@@ -3912,7 +3912,8 @@ fn (mut p FastArm64Parser) next() {
 }
 
 fn (p &FastArm64Parser) unsupported(feature string) IError {
-	return error('fastc arm64 parser does not support ${feature} at byte ${p.s.pos} in ${p.source_file.path}')
+	offset := fastc_original_source_offset(p.source_file.source_origins, p.source_offset + p.s.pos)
+	return error('fastc arm64 parser does not support ${feature} at byte ${offset} in ${p.source_file.path}')
 }
 
 fn (mut p FastArm64Parser) expect(wanted token.Token) ! {

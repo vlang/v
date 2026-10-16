@@ -1426,7 +1426,6 @@ struct Parser {
 	// source-level functions. It is immutable and shared by file generators.
 	function_c_names map[string]string
 	selfhost         bool
-	translated       bool
 	header_free      bool
 	// source_has_select is false only when the file provably holds no `select`
 	// word (see fastc_source_scan_flags), so block pre-scans for channel
@@ -1436,6 +1435,7 @@ struct Parser {
 	has_cleanup_hooks bool
 mut:
 	uses_pthread_tls     bool
+	translated           bool
 	path                 string
 	source_offset        int
 	source_origins       []FastcSourceOrigin

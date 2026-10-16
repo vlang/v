@@ -5,6 +5,40 @@ module fastc
 import os
 import v.pref
 
+fn test_fastc_arm64_unsupported_source_positions() {
+	$if arm64 ? {
+		root := os.join_path(os.vtmp_dir(), 'fastc_arm64_unsupported_offsets_${os.getpid()}')
+		os.mkdir_all(root)!
+		defer { os.rmdir_all(root) or {} }
+		path := os.join_path(root, 'main.v')
+		mut prefs := pref.new_preferences()
+		prefs.backend = 'fastc'
+		prefs.user_defines = ['arm64']
+		for template in [
+			'fn main() { BROKEN }',
+			r'$if arm64 ? { fn main() { BROKEN } }',
+			r'fn main() { $if arm64 ? { BROKEN } }',
+			r'$if arm64 ? { fn main() { $if macos { $if arm64 ? { BROKEN } } } }',
+			r'fn main() { value := $if arm64 ? { BROKEN; 1 } $else { 0 }; println(value) }',
+			r'fn main() { $if arm64 ? { defer { BROKEN } } }',
+			r'fn main() { $if arm64 ? { println("padding") }; BROKEN }',
+			'fn id[T](x T) T { return x }\nfn main() { _ := id(1); BROKEN }',
+			'fn fail[T](x T) { _ = x; BROKEN }\nfn main() { fail(1) }',
+		] {
+			source := 'module main\n// Preserve the original source location.\n' +
+				template.replace('BROKEN', 'asm arm64 { nop }') + '\n'
+			os.write_file(path, source)!
+			mut message := ''
+			generate_arm64_files([path], prefs, os.join_path(root, 'program')) or {
+				message = err.msg()
+			}
+			offset := source.index('asm arm64') or { panic('missing unsupported assembly') }
+			assert message.contains('fastc arm64 parser does not support expression token `asm`'), message
+			assert message.contains('at byte ${offset} in ${os.real_path(path)}'), '${source}: ${message}'
+		}
+	}
+}
+
 fn test_fastc_arm64_if_condition_validation() {
 	$if arm64 ? {
 		root := os.join_path(os.vtmp_dir(), 'fastc_arm64_if_condition_${os.getpid()}')

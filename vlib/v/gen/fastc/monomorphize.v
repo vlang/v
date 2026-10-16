@@ -39,6 +39,9 @@ struct FastcGenericMethodSource {
 	module_name                string
 	path                       string
 	imports                    map[string]string
+	header                     FastcSourceHeader
+	source_offset              int
+	source_origins             []FastcSourceOrigin
 	return_type_source         u32
 	first_param_is_type_param  bool
 	type_param_parameter_index int
@@ -96,6 +99,9 @@ fn fastc_collect_generic_methods_in_file(source_file FastcSourceFile, prefs &pre
 			module_name:                module_name
 			path:                       source_file.path
 			imports:                    source_file.header.imports
+			header:                     source_file.header
+			source_offset:              source_file.source_offset + generic.fn_start
+			source_origins:             source_file.source_origins
 			return_type_source:         generic.return_type_source
 			first_param_is_type_param:  generic.first_param_is_type_param
 			type_param_parameter_index: generic.type_param_parameter_index
@@ -474,7 +480,8 @@ fn (g &Parser) mono_parameter_types(source FastcGenericMethodSource, concrete u3
 		fallback[index] = fastc_specialized_generic_result_type(fallback[index], concrete)
 	}
 	mut signatures := map[string]FastcFunctionSignature{}
-	collect_function_signatures(g.render_mono_method(source, concrete), source.path,
+	instance := g.render_mono_method(source, concrete)
+	collect_function_signatures(instance.source, source.path,
 		FastcSourceHeader{
 			module_name: source.module_name
 			imports:     source.imports
@@ -580,15 +587,20 @@ fn fastc_generic_type_source_uses_parameter(source string, type_params string, p
 	return false
 }
 
-// render_mono_method produces the concrete source of one generic-method instance by
-// reusing the generic-function renderer: it re-scans the stored method source to locate
-// its `[T]` bracket + name, then substitutes the type parameter and renames the method.
-fn (g &Parser) render_mono_method(src FastcGenericMethodSource, concrete u32) string {
-	generics := fastc_scan_generic_fns(src.source, g.path, g.prefs, 0)
+// render_mono_method produces a concrete instance and preserves its defining source positions
+// through type substitution and renaming.
+fn (g &Parser) render_mono_method(src FastcGenericMethodSource, concrete u32) FastcSourceFile {
+	generics := fastc_scan_generic_fns(src.source, src.path, g.prefs, 0)
 	if generics.len == 0 {
-		return ''
+		return FastcSourceFile{}
 	}
-	return fastc_render_generic_instance(src.source, generics[0], flat.source_type_name(concrete), g.prefs)
+	return fastc_render_mapped_generic_instance(FastcSourceFile{
+		path:           src.path
+		source:         src.source
+		header:         src.header
+		source_offset:  src.source_offset
+		source_origins: src.source_origins
+	}, generics[0], flat.source_type_name(concrete), g.prefs, []FastcGenericCall{})
 }
 
 // erase_mono_generic_type_arguments removes type arguments from references to generic
@@ -597,10 +609,10 @@ fn (g &Parser) render_mono_method(src FastcGenericMethodSource, concrete u32) st
 // already does for signatures. The generated instance must receive the same treatment
 // before expression parsing, otherwise `Result[Concrete]{...}` is mistaken for an array
 // access followed by an ordinary block.
-fn (g &Parser) erase_mono_generic_type_arguments(source string, src FastcGenericMethodSource) string {
-	file := token.File.unindexed(src.path, source.len)
+fn (g &Parser) erase_mono_generic_type_arguments(source_file FastcSourceFile, src FastcGenericMethodSource) FastcSourceFile {
+	file := token.File.unindexed(src.path, source_file.source.len)
 	mut scan := scanner.new_scanner(g.prefs, .normal)
-	scan.init(file, source)
+	scan.init(file, source_file.source)
 	mut edits := []FastcSourceEdit{}
 	mut tok := scan.scan()
 	for tok != .eof {
@@ -628,7 +640,7 @@ fn (g &Parser) erase_mono_generic_type_arguments(source string, src FastcGeneric
 		for depth > 0 {
 			tok = scan.scan()
 			if tok == .eof {
-				return source
+				return source_file
 			}
 			if tok == .lsbr {
 				depth++
@@ -642,10 +654,7 @@ fn (g &Parser) erase_mono_generic_type_arguments(source string, src FastcGeneric
 		}
 		tok = scan.scan()
 	}
-	if edits.len == 0 {
-		return source
-	}
-	return fastc_apply_source_edits(source, edits)
+	return fastc_apply_mapped_source_edits(source_file, edits)
 }
 
 struct FastcGenericFn {

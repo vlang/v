@@ -8,10 +8,14 @@ with its source byte offset; FastC does not silently switch to the C backend.
 As in the default C backend, an `if` condition cannot start with another `if` expression,
 even behind opening parentheses. Assign the inner expression to a variable first.
 Both the C emitter and the native ARM64 parser enforce this rule.
-Diagnostics retain source-file byte offsets through generic rewrites, selected compile-time
-branches, and declaration initializers, including errors for unsupported expressions and invalid
-tokens in struct-field defaults. Files marked `@[translated]` retain support for these conditions,
-including constant, global, and struct-field initializers.
+The condition diagnostic preserves original source-file byte offsets through generic rewrites,
+selected compile-time branches, and declaration initializers. The common diagnostics for
+unsupported constructs do the same in both parsers. The C emitter also maps scanner errors in
+struct-field defaults.
+
+Files marked `@[translated]` retain support for these conditions, including constant, global, and
+struct-field initializers. On-demand generic instances use their defining file's translated status
+and source positions.
 
 Ordinary programs support the following constructs:
 
