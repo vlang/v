@@ -537,7 +537,8 @@ fn (g &Parser) method_uses_undefined_receiver() bool {
 			// (not a bare `R.f` / `R.f < x`) avoids flagging `.sort(a.x < b.x)` comparison
 			// closures. Only the base of an `a.b.c` chain is flagged (inner members have
 			// `previous == .dot`).
-			if previous != .dot && next == .dot {
+			if previous != .dot && next == .dot
+				&& lit !in bound && lit !in g.locals && lit !in g.imports {
 				mut ahead2 := ahead
 				if ahead2.scan() == .name {
 					after := ahead2.scan()

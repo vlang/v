@@ -61,3 +61,33 @@ fn test_fastc_undefined_receiver_probe_keeps_closure_bailout_and_scanner_state()
 	outside.tok = .name
 	assert !outside.method_uses_undefined_receiver()
 }
+
+fn test_fastc_known_receiver_probe_keeps_late_bindings_imports_and_scanner_state() {
+	for body in ['known.field', 'known.field[index]', 'known.one.two()', 'io.run()',
+		'later.run()\nlater := known', 'later.run()\nlater = known', 'late.one()\nfirst, late := pair()',
+		'late.one()\nfor index, late in items {}',
+		'known.run(missing, later)\nlater.run()\nlater := known',
+		'known /* comment */ . /* comment */ run()', 'known /* multiline\ncomment */ .run()',
+		'known.method fn () {}', r"known.method '\q'"] {
+		base := fastc_receiver_probe_test_parser(body)
+		g := Parser{
+			...base
+			imports: {
+				'io': 'io'
+			}
+		}
+		offset := g.s.offset
+		pos := g.s.pos
+		lit := g.s.lit
+		assert !g.method_uses_undefined_receiver(), body
+		assert !g.method_uses_undefined_receiver(), body
+		assert g.tok == .lcbr
+		assert g.s.offset == offset && g.s.pos == pos && g.s.lit == lit
+		assert g.s.diagnostics.len == 0
+	}
+	for body in ['known.run()\nmissing.run()', 'for late in items { late.run() }\nmissing.run()',
+		'known.run(missing, later)\nlater.run()'] {
+		g := fastc_receiver_probe_test_parser(body)
+		assert g.method_uses_undefined_receiver(), body
+	}
+}

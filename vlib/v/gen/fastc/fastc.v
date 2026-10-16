@@ -991,18 +991,18 @@ struct FastcFunctionDeferBlock {
 }
 
 struct FastcExpressionToken {
-	tok                  token.Token
 	source               string
 	unsafe_depth         int
+	tok                  token.Token
+	chan_element_type    u32
+	option_value_type    u32
 	is_mut_argument      bool
 	is_statement         bool
 	is_capturing_closure bool
 	is_storage           bool
-	chan_element_type    u32
-	option_value_type    u32
 mut:
-	lit string
 	typ u32
+	lit string
 }
 
 struct FastcRenderedExpression {

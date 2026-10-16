@@ -894,6 +894,7 @@ fn (g &Parser) render_leading_member_chain_promotion(tokens []FastcExpressionTok
 }
 
 fn (g &Parser) render_raw_expression_tokens(tokens []FastcExpressionToken) ?string {
+	if direct := g.render_raw_local_direct_member(tokens) { return direct }
 	if tokens.len == 1 {
 		item := tokens[0]
 		if item.source != '' {

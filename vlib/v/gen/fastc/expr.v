@@ -2195,10 +2195,8 @@ fn (g &Parser) translated_divisor_is_positive_constant() bool {
 }
 
 struct FastcStreamedExpressionToken {
-	piece                      string
-	module_separator           bool
-	next_token_is_mut_argument bool
-	source_token_count         int
+	piece            string
+	module_separator bool
 }
 
 // next_source_byte_may_be keeps scanner lookahead for comments and line breaks,
@@ -2217,10 +2215,7 @@ fn (g &Parser) next_source_byte_may_be(expected u8) bool {
 }
 
 @[inline]
-fn (mut g Parser) render_expression_stream_token(mut expression_tokens []FastcExpressionToken, stops []token.Token, previous_token token.Token, previous_lit string, previous_module_separator bool, shared_is_struct_field bool, spawn_is_field_name bool, keyword_is_field_name bool, brace_depth int, previous_was_pointer_cast bool, input_next_token_is_mut_argument bool, input_source_token_count int) !FastcStreamedExpressionToken {
-	mut next_token_is_mut_argument := input_next_token_is_mut_argument
-	mut source_token_count := input_source_token_count
-	source_token_count++
+fn (mut g Parser) render_expression_stream_token(mut expression_tokens []FastcExpressionToken, stops []token.Token, previous_token token.Token, previous_lit string, previous_module_separator bool, shared_is_struct_field bool, spawn_is_field_name bool, keyword_is_field_name bool, brace_depth int, previous_was_pointer_cast bool, input_next_token_is_mut_argument bool) !FastcStreamedExpressionToken {
 	keyword_module_alias := if g.tok.is_keyword() && g.lit in g.imports {
 		mut lookahead := g.s
 		lookahead.scan() == .dot
@@ -2240,9 +2235,8 @@ fn (mut g Parser) render_expression_stream_token(mut expression_tokens []FastcEx
 		tok:             stored_tok
 		lit:             g.lit
 		unsafe_depth:    g.unsafe_depth
-		is_mut_argument: next_token_is_mut_argument
+		is_mut_argument: input_next_token_is_mut_argument
 	}
-	next_token_is_mut_argument = false
 	module_separator := g.tok == .dot
 		&& g.expression_dot_is_module_separator(expression_tokens, expression_tokens.len - 1)
 	qualified_name_owner := if g.tok == .name && previous_token == .dot
@@ -2320,10 +2314,8 @@ fn (mut g Parser) render_expression_stream_token(mut expression_tokens []FastcEx
 		piece = '->'
 	}
 	return FastcStreamedExpressionToken{
-		piece:                      piece
-		module_separator:           module_separator
-		next_token_is_mut_argument: next_token_is_mut_argument
-		source_token_count:         source_token_count
+		piece:            piece
+		module_separator: module_separator
 	}
 }
 
@@ -2788,7 +2780,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			g.validate_nil(expression_tokens, previous_token, paren_depth, bracket_depth, brace_depth, struct_types, struct_depths, struct_paren_depths)!
 		}
 		g.validate_expression_stream_token(expression_tokens, stops, allow_mutation_statement, allow_declaration_guard, paren_depth, bracket_depth, brace_depth, unsafe_expression_depth, source_token_count, mut operator_state)!
-		streamed := g.render_expression_stream_token(mut expression_tokens, stops, previous_token, previous_lit, previous_module_separator, shared_is_struct_field, spawn_is_field_name, keyword_is_field_name, brace_depth, previous_was_pointer_cast, next_token_is_mut_argument, source_token_count)!
+		streamed := g.render_expression_stream_token(mut expression_tokens, stops, previous_token, previous_lit, previous_module_separator, shared_is_struct_field, spawn_is_field_name, keyword_is_field_name, brace_depth, previous_was_pointer_cast, next_token_is_mut_argument)!
 		mut piece := streamed.piece
 		if g.tok == .dot {
 			// A field sharing a mutable local's name keeps its own value/reference type.
@@ -2835,8 +2827,8 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			}
 		}
 		module_separator := streamed.module_separator
-		next_token_is_mut_argument = streamed.next_token_is_mut_argument
-		source_token_count = streamed.source_token_count
+		next_token_is_mut_argument = false
+		source_token_count++
 		if g.tok == .lpar && previous_token == .name {
 			piece = g.rewrite_expression_cast(mut result, expression_tokens, previous_lit, paren_depth, mut cast_depths, mut pointer_cast_depths, piece)
 		}

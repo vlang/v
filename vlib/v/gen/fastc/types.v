@@ -468,6 +468,38 @@ fn (g &Parser) infer_expression_type_range(tokens []FastcExpressionToken, expres
 	return inferred
 }
 
+// infer_local_direct_member_type only shortcuts a source-local direct lookup.
+// The full inference path retains all ambiguous or flow-sensitive expressions.
+fn (g &Parser) infer_local_direct_member_type(tokens []FastcExpressionToken, start int, end int) u32 {
+	if end - start != 3 || tokens[start].tok != .name || tokens[start + 1].tok != .dot
+		|| tokens[start + 2].tok != .name || !g.selfhost || g.translated
+		|| g.member_smartcasts.len > 0 || g.in_mono_drain || g.in_generic_placeholder {
+		return u32(0)
+	}
+	for i in start .. end {
+		item := tokens[i]
+		if item.source != '' || item.is_mut_argument || item.is_statement
+			|| item.is_capturing_closure || item.is_storage || item.chan_element_type != 0
+			|| item.option_value_type != 0 {
+			return u32(0)
+		}
+	}
+	root := tokens[start]
+	member := tokens[start + 2]
+	if root.lit == 'C' || root.lit.starts_with('@') || member.lit.starts_with('@')
+		|| root.lit in g.imports || tokens[start + 1].typ != 0 || member.typ != 0 {
+		return u32(0)
+	}
+	local := g.locals[root.lit] or { return u32(0) }
+	if local.typ == 0 || local.option_value_type != 0 || local.smartcast_origin_type != 0
+		|| local.smartcast_origin_source != '' || (root.typ != 0 && root.typ != local.typ) {
+		return u32(0)
+	}
+	// A declared enum (including an alias) wins before the local-field branch.
+	if g.resolve_declared_type_key(root.lit) != none { return u32(0) }
+	return g.struct_direct_member_type(local.typ, member.lit)
+}
+
 fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, expression_start int, expression_end int) !u32 {
 	if expression_start >= expression_end {
 		return u32(0)
@@ -523,6 +555,11 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 				u32(0)
 			}
 		}
+	}
+	if end - start == 3 && tokens[start].tok == .name && tokens[start + 1].tok == .dot
+		&& tokens[start + 2].tok == .name {
+		direct := g.infer_local_direct_member_type(tokens, start, end)
+		if direct != 0 { return direct }
 	}
 	if signature := g.function_alias_call_signature(tokens[start..end]) {
 		return signature.return_type
