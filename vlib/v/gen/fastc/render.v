@@ -107,6 +107,40 @@ fn fastc_resolve_enum_shorthands_in_source(source string, enum_c string, fields 
 	return out
 }
 
+// render_contextual_empty_map_initializer uses the destination's map layout
+// for a complete empty typed literal. No existing entries need conversion.
+fn (g &Parser) render_contextual_empty_map_initializer(tokens []FastcExpressionToken, expected_type u32) ?FastcRenderedExpression {
+	if !g.selfhost || expected_type == 0 || tokens.len < 3 || tokens[0].tok !in [
+		.name,
+		.lpar,
+	] {
+		return none
+	}
+	literal_tokens := fastc_strip_paren_tokens(tokens)
+	if literal_tokens.len < 3 || literal_tokens[literal_tokens.len - 2].tok != .lcbr
+		|| literal_tokens.last().tok != .rcbr {
+		return none
+	}
+	expected_layout := g.underlying_alias_type(expected_type)
+	if fastc_is_pointer_type(expected_layout) {
+		return none
+	}
+	key_type, value_type := g.map_key_value_types(expected_layout) or { return none }
+	actual_type := g.map_initializer_type(literal_tokens[..literal_tokens.len - 2]) or { return none }
+	if actual_type == expected_layout || fastc_is_pointer_type(actual_type) {
+		return none
+	}
+	actual_key, actual_value := g.map_key_value_types(actual_type) or { return none }
+	if actual_key == key_type && actual_value == value_type {
+		return none
+	}
+	hash_fn, eq_fn, clone_fn, free_fn := g.map_runtime_functions(key_type)
+	return FastcRenderedExpression{
+		source: '(builtin__new_map(sizeof(${g.collection_runtime_type(key_type)}), sizeof(${g.collection_runtime_type(value_type)}), &${hash_fn}, &${eq_fn}, &${clone_fn}, &${free_fn}))'
+		typ:    expected_type
+	}
+}
+
 fn (g &Parser) render_map_expression(tokens []FastcExpressionToken) ?FastcRenderedExpression {
 	if lookup := g.render_map_lookup_option_expression(tokens) {
 		// The Option temp uses the reserved `__vf_` prefix, NOT a plain name like `lookup`: a
@@ -4259,6 +4293,9 @@ fn (g &Parser) render_method_value_expression(tokens []FastcExpressionToken) ?st
 }
 
 fn (g &Parser) render_map_literal_argument(tokens []FastcExpressionToken, expected_type_source_id u32) ?FastcRenderedExpression {
+	if contextual := g.render_contextual_empty_map_initializer(tokens, expected_type_source_id) {
+		return contextual
+	}
 	expected_type := flat.source_type_name(expected_type_source_id)
 	map_type := fastc_trim_pointer_suffix(expected_type)
 	key_type_source_id, value_type_source_id := g.map_key_value_types(flat.source_type_id(map_type)) or { return none }

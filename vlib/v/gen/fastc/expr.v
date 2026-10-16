@@ -923,7 +923,11 @@ fn (mut g Parser) lower_or_expression(mut result strings.Builder, mut expression
 	g.next()
 	g.expect(.lcbr)!
 	temporary := g.temporary_name('option')
-	wrapper := (g.infer_expression_type(option_tokens) or { fastc_type_option })
+	wrapper := (g.infer_expression_type(if grouped_operand {
+		grouped_value_tokens
+	} else {
+		option_tokens
+	}) or { fastc_type_option })
 	error_binding := if flat.source_type_name(wrapper) == '__v_result' {
 		'IError err = ${temporary}.err;'
 	} else {
@@ -1002,6 +1006,18 @@ fn (mut g Parser) lower_or_expression(mut result strings.Builder, mut expression
 		if outer_cast && paren_depth > 0 && g.tok == .rpar {
 			paren_depth--
 			g.next()
+		}
+		// The typed field atom replaces its grouping opens, so consume the
+		// corresponding closes just as the fallback-value path does below.
+		if grouped_operand && in_struct_field {
+			mut skipped := 0
+			for skipped < grouped_paren_count && g.tok == .rpar {
+				if paren_depth > 0 {
+					paren_depth--
+				}
+				g.next()
+				skipped++
+			}
 		}
 		result.go_back(result.len)
 		or_expr_body := if fallback_value != '' && complex_value_type != flat.source_type_void {
@@ -2682,6 +2698,20 @@ fn (mut g Parser) finish_read_expression(mut result strings.Builder, mut express
 	}
 	mut flags := fastc_special_token_flags(expression_tokens)
 	mut rendered_expression := fastc_take_trimmed(mut result)
+	if flags.has_lcbr && flags.has_lsbr {
+		if contextual := g.render_contextual_empty_map_initializer(expression_tokens, saved_expected_expression_type_source_id) {
+			// Only the complete expression owns this expected type. Nested map
+			// receivers are rendered later with their own explicit context.
+			rendered_expression = contextual.source
+			expression_tokens = [FastcExpressionToken{
+				tok:    .name
+				lit:    contextual.source
+				source: contextual.source
+				typ:    contextual.typ
+			}]
+			flags = fastc_special_token_flags(expression_tokens)
+		}
+	}
 	if g.selfhost && (flags.has_source_name
 		|| fastc_expression_has_pointer_type_sizeof(expression_tokens))
 		&& !flags.has_assignment {
@@ -3717,6 +3747,7 @@ mut:
 	has_binary               bool
 	has_assignment           bool
 	has_not                  bool
+	has_question             bool
 	has_plus                 bool
 	has_typeof               bool
 	has_left_shift           bool
@@ -4471,6 +4502,9 @@ fn fastc_special_token_flags(tokens []FastcExpressionToken) FastcTokenFlags {
 			}
 			.not {
 				flags.has_not = true
+			}
+			.question {
+				flags.has_question = true
 			}
 			else {}
 		}
@@ -5333,6 +5367,20 @@ fn (g &Parser) render_special_expression_with_flags(tokens []FastcExpressionToke
 }
 
 fn (g &Parser) render_special_expression_impl(tokens []FastcExpressionToken, rendered_expression string, flags FastcTokenFlags) ?FastcRenderedExpression {
+	if g.selfhost && (flags.has_not || flags.has_question) && tokens.len > 3
+		&& tokens[0].tok == .lpar && tokens.last().tok == .rpar {
+		inner := fastc_strip_paren_tokens(tokens)
+		if inner.len < tokens.len && inner.len > 1 && inner.last().tok in [.not, .question]
+			&& !fastc_trailing_not_marks_fixed_array_literal(inner) {
+			// Propagation belongs to the grouped value. Render its inner operators
+			// and calls normally before restoring the surrounding parentheses.
+			normalized := fastc_question_as_not(inner)
+			raw := g.render_raw_expression_tokens(normalized) or { return none }
+			if value := g.render_special_expression(normalized, raw) {
+				return FastcRenderedExpression{ source: '(${value.source})', typ: value.typ }
+			}
+		}
+	}
 	if tokens.len == 2 && tokens[0].tok == .amp && tokens[1].tok == .name {
 		if local := g.locals[tokens[1].lit] {
 			if local.is_reference {

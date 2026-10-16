@@ -52,6 +52,7 @@ v -b fastc -enable-globals -o program path/to/project
 Directory entries select the full builtin runtime, including V strings, maps, errors, and
 garbage collection. Generic calls infer their concrete type from a mutable variable argument.
 Mutable field arguments also retain their type when inferring a generic instance.
+Empty map initializers use their expected key and value storage, including map aliases.
 On glibc Linux, thread IDs use the system call without requiring glibc 2.30. Generic
 parameter shadowing ends with its function and does not affect later constants.
 Function-pointer fields and parameters support mixed named and unnamed parameter types.
@@ -109,6 +110,8 @@ Escaped keyword fields and locals, and the ESC escape `\e` in runes and strings,
 Multiline values can continue with leading binary operators or a following `else` branch.
 Postfix updates used as values return the old value, and trailing variable attributes preserve
 the following statement. Option/Result tuple fallbacks can return an enclosing function's tuple.
+Grouped Option/Result propagation preserves payload types and early returns, including in call
+arguments.
 Direct integer tuple returns store each component at its declared width, including literal values.
 Assertions preserve the following fallback statement when it begins with a unary operator.
 Standalone `unsafe` blocks preserve local scopes. Forward labels remain reachable after a return
