@@ -4,7 +4,7 @@ import encoding.base64
 
 // decode_only reads `data` and returns the first parsed PEM Block. `none` is returned
 //  when a header is expected, but not present or when a start of '-----BEGIN' or end of '-----END'
-// can't be found.
+// can't be found, or when the '-----END' line names another type than the '-----BEGIN' line.
 //
 // use decode if you still need the unparsed rest of the string.
 @[inline]
@@ -15,17 +15,18 @@ pub fn decode_only(data string) ?Block {
 
 // decode reads `data` and returns the first parsed PEM Block along with the rest of
 // the string. `none` is returned when a header is expected, but not present
-// or when a start of '-----BEGIN' or end of '-----END' can't be found.
+// or when a start of '-----BEGIN' or end of '-----END' can't be found,
+// or when the '-----END' line names another type than the '-----BEGIN' line.
 //
 // use decode_only if you do not need the unparsed rest of the string.
 @[direct_array_access; inline]
 pub fn decode(data string) ?(Block, string) {
 	block, rest := decode_internal(data)?
-	return block, rest.all_after_first(pem_eol)
+	return block, rest
 }
 
 // decode_internal allows `decode` variations to deal with the rest of the data as
-// they want to. The returned rest starts right after the '-----END ' of the block.
+// they want to. The returned rest starts right after the '-----END TYPE-----' of the block.
 @[direct_array_access]
 fn decode_internal(data string) ?(Block, string) {
 	// direct_array_access safety: since we use the string.index method here,
@@ -41,13 +42,19 @@ fn decode_internal(data string) ?(Block, string) {
 	if !rest.starts_with(pem_end[1..]) {
 		block_end_index = rest.index(pem_end)? + 1
 	}
+	// the END line must name the same type as the BEGIN line
+	end_type := rest[block_end_index + pem_end.len - 1..]
+	if !end_type.starts_with(block.block_type)
+		|| !end_type[block.block_type.len..].starts_with(pem_eol) {
+		return none
+	}
 	b64_data := rest[..block_end_index].replace_each(['\r', '', '\n', '', '\t', '', ' ', ''])
 	block_data_len := block_end_index / 4 * 3
 	block.data = []u8{len: block_data_len, cap: block_data_len + 3, init: 0}
 	decoded_len := base64.decode_in_buffer(&b64_data, &block.data[0])
 	block.data = block.data[..decoded_len]
 
-	return block, rest[block_end_index + pem_end.len - 1..]
+	return block, end_type[block.block_type.len + pem_eol.len..]
 }
 
 @[direct_array_access]
