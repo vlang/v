@@ -15529,8 +15529,9 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 			if ct.starts_with('fn_ptr:') {
 				ct = g.resolve_fn_ptr_type(ct)
 			}
-			if target_text in g.interfaces || g.tc.qualify_name(target_text) in g.interfaces {
-				return '(${ct}){0}'
+			if g.cast_target_is_interface(target_type_id) {
+				// Boxing has no constant C form; a zero value loses the object and `_typ`.
+				return g.expr_to_string(id)
 			}
 			if target_type is types.SumType {
 				inner_id := g.a.child(&node, 0)
@@ -26037,7 +26038,10 @@ fn (mut g FlatGen) is_const_expr_inner(id flat.NodeId, mut visiting map[int]bool
 			g.is_const_expr_inner(g.a.child(&node, 0), mut visiting)
 		}
 		.cast_expr {
-			g.is_const_expr_inner(g.a.child(&node, 0), mut visiting)
+			// An interface value points at a boxed copy of its source, so the cast
+			// has to run in _vinit even when the source is constant.
+			!g.cast_target_is_interface(g.generic_default_type_id(flat.source_type_id(node.value)))
+				&& g.is_const_expr_inner(g.a.child(&node, 0), mut visiting)
 		}
 		.ident {
 			// A param or local is never a compile-time constant, even when a const
@@ -26075,7 +26079,9 @@ fn (mut g FlatGen) is_const_expr_inner(id flat.NodeId, mut visiting map[int]bool
 				child := g.a.child_node(&node, ci)
 				if child.kind == .field_init {
 					if ftyp := g.struct_field_type(flat.source_type_id(node.value), child.value) {
-						if ftyp is types.Array || ftyp is types.Map {
+						// An interface field boxes its value, even without an explicit cast.
+						if ftyp is types.Array || ftyp is types.Map
+							|| cgen_unalias_type(ftyp) is types.Interface {
 							all_const = false
 							break
 						}
@@ -26092,6 +26098,16 @@ fn (mut g FlatGen) is_const_expr_inner(id flat.NodeId, mut visiting map[int]bool
 			false
 		}
 	}
+}
+
+// cast_target_is_interface reports whether a cast to `target_type_id` builds an
+// interface value.
+fn (mut g FlatGen) cast_target_is_interface(target_type_id u32) bool {
+	target_text := flat.source_type_name(target_type_id)
+	if target_text in g.interfaces || g.tc.qualify_name(target_text) in g.interfaces {
+		return true
+	}
+	return cgen_unalias_type(g.tc.parse_type(target_type_id)) is types.Interface
 }
 
 fn (mut g FlatGen) const_ref_is_static(name string, mut visiting map[int]bool) bool {
