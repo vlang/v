@@ -139,12 +139,14 @@ fn test_the_error_lists_every_rejected_tool_cache_folder_and_why() {
 			assert message.contains('  - `${custom}`:\n      `${custom}` (mode 0775) is writable by its group without the sticky bit\n'), message
 			assert message.contains('  - `${os.join_path(writable, 'xdg', 'v', 'tools')}`:\n${writable_problem}\n'), message
 			assert message.contains('  - `${os.join_path(writable, 'vtmp', 'tools')}`:\n${writable_problem}\n'), message
+			assert message.contains('  - `${os.join_path(writable, 'home', '.vtools')}`:\n${writable_problem}\n'), message
 			assert message.contains('set ${tool_cache_dir_env} to a folder that only you can'), message
 			assert message.contains('mkdir -p -m 700 "\$HOME/.vtools"'), message
 		}
 		// Nothing may be created below the folder that others can write to.
 		assert !os.exists(os.join_path(writable, 'xdg', 'v', 'tools'))
 		assert !os.exists(os.join_path(writable, 'vtmp', 'tools'))
+		assert !os.exists(os.join_path(writable, 'home', '.vtools'))
 	})!
 }
 
@@ -179,7 +181,7 @@ fn test_the_ownership_launch_explains_why_no_cache_folder_can_be_used() {
 		assert result.exit_code == 1, result.output
 		assert result.output.contains('cannot find a writable cache for the V3 ownership compiler\nno usable tool cache folder was found:\n'), result.output
 		for candidate in [os.join_path(writable, 'xdg', 'v', 'tools'),
-			os.join_path(writable, 'vtmp', 'tools')] {
+			os.join_path(writable, 'vtmp', 'tools'), os.join_path(writable, 'home', '.vtools')] {
 			assert result.output.contains('  - `${candidate}`:\n      `${writable}` (mode 0777) is writable by its group and others without the sticky bit\n'), result.output
 		}
 		assert result.output.contains(tool_cache_dir_env), result.output

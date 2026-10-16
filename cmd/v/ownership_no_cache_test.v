@@ -19,15 +19,17 @@ fn test_ownership_compilations_honour_vtools_no_cache() {
 		os.chmod(os.join_path(root, 'shared'), 0o700) or {}
 		os.rmdir_all(root) or {}
 	}
-	// Both default tool cache folders are below a folder that everybody can write to, so the
-	// cache cannot be used at all, as on the host from the issue.
+	// Every default tool cache folder, `~/.vtools` included, is below a folder that everybody can
+	// write to, so the cache cannot be used at all, as on the host from the issue.
 	shared := os.join_path(root, 'shared')
 	xdg := os.join_path(shared, 'xdg')
 	vtmp := os.join_path(shared, 'vtmp')
+	home := os.join_path(shared, 'home')
 	os.mkdir(shared)!
 	os.chmod(shared, 0o777)!
 	os.mkdir(xdg, mode: 0o700)!
 	os.mkdir(vtmp, mode: 0o700)!
+	os.mkdir(home, mode: 0o700)!
 	moved := os.join_path(root, 'moved.v')
 	// Only the ownership checker rejects this program, so its diagnostic shows that the
 	// ownership compiler was built and ran.
@@ -36,6 +38,7 @@ fn test_ownership_compilations_honour_vtools_no_cache() {
 	os.write_file(clean, 'fn main() {\n\tvalues := [1, 2, 3]\n\tprintln(values.len)\n}\n')!
 	environment := {
 		'XDG_CACHE_HOME':       xdg
+		'HOME':                 home
 		'VTMP':                 vtmp
 		'VFLAGS':               ''
 		tool_cache_dir_env:     ''
@@ -57,4 +60,5 @@ fn test_ownership_compilations_honour_vtools_no_cache() {
 	assert leftovers == [], 'the temporary ownership compiler was left in `${vtmp}`'
 	assert !os.exists(os.join_path(xdg, 'v')), 'the tool cache must not be prepared'
 	assert !os.exists(os.join_path(vtmp, 'tools')), 'the tool cache must not be prepared'
+	assert !os.exists(os.join_path(home, '.vtools')), 'the tool cache must not be prepared'
 }
