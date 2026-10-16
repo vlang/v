@@ -8278,6 +8278,32 @@ fn v3_windows_prod_clang_triple(clang string) string {
 	return triple
 }
 
+// v3_c_flags_retarget_clang reports whether the user's C flags pick clang's target
+// themselves (`--target=<triple>`, `-target <triple>`), which overrides the default
+// `clang -dumpmachine` reports.
+fn v3_c_flags_retarget_clang(user_c_flags []string) bool {
+	return user_c_flags.any(it.starts_with('--target=') || it in ['-target', '--target'])
+}
+
+// v3_windows_clang_msvc_abi_error explains why a Windows build cannot link with a clang
+// whose default target is the MSVC ABI (`x86_64-pc-windows-msvc`), as the clang of a
+// Visual Studio or LLVM.org install is. V's Windows C build follows MinGW conventions
+// (`-municode`, `-Wl,--stack=...`, the bundled Boehm GC objects), which such a clang
+// hands to `link.exe`: the link fails with unresolved symbols, or the program
+// fast-fails at startup. The check is skipped when the user retargets clang
+// through `-cflags`, and it needs the triple the caller probed, so a failed probe never
+// blocks a build. An object output (`-o x.o`) is checked too: V's Windows C does not
+// compile for that ABI either. A C-only output runs no compiler and is not.
+fn v3_windows_clang_msvc_abi_error(c_compiler string, effective_c_compiler string, clang_triple string, target_os string, user_c_flags []string) ?string {
+	if target_os != 'windows' || effective_c_compiler != 'clang' {
+		return none
+	}
+	if !clang_triple.ends_with('-msvc') || v3_c_flags_retarget_clang(user_c_flags) {
+		return none
+	}
+	return '`-cc ${c_compiler}` targets the MSVC ABI (${clang_triple}), which cannot build the MinGW conventions V uses for Windows programs (`-municode`, `-Wl,--stack`, the bundled Boehm GC). Use a clang that targets MinGW (`clang -dumpmachine` prints `x86_64-w64-windows-gnu` or `x86_64-w64-mingw32`, as llvm-mingw does), retarget this one with `-cflags "--target=x86_64-w64-mingw32 --sysroot=<MinGW root> -fuse-ld=lld"`, or build with `-cc msvc` or `-cc gcc`.'
+}
+
 // v3_windows_prod_toolchain looks for the compilers v3_windows_prod_c_compiler chooses
 // between. Once MSVC is ready nothing else is looked up: the later tools cannot be
 // chosen, and probing a PATH `clang` runs a program.
@@ -11637,6 +11663,19 @@ pub fn run(args []string) {
 	if effective_c_compiler == 'msvc' && target.os != 'windows' && !output_cross_c {
 		eprintln('MSVC requires a Windows target; cannot compile target `${target.os}`')
 		exit(1)
+	}
+	if target.os == 'windows' && effective_c_compiler == 'clang' && !c_only && !output_cross_c
+		&& !check_only && !only_check_syntax {
+		// Only clang is probed: the other names decide the ABI by themselves. The probe
+		// is bounded (see v3_windows_prod_clang_triple) and a failed one is not an error.
+		clang_path := os.find_abs_path_of_executable(c_compiler) or { c_compiler }
+		clang_triple := v3_windows_prod_clang_triple(clang_path)
+		if msg := v3_windows_clang_msvc_abi_error(c_compiler, effective_c_compiler,
+			clang_triple, target.os, user_c_flags)
+		{
+			eprintln(msg)
+			exit(1)
+		}
 	}
 	if retry_compilation && use_implicit_tcc_semantics && !check_only && !only_check_syntax
 		&& !c_only && !is_o {
