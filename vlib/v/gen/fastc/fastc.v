@@ -1366,6 +1366,19 @@ struct FastcBoolImplication {
 	smartcast FastcMemberSmartcast
 }
 
+// FastcTypeDescriptorMemoEntry caches an immutable descriptor lookup. Zero
+// keys are empty; each operation uses its own 64-slot direct-mapped cache.
+struct FastcTypeDescriptorMemoEntry {
+	key   u32
+	value u32
+}
+
+struct FastcTypeDescriptorMemo {
+mut:
+	semantic_keys [64]FastcTypeDescriptorMemoEntry
+	aliases       [64]FastcTypeDescriptorMemoEntry
+}
+
 struct Parser {
 	prefs &pref.Preferences
 	// Generic methods (own type param) not resolved by the source-level pass, kept so a
@@ -1383,6 +1396,9 @@ struct Parser {
 	// (see fastc_declared_type_c_names); semantic_type_key resolves through it.
 	declared_type_c_names     flat.TypeTextBindings
 	declared_type_key_by_name flat.TypeTextBindings
+	// Only final self-host file generation opts in: both descriptor maps stay
+	// immutable for this Parser's lifetime, including module/mono switches.
+	type_descriptor_memo &FastcTypeDescriptorMemo = unsafe { nil }
 	// `__vf_`-prefixed generated C names, the only possible collisions for
 	// temporary_namespace candidates (see fastc_reserved_temporary_c_names).
 	fastc_prefixed_c_names []string
@@ -1855,6 +1871,11 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 		used_function_names:       ctx.used_function_names
 		function_c_names:          ctx.function_c_names
 		selfhost:                  prefs.building_v
+		type_descriptor_memo:      if prefs.building_v {
+			&FastcTypeDescriptorMemo{}
+		} else {
+			unsafe { nil }
+		}
 		translated:                source_file.header.translated
 		source_has_select:         source_file.header.has_select
 		has_startup_inits:         ctx.has_startup_inits

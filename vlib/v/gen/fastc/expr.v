@@ -307,11 +307,7 @@ fn (mut g Parser) try_read_atomic_expression(stops []token.Token, allow_mutation
 			return FastcAtomicExpression{}
 		}
 		typ = local.typ
-		if typ !in [flat.source_type_bool, flat.source_type_string, flat.source_type_int,
-			flat.source_type_i8, flat.source_type_i16, flat.source_type_i32, flat.source_type_i64,
-			flat.source_type_u8, flat.source_type_u16, flat.source_type_u32, flat.source_type_u64,
-			flat.source_type_isize, flat.source_type_usize, flat.source_type_f32, flat.source_type_f64,
-			flat.source_type_rune, flat.source_type_char] && !g.is_plain_aggregate_value_type(typ) {
+		if !fastc_simple_call_scalar_type(typ) && !g.is_plain_aggregate_value_type(typ) {
 			return FastcAtomicExpression{}
 		}
 		local_c_name = local.c_name
@@ -601,7 +597,9 @@ fn (mut g Parser) try_read_simple_call_expression(stops []token.Token, allow_mut
 	}
 }
 
+@[inline]
 fn fastc_simple_call_scalar_type(typ u32) bool {
+	if fastc_scalar_type_mask.enabled { return fastc_scalar_type_mask.contains(typ) }
 	return typ in [flat.source_type_bool, flat.source_type_char, flat.source_type_f32,
 		flat.source_type_f64, flat.source_type_i8, flat.source_type_i16, flat.source_type_i32,
 		flat.source_type_i64, flat.source_type_int, flat.source_type_isize, flat.source_type_rune,

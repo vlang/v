@@ -1652,11 +1652,7 @@ fn (g &Parser) plain_numeric_arithmetic_expression(tokens []FastcExpressionToken
 				local := g.locals[item.lit] or { return false }
 				if local.is_reference || local.option_value_type != 0 || local.smartcast_origin_type != 0
 					|| (item.typ != 0 && item.typ != local.typ)
-					|| local.typ !in [flat.source_type_int, flat.source_type_i8, flat.source_type_i16,
-						flat.source_type_i32, flat.source_type_i64, flat.source_type_isize,
-						flat.source_type_u8, flat.source_type_u16, flat.source_type_u32,
-						flat.source_type_u64, flat.source_type_usize, flat.source_type_f32,
-						flat.source_type_f64] {
+					|| !fastc_plain_arithmetic_value_type(local.typ) {
 					return false
 				}
 				expect_operand = false
@@ -1748,11 +1744,7 @@ fn (g &Parser) plain_primitive_comparison_expression(tokens []FastcExpressionTok
 					return false
 				}
 				typ = local.typ
-				if typ !in [flat.source_type_bool, flat.source_type_int, flat.source_type_i8,
-					flat.source_type_i16, flat.source_type_i32, flat.source_type_i64,
-					flat.source_type_isize, flat.source_type_u8, flat.source_type_u16,
-					flat.source_type_u32, flat.source_type_u64, flat.source_type_usize,
-					flat.source_type_f32, flat.source_type_f64] {
+				if !fastc_primitive_member_comparison_value_type(typ) {
 					return false
 				}
 			}
@@ -1813,7 +1805,9 @@ fn (g &Parser) plain_primitive_member_comparison_expression(tokens []FastcExpres
 	return fastc_common_arithmetic_type(left_type, right_type) != 0
 }
 
+@[inline]
 fn fastc_primitive_member_comparison_value_type(typ u32) bool {
+	if fastc_comparison_type_mask.enabled { return fastc_comparison_type_mask.contains(typ) }
 	return typ in [flat.source_type_bool, flat.source_type_int, flat.source_type_i8,
 		flat.source_type_i16, flat.source_type_i32, flat.source_type_i64, flat.source_type_isize,
 		flat.source_type_u8, flat.source_type_u16, flat.source_type_u32, flat.source_type_u64,
@@ -4095,11 +4089,7 @@ fn (g &Parser) render_selfhost_scalar_call_argument(tokens []FastcExpressionToke
 	if !g.selfhost || expected_type == 0 || tokens.len != 1 || tokens[0].source != '' {
 		return none
 	}
-	is_scalar := expected_type in [flat.source_type_bool, flat.source_type_char, flat.source_type_f32,
-		flat.source_type_f64, flat.source_type_i8, flat.source_type_i16, flat.source_type_i32,
-		flat.source_type_i64, flat.source_type_int, flat.source_type_isize, flat.source_type_rune,
-		flat.source_type_string, flat.source_type_u8, flat.source_type_u16, flat.source_type_u32,
-		flat.source_type_u64, flat.source_type_usize]
+	is_scalar := fastc_simple_call_scalar_type(expected_type)
 	if !is_scalar && fastc_is_pointer_type(expected_type) { return none }
 	item := tokens[0]
 	if is_scalar && item.typ == 0 && !item.is_mut_argument
@@ -4127,11 +4117,7 @@ fn (g &Parser) render_selfhost_plain_member_call_argument(tokens []FastcExpressi
 	if expected_type == 0 || tokens.len != 3 { return none }
 	field := g.plain_local_direct_member_field(tokens) or { return none }
 	if field.typ != expected_type { return none }
-	is_scalar := expected_type in [flat.source_type_bool, flat.source_type_char, flat.source_type_f32,
-		flat.source_type_f64, flat.source_type_i8, flat.source_type_i16, flat.source_type_i32,
-		flat.source_type_i64, flat.source_type_int, flat.source_type_isize, flat.source_type_rune,
-		flat.source_type_string, flat.source_type_u8, flat.source_type_u16, flat.source_type_u32,
-		flat.source_type_u64, flat.source_type_usize]
+	is_scalar := fastc_simple_call_scalar_type(expected_type)
 	if !is_scalar && !g.is_plain_aggregate_value_type(expected_type) { return none }
 	// The legacy membership path finishes through render_member_receiver, which
 	// uses the resolved root C name and sanitized direct field name.

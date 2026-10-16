@@ -1470,7 +1470,23 @@ fn fastc_trim_pointer_suffix(typ string) string {
 	return typ.trim_right('*')
 }
 
+// semantic_type_key memoizes only lookups against finalized file-generation
+// descriptors. Collisions recompute the original lookup and replace the slot.
+@[direct_array_access]
 fn (g &Parser) semantic_type_key(c_type_id u32) u32 {
+	if isnil(g.type_descriptor_memo) || c_type_id == 0 {
+		return g.semantic_type_key_uncached(c_type_id)
+	}
+	slot := int(c_type_id & 63)
+	entry := g.type_descriptor_memo.semantic_keys[slot]
+	if entry.key == c_type_id { return entry.value }
+	resolved := g.semantic_type_key_uncached(c_type_id)
+	mut memo := g.type_descriptor_memo
+	memo.semantic_keys[slot] = FastcTypeDescriptorMemoEntry{ key: c_type_id, value: resolved }
+	return resolved
+}
+
+fn (g &Parser) semantic_type_key_uncached(c_type_id u32) u32 {
 	c_type := flat.source_type_name(c_type_id)
 	base := fastc_trim_pointer_suffix(c_type)
 	if key := g.declared_type_c_names.type_id(base) {
@@ -1479,8 +1495,20 @@ fn (g &Parser) semantic_type_key(c_type_id u32) u32 {
 	return if base.len == c_type.len { c_type_id } else { flat.source_type_id(base) }
 }
 
+// underlying_alias_type uses the same per-file immutability contract as the
+// semantic-key memo; alias collection and arbitrary Parser values stay uncached.
+@[direct_array_access]
 fn (g &Parser) underlying_alias_type(c_type_id u32) u32 {
-	return fastc_underlying_alias_type(c_type_id, g.alias_base_types)
+	if isnil(g.type_descriptor_memo) || c_type_id == 0 {
+		return fastc_underlying_alias_type(c_type_id, g.alias_base_types)
+	}
+	slot := int(c_type_id & 63)
+	entry := g.type_descriptor_memo.aliases[slot]
+	if entry.key == c_type_id { return entry.value }
+	resolved := fastc_underlying_alias_type(c_type_id, g.alias_base_types)
+	mut memo := g.type_descriptor_memo
+	memo.aliases[slot] = FastcTypeDescriptorMemoEntry{ key: c_type_id, value: resolved }
+	return resolved
 }
 
 fn fastc_underlying_alias_type(c_type_id u32, alias_base_types flat.TypeTextBindings) u32 {
@@ -1744,19 +1772,33 @@ fn (g &Parser) array_element_type(typ_id u32) ?u32 {
 	return none
 }
 
+@[inline]
 fn fastc_is_integer_type(typ u32) bool {
+	if fastc_integer_type_mask.enabled { return fastc_integer_type_mask.contains(typ) }
 	return typ == flat.source_type_char || typ == flat.source_type_i8 || typ == flat.source_type_i16 || typ == flat.source_type_i32 || typ == flat.source_type_i64 || typ == flat.source_type_int || typ == flat.source_type_isize || typ == flat.source_type_rune || typ == flat.source_type_u8 || typ == flat.source_type_u16 || typ == flat.source_type_u32 || typ == flat.source_type_u64 || typ == fastc_type_unsigned_int || typ == flat.source_type_usize
 }
 
+@[inline]
 fn fastc_is_unsigned_integer_type(typ u32) bool {
+	if fastc_unsigned_integer_type_mask.enabled {
+		return fastc_unsigned_integer_type_mask.contains(typ)
+	}
 	return typ == flat.source_type_u8 || typ == flat.source_type_u16 || typ == flat.source_type_u32 || typ == flat.source_type_u64 || typ == fastc_type_unsigned_int || typ == flat.source_type_usize
 }
 
+@[inline]
 fn fastc_is_wide_unsigned_integer_type(typ u32) bool {
+	if fastc_wide_unsigned_integer_type_mask.enabled {
+		return fastc_wide_unsigned_integer_type_mask.contains(typ)
+	}
 	return typ == flat.source_type_u32 || typ == flat.source_type_u64 || typ == fastc_type_unsigned_int || typ == flat.source_type_usize
 }
 
+@[inline]
 fn fastc_is_signed_integer_type(typ u32) bool {
+	if fastc_signed_integer_type_mask.enabled {
+		return fastc_signed_integer_type_mask.contains(typ)
+	}
 	return typ == flat.source_type_char || typ == flat.source_type_i8 || typ == flat.source_type_i16 || typ == flat.source_type_i32 || typ == flat.source_type_i64 || typ == flat.source_type_int || typ == flat.source_type_isize || typ == flat.source_type_rune
 }
 
