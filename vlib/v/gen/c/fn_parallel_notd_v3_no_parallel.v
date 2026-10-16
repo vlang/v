@@ -898,6 +898,10 @@ fn (mut g FlatGen) apply_fn_signature_registrations(registrations []FnSignatureR
 }
 
 fn (mut g FlatGen) prepare_shared_sum_and_fixed_array_ret_wrappers(parallel bool) bool {
+	if g.shared_sum_wrappers_ready {
+		// Already built while the pre-dispatch helper lanes finished.
+		return true
+	}
 	mut sw := time.new_stopwatch()
 	if !parallel || os.getenv('V3_NO_PAR_FIXED_RET') != '' {
 		g.collect_shared_type_names()
@@ -911,22 +915,47 @@ fn (mut g FlatGen) prepare_shared_sum_and_fixed_array_ret_wrappers(parallel bool
 		g.timing_profile('  [ttime]     wr fixed ret   ${f64(sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		return false
 	}
-	mut worker := g.new_parallel_worker(3)
-	worker.fixed_array_ret_wrappers = map[string]bool{}
-	mut support_worker := g.new_parallel_worker(5)
-	support_worker.recursive_drop_helpers = map[u64]u32{}
-	support_worker.fixed_array_map_key_types = map[string]types.ArrayFixed{}
-	wrapper_thread := spawn fixed_array_ret_wrappers_thread(voidptr(worker))
-	support_thread := spawn cgen_support_precompute_thread(voidptr(support_worker))
-	g.collect_shared_type_names()
-	g.precompute_sum_name_lookup()
+	mut wrapper_workers, wrapper_threads := g.start_fixed_array_ret_wrappers()
+	g.collect_shared_sum_indexes()
 	if !g.skip_generics {
 		g.precompute_generic_method_candidate_index()
 	}
 	g.timing_profile('  [ttime]     wr shared+sum  ${f64(sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	sw.restart()
-	_ = wrapper_thread.wait()
-	_ = support_thread.wait()
+	g.finish_fixed_array_ret_wrappers(mut wrapper_workers, wrapper_threads)
+	g.timing_profile('  [ttime]     wr fixed ret   ${f64(sw.elapsed().microseconds()) / 1000.0:7.2f} ms (overlapped)')
+	return true
+}
+
+// collect_shared_sum_indexes builds the shared-type and sum-type indexes. Both
+// install fresh maps, so forks taken before keep reading their own copies.
+fn (mut g FlatGen) collect_shared_sum_indexes() {
+	g.collect_shared_type_names()
+	g.precompute_sum_name_lookup()
+}
+
+// start_fixed_array_ret_wrappers runs the fixed-array return wrapper scan and
+// the support precompute on private forks; finish_fixed_array_ret_wrappers
+// joins them and takes over their tables. Both read only collected
+// declaration tables.
+fn (mut g FlatGen) start_fixed_array_ret_wrappers() ([]&FlatGen, []thread voidptr) {
+	mut worker := g.new_parallel_worker(3)
+	worker.fixed_array_ret_wrappers = map[string]bool{}
+	mut support_worker := g.new_parallel_worker(5)
+	support_worker.recursive_drop_helpers = map[u64]u32{}
+	support_worker.fixed_array_map_key_types = map[string]types.ArrayFixed{}
+	mut threads := []thread voidptr{cap: 2}
+	threads << spawn fixed_array_ret_wrappers_thread(voidptr(worker))
+	threads << spawn cgen_support_precompute_thread(voidptr(support_worker))
+	return [worker, support_worker], threads
+}
+
+fn (mut g FlatGen) finish_fixed_array_ret_wrappers(mut wrapper_workers []&FlatGen, threads []thread voidptr) {
+	for t in threads {
+		_ = t.wait()
+	}
+	mut worker := wrapper_workers[0]
+	mut support_worker := wrapper_workers[1]
 	g.fixed_array_ret_wrappers = worker.fixed_array_ret_wrappers.move()
 	g.recursive_drop_helpers = support_worker.recursive_drop_helpers.move()
 	g.fixed_array_map_key_types = support_worker.fixed_array_map_key_types.move()
@@ -938,8 +967,7 @@ fn (mut g FlatGen) prepare_shared_sum_and_fixed_array_ret_wrappers(parallel bool
 		g.parallel_worker_scopes << support_worker.worker_scope
 		support_worker.worker_scope = unsafe { nil }
 	}
-	g.timing_profile('  [ttime]     wr fixed ret   ${f64(sw.elapsed().microseconds()) / 1000.0:7.2f} ms (overlapped)')
-	return true
+	g.shared_sum_wrappers_ready = true
 }
 
 // collect_gen_info_fn_preps resolves used function signatures on the persistent
@@ -3683,11 +3711,33 @@ fn (mut g FlatGen) run_pre_dispatch_parallel(no_parallel bool) bool {
 		g.refine_fn_item_costs(no_parallel, true)
 		g.timing_profile('  [ttime]     cg cost refine ${f64(psw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		psw.restart()
+		// The master would only wait for the helper lanes now. Build the shared
+		// and sum indexes and the fixed-array return wrappers meanwhile: they
+		// only read the collected declaration tables, and dispatch needs them next.
+		overlap_wrappers := os.getenv('V3_NO_PAR_FIXED_RET') == ''
+		mut wrapper_workers := []&FlatGen{}
+		mut wrapper_threads := []thread voidptr{}
+		if overlap_wrappers {
+			wrapper_workers, wrapper_threads = g.start_fixed_array_ret_wrappers()
+			g.collect_shared_sum_indexes()
+			g.timing_profile('  [ttime]     wr shared+sum  ${f64(psw.elapsed().microseconds()) / 1000.0:7.2f} ms (overlapped)')
+			psw.restart()
+		}
 		_ = fixed_storage_thread.wait()
 		_ = fixed_array_thread.wait()
 		_ = optional_thread.wait()
 		_ = call_optional_thread.wait()
 		g.timing_profile('  [ttime]     cg fs wait     ${f64(psw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		if overlap_wrappers {
+			psw.restart()
+			// The generic method index is cleared and filled in place, so build it
+			// only once the helper lanes, which share its storage, have finished.
+			if !g.skip_generics {
+				g.precompute_generic_method_candidate_index()
+			}
+			g.finish_fixed_array_ret_wrappers(mut wrapper_workers, wrapper_threads)
+			g.timing_profile('  [ttime]     wr fixed ret   ${f64(psw.elapsed().microseconds()) / 1000.0:7.2f} ms (overlapped)')
+		}
 	}
 	g.publish_fixed_storage_scan(mut fs_worker)
 	g.publish_fixed_array_support(mut fixed_array_worker)
