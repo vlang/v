@@ -21,6 +21,13 @@ REM Native core helpers are cached objects in normal builds. The direct stage
 REM compile must link them too; this stage explicitly uses -gc none.
 set V_STAGE_NATIVE="%~dp0vlib\builtin\core_windows.c" "%~dp0vlib\v\modulecache\file_metadata.c" "%~dp0vlib\time\ticks_windows.c" "%~dp0vlib\v\winthread_helper_windows.c" "%~dp0cmd\v\toolcache_windows_helpers.c" "%~dp0vlib\sync\thread_helper.c"
 set V_C_FILE=./vc/v_win.c
+REM Snapshots generated before vlang/v#30606 declare the SDK-backed Windows
+REM helpers (time ticks, Win32 threads, toolcache file/ACL probes) but do not
+REM embed their bodies, so the bootstrap must link these sources explicitly.
+REM Newer snapshots embed them with static linkage, so linking the external
+REM definitions as well is harmless. The other V_STAGE_NATIVE helpers are not
+REM referenced by existing vc snapshots and are left out of the bootstrap.
+set V_BOOTSTRAP_NATIVE="%~dp0vlib\time\ticks_windows.c" "%~dp0vlib\v\winthread_helper_windows.c" "%~dp0cmd\v\toolcache_windows_helpers.c"
 REM Portable vc snapshots need the full V1 compiler until the new driver is built.
 REM Keep this aligned with VC_BOOTSTRAP_DEFINE in the Unix makefiles.
 set VC_BOOTSTRAP_DEFINE=-DCUSTOM_DEFINE_v1_fallback
@@ -503,7 +510,7 @@ if not exist "!tcc_exe!" (
 	exit /b 1
 )
 echo  ^> Attempting to build "%V_BOOTSTRAP%" (from %V_C_FILE%) with "!tcc_exe!"
-"!tcc_exe!" %VC_BOOTSTRAP_DEFINE% -B"%tcc_dir%" -bt10 -g -w -o "%V_BOOTSTRAP%" "%V_C_FILE%" -ladvapi32 -lws2_32 -lbcrypt -Wl,-stack=33554432
+"!tcc_exe!" %VC_BOOTSTRAP_DEFINE% -B"%tcc_dir%" -bt10 -g -w -o "%V_BOOTSTRAP%" "%V_C_FILE%" %V_BOOTSTRAP_NATIVE% -ladvapi32 -lws2_32 -lbcrypt -Wl,-stack=33554432
 exit /b !ERRORLEVEL!
 
 :build_bootstrap_with_msvc
@@ -520,7 +527,7 @@ if !ERRORLEVEL! NEQ 0 (
 	exit /b 1
 )
 echo  ^> Attempting to build "%V_BOOTSTRAP%" (from %V_C_FILE%) with MSVC
-cl /nologo %VC_BOOTSTRAP_DEFINE% /volatile:ms /bigobj /MD /we4013 /utf-8 /w /std:c11 /D_CRT_DECLARE_NONSTDC_NAMES=1 /Fe"%V_BOOTSTRAP%" "%V_C_FILE%" kernel32.lib user32.lib dbghelp.lib ws2_32.lib bcrypt.lib advapi32.lib /link /STACK:33554432
+cl /nologo %VC_BOOTSTRAP_DEFINE% /volatile:ms /bigobj /MD /we4013 /utf-8 /w /std:c11 /D_CRT_DECLARE_NONSTDC_NAMES=1 /Fe"%V_BOOTSTRAP%" "%V_C_FILE%" %V_BOOTSTRAP_NATIVE% kernel32.lib user32.lib dbghelp.lib ws2_32.lib bcrypt.lib advapi32.lib /link /STACK:33554432
 set msvc_bootstrap_error=!ERRORLEVEL!
 call :try_delete "%ObjFile%"
 exit /b !msvc_bootstrap_error!
@@ -534,7 +541,7 @@ if [!resolved_exe!] == [] (
 set "clang_exe=!resolved_exe!"
 if "%PROCESSOR_ARCHITECTURE%" == "x86" ( set clang_target=i686-w64-mingw32 ) else ( set clang_target=x86_64-w64-mingw32 )
 echo  ^> Attempting to build "%V_BOOTSTRAP%" (from %V_C_FILE%) with Clang
-"!clang_exe!" %VC_BOOTSTRAP_DEFINE% --target=!clang_target! -std=c99 -municode -g -w -Wno-error=implicit-function-declaration -Wno-error=incompatible-function-pointer-types -o "%V_BOOTSTRAP%" "%V_C_FILE%" -ladvapi32 -lws2_32 -lbcrypt -Wl,-stack=33554432
+"!clang_exe!" %VC_BOOTSTRAP_DEFINE% --target=!clang_target! -std=c99 -municode -g -w -Wno-error=implicit-function-declaration -Wno-error=incompatible-function-pointer-types -o "%V_BOOTSTRAP%" "%V_C_FILE%" %V_BOOTSTRAP_NATIVE% -ladvapi32 -lws2_32 -lbcrypt -Wl,-stack=33554432
 if !ERRORLEVEL! NEQ 0 (
 	echo In most cases, compile errors happen because the version of Clang installed is too old
 	"!clang_exe!" --version
@@ -600,7 +607,7 @@ if !ERRORLEVEL! NEQ 0 (
 	exit /b 1
 )
 echo  ^> Attempting to build "%V_BOOTSTRAP%" (from %V_C_FILE%) with GCC "!gcc_exe!"
-"!gcc_exe!" %VC_BOOTSTRAP_DEFINE% -std=c99 -municode -g -w -o "%V_BOOTSTRAP%" "%V_C_FILE%" -ladvapi32 -lws2_32 -lbcrypt -Wl,-stack=33554432
+"!gcc_exe!" %VC_BOOTSTRAP_DEFINE% -std=c99 -municode -g -w -o "%V_BOOTSTRAP%" "%V_C_FILE%" %V_BOOTSTRAP_NATIVE% -ladvapi32 -lws2_32 -lbcrypt -Wl,-stack=33554432
 if !ERRORLEVEL! NEQ 0 (
 	echo In most cases, compile errors happen because the version of GCC installed is too old
 	"!gcc_exe!" --version
