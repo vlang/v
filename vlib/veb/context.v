@@ -58,6 +58,12 @@ mut:
 	// already_compressed indicates that the response body is already compressed (zstd/gzip)
 	// and the compression middlewares should skip it
 	already_compressed bool
+	// throttle_slot is the handler slot the throttle middleware took for this
+	// request, so its release half can free exactly it. Zero means no slot is
+	// held. Like the compression flags above, this is middleware state the
+	// framework carries because the two middleware halves run at different
+	// times.
+	throttle_slot u64
 pub:
 	// TODO: move this to `handle_request`
 	// time.ticks() from start of veb connection handle.
