@@ -55,6 +55,35 @@ fn test_simd_binary_call_emits_one_vector_instruction() {
 	assert asm_bl(0) !in words
 }
 
+fn test_simd_unqualified_callee_spelling_also_matches() {
+	// A call the checker resolves inside the defining module can carry no
+	// module prefix at all. That spelling must lower identically, or the
+	// helpers' own operators would silently take the scalar path.
+	mut m := ssa.Module.new()
+	vec4 := simd_vec4_type(mut m)
+	caller_id := m.new_function('caller', ssa.TypeID(0))
+	block_id := m.add_block(caller_id, 'entry')
+	left := m.add_instr(.struct_init, block_id, vec4, [])
+	right := m.add_instr(.struct_init, block_id, vec4, [])
+	words := simd_call_words(mut m, 'add_native', [left, right], vec4)
+	assert asm_fadd_v4s(0, 0, 1) in words
+	assert asm_bl(0) !in words
+}
+
+fn test_simd_operator_spelling_also_matches() {
+	// The operator itself always reaches the backend as a call, so it is
+	// lowered directly even when the helper it names has been expanded away.
+	mut m := ssa.Module.new()
+	vec4 := simd_vec4_type(mut m)
+	caller_id := m.new_function('caller', ssa.TypeID(0))
+	block_id := m.add_block(caller_id, 'entry')
+	left := m.add_instr(.struct_init, block_id, vec4, [])
+	right := m.add_instr(.struct_init, block_id, vec4, [])
+	words := simd_call_words(mut m, 'simd.F32x4.+', [left, right], vec4)
+	assert asm_fadd_v4s(0, 0, 1) in words
+	assert asm_bl(0) !in words
+}
+
 fn test_simd_sqrt_call_uses_one_operand() {
 	mut m := ssa.Module.new()
 	vec4 := simd_vec4_type(mut m)
