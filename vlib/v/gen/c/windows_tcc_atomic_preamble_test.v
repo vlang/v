@@ -5,6 +5,7 @@ import time
 import v.cmdexec
 import v.flat
 import v.pref
+import v.types
 
 fn windows_tcc_test_gen(ccompiler string, output_cross_c bool) FlatGen {
 	mut g := FlatGen.new()
@@ -38,6 +39,23 @@ fn test_windows_tcc_atomic_header_selects_the_system_preamble() {
 	mut linux := windows_tcc_test_gen('tcc', false)
 	linux.target = pref.target_from('linux', 'amd64') or { panic(err) }
 	assert !linux.uses_windows_tcc_atomic_header()
+}
+
+// The driver's damaged-manual-header probe builds its own generator before C
+// generation starts, so it has to reach the same preamble decision.
+fn test_manual_header_probe_follows_the_windows_tcc_preamble_choice() {
+	mut ast := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&ast)
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.target_from('windows', 'amd64') or { panic(err) }
+	for ccompiler in ['tinyc', 'tcc', 'C:/v/thirdparty/tcc/tcc.exe'] {
+		prefs.ccompiler = ccompiler
+		assert uses_manual_stdlib_c_headers(&ast, &tc, prefs, [], false), ccompiler
+	}
+	for ccompiler in ['', 'gcc', 'clang', 'msvc'] {
+		prefs.ccompiler = ccompiler
+		assert !uses_manual_stdlib_c_headers(&ast, &tc, prefs, [], false), ccompiler
+	}
 }
 
 // The failing shape: a program that uses the builtin (so it is not a literal
