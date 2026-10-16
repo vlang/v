@@ -14,6 +14,24 @@ fn test_compiler_selection_flags_are_not_forwarded() {
 	]
 }
 
+fn test_native_backend_is_refused_except_for_vfmt() {
+	// `vfmt` maps the removed `native` alias onto the C formatter, and
+	// cmd/tools/vfmt_test.v requires the CLI form to work.
+	assert !native_backend_rejected('fmt', ['-b', 'native'])
+	assert !native_backend_rejected('fmt', ['-backend', 'native'])
+	assert !native_backend_rejected('fmt', ['-b', 'c'])
+
+	// Every other command keeps the migration guidance.
+	assert native_backend_rejected('run', ['-b', 'native', 'main.v'])
+	assert native_backend_rejected('build', ['-backend', 'native', 'main.v'])
+	assert native_backend_rejected('test', ['-b', 'native', '.'])
+	assert native_backend_rejected('', ['-b', 'native', 'main.v'])
+
+	// Unrelated backends are untouched.
+	assert !native_backend_rejected('run', ['-b', 'c', 'main.v'])
+	assert !native_backend_rejected('run', ['-b', 'fastc', 'main.v'])
+}
+
 fn test_v1_fallback_drops_private_restart_options() {
 	warning := '-v3-internal-implicit-tcc-warning=warning: implicit tcc failed'
 	assert v1_fallback_args([warning, '-v3-internal-parser-diagnostics-printed',
