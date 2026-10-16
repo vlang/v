@@ -23,36 +23,52 @@ pub fn openapi_json[A, X](app &A, title string, version string) !string {
 	sb.write_string('","version":"')
 	sb.write_string(openapi_escape(version))
 	sb.write_string('"},"paths":{')
-	mut first_path := true
+	mut grouped := map[string][]Route{}
 	for _, route in routes {
+		grouped[openapi_path_of(route.path)] << route
+	}
+	mut paths := grouped.keys()
+	paths.sort()
+	mut first_path := true
+	for path in paths {
 		if !first_path {
 			sb.write_string(',')
 		}
 		first_path = false
-		write_openapi_path(mut sb, route)
+		write_openapi_path(mut sb, path, grouped[path])
 	}
 	sb.write_string('}}')
 	return sb.str()
 }
 
-// write_openapi_path renders one route: its path with `:name` segments as
-// `{name}`, one operation per HTTP method, path parameters listed.
-fn write_openapi_path(mut sb strings.Builder, route Route) {
-	openapi_path := openapi_path_of(route.path)
+// write_openapi_path renders one Path Item: the combined operations of all
+// routes sharing the same OpenAPI path template, with path parameters listed.
+fn write_openapi_path(mut sb strings.Builder, openapi_path string, routes []Route) {
 	sb.write_string('"')
 	sb.write_string(openapi_escape(openapi_path))
 	sb.write_string('":{')
+	mut ops := map[string]string{}
+	for route in routes {
+		for method in route.methods {
+			name := method.str().to_lower()
+			if name !in ops {
+				ops[name] = route.path
+			}
+		}
+	}
+	mut methods := ops.keys()
+	methods.sort()
 	mut first_method := true
-	for method in route.methods {
+	for method in methods {
 		if !first_method {
 			sb.write_string(',')
 		}
 		first_method = false
 		sb.write_string('"')
-		sb.write_string(method.str().to_lower())
+		sb.write_string(method)
 		sb.write_string('":{"parameters":[')
-		write_openapi_parameters(mut sb, route.path)
-		sb.write_string('],"responses":{"200":{"description":"OK"}}}}')
+		write_openapi_parameters(mut sb, ops[method])
+		sb.write_string('],"responses":{"200":{"description":"OK"}}}')
 	}
 	sb.write_string('}')
 }

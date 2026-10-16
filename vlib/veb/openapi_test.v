@@ -7,6 +7,8 @@
 // removes it. These tests pin the exact bytes.
 module veb
 
+import json2
+
 struct OApiApp {}
 
 struct OApiContext {
@@ -56,4 +58,65 @@ fn test_openapi_document_lists_each_method_and_the_path_parameter() {
 fn test_openapi_document_renders_a_variadic_tail_as_a_path_parameter() {
 	spec := oapi_spec()
 	assert spec.contains('"/files/{path}":{"get":{"parameters":[{"name":"path","in":"path","required":true')
+}
+
+struct OApiDocument {
+	openapi string
+	paths   map[string]map[string]OApiOperation
+}
+
+struct OApiOperation {
+	responses map[string]OApiResponse
+}
+
+struct OApiResponse {
+	description string
+}
+
+fn test_openapi_document_is_valid_json() {
+	spec := oapi_spec()
+	doc := json2.decode[OApiDocument](spec) or {
+		assert false, 'openapi document does not decode: ${err}'
+		return
+	}
+	assert doc.openapi == '3.0.0'
+	assert '/' in doc.paths
+	assert '/user/{id}' in doc.paths
+	assert '/files/{path}' in doc.paths
+	user_ops := doc.paths['/user/{id}']
+	assert 'get' in user_ops
+	assert 'post' in user_ops
+	assert user_ops['get'].responses['200'].description == 'OK'
+}
+
+struct OApiMergeApp {}
+
+struct OApiMergeContext {
+	Context
+}
+
+@['/users'; get]
+fn (app &OApiMergeApp) list_users(mut ctx OApiMergeContext) Result {
+	return ctx.text('list')
+}
+
+@['/users'; post]
+fn (app &OApiMergeApp) create_user(mut ctx OApiMergeContext) Result {
+	return ctx.text('create')
+}
+
+fn test_openapi_document_merges_handlers_sharing_a_path() {
+	app := OApiMergeApp{}
+	spec := openapi_json[OApiMergeApp, OApiMergeContext](app, 'Shop API', '1.0.0') or {
+		assert false, 'openapi_json failed: ${err}'
+		return
+	}
+	doc := json2.decode[OApiDocument](spec) or {
+		assert false, 'openapi document does not decode: ${err}'
+		return
+	}
+	assert '/users' in doc.paths
+	users_ops := doc.paths['/users']
+	assert 'get' in users_ops
+	assert 'post' in users_ops
 }
