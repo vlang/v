@@ -4,7 +4,8 @@ import encoding.base64
 
 // decode_only reads `data` and returns the first parsed PEM Block. `none` is returned
 //  when a header is expected, but not present or when a start of '-----BEGIN' or end of '-----END'
-// can't be found.
+// can't be found, or when the '-----END' line names another type than the '-----BEGIN' line,
+// or when the body is not valid, padded base64.
 //
 // use decode if you still need the unparsed rest of the string.
 @[inline]
@@ -15,18 +16,19 @@ pub fn decode_only(data string) ?Block {
 
 // decode reads `data` and returns the first parsed PEM Block along with the rest of
 // the string. `none` is returned when a header is expected, but not present
-// or when a start of '-----BEGIN' or end of '-----END' can't be found.
+// or when a start of '-----BEGIN' or end of '-----END' can't be found,
+// or when the '-----END' line names another type than the '-----BEGIN' line,
+// or when the body is not valid, padded base64.
 //
 // use decode_only if you do not need the unparsed rest of the string.
 @[direct_array_access; inline]
 pub fn decode(data string) ?(Block, string) {
 	block, rest := decode_internal(data)?
-	return block, rest[rest.index(pem_end)? + pem_end.len..].all_after_first(pem_eol)
+	return block, rest
 }
 
 // decode_internal allows `decode` variations to deal with the rest of the data as
-// they want to. for example Block.decode could have hindered performance with the final
-// indexing into `rest` that `decode_partial` does.
+// they want to. The returned rest starts right after the '-----END TYPE-----' of the block.
 @[direct_array_access]
 fn decode_internal(data string) ?(Block, string) {
 	// direct_array_access safety: since we use the string.index method here,
@@ -36,22 +38,77 @@ fn decode_internal(data string) ?(Block, string) {
 	block.headers, rest =
 		parse_headers(rest[pem_begin.len..].all_after(pem_eol).trim_left(' \n\t\v\f\r'))?
 
-	block_end_index := rest.index(pem_end)?
+	// index of the '-----END ' line: with an empty body it is the first line left,
+	// without the newline in front of it that `pem_end` starts with
+	mut block_end_index := 0
+	if !rest.starts_with(pem_end[1..]) {
+		block_end_index = rest.index(pem_end)? + 1
+	}
+	// the END line must name the same type as the BEGIN line
+	end_type := rest[block_end_index + pem_end.len - 1..]
+	if !end_type.starts_with(block.block_type)
+		|| !end_type[block.block_type.len..].starts_with(pem_eol) {
+		return none
+	}
 	b64_data := rest[..block_end_index].replace_each(['\r', '', '\n', '', '\t', '', ' ', ''])
+	// base64.decode_in_buffer does not report errors: it decodes characters outside
+	// the alphabet to garbage and drops an unpadded tail, so check the body first
+	if !is_valid_base64(b64_data) {
+		return none
+	}
 	block_data_len := block_end_index / 4 * 3
 	block.data = []u8{len: block_data_len, cap: block_data_len + 3, init: 0}
 	decoded_len := base64.decode_in_buffer(&b64_data, &block.data[0])
 	block.data = block.data[..decoded_len]
 
-	return block, rest
+	return block, end_type[block.block_type.len + pem_eol.len..]
+}
+
+// is_valid_base64 reports whether `s` is standard base64 with padding (RFC 4648 section 4):
+// a multiple of 4 characters from the alphabet, with '=' only as the last one or two.
+@[direct_array_access]
+fn is_valid_base64(s string) bool {
+	if s.len % 4 != 0 {
+		return false
+	}
+	for i, c in s {
+		if c == `=` {
+			if i < s.len - 2 || (i == s.len - 2 && s[s.len - 1] != `=`) {
+				return false
+			}
+		} else if !c.is_alnum() && c != `+` && c != `/` {
+			return false
+		}
+	}
+	return true
 }
 
 @[direct_array_access]
 fn parse_headers(block string) ?(map[string][]string, string) {
-	headers_str := block.all_before(pem_end).all_before('\n\n')
+	section := block.all_before(pem_end)
+	mut headers_str := section.all_before('\n\n')
+	mut body := block.all_after('\n\n')
 
-	// check that something was split or if it's empty
-	if headers_str.len == block.all_before(pem_end).len || headers_str.len == 0 {
+	if headers_str.len == section.len {
+		// no blank line: the headers are the leading lines that contain a colon
+		// (base64 never does), and the body starts at the first line without one
+		mut header_end := 0
+		for header_end < section.len {
+			line_end := section.index_after('\n', header_end) or { section.len }
+			if !section[header_end..line_end].contains(colon) {
+				break
+			}
+			header_end = line_end + 1
+		}
+		if header_end > section.len {
+			header_end = section.len
+		}
+		headers_str = section[..header_end]
+		body = block[header_end..]
+	}
+
+	// check if there are any headers
+	if headers_str.len == 0 {
 		return map[string][]string{}, block
 	}
 
@@ -67,7 +124,7 @@ fn parse_headers(block string) ?(map[string][]string, string) {
 	mut headers := map[string][]string{}
 	mut index := 0
 
-	for index < headers_separated.len - 1 {
+	for index < headers_separated.len {
 		line := headers_separated[index]
 		if line.len == 0 {
 			break
@@ -76,8 +133,13 @@ fn parse_headers(block string) ?(map[string][]string, string) {
 		key := line[..colon_index].trim_space()
 		mut val := line[colon_index + 1..].trim_space()
 
-		for colon_index = 0; index < headers_separated.len - 1 && colon_index == 0; {
+		// append the following lines without a colon to the value,
+		// stopping at the next header or after the last line
+		for colon_index = 0; colon_index == 0; {
 			index++
+			if index == headers_separated.len {
+				break
+			}
 			colon_index = headers_separated[index].index(colon) or {
 				val += headers_separated[index].trim_space()
 				0
@@ -90,5 +152,5 @@ fn parse_headers(block string) ?(map[string][]string, string) {
 		headers[key] << val
 	}
 
-	return headers, block.all_after('\n\n')
+	return headers, body
 }

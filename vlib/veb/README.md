@@ -1096,6 +1096,30 @@ app.use(handler: logger)
 
 Because we register `early_exit` before `logger` our logging middleware will never be executed!
 
+### Limiting concurrent requests
+
+`veb.throttle` caps how many requests run their handlers at once. A request over the cap
+waits for a free slot; when `max_waiting` requests are already waiting, or the wait passes
+`wait_timeout`, it is refused with `503 Service Unavailable` and a `Retry-After` header.
+
+```v ignore
+th := veb.throttle[Context](max_concurrent: 8, max_waiting: 16, wait_timeout: 2 * time.second)
+// register it after middleware that refuses requests cheaply, such as authentication
+app.use(th.acquire())
+// or only for some routes; every registration of `th` shares the same cap
+app.route_use('/reports/:path...', th.acquire())
+```
+
+The middleware takes a slot, and veb frees it when the request finishes, whichever way it
+finishes: after the handler and the "after" middleware, on a 404, or when a later middleware
+refuses the request. There is nothing to register for the release.
+
+A waiting request sleeps on the thread that serves it. veb serves each connection inline on
+a fixed set of worker threads, so a waiting request also delays the other connections of its
+thread, and no more requests than there are worker threads run handlers at once. Keep
+`max_concurrent` below the worker count for the cap to matter, and use `max_waiting: 0` to
+refuse at once instead of queueing.
+
 ## Controllers
 
 Controllers can be used to split up your app logic so you are able to have one struct

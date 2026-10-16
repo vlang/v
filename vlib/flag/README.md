@@ -217,3 +217,10 @@ When you need to distinguish between "flag not provided" and a falsey/default va
 pass a typed option default. For example,
 `fp.bool('a_bool', 0, ?bool(none), '...')` returns `?bool`, and
 `fp.string('a_string', 0, ?string(none), '...')` returns `?string`.
+
+A value that does not convert to the type of its flag, like `--an_int abc`,
+`--an_int=99999999999999999999`, `--a_float xyz` or `--a_bool=yes`, makes `fp.finalize()`
+return an error; `fp.int()`, `fp.float()` and `fp.bool()` return their default for it.
+
+When a flag is given more than once, like `--an_int 1 --an_int 2`, the last value wins.
+Use `fp.int_multi()`, `fp.float_multi()` or `fp.string_multi()` to get all the values.

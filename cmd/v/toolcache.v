@@ -82,9 +82,16 @@ fn tool_cache_is_verbose() bool {
 	return os.getenv(tool_cache_verbose_env).trim_space().to_lower() in ['1', 'true', 'yes', 'on']
 }
 
+// ToolCacheRejection records why one candidate folder was not used for the tool cache.
+struct ToolCacheRejection {
+	candidate string
+	problems  []string
+}
+
 // tool_cache_dir returns a writable directory for the compiled tools, creating it on demand.
-// It deliberately lives outside of the V source tree, next to the other V caches.
-fn tool_cache_dir() ?string {
+// It deliberately lives outside of the V source tree, next to the other V caches. When no
+// candidate can be used, the error names each of them, and why it was rejected.
+fn tool_cache_dir() !string {
 	mut candidates := []string{}
 	if custom := os.getenv_opt(tool_cache_dir_env) {
 		if custom.trim_space() != '' {
@@ -94,32 +101,86 @@ fn tool_cache_dir() ?string {
 	default_candidates := [os.join_path(os.cache_dir(), 'v', 'tools'),
 		os.join_path(os.vtmp_dir(), 'tools')]
 	candidates << default_candidates
+	mut rejected := []ToolCacheRejection{}
 	for candidate in candidates {
-		if candidate in default_candidates && !prepare_default_tool_cache_root(candidate) {
+		problems := tool_cache_candidate_problems(candidate, candidate in default_candidates)
+		if problems.len > 0 {
+			rejected << ToolCacheRejection{
+				candidate: candidate
+				problems:  problems
+			}
 			continue
 		}
-		if !os.is_dir(candidate) {
-			os.mkdir_all(os.dir(candidate)) or { continue }
-			// Create the folder so that only the current user can access it (mode 0700).
-			// With the default mode, a umask like 002 would let the whole group write to it.
-			// `tool_cache_root_can_stage` would then reject the folder, and every tool would
-			// be recompiled on each run instead of being cached.
-			os.mkdir(candidate, mode: 0o700) or {
-				if !os.is_dir(candidate) {
-					continue
-				}
+		if tool_cache_is_verbose() {
+			for rejection in rejected {
+				eprintln('> not using the tool cache folder `${rejection.candidate}`: ${rejection.problems.join('; ')}')
 			}
 		}
-		if os.is_dir(candidate) && directory_is_writable(candidate)
-			&& tool_cache_root_can_stage(candidate) {
-			return os.real_path(candidate)
+		return os.real_path(candidate)
+	}
+	return error(tool_cache_unavailable_message(rejected))
+}
+
+// tool_cache_candidate_problems prepares one candidate folder for the tool cache, creating it
+// when needed, and returns why it cannot be used, or nothing when it can.
+fn tool_cache_candidate_problems(candidate string, is_default bool) []string {
+	if is_default {
+		problems := prepare_default_tool_cache_root(candidate)
+		if problems.len > 0 {
+			return problems
 		}
 	}
-	return none
+	if !os.is_dir(candidate) {
+		os.mkdir_all(os.dir(candidate)) or {
+			return ['cannot create `${os.dir(candidate)}`: ${err.msg()}']
+		}
+		// Create the folder so that only the current user can access it (mode 0700).
+		// With the default mode, a umask like 002 would let the whole group write to it.
+		// `tool_cache_root_can_stage` would then reject the folder, and every tool would
+		// be recompiled on each run instead of being cached.
+		os.mkdir(candidate, mode: 0o700) or {
+			if !os.is_dir(candidate) {
+				return ['cannot create it: ${err.msg()}']
+			}
+		}
+	}
+	if !directory_is_writable(candidate) {
+		return ['the current user cannot create files in it']
+	}
+	problem := tool_cache_root_problem(candidate)
+	if problem != '' {
+		return [problem]
+	}
+	return []
+}
+
+// tool_cache_unavailable_message explains why no tool cache folder can be used, and how to
+// get one: every caller that needs the cache reports it the same way.
+fn tool_cache_unavailable_message(rejected []ToolCacheRejection) string {
+	mut lines := ['no usable tool cache folder was found:']
+	for rejection in rejected {
+		lines << '  - `${rejection.candidate}`:'
+		for problem in rejection.problems {
+			lines << '      ${problem}'
+		}
+	}
+	$if windows {
+		lines << 'The tool cache folder has to belong to you, and no other account may be allowed to change it.'
+		lines << 'Fix its permissions, or set ${tool_cache_dir_env} to a folder that only you can change.'
+	} $else {
+		lines << 'The tool cache folder, and every folder above it, has to belong to you or to root, and nobody'
+		lines << 'else may write to it unless it has the sticky bit. Otherwise someone else could replace the'
+		lines << 'tools that V runs.'
+		lines << 'Fix the permissions listed above, or set ${tool_cache_dir_env} to a folder that only you can'
+		lines << 'write to (V does not check the folders above that one), for example:'
+		lines << '  mkdir -p -m 700 "\$HOME/.vtools" && export ${tool_cache_dir_env}="\$HOME/.vtools"'
+	}
+	return lines.join('\n')
 }
 
 // prepare_default_tool_cache_root makes sure that nobody else can change a default cache
-// folder, or what is inside it. It reports whether the folder can be used.
+// folder, or what is inside it. It returns why the folder cannot be used, or nothing when it
+// can.
 //
 // The parent is V's own folder (`~/.cache/v`) or the `VTMP` folder (`/tmp/v_<uid>` by default).
 // It has to be private, along with every folder above it, or someone else could swap the cache
@@ -131,30 +192,65 @@ fn tool_cache_dir() ?string {
 // such a folder is moved aside and never read again, and a new, empty one is created instead.
 // A symlink is moved aside too: it could have been planted while the parent was writable,
 // and the folder it points to lives under parents that were never checked.
-fn prepare_default_tool_cache_root(candidate string) bool {
+fn prepare_default_tool_cache_root(candidate string) []string {
 	parent := os.dir(candidate)
-	os.mkdir_all(parent, mode: 0o700) or { return false }
+	os.mkdir_all(parent, mode: 0o700) or { return ['cannot create `${parent}`: ${err.msg()}'] }
 	// A `VTMP` folder set by the user may be shared on purpose, so it is left as it is.
 	if !tool_cache_root_can_stage(parent) && parent == os.join_path(os.cache_dir(), 'v') {
 		make_tool_cache_root_private(parent)
 	}
 	if !tool_cache_parents_are_trusted(parent) {
-		return false
+		problems := tool_cache_parent_problems(parent)
+		if problems.len == 0 {
+			return ['a folder above `${parent}` can be changed by someone else']
+		}
+		return problems
 	}
 	if os.is_link(candidate) || (os.is_dir(candidate) && !tool_cache_root_can_stage(candidate)) {
 		$if windows {
 			// Privacy is decided by ACLs there, and a new folder would get the same ACL.
-			return false
+			if os.is_link(candidate) {
+				return ['it is a symbolic link']
+			}
+			return [tool_cache_root_problem(candidate)]
 		}
 		aside := '${candidate}.untrusted-${time.now().unix()}-${os.getpid()}'
 		// If this fails, e.g. because another V process just did the same, the check after
 		// the folder is created again decides. A symlink that is still there is never used.
-		os.rename(candidate, aside) or { return !os.is_link(candidate) }
+		os.rename(candidate, aside) or {
+			if os.is_link(candidate) {
+				return ['it is a symbolic link, and it could not be moved aside: ${err.msg()}']
+			}
+			return []
+		}
 		if tool_cache_is_verbose() {
 			eprintln('> moved the untrusted tool cache folder `${candidate}` aside, to `${aside}`')
 		}
 	}
-	return true
+	return []
+}
+
+// tool_cache_parent_problems explains why `tool_cache_parents_are_trusted` rejects `path`. It
+// walks up from `path`, both as written and with symlinks resolved, like the check does, and
+// lists every folder that does not pass `tool_cache_root_can_stage`, nearest first, for as long
+// as the check still rejects the folders from there upwards. So all of them can be fixed at once.
+fn tool_cache_parent_problems(path string) []string {
+	mut problems := []string{}
+	for start in [os.real_path(path), os.abs_path(path)] {
+		mut current := start
+		for !tool_cache_parents_are_trusted(current) {
+			problem := tool_cache_root_problem(current)
+			if problem != '' && problem !in problems {
+				problems << problem
+			}
+			parent := os.dir(current)
+			if parent == current {
+				break
+			}
+			current = parent
+		}
+	}
+	return problems
 }
 
 // directory_is_writable reports whether this process can actually create files in a
@@ -334,9 +430,10 @@ fn tool_cache_entry_dir_for_uid(directory string, tool_name string, key string, 
 	return os.join_path(directory, '${tool_name}-${key}.${uid}')
 }
 
-// tool_cache_entry locates the cache slot for a tool, or none when no cache is usable.
-fn tool_cache_entry(vexe string, vroot string, tool_name string, tool_source string, build_args []string) ?ToolCacheEntry {
-	directory := tool_cache_dir()?
+// tool_cache_entry locates the cache slot for a tool. When no cache is usable, the error says
+// which folders were tried, and why each one was rejected.
+fn tool_cache_entry(vexe string, vroot string, tool_name string, tool_source string, build_args []string) !ToolCacheEntry {
+	directory := tool_cache_dir()!
 	key := tool_cache_key(vexe, tool_name, tool_key_sources(tool_source), build_args)
 	entry_dir := tool_cache_entry_dir_for_uid(directory, tool_name, key, os.getuid())
 	binary := os.join_path(entry_dir, '${tool_name}${tool_exe_suffix()}')

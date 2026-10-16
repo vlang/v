@@ -146,7 +146,7 @@ fn test_cached_vmod_roots_stop_at_project_boundaries() {
 fn test_cached_relative_flag_paths_preserve_path_selection_expressions() {
 	base_dir := os.join_path(os.vtmp_dir(), 'v3_modulecache_flags')
 	value := r"darwin -I$when_first_existing('/opt/local/include','/opt/homebrew/include') -L$first_existing('/opt/local/lib','/opt/homebrew/lib')"
-	assert cached_resolve_relative_flag_paths(value, os.join_path(base_dir, 'source.v')) == value
+	assert cached_resolve_flag_value(value, '', os.join_path(base_dir, 'source.v')) == value
 }
 
 fn test_cached_dependency_inputs_restore_empty_variable_value() {
