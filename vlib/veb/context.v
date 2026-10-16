@@ -58,6 +58,10 @@ mut:
 	// already_compressed indicates that the response body is already compressed (zstd/gzip)
 	// and the compression middlewares should skip it
 	already_compressed bool
+	// access_log_start_ms is the millisecond timestamp the access-log
+	// middleware stamped when the request arrived, so its finish half can log
+	// the latency. Zero means unstamped.
+	access_log_start_ms i64
 pub:
 	// TODO: move this to `handle_request`
 	// time.ticks() from start of veb connection handle.
