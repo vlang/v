@@ -250,6 +250,7 @@ mut:
 	cur_fn_ret_type                     u32
 	cur_fn_is_generic                   bool
 	cur_fn_manualfree                   bool
+	cur_fn_value_semantics              bool // standard library body that keeps V's value semantics under -ownership
 	literal_free_fn_body                bool // work item is proven to contain no closure literals
 	cur_fn_variadic_param               string
 	skip_generics                       bool
@@ -11637,6 +11638,7 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 	t.cur_fn_receiver_name = u32(0)
 	old_is_generic := t.cur_fn_is_generic
 	old_manualfree := t.cur_fn_manualfree
+	old_value_semantics := t.cur_fn_value_semantics
 	t.cur_fn_is_generic = if t.skip_generics {
 		false
 	} else {
@@ -11644,9 +11646,13 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 	}
 	// Generic specializations carry a template's `manualfree` attribute in the
 	// function node because the checker's declaration-attribute index only
-	// contains parsed declarations.
+	// contains parsed declarations. A standard library body that keeps V's value
+	// semantics in ownership mode receives no ownership cleanup either, and does not
+	// destroy the values it overwrites or removes from arrays and maps.
+	t.cur_fn_value_semantics = t.tc.ownership_fn_keeps_value_semantics(fn_node)
 	t.cur_fn_manualfree = fn_node.skip_ownership_drops()
 		|| t.tc.declaration_has_attribute(flat.NodeId(fn_idx), 'manualfree')
+		|| t.cur_fn_value_semantics
 	param_count := t.fn_body_param_count(fn_node)
 	param_types := t.fn_body_param_types(fn_node, param_count)
 	// A generic clone uses `main.` to pin a caller-owned return type that collides
@@ -11856,6 +11862,7 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 	t.smartcast_reestablishment_event_ids.clear()
 	t.cur_fn_is_generic = old_is_generic
 	t.cur_fn_manualfree = old_manualfree
+	t.cur_fn_value_semantics = old_value_semantics
 	t.cur_fn_receiver_name = old_receiver_name_source_id
 	t.cur_fn_source_file = old_source_file
 	t.cur_fn_source_module = old_source_module
