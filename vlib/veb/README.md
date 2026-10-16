@@ -438,6 +438,14 @@ with `400` before allocating their declared body; TLS reads also reject truncate
 Conflicting lengths and requests containing both `Transfer-Encoding` and `Content-Length`
 are rejected with `400`.
 
+To give some routes a lower limit, register `veb.body_limit` on them with `route_use`. It
+answers a larger body with `413` without closing the connection. It runs after veb has read
+the body, so it does not lower the memory that a request can use:
+
+```v ignore
+app.route_use('/api/profile', veb.body_limit[Context](100 * 1024))
+```
+
 ### Host
 
 To restrict an endpoint to a specific host, you can use the `host` attribute
