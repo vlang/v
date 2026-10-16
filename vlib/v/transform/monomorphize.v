@@ -1510,8 +1510,39 @@ fn add_lowered_generic_struct_operator_use(mut uses map[string][]string, call_na
 	}
 }
 
+// has_generic_index_operators tells whether the checker registered a generic
+// `[]` or `[]=` method, the only signatures generic_struct_operator_fn_name finds
+// for an index.
+fn (mut t Transformer) has_generic_index_operators() bool {
+	if t.generic_index_operators_known == 0 {
+		t.generic_index_operators_known = -1
+		if !isnil(t.tc) {
+			for name, _ in t.tc.fn_ret_types {
+				if name.ends_with('].[]') || name.ends_with('].[]=') {
+					t.generic_index_operators_known = 1
+					break
+				}
+			}
+			if t.generic_index_operators_known < 0 {
+				for name, _ in t.tc.fn_param_types {
+					if name.ends_with('].[]') || name.ends_with('].[]=') {
+						t.generic_index_operators_known = 1
+						break
+					}
+				}
+			}
+		}
+	}
+	return t.generic_index_operators_known > 0
+}
+
 fn (mut t Transformer) record_index_operator_fn_name(node flat.Node, method string) {
 	if node.kind != .index || node.value == 'range' || node.children_count < 2 {
+		return
+	}
+	// The operator is found only as a generic method signature such as
+	// `Box[T].[]`, which the checker registered before this stage.
+	if !t.has_generic_index_operators() {
 		return
 	}
 	base_id := t.a.child(&node, 0)

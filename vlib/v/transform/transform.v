@@ -592,6 +592,9 @@ mut:
 	match_lowered_fns []bool
 	// mono_pass_state lets the next monomorphize_pass continue the last one.
 	mono_pass_state MonomorphPassState
+	// generic_index_operators_known caches has_generic_index_operators: 0 not yet
+	// tested, 1 yes, -1 no.
+	generic_index_operators_known int
 	// box_type_text_cache is set while a box scan runs.
 	box_type_text_cache &BoxTypeTextCache = unsafe { nil }
 	// match_holders is the last match_holding_fns result, for the nodes below
