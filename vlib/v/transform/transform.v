@@ -11542,9 +11542,11 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 	}
 	// Generic specializations carry a template's `manualfree` attribute in the
 	// function node because the checker's declaration-attribute index only
-	// contains parsed declarations.
+	// contains parsed declarations. A standard library body that keeps V's value
+	// semantics in ownership mode receives no ownership cleanup either.
 	t.cur_fn_manualfree = fn_node.skip_ownership_drops()
 		|| t.tc.declaration_has_attribute(flat.NodeId(fn_idx), 'manualfree')
+		|| t.tc.ownership_fn_keeps_value_semantics(fn_node)
 	param_count := t.fn_body_param_count(fn_node)
 	param_types := t.fn_body_param_types(fn_node, param_count)
 	// A generic clone uses `main.` to pin a caller-owned return type that collides

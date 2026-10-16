@@ -265,6 +265,11 @@ mut:
 	scope_frames                     []OwnershipScopeFrame
 	suppressed_checks                int
 	path_active                      bool
+	// library_body_depth counts the function bodies being checked inside a standard library
+	// function, which keeps V's value semantics (see ownership_file_keeps_value_semantics).
+	library_body_depth int
+	library_files      map[string]bool // file name -> keeps value semantics
+	library_file_ids   map[int]bool    // source file ids of checked value-semantics bodies
 }
 
 fn ownership_clone_name_snapshots(names map[string]OwnershipNameSnapshot) map[string]OwnershipNameSnapshot {
@@ -577,6 +582,7 @@ fn ownership_clone_state_for_observation(src &OwnershipState) &OwnershipState {
 	result.scope_frames = ownership_clone_scope_frames(src.scope_frames)
 	result.suppressed_checks = src.suppressed_checks
 	result.path_active = src.path_active
+	result.library_body_depth = src.library_body_depth
 	return result
 }
 
@@ -859,6 +865,11 @@ fn (mut tc TypeChecker) ownership_merge_parallel_check_worker(w &TypeChecker) {
 			dst.skip_drop_before_assign[id] = true
 		}
 	}
+	for id, keeps in src.library_file_ids {
+		if keeps {
+			dst.library_file_ids[id] = true
+		}
+	}
 }
 
 fn (mut tc TypeChecker) ownership_state() &OwnershipState {
@@ -869,7 +880,59 @@ fn (mut tc TypeChecker) ownership_state() &OwnershipState {
 }
 
 fn (tc &TypeChecker) ownership_checks_suppressed() bool {
-	return tc.ownership != unsafe { nil } && tc.ownership.suppressed_checks > 0
+	return tc.ownership != unsafe { nil }
+		&& (tc.ownership.suppressed_checks > 0 || tc.ownership.library_body_depth > 0)
+}
+
+// ownership_file_keeps_value_semantics reports whether the functions declared in `file` keep
+// V's value semantics in ownership mode. These are the standard library modules that a
+// program imports, except `builtin`, which is written for ownership. The rest of the library
+// shares strings, arrays and structs as garbage-collected values: its by-value parameters,
+// locals and loop variables do not become owners, so it never moves or drops them, and the
+// program's call sites decide what crosses into it. Autofree builds the compiler itself from
+// the library, so it keeps checking every body.
+fn (mut tc TypeChecker) ownership_file_keeps_value_semantics(file string) bool {
+	if tc.autofree_mode || file == '' || tc.compiler_vroot == '' || tc.diagnostic_files.len == 0
+		|| file in tc.diagnostic_files {
+		return false
+	}
+	mut st := tc.ownership_state()
+	if cached := st.library_files[file] {
+		return cached
+	}
+	vlib := tc.memo_real_path(tc.compiler_vroot.trim_right('/\\') + '/vlib').replace('\\',
+		'/').trim_right('/')
+	path := tc.a.real_source_path(file).replace('\\', '/')
+	keeps := vlib.len > 0 && path.starts_with(vlib + '/') && !path.starts_with(vlib + '/builtin/')
+	st.library_files[file] = keeps
+	return keeps
+}
+
+// ownership_fn_decl_file returns the file that declares `node`. A generic specialization keeps
+// the position of its declaration, wherever the checker visits it from.
+fn (tc &TypeChecker) ownership_fn_decl_file(node flat.Node) string {
+	if file := tc.a.source_files[int(node.pos.id)] {
+		return file.name
+	}
+	return tc.cur_file
+}
+
+// ownership_fn_keeps_value_semantics reports whether the checker gave the body of `node` V's
+// value semantics (see ownership_file_keeps_value_semantics). Lowering then treats the body
+// like a `@[manualfree]` one and inserts no ownership cleanup into it.
+pub fn (tc &TypeChecker) ownership_fn_keeps_value_semantics(node flat.Node) bool {
+	return tc.ownership != unsafe { nil } && tc.ownership.library_file_ids[int(node.pos.id)]
+}
+
+// ownership_enter_nested_library_body keeps a function literal or lambda inside a library
+// body in that body's value semantics; ownership_end_fn leaves it again.
+fn (mut tc TypeChecker) ownership_enter_nested_library_body() bool {
+	if tc.ownership == unsafe { nil } || tc.ownership.library_body_depth == 0 {
+		return false
+	}
+	mut st := tc.ownership_state()
+	st.library_body_depth++
+	return true
 }
 
 fn (tc &TypeChecker) ownership_effects_disabled() bool {
@@ -5224,10 +5287,19 @@ fn (mut tc TypeChecker) ownership_begin_fn(node flat.Node) {
 	defer {
 		tc.ownership_time_ns += own_time_sw.elapsed().nanoseconds()
 	}
-	if tc.ownership_checks_suppressed() {
+	if tc.ownership_enter_nested_library_body() || tc.ownership_checks_suppressed() {
 		return
 	}
 	mut st := tc.ownership_state()
+	if tc.ownership_file_keeps_value_semantics(tc.ownership_fn_decl_file(node)) {
+		// The body creates no owners, so it records no moves, borrows or drops. Only the
+		// values it passes to owning callees are copied (ownership_copy_library_call_args).
+		st.library_body_depth = 1
+		if int(node.pos.id) in tc.a.source_files {
+			st.library_file_ids[int(node.pos.id)] = true
+		}
+		return
+	}
 	fn_name := tc.ownership_fn_name(node)
 	// Generic bindings and collected type metadata are stable within one body.
 	st.drop_requirements = map[string]map[u64]bool{}
@@ -5291,7 +5363,7 @@ fn (mut tc TypeChecker) ownership_begin_fn_literal(id flat.NodeId, node flat.Nod
 	defer {
 		tc.ownership_time_ns += own_time_sw.elapsed().nanoseconds()
 	}
-	if tc.ownership_checks_suppressed() {
+	if tc.ownership_enter_nested_library_body() || tc.ownership_checks_suppressed() {
 		return
 	}
 	mut st := tc.ownership_state()
@@ -5423,7 +5495,7 @@ fn (mut tc TypeChecker) ownership_begin_lambda_expr(id flat.NodeId, node flat.No
 	defer {
 		tc.ownership_time_ns += own_time_sw.elapsed().nanoseconds()
 	}
-	if tc.ownership_checks_suppressed() {
+	if tc.ownership_enter_nested_library_body() || tc.ownership_checks_suppressed() {
 		return
 	}
 	mut st := tc.ownership_state()
@@ -5735,6 +5807,11 @@ fn (mut tc TypeChecker) ownership_end_fn() {
 	own_time_sw := time.new_stopwatch()
 	defer {
 		tc.ownership_time_ns += own_time_sw.elapsed().nanoseconds()
+	}
+	if tc.ownership != unsafe { nil } && tc.ownership.library_body_depth > 0 {
+		mut library_st := tc.ownership_state()
+		library_st.library_body_depth--
+		return
 	}
 	if tc.ownership_checks_suppressed() {
 		return
@@ -9506,6 +9583,12 @@ fn (mut tc TypeChecker) ownership_add_return_descendant_from_expr(fn_name string
 }
 
 fn (mut tc TypeChecker) ownership_after_call(id flat.NodeId, node flat.Node, info CallInfo) {
+	if tc.ownership != unsafe { nil } && tc.ownership.library_body_depth > 0 {
+		if tc.ownership.suppressed_checks == 0 {
+			tc.ownership_copy_library_call_args(id, node, info)
+		}
+		return
+	}
 	if tc.ownership_effects_disabled() {
 		return
 	}
@@ -9716,6 +9799,74 @@ fn (mut tc TypeChecker) ownership_after_call(id flat.NodeId, node flat.Node, inf
 	for name in call_borrows {
 		tc.ownership_release_borrow(name, call_name)
 	}
+}
+
+// ownership_copy_library_call_args handles a call made by a body that keeps V's value
+// semantics (see ownership_file_keeps_value_semantics). Such a body still shares every value
+// it passes, so a callee that owns and destroys a by-value parameter receives an independent
+// copy of it. That is a builtin or program function whose parameter has an owned type, or one
+// that another call site moved an owned value into. A library callee owns nothing, so it
+// receives the value itself.
+fn (mut tc TypeChecker) ownership_copy_library_call_args(id flat.NodeId, node flat.Node, info CallInfo) {
+	call_name := if info.name.len > 0 { info.name } else { tc.ownership_call_name(id) }
+	if call_name == '' {
+		return
+	}
+	if file := tc.fn_type_files[call_name] {
+		if tc.ownership_file_keeps_value_semantics(file) {
+			return
+		}
+	}
+	mut st := tc.ownership_state()
+	for i in 1 .. node.children_count {
+		arg_node := tc.a.child_node(&node, i)
+		if arg_node.kind == .field_init || arg_node.is_mut {
+			continue
+		}
+		arg_value_id := tc.call_arg_value(tc.a.child(&node, i))
+		arg_id := tc.spread_arg_value(arg_value_id) or { arg_value_id }
+		param_idx := tc.ownership_call_arg_decl_param_idx(info, i)
+		type_param_idx := param_idx + tc.ownership_call_arg_shift(node, info)
+		variadic_elem_idx := tc.ownership_call_arg_variadic_elem_idx(info, type_param_idx,
+			arg_value_id)
+		target_param_idx := tc.ownership_call_arg_variadic_decl_param_idx(param_idx,
+			variadic_elem_idx)
+		target_suffix := ownership_call_arg_variadic_suffix(variadic_elem_idx)
+		expected := tc.ownership_call_arg_expected_type(info, type_param_idx, variadic_elem_idx)
+		if expected is Void || expected is Pointer
+			|| tc.ownership_standard_string_arg_is_borrowed(call_name, param_idx, expected)
+			|| !tc.ownership_call_param_takes_ownership(call_name, target_param_idx, target_suffix,
+				expected) || tc.ownership_expr_creates_owned_value(arg_id) {
+			continue
+		}
+		clean_id := tc.ownership_unwrap_expr(arg_id)
+		if !tc.valid_node_id(clean_id) {
+			continue
+		}
+		if _ := tc.ownership_default_clone_missing_method(expected) {
+			continue
+		}
+		st.borrowed_projection_actions[int(arg_id)] = .clone_value
+		st.borrowed_projection_actions[int(clean_id)] = .clone_value
+	}
+}
+
+// ownership_call_param_takes_ownership reports whether the callee owns and drops a by-value
+// parameter: an owned type, or one that a call site transferred ownership into.
+fn (mut tc TypeChecker) ownership_call_param_takes_ownership(fn_name string, param_idx int, suffix string, typ Type) bool {
+	if tc.ownership_type_is_owned(typ) || tc.ownership_builtin_string_arg_escapes(fn_name, param_idx, typ) {
+		return true
+	}
+	st := tc.ownership_state()
+	if suffix == '' && '${fn_name}__param_${param_idx}' in st.ownership_fn_params {
+		return true
+	}
+	for desc in st.ownership_fn_param_descs[fn_name] {
+		if desc.param_idx == param_idx && desc.suffix == suffix {
+			return true
+		}
+	}
+	return false
 }
 
 // A by-value String parameter can become owning through another call site. Give that

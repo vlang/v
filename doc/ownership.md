@@ -110,6 +110,14 @@ by-value string parameters still consume owned strings. When a parameter takes o
 string or borrowed view passed to it is copied for the callee, leaving the caller's value available.
 Returned copies remain owned; use `.clone()` when retaining another copy.
 
+Standard library modules other than `builtin` keep V's value semantics in their own function
+bodies. Their parameters, locals and loop variables never become owners, so library code neither
+moves nor destroys the values it receives or creates, and no ownership errors are reported inside
+it; those values are left to the garbage collector. Call sites in your code are unchanged: an owned
+value passed to a library function that does not borrow it is still moved. When library code passes
+a value to a `builtin` function whose parameter has taken ownership elsewhere, the function receives
+an independent copy.
+
 ## Move semantics
 
 Assigning an owned value to another variable **moves** it. The original variable

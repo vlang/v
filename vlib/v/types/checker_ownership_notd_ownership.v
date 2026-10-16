@@ -52,6 +52,11 @@ pub fn (tc &TypeChecker) ownership_drop_entries_at_fn_exit(_ string) []Ownership
 	return []OwnershipDropEntry{}
 }
 
+// ownership_fn_keeps_value_semantics reports no library bodies when ownership checking is disabled.
+pub fn (tc &TypeChecker) ownership_fn_keeps_value_semantics(_ flat.Node) bool {
+	return false
+}
+
 // ownership_drop_type_names returns no drop receiver source IDs when ownership checking is disabled.
 pub fn (tc &TypeChecker) ownership_drop_type_names() []u32 {
 	return []u32{}
