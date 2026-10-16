@@ -13948,20 +13948,36 @@ fn (g &FlatGen) sum_type_name_for_type(base_type0 types.Type) ?u32 {
 		if !flat.source_type_shape(name).has(.dotted) && g.tc.sum_types.contains(flat.source_type_name(name)) && g.resolve_sum_name(name) == name {
 			return name
 		}
-		for candidate in [g.shared_qualify_type_text(name, g.tc.cur_module), name] {
-			resolved := g.resolve_sum_name(candidate)
-			if g.tc.sum_types.contains(flat.source_type_name(resolved)) { return resolved }
+		// The module-qualified spelling first, then the type's own one.
+		if resolved := g.resolved_sum_type_candidate(g.shared_qualify_type_text(name, g.tc.cur_module)) {
+			return resolved
 		}
+		return g.resolved_sum_type_candidate(name)
 	}
 	if clean is types.Struct {
 		name := clean.source_type_id()
-		for candidate in [g.shared_qualify_type_text(name, g.tc.cur_module), name] {
-			if g.tc.sum_types.contains(flat.source_type_name(candidate)) { return candidate }
-			if !flat.source_type_shape(candidate).has(.dotted) {
-				resolved := g.resolve_sum_name(candidate)
-				if g.tc.sum_types.contains(flat.source_type_name(resolved)) { return resolved }
-			}
+		if sum_name := g.struct_sum_type_candidate(g.shared_qualify_type_text(name, g.tc.cur_module)) {
+			return sum_name
 		}
+		return g.struct_sum_type_candidate(name)
+	}
+	return none
+}
+
+fn (g &FlatGen) resolved_sum_type_candidate(candidate u32) ?u32 {
+	resolved := g.resolve_sum_name(candidate)
+	if g.tc.sum_types.contains(flat.source_type_name(resolved)) {
+		return resolved
+	}
+	return none
+}
+
+fn (g &FlatGen) struct_sum_type_candidate(candidate u32) ?u32 {
+	if g.tc.sum_types.contains(flat.source_type_name(candidate)) {
+		return candidate
+	}
+	if !flat.source_type_shape(candidate).has(.dotted) {
+		return g.resolved_sum_type_candidate(candidate)
 	}
 	return none
 }
@@ -14035,8 +14051,8 @@ fn (g &FlatGen) struct_promoted_field_suffix(type_name_id u32, field string, ini
 }
 
 fn (g &FlatGen) sum_unique_variant_field_info(base_type0 types.Type, field string) ?SumUniqueFieldInfo {
-	sum_name := flat.source_type_name(g.sum_type_name_for_type(base_type0) or { return none })
-	return g.sum_unique_variant_field_info_inner(flat.source_type_id(sum_name), field, []u32{})
+	sum_name_id := g.sum_type_name_for_type(base_type0) or { return none }
+	return g.sum_unique_variant_field_info_inner(sum_name_id, field, []u32{})
 }
 
 fn (g &FlatGen) sum_unique_variant_field_info_inner(sum_name_id u32, field string, seen_ids []u32) ?SumUniqueFieldInfo {
