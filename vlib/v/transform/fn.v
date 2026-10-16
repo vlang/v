@@ -12470,6 +12470,11 @@ fn (mut t Transformer) lower_owned_array_removal_call(node flat.Node, base_id fl
 	if method !in ['delete', 'delete_many', 'clear', 'free', 'trim', 'drop', 'delete_last'] || isnil(t.tc) || !t.tc.ownership_type_requires_destruction(t.tc.parse_type(elem_type_id)) {
 		return none
 	}
+	// A body with V's value semantics shares the elements it removes. Only `free` keeps
+	// its header reset below, without destroying the elements.
+	if t.cur_fn_value_semantics && method != 'free' {
+		return none
+	}
 	// V1 autofree treats clear() after a bulk append as an ownership transfer:
 	// the destination retains the element storage while clear() only resets the
 	// source header. Explicit ownership mode instead destroys removed elements.
@@ -12522,7 +12527,9 @@ fn (mut t Transformer) lower_owned_array_removal_call(node flat.Node, base_id fl
 				t.make_infix(.ne, size, t.make_int_literal(0)), t.make_prefix(.not, valid_bounds))
 		}
 		'clear', 'free' {
-			t.append_owned_array_drop_range(array_value, elem_type_id, t.make_int_literal(0), t.make_selector(array_value, 'len', flat.source_type_int), mut drop_stmts)
+			if !t.cur_fn_value_semantics {
+				t.append_owned_array_drop_range(array_value, elem_type_id, t.make_int_literal(0), t.make_selector(array_value, 'len', flat.source_type_int), mut drop_stmts)
+			}
 		}
 		'trim' {
 			if node.children_count < 2 {
@@ -12635,7 +12642,7 @@ fn (mut t Transformer) append_owned_array_drop_range(array_value flat.NodeId, el
 // while slices and arrays with live slice views still alias shared backing storage.
 // First/last produce the independent clone supplied by lower_owned_array_accessor_call.
 fn (mut t Transformer) try_lower_ignored_owned_array_pop_stmt(call_id flat.NodeId, node flat.Node) ?[]flat.NodeId {
-	if node.kind != .call || node.children_count == 0 || isnil(t.tc) {
+	if node.kind != .call || node.children_count == 0 || isnil(t.tc) || t.cur_fn_value_semantics {
 		return none
 	}
 	fn_node := t.a.child_node(&node, 0)
@@ -13085,7 +13092,7 @@ fn (mut t Transformer) make_owned_map_items_value(source flat.NodeId, map_type_i
 fn (mut t Transformer) append_owned_map_entries_drop_before_reset(map_expr flat.NodeId, map_type_id u32, key_type_name_id u32, value_type_name_id u32, method string) {
 	key_type_name := flat.source_type_name(key_type_name_id)
 
-	if isnil(t.tc) {
+	if isnil(t.tc) || t.cur_fn_value_semantics {
 		return
 	}
 	clean_key_type := trimmed_transform_text(flat.source_type_name(t.normalize_type_alias(key_type_name_id)))
@@ -13147,7 +13154,7 @@ fn (mut t Transformer) append_owned_map_entries_drop_before_reset(map_expr flat.
 fn (mut t Transformer) append_owned_map_entry_delete_with_drops(map_expr flat.NodeId, map_type_id u32, key_name string, key_type_name_id u32, value_type_name_id u32) bool {
 	key_type_name := flat.source_type_name(key_type_name_id)
 	value_type_name := flat.source_type_name(value_type_name_id)
-	if isnil(t.tc) {
+	if isnil(t.tc) || t.cur_fn_value_semantics {
 		return false
 	}
 	clean_key_type := trimmed_transform_text(flat.source_type_name(t.normalize_type_alias(key_type_name_id)))

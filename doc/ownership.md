@@ -111,12 +111,14 @@ string or borrowed view passed to it is copied for the callee, leaving the calle
 Returned copies remain owned; use `.clone()` when retaining another copy.
 
 Standard library modules other than `builtin` keep V's value semantics in their own function
-bodies. Their parameters, locals and loop variables never become owners, so library code neither
-moves nor destroys the values it receives or creates, and no ownership errors are reported inside
-it; those values are left to the garbage collector. Call sites in your code are unchanged: an owned
-value passed to a library function that does not borrow it is still moved. When library code passes
-a value to a `builtin` function whose parameter has taken ownership elsewhere, the function receives
-an independent copy.
+bodies. Their parameters, locals and loop variables never become owners, so library code does not
+move them or drop them at scope exit, and no ownership errors are reported inside it. Assignments
+and array or map updates in library code (`delete`, `clear`, overwriting an element or a map entry)
+do not destroy the value they replace or remove either. The values library code shares are left to
+the garbage collector, so with `-gc none` they are not freed. Call sites in your code are
+unchanged: an owned value passed to a library function that does not borrow it is still moved, and
+the library does not free it. When library code passes a value to a `builtin` or program function
+whose parameter has taken ownership, that function receives an independent copy.
 
 ## Move semantics
 
