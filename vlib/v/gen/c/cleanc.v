@@ -36,6 +36,7 @@ const usable_expr_type_memo_slots = 1024
 const usable_expr_type_memo_mask = usable_expr_type_memo_slots - 1
 const body_import_type_query_slots = 256
 const body_field_type_query_slots = 512
+const body_method_query_slots = 256
 
 // c_short_name_view returns the suffix after the final dot without allocating.
 @[direct_array_access; inline]
@@ -455,6 +456,18 @@ struct BodyImportTypeQuery {
 	generation u32
 }
 
+// BodyMethodQuery memoizes the call-independent part of a method call's return
+// type in the current body (see receiver_method_query).
+struct BodyMethodQuery {
+mut:
+	type_id     u32
+	generation  u32
+	has_ret     bool
+	method      string
+	method_name string
+	ret         types.Type
+}
+
 // BodyFieldTypeQuery memoizes one owner/field type query of the current body.
 struct BodyFieldTypeQuery {
 	type_id    u32
@@ -487,6 +500,7 @@ mut:
 	call_ret_gens   []u32
 	call_ret_values []types.Type
 	field_queries   []BodyFieldTypeQuery
+	method_queries  []BodyMethodQuery
 }
 
 @[heap]
@@ -516,6 +530,7 @@ fn (mut g FlatGen) begin_usable_expr_type_memo() {
 			call_ret_gens:   []u32{len: usable_expr_type_memo_slots}
 			call_ret_values: unsafe { []types.Type{len: usable_expr_type_memo_slots} }
 			field_queries:   []BodyFieldTypeQuery{len: body_field_type_query_slots}
+			method_queries:  []BodyMethodQuery{len: body_method_query_slots}
 		}
 	}
 	mut memo := g.usable_expr_type_memo
@@ -532,6 +547,9 @@ fn (mut g FlatGen) begin_usable_expr_type_memo() {
 		}
 		for i in 0 .. memo.field_queries.len {
 			memo.field_queries[i] = BodyFieldTypeQuery{}
+		}
+		for i in 0 .. memo.method_queries.len {
+			memo.method_queries[i] = BodyMethodQuery{}
 		}
 		memo.generation = 1
 	}

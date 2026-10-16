@@ -7104,33 +7104,88 @@ fn (g &FlatGen) specialized_selector_method_call_return_type(node flat.Node, fn_
 		return none
 	}
 	receiver_type := types.unwrap_pointer(g.usable_expr_type(g.a.child(&fn_node, 0)))
-	mut receiver_names := [receiver_type.name()]
-	if receiver_type is types.Alias {
-		receiver_names << receiver_type.base_type.name()
+	if ret := g.specialized_receiver_method_call_return_type(node, receiver_type.name(), fn_node.value) {
+		return ret
 	}
-	for receiver_name in receiver_names {
-		if receiver_name.len == 0 {
-			continue
-		}
-		if decl_key := g.tc.interface_method_signature_key(flat.source_type_id(receiver_name), fn_node.value) {
-			_, ret := g.tc.specialized_interface_method_signature(flat.source_type_id(receiver_name), decl_key)
-			if ret !is types.Unknown && ret !is types.Void {
-				return ret
-			}
-		}
-		resolved_method := g.resolve_method_name(flat.source_type_id(receiver_name), fn_node.value)
-		method_name := if resolved_method.len > 0 {
-			resolved_method
-		} else {
-			'${receiver_name}.${fn_node.value}'
-		}
-		if specialized := g.specialized_generic_method_name_for_call_args(node, method_name, int(node.children_count)) {
-			if ret := g.tc.fn_ret_types[specialized] {
-				return ret
-			}
+	if receiver_type is types.Alias {
+		return g.specialized_receiver_method_call_return_type(node, receiver_type.base_type.name(),
+			fn_node.value)
+	}
+	return none
+}
+
+fn (g &FlatGen) specialized_receiver_method_call_return_type(node flat.Node, receiver_name string, method string) ?types.Type {
+	if receiver_name.len == 0 {
+		return none
+	}
+	query := g.receiver_method_query(flat.source_type_id(receiver_name), method)
+	if query.has_ret {
+		return query.ret
+	}
+	if specialized := g.specialized_generic_method_name_for_call_args(node, query.method_name, int(node.children_count)) {
+		if ret := g.tc.fn_ret_types[specialized] {
+			return ret
 		}
 	}
 	return none
+}
+
+// receiver_method_query resolves the call-independent part of a method call on a
+// receiver spelling: an interface signature's return type, or the method's name.
+// Method calls on one receiver type recur within a body, so it is memoized there.
+@[direct_array_access]
+fn (g &FlatGen) receiver_method_query(receiver_id u32, method string) BodyMethodQuery {
+	mut memo := g.body_context_type_memo()
+	if isnil(memo) || memo.method_queries.len == 0 {
+		return g.receiver_method_query_uncached(receiver_id, method)
+	}
+	slot := body_owner_member_slot(receiver_id, method, body_method_query_slots)
+	// The masked slot is in bounds; borrow the entry without copying it.
+	entry := unsafe { &memo.method_queries[slot] }
+	if entry.generation == memo.generation && entry.type_id == receiver_id
+		&& entry.method == method {
+		return *entry
+	}
+	mut query := g.receiver_method_query_uncached(receiver_id, method)
+	query.generation = memo.generation
+	memo.method_queries[slot] = query
+	return query
+}
+
+fn (g &FlatGen) receiver_method_query_uncached(receiver_id u32, method string) BodyMethodQuery {
+	if decl_key := g.tc.interface_method_signature_key(receiver_id, method) {
+		_, ret := g.tc.specialized_interface_method_signature(receiver_id, decl_key)
+		if ret !is types.Unknown && ret !is types.Void {
+			return BodyMethodQuery{
+				type_id: receiver_id
+				method:  method
+				has_ret: true
+				ret:     ret
+			}
+		}
+	}
+	resolved_method := g.resolve_method_name(receiver_id, method)
+	return BodyMethodQuery{
+		type_id:     receiver_id
+		method:      method
+		method_name: if resolved_method.len > 0 {
+			resolved_method
+		} else {
+			'${flat.source_type_name(receiver_id)}.${method}'
+		}
+	}
+}
+
+// body_owner_member_slot hashes an owner spelling ID and a member name into a
+// power-of-two slot table; the entries compare the complete key.
+@[inline]
+fn body_owner_member_slot(owner_id u32, member string, slots int) int {
+	mut hash := owner_id * 16777619 ^ u32(member.len)
+	if member.len > 0 {
+		hash = hash * 16777619 ^ u32(member[0])
+		hash = hash * 16777619 ^ u32(member[member.len - 1])
+	}
+	return int((hash ^ (hash >> 15)) & u32(slots - 1))
 }
 
 fn (g &FlatGen) fn_value_type_for_ident(name string) ?types.Type {
@@ -8701,12 +8756,7 @@ fn (g &FlatGen) usable_struct_field_type(type_name_id u32, field_name string) ?t
 	if isnil(memo) || memo.field_queries.len == 0 {
 		return g.usable_struct_field_type_uncached(type_name_id, field_name)
 	}
-	mut hash := type_name_id * 16777619 ^ u32(field_name.len)
-	if field_name.len > 0 {
-		hash = hash * 16777619 ^ u32(field_name[0])
-		hash = hash * 16777619 ^ u32(field_name[field_name.len - 1])
-	}
-	slot := int((hash ^ (hash >> 15)) & u32(body_field_type_query_slots - 1))
+	slot := body_owner_member_slot(type_name_id, field_name, body_field_type_query_slots)
 	// The masked slot is in bounds; borrow the entry without copying its type.
 	entry := unsafe { &memo.field_queries[slot] }
 	if entry.generation == memo.generation && entry.type_id == type_name_id

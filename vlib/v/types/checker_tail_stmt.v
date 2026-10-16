@@ -11449,7 +11449,10 @@ pub fn (tc &TypeChecker) interface_metadata_name(name_id u32) u32 {
 	short := lookup.all_after_last('.')
 	mut match_name := ''
 	for candidate, _ in tc.interface_names {
-		if candidate.all_after_last('.') != short {
+		// `short` has no dot, so this is `candidate.all_after_last('.') == short`
+		// without copying every candidate's suffix.
+		if !candidate.ends_with(short) || (candidate.len > short.len
+			&& candidate[candidate.len - short.len - 1] != `.`) {
 			continue
 		}
 		if match_name != '' && match_name != candidate {
