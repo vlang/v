@@ -4,7 +4,8 @@ import encoding.base64
 
 // decode_only reads `data` and returns the first parsed PEM Block. `none` is returned
 //  when a header is expected, but not present or when a start of '-----BEGIN' or end of '-----END'
-// can't be found, or when the '-----END' line names another type than the '-----BEGIN' line.
+// can't be found, or when the '-----END' line names another type than the '-----BEGIN' line,
+// or when the body is not valid, padded base64.
 //
 // use decode if you still need the unparsed rest of the string.
 @[inline]
@@ -16,7 +17,8 @@ pub fn decode_only(data string) ?Block {
 // decode reads `data` and returns the first parsed PEM Block along with the rest of
 // the string. `none` is returned when a header is expected, but not present
 // or when a start of '-----BEGIN' or end of '-----END' can't be found,
-// or when the '-----END' line names another type than the '-----BEGIN' line.
+// or when the '-----END' line names another type than the '-----BEGIN' line,
+// or when the body is not valid, padded base64.
 //
 // use decode_only if you do not need the unparsed rest of the string.
 @[direct_array_access; inline]
@@ -49,12 +51,36 @@ fn decode_internal(data string) ?(Block, string) {
 		return none
 	}
 	b64_data := rest[..block_end_index].replace_each(['\r', '', '\n', '', '\t', '', ' ', ''])
+	// base64.decode_in_buffer does not report errors: it decodes characters outside
+	// the alphabet to garbage and drops an unpadded tail, so check the body first
+	if !is_valid_base64(b64_data) {
+		return none
+	}
 	block_data_len := block_end_index / 4 * 3
 	block.data = []u8{len: block_data_len, cap: block_data_len + 3, init: 0}
 	decoded_len := base64.decode_in_buffer(&b64_data, &block.data[0])
 	block.data = block.data[..decoded_len]
 
 	return block, end_type[block.block_type.len + pem_eol.len..]
+}
+
+// is_valid_base64 reports whether `s` is standard base64 with padding (RFC 4648 section 4):
+// a multiple of 4 characters from the alphabet, with '=' only as the last one or two.
+@[direct_array_access]
+fn is_valid_base64(s string) bool {
+	if s.len % 4 != 0 {
+		return false
+	}
+	for i, c in s {
+		if c == `=` {
+			if i < s.len - 2 || (i == s.len - 2 && s[s.len - 1] != `=`) {
+				return false
+			}
+		} else if !c.is_alnum() && c != `+` && c != `/` {
+			return false
+		}
+	}
+	return true
 }
 
 @[direct_array_access]
