@@ -26,7 +26,10 @@ fn (mut tc TypeChecker) mutable_alias_has_fresh_map_storage(id flat.NodeId) bool
 	}
 	// Inspect the whole function, not just statements preceding this use: a
 	// later rebind can reach it on the next loop iteration. Ambiguous bindings
-	// and escapes conservatively keep the existing alias diagnostic.
+	// and escapes conservatively keep the existing alias diagnostic. Closure
+	// bodies are scanned like the rest of the function: capturing the clone
+	// (`fn [mut copy] () { ... }`) shares only its fresh storage, and a rebind or
+	// `mut` escape inside the closure is caught by the same checks.
 	fn_node := tc.a.node(fn_id)
 	mut stack := []flat.NodeId{}
 	for i in 0 .. fn_node.children_count {
@@ -37,7 +40,7 @@ fn (mut tc TypeChecker) mutable_alias_has_fresh_map_storage(id flat.NodeId) bool
 		current_id := stack.pop()
 		current := tc.a.node(current_id)
 		match current.kind {
-			.fn_decl, .fn_literal, .lambda_expr, .comptime_for, .goto_stmt {
+			.fn_decl, .lambda_expr, .comptime_for, .goto_stmt {
 				return false
 			}
 			.param {
