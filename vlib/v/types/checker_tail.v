@@ -10495,6 +10495,11 @@ fn (tc &TypeChecker) current_receiver_param_method_call_info(base_id flat.NodeId
 	if base.kind != .ident || !tc.current_fn_param_is_receiver(base.value) {
 		return none
 	}
+	// A smartcast receiver (`if recv is Variant { recv.method() }`) calls the
+	// variant's method, not the enclosing receiver type's.
+	if _ := tc.smartcast_type(base_id) {
+		return none
+	}
 	fn_node := tc.a.nodes[tc.fn_context.node_id]
 	if fn_node.kind != .fn_decl || !fn_node.value.contains('.') {
 		return none
