@@ -17335,10 +17335,9 @@ fn (mut t Transformer) transform_match_expr_for_type(_id flat.NodeId, node flat.
 		actual_result_type = target_type_id
 	}
 	// Concrete branch types still need boxing when the context requires a
-	// pointer to an interface. Keep that target on the staging variable.
-	if t.is_fn_pointer_type_name(target_type_id)
-		|| (flat.source_type_shape(t.normalize_type_alias(target_type_id)).has(.pointer)
-			&& t.resolve_interface_type_name(target_type_id) != 0) {
+	// pointer to an interface, or an option or result of one. Keep that
+	// target on the staging variable.
+	if t.is_fn_pointer_type_name(target_type_id) || t.is_interface_pointer_target(target_type_id) {
 		actual_result_type = target_type_id
 	}
 	if t.sum_target_accepts_variant_type(target_type_id, actual_result_type) {
@@ -22097,8 +22096,18 @@ fn (mut t Transformer) transform_value_operand(id flat.NodeId) flat.NodeId {
 // that, drop the prelude the failed attempt queued, and return the operand unchanged so the
 // caller leaves it to its ordinary operand lowering.
 fn (mut t Transformer) materialize_value_branch_operand(id flat.NodeId) flat.NodeId {
+	return t.materialize_value_branch_operand_for_type(id, 0)
+}
+
+// materialize_value_branch_operand_for_type is materialize_value_branch_operand with the
+// type the context requires; 0 keeps the operand's own value type.
+fn (mut t Transformer) materialize_value_branch_operand_for_type(id flat.NodeId, target_type_id u32) flat.NodeId {
 	pending_mark := t.pending_stmts.len
-	value := t.transform_value_operand(id)
+	value := if target_type_id != 0 {
+		t.transform_expr_for_type(t.unwrap_parens(id), target_type_id)
+	} else {
+		t.transform_value_operand(id)
+	}
 	if value != id && t.operand_hoists_value_branch(value) {
 		if t.pending_stmts.len > pending_mark {
 			t.pending_stmts = t.pending_stmts[..pending_mark].clone()
@@ -22541,6 +22550,26 @@ fn (mut t Transformer) resolved_call_argument_param_type(id flat.NodeId, node fl
 	return params[param_index]
 }
 
+// is_interface_pointer_target reports whether `type_id` is a pointer to an interface,
+// or an option or result of one.
+fn (t &Transformer) is_interface_pointer_target(type_id u32) bool {
+	payload_type := if t.is_optional_type_name(type_id) {
+		t.optional_base_type(t.qualify_optional_type(type_id))
+	} else {
+		type_id
+	}
+	return flat.source_type_shape(t.normalize_type_alias(payload_type)).has(.pointer)
+		&& t.resolve_interface_type_name(payload_type) != 0
+}
+
+// call_argument_interface_pointer_type returns the parameter type of call argument
+// `child_index` when it is an interface pointer target, and 0 otherwise.
+fn (mut t Transformer) call_argument_interface_pointer_type(id flat.NodeId, node flat.Node, child_index int) u32 {
+	param := t.resolved_call_argument_param_type(id, node, child_index) or { return 0 }
+	param_type := t.semantic_type_name(param)
+	return if t.is_interface_pointer_target(param_type) { param_type } else { 0 }
+}
+
 fn (mut t Transformer) call_argument_borrows_fixed_array(id flat.NodeId, node flat.Node, child_index int) bool {
 	arg_id := t.a.child(&node, child_index)
 	if !t.is_fixed_array_type(t.normalized_node_type(arg_id)) {
@@ -22762,7 +22791,11 @@ fn (mut t Transformer) transform_call_expr_inner(id flat.NodeId, node flat.Node)
 					// transform_call_args groups them into the final struct argument.
 					arg_id
 				} else if t.is_value_match_or_if_operand(arg_id) {
-					t.materialize_value_branch_operand(arg_id)
+					// A branch value takes its type from the first branch, which a generic
+					// specialization does not widen to an interface pointer parameter. Keep
+					// that parameter as the target, so each branch is boxed with its own type.
+					t.materialize_value_branch_operand_for_type(arg_id, t.call_argument_interface_pointer_type(id,
+						node, i))
 				} else if i < last_branch && t.a.nodes[int(arg_id)].kind != .field_init
 					&& t.operand_needs_ordering_snapshot(arg_id) {
 					// A `mut` argument keeps its lvalue identity (only its dynamic base/index
