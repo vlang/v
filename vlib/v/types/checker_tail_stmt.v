@@ -17919,7 +17919,7 @@ fn (tc &TypeChecker) comptime_static_type_expr_name(id flat.NodeId) ?u32 {
 		return none
 	}
 	if node.kind == .selector && node.children_count == 1 {
-		base_name := (tc.comptime_static_type_expr_name(tc.a.child(&node, 0)) or { return none })
+		base_name := tc.comptime_static_type_expr_name(tc.a.child(&node, 0)) or { return none }
 		mut base_type := tc.parse_type(base_name)
 		if base_type is Unknown {
 			return none

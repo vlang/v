@@ -2670,7 +2670,7 @@ fn (mut g Parser) finish_read_expression(mut result strings.Builder, mut express
 		}
 		return g.render_constant_references(expression_tokens, special.source)
 	}
-	g.last_expression_type = (g.infer_expression_type(expression_tokens)!)
+	g.last_expression_type = g.infer_expression_type(expression_tokens)!
 	g.last_expression = expression_tokens
 	return_types := g.multi_return_types_for_expression(expression_tokens)
 	if return_types.len > 0 {
@@ -3187,7 +3187,7 @@ fn (g &Parser) streaming_call_argument_type(tokens []FastcExpressionToken) u32 {
 		// `recv.method(…)`: resolve on the receiver's type; parameter_types[0] is the receiver.
 		receiver_start := fastc_method_receiver_start(tokens, open - 2)
 		receiver_tokens := tokens[receiver_start..open - 2]
-		receiver_type := (g.infer_expression_type(receiver_tokens) or { return u32(0) })
+		receiver_type := g.infer_expression_type(receiver_tokens) or { return u32(0) }
 		method_key, _ := g.resolve_method(receiver_type, name)
 		signature := g.functions[method_key] or { return u32(0) }
 		idx := arg_index + 1
@@ -3500,7 +3500,7 @@ fn (g &Parser) channel_element_type(tokens []FastcExpressionToken) u32 {
 		}
 	}
 	if tokens.len >= 3 && tokens.last().tok == .name && tokens[tokens.len - 2].tok == .dot {
-		receiver_type := (g.infer_expression_type(tokens[..tokens.len - 2]) or { return u32(0) })
+		receiver_type := g.infer_expression_type(tokens[..tokens.len - 2]) or { return u32(0) }
 		receiver_layout := fastc_trim_pointer_suffix(flat.source_type_name(fastc_normalize_inferred_type(receiver_type)))
 		field_name := tokens.last().lit
 		if fields := g.struct_field_info[receiver_layout] {
@@ -4394,7 +4394,7 @@ fn (g &Parser) render_membership_expression(tokens []FastcExpressionToken, rende
 					if elements := fastc_expression_list_items(right_tokens, 1, right_tokens.len - 1) {
 						mut type_ids := []string{}
 						for element in elements {
-							type_key := (g.type_from_expression_tokens(element) or { break })
+							type_key := g.type_from_expression_tokens(element) or { break }
 							type_ids << flat.source_type_name(fastc_normalize_inferred_type(type_key)).trim_right('*')
 						}
 						if type_ids.len == elements.len && type_ids.len > 0 {
@@ -4439,7 +4439,7 @@ fn (g &Parser) render_membership_expression(tokens []FastcExpressionToken, rende
 					}
 				)
 				if right_type != u32(0) && g.underlying_alias_type(right_type) == flat.source_type_string {
-					left_type := (g.infer_expression_type(tokens[..i]) or { return none })
+					left_type := g.infer_expression_type(tokens[..i]) or { return none }
 					if g.underlying_alias_type(left_type) != flat.source_type_string {
 						return none
 					}
@@ -4482,7 +4482,7 @@ fn (g &Parser) render_membership_expression(tokens []FastcExpressionToken, rende
 				}
 				right_layout := fastc_trim_pointer_suffix(flat.source_type_name(right_type))
 				if right_layout.starts_with('Array_') || right_layout.starts_with('FixedArray_') {
-					element_type := (g.array_element_type(right_type) or { return none })
+					element_type := g.array_element_type(right_type) or { return none }
 					candidate := g.render_membership_candidate(tokens[..i], element_type) or {
 						return none
 					}
@@ -4541,7 +4541,7 @@ fn (g &Parser) render_membership_expression(tokens []FastcExpressionToken, rende
 				if i + 2 >= array_end || tokens[i + 1].tok != .lsbr || tokens[array_end - 1].tok != .rsbr {
 					continue
 				}
-				lhs_type := (g.infer_expression_type(tokens[..i]) or { return none })
+				lhs_type := g.infer_expression_type(tokens[..i]) or { return none }
 				items := fastc_expression_list_items(tokens, i + 2, array_end - 1) or {
 					return none
 				}
@@ -5066,7 +5066,7 @@ fn (g &Parser) render_special_expression_fallback(tokens []FastcExpressionToken,
 		if items.len == 0 {
 			return none
 		}
-		element_type := (g.infer_expression_type(items[0]) or { return none })
+		element_type := g.infer_expression_type(items[0]) or { return none }
 		if element_type == u32(0) {
 			return none
 		}
@@ -5742,7 +5742,7 @@ fn (g &Parser) fastc_element_call_open(tokens []FastcExpressionToken) int {
 		if lsbr <= 0 {
 			return -1
 		}
-		base_type := (g.infer_expression_type(tokens[..lsbr]) or { return -1 })
+		base_type := g.infer_expression_type(tokens[..lsbr]) or { return -1 }
 		layout := fastc_trim_pointer_suffix(flat.source_type_name(g.underlying_alias_type(base_type)))
 		if layout.starts_with('Array_') || layout.starts_with('FixedArray_') {
 			return open
@@ -5821,7 +5821,7 @@ fn (g &Parser) render_fixed_array_lengths(tokens []FastcExpressionToken, rendere
 			continue
 		}
 		receiver_tokens := tokens[start..i - 1]
-		receiver_type := (g.infer_expression_type(receiver_tokens) or { continue })
+		receiver_type := g.infer_expression_type(receiver_tokens) or { continue }
 		layout := fastc_trim_pointer_suffix(flat.source_type_name(g.underlying_alias_type(fastc_normalize_inferred_type(receiver_type))))
 		if !layout.starts_with('FixedArray_') {
 			continue
