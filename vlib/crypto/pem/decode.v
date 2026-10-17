@@ -83,6 +83,24 @@ fn is_valid_base64(s string) bool {
 	return true
 }
 
+fn is_header_section(section string) bool {
+	if !section.all_before('\n').contains(colon) {
+		return false
+	}
+	mut wrapped_value := false
+	for line in section.split_into_lines() {
+		if separator := line.index(colon) {
+			// The encoder starts a wrapped value after an empty header line.
+			wrapped_value = line[separator + 1..].trim_space().len == 0
+		} else if line.len == 0 || (!wrapped_value && line[0] !in [` `, `\t`]) {
+			// An unindented body line can precede a blank line in a block whose
+			// headers were not followed by the usual blank separator.
+			return false
+		}
+	}
+	return true
+}
+
 @[direct_array_access]
 fn parse_headers(block string) ?(map[string][]string, string) {
 	section := block.all_before(pem_end)
@@ -91,7 +109,7 @@ fn parse_headers(block string) ?(map[string][]string, string) {
 	// A CRLF blank line also terminates folded headers. Keep an earlier LF
 	// separator when a later CRLF blank line belongs to the base64 body.
 	if separator := section.index('\r\n\r\n') {
-		if separator < headers_str.len {
+		if separator < headers_str.len && is_header_section(section[..separator]) {
 			headers_str = section[..separator]
 			body = block[separator + 4..]
 		}
@@ -115,8 +133,8 @@ fn parse_headers(block string) ?(map[string][]string, string) {
 		body = block[header_end..]
 	}
 
-	// check if there are any headers
-	if headers_str.len == 0 {
+	// Without a header key, any blank lines belong to the base64 body.
+	if headers_str.len == 0 || !headers_str.contains(colon) {
 		return map[string][]string{}, block
 	}
 
