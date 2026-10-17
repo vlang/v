@@ -2628,9 +2628,17 @@ pub fn rewrite_cached_runtime_strings(cached_source string, old_values []string,
 	if replacements.len == 0 {
 		return cached_source.clone()
 	}
-	mut source := cached_source
 	mut replacement_values := replacements.keys()
 	replacement_values.sort()
+	// Definitions are found by symbol: cgen splits a long literal over several
+	// lines, so its text is not the single-line form written here.
+	units := c_source_units(cached_source)
+	mut defined_symbols := map[string]bool{}
+	for unit in units {
+		if unit.symbol != '' {
+			defined_symbols[unit.symbol] = true
+		}
+	}
 	mut symbol_replacements := map[string]string{}
 	mut target_definitions := map[string]string{}
 	mut target_definitions_present := map[string]bool{}
@@ -2642,19 +2650,24 @@ pub fn rewrite_cached_runtime_strings(cached_source string, old_values []string,
 			continue
 		}
 		new_symbol := cached_c_string_symbol(new_value)
-		old_definition := 'static const string ${old_symbol} = {"${cached_c_escape(old_value)}", ${old_value.len}, 1};'
 		new_definition := 'static const string ${new_symbol} = {"${cached_c_escape(new_value)}", ${new_value.len}, 1};'
-		if cached_source.contains(new_definition) {
+		if defined_symbols[new_symbol] {
 			target_definitions_present[new_symbol] = true
 		}
-		if source.contains(old_definition) {
-			source = source.replace('${old_definition}\n', '').replace(old_definition, '')
+		if defined_symbols[old_symbol] {
 			removed_definition_symbols[old_symbol] = true
 		}
 		symbol_replacements[old_symbol] = new_symbol
 		target_definitions[new_symbol] = new_definition
 	}
-	source = rewrite_c_identifier_tokens(source, symbol_replacements)
+	mut kept := strings.new_builder(cached_source.len)
+	for unit in units {
+		if unit.symbol != '' && removed_definition_symbols[unit.symbol] {
+			continue
+		}
+		kept.writeln(unit.text)
+	}
+	mut source := rewrite_c_identifier_tokens(kept.str(), symbol_replacements)
 	mut definitions := []string{}
 	mut target_symbols := target_definitions.keys()
 	target_symbols.sort()
@@ -2748,38 +2761,97 @@ fn rewrite_c_identifier_tokens(source string, replacements map[string]string) st
 	return out.str()
 }
 
+// CSourceUnit is one line of generated C, or all lines of one generated literal
+// definition.
+struct CSourceUnit {
+	text   string // without the final newline
+	symbol string // the generated literal this unit defines, if any
+}
+
+// c_source_units splits generated C into lines, keeping each generated literal
+// definition in one unit however many lines it spans.
+fn c_source_units(source string) []CSourceUnit {
+	lines := source.split_into_lines()
+	mut units := []CSourceUnit{cap: lines.len}
+	mut i := 0
+	for i < lines.len {
+		symbol := generated_static_string_definition_symbol(lines[i]) or {
+			units << CSourceUnit{
+				text: lines[i]
+			}
+			i++
+			continue
+		}
+		end := static_string_definition_end(lines, i, '')
+		units << CSourceUnit{
+			text:   if end == i + 1 { lines[i] } else { lines[i..end].join('\n') }
+			symbol: symbol
+		}
+		i = end
+	}
+	return units
+}
+
+// static_string_definition_end returns the index just past the last line of the
+// generated literal definition that starts at lines[start]. cgen continues a long
+// literal in adjacent literals on the following lines, because C compilers limit
+// the length of one literal and of one source line. A definition therefore runs to
+// the line that ends its initializer; keeping or dropping only its first line
+// leaves bare string lines, which no C compiler accepts. Every line of the
+// definition begins with prefix.
+fn static_string_definition_end(lines []string, start int, prefix string) int {
+	mut end := start + 1
+	for end < lines.len && !lines[end - 1].trim_space().ends_with(';') {
+		next := lines[end]
+		if !next.starts_with(prefix) || !next[prefix.len..].trim_space().starts_with('"') {
+			break
+		}
+		end++
+	}
+	return end
+}
+
 // prune_unreferenced_static_string_definitions removes generated string storage
 // that is referenced only by the program body. Cached module objects carry
 // their own static copies, while the program translation unit retains the full
 // prefix. Keeping body-only strings out of the shared dylib prefix makes an
 // ordinary program literal edit reuse the same cached dylib.
 pub fn prune_unreferenced_static_string_definitions(prefix string) string {
+	units := c_source_units(prefix)
 	mut references := map[string]int{}
-	for line in prefix.split_into_lines() {
-		for symbol in generated_string_symbols(line) {
+	for unit in units {
+		for symbol in generated_string_symbols(unit.text) {
 			references[symbol]++
 		}
 	}
 	mut out := strings.new_builder(prefix.len)
-	for line in prefix.split_into_lines() {
-		if symbol := generated_static_string_definition_symbol(line) {
-			if references[symbol] == 1 {
-				continue
-			}
+	for unit in units {
+		if unit.symbol != '' && references[unit.symbol] == 1 {
+			continue
 		}
-		out.writeln(line)
+		out.writeln(unit.text)
 	}
 	return out.str()
+}
+
+// static_string_definition_texts returns each generated literal definition of
+// source, without its final newline. A definition can span several lines.
+pub fn static_string_definition_texts(source string) []string {
+	mut definitions := []string{}
+	for unit in c_source_units(source) {
+		if unit.symbol != '' {
+			definitions << unit.text
+		}
+	}
+	return definitions
 }
 
 // static_string_definitions returns generated literal storage needed by the
 // current program body. Cached dependency declarations omit these records.
 pub fn static_string_definitions(source string) string {
 	mut out := strings.new_builder(4096)
-	for line in source.split_into_lines() {
-		if _ := generated_static_string_definition_symbol(line) {
-			out.writeln(line)
-		}
+	for definition in static_string_definition_texts(source) {
+		out.writeln(definition)
 	}
 	return out.str()
 }
@@ -2799,13 +2871,11 @@ pub fn without_duplicate_static_string_definitions(source string, existing_sourc
 		}
 	}
 	mut out := strings.new_builder(source.len)
-	for line in source.split_into_lines() {
-		if symbol := generated_static_string_definition_symbol(line) {
-			if existing[symbol] {
-				continue
-			}
+	for unit in c_source_units(source) {
+		if unit.symbol != '' && existing[unit.symbol] {
+			continue
 		}
-		out.writeln(line)
+		out.writeln(unit.text)
 	}
 	return out.str()
 }
@@ -2817,8 +2887,9 @@ pub fn materialize_cached_body_string_definitions(source string) string {
 	if !source.contains(marker) {
 		return source.clone()
 	}
+	lines := source.split_into_lines()
 	mut actual_symbols := map[string]bool{}
-	for line in source.split_into_lines() {
+	for line in lines {
 		if line.starts_with(marker) {
 			continue
 		}
@@ -2828,24 +2899,36 @@ pub fn materialize_cached_body_string_definitions(source string) string {
 	}
 	mut emitted_symbols := map[string]bool{}
 	mut out := strings.new_builder(source.len)
-	for line in source.split_into_lines() {
+	mut i := 0
+	for i < lines.len {
+		line := lines[i]
 		if line.starts_with(marker) {
-			definition := line[marker.len..]
-			if symbol := generated_static_string_definition_symbol(definition) {
+			if symbol := generated_static_string_definition_symbol(line[marker.len..]) {
+				// A long definition is recorded as one marker line per source line.
+				end := static_string_definition_end(lines, i, marker)
 				if !actual_symbols[symbol] && !emitted_symbols[symbol] {
-					out.writeln(definition)
+					for definition_line in lines[i..end] {
+						out.writeln(definition_line[marker.len..])
+					}
 					emitted_symbols[symbol] = true
 				}
+				i = end
 				continue
 			}
 		}
 		if symbol := generated_static_string_definition_symbol(line) {
-			if emitted_symbols[symbol] {
-				continue
+			end := static_string_definition_end(lines, i, '')
+			if !emitted_symbols[symbol] {
+				for definition_line in lines[i..end] {
+					out.writeln(definition_line)
+				}
+				emitted_symbols[symbol] = true
 			}
-			emitted_symbols[symbol] = true
+			i = end
+			continue
 		}
 		out.writeln(line)
+		i++
 	}
 	return out.str()
 }
