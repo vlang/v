@@ -108,6 +108,11 @@ fn is_header_section(section string) bool {
 
 @[direct_array_access]
 fn parse_headers(block string) ?(map[string][]string, string) {
+	// An END line right after the BEGIN line leaves no headers, and `section` would
+	// otherwise extend into the input after the block.
+	if block.starts_with(pem_end[1..]) {
+		return map[string][]string{}, block
+	}
 	section := block.all_before(pem_end)
 	mut headers_str := section.all_before('\n\n')
 	mut body := block.all_after('\n\n')

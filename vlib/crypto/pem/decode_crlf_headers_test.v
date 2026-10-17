@@ -107,12 +107,34 @@ fn test_lf_headers_with_a_crlf_blank_line() {
 	assert block.data == 'ABC'.bytes()
 }
 
-fn test_crlf_empty_block_keeps_header_like_trailing_input() {
-	trailer := '\r\ntrailer: value\r\n\r\nremaining'
-	block, rest := decode('-----BEGIN TEST-----\r\n-----END TEST-----' + trailer) or {
-		assert false, 'decode failed for an empty block'
-		return
+fn test_empty_block_keeps_header_like_trailing_input() {
+	for ending in ['\n', '\r\n'] {
+		trailer := '${ending}trailer: value${ending}${ending}remaining'
+		block, rest := decode('-----BEGIN TEST-----${ending}-----END TEST-----' + trailer) or {
+			assert false, 'decode failed for an empty block with ${ending.bytes()}'
+			return
+		}
+		assert block == Block.new('TEST')
+		assert rest == trailer
 	}
-	assert block == Block.new('TEST')
-	assert rest == trailer
+}
+
+fn test_empty_block_followed_by_a_block_with_headers() {
+	for ending in ['\n', '\r\n'] {
+		second := '-----BEGIN TEST-----${ending}Proc-Type: 4,ENCRYPTED${ending}${ending}REVG${ending}-----END TEST-----'
+		first, rest := decode('-----BEGIN TEST-----${ending}-----END TEST-----${ending}${second}') or {
+			assert false, 'decode failed for an empty first block with ${ending.bytes()}'
+			return
+		}
+		assert first == Block.new('TEST')
+		assert rest == ending + second
+		block := decode_only(rest) or {
+			assert false, 'decode_only failed for the second block with ${ending.bytes()}'
+			return
+		}
+		assert block.headers == {
+			'Proc-Type': ['4,ENCRYPTED']
+		}
+		assert block.data == 'DEF'.bytes()
+	}
 }
