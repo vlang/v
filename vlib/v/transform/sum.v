@@ -1943,6 +1943,15 @@ fn (mut t Transformer) wrap_sum_value_with_storage(expr_id flat.NodeId, target_s
 	has_expr_smartcast := expr_smartcast.expr_name.len > 0
 	if has_expr_smartcast && flat.source_type_name(t.resolve_sum_name(expr_smartcast.sum_type_name)) == resolved_sum {
 		variant = flat.source_type_name(t.resolve_variant(expr_smartcast.sum_type_name, expr_smartcast.variant_name))
+	} else if has_expr_smartcast
+		&& !t.sum_target_accepts_variant_type(resolved_sum_source_id_6, flat.source_type_id(variant)) {
+		// `Other(x)` with `x` smartcast to a variant of a different sum: the value
+		// is that variant, which `Other` wraps (V1 accepts `MathValue(num)` inside
+		// `match num { Sum, Product { ... } }` where both sums list `Sum`).
+		smartcast_variant := t.smartcast_target_type(expr_smartcast)
+		if t.sum_target_accepts_variant_type(resolved_sum_source_id_6, smartcast_variant) {
+			variant = flat.source_type_name(smartcast_variant)
+		}
 	}
 	if expr.kind == .prefix && expr.op == .mul && expr.children_count > 0 {
 		inner_type := flat.source_type_name(t.node_type(t.a.child(&expr, 0)))

@@ -17279,6 +17279,14 @@ fn (mut t Transformer) receiver_base_for_resolved_method(base_id flat.NodeId, me
 			&& t.normalize_type_alias(clean_source_source_id) == t.normalize_type_alias(method_receiver_source_id) {
 			if t.is_sum_type_name(method_receiver_source_id) {
 				if sc := t.find_smartcast(key) {
+					// A smartcast to the receiver sum itself (`match g.dir { Style { g.dir.m() } }`
+					// with the sum `Style` a variant of `g.dir`'s sum) passes the narrowed value.
+					// `original_expr_type` of a selector already reports that narrowed type.
+					smartcast_target_source_id := t.trim_pointer_type(t.smartcast_target_type(sc))
+					if smartcast_target_source_id != 0
+						&& t.normalize_type_alias(smartcast_target_source_id) == t.normalize_type_alias(method_receiver_source_id) {
+						return t.transform_expr_for_type(base_id, receiver_param_type)
+					}
 					original_type_source_id := t.trim_pointer_type(t.original_expr_type(base_id))
 
 					sum_type_source_id := t.trim_pointer_type(t.resolve_sum_name(sc.sum_type_name))
