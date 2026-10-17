@@ -912,6 +912,7 @@ fn (mut tc TypeChecker) check_semantics_scoped_serial() {
 	tc.defer_ierror_gating = tc.diagnostic_files.len > 0
 	tc.collect_selected_file_called_fns()
 	tc.check_export_attrs()
+	tc.check_custom_attribute_uses()
 	tc.check_c_js_generic_declarations()
 	tc.check_interface_reserved_parameter_names()
 	tc.check_goto_labels()
@@ -955,6 +956,7 @@ pub fn (mut tc TypeChecker) check_semantics_selected(selected map[string]bool) {
 	tc.resolution_type_mode = false
 	tc.check_duplicate_fn_declarations()
 	tc.check_export_attrs()
+	tc.check_custom_attribute_uses()
 	items := tc.collect_parallel_check_items()
 	tc.check_top_level_declarations()
 	mut selected_items := []CheckWorkItem{cap: selected.len}
@@ -1163,6 +1165,7 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 	tc.timing_profile('  [ttime]   ck called fns    ${f64(selsw.elapsed().microseconds()) / 1000.0:7.2f} ms (${tc.selected_file_called_fns.len})')
 	mut cksw := time.new_stopwatch()
 	tc.check_export_attrs()
+	tc.check_custom_attribute_uses()
 	tc.check_c_js_generic_declarations()
 	tc.check_interface_reserved_parameter_names()
 	tc.check_goto_labels()
