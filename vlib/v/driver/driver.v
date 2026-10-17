@@ -2000,7 +2000,8 @@ fn cxx_standard_flag(c99 bool, no_std bool) string {
 	if no_std {
 		return ''
 	}
-	return if c99 { '-std=c++11' } else { '-std=gnu++11' }
+	// V1 built C++ helper objects as C++17; current C++ headers (e.g. ICU) need it.
+	return if c99 { '-std=c++17' } else { '-std=gnu++17' }
 }
 
 fn c_wrapv_flag(target_os string) string {

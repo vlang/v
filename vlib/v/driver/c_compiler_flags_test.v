@@ -322,8 +322,8 @@ fn test_v3_no_std_omits_default_c_and_cpp_standards() {
 	assert c_standard_flag(false, false) == '-std=gnu11'
 	assert c_standard_flag(true, false) == '-std=c99'
 	assert c_standard_flag(false, true) == ''
-	assert cxx_standard_flag(false, false) == '-std=gnu++11'
-	assert cxx_standard_flag(true, false) == '-std=c++11'
+	assert cxx_standard_flag(false, false) == '-std=gnu++17'
+	assert cxx_standard_flag(true, false) == '-std=c++17'
 	assert cxx_standard_flag(false, true) == ''
 }
 
@@ -352,7 +352,7 @@ fn test_v3_no_std_command_keeps_the_user_standard_only() {
 	assert build.exit_code == 0, build.output
 	assert '-std=c++11' in build.output.split_into_lines(), build.output
 	assert !build.output.contains('-std=gnu11'), build.output
-	assert !build.output.contains('-std=gnu++11'), build.output
+	assert !build.output.contains('-std=gnu++17'), build.output
 }
 
 fn test_v3_tcc_linux_output_declares_backtrace() {
