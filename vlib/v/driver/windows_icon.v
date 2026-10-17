@@ -66,36 +66,6 @@ fn prepare_cross_windows_icon_resource(icon_path string, build_dir string, c_com
 	return obj_path
 }
 
-// windows_long_path_manifest declares the executable longPathAware, so Windows lets it
-// use paths past MAX_PATH (the setting applies only to executables that declare it).
-const windows_long_path_manifest = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
-  <application xmlns="urn:schemas-microsoft-com:asm.v3">
-    <windowsSettings>
-      <longPathAware xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">true</longPathAware>
-    </windowsSettings>
-  </application>
-</assembly>
-'
-
-// prepare_windows_long_path_manifest_resource compiles the long-path manifest into an
-// object that is linked into a Windows executable built with `c_compiler`.
-fn prepare_windows_long_path_manifest_resource(build_dir string, c_compiler string) !string {
-	manifest_path := os.join_path_single(build_dir, 'longpath.manifest')
-	rc_path := os.join_path_single(build_dir, 'longpath.rc')
-	obj_path := os.join_path_single(build_dir, 'longpath.o')
-	os.write_file(manifest_path, windows_long_path_manifest)!
-	// windres reads `\` as an escape inside a quoted resource path, so pass `/`.
-	os.write_file(rc_path, '1 24 "${manifest_path.replace('\\', '/')}"\n')!
-	windres := find_windows_windres(c_compiler)!
-	args := ['-i', rc_path, '-o', obj_path, '-O', 'coff']
-	res := cmdexec.run(windres, args)
-	if res.exit_code != 0 {
-		return error('failed to compile Windows manifest resource with `${windres}`: ${res.output.trim_space()}')
-	}
-	return obj_path
-}
-
 fn prepare_windows_icon_ico_path(icon_path string, build_dir string) !string {
 	match os.file_ext(icon_path).to_lower_ascii() {
 		'.ico' {
