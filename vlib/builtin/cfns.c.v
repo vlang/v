@@ -339,10 +339,13 @@ fn C.GetModuleFileName(hModule voidptr, lpFilename &u16, nSize u32) u32
 
 fn C.GetModuleFileNameW(hModule voidptr, lpFilename &u16, nSize u32) u32
 
-fn C.CreateFile(lpFilename &u16, dwDesiredAccess u32, dwShareMode u32, lpSecurityAttributes &u16, dwCreationDisposition u32,
+// The security-attributes argument is the opaque `LPSECURITY_ATTRIBUTES` of the C
+// API, not a `u16` buffer: `vlib/os` spells it `voidptr` for the same reason, and
+// the two spellings must agree because a portable snapshot emits both side by side.
+fn C.CreateFile(lpFilename &u16, dwDesiredAccess u32, dwShareMode u32, lpSecurityAttributes voidptr, dwCreationDisposition u32,
 	dwFlagsAndAttributes u32, hTemplateFile voidptr) voidptr
 
-fn C.CreateFileW(lpFilename &u16, dwDesiredAccess u32, dwShareMode u32, lpSecurityAttributes &u16, dwCreationDisposition u32,
+fn C.CreateFileW(lpFilename &u16, dwDesiredAccess u32, dwShareMode u32, lpSecurityAttributes voidptr, dwCreationDisposition u32,
 	dwFlagsAndAttributes u32, hTemplateFile voidptr) voidptr
 
 $if windows {
