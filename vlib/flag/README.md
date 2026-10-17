@@ -224,3 +224,13 @@ return an error; `fp.int()`, `fp.float()` and `fp.bool()` return their default f
 
 When a flag is given more than once, like `--an_int 1 --an_int 2`, the last value wins.
 Use `fp.int_multi()`, `fp.float_multi()` or `fp.string_multi()` to get all the values.
+
+By default, `FlagParser` scans all arguments, allowing flags to appear after positional arguments.
+To stop parsing flags at the first non-flag argument (treating everything from that point onward
+as positional arguments), call `fp.stop_on_first_non_flag()` after `skip_executable()` and before
+defining flags. Pass every spelling of options that require values, for example
+`fp.stop_on_first_non_flag('--number', '-n', '--name')`. Other options are treated as booleans;
+long and single-letter options accept an optional `true` or `false` value.
+The parser fixes the boundary before getters run,
+so registering a boolean before a value option gives the same result as the opposite order.
+Options after the first positional argument, including a later `--`, remain positional.
