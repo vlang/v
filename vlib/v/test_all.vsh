@@ -221,7 +221,8 @@ fn main() {
 	section(8, 'Language feature parity')
 	lang_v := os.join_path(cfg.tests_dir, 'testdata', 'test_all_lang_features.v')
 	lang_out := os.join_path(cfg.tests_dir, 'test_all_lang_features.out')
-	run('${q(v3_bin)} ${cfg.c99_flag} ${q(lang_v)} -b c -o ${q(v3_lang_bin)}')
+	// The suite declares `__global` variables, which need -enable-globals.
+	run('${q(v3_bin)} ${cfg.c99_flag} -enable-globals ${q(lang_v)} -b c -o ${q(v3_lang_bin)}')
 	v3_c_out := run_output(cfg, q(v3_lang_bin))
 	expected_out := read_text_file(lang_out)
 	assert_same_text('language feature output', v3_c_out, expected_out)
