@@ -18491,6 +18491,15 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 					if node.children_count == 2 && tc.type_aliases.contains(c_fn_name) {
 						return tc.parse_type(flat.source_type_id(c_fn_name))
 					}
+					// Modules may declare the same C function with different, but
+					// compatible, signatures; a call uses the one visible to its module,
+					// as call_info does, not whichever declaration was registered last.
+					if module_name := tc.visible_c_fn_module(c_fn_name) {
+						module_key := c_fn_module_signature_key(module_name, c_fn_name)
+						if ret := tc.c_fn_module_ret_types[module_key] {
+							return ret
+						}
+					}
 					if ret := tc.fn_ret_types[c_fn_name] {
 						return ret
 					}
