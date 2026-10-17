@@ -1800,11 +1800,11 @@ fn (mut t Transformer) sql_transform_value_call(call flat.NodeId) flat.NodeId {
 					if params.len > 0 {
 						receiver_depth, _ := t.pointer_type_depth_and_base(receiver_arg_type)
 						param_depth, _ := t.pointer_type_depth_and_base(t.normalize_type_alias(t.semantic_type_name(params[0])))
-						// Ordinary receiver conversion handles the final value/reference layer.
-						// Remove any extra indirections first, retaining reference parameters.
-						remaining_depth := if param_depth > 0 { param_depth } else { 1 }
-						if receiver_depth > remaining_depth {
-							for _ in remaining_depth .. receiver_depth {
+						// Remove the indirections that the receiver parameter does not take. The
+						// receiver can be a call the SQL lowering built (`renamed.make_ptr()`),
+						// whose pointer result ordinary receiver conversion does not dereference.
+						if receiver_depth > param_depth {
+							for _ in param_depth .. receiver_depth {
 								receiver_arg = t.make_prefix(.mul, receiver_arg)
 								receiver_arg_type = flat.source_type_id(flat.source_type_name(receiver_arg_type)[1..])
 								t.set_node_typ(int(receiver_arg), receiver_arg_type)
