@@ -11239,6 +11239,10 @@ fn (mut tc TypeChecker) check_or_fallback_type(or_id flat.NodeId, source_id flat
 		&& (is_ierror_type(actual) || tc.type_compatible_with_ierror_payload(actual)) {
 		return
 	}
+	// `return a() or { b() }` in a `!T` function returns the `!T` of `b()` as it is.
+	if tc.or_fallback_result_is_returned(or_id, actual, expected) {
+		return
+	}
 	actual_name := if tail.kind == .none_expr {
 		'none'
 	} else {
@@ -11261,6 +11265,19 @@ fn (mut tc TypeChecker) check_or_fallback_type(or_id flat.NodeId, source_id flat
 	}
 	pos := tc.or_fallback_value_pos(tail_id, tail)
 	tc.record_error_at(.assignment_mismatch, message, tail_id, pos)
+}
+
+// or_fallback_result_is_returned reports whether the `or {}` block of a returned
+// expression ends in a `!T` value of the enclosing `!T` function's payload type.
+fn (tc &TypeChecker) or_fallback_result_is_returned(or_id flat.NodeId, actual Type, expected Type) bool {
+	if tc.direct_parent_kind(or_id) != .return_stmt {
+		return false
+	}
+	fn_return := unalias_type(tc.fn_context.return_type)
+	clean_actual := unalias_type(actual)
+	return fn_return is ResultType && clean_actual is ResultType
+		&& tc.type_compatible(clean_actual.base_type, expected)
+		&& tc.type_compatible(clean_actual.base_type, fn_return.base_type)
 }
 
 fn (tc &TypeChecker) or_expr_is_struct_field_value(id flat.NodeId) bool {

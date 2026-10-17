@@ -1495,6 +1495,63 @@ fn (mut t Transformer) build_return_match_type_branch_chain(match_expr_id flat.N
 
 // try_expand_return_match detects a `return match x { ... }` pattern and expands
 // it into an if/else-if chain where every branch tail is an explicit return.
+// return_or_result_tail_as_return rewrites `return a() or { b() }` in a `!T`
+// function, where `b()` is a `!T` value, to `return a() or { return b() }`:
+// the `or {}` block passes the result of `b()`, error or value, on as it is.
+fn (mut t Transformer) return_or_result_tail_as_return(node flat.Node, source_return_id flat.NodeId) ?flat.NodeId {
+	if node.children_count != 1
+		|| !flat.source_type_shape(t.normalize_type_alias(t.cur_fn_ret_type)).has(.result_type) {
+		return none
+	}
+	or_id := t.a.child(&node, 0)
+	or_node := t.a.nodes[int(or_id)]
+	if or_node.kind != .or_expr || or_node.children_count != 2 || or_node.value in ['!', '?'] {
+		return none
+	}
+	block := t.a.nodes[int(t.a.child(&or_node, 1))]
+	if block.kind != .block || block.children_count == 0 {
+		return none
+	}
+	tail := t.a.nodes[int(t.a.child(&block, int(block.children_count) - 1))]
+	if tail.kind != .expr_stmt || tail.children_count != 1 {
+		return none
+	}
+	value_id := t.a.child(&tail, 0)
+	if !flat.source_type_shape(t.normalize_type_alias(t.node_type(value_id))).has(.result_type) {
+		return none
+	}
+	mut stmts := []flat.NodeId{cap: int(block.children_count)}
+	for i in 0 .. int(block.children_count) - 1 {
+		stmts << t.a.child(&block, i)
+	}
+	stmts << t.make_transformed_return(value_id, t.cur_fn_ret_type, source_return_id)
+	new_block := t.make_block(stmts)
+	t.a.nodes[int(new_block)].value = block.value
+	or_start := t.a.children.len
+	t.a.children << t.a.child(&or_node, 0)
+	t.a.children << new_block
+	new_or := t.a.add_node(flat.Node{
+		kind:           .or_expr
+		op:             or_node.op
+		children_start: or_start
+		children_count: 2
+		pos:            or_node.pos
+		value:          or_node.value
+		typ:            or_node.typ
+	})
+	ret_start := t.a.children.len
+	t.a.children << new_or
+	return t.a.add_node(flat.Node{
+		kind:           .return_stmt
+		op:             node.op
+		children_start: ret_start
+		children_count: 1
+		pos:            node.pos
+		value:          transformed_return_value(source_return_id)
+		typ:            node.typ
+	})
+}
+
 fn (mut t Transformer) try_expand_return_match(source_return_id flat.NodeId, node flat.Node) ?[]flat.NodeId {
 	if node.children_count == 0 {
 		return none
