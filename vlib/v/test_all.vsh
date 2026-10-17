@@ -797,12 +797,16 @@ fn run_process_with_timeout(command string, args []string, seconds int) ProcessR
 		process.set_args(args)
 	}
 	process.set_redirect_stdio()
+	// `xvfb-run` starts the X server and the program as its own children. Killing
+	// only `xvfb-run` would leave them holding the output pipes open, and the slurps
+	// below would wait for an EOF that never comes, so kill the whole group.
+	process.use_pgroup = true
 	process.run()
 	mut elapsed_ms := 0
 	limit_ms := seconds * 1000
 	for process.is_alive() {
 		if elapsed_ms >= limit_ms {
-			process.signal_kill()
+			process.signal_pgkill()
 			process.wait()
 			output := process.stdout_slurp() + process.stderr_slurp()
 			process.close()
