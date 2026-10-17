@@ -8978,9 +8978,10 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 					|| !tc.method_can_be_called_on_receiver(base_type, fn_node.value, method_name) {
 					continue
 				}
-				if method_name == 'array.map' {
-					// The builtin signature does not contain the mapper's result type.
-					// Let the array-specific path below infer it in the DSL scope.
+				if checker_is_raw_collection_method_name(method_name, 'array.')
+					|| checker_is_raw_collection_method_name(method_name, 'map.') {
+					// The builtin signatures return the untyped `array`/`map` (and lack
+					// `map`'s mapper result type). Let the collection paths below type them.
 					continue
 				}
 				return tc.call_info(method_name, true)
