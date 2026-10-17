@@ -4590,6 +4590,9 @@ fn (mut p Parser) parse_comptime_if() flat.NodeId {
 		if p.tok == .name && p.lit == 'compile_warn' {
 			return p.parse_compile_warn_stmt(dollar_start)
 		}
+		if p.tok == .name && p.lit == 'compile_notice' {
+			return p.parse_compile_notice_stmt(dollar_start)
+		}
 		if p.prefs.is_fmt && p.formatter_comptime_call_starts() {
 			call := p.parse_formatter_comptime_call(dollar_start)
 			return p.add_node_from(flat.Node{
@@ -4772,6 +4775,15 @@ fn (mut p Parser) parse_compile_warn_stmt(directive_start int) flat.NodeId {
 	}, call)
 }
 
+fn (mut p Parser) parse_compile_notice_stmt(directive_start int) flat.NodeId {
+	call := p.parse_compile_message_call(directive_start, '__v_compile_notice')
+	return p.add_node_from(flat.Node{
+		kind:           .expr_stmt
+		children_start: p.add_child(call)
+		children_count: 1
+	}, call)
+}
+
 fn (mut p Parser) parse_compile_message_call(directive_start int, sentinel string) flat.NodeId {
 	p.next() // skip `compile_error` / `compile_warn`
 	p.check(.lpar)
@@ -4780,10 +4792,16 @@ fn (mut p Parser) parse_compile_message_call(directive_start int, sentinel strin
 	} else {
 		p.expr(.lowest)
 	}
-	if sentinel == '__v_compile_error' {
+	if sentinel == '__v_compile_error' || sentinel == '__v_compile_notice' {
 		arg := p.a.node(message)
 		if arg.kind != .string_literal || arg.children_count != 0 {
-			p.record_diagnostic_span('`$compile_error` expects a string literal', directive_start, p.prev_tok_end)
+			name := if sentinel == '__v_compile_notice' {
+				'$compile_notice'
+			} else {
+				'$compile_error'
+			}
+			p.record_diagnostic_span('`${name}` expects a string literal', directive_start,
+				p.prev_tok_end)
 		}
 	}
 	for p.tok != .rpar && p.tok != .eof {
@@ -4811,7 +4829,11 @@ fn (mut p Parser) make_compile_message_call(message flat.NodeId, start int, end 
 	// selected concrete branch, while a deferred generic branch keeps it until specialization;
 	// if that branch is selected, generic validation rejects the sentinel as well.
 	name := if p.prefs.is_fmt {
-		if sentinel == '__v_compile_warn' { '\$compile_warn' } else { '\$compile_error' }
+		match sentinel {
+			'__v_compile_warn' { '\$compile_warn' }
+			'__v_compile_notice' { '\$compile_notice' }
+			else { '\$compile_error' }
+		}
 	} else {
 		sentinel
 	}
@@ -4958,6 +4980,17 @@ fn (mut p Parser) parse_top_level_comptime_if() flat.NodeId {
 		}
 		if p.tok == .name && p.lit == 'compile_warn' {
 			call := p.parse_compile_message_call(dollar_start, '__v_compile_warn')
+			if p.prefs.is_fmt {
+				return p.add_node_from(flat.Node{
+					kind:           .expr_stmt
+					children_start: p.add_child(call)
+					children_count: 1
+				}, call)
+			}
+			return p.make_top_level_compile_error(call)
+		}
+		if p.tok == .name && p.lit == 'compile_notice' {
+			call := p.parse_compile_message_call(dollar_start, '__v_compile_notice')
 			if p.prefs.is_fmt {
 				return p.add_node_from(flat.Node{
 					kind:           .expr_stmt
@@ -8920,7 +8953,8 @@ fn (mut p Parser) stmt() flat.NodeId {
 		.dollar {
 			pk := p.peek()
 			if pk == .key_if || pk == .key_for || pk == .key_match || (pk == .name
-				&& p.peek_lit in ['if', 'for', 'match', 'compile_error', 'compile_warn']) {
+				&& p.peek_lit in ['if', 'for', 'match', 'compile_error', 'compile_warn',
+					'compile_notice']) {
 				return p.parse_comptime_if()
 			}
 			if pk == .name && p.peek_lit == 'dbg' {
