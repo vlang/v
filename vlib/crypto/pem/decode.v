@@ -83,6 +83,9 @@ fn is_valid_base64(s string) bool {
 	return true
 }
 
+// is_header_section reports whether `section`, the text before a blank line that ends
+// with CRLF, contains only headers. A line without a colon must continue a header value:
+// it is indented, or it follows a header whose value is empty or ends with a comma.
 fn is_header_section(section string) bool {
 	if !section.all_before('\n').contains(colon) {
 		return false
@@ -90,8 +93,10 @@ fn is_header_section(section string) bool {
 	mut wrapped_value := false
 	for line in section.split_into_lines() {
 		if separator := line.index(colon) {
-			// The encoder starts a wrapped value after an empty header line.
-			wrapped_value = line[separator + 1..].trim_space().len == 0
+			// The encoder starts a wrapped value after an empty header line, and the
+			// RFC 1421 examples wrap comma separated values after a comma.
+			value := line[separator + 1..].trim_space()
+			wrapped_value = value.len == 0 || value.ends_with(',')
 		} else if line.len == 0 || (!wrapped_value && line[0] !in [` `, `\t`]) {
 			// An unindented body line can precede a blank line in a block whose
 			// headers were not followed by the usual blank separator.
@@ -106,12 +111,12 @@ fn parse_headers(block string) ?(map[string][]string, string) {
 	section := block.all_before(pem_end)
 	mut headers_str := section.all_before('\n\n')
 	mut body := block.all_after('\n\n')
-	// A CRLF blank line also terminates folded headers. Keep an earlier LF
+	// A blank line ending with CRLF also terminates folded headers. Keep an earlier LF
 	// separator when a later CRLF blank line belongs to the base64 body.
-	if separator := section.index('\r\n\r\n') {
+	if separator := section.index('\n\r\n') {
 		if separator < headers_str.len && is_header_section(section[..separator]) {
 			headers_str = section[..separator]
-			body = block[separator + 4..]
+			body = block[separator + 3..]
 		}
 	}
 

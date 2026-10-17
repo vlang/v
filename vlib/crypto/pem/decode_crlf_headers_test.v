@@ -81,6 +81,32 @@ fn test_crlf_indented_folded_header_with_inline_value() {
 	assert block.data == 'ABC'.bytes()
 }
 
+fn test_crlf_unindented_continuation_after_a_comma() {
+	// as in the RFC 1421 examples, also for the last header before the blank line
+	input := '-----BEGIN TEST-----\r\nKey-Info: RSA,\r\nI3rRIGXU\r\nwGrtiUm/\r\nMIC-Info: RSA-MD5,RSA,\r\njV2OfH+n\r\n\r\nQUJD\r\n-----END TEST-----\r\n'
+	block := decode_only(input) or {
+		assert false, 'decode_only failed for unindented continuations'
+		return
+	}
+	assert block.headers == {
+		'Key-Info': ['RSA,I3rRIGXUwGrtiUm/']
+		'MIC-Info': ['RSA-MD5,RSA,jV2OfH+n']
+	}
+	assert block.data == 'ABC'.bytes()
+}
+
+fn test_lf_headers_with_a_crlf_blank_line() {
+	input := '-----BEGIN TEST-----\nKey-Info: \n9FD3AAD2F2691B9A\n\r\nQUJD\n-----END TEST-----\n'
+	block := decode_only(input) or {
+		assert false, 'decode_only failed for a CRLF blank line after LF headers'
+		return
+	}
+	assert block.headers == {
+		'Key-Info': ['9FD3AAD2F2691B9A']
+	}
+	assert block.data == 'ABC'.bytes()
+}
+
 fn test_crlf_empty_block_keeps_header_like_trailing_input() {
 	trailer := '\r\ntrailer: value\r\n\r\nremaining'
 	block, rest := decode('-----BEGIN TEST-----\r\n-----END TEST-----' + trailer) or {
