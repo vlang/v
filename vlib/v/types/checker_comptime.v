@@ -473,7 +473,13 @@ fn (mut tc TypeChecker) check_comptime_static_method_var_call(id flat.NodeId, no
 					param_index)
 				source := tc.mut_pointer_slot_arg_source_type(arg_id)
 				value := if source is Pointer { source.base_type } else { source }
-				if expected is Pointer && !tc.type_compatible(value, expected.base_type) {
+				// The transformer passes the embedded struct of the first argument
+				// when that is what the method expects (`&ctx->veb__Context`), see
+				// transform_comptime_method_embedded_arg.
+				passes_embedded := arg_index == 0 && !has_implicit_ctx && expected is Pointer
+					&& tc.receiver_embeds(value, expected)
+				if expected is Pointer && !passes_embedded
+					&& !tc.type_compatible(value, expected.base_type) {
 					mut actual_ref := source
 					if source !is Pointer {
 						actual_ref = Type(Pointer{
