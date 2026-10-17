@@ -14038,6 +14038,9 @@ fn (mut t Transformer) try_lower_builtin_call(_id flat.NodeId, node flat.Node) ?
 			}
 		}
 	}
+	if free_call := t.try_lower_owned_string_free_call(_id, node) {
+		return free_call
+	}
 	if receiver_call := t.try_lower_receiver_method_call(_id, node) {
 		return receiver_call
 	}
@@ -18735,6 +18738,59 @@ fn (mut t Transformer) try_lower_string_method_call(node flat.Node) ?flat.NodeId
 
 	t.mark_fn_used_name('string.${method}')
 	return t.make_call_typed('string__${method}', args, flat.source_type_id(ret_type))
+}
+
+// try_lower_owned_string_free_call resets a string variable or field after an explicit
+// `s.free()` in an ownership build. `string.free()` leaves its double-free marker in the
+// header, so the ownership drop of that storage (when it is reassigned or goes out of
+// scope) reported a double free. An empty string drops as a no-op, like the zero value
+// that arrays and maps are reset to after their explicit `free()`.
+fn (mut t Transformer) try_lower_owned_string_free_call(id flat.NodeId, node flat.Node) ?flat.NodeId {
+	if node.children_count != 1 || isnil(t.tc) || t.tc.autofree_enabled() {
+		return none
+	}
+	callee := t.a.child_node(&node, 0)
+	if callee.kind != .selector || callee.value != 'free' || callee.children_count == 0 {
+		return none
+	}
+	base_id := t.a.child(callee, 0)
+	if !t.owned_string_free_target_is_storage(base_id) {
+		return none
+	}
+	base_type := t.node_type(base_id)
+	if base_type != flat.source_type_string {
+		return none
+	}
+	if !t.tc.ownership_type_requires_destruction(t.tc.parse_type(flat.source_type_string)) {
+		return none
+	}
+	if resolved := t.tc.resolved_call_name(id) {
+		if resolved != 'string.free' {
+			return none
+		}
+	}
+	base := t.stable_expr_for_reuse(base_id)
+	t.mark_fn_used_name('string.free')
+	call := t.make_call_typed('string__free', [t.runtime_addr(base, base_type)], flat.source_type_void)
+	t.pending_stmts << t.make_expr_stmt(call)
+	t.pending_stmts << t.make_assign(base, t.make_string_literal(''))
+	return t.make_empty()
+}
+
+// owned_string_free_target_is_storage reports whether `id` names string storage that a
+// later ownership drop can reach: a variable, or a field of one.
+fn (t &Transformer) owned_string_free_target_is_storage(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	return match node.kind {
+		.ident { node.value.len > 0 && t.var_type(node.value) != 0 }
+		.selector, .paren {
+			node.children_count > 0 && t.owned_string_free_target_is_storage(t.a.child(&node, 0))
+		}
+		else { false }
+	}
 }
 
 // try_fold_literal_string_call emits a literal when a pure string call has static operands.
