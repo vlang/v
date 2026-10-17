@@ -47,3 +47,37 @@ fn test_comptime_prepass_block_skip_matches_scanner_boundaries() {
 		}
 	}
 }
+
+fn test_comptime_const_name_scan_matches_full_scanner() {
+	for source in [
+		'module main\nconst before = 1\nfn f() { const local = 2; value := local }\nconst after = 3\n',
+		'module names\nfn f() { some_const := 1; module_name := 2; αconst := 3; xαconst := 4 }\nconst actual = 5\n',
+		'module main\n// const ignored = 1\n/* const ignored = 2 /* module other */ */\nconst actual = 3\n',
+		'module main\nfn f() { text := "const ignored = 1"; raw := r"module other"; ch := `c` }\nconst actual = 2\n',
+		'module main\nfn f() { text := "value: \${if true { "nested \${42}" } else { "const ignored" }}" }\nconst actual = 3\n',
+		'module main\n#flag -Dconst=ignored\nconst actual = 4\n',
+	] {
+		prefs := pref.new_preferences()
+		mut fs := token.FileSet.new()
+		file := fs.add_file('const_names.v', source.len)
+		mut expected := scanner.new_scanner(prefs, .normal)
+		expected.init(file, source)
+		mut actual := expected
+		for {
+			mut expected_tok := expected.scan()
+			for expected_tok !in [.key_module, .key_const, .eof] {
+				expected_tok = expected.scan()
+			}
+			assert scan_parallel_const_name_token(mut actual) == expected_tok, source
+			assert actual.offset == expected.offset, source
+			if expected_tok == .eof {
+				break
+			}
+			// Declaration parsing resumes with the ordinary scanner at each hit.
+			for _ in 0 .. 4 {
+				assert actual.scan() == expected.scan(), source
+				assert actual.lit == expected.lit, source
+			}
+		}
+	}
+}

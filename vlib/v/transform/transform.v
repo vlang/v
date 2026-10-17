@@ -15240,14 +15240,13 @@ fn (mut t Transformer) try_lower_discarded_closure_assign(node flat.Node) ?[]fla
 }
 
 fn (mut t Transformer) lower_discarded_closure_value(id flat.NodeId) ?[]flat.NodeId {
-	fn_type_source_id := t.discarded_closure_value_type(id) or { return none }
-
 	if !t.used_fn_contains_name('closure.closure_create_with_data') {
 		return none
 	}
 	if !t.discarded_closure_value_is_exclusive(id) {
 		return none
 	}
+	fn_type_source_id := t.discarded_closure_value_type(id) or { return none }
 
 	// The closure is destroyed right away, so a pointer-receiver method value can borrow
 	// its receiver, like the non-escaping local closures do, instead of copying it.
