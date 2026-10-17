@@ -173,13 +173,15 @@ fn maybe_ptr(stable &Holder) ?&PtrErr {
 }
 
 fn guard_shadow_stable(stable &Holder) !int {
-	holder := Holder{
-		err: PtrErr{
-			text: 'guard shadow stack field'
+	{
+		holder := Holder{
+			err: PtrErr{
+				text: 'guard shadow stack field'
+			}
 		}
+		p := &holder.err
+		assert p.msg() == 'guard shadow stack field'
 	}
-	p := &holder.err
-	assert p.msg() == 'guard shadow stack field'
 	if p := maybe_ptr(stable) {
 		return p
 	}
@@ -223,8 +225,7 @@ fn for_in_stack_field() !int {
 }
 
 fn shadow_stable_outer(stable &Holder) !int {
-	p := &stable.err
-	if true {
+	{
 		holder := Holder{
 			err: PtrErr{
 				text: 'shadow stack field'
@@ -233,6 +234,7 @@ fn shadow_stable_outer(stable &Holder) !int {
 		p := &holder.err
 		assert p.msg() == 'shadow stack field'
 	}
+	p := &stable.err
 	return p
 }
 

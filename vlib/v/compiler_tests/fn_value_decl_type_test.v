@@ -635,6 +635,8 @@ fn test_fn_value_expected_context_respects_value_shadowing() {
 	assert !struct_output.contains('main__foo'), struct_output
 }
 
+// A local cannot be redefined in a nested block, so the same name is bound in
+// sibling blocks: each call must check against the binding of its own block.
 fn test_variadic_fn_value_marker_uses_nearest_binding() {
 	v3_bin := build_v3()
 	output := run_bad(v3_bin, 'variadic_fn_value_shadowed_by_plain_fn', 'fn variadic(values ...int) int {
@@ -646,15 +648,18 @@ fn one(value int) int {
 }
 
 fn main() {
-	cb := variadic
+	{
+		cb := variadic
+		assert cb(1, 2) == 2
+	}
 	{
 		cb := one
 		_ := cb(1, 2)
 	}
-	assert cb(1, 2) == 2
 }
 ')
 	assert output.contains('expected 1 argument, but got 2'), output
+	assert output.count('error:') == 1, output
 }
 
 fn test_local_fn_literal_decl_generates_fn_pointer_locals() {

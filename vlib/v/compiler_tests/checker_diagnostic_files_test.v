@@ -354,16 +354,12 @@ fn test_selected_file_local_receiver_uses_distinct_import_alias() {
 	assert main_errors.len == 0, main_errors.str()
 }
 
-fn test_local_shadowing_in_child_scope_and_fn_literal_is_allowed() {
-	errors := check_diagnostic_project('ordinary_local_child_shadow', {
+fn test_local_shadowing_in_fn_literal_is_allowed() {
+	errors := check_diagnostic_project('ordinary_local_fn_literal_shadow', {
 		'main.v': 'module main
 
 fn main() {
 	timers := 1
-	if true {
-		timers := 2
-		_ = timers
-	}
 	cb := fn () {
 		timers := 3
 		_ = timers
@@ -374,6 +370,26 @@ fn main() {
 '
 	}, ['main.v'])
 	assert errors.len == 0, errors.str()
+}
+
+// A nested block shares its function's locals, so redefining one there is an
+// error (the V rule), unlike a fn literal, which starts a new function scope.
+fn test_local_redefinition_in_child_scope_is_rejected() {
+	errors := check_diagnostic_project('ordinary_local_child_redefinition', {
+		'main.v': 'module main
+
+fn main() {
+	timers := 1
+	if true {
+		timers := 2
+		_ = timers
+	}
+	_ = timers
+}
+'
+	}, ['main.v'])
+	assert errors.len == 1, errors.str()
+	assert errors[0].msg == 'redefinition of `timers`', errors.str()
 }
 
 fn test_selected_file_calling_invalid_ierror_method_return_reports_dependency_error() {
