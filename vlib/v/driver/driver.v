@@ -14776,7 +14776,14 @@ pub fn run(args []string) {
 			is_o)
 		if !c_only {
 			cc_dir = os.join_path_single(v3_output_dir(bin_file), '.${os.base(bin_file)}.v3cc.${tempname.unique_token()}')
-			os.mkdir(cc_dir) or {
+			// tcc.exe is not long-path aware, so a build dir past MAX_PATH cannot hold its files.
+			// Fall back to a short root under the system drive when the output path is long.
+			if cc_dir.len > 200 {
+				short_root := os.join_path_single(os.getenv_opt('SystemDrive') or { 'C:' } + '\\', 'v3cc')
+				cc_dir = os.join_path_single(short_root, tempname.unique_token())
+			}
+			// mkdir_all: the output directory may not exist yet, and mkdir would fail on it.
+			os.mkdir_all(cc_dir) or {
 				eprintln('failed to create C build directory ${cc_dir}: ${err}')
 				exit(1)
 			}
@@ -15303,6 +15310,20 @@ pub fn run(args []string) {
 				exit(1)
 			}
 			native_support_inputs << icon_object
+		}
+		// Mark Windows executables longPathAware so they can use paths past MAX_PATH.
+		// tcc and MSVC links are left unchanged; without windres the build goes on.
+		if prefs.normalized_target_os() == 'windows' && !effective_tcc && !is_o && !is_shared
+			&& !c_only && !c_compiler_is_msvc(c_compiler) {
+			long_path_object := prepare_windows_long_path_manifest_resource(cc_dir, c_compiler) or {
+				if verbose || show_cc {
+					eprintln('warning: executable is not longPathAware: ${err.msg()}')
+				}
+				''
+			}
+			if long_path_object.len > 0 {
+				native_support_inputs << long_path_object
+			}
 		}
 		if effective_tcc && !is_o && !generated_literal_output_only {
 			atomic_input := if generate_c_project.len > 0 {

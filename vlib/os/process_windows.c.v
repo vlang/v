@@ -88,6 +88,11 @@ fn win_bare_command_search_dirs() []string {
 // application name, so without this every bare-name spawn failed with "The
 // system cannot find the file specified".
 fn (p &Process) win_resolve_filename() !string {
+	// A `\\?\` path is already absolute and must reach CreateProcessW unchanged:
+	// abs_path would normalize it back into a form that exceeds MAX_PATH.
+	if p.filename.starts_with('\\\\?\\') {
+		return p.filename
+	}
 	if is_abs_path(p.filename) {
 		return win_exec_application_name(p.filename)
 	}

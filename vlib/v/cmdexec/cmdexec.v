@@ -43,7 +43,8 @@ fn resolve_program(program string) ?string {
 		// lpApplicationName; only the separate command-line buffer goes through
 		// ExpandEnvironmentStringsW. Expand `%NAME%` here, both to probe the
 		// real path and to launch it.
-		return windows_resolve_program(expand_windows_env_vars(program))
+		exe := windows_resolve_program(expand_windows_env_vars(program)) or { return none }
+		return windows_extended_length_path(exe)
 	} $else {
 		if os.is_executable(program) {
 			// Pin the file checked above before Process can interpret a bare name
@@ -106,6 +107,19 @@ fn windows_resolve_program(program string) ?string {
 		return windows_resolve_executable_path(os.abs_path(program))
 	}
 	return os.find_abs_path_of_executable(program) or { return none }
+}
+
+// windows_extended_length_path returns `path` with the `\\?\` prefix once it reaches
+// MAX_PATH, the form CreateProcessW can start past that length. Shorter paths are
+// returned unchanged, so the prefix only appears where the plain path would fail.
+fn windows_extended_length_path(path string) string {
+	$if !windows {
+		return path
+	}
+	if path.len < 260 || path.starts_with('\\\\?\\') {
+		return path
+	}
+	return '\\\\?\\' + path.replace('/', '\\')
 }
 
 // windows_resolve_executable_path returns the candidate CreateProcessW would
@@ -192,7 +206,7 @@ fn run_in_mode_with_env(program string, args []string, work_folder string, merge
 		process.set_stdin_path('/dev/null')
 	}
 	if work_folder.len > 0 {
-		process.set_work_folder(work_folder)
+		process.set_work_folder(windows_extended_length_path(work_folder))
 	}
 	if env.len > 0 {
 		mut child_env := os.environ()

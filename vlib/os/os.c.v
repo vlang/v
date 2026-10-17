@@ -505,8 +505,10 @@ pub fn system(cmd string) int {
 // whether lstat returns any result or a "not exists" error gives a clear indication of whether the path is occupied.
 pub fn exists(path string) bool {
 	$if windows {
+		// GetFileAttributesW is a Win32 call, so a longPathAware executable can use paths
+		// past MAX_PATH with it, where the CRT's _waccess cannot.
 		p := path.replace('/', '\\')
-		return C._waccess(p.to_wide(), f_ok) != -1
+		return C.GetFileAttributesW(p.to_wide()) != u32(C.INVALID_FILE_ATTRIBUTES)
 	} $else {
 		return C.access(&char(path.str), f_ok) != -1
 	}
