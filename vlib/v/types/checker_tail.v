@@ -3269,6 +3269,10 @@ fn (mut tc TypeChecker) record_return_match_sumtype_branch_mismatch(id flat.Node
 		if !tc.valid_node_id(tail_id) {
 			continue
 		}
+		// `else { panic('...') }` produces no value to check.
+		if tc.branch_tail_never_returns(branch_id) {
+			continue
+		}
 		actual := tc.raw_return_match_tail_type(tail_id)
 		if tc.type_is_same_sum_type(actual, expected_sum)
 			|| tc.type_name_is_direct_sum_variant(actual, expected_sum) {
