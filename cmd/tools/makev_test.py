@@ -169,6 +169,73 @@ class BootstrapConfigurationTests(unittest.TestCase):
 
 @unittest.skipUnless(os.name == "nt", "requires the Windows cmd.exe interpreter")
 class BatchExecutionTests(unittest.TestCase):
+    def test_tcc_link_inputs_follow_host_tcc32_and_branch_overrides(self):
+        for arch, option, branch, uses_openlibm in (
+            ("AMD64", "", None, True),
+            ("x86", "", None, False),
+            ("AMD64", "-tcc32", None, False),
+            ("AMD64", "", "thirdparty-windows-i386", False),
+            ("AMD64", "", '"thirdparty-windows-i386"', False),
+            ("x86", "", "thirdparty-windows-amd64", True),
+            ("x86", "", '"thirdparty-windows-amd64"', True),
+            ("AMD64", "-tcc32", "thirdparty-windows-amd64", True),
+            ("AMD64", "", "custom-tcc-bundle", False),
+        ):
+            with self.subTest(arch=arch, option=option, branch=branch), tempfile.TemporaryDirectory(
+                prefix="makev TCC link inputs "
+            ) as directory:
+                workdir = Path(directory)
+                tcc_dir = workdir / "thirdparty" / "tcc"
+                tcc_dir.mkdir(parents=True)
+                (tcc_dir / "tcc.exe").write_text("stub compiler", encoding="utf-8")
+                preamble = SOURCE[:SOURCE.index(":verifyopt\n")]
+                preamble = preamble.replace("%~dp0", str(workdir) + "\\")
+                body = "\n".join(
+                    routine("build_" + stage + "_with_tcc") for stage in ("bootstrap", "stage")
+                )
+                self.assertEqual(body.count('"!tcc_exe!" '), 2)
+                body = body.replace('"!tcc_exe!" ', "call :stub_tcc ")
+                script = "\n".join([
+                    preamble,
+                    "set test_calls=bootstrap.args",
+                    "call :build_bootstrap_with_tcc",
+                    "if !ERRORLEVEL! NEQ 0 exit /b !ERRORLEVEL!",
+                    "set test_calls=stage.args",
+                    "call :build_stage_with_tcc",
+                    "exit /b !ERRORLEVEL!",
+                    body,
+                    ":generate_stage_c",
+                    "exit /b 0",
+                    ":try_delete",
+                    "exit /b 0",
+                    ":stub_tcc",
+                    'if "%~1" == "" exit /b 0',
+                    '>>"%test_calls%" echo(%~1',
+                    "shift",
+                    "goto :stub_tcc",
+                ])
+                harness = workdir / "TCC link inputs.bat"
+                harness.write_bytes(script.replace("\n", "\r\n").encode("utf-8"))
+                env = dict(os.environ, PROCESSOR_ARCHITECTURE=arch, TCC_OPENLIBM="stale value")
+                env.pop("TCC_BRANCH", None)
+                if branch is not None:
+                    env["TCC_BRANCH"] = branch
+                command = [os.environ.get("ComSpec", "cmd.exe"), "/d", "/c", str(harness)]
+                if option:
+                    command.append(option)
+                result = subprocess.run(
+                    command, cwd=workdir, env=env, capture_output=True, text=True,
+                    errors="replace", timeout=15, check=False,
+                )
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                for stage in ("bootstrap", "stage"):
+                    args = (workdir / (stage + ".args")).read_text(encoding="utf-8").splitlines()
+                    math_inputs = [arg for arg in args if arg.lower().endswith("\\openlibm.o")]
+                    expected = [str(tcc_dir / "lib" / "openlibm.o")] if uses_openlibm else []
+                    self.assertEqual(math_inputs, expected, args)
+                    self.assertIn("-Wl,-stack=33554432", args)
+                    self.assertFalse(any("stale value" in arg for arg in args), args)
+
     def test_tcc_bootstrap_links_external_helpers_without_an_existing_compiler(self):
         if not (ROOT / "thirdparty" / "tcc" / "tcc.exe").is_file():
             self.skipTest("requires the bundled Windows TCC")
