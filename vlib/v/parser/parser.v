@@ -4449,7 +4449,11 @@ fn (mut p Parser) parse_field_attrs_with_kinds_mode(single_group bool, check_pen
 						p.check(.colon)
 					}
 					arg_kind := parsed_attribute_kind(p.tok)
-					arg := p.lit.trim_space()
+					mut arg := p.lit.trim_space()
+					if p.tok == .dot && p.peek() == .name {
+						p.next()
+						arg = '.' + p.lit
+					}
 					p.next()
 					if attr_name == 'deprecated' && arg_name == 'msg' {
 						if has_base_arg && !p.prefs.is_fmt {

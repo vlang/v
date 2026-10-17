@@ -17321,7 +17321,7 @@ fn (tc &TypeChecker) attribute_use_schemas(pieces []string, module string) []Att
 // later positionals are numbered from 1).
 fn (mut tc TypeChecker) check_attribute_use_args(node_id flat.NodeId, schema AttributeSchema, base string, pieces []string, pos token.Pos, module string) {
 	// Split the flattened pieces into parallel name/value lists first: the
-	// parser stores a dot-prefixed enum value (`.get`) as an empty piece
+	// legacy representation stores a dot-prefixed enum value (`.get`) as an empty piece
 	// followed by a numbered positional holding the bare ident
 	// (`Name_key: ` + `Name_1: get`), and the two must be reassembled below.
 	mut names := []string{}
@@ -17403,7 +17403,7 @@ fn (mut tc TypeChecker) check_attribute_use_args(node_id flat.NodeId, schema Att
 			continue
 		}
 		field := schema.fields[field_idx]
-		if bound[field.name] {
+		if bound[field.name] || values.len > 1 {
 			tc.record_error_at(.assignment_mismatch, 'duplicate field `${key}` in attribute `${base}`', node_id, pos)
 		}
 		bound[field.name] = true
@@ -17442,7 +17442,7 @@ fn is_bare_ident(s string) bool {
 }
 
 // attribute_dot_enum_value reassembles a dot-prefixed enum value that the
-// parser splits into an empty piece plus a numbered positional holding the
+// legacy representation splits into an empty piece plus a numbered positional holding the
 // bare ident (`Name_key: ` + `Name_1: get` becomes `.get`). The merge only
 // fires for a bare ident, so an empty piece followed by a quoted string,
 // a number, or nothing keeps its own meaning.
