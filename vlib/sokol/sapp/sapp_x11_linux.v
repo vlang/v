@@ -1573,7 +1573,7 @@ fn x11_parse_dropped_files_list(src &char) bool {
 	dst_end_ptr := unsafe { g_sapp_state.drop.buffer + (g_sapp_state.drop.max_path_length - 1) }
 	mut p := unsafe { src }
 	for {
-		src_chr := unsafe { *p }
+		src_chr := u8(unsafe { *p })
 		if src_chr == 0 {
 			break
 		}
@@ -1617,7 +1617,7 @@ fn x11_parse_dropped_files_list(src &char) bool {
 				}
 			}
 		} else {
-			dst_chr = u8(src_chr)
+			dst_chr = src_chr
 		}
 		if dst_chr != 0 {
 			if usize(dst_ptr) < usize(dst_end_ptr) {
