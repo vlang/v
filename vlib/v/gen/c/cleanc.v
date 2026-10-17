@@ -20172,6 +20172,12 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('#ifdef __APPLE__')
 	g.writeln('struct mach_header;')
 	g.writeln('#endif')
+	// OpenBSD, NetBSD and Android share this errno accessor. emit_c_runtime_declarations
+	// writes a declaration once per unit, so declare it before the per-libc branches
+	// rather than in the first of them.
+	g.writeln('#if defined(__OpenBSD__) || defined(__NetBSD__) || defined(__ANDROID__)')
+	g.emit_c_runtime_declarations(['__errno'])
+	g.writeln('#endif')
 	g.writeln('#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__DragonFly__)')
 	g.writeln('extern FILE* __stdinp;')
 	g.writeln('extern FILE* __stdoutp;')
@@ -20189,7 +20195,6 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('#define stdin ((FILE*)__stdin)')
 	g.writeln('#define stdout ((FILE*)__stdout)')
 	g.writeln('#define stderr ((FILE*)__stderr)')
-	g.emit_c_runtime_declarations(['__errno'])
 	g.writeln('#define errno (*__errno())')
 	g.writeln('#elif defined(__NetBSD__)')
 	g.writeln('#if defined(__LP64__) || defined(_LP64)')
@@ -20201,13 +20206,11 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('#define stdin ((FILE*)&__sF[0])')
 	g.writeln('#define stdout ((FILE*)&__sF[1])')
 	g.writeln('#define stderr ((FILE*)&__sF[2])')
-	g.emit_c_runtime_declarations(['__errno'])
 	g.writeln('#define errno (*__errno())')
 	g.writeln('#elif defined(__ANDROID__)')
 	g.writeln('extern FILE* stdin;')
 	g.writeln('extern FILE* stdout;')
 	g.writeln('extern FILE* stderr;')
-	g.emit_c_runtime_declarations(['__errno'])
 	g.writeln('#define errno (*__errno())')
 	g.writeln('#elif defined(__linux__) || defined(__EMSCRIPTEN__)')
 	g.writeln('extern FILE* stdin;')
@@ -20947,10 +20950,13 @@ fn (mut g FlatGen) headerless_platform_constants() {
 	g.headerless_freebsd_constants()
 	g.writeln('#elif defined(__OpenBSD__)')
 	g.headerless_bsd_constants('0x10000', '8', '9', '3', '28', '24', '0x0400', '', '0x2', false)
+	g.headerless_bsd_file_constants('0x20000', '-100', '0x08', '503', '500')
 	g.writeln('#elif defined(__NetBSD__)')
 	g.headerless_bsd_constants('0x00400000', '8', '9', '3', '28', '24', '0x0400', '0x0800', '0x4', false)
+	g.headerless_bsd_file_constants('0x00200000', '-100', '0x800', '1002', '121')
 	g.writeln('#elif defined(__DragonFly__)')
 	g.headerless_bsd_constants('0x00020000', '8', '9', '4', '47', '28', '0x0400', '0x0800', '0x0', false)
+	g.headerless_bsd_file_constants('0x08000000', '0xFFFAFDCD', '2', '58', '121')
 	g.writeln('#elif defined(__sun)')
 	g.headerless_solaris_constants()
 	g.writeln('#elif defined(__QNX__) || defined(__QNXNTO__)')
@@ -21234,12 +21240,18 @@ fn (mut g FlatGen) headerless_darwin_constants() {
 
 fn (mut g FlatGen) headerless_freebsd_constants() {
 	g.headerless_bsd_constants('0x00100000', '12', '13', '4', '47', '28', '0x00020000', '0x0800', '0x0', true)
+	g.headerless_bsd_file_constants('0x00020000', '-100', '0x0800', '58', '121')
+}
+
+// headerless_bsd_file_constants defines the path lookup and sysconf constants whose
+// values differ between the BSDs. Every one of them uses 0x0100 for O_NOFOLLOW.
+fn (mut g FlatGen) headerless_bsd_file_constants(o_directory string, at_fdcwd string, at_removedir string, sc_nprocessors_onln string, sc_phys_pages string) {
 	g.writeln('#define O_NOFOLLOW 0x0100')
-	g.writeln('#define O_DIRECTORY 0x00020000')
-	g.writeln('#define AT_FDCWD -100')
-	g.writeln('#define AT_REMOVEDIR 0x0800')
-	g.writeln('#define _SC_NPROCESSORS_ONLN 58')
-	g.writeln('#define _SC_PHYS_PAGES 121')
+	g.writeln('#define O_DIRECTORY ${o_directory}')
+	g.writeln('#define AT_FDCWD ${at_fdcwd}')
+	g.writeln('#define AT_REMOVEDIR ${at_removedir}')
+	g.writeln('#define _SC_NPROCESSORS_ONLN ${sc_nprocessors_onln}')
+	g.writeln('#define _SC_PHYS_PAGES ${sc_phys_pages}')
 }
 
 fn (mut g FlatGen) headerless_bsd_constants(o_cloexec string, f_setlk string, f_setlkw string, clock_monotonic string, sc_pagesize string, af_inet6 string, msg_nosignal string, so_nosigpipe string, ms_sync string, flock_sysid bool) {

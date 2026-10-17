@@ -16770,6 +16770,13 @@ fn (mut g FlatGen) c_extern_forward_decls() {
 			g.writeln('#ifndef __APPLE__')
 			g.writeln(line)
 			g.writeln('#endif')
+		} else if g.headerless_compiler_bootstrap() && name in c_winapi_extern_symbols {
+			// The portable snapshot defines SDK types such as DWORD only for Windows,
+			// and calls the Win32 API only from `$if windows` code, which is
+			// `#if defined(_WIN32)` there.
+			g.writeln('#ifdef _WIN32')
+			g.writeln(line)
+			g.writeln('#endif')
 		} else {
 			g.writeln(line)
 		}
