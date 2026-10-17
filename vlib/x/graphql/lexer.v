@@ -12,18 +12,18 @@ mut:
 
 fn Lexer.new(source Source) Lexer {
 	start_of_file_token := &Token{
-		kind: TokenKind.sof
-		start: 0
-		end: 0
-		line: 0
+		kind:   TokenKind.sof
+		start:  0
+		end:    0
+		line:   0
 		column: 0
 	}
 
 	return Lexer{
-		source: source
+		source:     source
 		last_token: start_of_file_token
-		token: start_of_file_token
-		line: 1
+		token:      start_of_file_token
+		line:       1
 		line_start: 0
 	}
 }
@@ -122,7 +122,7 @@ fn read_next_token(mut lexer Lexer, start int) !&Token {
 			}
 			// \r
 			0x000d {
-				if body[position + 1] == 0x000a {
+				if position + 1 < body_length && body[position + 1] == 0x000a {
 					position += 2
 				} else {
 					position += 1
@@ -162,11 +162,11 @@ fn read_next_token(mut lexer Lexer, start int) !&Token {
 					none)
 			}
 			0x002e { // .
-				if body[position + 1] == 0x002e && body[position + 2] == 0x002e {
+				if position + 2 < body_length && body[position + 1] == 0x002e && body[position + 2] == 0x002e {
 					return create_token(lexer, TokenKind.spread, position, position + 3,
 						none)
 				}
-				break
+				return error('Unexpected character: "." (0x2e)')
 			}
 			0x003a { // :
 				return create_token(lexer, TokenKind.colon, position, position + 1, none)
@@ -202,7 +202,7 @@ fn read_next_token(mut lexer Lexer, start int) !&Token {
 			}
 			0x0022 { // "
 
-				if body[position + 1] == 0x0022 && body[position + 2] == 0x0022 {
+				if position + 2 < body_length && body[position + 1] == 0x0022 && body[position + 2] == 0x0022 {
 					// println('matched comment')
 
 					return lexer.read_block_string(position)!
@@ -257,84 +257,50 @@ fn (lexer Lexer) read_name(start int) &Token {
 
 fn (lexer Lexer) read_number(start int, first_code u8) !&Token {
 	body := lexer.source.body
-
-	mut code := first_code
 	mut position := start
 	mut is_float := false
-
-	// NegativeSign (-)
-	if code == 0x002d {
-		position += 1
-		code = body[position]
+	if first_code == `-` {
+		position++
 	}
-
-	// Zero(0)
-	if code == 0x0030 {
-		position += 1
-
-		code = body[position]
-
-		if is_digit(code) {
+	if position >= body.len {
+		return error('Invalid number')
+	}
+	if body[position] == `0` {
+		position++
+		if position < body.len && is_digit(body[position]) {
 			return error('Invalid number, unexpected digit after 0')
 		}
 	} else {
-		position = lexer.read_digits(position, code)
-		code = body[position]
+		position = lexer.read_digits(position)!
 	}
-
-	// Full stop (.)
-	if code == 0x002e {
+	if position < body.len && body[position] == `.` {
 		is_float = true
-
-		position += 1
-		code = body[position]
-		position = lexer.read_digits(position, code)
-		code = body[position]
+		position = lexer.read_digits(position + 1)!
 	}
-
-	if code == 0x0045 || code == 0x0065 {
+	if position < body.len && (body[position] == `e` || body[position] == `E`) {
 		is_float = true
-		position += 1
-		code = body[position]
-
-		// + -
-		if code == 0x002b || code == 0x002d {
-			position += 1
-			code = body[position]
+		position++
+		if position < body.len && (body[position] == `+` || body[position] == `-`) {
+			position++
 		}
-
-		position = lexer.read_digits(position, code)
-		code = body[position]
+		position = lexer.read_digits(position)!
 	}
-
-	// Numbers cannot be followed by . or NameStart
-	if code == 0x002e || is_name_start(code) {
-		return error('INvalid number')
+	if position < body.len && (body[position] == `.` || is_name_start(body[position])) {
+		return error('Invalid number')
 	}
-
-	kind := if is_float {
-		TokenKind.float
-	} else {
-		TokenKind.integer
-	}
+	kind := if is_float { TokenKind.float } else { TokenKind.integer }
 	return create_token(lexer, kind, start, position, body[start..position])
 }
 
-fn (lexer Lexer) read_digits(start int, first_code u8) int {
-	if !is_digit(first_code) {
-		error('Invalid number')
-	}
-
+fn (lexer Lexer) read_digits(start int) !int {
 	body := lexer.source.body
-	mut position := start + 1 // +1 to skip first first_code
-
-	for {
-		if !is_digit(body[position]) {
-			break
-		}
-		position += 1
+	if start >= body.len || !is_digit(body[start]) {
+		return error('Invalid number')
 	}
-
+	mut position := start + 1
+	for position < body.len && is_digit(body[position]) {
+		position++
+	}
 	return position
 }
 
@@ -510,12 +476,12 @@ fn create_token(lexer Lexer, kind TokenKind, start int, end int, value ?string) 
 	col := 1 + start - lexer.line_start
 
 	return &Token{
-		kind: kind
-		start: start
-		end: end
-		line: line
+		kind:   kind
+		start:  start
+		end:    end
+		line:   line
 		column: col
-		value: value
+		value:  value
 	}
 }
 
@@ -556,7 +522,7 @@ fn read_escaped_unicode_variable_width(lexer Lexer, position int) !EscapeSequenc
 
 			return EscapeSequence{
 				value: utf32_to_str(u32(point))
-				size: size + 1
+				size:  size + 1
 			}
 		}
 
@@ -584,7 +550,7 @@ fn read_escaped_unicode_fixed_width(lexer Lexer, position int) !EscapeSequence {
 	if is_unicode_scalar_value(code) {
 		return EscapeSequence{
 			value: utf32_to_str(u32(code))
-			size: 6
+			size:  6
 		}
 	}
 
@@ -599,7 +565,7 @@ fn read_escaped_unicode_fixed_width(lexer Lexer, position int) !EscapeSequence {
 				cp := 0x10000 + ((code - 0xD800) << 10) + (trailing_code - 0xDC00)
 				return EscapeSequence{
 					value: utf32_to_str(u32(cp))
-					size: 12
+					size:  12
 				}
 			}
 		}
@@ -629,49 +595,49 @@ fn read_escaped_character(lexer Lexer, position int) !EscapeSequence {
 		0x0022 { // "
 			return EscapeSequence{
 				value: '"'
-				size: 2
+				size:  2
 			}
 		}
 		0x005c { // \
 			return EscapeSequence{
 				value: '\\'
-				size: 2
+				size:  2
 			}
 		}
 		0x002f { // /
 			return EscapeSequence{
 				value: '/'
-				size: 2
+				size:  2
 			}
 		}
 		0x0062 { // b
 			return EscapeSequence{
 				value: '\b'
-				size: 2
+				size:  2
 			}
 		}
 		0x0066 { // f
 			return EscapeSequence{
 				value: '\f'
-				size: 2
+				size:  2
 			}
 		}
 		0x006e { // n
 			return EscapeSequence{
 				value: '\n'
-				size: 2
+				size:  2
 			}
 		}
 		0x0072 { // r
 			return EscapeSequence{
 				value: '\r'
-				size: 2
+				size:  2
 			}
 		}
 		0x0074 { // t
 			return EscapeSequence{
 				value: '\t'
-				size: 2
+				size:  2
 			}
 		}
 		else {
