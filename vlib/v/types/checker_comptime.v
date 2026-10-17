@@ -3603,6 +3603,10 @@ fn (mut tc TypeChecker) check_array_literal_element_types(id flat.NodeId, node f
 		return
 	}
 	mut array_type := unalias_type(tc.resolve_type(id))
+	// A literal with a different number of values than an expected `[N]T` keeps its
+	// own dynamic type: its elements are still checked against `T` below, but the
+	// literal must not satisfy the fixed array it does not fill.
+	mut record_array_type := true
 	if node.typ == 0 {
 		if expected := tc.expected_context_for_expr(id) {
 			context_type := unalias_type(contextual_payload_type(expected) or { expected })
@@ -3611,9 +3615,11 @@ fn (mut tc TypeChecker) check_array_literal_element_types(id flat.NodeId, node f
 				tc.register_synth_type(id, context_type)
 			} else if context_type is ArrayFixed {
 				array_type = context_type
+				record_array_type = false
 				if expected_len := tc.fixed_array_len_value(context_type) {
 					if expected_len == node.children_count {
 						tc.register_synth_type(id, context_type)
+						record_array_type = true
 					}
 				}
 			}
@@ -3641,7 +3647,9 @@ fn (mut tc TypeChecker) check_array_literal_element_types(id flat.NodeId, node f
 	// type after checking has moved on resolves a parameter that shadowed a
 	// module-level function to that function instead, and types the literal as an
 	// array of function pointers.
-	tc.register_synth_type(id, array_type)
+	if record_array_type {
+		tc.register_synth_type(id, array_type)
+	}
 	if elem_type is Unknown {
 		return
 	}

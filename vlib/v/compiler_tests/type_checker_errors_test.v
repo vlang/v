@@ -1031,7 +1031,7 @@ fn main() {
 fn test_fixed_array_length_checks() {
 	v3_bin := build_v3()
 	// A literal passed where a fixed array is expected must have the exact length.
-	run_bad(v3_bin, 'bad_fixed_array_arg_len', 'fn take4(a [4]int) int {\n\treturn a[0]\n}\nfn main() {\n\t_ := take4([1, 2])\n}\n', 'expected `[4]int`')
+	run_bad(v3_bin, 'bad_fixed_array_arg_len', 'fn take4(a [4]int) int {\n\treturn a[0]\n}\nfn main() {\n\t_ := take4([1, 2])\n}\n', 'cannot use `[]int` as `[4]int` in argument 1 to `take4`')
 	// Genuine fixed arrays of different lengths in if-branches must mismatch.
 	run_bad(v3_bin, 'bad_if_branch_fixed_array_len', 'fn main() {\n\ta := [2]int{}\n\tb := [3]int{}\n\tc := true\n\t_ := if c { a } else { b }\n}\n', 'mismatched types `[2]int` and `[3]int`')
 	// Correct fixed-array length is accepted and round-trips.
