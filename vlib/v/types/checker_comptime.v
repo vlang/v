@@ -18283,10 +18283,12 @@ fn (mut tc TypeChecker) decl_assign_inferred_type(rhs_id flat.NodeId) Type {
 		}
 	}
 	if smartcast := tc.smartcast_type(rhs_id) {
-		if rhs.kind == .ident && tc.lexical_smartcast_type(rhs_id, rhs.value) == none {
+		if rhs.kind == .ident && tc.lexical_smartcast_type(rhs_id, rhs.value) == none
+			&& !tc.none_guard_fallthrough_unwraps(rhs_id, rhs.value) {
 			// A guard/assert fallthrough narrows reads of the original binding, but V1
 			// infers a new declaration from its declared type. Lexical branch and loop
-			// smartcasts still infer the narrowed variant.
+			// smartcasts, and the `if x == none { return }` unwrap, still infer the
+			// narrowed type.
 			if declared := tc.cur_scope.lookup(rhs.value) {
 				return declared
 			}

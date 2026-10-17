@@ -836,6 +836,75 @@ fn (mut tc TypeChecker) apply_post_assert_smartcasts(id flat.NodeId) {
 	}
 }
 
+// none_guard_fallthrough_unwraps reports whether the option `key` read at `id`
+// is unwrapped by an earlier `if key == none { return }` statement. V1 exposes
+// that unwrap to new declarations (`y := key` gets the option's base type), unlike
+// the other fallthrough narrowings (`!is` guards, asserts, `||` conditions).
+fn (tc &TypeChecker) none_guard_fallthrough_unwraps(id flat.NodeId, key string) bool {
+	if key.len == 0 || !valid_string_data(key) {
+		return false
+	}
+	mut current := id
+	mut parent_id := tc.direct_parent_id(current)
+	for _ in 0 .. 1024 {
+		if !tc.valid_node_id(parent_id) {
+			return false
+		}
+		parent := tc.a.node(parent_id)
+		if parent.kind in [.block, .fn_decl, .match_branch, .for_stmt, .for_in_stmt, .lock_expr,
+			.defer_stmt, .select_branch] {
+			mut index := -1
+			for i in 0 .. parent.children_count {
+				if tc.a.child(parent, i) == current {
+					index = i
+					break
+				}
+			}
+			for i := index - 1; i >= 0; i-- {
+				sibling_id := tc.a.child(parent, i)
+				if tc.is_none_guard_exit_for_key(sibling_id, key) {
+					return true
+				}
+				if tc.subtree_assigns_key(sibling_id, key) {
+					return false
+				}
+			}
+		}
+		if parent.kind in [.fn_decl, .fn_literal, .lambda_expr] {
+			return false
+		}
+		current = parent_id
+		parent_id = tc.direct_parent_id(current)
+	}
+	return false
+}
+
+// is_none_guard_exit_for_key reports whether `id` is `if key == none { return }`
+// (the condition may be parenthesized; the then-branch must always exit).
+fn (tc &TypeChecker) is_none_guard_exit_for_key(id flat.NodeId, key string) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.node(id)
+	if node.kind != .if_expr || node.children_count < 2 {
+		return false
+	}
+	cond_id := tc.unwrap_paren_expr_id(tc.a.child(node, 0))
+	if !tc.valid_node_id(cond_id) {
+		return false
+	}
+	cond := tc.a.node(cond_id)
+	if cond.kind != .infix || cond.op != .eq || cond.children_count < 2 {
+		return false
+	}
+	lhs := tc.a.child_node(cond, 0)
+	rhs := tc.a.child_node(cond, 1)
+	if lhs.kind != .ident || lhs.value != key || rhs.kind != .none_expr {
+		return false
+	}
+	return tc.stmt_definitely_returns(tc.a.child(node, 1))
+}
+
 fn (tc &TypeChecker) post_if_exit_smartcasts(id flat.NodeId) []LocalBinding {
 	if !tc.valid_node_id(id) {
 		return []LocalBinding{}
