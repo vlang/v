@@ -96,6 +96,7 @@ pub fn (af []Flag) str() string {
 pub struct FlagParser {
 mut:
 	value_errors []&InvalidFlagValueError // invalid flag values, like `--n abc` for an int flag; reported by finalize()
+	stopped_args []string
 pub:
 	original_args      []string // the original arguments to be parsed
 	idx_dashdash       int      // the index of a `--`, -1 if there is not any
@@ -134,6 +135,7 @@ fn (mut f FlagParser) free() {
 			flag.free()
 		}
 		f.flags.free()
+		f.stopped_args.free()
 		//
 		f.application_name.free()
 		f.application_version.free()
@@ -219,11 +221,33 @@ pub fn (mut fs FlagParser) allow_unknown_args() {
 	fs.allow_unknown_args = true
 }
 
-// stop_on_first_non_flag configures the parser to stop parsing flags at the first
-// non-flag (positional) argument. All arguments from that point onward are treated
-// as positional arguments (similar to Go's flag.Parse).
-pub fn (mut fs FlagParser) stop_on_first_non_flag() {
+// stop_on_first_non_flag separates flags from the first positional argument onward.
+// Call it after skip_executable and before defining flags. List every option spelling
+// that takes a value, e.g. stop_on_first_non_flag('--number', '-n', '--name').
+// Other options are booleans; long and single-letter options allow a true/false value.
+// The boundary is fixed before getters run, so their order does not affect parsing.
+pub fn (mut fs FlagParser) stop_on_first_non_flag(value_flags ...string) {
+	if fs.stop_on_first_non_flag {
+		return
+	}
 	fs.stop_on_first_non_flag = true
+	mut i := 0
+	for i < fs.args.len {
+		arg := fs.args[i]
+		if arg.len == 0 || arg == '-' || arg[0] != `-` {
+			break
+		}
+		if arg in value_flags {
+			i += if i + 1 < fs.args.len { 2 } else { 1 }
+		} else if (arg.starts_with('--') || arg.len == 2) && !arg.contains('=') && i + 1 < fs.args.len
+			&& fs.args[i + 1] in ['true', 'false'] {
+			i += 2
+		} else {
+			i++
+		}
+	}
+	fs.stopped_args = fs.args[i..].clone()
+	fs.args = fs.args[..i].clone()
 }
 
 // private helper to register a flag.
@@ -466,9 +490,6 @@ fn (mut fs FlagParser) parse_value(longhand string, shorthand u8) []string {
 			continue
 		}
 		if arg.len == 0 || arg == '-' || arg[0] != `-` {
-			if fs.stop_on_first_non_flag {
-				break
-			}
 			continue
 		}
 		if (arg.len == 2 && arg[0] == `-` && arg[1] == shorthand) || arg == full {
@@ -521,9 +542,6 @@ fn (mut fs FlagParser) parse_bool_value(longhand string, shorthand u8) []string 
 	for i < fs.args.len {
 		arg := fs.args[i]
 		if arg.len == 0 || arg == '-' || arg[0] != `-` {
-			if fs.stop_on_first_non_flag {
-				break
-			}
 			i++
 			continue
 		}
@@ -928,20 +946,17 @@ pub fn (mut fs FlagParser) finalize() ![]string {
 	}
 	mut remaining := fs.args.clone()
 	if !fs.allow_unknown_args {
-		mut stop_checking := false
 		for a in remaining {
-			if fs.stop_on_first_non_flag && (a.len == 0 || a == '-' || a[0] != `-`) {
-				stop_checking = true
-			}
-			if stop_checking {
-				continue
-			}
 			if (a.len >= 2 && a[..2] == '--') || (a.len == 2 && a[0] == `-`) {
 				return &UnknownFlagError{
 					flag: a
 				}
 			}
 		}
+	}
+	remaining << fs.stopped_args
+	if fs.stopped_args.len > 0 && fs.idx_dashdash >= 0 {
+		remaining << '--'
 	}
 	remaining << fs.all_after_dashdash
 	if fs.min_free_args > remaining.len {
