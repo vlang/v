@@ -42,6 +42,15 @@ fn widened_in_loop(ctx RangeContext) int {
 	return total
 }
 
+fn widened_from_own_field(ctx RangeContext) int {
+	mut copy := ctx
+	copy.ranges = copy.ranges.clone()
+	copy.ranges[.length] = AcceptedRange{
+		max: 3
+	}
+	return copy.ranges.len
+}
+
 fn test_entry_write_to_cloned_map_field_of_copy() {
 	mut ctx := RangeContext{}
 	ctx.ranges[.number] = AcceptedRange{
@@ -50,6 +59,7 @@ fn test_entry_write_to_cloned_map_field_of_copy() {
 	assert widened_range_count(ctx, true) == 2
 	assert widened_range_count(ctx, false) == 1
 	assert widened_in_loop(ctx) == 4
+	assert widened_from_own_field(ctx) == 2
 	assert ctx.ranges.len == 1
 	assert RangeKind.length !in ctx.ranges
 }

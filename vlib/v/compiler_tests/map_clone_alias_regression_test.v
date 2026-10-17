@@ -132,6 +132,24 @@ fn main() {
 	update(Ctx{})
 }
 '
+		'field_alias':    header + '
+struct Ctx {
+mut:
+	values map[string]Row
+}
+
+fn update(ctx Ctx) {
+	mut copy := ctx
+	mut p := &copy
+	copy.values = ctx.values.clone()
+	p.values = borrowed(ctx.values)
+	copy.values["new"] = Row{cells: [2]}
+}
+
+fn main() {
+	update(Ctx{})
+}
+'
 		'field_escape':   header + '
 struct Ctx {
 mut:

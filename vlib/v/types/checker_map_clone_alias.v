@@ -247,7 +247,7 @@ fn (mut tc TypeChecker) track_fresh_map_field_assignment(op flat.Op, lhs_id flat
 	}
 	if op != .assign || tc.cur_scope == unsafe { nil } || tc.fn_context.has_goto_nodes
 		|| tc.a.node(lhs_id).kind != .selector || unalias_type(tc.resolve_type(lhs_id)) !is Map
-		|| !tc.is_builtin_map_clone_call(rhs_id) {
+		|| !tc.is_builtin_map_clone_call(rhs_id) || !tc.map_field_holder_is_local_value(lhs_id) {
 		return
 	}
 	tc.fn_context.fresh_map_fields[key] = FreshMapField{
@@ -258,6 +258,26 @@ fn (mut tc TypeChecker) track_fresh_map_field_assignment(op flat.Op, lhs_id flat
 		assign_id:  rhs_id
 		loop_depth: tc.fn_context.pointer_alias_break_states.len
 	}
+}
+
+// map_field_holder_is_local_value reports whether the map field selector `id` is held
+// by value all the way from a local variable (`copy.ctx.values`). Through a pointer, a
+// parameter (a `mut` one refers to the caller's value) or a global, the field can also
+// be reached, and rebound, by other references that the checks here cannot see.
+fn (tc &TypeChecker) map_field_holder_is_local_value(id flat.NodeId) bool {
+	mut current := tc.a.node(id)
+	for current.kind == .selector && current.children_count > 0 {
+		base_id := tc.a.child(current, 0)
+		if unalias_type(tc.resolve_type(base_id)) is Pointer {
+			return false
+		}
+		current = tc.a.node(base_id)
+	}
+	if current.kind != .ident || tc.current_fn_param_type_text(current.value) != none
+		|| tc.ident_is_global_binding(current.value) {
+		return false
+	}
+	return true
 }
 
 // map_field_has_fresh_storage reports whether the map field `id` was assigned a fresh
@@ -287,9 +307,12 @@ fn (mut tc TypeChecker) map_field_has_fresh_storage(id flat.NodeId) bool {
 	return in_scope && !tc.map_field_may_be_rebound_between(key, fresh.assign_id, id)
 }
 
-// map_field_may_be_rebound_between reports whether code between the clone `from_id`
-// and the write `to_id` takes the address of the field (or of a value holding it),
-// passes it as `mut`, calls a method on it, or defines a closure.
+// map_field_may_be_rebound_between reports whether code before the write `to_id` could
+// rebind the field through another reference: anywhere in the function taking the
+// address of the field (or of a value holding it), and before the write passing it as
+// `mut` or calling a method on it. Such a reference made before the clone `from_id`
+// (`mut p := &copy`) can still rebind it later (`p.values = borrowed`). A closure
+// defined between the clone and the write is rejected too.
 fn (tc &TypeChecker) map_field_may_be_rebound_between(key string, from_id flat.NodeId, to_id flat.NodeId) bool {
 	fn_id := flat.NodeId(tc.fn_context.node_id)
 	if !tc.valid_node_id(fn_id) || !tc.valid_node_id(from_id) {
@@ -308,15 +331,16 @@ fn (tc &TypeChecker) map_field_may_be_rebound_between(key string, from_id flat.N
 	for stack.len > 0 {
 		current_id := stack.pop()
 		current := tc.a.node(current_id)
-		if current.pos.id == from_pos.id && current.pos.offset > from_pos.offset
-			&& current.pos.offset < to_pos.offset {
+		if current.kind == .prefix && current.op == .amp && current.children_count > 0
+			&& expr_key_overlaps(tc.expr_key(tc.a.child(current, 0)), key) {
+			return true
+		}
+		// The clone itself (`copy.values = copy.values.clone()`) is not a later rebind.
+		if current.pos.id == from_pos.id && current.pos.offset < to_pos.offset
+			&& current_id != from_id {
 			match current.kind {
 				.fn_literal, .lambda_expr {
-					return true
-				}
-				.prefix {
-					if current.op == .amp && current.children_count > 0
-						&& expr_key_overlaps(tc.expr_key(tc.a.child(current, 0)), key) {
+					if current.pos.offset > from_pos.offset {
 						return true
 					}
 				}
