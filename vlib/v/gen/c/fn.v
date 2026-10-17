@@ -16698,6 +16698,10 @@ fn (mut g FlatGen) c_extern_forward_decls() {
 			g.writeln('#ifndef __APPLE__')
 			g.writeln(line)
 			g.writeln('#endif')
+		} else if guard := g.c_extern_decl_cross_guard(name, decl.file) {
+			g.writeln('#if ${guard}')
+			g.writeln(line)
+			g.writeln('#endif')
 		} else {
 			g.writeln(line)
 		}
@@ -16705,6 +16709,23 @@ fn (mut g FlatGen) c_extern_forward_decls() {
 	if names.len > 0 {
 		g.writeln('')
 	}
+}
+
+// c_extern_decl_cross_guard returns the C preprocessor condition that portable
+// output has to keep around a C prototype, or none when the prototype belongs to
+// every target. The core library declares the Win32 API for every target, because
+// only the `$if windows` calls decide whether it is reachable; on another target
+// those prototypes name types that do not exist, so they follow the same condition
+// cgen writes for a `$if windows` block. `name` and `source_file` are the symbol the
+// prototype is written with and the file the declaration was written in.
+fn (g &FlatGen) c_extern_decl_cross_guard(name string, source_file string) ?string {
+	if !g.output_cross_c {
+		return none
+	}
+	if name in c_winapi_extern_symbols && g.c_source_file_is_in_vlib(source_file) {
+		return 'defined(_WIN32)'
+	}
+	return none
 }
 
 // first_node_id_at_or_after returns the position of the first id >= `start` in

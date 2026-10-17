@@ -258,3 +258,32 @@ fn test_portable_gc_helper_preserves_linux_header_linkage() ! {
 	assert text.contains('v_gc_can_register_main_data_roots_impl'), text
 	assert !text.contains('static inline static')
 }
+
+// The portable snapshot is compiled by the host C compiler, so a binding that
+// exists only on Windows must stay inside the preprocessor branch that reaches
+// it. Regression: a snapshot that declared GetConsoleMode while the DWORD
+// typedef stayed Windows-only made `cc` fail with `unknown type name 'DWORD'`.
+// No production seam is needed: this drives the public `-os cross` snapshot
+// command and the host C compiler, the same path `make` takes for vc/v.c.
+fn test_cross_snapshot_keeps_windows_bindings_behind_their_guard() ! {
+	$if windows || freestanding || vinix {
+		return
+	}
+	cc := os.find_abs_path_of_executable('clang') or {
+		os.find_abs_path_of_executable('cc') or { return }
+	}
+	root := os.join_path(os.vtmp_dir(), 'portable_cross_bindings_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	snapshot := os.join_path(root, 'snapshot.c')
+	// Building the compiler is the one program whose portable snapshot declares
+	// every core C binding, including the Windows API surface.
+	generated := cmdexec.run(@VEXE, ['-nocache', '-os', 'cross', '-o', snapshot,
+		os.join_path(@VEXEROOT, 'cmd', 'v')])
+	assert generated.exit_code == 0, generated.output
+	code := os.read_file(snapshot)!
+	assert code.contains('bool GetConsoleMode(void*, DWORD*);'), 'the Windows binding is missing from the snapshot'
+	assert code.contains('#if defined(_WIN32)\nbool GetConsoleMode(void*, DWORD*);\n#endif'), 'the Windows binding lost its target guard'
+	checked := cmdexec.run(cc, ['-std=gnu11', '-fsyntax-only', snapshot])
+	assert checked.exit_code == 0, checked.output
+}

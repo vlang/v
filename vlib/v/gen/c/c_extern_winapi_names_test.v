@@ -74,3 +74,20 @@ fn test_program_links_its_own_c_functions_named_like_win32_apis() {
 	assert run.exit_code == 0, run.output
 	assert run.output.split_into_lines() == ['42', '42', '101', '42', 'true'], run.output
 }
+
+// Portable output guards the Win32 API that the core library declares inside
+// `#if defined(_WIN32)`. A program's own C function keeps its prototype on every
+// target, so the boundary is where the declaration lives, not its name alone.
+fn test_program_keeps_its_own_c_functions_named_like_win32_apis_in_portable_output() {
+	root := winapi_names_project('portable')!
+	defer { os.rmdir_all(root) or {} }
+	c_source := os.join_path(root, 'portable.c')
+	result := os.exec([@VEXE, '-new-compiler', '-nocache', '-os', 'cross', '-o', c_source,
+		os.join_path(root, 'main.v')])
+	assert result.exit_code == 0, result.output
+	generated := os.read_lines(c_source)!
+	for line in ['int Sleep(int ms);', 'int CloseHandle(int handle);', 'int CreateFile(int flags);',
+		'i32 GetFileInformationByHandle(void* handle, void* information);'] {
+		assert line in generated, line
+	}
+}
