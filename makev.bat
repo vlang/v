@@ -17,9 +17,12 @@ set V_OLD=./v_old.exe
 set V_UPDATED=./v_up.exe
 set V_STAGE=./v_stage.exe
 set V_STAGE_C=./v_stage.c
+REM Current vc snapshots declare these Windows helpers as external functions.
+REM Older snapshots embed static definitions, which can coexist with these.
+set V_BOOTSTRAP_NATIVE="%~dp0vlib\time\ticks_windows.c" "%~dp0vlib\v\winthread_helper_windows.c" "%~dp0cmd\v\toolcache_windows_helpers.c"
 REM Native core helpers are cached objects in normal builds. The direct stage
 REM compile must link them too; this stage explicitly uses -gc none.
-set V_STAGE_NATIVE="%~dp0vlib\builtin\core_windows.c" "%~dp0vlib\v\modulecache\file_metadata.c" "%~dp0vlib\time\ticks_windows.c" "%~dp0vlib\v\winthread_helper_windows.c" "%~dp0cmd\v\toolcache_windows_helpers.c" "%~dp0vlib\sync\thread_helper.c"
+set V_STAGE_NATIVE="%~dp0vlib\builtin\core_windows.c" "%~dp0vlib\v\modulecache\file_metadata.c" %V_BOOTSTRAP_NATIVE% "%~dp0vlib\sync\thread_helper.c"
 set V_C_FILE=./vc/v_win.c
 REM Snapshots generated before vlang/v#30606 declare the SDK-backed Windows
 REM helpers (time ticks, Win32 threads, toolcache file/ACL probes) but do not
