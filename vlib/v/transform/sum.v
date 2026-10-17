@@ -2124,7 +2124,15 @@ fn (mut t Transformer) wrap_sum_value_with_storage(expr_id flat.NodeId, target_s
 		&& (flat.source_type_shape(expr_type).has(.pointer) || source_pointer_value) {
 		t.transform_expr_preserving_pointer_value(expr_id)
 	} else if needs_variant_conversion {
-		t.transform_expr_for_type(expr_id, flat.source_type_id(matched_variant))
+		// An array literal keeps its own element type (`[u8(1), 2]` holds two `u8`s)
+		// and is converted element by element, instead of being retyped as `[]Sum`.
+		if expr.kind == .array_literal {
+			t.transform_array_value_for_dynamic_target(expr_id, flat.source_type_id(matched_variant)) or {
+				t.transform_expr_for_type(expr_id, flat.source_type_id(matched_variant))
+			}
+		} else {
+			t.transform_expr_for_type(expr_id, flat.source_type_id(matched_variant))
+		}
 	} else {
 		t.transform_expr(expr_id)
 	}
