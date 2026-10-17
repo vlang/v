@@ -166,6 +166,7 @@ fn main() {
 	assert run.output.trim_space() == 'ok'
 }
 
+// Embedded structs must come first in a struct body.
 fn test_interface_dispatch_uses_nested_promoted_receiver_path() {
 	v3_bin := build_v3()
 
@@ -185,13 +186,13 @@ fn (inner Inner) m() int {
 }
 
 struct Mid {
-	pad int
 	Inner
+	pad int
 }
 
 struct Outer {
-	tag int
 	Mid
+	tag int
 }
 
 fn use(item HasNumber) int {

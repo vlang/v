@@ -680,7 +680,10 @@ fn main() {
 	assert run.output.trim_space() == 'ok'
 }
 
-fn test_main_error_does_not_shadow_imported_builtin_error_embed() {
+// The main module cannot declare its own `Error` any more (see
+// test_main_cannot_redeclare_builtin_error_types), so an imported module's
+// `Error` embed always names the builtin one.
+fn test_imported_builtin_error_embed_is_ierror_value() {
 	v3_bin := build_v3()
 
 	root := os.join_path(os.temp_dir(), 'v3_ierror_payload_imported_builtin_embed_${os.getpid()}')
@@ -701,8 +704,6 @@ pub fn payload() !IError {
 
 	src := os.join_path(root, 'main.v')
 	os.write_file(src, "import payloadmod
-
-struct Error {}
 
 fn main() {
 	value := payloadmod.payload() or {
@@ -727,16 +728,15 @@ fn main() {
 	assert run.output.trim_space() == 'ok'
 }
 
-fn test_main_local_error_embed_is_not_result_payload() {
+// Like V, the main module cannot declare a type named like the builtin `Error`
+// or `MessageError`, so a main-local error embed cannot shadow them.
+fn test_main_cannot_redeclare_builtin_error_types() {
 	v3_bin := build_v3()
-
-	root := os.join_path(os.temp_dir(), 'v3_ierror_payload_main_error_${os.getpid()}')
-	os.mkdir_all(root) or { panic(err) }
-	src := os.join_path(root, 'main.v')
-	os.write_file(src, "struct Error {}
+	for name in ['Error', 'MessageError'] {
+		run_bad_ierror_payload(v3_bin, 'main_local_${name}', "struct ${name} {}
 
 struct MyErr {
-	Error
+	${name}
 }
 
 fn (err MyErr) msg() string {
@@ -754,53 +754,7 @@ fn fail() !int {
 fn main() {
 	_ := fail() or { 0 }
 }
-") or {
-		panic(err)
+",
+			'cannot register struct `${name}`', 'another type with this name exists')
 	}
-
-	bin := os.join_path(os.temp_dir(), 'v3_ierror_payload_main_error_input')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return'), compile.output
-	assert compile.output.contains('MyErr'), compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-}
-
-fn test_main_local_message_error_embed_is_not_result_payload() {
-	v3_bin := build_v3()
-
-	root := os.join_path(os.temp_dir(), 'v3_ierror_payload_main_message_error_${os.getpid()}')
-	os.mkdir_all(root) or { panic(err) }
-	src := os.join_path(root, 'main.v')
-	os.write_file(src, "struct MessageError {}
-
-struct MyErr {
-	MessageError
-}
-
-fn (err MyErr) msg() string {
-	return 'bad'
-}
-
-fn (err MyErr) code() int {
-	return 7
-}
-
-fn fail() !int {
-	return MyErr{}
-}
-
-fn main() {
-	_ := fail() or { 0 }
-}
-") or {
-		panic(err)
-	}
-
-	bin := os.join_path(os.temp_dir(), 'v3_ierror_payload_main_message_error_input')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return'), compile.output
-	assert compile.output.contains('MyErr'), compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
 }

@@ -219,11 +219,12 @@ fn main() {}
 	',
 		'unsupported generic declaration `helper`')
 
+	// Single-letter capital names are reserved for generic parameters.
 	run_selfhost_bad(v3_bin, 'generic_interface_marker_only', '
-interface I[T] {}
+interface Marker[T] {}
 fn main() {}
 	',
-		'unsupported generic declaration `I`')
+		'unsupported generic declaration `Marker`')
 
 	run_selfhost_bad(v3_bin, 'generic_type_alias_marker_only', '
 type Alias[T] = int

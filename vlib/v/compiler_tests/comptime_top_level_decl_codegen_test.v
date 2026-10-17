@@ -158,15 +158,17 @@ $if some_feature ? {
 
 fn test_synthetic_top_level_block_keeps_main_scope_locals() {
 	v3_bin := comptime_decl_build_v3()
+	// The statements of an active top-level `$if` start script mode, and all
+	// definitions must come before script code, so `helper` is declared first.
 	run := comptime_decl_compile_run_source(v3_bin, 'synthetic_block_main_scope', 'module main
+
+fn helper() int {
+	return 0
+}
 
 $if some_feature ? {
 	x := 1
 	y := 2
-}
-
-fn helper() int {
-	return 0
 }
 
 println(int_str(x + y))
