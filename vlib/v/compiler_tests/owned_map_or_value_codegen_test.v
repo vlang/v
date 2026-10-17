@@ -1,3 +1,4 @@
+// vtest ownership
 import os
 
 fn test_owned_map_or_values_acquire_independent_storage() {
