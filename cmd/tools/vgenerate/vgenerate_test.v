@@ -38,11 +38,24 @@ fn test_generate_model_writes_an_orm_struct() {
 	assert content.contains('age    int')
 	assert content.contains('active bool')
 	path := os.join_path('models', 'user.v')
-	os.write_file('gen_check_main.v', 'module main\n\nimport models\n\nfn main() {\n\t_ := models.User{}\n}\n') or {
-		assert false, 'could not write check wrapper: ${err}'
-		return
+	// Check the model as an input file so field naming diagnostics are not
+	// suppressed as they can be for imported dependencies.
+	res := os.exec([@VEXE, '-shared', '-check', path])
+	assert res.exit_code == 0, 'generated model does not check: ${res.output}'
+}
+
+fn test_generate_model_accepts_snake_case_field_names() {
+	old_wd := gen_setup()
+	defer {
+		gen_teardown(old_wd)
 	}
-	res := os.exec([@VEXE, '-check', 'gen_check_main.v'])
+	generate_model(['User', 'first_name:string', 'version2:i64', 'x:bool'])!
+	path := os.join_path('models', 'user.v')
+	content := os.read_file(path)!
+	assert content.contains('first_name string')
+	assert content.contains('version2   i64')
+	assert content.contains('x          bool')
+	res := os.exec([@VEXE, '-shared', '-check', path])
 	assert res.exit_code == 0, 'generated model does not check: ${res.output}'
 }
 
@@ -112,7 +125,8 @@ fn test_generate_model_rejects_duplicate_field_names() {
 }
 
 fn test_generate_model_rejects_invalid_field_names() {
-	for spec in [':string', 'first-name:string', '1name:string'] {
+	for spec in [':string', 'first-name:string', '1name:string', 'Name:string', 'firstName:string',
+		'_name:string'] {
 		old_wd := gen_setup()
 		generate_model(['User', spec]) or {
 			assert err.msg().contains('invalid field name'), 'wrong error for `${spec}`: ${err.msg()}'
