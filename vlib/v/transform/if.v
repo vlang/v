@@ -1391,6 +1391,16 @@ fn (t &Transformer) merge_if_expr_types(current_id u32, next_id u32) u32 {
 			return next_id
 		}
 	}
+	// A `none` branch (`?void`) takes the option type of the other branch, as in
+	// `if p.len == 0 { none } else { prefix }` with a `?string` prefix.
+	if current.starts_with('?') && next.starts_with('?') {
+		if t.optional_base_type(current_id) in [flat.source_type_void, flat.source_type_unknown] {
+			return next_id
+		}
+		if t.optional_base_type(next_id) in [flat.source_type_void, flat.source_type_unknown] {
+			return current_id
+		}
+	}
 	return current_id
 }
 

@@ -10424,6 +10424,24 @@ pub fn (tc &TypeChecker) slot_value_compatible(actual Type, expected Type) bool 
 	return tc.type_compatible(actual, expected)
 }
 
+// qualified_type_modifiers returns the text before the trailing qualified type name
+// of `name`, e.g. `?&` for `?&mod.Frame`, so `?&mod.Frame` and `&mod.Frame` are not
+// treated as spellings of one type. Names that do not end in an identifier keep ''.
+fn qualified_type_modifiers(name string) string {
+	mut start := name.len
+	for start > 0 {
+		c := name[start - 1]
+		if !(c.is_letter() || c.is_digit() || c == `_` || c == `.`) {
+			break
+		}
+		start--
+	}
+	if start == name.len {
+		return ''
+	}
+	return name[..start]
+}
+
 fn (tc &TypeChecker) type_compatible(actual Type, expected Type) bool {
 	actual_raw := actual
 	expected_raw := expected
@@ -10449,7 +10467,8 @@ fn (tc &TypeChecker) type_compatible(actual Type, expected Type) bool {
 		return true
 	}
 	if actual_name.contains('.') && expected_name.contains('.')
-		&& actual_name.all_after_last('.') == expected_name.all_after_last('.') {
+		&& actual_name.all_after_last('.') == expected_name.all_after_last('.')
+		&& qualified_type_modifiers(actual_name) == qualified_type_modifiers(expected_name) {
 		actual_prefix := actual_name.all_before_last('.')
 		expected_prefix := expected_name.all_before_last('.')
 		actual_module := tc.resolve_import_alias(actual_prefix) or { actual_prefix }

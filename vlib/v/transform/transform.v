@@ -16964,23 +16964,41 @@ fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type_id u3
 				}
 			}
 			source_type_source_id_3 := t.optional_conversion_source_type(id)
-
-			if t.is_optional_type_name(source_type_source_id_3)
+			same_option_source := t.is_optional_type_name(source_type_source_id_3)
 				&& flat.source_type_name(t.qualify_optional_type(source_type_source_id_3)) == optional_target
-				&& node.kind !in [.block, .if_expr, .match_stmt] {
+			if same_option_source && node.kind !in [.block, .if_expr, .match_stmt] {
 				return t.transform_expr(id)
 			}
-			if !t.is_optional_type_name(source_type_source_id_3) && t.is_interface_type(target_payload_source_id) {
+			// An `if`/`match` with option branch values (`?T(x)`, `none`) is lowered
+			// below into a temporary of the option type itself, converting each
+			// branch. Boxing it as the sum/interface payload would assign the branch
+			// options to a payload-typed temporary.
+			payload_conversion := match node.kind {
+				.if_expr {
+					!same_option_source
+						&& !t.is_optional_type_name(t.if_expr_branch_result_type(node))
+				}
+				.match_stmt {
+					!same_option_source && !t.is_optional_type_name(t.match_expr_type(node))
+				}
+				else {
+					true
+				}
+			}
+			if payload_conversion && !t.is_optional_type_name(source_type_source_id_3)
+				&& t.is_interface_type(target_payload_source_id) {
 				share_source := t.interface_target_should_share_source(id, target_payload_source_id)
 				if value := t.transform_interface_value_for_type(id, target_payload_source_id, share_source) {
 					return t.make_optional_some(value, optional_target_source_id_5)
 				}
 			}
-			if !t.is_optional_type_name(source_type_source_id_3) && t.is_sum_type_name(target_payload_source_id) {
+			if payload_conversion && !t.is_optional_type_name(source_type_source_id_3)
+				&& t.is_sum_type_name(target_payload_source_id) {
 				value := t.transform_sum_value_for_type(id, target_payload_source_id)
 				return t.make_optional_some(value, optional_target_source_id_5)
 			}
-			if t.is_optional_type_name(source_type_source_id_3) && t.is_sum_type_name(target_payload_source_id) {
+			if payload_conversion && t.is_optional_type_name(source_type_source_id_3)
+				&& t.is_sum_type_name(target_payload_source_id) {
 				if t.sum_target_accepts_variant_type(target_payload_source_id, source_type_source_id_3) {
 					value := t.wrap_sum_value(id, target_payload_source_id)
 					return t.make_optional_some(value, optional_target_source_id_5)
