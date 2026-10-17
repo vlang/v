@@ -18792,6 +18792,23 @@ fn (mut tc TypeChecker) infer_generic_type_text_from_type_bytes(param_text strin
 	if clean.len == 0 {
 		return
 	}
+	if clean.starts_with('map[') {
+		end := find_matching_bracket(clean, 3)
+		if end > 3 && end + 1 < clean.len && actual is Map {
+			tc.infer_generic_type_text_from_type(clean[4..end], actual.key_type, generic_params, mut inferred)
+			tc.infer_generic_type_text_from_type(clean[end + 1..], actual.value_type, generic_params, mut inferred)
+		}
+		return
+	}
+	if clean.starts_with('(') && clean.ends_with(')') && actual is MultiReturn {
+		parts := split_params(clean[1..clean.len - 1])
+		if parts.len == actual.types.len {
+			for i, part in parts {
+				tc.infer_generic_type_text_from_type(part, actual.types[i], generic_params, mut inferred)
+			}
+		}
+		return
+	}
 	if clean.starts_with('&') {
 		if actual is Pointer {
 			tc.infer_generic_type_text_from_type_bytes(clean[1..], actual.base_type, generic_params, mut inferred)
@@ -18929,6 +18946,23 @@ fn (mut tc TypeChecker) infer_generic_type_value_from_type(param_id u32, actual 
 fn (mut tc TypeChecker) infer_generic_type_value_from_type_bytes(param_text string, actual Type, generic_params []string, mut inferred map[string]Type) {
 	clean := trimmed_space(param_text)
 	if clean.len == 0 {
+		return
+	}
+	if clean.starts_with('map[') {
+		end := find_matching_bracket(clean, 3)
+		if end > 3 && end + 1 < clean.len && actual is Map {
+			tc.infer_generic_type_value_from_type(clean[4..end], actual.key_type, generic_params, mut inferred)
+			tc.infer_generic_type_value_from_type(clean[end + 1..], actual.value_type, generic_params, mut inferred)
+		}
+		return
+	}
+	if clean.starts_with('(') && clean.ends_with(')') && actual is MultiReturn {
+		parts := split_params(clean[1..clean.len - 1])
+		if parts.len == actual.types.len {
+			for i, part in parts {
+				tc.infer_generic_type_value_from_type(part, actual.types[i], generic_params, mut inferred)
+			}
+		}
 		return
 	}
 	if clean.starts_with('&') {

@@ -9328,7 +9328,8 @@ fn (mut tc TypeChecker) resolve_expr(id flat.NodeId, expected Type) Type {
 		}
 	}
 	if node.kind == .call {
-		if call_info := tc.resolve_call_info(id, node) {
+		if info := tc.resolve_call_info(id, node) {
+			call_info := tc.specialized_plain_generic_call_info(node, info)
 			if call_info.return_type !is Unknown && call_info.return_type !is Void {
 				tc.register_synth_type(id, call_info.return_type)
 				return call_info.return_type
