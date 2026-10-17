@@ -765,6 +765,9 @@ fn test_portable_output_keeps_other_target_linkage_metadata() {
 		selected.a = ast
 		selected.set_target(pref.target_from('linux', 'arm64') or { panic(err) })
 		selected.collect_c_flags_from_directives()
-		assert !selected.should_emit_c_extern_decl_from_file('native_api', source, 'bindings'), flag
+		// A selected target drops the other target's link inputs, so they do not make the
+		// file need a prototype beside its headers. (A unit without any headers declares
+		// every binding it calls, whatever its link inputs.)
+		assert !selected.c_extern_decl_has_no_header(source, 'bindings'), flag
 	}
 }
