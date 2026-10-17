@@ -19570,6 +19570,12 @@ fn (mut tc TypeChecker) insert_decl_lhs(lhs_id flat.NodeId, typ Type, is_mut boo
 			return ScopeBindingOwner{}
 		}
 		owner := tc.cur_scope.insert_with_owner(lhs.value, typ)
+		if lhs.value != '_' {
+			// The alias marker is keyed by name; an earlier binding of the same name in
+			// a finished sibling scope must not taint this one. check_decl_assign sets
+			// it again when this binding's own value aliases an immutable one.
+			tc.fn_context.immutable_reference_aliases.delete(lhs.value)
+		}
 		if is_mut && lhs.value != '_' {
 			if previous_owner := tc.fn_context.mut_local_owners[lhs.value] {
 				// A `for mut` pointer binding records its pointee type so reads inside
