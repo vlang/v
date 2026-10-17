@@ -2487,6 +2487,8 @@ A match expression returns the value of the final expression from the matching b
 
 A `match` expression can propagate results with `!` in its branches, including results
 containing pointers to interfaces. A branch error propagates from the enclosing function.
+Where a pointer to an interface is expected, such as `&Shape` or `?&Shape`, the branches
+can return pointers to different types that implement that interface.
 
 When inferring an enum result, a qualified value in the first branch, such as `Color.red`,
 provides the type for shorthand values such as `.blue` in subsequent branches.
@@ -4931,6 +4933,10 @@ fn main() {
 	}
 }
 ```
+
+A test against another interface checks the type of the stored value at run time. It compiles
+even when no type implements both interfaces; it is then always `false`. Casting with
+`a as IBar` panics when the stored value does not implement `IBar`.
 
 For more information, see [Dynamic casts](#dynamic-casts).
 
@@ -10149,8 +10155,9 @@ v -os freebsd .
 ```
 
 > [!NOTE]
-> Cross-compiling a Windows binary on a Linux machine requires the GNU C compiler for
-> MinGW-w64 (targeting Win64) to first be installed.
+> Cross-compiling a Windows binary on a Linux or macOS machine requires the GNU C compiler for
+> MinGW-w64 (targeting Win64) to first be installed. Without `-arch` and `-cc`, `-os windows`
+> builds an amd64 executable with `x86_64-w64-mingw32-gcc`, also on an arm64 machine.
 
 For Ubuntu/Debian-based distributions:
 
@@ -10162,6 +10169,12 @@ For Arch based distributions:
 
 ```shell
 sudo pacman -S mingw-w64-gcc
+```
+
+For macOS with Homebrew:
+
+```shell
+brew install mingw-w64
 ```
 
 (Cross compiling for macOS is temporarily not possible.)

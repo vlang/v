@@ -2023,15 +2023,26 @@ fn v3_is_macos_linux_cross_compiler(c_compiler string) bool {
 	return name == 'cc' || name == 'clang' || name.starts_with('clang-')
 }
 
-fn v3_windows_cross_c_compiler(c_compiler string, host pref.Target, target pref.Target) string {
+// v3_windows_cross_c_compiler replaces TCC and the platform default `cc`, which
+// cannot build a Windows program on another host, with the MinGW-w64 GCC for
+// the target architecture. An explicit `-cc` other than TCC is kept.
+fn v3_windows_cross_c_compiler(c_compiler string, c_compiler_explicit bool, host pref.Target, target pref.Target) string {
+	name := os.file_name(c_compiler).to_lower_ascii()
 	if host.os == 'windows' || target.os != 'windows'
-		|| os.file_name(c_compiler).to_lower_ascii() !in ['tcc', 'tinyc'] {
+		|| (name !in ['tcc', 'tinyc'] && (c_compiler_explicit || name != 'cc')) {
 		return c_compiler
 	}
-	return match target.arch {
+	cross_compiler := v3_windows_mingw_gcc(target.arch)
+	return if cross_compiler == '' { c_compiler } else { cross_compiler }
+}
+
+// v3_windows_mingw_gcc is the MinGW-w64 GCC that builds programs for Windows on
+// `arch`, or '' when MinGW-w64 has no GCC for it.
+fn v3_windows_mingw_gcc(arch string) string {
+	return match arch {
 		'amd64' { 'x86_64-w64-mingw32-gcc' }
 		'x86' { 'i686-w64-mingw32-gcc' }
-		else { c_compiler }
+		else { '' }
 	}
 }
 
@@ -2042,10 +2053,19 @@ fn v3_c_compiler_command_alias(c_compiler string, host_os string) string {
 	return c_compiler
 }
 
-fn v3_target_arch_for_request(host pref.Target, target_os string, target_arch string, target_arch_explicit bool) string {
-	if host.os == 'macos' && pref.normalized_os(target_os) == 'linux' && !target_arch_explicit {
+fn v3_target_arch_for_request(host pref.Target, target_os string, target_arch string, target_arch_explicit bool, c_compiler_explicit bool) string {
+	if target_arch_explicit {
+		return target_arch
+	}
+	normalized_target_os := pref.normalized_os(target_os.trim_space().to_lower())
+	if host.os == 'macos' && normalized_target_os == 'linux' {
 		// The bundled Linux sysroot contains an x86_64 userspace, independently of
 		// whether the macOS host is Intel or Apple Silicon.
+		return 'amd64'
+	}
+	if host.os != 'windows' && normalized_target_os == 'windows' && !c_compiler_explicit {
+		// Another host builds a Windows program with the MinGW-w64 GCC for Win64,
+		// `x86_64-w64-mingw32-gcc` (see v3_windows_cross_c_compiler), also on arm64.
 		return 'amd64'
 	}
 	return target_arch
@@ -2103,8 +2123,10 @@ fn c_compiler_target_args(target pref.Target, c_compiler string, compiler_explic
 		}
 		return ['-target', 'x86_64-linux-gnu', '-I', os.join_path(linux_cross_sysroot, 'include')]
 	}
-	if compiler_explicit {
-		// An explicitly selected compiler may already encode its target in its name or defaults.
+	if compiler_explicit || (target.os == 'windows' && c_compiler != ''
+		&& c_compiler == v3_windows_mingw_gcc(target.arch)) {
+		// An explicitly selected compiler may already encode its target in its name or defaults,
+		// and so does the MinGW-w64 GCC that v3_windows_cross_c_compiler selects.
 		return []string{}
 	}
 	return error('linking target ${target.os}/${target.arch} from host ${host.os}/${host.arch} is not supported by the default C compiler; use -o file.c and compile it with a target toolchain')
@@ -2526,6 +2548,8 @@ struct V3CCompilerFlagOptions {
 	is_c_debug          bool
 	is_o                bool
 	is_liveshared       bool
+	// is_freestanding marks a `-freestanding` build: no libc, crt or default libraries.
+	is_freestanding bool
 }
 
 struct V3CCompilerFlagPlan {
@@ -3686,7 +3710,9 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 	}
 	optimization_flags := v3_prod_c_optimization_flags(options.is_prod, options.no_prod_options, options.is_shared, options.parallel_cc, options.large_c_unit, options.limit_inlining, options.is_tcc)
 	// Standalone objects must contain machine code for a later independent link.
-	before_inputs << if options.is_o {
+	// A freestanding `_start` calls `main` from a top-level asm block, which the
+	// LTO symbol table does not see, so gcc would drop `main` from the link.
+	before_inputs << if options.is_o || options.is_freestanding {
 		optimization_flags.filter(it != '-flto')
 	} else {
 		optimization_flags
@@ -3708,9 +3734,14 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 				tcc_resources.library_arg]
 			before_inputs << v3_tcc_host_system_flags(options.target_os, options.macos_sdk_root)
 		}
-		if v3_tcc_backtrace_enabled(options.target_os, options.target_arch, options.is_shared) {
+		// TinyCC's backtrace runtime prints through libc.
+		if !options.is_freestanding
+			&& v3_tcc_backtrace_enabled(options.target_os, options.target_arch, options.is_shared) {
 			before_inputs << '-bt25'
 		}
+	}
+	if options.is_freestanding {
+		before_inputs << ['-ffreestanding', '-fno-stack-protector']
 	}
 	before_inputs << options.warn_args
 	if '-Wno-int-conversion' !in before_inputs {
@@ -3746,7 +3777,20 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 	} else {
 		c_link_dependency_flags(options.dependencies)
 	}
-	add_v3_default_linker_flags(mut after_inputs, options.target_os, options.is_o)
+	if options.is_freestanding {
+		// The program brings its own `_start`, syscalls and allocator (see
+		// vlib/builtin/linux_bare), so it links nothing from the host.
+		if !options.is_o && !options.is_shared {
+			after_inputs << ['-static', '-nostdlib']
+			// `-nostdlib` also drops TinyCC's own runtime, whose helpers (like
+			// `__builtin_clz`) the generated code calls; they do not need libc.
+			if options.is_tcc {
+				after_inputs << '-ltcc1'
+			}
+		}
+	} else {
+		add_v3_default_linker_flags(mut after_inputs, options.target_os, options.is_o)
+	}
 	if !options.is_o {
 		after_inputs << options.link_ld_flags
 	}
@@ -7022,17 +7066,18 @@ fn merge_incremental_program_body(cached_source string, cached_prefix string, ch
 		merged = merged.replace(old_section, new_section)
 	}
 	support_declarations := incremental_c_support_declarations(changed_source) or { return none }
-	new_definitions := modulecache.static_string_definitions(changed_source)
-	mut additions := strings.new_builder(support_declarations.len + new_definitions.len)
+	new_definitions := modulecache.static_string_definition_texts(changed_source)
+	mut additions := strings.new_builder(support_declarations.len + 256)
 	if support_declarations.trim_space().len > 0 {
 		additions.write_string(support_declarations)
 		if !support_declarations.ends_with('\n') {
 			additions.writeln('')
 		}
 	}
-	for line in new_definitions.split_into_lines() {
-		if line.len > 0 && !merged.contains(line) {
-			additions.writeln(line)
+	// A long literal's definition spans several lines; add it whole or not at all.
+	for definition in new_definitions {
+		if !merged.contains(definition) {
+			additions.writeln(definition)
 		}
 	}
 	declaration_text := additions.str()
@@ -7107,17 +7152,18 @@ fn merge_cached_generic_program_body(cached_source string, changed_source string
 		merged = merged.replace(old_section, changed_sections.sections[key])
 	}
 	support_declarations := incremental_c_support_declarations(changed_source) or { '' }
-	new_definitions := modulecache.static_string_definitions(changed_source)
-	mut additions := strings.new_builder(support_declarations.len + new_definitions.len)
+	new_definitions := modulecache.static_string_definition_texts(changed_source)
+	mut additions := strings.new_builder(support_declarations.len + 256)
 	if support_declarations.trim_space().len > 0 {
 		additions.write_string(support_declarations)
 		if !support_declarations.ends_with('\n') {
 			additions.writeln('')
 		}
 	}
-	for line in new_definitions.split_into_lines() {
-		if line.len > 0 && !merged.contains(line) {
-			additions.writeln(line)
+	// A long literal's definition spans several lines; add it whole or not at all.
+	for definition in new_definitions {
+		if !merged.contains(definition) {
+			additions.writeln(definition)
 		}
 	}
 	marker := '/* V3CACHE_BODY_BEGIN */'
@@ -7160,10 +7206,10 @@ fn incremental_c_cached_declarations(source string) string {
 }
 
 fn incremental_static_string_markers(source string) string {
-	definitions := modulecache.static_string_definitions(source)
-	mut out := strings.new_builder(definitions.len + 256)
-	for line in definitions.split_into_lines() {
-		if line.len > 0 {
+	mut out := strings.new_builder(4096)
+	for definition in modulecache.static_string_definition_texts(source) {
+		// materialize_cached_body_string_definitions joins the lines of a long literal again.
+		for line in definition.split_into_lines() {
 			out.writeln('// V3CACHE_BASELINE ${line}')
 		}
 	}
@@ -7634,6 +7680,7 @@ fn clone_flat_ast_after_transform_from_scope(ast &flat.FlatAst, scope voidptr) &
 		nodes:                         nodes
 		children:                      children
 		user_code_start:               ast.user_code_start
+		parsed_node_count:             ast.parsed_node_count
 		disabled_fns:                  ast.disabled_fns
 		export_fn_names:               ast.export_fn_names
 		noreturn_fns:                  ast.noreturn_fns
@@ -8147,7 +8194,7 @@ fn v3_select_c_compiler(vroot string, requested V3BundledTccProbeOptions) V3CCom
 	options := V3BundledTccProbeOptions{
 		...requested
 		c_compiler: v3_c_compiler_command_alias(v3_windows_cross_c_compiler(requested.c_compiler,
-			requested.host_target, requested.target), requested.host_os)
+			requested.c_compiler_explicit, requested.host_target, requested.target), requested.host_os)
 	}
 	bundled_tcc_available := v3_bundled_tcc_available(options)
 	allow_system_tcc := options.backend == 'c' && !options.c_only && !options.is_prod
@@ -8300,6 +8347,33 @@ fn v3_windows_prod_clang_triple(clang string) string {
 		return ''
 	}
 	return triple
+}
+
+// v3_c_flags_retarget_clang reports whether the user's C flags pick clang's target
+// themselves (`--target=<triple>`, `-target <triple>`), which overrides the default
+// `clang -dumpmachine` reports.
+fn v3_c_flags_retarget_clang(user_c_flags []string) bool {
+	return user_c_flags.any(it.starts_with('--target=') || it in ['-target', '--target'])
+}
+
+// v3_windows_clang_msvc_abi_error explains why a Windows build cannot link with a clang
+// whose default target is the MSVC ABI (`x86_64-pc-windows-msvc`), as the clang of a
+// Visual Studio or LLVM.org install is. V's Windows C build follows MinGW conventions
+// (`-municode`, `-Wl,--stack=...`, the bundled Boehm GC objects), which such a clang
+// hands to `link.exe`: the link fails with unresolved symbols, or the program
+// fast-fails at startup. The check is skipped when the user retargets clang through
+// `-cflags` or `CFLAGS` (`user_c_flags` carries both), and it needs the triple the caller
+// probed, so a failed probe never blocks a build. An object output (`-o x.o`) is checked
+// too: V's Windows C does not compile for that ABI either. A C-only output runs no
+// compiler and is not, nor is any mode that returns before the C build.
+fn v3_windows_clang_msvc_abi_error(c_compiler string, effective_c_compiler string, clang_triple string, target_os string, user_c_flags []string) ?string {
+	if target_os != 'windows' || effective_c_compiler != 'clang' {
+		return none
+	}
+	if !clang_triple.ends_with('-msvc') || v3_c_flags_retarget_clang(user_c_flags) {
+		return none
+	}
+	return '`-cc ${c_compiler}` targets the MSVC ABI (${clang_triple}), which cannot build the MinGW conventions V uses for Windows programs (`-municode`, `-Wl,--stack`, the bundled Boehm GC). Use a clang that targets MinGW (`clang -dumpmachine` prints `x86_64-w64-windows-gnu` or `x86_64-w64-mingw32`, as llvm-mingw does), retarget this one with `-cflags "--target=x86_64-w64-mingw32 --sysroot=<MinGW root> -fuse-ld=lld"`, or build with `-cc msvc` or `-cc gcc`.'
 }
 
 // v3_windows_prod_toolchain looks for the compilers v3_windows_prod_c_compiler chooses
@@ -10454,6 +10528,7 @@ pub fn run(args []string) {
 	mut dump_files := ''
 	mut generate_c_project := ''
 	mut module_search_path_spec := ''
+	mut bare_builtin_dir := ''
 	mut exclude_patterns := []string{}
 	mut file_list := []string{}
 	mut run_args := []string{}
@@ -10775,6 +10850,9 @@ pub fn run(args []string) {
 			i++
 		} else if args[i] == '-path' && i + 1 < args.len {
 			module_search_path_spec = args[i + 1]
+			i += 2
+		} else if args[i] == '-bare-builtin-dir' && i + 1 < args.len {
+			bare_builtin_dir = args[i + 1]
 			i += 2
 		} else if args[i] == '-exclude' && i + 1 < args.len {
 			for pattern in args[i + 1].split_any(',') {
@@ -11283,7 +11361,9 @@ pub fn run(args []string) {
 			exit(1)
 		}
 	}
-	disable_gc := v3_gc_is_disabled(building_v, cross_output, target_os, target_arch)
+	// A `-freestanding` program has no libc for a collector to run on.
+	disable_gc := 'freestanding' in user_defines
+		|| v3_gc_is_disabled(building_v, cross_output, target_os, target_arch)
 	apply_v3_gc_mode(gc_mode, disable_gc, mut user_defines, mut compile_values) or {
 		eprintln(err.msg())
 		exit(1)
@@ -11326,7 +11406,7 @@ pub fn run(args []string) {
 	}
 	compatibility_host := pref.host_target()
 	target_arch = v3_target_arch_for_request(compatibility_host, target_os, target_arch,
-		target_arch_explicit)
+		target_arch_explicit, c_compiler_explicit)
 	// `-os cross` is not a platform. It asks for portable C that is not tied to
 	// one OS, architecture or C compiler, so that a single generated snapshot
 	// (`vc/v.c`) bootstraps V everywhere. Generate against the host target and
@@ -11495,8 +11575,9 @@ pub fn run(args []string) {
 	// default to C; optional backends and their SSA dependencies can be skipped. This
 	// avoids parsing/checking/transforming/cgen-ing unused code when self-hosting. The `skip_*`
 	// defines drive two things in lock-step: `$if !skip_* ?` gates in main() make the parser
-	// drop the dispatch blocks (so the backend symbols are never referenced), and
-	// resolve_imports skips parsing the corresponding module directories.
+	// drop the dispatch blocks (so the backend symbols are never referenced), and the gated
+	// imports at the top of this file drop the corresponding modules. A program that still
+	// imports one of them, directly or through another module, gets it parsed as usual.
 	// `-all-backends` keeps everything; `-compile-backend <name>` opts a specific backend back
 	// in; the active `-b` target backend is always force-included.
 	// The full `cmd/v` CLI (the executable that `make`, `makev.bat`, `v self`, and `v up`
@@ -11552,7 +11633,9 @@ pub fn run(args []string) {
 	if !include_wasm {
 		user_defines << 'skip_wasm'
 	}
-	if !include_arm64 && !include_wasm {
+	// SSA is shared by ARM64 and WebAssembly. Derive its define from the final skips, so an
+	// explicit `-d skip_wasm` also drops the driver's gated `v.ssa` import.
+	if 'skip_arm64' in user_defines && 'skip_wasm' in user_defines && 'skip_ssa' !in user_defines {
 		user_defines << 'skip_ssa'
 	}
 	if !include_eval {
@@ -11629,6 +11712,10 @@ pub fn run(args []string) {
 	bundled_tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
 	host_os := os.user_os()
 	host_target := pref.host_target()
+	// TinyCC has inline assembly only for x86, and the freestanding runtime makes
+	// its syscalls and `_start` with it.
+	bare_needs_platform_cc := 'freestanding' in user_defines
+		&& target.arch !in ['amd64', 'i386']
 	selection := v3_select_c_compiler(prefs.vroot, V3BundledTccProbeOptions{
 		backend:             backend
 		c_only:              c_only
@@ -11647,7 +11734,7 @@ pub fn run(args []string) {
 		target:              target
 		bundled_tcc:         bundled_tcc
 		host_rejects_tcc:    pref.host_rejects_tcc_executables()
-		prefer_platform_cc:  v3_gc_prefers_platform_cc(user_defines)
+		prefer_platform_cc:  v3_gc_prefers_platform_cc(user_defines) || bare_needs_platform_cc
 	})
 	bundled_tcc_available := selection.bundled_tcc_available
 	implicit_tcc := selection.implicit_tcc
@@ -12219,6 +12306,20 @@ pub fn run(args []string) {
 	// compile tools against the current tree. V3 selects its pointer-sized map
 	// implementation through the internal backend define above.
 	builtin_files = builtin_files.filter(os.file_name(it) != 'map.v')
+	// `-freestanding` builtin calls hooks (bare_print, __malloc, ...) and links no
+	// libc, so the implementations of those and the process entry point come from
+	// a bare builtin directory, by default vlib/builtin/linux_bare.
+	if 'freestanding' in prefs.user_defines && prefs.backend == 'c' {
+		bare_dir := if bare_builtin_dir.len > 0 {
+			bare_builtin_dir
+		} else {
+			os.join_path(builtin_dir, 'linux_bare')
+		}
+		builtin_files << prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(bare_dir,
+			builtin_defines, prefs.backend, prefs.target))
+	} else if bare_builtin_dir.len > 0 {
+		eprintln('`-bare-builtin-dir` must be used with `-freestanding`')
+	}
 	if no_builtin {
 		builtin_files = []
 	}
@@ -12770,6 +12871,8 @@ pub fn run(args []string) {
 	if verbose && !silent {
 		println('    ${'parsed .v lines':-28s} ${source_file_line_count(p.parsed_v_file_paths, a.source_files)} lines')
 	}
+	// Parsing is complete; every node appended from here on is synthesized.
+	a.parsed_node_count = a.nodes.len
 	b.metric('AST nodes after parse', a.nodes.len, 'nodes')
 	b.metric('AST children after parse', a.children.len, 'edges')
 	b.metric('canonical AST texts', a.text_count(), 'texts')
@@ -14790,10 +14893,6 @@ pub fn run(args []string) {
 			''
 		}
 		mut generated_c_flags := cgen_cache_metadata.flags.clone()
-		// The first handle is appended inside cgen_scope, and a later thread frees
-		// that scope while the handles are still read. Reserve room for all three
-		// appends here, so the handle array never lives in cgen_scope.
-		mut cgen_release_threads := []thread{cap: 3}
 		mut windows_gui_entry_point := cgen_cache_metadata.windows_gui_entry_point
 		mut interface_impl_signature := cgen_cache_metadata.interface_impl_signature
 		mut cgen_was_parallel := false
@@ -14863,7 +14962,7 @@ pub fn run(args []string) {
 			// texts were published, so release them before Cgen's peak. Unmapping them
 			// takes a few milliseconds; a helper thread does it while cgen starts.
 			if transform_helper_scopes.len > 0 {
-				cgen_release_threads << spawn free_prealloc_scopes(transform_helper_scopes)
+				track_release_thread(spawn free_prealloc_scopes(transform_helper_scopes))
 			}
 			transform_helper_scopes = []voidptr{}
 			pre_tc.freeze_type_cache_for_forks()
@@ -14963,8 +15062,8 @@ pub fn run(args []string) {
 			pre_tc.set_fresh_type_cache(cgen_parse_cache_enabled)
 			// Nothing reads cgen's arenas any more. Unmapping them takes several
 			// milliseconds; do it beside the following stages.
-			cgen_release_threads << spawn release_cgen_scopes(cgen_worker_scopes.clone(),
-				cgen_scope)
+			track_release_thread(spawn release_cgen_scopes(cgen_worker_scopes.clone(),
+				cgen_scope))
 		} else if !cgen_cache_hit {
 			generated_path := if cache_state.manager.enabled { cache_plan_file } else { cc_src }
 			mut g := cgen.FlatGen.new()
@@ -15075,7 +15174,7 @@ pub fn run(args []string) {
 			mut cgen_pool := a.worker_pool
 			a.worker_pool = unsafe { nil }
 			cgen_pool.stop()
-			cgen_release_threads << spawn join_stopped_worker_pool(cgen_pool)
+			track_release_thread(spawn join_stopped_worker_pool(cgen_pool))
 		}
 		if cgen_cache_hit {
 			b.step('cgen (cached)')
@@ -15095,6 +15194,24 @@ pub fn run(args []string) {
 		mut msvc_saved_environment := []MsvcSavedVariable{}
 		if effective_c_compiler == 'msvc' && !c_only {
 			msvc_saved_environment = msvc_require_cl(c_compiler, host_os, prefs.target)
+		}
+		if effective_c_compiler == 'clang' && prefs.normalized_target_os() == 'windows' && !c_only
+			&& !output_cross_c {
+			// Like msvc_require_cl, this runs only once a C build is required: source
+			// listings, checks and C-only outputs never probe the compiler. Only clang is
+			// probed, the other names decide the ABI by themselves; the probe is bounded
+			// (see v3_windows_prod_clang_triple) and a failed one is not an error.
+			clang_path := os.find_abs_path_of_executable(c_compiler) or { c_compiler }
+			clang_triple := v3_windows_prod_clang_triple(clang_path)
+			mut retarget_flags := environment_c_flags.clone()
+			retarget_flags << user_c_flags
+			if msg := v3_windows_clang_msvc_abi_error(c_compiler, effective_c_compiler,
+				clang_triple, prefs.normalized_target_os(), retarget_flags)
+			{
+				cleanup_c_build_dir(cc_dir)
+				eprintln(msg)
+				exit(1)
+			}
 		}
 		pic_flag := shared_pic_flag(is_shared || use_cached_dev_dylib, prefs.normalized_target_os())
 		mut linux_cross_sysroot := ''
@@ -15256,9 +15373,17 @@ pub fn run(args []string) {
 		} else {
 			c_compiler
 		}
+		// A call of a function that this build left out must not pass for a call of
+		// an undeclared one, which TinyCC takes to return `int`. Only the program
+		// unit can make such a call: a build leaves declarations out only when it
+		// reads every module from its header, and then it compiles no module. The
+		// flag stays out of `warn_args`, which name the objects of the modules, or a
+		// build that left declarations out would not find the objects of a build
+		// that did not.
+		mut program_warn_args := warn_args.clone()
 		if effective_tcc && pruned_declarations.count > 0
-			&& '-Werror=implicit-function-declaration' !in warn_args {
-			warn_args << '-Werror=implicit-function-declaration'
+			&& '-Werror=implicit-function-declaration' !in program_warn_args {
+			program_warn_args << '-Werror=implicit-function-declaration'
 		}
 		c_flag_options := V3CCompilerFlagOptions{
 			environment_c_flags: environment_c_flags
@@ -15266,7 +15391,7 @@ pub fn run(args []string) {
 			target_args:         target_args
 			link_c_standard:     link_c_standard
 			dependencies:        resolved_c_flags
-			warn_args:           warn_args
+			warn_args:           program_warn_args
 			tcc_resources:       v3_tcc_resource_flags_for_compiler(prefs.vroot, planned_tcc_compiler, bundled_tcc, bundled_tcc_available)
 			vroot:               prefs.vroot
 			target_os:           prefs.normalized_target_os()
@@ -15286,6 +15411,7 @@ pub fn run(args []string) {
 			is_c_debug:          is_c_debug
 			is_o:                is_o
 			is_liveshared:       is_liveshared
+			is_freestanding:     'freestanding' in prefs.user_defines
 		}
 		c_flag_plan := v3_c_compiler_flag_plan(c_flag_options)
 		large_c_flag_options := V3CCompilerFlagOptions{
@@ -15368,9 +15494,7 @@ pub fn run(args []string) {
 				println('Generated C project in ${generate_c_project}')
 			}
 			b.print_report()
-			for cgen_release_thread in cgen_release_threads {
-				cgen_release_thread.wait()
-			}
+			wait_release_threads()
 			if retained_transform_scope != unsafe { nil }
 				|| retained_transform_prepare_scope != unsafe { nil } {
 				free_retained_scopes(retained_transform_scope, retained_transform_prepare_scope)
@@ -15383,11 +15507,10 @@ pub fn run(args []string) {
 		// Nothing below reads the transformed AST or its checker payloads: the C
 		// compiler consumes the generated file. Release those arenas alongside it
 		// so their unmapping is not serial work after the compile.
-		mut scope_free_threads := []thread{}
-		scope_free_threads << cgen_release_threads
 		if retained_transform_scope != unsafe { nil }
 			|| retained_transform_prepare_scope != unsafe { nil } {
-			scope_free_threads << spawn free_retained_scopes(retained_transform_scope, retained_transform_prepare_scope)
+			track_release_thread(spawn free_retained_scopes(retained_transform_scope,
+				retained_transform_prepare_scope))
 			retained_transform_scope = unsafe { nil }
 			retained_transform_prepare_scope = unsafe { nil }
 		}
@@ -16421,9 +16544,7 @@ Please install the corresponding development package/libraries and make sure the
 			os.rm(retained_full_c_source) or {}
 			cleanup_c_build_dir(cc_dir)
 		}
-		for scope_free_thread in scope_free_threads {
-			scope_free_thread.wait()
-		}
+		wait_release_threads()
 		b.step(if tcc_cache_hit {
 			'tcc (cached)'
 		} else if used_tcc {
@@ -20909,25 +21030,27 @@ fn real_path_is_in_dir(real_path string, real_dir string) bool {
 	return real_path == real_dir || real_path.starts_with(real_dir + os.path_separator)
 }
 
-// skipped_backend_module_groups lists the importable backend module groups that the current
-// configuration excludes (driven by the same `skip_*` defines that gate the dispatch in
-// main()). SSA is shared by ARM64 and WebAssembly and is excluded only when both are disabled.
-fn skipped_backend_module_groups(prefs &pref.Preferences) [][]string {
-	mut skipped := [][]string{}
+// skipped_backend_modules lists the backend modules that the `skip_*` defines exclude. The
+// compiler imports each of them only behind the matching `$if !skip_* ?` gate, which the
+// parser honors but the byte-level import scan of discover_eager_selfhost_modules cannot.
+fn skipped_backend_modules(prefs &pref.Preferences) map[string]bool {
+	mut skipped := map[string]bool{}
 	if 'skip_fastc' in prefs.user_defines {
-		skipped << ['v.gen.fastc', 'v.fastcdriver']
+		skipped['v.gen.fastc'] = true
+		skipped['v.fastcdriver'] = true
 	}
 	if 'skip_arm64' in prefs.user_defines {
-		skipped << ['v.gen.arm64']
+		skipped['v.gen.arm64'] = true
 	}
 	if 'skip_wasm' in prefs.user_defines {
-		skipped << ['v.gen.wasm']
+		skipped['v.gen.wasm'] = true
 	}
-	if 'skip_arm64' in prefs.user_defines && 'skip_wasm' in prefs.user_defines {
-		skipped << ['v.ssa', 'v.ssa.optimize']
+	if 'skip_ssa' in prefs.user_defines {
+		skipped['v.ssa'] = true
+		skipped['v.ssa.optimize'] = true
 	}
 	if 'skip_eval' in prefs.user_defines {
-		skipped << ['v.eval']
+		skipped['v.eval'] = true
 	}
 	return skipped
 }
@@ -23486,6 +23609,10 @@ fn discover_eager_selfhost_modules(a &flat.FlatAst, prefs &pref.Preferences, fir
 	// Traversal attempts are separate from successfully parsed modules. An
 	// unresolved eager probe must remain visible to the authoritative resolver.
 	mut visited_modules := parsed_modules.clone()
+	// The byte-level scan below also sees imports inside `$if !skip_* ?` gates. Leave the
+	// backend modules those gates exclude to the authoritative resolver, which parses one
+	// only when a real import of it remains.
+	skipped_modules := skipped_backend_modules(prefs)
 	mut pending := []EagerSelfhostImport{cap: 128}
 	mut cur_file := first_file
 	for node in a.nodes {
@@ -23546,6 +23673,9 @@ fn discover_eager_selfhost_modules(a &flat.FlatAst, prefs &pref.Preferences, fir
 		wave_imports := source_imports_fast_parallel(a, wave_files)
 		for i, file in wave_files {
 			for imported in wave_imports[i] {
+				if imported in skipped_modules {
+					continue
+				}
 				pending << EagerSelfhostImport{
 					path:           imported
 					importing_file: file
@@ -23590,32 +23720,6 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	seed_initial_module_nodes(a, initial_file_nodes, explicit_initial_imports, mut parsed_modules, mut
 		parsed_identity_dirs, mut parsed_dir_identities)
 	a.resolved_module_dirs = parsed_identity_dirs.clone()
-
-	// Backend modules excluded by the active configuration are never parsed: their
-	// dispatch in main() is gated out by the matching `$if !skip_* ?`, so nothing
-	// references their symbols. Pre-seeding parsed_modules makes the loop below treat
-	// them as already handled, so neither v.v's top-level imports nor any transitive
-	// import pulls them in. The shared SSA pipeline is retained when either consumer is
-	// explicitly imported, even if neither backend is enabled in the compiler being built.
-	for skipped_group in skipped_backend_module_groups(prefs) {
-		mut group_requested := false
-		if 'v.ssa' in skipped_group
-			&& ('v.gen.arm64' in explicit_initial_imports || 'v.gen.wasm' in explicit_initial_imports) {
-			group_requested = true
-		}
-		for skipped in skipped_group {
-			if skipped in explicit_initial_imports {
-				group_requested = true
-				break
-			}
-		}
-		if group_requested {
-			continue
-		}
-		for skipped in skipped_group {
-			parsed_modules[skipped] = true
-		}
-	}
 
 	if prepared.ready {
 		prepared.initial_parsed = parsed_modules.clone()

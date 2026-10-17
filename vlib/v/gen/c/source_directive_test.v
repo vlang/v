@@ -607,8 +607,10 @@ fn test_freestanding_c_uses_target_errno_header() ! {
 	source := os.join_path(dir, 'main.v')
 	output := os.join_path(dir, 'main.c')
 	os.write_file(source, 'fn main() { println(1) }\n')!
+	// -target-libc-headers rejects Windows targets and the target OS defaults to the host's,
+	// so pin Linux. Writing `.c` output only generates C; no Linux toolchain is needed.
 	result := os.exec([@VEXE, '-freestanding', '-target-libc-headers', '-gc', 'none', '-nocache',
-		'-o', output, source])
+		'-os', 'linux', '-o', output, source])
 	assert result.exit_code == 0, result.output
 	generated := os.read_file(output)!
 	assert generated.contains('#include <errno.h>')
@@ -763,6 +765,9 @@ fn test_portable_output_keeps_other_target_linkage_metadata() {
 		selected.a = ast
 		selected.set_target(pref.target_from('linux', 'arm64') or { panic(err) })
 		selected.collect_c_flags_from_directives()
-		assert !selected.should_emit_c_extern_decl_from_file('native_api', source, 'bindings'), flag
+		// A selected target drops the other target's link inputs, so they do not make the
+		// file need a prototype beside its headers. (A unit without any headers declares
+		// every binding it calls, whatever its link inputs.)
+		assert !selected.c_extern_decl_has_no_header(source, 'bindings'), flag
 	}
 }

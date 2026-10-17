@@ -13101,10 +13101,12 @@ fn (mut tc TypeChecker) check_export_attrs() {
 					tc.record_error_at(.unsupported_generic, 'missing argument for @[export] attribute', flat.NodeId(i), pos)
 					continue
 				}
+				// The parser records the exports of main and builtin under their bare
+				// names, which `qname` already is there. In another module, the bare
+				// name belongs to a different function: `dlmalloc.realloc` must not
+				// take the export of builtin's `realloc`.
 				export_name := tc.a.export_fn_names[qname] or {
-					tc.a.export_fn_names[node.value] or {
-						tc.a.export_fn_names['${cur_module}.${node.value}'] or { continue }
-					}
+					tc.a.export_fn_names['${cur_module}.${node.value}'] or { continue }
 				}
 				if export_name.len == 0 {
 					tc.record_error_unfiltered(.unsupported_generic, 'empty export name for `${qname}`', flat.NodeId(i))

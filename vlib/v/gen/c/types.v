@@ -371,14 +371,16 @@ fn main_type_alias_id(aliases flat.TypeTextBindings, name string) ?u32 {
 		return aliases.type_id('main.${name}')
 	}
 	mut buf := [module_key_view_cap]u8{}
-	key := unsafe {
-		p := &u8(&buf[0])
+	// Declarations stay outside the `unsafe` blocks: the FastC parser, which builds
+	// the compiler with `-b fastc`, rejects `:=` inside a value block.
+	p := unsafe { &u8(&buf[0]) }
+	unsafe {
 		vmemcpy(p, c'main.', 5)
 		if name.len > 0 {
 			vmemcpy(p + 5, name.str, name.len)
 		}
-		tos(p, key_len)
 	}
+	key := unsafe { tos(p, key_len) }
 	return aliases.type_id(key)
 }
 

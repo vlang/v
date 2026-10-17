@@ -327,7 +327,7 @@ fn (mut g Parser) parse_comptime_match_statement() !bool {
 			branch_matches = !selected
 		} else {
 			for {
-				target_type := (g.parse_type()!)
+				target_type := g.parse_type()!
 				branch_matches = branch_matches || g.underlying_alias_type(subject_type) == g.underlying_alias_type(target_type)
 				if g.tok != .comma {
 					break
@@ -919,7 +919,7 @@ fn (mut g Parser) parse_comptime_unary() !bool {
 			target_type = flat.source_type_id(g.lit)
 			g.next()
 		} else {
-			target_type = (g.parse_type()!)
+			target_type = g.parse_type()!
 		}
 		mut left_type := g.comptime_named_type(name)
 		if subject_pointer_depth > 0 {

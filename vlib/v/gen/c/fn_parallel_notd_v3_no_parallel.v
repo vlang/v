@@ -77,10 +77,13 @@ struct CollectGenInfoScanArgs {
 	g     voidptr // read-only &FlatGen master
 	start int
 	end   int
+	// parsed_end is the first synthesized node, see FlatGen.parsed_node_end.
+	parsed_end int
 mut:
 	counts            CollectGenInfoScanCounts
 	top_level_pos     int
 	string_pos        int
+	parsed_strings    int
 	type_metadata_pos int
 	embed_pos         int
 	top_levels_ptr    voidptr
@@ -190,6 +193,9 @@ fn collect_gen_info_scan_count_thread(arg voidptr) voidptr {
 				a.embed_pos++
 			} else {
 				a.string_pos++
+				if node_idx < a.parsed_end {
+					a.parsed_strings++
+				}
 			}
 		}
 		if node.kind in [.file, .module_decl, .fn_decl, .c_fn_decl, .struct_decl, .type_decl,
@@ -811,6 +817,7 @@ fn (mut g FlatGen) scan_collect_gen_info(no_parallel bool) CollectGenInfoScanCou
 	mut args := []CollectGenInfoScanArgs{cap: n_jobs}
 	mut tasks := []workers.Task{cap: n_jobs}
 	mut metadata_bits := []u64{len: (g.a.nodes.len + 63) / 64}
+	parsed_end := g.parsed_node_end()
 	for job in 0 .. n_jobs {
 		// Ranges start on a 64-node boundary, so that no two jobs write the same
 		// word of metadata_bits.
@@ -824,6 +831,7 @@ fn (mut g FlatGen) scan_collect_gen_info(no_parallel bool) CollectGenInfoScanCou
 			g:                 voidptr(g)
 			start:             start
 			end:               end
+			parsed_end:        parsed_end
 			metadata_bits_ptr: unsafe { voidptr(&metadata_bits) }
 			type_text_cache:   &TypeMetadataTextCache{}
 		}
@@ -839,6 +847,7 @@ fn (mut g FlatGen) scan_collect_gen_info(no_parallel bool) CollectGenInfoScanCou
 	mut counts := CollectGenInfoScanCounts{}
 	mut top_level_count := 0
 	mut string_count := 0
+	mut parsed_string_count := 0
 	mut type_metadata_count := 0
 	mut embed_count := 0
 	for mut arg in args {
@@ -859,11 +868,13 @@ fn (mut g FlatGen) scan_collect_gen_info(no_parallel bool) CollectGenInfoScanCou
 		arg.embed_pos = embed_count
 		top_level_count += counted_top_levels
 		string_count += counted_strings
+		parsed_string_count += arg.parsed_strings
 		type_metadata_count += counted_type_metadata
 		embed_count += counted_embeds
 	}
 	g.top_level_node_ids = []i32{len: top_level_count}
 	g.ast_string_literals = []string{len: string_count}
+	g.ast_string_literals_parsed = parsed_string_count
 	g.type_metadata_node_ids = []i32{len: type_metadata_count}
 	g.embed_payload_node_ids = []i32{len: embed_count}
 	for mut arg in args {
@@ -1210,19 +1221,48 @@ fn (mut g FlatGen) replay_prep_candidates(args []FlatCgenCostArgs) {
 	}
 }
 
+// preintern_ast_string_literals numbers every AST string literal before any
+// function body is generated: literals of parsed nodes in AST order, then the
+// values that only synthesized nodes carry, see intern_synthesized_string_literals.
 @[direct_array_access]
 fn (mut g FlatGen) preintern_ast_string_literals() {
 	if g.ast_string_literals_ready {
-		for value in g.ast_string_literals {
-			g.intern_string(value)
+		parsed := int_min(g.ast_string_literals_parsed, g.ast_string_literals.len)
+		for i in 0 .. parsed {
+			g.intern_string(g.ast_string_literals[i])
 		}
+		g.intern_synthesized_string_literals(g.ast_string_literals[parsed..])
 		return
 	}
+	parsed_end := g.parsed_node_end()
+	mut synthesized := []string{}
 	for i in 0 .. g.a.nodes.len {
 		node := unsafe { &g.a.nodes[i] }
 		if node.kind == .string_literal && !node.is_embed_payload() {
-			g.intern_string(node.value)
+			if i < parsed_end {
+				g.intern_string(node.value)
+			} else {
+				synthesized << node.value
+			}
 		}
+	}
+	g.intern_synthesized_string_literals(synthesized)
+}
+
+// intern_synthesized_string_literals numbers the literal values that only
+// synthesized nodes carry in sorted order. Those nodes are appended in an order
+// that depends on how the checker and transform split their work across
+// threads, so AST order would make the generated C depend on the job count.
+fn (mut g FlatGen) intern_synthesized_string_literals(values []string) {
+	mut fresh := []string{}
+	for value in values {
+		if value !in g.str_lit_ids {
+			fresh << value
+		}
+	}
+	fresh.sort()
+	for value in fresh {
+		g.intern_string(value)
 	}
 }
 
@@ -1680,16 +1720,25 @@ fn (mut g FlatGen) gen_fn_chunks_scoped_dynamic(
 		batch.gen_fn_items(chunks[chunk_idx])
 		batch.parallel_chunk_wrapper_capture = -1
 		cgen_worker_scope_leave(scratch_scope)
-		segment_start := g.fn_segs.len
-		g.absorb_scoped_cgen_batch(batch, false)
-		if g.fn_segs.len > segment_start {
-			g.fn_seg_chunk_indexes << chunk_idx
-		}
+		g.absorb_dispatch_chunk(batch, chunk_idx)
 	}
 	cgen_worker_scope_free(scratch_scope)
 	g.timing_profile('  [ttime]     cg wkr busy    ${f64(wsw.elapsed().microseconds()) / 1000.0:7.2f} ms (chunks: ${n_chunks})')
 	g.worker_scope = result_scope
 	cgen_worker_scope_leave(result_scope)
+}
+
+// absorb_dispatch_chunk publishes a finished chunk batch into this body
+// dispatcher, remembering the chunk of its output and of each new literal.
+fn (mut g FlatGen) absorb_dispatch_chunk(batch &FlatGen, chunk_idx int) {
+	segment_start := g.fn_segs.len
+	g.absorb_scoped_cgen_batch(batch, false)
+	if g.fn_segs.len > segment_start {
+		g.fn_seg_chunk_indexes << chunk_idx
+	}
+	for g.str_lit_chunk_indexes.len < g.str_lits.len - g.str_lits_base_len {
+		g.str_lit_chunk_indexes << chunk_idx
+	}
 }
 
 // gen_fn_items_scoped_master_batches publishes each caller-thread batch
@@ -1900,6 +1949,7 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 					g.sb = strings.new_builder(4096)
 					g.fn_segs << prefix
 				}
+				g.split_body_fn_ptr_types_from_decls(items.len)
 				g.gen_fn_items_scoped_master_batches(items)
 			}
 		} else {
@@ -1919,15 +1969,14 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 	// can drain a queued body task instead of staying reserved for the whole
 	// function-generation phase. Target-header preambles depend on thread use
 	// discovered by body workers, so emit those on the master after they merge.
-	parallel_type_decls := available_jobs > 2 && g.scope_parallel_workers
-		&& !g.program_body_only && g.incremental_fn_names.len == 0 && !g.target_libc_headers
-		&& g.cache_const_modules.len == 0
+	parallel_type_decls := available_jobs > 2 && g.decl_task_eligible(n_items)
 	n_jobs := flat_cgen_job_count(available_jobs, n_items, g.flat_cgen_job_limit())
 	if n_items < min_flat_cgen_parallel_items || n_jobs <= 1 {
 		if g.scope_parallel_workers {
 			if n_items < min_flat_cgen_parallel_items {
 				g.gen_fn_items(items)
 			} else {
+				g.split_body_fn_ptr_types_from_decls(n_items)
 				g.gen_fn_items_scoped_master_batches(items)
 			}
 		} else {
@@ -2066,6 +2115,7 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 		// workers use their private copies. Restore them for synthetic output.
 		mut msw := time.new_stopwatch()
 		g.reset_context_lookup_caches()
+		g.publish_dispatch_literals_in_chunk_order(cgen_workers)
 		for worker_ptr in cgen_workers {
 			mut w := unsafe { &FlatGen(worker_ptr) }
 			if ordered_chunk_outputs.len > 0 {
@@ -2122,6 +2172,7 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 		}
 	}
 	cgen_worker_scope_leave(worker_setup_scope)
+	g.split_body_fn_ptr_types_from_decls(n_items)
 	fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
 	mut tasks := []workers.Task{cap: chunk_count}
 	for ci in 0 .. chunk_count {
@@ -2155,6 +2206,42 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 	}
 	unsafe { g.sb.free() }
 	g.sb = strings.new_builder(0)
+}
+
+// decl_task_eligible reports whether gen_fns_dispatch emits the type
+// declarations on a pool task beside the function bodies when the pool has at
+// least three jobs.
+fn (g &FlatGen) decl_task_eligible(n_items int) bool {
+	return g.scope_parallel_workers && !g.program_body_only && g.incremental_fn_names.len == 0
+		&& !g.target_libc_headers && g.cache_const_modules.len == 0
+		&& n_items >= min_flat_cgen_parallel_items
+}
+
+// parallel_decl_task_planned reports whether gen_fns_dispatch will start the
+// declaration task with the current pool and the selected functions.
+fn (g &FlatGen) parallel_decl_task_planned() bool {
+	if isnil(g.a.worker_pool) {
+		return false
+	}
+	available_jobs := g.a.worker_pool.size() + 1
+	n_items := g.fn_gen_items.len
+	return available_jobs > 2 && g.decl_task_eligible(n_items)
+		&& flat_cgen_job_count(available_jobs, n_items, g.flat_cgen_job_limit()) > 1
+}
+
+// split_body_fn_ptr_types_from_decls is called right before function bodies
+// are generated when fewer jobs keep the declaration task from running. That
+// task emits the type declaration block beside the body workers, so it sees
+// only the function-pointer types used before them; types that only bodies
+// use follow the block. Recording the same set here lets
+// write_type_declaration_block place every typedef as the task would, making
+// the generated C independent of the job count.
+fn (mut g FlatGen) split_body_fn_ptr_types_from_decls(n_items int) {
+	if !g.decl_task_eligible(n_items) {
+		return
+	}
+	g.decl_fn_ptr_types = g.used_fn_ptr_types.clone()
+	g.split_body_fn_ptr_types = true
 }
 
 // prepare_serial_fn_tables gives runtime `-no-parallel` generation the same
@@ -2396,11 +2483,7 @@ fn (mut g FlatGen) prepare_parallel_items(items []FlatFnGenItem) {
 	// example struct-field defaults) that lives outside every function subtree.
 	// Intern all source literals before workers fork so their numeric IDs remain
 	// valid regardless of which chunk first references that metadata.
-	for node in g.a.nodes {
-		if node.kind == .string_literal && !node.is_embed_payload() {
-			g.intern_string(node.value)
-		}
-	}
+	g.preintern_ast_string_literals()
 	// The cache is keyed by the bare type text and reset whenever the
 	// file/module context changes (items are grouped by file, so resets are
 	// rare); the old composite '${file}\n${module}\n${typ}' key allocated a
@@ -3366,6 +3449,47 @@ fn (mut g FlatGen) publish_worker_string_literals(w &FlatGen) map[int]int {
 		}
 	}
 	return remap
+}
+
+// DispatchLiteral is a string literal that a body chunk added to its dispatcher.
+struct DispatchLiteral {
+	chunk_idx int
+	order     int
+	value     string
+}
+
+// publish_dispatch_literals_in_chunk_order numbers the literals that body
+// chunks generated in chunk order, which follows the function order. Each
+// dispatcher pulls chunks from a shared queue, so merging the dispatchers one by
+// one would number them by which thread happened to take which chunk.
+fn (mut g FlatGen) publish_dispatch_literals_in_chunk_order(dispatchers []voidptr) {
+	mut literals := []DispatchLiteral{}
+	for worker_ptr in dispatchers {
+		w := unsafe { &FlatGen(worker_ptr) }
+		for i, chunk_idx in w.str_lit_chunk_indexes {
+			literals << DispatchLiteral{
+				chunk_idx: chunk_idx
+				order:     literals.len
+				value:     w.str_lits[w.str_lits_base_len + i]
+			}
+		}
+	}
+	if literals.len == 0 {
+		return
+	}
+	literals.sort_with_compare(compare_dispatch_literals)
+	for literal in literals {
+		if literal.value !in g.str_lit_ids {
+			g.intern_string(literal.value.clone())
+		}
+	}
+}
+
+fn compare_dispatch_literals(a &DispatchLiteral, b &DispatchLiteral) int {
+	if a.chunk_idx != b.chunk_idx {
+		return a.chunk_idx - b.chunk_idx
+	}
+	return a.order - b.order
 }
 
 fn remap_scoped_worker_string_symbols(source string, remap map[int]int, user_c_symbols map[string]bool) string {

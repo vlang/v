@@ -5741,6 +5741,11 @@ fn (mut g FlatGen) write_export_wrapper_c_abi_params(node flat.Node, abi_decl fl
 		if ct.starts_with('fn_ptr:') {
 			ct = g.resolve_fn_ptr_type(ct)
 		}
+		// Match the prototype that `c_extern_decl_params` emits for the same
+		// declaration, or a V definition of e.g. `memcpy` conflicts with it.
+		if c_extern_param_needs_const_prefix(param.value, raw_type, param_type) {
+			ct = 'const ${ct}'
+		}
 		if written > 0 {
 			g.write(', ')
 		}
@@ -6480,6 +6485,10 @@ fn (mut g FlatGen) set_cur_fn_ret(ret_type types.Type) {
 // gen_compiler_vexe_env_setup emits compiler vexe env setup output for c.
 fn (mut g FlatGen) gen_compiler_vexe_env_setup() {
 	if !g.compiler_vexe_env_setup || (g.compiler_vexe.len == 0 && g.compiler_vroot.len == 0) {
+		return
+	}
+	// A `-freestanding` program has no environment (no getenv/setenv) to set it in.
+	if 'freestanding' in g.compile_defines {
 		return
 	}
 	root := c_escape(g.compiler_vroot)
@@ -16770,11 +16779,11 @@ fn (mut g FlatGen) c_extern_forward_decls() {
 			g.writeln('#ifndef __APPLE__')
 			g.writeln(line)
 			g.writeln('#endif')
-		} else if name in c_winapi_extern_symbols {
-			// The declaration names Win32 types (BOOL, DWORD, HANDLE) that the
-			// preamble only typedefs under _WIN32, so a cross build that is also
-			// compiled on a non-Windows host must not emit it unguarded.
-			g.writeln('#if defined(_WIN32)')
+		} else if g.headerless_compiler_bootstrap() && name in c_winapi_extern_symbols {
+			// The portable snapshot defines SDK types such as DWORD only for Windows,
+			// and calls the Win32 API only from `$if windows` code, which is
+			// `#if defined(_WIN32)` there.
+			g.writeln('#ifdef _WIN32')
 			g.writeln(line)
 			g.writeln('#endif')
 		} else {
@@ -17378,12 +17387,12 @@ fn (g &FlatGen) should_emit_c_extern_decl_from_file(cfn string, source_file stri
 			'v_os_exec_capture_start', 'v_os_exec_capture_input_start'] {
 		return true
 	}
+	// A unit without system headers has no other declaration of a bodyless C function,
+	// whether a stdlib module or the program declares it: without this prototype the
+	// call is an implicit declaration, which C99 compilers reject, and a pointer or
+	// 64-bit result is truncated to `int`.
 	if !g.c_directives_use_system_libc() && !g.target_libc_headers
-		&& !g.files_with_c_includes[source_file] && module_name !in g.mods_with_c_includes
-		&& (g.c_source_file_is_in_vlib(source_file) || g.c_source_file_is_compiler_main(source_file)
-			|| cfn in ['task_info', 'mach_task_self', 'getppid']
-			|| cfn in c_preamble_declared_extern_symbols
-			|| cfn in c_system_libc_preamble_declared_fns || cfn in c_manual_stdlib_declared_fns) {
+		&& !g.files_with_c_includes[source_file] && module_name !in g.mods_with_c_includes {
 		return true
 	}
 	return g.c_extern_decl_has_no_header(source_file, module_name)
@@ -17893,8 +17902,78 @@ fn (mut g FlatGen) c_extern_decl_line(node flat.Node, cfn string) string {
 	sb.write_string(cfn)
 	sb.write_u8(`(`)
 	sb.write_string(g.c_extern_decl_params(node))
-	sb.write_string(');')
+	sb.write_u8(`)`)
+	if symbol := g.c_extern_darwin_x64_symbol(cfn) {
+		// The prototype without the label stays for every other target.
+		unlabeled := sb.str()
+		return '#if defined(__APPLE__) && defined(__x86_64__)\n${unlabeled} __asm__("${symbol}");\n#else\n${unlabeled};\n#endif'
+	}
+	sb.write_u8(`;`)
 	return sb.str()
+}
+
+// c_extern_darwin_x64_symbol returns the symbol that the macOS SDK links `cfn` to
+// on x86_64, when that is not the plain `_cfn`. The SDK headers rename these
+// functions with an asm label: `stat` is `_stat$INODE64` there, because the bare
+// `_stat` is kept for old binaries and fills the 32-bit-inode `struct stat`, and
+// the bare `_readdir` returns the old `struct dirent`. V describes only the 64-bit
+// inode layouts, so a prototype without the SDK's label reads garbage on an Intel
+// Mac. arm64 has only the 64-bit inode functions, under their plain names.
+fn (g &FlatGen) c_extern_darwin_x64_symbol(cfn string) ?string {
+	if g.target.os != 'macos' && !g.output_cross_c {
+		return none
+	}
+	symbol := c_darwin_x64_sdk_symbols[cfn] or { return none }
+	return symbol
+}
+
+// c_darwin_x64_sdk_symbols lists the functions that the macOS SDK renames for an
+// x86_64 target, with the symbol it gives them (`__DARWIN_INODE64`,
+// `__DARWIN_ALIAS_I`, `__DARWIN_1050` and `__DARWIN_EXTSN` in <sys/cdefs.h>).
+// `select` takes its `$1050` name because V defines no `_DARWIN_C_SOURCE`.
+const c_darwin_x64_sdk_symbols = {
+	'__opendir2':      '___opendir2$INODE64'
+	'alphasort':       '_alphasort$INODE64'
+	'daemon':          '_daemon$1050'
+	'fdopendir':       '_fdopendir$INODE64'
+	'fdscandir':       '_fdscandir$INODE64'
+	'fdscandir_b':     '_fdscandir_b$INODE64'
+	'fstat':           '_fstat$INODE64'
+	'fstatat':         '_fstatat$INODE64'
+	'fstatfs':         '_fstatfs$INODE64'
+	'fstatx_np':       '_fstatx_np$INODE64'
+	'fts_children':    '_fts_children$INODE64'
+	'fts_close':       '_fts_close$INODE64'
+	'fts_open':        '_fts_open$INODE64'
+	'fts_open_b':      '_fts_open_b$INODE64'
+	'fts_read':        '_fts_read$INODE64'
+	'fts_set':         '_fts_set$INODE64'
+	'ftw':             '_ftw$INODE64'
+	'getfsstat':       '_getfsstat$INODE64'
+	'getmntinfo':      '_getmntinfo$INODE64'
+	'getmntinfo_r_np': '_getmntinfo_r_np$INODE64'
+	'glob':            '_glob$INODE64'
+	'glob_b':          '_glob_b$INODE64'
+	'lstat':           '_lstat$INODE64'
+	'lstatx_np':       '_lstatx_np$INODE64'
+	'nftw':            '_nftw$INODE64'
+	'opendir':         '_opendir$INODE64'
+	'pselect':         '_pselect$1050'
+	'readdir':         '_readdir$INODE64'
+	'readdir_r':       '_readdir_r$INODE64'
+	'realpath':        '_realpath$DARWIN_EXTSN'
+	'rewinddir':       '_rewinddir$INODE64'
+	'scandir':         '_scandir$INODE64'
+	'scandir_b':       '_scandir_b$INODE64'
+	'scandirat':       '_scandirat$INODE64'
+	'scandirat_b':     '_scandirat_b$INODE64'
+	'seekdir':         '_seekdir$INODE64'
+	'select':          '_select$1050'
+	'stat':            '_stat$INODE64'
+	'statfs':          '_statfs$INODE64'
+	'statx_np':        '_statx_np$INODE64'
+	'syslog':          '_syslog$DARWIN_EXTSN'
+	'telldir':         '_telldir$INODE64'
 }
 
 // c_extern_calling_convention returns the calling convention for the prototype V

@@ -7059,6 +7059,7 @@ fn (mut t Transformer) synthesize_auto_str_helpers() []string {
 
 	old_tc_module := if isnil(t.tc) { '' } else { t.tc.cur_module }
 	old_tc_file := if isnil(t.tc) { '' } else { t.tc.cur_file }
+	old_temp_counter := t.temp_counter
 	was_log_active := t.used_fns_log_active
 	log_start := t.used_fns_log.len
 	t.used_fns_log_active = true
@@ -7093,6 +7094,9 @@ fn (mut t Transformer) synthesize_auto_str_helpers() []string {
 				t.tc.cur_module = req.module
 				t.tc.cur_file = req.file
 			}
+			// A helper is a function of its own: number its temporaries from zero,
+			// not from whatever the transform lowered before it.
+			t.temp_counter = 0
 			t.build_auto_str_helper_fn(name)
 		}
 	}
@@ -7111,6 +7115,7 @@ fn (mut t Transformer) synthesize_auto_str_helpers() []string {
 	}
 	t.cur_module = old_module
 	t.cur_file = old_file
+	t.temp_counter = old_temp_counter
 	t.auto_str_helper_module = old_helper_module
 	t.auto_str_synthesis_type = old_synthesis_type_source_id
 	if !isnil(t.tc) {
@@ -11427,6 +11432,7 @@ fn (mut t Transformer) synthesize_default_clone_helpers() []string {
 	old_file := t.cur_file
 	old_tc_module := if isnil(t.tc) { '' } else { t.tc.cur_module }
 	old_tc_file := if isnil(t.tc) { '' } else { t.tc.cur_file }
+	old_temp_counter := t.temp_counter
 	was_log_active := t.used_fns_log_active
 	log_start := t.used_fns_log.len
 	t.used_fns_log_active = true
@@ -11455,6 +11461,9 @@ fn (mut t Transformer) synthesize_default_clone_helpers() []string {
 				t.tc.cur_module = req.module
 				t.tc.cur_file = req.file
 			}
+			// A helper is a function of its own: number its temporaries from zero,
+			// not from whatever the transform lowered before it.
+			t.temp_counter = 0
 			t.build_default_clone_helper_fn(name)
 		}
 	}
@@ -11473,6 +11482,7 @@ fn (mut t Transformer) synthesize_default_clone_helpers() []string {
 	}
 	t.cur_module = old_module
 	t.cur_file = old_file
+	t.temp_counter = old_temp_counter
 	if !isnil(t.tc) {
 		t.tc.cur_module = old_tc_module
 		t.tc.cur_file = old_tc_file

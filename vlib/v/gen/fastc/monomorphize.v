@@ -312,7 +312,7 @@ fn (mut g Parser) queue_explicit_mono_method(tokens []FastcExpressionToken) ?str
 	}
 	dot_index := tokens.len - 2
 	receiver_start := fastc_method_receiver_start(tokens, dot_index)
-	receiver_type := (g.infer_expression_type(tokens[receiver_start..dot_index]) or { return none })
+	receiver_type := g.infer_expression_type(tokens[receiver_start..dot_index]) or { return none }
 	receiver_base := flat.source_type_name(fastc_normalize_inferred_type(receiver_type)).trim_right('*')
 	method := tokens.last().lit
 	if '${receiver_base}.${method}' !in g.generic_method_sources {
@@ -345,7 +345,7 @@ fn (mut g Parser) queue_implicit_mono_method(tokens []FastcExpressionToken) ?str
 	}
 	dot_index := tokens.len - 2
 	receiver_start := fastc_method_receiver_start(tokens, dot_index)
-	receiver_type := (g.infer_expression_type(tokens[receiver_start..dot_index]) or { return none })
+	receiver_type := g.infer_expression_type(tokens[receiver_start..dot_index]) or { return none }
 	receiver_base := flat.source_type_name(fastc_normalize_inferred_type(receiver_type)).trim_right('*')
 	method := tokens.last().lit
 	source_key := '${receiver_base}.${method}'
