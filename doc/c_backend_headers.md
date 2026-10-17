@@ -81,6 +81,9 @@ length, including embedded NUL bytes, so the C compiler needs no compound litera
 Literal IDs remain ordinary identifiers so they do not expand C struct member names. This form also
 works in portable snapshots and MSVC output. Cached modules retain explicit literal initializers
 for sharing and rewriting through their declaration prefix.
+The `_SL` helper is defined only around each literal table and undefined before generated functions,
+so a C binding can declare and call a function named `_SL`. A `_SL` macro defined by an included C
+header or a `-D` flag is saved with `#pragma push_macro` before the table and restored after it.
 
 Generated C still needs the native objects and library flags when linked. Use V to build
 executables, or `-generate-c-project` to export a build command with the native sources

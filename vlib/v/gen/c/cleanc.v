@@ -19312,7 +19312,6 @@ fn (mut g FlatGen) preamble() {
 	g.writeln('#define E_STRUCT')
 	g.writeln('#endif')
 	g.writeln('#define _S(s) ((string){.str=(u8*)("" s), .len=(sizeof(s)-1), .is_lit=1})')
-	g.writeln('#define _SL(id, s, n) static const string id = {s, n, 1}')
 	g.writeln('#if !defined(VNORETURN)')
 	g.writeln('#if defined(__TINYC__)')
 	g.writeln('#define VNORETURN __attribute__((noreturn))')

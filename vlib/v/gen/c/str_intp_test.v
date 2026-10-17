@@ -59,13 +59,18 @@ fn test_cached_string_literal_table_preserves_explicit_initializers() {
 	assert g.sb.str() == 'static const string _str_0 = {"literal", 7, 1};\n\n'
 }
 
+// regular_string_literal_table returns a noncached literal table holding `entries`.
+fn regular_string_literal_table(entries string) string {
+	return '#pragma push_macro("_SL")\n#undef _SL\n#define _SL(id, s, n) static const string id = {s, n, 1}\n${entries}#undef _SL\n#pragma pop_macro("_SL")\n\n'
+}
+
 fn test_string_literal_table_uses_declaration_macros_in_regular_and_split_c_output() {
 	for split in [false, true] {
 		mut g := FlatGen.new()
 		g.cache_split = split
 		g.intern_string('literal')
 		g.string_literals()
-		assert g.sb.str() == '_SL(_str_0, "literal", 7);\n\n'
+		assert g.sb.str() == regular_string_literal_table('_SL(_str_0, "literal", 7);\n')
 	}
 }
 
@@ -76,7 +81,7 @@ fn test_cross_string_literal_declarations_preserve_byte_lengths() {
 		g.set_output_cross_c(true)
 		g.intern_string('a\x00b')
 		g.string_literals()
-		assert g.sb.str() == '_SL(_str_0, "a\\000b", 3);\n\n'
+		assert g.sb.str() == regular_string_literal_table('_SL(_str_0, "a\\000b", 3);\n')
 	}
 }
 
@@ -100,9 +105,40 @@ fn test_long_string_literal_table_entries_split_without_changing_bytes() {
 			if stable {
 				assert joined == 'static const string _str_0 = {"${c_escape(value)}", ${value.len}, 1};\n\n'
 			} else {
-				assert joined == '_SL(_str_0, "${c_escape(value)}", ${value.len});\n\n'
+				assert joined == regular_string_literal_table('_SL(_str_0, "${c_escape(value)}", ${value.len});\n')
 			}
 		}
+	}
+}
+
+fn test_string_literal_macro_keeps_c_function_and_macro_names() {
+	root := os.join_path(os.vtmp_dir(), 'string_literal_c_function_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.c.v')
+	header := os.join_path(root, 'binding.h')
+	binary := os.join_path(root, 'main')
+	// The function must not expand the helper, and the header's own `_SL` macro
+	// must still be defined after the literal table: without it the call returns 40.
+	os.write_file(header, 'static inline int _SL(void) { return 40; }\n#define _SL() (_SL() + 2)\n')!
+	os.write_file(source, 'module main
+#include "${header.replace('\\', '/')}"
+fn C._SL() int
+fn main() {
+	result := C._SL()
+	println("binding: \${result}")
+}
+')!
+	for mode in [([]string{}), ['-no-parallel']] {
+		mut args := ['-new-compiler', '-nocache', '-gc', 'none', '-cc', 'clang', '-no-retry-compilation',
+			'-o', binary]
+		args << mode
+		args << source
+		compiled := cmdexec.run(@VEXE, args)
+		assert compiled.exit_code == 0, '${mode}: ${compiled.output}'
+		run := cmdexec.run(binary, [])
+		assert run.exit_code == 0, run.output
+		assert run.output == 'binding: 42\n', run.output
 	}
 }
 
