@@ -664,9 +664,11 @@ fn main() {
 fn test_local_fn_literal_decl_generates_fn_pointer_locals() {
 	v3_bin := build_v3()
 	optional_c := gen_c(v3_bin, 'fn_value_optional_void_local_c', optional_fn_src)
+	// `fn (i int) !` returns a result, so its fn pointer returns `__v_result`.
 	assert !optional_c.contains('__v_option f = __anon_fn'), optional_c
+	assert !optional_c.contains('__v_result f = __anon_fn'), optional_c
 	assert !optional_c.contains('i64 f = __anon_fn'), optional_c
-	assert optional_c.contains('typedef struct __v_option (*_fn_ptr_'), optional_c
+	assert optional_c.contains('typedef struct __v_result (*_fn_ptr_'), optional_c
 	assert optional_c.contains(' f = __anon_fn_'), optional_c
 
 	optional_callback_c := gen_c(v3_bin, 'fn_value_optional_callback_param_c',
