@@ -1386,6 +1386,9 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, al
 					}
 					tc.check_decl_type_strings(flat.NodeId(i), node)
 					tc.check_struct_implements(flat.NodeId(i), node)
+					if tc.declaration_has_attribute(node_id, 'attribute') {
+						tc.check_attribute_schema_decl(node_id, node)
+					}
 				}
 				if file_values {
 					tc.check_struct_field_defaults(node_id, node)
@@ -1396,6 +1399,7 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, al
 					continue
 				}
 				node_id := flat.NodeId(i)
+				tc.check_attribute_marker_target(node_id, node)
 				tc.check_type_declaration_conflict(node_id, node)
 				if node.kind == .interface_decl {
 					if tc.should_check_type_declaration_name(node_id, node)
@@ -1421,6 +1425,7 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, al
 			.enum_decl {
 				if do_signatures {
 					node_id := flat.NodeId(i)
+					tc.check_attribute_marker_target(node_id, node)
 					tc.check_type_declaration_conflict(node_id, node)
 					if tc.should_check_type_declaration_name(node_id, node)
 						&& !pascal_case_name_is_valid(node.value) {
@@ -1453,6 +1458,7 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, al
 				if !do_signatures {
 					continue
 				}
+				tc.check_attribute_marker_target(flat.NodeId(i), node)
 				tc.check_fn_declaration_name(flat.NodeId(i), node)
 				tc.check_method_field_name_collision(flat.NodeId(i), node)
 				tc.check_main_fn_signature(flat.NodeId(i), node)
