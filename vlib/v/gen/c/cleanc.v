@@ -618,6 +618,7 @@ mut:
 	top_level_node_ids             []i32
 	ast_string_literals            []string
 	ast_string_literals_ready      bool
+	ast_string_literals_parsed     int   // how many leading ast_string_literals come from parsed nodes
 	embed_payload_node_ids         []i32 // `$embed_file` payload nodes, in AST order
 	embed_payload_nodes_ready      bool
 	fn_segs                        []string
@@ -676,6 +677,7 @@ mut:
 	str_lits                       []string
 	str_lit_ids                    map[string]int
 	str_lits_shared                bool
+	str_lit_chunk_indexes          []int // body chunk of each literal past str_lits_base_len
 	// Worker snapshots inherit this immutable prefix from their parent generator.
 	str_lits_base_len int
 	global_types      map[string]types.Type
@@ -780,6 +782,8 @@ mut:
 	modules                        map[string]string // alias -> full module name
 	fn_ptr_types                   map[string]string // fn_ptr:ret|params -> typedef name
 	used_fn_ptr_types              map[string]bool   // signatures referenced by emitted C
+	decl_fn_ptr_types              map[string]bool   // the declaration-side ones, see split_body_fn_ptr_types_from_decls
+	split_body_fn_ptr_types        bool
 	multi_return_types             []types.Type
 	multi_return_type_names        map[string]bool
 	multi_return_types_ready       bool
@@ -3420,6 +3424,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.type_metadata_nodes_ready = false
 	g.ast_string_literals = []string{}
 	g.ast_string_literals_ready = false
+	g.ast_string_literals_parsed = 0
 	g.embed_payload_node_ids = []i32{}
 	g.embed_payload_nodes_ready = false
 	g.direct_array_access = false
@@ -3534,6 +3539,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.modules.clear()
 	g.fn_ptr_types.clear()
 	g.used_fn_ptr_types.clear()
+	g.decl_fn_ptr_types.clear()
+	g.split_body_fn_ptr_types = false
 	g.multi_return_types = []types.Type{}
 	g.multi_return_type_names.clear()
 	g.multi_return_types_ready = false
@@ -3820,9 +3827,10 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	}
 	// Deferring const lowering and the libc compatibility preseed only pays off
 	// when gen_fns_dispatch actually starts a declaration task; in a serial
-	// dispatch it would just move the work behind an early selection.
-	defer_parallel_support := g.scope_parallel_workers && parallel_cgen && !g.program_body_only && g.cache_const_modules.len == 0
-		&& g.incremental_fn_names.len == 0
+	// dispatch it would just move the work behind an early selection. Without
+	// the task, consts are lowered before the function bodies whatever the job
+	// count, so the generated C does not depend on it.
+	defer_parallel_support := parallel_cgen && g.parallel_decl_task_planned()
 	mut const_code := if g.program_body_only || defer_parallel_support || g.cache_const_modules.len > 0 {
 		''
 	} else {
@@ -4303,7 +4311,24 @@ fn (mut g FlatGen) gen_type_declaration_block() {
 // then supplements it with function-pointer types discovered by body workers.
 fn (mut g FlatGen) write_type_declaration_block() {
 	if g.parallel_type_decls.len == 0 {
+		if !g.split_body_fn_ptr_types {
+			g.gen_type_declaration_block()
+			return
+		}
+		// Bodies were generated first, but emit what the parallel declaration
+		// task would: the block sees only the declaration-side function-pointer
+		// types, and the ones that only bodies use follow it.
+		mut all_used := g.used_fn_ptr_types.move()
+		g.used_fn_ptr_types = g.decl_fn_ptr_types.move()
 		g.gen_type_declaration_block()
+		for encoded, used in g.used_fn_ptr_types {
+			if used {
+				all_used[encoded] = true
+			}
+		}
+		g.used_fn_ptr_types = all_used.move()
+		g.split_body_fn_ptr_types = false
+		g.fn_ptr_typedefs()
 		return
 	}
 	g.sb.write_string(g.parallel_type_decls)
@@ -5268,12 +5293,24 @@ fn (mut g FlatGen) add_macos_shared_export_linker_flags() {
 	}
 }
 
+// parsed_node_end returns the index of the first node that a stage after the
+// parser appended to the AST, or the node count when that is unknown.
+fn (g &FlatGen) parsed_node_end() int {
+	parsed := g.a.parsed_node_count
+	if parsed <= 0 || parsed > g.a.nodes.len {
+		return g.a.nodes.len
+	}
+	return parsed
+}
+
 @[direct_array_access]
 fn (mut g FlatGen) scan_collect_gen_info_serial() CollectGenInfoScanCounts {
 	mut counts := CollectGenInfoScanCounts{}
 	mut cache := &TypeMetadataTextCache{}
 	incremental := g.incremental_fn_names.len > 0
+	parsed_end := g.parsed_node_end()
 	g.ast_string_literals = []string{cap: 4096}
+	g.ast_string_literals_parsed = 0
 	g.top_level_node_ids = []i32{cap: 4096}
 	g.type_metadata_node_ids = []i32{cap: 4096}
 	g.embed_payload_node_ids = []i32{}
@@ -5288,6 +5325,9 @@ fn (mut g FlatGen) scan_collect_gen_info_serial() CollectGenInfoScanCounts {
 				g.embed_payload_node_ids << node_idx
 			} else {
 				g.ast_string_literals << node.value
+				if node_idx < parsed_end {
+					g.ast_string_literals_parsed++
+				}
 			}
 		}
 		if node.kind in [.file, .module_decl, .fn_decl, .c_fn_decl, .struct_decl, .type_decl,
@@ -12144,6 +12184,7 @@ fn (mut g FlatGen) register_struct_decl_info_at(node_id int, name string, full_n
 // declaration nodes are outside function subtrees, so parallel function prep
 // does not otherwise see them before worker-local string IDs are assigned.
 fn (mut g FlatGen) preseed_struct_default_string_literals() {
+	parsed_end := g.parsed_node_end()
 	mut seen := map[int]bool{}
 	mut stack := []flat.NodeId{cap: 32}
 	for _, info in g.struct_decl_infos {
@@ -12162,7 +12203,8 @@ fn (mut g FlatGen) preseed_struct_default_string_literals() {
 				}
 				seen[idx] = true
 				node := g.a.nodes[idx]
-				if node.kind == .string_literal && !node.is_embed_payload() {
+				// Synthesized nodes are numbered later, in sorted order.
+				if node.kind == .string_literal && !node.is_embed_payload() && idx < parsed_end {
 					g.intern_string(node.value)
 				}
 				for child_idx := node.children_count - 1; child_idx >= 0; child_idx-- {
