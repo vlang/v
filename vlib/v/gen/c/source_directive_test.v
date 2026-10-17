@@ -608,7 +608,7 @@ fn test_freestanding_c_uses_target_errno_header() ! {
 	output := os.join_path(dir, 'main.c')
 	os.write_file(source, 'fn main() { println(1) }\n')!
 	result := os.exec([@VEXE, '-freestanding', '-target-libc-headers', '-gc', 'none', '-nocache',
-		'-o', output, source])
+		'-os', 'linux', '-o', output, source])
 	assert result.exit_code == 0, result.output
 	generated := os.read_file(output)!
 	assert generated.contains('#include <errno.h>')
