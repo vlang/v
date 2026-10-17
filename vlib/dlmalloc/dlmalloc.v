@@ -959,7 +959,7 @@ fn (mut dl Dlmalloc) malloc_real(size usize) voidptr {
 				// some programs (esp. json2). Theoretically disabling this path just
 				// makes fragmentation a little worse but nothing really bad should happen
 				if false && smallbits != 0 {
-					leftbits := (smallbits << idx) & left_bits(1 << idx)
+					leftbits := (smallbits << idx) & left_bits(u32(1) << idx)
 					leastbit := least_bit(leftbits)
 					i := u32(bits.trailing_zeros_32(leastbit))
 					mut b := dl.smallbin_at(i)
@@ -1214,7 +1214,7 @@ fn (mut dl Dlmalloc) tmalloc_large(size usize) voidptr {
 		}
 
 		if isnil(t) && isnil(v) {
-			leftbits := left_bits(1 << idx) & dl.treemap
+			leftbits := left_bits(u32(1) << idx) & dl.treemap
 			if leftbits != 0 {
 				leastbit := least_bit(leftbits)
 				i := bits.trailing_zeros_32(leastbit)
