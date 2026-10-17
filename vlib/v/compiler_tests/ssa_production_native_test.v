@@ -61,6 +61,7 @@ fn main() {
 			panic(err)
 		}
 		output := os.join_path(root, 'program')
+		// No `-gc none`: the ARM64 backend links no collector, so it must not use one.
 		compile := cmdexec.run(v3_bin, ['-prod', '-b', 'arm64', '-o', output, source])
 		assert compile.exit_code == 0, compile.output
 		run := cmdexec.run(output, [])

@@ -11525,8 +11525,10 @@ pub fn run(args []string) {
 			exit(1)
 		}
 	}
-	// A `-freestanding` program has no libc for a collector to run on.
-	disable_gc := 'freestanding' in user_defines
+	// A `-freestanding` program has no libc for a collector to run on. The ARM64 backend
+	// links its Mach-O output itself, against libSystem only, so a collector call would
+	// be left unresolved until dyld fails to bind it at startup.
+	disable_gc := 'freestanding' in user_defines || backend == 'arm64'
 		|| v3_gc_is_disabled(building_v, cross_output, target_os, target_arch)
 	apply_v3_gc_mode(gc_mode, disable_gc, mut user_defines, mut compile_values) or {
 		eprintln(err.msg())

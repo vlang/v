@@ -10425,8 +10425,8 @@ use `v help`, `v help build` and `v help build-c`.
 
 `-b native` has been replaced by `-b arm64` for native ARM64 compilation on macOS.
 Enable the backend with `v -compile-backend arm64 self`, then compile with
-`v -b arm64 -gc none file.v`. The native ARM64 backend currently requires garbage collection
-to be disabled.
+`v -b arm64 file.v`. The native ARM64 backend does not link a garbage collector yet, so it
+always builds as if `-gc none` was passed.
 A native AMD64 backend is not available yet; use `v -b c -arch amd64 file.v` for AMD64
 compilation through the C backend.
 
