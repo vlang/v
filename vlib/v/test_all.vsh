@@ -23,7 +23,7 @@ const requested_vlib_tests = [
 	'vlib/os/process_test.v',
 	'vlib/os/file_test.v',
 	'vlib/arrays/arrays_test.v',
-	'vlib/v/tests/testdata/multiple_generic_struct_fields.v',
+	'vlib/v/compiler_tests/testdata/multiple_generic_struct_fields.v',
 ]
 
 // Unit tests that are known to fail and are not run for now. Paths are relative to the
