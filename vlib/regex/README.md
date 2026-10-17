@@ -128,7 +128,8 @@ must be matched.
 
 #### **Long quantifiers**
 
-- `{x}` matches exactly x times, `a{2}` matches `aa`, but not `aaa` or `a`
+- `{x}` matches exactly x times, `a{2}` matches `aa`, but not `aaa` or `a`.
+  `{0}` skips its token or group and matches without consuming input.
 - `{min,}` matches at least min times, `a{2,}` matches `aaa` or `aa`, not `a`
 - `{,max}` matches at least 0 times and at maximum max times,
   for example, `a{,2}` matches `a` and `aa`, but doesn't match `aaa`
@@ -472,6 +473,9 @@ for name in re.group_map.keys() {
 }
 ```
 
+Groups that did not participate report bounds `(-1, -1)`, including after a search.
+An empty capturing group reports equal start and end bounds.
+
 ### Groups query functions
 
 These functions are helpers to query the captured groups
@@ -585,6 +589,10 @@ pub fn (mut re RE) find_all(in_txt string) []int
 // the result is like ['first match','secon match']
 pub fn (mut re RE) find_all_str(in_txt string) []string
 ```
+
+`split` returns the sections around matches. Zero-width separators at the beginning or
+end do not add empty sections; separators that consume input retain empty sections.
+For example, an empty pattern splits `ab` into `['a', 'b']`.
 
 #### Replace functions
 
