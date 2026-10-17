@@ -50,6 +50,16 @@ fn test_base_url() {
 	assert content.base_url == 'source'
 }
 
+fn test_quoted_start_is_rejected_without_panicking() {
+	for text in ['"Module {\n\tname: \'x\'\n}\n', '\'Module {\n\tname: "x"\n}\n'] {
+		vmod.decode(text) or {
+			assert err.msg().starts_with('vmod: ')
+			continue
+		}
+		assert false
+	}
+}
+
 fn test_legacy_dependencies() {
 	for name in ['ui', "'ui'", '"ui"'] {
 		for version in ['0.1', '1', '0.1.2', "'0.1'", '"0.1"', "'^0.1.2'"] {
