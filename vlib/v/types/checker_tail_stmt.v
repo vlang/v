@@ -666,9 +666,19 @@ fn (tc &TypeChecker) expr_is_nested_value_tail(stmt_id flat.NodeId) bool {
 				// not turn the final branch's array append into an expression append.
 				passed_branch = true
 			}
+			.or_expr {
+				// The `or {}` block of a call that returns no value only runs statements.
+				if parent.children_count >= 2 && tc.a.child(parent, 1) == current {
+					source_type := unalias_type(tc.resolve_type(tc.a.child(parent, 0)))
+					if is_result_void_type(source_type) || is_option_void_type(source_type) {
+						return false
+					}
+				}
+				return passed_branch
+			}
 			.return_stmt, .decl_assign, .assign, .selector_assign, .index_assign, .field_init,
 			.call, .infix, .prefix, .postfix, .selector, .index, .array_literal, .array_init,
-			.map_init, .struct_init, .string_interp, .cast_expr, .as_expr, .or_expr, .spawn_expr,
+			.map_init, .struct_init, .string_interp, .cast_expr, .as_expr, .spawn_expr,
 			.assert_stmt {
 				return passed_branch
 			}
