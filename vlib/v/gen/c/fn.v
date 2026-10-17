@@ -17903,7 +17903,19 @@ fn (g &FlatGen) is_c_extern_fn_name_arg(arg_id flat.NodeId) bool {
 	return name.starts_with('C.')
 }
 
+// c_extern_exact_decls holds the prototypes of C functions whose real signature a
+// bodyless V declaration cannot spell. bdwgc declares `GC_noop1_ptr(volatile void *)`
+// (gc/gc.h; V's gc.h wrapper also defines it), while builtin's `voidptr` view would
+// read `void*`. That conflicts with the collector header wherever another module
+// includes it into the same unit, as fontstash does under `-gc boehm`.
+const c_extern_exact_decls = {
+	'GC_noop1_ptr': 'void GC_noop1_ptr(volatile void*);'
+}
+
 fn (mut g FlatGen) c_extern_decl_line(node flat.Node, cfn string) string {
+	if exact := c_extern_exact_decls[cfn] {
+		return exact
+	}
 	mut sb := strings.new_builder(96)
 	ret_type := g.parse_node_type(&node)
 	return_name := g.c_extern_interop_type_name(ret_type) or { g.fn_return_type_name(ret_type) }
