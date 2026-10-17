@@ -112,7 +112,7 @@ fn test_generate_model_rejects_duplicate_field_names() {
 }
 
 fn test_generate_model_rejects_invalid_field_names() {
-	for spec in [':string', 'first-name:string', '1name:string'] {
+	for spec in [':string', 'first-name:string', '1name:string', 'Foo:string', 'firstName:string'] {
 		old_wd := gen_setup()
 		generate_model(['User', spec]) or {
 			assert err.msg().contains('invalid field name'), 'wrong error for `${spec}`: ${err.msg()}'

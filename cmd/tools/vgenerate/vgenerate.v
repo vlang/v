@@ -93,17 +93,17 @@ fn valid_name(name string) bool {
 }
 
 // valid_field_name reports whether `name` is a usable struct field name:
-// a non-empty V identifier. Callers check duplicates separately.
+// a non-empty lowercase V identifier. Callers check duplicates separately.
 fn valid_field_name(name string) bool {
 	if name.len == 0 {
 		return false
 	}
 	first := name[0]
-	if !(first == `_` || (first >= `a` && first <= `z`) || (first >= `A` && first <= `Z`)) {
+	if !(first == `_` || (first >= `a` && first <= `z`)) {
 		return false
 	}
 	for c in name.bytes()[1..] {
-		if !(c == `_` || (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`)
+		if !(c == `_` || (c >= `a` && c <= `z`)
 			|| (c >= `0` && c <= `9`)) {
 			return false
 		}
