@@ -13772,6 +13772,9 @@ fn (mut t Transformer) transform_return_stmt(id flat.NodeId, node flat.Node) []f
 		return [id]
 	}
 	source_return_id := t.return_drop_source_id(id, node)
+	if rewritten := t.return_or_result_tail_as_return(node, source_return_id) {
+		return t.transform_return_stmt(rewritten, t.a.nodes[int(rewritten)])
+	}
 	if expanded := t.try_expand_return_if(source_return_id, node) {
 		return expanded
 	}
