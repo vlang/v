@@ -16974,6 +16974,8 @@ fn (mut tc TypeChecker) check_builtin_map_call_args(_id flat.NodeId, node flat.N
 	if method !in ['clone', 'move', 'keys', 'values'] {
 		return false
 	}
+	// See check_builtin_array_call_args: the receiver, like `{'a': f()}`, is checked here.
+	tc.check_node(receiver_id)
 	for i in 1 .. node.children_count {
 		tc.check_node(tc.call_arg_value(tc.a.child(&node, i)))
 	}
@@ -17084,6 +17086,12 @@ fn copy_arg_elem_type(typ Type) ?Type {
 	return none
 }
 
+// builtin_array_fully_checked_methods lists the builtin array methods whose calls
+// check_builtin_array_call_args checks by itself (it returns true for them).
+const builtin_array_fully_checked_methods = ['clone', 'reverse', 'first', 'last', 'pop', 'pop_left',
+	'delete', 'insert', 'prepend', 'index', 'last_index', 'contains', 'sort_with_compare',
+	'sorted_with_compare', 'map', 'any', 'all', 'filter', 'count']!
+
 fn (mut tc TypeChecker) check_builtin_array_call_args(id flat.NodeId, node flat.Node, info CallInfo) bool {
 	if node.children_count == 0 || info.arg_offset != 0 {
 		return false
@@ -17102,6 +17110,13 @@ fn (mut tc TypeChecker) check_builtin_array_call_args(id flat.NodeId, node flat.
 		return false
 	}
 	method := callee.value
+	if method in builtin_array_fully_checked_methods {
+		// This call skips the generic method path, which checks the receiver first.
+		// Without that, nothing in a receiver like `[a(), b()]` is checked: its errors
+		// are lost, and markused, which follows the call edges that the checker records,
+		// drops `a` and `b`.
+		tc.check_node(receiver_id)
+	}
 	short_struct_start := if method == 'prepend' {
 		1
 	} else if method == 'insert' {
