@@ -4470,6 +4470,13 @@ fn (tc &TypeChecker) fixed_array_reference_is_call_borrow(id flat.NodeId) bool {
 			return false
 		}
 		parent := tc.a.node(parent_id)
+		// A branch value of an `if`/`match` that is itself the call argument, e.g.
+		// `f(if c { &buf[0] } else { unsafe { nil } })`, is also only borrowed.
+		if parent.kind in [.expr_stmt, .block, .if_expr, .match_branch, .match_stmt]
+			&& tc.expr_is_value_tail_of(parent_id, current) {
+			current = parent_id
+			continue
+		}
 		// Like V1, a cast such as `voidptr(&buf[0])` or `u64(&buf[0]) + 8` that
 		// goes straight into a call is still only a borrow for that call.
 		if parent.kind != .paren && parent.kind != .cast_expr
