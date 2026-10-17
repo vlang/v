@@ -113,3 +113,7 @@ created by another compiler process; filesystem failures remain errors.
 Negated integer literals above `INT_MAX` and within the signed 64-bit range receive an `LL`
 suffix in C output, including parenthesized operands and constant initializers. This preserves
 their sign with MSVC.
+
+Cache-invalidation restarts remove the current temporary C build directory before
+starting the replacement compiler process. Successful cached builds leave no `.v3cc.*`
+directory beside the output.
