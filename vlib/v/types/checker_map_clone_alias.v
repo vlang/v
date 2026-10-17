@@ -43,11 +43,6 @@ fn (mut tc TypeChecker) mutable_alias_has_fresh_map_storage(id flat.NodeId) bool
 			.fn_decl, .lambda_expr, .comptime_for, .goto_stmt {
 				return false
 			}
-			.fn_literal {
-				// An anonymous fn can only reach this binding through a captured
-				// copy, so nothing in its body can rebind this one.
-				continue
-			}
 			.param {
 				if current.value == node.value {
 					return false
