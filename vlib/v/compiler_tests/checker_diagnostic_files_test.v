@@ -301,7 +301,7 @@ fn test_selected_file_calling_invalid_ierror_result_return_reports_dependency_er
 	main_errors := check_diagnostic_project('ierror_return_called_from_main',
 		called_invalid_ierror_return_project, ['main.v'])
 	assert main_errors.len == 1, main_errors.str()
-	assert main_errors[0].msg.contains('cannot return')
+	assert main_errors[0].msg.contains('in return argument')
 	assert main_errors[0].msg.contains('bad.NotError')
 	assert main_errors[0].msg.contains('`!int`')
 }
@@ -310,7 +310,7 @@ fn test_selected_file_calling_transitive_invalid_ierror_result_return_reports_de
 	main_errors := check_diagnostic_project('ierror_return_transitive_called_from_main',
 		called_transitive_invalid_ierror_return_project, ['main.v'])
 	assert main_errors.len == 1, main_errors.str()
-	assert main_errors[0].msg.contains('cannot return')
+	assert main_errors[0].msg.contains('in return argument')
 	assert main_errors[0].msg.contains('bad.NotError')
 	assert main_errors[0].msg.contains('`!int`')
 }
@@ -319,7 +319,7 @@ fn test_selected_file_calling_invalid_ierror_local_method_return_reports_depende
 	main_errors := check_diagnostic_project('ierror_local_method_return_called_from_main',
 		called_invalid_ierror_local_method_return_project, ['main.v'])
 	assert main_errors.len == 1, main_errors.str()
-	assert main_errors[0].msg.contains('cannot return')
+	assert main_errors[0].msg.contains('in return argument')
 	assert main_errors[0].msg.contains('bad.NotError')
 	assert main_errors[0].msg.contains('`!int`')
 }
@@ -328,7 +328,7 @@ fn test_selected_file_multi_return_local_receiver_reports_dependency_error() {
 	main_errors := check_diagnostic_project('ierror_multi_return_method_called_from_main',
 		called_invalid_ierror_multi_return_local_method_project, ['main.v'])
 	assert main_errors.len == 1, main_errors.str()
-	assert main_errors[0].msg.contains('cannot return')
+	assert main_errors[0].msg.contains('in return argument')
 	assert main_errors[0].msg.contains('bad.NotError')
 	assert main_errors[0].msg.contains('`!int`')
 }
@@ -337,7 +337,7 @@ fn test_selected_file_for_in_local_receiver_reports_dependency_error() {
 	main_errors := check_diagnostic_project('ierror_for_in_method_called_from_main',
 		called_invalid_ierror_for_in_local_method_project, ['main.v'])
 	assert main_errors.len == 1, main_errors.str()
-	assert main_errors[0].msg.contains('cannot return')
+	assert main_errors[0].msg.contains('in return argument')
 	assert main_errors[0].msg.contains('bad.NotError')
 	assert main_errors[0].msg.contains('`!int`')
 }
@@ -396,7 +396,7 @@ fn test_selected_file_calling_invalid_ierror_method_return_reports_dependency_er
 	main_errors := check_diagnostic_project('ierror_method_return_called_from_main',
 		called_invalid_ierror_method_return_project, ['main.v'])
 	assert main_errors.len == 1, main_errors.str()
-	assert main_errors[0].msg.contains('cannot return')
+	assert main_errors[0].msg.contains('in return argument')
 	assert main_errors[0].msg.contains('bad.NotError')
 	assert main_errors[0].msg.contains('`!int`')
 }

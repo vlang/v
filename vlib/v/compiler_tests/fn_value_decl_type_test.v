@@ -502,8 +502,7 @@ fn main() {
 }
 '
 	})
-	assert bad_output.contains('cannot use `fn (string) int`'), bad_output
-	assert bad_output.contains('expected `fn (int) int`'), bad_output
+	assert bad_output.contains('cannot use `fn (string) int` as `fn (int) int` in argument 1 to `invoke`'), bad_output
 }
 
 fn test_resolved_fn_value_wins_over_imported_const_suffix() {

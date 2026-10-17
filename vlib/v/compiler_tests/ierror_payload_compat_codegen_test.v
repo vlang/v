@@ -350,7 +350,7 @@ fn main() {
 	fail() or { return }
 }
 ",
-		'cannot return', 'AliasChainPlain')
+		'in return argument', '`AliasChainPlain`')
 }
 
 fn test_result_error_match_rejects_non_ierror_branch() {
@@ -382,7 +382,7 @@ fn main() {
 	fail_match(1) or { return }
 }
 ",
-		'cannot return', 'Other')
+		'return type mismatch', '`Other`')
 }
 
 fn test_unqualified_builtin_error_in_imported_module_is_result_payload() {
@@ -470,7 +470,7 @@ fn main() {
 	bin := os.join_path(os.temp_dir(), 'v3_ierror_payload_msg_only_input')
 	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return'), compile.output
+	assert compile.output.contains('in return argument'), compile.output
 	assert compile.output.contains('NotError'), compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 }
@@ -537,7 +537,7 @@ fn main() {
 	bin := os.join_path(os.temp_dir(), 'v3_ierror_payload_fake_embed_input')
 	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return'), compile.output
+	assert compile.output.contains('in return argument'), compile.output
 	assert compile.output.contains('fake.FalseError')
 		|| compile.output.contains('fake.FalseMessageError'), compile.output
 
@@ -586,7 +586,7 @@ fn main() {
 	bin := os.join_path(os.temp_dir(), 'v3_ierror_payload_selective_error_input')
 	compile := os.exec([v3_bin, root, '-b', 'c', '-o', bin])
 	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return'), compile.output
+	assert compile.output.contains('in return argument'), compile.output
 	assert compile.output.contains('MyErr'), compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 }
@@ -633,7 +633,7 @@ fn main() {
 	bin := os.join_path(os.temp_dir(), 'v3_ierror_payload_selective_message_error_input')
 	compile := os.exec([v3_bin, root, '-b', 'c', '-o', bin])
 	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return'), compile.output
+	assert compile.output.contains('in return argument'), compile.output
 	assert compile.output.contains('MyErr'), compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 }
