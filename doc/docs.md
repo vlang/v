@@ -2487,6 +2487,8 @@ A match expression returns the value of the final expression from the matching b
 
 A `match` expression can propagate results with `!` in its branches, including results
 containing pointers to interfaces. A branch error propagates from the enclosing function.
+When the expected result is a pointer to an interface, each branch can return a different
+type implementing that interface.
 
 When inferring an enum result, a qualified value in the first branch, such as `Color.red`,
 provides the type for shorthand values such as `.blue` in subsequent branches.

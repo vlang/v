@@ -308,12 +308,12 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 		}
 	}
 	if target_is_ptr && node.kind == .match_stmt {
-		if lowered := t.transform_match_expr_for_type(id, node, target_type) {
+		if lowered := t.transform_match_expr_for_type(id, node, target_type_id) {
 			return lowered
 		}
 	}
 	if target_is_ptr && node.kind == .if_expr {
-		if lowered := t.try_expand_if_expr_value_for_type(id, node, target_type) {
+		if lowered := t.try_expand_if_expr_value_for_type(id, node, target_type_id) {
 			return lowered
 		}
 	}

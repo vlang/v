@@ -17334,7 +17334,11 @@ fn (mut t Transformer) transform_match_expr_for_type(_id flat.NodeId, node flat.
 		|| t.generic_arg_is_unresolved(actual_result_type) {
 		actual_result_type = target_type_id
 	}
-	if t.is_fn_pointer_type_name(target_type_id) {
+	// Concrete branch types still need boxing when the context requires a
+	// pointer to an interface. Keep that target on the staging variable.
+	if t.is_fn_pointer_type_name(target_type_id)
+		|| (flat.source_type_shape(t.normalize_type_alias(target_type_id)).has(.pointer)
+			&& t.resolve_interface_type_name(target_type_id) != 0) {
 		actual_result_type = target_type_id
 	}
 	if t.sum_target_accepts_variant_type(target_type_id, actual_result_type) {
