@@ -8475,14 +8475,15 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 	if rhs_node.kind == .enum_val && lhs_node.kind != .enum_val {
 		if unalias_type(rhs_enum_expected) is Enum {
 			rhs_type = tc.resolve_expr(rhs_id, rhs_enum_expected)
-		} else if rhs_enum_expected !is Unknown && rhs_enum_expected !is Void {
+		} else if rhs_enum_expected !is Unknown && rhs_enum_expected !is Void
+			&& tc.enum_field_value_depth == 0 {
 			tc.record_error_at(.assignment_mismatch, 'expected type is not an enum (`${tc.diagnostic_expr_type_name(lhs_id, rhs_enum_expected)}`)', id, rhs_node.pos)
 			tc.register_synth_type(id, Type(void_))
 			return
 		}
 	}
 	if lhs_node.kind == .enum_val && rhs_node.kind != .enum_val && unalias_type(rhs_type) !is Enum
-		&& rhs_type !is Unknown && rhs_type !is Void {
+		&& rhs_type !is Unknown && rhs_type !is Void && tc.enum_field_value_depth == 0 {
 		tc.record_error_at(.assignment_mismatch, 'expected type is not an enum (`${tc.diagnostic_expr_type_name(rhs_id, rhs_type)}`)', id, lhs_node.pos)
 		tc.register_synth_type(id, Type(void_))
 		return

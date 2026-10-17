@@ -1011,6 +1011,7 @@ pub mut:
 	lock_depth             int
 	autolocked_map         string // the `shared` map locked by the operation being checked, see SharedMapAutolock
 	comptime_static_depth  int
+	enum_field_value_depth int // > 0 while an enum field initializer is checked
 	errors                 []TypeError
 	notices                []TypeError
 	resolved_call_names    []&CachedName // node_id -> resolved function name
@@ -18371,7 +18372,11 @@ fn (mut tc TypeChecker) check_enum_field_values(node_id flat.NodeId, node flat.N
 					}
 				}
 			}
+			// `.base + 2` refers to an earlier field of this enum, so its `.base`
+			// is not an enum shorthand that needs an enum-typed operand.
+			tc.enum_field_value_depth++
 			tc.check_node(value_id)
+			tc.enum_field_value_depth--
 			value_node := tc.a.node(value_id)
 			if value_node.kind == .enum_val {
 				if duplicate_name {
