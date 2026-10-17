@@ -557,6 +557,11 @@ pub fn (mut re RE) compile_opt(pattern string) !
 
 ### Matching Functions
 
+Matchers consume only bytes inside the subject. A non-word class such as `\W` does not
+match the position after the final byte. Zero-width patterns can still match that position.
+The low-level `match_base` length is the number of subject bytes; the buffer does not
+need a trailing NUL byte.
+
 These are the matching functions
 
 ```v ignore

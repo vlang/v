@@ -285,8 +285,9 @@ const cgroups_test_suite = [
 	},
 	TestItemCGroup{
 		"http://www.ciao.mondo/hello/pippo12_/pera.html",
-		r"(?P<format>https?)|(?P<format>ftps?)://(?P<token>[\w_]+.)+",0,46,
-		[8, 0, 0, 4, 1, 7, 11, 1, 11, 16, 1, 16, 22, 1, 22, 28, 1, 28, 37, 1, 37, 42, 1, 42, 46]
+		// The final dot cannot consume the string terminator after the greedy word class.
+		r"(?P<format>https?)|(?P<format>ftps?)://(?P<token>[\w_]+.)+",0,42,
+		[7, 0, 0, 4, 1, 7, 11, 1, 11, 16, 1, 16, 22, 1, 22, 28, 1, 28, 37, 1, 37, 42]
 		//[8, 0, 0, 4, 1, 7, 10, 1, 11, 15, 1, 16, 21, 1, 22, 27, 1, 28, 36, 1, 37, 41, 1, 42, 46],
 		{'format':int(0),'token':1}
 	},

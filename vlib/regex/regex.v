@@ -101,13 +101,20 @@ fn (re &RE) get_char(in_txt string, i int) (u32, int) {
 
 // get_charb get a char from position i and return an u32 with the unicode code
 @[direct_array_access; inline]
-fn (re &RE) get_charb(in_txt &u8, i int) (u32, int) {
+fn (re &RE) get_charb(in_txt &u8, i int, text_len int) (u32, int) {
+	// The FSM uses a virtual end marker, without reading the byte after the buffer.
+	if i >= text_len {
+		return 0, 1
+	}
 	// ascii 8 bit
 	if (re.flag & f_bin) != 0 || unsafe { in_txt[i] } & 0x80 == 0 {
 		return u32(unsafe { in_txt[i] }), 1
 	}
 	// unicode char
-	char_len := utf8util_char_len(unsafe { in_txt[i] })
+	mut char_len := utf8util_char_len(unsafe { in_txt[i] })
+	if char_len > text_len - i {
+		char_len = 1
+	}
 	mut tmp := 0
 	mut ch := u32(0)
 	for tmp < char_len {
@@ -1899,9 +1906,12 @@ pub mut:
 	last_dot_pc int = -1 // last dot chat pc
 }
 
-// match_base matches the compiled token program against the supplied byte buffer.
+// match_base matches the compiled token program against exactly text_len bytes of the buffer.
+// The buffer does not need a trailing NUL byte.
 @[direct_array_access]
-pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
+pub fn (mut re RE) match_base(in_txt &u8, text_len int) (int, int) {
+	// Keep the end position available to zero-width tokens and quantifier transitions.
+	in_txt_len := text_len + 1
 	// result status
 	mut result := no_match_found // function return
 
@@ -1959,7 +1969,7 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 					} else if ist == 0 || m_state in [.start, .ist_next, .stop] {
 						buf2.write_string('# ${step_count:3d} s: ${state_str(m_state):12s} PC: NA\n')
 					} else {
-						ch, char_len = re.get_charb(in_txt, state.i)
+						ch, char_len = re.get_charb(in_txt, state.i, text_len)
 
 						buf2.write_string('# ${step_count:3d} s: ${state_str(m_state):12s} PC: ${state.pc:3d}=>')
 						buf2.write_string('${ist:8x}'.replace(' ', '0'))
@@ -2161,7 +2171,7 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 		}
 
 		// load the char
-		ch, char_len = re.get_charb(in_txt, state.i)
+		ch, char_len = re.get_charb(in_txt, state.i, text_len)
 
 		// check new line if flag f_nl enabled
 		if (re.flag & f_nl) != 0 && char_len == 1 && u8(ch) in new_line_list {
@@ -2301,6 +2311,13 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 				m_state = .ist_load
 				continue
 			}
+			// Control instructions and zero-width tokens can still finish at EOF.
+			else if state.i >= text_len && ist in [u32(ist_simple_char), ist_dot_char, ist_bsls_char,
+				ist_char_class_pos, ist_char_class_neg] {
+				m_state = .ist_quant_n
+				continue
+			}
+
 			// check ist_dot_char
 			else if ist == ist_dot_char {
 				// println("ist_dot_char rep: ${re.prog[state.pc].rep}")
