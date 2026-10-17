@@ -69,3 +69,100 @@ fn test_if_expression_propagates_result_of_interface_pointer() {
 		assert false
 	}
 }
+
+fn shape_pointer(shape &Shape) &Shape {
+	return shape
+}
+
+fn make_concrete_shape(kind string, size int) &Shape {
+	return shape_pointer(match kind {
+		'square' { &Square{size} }
+		else { &Circle{size} }
+	})
+}
+
+fn test_match_expression_boxes_concrete_branches_as_interface_pointers() {
+	assert make_concrete_shape('square', 2).area() == 4
+	assert make_concrete_shape('circle', 2).area() == 12
+}
+
+fn make_concrete_square(side int) !&Square {
+	if side < 0 {
+		return error('square')
+	}
+	return &Square{side}
+}
+
+fn make_concrete_circle(radius int) !&Circle {
+	if radius < 0 {
+		return error('circle')
+	}
+	return &Circle{radius}
+}
+
+fn make_concrete_shape_result(kind string, size int) !&Shape {
+	return shape_pointer(match kind {
+		'square' { make_concrete_square(size)! }
+		else { make_concrete_circle(size)! }
+	})
+}
+
+fn test_match_expression_boxes_propagated_concrete_results_as_interface_pointers() {
+	assert (make_concrete_shape_result('square', 2) or { panic(err) }).area() == 4
+	assert (make_concrete_shape_result('circle', 2) or { panic(err) }).area() == 12
+	for kind in ['square', 'circle'] {
+		make_concrete_shape_result(kind, -1) or {
+			assert err.msg() == kind
+			continue
+		}
+		assert false
+	}
+}
+
+fn make_generic_shape[T](kind string, size T) &Shape {
+	return shape_pointer(match kind {
+		'square' { &Square{int(size)} }
+		else { &Circle{int(size)} }
+	})
+}
+
+fn make_generic_shape_if[T](square bool, size T) &Shape {
+	return shape_pointer(if square { &Square{int(size)} } else { &Circle{int(size)} })
+}
+
+fn test_generic_branch_arguments_box_concrete_branches_as_interface_pointers() {
+	assert make_generic_shape('square', 2).area() == 4
+	assert make_generic_shape('circle', 2).area() == 12
+	assert make_generic_shape_if(true, 2).area() == 4
+	assert make_generic_shape_if(false, 2).area() == 12
+}
+
+fn optional_shape_area(shape ?&Shape) int {
+	s := shape or { return -1 }
+	return s.area()
+}
+
+fn optional_shape_area_of(kind string, size int) int {
+	return optional_shape_area(match kind {
+		'square' { &Square{size} }
+		'none' { none }
+		else { &Circle{size} }
+	})
+}
+
+fn optional_generic_shape_area_of[T](kind string, size T) int {
+	return optional_shape_area(match kind {
+		'square' { &Square{int(size)} }
+		'none' { none }
+		else { &Circle{int(size)} }
+	})
+}
+
+fn test_match_expression_boxes_concrete_branches_as_optional_interface_pointers() {
+	assert optional_shape_area_of('square', 2) == 4
+	assert optional_shape_area_of('circle', 2) == 12
+	assert optional_shape_area_of('none', 2) == -1
+	assert optional_generic_shape_area_of('square', 2) == 4
+	assert optional_generic_shape_area_of('circle', 2) == 12
+	assert optional_generic_shape_area_of('none', 2) == -1
+}
