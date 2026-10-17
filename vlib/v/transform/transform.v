@@ -22155,6 +22155,24 @@ fn (mut t Transformer) materialize_value_branch_operand_for_type(id flat.NodeId,
 		t.transform_value_operand(id)
 	}
 	if value != id && t.operand_hoists_value_branch(value) {
+		// A block operand (`unsafe { match x { ... } }`) lowered with its value type stays a
+		// statement expression whose body holds the lowered branch, so the check above cannot
+		// tell it from a branch rebuilt unchanged. Once its value tail is no longer a branch it
+		// was materialized: spill it to a value temp, so the caller re-dispatches over a plain
+		// operand instead of lowering the block again without its type (which emits empty
+		// propagation arms such as `(!opt.ok ?  : )` for `i64(unsafe { match ... })`).
+		if t.a.nodes[int(value)].kind == .block && !t.is_value_match_or_if_operand(value) {
+			mut value_type := target_type_id
+			if value_type == 0 {
+				value_type = t.node_type(value)
+			}
+			if value_type == 0 {
+				value_type = t.node_type(id)
+			}
+			if value_type != 0 && value_type != flat.source_type_void {
+				return t.snapshot_transformed_expr_for_reuse(value, value_type, 'value_block')
+			}
+		}
 		if t.pending_stmts.len > pending_mark {
 			t.pending_stmts = t.pending_stmts[..pending_mark].clone()
 		}
