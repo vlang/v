@@ -287,9 +287,27 @@ fn test_windows_makev_keeps_the_v3_tcc_root_absolute() {
 	// The bootstrap compiler emits the stage C, which this script then links.
 	// The absolute tcc path reaches it through `!stage_vflags!`, asserted below.
 	assert source.contains('"%V_BOOTSTRAP%" %V_BOOTSTRAP_VFLAGS% -gc none -g !stage_vflags! -o "%V_STAGE_C%" cmd/v')
-	assert source.contains('"%V_STAGE%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc -cc "!tcc_exe!" -o "%V_UPDATED%" cmd/v')
 	assert source.contains('set stage_vflags=-cc "!tcc_exe!"')
+	// The stage compiler, and the self-hosted fallback, build the updated compiler
+	// with `!updated_vflags!`; each TCC route sets it to the absolute tcc path first.
+	assert_makev_routine_sets_tcc_before(source, 'build_fresh_v_with_tcc',
+		'"%V_STAGE%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc !updated_vflags! -o "%V_UPDATED%" cmd/v')
+	assert_makev_routine_sets_tcc_before(source, 'build_self_hosted_with_tcc',
+		'"%V_EXE%" %V_BOOTSTRAP_VFLAGS% -g !updated_vflags! -o "%V_UPDATED%" cmd/v')
 	assert !source.contains('-cflags -Bthirdparty/tcc')
+}
+
+// assert_makev_routine_sets_tcc_before checks that the makev.bat subroutine `:name`
+// sets `updated_vflags` to the bundled tcc before it runs `command`.
+fn assert_makev_routine_sets_tcc_before(source string, name string, command string) {
+	text := source.replace('\r\n', '\n')
+	start := text.index('\n:${name}\n') or { panic('makev.bat has no `:${name}` subroutine') }
+	routine_end := text.index_after('\n:', start + 1) or { text.len }
+	routine := text[start..routine_end]
+	set_index := routine.index('\nset updated_vflags=-cc "!tcc_exe!"\n') or { -1 }
+	command_index := routine.index('\n${command}\n') or { -1 }
+	assert set_index >= 0, name
+	assert command_index > set_index, name
 }
 
 fn test_launcher_finds_external_commands() {

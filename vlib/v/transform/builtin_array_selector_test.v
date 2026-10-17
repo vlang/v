@@ -58,7 +58,7 @@ fn test_builtin_array_data_is_passed_as_a_pointer_value_to_v_functions() {
 			'data': 'int'
 		})
 	}
-	argument := t.transform_call_arg_for_param(selector, 'voidptr')
+	argument := t.transform_call_arg_for_param(selector, flat.source_type_voidptr)
 	assert a.node(argument).kind == .selector
 	assert a.node(argument).value == 'data'
 }

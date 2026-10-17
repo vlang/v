@@ -14,7 +14,7 @@ fn test_rebuilt_pointer_field_selector_preserves_mutable_argument() {
 			fields: [FieldInfo{ name: 'value', typ: flat.source_type_id('&int') }]
 		}
 		base := t.make_ident('holder')
-		field := t.make_selector(base, 'value', '&int')
+		field := t.make_selector(base, 'value', flat.source_type_id('&int'))
 		a.set_node_is_mut(field, mutable)
 		lowered := t.transform_selector_expr(field, a.nodes[int(field)])
 		assert a.nodes[int(lowered)].op == .arrow

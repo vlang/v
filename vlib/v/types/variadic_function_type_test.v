@@ -33,7 +33,7 @@ fn test_variadic_function_type_metadata_survives_generic_substitution() {
 	a := flat.FlatAst.new()
 	tc := TypeChecker.new(&a)
 	generic := tc.parse_type(flat.source_type_id('fn (T, ...T) T'))
-	text_substitution := tc.substitute_generic_type(generic, ['string'], ['T'])
+	text_substitution := tc.substitute_generic_type(generic, flat.TypeTextList.from_names(['string']).ids, ['T'])
 	value_substitution := tc.substitute_generic_type_values(generic, [Type(string_)], ['T'])
 	for specialized in [text_substitution, value_substitution] {
 		assert specialized is FnType

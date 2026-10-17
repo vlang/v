@@ -20,3 +20,16 @@ fn test_setting_numeric_lists_copies_caller_storage() {
 	ids[0] = source_type_id('pkg.Other')
 	assert bindings.value('call') == ['pkg.T']
 }
+
+fn test_appending_numeric_lists_copies_values_and_preserves_empty_entries() {
+	first := source_type_id('pkg.First')
+	second := source_type_id('pkg.Second')
+	mut ids := [second, u32(0), second]
+	mut bindings := TypeTextListBindings{}
+	bindings.set_ids('call', [first])
+	bindings.append_ids('call', ids)
+	ids[0] = first
+	assert bindings.type_ids('call') or { panic('missing call') } == [first, second, 0, second]
+	bindings.append_ids('absent', []u32{})
+	assert !bindings.contains('absent')
+}

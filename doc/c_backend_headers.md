@@ -16,6 +16,9 @@ The C backend emits libc prototypes from bodyless V declarations such as
 `fn C.strlen(const_s &char) usize`. Runtime bindings are marked used so cached modules
 retain their prototypes. Native backends retain C declarations without rooting same-named
 V functions.
+With `-target-libc-headers`, `<errno.h>` owns the errno accessor declarations.
+This avoids conflicting `i32*` prototypes on targets whose `int32_t` is `long`,
+such as ARM newlib.
 Explicit headers for other C libraries remain included. Core SDK headers are also
 restored when another binding requests headers, so native declarations stay authoritative
 regardless of source collection order.
@@ -66,6 +69,8 @@ new program literals and cleanup hooks after source edits.
 Warm builds using `os` also retain system-header ownership, so platform stat macros do not
 conflict with compatibility declarations. Windows standalone and custom-libc builds keep
 their required native layouts.
+Windows file and console APIs preserve `C.DWORD` output pointer types at SDK call sites.
+This preserves the SDK's pointer types when a C compiler checks calls against Windows headers.
 Core file mappings retain standalone declarations on verified 64-bit targets, including native
 mapping flags and the synchronization function signature. Other targets and programs using
 explicit C headers or custom libc headers keep platform-header ownership.
@@ -76,6 +81,9 @@ length, including embedded NUL bytes, so the C compiler needs no compound litera
 Literal IDs remain ordinary identifiers so they do not expand C struct member names. This form also
 works in portable snapshots and MSVC output. Cached modules retain explicit literal initializers
 for sharing and rewriting through their declaration prefix.
+The `_SL` helper is defined only around each literal table and undefined before generated functions,
+so a C binding can declare and call a function named `_SL`. A `_SL` macro defined by an included C
+header or a `-D` flag is saved with `#pragma push_macro` before the table and restored after it.
 
 Generated C still needs the native objects and library flags when linked. Use V to build
 executables, or `-generate-c-project` to export a build command with the native sources
@@ -98,7 +106,9 @@ and `-no-builtin` use compatibility headers when complete V bindings are unavail
 
 Portable compiler snapshots generated with `-cross cmd/v` or `-os cross cmd/v` supply
 their runtime declarations and helper definitions from V without include directives on
-the supported hosted targets.
+the supported hosted targets, except explicit Windows targets. Windows compiler snapshots
+use the Windows SDK and embed the native stream, clock, thread, tool-cache, and atomic helpers,
+so they can be compiled and linked without native objects from the generating checkout.
 They retain the complete compiler runtime and disable the platform signal handler.
 The text of includes inside compiler string literals is still present for other generated programs.
 
@@ -109,3 +119,8 @@ created by another compiler process; filesystem failures remain errors.
 Negated integer literals above `INT_MAX` and within the signed 64-bit range receive an `LL`
 suffix in C output, including parenthesized operands and constant initializers. This preserves
 their sign with MSVC.
+
+With `-target-libc-headers`, the target libc owns the accessor behind its `errno` macro.
+The generated C includes `<errno.h>` and leaves the libc accessor declaration to that header,
+avoiding conflicts where the target's `int32_t` differs from C's `int`. Headerless output
+retains the V-owned declarations.

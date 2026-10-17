@@ -55,6 +55,11 @@ workload and machine capacity are known.
 Skipped test paths are resolved before comparison, so selecting a file through a symlink
 does not bypass its platform or architecture exclusion.
 
+On Linux, `-race` test builds use `_setjmp` and `_longjmp` to continue after failed assertions,
+avoiding ThreadSanitizer's incompatible `longjmp` interceptor on glibc 2.44. Later tests and
+race detection still run. A later race report can retain frames from the failed test because
+the sanitizer does not observe that jump.
+
 Tests ending in `_windows_test.v` or `_windows_test.c.v` run only on Windows.
 The compound `_android_outside_termux_test.v` and `_android_outside_termux_test.c.v`
 suffixes select Android outside Termux; `_termux_test.v` and `_termux_test.c.v`

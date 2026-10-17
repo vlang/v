@@ -31,6 +31,11 @@ permissions:
 jobs:
   docker-alpine-musl-gcc:
     runs-on: ubuntu-24.04
+    env:
+      # Stop a failing test session at its first failure instead of
+      # running the whole suite to completion; the remaining files
+      # add no signal.
+      VTEST_FAIL_FAST: '1'
     timeout-minutes: 241
     container:
       image: thevlang/vlang:alpine-build
@@ -62,6 +67,11 @@ jobs:
 
   docker-alpine-musl-tcc:
     runs-on: ubuntu-24.04
+    env:
+      # Stop a failing test session at its first failure instead of
+      # running the whole suite to completion; the remaining files
+      # add no signal.
+      VTEST_FAIL_FAST: '1'
     timeout-minutes: 241
     container:
       image: thevlang/vlang:alpine-build
@@ -83,6 +93,11 @@ jobs:
 
   docker-ubuntu-musl:
     runs-on: ubuntu-24.04
+    env:
+      # Stop a failing test session at its first failure instead of
+      # running the whole suite to completion; the remaining files
+      # add no signal.
+      VTEST_FAIL_FAST: '1'
     timeout-minutes: 150
     container:
       image: thevlang/vlang:ubuntu-build

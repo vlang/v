@@ -8,17 +8,17 @@ fn test_owned_array_storage_void_wrappers_preserve_the_source() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	assert t.optional_base_type('!') == 'void'
-	assert t.optional_base_type('?') == 'void'
-	assert t.optional_base_type('![]int') == '[]int'
-	assert t.optional_base_type('?[]int') == '[]int'
+	assert t.optional_base_type(flat.source_type_id('!')) == flat.source_type_void
+	assert t.optional_base_type(flat.source_type_id('?')) == flat.source_type_void
+	assert flat.source_type_name(t.optional_base_type(flat.source_type_id('![]int'))) == '[]int'
+	assert flat.source_type_name(t.optional_base_type(flat.source_type_id('?[]int'))) == '[]int'
 	for wrapper in ['!', '?', '!void', '?void'] {
 		t.set_var_type('source', flat.source_type_id(wrapper))
 		source := t.make_ident('source')
 		nodes_before := a.nodes.len
 		for clone_owned_value in [false, true] {
 			// Bare markers must unwrap to void so the storage scan terminates.
-			assert t.clone_owned_array_storage_value(source, wrapper, clone_owned_value) == source
+			assert t.clone_owned_array_storage_value(source, flat.source_type_id(wrapper), clone_owned_value) == source
 			assert a.nodes.len == nodes_before
 			assert t.pending_stmts.len == 0
 		}
@@ -52,9 +52,9 @@ fn configure_owned_array_storage_checker(mut tc types.TypeChecker) {
 		typ:  types.Type(types.string_)
 	}]
 	tc.interface_names['IError'] = true
-	tc.type_aliases.set('ArrayResult', '![]Res')
-	tc.type_aliases.set('ArrayResultAlias', 'ArrayResult')
-	tc.type_aliases.set('ArrayOption', '?[]Res')
+	tc.type_aliases.set_id('ArrayResult', flat.source_type_id('![]Res'))
+	tc.type_aliases.set_id('ArrayResultAlias', flat.source_type_id('ArrayResult'))
+	tc.type_aliases.set_id('ArrayOption', flat.source_type_id('?[]Res'))
 	assert tc.ownership_type_requires_destruction(tc.parse_type(flat.source_type_id('Res')))
 }
 
@@ -69,12 +69,12 @@ fn test_owned_array_result_storage_clones_only_the_active_owner() {
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
 		t.set_var_type('source', flat.source_type_id(wrapper))
 		source := t.make_ident('source')
-		owned := t.clone_owned_array_value_for_capture(source, wrapper)
+		owned := t.clone_owned_array_value_for_capture(source, flat.source_type_id(wrapper))
 		assert t.is_owned_array_storage_value(owned)
 		assert t.pending_stmts.len == 2
 		check_owned_array_result_branch(&a, t.pending_stmts.last())
 		// Reusing the acquired value must not create a second error or payload owner.
-		assert t.clone_owned_array_value_for_capture(owned, wrapper) == owned
+		assert t.clone_owned_array_value_for_capture(owned, flat.source_type_id(wrapper)) == owned
 		assert t.pending_stmts.len == 2
 	}
 }
@@ -90,7 +90,7 @@ fn test_owned_array_result_sum_storage_keeps_error_acquisition_inside_its_varian
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.sum_types.set('Storage', ['ArrayResultAlias', 'int'])
 	t.set_var_type('source', flat.source_type_id('Storage'))
-	owned := t.clone_owned_array_value_for_capture(t.make_ident('source'), 'Storage')
+	owned := t.clone_owned_array_value_for_capture(t.make_ident('source'), flat.source_type_id('Storage'))
 	assert t.is_owned_array_storage_value(owned)
 	mut result_branches := []flat.NodeId{}
 	mut error_clones := 0
@@ -123,9 +123,9 @@ fn test_owned_array_optional_and_borrowed_result_storage_do_not_clone_absent_err
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
 		t.set_var_type('source', flat.source_type_id(wrapper))
 		if wrapper == 'ArrayResultAlias' {
-			t.clone_owned_array_view_for_storage(t.make_ident('source'), wrapper)
+			t.clone_owned_array_view_for_storage(t.make_ident('source'), flat.source_type_id(wrapper))
 		} else {
-			t.clone_owned_array_value_for_capture(t.make_ident('source'), wrapper)
+			t.clone_owned_array_value_for_capture(t.make_ident('source'), flat.source_type_id(wrapper))
 		}
 		assert t.pending_stmts.len == 2
 		branch := a.nodes[int(t.pending_stmts.last())]
@@ -150,8 +150,8 @@ fn test_owned_array_storage_preserves_explicit_array_references() {
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
 		t.set_var_type('source', flat.source_type_id(wrapper))
 		source := t.make_ident('source')
-		assert t.clone_owned_array_view_for_storage(source, wrapper) == source
-		assert t.clone_owned_array_value_for_capture(source, wrapper) == source
+		assert t.clone_owned_array_view_for_storage(source, flat.source_type_id(wrapper)) == source
+		assert t.clone_owned_array_value_for_capture(source, flat.source_type_id(wrapper)) == source
 		assert t.pending_stmts.len == 0
 	}
 }
@@ -166,10 +166,10 @@ fn test_owned_array_reference_wrappers_keep_data_borrowed() {
 		configure_owned_array_storage_checker(mut tc)
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
 		t.set_var_type('source', flat.source_type_id(wrapper))
-		t.clone_owned_array_view_for_storage(t.make_ident('source'), wrapper)
+		t.clone_owned_array_view_for_storage(t.make_ident('source'), flat.source_type_id(wrapper))
 		assert t.pending_stmts.len == 2
 		branch := t.pending_stmts.last()
-		assert owned_array_storage_call_count(&a, branch, default_clone_helper_name('[]Res')) == 0
+		assert owned_array_storage_call_count(&a, branch, default_clone_helper_name(flat.source_type_id('[]Res'))) == 0
 		assert owned_array_storage_call_count(&a, branch, 'v3_heap_array') == 0
 		assert owned_array_storage_call_count(&a, branch, '__v3_clone_owned_ierror') == 0
 	}
@@ -185,10 +185,10 @@ fn test_owned_array_synthetic_pointer_acquisition_still_copies() {
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.set_var_type('source', flat.source_type_id('&[]Res'))
 	source := t.make_ident('source')
-	assert t.clone_owned_array_storage_value(source, '&[]Res', true) != source
+	assert t.clone_owned_array_storage_value(source, flat.source_type_id('&[]Res'), true) != source
 	assert t.pending_stmts.len == 2
 	branch := t.pending_stmts.last()
-	assert owned_array_storage_call_count(&a, branch, default_clone_helper_name('[]Res')) == 1
+	assert owned_array_storage_call_count(&a, branch, default_clone_helper_name(flat.source_type_id('[]Res'))) == 1
 	assert owned_array_storage_call_count(&a, branch, 'v3_heap_array') == 1
 }
 
@@ -201,11 +201,11 @@ fn check_owned_array_result_branch(a &flat.FlatAst, branch_id flat.NodeId) {
 	failure := a.child(&branch, 2)
 	assert owned_array_storage_call_count(a, success, '__v3_clone_owned_ierror') == 0
 	assert owned_array_storage_selector_count(a, success, 'err') == 0
-	assert owned_array_storage_call_count(a, success, default_clone_helper_name('[]Res')) == 1
+	assert owned_array_storage_call_count(a, success, default_clone_helper_name(flat.source_type_id('[]Res'))) == 1
 	assert owned_array_storage_call_count(a, failure, '__v3_clone_owned_ierror') == 1
 	assert owned_array_storage_selector_count(a, failure, 'err') == 1
 	assert owned_array_storage_selector_count(a, failure, 'value') == 0
-	assert owned_array_storage_call_count(a, failure, default_clone_helper_name('[]Res')) == 0
+	assert owned_array_storage_call_count(a, failure, default_clone_helper_name(flat.source_type_id('[]Res'))) == 0
 	assert owned_array_storage_call_count(a, failure, 'drop_owned') == 0
 	failure_block := a.nodes[int(failure)]
 	assert failure_block.kind == .block && failure_block.children_count == 1
@@ -282,7 +282,7 @@ fn test_owned_sum_reassignment_keeps_declared_storage_under_smartcast() {
 	t.sum_types.set('Value', ['First', 'Second'])
 	t.set_var_type('value', flat.source_type_id('Value'))
 	t.set_var_type('replacement', flat.source_type_id('Value'))
-	t.push_smartcast('value', 'First', 'Value')
+	t.push_smartcast('value', flat.source_type_id('First'), flat.source_type_id('Value'))
 	assignment := t.make_assign(t.make_ident('value'), t.make_ident('replacement'))
 	statements := t.transform_stmt(assignment)
 	assert statements.len > 0

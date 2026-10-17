@@ -2484,6 +2484,10 @@ match false {
 ```
 
 A match expression returns the value of the final expression from the matching branch.
+
+A `match` expression can propagate results with `!` in its branches, including results
+containing pointers to interfaces. A branch error propagates from the enclosing function.
+
 When inferring an enum result, a qualified value in the first branch, such as `Color.red`,
 provides the type for shorthand values such as `.blue` in subsequent branches.
 This also applies to parenthesized shorthand values and bitwise expressions with flag enums.
@@ -6083,6 +6087,9 @@ Avoid manually checking, whether the channel was closed or not, because that
 can introduce data races, if you are not careful.
 
 #### Channel Select
+
+Assertion messages inside a select branch can use values declared or received in that branch,
+including arrays and structs converted to strings.
 
 The `select` command allows monitoring several channels at the same time
 without noticeable CPU load. It consists of a list of possible transfers and associated branches
@@ -9994,6 +10001,8 @@ specification &ndash; as in the example [above](#atomics).
 
 An initializer for global variables must be explicitly converted to the
 desired target type. If no initializer is given a default initialization is done.
+Option and result globals can also be declared by type, such as `__global current ?int`
+and `__global status !int`, and assigned or reassigned later.
 Global map references can be initialized with empty or populated map literals, such as
 `&map[string]bool{}` or `&{'enabled': true}`. The referenced map is allocated and initialized
 before the declaring module's `init()` function runs.
@@ -10426,6 +10435,9 @@ Use the `C.` prefix to refer to the C function.
 Note that such redeclarations only need to have enough details about the
 functions/structs that you want to use.
 Note also that they *do not have* to be complete, unlike the ones in the .h files.
+
+A C function receiving the address of a local can change its value. Subsequent expressions
+read that value even when the V binding was declared without `mut`.
 
 Parameter names in `C.` function declarations may start with uppercase letters, as in C headers.
 The lowercase naming rule still applies to parameters of ordinary V functions.

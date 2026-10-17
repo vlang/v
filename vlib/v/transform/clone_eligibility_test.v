@@ -17,7 +17,7 @@ fn test_default_clone_eligibility_includes_ordinary_struct_fields() {
 		fields: [FieldInfo{ name: 'values', typ: flat.source_type_id('[2]MapValue') }]
 	}
 	t.structs['PlainValue'] = StructInfo{
-		fields: [FieldInfo{ name: 'n', typ: flat.source_type_id('int') }]
+		fields: [FieldInfo{ name: 'n', typ: flat.source_type_int }]
 	}
 	t.structs['ReferenceValue'] = StructInfo{
 		fields: [FieldInfo{ name: 'value', typ: flat.source_type_id('&MapValue') }]
@@ -26,10 +26,10 @@ fn test_default_clone_eligibility_includes_ordinary_struct_fields() {
 	t.structs['RecursiveValue'] = StructInfo{
 		fields: [FieldInfo{ name: 'value', typ: flat.source_type_id('RecursiveValue') }]
 	}
-	assert t.compiler_default_clone_type_needs_work('MapValue')
-	assert t.compiler_default_clone_type_needs_work('NestedValue')
-	assert !t.compiler_default_clone_type_needs_work('PlainValue')
-	assert !t.compiler_default_clone_type_needs_work('ReferenceValue')
-	assert !t.compiler_default_clone_type_needs_work('&MapValue')
-	assert !t.compiler_default_clone_type_needs_work('RecursiveValue')
+	assert t.compiler_default_clone_type_needs_work(flat.source_type_id('MapValue'))
+	assert t.compiler_default_clone_type_needs_work(flat.source_type_id('NestedValue'))
+	assert !t.compiler_default_clone_type_needs_work(flat.source_type_id('PlainValue'))
+	assert !t.compiler_default_clone_type_needs_work(flat.source_type_id('ReferenceValue'))
+	assert !t.compiler_default_clone_type_needs_work(flat.source_type_id('&MapValue'))
+	assert !t.compiler_default_clone_type_needs_work(flat.source_type_id('RecursiveValue'))
 }
