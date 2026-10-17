@@ -14785,7 +14785,10 @@ pub fn run(args []string) {
 			''
 		}
 		mut generated_c_flags := cgen_cache_metadata.flags.clone()
-		mut cgen_release_threads := []thread{}
+		// The first handle is appended inside cgen_scope, and a later thread frees
+		// that scope while the handles are still read. Reserve room for all three
+		// appends here, so the handle array never lives in cgen_scope.
+		mut cgen_release_threads := []thread{cap: 3}
 		mut windows_gui_entry_point := cgen_cache_metadata.windows_gui_entry_point
 		mut interface_impl_signature := cgen_cache_metadata.interface_impl_signature
 		mut cgen_was_parallel := false
