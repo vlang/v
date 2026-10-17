@@ -410,9 +410,30 @@ struct MapLoopCopybackGuard {
 }
 
 struct FixedStorageConstRefItem {
-	id     flat.NodeId
-	file   string
-	module string
+	id flat.NodeId
+	// at is the scanned node that recorded the reference: the reference itself,
+	// or the index, call, or address-of node that uses it.
+	at int
+}
+
+// FixedStorageScanMarker is a `.file` or `module` node met by the fixed-storage
+// scan; the markers of all chunks, in node order, give the file and module that
+// a linear walk of the whole AST would have at any node.
+struct FixedStorageScanMarker {
+	idx     int
+	is_file bool
+	value   string
+}
+
+// FixedStorageScanContexts maps node indexes to the file and module in effect
+// at them in a linear walk of the AST.
+struct FixedStorageScanContexts {
+	start_file   string
+	start_module string
+mut:
+	ids     []int
+	files   []string
+	modules []string
 }
 
 struct EnumBackingInfo {
@@ -14984,8 +15005,6 @@ struct FixedStorageNodeScanArgs {
 	g                      &FlatGen
 	start                  int
 	end                    int
-	file                   string
-	module                 string
 	fixed_candidate_idents map[string]bool
 	fixed_candidate_shorts map[string]bool
 	ident_filter           &FixedStorageCandidateNameFilter
@@ -14995,6 +15014,7 @@ mut:
 	ref_items        []FixedStorageConstRefItem
 	call_base_items  []FixedStorageConstRefItem
 	index_base_items []FixedStorageConstRefItem
+	markers          []FixedStorageScanMarker
 	fixed_safe_refs  map[int]bool
 }
 
@@ -15105,27 +15125,23 @@ fn fixed_storage_node_scan_thread(arg voidptr) voidptr {
 }
 
 fn (g &FlatGen) scan_fixed_storage_node_range(mut scan FixedStorageNodeScanArgs) {
-	mut cur_module := scan.module
-	mut cur_file := scan.file
 	for idx := scan.start; idx < scan.end; idx++ {
 		node := unsafe { &g.a.nodes[idx] }
 		kind_id := int(node.kind)
-		if kind_id == 77 {
-			cur_file = node.value
-			cur_module = 'main'
-			continue
-		}
-		if kind_id == 73 {
-			cur_module = node.value
+		if kind_id == 77 || kind_id == 73 {
+			scan.markers << FixedStorageScanMarker{
+				idx:     idx
+				is_file: kind_id == 77
+				value:   node.value
+			}
 			continue
 		}
 		match node.kind {
 			.prefix {
 				if node.op == .amp && node.children_count > 0 {
 					scan.address_items << FixedStorageConstRefItem{
-						id:     g.a.child(node, 0)
-						file:   cur_file
-						module: cur_module
+						id: g.a.child(node, 0)
+						at: idx
 					}
 				}
 			}
@@ -15138,9 +15154,8 @@ fn (g &FlatGen) scan_fixed_storage_node_range(mut scan FixedStorageNodeScanArgs)
 				if g.const_ref_node_may_match_fixed_candidate(base_node, scan.fixed_candidate_idents, scan.fixed_candidate_shorts, scan.ident_filter, scan.short_filter) {
 					g.mark_const_ref_descendants(mut scan.fixed_safe_refs, base_id)
 					scan.index_base_items << FixedStorageConstRefItem{
-						id:     base_id
-						file:   cur_file
-						module: cur_module
+						id: base_id
+						at: idx
 					}
 				}
 			}
@@ -15154,9 +15169,8 @@ fn (g &FlatGen) scan_fixed_storage_node_range(mut scan FixedStorageNodeScanArgs)
 				}
 				if g.const_ref_node_may_match_fixed_candidate(node, scan.fixed_candidate_idents, scan.fixed_candidate_shorts, scan.ident_filter, scan.short_filter) {
 					scan.ref_items << FixedStorageConstRefItem{
-						id:     flat.NodeId(idx)
-						file:   cur_file
-						module: cur_module
+						id: flat.NodeId(idx)
+						at: idx
 					}
 				}
 			}
@@ -15170,9 +15184,8 @@ fn (g &FlatGen) scan_fixed_storage_node_range(mut scan FixedStorageNodeScanArgs)
 					base_node := g.a.node(base_id)
 					if g.const_ref_node_may_match_fixed_candidate(base_node, scan.fixed_candidate_idents, scan.fixed_candidate_shorts, scan.ident_filter, scan.short_filter) {
 						scan.call_base_items << FixedStorageConstRefItem{
-							id:     base_id
-							file:   cur_file
-							module: cur_module
+							id: base_id
+							at: idx
 						}
 					}
 				}
@@ -15185,9 +15198,8 @@ fn (g &FlatGen) scan_fixed_storage_node_range(mut scan FixedStorageNodeScanArgs)
 					arg_node := g.a.node(arg_id)
 					if g.const_ref_node_may_match_fixed_candidate(arg_node, scan.fixed_candidate_idents, scan.fixed_candidate_shorts, scan.ident_filter, scan.short_filter) {
 						scan.call_base_items << FixedStorageConstRefItem{
-							id:     arg_id
-							file:   cur_file
-							module: cur_module
+							id: arg_id
+							at: idx
 						}
 					}
 				}
@@ -15195,9 +15207,8 @@ fn (g &FlatGen) scan_fixed_storage_node_range(mut scan FixedStorageNodeScanArgs)
 			.ident, .paren {
 				if g.const_ref_node_may_match_fixed_candidate(node, scan.fixed_candidate_idents, scan.fixed_candidate_shorts, scan.ident_filter, scan.short_filter) {
 					scan.ref_items << FixedStorageConstRefItem{
-						id:     flat.NodeId(idx)
-						file:   cur_file
-						module: cur_module
+						id: flat.NodeId(idx)
+						at: idx
 					}
 				}
 			}
@@ -15260,19 +15271,10 @@ fn (mut g FlatGen) collect_fixed_storage_consts(allow_parallel bool) {
 	}
 	mut scans := []FixedStorageNodeScanArgs{cap: bounds.len - 1}
 	for i in 0 .. bounds.len - 1 {
-		start := bounds[i]
-		mut scan_file := ''
-		if start < g.a.nodes.len {
-			if source_file := g.a.source_files[g.a.nodes[start].pos.id] {
-				scan_file = source_file.name
-			}
-		}
 		scans << FixedStorageNodeScanArgs{
 			g:                      g
-			start:                  start
+			start:                  bounds[i]
 			end:                    bounds[i + 1]
-			file:                   scan_file
-			module:                 g.tc.file_modules[scan_file] or { 'main' }
 			fixed_candidate_idents: fixed_candidate_idents
 			fixed_candidate_shorts: fixed_candidate_shorts
 			ident_filter:           &fixed_candidate_ident_filter
@@ -15286,6 +15288,7 @@ fn (mut g FlatGen) collect_fixed_storage_consts(allow_parallel bool) {
 	}
 	g.scan_fixed_storage_node_range(mut scans[0])
 	scan_scopes := scan_threads.wait()
+	contexts := g.fixed_storage_scan_contexts(scans)
 	for scan in scans {
 		address_items << scan.address_items
 		ref_items << scan.ref_items
@@ -15302,9 +15305,9 @@ fn (mut g FlatGen) collect_fixed_storage_consts(allow_parallel bool) {
 	}
 	g.timing_profile('  [ttime]         fs node scan ${f64(fssw.elapsed().microseconds()) / 1000.0:7.2f} ms (refs: ${ref_items.len}, calls: ${call_base_items.len}, indexes: ${index_base_items.len})')
 	fssw.restart()
+	mut file_contexts := []FixedStorageRefFileContext{}
 	for item in address_items {
-		g.tc.cur_file = item.file
-		g.tc.cur_module = item.module
+		g.set_fixed_storage_ref_context(item, &contexts, mut file_contexts)
 		child := g.a.nodes[int(item.id)]
 		const_name := g.const_ref_name_from_node_cached_for_collect(child, unique_const_ref_names, mut const_ref_name_cache)
 		if const_name.len > 0 && g.const_address_can_force_fixed_storage(const_name) {
@@ -15318,8 +15321,7 @@ fn (mut g FlatGen) collect_fixed_storage_consts(allow_parallel bool) {
 		return
 	}
 	for item in call_base_items {
-		g.tc.cur_file = item.file
-		g.tc.cur_module = item.module
+		g.set_fixed_storage_ref_context(item, &contexts, mut file_contexts)
 		node := g.a.nodes[int(item.id)]
 		primary := g.fixed_storage_candidate_primary_from_matched_node_for_collect(node, fixed_storage_candidates, unique_const_ref_names, mut const_ref_name_cache, mut primary_name_cache)
 		if primary.len > 0 {
@@ -15330,8 +15332,7 @@ fn (mut g FlatGen) collect_fixed_storage_consts(allow_parallel bool) {
 		if fixed_safe_refs[int(item.id)] or { false } {
 			continue
 		}
-		g.tc.cur_file = item.file
-		g.tc.cur_module = item.module
+		g.set_fixed_storage_ref_context(item, &contexts, mut file_contexts)
 		node := g.a.nodes[int(item.id)]
 		primary := g.fixed_storage_candidate_primary_from_matched_node_for_collect(node, fixed_storage_candidates, unique_const_ref_names, mut const_ref_name_cache, mut primary_name_cache)
 		if primary.len > 0 {
@@ -15339,8 +15340,7 @@ fn (mut g FlatGen) collect_fixed_storage_consts(allow_parallel bool) {
 		}
 	}
 	for item in index_base_items {
-		g.tc.cur_file = item.file
-		g.tc.cur_module = item.module
+		g.set_fixed_storage_ref_context(item, &contexts, mut file_contexts)
 		node := g.a.nodes[int(item.id)]
 		primary := g.fixed_storage_candidate_primary_from_matched_node_for_collect(node, fixed_storage_candidates, unique_const_ref_names, mut const_ref_name_cache, mut primary_name_cache)
 		if primary.len > 0 {
@@ -15356,6 +15356,117 @@ fn (mut g FlatGen) collect_fixed_storage_consts(allow_parallel bool) {
 	g.timing_profile('  [ttime]         fs replay    ${f64(fssw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	g.tc.cur_module = old_module
 	g.tc.cur_file = old_file
+}
+
+// fixed_storage_scan_contexts replays the `.file`/`module` markers that the
+// scan chunks met, in node order, so a reference resolves in the same context
+// however the node array was split between scan threads.
+fn (g &FlatGen) fixed_storage_scan_contexts(scans []FixedStorageNodeScanArgs) FixedStorageScanContexts {
+	mut start_file := ''
+	if g.a.nodes.len > 0 {
+		if source_file := g.a.source_files[g.a.nodes[0].pos.id] {
+			start_file = source_file.name
+		}
+	}
+	mut contexts := FixedStorageScanContexts{
+		start_file:   start_file
+		start_module: g.tc.file_modules[start_file] or { 'main' }
+	}
+	mut cur_file := contexts.start_file
+	mut cur_module := contexts.start_module
+	for scan in scans {
+		for marker in scan.markers {
+			if marker.is_file {
+				cur_file = marker.value
+				cur_module = 'main'
+			} else {
+				cur_module = marker.value
+			}
+			contexts.ids << marker.idx
+			contexts.files << cur_file
+			contexts.modules << cur_module
+		}
+	}
+	return contexts
+}
+
+// at returns the file and module that a linear walk of the AST has at node `idx`.
+@[direct_array_access]
+fn (contexts &FixedStorageScanContexts) at(idx int) (string, string) {
+	mut lo := 0
+	mut hi := contexts.ids.len
+	for lo < hi {
+		mid := (lo + hi) / 2
+		if contexts.ids[mid] <= idx {
+			lo = mid + 1
+		} else {
+			hi = mid
+		}
+	}
+	if lo == 0 {
+		return contexts.start_file, contexts.start_module
+	}
+	return contexts.files[lo - 1], contexts.modules[lo - 1]
+}
+
+struct FixedStorageRefFileContext {
+	resolved bool
+	known    bool
+	file     string
+	module   string
+}
+
+// set_fixed_storage_ref_context makes the checker resolve a recorded const
+// reference in the file that the reference was written in. The transform
+// appends lowered nodes (the index of a lowered `for x in consts` loop, for
+// example) after the declarations it generated last, so the markers in front
+// of them belong to an unrelated file or module; the reference's own position
+// names its file regardless of where its users were appended. Positionless
+// references fall back to the markers in front of the node that recorded them.
+@[direct_array_access]
+fn (mut g FlatGen) set_fixed_storage_ref_context(item FixedStorageConstRefItem, contexts &FixedStorageScanContexts, mut file_contexts []FixedStorageRefFileContext) {
+	pos_id := int(g.a.nodes[int(item.id)].pos.id)
+	if pos_id > 0 {
+		if pos_id >= file_contexts.len {
+			file_contexts << []FixedStorageRefFileContext{len: pos_id + 1 - file_contexts.len}
+		}
+		if !file_contexts[pos_id].resolved {
+			file_contexts[pos_id] = g.fixed_storage_ref_file_context(pos_id)
+		}
+		if file_contexts[pos_id].known {
+			g.tc.cur_file = file_contexts[pos_id].file
+			g.tc.cur_module = file_contexts[pos_id].module
+			return
+		}
+	}
+	file, module_name := contexts.at(item.at)
+	g.tc.cur_file = file
+	g.tc.cur_module = module_name
+}
+
+fn (g &FlatGen) fixed_storage_ref_file_context(pos_id int) FixedStorageRefFileContext {
+	// Template code belongs to the file that expands the template.
+	mut file_id := pos_id
+	for _ in 0 .. 8 {
+		call_site := g.a.template_call_sites[file_id] or { break }
+		file_id = call_site.id
+	}
+	if file_id <= 0 {
+		return FixedStorageRefFileContext{
+			resolved: true
+		}
+	}
+	source_file := g.a.source_files[file_id] or {
+		return FixedStorageRefFileContext{
+			resolved: true
+		}
+	}
+	return FixedStorageRefFileContext{
+		resolved: true
+		known:    true
+		file:     source_file.name
+		module:   g.tc.file_modules[source_file.name] or { 'main' }
+	}
 }
 
 fn (g &FlatGen) mark_const_ref_descendants(mut ids map[int]bool, id flat.NodeId) {
