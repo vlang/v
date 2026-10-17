@@ -655,7 +655,13 @@ mut:
 	// reconstruct the same type from the lowered text tree.
 	preserve_inplace_expr_types bool
 	inplace_child_log           []InplaceChildRewrite
-	worker_scope                voidptr
+	// inplace_rewrite_holds suspends the in-place child rewrites while the
+	// source subtree being transformed is still needed afterwards: a multi-type
+	// match arm transforms its body once per variant, and an array append reads
+	// its source operand again after lowering it. An in-place rewrite would hand
+	// those later reads the lowered nodes instead of the source ones.
+	inplace_rewrite_holds int
+	worker_scope          voidptr
 	// Helper merge tables are disposable; published AST text uses their parent arena.
 	merge_scratch_scope voidptr
 	// Arenas of the prepare-time index helpers; the driver frees them with the
@@ -2798,8 +2804,8 @@ fn (mut t Transformer) record_inplace_child_rewrite(slot int, child flat.NodeId)
 fn (mut t Transformer) rewrite_children_in_place(id flat.NodeId, children []flat.NodeId) bool {
 	idx := int(id)
 	if !t.inplace_child_rewrites || !t.skip_generics || !t.base_write_intercept
-		|| t.smartcast_stack.len > 0 || idx < 0 || idx >= t.a.nodes.len
-		|| !t.base_write_allowed(idx) {
+		|| t.smartcast_stack.len > 0 || t.inplace_rewrite_holds > 0 || idx < 0
+		|| idx >= t.a.nodes.len || !t.base_write_allowed(idx) {
 		return false
 	}
 	node := t.a.nodes[idx]
@@ -2822,8 +2828,8 @@ fn (mut t Transformer) rewrite_children_in_place(id flat.NodeId, children []flat
 fn (mut t Transformer) rewrite_one_child_in_place(id flat.NodeId, child flat.NodeId) bool {
 	idx := int(id)
 	if !t.inplace_child_rewrites || !t.skip_generics || !t.base_write_intercept
-		|| t.smartcast_stack.len > 0 || idx < 0 || idx >= t.a.nodes.len
-		|| !t.base_write_allowed(idx) {
+		|| t.smartcast_stack.len > 0 || t.inplace_rewrite_holds > 0 || idx < 0
+		|| idx >= t.a.nodes.len || !t.base_write_allowed(idx) {
 		return false
 	}
 	node := t.a.nodes[idx]
@@ -2843,8 +2849,8 @@ fn (mut t Transformer) rewrite_one_child_in_place(id flat.NodeId, child flat.Nod
 fn (mut t Transformer) rewrite_two_children_in_place(id flat.NodeId, first flat.NodeId, second flat.NodeId) bool {
 	idx := int(id)
 	if !t.inplace_child_rewrites || !t.skip_generics || !t.base_write_intercept
-		|| t.smartcast_stack.len > 0 || idx < 0 || idx >= t.a.nodes.len
-		|| !t.base_write_allowed(idx) {
+		|| t.smartcast_stack.len > 0 || t.inplace_rewrite_holds > 0 || idx < 0
+		|| idx >= t.a.nodes.len || !t.base_write_allowed(idx) {
 		return false
 	}
 	node := t.a.nodes[idx]
@@ -30508,7 +30514,12 @@ fn (mut t Transformer) build_match_value_type_branch_chain(match_expr_id flat.No
 		}
 	}
 	raw_body := t.make_block(body_ids)
+	// Every variant of the arm transforms the same body nodes, and a lowered
+	// body can keep the source nodes it did not change, so none of them may be
+	// rewritten in place.
+	t.inplace_rewrite_holds++
 	body_block := t.if_value_branch_block(raw_body, target_name, target_type_id)
+	t.inplace_rewrite_holds--
 	for _ in 0 .. sc_pushed {
 		t.pop_smartcast()
 	}
@@ -30579,7 +30590,12 @@ fn (mut t Transformer) build_match_type_branch_chain(match_expr_id flat.NodeId, 
 			body_id
 		}
 	}
+	// Every variant of the arm transforms the same body nodes, and a lowered
+	// body can keep the source nodes it did not change, so none of them may be
+	// rewritten in place.
+	t.inplace_rewrite_holds++
 	body_block := t.make_block(t.transform_scope_stmts(body_ids))
+	t.inplace_rewrite_holds--
 	for _ in 0 .. sc_pushed {
 		t.pop_smartcast()
 	}
