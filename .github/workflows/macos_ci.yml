@@ -47,6 +47,9 @@ jobs:
       # Stop a failing test session at its first failure instead of running the
       # whole suite to completion; the remaining files add no signal.
       VTEST_FAIL_FAST: '1'
+      # Three test workers fit the 3-CPU/7 GB Apple-silicon runners: a worker
+      # peaks near 0.25 GB, so this stays CPU-bound with ample headroom.
+      VJOBS: '3'
       VTEST_SHOW_LONGEST_BY_RUNTIME: 3
       VTEST_SHOW_LONGEST_BY_COMPTIME: 3
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
@@ -340,6 +343,9 @@ jobs:
       # Stop a failing test session at its first failure instead of running the
       # whole suite to completion; the remaining files add no signal.
       VTEST_FAIL_FAST: '1'
+      # Three test workers fit the 3-CPU/7 GB Apple-silicon runners: a worker
+      # peaks near 0.25 GB, so this stays CPU-bound with ample headroom.
+      VJOBS: '3'
       VTEST_SHOW_LONGEST_BY_RUNTIME: 3
       VTEST_SHOW_LONGEST_BY_COMPTIME: 3
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
