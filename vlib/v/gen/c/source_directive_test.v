@@ -587,6 +587,39 @@ fn test_target_libc_headers_own_their_c_extern_declarations() {
 	assert g.should_emit_c_extern_decl_from_file('target_specific_api', source, 'main')
 }
 
+fn test_target_libc_headers_own_errno_accessor_declarations() {
+	mut g := FlatGen.new()
+	source := os.join_path(@VEXEROOT, 'vlib', 'builtin', 'cfns.c.v')
+	g.compiler_vroot = @VEXEROOT
+	for name in ['__error', '__errno', '__errno_location', '___errno', '_errno', '_errnop',
+		'__get_errno_ptr'] {
+		g.set_target_libc_headers(false)
+		assert g.should_emit_c_extern_decl_from_file(name, source, 'builtin'), name
+		g.set_target_libc_headers(true)
+		assert !g.should_emit_c_extern_decl_from_file(name, source, 'builtin'), name
+	}
+}
+
+fn test_freestanding_c_uses_target_errno_header() ! {
+	dir := os.join_path(os.vtmp_dir(), 'target_errno_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	source := os.join_path(dir, 'main.v')
+	output := os.join_path(dir, 'main.c')
+	os.write_file(source, 'fn main() { println(1) }\n')!
+	// -target-libc-headers rejects Windows targets and the target OS defaults to the host's,
+	// so pin Linux. Writing `.c` output only generates C; no Linux toolchain is needed.
+	result := os.exec([@VEXE, '-freestanding', '-target-libc-headers', '-gc', 'none', '-nocache',
+		'-os', 'linux', '-o', output, source])
+	assert result.exit_code == 0, result.output
+	generated := os.read_file(output)!
+	assert generated.contains('#include <errno.h>')
+	for name in ['__error', '__errno', '__errno_location', '___errno', '_errno', '_errnop',
+		'__get_errno_ptr'] {
+		assert !generated.contains('i32* ' + name + '('), name
+	}
+}
+
 fn test_builtin_boehm_directives_use_system_libc() {
 	mut boehm := FlatGen.new()
 	boehm.add_c_directive('builtin', '#include <gc.h>', false)
@@ -732,6 +765,9 @@ fn test_portable_output_keeps_other_target_linkage_metadata() {
 		selected.a = ast
 		selected.set_target(pref.target_from('linux', 'arm64') or { panic(err) })
 		selected.collect_c_flags_from_directives()
-		assert !selected.should_emit_c_extern_decl_from_file('native_api', source, 'bindings'), flag
+		// A selected target drops the other target's link inputs, so they do not make the
+		// file need a prototype beside its headers. (A unit without any headers declares
+		// every binding it calls, whatever its link inputs.)
+		assert !selected.c_extern_decl_has_no_header(source, 'bindings'), flag
 	}
 }

@@ -43,6 +43,7 @@ const external_commands = [
 	'download',
 	'env',
 	'fmt',
+	'generate',
 	'git-fmt-hook',
 	'gret',
 	'init',
@@ -142,7 +143,7 @@ fn main() {
 		eprintln('unknown option `-usecache`; caching is enabled by default, use `-nocache` to disable it')
 		exit(1)
 	}
-	if selected_backend(compiler_args_before_program(option_args), false) == 'native' {
+	if native_backend_rejected(command, option_args) {
 		eprintln(pref.native_backend_replacement_message)
 		exit(1)
 	}
@@ -204,8 +205,8 @@ fn main() {
 		exit(1)
 	}
 	if command in external_commands
-		|| command in ['new', 'init', 'install', 'link', 'list', 'outdated', 'remove', 'registry',
-			'search', 'show', 'unlink', 'update', 'upgrade', 'vlib-docs'] {
+		|| command in ['new', 'init', 'generate', 'install', 'link', 'list', 'outdated', 'remove',
+			'registry', 'search', 'show', 'unlink', 'update', 'upgrade', 'vlib-docs'] {
 		run_external_tool(args, command_index, command)
 		return
 	}
@@ -453,8 +454,8 @@ fn find_command(args []string) (int, string) {
 		}
 		if arg in external_commands
 			|| arg in ['version', '-version', '--version', 'help', '-h', '--help', 'get', 'interpret',
-				'new', 'init', 'install', 'link', 'list', 'outdated', 'remove', 'registry', 'search',
-				'show', 'unlink', 'update', 'upgrade', 'vlib-docs', 'build-module'] {
+				'new', 'init', 'generate', 'install', 'link', 'list', 'outdated', 'remove', 'registry',
+				'search', 'show', 'unlink', 'update', 'upgrade', 'vlib-docs', 'build-module'] {
 			return i, arg
 		}
 		if !arg.starts_with('-') {
@@ -1528,4 +1529,15 @@ fn v1_fallback_make_hint() string {
 		return 'On Windows, install GNU make in MSYS2 (`make` or `mingw32-make`) and put its tools, including `sh`, on PATH.'
 	}
 	return 'Install make.'
+}
+
+// native_backend_rejected reports whether the removed `-b native` backend has to
+// be refused for `command`. `vfmt` is the one tool that still accepts the alias,
+// because it maps `native` onto the C formatter, so the launcher must let it
+// through instead of rejecting the flag before the tool ever sees it.
+fn native_backend_rejected(command string, option_args []string) bool {
+	if command == 'fmt' {
+		return false
+	}
+	return selected_backend(compiler_args_before_program(option_args), false) == 'native'
 }

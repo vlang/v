@@ -48,6 +48,9 @@ fn test_windows_literal_hello_has_no_headers_or_gc() {
 		panic('Windows ASCII hello must use minimal output')
 	}
 	assert code.len < 256, code
+	// The driver links Windows executables with -municode, so the CRT calls wmain.
+	assert code.contains('int wmain(void) {'), code
+	assert !code.contains('int main('), code
 	assert code.contains('int puts(const char* const_msg);'), code
 	assert code.contains('_setmode(1, 0x8000);'), code
 	assert !code.contains('#include') && !code.contains('GC_') && !code.contains('malloc'), code
@@ -62,6 +65,7 @@ fn test_windows_literal_output_retries_writes_and_preserves_bytes_and_order() ! 
 		panic('Windows ASCII stream output must use minimal output')
 	}
 	assert code.contains('int _write(int fd, const void* const_buf, unsigned int count);'), code
+	assert code.contains('int wmain(void) {'), code
 	assert !code.contains('#include') && !code.contains('GC_'), code
 	assert !code.contains('__SIZE_TYPE__') && !code.contains('__PTRDIFF_TYPE__'), code
 	stub := '#include <assert.h>
@@ -118,7 +122,9 @@ fn run_literal_native_stub(name string, code string, stub string, extra_flags []
 	generated := os.join_path(root, 'generated.c')
 	sink := os.join_path(root, 'sink.c')
 	binary := os.join_path(root, 'probe' + $if windows { '.exe' } $else { '' })
-	os.write_file(generated, code.replace('int main(void)', 'int literal_main(void)'))!
+	// Windows literal programs enter through wmain; the stub supplies its own main.
+	os.write_file(generated, code.replace_each(['int wmain(void)', 'int literal_main(void)',
+		'int main(void)', 'int literal_main(void)']))!
 	os.write_file(sink, stub)!
 	compiler := $if windows { 'gcc' } $else { 'cc' }
 	compiled := cmdexec.run(compiler, ['-std=c11', '-Werror', '-Wall', '-Wextra', ...extra_flags,

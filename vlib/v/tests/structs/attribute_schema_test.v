@@ -35,7 +35,7 @@ fn index() {
 }
 
 struct Cfg {
-	user_name string @[GetRoute: '/cfg'; GetRoute_method: ; GetRoute_1: post]
+	user_name string @[GetRoute: '/cfg'; GetRoute_method:; GetRoute_1: post]
 }
 
 enum Level {

@@ -2,10 +2,10 @@ module os
 
 import strings
 
-$if macos {
-	// needed for os.executable():
-	fn C._dyld_get_image_name(image u32) &char
-}
+// needed for os.executable() on macOS. Declared outside `$if macos`: `-cross` output
+// keeps the macOS branch of executable(), while a top-level `$if macos` is resolved
+// for the host that generates it.
+fn C._dyld_get_image_name(image u32) &char
 
 // BSD sysctl identifiers stay in V so executable lookup does not require C headers.
 const sysctl_ctl_kern = i32(1)
@@ -384,6 +384,7 @@ fn vpopen(path string) voidptr {
 	$if windows {
 		mode := 'rb'
 		wpath := path.to_wide()
+		windows_avoid_long_temp_env()
 		return C._wpopen(wpath, mode.to_wide())
 	} $else {
 		cpath := path.str
@@ -457,6 +458,7 @@ pub fn system(cmd string) int {
 		wcmd := if cmd.len > 1 && cmd[0] == `"` && cmd[1] != `"` { '"${cmd}"' } else { cmd }
 		flush_stdout()
 		flush_stderr()
+		windows_avoid_long_temp_env()
 		unsafe {
 			ret = C._wsystem(wcmd.to_wide())
 		}
@@ -505,8 +507,10 @@ pub fn system(cmd string) int {
 // whether lstat returns any result or a "not exists" error gives a clear indication of whether the path is occupied.
 pub fn exists(path string) bool {
 	$if windows {
+		// GetFileAttributesW is a Win32 call, so a longPathAware executable can use paths
+		// past MAX_PATH with it, where the CRT's _waccess cannot.
 		p := path.replace('/', '\\')
-		return C._waccess(p.to_wide(), f_ok) != -1
+		return C.GetFileAttributesW(p.to_wide()) != u32(C.INVALID_FILE_ATTRIBUTES)
 	} $else {
 		return C.access(&char(path.str), f_ok) != -1
 	}
@@ -1273,6 +1277,7 @@ pub fn execvp(cmdpath string, cmdargs []string) ! {
 	cargs << &char(unsafe { nil })
 	mut res := int(0)
 	$if windows {
+		windows_avoid_long_temp_env()
 		res = C._execvp(&char(cmdpath.str), cargs.data)
 	} $else {
 		res = C.execvp(&char(cmdpath.str), cargs.data)
@@ -1298,8 +1303,16 @@ pub fn execve(cmdpath string, cmdargs []string, envs []string) ! {
 	for i in 0 .. cmdargs.len {
 		cargv << &char(cmdargs[i].str)
 	}
-	for i in 0 .. envs.len {
-		cenvs << &char(envs[i].str)
+	$if windows {
+		windows_avoid_long_temp_env()
+	}
+	child_envs := $if windows {
+		windows_temp_env_entries_fix(envs, windows_temp_env_candidates)
+	} $else {
+		envs
+	}
+	for i in 0 .. child_envs.len {
+		cenvs << &char(child_envs[i].str)
 	}
 	cargv << &char(unsafe { nil })
 	cenvs << &char(unsafe { nil })

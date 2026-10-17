@@ -1,3 +1,4 @@
+// vtest ownership
 import os
 
 const mutable_index_move_vexe = @VEXE

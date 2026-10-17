@@ -982,10 +982,9 @@ fn (mut t Transformer) validate_specialized_is_expr(subject_type_id u32, resolve
 		if _ := t.resolve_interface_pattern(pattern_id, subject_type_id) {
 			return true
 		}
-		if target_iface_source_id := t.resolve_interface_pattern_interface(pattern_id) {
-			if t.interface_conversion_impl_mappings(subject_type_id, target_iface_source_id).len > 0 {
-				return true
-			}
+		if _ := t.resolve_interface_pattern_interface(pattern_id) {
+			// A test against another interface is valid even when no type implements both.
+			return true
 		}
 		if t.is_builtin_ierror_interface_name(subject_type_id) {
 			t.record_monomorph_error('`${pattern}` is not compatible with `IError`')
@@ -1532,7 +1531,9 @@ fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.No
 			} else {
 				t.transform_expr(expr_id)
 			}
-			if converted := t.convert_interface_expr_to_interface(child, expr_type, target_iface_source_id) {
+			if converted := t.convert_interface_expr_to_interface(child, expr_type, target_iface_source_id,
+				.checked)
+			{
 				if target_is_pointer {
 					return t.heap_copy_interface_expr(converted, target_iface_source_id, flat.source_type_id(node.value))
 				}

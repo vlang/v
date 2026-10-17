@@ -58,7 +58,7 @@ fn test_type_interner_owns_payloads_from_a_left_worker_scope() {
 		second_id, second := interner.canonicalize(expected)
 		assert second_id == id
 		assert semantic_types_equal(second, expected)
-		assert interner.name(id) == expected.name()
+		assert interner.source_type_id(id) == expected.source_type_id()
 		probed := interner.probe(expected) or { panic('published type is missing') }
 		assert semantic_types_equal(probed, expected)
 	}
@@ -73,7 +73,7 @@ fn test_type_interner_promotes_scoped_slice_growth() {
 			id, _ := interner.canonicalize(Type(Unknown{
 				reason: 'scoped_type_${i}'
 			}))
-			interner.name(id)
+			interner.source_type_id(id)
 		}
 		assert unsafe { prealloc_scope_owns(scope, interner.types.data) }
 		assert unsafe { prealloc_scope_owns(scope, interner.names.data) }
