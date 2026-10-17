@@ -17893,8 +17893,78 @@ fn (mut g FlatGen) c_extern_decl_line(node flat.Node, cfn string) string {
 	sb.write_string(cfn)
 	sb.write_u8(`(`)
 	sb.write_string(g.c_extern_decl_params(node))
-	sb.write_string(');')
+	sb.write_u8(`)`)
+	if symbol := g.c_extern_darwin_x64_symbol(cfn) {
+		// The prototype without the label stays for every other target.
+		unlabeled := sb.str()
+		return '#if defined(__APPLE__) && defined(__x86_64__)\n${unlabeled} __asm__("${symbol}");\n#else\n${unlabeled};\n#endif'
+	}
+	sb.write_u8(`;`)
 	return sb.str()
+}
+
+// c_extern_darwin_x64_symbol returns the symbol that the macOS SDK links `cfn` to
+// on x86_64, when that is not the plain `_cfn`. The SDK headers rename these
+// functions with an asm label: `stat` is `_stat$INODE64` there, because the bare
+// `_stat` is kept for old binaries and fills the 32-bit-inode `struct stat`, and
+// the bare `_readdir` returns the old `struct dirent`. V describes only the 64-bit
+// inode layouts, so a prototype without the SDK's label reads garbage on an Intel
+// Mac. arm64 has only the 64-bit inode functions, under their plain names.
+fn (g &FlatGen) c_extern_darwin_x64_symbol(cfn string) ?string {
+	if g.target.os != 'macos' && !g.output_cross_c {
+		return none
+	}
+	symbol := c_darwin_x64_sdk_symbols[cfn] or { return none }
+	return symbol
+}
+
+// c_darwin_x64_sdk_symbols lists the functions that the macOS SDK renames for an
+// x86_64 target, with the symbol it gives them (`__DARWIN_INODE64`,
+// `__DARWIN_ALIAS_I`, `__DARWIN_1050` and `__DARWIN_EXTSN` in <sys/cdefs.h>).
+// `select` takes its `$1050` name because V defines no `_DARWIN_C_SOURCE`.
+const c_darwin_x64_sdk_symbols = {
+	'__opendir2':      '___opendir2$INODE64'
+	'alphasort':       '_alphasort$INODE64'
+	'daemon':          '_daemon$1050'
+	'fdopendir':       '_fdopendir$INODE64'
+	'fdscandir':       '_fdscandir$INODE64'
+	'fdscandir_b':     '_fdscandir_b$INODE64'
+	'fstat':           '_fstat$INODE64'
+	'fstatat':         '_fstatat$INODE64'
+	'fstatfs':         '_fstatfs$INODE64'
+	'fstatx_np':       '_fstatx_np$INODE64'
+	'fts_children':    '_fts_children$INODE64'
+	'fts_close':       '_fts_close$INODE64'
+	'fts_open':        '_fts_open$INODE64'
+	'fts_open_b':      '_fts_open_b$INODE64'
+	'fts_read':        '_fts_read$INODE64'
+	'fts_set':         '_fts_set$INODE64'
+	'ftw':             '_ftw$INODE64'
+	'getfsstat':       '_getfsstat$INODE64'
+	'getmntinfo':      '_getmntinfo$INODE64'
+	'getmntinfo_r_np': '_getmntinfo_r_np$INODE64'
+	'glob':            '_glob$INODE64'
+	'glob_b':          '_glob_b$INODE64'
+	'lstat':           '_lstat$INODE64'
+	'lstatx_np':       '_lstatx_np$INODE64'
+	'nftw':            '_nftw$INODE64'
+	'opendir':         '_opendir$INODE64'
+	'pselect':         '_pselect$1050'
+	'readdir':         '_readdir$INODE64'
+	'readdir_r':       '_readdir_r$INODE64'
+	'realpath':        '_realpath$DARWIN_EXTSN'
+	'rewinddir':       '_rewinddir$INODE64'
+	'scandir':         '_scandir$INODE64'
+	'scandir_b':       '_scandir_b$INODE64'
+	'scandirat':       '_scandirat$INODE64'
+	'scandirat_b':     '_scandirat_b$INODE64'
+	'seekdir':         '_seekdir$INODE64'
+	'select':          '_select$1050'
+	'stat':            '_stat$INODE64'
+	'statfs':          '_statfs$INODE64'
+	'statx_np':        '_statx_np$INODE64'
+	'syslog':          '_syslog$DARWIN_EXTSN'
+	'telldir':         '_telldir$INODE64'
 }
 
 // c_extern_calling_convention returns the calling convention for the prototype V
