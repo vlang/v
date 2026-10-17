@@ -82,7 +82,7 @@ fn test_map_callbacks_resolve_aliases_and_keep_fixed_array_helpers() {
 			hash_fn, eq_fn, clone_fn, free_fn := t.map_callback_names_for_type(flat.source_type_id(name))
 			actual := [hash_fn, eq_fn, clone_fn, free_fn]
 			if name == 'BlockKey' {
-				prefix := '${tc.c_type(tc.parse_type(base))}_map_key'
+				prefix := '${tc.c_type(tc.parse_type(flat.source_type_id(base)))}_map_key'
 				assert actual == ['${prefix}_hash', '${prefix}_eq', '${prefix}_clone',
 					'${prefix}_free']
 			} else {
