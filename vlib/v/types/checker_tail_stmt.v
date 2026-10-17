@@ -7764,7 +7764,10 @@ fn (tc &TypeChecker) selector_type(_id flat.NodeId, node flat.Node) ?Type {
 		if typ := tc.sum_shared_field_type(clean, node.value) {
 			return typ
 		}
-		if base_node.kind == .index {
+		// Like V1, a field that only one variant has is read through that variant
+		// (an implicit, checked `as` cast) when the sum value cannot be smartcast,
+		// e.g. `shapes[0].radius` or `def.range().entries`.
+		if base_node.kind == .index || tc.expr_key(base_id).len == 0 {
 			if typ := tc.sum_unique_variant_field_type(clean, node.value) {
 				return typ
 			}

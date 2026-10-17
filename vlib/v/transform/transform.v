@@ -24529,6 +24529,27 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 		new_base := t.selector_base_for_field(transformed_base, base_type0_source_id)
 		return t.lower_sum_shared_field_selector(new_base, base_type0_source_id, node.value, shared_typ_source_id)
 	}
+	// Like V1, a field that only one variant has reads `(sum as Variant).field` when
+	// the sum value cannot be smartcast (see the checker's selector_type). cgen
+	// accesses the variant of an indexed sum value directly, which keeps it an lvalue.
+	if base_node0.kind != .index && t.expr_key(base_id).len == 0 {
+		if variant_source_id := t.sum_unique_field_variant(base_type0_source_id, node.value) {
+			start := t.a.children.len
+			t.a.children << base_id
+			variant_value := t.transform_as_expr(base_id, flat.Node{
+				kind:           .as_expr
+				value:          flat.source_type_name(variant_source_id)
+				typ:            variant_source_id
+				children_start: start
+				children_count: 1
+				pos:            node.pos
+			})
+			field_type_source_id := t.lookup_struct_field_type(variant_source_id, node.value) or {
+				t.transformed_selector_type(node)
+			}
+			return t.make_selector_op(variant_value, node.value, field_type_source_id, .dot)
+		}
+	}
 	// Ask the checker about a method named without a call before the receiver is
 	// lowered: lowering retypes a local that holds a struct alias as its struct.
 	is_method_value := !isnil(t.tc) && t.tc.expr_is_method_value(id)
@@ -24831,6 +24852,37 @@ fn (t &Transformer) sum_shared_field_type_name_inner(sum_type_id u32, field stri
 	}
 	if common == 0 { return none }
 	return common
+}
+
+// sum_unique_field_variant returns the only struct variant of the sum type `sum_type_id`
+// that has the field `field`.
+fn (t &Transformer) sum_unique_field_variant(sum_type_id u32, field string) ?u32 {
+	if sum_type_id == 0 || flat.source_type_shape(sum_type_id).has(.pointer) {
+		return none
+	}
+	mut sum_candidate := sum_type_id
+	if t.active_specialization_args.ids.len > 0 {
+		sum_candidate = t.subst_type(sum_candidate, t.active_specialization_args.ids)
+	}
+	if resolved := t.resolve_sum_name_from_c_name(flat.source_type_name(sum_candidate)) {
+		sum_candidate = resolved
+	}
+	if !t.sum_types.contains(flat.source_type_name(t.resolve_sum_name(sum_candidate))) {
+		return none
+	}
+	mut found := u32(0)
+	for variant in t.concrete_sum_variants_for_candidate(sum_candidate) {
+		if _ := t.lookup_struct_field_type(variant, field) {
+			if found != 0 {
+				return none
+			}
+			found = variant
+		}
+	}
+	if found == 0 {
+		return none
+	}
+	return found
 }
 
 // sum_variant_field_type_name supports sum variant field type name handling for Transformer.
