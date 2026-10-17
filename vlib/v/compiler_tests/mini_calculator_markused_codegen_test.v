@@ -236,6 +236,56 @@ pub fn (mut p Parser) expr() !int {
 	assert !generated.contains('othermod__Parser__expr('), generated
 }
 
+fn test_main_and_const_receivers_do_not_root_imported_homonyms() {
+	v3_bin := mini_calc_build_v3()
+	output, generated := mini_calc_compile_run(v3_bin, 'imported_homonym_main', {
+		'main.v':         'module main
+
+import othermod
+
+struct Parser {}
+
+fn (p Parser) expr() int {
+	return 5
+}
+
+fn (p Parser) term() int {
+	return 6
+}
+
+const term = Parser{}.term()
+
+fn main() {
+	parser := Parser{}
+	println(int_str(parser.expr()))
+	println(int_str(term))
+	println(int_str(othermod.touch()))
+}
+'
+		'othermod/mod.v': 'module othermod
+
+pub struct Parser {}
+
+pub fn touch() int {
+	return 2
+}
+
+pub fn (p Parser) expr() int {
+	return 100
+}
+
+pub fn (p Parser) term() int {
+	return 100
+}
+'
+	}, 'main.v')
+	assert output == '5\n6\n2'
+	assert generated.contains('Parser__expr('), generated
+	assert generated.contains('Parser__term('), generated
+	assert !generated.contains('othermod__Parser__expr('), generated
+	assert !generated.contains('othermod__Parser__term('), generated
+}
+
 fn test_top_level_local_receiver_cannot_shadow_module_alias() {
 	v3_bin := mini_calc_build_v3()
 	output := mini_calc_compile_bad(v3_bin, 'local_receiver_alias_shadow', {
