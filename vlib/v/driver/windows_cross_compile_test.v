@@ -50,3 +50,29 @@ fn test_unsupported_windows_target_exits_with_its_error() {
 		assert !res.output.contains('signal'), res.output
 	}
 }
+
+fn test_windows_target_builds_an_amd64_executable_with_mingw() {
+	$if windows {
+		return
+	}
+	os.find_abs_path_of_executable('x86_64-w64-mingw32-gcc') or {
+		eprintln('skipping: x86_64-w64-mingw32-gcc is not installed')
+		return
+	}
+	dir := windows_cross_test_dir('mingw')
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	source := os.join_path(dir, 'main.v')
+	output := os.join_path(dir, 'main.exe')
+	os.write_file(source, windows_cross_source)!
+	res := run_windows_cross_build(['-nocache', '-os', 'windows', '-o', output, source])
+	assert res.exit_code == 0, res.output
+	exe := os.read_bytes(output)!
+	assert exe.len > 0x40 && exe[0] == `M` && exe[1] == `Z`
+	pe := int(u32(exe[0x3c]) | (u32(exe[0x3d]) << 8) | (u32(exe[0x3e]) << 16) | (u32(exe[0x3f]) << 24))
+	assert pe + 6 <= exe.len
+	assert exe[pe..pe + 4] == [u8(`P`), `E`, 0, 0]
+	// IMAGE_FILE_MACHINE_AMD64, also on an arm64 host.
+	assert u16(exe[pe + 4]) | (u16(exe[pe + 5]) << 8) == 0x8664
+}

@@ -2023,15 +2023,26 @@ fn v3_is_macos_linux_cross_compiler(c_compiler string) bool {
 	return name == 'cc' || name == 'clang' || name.starts_with('clang-')
 }
 
-fn v3_windows_cross_c_compiler(c_compiler string, host pref.Target, target pref.Target) string {
+// v3_windows_cross_c_compiler replaces TCC and the platform default `cc`, which
+// cannot build a Windows program on another host, with the MinGW-w64 GCC for
+// the target architecture. An explicit `-cc` other than TCC is kept.
+fn v3_windows_cross_c_compiler(c_compiler string, c_compiler_explicit bool, host pref.Target, target pref.Target) string {
+	name := os.file_name(c_compiler).to_lower_ascii()
 	if host.os == 'windows' || target.os != 'windows'
-		|| os.file_name(c_compiler).to_lower_ascii() !in ['tcc', 'tinyc'] {
+		|| (name !in ['tcc', 'tinyc'] && (c_compiler_explicit || name != 'cc')) {
 		return c_compiler
 	}
-	return match target.arch {
+	cross_compiler := v3_windows_mingw_gcc(target.arch)
+	return if cross_compiler == '' { c_compiler } else { cross_compiler }
+}
+
+// v3_windows_mingw_gcc is the MinGW-w64 GCC that builds programs for Windows on
+// `arch`, or '' when MinGW-w64 has no GCC for it.
+fn v3_windows_mingw_gcc(arch string) string {
+	return match arch {
 		'amd64' { 'x86_64-w64-mingw32-gcc' }
 		'x86' { 'i686-w64-mingw32-gcc' }
-		else { c_compiler }
+		else { '' }
 	}
 }
 
@@ -2042,10 +2053,19 @@ fn v3_c_compiler_command_alias(c_compiler string, host_os string) string {
 	return c_compiler
 }
 
-fn v3_target_arch_for_request(host pref.Target, target_os string, target_arch string, target_arch_explicit bool) string {
-	if host.os == 'macos' && pref.normalized_os(target_os) == 'linux' && !target_arch_explicit {
+fn v3_target_arch_for_request(host pref.Target, target_os string, target_arch string, target_arch_explicit bool, c_compiler_explicit bool) string {
+	if target_arch_explicit {
+		return target_arch
+	}
+	normalized_target_os := pref.normalized_os(target_os.trim_space().to_lower())
+	if host.os == 'macos' && normalized_target_os == 'linux' {
 		// The bundled Linux sysroot contains an x86_64 userspace, independently of
 		// whether the macOS host is Intel or Apple Silicon.
+		return 'amd64'
+	}
+	if host.os != 'windows' && normalized_target_os == 'windows' && !c_compiler_explicit {
+		// Another host builds a Windows program with the MinGW-w64 GCC for Win64,
+		// `x86_64-w64-mingw32-gcc` (see v3_windows_cross_c_compiler), also on arm64.
 		return 'amd64'
 	}
 	return target_arch
@@ -2103,8 +2123,10 @@ fn c_compiler_target_args(target pref.Target, c_compiler string, compiler_explic
 		}
 		return ['-target', 'x86_64-linux-gnu', '-I', os.join_path(linux_cross_sysroot, 'include')]
 	}
-	if compiler_explicit {
-		// An explicitly selected compiler may already encode its target in its name or defaults.
+	if compiler_explicit || (target.os == 'windows' && c_compiler != ''
+		&& c_compiler == v3_windows_mingw_gcc(target.arch)) {
+		// An explicitly selected compiler may already encode its target in its name or defaults,
+		// and so does the MinGW-w64 GCC that v3_windows_cross_c_compiler selects.
 		return []string{}
 	}
 	return error('linking target ${target.os}/${target.arch} from host ${host.os}/${host.arch} is not supported by the default C compiler; use -o file.c and compile it with a target toolchain')
@@ -8149,7 +8171,7 @@ fn v3_select_c_compiler(vroot string, requested V3BundledTccProbeOptions) V3CCom
 	options := V3BundledTccProbeOptions{
 		...requested
 		c_compiler: v3_c_compiler_command_alias(v3_windows_cross_c_compiler(requested.c_compiler,
-			requested.host_target, requested.target), requested.host_os)
+			requested.c_compiler_explicit, requested.host_target, requested.target), requested.host_os)
 	}
 	bundled_tcc_available := v3_bundled_tcc_available(options)
 	allow_system_tcc := options.backend == 'c' && !options.c_only && !options.is_prod
@@ -11328,7 +11350,7 @@ pub fn run(args []string) {
 	}
 	compatibility_host := pref.host_target()
 	target_arch = v3_target_arch_for_request(compatibility_host, target_os, target_arch,
-		target_arch_explicit)
+		target_arch_explicit, c_compiler_explicit)
 	// `-os cross` is not a platform. It asks for portable C that is not tied to
 	// one OS, architecture or C compiler, so that a single generated snapshot
 	// (`vc/v.c`) bootstraps V everywhere. Generate against the host target and

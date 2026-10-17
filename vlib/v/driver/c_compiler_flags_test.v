@@ -275,10 +275,40 @@ fn test_v3_windows_cross_compiler_replaces_host_tcc() {
 		os:   'windows'
 		arch: 'x86'
 	}
-	assert v3_windows_cross_c_compiler('tcc', linux, windows_amd64) == 'x86_64-w64-mingw32-gcc'
-	assert v3_windows_cross_c_compiler('tinyc', linux, windows_x86) == 'i686-w64-mingw32-gcc'
-	assert v3_windows_cross_c_compiler('clang', linux, windows_amd64) == 'clang'
-	assert v3_windows_cross_c_compiler('tcc', windows_amd64, windows_amd64) == 'tcc'
+	windows_arm64 := pref.Target{
+		os:   'windows'
+		arch: 'arm64'
+	}
+	assert v3_windows_cross_c_compiler('tcc', true, linux, windows_amd64) == 'x86_64-w64-mingw32-gcc'
+	assert v3_windows_cross_c_compiler('tinyc', true, linux, windows_x86) == 'i686-w64-mingw32-gcc'
+	assert v3_windows_cross_c_compiler('clang', true, linux, windows_amd64) == 'clang'
+	assert v3_windows_cross_c_compiler('tcc', true, windows_amd64, windows_amd64) == 'tcc'
+	// The platform default `cc` has no Windows headers; an explicit `-cc cc` is kept.
+	assert v3_windows_cross_c_compiler('cc', false, linux, windows_amd64) == 'x86_64-w64-mingw32-gcc'
+	assert v3_windows_cross_c_compiler('cc', true, linux, windows_amd64) == 'cc'
+	assert v3_windows_cross_c_compiler('cc', false, linux, windows_arm64) == 'cc'
+	assert v3_windows_cross_c_compiler('cc', false, windows_amd64, windows_amd64) == 'cc'
+}
+
+fn test_v3_windows_target_defaults_to_amd64_on_other_hosts() {
+	macos_arm64 := pref.Target{
+		os:   'macos'
+		arch: 'arm64'
+	}
+	linux_arm64 := pref.Target{
+		os:   'linux'
+		arch: 'arm64'
+	}
+	windows_arm64 := pref.Target{
+		os:   'windows'
+		arch: 'arm64'
+	}
+	assert v3_target_arch_for_request(macos_arm64, 'windows', 'arm64', false, false) == 'amd64'
+	assert v3_target_arch_for_request(linux_arm64, 'Windows', 'arm64', false, false) == 'amd64'
+	assert v3_target_arch_for_request(macos_arm64, 'windows', 'arm64', true, false) == 'arm64'
+	assert v3_target_arch_for_request(macos_arm64, 'windows', 'arm64', false, true) == 'arm64'
+	assert v3_target_arch_for_request(windows_arm64, 'windows', 'arm64', false, false) == 'arm64'
+	assert v3_target_arch_for_request(macos_arm64, 'macos', 'arm64', false, false) == 'arm64'
 }
 
 fn test_v3_msvc_alias_selects_cl_on_windows() {
@@ -359,8 +389,8 @@ fn test_macos_linux_cross_compile_uses_bundled_amd64_sysroot() {
 		os:   'linux'
 		arch: 'amd64'
 	}
-	assert v3_target_arch_for_request(host, 'linux', 'arm64', false) == 'amd64'
-	assert v3_target_arch_for_request(host, 'linux', 'arm64', true) == 'arm64'
+	assert v3_target_arch_for_request(host, 'linux', 'arm64', false, false) == 'amd64'
+	assert v3_target_arch_for_request(host, 'linux', 'arm64', true, false) == 'arm64'
 	assert v3_macos_linux_cross_compile(host, target, 'c', 'cc')
 	assert v3_macos_linux_cross_compile(host, target, 'c', 'clang')
 	assert v3_macos_linux_cross_compile(host, target, 'c', '/usr/bin/clang')

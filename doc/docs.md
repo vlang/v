@@ -10151,8 +10151,9 @@ v -os freebsd .
 ```
 
 > [!NOTE]
-> Cross-compiling a Windows binary on a Linux machine requires the GNU C compiler for
-> MinGW-w64 (targeting Win64) to first be installed.
+> Cross-compiling a Windows binary on a Linux or macOS machine requires the GNU C compiler for
+> MinGW-w64 (targeting Win64) to first be installed. Without `-arch` and `-cc`, `-os windows`
+> builds an amd64 executable with `x86_64-w64-mingw32-gcc`, also on an arm64 machine.
 
 For Ubuntu/Debian-based distributions:
 
@@ -10164,6 +10165,12 @@ For Arch based distributions:
 
 ```shell
 sudo pacman -S mingw-w64-gcc
+```
+
+For macOS with Homebrew:
+
+```shell
+brew install mingw-w64
 ```
 
 (Cross compiling for macOS is temporarily not possible.)
