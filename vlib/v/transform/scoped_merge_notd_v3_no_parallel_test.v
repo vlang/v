@@ -90,17 +90,26 @@ fn test_helper_merge_releases_bookkeeping_and_preserves_published_text() {
 }
 
 fn test_scoped_monomorph_specialization_args_are_deep_cloned() {
+	mut master := flat.TypeTextListBindings{}
 	scope := transform_worker_scope_begin(true)
-	scoped_args := ['cloud.Body'.clone(), '[]string'.clone()]
+	mut worker := flat.TypeTextListBindings{}
+	scoped_name := 'decode_cloud_Body'.clone()
+	worker.set(scoped_name, ['cloud.Body'.clone(), '[]string'.clone()])
+	scoped_args := worker.type_ids(scoped_name) or { panic('missing worker args') }
 	transform_worker_scope_leave(scope)
 
-	owned_args := clone_monomorph_specialization_args(scoped_args)
-	assert owned_args == ['cloud.Body', '[]string']
+	// Mirrors the scoped and parallel monomorphize merges, which publish the
+	// worker's arena-backed argument IDs before its scratch scope is freed.
+	master.set_ids(scoped_name.clone(), scoped_args)
+	owned_args := master.type_ids('decode_cloud_Body') or { panic('missing master args') }
+	assert !transform_scope_owns(scope, owned_args.data)
+	assert !transform_scope_owns(scope, master.keys()[0].str)
 	for arg in owned_args {
-		assert !transform_scope_owns(scope, arg.str)
+		assert !transform_scope_owns(scope, flat.source_type_name(arg).str)
 	}
+	assert master.value('decode_cloud_Body') == ['cloud.Body', '[]string']
 	transform_worker_scope_free(scope)
-	assert owned_args == ['cloud.Body', '[]string']
+	assert master.value('decode_cloud_Body') == ['cloud.Body', '[]string']
 }
 
 fn test_scoped_batch_specialization_names_outlive_scratch_scope() {
