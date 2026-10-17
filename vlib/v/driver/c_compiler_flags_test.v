@@ -1311,6 +1311,27 @@ fn test_v3_tcc_flag_plan_skips_backtrace_on_macos_arm64() {
 	assert '-L${tcc_install_dir}' in plan.before_inputs
 }
 
+fn test_v3_freestanding_flag_plan_links_no_host_libraries() {
+	for is_tcc in [false, true] {
+		plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+			is_tcc:          is_tcc
+			is_prod:         !is_tcc
+			is_freestanding: true
+			target_os:       'linux'
+			target_arch:     'amd64'
+			c_compiler:      if is_tcc { 'tinyc' } else { 'gcc' }
+			vroot:           os.join_path(os.temp_dir(), 'v3_freestanding_flag_plan')
+		})
+		assert '-ffreestanding' in plan.before_inputs, 'tcc=${is_tcc}'
+		assert '-bt25' !in plan.before_inputs, 'tcc=${is_tcc}'
+		// `_start` calls `main` from a top-level asm block, which LTO does not see.
+		assert '-flto' !in plan.before_inputs, 'tcc=${is_tcc}'
+		assert '-static' in plan.after_inputs && '-nostdlib' in plan.after_inputs, 'tcc=${is_tcc}'
+		assert '-lm' !in plan.after_inputs && '-lpthread' !in plan.after_inputs, 'tcc=${is_tcc}'
+		assert ('-ltcc1' in plan.after_inputs) == is_tcc
+	}
+}
+
 fn test_v3_linux_shared_flag_plan_hides_static_archive_symbols() {
 	plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
 		is_shared:  true

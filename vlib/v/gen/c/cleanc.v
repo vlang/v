@@ -20431,57 +20431,15 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 		'pthread_setspecific', 'pthread_once', 'pthread_attr_init', 'pthread_attr_destroy',
 		'pthread_attr_setstacksize', 'pthread_attr_setdetachstate', 'pthread_create', 'pthread_join',
 		'pthread_detach'])
-	// Both thread runtimes below allocate their contexts through these helpers.
-	g.thread_allocation_helpers()
-	g.writeln('#ifdef _WIN32')
-	g.writeln('#ifndef INFINITE')
-	g.writeln('#define INFINITE 0xFFFFFFFF')
-	g.writeln('#endif')
-	g.writeln('typedef struct { HANDLE handle; void* context; } __v_thread;')
-	g.writeln('static bool __v_thread_equal(__v_thread a, __v_thread b) { return a.handle == b.handle; }')
-	g.writeln('typedef void* (*__v_thread_start_fn)(void*);')
-	g.writeln('typedef struct { __v_thread_start_fn start; void* arg; void* result; } __v_windows_thread_context;')
-	g.writeln('static const size_t __v_thread_stack_size = V_THREAD_STACK_SIZE;')
-	g.writeln('static DWORD WINAPI __v_windows_thread_start(void* raw_context) { __v_windows_thread_context* context = (__v_windows_thread_context*)raw_context; context->result = context->start(context->arg); return 0; }')
-	g.writeln('static __v_thread __v_thread_spawn(__v_thread_start_fn start, void* arg, void (*cleanup)(void*)) {')
-	g.writeln('\t__v_thread result;')
-	g.writeln('\t__v_windows_thread_context* context = (__v_windows_thread_context*)__v_thread_alloc(sizeof(__v_windows_thread_context));')
-	g.writeln('\tcontext->start = start; context->arg = arg; context->result = NULL;')
-	g.writeln('\tresult.context = context;')
-	g.writeln('\tresult.handle = ${g.windows_spawn_create_fn()}(NULL, __v_thread_stack_size, __v_windows_thread_start, context, 0, NULL);')
-	g.writeln('\tif (!result.handle) { DWORD error = GetLastError(); free(context); if (cleanup) cleanup(arg); fprintf(stderr, "V thread creation failed: %lu\\n", (unsigned long)error); abort(); }')
-	g.writeln('\treturn result;')
-	g.writeln('}')
-	g.writeln('static void* __v_thread_join(__v_thread thread) {')
-	g.writeln('\tDWORD rc = WaitForSingleObject(thread.handle, INFINITE);')
-	g.writeln('\tif (rc != 0) { fprintf(stderr, "V thread join failed: %lu\\n", (unsigned long)rc); abort(); }')
-	g.writeln('\tvoid* result = ((__v_windows_thread_context*)thread.context)->result;')
-	g.writeln('\tif (!CloseHandle(thread.handle)) { DWORD error = GetLastError(); __v_thread_free(thread.context); fprintf(stderr, "V thread handle cleanup failed: %lu\\n", (unsigned long)error); abort(); }')
-	g.writeln('\t__v_thread_free(thread.context);')
-	g.writeln('\treturn result;')
-	g.writeln('}')
-	g.windows_detached_thread_runtime()
-	g.writeln('#else')
-	g.writeln('typedef struct { pthread_t handle; } __v_thread;')
-	g.writeln('static bool __v_thread_equal(__v_thread a, __v_thread b) { return pthread_equal(a.handle, b.handle) != 0; }')
-	g.writeln('typedef void* (*__v_thread_start_fn)(void*);')
-	g.writeln('static const size_t __v_thread_stack_size = V_THREAD_STACK_SIZE;')
-	g.writeln('static __v_thread __v_thread_spawn(__v_thread_start_fn start, void* arg, void (*cleanup)(void*)) {')
-	g.writeln('\t__v_thread result;')
-	g.writeln('\tpthread_attr_t attr;')
-	g.writeln('\tint rc = pthread_attr_init(&attr);')
-	g.writeln('\tif (rc != 0) { if (cleanup) cleanup(arg); fprintf(stderr, "V thread attribute initialization failed: %d\\n", rc); abort(); }')
-	g.writeln('\trc = pthread_attr_setstacksize(&attr, __v_thread_stack_size);')
-	g.writeln('\tif (rc != 0) { pthread_attr_destroy(&attr); if (cleanup) cleanup(arg); fprintf(stderr, "V thread stack size setup failed: %d\\n", rc); abort(); }')
-	g.writeln('\trc = pthread_create(&result.handle, &attr, (void*)start, arg);')
-	g.writeln('\tint attr_rc = pthread_attr_destroy(&attr);')
-	g.writeln('\tif (rc != 0) { if (cleanup) cleanup(arg); fprintf(stderr, "V thread creation failed: %d\\n", rc); abort(); }')
-	g.writeln('\tif (attr_rc != 0) { fprintf(stderr, "V thread attribute cleanup failed: %d\\n", attr_rc); abort(); }')
-	g.writeln('\treturn result;')
-	g.writeln('}')
-	g.writeln('static void* __v_thread_join(__v_thread thread) { void* result = NULL; int rc = pthread_join(thread.handle, &result); if (rc != 0) { fprintf(stderr, "V thread join failed: %d\\n", rc); abort(); } return result; }')
-	g.pthread_detached_thread_runtime()
-	g.writeln('#endif')
+	if 'freestanding' in g.compile_defines && !g.needs_thread_runtime {
+		// There are no threads without libc, so a freestanding program that does
+		// not `spawn` gets only the type. gcc -O0 compiles even an unused static
+		// runtime, which calls pthreads and stdio that the link cannot find.
+		g.target_libc_thread_type()
+		g.writeln('typedef void* (*__v_thread_start_fn)(void*);')
+	} else {
+		g.headerless_thread_runtime()
+	}
 	g.writeln('typedef struct SRWLOCK { void* Ptr; } SRWLOCK;')
 	g.writeln('typedef struct CONDITION_VARIABLE { void* Ptr; } CONDITION_VARIABLE;')
 	g.writeln('typedef void* atomic_uintptr_t;')
@@ -20538,6 +20496,62 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 		'memcpy', 'memmove', 'memcmp', 'strlen', 'qsort', 'fwrite', 'mmap', 'pthread_self',
 		'pthread_mutex_lock', 'pthread_mutex_unlock', 'pthread_mutex_init', 'mprotect', 'sysconf',
 		'aligned_alloc', 'exit', 'getpid', 'fcntl'])
+}
+
+// headerless_thread_runtime writes the `__v_thread` type and the runtime that starts,
+// joins and detaches threads with the Win32 API or pthreads.
+fn (mut g FlatGen) headerless_thread_runtime() {
+	// Both thread runtimes below allocate their contexts through these helpers.
+	g.thread_allocation_helpers()
+	g.writeln('#ifdef _WIN32')
+	g.writeln('#ifndef INFINITE')
+	g.writeln('#define INFINITE 0xFFFFFFFF')
+	g.writeln('#endif')
+	g.writeln('typedef struct { HANDLE handle; void* context; } __v_thread;')
+	g.writeln('static bool __v_thread_equal(__v_thread a, __v_thread b) { return a.handle == b.handle; }')
+	g.writeln('typedef void* (*__v_thread_start_fn)(void*);')
+	g.writeln('typedef struct { __v_thread_start_fn start; void* arg; void* result; } __v_windows_thread_context;')
+	g.writeln('static const size_t __v_thread_stack_size = V_THREAD_STACK_SIZE;')
+	g.writeln('static DWORD WINAPI __v_windows_thread_start(void* raw_context) { __v_windows_thread_context* context = (__v_windows_thread_context*)raw_context; context->result = context->start(context->arg); return 0; }')
+	g.writeln('static __v_thread __v_thread_spawn(__v_thread_start_fn start, void* arg, void (*cleanup)(void*)) {')
+	g.writeln('\t__v_thread result;')
+	g.writeln('\t__v_windows_thread_context* context = (__v_windows_thread_context*)__v_thread_alloc(sizeof(__v_windows_thread_context));')
+	g.writeln('\tcontext->start = start; context->arg = arg; context->result = NULL;')
+	g.writeln('\tresult.context = context;')
+	g.writeln('\tresult.handle = ${g.windows_spawn_create_fn()}(NULL, __v_thread_stack_size, __v_windows_thread_start, context, 0, NULL);')
+	g.writeln('\tif (!result.handle) { DWORD error = GetLastError(); free(context); if (cleanup) cleanup(arg); fprintf(stderr, "V thread creation failed: %lu\\n", (unsigned long)error); abort(); }')
+	g.writeln('\treturn result;')
+	g.writeln('}')
+	g.writeln('static void* __v_thread_join(__v_thread thread) {')
+	g.writeln('\tDWORD rc = WaitForSingleObject(thread.handle, INFINITE);')
+	g.writeln('\tif (rc != 0) { fprintf(stderr, "V thread join failed: %lu\\n", (unsigned long)rc); abort(); }')
+	g.writeln('\tvoid* result = ((__v_windows_thread_context*)thread.context)->result;')
+	g.writeln('\tif (!CloseHandle(thread.handle)) { DWORD error = GetLastError(); __v_thread_free(thread.context); fprintf(stderr, "V thread handle cleanup failed: %lu\\n", (unsigned long)error); abort(); }')
+	g.writeln('\t__v_thread_free(thread.context);')
+	g.writeln('\treturn result;')
+	g.writeln('}')
+	g.windows_detached_thread_runtime()
+	g.writeln('#else')
+	g.writeln('typedef struct { pthread_t handle; } __v_thread;')
+	g.writeln('static bool __v_thread_equal(__v_thread a, __v_thread b) { return pthread_equal(a.handle, b.handle) != 0; }')
+	g.writeln('typedef void* (*__v_thread_start_fn)(void*);')
+	g.writeln('static const size_t __v_thread_stack_size = V_THREAD_STACK_SIZE;')
+	g.writeln('static __v_thread __v_thread_spawn(__v_thread_start_fn start, void* arg, void (*cleanup)(void*)) {')
+	g.writeln('\t__v_thread result;')
+	g.writeln('\tpthread_attr_t attr;')
+	g.writeln('\tint rc = pthread_attr_init(&attr);')
+	g.writeln('\tif (rc != 0) { if (cleanup) cleanup(arg); fprintf(stderr, "V thread attribute initialization failed: %d\\n", rc); abort(); }')
+	g.writeln('\trc = pthread_attr_setstacksize(&attr, __v_thread_stack_size);')
+	g.writeln('\tif (rc != 0) { pthread_attr_destroy(&attr); if (cleanup) cleanup(arg); fprintf(stderr, "V thread stack size setup failed: %d\\n", rc); abort(); }')
+	g.writeln('\trc = pthread_create(&result.handle, &attr, (void*)start, arg);')
+	g.writeln('\tint attr_rc = pthread_attr_destroy(&attr);')
+	g.writeln('\tif (rc != 0) { if (cleanup) cleanup(arg); fprintf(stderr, "V thread creation failed: %d\\n", rc); abort(); }')
+	g.writeln('\tif (attr_rc != 0) { fprintf(stderr, "V thread attribute cleanup failed: %d\\n", attr_rc); abort(); }')
+	g.writeln('\treturn result;')
+	g.writeln('}')
+	g.writeln('static void* __v_thread_join(__v_thread thread) { void* result = NULL; int rc = pthread_join(thread.handle, &result); if (rc != 0) { fprintf(stderr, "V thread join failed: %d\\n", rc); abort(); } return result; }')
+	g.pthread_detached_thread_runtime()
+	g.writeln('#endif')
 }
 
 fn c_function_like_macro_decl_names() []string {
@@ -23752,11 +23766,14 @@ fn (g &FlatGen) is_builtin_autostr_addr_state(name string) bool {
 // Vinix is a freestanding kernel target and does not provide the ELF TLS ABI.
 // Its scheduler owns per-CPU/per-thread state explicitly, so emitting STT_TLS
 // globals would require a PT_TLS segment and thread-pointer setup that do not
-// exist during early boot.
+// exist during early boot. A `-freestanding` program has no libc to set up the
+// thread pointer either: its own `_start` calls `main` directly.
 fn (g &FlatGen) global_is_thread_local(name string) bool {
-	return g.target.os != 'vinix' && (name.contains('__anon_fn_')
-		|| g.is_builtin_autostr_addr_state(name) || g.is_builtin_panic_state(name)
-		|| g.is_builtin_arena_top(name))
+	if g.target.os == 'vinix' || 'freestanding' in g.compile_defines {
+		return false
+	}
+	return name.contains('__anon_fn_') || g.is_builtin_autostr_addr_state(name)
+		|| g.is_builtin_panic_state(name) || g.is_builtin_arena_top(name)
 }
 
 // Each thread has its own stack of scoped arenas (see
@@ -24409,6 +24426,24 @@ fn (mut g FlatGen) global_init_optional_c_type(name string) ?string {
 // a file. `v3_eprintf` takes the arguments of `printf`. The flushes are in functions, so
 // that each report line in the program costs two calls, and not three inlined flushes.
 fn (mut g FlatGen) test_failure_helpers() {
+	if 'freestanding' in g.compile_defines {
+		// Without libc there is no stdio: write through the bare builtin's hook,
+		// like `eprint` does. There is no `printf` either, so a report leaves out
+		// the formatted details, such as the values of a failed comparison.
+		g.writeln('void bare_eprint(u8* buf, u64 len);')
+		g.writeln('#define v3_eprintf(...) ((void)0)')
+		g.writeln('static void v3_eprint_lit(const char* s) {')
+		g.writeln('\tu64 len = 0;')
+		g.writeln('\twhile (s[len] != 0) len++;')
+		g.writeln('\tbare_eprint((u8*)s, len);')
+		g.writeln('}')
+		g.writeln('static void v3_eprintln_string(string s) {')
+		g.writeln('\tbare_eprint(s.str, (u64)s.len);')
+		g.writeln('\tbare_eprint((u8*)"\\n", 1);')
+		g.writeln('}')
+		g.writeln('')
+		return
+	}
 	g.writeln('static FILE* v3_eprint_begin(void) {')
 	g.writeln('\tfflush(stdout);')
 	g.writeln('\tfflush(stderr);')
