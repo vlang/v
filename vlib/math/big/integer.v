@@ -618,9 +618,19 @@ pub fn (base Integer) big_mod_pow(exponent Integer, modulus Integer) !Integer {
 		return one_int
 	}
 
-	// Preserve mask-based reduction instead of dividing a large nonnegative base.
-	x := if base.signum >= 0 && m.is_power_of_2() {
-		base.mask_bits(u32(m.bit_len() - 1))
+	// Reduce modulo a power of two by masking the low bits of |base|, instead of dividing
+	// a large base. A negative base then maps a nonzero `|base| mod m` to `m - |base| mod m`.
+	x := if m.is_power_of_2() {
+		low := Integer{
+			digits:   base.digits
+			signum:   if base.signum == 0 { 0 } else { 1 }
+			is_const: base.is_const
+		}.mask_bits(u32(m.bit_len() - 1))
+		if base.signum < 0 && low.signum != 0 {
+			m - low
+		} else {
+			low
+		}
 	} else {
 		base.mod_euclid(m)
 	}

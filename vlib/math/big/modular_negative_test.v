@@ -44,10 +44,10 @@ fn test_modular_powers_negative_base_large_exponents() {
 	}
 }
 
-fn test_modular_powers_large_positive_base_power_of_two_moduli() {
+fn test_modular_powers_large_bases_power_of_two_moduli() {
 	exponent := big.integer_from_string('18446744073709551617')!
 	// The high bits do not affect a power-of-two remainder. Keep the base much
-	// larger than the modulus to exercise the mask-based binary exponentiation path.
+	// larger than the modulus to exercise the mask-based reduction for both signs.
 	high := big.one_int.left_shift(600000)
 	for bits in [u32(7), 60, 61, 120] {
 		m := big.one_int.left_shift(bits)
@@ -56,10 +56,14 @@ fn test_modular_powers_large_positive_base_power_of_two_moduli() {
 			base := high + residue
 			// 2^64 + 1 = (2^64 - 1) + 2, with the reference reduced before powering.
 			expected := (residue.mod_pow(u64(0xffffffffffffffff), m) * residue * residue) % m
-			positive := base.big_mod_pow(exponent, m)!
-			negative := base.big_mod_pow(exponent, m.neg())!
-			assert positive == expected, '${bits} ${value}: ${positive} != ${expected}'
-			assert negative == expected, '${bits} ${value}: ${negative} != ${expected}'
+			// The exponent is odd, so (-base)^e == -(base^e).
+			expected_neg := expected.neg().mod_euclid(m)
+			for modulus in [m, m.neg()] {
+				got := base.big_mod_pow(exponent, modulus)!
+				assert got == expected, '${bits} ${value}: ${got} != ${expected}'
+				got_neg := base.neg().big_mod_pow(exponent, modulus)!
+				assert got_neg == expected_neg, '${bits} -${value}: ${got_neg} != ${expected_neg}'
+			}
 		}
 	}
 }
