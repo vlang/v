@@ -22648,6 +22648,12 @@ fn (mut g FlatGen) atomic_thread_fence_compat_decls() {
 	// clang/gcc keep the builtin.
 	g.writeln('#if defined(_WIN32) && (defined(__TINYC__) || (defined(_MSC_VER) && !defined(__clang__)))')
 	g.writeln('/* V atomic.h supplies atomic_thread_fence on Windows TCC and MSVC. */')
+	// macOS TCC exports the standard fence directly. Its preprocessor can define
+	// only __arm64__, so it must not depend on the __aarch64__ shim branch below.
+	g.writeln('#elif defined(__TINYC__) && defined(__APPLE__)')
+	g.writeln('#undef atomic_thread_fence')
+	g.writeln('#undef __atomic_thread_fence')
+	g.writeln('#define __atomic_thread_fence(order) atomic_thread_fence(order)')
 	g.writeln('#elif defined(__TINYC__) && (defined(__i386__) || defined(__arm__) || defined(__aarch64__) || defined(__riscv) || (defined(__x86_64__) && defined(__linux__)))')
 	g.writeln('extern void _V_atomic_thread_fence(int order);')
 	g.writeln('#define atomic_thread_fence(order) _V_atomic_thread_fence(order)')
