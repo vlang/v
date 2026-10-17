@@ -10591,7 +10591,9 @@ fn (mut tc TypeChecker) check_or_expr(id flat.NodeId, node flat.Node) {
 				return
 			} else if inner.kind == .ident {
 				if smart_type := tc.smartcast_type(inner_id) {
-					tc.record_error(.assignment_mismatch, 'cannot use `or {}` block on non-option variable `${inner.value}` (it was already unwrapped to `${smart_type.name()}` by an earlier none check; use `${inner.value}` directly)', inner_id)
+					if tc.is_legacy_redundant_option_unwrap(inner_id, *inner) {
+						tc.record_error(.assignment_mismatch, 'cannot use `or {}` block on non-option variable `${inner.value}` (it was already unwrapped to `${smart_type.name()}` by an earlier none check; use `${inner.value}` directly)', inner_id)
+					}
 				} else {
 					tc.record_error(.assignment_mismatch, 'cannot use `or {}` block on non-option variable', inner_id)
 				}
@@ -10674,6 +10676,103 @@ fn (mut tc TypeChecker) check_or_expr(id flat.NodeId, node flat.Node) {
 	}
 }
 
+// is_legacy_redundant_option_unwrap reports whether `x or {}` or `x?` on the narrowed
+// option variable `x` is rejected, as V 0.5.2 did. 0.5.2 unwrapped an option variable
+// only in the then-branch of `if x != none` (alone or in an `&&` chain), in the else
+// branch of a two-branch `if x == none {} else {}`, and after an `if x == none { return }`
+// guard. V3 also narrows in `for x != none` loops, in the right operand of `&&`/`||`,
+// and after compound guards, where code written for 0.5.2 still had to use `x or {}`.
+// There the unwrap is accepted; its fallback is unreachable.
+fn (tc &TypeChecker) is_legacy_redundant_option_unwrap(id flat.NodeId, node flat.Node) bool {
+	declared := tc.cur_scope.lookup(node.value) or { return true }
+	if unalias_type(declared) !is OptionType {
+		return true
+	}
+	name := node.value
+	mut current := id
+	mut parent_id := tc.direct_parent_id(current)
+	for tc.valid_node_id(parent_id) {
+		parent := tc.a.node(parent_id)
+		if parent.kind == .if_expr && parent.children_count >= 2 {
+			cond_id := tc.a.child(parent, 0)
+			if current == tc.a.child(parent, 1) {
+				if tc.legacy_if_cond_unwraps(cond_id, name) {
+					return true
+				}
+			} else if parent.children_count >= 3 && current == tc.a.child(parent, 2)
+				&& tc.a.node(current).kind == .block && !tc.is_else_if_branch(parent_id)
+				&& tc.is_none_eq_check_of(cond_id, name) {
+				return true
+			}
+		} else {
+			for i in 0 .. parent.children_count {
+				sibling_id := tc.a.child(parent, i)
+				if sibling_id == current {
+					break
+				}
+				sibling := tc.a.node(sibling_id)
+				if sibling.kind == .if_expr && sibling.children_count >= 2
+					&& tc.is_none_eq_check_of(tc.a.child(sibling, 0), name)
+					&& tc.stmt_definitely_returns(tc.a.child(sibling, 1)) {
+					return true
+				}
+			}
+		}
+		if parent.kind == .fn_decl {
+			break
+		}
+		current = parent_id
+		parent_id = tc.direct_parent_id(current)
+	}
+	return false
+}
+
+// legacy_if_cond_unwraps reports whether V 0.5.2 unwrapped `name` in the then-branch
+// of an `if` with the condition `cond_id`: `name != none`, possibly inside an `&&` chain.
+fn (tc &TypeChecker) legacy_if_cond_unwraps(cond_id flat.NodeId, name string) bool {
+	if !tc.valid_node_id(cond_id) {
+		return false
+	}
+	cond := tc.a.node(cond_id)
+	if cond.kind != .infix || cond.children_count < 2 {
+		return false
+	}
+	lhs := tc.a.child_node(cond, 0)
+	if cond.op == .logical_and {
+		return tc.legacy_if_cond_unwraps(tc.a.child(cond, 0), name)
+			|| tc.legacy_if_cond_unwraps(tc.a.child(cond, 1), name)
+	}
+	return cond.op == .ne && lhs.kind == .ident && lhs.value == name
+		&& tc.a.child_node(cond, 1).kind == .none_expr
+}
+
+// is_none_eq_check_of reports whether `cond_id` is `name == none`, possibly parenthesized.
+fn (tc &TypeChecker) is_none_eq_check_of(cond_id flat.NodeId, name string) bool {
+	mut id := cond_id
+	for tc.valid_node_id(id) && tc.a.node(id).kind == .paren && tc.a.node(id).children_count > 0 {
+		id = tc.a.child(tc.a.node(id), 0)
+	}
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	cond := tc.a.node(id)
+	if cond.kind != .infix || cond.op != .eq || cond.children_count < 2 {
+		return false
+	}
+	lhs := tc.a.child_node(cond, 0)
+	return lhs.kind == .ident && lhs.value == name && tc.a.child_node(cond, 1).kind == .none_expr
+}
+
+// is_else_if_branch reports whether the `if` at `id` is the `else if` of an outer `if`.
+fn (tc &TypeChecker) is_else_if_branch(id flat.NodeId) bool {
+	parent_id := tc.direct_parent_id(id)
+	if !tc.valid_node_id(parent_id) {
+		return false
+	}
+	parent := tc.a.node(parent_id)
+	return parent.kind == .if_expr && parent.children_count >= 3 && tc.a.child(parent, 2) == id
+}
+
 fn (tc &TypeChecker) or_block_call_display_name(call &flat.Node) string {
 	if call.children_count > 0 {
 		callee := tc.a.child_node(call, 0)
@@ -10744,19 +10843,24 @@ fn (mut tc TypeChecker) check_option_propagation(id flat.NodeId, source_id flat.
 		return
 	}
 	if source.kind == .ident {
+		// A narrowing that V 0.5.2 did not have keeps the declared Option rules.
+		mut is_v3_only_unwrap := false
 		if smart_type := tc.smartcast_type(source_id) {
-			parent_id := tc.direct_parent_id(id)
-			if tc.valid_node_id(parent_id) && tc.a.node(parent_id).kind == .return_stmt
-				&& clean_return_type is OptionType {
-				parent := tc.a.node(parent_id)
-				operator_pos := tc.propagation_operator_pos(source_id, id, '?')
-				return_line := tc.previous_source_line_matching(parent.pos, 'return')
-				tc.record_warning_at(.return_mismatch, 'unwrapping option is redundant as the function returns option', parent_id, token.new_span(return_line.id, return_line.offset, operator_pos.offset))
+			is_v3_only_unwrap = !tc.is_legacy_redundant_option_unwrap(source_id, *source)
+			if !is_v3_only_unwrap {
+				parent_id := tc.direct_parent_id(id)
+				if tc.valid_node_id(parent_id) && tc.a.node(parent_id).kind == .return_stmt
+					&& clean_return_type is OptionType {
+					parent := tc.a.node(parent_id)
+					operator_pos := tc.propagation_operator_pos(source_id, id, '?')
+					return_line := tc.previous_source_line_matching(parent.pos, 'return')
+					tc.record_warning_at(.return_mismatch, 'unwrapping option is redundant as the function returns option', parent_id, token.new_span(return_line.id, return_line.offset, operator_pos.offset))
+				}
+				tc.record_error_at(.assignment_mismatch, 'cannot use `?` on non-option variable `${source.value}` (it was already unwrapped to `${smart_type.name()}` by an earlier none check; use `${source.value}` directly)', source_id, tc.node_value_diagnostic_pos(source_id))
+				return
 			}
-			tc.record_error_at(.assignment_mismatch, 'cannot use `?` on non-option variable `${source.value}` (it was already unwrapped to `${smart_type.name()}` by an earlier none check; use `${source.value}` directly)', source_id, tc.node_value_diagnostic_pos(source_id))
-			return
 		}
-		if clean_source_type is OptionType {
+		if clean_source_type is OptionType || is_v3_only_unwrap {
 			parent_id := tc.direct_parent_id(id)
 			if tc.valid_node_id(parent_id) && tc.a.node(parent_id).kind == .return_stmt
 				&& clean_return_type !is OptionType && !main_allows_propagation {
