@@ -15258,9 +15258,17 @@ pub fn run(args []string) {
 		} else {
 			c_compiler
 		}
+		// A call of a function that this build left out must not pass for a call of
+		// an undeclared one, which TinyCC takes to return `int`. Only the program
+		// unit can make such a call: a build leaves declarations out only when it
+		// reads every module from its header, and then it compiles no module. The
+		// flag stays out of `warn_args`, which name the objects of the modules, or a
+		// build that left declarations out would not find the objects of a build
+		// that did not.
+		mut program_warn_args := warn_args.clone()
 		if effective_tcc && pruned_declarations.count > 0
-			&& '-Werror=implicit-function-declaration' !in warn_args {
-			warn_args << '-Werror=implicit-function-declaration'
+			&& '-Werror=implicit-function-declaration' !in program_warn_args {
+			program_warn_args << '-Werror=implicit-function-declaration'
 		}
 		c_flag_options := V3CCompilerFlagOptions{
 			environment_c_flags: environment_c_flags
@@ -15268,7 +15276,7 @@ pub fn run(args []string) {
 			target_args:         target_args
 			link_c_standard:     link_c_standard
 			dependencies:        resolved_c_flags
-			warn_args:           warn_args
+			warn_args:           program_warn_args
 			tcc_resources:       v3_tcc_resource_flags_for_compiler(prefs.vroot, planned_tcc_compiler, bundled_tcc, bundled_tcc_available)
 			vroot:               prefs.vroot
 			target_os:           prefs.normalized_target_os()
