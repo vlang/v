@@ -27504,7 +27504,9 @@ fn (mut t Transformer) apply_smartcast_contexts(base flat.NodeId, typ_id u32, co
 		if t.is_interface_type_name(sc.sum_type_name) {
 			variant_name_source_id := t.trim_all_pointer_type(sc.variant_name)
 			if target_iface_source_id := t.resolve_interface_pattern_interface(variant_name_source_id) {
-				if converted := t.convert_interface_expr_to_interface(current, current_type, target_iface_source_id) {
+				if converted := t.convert_interface_expr_to_interface(current, current_type, target_iface_source_id,
+					.tested)
+				{
 					current = converted
 					current_type = target_iface_source_id
 					continue

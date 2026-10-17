@@ -4934,6 +4934,10 @@ fn main() {
 }
 ```
 
+A test against another interface checks the type of the stored value at run time. It compiles
+even when no type implements both interfaces; it is then always `false`. Casting with
+`a as IBar` panics when the stored value does not implement `IBar`.
+
 For more information, see [Dynamic casts](#dynamic-casts).
 
 #### Interface method definitions
