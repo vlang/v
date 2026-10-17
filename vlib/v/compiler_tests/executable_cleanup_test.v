@@ -153,9 +153,11 @@ pub fn answer() int {
 	assert no_main_c.contains('int exported_answer(void)'), no_main_c
 	assert_cleanup_registered_after_init(no_main_c)
 
-	// A natural-name export (export name equal to the C symbol) is emitted directly
-	// with no wrapper, so its own body must run the guarded initializer; otherwise a
-	// host calling it observes uninitialized globals and skipped module init().
+	// A natural-name export (export name equal to the C symbol) whose C ABI matches
+	// its V signature is emitted directly with no wrapper, so its own body must run
+	// the guarded initializer; otherwise a host calling it observes uninitialized
+	// globals and skipped module init(). With a platform `int` in the signature the
+	// export is a C ABI wrapper, which runs the initializer instead.
 	direct_export_source := os.join_path(root, 'direct_export.v')
 	direct_export_c_path := os.join_path(root, 'direct_export.c')
 	os.write_file(direct_export_source, "module main
@@ -172,6 +174,11 @@ fn init() {
 pub fn start() int {
 	return direct_export_counter
 }
+
+@[export: 'start_wide']
+pub fn start_wide() i64 {
+	return direct_export_counter
+}
 ")!
 	generate_direct := os.exec([v3_bin, '-nocache', '-enable-globals', '-o', direct_export_c_path,
 		direct_export_source])
@@ -180,6 +187,10 @@ pub fn start() int {
 	assert direct_export_c.contains('int start(void) {'), direct_export_c
 	direct_start_body := direct_export_c.all_after('int start(void) {').all_before('}')
 	assert direct_start_body.contains('_vno_main_init_caller();'), direct_export_c
+	assert direct_export_c.contains('i64 start_wide(void) {'), direct_export_c
+	direct_wide_body := direct_export_c.all_after('i64 start_wide(void) {').all_before('}')
+	assert direct_wide_body.contains('_vno_main_init_caller();'), direct_export_c
+	assert !direct_export_c.contains('main__start_wide'), direct_export_c
 
 	explicit_main_no_main_c := executable_cleanup_generate_c(v3_bin, root, 'explicit_main_no_main',
 		'.v', '-d no_main', "fn main() {

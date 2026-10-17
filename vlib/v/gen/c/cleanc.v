@@ -846,6 +846,7 @@ mut:
 	c_extern_forced_decls         map[string]bool
 	export_c_abi_decls            map[string]flat.NodeId
 	main_export_owners            map[string][]string
+	main_export_c_abi_wrappers    map[string]bool
 	c_extern_global_names         map[string]string
 	export_global_names           map[string]string
 	global_linker_sections        map[string]string
@@ -1734,6 +1735,7 @@ pub fn FlatGen.new() FlatGen {
 		c_extern_forced_decls:              map[string]bool{}
 		export_c_abi_decls:                 map[string]flat.NodeId{}
 		main_export_owners:                 map[string][]string{}
+		main_export_c_abi_wrappers:         map[string]bool{}
 		c_extern_global_names:              map[string]string{}
 		export_global_names:                map[string]string{}
 		global_linker_sections:             map[string]string{}
@@ -3594,6 +3596,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.c_extern_forced_decls.clear()
 	g.export_c_abi_decls.clear()
 	g.main_export_owners.clear()
+	g.main_export_c_abi_wrappers.clear()
 	g.c_extern_global_names.clear()
 	g.export_global_names.clear()
 	g.global_linker_sections.clear()

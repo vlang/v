@@ -1351,15 +1351,27 @@ fn (mut g FlatGen) precompute_export_lookups() {
 			g.main_export_owners[export_name] = owners
 		}
 	}
+	old_tc_file := if isnil(g.tc) { '' } else { g.tc.cur_file }
+	old_tc_module := if isnil(g.tc) { '' } else { g.tc.cur_module }
+	mut cur_file := ''
 	mut cur_module := ''
 	for idx in g.top_level_nodes() {
 		node := g.a.nodes[idx]
 		if node.kind == .file {
+			cur_file = node.value
 			cur_module = ''
 			continue
 		}
 		if node.kind == .module_decl {
 			cur_module = node.value
+			continue
+		}
+		if node.kind == .fn_decl {
+			if g.a.export_fn_names.len > 0 && cur_module in ['', 'main'] && !isnil(g.tc) {
+				g.tc.cur_file = cur_file
+				g.tc.cur_module = if cur_module.len == 0 { 'main' } else { cur_module }
+				g.note_main_export_c_abi_wrapper(node, cur_module)
+			}
 			continue
 		}
 		if node.kind != .c_fn_decl {
@@ -1368,6 +1380,69 @@ fn (mut g FlatGen) precompute_export_lookups() {
 		key := export_c_abi_lookup_key(cur_module, node.value.trim_string_left('C.'))
 		if key !in g.export_c_abi_decls {
 			g.export_c_abi_decls[key] = flat.NodeId(idx)
+		}
+	}
+	if !isnil(g.tc) {
+		g.tc.cur_file = old_tc_file
+		g.tc.cur_module = old_tc_module
+	}
+}
+
+// note_main_export_c_abi_wrapper records a main-module function exported under
+// its own C name whose C ABI signature differs from its V one. An export presents
+// the C ABI (the platform `int` stays C `int`, as V1 emitted it), so such a
+// function gets an internal name and its export becomes a wrapper, like every
+// export under another name. Otherwise C callers would pass and read 32-bit ints
+// where the function uses V's 64-bit `int`.
+fn (mut g FlatGen) note_main_export_c_abi_wrapper(node flat.Node, module_name string) {
+	name := node.value.trim_string_left('main.')
+	export_name := g.export_fn_name_in_module(module_name, node.value) or { return }
+	if export_name != g.cname(name) || node.generic_params().len > 0 {
+		return
+	}
+	mut differs := c_abi_spells_platform_int(g.tc.parse_resolution_type(node.typ))
+	for i in 0 .. node.children_count {
+		if differs {
+			break
+		}
+		param := g.a.child_node(&node, i)
+		if param.kind != .param || param.typ == 0 || param.typ_text() == '...' {
+			continue
+		}
+		differs = c_abi_spells_platform_int(g.tc.parse_resolution_type(param.typ))
+	}
+	if differs {
+		g.main_export_c_abi_wrappers[name] = true
+	}
+}
+
+// c_abi_spells_platform_int reports whether a type is spelled differently in a C
+// ABI signature than in V's own: c_extern_interop_type_name keeps the platform
+// `int` as C `int`, also behind pointers, aliases and function types.
+fn c_abi_spells_platform_int(t types.Type) bool {
+	match t {
+		types.Primitive {
+			return t.size == 0 && t.props.has(.integer) && !t.props.has(.unsigned)
+		}
+		types.Pointer {
+			return c_abi_spells_platform_int(t.base_type)
+		}
+		types.Alias {
+			return c_abi_spells_platform_int(t.base_type)
+		}
+		types.FnType {
+			if c_abi_spells_platform_int(t.return_type) {
+				return true
+			}
+			for param in t.params {
+				if c_abi_spells_platform_int(param) {
+					return true
+				}
+			}
+			return false
+		}
+		else {
+			return false
 		}
 	}
 }
@@ -1393,7 +1468,12 @@ fn (g &FlatGen) export_fn_uses_c_abi(module_name string, name string) bool {
 }
 
 fn (g &FlatGen) main_export_needs_internal_name(module_name string, name string) bool {
-	if module_name !in ['', 'main'] || !g.export_fn_uses_c_abi(module_name, name) {
+	if module_name !in ['', 'main'] {
+		return false
+	}
+	if !(g.main_export_c_abi_wrappers.len > 0
+		&& g.main_export_c_abi_wrappers[name.trim_string_left('main.')])
+		&& !g.export_fn_uses_c_abi(module_name, name) {
 		return false
 	}
 	export_name := g.export_fn_name_in_module(module_name, name) or { return false }
@@ -5556,7 +5636,8 @@ fn (mut g FlatGen) emit_object_file_export_wrappers() {
 			continue
 		}
 		export_name := g.cname('main.${node.value}')
-		if emitted[export_name] {
+		// A main function behind an export wrapper already has this internal name.
+		if emitted[export_name] || export_name == item.c_name {
 			continue
 		}
 		emitted[export_name] = true
@@ -5625,17 +5706,24 @@ fn (mut g FlatGen) export_wrapper_arg_names(node flat.Node) []string {
 
 fn (mut g FlatGen) export_wrapper_return_c_type(node flat.Node, module_name string, fallback types.Type) string {
 	if abi_decl := g.export_fn_c_abi_decl(module_name, node.value) {
-		abi_type := g.parse_node_type(&abi_decl)
-		return g.c_extern_interop_type_name(abi_type) or { g.fn_return_type_name(abi_type) }
+		return g.export_c_abi_return_type_name(g.parse_node_type(&abi_decl))
 	}
 	if key := g.export_fn_c_abi_key(module_name, node.value) {
 		if abi_type := g.tc.c_fn_module_ret_types[key] {
-			return g.c_extern_interop_type_name(abi_type) or {
-				g.fn_return_type_name(abi_type)
-			}
+			return g.export_c_abi_return_type_name(abi_type)
 		}
 	}
-	return g.c_extern_interop_type_name(fallback) or { g.fn_return_type_name(fallback) }
+	return g.export_c_abi_return_type_name(fallback)
+}
+
+// export_c_abi_return_type_name spells the return type of an export wrapper. The
+// platform `int` stays C `int`, but C cannot return an array, so a fixed array
+// keeps the `_v_ret_` struct that the wrapped V function itself returns.
+fn (mut g FlatGen) export_c_abi_return_type_name(t types.Type) string {
+	if _ := array_fixed_type(t) {
+		return g.fn_return_type_name(t)
+	}
+	return g.c_extern_interop_type_name(t) or { g.fn_return_type_name(t) }
 }
 
 fn (mut g FlatGen) write_export_wrapper_params(node flat.Node, module_name string) {
@@ -5680,6 +5768,11 @@ fn (mut g FlatGen) write_export_wrapper_params(node flat.Node, module_name strin
 
 fn (mut g FlatGen) write_export_wrapper_v_c_abi_params(node flat.Node, module_name string) {
 	typed_params := g.fn_node_param_types(node, module_name)
+	// The wrapper forwards a veb handler's implicit `ctx` (see export_wrapper_arg_names),
+	// so it must also receive it, at the position the wrapped function declares it.
+	needs_implicit_ctx := g.fn_needs_implicit_veb_ctx(node)
+	insert_implicit_ctx_after_first := needs_implicit_ctx && g.fn_has_receiver_param(node)
+	mut implicit_ctx_written := false
 	mut param_idx := 0
 	mut written := 0
 	for i in 0 .. node.children_count {
@@ -5720,6 +5813,19 @@ fn (mut g FlatGen) write_export_wrapper_v_c_abi_params(node flat.Node, module_na
 				g.current_param_use_cname(param.value)
 			})
 		}
+		written++
+		if insert_implicit_ctx_after_first && !implicit_ctx_written {
+			g.write(', ')
+			g.write_implicit_veb_ctx_param()
+			written++
+			implicit_ctx_written = true
+		}
+	}
+	if needs_implicit_ctx && !implicit_ctx_written {
+		if written > 0 {
+			g.write(', ')
+		}
+		g.write_implicit_veb_ctx_param()
 		written++
 	}
 	if written == 0 {

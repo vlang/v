@@ -165,8 +165,8 @@ fn test_export_name_matching_natural_symbol_uses_function_directly() {
 		'main.v': "module main
 
 @[export: 'natural_name']
-fn natural_name() int {
-	return 1
+fn natural_name(value f64) f64 {
+	return value
 }
 
 fn main() {}
@@ -176,7 +176,85 @@ fn main() {}
 	compile := export_attr_compile(v3_bin, os.join_path(root, 'main.v'), bin_path)
 	assert compile.exit_code == 0, compile.output
 	c_code := os.read_file(bin_path + '.c') or { panic(err) }
-	assert c_code.count('i64 natural_name(void) {') == 1, c_code
+	assert c_code.count('double natural_name(double value) {') == 1, c_code
+	assert !c_code.contains('main__natural_name'), c_code
+}
+
+fn test_export_name_matching_natural_symbol_keeps_c_abi_int() {
+	v3_bin := export_attr_build_v3()
+	root := export_attr_project('natural_c_abi_int', {
+		'main.v': "module main
+
+@[export: 'natural_add']
+fn natural_add(left int, right int) int {
+	return left + right
+}
+
+@[export: 'renamed_add_export']
+fn renamed_add(left int, right int) int {
+	return left + right
+}
+
+fn take(cb fn (int, int) int) int {
+	return cb(40, 2)
+}
+
+fn main() {
+	println(natural_add(3_000_000_000, 1).str())
+	println(take(natural_add).str())
+	println(renamed_add(3_000_000_000, 2).str())
+}
+"
+	})
+	bin_path := os.join_path(root, 'app')
+	compile := export_attr_compile(v3_bin, os.join_path(root, 'main.v'), bin_path)
+	assert compile.exit_code == 0, compile.output
+	run := os.exec([bin_path])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '3000000001\n42\n3000000002', run.output
+	c_code := os.read_file(bin_path + '.c') or { panic(err) }
+	// An export presents the C ABI whether or not it is renamed: C callers pass and
+	// read C `int`. V callers keep the 64-bit function under an internal name.
+	assert c_code.contains('int renamed_add_export(int left, int right) {'), c_code
+	assert c_code.count('int natural_add(int left, int right) {') == 1, c_code
+	assert c_code.contains('i64 main__natural_add(i64 left, i64 right) {'), c_code
+	assert c_code.contains('return main__natural_add(left, right);'), c_code
+	assert c_code.contains('take(main__natural_add)'), c_code
+	assert !c_code.contains('i64 natural_add('), c_code
+}
+
+fn test_natural_name_export_links_from_c_object_file() {
+	$if windows {
+		return
+	}
+	cc := os.find_abs_path_of_executable('cc') or { return }
+	v3_bin := export_attr_build_v3()
+	root := export_attr_project('natural_object_file', {
+		'lib.v':  "module main
+
+@[export: 'natural_mul']
+pub fn natural_mul(left int, right int) int {
+	return left * right
+}
+"
+		'host.c': '#include <stdio.h>
+extern int natural_mul(int left, int right);
+int main(void) {
+	printf("%d\\n", natural_mul(-6, 7));
+	return 0;
+}
+'
+	})
+	object := os.join_path(root, 'lib.o')
+	compile := os.exec([v3_bin, '-gc', 'none', '-cc', cc, '-is_o', '-o', object,
+		os.join_path(root, 'lib.v')])
+	assert compile.exit_code == 0, compile.output
+	host := os.join_path(root, 'host')
+	link := os.exec([cc, '-o', host, os.join_path(root, 'host.c'), object, '-lm', '-lpthread'])
+	assert link.exit_code == 0, link.output
+	run := os.exec([host])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '-42', run.output
 }
 
 fn test_export_name_of_libc_remapped_natural_symbol_prefixes_main_function() {
