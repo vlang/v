@@ -436,29 +436,50 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 	mut not_found := false
 
 	defer {
-		// execute middleware functions after veb is done and before the response is send
-		mut was_done := true
-		$if A is MiddlewareApp {
-			if !not_found && !middleware_has_sent_response {
-				// if the middleware doesn't send an alternate response, but only changes the
-				// response object we only have to check if the `done` was previously set to true
-				was_done = user_context.Context.done
-				// reset `done` so the middleware functions can return a different response
-				// 1 time only, since the `done` guard is still present in
-				// `Context.send_response_to_client`
-				user_context.Context.done = false
+		// A panicking handler must not take the server down with it. Nothing between
+		// here and the accept loop recovers, so without this the process exits.
+		// `recover()` only stops the panic when called directly in a defer block, and
+		// V does not allow `return` in one, so the recovered case answers 500 here and
+		// skips the after-middleware through the else branch.
+		if msg := recover() {
+			eprintln('[veb] handler for route "${url.path}" panicked: ${msg}')
+			user_context.server_error('Internal Server Error')
+		} else {
+			// execute middleware functions after veb is done and before the response is send
+			mut was_done := true
+			$if A is MiddlewareApp {
+				if !not_found && !middleware_has_sent_response {
+					// if the middleware doesn't send an alternate response, but only changes the
+					// response object we only have to check if the `done` was previously set to true
+					was_done = user_context.Context.done
+					// reset `done` so the middleware functions can return a different response
+					// 1 time only, since the `done` guard is still present in
+					// `Context.send_response_to_client`
+					user_context.Context.done = false
 
-				// no need to check the result of `validate_middleware`, since a response has to be sent
-				// anyhow. This function makes sure no further middleware is executed.
-				validate_middleware[X](mut user_context, app_global_handlers_after(app))
-				// skip route-specific after-middleware if global already sent a response
-				if !user_context.Context.done {
-					validate_middleware[X](mut user_context, get_handlers_for_method(route.after_middlewares,
-						user_context.Context.req.method))
-					// Preserve an after-middleware response, or restore the handler response state.
-					user_context.Context.done = user_context.Context.done || was_done
+					// no need to check the result of `validate_middleware`, since a response has to be sent
+					// anyhow. This function makes sure no further middleware is executed.
+					validate_middleware[X](mut user_context, app_global_handlers_after(app))
+					// skip route-specific after-middleware if global already sent a response
+					if !user_context.Context.done {
+						validate_middleware[X](mut user_context, get_handlers_for_method(route.after_middlewares,
+							user_context.Context.req.method))
+						// Preserve an after-middleware response, or restore the handler response state.
+						user_context.Context.done = user_context.Context.done || was_done
+					}
 				}
 			}
+			// send only the headers, because if the response body is too big, TcpConn code will
+			// actually block, because it has to wait for the socket to become ready to write. veb
+			// will handle this case.
+			if !was_done && !user_context.Context.done && user_context.Context.takeover_mode == .none {
+				eprintln('[veb] handler for route "${url.path}" does not send any data!')
+				// send response anyway so the connection won't block
+				// fast_send_resp_header(mut user_context.conn, user_context.res) or {}
+			} else if user_context.Context.takeover_mode == .none {
+				// fast_send_resp_header(mut user_context.conn, user_context.res) or {}
+			}
+			// Context.takeover_mode is set, so the user must send a response.
 		}
 		// Free the handler slots a throttle took for this request on every way
 		// out, including the 404 and refusing-middleware paths that skip the
@@ -466,17 +487,6 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 		if user_context.Context.throttle_leases.len > 0 {
 			user_context.Context.release_throttle_leases()
 		}
-		// send only the headers, because if the response body is too big, TcpConn code will
-		// actually block, because it has to wait for the socket to become ready to write. veb
-		// will handle this case.
-		if !was_done && !user_context.Context.done && user_context.Context.takeover_mode == .none {
-			eprintln('[veb] handler for route "${url.path}" does not send any data!')
-			// send response anyway so the connection won't block
-			// fast_send_resp_header(mut user_context.conn, user_context.res) or {}
-		} else if user_context.Context.takeover_mode == .none {
-			// fast_send_resp_header(mut user_context.conn, user_context.res) or {}
-		}
-		// Context.takeover_mode is set, so the user must send a response.
 	}
 
 	is_root_path := url.path.len == 0 || url.path == '/'
