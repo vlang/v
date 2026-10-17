@@ -14,7 +14,8 @@ fn test_production_native_pipeline_promotes_branch_and_loop_locals() {
 			os.rmdir_all(root) or {}
 		}
 		v3_bin := os.join_path(root, 'v3')
-		build := cmdexec.run(@VEXE, ['-gc', 'none', '-path',
+		// A `vlib/v/v.v` compiler leaves the ARM64 backend out unless it is asked for.
+		build := cmdexec.run(@VEXE, ['-gc', 'none', '-compile-backend', 'arm64', '-path',
 			'${ssa_production_vlib_dir}|@vlib|@vmodules', '-o', v3_bin, ssa_production_v3_src])
 		assert build.exit_code == 0, build.output
 		source := os.join_path(root, 'main.v')
