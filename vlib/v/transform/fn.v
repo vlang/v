@@ -129,6 +129,13 @@ fn (t &Transformer) local_fn_decl_return_type(name string) ?u32 {
 		return ret_source_id
 	}
 	qname := transform_qualified_fn_name(t.cur_module, name)
+	// A `fn C.name()` declaration is also registered under its bare name, but it
+	// is not a local function: only `C.name()` calls it. In a `.vsh` script a bare
+	// `getenv()` is `os.getenv`, so it must not be typed as `C.getenv`.
+	if qname == name && !isnil(t.tc) && name !in t.tc.v_fn_semantic_names
+		&& 'C.${name}' in t.tc.fn_ret_types {
+		return none
+	}
 	if ret_source_id := t.fn_ret_types.type_id(qname) {
 		return ret_source_id
 	}
