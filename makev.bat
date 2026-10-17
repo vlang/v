@@ -508,11 +508,12 @@ if !stage_error! NEQ 0 call :try_delete "%V_STAGE%"
 exit /b !stage_error!
 
 :select_tcc_openlibm
-REM An existing checkout can differ from tcc_branch, including with --local.
-REM Query its compiler target before each link instead of inferring it from Git.
+REM Direct TCC links need OpenLibm for C99 math that msvcrt lacks (remainder).
+REM Every Windows TCC bundle ships lib\openlibm.o built for its own compiler, as
+REM vlib/math expects. Use the installed checkout's object before each link: an
+REM existing checkout keeps its branch, so it can differ from tcc_branch.
 set "TCC_OPENLIBM="
-if not exist "!tcc_exe!" exit /b 0
-for /f "tokens=2 delims=()" %%A in ('""!tcc_exe!" -v 2^>^&1"') do if /I "%%A" == "x86_64 Windows" set TCC_OPENLIBM="%tcc_dir%\lib\openlibm.o"
+if exist "%tcc_dir%\lib\openlibm.o" set TCC_OPENLIBM="%tcc_dir%\lib\openlibm.o"
 exit /b 0
 
 :build_bootstrap_with_tcc
