@@ -8005,12 +8005,17 @@ fn v3_should_probe_bundled_tcc(options V3BundledTccProbeOptions) bool {
 	if options.is_prod || options.race {
 		return false
 	}
-	// Windows uses its bundled TCC as the platform default, including modes that
-	// use a debug compiler by default on other hosts.
-	if options.host_os == 'windows' && options.target.os == 'windows' {
-		return true
-	}
-	return !options.is_c_debug
+	return v3_tcc_builds_c_debug(options.is_c_debug, options.host_os, options.target.os)
+}
+
+// v3_tcc_builds_c_debug reports whether a `-cg` build still goes to TCC. Windows
+// uses its bundled TCC as the platform default, including modes that use a debug
+// compiler by default on other hosts. The selection and every gate that decides
+// whether to run the selected TCC must agree on this: generating for TCC and then
+// refusing to run it regenerates the whole program for the platform compiler and
+// reports a failure that never happened.
+fn v3_tcc_builds_c_debug(is_c_debug bool, host_os string, target_os string) bool {
+	return !is_c_debug || (host_os == 'windows' && target_os == 'windows')
 }
 
 fn v3_bundled_tcc_available(options V3BundledTccProbeOptions) bool {
@@ -15404,8 +15409,8 @@ pub fn run(args []string) {
 			// link, or objects of another compiler. Such a build goes the way it went
 			// before there was a module cache for TinyCC.
 			if needs_objective_c || link_uses_non_c_language
-				|| tcc_link_has_incompatible_objects || target_args.len > 0 || is_c_debug
-				|| dump_c_flags.len > 0 {
+				|| tcc_link_has_incompatible_objects || target_args.len > 0
+				|| !v3_tcc_builds_c_debug(is_c_debug, host_os, target.os) || dump_c_flags.len > 0 {
 				trace_v3_cache_fallback('the bundled TinyCC cannot build and link the module objects of this program')
 				restart_v3_without_cache()
 			}
@@ -15858,7 +15863,7 @@ pub fn run(args []string) {
 		// executable would say it is.
 		mut program_link_inputs := V3ProgramLinkInputs{}
 		if cached_dev_dylib.len > 0 && tcc_main_file.len > 0 && !link_uses_non_c_language
-			&& !is_c_debug && implicit_tcc != '' {
+			&& v3_tcc_builds_c_debug(is_c_debug, host_os, target.os) && implicit_tcc != '' {
 			tried_tcc = true
 			tcc_path := implicit_tcc
 			tcc_resources := v3_tcc_resource_flags_for_compiler(prefs.vroot, tcc_path, bundled_tcc, bundled_tcc_available)
@@ -15943,7 +15948,8 @@ pub fn run(args []string) {
 			&& (!tcc_link_has_incompatible_objects || cache_full_tcc_source.len > 0)
 			&& target_args.len == 0 && (!c_compiler_explicit || explicit_tcc)
 			&& (!cache_state.manager.enabled || cache_full_tcc_source.len > 0 || cache_with_tcc)
-			&& !is_c_debug && dump_c_flags.len == 0 && (explicit_tcc || implicit_tcc != '') {
+			&& v3_tcc_builds_c_debug(is_c_debug, host_os, target.os) && dump_c_flags.len == 0
+			&& (explicit_tcc || implicit_tcc != '') {
 			tried_tcc = true
 			tcc_path := if explicit_tcc && c_compiler in ['tcc', 'tinyc'] && bundled_tcc_available {
 				bundled_tcc
@@ -17053,7 +17059,8 @@ fn v3_retry_compilation_args(args []string, c_compiler_arg_index int, fallback s
 fn v3_implicit_tcc_fallback_warning(fallback string, reason string) string {
 	cause := v3_c_compiler_failure_reason(reason)
 	if cause.len == 0 {
-		return 'warning: implicit tcc could not be used for this build, regenerating it with ${fallback}'
+		// No compiler output: the build never ran TCC, it only generated for it.
+		return 'warning: implicit tcc was not attempted for this build, regenerating it with ${fallback}'
 	}
 	return 'warning: implicit tcc could not be used for this build (${cause}), regenerating it with ${fallback}'
 }
