@@ -201,6 +201,13 @@ fn (t &Transformer) resolve_sum_name_uncached(sum_name string) string {
 		|| sum_name.starts_with('fn(') || sum_name.starts_with('fn (') {
 		return ''
 	}
+	// Neither is an option or result of a sum type: the short-name fallback below
+	// would resolve `?css.StyleValue` (or `?&dom.StyleValue`) to the `StyleValue`
+	// sum, and the value of an `x := if c { ?T(a) } else { ?T(none) }` would be
+	// lowered into a payload-typed temporary.
+	if sum_name.starts_with('?') || sum_name.starts_with('!') {
+		return ''
+	}
 	if !isnil(t.tc) && t.tc.sum_types.contains(sum_name) {
 		return sum_name
 	}
