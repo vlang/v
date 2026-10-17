@@ -106,3 +106,51 @@ fn main() {
 		assert message == 'cannot use `string` as `int` in argument 1 to `takes_int`', message
 	}
 }
+
+fn test_calls_in_sort_receivers_are_kept() {
+	a, tc, mut prepared := check_builtin_method_receiver_source('sort_kept', 'module main
+
+fn default_index() int {
+	return 0
+}
+
+fn comparator_index() int {
+	return 1
+}
+
+fn main() {
+	mut groups := [[3, 1], [4, 2]]
+	groups[default_index()].sort()
+	groups[comparator_index()].sort(a > b)
+}
+')
+	assert tc.errors.len == 0, tc.errors.str()
+	used := mark_used_without_generic_detection_prepared(a, tc, mut prepared)
+	prepared.release()
+	dependencies := main_fn_dependencies(a, tc)
+	for name in ['default_index', 'comparator_index'] {
+		assert used[name], name
+		assert name in dependencies, name
+	}
+}
+
+fn test_errors_in_sort_receivers_are_reported() {
+	_, tc, mut prepared := check_builtin_method_receiver_source('sort_errors', "module main
+
+fn pick(index int) int {
+	return index
+}
+
+fn main() {
+	mut groups := [[3, 1], [4, 2]]
+	groups[pick('default')].sort()
+	groups[pick('comparator')].sort(a > b)
+}
+")
+	prepared.release()
+	messages := tc.errors.map(it.msg)
+	assert messages.len == 2, messages.str()
+	for message in messages {
+		assert message == 'cannot use `string` as `int` in argument 1 to `pick`', message
+	}
+}

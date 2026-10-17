@@ -17578,6 +17578,9 @@ fn (mut tc TypeChecker) record_array_compare_callback_param_errors(method string
 }
 
 fn (mut tc TypeChecker) check_array_sort_call(id flat.NodeId, node flat.Node, callee flat.Node) {
+	// Both sort call paths return before the generic receiver check. Visit the
+	// receiver here so calls in indexes and selectors are checked and kept alive.
+	tc.check_node(tc.a.child(&callee, 0))
 	explicit_count := int(node.children_count) - 1
 	if explicit_count > 1 {
 		tc.record_error_at(.call_arg_mismatch, 'expected 0 or 1 argument, but got ${explicit_count}', id, tc.method_call_name_pos(node, callee))
