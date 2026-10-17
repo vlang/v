@@ -4420,7 +4420,8 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 			if expected !is Pointer && tc.type_has_declaration_attribute(expected, 'nocopy') {
 				tc.record_error_at(.assignment_mismatch, 'cannot copy @[nocopy] struct: use a reference instead', value_id, tc.a.node(value_id).pos)
 			}
-			if expected is Pointer {
+			// Like V1, a `@[heap]` struct may retain a pointer parameter in its fields.
+			if expected is Pointer && !tc.type_has_declaration_attribute(Type(init_struct), 'heap') {
 				tc.record_non_heap_pointer_param_escape(value_id)
 			}
 			// A method value stored in a struct field escapes the evaluation site (several
