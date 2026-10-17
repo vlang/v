@@ -22249,7 +22249,12 @@ fn (mut g FlatGen) libc_compat_decls() {
 		g.writeln('#endif')
 		g.writeln('#endif')
 		if !g.libc_compat_fns[c_libc_compat_syscall_decl_key] {
+			// The <unistd.h> of the manual stdlib prelude already declares it. Repeating
+			// it after `-is_o` pushes its `internal_linkage` attribute makes clang
+			// reject the second declaration, so only the headerless preamble needs it.
+			g.writeln('#ifndef V_MANUAL_STDLIB_HEADERS')
 			g.writeln('long syscall(long number, ...);')
+			g.writeln('#endif')
 		}
 		g.writeln('static inline u32 v3_gettid(void) {')
 		g.writeln('\treturn (u32)syscall(SYS_gettid);')
