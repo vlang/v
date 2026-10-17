@@ -105,6 +105,7 @@ Direct TCC links add the installed bundle's `thirdparty\tcc\lib\openlibm.o`, whe
 for C99 math functions such as `remainder`. Each bundle ships this object for its own compiler,
 so an existing amd64 or i386 checkout links a matching object even when it differs from the
 branch selected by the host, `-tcc32`, or `TCC_BRANCH`.
+For paths longer than 260 characters, see [Long paths on Windows](doc/windows_long_paths.md).
 
 (Like the note above says, on Windows, use `makev.bat`, instead of `make`.)
 
