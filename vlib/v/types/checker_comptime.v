@@ -11229,8 +11229,9 @@ fn (mut tc TypeChecker) check_or_fallback_type(or_id flat.NodeId, source_id flat
 		}
 	}
 	parent_kind := tc.direct_parent_kind(or_id)
+	// An untyped integer constant such as `-1` adopts the float type like a bare literal.
 	is_strict_numeric_mismatch := actual.is_integer() && expected.is_float()
-		&& tail.kind != .int_literal
+		&& tail.kind != .int_literal && !tc.is_untyped_integer_constant_expr(tail_id)
 	if tc.expr_compatible(tail_id, actual, expected) && !is_strict_numeric_mismatch {
 		return
 	}
