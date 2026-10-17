@@ -1,5 +1,6 @@
 module parser
 
+import os
 import v.pref
 import v.scanner
 import v.token
@@ -56,6 +57,7 @@ fn test_comptime_const_name_scan_matches_full_scanner() {
 		'module main\nfn f() { text := "const ignored = 1"; raw := r"module other"; ch := `c` }\nconst actual = 2\n',
 		'module main\nfn f() { text := "value: \${if true { "nested \${42}" } else { "const ignored" }}" }\nconst actual = 3\n',
 		'module main\n#flag -Dconst=ignored\nconst actual = 4\n',
+		'module names\nstruct Escaped {\n @module u32\n @const int\n}\nconst actual = 5\n',
 	] {
 		prefs := pref.new_preferences()
 		mut fs := token.FileSet.new()
@@ -80,4 +82,14 @@ fn test_comptime_const_name_scan_matches_full_scanner() {
 			}
 		}
 	}
+}
+
+fn test_comptime_const_name_scan_keeps_module_after_escaped_keywords() {
+	path := os.join_path(os.vtmp_dir(), 'escaped_const_names_${os.getpid()}.v')
+	os.write_file(path, 'module names\nstruct Escaped {\n @module u32\n @const int\n}\nconst actual = 5\n')!
+	defer { os.rm(path) or {} }
+	mut p := Parser.new(pref.new_preferences())
+	names := p.parallel_comptime_const_names([path])
+	assert names.len == 1, names.str()
+	assert names['names\nactual'], names.str()
 }

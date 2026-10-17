@@ -474,7 +474,7 @@ fn scan_parallel_const_name_token(mut s scanner.Scanner) token.Token {
 		if !s.in_str_incomplete && !s.in_str_inter {
 			for s.offset < s.src.len {
 				c := s.src[s.offset]
-				if c >= 0x80 || c in [`c`, `m`, `/`, `'`, `"`, `\``, `#`]
+				if c >= 0x80 || c in [`c`, `m`, `/`, `'`, `"`, `\``, `#`, `@`]
 					|| (c == `r` && s.offset + 1 < s.src.len
 						&& s.src[s.offset + 1] in [`'`, `"`]) {
 					break
