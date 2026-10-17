@@ -112,6 +112,27 @@ fn retain_custom_clone(mut out []CustomAppend) {
 	value := make_custom_append()
 	out << value
 }
+const shared_append = AppendNode{children: [AppendNode{n: 1}]}
+fn make_scoped_const(flag bool) AppendNode {
+	if flag {
+		shared_append := 1
+		if shared_append > 0 {
+			return AppendNode{}
+		}
+	}
+	return shared_append
+}
+fn retain_scoped_const(mut out []AppendNode) {
+	value := make_scoped_const(false)
+	out << value
+}
+fn wrapped_append_1() AppendNode { return wrapped_append_2() }
+fn wrapped_append_2() AppendNode { return wrapped_append_3() }
+fn wrapped_append_3() AppendNode { return shared_append }
+fn retain_wrapped_const(mut out []AppendNode) {
+	value := wrapped_append_1()
+	out << value
+}
 fn main() {}
 ')!
 	compiled := cmdexec.run(@VEXE, ['-new-compiler', '-no-skip-unused', '-o', c_path, path])
@@ -127,7 +148,7 @@ fn main() {}
 	assert !tree.contains('__derived_clone'), tree
 	for name in ['retain_live_local', 'retain_mutable_local', 'retain_alias', 'retain_variable_origin',
 		'retain_loop', 'retain_twice', 'retain_defer', 'retain_capture', 'retain_call_alias',
-		'retain_literal_alias', 'retain_shared_fields'] {
+		'retain_literal_alias', 'retain_shared_fields', 'retain_scoped_const', 'retain_wrapped_const'] {
 		body := code.all_after_last('void ${name}(').all_after('{').all_before('\n}')
 		assert body.contains('__derived_clone'), '${name}: ${body}'
 	}

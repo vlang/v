@@ -2119,15 +2119,26 @@ fn (mut t Transformer) prepare_array_append_tree_factories() {
 			dependencies[decl.idx] = calls
 		}
 	}
-	mut changed := true
-	for changed {
-		changed = false
-		for idx, calls in dependencies {
-			if safe[idx] && calls.any(!safe[it]) {
-				safe[idx] = false
-				changed = true
+	// Propagate rejections from callees to callers along reverse edges, so each
+	// dependency is visited once even for long chains of forwarding wrappers.
+	mut callers := map[int][]int{}
+	mut rejected := []int{}
+	for idx, calls in dependencies {
+		for callee in calls {
+			if safe[callee] {
+				callers[callee] << idx
+			} else {
+				rejected << idx
 			}
 		}
+	}
+	for rejected.len > 0 {
+		idx := rejected.pop()
+		if !safe[idx] {
+			continue
+		}
+		safe[idx] = false
+		rejected << callers[idx]
 	}
 	for name, decl in t.call_param_types_decl_index {
 		if safe[decl.idx] {
@@ -2214,6 +2225,27 @@ fn (t &Transformer) array_append_factory_body_is_fresh(id flat.NodeId, mut local
 			return false
 		}
 		locals[lhs.value] = owns
+		return true
+	}
+	if node.kind == .block {
+		// A block's bindings end with it. A later use of the same name resolves
+		// to an outer declaration, such as a storage-bearing module constant.
+		outer := locals.clone()
+		for i in 0 .. node.children_count {
+			if !t.array_append_factory_body_is_fresh(t.a.child(&node, i), mut locals, mut uses, mut calls) {
+				return false
+			}
+		}
+		mut scoped := []string{}
+		for name, _ in locals {
+			if name !in outer {
+				scoped << name
+			}
+		}
+		for name in scoped {
+			locals.delete(name)
+			uses.delete(name)
+		}
 		return true
 	}
 	if node.kind == .ident {
