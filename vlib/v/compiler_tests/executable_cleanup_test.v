@@ -149,7 +149,8 @@ pub fn answer() int {
 	assert generate_no_main.exit_code == 0, generate_no_main.output
 	no_main_c := os.read_file(no_main_c_path)!
 	assert no_main_c.contains('static void _vno_main_init_caller(void) {'), no_main_c
-	assert no_main_c.contains('i64 exported_answer(void)'), no_main_c
+	// The export presents the C ABI: V's 64-bit `int` stays C `int` there.
+	assert no_main_c.contains('int exported_answer(void)'), no_main_c
 	assert_cleanup_registered_after_init(no_main_c)
 
 	// A natural-name export (export name equal to the C symbol) is emitted directly
@@ -172,8 +173,8 @@ pub fn start() int {
 	return direct_export_counter
 }
 ")!
-	generate_direct :=
-		os.exec([v3_bin, '-nocache', '-o', direct_export_c_path, direct_export_source])
+	generate_direct := os.exec([v3_bin, '-nocache', '-enable-globals', '-o', direct_export_c_path,
+		direct_export_source])
 	assert generate_direct.exit_code == 0, generate_direct.output
 	direct_export_c := os.read_file(direct_export_c_path)!
 	assert direct_export_c.contains('int start(void) {'), direct_export_c
