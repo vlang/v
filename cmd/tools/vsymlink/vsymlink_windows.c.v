@@ -22,6 +22,7 @@ fn setup_symlink(custom_link_dir string) {
 			if os.exists(vsymlink) {
 				os.rm(vsymlink) or { panic(err) }
 			}
+			remove_shell_shim(vsymlinkdir)
 			vsymlink = os.join_path(vsymlinkdir, 'v.exe')
 		}
 	}
@@ -37,6 +38,7 @@ fn setup_symlink(custom_link_dir string) {
 		}
 		os.write_file(vsymlink, '@echo off\n"${vexe}" %*') or { panic(err) }
 		eprintln('${vsymlink} file written.')
+		write_shell_shim(vsymlinkdir, vexe)
 	}
 	if !os.exists(vsymlink) {
 		warn_and_exit('Could not create ${vsymlink}')
@@ -101,6 +103,35 @@ fn default_link_dir() string {
 
 fn symlink_path(link_dir string) string {
 	return os.join_path(link_dir, 'v.exe')
+}
+
+// shell_shim_content renders the POSIX shell shim installed next to `v.bat`
+// when a native symlink cannot be created. A `.bat` file is invisible to POSIX
+// shells: Git Bash, MSYS2 and Cygwin resolve `v` through `env`, which cannot
+// execute it, so anything with a `#!/usr/bin/env -S v ...` shebang - including
+// the pre-commit hook installed by `v git-fmt-hook install` - fails there with
+// `env: 'v': No such file or directory`. The shim forwards to the same
+// executable, so `v` resolves in those shells too. The path uses forward
+// slashes, which Git Bash, MSYS2 and Cygwin all accept, including the `C:/...`
+// drive form.
+fn shell_shim_content(vexe_path string) string {
+	return '#!/bin/sh\nexec "${os.to_slash(vexe_path)}" "$@"\n'
+}
+
+fn write_shell_shim(link_dir string, vexe_path string) {
+	vshim := os.join_path(link_dir, 'v')
+	if os.exists(vshim) {
+		os.rm(vshim) or { panic(err) }
+	}
+	os.write_file(vshim, shell_shim_content(vexe_path)) or { panic(err) }
+	eprintln('${vshim} file written.')
+}
+
+fn remove_shell_shim(link_dir string) {
+	vshim := os.join_path(link_dir, 'v')
+	if os.exists(vshim) {
+		os.rm(vshim) or { panic(err) }
+	}
 }
 
 fn append_path_entry(path_value string, entry string, delimiter string, case_insensitive bool) string {
