@@ -3742,9 +3742,10 @@ fn (mut tc TypeChecker) branches_compatible_with(id flat.NodeId, expected Type) 
 			}
 			saved_smartcasts := clone_smartcasts(tc.smartcasts)
 			tc.apply_match_branch_context_smartcasts(subject_key, subject_type, branch)
-			actual := tc.resolve_expr(tail, expected)
+			actual, unbound := tc.resolve_branch_tail_expr(branch_id, tail, expected,
+				[]LocalBinding{})
 			tc.smartcasts = saved_smartcasts
-			if !tc.if_branch_type_compatible_with_context(actual, tail, expected) {
+			if unbound || !tc.if_branch_type_compatible_with_context(actual, tail, expected) {
 				return false
 			}
 		}
@@ -3766,9 +3767,13 @@ fn (mut tc TypeChecker) branches_compatible_with(id flat.NodeId, expected Type) 
 		if !tc.branch_failure_literal_matches_context(then_tail, expected) {
 			return false
 		}
-		if !tc.branch_tail_never_returns(tc.a.child(&node, 1)) {
-			then_actual := tc.resolve_expr(then_tail, expected)
-			if !tc.if_branch_type_compatible_with_context(then_actual, then_tail, expected) {
+		then_id := tc.a.child(&node, 1)
+		if !tc.branch_tail_never_returns(then_id) {
+			guard_bindings := tc.if_guard_branch_bindings(tc.a.child(&node, 0))
+			then_actual, unbound := tc.resolve_branch_tail_expr(then_id, then_tail, expected,
+				guard_bindings)
+			if unbound
+				|| !tc.if_branch_type_compatible_with_context(then_actual, then_tail, expected) {
 				return false
 			}
 		}
@@ -3789,10 +3794,134 @@ fn (mut tc TypeChecker) branches_compatible_with(id flat.NodeId, expected Type) 
 		if !tc.branch_failure_literal_matches_context(else_tail, expected) {
 			return false
 		}
-		else_actual := tc.resolve_expr(else_tail, expected)
-		return tc.if_branch_type_compatible_with_context(else_actual, else_tail, expected)
+		else_actual, unbound := tc.resolve_branch_tail_expr(else_id, else_tail, expected,
+			[]LocalBinding{})
+		return !unbound
+			&& tc.if_branch_type_compatible_with_context(else_actual, else_tail, expected)
 	}
 	return false
+}
+
+// resolve_branch_tail_expr resolves the value `tail` of the branch `branch_id`
+// against `expected` before the branch is checked, with the names the branch
+// binds before its value in scope: the variables of an `if x := opt {` guard
+// (`guard_bindings`), and the locals declared by the statements of the branch
+// before `tail`. Without them the check of a call receiver in `tail`
+// (`x.node().is_connected()`) reports those names as undefined. When `tail`
+// uses one of them that cannot be typed yet, `tail` is not resolved, and the
+// second result is true.
+fn (mut tc TypeChecker) resolve_branch_tail_expr(branch_id flat.NodeId, tail flat.NodeId, expected Type, guard_bindings []LocalBinding) (Type, bool) {
+	saved_scope := tc.cur_scope
+	mut untyped := []string{}
+	if guard_bindings.len > 0 {
+		tc.cur_scope = new_scope(saved_scope)
+		for binding in guard_bindings {
+			tc.cur_scope.insert(binding.name, binding.typ)
+			if type_contains_unknown(binding.typ) {
+				untyped << binding.name
+			}
+		}
+	}
+	tc.insert_branch_tail_locals(branch_id, saved_scope, mut untyped)
+	for name in untyped {
+		if tc.expr_uses_ident(tail, name) {
+			tc.cur_scope = saved_scope
+			return unknown_type('branch value uses an untyped branch variable'), true
+		}
+	}
+	actual := tc.resolve_expr(tail, expected)
+	tc.cur_scope = saved_scope
+	return actual, false
+}
+
+// if_guard_branch_bindings returns the variables the guard `cond_id` of an
+// `if x := opt {` binds, typed without checking the guard; a variable that
+// cannot be typed that way is unknown. It returns nothing for other conditions.
+fn (tc &TypeChecker) if_guard_branch_bindings(cond_id flat.NodeId) []LocalBinding {
+	if !tc.valid_node_id(cond_id) {
+		return []LocalBinding{}
+	}
+	cond := tc.a.nodes[int(cond_id)]
+	if cond.kind != .decl_assign || cond.children_count < 2 {
+		return []LocalBinding{}
+	}
+	mut bindings := tc.if_guard_query_bindings(cond)
+	for lhs_id in tc.if_guard_lhs_ids(cond) {
+		lhs := tc.a.node(lhs_id)
+		if lhs.kind != .ident || lhs.value.len == 0 || lhs.value == '_'
+			|| bindings.any(it.name == lhs.value) {
+			continue
+		}
+		bindings << LocalBinding{
+			name: lhs.value
+			typ:  unknown_type('if guard variable before the guard is checked')
+		}
+	}
+	return bindings
+}
+
+// insert_branch_tail_locals inserts into a scope over `outer` the locals that
+// the statements of the branch block or match branch `branch_id` declare
+// before its value, typed from their initializers. The names that cannot be
+// typed are added to `untyped`.
+fn (mut tc TypeChecker) insert_branch_tail_locals(branch_id flat.NodeId, outer &Scope, mut untyped []string) {
+	if !tc.valid_node_id(branch_id) {
+		return
+	}
+	node := tc.a.nodes[int(branch_id)]
+	if node.kind != .block && node.kind != .match_branch {
+		return
+	}
+	first := if node.kind == .match_branch && node.value != 'else' { node.value.int() } else { 0 }
+	if node.children_count <= first {
+		return
+	}
+	last := int(node.children_count) - 1
+	for i in first .. last {
+		stmt := tc.a.child_node(&node, i)
+		if stmt.kind != .decl_assign {
+			continue
+		}
+		lhs_ids := tc.multi_assign_lhs_ids(*stmt)
+		rhs_count := tc.multi_assign_rhs_count(*stmt)
+		mut multi := []Type{}
+		if lhs_ids.len > 1 && rhs_count == 1 {
+			rhs_type := tc.resolve_type(tc.multi_assign_rhs_id(*stmt, 0))
+			if rhs_type is MultiReturn {
+				multi = rhs_type.types.clone()
+			}
+		}
+		mut types := []Type{cap: lhs_ids.len}
+		for j in 0 .. lhs_ids.len {
+			mut typ := unknown_type('untyped branch local')
+			if lhs_ids.len == 1 && rhs_count == 1 && stmt.typ != 0 {
+				typ = tc.parse_type(stmt.typ)
+			} else if j < multi.len {
+				typ = multi[j]
+			} else if rhs_count == lhs_ids.len {
+				typ = tc.resolve_type(tc.multi_assign_rhs_id(*stmt, j))
+			}
+			types << typ
+		}
+		for j, lhs_id in lhs_ids {
+			lhs := tc.a.node(lhs_id)
+			if lhs.kind != .ident || lhs.value.len == 0 || lhs.value == '_' {
+				continue
+			}
+			if voidptr(tc.cur_scope) == voidptr(outer) {
+				tc.cur_scope = new_scope(outer)
+			}
+			typ := types[j]
+			tc.cur_scope.insert(lhs.value, typ)
+			if typ is Void || type_contains_unknown(typ) {
+				untyped << lhs.value
+			}
+		}
+	}
+	last_id := tc.a.child(&node, last)
+	if tc.valid_node_id(last_id) && tc.a.nodes[int(last_id)].kind == .block {
+		tc.insert_branch_tail_locals(last_id, outer, mut untyped)
+	}
 }
 
 fn (mut tc TypeChecker) apply_match_branch_context_smartcasts(subject_key string, subject_type Type, branch flat.Node) {
