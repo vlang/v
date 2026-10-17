@@ -36,3 +36,9 @@ at least one digit. Empty strings and bare `+` or `-` signs return an error.
 `Integer.get_bit(index)` reads the infinite two's-complement representation. Every bit
 of `-1` is set, and bits above a negative integer's magnitude are set. `set_bit` and
 the `bitwise_and`, `bitwise_or`, and `bitwise_xor` methods operate on magnitudes.
+
+`Integer.mod_pow` and `Integer.big_mod_pow` reduce negative bases into nonnegative
+residues less than the absolute modulus. `mod_pow` panics for a zero modulus;
+`big_mod_pow` returns zero for a zero modulus or an absolute modulus of one.
+`Integer.mod_inverse(n)` requires `n > 1` and returns a nonnegative inverse less than `n`,
+also when the operand is negative. `%` continues to return a truncated remainder.
