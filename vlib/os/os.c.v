@@ -384,6 +384,7 @@ fn vpopen(path string) voidptr {
 	$if windows {
 		mode := 'rb'
 		wpath := path.to_wide()
+		windows_avoid_long_temp_env()
 		return C._wpopen(wpath, mode.to_wide())
 	} $else {
 		cpath := path.str
@@ -457,6 +458,7 @@ pub fn system(cmd string) int {
 		wcmd := if cmd.len > 1 && cmd[0] == `"` && cmd[1] != `"` { '"${cmd}"' } else { cmd }
 		flush_stdout()
 		flush_stderr()
+		windows_avoid_long_temp_env()
 		unsafe {
 			ret = C._wsystem(wcmd.to_wide())
 		}
@@ -1275,6 +1277,7 @@ pub fn execvp(cmdpath string, cmdargs []string) ! {
 	cargs << &char(unsafe { nil })
 	mut res := int(0)
 	$if windows {
+		windows_avoid_long_temp_env()
 		res = C._execvp(&char(cmdpath.str), cargs.data)
 	} $else {
 		res = C.execvp(&char(cmdpath.str), cargs.data)
@@ -1300,8 +1303,16 @@ pub fn execve(cmdpath string, cmdargs []string, envs []string) ! {
 	for i in 0 .. cmdargs.len {
 		cargv << &char(cmdargs[i].str)
 	}
-	for i in 0 .. envs.len {
-		cenvs << &char(envs[i].str)
+	$if windows {
+		windows_avoid_long_temp_env()
+	}
+	child_envs := $if windows {
+		windows_temp_env_entries_fix(envs, windows_temp_env_candidates)
+	} $else {
+		envs
+	}
+	for i in 0 .. child_envs.len {
+		cenvs << &char(child_envs[i].str)
 	}
 	cargv << &char(unsafe { nil })
 	cenvs << &char(unsafe { nil })

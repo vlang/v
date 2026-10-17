@@ -258,11 +258,12 @@ fn (mut p Process) win_spawn_process() int {
 		to_be_freed << work_folder_ptr
 	}
 
+	windows_avoid_long_temp_env()
 	mut env_block := []u16{}
 	if p.env.len > 0 {
 		mut env_ptr := &u16(unsafe { nil })
 
-		for e in p.env {
+		for e in windows_temp_env_entries_fix(p.env, windows_temp_env_candidates) {
 			// e should in `ABC=123` format
 			env_ptr = e.to_wide()
 			if isnil(env_ptr) {
