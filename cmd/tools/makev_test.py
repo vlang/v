@@ -169,69 +169,107 @@ class BootstrapConfigurationTests(unittest.TestCase):
 
 @unittest.skipUnless(os.name == "nt", "requires the Windows cmd.exe interpreter")
 class BatchExecutionTests(unittest.TestCase):
-    def test_tcc_link_inputs_follow_host_tcc32_and_branch_overrides(self):
-        for arch, option, branch, uses_openlibm in (
-            ("AMD64", "", None, True),
-            ("x86", "", None, False),
-            ("AMD64", "-tcc32", None, False),
-            ("AMD64", "", "thirdparty-windows-i386", False),
-            ("AMD64", "", '"thirdparty-windows-i386"', False),
-            ("x86", "", "thirdparty-windows-amd64", True),
-            ("x86", "", '"thirdparty-windows-amd64"', True),
-            ("AMD64", "-tcc32", "thirdparty-windows-amd64", True),
-            ("AMD64", "", "custom-tcc-bundle", False),
+    def test_tcc_link_inputs_follow_the_installed_target(self):
+        # Updating an existing checkout does not switch its branch. Model that
+        # retained compiler independently of the requested host/options/branch.
+        for arch, options, branch, installed, stage_target in (
+            ("AMD64", [], None, "i386 Windows", None),
+            ("AMD64", ["--local"], None, "i386 Windows", None),
+            ("x86", [], None, "x86_64 Windows", None),
+            ("AMD64", ["-tcc32"], None, "x86_64 Windows", None),
+            ("AMD64", ["-tcc32", "--local"], None, "i386 Windows", None),
+            ("AMD64", [], "thirdparty-windows-i386", "x86_64 Windows", None),
+            ("AMD64", ["--local"], '"thirdparty-windows-i386"', "x86_64 Windows", None),
+            ("x86", [], "thirdparty-windows-amd64", "i386 Windows", None),
+            ("x86", ["--local"], '"thirdparty-windows-amd64"', "i386 Windows", None),
+            ("AMD64", [], "custom-tcc-bundle", "x86_64 Windows", None),
+            ("AMD64", [], "custom-tcc-bundle", "i386 Windows", None),
+            ("AMD64", [], None, "AArch64 Windows", None),
+            ("AMD64", [], None, "x86_64 Linux", None),
+            ("AMD64", [], None, "unrecognized", None),
+            ("AMD64", [], None, "x86_64 Windows", "i386 Windows"),
+            ("AMD64", [], None, "i386 Windows", "x86_64 Windows"),
         ):
-            with self.subTest(arch=arch, option=option, branch=branch), tempfile.TemporaryDirectory(
+            with self.subTest(arch=arch, options=options, branch=branch, installed=installed), tempfile.TemporaryDirectory(
                 prefix="makev TCC link inputs "
             ) as directory:
                 workdir = Path(directory)
                 tcc_dir = workdir / "thirdparty" / "tcc"
                 tcc_dir.mkdir(parents=True)
-                (tcc_dir / "tcc.exe").write_text("stub compiler", encoding="utf-8")
+                # A real child process supplies the version output to FOR /F;
+                # only compiler work is stubbed, not target parsing or options.
+                compiler = tcc_dir / "TCC target.cmd"
+                compiler.write_bytes("\n".join([
+                    "@echo off",
+                    'if "%~1" == "-v" goto :version',
+                    ":args",
+                    'if "%~1" == "" exit /b 0',
+                    '>>"%test_calls%" echo(%~1',
+                    "shift",
+                    "goto :args",
+                    ":version",
+                    "echo tcc version 0.9.28rc build-hash ^(%TCC_TEST_TARGET%^) 1>&2",
+                    '>>"target-probes.txt" echo %TCC_TEST_TARGET%',
+                    "exit /b 0",
+                ]).replace("\n", "\r\n").encode("utf-8"))
                 preamble = SOURCE[:SOURCE.index(":verifyopt\n")]
                 preamble = preamble.replace("%~dp0", str(workdir) + "\\")
                 body = "\n".join(
                     routine("build_" + stage + "_with_tcc") for stage in ("bootstrap", "stage")
                 )
                 self.assertEqual(body.count('"!tcc_exe!" '), 2)
-                body = body.replace('"!tcc_exe!" ', "call :stub_tcc ")
+                body = body.replace('"!tcc_exe!" ', 'call "!tcc_exe!" ')
                 script = "\n".join([
                     preamble,
+                    'set "tcc_exe=' + str(compiler) + '"',
+                    "goto :verifyopt",
+                    routine("verifyopt"),
+                    routine("init"),
+                    routine("build"),
+                    ":tcc_strap",
+                    ":tcc32_strap",
                     "set test_calls=bootstrap.args",
                     "call :build_bootstrap_with_tcc",
                     "if !ERRORLEVEL! NEQ 0 exit /b !ERRORLEVEL!",
+                    'set "TCC_TEST_TARGET=' + (stage_target or installed) + '"',
                     "set test_calls=stage.args",
                     "call :build_stage_with_tcc",
                     "exit /b !ERRORLEVEL!",
                     body,
+                    routine("select_tcc_openlibm"),
+                    ":download_tcc",
+                    '>>"download.txt" echo update existing checkout',
+                    "exit /b 0",
+                    ":cloning_vc",
+                    "exit /b 0",
                     ":generate_stage_c",
                     "exit /b 0",
                     ":try_delete",
                     "exit /b 0",
-                    ":stub_tcc",
-                    'if "%~1" == "" exit /b 0',
-                    '>>"%test_calls%" echo(%~1',
-                    "shift",
-                    "goto :stub_tcc",
                 ])
                 harness = workdir / "TCC link inputs.bat"
                 harness.write_bytes(script.replace("\n", "\r\n").encode("utf-8"))
-                env = dict(os.environ, PROCESSOR_ARCHITECTURE=arch, TCC_OPENLIBM="stale value")
+                env = dict(os.environ, PROCESSOR_ARCHITECTURE=arch,
+                           TCC_OPENLIBM="stale value", TCC_TEST_TARGET=installed)
                 env.pop("TCC_BRANCH", None)
                 if branch is not None:
                     env["TCC_BRANCH"] = branch
                 command = [os.environ.get("ComSpec", "cmd.exe"), "/d", "/c", str(harness)]
-                if option:
-                    command.append(option)
+                command.extend(options)
                 result = subprocess.run(
                     command, cwd=workdir, env=env, capture_output=True, text=True,
                     errors="replace", timeout=15, check=False,
                 )
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-                for stage in ("bootstrap", "stage"):
+                self.assertEqual((workdir / "download.txt").exists(), "--local" not in options)
+                self.assertEqual(
+                    (workdir / "target-probes.txt").read_text().splitlines(),
+                    [installed, stage_target or installed],
+                )
+                for stage, target in (("bootstrap", installed), ("stage", stage_target or installed)):
                     args = (workdir / (stage + ".args")).read_text(encoding="utf-8").splitlines()
                     math_inputs = [arg for arg in args if arg.lower().endswith("\\openlibm.o")]
-                    expected = [str(tcc_dir / "lib" / "openlibm.o")] if uses_openlibm else []
+                    expected = [str(tcc_dir / "lib" / "openlibm.o")] if target == "x86_64 Windows" else []
                     self.assertEqual(math_inputs, expected, args)
                     self.assertIn("-Wl,-stack=33554432", args)
                     self.assertFalse(any("stale value" in arg for arg in args), args)
@@ -293,6 +331,7 @@ int main(void) {
                 "call :build_bootstrap_with_tcc",
                 "exit /b !ERRORLEVEL!",
                 routine("build_bootstrap_with_tcc"),
+                routine("select_tcc_openlibm"),
             ])
             harness = workdir / "bootstrap harness.bat"
             harness.write_bytes(script.replace("\n", "\r\n").encode("utf-8"))
@@ -331,7 +370,7 @@ int main(void) {
         labels = [
             "build_msvc_stage", "generate_stage_c", "build_stage_with_tcc",
             "build_stage_with_msvc", "build_stage_with_clang", "build_stage_with_gcc",
-            "try_delete", "compile_error", "error",
+            "try_delete", "compile_error", "error", "select_tcc_openlibm",
         ]
         body = "\n".join([msvc] + [routine(label) for label in labels])
         lines = body.splitlines()
@@ -546,6 +585,8 @@ int main(void) {
         prefix = "cl " if compiler == "msvc" else '"!' + compiler + '_exe!" '
         body = body.replace(prefix, "call :stub_link ")
         body = body.replace('"%V_STAGE%" ', "call :stub_final ")
+        if compiler == "tcc":
+            body += "\n" + routine("select_tcc_openlibm")
         for wait in (100, 250):
             body = body.replace(
                 f"ping 192.0.2.1 -n 1 -w {wait} >nul", "rem No delay in tests"

@@ -56,11 +56,6 @@ REM Let a particular environment specify their own TCC and VC repos (to help mir
 if /I not ["%TCC_GIT%"] == [""] set tcc_url=%TCC_GIT%
 if /I not ["%TCC_BRANCH%"] == [""] set tcc_branch=%TCC_BRANCH%
 
-REM OpenLibm is an x64-only object in the amd64 bundle. Check the selected
-REM branch after -tcc32 and TCC_BRANCH overrides, including quoted names.
-set "TCC_OPENLIBM="
-if /I "%tcc_branch:"=%" == "thirdparty-windows-amd64" set TCC_OPENLIBM="%tcc_dir%\lib\openlibm.o"
-
 if /I not ["%VC_GIT%"] == [""] set vc_url=%VC_GIT%
 
 pushd "%~dp0"
@@ -512,11 +507,20 @@ set stage_error=!ERRORLEVEL!
 if !stage_error! NEQ 0 call :try_delete "%V_STAGE%"
 exit /b !stage_error!
 
+:select_tcc_openlibm
+REM An existing checkout can differ from tcc_branch, including with --local.
+REM Query its compiler target before each link instead of inferring it from Git.
+set "TCC_OPENLIBM="
+if not exist "!tcc_exe!" exit /b 0
+for /f "tokens=2 delims=()" %%A in ('""!tcc_exe!" -v 2^>^&1"') do if /I "%%A" == "x86_64 Windows" set TCC_OPENLIBM="%tcc_dir%\lib\openlibm.o"
+exit /b 0
+
 :build_bootstrap_with_tcc
 if not exist "!tcc_exe!" (
 	echo  ^> TCC not found
 	exit /b 1
 )
+call :select_tcc_openlibm
 echo  ^> Attempting to build "%V_BOOTSTRAP%" (from %V_C_FILE%) with "!tcc_exe!"
 "!tcc_exe!" %VC_BOOTSTRAP_DEFINE% -B"%tcc_dir%" -bt10 -g -w -o "%V_BOOTSTRAP%" "%V_C_FILE%" %V_BOOTSTRAP_NATIVE% %TCC_OPENLIBM% -ladvapi32 -lws2_32 -lbcrypt -Wl,-stack=33554432
 exit /b !ERRORLEVEL!
@@ -571,6 +575,7 @@ exit /b !stage_error!
 set stage_vflags=-cc "!tcc_exe!"
 call :generate_stage_c
 if !ERRORLEVEL! NEQ 0 exit /b !ERRORLEVEL!
+call :select_tcc_openlibm
 echo  ^> Compiling "%V_STAGE%" from "%V_STAGE_C%" with TCC
 "!tcc_exe!" -B"%tcc_dir%" -bt10 -g -w -o "%V_STAGE%" "%V_STAGE_C%" %V_STAGE_NATIVE% %TCC_OPENLIBM% -ldbghelp -lws2_32 -L"%~dp0vlib\crypto\rand\internal\libraries\bcrypt" -lbcrypt -I "%~dp0thirdparty\stdatomic\win" -ladvapi32 -Wl,-stack=33554432
 set stage_error=!ERRORLEVEL!

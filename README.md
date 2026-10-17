@@ -101,8 +101,10 @@ The compatibility filter uses the system `sh`; Bash is not required.
 
 On Windows, `makev.bat` generates the first compiler stage as C and links it directly.
 This also works with older bootstrap snapshots whose process-spawn code is broken.
-Direct TCC builds link the bundled OpenLibm object only for `thirdparty-windows-amd64`.
-The i386 bundle selected on x86 hosts or with `-tcc32` does not use this x64 object.
+Direct TCC builds link OpenLibm only when the installed compiler reports `x86_64 Windows`.
+They inspect the actual compiler before each link, including with `--local` or `TCC_BRANCH`.
+An existing checkout can differ from the requested branch; its i386 compiler does not use this
+x64 object.
 
 (Like the note above says, on Windows, use `makev.bat`, instead of `make`.)
 
