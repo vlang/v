@@ -278,6 +278,11 @@ fn asm_fcmp_d(dn Reg, dm Reg) u32 {
 	return 0x1E602000 | (u32(dm) << 16) | (u32(dn) << 5)
 }
 
+// fcmp sn, sm (compare two single-precision floats, sets NZCV)
+fn asm_fcmp_s(dn Reg, dm Reg) u32 {
+	return 0x1E202000 | (u32(dm) << 16) | (u32(dn) << 5)
+}
+
 // === Memory ===
 
 // str rt, [rn] (store 64-bit)
@@ -539,39 +544,77 @@ fn asm_fadd_d(dd int, dn int, dm int) u32 {
 	return 0x1E602800 | (u32(dm) << 16) | (u32(dn) << 5) | u32(dd)
 }
 
+// fsub dd, dn, dm
+fn asm_fsub_d(dd int, dn int, dm int) u32 {
+	return 0x1E603800 | (u32(dm) << 16) | (u32(dn) << 5) | u32(dd)
+}
+
+// fmul dd, dn, dm
+fn asm_fmul_d(dd int, dn int, dm int) u32 {
+	return 0x1E600800 | (u32(dm) << 16) | (u32(dn) << 5) | u32(dd)
+}
+
+// fdiv dd, dn, dm
+fn asm_fdiv_d(dd int, dn int, dm int) u32 {
+	return 0x1E601800 | (u32(dm) << 16) | (u32(dn) << 5) | u32(dd)
+}
+
+// fsqrt dd, dn
+fn asm_fsqrt_d(dd int, dn int) u32 {
+	return 0x1E61C000 | (u32(dn) << 5) | u32(dd)
+}
+
+// fadd sd, sn, sm
+fn asm_fadd_s(dd int, dn int, dm int) u32 {
+	return 0x1E202800 | (u32(dm) << 16) | (u32(dn) << 5) | u32(dd)
+}
+
+// fsub sd, sn, sm
+fn asm_fsub_s(dd int, dn int, dm int) u32 {
+	return 0x1E203800 | (u32(dm) << 16) | (u32(dn) << 5) | u32(dd)
+}
+
+// fmul sd, sn, sm
+fn asm_fmul_s(dd int, dn int, dm int) u32 {
+	return 0x1E200800 | (u32(dm) << 16) | (u32(dn) << 5) | u32(dd)
+}
+
+// fdiv sd, sn, sm
+fn asm_fdiv_s(dd int, dn int, dm int) u32 {
+	return 0x1E201800 | (u32(dm) << 16) | (u32(dn) << 5) | u32(dd)
+}
+
+// fsqrt sd, sn
+fn asm_fsqrt_s(dd int, dn int) u32 {
+	return 0x1E21C000 | (u32(dn) << 5) | u32(dd)
+}
+
+// frintz sd, sn (truncate toward zero)
+fn asm_frintz_s(dd int, dn int) u32 {
+	return 0x1E25C000 | (u32(dn) << 5) | u32(dd)
+}
+
+// frintz dd, dn (truncate toward zero)
+fn asm_frintz_d(dd int, dn int) u32 {
+	return 0x1E65C000 | (u32(dn) << 5) | u32(dd)
+}
+
 // fadd d0, d0, d1 (common case)
+// Kept because gen_test.v asserts on this word; the general encoder above
+// emits the same one for the same registers.
 fn asm_fadd_d0_d0_d1() u32 {
 	return 0x1E612800
 }
 
-// fsub d0, d0, d1
-fn asm_fsub_d0_d0_d1() u32 {
-	return 0x1E613800
+// fmsub dd, dn, dm, da (dd = da - dn * dm) — the double-precision frem
+// sequence: d - trunc(d/n)*m.
+fn asm_fmsub_d(sd int, sn int, sm int, sa int) u32 {
+	return 0x1F418000 | (u32(sm) << 16) | (u32(sa) << 10) | (u32(sn) << 5) | u32(sd)
 }
 
-// fmul d0, d0, d1
-fn asm_fmul_d0_d0_d1() u32 {
-	return 0x1E610800
-}
-
-// fdiv d0, d0, d1
-fn asm_fdiv_d0_d0_d1() u32 {
-	return 0x1E611800
-}
-
-// fdiv d2, d0, d1
-fn asm_fdiv_d2_d0_d1() u32 {
-	return 0x1E611802
-}
-
-// frintz d2, d2 (truncate to integer)
-fn asm_frintz_d2() u32 {
-	return 0x1E65C042
-}
-
-// fmsub d0, d2, d1, d0 (d0 = d0 - d2*d1) — used for fmod: a - trunc(a/b)*b
-fn asm_fmsub_d0_d2_d1_d0() u32 {
-	return 0x1F418040
+// fmsub sd, sn, sm, sa (sd = sa - sn * sm) — the single-precision frem sequence
+fn asm_fmsub_s(sd int, sn int, sm int, sa int) u32 {
+	return 0x1F008000 | (u32(sm) << 16) | (u32(sa) << 10) | (u32(sn) << 5) | u32(sd)
 }
 
 // === Float Conversions ===
@@ -624,6 +667,90 @@ fn asm_fcvt_d_s(dd int, sn int) u32 {
 // fcvt sd, dn (convert double-precision to single-precision float)
 fn asm_fcvt_s_d(sd int, dn int) u32 {
 	return 0x1E624000 | (u32(dn) << 5) | u32(sd)
+}
+
+// === Vector (Advanced SIMD) ===
+//
+// A `v` register holds four f32 lanes; the same register number names the low
+// 64 bits as `d` and the low 32 bits as `s`. These encoders cover the
+// four-lane f32 operations the `simd` module needs, and the 16-byte load/store
+// pair that moves a whole vector between memory and a `v` register.
+
+// fadd vd.4s, vn.4s, vm.4s
+fn asm_fadd_v4s(vd int, vn int, vm int) u32 {
+	return 0x4E20D400 | (u32(vm) << 16) | (u32(vn) << 5) | u32(vd)
+}
+
+// fsub vd.4s, vn.4s, vm.4s
+fn asm_fsub_v4s(vd int, vn int, vm int) u32 {
+	return 0x4EA0D400 | (u32(vm) << 16) | (u32(vn) << 5) | u32(vd)
+}
+
+// fmul vd.4s, vn.4s, vm.4s
+fn asm_fmul_v4s(vd int, vn int, vm int) u32 {
+	return 0x6E20DC00 | (u32(vm) << 16) | (u32(vn) << 5) | u32(vd)
+}
+
+// fdiv vd.4s, vn.4s, vm.4s
+fn asm_fdiv_v4s(vd int, vn int, vm int) u32 {
+	return 0x6E20FC00 | (u32(vm) << 16) | (u32(vn) << 5) | u32(vd)
+}
+
+// fsqrt vd.4s, vn.4s
+fn asm_fsqrt_v4s(vd int, vn int) u32 {
+	return 0x6EA1F800 | (u32(vn) << 5) | u32(vd)
+}
+
+// ldr qd, [xn, #imm12] (load 128-bit, unsigned offset scaled by 16)
+// imm12 is the byte offset divided by 16; range 0..65520 step 16.
+// ARMv8-A permits an unaligned base register here, so a vector that lives in
+// two consecutive 8-byte stack slots is reachable without re-aligning the frame.
+fn asm_ldr_q_imm(vd int, xn Reg, imm12 u32) u32 {
+	return 0x3DC00000 | ((imm12 & 0xFFF) << 10) | (u32(xn) << 5) | u32(vd)
+}
+
+// ldr sd, [xn, #imm12] (load one f32 lane, unsigned offset scaled by 4)
+// imm12 is the byte offset divided by 4; range 0..16380 step 4. Four of these
+// fill four consecutive FP registers, which is how a four-lane f32 aggregate is
+// passed to a C function under the AAPCS64 HFA rules: one `ldr q` fills one
+// register's lanes, not the four registers the callee reads.
+fn asm_ldr_s_imm(vd int, xn Reg, imm12 u32) u32 {
+	return 0xBD400000 | ((imm12 & 0xFFF) << 10) | (u32(xn) << 5) | u32(vd)
+}
+
+// str qd, [xn, #imm12] (store 128-bit, unsigned offset scaled by 16)
+// imm12 is the byte offset divided by 16; range 0..65520 step 16
+fn asm_str_q_imm(vd int, xn Reg, imm12 u32) u32 {
+	return 0x3D800000 | ((imm12 & 0xFFF) << 10) | (u32(xn) << 5) | u32(vd)
+}
+
+// The scalar f64 forms of the loads and stores above. They are the integer
+// 64-bit forms with the SIMD flag (V) set, which is the same step that turns
+// `ldr w` into `ldr s`, so a value in a stack slot moves into the register the
+// instruction names in one word instead of an integer load plus an `fmov`.
+// imm12 is the byte offset divided by 8; range 0..32760 step 8
+fn asm_ldr_d_imm(vd int, xn Reg, imm12 u32) u32 {
+	return 0xFD400000 | ((imm12 & 0xFFF) << 10) | (u32(xn) << 5) | u32(vd)
+}
+
+fn asm_str_d_imm(vd int, xn Reg, imm12 u32) u32 {
+	return 0xFD000000 | ((imm12 & 0xFFF) << 10) | (u32(xn) << 5) | u32(vd)
+}
+
+// ldur dd, [xn, #simm9] / stur dd, [xn, #simm9] (unscaled f64 load/store).
+// The unscaled immediate reaches negative offsets the scaled form cannot, so
+// the frames too small for an sp-relative slot still take one instruction.
+fn asm_ldur_d(vd int, xn Reg, simm9 i32) u32 {
+	return 0xFC400000 | (u32(simm9 & 0x1FF) << 12) | (u32(xn) << 5) | u32(vd)
+}
+
+fn asm_stur_d(vd int, xn Reg, simm9 i32) u32 {
+	return 0xFC000000 | (u32(simm9 & 0x1FF) << 12) | (u32(xn) << 5) | u32(vd)
+}
+
+// ldur sd, [xn, #simm9] (unscaled f32 load), for the same frames.
+fn asm_ldur_s(vd int, xn Reg, simm9 i32) u32 {
+	return 0xBC400000 | (u32(simm9 & 0x1FF) << 12) | (u32(xn) << 5) | u32(vd)
 }
 
 // === Special ===

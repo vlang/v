@@ -1030,6 +1030,13 @@ pub fn is_test_file_for_backend(path string, backend string) bool {
 	if suffix_is_backend_name(backend_suffix) {
 		// A backend name wins over an architecture alias: `wasm` spells both, and
 		// `foo_test.wasm.v` is a WASM backend test, not an amd64/arm64 one.
+		if backend_suffix == 'native' {
+			// `native` and `arm64` are two spellings of the same backend: the driver
+			// rewrites `-b native` to `arm64`, so a run's backend reaches this comparison
+			// as `arm64`. A `foo_test.native.v` file has to answer to that spelling too,
+			// or no such file is ever selected and the native backend keeps no tests.
+			return backend in ['native', 'arm64']
+		}
 		return backend_suffix == backend
 	}
 	if _ := arch_from_string(backend_suffix) {

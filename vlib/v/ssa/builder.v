@@ -2085,6 +2085,7 @@ fn (b &Builder) skip_source_fn(name string) bool {
 	}
 	return name.starts_with('print_backtrace') || name.starts_with('backtrace_')
 		|| name.starts_with('map.')
+		|| name in ['map_map_eq', 'map_map_ne', 'VMapData.free']
 		|| name in ['print_libbacktrace', 'eprint_libbacktrace', 'bsd_backtrace_resolve_atos']
 }
 
@@ -2114,14 +2115,19 @@ fn (b &Builder) skip_source_fn_in_module(name string, module_name string) bool {
 	if module_name in ['c', 'v.gen.c'] && name.starts_with('Gen.') {
 		return true
 	}
+		return true
+	}
 	if module_name == 'strings' {
 		return b.skip_source_fn(ssa_fn_name_in_module(module_name, name))
 			|| name.starts_with('Builder.') && b.skip_source_fn(name)
 			|| name == 'Builder.push_many'
 	}
 	if module_name == 'os' {
+		// `Process.wait` ends in `Process._spawn`, whose POSIX body needs `C.fork`
+		// and `C.execve`, which the native backend cannot express; `CommandArgs.close`
+		// and `system_args` are the two bodies that reach it, so they go with it.
 		return name in ['is_dir', 'is_link', 'ls', 'normalize_path_in_builder', 'check_fwrite',
-			'check_fread', 'join_path_single']
+			'check_fread', 'join_path_single', 'Process.wait', 'CommandArgs.close', 'system_args']
 	}
 	if module_name == 'strconv' {
 		return name in ['f32_to_str_l', 'f32_to_str_l_with_dot', 'f64_to_str_l', 'f64_to_str_l_with_dot',
@@ -7331,7 +7337,8 @@ fn (b &Builder) fn_is_used_for_decl(name string, qualified_method bool) bool {
 	}
 	if name in ['new_map', 'memdup', 'int_str', 'bool_str', 'print', 'println', 'eprint', 'eprintln',
 		'exit', 'arguments', 'tos', 'tos2', 'tos3', 'tos_clone', 'cstring_to_vstring', 'malloc_noscan',
-		'isnil', 'error', 'error_with_code', 'join_path_single'] {
+		'isnil', 'error', 'error_with_code', 'join_path_single', 'DenseArray.has_index',
+		'DenseArray__has_index', 'has_index'] {
 		return true
 	}
 	return false
@@ -11680,7 +11687,15 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 		} else if fn_node.kind == .selector && b.is_function_value_expr(fn_node_id) {
 			return b.build_indirect_call(id, node, fn_node_id)
 		}
-		panic('ssa: unknown function `${actual_name}`')
+		// Name the caller as well as the callee: when the missing callee is a
+		// skipped runtime function, the interesting half is which body still
+		// mentions it.
+		caller := if b.cur_func >= 0 && b.cur_func < b.m.funcs.len {
+			b.m.funcs[b.cur_func].name
+		} else {
+			'<none>'
+		}
+		panic('ssa: unknown function `${actual_name}` (called from `${caller}` in module `${b.cur_module}`)')
 	}
 	fn_ref := b.m.add_value(.func_ref, b.void_type, resolved_name, fn_idx)
 	ret_type := b.m.funcs[fn_idx].typ

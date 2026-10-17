@@ -340,3 +340,52 @@ fn test_literal_c_variadic_string_stores_both_words() {
 	assert asm_str_imm(Reg(8), sp, 0) in words
 	assert asm_str_imm(Reg(10), sp, 1) in words
 }
+
+fn float_binop_words(mut m ssa.Module, fop ssa.OpCode, arg_type ssa.TypeID, ret_type ssa.TypeID,
+	a string, b string) []u32 {
+	func_id := m.new_function('caller', ret_type)
+	block_id := m.add_block(func_id, 'entry')
+	lhs := m.add_value(.constant, arg_type, a, 0)
+	rhs := m.add_value(.constant, arg_type, b, 0)
+	result := m.add_instr(fop, block_id, ret_type, [lhs, rhs])
+	mut g := Gen.new(m)
+	g.reset_value_slots(&m.funcs[func_id])
+	g.gen_instr(int(result))
+	g.materialize_text()
+	mut words := []u32{}
+	for i := 0; i < g.macho.text_data.len; i += 4 {
+		words << read_u32_le(g.macho.text_data, i)
+	}
+	return words
+}
+
+fn test_f32_arithmetic_stays_single_precision() {
+	mut m := ssa.Module.new()
+	f32_type := m.type_store.get_float(32)
+	words := float_binop_words(mut m, .fadd, f32_type, f32_type, '1', '2')
+	assert asm_fadd_s(0, 0, 1) in words
+	// The old path widened both operands to f64, operated, and narrowed back;
+	// none of that register traffic should survive for a plain f32 add.
+	assert asm_fadd_d0_d0_d1() !in words
+	assert asm_fcvt_d_s(0, 0) !in words
+	assert asm_fcvt_s_d(0, 0) !in words
+}
+
+fn test_f64_arithmetic_uses_double_precision() {
+	mut m := ssa.Module.new()
+	f64_type := m.type_store.get_float(64)
+	words := float_binop_words(mut m, .fadd, f64_type, f64_type, '1', '2')
+	assert asm_fadd_d0_d0_d1() in words
+	assert asm_fadd_s(0, 0, 1) !in words
+}
+
+fn test_f32_comparison_stays_single_precision() {
+	mut m := ssa.Module.new()
+	f32_type := m.type_store.get_float(32)
+	bool_type := m.type_store.get_int(1)
+	words := float_binop_words(mut m, .lt, f32_type, bool_type, '1', '2')
+	// The operands are f32 even though the comparison's result is not, so FCMP
+	// runs at the operands' width.
+	assert asm_fcmp_s(Reg(0), Reg(1)) in words
+	assert asm_fcmp_d(Reg(0), Reg(1)) !in words
+}
