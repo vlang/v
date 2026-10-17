@@ -159,8 +159,10 @@ fn align_up(a usize, alignment usize) usize {
 	}
 }
 
+// left_bits returns a mask of all the bits above the single bit in `x`.
+// The parentheses matter: `|` and `+` have the same precedence in V.
 fn left_bits(x u32) u32 {
-	return (x << 1) | (~(x << 1)) + 1
+	return (x << 1) | (~(x << 1) + 1)
 }
 
 fn least_bit(x u32) u32 {
@@ -313,7 +315,7 @@ fn (c &Chunk) next() &Chunk {
 
 fn (c &Chunk) prev() &Chunk {
 	mut me := usize(c)
-	me = me + c.prev_foot
+	me = me - c.prev_foot
 	return unsafe { &Chunk(me) }
 }
 
@@ -393,10 +395,6 @@ fn (tree &TreeChunk) leftmost_child() &TreeChunk {
 
 fn (tree &TreeChunk) chunk() &Chunk {
 	return &tree.chunk
-}
-
-fn (tree &TreeChunk) size(treemap u32) usize {
-	return tree.chunk.head & ~flag_bits
 }
 
 @[unsafe]
@@ -857,10 +855,10 @@ fn (mut dl Dlmalloc) insert_large_chunk(chunk_ &TreeChunk, size usize) {
 			mut k := size << leftshift_for_tree_index(idx)
 			for {
 				if t.chunk().size() != size {
-					c_ := &t.child[int((k >> sizeof(usize) * 8 - 1) & 1)]
+					c_ := &t.child[int((k >> (sizeof(usize) * 8 - 1)) & 1)]
 					mut c := &&TreeChunk(c_)
 					k <<= 1
-					if !isnil(c) {
+					if !isnil(*c) {
 						t = *c
 					} else {
 						*c = chunk
@@ -954,11 +952,7 @@ fn (mut dl Dlmalloc) malloc_real(size usize) voidptr {
 			if nb > dl.dvsize {
 				// if there's some other bin with some memory, then we just use
 				// the next smallest bin
-
-				// todo(playXE): Find out why in the world this part of code does not work in
-				// some programs (esp. json2). Theoretically disabling this path just
-				// makes fragmentation a little worse but nothing really bad should happen
-				if false && smallbits != 0 {
+				if smallbits != 0 {
 					leftbits := (smallbits << idx) & left_bits(u32(1) << idx)
 					leastbit := least_bit(leftbits)
 					i := u32(bits.trailing_zeros_32(leastbit))
@@ -972,7 +966,7 @@ fn (mut dl Dlmalloc) malloc_real(size usize) voidptr {
 					} else {
 						p.set_size_and_pinuse_of_inuse_chunk(nb)
 						mut r := p.plus_offset(nb)
-						r.set_size_and_pinuse_of_free_chunk(size)
+						r.set_size_and_pinuse_of_free_chunk(rsize)
 						dl.replace_dv(r, rsize)
 					}
 
@@ -1119,7 +1113,7 @@ fn (mut dl Dlmalloc) sys_alloc(size usize) voidptr {
 				if !isnil(sp) && !sp.is_extern() && sp.sys_flags() == flags {
 					oldbase := sp.base
 					sp.base = tbase
-					sp.size = tsize
+					sp.size += tsize
 					return dl.prepend_alloc(tbase, oldbase, size)
 				} else {
 					dl.add_segment(tbase, tsize, flags)
@@ -1150,7 +1144,7 @@ fn (mut dl Dlmalloc) tmalloc_small(size usize) voidptr {
 		i := bits.trailing_zeros_32(leastbit)
 		mut v := *dl.treebin_at(u32(i))
 		mut t := v
-		mut rsize := t.size(dl.treemap)
+		mut rsize := t.chunk().size() - size
 		for {
 			t = t.leftmost_child()
 			if isnil(t) {
@@ -1328,7 +1322,7 @@ fn (mut dl Dlmalloc) add_segment(tbase voidptr, tsize usize, flags u32) {
 			nextp := p.plus_offset(sizeof(usize))
 			p.head = fencepost_head()
 			nfences += 1
-			if nextp.head < old_end {
+			if voidptr(&nextp.head) < old_end {
 				p = nextp
 			} else {
 				break
@@ -1378,6 +1372,7 @@ pub fn (mut dl Dlmalloc) realloc(oldmem voidptr, bytes usize) voidptr {
 			oc := oldp.size() - overhead_for(oldp)
 			copy_bytes := if oc < bytes { oc } else { bytes }
 			vmemcpy(ptr, oldmem, int(copy_bytes))
+			dl.free_(oldmem)
 		}
 
 		return ptr
