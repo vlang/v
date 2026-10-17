@@ -4262,6 +4262,25 @@ fn free_retained_scopes(transform_scope voidptr, prepare_scope voidptr) {
 	}
 }
 
+// release_cgen_scopes releases cgen's retained worker arenas and its stage arena.
+fn release_cgen_scopes(worker_scopes []voidptr, cgen_scope voidptr) {
+	cgen.free_cgen_worker_scopes(worker_scopes)
+	prealloc_scope_free_for_v3(cgen_scope)
+}
+
+// free_prealloc_scopes releases detached prealloc scopes; any thread can do it.
+fn free_prealloc_scopes(scopes []voidptr) {
+	for scope in scopes {
+		prealloc_scope_free_for_v3(scope)
+	}
+}
+
+// join_stopped_worker_pool waits for the threads of a stopped worker pool.
+fn join_stopped_worker_pool(pool &workers.Pool) {
+	mut p := unsafe { pool }
+	p.join()
+}
+
 // release_unused_diagnostic_scope preserves warnings promoted to errors and
 // discards notice storage before its arena is released.
 fn release_unused_diagnostic_scope(mut errors []types.TypeError, mut notices []types.TypeError, scope voidptr) {
@@ -14766,6 +14785,7 @@ pub fn run(args []string) {
 			''
 		}
 		mut generated_c_flags := cgen_cache_metadata.flags.clone()
+		mut cgen_release_threads := []thread{}
 		mut windows_gui_entry_point := cgen_cache_metadata.windows_gui_entry_point
 		mut interface_impl_signature := cgen_cache_metadata.interface_impl_signature
 		mut cgen_was_parallel := false
@@ -14830,6 +14850,14 @@ pub fn run(args []string) {
 			// Rebuild fork-shared lookup indexes in Cgen's parent arena. Scoped serial
 			// batches otherwise can inherit map storage populated by an earlier arena.
 			pre_tc.set_fresh_type_cache(cgen_parse_cache_enabled)
+			// The transform helper arenas were kept only for the transform-stage type
+			// cache, whose keys can name their texts; that cache is gone now. Their node
+			// texts were published, so release them before Cgen's peak. Unmapping them
+			// takes a few milliseconds; a helper thread does it while cgen starts.
+			if transform_helper_scopes.len > 0 {
+				cgen_release_threads << spawn free_prealloc_scopes(transform_helper_scopes)
+			}
+			transform_helper_scopes = []voidptr{}
 			pre_tc.freeze_type_cache_for_forks()
 			pre_tc.discard_type_cache_overlay_after_forks()
 			mut scoped_generated_c_flags := []string{}
@@ -14915,7 +14943,7 @@ pub fn run(args []string) {
 			if !incremental_cache_hit {
 				scoped_generated_c_flags = g.c_flags()
 			}
-			g.free_parallel_worker_scopes()
+			cgen_worker_scopes := g.take_parallel_worker_scopes()
 			prealloc_scope_leave_for_v3(cgen_scope)
 			if !incremental_cache_hit {
 				generated_c_flags = clone_string_list(scoped_generated_c_flags)
@@ -14925,7 +14953,10 @@ pub fn run(args []string) {
 			// stage arena; all of them can grow while servicing those queries.
 			pre_tc.reset_type_interners()
 			pre_tc.set_fresh_type_cache(cgen_parse_cache_enabled)
-			prealloc_scope_free_for_v3(cgen_scope)
+			// Nothing reads cgen's arenas any more. Unmapping them takes several
+			// milliseconds; do it beside the following stages.
+			cgen_release_threads << spawn release_cgen_scopes(cgen_worker_scopes.clone(),
+				cgen_scope)
 		} else if !cgen_cache_hit {
 			generated_path := if cache_state.manager.enabled { cache_plan_file } else { cc_src }
 			mut g := cgen.FlatGen.new()
@@ -15030,7 +15061,14 @@ pub fn run(args []string) {
 				exit(1)
 			}
 		}
-		a.close_workers()
+		if !isnil(a.worker_pool) {
+			// Later stages create their own workers if they need any. Let the
+			// helper threads exit while those stages run instead of joining them here.
+			mut cgen_pool := a.worker_pool
+			a.worker_pool = unsafe { nil }
+			cgen_pool.stop()
+			cgen_release_threads << spawn join_stopped_worker_pool(cgen_pool)
+		}
 		if cgen_cache_hit {
 			b.step('cgen (cached)')
 		} else if incremental_cache_hit {
@@ -15322,6 +15360,9 @@ pub fn run(args []string) {
 				println('Generated C project in ${generate_c_project}')
 			}
 			b.print_report()
+			for cgen_release_thread in cgen_release_threads {
+				cgen_release_thread.wait()
+			}
 			if retained_transform_scope != unsafe { nil }
 				|| retained_transform_prepare_scope != unsafe { nil } {
 				free_retained_scopes(retained_transform_scope, retained_transform_prepare_scope)
@@ -15335,6 +15376,7 @@ pub fn run(args []string) {
 		// compiler consumes the generated file. Release those arenas alongside it
 		// so their unmapping is not serial work after the compile.
 		mut scope_free_threads := []thread{}
+		scope_free_threads << cgen_release_threads
 		if retained_transform_scope != unsafe { nil }
 			|| retained_transform_prepare_scope != unsafe { nil } {
 			scope_free_threads << spawn free_retained_scopes(retained_transform_scope, retained_transform_prepare_scope)

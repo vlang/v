@@ -8340,14 +8340,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 							}
 						}
 					}
-				} else if base.kind == .ident
-					&& (base.value in g.tc.structs || base.value in g.tc.enum_names || g.tc.qualify_name(base.value) in g.tc.structs
-						|| g.tc.qualify_name(base.value) in g.tc.enum_names) {
-					qname := if base.value in g.tc.structs || base.value in g.tc.enum_names {
-						base.value
-					} else {
-						g.tc.qualify_name(base.value)
-					}
+				} else if qname := g.static_call_base_type_name(base) {
 					static_name := '${qname}.${fn_node.value}'
 					g.write(g.cname(static_name))
 					g.write('(')
@@ -9534,9 +9527,20 @@ fn (g &FlatGen) receiver_base_type(base_id flat.NodeId) types.Type {
 }
 
 fn (g &FlatGen) global_type_for_ident(name string) ?types.Type {
-	qname := qualify_name_in_module(g.tc.cur_module, name)
-	if qname != name {
-		if typ := g.global_types[qname] {
+	if g.global_types.len == 0 {
+		return none
+	}
+	// qualify_name_in_module(cur_module, name), joined on the stack for the read.
+	module_name := g.tc.cur_module
+	if module_name.len > 0 && module_name != 'main' && module_name != 'builtin'
+		&& !name.contains('.') {
+		if module_name.len + 1 + name.len <= module_key_view_cap {
+			mut buf := [module_key_view_cap]u8{}
+			qname := unsafe { joined_key_view(&buf[0], module_name, `.`, name, 0, '') }
+			if typ := g.global_types[qname] {
+				return typ
+			}
+		} else if typ := g.global_types['${module_name}.${name}'] {
 			return typ
 		}
 	}
@@ -10971,11 +10975,34 @@ fn (g &FlatGen) current_param_type(name string) ?types.Type {
 	if g.cur_param_name_bits != 0 && g.cur_param_name_bits & current_param_name_bit(name) == 0 {
 		return none
 	}
-	typ := g.cur_param_types[name] or { return none }
+	typ := g.current_param_type_value(name)?
 	if g.cur_mut_params.len > 0 && g.current_mut_param_binding_is_shadowed(name) {
 		return none
 	}
 	return typ
+}
+
+// current_param_type_value reads cur_param_types[name]. A body has a few
+// parameters, kept in order in cur_param_names/cur_param_type_values, and a
+// short scan is cheaper than hashing the name; a repeated name (`_`) and an
+// out-of-sync list fall back to the map, whose latest assignment wins.
+@[direct_array_access]
+fn (g &FlatGen) current_param_type_value(name string) ?types.Type {
+	names := g.cur_param_names
+	if names.len != g.cur_param_type_values.len || names.len != g.cur_param_types.len {
+		return g.cur_param_types[name] or { return none }
+	}
+	for i := names.len - 1; i >= 0; i-- {
+		if names[i].len == name.len && names[i] == name {
+			for j := i - 1; j >= 0; j-- {
+				if names[j].len == name.len && names[j] == name {
+					return g.cur_param_types[name] or { return none }
+				}
+			}
+			return g.cur_param_type_values[i]
+		}
+	}
+	return none
 }
 
 @[direct_array_access; inline]
@@ -11725,6 +11752,26 @@ fn (g &FlatGen) unique_short_fn_decl_variadic(name string) ?bool {
 }
 
 fn (mut g FlatGen) param_types_for(name string, fallback string) []types.Type {
+	// The cache key is `module\x01name[\x01fallback]`. Join it on the stack: the
+	// lookup does not keep it and an insert clones it.
+	has_fallback := name != fallback
+	key_len := g.tc.cur_module.len + 1 + name.len + if has_fallback { 1 + fallback.len } else { 0 }
+	if key_len <= module_key_view_cap {
+		mut buf := [module_key_view_cap]u8{}
+		view_key := unsafe {
+			joined_key_view(&buf[0], g.tc.cur_module, 1, name, if has_fallback {
+				u8(1)
+			} else {
+				u8(0)
+			}, if has_fallback { fallback } else { '' })
+		}
+		if cached := g.param_types_cache[view_key] {
+			return cached
+		}
+		result := g.param_types_for_uncached(name, fallback)
+		g.param_types_cache[view_key] = result
+		return result
+	}
 	call_key := if name == fallback { name } else { '${name}\x01${fallback}' }
 	// Unqualified V declarations are resolved in the current module. The same
 	// short name can therefore have different signatures in builtin, main, and
@@ -13985,6 +14032,22 @@ fn codegen_generic_arg_is_unresolved_bytes(arg string) bool {
 	return false
 }
 
+// static_call_base_type_name returns the struct or enum an ident call base names
+// (`Type.make()`), as spelled or qualified with the current module.
+fn (g &FlatGen) static_call_base_type_name(base &flat.Node) ?string {
+	if base.kind != .ident {
+		return none
+	}
+	if base.value in g.tc.structs || base.value in g.tc.enum_names {
+		return base.value
+	}
+	qname := g.tc.qualify_name(base.value)
+	if qname in g.tc.structs || qname in g.tc.enum_names {
+		return qname
+	}
+	return none
+}
+
 fn (g &FlatGen) fn_value_call_param_types(callee_id flat.NodeId) ?[]types.Type {
 	if int(callee_id) < 0 {
 		return none
@@ -13996,16 +14059,21 @@ fn (g &FlatGen) fn_value_call_param_types(callee_id flat.NodeId) ?[]types.Type {
 				return fn_type_effective_params(ft)
 			}
 		}
-		if typ := g.local_ident_type(node.value) {
+		// local_ident_type, then a global only when no parameter or body local has
+		// the name; each lookup runs once.
+		if typ := g.current_param_type(node.value) {
 			if ft := fn_type_from(typ) {
 				return fn_type_effective_params(ft)
 			}
-		}
-		if g.current_param_type(node.value) == none && !g.cur_scope_has_local_name(node.value) {
-			if typ := g.global_type_for_ident(node.value) {
-				if ft := fn_type_from(typ) {
+		} else if local := g.tc.cur_scope.lookup_before(node.value, g.tc.file_scope) {
+			if local !is types.Void {
+				if ft := fn_type_from(local) {
 					return fn_type_effective_params(ft)
 				}
+			}
+		} else if typ := g.global_type_for_ident(node.value) {
+			if ft := fn_type_from(typ) {
+				return fn_type_effective_params(ft)
 			}
 		}
 	}
@@ -16340,26 +16408,25 @@ fn (mut g FlatGen) bare_builtin_hook_forward_decls() {
 // forward_decls supports forward decls handling for FlatGen.
 fn (mut g FlatGen) forward_decls() {
 	items := g.ensure_fn_gen_items()
-	mut forwarded_exports := []string{cap: g.a.export_fn_names.len}
 	if !g.scope_parallel_workers {
+		mut forwarded_exports := []string{cap: g.a.export_fn_names.len}
 		g.forward_decl_items(items, mut forwarded_exports)
-		g.bare_builtin_hook_forward_decls()
-		if g.needs_no_main_runtime_init_caller() {
-			storage := if g.cache_split { '' } else { 'static ' }
-			g.writeln('${storage}void _vno_main_init_caller(void);')
-		}
-		if g.is_shared {
-			g.writeln('void _vcleanup(void);')
-			g.writeln('void _vinit_caller(void);')
-			g.writeln('void _vcleanup_caller(void);')
-		}
-		g.writeln('')
-		return
+	} else {
+		g.forward_decl_batches(items, 0, items.len)
 	}
+	g.forward_decls_tail()
+}
+
+// forward_decl_batches emits the prototypes of `items[lo..hi]` in 1024-item
+// batches on disposable checker forks and caches. `lo` must be a multiple of
+// 1024, so that splitting the items over several generators keeps the batch
+// boundaries (and the per-batch export deduplication) of a single pass.
+fn (mut g FlatGen) forward_decl_batches(items []FlatFnGenItem, lo int, hi int) {
+	mut forwarded_exports := []string{cap: g.a.export_fn_names.len}
 	// Compiler-sized output is still only a few hundred KiB per 1024-item
 	// batch. Amortize checker forks and map snapshots across that larger unit.
-	for start := 0; start < items.len; start += 1024 {
-		end := if start + 1024 < items.len { start + 1024 } else { items.len }
+	for start := lo; start < hi; start += 1024 {
+		end := if start + 1024 < hi { start + 1024 } else { hi }
 		// Map lookups below can return batch-owned string values. Do not retain them after the
 		// scratch arena is freed; duplicate compatible C prototypes across batches are harmless.
 		forwarded_exports.clear()
@@ -16404,6 +16471,11 @@ fn (mut g FlatGen) forward_decls() {
 		unsafe { batch_output.free() }
 		cgen_worker_scope_free(scratch_scope)
 	}
+}
+
+// forward_decls_tail emits the runtime prototypes that follow the function
+// prototypes in the scoped parallel forward declaration block.
+fn (mut g FlatGen) forward_decls_tail() {
 	g.bare_builtin_hook_forward_decls()
 	if g.needs_no_main_runtime_init_caller() {
 		storage := if g.cache_split { '' } else { 'static ' }

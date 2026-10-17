@@ -35,6 +35,8 @@ const c_has_attribute_override_key = '@function:__has_attribute'
 const usable_expr_type_memo_slots = 1024
 const usable_expr_type_memo_mask = usable_expr_type_memo_slots - 1
 const body_import_type_query_slots = 256
+const body_field_type_query_slots = 512
+const body_method_query_slots = 256
 
 // c_short_name_view returns the suffix after the final dot without allocating.
 @[direct_array_access; inline]
@@ -455,6 +457,27 @@ struct BodyImportTypeQuery {
 	generation u32
 }
 
+// BodyMethodQuery memoizes the call-independent part of a method call's return
+// type in the current body (see receiver_method_query).
+struct BodyMethodQuery {
+mut:
+	type_id     u32
+	generation  u32
+	has_ret     bool
+	method      string
+	method_name string
+	ret         types.Type
+}
+
+// BodyFieldTypeQuery memoizes one owner/field type query of the current body.
+struct BodyFieldTypeQuery {
+	type_id    u32
+	generation u32
+	found      bool
+	field      string
+	value      types.Type
+}
+
 @[heap]
 struct ConstHelperDependencies {
 mut:
@@ -473,6 +496,12 @@ mut:
 	gens           []u32
 	values         []types.Type
 	import_queries []BodyImportTypeQuery
+	// Declared callee return types of call nodes, tagged like `ids`/`gens`.
+	call_ret_ids    []int
+	call_ret_gens   []u32
+	call_ret_values []types.Type
+	field_queries   []BodyFieldTypeQuery
+	method_queries  []BodyMethodQuery
 }
 
 @[heap]
@@ -494,10 +523,15 @@ fn (mut g FlatGen) begin_usable_expr_type_memo() {
 	if isnil(g.usable_expr_type_memo) {
 		g.usable_expr_type_memo = &UsableExprTypeMemo{
 			// Generation zero marks unused slots, including the slot for node zero.
-			ids:            []int{len: usable_expr_type_memo_slots}
-			gens:           []u32{len: usable_expr_type_memo_slots}
-			values:         unsafe { []types.Type{len: usable_expr_type_memo_slots} }
-			import_queries: []BodyImportTypeQuery{len: body_import_type_query_slots}
+			ids:             []int{len: usable_expr_type_memo_slots}
+			gens:            []u32{len: usable_expr_type_memo_slots}
+			values:          unsafe { []types.Type{len: usable_expr_type_memo_slots} }
+			import_queries:  []BodyImportTypeQuery{len: body_import_type_query_slots}
+			call_ret_ids:    []int{len: usable_expr_type_memo_slots}
+			call_ret_gens:   []u32{len: usable_expr_type_memo_slots}
+			call_ret_values: unsafe { []types.Type{len: usable_expr_type_memo_slots} }
+			field_queries:   []BodyFieldTypeQuery{len: body_field_type_query_slots}
+			method_queries:  []BodyMethodQuery{len: body_method_query_slots}
 		}
 	}
 	mut memo := g.usable_expr_type_memo
@@ -508,6 +542,15 @@ fn (mut g FlatGen) begin_usable_expr_type_memo() {
 		}
 		for i in 0 .. memo.import_queries.len {
 			memo.import_queries[i] = BodyImportTypeQuery{}
+		}
+		for i in 0 .. memo.call_ret_gens.len {
+			memo.call_ret_gens[i] = 0
+		}
+		for i in 0 .. memo.field_queries.len {
+			memo.field_queries[i] = BodyFieldTypeQuery{}
+		}
+		for i in 0 .. memo.method_queries.len {
+			memo.method_queries[i] = BodyMethodQuery{}
 		}
 		memo.generation = 1
 	}
@@ -563,6 +606,8 @@ mut:
 	parallel_type_decls            string
 	parallel_global_decls          string
 	parallel_forward_decls         string
+	parallel_forward_decl_parts    []string
+	parallel_forward_decl_lanes    bool
 	parallel_support_decls         string
 	parallel_enum_str_defs         string
 	parallel_interface_stubs       string
@@ -718,6 +763,8 @@ mut:
 	multi_return_type_names        map[string]bool
 	multi_return_types_ready       bool
 	decl_types_ready               bool
+	selected_decl_types_ready      bool
+	shared_sum_wrappers_ready      bool
 	optional_types_ready           bool
 	fixed_array_ret_wrappers       map[string]bool // bare fixed-array c_type name -> has a return wrapper struct
 	emitted_fixed_array_typedefs   map[string]bool // bare fixed-array typedefs already written (shared across passes)
@@ -2269,7 +2316,7 @@ pub fn cache_native_inputs(a &flat.FlatAst, vroot string, target pref.Target, us
 				if node.value in ['include', 'insert', 'preinclude', 'postinclude'] {
 					relevant << node_idx
 				} else if node.value == 'define' {
-					name := node.typ_text().trim_space().all_before(' ').all_before('\t').all_before('(')
+					name := flat.source_type_name(node.typ).trim_space().all_before(' ').all_before('\t').all_before('(')
 					if result.implementation_define.len == 0
 						&& c_define_selects_native_implementation(name) {
 						result.implementation_define = name
@@ -2277,10 +2324,10 @@ pub fn cache_native_inputs(a &flat.FlatAst, vroot string, target pref.Target, us
 				} else if node.value == 'pkgconfig' && !cur_file_is_shipped {
 					// A package's search paths lie outside V. Their resolution is
 					// left to pkg-config and the C compiler.
-					result.user_supplied = '#pkgconfig ${node.typ_text()}'
+					result.user_supplied = '#pkgconfig ${flat.source_type_name(node.typ)}'
 					return result
 				} else if node.value == 'flag' {
-					flags := c_flag_args_with_values(node.typ_text(), vroot, cur_file, target,
+					flags := c_flag_args_with_values(flat.source_type_name(node.typ), vroot, cur_file, target,
 						compile_values)
 					if !cur_file_is_shipped {
 						if input := c_flags_user_native_input(flags, shipped_roots) {
@@ -2349,7 +2396,7 @@ pub fn cache_native_inputs(a &flat.FlatAst, vroot string, target pref.Target, us
 		if node.kind != .directive {
 			continue
 		}
-		include_arg := c_include_arg_for_target_with_values(node.typ_text(), vroot, cur_file, target,
+		include_arg := c_include_arg_for_target_with_values(flat.source_type_name(node.typ), vroot, cur_file, target,
 			compile_values)
 		if include_arg.len == 0 || c_include_arg_is_builtin_abi_helper(include_arg, vroot) {
 			continue
@@ -3081,14 +3128,27 @@ pub fn (mut g FlatGen) set_scope_parallel_workers(enabled bool) {
 // free_parallel_worker_scopes releases scratch arenas retained by joined cgen
 // helper threads.
 pub fn (mut g FlatGen) free_parallel_worker_scopes() {
+	free_cgen_worker_scopes(g.take_parallel_worker_scopes())
+}
+
+// take_parallel_worker_scopes hands the arenas retained for cgen's output over to
+// the caller, which releases them with free_cgen_worker_scopes.
+pub fn (mut g FlatGen) take_parallel_worker_scopes() []voidptr {
+	scopes := g.parallel_worker_scopes
+	g.parallel_worker_scopes = []voidptr{}
+	return scopes
+}
+
+// free_cgen_worker_scopes releases arenas taken with take_parallel_worker_scopes.
+// They are detached from every thread, so any thread can release them.
+pub fn free_cgen_worker_scopes(scopes []voidptr) {
 	$if prealloc {
-		for scope in g.parallel_worker_scopes {
+		for scope in scopes {
 			if scope != unsafe { nil } {
 				unsafe { prealloc_scope_free_after(scope) }
 			}
 		}
 	}
-	g.parallel_worker_scopes = []voidptr{}
 }
 
 // gen supports gen handling for FlatGen.
@@ -3350,6 +3410,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.parallel_type_decls = ''
 	g.parallel_global_decls = ''
 	g.parallel_forward_decls = ''
+	g.parallel_forward_decl_parts = []string{}
+	g.parallel_forward_decl_lanes = false
 	g.parallel_support_decls = ''
 	g.parallel_enum_str_defs = ''
 	g.parallel_interface_stubs = ''
@@ -3455,6 +3517,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.multi_return_type_names.clear()
 	g.multi_return_types_ready = false
 	g.decl_types_ready = false
+	g.selected_decl_types_ready = false
+	g.shared_sum_wrappers_ready = false
 	g.optional_types_ready = false
 	g.fixed_array_ret_wrappers.clear()
 	g.emitted_fixed_array_typedefs.clear()
@@ -3858,6 +3922,9 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	for segment in g.fn_segs {
 		known_output_len += segment.len
 	}
+	for part in g.parallel_forward_decl_parts {
+		known_output_len += part.len
+	}
 	// Leave headroom for the small body-dependent supplement emitted below.
 	g.sb.ensure_cap(known_output_len + 1_048_576) // 1 MiB
 	if g.parallel_type_decls.len == 0 {
@@ -3888,6 +3955,11 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		g.gen_global_declaration_block()
 	}
 	if g.parallel_forward_decls.len > 0 {
+		for part in g.parallel_forward_decl_parts {
+			g.sb.write_string(part)
+			unsafe { part.free() }
+		}
+		g.parallel_forward_decl_parts = []string{}
 		g.sb.write_string(g.parallel_forward_decls)
 		unsafe { g.parallel_forward_decls.free() }
 		g.parallel_forward_decls = ''
@@ -4177,7 +4249,9 @@ fn (mut g FlatGen) gen_global_declaration_block() {
 fn (mut g FlatGen) gen_type_declaration_block() {
 	// The final function selection can add wrapped tuple signatures after cache
 	// demand collection. Discover them before emitting their payload layouts.
-	g.collect_selected_declaration_signature_types()
+	if !g.selected_decl_types_ready {
+		g.collect_selected_declaration_signature_types()
+	}
 	if g.cache_decl_demand {
 		mut seen := map[u32]bool{}
 		for typ in g.multi_return_types {
@@ -4589,6 +4663,19 @@ struct FnSignatureRegistration {
 	return_type   types.Type
 }
 
+// cgen_moved_string returns `s`; pushing a call result does not copy it.
+@[inline]
+fn cgen_moved_string(s string) string {
+	return s
+}
+
+// moved_fn_signature_registration returns `registration`; pushing a call
+// result does not deep-copy it.
+@[inline]
+fn moved_fn_signature_registration(registration FnSignatureRegistration) FnSignatureRegistration {
+	return registration
+}
+
 fn (g &FlatGen) new_collect_gen_info_view() FlatGen {
 	mut view := *g
 	view.tc = g.clone_parallel_type_checker()
@@ -4786,9 +4873,10 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 		}
 		if kind_id == 61 {
 			ci_t0 := if fn_profile { time.sys_mono_now() } else { u64(0) }
-			mut prep := CollectGenFnPrep{}
-			if has_parallel_fn_preps {
-				prep = fn_preps[top_level_pos]
+			mut prep := if has_parallel_fn_preps {
+				fn_preps[top_level_pos]
+			} else {
+				CollectGenFnPrep{}
 			}
 			if (has_parallel_fn_preps && !prep.prepared) || (!has_parallel_fn_preps && g.has_used_fn_filter() && !g.used_fn_contains_in_module(node.value, cur_module)) {
 				if g.incremental_fn_names.len == 0 {
@@ -4827,8 +4915,10 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 					canonical_shared_fn_short_names[node.value] = true
 				}
 			} else {
-				nonshared_fn_short_names << node.value
-				nonshared_fn_full_names << full_name
+				// Both names outlive this loop (AST text and a fresh string): `<<`
+				// would copy each of them again.
+				nonshared_fn_short_names << cgen_moved_string(node.value)
+				nonshared_fn_full_names << cgen_moved_string(full_name)
 				nonshared_fn_file_ranks << c_backend_fn_file_rank(cur_file)
 				nonshared_fn_node_indexes << node_idx
 			}
@@ -4842,7 +4932,9 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 					if shared_params.any(it) {
 						g.has_shared_params = true
 					}
-					fn_signature_registrations << prep.registration
+					// The prepared registration lives as long as fn_preps; apply
+					// copies what it keeps, so do not deep-copy it here first.
+					fn_signature_registrations << moved_fn_signature_registration(prep.registration)
 				} else {
 					fn_signature_registrations << g.prepare_fn_signature_registration(node.value, full_name, ptypes, shared_params, decl_is_variadic, first_param_is_mut, return_type)
 				}
@@ -5541,10 +5633,10 @@ fn cache_directive_flag_groups(a &flat.FlatAst, vroot string, target pref.Target
 		mut flags := []string{}
 		mut at_start := false
 		if node.value == 'flag' {
-			flags, at_start = c_flag_args_with_start_marker(node.typ_text(), vroot, cur_file, target,
+			flags, at_start = c_flag_args_with_start_marker(flat.source_type_name(node.typ), vroot, cur_file, target,
 				compile_values)
 		} else if node.value == 'pkgconfig' {
-			flags = c_pkgconfig_flags(node.typ_text())
+			flags = c_pkgconfig_flags(flat.source_type_name(node.typ))
 		} else {
 			continue
 		}
@@ -13881,20 +13973,36 @@ fn (g &FlatGen) sum_type_name_for_type(base_type0 types.Type) ?u32 {
 		if !flat.source_type_shape(name).has(.dotted) && g.tc.sum_types.contains(flat.source_type_name(name)) && g.resolve_sum_name(name) == name {
 			return name
 		}
-		for candidate in [g.shared_qualify_type_text(name, g.tc.cur_module), name] {
-			resolved := g.resolve_sum_name(candidate)
-			if g.tc.sum_types.contains(flat.source_type_name(resolved)) { return resolved }
+		// The module-qualified spelling first, then the type's own one.
+		if resolved := g.resolved_sum_type_candidate(g.shared_qualify_type_text(name, g.tc.cur_module)) {
+			return resolved
 		}
+		return g.resolved_sum_type_candidate(name)
 	}
 	if clean is types.Struct {
 		name := clean.source_type_id()
-		for candidate in [g.shared_qualify_type_text(name, g.tc.cur_module), name] {
-			if g.tc.sum_types.contains(flat.source_type_name(candidate)) { return candidate }
-			if !flat.source_type_shape(candidate).has(.dotted) {
-				resolved := g.resolve_sum_name(candidate)
-				if g.tc.sum_types.contains(flat.source_type_name(resolved)) { return resolved }
-			}
+		if sum_name := g.struct_sum_type_candidate(g.shared_qualify_type_text(name, g.tc.cur_module)) {
+			return sum_name
 		}
+		return g.struct_sum_type_candidate(name)
+	}
+	return none
+}
+
+fn (g &FlatGen) resolved_sum_type_candidate(candidate u32) ?u32 {
+	resolved := g.resolve_sum_name(candidate)
+	if g.tc.sum_types.contains(flat.source_type_name(resolved)) {
+		return resolved
+	}
+	return none
+}
+
+fn (g &FlatGen) struct_sum_type_candidate(candidate u32) ?u32 {
+	if g.tc.sum_types.contains(flat.source_type_name(candidate)) {
+		return candidate
+	}
+	if !flat.source_type_shape(candidate).has(.dotted) {
+		return g.resolved_sum_type_candidate(candidate)
 	}
 	return none
 }
@@ -13968,8 +14076,8 @@ fn (g &FlatGen) struct_promoted_field_suffix(type_name_id u32, field string, ini
 }
 
 fn (g &FlatGen) sum_unique_variant_field_info(base_type0 types.Type, field string) ?SumUniqueFieldInfo {
-	sum_name := flat.source_type_name(g.sum_type_name_for_type(base_type0) or { return none })
-	return g.sum_unique_variant_field_info_inner(flat.source_type_id(sum_name), field, []u32{})
+	sum_name_id := g.sum_type_name_for_type(base_type0) or { return none }
+	return g.sum_unique_variant_field_info_inner(sum_name_id, field, []u32{})
 }
 
 fn (g &FlatGen) sum_unique_variant_field_info_inner(sum_name_id u32, field string, seen_ids []u32) ?SumUniqueFieldInfo {
@@ -14444,7 +14552,7 @@ fn (g &FlatGen) cur_scope_has_local_name(name string) bool {
 	mut scope := g.tc.cur_scope
 	for scope != unsafe { nil } && voidptr(scope) != voidptr(g.tc.file_scope) {
 		$if !ownership ? {
-			if name in scope.name_indexes {
+			if scope.binds_own(name) {
 				return true
 			}
 		} $else {
@@ -14616,28 +14724,29 @@ fn (g &FlatGen) const_ref_name(name string) string {
 	if name in g.const_vals {
 		return g.const_primary_name(name)
 	}
-	if name.contains('.') {
-		if name in g.const_vals {
-			return g.const_primary_name(name)
-		}
-	}
-	if name.contains('__') {
+	has_dot := name.contains('.')
+	has_double_underscore := name.contains('__')
+	if has_double_underscore {
 		dotted := name.replace('__', '.')
 		if dotted in g.const_vals {
 			return g.const_primary_name(dotted)
 		}
 	}
-	sep := if name.contains('.') {
+	sep := if has_dot {
 		'.'
-	} else if name.contains('__') {
+	} else if has_double_underscore {
 		'__'
 	} else {
 		return ''
 	}
-	short_name := name.all_after_last(sep)
-	if short_name !in g.const_vals {
+	// Most dotted names are not consts: probe a view of the short name (the part
+	// all_after_last returns) and only copy it on a hit.
+	sep_idx := name.last_index(sep) or { return '' }
+	short_view := unsafe { name.substr_unsafe(sep_idx + sep.len, name.len) }
+	if short_view !in g.const_vals {
 		return ''
 	}
+	short_name := short_view.clone()
 	resolved := g.const_primary_name(short_name)
 	mod := if resolved in g.const_modules { g.const_modules[resolved] } else { '' }
 	if mod.len == 0 {
