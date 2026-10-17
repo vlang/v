@@ -16804,7 +16804,7 @@ fn (mut tc TypeChecker) check_mutable_alias_assignment_lhs(id flat.NodeId, rhs_i
 			}
 		}
 		if aliases && !tc.mutable_alias_has_fresh_map_storage(base_id)
-			&& !tc.lvalue_is_inline_fixed_array(base_id) {
+			&& !tc.map_field_has_fresh_storage(base_id) && !tc.lvalue_is_inline_fixed_array(base_id) {
 			tc.record_error_at(.assignment_mismatch, '`${tc.source_text_for_node(base_id)}` aliases mutable data from an immutable value, clone it first (or use `unsafe`)', base_id, if base.kind in [
 				.ident,
 				.selector,
@@ -19882,6 +19882,7 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 			tc.check_mutable_array_immutable_references(rhs_id)
 		}
 		tc.check_mutable_alias_assignment_lhs(lhs_id, rhs_id)
+		tc.track_fresh_map_field_assignment(node.op, lhs_id, rhs_id)
 		if tc.warn_about_allocs && node.op == .assign {
 			tc.warn_implicit_interface_conversion(rhs_id, tc.resolve_type(rhs_id), expected_type)
 		}
