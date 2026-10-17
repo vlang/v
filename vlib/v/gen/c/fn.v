@@ -12953,7 +12953,14 @@ fn (mut g FlatGen) gen_optional_arg_with_abi(arg_id flat.NodeId, expected types.
 			g.gen_expr(arg_id)
 			return true
 		}
-		if arg_node.kind == .none_expr || g.expr_really_returns_optional(arg_id) {
+		if arg_node.kind == .none_expr {
+			// A `none` has no payload and takes its wrapper type from the
+			// destination. Cgen-emitted field defaults (imported or nested structs)
+			// have no checker-recorded type for it.
+			g.gen_expr_with_expected_type(arg_id, expected)
+			return true
+		}
+		if g.expr_really_returns_optional(arg_id) {
 			g.gen_expr(arg_id)
 			return true
 		}
