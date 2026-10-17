@@ -5722,6 +5722,7 @@ fn (tc &TypeChecker) supplied_fields_for_embeds(decl flat.Node, supplied map[str
 		field_type_text := if field.typ != 0 { field.typ_text() } else { field.value }
 		if source_field_decl_is_embed(field, field_type_text) {
 			embed_fields[field.value] = true
+			embed_fields[struct_decl_field_init_name(field, true)] = true
 		}
 	}
 	mut promoted := map[string]bool{}
@@ -5731,6 +5732,15 @@ fn (tc &TypeChecker) supplied_fields_for_embeds(decl flat.Node, supplied map[str
 		}
 	}
 	return promoted
+}
+
+// struct_decl_field_init_name returns the name a struct literal initializes the declared
+// field with: an embedded `mod.Type[T]` is initialized as `Type: ...`.
+fn struct_decl_field_init_name(field &flat.Node, is_embed bool) string {
+	if !is_embed {
+		return field.value
+	}
+	return strip_generic_args_name(field.value).all_after_last('.')
 }
 
 fn (tc &TypeChecker) missing_reference_struct_fields(struct_name_id u32, supplied map[string]bool, path_ids []u32) []MissingReferenceField {
@@ -5759,6 +5769,7 @@ fn (tc &TypeChecker) missing_reference_struct_fields(struct_name_id u32, supplie
 			tc.parse_type(flat.source_type_id(field_type_text))
 		})
 		is_embed := source_field_decl_is_embed(field, field_type_text)
+		init_name := struct_decl_field_init_name(field, is_embed)
 		if field_type is Pointer {
 			if tc.struct_field_has_shared_elements(clean_name_id, field.value) {
 				continue
@@ -5784,7 +5795,7 @@ fn (tc &TypeChecker) missing_reference_struct_fields(struct_name_id u32, supplie
 					}
 				}
 			}
-			if field.children_count == 0 && field.value !in supplied {
+			if field.children_count == 0 && init_name !in supplied {
 				missing << MissingReferenceField{
 					path:  '${display_name}.${field.value}'
 					owner: flat.source_type_id(display_name)
@@ -5795,7 +5806,7 @@ fn (tc &TypeChecker) missing_reference_struct_fields(struct_name_id u32, supplie
 		if field_type !is Struct || field.children_count > 0 {
 			continue
 		}
-		if field.value in supplied {
+		if init_name in supplied {
 			// An explicitly initialized field is checked on its own, and an embedded
 			// struct literal reports its own missing reference fields. Re-checking the
 			// embedded struct here would duplicate those diagnostics at the outer literal.
@@ -5845,7 +5856,8 @@ fn (tc &TypeChecker) missing_required_struct_fields(struct_name_id u32, supplied
 		}
 		field_type_text := if field.typ != 0 { field.typ_text() } else { field.value }
 		is_embed := source_field_decl_is_embed(field, field_type_text)
-		if struct_field_has_attr(*field, 'required') && field.value !in supplied {
+		init_name := struct_decl_field_init_name(field, is_embed)
+		if struct_field_has_attr(*field, 'required') && init_name !in supplied {
 			missing << '${display_name}.${field.value}'
 		}
 		field_type := unalias_type(tc.struct_field_type(clean_name_id, field.value) or {
@@ -5854,7 +5866,7 @@ fn (tc &TypeChecker) missing_required_struct_fields(struct_name_id u32, supplied
 		if field_type !is Struct || field.children_count > 0 {
 			continue
 		}
-		if field.value in supplied {
+		if init_name in supplied {
 			// An explicitly initialized field is checked on its own, and an embedded
 			// struct literal reports its own missing required fields. Re-checking the
 			// embedded struct here would duplicate those diagnostics at the outer literal.
