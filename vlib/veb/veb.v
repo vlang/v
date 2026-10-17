@@ -61,7 +61,7 @@ fn insert_route_metadata(mut routes map[string]Route, name string, attrs []strin
 fn generate_routes[A, X](app &A) !map[string]Route {
 	mut routes := map[string]Route{}
 	$for method in A.methods {
-		$if method.return_type is Result {
+		$if method.return_type is Result || method.return_type is !Result {
 			mut parameter_names := []string{}
 			$if method.args.len > 1 {
 				for param in method.args[1..] {
@@ -72,7 +72,7 @@ fn generate_routes[A, X](app &A) !map[string]Route {
 		} $else {
 			// If we have route attributes, but the wrong return type, return an error
 			if has_route_attributes(method.attrs) {
-				return error('method `${method.name}` at `${method.location}` has route attributes but invalid return type. Handler methods must return `veb.Result`, not `!veb.Result` or other types')
+				return error('method `${method.name}` at `${method.location}` has route attributes but invalid return type. Handler methods must return `veb.Result` or `!veb.Result`')
 			}
 		}
 	}
@@ -587,6 +587,42 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 							unsafe { prealloc_scope_checkpoint(c'veb before route handler') }
 						}
 						app.$method(mut user_context)
+						$if trace_prealloc ? {
+							unsafe { prealloc_scope_checkpoint(c'veb after route handler') }
+						}
+					}
+					return
+				}
+			} $else $if method.return_type is !Result {
+				// A handler that returns `!veb.Result` answers by returning the
+				// value, and declines by returning an error, which becomes a
+				// JSON envelope through `error_with`.
+				if method.name == matched.name {
+					$if method.args.len > 1 {
+						if !matched.from_data || user_context.Context.req.method in [
+							.get,
+							.post,
+						] {
+							if !matched.from_data && args.len + 1 != method.args.len {
+								eprintln('[veb] warning: uneven parameters count (${method.args.len}) in `${method.name}`, compared to the veb route `${method.attrs}` (${args.len})')
+							}
+							$if trace_prealloc ? {
+								unsafe { prealloc_scope_checkpoint(c'veb before route handler') }
+							}
+							app.$method(mut user_context, ...args) or {
+								user_context.error_with(err)
+							}
+							$if trace_prealloc ? {
+								unsafe { prealloc_scope_checkpoint(c'veb after route handler') }
+							}
+						}
+					} $else {
+						$if trace_prealloc ? {
+							unsafe { prealloc_scope_checkpoint(c'veb before route handler') }
+						}
+						app.$method(mut user_context) or {
+							user_context.error_with(err)
+						}
 						$if trace_prealloc ? {
 							unsafe { prealloc_scope_checkpoint(c'veb after route handler') }
 						}
