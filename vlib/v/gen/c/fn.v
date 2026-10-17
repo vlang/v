@@ -17303,7 +17303,18 @@ fn (g &FlatGen) c_extern_decl_has_no_header(source_file string, module_name stri
 	return g.mods_with_c_libs[module_name] && module_name !in g.mods_with_c_includes
 }
 
+// c_errno_accessor_fns are the per-libc functions behind the `errno` macro that builtin
+// binds (cfns.c.v). A libc declares exactly one of them, in its own <errno.h>.
+const c_errno_accessor_fns = ['__errno', '___errno', '__errno_location', '__error', '__get_errno_ptr',
+	'_errno', '_errnop']
+
 fn (g &FlatGen) should_emit_c_extern_decl_from_file(cfn string, source_file string, module_name string) bool {
+	// A target that supplies its libc headers declares its errno accessor itself. Restated
+	// with V's `&i32` it conflicts wherever int32_t is `long` (newlib on arm-none-eabi:
+	// `int *__errno(void)` against `long *__errno(void)`).
+	if g.target_libc_headers && cfn in c_errno_accessor_fns {
+		return false
+	}
 	// builtin/cfns.c.v declares the static vschannel helper supplied by its C header.
 	// A user C.request declaration is unrelated and follows the normal header checks.
 	if cfn == 'request' {
