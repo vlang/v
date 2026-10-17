@@ -132,3 +132,133 @@ fn (mut tc TypeChecker) is_builtin_map_clone_call(id flat.NodeId) bool {
 	}
 	return false
 }
+
+// FreshMapField is where `alias.field = m.clone()` was checked.
+struct FreshMapField {
+	owner      ScopeBindingOwner
+	assign_id  flat.NodeId = flat.empty_node
+	loop_depth int
+}
+
+// track_fresh_map_field_assignment records `alias.field = m.clone()`: until its block
+// ends or `alias` (or the field) is assigned again, entry writes to `alias.field`
+// reach only the fresh map, not the immutable value `alias` was copied from.
+fn (mut tc TypeChecker) track_fresh_map_field_assignment(op flat.Op, lhs_id flat.NodeId, rhs_id flat.NodeId) {
+	key := tc.expr_key(lhs_id)
+	if key.len == 0 {
+		return
+	}
+	if tc.fn_context.fresh_map_fields.len > 0 {
+		prefix := key + '.'
+		for tracked in tc.fn_context.fresh_map_fields.keys() {
+			if tracked == key || tracked.starts_with(prefix) {
+				tc.fn_context.fresh_map_fields.delete(tracked)
+			}
+		}
+	}
+	if op != .assign || tc.cur_scope == unsafe { nil } || tc.fn_context.has_goto_nodes
+		|| tc.a.node(lhs_id).kind != .selector || unalias_type(tc.resolve_type(lhs_id)) !is Map
+		|| !tc.is_builtin_map_clone_call(rhs_id) {
+		return
+	}
+	tc.fn_context.fresh_map_fields[key] = FreshMapField{
+		owner:      ScopeBindingOwner{
+			scope:    tc.cur_scope
+			lifetime: tc.cur_scope.lifetime
+		}
+		assign_id:  rhs_id
+		loop_depth: tc.fn_context.pointer_alias_break_states.len
+	}
+}
+
+// map_field_has_fresh_storage reports whether the map field `id` was assigned a fresh
+// clone earlier in this block, or in an enclosing block of the same loop iteration
+// (see track_fresh_map_field_assignment), and nothing in between could rebind it.
+fn (mut tc TypeChecker) map_field_has_fresh_storage(id flat.NodeId) bool {
+	if tc.fn_context.fresh_map_fields.len == 0 || !tc.valid_node_id(id)
+		|| tc.a.node(id).kind != .selector {
+		return false
+	}
+	key := tc.expr_key(id)
+	fresh := tc.fn_context.fresh_map_fields[key] or { return false }
+	// Loop bodies push a break state: a clone from before the loop does not
+	// cover the next iteration, which may follow a rebind later in the body.
+	if fresh.loop_depth != tc.fn_context.pointer_alias_break_states.len {
+		return false
+	}
+	mut scope := tc.cur_scope
+	mut in_scope := false
+	for scope != unsafe { nil } {
+		if fresh.owner.belongs_to_scope(scope) {
+			in_scope = true
+			break
+		}
+		scope = scope.parent
+	}
+	return in_scope && !tc.map_field_may_be_rebound_between(key, fresh.assign_id, id)
+}
+
+// map_field_may_be_rebound_between reports whether code between the clone `from_id`
+// and the write `to_id` takes the address of the field (or of a value holding it),
+// passes it as `mut`, calls a method on it, or defines a closure.
+fn (tc &TypeChecker) map_field_may_be_rebound_between(key string, from_id flat.NodeId, to_id flat.NodeId) bool {
+	fn_id := flat.NodeId(tc.fn_context.node_id)
+	if !tc.valid_node_id(fn_id) || !tc.valid_node_id(from_id) {
+		return true
+	}
+	from_pos := tc.a.node(from_id).pos
+	to_pos := tc.a.node(to_id).pos
+	if from_pos.id != to_pos.id || from_pos.offset >= to_pos.offset {
+		return true
+	}
+	fn_node := tc.a.node(fn_id)
+	mut stack := []flat.NodeId{}
+	for i in 0 .. fn_node.children_count {
+		stack << tc.a.child(fn_node, i)
+	}
+	for stack.len > 0 {
+		current_id := stack.pop()
+		current := tc.a.node(current_id)
+		if current.pos.id == from_pos.id && current.pos.offset > from_pos.offset
+			&& current.pos.offset < to_pos.offset {
+			match current.kind {
+				.fn_literal, .lambda_expr {
+					return true
+				}
+				.prefix {
+					if current.op == .amp && current.children_count > 0
+						&& expr_key_overlaps(tc.expr_key(tc.a.child(current, 0)), key) {
+						return true
+					}
+				}
+				.call {
+					if current.children_count > 0 {
+						callee := tc.a.child_node(current, 0)
+						if callee.kind == .selector && callee.children_count > 0
+							&& expr_key_overlaps(tc.expr_key(tc.a.child(callee, 0)), key) {
+							return true
+						}
+					}
+					for i in 1 .. current.children_count {
+						arg_id := tc.call_arg_value(tc.a.child(current, i))
+						if tc.a.node(arg_id).is_mut && expr_key_overlaps(tc.expr_key(arg_id), key) {
+							return true
+						}
+					}
+				}
+				else {}
+			}
+		}
+		for i in 0 .. current.children_count {
+			stack << tc.a.child(current, i)
+		}
+	}
+	return false
+}
+
+// expr_key_overlaps reports whether the lvalue `candidate` is `key`, holds it, or is
+// held by it.
+fn expr_key_overlaps(candidate string, key string) bool {
+	return candidate.len > 0 && (candidate == key || key.starts_with(candidate + '.')
+		|| candidate.starts_with(key + '.'))
+}
