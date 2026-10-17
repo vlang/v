@@ -8194,8 +8194,18 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 					}
 					if inner.kind == .ident && !inner_is_local && !base_is_declared_value {
 						if mod := g.import_alias_module(inner.value) {
-							full_name := '${mod}.${base.value}.${fn_node.value}'
-							g.write(g.cname(full_name))
+							// `mod.Type.method(...)` is a static method of an imported type. Its
+							// declaration is emitted under the static fn key, not `mod__Type__method`.
+							// Cgen meets the raw selector form in imported struct field defaults.
+							mut full_name := '${mod}.${base.value}.${fn_node.value}'
+							if static_fn := g.static_method_fn_name(flat.source_type_id('${mod}.${base.value}'),
+								fn_node.value)
+							{
+								full_name = static_fn
+								g.write(g.direct_call_name(static_fn))
+							} else {
+								g.write(g.cname(full_name))
+							}
 							g.write('(')
 							g.gen_call_args(full_name, node, 1)
 							g.write(')')
