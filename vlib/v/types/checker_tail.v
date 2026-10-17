@@ -16477,6 +16477,11 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			if tc.receiver_compatible(actual, expected) {
 				continue
 			}
+			// Like V1, a function call may pass a struct (or a reference to one) where
+			// one of its embedded structs is expected; cgen passes the embedded field.
+			if !info.has_receiver && tc.call_arg_embeds_expected(actual, expected) {
+				continue
+			}
 			if spawn_rvalue_address {
 				continue
 			}
@@ -19959,6 +19964,18 @@ fn (tc &TypeChecker) receiver_compatible(actual Type, expected Type) bool {
 		return tc.pointer_base_value_compatible(actual.base_type, expected)
 	}
 	return false
+}
+
+// call_arg_embeds_expected reports whether the argument type `actual` (a struct, or a
+// reference to one) embeds the expected struct type at the same reference depth.
+fn (tc &TypeChecker) call_arg_embeds_expected(actual Type, expected Type) bool {
+	actual_depth, actual_base := type_pointer_depth_and_base(actual)
+	expected_depth, expected_base := type_pointer_depth_and_base(expected)
+	if actual_depth != expected_depth || actual_depth > 1 || unalias_type(actual_base) !is Struct
+		|| unalias_type(expected_base) !is Struct {
+		return false
+	}
+	return tc.receiver_embeds(actual_base, expected_base)
 }
 
 fn (tc &TypeChecker) method_receiver_compatible(actual Type, expected Type, method_name string) bool {
