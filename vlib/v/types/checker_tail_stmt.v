@@ -18521,6 +18521,11 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 				base_node := tc.a.child_node(fn_node, 0)
 				if base_node.kind == .ident && base_node.value == 'C' {
 					c_fn_name := 'C.${fn_node.value}'
+					// `C.X(v)` with a declared `type C.X = T` is a cast to that alias,
+					// as check_c_alias_cast_call checks it; it is not an opaque C struct.
+					if node.children_count == 2 && tc.type_aliases.contains(c_fn_name) {
+						return tc.parse_type(flat.source_type_id(c_fn_name))
+					}
 					if ret := tc.fn_ret_types[c_fn_name] {
 						return ret
 					}
