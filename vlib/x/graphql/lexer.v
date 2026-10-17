@@ -29,9 +29,9 @@ fn Lexer.new(source Source) Lexer {
 }
 
 // Advances the token stream to the next non-ignored token.
-fn (mut lexer Lexer) advance() &Token {
+fn (mut lexer Lexer) advance() !&Token {
 	lexer.last_token = lexer.token
-	token := lexer.lookahead()
+	token := lexer.lookahead()!
 	// println('..advancing from ${lexer.token.kind} to ${token.kind}')
 
 	lexer.token = token
@@ -41,7 +41,7 @@ fn (mut lexer Lexer) advance() &Token {
 
 // Looks ahead and returns the next non-ignored token,
 // but does not change the state of Lexer.
-fn (mut lexer Lexer) lookahead() &Token {
+fn (mut lexer Lexer) lookahead() !&Token {
 	mut token := lexer.token
 
 	if token.kind != TokenKind.eof {
@@ -50,7 +50,7 @@ fn (mut lexer Lexer) lookahead() &Token {
 				token = next
 			} else {
 				// println('char ends at ${token.end}')
-				mut next_token := read_next_token(mut lexer, token.end) or { panic(err) }
+				mut next_token := read_next_token(mut lexer, token.end)!
 
 				// println('...<< prev token ${token.kind}')
 				// println('...>> next token ${next_token.kind}')
@@ -205,9 +205,9 @@ fn read_next_token(mut lexer Lexer, start int) !&Token {
 				if body[position + 1] == 0x0022 && body[position + 2] == 0x0022 {
 					// println('matched comment')
 
-					return lexer.read_block_string(position)
+					return lexer.read_block_string(position)!
 				}
-				return lexer.read_string(position)
+				return lexer.read_string(position)!
 			}
 			else {
 				// Do nothing
@@ -216,7 +216,7 @@ fn read_next_token(mut lexer Lexer, start int) !&Token {
 
 		// IntValue | FloatValue (Digit | -)
 		if is_digit(code) || code == 0x002d {
-			return lexer.read_number(position, code) or { panic(err) }
+			return lexer.read_number(position, code)!
 		}
 
 		// Name
@@ -226,7 +226,7 @@ fn read_next_token(mut lexer Lexer, start int) !&Token {
 			return name_token
 		}
 
-		return error('unexpected character')
+		return error('Unexpected character: "${code.ascii_str()}" (0x${code.hex()})')
 	}
 
 	return create_token(lexer, TokenKind.eof, body_length, body_length, none)
@@ -338,7 +338,7 @@ fn (lexer Lexer) read_digits(start int, first_code u8) int {
 	return position
 }
 
-fn (lexer Lexer) read_string(start int) &Token {
+fn (lexer Lexer) read_string(start int) !&Token {
 	body := lexer.source.body
 	body_length := body.len
 
@@ -364,24 +364,24 @@ fn (lexer Lexer) read_string(start int) &Token {
 		if code == 0x005c {
 			value += body[chunk_start..position]
 
-			escape := if body[position + 1] == 0x0075 {
-				if body[position + 2] == 0x007b {
-					read_escaped_unicode_variable_width(lexer, position)
+			escape := if position + 1 < body_length && body[position + 1] == 0x0075 {
+				if position + 2 < body_length && body[position + 2] == 0x007b {
+					read_escaped_unicode_variable_width(lexer, position)!
 				} else {
-					read_escaped_unicode_fixed_width(lexer, position)
+					read_escaped_unicode_fixed_width(lexer, position)!
 				}
 			} else {
-				read_escaped_character(lexer, position)
+				read_escaped_character(lexer, position)!
 			}
 			value += escape.value
 			position += escape.size
-			chunk_start += position
+			chunk_start = position
 			continue
 		}
 
 		// LineTerminator (\n | \r)
 		if code == 0x000a || code == 0x000d {
-			break
+			return error('Unterminated string')
 		}
 
 		// SourceCharacter
@@ -390,11 +390,11 @@ fn (lexer Lexer) read_string(start int) &Token {
 		} else if is_supplementary_code_point(body, position) {
 			position += 2
 		} else {
-			panic('invalid char')
+			return error('Invalid character within string: "${code.ascii_str()}"')
 		}
 	}
 
-	panic('unterminated string')
+	return error('Unterminated string')
 }
 
 fn (mut lexer Lexer) read_comment(start int) &Token {
@@ -428,7 +428,7 @@ fn (mut lexer Lexer) read_comment(start int) &Token {
 	return create_token(lexer, TokenKind.comment, start, position, body[start + 1..position])
 }
 
-fn (mut lexer Lexer) read_block_string(start int) &Token {
+fn (mut lexer Lexer) read_block_string(start int) !&Token {
 	body := lexer.source.body
 	body_length := body.len
 
@@ -448,7 +448,7 @@ fn (mut lexer Lexer) read_block_string(start int) &Token {
 		code := body[position]
 
 		// Closing Triple-Quote (""")
-		if code == 0x0022 && body[position + 1] == 0x0022 && body[position + 2] == 0x0022 {
+		if position + 2 < body_length && code == 0x0022 && body[position + 1] == 0x0022 && body[position + 2] == 0x0022 {
 			current_line += body[chunk_start..position]
 			block_lines << current_line
 
@@ -465,7 +465,7 @@ fn (mut lexer Lexer) read_block_string(start int) &Token {
 		}
 
 		// Escaped Triple-Quote (\""")
-		if code == 0x005c && body[position + 1] == 0x0022 && body[position + 2] == 0x0022
+		if position + 3 < body_length && code == 0x005c && body[position + 1] == 0x0022 && body[position + 2] == 0x0022
 			&& body[position + 3] == 0x0022 {
 			current_line += body[chunk_start..position]
 			// skip only slash
@@ -480,7 +480,7 @@ fn (mut lexer Lexer) read_block_string(start int) &Token {
 			current_line += body[chunk_start..position]
 			block_lines << current_line
 
-			if code == 0x000d && body[position + 1] == 0x000a {
+			if code == 0x000d && position + 1 < body_length && body[position + 1] == 0x000a {
 				position += 2
 			} else {
 				position++
@@ -498,11 +498,11 @@ fn (mut lexer Lexer) read_block_string(start int) &Token {
 		} else if is_supplementary_code_point(body, position) {
 			position += 2
 		} else {
-			error('Invalid character within string')
+			return error('Invalid character within block string: "${code.ascii_str()}"')
 		}
 	}
 
-	panic('unterminated string')
+	return error('Unterminated block string')
 }
 
 fn create_token(lexer Lexer, kind TokenKind, start int, end int, value ?string) &Token {
@@ -536,28 +536,27 @@ struct EscapeSequence {
 	size  int
 }
 
-fn read_escaped_unicode_variable_width(lexer Lexer, position int) EscapeSequence {
+fn read_escaped_unicode_variable_width(lexer Lexer, position int) !EscapeSequence {
 	body := lexer.source.body
 	mut point := 0
 	mut size := 3
 
 	for {
 		// Cannot be larger than 12 chars (\u{00000000}).
-		if size > 12 {
+		if size > 12 || position + size >= body.len {
 			break
 		}
 
-		size++
 		code := body[position + size]
 
 		if code == 0x007d {
-			if size < 5 || !is_unicode_scalar_value(point) {
+			if size < 4 || !is_unicode_scalar_value(point) {
 				break
 			}
 
 			return EscapeSequence{
-				value: u8(point).ascii_str()
-				size: size
+				value: utf32_to_str(u32(point))
+				size: size + 1
 			}
 		}
 
@@ -565,18 +564,26 @@ fn read_escaped_unicode_variable_width(lexer Lexer, position int) EscapeSequence
 		if point < 0 {
 			break
 		}
+
+		size++
 	}
 
-	panic('Invalid unicode escape sequence')
+	return error('Invalid Unicode escape sequence')
 }
 
-fn read_escaped_unicode_fixed_width(lexer Lexer, position int) EscapeSequence {
+fn read_escaped_unicode_fixed_width(lexer Lexer, position int) !EscapeSequence {
 	body := lexer.source.body
+	if position + 5 >= body.len {
+		return error('Invalid Unicode escape sequence')
+	}
 	code := read16_bit_hex_code(body, position + 2)
+	if code < 0 {
+		return error('Invalid Unicode escape sequence')
+	}
 
 	if is_unicode_scalar_value(code) {
 		return EscapeSequence{
-			value: u8(code).ascii_str()
+			value: utf32_to_str(u32(code))
 			size: 6
 		}
 	}
@@ -585,19 +592,20 @@ fn read_escaped_unicode_fixed_width(lexer Lexer, position int) EscapeSequence {
 	// a valid pair is formed.
 	if is_leading_surrogate(code) {
 		// \u
-		if body[position + 6] == 0x005c && body[position + 7] == 0x0075 {
+		if position + 11 < body.len && body[position + 6] == 0x005c && body[position + 7] == 0x0075 {
 			trailing_code := read16_bit_hex_code(body, position + 8)
 
 			if is_trailing_surrogate(trailing_code) {
+				cp := 0x10000 + ((code - 0xD800) << 10) + (trailing_code - 0xDC00)
 				return EscapeSequence{
-					value: [u8(code), u8(trailing_code)].bytestr()
+					value: utf32_to_str(u32(cp))
 					size: 12
 				}
 			}
 		}
 	}
 
-	panic('Invalid Unicode escape sequence:')
+	return error('Invalid Unicode escape sequence')
 }
 
 // | Escaped Character | Code Point | Character Name               |
@@ -610,61 +618,64 @@ fn read_escaped_unicode_fixed_width(lexer Lexer, position int) EscapeSequence {
 // | `n`               | U+000A     | line feed (new line)         |
 // | `r`               | U+000D     | carriage return              |
 // | `t`               | U+0009     | horizontal tab               |
-fn read_escaped_character(lexer Lexer, position int) EscapeSequence {
+fn read_escaped_character(lexer Lexer, position int) !EscapeSequence {
 	body := lexer.source.body
+	if position + 1 >= body.len {
+		return error('Invalid character escape sequence')
+	}
 	code := body[position + 1]
 
 	match code {
-		0x0022 { // ""
+		0x0022 { // "
 			return EscapeSequence{
-				value: `"`.str()
+				value: '"'
 				size: 2
 			}
 		}
 		0x005c { // \
 			return EscapeSequence{
-				value: `\\`.str()
+				value: '\\'
 				size: 2
 			}
 		}
 		0x002f { // /
 			return EscapeSequence{
-				value: `/`.str()
+				value: '/'
 				size: 2
 			}
 		}
 		0x0062 { // b
 			return EscapeSequence{
-				value: `b`.str()
+				value: '\b'
 				size: 2
 			}
 		}
 		0x0066 { // f
 			return EscapeSequence{
-				value: `f`.str()
+				value: '\f'
 				size: 2
 			}
 		}
 		0x006e { // n
 			return EscapeSequence{
-				value: `n`.str()
+				value: '\n'
 				size: 2
 			}
 		}
 		0x0072 { // r
 			return EscapeSequence{
-				value: `r`.str()
+				value: '\r'
 				size: 2
 			}
 		}
 		0x0074 { // t
 			return EscapeSequence{
-				value: `t`.str()
+				value: '\t'
 				size: 2
 			}
 		}
 		else {
-			panic('Invalid character escape sequence')
+			return error('Invalid character escape sequence: \\${code.ascii_str()}')
 		}
 	}
 }
