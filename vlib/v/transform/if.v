@@ -2224,6 +2224,14 @@ fn (t &Transformer) stmt_definitely_exits(id flat.NodeId) bool {
 		.return_stmt {
 			return true
 		}
+		.expr_stmt {
+			// `panic(...)`/`exit(...)` end the branch like the checker's
+			// `stmt_definitely_returns`, which already narrowed after them.
+			return node.children_count > 0 && t.stmt_definitely_exits(t.a.child(&node, 0))
+		}
+		.call {
+			return !isnil(t.tc) && t.is_noreturn_call(id)
+		}
 		.assert_stmt {
 			if node.children_count == 0 {
 				return false
@@ -2456,6 +2464,9 @@ fn (t &Transformer) extract_none_eq_exprs(cond_id flat.NodeId) []IsExprInfo {
 		return []IsExprInfo{}
 	}
 	cond := t.a.nodes[int(cond_id)]
+	if cond.kind == .paren && cond.children_count > 0 {
+		return t.extract_none_eq_exprs(t.a.child(&cond, 0))
+	}
 	if cond.kind == .infix && cond.op == .eq && cond.children_count >= 2 {
 		if info := t.option_none_cmp_info(cond) {
 			return [info]
