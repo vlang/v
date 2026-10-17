@@ -839,7 +839,66 @@ fn (tc &TypeChecker) assignment_integer_literal_operand(id flat.NodeId) ?flat.No
 fn (tc &TypeChecker) fn_storage_voidptr_mismatch(expr_id flat.NodeId, actual Type, expected Type) bool {
 	return is_fn_pointer_type(expected) && fn_param_is_voidptr_type(actual) && tc.unsafe_depth == 0
 		&& !tc.current_fn_declared_unsafe() && !tc.expr_is_unsafe_nil(expr_id)
+		&& !tc.branch_values_are_unsafe_nil_or_typed(expr_id)
 		&& !tc.node_is_in_translated_file(expr_id)
+}
+
+// branch_values_are_unsafe_nil_or_typed reports whether every value of an
+// `if`/`match` expression is `unsafe { nil }` or has a non-voidptr type, as in
+// `if raw { unsafe { nil } } else { callback }`. The branch types are checked
+// against the storage type separately.
+fn (tc &TypeChecker) branch_values_are_unsafe_nil_or_typed(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind in [.paren, .expr_stmt] && node.children_count == 1 {
+		return tc.branch_values_are_unsafe_nil_or_typed(tc.a.child(&node, 0))
+	}
+	mut branch_ids := []flat.NodeId{}
+	if node.kind == .if_expr {
+		if node.children_count <= 2 {
+			return false
+		}
+		branch_ids << tc.a.child(&node, 1)
+		else_id := tc.a.child(&node, 2)
+		if tc.a.nodes[int(else_id)].kind == .if_expr {
+			if !tc.branch_values_are_unsafe_nil_or_typed(else_id) {
+				return false
+			}
+		} else {
+			branch_ids << else_id
+		}
+	} else if node.kind == .match_stmt {
+		for i in 1 .. node.children_count {
+			branch_ids << tc.a.child(&node, i)
+		}
+	} else {
+		return false
+	}
+	for branch_id in branch_ids {
+		if tc.branch_tail_never_returns(branch_id) {
+			continue
+		}
+		tail_id := tc.branch_tail_expr_id(branch_id)
+		if !tc.valid_node_id(tail_id) {
+			return false
+		}
+		if tc.branch_tail_is_nil(tail_id) || tc.branch_values_are_unsafe_nil_or_typed(tail_id) {
+			continue
+		}
+		if fn_param_is_voidptr_type(tc.resolve_type(tail_id)) {
+			return false
+		}
+	}
+	return true
+}
+
+// branch_tail_is_nil reports whether a branch value is `nil`; the branch tail of
+// `unsafe { nil }` is the literal itself.
+fn (tc &TypeChecker) branch_tail_is_nil(tail_id flat.NodeId) bool {
+	return tc.expr_is_unsafe_nil(tail_id)
+		|| (tc.valid_node_id(tail_id) && tc.a.nodes[int(tail_id)].kind == .nil_literal)
 }
 
 fn (tc &TypeChecker) direct_sum_assignment_variant_matches(actual Type, expected SumType) bool {
