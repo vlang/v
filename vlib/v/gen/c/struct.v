@@ -250,7 +250,10 @@ fn (mut g FlatGen) struct_init_effective_type_name(id flat.NodeId, node flat.Nod
 fn (mut g FlatGen) gen_pointer_value_struct_field(value_id flat.NodeId, expected types.Type) bool {
 	actual := g.tc.resolve_type(value_id)
 	expected0 := if expected is types.Alias { expected.base_type } else { expected }
-	if expected0 is types.Pointer {
+	// An option/result field wraps the pointer (`?&T` from `&T`); it is never
+	// filled by dereferencing it. The short-name comparison below would otherwise
+	// match `&dom.StyleValue` with `?&dom.StyleValue`.
+	if expected0 is types.Pointer || expected0 is types.OptionType || expected0 is types.ResultType {
 		return false
 	}
 	if actual is types.Pointer {
