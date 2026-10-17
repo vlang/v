@@ -446,7 +446,10 @@ fn (mut g FlatGen) string_literals() {
 fn (mut g FlatGen) string_literals_from(start int) {
 	use_declaration_macro := g.str_lits.len > start && !g.cache_stable_symbols
 	if use_declaration_macro {
-		// Keep the helper out of C headers, extern declarations, and function bodies.
+		// Keep the helper out of C headers, extern declarations, and function bodies,
+		// and give back a `_SL` macro that an included C header defined.
+		g.writeln('#pragma push_macro("_SL")')
+		g.writeln('#undef _SL')
 		g.writeln('#define _SL(id, s, n) static const string id = {s, n, 1}')
 	}
 	if g.cache_split {
@@ -462,6 +465,7 @@ fn (mut g FlatGen) string_literals_from(start int) {
 	}
 	if use_declaration_macro {
 		g.writeln('#undef _SL')
+		g.writeln('#pragma pop_macro("_SL")')
 	}
 	if g.str_lits.len > start {
 		g.writeln('')
