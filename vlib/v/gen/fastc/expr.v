@@ -502,7 +502,7 @@ fn (mut g Parser) lower_higher_order_expression(mut result strings.Builder, mut 
 			if cmp_name !in g.spawn_helpers {
 				// The same rendered comparison in two blocks with swapped element
 				// bindings yields the -1 / +1 / 0 ordering without re-rendering it.
-				g.spawn_helpers[cmp_name] = 'static int ${cmp_name}(void *__vf_a, void *__vf_b) { { ${flat.source_type_name(norm_element)} a = *(${flat.source_type_name(norm_element)} *)__vf_a; ${flat.source_type_name(norm_element)} b = *(${flat.source_type_name(norm_element)} *)__vf_b; if (${condition}) { return -1; } } { ${flat.source_type_name(norm_element)} a = *(${flat.source_type_name(norm_element)} *)__vf_b; ${flat.source_type_name(norm_element)} b = *(${flat.source_type_name(norm_element)} *)__vf_a; if (${condition}) { return 1; } } return 0; }'
+				g.spawn_helpers[cmp_name] = 'static ${fastc_platform_int_c_type} ${cmp_name}(void *__vf_a, void *__vf_b) { { ${flat.source_type_name(norm_element)} a = *(${flat.source_type_name(norm_element)} *)__vf_a; ${flat.source_type_name(norm_element)} b = *(${flat.source_type_name(norm_element)} *)__vf_b; if (${condition}) { return -1; } } { ${flat.source_type_name(norm_element)} a = *(${flat.source_type_name(norm_element)} *)__vf_b; ${flat.source_type_name(norm_element)} b = *(${flat.source_type_name(norm_element)} *)__vf_a; if (${condition}) { return 1; } } return 0; }'
 			}
 			lowered := '({ builtin__array_sort_with_compare((array *)&(${receiver_source}), ${cmp_name}); })'
 			result.write_string(lowered)
