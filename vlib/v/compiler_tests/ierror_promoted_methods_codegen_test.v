@@ -328,7 +328,8 @@ fn main() {
 	c_code := os.read_file('${bin}.c') or { '' }
 	assert c_code.contains('string dead__DeadErr__msg(dead__DeadErr err)'), c_code
 	assert c_code.contains('string dead__Helper__text(dead__Helper h)'), c_code
-	assert c_code.contains('return dead__Helper__text((dead__Helper){0});'), c_code
+	// An empty struct literal is `{E_STRUCT}` since empty structs are zero-sized.
+	assert c_code.contains('return dead__Helper__text((dead__Helper){E_STRUCT});'), c_code
 	assert !c_code.contains('dead__unrelated_dead_fn'), c_code
 
 	run := os.exec([bin])

@@ -112,14 +112,15 @@ fn test_top_level_decls_inside_active_comptime_branch_are_codegen_visible() {
 	else_c := comptime_decl_gen_c(v3_bin, 'else_branch', false)
 	else_choice := comptime_decl_struct_body(else_c, 'Choice')
 	assert comptime_decl_count(else_c, 'struct main__Choice {') == 1, else_c
-	assert else_choice.contains('_dummy'), else_c
+	// An empty struct body is the zero-sized `E_STRUCT_DECL` member.
+	assert else_choice.contains('E_STRUCT_DECL'), else_c
 	assert !else_choice.contains('i64 x;'), else_c
 
 	feature_c := comptime_decl_gen_c(v3_bin, 'feature_branch', true)
 	feature_choice := comptime_decl_struct_body(feature_c, 'Choice')
 	assert comptime_decl_count(feature_c, 'struct main__Choice {') == 1, feature_c
 	assert feature_choice.contains('i64 x;'), feature_c
-	assert !feature_choice.contains('_dummy'), feature_c
+	assert !feature_choice.contains('E_STRUCT_DECL'), feature_c
 }
 
 fn test_declaration_only_top_level_comptime_block_synthesizes_executable_main() {
