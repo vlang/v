@@ -26408,7 +26408,14 @@ fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.
 			}
 			source_iface := t.resolve_interface_type_name(flat.source_type_id(child_type))
 			if t.pointer_cast_target_implements_source_iface(flat.source_type_id(target_type[1..]), source_iface) {
-				source := t.transform_expr(child_id)
+				// `if data is Impl { &Impl(data) }`: `child_type` is the interface, so read
+				// `_object` from the interface value itself, not from the smartcast `Impl`.
+				child_key := t.expr_key(child_id)
+				source := if child_key.len > 0 && t.has_smartcast(child_key) {
+					t.make_plain_expr_for_smartcast(child_id)
+				} else {
+					t.transform_expr(child_id)
+				}
 				object := t.make_selector_op(source, '_object', flat.source_type_voidptr, if child_type.starts_with('&') {
 					.arrow
 				} else {
