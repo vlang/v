@@ -9241,6 +9241,16 @@ fn (mut tc TypeChecker) resolve_expr(id flat.NodeId, expected Type) Type {
 			return expected
 		}
 	}
+	if node.kind == .or_expr && node.children_count >= 2 && node.value !in ['!', '?']
+		&& expected !is Void && expected !is Unknown
+		&& tc.a.nodes[int(tc.a.child(&node, 0))].kind == .match_stmt {
+		// The `or` block of `match x {...} or {...}` unwraps `x`; the match is the value.
+		actual := tc.resolve_expr(tc.a.child(&node, 0), expected)
+		if tc.type_compatible(actual, expected) {
+			tc.register_synth_type(id, expected_raw)
+			return expected_raw
+		}
+	}
 	if node.kind == .or_expr && node.children_count >= 2
 		&& (expected is OptionType || expected is ResultType) {
 		payload := match expected {
