@@ -16408,8 +16408,8 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 			&& !tc.expr_is_unsafe_reference_alias(rhs_id) && !is_mut_map_alias_receiver {
 			tc.record_error_at(.assignment_mismatch, 'cannot copy map: call `move` or `clone` method (or use a reference)', rhs_id, rhs_node.pos)
 		}
-		if tc.unsafe_depth == 0 && lhs_is_mut && unalias_type(rhs_type) is Array
-			&& rhs_node.kind == .selector && tc.expr_can_take_address(rhs_id) {
+		if tc.unsafe_depth == 0 && lhs_is_mut && rhs_type is Array && rhs_node.kind == .selector
+			&& tc.expr_can_take_address(rhs_id) {
 			tc.record_error_at(.assignment_mismatch, 'use `mut array2 := array1.clone()` instead of `mut array2 := array1` (or use `unsafe`)', id, tc.assignment_operator_pos(node, lhs_id, rhs_id))
 		}
 		if rhs_type is Void && rhs_node.kind == .infix && rhs_node.op == .left_shift {
@@ -19975,7 +19975,9 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 		}
 		if node.op == .assign && rhs_node.kind == .ident && lhs_node.kind == .ident
 			&& lhs_node.value != '_' {
-			is_array_copy := clean_expected_type is Array && clean_rhs_type is Array
+			// Like V1, a type alias of an array (`type Values = []Value`) is not
+			// treated as an array here.
+			is_array_copy := expected_type is Array && rhs_type is Array
 				&& expected_type.name() == rhs_type.name()
 			is_map_copy := clean_expected_type is Map && clean_rhs_type is Map
 			if tc.unsafe_depth == 0 && (is_array_copy || is_map_copy) {
