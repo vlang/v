@@ -60,7 +60,6 @@ const temporarily_disabled_c_directive_order_test_functions = [
 	'test_system_header_aggregates_are_emitted_headerlessly',
 	'test_system_header_functions_are_emitted_headerlessly',
 	'test_mach_headers_are_emitted_headerlessly',
-	'test_inferred_mach_headers_are_target_guarded',
 	'test_timerfd_header_uses_headerless_decls',
 	'test_stdarg_in_inlined_header_provides_va_defs',
 	'test_inttypes_in_inlined_header_keeps_format_macros',
