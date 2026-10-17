@@ -8392,6 +8392,10 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 	rhs_node := tc.a.node(rhs_id)
 	mut lhs_type := tc.infix_read_type(lhs_id)
 	mut rhs_type := tc.infix_read_type(rhs_id)
+	if node.op in [.eq, .ne] {
+		lhs_type = tc.option_compare_operand_type(lhs_id, lhs_type, rhs_type)
+		rhs_type = tc.option_compare_operand_type(rhs_id, rhs_type, lhs_type)
+	}
 	if node.op in [.pipe, .amp, .xor] {
 		if expected := tc.expected_context_for_expr(id) {
 			clean_expected := unalias_type(expected)
@@ -9797,6 +9801,27 @@ fn optional_payload_is_string(typ Type) bool {
 		return type_is_string_like(typ.base_type)
 	}
 	return false
+}
+
+// option_compare_operand_type returns the declared option type of an `==`/`!=`
+// operand that is narrowed to its payload (`x` after `x != none`) when the other
+// operand is an option. Like V1, `doc != x` then compares the two options rather
+// than rejecting the unwrapped `x`; the transform compares the option wrappers.
+fn (tc &TypeChecker) option_compare_operand_type(id flat.NodeId, typ Type, other Type) Type {
+	if unalias_type(typ) is OptionType || unalias_type(other) !is OptionType
+		|| !tc.valid_node_id(id) {
+		return typ
+	}
+	node := tc.a.node(id)
+	declared := match node.kind {
+		.ident { tc.cur_scope.lookup(node.value) or { return typ } }
+		.selector { tc.selector_declared_value_type(*node) or { return typ } }
+		else { return typ }
+	}
+	if unalias_type(declared) is OptionType && tc.smartcast_type(id) != none {
+		return declared
+	}
+	return typ
 }
 
 fn (tc &TypeChecker) infix_read_type(id flat.NodeId) Type {
