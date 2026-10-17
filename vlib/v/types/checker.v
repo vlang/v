@@ -1131,6 +1131,11 @@ pub mut:
 	// records the node count the index covers.
 	top_level_idx           []i32
 	top_level_idx_nodes_len int
+	// mut_binding_value_id is the value of the `mut` binding (`mut x := v`, or
+	// `x = v` for a mutable `x`) being checked. Like V1, only a struct literal
+	// that is that value (or one of its branch tails) rejects `&immutable` in its
+	// `mut:` fields.
+	mut_binding_value_id int = -1
 	// Anonymous and function-local struct declarations are synthesized below
 	// the file's top-level declaration tree. The direct-parent pass records their
 	// sorted node ids so collect_top_level_idx_fast can merge them without

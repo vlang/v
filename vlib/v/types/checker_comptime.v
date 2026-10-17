@@ -16199,6 +16199,10 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 			tc.expected_expr_type = explicit_expected
 		}
 		error_count := tc.errors.len
+		saved_mut_binding_value_id := tc.mut_binding_value_id
+		if lhs_node.value != '_' && tc.decl_lhs_is_mut(node, lhs_id) {
+			tc.mut_binding_value_id = int(rhs_id)
+		}
 		tc.fn_context.undefined_variable_context_depth++
 		$if ownership ? {
 			if tc.ownership_should_defer_aggregate_consumption(lhs_id, .assign) {
@@ -16212,6 +16216,7 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 			tc.check_node(rhs_id)
 		}
 		tc.fn_context.undefined_variable_context_depth--
+		tc.mut_binding_value_id = saved_mut_binding_value_id
 		tc.expected_expr_id = saved_expected_expr_id
 		tc.expected_expr_type = saved_expected_expr_type
 		rhs_node := tc.a.nodes[int(rhs_id)]
@@ -19853,6 +19858,11 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 		expected_type := tc.assignment_expected_type(lhs_id, lhs_type)
 		source_rhs_type := tc.resolve_type(rhs_id)
 		tc.annotate_expected_expr(rhs_id, expected_type)
+		saved_mut_binding_value_id := tc.mut_binding_value_id
+		if node.op == .assign && lhs_node.kind == .ident && lhs_node.value != '_'
+			&& tc.ident_is_mutable_lvalue(lhs_node.value) {
+			tc.mut_binding_value_id = int(rhs_id)
+		}
 		$if ownership ? {
 			if tc.ownership_should_defer_aggregate_consumption(lhs_id, node.op) {
 				tc.ownership_begin_defer_aggregate_consumption(rhs_id)
@@ -19864,6 +19874,7 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 		} $else {
 			tc.check_node_with_expected_context(rhs_id, expected_type)
 		}
+		tc.mut_binding_value_id = saved_mut_binding_value_id
 		if node.op == .assign {
 			tc.record_null_constant_reference_error(.assignment_mismatch, rhs_id, expected_type)
 		}

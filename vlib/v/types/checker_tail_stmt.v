@@ -4726,7 +4726,8 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 				&& value_node.kind == .ident && tc.const_key_for_name(value_node.value) != none {
 				tc.record_error_at(.assignment_mismatch, 'cannot assign a const map to mut struct field, call `clone` method (or use a reference)', value_id, value_node.pos)
 			}
-			if tc.unsafe_depth == 0 && field_is_mut {
+			if tc.unsafe_depth == 0 && field_is_mut && tc.mut_binding_value_id >= 0
+				&& tc.expr_is_value_tail_of(flat.NodeId(tc.mut_binding_value_id), id) {
 				if addressed_id := tc.addressed_ident(value_id) {
 					addressed := tc.a.node(addressed_id)
 					addressed_type := tc.non_file_scope_type(addressed.value) or { Type(Unknown{}) }
