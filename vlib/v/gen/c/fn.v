@@ -16770,6 +16770,13 @@ fn (mut g FlatGen) c_extern_forward_decls() {
 			g.writeln('#ifndef __APPLE__')
 			g.writeln(line)
 			g.writeln('#endif')
+		} else if name in c_winapi_extern_symbols {
+			// The declaration names Win32 types (BOOL, DWORD, HANDLE) that the
+			// preamble only typedefs under _WIN32, so a cross build that is also
+			// compiled on a non-Windows host must not emit it unguarded.
+			g.writeln('#if defined(_WIN32)')
+			g.writeln(line)
+			g.writeln('#endif')
 		} else {
 			g.writeln(line)
 		}
