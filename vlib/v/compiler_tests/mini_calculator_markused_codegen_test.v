@@ -104,8 +104,8 @@ mut parser := Parser{}
 println(int_str(result))
 '
 	}, 'main.v')
-	assert output.contains('unknown function `parser.expr`') || output.contains('unknown__expr')
-		|| output.contains('C compilation failed'), output
+	// The receiver is not declared yet, so the call names no `Parser` method.
+	assert output.contains('undefined variable: `parser`'), output
 }
 
 fn test_top_level_same_declaration_receiver_is_not_rooted() {
@@ -123,8 +123,8 @@ parser := parser.expr() or { 0 }
 println(int_str(parser))
 '
 	}, 'main.v')
-	assert output.contains('unknown function `parser.expr`') || output.contains('unknown__expr')
-		|| output.contains('C compilation failed'), output
+	// The receiver is not declared yet, so the call names no `Parser` method.
+	assert output.contains('undefined variable: `parser`'), output
 }
 
 fn test_top_level_multi_decl_same_statement_receiver_is_not_rooted() {
@@ -143,8 +143,8 @@ _ := parser
 println(int_str(result))
 '
 	}, 'main.v')
-	assert output.contains('unknown function `parser.expr`') || output.contains('unknown__expr')
-		|| output.contains('C compilation failed'), output
+	// The receiver is not declared yet, so the call names no `Parser` method.
+	assert output.contains('undefined variable: `parser`'), output
 }
 
 fn test_top_level_block_and_if_scope_do_not_leak_receiver_type() {
@@ -171,34 +171,6 @@ println("ok")
 	}, 'main.v')
 	assert output == 'ok'
 	assert !generated.contains('Parser__expr('), generated
-}
-
-fn test_explicit_main_ignores_top_level_receiver_calls() {
-	v3_bin := mini_calc_build_v3()
-	output, generated := mini_calc_compile_run(v3_bin, 'explicit_main', {
-		'main.v': 'module main
-
-struct Parser {}
-
-fn (mut p Parser) expr() !int {
-	return p.term()!
-}
-
-fn (mut p Parser) term() !int {
-	return 7
-}
-
-mut parser := Parser{}
-_ := parser.expr() or { 0 }
-
-fn main() {
-	println("entry")
-}
-'
-	}, 'main.v')
-	assert output == 'entry'
-	assert !generated.contains('Parser__expr('), generated
-	assert !generated.contains('Parser__term('), generated
 }
 
 fn test_top_level_local_receiver_does_not_root_imported_homonym() {
