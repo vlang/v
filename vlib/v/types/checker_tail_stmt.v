@@ -1329,6 +1329,17 @@ fn (mut tc TypeChecker) check_if_guard(id flat.NodeId, node flat.Node) []LocalBi
 		if base := tc.mut_param_base_for_current_ident(rhs_node.value, rhs_type) {
 			rhs_type = base
 		}
+		// `if x == none {} else if y := x {`: as in V 0.5.2, the none check does
+		// not narrow `x` in the condition of the `else if`, so the guard unwraps
+		// the declared option.
+		if rhs_type !is OptionType && rhs_type !is ResultType
+			&& tc.if_guard_follows_none_check(id, rhs_node.value) {
+			if declared := tc.cur_scope.lookup(rhs_node.value) {
+				if declared is OptionType {
+					rhs_type = declared
+				}
+			}
+		}
 	}
 	if rhs_node.kind == .selector {
 		if declared := tc.selector_declared_value_type(*rhs_node) {
@@ -1394,6 +1405,33 @@ fn (mut tc TypeChecker) check_if_guard(id flat.NodeId, node flat.Node) []LocalBi
 		return result
 	}
 	return []LocalBinding{}
+}
+
+// if_guard_follows_none_check reports whether the guard `guard_id` is the
+// condition of an `else if` in a chain whose earlier condition, such as
+// `x == none`, narrows the variable `name` for its `else` branch.
+fn (tc &TypeChecker) if_guard_follows_none_check(guard_id flat.NodeId, name string) bool {
+	mut current := tc.direct_parent_id(guard_id)
+	if !tc.valid_node_id(current) || tc.a.node(current).kind != .if_expr
+		|| tc.a.child(tc.a.node(current), 0) != guard_id {
+		return false
+	}
+	mut parent_id := tc.direct_parent_id(current)
+	for tc.valid_node_id(parent_id) {
+		parent := tc.a.node(parent_id)
+		if parent.kind != .if_expr || parent.children_count <= 2
+			|| tc.a.child(parent, 2) != current {
+			return false
+		}
+		for binding in tc.extract_else_branch_smartcasts(tc.a.child(parent, 0)) {
+			if binding.name == name {
+				return true
+			}
+		}
+		current = parent_id
+		parent_id = tc.direct_parent_id(current)
+	}
+	return false
 }
 
 // if_guard_payload_type returns the value an `if x := rhs` guard unwraps from
