@@ -12720,10 +12720,13 @@ fn (tc &TypeChecker) concrete_method_signature_key_seen(concrete_name_id u32, me
 	// collected concrete name before doing suffix-based method lookup.
 	for alias_name in [concrete_name, qualified_name] {
 		if alias_target_source_id := tc.type_aliases.type_id(alias_name) {
-			alias_target := flat.source_type_name(alias_target_source_id)
-
+			// An alias of a reference (`type Refs = &&Names`) has the methods of the
+			// referenced type, which a call reaches through automatic dereferencing.
+			alias_target := flat.source_type_name(alias_target_source_id).trim_left('&')
 			if alias_target != alias_name && alias_target != concrete_name {
-				if inherited := tc.concrete_method_signature_key_seen(alias_target_source_id, method, mut seen_aliases) {
+				if inherited := tc.concrete_method_signature_key_seen(flat.source_type_id(alias_target),
+					method, mut seen_aliases)
+				{
 					return inherited
 				}
 			}
