@@ -2306,7 +2306,8 @@ fn (mut tc TypeChecker) check_match_branch_tail_type_diagnostics(id flat.NodeId,
 	}
 	if first_cast_index > 0 {
 		first_tail := tc.a.node(tails[0])
-		if first_tail.kind == .int_literal {
+		// An int literal branch defaults to `int`, so a later `int` (or `i32`) cast fits.
+		if first_tail.kind == .int_literal && cast_type.name() !in ['int', 'i32'] {
 			tc.record_error_at(.if_branch_mismatch, 'the type of the last expression of the first match branch was `int literal`, which is not compatible with `${cast_type.name()}`', cast_id, cast_node.pos)
 		}
 		return
