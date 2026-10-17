@@ -10,6 +10,11 @@ pub:
 	value string
 }
 
+// comptime_string_fold_max_len bounds how long a folded string may become. V
+// compiles itself with this module, so a fold that materialises a huge string
+// charges the compiler instead of the program it is building.
+const comptime_string_fold_max_len = 1 << 20
+
 // comptime_string_scalar calls the builtin implementation on compile-time-known operands.
 pub fn comptime_string_scalar(receiver string, method string, args []string) ?ComptimeStringScalar {
 	if args.len == 0 {
@@ -17,6 +22,7 @@ pub fn comptime_string_scalar(receiver string, method string, args []string) ?Co
 			'trim_space' { receiver.trim_space() }
 			'to_lower' { receiver.to_lower() }
 			'to_upper' { receiver.to_upper() }
+			'reverse' { receiver.reverse() }
 			else { return none }
 		}
 		return ComptimeStringScalar{flat.source_type_string, value}
@@ -52,6 +58,31 @@ pub fn comptime_string_scalar(receiver string, method string, args []string) ?Co
 		else { return none }
 	}
 	return ComptimeStringScalar{flat.source_type_string, value}
+}
+
+// comptime_string_repeat folds `s.repeat(count)` for compile-time-known operands.
+// `repeat` is the one string operation in the wasm stub gap whose argument is an
+// int, so it cannot travel through comptime_string_scalar's string-only arguments.
+pub fn comptime_string_repeat(receiver string, count_text string) ?ComptimeStringScalar {
+	count := comptime_string_bound(count_text)?
+	// The program would allocate this string once; folding makes the compiler own
+	// it for the whole build instead, so a large repeat is left to the backend.
+	if count > 0 && receiver.len > 0 && count > comptime_string_fold_max_len / receiver.len {
+		return none
+	}
+	return ComptimeStringScalar{flat.source_type_string, receiver.repeat(count)}
+}
+
+// comptime_string_index folds `s.index(needle)`. The bool reports whether the
+// needle was found, which is the `none` half of the option the checker typed.
+pub fn comptime_string_index(receiver string, needle string) (ComptimeStringScalar, bool) {
+	idx := receiver.index(needle) or { return ComptimeStringScalar{}, false }
+	return ComptimeStringScalar{flat.source_type_int, idx.str()}, true
+}
+
+// comptime_string_split folds `s.split(delim)` for compile-time-known operands.
+pub fn comptime_string_split(receiver string, delim string) []string {
+	return receiver.split(delim)
 }
 
 // comptime_string_bound parses a literal slice bound without truncating it to int.

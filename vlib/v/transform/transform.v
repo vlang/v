@@ -260,6 +260,7 @@ mut:
 	var_types                           []VarTypeBinding
 	var_type_texts                      &flat.TypeTextTable = &flat.TypeTextTable{}
 	comptime_scalar_locals              map[string]ComptimeStringScalar
+	comptime_array_locals               map[string][]ComptimeStringScalar
 	cur_stmt_list                       []flat.NodeId // the statement list being transformed
 	var_type_indices                    map[string]int
 	var_type_cache                      &VarTypeIndexCache = unsafe { nil }
@@ -1250,6 +1251,7 @@ struct VarTypeScopeMark {
 
 struct FunctionLocalState {
 	comptime_scalar_locals        map[string]ComptimeStringScalar
+	comptime_array_locals         map[string][]ComptimeStringScalar
 	var_types                     []VarTypeBinding
 	var_type_indices              map[string]int
 	fn_value_locals               map[string]string
@@ -3230,6 +3232,7 @@ fn (mut t Transformer) reset_var_types() {
 fn (mut t Transformer) detach_function_local_state() FunctionLocalState {
 	state := FunctionLocalState{
 		comptime_scalar_locals:        t.comptime_scalar_locals
+		comptime_array_locals:         t.comptime_array_locals
 		var_types:                     t.var_types
 		var_type_indices:              t.var_type_indices
 		fn_value_locals:               t.fn_value_locals
@@ -3245,6 +3248,7 @@ fn (mut t Transformer) detach_function_local_state() FunctionLocalState {
 	t.clear_node_type_memo()
 	t.var_types = []VarTypeBinding{}
 	t.comptime_scalar_locals = map[string]ComptimeStringScalar{}
+	t.comptime_array_locals = map[string][]ComptimeStringScalar{}
 	t.var_type_indices = map[string]int{}
 	t.fn_value_locals = map[string]string{}
 	t.mut_param_values = map[string]bool{}
@@ -3262,6 +3266,7 @@ fn (mut t Transformer) restore_function_local_state(state FunctionLocalState) {
 	t.clear_node_type_memo()
 	t.var_types = state.var_types
 	t.comptime_scalar_locals = state.comptime_scalar_locals
+	t.comptime_array_locals = state.comptime_array_locals
 	t.var_type_indices = state.var_type_indices
 	t.fn_value_locals = state.fn_value_locals
 	t.mut_param_values = state.mut_param_values
@@ -5056,6 +5061,7 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 	}
 	w.var_types = []VarTypeBinding{}
 	w.comptime_scalar_locals = map[string]ComptimeStringScalar{}
+	w.comptime_array_locals = map[string][]ComptimeStringScalar{}
 	w.var_type_indices = map[string]int{}
 	w.refined_node_types = t.refined_node_types.clone()
 	w.mut_param_values = map[string]bool{}
@@ -5181,6 +5187,7 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	w.node_module_map_nodes = -1
 	w.var_types = []VarTypeBinding{}
 	w.comptime_scalar_locals = map[string]ComptimeStringScalar{}
+	w.comptime_array_locals = map[string][]ComptimeStringScalar{}
 	w.var_type_indices = map[string]int{}
 	w.mut_param_values = map[string]bool{}
 	w.fixed_array_param_values = map[string]bool{}
@@ -7337,8 +7344,15 @@ fn (mut t Transformer) transform_string_interp_part(child_id flat.NodeId) flat.N
 		format = child.typ_text()
 	}
 	t.mark_string_interp_call_part_used(expr_id)
-	// route a value `match`/`if` interpolation operand (e.g. `'${match x { ... }}'`)
-	// through its target type so its propagating arms are lowered as values.
+	// A compile-time-known array of scalars renders as the same text the
+	// printer would produce, so fold it here instead of synthesising an
+	// auto-str helper the wasm backend has no body for.
+	if format == '' {
+		if folded := t.try_fold_comptime_array_str(expr_id) {
+			return folded
+		}
+	}
+	// route a value `match`/`if` interpolation operand ...
 	mut transformed := t.transform_value_operand(expr_id)
 	// The source annotation remains `?T` inside `if value != none`, but the
 	// transformed expression is the narrowed `.value` selector. Prefer that
