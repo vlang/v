@@ -18,7 +18,9 @@ features.
 
 ## Quick Start
 
-Run your veb app with a live reload via `v watch -d veb_livereload run .`
+Run your veb app with a live reload via `v -d veb_livereload watch run .`
+Compiler options before `watch` are forwarded to the app's compiler command.
+Options after `watch`, such as `v watch -d veb_livereload run .`, also work.
 
 Stylesheet changes are applied in place. Changes to other static assets trigger a
 full reload so updated scripts and images are fetched. Page or template changes
