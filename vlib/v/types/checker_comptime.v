@@ -5138,7 +5138,8 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 		pointee_is_variant := clean_actual is Pointer
 			&& tc.sum_type_contains_variant(clean_target, clean_actual.base_type)
 		if !tc.sum_type_contains_variant(clean_target, actual) && !pointee_is_variant
-			&& !tc.smartcast_wrapper_cast_payload_compatible(child_id, actual, target) {
+			&& !tc.smartcast_wrapper_cast_payload_compatible(child_id, actual, target)
+			&& !tc.sum_array_variant_accepts_elements(clean_target, actual) {
 			if !tc.named_variant_init_was_reported(child_id) {
 				tc.record_error_at(.assignment_mismatch, 'cannot cast `${actual.name()}` to `${target.name()}`', id, node.pos)
 			}
@@ -11265,6 +11266,30 @@ fn (mut tc TypeChecker) check_or_fallback_type(or_id flat.NodeId, source_id flat
 	}
 	pos := tc.or_fallback_value_pos(tail_id, tail)
 	tc.record_error_at(.assignment_mismatch, message, tail_id, pos)
+}
+
+// sum_array_variant_accepts_elements reports whether `actual` is an array whose
+// elements are variants of the element sum of an array variant of `sum`, as
+// `[]u8` for the `[]Any` variant of `json2.Any`. Like V 0.5.2, `json2.Any(bytes)`
+// converts each element.
+fn (tc &TypeChecker) sum_array_variant_accepts_elements(sum SumType, actual Type) bool {
+	clean_actual := unalias_type(actual)
+	if clean_actual !is Array {
+		return false
+	}
+	actual_array := clean_actual as Array
+	base := flat.source_type_name(tc.sum_base_name(sum.source_type_id()))
+	for variant_source_id in tc.sum_types.type_ids(base) or { []u32{} } {
+		variant := unalias_type(tc.parse_type(tc.concrete_sum_variant_name(sum.source_type_id(),
+			variant_source_id)))
+		if variant is Array {
+			elem := unalias_type(variant.elem_type)
+			if elem is SumType && tc.sum_type_contains_variant(elem, actual_array.elem_type) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // or_fallback_result_is_returned reports whether the `or {}` block of a returned
