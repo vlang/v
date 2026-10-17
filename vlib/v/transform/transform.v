@@ -25061,6 +25061,13 @@ fn (mut t Transformer) transform_map_index_address_or_expr(node flat.Node, expr_
 }
 
 fn (mut t Transformer) transform_match_trailing_or_expr(_id flat.NodeId, node flat.Node) ?flat.NodeId {
+	new_match := t.match_with_trailing_or_subject(node)?
+	return t.transform_expr(new_match)
+}
+
+// match_with_trailing_or_subject rewrites `match x {...} or {...}` to a match on
+// `x or {...}`: the trailing `or` block unwraps the match subject, not the result.
+fn (mut t Transformer) match_with_trailing_or_subject(node flat.Node) ?flat.NodeId {
 	if node.kind != .or_expr || node.children_count < 2 {
 		return none
 	}
@@ -25105,7 +25112,7 @@ fn (mut t Transformer) transform_match_trailing_or_expr(_id flat.NodeId, node fl
 		value:          match_node.value
 		typ:            match_node.typ
 	})
-	return t.transform_expr(new_match)
+	return new_match
 }
 
 // transform_prefix_expr transforms transform prefix expr data for transform.

@@ -1499,9 +1499,14 @@ fn (mut t Transformer) try_expand_return_match(source_return_id flat.NodeId, nod
 	if node.children_count == 0 {
 		return none
 	}
-	val_id := t.a.child(&node, 0)
+	mut val_id := t.a.child(&node, 0)
 	if int(val_id) < 0 || int(val_id) >= t.a.nodes.len {
 		return none
+	}
+	if t.a.nodes[int(val_id)].kind == .or_expr {
+		// `return match x {...} or {...}`: the `or` block unwraps `x`, so the
+		// branches still return directly, like a plain `return match`.
+		val_id = t.match_with_trailing_or_subject(t.a.nodes[int(val_id)]) or { return none }
 	}
 	val := t.a.nodes[int(val_id)]
 	if val.kind != .match_stmt || val.children_count < 2 {
