@@ -1625,6 +1625,8 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 					pattern := flat.source_type_name(pattern_source_id)
 
 					if _ := tc.resolve_ierror_match_pattern(pattern_source_id) {
+					} else if _ := tc.resolve_interface_pattern_interface(pattern_source_id) {
+						// Another interface is tested at run time, like on other interfaces.
 					} else if tc.should_diagnose(cond_id) {
 						tc.record_error(.condition_mismatch, '`${pattern}` is not compatible with `IError`', cond_id)
 					}
@@ -1646,11 +1648,10 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 						}
 						continue
 					}
-					if target_iface_source_id := tc.resolve_interface_pattern_interface(pattern_source_id_5) {
-						if !tc.interface_runtime_pattern_allowed(subject_type.source_type_id(), target_iface_source_id)
-							&& tc.should_diagnose(cond_id) {
-							tc.record_error(.condition_mismatch, '`${pattern}` is not compatible with interface `${subject_type.name()}`', cond_id)
-						}
+					// An interface pattern is tested at run time against the stored value's
+					// type. It is valid even when no type in the program implements both
+					// interfaces; the test is then always false.
+					if _ := tc.resolve_interface_pattern_interface(pattern_source_id_5) {
 						continue
 					}
 					if concrete_source_id := tc.resolve_interface_match_pattern(pattern_source_id_5) {
@@ -3002,37 +3003,6 @@ fn (tc &TypeChecker) resolve_interface_pattern_interface(pattern_id u32) ?u32 {
 	return none
 }
 
-fn (tc &TypeChecker) interface_runtime_pattern_allowed(subject_iface_id u32, target_iface_id u32) bool {
-	subject_id := tc.interface_metadata_name(subject_iface_id)
-	target_id := tc.interface_metadata_name(target_iface_id)
-	if subject_id == target_id {
-		return true
-	}
-	if tc.interface_implements_interface(subject_id, target_id)
-		|| tc.interface_implements_interface(target_id, subject_id) {
-		return true
-	}
-	for concrete_id in tc.interface_impl_names(subject_id) {
-		if flat.source_type_name(concrete_id) in tc.interface_names {
-			if tc.interface_implements_interface(concrete_id, target_id) {
-				return true
-			}
-			continue
-		}
-		resolved_id := tc.interface_metadata_name(concrete_id)
-		if flat.source_type_name(resolved_id) in tc.interface_names {
-			if tc.interface_implements_interface(resolved_id, target_id) {
-				return true
-			}
-			continue
-		}
-		if tc.named_type_implements_interface(concrete_id, target_id) {
-			return true
-		}
-	}
-	return false
-}
-
 fn (tc &TypeChecker) pattern_type_known(pattern_id u32) bool {
 	clean := trimmed_space(flat.source_type_name(pattern_id))
 	if clean.starts_with('[]') || clean.starts_with('map[') || clean.starts_with('[')
@@ -3249,11 +3219,8 @@ fn (mut tc TypeChecker) check_is_expr(id flat.NodeId, node flat.Node) {
 	if is_ierror_type(expr_type) {
 		if node.value.len > 0 {
 			if node.value == 'none' {
-			} else if target_iface_source_id := tc.resolve_interface_pattern_interface(flat.source_type_id(node.value)) {
-				if !tc.interface_implements_interface(target_iface_source_id, flat.source_type_id('IError'))
-					&& tc.should_diagnose(id) {
-					tc.record_error(.condition_mismatch, '`${node.value}` is not compatible with `IError`', id)
-				}
+			} else if _ := tc.resolve_interface_pattern_interface(flat.source_type_id(node.value)) {
+				// Another interface is tested at run time, like on other interfaces.
 			} else if _ := tc.resolve_ierror_match_pattern(flat.source_type_id(node.value)) {
 			} else if concrete_source_id := tc.resolve_interface_match_pattern(flat.source_type_id(node.value)) {
 				pos := tc.node_value_diagnostic_pos(id)
@@ -3276,11 +3243,9 @@ fn (mut tc TypeChecker) check_is_expr(id flat.NodeId, node flat.Node) {
 					&& tc.should_diagnose(id) {
 					tc.record_error(.condition_mismatch, '`${node.value}` is not compatible with interface `${expr_type.name()}`', id)
 				}
-			} else if target_iface_source_id := tc.resolve_interface_pattern_interface(flat.source_type_id(node.value)) {
-				if !tc.interface_runtime_pattern_allowed(expr_type.source_type_id(), target_iface_source_id)
-					&& tc.should_diagnose(id) {
-					tc.record_error(.condition_mismatch, '`${node.value}` is not compatible with interface `${expr_type.name()}`', id)
-				}
+			} else if _ := tc.resolve_interface_pattern_interface(flat.source_type_id(node.value)) {
+				// `iface is OtherIface` is a run-time test, valid even when no type in the
+				// program implements both interfaces.
 			} else if concrete_source_id := tc.resolve_interface_match_pattern(flat.source_type_id(node.value)) {
 				concrete_type := unwrap_pointer(tc.parse_type(concrete_source_id))
 				concrete_name := flat.source_type_name(method_type_name(concrete_type))
