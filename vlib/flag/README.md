@@ -224,3 +224,7 @@ return an error; `fp.int()`, `fp.float()` and `fp.bool()` return their default f
 
 When a flag is given more than once, like `--an_int 1 --an_int 2`, the last value wins.
 Use `fp.int_multi()`, `fp.float_multi()` or `fp.string_multi()` to get all the values.
+
+By default, `FlagParser` scans all arguments, allowing flags to appear after positional arguments.
+To stop parsing flags at the first non-flag argument (treating everything from that point onward
+as positional arguments, matching Go's `flag.Parse` behavior), call `fp.stop_on_first_non_flag()`.
