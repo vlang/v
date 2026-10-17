@@ -18,6 +18,9 @@ import sync
 import sync.stdatomic as _
 
 fn main() {
+	$if !tinyc {
+		$compile_error("this regression requires TinyCC")
+	}
 	spinlock := sync.new_spin_lock()
 	spinlock.lock()
 	spinlock.unlock()
@@ -34,7 +37,11 @@ fn main() {
 				// macOS TCC's preprocessor exposes __arm64__ without __aarch64__.
 				args.insert(0, ['-cflags', '-U__aarch64__'])
 			}
-			build := cmdexec.run(@VEXE, args)
+			// macOS CI selects Clang globally; these child builds must select TCC.
+			build := cmdexec.run_in_merged_with_env(@VEXE, args, root, {
+				'VFLAGS':  ''
+				'VOSARGS': ''
+			})
 			assert build.exit_code == 0, build.output
 			assert !build.output.contains('falling back'), build.output
 			assert !build.output.contains('implicit tcc could not be used'), build.output
