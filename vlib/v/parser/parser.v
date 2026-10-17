@@ -9204,7 +9204,7 @@ fn (mut p Parser) if_stmt() flat.NodeId {
 	p.next() // skip 'if'
 	if p.tok == .key_match && !p.prefs.is_fmt {
 		p.record_diagnostic_span('cannot use `match` with `if` statements', p.tok_pos, p.tok_end)
-	} else if p.tok == .key_if && !p.is_translated {
+	} else if p.tok == .key_if && !p.is_translated && !p.if_condition_has_else() {
 		p.record_diagnostic_span('the condition of an `if` should be a boolean expression, not another `if` statement; did you write `if` twice by mistake?',
 			p.tok_pos, p.tok_end)
 		p.next()
@@ -9310,6 +9310,34 @@ fn (mut p Parser) if_stmt() flat.NodeId {
 		children_count: flat.child_count(ids.len)
 		pos:            p.span_to(if_start)
 	})
+}
+
+// if_condition_has_else distinguishes a value-producing conditional from an accidental `if if`.
+fn (mut p Parser) if_condition_has_else() bool {
+	mut kind := p.peek()
+	mut lookahead := p.s
+	mut grouping := 0
+	mut braces := 0
+	for kind != .eof {
+		if kind in [.lpar, .lsbr] {
+			grouping++
+		} else if kind in [.rpar, .rsbr] {
+			grouping--
+		} else if grouping == 0 && kind == .lcbr {
+			braces++
+		} else if grouping == 0 && kind == .rcbr {
+			braces--
+			if braces == 0 {
+				kind = lookahead.scan()
+				for kind == .semicolon {
+					kind = lookahead.scan()
+				}
+				return kind == .key_else
+			}
+		}
+		kind = lookahead.scan()
+	}
+	return false
 }
 
 // check_parenthesized_if_condition rejects an `if` condition that starts with another `if`
@@ -11505,6 +11533,20 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 			lhs = p.selector_or_method(lhs)
 			continue
 		}
+		if p.current_token_is_newline_semicolon() && p.peek() == .lcbr
+			&& !p.in_for_container && p.in_select_branch_condition == 0 {
+			lhs_node := p.a.nodes[int(lhs)]
+			if lhs_node.kind in [.ident, .selector, .index] {
+				type_id := p.resolve_local_type_id(p.type_expr_name(lhs))
+				type_name := flat.source_type_name(type_id)
+				if type_name_can_init(type_name) && !p.is_local_binding(type_name.all_before('.'))
+					&& (lhs_node.kind != .index || p.generic_type_target_has_static_path(lhs)) {
+					p.next()
+					lhs = p.struct_init(type_id)
+					continue
+				}
+			}
+		}
 		// module-qualified struct init: module.Type{} or module.Type{field: val, ...}
 		if p.tok == .lcbr && (p.in_select_branch_condition == 0 || p.current_lcbr_is_attached()
 			|| p.select_condition_has_qualified_struct_type(lhs))
@@ -11623,6 +11665,9 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 				&& p.current_generic_struct_init_suffix_followed_by_lcbr() {
 				before_suffix_offset := p.s.offset
 				suffix := p.parse_type_generic_suffix()
+				if p.current_token_is_newline_semicolon() && p.peek() == .lcbr {
+					p.next()
+				}
 				if p.s.offset != before_suffix_offset && p.tok == .lcbr {
 					lhs = p.struct_init(p.resolve_local_type_id(flat.source_type_id(base_type_name + suffix)))
 					continue
@@ -13591,6 +13636,8 @@ fn (mut p Parser) empty_map_init_after_type(map_type_id u32, start int) flat.Nod
 }
 
 fn (mut p Parser) pointer_cast_expr_from_current_depth(depth int, start int) ?flat.NodeId {
+	saved_diagnostics_len := p.diagnostics.len
+	saved_diagnostic_limit_reached := p.diagnostic_limit_reached
 	saved_s := p.s
 	saved_tok := p.tok
 	saved_lit := p.lit
@@ -13618,6 +13665,8 @@ fn (mut p Parser) pointer_cast_expr_from_current_depth(depth int, start int) ?fl
 			pos:            p.span_to(start)
 		})
 	}
+	p.diagnostics.trim(saved_diagnostics_len)
+	p.diagnostic_limit_reached = saved_diagnostic_limit_reached
 	p.s = saved_s
 	p.tok = saved_tok
 	p.lit = saved_lit
