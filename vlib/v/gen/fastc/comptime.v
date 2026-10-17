@@ -327,7 +327,7 @@ fn (mut g Parser) parse_comptime_match_statement() !bool {
 			branch_matches = !selected
 		} else {
 			for {
-				target_type := (g.parse_type()!)
+				target_type := g.parse_type()!
 				branch_matches = branch_matches || g.underlying_alias_type(subject_type) == g.underlying_alias_type(target_type)
 				if g.tok != .comma {
 					break
@@ -415,14 +415,28 @@ fn (mut g Parser) parse_comptime_for_statement() !bool {
 	if body_end < 0 {
 		return g.unsupported('unterminated `\$for` block')
 	}
-	body_source := g.s.src[body_start..body_end]
+	body_source := FastcSourceFile{
+		path:           g.path
+		source:         g.s.src[body_start..body_end]
+		source_offset:  g.source_offset + body_start
+		source_origins: g.source_origins
+	}
 	g.next() // consume the closing `}`; the main scanner now continues after it
 	saved_tok := g.tok
 	saved_lit := g.lit
 	saved_s := g.s
+	saved_source_offset := g.source_offset
+	saved_source_origins := g.source_origins
+	defer {
+		g.s = saved_s
+		g.tok = saved_tok
+		g.lit = saved_lit
+		g.source_offset = saved_source_offset
+		g.source_origins = saved_source_origins
+	}
 	// Build one substituted body per iteration item: a struct field for `.fields`,
 	// or an enum value for `.values`.
-	mut substituted_bodies := []string{}
+	mut substituted_bodies := []FastcSourceFile{}
 	if member == 'values' {
 		for value_name in g.enum_field_names[c_type] {
 			substituted_bodies << g.substitute_comptime_enum_value(body_source, loop_var, c_type, value_name)
@@ -435,9 +449,11 @@ fn (mut g Parser) parse_comptime_for_statement() !bool {
 	for substituted in substituted_bodies {
 		// Re-scan each unrolled body as ordinary V — no comptime awareness is needed
 		// in the renderer.
-		file := token.File.unindexed('comptime_for', substituted.len)
+		file := token.File.unindexed('comptime_for', substituted.source.len)
 		g.s = scanner.new_scanner(g.prefs, .normal)
-		g.s.init(file, substituted)
+		g.s.init(file, substituted.source)
+		g.source_offset = substituted.source_offset
+		g.source_origins = substituted.source_origins
 		g.next()
 		// A fresh C block scopes any locals the body declares, so re-parsing it per
 		// item does not redeclare them in the enclosing scope.
@@ -453,9 +469,6 @@ fn (mut g Parser) parse_comptime_for_statement() !bool {
 		g.indent--
 		g.write_line('}')
 	}
-	g.s = saved_s
-	g.tok = saved_tok
-	g.lit = saved_lit
 	return false
 }
 
@@ -470,7 +483,8 @@ fn fastc_comptime_loop_var_token(tok token.Token) bool {
 	return tok in [.name, .key_shared]
 }
 
-fn (g &Parser) substitute_comptime_field(body string, loop_var string, field FastcStructField) string {
+fn (g &Parser) substitute_comptime_field(source_file FastcSourceFile, loop_var string, field FastcStructField) FastcSourceFile {
+	body := source_file.source
 	field_name := field.name
 	file := token.File.unindexed('cf', body.len)
 	mut s := scanner.new_scanner(g.prefs, .normal)
@@ -645,14 +659,15 @@ fn (g &Parser) substitute_comptime_field(body string, loop_var string, field Fas
 		previous = tok
 		tok = s.scan()
 	}
-	return fastc_apply_source_edits(body, edits)
+	return fastc_apply_mapped_source_edits(source_file, edits)
 }
 
 // substitute_comptime_enum_value rewrites one `$for x in Enum.values { ... }` body
 // for a single enum value: `<var>.name` becomes the value-name string literal and
 // `<var>.value` becomes the enum's C constant. Other `<var>.<member>` forms are left
 // as-is so they surface as unsupported when re-parsed.
-fn (g &Parser) substitute_comptime_enum_value(body string, loop_var string, enum_c_type string, value_name string) string {
+fn (g &Parser) substitute_comptime_enum_value(source_file FastcSourceFile, loop_var string, enum_c_type string, value_name string) FastcSourceFile {
+	body := source_file.source
 	mut file_set := token.FileSet.new()
 	mut file := file_set.add_file('cv', body.len)
 	file.index_lines_without_digest(body)
@@ -692,7 +707,7 @@ fn (g &Parser) substitute_comptime_enum_value(body string, loop_var string, enum
 		}
 		tok = s.scan()
 	}
-	return fastc_apply_source_edits(body, edits)
+	return fastc_apply_mapped_source_edits(source_file, edits)
 }
 
 // read_comptime_is_type reads the type on the right of `<var>.typ is <Type>` and
@@ -904,7 +919,7 @@ fn (mut g Parser) parse_comptime_unary() !bool {
 			target_type = flat.source_type_id(g.lit)
 			g.next()
 		} else {
-			target_type = (g.parse_type()!)
+			target_type = g.parse_type()!
 		}
 		mut left_type := g.comptime_named_type(name)
 		if subject_pointer_depth > 0 {

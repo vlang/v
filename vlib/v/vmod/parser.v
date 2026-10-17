@@ -122,7 +122,7 @@ fn (mut s Scanner) create_number() string {
 }
 
 fn (s &Scanner) peek_char(c u8) bool {
-	return s.pos - 1 < s.text.len && s.text[s.pos - 1] == c
+	return s.pos > 0 && s.pos - 1 < s.text.len && s.text[s.pos - 1] == c
 }
 
 fn (mut s Scanner) scan_all() {

@@ -282,7 +282,6 @@ fn (mut t Transformer) fixed_array_call_uses_borrow(id flat.NodeId, node flat.No
 	params := t.call_param_types_from_decl(name) or { []types.Type{} }
 	offset := if params.len > 0 { t.call_param_offset(name, node, params) } else { 0 }
 	if t.fixed_array_expr_mentions_param(callee_id, param) {
-		dependency_start := dependencies.len
 		receiver_borrows := offset == 1 && callee.kind == .selector && callee.children_count > 0
 			&& t.fixed_array_arg_hands_param_storage(t.a.child(callee, 0), param)
 			&& t.fixed_array_storage_arg_borrows(name, node, params, 0, t.a.child(callee, 0), mut dependencies)
@@ -290,13 +289,9 @@ fn (mut t Transformer) fixed_array_call_uses_borrow(id flat.NodeId, node flat.No
 			if !t.fixed_array_param_use_borrows(callee_id, param, false, mut dependencies) {
 				return false
 			}
-		} else if dependencies.len > dependency_start {
-			mut ordinary_dependencies := []BorrowParamRef{}
-			if t.fixed_array_param_use_borrows(callee_id, param, false, mut ordinary_dependencies) {
-				dependencies.trim(dependency_start)
-				dependencies << ordinary_dependencies
-			}
 		}
+		// A method callee has a function type, so it cannot provide the scalar-read
+		// alternative used for ordinary arguments below. Keep its receiver dependency.
 	}
 	for i in 1 .. node.children_count {
 		arg_id := t.a.child(&node, i)

@@ -170,7 +170,7 @@ fn (g &Parser) map_receiver_type_before_dot(tokens []FastcExpressionToken, dot i
 		return none
 	}
 	receiver_start := fastc_method_receiver_start(tokens, dot)
-	receiver_type := (g.infer_expression_type(tokens[receiver_start..dot]) or { return none })
+	receiver_type := g.infer_expression_type(tokens[receiver_start..dot]) or { return none }
 	if !g.is_map_type(receiver_type) {
 		return none
 	}
@@ -784,7 +784,7 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 			// prefix-operator handling below (e.g. `*` deref) infer it instead.
 			continue
 		}
-		receiver_type := (g.infer_expression_type_range(tokens, receiver_start, i - 1)!)
+		receiver_type := g.infer_expression_type_range(tokens, receiver_start, i - 1)!
 		if receiver_type == u32(0) {
 			continue
 		}
@@ -909,7 +909,7 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 					return smartcast.typ
 				}
 			}
-			receiver_type := (g.infer_expression_type_range(tokens, start, end - 2)!)
+			receiver_type := g.infer_expression_type_range(tokens, start, end - 2)!
 			if field := g.struct_field_metadata(receiver_type, tokens[end - 1].lit) {
 				return field.typ
 			}
@@ -923,14 +923,14 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 		}
 	}
 	if tokens[start].tok in [.plus, .minus] {
-		operand_type := (g.infer_expression_type_range(tokens, start + 1, end)!)
+		operand_type := g.infer_expression_type_range(tokens, start + 1, end)!
 		if tokens[start].tok == .minus && operand_type == fastc_type_integer_literal {
 			return fastc_type_negative_integer_literal
 		}
 		return operand_type
 	}
 	if tokens[start].tok in [.amp, .and] {
-		operand_type := (g.infer_expression_type_range(tokens, start + 1, end)!)
+		operand_type := g.infer_expression_type_range(tokens, start + 1, end)!
 		// A mutable/reference local has pointer storage but value type `T` in V.
 		// Taking `&local` therefore yields its existing `T*` storage type, not
 		// `T**`. The rendered `&(*local)` expression follows the same rule.
@@ -952,7 +952,7 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 		}
 	}
 	if tokens[start].tok == .mul {
-		operand_type := (g.infer_expression_type_range(tokens, start + 1, end)!)
+		operand_type := g.infer_expression_type_range(tokens, start + 1, end)!
 		// Dereferencing removes exactly one pointer level. trim_right('*') collapses
 		// `T**` all the way to `T`, which makes values such as
 		// `*(&&ast.File(ptr))` look by-value and adds a bogus address-of later.
@@ -964,7 +964,7 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 		}
 	}
 	if tokens[start].tok == .bit_not {
-		operand_type := (g.infer_expression_type_range(tokens, start + 1, end)!)
+		operand_type := g.infer_expression_type_range(tokens, start + 1, end)!
 		return operand_type
 	}
 	if g.selfhost && tokens[end - 1].tok == .not {
@@ -976,7 +976,7 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 		})
 	}
 	if tokens[end - 1].tok in [.inc, .dec] {
-		operand_type := (g.infer_expression_type_range(tokens, start, end - 1)!)
+		operand_type := g.infer_expression_type_range(tokens, start, end - 1)!
 		if g.selfhost && operand_type == u32(0) {
 			return flat.source_type_int
 		}
@@ -997,7 +997,7 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 			}
 		}
 		if open_index > start {
-			base_type := (g.infer_expression_type_range(tokens, start, open_index)!)
+			base_type := g.infer_expression_type_range(tokens, start, open_index)!
 			base_layout := fastc_trim_pointer_suffix(flat.source_type_name(base_type))
 			if fastc_top_level_token_index(tokens, open_index + 1, end - 1, .dotdot) != none {
 				// Slicing a fixed array yields a dynamic array of its element type.
@@ -1053,8 +1053,8 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 			return g.infer_expression_type_range(tokens, start, i)!
 		}
 		if tokens[i].tok in [.left_shift, .right_shift, .right_shift_unsigned] && i > start {
-			mut left_type := (g.infer_expression_type_range(tokens, start, i)!)
-			mut right_type := (g.infer_expression_type_range(tokens, i + 1, end)!)
+			mut left_type := g.infer_expression_type_range(tokens, start, i)!
+			mut right_type := g.infer_expression_type_range(tokens, i + 1, end)!
 			if left_element_source_id := g.indexed_array_operand_type(tokens, start, i, left_type) {
 				left_element := left_element_source_id
 
@@ -1080,8 +1080,8 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 			}
 		}
 		if tokens[i].tok in [.plus, .minus, .mul, .div, .mod, .amp, .pipe, .xor] && i > start {
-			mut left_type := (g.infer_expression_type_range(tokens, start, i)!)
-			mut right_type := (g.infer_expression_type_range(tokens, i + 1, end)!)
+			mut left_type := g.infer_expression_type_range(tokens, start, i)!
+			mut right_type := g.infer_expression_type_range(tokens, i + 1, end)!
 			if left_element_source_id := g.indexed_array_operand_type(tokens, start, i, left_type) {
 				left_element := left_element_source_id
 

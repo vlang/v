@@ -50,19 +50,14 @@ fn test_base_url() {
 	assert content.base_url == 'source'
 }
 
-fn test_escaped_quote_inside_a_string_keeps_the_character() {
-	content := vmod.decode("Module { name: 'it\\'s' }")!
-	assert content.name == "it's"
-}
-
-fn test_unterminated_string_ending_with_a_backslash() {
-	// The scanner used to read one byte past the text while testing for a
-	// trailing escape, which aborted the process on this input.
-	vmod.decode("Module { name: 'a\\") or {
-		assert err.msg().starts_with('vmod: ')
-		return
+fn test_quoted_start_is_rejected_without_panicking() {
+	for text in ['"Module {\n\tname: \'x\'\n}\n', '\'Module {\n\tname: "x"\n}\n'] {
+		vmod.decode(text) or {
+			assert err.msg().starts_with('vmod: ')
+			continue
+		}
+		assert false
 	}
-	assert false
 }
 
 fn test_legacy_dependencies() {
@@ -178,4 +173,19 @@ fn test_workspaces_require_an_array_of_strings() {
 		vmod.decode(text) or { failed = true }
 		assert failed, text
 	}
+}
+
+fn test_escaped_quote_inside_a_string_keeps_the_character() {
+	content := vmod.decode("Module { name: 'it\\'s' }")!
+	assert content.name == "it's"
+}
+
+fn test_unterminated_string_ending_with_a_backslash() {
+	// The scanner used to read one byte past the text while testing for a
+	// trailing escape, which aborted the process on this input.
+	vmod.decode("Module { name: 'a\\") or {
+		assert err.msg().starts_with('vmod: ')
+		return
+	}
+	assert false
 }

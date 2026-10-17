@@ -1,3 +1,4 @@
+// vtest ownership
 import os
 
 fn test_map_value_address_or_preserves_storage_and_handles_missing_keys() {

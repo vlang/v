@@ -1,3 +1,4 @@
+// vtest ownership
 import os
 
 const interface_pointer_forward_vexe = @VEXE

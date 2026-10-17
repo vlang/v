@@ -2,10 +2,10 @@ module os
 
 import strings
 
-$if macos {
-	// needed for os.executable():
-	fn C._dyld_get_image_name(image u32) &char
-}
+// needed for os.executable() on macOS. Declared outside `$if macos`: `-cross` output
+// keeps the macOS branch of executable(), while a top-level `$if macos` is resolved
+// for the host that generates it.
+fn C._dyld_get_image_name(image u32) &char
 
 // BSD sysctl identifiers stay in V so executable lookup does not require C headers.
 const sysctl_ctl_kern = i32(1)
