@@ -81,6 +81,18 @@ fn main() {
 	copy["new"] = Row{cells: [2]}
 }
 '
+		'closure_rebind': header + '
+fn main() {
+	scope := {"old": Row{cells: [1]}}
+	mut copy := scope.clone()
+	fill := fn [mut copy] () {
+		copy["closure"] = Row{cells: [3]}
+	}
+	fill()
+	copy = borrowed(scope)
+	copy["new"] = Row{cells: [2]}
+}
+'
 		'field_branch':   header + '
 struct Ctx {
 mut:
