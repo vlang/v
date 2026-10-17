@@ -507,13 +507,23 @@ set stage_error=!ERRORLEVEL!
 if !stage_error! NEQ 0 call :try_delete "%V_STAGE%"
 exit /b !stage_error!
 
+:select_tcc_openlibm
+REM Direct TCC links need OpenLibm for C99 math that msvcrt lacks (remainder).
+REM Every Windows TCC bundle ships lib\openlibm.o built for its own compiler, as
+REM vlib/math expects. Use the installed checkout's object before each link: an
+REM existing checkout keeps its branch, so it can differ from tcc_branch.
+set "TCC_OPENLIBM="
+if exist "%tcc_dir%\lib\openlibm.o" set TCC_OPENLIBM="%tcc_dir%\lib\openlibm.o"
+exit /b 0
+
 :build_bootstrap_with_tcc
 if not exist "!tcc_exe!" (
 	echo  ^> TCC not found
 	exit /b 1
 )
+call :select_tcc_openlibm
 echo  ^> Attempting to build "%V_BOOTSTRAP%" (from %V_C_FILE%) with "!tcc_exe!"
-"!tcc_exe!" %VC_BOOTSTRAP_DEFINE% -B"%tcc_dir%" -bt10 -g -w -o "%V_BOOTSTRAP%" "%V_C_FILE%" %V_BOOTSTRAP_NATIVE% -ladvapi32 -lws2_32 -lbcrypt -Wl,-stack=33554432
+"!tcc_exe!" %VC_BOOTSTRAP_DEFINE% -B"%tcc_dir%" -bt10 -g -w -o "%V_BOOTSTRAP%" "%V_C_FILE%" %V_BOOTSTRAP_NATIVE% %TCC_OPENLIBM% -ladvapi32 -lws2_32 -lbcrypt -Wl,-stack=33554432
 exit /b !ERRORLEVEL!
 
 :build_bootstrap_with_msvc
@@ -566,8 +576,9 @@ exit /b !stage_error!
 set stage_vflags=-cc "!tcc_exe!"
 call :generate_stage_c
 if !ERRORLEVEL! NEQ 0 exit /b !ERRORLEVEL!
+call :select_tcc_openlibm
 echo  ^> Compiling "%V_STAGE%" from "%V_STAGE_C%" with TCC
-"!tcc_exe!" -B"%tcc_dir%" -bt10 -g -w -o "%V_STAGE%" "%V_STAGE_C%" %V_STAGE_NATIVE% -ldbghelp -lws2_32 -L"%~dp0vlib\crypto\rand\internal\libraries\bcrypt" -lbcrypt -I "%~dp0thirdparty\stdatomic\win" -ladvapi32 -Wl,-stack=33554432
+"!tcc_exe!" -B"%tcc_dir%" -bt10 -g -w -o "%V_STAGE%" "%V_STAGE_C%" %V_STAGE_NATIVE% %TCC_OPENLIBM% -ldbghelp -lws2_32 -L"%~dp0vlib\crypto\rand\internal\libraries\bcrypt" -lbcrypt -I "%~dp0thirdparty\stdatomic\win" -ladvapi32 -Wl,-stack=33554432
 set stage_error=!ERRORLEVEL!
 call :try_delete "%V_STAGE_C%"
 exit /b !stage_error!

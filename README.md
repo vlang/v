@@ -101,6 +101,10 @@ The compatibility filter uses the system `sh`; Bash is not required.
 
 On Windows, `makev.bat` generates the first compiler stage as C and links it directly.
 This also works with older bootstrap snapshots whose process-spawn code is broken.
+Direct TCC links add the installed bundle's `thirdparty\tcc\lib\openlibm.o`, when present,
+for C99 math functions such as `remainder`. Each bundle ships this object for its own compiler,
+so an existing amd64 or i386 checkout links a matching object even when it differs from the
+branch selected by the host, `-tcc32`, or `TCC_BRANCH`.
 
 (Like the note above says, on Windows, use `makev.bat`, instead of `make`.)
 

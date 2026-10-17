@@ -73,6 +73,40 @@ class BootstrapConfigurationTests(unittest.TestCase):
                 self.assertEqual(len(commands), 1)
                 self.assertIn("%V_BOOTSTRAP_NATIVE%", commands[0])
 
+    def test_tcc_links_select_the_installed_bundle_openlibm(self):
+        # Every Windows TCC bundle ships lib/openlibm.o for its own compiler. An
+        # existing checkout keeps its branch, so never infer it from tcc_branch.
+        select = [
+            line for line in routine("select_tcc_openlibm").splitlines()
+            if line and not line.startswith("REM ")
+        ]
+        self.assertEqual(select, [
+            ":select_tcc_openlibm",
+            'set "TCC_OPENLIBM="',
+            'if exist "%tcc_dir%\\lib\\openlibm.o" set TCC_OPENLIBM="%tcc_dir%\\lib\\openlibm.o"',
+            "exit /b 0",
+        ])
+        for compiler in ("tcc", "clang", "gcc", "msvc"):
+            for stage in ("bootstrap", "stage"):
+                with self.subTest(compiler=compiler, stage=stage):
+                    body = routine("build_" + stage + "_with_" + compiler)
+                    prefix = "cl " if compiler == "msvc" else '"!' + compiler + '_exe!" '
+                    links = [line for line in body.splitlines() if line.startswith(prefix)]
+                    self.assertEqual(len(links), 1)
+                    if compiler != "tcc":
+                        self.assertNotIn("OPENLIBM", body.upper())
+                        continue
+                    # Select in each routine, right before its link: the stage
+                    # link also runs after a Clang/GCC bootstrap.
+                    lines = body.splitlines()
+                    select_at = lines.index("call :select_tcc_openlibm")
+                    link_at = lines.index(links[0])
+                    self.assertLess(select_at, link_at)
+                    self.assertTrue(all(
+                        line.startswith("echo ") for line in lines[select_at + 1:link_at]
+                    ), lines[select_at:link_at + 1])
+                    self.assertIn(" %TCC_OPENLIBM% ", links[0])
+
     def test_msvc_fallbacks_build_the_next_stage(self):
         attempts = re.findall(
             r"call :build_msvc_stage (tcc|msvc|clang|gcc)\b", routine("msvc_strap")
@@ -169,6 +203,106 @@ class BootstrapConfigurationTests(unittest.TestCase):
 
 @unittest.skipUnless(os.name == "nt", "requires the Windows cmd.exe interpreter")
 class BatchExecutionTests(unittest.TestCase):
+    def test_tcc_links_use_the_installed_bundle_openlibm(self):
+        # Updating an existing checkout does not switch its branch, and --local
+        # skips the update. The host, -tcc32 and TCC_BRANCH must not matter:
+        # every link uses the object that the installed bundle ships, if any.
+        for arch, options, branch, bootstrap_object, stage_object in (
+            ("AMD64", [], None, True, True),
+            ("AMD64", [], None, False, False),
+            ("AMD64", ["--local"], None, True, True),
+            ("AMD64", ["--local"], None, False, False),
+            ("x86", [], None, True, True),
+            ("AMD64", ["-tcc32"], None, True, True),
+            ("AMD64", ["-tcc32", "--local"], None, False, False),
+            ("AMD64", [], "thirdparty-windows-i386", True, True),
+            ("AMD64", ["--local"], '"thirdparty-windows-i386"', True, True),
+            ("x86", [], "thirdparty-windows-amd64", False, False),
+            ("AMD64", [], "custom-tcc-bundle", False, False),
+            ("AMD64", [], None, True, False),
+            ("AMD64", [], None, False, True),
+        ):
+            with self.subTest(
+                arch=arch, options=options, branch=branch,
+                bootstrap_object=bootstrap_object, stage_object=stage_object,
+            ), tempfile.TemporaryDirectory(prefix="makev TCC link inputs ") as directory:
+                workdir = Path(directory)
+                tcc_dir = workdir / "thirdparty" / "tcc"
+                openlibm = tcc_dir / "lib" / "openlibm.o"
+                openlibm.parent.mkdir(parents=True)
+                if bootstrap_object:
+                    openlibm.write_text("bundle object", encoding="utf-8")
+                # A real child batch file records each whole link command line;
+                # only compiler work is stubbed, not the option or build flow.
+                # It echoes %* because -B"<dir with spaces>" breaks an IF on %~1.
+                compiler = tcc_dir / "TCC stub.cmd"
+                compiler.write_bytes(
+                    b'@echo off\r\n>>"%test_calls%" echo(%*\r\nexit /b 0\r\n'
+                )
+                preamble = SOURCE[:SOURCE.index(":verifyopt\n")]
+                preamble = preamble.replace("%~dp0", str(workdir) + "\\")
+                body = "\n".join(
+                    routine("build_" + stage + "_with_tcc") for stage in ("bootstrap", "stage")
+                )
+                body, compiler_calls = re.subn(
+                    r'(?m)^"!tcc_exe!" ', 'call "!tcc_exe!" ', body
+                )
+                self.assertEqual(compiler_calls, 2)
+                script = "\n".join([
+                    preamble,
+                    'set "tcc_exe=' + str(compiler) + '"',
+                    "goto :verifyopt",
+                    routine("verifyopt"),
+                    routine("init"),
+                    routine("build"),
+                    ":tcc_strap",
+                    ":tcc32_strap",
+                    "set test_calls=bootstrap.args",
+                    "call :build_bootstrap_with_tcc",
+                    "if !ERRORLEVEL! NEQ 0 exit /b !ERRORLEVEL!",
+                    # The installed bundle can gain or lose the object between links.
+                    'if "%TCC_TEST_STAGE_OBJECT%" == "1" echo bundle object>"%tcc_dir%\\lib\\openlibm.o"',
+                    'if not "%TCC_TEST_STAGE_OBJECT%" == "1" del "%tcc_dir%\\lib\\openlibm.o" >nul 2>&1',
+                    "set test_calls=stage.args",
+                    "call :build_stage_with_tcc",
+                    "exit /b !ERRORLEVEL!",
+                    body,
+                    routine("select_tcc_openlibm"),
+                    ":download_tcc",
+                    '>>"download.txt" echo update existing checkout',
+                    "exit /b 0",
+                    ":cloning_vc",
+                    "exit /b 0",
+                    ":generate_stage_c",
+                    "exit /b 0",
+                    ":try_delete",
+                    "exit /b 0",
+                ])
+                harness = workdir / "TCC link inputs.bat"
+                harness.write_bytes(script.replace("\n", "\r\n").encode("utf-8"))
+                env = dict(os.environ, PROCESSOR_ARCHITECTURE=arch, TCC_OPENLIBM="stale value",
+                           TCC_TEST_STAGE_OBJECT="1" if stage_object else "0")
+                env.pop("TCC_BRANCH", None)
+                if branch is not None:
+                    env["TCC_BRANCH"] = branch
+                command = [os.environ.get("ComSpec", "cmd.exe"), "/d", "/c", str(harness)]
+                command.extend(options)
+                result = subprocess.run(
+                    command, cwd=workdir, env=env, capture_output=True, text=True,
+                    errors="replace", timeout=15, check=False,
+                )
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual((workdir / "download.txt").exists(), "--local" not in options)
+                for stage, present in (("bootstrap", bootstrap_object), ("stage", stage_object)):
+                    links = (workdir / (stage + ".args")).read_text(encoding="utf-8").splitlines()
+                    self.assertEqual(len(links), 1, links)
+                    link = links[0]
+                    self.assertEqual(link.lower().count("openlibm.o"), 1 if present else 0, link)
+                    if present:
+                        self.assertIn(' "' + str(openlibm) + '" ', link)
+                    self.assertIn("-Wl,-stack=33554432", link)
+                    self.assertNotIn("stale value", link)
+
     def test_tcc_bootstrap_links_external_helpers_without_an_existing_compiler(self):
         if not (ROOT / "thirdparty" / "tcc" / "tcc.exe").is_file():
             self.skipTest("requires the bundled Windows TCC")
@@ -226,6 +360,7 @@ int main(void) {
                 "call :build_bootstrap_with_tcc",
                 "exit /b !ERRORLEVEL!",
                 routine("build_bootstrap_with_tcc"),
+                routine("select_tcc_openlibm"),
             ])
             harness = workdir / "bootstrap harness.bat"
             harness.write_bytes(script.replace("\n", "\r\n").encode("utf-8"))
@@ -264,7 +399,7 @@ int main(void) {
         labels = [
             "build_msvc_stage", "generate_stage_c", "build_stage_with_tcc",
             "build_stage_with_msvc", "build_stage_with_clang", "build_stage_with_gcc",
-            "try_delete", "compile_error", "error",
+            "try_delete", "compile_error", "error", "select_tcc_openlibm",
         ]
         body = "\n".join([msvc] + [routine(label) for label in labels])
         lines = body.splitlines()
@@ -479,6 +614,8 @@ int main(void) {
         prefix = "cl " if compiler == "msvc" else '"!' + compiler + '_exe!" '
         body = body.replace(prefix, "call :stub_link ")
         body = body.replace('"%V_STAGE%" ', "call :stub_final ")
+        if compiler == "tcc":
+            body += "\n" + routine("select_tcc_openlibm")
         for wait in (100, 250):
             body = body.replace(
                 f"ping 192.0.2.1 -n 1 -w {wait} >nul", "rem No delay in tests"
