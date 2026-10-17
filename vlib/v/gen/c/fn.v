@@ -8689,6 +8689,8 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 					uses_fn_value_param_types = true
 				}
 			}
+			callee_is_local_fn_value := uses_fn_value_param_types
+				&& g.local_fn_value_callee(g.a.child(node, 0))
 			callee_uses_specialized_generic_abi :=
 				g.call_callee_uses_specialized_generic_abi(g.a.child(node, 0))
 			concrete_optional_args := g.call_uses_concrete_optional_params(actual_fn)
@@ -9082,7 +9084,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 					&& g.voidptr_value_arg_needs_address(arg_id, arg_node, arg_type, param_types[arg_idx], is_c_call) {
 					needs_addr = true
 				}
-				if !is_c_call && !needs_addr && arg_idx == 0
+				if !is_c_call && !needs_addr && arg_idx == 0 && !callee_is_local_fn_value
 					&& (g.mut_receiver_arg_wants_addr(actual_fn, arg_id)
 						|| g.mut_receiver_arg_wants_addr(emitted_callee_name, arg_id)
 						|| g.mut_receiver_arg_wants_addr(fn_name, arg_id)) {
@@ -14068,6 +14070,38 @@ fn (g &FlatGen) static_call_base_type_name(base &flat.Node) ?string {
 		return qname
 	}
 	return none
+}
+
+// local_fn_value_callee reports whether a call's callee is a parameter or a local
+// holding a fn value. It shadows any function of the same name, so the call must not
+// take facts like a `mut` first parameter from that function (`if call := cb.f {
+// call(args) }` with an imported `call(mut vm VM, ...)`).
+fn (g &FlatGen) local_fn_value_callee(callee_id flat.NodeId) bool {
+	if int(callee_id) < 0 {
+		return false
+	}
+	node := g.a.nodes[int(callee_id)]
+	if node.kind != .ident {
+		return false
+	}
+	if typ := g.cur_param_types[node.value] {
+		if _ := fn_type_from(typ) {
+			return true
+		}
+		return false
+	}
+	if typ := g.current_param_type(node.value) {
+		if _ := fn_type_from(typ) {
+			return true
+		}
+		return false
+	}
+	if local := g.tc.cur_scope.lookup_before(node.value, g.tc.file_scope) {
+		if _ := fn_type_from(local) {
+			return true
+		}
+	}
+	return false
 }
 
 fn (g &FlatGen) fn_value_call_param_types(callee_id flat.NodeId) ?[]types.Type {
