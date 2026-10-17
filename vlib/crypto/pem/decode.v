@@ -88,6 +88,14 @@ fn parse_headers(block string) ?(map[string][]string, string) {
 	section := block.all_before(pem_end)
 	mut headers_str := section.all_before('\n\n')
 	mut body := block.all_after('\n\n')
+	// A CRLF blank line also terminates folded headers. Keep an earlier LF
+	// separator when a later CRLF blank line belongs to the base64 body.
+	if separator := section.index('\r\n\r\n') {
+		if separator < headers_str.len {
+			headers_str = section[..separator]
+			body = block[separator + 4..]
+		}
+	}
 
 	if headers_str.len == section.len {
 		// no blank line: the headers are the leading lines that contain a colon
