@@ -9396,36 +9396,45 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 				}
 				return tc.call_info(mname, true)
 			}
-			// The semantic alias payload can be the open generic form after a
-			// declaration-module parse. Reparse the recorded target text in the
-			// caller so `type Vec = vec.Vec3[f64]` retains its concrete argument
-			// when resolving inherited methods such as `Vec.cross()`.
-			alias_target_type := if target_source_id := tc.alias_target_type_text(clean.source_type_id()) {
-				target_source_id_2 := target_source_id
+			// Walk the whole alias chain, like V1: with `type B = A` and `type C = B`,
+			// a `C` receiver also calls the methods declared on `B` and on `A`.
+			mut alias_level := clean
+			for _ in 0 .. 64 {
+				// The semantic alias payload can be the open generic form after a
+				// declaration-module parse. Reparse the recorded target text in the
+				// caller so `type Vec = vec.Vec3[f64]` retains its concrete argument
+				// when resolving inherited methods such as `Vec.cross()`.
+				alias_target_type := if target_source_id := tc.alias_target_type_text(alias_level.source_type_id()) {
+					target_source_id_2 := target_source_id
 
-				tc.parse_type(target_source_id_2)
-			} else {
-				clean.base_type
-			}
-			alias_target_name := resolve_type_name_for_method(alias_target_type)
-			if alias_target_name != 0 {
-				if info := tc.resolve_generic_struct_method(alias_target_name, fn_node.value) {
-					return info
+					tc.parse_type(target_source_id_2)
+				} else {
+					alias_level.base_type
 				}
-				if info := tc.embedded_method_call_info(alias_target_name, fn_node.value) {
-					return info
-				}
-				for mname in receiver_method_name_candidates(clean.base_type, fn_node.value, tc.cur_module) {
-					if checker_is_raw_collection_method_name(mname, 'array.')
-						|| checker_is_raw_collection_method_name(mname, 'map.')
-						|| mname !in tc.fn_ret_types {
-						continue
+				alias_target_name := resolve_type_name_for_method(alias_target_type)
+				if alias_target_name != 0 {
+					if info := tc.resolve_generic_struct_method(alias_target_name, fn_node.value) {
+						return info
 					}
-					if !tc.method_can_be_called_on_receiver(base_type, fn_node.value, mname) {
-						continue
+					if info := tc.embedded_method_call_info(alias_target_name, fn_node.value) {
+						return info
 					}
-					return tc.call_info(mname, true)
+					for mname in receiver_method_name_candidates(alias_level.base_type, fn_node.value, tc.cur_module) {
+						if checker_is_raw_collection_method_name(mname, 'array.')
+							|| checker_is_raw_collection_method_name(mname, 'map.')
+							|| mname !in tc.fn_ret_types {
+							continue
+						}
+						if !tc.method_can_be_called_on_receiver(base_type, fn_node.value, mname) {
+							continue
+						}
+						return tc.call_info(mname, true)
+					}
 				}
+				if alias_level.base_type !is Alias {
+					break
+				}
+				alias_level = alias_level.base_type as Alias
 			}
 			if _ := array_type_from_receiver(clean) {
 				for mname in receiver_method_name_candidates(clean, fn_node.value, tc.cur_module) {
