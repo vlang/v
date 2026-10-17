@@ -9751,7 +9751,19 @@ fn (t &Transformer) bound_method_value_allocates_runtime_closure(id flat.NodeId)
 	if t.tc.expr_is_method_value(id) {
 		return true
 	}
-	return t.resolve_receiver_method_name(t.a.child(&node, 0), node.value).len > 0
+	base_id := t.a.child(&node, 0)
+	// A selector naming a field reads it (`s.str` is the string's `str` field,
+	// even though `string` also has a `str()` method); it is not a method value.
+	mut base_type := t.trim_pointer_type(t.lvalue_type(base_id))
+	if smartcast_type := t.smartcast_receiver_type_name(base_id) {
+		base_type = smartcast_type
+	}
+	if base_type != 0 {
+		if _ := t.lookup_struct_field_type(base_type, node.value) {
+			return false
+		}
+	}
+	return t.resolve_receiver_method_name(base_id, node.value).len > 0
 }
 
 fn (t &Transformer) immediate_bound_method_value_allocates_runtime_closure(id flat.NodeId) bool {
