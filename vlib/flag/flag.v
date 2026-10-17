@@ -116,6 +116,7 @@ pub mut:
 	min_free_args           int
 	args_description        string
 	allow_unknown_args      bool       // whether passing undescribed arguments is allowed
+	stop_on_first_non_flag  bool       // whether to stop parsing flags at the first non-flag argument
 	footers                 []string   // when set, --help will display all the collected footers at the bottom.
 	options                 DocOptions // documentation options
 }
@@ -216,6 +217,13 @@ pub fn (mut fs FlagParser) skip_executable() {
 // will not cause the validation in .finalize() to fail.
 pub fn (mut fs FlagParser) allow_unknown_args() {
 	fs.allow_unknown_args = true
+}
+
+// stop_on_first_non_flag configures the parser to stop parsing flags at the first
+// non-flag (positional) argument. All arguments from that point onward are treated
+// as positional arguments (similar to Go's flag.Parse).
+pub fn (mut fs FlagParser) stop_on_first_non_flag() {
+	fs.stop_on_first_non_flag = true
 }
 
 // private helper to register a flag.
@@ -457,7 +465,10 @@ fn (mut fs FlagParser) parse_value(longhand string, shorthand u8) []string {
 			should_skip_one = false
 			continue
 		}
-		if arg.len == 0 || arg[0] != `-` {
+		if arg.len == 0 || arg == '-' || arg[0] != `-` {
+			if fs.stop_on_first_non_flag {
+				break
+			}
 			continue
 		}
 		if (arg.len == 2 && arg[0] == `-` && arg[1] == shorthand) || arg == full {
@@ -509,7 +520,10 @@ fn (mut fs FlagParser) parse_bool_value(longhand string, shorthand u8) []string 
 	mut i := 0
 	for i < fs.args.len {
 		arg := fs.args[i]
-		if arg.len == 0 || arg[0] != `-` {
+		if arg.len == 0 || arg == '-' || arg[0] != `-` {
+			if fs.stop_on_first_non_flag {
+				break
+			}
 			i++
 			continue
 		}
@@ -914,7 +928,14 @@ pub fn (mut fs FlagParser) finalize() ![]string {
 	}
 	mut remaining := fs.args.clone()
 	if !fs.allow_unknown_args {
+		mut stop_checking := false
 		for a in remaining {
+			if fs.stop_on_first_non_flag && (a.len == 0 || a == '-' || a[0] != `-`) {
+				stop_checking = true
+			}
+			if stop_checking {
+				continue
+			}
 			if (a.len >= 2 && a[..2] == '--') || (a.len == 2 && a[0] == `-`) {
 				return &UnknownFlagError{
 					flag: a
