@@ -328,6 +328,28 @@ fn (mut t Transformer) make_array_push_many_call(lhs_addr flat.NodeId, rhs flat.
 		t.make_selector(rhs_value, 'len', flat.source_type_int)], flat.source_type_void)
 }
 
+// array_many_fixed_rhs passes a fixed-array bulk insert/prepend operand as inline fixed
+// storage. A fixed-array local moved to the heap is still typed by its variable (`&[2]int`)
+// although it reads as `*fixed`, and a `mut` fixed-array parameter reads as its pointer.
+fn (mut t Transformer) array_many_fixed_rhs(value flat.NodeId, rhs_type_id u32) (flat.NodeId, u32) {
+	if t.is_fixed_array_type(rhs_type_id) {
+		return value, rhs_type_id
+	}
+	value_type := t.normalize_type_alias(t.node_type(value))
+	if t.is_fixed_array_type(value_type) {
+		return value, value_type
+	}
+	if flat.source_type_shape(value_type).has(.pointer) {
+		pointee := t.normalize_type_alias(t.trim_pointer_type(value_type))
+		if t.is_fixed_array_type(pointee) {
+			deref := t.make_prefix(.mul, value)
+			t.set_node_typ(int(deref), pointee)
+			return deref, pointee
+		}
+	}
+	return value, rhs_type_id
+}
+
 fn (mut t Transformer) make_array_insert_many_call(lhs_addr flat.NodeId, index flat.NodeId, rhs flat.NodeId, rhs_type_id u32) flat.NodeId {
 	if t.is_fixed_array_type(rhs_type_id) {
 		return t.make_call_typed('array__insert_many', [lhs_addr, index, rhs,
@@ -2740,7 +2762,8 @@ fn (mut t Transformer) lower_array_prepend_call(node flat.Node, fn_node flat.Nod
 			rhs_type = base_type_id
 			converted_bulk_append = true
 		} else {
-			value = t.transform_array_many_rhs(value_id, value_node, base_type_id)
+			value, rhs_type = t.array_many_fixed_rhs(t.transform_array_many_rhs(value_id,
+				value_node, base_type_id), rhs_type)
 		}
 		cloned_value, cloned := t.clone_borrowed_array_append_many_value(value_id, value, rhs_type, elem_type_id)
 		t.inplace_rewrite_holds--
@@ -2859,7 +2882,8 @@ fn (mut t Transformer) lower_array_insert_call(node flat.Node, fn_node flat.Node
 			rhs_type = base_type_id
 			converted_bulk_append = true
 		} else {
-			value = t.transform_array_many_rhs(value_id, value_node, base_type_id)
+			value, rhs_type = t.array_many_fixed_rhs(t.transform_array_many_rhs(value_id,
+				value_node, base_type_id), rhs_type)
 		}
 		cloned_value, cloned := t.clone_borrowed_array_append_many_value(value_id, value, rhs_type, elem_type_id)
 		t.inplace_rewrite_holds--
