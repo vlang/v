@@ -751,6 +751,10 @@ fn write_toc(dn doc.DocNode, mut toc strings.Builder) {
 	toc.writeln('</li>')
 }
 
+// highlight_code_languages are the languages of the fenced code blocks that vdoc highlights as
+// V code, like ```v. Code blocks in other languages, like ```sh, are shown as they are.
+const highlight_code_languages = ['v', 'vlang', 'vsh']!
+
 struct MdHtmlCodeHighlighter {
 mut:
 	language           string
@@ -767,16 +771,16 @@ fn (f &MdHtmlCodeHighlighter) transform_attribute(p markdown.ParentType, name st
 
 fn (f &MdHtmlCodeHighlighter) transform_content(parent markdown.ParentType, text string) string {
 	if parent is markdown.MD_BLOCKTYPE && parent == .md_block_code {
-		if f.language == '' {
-			return html.escape(text)
-		}
-		output := html_highlight(text)
+		is_v_code := f.language.to_lower() in highlight_code_languages
 		// Reset the language, so that it will not persist between blocks,
 		// and will not be accidentally re-used for the next block, that may be lacking ```language :
 		unsafe {
 			f.language = ''
 		}
-		return output
+		if !is_v_code {
+			return html.escape(text)
+		}
+		return html_highlight(text)
 	}
 	return text
 }
