@@ -7,32 +7,32 @@ fn test_var_type_scope_restores_like_a_copy() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.set_var_type('outer', 'int')
-	t.set_var_type('shadowed', 'string')
+	t.set_var_type('outer', flat.source_type_int)
+	t.set_var_type('shadowed', flat.source_type_string)
 	expected := t.var_types.clone()
 	t.var_type_undo_active = true
 	scope := t.mark_var_type_scope()
-	t.set_var_type('inner', 'u8')
-	t.set_var_type('shadowed', 'f64')
+	t.set_var_type('inner', flat.source_type_u8)
+	t.set_var_type('shadowed', flat.source_type_f64)
 	nested := t.mark_var_type_scope()
-	t.set_var_type('inner', '[]int')
-	t.set_var_type('deep', 'bool')
-	t.set_var_type('outer', 'i64')
-	t.set_var_type('outer', 'u64')
+	t.set_var_type('inner', flat.source_type_id('[]int'))
+	t.set_var_type('deep', flat.source_type_bool)
+	t.set_var_type('outer', flat.source_type_i64)
+	t.set_var_type('outer', flat.source_type_u64)
 	t.restore_var_type_scope(nested)
-	assert t.var_type('inner') == 'u8'
-	assert t.var_type('outer') == 'int'
-	assert t.var_type('shadowed') == 'f64'
-	assert t.var_type('deep') == ''
+	assert t.var_type('inner') == flat.source_type_u8
+	assert t.var_type('outer') == flat.source_type_int
+	assert t.var_type('shadowed') == flat.source_type_f64
+	assert t.var_type('deep') == u32(0)
 	t.restore_var_type_scope(scope)
 	t.var_type_undo_active = false
 	assert t.var_types == expected
 	assert t.var_type_indices.len == expected.len
 	assert t.var_type_index('inner') == -1
-	assert t.var_type('shadowed') == 'string'
+	assert t.var_type('shadowed') == flat.source_type_string
 	assert t.var_type_undo_log.len == 0
 	// Outside such a walk a rebinding leaves no record behind.
-	t.set_var_type('outer', 'i8')
+	t.set_var_type('outer', flat.source_type_i8)
 	assert t.var_type_undo_log.len == 0
 }
 
@@ -145,8 +145,8 @@ fn test_generic_call_name_filter_keeps_every_spelling_of_a_declaration() {
 fn test_alias_receiver_candidates_follow_the_signature_tables() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases['Meters'] = 'int'
-	tc.type_aliases['unit.Feet'] = 'int'
+	tc.type_aliases.set_id('Meters', flat.source_type_int)
+	tc.type_aliases.set_id('unit.Feet', flat.source_type_int)
 	receiver := [types.Type(types.int_)]
 	tc.fn_param_types['Meters.double'] = receiver
 	tc.fn_param_types['os.double'] = receiver
@@ -167,7 +167,7 @@ fn test_alias_receiver_candidates_follow_the_signature_tables() {
 	tc.fn_param_types['Meters.pending'] = receiver
 	assert t.alias_receiver_method_candidates('pending') == ['Meters.pending']
 	// A new signature or alias is found by the scan until the list is taken again.
-	tc.type_aliases['Yards'] = 'int'
+	tc.type_aliases.set_id('Yards', flat.source_type_int)
 	tc.fn_param_types['Yards.double'] = receiver
 	expected := ['Meters.double', 'unit.Feet.double', 'Yards.double']
 	assert t.alias_receiver_method_candidates('double') == expected
@@ -184,31 +184,34 @@ fn test_append_element_interface_answers_follow_the_type_tables() {
 	t.cur_module = 'main'
 	t.append_elem_interface_cache = &ElemInterfaceCache{}
 	for _ in 0 .. 2 {
-		assert t.array_append_elem_is_interface('Shape')
-		assert !t.array_append_elem_is_interface('int')
-		assert !t.array_append_elem_is_interface('Later')
+		assert t.array_append_elem_is_interface(flat.source_type_id('Shape'))
+		assert !t.array_append_elem_is_interface(flat.source_type_int)
+		assert !t.array_append_elem_is_interface(flat.source_type_id('Later'))
 	}
 	tc.interface_names['Later'] = true
-	assert t.array_append_elem_is_interface('Later')
+	assert t.array_append_elem_is_interface(flat.source_type_id('Later'))
 	tc.interface_names['geometry.Solid'] = true
-	assert !t.array_append_elem_is_interface('Solid')
+	assert !t.array_append_elem_is_interface(flat.source_type_id('Solid'))
 	t.cur_module = 'geometry'
-	assert t.array_append_elem_is_interface('Solid') == t.array_append_elem_is_interface_uncached('Solid')
+	assert t.array_append_elem_is_interface(flat.source_type_id('Solid')) == t.array_append_elem_is_interface_uncached(flat.source_type_id('Solid'))
 }
 
 fn test_alias_chain_stops_at_plain_types_and_cycles() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases['Names'] = 'Words'
-	tc.type_aliases['Words'] = '[]string'
-	tc.type_aliases['Ping'] = 'Pong'
-	tc.type_aliases['Pong'] = 'Ping'
+	tc.type_aliases.set_id('Names', flat.source_type_id('Words'))
+	tc.type_aliases.set_id('Words', flat.source_type_id('[]string'))
+	tc.type_aliases.set_id('Ping', flat.source_type_id('Pong'))
+	tc.type_aliases.set_id('Pong', flat.source_type_id('Ping'))
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
-	assert t.normalize_type_alias_chain('int') == 'int'
-	assert t.normalize_type_alias_chain('[]string') == '[]string'
-	assert t.normalize_type_alias_chain('Names') == '[]string'
-	assert t.normalize_type_alias_chain('Ping') in ['Ping', 'Pong']
+	assert t.normalize_type_alias_chain(flat.source_type_int) == flat.source_type_int
+	assert flat.source_type_name(t.normalize_type_alias_chain(flat.source_type_id('[]string'))) == '[]string'
+	assert flat.source_type_name(t.normalize_type_alias_chain(flat.source_type_id('Names'))) == '[]string'
+	assert flat.source_type_name(t.normalize_type_alias_chain(flat.source_type_id('Ping'))) in [
+		'Ping',
+		'Pong',
+	]
 }
 
 fn shortcut_test_node(mut a flat.FlatAst, node flat.Node, children []flat.NodeId) flat.NodeId {
@@ -254,7 +257,7 @@ fn test_closure_bounds_hold_for_every_value_the_cleanup_walk_accepts() {
 	plain := shortcut_test_node(mut a, flat.Node{ kind: .fn_literal }, [])
 	text := t.make_string_literal('text')
 	name := t.make_ident('name')
-	field := t.make_selector(t.make_ident('base'), 'field', 'int')
+	field := t.make_selector(t.make_ident('base'), 'field', flat.source_type_int)
 	cond := a.add_val(.bool_literal, 'true')
 	in_paren := t.make_paren(shortcut_capturing_literal(mut a, mut t))
 	in_block := shortcut_test_node(mut a, flat.Node{ kind: .block }, [

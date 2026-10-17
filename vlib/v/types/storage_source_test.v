@@ -53,6 +53,21 @@ fn main() { _ = make_text().view() }
 	tc.body_resolve_memo.call_generation++
 	assert probe.storage_query_probe_checked_call_info(outer) == none
 	tc.body_resolve_memo.call_generation = generation_before
+	// A spelling lookup changes private cache state without changing generic bindings.
+	tc.type_param_texts.set_id('T', flat.source_type_int)
+	mut cached_spelling := tc.fork_storage_observation_view()
+	mut spelling_table := cached_spelling.type_param_texts.texts
+	_ = spelling_table.intern('storage_probe_cache_only')
+	assert (cached_spelling.storage_query_probe_checked_call_info(outer) or {
+		panic('missing cached call after private spelling lookup')
+	}) == info
+	assert (cached_spelling.storage_query_probe_checked_type(receiver) or {
+		panic('missing cached type after private spelling lookup')
+	}) == Type(typ)
+	assert !cached_spelling.storage_query_probe.recheck_requested
+	cached_spelling.type_param_texts.set_id('T', flat.source_type_string)
+	assert cached_spelling.storage_query_probe_checked_call_info(outer) == none
+	assert cached_spelling.storage_query_probe_checked_type(receiver) == none
 	slot := int(outer) & 2047
 	tc.body_resolve_memo.call_ids[slot] = -1
 	assert probe.storage_query_probe_checked_call_info(outer) == none

@@ -1,5 +1,6 @@
 module fastc
 
+import v.flat
 import os
 import time
 import v.pref
@@ -500,10 +501,8 @@ fn fastc_collect_index_worker(sources []FastcSourceFile, prefs &pref.Preferences
 		}
 		flagged := [
 			FastcSourceFile{
-				path:          source_file.path
-				source:        source_file.source
-				source_offset: source_file.source_offset
-				header:        fastc_header_with_scan_flags(source_file.header, file_flags)
+				...source_file
+				header: fastc_header_with_scan_flags(source_file.header, file_flags)
 			},
 		]
 		partial := fastc_collect_declaration_chunk(flagged, prefs, 0, 1)
@@ -522,7 +521,7 @@ fn fastc_collect_index_worker(sources []FastcSourceFile, prefs &pref.Preferences
 // and the declaration index in one parallel pass over the files: each file is
 // visited once, and there is a single spawn/join round. The results are
 // applied in file order, so they match the two serial scans.
-fn fastc_collect_generic_and_declaration_indexes(mut sources []FastcSourceFile, prefs &pref.Preferences, mut declared_types map[string]bool, mut declared_kinds map[string]FastcDeclaredTypeKind, mut enum_flags map[string]bool, mut params_structs map[string]bool, mut type_source_paths map[string]bool, mut type_sources map[string]string, mut constants map[string]string, mut public_constants map[string]bool, mut constant_sources map[string]string, mut constant_spans map[string][]int, mut global_sources map[string]string, mut globals map[string]string, mut public_globals map[string]bool) !map[string]FastcGenericMethodSource {
+fn fastc_collect_generic_and_declaration_indexes(mut sources []FastcSourceFile, prefs &pref.Preferences, mut declared_types map[string]bool, mut declared_kinds map[string]FastcDeclaredTypeKind, mut enum_flags map[string]bool, mut params_structs map[string]bool, mut type_source_paths map[string]bool, mut type_sources map[string]FastcDeclarationSource, mut constants map[string]string, mut public_constants map[string]bool, mut constant_sources map[string]FastcDeclarationSource, mut constant_spans map[string][]int, mut global_sources map[string]FastcDeclarationSource, mut globals map[string]string, mut public_globals map[string]bool) !map[string]FastcGenericMethodSource {
 	jobs := fastc_parallel_jobs(sources, prefs)
 	if jobs <= 1 {
 		generic_method_sources := fastc_collect_generic_method_sources(mut sources, prefs)
@@ -554,10 +553,8 @@ fn fastc_collect_generic_and_declaration_indexes(mut sources []FastcSourceFile, 
 	for index, indexed in partials {
 		source_file := sources[index]
 		sources[index] = FastcSourceFile{
-			path:          source_file.path
-			source:        source_file.source
-			source_offset: source_file.source_offset
-			header:        fastc_header_with_body_spans(fastc_header_with_scan_flags(source_file.header, indexed.flags), indexed.body_spans)
+			...source_file
+			header: fastc_header_with_body_spans(fastc_header_with_scan_flags(source_file.header, indexed.flags), indexed.body_spans)
 		}
 		for key, generic in indexed.generics {
 			generic_method_sources[key] = generic
@@ -578,7 +575,7 @@ struct FastcIndexedFileGenOutput {
 struct FastcFileGenWorkerResult {
 	outputs           []FastcIndexedFileGenOutput
 	composite_types   map[string]bool
-	fixed_array_types map[string]string
+	fixed_array_types flat.TypeTextBindings
 }
 
 // FastcGenQueue is a shared work-stealing counter for per-file generation. On a
@@ -620,7 +617,7 @@ fn fastc_file_generation_order(sources []FastcSourceFile) []int {
 fn fastc_generate_file_steal(ctx &FastcFileGenContext, sources []FastcSourceFile, order []int, queue &FastcGenQueue) FastcFileGenWorkerResult {
 	mut outputs := []FastcIndexedFileGenOutput{}
 	mut composite_types := map[string]bool{}
-	mut fixed_array_types := map[string]string{}
+	mut fixed_array_types := flat.TypeTextBindings{}
 	limit := u32(order.len)
 	bench_files := os.getenv('FASTC_BENCH_FILES') != ''
 	mut sw := time.new_stopwatch()
@@ -639,8 +636,9 @@ fn fastc_generate_file_steal(ctx &FastcFileGenContext, sources []FastcSourceFile
 		for name, _ in output.composite_types {
 			composite_types[name] = true
 		}
-		for name, array_type in output.fixed_array_types {
-			fixed_array_types[name] = array_type
+		for name, array_type_id in output.fixed_array_types.ids {
+			array_type := flat.source_type_name(array_type_id)
+			fixed_array_types.set(name, array_type)
 		}
 		outputs << FastcIndexedFileGenOutput{
 			index:  file_index
@@ -751,6 +749,7 @@ fn fastc_source_generation_fragments(source_file FastcSourceFile, prefs &pref.Pr
 			// its bytes instead of copying every fragment before the parallel pass.
 			source:               unsafe { source_file.source[start..cuts[i + 1]] }
 			source_offset:        source_file.source_offset + start
+			source_origins:       source_file.source_origins
 			source_line_offset:   source_file.source_line_offset + position_lines
 			source_column_offset: if position_lines == 0 {
 				source_file.source_column_offset + position_column
@@ -838,7 +837,7 @@ mut:
 	result  FastcTypeDeclarationResult
 }
 
-fn fastc_start_type_declarations(sources []FastcSourceFile, type_sources map[string]string, prefs &pref.Preferences, type_source_paths map[string]bool, declared_types map[string]bool, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, constants map[string]string, public_constants map[string]bool) FastcPendingTypeDeclarations {
+fn fastc_start_type_declarations(sources []FastcSourceFile, type_sources map[string]FastcDeclarationSource, prefs &pref.Preferences, type_source_paths map[string]bool, declared_types map[string]bool, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, constants map[string]string, public_constants map[string]bool) FastcPendingTypeDeclarations {
 	if fastc_parallel_worker_limit(prefs) <= 1 {
 		return FastcPendingTypeDeclarations{
 			result: fastc_run_type_declarations(sources, type_sources, prefs, type_source_paths, declared_types, declared_kinds, enum_flags, constants, public_constants)
@@ -870,7 +869,7 @@ mut:
 	result  FastcFieldDefaultsResult
 }
 
-fn fastc_start_field_defaults(source_imports map[string]map[string]string, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, fastc_prefixed_c_names []string, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, enum_field_types map[string]string, enum_field_names map[string][]string, alias_base_types map[string]string, struct_fields map[string]map[string]string, struct_field_info map[string][]FastcStructField, functions map[string]FastcFunctionSignature, function_c_names map[string]string, constants map[string]string, public_constants map[string]bool, constant_types map[string]string, globals map[string]string, public_globals map[string]bool, global_types map[string]string, sum_types map[string]bool) FastcPendingFieldDefaults {
+fn fastc_start_field_defaults(source_imports map[string]map[string]string, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names flat.TypeTextBindings, fastc_prefixed_c_names []string, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, enum_field_types flat.TypeTextBindings, enum_field_names map[string][]string, alias_base_types flat.TypeTextBindings, struct_fields map[string]flat.TypeTextBindings, struct_field_info map[string][]FastcStructField, functions map[string]FastcFunctionSignature, function_c_names map[string]string, constants map[string]string, public_constants map[string]bool, constant_types flat.TypeTextBindings, globals map[string]string, public_globals map[string]bool, global_types flat.TypeTextBindings, sum_types map[string]bool) FastcPendingFieldDefaults {
 	if fastc_parallel_worker_limit(prefs) <= 1 {
 		return FastcPendingFieldDefaults{
 			result: fastc_run_field_defaults(source_imports, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, enum_field_names, alias_base_types, struct_fields, struct_field_info, functions, function_c_names, constants, public_constants, constant_types, globals, public_globals, global_types, sum_types)
@@ -950,7 +949,7 @@ fn fastc_generate_file_outputs(ctx &FastcFileGenContext, sources []FastcSourceFi
 	}
 	mut outputs := []FastcFileGenOutput{len: generation_sources.len}
 	mut composite_types := map[string]bool{}
-	mut fixed_array_types := map[string]string{}
+	mut fixed_array_types := flat.TypeTextBindings{}
 	first := fastc_generate_file_steal(ctx, generation_sources, order, queue)
 	for indexed_output in first.outputs {
 		outputs[indexed_output.index] = indexed_output.output
@@ -972,12 +971,13 @@ fn fastc_generate_file_outputs(ctx &FastcFileGenContext, sources []FastcSourceFi
 	}
 }
 
-fn fastc_merge_worker_types(worker FastcFileGenWorkerResult, mut composite_types map[string]bool, mut fixed_array_types map[string]string) {
+fn fastc_merge_worker_types(worker FastcFileGenWorkerResult, mut composite_types map[string]bool, mut fixed_array_types flat.TypeTextBindings) {
 	for name, _ in worker.composite_types {
 		composite_types[name] = true
 	}
-	for name, array_type in worker.fixed_array_types {
-		fixed_array_types[name] = array_type
+	for name, array_type_id in worker.fixed_array_types.ids {
+		array_type := flat.source_type_name(array_type_id)
+		fixed_array_types.set(name, array_type)
 	}
 }
 
@@ -1067,7 +1067,7 @@ fn fastc_collect_declaration_worker(sources []FastcSourceFile, prefs &pref.Prefe
 	return partials
 }
 
-fn fastc_collect_declaration_indexes(sources []FastcSourceFile, prefs &pref.Preferences, mut declared_types map[string]bool, mut declared_kinds map[string]FastcDeclaredTypeKind, mut enum_flags map[string]bool, mut params_structs map[string]bool, mut type_source_paths map[string]bool, mut type_sources map[string]string, mut constants map[string]string, mut public_constants map[string]bool, mut constant_sources map[string]string, mut constant_spans map[string][]int, mut global_sources map[string]string, mut globals map[string]string, mut public_globals map[string]bool) ! {
+fn fastc_collect_declaration_indexes(sources []FastcSourceFile, prefs &pref.Preferences, mut declared_types map[string]bool, mut declared_kinds map[string]FastcDeclaredTypeKind, mut enum_flags map[string]bool, mut params_structs map[string]bool, mut type_source_paths map[string]bool, mut type_sources map[string]FastcDeclarationSource, mut constants map[string]string, mut public_constants map[string]bool, mut constant_sources map[string]FastcDeclarationSource, mut constant_spans map[string][]int, mut global_sources map[string]FastcDeclarationSource, mut globals map[string]string, mut public_globals map[string]bool) ! {
 	jobs := fastc_parallel_jobs(sources, prefs)
 	if jobs <= 1 {
 		partial := fastc_collect_declaration_chunk(sources, prefs, 0, sources.len)
@@ -1107,7 +1107,7 @@ struct FastcIndexedSignaturePartial {
 
 // fastc_collect_signature_worker collects one file at a time from the shared
 // counter (largest files first); the caller merges the partials in file order.
-fn fastc_collect_signature_worker(sources []FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, params_structs map[string]bool, order []int, queue &FastcGenQueue) []FastcIndexedSignaturePartial {
+fn fastc_collect_signature_worker(sources []FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names flat.TypeTextBindings, params_structs map[string]bool, order []int, queue &FastcGenQueue) []FastcIndexedSignaturePartial {
 	mut partials := []FastcIndexedSignaturePartial{}
 	for {
 		slot := fastc_atomic_fetch_add_u32(&queue.next, 1)
@@ -1123,7 +1123,7 @@ fn fastc_collect_signature_worker(sources []FastcSourceFile, prefs &pref.Prefere
 	return partials
 }
 
-fn fastc_collect_signatures(sources []FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, params_structs map[string]bool, mut functions map[string]FastcFunctionSignature, mut interface_methods map[string]bool, mut interface_fields map[string]FastcInterfaceField, mut embed_embedders []string, mut embed_embeddeds []string) ! {
+fn fastc_collect_signatures(sources []FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names flat.TypeTextBindings, params_structs map[string]bool, mut functions map[string]FastcFunctionSignature, mut interface_methods map[string]bool, mut interface_fields map[string]FastcInterfaceField, mut embed_embedders []u32, mut embed_embeddeds []u32) ! {
 	jobs := fastc_parallel_jobs(sources, prefs)
 	if jobs <= 1 {
 		partial := fastc_collect_signature_chunk(sources, prefs, declared_types, declared_type_c_names, params_structs, 0, sources.len)
@@ -1161,7 +1161,7 @@ fn fastc_collect_signatures(sources []FastcSourceFile, prefs &pref.Preferences, 
 
 // fastc_parse_constant_file_worker parses candidate files until the shared
 // counter runs past the end of `order` (largest files first).
-fn fastc_parse_constant_file_worker(ctx &FastcConstantGenContext, candidates []FastcSourceFile, seed map[string]string, order []int, queue &FastcGenQueue) []FastcIndexedConstantFileResult {
+fn fastc_parse_constant_file_worker(ctx &FastcConstantGenContext, candidates []FastcSourceFile, seed flat.TypeTextBindings, order []int, queue &FastcGenQueue) []FastcIndexedConstantFileResult {
 	mut results := []FastcIndexedConstantFileResult{}
 	bench_files := os.getenv('FASTC_BENCH_FILES') != ''
 	for {
@@ -1173,7 +1173,7 @@ fn fastc_parse_constant_file_worker(ctx &FastcConstantGenContext, candidates []F
 		file_sw := time.new_stopwatch()
 		results << FastcIndexedConstantFileResult{
 			index:  index
-			result: fastc_parse_constant_file(ctx, candidates[index], seed.clone())
+			result: fastc_parse_constant_file(ctx, candidates[index], seed.fork())
 		}
 		if bench_files {
 			eprintln('fastc-constants-file ${file_sw.elapsed().microseconds()}us ${candidates[index].source.len} bytes ${candidates[index].path}')
@@ -1185,7 +1185,7 @@ fn fastc_parse_constant_file_worker(ctx &FastcConstantGenContext, candidates []F
 // fastc_parse_constant_files_parallel parses every candidate file's constants
 // on parallel workers, each starting from the phase's initial constant types.
 // It returns an empty list when the phase runs serially.
-fn fastc_parse_constant_files_parallel(ctx &FastcConstantGenContext, candidates []FastcSourceFile, seed map[string]string) []FastcConstantFileResult {
+fn fastc_parse_constant_files_parallel(ctx &FastcConstantGenContext, candidates []FastcSourceFile, seed flat.TypeTextBindings) []FastcConstantFileResult {
 	jobs := fastc_parallel_job_count(candidates.len, ctx.prefs)
 	if jobs <= 1 {
 		return []FastcConstantFileResult{}

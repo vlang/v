@@ -39,8 +39,8 @@ fn after() {}
 		},
 	], prefs, 0, 1)
 	assert !partial.failed, partial.error_message
-	type_source := partial.type_sources[path]
-	constant_source := partial.constant_sources[path]
+	type_source := partial.type_sources[path].source
+	constant_source := partial.constant_sources[path].source
 	assert type_source.contains('@[flag]\nenum Mode')
 	assert type_source.contains('struct Box')
 	assert !type_source.contains('fn before')
@@ -74,8 +74,8 @@ fn test_filtered_eof_comptime_spans_include_closing_brace() {
 		},
 	], prefs, 0, 1)
 	assert !partial.failed, partial.error_message
-	assert partial.type_sources[path].ends_with('}')
-	assert partial.constant_sources[path].ends_with('}')
+	assert partial.type_sources[path].source.ends_with('}')
+	assert partial.constant_sources[path].source.ends_with('}')
 }
 
 fn test_constant_visibility_resets_after_each_declaration() {

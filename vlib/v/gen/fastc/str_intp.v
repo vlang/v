@@ -1,5 +1,6 @@
 module fastc
 
+import v.flat
 import strings
 import v.token
 
@@ -9,18 +10,24 @@ import v.token
 // fields' defaults) is generated into g.spawn_helpers on first use. Returns none if
 // `c_type` is not a struct/union.
 fn (g &Parser) can_generate_default_struct_str(c_type string) bool {
-	key := g.semantic_type_key(c_type.trim_right('*'))
-	return key in g.declared_kinds && g.declared_kinds[key] in [.struct_, .union_]
+	key := g.semantic_type_key(flat.source_type_id(c_type.trim_right('*')))
+	return flat.source_type_name(key) in g.declared_kinds && g.declared_kinds[flat.source_type_name(key)] in [
+		.struct_,
+		.union_,
+	]
 }
 
 fn (mut g Parser) fastc_default_struct_str_name(c_type string) ?string {
-	key := g.semantic_type_key(c_type)
+	key := g.semantic_type_key(flat.source_type_id(c_type))
 	// A missing key defaults to `.struct_` (the zero enum value), so require it to be
 	// present before treating `c_type` as a struct.
-	if key !in g.declared_kinds || g.declared_kinds[key] !in [.struct_, .union_] {
+	if flat.source_type_name(key) !in g.declared_kinds || g.declared_kinds[flat.source_type_name(key)] !in [
+		.struct_,
+		.union_,
+	] {
 		return none
 	}
-	c_name := fastc_c_declared_type_name(key)
+	c_name := fastc_c_declared_type_name(flat.source_type_name(key))
 	fn_name := 'v_fastc_default_str_${c_name}'
 	if fn_name in g.spawn_helpers {
 		return fn_name
@@ -33,8 +40,8 @@ fn (mut g Parser) fastc_default_struct_str_name(c_type string) ?string {
 	body += '\tstring res = _S("${display}{\\n");\n'
 	for field in g.struct_field_info[c_name] {
 		c_field := fastc_c_identifier(field.name)
-		formatted := g.fastc_struct_field_str_expression('it.${c_field}', field.typ) or {
-			'_S("<${field.typ}>")'
+		formatted := g.fastc_struct_field_str_expression('it.${c_field}', field.typ_text()) or {
+			'_S("<${field.typ_text()}>")'
 		}
 		body += '\tres = builtin__string_plus(res, _S("    ${field.name}: "));\n'
 		body += '\tres = builtin__string_plus(res, ${formatted});\n'
@@ -51,8 +58,8 @@ fn (mut g Parser) fastc_default_struct_str_name(c_type string) ?string {
 // locals use FastC's wrapper; the caller passes either representation as an element
 // pointer, so the helper itself is shared by both forms.
 fn (mut g Parser) fastc_fixed_array_str_name(c_type string) ?string {
-	array_type := fastc_normalize_inferred_type(c_type).trim_right('*')
-	element_type := fastc_fixed_array_element_type(array_type) or { return none }
+	array_type := flat.source_type_name(fastc_normalize_inferred_type(flat.source_type_id(c_type))).trim_right('*')
+	element_type := (fastc_fixed_array_element_type(flat.source_type_id(array_type)) or { return none })
 	length_source := fastc_fixed_array_length(array_type) or { return none }
 	length := g.fixed_array_length_value(length_source) or { return none }
 	fn_name := 'v_fastc_fixed_array_str_${fastc_composite_type_part(array_type)}'
@@ -62,11 +69,11 @@ fn (mut g Parser) fastc_fixed_array_str_name(c_type string) ?string {
 	// Reserve the name before formatting elements so nested formatting cannot
 	// register the same helper recursively.
 	g.spawn_helpers[fn_name] = ''
-	g.protos.writeln('string ${fn_name}(${element_type} *it);')
-	mut body := 'string ${fn_name}(${element_type} *it) {\n'
+	g.protos.writeln('string ${fn_name}(${flat.source_type_name(element_type)} *it);')
+	mut body := 'string ${fn_name}(${flat.source_type_name(element_type)} *it) {\n'
 	body += '\tstring res = _S("[");\n'
 	for index in 0 .. length {
-		formatted := g.fastc_struct_field_str_expression('it[${index}]', element_type) or {
+		formatted := g.fastc_struct_field_str_expression('it[${index}]', flat.source_type_name(element_type)) or {
 			g.spawn_helpers.delete(fn_name)
 			return none
 		}
@@ -87,7 +94,7 @@ fn (mut g Parser) fastc_fixed_array_str_name(c_type string) ?string {
 // same per-type logic as struct-field formatting. Returns none for a non-sum type
 // or when any variant cannot be formatted.
 fn (mut g Parser) fastc_sumtype_str_helper(c_type string) ?string {
-	base := fastc_normalize_inferred_type(c_type).trim_right('*')
+	base := flat.source_type_name(fastc_normalize_inferred_type(flat.source_type_id(c_type))).trim_right('*')
 	if base !in g.sum_types {
 		return none
 	}
@@ -120,8 +127,8 @@ fn (mut g Parser) fastc_sumtype_str_helper(c_type string) ?string {
 // sum type or interface: it switches on the runtime `_typ` tag and returns the
 // variant's dotted name (`v.ast.CallExpr`). Returns none for non-boxed types.
 fn (mut g Parser) fastc_sumtype_type_name_helper(c_type string) ?string {
-	base := fastc_normalize_inferred_type(c_type).trim_right('*')
-	if base !in g.sum_types && g.declared_kinds[g.semantic_type_key(base)] != .interface_ {
+	base := flat.source_type_name(fastc_normalize_inferred_type(flat.source_type_id(c_type))).trim_right('*')
+	if base !in g.sum_types && g.declared_kinds[flat.source_type_name(g.semantic_type_key(flat.source_type_id(base)))] != .interface_ {
 		return none
 	}
 	fn_name := 'v_fastc_typename_${base}'
@@ -147,11 +154,11 @@ fn (mut g Parser) fastc_sumtype_type_name_helper(c_type string) ?string {
 }
 
 fn (mut g Parser) fastc_array_str_name(c_type string) ?string {
-	array_type := fastc_normalize_inferred_type(c_type).trim_right('*')
+	array_type := flat.source_type_name(fastc_normalize_inferred_type(flat.source_type_id(c_type))).trim_right('*')
 	if !array_type.starts_with('Array_') {
 		return none
 	}
-	element_type := fastc_array_element_type(array_type) or { return none }
+	element_type := (fastc_array_element_type(flat.source_type_id(array_type)) or { return none })
 	fn_name := 'v_fastc_array_str_${fastc_composite_type_part(array_type)}'
 	if fn_name in g.spawn_helpers {
 		return fn_name
@@ -159,8 +166,8 @@ fn (mut g Parser) fastc_array_str_name(c_type string) ?string {
 	g.spawn_helpers[fn_name] = ''
 	g.protos.writeln('string ${fn_name}(${array_type} it);')
 	index := '__v_fastc_array_str_index'
-	element := '(*(${element_type} *)builtin__array_get(it, ${index}))'
-	formatted := g.fastc_struct_field_str_expression(element, element_type) or {
+	element := '(*(${flat.source_type_name(element_type)} *)builtin__array_get(it, ${index}))'
+	formatted := g.fastc_struct_field_str_expression(element, flat.source_type_name(element_type)) or {
 		g.spawn_helpers.delete(fn_name)
 		return none
 	}
@@ -176,23 +183,26 @@ fn (mut g Parser) fastc_array_str_name(c_type string) ?string {
 }
 
 fn (mut g Parser) fastc_map_str_name(c_type string) ?string {
-	map_type := fastc_normalize_inferred_type(c_type).trim_right('*')
-	key_type, value_type := g.map_key_value_types(map_type)?
+	map_type := flat.source_type_name(fastc_normalize_inferred_type(flat.source_type_id(c_type))).trim_right('*')
+	key_type_source_id, value_type_source_id := g.map_key_value_types(flat.source_type_id(map_type))?
+	key_type := key_type_source_id
+	value_type := value_type_source_id
+
 	fn_name := 'v_fastc_map_str_${map_type}'
 	if fn_name in g.spawn_helpers {
 		return fn_name
 	}
 	g.spawn_helpers[fn_name] = ''
 	g.protos.writeln('string ${fn_name}(${map_type} it);')
-	key_string := g.fastc_struct_field_str_expression('__vf_key', key_type) or {
+	key_string := g.fastc_struct_field_str_expression('__vf_key', flat.source_type_name(key_type)) or {
 		g.spawn_helpers.delete(fn_name)
 		return none
 	}
-	value_string := g.fastc_struct_field_str_expression('(*(${value_type} *)builtin__map_get_check((map *)&it, &__vf_key))', value_type) or {
+	value_string := g.fastc_struct_field_str_expression('(*(${flat.source_type_name(value_type)} *)builtin__map_get_check((map *)&it, &__vf_key))', flat.source_type_name(value_type)) or {
 		g.spawn_helpers.delete(fn_name)
 		return none
 	}
-	g.spawn_helpers[fn_name] = 'string ${fn_name}(${map_type} it) {\n\tstring res = _S("{");\n\tarray keys = builtin__map_keys((map *)&it);\n\tfor (int i = 0; i < keys.len; i++) {\n\t\t${key_type} __vf_key = *(${key_type} *)builtin__array_get(keys, i);\n\t\tif (i) res = builtin__string_plus(res, _S(", "));\n\t\tres = builtin__string_plus(res, ${key_string});\n\t\tres = builtin__string_plus(res, _S(": "));\n\t\tres = builtin__string_plus(res, ${value_string});\n\t}\n\treturn builtin__string_plus(res, _S("}"));\n}'
+	g.spawn_helpers[fn_name] = 'string ${fn_name}(${map_type} it) {\n\tstring res = _S("{");\n\tarray keys = builtin__map_keys((map *)&it);\n\tfor (int i = 0; i < keys.len; i++) {\n\t\t${flat.source_type_name(key_type)} __vf_key = *(${flat.source_type_name(key_type)} *)builtin__array_get(keys, i);\n\t\tif (i) res = builtin__string_plus(res, _S(", "));\n\t\tres = builtin__string_plus(res, ${key_string});\n\t\tres = builtin__string_plus(res, _S(": "));\n\t\tres = builtin__string_plus(res, ${value_string});\n\t}\n\treturn builtin__string_plus(res, _S("}"));\n}'
 	return fn_name
 }
 
@@ -201,54 +211,68 @@ fn (mut g Parser) fastc_map_str_name(c_type string) ?string {
 // single-quoted, a type with a `str()` method (user or builtin, e.g. `int`) calls it, an
 // enum uses its name table, and a nested struct recurses. Returns none if unrenderable.
 fn (mut g Parser) fastc_struct_field_str_expression(value_c string, field_c_type string) ?string {
-	ft := fastc_normalize_inferred_type(field_c_type)
-	if ft == 'string' {
+	ft := fastc_normalize_inferred_type(flat.source_type_id(field_c_type))
+	if ft == flat.source_type_string {
 		// A single-quote C literal, built without `\'`/`\"` escapes (a self-host str_intp
 		// hazard) by concatenating literal pieces.
 		q := '_S("' + "'" + '")'
 		return 'builtin__string_plus(builtin__string_plus(${q}, ${value_c}), ${q})'
 	}
-	if element_type := fastc_fixed_array_element_type(ft.trim_right('*')) {
-		if helper := g.fastc_fixed_array_str_name(ft) {
-			return '${helper}((${element_type} *)(${value_c}))'
+	if element_type_source_id := fastc_fixed_array_element_type(flat.source_type_id(flat.source_type_name(ft).trim_right('*'))) {
+		element_type := element_type_source_id
+
+		if helper := g.fastc_fixed_array_str_name(flat.source_type_name(ft)) {
+			return '${helper}((${flat.source_type_name(element_type)} *)(${value_c}))'
 		}
 	}
-	if ft.trim_right('*').starts_with('Array_') {
-		if helper := g.fastc_array_str_name(ft) {
-			value := if ft.ends_with('*') { '*(${value_c})' } else { value_c }
+	if flat.source_type_name(ft).trim_right('*').starts_with('Array_') {
+		if helper := g.fastc_array_str_name(flat.source_type_name(ft)) {
+			value := if flat.source_type_name(ft).ends_with('*') {
+				'*(${value_c})'
+			} else {
+				value_c
+			}
 			return '${helper}(${value})'
 		}
 	}
-	if ft.trim_right('*').starts_with('Map_') {
-		if helper := g.fastc_map_str_name(ft) {
-			value := if ft.ends_with('*') { '*(${value_c})' } else { value_c }
+	if flat.source_type_name(ft).trim_right('*').starts_with('Map_') {
+		if helper := g.fastc_map_str_name(flat.source_type_name(ft)) {
+			value := if flat.source_type_name(ft).ends_with('*') {
+				'*(${value_c})'
+			} else {
+				value_c
+			}
 			return '${helper}(${value})'
 		}
 	}
-	if ft.trim_right('*') in g.sum_types {
-		if helper := g.fastc_sumtype_str_helper(ft) {
-			value := if ft.ends_with('*') { '*(${value_c})' } else { value_c }
+	if flat.source_type_name(ft).trim_right('*') in g.sum_types {
+		if helper := g.fastc_sumtype_str_helper(flat.source_type_name(ft)) {
+			value := if flat.source_type_name(ft).ends_with('*') {
+				'*(${value_c})'
+			} else {
+				value_c
+			}
 			return '${helper}(${value})'
 		}
 	}
 	key := g.semantic_type_key(ft)
-	method_key := '${key}.str'
+	method_key := '${flat.source_type_name(key)}.str'
 	if method_signature := g.functions[method_key] {
-		expected_receiver := method_signature.parameter_types[0]
-		receiver := if expected_receiver.ends_with('*') && !ft.ends_with('*') {
+		expected_receiver := method_signature.parameter_types.at(0)
+		receiver := if expected_receiver.ends_with('*') && !flat.source_type_name(ft).ends_with('*') {
 			'&(${value_c})'
-		} else if !expected_receiver.ends_with('*') && ft.ends_with('*') {
+		} else if !expected_receiver.ends_with('*') && flat.source_type_name(ft).ends_with('*') {
 			'*(${value_c})'
 		} else {
 			value_c
 		}
-		method_c_name := g.c_function_name_or(method_key, fastc_method_c_name(method_signature.module_name, fastc_c_declared_type_name(key), 'str'))
+		method_c_name := g.c_function_name_or(method_key, fastc_method_c_name(method_signature.module_name, fastc_c_declared_type_name(flat.source_type_name(key)), 'str'))
 		return '${method_c_name}(${receiver})'
 	}
-	if g.declared_kinds[key] == .enum_ {
-		return 'v_fastc_enum_str_${fastc_c_declared_type_name(key)}(${value_c})'
+	if g.declared_kinds[flat.source_type_name(key)] == .enum_ {
+		return 'v_fastc_enum_str_${fastc_c_declared_type_name(flat.source_type_name(key))}(${value_c})'
 	}
-	if nested := g.fastc_default_struct_str_name(ft) {
+	if nested := g.fastc_default_struct_str_name(flat.source_type_name(ft)) {
 		return '${nested}(${value_c})'
 	}
 	return none
@@ -277,11 +301,11 @@ fn (mut g Parser) read_interpolated_string() !string {
 		value_tokens := g.last_expression.clone()
 		value_type := fastc_normalize_inferred_type(g.last_expression_type)
 		value_key := g.semantic_type_key(value_type)
-		alias_has_str_method := g.declared_kinds[value_key] == .alias_ && '${value_key}.str' in g.functions
+		alias_has_str_method := g.declared_kinds[flat.source_type_name(value_key)] == .alias_ && '${flat.source_type_name(value_key)}.str' in g.functions
 		interpolation_type := if alias_has_str_method {
-			value_type
+			flat.source_type_name(value_type)
 		} else {
-			g.underlying_alias_type(value_type)
+			flat.source_type_name(g.underlying_alias_type(value_type))
 		}
 		mut format_specifier := ''
 		if g.tok == .colon {
@@ -291,6 +315,8 @@ fn (mut g Parser) read_interpolated_string() !string {
 					format_specifier += g.lit
 				} else if g.tok == .minus {
 					format_specifier += '-'
+				} else if g.tok == .plus {
+					format_specifier += '+'
 				} else {
 					return g.unsupported('interpolation format token `${g.token_source()}`')
 				}
@@ -298,8 +324,8 @@ fn (mut g Parser) read_interpolated_string() !string {
 			}
 		}
 		g.expect(.rcbr)!
-		if format_specifier.ends_with('c') && fastc_is_integer_expression_type(interpolation_type) && !fastc_integer_interpolation_format_is_supported(format_specifier, fastc_is_unsigned_integer_type(interpolation_type)) {
-			return g.unsupported('interpolation format `${format_specifier}` for `${value_type}`')
+		if format_specifier.ends_with('c') && fastc_is_integer_expression_type(flat.source_type_id(interpolation_type)) && !fastc_integer_interpolation_format_is_supported(format_specifier, fastc_is_unsigned_integer_type(flat.source_type_id(interpolation_type))) {
+			return g.unsupported('interpolation format `${format_specifier}` for `${flat.source_type_name(value_type)}`')
 		}
 		if !g.selfhost && format_specifier.ends_with('c') {
 			codepoint := fastc_integer_literal_value(value_tokens) or {
@@ -319,9 +345,11 @@ fn (mut g Parser) read_interpolated_string() !string {
 			} else {
 				value
 			}
-		} else if element_type := fastc_fixed_array_element_type(interpolation_type.trim_right('*')) {
+		} else if element_type_source_id := fastc_fixed_array_element_type(flat.source_type_id(interpolation_type.trim_right('*'))) {
+			element_type := element_type_source_id
+
 			helper := g.fastc_fixed_array_str_name(interpolation_type) or {
-				return g.unsupported('interpolation of fixed array type `${value_type}`')
+				return g.unsupported('interpolation of fixed array type `${flat.source_type_name(value_type)}`')
 			}
 			is_member_array := value_tokens.len >= 3 && value_tokens.last().tok == .name && value_tokens[value_tokens.len - 2].tok == .dot
 			is_global_array := value_tokens.len == 1 && value_tokens[0].tok == .name && fastc_global_key(g.module_name, value_tokens[0].lit) in g.globals
@@ -330,16 +358,28 @@ fn (mut g Parser) read_interpolated_string() !string {
 			} else {
 				'(${value}).data'
 			}
-			parts << '${helper}((${element_type} *)(${data_source}))'
+			parts << '${helper}((${flat.source_type_name(element_type)} *)(${data_source}))'
 		} else if interpolation_type.trim_right('*').starts_with('Array_') {
 			helper := g.fastc_array_str_name(interpolation_type) or {
-				return g.unsupported('interpolation of array type `${value_type}`')
+				return g.unsupported('interpolation of array type `${flat.source_type_name(value_type)}`')
 			}
 			array_value := if interpolation_type.ends_with('*') { '*(${value})' } else { value }
 			parts << '${helper}(${array_value})'
-		} else if g.declared_kinds[g.semantic_type_key(interpolation_type)] == .enum_ {
-			enum_key := g.semantic_type_key(interpolation_type)
-			is_unsigned := g.enum_flags[enum_key]
+		} else if interpolation_type.trim_right('*').starts_with('Map_') {
+			helper := g.fastc_map_str_name(interpolation_type) or {
+				return g.unsupported('interpolation of map type `${flat.source_type_name(value_type)}`')
+			}
+			map_value := if interpolation_type.ends_with('*') { '*(${value})' } else { value }
+			parts << '${helper}(${map_value})'
+		} else if format_specifier == '+' && fastc_is_integer_expression_type(flat.source_type_id(interpolation_type)) {
+			// `${n:+}` signs a non-negative integer too.
+			integer_str := g.fastc_struct_field_str_expression('__vf_signed', interpolation_type) or {
+				return g.unsupported('interpolation format `+` for `${flat.source_type_name(value_type)}`')
+			}
+			parts << '({ ${interpolation_type} __vf_signed = (${value}); string __vf_signed_str = ${integer_str}; __vf_signed >= 0 ? builtin__string_plus(_S("+"), __vf_signed_str) : __vf_signed_str; })'
+		} else if g.declared_kinds[flat.source_type_name(g.semantic_type_key(flat.source_type_id(interpolation_type)))] == .enum_ {
+			enum_key := g.semantic_type_key(flat.source_type_id(interpolation_type))
+			is_unsigned := g.enum_flags[flat.source_type_name(enum_key)]
 			format_character := if format_specifier.len > 0 {
 				format_specifier[format_specifier.len - 1]
 			} else {
@@ -347,7 +387,7 @@ fn (mut g Parser) read_interpolated_string() !string {
 			}
 			if format_character == `d` || format_character == `u` || format_character == `x` || format_character == `X` || format_character == `o` || format_character == `c` || format_character == `b` {
 				if !fastc_integer_interpolation_format_is_supported(format_specifier, is_unsigned) {
-					return g.unsupported('interpolation format `${format_specifier}` for enum `${value_type}`')
+					return g.unsupported('interpolation format `${format_specifier}` for enum `${flat.source_type_name(value_type)}`')
 				}
 				parts << if is_unsigned {
 					'v_fastc_unsigned_format((unsigned long long)(${value}), "${format_specifier}")'
@@ -356,12 +396,12 @@ fn (mut g Parser) read_interpolated_string() !string {
 				}
 			} else {
 				width := fastc_string_interpolation_width(format_specifier) or {
-					return g.unsupported('interpolation format `${format_specifier}` for enum `${value_type}`')
+					return g.unsupported('interpolation format `${format_specifier}` for enum `${flat.source_type_name(value_type)}`')
 				}
-				enum_type := fastc_c_declared_type_name(enum_key)
-				method_key := '${enum_key}.str'
+				enum_type := fastc_c_declared_type_name(flat.source_type_name(enum_key))
+				method_key := '${flat.source_type_name(enum_key)}.str'
 				enum_name := if method_signature := g.functions[method_key] {
-					expected_receiver := method_signature.parameter_types[0]
+					expected_receiver := method_signature.parameter_types.at(0)
 					receiver := if expected_receiver.ends_with('*') && !interpolation_type.ends_with('*') {
 						'&(${value})'
 					} else if !expected_receiver.ends_with('*') && interpolation_type.ends_with('*') {
@@ -382,19 +422,31 @@ fn (mut g Parser) read_interpolated_string() !string {
 			}
 		} else {
 			mut converted_primitive := false
-			if !g.selfhost || format_specifier != '' {
+			if g.selfhost && interpolation_type in ['f64', 'f32'] {
+				// `${x:.1}`, `${x:8.2}`, `${x:-8.2}`, `${x:.2f}`: the C backend's float formats.
+				if float_format := fastc_float_interpolation_format(format_specifier) {
+					formatted := '${g.fastc_float_format_helper(float_format.fixed)}((double)(${value}), ${float_format.precision})'
+					parts << if float_format.width > 0 {
+						'v_fastc_string_pad(${formatted}, ${float_format.width}, ${float_format.left_align})'
+					} else {
+						formatted
+					}
+					converted_primitive = true
+				}
+			}
+			if !converted_primitive && (!g.selfhost || format_specifier != '') {
 				if primitive_conversion := fastc_primitive_interpolation_expression(interpolation_type, value, format_specifier) {
 					parts << primitive_conversion
 					converted_primitive = true
 				} else if !g.selfhost && fastc_is_primitive_interpolation_type(interpolation_type) {
-					return g.unsupported('interpolation format `${format_specifier}` for `${value_type}`')
+					return g.unsupported('interpolation format `${format_specifier}` for `${flat.source_type_name(value_type)}`')
 				}
 			}
 			if !converted_primitive {
-				receiver_key := g.semantic_type_key(interpolation_type)
-				method_key := '${receiver_key}.str'
+				receiver_key := g.semantic_type_key(flat.source_type_id(interpolation_type))
+				method_key := '${flat.source_type_name(receiver_key)}.str'
 				if method_signature := g.functions[method_key] {
-					expected_receiver := method_signature.parameter_types[0]
+					expected_receiver := method_signature.parameter_types.at(0)
 					receiver := if expected_receiver.ends_with('*') && !interpolation_type.ends_with('*') {
 						'&(${value})'
 					} else if !expected_receiver.ends_with('*') && interpolation_type.ends_with('*') {
@@ -402,7 +454,7 @@ fn (mut g Parser) read_interpolated_string() !string {
 					} else {
 						value
 					}
-					method_c_name := g.c_function_name_or(method_key, fastc_method_c_name(method_signature.module_name, fastc_c_declared_type_name(receiver_key), 'str'))
+					method_c_name := g.c_function_name_or(method_key, fastc_method_c_name(method_signature.module_name, fastc_c_declared_type_name(flat.source_type_name(receiver_key)), 'str'))
 					parts << '${method_c_name}(${receiver})'
 				} else if sumtype_helper := g.fastc_sumtype_str_helper(interpolation_type) {
 					// A boxed sum type dispatches `str()` on its runtime variant tag.
@@ -425,11 +477,11 @@ fn (mut g Parser) read_interpolated_string() !string {
 				} else {
 					local_type := if g.last_expression.len > 0 && g.last_expression[0].tok == .name {
 						local := g.locals[g.last_expression[0].lit] or { FastcLocal{} }
-						local.typ
+						local.typ_text()
 					} else {
 						''
 					}
-					return g.unsupported('interpolation of type `${value_type}` for `${fastc_expression_tokens_debug(g.last_expression)}` (local `${local_type}`)')
+					return g.unsupported('interpolation of type `${flat.source_type_name(value_type)}` for `${fastc_expression_tokens_debug(g.last_expression)}` (local `${local_type}`)')
 				}
 			}
 		}
@@ -441,7 +493,7 @@ fn (mut g Parser) read_interpolated_string() !string {
 			g.next()
 		}
 	}
-	g.last_expression_type = 'string'
+	g.last_expression_type = flat.source_type_string
 	g.last_expression = [FastcExpressionToken{
 		tok: .string
 		lit: first_literal
@@ -461,7 +513,10 @@ fn (mut g Parser) read_interpolated_string() !string {
 }
 
 fn fastc_is_primitive_interpolation_type(value_type string) bool {
-	return fastc_is_integer_expression_type(value_type) || value_type in ['bool', 'char']
+	return fastc_is_integer_expression_type(flat.source_type_id(value_type)) || value_type in [
+		'bool',
+		'char',
+	]
 }
 
 fn fastc_string_interpolation_width(format string) ?FastcInterpolationWidth {
@@ -516,8 +571,8 @@ fn fastc_integer_interpolation_format_is_supported(format string, is_unsigned bo
 }
 
 fn fastc_primitive_interpolation_expression(value_type string, value string, format string) ?string {
-	if fastc_is_integer_expression_type(value_type) {
-		is_unsigned := fastc_is_unsigned_integer_type(value_type)
+	if fastc_is_integer_expression_type(flat.source_type_id(value_type)) {
+		is_unsigned := fastc_is_unsigned_integer_type(flat.source_type_id(value_type))
 		effective_format := if format.len > 0 && format[format.len - 1].is_digit() {
 			format + 'd'
 		} else {
@@ -670,7 +725,10 @@ fn fastc_needs_space(last u8, next string) bool {
 	if next.len == 0 {
 		return false
 	}
-	return (last.is_alnum() || last == `_`) && (next[0].is_alnum() || next[0] == `_`)
+	// C's preprocessing number grammar absorbs a sign after e/p, including
+	// a hexadecimal integer such as `0xb5e` followed by a separate `+` token.
+	return ((last.is_alnum() || last == `_`) && (next[0].is_alnum() || next[0] == `_`))
+		|| (last in [`e`, `E`, `p`, `P`] && next in ['+', '-'])
 }
 
 fn fastc_c_string(literal string) !string {
@@ -730,6 +788,11 @@ fn fastc_c_string(literal string) !string {
 				result.write_u8(`0` + ((value >> 3) & 7))
 				result.write_u8(`0` + (value & 7))
 				i += 4
+				continue
+			}
+			if raw[i + 1] == `e` {
+				result.write_string('\\033')
+				i += 2
 				continue
 			}
 			if raw[i + 1] >= `0` && raw[i + 1] <= `7` && (i + 3 >= raw.len - 1 || raw[i + 2] < `0` || raw[i + 2] > `7` || raw[i + 3] < `0` || raw[i + 3] > `7`) {
@@ -793,6 +856,7 @@ fn fastc_c_rune(literal string) !string {
 				`v` { 11 }
 				`f` { 12 }
 				`r` { 13 }
+				`e` { 27 }
 				`\\` { 92 }
 				96 { 96 }
 				`'` { 39 }

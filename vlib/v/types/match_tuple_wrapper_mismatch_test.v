@@ -8,7 +8,7 @@ import v.pref
 fn test_none_error_pair_keeps_option_constraint_until_concrete_type() {
 	tc := TypeChecker.new(&flat.FlatAst{})
 	none_type := Type(None{})
-	error_type := Type(Interface{ name: 'IError' })
+	error_type := Type(Interface{ name_id: flat.source_type_id('IError') })
 	partial := tc.promoted_multi_tail_type(none_type, error_type) or { panic('missing promotion') }
 	assert partial is None
 	result_type := Type(ResultType{ base_type: Type(string_) })

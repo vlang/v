@@ -73,8 +73,12 @@ static int v_segfault_previous_consumed[2];
 
 static int v_segfault_consume_previous(int index) {
 #if defined(__TINYC__)
-	extern unsigned int __atomic_exchange_4(unsigned int*, unsigned int, int);
-	return __atomic_exchange_4((unsigned int*)&v_segfault_previous_consumed[index], 1, 5) == 0;
+	// TinyCC compiles atomic builtins to calls into its runtime, and the runtimes of the
+	// Linux arm and arm64 TCC bundles have no atomic helpers. V's action is one-shot
+	// there whenever the previous one is (see v_segfault_install_signal), so the kernel
+	// consumed it, when it delivered this signal.
+	(void)index;
+	return 1;
 #else
 	return __atomic_exchange_n(&v_segfault_previous_consumed[index], 1, 5) == 0;
 #endif
@@ -369,7 +373,17 @@ static void v_segfault_install_signal(int sig) {
 	memset(&sa, 0, sizeof(sa));
 	sa.sa_sigaction = v_segfault_signal_handler;
 	struct sigaction* previous = &v_segfault_previous[sig == SIGBUS ? 1 : 0];
-	sa.sa_flags = SA_SIGINFO | SA_ONSTACK | (previous->sa_flags & (SA_NODEFER | SA_RESTART));
+	int inherited_flags = SA_NODEFER | SA_RESTART;
+#if defined(__TINYC__)
+	// With a one-shot previous handler, V's handler either reports a stack overflow and
+	// exits, or forwards the fault to that handler. Taking over SA_RESETHAND makes the
+	// kernel reset the signal to SIG_DFL, when it delivers it, so the previous handler
+	// still runs at most once, without an atomic exchange in C.
+	if (previous->sa_handler != SIG_DFL) {
+		inherited_flags |= SA_RESETHAND;
+	}
+#endif
+	sa.sa_flags = SA_SIGINFO | SA_ONSTACK | (previous->sa_flags & inherited_flags);
 	sa.sa_mask = previous->sa_mask;
 	sigaction(sig, &sa, NULL);
 }

@@ -52,15 +52,11 @@ fn (mut btree BTree) add_children(tag Tag) int {
 	btree.all_tags << tag
 	if btree.all_tags.len > 1 {
 		for btree.childrens.len <= btree.node_pointer {
-			mut temp_array := btree.childrens.clone()
-			temp_array << []int{}
-			btree.childrens = temp_array
+			btree.childrens << []int{}
 		}
 		btree.childrens[btree.node_pointer] << btree.all_tags.len - 1
 		for btree.parents.len < btree.all_tags.len {
-			mut temp_array := btree.parents.clone()
-			temp_array << 0
-			btree.parents = temp_array
+			btree.parents << 0
 		}
 		btree.parents[btree.all_tags.len - 1] = btree.node_pointer
 	}

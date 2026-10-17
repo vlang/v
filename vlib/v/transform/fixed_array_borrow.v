@@ -26,15 +26,27 @@ struct BorrowParamRef {
 // only turn one into borrowing, so the iteration ends; a recursive call through a parameter not
 // yet known to borrow leaves it escaping. Plain pointer parameters (`data &u8`) are summarised
 // as well as fixed-array ones, because that is what an element address `&a[i]` is handed to.
+//
+// Monomorphization starts from the summaries the transform stage computed before lowering and
+// summarises only the declarations appended since; a call into an earlier declaration borrows
+// as its summary says.
 fn (mut t Transformer) prepare_fixed_array_borrow_params() {
 	if isnil(t.tc) {
 		return
 	}
 	t.ensure_call_param_types_decl_index()
+	mut summarised := 0
+	if t.borrow_params_after_transform && t.tc.transform_borrow_node_count <= t.a.nodes.len {
+		summarised = t.tc.transform_borrow_node_count
+		for decl, summary in t.tc.transform_borrow_params {
+			t.fixed_array_borrow_params[decl] = summary
+		}
+	}
+	t.fixed_array_borrow_node_count = t.a.nodes.len
 	mut candidates := []BorrowCandidate{}
 	mut seen_decls := map[int]bool{}
 	for name, decl in t.call_param_types_decl_index {
-		if seen_decls[decl.idx] {
+		if decl.idx < summarised || seen_decls[decl.idx] {
 			continue
 		}
 		seen_decls[decl.idx] = true
@@ -77,8 +89,15 @@ fn (mut t Transformer) prepare_fixed_array_borrow_params() {
 		if !t.fixed_array_param_body_borrows(c, mut dependencies) {
 			continue
 		}
-		remaining[i] = dependencies.len
+		remaining[i] = 0
 		for dependency in dependencies {
+			if dependency.decl < summarised {
+				if !t.fixed_array_borrow_summary(dependency) {
+					remaining[i] = -1
+					break
+				}
+				continue
+			}
 			indexes := candidate_index[dependency.decl] or { []int{} }
 			if dependency.index < 0 || dependency.index >= indexes.len
 				|| indexes[dependency.index] < 0 {
@@ -86,6 +105,7 @@ fn (mut t Transformer) prepare_fixed_array_borrow_params() {
 				break
 			}
 			dependents[indexes[dependency.index]] << i
+			remaining[i]++
 		}
 		if remaining[i] == 0 {
 			queue << i
@@ -128,15 +148,19 @@ fn (mut t Transformer) fixed_array_param_body_borrows(c BorrowCandidate, mut dep
 
 fn (t &Transformer) fixed_array_call_param_borrows(name string, call flat.Node, index int) bool {
 	param := t.fixed_array_call_param_ref(name, call, index) or { return false }
+	return t.fixed_array_borrow_summary(param)
+}
+
+fn (t &Transformer) fixed_array_borrow_summary(param BorrowParamRef) bool {
 	summary := t.fixed_array_borrow_params[param.decl] or { return false }
-	return index >= 0 && index < summary.len && summary[index]
+	return param.index >= 0 && param.index < summary.len && summary[param.index]
 }
 
 fn (t &Transformer) fixed_array_call_param_ref(name string, call flat.Node, index int) ?BorrowParamRef {
 	callee_id := t.a.child(&call, 0)
 	callee := t.a.node(callee_id)
 	if callee.kind == .ident {
-		if t.var_type(callee.value).len > 0 {
+		if flat.source_type_name(t.var_type(callee.value)).len > 0 {
 			return none
 		}
 		// Escape prescanning precedes local type registration. Resolve lexical
@@ -258,7 +282,6 @@ fn (mut t Transformer) fixed_array_call_uses_borrow(id flat.NodeId, node flat.No
 	params := t.call_param_types_from_decl(name) or { []types.Type{} }
 	offset := if params.len > 0 { t.call_param_offset(name, node, params) } else { 0 }
 	if t.fixed_array_expr_mentions_param(callee_id, param) {
-		dependency_start := dependencies.len
 		receiver_borrows := offset == 1 && callee.kind == .selector && callee.children_count > 0
 			&& t.fixed_array_arg_hands_param_storage(t.a.child(callee, 0), param)
 			&& t.fixed_array_storage_arg_borrows(name, node, params, 0, t.a.child(callee, 0), mut dependencies)
@@ -266,13 +289,9 @@ fn (mut t Transformer) fixed_array_call_uses_borrow(id flat.NodeId, node flat.No
 			if !t.fixed_array_param_use_borrows(callee_id, param, false, mut dependencies) {
 				return false
 			}
-		} else if dependencies.len > dependency_start {
-			mut ordinary_dependencies := []BorrowParamRef{}
-			if t.fixed_array_param_use_borrows(callee_id, param, false, mut ordinary_dependencies) {
-				dependencies.trim(dependency_start)
-				dependencies << ordinary_dependencies
-			}
 		}
+		// A method callee has a function type, so it cannot provide the scalar-read
+		// alternative used for ordinary arguments below. Keep its receiver dependency.
 	}
 	for i in 1 .. node.children_count {
 		arg_id := t.a.child(&node, i)

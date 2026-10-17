@@ -395,9 +395,9 @@ fn test_manual_stdlib_header_usage_matches_headerless_and_target_header_modes() 
 	prefs.target = pref.host_target()
 	assert !uses_manual_stdlib_c_headers(&ast, &tc, prefs, [], false)
 	ast.add_node(flat.Node{ kind: .module_decl, value: 'builtin' })
-	ast.add_node(flat.Node{ kind: .directive, value: 'include', typ: '<pthread.h>' })
+	ast.add_node(flat.Node{ kind: .directive, value: 'include', typ: flat.source_type_id('<pthread.h>') })
 	assert !uses_manual_stdlib_c_headers(&ast, &tc, prefs, [], false)
-	ast.add_node(flat.Node{ kind: .directive, value: 'include', typ: '<stdio.h>' })
+	ast.add_node(flat.Node{ kind: .directive, value: 'include', typ: flat.source_type_id('<stdio.h>') })
 	assert uses_manual_stdlib_c_headers(&ast, &tc, prefs, [], false)
 	prefs.target_libc_headers = true
 	assert !uses_manual_stdlib_c_headers(&ast, &tc, prefs, [], false)
@@ -412,7 +412,7 @@ fn test_manual_stdlib_header_usage_matches_include_collection() {
 			prefs.target = pref.host_target()
 			ast.add_node(flat.Node{ kind: .file, value: '/project/main.v' })
 			ast.add_node(flat.Node{ kind: .module_decl, value: 'main' })
-			ast.add_node(flat.Node{ kind: .directive, value: kind, typ: header })
+			ast.add_node(flat.Node{ kind: .directive, value: kind, typ: flat.source_type_id(header) })
 			assert uses_manual_stdlib_c_headers(&ast, &tc, prefs, [], false) == (header != 'windows <windows.h>'
 				|| prefs.target.os == 'windows')
 			// Portable C includes retain a preprocessor guard for the target C compiler.
@@ -444,7 +444,7 @@ fn test_manual_stdlib_header_usage_resolves_native_sources_with_cli_include_dirs
 			prefs.output_cross_c = portable
 			ast.add_node(flat.Node{ kind: .file, value: os.join_path(root, 'main.v') })
 			ast.add_node(flat.Node{ kind: .module_decl, value: 'main' })
-			ast.add_node(flat.Node{ kind: .directive, value: 'include', typ: '"helper.c"' })
+			ast.add_node(flat.Node{ kind: .directive, value: 'include', typ: flat.source_type_id('"helper.c"') })
 			// Portable runtime helpers require compatibility headers even when the
 			// application's native source has no includes of its own.
 			assert uses_manual_stdlib_c_headers(&ast, &tc, prefs, ['-I', include_dir], false)
@@ -509,6 +509,28 @@ fn test_headerless_thread_runtime_can_spawn_detached_threads() {
 	assert c_code.contains('pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED)'), c_code
 }
 
+fn test_boehm_windows_spawn_threads_are_created_by_gc_create_thread() {
+	// Every Windows spawn thread under Boehm goes through GC_CreateThread, which registers
+	// it with the collector. Each preamble emits three spawn creates: __v_thread_spawn,
+	// __v_thread_spawn_detached and __v_thread_spawn_comparable. A partial change fails the count.
+	for preamble in ['system', 'headerless'] {
+		mut g := windows_preamble_test_gen()
+		g.compile_defines << 'gcboehm'
+		if preamble == 'system' {
+			g.system_libc_preamble()
+		} else {
+			g.headerless_libc_preamble()
+		}
+		c_code := g.sb.str()
+		assert !c_code.contains('= CreateThread(NULL'), '${preamble}: raw CreateThread spawn remains'
+		assert c_code.count('GC_CreateThread(NULL, __v_thread_stack_size') == 3, '${preamble}: ${c_code.count('GC_CreateThread(NULL, __v_thread_stack_size')} spawn creates through GC_CreateThread'
+		assert c_code.contains('HANDLE WINAPI GC_CreateThread('), preamble
+		// libgc exports the stdcall name with an underscore when built with GC_UNDERSCORE_STDCALL.
+		// Mirror gc.h's rename, so the declaration matches that export.
+		assert c_code.contains('#if defined(GC_UNDERSCORE_STDCALL)\n#define GC_CreateThread _GC_CreateThread\n#endif'), preamble
+	}
+}
+
 fn test_cross_c_system_libc_preamble_keeps_posix_environ() {
 	mut g := windows_preamble_test_gen()
 	g.set_output_cross_c(true)
@@ -536,6 +558,20 @@ fn test_gnu_c_flags_keep_default_feature_macros() {
 		c_code := g.sb.str()
 		assert !c_code.contains('_GNU_SOURCE'), '${flags}: ${c_code}'
 		assert !c_code.contains('_POSIX_C_SOURCE'), '${flags}: ${c_code}'
+	}
+}
+
+fn test_syncfs_binding_requests_linux_gnu_feature_macros() {
+	for flags in [[]string{}, ['-std=gnu11'], ['-std=c99', '-std=gnu99']] {
+		mut a := flat.FlatAst.new()
+		mut tc := types.TypeChecker.new(&a)
+		tc.fn_ret_types['C.syncfs'] = types.Type(types.int_)
+		mut g := FlatGen.new()
+		g.tc = &tc
+		g.c_flags = flags
+		g.c99_feature_test_macros()
+		c_code := g.sb.str()
+		assert c_code.contains('#if defined(__linux__) && !defined(_GNU_SOURCE)\n#define _GNU_SOURCE\n#endif'), '${flags}: ${c_code}'
 	}
 }
 
@@ -645,6 +681,23 @@ fn test_target_libc_preamble_emits_pthread_runtime_when_threads_are_used() {
 	assert c_code.contains('pthread_equal(a.handle, b.handle) != 0')
 	assert c_code.contains('void* p = v_gc_malloc_uncollectable(size);')
 	assert c_code.contains('v_gc_free(ptr);')
+}
+
+fn test_object_file_boehm_declares_gc_helpers_before_thread_allocation() {
+	mut g := FlatGen.new()
+	g.compile_defines = ['gcboehm']
+	g.set_object_file_mode(true)
+	g.needs_thread_runtime = true
+	g.preamble()
+	c_code := g.sb.str()
+	alloc := c_code.index('static void* __v_thread_alloc(') or { -1 }
+	assert alloc >= 0
+	// The helper definitions are embedded as `static` in object-file mode, so their
+	// prototypes must be `static` too and must precede the first call site.
+	alloc_decl := c_code.index('static void* v_gc_malloc_uncollectable(size_t size);') or { -1 }
+	assert alloc_decl >= 0 && alloc_decl < alloc
+	free_decl := c_code.index('static void v_gc_free(void* ptr);') or { -1 }
+	assert free_decl >= 0 && free_decl < alloc
 }
 
 fn test_vinix_target_libc_thread_runtime_uses_freestanding_pthread_abi() {

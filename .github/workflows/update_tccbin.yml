@@ -66,6 +66,7 @@ concurrency:
 jobs:
   control:
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     outputs:
       target: ${{ steps.control.outputs.target }}
       publish: ${{ steps.control.outputs.publish }}
@@ -289,6 +290,7 @@ jobs:
     needs: control
     if: needs.control.outputs.has_hosted == 'true' || needs.control.outputs.has_bsd == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     outputs:
       tinycc_hash: ${{ steps.tinycc.outputs.hash }}
       libgc_hash: ${{ steps.bdwgc.outputs.libgc_hash }}
@@ -356,6 +358,7 @@ jobs:
           echo "libatomic_ops $LIBATOMIC_OPS_COMMIT resolves to $libatomic_ops_hash"
 
   update-tccbin-hosted:
+    timeout-minutes: 120
     needs:
       - control
       - resolve-sources
@@ -1680,6 +1683,7 @@ jobs:
             git -C thirdparty/tcc push origin "HEAD:${{ matrix.branch }}"
 
   update-tccbin-bsd:
+    timeout-minutes: 120
     needs:
       - control
       - resolve-sources

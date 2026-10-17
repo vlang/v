@@ -132,7 +132,7 @@ fn (tc &TypeChecker) vls_type_details(typ Type) []VlsDetail {
 		if t is Pointer {
 			t = t.base_type
 		} else if t is Alias {
-			alias_name := t.name
+			alias_name := t.name()
 			t = t.base_type
 			tc.vls_method_details(alias_name, mut details, mut seen)
 		} else {
@@ -194,9 +194,9 @@ fn (tc &TypeChecker) vls_field_is_usable(typ Type, owner string, field string) b
 	}
 	if visibility := tc.private_declaration(owner) {
 		return tc.is_synthesized_anon_struct(owner)
-			&& tc.anonymous_struct_field_is_public(owner, field, visibility.module_name)
+			&& tc.anonymous_struct_field_is_public(flat.source_type_id(owner), field, visibility.module_name)
 	}
-	return !tc.struct_field_is_private_outside_module(owner, field)
+	return !tc.struct_field_is_private_outside_module(flat.source_type_id(owner), field)
 }
 
 // vls_method_details adds the methods of the type `owner` the file being

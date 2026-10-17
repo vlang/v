@@ -25,18 +25,35 @@ fn span_text(src string, node flat.Node) string {
 	return src[node.pos.offset..node.pos.end]
 }
 
+fn test_enum_backing_storage_is_separate_from_attribute_metadata() {
+	ast, _ := parse_span_source('enum_backing_storage', 'enum Bare { one }
+@[json_as_number]
+enum Number as u64 { one }
+@[json_as_number]
+enum Marked { one }
+')
+	enums := ast.nodes.filter(it.kind == .enum_decl)
+	assert enums.len == 3
+	assert enums[0].enum_backing_type_id() == 0
+	assert enums[0].generic_params().len == 0
+	assert enums[1].enum_backing_type_id() == flat.source_type_u64
+	assert enums[1].generic_params() == ['json_as_number']
+	assert enums[2].enum_backing_type_id() == 0
+	assert enums[2].generic_params() == ['json_as_number']
+}
+
 fn test_keyword_module_import_keeps_source_alias() {
 	ast, _ := parse_span_source('keyword_module_imports', 'import type\nimport pkg.type\nimport type.bar\nimport foo as renamed\n')
 	imports := ast.nodes.filter(it.kind == .import_decl)
 	assert imports.len == 4
 	assert imports[0].value == 'type'
-	assert imports[0].typ == 'type'
+	assert imports[0].typ_text() == 'type'
 	assert imports[1].value == 'pkg.type'
-	assert imports[1].typ == 'type'
+	assert imports[1].typ_text() == 'type'
 	assert imports[2].value == 'type.bar'
-	assert imports[2].typ == 'bar'
+	assert imports[2].typ_text() == 'bar'
 	assert imports[3].value == 'foo'
-	assert imports[3].typ == 'renamed'
+	assert imports[3].typ_text() == 'renamed'
 }
 
 fn test_keyword_top_level_module_declaration_uses_name() {
@@ -353,7 +370,7 @@ fn consume(chs []chan mut Item) {}
 	for node in ast.nodes {
 		if node.kind == .param && node.value == 'chs' {
 			found = true
-			assert node.typ == '[]chan mut Item'
+			assert node.typ_text() == '[]chan mut Item'
 		}
 	}
 	assert found
@@ -425,7 +442,7 @@ fn main() {
 	mut saw_loop := false
 	mut type_ident_count := 0
 	for node in ast.nodes {
-		if node.kind == .param && node.value == 'type' && node.typ == 'int' {
+		if node.kind == .param && node.value == 'type' && node.typ_text() == 'int' {
 			saw_param = true
 		}
 		if node.kind == .ident && node.value == 'type' {
@@ -509,13 +526,13 @@ fn test_shared_keyword_identifier_as_parameter_name() {
 	return shared
 }
 ')
-	assert ast.nodes.any(it.kind == .param && it.value == 'shared' && it.typ == 'int' && !it.is_mut)
+	assert ast.nodes.any(it.kind == .param && it.value == 'shared' && it.typ_text() == 'int' && !it.is_mut)
 	grouped_ast, _ := parse_span_source('grouped_shared_parameter_name', 'fn pair(shared, other int) int {
 	return shared + other
 }
 ')
-	assert grouped_ast.nodes.any(it.kind == .param && it.value == 'shared' && it.typ == 'int' && !it.is_mut)
-	assert grouped_ast.nodes.any(it.kind == .param && it.value == 'other' && it.typ == 'int' && !it.is_mut)
+	assert grouped_ast.nodes.any(it.kind == .param && it.value == 'shared' && it.typ_text() == 'int' && !it.is_mut)
+	assert grouped_ast.nodes.any(it.kind == .param && it.value == 'other' && it.typ_text() == 'int' && !it.is_mut)
 }
 
 fn test_grouped_struct_fields_start_at_their_own_names() {
@@ -643,7 +660,7 @@ fn test_inferred_fixed_array_spans_from_opening_bracket() {
 	mut saw_b := false
 	mut saw_row := false
 	for node in ast.nodes {
-		if node.kind != .postfix || !node.typ.starts_with('[') {
+		if node.kind != .postfix || !node.typ_text().starts_with('[') {
 			continue
 		}
 		t := span_text(src, node)
@@ -672,7 +689,7 @@ fn test_explicit_fixed_array_value_literal_spans_from_type_prefix() {
 ')
 	mut saw := false
 	for node in ast.nodes {
-		if node.kind == .array_literal && node.typ == '[3]int' {
+		if node.kind == .array_literal && node.typ_text() == '[3]int' {
 			saw = true
 			assert span_text(src, node) == '[3]int[1, 2, 3]'
 		}
@@ -992,7 +1009,7 @@ struct InlineComposite {
 	fields := ast.nodes.filter(it.kind == .field_decl)
 	assert fields.map(it.value) == ['pub', 'pub', 'pub', 'pub', 'pub', 'pub', 'mut', 'pub', 'pub',
 		'items', 'values']
-	assert fields.map(it.typ) == ['[]int', 'map[string]int', '&int', 'fn() int', 'Box[int]',
+	assert fields.map(it.typ_text()) == ['[]int', 'map[string]int', '&int', 'fn() int', 'Box[int]',
 		'other.Value', '[]int', 'chan int', 'thread int', '[]int', '[3]int']
 	for field in fields[..9] {
 		assert field.generic_params().len == 0 || field.generic_params()[0] == ''

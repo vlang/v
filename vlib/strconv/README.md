@@ -294,3 +294,6 @@ Like the quoting functions, all three are checked against Go 1.26.1: over
 two-byte body whose second byte is 0x00-0x28 in the two quoted styles), and
 over 54 hand-picked inputs covering the numeric escape forms and their
 boundaries, invalid UTF-8, multi-byte runes and the error cases.
+
+On the C backend, `fxx_to_str_l_parse` and `fxx_to_str_l_parse_with_dot` return `inf`, `+inf`,
+`-inf`, and `nan` unchanged when expanding a scientific-format string to decimal notation.
