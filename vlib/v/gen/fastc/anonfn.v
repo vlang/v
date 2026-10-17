@@ -303,7 +303,7 @@ fn (g &Parser) capture_type_source_bytes(typ string) ?string {
 		return '&' + g.capture_type_source_bytes(typ[..typ.len - 1])?
 	}
 	if typ.starts_with('Array_') {
-		element := (g.array_element_type(flat.source_type_id(typ))?)
+		element := g.array_element_type(flat.source_type_id(typ))?
 		return '[]' + g.capture_type_source_bytes(flat.source_type_name(element))?
 	}
 	if typ.starts_with('Map_') {

@@ -2708,7 +2708,7 @@ fn (g &Parser) option_value_type_for_expression(tokens []FastcExpressionToken) u
 		return static_signature.option_type
 	}
 	function_key := if name_index == 2 && tokens[0].lit !in g.imports && tokens[0].lit != 'C' {
-		receiver_type := (g.infer_expression_type(tokens[..1]) or { return u32(0) })
+		receiver_type := g.infer_expression_type(tokens[..1]) or { return u32(0) }
 		method_key, _ := g.resolve_method(receiver_type, tokens[name_index].lit)
 		method_key
 	} else {
@@ -2746,7 +2746,7 @@ fn (g &Parser) erased_generic_option_value_type_for_expression(tokens []FastcExp
 		if field.generic_argument_type == u32(0) {
 			return none
 		}
-		receiver_type := (g.infer_expression_type(receiver_tokens) or { return none })
+		receiver_type := g.infer_expression_type(receiver_tokens) or { return none }
 		method_key, _ := g.resolve_method(receiver_type, tokens[i].lit)
 		signature := g.functions[method_key] or { return none }
 		if signature.return_type_text() in ['Option', '__v_result'] && signature.option_type == flat.source_type_voidptr {
@@ -2812,7 +2812,7 @@ fn (g &Parser) expression_tokens_are_statement(expression_tokens []FastcExpressi
 				continue
 			}
 			receiver_start := fastc_method_receiver_start(tokens, i - 1)
-			receiver_type := (g.infer_expression_type(tokens[receiver_start..i - 1]) or { continue })
+			receiver_type := g.infer_expression_type(tokens[receiver_start..i - 1]) or { continue }
 			if tokens[i].lit == 'wait' && (flat.source_type_name(receiver_type).starts_with(fastc_thread_type_prefix) || (flat.source_type_name(receiver_type).trim_right('*').starts_with('Array_') && (flat.source_type_name(g.array_element_type(receiver_type) or { u32(0) })).starts_with(fastc_thread_type_prefix))) {
 				// Generated thread waiters are absent from g.functions, but joining a spawn
 				// (or every spawn in a `[]thread` via `.wait()`) is a valid standalone

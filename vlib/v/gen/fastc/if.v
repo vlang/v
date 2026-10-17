@@ -25,7 +25,7 @@ fn (g &Parser) optional_function_field_for_expression(tokens []FastcExpressionTo
 	if tokens.len < 3 || tokens[tokens.len - 2].tok != .dot || tokens.last().tok != .name {
 		return none
 	}
-	receiver_type := (g.infer_expression_type(tokens[..tokens.len - 2]) or { return none })
+	receiver_type := g.infer_expression_type(tokens[..tokens.len - 2]) or { return none }
 	field := g.struct_field_metadata(receiver_type, tokens.last().lit) or { return none }
 	if !field.is_optional_function {
 		return none

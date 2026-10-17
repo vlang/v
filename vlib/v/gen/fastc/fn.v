@@ -778,7 +778,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		} else if g.tok == .key_none {
 			receiver_key = 'none'
 		}
-		receiver_type = (g.parse_type()!)
+		receiver_type = g.parse_type()!
 		if receiver_key == '' {
 			receiver_key = flat.source_type_name(g.semantic_type_key(receiver_type))
 		}
@@ -866,13 +866,13 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 				return_types, return_types_are_functions = g.parse_multi_return_types()!
 				option_return_type = flat.source_type_id('MultiReturn')
 			} else {
-				option_return_type = (g.parse_type()!)
+				option_return_type = g.parse_type()!
 			}
 		} else if g.tok == .lpar {
 			return_types, return_types_are_functions = g.parse_multi_return_types()!
 			return_type = flat.source_type_id('MultiReturn')
 		} else {
-			return_type = (g.parse_type()!)
+			return_type = g.parse_type()!
 		}
 	}
 	return_type_is_function := g.pending_fn_pointer
@@ -1444,7 +1444,7 @@ fn (mut g Parser) parse_parameters(function_key string, parameter_offset int) ![
 		} else {
 			u32(0)
 		}
-		mut type_name := (g.parse_type()!)
+		mut type_name := g.parse_type()!
 		option_value_type := g.pending_option_value_type
 		is_fn_pointer := g.pending_fn_pointer
 		fn_return_type := g.pending_fn_return_type
