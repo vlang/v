@@ -1,3 +1,4 @@
+// vtest ownership
 import os
 
 const owned_map_delete_vexe = @VEXE
