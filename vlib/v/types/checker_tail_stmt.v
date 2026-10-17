@@ -2489,7 +2489,8 @@ fn (tc &TypeChecker) match_branch_tail_diagnostic_type(subject_key string, subje
 			if smartcast_name.len > 0 {
 				smartcast_type := tc.parse_type(flat.source_type_id(smartcast_name))
 				tail := tc.a.node(tail_id)
-				if tail.kind == .ident && tc.expr_key(tail_id) == subject_key {
+				// `match key.handle { Variant { key.handle } }` names the subject like an ident.
+				if tail.kind in [.ident, .selector] && tc.expr_key(tail_id) == subject_key {
 					return smartcast_type
 				}
 				if tail.kind == .prefix && tail.op == .amp && tail.children_count > 0 {
