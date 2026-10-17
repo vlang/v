@@ -6682,6 +6682,29 @@ fn test_subtest() {
 }
 ```
 
+### Test coverage
+
+The C backend can record line and function coverage for a test run:
+
+```sh
+v -no-skip-unused -coverage vcov/ test mymodule/
+v cover vcov/
+v cover vcov/ --functions
+v cover vcov/ --uncovered
+v cover vcov/ --json coverage.json
+```
+
+`-no-skip-unused` keeps functions that no test calls in the build. Function coverage
+records entry into a function, including one with an empty body; it does not measure branches.
+Reports combine function hits across test files. Delete the coverage directory before
+recording a fresh run so previous runs do not contribute hits.
+
+`v cover vcov/ --write-tests --filter mymodule/` appends starter tests beside selected
+sources within the working directory. Use `--dry-run` to preview the generated contents.
+Existing tests are preserved. The starter can call functions with simple zero-value
+arguments; generic, option, result, tuple and other complex signatures get a comment instead.
+Replace the generated `assert true` with a meaningful assertion before using the tests.
+
 ## Memory management
 
 V avoids doing unnecessary allocations in the first place by using value types,

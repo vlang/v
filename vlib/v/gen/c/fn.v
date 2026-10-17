@@ -5422,6 +5422,14 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 	if is_direct_no_main_export {
 		g.writeln('_vno_main_init_caller();')
 	}
+	// The entry counter must be the first thing in the body: a function whose
+	// statements are all covered still needs its own point, and one with none
+	// at all would otherwise never appear in the report. A `@[_naked]` body is
+	// the one exception: nothing may run before the user's hand-written code, so
+	// such a function is not instrumented at all.
+	if !is_naked_fn {
+		g.write_coverage_function_entry(node, generated_fn_name)
+	}
 	g.gen_panic_owner_decl(g.uses_recover && g.node_defers(node_id))
 	g.gen_function_defer_prelude()
 	// A `@[_naked]` body has no compiler-generated frame for its own `ret` to
