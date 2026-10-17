@@ -174,3 +174,18 @@ fn test_workspaces_require_an_array_of_strings() {
 		assert failed, text
 	}
 }
+
+fn test_escaped_quote_inside_a_string_keeps_the_character() {
+	content := vmod.decode("Module { name: 'it\\'s' }")!
+	assert content.name == "it's"
+}
+
+fn test_unterminated_string_ending_with_a_backslash() {
+	// The scanner used to read one byte past the text while testing for a
+	// trailing escape, which aborted the process on this input.
+	vmod.decode("Module { name: 'a\\") or {
+		assert err.msg().starts_with('vmod: ')
+		return
+	}
+	assert false
+}
