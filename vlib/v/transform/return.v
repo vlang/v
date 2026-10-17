@@ -1476,7 +1476,12 @@ fn (mut t Transformer) build_return_match_type_branch_chain(match_expr_id flat.N
 		t.push_smartcast(orig_subj, sc.variant_name, sc.sum_type_name)
 		sc_pushed++
 	}
+	// Every variant of the arm transforms the same body nodes, and a lowered
+	// body can keep the source nodes it did not change, so none of them may be
+	// rewritten in place.
+	t.inplace_rewrite_holds++
 	body_block := t.match_branch_return_block(branch, n_conds, ret_typ_id, source_return_id, []flat.NodeId{})
+	t.inplace_rewrite_holds--
 	for _ in 0 .. sc_pushed {
 		t.pop_smartcast()
 	}
