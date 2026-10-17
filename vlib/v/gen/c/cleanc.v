@@ -3876,6 +3876,13 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	}
 	// Function workers collect only the C symbols reached by emitted bodies.
 	// Finalize their declarations and function-pointer types after the merge.
+	// A serial dispatch has no workers to merge, and unless the item prep
+	// already collected the refs, the master holds none: collect them from the
+	// selected bodies before freezing the set, or a C function used only as a
+	// value (`&C.DefWindowProc`) loses its prototype.
+	if !g.parallel_used {
+		_ = g.c_extern_referenced_symbols()
+	}
 	g.c_extern_refs_ready = true
 	$if !v3_no_parallel ? {
 		if g.scope_parallel_workers {
