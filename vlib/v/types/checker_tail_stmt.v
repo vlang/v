@@ -5498,14 +5498,20 @@ fn (tc &TypeChecker) expr_raw_fn_type_text(id flat.NodeId) ?string {
 				return Type(fn_type).name()
 			}
 		}
+		// The short-name index also holds methods (`EventLoop.did_change`), but a
+		// bare name never refers to one, so look past a same-named method.
 		if index := tc.fn_decl_short_name_ids[node.value] {
-			return tc.fn_node_source_type_text(tc.a.node(flat.NodeId(index)))
+			decl := tc.a.node(flat.NodeId(index))
+			if !tc.fn_has_receiver_param(decl) {
+				return tc.fn_node_source_type_text(decl)
+			}
 		}
 		// Declarations appended after collect (monomorphization) miss the
 		// index; scan them with an allocation-free suffix compare.
 		for index in tc.top_level_idx {
 			decl := tc.a.node(flat.NodeId(index))
-			if decl.kind == .fn_decl && embedded_name_matches(node.value, decl.value) {
+			if decl.kind == .fn_decl && embedded_name_matches(node.value, decl.value)
+				&& !tc.fn_has_receiver_param(decl) {
 				return tc.fn_node_source_type_text(decl)
 			}
 		}
