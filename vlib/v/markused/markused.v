@@ -3676,8 +3676,21 @@ fn markused_type_text_needs_shared_runtime(type_id u32) bool {
 	if !typ.contains('shared ') {
 		return false
 	}
-	clean := typ.trim_space()
-	return clean.starts_with('shared ') || clean.contains(' shared ')
+	// The modifier can follow a container prefix, as in `[]shared T` or
+	// `map[string]shared T`, whose elements are shared wrappers too.
+	mut start := 0
+	for {
+		idx := typ.index_after('shared ', start) or { return false }
+		if idx == 0 || !markused_is_name_byte(typ[idx - 1]) {
+			return true
+		}
+		start = idx + 'shared '.len
+	}
+	return false
+}
+
+fn markused_is_name_byte(c u8) bool {
+	return c.is_letter() || c.is_digit() || c == `_` || c == `.`
 }
 
 fn markused_infix_needs_f32_eq_epsilon(a &flat.FlatAst, tc &types.TypeChecker, node flat.Node) bool {
