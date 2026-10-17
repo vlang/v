@@ -14695,8 +14695,16 @@ fn (tc &TypeChecker) expr_is_shared_arg(id flat.NodeId) bool {
 		return tc.selector_is_shared_arg(node)
 	}
 	if node.kind == .index && node.children_count > 0 {
-		base := tc.a.child_node(&node, 0)
+		mut base := tc.a.child_node(&node, 0)
+		for base.kind == .paren && base.children_count > 0 {
+			base = tc.a.child_node(base, 0)
+		}
 		if base.typ_text().trim_space().starts_with('[]shared ') {
+			return true
+		}
+		// Idents carry their canonical type, which has no `shared` element marker. A
+		// `[]shared T` local or parameter is tracked per binding instead.
+		if base.kind == .ident && tc.current_binding_has_shared_elements(base.value) {
 			return true
 		}
 		if base.kind == .selector && tc.selector_has_shared_elements(base) {
