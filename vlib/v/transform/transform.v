@@ -4834,6 +4834,7 @@ fn (t &Transformer) ast_base_clone_with_storage(nodes []flat.Node, children []fl
 		nodes:                         nodes
 		children:                      children
 		user_code_start:               t.a.user_code_start
+		parsed_node_count:             t.a.parsed_node_count
 		disabled_fns:                  t.a.disabled_fns
 		noreturn_fns:                  t.a.noreturn_fns
 		contextual_anon_struct_types:  t.a.contextual_anon_struct_types

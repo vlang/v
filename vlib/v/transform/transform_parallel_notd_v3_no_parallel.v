@@ -3022,6 +3022,7 @@ fn shared_region_view(a &flat.FlatAst, nstart int, nend int, cstart int, cend in
 		nodes:                         nodes
 		children:                      children
 		user_code_start:               a.user_code_start
+		parsed_node_count:             a.parsed_node_count
 		disabled_fns:                  a.disabled_fns
 		noreturn_fns:                  a.noreturn_fns
 		contextual_anon_struct_types:  a.contextual_anon_struct_types
