@@ -6,6 +6,7 @@ umask 077
 
 readonly vc_repository_allowlisted='https://github.com/vlang/vc'
 readonly bootstrap_lock_relative='thirdparty/tccbin_automation/bootstrap/vc.lock'
+readonly tcc_repository_allowlisted='https://github.com/vlang/tccbin'
 
 die() {
 	printf '%s\n' "tccbin bootstrap: $*" >&2
@@ -322,6 +323,36 @@ resolve_cc() {
 	printf '%s\n' "$resolved"
 }
 
+# attach_tcc_bootstrap_bundle links the TCC bundle named by TCCBIN_BOOTSTRAP_TCC_ROOT
+# into the private contract copy. The workflow picks the pinned commit for the runner
+# architecture and passes it as TCCBIN_BOOTSTRAP_TCC_COMMIT; this script only checks that
+# the checkout matches it. Compiling the darwin fastc backend needs thirdparty/tcc headers
+# and library, and the contract checkout itself must stay clean for the attestations.
+attach_tcc_bootstrap_bundle() {
+	local private_root=$1
+	local tcc_root tcc_commit
+	[[ -n "${TCCBIN_BOOTSTRAP_TCC_ROOT:-}" ]] || return 0
+	tcc_root=$(physical_directory "$TCCBIN_BOOTSTRAP_TCC_ROOT")
+	tcc_commit=${TCCBIN_BOOTSTRAP_TCC_COMMIT:-}
+	[[ "$tcc_commit" =~ ^[0-9a-f]{40}$ ]] || die 'TCC bootstrap bundle commit must be a full SHA'
+	validate_checkout "$tcc_root" "$tcc_repository_allowlisted" "$tcc_commit"
+	[[ -f "$tcc_root/include/libtcc.h" && ! -L "$tcc_root/include/libtcc.h" ]] \
+		|| die 'TCC bootstrap bundle lacks include/libtcc.h'
+	[[ -f "$tcc_root/lib/libtcc.a" && ! -L "$tcc_root/lib/libtcc.a" ]] \
+		|| die 'TCC bootstrap bundle lacks lib/libtcc.a'
+	[[ ! -e "$private_root/thirdparty/tcc" && ! -L "$private_root/thirdparty/tcc" ]] \
+		|| die 'private contract checkout already has a thirdparty/tcc entry'
+	ln -s -- "$tcc_root" "$private_root/thirdparty/tcc"
+}
+
+# detach_tcc_bootstrap_bundle removes the link before the final clean-checkout checks.
+detach_tcc_bootstrap_bundle() {
+	local private_root=$1
+	[[ -L "$private_root/thirdparty/tcc" ]] || return 0
+	rm -f -- "$private_root/thirdparty/tcc" \
+		|| die 'TCC bootstrap bundle link cannot be removed'
+}
+
 contract_root=$(physical_directory "$contract_root_input")
 vc_root=$(physical_directory "$vc_root_input")
 work_root=$(canonical_new_directory "$work_root_input")
@@ -379,6 +410,7 @@ export LDFLAGS=
 private_contract_root="$work_root/contract-source"
 clone_contract_checkout "$contract_root" "$private_contract_root" "$contract_repository_url" \
 	"$contract_sha" "$work_root/empty-template"
+attach_tcc_bootstrap_bundle "$private_contract_root"
 lock_path="$private_contract_root/$bootstrap_lock_relative"
 [[ -f "$lock_path" && ! -L "$lock_path" ]] || die 'VC lock is absent from the contract checkout'
 read_lock "$lock_path"
@@ -434,6 +466,7 @@ validate_materialized_vc_artifact "$vc_root" "$vc_source"
 			-o "$cli_path" thirdparty/tccbin_automation/bin/cmd
 )
 
+detach_tcc_bootstrap_bundle "$private_contract_root"
 rm -f -- "$private_contract_root/v1${exe_suffix}" "$private_contract_root/v2${exe_suffix}" \
 	"$private_contract_root/v${exe_suffix}" \
 	|| die 'private bootstrap compilers cannot be removed before final attestation'
