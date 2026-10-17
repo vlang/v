@@ -23430,15 +23430,30 @@ fn (mut t Transformer) transform_index_expr(id flat.NodeId, node flat.Node) flat
 		// stabilize an earlier side-effecting operand before a later hoisting one.
 		// The index base (`i == 0`) keeps master's dedicated base lowering.
 		mut new_child := if i == 0 {
+			// A side-effecting base (`tr.values()[match n { ... }]`) left inline would run
+			// after a later child's hoisted prelude. An lvalue base keeps its identity, with
+			// only its dynamic components spilled; an rvalue base is spilled by value.
+			mut base_id := child_id
+			mut spill_base := false
+			if last_value_branch > 0 && !t.is_value_match_or_if_operand(child_id)
+				&& !t.is_stable_expr_for_reuse(child_id) {
+				if stabilized := t.stabilize_original_lvalue_receiver(child_id) {
+					base_id = stabilized
+				} else {
+					spill_base = true
+				}
+			}
 			base := if index_node_is_range(t.a, node) {
-				t.transform_index_base_expr(child_id)
+				t.transform_index_base_expr(base_id)
 			} else {
-				t.transform_element_index_base_expr(child_id)
+				t.transform_element_index_base_expr(base_id)
 			}
 			if node.value == 'range' && node.children_count < 3 {
 				base_type_source_id := t.node_type(base)
 
 				t.stable_transformed_expr_for_reuse(base, base_type_source_id, 'slice_base')
+			} else if spill_base && t.node_type(base) != 0 {
+				t.snapshot_transformed_expr_for_reuse(base, t.node_type(base), 'index_base')
 			} else {
 				base
 			}
