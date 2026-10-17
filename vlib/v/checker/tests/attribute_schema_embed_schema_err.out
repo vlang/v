@@ -1,0 +1,7 @@
+vlib/v/checker/tests/attribute_schema_embed_schema_err.vv:7:2: error: cannot embed attribute schema `Route`
+    5 | 
+    6 | struct Outer {
+    7 |     Route
+      |     ~~~~~
+    8 | }
+    9 |

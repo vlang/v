@@ -4204,6 +4204,15 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 				}
 			}
 		}
+		// An attribute schema is inert metadata: unlike `@[noinit]`, which only
+		// restricts cross-module initialization, a schema cannot be initialized
+		// anywhere (vlang/rfcs#35, slice 1).
+		if decl_id := tc.source_struct_decl_id_for_name(init_struct.source_type_id()) {
+			if tc.declaration_has_attribute(decl_id, 'attribute') {
+				display_name := tc.diagnostic_type_name(init_type)
+				tc.record_error_at(.assignment_mismatch, 'cannot initialize struct `${display_name}` marked with `@[attribute]`', id, node.pos)
+			}
+		}
 		// A `struct { ... }` literal is parsed into a name the parser synthesized for it
 		// (or left as a bare `struct` when its field types cannot be inferred), which the
 		// checker then resolves to whichever anonymous type the context expects.
