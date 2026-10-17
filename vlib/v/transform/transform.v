@@ -21881,7 +21881,20 @@ fn (mut t Transformer) transform_assert_stmt(id flat.NodeId, node flat.Node) []f
 				new_children << eid
 			}
 		} else {
-			new_children << t.transform_expr(child_id)
+			// Message interpolation may hoist formatting into pending statements.
+			// Keep those statements inside the failure-only message expression.
+			pending_start := t.pending_stmts.len
+			message := t.transform_expr(child_id)
+			if t.pending_stmts.len > pending_start {
+				mut message_stmts := t.pending_stmts[pending_start..].clone()
+				t.pending_stmts.trim(pending_start)
+				message_stmts << t.make_expr_stmt(message)
+				message_block := t.make_block(message_stmts)
+				t.a.nodes[int(message_block)].typ = flat.source_type_id('string')
+				new_children << message_block
+			} else {
+				new_children << message
+			}
 		}
 	}
 	mut value := node.value
