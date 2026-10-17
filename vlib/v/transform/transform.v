@@ -11565,7 +11565,9 @@ fn mut_param_has_builtin_pointer_value(param flat.Node) bool {
 }
 
 // heap_fixed_array_view_params moves an escaping by-value parameter's local copy at
-// function entry. Reference and mut parameters keep sharing the caller's promoted root.
+// function entry: one exposed as a fixed array view, or, like V1, one whose address
+// escapes (`return Node{parent: &param}`). Reference and mut parameters keep sharing
+// the caller's promoted root.
 fn (mut t Transformer) heap_fixed_array_view_params(fn_node flat.Node, param_types []types.Type) (map[int]flat.NodeId, []flat.NodeId) {
 	mut replacements := map[int]flat.NodeId{}
 	mut entry_stmts := []flat.NodeId{}
@@ -11581,7 +11583,8 @@ fn (mut t Transformer) heap_fixed_array_view_params(fn_node flat.Node, param_typ
 		}
 		index := param_index
 		param_index++
-		if param.value !in t.escaping_fixed_array_view_sources || param.is_mut || param.op == .amp
+		if (param.value !in t.escaping_fixed_array_view_sources
+			&& param.value !in t.escaping_amp_sources) || param.is_mut || param.op == .amp
 			|| t.var_is_ref_param(param.value)
 			|| (index < param_types.len && escape_type_is_pointer(param_types[index])) {
 			continue
@@ -11594,7 +11597,11 @@ fn (mut t Transformer) heap_fixed_array_view_params(fn_node flat.Node, param_typ
 		if !t.is_fixed_array_type(typ_source_id) && !t.heapable_value_type(typ_source_id_8) {
 			continue
 		}
-		abi_name := t.new_temp('fixed_array_value_param')
+		abi_name := t.new_temp(if t.is_fixed_array_type(typ_source_id) {
+			'fixed_array_value_param'
+		} else {
+			'heap_value_param'
+		})
 		mut abi_param := param
 		abi_param.value = abi_name
 		replacements[int(param_id)] = t.a.add_node(abi_param)
