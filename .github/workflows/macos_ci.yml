@@ -80,6 +80,8 @@ jobs:
           grep -qx '42' "$RUNNER_TEMP/v3_canary.out" || { echo '::error::the V-compiled canary did not build/run correctly'; exit 1; }
           if grep -qiE 'retrying with .-old-compiler|compatibility fallback|used the stable compiler' "$RUNNER_TEMP/v3_canary.out"; then echo '::error::the default compiler silently fell back to V1'; exit 1; fi
           echo 'OK: V compiled and ran this program in-process on macOS, with the fallback disabled'
+      - name: FastC ARM64 condition regressions
+        run: ./v -d arm64 -silent test vlib/v/gen/fastc/if_condition_arm64_test.v
       - name: Legacy gg import multiwindow isolation
         if: env.V_MACOS_MULTIWINDOW_TESTS == '1'
         run: ./v test vlib/gg/legacy_import_multiwindow_isolation_test.v
