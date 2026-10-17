@@ -1851,7 +1851,8 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 	if value_context {
 		tc.check_match_branch_tail_type_diagnostics(id, node)
 	}
-	if value_context && tc.match_expr_all_tails_are_none(node) {
+	if value_context && tc.match_expr_all_tails_are_none(node)
+		&& !tc.expr_has_explicit_option_context(id) {
 		tc.record_error_at(.if_branch_mismatch, 'invalid match expression, must supply at least one value other than `none`', id, tc.match_header_pos(node))
 	}
 	$if ownership ? {

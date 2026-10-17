@@ -22029,10 +22029,22 @@ fn (mut tc TypeChecker) check_if_value_requirements(id flat.NodeId, node flat.No
 		&& !tc.branch_tail_never_returns(else_id) {
 		tc.record_error_at(.if_branch_mismatch, '`if` expression requires an expression as the last statement of every branch', else_id, tc.if_branch_missing_value_pos(else_id))
 	}
-	if tc.if_expr_all_tails_are_none(node) {
+	if tc.if_expr_all_tails_are_none(node) && !tc.expr_has_explicit_option_context(id) {
 		pos := token.new_span(node.pos.id, node.pos.offset, node.pos.offset + 2)
 		tc.record_error_at(.if_branch_mismatch, 'invalid if expression, must supply at least one value other than `none`', id, pos)
 	}
+}
+
+// expr_has_explicit_option_context reports whether the value expression `id` is
+// checked against an option or result type, such as the value of `return` in a
+// `?T` function. V1 types an all-`none` `if`/`match` by that context, so it is
+// not an untyped `none` value then.
+fn (tc &TypeChecker) expr_has_explicit_option_context(id flat.NodeId) bool {
+	if tc.expected_expr_id < 0 || !tc.expr_is_value_tail_of(flat.NodeId(tc.expected_expr_id), id) {
+		return false
+	}
+	expected := unalias_type(tc.expected_expr_type)
+	return expected is OptionType || expected is ResultType
 }
 
 fn (tc &TypeChecker) if_branch_missing_value_pos(branch_id flat.NodeId) token.Pos {
