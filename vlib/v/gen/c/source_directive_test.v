@@ -607,6 +607,8 @@ fn test_freestanding_c_uses_target_errno_header() ! {
 	source := os.join_path(dir, 'main.v')
 	output := os.join_path(dir, 'main.c')
 	os.write_file(source, 'fn main() { println(1) }\n')!
+	// -target-libc-headers rejects Windows targets and the target OS defaults to the host's,
+	// so pin Linux. Writing `.c` output only generates C; no Linux toolchain is needed.
 	result := os.exec([@VEXE, '-freestanding', '-target-libc-headers', '-gc', 'none', '-nocache',
 		'-os', 'linux', '-o', output, source])
 	assert result.exit_code == 0, result.output
