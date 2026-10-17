@@ -217,8 +217,10 @@ class BatchExecutionTests(unittest.TestCase):
                 body = "\n".join(
                     routine("build_" + stage + "_with_tcc") for stage in ("bootstrap", "stage")
                 )
-                self.assertEqual(body.count('"!tcc_exe!" '), 2)
-                body = body.replace('"!tcc_exe!" ', 'call "!tcc_exe!" ')
+                body, compiler_calls = re.subn(
+                    r'(?m)^"!tcc_exe!" ', 'call "!tcc_exe!" ', body
+                )
+                self.assertEqual(compiler_calls, 2)
                 script = "\n".join([
                     preamble,
                     'set "tcc_exe=' + str(compiler) + '"',
