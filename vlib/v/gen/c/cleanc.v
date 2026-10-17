@@ -10396,6 +10396,10 @@ fn (g &FlatGen) ordered_startup_modules(module_to_init map[string]string) []stri
 		}
 	}
 	g.visit_startup_module('builtin', startup_modules, mut visiting, mut visited, mut result)
+	// No module imports the closure runtime, but any const initializer may create a
+	// closure (a method value or a capturing fn literal), which needs the runtime's
+	// own consts (`closure_size`, ...) to be set already.
+	g.visit_startup_module('closure', startup_modules, mut visiting, mut visited, mut result)
 	for mod, _ in g.module_imports {
 		if mod !in imported_modules {
 			g.visit_startup_module(mod, startup_modules, mut visiting, mut visited, mut result)
