@@ -14792,10 +14792,6 @@ pub fn run(args []string) {
 			''
 		}
 		mut generated_c_flags := cgen_cache_metadata.flags.clone()
-		// The first handle is appended inside cgen_scope, and a later thread frees
-		// that scope while the handles are still read. Reserve room for all three
-		// appends here, so the handle array never lives in cgen_scope.
-		mut cgen_release_threads := []thread{cap: 3}
 		mut windows_gui_entry_point := cgen_cache_metadata.windows_gui_entry_point
 		mut interface_impl_signature := cgen_cache_metadata.interface_impl_signature
 		mut cgen_was_parallel := false
@@ -14865,7 +14861,7 @@ pub fn run(args []string) {
 			// texts were published, so release them before Cgen's peak. Unmapping them
 			// takes a few milliseconds; a helper thread does it while cgen starts.
 			if transform_helper_scopes.len > 0 {
-				cgen_release_threads << spawn free_prealloc_scopes(transform_helper_scopes)
+				track_release_thread(spawn free_prealloc_scopes(transform_helper_scopes))
 			}
 			transform_helper_scopes = []voidptr{}
 			pre_tc.freeze_type_cache_for_forks()
@@ -14965,8 +14961,8 @@ pub fn run(args []string) {
 			pre_tc.set_fresh_type_cache(cgen_parse_cache_enabled)
 			// Nothing reads cgen's arenas any more. Unmapping them takes several
 			// milliseconds; do it beside the following stages.
-			cgen_release_threads << spawn release_cgen_scopes(cgen_worker_scopes.clone(),
-				cgen_scope)
+			track_release_thread(spawn release_cgen_scopes(cgen_worker_scopes.clone(),
+				cgen_scope))
 		} else if !cgen_cache_hit {
 			generated_path := if cache_state.manager.enabled { cache_plan_file } else { cc_src }
 			mut g := cgen.FlatGen.new()
@@ -15077,7 +15073,7 @@ pub fn run(args []string) {
 			mut cgen_pool := a.worker_pool
 			a.worker_pool = unsafe { nil }
 			cgen_pool.stop()
-			cgen_release_threads << spawn join_stopped_worker_pool(cgen_pool)
+			track_release_thread(spawn join_stopped_worker_pool(cgen_pool))
 		}
 		if cgen_cache_hit {
 			b.step('cgen (cached)')
@@ -15378,9 +15374,7 @@ pub fn run(args []string) {
 				println('Generated C project in ${generate_c_project}')
 			}
 			b.print_report()
-			for cgen_release_thread in cgen_release_threads {
-				cgen_release_thread.wait()
-			}
+			wait_release_threads()
 			if retained_transform_scope != unsafe { nil }
 				|| retained_transform_prepare_scope != unsafe { nil } {
 				free_retained_scopes(retained_transform_scope, retained_transform_prepare_scope)
@@ -15393,11 +15387,10 @@ pub fn run(args []string) {
 		// Nothing below reads the transformed AST or its checker payloads: the C
 		// compiler consumes the generated file. Release those arenas alongside it
 		// so their unmapping is not serial work after the compile.
-		mut scope_free_threads := []thread{}
-		scope_free_threads << cgen_release_threads
 		if retained_transform_scope != unsafe { nil }
 			|| retained_transform_prepare_scope != unsafe { nil } {
-			scope_free_threads << spawn free_retained_scopes(retained_transform_scope, retained_transform_prepare_scope)
+			track_release_thread(spawn free_retained_scopes(retained_transform_scope,
+				retained_transform_prepare_scope))
 			retained_transform_scope = unsafe { nil }
 			retained_transform_prepare_scope = unsafe { nil }
 		}
@@ -16431,9 +16424,7 @@ Please install the corresponding development package/libraries and make sure the
 			os.rm(retained_full_c_source) or {}
 			cleanup_c_build_dir(cc_dir)
 		}
-		for scope_free_thread in scope_free_threads {
-			scope_free_thread.wait()
-		}
+		wait_release_threads()
 		b.step(if tcc_cache_hit {
 			'tcc (cached)'
 		} else if used_tcc {
