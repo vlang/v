@@ -105,7 +105,8 @@ fn (mut tc TypeChecker) mutable_alias_has_fresh_map_storage(id flat.NodeId) bool
 				}
 				for i in 1 .. current.children_count {
 					arg_id := tc.call_arg_value(tc.a.child(current, i))
-					if tc.a.node(arg_id).is_mut && tc.expr_key(arg_id) == node.value {
+					if tc.a.node(arg_id).is_mut && tc.expr_key(arg_id) == node.value
+						&& tc.call_may_rebind_mut_map_arg(current_id, i) {
 						return false
 					}
 				}
@@ -117,6 +118,94 @@ fn (mut tc TypeChecker) mutable_alias_has_fresh_map_storage(id flat.NodeId) bool
 		}
 	}
 	return declarations == 1
+}
+
+// call_may_rebind_mut_map_arg reports whether the function called by `call_id` may
+// rebind the map passed as `mut` in its argument child `arg_child`, rather than only
+// read or replace its entries. A function that cannot be inspected may.
+fn (mut tc TypeChecker) call_may_rebind_mut_map_arg(call_id flat.NodeId, arg_child int) bool {
+	call := tc.a.node(call_id)
+	if call.children_count == 0 || tc.a.child_node(call, 0).kind != .ident {
+		return true
+	}
+	info := tc.resolve_call_info(call_id, *call) or { return true }
+	if info.name.len == 0 || info.name.starts_with('C.') || info.has_receiver {
+		return true
+	}
+	decl := tc.visible_mutation_fn_decl(info.name, tc.fn_type_modules[info.name] or {
+		tc.cur_module
+	}) or { return true }
+	fn_node := tc.a.node(flat.NodeId(decl.idx))
+	fn_short_name := fn_node.value.all_after_last('.')
+	mut param_name := ''
+	mut param_index := 0
+	mut body := []flat.NodeId{}
+	for i in 0 .. fn_node.children_count {
+		child_id := tc.a.child(fn_node, i)
+		child := tc.a.node(child_id)
+		if child.kind != .param {
+			body << child_id
+			continue
+		}
+		param_index++
+		if param_index == arg_child {
+			param_name = child.value
+		}
+	}
+	if param_name.len == 0 {
+		return true
+	}
+	mut stack := body.clone()
+	for stack.len > 0 {
+		current_id := stack.pop()
+		current := tc.a.node(current_id)
+		match current.kind {
+			.fn_decl, .lambda_expr, .comptime_for, .goto_stmt {
+				return true
+			}
+			.fn_literal {
+				// It can only reach the map through a captured copy.
+				continue
+			}
+			.assign {
+				for lhs_id in tc.multi_assign_lhs_ids(*current) {
+					if tc.expr_key(lhs_id) == param_name {
+						return true
+					}
+				}
+			}
+			.prefix {
+				if current.op == .amp && current.children_count > 0
+					&& tc.expr_key(tc.a.child(current, 0)) == param_name {
+					return true
+				}
+			}
+			.selector {
+				if current.children_count > 0 && current.value != 'len'
+					&& tc.expr_key(tc.a.child(current, 0)) == param_name {
+					return true
+				}
+			}
+			.call {
+				// Passing it on as `mut` is only followed into a direct recursive call
+				// in the same position, which this scan already covers.
+				for i in 1 .. current.children_count {
+					arg_id := tc.call_arg_value(tc.a.child(current, i))
+					if tc.a.node(arg_id).is_mut && tc.expr_key(arg_id) == param_name {
+						callee := tc.a.child_node(current, 0)
+						if i != arg_child || callee.kind != .ident || callee.value != fn_short_name {
+							return true
+						}
+					}
+				}
+			}
+			else {}
+		}
+		for i in 0 .. current.children_count {
+			stack << tc.a.child(current, i)
+		}
+	}
+	return false
 }
 
 fn (mut tc TypeChecker) is_builtin_map_clone_call(id flat.NodeId) bool {
