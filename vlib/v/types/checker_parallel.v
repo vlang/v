@@ -3348,7 +3348,7 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 				operator_params_match = false
 				tc.record_error_at(.call_arg_mismatch, 'the receiver type `${receiver.typ_text()}` should be the same type as the operand `${param.typ_text()}`', id, tc.fn_declaration_diagnostic_pos(node))
 			}
-			if receiver_type.name() != param_type.name() && param_type !is FnType {
+			if receiver_type.name() != param_type.name() {
 				operator_params_match = false
 				tc.record_error_at(.call_arg_mismatch, 'expected `${receiver_type.name()}` not `${param_type.name()}` - both operands must be the same type for operator overloading', param_id, tc.type_diagnostic_pos(param_id, param_type.name()))
 			}
