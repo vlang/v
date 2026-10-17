@@ -3904,6 +3904,11 @@ fn (mut g FlatGen) gen_method_value_closure(selector_id flat.NodeId, base_id fla
 	if _ := g.field_type(base_type, method) {
 		return false
 	}
+	// So does a field promoted from an embedded struct (`env.status` reads
+	// `env.Base.status` even when `env`'s own type has a `status()` method).
+	if _ := g.embedded_field_path_for_promoted_selector(base_type, method) {
+		return false
+	}
 	// Builtin storage types are not structs in the type algebra, but their fields
 	// are registered on the corresponding builtin structs. They follow the same
 	// field-before-method rule (`s.str` is string storage, not the bound `str()`
