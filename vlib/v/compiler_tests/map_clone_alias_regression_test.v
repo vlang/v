@@ -81,6 +81,78 @@ fn main() {
 	copy["new"] = Row{cells: [2]}
 }
 '
+		'closure_rebind': header + '
+fn main() {
+	scope := {"old": Row{cells: [1]}}
+	mut copy := scope.clone()
+	fill := fn [mut copy] () {
+		copy["closure"] = Row{cells: [3]}
+	}
+	fill()
+	copy = borrowed(scope)
+	copy["new"] = Row{cells: [2]}
+}
+'
+		'field_branch':   header + '
+struct Ctx {
+mut:
+	values map[string]Row
+}
+
+fn update(ctx Ctx, fresh bool) {
+	mut copy := ctx
+	if fresh {
+		copy.values = ctx.values.clone()
+	}
+	copy.values["new"] = Row{cells: [2]}
+}
+
+fn main() {
+	update(Ctx{}, true)
+}
+'
+		'field_loop':     header + '
+struct Ctx {
+mut:
+	values map[string]Row
+}
+
+fn update(ctx Ctx) {
+	mut copy := ctx
+	copy.values = ctx.values.clone()
+	for i in 0 .. 2 {
+		copy.values["new"] = Row{cells: [2]}
+		if i == 0 {
+			copy = ctx
+		}
+	}
+}
+
+fn main() {
+	update(Ctx{})
+}
+'
+		'field_escape':   header + '
+struct Ctx {
+mut:
+	values map[string]Row
+}
+
+fn reset(mut dst Ctx, src Ctx) {
+	dst = src
+}
+
+fn update(ctx Ctx) {
+	mut copy := ctx
+	copy.values = ctx.values.clone()
+	reset(mut copy, ctx)
+	copy.values["new"] = Row{cells: [2]}
+}
+
+fn main() {
+	update(Ctx{})
+}
+'
 	}
 	for name, source in cases {
 		path := os.join_path(root, '${name}.v')

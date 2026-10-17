@@ -9751,7 +9751,19 @@ fn (t &Transformer) bound_method_value_allocates_runtime_closure(id flat.NodeId)
 	if t.tc.expr_is_method_value(id) {
 		return true
 	}
-	return t.resolve_receiver_method_name(t.a.child(&node, 0), node.value).len > 0
+	base_id := t.a.child(&node, 0)
+	// A selector naming a field reads it (`s.str` is the string's `str` field,
+	// even though `string` also has a `str()` method); it is not a method value.
+	mut base_type := t.trim_pointer_type(t.lvalue_type(base_id))
+	if smartcast_type := t.smartcast_receiver_type_name(base_id) {
+		base_type = smartcast_type
+	}
+	if base_type != 0 {
+		if _ := t.lookup_struct_field_type(base_type, node.value) {
+			return false
+		}
+	}
+	return t.resolve_receiver_method_name(base_id, node.value).len > 0
 }
 
 fn (t &Transformer) immediate_bound_method_value_allocates_runtime_closure(id flat.NodeId) bool {
@@ -11558,7 +11570,9 @@ fn mut_param_has_builtin_pointer_value(param flat.Node) bool {
 }
 
 // heap_fixed_array_view_params moves an escaping by-value parameter's local copy at
-// function entry. Reference and mut parameters keep sharing the caller's promoted root.
+// function entry: one exposed as a fixed array view, or, like V1, one whose address
+// escapes (`return Node{parent: &param}`). Reference and mut parameters keep sharing
+// the caller's promoted root.
 fn (mut t Transformer) heap_fixed_array_view_params(fn_node flat.Node, param_types []types.Type) (map[int]flat.NodeId, []flat.NodeId) {
 	mut replacements := map[int]flat.NodeId{}
 	mut entry_stmts := []flat.NodeId{}
@@ -11574,7 +11588,8 @@ fn (mut t Transformer) heap_fixed_array_view_params(fn_node flat.Node, param_typ
 		}
 		index := param_index
 		param_index++
-		if param.value !in t.escaping_fixed_array_view_sources || param.is_mut || param.op == .amp
+		if (param.value !in t.escaping_fixed_array_view_sources
+			&& param.value !in t.escaping_amp_sources) || param.is_mut || param.op == .amp
 			|| t.var_is_ref_param(param.value)
 			|| (index < param_types.len && escape_type_is_pointer(param_types[index])) {
 			continue
@@ -11587,7 +11602,11 @@ fn (mut t Transformer) heap_fixed_array_view_params(fn_node flat.Node, param_typ
 		if !t.is_fixed_array_type(typ_source_id) && !t.heapable_value_type(typ_source_id_8) {
 			continue
 		}
-		abi_name := t.new_temp('fixed_array_value_param')
+		abi_name := t.new_temp(if t.is_fixed_array_type(typ_source_id) {
+			'fixed_array_value_param'
+		} else {
+			'heap_value_param'
+		})
 		mut abi_param := param
 		abi_param.value = abi_name
 		replacements[int(param_id)] = t.a.add_node(abi_param)
@@ -13765,6 +13784,9 @@ fn (mut t Transformer) transform_return_stmt(id flat.NodeId, node flat.Node) []f
 		return [id]
 	}
 	source_return_id := t.return_drop_source_id(id, node)
+	if rewritten := t.return_or_result_tail_as_return(node, source_return_id) {
+		return t.transform_return_stmt(rewritten, t.a.nodes[int(rewritten)])
+	}
 	if expanded := t.try_expand_return_if(source_return_id, node) {
 		return expanded
 	}
@@ -16942,23 +16964,41 @@ fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type_id u3
 				}
 			}
 			source_type_source_id_3 := t.optional_conversion_source_type(id)
-
-			if t.is_optional_type_name(source_type_source_id_3)
+			same_option_source := t.is_optional_type_name(source_type_source_id_3)
 				&& flat.source_type_name(t.qualify_optional_type(source_type_source_id_3)) == optional_target
-				&& node.kind !in [.block, .if_expr, .match_stmt] {
+			if same_option_source && node.kind !in [.block, .if_expr, .match_stmt] {
 				return t.transform_expr(id)
 			}
-			if !t.is_optional_type_name(source_type_source_id_3) && t.is_interface_type(target_payload_source_id) {
+			// An `if`/`match` with option branch values (`?T(x)`, `none`) is lowered
+			// below into a temporary of the option type itself, converting each
+			// branch. Boxing it as the sum/interface payload would assign the branch
+			// options to a payload-typed temporary.
+			payload_conversion := match node.kind {
+				.if_expr {
+					!same_option_source
+						&& !t.is_optional_type_name(t.if_expr_branch_result_type(node))
+				}
+				.match_stmt {
+					!same_option_source && !t.is_optional_type_name(t.match_expr_type(node))
+				}
+				else {
+					true
+				}
+			}
+			if payload_conversion && !t.is_optional_type_name(source_type_source_id_3)
+				&& t.is_interface_type(target_payload_source_id) {
 				share_source := t.interface_target_should_share_source(id, target_payload_source_id)
 				if value := t.transform_interface_value_for_type(id, target_payload_source_id, share_source) {
 					return t.make_optional_some(value, optional_target_source_id_5)
 				}
 			}
-			if !t.is_optional_type_name(source_type_source_id_3) && t.is_sum_type_name(target_payload_source_id) {
+			if payload_conversion && !t.is_optional_type_name(source_type_source_id_3)
+				&& t.is_sum_type_name(target_payload_source_id) {
 				value := t.transform_sum_value_for_type(id, target_payload_source_id)
 				return t.make_optional_some(value, optional_target_source_id_5)
 			}
-			if t.is_optional_type_name(source_type_source_id_3) && t.is_sum_type_name(target_payload_source_id) {
+			if payload_conversion && t.is_optional_type_name(source_type_source_id_3)
+				&& t.is_sum_type_name(target_payload_source_id) {
 				if t.sum_target_accepts_variant_type(target_payload_source_id, source_type_source_id_3) {
 					value := t.wrap_sum_value(id, target_payload_source_id)
 					return t.make_optional_some(value, optional_target_source_id_5)
@@ -24526,6 +24566,27 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 		new_base := t.selector_base_for_field(transformed_base, base_type0_source_id)
 		return t.lower_sum_shared_field_selector(new_base, base_type0_source_id, node.value, shared_typ_source_id)
 	}
+	// Like V1, a field that only one variant has reads `(sum as Variant).field` when
+	// the sum value cannot be smartcast (see the checker's selector_type). cgen
+	// accesses the variant of an indexed sum value directly, which keeps it an lvalue.
+	if base_node0.kind != .index && t.expr_key(base_id).len == 0 {
+		if variant_source_id := t.sum_unique_field_variant(base_type0_source_id, node.value) {
+			start := t.a.children.len
+			t.a.children << base_id
+			variant_value := t.transform_as_expr(base_id, flat.Node{
+				kind:           .as_expr
+				value:          flat.source_type_name(variant_source_id)
+				typ:            variant_source_id
+				children_start: start
+				children_count: 1
+				pos:            node.pos
+			})
+			field_type_source_id := t.lookup_struct_field_type(variant_source_id, node.value) or {
+				t.transformed_selector_type(node)
+			}
+			return t.make_selector_op(variant_value, node.value, field_type_source_id, .dot)
+		}
+	}
 	// Ask the checker about a method named without a call before the receiver is
 	// lowered: lowering retypes a local that holds a struct alias as its struct.
 	is_method_value := !isnil(t.tc) && t.tc.expr_is_method_value(id)
@@ -24830,6 +24891,37 @@ fn (t &Transformer) sum_shared_field_type_name_inner(sum_type_id u32, field stri
 	return common
 }
 
+// sum_unique_field_variant returns the only struct variant of the sum type `sum_type_id`
+// that has the field `field`.
+fn (t &Transformer) sum_unique_field_variant(sum_type_id u32, field string) ?u32 {
+	if sum_type_id == 0 || flat.source_type_shape(sum_type_id).has(.pointer) {
+		return none
+	}
+	mut sum_candidate := sum_type_id
+	if t.active_specialization_args.ids.len > 0 {
+		sum_candidate = t.subst_type(sum_candidate, t.active_specialization_args.ids)
+	}
+	if resolved := t.resolve_sum_name_from_c_name(flat.source_type_name(sum_candidate)) {
+		sum_candidate = resolved
+	}
+	if !t.sum_types.contains(flat.source_type_name(t.resolve_sum_name(sum_candidate))) {
+		return none
+	}
+	mut found := u32(0)
+	for variant in t.concrete_sum_variants_for_candidate(sum_candidate) {
+		if _ := t.lookup_struct_field_type(variant, field) {
+			if found != 0 {
+				return none
+			}
+			found = variant
+		}
+	}
+	if found == 0 {
+		return none
+	}
+	return found
+}
+
 // sum_variant_field_type_name supports sum variant field type name handling for Transformer.
 fn (t &Transformer) sum_variant_field_type_name(variant_id u32, field string) ?u32 {
 	mut visited := map[u32]bool{}
@@ -25061,6 +25153,13 @@ fn (mut t Transformer) transform_map_index_address_or_expr(node flat.Node, expr_
 }
 
 fn (mut t Transformer) transform_match_trailing_or_expr(_id flat.NodeId, node flat.Node) ?flat.NodeId {
+	new_match := t.match_with_trailing_or_subject(node)?
+	return t.transform_expr(new_match)
+}
+
+// match_with_trailing_or_subject rewrites `match x {...} or {...}` to a match on
+// `x or {...}`: the trailing `or` block unwraps the match subject, not the result.
+fn (mut t Transformer) match_with_trailing_or_subject(node flat.Node) ?flat.NodeId {
 	if node.kind != .or_expr || node.children_count < 2 {
 		return none
 	}
@@ -25105,7 +25204,7 @@ fn (mut t Transformer) transform_match_trailing_or_expr(_id flat.NodeId, node fl
 		value:          match_node.value
 		typ:            match_node.typ
 	})
-	return t.transform_expr(new_match)
+	return new_match
 }
 
 // transform_prefix_expr transforms transform prefix expr data for transform.
@@ -26320,7 +26419,14 @@ fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.
 			}
 			source_iface := t.resolve_interface_type_name(flat.source_type_id(child_type))
 			if t.pointer_cast_target_implements_source_iface(flat.source_type_id(target_type[1..]), source_iface) {
-				source := t.transform_expr(child_id)
+				// `if data is Impl { &Impl(data) }`: `child_type` is the interface, so read
+				// `_object` from the interface value itself, not from the smartcast `Impl`.
+				child_key := t.expr_key(child_id)
+				source := if child_key.len > 0 && t.has_smartcast(child_key) {
+					t.make_plain_expr_for_smartcast(child_id)
+				} else {
+					t.transform_expr(child_id)
+				}
 				object := t.make_selector_op(source, '_object', flat.source_type_voidptr, if child_type.starts_with('&') {
 					.arrow
 				} else {

@@ -333,9 +333,10 @@ mut:
 
 fn main() {
 	value := 1
-	_ := Holder{
+	mut holder := Holder{
 		ptr: &value
 	}
+	println(holder)
 }
 ',
 		'`value` is immutable, cannot have a mutable reference to an immutable object')

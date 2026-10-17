@@ -4470,6 +4470,13 @@ fn (tc &TypeChecker) fixed_array_reference_is_call_borrow(id flat.NodeId) bool {
 			return false
 		}
 		parent := tc.a.node(parent_id)
+		// A branch value of an `if`/`match` that is itself the call argument, e.g.
+		// `f(if c { &buf[0] } else { unsafe { nil } })`, is also only borrowed.
+		if parent.kind in [.expr_stmt, .block, .if_expr, .match_branch, .match_stmt]
+			&& tc.expr_is_value_tail_of(parent_id, current) {
+			current = parent_id
+			continue
+		}
 		// Like V1, a cast such as `voidptr(&buf[0])` or `u64(&buf[0]) + 8` that
 		// goes straight into a call is still only a borrow for that call.
 		if parent.kind != .paren && parent.kind != .cast_expr
@@ -5138,7 +5145,8 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 		pointee_is_variant := clean_actual is Pointer
 			&& tc.sum_type_contains_variant(clean_target, clean_actual.base_type)
 		if !tc.sum_type_contains_variant(clean_target, actual) && !pointee_is_variant
-			&& !tc.smartcast_wrapper_cast_payload_compatible(child_id, actual, target) {
+			&& !tc.smartcast_wrapper_cast_payload_compatible(child_id, actual, target)
+			&& !tc.sum_array_variant_accepts_elements(clean_target, actual) {
 			if !tc.named_variant_init_was_reported(child_id) {
 				tc.record_error_at(.assignment_mismatch, 'cannot cast `${actual.name()}` to `${target.name()}`', id, node.pos)
 			}
@@ -8392,6 +8400,10 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 	rhs_node := tc.a.node(rhs_id)
 	mut lhs_type := tc.infix_read_type(lhs_id)
 	mut rhs_type := tc.infix_read_type(rhs_id)
+	if node.op in [.eq, .ne] {
+		lhs_type = tc.option_compare_operand_type(lhs_id, lhs_type, rhs_type)
+		rhs_type = tc.option_compare_operand_type(rhs_id, rhs_type, lhs_type)
+	}
 	if node.op in [.pipe, .amp, .xor] {
 		if expected := tc.expected_context_for_expr(id) {
 			clean_expected := unalias_type(expected)
@@ -9799,6 +9811,27 @@ fn optional_payload_is_string(typ Type) bool {
 	return false
 }
 
+// option_compare_operand_type returns the declared option type of an `==`/`!=`
+// operand that is narrowed to its payload (`x` after `x != none`) when the other
+// operand is an option. Like V1, `doc != x` then compares the two options rather
+// than rejecting the unwrapped `x`; the transform compares the option wrappers.
+fn (tc &TypeChecker) option_compare_operand_type(id flat.NodeId, typ Type, other Type) Type {
+	if unalias_type(typ) is OptionType || unalias_type(other) !is OptionType
+		|| !tc.valid_node_id(id) {
+		return typ
+	}
+	node := tc.a.node(id)
+	declared := match node.kind {
+		.ident { tc.cur_scope.lookup(node.value) or { return typ } }
+		.selector { tc.selector_declared_value_type(*node) or { return typ } }
+		else { return typ }
+	}
+	if unalias_type(declared) is OptionType && tc.smartcast_type(id) != none {
+		return declared
+	}
+	return typ
+}
+
 fn (tc &TypeChecker) infix_read_type(id flat.NodeId) Type {
 	typ := tc.resolve_type(id)
 	if int(id) < 0 {
@@ -10591,7 +10624,9 @@ fn (mut tc TypeChecker) check_or_expr(id flat.NodeId, node flat.Node) {
 				return
 			} else if inner.kind == .ident {
 				if smart_type := tc.smartcast_type(inner_id) {
-					tc.record_error(.assignment_mismatch, 'cannot use `or {}` block on non-option variable `${inner.value}` (it was already unwrapped to `${smart_type.name()}` by an earlier none check; use `${inner.value}` directly)', inner_id)
+					if tc.is_legacy_redundant_option_unwrap(inner_id, *inner) {
+						tc.record_error(.assignment_mismatch, 'cannot use `or {}` block on non-option variable `${inner.value}` (it was already unwrapped to `${smart_type.name()}` by an earlier none check; use `${inner.value}` directly)', inner_id)
+					}
 				} else {
 					tc.record_error(.assignment_mismatch, 'cannot use `or {}` block on non-option variable', inner_id)
 				}
@@ -10674,6 +10709,103 @@ fn (mut tc TypeChecker) check_or_expr(id flat.NodeId, node flat.Node) {
 	}
 }
 
+// is_legacy_redundant_option_unwrap reports whether `x or {}` or `x?` on the narrowed
+// option variable `x` is rejected, as V 0.5.2 did. 0.5.2 unwrapped an option variable
+// only in the then-branch of `if x != none` (alone or in an `&&` chain), in the else
+// branch of a two-branch `if x == none {} else {}`, and after an `if x == none { return }`
+// guard. V3 also narrows in `for x != none` loops, in the right operand of `&&`/`||`,
+// and after compound guards, where code written for 0.5.2 still had to use `x or {}`.
+// There the unwrap is accepted; its fallback is unreachable.
+fn (tc &TypeChecker) is_legacy_redundant_option_unwrap(id flat.NodeId, node flat.Node) bool {
+	declared := tc.cur_scope.lookup(node.value) or { return true }
+	if unalias_type(declared) !is OptionType {
+		return true
+	}
+	name := node.value
+	mut current := id
+	mut parent_id := tc.direct_parent_id(current)
+	for tc.valid_node_id(parent_id) {
+		parent := tc.a.node(parent_id)
+		if parent.kind == .if_expr && parent.children_count >= 2 {
+			cond_id := tc.a.child(parent, 0)
+			if current == tc.a.child(parent, 1) {
+				if tc.legacy_if_cond_unwraps(cond_id, name) {
+					return true
+				}
+			} else if parent.children_count >= 3 && current == tc.a.child(parent, 2)
+				&& tc.a.node(current).kind == .block && !tc.is_else_if_branch(parent_id)
+				&& tc.is_none_eq_check_of(cond_id, name) {
+				return true
+			}
+		} else {
+			for i in 0 .. parent.children_count {
+				sibling_id := tc.a.child(parent, i)
+				if sibling_id == current {
+					break
+				}
+				sibling := tc.a.node(sibling_id)
+				if sibling.kind == .if_expr && sibling.children_count >= 2
+					&& tc.is_none_eq_check_of(tc.a.child(sibling, 0), name)
+					&& tc.stmt_definitely_returns(tc.a.child(sibling, 1)) {
+					return true
+				}
+			}
+		}
+		if parent.kind == .fn_decl {
+			break
+		}
+		current = parent_id
+		parent_id = tc.direct_parent_id(current)
+	}
+	return false
+}
+
+// legacy_if_cond_unwraps reports whether V 0.5.2 unwrapped `name` in the then-branch
+// of an `if` with the condition `cond_id`: `name != none`, possibly inside an `&&` chain.
+fn (tc &TypeChecker) legacy_if_cond_unwraps(cond_id flat.NodeId, name string) bool {
+	if !tc.valid_node_id(cond_id) {
+		return false
+	}
+	cond := tc.a.node(cond_id)
+	if cond.kind != .infix || cond.children_count < 2 {
+		return false
+	}
+	lhs := tc.a.child_node(cond, 0)
+	if cond.op == .logical_and {
+		return tc.legacy_if_cond_unwraps(tc.a.child(cond, 0), name)
+			|| tc.legacy_if_cond_unwraps(tc.a.child(cond, 1), name)
+	}
+	return cond.op == .ne && lhs.kind == .ident && lhs.value == name
+		&& tc.a.child_node(cond, 1).kind == .none_expr
+}
+
+// is_none_eq_check_of reports whether `cond_id` is `name == none`, possibly parenthesized.
+fn (tc &TypeChecker) is_none_eq_check_of(cond_id flat.NodeId, name string) bool {
+	mut id := cond_id
+	for tc.valid_node_id(id) && tc.a.node(id).kind == .paren && tc.a.node(id).children_count > 0 {
+		id = tc.a.child(tc.a.node(id), 0)
+	}
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	cond := tc.a.node(id)
+	if cond.kind != .infix || cond.op != .eq || cond.children_count < 2 {
+		return false
+	}
+	lhs := tc.a.child_node(cond, 0)
+	return lhs.kind == .ident && lhs.value == name && tc.a.child_node(cond, 1).kind == .none_expr
+}
+
+// is_else_if_branch reports whether the `if` at `id` is the `else if` of an outer `if`.
+fn (tc &TypeChecker) is_else_if_branch(id flat.NodeId) bool {
+	parent_id := tc.direct_parent_id(id)
+	if !tc.valid_node_id(parent_id) {
+		return false
+	}
+	parent := tc.a.node(parent_id)
+	return parent.kind == .if_expr && parent.children_count >= 3 && tc.a.child(parent, 2) == id
+}
+
 fn (tc &TypeChecker) or_block_call_display_name(call &flat.Node) string {
 	if call.children_count > 0 {
 		callee := tc.a.child_node(call, 0)
@@ -10744,19 +10876,24 @@ fn (mut tc TypeChecker) check_option_propagation(id flat.NodeId, source_id flat.
 		return
 	}
 	if source.kind == .ident {
+		// A narrowing that V 0.5.2 did not have keeps the declared Option rules.
+		mut is_v3_only_unwrap := false
 		if smart_type := tc.smartcast_type(source_id) {
-			parent_id := tc.direct_parent_id(id)
-			if tc.valid_node_id(parent_id) && tc.a.node(parent_id).kind == .return_stmt
-				&& clean_return_type is OptionType {
-				parent := tc.a.node(parent_id)
-				operator_pos := tc.propagation_operator_pos(source_id, id, '?')
-				return_line := tc.previous_source_line_matching(parent.pos, 'return')
-				tc.record_warning_at(.return_mismatch, 'unwrapping option is redundant as the function returns option', parent_id, token.new_span(return_line.id, return_line.offset, operator_pos.offset))
+			is_v3_only_unwrap = !tc.is_legacy_redundant_option_unwrap(source_id, *source)
+			if !is_v3_only_unwrap {
+				parent_id := tc.direct_parent_id(id)
+				if tc.valid_node_id(parent_id) && tc.a.node(parent_id).kind == .return_stmt
+					&& clean_return_type is OptionType {
+					parent := tc.a.node(parent_id)
+					operator_pos := tc.propagation_operator_pos(source_id, id, '?')
+					return_line := tc.previous_source_line_matching(parent.pos, 'return')
+					tc.record_warning_at(.return_mismatch, 'unwrapping option is redundant as the function returns option', parent_id, token.new_span(return_line.id, return_line.offset, operator_pos.offset))
+				}
+				tc.record_error_at(.assignment_mismatch, 'cannot use `?` on non-option variable `${source.value}` (it was already unwrapped to `${smart_type.name()}` by an earlier none check; use `${source.value}` directly)', source_id, tc.node_value_diagnostic_pos(source_id))
+				return
 			}
-			tc.record_error_at(.assignment_mismatch, 'cannot use `?` on non-option variable `${source.value}` (it was already unwrapped to `${smart_type.name()}` by an earlier none check; use `${source.value}` directly)', source_id, tc.node_value_diagnostic_pos(source_id))
-			return
 		}
-		if clean_source_type is OptionType {
+		if clean_source_type is OptionType || is_v3_only_unwrap {
 			parent_id := tc.direct_parent_id(id)
 			if tc.valid_node_id(parent_id) && tc.a.node(parent_id).kind == .return_stmt
 				&& clean_return_type !is OptionType && !main_allows_propagation {
@@ -11100,13 +11237,18 @@ fn (mut tc TypeChecker) check_or_fallback_type(or_id flat.NodeId, source_id flat
 		}
 	}
 	parent_kind := tc.direct_parent_kind(or_id)
+	// An untyped integer constant such as `-1` adopts the float type like a bare literal.
 	is_strict_numeric_mismatch := actual.is_integer() && expected.is_float()
-		&& tail.kind != .int_literal
+		&& tail.kind != .int_literal && !tc.is_untyped_integer_constant_expr(tail_id)
 	if tc.expr_compatible(tail_id, actual, expected) && !is_strict_numeric_mismatch {
 		return
 	}
 	if tc.direct_parent_kind(or_id) == .return_stmt && tc.fn_context.return_type is ResultType
 		&& (is_ierror_type(actual) || tc.type_compatible_with_ierror_payload(actual)) {
+		return
+	}
+	// `return a() or { b() }` in a `!T` function returns the `!T` of `b()` as it is.
+	if tc.or_fallback_result_is_returned(or_id, actual, expected) {
 		return
 	}
 	actual_name := if tail.kind == .none_expr {
@@ -11131,6 +11273,43 @@ fn (mut tc TypeChecker) check_or_fallback_type(or_id flat.NodeId, source_id flat
 	}
 	pos := tc.or_fallback_value_pos(tail_id, tail)
 	tc.record_error_at(.assignment_mismatch, message, tail_id, pos)
+}
+
+// sum_array_variant_accepts_elements reports whether `actual` is an array whose
+// elements are variants of the element sum of an array variant of `sum`, as
+// `[]u8` for the `[]Any` variant of `json2.Any`. Like V 0.5.2, `json2.Any(bytes)`
+// converts each element.
+fn (tc &TypeChecker) sum_array_variant_accepts_elements(sum SumType, actual Type) bool {
+	clean_actual := unalias_type(actual)
+	if clean_actual !is Array {
+		return false
+	}
+	actual_array := clean_actual as Array
+	base := flat.source_type_name(tc.sum_base_name(sum.source_type_id()))
+	for variant_source_id in tc.sum_types.type_ids(base) or { []u32{} } {
+		variant := unalias_type(tc.parse_type(tc.concrete_sum_variant_name(sum.source_type_id(),
+			variant_source_id)))
+		if variant is Array {
+			elem := unalias_type(variant.elem_type)
+			if elem is SumType && tc.sum_type_contains_variant(elem, actual_array.elem_type) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// or_fallback_result_is_returned reports whether the `or {}` block of a returned
+// expression ends in a `!T` value of the enclosing `!T` function's payload type.
+fn (tc &TypeChecker) or_fallback_result_is_returned(or_id flat.NodeId, actual Type, expected Type) bool {
+	if tc.direct_parent_kind(or_id) != .return_stmt {
+		return false
+	}
+	fn_return := unalias_type(tc.fn_context.return_type)
+	clean_actual := unalias_type(actual)
+	return fn_return is ResultType && clean_actual is ResultType
+		&& tc.type_compatible(clean_actual.base_type, expected)
+		&& tc.type_compatible(clean_actual.base_type, fn_return.base_type)
 }
 
 fn (tc &TypeChecker) or_expr_is_struct_field_value(id flat.NodeId) bool {
@@ -16020,6 +16199,10 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 			tc.expected_expr_type = explicit_expected
 		}
 		error_count := tc.errors.len
+		saved_mut_binding_value_id := tc.mut_binding_value_id
+		if lhs_node.value != '_' && tc.decl_lhs_is_mut(node, lhs_id) {
+			tc.mut_binding_value_id = int(rhs_id)
+		}
 		tc.fn_context.undefined_variable_context_depth++
 		$if ownership ? {
 			if tc.ownership_should_defer_aggregate_consumption(lhs_id, .assign) {
@@ -16033,6 +16216,7 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 			tc.check_node(rhs_id)
 		}
 		tc.fn_context.undefined_variable_context_depth--
+		tc.mut_binding_value_id = saved_mut_binding_value_id
 		tc.expected_expr_id = saved_expected_expr_id
 		tc.expected_expr_type = saved_expected_expr_type
 		rhs_node := tc.a.nodes[int(rhs_id)]
@@ -16224,8 +16408,8 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 			&& !tc.expr_is_unsafe_reference_alias(rhs_id) && !is_mut_map_alias_receiver {
 			tc.record_error_at(.assignment_mismatch, 'cannot copy map: call `move` or `clone` method (or use a reference)', rhs_id, rhs_node.pos)
 		}
-		if tc.unsafe_depth == 0 && lhs_is_mut && unalias_type(rhs_type) is Array
-			&& rhs_node.kind == .selector && tc.expr_can_take_address(rhs_id) {
+		if tc.unsafe_depth == 0 && lhs_is_mut && rhs_type is Array && rhs_node.kind == .selector
+			&& tc.expr_can_take_address(rhs_id) {
 			tc.record_error_at(.assignment_mismatch, 'use `mut array2 := array1.clone()` instead of `mut array2 := array1` (or use `unsafe`)', id, tc.assignment_operator_pos(node, lhs_id, rhs_id))
 		}
 		if rhs_type is Void && rhs_node.kind == .infix && rhs_node.op == .left_shift {
@@ -16620,7 +16804,7 @@ fn (mut tc TypeChecker) check_mutable_alias_assignment_lhs(id flat.NodeId, rhs_i
 			}
 		}
 		if aliases && !tc.mutable_alias_has_fresh_map_storage(base_id)
-			&& !tc.lvalue_is_inline_fixed_array(base_id) {
+			&& !tc.map_field_has_fresh_storage(base_id) && !tc.lvalue_is_inline_fixed_array(base_id) {
 			tc.record_error_at(.assignment_mismatch, '`${tc.source_text_for_node(base_id)}` aliases mutable data from an immutable value, clone it first (or use `unsafe`)', base_id, if base.kind in [
 				.ident,
 				.selector,
@@ -18179,10 +18363,12 @@ fn (mut tc TypeChecker) decl_assign_inferred_type(rhs_id flat.NodeId) Type {
 		}
 	}
 	if smartcast := tc.smartcast_type(rhs_id) {
-		if rhs.kind == .ident && tc.lexical_smartcast_type(rhs_id, rhs.value) == none {
+		if rhs.kind == .ident && tc.lexical_smartcast_type(rhs_id, rhs.value) == none
+			&& !tc.none_guard_fallthrough_unwraps(rhs_id, rhs.value) {
 			// A guard/assert fallthrough narrows reads of the original binding, but V1
 			// infers a new declaration from its declared type. Lexical branch and loop
-			// smartcasts still infer the narrowed variant.
+			// smartcasts, and the `if x == none { return }` unwrap, still infer the
+			// narrowed type.
 			if declared := tc.cur_scope.lookup(rhs.value) {
 				return declared
 			}
@@ -19384,6 +19570,12 @@ fn (mut tc TypeChecker) insert_decl_lhs(lhs_id flat.NodeId, typ Type, is_mut boo
 			return ScopeBindingOwner{}
 		}
 		owner := tc.cur_scope.insert_with_owner(lhs.value, typ)
+		if lhs.value != '_' {
+			// The alias marker is keyed by name; an earlier binding of the same name in
+			// a finished sibling scope must not taint this one. check_decl_assign sets
+			// it again when this binding's own value aliases an immutable one.
+			tc.fn_context.immutable_reference_aliases.delete(lhs.value)
+		}
 		if is_mut && lhs.value != '_' {
 			if previous_owner := tc.fn_context.mut_local_owners[lhs.value] {
 				// A `for mut` pointer binding records its pointee type so reads inside
@@ -19672,6 +19864,11 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 		expected_type := tc.assignment_expected_type(lhs_id, lhs_type)
 		source_rhs_type := tc.resolve_type(rhs_id)
 		tc.annotate_expected_expr(rhs_id, expected_type)
+		saved_mut_binding_value_id := tc.mut_binding_value_id
+		if node.op == .assign && lhs_node.kind == .ident && lhs_node.value != '_'
+			&& tc.ident_is_mutable_lvalue(lhs_node.value) {
+			tc.mut_binding_value_id = int(rhs_id)
+		}
 		$if ownership ? {
 			if tc.ownership_should_defer_aggregate_consumption(lhs_id, node.op) {
 				tc.ownership_begin_defer_aggregate_consumption(rhs_id)
@@ -19683,6 +19880,7 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 		} $else {
 			tc.check_node_with_expected_context(rhs_id, expected_type)
 		}
+		tc.mut_binding_value_id = saved_mut_binding_value_id
 		if node.op == .assign {
 			tc.record_null_constant_reference_error(.assignment_mismatch, rhs_id, expected_type)
 		}
@@ -19690,6 +19888,7 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 			tc.check_mutable_array_immutable_references(rhs_id)
 		}
 		tc.check_mutable_alias_assignment_lhs(lhs_id, rhs_id)
+		tc.track_fresh_map_field_assignment(node.op, lhs_id, rhs_id)
 		if tc.warn_about_allocs && node.op == .assign {
 			tc.warn_implicit_interface_conversion(rhs_id, tc.resolve_type(rhs_id), expected_type)
 		}
@@ -19776,7 +19975,9 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 		}
 		if node.op == .assign && rhs_node.kind == .ident && lhs_node.kind == .ident
 			&& lhs_node.value != '_' {
-			is_array_copy := clean_expected_type is Array && clean_rhs_type is Array
+			// Like V1, a type alias of an array (`type Values = []Value`) is not
+			// treated as an array here.
+			is_array_copy := expected_type is Array && rhs_type is Array
 				&& expected_type.name() == rhs_type.name()
 			is_map_copy := clean_expected_type is Map && clean_rhs_type is Map
 			if tc.unsafe_depth == 0 && (is_array_copy || is_map_copy) {

@@ -201,6 +201,13 @@ fn (t &Transformer) resolve_sum_name_uncached(sum_name string) string {
 		|| sum_name.starts_with('fn(') || sum_name.starts_with('fn (') {
 		return ''
 	}
+	// Neither is an option or result of a sum type: the short-name fallback below
+	// would resolve `?css.StyleValue` (or `?&dom.StyleValue`) to the `StyleValue`
+	// sum, and the value of an `x := if c { ?T(a) } else { ?T(none) }` would be
+	// lowered into a payload-typed temporary.
+	if sum_name.starts_with('?') || sum_name.starts_with('!') {
+		return ''
+	}
 	if !isnil(t.tc) && t.tc.sum_types.contains(sum_name) {
 		return sum_name
 	}
@@ -1943,6 +1950,15 @@ fn (mut t Transformer) wrap_sum_value_with_storage(expr_id flat.NodeId, target_s
 	has_expr_smartcast := expr_smartcast.expr_name.len > 0
 	if has_expr_smartcast && flat.source_type_name(t.resolve_sum_name(expr_smartcast.sum_type_name)) == resolved_sum {
 		variant = flat.source_type_name(t.resolve_variant(expr_smartcast.sum_type_name, expr_smartcast.variant_name))
+	} else if has_expr_smartcast
+		&& !t.sum_target_accepts_variant_type(resolved_sum_source_id_6, flat.source_type_id(variant)) {
+		// `Other(x)` with `x` smartcast to a variant of a different sum: the value
+		// is that variant, which `Other` wraps (V1 accepts `MathValue(num)` inside
+		// `match num { Sum, Product { ... } }` where both sums list `Sum`).
+		smartcast_variant := t.smartcast_target_type(expr_smartcast)
+		if t.sum_target_accepts_variant_type(resolved_sum_source_id_6, smartcast_variant) {
+			variant = flat.source_type_name(smartcast_variant)
+		}
 	}
 	if expr.kind == .prefix && expr.op == .mul && expr.children_count > 0 {
 		inner_type := flat.source_type_name(t.node_type(t.a.child(&expr, 0)))
@@ -2124,7 +2140,15 @@ fn (mut t Transformer) wrap_sum_value_with_storage(expr_id flat.NodeId, target_s
 		&& (flat.source_type_shape(expr_type).has(.pointer) || source_pointer_value) {
 		t.transform_expr_preserving_pointer_value(expr_id)
 	} else if needs_variant_conversion {
-		t.transform_expr_for_type(expr_id, flat.source_type_id(matched_variant))
+		// An array literal keeps its own element type (`[u8(1), 2]` holds two `u8`s)
+		// and is converted element by element, instead of being retyped as `[]Sum`.
+		if expr.kind == .array_literal {
+			t.transform_array_value_for_dynamic_target(expr_id, flat.source_type_id(matched_variant)) or {
+				t.transform_expr_for_type(expr_id, flat.source_type_id(matched_variant))
+			}
+		} else {
+			t.transform_expr_for_type(expr_id, flat.source_type_id(matched_variant))
+		}
 	} else {
 		t.transform_expr(expr_id)
 	}
