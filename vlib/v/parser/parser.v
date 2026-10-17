@@ -10046,6 +10046,9 @@ fn (mut p Parser) match_branch_cond() flat.NodeId {
 			&& ((p.lit[0] >= `A` && p.lit[0] <= `Z`)
 				|| p.imported_named_variant_pattern_starts_here(mod_name)) {
 			type_name := flat.source_type_id(mod_name + '.' + p.named_variant_pattern_type_name_bytes())
+			if p.match_branch_cast_follows(type_name) {
+				return p.match_branch_cast_value(type_name)
+			}
 			if pattern := p.named_variant_match_pattern(type_name, pattern_start) {
 				return pattern
 			}
@@ -10076,7 +10079,9 @@ fn (mut p Parser) match_branch_cond() flat.NodeId {
 		}
 		return sel
 	}
-	if p.tok == .name && p.lit.len > 0
+	// An unqualified `GLenum(0x84fe) {` is a cast value, not a type pattern; only
+	// `Sum.Variant(x)` binds a payload. Parse it below as an ordinary expression.
+	if p.tok == .name && p.lit.len > 0 && p.peek() != .lpar
 		&& ((p.lit[0] >= `A` && p.lit[0] <= `Z`) || p.is_generated_type_name(p.lit)) {
 		pattern_start := p.span_start()
 		name := p.named_variant_pattern_type_name()
@@ -10142,6 +10147,27 @@ fn (mut p Parser) match_type_pattern_node(type_name_id u32) flat.NodeId {
 		})
 	}
 	return p.add_val(.ident, type_name)
+}
+
+// match_branch_cast_follows reports whether `mod.Type` followed by `(` starts a cast value,
+// e.g. `webgl.GLenum(0x84fe) {`, instead of a sum type variant pattern with a payload binding.
+fn (mut p Parser) match_branch_cast_follows(type_name_id u32) bool {
+	type_name := flat.source_type_name(type_name_id)
+	if p.tok != .lpar || p.prefs.is_fmt || type_name.count('.') != 1 {
+		return false
+	}
+	if _ := p.named_variant_pattern_type(type_name_id) {
+		return false
+	}
+	module_name := type_name.all_before('.')
+	return module_name in p.imported_module_names && !p.is_local_binding(module_name)
+}
+
+fn (mut p Parser) match_branch_cast_value(type_name_id u32) flat.NodeId {
+	p.in_match_branch_condition++
+	cond := p.expr_with_lhs(p.match_type_pattern_node(type_name_id), .lowest)
+	p.in_match_branch_condition--
+	return cond
 }
 
 fn top_level_dot_index(s string) ?int {
