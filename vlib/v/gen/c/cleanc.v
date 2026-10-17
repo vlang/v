@@ -24942,7 +24942,8 @@ fn (mut g FlatGen) queue_global_array_init(target string, val_id flat.NodeId, ty
 			return false
 		}
 		callee := g.a.child_node(&node, 0)
-		if callee.kind != .ident || callee.value != 'array_new' {
+		// Scalar and enum rows are lowered to the noscan allocator.
+		if callee.kind != .ident || callee.value !in ['array_new', '__new_array_noscan'] {
 			return false
 		}
 		if default_expr := g.global_array_default_elem_expr(typ.elem_type) {

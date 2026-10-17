@@ -594,6 +594,8 @@ fn (mut t Transformer) lower_array_init_to_runtime(id flat.NodeId, node flat.Nod
 			init_expr = t.zero_value_for_type(clean_elem_type_source_id_2)
 		} else if default_value := t.make_struct_runtime_default_value(clean_elem_type_source_id_2) {
 			init_expr = default_value
+		} else if default_value := t.enum_array_default_elem_value(clean_elem_type_source_id_2) {
+			init_expr = default_value
 		} else {
 			return new_call
 		}
@@ -652,6 +654,39 @@ fn (mut t Transformer) lower_array_init_to_runtime(id flat.NodeId, node flat.Nod
 	result := t.make_ident(tmp_name)
 	t.set_node_typ(int(result), flat.source_type_id('[]${flat.source_type_name(elem_type)}'))
 	return result
+}
+
+// enum_array_default_elem_value is the value that `[]Enum{len: n}` fills its elements with:
+// the enum's first member, like the default of an enum struct field. It is none when that
+// value is 0 (zeroed storage already holds it), and for flag enums, which default to 0.
+fn (mut t Transformer) enum_array_default_elem_value(elem_type_id u32) ?flat.NodeId {
+	if isnil(t.tc) {
+		return none
+	}
+	elem_type := t.tc.parse_type(elem_type_id)
+	if elem_type !is types.Enum {
+		return none
+	}
+	enum_type := elem_type as types.Enum
+	if enum_type.is_flag {
+		return none
+	}
+	enum_name := flat.source_type_name(enum_type.name_id).trim_string_left('main.')
+	fields := t.enum_types[enum_name] or { return none }
+	if fields.len == 0 {
+		return none
+	}
+	enum_name_id := flat.source_type_id(enum_name)
+	values := t.tc.comptime_enum_decl_field_values(enum_name_id)
+	first_value := values[fields[0]] or { return none }
+	if first_value == 0 {
+		return none
+	}
+	return t.make_comptime_enum_value(EnumValueMeta{
+		name:      fields[0]
+		value:     first_value
+		enum_name: enum_name_id
+	})
 }
 
 fn (mut t Transformer) make_struct_runtime_default_value(struct_type_id u32) ?flat.NodeId {
