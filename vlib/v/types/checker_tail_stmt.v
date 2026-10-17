@@ -9500,7 +9500,7 @@ fn (mut tc TypeChecker) resolve_expr(id flat.NodeId, expected Type) Type {
 			}
 		}
 	}
-	if node.kind == .map_init {
+	if node.kind == .map_init && tc.explicit_map_literal_type_fits(node, expected) {
 		if expected_map := map_type_from_receiver(expected) {
 			if node.children_count == 0 {
 				tc.register_synth_type(id, expected_raw)
@@ -9517,7 +9517,9 @@ fn (mut tc TypeChecker) resolve_expr(id flat.NodeId, expected Type) Type {
 						break
 					}
 					if !tc.receiver_compatible(update_actual.key_type, expected_map.key_type)
-						|| !tc.receiver_compatible(update_actual.value_type, expected_map.value_type) {
+						|| !tc.receiver_compatible(update_actual.value_type, expected_map.value_type)
+						|| tc.map_entry_layouts_differ(update_actual.key_type, expected_map.key_type)
+						|| tc.map_entry_layouts_differ(update_actual.value_type, expected_map.value_type) {
 						all_ok = false
 						break
 					}
@@ -10681,8 +10683,8 @@ fn (tc &TypeChecker) type_compatible(actual Type, expected Type) bool {
 	}
 	if expected is Map {
 		if actual is Map {
-			return tc.type_compatible(actual.key_type, expected.key_type)
-				&& tc.type_compatible(actual.value_type, expected.value_type)
+			return tc.map_entry_types_compatible(actual.key_type, expected.key_type)
+				&& tc.map_entry_types_compatible(actual.value_type, expected.value_type)
 		}
 	}
 	if expected is FnType {
@@ -10702,6 +10704,83 @@ fn (tc &TypeChecker) type_compatible(actual Type, expected Type) bool {
 			}
 			return tc.fn_return_compatible(actual.return_type, expected.return_type)
 		}
+	}
+	return false
+}
+
+// explicit_map_literal_type_fits reports whether the map literal `node` may take
+// the `expected` map type. An untyped `{...}` literal may; an explicitly typed
+// `map[K]V{...}` keeps its own type unless that is the expected one (up to aliases).
+fn (tc &TypeChecker) explicit_map_literal_type_fits(node flat.Node, expected Type) bool {
+	if node.value.len == 0 || map_type_from_receiver(expected) == none {
+		return true
+	}
+	return tc.type_compatible(tc.parse_type(flat.source_type_id(node.value)), expected)
+}
+
+// map_entry_types_compatible reports whether a map with key or value type `actual`
+// can be used where one with `expected` is required.
+fn (tc &TypeChecker) map_entry_types_compatible(actual Type, expected Type) bool {
+	return tc.type_compatible(actual, expected) && !tc.map_entry_layouts_differ(actual, expected)
+}
+
+// map_entry_layouts_differ reports whether otherwise compatible map key or value
+// types store their entries differently. A map is not converted entry by entry, so
+// unlike plain values the types must match: aliases are transparent, but `u32` is
+// not a `u64`, `int` is not a `?int`, and a concrete type is not the interface or
+// sum type that would box it.
+fn (tc &TypeChecker) map_entry_layouts_differ(actual Type, expected Type) bool {
+	clean_actual := unalias_type(actual)
+	clean_expected := unalias_type(expected)
+	if type_contains_unknown(clean_actual) || type_contains_unknown(clean_expected) {
+		return false
+	}
+	if (clean_actual.is_integer() || clean_actual.is_float())
+		&& (clean_expected.is_integer() || clean_expected.is_float()) {
+		return clean_actual.name() != clean_expected.name()
+	}
+	match clean_expected {
+		OptionType {
+			if clean_actual is OptionType {
+				return tc.map_entry_layouts_differ(clean_actual.base_type, clean_expected.base_type)
+			}
+			return true
+		}
+		ResultType {
+			if clean_actual is ResultType {
+				return tc.map_entry_layouts_differ(clean_actual.base_type, clean_expected.base_type)
+			}
+			return true
+		}
+		Array {
+			if clean_actual is Array {
+				return tc.map_entry_layouts_differ(clean_actual.elem_type, clean_expected.elem_type)
+			}
+		}
+		ArrayFixed {
+			if clean_actual is ArrayFixed {
+				return tc.map_entry_layouts_differ(clean_actual.elem_type, clean_expected.elem_type)
+			}
+		}
+		Map {
+			if clean_actual is Map {
+				return tc.map_entry_layouts_differ(clean_actual.key_type, clean_expected.key_type)
+					|| tc.map_entry_layouts_differ(clean_actual.value_type, clean_expected.value_type)
+			}
+		}
+		Pointer {
+			if clean_actual is Pointer && clean_actual.base_type !is Void
+				&& clean_expected.base_type !is Void {
+				return tc.map_entry_layouts_differ(clean_actual.base_type, clean_expected.base_type)
+			}
+		}
+		Interface {
+			return clean_actual !is Interface
+		}
+		SumType {
+			return clean_actual !is SumType
+		}
+		else {}
 	}
 	return false
 }
