@@ -17671,8 +17671,7 @@ fn (t &Transformer) receiver_method_matches_base_type(method_name string, base_i
 	if receiver_name == flat.source_type_name(base_type) {
 		return true
 	}
-	if alias_target_source_id := t.alias_target_type_preserving_main_lock(base_type) {
-		clean_target := flat.source_type_name(t.trim_pointer_type(alias_target_source_id))
+	for clean_target in t.alias_chain_target_names(base_type) {
 		if receiver_name == clean_target
 			|| receiver_name.all_after_last('.') == clean_target.all_after_last('.') {
 			return true
@@ -17730,8 +17729,7 @@ fn (t &Transformer) receiver_method_matches_type_name(method_name string, typ_id
 	if normalized_source_id_4 != 0 && normalized !in candidates {
 		candidates << normalized
 	}
-	if alias_target_source_id := t.alias_target_type_preserving_main_lock(flat.source_type_id(clean)) {
-		clean_target := flat.source_type_name(t.trim_pointer_type(alias_target_source_id))
+	for clean_target in t.alias_chain_target_names(flat.source_type_id(clean)) {
 		if clean_target !in candidates {
 			candidates << clean_target
 		}
@@ -17741,6 +17739,25 @@ fn (t &Transformer) receiver_method_matches_type_name(method_name string, typ_id
 		}
 	}
 	return receiver_name in candidates
+}
+
+// alias_chain_target_names lists the types an alias chain names, nearest first:
+// `B` and `A` for a `C` with `type C = B` and `type B = A`. A method declared on
+// any of them is a method of `C`, as in V1.
+fn (t &Transformer) alias_chain_target_names(typ_id u32) []string {
+	mut names := []string{}
+	mut current := t.trim_pointer_type(typ_id)
+	for _ in 0 .. 64 {
+		target_source_id := t.alias_target_type_preserving_main_lock(current) or { break }
+		target_id := t.trim_pointer_type(target_source_id)
+		target := flat.source_type_name(target_id)
+		if target_id == 0 || target_id == current || target in names {
+			break
+		}
+		names << target
+		current = target_id
+	}
+	return names
 }
 
 fn (t &Transformer) checker_selected_receiver_method_name(call_id flat.NodeId, builtin_name string) ?string {

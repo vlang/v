@@ -115,6 +115,9 @@ fn test_methods_through_a_three_level_chain() {
 	assert dp.name() == 'values'
 }
 
+type LocalValues = alias_chain_style.MutableValues
+type LocalValues2 = LocalValues
+
 fn test_methods_through_an_imported_chain() {
 	mut v := alias_chain_style.MutableValues{
 		width: 3
@@ -135,4 +138,16 @@ fn test_methods_through_an_imported_chain() {
 	assert props.cache.direction == 7
 	assert props.width == 7
 	assert pv.doubled_width() == 14
+}
+
+fn test_methods_through_a_local_chain_of_an_imported_chain() {
+	mut l := LocalValues2{
+		width: 20
+	}
+	assert l.width_px() == 20
+	assert l.padded_width() == 120
+	l.grow()
+	l.ensure_cache().direction = 1
+	assert l.width == 21
+	assert l.cache.direction == 1
 }
