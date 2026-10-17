@@ -1373,7 +1373,7 @@ fn (tc &TypeChecker) vls_enum_values(decl flat.Node) map[string]string {
 		}
 		return texts
 	}
-	mut values := map[string]int{}
+	mut values := map[string]i64{}
 	mut next := i64(0)
 	mut known := true
 	for name in field_names {
@@ -1396,7 +1396,7 @@ fn (tc &TypeChecker) vls_enum_values(decl flat.Node) map[string]string {
 		}
 		if known {
 			texts[name] = value.str()
-			values[name] = int(value)
+			values[name] = value
 			next = value + 1
 		}
 	}
