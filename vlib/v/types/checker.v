@@ -18585,12 +18585,10 @@ pub fn (tc &TypeChecker) type_has_declaration_attribute(typ Type, name string) b
 	}
 	base, _, is_generic := generic_type_application_parts(type_name)
 	declaration_name := if is_generic { base } else { type_name }
-	for index in tc.type_declaration_ids[declaration_name.all_after_last('.')] {
-		if tc.declaration_has_attribute(flat.NodeId(index), name) {
-			return true
-		}
-	}
-	return false
+	// Semantic type names already carry their declaring module. The short-name
+	// index also contains unrelated declarations from imported modules.
+	index := tc.first_type_declaration_ids[declaration_name] or { return false }
+	return tc.declaration_has_attribute(flat.NodeId(index), name)
 }
 
 fn (tc &TypeChecker) non_heap_pointer_param_struct(name string) ?string {
