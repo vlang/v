@@ -17,6 +17,13 @@ fn (mut g FlatGen) scan_collect_gen_info(_ bool) CollectGenInfoScanCounts {
 	return g.scan_collect_gen_info_serial()
 }
 
+// sorted_fn_gen_item_keys sorts the keys by C name, stably.
+fn (g &FlatGen) sorted_fn_gen_item_keys(keys []FlatFnGenItemSortKey) []FlatFnGenItemSortKey {
+	mut sorted := keys.clone()
+	sorted.sort(a.c_name < b.c_name)
+	return sorted
+}
+
 // TypeIndexArgs is empty: v3_no_parallel builds share no type indexes.
 struct TypeIndexArgs {}
 
@@ -27,7 +34,7 @@ fn (mut g FlatGen) start_type_indexes(_ bool) (&TypeIndexArgs, []int) {
 fn (mut g FlatGen) finish_type_indexes(_ &TypeIndexArgs, _ []int) {}
 
 fn (mut g FlatGen) apply_fn_signature_registrations(registrations []FnSignatureRegistration, node_regs []FnDeclNodeReg) {
-	for group in 0 .. 4 {
+	for group in 0 .. fn_signature_registration_groups {
 		for registration in registrations {
 			g.apply_fn_signature_registration_group(registration, group)
 		}

@@ -12239,10 +12239,9 @@ fn (mut g FlatGen) register_fn_decl_signature(name string, full_name string, pty
 
 fn (mut g FlatGen) register_fn_decl_signature_type(name string, full_name string, ptypes []types.Type, shared_params []bool, is_variadic bool, is_mut bool, rt types.Type) {
 	registration := g.prepare_fn_signature_registration(name, full_name, ptypes, shared_params, is_variadic, is_mut, rt)
-	g.apply_fn_signature_registration_group(registration, 0)
-	g.apply_fn_signature_registration_group(registration, 1)
-	g.apply_fn_signature_registration_group(registration, 2)
-	g.apply_fn_signature_registration_group(registration, 3)
+	for group in 0 .. fn_signature_registration_groups {
+		g.apply_fn_signature_registration_group(registration, group)
+	}
 }
 
 fn (mut g FlatGen) prepare_fn_signature_registration(name string, full_name string, ptypes []types.Type, shared_params []bool, is_variadic bool, is_mut bool, rt types.Type) FnSignatureRegistration {
@@ -12353,6 +12352,10 @@ fn (mut g FlatGen) reserve_fn_signature_registrations(registrations []FnSignatur
 	g.fn_decl_mut_receivers.reserve(u32(g.fn_decl_mut_receivers.len) + mutable)
 }
 
+// fn_signature_registration_groups is the number of independent map groups that
+// apply_fn_signature_registration_group fills.
+const fn_signature_registration_groups = 5
+
 fn (mut g FlatGen) apply_fn_signature_registration_group(registration FnSignatureRegistration, group int) {
 	match group {
 		0 {
@@ -12360,7 +12363,6 @@ fn (mut g FlatGen) apply_fn_signature_registration_group(registration FnSignatur
 			if registration.is_variadic {
 				g.fn_decl_variadic[registration.module_key] = true
 			}
-			g.fn_decl_variadic_short_counts[registration.short_name] = g.fn_decl_variadic_short_counts[registration.short_name] + 1
 			for alias_idx in 0 .. registration.alias_count {
 				alias := registration.aliases[alias_idx]
 				if alias !in g.fn_decl_param_types {
@@ -12397,6 +12399,9 @@ fn (mut g FlatGen) apply_fn_signature_registration_group(registration FnSignatur
 					g.fn_decl_mut_receivers[alias] = true
 				}
 			}
+		}
+		4 {
+			g.fn_decl_variadic_short_counts[registration.short_name] = g.fn_decl_variadic_short_counts[registration.short_name] + 1
 		}
 		else {}
 	}

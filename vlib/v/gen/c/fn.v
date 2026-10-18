@@ -277,7 +277,7 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 			idx:    i
 		}
 	}
-	keys.sort(a.c_name < b.c_name)
+	keys = g.sorted_fn_gen_item_keys(keys)
 	unsorted := items.clone()
 	for i, key in keys {
 		items[i] = unsorted[key.idx]

@@ -102,7 +102,8 @@ struct FnSignatureRegistrationArgs {
 	g                 voidptr
 	registrations_ptr voidptr
 	node_regs_ptr     voidptr
-	// 0..3: signature registration groups, 4..6: register_fn_decl_nodes maps.
+	// Below fn_signature_registration_groups: a signature registration group;
+	// the three above it: register_fn_decl_nodes maps.
 	group int
 }
 
@@ -124,9 +125,9 @@ mut:
 fn fn_signature_registration_thread(arg voidptr) voidptr {
 	a := unsafe { &FnSignatureRegistrationArgs(arg) }
 	mut g := unsafe { &FlatGen(a.g) }
-	if a.group >= 4 {
+	if a.group >= fn_signature_registration_groups {
 		node_regs := unsafe { &[]FnDeclNodeReg(a.node_regs_ptr) }
-		g.register_fn_decl_nodes(*node_regs, a.group - 4)
+		g.register_fn_decl_nodes(*node_regs, a.group - fn_signature_registration_groups)
 		return unsafe { nil }
 	}
 	registrations := unsafe { &[]FnSignatureRegistration(a.registrations_ptr) }
@@ -626,6 +627,104 @@ fn optional_support_selection_thread(arg voidptr) voidptr {
 	return unsafe { nil }
 }
 
+struct FnGenItemKeySortArgs {
+mut:
+	keys []FlatFnGenItemSortKey
+}
+
+fn fn_gen_item_key_sort_thread(arg voidptr) voidptr {
+	mut a := unsafe { &FnGenItemKeySortArgs(arg) }
+	a.keys.sort(a.c_name < b.c_name)
+	return unsafe { nil }
+}
+
+// sorted_fn_gen_item_keys returns the keys stably sorted by C name, like
+// `keys.sort(a.c_name < b.c_name)`. Large inputs are split into consecutive
+// parts that are sorted on the pool and merged, ties taken from the earlier
+// part, so equal names keep their input order.
+fn (g &FlatGen) sorted_fn_gen_item_keys(keys []FlatFnGenItemSortKey) []FlatFnGenItemSortKey {
+	if keys.len < 4096 || isnil(g.a.worker_pool) || g.a.worker_pool.size() < 4 {
+		mut sorted := keys.clone()
+		sorted.sort(a.c_name < b.c_name)
+		return sorted
+	}
+	n_parts := 8
+	mut parts := []FnGenItemKeySortArgs{cap: n_parts}
+	for part in 0 .. n_parts {
+		parts << FnGenItemKeySortArgs{
+			keys: keys[keys.len * part / n_parts..keys.len * (part + 1) / n_parts].clone()
+		}
+	}
+	mut tasks := []workers.Task{cap: n_parts}
+	for part in 0 .. n_parts {
+		tasks << workers.Task{
+			run:        fn_gen_item_key_sort_thread
+			arg:        unsafe { voidptr(&parts[part]) }
+			force_sync: part == 0
+		}
+	}
+	g.a.worker_pool.run(tasks)
+	mut runs := [][]FlatFnGenItemSortKey{cap: n_parts}
+	for part in parts {
+		runs << moved_fn_gen_item_sort_keys(part.keys)
+	}
+	for runs.len > 1 {
+		mut merged := [][]FlatFnGenItemSortKey{cap: (runs.len + 1) / 2}
+		for i := 0; i < runs.len; i += 2 {
+			if i + 1 < runs.len {
+				merged << merge_fn_gen_item_sort_keys(runs[i], runs[i + 1])
+			} else {
+				merged << moved_fn_gen_item_sort_keys(runs[i])
+			}
+		}
+		runs = moved_fn_gen_item_sort_runs(merged)
+	}
+	return runs[0]
+}
+
+// merge_fn_gen_item_sort_keys merges two sorted runs; on equal names the key of
+// `first` comes first.
+fn merge_fn_gen_item_sort_keys(first []FlatFnGenItemSortKey, second []FlatFnGenItemSortKey) []FlatFnGenItemSortKey {
+	mut out := []FlatFnGenItemSortKey{cap: first.len + second.len}
+	mut i := 0
+	mut j := 0
+	for i < first.len && j < second.len {
+		if second[j].c_name < first[i].c_name {
+			out << moved_fn_gen_item_sort_key(second[j])
+			j++
+		} else {
+			out << moved_fn_gen_item_sort_key(first[i])
+			i++
+		}
+	}
+	for i < first.len {
+		out << moved_fn_gen_item_sort_key(first[i])
+		i++
+	}
+	for j < second.len {
+		out << moved_fn_gen_item_sort_key(second[j])
+		j++
+	}
+	return out
+}
+
+@[inline]
+fn moved_fn_gen_item_sort_keys(keys []FlatFnGenItemSortKey) []FlatFnGenItemSortKey {
+	return keys
+}
+
+@[inline]
+fn moved_fn_gen_item_sort_runs(runs [][]FlatFnGenItemSortKey) [][]FlatFnGenItemSortKey {
+	return runs
+}
+
+// moved_fn_gen_item_sort_key returns `key`; pushing a call result does not
+// copy its name.
+@[inline]
+fn moved_fn_gen_item_sort_key(key FlatFnGenItemSortKey) FlatFnGenItemSortKey {
+	return key
+}
+
 // TypeIndexArgs carries the read-only type indexes that a helper thread builds
 // from the checker's (complete) type tables while collect_gen_info runs;
 // `scope` holds their storage until cgen output is done.
@@ -983,7 +1082,7 @@ fn (mut g FlatGen) scan_collect_gen_info(no_parallel bool) CollectGenInfoScanCou
 fn (mut g FlatGen) apply_fn_signature_registrations(registrations []FnSignatureRegistration, node_regs []FnDeclNodeReg) {
 	if registrations.len < 128 || isnil(g.a.worker_pool) || g.a.worker_pool.size() < 4
 		|| os.getenv('V3_NO_PAR_CGEN_SIG_REG') != '' {
-		for group in 0 .. 4 {
+		for group in 0 .. fn_signature_registration_groups {
 			for registration in registrations {
 				g.apply_fn_signature_registration_group(registration, group)
 			}
@@ -994,9 +1093,10 @@ fn (mut g FlatGen) apply_fn_signature_registrations(registrations []FnSignatureR
 		return
 	}
 	// Signature groups and the three fn-decl node maps each fill their own maps.
-	mut args := []FnSignatureRegistrationArgs{cap: 7}
-	mut tasks := []workers.Task{cap: 7}
-	for group in 0 .. 7 {
+	n_tasks := fn_signature_registration_groups + 3
+	mut args := []FnSignatureRegistrationArgs{cap: n_tasks}
+	mut tasks := []workers.Task{cap: n_tasks}
+	for group in 0 .. n_tasks {
 		args << FnSignatureRegistrationArgs{
 			g:                 voidptr(g)
 			registrations_ptr: unsafe { voidptr(&registrations) }
@@ -1004,7 +1104,7 @@ fn (mut g FlatGen) apply_fn_signature_registrations(registrations []FnSignatureR
 			group:             group
 		}
 	}
-	for group in 0 .. 7 {
+	for group in 0 .. n_tasks {
 		tasks << workers.Task{
 			run:        fn_signature_registration_thread
 			arg:        unsafe { voidptr(&args[group]) }
