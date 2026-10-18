@@ -6,8 +6,10 @@ import time
 // RateLimitOptions configures the `rate_limit` middleware: a token bucket per
 // client key, refilled at `requests_per_second` up to `burst` tokens. The key
 // is the request IP. Once the table reaches `max_keys`, buckets idle longer
-// than `idle_timeout` are swept first, so distinct clients cannot grow it
-// without bound.
+// than `idle_timeout` are swept first. If no slot is available, new clients
+// receive 429 without evicting existing buckets. A nonpositive `max_keys`
+// rejects every request without allocating buckets.
+// See [rate_limit.md](rate_limit.md) for capacity and retry behavior.
 @[params]
 pub struct RateLimitOptions {
 pub:
@@ -41,15 +43,20 @@ fn new_rate_limit_store() &RateLimitStore {
 
 // allow consumes one token for `key` when the bucket holds one after
 // refilling to `now_ms`. It returns whether the request passes and, when it
-// does not, after how many whole seconds the next token arrives, which is
-// what the `Retry-After` header carries.
+// does not, the whole-second `Retry-After` for another token or an idle slot.
 fn (mut s RateLimitStore) allow(key string, now_ms i64, o RateLimitOptions) (bool, int) {
 	s.mu.lock()
 	defer {
 		s.mu.unlock()
 	}
-	if s.buckets.len >= o.max_keys {
-		s.sweep_idle(now_ms, o.idle_timeout)
+	if o.max_keys <= 0 {
+		return false, 60
+	}
+	if key !in s.buckets && s.buckets.len >= o.max_keys {
+		retry_after := s.sweep_idle(now_ms, o.idle_timeout)
+		if s.buckets.len >= o.max_keys {
+			return false, retry_after
+		}
 	}
 	mut bucket := s.buckets[key] or {
 		TokenBucket{
@@ -63,15 +70,23 @@ fn (mut s RateLimitStore) allow(key string, now_ms i64, o RateLimitOptions) (boo
 	return allowed, retry_after
 }
 
-// sweep_idle drops buckets untouched for longer than `idle`, bounding the
-// table a flood of distinct keys can build.
-fn (mut s RateLimitStore) sweep_idle(now_ms i64, idle time.Duration) {
+// sweep_idle drops buckets untouched for longer than `idle` and returns the
+// earliest remaining bucket expiry in whole seconds, rounded up.
+fn (mut s RateLimitStore) sweep_idle(now_ms i64, idle time.Duration) int {
 	idle_ms := i64(idle) / i64(time.millisecond)
+	mut earliest_expiry_ms := i64(0)
 	for key, bucket in s.buckets {
-		if now_ms - bucket.last_unix_ms > idle_ms {
+		elapsed := now_ms - bucket.last_unix_ms
+		if elapsed > idle_ms {
 			s.buckets.delete(key)
+		} else {
+			expires_in_ms := idle_ms - elapsed + 1
+			if earliest_expiry_ms == 0 || expires_in_ms < earliest_expiry_ms {
+				earliest_expiry_ms = expires_in_ms
+			}
 		}
 	}
+	return int((earliest_expiry_ms + 999) / 1000)
 }
 
 // bucket_allow refills `b` to `now_ms` and consumes one token when one is
@@ -79,10 +94,12 @@ fn (mut s RateLimitStore) sweep_idle(now_ms i64, idle time.Duration) {
 // rather than dividing by zero.
 fn bucket_allow(mut b TokenBucket, now_ms i64, rate_per_sec f64, burst int) (bool, int) {
 	elapsed := now_ms - b.last_unix_ms
-	if elapsed > 0 && rate_per_sec > 0 {
-		b.tokens += f64(elapsed) / 1000.0 * rate_per_sec
-		if b.tokens > f64(burst) {
-			b.tokens = f64(burst)
+	if elapsed > 0 {
+		if rate_per_sec > 0 {
+			b.tokens += f64(elapsed) / 1000.0 * rate_per_sec
+			if b.tokens > f64(burst) {
+				b.tokens = f64(burst)
+			}
 		}
 		b.last_unix_ms = now_ms
 	}
@@ -99,6 +116,7 @@ fn bucket_allow(mut b TokenBucket, now_ms i64, rate_per_sec f64, burst int) (boo
 
 // rate_limit returns middleware that caps requests per client key at the
 // configured rate, answering 429 with a `Retry-After` header past it.
+// New clients also receive 429 while all `max_keys` buckets are occupied.
 // Register it globally or on the routes that need it:
 // ```v
 // app.use(veb.rate_limit[Context](requests_per_second: 5, burst: 10))

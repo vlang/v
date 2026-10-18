@@ -71,6 +71,19 @@ fn test_a_custom_message_reaches_the_refused_client() {
 	assert ctx.res.body == 'slow down'
 }
 
+fn test_closed_capacity_uses_the_configured_response_and_retry_header() {
+	mut app := LimitApp{}
+	app.use(rate_limit[LimitContext](max_keys: 0, message: 'no client slots'))
+	ctx := limit_request(mut app, '/api')
+	assert ctx.res.status_code == int(http.Status.too_many_requests)
+	assert ctx.res.body == 'no client slots'
+	retry_after := ctx.res.header.get_custom('Retry-After') or {
+		assert false, 'a full store must carry Retry-After'
+		return
+	}
+	assert retry_after == '60'
+}
+
 fn test_buckets_refill_with_time() {
 	mut store := new_rate_limit_store()
 	options := RateLimitOptions{
@@ -120,4 +133,93 @@ fn test_idle_keys_are_swept_past_the_cap() {
 	assert 'old' !in store.buckets
 	assert 'recent' in store.buckets
 	assert 'new' in store.buckets
+}
+
+fn test_active_clients_cannot_grow_the_table_past_the_cap() {
+	mut store := new_rate_limit_store()
+	options := RateLimitOptions{
+		requests_per_second: 1
+		burst:               1
+		max_keys:            2
+		idle_timeout:        time.minute
+	}
+	for i in 0 .. 20 {
+		allowed, retry_after := store.allow('client-${i}', 0, options)
+		assert allowed == (i < options.max_keys)
+		if i >= options.max_keys {
+			assert retry_after == 61
+		}
+		assert store.buckets.len <= options.max_keys
+	}
+	// Refusing new clients must not evict a depleted bucket or reset its burst.
+	allowed, retry_after := store.allow('client-0', 0, options)
+	assert !allowed
+	assert retry_after >= 1
+	assert store.buckets['client-0'].tokens == 0
+	assert store.buckets.len == options.max_keys
+	refilled, _ := store.allow('client-0', 1000, options)
+	assert refilled
+	assert store.buckets.len == options.max_keys
+}
+
+fn test_full_table_retries_when_the_earliest_bucket_can_expire() {
+	mut store := new_rate_limit_store()
+	options := RateLimitOptions{
+		requests_per_second: 1
+		burst:               1
+		max_keys:            2
+		idle_timeout:        1500 * time.millisecond
+	}
+	_, _ = store.allow('first', 1000, options)
+	_, _ = store.allow('second', 1500, options)
+	allowed_earlier, retry_earlier := store.allow('new', 1500, options)
+	assert !allowed_earlier
+	assert retry_earlier == 2
+	allowed, retry_after := store.allow('new', 2000, options)
+	assert !allowed
+	assert retry_after == 1
+	assert 'new' !in store.buckets
+	// Exactly the timeout is still occupied; expiry requires longer idle time.
+	allowed_at_timeout, retry_at_timeout := store.allow('new', 2500, options)
+	assert !allowed_at_timeout
+	assert retry_at_timeout == 1
+	allowed_after_timeout, _ := store.allow('new', 2501, options)
+	assert allowed_after_timeout
+	assert 'first' !in store.buckets
+	assert 'second' in store.buckets
+	assert store.buckets.len == options.max_keys
+}
+
+fn test_nonpositive_max_keys_reject_without_allocating_buckets() {
+	for max_keys in [0, -1] {
+		mut store := new_rate_limit_store()
+		options := RateLimitOptions{
+			max_keys: max_keys
+		}
+		for i in 0 .. 20 {
+			allowed, retry_after := store.allow('client-${i}', 0, options)
+			assert !allowed
+			assert retry_after == 60
+		}
+		assert store.buckets.len == 0
+	}
+}
+
+fn test_requests_without_refill_keep_their_bucket_active() {
+	mut store := new_rate_limit_store()
+	options := RateLimitOptions{
+		requests_per_second: 0
+		burst:               1
+		max_keys:            1
+		idle_timeout:        time.second
+	}
+	allowed, _ := store.allow('active', 0, options)
+	assert allowed
+	allowed_again, _ := store.allow('active', 1000, options)
+	assert !allowed_again
+	allowed_new, retry_after := store.allow('new', 1001, options)
+	assert !allowed_new
+	assert retry_after == 1
+	assert 'active' in store.buckets
+	assert store.buckets['active'].tokens == 0
 }
