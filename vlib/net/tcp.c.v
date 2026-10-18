@@ -258,8 +258,9 @@ pub fn (c TcpConn) read(mut buf []u8) !int {
 	return c.read_ptr(buf.data, buf.len)!
 }
 
+// read_deadline returns the current read deadline, or an error when it is unset.
 pub fn (mut c TcpConn) read_deadline() !time.Time {
-	if c.read_deadline.unix() == 0 {
+	if deadline_set(c.read_deadline) {
 		return c.read_deadline
 	}
 	return error('none')
@@ -326,8 +327,9 @@ pub fn (mut c TcpConn) set_read_deadline(deadline time.Time) {
 	c.read_deadline = deadline
 }
 
+// write_deadline returns the current write deadline, or an error when it is unset.
 pub fn (mut c TcpConn) write_deadline() !time.Time {
-	if c.write_deadline.unix() == 0 {
+	if deadline_set(c.write_deadline) {
 		return c.write_deadline
 	}
 	return error('none')
@@ -628,8 +630,9 @@ pub fn (mut l TcpListener) accept_only() !&TcpConn {
 	}
 }
 
+// accept_deadline returns the current accept deadline, or an error when it is unset.
 pub fn (c &TcpListener) accept_deadline() !time.Time {
-	if c.accept_deadline.unix() != 0 {
+	if deadline_set(c.accept_deadline) {
 		return c.accept_deadline
 	}
 	return error('invalid deadline')

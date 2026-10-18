@@ -17,7 +17,8 @@ default, ends at its deadline. Set the deadline back to `time.Time{}` or `time.u
 to the timeout. These are the only unset deadline values; other timestamps, including those
 within the first second of 1970, expire when they are in the past. The same rules apply to
 `net.unix` waits. With an unset deadline and `no_timeout` or `infinite_timeout`, a wait has no
-time limit.
+time limit. The deadline getters return an error for either unset value and otherwise return
+the timestamp, including when it has already expired.
 
 A deadline applies where an operation waits before its system call: the
 `wait_for_read`/`wait_for_write`/`wait_for_accept` methods, and in the default build TCP reads and
