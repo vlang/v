@@ -212,15 +212,15 @@ fn test_generic_instantiation_falls_back_for_uncached_declarations() {
 			panic('missing cached generic instantiation')
 		}
 		assert cached.generic_params == ['U']
-		assert cached.concrete_args == ['int']
+		assert cached.concrete_args_text() == ['int']
 		tc.enclosing_generic_params_by_node.delete(decl_id)
 		fallback := tc.generic_compile_error_instantiation(call, info) or {
 			panic('missing uncached generic instantiation')
 		}
 		assert fallback.decl_id == cached.decl_id
 		assert fallback.generic_params == cached.generic_params
-		assert fallback.concrete_args == cached.concrete_args
-		assert fallback.symbol_types == cached.symbol_types
+		assert fallback.concrete_args_text() == cached.concrete_args_text()
+		assert fallback.symbol_types.ids == cached.symbol_types.ids
 	}
 }
 
@@ -279,7 +279,7 @@ fn test_generic_method_metadata_routes_remain_independent() {
 		mut tc := TypeChecker.new(&a)
 		name := if route == 1 { 'Alias' } else { 'Box' }
 		key := if route == 2 { 'Box[u8].read' } else { '${name}.read' }
-		tc.fn_ret_types[key] = tc.parse_type('u64')
+		tc.fn_ret_types[key] = tc.parse_type(flat.source_type_u64)
 		if route == 0 {
 			tc.struct_generic_params['Box'] = ['T']
 		} else if route == 1 {
@@ -287,7 +287,7 @@ fn test_generic_method_metadata_routes_remain_independent() {
 		} else {
 			tc.register_generated_fn_param_types(key, []Type{})
 		}
-		info := tc.resolve_generic_struct_method('${name}[u8]', 'read') or { panic('missing route ${route}') }
+		info := tc.resolve_generic_struct_method(flat.source_type_id('${name}[u8]'), 'read') or { panic('missing route ${route}') }
 		assert info.name == key
 		assert info.return_type.name() == 'u64'
 	}
@@ -296,9 +296,9 @@ fn test_generic_method_metadata_routes_remain_independent() {
 fn test_plain_signatures_and_aliases_do_not_supply_generic_parameters() {
 	a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
-	tc.type_aliases['Concrete'] = 'Box'
-	tc.fn_ret_types['Box.read'] = tc.parse_type('u64')
+	tc.type_aliases.set_id('Concrete', flat.source_type_id('Box'))
+	tc.fn_ret_types['Box.read'] = tc.parse_type(flat.source_type_u64)
 	tc.fn_param_types['Box.read'] = []Type{}
-	assert tc.resolve_generic_struct_method('Box[u8]', 'read') == none
-	assert tc.resolve_generic_struct_method('Concrete', 'read') == none
+	assert tc.resolve_generic_struct_method(flat.source_type_id('Box[u8]'), 'read') == none
+	assert tc.resolve_generic_struct_method(flat.source_type_id('Concrete'), 'read') == none
 }

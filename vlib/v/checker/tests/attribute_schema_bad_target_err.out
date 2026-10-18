@@ -1,0 +1,5 @@
+vlib/v/checker/tests/attribute_schema_bad_target_err.vv:1:3: error: unknown attribute target `fnu`
+    1 | @[attribute: 'fnu']
+      |   ~~~~~~~~~
+    2 | struct Route {
+    3 |     path string

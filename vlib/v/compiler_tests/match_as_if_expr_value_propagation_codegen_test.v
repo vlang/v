@@ -633,18 +633,18 @@ fn (mut tr Tracer) needle_str() string {
 	return "lo"
 }
 
-fn (mut tr Tracer) text_first(_ First) !string {
+fn (mut tr Tracer) text_first(_ First) ![]string {
 	tr.order << 2
-	return "hello"
+	return ["hel", "lo"]
 }
 
-fn (mut tr Tracer) text_second(_ Second) !string {
+fn (mut tr Tracer) text_second(_ Second) ![]string {
 	tr.order << 2
-	return "world"
+	return ["wor", "ld"]
 }
 
-// String-membership ordering: the side-effecting needle must run before the
-// hoisting match container. "lo" in "hello" is true; order [1,2] -> 512 (a
+// String-element membership ordering: the side-effecting needle must run before the
+// hoisting match container. "lo" in ["hel", "lo"] is true; order [1,2] -> 512 (a
 // reversed order would be 521).
 fn select_value_string_membership_order(node Node) !int {
 	mut tr := Tracer{}
@@ -655,14 +655,14 @@ fn select_value_string_membership_order(node Node) !int {
 	return (if inside { 500 } else { 0 }) + tr.order[0] * 10 + tr.order[1]
 }
 
-fn wrap_str(s string) string {
+fn wrap_str(s []string) []string {
 	return s
 }
 
-// String-membership ordering with a *nested* container: the match is wrapped inside a call
-// (`needle in wrap_str(match ...)`), which still hoists the match prelude. The side-effecting
-// needle must run before it. First -> "lo" in "hello" = true, order [1,2] -> 512 (a reversed
-// order would be 521).
+// String-element membership ordering with a *nested* container: the match is wrapped inside a
+// call (`needle in wrap_str(match ...)`), which still hoists the match prelude. The
+// side-effecting needle must run before it. First -> "lo" in ["hel", "lo"] = true, order [1,2]
+// -> 512 (a reversed order would be 521).
 fn select_value_nested_string_membership_order(node Node) !int {
 	mut tr := Tracer{}
 	inside := tr.needle_str() in wrap_str(match node {

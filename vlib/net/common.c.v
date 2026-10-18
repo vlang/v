@@ -99,7 +99,7 @@ pub fn close(handle int) ! {
 				}
 				return
 			}
-			return err_timed_out
+			return error_with_code(err_timed_out.msg(), err_timed_out.code())
 		}
 		wrap_error(ecode)!
 	}
@@ -168,7 +168,7 @@ fn select_deadline(handle int, test Select, deadline time.Time) !bool {
 	}
 
 	// Deadline elapsed
-	return err_timed_out
+	return error_with_code(err_timed_out.msg(), err_timed_out.code())
 }
 
 // wait_for_common wraps the common wait code
@@ -193,7 +193,7 @@ fn wait_for_common(handle int, deadline time.Time, timeout time.Duration, test S
 		return
 	}
 
-	return err_timed_out
+	return error_with_code(err_timed_out.msg(), err_timed_out.code())
 }
 
 // wait_for_write waits for a write io operation to be available

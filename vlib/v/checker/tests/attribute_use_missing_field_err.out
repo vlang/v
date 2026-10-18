@@ -1,0 +1,7 @@
+vlib/v/checker/tests/attribute_use_missing_field_err.vv:7:3: error: attribute `Route` is missing field `method`
+    5 | }
+    6 | 
+    7 | @[Route('/a')]
+      |   ~~~~~
+    8 | fn index() {
+    9 | }

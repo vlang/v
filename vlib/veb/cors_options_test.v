@@ -202,11 +202,7 @@ fn test_cors_validate_request_with_a_wildcard_header_allowlist_passes_any_header
 	assert ctx.res.status_code == 0
 }
 
-// NOTE: the allow-list check iterates every request header, and `Origin` is one
-// of them, so a list that does not contain `Origin` refuses every request that
-// carries one. That looks unintended, but it is what the code does, so it is
-// asserted here rather than changed.
-fn test_cors_validate_request_rejects_a_request_header_outside_the_allowlist() {
+fn test_cors_validate_request_accepts_browser_headers_with_an_allowlist() {
 	mut ctx := cors_ctx(.get, {
 		.origin:     cov_cors_origin
 		.user_agent: 'cov/1.0'
@@ -216,9 +212,38 @@ fn test_cors_validate_request_rejects_a_request_header_outside_the_allowlist() {
 		allowed_methods: [.get]
 		allowed_headers: ['X-Token']
 	}
+	assert options.validate_request(mut ctx)
+	assert ctx.res.status_code == 0
+	assert ctx.res.body == ''
+}
+
+fn test_cors_validate_request_matches_requested_headers_case_insensitively() {
+	mut ctx := cors_ctx(.get, {
+		.origin:                         cov_cors_origin
+		.access_control_request_headers: ' x-ToKeN , CONTENT-TYPE '
+	})
+	options := CorsOptions{
+		origins:         [cov_cors_origin]
+		allowed_methods: [.get]
+		allowed_headers: ['X-Token', 'Content-Type']
+	}
+	assert options.validate_request(mut ctx)
+	assert ctx.res.status_code == 0
+}
+
+fn test_cors_validate_request_rejects_an_unlisted_requested_header() {
+	mut ctx := cors_ctx(.get, {
+		.origin:                         cov_cors_origin
+		.access_control_request_headers: 'x-token, X-Forbidden'
+	})
+	options := CorsOptions{
+		origins:         [cov_cors_origin]
+		allowed_methods: [.get]
+		allowed_headers: ['X-Token']
+	}
 	assert !options.validate_request(mut ctx)
 	assert ctx.res.status_code == int(http.Status.forbidden)
-	assert ctx.res.body == 'invalid Header "Origin"'
+	assert ctx.res.body == 'invalid Header "X-Forbidden"'
 }
 
 // NOTE: `cors_safelisted_response_headers` names CORS-safelisted *response*

@@ -66,7 +66,7 @@ fn test_header_backed_declarations_do_not_get_a_second_prototype() {
 	postinclude_g.collect_c_directive('main', flat.Node{
 		kind:  .directive
 		value: 'postinclude'
-		typ:   '"${header}"'
+		typ:   flat.source_type_id('"${header}"')
 	}, source, false)
 	assert 'postinclude_api' !in postinclude_g.inlined_c_declared_fns
 	assert '#include "${header}"' in postinclude_g.postinclude_directives
@@ -77,7 +77,7 @@ fn test_header_backed_declarations_do_not_get_a_second_prototype() {
 	preinclude_g.collect_c_directive('main', flat.Node{
 		kind:  .directive
 		value: 'preinclude'
-		typ:   '"${header}"'
+		typ:   flat.source_type_id('"${header}"')
 	}, source, false)
 	assert 'postinclude_api' !in preinclude_g.inlined_c_declared_fns
 	assert !preinclude_g.should_emit_c_extern_decl_from_file('postinclude_api', source, 'main')
@@ -100,7 +100,7 @@ fn test_include_preserves_header_without_scanning_declarations() {
 	g.collect_c_directive('main', flat.Node{
 		kind:  .directive
 		value: 'include'
-		typ:   '"${header}"'
+		typ:   flat.source_type_id('"${header}"')
 	}, source, false)
 
 	assert g.c_directives.len == 1
@@ -159,12 +159,12 @@ fn test_preinclude_does_not_scan_macro_state() {
 	g.collect_c_directive('main', flat.Node{
 		kind:  .directive
 		value: 'preinclude'
-		typ:   '"${config_header}"'
+		typ:   flat.source_type_id('"${config_header}"')
 	}, source, false)
 	g.collect_c_directive('main', flat.Node{
 		kind:  .directive
 		value: 'preinclude'
-		typ:   '"${api_header}"'
+		typ:   flat.source_type_id('"${api_header}"')
 	}, source, false)
 
 	assert 'chained_api' !in g.inlined_c_active_macros
@@ -265,7 +265,7 @@ fn test_cache_extern_filter_uses_pthread_v_declarations() {
 	g.collect_c_directive('main', flat.Node{
 		kind:  .directive
 		value: 'include'
-		typ:   '<pthread.h>'
+		typ:   flat.source_type_id('<pthread.h>')
 	}, '/tmp/main.c.v', false)
 	assert !g.should_emit_c_extern_decl('pthread_once')
 	assert !g.should_emit_c_extern_decl('pthread_attr_setdetachstate')
@@ -387,7 +387,7 @@ fn test_cocoa_nsfont_binding_accepts_a_target_qualified_cocoa_include() {
 	g.collect_c_directive('ui', flat.Node{
 		kind:  .directive
 		value: 'include'
-		typ:   'macos <Cocoa/Cocoa.h>'
+		typ:   flat.source_type_id('macos <Cocoa/Cocoa.h>')
 	}, '', false)
 	directives := g.ordered_c_directives(false)
 	assert directives.len == 1 && directives[0].starts_with('#if '), directives.str()
@@ -397,7 +397,7 @@ fn test_cocoa_nsfont_binding_accepts_a_target_qualified_cocoa_include() {
 	g.collect_c_directive('ui', flat.Node{
 		kind:  .directive
 		value: 'include'
-		typ:   'linux <Cocoa/Cocoa.h>'
+		typ:   flat.source_type_id('linux <Cocoa/Cocoa.h>')
 	}, '', false)
 	assert g.ordered_c_directives(false).len == 1
 	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
@@ -587,6 +587,39 @@ fn test_target_libc_headers_own_their_c_extern_declarations() {
 	assert g.should_emit_c_extern_decl_from_file('target_specific_api', source, 'main')
 }
 
+fn test_target_libc_headers_own_errno_accessor_declarations() {
+	mut g := FlatGen.new()
+	source := os.join_path(@VEXEROOT, 'vlib', 'builtin', 'cfns.c.v')
+	g.compiler_vroot = @VEXEROOT
+	for name in ['__error', '__errno', '__errno_location', '___errno', '_errno', '_errnop',
+		'__get_errno_ptr'] {
+		g.set_target_libc_headers(false)
+		assert g.should_emit_c_extern_decl_from_file(name, source, 'builtin'), name
+		g.set_target_libc_headers(true)
+		assert !g.should_emit_c_extern_decl_from_file(name, source, 'builtin'), name
+	}
+}
+
+fn test_freestanding_c_uses_target_errno_header() ! {
+	dir := os.join_path(os.vtmp_dir(), 'target_errno_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	source := os.join_path(dir, 'main.v')
+	output := os.join_path(dir, 'main.c')
+	os.write_file(source, 'fn main() { println(1) }\n')!
+	// -target-libc-headers rejects Windows targets and the target OS defaults to the host's,
+	// so pin Linux. Writing `.c` output only generates C; no Linux toolchain is needed.
+	result := os.exec([@VEXE, '-freestanding', '-target-libc-headers', '-gc', 'none', '-nocache',
+		'-os', 'linux', '-o', output, source])
+	assert result.exit_code == 0, result.output
+	generated := os.read_file(output)!
+	assert generated.contains('#include <errno.h>')
+	for name in ['__error', '__errno', '__errno_location', '___errno', '_errno', '_errnop',
+		'__get_errno_ptr'] {
+		assert !generated.contains('i32* ' + name + '('), name
+	}
+}
+
 fn test_builtin_boehm_directives_use_system_libc() {
 	mut boehm := FlatGen.new()
 	boehm.add_c_directive('builtin', '#include <gc.h>', false)
@@ -674,7 +707,7 @@ fn test_target_inactive_include_does_not_claim_header_ownership() {
 		g.collect_c_directive('main', flat.Node{
 			kind:  .directive
 			value: kind
-			typ:   '${inactive_target} <ownership_probe.h>'
+			typ:   flat.source_type_id('${inactive_target} <ownership_probe.h>')
 		}, source, false)
 	}
 	assert source !in g.files_with_c_includes
@@ -688,7 +721,7 @@ fn test_target_inactive_include_does_not_claim_header_ownership() {
 	active_g.collect_c_directive('main', flat.Node{
 		kind:  .directive
 		value: 'include'
-		typ:   '${os.user_os()} <ownership_probe.h>'
+		typ:   flat.source_type_id('${os.user_os()} <ownership_probe.h>')
 	}, source, false)
 	assert source in active_g.files_with_c_includes
 	assert !active_g.should_emit_c_extern_decl_from_file('helper_fn', source, 'main')
@@ -703,7 +736,7 @@ fn test_cross_os_target_include_is_guarded_for_the_c_compiler() {
 	g.collect_c_directive('main', flat.Node{
 		kind:  .directive
 		value: 'include'
-		typ:   '${target_os} <target_only.h>'
+		typ:   flat.source_type_id('${target_os} <target_only.h>')
 	}, '', false)
 	condition := pref.cross_target_c_condition(target_os) or { panic('missing target condition') }
 	directives := g.ordered_c_directives(false)
@@ -718,7 +751,7 @@ fn test_portable_output_keeps_other_target_linkage_metadata() {
 		mut ast := &flat.FlatAst{}
 		ast.add_val(.file, source)
 		ast.add_val(.module_decl, 'bindings')
-		ast.add_node(flat.Node{ kind: .directive, value: 'flag', typ: flag })
+		ast.add_node(flat.Node{ kind: .directive, value: 'flag', typ: flat.source_type_id(flag) })
 		mut g := FlatGen.new()
 		g.a = ast
 		g.set_target(pref.target_from('linux', 'arm64') or { panic(err) })
@@ -732,6 +765,9 @@ fn test_portable_output_keeps_other_target_linkage_metadata() {
 		selected.a = ast
 		selected.set_target(pref.target_from('linux', 'arm64') or { panic(err) })
 		selected.collect_c_flags_from_directives()
-		assert !selected.should_emit_c_extern_decl_from_file('native_api', source, 'bindings'), flag
+		// A selected target drops the other target's link inputs, so they do not make the
+		// file need a prototype beside its headers. (A unit without any headers declares
+		// every binding it calls, whatever its link inputs.)
+		assert !selected.c_extern_decl_has_no_header(source, 'bindings'), flag
 	}
 }

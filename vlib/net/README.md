@@ -10,6 +10,9 @@ read timeout directly in `recv`, avoiding a readiness poll before each read.
 disable it. Deadline-only reads and nonblocking reads continue to use readiness
 polling, as do sockets that do not support the receive-timeout option.
 
+Networking APIs support `-autofree`. Invalid-port and timeout results own their error values,
+while preserving the messages and codes of the corresponding `net.err_*` constants.
+
 UDP multicast example:
 
 ```v
@@ -40,3 +43,6 @@ computing its masked `network()`, `broadcast()`, and `size()`. `contains('192.16
 checks membership and returns false for malformed queries. Prefixes range from 0 to 32.
 `parse_ip` and `format_ip` convert between dotted IPv4 addresses and `u32` values. Parsing
 rejects invalid octets, leading zeroes, and numeric overflow. IPv6 CIDR is unsupported.
+
+`resolve_ipaddrs` rejects an empty address with an error. Use `:port` for the IPv4 or IPv6
+wildcard address, according to the selected address family.

@@ -21,11 +21,11 @@ fn test_sql_dynamic_guard_infers_bound_callback_field_type() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	tc.structs['MapSqlOptionalKey'] = [
-		types.StructField{ name: 'optional_id', typ: tc.parse_type('?int') },
+		types.StructField{ name: 'optional_id', typ: tc.parse_type(flat.source_type_id('?int')) },
 	]
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.sql_array_it_name = '__elem'
-	t.set_var_type('__elem', 'MapSqlOptionalKey')
-	assert t.sql_dynamic_value_type(['it.optional_id']) == '?int'
+	t.set_var_type('__elem', flat.source_type_id('MapSqlOptionalKey'))
+	assert flat.source_type_name(t.sql_dynamic_value_type(['it.optional_id'])) == '?int'
 	assert t.sql_bound_interpolation_text('key ' + '$' + '{it}') == 'key ' + '$' + '{__elem}'
 }

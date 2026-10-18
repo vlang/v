@@ -383,7 +383,7 @@ fn (mut g Gen) setup_json_migration(fnode &flat.Node) {
 				legacy_imports << flat.NodeId(i)
 			} else if n.value == 'json2' {
 				json2_imports << flat.NodeId(i)
-			} else if n.typ == 'json2' {
+			} else if n.typ_text() == 'json2' {
 				return
 			}
 		}
@@ -393,7 +393,7 @@ fn (mut g Gen) setup_json_migration(fnode &flat.Node) {
 	}
 	legacy_id := legacy_imports[0]
 	legacy := g.a.node(legacy_id)
-	if !direct[int(legacy_id)] || (legacy.typ.len > 0 && legacy.typ != 'json') {
+	if !direct[int(legacy_id)] || (legacy.typ_text().len > 0 && legacy.typ_text() != 'json') {
 		return
 	}
 	for id in json2_imports {
@@ -407,11 +407,11 @@ fn (mut g Gen) setup_json_migration(fnode &flat.Node) {
 	mut qualifier := 'json2'
 	if json2_imports.len == 1 {
 		existing := g.a.node(json2_imports[0])
-		if existing.typ == '_' || g.comment_on_same_line_after(legacy.pos.offset, legacy.pos.end) {
+		if existing.typ_text() == '_' || g.comment_on_same_line_after(legacy.pos.offset, legacy.pos.end) {
 			return
 		}
-		if existing.typ.len > 0 && existing.typ != 'json2' {
-			qualifier = existing.typ
+		if existing.typ_text().len > 0 && existing.typ_text() != 'json2' {
+			qualifier = existing.typ_text()
 		}
 	}
 	if declared_names[qualifier] {
@@ -466,7 +466,7 @@ fn (mut g Gen) setup_json_migration(fnode &flat.Node) {
 			&& legacy.children_count > 0 {
 			return
 		}
-		if n.kind == .field_decl && n.value == n.typ && n.children_count == 0 {
+		if n.kind == .field_decl && n.value == n.typ_text() && n.children_count == 0 {
 			return
 		}
 		if n.kind == .selector && n.children_count > 0 {
@@ -660,7 +660,11 @@ fn (mut g Gen) collect_implied_imports(fnode &flat.Node) {
 			continue
 		}
 		if n.kind == .import_decl {
-			local_name := if n.typ.len > 0 { n.typ } else { n.value.all_after_last('.') }
+			local_name := if n.typ_text().len > 0 {
+				n.typ_text()
+			} else {
+				n.value.all_after_last('.')
+			}
 			imported[local_name] = true
 		} else if n.kind == .decl_assign && n.children_count > 0 {
 			// A formatter parse has no checker scope information. Record declarations at
@@ -1070,7 +1074,7 @@ fn (mut g Gen) expr(id flat.NodeId) {
 			g.string_interp(id)
 		}
 		.ident {
-			if n.typ == '__v3_formatter_raw' {
+			if n.typ_text() == '__v3_formatter_raw' {
 				source := g.a.formatter_sources[int(id)] or { n.value }
 				g.write(source.trim_space())
 			} else {
@@ -1096,7 +1100,7 @@ fn (mut g Gen) expr(id flat.NodeId) {
 			child := g.a.child(n, 0)
 			cn := g.a.node(child)
 			if n.op == .not && cn.kind == .array_literal
-				&& ((n.typ.len > 0 && cn.typ == n.typ) || int(child) in g.a.formatter_sources) {
+				&& ((n.typ_text().len > 0 && cn.typ_text() == n.typ_text()) || int(child) in g.a.formatter_sources) {
 				g.expr(child)
 			} else if n.op == .not {
 				g.expr(child)
@@ -1169,8 +1173,8 @@ fn (mut g Gen) expr(id flat.NodeId) {
 			g.array_literal(id)
 		}
 		.array_init {
-			if n.typ.len > 0 {
-				g.write(g.type_text(n.typ))
+			if n.typ_text().len > 0 {
+				g.write(g.type_text(n.typ_text()))
 			} else if n.value.len > 0 {
 				g.write('[]${g.type_text(n.value)}')
 			}
@@ -1270,7 +1274,7 @@ fn (mut g Gen) expr(id flat.NodeId) {
 			g.write(')')
 		}
 		.offsetof_expr {
-			g.write('__offsetof(${n.value}, ${n.typ})')
+			g.write('__offsetof(${n.value}, ${n.typ_text()})')
 		}
 		.block {
 			g.block_expr(id)
@@ -1289,7 +1293,7 @@ fn (mut g Gen) expr(id flat.NodeId) {
 			g.write('/* ${n.kind} */')
 		}
 	}
-	if (n.kind == .sql_expr || n.typ == '__v3_formatter_raw') && int(id) in g.a.formatter_sources {
+	if (n.kind == .sql_expr || n.typ_text() == '__v3_formatter_raw') && int(id) in g.a.formatter_sources {
 		g.skip_comments_before(n.pos.end + 1)
 	} else if g.suppress_trailing_comments == 0 {
 		g.emit_trailing_comments(n.pos.end)
@@ -1710,7 +1714,7 @@ fn (mut g Gen) call_expr(id flat.NodeId) {
 		// literal, and `?Foo` as an empty node, which keeps only its source text.
 		mut type_text := ''
 		if first.kind == .array_init && first.children_count == 0 {
-			type_text = first.typ
+			type_text = first.typ_text()
 		} else if first.kind == .empty && args.len > 1 {
 			type_text = g.json_decode_type_arg_source(children[0], args[1]) or { '' }
 		}
@@ -2522,8 +2526,8 @@ fn (mut g Gen) fn_literal(id flat.NodeId) {
 			if capture.is_mut {
 				g.write('mut ')
 			}
-			if capture.typ in ['shared', 'atomic'] {
-				g.write('${capture.typ} ')
+			if capture.typ_text() in ['shared', 'atomic'] {
+				g.write('${capture.typ_text()} ')
 			}
 			g.expr(capture_id)
 			if capture_i < captures.len - 1 {
@@ -2542,8 +2546,8 @@ fn (mut g Gen) fn_literal(id flat.NodeId) {
 		g.write(' ')
 	}
 	g.params(id, params)
-	if n.typ.len > 0 && n.typ != 'void' {
-		g.write(' ${g.type_text(n.typ)}')
+	if n.typ_text().len > 0 && n.typ_text() != 'void' {
+		g.write(' ${g.type_text(n.typ_text())}')
 	}
 	if body.len == 0 && g.empty_braced_body_is_compact(n, n.pos.end)
 		&& !g.has_comment_between(n.pos.offset, n.pos.end) {
@@ -2962,7 +2966,7 @@ fn (mut g Gen) string_interp(id flat.NodeId) {
 	quote_str := if quote == `"` { '"' } else { "'" }
 	// Keep the source spelling of each literal part, as plain literals do.
 	literal_spellings := g.interp_literal_spellings(n, children, quote)
-	if n.typ.starts_with('js:') {
+	if n.typ_text().starts_with('js:') {
 		g.write('js')
 	}
 	g.write(quote_str)
@@ -2976,7 +2980,7 @@ fn (mut g Gen) string_interp(id flat.NodeId) {
 			g.in_string_interp = true
 			g.expr(g.a.child(c, 0))
 			g.in_string_interp = was_in_string_interp
-			g.write(':${c.typ}')
+			g.write(':${c.typ_text()}')
 			g.write('}')
 		} else {
 			g.write('\${')
@@ -2997,7 +3001,7 @@ fn (mut g Gen) string_interp(id flat.NodeId) {
 fn (g &Gen) interp_literal_spellings(n &flat.Node, children []flat.NodeId, quote u8) map[int]string {
 	mut spellings := map[int]string{}
 	source := g.source_span(n.pos.offset, n.pos.end) or { return spellings }
-	prefix_len := if n.typ.starts_with('js:') { 2 } else { 0 }
+	prefix_len := if n.typ_text().starts_with('js:') { 2 } else { 0 }
 	parts := interp_literal_parts(source, prefix_len) or { return spellings }
 	old_quote := source[prefix_len]
 	mut ci := 0
@@ -4050,7 +4054,7 @@ fn (mut g Gen) comptime_for(id flat.NodeId) {
 	if kind == 'strings' && n.children_count == 2 {
 		g.expr(g.a.child(n, 1))
 	} else {
-		g.write('${g.type_text(n.typ)}.${kind}')
+		g.write('${g.type_text(n.typ_text())}.${kind}')
 	}
 	g.write(' {')
 	g.writeln('')
@@ -4121,8 +4125,8 @@ fn (mut g Gen) select_stmt(id flat.NodeId) {
 // (without the `{}`) so it is not mistaken for the branch body.
 fn (mut g Gen) match_cond(id flat.NodeId) {
 	n := g.a.node(id)
-	if n.kind == .array_init && n.children_count == 0 && n.typ.len > 0 {
-		g.write(g.type_text(n.typ))
+	if n.kind == .array_init && n.children_count == 0 && n.typ_text().len > 0 {
+		g.write(g.type_text(n.typ_text()))
 		return
 	}
 	if n.kind == .map_init && n.children_count == 0 && n.value.len > 0 {
@@ -4162,8 +4166,8 @@ fn (mut g Gen) import_decl(id flat.NodeId) {
 	}
 	g.write('import ${n.value}')
 	last_seg := n.value.all_after_last('.')
-	if n.typ.len > 0 && n.typ != last_seg {
-		g.write(' as ${n.typ}')
+	if n.typ_text().len > 0 && n.typ_text() != last_seg {
+		g.write(' as ${n.typ_text()}')
 	}
 	symbols := g.a.children_of(n)
 	if symbols.len > 0 {
@@ -4298,8 +4302,8 @@ fn (mut g Gen) fn_decl(id flat.NodeId) {
 	}
 	g.write_generic_params(n)
 	g.params(id, params)
-	if n.typ.len > 0 && n.typ != 'void' {
-		g.write(' ${g.type_text(n.typ)}')
+	if n.typ_text().len > 0 && n.typ_text() != 'void' {
+		g.write(' ${g.type_text(n.typ_text())}')
 	}
 	if n.kind == .c_fn_decl {
 		g.writeln('')
@@ -4390,7 +4394,7 @@ fn (mut g Gen) params(parent_id flat.NodeId, ids []flat.NodeId) {
 }
 
 fn (g &Gen) param_type(p &flat.Node) string {
-	mut t := p.typ
+	mut t := p.typ_text()
 	if p.is_mut && p.op != .amp && t.starts_with('&') {
 		t = t[1..]
 	}
@@ -4398,7 +4402,7 @@ fn (g &Gen) param_type(p &flat.Node) string {
 }
 
 fn (g &Gen) receiver_type(rn &flat.Node) string {
-	mut t := rn.typ
+	mut t := rn.typ_text()
 	if rn.is_mut && t.starts_with('&') {
 		t = t[1..]
 	}
@@ -4440,7 +4444,7 @@ fn (mut g Gen) struct_decl(id flat.NodeId) {
 	if n.op == .arrow {
 		g.write('pub ')
 	}
-	tags := n.typ
+	tags := n.typ_text()
 	kw := if tag_has(tags, 'union') { 'union ' } else { 'struct ' }
 	g.write(kw)
 	g.write(g.type_text(n.value))
@@ -4561,7 +4565,7 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId, body_start int, end int, comp
 			g.write(f.value)
 			width := alignments[int(fid)] or { prefix.len + f.value.len }
 			g.write(' '.repeat(width - prefix.len - f.value.len + 1))
-			type_text := g.type_text(f.typ)
+			type_text := g.type_text(f.typ_text())
 			g.write(type_text)
 			suffix_width = type_text.len
 			if f.children_count > 0 {
@@ -4634,9 +4638,9 @@ fn (mut g Gen) enum_decl(id flat.NodeId) {
 		g.write('pub ')
 	}
 	g.write('enum ${n.value}')
-	gp := n.generic_params()
-	if gp.len > 0 && gp[0].len > 0 {
-		g.write(' as ${gp[0]}')
+	backing := n.enum_backing_type_id()
+	if backing != 0 {
+		g.write(' as ${flat.source_type_name(backing)}')
 	}
 	end := g.a.formatter_node_ends[int(id)] or { n.pos.end }
 	// The parser can leave a nameless member behind, e.g. when the `{` sits on its own line
@@ -4832,8 +4836,8 @@ fn (mut g Gen) type_decl(id flat.NodeId) {
 	variants := g.a.children_of(n)
 	if variants.len > 0 {
 		g.sum_type_variants(variants)
-	} else if n.typ.len > 0 {
-		g.write(' = ${g.type_text(n.typ)}')
+	} else if n.typ_text().len > 0 {
+		g.write(' = ${g.type_text(n.typ_text())}')
 	}
 	if !g.on_newline {
 		g.writeln('')
@@ -4957,17 +4961,17 @@ fn (mut g Gen) interface_decl(id flat.NodeId) {
 				g.write('[${mgp.join(', ')}]')
 			}
 			g.params(fid, g.a.children_of(f))
-			if f.typ.len > 0 {
-				g.write(' ${g.type_text(f.typ)}')
+			if f.typ_text().len > 0 {
+				g.write(' ${g.type_text(f.typ_text())}')
 			}
 			suffix_width = g.node_source_width(fid)
 		} else {
 			g.write(f.value)
 			suffix_width = f.value.len
-			if f.typ.len > 0 {
+			if f.typ_text().len > 0 {
 				width := alignments[int(fid)] or { f.value.len }
 				g.write(' '.repeat(width - f.value.len + 1))
-				type_text := g.type_text(f.typ)
+				type_text := g.type_text(f.typ_text())
 				g.write(type_text)
 				suffix_width = type_text.len
 			}
@@ -5029,7 +5033,11 @@ fn (mut g Gen) interface_comment_alignments(fields []flat.NodeId) map[int]int {
 			if f.op == .dot {
 				method_align.add_info(g.node_source_width(fid), line, has_break)
 			} else {
-				width := if f.typ.len > 0 { g.type_text(f.typ).len } else { f.value.len }
+				width := if f.typ_text().len > 0 {
+					g.type_text(f.typ_text()).len
+				} else {
+					f.value.len
+				}
 				field_align.add_info(width, line, has_break)
 			}
 			entries << fid
@@ -5235,7 +5243,7 @@ fn (mut g Gen) struct_field_suffix_alignments(fields []flat.NodeId, alignments m
 		if preserves_attrs {
 			preserved_fields[int(fid)] = true
 		}
-		type_width := g.type_text(f.typ).len
+		type_width := g.type_text(f.typ_text()).len
 		mut suffix := type_width
 		mut suffix_known := true
 		if f.children_count > 0 {
@@ -5293,7 +5301,7 @@ fn (mut g Gen) struct_field_suffix_alignments(fields []flat.NodeId, alignments m
 				attr_group_break = true
 				continue
 			}
-			type_width := g.type_text(f.typ).len
+			type_width := g.type_text(f.typ_text()).len
 			padded_type_width := int_max(type_width, defaults[int(fid)] or { 0 })
 			flags := gp[0]
 			// The volatile prefix shifts the type column beyond the aligned field name.
@@ -5361,7 +5369,7 @@ fn (g &Gen) aggregate_field_alignments(fields []flat.NodeId, is_interface bool) 
 		mut alignable := false
 		if is_interface {
 			section = if f.is_mut { 'mut' } else { '' }
-			alignable = f.kind == .interface_field && f.op != .dot && f.typ.len > 0
+			alignable = f.kind == .interface_field && f.op != .dot && f.typ_text().len > 0
 		} else if f.kind == .field_decl {
 			gp := f.generic_params()
 			flags := if gp.len > 0 { gp[0] } else { '' }
@@ -5461,8 +5469,8 @@ fn (mut g Gen) const_field(fid flat.NodeId, pub_prefix string) {
 	if f.children_count > 0 {
 		g.write(' = ')
 		g.expr(g.a.child(f, 0))
-	} else if f.typ.len > 0 {
-		g.write(' ${g.type_text(f.typ)}')
+	} else if f.typ_text().len > 0 {
+		g.write(' ${g.type_text(f.typ_text())}')
 	}
 	// `g.expr` already terminated the line when it flushed a trailing `//`
 	// comment; a second newline here would add a blank line on every `vfmt`
@@ -5530,9 +5538,9 @@ fn (mut g Gen) global_field(fid flat.NodeId, group_pub bool, align_width int) {
 	g.write(head)
 	padding := if align_width > 0 { align_width - head.len + 1 } else { 1 }
 	if f.children_count > 0 {
-		if f.typ.len > 0 {
+		if f.typ_text().len > 0 {
 			g.write(' '.repeat(padding))
-			g.write(g.type_text(f.typ))
+			g.write(g.type_text(f.typ_text()))
 			g.write(' = ')
 		} else {
 			g.write(' '.repeat(padding))
@@ -5541,7 +5549,7 @@ fn (mut g Gen) global_field(fid flat.NodeId, group_pub bool, align_width int) {
 		g.expr(g.a.child(f, 0))
 	} else {
 		g.write(' '.repeat(padding))
-		g.write(g.type_text(f.typ))
+		g.write(g.type_text(f.typ_text()))
 	}
 	g.emit_trailing_comments(f.pos.end)
 	if !g.on_newline {
@@ -5562,8 +5570,8 @@ fn (mut g Gen) directive_stmt(id flat.NodeId) {
 	}
 	g.emit_attrs(id)
 	g.write('#${n.value}')
-	if n.typ.len > 0 {
-		g.write(' ${n.typ}')
+	if n.typ_text().len > 0 {
+		g.write(' ${n.typ_text()}')
 	}
 	g.writeln('')
 }
@@ -6083,9 +6091,9 @@ fn (g &Gen) string_literal_text(n &flat.Node) string {
 	is_c_string := n.kind == .char_literal && n.value.starts_with('c:')
 	prefix := if is_c_string {
 		'c'
-	} else if n.typ.starts_with('raw:') {
+	} else if n.typ_text().starts_with('raw:') {
 		'r'
-	} else if n.typ.starts_with('js:') {
+	} else if n.typ_text().starts_with('js:') {
 		'js'
 	} else {
 		''
@@ -6106,7 +6114,7 @@ fn (g &Gen) string_literal_text(n &flat.Node) string {
 			&& source[source.len - 1] == source[prefix.len] {
 			// A raw literal cannot escape its delimiter, so its quotes are part of
 			// what it can hold and are kept as written, as they were before.
-			if n.typ.starts_with('raw:') {
+			if n.typ_text().starts_with('raw:') {
 				return source
 			}
 			return requote_literal_text(source, prefix.len)
@@ -6115,11 +6123,11 @@ fn (g &Gen) string_literal_text(n &flat.Node) string {
 	if is_c_string {
 		return c_string_literal_text(n.value)
 	}
-	if n.typ.starts_with('raw:') {
-		quote := if n.typ.ends_with('"') { '"' } else { "'" }
+	if n.typ_text().starts_with('raw:') {
+		quote := if n.typ_text().ends_with('"') { '"' } else { "'" }
 		return 'r${quote}${n.value}${quote}'
 	}
-	if n.typ.starts_with('js:') {
+	if n.typ_text().starts_with('js:') {
 		return 'js${quote_string(n.value)}'
 	}
 	return quote_string(n.value)

@@ -187,14 +187,14 @@ fn (mut g FlatGen) smartcast_is_expr(cond &flat.Node) {
 			clean_sum = clean_sum0.base_type
 		}
 		if clean_sum is types.SumType {
-			variant_name := g.resolve_variant(clean_sum.name, cond.value)
-			variant_type := g.tc.parse_type(variant_name)
+			variant_name := flat.source_type_name(g.resolve_variant(clean_sum.source_type_id(), flat.source_type_id(cond.value)))
+			variant_type := g.tc.parse_type(flat.source_type_id(variant_name))
 			if variant_type is types.Void {
 				return
 			}
 			variant_ct := g.tc.c_type(variant_type)
 			field_name := g.sum_field_name(variant_name)
-			is_ptr_variant := g.variant_references_sum(variant_name, clean_sum.name)
+			is_ptr_variant := g.variant_references_sum(flat.source_type_id(variant_name), clean_sum.source_type_id())
 			var_name := g.local_cname(expr_node.value)
 			tmp := g.tmp_name()
 			if is_ptr_variant {
@@ -712,7 +712,7 @@ fn (mut g FlatGen) seed_scope_from_decl(node flat.Node) {
 	// The declared type annotation is authoritative; resolving the RHS can
 	// disagree for lowered temps (`__or_val := <zero []Val>` resolving to the
 	// element sum type) and would poison every later use of the binding.
-	if node.typ.len > 0 {
+	if node.typ_text().len > 0 {
 		typ := g.parse_node_type(&node)
 		if !decl_annotation_is_unusable(typ, node.typ) {
 			g.tc.cur_scope.insert(lhs.value, typ)
@@ -795,7 +795,7 @@ fn (mut g FlatGen) gen_if_expr_stmt(node flat.Node) {
 	inferred_type := g.if_expr_type(&node)
 	ret_type := if g.expected_expr_type is types.MultiReturn {
 		types.Type(g.expected_expr_type)
-	} else if node.typ.len > 0 {
+	} else if node.typ_text().len > 0 {
 		annotated_type := g.parse_node_type(&node)
 		if annotated_type is types.Primitive && inferred_type !is types.Primitive {
 			inferred_type

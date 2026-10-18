@@ -2,6 +2,7 @@ module fastc
 
 import os
 import v.cmdexec
+import v.flat
 import v.pref
 import v.scanner
 import v.token
@@ -68,21 +69,21 @@ interface Handler {
 	}
 	mut functions := map[string]FastcFunctionSignature{}
 	collect_function_signatures(source, 'contextual_signatures.v', header, prefs, []int{},
-		declared, map[string]string{}, map[string]bool{}, mut functions) or { panic(err) }
+		declared, flat.TypeTextBindings{}, map[string]bool{}, mut functions) or { panic(err) }
 	callback := functions['Callback'] or { panic('missing callback signature') }
-	assert callback.parameter_types == ['string', 'int']
-	assert callback.return_type == 'bool'
+	assert callback.parameter_types.names() == ['string', 'int']
+	assert callback.return_type_text() == 'bool'
 	mut methods := map[string]bool{}
 	mut fields := map[string]FastcInterfaceField{}
 	mut field_paths := map[string]string{}
-	mut embedders := []string{}
-	mut embedded := []string{}
+	mut embedders := []u32{}
+	mut embedded := []u32{}
 	collect_interface_method_signatures(source, 'contextual_signatures.v', header, prefs,
 		[]int{}, declared, mut functions, mut methods, mut fields, mut field_paths,
 		mut embedders, mut embedded) or { panic(err) }
 	handler := functions['Handler.handle'] or { panic('missing handler signature') }
-	assert handler.parameter_types == ['Handler', 'string', 'int']
-	assert handler.return_type == 'bool'
+	assert handler.parameter_types.names() == ['Handler', 'string', 'int']
+	assert handler.return_type_text() == 'bool'
 	mut scan := scanner.new_scanner(prefs, .normal)
 	function_source := 'fn (\nmodule string,\ntype int\n) bool'
 	file := token.File.unindexed('contextual_function_type.v', function_source.len)
@@ -90,6 +91,6 @@ interface Handler {
 	_ = scan.scan()
 	function_type := fastc_peek_function_type(scan, 'contextual_function_type.v', 'main',
 		map[string]string{}, declared, false) or { panic(err) }
-	assert function_type.parameter_types == ['string', 'int']
-	assert function_type.return_type == 'bool'
+	assert function_type.parameter_types.names() == ['string', 'int']
+	assert function_type.return_type_text() == 'bool'
 }

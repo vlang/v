@@ -23,6 +23,7 @@ permissions:
 jobs:
   symlink-unix:
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
@@ -66,6 +67,7 @@ jobs:
 
   symlink-windows:
     runs-on: windows-2025
+    timeout-minutes: 60
     strategy:
       matrix:
         flags: ['', '-githubci']

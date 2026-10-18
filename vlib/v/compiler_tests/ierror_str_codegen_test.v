@@ -54,7 +54,8 @@ fn main() {
 	assert c_code.contains('IError__str(err)'), c_code
 	assert c_code.contains('return IError__str(err);'), c_code
 	assert !c_code.contains('string__eq(err.message'), c_code
-	assert c_code.contains('IError__msg(&err)'), c_code
+	// Interface method calls pass the typed receiver in parentheses.
+	assert c_code.contains('IError__msg(&(err))'), c_code
 	assert c_code.contains('err.code'), c_code
 
 	run := os.exec([bin])

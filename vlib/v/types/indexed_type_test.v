@@ -16,13 +16,13 @@ fn test_checked_type_ids_follow_retyping_rewrites_and_cache_collisions() {
 	bytes := tc.checked_expr_type_id(collision) or { panic('missing colliding array type') }
 	assert ints != bytes
 	assert (tc.checked_expr_type_id(first) or { panic('missing checked type') }) == ints
-	assert tc.type_name_by_id(ints) == '[]int'
-	assert tc.type_name_by_id(bytes) == '[]u8'
+	assert flat.source_type_name(tc.type_name_by_id(ints)) == '[]int'
+	assert flat.source_type_name(tc.type_name_by_id(bytes)) == '[]u8'
 	assert (tc.type_by_id(ints) or { panic('missing canonical type') }) is Array
 	tc.register_synth_type(first, Type(Array{ elem_type: Type(string_) }))
 	strings := (tc.checked_expr_type_id(first) or { panic('missing checked type') })
 	assert strings != ints && strings != bytes
-	assert tc.type_name_by_id(strings) == '[]string'
+	assert flat.source_type_name(tc.type_name_by_id(strings)) == '[]string'
 	tc.invalidate_checked_expr_type(int(first))
 	assert tc.checked_expr_type_id(first) == none
 	tc.register_synth_type(first, Type(Array{ elem_type: Type(int_) }))
@@ -35,7 +35,7 @@ fn test_checked_type_ids_are_private_to_worker_interners() {
 	mut tc := TypeChecker.new(&a)
 	tc.register_synth_type(id, Type(Array{ elem_type: Type(int_) }))
 	parent_id := (tc.checked_expr_type_id(id) or { panic('missing checked type') })
-	assert tc.type_name_by_id(parent_id) == '[]int'
+	assert flat.source_type_name(tc.type_name_by_id(parent_id)) == '[]int'
 	assert tc.c_type_by_id(parent_id) or { panic('missing parent C type') } == 'Array'
 	mut worker := tc.fork_for_parallel_transform(&a)
 	// Deliberately occupy the parent's numeric identity with a different type.
@@ -43,13 +43,13 @@ fn test_checked_type_ids_are_private_to_worker_interners() {
 	assert other_id == parent_id
 	worker_id := (worker.checked_expr_type_id(id) or { panic('missing worker type') })
 	assert worker_id != parent_id
-	assert worker.type_name_by_id(worker_id) == '[]int'
-	assert worker.type_name_by_id(other_id) == '[]u8'
+	assert flat.source_type_name(worker.type_name_by_id(worker_id)) == '[]int'
+	assert flat.source_type_name(worker.type_name_by_id(other_id)) == '[]u8'
 	assert worker.c_type_by_id(other_id) or { panic('missing worker C type') } == 'Array'
-	assert tc.type_name_by_id(parent_id) == '[]int'
+	assert flat.source_type_name(tc.type_name_by_id(parent_id)) == '[]int'
 	tc.reset_type_interners()
 	new_id := (tc.checked_expr_type_id(id) or { panic('missing checked type') })
-	assert tc.type_name_by_id(new_id) == '[]int'
+	assert flat.source_type_name(tc.type_name_by_id(new_id)) == '[]int'
 }
 
 fn test_indexed_type_names_do_not_cache_missing_future_ids() {
@@ -59,11 +59,11 @@ fn test_indexed_type_names_do_not_cache_missing_future_ids() {
 	future := TypeId(tc.type_count())
 	assert tc.type_by_id(future) == none
 	assert tc.c_type_by_id(future) == none
-	assert tc.type_name_by_id(future) == 'unknown'
+	assert tc.type_name_by_id(future) == flat.source_type_unknown
 	tc.register_synth_type(id, Type(Array{ elem_type: Type(bool_) }))
 	actual := (tc.checked_expr_type_id(id) or { panic('missing checked type') })
 	assert actual == future
-	assert tc.type_name_by_id(actual) == '[]bool'
+	assert flat.source_type_name(tc.type_name_by_id(actual)) == '[]bool'
 	assert tc.c_type_by_id(actual) or { panic('missing C type') } == 'Array'
 }
 
@@ -116,31 +116,31 @@ fn test_parsed_ids_follow_generic_recursive_alias_and_worker_precedence() {
 	a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
 	tc.set_fresh_type_cache(true)
-	integer := tc.parse_type_id('u64') or { panic('missing integer identity') }
+	integer := tc.parse_type_id(flat.source_type_u64) or { panic('missing integer identity') }
 	tc.cur_module = 'other'
 	tc.cur_file = 'other.v'
-	assert tc.parse_type_id('u64') or { panic('missing contextual identity') } == integer
-	tc.type_param_texts['u64'] = 'string'
-	bound := tc.parse_type_id('u64') or { panic('missing bound identity') }
+	assert tc.parse_type_id(flat.source_type_u64) or { panic('missing contextual identity') } == integer
+	tc.type_param_texts.set_id('u64', flat.source_type_string)
+	bound := tc.parse_type_id(flat.source_type_u64) or { panic('missing bound identity') }
 	assert bound != integer
-	assert tc.type_name_by_id(bound) == 'string'
+	assert tc.type_name_by_id(bound) == flat.source_type_string
 	tc.type_param_texts.clear()
-	tc.type_cache.alias_parse_stack << 'u64'
-	recursive := tc.parse_type_id('u64') or { panic('missing recursive identity') }
+	tc.type_cache.alias_parse_stack << flat.source_type_u64
+	recursive := tc.parse_type_id(flat.source_type_u64) or { panic('missing recursive identity') }
 	assert recursive != integer
 	assert tc.type_by_id(recursive) or { panic('missing recursive alias') } is Alias
 	tc.type_cache.alias_parse_stack.clear()
-	assert tc.parse_type_id('u64') or { panic('missing restored identity') } == integer
+	assert tc.parse_type_id(flat.source_type_u64) or { panic('missing restored identity') } == integer
 	mut worker := tc.fork_for_parallel_transform(&a)
 	worker.set_fresh_type_cache(true)
-	boolean := worker.parse_type_id('bool') or { panic('missing worker boolean') }
+	boolean := worker.parse_type_id(flat.source_type_bool) or { panic('missing worker boolean') }
 	assert boolean == integer
-	worker_integer := worker.parse_type_id('u64') or { panic('missing worker integer') }
+	worker_integer := worker.parse_type_id(flat.source_type_u64) or { panic('missing worker integer') }
 	assert worker_integer != integer
-	assert worker.type_name_by_id(boolean) == 'bool'
-	assert worker.type_name_by_id(worker_integer) == 'u64'
+	assert worker.type_name_by_id(boolean) == flat.source_type_bool
+	assert worker.type_name_by_id(worker_integer) == flat.source_type_u64
 	tc.reset_type_interners()
-	replacement := tc.parse_type_id('bool') or { panic('missing replacement identity') }
+	replacement := tc.parse_type_id(flat.source_type_bool) or { panic('missing replacement identity') }
 	assert replacement == integer
-	assert tc.type_name_by_id(replacement) == 'bool'
+	assert tc.type_name_by_id(replacement) == flat.source_type_bool
 }

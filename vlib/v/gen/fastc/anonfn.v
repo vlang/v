@@ -1,5 +1,6 @@
 module fastc
 
+import v.flat
 import os
 import v.scanner
 import v.token
@@ -18,7 +19,7 @@ fn (mut g Parser) parse_anonymous_function() !(string, string, bool) {
 	// just past the closing `}`.
 	g.next() // consume `fn`
 	mut capture_names := []string{}
-	mut capture_types := []string{}
+	mut capture_types := []u32{}
 	mut capture_params := []string{}
 	mut capture_values := []string{}
 	if g.tok == .lsbr {
@@ -36,15 +37,15 @@ fn (mut g Parser) parse_anonymous_function() !(string, string, bool) {
 			}
 			capture_type := fastc_normalize_inferred_type(local.typ)
 			capture_source_type := g.capture_type_source(capture_type) or {
-				return g.unsupported('closure capture `${capture_name}` of type `${capture_type}`')
+				return g.unsupported('closure capture `${capture_name}` of type `${flat.source_type_name(capture_type)}`')
 			}
 			capture_names << capture_name
 			capture_types << capture_type
 			capture_params << '${capture_name} ${capture_source_type}'
 			capture_value := g.local_c_name(capture_name)
-			capture_values << if capture_type.starts_with('Map_') {
+			capture_values << if flat.source_type_name(capture_type).starts_with('Map_') {
 				'builtin__map_clone(&(${capture_value}))'
-			} else if capture_type.starts_with('Array_') {
+			} else if flat.source_type_name(capture_type).starts_with('Array_') {
 				'builtin__array_clone_to_depth(&(${capture_value}), 1)'
 			} else {
 				capture_value
@@ -86,14 +87,24 @@ fn (mut g Parser) parse_anonymous_function() !(string, string, bool) {
 		}
 		g.next()
 	}
-	name := '__vf_anon_${g.module_name.replace('.', '_')}_${os.file_name(g.path).replace('.', '_')}_${anon_start}'
+	name := '__vf_anon_${g.module_name.replace('.', '_')}_${os.file_name(g.path).replace('.', '_')}_${g.source_offset + anon_start}'
 	// Rewrite `fn (...) ...` as `fn <name> (...) ...` so `parse_function` reads it as
 	// an ordinary declaration.
 	function_source := g.s.src[params_start..body_end]
-	plain_synthetic := 'fn ${name} ${function_source}'
+	prefix := 'fn ${name} '
+	plain_synthetic := fastc_apply_mapped_source_edits(FastcSourceFile{
+		path:           g.path
+		source:         g.s.src[anon_start..body_end]
+		source_offset:  g.source_offset + anon_start
+		source_origins: g.source_origins
+	}, [FastcSourceEdit{
+		start:       0
+		end:         params_start - anon_start
+		replacement: prefix
+	}])
 	c_name := fastc_c_function_name(g.module_name, name)
 	mut signatures := map[string]FastcFunctionSignature{}
-	collect_function_signatures(plain_synthetic, g.path, FastcSourceHeader{
+	collect_function_signatures(plain_synthetic.source, g.path, FastcSourceHeader{
 		module_name: g.module_name
 		imports:     g.imports
 	}, g.prefs, []int{}, g.declared_types, g.declared_type_c_names, map[string]bool{},
@@ -104,11 +115,15 @@ fn (mut g Parser) parse_anonymous_function() !(string, string, bool) {
 	synthetic := if capture_names.len == 0 {
 		plain_synthetic
 	} else {
-		'fn ${name} (${capture_params.join(', ')}${if function_source[1..].trim_left(' \t\r\n').starts_with(')') {
-			''
-		} else {
-			', '
-		}}${function_source[1..]}'
+		fastc_apply_mapped_source_edits(plain_synthetic, [FastcSourceEdit{
+			start:       prefix.len + 1
+			end:         prefix.len + 1
+			replacement: capture_params.join(', ') + if function_source[1..].trim_left(' \t\r\n').starts_with(')') {
+				''
+			} else {
+				', '
+			}
+		}])
 	}
 
 	// Save the resume position (already advanced past the literal) and every piece of
@@ -116,6 +131,10 @@ fn (mut g Parser) parse_anonymous_function() !(string, string, bool) {
 	resume_s := g.s
 	resume_tok := g.tok
 	resume_lit := g.lit
+	resume_source_offset := g.source_offset
+	resume_source_line_offset := g.source_line_offset
+	resume_source_column_offset := g.source_column_offset
+	resume_source_origins := g.source_origins
 	saved_locals := g.locals.clone()
 	saved_temp_id := g.temp_id
 	saved_indent := g.indent
@@ -129,16 +148,24 @@ fn (mut g Parser) parse_anonymous_function() !(string, string, bool) {
 	// set, exactly as the mono drain does for on-demand instances.
 	g.in_mono_drain = true
 	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file(g.path, synthetic.len)
-	file.index_lines_without_digest(synthetic)
+	mut file := file_set.add_file(g.path, synthetic.source.len)
+	file.index_lines_without_digest(synthetic.source)
 	g.s = scanner.new_scanner(g.prefs, .normal)
-	g.s.init(file, synthetic)
+	g.s.init(file, synthetic.source)
+	g.source_offset = synthetic.source_offset
+	g.source_origins = synthetic.source_origins
+	g.source_line_offset = 0
+	g.source_column_offset = 0
 	g.next()
 	g.parse_function(true) or {
 		// Restore before propagating so the outer parse can report cleanly.
 		g.s = resume_s
 		g.tok = resume_tok
 		g.lit = resume_lit
+		g.source_offset = resume_source_offset
+		g.source_line_offset = resume_source_line_offset
+		g.source_column_offset = resume_source_column_offset
+		g.source_origins = resume_source_origins
 		g.locals = saved_locals.clone()
 		g.temp_id = saved_temp_id
 		g.indent = saved_indent
@@ -159,6 +186,10 @@ fn (mut g Parser) parse_anonymous_function() !(string, string, bool) {
 	g.s = resume_s
 	g.tok = resume_tok
 	g.lit = resume_lit
+	g.source_offset = resume_source_offset
+	g.source_line_offset = resume_source_line_offset
+	g.source_column_offset = resume_source_column_offset
+	g.source_origins = resume_source_origins
 	g.locals = saved_locals.clone()
 	g.temp_id = saved_temp_id
 	g.indent = saved_indent
@@ -177,17 +208,17 @@ fn (mut g Parser) parse_anonymous_function() !(string, string, bool) {
 	mut call_args := []string{}
 	for i, capture_name in capture_names {
 		field_name := fastc_c_identifier(capture_name)
-		fields << '${capture_types[i]} ${field_name};'
+		fields << '${flat.source_type_name(capture_types[i])} ${field_name};'
 		initializers << '.${field_name}=(${capture_values[i]})'
 		call_args << '__vf_ctx->${field_name}'
 	}
-	for i, parameter_type in signature.parameter_types {
+	for i, parameter_type in signature.parameter_types_text() {
 		wrapper_params << '${fastc_output_c_type(parameter_type)} __vf_arg_${i}'
 		call_args << '__vf_arg_${i}'
 	}
 	closure_global := g.globals[fastc_global_key('builtin.closure', 'g_closure')]
 	create_function := g.c_function_name_for_key(fastc_function_key('builtin.closure', 'closure_create_with_data'))
-	return_type := fastc_output_c_type(signature.return_type)
+	return_type := fastc_output_c_type(signature.return_type_text())
 	return_prefix := if return_type == 'void' { '' } else { 'return ' }
 	g.spawn_helpers[context_name] = 'typedef struct { ${fields.join(' ')} } ${context_name};\n'
 	g.spawn_helpers[wrapper_name] = '${return_type} ${wrapper_name}(${if wrapper_params.len == 0 {
@@ -195,10 +226,10 @@ fn (mut g Parser) parse_anonymous_function() !(string, string, bool) {
 	} else {
 		wrapper_params.join(', ')
 	}}) {\n${context_name} *__vf_ctx = (${context_name} *)((voidptr (*)(void))${closure_global}.closure_get_data)();\n${return_prefix}${c_name}(${call_args.join(', ')});\n}\n'
-	return '({ ${context_name} __vf_capture_value = {${initializers.join(', ')}}; (${return_type} (*)(${if signature.parameter_types.len == 0 {
+	return '({ ${context_name} __vf_capture_value = {${initializers.join(', ')}}; (${return_type} (*)(${if signature.parameter_types.ids.len == 0 {
 		'void'
 	} else {
-		signature.parameter_types.map(fastc_output_c_type(it)).join(', ')
+		signature.parameter_types_text().map(fastc_output_c_type(it)).join(', ')
 	}}))${create_function}((voidptr)${wrapper_name}, builtin__memdup(&__vf_capture_value, sizeof(__vf_capture_value)), true); })', c_name, true
 }
 
@@ -271,27 +302,34 @@ fn (mut g Parser) add_local_closure_cleanup(name string) {
 	g.deferred_lines << '\t'.repeat(g.indent) + line
 }
 
-fn (g &Parser) capture_type_source(typ string) ?string {
+fn (g &Parser) capture_type_source(typ u32) ?string {
+	return g.capture_type_source_bytes(flat.source_type_name(typ))
+}
+
+fn (g &Parser) capture_type_source_bytes(typ string) ?string {
 	if typ.ends_with('*') {
-		return '&' + g.capture_type_source(typ[..typ.len - 1])?
+		return '&' + g.capture_type_source_bytes(typ[..typ.len - 1])?
 	}
 	if typ.starts_with('Array_') {
-		element := g.array_element_type(typ)?
-		return '[]' + g.capture_type_source(element)?
+		element := g.array_element_type(flat.source_type_id(typ))?
+		return '[]' + g.capture_type_source_bytes(flat.source_type_name(element))?
 	}
 	if typ.starts_with('Map_') {
-		key, value := g.map_key_value_types(typ)?
-		return 'map[' + g.capture_type_source(key)? + ']' + g.capture_type_source(value)?
+		key_source_id, value_source_id := g.map_key_value_types(flat.source_type_id(typ))?
+		key := key_source_id
+		value := value_source_id
+
+		return 'map[' + g.capture_type_source_bytes(flat.source_type_name(key))? + ']' + g.capture_type_source_bytes(flat.source_type_name(value))?
 	}
 	if fastc_primitive_c_type(typ) != none {
 		return typ
 	}
-	key := g.semantic_type_key(typ)
-	if key !in g.declared_types {
+	key := g.semantic_type_key(flat.source_type_id(typ))
+	if flat.source_type_name(key) !in g.declared_types {
 		return none
 	}
-	module_name := key.all_before_last('.')
-	name := key.all_after_last('.')
+	module_name := flat.source_type_name(key).all_before_last('.')
+	name := flat.source_type_name(key).all_after_last('.')
 	if module_name == g.module_name || module_name == 'builtin' {
 		return name
 	}
