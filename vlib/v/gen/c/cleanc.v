@@ -5078,6 +5078,7 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 	mut presw := time.new_stopwatch()
 	g.unused_param_seen = &UnusedParamSeen{}
 	defer_fn_signature_registrations := !no_parallel && g.scope_parallel_workers && g.skip_generics && g.incremental_fn_names.len == 0 && par_cgen_prep_enabled()
+	type_index_args, type_index_threads := g.start_type_indexes(no_parallel)
 	g.reserve_collect_gen_info_maps(no_parallel, defer_fn_signature_registrations)
 	g.precompute_export_lookups()
 	if profile {
@@ -5114,6 +5115,7 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 		g.index_cross_directive_guards()
 	}
 	mut cisub_sw := time.new_stopwatch()
+	g.finish_type_indexes(type_index_args, type_index_threads)
 	fn_preps := g.collect_gen_info_fn_preps(top_level_nodes, no_parallel, defer_fn_signature_registrations)
 	has_parallel_fn_preps := fn_preps.len == top_level_nodes.len
 	if profile {
@@ -12747,6 +12749,11 @@ fn (g &FlatGen) enum_selector_base_name(name_id u32) ?u32 {
 
 fn (g &FlatGen) enum_selector_base_name_uncached(name_id u32) ?u32 {
 	name := flat.source_type_name(name_id)
+	// Every resolution below (import alias, qualified name, selective import,
+	// alias chain) keeps the last name component of `name`.
+	if !g.name_may_reach_enum(name) {
+		return none
+	}
 	if name in g.tc.enum_names || name in g.tc.flag_enums {
 		return name_id
 	}

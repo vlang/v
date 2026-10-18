@@ -5573,40 +5573,70 @@ mut:
 // enum, sum type and interface declaration. A name whose last component is not
 // in it cannot denote such a type, qualified or not. Generic applications
 // (names with `[`) are left out; lookups with `[` must not use the index.
+// `alias_shorts` covers only the type aliases, `enum_shorts` the enums, flag
+// enums and type aliases.
 @[heap]
 struct TypeNameShortIndex {
 mut:
-	shorts map[string]bool
+	shorts       map[string]bool
+	alias_shorts map[string]bool
+	enum_shorts  map[string]bool
 }
 
-fn (mut index TypeNameShortIndex) add(name string) {
+fn add_type_name_short(mut shorts map[string]bool, name string) {
 	if name.contains('[') {
 		return
 	}
 	short := c_short_name_view(name)
-	if short !in index.shorts {
-		index.shorts[short] = true
+	if short !in shorts {
+		shorts[short] = true
 	}
 }
 
 fn new_type_name_short_index(tc &types.TypeChecker) &TypeNameShortIndex {
 	mut index := &TypeNameShortIndex{}
 	for name, _ in tc.structs {
-		index.add(name)
+		add_type_name_short(mut index.shorts, name)
 	}
 	for name, _ in tc.type_aliases.ids {
-		index.add(name)
+		add_type_name_short(mut index.shorts, name)
+		add_type_name_short(mut index.alias_shorts, name)
+		add_type_name_short(mut index.enum_shorts, name)
 	}
 	for name, _ in tc.enum_names {
-		index.add(name)
+		add_type_name_short(mut index.shorts, name)
+		add_type_name_short(mut index.enum_shorts, name)
+	}
+	for name, _ in tc.flag_enums {
+		add_type_name_short(mut index.enum_shorts, name)
 	}
 	for name, _ in tc.sum_types.ids {
-		index.add(name)
+		add_type_name_short(mut index.shorts, name)
 	}
 	for name, _ in tc.interface_names {
-		index.add(name)
+		add_type_name_short(mut index.shorts, name)
 	}
 	return index
+}
+
+// name_may_be_type_alias is false when no type alias can have the last name
+// component of `name`.
+@[inline]
+fn (g &FlatGen) name_may_be_type_alias(name string) bool {
+	if isnil(g.type_name_short_index) || name.contains('[') {
+		return true
+	}
+	return c_short_name_view(name) in g.type_name_short_index.alias_shorts
+}
+
+// name_may_reach_enum is false when neither an enum nor a type alias can have
+// the last name component of `name`.
+@[inline]
+fn (g &FlatGen) name_may_reach_enum(name string) bool {
+	if isnil(g.type_name_short_index) || name.contains('[') {
+		return true
+	}
+	return c_short_name_view(name) in g.type_name_short_index.enum_shorts
 }
 
 // ident_may_name_type is false when `name` (as written, or as the checker
@@ -5881,6 +5911,10 @@ fn (g &FlatGen) struct_type_alias_target(type_name_id u32) ?u32 {
 			}
 			return base.source_type_id()
 		}
+	}
+	// Both lookups below name an alias with the same last component.
+	if !g.name_may_be_type_alias(type_name) {
+		return none
 	}
 	qname := g.tc.qualify_name(type_name)
 	if target_source_id := g.tc.type_aliases.type_id(qname) {

@@ -1828,6 +1828,11 @@ fn (g &FlatGen) enum_method_c_name_in_module(module_name string, name string) ?s
 	if !name.contains('.') {
 		return none
 	}
+	// The receiver of an enum method resolves through enum_selector_base_name,
+	// which needs an enum or type alias with the receiver's last component.
+	if !g.name_may_reach_enum(c_owner_name_view(name)) {
+		return none
+	}
 	mut cache := if module_name.len == 0 {
 		g.enum_method_cache
 	} else {

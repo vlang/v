@@ -626,24 +626,65 @@ fn optional_support_selection_thread(arg voidptr) voidptr {
 	return unsafe { nil }
 }
 
-// StructFieldIndexArgs carries the shared struct field index built beside the
-// pre-dispatch helpers; `scope` holds its storage until cgen output is done.
-// It also builds the short-name parameter type index (precompute_param_type_index).
-struct StructFieldIndexArgs {
+// TypeIndexArgs carries the read-only type indexes that a helper thread builds
+// from the checker's (complete) type tables while collect_gen_info runs;
+// `scope` holds their storage until cgen output is done.
+struct TypeIndexArgs {
+	tc &types.TypeChecker
+mut:
+	scope       voidptr
+	field_index &StructFieldIndexBase = unsafe { nil }
+	type_names  &TypeNameShortIndex   = unsafe { nil }
+}
+
+fn type_index_thread(arg voidptr) voidptr {
+	mut a := unsafe { &TypeIndexArgs(arg) }
+	a.scope = cgen_worker_scope_begin(true)
+	a.field_index = new_struct_field_index_base(a.tc.structs)
+	a.type_names = new_type_name_short_index(a.tc)
+	cgen_worker_scope_leave(a.scope)
+	return unsafe { nil }
+}
+
+// start_type_indexes builds the shared struct field and type-name indexes on a
+// helper thread; finish_type_indexes installs them. Only parallel generation
+// uses them.
+fn (mut g FlatGen) start_type_indexes(no_parallel bool) (&TypeIndexArgs, []thread voidptr) {
+	mut args := &TypeIndexArgs{
+		tc: g.tc
+	}
+	mut threads := []thread voidptr{cap: 1}
+	if !no_parallel && g.scope_parallel_workers && g.incremental_fn_names.len == 0 {
+		threads << spawn type_index_thread(voidptr(args))
+	}
+	return args, threads
+}
+
+fn (mut g FlatGen) finish_type_indexes(args &TypeIndexArgs, threads []thread voidptr) {
+	if threads.len == 0 {
+		return
+	}
+	_ = threads.wait()
+	g.struct_field_index_base = args.field_index
+	g.type_name_short_index = args.type_names
+	if args.scope != unsafe { nil } {
+		g.parallel_worker_scopes << args.scope
+	}
+}
+
+// ParamTypeIndexArgs carries the short-name parameter type index
+// (precompute_param_type_index) built beside the pre-dispatch helpers.
+struct ParamTypeIndexArgs {
 	g  &FlatGen
 	tc &types.TypeChecker
 mut:
 	scope                voidptr
-	base                 &StructFieldIndexBase = unsafe { nil }
-	type_names           &TypeNameShortIndex   = unsafe { nil }
 	param_types_by_short map[string][]types.Type
 }
 
-fn struct_field_index_thread(arg voidptr) voidptr {
-	mut a := unsafe { &StructFieldIndexArgs(arg) }
+fn param_type_index_thread(arg voidptr) voidptr {
+	mut a := unsafe { &ParamTypeIndexArgs(arg) }
 	a.scope = cgen_worker_scope_begin(true)
-	a.base = new_struct_field_index_base(a.tc.structs)
-	a.type_names = new_type_name_short_index(a.tc)
 	a.param_types_by_short = cgen_param_types_by_short(a.g.fn_decl_param_types, a.tc.fn_param_types)
 	cgen_worker_scope_leave(a.scope)
 	return unsafe { nil }
@@ -3905,11 +3946,11 @@ fn (mut g FlatGen) run_pre_dispatch_parallel(no_parallel bool) bool {
 		// fixed-storage scan finishes on a helper thread.
 		mut psw := time.new_stopwatch()
 		// The master swaps in a selection checker meanwhile; keep the checked one.
-		mut field_index_args := &StructFieldIndexArgs{
+		mut field_index_args := &ParamTypeIndexArgs{
 			g:  g
 			tc: g.tc
 		}
-		field_index_thread := spawn struct_field_index_thread(voidptr(field_index_args))
+		field_index_thread := spawn param_type_index_thread(voidptr(field_index_args))
 		// The fixed-array return wrapper scans only read the collected declaration
 		// tables; run them beside the other lanes from the start.
 		overlap_wrappers := os.getenv('V3_NO_PAR_FIXED_RET') == ''
@@ -3950,8 +3991,6 @@ fn (mut g FlatGen) run_pre_dispatch_parallel(no_parallel bool) bool {
 		_ = optional_thread.wait()
 		_ = call_optional_thread.wait()
 		_ = field_index_thread.wait()
-		g.struct_field_index_base = field_index_args.base
-		g.type_name_short_index = field_index_args.type_names
 		g.param_types_by_short = field_index_args.param_types_by_short.move()
 		if field_index_args.scope != unsafe { nil } {
 			g.parallel_worker_scopes << field_index_args.scope

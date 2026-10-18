@@ -17,6 +17,15 @@ fn (mut g FlatGen) scan_collect_gen_info(_ bool) CollectGenInfoScanCounts {
 	return g.scan_collect_gen_info_serial()
 }
 
+// TypeIndexArgs is empty: v3_no_parallel builds share no type indexes.
+struct TypeIndexArgs {}
+
+fn (mut g FlatGen) start_type_indexes(_ bool) (&TypeIndexArgs, []int) {
+	return &TypeIndexArgs{}, []int{}
+}
+
+fn (mut g FlatGen) finish_type_indexes(_ &TypeIndexArgs, _ []int) {}
+
 fn (mut g FlatGen) apply_fn_signature_registrations(registrations []FnSignatureRegistration, node_regs []FnDeclNodeReg) {
 	for group in 0 .. 4 {
 		for registration in registrations {
