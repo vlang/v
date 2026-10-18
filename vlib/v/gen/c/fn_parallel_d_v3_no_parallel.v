@@ -17,11 +17,14 @@ fn (mut g FlatGen) scan_collect_gen_info(_ bool) CollectGenInfoScanCounts {
 	return g.scan_collect_gen_info_serial()
 }
 
-fn (mut g FlatGen) apply_fn_signature_registrations(registrations []FnSignatureRegistration) {
+fn (mut g FlatGen) apply_fn_signature_registrations(registrations []FnSignatureRegistration, node_regs []FnDeclNodeReg) {
 	for group in 0 .. 4 {
 		for registration in registrations {
 			g.apply_fn_signature_registration_group(registration, group)
 		}
+	}
+	for which in 0 .. 3 {
+		g.register_fn_decl_nodes(node_regs, which)
 	}
 }
 

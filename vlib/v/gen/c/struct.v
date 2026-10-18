@@ -4186,55 +4186,137 @@ fn (mut g FlatGen) collect_shared_type_names() {
 	g.tc.cur_module = old_module
 }
 
+@[direct_array_access]
 fn (mut g FlatGen) collect_local_shared_type_names() {
 	mut cur_module := 'main'
-	for i in g.type_metadata_nodes() {
-		node := g.a.nodes[i]
-		if node.kind == .module_decl {
-			cur_module = if node.value.len == 0 { 'main' } else { node.value }
-			continue
-		}
-		if node.kind == .global_decl {
-			g.tc.cur_module = cur_module
-			for j in 0 .. node.children_count {
-				field := g.a.child_node(&node, j)
-				inner := shared_inner_type_text(field.typ) or { continue }
-				g.register_shared_type_name(g.shared_qualify_type_text(inner, cur_module), cur_module)
+	if g.shared_scan_bits_ready {
+		// The info scan marked the few metadata nodes the loop below acts on;
+		// visit those in node order instead of every call, param and init.
+		for word_idx, word in g.shared_scan_bits {
+			mut bits := word
+			for bits != 0 {
+				bit := int(cgen_trailing_zeros_u64(bits))
+				bits &= bits - 1
+				cur_module = g.collect_local_shared_type_names_at(word_idx * 64 + bit,
+					cur_module)
 			}
+		}
+		return
+	}
+	for i in g.type_metadata_nodes() {
+		// Most metadata nodes are calls, struct inits and params; skip them before
+		// copying the node.
+		kind := g.a.nodes[i].kind
+		if kind != .module_decl && kind != .global_decl && kind != .fn_decl
+			&& kind != .decl_assign {
 			continue
 		}
-		if node.kind != .decl_assign || !decl_assign_is_shared_marker(node.value) {
-			if node.kind == .fn_decl {
-				module_name := g.a.specialized_fn_modules[i] or { cur_module }
-				g.collect_fn_shared_param_type_names(node, module_name)
-			} else if node.kind == .decl_assign {
-				// `mut items := []shared T{}` stores `shared T` wrappers, although the
-				// declaration itself is not `shared`.
-				g.tc.cur_module = cur_module
-				for j := 0; j + 1 < node.children_count; j += 2 {
-					rhs := g.a.child_node(&node, j + 1)
-					inner := shared_array_inner_type_text(rhs.typ) or { continue }
-					g.register_shared_type_name_in_file(inner, cur_module, node.pos.id)
+		cur_module = g.collect_local_shared_type_names_at(i, cur_module)
+	}
+}
+
+@[inline]
+fn cgen_trailing_zeros_u64(x u64) int {
+	mut n := 0
+	mut v := x
+	for v & 1 == 0 {
+		v >>= 1
+		n++
+	}
+	return n
+}
+
+// shared_scan_node_relevant reports whether collect_local_shared_type_names_at
+// can do anything for a type metadata node: track a module, or register the
+// wrapper of a `shared` global, parameter or declaration. It only reads type
+// texts, so the parallel info scan can classify nodes with it.
+fn shared_scan_node_relevant(a &flat.FlatAst, node &flat.Node) bool {
+	match node.kind {
+		.module_decl, .global_decl {
+			return true
+		}
+		.fn_decl {
+			for i in 0 .. node.children_count {
+				param := a.child_node(node, i)
+				if param.kind != .param {
+					continue
+				}
+				if _ := shared_inner_type_text(param.typ) {
+					return true
+				}
+				if _ := shared_array_inner_type_text(param.typ) {
+					return true
 				}
 			}
-			continue
+			return false
 		}
-		g.tc.cur_module = cur_module
-		for j := 0; j + 1 < node.children_count; j += 2 {
-			rhs_id := g.a.child(&node, j + 1)
-			rhs := g.a.nodes[int(rhs_id)]
-			if inner := shared_array_inner_type_text(rhs.typ) {
-				g.register_shared_type_name(g.shared_qualify_type_text(inner, cur_module), cur_module)
-				continue
+		.decl_assign {
+			if decl_assign_is_shared_marker(node.value) {
+				return true
 			}
-			inner_type := shared_local_value_type(g.tc.resolve_type(rhs_id))
-			if inner_type is types.Unknown || inner_type is types.Void {
-				continue
+			for j := 0; j + 1 < node.children_count; j += 2 {
+				rhs := a.child_node(node, j + 1)
+				if _ := shared_array_inner_type_text(rhs.typ) {
+					return true
+				}
 			}
-			inner := g.shared_qualify_type_text(inner_type.source_type_id(), cur_module)
-			g.register_shared_type_name(inner, cur_module)
+			return false
+		}
+		else {
+			return false
 		}
 	}
+}
+
+// collect_local_shared_type_names_at handles one type metadata node of
+// collect_local_shared_type_names and returns the module that follows it.
+fn (mut g FlatGen) collect_local_shared_type_names_at(i int, module_before string) string {
+	cur_module := module_before
+	node := g.a.nodes[i]
+	if node.kind == .module_decl {
+		return if node.value.len == 0 { 'main' } else { node.value }
+	}
+	if node.kind == .global_decl {
+		g.tc.cur_module = cur_module
+		for j in 0 .. node.children_count {
+			field := g.a.child_node(&node, j)
+			inner := shared_inner_type_text(field.typ) or { continue }
+			g.register_shared_type_name(g.shared_qualify_type_text(inner, cur_module), cur_module)
+		}
+		return cur_module
+	}
+	if node.kind != .decl_assign || !decl_assign_is_shared_marker(node.value) {
+		if node.kind == .fn_decl {
+			module_name := g.a.specialized_fn_modules[i] or { cur_module }
+			g.collect_fn_shared_param_type_names(node, module_name)
+		} else if node.kind == .decl_assign {
+			// `mut items := []shared T{}` stores `shared T` wrappers, although the
+			// declaration itself is not `shared`.
+			g.tc.cur_module = cur_module
+			for j := 0; j + 1 < node.children_count; j += 2 {
+				rhs := g.a.child_node(&node, j + 1)
+				inner := shared_array_inner_type_text(rhs.typ) or { continue }
+				g.register_shared_type_name_in_file(inner, cur_module, node.pos.id)
+			}
+		}
+		return cur_module
+	}
+	g.tc.cur_module = cur_module
+	for j := 0; j + 1 < node.children_count; j += 2 {
+		rhs_id := g.a.child(&node, j + 1)
+		rhs := g.a.nodes[int(rhs_id)]
+		if inner := shared_array_inner_type_text(rhs.typ) {
+			g.register_shared_type_name(g.shared_qualify_type_text(inner, cur_module), cur_module)
+			continue
+		}
+		inner_type := shared_local_value_type(g.tc.resolve_type(rhs_id))
+		if inner_type is types.Unknown || inner_type is types.Void {
+			continue
+		}
+		inner := g.shared_qualify_type_text(inner_type.source_type_id(), cur_module)
+		g.register_shared_type_name(inner, cur_module)
+	}
+	return cur_module
 }
 
 fn shared_local_value_type(typ types.Type) types.Type {

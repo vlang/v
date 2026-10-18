@@ -93,13 +93,17 @@ mut:
 	// metadata_bits records the count pass's is_type_metadata_node results, one
 	// bit per node, so the fill pass does not classify every node again.
 	metadata_bits_ptr voidptr
-	type_text_cache   &TypeMetadataTextCache = unsafe { nil }
+	// shared_bits marks the metadata nodes collect_local_shared_type_names visits.
+	shared_bits_ptr voidptr
+	type_text_cache &TypeMetadataTextCache = unsafe { nil }
 }
 
 struct FnSignatureRegistrationArgs {
 	g                 voidptr
 	registrations_ptr voidptr
-	group             int
+	node_regs_ptr     voidptr
+	// 0..3: signature registration groups, 4..6: register_fn_decl_nodes maps.
+	group int
 }
 
 struct FlatCgenSelectArgs {
@@ -120,6 +124,11 @@ mut:
 fn fn_signature_registration_thread(arg voidptr) voidptr {
 	a := unsafe { &FnSignatureRegistrationArgs(arg) }
 	mut g := unsafe { &FlatGen(a.g) }
+	if a.group >= 4 {
+		node_regs := unsafe { &[]FnDeclNodeReg(a.node_regs_ptr) }
+		g.register_fn_decl_nodes(*node_regs, a.group - 4)
+		return unsafe { nil }
+	}
 	registrations := unsafe { &[]FnSignatureRegistration(a.registrations_ptr) }
 	for registration in registrations {
 		g.apply_fn_signature_registration_group(registration, a.group)
@@ -180,12 +189,18 @@ fn collect_gen_info_scan_count_thread(arg voidptr) voidptr {
 	g := unsafe { &FlatGen(a.g) }
 	incremental := g.incremental_fn_names.len > 0
 	mut metadata_bits := unsafe { &[]u64(a.metadata_bits_ptr) }
+	mut shared_bits := unsafe { &[]u64(a.shared_bits_ptr) }
 	for node_idx in a.start .. a.end {
 		node := g.a.nodes[node_idx]
 		if is_type_metadata_node(&node, mut a.type_text_cache) {
 			a.type_metadata_pos++
 			unsafe {
 				metadata_bits[node_idx >> 6] |= u64(1) << (node_idx & 63)
+			}
+			if shared_scan_node_relevant(g.a, &node) {
+				unsafe {
+					shared_bits[node_idx >> 6] |= u64(1) << (node_idx & 63)
+				}
 			}
 		}
 		if node.kind == .string_literal {
@@ -506,9 +521,6 @@ fn fixed_storage_scan_thread(arg voidptr) voidptr {
 	w.collect_fixed_storage_consts(true)
 	w.timing_profile('  [ttime]       fs consts     ${f64(fssw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	fssw.restart()
-	w.precompute_param_type_index()
-	w.timing_profile('  [ttime]       fs param idx  ${f64(fssw.elapsed().microseconds()) / 1000.0:7.2f} ms')
-	fssw.restart()
 	w.precompute_concrete_optional_abi_fns()
 	w.timing_profile('  [ttime]       fs opt abi    ${f64(fssw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	w.worker_scope = scope
@@ -576,8 +588,11 @@ fn optional_support_selection_thread(arg voidptr) voidptr {
 		metadata.needed_optional_types = flat.TypeTextBindings{}
 		metadata.optional_pointer_struct_tags = map[string]string{}
 		metadata_thread := spawn checker_signature_support_thread(voidptr(metadata))
+		// Resolve every declaration's signature while the master selects; the
+		// selected subset is only registered once it arrives.
+		signatures := w.precompute_fn_decl_signature_types()
 		w.fn_gen_items = <-a.items
-		w.collect_selected_declaration_signature_types()
+		w.collect_selected_declaration_signature_types_from(&signatures)
 		// The items are the final selection: the declaration task does not have
 		// to walk their signatures again.
 		w.selected_decl_types_ready = true
@@ -613,17 +628,21 @@ fn optional_support_selection_thread(arg voidptr) voidptr {
 
 // StructFieldIndexArgs carries the shared struct field index built beside the
 // pre-dispatch helpers; `scope` holds its storage until cgen output is done.
+// It also builds the short-name parameter type index (precompute_param_type_index).
 struct StructFieldIndexArgs {
+	g  &FlatGen
 	tc &types.TypeChecker
 mut:
-	scope voidptr
-	base  &StructFieldIndexBase = unsafe { nil }
+	scope                voidptr
+	base                 &StructFieldIndexBase = unsafe { nil }
+	param_types_by_short map[string][]types.Type
 }
 
 fn struct_field_index_thread(arg voidptr) voidptr {
 	mut a := unsafe { &StructFieldIndexArgs(arg) }
 	a.scope = cgen_worker_scope_begin(true)
 	a.base = new_struct_field_index_base(a.tc.structs)
+	a.param_types_by_short = cgen_param_types_by_short(a.g.fn_decl_param_types, a.tc.fn_param_types)
 	cgen_worker_scope_leave(a.scope)
 	return unsafe { nil }
 }
@@ -834,6 +853,7 @@ fn (mut g FlatGen) scan_collect_gen_info(no_parallel bool) CollectGenInfoScanCou
 	mut args := []CollectGenInfoScanArgs{cap: n_jobs}
 	mut tasks := []workers.Task{cap: n_jobs}
 	mut metadata_bits := []u64{len: (g.a.nodes.len + 63) / 64}
+	g.shared_scan_bits = []u64{len: (g.a.nodes.len + 63) / 64}
 	parsed_end := g.parsed_node_end()
 	for job in 0 .. n_jobs {
 		// Ranges start on a 64-node boundary, so that no two jobs write the same
@@ -850,6 +870,7 @@ fn (mut g FlatGen) scan_collect_gen_info(no_parallel bool) CollectGenInfoScanCou
 			end:               end
 			parsed_end:        parsed_end
 			metadata_bits_ptr: unsafe { voidptr(&metadata_bits) }
+			shared_bits_ptr:   unsafe { voidptr(&g.shared_scan_bits) }
 			type_text_cache:   &TypeMetadataTextCache{}
 		}
 	}
@@ -912,10 +933,11 @@ fn (mut g FlatGen) scan_collect_gen_info(no_parallel bool) CollectGenInfoScanCou
 	unsafe { metadata_bits.free() }
 	g.type_metadata_nodes_ready = true
 	g.embed_payload_nodes_ready = true
+	g.shared_scan_bits_ready = true
 	return counts
 }
 
-fn (mut g FlatGen) apply_fn_signature_registrations(registrations []FnSignatureRegistration) {
+fn (mut g FlatGen) apply_fn_signature_registrations(registrations []FnSignatureRegistration, node_regs []FnDeclNodeReg) {
 	if registrations.len < 128 || isnil(g.a.worker_pool) || g.a.worker_pool.size() < 4
 		|| os.getenv('V3_NO_PAR_CGEN_SIG_REG') != '' {
 		for group in 0 .. 4 {
@@ -923,18 +945,23 @@ fn (mut g FlatGen) apply_fn_signature_registrations(registrations []FnSignatureR
 				g.apply_fn_signature_registration_group(registration, group)
 			}
 		}
+		for which in 0 .. 3 {
+			g.register_fn_decl_nodes(node_regs, which)
+		}
 		return
 	}
-	mut args := []FnSignatureRegistrationArgs{cap: 4}
-	mut tasks := []workers.Task{cap: 4}
-	for group in 0 .. 4 {
+	// Signature groups and the three fn-decl node maps each fill their own maps.
+	mut args := []FnSignatureRegistrationArgs{cap: 7}
+	mut tasks := []workers.Task{cap: 7}
+	for group in 0 .. 7 {
 		args << FnSignatureRegistrationArgs{
 			g:                 voidptr(g)
 			registrations_ptr: unsafe { voidptr(&registrations) }
+			node_regs_ptr:     unsafe { voidptr(&node_regs) }
 			group:             group
 		}
 	}
-	for group in 0 .. 4 {
+	for group in 0 .. 7 {
 		tasks << workers.Task{
 			run:        fn_signature_registration_thread
 			arg:        unsafe { voidptr(&args[group]) }
@@ -1821,14 +1848,12 @@ fn (mut g FlatGen) publish_fixed_storage_scan(mut fs_worker FlatGen) {
 		// release the helper arena before the function workers start, instead of
 		// keeping it resident through emission.
 		g.fixed_storage_consts = clone_cgen_string_bool_map(fs_worker.fixed_storage_consts)
-		g.param_types_by_short = clone_cgen_param_types_map(fs_worker.param_types_by_short)
 		g.concrete_optional_abi_fns = clone_cgen_string_bool_map(fs_worker.concrete_optional_abi_fns)
 		cgen_worker_scope_free(fs_worker.worker_scope)
 		fs_worker.worker_scope = unsafe { nil }
 		return
 	}
 	g.fixed_storage_consts = fs_worker.fixed_storage_consts.move()
-	g.param_types_by_short = fs_worker.param_types_by_short.move()
 	g.concrete_optional_abi_fns = fs_worker.concrete_optional_abi_fns.move()
 }
 
@@ -3869,15 +3894,26 @@ fn (mut g FlatGen) run_pre_dispatch_parallel(no_parallel bool) bool {
 			},
 		])
 		g.refine_fn_item_costs(no_parallel, false)
+		g.precompute_param_type_index()
 	} else {
 		// Item selection only reads the AST and immutable checker tables, so let
 		// its exact-cost pass use the otherwise-idle pool while the independent
 		// fixed-storage scan finishes on a helper thread.
 		mut psw := time.new_stopwatch()
+		// The master swaps in a selection checker meanwhile; keep the checked one.
 		mut field_index_args := &StructFieldIndexArgs{
+			g:  g
 			tc: g.tc
 		}
 		field_index_thread := spawn struct_field_index_thread(voidptr(field_index_args))
+		// The fixed-array return wrapper scans only read the collected declaration
+		// tables; run them beside the other lanes from the start.
+		overlap_wrappers := os.getenv('V3_NO_PAR_FIXED_RET') == ''
+		mut wrapper_workers := []&FlatGen{}
+		mut wrapper_threads := []thread voidptr{}
+		if overlap_wrappers {
+			wrapper_workers, wrapper_threads = g.start_fixed_array_ret_wrappers()
+		}
 		fixed_storage_thread := spawn fixed_storage_scan_thread(voidptr(fs_worker))
 		fixed_array_thread := spawn fixed_array_support_thread(voidptr(fixed_array_worker))
 		call_optional_thread := spawn unresolved_call_optional_thread(voidptr(call_optional_worker))
@@ -3899,12 +3935,9 @@ fn (mut g FlatGen) run_pre_dispatch_parallel(no_parallel bool) bool {
 		// The master would only wait for the helper lanes now. Build the shared
 		// and sum indexes and the fixed-array return wrappers meanwhile: they
 		// only read the collected declaration tables, and dispatch needs them next.
-		overlap_wrappers := os.getenv('V3_NO_PAR_FIXED_RET') == ''
-		mut wrapper_workers := []&FlatGen{}
-		mut wrapper_threads := []thread voidptr{}
 		if overlap_wrappers {
-			wrapper_workers, wrapper_threads = g.start_fixed_array_ret_wrappers()
-			g.collect_shared_sum_indexes()
+			g.collect_shared_type_names()
+			g.precompute_sum_name_lookup()
 			g.timing_profile('  [ttime]     wr shared+sum  ${f64(psw.elapsed().microseconds()) / 1000.0:7.2f} ms (overlapped)')
 			psw.restart()
 		}
@@ -3914,6 +3947,7 @@ fn (mut g FlatGen) run_pre_dispatch_parallel(no_parallel bool) bool {
 		_ = call_optional_thread.wait()
 		_ = field_index_thread.wait()
 		g.struct_field_index_base = field_index_args.base
+		g.param_types_by_short = field_index_args.param_types_by_short.move()
 		if field_index_args.scope != unsafe { nil } {
 			g.parallel_worker_scopes << field_index_args.scope
 		}

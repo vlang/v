@@ -166,10 +166,20 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 		nodes := g.top_level_nodes()
 		g.collect_fn_gen_candidates_range(nodes, 0, nodes.len, '', '', direct_array_access_fns, ignore_overflow_fns, program_modules)
 	}
-	mut preferred_fns := map[string]PreferredFlatFnCandidate{}
-	preferred_fns.reserve(u32(candidates.len))
-	for candidate in candidates {
-		mut preferred := preferred_fns[candidate.preferred_name] or { PreferredFlatFnCandidate{} }
+	// One entry per preferred name; each candidate keeps the index of its entry,
+	// so the selection pass below needs no name lookups.
+	mut preferred_index := map[string]int{}
+	preferred_index.reserve(u32(candidates.len))
+	mut preferred_fns := []PreferredFlatFnCandidate{cap: candidates.len}
+	mut candidate_preferred := []int{len: candidates.len}
+	for ci, candidate in candidates {
+		pi := preferred_index[candidate.preferred_name] or {
+			preferred_index[candidate.preferred_name] = preferred_fns.len
+			preferred_fns << PreferredFlatFnCandidate{}
+			preferred_fns.len - 1
+		}
+		candidate_preferred[ci] = pi
+		mut preferred := unsafe { &preferred_fns[pi] }
 		if candidate.item.is_program_specialization {
 			preferred.has_program_specialization = true
 		}
@@ -180,7 +190,6 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 			preferred.rank = rank
 			preferred.preferred_is_specialization = preferred.has_program_specialization
 		}
-		preferred_fns[candidate.preferred_name] = preferred
 	}
 	mut items := []FlatFnGenItem{cap: candidates.len}
 	// Dedup the selected C names within this pass only. This used to be the
@@ -188,8 +197,9 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 	// to every forked cgen worker; since the map header became pointer sized that
 	// sharing is a true alias rather than a private header copy, so an entry a
 	// worker added would make this pass drop the function instead of selecting it.
-	mut emitted := map[string]bool{}
-	emitted.reserve(u32(candidates.len))
+	// Every candidate's C name is its preferred name, so the flag lives with the
+	// preferred entry.
+	mut emitted := []bool{len: preferred_fns.len}
 	mut prep_stack := []flat.NodeId{cap: 256}
 	mut prep_type_text_cache := map[u32]bool{}
 	// In parallel-prep mode the exact-cost pass (or its serial fallback) also
@@ -203,18 +213,19 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 		g.prep_typ_text_cache = &PrepTypTextCache{}
 		g.preseed_type_seen = &PreseedTypeSeen{}
 	}
-	for candidate in candidates {
-		preferred := preferred_fns[candidate.preferred_name]
+	for ci, candidate in candidates {
+		pi := candidate_preferred[ci]
+		preferred := preferred_fns[pi]
 		if preferred.node_id != int(candidate.item.node_id) {
 			continue
 		}
 		item := candidate.item
 		qfn := item.c_name
 		if qfn.len > 0 {
-			if emitted[qfn] {
+			if emitted[pi] {
 				continue
 			}
-			emitted[qfn] = true
+			emitted[pi] = true
 			node := g.a.nodes[int(item.node_id)]
 			if node.value.contains('[') && node.value.contains('].') {
 				qualified := if item.module !in ['', 'main', 'builtin']
@@ -333,7 +344,7 @@ fn (mut g FlatGen) collect_fn_gen_candidates_range(nodes []i32, start int, end i
 			is_program_specialization) {
 			continue
 		}
-		preferred_name := g.fn_c_name_in_module(item_module, node.value)
+		preferred_name := g.fn_c_name_in_module_known(item_module, node.value, qfn)
 		candidates << FlatFnGenCandidate{
 			preferred_name: preferred_name
 			item:           FlatFnGenItem{
@@ -1557,6 +1568,12 @@ fn (g &FlatGen) should_rename_user_main_for_tests(module_name string, name strin
 }
 
 fn (g &FlatGen) fn_c_name_in_module(module_name string, name string) string {
+	return g.fn_c_name_in_module_known(module_name, name, '')
+}
+
+// fn_c_name_in_module_known is fn_c_name_in_module for a caller that already
+// computed `qualified_fn_name_in_module_c(module_name, name)` (empty: not yet).
+fn (g &FlatGen) fn_c_name_in_module_known(module_name string, name string, qualified_c_name string) string {
 	if collision_name := g.operator_overload_collision_c_name(module_name, name) {
 		return collision_name
 	}
@@ -1574,6 +1591,9 @@ fn (g &FlatGen) fn_c_name_in_module(module_name string, name string) string {
 	}
 	if g.main_export_needs_internal_name(module_name, name) {
 		return g.cname('main.${name}')
+	}
+	if qualified_c_name.len > 0 {
+		return qualified_c_name
 	}
 	return g.qualified_fn_name_in_module_c(module_name, name)
 }
@@ -12053,20 +12073,25 @@ fn (g &FlatGen) generic_receiver_method_param_types(name string) ?[]types.Type {
 // precompute_param_type_index builds short-name -> param-types, preserving the fallback's
 // priority (fn_decl_param_types first, then the checker's fn_param_types; first match wins).
 fn (mut g FlatGen) precompute_param_type_index() {
-	for name, params in g.fn_decl_param_types {
-		if name.contains('.') {
-			short := name.all_after_last('.')
-			if short !in g.param_types_by_short {
-				g.param_types_by_short[short] = params
-			}
-		}
-	}
-	for name, params in g.tc.fn_param_types {
-		if name.contains('.') {
-			short := name.all_after_last('.')
-			if short !in g.param_types_by_short {
-				g.param_types_by_short[short] = params
-			}
+	add_param_types_by_short(mut g.param_types_by_short, g.fn_decl_param_types)
+	add_param_types_by_short(mut g.param_types_by_short, g.tc.fn_param_types)
+}
+
+// cgen_param_types_by_short builds the index of precompute_param_type_index:
+// the first parameter list of every short method/function name.
+fn cgen_param_types_by_short(decl_params map[string][]types.Type, checker_params map[string][]types.Type) map[string][]types.Type {
+	mut index := map[string][]types.Type{}
+	add_param_types_by_short(mut index, decl_params)
+	add_param_types_by_short(mut index, checker_params)
+	return index
+}
+
+fn add_param_types_by_short(mut index map[string][]types.Type, params_by_name map[string][]types.Type) {
+	for name, params in params_by_name {
+		// A borrowed suffix: the map insert copies a new key.
+		short := c_short_name_view(name)
+		if short.len < name.len && short !in index {
+			index[short] = params
 		}
 	}
 }
