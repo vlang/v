@@ -846,6 +846,7 @@ mut:
 	c_extern_forced_decls         map[string]bool
 	export_c_abi_decls            map[string]flat.NodeId
 	main_export_owners            map[string][]string
+	main_export_c_abi_wrappers    map[string]bool
 	c_extern_global_names         map[string]string
 	export_global_names           map[string]string
 	global_linker_sections        map[string]string
@@ -1139,6 +1140,7 @@ struct NativeSourceContextDirective {
 struct ObjectiveCppSourceRequest {
 	module                 string
 	source_path            string
+	defined_fns            []string
 	local_context          []NativeSourceContextDirective
 	source_macros_possible bool
 }
@@ -1734,6 +1736,7 @@ pub fn FlatGen.new() FlatGen {
 		c_extern_forced_decls:              map[string]bool{}
 		export_c_abi_decls:                 map[string]flat.NodeId{}
 		main_export_owners:                 map[string][]string{}
+		main_export_c_abi_wrappers:         map[string]bool{}
 		c_extern_global_names:              map[string]string{}
 		export_global_names:                map[string]string{}
 		global_linker_sections:             map[string]string{}
@@ -2681,15 +2684,24 @@ pub fn cache_native_input_language(path string, c_flags []string, c99_mode bool,
 // cache_native_inputs_language reports the richest preprocessor language any
 // native input requires. The shared compiler-macro probe uses it so it never omits
 // a language macro (`__OBJC__`, `__cplusplus`) that an input's active branches
-// depend on.
+// depend on. An Objective-C(++) source include inside a `#if` branch that is
+// definitely inactive is skipped: cgen omits such an include too, so it must not
+// force the generated unit into Objective-C or rule out TCC.
 pub fn cache_native_inputs_language(a &flat.FlatAst, vroot string, c_flags []string, c99_mode bool, ccompiler string, target pref.Target) string {
 	include_dirs := c_flag_include_dirs(c_flags)
+	mut contexts := CacheNativeSourceContexts{}
 	mut need_objc := false
 	mut need_cpp := false
 	mut cur_file := ''
-	for node in a.nodes {
+	mut cur_module := 'main'
+	for node_idx, node in a.nodes {
 		if node.kind == .file {
 			cur_file = node.value
+			cur_module = 'main'
+			continue
+		}
+		if node.kind == .module_decl {
+			cur_module = node.value
 			continue
 		}
 		if node.kind != .directive
@@ -2702,7 +2714,16 @@ pub fn cache_native_inputs_language(a &flat.FlatAst, vroot string, c_flags []str
 		}
 		if c_include_arg_is_source_file(include_arg) {
 			for path in c_include_file_paths(include_arg, vroot, cur_file, include_dirs) {
-				match cache_native_input_language(path, c_flags, c99_mode, target) {
+				language := cache_native_input_language(path, c_flags, c99_mode, target)
+				if node.value == 'include' && (path.ends_with('.m') || path.ends_with('.mm')) {
+					if !contexts.ready {
+						contexts = cache_native_source_contexts(a, vroot, c_flags, target)
+					}
+					if contexts.include_definitely_inactive(node_idx, cur_module, c99_mode, target) {
+						continue
+					}
+				}
+				match language {
 					'objective-c++' {
 						need_objc = true
 						need_cpp = true
@@ -2724,6 +2745,127 @@ pub fn cache_native_inputs_language(a &flat.FlatAst, vroot string, c_flags []str
 		}
 	}
 	return c_native_language_from_features(need_objc, need_cpp)
+}
+
+struct CacheNativeSourceDirective {
+	node_idx      int
+	text          string
+	native_source bool // part of the context cgen gives a native source include
+}
+
+// CacheNativeSourceContexts mirrors, per module, the preprocessor context that cgen
+// evaluates before it omits an inactive Objective-C(++) source include
+// (collect_c_directive_at, native_source_context_has_macro_inputs).
+struct CacheNativeSourceContexts {
+	ready      bool
+	flags      []string
+	directives map[string][]CacheNativeSourceDirective
+	imports    map[string][]string
+}
+
+fn cache_native_source_contexts(a &flat.FlatAst, vroot string, c_flags []string, target pref.Target) CacheNativeSourceContexts {
+	include_dirs := c_flag_include_dirs(c_flags)
+	mut flags := c_flags.clone()
+	flags << cache_directive_flags_skipping(a, vroot, target, map[string]string{}, map[int]bool{})
+	mut directives := map[string][]CacheNativeSourceDirective{}
+	mut imports := map[string][]string{}
+	mut cur_file := ''
+	mut cur_module := 'main'
+	for node_idx, node in a.nodes {
+		if node.kind == .file {
+			cur_file = node.value
+			cur_module = 'main'
+			continue
+		}
+		if node.kind == .module_decl {
+			cur_module = node.value
+			continue
+		}
+		if node.kind == .import_decl {
+			if node.value.len > 0 && node.value !in imports[cur_module] {
+				imports[cur_module] << node.value
+			}
+			continue
+		}
+		if node.kind != .directive {
+			continue
+		}
+		mut text := ''
+		mut native_source := true
+		if node.value in ['define', 'undef', 'ifdef', 'ifndef', 'if', 'elif', 'else', 'endif',
+			'pragma', 'error', 'warning'] {
+			text = c_preprocessor_directive_line(node.value, node.typ_text())
+		} else if node.value == 'include' && node.typ != 0 {
+			include_arg := c_include_arg_for_target(node.typ_text(), vroot, cur_file, target)
+			if include_arg.len == 0 || c_include_arg_is_builtin_abi_helper(include_arg, vroot) {
+				continue
+			}
+			if c_include_arg_is_source_file(include_arg) {
+				// A source include can define macros, but it is not part of the
+				// directive context itself (see native_source_context_has_macro_inputs).
+				text = '#include ${include_arg}'
+				native_source = false
+			} else {
+				text = c_native_source_context_header_include(include_arg, vroot, cur_file,
+					include_dirs)
+			}
+		}
+		if text.len > 0 {
+			directives[cur_module] << CacheNativeSourceDirective{
+				node_idx:      node_idx
+				text:          text
+				native_source: native_source
+			}
+		}
+	}
+	return CacheNativeSourceContexts{
+		ready:      true
+		flags:      flags
+		directives: directives
+		imports:    imports
+	}
+}
+
+// include_definitely_inactive reports whether the source include at `node_idx` is
+// in a branch that the directives before it, and those of the modules it imports,
+// prove inactive.
+fn (c &CacheNativeSourceContexts) include_definitely_inactive(node_idx int, module_name string, c99_mode bool, target pref.Target) bool {
+	mut context := []string{}
+	mut macro_inputs := []string{}
+	mut visited := map[string]bool{}
+	c.collect_imported(module_name, mut visited, mut context, mut macro_inputs)
+	for directive in c.directives[module_name] or { []CacheNativeSourceDirective{} } {
+		if directive.node_idx >= node_idx {
+			break
+		}
+		if directive.native_source {
+			context << directive.text
+		}
+		macro_inputs << directive.text
+	}
+	if context.len == 0 {
+		return false
+	}
+	source_macros_possible := c_native_source_context_state(macro_inputs, c.flags, c99_mode, target,
+		false).source_macros_possible
+	return c_native_source_context_definitely_inactive(context, c.flags, c99_mode, target,
+		source_macros_possible)
+}
+
+fn (c &CacheNativeSourceContexts) collect_imported(module_name string, mut visited map[string]bool, mut context []string, mut macro_inputs []string) {
+	visited[module_name] = true
+	for dependency in c.imports[module_name] or { []string{} } {
+		if dependency in visited {
+			continue
+		}
+		c.collect_imported(dependency, mut visited, mut context, mut macro_inputs)
+		for directive in c.directives[dependency] or { []CacheNativeSourceDirective{} } {
+			if directive.native_source {
+				context << directive.text
+			}
+			macro_inputs << directive.text
+		}
+	}
 }
 
 fn c_native_language_from_features(need_objc bool, need_cpp bool) string {
@@ -3594,6 +3736,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.c_extern_forced_decls.clear()
 	g.export_c_abi_decls.clear()
 	g.main_export_owners.clear()
+	g.main_export_c_abi_wrappers.clear()
 	g.c_extern_global_names.clear()
 	g.export_global_names.clear()
 	g.global_linker_sections.clear()
@@ -6284,6 +6427,7 @@ fn (mut g FlatGen) collect_c_directive_at(node_idx int, module_name string, node
 					g.objective_cpp_source_requests << ObjectiveCppSourceRequest{
 						module:                 module_name
 						source_path:            source_path
+						defined_fns:            c_source_defined_fn_names(source_text)
 						source_macros_possible: g.native_source_context_has_macro_inputs(module_name)
 						local_context:          (g.native_source_contexts[module_name] or {
 							[]NativeSourceContextDirective{}
@@ -9603,6 +9747,86 @@ fn c_ident_char(ch u8) bool {
 	return (ch >= `a` && ch <= `z`) || (ch >= `A` && ch <= `Z`) || (ch >= `0` && ch <= `9`) || ch == `_`
 }
 
+const c_source_non_fn_keywords = ['if', 'for', 'while', 'switch', 'catch', 'return', 'sizeof',
+	'defined', 'decltype', 'alignof', '_Alignof', 'typeof', '__attribute__', '__declspec']
+
+// c_source_defined_fn_names returns the names of the functions that a C, C++ or
+// Objective-C source defines: an identifier directly followed by a parameter list
+// and then a body. Calls and prototypes are not followed by `{`.
+fn c_source_defined_fn_names(text string) []string {
+	src := c_strip_comments(text)
+	mut names := []string{}
+	mut i := 0
+	mut line_start := true
+	for i < src.len {
+		ch := src[i]
+		if ch == `\n` {
+			line_start = true
+			i++
+			continue
+		}
+		if line_start && ch == `#` {
+			// Skip a preprocessor line, including its backslash continuations.
+			for i < src.len && !(src[i] == `\n` && src[i - 1] != `\\`) {
+				i++
+			}
+			continue
+		}
+		if ch == ` ` || ch == `\t` || ch == `\r` {
+			i++
+			continue
+		}
+		line_start = false
+		if ch == `"` || ch == `'` {
+			i++
+			for i < src.len && src[i] != ch && src[i] != `\n` {
+				if src[i] == `\\` {
+					i++
+				}
+				i++
+			}
+			i++
+			continue
+		}
+		if !c_ident_char(ch) || (ch >= `0` && ch <= `9`) {
+			i++
+			continue
+		}
+		start := i
+		for i < src.len && c_ident_char(src[i]) {
+			i++
+		}
+		name := src[start..i]
+		mut j := i
+		for j < src.len && src[j] in [` `, `\t`, `\r`, `\n`] {
+			j++
+		}
+		if j >= src.len || src[j] != `(` || name in c_source_non_fn_keywords {
+			continue
+		}
+		mut depth := 0
+		for j < src.len {
+			if src[j] == `(` {
+				depth++
+			} else if src[j] == `)` {
+				depth--
+				if depth == 0 {
+					break
+				}
+			}
+			j++
+		}
+		j++
+		for j < src.len && src[j] in [` `, `\t`, `\r`, `\n`] {
+			j++
+		}
+		if j < src.len && src[j] == `{` && name !in names {
+			names << name
+		}
+	}
+	return names
+}
+
 fn c_include_file_path(include_arg string, vroot string, source_file string) string {
 	clean := trimmed_space(include_arg)
 	if clean.len < 2 {
@@ -10192,10 +10416,20 @@ fn c_preprocessor_condition_state(raw string, defined map[string]bool, undefined
 }
 
 fn (mut g FlatGen) materialize_objective_cpp_sources() {
+	mut header_texts := map[string]string{}
 	for request in g.objective_cpp_source_requests {
 		context_directives := g.ordered_native_source_context(request.module, request.local_context)
 		if context_directives.len > 0 && c_native_source_context_definitely_inactive(context_directives, g.c_flags, g.c99_mode, g.target, request.source_macros_possible) {
 			continue
+		}
+		// The source is compiled on its own, so it declares nothing in the generated
+		// unit, even when its V file includes headers. Like `@[c_extern]`, the V
+		// declarations of the functions it defines need their prototypes, unless an
+		// included header declares them itself.
+		for name in request.defined_fns {
+			if !g.c_quoted_headers_mention(name, mut header_texts) {
+				g.c_extern_forced_decls[name] = true
+			}
 		}
 		if context_directives.len > 0 || c_source_include_has_preprocessor_context(context_directives) {
 			g.add_native_source_context_wrapper(request.source_path, context_directives)
@@ -10203,6 +10437,41 @@ fn (mut g FlatGen) materialize_objective_cpp_sources() {
 			g.c_flags << request.source_path
 		}
 	}
+}
+
+// c_quoted_headers_mention reports whether a quoted header of the generated unit
+// spells `name`. System headers cannot declare a project's own functions.
+fn (g &FlatGen) c_quoted_headers_mention(name string, mut texts map[string]string) bool {
+	for directive in g.c_directives {
+		clean := trimmed_space(directive.text)
+		if !clean.starts_with('#include "') || !clean.ends_with('"') {
+			continue
+		}
+		path := clean['#include "'.len..clean.len - 1]
+		if c_include_arg_is_source_file('"${path}"') {
+			continue
+		}
+		if path !in texts {
+			texts[path] = os.read_file(path) or { '' }
+		}
+		if c_text_has_identifier(texts[path], name) {
+			return true
+		}
+	}
+	return false
+}
+
+fn c_text_has_identifier(text string, name string) bool {
+	mut start := 0
+	for {
+		idx := text.index_after(name, start) or { return false }
+		end := idx + name.len
+		if (idx == 0 || !c_ident_char(text[idx - 1])) && (end >= text.len || !c_ident_char(text[end])) {
+			return true
+		}
+		start = end
+	}
+	return false
 }
 
 fn (mut g FlatGen) add_native_source_context_wrapper(source_path string, directives []string) {

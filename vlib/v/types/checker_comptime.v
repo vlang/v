@@ -4512,9 +4512,12 @@ fn (tc &TypeChecker) fixed_array_reference_is_call_borrow(id flat.NodeId) bool {
 			continue
 		}
 		// Like V1, a cast such as `voidptr(&buf[0])` or `u64(&buf[0]) + 8` that
-		// goes straight into a call is still only a borrow for that call.
+		// goes straight into a call is still only a borrow for that call, and so
+		// is a comparison such as `voidptr(&buf[0]) == p`, whose bool result
+		// cannot carry the pointer anywhere.
 		if parent.kind != .paren && parent.kind != .cast_expr
-			&& !(parent.kind == .infix && parent.op in [.plus, .minus]) {
+			&& !(parent.kind == .infix && parent.op in [.plus, .minus, .eq, .ne, .lt, .gt, .le,
+				.ge]) {
 			return false
 		}
 		current = parent_id
@@ -5296,7 +5299,8 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 		return
 	}
 	if clean_actual is Interface
-		&& tc.interface_metadata_name(clean_actual.source_type_id()) != tc.interface_metadata_name(target_iface.source_type_id()) {
+		&& tc.interface_metadata_name(clean_actual.source_type_id()) != tc.interface_metadata_name(target_iface.source_type_id())
+		&& !tc.interface_embeds_interface(clean_actual.source_type_id(), target_iface.source_type_id(), 0) {
 		tc.record_error_at(.assignment_mismatch, 'cannot implement interface `${target_iface.name()}` with a different interface `${clean_actual.name()}`', id, node.pos)
 		return
 	}
@@ -5497,6 +5501,24 @@ fn (tc &TypeChecker) interface_embedding_exceeds(iface_name_id u32, depth int, m
 		}
 	}
 	path.delete(name_id)
+	return false
+}
+
+// interface_embeds_interface reports whether interface `iface_name_id` embeds the
+// interface `target_name_id`, directly or through another embedded interface. Like
+// V1, a value of such an interface converts to the one it embeds.
+fn (tc &TypeChecker) interface_embeds_interface(iface_name_id u32, target_name_id u32, depth int) bool {
+	if depth > 100 {
+		return false
+	}
+	target := tc.interface_metadata_name(target_name_id)
+	name := flat.source_type_name(tc.interface_metadata_name(iface_name_id))
+	for embed_source_id in tc.interface_embeds.type_ids(name) or { []u32{} } {
+		if tc.interface_metadata_name(embed_source_id) == target
+			|| tc.interface_embeds_interface(embed_source_id, target_name_id, depth + 1) {
+			return true
+		}
+	}
 	return false
 }
 

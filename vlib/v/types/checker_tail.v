@@ -15553,8 +15553,11 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		recv_type := tc.smartcast_type(recv_id) or {
 			tc.cached_expr_type(recv_id) or { tc.resolve_type(recv_id) }
 		}
+		// A method that a map alias declares itself, such as `fn (m MyMap) delete(k string)`,
+		// is called instead of the builtin one and keeps its own receiver mutability.
 		builtin_map_mutating_receiver := unalias_and_unwrap_pointer_type(recv_type) is Map
 			&& fn_node.value in ['clear', 'delete', 'move', 'reserve']
+			&& (info.name.len == 0 || info.name.starts_with('map.'))
 		mutating_receiver := tc.mut_receiver_methods[info.name] || builtin_map_mutating_receiver
 		if mutating_receiver {
 			tc.check_locked_shared_mut_receiver_mutation(recv_id)
