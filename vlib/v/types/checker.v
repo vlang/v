@@ -517,8 +517,8 @@ mut:
 	sum_variant_pattern_entries  map[string]&SumVariantPatternFileEntries
 	recv_pattern_entries         map[string]GenericReceiverMethodPatternMatch
 	recv_pattern_misses          map[string]bool
-	lexical_smartcast_entries    map[int]Type
-	lexical_smartcast_misses     map[int]bool
+	lexical_smartcast_pages      [][]u32 // see lexical_smartcast_state
+	lexical_smartcast_types      []Type
 	ierror_compat_entries        map[u32]int
 	ierror_scoped_compat_entries map[u32]&TypeQueryScopeEntries
 	interface_impl_entries       map[u32]flat.TypeTextList
@@ -571,8 +571,8 @@ fn new_type_cache(parse_enabled bool) &TypeCache {
 	cache.sum_variant_pattern_entries = map[string]&SumVariantPatternFileEntries{}
 	cache.recv_pattern_entries = map[string]GenericReceiverMethodPatternMatch{}
 	cache.recv_pattern_misses = map[string]bool{}
-	cache.lexical_smartcast_entries = map[int]Type{}
-	cache.lexical_smartcast_misses = map[int]bool{}
+	cache.lexical_smartcast_pages = [][]u32{}
+	cache.lexical_smartcast_types = []Type{}
 	cache.ierror_compat_entries = map[u32]int{}
 	cache.ierror_scoped_compat_entries = map[u32]&TypeQueryScopeEntries{}
 	cache.interface_impl_entries = map[u32]flat.TypeTextList{}
@@ -590,6 +590,44 @@ fn new_type_cache_with_base(parse_enabled bool, base &TypeCache) &TypeCache {
 	mut cache := new_type_cache(parse_enabled)
 	cache.base = base
 	return cache
+}
+
+// lexical_smartcast_state returns the cached lexical smartcast state of the node
+// `idx`. The states live in pages of 1024 nodes, which a checker allocates as it
+// queries them: 0 = not computed yet, 1 = no narrowing, k + 2 = narrowed to
+// lexical_smartcast_types[k].
+@[direct_array_access; inline]
+fn (cache &TypeCache) lexical_smartcast_state(idx int) u32 {
+	page := idx >> 10
+	if idx < 0 || page >= cache.lexical_smartcast_pages.len {
+		return 0
+	}
+	states := cache.lexical_smartcast_pages[page]
+	if states.len == 0 {
+		return 0
+	}
+	return states[idx & 1023]
+}
+
+// lexical_smartcast_miss reports whether the node `idx` is cached as having no
+// lexical narrowing.
+pub fn (cache &TypeCache) lexical_smartcast_miss(idx int) bool {
+	return cache.lexical_smartcast_state(idx) == 1
+}
+
+@[direct_array_access]
+fn (mut cache TypeCache) set_lexical_smartcast_state(idx int, state u32) {
+	if idx < 0 {
+		return
+	}
+	page := idx >> 10
+	for cache.lexical_smartcast_pages.len <= page {
+		cache.lexical_smartcast_pages << []u32{}
+	}
+	if cache.lexical_smartcast_pages[page].len == 0 {
+		cache.lexical_smartcast_pages[page] = []u32{len: 1024}
+	}
+	cache.lexical_smartcast_pages[page][idx & 1023] = state
 }
 
 fn (mut cache TypeCache) clear_c_type_entries() {
