@@ -68,8 +68,8 @@ fn select(handle int, test Select, timeout time.Duration) !bool {
 
 @[inline]
 fn select_deadline(handle int, test Select, deadline time.Time) !bool {
-	// if we have a 0 deadline here then the timeout that was passed was infinite...
-	infinite := deadline.unix() == 0
+	// Only the unset deadline sentinels mean an infinite wait.
+	infinite := !deadline_set(deadline)
 	for infinite || time.now() <= deadline {
 		timeout := if infinite { net.infinite_timeout } else { deadline - time.now() }
 		ready := select(handle, test, timeout) or {

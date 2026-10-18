@@ -13,7 +13,11 @@ polling, as do sockets that do not support the receive-timeout option.
 A deadline set with `set_read_deadline`, `set_write_deadline` or `set_accept_deadline` takes
 precedence over the matching timeout for as long as it is set: a UDP read with a 400 ms deadline
 waits 400 ms even under the 100 ms default timeout, and a TCP accept, whose timeout is infinite by
-default, ends at its deadline. Set the deadline back to `time.Time{}` to return to the timeout.
+default, ends at its deadline. Set the deadline back to `time.Time{}` or `time.unix(0)` to return
+to the timeout. These are the only unset deadline values; other timestamps, including those
+within the first second of 1970, expire when they are in the past. The same rules apply to
+`net.unix` waits. With an unset deadline and `no_timeout` or `infinite_timeout`, a wait has no
+time limit.
 
 A deadline applies where an operation waits before its system call: the
 `wait_for_read`/`wait_for_write`/`wait_for_accept` methods, and in the default build TCP reads and

@@ -39,6 +39,8 @@ fn test_tcp_blocking_read_uses_socket_timeout() ! {
 			server.set_read_timeout(timeout)
 			assert server.read_timeout_in_socket
 			assert tcp_socket_receive_timeout(server.sock.handle)! == 0
+			client.write_string('ok')!
+			assert server.read(mut buffer)! == 2
 		}
 		server.set_read_timeout(no_timeout)
 		server.set_read_deadline(time.now().add(50 * time.millisecond))
@@ -109,4 +111,39 @@ fn test_a_deadline_before_1970_is_set_and_due() ! {
 		return
 	}
 	assert false, 'nobody connected'
+}
+
+fn tcp_connect_after_deadline_delay(address string) {
+	time.sleep(100 * time.millisecond)
+	mut client := dial_tcp(address) or { panic(err) }
+	client.close() or { panic(err) }
+}
+
+fn test_epoch_subsecond_accept_deadlines_are_due() ! {
+	for nanosecond in [1, 999999999] {
+		mut listener := listen_tcp(.ip, '127.0.0.1:0')!
+		defer { listener.close() or {} }
+		listener.set_accept_deadline(time.unix_nanosecond(0, nanosecond))
+		// Wake an incorrectly infinite wait so a regression fails without hanging.
+		connector := spawn tcp_connect_after_deadline_delay(listener.addr()!.str())
+		mut timed_out := false
+		listener.wait_for_accept() or {
+			assert err.code() == err_timed_out.code()
+			timed_out = true
+		}
+		connector.wait()
+		assert timed_out, 'expired deadline waited for a connection'
+	}
+}
+
+fn test_unset_accept_deadlines_allow_waiting_without_a_timeout() ! {
+	for deadline in [time.Time{}, time.unix(0)] {
+		mut listener := listen_tcp(.ip, '127.0.0.1:0')!
+		defer { listener.close() or {} }
+		listener.set_accept_timeout(no_timeout)
+		listener.set_accept_deadline(deadline)
+		connector := spawn tcp_connect_after_deadline_delay(listener.addr()!.str())
+		listener.wait_for_accept()!
+		connector.wait()
+	}
 }
