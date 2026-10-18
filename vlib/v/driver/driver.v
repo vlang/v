@@ -13430,6 +13430,7 @@ pub fn run(args []string) {
 		}
 	}
 	mut pre_tc := types.TypeChecker.new(a)
+	mut pre_tc_file_ownership := DiagnosticFileOwnership{}
 	mut checker_notice_count := 0
 	mut checker_warning_count := 0
 	mut cached_checker_diagnostics := []V3CachedTypeDiagnostic{}
@@ -13490,7 +13491,7 @@ pub fn run(args []string) {
 		if continue_collect {
 			pre_tc.diagnostic_files = map[string]bool{}
 		}
-		set_diagnostic_files(mut pre_tc, user_files)
+		set_diagnostic_files_judged(mut pre_tc, user_files, mut pre_tc_file_ownership)
 		// The C generator has a dedicated literal-output path. The SSA/native backend
 		// still builds ordinary builtin bodies, so it needs their full dependency set.
 		// MSVC's regular runtime demangles backtraces with string slices, which only
@@ -14599,7 +14600,7 @@ pub fn run(args []string) {
 		// declarations, and v1/v2 do not run a second semantic checker after lowering.
 		pre_tc.diagnose_unknown_calls = false
 		pre_tc.reject_unlowered_map_mutation = true
-		set_diagnostic_files(mut pre_tc, user_files)
+		set_diagnostic_files_judged(mut pre_tc, user_files, mut pre_tc_file_ownership)
 		set_unsupported_generic_files(mut pre_tc, a, is_selfhost, diagnostic_root)
 		incremental_needs_monomorphize := incremental_cache_hit && (incremental_uses_generics
 			|| transformed_used_fns_need_monomorphize(incremental_stage_used_fns))
@@ -21140,13 +21141,34 @@ fn check_markused(a &flat.FlatAst, mut tc types.TypeChecker, no_skip_unused bool
 	return used
 }
 
+// DiagnosticFileOwnership remembers the files that set_diagnostic_files found
+// outside of the project, together with what it judged them by, so that a later
+// call for the same checker does not judge them again.
+struct DiagnosticFileOwnership {
+mut:
+	key       string
+	not_owned map[string]bool
+}
+
 fn set_diagnostic_files(mut tc types.TypeChecker, user_files []string) {
+	mut ownership := DiagnosticFileOwnership{}
+	set_diagnostic_files_judged(mut tc, user_files, mut ownership)
+}
+
+// set_diagnostic_files_judged is set_diagnostic_files that keeps, in `ownership`,
+// the files it found outside of the project for its next call.
+fn set_diagnostic_files_judged(mut tc types.TypeChecker, user_files []string, mut ownership DiagnosticFileOwnership) {
 	for uf in user_files {
 		tc.diagnostic_files[uf] = true
 	}
 	// Exact-output fixtures deliberately diagnose only their selected input.
 	if tc.checker_fixture_mode {
 		return
+	}
+	ownership_key := '${os.getwd()}\x00${tc.shadow_diagnostic_root}\x00${tc.shadow_explicit_roots.join('\x01')}\x00${tc.shadow_dependency_roots.join('\x01')}'
+	if ownership.key != ownership_key {
+		ownership.key = ownership_key
+		ownership.not_owned = map[string]bool{}
 	}
 	// Imported project modules need the same checks as the entry files.
 	// Resolve ownership once here, rather than for every checked expression.
@@ -21176,9 +21198,16 @@ fn set_diagnostic_files(mut tc types.TypeChecker, user_files []string) {
 		} else {
 			node.value
 		}
+		// Each file has two `.file` nodes, and a later call sees the same files
+		// again: judge every owner only once.
+		if ownership.not_owned[owner] {
+			continue
+		}
 		if resolver.owns_file(owner, tc.shadow_diagnostic_root, tc.shadow_explicit_roots,
 			tc.shadow_dependency_roots) {
 			tc.diagnostic_files[node.value] = true
+		} else {
+			ownership.not_owned[owner] = true
 		}
 	}
 }
