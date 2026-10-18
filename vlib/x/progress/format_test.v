@@ -29,6 +29,9 @@ fn test_fmt_time() {
 	assert fmt_time(3725 * time.second, .s) == '3725s'
 	assert fmt_time(1500 * time.millisecond, .sf) == '1.50s'
 	assert fmt_time(-5 * time.second, .mmss) == '00:00'
+	assert fmt_time(75 * time.second + 250 * time.millisecond, .mmssf) == '01:15.25'
+	assert fmt_time(3725 * time.second + 120 * time.millisecond, .hhmmssf) == '01:02:05.12'
+	assert fmt_time(0, .mmssf) == '00:00.00'
 	assert fmt_time_unknown(.mmss) == '--:--'
 	assert fmt_time_unknown(.hhmmss) == '--:--:--'
 }
