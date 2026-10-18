@@ -4400,6 +4400,7 @@ fn (mut p Parser) parse_field_attrs_with_kinds_mode(single_group bool, check_pen
 			// escape is no longer valid syntax. Reflection keeps the legacy unquoted form.
 			piece_start := p.tok_pos
 			piece_end := p.tok_end
+			is_name_piece := p.tok == .name || p.tok == .key_pub
 			piece_name := attr_unquote(p.lit).all_before(':').trim_space()
 			if !p.prefs.is_fmt && piece_name.len > 0
 				&& (attrs.any(it.all_before(':').trim_space() == piece_name)
@@ -4409,6 +4410,25 @@ fn (mut p Parser) parse_field_attrs_with_kinds_mode(single_group bool, check_pen
 			}
 			mut piece := if p.prefs.is_fmt { p.lit } else { attr_unquote(p.lit) }
 			p.next()
+			// A module-qualified attribute name is one attribute: `@[mod.Name]`
+			// and `@[mod.Name(args)]` must reach the checker as a single
+			// `mod.Name` name, not as `mod` plus `Name` split on the dot
+			// (vlang/rfcs#35). Only a name followed by `.` and another name
+			// merges; every other token sequence keeps the legacy pieces.
+			if is_name_piece && p.tok == .dot && (p.peek() == .name || p.peek() == .key_pub) {
+				p.next()
+				piece += '.' + p.lit
+				p.next()
+				if !p.prefs.is_fmt {
+					merged_name := piece.trim_space()
+					if attrs.any(it.all_before(':').trim_space() == merged_name)
+						|| (check_pending_decl_attrs
+							&& p.pending_decl_attrs.any(it.all_before(':').trim_space() == merged_name)) {
+						p.record_diagnostic_span('duplicate attribute `${merged_name}`',
+							piece_start, p.prev_tok_end)
+					}
+				}
+			}
 			if p.tok == .lpar {
 				attr_name := piece
 				call_attrs_start := attrs.len
@@ -4429,7 +4449,11 @@ fn (mut p Parser) parse_field_attrs_with_kinds_mode(single_group bool, check_pen
 						p.check(.colon)
 					}
 					arg_kind := parsed_attribute_kind(p.tok)
-					arg := p.lit.trim_space()
+					mut arg := p.lit.trim_space()
+					if p.tok == .dot && p.peek() == .name {
+						p.next()
+						arg = '.' + p.lit
+					}
 					p.next()
 					if attr_name == 'deprecated' && arg_name == 'msg' {
 						if has_base_arg && !p.prefs.is_fmt {
@@ -10046,6 +10070,9 @@ fn (mut p Parser) match_branch_cond() flat.NodeId {
 			&& ((p.lit[0] >= `A` && p.lit[0] <= `Z`)
 				|| p.imported_named_variant_pattern_starts_here(mod_name)) {
 			type_name := flat.source_type_id(mod_name + '.' + p.named_variant_pattern_type_name_bytes())
+			if p.match_branch_cast_follows(type_name) {
+				return p.match_branch_cast_value(type_name)
+			}
 			if pattern := p.named_variant_match_pattern(type_name, pattern_start) {
 				return pattern
 			}
@@ -10076,7 +10103,9 @@ fn (mut p Parser) match_branch_cond() flat.NodeId {
 		}
 		return sel
 	}
-	if p.tok == .name && p.lit.len > 0
+	// An unqualified `GLenum(0x84fe) {` is a cast value, not a type pattern; only
+	// `Sum.Variant(x)` binds a payload. Parse it below as an ordinary expression.
+	if p.tok == .name && p.lit.len > 0 && p.peek() != .lpar
 		&& ((p.lit[0] >= `A` && p.lit[0] <= `Z`) || p.is_generated_type_name(p.lit)) {
 		pattern_start := p.span_start()
 		name := p.named_variant_pattern_type_name()
@@ -10142,6 +10171,27 @@ fn (mut p Parser) match_type_pattern_node(type_name_id u32) flat.NodeId {
 		})
 	}
 	return p.add_val(.ident, type_name)
+}
+
+// match_branch_cast_follows reports whether `mod.Type` followed by `(` starts a cast value,
+// e.g. `webgl.GLenum(0x84fe) {`, instead of a sum type variant pattern with a payload binding.
+fn (mut p Parser) match_branch_cast_follows(type_name_id u32) bool {
+	type_name := flat.source_type_name(type_name_id)
+	if p.tok != .lpar || p.prefs.is_fmt || type_name.count('.') != 1 {
+		return false
+	}
+	if _ := p.named_variant_pattern_type(type_name_id) {
+		return false
+	}
+	module_name := type_name.all_before('.')
+	return module_name in p.imported_module_names && !p.is_local_binding(module_name)
+}
+
+fn (mut p Parser) match_branch_cast_value(type_name_id u32) flat.NodeId {
+	p.in_match_branch_condition++
+	cond := p.expr_with_lhs(p.match_type_pattern_node(type_name_id), .lowest)
+	p.in_match_branch_condition--
+	return cond
 }
 
 fn top_level_dot_index(s string) ?int {
@@ -11505,6 +11555,20 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 			lhs = p.selector_or_method(lhs)
 			continue
 		}
+		if p.current_token_is_newline_semicolon() && p.peek() == .lcbr
+			&& !p.in_for_container && p.in_select_branch_condition == 0 {
+			lhs_node := p.a.nodes[int(lhs)]
+			if lhs_node.kind in [.ident, .selector, .index] {
+				type_id := p.resolve_local_type_id(p.type_expr_name(lhs))
+				type_name := flat.source_type_name(type_id)
+				if type_name_can_init(type_name) && !p.is_local_binding(type_name.all_before('.'))
+					&& (lhs_node.kind != .index || p.generic_type_target_has_static_path(lhs)) {
+					p.next()
+					lhs = p.struct_init(type_id)
+					continue
+				}
+			}
+		}
 		// module-qualified struct init: module.Type{} or module.Type{field: val, ...}
 		if p.tok == .lcbr && (p.in_select_branch_condition == 0 || p.current_lcbr_is_attached()
 			|| p.select_condition_has_qualified_struct_type(lhs))
@@ -11623,6 +11687,9 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 				&& p.current_generic_struct_init_suffix_followed_by_lcbr() {
 				before_suffix_offset := p.s.offset
 				suffix := p.parse_type_generic_suffix()
+				if p.current_token_is_newline_semicolon() && p.peek() == .lcbr {
+					p.next()
+				}
 				if p.s.offset != before_suffix_offset && p.tok == .lcbr {
 					lhs = p.struct_init(p.resolve_local_type_id(flat.source_type_id(base_type_name + suffix)))
 					continue
@@ -12490,7 +12557,11 @@ fn (mut p Parser) keyword_token_is_ident_expr() bool {
 	return match p.tok {
 		.key_module, .key_type { true }
 		.key_shared { p.shared_token_is_identifier(false) }
-		.key_lock, .key_rlock, .key_match, .key_select { p.peek() in [.lpar, .lsbr] }
+		.key_lock, .key_rlock, .key_select { p.peek() in [.lpar, .lsbr] }
+		// `match [1, 2] {` and `match []int{} {` match an array, as a statement
+		// `match` does. Only a `[` right after the keyword indexes or specializes a
+		// function named `match` (V1 used the same rule).
+		.key_match { p.peek() == .lpar || (p.peek() == .lsbr && p.peek_pos == p.tok_end) }
 		else { false }
 	}
 }
@@ -13591,6 +13662,8 @@ fn (mut p Parser) empty_map_init_after_type(map_type_id u32, start int) flat.Nod
 }
 
 fn (mut p Parser) pointer_cast_expr_from_current_depth(depth int, start int) ?flat.NodeId {
+	saved_diagnostics_len := p.diagnostics.len
+	saved_diagnostic_limit_reached := p.diagnostic_limit_reached
 	saved_s := p.s
 	saved_tok := p.tok
 	saved_lit := p.lit
@@ -13618,6 +13691,8 @@ fn (mut p Parser) pointer_cast_expr_from_current_depth(depth int, start int) ?fl
 			pos:            p.span_to(start)
 		})
 	}
+	p.diagnostics.trim(saved_diagnostics_len)
+	p.diagnostic_limit_reached = saved_diagnostic_limit_reached
 	p.s = saved_s
 	p.tok = saved_tok
 	p.lit = saved_lit

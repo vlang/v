@@ -262,6 +262,16 @@ the failing tests too.
 NB 6: Set `VTEST_SKIP_OWNERSHIP=1` to omit ownership and autofree tests from
 `v test`, `v test-self`, and `vlib/v/test_all.vsh`. GitHub Actions enables this
 behavior automatically while ownership/autofree coverage is disabled there.
+A `_test.v` file is an ownership/autofree test when it is in an `ownership`
+folder, its name contains `ownership` or `autofree`, its `// vtest vflags:` line
+has `-ownership`, `-autofree` or `-d ownership`, or it has this line:
+```v ignore
+// vtest ownership
+```
+Add that line to a test that builds the ownership compiler, or compiles with one
+of those flags (for example with `os.exec([vexe, '-ownership', ...])`). Flags
+elsewhere in a test's source are not enough, since many tests pass them only to
+check how they are parsed or rejected.
 
 ## `.github/workflows/ci.yml`
 

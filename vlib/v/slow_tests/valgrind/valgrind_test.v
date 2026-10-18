@@ -1,4 +1,5 @@
 // vtest build: !musl? && !sanitized_job?
+// vtest ownership
 import os
 import term
 import benchmark

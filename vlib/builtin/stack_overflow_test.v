@@ -145,6 +145,38 @@ fn test_stack_overflow_prints_a_message() {
 	}
 }
 
+// Every hosted program links the handler, so it must build with the bundled TCC, whose
+// Linux arm64 runtime has no atomic helpers. A retry with the system C compiler, or with
+// the compatibility compiler, would hide a failure; the flags below disable both.
+fn test_handler_builds_with_tcc() {
+	$if !((linux || macos) && (amd64 || arm64)) {
+		return
+	}
+	work_dir := os.join_path(os.vtmp_dir(), 'stack_overflow_tcc_test_${os.getpid()}')
+	os.mkdir_all(work_dir)!
+	defer {
+		os.rmdir_all(work_dir) or {}
+	}
+	source := os.join_path(work_dir, 'child.v')
+	binary := os.join_path(work_dir, 'child')
+	os.write_file(source, child_source)!
+	compile := os.exec([@VEXE, '-new-compiler', '-cc', 'tcc', '-no-retry-compilation', '-o', binary,
+		source])
+	assert compile.exit_code == 0, compile.output
+	// The fault is reported once: by the one-shot handler of the TCC `-bt` runtime, that
+	// V forwards it to, or by V, when there is no such handler (macOS).
+	res := run_child(binary, 'nil')
+	assert res.exit_code != 0, res.output
+	assert res.output.count('invalid memory access') + res.output.count('segmentation fault') == 1, res.output
+	$if linux {
+		for mode in ['main', 'thread'] {
+			overflow := run_child(binary, mode)
+			assert overflow.exit_code != 0, '${mode}: ${overflow.output}'
+			assert overflow.output.contains('V panic: stack overflow'), '${mode}: ${overflow.output}'
+		}
+	}
+}
+
 // V's handler calls the handler that was installed before it for any fault that is not
 // a stack overflow, so it has to block the signals that the previous action blocks.
 fn test_previous_handler_keeps_its_signal_mask() {

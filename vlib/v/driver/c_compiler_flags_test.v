@@ -275,10 +275,40 @@ fn test_v3_windows_cross_compiler_replaces_host_tcc() {
 		os:   'windows'
 		arch: 'x86'
 	}
-	assert v3_windows_cross_c_compiler('tcc', linux, windows_amd64) == 'x86_64-w64-mingw32-gcc'
-	assert v3_windows_cross_c_compiler('tinyc', linux, windows_x86) == 'i686-w64-mingw32-gcc'
-	assert v3_windows_cross_c_compiler('clang', linux, windows_amd64) == 'clang'
-	assert v3_windows_cross_c_compiler('tcc', windows_amd64, windows_amd64) == 'tcc'
+	windows_arm64 := pref.Target{
+		os:   'windows'
+		arch: 'arm64'
+	}
+	assert v3_windows_cross_c_compiler('tcc', true, linux, windows_amd64) == 'x86_64-w64-mingw32-gcc'
+	assert v3_windows_cross_c_compiler('tinyc', true, linux, windows_x86) == 'i686-w64-mingw32-gcc'
+	assert v3_windows_cross_c_compiler('clang', true, linux, windows_amd64) == 'clang'
+	assert v3_windows_cross_c_compiler('tcc', true, windows_amd64, windows_amd64) == 'tcc'
+	// The platform default `cc` has no Windows headers; an explicit `-cc cc` is kept.
+	assert v3_windows_cross_c_compiler('cc', false, linux, windows_amd64) == 'x86_64-w64-mingw32-gcc'
+	assert v3_windows_cross_c_compiler('cc', true, linux, windows_amd64) == 'cc'
+	assert v3_windows_cross_c_compiler('cc', false, linux, windows_arm64) == 'cc'
+	assert v3_windows_cross_c_compiler('cc', false, windows_amd64, windows_amd64) == 'cc'
+}
+
+fn test_v3_windows_target_defaults_to_amd64_on_other_hosts() {
+	macos_arm64 := pref.Target{
+		os:   'macos'
+		arch: 'arm64'
+	}
+	linux_arm64 := pref.Target{
+		os:   'linux'
+		arch: 'arm64'
+	}
+	windows_arm64 := pref.Target{
+		os:   'windows'
+		arch: 'arm64'
+	}
+	assert v3_target_arch_for_request(macos_arm64, 'windows', 'arm64', false, false) == 'amd64'
+	assert v3_target_arch_for_request(linux_arm64, 'Windows', 'arm64', false, false) == 'amd64'
+	assert v3_target_arch_for_request(macos_arm64, 'windows', 'arm64', true, false) == 'arm64'
+	assert v3_target_arch_for_request(macos_arm64, 'windows', 'arm64', false, true) == 'arm64'
+	assert v3_target_arch_for_request(windows_arm64, 'windows', 'arm64', false, false) == 'arm64'
+	assert v3_target_arch_for_request(macos_arm64, 'macos', 'arm64', false, false) == 'arm64'
 }
 
 fn test_v3_msvc_alias_selects_cl_on_windows() {
@@ -292,8 +322,8 @@ fn test_v3_no_std_omits_default_c_and_cpp_standards() {
 	assert c_standard_flag(false, false) == '-std=gnu11'
 	assert c_standard_flag(true, false) == '-std=c99'
 	assert c_standard_flag(false, true) == ''
-	assert cxx_standard_flag(false, false) == '-std=gnu++11'
-	assert cxx_standard_flag(true, false) == '-std=c++11'
+	assert cxx_standard_flag(false, false) == '-std=gnu++17'
+	assert cxx_standard_flag(true, false) == '-std=c++17'
 	assert cxx_standard_flag(false, true) == ''
 }
 
@@ -322,7 +352,7 @@ fn test_v3_no_std_command_keeps_the_user_standard_only() {
 	assert build.exit_code == 0, build.output
 	assert '-std=c++11' in build.output.split_into_lines(), build.output
 	assert !build.output.contains('-std=gnu11'), build.output
-	assert !build.output.contains('-std=gnu++11'), build.output
+	assert !build.output.contains('-std=gnu++17'), build.output
 }
 
 fn test_v3_tcc_linux_output_declares_backtrace() {
@@ -359,8 +389,8 @@ fn test_macos_linux_cross_compile_uses_bundled_amd64_sysroot() {
 		os:   'linux'
 		arch: 'amd64'
 	}
-	assert v3_target_arch_for_request(host, 'linux', 'arm64', false) == 'amd64'
-	assert v3_target_arch_for_request(host, 'linux', 'arm64', true) == 'arm64'
+	assert v3_target_arch_for_request(host, 'linux', 'arm64', false, false) == 'amd64'
+	assert v3_target_arch_for_request(host, 'linux', 'arm64', true, false) == 'arm64'
 	assert v3_macos_linux_cross_compile(host, target, 'c', 'cc')
 	assert v3_macos_linux_cross_compile(host, target, 'c', 'clang')
 	assert v3_macos_linux_cross_compile(host, target, 'c', '/usr/bin/clang')
@@ -1279,6 +1309,27 @@ fn test_v3_tcc_flag_plan_skips_backtrace_on_macos_arm64() {
 	assert '-B${tcc_install_dir}' in plan.before_inputs
 	assert '-I${os.join_path_single(tcc_install_dir, 'include')}' in plan.before_inputs
 	assert '-L${tcc_install_dir}' in plan.before_inputs
+}
+
+fn test_v3_freestanding_flag_plan_links_no_host_libraries() {
+	for is_tcc in [false, true] {
+		plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+			is_tcc:          is_tcc
+			is_prod:         !is_tcc
+			is_freestanding: true
+			target_os:       'linux'
+			target_arch:     'amd64'
+			c_compiler:      if is_tcc { 'tinyc' } else { 'gcc' }
+			vroot:           os.join_path(os.temp_dir(), 'v3_freestanding_flag_plan')
+		})
+		assert '-ffreestanding' in plan.before_inputs, 'tcc=${is_tcc}'
+		assert '-bt25' !in plan.before_inputs, 'tcc=${is_tcc}'
+		// `_start` calls `main` from a top-level asm block, which LTO does not see.
+		assert '-flto' !in plan.before_inputs, 'tcc=${is_tcc}'
+		assert '-static' in plan.after_inputs && '-nostdlib' in plan.after_inputs, 'tcc=${is_tcc}'
+		assert '-lm' !in plan.after_inputs && '-lpthread' !in plan.after_inputs, 'tcc=${is_tcc}'
+		assert ('-ltcc1' in plan.after_inputs) == is_tcc
+	}
 }
 
 fn test_v3_linux_shared_flag_plan_hides_static_archive_symbols() {

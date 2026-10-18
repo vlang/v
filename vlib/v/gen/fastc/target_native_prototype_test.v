@@ -5,6 +5,43 @@ import v.cmdexec
 import v.flat
 import v.pref
 
+fn test_fastc_native_context_preserves_declaration_origins_and_order() {
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.target_from('vinix', 'amd64') or { panic(err) }
+	sources := [FastcSourceFile{
+		path:   'first.c.v'
+		source: 'module main\n#include <missing_native.h>\nfn C.shared()\nfn first() { C.first_reference() }\n'
+	}, FastcSourceFile{
+		path:   'second.c.v'
+		source: 'module main\n$if windows {\nfn C.inactive()\nfn hidden() { C.inactive_reference() }\n} $else {\nfn C.shared()\nfn second() { C.second_reference() }\n}\n'
+	}, FastcSourceFile{
+		path:   'third.c.v'
+		source: 'module main\nfn C.shared()\nfn C.separate()\nfn third() { C.first_reference() }\n'
+	}, FastcSourceFile{
+		path:   'fourth.c.v'
+		source: 'module main\n$if vinix {\n#preinclude <missing_target.h>\nfn C.shared()\nfn fourth() { C.fourth_reference() }\n}\n'
+	}, FastcSourceFile{
+		path:   'fifth.c.v'
+		source: 'module main\nfn C.separate()\nfn fifth() { C.last_reference() }\n'
+	}]
+	parallel_context := fastc_native_source_context(sources, prefs)
+	prefs.no_parallel = true
+	serial_context := fastc_native_source_context(sources, prefs)
+	assert parallel_context.references == serial_context.references
+	assert parallel_context.references.keys() == serial_context.references.keys()
+	assert parallel_context.files_with_headers == serial_context.files_with_headers
+	assert parallel_context.declaration_paths == serial_context.declaration_paths
+	assert parallel_context.declaration_paths['shared'] == ['first.c.v', 'second.c.v', 'third.c.v',
+		'fourth.c.v']
+	assert parallel_context.declaration_paths['separate'] == ['third.c.v', 'fifth.c.v']
+	assert 'inactive' !in parallel_context.declaration_paths
+	assert 'inactive_reference' !in parallel_context.references
+	assert parallel_context.files_with_headers == {
+		'first.c.v':  true
+		'fourth.c.v': true
+	}
+}
+
 fn test_fastc_target_native_prototypes_follow_declaring_source_header_ownership() {
 	mut prefs := pref.new_preferences()
 	prefs.target_libc_headers = true

@@ -429,6 +429,74 @@ fn test_serial_prep_interns_ast_string_literals_in_source_order() {
 	assert g.str_lit_ids['second'] == 1
 }
 
+fn test_dispatch_worker_literals_are_numbered_in_chunk_order() {
+	mut g, _ := parallel_worker_test_gen(true)
+	assert g.intern_string('source') == 0
+	g.str_lits_shared = true
+	// The queue handed chunks 1 and 3 to the first dispatcher, 0 and 2 to the second.
+	mut first := g.new_parallel_dispatch_worker(1)
+	mut second := g.new_parallel_dispatch_worker(2)
+	for chunk in [[1, 3], [0, 2]] {
+		mut dispatcher := if chunk[0] == 1 { first } else { second }
+		for chunk_idx in chunk {
+			mut batch := dispatcher.new_parallel_worker(chunk_idx)
+			id := batch.intern_string('chunk ${chunk_idx}')
+			shared_id := batch.intern_string('shared')
+			batch.sb.write_string('use(_str_${id}, _str_${shared_id});')
+			dispatcher.absorb_dispatch_chunk(batch, chunk_idx)
+		}
+	}
+	g.publish_dispatch_literals_in_chunk_order([voidptr(first), voidptr(second)])
+	mut ordered := []string{len: 4}
+	mut ordered_wrapper_defs := []ParallelChunkWrapperDefs{len: 4}
+	g.merge_parallel_worker_ordered(first, mut ordered, mut ordered_wrapper_defs)
+	g.merge_parallel_worker_ordered(second, mut ordered, mut ordered_wrapper_defs)
+	assert g.str_lits == ['source', 'chunk 0', 'shared', 'chunk 1', 'chunk 2', 'chunk 3']
+	assert ordered == ['use(_str_1, _str_2);', 'use(_str_3, _str_2);', 'use(_str_4, _str_2);',
+		'use(_str_5, _str_2);']
+}
+
+fn test_synthesized_string_literals_are_numbered_in_sorted_order() {
+	mut g, _ := parallel_worker_test_gen(false)
+	values := ['parsed b', 'parsed a', 'synthesized z', 'parsed a', 'synthesized c']
+	g.a.nodes = values.map(flat.Node{
+		kind:  .string_literal
+		value: it
+	})
+	g.a.parsed_node_count = 2
+	g.preintern_ast_string_literals()
+	assert g.str_lits == ['parsed b', 'parsed a', 'synthesized c', 'synthesized z']
+	// The collected literal table must give the same numbering as the node walk.
+	mut collected, _ := parallel_worker_test_gen(false)
+	collected.a.nodes = g.a.nodes
+	collected.a.parsed_node_count = 2
+	_ = collected.scan_collect_gen_info_serial()
+	collected.ast_string_literals_ready = true
+	assert collected.ast_string_literals_parsed == 2
+	collected.preintern_ast_string_literals()
+	assert collected.str_lits == g.str_lits
+}
+
+fn test_body_only_fn_ptr_typedefs_follow_the_type_declarations() {
+	mut g, _ := parallel_worker_test_gen(true)
+	g.used_fn_ptr_types['fn_ptr:int|int'] = true
+	g.split_body_fn_ptr_types_from_decls(min_flat_cgen_parallel_items)
+	assert g.split_body_fn_ptr_types
+	// Function bodies discover a type that the declarations never use.
+	g.used_fn_ptr_types['fn_ptr:i64|i64'] = true
+	g.fn_ptr_types['fn_ptr:int|int'] = '_fn_ptr_decl'
+	g.fn_ptr_types['fn_ptr:i64|i64'] = '_fn_ptr_body'
+	g.write_type_declaration_block()
+	out := g.sb.str()
+	decl := out.index('_fn_ptr_decl') or { -1 }
+	body := out.index('_fn_ptr_body') or { -1 }
+	// One sorted typedef group would put the `i64` signature first.
+	assert decl >= 0 && body > decl, out
+	assert !g.split_body_fn_ptr_types
+	assert g.used_fn_ptr_types['fn_ptr:i64|i64']
+	assert g.used_fn_ptr_types['fn_ptr:int|int']
+}
+
 fn test_type_metadata_scan_preserves_order_across_worker_shards() {
 	mut g, _ := parallel_worker_test_gen(false)
 	g.a.worker_pool = workers.new(4)

@@ -38,7 +38,7 @@ fn main() {
 		c_source := generate(source, 'indexed_enum_collections.v', prefs) or { panic(err) }
 		if selfhost {
 			// Every print still uses the enum printer, including aliases and missing map keys.
-			assert c_source.all_after_last('int main(').count('v_fastc_print_enum_Color(') == 9, c_source
+			assert c_source.all_after_last('int ${fastc_c_main_name(prefs)}(').count('v_fastc_print_enum_Color(') == 9, c_source
 			continue
 		}
 		c_file := os.join_path(root, 'program.c')

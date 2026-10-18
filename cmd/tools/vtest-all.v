@@ -271,17 +271,15 @@ fn get_all_commands() []Command {
 			rmfile: 'swait'
 		}
 		res << Command{
-			line:          '${vexe} -cc gcc -keepc -freestanding -o bel vlib/os/bare/bare_example_linux.v'
-			okmsg:         'V can compile with -freestanding on Linux with GCC.'
-			rmfile:        'bel'
-			v3_compatible: false
+			line:   '${vexe} -cc gcc -keepc -freestanding -o bel vlib/os/bare/bare_example_linux.v'
+			okmsg:  'V can compile with -freestanding on Linux with GCC.'
+			rmfile: 'bel'
 		}
 
 		res << Command{
-			line:          '${vexe} -cc gcc -keepc -freestanding -o str_array vlib/strconv/bare/str_array_example.v'
-			okmsg:         'V can compile & allocate memory with -freestanding on Linux with GCC.'
-			rmfile:        'str_array'
-			v3_compatible: false
+			line:   '${vexe} -cc gcc -keepc -freestanding -o str_array vlib/strconv/bare/str_array_example.v'
+			okmsg:  'V can compile & allocate memory with -freestanding on Linux with GCC.'
+			rmfile: 'str_array'
 		}
 		res << Command{
 			line:          '${vexe} -cc gcc -keepc -freestanding -o time_now vlib/time/bare/time_now_example.v'

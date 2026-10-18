@@ -25,12 +25,12 @@ fn (g &Parser) optional_function_field_for_expression(tokens []FastcExpressionTo
 	if tokens.len < 3 || tokens[tokens.len - 2].tok != .dot || tokens.last().tok != .name {
 		return none
 	}
-	receiver_type := (g.infer_expression_type(tokens[..tokens.len - 2]) or { return none })
+	receiver_type := g.infer_expression_type(tokens[..tokens.len - 2]) or { return none }
 	field := g.struct_field_metadata(receiver_type, tokens.last().lit) or { return none }
 	if !field.is_optional_function {
 		return none
 	}
-	return field
+	return *field
 }
 
 fn (g &Parser) or_block_has_statements() bool {
@@ -210,10 +210,12 @@ fn (mut g Parser) prescan_register_is_conjunct(toks []token.Token, lits []string
 // smart-cast; a bare bool-local conjunct inherits its own recorded implications.
 fn (g &Parser) compute_bool_is_implications(tokens []FastcExpressionToken) []FastcBoolImplication {
 	mut depth := 0
+	mut may_have_implications := tokens.len == 1
 	for t in tokens {
 		match t.tok {
 			.lpar, .lsbr, .lcbr { depth++ }
 			.rpar, .rsbr, .rcbr { depth-- }
+			.key_is, .and { may_have_implications = true }
 			.logical_or {
 				if depth == 0 {
 					return []
@@ -222,6 +224,7 @@ fn (g &Parser) compute_bool_is_implications(tokens []FastcExpressionToken) []Fas
 			else {}
 		}
 	}
+	if !may_have_implications { return []FastcBoolImplication{} }
 	mut implications := []FastcBoolImplication{}
 	for conjunct in fastc_split_top_level_and(tokens) {
 		if imp := g.bool_conjunct_implication(conjunct) {
@@ -360,8 +363,29 @@ fn (g &Parser) detect_option_none_narrowings(cond_tokens []FastcExpressionToken)
 	return names
 }
 
+fn (g &Parser) validate_if_condition() ! {
+	fastc_validate_if_condition(g.tok, g.s, g.translated, g.source_offset, g.source_origins, g.path)!
+}
+
+fn fastc_validate_if_condition(tok token.Token, scan &scanner.Scanner, translated bool, source_offset int, source_origins []FastcSourceOrigin, path string) ! {
+	if translated || tok !in [.key_if, .lpar] {
+		return
+	}
+	// Match the regular parser, including conditions hidden behind opening parentheses.
+	mut lookahead := *scan
+	mut next := tok
+	for next == .lpar {
+		next = lookahead.scan()
+	}
+	if next == .key_if {
+		offset := fastc_original_source_offset(source_origins, lookahead.pos + source_offset)
+		return error('the condition of an `if` cannot start with another `if` expression; assign it to a variable first at byte ${offset} in ${path}')
+	}
+}
+
 fn (mut g Parser) parse_if() !bool {
 	g.next()
+	g.validate_if_condition()!
 	// `if a, b := opt_fn() { ... }` unwraps an option whose value is a multi-return
 	// tuple and binds each component. The comma would otherwise trip the condition
 	// reader as a parallel assignment, so detect the `name (, name)+ :=` prefix here.
@@ -1225,12 +1249,25 @@ fn (g &Parser) render_guard_boolean_expression(tokens []FastcExpressionToken) ?s
 	return none
 }
 
+// can_skip_member_smartcast_detection proves the ignored no-plan path has no
+// renderer side effects: both old conjunction splits have exactly one part.
+fn (g &Parser) can_skip_member_smartcast_detection(tokens []FastcExpressionToken, rendered_condition string) bool {
+	if !g.selfhost || g.member_smartcasts.len != 0 { return false }
+	for item in tokens {
+		if item.tok in [.key_is, .not_is, .and] { return false }
+	}
+	return !fastc_contains(rendered_condition, '&&')
+}
+
 // detect_member_smartcasts finds every `member.path is Type` test in a (possibly
 // `&&`-conjoined) condition, records a plan per test, and rewrites `condition` to
 // the conjunction of the runtime type checks plus any boolean guards. Returns an
 // empty list (leaving `condition` untouched) when the condition is not a member
 // smartcast, so simple-local smartcasts and ordinary conditions are unaffected.
 fn (mut g Parser) detect_member_smartcasts(cond_tokens []FastcExpressionToken, rendered_condition string) ([]FastcMemberSmartcastPlan, string) {
+	if g.can_skip_member_smartcast_detection(cond_tokens, rendered_condition) {
+		return []FastcMemberSmartcastPlan{}, ''
+	}
 	conjuncts := fastc_split_top_level_and(cond_tokens)
 	rendered_conjuncts := fastc_split_top_level_c_and(fastc_strip_outer_parens(rendered_condition))
 	aligned := rendered_conjuncts.len == conjuncts.len
@@ -1608,6 +1645,7 @@ fn (mut g Parser) read_if_expression() !string {
 		u32(0)
 	}
 	g.expect(.key_if)!
+	g.validate_if_condition()!
 	// `pos := if a, _, _ := opt_multi() { … } else { … }`: a multi-return option guard
 	// used as an if-expression value.
 	if g.tok == .name {

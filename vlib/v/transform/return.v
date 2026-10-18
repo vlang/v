@@ -182,10 +182,21 @@ fn (mut t Transformer) transformed_branch_error_return(value_id flat.NodeId, ret
 	if !t.return_expr_is_propagated_err(value_id, payload_type_source_id) {
 		return none
 	}
-	err_expr := t.transform_expr(value_id)
-	ret := t.make_none_return_stmt_with_err_expr(err_expr)
+	ret := t.make_none_return_stmt_with_err_expr(t.transform_returned_error(value_id))
 	t.mark_transformed_return(ret, source_return_id)
 	return ret
+}
+
+// transform_returned_error lowers the error of a failed-result return. When ownership analysis
+// decided that the error is read from borrowed storage, such as a module-level `IError`
+// constant, the caller receives an independent clone that it may free.
+fn (mut t Transformer) transform_returned_error(value_id flat.NodeId) flat.NodeId {
+	err_expr := t.transform_expr(value_id)
+	mut err_type := t.return_ierror_expr_type(value_id)
+	if err_type == 0 {
+		err_type = flat.source_type_id('IError')
+	}
+	return t.clone_borrowed_projection(value_id, err_expr, err_type)
 }
 
 fn (mut t Transformer) return_expr_is_propagated_err(id flat.NodeId, payload_type_id u32) bool {
@@ -1465,7 +1476,12 @@ fn (mut t Transformer) build_return_match_type_branch_chain(match_expr_id flat.N
 		t.push_smartcast(orig_subj, sc.variant_name, sc.sum_type_name)
 		sc_pushed++
 	}
+	// Every variant of the arm transforms the same body nodes, and a lowered
+	// body can keep the source nodes it did not change, so none of them may be
+	// rewritten in place.
+	t.inplace_rewrite_holds++
 	body_block := t.match_branch_return_block(branch, n_conds, ret_typ_id, source_return_id, []flat.NodeId{})
+	t.inplace_rewrite_holds--
 	for _ in 0 .. sc_pushed {
 		t.pop_smartcast()
 	}
@@ -1484,13 +1500,75 @@ fn (mut t Transformer) build_return_match_type_branch_chain(match_expr_id flat.N
 
 // try_expand_return_match detects a `return match x { ... }` pattern and expands
 // it into an if/else-if chain where every branch tail is an explicit return.
+// return_or_result_tail_as_return rewrites `return a() or { b() }` in a `!T`
+// function, where `b()` is a `!T` value, to `return a() or { return b() }`:
+// the `or {}` block passes the result of `b()`, error or value, on as it is.
+fn (mut t Transformer) return_or_result_tail_as_return(node flat.Node, source_return_id flat.NodeId) ?flat.NodeId {
+	if node.children_count != 1
+		|| !flat.source_type_shape(t.normalize_type_alias(t.cur_fn_ret_type)).has(.result_type) {
+		return none
+	}
+	or_id := t.a.child(&node, 0)
+	or_node := t.a.nodes[int(or_id)]
+	if or_node.kind != .or_expr || or_node.children_count != 2 || or_node.value in ['!', '?'] {
+		return none
+	}
+	block := t.a.nodes[int(t.a.child(&or_node, 1))]
+	if block.kind != .block || block.children_count == 0 {
+		return none
+	}
+	tail := t.a.nodes[int(t.a.child(&block, int(block.children_count) - 1))]
+	if tail.kind != .expr_stmt || tail.children_count != 1 {
+		return none
+	}
+	value_id := t.a.child(&tail, 0)
+	if !flat.source_type_shape(t.normalize_type_alias(t.node_type(value_id))).has(.result_type) {
+		return none
+	}
+	mut stmts := []flat.NodeId{cap: int(block.children_count)}
+	for i in 0 .. int(block.children_count) - 1 {
+		stmts << t.a.child(&block, i)
+	}
+	stmts << t.make_transformed_return(value_id, t.cur_fn_ret_type, source_return_id)
+	new_block := t.make_block(stmts)
+	t.a.nodes[int(new_block)].value = block.value
+	or_start := t.a.children.len
+	t.a.children << t.a.child(&or_node, 0)
+	t.a.children << new_block
+	new_or := t.a.add_node(flat.Node{
+		kind:           .or_expr
+		op:             or_node.op
+		children_start: or_start
+		children_count: 2
+		pos:            or_node.pos
+		value:          or_node.value
+		typ:            or_node.typ
+	})
+	ret_start := t.a.children.len
+	t.a.children << new_or
+	return t.a.add_node(flat.Node{
+		kind:           .return_stmt
+		op:             node.op
+		children_start: ret_start
+		children_count: 1
+		pos:            node.pos
+		value:          transformed_return_value(source_return_id)
+		typ:            node.typ
+	})
+}
+
 fn (mut t Transformer) try_expand_return_match(source_return_id flat.NodeId, node flat.Node) ?[]flat.NodeId {
 	if node.children_count == 0 {
 		return none
 	}
-	val_id := t.a.child(&node, 0)
+	mut val_id := t.a.child(&node, 0)
 	if int(val_id) < 0 || int(val_id) >= t.a.nodes.len {
 		return none
+	}
+	if t.a.nodes[int(val_id)].kind == .or_expr {
+		// `return match x {...} or {...}`: the `or` block unwraps `x`, so the
+		// branches still return directly, like a plain `return match`.
+		val_id = t.match_with_trailing_or_subject(t.a.nodes[int(val_id)]) or { return none }
 	}
 	val := t.a.nodes[int(val_id)]
 	if val.kind != .match_stmt || val.children_count < 2 {

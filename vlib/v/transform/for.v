@@ -398,21 +398,22 @@ fn (mut t Transformer) transform_for_in_body(id flat.NodeId, node flat.Node) []f
 		return t.lower_iterator_for_in(id, node, key_id, val_id, container_id, iter_type,
 			iter_info, has_index, body_ids)
 	}
-	effective_iter := if flat.source_type_shape(iter_type).has(.variadic) {
-		'[]' + flat.source_type_name(iter_type)[3..]
-	} else if flat.source_type_shape(iter_type).has(.pointer_array) {
-		flat.source_type_name(iter_type)[1..]
-	} else if flat.source_type_name(iter_type).starts_with('&[') && t.is_fixed_array_type(flat.source_type_id(flat.source_type_name(iter_type)[1..])) {
-		flat.source_type_name(iter_type)[1..]
-	} else if flat.source_type_name(iter_type) == '&string' {
-		'string'
+	iter_shape := flat.source_type_shape(iter_type)
+	effective_iter := if iter_shape.has(.variadic) {
+		flat.source_type_id('[]' + flat.source_type_name(iter_type)[3..])
+	} else if iter_shape.has(.pointer_array) {
+		t.trim_pointer_type(iter_type)
+	} else if flat.source_type_name(iter_type).starts_with('&[') && t.is_fixed_array_type(t.trim_pointer_type(iter_type)) {
+		t.trim_pointer_type(iter_type)
+	} else if iter_shape.has(.pointer) && t.trim_pointer_type(iter_type) == flat.source_type_string {
+		flat.source_type_string
 	} else {
-		flat.source_type_name(iter_type)
+		iter_type
 	}
-	if effective_iter.starts_with('[]') || effective_iter == 'string'
-		|| t.is_fixed_array_type(flat.source_type_id(effective_iter)) {
+	if flat.source_type_shape(effective_iter).has(.array_type) || effective_iter == flat.source_type_string
+		|| t.is_fixed_array_type(effective_iter) {
 		body_ids := t.a.children_of(&node)[header_count..].clone()
-		return t.lower_indexed_for_in(id, node, key_id, val_id, container_id, flat.source_type_id(effective_iter),
+		return t.lower_indexed_for_in(id, node, key_id, val_id, container_id, effective_iter,
 			has_index, body_ids)
 	}
 	return t.rebuild_for_in_stmt(id, node)
@@ -1575,7 +1576,7 @@ fn (mut t Transformer) detect_for_in_type(node flat.Node) u32 {
 		if iter_node.kind == .ident && iter_node.value.len > 0 {
 			mut raw_local_type := t.raw_var_type(iter_node.value)
 			if t.pointer_value_rvalues[iter_node.value] && flat.source_type_shape(raw_local_type).has(.pointer) {
-				raw_local_type = flat.source_type_id(flat.source_type_name(raw_local_type)[1..])
+				raw_local_type = t.trim_pointer_type(raw_local_type)
 			}
 			if raw_local_type != 0 && t.iterator_for_in_info(raw_local_type) != none {
 				return raw_local_type
@@ -1587,7 +1588,7 @@ fn (mut t Transformer) detect_for_in_type(node flat.Node) u32 {
 			if (t.mut_param_values[iter_node.value] || t.pointer_value_rvalues[iter_node.value])
 				&& flat.source_type_shape(local_type).has(.pointer)
 				&& for_iter_type_is_container(t.trim_pointer_type(local_type)) {
-				local_type = flat.source_type_id(flat.source_type_name(local_type)[1..])
+				local_type = t.trim_pointer_type(local_type)
 			}
 			if local_type != 0 && for_iter_type_is_container(local_type) {
 				t.set_node_typ(int(iter_id), local_type)
@@ -1838,7 +1839,7 @@ fn (t &Transformer) declared_for_in_elem_type(container_id flat.NodeId, node fla
 	for _ in 0 .. 16 {
 		container_type = for_iter_payload_type(container_type)
 		if flat.source_type_shape(container_type).has(.pointer) {
-			container_type = flat.source_type_id(flat.source_type_name(container_type)[1..])
+			container_type = t.trim_pointer_type(container_type)
 			continue
 		}
 		if target_source_id := t.tc.type_aliases.type_id(flat.source_type_name(container_type)) {

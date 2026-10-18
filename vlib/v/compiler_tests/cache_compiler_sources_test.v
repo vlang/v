@@ -2,6 +2,16 @@ import os
 import time
 import v.cmdexec
 
+// cached_module_lines returns the `Caching module` lines of a `-v` build.
+fn cached_module_lines(output string) []string {
+	return output.split_into_lines().filter(it.starts_with('Caching module '))
+}
+
+// has_output_line reports whether the program printed `line` on its own line.
+fn has_output_line(output string, line string) bool {
+	return output.split_into_lines().any(it.trim_space() == line)
+}
+
 fn test_module_cache_reuses_artifacts_after_unbuilt_compiler_source_changes() {
 	$if windows {
 		return
@@ -33,26 +43,32 @@ fn test_module_cache_reuses_artifacts_after_unbuilt_compiler_source_changes() {
 	source := os.join_path(root, 'main.v')
 	os.write_file(source, 'import strings\nfn main() { println(strings.repeat(120, 3)) }\n')!
 	cache := os.join_path(root, 'cache')
-	args := ['-u', 'VEXE', '-u', 'VFLAGS', 'V3CACHE=${cache}', compiler, '-new-compiler', '-cc',
-		'cc', 'run', source]
+	// `Caching module` is printed only with `-v` (or `-show-timings`).
+	args := ['-u', 'VEXE', '-u', 'VFLAGS', 'V3CACHE=${cache}', compiler, '-new-compiler', '-v',
+		'-cc', 'cc', 'run', source]
 	first := cmdexec.run_in('env', args, root)
 	assert first.exit_code == 0, first.output
-	assert first.output.trim_space() == 'Caching module builtin...\nxxx', first.output
+	assert has_output_line(first.output, 'xxx'), first.output
+	assert 'Caching module builtin...' in cached_module_lines(first.output), first.output
 	cache_roots := os.ls(cache)!.filter(it.starts_with('v3_module_cache_'))
 	assert cache_roots.len == 1, cache_roots.str()
 	cache_root := os.join_path(cache, cache_roots[0])
 	before := os.ls(cache_root)!
-	assert before.len == 1, before.str()
+	// `.shared_objects` pools module objects across compiler builds.
+	generations := before.filter(!it.starts_with('.'))
+	assert generations.len == 1, before.str()
 
 	os.write_file(compiler_source, 'module main\nfn changed_compiler_placeholder() {}\n')!
 	second := cmdexec.run_in('env', args, root)
 	assert second.exit_code == 0, second.output
-	assert second.output.trim_space() == 'xxx', second.output
+	assert has_output_line(second.output, 'xxx'), second.output
+	assert cached_module_lines(second.output).len == 0, second.output
 	assert os.ls(cache_root)! == before
 
 	// Program source changes still invalidate the program's cached artifacts.
 	os.write_file(source, 'import strings\nfn main() { println(strings.repeat(121, 3)) }\n')!
 	changed := cmdexec.run_in('env', args, root)
 	assert changed.exit_code == 0, changed.output
-	assert changed.output.trim_space() == 'yyy', changed.output
+	assert has_output_line(changed.output, 'yyy'), changed.output
+	assert cached_module_lines(changed.output).len == 0, changed.output
 }

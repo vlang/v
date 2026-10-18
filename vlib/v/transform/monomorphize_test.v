@@ -215,7 +215,10 @@ fn test_explicit_generic_fn_value_candidates_resolve_selective_import() {
 	file_name := '/tmp/main.v'
 	tc.file_selective_imports[file_import_key(file_name, 'id')] = ['lib.id']
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.node_file_map_cache = []u32{len: a.nodes.len}
+	// The node context caches are sized together; a node without a file id
+	// takes its context from its module entry.
+	t.node_module_map_cache = []u16{len: a.nodes.len}
+	t.node_file_map_cache = []u16{len: a.nodes.len}
 	t.node_file_map_cache[int(index_id)] = t.node_context_text_id(file_name)
 
 	candidates := t.explicit_generic_fn_value_decl_candidates(index_id, base_id, a.nodes[int(base_id)], 'main')
@@ -1278,6 +1281,8 @@ fn test_recorded_generic_arg_ids_preserve_ownership_and_invalidate_misses() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	// prepare allocates the miss cache; without it misses are not recorded.
+	t.spec_args_misses = &SpecArgsMissCache{}
 	key := flat.source_type_id('Record_int')
 	assert t.recorded_type_specialization_args(key) == none
 	assert t.spec_args_misses.misses[key]
@@ -1308,6 +1313,11 @@ fn test_numeric_specialized_type_decoder_preserves_cached_argument_storage() {
 	mut tc := types.TypeChecker.new(&a)
 	tc.struct_generic_params['Box'] = ['T']
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	// prepare allocates the decode cache; without it misses are not recorded.
+	t.generic_spec_decode_cache = &TypeLookupCache{
+		entries: map[u32]u32{}
+		misses:  map[u32]bool{}
+	}
 	name := flat.source_type_id('Box_int')
 	mut args := t.decode_single_generic_specialized_type_args(name) or { panic('missing decoded arguments') }
 	assert args == [flat.source_type_int]

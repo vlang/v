@@ -525,8 +525,13 @@ $if windows {
 }
 
 // pthread.h
-@[markused]
-fn C.pthread_self() usize
+$if macos {
+	@[markused]
+	fn C.pthread_self() voidptr
+} $else {
+	@[markused]
+	fn C.pthread_self() usize
+}
 
 @[markused]
 fn C.pthread_create(thread voidptr, attr voidptr, start_routine voidptr, arg voidptr) i32

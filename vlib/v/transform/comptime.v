@@ -2117,7 +2117,7 @@ fn (mut t Transformer) make_comptime_method_selector(receiver flat.NodeId, metho
 			ret := t.tc.fn_ret_types[method_key] or { types.Type(types.void_) }
 			fn_type := types.Type(types.FnType{
 				params:      params.clone()
-				params_mut:  (t.tc.declaration_param_mutability[method_key] or { []bool{} }).clone()
+				params_mut:  t.tc.declaration_param_mutability_for(method_key).clone()
 				is_variadic: t.tc.fn_variadic[method_key] or { false }
 				return_type: ret
 			})
@@ -4060,29 +4060,39 @@ fn (mut t Transformer) build_struct_field_decl_metas_cache() {
 	mut cache := map[u32]map[string]FieldDeclMeta{}
 	mut cur_mod := ''
 	mut cur_file_id := 0
-	use_idx := !isnil(t.tc) && t.tc.top_level_idx.len > 0
-		&& t.tc.top_level_idx_nodes_len == t.a.nodes.len
-	count := if use_idx { t.tc.top_level_idx.len } else { t.a.nodes.len }
+	// The checker's top-level index lists the declarations of the nodes it
+	// covers, with their file markers; the nodes appended behind it, by lowering,
+	// are read one by one, their module following their position.
+	indexed_count, indexed_nodes := t.top_level_scan_prefix()
+	count := indexed_count + t.a.nodes.len - indexed_nodes
 	for ii in 0 .. count {
-		node_idx := if use_idx { t.tc.top_level_idx[ii] } else { ii }
-		node := t.a.nodes[node_idx]
-		node_ref := t.a.node(flat.NodeId(node_idx))
-		if use_idx && node.kind == .file {
-			cur_mod = t.tc.file_modules[node.value] or { 'main' }
+		use_idx := ii < indexed_count
+		node_idx := if use_idx {
+			int(t.tc.top_level_idx[ii])
+		} else {
+			indexed_nodes + ii - indexed_count
+		}
+		// The appended nodes are visited one by one; read one in place, and copy
+		// only a struct declaration.
+		scanned := unsafe { &t.a.nodes[node_idx] }
+		if use_idx && scanned.kind == .file {
+			cur_mod = t.tc.file_modules[scanned.value] or { 'main' }
 			continue
 		}
-		if !use_idx && node.pos.id > 0 && node.pos.id != cur_file_id {
-			cur_file_id = node.pos.id
+		if !use_idx && scanned.pos.id > 0 && scanned.pos.id != cur_file_id {
+			cur_file_id = scanned.pos.id
 			// Files without an explicit module declaration belong to main.
 			cur_mod = 'main'
 		}
-		if node.kind == .module_decl {
-			cur_mod = node.value
+		if scanned.kind == .module_decl {
+			cur_mod = scanned.value
 			continue
 		}
-		if node.kind != .struct_decl {
+		if scanned.kind != .struct_decl {
 			continue
 		}
+		node := *scanned
+		node_ref := t.a.node(flat.NodeId(node_idx))
 		mut fields := map[string]FieldDeclMeta{}
 		for i in 0 .. node.children_count {
 			field := t.a.child_node(node_ref, i)

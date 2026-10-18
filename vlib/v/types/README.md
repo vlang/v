@@ -46,8 +46,11 @@ owner and field without retaining a worker's mutable table.
 `sum_variant_type_for_pattern` accepts source IDs for the sum and pattern and returns an
 optional source ID. Its cache retains the writing file and module when matching a spelling.
 `fn_signature_type(name, source_id)` resolves an interned annotation in its declaration context.
-Source qualification (`qualify_type_text` and `qualify_resolution_type_text`) and imported-type
-resolution also pass spelling IDs. Private recursive spelling parsers work with bytes inside
+Source qualification (`qualify_type_text`, `qualify_resolution_type_text`, and
+`qualify_type_name`) and imported-type resolution pass spelling IDs. `qualify_type_name` shares
+the file, module, resolution-mode, and declaration-growth cache used by `qualify_name`;
+declaration-name callers can retain the string interface.
+Private recursive spelling parsers work with bytes inside
 these boundaries. C ABI encodings and emitted declaration names remain strings.
 
 Alias targets, generic binding values, and original return annotations use `flat.TypeTextBindings`.

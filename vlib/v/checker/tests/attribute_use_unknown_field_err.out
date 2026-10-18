@@ -1,0 +1,7 @@
+vlib/v/checker/tests/attribute_use_unknown_field_err.vv:7:3: error: unknown field `metho` in attribute `Route`
+    5 | }
+    6 | 
+    7 | @[Route('/a', metho: 'x', method: 'y')]
+      |   ~~~~~
+    8 | fn index() {
+    9 | }
