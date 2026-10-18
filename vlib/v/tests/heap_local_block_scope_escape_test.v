@@ -175,3 +175,40 @@ fn test_select_receive_binding() {
 	}
 	assert node_depth(cur) == 3
 }
+
+struct Chain {
+mut:
+	next &Node = unsafe { nil }
+}
+
+fn test_store_through_a_pointer_alias_of_outer_storage() {
+	mut saved := Chain{}
+	for f in [2, 3, 5] {
+		mut p := &saved
+		mut x := Node{
+			next:   saved.next
+			factor: f
+		}
+		p.next = &x
+	}
+	assert saved.next.factor == 5
+	assert node_depth(*saved.next) == 2
+}
+
+type Shape = Box(Node) | Nothing
+
+fn test_named_variant_payload_binding() {
+	mut cur := Node{
+		factor: 1
+	}
+	for f in [2, 3, 5] {
+		shape := Shape.Box(cur)
+		match shape {
+			Shape.Box(n) {
+				cur = Node{&n, f}
+			}
+			Shape.Nothing {}
+		}
+	}
+	assert node_depth(cur) == 3
+}

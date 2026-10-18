@@ -10385,6 +10385,15 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 		if scoped {
 			t.escape_scope_depth++
 		}
+		if node.kind == .match_branch && node.value != 'else' && node.value.int() == 1
+			&& node.children_count > 0 {
+			// `Expr.Node(n)` binds `n` in the branch. Its declaration is only synthesized
+			// when the branch is lowered (see named_variant_binding_decls).
+			binding := t.named_variant_binding_name(t.a.child(node, 0))
+			if binding.len > 0 {
+				t.escape_decl_depths[binding] = t.escape_scope_depth
+			}
+		}
 		for i in 0 .. node.children_count {
 			t.scan_escape_pass(t.a.child(node, i), mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut method_value_receivers, mut closure_capture_aliases, mut interface_boxes, mut returned, mut local_stack_names, mut local_stack_added, mut reference_backing_sources, false)
 		}
@@ -11235,7 +11244,22 @@ fn (t &Transformer) escape_aggregate_address_sources(id flat.NodeId, amp_sources
 // the local is gone when its block ends, and a loop reuses it in its next iteration.
 fn (mut t Transformer) mark_outer_scope_address_store(lhs_id flat.NodeId, rhs_id flat.NodeId, amp_sources map[string][]string, ptr_aliases map[string]string) {
 	lhs_root := t.escape_address_root_name(lhs_id) or { '' }
-	lhs_depth := t.escape_decl_depths[lhs_root] or { 0 }
+	if lhs_root == '_' {
+		// `_ = Holder{next: &x}` keeps nothing.
+		return
+	}
+	mut lhs_depth := t.escape_decl_depths[lhs_root] or { 0 }
+	// A store through a pointer lands in the storage that it points to: after
+	// `p := &saved`, `p.next = &x` writes into `saved`. Rebinding `p` itself does not.
+	if t.a.nodes[int(t.unwrap_parens(lhs_id))].kind != .ident
+		&& !t.escape_address_root_is_value(lhs_id) {
+		for target in escape_alias_sources(lhs_root, amp_sources, ptr_aliases) {
+			target_depth := t.escape_decl_depths[target] or { 0 }
+			if target_depth < lhs_depth {
+				lhs_depth = target_depth
+			}
+		}
+	}
 	for source_name in t.escape_stored_address_sources(rhs_id, amp_sources, ptr_aliases) {
 		if source_depth := t.escape_decl_depths[source_name] {
 			if source_depth > lhs_depth {
