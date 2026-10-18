@@ -657,7 +657,10 @@ fn test_c_flag_linkage_uses_resolved_target_arguments() {
 		g.a = p.parse_files([source])
 		g.target = prefs.target
 		g.collect_c_flags_from_directives()
-		assert g.should_emit_c_extern_decl_from_file('native_api', source, 'main') == (i == 0)
+		// Only the resolved, active link input makes the file need a prototype beside its
+		// headers. (A unit without any headers declares every binding it calls, whatever
+		// its link inputs, since #30781.)
+		assert g.c_extern_decl_has_no_header(source, 'main') == (i == 0), flag
 	}
 }
 

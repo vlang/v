@@ -685,10 +685,20 @@ fn test_header_backed_c_declarations_skip_generated_prototypes() {
 	lib_only.note_c_include_directive('bindings', '/project/other.c.v')
 	assert !lib_only.should_emit_c_extern_decl_from_file('foo_open', source, 'bindings')
 
-	// Nothing links and nothing includes: the symbol has to come from somewhere else,
-	// so V3 stays out of the way, exactly like the V1 backend.
+	// Nothing links and nothing includes: with system headers the symbol has to come
+	// from somewhere else, so V3 stays out of the way, exactly like the V1 backend.
+	mut with_system_headers := FlatGen.new()
+	with_system_headers.c_directives << CDirective{
+		text: '#include <stdio.h>'
+	}
+	assert with_system_headers.c_directives_use_system_libc()
+	assert !with_system_headers.should_emit_c_extern_decl_from_file('unrelated_api', source, 'main')
+
+	// A unit without system headers has no other declaration of the binding, so it gets
+	// the prototype even for a program's own `fn C.` (#30781).
 	mut bare := FlatGen.new()
-	assert !bare.should_emit_c_extern_decl_from_file('unrelated_api', source, 'main')
+	assert !bare.c_directives_use_system_libc()
+	assert bare.should_emit_c_extern_decl_from_file('unrelated_api', source, 'main')
 }
 
 fn test_apple_framework_include_does_not_match_x11() {
