@@ -742,3 +742,21 @@ fn test_durable_target_commit_plan_schema_closure_and_collision_slots_are_closed
 			operation_id, planned_path) or { panic(err) }), key
 	}
 }
+
+fn test_durable_git_pipe_returns_two_live_descriptors() {
+	$if linux || macos || freebsd || openbsd {
+		fds := bin.durable_git_pipe_round_trip_for_test() or { panic(err) }
+		assert fds[0] > 2
+		assert fds[1] > 2
+		assert fds[0] != fds[1]
+	}
+}
+
+fn test_durable_git_deadlines_keep_nanosecond_scale() {
+	assert bin.durable_git_deadline_constants_for_test() == [
+		u64(5_000_000_000),
+		u64(30_000_000_000),
+		u64(120_000_000_000),
+		u64(5_000_000_000),
+	]
+}

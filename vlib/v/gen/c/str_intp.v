@@ -35,7 +35,7 @@ fn (mut g FlatGen) gen_string_interp(node flat.Node) {
 			g.write('_str_${sid}')
 		} else {
 			typ := g.string_interp_child_type(expr_id, child)
-			typ_name := types.Type(typ).name()
+			typ_name_id := types.Type(typ).source_type_id()
 			if child.typ_text() == 'string' || typ is types.String {
 				if format.len > 0 {
 					g.gen_formatted_string_interp_child_expr(expr_id, typ, format)
@@ -47,7 +47,7 @@ fn (mut g FlatGen) gen_string_interp(node flat.Node) {
 				// emitted by gen_formatted_string_interp_child_expr
 			} else if g.gen_map_str_expr(expr_id, typ) {
 				// emitted by gen_map_str_expr
-			} else if g.is_ierror_type_name(typ_name) {
+			} else if g.is_ierror_type_name(typ_name_id) {
 				// IError may resolve as Interface/Alias/Struct depending on context. Dispatch
 				// through msg() so boxed MessageError values do not depend on the legacy cache.
 				g.gen_ierror_dynamic_method_expr(expr_id, typ, 'msg')
@@ -61,7 +61,7 @@ fn (mut g FlatGen) gen_string_interp(node flat.Node) {
 				g.gen_string_interp_child_expr(expr_id)
 				g.write(')')
 			} else if typ is types.Enum {
-				g.write('${g.enum_autostr_c_name(typ.name())}__autostr(')
+				g.write('${g.enum_autostr_c_name(typ.source_type_id())}__autostr(')
 				g.gen_string_interp_child_expr(expr_id)
 				g.write(')')
 			} else if typ is types.Interface {
@@ -268,7 +268,7 @@ fn (mut g FlatGen) gen_formatted_string_interp_child_expr(child_id flat.NodeId, 
 		} else if f.width > 0 {
 			g.write('v3_string_pad(')
 		}
-		g.write('${g.enum_autostr_c_name(typ.name())}__autostr(')
+		g.write('${g.enum_autostr_c_name(typ.source_type_id())}__autostr(')
 		g.gen_string_interp_child_expr(child_id)
 		g.write(')')
 		if f.zero && f.width > 0 {
@@ -444,6 +444,14 @@ fn (mut g FlatGen) string_literals() {
 // anything interned later (worker novelties, the synthetic main) is emitted
 // as a supplement after the joins — per-id definitions are order-independent.
 fn (mut g FlatGen) string_literals_from(start int) {
+	use_declaration_macro := g.str_lits.len > start && !g.cache_stable_symbols
+	if use_declaration_macro {
+		// Keep the helper out of C headers, extern declarations, and function bodies,
+		// and give back a `_SL` macro that an included C header defined.
+		g.writeln('#pragma push_macro("_SL")')
+		g.writeln('#undef _SL')
+		g.writeln('#define _SL(id, s, n) static const string id = {s, n, 1}')
+	}
 	if g.cache_split {
 		mut literals := g.str_lits[start..].clone()
 		literals.sort()
@@ -454,6 +462,10 @@ fn (mut g FlatGen) string_literals_from(start int) {
 		for i := start; i < g.str_lits.len; i++ {
 			g.write_string_literal_def(i, g.str_lits[i])
 		}
+	}
+	if use_declaration_macro {
+		g.writeln('#undef _SL')
+		g.writeln('#pragma pop_macro("_SL")')
 	}
 	if g.str_lits.len > start {
 		g.writeln('')
@@ -470,7 +482,7 @@ fn (mut g FlatGen) write_string_literal_def(id int, s string) {
 		g.write('_SL(_str_')
 		g.sb.write_decimal(i64(id))
 		g.sb.write_string(', "')
-		c_escape_into(mut g.sb, s)
+		c_literal_escape_into(mut g.sb, s)
 		g.sb.write_string('", ')
 		g.sb.write_decimal(i64(s.len))
 		g.writeln(');')
@@ -479,7 +491,7 @@ fn (mut g FlatGen) write_string_literal_def(id int, s string) {
 	g.write('static const string _str_')
 	g.sb.write_decimal(i64(id))
 	g.sb.write_string(' = {"')
-	c_escape_into(mut g.sb, s)
+	c_literal_escape_into(mut g.sb, s)
 	g.sb.write_string('", ')
 	g.sb.write_decimal(i64(s.len))
 	g.writeln(', 1};')

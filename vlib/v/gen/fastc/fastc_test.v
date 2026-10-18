@@ -1303,7 +1303,7 @@ pub fn answer() int {
 	return 42
 }
 ', 'declaration_only_entry.v', prefs) or { panic(err) }
-	assert c_source.contains('int main(void) {'), c_source
+	assert c_source.contains('int ${fastc_c_main_name(prefs)}(void) {'), c_source
 	assert c_source.contains('\tsetvbuf(stdout, NULL, _IONBF, 0);\n\treturn 0;'), c_source
 
 	root := os.join_path(os.vtmp_dir(), 'v3_fastc_declaration_only_${os.getpid()}')
@@ -2001,7 +2001,7 @@ fn test_ordinary_print_rejects_types_without_runtime_support() {
 fn test_top_level_statements_emit_main_directly() {
 	prefs := pref.new_preferences()
 	c_source := generate("println('Hello, World!')\n", 'hello_world.v', prefs) or { panic(err) }
-	assert c_source.contains('int main(void) {')
+	assert c_source.contains('int ${fastc_c_main_name(prefs)}(void) {')
 	assert c_source.contains('println("Hello, World!");')
 	assert c_source.contains('setvbuf(stdout, NULL, _IONBF, 0);')
 }
@@ -2915,7 +2915,7 @@ fn main() {
 	_ := missing_map_len(values)
 }
 ', 'map_value_lookup.v', prefs) or { panic(err) }
-	assert c_source.contains('__vf_ml.state ? (Map_string_int)builtin__new_map(sizeof(string), sizeof(int)'), c_source
+	assert c_source.contains('__vf_ml.state ? (Map_string_int)builtin__new_map(sizeof(string), sizeof(${fastc_output_c_type('int')})'), c_source
 	assert c_source.contains('return inner.data->count;'), c_source
 	assert !c_source.contains('Map_string_int){0}'), c_source
 	assert !c_source.contains('__vf_map_zero'), c_source
@@ -3283,7 +3283,7 @@ fn logical_shift(value int) int { value >>>= 1; return value }
 		}
 		c_file := os.join_path(root, 'matrix.c')
 		bin_file := os.join_path(root, 'matrix')
-		os.write_file(c_file, '#define main unused_main\n' + generated +
+		os.write_file(c_file, '#define ${fastc_c_main_name(prefs)} unused_main\n' + generated +
 			'\n#undef main\nint main(void) {\n' + checks.join('\n') + '\nreturn 0;\n}\n')!
 		tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
 		compiled := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
@@ -3948,21 +3948,6 @@ fn main() {
 	_ := Worker(Wrong{})
 }
 ',
-		'module main
-
-interface Worker {
-mut:
-	work()
-}
-
-struct Wrong {}
-
-fn (wrong Wrong) work() {}
-
-fn main() {
-	_ := Worker(Wrong{})
-}
-',
 	] {
 		mut message := ''
 		_ := generate(source, 'invalid_interface_receiver_mutability.v', prefs) or {
@@ -3971,6 +3956,23 @@ fn main() {
 		}
 		assert message.contains('incompatible mutability for interface `Worker` method `work`'), message
 	}
+	read_only_implementation := generate('module main
+
+interface Worker {
+mut:
+	work()
+}
+
+struct Good {}
+
+fn (good Good) work() {}
+
+fn main() {
+	mut worker := Worker(Good{})
+	worker.work()
+}
+', 'mutable_interface_read_only_implementation.v', prefs) or { panic(err) }
+	assert read_only_implementation.contains('case __v_typeid_Good: Good_work(*(Good *)value._object); return;'), read_only_implementation
 
 	mut immutable_message := ''
 	_ := generate('module main
@@ -4410,7 +4412,7 @@ fn init() {
 
 println(answer)
 ', 'initialized_script_global.v', prefs) or { panic(err) }
-	main_source := c_source.all_after('int main(void) {')
+	main_source := c_source.all_after('int ${fastc_c_main_name(prefs)}(void) {')
 	startup_source := c_source.all_after('void v_fastc_init_globals(void) {')
 	initializer := startup_source.index('answer = 42;') or { -1 }
 	module_initializer := startup_source.index('\n\tinit();') or { -1 }
@@ -4602,7 +4604,7 @@ pub fn value() int {
 	prefs.enable_globals = true
 	prefs.module_search_paths = [root]
 	c_source := generate_files([main_file], prefs) or { panic(err) }
-	main_source := c_source.all_after('int main(void) {')
+	main_source := c_source.all_after('int ${fastc_c_main_name(prefs)}(void) {')
 	startup_source := c_source.all_after('void v_fastc_init_globals(void) {')
 	dependency_initializer := startup_source.index('dep__state = 1;') or { -1 }
 	dependency_init := startup_source.index('\tdep__init();') or { -1 }
@@ -4688,7 +4690,7 @@ pub fn ping() {}
 	dependency_cleanup := cleanup_source.index('\n\tdep__cleanup();') or { -1 }
 	assert main_cleanup >= 0, c_source
 	assert dependency_cleanup > main_cleanup, c_source
-	main_source := c_source.all_after('int main(void) {')
+	main_source := c_source.all_after('int ${fastc_c_main_name(prefs)}(void) {')
 	startup_call := main_source.index('v_fastc_init_globals();') or { -1 }
 	cleanup_registration := main_source.index('atexit(v_fastc_cleanup_modules);') or { -1 }
 	early_return := main_source.index('return 0;') or { -1 }
@@ -4724,7 +4726,7 @@ fn main() {
 	println('unreachable')
 }
 ", 'cleanup_after_exit.c.v', prefs) or { panic(err) }
-	main_source := c_source.all_after('int main(void) {')
+	main_source := c_source.all_after('int ${fastc_c_main_name(prefs)}(void) {')
 	registration := main_source.index('atexit(v_fastc_cleanup_modules);') or { -1 }
 	exit_call := main_source.index('exit(0);') or { -1 }
 	assert registration >= 0, c_source
@@ -5367,7 +5369,7 @@ fn main() {
 	values := [1, true]
 }
 ', 'inferred_array_element_types.v', prefs) or { panic(err) }
-	assert c_source.contains('builtin__new_array_from_c_array(2, 2, sizeof(int)'), c_source
+	assert c_source.contains('builtin__new_array_from_c_array(2, 2, sizeof(${fastc_output_c_type('int')})'), c_source
 }
 
 fn test_undeclared_function_signature_types_are_rejected() {
@@ -5816,9 +5818,9 @@ fn main() {
 	if 1 in [__vf_m_c0] {}
 }
 ', 'membership_temporary_collision.v', prefs) or { panic(err) }
-	assert c_source.contains('int __vf_m_1_x = (1);'), c_source
+	assert c_source.contains('${fastc_output_c_type('int')} __vf_m_1_x = (1);'), c_source
 	assert c_source.contains('__vf_m_1_a'), c_source
-	assert !c_source.contains('int __vf_m_x = (1);'), c_source
+	assert !c_source.contains('${fastc_output_c_type('int')} __vf_m_x = (1);'), c_source
 }
 
 fn test_selfhost_string_membership_uses_substring_semantics() {
@@ -6278,7 +6280,7 @@ fn main() {}
 		panic(err)
 	}
 	c_source := generate_files([main_file], prefs) or { panic(err) }
-	assert c_source.contains('change(&config.writable);'), c_source
+	assert c_source.contains('change(&(config->writable));'), c_source
 }
 
 fn test_match_expression_requires_else() {
@@ -6952,7 +6954,7 @@ fn main() {
 fn test_main_return_type_is_not_validated() {
 	prefs := pref.new_preferences()
 	c_source := generate('module main\nfn main() int { return 7 }\n', 'value_returning_main.v', prefs) or { panic(err) }
-	assert c_source.contains('int main(void)'), c_source
+	assert c_source.contains('int ${fastc_c_main_name(prefs)}(void)'), c_source
 	assert c_source.contains('return 7;'), c_source
 }
 
@@ -7008,7 +7010,7 @@ fn main() {
 	}
 }
 ', 'mutable_iteration.v', prefs) or { panic(err) }
-	assert c_source.contains('int *item = &(((int *)'), c_source
+	assert c_source.contains('${fastc_output_c_type('int')} *item = &(((${fastc_output_c_type('int')} *)'), c_source
 	assert c_source.contains('println((*(item)));'), c_source
 	assert c_source.contains('(*item)=3;'), c_source
 	assert c_source.contains('change(item);'), c_source
@@ -7055,21 +7057,25 @@ fn main() {
 }
 '
 	c32 := generate(source, 'map_usize_32.v', prefs) or { panic(err) }
+	int32_type := fastc_output_c_type('int')
+	assert int32_type == 'i32'
 	for key_type in ['usize', 'voidptr'] {
-		assert c32.contains('sizeof(${key_type}), sizeof(int), &builtin__map_hash_int_4, &builtin__map_eq_int_4, &builtin__map_clone_int_4'), c32
+		assert c32.contains('sizeof(${key_type}), sizeof(${int32_type}), &builtin__map_hash_int_4, &builtin__map_eq_int_4, &builtin__map_clone_int_4'), c32
 	}
 
 	prefs.target = pref.target_from('linux', 'arm64') or { panic(err) }
 	c64 := generate(source, 'map_usize_64.v', prefs) or { panic(err) }
+	int64_type := fastc_output_c_type('int')
+	assert int64_type == 'i64'
 	for key_type in ['usize', 'voidptr'] {
-		assert c64.contains('sizeof(${key_type}), sizeof(int), &builtin__map_hash_int_8, &builtin__map_eq_int_8, &builtin__map_clone_int_8'), c64
+		assert c64.contains('sizeof(${key_type}), sizeof(${int64_type}), &builtin__map_hash_int_8, &builtin__map_eq_int_8, &builtin__map_clone_int_8'), c64
 	}
 
-	hash_fn, eq_fn, clone_fn, _ := fastc_map_runtime_functions('int*', 32)
+	hash_fn, eq_fn, clone_fn, _ := fastc_map_runtime_functions(flat.source_type_id('int*'), 32)
 	assert hash_fn == 'builtin__map_hash_int_4'
 	assert eq_fn == 'builtin__map_eq_int_4'
 	assert clone_fn == 'builtin__map_clone_int_4'
-	i64_hash_fn, _, _, _ := fastc_map_runtime_functions('i64', 32)
+	i64_hash_fn, _, _, _ := fastc_map_runtime_functions(flat.source_type_id('i64'), 32)
 	assert i64_hash_fn == 'builtin__map_hash_int_8'
 }
 
@@ -7106,13 +7112,13 @@ fn main() {
 	println(permissions.len)
 }
 ", 'map_alias_callbacks.v', prefs) or { panic(err) }
-	assert c_source.contains('sizeof(WideKey), sizeof(int), &builtin__map_hash_int_8, &builtin__map_eq_int_8, &builtin__map_clone_int_8'), c_source
+	assert c_source.contains('sizeof(WideKey), sizeof(${fastc_output_c_type('int')}), &builtin__map_hash_int_8, &builtin__map_eq_int_8, &builtin__map_clone_int_8'), c_source
 
-	assert c_source.contains('sizeof(TextKey), sizeof(int), &builtin__map_hash_string, &builtin__map_eq_string, &builtin__map_clone_string'), c_source
+	assert c_source.contains('sizeof(TextKey), sizeof(${fastc_output_c_type('int')}), &builtin__map_hash_string, &builtin__map_eq_string, &builtin__map_clone_string'), c_source
 
-	assert c_source.contains('sizeof(KindKey), sizeof(int), &builtin__map_hash_int_4, &builtin__map_eq_int_4, &builtin__map_clone_int_4'), c_source
+	assert c_source.contains('sizeof(KindKey), sizeof(${fastc_output_c_type('int')}), &builtin__map_hash_int_4, &builtin__map_eq_int_4, &builtin__map_clone_int_4'), c_source
 
-	assert c_source.contains('sizeof(PermissionsKey), sizeof(int), &builtin__map_hash_int_8, &builtin__map_eq_int_8, &builtin__map_clone_int_8'), c_source
+	assert c_source.contains('sizeof(PermissionsKey), sizeof(${fastc_output_c_type('int')}), &builtin__map_hash_int_8, &builtin__map_eq_int_8, &builtin__map_clone_int_8'), c_source
 }
 
 fn test_array_pointer_iteration_preserves_element_references() {
@@ -7133,7 +7139,7 @@ fn main() {
 	}
 }
 ', 'array_pointer_iteration.v', prefs) or { panic(err) }
-	assert c_source.count('int *value = &(((int *)__v') == 2, c_source
+	assert c_source.count('${fastc_output_c_type('int')} *value = &(((${fastc_output_c_type('int')} *)__v') == 2, c_source
 	assert c_source.count('take(value);') == 2, c_source
 }
 
@@ -12516,7 +12522,7 @@ fn test_failed_generic_placeholder_block_unwinds_local_scope() {
 				body_depth--
 			}
 		}
-		assert g.parse_generic_body_or_stub('voidptr', out_checkpoint, 0, body_end, false)
+		assert g.parse_generic_body_or_stub(flat.source_type_id('voidptr'), out_checkpoint, 0, body_end, false)
 		assert g.local_scope_depth == 0
 		assert g.local_scope_changes.len == 0
 		assert 'local' !in g.locals
@@ -13684,8 +13690,8 @@ fn main() {
 	assert c_source.contains('Array_int util__Wrapper_wrap_method_mono_int('), c_source
 	assert c_source.contains('__typeof__((util__wrap_mono_int(1))) values'), c_source
 	assert !c_source.contains('Array_voidptr values'), c_source
-	assert fastc_specialized_generic_result_type('Map_string_Array_voidptr', 'int') == 'Map_string_Array_int'
-	assert fastc_specialized_generic_result_type('voidptr*', 'int') == 'int*'
+	assert fastc_specialized_generic_result_type(flat.source_type_id('Map_string_Array_voidptr'), flat.source_type_int) == flat.source_type_id('Map_string_Array_int')
+	assert fastc_specialized_generic_result_type(flat.source_type_id('voidptr*'), flat.source_type_int) == flat.source_type_id('int*')
 }
 
 fn test_selfhost_on_demand_generic_infers_composite_parameter_type() {
@@ -13729,8 +13735,8 @@ fn main() {
 	assert c_source.contains('int util__lookup_mono_int(Map_string_int items)'), c_source
 	assert c_source.contains('util__head_mono_int(items)'), c_source
 	assert c_source.contains('util__lookup_mono_int(mapped)'), c_source
-	assert fastc_infer_generic_type_from_parameter('Array_voidptr', 'Array_int') == 'int'
-	assert fastc_infer_generic_type_from_parameter('Map_string_Array_voidptr', 'Map_string_Array_example__Item_ptr') == 'example__Item*'
+	assert fastc_infer_generic_type_from_parameter(flat.source_type_id('Array_voidptr'), flat.source_type_id('Array_int')) == flat.source_type_int
+	assert fastc_infer_generic_type_from_parameter(flat.source_type_id('Map_string_Array_voidptr'), flat.source_type_id('Map_string_Array_example__Item_ptr')) == flat.source_type_id('example__Item*')
 }
 
 fn test_selfhost_on_demand_generic_does_not_partially_infer_multiple_type_parameters() {
@@ -14056,7 +14062,7 @@ fn literal_unsigned(count int) u64 { return -1 >>> count }
 		if selfhost { continue }
 		c_file := os.join_path(root, 'shifts.c')
 		bin_file := os.join_path(root, 'shifts')
-		os.write_file(c_file, '#define main unused_main\n' + generated + '\n#undef main\nint main(void) {\n' + checks.join('\n') + '\nreturn 0;\n}\n')!
+		os.write_file(c_file, '#define ${fastc_c_main_name(prefs)} unused_main\n' + generated + '\n#undef main\nint main(void) {\n' + checks.join('\n') + '\nreturn 0;\n}\n')!
 		tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
 		compiled := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
 		assert compiled.exit_code == 0, compiled.output + '\n' + generated

@@ -1,0 +1,7 @@
+vlib/v/checker/tests/attribute_use_too_many_args_err.vv:6:3: error: attribute `Route` expects 1 positional argument, got 2 positional arguments
+    4 | }
+    5 | 
+    6 | @[Route('/a', '/b')]
+      |   ~~~~~
+    7 | fn index() {
+    8 | }

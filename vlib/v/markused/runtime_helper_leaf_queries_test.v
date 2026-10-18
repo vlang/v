@@ -6,7 +6,7 @@ import v.types
 fn test_runtime_helper_queries_keep_wrapped_errors_after_scalar_comparisons() {
 	mut a := flat.FlatAst{}
 	mut tc := types.TypeChecker.new(&a)
-	mut cache := map[string]int{}
+	mut cache := map[u32]int{}
 	for scalar in [types.Type(types.int_), types.Type(types.f64_), types.Type(types.string_),
 		types.Type(types.char_), types.Type(types.rune_), types.Type(types.isize_),
 		types.Type(types.usize_), types.Type(types.void_), types.Type(types.nil_),
@@ -58,8 +58,8 @@ fn test_channel_stringification_keeps_alias_module_context_after_scalar_prints()
 fn test_runtime_helper_queries_keep_recursive_nominal_payloads_and_custom_str() {
 	mut a := flat.FlatAst{}
 	mut tc := types.TypeChecker.new(&a)
-	mut equality_cache := map[string]int{}
-	mut channel_cache := map[string]int{}
+	mut equality_cache := map[u32]int{}
+	mut channel_cache := map[string]&MarkusedTypeResults{}
 	error_type := types.Type(types.Interface{ name_id: flat.source_type_id('IError') })
 	channel := types.Type(types.Channel{ elem_type: types.int_ })
 	error_box := types.Type(types.Struct{ name_id: flat.source_type_id('support.int') })

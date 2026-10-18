@@ -203,7 +203,7 @@ fn test_enum_helper_prefers_exact_free_function_over_method_suffix() {
 	g.a = &a
 	mut field_values := map[string]i64{}
 	mut resolving := map[string]bool{}
-	value := g.enum_comptime_call_value(call, 'main', 'E', mut field_values,
+	value := g.enum_comptime_call_value(call, 'main', flat.source_type_id('E'), mut field_values,
 		map[string]flat.NodeId{}, mut resolving) or { -1 }
 	assert value == 4
 }

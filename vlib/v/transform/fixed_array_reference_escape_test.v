@@ -145,7 +145,7 @@ fn test_fixed_array_reference_generic_fields_preserve_type_owners() {
 		'worker.Nested[Inner]':                true
 		'worker.Holder[worker.Holder[Inner]]': true
 	} {
-		mut seen := map[string]bool{}
+		mut seen := map[u32]bool{}
 		assert t.escape_value_contains_fixed_array(types.Type(types.Struct{ name_id: flat.source_type_id(name) }), mut seen) == expected, name
 	}
 }
@@ -617,10 +617,10 @@ fn test_fixed_array_reference_sum_headers_do_not_own_inline_variant_storage() {
 	tc.sum_generic_params['Generic'] = ['T']
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	for name in ['Payload', 'Generic[FixedPayload]'] {
-		mut seen := map[string]bool{}
+		mut seen := map[u32]bool{}
 		assert !t.escape_value_contains_fixed_array(types.Type(types.SumType{ name_id: flat.source_type_id(name) }), mut seen)
 	}
-	mut seen := map[string]bool{}
+	mut seen := map[u32]bool{}
 	assert !t.escape_value_contains_fixed_array(types.Type(types.Alias{
 		name_id:   flat.source_type_id('PayloadAlias')
 		base_type: types.Type(types.SumType{ name_id: flat.source_type_id('Payload') })

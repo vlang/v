@@ -75,20 +75,20 @@ fn interface_impl_index_chunk_thread(arg voidptr) voidptr {
 		a.scope = check_worker_scope_begin(true)
 	}
 	tc := unsafe { &TypeChecker(a.checker) }
-	iface_names := unsafe { &[]string(a.iface_names) }
+	iface_names := unsafe { &[]u32(a.iface_names) }
 	mut results := unsafe { &InterfaceImplResults(a.results) }
 	// Implementer scans differ widely in cost (IError checks every type), so
 	// each job pulls the next interface instead of taking a fixed slice.
 	for {
 		i := <-a.queue or { break }
 		iface_name := unsafe { iface_names[i] }
-		impls := if is_builtin_ierror_name(iface_name) {
+		impls := if is_builtin_ierror_name(flat.source_type_name(iface_name)) {
 			tc.ierror_impl_names()
 		} else {
 			tc.interface_impl_names_uncached(iface_name)
 		}
 		results.items[i] = &InterfaceImplIndex{
-			names: flat.TypeTextList.from_names(impls)
+			names: flat.TypeTextList{ ids: impls }
 			ids:   stable_interface_type_ids(impls)
 		}
 	}
@@ -98,7 +98,7 @@ fn interface_impl_index_chunk_thread(arg voidptr) voidptr {
 	return unsafe { nil }
 }
 
-fn (mut tc TypeChecker) prepare_interface_impl_indexes_parallel(iface_names []string) bool {
+fn (mut tc TypeChecker) prepare_interface_impl_indexes_parallel(iface_names []u32) bool {
 	pool := checker_worker_pool(tc.a)
 	if iface_names.len < 8 || isnil(pool) {
 		return false
@@ -149,12 +149,9 @@ fn (mut tc TypeChecker) prepare_interface_impl_indexes_parallel(iface_names []st
 			// Worker indexes are backed by disposable worker arenas. Publish a
 			// parent-owned copy before those arenas are released.
 			worker_index := results.items[i]
-			mut names := []string{cap: worker_index.names.ids.len}
-			for name in worker_index.names_text() {
-				names << name.clone()
-			}
+			names := worker_index.names.ids.clone()
 			tc.interface_impl_indexes[iface_name] = &InterfaceImplIndex{
-				names: flat.TypeTextList.from_names(names)
+				names: flat.TypeTextList{ ids: names }
 				ids:   stable_interface_type_ids(names)
 			}
 		}
@@ -915,6 +912,7 @@ fn (mut tc TypeChecker) check_semantics_scoped_serial() {
 	tc.defer_ierror_gating = tc.diagnostic_files.len > 0
 	tc.collect_selected_file_called_fns()
 	tc.check_export_attrs()
+	tc.check_custom_attribute_uses()
 	tc.check_c_js_generic_declarations()
 	tc.check_interface_reserved_parameter_names()
 	tc.check_goto_labels()
@@ -958,6 +956,7 @@ pub fn (mut tc TypeChecker) check_semantics_selected(selected map[string]bool) {
 	tc.resolution_type_mode = false
 	tc.check_duplicate_fn_declarations()
 	tc.check_export_attrs()
+	tc.check_custom_attribute_uses()
 	items := tc.collect_parallel_check_items()
 	tc.check_top_level_declarations()
 	mut selected_items := []CheckWorkItem{cap: selected.len}
@@ -1166,6 +1165,7 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 	tc.timing_profile('  [ttime]   ck called fns    ${f64(selsw.elapsed().microseconds()) / 1000.0:7.2f} ms (${tc.selected_file_called_fns.len})')
 	mut cksw := time.new_stopwatch()
 	tc.check_export_attrs()
+	tc.check_custom_attribute_uses()
 	tc.check_c_js_generic_declarations()
 	tc.check_interface_reserved_parameter_names()
 	tc.check_goto_labels()
@@ -1389,6 +1389,9 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, al
 					}
 					tc.check_decl_type_strings(flat.NodeId(i), node)
 					tc.check_struct_implements(flat.NodeId(i), node)
+					if tc.declaration_has_attribute(node_id, 'attribute') {
+						tc.check_attribute_schema_decl(node_id, node)
+					}
 				}
 				if file_values {
 					tc.check_struct_field_defaults(node_id, node)
@@ -1399,6 +1402,7 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, al
 					continue
 				}
 				node_id := flat.NodeId(i)
+				tc.check_attribute_marker_target(node_id, node)
 				tc.check_type_declaration_conflict(node_id, node)
 				if node.kind == .interface_decl {
 					if tc.should_check_type_declaration_name(node_id, node)
@@ -1424,6 +1428,7 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, al
 			.enum_decl {
 				if do_signatures {
 					node_id := flat.NodeId(i)
+					tc.check_attribute_marker_target(node_id, node)
 					tc.check_type_declaration_conflict(node_id, node)
 					if tc.should_check_type_declaration_name(node_id, node)
 						&& !pascal_case_name_is_valid(node.value) {
@@ -1456,6 +1461,7 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, al
 				if !do_signatures {
 					continue
 				}
+				tc.check_attribute_marker_target(flat.NodeId(i), node)
 				tc.check_fn_declaration_name(flat.NodeId(i), node)
 				tc.check_method_field_name_collision(flat.NodeId(i), node)
 				tc.check_main_fn_signature(flat.NodeId(i), node)
@@ -3281,7 +3287,7 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 		if receiver.kind == .param && receiver.op == .dot {
 			receiver_type := unalias_type(tc.parse_type(receiver.typ))
 			if receiver_type is Interface
-				&& node.value.all_after_last('.') in tc.interface_abstract_method_names(receiver_type.name()) {
+				&& node.value.all_after_last('.') in tc.interface_abstract_method_names(receiver_type.source_type_id()) {
 				tc.record_error_at(.duplicate_decl, 'interface `${receiver_type.name()}` cannot implement its own interface method `${node.value.all_after_last('.')}`', id, tc.fn_declaration_diagnostic_pos(node))
 			}
 			if receiver_type is OptionType || receiver.typ_text().contains('?')
@@ -4392,7 +4398,7 @@ fn (mut tc TypeChecker) prewarm_shared_type_cache() {
 	tc.prepare_tail_decl_ids()
 	_ = tc.local_fn_decl_exists('__v3_prewarm__')
 	_ = flat.source_type_name(tc.unique_qualified_type_name('__V3Prewarm__') or { u32(0) })
-	_ = tc.source_struct_has_non_builtin_error_embed('__V3Prewarm__', '', '')
+	_ = tc.source_struct_has_non_builtin_error_embed(flat.source_type_id('__V3Prewarm__'), '', '')
 }
 
 // install_type_cache_overlay freezes the master's warm type cache as the
@@ -4432,21 +4438,31 @@ fn (mut tc TypeChecker) restore_type_cache_base() {
 	for k, v in overlay.c_entries {
 		base.c_entries[k] = v
 	}
-	for k, v in overlay.struct_field_entries {
-		base.struct_field_entries[k] = v
+	for owner_id, fields in overlay.struct_field_entries {
+		for field_name, typ in fields.values {
+			base.remember_struct_field_entry(owner_id, field_name, typ)
+		}
 	}
-	for k, v in overlay.struct_field_misses {
-		base.struct_field_misses[k] = v
+	for owner_id, fields in overlay.struct_field_misses {
+		for field_name, _ in fields.values { base.remember_struct_field_miss(owner_id, field_name) }
 	}
 	for k, v in overlay.ierror_compat_entries {
 		base.ierror_compat_entries[k] = v
 	}
-	for k, v in overlay.interface_impl_entries.ids {
-		base.interface_impl_entries.set_ids(k, v)
+	for owner_id, contexts in overlay.ierror_scoped_compat_entries {
+		for scope, value in contexts.values {
+			base.remember_ierror_compat_entry(SourceTypeQueryKey{ owner_id: owner_id, scope: scope }, value)
+		}
+	}
+	for k, v in overlay.interface_impl_entries {
+		base.interface_impl_entries[k] = flat.TypeTextList{ ids: v.ids.clone() }
 	}
 	if overlay.source_error_embed_indexed && !base.source_error_embed_indexed {
+		base.clear_source_error_embed_entries()
 		base.source_error_embed_entries = overlay.source_error_embed_entries.move()
 		base.source_error_embed_indexed = true
+		base.source_error_embed_shared = overlay.source_error_embed_shared
+		overlay.source_error_embed_shared = false
 	}
 	if overlay.ierror_impl_names_set && !base.ierror_impl_names_set {
 		base.ierror_impl_names = overlay.ierror_impl_names
@@ -4941,12 +4957,11 @@ fn (mut tc TypeChecker) free_parallel_check_worker_cache() {
 			mut cache := tc.type_cache
 			cache.parse_entries.free()
 			cache.c_entries.free()
-			cache.struct_field_entries.free()
-			cache.struct_field_misses.free()
-			cache.ierror_compat_entries.free()
-			cache.interface_impl_entries.ids.free()
+			cache.free_struct_field_entries()
+			cache.free_ierror_compat_entries()
+			cache.interface_impl_entries.free()
 			if !cache.source_error_embed_shared {
-				cache.source_error_embed_entries.free()
+				cache.free_source_error_embed_entries()
 			}
 		}
 	}

@@ -1881,12 +1881,16 @@ fn validate_manifest_value(automation_root string, manifest JsonValue) ![]Schema
 			'patch-0007',
 			'patch-0008',
 			'patch-0009',
+			'patch-0010',
+			'patch-0011',
+			'patch-0012',
+			'patch-0013',
 		]
 		if patch_ids_in_order != expected_patch_ids {
-			issues << SchemaIssue{'$/patches', 'Windows must declare the nine ordered TinyCC patches'}
+			issues << SchemaIssue{'$/patches', 'Windows must declare the thirteen ordered TinyCC patches'}
 		}
-		if orders != [i64(1), 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] {
-			issues << SchemaIssue{'$/transforms', 'Windows patch and transform order must be exactly 1 through 11'}
+		if orders != [i64(1), 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] {
+			issues << SchemaIssue{'$/transforms', 'Windows patch and transform order must be exactly 1 through 15'}
 		}
 		mut effect_ids := header_effects.map(require_string_member(it, 'id') or { '' })
 		effect_ids.sort()
@@ -2130,7 +2134,7 @@ fn validate_windows_transforms(transforms []JsonValue, header_effects []JsonValu
 		if require_string_member(transform, 'id')! != expected_ids[index]
 			|| require_string_member(transform, 'path')! != expected_paths[index]
 			|| require_string_member(transform, 'owner')! != expected_owners[index]
-			|| require_integer_member(transform, 'order')! != i64(index + 10)
+			|| require_integer_member(transform, 'order')! != i64(index + 14)
 			|| require_string_member(transform, 'apply_stage')! != expected_stages[index]
 			|| actual_effects != expected_effects[index] {
 			issues << SchemaIssue{'\$/transforms/${index}', 'Windows transform binding differs from the exact reviewed tuple'}
