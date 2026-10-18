@@ -4754,8 +4754,17 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 			if expected !is Void {
 				mut actual := tc.resolve_expr(value_id, expected)
 				if value_node.kind == .call {
-					if call_info := tc.resolve_call_info(value_id, value_node) {
-						if call_info.return_type !is Unknown && call_info.return_type !is Void {
+					if info := tc.resolve_call_info(value_id, value_node) {
+						// An implicit generic call resolves to its declared signature, so
+						// specialize it from the arguments first. A return type that still
+						// carries a placeholder (`map[T]int` -> `map[unknown]int`, an open
+						// `Box[T]` or `chan T` spelling) must not replace the type inferred
+						// from the expected field type.
+						call_info := tc.specialized_plain_generic_call_info(value_node, info)
+						if !type_contains_unknown(call_info.return_type)
+							&& call_info.return_type !is Void
+							&& !generic_semantic_type_has_placeholder(call_info.return_type)
+							&& !tc.type_text_has_generic_placeholder(call_info.return_type.source_type_id()) {
 							actual = call_info.return_type
 						}
 					}
@@ -10951,6 +10960,9 @@ fn type_contains_unknown_nested(typ Type) bool {
 	if typ is Map {
 		return type_contains_unknown(typ.key_type) || type_contains_unknown(typ.value_type)
 	}
+	if typ is Channel {
+		return type_contains_unknown(typ.elem_type)
+	}
 	if typ is Pointer {
 		return type_contains_unknown(typ.base_type)
 	}
@@ -14544,6 +14556,12 @@ fn (tc &TypeChecker) substitute_generic_type_values(typ Type, args []Type, param
 		return Type(Map{
 			key_type:   tc.substitute_generic_type_values(typ.key_type, args, param_names)
 			value_type: tc.substitute_generic_type_values(typ.value_type, args, param_names)
+		})
+	}
+	if typ is Channel {
+		return Type(Channel{
+			elem_type: tc.substitute_generic_type_values(typ.elem_type, args, param_names)
+			is_mut:    typ.is_mut
 		})
 	}
 	if typ is Pointer {
