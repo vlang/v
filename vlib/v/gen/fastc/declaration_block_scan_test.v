@@ -15,6 +15,7 @@ mut:
 	declaration_paths   map[string]string
 	declaration_modules map[string]string
 	type_source         string
+	source_origins      []FastcSourceOrigin
 	body_spans          []int
 	error_message       string
 }
@@ -26,7 +27,7 @@ fn fastc_probe_declaration_blocks(source string, prefs &pref.Preferences, accele
 		result.has_types = collect_declared_types(source, 'declaration_blocks.v', 'sample', prefs,
 			mut result.declared_types, mut result.declared_kinds, mut result.enum_flags,
 			mut result.params_structs, mut result.declaration_paths,
-			mut result.declaration_modules, mut type_source, mut result.body_spans) or {
+			mut result.declaration_modules, mut type_source, mut result.source_origins, mut result.body_spans) or {
 			result.error_message = err.msg()
 			false
 		}
@@ -34,7 +35,7 @@ fn fastc_probe_declaration_blocks(source string, prefs &pref.Preferences, accele
 		result.has_types = fastc_probe_unaccelerated_declared_types(source, 'declaration_blocks.v', 'sample', prefs,
 			mut result.declared_types, mut result.declared_kinds, mut result.enum_flags,
 			mut result.params_structs, mut result.declaration_paths,
-			mut result.declaration_modules, mut type_source, mut result.body_spans) or {
+			mut result.declaration_modules, mut type_source, mut result.source_origins, mut result.body_spans) or {
 			result.error_message = err.msg()
 			false
 		}
@@ -165,7 +166,7 @@ fn test_fastc_declaration_block_skip_preserves_matching_close_diagnostics_and_re
 }
 
 // Differential oracle: declaration indexing before the function-body fast path.
-fn fastc_probe_unaccelerated_declared_types(source string, path string, module_name string, prefs &pref.Preferences, mut declared_types map[string]bool, mut declared_kinds map[string]FastcDeclaredTypeKind, mut enum_flags map[string]bool, mut params_structs map[string]bool, mut declaration_paths map[string]string, mut declaration_modules map[string]string, mut type_source strings.Builder, mut body_spans []int) !bool {
+fn fastc_probe_unaccelerated_declared_types(source string, path string, module_name string, prefs &pref.Preferences, mut declared_types map[string]bool, mut declared_kinds map[string]FastcDeclaredTypeKind, mut enum_flags map[string]bool, mut params_structs map[string]bool, mut declaration_paths map[string]string, mut declaration_modules map[string]string, mut type_source strings.Builder, mut source_origins []FastcSourceOrigin, mut body_spans []int) !bool {
 	mut scratch_body_spans := []int{}
 	mut pending_fn := false
 	mut fn_body_start := -1
@@ -202,11 +203,12 @@ fn fastc_probe_unaccelerated_declared_types(source string, path string, module_n
 				comptime_end := if selected.tok == .eof { scan.offset } else { scan.pos }
 				if selected.source != '' {
 					mut selected_types := strings.new_builder(256)
-					selected_has_types := fastc_probe_unaccelerated_declared_types(selected.source, path, module_name, prefs, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs, mut declaration_paths, mut declaration_modules, mut selected_types, mut scratch_body_spans)!
+					mut selected_origins := []FastcSourceOrigin{}
+					selected_has_types := fastc_probe_unaccelerated_declared_types(selected.source, path, module_name, prefs, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs, mut declaration_paths, mut declaration_modules, mut selected_types, mut selected_origins, mut scratch_body_spans)!
 					has_type_declarations = has_type_declarations || selected_has_types
 					if selected_types.len > 0 {
 						start := if pending_start >= 0 { pending_start } else { comptime_start }
-						fastc_append_filtered_source_span(source, emitted_end, start, comptime_end, mut type_source)
+						fastc_append_filtered_source_span(source, emitted_end, start, comptime_end, mut type_source, mut source_origins)
 						emitted_end = comptime_end
 					}
 				}
@@ -321,7 +323,7 @@ fn fastc_probe_unaccelerated_declared_types(source string, path string, module_n
 				pending_fn = false
 			}
 			if declaration_start >= 0 && declaration_has_block && brace_depth == 0 {
-				fastc_append_filtered_source_span(source, emitted_end, declaration_start, scan.offset, mut type_source)
+				fastc_append_filtered_source_span(source, emitted_end, declaration_start, scan.offset, mut type_source, mut source_origins)
 				emitted_end = scan.offset
 				declaration_start = -1
 				declaration_has_block = false
@@ -338,7 +340,7 @@ fn fastc_probe_unaccelerated_declared_types(source string, path string, module_n
 				continue
 			}
 			declaration_end := if scan.offset > scan.pos { scan.offset } else { scan.pos }
-			fastc_append_filtered_source_span(source, emitted_end, declaration_start, declaration_end, mut type_source)
+			fastc_append_filtered_source_span(source, emitted_end, declaration_start, declaration_end, mut type_source, mut source_origins)
 			emitted_end = declaration_end
 			declaration_start = -1
 		}
@@ -349,7 +351,7 @@ fn fastc_probe_unaccelerated_declared_types(source string, path string, module_n
 		tok = scan.scan()
 	}
 	if declaration_start >= 0 {
-		fastc_append_filtered_source_span(source, emitted_end, declaration_start, source.len, mut type_source)
+		fastc_append_filtered_source_span(source, emitted_end, declaration_start, source.len, mut type_source, mut source_origins)
 	}
 	return has_type_declarations
 }
@@ -374,12 +376,12 @@ fn test_fastc_serial_declaration_index_publishes_recorded_body_spans() {
 	mut enum_flags := map[string]bool{}
 	mut params_structs := map[string]bool{}
 	mut type_source_paths := map[string]bool{}
-	mut type_sources := map[string]string{}
+	mut type_sources := map[string]FastcDeclarationSource{}
 	mut constants := map[string]string{}
 	mut public_constants := map[string]bool{}
-	mut constant_sources := map[string]string{}
+	mut constant_sources := map[string]FastcDeclarationSource{}
 	mut constant_spans := map[string][]int{}
-	mut global_sources := map[string]string{}
+	mut global_sources := map[string]FastcDeclarationSource{}
 	mut globals := map[string]string{}
 	mut public_globals := map[string]bool{}
 	_ := fastc_collect_generic_and_declaration_indexes(mut sources, prefs, mut declared_types,

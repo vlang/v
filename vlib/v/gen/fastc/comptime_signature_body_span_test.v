@@ -45,10 +45,11 @@ fn tail() {}
 		mut declaration_paths := map[string]string{}
 		mut declaration_modules := map[string]string{}
 		mut type_source := strings.new_builder(128)
+		mut source_origins := []FastcSourceOrigin{}
 		mut body_spans := []int{}
 		collect_declared_types(source, path, 'main', prefs, mut declared, mut kinds,
 			mut enum_flags, mut params_structs, mut declaration_paths, mut declaration_modules,
-			mut type_source, mut body_spans) or { panic(err) }
+			mut type_source, mut source_origins, mut body_spans) or { panic(err) }
 		type_source.free()
 		assert body_spans.len == 6
 		header := FastcSourceHeader{
