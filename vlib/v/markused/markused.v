@@ -600,7 +600,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	} else {
 		enqueue_auto_roots(a, fn_decls, reachable_modules, mut used, mut queue)
 	}
-	enqueue_implicit_global_container_roots(a, tc, fn_decls, mut used, mut queue)
+	enqueue_implicit_global_container_roots(a, tc, fn_decls, fn_decl_lists, mut used, mut queue)
 	for root in marked_roots {
 		enqueue(root, mut used, mut queue)
 	}
@@ -920,8 +920,10 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	// function in `method_values_by_fn`; they are seeded inside the BFS below (only when
 	// that function is reached), so an unreachable function's method value never forces an
 	// otherwise-unused specialization to be transformed/emitted.
-	mut uses_generics := enqueue_initializer_calls(a, collector, fn_decls, mut used, mut queue, false)
-	uses_generics = enqueue_top_level_calls(a, collector, fn_decls, has_entry_main, mut used, mut queue, uses_generics)
+	mut uses_generics := enqueue_initializer_calls(a, collector, fn_decls, fn_decl_lists, mut used, mut
+		queue, false)
+	uses_generics = enqueue_top_level_calls(a, collector, fn_decls, fn_decl_lists, has_entry_main, mut
+		used, mut queue, uses_generics)
 	// Interface method values and other roots can enter the queue as abstract
 	// dispatch keys that have no function declaration of their own. Seed their
 	// concrete implementations before the declaration-driven BFS skips those keys.
@@ -1192,7 +1194,8 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 				}
 			}
 			for initializer_ref in initializer_refs {
-				enqueue_initializer_ref_calls(a, collector, fn_decls, initializer_ref, mut processed_initializer_refs, mut initializer_calls, mut used, mut queue)
+				enqueue_initializer_ref_calls(a, collector, fn_decls, fn_decl_lists, initializer_ref, mut
+					processed_initializer_refs, mut initializer_calls, mut used, mut queue)
 			}
 			total_callees += unique_call_count
 			// Complete callee resolution depends only on its name and caller
@@ -1244,7 +1247,8 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 					}
 					if !safe_alias_done[callee] {
 						safe_alias_done[callee] = true
-						add_safe_decl_alias(callee, callee_info, a, mut used, mut queue)
+						add_safe_decl_alias(callee, callee_info, fn_info.module, fn_decl_lists, a, mut
+							used, mut queue)
 					}
 				} else if callee in tc.fn_ret_types {
 					found_direct = true
@@ -1667,14 +1671,18 @@ fn fn_decl_key_is_exact_for_info(name string, decl_name string, module_name stri
 	return lowered != qname && name == lowered
 }
 
-fn add_safe_decl_alias(callee string, callee_info FnDeclInfo, a &flat.FlatAst, mut used map[string]bool, mut queue []string) {
-	alias := a.node(callee_info.node_id).value
-	if fn_decl_key_is_exact_for_info(callee, alias, callee_info.module) {
+// add_safe_decl_alias enqueues the qualified and C names of the declaration that
+// `callee`, a call in `caller_module`, stands for when the call names it by a key
+// that is not its own, as the short name `Parser.expr` of `othermod.Parser.expr`.
+fn add_safe_decl_alias(callee string, callee_info FnDeclInfo, caller_module string, fn_decl_lists map[string][]FnDeclInfo, a &flat.FlatAst, mut used map[string]bool, mut queue []string) {
+	info := markused_alias_decl_info(callee, callee_info, caller_module, fn_decl_lists)
+	alias := a.node(info.node_id).value
+	if fn_decl_key_is_exact_for_info(callee, alias, info.module) {
 		return
 	}
 	mut aliases := []string{cap: 3}
 	aliases << alias
-	qalias := qualify_fn(callee_info.module, alias)
+	qalias := qualify_fn(info.module, alias)
 	if qalias != alias {
 		aliases << qalias
 	}
@@ -1687,6 +1695,27 @@ fn add_safe_decl_alias(callee string, callee_info FnDeclInfo, a &flat.FlatAst, m
 			enqueue(candidate, mut used, mut queue)
 		}
 	}
+}
+
+// markused_alias_decl_info returns the declaration that `callee`, called in
+// `caller_module`, means among those registered under that key: the one of the
+// caller's own module, where there is one. `fallback`, the declaration registered
+// last, can be a homonym of another module: `Parser.expr` names a method of `main`
+// and, by its short name, one of an imported module that declares a `Parser` too.
+fn markused_alias_decl_info(callee string, fallback FnDeclInfo, caller_module string, fn_decl_lists map[string][]FnDeclInfo) FnDeclInfo {
+	infos := fn_decl_lists[callee] or { return fallback }
+	if infos.len > 1 {
+		for info in infos {
+			if markused_is_same_module(info.module, caller_module) {
+				return info
+			}
+		}
+	}
+	return fallback
+}
+
+fn markused_is_same_module(a string, b string) bool {
+	return a == b || (a in ['', 'main'] && b in ['', 'main'])
 }
 
 fn markused_is_unqualified_receiver_method_name(name string) bool {
@@ -1763,7 +1792,7 @@ fn markused_decl_type_snapshot(src flat.TypeTextBindings, lhs_count int) flat.Ty
 }
 
 // enqueue_initializer_calls supports enqueue initializer calls handling for markused.
-fn enqueue_initializer_calls(a &flat.FlatAst, collector CallCollector, fn_decls map[string]FnDeclInfo, mut used map[string]bool, mut queue []string, initial_uses_generics bool) bool {
+fn enqueue_initializer_calls(a &flat.FlatAst, collector CallCollector, fn_decls map[string]FnDeclInfo, fn_decl_lists map[string][]FnDeclInfo, mut used map[string]bool, mut queue []string, initial_uses_generics bool) bool {
 	mut cur_module := ''
 	mut imports := map[string]string{}
 	mut calls := []string{cap: 32}
@@ -1794,7 +1823,8 @@ fn enqueue_initializer_calls(a &flat.FlatAst, collector CallCollector, fn_decls 
 						uses_generics = collector.collect_calls_with_generic_usage(field, cur_module, imports, '', u32(0), mut calls)
 					}
 					for callee in calls {
-						enqueue_initializer_callee(callee, fn_decls, a, mut used, mut queue)
+						enqueue_initializer_callee(callee, cur_module, fn_decls, fn_decl_lists, a, mut
+							used, mut queue)
 					}
 				}
 			}
@@ -1804,7 +1834,7 @@ fn enqueue_initializer_calls(a &flat.FlatAst, collector CallCollector, fn_decls 
 	return uses_generics
 }
 
-fn enqueue_initializer_ref_calls(a &flat.FlatAst, collector CallCollector, fn_decls map[string]FnDeclInfo, initializer_ref string, mut processed map[string]bool, mut calls []string, mut used map[string]bool, mut queue []string) {
+fn enqueue_initializer_ref_calls(a &flat.FlatAst, collector CallCollector, fn_decls map[string]FnDeclInfo, fn_decl_lists map[string][]FnDeclInfo, initializer_ref string, mut processed map[string]bool, mut calls []string, mut used map[string]bool, mut queue []string) {
 	if initializer_ref in processed {
 		return
 	}
@@ -1813,23 +1843,25 @@ fn enqueue_initializer_ref_calls(a &flat.FlatAst, collector CallCollector, fn_de
 	calls.clear()
 	collector.collect_calls(a.node(info.expr_id), info.module, collector.imports(info.import_context), '', u32(0), mut calls)
 	for callee in calls {
-		enqueue_initializer_callee(callee, fn_decls, a, mut used, mut queue)
+		enqueue_initializer_callee(callee, info.module, fn_decls, fn_decl_lists, a, mut used, mut
+			queue)
 	}
 }
 
-fn enqueue_initializer_callee(callee string, fn_decls map[string]FnDeclInfo, a &flat.FlatAst, mut used map[string]bool, mut queue []string) {
+fn enqueue_initializer_callee(callee string, caller_module string, fn_decls map[string]FnDeclInfo, fn_decl_lists map[string][]FnDeclInfo, a &flat.FlatAst, mut used map[string]bool, mut queue []string) {
 	if !valid_symbol_name(callee) {
 		return
 	}
 	if callee_info := fn_decls[callee] {
 		enqueue(callee, mut used, mut queue)
-		add_safe_decl_alias(callee, callee_info, a, mut used, mut queue)
+		add_safe_decl_alias(callee, callee_info, caller_module, fn_decl_lists, a, mut used, mut
+			queue)
 	} else {
 		enqueue(callee, mut used, mut queue)
 	}
 }
 
-fn enqueue_implicit_global_container_roots(a &flat.FlatAst, tc &types.TypeChecker, fn_decls map[string]FnDeclInfo, mut used map[string]bool, mut queue []string) {
+fn enqueue_implicit_global_container_roots(a &flat.FlatAst, tc &types.TypeChecker, fn_decls map[string]FnDeclInfo, fn_decl_lists map[string][]FnDeclInfo, mut used map[string]bool, mut queue []string) {
 	mut needs_array := false
 	mut needs_map := false
 	for node_idx in tc.top_level_idx {
@@ -1858,7 +1890,8 @@ fn enqueue_implicit_global_container_roots(a &flat.FlatAst, tc &types.TypeChecke
 		}
 	}
 	if needs_array {
-		enqueue_initializer_callee('__new_array', fn_decls, a, mut used, mut queue)
+		enqueue_initializer_callee('__new_array', 'builtin', fn_decls, fn_decl_lists, a, mut used, mut
+			queue)
 	}
 	if needs_map {
 		for helper in ['new_map', 'map_hash_string', 'map_eq_string', 'map_clone_string',
@@ -1866,7 +1899,8 @@ fn enqueue_implicit_global_container_roots(a &flat.FlatAst, tc &types.TypeChecke
 			'map_hash_int_16', 'map_eq_int_1', 'map_eq_int_2', 'map_eq_int_4', 'map_eq_int_8',
 			'map_eq_int_16', 'map_clone_int_1', 'map_clone_int_2', 'map_clone_int_4', 'map_clone_int_8',
 			'map_clone_int_16', 'map_free_nop'] {
-			enqueue_initializer_callee(helper, fn_decls, a, mut used, mut queue)
+			enqueue_initializer_callee(helper, 'builtin', fn_decls, fn_decl_lists, a, mut used, mut
+				queue)
 		}
 	}
 }
@@ -1968,7 +2002,7 @@ fn markused_file_is_test(file string) bool {
 	return pref.is_test_file_for_backend(file, 'c') || file.ends_with('_test.js.v')
 }
 
-fn enqueue_top_level_calls(a &flat.FlatAst, collector CallCollector, fn_decls map[string]FnDeclInfo, has_entry_main bool, mut used map[string]bool, mut queue []string, initial_uses_generics bool) bool {
+fn enqueue_top_level_calls(a &flat.FlatAst, collector CallCollector, fn_decls map[string]FnDeclInfo, fn_decl_lists map[string][]FnDeclInfo, has_entry_main bool, mut used map[string]bool, mut queue []string, initial_uses_generics bool) bool {
 	if has_entry_main {
 		return initial_uses_generics
 	}
@@ -2000,7 +2034,8 @@ fn enqueue_top_level_calls(a &flat.FlatAst, collector CallCollector, fn_decls ma
 			for callee in calls {
 				if callee_info := fn_decls[callee] {
 					enqueue(callee, mut used, mut queue)
-					add_safe_decl_alias(callee, callee_info, a, mut used, mut queue)
+					add_safe_decl_alias(callee, callee_info, module_name, fn_decl_lists, a, mut used, mut
+						queue)
 				} else {
 					enqueue(callee, mut used, mut queue)
 				}
@@ -3676,8 +3711,21 @@ fn markused_type_text_needs_shared_runtime(type_id u32) bool {
 	if !typ.contains('shared ') {
 		return false
 	}
-	clean := typ.trim_space()
-	return clean.starts_with('shared ') || clean.contains(' shared ')
+	// The modifier can follow a container prefix, as in `[]shared T` or
+	// `map[string]shared T`, whose elements are shared wrappers too.
+	mut start := 0
+	for {
+		idx := typ.index_after('shared ', start) or { return false }
+		if idx == 0 || !markused_is_name_byte(typ[idx - 1]) {
+			return true
+		}
+		start = idx + 'shared '.len
+	}
+	return false
+}
+
+fn markused_is_name_byte(c u8) bool {
+	return c.is_letter() || c.is_digit() || c == `_` || c == `.`
 }
 
 fn markused_infix_needs_f32_eq_epsilon(a &flat.FlatAst, tc &types.TypeChecker, node flat.Node) bool {

@@ -17,6 +17,8 @@ pub fn open_uri(uri string) ! {
 	handle := dl.open_opt('shell32', dl.rtld_now)!
 	// https://docs.microsoft.com/en-us/windows/win32/api/shellapi/nf-shellapi-shellexecutew
 	func := ShellExecuteWin(dl.sym_opt(handle, 'ShellExecuteW')!)
+	// ShellExecuteW starts the handler program through CreateProcessW.
+	windows_avoid_long_temp_env()
 	// 1 is SW_SHOWNORMAL, but it avoids including winuser.h, and in turn windows.h, which conflicts with raylib
 	func(unsafe { nil }, 'open'.to_wide(), uri.to_wide(), unsafe { nil }, unsafe { nil }, 1)
 	dl.close(handle)

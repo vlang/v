@@ -451,7 +451,7 @@ fn (mut p Parser) parallel_comptime_const_names(paths []string) map[string]bool 
 		s.init(file, src)
 		mut module_name := ''
 		for {
-			tok := s.scan()
+			tok := scan_parallel_const_name_token(mut s)
 			if tok == .eof { break }
 			if tok == .key_module && s.scan() == .name {
 				module_name = s.lit
@@ -463,6 +463,37 @@ fn (mut p Parser) parallel_comptime_const_names(paths []string) map[string]bool 
 		}
 	}
 	return names
+}
+
+// Only declaration keywords matter to the name superset. Preserve the scanner's
+// handling of comments, directives, strings and interpolation; skip unrelated
+// ASCII words whole so a suffix such as `some_const` cannot become a keyword.
+@[direct_array_access]
+fn scan_parallel_const_name_token(mut s scanner.Scanner) token.Token {
+	for {
+		if !s.in_str_incomplete && !s.in_str_inter {
+			for s.offset < s.src.len {
+				c := s.src[s.offset]
+				if c >= 0x80 || c in [`c`, `m`, `/`, `'`, `"`, `\``, `#`, `@`]
+					|| (c == `r` && s.offset + 1 < s.src.len
+						&& s.src[s.offset + 1] in [`'`, `"`]) {
+					break
+				}
+				s.offset++
+				if c.is_alnum() || c == `_` {
+					for s.offset < s.src.len
+						&& (s.src[s.offset].is_alnum() || s.src[s.offset] == `_`) {
+						s.offset++
+					}
+				}
+			}
+		}
+		tok := s.scan()
+		if tok in [.key_module, .key_const, .eof] {
+			return tok
+		}
+	}
+	return .eof
 }
 
 @[direct_array_access]

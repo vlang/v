@@ -277,11 +277,12 @@ const always_loaded_module_dirs = ['builtin', 'builtin/closure', 'strconv', 'str
 	'math/bits']
 
 // plain_functions_of returns the plain functions that the sources in `module_dir`
-// declare.
+// declare. A test file, as `foo_test.v` or `foo_test.c.v`, is no part of its
+// module that a program links.
 fn plain_functions_of(module_dir string) []string {
 	mut names := map[string]bool{}
 	for file in os.ls(module_dir) or { []string{} } {
-		if !file.ends_with('.v') || file.ends_with('_test.v') {
+		if !file.ends_with('.v') || file.all_before('.').ends_with('_test') {
 			continue
 		}
 		for line in os.read_lines(os.join_path_single(module_dir, file)) or { []string{} } {

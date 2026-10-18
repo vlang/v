@@ -622,7 +622,11 @@ pub mut:
 	nodes           []Node
 	children        []NodeId
 	user_code_start int
-	disabled_fns    map[string]bool
+	// parsed_node_count is the number of nodes the parser produced, or 0 when
+	// it was not recorded. Later stages append synthesized nodes past it, in an
+	// order that can depend on how their work was split across threads.
+	parsed_node_count int
+	disabled_fns      map[string]bool
 	// The names spelled inside a `$if`/`$match` body this build does not take,
 	// keyed by `<file>:<fn name offset>|<name>`. The body is never parsed, so
 	// nothing in the AST records its identifier occurrences or reads.

@@ -321,18 +321,20 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 			has_array_init = true
 			continue
 		}
-		mut field_metadata := FastcStructField{}
+		mut field_is_shared_pointer := false
 		mut expected_type := if flat.source_type_name(layout_type) == 'array' && field_name == 'init' {
 			g.array_element_type(c_type) or { u32(0) }
 		} else {
 			g.struct_direct_member_type(c_type, field_name)
 		}
 		if expected_type != 0 {
-			field_metadata = g.struct_field_metadata(c_type, field_name) or { FastcStructField{} }
+			if field := g.struct_field_metadata(c_type, field_name) {
+				field_is_shared_pointer = field.is_shared_pointer
+			}
 		}
 		if expected_type == 0 && !is_c_struct_literal {
 			if field := g.struct_field_metadata(c_type, field_name) {
-				field_metadata = field
+				field_is_shared_pointer = field.is_shared_pointer
 				expected_type = field.typ
 				mut storage_path := field.storage_path.clone()
 				storage_path << field.name
@@ -354,14 +356,14 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 			}
 		}
 		field_value := if value_start >= 0 {
-			g.render_struct_literal_field_value(tokens[value_start..value_end], expected_type, c_field_name, explicit_initializers.len, field_metadata.is_shared_pointer) or { return none }
+			g.render_struct_literal_field_value(tokens[value_start..value_end], expected_type, c_field_name, explicit_initializers.len, field_is_shared_pointer) or { return none }
 		} else {
 			g.render_struct_literal_field_value([
 				FastcExpressionToken{
 					tok: .name
 					lit: field_name
 				},
-			], expected_type, c_field_name, explicit_initializers.len, field_metadata.is_shared_pointer) or { return none }
+			], expected_type, c_field_name, explicit_initializers.len, field_is_shared_pointer) or { return none }
 		}
 		explicit_initializers << field_value.explicit_initializers
 		if field_value.rendered_field != '' {
@@ -420,7 +422,7 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 	if flat.source_type_name(layout_type) == 'array' && update_source == ''
 		&& flat.source_type_name(c_type).trim_right('*').starts_with('Array_') {
 		array_type := flat.source_type_name(c_type).trim_right('*')
-		element_type := (g.array_element_type(flat.source_type_id(array_type)) or { return none })
+		element_type := g.array_element_type(flat.source_type_id(array_type)) or { return none }
 		storage_type := g.collection_storage_type(element_type)
 		length := field_values['len'] or { '0' }
 		capacity := field_values['cap'] or { '0' }

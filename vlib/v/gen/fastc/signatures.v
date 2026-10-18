@@ -545,7 +545,7 @@ fn collect_function_signatures_at(source string, source_offset int, path string,
 		tok = scan.scan()
 	}
 	if header.has_comptime_if {
-		fastc_collect_selected_comptime_function_signatures(source, source_offset, path, header, prefs, declared_types, declared_type_c_names, params_structs, mut functions)!
+		fastc_collect_selected_comptime_function_signatures(source, source_offset, path, header, prefs, skips, declared_types, declared_type_c_names, params_structs, mut functions)!
 	}
 }
 
@@ -1534,6 +1534,12 @@ fn fastc_scan_type_bytes(mut scan scanner.Scanner, first token.Token, path strin
 	for tok == .amp || tok == .and || tok == .mul {
 		pointers += if tok == .and { 2 } else { 1 }
 		tok = scan.scan()
+	}
+	// `&?T` / `&!T`: a pointer to an option or result value.
+	if !optional && pointers > 0 && tok in [.question, .not] {
+		inner_type, next_token := fastc_scan_type_bytes(mut scan, tok, path, module_name, imports,
+			declared_types, allow_short_placeholders)!
+		return inner_type + '*'.repeat(pointers), next_token
 	}
 	if optional && fastc_is_void_return_boundary(tok) {
 		return wrapper + '*'.repeat(pointers), tok

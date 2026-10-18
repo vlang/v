@@ -192,7 +192,7 @@ fn decl_type_is_usable(typ_id u32) bool {
 	if typ_id == u32(0) || typ in ['unknown', 'array', 'map', 'struct'] || typ.contains('unknown') {
 		return false
 	}
-	if types.type_text_contains_typeof(typ) {
+	if flat.source_type_shape(typ_id).has(.typeof_expr) {
 		return false
 	}
 	// `replace` copies the text even when it holds no space.
@@ -210,7 +210,7 @@ fn (t &Transformer) checker_expr_type_name(id flat.NodeId) ?u32 {
 	if t.tc.type_aliases.contains(flat.source_type_name(name)) {
 		name = t.normalize_type_alias(name)
 	}
-	if types.type_text_contains_typeof(flat.source_type_name(name)) {
+	if flat.source_type_shape(name).has(.typeof_expr) {
 		name = t.tc.type_name(t.tc.resolve_type(id))
 		if t.tc.type_aliases.contains(flat.source_type_name(name)) {
 			name = t.normalize_type_alias(name)
@@ -1414,7 +1414,9 @@ fn (t &Transformer) normalize_type_alias(type_id u32) u32 {
 	if type_id == 0 || isnil(t.tc) { return type_id }
 	mut texts := t.var_type_texts
 	if isnil(t.alias_cache) {
-		return texts.intern(t.normalize_type_alias_uncached(texts.text(type_id)))
+		typ := texts.text(type_id)
+		result := t.normalize_type_alias_uncached(typ)
+		return if result == typ { type_id } else { texts.intern(result) }
 	}
 	mut c := t.alias_cache
 	if c.texts != t.var_type_texts {
@@ -1445,8 +1447,8 @@ fn (t &Transformer) normalize_type_alias(type_id u32) u32 {
 	}
 	// Only a miss crosses back to the source/alias spelling resolver.
 	typ := texts.text(type_id)
-	if fast := t.normalize_dotted_canonical_fast(typ) {
-		result_id := texts.intern(fast)
+	if t.normalize_dotted_canonical_fast(typ) {
+		result_id := type_id
 		c.entries[type_id] = result_id
 		c.recent_types[recent_slot] = type_id
 		c.recent_results[recent_slot] = result_id
@@ -1455,7 +1457,7 @@ fn (t &Transformer) normalize_type_alias(type_id u32) u32 {
 		return result_id
 	}
 	result := t.normalize_type_alias_uncached(typ)
-	result_id := texts.intern(result)
+	result_id := if result == typ { type_id } else { texts.intern(result) }
 	c.entries[type_id] = result_id
 	c.recent_types[recent_slot] = type_id
 	c.recent_results[recent_slot] = result_id
@@ -1472,7 +1474,7 @@ fn (t &Transformer) normalize_type_alias(type_id u32) u32 {
 // uncached walk's qualified-name branch returns it before consulting imports,
 // so the answer is file-independent). Any other shape falls through.
 @[direct_array_access; inline]
-fn (t &Transformer) normalize_dotted_canonical_fast(typ string) ?string {
+fn (t &Transformer) normalize_dotted_canonical_fast(typ string) bool {
 	mut has_dot := false
 	for i in 0 .. typ.len {
 		c := typ[i]
@@ -1483,22 +1485,22 @@ fn (t &Transformer) normalize_dotted_canonical_fast(typ string) ?string {
 		if (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || (c >= `0` && c <= `9`) || c == `_` {
 			continue
 		}
-		return none
+		return false
 	}
 	if !has_dot {
-		return none
+		return false
 	}
 	first := typ[0]
 	if !((first >= `a` && first <= `z`) || (first >= `A` && first <= `Z`) || first == `_`) {
-		return none
+		return false
 	}
 	if t.tc.type_aliases.contains(typ) {
-		return none
+		return false
 	}
 	if t.type_authority_has(typ) {
-		return typ
+		return true
 	}
-	return none
+	return false
 }
 
 // normalize_type_alias_uncached converts normalize type alias uncached data for transform.
@@ -2159,7 +2161,6 @@ fn (t &Transformer) node_type_uncached(id flat.NodeId) u32 {
 		return flat.source_type_u32
 	}
 	resolved_source_id := t.resolve_expr_type(id)
-	resolved := flat.source_type_name(resolved_source_id)
 	if resolved_source_id != 0 {
 		if node.kind == .array_literal && t.generic_arg_is_unresolved(resolved_source_id) {
 			elem_type_source_id := t.array_literal_elem_type(node)
@@ -2167,7 +2168,7 @@ fn (t &Transformer) node_type_uncached(id flat.NodeId) u32 {
 			elem_type := flat.source_type_name(elem_type_source_id_3)
 			if decl_type_is_usable(elem_type_source_id_3) && !t.generic_arg_is_unresolved(elem_type_source_id) {
 				if t.is_fixed_array_type(resolved_source_id) {
-					return flat.source_type_id('[${fixed_array_len_text(resolved)}]${elem_type}')
+					return flat.source_type_id('[${fixed_array_len_text(flat.source_type_name(resolved_source_id))}]${elem_type}')
 				}
 				return flat.source_type_id('[]${elem_type}')
 			}
@@ -2175,12 +2176,12 @@ fn (t &Transformer) node_type_uncached(id flat.NodeId) u32 {
 		// The checker override only applies to named struct types. Most expressions
 		// are builtin scalars or containers; avoid parsing both types and deriving
 		// their C names for those overwhelmingly common cases.
-		if !t.building_v && type_text_may_name_struct(resolved) {
+		if !t.building_v && type_text_may_name_struct(resolved_source_id) {
 			if checked_source_id := t.checker_type_over_struct_guess(id, resolved_source_id) {
 				return checked_source_id
 			}
 		}
-		if types.type_text_contains_typeof(resolved) && !isnil(t.tc) {
+		if flat.source_type_shape(resolved_source_id).has(.typeof_expr) && !isnil(t.tc) {
 			if typ := t.tc.expr_type(id) {
 				name_source_id := t.normalize_type_alias(t.tc.type_name(typ))
 				name_source_id_2 := name_source_id
@@ -2299,8 +2300,20 @@ fn (t &Transformer) node_type_uncached(id flat.NodeId) u32 {
 	return u32(0)
 }
 
+// type_text_may_name_struct screens an interned spelling before checker struct overrides.
 @[inline]
-fn type_text_may_name_struct(typ string) bool {
+fn type_text_may_name_struct(typ_id u32) bool {
+	shape := flat.source_type_shape(typ_id)
+	if typ_id == 0 || shape.has(.builtin_alias) || shape.has(.array_type)
+		|| shape.has(.map_type) || shape.has(.leading_bracket) || shape.has(.function_compact)
+		|| shape.has(.function_spaced) || shape.has(.channel_type) || shape.has(.optional) {
+		return false
+	}
+	if !shape.has(.pointer) {
+		return true
+	}
+	// Pointer chains retain the exact byte grammar for the underlying spelling.
+	typ := flat.source_type_name(typ_id)
 	mut start := 0
 	for start < typ.len && typ[start] == `&` {
 		start++
@@ -2325,8 +2338,7 @@ fn (t &Transformer) checker_type_over_struct_guess(id flat.NodeId, guessed_id u3
 	node := t.a.nodes[int(id)]
 	if node.kind == .ident {
 		local_type_source_id_2 := t.normalized_var_type(node.value)
-		local_type := flat.source_type_name(local_type_source_id_2)
-		if local_type_source_id_2 != 0 && local_type == flat.source_type_name(t.normalize_type_alias(guessed_id)) {
+		if local_type_source_id_2 != 0 && local_type_source_id_2 == t.normalize_type_alias(guessed_id) {
 			// Function-local bindings are authoritative after lowering. The checker
 			// cache still describes the source node and can retain a mutable
 			// parameter's pointer storage type after that node is reused for a value
@@ -2530,11 +2542,11 @@ fn (t &Transformer) lvalue_type(id flat.NodeId) u32 {
 	if node.kind == .selector {
 		sel_type_source_id := t.resolve_selector_type(node)
 		sel_type_shape := flat.source_type_shape(sel_type_source_id)
-		if !isnil(t.tc) {
+		if !isnil(t.tc) && !sel_type_shape.has(.pointer) {
 			if checker_type := t.tc.expr_type(id) {
-				checker_name := checker_type.name()
-				if checker_name.starts_with('&') && !sel_type_shape.has(.pointer) {
-					return flat.source_type_id(checker_name)
+				checker_name := t.tc.type_name(checker_type)
+				if flat.source_type_shape(checker_name).has(.pointer) {
+					return checker_name
 				}
 			}
 		}
