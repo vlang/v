@@ -5649,7 +5649,8 @@ fn test_comptime_field_generic_calls_keep_resolved_field_types() {
 	v3_bin := build_v3_review_transform()
 	out := run_good_project(v3_bin, 'comptime_field_resolved_types', {
 		'v.mod':         "Module { name: 'comptime_field_resolved_types' }\n"
-		'model/model.v': 'module model\n\npub enum KeyCode {\n\tenter\n}\n\npub type Callback = fn (int)\n\n@[typedef]\npub struct C.model_event {\npub:\n\tkey KeyCode\n\tcb Callback\n}\n\npub type Event = C.model_event\n'
+		'model/model.h': 'typedef struct {\n\tint key;\n\tvoid (*cb)(int);\n} model_event;\n'
+		'model/model.v': 'module model\n\n#include "@VMODROOT/model/model.h"\n\npub enum KeyCode {\n\tenter\n}\n\npub type Callback = fn (int)\n\n@[typedef]\npub struct C.model_event {\npub:\n\tkey KeyCode\n\tcb Callback\n}\n\npub type Event = C.model_event\n'
 		'codec/codec.v': 'module codec\n\npub fn visit[T](mut value T) {\n\t\$for field in T.fields {\n\t\ttouch(mut value.\$(field.name))\n\t}\n}\n\nfn touch[T](mut value T) {\n\t_ = value\n}\n'
 		'main.v':        'module main\n\nimport codec\nimport model\n\nfn main() {\n\tmut event := model.Event{}\n\tcodec.visit(mut event)\n\tprintln(int_str(int(event.key)))\n}\n'
 	}, 'main.v')
