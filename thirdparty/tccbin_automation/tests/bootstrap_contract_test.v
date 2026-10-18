@@ -95,10 +95,10 @@ fn test_bootstrap_script_is_syntax_valid_network_free_and_ordered() {
 		assert !source.contains(forbidden), forbidden
 	}
 	cc_index := source.index('"$cc_command" -std=c99') or { panic('cc bootstrap missing') }
-	v1_index := source.index(r'"$private_contract_root/v1${exe_suffix}" -no-parallel') or {
+	v1_index := source.index(r'build_v_program "$private_contract_root/v1${exe_suffix}"') or {
 		panic('v1 bootstrap missing')
 	}
-	v2_index := source.index(r'"$private_contract_root/v2${exe_suffix}" -no-parallel') or {
+	v2_index := source.index(r'build_v_program "$private_contract_root/v2${exe_suffix}"') or {
 		panic('v2 bootstrap missing')
 	}
 	cli_index := source.index(r'-d "tccbin_contract_repository=${contract_repository}"') or {
@@ -110,7 +110,8 @@ fn test_bootstrap_script_is_syntax_valid_network_free_and_ordered() {
 	assert v2_index < cli_index
 	assert cli_index < oracle_index
 	assert source.contains(r'-d "tccbin_contract_sha=${contract_sha}"')
-	assert source.count('-no-parallel -nocache -cc "$cc_command"') == 3
+	// build_v_program holds the only direct invocation; every cmd/v build goes through it.
+		assert source.count('-no-parallel -nocache -cc "$cc_command"') == 1
 	assert source.count('-gc none') == 3
 	cli_path_assignment := r'cli_path="$work_root/tccbin-automation${exe_suffix}"'
 	assert source.count(cli_path_assignment) == 1
@@ -120,7 +121,8 @@ fn test_bootstrap_script_is_syntax_valid_network_free_and_ordered() {
 	assert source.count(r'$cli_path') == 2
 	assert source.count(r'${cli_path}') == 0
 	assert source.count(r'"$cli_path"') == 2
-	assert source.count(r'-o "$cli_path"') == 1
+	assert source.count(r'"$private_contract_root/v${exe_suffix}" "$cli_path" -gc none') == 1
+		assert source.contains('vlib/builtin/core_windows.c')
 	assert source.count(r'binding_output=$("$cli_path" contract-binding)') == 1
 	for forbidden_interface in ['-silent', 'result-file', 'result_file', 'tail -n 1', 'tail -1'] {
 		assert !source.contains(forbidden_interface), forbidden_interface
