@@ -1253,6 +1253,9 @@ pub mut:
 	// nil until check_fn_items_serial arms it (see BodyResolveMemo).
 	body_resolve_memo &BodyResolveMemo = unsafe { nil }
 	import_info_cache &ImportInfoCache = unsafe { nil }
+	// The smartcast keys of the body being checked (see SmartcastKeyFilter);
+	// nil outside check_fn_items_serial.
+	smartcast_key_filter &SmartcastKeyFilter = unsafe { nil }
 	// Nanoseconds spent in the ownership checker's per-fn boundary passes.
 	// Only `-d ownership` builds ever write it (every writer lives in
 	// checker_ownership_d_ownership.v), so plain builds report exactly 0.
@@ -12901,7 +12904,11 @@ fn (mut tc TypeChecker) collect_selected_file_root_called_fns() {
 	tc.cur_file = ''
 	tc.cur_module = ''
 	tc.cur_scope = tc.file_scope
+	mut smartcast_keys := &SmartcastKeyFilter{}
+	mut prev_top_level := -1
 	for i in tc.top_level_idx {
+		range_lo := prev_top_level + 1
+		prev_top_level = i
 		node := tc.a.node(flat.NodeId(i))
 		match node.kind {
 			.file {
@@ -12917,11 +12924,28 @@ fn (mut tc TypeChecker) collect_selected_file_root_called_fns() {
 				if i < tc.a.user_code_start || !tc.diagnostic_files[tc.cur_file] {
 					continue
 				}
+				// A fn subtree is the node range since the previous top-level node.
+				smartcast_keys.arm(range_lo, i)
+				tc.smartcast_key_filter = smartcast_keys
 				tc.collect_selected_file_fn_body_called_fns(node)
+				tc.smartcast_key_filter = unsafe { nil }
 			}
 			else {}
 		}
 	}
+}
+
+// collect_selected_decl_called_fns walks the body of `decl` for the functions it
+// calls, with the smartcast keys of its node range in `smartcast_keys`.
+fn (mut tc TypeChecker) collect_selected_decl_called_fns(decl SelectedFnDecl, mut smartcast_keys SmartcastKeyFilter) {
+	tc.cur_file = decl.file
+	tc.cur_module = decl.mod
+	// selected_file_fn_decls takes the cost as the span since the previous
+	// top-level node: the fn subtree.
+	smartcast_keys.arm(decl.idx - decl.cost + 1, decl.idx)
+	tc.smartcast_key_filter = smartcast_keys
+	tc.collect_selected_file_fn_body_called_fns(tc.a.node(flat.NodeId(decl.idx)))
+	tc.smartcast_key_filter = unsafe { nil }
 }
 
 // SelectedFnDecl locates the first fn_decl node for a qualified name, with the
@@ -12942,6 +12966,7 @@ fn (mut tc TypeChecker) collect_selected_file_called_fns_transitively() {
 	tc.cur_scope = tc.file_scope
 	mut visited := map[string]bool{}
 	can_parallel := tc.selected_file_reachability_parallel_available()
+	mut smartcast_keys := &SmartcastKeyFilter{}
 	for tc.selected_file_worklist.len > 0 {
 		if !can_parallel || tc.selected_file_worklist.len < min_parallel_selected_fn_bodies {
 			name := tc.selected_file_worklist.pop()
@@ -12950,9 +12975,7 @@ fn (mut tc TypeChecker) collect_selected_file_called_fns_transitively() {
 			}
 			visited[name] = true
 			decl := decls[name] or { continue }
-			tc.cur_file = decl.file
-			tc.cur_module = decl.mod
-			tc.collect_selected_file_fn_body_called_fns(tc.a.node(flat.NodeId(decl.idx)))
+			tc.collect_selected_decl_called_fns(decl, mut smartcast_keys)
 			continue
 		}
 		mut frontier := []SelectedFnDecl{}
@@ -12969,9 +12992,7 @@ fn (mut tc TypeChecker) collect_selected_file_called_fns_transitively() {
 			continue
 		}
 		for decl in frontier {
-			tc.cur_file = decl.file
-			tc.cur_module = decl.mod
-			tc.collect_selected_file_fn_body_called_fns(tc.a.node(flat.NodeId(decl.idx)))
+			tc.collect_selected_decl_called_fns(decl, mut smartcast_keys)
 		}
 	}
 }

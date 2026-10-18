@@ -103,3 +103,102 @@ fn (tc &TypeChecker) lexical_parent_link(id flat.NodeId) (flat.NodeId, flat.Node
 	}
 	return parent, child, depth
 }
+
+// SmartcastKeyFilter holds every expression key that a lexical smartcast in the
+// node range [lo, hi] of one function can narrow: the subjects of its `is`
+// tests (negated or not), the operands of its `== none` / `!= none` (or nil)
+// comparisons, and its match subjects. Every narrowing the lexical walk finds
+// is named by one of them, also through a bool condition saved in a local
+// (whose initializer is in the same function). The keys are taken on the first
+// query of the range.
+@[heap]
+struct SmartcastKeyFilter {
+mut:
+	lo    int = -1
+	hi    int = -1
+	ready bool
+	keys  []string
+	index map[string]bool
+}
+
+const smartcast_key_filter_linear = 16
+
+fn (mut filter SmartcastKeyFilter) arm(lo int, hi int) {
+	filter.lo = lo
+	filter.hi = hi
+	filter.ready = false
+}
+
+fn (mut filter SmartcastKeyFilter) add(key string) {
+	if key.len == 0 {
+		return
+	}
+	if filter.index.len > 0 {
+		filter.index[key] = true
+		return
+	}
+	if key in filter.keys {
+		return
+	}
+	filter.keys << keep_string(key)
+	if filter.keys.len > smartcast_key_filter_linear {
+		for k in filter.keys {
+			filter.index[k] = true
+		}
+	}
+}
+
+fn (filter &SmartcastKeyFilter) has(key string) bool {
+	if filter.index.len > 0 {
+		return key in filter.index
+	}
+	return key in filter.keys
+}
+
+@[direct_array_access]
+fn (tc &TypeChecker) collect_smartcast_keys(mut filter SmartcastKeyFilter) {
+	filter.keys.clear()
+	if filter.index.len > 0 {
+		filter.index.clear()
+	}
+	hi := int_min(filter.hi, tc.a.nodes.len - 1)
+	for i in filter.lo .. hi + 1 {
+		node := unsafe { &tc.a.nodes[i] }
+		match node.kind {
+			.is_expr, .match_stmt {
+				if node.children_count > 0 {
+					filter.add(tc.expr_key(tc.a.child(node, 0)))
+				}
+			}
+			.infix {
+				if node.op in [.eq, .ne] && node.children_count >= 2 {
+					lhs := tc.a.child(node, 0)
+					rhs := tc.a.child(node, 1)
+					if tc.a.node(lhs).kind in [.none_expr, .nil_literal]
+						|| tc.a.node(rhs).kind in [.none_expr, .nil_literal] {
+						filter.add(tc.expr_key(lhs))
+						filter.add(tc.expr_key(rhs))
+					}
+				}
+			}
+			else {}
+		}
+	}
+	filter.ready = true
+}
+
+// lexical_smartcast_key_unused reports that no lexical smartcast of the
+// function being checked can narrow `key` at the node `idx`.
+fn (tc &TypeChecker) lexical_smartcast_key_unused(idx int, key string) bool {
+	if isnil(tc.smartcast_key_filter) {
+		return false
+	}
+	mut filter := tc.smartcast_key_filter
+	if idx < filter.lo || idx > filter.hi || filter.lo < 0 {
+		return false
+	}
+	if !filter.ready {
+		tc.collect_smartcast_keys(mut filter)
+	}
+	return !filter.has(key)
+}

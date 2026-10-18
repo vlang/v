@@ -16069,7 +16069,11 @@ fn (tc &TypeChecker) smartcast_type(id flat.NodeId) ?Type {
 	if state != 0 {
 		return cache.lexical_smartcast_types[int(state) - 2]
 	}
-	result := tc.lexical_smartcast_type(id, key) or {
+	mut found := ?Type(none)
+	if !tc.lexical_smartcast_key_unused(idx, key) {
+		found = tc.lexical_smartcast_type(id, key)
+	}
+	result := found or {
 		if isnil(tc.storage_query_probe) && !tc.resolution_type_mode && idx < tc.lexical_smartcast_misses.len
 			&& (!tc.parallel_check_sparse || (idx >= tc.check_range_lo && idx <= tc.check_range_hi)) {
 			mut writable := unsafe { tc }

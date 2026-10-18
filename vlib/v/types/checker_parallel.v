@@ -2828,11 +2828,15 @@ fn (mut tc TypeChecker) check_fn_items_serial(items []CheckWorkItem) {
 		// This context stays in the batch's arena. Direct/concrete checks and
 		// checker forks receive fresh contexts instead of inheriting its storage.
 		mut reusable_context := new_function_check_context()
+		// So does the smartcast key filter, which is only armed here.
+		mut smartcast_keys := &SmartcastKeyFilter{}
 		for it in items {
 			node := tc.a.nodes[it.fn_idx]
 			tc.check_range_lo = it.range_lo
 			tc.check_range_hi = it.fn_idx
 			memo.begin(it.range_lo, it.fn_idx)
+			smartcast_keys.arm(it.range_lo, it.fn_idx)
+			tc.smartcast_key_filter = smartcast_keys
 			tc.check_fn_decl_semantics_with_context(it.fn_idx, node, it.file, it.module,
 				mut reusable_context)
 			reusable_context.reset_for_sibling_check()
@@ -2847,6 +2851,7 @@ fn (mut tc TypeChecker) check_fn_items_serial(items []CheckWorkItem) {
 		}
 	}
 	memo.active = false
+	tc.smartcast_key_filter = unsafe { nil }
 	tc.check_range_lo = -1
 	tc.check_range_hi = -1
 }
