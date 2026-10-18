@@ -1265,7 +1265,7 @@ fn (mut g Parser) parse_return() !bool {
 		'__v_result',
 	] {
 		mut payload_type := fastc_normalize_inferred_type(actual_type)
-		if g.option_return_type != u32(0) && (g.should_box_variant(g.option_return_type_text(), payload_type) || (g.declared_kinds[g.semantic_type_key(g.option_return_type_text())] == .interface_ && g.declared_kinds[g.semantic_type_key(payload_type)] != .interface_)) {
+		if g.option_return_type != u32(0) && (g.should_box_variant(g.option_return_type_text(), payload_type) || ((g.option_return_type_text() == 'IError' || g.declared_kinds[g.semantic_type_key(g.option_return_type_text())] == .interface_) && g.declared_kinds[g.semantic_type_key(payload_type)] != .interface_)) {
 			expression = g.interface_value_expression(g.option_return_type_text(), payload_type, expression)
 			payload_type = g.option_return_type_text()
 		}
@@ -1279,18 +1279,54 @@ fn (mut g Parser) parse_return() !bool {
 
 // returns_error_value reports whether a value of `actual_type`, returned from the current
 // `!T` function, is its error: a struct implementing IError (`msg` and `code`, its own or
-// through an embedded `Error`) that is not the success type `T` itself.
+// through an embedded `Error`) that is not assignable to the success type `T`.
 fn (g &Parser) returns_error_value(actual_type string) bool {
-	value_type := fastc_trim_pointer_suffix(fastc_normalize_inferred_type(actual_type))
+	value_type := fastc_trim_pointer_suffix(g.underlying_alias_type(fastc_normalize_inferred_type(actual_type)))
 	if value_type == '' || g.declared_kinds[g.semantic_type_key(value_type)] != .struct_ {
 		return false
 	}
-	if fastc_trim_pointer_suffix(fastc_normalize_inferred_type(g.option_return_type_text())) == value_type {
+	payload_type := fastc_trim_pointer_suffix(g.underlying_alias_type(fastc_normalize_inferred_type(g.option_return_type_text())))
+	// IError is an intrinsic C struct rather than a source-level interface declaration.
+	if payload_type == value_type || payload_type == 'IError'
+		|| g.sumtype_has_variant(payload_type, value_type)
+		|| g.result_payload_interface_accepts(payload_type, value_type) {
 		return false
 	}
 	msg_key, _ := g.resolve_method(value_type, 'msg')
 	code_key, _ := g.resolve_method(value_type, 'code')
 	return msg_key in g.functions && code_key in g.functions
+}
+
+// result_payload_interface_accepts checks the complete interface shape before an
+// IError implementer is classified as a failure instead of a successful payload.
+fn (g &Parser) result_payload_interface_accepts(payload_type string, value_type string) bool {
+	payload_key := g.semantic_type_key(payload_type)
+	if g.declared_kinds[payload_key] != .interface_ {
+		return false
+	}
+	prefix := payload_key + '.'
+	for method_key, signature in g.functions {
+		if !method_key.starts_with(prefix) || signature.parameter_types.ids.len == 0
+			|| signature.parameter_types.at(0) != payload_type {
+			continue
+		}
+		candidate_key, _ := g.resolve_method(value_type, method_key.all_after_last('.'))
+		candidate := g.functions[candidate_key] or { return false }
+		if !fastc_interface_method_signatures_match(signature, candidate) {
+			return false
+		}
+	}
+	for field_key, required in g.interface_fields {
+		if !field_key.starts_with(prefix) {
+			continue
+		}
+		actual := g.interface_implementation_field(value_type, g.semantic_type_key(value_type),
+			required.name) or { return false }
+		if actual.typ_text() != required.typ_text() || (required.is_mutable && !actual.is_mutable) {
+			return false
+		}
+	}
+	return true
 }
 
 fn (mut g Parser) write_return_expression(expression string, expression_type string) {

@@ -157,6 +157,101 @@ fn test_fastc_custom_error_returns_runtime() {
 	assert run.output.trim_space() == 'custom errors work', run.output
 }
 
+// An IError implementer can also be a successful interface payload. Check every
+// required method and field so unrelated interfaces still receive an error.
+const result_interface_payload_source = 'module main
+
+struct PayloadError {
+	Error
+	message string
+}
+
+fn (e PayloadError) msg() string {
+	return e.message
+}
+
+interface MessagePayload {
+	msg() string
+}
+
+interface FieldPayload {
+	message string
+}
+
+interface OtherPayload {
+	code() string
+}
+
+interface WrongFieldPayload {
+	message int
+}
+
+fn ierror_payload() !IError {
+	return PayloadError{ message: "ierror" }
+}
+
+fn message_payload() !MessagePayload {
+	return PayloadError{ message: "message" }
+}
+
+fn pointer_message_payload() !MessagePayload {
+	return &PayloadError{ message: "pointer" }
+}
+
+fn field_payload() !FieldPayload {
+	return PayloadError{ message: "field" }
+}
+
+fn generic_payload[T](value T) !MessagePayload {
+	return value
+}
+
+fn other_payload() !OtherPayload {
+	return PayloadError{ message: "failure" }
+}
+
+fn wrong_field_payload() !WrongFieldPayload {
+	return PayloadError{ message: "field failure" }
+}
+
+fn main() {
+	ierror_value := ierror_payload() or { panic(err) }
+	assert ierror_value.msg() == "ierror"
+	message_value := message_payload() or { panic(err) }
+	assert message_value.msg() == "message"
+	pointer_value := pointer_message_payload() or { panic(err) }
+	assert pointer_value.msg() == "pointer"
+	_ := field_payload() or { panic(err) }
+	generic_value := generic_payload(PayloadError{ message: "generic" }) or { panic(err) }
+	assert generic_value.msg() == "generic"
+	mut saw_error := false
+	other_payload() or {
+		assert err.msg() == "failure"
+		saw_error = true
+	}
+	assert saw_error
+	mut saw_field_error := false
+	wrong_field_payload() or {
+		assert err.msg() == "field failure"
+		saw_field_error = true
+	}
+	assert saw_field_error
+	println("result interface payloads work")
+}
+'
+
+fn test_fastc_result_interface_payload_returns_runtime() {
+	$if !macos && !linux {
+		return
+	}
+	root, program := fastc_build_program('fastc_result_interface_payload', result_interface_payload_source,
+		'program')
+	defer { os.rmdir_all(root) or {} }
+	run := cmdexec.run(program, [])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'result interface payloads work', run.output
+}
+
 // A one-line definition (every interface's) ends at its own `};`. Ending it at the next
 // definition's `\n};` made a move carry the following struct along without updating its
 // index, and a later move then spliced `struct os__File` into the middle of another struct.
