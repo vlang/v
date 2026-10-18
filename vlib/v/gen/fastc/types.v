@@ -225,10 +225,11 @@ fn fastc_call_arguments(tokens []FastcExpressionToken, open int, close int) ![][
 			else {}
 		}
 	}
-	if start == close {
-		return error('empty fastc function argument')
+	// A final comma terminates the last argument; interior empty arguments
+	// were rejected while splitting above.
+	if start < close {
+		call_args << tokens[start..close]
 	}
-	call_args << tokens[start..close]
 	return call_args
 }
 
