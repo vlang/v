@@ -6958,33 +6958,28 @@ fn (t &Transformer) generic_call_arg_ids_from_param(node flat.Node, param_idx in
 }
 
 fn (mut t Transformer) infer_generic_variadic_call_arg(param_type_id u32, elem_param_type_id u32, arg_id flat.NodeId, mut inferred map[string]u32) {
-	if spread_id := t.generic_call_spread_arg_child(arg_id) {
-		inferred_arg_type := t.generic_call_arg_type_for_inference(spread_id)
-		arg_type := generic_arg_type_for_param(param_type_id, inferred_arg_type)
-		if arg_type != 0 {
-			infer_generic_type_args(param_type_id, arg_type, mut inferred)
-		}
-		return
-	}
-	inferred_arg_type := t.generic_call_arg_type_for_inference(arg_id)
-	if t.generic_call_arg_is_packed_variadic_tail(arg_id) {
-		arg_type := generic_arg_type_for_param(param_type_id, inferred_arg_type)
-		if arg_type != 0 {
-			infer_generic_type_args(param_type_id, arg_type, mut inferred)
-		}
-		return
-	}
-	arg_type := generic_arg_type_for_param(elem_param_type_id, inferred_arg_type)
+	inference_param_type, value_id := t.generic_variadic_arg_for_inference(param_type_id, elem_param_type_id, arg_id)
+	inferred_arg_type := t.generic_call_arg_type_for_inference(value_id)
+	arg_type := generic_arg_type_for_param(inference_param_type, inferred_arg_type)
 	if arg_type != 0 {
-		infer_generic_type_args(elem_param_type_id, arg_type, mut inferred)
+		infer_generic_type_args(inference_param_type, arg_type, mut inferred)
+	}
+	if inference_param_type == param_type_id {
+		return
 	}
 	t.infer_generic_struct_init_args(elem_param_type_id, arg_id, mut inferred)
-	// The short struct-init call syntax for a variadic generic struct param
-	// (`f(a: x, b: y)` for `fn f[T](items ...Params[T])`) packs the element's
-	// fields as bare `field_init` args rather than a wrapped `struct_init`, so
-	// `infer_generic_struct_init_args` above cannot see them. Infer T from the
-	// field's declared type the same way the non-variadic path does.
+	// Short struct-init arguments belong to one variadic struct element.
 	t.infer_generic_field_init_type_arg(elem_param_type_id, arg_id, mut inferred)
+}
+
+fn (t &Transformer) generic_variadic_arg_for_inference(param_type_id u32, elem_param_type_id u32, arg_id flat.NodeId) (u32, flat.NodeId) {
+	if spread_id := t.generic_call_spread_arg_child(arg_id) {
+		return param_type_id, spread_id
+	}
+	if t.generic_call_arg_is_packed_variadic_tail(arg_id) {
+		return param_type_id, arg_id
+	}
+	return elem_param_type_id, arg_id
 }
 
 // An array's dimensions alone do not distinguish one variadic element from
@@ -11841,10 +11836,23 @@ fn (mut t Transformer) generic_clone_call_type_args(node flat.Node, decl Generic
 	receiver_params := if is_receiver { t.generic_receiver_param_names(decl) } else { []string{} }
 	mut inferred := map[string]u32{}
 	mut param_idx := 0
+	param_count := t.generic_decl_param_count(decl.node)
 	for i in 0 .. decl.node.children_count {
 		param := t.a.child_node(&decl.node, i)
 		if param.kind != .param {
 			if t.prefix_param_scan { break }
+			continue
+		}
+		if generic_param_text_is_variadic(param.typ) && param_idx == param_count - 1 {
+			elem_param_type := generic_variadic_elem_param_text(param.typ)
+			for arg_id in t.generic_call_arg_ids_from_param(node, param_idx, is_receiver) {
+				param_type, value_id := t.generic_variadic_arg_for_inference(param.typ, elem_param_type, arg_id)
+				arg_type := t.generic_clone_argument_type(value_id, args_ids)
+				if decl_type_is_usable(arg_type) && !t.generic_arg_is_unresolved(arg_type) {
+					infer_generic_type_args(param_type, generic_arg_type_for_param(param_type, arg_type), mut inferred)
+				}
+			}
+			param_idx++
 			continue
 		}
 		arg_id := t.generic_call_arg_id_for_param(node, param_idx, is_receiver) or {

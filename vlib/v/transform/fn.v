@@ -19159,12 +19159,19 @@ fn (t &Transformer) generic_call_declared_return_type(id flat.NodeId, node flat.
 		if arg_idx >= node.children_count {
 			break
 		}
-		arg_type_source_id_7 := t.expr_value_type(t.a.child(&node, arg_idx))
+		mut arg_id := t.a.child(&node, arg_idx)
+		mut inference_param_type := param_text
+		if generic_param_text_is_variadic(param_text) {
+			param_type, value_id := t.generic_variadic_arg_for_inference(param_text, generic_variadic_elem_param_text(param_text), arg_id)
+			inference_param_type = param_type
+			arg_id = value_id
+		}
+		arg_type_source_id_7 := t.expr_value_type(arg_id)
 		arg_type := flat.source_type_name(arg_type_source_id_7)
 		if arg_type_source_id_7 == 0 || arg_type in ['unknown', 'generic', 'void'] {
 			continue
 		}
-		infer_generic_type_args(param_text, arg_type_source_id_7, mut inferred)
+		infer_generic_type_args(inference_param_type, arg_type_source_id_7, mut inferred)
 	}
 	mut args := []u32{cap: params.len}
 	for param in params {
