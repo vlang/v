@@ -4752,8 +4752,14 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 			if expected !is Void {
 				mut actual := tc.resolve_expr(value_id, expected)
 				if value_node.kind == .call {
-					if call_info := tc.resolve_call_info(value_id, value_node) {
-						if call_info.return_type !is Unknown && call_info.return_type !is Void {
+					if info := tc.resolve_call_info(value_id, value_node) {
+						// An implicit generic call resolves to its declared signature, so
+						// specialize it from the arguments first. A return type that still
+						// contains a placeholder (`map[T]int` -> `map[unknown]int`) must
+						// not replace the type inferred from the expected field type.
+						call_info := tc.specialized_plain_generic_call_info(value_node, info)
+						if !type_contains_unknown(call_info.return_type)
+							&& call_info.return_type !is Void {
 							actual = call_info.return_type
 						}
 					}
