@@ -128,3 +128,32 @@ fn test_portable_windows_helpers_link_without_checkout_objects() ! {
 		'-ladvapi32'])
 	assert result.exit_code == 0, result.output
 }
+
+fn test_windows_error_macros_match_sdk() {
+	cc_name := $if windows { 'gcc' } $else { 'x86_64-w64-mingw32-gcc' }
+	cc := os.find_abs_path_of_executable(cc_name) or { return }
+	mut g := windows_core_test_gen()
+	g.headerless_windows_core_declarations()
+	prelude := g.sb.str()
+	assert prelude.contains('#define ERROR_INSUFFICIENT_BUFFER 122'), 'vlib/os uses C.ERROR_INSUFFICIENT_BUFFER, so the prelude must define it'
+	// carry only the ERROR_ defines into the SDK check: the prelude structs
+	// intentionally collide with windows.h by design (that is why V is
+	// headerless), so only the macro values are compared
+	mut defines := []string{}
+	for line in prelude.split_into_lines() {
+		if line.starts_with('#define ERROR_') {
+			defines << line.replace('ERROR_', 'SDK_ERROR_')
+		}
+	}
+	assert defines.len > 0, 'prelude must define at least one ERROR_ macro'
+	lines := defines.join('\n') + '\n#include <windows.h>\n_Static_assert(SDK_ERROR_INSUFFICIENT_BUFFER == ERROR_INSUFFICIENT_BUFFER, "ERROR_INSUFFICIENT_BUFFER value");\n'
+	dir := os.join_path(os.vtmp_dir(), 'windows_core_errmacros_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	source := os.join_path(dir, 'errmacros.c')
+	os.write_file(source, lines)!
+	result := os.execute('${os.quoted_path(cc)} -std=gnu11 -fsyntax-only ${os.quoted_path(source)}')
+	assert result.exit_code == 0, result.output
+}

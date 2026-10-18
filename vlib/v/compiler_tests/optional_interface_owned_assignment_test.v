@@ -1,3 +1,4 @@
+// vtest ownership
 import os
 
 fn test_optional_interface_owned_assignment_preserves_value_after_return() {

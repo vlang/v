@@ -1995,3 +1995,17 @@ fn test_after_empty_missing_and_multibyte_delimiters() {
 	assert 'abc--def--ghi'.after('--') == 'ghi'
 	assert 'α🙂β🙂γ'.after('🙂') == 'γ'
 }
+
+fn test_string_equality_with_shared_storage_still_compares_lengths() {
+	text := 'prefix:value'.clone()
+	full := unsafe { text.substr_unsafe(0, text.len) }
+	short := unsafe { text.substr_unsafe(0, 6) }
+	assert text.str == full.str
+	assert text.str == short.str
+	assert text == full
+	assert text != short
+	assert short == 'prefix'
+	assert text == text.clone()
+	assert text != 'prefix:other'
+	assert '' == ''.clone()
+}

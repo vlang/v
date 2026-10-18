@@ -131,7 +131,8 @@ fn main() {
 	_ := next_value()
 }
 ')
-	assert c_code.contains('static i64 x = 0;')
+	// Translated `int` stores keep C's 32-bit `int` conversion.
+	assert c_code.contains('static i64 x = ((i32)(0));'), c_code
 }
 
 // test_aggregate_globals_are_brace_zero_initialized validates this v3 regression case.

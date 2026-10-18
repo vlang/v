@@ -308,13 +308,13 @@ fn (mut t Transformer) transform_infix_array_ops(_id flat.NodeId, node flat.Node
 		if (lhs_is_fixed && rhs_is_fixed)
 			|| (lhs_is_fixed && t.expr_can_be_fixed_array_literal(rhs_id))
 			|| (rhs_is_fixed && t.expr_can_be_fixed_array_literal(lhs_id)) {
-			mut fixed_type := flat.source_type_name(t.resolved_fixed_array_canonical_type(lhs_type))
+			mut fixed_type := t.resolved_fixed_array_canonical_type(lhs_type)
 			if !lhs_is_fixed {
-				fixed_type = flat.source_type_name(t.resolved_fixed_array_canonical_type(rhs_type))
+				fixed_type = t.resolved_fixed_array_canonical_type(rhs_type)
 			}
-			new_lhs := t.transform_expr_for_type(lhs_id, flat.source_type_id(fixed_type))
-			new_rhs := t.transform_expr_for_type(rhs_id, flat.source_type_id(fixed_type))
-			eq_call := t.make_membership_eq_expr(new_lhs, new_rhs, flat.source_type_id(fixed_type))
+			new_lhs := t.transform_expr_for_type(lhs_id, fixed_type)
+			new_rhs := t.transform_expr_for_type(rhs_id, fixed_type)
+			eq_call := t.make_membership_eq_expr(new_lhs, new_rhs, fixed_type)
 			if node.op == .ne {
 				return t.make_prefix(.not, eq_call)
 			}
@@ -3686,6 +3686,7 @@ pub fn (mut t Transformer) synthesize_sum_eq_helpers() []string {
 	old_helper_module := t.sum_eq_helper_module
 	old_tc_module := if isnil(t.tc) { '' } else { t.tc.cur_module }
 	old_tc_file := if isnil(t.tc) { '' } else { t.tc.cur_file }
+	old_temp_counter := t.temp_counter
 	was_log_active := t.used_fns_log_active
 	log_start := t.used_fns_log.len
 	t.used_fns_log_active = true
@@ -3724,6 +3725,9 @@ pub fn (mut t Transformer) synthesize_sum_eq_helpers() []string {
 				t.tc.cur_module = req.module
 				t.tc.cur_file = req.file
 			}
+			// A helper is a function of its own: number its temporaries from zero,
+			// not from whatever the transform lowered before it.
+			t.temp_counter = 0
 			if req.struct_name != 0 {
 				t.build_struct_eq_helper_fn(req.struct_name, helper)
 			} else {
@@ -3746,6 +3750,7 @@ pub fn (mut t Transformer) synthesize_sum_eq_helpers() []string {
 	}
 	t.cur_module = old_module
 	t.cur_file = old_file
+	t.temp_counter = old_temp_counter
 	t.sum_eq_helper_module = old_helper_module
 	if !isnil(t.tc) {
 		t.tc.cur_module = old_tc_module

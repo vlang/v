@@ -7,9 +7,11 @@ import v.scanner
 import v.token
 
 struct FastcAsmOperand {
-	constraint string
-	expression string
-	alias      string
+	constraint     string
+	expression     string
+	alias          string
+	source_offset  int
+	source_origins []FastcSourceOrigin
 }
 
 struct FastcAsmRenderedOperand {
@@ -59,7 +61,12 @@ fn (mut g Parser) parse_asm_statement() !bool {
 		g.next()
 	}
 	if depth != 0 { return g.unsupported('unfinished assembly block') }
-	body := fastc_asm_strip_comments(g.s.src[body_start..g.s.pos])
+	body := fastc_asm_strip_comments(FastcSourceFile{
+		path:           g.path
+		source:         g.s.src[body_start..g.s.pos]
+		source_offset:  g.source_offset + body_start
+		source_origins: g.source_origins
+	})
 	g.next()
 	g.consume_statement_end()
 	sections := fastc_asm_sections(body)
@@ -74,12 +81,20 @@ fn (mut g Parser) parse_asm_statement() !bool {
 	} else {
 		[]FastcAsmOperand{}
 	}
-	clobbers := if sections.len > 3 { sections[3].replace(',', ' ').fields() } else { []string{} }
-	labels := if sections.len > 4 { sections[4].replace(',', ' ').fields() } else { []string{} }
+	clobbers := if sections.len > 3 {
+		sections[3].source.replace(',', ' ').fields()
+	} else {
+		[]string{}
+	}
+	labels := if sections.len > 4 {
+		sections[4].source.replace(',', ' ').fields()
+	} else {
+		[]string{}
+	}
 	if labels.len > 0 && !is_goto { return g.unsupported('assembly labels without goto') }
 	normalized_arch := pref.normalized_arch(arch)
 	if normalized_arch !in ['amd64', 'arm64'] || normalized_arch != g.prefs.target.arch {
-		if sections[0].trim_space() != '' || outputs.len > 0 || inputs.len > 0 || labels.len > 0 {
+		if sections[0].source.trim_space() != '' || outputs.len > 0 || inputs.len > 0 || labels.len > 0 {
 			return g.unsupported('assembly architecture `${arch}` for `${g.prefs.target.arch}`')
 		}
 	}
@@ -133,13 +148,13 @@ fn (mut g Parser) parse_asm_statement() !bool {
 	is_extended := sections.len > 1 || is_goto
 	mut template := ''
 	if is_raw {
-		template = fastc_asm_raw_template(sections[0])!
+		template = fastc_asm_raw_template(sections[0].source)!
 		for label in labels {
 			template = template.replace('%l[${label}]', '%l[${fastc_c_identifier(label)}]')
 		}
 	} else {
 		mut lines := []string{}
-		for source_line in sections[0].split_into_lines() {
+		for source_line in sections[0].source.split_into_lines() {
 			line := source_line.trim_space()
 			if line == '' { continue }
 			lines << fastc_asm_lower_template(line, normalized_arch, aliases, is_extended, is_intel, labels)
@@ -174,7 +189,7 @@ fn (mut g Parser) parse_asm_statement() !bool {
 }
 
 fn (mut g Parser) render_asm_operand_info(operand FastcAsmOperand, intel bool, reserved_aliases []string) !FastcAsmRenderedOperand {
-	rendered := g.render_asm_operand(operand.expression)!
+	rendered := g.render_asm_operand(operand)!
 	typ := g.underlying_alias_type(rendered.typ)
 	if !intel || operand.alias == '' || !operand.constraint.contains('m') {
 		return FastcAsmRenderedOperand{ source: rendered.source, typ: typ }
@@ -192,21 +207,28 @@ fn (mut g Parser) render_asm_operand_info(operand FastcAsmOperand, intel bool, r
 	}
 }
 
-fn (mut g Parser) render_asm_operand(source string) !FastcAsmRenderedOperand {
+fn (mut g Parser) render_asm_operand(operand FastcAsmOperand) !FastcAsmRenderedOperand {
+	source := operand.expression
 	previous_scanner := g.s
 	previous_tok := g.tok
 	previous_lit := g.lit
 	previous_expected := g.expected_expression_type
+	previous_source_offset := g.source_offset
+	previous_source_origins := g.source_origins
 	defer {
 		g.s = previous_scanner
 		g.tok = previous_tok
 		g.lit = previous_lit
 		g.expected_expression_type = previous_expected
+		g.source_offset = previous_source_offset
+		g.source_origins = previous_source_origins
 	}
 	mut scan := scanner.new_scanner(g.prefs, .normal)
 	file := token.File.unindexed(g.path, source.len)
 	scan.init(file, source)
 	g.s = scan
+	g.source_offset = operand.source_offset
+	g.source_origins = operand.source_origins
 	g.expected_expression_type = 0
 	g.next()
 	mut expression := g.read_expression([token.Token.semicolon, token.Token.eof])!
@@ -246,17 +268,16 @@ fn fastc_asm_rendered_operand_source(operand FastcAsmOperand, rendered FastcAsmR
 	}, rendered.source)
 }
 
-fn fastc_asm_strip_comments(source string) string {
-	mut out := strings.new_builder(source.len)
+fn fastc_asm_strip_comments(source_file FastcSourceFile) FastcSourceFile {
+	source := source_file.source
+	mut edits := []FastcSourceEdit{}
 	mut i := 0
 	mut quote := u8(0)
 	for i < source.len {
 		c := source[i]
 		if quote != 0 {
-			out.write_u8(c)
 			if c == `\\` && i + 1 < source.len {
 				i++
-				out.write_u8(source[i])
 			} else if c == quote {
 				quote = 0
 			}
@@ -265,15 +286,18 @@ fn fastc_asm_strip_comments(source string) string {
 		}
 		if c in [`'`, `"`, `\``] { quote = c }
 		if c == `/` && i + 1 < source.len && source[i + 1] == `/` {
+			start := i
 			for i < source.len && source[i] != `\n` { i++ }
+			edits << FastcSourceEdit{ start: start, end: i }
 			continue
 		}
 		if c == `/` && i + 1 < source.len && source[i + 1] == `*` {
-			out.write_u8(` `)
+			start := i
+			mut newlines := 0
 			i += 2
 			mut depth := 1
 			for i < source.len && depth > 0 {
-				if source[i] == `\n` { out.write_u8(`\n`) }
+				if source[i] == `\n` { newlines++ }
 				if i + 1 < source.len && source[i..i + 2] == '/*' {
 					depth++
 					i += 2
@@ -284,16 +308,17 @@ fn fastc_asm_strip_comments(source string) string {
 					i++
 				}
 			}
+			edits << FastcSourceEdit{ start: start, end: i, replacement: ' ' + '\n'.repeat(newlines) }
 			continue
 		}
-		out.write_u8(c)
 		i++
 	}
-	return out.str()
+	return fastc_apply_mapped_source_edits(source_file, edits)
 }
 
-fn fastc_asm_sections(source string) []string {
-	mut parts := []string{}
+fn fastc_asm_sections(source_file FastcSourceFile) []FastcSourceFile {
+	source := source_file.source
+	mut parts := []FastcSourceFile{}
 	mut start := 0
 	mut quote := u8(0)
 	mut i := 0
@@ -313,16 +338,25 @@ fn fastc_asm_sections(source string) []string {
 		} else if c in [`)`, `]`] {
 			depth--
 		} else if c == `;` && depth == 0 {
-			parts << source[start..i]
+			parts << FastcSourceFile{
+				...source_file
+				source:        source[start..i]
+				source_offset: source_file.source_offset + start
+			}
 			start = i + 1
 		}
 		i++
 	}
-	parts << source[start..]
+	parts << FastcSourceFile{
+		...source_file
+		source:        source[start..]
+		source_offset: source_file.source_offset + start
+	}
 	return parts
 }
 
-fn fastc_asm_operands(source string, is_output bool) ![]FastcAsmOperand {
+fn fastc_asm_operands(source_file FastcSourceFile, is_output bool) ![]FastcAsmOperand {
+	source := source_file.source
 	mut operands := []FastcAsmOperand{}
 	mut i := 0
 	for i < source.len {
@@ -347,7 +381,7 @@ fn fastc_asm_operands(source string, is_output bool) ![]FastcAsmOperand {
 			return error('fastc: expected assembly operand expression')
 		}
 		i++
-		start := i
+		mut start := i
 		mut depth := 1
 		mut quote := u8(0)
 		for i < source.len && depth > 0 {
@@ -369,6 +403,7 @@ fn fastc_asm_operands(source string, is_output bool) ![]FastcAsmOperand {
 			i++
 		}
 		if depth != 0 { return error('fastc: unfinished assembly operand expression') }
+		for start < i && source[start].is_space() { start++ }
 		expression := source[start..i].trim_space()
 		i++
 		for i < source.len && source[i].is_space() { i++ }
@@ -384,7 +419,13 @@ fn fastc_asm_operands(source string, is_output bool) ![]FastcAsmOperand {
 		if alias != '' && !fastc_asm_is_ident(alias) {
 			return error('fastc: invalid assembly operand alias `${alias}`')
 		}
-		operands << FastcAsmOperand{ constraint: constraint, expression: expression, alias: alias }
+		operands << FastcAsmOperand{
+			constraint:     constraint
+			expression:     expression
+			alias:          alias
+			source_offset:  source_file.source_offset + start
+			source_origins: source_file.source_origins
+		}
 	}
 	return operands
 }

@@ -460,6 +460,12 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 				}
 			}
 		}
+		// Free the handler slots a throttle took for this request on every way
+		// out, including the 404 and refusing-middleware paths that skip the
+		// after-middleware above.
+		if user_context.Context.throttle_leases.len > 0 {
+			user_context.Context.release_throttle_leases()
+		}
 		// send only the headers, because if the response body is too big, TcpConn code will
 		// actually block, because it has to wait for the socket to become ready to write. veb
 		// will handle this case.

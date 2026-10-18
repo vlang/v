@@ -4,6 +4,20 @@ import os
 import v.cmdexec
 import v.pref
 
+fn test_fastc_import_scan_bound_ignores_longer_identifiers() {
+	assert fastc_source_last_word_index('', 'import') == -1
+	assert fastc_source_last_word_index('imp', 'import') == -1
+	assert fastc_source_last_word_index('imported imports _import import2', 'import') == -1
+	assert fastc_source_last_word_index('import os\nfn imported() { imports := 1 }', 'import') == 0
+	assert fastc_source_last_word_index('import os\nimport strings\nfn imported() {}', 'import') == 10
+	// Comments and strings remain conservative candidates for the lexer.
+	assert fastc_source_last_word_index('// import absent', 'import') == 3
+	assert fastc_source_last_word_index('"import absent"', 'import') == 1
+	prefs := pref.new_preferences()
+	header := fastc_scan_source_header('module main\nimport os\nconst imported = 1\nimport strings\nfn imports() {}\n', 'import_word_bound.v', prefs) or { panic(err) }
+	assert header.import_order == ['os', 'strings']
+}
+
 fn test_fastc_imports_after_declarations_keep_source_order() {
 	prefs := pref.new_preferences()
 	header := fastc_scan_source_header(r'module main

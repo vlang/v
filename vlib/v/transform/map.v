@@ -852,7 +852,7 @@ fn (mut t Transformer) disabled_struct_operator_zero_value_expansion_estimate(id
 	lhs_is_pointer := flat.source_type_shape(lhs_type).has(.pointer) || checker_lhs_type_shape.has(.pointer)
 		|| (lhs_node.kind == .ident && t.mut_param_values[lhs_node.value])
 	if lhs_is_pointer && flat.source_type_shape(lhs_type).has(.pointer) {
-		lhs_type = flat.source_type_id(flat.source_type_name(lhs_type)[1..])
+		lhs_type = t.trim_pointer_type(lhs_type)
 	}
 	mut struct_type := u32(0)
 	mut is_alias_operator := false
@@ -2751,7 +2751,7 @@ fn (mut t Transformer) clone_map_assignment_rhs_if_needed(value flat.NodeId, rhs
 // caller, so cloning from the old value remains valid.
 fn (mut t Transformer) append_map_value_drop_before_set(map_expr flat.NodeId, map_type_id u32, key_name string, value_type_name_id u32, mut result []flat.NodeId) {
 	value_type_name := flat.source_type_name(value_type_name_id)
-	if isnil(t.tc) {
+	if isnil(t.tc) || t.cur_fn_value_semantics {
 		return
 	}
 	value_type := t.tc.parse_type(value_type_name_id)
@@ -3259,7 +3259,8 @@ fn (mut t Transformer) append_owned_lvalue_drop_before_assign(lvalue flat.NodeId
 // storage existed before the assignment. Map-index field updates use this to avoid
 // dropping the zero fallback loaded for an absent key.
 fn (mut t Transformer) append_owned_lvalue_drop_before_assign_if(lvalue flat.NodeId, type_name_id u32, guard flat.NodeId, mut result []flat.NodeId) {
-	if isnil(t.tc) || !t.tc.ownership_type_requires_destruction(t.tc.parse_type(type_name_id)) {
+	if isnil(t.tc) || t.cur_fn_value_semantics
+		|| !t.tc.ownership_type_requires_destruction(t.tc.parse_type(type_name_id)) {
 		return
 	}
 	drop_call := t.make_call_typed('drop_owned', [lvalue], flat.source_type_void)

@@ -39,7 +39,6 @@ fn interface_pattern_is_collapsed_container_type(name_id u32) bool {
 }
 
 fn (mut t Transformer) pointer_sum_access_expr(expr_id flat.NodeId, expr_type_id u32) (flat.NodeId, u32, flat.Op) {
-	expr_type := flat.source_type_name(expr_type_id)
 	has_smartcast := t.expr_has_smartcast(expr_id)
 	mut access := if has_smartcast {
 		// A runtime tag check always starts from the stored sum/interface value.
@@ -48,26 +47,25 @@ fn (mut t Transformer) pointer_sum_access_expr(expr_id flat.NodeId, expr_type_id
 	} else {
 		t.transform_selector_base_expr(expr_id)
 	}
-	mut access_type := expr_type
+	mut access_type := expr_type_id
 	if has_smartcast {
-		raw_type_source_id := t.raw_expr_type_without_smartcast(expr_id)
-		raw_type := flat.source_type_name(raw_type_source_id)
-		if raw_type_source_id != 0 {
+		raw_type := t.raw_expr_type_without_smartcast(expr_id)
+		if raw_type != 0 {
 			access_type = raw_type
 		}
 	}
-	for access_type.starts_with('&&') {
+	for flat.source_type_shape(access_type).has(.pointer_chain) {
 		access = t.make_prefix(.mul, access)
-		access_type = access_type[1..]
-		t.set_node_typ(int(access), flat.source_type_id(access_type))
+		access_type = t.trim_pointer_type(access_type)
+		t.set_node_typ(int(access), access_type)
 	}
 	mut value_type := (if has_smartcast {
-		flat.source_type_id(access_type)
+		access_type
 	} else {
 		t.node_type(access)
 	})
 	if value_type == 0 {
-		value_type = flat.source_type_id(access_type)
+		value_type = access_type
 	}
 	op := if flat.source_type_shape(value_type).has(.pointer) { flat.Op.arrow } else { flat.Op.dot }
 	return access, value_type, op
@@ -199,6 +197,13 @@ fn (t &Transformer) resolve_sum_name_uncached(sum_name string) string {
 	// into one sum value.
 	if sum_name.starts_with('[]') || sum_name.starts_with('map[') || sum_name.starts_with('[')
 		|| sum_name.starts_with('fn(') || sum_name.starts_with('fn (') {
+		return ''
+	}
+	// Neither is an option or result of a sum type: the short-name fallback below
+	// would resolve `?css.StyleValue` (or `?&dom.StyleValue`) to the `StyleValue`
+	// sum, and the value of an `x := if c { ?T(a) } else { ?T(none) }` would be
+	// lowered into a payload-typed temporary.
+	if sum_name.starts_with('?') || sum_name.starts_with('!') {
 		return ''
 	}
 	if !isnil(t.tc) && t.tc.sum_types.contains(sum_name) {
@@ -982,10 +987,9 @@ fn (mut t Transformer) validate_specialized_is_expr(subject_type_id u32, resolve
 		if _ := t.resolve_interface_pattern(pattern_id, subject_type_id) {
 			return true
 		}
-		if target_iface_source_id := t.resolve_interface_pattern_interface(pattern_id) {
-			if t.interface_conversion_impl_mappings(subject_type_id, target_iface_source_id).len > 0 {
-				return true
-			}
+		if _ := t.resolve_interface_pattern_interface(pattern_id) {
+			// A test against another interface is valid even when no type implements both.
+			return true
 		}
 		if t.is_builtin_ierror_interface_name(subject_type_id) {
 			t.record_monomorph_error('`${pattern}` is not compatible with `IError`')
@@ -1532,7 +1536,9 @@ fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.No
 			} else {
 				t.transform_expr(expr_id)
 			}
-			if converted := t.convert_interface_expr_to_interface(child, expr_type, target_iface_source_id) {
+			if converted := t.convert_interface_expr_to_interface(child, expr_type, target_iface_source_id,
+				.checked)
+			{
 				if target_is_pointer {
 					return t.heap_copy_interface_expr(converted, target_iface_source_id, flat.source_type_id(node.value))
 				}
@@ -1942,6 +1948,15 @@ fn (mut t Transformer) wrap_sum_value_with_storage(expr_id flat.NodeId, target_s
 	has_expr_smartcast := expr_smartcast.expr_name.len > 0
 	if has_expr_smartcast && flat.source_type_name(t.resolve_sum_name(expr_smartcast.sum_type_name)) == resolved_sum {
 		variant = flat.source_type_name(t.resolve_variant(expr_smartcast.sum_type_name, expr_smartcast.variant_name))
+	} else if has_expr_smartcast
+		&& !t.sum_target_accepts_variant_type(resolved_sum_source_id_6, flat.source_type_id(variant)) {
+		// `Other(x)` with `x` smartcast to a variant of a different sum: the value
+		// is that variant, which `Other` wraps (V1 accepts `MathValue(num)` inside
+		// `match num { Sum, Product { ... } }` where both sums list `Sum`).
+		smartcast_variant := t.smartcast_target_type(expr_smartcast)
+		if t.sum_target_accepts_variant_type(resolved_sum_source_id_6, smartcast_variant) {
+			variant = flat.source_type_name(smartcast_variant)
+		}
 	}
 	if expr.kind == .prefix && expr.op == .mul && expr.children_count > 0 {
 		inner_type := flat.source_type_name(t.node_type(t.a.child(&expr, 0)))
@@ -1977,7 +1992,7 @@ fn (mut t Transformer) wrap_sum_value_with_storage(expr_id flat.NodeId, target_s
 		return t.transform_expr(expr_id)
 	}
 	if !has_expr_smartcast && flat.source_type_shape(expr_type).has(.pointer)
-		&& flat.source_type_name(t.resolve_sum_name(flat.source_type_id(flat.source_type_name(expr_type)[1..]))) == resolved_sum {
+		&& flat.source_type_name(t.resolve_sum_name(t.trim_pointer_type(expr_type))) == resolved_sum {
 		if expr.kind == .prefix && expr.op == .mul {
 			return t.transform_expr(expr_id)
 		}
@@ -2123,7 +2138,15 @@ fn (mut t Transformer) wrap_sum_value_with_storage(expr_id flat.NodeId, target_s
 		&& (flat.source_type_shape(expr_type).has(.pointer) || source_pointer_value) {
 		t.transform_expr_preserving_pointer_value(expr_id)
 	} else if needs_variant_conversion {
-		t.transform_expr_for_type(expr_id, flat.source_type_id(matched_variant))
+		// An array literal keeps its own element type (`[u8(1), 2]` holds two `u8`s)
+		// and is converted element by element, instead of being retyped as `[]Sum`.
+		if expr.kind == .array_literal {
+			t.transform_array_value_for_dynamic_target(expr_id, flat.source_type_id(matched_variant)) or {
+				t.transform_expr_for_type(expr_id, flat.source_type_id(matched_variant))
+			}
+		} else {
+			t.transform_expr_for_type(expr_id, flat.source_type_id(matched_variant))
+		}
 	} else {
 		t.transform_expr(expr_id)
 	}

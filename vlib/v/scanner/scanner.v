@@ -484,6 +484,13 @@ pub fn (mut s Scanner) scan() token.Token {
 			return .string
 		}
 		tok := token.Token.from_string_tinyv(s.lit)
+		// FastC reads tokens without a parser, so it receives an escaped keyword
+		// (`@type`, `@none`) as the plain identifier it names; `@FILE` and the other
+		// compile-time values are not keywords and keep their `@`.
+		if c == `@` && tok == .name && s.lit.len > 1 && !isnil(s.pref) && s.pref.backend == 'fastc'
+			&& token.Token.from_string_tinyv(s.lit[1..]).is_keyword() {
+			s.lit = s.lit[1..]
+		}
 		if tok in [.key_break, .key_continue, .key_nil, .key_none, .key_return, .key_false, .key_true,
 			.name]
 			|| (follows_dot && tok.is_keyword()) {

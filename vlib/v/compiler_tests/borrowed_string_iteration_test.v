@@ -1,3 +1,4 @@
+// vtest ownership
 import os
 
 fn test_borrowed_strings_iterate_bytes_and_evaluate_the_source_once() {

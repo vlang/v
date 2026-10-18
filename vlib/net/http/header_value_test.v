@@ -220,6 +220,9 @@ fn test_other_bytes_are_stored_and_rendered_as_they_are() {
 		values << with_byte('0123456789abcdef', b, '0123456789abcdef')
 	}
 	for value in values {
+		// The SP and HTAB around a value are stored, but not written, see
+		// header_render_trim_test.v. Inside a value they are written.
+		wire := value.trim(' \t')
 		mut h := new_header()
 		h.add(.location, value)
 		h.set(.etag, value)
@@ -231,12 +234,12 @@ fn test_other_bytes_are_stored_and_rendered_as_they_are() {
 		assert h.values(.etag) == [value]
 		assert h.custom_values('X-Foo') == [value]
 		assert h.custom_values('X-Bar') == [value]
-		assert h.render() == 'Location: ${value}\r\nETag: ${value}\r\nX-Foo: ${value}\r\nX-Bar: ${value}\r\n'
+		assert h.render() == 'Location: ${wire}\r\nETag: ${wire}\r\nX-Foo: ${wire}\r\nX-Bar: ${wire}\r\n'
 		assert new_header().join(h).render() == h.render()
-		assert new_header(key: .location, value: value).render() == 'Location: ${value}\r\n'
+		assert new_header(key: .location, value: value).render() == 'Location: ${wire}\r\n'
 		assert new_custom_header_from_map({
 			'X-Foo': value
-		})!.render() == 'X-Foo: ${value}\r\n'
+		})!.render() == 'X-Foo: ${wire}\r\n'
 	}
 }
 
