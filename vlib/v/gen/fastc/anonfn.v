@@ -13,7 +13,7 @@ import v.token
 // definition is captured out of `g.out` and stored alongside the mono instances
 // so it is emitted at top level; the enclosing expression only keeps the name.
 fn (mut g Parser) parse_anonymous_function() !(string, string, bool) {
-	anon_start := g.source_offset + g.s.pos
+	anon_start := g.s.pos
 	// Advance the main scanner past the whole literal: `fn`, an optional parameter
 	// list, the return type, and the balanced body block. `body_end` marks the byte
 	// just past the closing `}`.
@@ -87,7 +87,7 @@ fn (mut g Parser) parse_anonymous_function() !(string, string, bool) {
 		}
 		g.next()
 	}
-	name := '__vf_anon_${g.module_name.replace('.', '_')}_${os.file_name(g.path).replace('.', '_')}_${anon_start}'
+	name := '__vf_anon_${g.module_name.replace('.', '_')}_${os.file_name(g.path).replace('.', '_')}_${g.source_offset + anon_start}'
 	// Rewrite `fn (...) ...` as `fn <name> (...) ...` so `parse_function` reads it as
 	// an ordinary declaration.
 	function_source := g.s.src[params_start..body_end]

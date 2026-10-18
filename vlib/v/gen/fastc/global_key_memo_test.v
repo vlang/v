@@ -49,18 +49,22 @@ fn test_fastc_global_key_memo_resets_when_monomorphization_switches_modules() {
 	assert g.unqualified_global_key('absent') == none
 	assert g.global_key_memo.len == 2
 	// Exercise the actual context switch used by synthetic generic instances.
-	g.parse_mono_instance('', FastcGenericMethodSource{
-		module_name: 'beta'
-		path:        'global_memo_beta.v'
+	g.parse_mono_instance(FastcSourceFile{
+		path:   'global_memo_beta.v'
+		header: FastcSourceHeader{
+			module_name: 'beta'
+		}
 	}) or { panic(err) }
 	assert g.module_name == 'beta'
 	assert g.global_key_memo.len == 0
 	assert g.unqualified_global_key('shared') or { panic('missing beta global') } == 'beta.shared'
 	assert g.unqualified_global_key('absent') == none
 	assert g.global_key_memo.len == 2
-	g.parse_mono_instance('', FastcGenericMethodSource{
-		module_name: 'main'
-		path:        'global_memo_main.v'
+	g.parse_mono_instance(FastcSourceFile{
+		path:   'global_memo_main.v'
+		header: FastcSourceHeader{
+			module_name: 'main'
+		}
 	}) or { panic(err) }
 	assert g.global_key_memo.len == 0
 	assert g.unqualified_global_key('shared') or { panic('missing main global') } == 'shared'

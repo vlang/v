@@ -127,11 +127,14 @@ fn test_fastc_descriptor_memos_are_parser_local_and_module_independent() {
 	assert b.semantic_type_key(typ) == flat.source_type_id('memo.ContextB')
 	assert a.underlying_alias_type(alias) == flat.source_type_id('int*')
 	assert b.underlying_alias_type(alias) == flat.source_type_id('i64*')
-	a.parse_mono_instance('', FastcGenericMethodSource{
-		module_name: 'different'
-		path:        'descriptor_memo_context.v'
-		imports:     {
-			'another': 'different.module'
+	a.parse_mono_instance(FastcSourceFile{
+		path:   'descriptor_memo_context.v'
+		header: FastcSourceHeader{
+			module_name: 'different'
+
+			imports: {
+				'another': 'different.module'
+			}
 		}
 	}) or { panic(err) }
 	assert a.semantic_type_key(typ) == flat.source_type_id('memo.ContextA')

@@ -94,3 +94,21 @@ fn test_fastc_synthetic_error_restores_outer_source_context() {
 		assert message.contains('at byte ${offset} in restored_position.v'), message
 	}
 }
+
+fn test_fastc_function_literal_in_source_fragment_uses_relative_scanner_bounds() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	source := 'module main\nfn main() { callback := fn () int { return 42 }; assert callback() == 42 }\n'
+	fragment_offset := 137
+	generated, _, _ := generate_source_files([
+		FastcSourceFile{
+			path:          'fragment_literal.v'
+			source:        source
+			source_offset: fragment_offset
+			header:        fastc_scan_source_header(source, 'fragment_literal.v', prefs) or { panic(err) }
+		},
+	], map[string]string{}, prefs) or { panic(err) }
+	literal_offset := fragment_offset + source.index('fn ()') or { panic('missing literal') }
+	assert generated.contains('__vf_anon_main_fragment_literal_v_${literal_offset}')
+	assert generated.contains('return 42;')
+}

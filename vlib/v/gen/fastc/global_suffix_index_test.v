@@ -105,7 +105,7 @@ fn test_fastc_global_suffix_index_survives_monomorphization_context_switch() {
 		global_suffix_index: fastc_global_suffix_index(globals, flat.TypeTextBindings{})
 	}
 	assert g.unqualified_global_key('value') or { panic('missing alpha') } == 'alpha.value'
-	g.parse_mono_instance('', FastcGenericMethodSource{ module_name: 'beta', path: 'suffix_beta.v' }) or { panic(err) }
+	g.parse_mono_instance(FastcSourceFile{ path: 'suffix_beta.v', header: FastcSourceHeader{ module_name: 'beta' } }) or { panic(err) }
 	assert g.global_suffix_index.ready
 	assert g.unqualified_global_key('value') or { panic('missing beta') } == 'beta.value'
 }

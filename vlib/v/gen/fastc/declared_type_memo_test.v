@@ -54,17 +54,21 @@ fn test_fastc_declared_type_memo_resets_when_monomorphization_switches_modules()
 	assert g.resolve_declared_type_key('Private') or { panic('missing private type') } == 'alpha.Private'
 	assert g.resolve_declared_type_key('ordinary_value_name') == none
 	assert g.declared_type_key_memo.len == 3
-	g.parse_mono_instance('', FastcGenericMethodSource{
-		module_name: 'beta'
-		path:        'declared_memo_beta.v'
+	g.parse_mono_instance(FastcSourceFile{
+		path:   'declared_memo_beta.v'
+		header: FastcSourceHeader{
+			module_name: 'beta'
+		}
 	}) or { panic(err) }
 	assert g.declared_type_key_memo.len == 0
 	assert g.resolve_declared_type_key('Record') or { panic('missing beta type') } == 'beta.Record'
 	assert g.resolve_declared_type_key('Private') == none
 	assert g.resolve_declared_type_key('ordinary_value_name') == none
-	g.parse_mono_instance('', FastcGenericMethodSource{
-		module_name: 'alpha'
-		path:        'declared_memo_alpha.v'
+	g.parse_mono_instance(FastcSourceFile{
+		path:   'declared_memo_alpha.v'
+		header: FastcSourceHeader{
+			module_name: 'alpha'
+		}
 	}) or { panic(err) }
 	assert g.declared_type_key_memo.len == 0
 	assert g.resolve_declared_type_key('Private') or { panic('missing restored private type') } == 'alpha.Private'
