@@ -839,7 +839,69 @@ fn (tc &TypeChecker) assignment_integer_literal_operand(id flat.NodeId) ?flat.No
 fn (tc &TypeChecker) fn_storage_voidptr_mismatch(expr_id flat.NodeId, actual Type, expected Type) bool {
 	return is_fn_pointer_type(expected) && fn_param_is_voidptr_type(actual) && tc.unsafe_depth == 0
 		&& !tc.current_fn_declared_unsafe() && !tc.expr_is_unsafe_nil(expr_id)
+		&& !tc.branch_values_are_unsafe_nil_or_typed(expr_id)
 		&& !tc.node_is_in_translated_file(expr_id)
+}
+
+// branch_values_are_unsafe_nil_or_typed reports whether every value of an
+// `if`/`match` expression is `unsafe { nil }` or has a non-voidptr type, as in
+// `if raw { unsafe { nil } } else { callback }`. The branch types are checked
+// against the storage type separately.
+fn (tc &TypeChecker) branch_values_are_unsafe_nil_or_typed(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind in [.paren, .expr_stmt] && node.children_count == 1 {
+		return tc.branch_values_are_unsafe_nil_or_typed(tc.a.child(&node, 0))
+	}
+	mut branch_ids := []flat.NodeId{}
+	if node.kind == .if_expr {
+		if node.children_count <= 2 {
+			return false
+		}
+		branch_ids << tc.a.child(&node, 1)
+		else_id := tc.a.child(&node, 2)
+		if tc.a.nodes[int(else_id)].kind == .if_expr {
+			if !tc.branch_values_are_unsafe_nil_or_typed(else_id) {
+				return false
+			}
+		} else {
+			branch_ids << else_id
+		}
+	} else if node.kind == .match_stmt {
+		for i in 1 .. node.children_count {
+			branch_ids << tc.a.child(&node, i)
+		}
+	} else {
+		return false
+	}
+	for branch_id in branch_ids {
+		if tc.branch_tail_never_returns(branch_id) {
+			continue
+		}
+		tail_id := tc.branch_tail_expr_id(branch_id)
+		if !tc.valid_node_id(tail_id) {
+			return false
+		}
+		if tc.branch_tail_is_nil(tail_id) || tc.branch_values_are_unsafe_nil_or_typed(tail_id) {
+			continue
+		}
+		// Branch locals are out of scope here; use the type recorded while checking
+		// the tail instead of resolving its identifier in the enclosing scope.
+		tail_type := tc.expr_type(tail_id) or { tc.resolve_type(tail_id) }
+		if type_contains_unknown(tail_type) || fn_param_is_voidptr_type(tail_type) {
+			return false
+		}
+	}
+	return true
+}
+
+// branch_tail_is_nil reports whether a branch value is `nil`; the branch tail of
+// `unsafe { nil }` is the literal itself.
+fn (tc &TypeChecker) branch_tail_is_nil(tail_id flat.NodeId) bool {
+	return tc.expr_is_unsafe_nil(tail_id)
+		|| (tc.valid_node_id(tail_id) && tc.a.nodes[int(tail_id)].kind == .nil_literal)
 }
 
 fn (tc &TypeChecker) direct_sum_assignment_variant_matches(actual Type, expected SumType) bool {
@@ -3267,6 +3329,10 @@ fn (mut tc TypeChecker) record_return_match_sumtype_branch_mismatch(id flat.Node
 		branch_id := tc.a.child(node, i)
 		tail_id := tc.branch_tail_expr_id(branch_id)
 		if !tc.valid_node_id(tail_id) {
+			continue
+		}
+		// `else { panic('...') }` produces no value to check.
+		if tc.branch_tail_never_returns(branch_id) {
 			continue
 		}
 		actual := tc.raw_return_match_tail_type(tail_id)
@@ -8977,9 +9043,10 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 					|| !tc.method_can_be_called_on_receiver(base_type, fn_node.value, method_name) {
 					continue
 				}
-				if method_name == 'array.map' {
-					// The builtin signature does not contain the mapper's result type.
-					// Let the array-specific path below infer it in the DSL scope.
+				if checker_is_raw_collection_method_name(method_name, 'array.')
+					|| checker_is_raw_collection_method_name(method_name, 'map.') {
+					// The builtin signatures return the untyped `array`/`map` (and lack
+					// `map`'s mapper result type). Let the collection paths below type them.
 					continue
 				}
 				return tc.call_info(method_name, true)
@@ -9399,36 +9466,45 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 				}
 				return tc.call_info(mname, true)
 			}
-			// The semantic alias payload can be the open generic form after a
-			// declaration-module parse. Reparse the recorded target text in the
-			// caller so `type Vec = vec.Vec3[f64]` retains its concrete argument
-			// when resolving inherited methods such as `Vec.cross()`.
-			alias_target_type := if target_source_id := tc.alias_target_type_text(clean.source_type_id()) {
-				target_source_id_2 := target_source_id
+			// Walk the whole alias chain, like V1: with `type B = A` and `type C = B`,
+			// a `C` receiver also calls the methods declared on `B` and on `A`.
+			mut alias_level := clean
+			for _ in 0 .. 64 {
+				// The semantic alias payload can be the open generic form after a
+				// declaration-module parse. Reparse the recorded target text in the
+				// caller so `type Vec = vec.Vec3[f64]` retains its concrete argument
+				// when resolving inherited methods such as `Vec.cross()`.
+				alias_target_type := if target_source_id := tc.alias_target_type_text(alias_level.source_type_id()) {
+					target_source_id_2 := target_source_id
 
-				tc.parse_type(target_source_id_2)
-			} else {
-				clean.base_type
-			}
-			alias_target_name := resolve_type_name_for_method(alias_target_type)
-			if alias_target_name != 0 {
-				if info := tc.resolve_generic_struct_method(alias_target_name, fn_node.value) {
-					return info
+					tc.parse_type(target_source_id_2)
+				} else {
+					alias_level.base_type
 				}
-				if info := tc.embedded_method_call_info(alias_target_name, fn_node.value) {
-					return info
-				}
-				for mname in receiver_method_name_candidates(clean.base_type, fn_node.value, tc.cur_module) {
-					if checker_is_raw_collection_method_name(mname, 'array.')
-						|| checker_is_raw_collection_method_name(mname, 'map.')
-						|| mname !in tc.fn_ret_types {
-						continue
+				alias_target_name := resolve_type_name_for_method(alias_target_type)
+				if alias_target_name != 0 {
+					if info := tc.resolve_generic_struct_method(alias_target_name, fn_node.value) {
+						return info
 					}
-					if !tc.method_can_be_called_on_receiver(base_type, fn_node.value, mname) {
-						continue
+					if info := tc.embedded_method_call_info(alias_target_name, fn_node.value) {
+						return info
 					}
-					return tc.call_info(mname, true)
+					for mname in receiver_method_name_candidates(alias_level.base_type, fn_node.value, tc.cur_module) {
+						if checker_is_raw_collection_method_name(mname, 'array.')
+							|| checker_is_raw_collection_method_name(mname, 'map.')
+							|| mname !in tc.fn_ret_types {
+							continue
+						}
+						if !tc.method_can_be_called_on_receiver(base_type, fn_node.value, mname) {
+							continue
+						}
+						return tc.call_info(mname, true)
+					}
 				}
+				if alias_level.base_type !is Alias {
+					break
+				}
+				alias_level = alias_level.base_type as Alias
 			}
 			if _ := array_type_from_receiver(clean) {
 				for mname in receiver_method_name_candidates(clean, fn_node.value, tc.cur_module) {
@@ -10423,6 +10499,11 @@ fn (tc &TypeChecker) current_receiver_param_method_call_info(base_id flat.NodeId
 	// Only the receiver parameter can use the enclosing method's receiver type.
 	// Other parameters may be distinct aliases of the same underlying type.
 	if base.kind != .ident || !tc.current_fn_param_is_receiver(base.value) {
+		return none
+	}
+	// A smartcast receiver (`if recv is Variant { recv.method() }`) calls the
+	// variant's method, not the enclosing receiver type's.
+	if _ := tc.smartcast_type(base_id) {
 		return none
 	}
 	fn_node := tc.a.nodes[tc.fn_context.node_id]
@@ -16407,6 +16488,11 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			if tc.receiver_compatible(actual, expected) {
 				continue
 			}
+			// Like V1, a function call may pass a struct (or a reference to one) where
+			// one of its embedded structs is expected; cgen passes the embedded field.
+			if !info.has_receiver && tc.call_arg_embeds_expected(actual, expected) {
+				continue
+			}
 			if spawn_rvalue_address {
 				continue
 			}
@@ -19907,6 +19993,18 @@ fn (tc &TypeChecker) receiver_compatible(actual Type, expected Type) bool {
 	return false
 }
 
+// call_arg_embeds_expected reports whether the argument type `actual` (a struct, or a
+// reference to one) embeds the expected struct type at the same reference depth.
+fn (tc &TypeChecker) call_arg_embeds_expected(actual Type, expected Type) bool {
+	actual_depth, actual_base := type_pointer_depth_and_base(actual)
+	expected_depth, expected_base := type_pointer_depth_and_base(expected)
+	if actual_depth != expected_depth || actual_depth > 1 || unalias_type(actual_base) !is Struct
+		|| unalias_type(expected_base) !is Struct {
+		return false
+	}
+	return tc.receiver_embeds(actual_base, expected_base)
+}
+
 fn (tc &TypeChecker) method_receiver_compatible(actual Type, expected Type, method_name string) bool {
 	if tc.receiver_compatible(actual, expected) {
 		return true
@@ -20907,6 +21005,69 @@ fn array_like_elem_type(t Type) ?Type {
 	return none
 }
 
+// if_chain_option_head_accepts reports whether the branches of the if-expression
+// `id` (possibly an `else if` link) convert to an option type set by the first
+// branch of its `if`/`else if` chain. V1 types the chain by that first branch and
+// wraps later payload branches, so `if c { opt } else { value }` is a `?T` (but a
+// `T` first branch followed by a `?T` one is still a mismatch).
+fn (tc &TypeChecker) if_chain_option_head_accepts(id flat.NodeId, then_id flat.NodeId, else_id flat.NodeId, then_type Type, else_type Type) bool {
+	// Multi-value branches (`a, b`) keep their per-element checks.
+	if tc.branch_explicit_comma_tail_types(then_id) != none
+		|| tc.branch_explicit_comma_tail_types(else_id) != none {
+		return false
+	}
+	mut head_id := id
+	for _ in 0 .. 1024 {
+		parent_id := tc.direct_parent_id(head_id)
+		if !tc.valid_node_id(parent_id) {
+			break
+		}
+		parent := tc.a.node(parent_id)
+		if parent.kind != .if_expr || parent.children_count < 3 || tc.a.child(parent, 2) != head_id {
+			break
+		}
+		head_id = parent_id
+	}
+	head_type := if head_id == id {
+		then_type
+	} else {
+		head := tc.a.node(head_id)
+		head_then_id := tc.a.child(head, 1)
+		if tc.branch_explicit_comma_tail_types(head_then_id) != none {
+			return false
+		}
+		tc.branch_tail_type_with_smartcasts(head_then_id, tc.extract_smartcasts(tc.a.child(head,
+			0)))
+	}
+	head_option := unalias_type(head_type)
+	if head_option !is OptionType {
+		return false
+	}
+	return tc.if_branch_converts_to_option(then_id, then_type, head_type)
+		&& tc.if_branch_converts_to_option(else_id, else_type, head_type)
+}
+
+fn (tc &TypeChecker) if_branch_converts_to_option(branch_id flat.NodeId, typ Type, option Type) bool {
+	clean_option := unalias_type(option)
+	if clean_option !is OptionType {
+		return false
+	}
+	clean := unalias_type(typ)
+	if clean is None {
+		return true
+	}
+	if is_option_void_type(clean) {
+		tail_id := tc.branch_tail_expr_id(branch_id)
+		if tc.branch_tail_is_none_literal(tail_id) {
+			return true
+		}
+	}
+	if clean is OptionType {
+		return tc.type_compatible(typ, option)
+	}
+	return clean !is ResultType && tc.type_compatible(typ, clean_option.base_type)
+}
+
 // if_branch_types_compatible reports whether two if-expression branch types are
 // compatible. Bare array literals (`[a, b, c]`) resolve to a fixed `T[n]`, but V
 // treats them as dynamic `[]T`; two *literal* branches with compatible element
@@ -21763,6 +21924,9 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 					return
 				}
 			}
+			if tc.if_chain_option_head_accepts(id, then_id, else_id, then_type, else_type) {
+				return
+			}
 			if tc.should_diagnose(id) {
 				pos := token.new_span(node.pos.id, node.pos.offset, node.pos.offset + 2)
 				if (then_type is OptionType) != (else_type is OptionType)
@@ -21995,10 +22159,22 @@ fn (mut tc TypeChecker) check_if_value_requirements(id flat.NodeId, node flat.No
 		&& !tc.branch_tail_never_returns(else_id) {
 		tc.record_error_at(.if_branch_mismatch, '`if` expression requires an expression as the last statement of every branch', else_id, tc.if_branch_missing_value_pos(else_id))
 	}
-	if tc.if_expr_all_tails_are_none(node) {
+	if tc.if_expr_all_tails_are_none(node) && !tc.expr_has_explicit_option_context(id) {
 		pos := token.new_span(node.pos.id, node.pos.offset, node.pos.offset + 2)
 		tc.record_error_at(.if_branch_mismatch, 'invalid if expression, must supply at least one value other than `none`', id, pos)
 	}
+}
+
+// expr_has_explicit_option_context reports whether the value expression `id` is
+// checked against an option or result type, such as the value of `return` in a
+// `?T` function. V1 types an all-`none` `if`/`match` by that context, so it is
+// not an untyped `none` value then.
+fn (tc &TypeChecker) expr_has_explicit_option_context(id flat.NodeId) bool {
+	if tc.expected_expr_id < 0 || !tc.expr_is_value_tail_of(flat.NodeId(tc.expected_expr_id), id) {
+		return false
+	}
+	expected := unalias_type(tc.expected_expr_type)
+	return expected is OptionType || expected is ResultType
 }
 
 fn (tc &TypeChecker) if_branch_missing_value_pos(branch_id flat.NodeId) token.Pos {

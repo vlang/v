@@ -2273,6 +2273,14 @@ Branch-local values keep their declared types; unrelated enum types cannot be co
 Appending an `if` or `match` expression to an enum array also supplies the element type
 for shorthand values in its branches. Every branch must produce a compatible enum value.
 
+When the first branch has type `?T`, later branches may supply `T` or `none`.
+A function returning `?void` supplies an optional value without a payload; it cannot replace
+`none` in a branch that needs `?int` or another option with a payload.
+
+An `if` or `match` expression stored as a function value may combine compatible functions
+with `unsafe { nil }`. Branch-local variables retain their types: a `voidptr` variable
+cannot be stored as a function value.
+
 #### `If` unwrapping
 Anywhere you can use `or {}`, you can also use "if unwrapping". This binds the unwrapped value
 of an expression to a variable when that expression is not none nor an error.
@@ -3689,6 +3697,13 @@ An array returned from an immutable argument remains immutable, including when r
 a local function value, a narrowed `if` or `match` branch, or after an exiting `if` guard.
 Use `.clone()` for a mutable copy.
 
+A cloned map has separate entry storage. After replacing a copied struct's map field with
+a clone, replacing entries leaves the original map unchanged. The compiler may reject such
+writes if a reference to the containing struct could rebind the field, including references
+taken before the clone. A callback that may rebind a map also prevents subsequent entry writes
+from being treated as independent of the original; a callback that shadows the enclosing
+function's name still counts as a callback.
+
 A pointer returned through a callback can still refer to an immutable argument, even if the
 callback returns `voidptr`. Converting that result to a typed reference does not make the
 underlying object mutable. Different pointee types do not prove separate storage: a `voidptr`
@@ -4892,6 +4907,9 @@ fn get_component[T](entity Entity) !T {
 ```
 
 If you want to return the smart-casted pointer itself, use `!&T` as the return type instead.
+
+After an optional interface passes a `!= none` check, an unsafe cast such as
+`unsafe { &T(value) }` uses its unwrapped interface value.
 
 Appending a smart-casted value to an array of its original interface type preserves the
 complete interface value. Both `animals << animal` and `animals << Animal(animal)` retain

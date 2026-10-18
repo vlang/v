@@ -1694,6 +1694,15 @@ fn (mut t Transformer) lower_or_expr_to_temp(id flat.NodeId, node flat.Node) fla
 	mut prelude := []flat.NodeId{}
 	t.drain_pending(mut prelude)
 	mut new_expr_type := t.node_type(new_expr)
+	// A smartcast unwrap access (`x.value`) is typed with its payload. Resolving it
+	// as a selector would find a payload struct field that is also named `value`.
+	if int(new_expr) >= 0 && int(new_expr) < t.a.nodes.len {
+		new_expr_node := t.a.nodes[int(new_expr)]
+		if new_expr_node.kind == .selector && new_expr_node.typ != 0
+			&& transformed_option_unwrap_access_marker in new_expr_node.generic_params() {
+			new_expr_type = new_expr_node.typ
+		}
+	}
 	// A preceding guard can prove an optional selector successful and smartcast
 	// the source directly to its payload (for example `if !x.ok { return }`
 	// followed by `x or { ... }`). In that case the fallback is unreachable and

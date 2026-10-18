@@ -666,9 +666,19 @@ fn (tc &TypeChecker) expr_is_nested_value_tail(stmt_id flat.NodeId) bool {
 				// not turn the final branch's array append into an expression append.
 				passed_branch = true
 			}
+			.or_expr {
+				// The `or {}` block of a call that returns no value only runs statements.
+				if parent.children_count >= 2 && tc.a.child(parent, 1) == current {
+					source_type := unalias_type(tc.resolve_type(tc.a.child(parent, 0)))
+					if is_result_void_type(source_type) || is_option_void_type(source_type) {
+						return false
+					}
+				}
+				return passed_branch
+			}
 			.return_stmt, .decl_assign, .assign, .selector_assign, .index_assign, .field_init,
 			.call, .infix, .prefix, .postfix, .selector, .index, .array_literal, .array_init,
-			.map_init, .struct_init, .string_interp, .cast_expr, .as_expr, .or_expr, .spawn_expr,
+			.map_init, .struct_init, .string_interp, .cast_expr, .as_expr, .spawn_expr,
 			.assert_stmt {
 				return passed_branch
 			}
@@ -834,6 +844,75 @@ fn (mut tc TypeChecker) apply_post_assert_smartcasts(id flat.NodeId) {
 			tc.smartcasts[binding.name] = binding.typ
 		}
 	}
+}
+
+// none_guard_fallthrough_unwraps reports whether the option `key` read at `id`
+// is unwrapped by an earlier `if key == none { return }` statement. V1 exposes
+// that unwrap to new declarations (`y := key` gets the option's base type), unlike
+// the other fallthrough narrowings (`!is` guards, asserts, `||` conditions).
+fn (tc &TypeChecker) none_guard_fallthrough_unwraps(id flat.NodeId, key string) bool {
+	if key.len == 0 || !valid_string_data(key) {
+		return false
+	}
+	mut current := id
+	mut parent_id := tc.direct_parent_id(current)
+	for _ in 0 .. 1024 {
+		if !tc.valid_node_id(parent_id) {
+			return false
+		}
+		parent := tc.a.node(parent_id)
+		if parent.kind in [.block, .fn_decl, .match_branch, .for_stmt, .for_in_stmt, .lock_expr,
+			.defer_stmt, .select_branch] {
+			mut index := -1
+			for i in 0 .. parent.children_count {
+				if tc.a.child(parent, i) == current {
+					index = i
+					break
+				}
+			}
+			for i := index - 1; i >= 0; i-- {
+				sibling_id := tc.a.child(parent, i)
+				if tc.is_none_guard_exit_for_key(sibling_id, key) {
+					return true
+				}
+				if tc.subtree_assigns_key(sibling_id, key) {
+					return false
+				}
+			}
+		}
+		if parent.kind in [.fn_decl, .fn_literal, .lambda_expr] {
+			return false
+		}
+		current = parent_id
+		parent_id = tc.direct_parent_id(current)
+	}
+	return false
+}
+
+// is_none_guard_exit_for_key reports whether `id` is `if key == none { return }`
+// (the condition may be parenthesized; the then-branch must always exit).
+fn (tc &TypeChecker) is_none_guard_exit_for_key(id flat.NodeId, key string) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.node(id)
+	if node.kind != .if_expr || node.children_count < 2 {
+		return false
+	}
+	cond_id := tc.unwrap_paren_expr_id(tc.a.child(node, 0))
+	if !tc.valid_node_id(cond_id) {
+		return false
+	}
+	cond := tc.a.node(cond_id)
+	if cond.kind != .infix || cond.op != .eq || cond.children_count < 2 {
+		return false
+	}
+	lhs := tc.a.child_node(cond, 0)
+	rhs := tc.a.child_node(cond, 1)
+	if lhs.kind != .ident || lhs.value != key || rhs.kind != .none_expr {
+		return false
+	}
+	return tc.stmt_definitely_returns(tc.a.child(node, 1))
 }
 
 fn (tc &TypeChecker) post_if_exit_smartcasts(id flat.NodeId) []LocalBinding {
@@ -1260,6 +1339,17 @@ fn (mut tc TypeChecker) check_if_guard(id flat.NodeId, node flat.Node) []LocalBi
 		if base := tc.mut_param_base_for_current_ident(rhs_node.value, rhs_type) {
 			rhs_type = base
 		}
+		// `if x == none {} else if y := x {`: as in V 0.5.2, the none check does
+		// not narrow `x` in the condition of the `else if`, so the guard unwraps
+		// the declared option.
+		if rhs_type !is OptionType && rhs_type !is ResultType
+			&& tc.if_guard_follows_none_check(id, rhs_node.value) {
+			if declared := tc.cur_scope.lookup(rhs_node.value) {
+				if declared is OptionType {
+					rhs_type = declared
+				}
+			}
+		}
 	}
 	if rhs_node.kind == .selector {
 		if declared := tc.selector_declared_value_type(*rhs_node) {
@@ -1325,6 +1415,33 @@ fn (mut tc TypeChecker) check_if_guard(id flat.NodeId, node flat.Node) []LocalBi
 		return result
 	}
 	return []LocalBinding{}
+}
+
+// if_guard_follows_none_check reports whether the guard `guard_id` is the
+// condition of an `else if` in a chain whose earlier condition, such as
+// `x == none`, narrows the variable `name` for its `else` branch.
+fn (tc &TypeChecker) if_guard_follows_none_check(guard_id flat.NodeId, name string) bool {
+	mut current := tc.direct_parent_id(guard_id)
+	if !tc.valid_node_id(current) || tc.a.node(current).kind != .if_expr
+		|| tc.a.child(tc.a.node(current), 0) != guard_id {
+		return false
+	}
+	mut parent_id := tc.direct_parent_id(current)
+	for tc.valid_node_id(parent_id) {
+		parent := tc.a.node(parent_id)
+		if parent.kind != .if_expr || parent.children_count <= 2
+			|| tc.a.child(parent, 2) != current {
+			return false
+		}
+		for binding in tc.extract_else_branch_smartcasts(tc.a.child(parent, 0)) {
+			if binding.name == name {
+				return true
+			}
+		}
+		current = parent_id
+		parent_id = tc.direct_parent_id(current)
+	}
+	return false
 }
 
 // if_guard_payload_type returns the value an `if x := rhs` guard unwraps from
@@ -1782,7 +1899,8 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 	if value_context {
 		tc.check_match_branch_tail_type_diagnostics(id, node)
 	}
-	if value_context && tc.match_expr_all_tails_are_none(node) {
+	if value_context && tc.match_expr_all_tails_are_none(node)
+		&& !tc.expr_has_explicit_option_context(id) {
 		tc.record_error_at(.if_branch_mismatch, 'invalid match expression, must supply at least one value other than `none`', id, tc.match_header_pos(node))
 	}
 	$if ownership ? {
@@ -2198,7 +2316,8 @@ fn (mut tc TypeChecker) check_match_branch_tail_type_diagnostics(id flat.NodeId,
 	}
 	if first_cast_index > 0 {
 		first_tail := tc.a.node(tails[0])
-		if first_tail.kind == .int_literal {
+		// An int literal branch defaults to `int`, so a later `int` (or `i32`) cast fits.
+		if first_tail.kind == .int_literal && cast_type.name() !in ['int', 'i32'] {
 			tc.record_error_at(.if_branch_mismatch, 'the type of the last expression of the first match branch was `int literal`, which is not compatible with `${cast_type.name()}`', cast_id, cast_node.pos)
 		}
 		return
@@ -2370,7 +2489,8 @@ fn (tc &TypeChecker) match_branch_tail_diagnostic_type(subject_key string, subje
 			if smartcast_name.len > 0 {
 				smartcast_type := tc.parse_type(flat.source_type_id(smartcast_name))
 				tail := tc.a.node(tail_id)
-				if tail.kind == .ident && tc.expr_key(tail_id) == subject_key {
+				// `match key.handle { Variant { key.handle } }` names the subject like an ident.
+				if tail.kind in [.ident, .selector] && tc.expr_key(tail_id) == subject_key {
 					return smartcast_type
 				}
 				if tail.kind == .prefix && tail.op == .amp && tail.children_count > 0 {
@@ -3672,9 +3792,10 @@ fn (mut tc TypeChecker) branches_compatible_with(id flat.NodeId, expected Type) 
 			}
 			saved_smartcasts := clone_smartcasts(tc.smartcasts)
 			tc.apply_match_branch_context_smartcasts(subject_key, subject_type, branch)
-			actual := tc.resolve_expr(tail, expected)
+			actual, unbound := tc.resolve_branch_tail_expr(branch_id, tail, expected,
+				[]LocalBinding{})
 			tc.smartcasts = saved_smartcasts
-			if !tc.if_branch_type_compatible_with_context(actual, tail, expected) {
+			if unbound || !tc.if_branch_type_compatible_with_context(actual, tail, expected) {
 				return false
 			}
 		}
@@ -3696,9 +3817,13 @@ fn (mut tc TypeChecker) branches_compatible_with(id flat.NodeId, expected Type) 
 		if !tc.branch_failure_literal_matches_context(then_tail, expected) {
 			return false
 		}
-		if !tc.branch_tail_never_returns(tc.a.child(&node, 1)) {
-			then_actual := tc.resolve_expr(then_tail, expected)
-			if !tc.if_branch_type_compatible_with_context(then_actual, then_tail, expected) {
+		then_id := tc.a.child(&node, 1)
+		if !tc.branch_tail_never_returns(then_id) {
+			guard_bindings := tc.if_guard_branch_bindings(tc.a.child(&node, 0))
+			then_actual, unbound := tc.resolve_branch_tail_expr(then_id, then_tail, expected,
+				guard_bindings)
+			if unbound
+				|| !tc.if_branch_type_compatible_with_context(then_actual, then_tail, expected) {
 				return false
 			}
 		}
@@ -3719,10 +3844,134 @@ fn (mut tc TypeChecker) branches_compatible_with(id flat.NodeId, expected Type) 
 		if !tc.branch_failure_literal_matches_context(else_tail, expected) {
 			return false
 		}
-		else_actual := tc.resolve_expr(else_tail, expected)
-		return tc.if_branch_type_compatible_with_context(else_actual, else_tail, expected)
+		else_actual, unbound := tc.resolve_branch_tail_expr(else_id, else_tail, expected,
+			[]LocalBinding{})
+		return !unbound
+			&& tc.if_branch_type_compatible_with_context(else_actual, else_tail, expected)
 	}
 	return false
+}
+
+// resolve_branch_tail_expr resolves the value `tail` of the branch `branch_id`
+// against `expected` before the branch is checked, with the names the branch
+// binds before its value in scope: the variables of an `if x := opt {` guard
+// (`guard_bindings`), and the locals declared by the statements of the branch
+// before `tail`. Without them the check of a call receiver in `tail`
+// (`x.node().is_connected()`) reports those names as undefined. When `tail`
+// uses one of them that cannot be typed yet, `tail` is not resolved, and the
+// second result is true.
+fn (mut tc TypeChecker) resolve_branch_tail_expr(branch_id flat.NodeId, tail flat.NodeId, expected Type, guard_bindings []LocalBinding) (Type, bool) {
+	saved_scope := tc.cur_scope
+	mut untyped := []string{}
+	if guard_bindings.len > 0 {
+		tc.cur_scope = new_scope(saved_scope)
+		for binding in guard_bindings {
+			tc.cur_scope.insert(binding.name, binding.typ)
+			if type_contains_unknown(binding.typ) {
+				untyped << binding.name
+			}
+		}
+	}
+	tc.insert_branch_tail_locals(branch_id, saved_scope, mut untyped)
+	for name in untyped {
+		if tc.expr_uses_ident(tail, name) {
+			tc.cur_scope = saved_scope
+			return unknown_type('branch value uses an untyped branch variable'), true
+		}
+	}
+	actual := tc.resolve_expr(tail, expected)
+	tc.cur_scope = saved_scope
+	return actual, false
+}
+
+// if_guard_branch_bindings returns the variables the guard `cond_id` of an
+// `if x := opt {` binds, typed without checking the guard; a variable that
+// cannot be typed that way is unknown. It returns nothing for other conditions.
+fn (tc &TypeChecker) if_guard_branch_bindings(cond_id flat.NodeId) []LocalBinding {
+	if !tc.valid_node_id(cond_id) {
+		return []LocalBinding{}
+	}
+	cond := tc.a.nodes[int(cond_id)]
+	if cond.kind != .decl_assign || cond.children_count < 2 {
+		return []LocalBinding{}
+	}
+	mut bindings := tc.if_guard_query_bindings(cond)
+	for lhs_id in tc.if_guard_lhs_ids(cond) {
+		lhs := tc.a.node(lhs_id)
+		if lhs.kind != .ident || lhs.value.len == 0 || lhs.value == '_'
+			|| bindings.any(it.name == lhs.value) {
+			continue
+		}
+		bindings << LocalBinding{
+			name: lhs.value
+			typ:  unknown_type('if guard variable before the guard is checked')
+		}
+	}
+	return bindings
+}
+
+// insert_branch_tail_locals inserts into a scope over `outer` the locals that
+// the statements of the branch block or match branch `branch_id` declare
+// before its value, typed from their initializers. The names that cannot be
+// typed are added to `untyped`.
+fn (mut tc TypeChecker) insert_branch_tail_locals(branch_id flat.NodeId, outer &Scope, mut untyped []string) {
+	if !tc.valid_node_id(branch_id) {
+		return
+	}
+	node := tc.a.nodes[int(branch_id)]
+	if node.kind != .block && node.kind != .match_branch {
+		return
+	}
+	first := if node.kind == .match_branch && node.value != 'else' { node.value.int() } else { 0 }
+	if node.children_count <= first {
+		return
+	}
+	last := int(node.children_count) - 1
+	for i in first .. last {
+		stmt := tc.a.child_node(&node, i)
+		if stmt.kind != .decl_assign {
+			continue
+		}
+		lhs_ids := tc.multi_assign_lhs_ids(*stmt)
+		rhs_count := tc.multi_assign_rhs_count(*stmt)
+		mut multi := []Type{}
+		if lhs_ids.len > 1 && rhs_count == 1 {
+			rhs_type := tc.resolve_type(tc.multi_assign_rhs_id(*stmt, 0))
+			if rhs_type is MultiReturn {
+				multi = rhs_type.types.clone()
+			}
+		}
+		mut types := []Type{cap: lhs_ids.len}
+		for j in 0 .. lhs_ids.len {
+			mut typ := unknown_type('untyped branch local')
+			if lhs_ids.len == 1 && rhs_count == 1 && stmt.typ != 0 {
+				typ = tc.parse_type(stmt.typ)
+			} else if j < multi.len {
+				typ = multi[j]
+			} else if rhs_count == lhs_ids.len {
+				typ = tc.resolve_type(tc.multi_assign_rhs_id(*stmt, j))
+			}
+			types << typ
+		}
+		for j, lhs_id in lhs_ids {
+			lhs := tc.a.node(lhs_id)
+			if lhs.kind != .ident || lhs.value.len == 0 || lhs.value == '_' {
+				continue
+			}
+			if voidptr(tc.cur_scope) == voidptr(outer) {
+				tc.cur_scope = new_scope(outer)
+			}
+			typ := types[j]
+			tc.cur_scope.insert(lhs.value, typ)
+			if typ is Void || type_contains_unknown(typ) {
+				untyped << lhs.value
+			}
+		}
+	}
+	last_id := tc.a.child(&node, last)
+	if tc.valid_node_id(last_id) && tc.a.nodes[int(last_id)].kind == .block {
+		tc.insert_branch_tail_locals(last_id, outer, mut untyped)
+	}
 }
 
 fn (mut tc TypeChecker) apply_match_branch_context_smartcasts(subject_key string, subject_type Type, branch flat.Node) {
@@ -4429,7 +4678,8 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 			if expected !is Pointer && tc.type_has_declaration_attribute(expected, 'nocopy') {
 				tc.record_error_at(.assignment_mismatch, 'cannot copy @[nocopy] struct: use a reference instead', value_id, tc.a.node(value_id).pos)
 			}
-			if expected is Pointer {
+			// Like V1, a `@[heap]` struct may retain a pointer parameter in its fields.
+			if expected is Pointer && !tc.type_has_declaration_attribute(Type(init_struct), 'heap') {
 				tc.record_non_heap_pointer_param_escape(value_id)
 			}
 			// A method value stored in a struct field escapes the evaluation site (several
@@ -4485,7 +4735,8 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 				&& value_node.kind == .ident && tc.const_key_for_name(value_node.value) != none {
 				tc.record_error_at(.assignment_mismatch, 'cannot assign a const map to mut struct field, call `clone` method (or use a reference)', value_id, value_node.pos)
 			}
-			if tc.unsafe_depth == 0 && field_is_mut {
+			if tc.unsafe_depth == 0 && field_is_mut && tc.mut_binding_value_id >= 0
+				&& tc.expr_is_value_tail_of(flat.NodeId(tc.mut_binding_value_id), id) {
 				if addressed_id := tc.addressed_ident(value_id) {
 					addressed := tc.a.node(addressed_id)
 					addressed_type := tc.non_file_scope_type(addressed.value) or { Type(Unknown{}) }
@@ -5268,14 +5519,20 @@ fn (tc &TypeChecker) expr_raw_fn_type_text(id flat.NodeId) ?string {
 				return Type(fn_type).name()
 			}
 		}
+		// The short-name index also holds methods (`EventLoop.did_change`), but a
+		// bare name never refers to one, so look past a same-named method.
 		if index := tc.fn_decl_short_name_ids[node.value] {
-			return tc.fn_node_source_type_text(tc.a.node(flat.NodeId(index)))
+			decl := tc.a.node(flat.NodeId(index))
+			if !tc.fn_has_receiver_param(decl) {
+				return tc.fn_node_source_type_text(decl)
+			}
 		}
 		// Declarations appended after collect (monomorphization) miss the
 		// index; scan them with an allocation-free suffix compare.
 		for index in tc.top_level_idx {
 			decl := tc.a.node(flat.NodeId(index))
-			if decl.kind == .fn_decl && embedded_name_matches(node.value, decl.value) {
+			if decl.kind == .fn_decl && embedded_name_matches(node.value, decl.value)
+				&& !tc.fn_has_receiver_param(decl) {
 				return tc.fn_node_source_type_text(decl)
 			}
 		}
@@ -5474,6 +5731,7 @@ fn (tc &TypeChecker) supplied_fields_for_embeds(decl flat.Node, supplied map[str
 		field_type_text := if field.typ != 0 { field.typ_text() } else { field.value }
 		if source_field_decl_is_embed(field, field_type_text) {
 			embed_fields[field.value] = true
+			embed_fields[struct_decl_field_init_name(field, true)] = true
 		}
 	}
 	mut promoted := map[string]bool{}
@@ -5483,6 +5741,15 @@ fn (tc &TypeChecker) supplied_fields_for_embeds(decl flat.Node, supplied map[str
 		}
 	}
 	return promoted
+}
+
+// struct_decl_field_init_name returns the name a struct literal initializes the declared
+// field with: an embedded `mod.Type[T]` is initialized as `Type: ...`.
+fn struct_decl_field_init_name(field &flat.Node, is_embed bool) string {
+	if !is_embed {
+		return field.value
+	}
+	return strip_generic_args_name(field.value).all_after_last('.')
 }
 
 fn (tc &TypeChecker) missing_reference_struct_fields(struct_name_id u32, supplied map[string]bool, path_ids []u32) []MissingReferenceField {
@@ -5511,6 +5778,7 @@ fn (tc &TypeChecker) missing_reference_struct_fields(struct_name_id u32, supplie
 			tc.parse_type(flat.source_type_id(field_type_text))
 		})
 		is_embed := source_field_decl_is_embed(field, field_type_text)
+		init_name := struct_decl_field_init_name(field, is_embed)
 		if field_type is Pointer {
 			if tc.struct_field_has_shared_elements(clean_name_id, field.value) {
 				continue
@@ -5536,7 +5804,7 @@ fn (tc &TypeChecker) missing_reference_struct_fields(struct_name_id u32, supplie
 					}
 				}
 			}
-			if field.children_count == 0 && field.value !in supplied {
+			if field.children_count == 0 && init_name !in supplied {
 				missing << MissingReferenceField{
 					path:  '${display_name}.${field.value}'
 					owner: flat.source_type_id(display_name)
@@ -5547,7 +5815,7 @@ fn (tc &TypeChecker) missing_reference_struct_fields(struct_name_id u32, supplie
 		if field_type !is Struct || field.children_count > 0 {
 			continue
 		}
-		if field.value in supplied {
+		if init_name in supplied {
 			// An explicitly initialized field is checked on its own, and an embedded
 			// struct literal reports its own missing reference fields. Re-checking the
 			// embedded struct here would duplicate those diagnostics at the outer literal.
@@ -5597,7 +5865,8 @@ fn (tc &TypeChecker) missing_required_struct_fields(struct_name_id u32, supplied
 		}
 		field_type_text := if field.typ != 0 { field.typ_text() } else { field.value }
 		is_embed := source_field_decl_is_embed(field, field_type_text)
-		if struct_field_has_attr(*field, 'required') && field.value !in supplied {
+		init_name := struct_decl_field_init_name(field, is_embed)
+		if struct_field_has_attr(*field, 'required') && init_name !in supplied {
 			missing << '${display_name}.${field.value}'
 		}
 		field_type := unalias_type(tc.struct_field_type(clean_name_id, field.value) or {
@@ -5606,7 +5875,7 @@ fn (tc &TypeChecker) missing_required_struct_fields(struct_name_id u32, supplied
 		if field_type !is Struct || field.children_count > 0 {
 			continue
 		}
-		if field.value in supplied {
+		if init_name in supplied {
 			// An explicitly initialized field is checked on its own, and an embedded
 			// struct literal reports its own missing required fields. Re-checking the
 			// embedded struct here would duplicate those diagnostics at the outer literal.
@@ -7504,7 +7773,10 @@ fn (tc &TypeChecker) selector_type(_id flat.NodeId, node flat.Node) ?Type {
 		if typ := tc.sum_shared_field_type(clean, node.value) {
 			return typ
 		}
-		if base_node.kind == .index {
+		// Like V1, a field that only one variant has is read through that variant
+		// (an implicit, checked `as` cast) when the sum value cannot be smartcast,
+		// e.g. `shapes[0].radius` or `def.range().entries`.
+		if base_node.kind == .index || tc.expr_key(base_id).len == 0 {
 			if typ := tc.sum_unique_variant_field_type(clean, node.value) {
 				return typ
 			}
@@ -9012,6 +9284,16 @@ fn (mut tc TypeChecker) resolve_expr(id flat.NodeId, expected Type) Type {
 			return expected
 		}
 	}
+	if node.kind == .or_expr && node.children_count >= 2 && node.value !in ['!', '?']
+		&& expected !is Void && expected !is Unknown
+		&& tc.a.nodes[int(tc.a.child(&node, 0))].kind == .match_stmt {
+		// The `or` block of `match x {...} or {...}` unwraps `x`; the match is the value.
+		actual := tc.resolve_expr(tc.a.child(&node, 0), expected)
+		if tc.type_compatible(actual, expected) {
+			tc.register_synth_type(id, expected_raw)
+			return expected_raw
+		}
+	}
 	if node.kind == .or_expr && node.children_count >= 2
 		&& (expected is OptionType || expected is ResultType) {
 		payload := match expected {
@@ -10151,6 +10433,24 @@ pub fn (tc &TypeChecker) slot_value_compatible(actual Type, expected Type) bool 
 	return tc.type_compatible(actual, expected)
 }
 
+// qualified_type_modifiers returns the text before the trailing qualified type name
+// of `name`, e.g. `?&` for `?&mod.Frame`, so `?&mod.Frame` and `&mod.Frame` are not
+// treated as spellings of one type. Names that do not end in an identifier keep ''.
+fn qualified_type_modifiers(name string) string {
+	mut start := name.len
+	for start > 0 {
+		c := name[start - 1]
+		if !(c.is_letter() || c.is_digit() || c == `_` || c == `.`) {
+			break
+		}
+		start--
+	}
+	if start == name.len {
+		return ''
+	}
+	return name[..start]
+}
+
 fn (tc &TypeChecker) type_compatible(actual Type, expected Type) bool {
 	actual_raw := actual
 	expected_raw := expected
@@ -10176,7 +10476,8 @@ fn (tc &TypeChecker) type_compatible(actual Type, expected Type) bool {
 	actual_name := flat.source_type_name(actual_name_comparison_type_id)
 	expected_name := flat.source_type_name(expected_name_comparison_type_id)
 	if actual_name.contains('.') && expected_name.contains('.')
-		&& actual_name.all_after_last('.') == expected_name.all_after_last('.') {
+		&& actual_name.all_after_last('.') == expected_name.all_after_last('.')
+		&& qualified_type_modifiers(actual_name) == qualified_type_modifiers(expected_name) {
 		actual_prefix := actual_name.all_before_last('.')
 		expected_prefix := expected_name.all_before_last('.')
 		actual_module := tc.resolve_import_alias(actual_prefix) or { actual_prefix }

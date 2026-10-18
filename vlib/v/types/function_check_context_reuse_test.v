@@ -38,6 +38,9 @@ fn test_function_check_context_reset_detaches_shared_arrays_and_clears_semantic_
 	ctx.locked_shared_base_names['value'] = 'base'
 	ctx.pointer_binding_value_keys['value'] = ['target']
 	ctx.immutable_reference_aliases['value'] = true
+	ctx.fresh_map_fields['value.field'] = FreshMapField{
+		owner: owner
+	}
 	ctx.unsafe_reference_alias_owners['value'] = true
 	ctx.pointer_alias_goto_states['label'] = [{
 		'value': ['target']
