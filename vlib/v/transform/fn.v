@@ -11358,9 +11358,9 @@ fn (mut t Transformer) make_compiler_default_clone_value(source flat.NodeId, typ
 // make_compiler_default_sum_clone_value rebuilds the active variant so its boxed
 // payload is independent from the source sum value.
 fn (mut t Transformer) make_compiler_default_sum_clone_value(source flat.NodeId, sum_type_id u32) flat.NodeId {
-	resolved_sum_source_id := t.resolve_sum_name(sum_type_id)
-	resolved_sum := flat.source_type_name(resolved_sum_source_id)
-	variants := t.sum_types.type_ids(resolved_sum) or { return source }
+	// A generic sum instance (`Maybe[&Item]`) lists its declaration's variants (`T`);
+	// substitute them, or the clone names a `T` payload field the instance lacks.
+	resolved_sum_source_id, variants := t.concrete_sum_name_and_variants(sum_type_id)
 	if variants.len == 0 {
 		return source
 	}
