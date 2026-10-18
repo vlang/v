@@ -54,6 +54,27 @@ fn (g &Parser) dynamic_array_literal_source(array_type string, element_type stri
 // array representation expected by a function or method parameter.
 fn (g &Parser) render_fixed_array_dynamic_argument(tokens []FastcExpressionToken, expected_type_source_id u32) ?string {
 	expected_type := flat.source_type_name(expected_type_source_id)
+	if expected_type.ends_with('*') {
+		// A `mut []T` parameter given a fixed array that is already a pointer (a
+		// `mut [N]T` parameter of the caller) gets a view of that storage.
+		actual_type := g.infer_expression_type(tokens) or { return none }
+		if flat.source_type_name(actual_type).ends_with('*') && !flat.source_type_name(actual_type).ends_with('**')
+			&& fastc_fixed_array_length(flat.source_type_name(g.underlying_alias_type(actual_type)).trim_right('*')) != none {
+			return g.render_fixed_array_as_dynamic(tokens, flat.source_type_id(expected_type.trim_right('*')), true)
+		}
+		return none
+	}
+	return g.render_fixed_array_as_dynamic(tokens, expected_type_source_id, false)
+}
+
+// render_fixed_array_mut_argument passes a fixed array to a `mut []T` parameter as a view
+// of its own storage, so writes through the parameter (`copy(mut fixed, src)`) reach it.
+fn (g &Parser) render_fixed_array_mut_argument(tokens []FastcExpressionToken, expected_type_source_id u32) ?string {
+	return g.render_fixed_array_as_dynamic(tokens, expected_type_source_id, true)
+}
+
+fn (g &Parser) render_fixed_array_as_dynamic(tokens []FastcExpressionToken, expected_type_source_id u32, view bool) ?string {
+	expected_type := flat.source_type_name(expected_type_source_id)
 	if expected_type.ends_with('*') || !flat.source_type_name(g.underlying_alias_type(expected_type_source_id)).starts_with('Array_') {
 		return none
 	}
@@ -71,12 +92,24 @@ fn (g &Parser) render_fixed_array_dynamic_argument(tokens []FastcExpressionToken
 		// Fixed-array parameters use a wrapper value, but this conversion needs
 		// the original field/global storage as its C-array source.
 		raw := g.render_member_receiver(storage_tokens) or { return none }
+		if view {
+			return fastc_fixed_array_view(expected_type, length, size, raw)
+		}
 		return '((${expected_type})builtin__new_array_from_c_array(${length}, ${length}, ${size}, ${raw}))'
 	}
 	value := g.render_call_argument_expression(tokens, actual_type) or { return none }
-	temporary := g.temporary_namespace('fixed_argument') + '_value'
 	access := if flat.source_type_name(actual_layout).ends_with('*') { '->' } else { '.' }
+	if view {
+		return fastc_fixed_array_view(expected_type, length, size, '(${value})${access}data')
+	}
+	temporary := g.temporary_namespace('fixed_argument') + '_value'
 	return '({ ${flat.source_type_name(actual_type)} ${temporary} = (${value}); ((${expected_type})builtin__new_array_from_c_array(${length}, ${length}, ${size}, ${temporary}${access}data)); })'
+}
+
+// fastc_fixed_array_view is the address of a dynamic array whose elements are the
+// fixed array's own storage, for a `mut []T` parameter.
+fn fastc_fixed_array_view(array_type string, length string, size string, storage string) string {
+	return '(&(${array_type}){.data=(void*)(${storage}), .len=${length}, .cap=${length}, .element_size=${size}})'
 }
 
 fn fastc_array_values_call_source(element_type string, items []string, values_name string, call_source string) string {
@@ -1027,7 +1060,9 @@ fn (g &Parser) render_raw_expression_tokens(tokens []FastcExpressionToken) ?stri
 		} else if item.tok == .rpar && i in cast_closes {
 			piece = '))'
 		} else if item.tok == .number {
-			piece = if g.selfhost {
+			piece = if g.selfhost && i + 1 < tokens.len && tokens[i + 1].tok == .left_shift {
+				fastc_shift_operand_number(fastc_c_selfhost_number(item.lit))
+			} else if g.selfhost {
 				fastc_c_selfhost_number(item.lit)
 			} else {
 				fastc_c_number(item.lit) or { return none }

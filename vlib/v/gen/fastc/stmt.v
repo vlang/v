@@ -1295,6 +1295,12 @@ fn (mut g Parser) parse_return() !bool {
 		&& !g.should_box_variant(g.option_return_type, actual_type) {
 		return g.unsupported('an Option cannot carry an error as its failure state')
 	}
+	if g.selfhost && g.return_type_text() == '__v_result' && flat.source_type_name(actual_type).trim_right('*') != 'IError'
+		&& g.returns_error_value(actual_type) {
+		// `return MyError{}` in a `!T` function returns that error, not a `T`.
+		expression = g.interface_value_expression(flat.source_type_id('IError'), actual_type, expression)
+		actual_type = flat.source_type_id('IError')
+	}
 	if g.selfhost && g.return_type_text() == '__v_result' && flat.source_type_name(actual_type).trim_right('*') == 'IError' {
 		expression = '(__v_result){.err=${expression}, .state=1}'
 		actual_type = g.return_type
@@ -1303,7 +1309,7 @@ fn (mut g Parser) parse_return() !bool {
 		'__v_result',
 	] {
 		mut payload_type := fastc_normalize_inferred_type(actual_type)
-		if g.option_return_type != u32(0) && (g.should_box_variant(g.option_return_type, payload_type) || (g.declared_kinds[flat.source_type_name(g.semantic_type_key(g.option_return_type))] == .interface_ && g.declared_kinds[flat.source_type_name(g.semantic_type_key(payload_type))] != .interface_)) {
+		if g.option_return_type != u32(0) && (g.should_box_variant(g.option_return_type, payload_type) || ((g.option_return_type_text() == 'IError' || g.declared_kinds[flat.source_type_name(g.semantic_type_key(g.option_return_type))] == .interface_) && g.declared_kinds[flat.source_type_name(g.semantic_type_key(payload_type))] != .interface_)) {
 			expression = g.interface_value_expression(g.option_return_type, payload_type, expression)
 			payload_type = g.option_return_type
 		}
@@ -1312,6 +1318,58 @@ fn (mut g Parser) parse_return() !bool {
 	}
 	g.consume_statement_end()
 	g.write_return_expression(expression, actual_type)
+	return true
+}
+
+// returns_error_value reports whether a value of `actual_type`, returned from the current
+// `!T` function, is its error: a struct implementing IError (`msg` and `code`, its own or
+// through an embedded `Error`) that is not assignable to the success type `T`.
+fn (g &Parser) returns_error_value(actual_type u32) bool {
+	value_type := flat.source_type_id(fastc_trim_pointer_suffix(flat.source_type_name(g.underlying_alias_type(fastc_normalize_inferred_type(actual_type)))))
+	if value_type == 0 || g.declared_kinds[flat.source_type_name(g.semantic_type_key(value_type))] != .struct_ {
+		return false
+	}
+	payload_type := flat.source_type_id(fastc_trim_pointer_suffix(flat.source_type_name(g.underlying_alias_type(fastc_normalize_inferred_type(g.option_return_type)))))
+	// IError is an intrinsic C struct rather than a source-level interface declaration.
+	if payload_type == value_type || flat.source_type_name(payload_type) == 'IError'
+		|| g.sumtype_has_variant(payload_type, value_type)
+		|| g.result_payload_interface_accepts(payload_type, value_type) {
+		return false
+	}
+	msg_key, _ := g.resolve_method(value_type, 'msg')
+	code_key, _ := g.resolve_method(value_type, 'code')
+	return msg_key in g.functions && code_key in g.functions
+}
+
+// result_payload_interface_accepts checks the complete interface shape before an
+// IError implementer is classified as a failure instead of a successful payload.
+fn (g &Parser) result_payload_interface_accepts(payload_type u32, value_type u32) bool {
+	payload_key := g.semantic_type_key(payload_type)
+	if g.declared_kinds[flat.source_type_name(payload_key)] != .interface_ {
+		return false
+	}
+	prefix := flat.source_type_name(payload_key) + '.'
+	for method_key, signature in g.functions {
+		if !method_key.starts_with(prefix) || signature.parameter_types.ids.len == 0
+			|| signature.parameter_types.ids[0] != payload_type {
+			continue
+		}
+		candidate_key, _ := g.resolve_method(value_type, method_key.all_after_last('.'))
+		candidate := g.functions[candidate_key] or { return false }
+		if !fastc_interface_method_signatures_match(signature, candidate) {
+			return false
+		}
+	}
+	for field_key, required in g.interface_fields {
+		if !field_key.starts_with(prefix) {
+			continue
+		}
+		actual := g.interface_implementation_field(value_type, flat.source_type_name(g.semantic_type_key(value_type)),
+			required.name) or { return false }
+		if actual.typ_text() != required.typ_text() || (required.is_mutable && !actual.is_mutable) {
+			return false
+		}
+	}
 	return true
 }
 

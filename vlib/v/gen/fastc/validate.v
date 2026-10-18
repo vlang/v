@@ -10,7 +10,13 @@ fn (g &Parser) expression_token(previous token.Token, previous_lit string, quali
 		}
 		.number {
 			if g.selfhost {
-				fastc_c_selfhost_number(g.lit)
+				number := fastc_c_selfhost_number(g.lit)
+				mut after := g.s
+				if after.scan() == .left_shift {
+					fastc_shift_operand_number(number)
+				} else {
+					number
+				}
 			} else {
 				fastc_c_number(g.lit)!
 			}

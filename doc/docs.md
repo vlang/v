@@ -5372,6 +5372,9 @@ fn main() {
 An Option stores either a value or `none`. It has no error field and cannot carry an error as
 its failure state. A Result stores either a value or an `IError`.
 An `IError` may still be an ordinary Option payload, for example `?IError`.
+A concrete value implementing `IError` is also a successful Result payload when it is assignable
+to the declared payload type, including `!IError` and compatible interfaces. Otherwise, returning
+that value from a Result function produces an error.
 
 A function returning only `!` or `?` has no success payload. Its return type is a Result or
 Option of `void`; callers still handle errors or absence with an `or` block or propagation.
