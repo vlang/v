@@ -117,6 +117,41 @@ fn test_explicit_unused_import_keeps_source_diagnostics() {
 	assert tc.notices.any(it.msg.contains("module 'os' is imported but never used")), tc.notices.str()
 }
 
+// A submodule import names its parent module or alias in its module path,
+// which is not an attribute use of that import.
+fn test_submodule_import_path_does_not_use_parent_import() {
+	path := os.join_path(os.vtmp_dir(), 'v3_submodule_import_path_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	for imports, display_name in {
+		'import term as te\nimport te.ui\n': 'te (term)'
+		'import term\nimport term.ui\n':     'term'
+	} {
+		os.write_file(path, imports)!
+		mut p := parser.Parser.new(pref.new_preferences())
+		a := p.parse_file(path)
+		mut tc := TypeChecker.new(a)
+		tc.collect(a)
+		tc.check_unused_import_diagnostics()
+		assert tc.notices.any(it.msg.contains("module '${display_name}' is imported but never used")), '${imports}: ${tc.notices}'
+	}
+}
+
+fn test_qualified_field_and_enum_value_attributes_use_imports() {
+	path := os.join_path(os.vtmp_dir(), 'v3_qualified_member_attribute_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	for declaration in ['struct Item {\n\tname string @[schema.Skip]\n}\n',
+		'enum Kind {\n\tfirst @[schema.Skip]\n}\n'] {
+		os.write_file(path, 'import schema\n${declaration}fn main() {}\n')!
+		mut p := parser.Parser.new(pref.new_preferences())
+		a := p.parse_file(path)
+		assert p.diagnostics.len == 0, p.diagnostics.str()
+		mut tc := TypeChecker.new(a)
+		tc.collect(a)
+		tc.check_unused_import_diagnostics()
+		assert tc.notices.len == 0, '${declaration}: ${tc.notices}'
+	}
+}
+
 fn test_sql_table_references_use_imports() {
 	path := os.join_path(os.vtmp_dir(), 'v3_sql_table_import_${os.getpid()}.v')
 	defer { os.rm(path) or {} }
