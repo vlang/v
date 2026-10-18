@@ -7161,6 +7161,13 @@ fn (mut t Transformer) transform_string_interp_part(child_id flat.NodeId) flat.N
 
 		if call_ret_source_id != 0 && !t.generic_arg_is_unresolved(call_ret_source_id) {
 			typ = call_ret_source_id_2
+			// The return type can arrive unaliased (`[]Column` for a declared `Columns`).
+			// Keep the alias, so that a `str()` method declared on it formats the value.
+			alias_source_id := t.raw_alias_type_for_expr(expr_id)
+			if alias_source_id != 0 && alias_source_id != typ
+				&& t.normalize_type_alias(alias_source_id) == t.normalize_type_alias(typ) {
+				typ = alias_source_id
+			}
 		}
 	}
 	if typ == 0 {
