@@ -383,6 +383,7 @@ pub type TypeDefinitionNode = EnumTypeDefinitionNode
 	| UnionTypeDefinitionNode
 
 pub struct ScalarTypeDefinitionNode {
+pub:
 	kind        Kind
 	description ?StringValueNode
 	name        NameNode
@@ -392,6 +393,7 @@ pub mut:
 }
 
 pub struct ObjectTypeDefinitionNode {
+pub:
 	kind        Kind
 	description ?StringValueNode
 	name        NameNode
@@ -403,6 +405,7 @@ pub mut:
 }
 
 pub struct FieldDefinitionNode {
+pub:
 	kind        Kind = Kind.field_definition
 	description ?StringValueNode
 	name        NameNode
@@ -414,6 +417,7 @@ pub mut:
 }
 
 pub struct InputValueDefinitionNode {
+pub:
 	kind          Kind
 	description   ?StringValueNode
 	name          NameNode
@@ -425,6 +429,7 @@ pub mut:
 }
 
 pub struct InterfaceTypeDefinitionNode {
+pub:
 	kind        Kind = Kind.interface_type_definition
 	description ?StringValueNode
 	name        NameNode
@@ -436,6 +441,7 @@ pub mut:
 }
 
 pub struct UnionTypeDefinitionNode {
+pub:
 	kind        Kind = Kind.union_type_definition
 	description ?StringValueNode
 	name        NameNode
@@ -446,6 +452,7 @@ pub mut:
 }
 
 pub struct EnumTypeDefinitionNode {
+pub:
 	kind        Kind = Kind.enum_type_definition
 	description ?StringValueNode
 	name        NameNode
@@ -456,6 +463,7 @@ pub mut:
 }
 
 pub struct EnumValueDefinitionNode {
+pub:
 	kind        Kind = Kind.enum_value_definition
 	description ?StringValueNode
 	name        NameNode
@@ -465,6 +473,7 @@ pub mut:
 }
 
 pub struct InputObjectTypeDefinitionNode {
+pub:
 	kind        Kind = Kind.input_object_type_definition
 	description ?StringValueNode
 	name        NameNode
@@ -475,6 +484,7 @@ pub mut:
 }
 
 pub struct DirectiveDefinitionNode {
+pub:
 	kind        Kind = Kind.directive_definition
 	description ?StringValueNode
 	name        NameNode
@@ -486,6 +496,7 @@ pub mut:
 }
 
 pub struct SchemaExtensionNode {
+pub:
 	kind            Kind = Kind.schema_extension
 	directives      ?[]DirectiveNode
 	operation_types ?[]OperationTypeDefinitionNode
@@ -503,6 +514,7 @@ pub type TypeExtensionNode = EnumTypeExtensionNode
 	| UnionTypeExtensionNode
 
 pub struct ScalarTypeExtensionNode {
+pub:
 	kind       Kind = Kind.scalar_type_extension
 	name       NameNode
 	directives ?[]DirectiveNode
@@ -511,6 +523,7 @@ pub mut:
 }
 
 pub struct ObjectTypeExtensionNode {
+pub:
 	kind       Kind = Kind.object_type_extension
 	name       NameNode
 	interfaces ?[]NamedTypeNode
@@ -521,6 +534,7 @@ pub mut:
 }
 
 pub struct InterfaceTypeExtensionNode {
+pub:
 	kind       Kind = Kind.interface_type_extension
 	name       NameNode
 	interfaces ?[]NamedTypeNode
@@ -531,6 +545,7 @@ pub mut:
 }
 
 pub struct UnionTypeExtensionNode {
+pub:
 	kind       Kind = Kind.union_type_extension
 	name       NameNode
 	directives ?[]DirectiveNode
@@ -540,6 +555,7 @@ pub mut:
 }
 
 pub struct EnumTypeExtensionNode {
+pub:
 	kind       Kind = Kind.enum_type_extension
 	name       NameNode
 	directives ?[]DirectiveNode
@@ -549,6 +565,7 @@ pub mut:
 }
 
 pub struct InputObjectTypeExtensionNode {
+pub:
 	kind       Kind = Kind.object_type_extension
 	name       NameNode
 	directives ?[]DirectiveNode
