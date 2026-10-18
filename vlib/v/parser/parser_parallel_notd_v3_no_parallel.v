@@ -1208,6 +1208,30 @@ mut:
 	pending_files []PendingSourceFile
 }
 
+// MergeTextProbeArgs is the task of probe_worker_texts_thread.
+struct MergeTextProbeArgs {
+	master voidptr // &Parser
+	worker voidptr // &Parser
+mut:
+	missing []bool
+}
+
+// probe_worker_texts_thread marks the texts of one worker's table that the
+// master's text table does not hold. Nothing writes the master table while the
+// probes run.
+@[direct_array_access]
+fn probe_worker_texts_thread(arg voidptr) voidptr {
+	mut probe := unsafe { &MergeTextProbeArgs(arg) }
+	p := unsafe { &Parser(probe.master) }
+	w := unsafe { &Parser(probe.worker) }
+	for i, value in w.a.text_values {
+		if value !in p.a.text_ids {
+			probe.missing[i] = true
+		}
+	}
+	return unsafe { nil }
+}
+
 fn new_parse_merge_text_cache() &flat.TextProbeCache {
 	return flat.new_text_probe_cache()
 }
@@ -1339,14 +1363,42 @@ fn (mut p Parser) merge_parsed_workers_parallel(mut parser_workers []&Parser, mu
 	}
 	// Each worker has already interned its node payloads in source order. Merge
 	// those unique tables once, in chunk order, so the copy threads can rebind
-	// every payload without leaving a serial per-node miss pass behind.
-	mut text_headroom := 0
+	// every payload without leaving a serial per-node miss pass behind. The pool
+	// first marks the texts the master table lacks; a text it holds already
+	// stays as it is, so only the marked ones go through the ordered inserts.
+	mut probes := []MergeTextProbeArgs{cap: thread_count}
 	for worker in parser_workers {
-		text_headroom += worker.a.text_count()
+		probes << MergeTextProbeArgs{
+			master:  voidptr(p)
+			worker:  voidptr(worker)
+			missing: []bool{len: worker.a.text_count()}
+		}
+	}
+	mut probe_tasks := []workers.Task{cap: thread_count}
+	for ci in 0 .. thread_count {
+		probe_tasks << workers.Task{
+			run:        probe_worker_texts_thread
+			arg:        unsafe { voidptr(&probes[ci]) }
+			force_sync: ci == 0
+		}
+	}
+	p.a.worker_pool.run(probe_tasks)
+	mut text_headroom := 0
+	for probe in probes {
+		for missing in probe.missing {
+			if missing {
+				text_headroom++
+			}
+		}
 	}
 	p.a.reserve_transform_texts(text_headroom)
-	for worker in parser_workers {
-		p.a.intern_texts_from(worker.a)
+	for ci, worker in parser_workers {
+		missing := probes[ci].missing
+		for i, value in worker.a.text_values {
+			if missing[i] {
+				p.a.intern_text(value)
+			}
+		}
 	}
 	unsafe {
 		p.a.nodes.grow_len(node_offsets[thread_count] - base_nodes)
@@ -1590,7 +1642,10 @@ fn (mut p Parser) merge_parsed_worker_bookkeeping(mut w Parser, mut starts []int
 		}
 	}
 	for key, value in w.comptime_string_consts {
-		p.comptime_string_consts[key.clone()] = value
+		// Every entry is `true`; most come from the prefix that the master holds.
+		if key !in p.comptime_string_consts {
+			p.comptime_string_consts[key.clone()] = value
+		}
 	}
 	p.parsed_v_files += w.parsed_v_files
 	for path in w.parsed_v_file_paths {
