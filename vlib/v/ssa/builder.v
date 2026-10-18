@@ -2121,11 +2121,8 @@ fn (b &Builder) skip_source_fn_in_module(name string, module_name string) bool {
 			|| name == 'Builder.push_many'
 	}
 	if module_name == 'os' {
-		// `Process.wait` ends in `Process._spawn`, whose POSIX body needs `C.fork`
-		// and `C.execve`, which the native backend cannot express; `CommandArgs.close`
-		// and `system_args` are the two bodies that reach it, so they go with it.
 		return name in ['is_dir', 'is_link', 'ls', 'normalize_path_in_builder', 'check_fwrite',
-			'check_fread', 'join_path_single', 'Process.wait', 'CommandArgs.close', 'system_args']
+			'check_fread', 'join_path_single']
 	}
 	if module_name == 'strconv' {
 		return name in ['f32_to_str_l', 'f32_to_str_l_with_dot', 'f64_to_str_l', 'f64_to_str_l_with_dot',

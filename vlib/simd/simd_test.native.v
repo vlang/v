@@ -1,15 +1,10 @@
 module main
 
-// This file is selected only by the native backend (`-b native` / `-b arm64`).
+// This file is selected only by the ARM64 backend (`-b arm64`).
 // The C backend exercises the same API in `simd_test.v`; what is added here is
 // the per-lane consistency check, which is the assertion that catches a vector
 // load filling the wrong registers.
-//
-// Running it needs a native-backend host, and also a test runner that can be
-// built by that backend: `v test` itself is compiled to the active backend, and
-// the runner uses closures that capture variables, which the native backend
-// does not support yet. Until that lands this file is checked by reading it and
-// by running the same assertions under the C backend, not by CI.
+// Run on macOS ARM64 with a compiler built with ARM64 backend support.
 
 import simd
 

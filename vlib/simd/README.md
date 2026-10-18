@@ -115,7 +115,7 @@ conversions are scalar V code on every path. The non-C backends use scalar V cod
 `vectors_generated.v`, `vectors_generated.c.v`, `simd.h` and `vectors_generated_test.v` are
 written by `gen.vsh`. After editing it, regenerate them with `v run vlib/simd/gen.vsh`.
 
-On V's native backend (`-b native`), the five `F32x4` arithmetic operators are
+On V's ARM64 backend (`-b arm64`), the five `F32x4` arithmetic operators are
 lowered to single NEON instructions instead of the scalar loop. The generator
 gives those operators a named helper call on non-C backends (see `vhelper` in
 `gen.vsh`), with `@[noinline]` so the call stays visible; the backend matches
