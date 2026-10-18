@@ -7,6 +7,7 @@ module fasthttp
 // They drive the internal serve_conn / flush / pooling paths directly over a real
 // socketpair, so no listener or port is needed.
 import os
+import time
 
 fn C.socketpair(domain i32, typ i32, protocol i32, sockets &i32) i32
 
@@ -671,4 +672,36 @@ fn test_conn_state_is_pooled_with_buffers_retained() ! {
 	assert reused == pooled
 
 	C.close(client_fd)
+}
+
+fn test_timeout_sweep_is_throttled_across_ready_batches() ! {
+	server := new_server(ServerConfig{
+		family:             .ip
+		port:               0
+		handler:            regression_handler
+		timeout_in_seconds: 1
+	})!
+	epoll_fd := C.epoll_create1(0)
+	assert epoll_fd >= 0
+	defer { C.close(epoll_fd) }
+	mut sockets := [2]i32{}
+	assert C.socketpair(C.AF_UNIX, C.SOCK_STREAM, 0, &sockets[0]) == 0
+	defer { C.close(sockets[1]) }
+	mut w := new_regression_worker(server, epoll_fd)
+	mut cs := state_for(mut w, sockets[0])
+	cs.read_buf << u8(`G`)
+	mark_read_deadline(mut w, mut cs)
+	// Use an expired deadline to observe whether a scan happened without sleeps.
+	cs.read_start_ns = time.sys_mono_now() - 2 * time.second
+	// Stay throttled even if the scheduler delays the next call on a loaded runner.
+	w.last_timeout_sweep_ns = time.sys_mono_now() + time.hour
+	previous_sweep := w.last_timeout_sweep_ns
+	sweep_timeouts(mut w)
+	assert w.last_timeout_sweep_ns == previous_sweep
+	assert unsafe { w.conns[sockets[0]] != nil }
+	w.last_timeout_sweep_ns = 0
+	sweep_timeouts(mut w)
+	assert w.last_timeout_sweep_ns > 0
+	assert unsafe { w.conns[sockets[0]] == nil }
+	assert w.parked == 0
 }

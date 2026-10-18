@@ -8,7 +8,7 @@ import net
 import time
 
 const max_thread_pool_size = runtime.nr_cpus()
-const max_connection_size = 65536 // Max events per epoll_wait
+const max_connection_size = 65536 // Listening backlog and connection capacity.
 const default_max_request_body_size = 64 * 1024 * 1024
 
 const tiny_bad_request_response = 'HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()

@@ -35,6 +35,16 @@ Do not concurrently mutate the same binding map or private lookup cache.
 an intermediate string array; `names` resolves the sequence for a consumer that accepts text.
 Numeric copies preserve identities without cloning spelling storage. Generic constraints in
 `NodePayload` also use this list; `Node.generic_constraints()` supplies text to syntax consumers.
+`Node.generic_constraint_ids()` borrows their ordered numeric identities for read-only consumers.
+Enum backing annotations use the scalar `NodePayload.enum_backing_type` source ID.
+`Node.enum_backing_type_id()` reads it and `set_enum_backing_type_id()` replaces it while preserving
+other metadata. Generic name/attribute lists contain markers such as `json_as_number`, independently
+of enum storage types. Payload replacement, owned cloning, and arena promotion retain the ID;
+source formatters and stable cache signatures resolve its spelling only when rendering text.
+Debugger child-expression source types use `NodePayload.debugger_value_types` independently of
+binding names and display text. `Node.debugger_value_type_ids()` borrows the ordered immutable IDs;
+`set_debugger_value_type_ids()` and `node_payload_with_debugger_types()` copy caller ID arrays.
+`node_payload_with_type_metadata()` preserves both typed metadata slots in syntax clones.
 
 `TypeTextListBindings` stores ordered lists of source IDs. `set_ids` copies a caller's list;
 `append_ids` copies additional entries, preserving their order and empty spellings.

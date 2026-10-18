@@ -33,9 +33,9 @@ fn test_interface_box_scan_retains_every_multi_return_assignment_slot() {
 
 	t.collect_interface_assign_boxes(a.nodes[int(assignment)])
 
-	assert t.interface_boxed_types['Reader\nFirst']
-	assert t.interface_boxed_types['Reader\nLast']
-	assert !t.interface_boxed_types['Reader\nint']
+	assert t.interface_boxed_types[interface_boxed_type_key(flat.source_type_id('Reader'), flat.source_type_id('First'))]
+	assert t.interface_boxed_types[interface_boxed_type_key(flat.source_type_id('Reader'), flat.source_type_id('Last'))]
+	assert !t.interface_boxed_types[interface_boxed_type_key(flat.source_type_id('Reader'), flat.source_type_id('int'))]
 }
 
 fn test_interface_box_scan_retains_parallel_assignment_boxes() {
@@ -55,8 +55,8 @@ fn test_interface_box_scan_retains_parallel_assignment_boxes() {
 
 	t.collect_interface_assign_boxes(a.nodes[int(assignment)])
 
-	assert t.interface_boxed_types['Reader\nFirst']
-	assert t.interface_boxed_types['Reader\nLast']
+	assert t.interface_boxed_types[interface_boxed_type_key(flat.source_type_id('Reader'), flat.source_type_id('First'))]
+	assert t.interface_boxed_types[interface_boxed_type_key(flat.source_type_id('Reader'), flat.source_type_id('Last'))]
 }
 
 fn test_interface_box_scan_preserves_interface_alias_after_primitive_arguments() {
@@ -78,9 +78,9 @@ fn test_interface_box_scan_preserves_interface_alias_after_primitive_arguments()
 
 	t.collect_interface_call_boxes(call, a.nodes[int(call)])
 
-	assert t.interface_boxed_types['Reader\nSource']
-	assert !t.interface_boxed_types['Reader\nint']
-	assert !t.interface_boxed_types['Reader\nstring']
+	assert t.interface_boxed_types[interface_boxed_type_key(flat.source_type_id('Reader'), flat.source_type_id('Source'))]
+	assert !t.interface_boxed_types[interface_boxed_type_key(flat.source_type_id('Reader'), flat.source_type_id('int'))]
+	assert !t.interface_boxed_types[interface_boxed_type_key(flat.source_type_id('Reader'), flat.source_type_id('string'))]
 }
 
 fn test_interface_box_param_predicate_preserves_container_and_callback_types() {
@@ -143,8 +143,11 @@ fn test_interface_array_spread_classification_and_box_scan() {
 		t.collect_interface_append_boxes(a.nodes[int(append)])
 
 		boxed_type := if actual is types.Primitive { 'int' } else { 'string' }
-		assert t.interface_boxed_types['Value\n${boxed_type}']
-		expected_keys := ['Value\n${boxed_type}', 'Value\n${c_name(boxed_type)}']
+		assert t.interface_boxed_types[interface_boxed_type_key(flat.source_type_id('Value'), flat.source_type_id('${boxed_type}'))]
+		expected_keys := [
+			interface_boxed_type_key(flat.source_type_id('Value'), flat.source_type_id(boxed_type)),
+			interface_boxed_type_key(flat.source_type_id('Value'), flat.source_type_id(c_name(boxed_type))),
+		]
 		assert t.interface_boxed_types.keys().all(it in expected_keys)
 	}
 }

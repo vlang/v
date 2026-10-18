@@ -1,6 +1,5 @@
 module fastc
 
-import v.flat
 import os
 import strings
 import time
@@ -18,12 +17,12 @@ fn fastc_vmod_root_for_file(source_file string) string {
 }
 
 fn fastc_preferences_for_entry_paths(paths []string, prefs &pref.Preferences) pref.Preferences {
-	mut scoped := *prefs
+	mut scoped := fastc_target_runtime_preferences(prefs)
 	if scoped.module_resolution_root == '' && paths.len > 0 {
 		scoped.module_resolution_root = if os.is_dir(paths[0]) {
-			os.real_path(paths[0])
+			fastc_resolution_path(paths[0], prefs)
 		} else {
-			os.dir(os.real_path(paths[0]))
+			os.dir(fastc_resolution_path(paths[0], prefs))
 		}
 	}
 	return scoped
@@ -38,8 +37,71 @@ fn fastc_builtin_file_excluded(path string, prefs &pref.Preferences) bool {
 	if name == 'map.v' && 'v3_backend' in prefs.user_defines {
 		return true
 	}
+	if prefs.target_libc_headers && name == 'prealloc.c.v'
+		&& 'prealloc' !in prefs.user_defines {
+		// The target allocator does not use the hosted arena's atomics header.
+		return true
+	}
 	// FastC has no 128-bit integer lowering yet.
 	return name in ['int_d_v3_backend.v', 'string_d_v3_backend.v']
+}
+
+// fastc_sources_with_self_module_qualifiers adds the current module's short
+// qualifier after source resolution, without loading it as a new import.
+fn fastc_sources_with_self_module_qualifiers(sources []FastcSourceFile, prefs &pref.Preferences) ![]FastcSourceFile {
+	if !prefs.target_libc_headers {
+		return sources
+	}
+	mut globals := map[string]string{}
+	mut public_globals := map[string]bool{}
+	mut global_paths := map[string]string{}
+	for source in sources {
+		// Declaration flags are filled by the next collection phase, so use a
+		// cheap superset check before scanning globals at this earlier point.
+		if !source.source.contains('__global') {
+			continue
+		}
+		mut declarations := strings.new_builder(64)
+		mut declaration_origins := []FastcSourceOrigin{}
+		collect_global_names(source.source, source.path, source.header, prefs,
+			source.header.body_spans, mut globals, mut public_globals, mut global_paths,
+			mut declarations, mut declaration_origins)!
+		declarations.free()
+	}
+	mut result := []FastcSourceFile{cap: sources.len}
+	for source in sources {
+		module_name := source.header.module_name
+		qualifier := module_name.all_after_last('.')
+		mut shadowed := qualifier == '' || qualifier in source.header.imports
+		if !shadowed {
+			for key, _ in globals {
+				if key == qualifier || key.ends_with('.${qualifier}') {
+					shadowed = true
+					break
+				}
+			}
+		}
+		if shadowed {
+			result << source
+			continue
+		}
+		mut imports := source.header.imports.clone()
+		imports[qualifier] = module_name
+		result << FastcSourceFile{
+			...source
+			header: FastcSourceHeader{
+				...source.header
+				imports: imports
+			}
+		}
+	}
+	return result
+}
+
+// fastc_resolution_path keeps a staged source tree's lexical paths when its
+// files are symlinks to an unfiltered original tree.
+fn fastc_resolution_path(path string, prefs &pref.Preferences) string {
+	return if prefs.target_libc_headers { os.abs_path(path) } else { os.real_path(path) }
 }
 
 fn fastc_expand_entry_paths(paths []string, prefs &pref.Preferences) ![]string {
@@ -49,7 +111,7 @@ fn fastc_expand_entry_paths(paths []string, prefs &pref.Preferences) ![]string {
 			entries << path
 			continue
 		}
-		files := fastc_list_module_sources(os.real_path(path), prefs)
+		files := fastc_list_module_sources(fastc_resolution_path(path, prefs), prefs)
 		if files.len == 0 {
 			return error('fastc entry directory `${path}` has no V source files for this target')
 		}
@@ -65,6 +127,7 @@ fn fastc_expand_entry_paths(paths []string, prefs &pref.Preferences) ![]string {
 
 fn fastc_resolve_c_pseudo_paths(raw string, vroot string, source_file string) string {
 	mut result := raw
+	origin_file := if source_file.len > 0 { os.real_path(source_file) } else { source_file }
 	if result.contains('@VEXEROOT') && vroot.len > 0 {
 		result = result.replace('@VEXEROOT', vroot)
 	}
@@ -75,7 +138,7 @@ fn fastc_resolve_c_pseudo_paths(raw string, vroot string, source_file string) st
 		result = result.replace('@VMODROOT', fastc_vmod_root_for_file(source_file))
 	}
 	if result.contains('@DIR') {
-		dir := if source_file.len > 0 { os.dir(source_file) } else { os.getwd() }
+		dir := if origin_file.len > 0 { os.dir(origin_file) } else { os.getwd() }
 		result = result.replace('@DIR', os.real_path(dir))
 	}
 	// A quoted C include is relative to the V file that declared it. FastC hoists
@@ -87,7 +150,7 @@ fn fastc_resolve_c_pseudo_paths(raw string, vroot string, source_file string) st
 		if quote_start >= 0 && quote_end > quote_start {
 			include_path := result[quote_start + 1..quote_end]
 			if !os.is_abs_path(include_path) {
-				dir := if source_file.len > 0 { os.dir(source_file) } else { os.getwd() }
+				dir := if origin_file.len > 0 { os.dir(origin_file) } else { os.getwd() }
 				resolved := os.join_path(os.real_path(dir), include_path)
 				if os.exists(resolved) {
 					result = result[..quote_start + 1] + resolved + result[quote_end..]
@@ -165,7 +228,7 @@ fn fastc_resolve_source_files_deferring_memo(paths []string, prefs &pref.Prefere
 	// The entries' canonical paths key the memo and seed the walk's cache.
 	mut entry_real_paths := []string{cap: paths.len}
 	for path in paths {
-		entry_real_paths << os.real_path(path)
+		entry_real_paths << fastc_resolution_path(path, prefs)
 	}
 	memo_path := fastc_resolve_memo_path_of_real(entry_real_paths, prefs)
 	timer.mark('resolve.memo_path')
@@ -220,7 +283,7 @@ fn fastc_resolve_source_files_deferring_memo(paths []string, prefs &pref.Prefere
 	}
 	for path in paths {
 		entry_path := if prefs.building_v {
-			real_path_cache[path] or { os.real_path(path) }
+			real_path_cache[path] or { fastc_resolution_path(path, prefs) }
 		} else {
 			path
 		}
@@ -293,7 +356,7 @@ fn fastc_resolve_source_files_deferring_memo(paths []string, prefs &pref.Prefere
 			} else if cached := real_path_cache[queued.path] {
 				path = cached
 			} else {
-				path = os.real_path(queued.path)
+				path = fastc_resolution_path(queued.path, prefs)
 				real_path_cache[queued.path] = path
 			}
 			if seen[path] {
@@ -412,10 +475,8 @@ fn fastc_resolve_source_files_deferring_memo(paths []string, prefs &pref.Prefere
 	if module_aliases.len > 0 {
 		for index in 0 .. sources.len {
 			sources[index] = FastcSourceFile{
-				path:          sources[index].path
-				source:        sources[index].source
-				source_offset: sources[index].source_offset
-				header:        fastc_canonicalize_header_imports(sources[index].header, module_aliases)
+				...sources[index]
+				header: fastc_canonicalize_header_imports(sources[index].header, module_aliases)
 			}
 		}
 	}
@@ -585,7 +646,7 @@ fn fastc_resolve_memo_path(paths []string, prefs &pref.Preferences) string {
 // fastc_resolve_memo_path_of_real names the memo of the entries `real_paths`
 // (canonical) under the preferences that shape a resolution.
 fn fastc_resolve_memo_path_of_real(real_paths []string, prefs &pref.Preferences) string {
-	if os.getenv('V3_FASTC_NO_RESOLVE_MEMO') != '' {
+	if os.getenv('V3_FASTC_NO_RESOLVE_MEMO') != '' || prefs.target_libc_headers {
 		return ''
 	}
 	mut hash := u64(14695981039346656037)
@@ -1199,7 +1260,7 @@ const fastc_source_load_chunk_size = 4
 // (vfmt rewrites '\x00' as '\0', which the FastC parser rejects, so this
 // helper stays in a file vfmt does not verify.)
 fn fastc_module_cache_key(prefs &pref.Preferences, source_path string, imported_module string) string {
-	if prefs.building_v {
+	if prefs.building_v && !prefs.target_libc_headers {
 		return imported_module
 	}
 	return os.dir(source_path) + '\x00' + imported_module
@@ -1211,7 +1272,9 @@ fn fastc_resolve_module_dir(module_cache_key string, imported_module string, sou
 	}
 	mut module_dir := ''
 	mut canonical := false
-	if prefs.building_v {
+	if prefs.target_libc_headers {
+		module_dir = fastc_target_module_dir(imported_module, source_path, prefs)
+	} else if prefs.building_v {
 		vlib_module_dir := prefs.get_vlib_module_path(imported_module)
 		// Alias modules need the generic resolver to follow `alias.v`.
 		if os.is_dir(vlib_module_dir) && !os.is_file(os.join_path_single(vlib_module_dir, 'alias.v')) {
@@ -1223,11 +1286,60 @@ fn fastc_resolve_module_dir(module_cache_key string, imported_module string, sou
 	} else {
 		module_dir = prefs.get_module_path(imported_module, source_path)
 	}
-	if prefs.building_v && !canonical {
+	if prefs.building_v && !canonical && !prefs.target_libc_headers {
 		module_dir = os.real_path(module_dir)
 	}
 	module_path_cache[module_cache_key] = module_dir
 	return module_dir
+}
+
+fn fastc_target_module_from_root(root string, module_name string) string {
+	if alias_path := pref.resolve_module_alias_path(root, module_name) {
+		return alias_path
+	}
+	path := os.join_path(root, module_name.replace('.', os.path_separator))
+	return if os.is_dir(path) { path } else { '' }
+}
+
+// fastc_target_module_dir resolves project modules within the selected tree
+// before vlib, without following a staged source's symlink back to its origin.
+fn fastc_target_module_dir(module_name string, source_path string, prefs &pref.Preferences) string {
+	root := os.abs_path(prefs.module_resolution_root)
+	mut dir := os.dir(os.abs_path(source_path))
+	for dir == root || dir.starts_with(root + os.path_separator) {
+		module_dir := fastc_target_module_from_root(dir, module_name)
+		if module_dir != '' {
+			return module_dir
+		}
+		if dir == root {
+			break
+		}
+		dir = os.dir(dir)
+	}
+	project_module := fastc_target_module_from_root(root, module_name)
+	if project_module != '' {
+		return project_module
+	}
+	for search_root in prefs.module_search_paths {
+		module_dir := fastc_target_module_from_root(search_root, module_name)
+		if module_dir != '' {
+			return module_dir
+		}
+	}
+	module_dir := fastc_target_module_from_root(os.join_path(prefs.vroot, 'vlib'), module_name)
+	if module_dir != '' {
+		return module_dir
+	}
+	for search_root in prefs.installed_module_roots() {
+		installed := fastc_target_module_from_root(search_root, module_name)
+		if installed != '' {
+			return installed
+		}
+	}
+	// A source-stage may omit an entire module which a live source imports.
+	// Match ordinary C's lookup in the original project only for that missing
+	// dependency; imports back into the selected tree still take priority above.
+	return prefs.get_module_path(module_name, os.real_path(source_path))
 }
 
 // fastc_module_source_files lists and memoizes the backend-compatible source
@@ -1301,7 +1413,7 @@ fn fastc_canonicalize_header_imports(header FastcSourceHeader, module_aliases ma
 // declares (which V compiles as part of the same module). The entry file itself
 // and duplicates are filtered by the caller's seen-set.
 fn fastc_entry_module_files(entry_path string, prefs &pref.Preferences) []string {
-	entry_dir := os.dir(os.real_path(entry_path))
+	entry_dir := os.dir(fastc_resolution_path(entry_path, prefs))
 	if entry_dir == '' {
 		return []string{}
 	}
@@ -1416,6 +1528,9 @@ fn fastc_module_lifecycle_calls(ordered_sources []FastcSourceFile, functions map
 	for module_name in modules {
 		function_key := fastc_function_key(module_name, hook_name)
 		if signature := functions[function_key] {
+			if signature.is_global {
+				continue
+			}
 			if signature.parameter_types.ids.len > 0 {
 				return error('fastc parser does not support module `${hook_name}` with parameters in ${signature.path}')
 			}
@@ -1460,7 +1575,9 @@ fn fastc_append_module_sources(module_name string, sources []FastcSourceFile, mu
 		return
 	}
 	if module_name in visiting {
-		return error('fastc parser does not support cyclic module dependency involving `${module_name}`')
+		// A cycle has no complete dependency order. Stop only this active edge;
+		// the first visit still appends every module after its remaining imports.
+		return
 	}
 	visiting << module_name
 	mut dependencies := []string{}
@@ -1522,6 +1639,9 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 	mut has_globals := false
 	mut translated := false
 	mut brace_depth := 0
+	// Imports can follow declarations. A byte bound keeps ordinary files from
+	// tokenizing function bodies once their final possible import is behind us.
+	last_import_offset := source.last_index('import') or { -1 }
 	mut tok := scan.scan()
 	for tok != .eof {
 		if brace_depth == 0 && fastc_keyword_is_qualifier(tok, scan) {
@@ -1574,8 +1694,9 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 				continue
 			}
 		}
-		if brace_depth == 0 && tok in [.key_fn, .key_struct, .key_enum, .key_interface, .key_type,
-			.key_const, .key_global] {
+		if brace_depth == 0 && scan.pos > last_import_offset
+			&& tok in [.key_fn, .key_struct, .key_enum, .key_interface, .key_type, .key_const,
+				.key_global] {
 			break
 		}
 		if tok != .key_import || brace_depth > 0 {
@@ -1680,10 +1801,8 @@ fn fastc_apply_scan_flags(mut sources []FastcSourceFile, flags []FastcSourceScan
 	for i, file_flags in flags {
 		source_file := sources[start + i]
 		sources[start + i] = FastcSourceFile{
-			path:          source_file.path
-			source:        source_file.source
-			source_offset: source_file.source_offset
-			header:        fastc_header_with_scan_flags(source_file.header, file_flags)
+			...source_file
+			header: fastc_header_with_scan_flags(source_file.header, file_flags)
 		}
 	}
 }

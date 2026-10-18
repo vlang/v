@@ -58,9 +58,7 @@ fn main() {
 	assert run.output.trim_space() == '5'
 }
 
-// A call no instance is made for (here the argument is a field, which the call scan does
-// not resolve) reaches the stub, which must say so rather than return as if it had run.
-fn test_fastc_generic_called_without_an_instance_reports_the_call() {
+fn test_fastc_generic_called_with_a_mut_field_argument_is_instantiated() {
 	$if !macos && !linux {
 		return
 	}
@@ -74,6 +72,22 @@ fn main() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
+	program := os.join_path(root, 'program')
+	build := cmdexec.run(@VEXE, ['-b', 'fastc', '-o', program, root])
+	assert build.exit_code == 0, build.output
+	run := cmdexec.run(program, [])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '3', run.output
+}
+
+// A generic callback passed without a concrete instance must report that missing
+// instance instead of running a fake body.
+fn test_fastc_generic_called_without_an_instance_reports_the_call() {
+	$if !macos && !linux {
+		return
+	}
+	root := fastc_generic_fixture('uninferred', fastc_generic_sink + '\nfn invoke(callback fn (mut Sink, int), mut sink Sink) { callback(mut sink, 3) }\nfn main() { mut sink := Sink{}; invoke(pass, mut sink); println(sink.n) }\n')
+	defer { os.rmdir_all(root) or {} }
 	program := os.join_path(root, 'program')
 	build := cmdexec.run(@VEXE, ['-b', 'fastc', '-o', program, root])
 	assert build.exit_code == 0, build.output

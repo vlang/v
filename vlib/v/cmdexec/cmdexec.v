@@ -43,7 +43,8 @@ fn resolve_program(program string) ?string {
 		// lpApplicationName; only the separate command-line buffer goes through
 		// ExpandEnvironmentStringsW. Expand `%NAME%` here, both to probe the
 		// real path and to launch it.
-		return windows_resolve_program(expand_windows_env_vars(program))
+		exe := windows_resolve_program(expand_windows_env_vars(program)) or { return none }
+		return windows_extended_length_path(exe)
 	} $else {
 		if os.is_executable(program) {
 			// Pin the file checked above before Process can interpret a bare name
@@ -106,6 +107,77 @@ fn windows_resolve_program(program string) ?string {
 		return windows_resolve_executable_path(os.abs_path(program))
 	}
 	return os.find_abs_path_of_executable(program) or { return none }
+}
+
+// windows_extended_length_path returns `path` in the `\\?\` form once it reaches MAX_PATH
+// UTF-16 units, the form CreateProcessW can start past that length: `\\?\C:\...` for a
+// drive path and `\\?\UNC\server\share\...` for a UNC path, normalized first, since Windows
+// takes a `\\?\` path literally. Shorter paths, paths that already use a `\\?\` or `\\.\`
+// prefix, and paths that are not fully qualified (relative, `C:dir`, `\dir`) are returned
+// unchanged.
+fn windows_extended_length_path(path string) string {
+	$if !windows {
+		return path
+	}
+	return windows_extended_length_path_for(path)
+}
+
+// windows_extended_length_path_for is windows_extended_length_path without the host check,
+// so that it can be tested on any host.
+fn windows_extended_length_path_for(path string) string {
+	p := path.replace('/', '\\')
+	if windows_utf16_len(p) < 260 || p.starts_with('\\\\?\\') || p.starts_with('\\\\.\\') {
+		return path
+	}
+	if p.len >= 3 && p[0].is_letter() && p[1] == `:` && p[2] == `\\` {
+		return '\\\\?\\' + windows_normalize_path(p)
+	}
+	if p.starts_with('\\\\') && p.len > 2 && p[2] != `\\` {
+		return '\\\\?\\UNC\\' + windows_normalize_path(p)[2..]
+	}
+	return path
+}
+
+// windows_normalize_path resolves the `.` and `..` parts of the fully qualified Windows
+// path `p` and drops repeated separators, as Windows does for a path without `\\?\`.
+// The drive (`C:`) or the `\\server\share` of a UNC path is kept as the root.
+fn windows_normalize_path(p string) string {
+	unc := p.starts_with('\\\\')
+	parts := p.trim_left('\\').split('\\')
+	root_len := if unc { 2 } else { 1 }
+	if parts.len < root_len {
+		return p
+	}
+	mut kept := parts[..root_len].clone()
+	for part in parts[root_len..] {
+		if part == '' || part == '.' {
+			continue
+		}
+		if part == '..' {
+			if kept.len > root_len {
+				kept.delete_last()
+			}
+			continue
+		}
+		kept << part
+	}
+	normalized := kept.join('\\')
+	return if unc {
+		'\\\\' + normalized
+	} else if kept.len == root_len {
+		normalized + '\\'
+	} else {
+		normalized
+	}
+}
+
+// windows_utf16_len returns the length of `s` in UTF-16 code units, the unit of MAX_PATH.
+fn windows_utf16_len(s string) int {
+	mut n := 0
+	for r in s.runes() {
+		n += if u32(r) > 0xFFFF { 2 } else { 1 }
+	}
+	return n
 }
 
 // windows_resolve_executable_path returns the candidate CreateProcessW would

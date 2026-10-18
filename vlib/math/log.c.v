@@ -14,9 +14,13 @@ pub fn log(x f64) f64 {
 }
 
 // log2 returns the binary logarithm of x (float64).
-// The special cases are the same as for log.
+// The special cases are the same as for log. Exact powers of two return their exponent.
 @[inline]
 pub fn log2(x f64) f64 {
+	frac, expn := frexp(x)
+	if frac == 0.5 {
+		return f64(expn - 1)
+	}
 	return C.log2(x)
 }
 

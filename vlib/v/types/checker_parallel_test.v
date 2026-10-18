@@ -155,18 +155,18 @@ fn test_static_method_name_index_preserves_aliases_and_late_signatures() {
 	tc.collect(a)
 	assert tc.static_associated_method_names['make']
 	key := flat.encode_static_type_method_name('Widget', 'make')
-	assert tc.static_assoc_fn_key_for_base('Widget', 'make')? == key
-	assert tc.static_assoc_fn_key_for_base('Alias', 'make')? == key
-	assert tc.static_assoc_fn_key_for_base('Widget', 'missing') == none
+	assert tc.static_assoc_fn_key_for_base(flat.source_type_id('Widget'), 'make')? == key
+	assert tc.static_assoc_fn_key_for_base(flat.source_type_id('Alias'), 'make')? == key
+	assert tc.static_assoc_fn_key_for_base(flat.source_type_id('Widget'), 'missing') == none
 	worker := tc.fork_for_parallel_check()
-	assert worker.static_assoc_fn_key_for_base('Alias', 'make')? == key
-	assert worker.static_assoc_fn_key_for_base('Widget', 'missing') == none
+	assert worker.static_assoc_fn_key_for_base(flat.source_type_id('Alias'), 'make')? == key
+	assert worker.static_assoc_fn_key_for_base(flat.source_type_id('Widget'), 'missing') == none
 	worker.free_parallel_check_worker_cache()
 
 	late_key := flat.encode_static_type_method_name('Widget', 'late')
 	tc.fn_ret_types[late_key] = Type(int_)
 	tc.fn_param_types[late_key] = []Type{}
-	assert tc.static_assoc_fn_key_for_base('Widget', 'late')? == late_key
+	assert tc.static_assoc_fn_key_for_base(flat.source_type_id('Widget'), 'late')? == late_key
 }
 
 fn test_type_promotion_cache_preserves_misses_and_distinct_live_payloads() {
@@ -548,10 +548,10 @@ fn test_parallel_interface_indexes_outlive_worker_scopes() {
 	mut names := tc.interface_names.keys()
 	names.sort()
 	assert names.len == expected.len
-	mut expected_ids := map[string]map[string]int{}
+	mut expected_ids := map[string]map[u32]int{}
 	for iface in names {
-		assert tc.interface_impl_names(iface) == expected[iface], iface
-		expected_ids[iface] = tc.interface_type_ids(iface)
+		assert flat.TypeTextList{ ids: tc.interface_impl_names(flat.source_type_id(iface)) }.names() == expected[iface], iface
+		expected_ids[iface] = tc.interface_type_ids(flat.source_type_id(iface))
 	}
 	expected_signature := tc.interface_impl_set_signature()
 	a.ensure_workers(2)
@@ -560,11 +560,13 @@ fn test_parallel_interface_indexes_outlive_worker_scopes() {
 	for _ in 0 .. 4 {
 		// This call releases each worker's scratch arena before returning. Later
 		// rounds allocate another set of indexes while the first snapshot stays live.
-		assert tc.prepare_interface_impl_indexes_parallel(names)
+		assert tc.prepare_interface_impl_indexes_parallel(flat.TypeTextList.from_names(names).ids)
 		for iface in names {
-			prepared := tc.pre_transform_interface_impl_names(iface) or {
-				panic('missing prepared interface index for ${iface}')
-			}
+			prepared := flat.TypeTextList{
+				ids: tc.pre_transform_interface_impl_names(flat.source_type_id(iface)) or {
+					panic('missing prepared interface index for ${iface}')
+				}
+			}.names()
 			assert prepared == expected[iface], '${iface}: ${prepared}'
 			if iface !in retained {
 				retained[iface] = prepared
@@ -574,7 +576,7 @@ fn test_parallel_interface_indexes_outlive_worker_scopes() {
 		tc.freeze_pre_transform_interface_impl_names()
 		assert tc.interface_impl_set_signature() == expected_signature
 		for iface in names {
-			assert tc.interface_type_ids(iface) == expected_ids[iface], iface
+			assert tc.interface_type_ids(flat.source_type_id(iface)) == expected_ids[iface], iface
 		}
 	}
 }
@@ -757,7 +759,7 @@ fn test_generic_receiver_pattern_index_survives_rebuild_and_worker_fork() {
 		tc.fn_ret_types['irrelevant_${i}'] = Type(int_)
 	}
 
-	matched := tc.generic_receiver_method_pattern_match('Box', flat.TypeTextList.from_names(['[]int']).ids, 'flatten') or {
+	matched := tc.generic_receiver_method_pattern_match(flat.source_type_id('Box'), flat.TypeTextList.from_names(['[]int']).ids, 'flatten') or {
 		assert false
 		return
 	}

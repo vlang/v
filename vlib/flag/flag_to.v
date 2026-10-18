@@ -68,54 +68,30 @@ fn assign_single_flag_value[T](mut target T, default_value T, f FlagData, struct
 	_ = target
 	a_or_r := f.arg or { '${f.repeats}' }
 	$if T is int {
-		if !a_or_r.is_int() {
-			return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field_name}`')
-		}
-		target = a_or_r.int()
+		// bit size 0 is the size of `int` on the target
+		target = int(int_arg(a_or_r, 0, f, struct_name, field_name)!)
 	} $else $if T is i64 {
-		if !a_or_r.is_int() {
-			return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field_name}`')
-		}
-		target = a_or_r.i64()
+		target = int_arg(a_or_r, 64, f, struct_name, field_name)!
 	} $else $if T is u64 {
-		if !a_or_r.is_int() {
-			return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field_name}`')
-		}
-		target = a_or_r.u64()
+		target = uint_arg(a_or_r, 64, f, struct_name, field_name)!
 	} $else $if T is i32 {
-		if !a_or_r.is_int() {
-			return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field_name}`')
-		}
-		target = a_or_r.i32()
+		target = i32(int_arg(a_or_r, 32, f, struct_name, field_name)!)
 	} $else $if T is u32 {
-		if !a_or_r.is_int() {
-			return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field_name}`')
-		}
-		target = a_or_r.u32()
+		target = u32(uint_arg(a_or_r, 32, f, struct_name, field_name)!)
 	} $else $if T is i16 {
-		if !a_or_r.is_int() {
-			return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field_name}`')
-		}
-		target = a_or_r.i16()
+		target = i16(int_arg(a_or_r, 16, f, struct_name, field_name)!)
 	} $else $if T is u16 {
-		if !a_or_r.is_int() {
-			return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field_name}`')
-		}
-		target = a_or_r.u16()
+		target = u16(uint_arg(a_or_r, 16, f, struct_name, field_name)!)
 	} $else $if T is i8 {
-		if !a_or_r.is_int() {
-			return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field_name}`')
-		}
-		target = a_or_r.i8()
+		target = i8(int_arg(a_or_r, 8, f, struct_name, field_name)!)
 	} $else $if T is u8 {
-		if !a_or_r.is_int() {
-			return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field_name}`')
-		}
-		target = a_or_r.u8()
+		target = u8(uint_arg(a_or_r, 8, f, struct_name, field_name)!)
 	} $else $if T is f32 {
-		target = f.arg or { return error('failed appending ${f.raw} to ${field_name}') }.f32()
+		target = f32(float_arg(f.arg or { return error('failed appending ${f.raw} to ${field_name}') },
+			32, f, struct_name, field_name)!)
 	} $else $if T is f64 {
-		target = f.arg or { return error('failed appending ${f.raw} to ${field_name}') }.f64()
+		target = float_arg(f.arg or { return error('failed appending ${f.raw} to ${field_name}') },
+			64, f, struct_name, field_name)!
 	} $else $if T is bool {
 		if arg := f.arg {
 			return error('can not assign `${arg}` to bool field `${field_name}`')
@@ -128,34 +104,73 @@ fn assign_single_flag_value[T](mut target T, default_value T, f FlagData, struct
 	}
 }
 
-fn append_multi_flag_value[T](mut target T, f FlagData, field_name string) ! {
+fn append_multi_flag_value[T](mut target T, f FlagData, struct_name string, field_name string) ! {
 	$if T is []string {
 		target << f.arg or { return error('failed appending ${f.raw} to ${field_name}') }.str()
-	} $else $if T is []int {
-		target << f.arg or { return error('failed appending ${f.raw} to ${field_name}') }.int()
-	} $else $if T is []i64 {
-		target << f.arg or { return error('failed appending ${f.raw} to ${field_name}') }.i64()
-	} $else $if T is []u64 {
-		target << f.arg or { return error('failed appending ${f.raw} to ${field_name}') }.u64()
-	} $else $if T is []i32 {
-		target << f.arg or { return error('failed appending ${f.raw} to ${field_name}') }.i32()
-	} $else $if T is []u32 {
-		target << f.arg or { return error('failed appending ${f.raw} to ${field_name}') }.u32()
-	} $else $if T is []i16 {
-		target << f.arg or { return error('failed appending ${f.raw} to ${field_name}') }.i16()
-	} $else $if T is []u16 {
-		target << f.arg or { return error('failed appending ${f.raw} to ${field_name}') }.u16()
-	} $else $if T is []i8 {
-		target << f.arg or { return error('failed appending ${f.raw} to ${field_name}') }.i8()
-	} $else $if T is []u8 {
-		target << f.arg or { return error('failed appending ${f.raw} to ${field_name}') }.u8()
-	} $else $if T is []f32 {
-		target << f.arg or { return error('failed appending ${f.raw} to ${field_name}') }.f32()
-	} $else $if T is []f64 {
-		target << f.arg or { return error('failed appending ${f.raw} to ${field_name}') }.f64()
 	} $else {
-		return error('field type: ${T.name} for multi value ${field_name} is not supported')
+		arg := f.arg or { return error('failed appending ${f.raw} to ${field_name}') }
+		$if T is []int {
+			target << int(int_arg(arg, 0, f, struct_name, field_name)!)
+		} $else $if T is []i64 {
+			target << int_arg(arg, 64, f, struct_name, field_name)!
+		} $else $if T is []u64 {
+			target << uint_arg(arg, 64, f, struct_name, field_name)!
+		} $else $if T is []i32 {
+			target << i32(int_arg(arg, 32, f, struct_name, field_name)!)
+		} $else $if T is []u32 {
+			target << u32(uint_arg(arg, 32, f, struct_name, field_name)!)
+		} $else $if T is []i16 {
+			target << i16(int_arg(arg, 16, f, struct_name, field_name)!)
+		} $else $if T is []u16 {
+			target << u16(uint_arg(arg, 16, f, struct_name, field_name)!)
+		} $else $if T is []i8 {
+			target << i8(int_arg(arg, 8, f, struct_name, field_name)!)
+		} $else $if T is []u8 {
+			target << u8(uint_arg(arg, 8, f, struct_name, field_name)!)
+		} $else $if T is []f32 {
+			target << f32(float_arg(arg, 32, f, struct_name, field_name)!)
+		} $else $if T is []f64 {
+			target << float_arg(arg, 64, f, struct_name, field_name)!
+		} $else {
+			return error('field type: ${T.name} for multi value ${field_name} is not supported')
+		}
 	}
+}
+
+// int_arg converts the integer `arg`, given with the flag `f`, for the signed field
+// `struct_name.field_name` of `bit_size` bits (0 for `int`).
+// It returns an error, when `arg` is not an integer, or does not fit in the field.
+fn int_arg(arg string, bit_size int, f FlagData, struct_name string, field_name string) !i64 {
+	return parse_int_value(arg, bit_size) or {
+		number_arg_error(err, arg, f, struct_name, field_name)
+	}
+}
+
+// uint_arg is like int_arg, for an unsigned field.
+fn uint_arg(arg string, bit_size int, f FlagData, struct_name string, field_name string) !u64 {
+	return parse_uint_value(arg, bit_size) or {
+		number_arg_error(err, arg, f, struct_name, field_name)
+	}
+}
+
+// float_arg converts the number `arg`, given with the flag `f`, for the `f32` or `f64` field
+// `struct_name.field_name` (`bit_size` 32 or 64).
+// It returns an error, when `arg` is not a number, or is too large for the field.
+fn float_arg(arg string, bit_size int, f FlagData, struct_name string, field_name string) !f64 {
+	return parse_float_value(arg, bit_size) or {
+		number_arg_error(err, arg, f, struct_name, field_name)
+	}
+}
+
+// number_arg_error returns the error for the argument `arg` of the flag `f`, that could not
+// be converted for the field `struct_name.field_name`, because of `err`.
+fn number_arg_error(err IError, arg string, f FlagData, struct_name string, field_name string) IError {
+	kind := match err.msg() {
+		value_out_of_range { 'out of range' }
+		'not a number' { 'non-number' }
+		else { 'non-integer' }
+	}
+	return error('can not assign ${kind} value `${arg}` from flag `${f.raw}` to `${struct_name}.${field_name}`')
 }
 
 fn (sf StructField) shortest_match_name() ?string {
@@ -984,7 +999,7 @@ pub fn (fm FlagMapper) to_struct[T](defaults ?T) !T {
 				assign_single_flag_value(mut result.$(field.name), the_default.$(field.name), f, struct_name, field.name)!
 			}
 			for f in fm.array_field_map_flag[field.name] {
-				append_multi_flag_value(mut result.$(field.name), f, field.name)!
+				append_multi_flag_value(mut result.$(field.name), f, struct_name, field.name)!
 			}
 		}
 	} $else {

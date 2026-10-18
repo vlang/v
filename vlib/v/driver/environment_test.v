@@ -744,7 +744,7 @@ fn test_scoped_type_metadata_preserves_generic_interface_parameters() {
 	assert !scoped_value_owned(scope, params.data)
 	assert !scoped_value_owned(scope, params[0].str)
 	prealloc_scope_free_for_v3(scope)
-	key := tc.interface_method_signature_key('Store', 'get') or { panic('missing interface method') }
+	key := tc.interface_method_signature_key(flat.source_type_id('Store'), 'get') or { panic('missing interface method') }
 	assert key == 'Store[T].get'
 }
 

@@ -122,7 +122,7 @@ fn (g &Parser) unqualified_function_key(name string) string {
 	}
 	local_key := fastc_function_key(g.module_name, name)
 	mut key := local_key
-	if local_key !in g.functions {
+	if local_key !in g.functions && local_key !in g.mono_functions {
 		builtin_key := fastc_function_key('builtin', name)
 		if builtin_key in g.functions {
 			key = builtin_key
@@ -141,11 +141,18 @@ fn (g &Parser) c_function_name_for_key(key string) string {
 	return g.c_function_name_or(key, fastc_c_function_name_for_key(key))
 }
 
+// c_function_name_or resolves the C symbol of function `key` for both its
+// definition and every reference to it. The program's entry (`main` of the main
+// module, outside test builds where it is an ordinary function) is named by the
+// target: `wmain` on Windows, so a call to or function value of `main` reaches
+// the symbol the entry is defined as.
 fn (g &Parser) c_function_name_or(key string, conventional string) string {
 	if cached := g.c_function_name_memo[key] {
 		return cached
 	}
-	c_name := if compact_name := g.function_c_names[key] {
+	c_name := if key == 'main' && !g.prefs.is_test {
+		fastc_c_main_name(g.prefs)
+	} else if compact_name := g.function_c_names[key] {
 		compact_name
 	} else {
 		conventional

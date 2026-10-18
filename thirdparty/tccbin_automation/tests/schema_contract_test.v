@@ -1923,11 +1923,11 @@ fn test_legacy_onboarding_registry_is_dormant_until_one_canonical_policy_is_revi
 	windows_policy_issues := validate_schema_source('onboarding-policy.schema.json',
 		windows_policy_source, 'legacy-onboarding-windows-policy')
 	assert windows_policy_issues.len == 0
-	assert (windows_policy.object_value('patches') or { panic('patches missing') }).array_value.len == 9
+	assert (windows_policy.object_value('patches') or { panic('patches missing') }).array_value.len == 13
 	assert (windows_policy.object_value('transforms') or { panic('transforms missing') }).array_value.len == 2
 	assert (windows_policy.object_value('header_effects') or { panic('header effects missing') }).array_value.len == 3
 	assert (windows_policy.object_value('integrations') or { panic('integrations missing') }).array_value.len == 1
-	assert (windows_policy.object_value('probes') or { panic('probes missing') }).array_value.len == 23
+	assert (windows_policy.object_value('probes') or { panic('probes missing') }).array_value.len == 27
 	windows_payload := windows_policy.object_value('payload_policy') or {
 		panic('payload policy missing')
 	}
@@ -2285,7 +2285,7 @@ fn test_manifest_source_matrix_transforms_symlinks_and_control_boundaries_are_cl
 		windows.replace_once('"id": "vlang-header-compat"', '"id": "other-header-compat"'),
 		windows.replace_once('"path": "vlang-header-compat.patch"', '"path": "other.patch"'),
 		windows.replace_once('"owner": "bundle-overlay"', '"owner": "v-libgc"'),
-		windows.replace_once('"order": 10', '"order": 12'),
+		windows.replace_once('"order": 14', '"order": 16'),
 		windows.replace_once('"apply_stage": "bundle-payload-post-copy"',
 			'"apply_stage": "v-libgc-source-prebuild"'),
 		windows.replace_once('"header-gmtime-s", "header-condition-variable", "header-faststorefence"',

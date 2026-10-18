@@ -27,9 +27,9 @@ fn (mut t Transformer) transform_return_with_sumtype_wrap(id flat.NodeId, node f
 	child_id := t.a.child(&node, 0)
 	child := t.a.nodes[int(child_id)]
 	if child.kind == .struct_init && child.value.len > 0 {
-		variants := flat.TypeTextList{ ids: t.sum_types.type_ids(t.cur_fn_ret_type_text()) or { []u32{} } }.names()
+		variants := t.sum_types.type_ids(t.cur_fn_ret_type_text()) or { []u32{} }
 		for v in variants {
-			if v == child.value {
+			if flat.source_type_name(v) == child.value {
 				// This is a variant being returned as a sum type.
 				// For now, pass through - C gen handles the wrapping.
 				// TODO: Generate explicit sum type wrapping here.
@@ -182,10 +182,21 @@ fn (mut t Transformer) transformed_branch_error_return(value_id flat.NodeId, ret
 	if !t.return_expr_is_propagated_err(value_id, payload_type_source_id) {
 		return none
 	}
-	err_expr := t.transform_expr(value_id)
-	ret := t.make_none_return_stmt_with_err_expr(err_expr)
+	ret := t.make_none_return_stmt_with_err_expr(t.transform_returned_error(value_id))
 	t.mark_transformed_return(ret, source_return_id)
 	return ret
+}
+
+// transform_returned_error lowers the error of a failed-result return. When ownership analysis
+// decided that the error is read from borrowed storage, such as a module-level `IError`
+// constant, the caller receives an independent clone that it may free.
+fn (mut t Transformer) transform_returned_error(value_id flat.NodeId) flat.NodeId {
+	err_expr := t.transform_expr(value_id)
+	mut err_type := t.return_ierror_expr_type(value_id)
+	if err_type == 0 {
+		err_type = flat.source_type_id('IError')
+	}
+	return t.clone_borrowed_projection(value_id, err_expr, err_type)
 }
 
 fn (mut t Transformer) return_expr_is_propagated_err(id flat.NodeId, payload_type_id u32) bool {
@@ -295,9 +306,7 @@ fn (t &Transformer) return_ierror_expr_type(id flat.NodeId) u32 {
 		}
 	}
 	if typ_source_id := t.return_ierror_type_candidate(flat.source_type_id(primary_type)) {
-		typ := flat.source_type_name(typ_source_id)
-
-		return flat.source_type_id(typ)
+		return typ_source_id
 	}
 	for typ in [node.typ_text(), flat.source_type_name(t.raw_checker_node_type(id)),
 		flat.source_type_name(t.original_expr_type(id)), flat.source_type_name(t.node_type(id))] {
@@ -316,7 +325,7 @@ fn (t &Transformer) return_ierror_type_candidate(typ_id u32) ?u32 {
 	if typ_id == u32(0) || typ_id == flat.source_type_unknown || typ.contains('unknown') {
 		return none
 	}
-	if t.is_ierror_type(typ) {
+	if t.is_ierror_type(typ_id) {
 		return typ_id
 	}
 	if !t.is_type_alias_name(t.trim_pointer_type(typ_id)) {
@@ -324,8 +333,7 @@ fn (t &Transformer) return_ierror_type_candidate(typ_id u32) ?u32 {
 	}
 	resolved_source_id := t.alias_str_resolved_base_type(typ_id)
 	resolved_comparison_type_id := resolved_source_id
-	resolved := flat.source_type_name(resolved_comparison_type_id)
-	if resolved_comparison_type_id != typ_comparison_type_id_2 && t.is_ierror_type(resolved) {
+	if resolved_comparison_type_id != typ_comparison_type_id_2 && t.is_ierror_type(resolved_source_id) {
 		return resolved_source_id
 	}
 	return none
@@ -428,9 +436,7 @@ fn (mut t Transformer) try_expand_return_optional_expr(source_return_id flat.Nod
 		return none
 	}
 	ret_type_source_id := t.qualify_optional_type(t.cur_fn_ret_type)
-	ret_type := flat.source_type_name(ret_type_source_id)
 	expr_type_source_id := t.qualify_optional_type(expr_type0_source_id)
-	expr_type := flat.source_type_name(expr_type_source_id)
 	new_expr := t.clone_borrowed_storage_projection(child_id, t.transform_optional_wrapper_expr(child_id), expr_type_source_id)
 	mut result := []flat.NodeId{}
 	t.drain_pending(mut result)
@@ -439,7 +445,7 @@ fn (mut t Transformer) try_expand_return_optional_expr(source_return_id flat.Nod
 	tmp_ident := t.make_ident(tmp_name)
 	ok_cond := t.make_selector(tmp_ident, 'ok', flat.source_type_bool)
 	value := t.make_selector(t.make_ident(tmp_name), 'value', t.optional_base_type(expr_type_source_id))
-	then_block := t.try_convert_forwarded_wrapped_multi_return(value, expr_type, ret_type, source_return_id) or {
+	then_block := t.try_convert_forwarded_wrapped_multi_return(value, expr_type_source_id, ret_type_source_id, source_return_id) or {
 		t.make_block([t.make_transformed_return(value, ret_type_source_id, source_return_id)])
 	}
 	err_expr := t.result_error_expr(t.make_ident(tmp_name))
@@ -450,14 +456,14 @@ fn (mut t Transformer) try_expand_return_optional_expr(source_return_id flat.Nod
 	return result
 }
 
-fn (mut t Transformer) try_convert_forwarded_wrapped_multi_return(value_id flat.NodeId, actual_wrapper string, expected_wrapper string, source_return_id flat.NodeId) ?flat.NodeId {
+fn (mut t Transformer) try_convert_forwarded_wrapped_multi_return(value_id flat.NodeId, actual_wrapper u32, expected_wrapper u32, source_return_id flat.NodeId) ?flat.NodeId {
 	if isnil(t.tc) {
 		return none
 	}
-	actual_types := multi_return_types_from_type(t.tc.parse_type(flat.source_type_id(actual_wrapper)), 0) or {
+	actual_types := multi_return_types_from_type(t.tc.parse_type(actual_wrapper), 0) or {
 		return none
 	}
-	expected_types := multi_return_types_from_type(t.tc.parse_type(flat.source_type_id(expected_wrapper)), 0) or {
+	expected_types := multi_return_types_from_type(t.tc.parse_type(expected_wrapper), 0) or {
 		return none
 	}
 	if actual_types.len != expected_types.len {
@@ -482,7 +488,7 @@ fn (mut t Transformer) try_convert_forwarded_wrapped_multi_return(value_id flat.
 	}
 	mut then_body := t.pending_stmts[pending_start..].clone()
 	t.pending_stmts = t.pending_stmts[..pending_start].clone()
-	then_body << t.make_transformed_return_values(return_values, flat.source_type_id(expected_wrapper), source_return_id)
+	then_body << t.make_transformed_return_values(return_values, expected_wrapper, source_return_id)
 	return t.make_block(then_body)
 }
 
@@ -530,7 +536,6 @@ fn (t &Transformer) return_expr_is_optional_result(id flat.NodeId) bool {
 	}
 	if node.kind == .ident {
 		typ_source_id := t.var_type(node.value)
-		typ := flat.source_type_name(typ_source_id)
 		return t.is_optional_type_name(typ_source_id) || t.is_optional_type_name(node.typ)
 	}
 	if node.kind in [.selector, .index, .if_expr, .match_stmt, .or_expr] {
@@ -1326,7 +1331,7 @@ fn (mut t Transformer) match_branch_return_block(branch flat.Node, body_start_id
 		}
 		return t.make_block(all)
 	}
-	expected_ret := flat.source_type_name(t.optional_base_type(ret_typ_id))
+	expected_ret := t.optional_base_type(ret_typ_id)
 	actual_tail := if tail_expr_node.kind == .enum_val {
 		t.transform_enum_shorthand(tail_expr, tail_expr_node, expected_ret)
 	} else {
@@ -1471,7 +1476,12 @@ fn (mut t Transformer) build_return_match_type_branch_chain(match_expr_id flat.N
 		t.push_smartcast(orig_subj, sc.variant_name, sc.sum_type_name)
 		sc_pushed++
 	}
+	// Every variant of the arm transforms the same body nodes, and a lowered
+	// body can keep the source nodes it did not change, so none of them may be
+	// rewritten in place.
+	t.inplace_rewrite_holds++
 	body_block := t.match_branch_return_block(branch, n_conds, ret_typ_id, source_return_id, []flat.NodeId{})
+	t.inplace_rewrite_holds--
 	for _ in 0 .. sc_pushed {
 		t.pop_smartcast()
 	}

@@ -25,7 +25,7 @@ pub fn (tc &TypeChecker) named_variant_payload_type(variant_type_id u32) ?Type {
 	if !flat.is_named_variant_type_name(variant_type) {
 		return none
 	}
-	return tc.struct_field_type(variant_type, flat.named_variant_payload_field)
+	return tc.struct_field_type(variant_type_id, flat.named_variant_payload_field)
 }
 
 // declare_named_variant_binding declares the payload binding of a single
