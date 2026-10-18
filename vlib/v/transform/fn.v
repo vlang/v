@@ -9156,7 +9156,9 @@ fn (mut t Transformer) lower_sum_str(expr flat.NodeId, sum_name_id u32) flat.Nod
 		t.stringify_stack.delete_last()
 	}
 	base := t.stable_transformed_expr_for_reuse(expr, resolved_sum_source_id_2, 'sum_str')
-	tag := t.make_selector_op(base, 'typ', flat.source_type_int, if sum_name.starts_with('&') {
+	// A variant can declare its own `typ` field; the internal tag selector cannot collide
+	// with it, unlike a plain `.typ` selector, which cgen resolves as that field.
+	tag := t.make_sum_tag_selector(base, if sum_name.starts_with('&') {
 		.arrow
 	} else {
 		.dot
@@ -11284,6 +11286,10 @@ fn (mut t Transformer) make_compiler_default_clone_value(source flat.NodeId, typ
 			}
 		}
 	}
+	// Without a `clone()` of its own (dispatched above), a union is copied bitwise.
+	if t.type_is_union(flat.source_type_id(clean)) {
+		return source
+	}
 	if isnil(t.tc) || (!t.tc.named_type_implements_marker(flat.source_type_id(clean), flat.source_type_id('IClone'))
 		&& t.tc.ownership_default_clone_missing_method(t.tc.parse_type(flat.source_type_id(clean))) != none) {
 		return source
@@ -11732,6 +11738,23 @@ fn (t &Transformer) compiler_default_clone_field_type(owner_id u32, field FieldI
 	}
 }
 
+// type_is_union reports whether `typ_id` names a `union`. Its members share their
+// storage and none of them is known to be the live one, so a copy is bitwise, unless
+// the union declares a `clone()` method: cloning a `string` member would overwrite the
+// integer or float payload stored there.
+fn (t &Transformer) type_is_union(typ_id u32) bool {
+	if isnil(t.tc) || typ_id == 0 {
+		return false
+	}
+	return flat.source_type_name(typ_id) in t.tc.unions
+}
+
+// union_has_clone_method reports whether a union declares the `clone()` method that
+// copies it instead of the bitwise copy.
+fn (t &Transformer) union_has_clone_method(typ_id u32) bool {
+	return !isnil(t.tc) && t.tc.ownership_type_has_clone_method(t.tc.parse_type(typ_id))
+}
+
 fn (t &Transformer) compiler_default_clone_type_needs_work(typ_id u32) bool {
 	return t.compiler_default_clone_type_needs_work_seen(typ_id, []u32{})
 }
@@ -11741,6 +11764,7 @@ fn (t &Transformer) compiler_default_clone_type_needs_work_seen(typ_id u32, seen
 	shape := flat.source_type_shape(clean)
 	if clean == 0 || shape.has(.pointer) || clean in seen_ids { return false }
 	if !isnil(t.tc) && types.unalias_type(t.tc.parse_type(clean)) is types.Enum { return false }
+	if t.type_is_union(clean) { return t.union_has_clone_method(clean) }
 	if clean in [transform_source_type_thread, transform_source_type_chan] || shape.has(.thread_type) || shape.has(.channel_type) {
 		return false
 	}
