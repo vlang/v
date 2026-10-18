@@ -431,6 +431,31 @@ vc_source_win="$work_root/v_win.c"
 materialize_vc_artifact "$vc_root" "$lock_v_c" "$vc_source_v"
 materialize_vc_artifact "$vc_root" "$lock_v_win_c" "$vc_source_win"
 
+# build_v_program builds the package named by the last argument with the compiler named by the first,
+# writing the program to the second. Anything in between is passed to the compiler as flags.
+# Windows builds the C first and links the native runtime helpers the way makev.bat does: V emits
+# their declarations only in C output mode, so a direct build fails when cc treats implicit
+# declarations as errors (gcc 14 and later).
+build_v_program() {
+	local compiler=$1 output=$2 package=${!#}
+	local -a flags=("${@:3:$(($# - 3))}")
+	case "$(uname -s)" in
+		MINGW* | MSYS* | CYGWIN*)
+			"$compiler" -no-parallel -nocache "${flags[@]}" -o "$output.c" "$package"
+			"$cc_command" -std=gnu11 -municode -w -fwrapv -o "$output" "$output.c" \
+				vlib/builtin/core_windows.c vlib/v/modulecache/file_metadata.c \
+				vlib/time/ticks_windows.c vlib/v/winthread_helper_windows.c \
+				cmd/v/toolcache_windows_helpers.c vlib/sync/thread_helper.c \
+				-I thirdparty/stdatomic/win -ldbghelp -lws2_32 -lbcrypt -ladvapi32 \
+				-Wl,-stack=33554432 || die 'Windows V program link failed'
+			rm -f -- "$output.c"
+			;;
+		*)
+			"$compiler" -no-parallel -nocache -cc "$cc_command" "${flags[@]}" -o "$output" "$package"
+			;;
+	esac
+}
+
 cc_command=$(resolve_cc)
 case "$(uname -s)" in
 	MINGW* | MSYS* | CYGWIN*)
@@ -455,15 +480,12 @@ validate_materialized_vc_artifact "$vc_root" "$vc_source"
 
 (
 	cd -P -- "$private_contract_root"
-	"$private_contract_root/v1${exe_suffix}" -no-parallel -nocache -cc "$cc_command" \
-		-o "$private_contract_root/v2${exe_suffix}" -gc none cmd/v
-	"$private_contract_root/v2${exe_suffix}" -no-parallel -nocache -cc "$cc_command" \
-		-o "$private_contract_root/v${exe_suffix}" -gc none cmd/v
-		"$private_contract_root/v${exe_suffix}" -no-parallel -nocache -cc "$cc_command" \
-			-gc none \
-			-d "tccbin_contract_repository=${contract_repository}" \
-			-d "tccbin_contract_sha=${contract_sha}" \
-			-o "$cli_path" thirdparty/tccbin_automation/bin/cmd
+	build_v_program "$private_contract_root/v1${exe_suffix}" "$private_contract_root/v2${exe_suffix}" -gc none cmd/v
+	build_v_program "$private_contract_root/v2${exe_suffix}" "$private_contract_root/v${exe_suffix}" -gc none cmd/v
+	build_v_program "$private_contract_root/v${exe_suffix}" "$cli_path" -gc none \
+		-d "tccbin_contract_repository=${contract_repository}" \
+		-d "tccbin_contract_sha=${contract_sha}" \
+		thirdparty/tccbin_automation/bin/cmd
 )
 
 detach_tcc_bootstrap_bundle "$private_contract_root"
