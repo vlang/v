@@ -126,6 +126,7 @@ Postfix updates used as values return the old value, and trailing variable attri
 the following statement. Option/Result tuple fallbacks can return an enclosing function's tuple.
 Grouped Option/Result propagation preserves payload types and early returns, including in call
 arguments.
+Optional sum-type lookups preserve `none` fallbacks and successful payloads.
 Direct integer tuple returns store each component at its declared width, including literal values.
 Assertions preserve the following fallback statement when it begins with a unary operator.
 Standalone `unsafe` blocks preserve local scopes. Forward labels remain reachable after a return
