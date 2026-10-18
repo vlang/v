@@ -32,6 +32,9 @@ fn test_double_precision_encoders_match_reference() {
 	// through the general encoders rather than a fixed form each.
 	assert asm_frintz_d(2, 2) == 0x1E65C042
 	assert asm_fmsub_d(0, 2, 1, 0) == 0x1F418040
+	// fmsub d0, d2, d0, d0 / fmsub d5, d6, d8, d7
+	assert asm_fmsub_d(0, 2, 0, 0) == 0x1F408040
+	assert asm_fmsub_d(5, 6, 8, 7) == 0x1F489CC5
 	assert asm_fcmp_d(Reg(0), Reg(1)) == 0x1E612000
 }
 

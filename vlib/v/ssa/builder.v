@@ -2115,8 +2115,6 @@ fn (b &Builder) skip_source_fn_in_module(name string, module_name string) bool {
 	if module_name in ['c', 'v.gen.c'] && name.starts_with('Gen.') {
 		return true
 	}
-		return true
-	}
 	if module_name == 'strings' {
 		return b.skip_source_fn(ssa_fn_name_in_module(module_name, name))
 			|| name.starts_with('Builder.') && b.skip_source_fn(name)

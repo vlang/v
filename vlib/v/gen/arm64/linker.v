@@ -54,14 +54,18 @@ const cs_page_shift_arm64 = 14 // log2(16384)
 // truncate bits are laid out differently per platform: the BSD family (and so
 // macOS, the only target this linker was built for) uses 0x200/0x400, Linux
 // 0x40/0x200 and MSVCRT 0x100/0x200. One constant only ever suits one of them;
-// the others silently fail to create the file.
+// the others silently fail to create the file. MSVCRT also needs binary mode
+// to preserve instruction bytes, including bytes equal to a newline.
 const o_wronly_creat_trunc = $if windows {
-	0x301
+	0x8301
 } $else $if linux {
 	0x241
 } $else {
 	0x601
 }
+
+// MSVCRT accepts read/write permission bits, without POSIX executable bits.
+const output_file_permissions = $if windows { 0o600 } $else { 0o755 }
 
 // ARM64 page size on macOS
 const page_size = 0x4000 // 16KB
@@ -562,7 +566,7 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 	if !write_file_array_raw(tmp_output_path, l.buf) {
 		panic('failed to write output file')
 	}
-	if C.chmod(&char(tmp_output_path.str), 0o755) != 0 {
+	if C.chmod(&char(tmp_output_path.str), output_file_permissions) != 0 {
 		panic('failed to chmod output file')
 	}
 	mut renamed := C.rename(&char(tmp_output_path.str), &char(output_path.str)) == 0
@@ -582,7 +586,7 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 
 // write_file_array_raw writes file array raw output for arm64.
 fn write_file_array_raw(path string, data []u8) bool {
-	fd := C.open(&char(path.str), o_wronly_creat_trunc, 0o755)
+	fd := C.open(&char(path.str), o_wronly_creat_trunc, output_file_permissions)
 	if fd < 0 {
 		return false
 	}

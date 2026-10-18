@@ -55,10 +55,9 @@ fn test_simd_binary_call_emits_one_vector_instruction() {
 	assert asm_bl(0) !in words
 }
 
-fn test_simd_unqualified_callee_spelling_also_matches() {
-	// A call the checker resolves inside the defining module can carry no
-	// module prefix at all. That spelling must lower identically, or the
-	// helpers' own operators would silently take the scalar path.
+fn test_user_callee_with_a_simd_helper_name_is_left_alone() {
+	// A main-module function can have the same name and representation while
+	// computing something unrelated. Only helpers in simd are intrinsic targets.
 	mut m := ssa.Module.new()
 	vec4 := simd_vec4_type(mut m)
 	caller_id := m.new_function('caller', ssa.TypeID(0))
@@ -66,8 +65,9 @@ fn test_simd_unqualified_callee_spelling_also_matches() {
 	left := m.add_instr(.struct_init, block_id, vec4, [])
 	right := m.add_instr(.struct_init, block_id, vec4, [])
 	words := simd_call_words(mut m, 'add_native', [left, right], vec4)
-	assert asm_fadd_v4s(0, 0, 1) in words
-	assert asm_bl(0) !in words
+	assert simd_intrinsic_op('add_native') == none
+	assert asm_fadd_v4s(0, 0, 1) !in words
+	assert asm_bl(0) in words
 }
 
 fn test_simd_operator_spelling_also_matches() {

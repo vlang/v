@@ -609,7 +609,7 @@ fn asm_fadd_d0_d0_d1() u32 {
 // fmsub dd, dn, dm, da (dd = da - dn * dm) — the double-precision frem
 // sequence: d - trunc(d/n)*m.
 fn asm_fmsub_d(sd int, sn int, sm int, sa int) u32 {
-	return 0x1F418000 | (u32(sm) << 16) | (u32(sa) << 10) | (u32(sn) << 5) | u32(sd)
+	return 0x1F408000 | (u32(sm) << 16) | (u32(sa) << 10) | (u32(sn) << 5) | u32(sd)
 }
 
 // fmsub sd, sn, sm, sa (sd = sa - sn * sm) — the single-precision frem sequence

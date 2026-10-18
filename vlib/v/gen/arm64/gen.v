@@ -1367,32 +1367,27 @@ enum SimdIntrinsicOp {
 
 // simd_intrinsics maps an SSA callee name to the four-lane operation it means.
 // The same operation can arrive under several names. The four-lane helpers are
-// what the operators call on non-C backends, and a call the checker resolves
-// inside the defining module can carry no module prefix at all. The operator
+// what the operators call on non-C backends; the SSA builder qualifies each
+// helper with its defining module. The operator
 // methods themselves (`simd.F32x4.+` and the `add`/`sub`/`mul`/`div`
 // convenience wrappers the generator emits beside them) are listed too,
 // because they always reach this backend as calls even when the helper bodies
 // inside them have been expanded away before codegen. The layout guard on the
-// call keeps a same-named user function from matching by accident.
+// call verifies its representation; the module prefix preserves callee identity.
 const simd_intrinsics = {
 	'simd.add_native':  SimdIntrinsicOp.vadd
-	'add_native':       SimdIntrinsicOp.vadd
 	'simd.F32x4.+':     SimdIntrinsicOp.vadd
 	'simd.F32x4.add':   SimdIntrinsicOp.vadd
 	'simd.sub_native':  SimdIntrinsicOp.vsub
-	'sub_native':       SimdIntrinsicOp.vsub
 	'simd.F32x4.-':     SimdIntrinsicOp.vsub
 	'simd.F32x4.sub':   SimdIntrinsicOp.vsub
 	'simd.mul_native':  SimdIntrinsicOp.vmul
-	'mul_native':       SimdIntrinsicOp.vmul
 	'simd.F32x4.*':     SimdIntrinsicOp.vmul
 	'simd.F32x4.mul':   SimdIntrinsicOp.vmul
 	'simd.div_native':  SimdIntrinsicOp.vdiv
-	'div_native':       SimdIntrinsicOp.vdiv
 	'simd.F32x4./':     SimdIntrinsicOp.vdiv
 	'simd.F32x4.div':   SimdIntrinsicOp.vdiv
 	'simd.sqrt_native': SimdIntrinsicOp.vsqrt
-	'sqrt_native':      SimdIntrinsicOp.vsqrt
 	'simd.F32x4.sqrt':  SimdIntrinsicOp.vsqrt
 }
 
@@ -2640,11 +2635,11 @@ fn (mut g Gen) load_d_from_slot(val_id int, dreg int) bool {
 fn (mut g Gen) load_s_from_slot(val_id int, sreg int) bool {
 	off := g.stack_slot(val_id) or { return false }
 	sp_offset := g.stack_size + g.transient_stack_size + off
-	if off < 0 && sp_offset >= 0 && sp_offset < 32768 && sp_offset % 8 == 0 {
+	if off < 0 && sp_offset >= 0 && sp_offset < 16384 && sp_offset % 8 == 0 {
 		g.emit32(asm_ldr_s_imm(sreg, sp, u32(sp_offset / 4)))
 		return true
 	}
-	if off < 0 && sp_offset >= 32768 && sp_offset < 0x1000000 && sp_offset % 8 == 0 {
+	if off < 0 && sp_offset >= 16384 && sp_offset < 0x1000000 && sp_offset % 8 == 0 {
 		g.emit32(asm_add_imm_lsl12(Reg(11), sp, u32(sp_offset >> 12)))
 		g.emit32(asm_ldr_s_imm(sreg, Reg(11), u32((sp_offset & 0xFFF) / 4)))
 		return true

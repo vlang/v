@@ -177,3 +177,55 @@ fn test_f32_comparison_compares_at_the_operands_width() {
 	assert asm_fcmp_d(Reg(0), Reg(1)) !in words
 	assert words.len == 5
 }
+
+fn test_f32_slot_load_preserves_offsets_across_scaled_immediate_boundary() {
+	// Frames are 16-byte aligned, and every local occupies an eight-byte slot.
+	// The scalar f32 load has only 12 offset bits scaled by four (16 KiB).
+	for offset in [16376, 16384, 16392, 32760, 32768] {
+		mut m := ssa.Module.new()
+		float_type := m.type_store.get_float(32)
+		func_id := m.new_function('caller', float_type)
+		block_id := m.add_block(func_id, 'entry')
+		value := m.add_instr(.fadd, block_id, float_type, [])
+		mut g := Gen.new(m)
+		g.reset_value_slots(&m.funcs[func_id])
+		// 16400 - 16 = 16384 exercises the first unencodable direct offset.
+		g.stack_size = (offset + 31) / 16 * 16
+		g.set_stack_slot(value, offset - g.stack_size)
+		assert g.load_s_from_slot(value, 3)
+		g.materialize_text()
+		words := collected_float_words(g)
+		if offset < 16384 {
+			assert words == [asm_ldr_s_imm(3, sp, u32(offset / 4))]
+		} else {
+			assert words == [asm_add_imm_lsl12(Reg(11), sp, u32(offset >> 12)),
+				asm_ldr_s_imm(3, Reg(11), u32((offset & 0xFFF) / 4))]
+		}
+	}
+}
+
+fn test_f32_slot_load_counts_transient_stack_at_scaled_immediate_boundary() {
+	mut m := ssa.Module.new()
+	float_type := m.type_store.get_float(32)
+	func_id := m.new_function('caller', float_type)
+	block_id := m.add_block(func_id, 'entry')
+	value := m.add_instr(.fadd, block_id, float_type, [])
+	mut g := Gen.new(m)
+	g.reset_value_slots(&m.funcs[func_id])
+	g.stack_size = 16384
+	g.transient_stack_size = 16
+	g.set_stack_slot(value, -16)
+	assert g.load_s_from_slot(value, 3)
+	g.materialize_text()
+	assert collected_float_words(g) == [asm_add_imm_lsl12(Reg(11), sp, 4),
+		asm_ldr_s_imm(3, Reg(11), 0)]
+}
+
+fn test_f64_remainder_of_the_same_value_uses_its_loaded_register() {
+	mut m := ssa.Module.new()
+	words := binop_words(mut m, .frem, 64, true)
+	assert asm_fdiv_d(2, 0, 0) in words
+	// The general FMSUB encoder must not force multiplier d1: only d0 is loaded.
+	assert u32(0x1F408040) in words
+	assert u32(0x1F418040) !in words
+}
