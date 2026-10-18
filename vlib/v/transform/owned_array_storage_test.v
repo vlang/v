@@ -1,3 +1,4 @@
+// vtest ownership
 module transform
 
 import os
@@ -169,7 +170,7 @@ fn test_owned_array_reference_wrappers_keep_data_borrowed() {
 		t.clone_owned_array_view_for_storage(t.make_ident('source'), flat.source_type_id(wrapper))
 		assert t.pending_stmts.len == 2
 		branch := t.pending_stmts.last()
-		assert owned_array_storage_call_count(&a, branch, default_clone_helper_name('[]Res')) == 0
+		assert owned_array_storage_call_count(&a, branch, default_clone_helper_name(flat.source_type_id('[]Res'))) == 0
 		assert owned_array_storage_call_count(&a, branch, 'v3_heap_array') == 0
 		assert owned_array_storage_call_count(&a, branch, '__v3_clone_owned_ierror') == 0
 	}
@@ -188,7 +189,7 @@ fn test_owned_array_synthetic_pointer_acquisition_still_copies() {
 	assert t.clone_owned_array_storage_value(source, flat.source_type_id('&[]Res'), true) != source
 	assert t.pending_stmts.len == 2
 	branch := t.pending_stmts.last()
-	assert owned_array_storage_call_count(&a, branch, default_clone_helper_name('[]Res')) == 1
+	assert owned_array_storage_call_count(&a, branch, default_clone_helper_name(flat.source_type_id('[]Res'))) == 1
 	assert owned_array_storage_call_count(&a, branch, 'v3_heap_array') == 1
 }
 
@@ -201,11 +202,11 @@ fn check_owned_array_result_branch(a &flat.FlatAst, branch_id flat.NodeId) {
 	failure := a.child(&branch, 2)
 	assert owned_array_storage_call_count(a, success, '__v3_clone_owned_ierror') == 0
 	assert owned_array_storage_selector_count(a, success, 'err') == 0
-	assert owned_array_storage_call_count(a, success, default_clone_helper_name('[]Res')) == 1
+	assert owned_array_storage_call_count(a, success, default_clone_helper_name(flat.source_type_id('[]Res'))) == 1
 	assert owned_array_storage_call_count(a, failure, '__v3_clone_owned_ierror') == 1
 	assert owned_array_storage_selector_count(a, failure, 'err') == 1
 	assert owned_array_storage_selector_count(a, failure, 'value') == 0
-	assert owned_array_storage_call_count(a, failure, default_clone_helper_name('[]Res')) == 0
+	assert owned_array_storage_call_count(a, failure, default_clone_helper_name(flat.source_type_id('[]Res'))) == 0
 	assert owned_array_storage_call_count(a, failure, 'drop_owned') == 0
 	failure_block := a.nodes[int(failure)]
 	assert failure_block.kind == .block && failure_block.children_count == 1

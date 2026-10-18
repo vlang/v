@@ -504,10 +504,10 @@ fn test_context_lookup_cache_tracks_source_file_imports() {
 	g.tc = &tc
 	tc.cur_file = 'one.v'
 	assert g.import_alias_module('kind')? == 'first.token'
-	assert g.enum_selector_base_name('kind.Kind')? == 'first.token.Kind'
+	assert g.enum_selector_base_name(flat.source_type_id('kind.Kind'))? == flat.source_type_id('first.token.Kind')
 	tc.cur_file = 'two.v'
 	assert g.import_alias_module('kind')? == 'second.token'
-	assert g.enum_selector_base_name('kind.Kind')? == 'second.token.Kind'
+	assert g.enum_selector_base_name(flat.source_type_id('kind.Kind'))? == flat.source_type_id('second.token.Kind')
 }
 
 fn test_transformed_module_call_namespace_arguments() {

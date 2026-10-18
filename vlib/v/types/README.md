@@ -36,12 +36,21 @@ declaration context; identical spelling IDs can resolve to different semantic ty
 `Type.source_type_id()`, `TypeChecker.type_name(value)`, and `type_name_by_id(id)` return spelling
 IDs. Resolve bytes with `flat.source_type_name(id)` for diagnostics, spelling syntax, or emission.
 Builtin spelling constants in `v.flat` avoid repeated interning of scalar names.
+Field and interface queries accept source spelling IDs as well, including
+`struct_fields_for_type`, `struct_field_type`, `interface_field_list`,
+`interface_metadata_name`, and method-signature lookup by concrete or interface type.
+The field cache uses those IDs for owners and keeps field names as declaration strings.
+Its frozen declaration tables remain shared; private worker entries and misses merge by
+owner and field without retaining a worker's mutable table.
 `generic_type_name_matches` accepts source IDs and retains recursive spelling grammar internally.
 `sum_variant_type_for_pattern` accepts source IDs for the sum and pattern and returns an
 optional source ID. Its cache retains the writing file and module when matching a spelling.
 `fn_signature_type(name, source_id)` resolves an interned annotation in its declaration context.
-Source qualification (`qualify_type_text` and `qualify_resolution_type_text`) and imported-type
-resolution also pass spelling IDs. Private recursive spelling parsers work with bytes inside
+Source qualification (`qualify_type_text`, `qualify_resolution_type_text`, and
+`qualify_type_name`) and imported-type resolution pass spelling IDs. `qualify_type_name` shares
+the file, module, resolution-mode, and declaration-growth cache used by `qualify_name`;
+declaration-name callers can retain the string interface.
+Private recursive spelling parsers work with bytes inside
 these boundaries. C ABI encodings and emitted declaration names remain strings.
 
 Alias targets, generic binding values, and original return annotations use `flat.TypeTextBindings`.
@@ -49,6 +58,13 @@ Parameter annotations, sum variants, implemented interfaces, and interface embed
 `flat.TypeTextListBindings`. Binding keys retain declaration names; values carry source IDs.
 `InterfaceImplIndex` retains its ordered implementation names in a `TypeTextList`;
 `names_text()` resolves them for diagnostics and emission while preserving interface tag order.
+`interface_impl_names`, `pre_transform_interface_impl_names`, and `ierror_impl_names` return
+caller-owned spelling ID arrays. Interface query cache owners, frozen snapshots, and ordered
+satisfaction-proof pairs use source IDs. `InterfaceImplIndex.ids`, `interface_type_ids`, and the
+stable dispatch allocators map source spelling IDs to runtime integer tags. Those tags retain the
+same spelling hash, collision probing, and lexical ordering; they are not source spelling IDs.
+Recursive struct declaration queries also accept spelling IDs while field paths and diagnostic
+messages retain their rendered text.
 Canonical name caches, recursive-alias stacks, and deferred return annotations also retain IDs.
 `TypeTextBindings.value_id(name)` and `NodeTypeTextBindings.value_id(node)` read a stored ID
 directly, returning zero for an absent or empty spelling. Use `type_id` or `contains` when the

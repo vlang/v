@@ -145,10 +145,9 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 			sum_field_type_source_id := t.struct_field_sum_type(field_type, info.module)
 
 			enum_field_type_source_id := t.enum_type_name_for_expected(field_type, info.module)
-			enum_field_type := flat.source_type_name(enum_field_type_source_id)
 			fixed_to_dynamic := flat.source_type_shape(field_type).has(.array_type) && t.is_fixed_array_type(value_type_source_id)
 			shared_interface_source := !isnil(t.tc) && t.is_interface_type(field_type)
-				&& t.tc.struct_field_is_shared(node.value, target_field_name)
+				&& t.tc.struct_field_is_shared(flat.source_type_id(node.value), target_field_name)
 				&& t.expr_is_shared_value(val_id)
 			// Check if the value is an enum shorthand and the field type is an enum
 			mut new_val := if shared_interface_source {
@@ -156,7 +155,7 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 				// wrapper borrow both its value and its synchronization guard.
 				t.transform_expr(val_id)
 			} else if val_node.kind == .enum_val && enum_field_type_source_id != 0 {
-				t.transform_enum_shorthand(val_id, val_node, enum_field_type)
+				t.transform_enum_shorthand(val_id, val_node, enum_field_type_source_id)
 			} else if fixed_to_dynamic {
 				t.fixed_array_value_to_owned_array(val_id, value_type_source_id, field_type)
 			} else if sum_field_type_source_id != 0 {
@@ -483,9 +482,8 @@ fn (mut t Transformer) merge_promoted_struct_default(init_id flat.NodeId, defaul
 				t.cur_file)
 			default_value := t.a.nodes[int(decl_value_id)]
 			enum_field_type_source_id_2 := t.enum_type_name_for_expected(field_type_source_id_2, info.module)
-			enum_field_type := flat.source_type_name(enum_field_type_source_id_2)
 			new_value := if default_value.kind == .enum_val && enum_field_type_source_id_2 != 0 {
-				t.transform_enum_shorthand(decl_value_id, default_value, enum_field_type)
+				t.transform_enum_shorthand(decl_value_id, default_value, enum_field_type_source_id_2)
 			} else if t.is_sum_type_name(field_type_source_id_2) {
 				t.wrap_sum_value(decl_value_id, field_type_source_id_2)
 			} else {
@@ -747,7 +745,7 @@ fn (mut t Transformer) infer_bare_generic_struct_init_type(node flat.Node) ?u32 
 		value_type_source_id_2 := t.generic_struct_init_value_type(t.a.child(field, 0))
 		value_type := flat.source_type_name(value_type_source_id_2)
 		if value_type_source_id_2 != 0 {
-			infer_generic_type_args(field_type, value_type, mut inferred)
+			infer_generic_type_args(flat.source_type_id(field_type), flat.source_type_id(value_type), mut inferred)
 		}
 	}
 	mut args := []string{cap: params.len}
@@ -795,9 +793,9 @@ fn (mut t Transformer) specialize_struct_default_expr(struct_type_id u32, defaul
 
 // nested_generic_defaults_need_lowering finds omitted value fields whose generic defaults
 // need specialization before the backend emits the enclosing struct's default value.
-fn (t &Transformer) nested_generic_defaults_need_lowering(type_name_id u32, mut visited map[string]bool) bool {
+fn (t &Transformer) nested_generic_defaults_need_lowering(type_name_id u32, mut visited map[u32]bool) bool {
 	type_name := flat.source_type_name(type_name_id)
-	if type_name_id == 0 || type_name[0] in [`&`, `?`, `!`] || type_name.starts_with('map[') || type_name.starts_with('[]') || type_name in visited {
+	if type_name_id == 0 || type_name[0] in [`&`, `?`, `!`] || type_name.starts_with('map[') || type_name.starts_with('[]') || type_name_id in visited {
 		return false
 	}
 	normalized_source_id := t.normalize_type_alias(type_name_id)
@@ -807,13 +805,13 @@ fn (t &Transformer) nested_generic_defaults_need_lowering(type_name_id u32, mut 
 		return false
 	}
 	if t.is_fixed_array_type(normalized_source_id) {
-		return t.nested_generic_defaults_need_lowering(flat.source_type_id(fixed_array_elem_type(normalized)), mut visited)
+		return t.nested_generic_defaults_need_lowering(fixed_array_elem_type(normalized_source_id), mut visited)
 	}
-	if normalized in visited {
+	if normalized_source_id in visited {
 		return false
 	}
-	visited[type_name] = true
-	visited[normalized] = true
+	visited[type_name_id] = true
+	visited[normalized_source_id] = true
 	info := t.lookup_struct_info(normalized_source_id_2) or { return false }
 	_, args, generic := generic_app_parts(normalized)
 	for field in info.fields {
@@ -861,7 +859,7 @@ fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Nod
 		}
 		field_type_source_id := t.lookup_struct_field_type(flat.source_type_id(node.value), field.name) or { field.typ }
 		field_type := flat.source_type_name(field_type_source_id)
-		mut visited := map[string]bool{}
+		mut visited := map[u32]bool{}
 		if t.nested_generic_defaults_need_lowering(field_type_source_id, mut visited) {
 			normalized_field_type_source_id := t.normalize_type_alias(field_type_source_id)
 
@@ -950,9 +948,8 @@ fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Nod
 			continue
 		}
 		enum_field_type_source_id_3 := t.enum_type_name_for_expected(field_type_source_id_2, info.module)
-		enum_field_type := flat.source_type_name(enum_field_type_source_id_3)
 		new_val := if default_node.kind == .enum_val && enum_field_type_source_id_3 != 0 {
-			t.transform_enum_shorthand(default_id, default_node, enum_field_type)
+			t.transform_enum_shorthand(default_id, default_node, enum_field_type_source_id_3)
 		} else if t.is_sum_type_name(field_type_source_id_2) {
 			// A sum-type field default (e.g. `typ_expr Expr = EmptyExpr{}`) must be
 			// wrapped into the sum, not emitted as the bare variant. wrap_sum_value
@@ -1049,19 +1046,19 @@ fn (t &Transformer) lookup_struct_info(name_id u32) ?StructInfo {
 		scoped_base, _, scoped_has_generic_args := generic_app_parts(name)
 		lookup_name := if scoped_has_generic_args { scoped_base } else { name }
 		if !lookup_name.contains('.') {
-			if resolved := t.selective_import_type_name_for_file(t.cur_file, lookup_name) {
+			if resolved_source_id := t.selective_import_type_name_for_file(t.cur_file, flat.source_type_id(lookup_name)) {
+				resolved := flat.source_type_name(resolved_source_id)
+
 				if scoped_has_generic_args {
 					// Keep the arguments; the generic branch below specializes the
 					// resolved base with them.
 					scoped_name = flat.source_type_id('${resolved}${name[scoped_base.len..]}')
 				} else {
-					if info := t.lookup_struct_info_direct(resolved) {
+					if info := t.lookup_struct_info_direct(resolved_source_id) {
 						return info
 					}
-					if alias_target_source_id := t.alias_target_type_preserving_main_lock(flat.source_type_id(resolved)) {
-						alias_target := flat.source_type_name(alias_target_source_id)
-
-						if info := t.lookup_struct_info_direct(alias_target) {
+					if alias_target_source_id := t.alias_target_type_preserving_main_lock(resolved_source_id) {
+						if info := t.lookup_struct_info_direct(alias_target_source_id) {
 							return info
 						}
 					}
@@ -1080,17 +1077,17 @@ fn (t &Transformer) lookup_struct_info(name_id u32) ?StructInfo {
 	}
 	base, args, has_generic_args := generic_app_parts(flat.source_type_name(scoped_name))
 	if has_generic_args {
-		if base_info := t.lookup_struct_info_direct(base) {
+		if base_info := t.lookup_struct_info_direct(flat.source_type_id(base)) {
 			params := t.generic_struct_param_names_for_base(base)
 			if params.len == args.len && params.len > 0 {
 				mut fields := []FieldInfo{cap: base_info.fields.len}
 				for field in base_info.fields {
 					fields << FieldInfo{
 						name:         field.name
-						typ:          flat.source_type_id(substitute_generic_type_text_with_params(field.typ_text(), flat.TypeTextList.from_names(args).ids,
-							params))
-						raw_typ:      flat.source_type_id(substitute_generic_type_text_with_params(field.raw_typ_text(), flat.TypeTextList.from_names(args).ids,
-							params))
+						typ:          substitute_generic_type_text_with_params(field.typ, flat.TypeTextList.from_names(args).ids,
+							params)
+						raw_typ:      substitute_generic_type_text_with_params(field.raw_typ, flat.TypeTextList.from_names(args).ids,
+							params)
 						default_expr: field.default_expr
 						is_embedded:  field.is_embedded
 					}
@@ -1105,15 +1102,15 @@ fn (t &Transformer) lookup_struct_info(name_id u32) ?StructInfo {
 			}
 		}
 	}
-	if info := t.lookup_struct_info_preferred(name) {
+	if info := t.lookup_struct_info_preferred(name_comparison_type_id) {
 		return info
 	}
 	// Resolve a qualified import alias (`m.Config` -> `some.mod.Config`) before the
 	// short-name fallback below, so a same-named local type cannot shadow the imported
 	// one. `resolve_imported_type_name` only matches dotted alias names, so bare names
 	// fall through to the direct lookup unchanged.
-	if imported := t.resolve_imported_type_name(name) {
-		if info := t.lookup_struct_info_direct(imported) {
+	if imported_source_id := t.resolve_imported_type_name(name_comparison_type_id) {
+		if info := t.lookup_struct_info_direct(imported_source_id) {
 			return info
 		}
 	}
@@ -1121,9 +1118,8 @@ fn (t &Transformer) lookup_struct_info(name_id u32) ?StructInfo {
 	// `Context = C.sgl_context` must not inherit defaults from an imported
 	// `gg.Context` that happens to own the global short-name entry.
 	normalized_comparison_type_id_2 := t.normalize_type_alias(name_id)
-	normalized := flat.source_type_name(normalized_comparison_type_id_2)
 	if normalized_comparison_type_id_2 != name_comparison_type_id {
-		if info := t.lookup_struct_info_direct(normalized) {
+		if info := t.lookup_struct_info_direct(normalized_comparison_type_id_2) {
 			return info
 		}
 	}
@@ -1131,20 +1127,21 @@ fn (t &Transformer) lookup_struct_info(name_id u32) ?StructInfo {
 	// type by its bare name (`BoolConfig` from main, while transforming the declaring
 	// module); the module-qualified lookup above misses those, so fall back to the
 	// direct lookup, which tries the bare name too.
-	if info := t.lookup_struct_info_direct(name) {
+	if info := t.lookup_struct_info_direct(name_comparison_type_id) {
 		return info
 	}
 	// Mark-used runs before transform and can prune a struct declaration whose value is
 	// only observed through an interface box. The checker field table deliberately
 	// survives that pruning, so use it as the authoritative fallback for structural
 	// operations such as semantic equality.
-	if info := t.lookup_checker_struct_info(name) {
+	if info := t.lookup_checker_struct_info(name_comparison_type_id) {
 		return info
 	}
 	return none
 }
 
-fn (t &Transformer) bare_struct_name_is_local_to_current_module(name string) bool {
+fn (t &Transformer) bare_struct_name_is_local_to_current_module(name_id u32) bool {
+	name := flat.source_type_name(name_id)
 	if name == '' || name.contains('.') {
 		return false
 	}
@@ -1165,7 +1162,8 @@ fn (t &Transformer) bare_struct_name_is_local_to_current_module(name string) boo
 // bare_sum_type_name_is_local_to_current_module is the sum type counterpart of
 // bare_struct_name_is_local_to_current_module. The transformer also indexes imported
 // sum types by their short name, so only the checker's table tells them apart.
-fn (t &Transformer) bare_sum_type_name_is_local_to_current_module(name string) bool {
+fn (t &Transformer) bare_sum_type_name_is_local_to_current_module(name_id u32) bool {
+	name := flat.source_type_name(name_id)
 	if name == '' || name.contains('.') || isnil(t.tc) {
 		return false
 	}
@@ -1176,49 +1174,43 @@ fn (t &Transformer) bare_sum_type_name_is_local_to_current_module(name string) b
 	return t.tc.sum_types.contains(name)
 }
 
-fn (t &Transformer) checker_struct_lookup_name(name string) string {
-	if isnil(t.tc) || name == '' {
-		return ''
-	}
-	if name in t.tc.structs {
-		return name
-	}
+fn (t &Transformer) checker_struct_lookup_name(name_id u32) u32 {
+	if isnil(t.tc) || name_id == 0 { return 0 }
+	name := flat.source_type_name(name_id)
+	if name in t.tc.structs { return name_id }
 	if name.contains('.') {
 		short_name := name.all_after_last('.')
 		module_name := name.all_before_last('.')
 		short_module := t.tc.struct_modules[short_name] or { '' }
 		if short_name in t.tc.structs && short_module == module_name {
-			return short_name
+			return flat.source_type_id(short_name)
 		}
-		return ''
+		return 0
 	}
 	if t.cur_module.len > 0 && t.cur_module !in ['main', 'builtin'] {
 		qualified_name := '${t.cur_module}.${name}'
-		if qualified_name in t.tc.structs {
-			return qualified_name
-		}
+		if qualified_name in t.tc.structs { return flat.source_type_id(qualified_name) }
 	}
 	// A bare imported struct short name (e.g. `Vec2` from `import math.vec { Vec2 }`,
 	// keyed `vec.Vec2`). The bare name survives only as a generic-params shadow, so
 	// resolve it to the unique qualified struct whose short name matches. Without this
 	// an operator/eq on the imported generic instance leaves a raw C struct binary op.
-	if resolved := t.unique_qualified_struct_for_short(name) {
-		return resolved
-	}
-	return ''
+	return t.unique_qualified_struct_for_short(name_id) or { u32(0) }
 }
 
 // unique_qualified_struct_for_short resolves a bare struct short name to the unique
 // module-qualified struct key that shares it (`Vec2` -> `vec.Vec2`), or none when
 // absent or ambiguous. Scans the small generic-struct table.
-fn (t &Transformer) unique_qualified_struct_for_short(name string) ?string {
+fn (t &Transformer) unique_qualified_struct_for_short(name_id u32) ?u32 {
+	name := flat.source_type_name(name_id)
 	if isnil(t.tc) || name == '' || name.contains('.') {
 		return none
 	}
 	if t.struct_short_name_index_ready {
-		qualified := flat.source_type_name(t.struct_short_name_index.type_id(name) or { return none })
+		qualified_id := t.struct_short_name_index.type_id(name) or { return none }
+		qualified := flat.source_type_name(qualified_id)
 		if qualified != struct_short_name_ambiguous && !qualified.contains('[') {
-			return qualified
+			return qualified_id
 		}
 		return none
 	}
@@ -1235,25 +1227,24 @@ fn (t &Transformer) unique_qualified_struct_for_short(name string) ?string {
 		found = sname
 	}
 	if found.len > 0 {
-		return found
+		return flat.source_type_id(found)
 	}
 	return none
 }
 
-fn (t &Transformer) lookup_checker_struct_info(name string) ?StructInfo {
-	lookup_name := t.checker_struct_lookup_name(name)
-	if lookup_name.len == 0 {
-		return none
-	}
+fn (t &Transformer) lookup_checker_struct_info(name_id u32) ?StructInfo {
+	lookup_id := t.checker_struct_lookup_name(name_id)
+	if lookup_id == 0 { return none }
+	lookup_name := flat.source_type_name(lookup_id)
 	checker_fields := t.tc.structs[lookup_name] or { return none }
 	mut fields := []FieldInfo{cap: checker_fields.len}
 	for field in checker_fields {
-		field_type := field.typ.name()
+		field_type := field.typ.source_type_id()
 		fields << FieldInfo{
 			name:        field.name
-			typ:         flat.source_type_id(field_type)
-			raw_typ:     flat.source_type_id(field_type)
-			is_embedded: field.name == field_type
+			typ:         field_type
+			raw_typ:     field_type
+			is_embedded: field.name == flat.source_type_name(field_type)
 		}
 	}
 	return StructInfo{
@@ -1265,7 +1256,8 @@ fn (t &Transformer) lookup_checker_struct_info(name string) ?StructInfo {
 
 // struct_info_matches_qualifier reports whether `info` can be the struct that the
 // qualified `name` (`mod.Type`, or an import alias of `mod`) refers to.
-fn (t &Transformer) struct_info_matches_qualifier(info StructInfo, name string) bool {
+fn (t &Transformer) struct_info_matches_qualifier(info StructInfo, name_id u32) bool {
+	name := flat.source_type_name(name_id)
 	qualifier := name.all_before_last('.')
 	if info.module.len == 0 || info.module == 'main' {
 		return qualifier == 'main'
@@ -1273,35 +1265,21 @@ fn (t &Transformer) struct_info_matches_qualifier(info StructInfo, name string) 
 	if qualifier == info.module || qualifier == info.module.all_after_last('.') {
 		return true
 	}
-	if imported := t.resolve_imported_type_name(name) {
+	if imported_source_id := t.resolve_imported_type_name(name_id) {
+		imported := flat.source_type_name(imported_source_id)
+
 		return imported.all_before_last('.') == info.module
 	}
 	return false
 }
 
-fn (t &Transformer) resolve_imported_type_name(name string) ?string {
-	if isnil(t.tc) || !name.contains('.') || name.starts_with('C.') {
-		return none
-	}
-	dot := name.index_u8(`.`)
-	if dot <= 0 {
-		return none
-	}
-	alias := name[..dot]
-	if mod := t.file_import_module(t.cur_file, alias) {
-		if mod != alias {
-			return mod + name[dot..]
-		}
-	}
-	if mod := t.tc.imports[alias] {
-		if mod != alias {
-			return mod + name[dot..]
-		}
-	}
-	return none
+fn (t &Transformer) resolve_imported_type_name(name_id u32) ?u32 {
+	resolved := t.resolve_imported_symbol_name(flat.source_type_name(name_id)) or { return none }
+	return flat.source_type_id(resolved)
 }
 
-fn (t &Transformer) lookup_struct_info_preferred(name string) ?StructInfo {
+fn (t &Transformer) lookup_struct_info_preferred(name_id u32) ?StructInfo {
+	name := flat.source_type_name(name_id)
 	if name.contains('.') {
 		if name in t.structs {
 			return t.structs[name]
@@ -1317,7 +1295,8 @@ fn (t &Transformer) lookup_struct_info_preferred(name string) ?StructInfo {
 	return none
 }
 
-fn (t &Transformer) lookup_struct_info_direct(name string) ?StructInfo {
+fn (t &Transformer) lookup_struct_info_direct(name_id u32) ?StructInfo {
+	name := flat.source_type_name(name_id)
 	if name.contains('.') {
 		if name in t.structs {
 			return t.structs[name]
@@ -1336,7 +1315,7 @@ fn (t &Transformer) lookup_struct_info_direct(name string) ?StructInfo {
 		if info := t.structs[short_name] {
 			// The bare table is first-wins across modules: its entry may be another
 			// module's homonym, which must not answer for this qualified name.
-			if t.struct_info_matches_qualifier(info, name) {
+			if t.struct_info_matches_qualifier(info, name_id) {
 				return info
 			}
 		}
@@ -1414,7 +1393,8 @@ fn (t &Transformer) is_embedded_field(field FieldInfo) bool {
 	return field.is_embedded
 }
 
-fn field_decl_is_embedded(name string, typ string) bool {
+fn field_decl_is_embedded(name string, typ_id u32) bool {
+	typ := flat.source_type_name(typ_id)
 	if name == '' || typ == '' {
 		return false
 	}
@@ -1453,14 +1433,14 @@ fn (mut t Transformer) transform_assoc_expr(id flat.NodeId, node flat.Node) flat
 		assoc_type = base_type
 	}
 	if flat.source_type_shape(assoc_type).has(.pointer) {
-		assoc_type = flat.source_type_id(flat.source_type_name(assoc_type)[1..])
+		assoc_type = t.trim_pointer_type(assoc_type)
 	}
 	if _ := t.lookup_struct_info(assoc_type) {
 		// use the explicit assoc type
 	} else {
 		mut clean_base_type := base_type
 		if flat.source_type_shape(clean_base_type).has(.pointer) {
-			clean_base_type = flat.source_type_id(flat.source_type_name(clean_base_type)[1..])
+			clean_base_type = t.trim_pointer_type(clean_base_type)
 		}
 		if _ := t.lookup_struct_info(clean_base_type) {
 			assoc_type = clean_base_type
@@ -1511,12 +1491,11 @@ fn (mut t Transformer) transform_assoc_expr(id flat.NodeId, node flat.Node) flat
 		value_type_source_id := t.node_type(value_id)
 
 		enum_field_type_source_id_4 := t.enum_type_name_for_expected(field_type_source_id_3, assoc_module)
-		enum_field_type := flat.source_type_name(enum_field_type_source_id_4)
 		sum_field_type_source_id_2 := t.struct_field_sum_type(field_type_source_id_3, assoc_module)
 
 		fixed_to_dynamic := field_type_shape.has(.array_type) && t.is_fixed_array_type(value_type_source_id)
 		mut value := if value_node.kind == .enum_val && enum_field_type_source_id_4 != 0 {
-			t.transform_enum_shorthand(value_id, value_node, enum_field_type)
+			t.transform_enum_shorthand(value_id, value_node, enum_field_type_source_id_4)
 		} else if fixed_to_dynamic {
 			t.fixed_array_value_to_owned_array(value_id, value_type_source_id, field_type_source_id_3)
 		} else if sum_field_type_source_id_2 != 0 {
@@ -1610,7 +1589,7 @@ fn (mut t Transformer) transform_amp_assoc_expr_for_type(_id flat.NodeId, node f
 		value_type = t.node_type(child_id)
 	}
 	if flat.source_type_shape(value_type).has(.pointer) {
-		value_type = flat.source_type_id(flat.source_type_name(value_type)[1..])
+		value_type = t.trim_pointer_type(value_type)
 	}
 	if value_type == 0 {
 		return none
@@ -1750,7 +1729,7 @@ fn (t &Transformer) sum_type_for_field_variant(field_name string, val_id flat.No
 		t.node_type(val_id)
 	}
 	if flat.source_type_shape(variant).has(.pointer) {
-		variant = flat.source_type_id(flat.source_type_name(variant)[1..])
+		variant = t.trim_pointer_type(variant)
 	}
 	if variant == 0 {
 		return none
@@ -1785,29 +1764,27 @@ fn (mut t Transformer) fixed_array_value_to_array(value_id flat.NodeId, fixed_ty
 // takes ownership. A borrowed projection keeps its fixed source alive, so clone its elements
 // directly into the dynamic array instead of cloning and dropping a shallow converted array.
 fn (mut t Transformer) fixed_array_value_to_owned_array(value_id flat.NodeId, fixed_type_id u32, array_type_id u32) flat.NodeId {
-	fixed_type := flat.source_type_name(fixed_type_id)
-
 	if isnil(t.tc) || !t.tc.ownership_expr_is_borrowed_projection(value_id) {
 		return t.fixed_array_value_to_array(value_id, fixed_type_id, array_type_id)
 	}
-	elem_type := fixed_array_elem_type(fixed_type)
+	elem_type := fixed_array_elem_type(fixed_type_id)
 	len_expr := t.make_fixed_array_len_expr(fixed_type_id)
 	source := t.stable_transformed_expr_for_reuse(t.transform_expr(value_id), fixed_type_id,
 		'borrowed_fixed_array_source')
 	out_name := t.new_temp('borrowed_fixed_array')
 	idx_name := t.new_temp('borrowed_fixed_array_idx')
-	t.pending_stmts << t.make_decl_assign_typed(out_name, t.make_array_new_call(flat.source_type_id(elem_type),
+	t.pending_stmts << t.make_decl_assign_typed(out_name, t.make_array_new_call(elem_type,
 		t.make_int_literal(0), len_expr), array_type_id)
 	init := t.make_decl_assign_typed(idx_name, t.make_int_literal(0), flat.source_type_int)
 	cond := t.make_infix(.lt, t.make_ident(idx_name), len_expr)
 	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
-	source_elem := t.make_index(source, t.make_ident(idx_name), flat.source_type_id(elem_type))
+	source_elem := t.make_index(source, t.make_ident(idx_name), elem_type)
 	pending_start := t.pending_stmts.len
-	cloned_elem := t.make_compiler_default_clone_value(source_elem, flat.source_type_id(elem_type), true)
+	cloned_elem := t.make_compiler_default_clone_value(source_elem, elem_type, true)
 	mut body := t.pending_stmts[pending_start..].clone()
 	t.pending_stmts = t.pending_stmts[..pending_start].clone()
 	value_name := t.new_temp('borrowed_fixed_array_value')
-	body << t.make_decl_assign_typed(value_name, cloned_elem, flat.source_type_id(elem_type))
+	body << t.make_decl_assign_typed(value_name, cloned_elem, elem_type)
 	body << t.make_expr_stmt(t.make_call_typed('array_push', [
 		t.make_prefix(.amp, t.make_ident(out_name)),
 		t.make_prefix(.amp, t.make_ident(value_name)),
@@ -1825,28 +1802,24 @@ fn (mut t Transformer) fixed_array_value_to_array_no_alloc(value_id flat.NodeId,
 }
 
 fn (mut t Transformer) fixed_array_data_to_array_no_alloc(data_id flat.NodeId, fixed_type_id u32, array_type_id u32) flat.NodeId {
-	fixed_type := flat.source_type_name(fixed_type_id)
-
-	elem_type := fixed_array_elem_type(fixed_type)
+	elem_type := fixed_array_elem_type(fixed_type_id)
 	len_expr := t.make_fixed_array_len_expr(fixed_type_id)
 	t.mark_fn_used('new_array_from_c_array_no_alloc')
 	return t.make_call_typed('new_array_from_c_array_no_alloc', [
 		len_expr,
 		len_expr,
-		t.make_sizeof_type(flat.source_type_id(elem_type)),
+		t.make_sizeof_type(elem_type),
 		data_id,
 	], array_type_id)
 }
 
 fn (mut t Transformer) fixed_array_data_to_array(data_id flat.NodeId, fixed_type_id u32, array_type_id u32) flat.NodeId {
-	fixed_type := flat.source_type_name(fixed_type_id)
-
-	elem_type := fixed_array_elem_type(fixed_type)
+	elem_type := fixed_array_elem_type(fixed_type_id)
 	len_expr := t.make_fixed_array_len_expr(fixed_type_id)
 	return t.make_call_typed('new_array_from_c_array', [
 		len_expr,
 		len_expr,
-		t.make_sizeof_type(flat.source_type_id(elem_type)),
+		t.make_sizeof_type(elem_type),
 		data_id,
 	], array_type_id)
 }
@@ -1908,7 +1881,7 @@ fn (mut t Transformer) transform_map_init_expr(id flat.NodeId, node flat.Node) f
 	if map_type.starts_with('map[') {
 		mut map_node := node
 		map_node.value = map_type
-		map_node.set_type_text(map_type)
+		map_node.typ = map_type_source_id
 		return t.lower_map_init_to_runtime(id, map_node)
 	}
 	if node.children_count == 0 {
@@ -1935,4 +1908,26 @@ fn (mut t Transformer) transform_map_init_expr(id flat.NodeId, node flat.Node) f
 		value:          node.value
 		typ:            node.typ
 	})
+}
+
+fn (t &Transformer) resolve_imported_symbol_name(name string) ?string {
+	if isnil(t.tc) || !name.contains('.') || name.starts_with('C.') {
+		return none
+	}
+	dot := name.index_u8(`.`)
+	if dot <= 0 {
+		return none
+	}
+	alias := name[..dot]
+	if mod := t.file_import_module(t.cur_file, alias) {
+		if mod != alias {
+			return mod + name[dot..]
+		}
+	}
+	if mod := t.tc.imports[alias] {
+		if mod != alias {
+			return mod + name[dot..]
+		}
+	}
+	return none
 }

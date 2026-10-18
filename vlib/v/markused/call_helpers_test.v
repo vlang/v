@@ -353,7 +353,7 @@ fn array_literal_node(mut a flat.FlatAst, len int) flat.NodeId {
 fn array_literal_root_calls(mut a flat.FlatAst, c &CallCollector, kind flat.NodeKind, name string, expr flat.NodeId) []string {
 	root := call_helper_node(mut a, flat.Node{ kind: kind, value: name }, [expr])
 	mut calls := []string{}
-	c.collect_calls_with_locals(a.node(root), 'main', map[string]string{}, '', '', map[string]bool{},
+	c.collect_calls_with_locals(a.node(root), 'main', map[string]string{}, '', u32(0), map[string]bool{},
 		flat.TypeTextBindings.from_names({}), map[int]bool{}, mut calls)
 	return calls
 }
@@ -383,7 +383,7 @@ fn test_dynamic_array_iteration_keeps_lowered_get_helper() {
 				])
 				mut calls := []string{}
 				collector.collect_calls_with_locals(a.node(root), 'main', map[string]string{},
-					'', '', {
+					'', u32(0), {
 						'names': true
 						'val':   true
 						'i':     true
@@ -967,14 +967,14 @@ fn test_generic_factory_infers_semantic_channel_element_types() {
 		'chan ?U', 'chan map[string][]U'] {
 		actual := tc.parse_type(flat.source_type_id(pattern.replace('U', 'Payload')))
 		mut inferred := flat.TypeTextBindings{}
-		markused_infer_alias_generic_type(pattern, actual, ['U'], mut inferred)
+		markused_infer_alias_generic_type(flat.source_type_id(pattern), actual, ['U'], mut inferred)
 		assert inferred.value('U') == 'Payload', pattern
 	}
 	channel := types.Type(types.Channel{ elem_type: types.Type(types.Struct{ name_id: flat.source_type_id('Payload') }) })
 	for actual in [channel, types.Type(types.Pointer{ base_type: channel }),
 		types.Type(types.Alias{ name_id: flat.source_type_id('Mailbox'), base_type: channel })] {
 		mut inferred := flat.TypeTextBindings{}
-		markused_infer_alias_generic_type('chan U', actual, ['U'], mut inferred)
+		markused_infer_alias_generic_type(flat.source_type_id('chan U'), actual, ['U'], mut inferred)
 		assert inferred.value('U') == 'Payload', actual.name()
 	}
 	for actual in [
@@ -982,7 +982,7 @@ fn test_generic_factory_infers_semantic_channel_element_types() {
 		types.Type(types.Array{ elem_type: types.Type(types.Struct{ name_id: flat.source_type_id('Payload') }) }),
 	] {
 		mut inferred := flat.TypeTextBindings{}
-		markused_infer_alias_generic_type('chan U', actual, ['U'], mut inferred)
+		markused_infer_alias_generic_type(flat.source_type_id('chan U'), actual, ['U'], mut inferred)
 		assert inferred.ids.len == 0
 	}
 }
@@ -1022,7 +1022,7 @@ fn test_channel_generic_reachability_inference() {
 	mut a := flat.FlatAst.new()
 	tc := types.TypeChecker.new(&a)
 	actual := types.Type(types.Channel{ elem_type: types.Type(types.int_) })
-	inferred := tc.infer_generic_reachability_type_args('gates.make_gate', 'chan U', actual,
+	inferred := tc.infer_generic_reachability_type_args('gates.make_gate', flat.source_type_id('chan U'), actual,
 		['U'])
 	assert inferred['U'] == flat.source_type_int
 }
@@ -1059,7 +1059,7 @@ fn test_unindexed_generic_factory_infers_spread_and_shared_arguments() {
 fn test_repeated_generic_parameter_keeps_first_alias_inference() {
 	mut inferred := flat.TypeTextBindings{}
 	for name in ['A', 'B'] {
-		markused_infer_alias_generic_type('U', types.Type(types.Alias{
+		markused_infer_alias_generic_type(flat.source_type_id('U'), types.Type(types.Alias{
 			name_id:   flat.source_type_id(name)
 			base_type: types.Type(types.int_)
 		}), ['U'], mut inferred)
@@ -1810,7 +1810,7 @@ fn test_factory_local_inference_preserves_lexical_bindings() {
 			}
 		}
 		mut calls := []string{}
-		collector.collect_calls(a.node(fn_id), 'main', map[string]string{}, '', '', mut calls)
+		collector.collect_calls(a.node(fn_id), 'main', map[string]string{}, '', u32(0), mut calls)
 		assert 'A.method' in calls, '${scope}: ${calls}'
 		assert 'B.method' in calls, '${scope}: ${calls}'
 		assert 'gates.Gate[A].backward' in calls, '${scope}: ${calls}'
@@ -2095,7 +2095,7 @@ fn test_factory_local_inference_uses_loop_bindings() {
 			])
 			collector := CallCollector{ a: &a, tc: &tc, import_contexts: [map[string]string{}] }
 			mut calls := []string{}
-			collector.collect_calls(a.node(fn_id), 'main', map[string]string{}, '', '', mut calls)
+			collector.collect_calls(a.node(fn_id), 'main', map[string]string{}, '', u32(0), mut calls)
 			assert 'gates.Gate[${expected}].backward' in calls, '${container_type}, key=${use_key}: ${calls}'
 		}
 	}
@@ -2141,7 +2141,7 @@ fn test_factory_local_inference_decomposes_multi_return_declarations() {
 		fn_id := call_helper_node(mut a, flat.Node{ kind: .fn_decl, value: 'use_gate' }, [body])
 		collector := CallCollector{ a: &a, tc: &tc, import_contexts: [map[string]string{}] }
 		mut calls := []string{}
-		collector.collect_calls(a.node(fn_id), 'main', map[string]string{}, '', '', mut calls)
+		collector.collect_calls(a.node(fn_id), 'main', map[string]string{}, '', u32(0), mut calls)
 		if discarded != 'first' {
 			assert 'gates.Gate[T].backward' in calls, calls.str()
 		}
@@ -2215,7 +2215,7 @@ fn test_factory_local_inference_preserves_range_integer_types() {
 				])
 				collector := CallCollector{ a: &a, tc: &tc, import_contexts: [map[string]string{}] }
 				mut calls := []string{}
-				collector.collect_calls(a.node(fn_id), 'main', map[string]string{}, '', '', mut calls)
+				collector.collect_calls(a.node(fn_id), 'main', map[string]string{}, '', u32(0), mut calls)
 				if 'gates.Gate[${expected}].backward' !in calls {
 					mismatches << '${bound_type}/${literals}/${range_node}: ${calls}'
 				}
@@ -2307,7 +2307,7 @@ fn test_initializer_without_local_bindings_keeps_calls_refs_and_generics() {
 	_, type_names, ident_types, visible := collector.local_value_info_with_visibility(a.node(field), 'main', map[string]string{})
 	assert type_names.ids.len == 0 && ident_types.ids.len == 0 && visible.len == 0
 	mut calls := []string{}
-	assert collector.collect_calls_with_generic_usage(a.node(field), 'main', map[string]string{}, '', '', mut calls)
+	assert collector.collect_calls_with_generic_usage(a.node(field), 'main', map[string]string{}, '', u32(0), mut calls)
 	assert calls == ['factory', 'factory']
 	mut refs := []string{}
 	collector.collect_initializer_refs(a.node(field), 'main', map[string]string{}, mut refs)
@@ -2398,7 +2398,7 @@ fn test_reused_local_visibility_keeps_shadowed_callback_and_constant_edges() {
 		has_local_ident_visibility: true
 	}
 	mut old_calls := []string{}
-	control.collect_calls_with_locals(a.node(fn_id), 'main', map[string]string{}, '', '', old_names, old_types, old_visible, mut old_calls)
+	control.collect_calls_with_locals(a.node(fn_id), 'main', map[string]string{}, '', u32(0), old_names, old_types, old_visible, mut old_calls)
 	assert result.calls == old_calls
 	assert result.calls == ['callback', 'callback', 'callback']
 	mut param_calls := []string{}

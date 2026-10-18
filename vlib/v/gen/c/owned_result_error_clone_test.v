@@ -87,8 +87,8 @@ fn owned_result_error_clone_code(clone_kind string, pointer_receiver bool, needs
 	g.tc = &tc
 	g.register_struct_decl_info_at(int(params_id), 'CloneParams', 'CloneParams', 'main',
 		'main.v', params_decl)
-	g.iface_impls['IError'] = ['Fault']
-	g.iface_type_ids['IError::Fault'] = 1
+	g.iface_impls['IError'] = [flat.source_type_id('Fault')]
+	g.iface_type_ids[interface_dispatch_boxed_type_key(flat.source_type_id('IError'), flat.source_type_id('Fault'))] = 1
 	assert g.ownership_type_requires_destruction(fault, 0) == needs_drop
 	compatible := clone_kind in ['value', 'value_alias', 'pointer', 'pointer_alias',
 		'pointer_alias_chain']

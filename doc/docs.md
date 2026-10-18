@@ -54,6 +54,8 @@ If V is already installed on a machine, it can be upgraded to its latest version
 by using the V's built-in self-updater.
 To do so, run the command `v up`.
 This also refreshes the bundled TCC binaries used for fast C compilation.
+On macOS, TCC builds use its runtime thread fence directly, including when
+preprocessed C identifies ARM64 with `__arm64__` alone.
 
 After updating, `v up` refreshes previously cached vlib modules with the compiler
 and flags used to cache them, including normal and `-prod` builds. Unchanged
@@ -2484,6 +2486,12 @@ match false {
 ```
 
 A match expression returns the value of the final expression from the matching branch.
+
+A `match` expression can propagate results with `!` in its branches, including results
+containing pointers to interfaces. A branch error propagates from the enclosing function.
+Where a pointer to an interface is expected, such as `&Shape` or `?&Shape`, the branches
+can return pointers to different types that implement that interface.
+
 When inferring an enum result, a qualified value in the first branch, such as `Color.red`,
 provides the type for shorthand values such as `.blue` in subsequent branches.
 This also applies to parenthesized shorthand values and bitwise expressions with flag enums.
@@ -4928,6 +4936,10 @@ fn main() {
 }
 ```
 
+A test against another interface checks the type of the stored value at run time. It compiles
+even when no type implements both interfaces; it is then always `false`. Casting with
+`a as IBar` panics when the stored value does not implement `IBar`.
+
 For more information, see [Dynamic casts](#dynamic-casts).
 
 #### Interface method definitions
@@ -5360,6 +5372,9 @@ fn main() {
 An Option stores either a value or `none`. It has no error field and cannot carry an error as
 its failure state. A Result stores either a value or an `IError`.
 An `IError` may still be an ordinary Option payload, for example `?IError`.
+A concrete value implementing `IError` is also a successful Result payload when it is assignable
+to the declared payload type, including `!IError` and compatible interfaces. Otherwise, returning
+that value from a Result function produces an error.
 
 A function returning only `!` or `?` has no success payload. Its return type is a Result or
 Option of `void`; callers still handle errors or absence with an `or` block or propagation.
@@ -6083,6 +6098,9 @@ Avoid manually checking, whether the channel was closed or not, because that
 can introduce data races, if you are not careful.
 
 #### Channel Select
+
+Assertion messages inside a select branch can use values declared or received in that branch,
+including arrays and structs converted to strings.
 
 The `select` command allows monitoring several channels at the same time
 without noticeable CPU load. It consists of a list of possible transfers and associated branches
@@ -10142,8 +10160,9 @@ v -os freebsd .
 ```
 
 > [!NOTE]
-> Cross-compiling a Windows binary on a Linux machine requires the GNU C compiler for
-> MinGW-w64 (targeting Win64) to first be installed.
+> Cross-compiling a Windows binary on a Linux or macOS machine requires the GNU C compiler for
+> MinGW-w64 (targeting Win64) to first be installed. Without `-arch` and `-cc`, `-os windows`
+> builds an amd64 executable with `x86_64-w64-mingw32-gcc`, also on an arm64 machine.
 
 For Ubuntu/Debian-based distributions:
 
@@ -10155,6 +10174,12 @@ For Arch based distributions:
 
 ```shell
 sudo pacman -S mingw-w64-gcc
+```
+
+For macOS with Homebrew:
+
+```shell
+brew install mingw-w64
 ```
 
 (Cross compiling for macOS is temporarily not possible.)
@@ -10428,6 +10453,9 @@ Use the `C.` prefix to refer to the C function.
 Note that such redeclarations only need to have enough details about the
 functions/structs that you want to use.
 Note also that they *do not have* to be complete, unlike the ones in the .h files.
+
+A C function receiving the address of a local can change its value. Subsequent expressions
+read that value even when the V binding was declared without `mut`.
 
 Parameter names in `C.` function declarations may start with uppercase letters, as in C headers.
 The lowercase naming rule still applies to parameters of ordinary V functions.

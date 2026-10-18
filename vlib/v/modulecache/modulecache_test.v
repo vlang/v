@@ -146,7 +146,7 @@ fn test_cached_vmod_roots_stop_at_project_boundaries() {
 fn test_cached_relative_flag_paths_preserve_path_selection_expressions() {
 	base_dir := os.join_path(os.vtmp_dir(), 'v3_modulecache_flags')
 	value := r"darwin -I$when_first_existing('/opt/local/include','/opt/homebrew/include') -L$first_existing('/opt/local/lib','/opt/homebrew/lib')"
-	assert cached_resolve_relative_flag_paths(value, os.join_path(base_dir, 'source.v')) == value
+	assert cached_resolve_flag_value(value, '', os.join_path(base_dir, 'source.v')) == value
 }
 
 fn test_cached_dependency_inputs_restore_empty_variable_value() {
@@ -266,6 +266,57 @@ fn test_static_const_body_literals_are_preserved_and_deduplicated() {
 	assert without_duplicate_static_string_definitions(source, first) == second + 'void main__main(void) { println(_v3_lit_1_44bd54d473cd3d44); }\n'
 	assert materialize_cached_body_string_definitions('// V3CACHE_BASELINE ' + first + second) == first + second
 	assert !prune_unreferenced_static_string_definitions(source).contains('_v3_lit_1_44bd55d473cd3ef7')
+}
+
+// split_literal_definition is how cgen writes a literal too long for one C source
+// line: adjacent literals, each on a line of its own.
+fn split_literal_definition(symbol string, parts []string) string {
+	value := parts.join('')
+	return 'static const string ${symbol} = {"' + parts.join('"\n"') + '", ${value.len}, 1};\n'
+}
+
+fn test_split_literal_definitions_are_kept_or_dropped_whole() {
+	unused := split_literal_definition(cached_c_string_symbol('aaaabbbbcccc'), ['aaaa', 'bbbb',
+		'cccc'])
+	used_symbol := cached_c_string_symbol('ddddeeee')
+	used := split_literal_definition(used_symbol, ['dddd', 'eeee'])
+	short := 'static const string _v3_lit_1_44bd55d473cd3ef7 = {".", 1, 1};\n'
+	body := 'void f(void) { println(${used_symbol}); }\n'
+	source := unused + short + used + body
+	assert prune_unreferenced_static_string_definitions(source) == used + body
+	assert static_string_definitions(source) == unused + short + used
+	assert static_string_definition_texts(source) == [unused.trim_right('\n'), short.trim_right('\n'),
+		used.trim_right('\n')]
+	assert without_duplicate_static_string_definitions(source, unused + short) == used + body
+}
+
+fn test_split_literal_definitions_survive_baseline_markers() {
+	symbol := cached_c_string_symbol('aaaabbbbcccc')
+	definition := split_literal_definition(symbol, ['aaaa', 'bbbb', 'cccc'])
+	mut markers := ''
+	for line in definition.split_into_lines() {
+		markers += '// V3CACHE_BASELINE ${line}\n'
+	}
+	body := 'void f(void) { println(${symbol}); }\n'
+	assert materialize_cached_body_string_definitions(markers + body) == definition + body
+	// A real definition takes precedence over the recorded one, whole.
+	assert materialize_cached_body_string_definitions(markers + definition + body) == definition + body
+}
+
+fn test_cached_runtime_literal_rewrite_replaces_split_definitions() {
+	old_value := 'aaaabbbbcccc'
+	new_value := 'aaaabbbbdddd'
+	old_symbol := cached_c_string_symbol(old_value)
+	new_symbol := cached_c_string_symbol(new_value)
+	source := split_literal_definition(old_symbol, ['aaaa', 'bbbb', 'cccc']) +
+		'${c_body_begin}\nvoid main(void) { use(${old_symbol}); }\n'
+	rewritten := rewrite_cached_runtime_strings(source, [old_value], [new_value]) or {
+		panic('expected the split literal to be rewritten')
+	}
+	assert !rewritten.contains(old_symbol)
+	assert !rewritten.contains('"cccc"')
+	assert rewritten.count('static const string ${new_symbol} =') == 1
+	assert rewritten.contains('use(${new_symbol});')
 }
 
 fn test_type_declarations_omit_functions_with_local_typedefs() {

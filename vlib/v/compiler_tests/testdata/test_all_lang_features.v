@@ -1,6 +1,7 @@
 module main
 
 import math
+import math.big
 import os
 import sync
 import strings
@@ -2022,14 +2023,14 @@ fn math_generic119() int {
 
 // module_const_method119 supports module const method119 handling for v3 tests.
 fn module_const_method119() int {
-	return token.scanner_matcher.find('fn')
+	return big.three_int.int() + 80
 }
 
 // qualified_static_new119 supports qualified static new119 handling for v3 tests.
 fn qualified_static_new119() int {
-	mut matcher119 := token.KeywordsMatcherTrie.new(2)
-	matcher119.add_word('module', 71)
-	return matcher119.find('module')
+	mut files119 := token.FileSet.new()
+	file119 := files119.add_file('module.v', 71)
+	return file119.size
 }
 
 // new creates a StaticNewLocal119 value for v3 tests.

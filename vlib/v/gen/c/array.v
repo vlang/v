@@ -1119,14 +1119,14 @@ fn (mut g FlatGen) gen_fixed_array_pointers_expr(base_id flat.NodeId, is_ptr boo
 // name (`thread T`); a bare `thread` denotes a void payload.
 fn (mut g FlatGen) gen_thread_array_wait(base_id flat.NodeId, is_ptr bool, elem_type types.Type) {
 	g.needs_thread_runtime = true
-	mut ret_name := ''
+	mut ret_name_id := u32(0)
 	if elem_type is types.Struct {
 		trimmed := trimmed_space(elem_type.name())
 		if trimmed != 'thread' && trimmed.starts_with('thread ') {
-			ret_name = trimmed_space(trimmed[7..])
+			ret_name_id = flat.source_type_id(trimmed_space(trimmed[7..]))
 		}
 	}
-	fn_name := g.ensure_thread_arr_wait_fn(ret_name)
+	fn_name := g.ensure_thread_arr_wait_fn(ret_name_id)
 	g.write('${fn_name}(')
 	if is_ptr {
 		g.write('*')
@@ -1138,10 +1138,10 @@ fn (mut g FlatGen) gen_thread_array_wait(base_id flat.NodeId, is_ptr bool, elem_
 // ensure_thread_arr_wait_fn registers (once per payload type) a function that joins
 // every thread handle in the array and, for a non-void payload, copies each thread's
 // heap-returned value into a result `[]T` (freeing the per-thread allocation).
-fn (mut g FlatGen) ensure_thread_arr_wait_fn(ret_name string) string {
-	is_void := ret_name.len == 0
+fn (mut g FlatGen) ensure_thread_arr_wait_fn(ret_name_id u32) string {
+	is_void := ret_name_id == 0
 	if !is_void {
-		ret_type := cgen_unalias_type(g.tc.parse_type(flat.source_type_id(ret_name)))
+		ret_type := cgen_unalias_type(g.tc.parse_type(ret_name_id))
 		if ret_type is types.OptionType || ret_type is types.ResultType {
 			return g.ensure_thread_optional_arr_wait_fn(ret_type)
 		}
@@ -1152,7 +1152,7 @@ fn (mut g FlatGen) ensure_thread_arr_wait_fn(ret_name string) string {
 	ret_ct := if is_void {
 		'void'
 	} else {
-		g.fn_return_type_name(g.tc.parse_type(flat.source_type_id(ret_name)))
+		g.fn_return_type_name(g.tc.parse_type(ret_name_id))
 	}
 	key := 'threadwait|${ret_ct}'
 	if name := g.spawn_wrapper_names[key] {
@@ -1279,20 +1279,24 @@ fn (mut g FlatGen) array_method_fallback(method string) string {
 	return best_mname
 }
 
+fn array_method_receiver_key(receiver_name_id u32, elem_type_id u32) u64 {
+	return u64(receiver_name_id) << 32 | u64(elem_type_id)
+}
+
 fn (mut g FlatGen) array_method_fallback_for_receiver(method string, base_id flat.NodeId, arr types.Array) string {
 	receiver_type := types.unwrap_pointer(g.usable_expr_type(base_id))
-	receiver_name := receiver_type.name()
-	key := '${receiver_name}|${arr.elem_type.name()}.${method}'
-	if key in g.array_method_cache {
-		return g.array_method_cache[key]
+	receiver_name_id := receiver_type.source_type_id()
+	key := array_method_receiver_key(receiver_name_id, arr.elem_type.source_type_id())
+	if cached := g.array_method_receiver_cache[key][method] {
+		return cached
 	}
 	// Preserve custom methods on aliases such as `strings.Builder = []u8`.
 	// Falling back through the erased array type can select an unrelated method
 	// that happens to have the same short name.
 	if receiver_type is types.Alias {
-		alias_method := g.resolve_method_name(flat.source_type_id(receiver_name), method)
+		alias_method := g.resolve_method_name(receiver_name_id, method)
 		if alias_method.len > 0 {
-			g.array_method_cache[key] = alias_method
+			g.array_method_receiver_cache[key][method] = alias_method
 			return alias_method
 		}
 	}
@@ -1320,7 +1324,7 @@ fn (mut g FlatGen) array_method_fallback_for_receiver(method string, base_id fla
 	if best_mname.len == 0 {
 		best_mname = g.array_method_fallback(method)
 	}
-	g.array_method_cache[key] = best_mname
+	g.array_method_receiver_cache[key][method] = best_mname
 	return best_mname
 }
 
