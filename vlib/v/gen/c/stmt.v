@@ -6940,6 +6940,13 @@ fn (g &FlatGen) usable_expr_type_uncached(id flat.NodeId) types.Type {
 		}
 		if node.kind == .ident {
 			if typ := g.current_param_type(node.value) {
+				// A `shared T` parameter is typed `&T` (its wrapper pointer), but the
+				// identifier is emitted as the wrapper's `val`, a `T` value, as for a
+				// `shared` local.
+				if typ is types.Pointer && g.local_shared_storage_by_owner.len > 0
+					&& g.local_storage_is_shared(node.value) {
+					return typ.base_type
+				}
 				return typ
 			}
 			// A global's C declaration follows its registered storage type. Its
