@@ -7971,7 +7971,7 @@ fn markused_infer_generic_type_text_bytes(pattern string, actual string, generic
 		}
 		return
 	}
-	for prefix in ['mut ', 'shared ', 'atomic ', '...', '[]', 'chan ', '?', '!', '&'] {
+	for prefix in ['mut ', 'shared ', 'atomic ', '...', '[]', 'chan ', 'thread ', '?', '!', '&'] {
 		if clean.starts_with(prefix) {
 			if value.starts_with(prefix) {
 				markused_infer_generic_type_text_bytes(clean[prefix.len..], value[prefix.len..],

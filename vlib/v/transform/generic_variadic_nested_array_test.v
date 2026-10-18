@@ -21,6 +21,22 @@ fn test_single_array_argument_infers_variadic_array_element() {
 	assert flat.source_type_name(inferred['T']) == 'int'
 }
 
+// sibling of https://github.com/vlang/v/issues/30842 for `thread T`
+fn test_thread_argument_infers_payload_type() {
+	mut inferred := map[string]u32{}
+	infer_generic_type_args(flat.source_type_id('thread T'), flat.source_type_id('thread string'),
+		mut inferred)
+	assert inferred['T'] == flat.source_type_string
+	mut nested := map[string]u32{}
+	infer_generic_type_args(flat.source_type_id('thread []T'), flat.source_type_id('thread []int'),
+		mut nested)
+	assert flat.source_type_name(nested['T']) == 'int'
+	mut mismatched := map[string]u32{}
+	infer_generic_type_args(flat.source_type_id('thread T'), flat.source_type_id('[]string'),
+		mut mismatched)
+	assert 'T' !in mismatched
+}
+
 fn test_variadic_call_inference_distinguishes_source_elements_and_packed_tails() {
 	for mode in ['element', 'spread', 'packed', 'temporary', 'forwarded'] {
 		mut a := flat.FlatAst.new()

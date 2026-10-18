@@ -14026,6 +14026,13 @@ fn infer_codegen_generic_type_args_bytes(param_type string, arg_type string, mut
 		infer_codegen_generic_type_args_bytes(param[3..], arg.trim_left('[]'), mut inferred)
 		return
 	}
+	if param.starts_with('thread ') {
+		// Mirror the transformer: `thread T` binds from a `thread string` argument.
+		if arg.starts_with('thread ') {
+			infer_codegen_generic_type_args_bytes(param[7..], arg[7..], mut inferred)
+		}
+		return
+	}
 	if param.starts_with('[]') && arg.starts_with('[]') {
 		infer_codegen_generic_type_args_bytes(param[2..], arg[2..], mut inferred)
 		return
