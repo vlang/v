@@ -10,9 +10,9 @@ struct DurablePlanTestRepository {
 	tree  string
 }
 
-fn plan_run(command string) string {
-	result := os.execute(command)
-	assert result.exit_code == 0, '${command}\n${result.output}'
+fn plan_run(argv []string) string {
+	result := os.exec(argv)
+	assert result.exit_code == 0, '${argv.join(' ')}\n${result.output}'
 	return result.output.trim_space()
 }
 
@@ -155,10 +155,9 @@ fn plan_seeded_unknown_target(with_blockers bool) string {
 }
 
 fn plan_proof_source(root string, head string) string {
-	tree :=
-		plan_run('git --no-replace-objects --git-dir ${os.quoted_path(root)} rev-parse ${head}^{tree}')
-	line :=
-		plan_run('git --no-replace-objects --git-dir ${os.quoted_path(root)} rev-list --parents -n 1 ${head}')
+	tree := plan_run(['git', '--no-replace-objects', '--git-dir', root, 'rev-parse', '${head}^{tree}'])
+	line := plan_run(['git', '--no-replace-objects', '--git-dir', root, 'rev-list', '--parents',
+		'-n', '1', head])
 	parts := line.split(' ')
 	assert parts.len == 2
 	return '{"schema_version":1,"repository":"vlang/v","ref":"refs/heads/tccbin-automation-state","commit_sha":"${head}","remote_head":"${head}","tree_sha":"${tree}","parent_shas":["${parts[1]}"],"verification_verified":true,"verification_reason":"valid","verified_at":"2026-08-18T00:00:00Z","state_writer_app_id":1234,"actor_login":"state-writer[bot]","actor_node_id":"BOT_state_writer","actor_database_id":5678,"actor_type":"Bot"}'
@@ -191,21 +190,21 @@ fn prepare_plan_repository(suffix string, selected_source string,
 		'libatomic_ops-master').replace('https://repo.or.cz/tinycc.git',
 		'https://github.com/bdwgc/libatomic_ops').replace('"ref": "mob"', '"ref": "master"'))
 	for command in [
-		'git -C ${os.quoted_path(work_root)} init -q',
-		'git -C ${os.quoted_path(work_root)} checkout -qb tccbin-automation-state',
-		'git -C ${os.quoted_path(work_root)} config user.email plan@example.invalid',
-		'git -C ${os.quoted_path(work_root)} config user.name "Plan Test"',
-		'git -C ${os.quoted_path(work_root)} add -- targets sources',
-		'git -C ${os.quoted_path(work_root)} commit -qm plan-root',
+		['git', '-C', work_root, 'init', '-q'],
+		['git', '-C', work_root, 'checkout', '-qb', 'tccbin-automation-state'],
+		['git', '-C', work_root, 'config', 'user.email', 'plan@example.invalid'],
+		['git', '-C', work_root, 'config', 'user.name', 'Plan Test'],
+		['git', '-C', work_root, 'add', '--', 'targets', 'sources'],
+		['git', '-C', work_root, 'commit', '-qm', 'plan-root'],
 	] {
 		plan_run(command)
 	}
 	plan_write(work_root, 'targets/linux-amd64.json', selected_source)
-	plan_run('git -C ${os.quoted_path(work_root)} add -- targets/linux-amd64.json')
-	plan_run('git -C ${os.quoted_path(work_root)} commit -qm plan-target')
-	head := plan_run('git -C ${os.quoted_path(work_root)} rev-parse HEAD')
-	tree := plan_run('git -C ${os.quoted_path(work_root)} rev-parse HEAD^{tree}')
-	plan_run('git clone -q --bare ${os.quoted_path(work_root)} ${os.quoted_path(bare_root)}')
+	plan_run(['git', '-C', work_root, 'add', '--', 'targets/linux-amd64.json'])
+	plan_run(['git', '-C', work_root, 'commit', '-qm', 'plan-target'])
+	head := plan_run(['git', '-C', work_root, 'rev-parse', 'HEAD'])
+	tree := plan_run(['git', '-C', work_root, 'rev-parse', 'HEAD^{tree}'])
+	plan_run(['git', 'clone', '-q', '--bare', work_root, bare_root])
 	os.rmdir_all(work_root) or {}
 	real_root := os.real_path(bare_root)
 	proof := os.join_path(real_root, 'plan-proof')
@@ -559,7 +558,7 @@ fn test_durable_target_commit_plan_runner_trace_reaps_only_after_both_eof() {
 		'sigchld-post-reap', 'repository-preflight-after']
 	assert !os.exists(trace_path) && !os.is_link(trace_path)
 	rejection := bin.durable_git_authority_adapter_rejection_for_test(repository.root,
-		'rev-parse HEAD') or { panic(err) }
+		['rev-parse', 'HEAD']) or { panic(err) }
 	assert rejection == 'durable Git authority adapter rejected noncanonical arguments'
 	assert !os.exists(trace_path) && !os.is_link(trace_path)
 }
