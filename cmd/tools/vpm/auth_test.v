@@ -27,6 +27,14 @@ fn test_unqualified_vpm_token_covers_one_private_registry() {
 	assert registry_token('https://vpm.example.com/a_module') == 'tok-all'
 }
 
+fn test_registry_transport_validates_https_without_a_token() {
+	assert registry_validates_tls(true, 'https://vpm.example.com/module')
+	assert registry_validates_tls(true, 'HTTPS://vpm.example.com/module')
+	assert !registry_validates_tls(true, 'http://vpm.example.com/module')
+	assert !registry_validates_tls(false, 'https://vpm.example.com/module')
+	assert !registry_validates_tls(true, '::::not a url::::')
+}
+
 // A scoped token must win over the unqualified one, because a machine holding
 // tokens for several private registries must not send one registry's token to
 // another.
