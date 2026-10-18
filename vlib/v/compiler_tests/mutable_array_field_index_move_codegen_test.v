@@ -7,7 +7,9 @@ const mutable_index_move_v3_dir = os.dir(mutable_index_move_tests_dir)
 const mutable_index_move_vlib_dir = os.dir(mutable_index_move_v3_dir)
 const mutable_index_move_v3_src = os.join_path(mutable_index_move_v3_dir, 'v.v')
 
-fn test_mutable_array_field_index_move_clears_source_slot() {
+// Under -ownership, reading an element through a `mut` receiver copies it: the
+// array keeps owning its element, and the copy owns separate storage.
+fn test_mutable_array_field_index_read_clones_source_slot() {
 	pid := os.getpid()
 	v3_bin := os.join_path(os.temp_dir(), 'v3_mutable_index_move_${pid}')
 	source := os.join_path(os.temp_dir(), 'v3_mutable_index_move_input_${pid}.v')
@@ -47,7 +49,8 @@ fn main() {
 \t}
 \titem := queue.pop()
 \tassert item.path == 'owned path'
-\tassert queue.items[0].path == ''
+\tassert queue.items[0].path == 'owned path'
+\tassert item.path.str != queue.items[0].path.str
 \tprintln('ok')
 }
 ") or {
