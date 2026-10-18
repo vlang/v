@@ -1,0 +1,13 @@
+@[attribute]
+struct Limits {
+	count int
+	label string
+	flag  bool
+}
+
+@[Limits('x', 1, 'y')]
+fn index() {
+}
+
+fn main() {
+}

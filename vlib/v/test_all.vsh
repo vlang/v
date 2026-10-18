@@ -23,7 +23,7 @@ const requested_vlib_tests = [
 	'vlib/os/process_test.v',
 	'vlib/os/file_test.v',
 	'vlib/arrays/arrays_test.v',
-	'vlib/v/tests/testdata/multiple_generic_struct_fields.v',
+	'vlib/v/compiler_tests/testdata/multiple_generic_struct_fields.v',
 ]
 
 // Unit tests that are known to fail and are not run for now. Paths are relative to the
@@ -60,7 +60,6 @@ const temporarily_disabled_c_directive_order_test_functions = [
 	'test_system_header_aggregates_are_emitted_headerlessly',
 	'test_system_header_functions_are_emitted_headerlessly',
 	'test_mach_headers_are_emitted_headerlessly',
-	'test_inferred_mach_headers_are_target_guarded',
 	'test_timerfd_header_uses_headerless_decls',
 	'test_stdarg_in_inlined_header_provides_va_defs',
 	'test_inttypes_in_inlined_header_keeps_format_macros',
@@ -222,7 +221,8 @@ fn main() {
 	section(8, 'Language feature parity')
 	lang_v := os.join_path(cfg.tests_dir, 'testdata', 'test_all_lang_features.v')
 	lang_out := os.join_path(cfg.tests_dir, 'test_all_lang_features.out')
-	run('${q(v3_bin)} ${cfg.c99_flag} ${q(lang_v)} -b c -o ${q(v3_lang_bin)}')
+	// The suite declares `__global` variables, which need -enable-globals.
+	run('${q(v3_bin)} ${cfg.c99_flag} -enable-globals ${q(lang_v)} -b c -o ${q(v3_lang_bin)}')
 	v3_c_out := run_output(cfg, q(v3_lang_bin))
 	expected_out := read_text_file(lang_out)
 	assert_same_text('language feature output', v3_c_out, expected_out)
@@ -798,12 +798,16 @@ fn run_process_with_timeout(command string, args []string, seconds int) ProcessR
 		process.set_args(args)
 	}
 	process.set_redirect_stdio()
+	// `xvfb-run` starts the X server and the program as its own children. Killing
+	// only `xvfb-run` would leave them holding the output pipes open, and the slurps
+	// below would wait for an EOF that never comes, so kill the whole group.
+	process.use_pgroup = true
 	process.run()
 	mut elapsed_ms := 0
 	limit_ms := seconds * 1000
 	for process.is_alive() {
 		if elapsed_ms >= limit_ms {
-			process.signal_kill()
+			process.signal_pgkill()
 			process.wait()
 			output := process.stdout_slurp() + process.stderr_slurp()
 			process.close()

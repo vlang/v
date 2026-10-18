@@ -1006,6 +1006,19 @@ pub mut:
 	// Read-only post-check call graph for transform forks (see
 	// fork_for_parallel_transform); nil in the checker that owns the graph.
 	post_check_dependencies &DependencyGraphView = unsafe { nil }
+	// The interface boxes the transform stage collected from the tree before
+	// lowering, the node count it scanned and the library bodies it skipped, for
+	// the monomorphization stage to start from. transform_boxed_node_count is -1
+	// until the transform stage sets them.
+	transform_boxed_types      []u64
+	transform_boxed_values     []bool
+	transform_boxed_skipped    []bool
+	transform_boxed_node_count int = -1
+	// The fixed-array borrow summaries the transform stage computed before
+	// lowering, keyed by fn_decl node, and the node count they cover, for the
+	// monomorphization stage to start from.
+	transform_borrow_params     map[int][]bool
+	transform_borrow_node_count int
 	// Methods used as *values* (`recv.method` passed as a callback), recorded per enclosing
 	// function during semantic checking — which has full scope/type info, runs before
 	// markused, and (unlike a call) routes a value-context selector through check_selector.
@@ -1169,6 +1182,10 @@ pub mut:
 	// the tests of other compiler modules can register declarations directly.
 	declaration_attributes map[int][]string
 	type_declaration_ids   map[string][]int
+	// attribute_schemas indexes custom attribute schemas by short name
+	// (vlang/rfcs#35). Several modules may declare the same short name;
+	// uses resolve V-strict, see check_custom_attribute_uses.
+	attribute_schemas map[string][]AttributeSchema
 mut:
 	checked_library_body_count int
 	// Successful reachability frontiers only append notices. Keep their last
@@ -1400,6 +1417,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		symbols:                                 symbols
 		enclosing_generic_params_by_node:        map[int][]string{}
 		declaration_attributes:                  map[int][]string{}
+		attribute_schemas:                       map[string][]AttributeSchema{}
 		noalloc_terminal_functions:              map[string]bool{}
 		type_declaration_ids:                    map[string][]int{}
 		strings_builder_bindings:                map[string]bool{}
@@ -1594,6 +1612,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		preflight_index_nodes_len:             tc.preflight_index_nodes_len
 		has_goto_nodes:                        tc.has_goto_nodes
 		declaration_attributes:                tc.declaration_attributes
+		attribute_schemas:                     tc.attribute_schemas
 		type_declaration_ids:                  tc.type_declaration_ids
 		first_type_declaration_ids:            tc.first_type_declaration_ids
 		strings_builder_bindings:              tc.strings_builder_bindings
@@ -2838,6 +2857,11 @@ pub fn (mut tc TypeChecker) begin_sparse_transform_node_caches(base_nodes int) {
 		tc.pre_transform_type_cache = tc.type_cache
 		tc.type_cache = new_type_cache_with_base(tc.pre_transform_type_cache.parse_enabled,
 			tc.pre_transform_type_cache)
+		if !isnil(tc.resolution_type_views) {
+			// The cached parse views still memoize into the cache that is now the frozen
+			// base. They would grow its maps in the transform's disposable arena.
+			tc.reset_resolution_type_view_cache()
+		}
 	}
 }
 
@@ -6830,6 +6854,47 @@ fn (mut tc TypeChecker) check_unused_import_diagnostics() {
 	tc.cur_module = final_module
 }
 
+// node_uses_qualified_attribute reports whether the attributes of `id`, or of
+// its struct fields, name a schema of `qualifier` or `module_path`, as the
+// dotted form `@[mod.Skip]` of a custom attribute does (vlang/rfcs#35).
+fn (tc &TypeChecker) node_uses_qualified_attribute(id flat.NodeId, qualifier string, module_path string) bool {
+	if qualifier.len == 0 && module_path.len == 0 {
+		return false
+	}
+	if attribute_pieces_name_module(tc.declaration_attributes[int(id)], qualifier, module_path) {
+		return true
+	}
+	node := tc.a.node(id)
+	for i in 0 .. node.children_count {
+		child := tc.a.child_node(node, i)
+		mut meta := child.generic_params()
+		if meta.len == 0 {
+			continue
+		}
+		if child.kind == .field_decl {
+			meta = meta[1..]
+		}
+		if attribute_pieces_name_module(meta, qualifier, module_path) {
+			return true
+		}
+	}
+	return false
+}
+
+// attribute_pieces_name_module reports whether an attribute piece is qualified
+// with `qualifier` or `module_path`.
+fn attribute_pieces_name_module(pieces []string, qualifier string, module_path string) bool {
+	for raw in pieces {
+		name := raw.all_before(':').trim_space()
+		if idx := name.last_index('.') {
+			if name[..idx] == qualifier || name[..idx] == module_path {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // nodes_of_files lists, in order, the indices of the nodes in each of `file_ids`.
 fn (tc &TypeChecker) nodes_of_files(file_ids []int) map[int][]int {
 	mut max_id := -1
@@ -7066,6 +7131,11 @@ fn (tc &TypeChecker) import_is_used(import_id flat.NodeId, import_node flat.Node
 			|| type_text_contains_qualified_import(node.value, import_node.typ_text())
 			|| type_text_contains_qualified_import(node.typ_text(), module_path)
 			|| type_text_contains_qualified_import(node.value, module_path)) {
+			return true
+		}
+		// A module-qualified attribute name (`@[mod.Skip]`) is a use of the
+		// module even though no selector expression names it (vlang/rfcs#35).
+		if tc.node_uses_qualified_attribute(flat.NodeId(idx), import_node.typ_text(), module_path) {
 			return true
 		}
 		for constraint in node.generic_constraints() {
@@ -10726,6 +10796,7 @@ pub fn (mut tc TypeChecker) check_semantics() {
 	tc.check_comptime_struct_updates_preflight()
 	tc.collect_selected_file_called_fns()
 	tc.check_export_attrs()
+	tc.check_custom_attribute_uses()
 	tc.check_import_diagnostics()
 	tc.check_c_js_generic_declarations()
 	tc.check_duplicate_fn_declarations()
@@ -10774,9 +10845,13 @@ pub fn (mut tc TypeChecker) check_semantics() {
 				tc.check_decl_type_strings(flat.NodeId(i), node)
 				tc.check_struct_implements(flat.NodeId(i), node)
 				tc.check_struct_field_defaults(node_id, node)
+				if tc.declaration_has_attribute(node_id, 'attribute') {
+					tc.check_attribute_schema_decl(node_id, node)
+				}
 			}
 			.type_decl, .interface_decl {
 				node_id := flat.NodeId(i)
+				tc.check_attribute_marker_target(node_id, node)
 				tc.check_type_declaration_conflict(node_id, node)
 				if node.kind == .interface_decl {
 					if tc.should_check_type_declaration_name(node_id, node)
@@ -10801,6 +10876,7 @@ pub fn (mut tc TypeChecker) check_semantics() {
 			}
 			.enum_decl {
 				node_id := flat.NodeId(i)
+				tc.check_attribute_marker_target(node_id, node)
 				tc.check_type_declaration_conflict(node_id, node)
 				if tc.should_check_type_declaration_name(node_id, node)
 					&& !pascal_case_name_is_valid(node.value) {
@@ -10821,6 +10897,7 @@ pub fn (mut tc TypeChecker) check_semantics() {
 				tc.check_const_global_initializers(node)
 			}
 			.fn_decl {
+				tc.check_attribute_marker_target(flat.NodeId(i), node)
 				tc.check_fn_declaration_name(flat.NodeId(i), node)
 				tc.check_method_field_name_collision(flat.NodeId(i), node)
 				tc.check_main_fn_signature(flat.NodeId(i), node)
@@ -13083,10 +13160,12 @@ fn (mut tc TypeChecker) check_export_attrs() {
 					tc.record_error_at(.unsupported_generic, 'missing argument for @[export] attribute', flat.NodeId(i), pos)
 					continue
 				}
+				// The parser records the exports of main and builtin under their bare
+				// names, which `qname` already is there. In another module, the bare
+				// name belongs to a different function: `dlmalloc.realloc` must not
+				// take the export of builtin's `realloc`.
 				export_name := tc.a.export_fn_names[qname] or {
-					tc.a.export_fn_names[node.value] or {
-						tc.a.export_fn_names['${cur_module}.${node.value}'] or { continue }
-					}
+					tc.a.export_fn_names['${cur_module}.${node.value}'] or { continue }
 				}
 				if export_name.len == 0 {
 					tc.record_error_unfiltered(.unsupported_generic, 'empty export name for `${qname}`', flat.NodeId(i))
@@ -16666,6 +16745,774 @@ fn (tc &TypeChecker) struct_value_path_reaches(current_name_id u32, target_name_
 	return false
 }
 
+// check_attribute_marker_target reports `@[attribute]` on declarations that
+// cannot declare a custom attribute schema (vlang/rfcs#35, slice 1): only
+// structs can carry the marker.
+fn (mut tc TypeChecker) check_attribute_marker_target(node_id flat.NodeId, node flat.Node) {
+	if node.kind == .struct_decl || !tc.declaration_has_attribute(node_id, 'attribute') {
+		return
+	}
+	kind := if node.kind == .fn_decl {
+		'fn'
+	} else if node.kind == .enum_decl {
+		'enum'
+	} else if node.kind == .interface_decl {
+		'interface'
+	} else if node.kind == .type_decl {
+		'type'
+	} else {
+		'declaration'
+	}
+	tc.record_error_at(.assignment_mismatch, '`@[attribute]` can only be applied to struct declarations', node_id, tc.declaration_keyword_name_pos(node_id, kind))
+}
+
+// check_attribute_schema_decl validates a struct marked with `@[attribute]`,
+// which declares a custom attribute schema (vlang/rfcs#35, slice 1). A schema
+// is inert metadata: its fields hold immutable data, so `mut` fields and
+// embeds are rejected here. Initialization, embedding elsewhere, and generic
+// type argument uses are rejected at their own sites.
+fn (mut tc TypeChecker) check_attribute_schema_decl(node_id flat.NodeId, node flat.Node) {
+	display := node.value.all_after_last('.')
+	if node.generic_params().len > 0 {
+		tc.record_error_at(.assignment_mismatch, 'attribute schema `${display}` cannot have generic parameters', node_id, tc.struct_declaration_name_pos(node))
+	}
+	for i in 0 .. node.children_count {
+		field_id := tc.a.child(&node, i)
+		field := tc.a.child_node(&node, i)
+		if field.kind != .field_decl {
+			continue
+		}
+		field_type_text := if field.typ != 0 { field.typ_text() } else { field.value }
+		if source_field_decl_is_mut(*field) {
+			tc.record_error_at(.assignment_mismatch, 'attribute schema `${display}` cannot have `mut` fields', field_id, tc.struct_field_declaration_pos(*field))
+		}
+		if source_field_decl_is_embed(field, field_type_text) {
+			tc.record_error_at(.assignment_mismatch, 'attribute schema `${display}` cannot embed structs', field_id, tc.struct_field_declaration_pos(*field))
+			continue
+		}
+		if field.children_count > 0 {
+			tc.record_error_at(.assignment_mismatch, 'attribute schema field `${display}.${field.value}` cannot have a default value', field_id, tc.struct_field_declaration_pos(*field))
+		}
+		if tc.attribute_field_kind(field_type_text) == .unsupported {
+			tc.record_error_at(.assignment_mismatch, 'attribute schema field `${display}.${field.value}` must be a string, integer, bool, or enum, not `${field_type_text.trim_space()}`', field_id, tc.struct_field_declaration_pos(*field))
+		}
+	}
+	for raw in tc.declaration_attributes[int(node_id)] {
+		if raw.all_before(':').trim_space() != 'attribute' || !raw.contains(':') {
+			continue
+		}
+		target := attribute_string_unquote(raw.all_after(':').trim_space())
+		if target.len > 0 && !is_attribute_target_name(target) {
+			lo, hi := attribute_use_window(node)
+			tc.record_error_at(.assignment_mismatch, 'unknown attribute target `${target}`', node_id, tc.attribute_use_pos(node, 'attribute', lo, hi))
+		}
+	}
+}
+
+// AttributeSchemaField is one field of a custom attribute schema.
+struct AttributeSchemaField {
+	name      string
+	type_text string
+}
+
+// AttributeSchema is a struct registered with `@[attribute]` whose uses are
+// validated by check_custom_attribute_uses (vlang/rfcs#35, slice 2). Targets
+// is empty when the schema may sit on any declaration.
+struct AttributeSchema {
+mut:
+	name    string
+	module  string
+	fields  []AttributeSchemaField
+	targets []string
+}
+
+// AttributeUse is one schema applied through an attribute, with the piece name
+// that applied it (`Route` or `mod.Route`), which is what diagnostics quote.
+struct AttributeUse {
+	schema AttributeSchema
+	base   string
+}
+
+// AttributeFieldKind classifies schema field types and attribute argument
+// values. Only strings, integers, bools, and enums are supported (slice 2);
+// everything else is AttributeFieldKind.unsupported.
+enum AttributeFieldKind {
+	string_
+	integer
+	boolean
+	enum_
+	unsupported
+}
+
+// attribute_target_kind_word names a declaration kind the way target
+// restrictions spell it: 'fn', 'struct', 'enum', 'field', 'value' (enum
+// value), 'interface'. Anything else reports as 'declaration'.
+fn attribute_target_kind_word(kind flat.NodeKind) string {
+	return match kind {
+		.fn_decl { 'fn' }
+		.struct_decl { 'struct' }
+		.enum_decl { 'enum' }
+		.field_decl { 'field' }
+		.enum_field { 'value' }
+		.interface_decl { 'interface' }
+		.type_decl { 'type' }
+		else { 'declaration' }
+	}
+}
+
+// is_attribute_target_name reports whether `name` may restrict an attribute
+// schema to a declaration kind.
+fn is_attribute_target_name(name string) bool {
+	return name in ['fn', 'struct', 'enum', 'field', 'value', 'interface', 'module']
+}
+
+// attribute_modules_compatible reports whether a schema declared in
+// `schema_module` is visible to a bare use in `use_module`. Bare names
+// resolve V-strict: the current module only.
+fn attribute_modules_compatible(schema_module string, use_module string) bool {
+	if schema_module == use_module {
+		return true
+	}
+	return schema_module in ['', 'main'] && use_module in ['', 'main']
+}
+
+// attribute_string_literal reports whether `value` is a quoted string literal.
+fn attribute_string_literal(value string) bool {
+	return (value.len >= 2 && value[0] in [`'`, `"`] && value[value.len - 1] == value[0])
+		|| (value.len >= 3 && value[0] == `r` && value[1] in [`'`, `"`]
+			&& value[value.len - 1] == value[1])
+}
+
+// attribute_string_unquote strips one pair of surrounding quotes, if present.
+fn attribute_string_unquote(value string) string {
+	if value.len >= 3 && value[0] == `r` && value[1] in [`'`, `"`]
+		&& value[value.len - 1] == value[1] {
+		return value[2..value.len - 1]
+	}
+	if attribute_string_literal(value) {
+		return value[1..value.len - 1]
+	}
+	return value
+}
+
+// attribute_integer_literal reports whether `value` spells an integer:
+// decimal, hex, octal, or binary, with optional `-` and `_` separators.
+fn attribute_integer_literal(value string) bool {
+	mut text := value.replace('_', '')
+	if text.starts_with('-') {
+		text = text[1..]
+	}
+	if text.starts_with('0x') || text.starts_with('0X') {
+		if text.len <= 2 {
+			return false
+		}
+		for c in text[2..] {
+			if !c.is_hex_digit() {
+				return false
+			}
+		}
+		return true
+	}
+	if text.starts_with('0o') || text.starts_with('0O') {
+		if text.len <= 2 {
+			return false
+		}
+		for c in text[2..] {
+			if c < `0` || c > `7` {
+				return false
+			}
+		}
+		return true
+	}
+	if text.starts_with('0b') || text.starts_with('0B') {
+		if text.len <= 2 {
+			return false
+		}
+		for c in text[2..] {
+			if c != `0` && c != `1` {
+				return false
+			}
+		}
+		return true
+	}
+	if text.len == 0 {
+		return false
+	}
+	for c in text {
+		if !c.is_digit() {
+			return false
+		}
+	}
+	return true
+}
+
+// attribute_arg_kind classifies a raw attribute argument value: quoted
+// strings, integers, bools, and dot-prefixed enum values are valid;
+// anything else (bare idents, floats, compound expressions) is invalid.
+fn attribute_arg_kind(value string) AttributeFieldKind {
+	if attribute_string_literal(value) {
+		return .string_
+	}
+	if value == 'true' || value == 'false' {
+		return .boolean
+	}
+	if attribute_integer_literal(value) {
+		return .integer
+	}
+	if value.len > 1 && value[0] == `.` {
+		return .enum_
+	}
+	return .unsupported
+}
+
+// attribute_field_kind maps a schema field type to the argument kind it
+// accepts. Only plain strings, integers, bools, and enums are supported;
+// options, references, arrays, maps, and nested structs are unsupported.
+fn (tc &TypeChecker) attribute_field_kind(type_text string) AttributeFieldKind {
+	clean := unalias_type(tc.parse_type(flat.source_type_id(type_text.trim_space())))
+	if clean is String {
+		return .string_
+	}
+	if clean.is_integer() {
+		return .integer
+	}
+	if clean.name() == 'bool' {
+		return .boolean
+	}
+	if clean is Enum {
+		return .enum_
+	}
+	return .unsupported
+}
+
+// attribute_enum_decl finds the enum declaration for `type_text`, trying the
+// spelling as written, then the current-module qualification, then the short
+// name.
+fn (tc &TypeChecker) attribute_enum_decl(type_text string, module string) ?flat.NodeId {
+	trimmed := type_text.trim_space()
+	short := trimmed.all_after_last('.')
+	mod := if module in ['', 'main'] { 'main' } else { module }
+	candidates := [trimmed, '${mod}.${short}', short]
+	for cand in candidates {
+		if idx := tc.first_type_declaration_ids[cand] {
+			if tc.a.nodes[idx].kind == .enum_decl {
+				return flat.NodeId(idx)
+			}
+		}
+	}
+	return none
+}
+
+// attribute_enum_has_value reports whether enum `decl_id` declares `name`.
+fn (tc &TypeChecker) attribute_enum_has_value(decl_id flat.NodeId, name string) bool {
+	decl := tc.a.node(decl_id)
+	for i in 0 .. decl.children_count {
+		field := tc.a.child_node(decl, i)
+		if field.kind == .enum_field && field.value == name {
+			return true
+		}
+	}
+	return false
+}
+
+// collect_attribute_schemas registers every struct marked with `@[attribute]`
+// by short name. Several modules may declare the same name; uses resolve
+// V-strict in check_custom_attribute_uses.
+fn (mut tc TypeChecker) collect_attribute_schemas() {
+	tc.attribute_schemas = map[string][]AttributeSchema{}
+	mut cur_module := ''
+	for i in tc.top_level_idx {
+		node := tc.a.nodes[i]
+		match node.kind {
+			.file {
+				tc.enter_file(node.value)
+				cur_module = tc.cur_module
+			}
+			.module_decl {
+				cur_module = node.value
+				tc.enter_module(node.value)
+			}
+			.struct_decl {
+				node_id := flat.NodeId(i)
+				if !tc.declaration_has_attribute(node_id, 'attribute') {
+					continue
+				}
+				short := node.value.all_after_last('.')
+				module := if node.value.contains('.') {
+					node.value.all_before_last('.')
+				} else {
+					cur_module
+				}
+				mut schema := AttributeSchema{
+					name:   short
+					module: module
+				}
+				for j in 0 .. node.children_count {
+					field := tc.a.child_node(&node, j)
+					if field.kind != .field_decl {
+						continue
+					}
+					type_text := if field.typ != 0 { field.typ_text() } else { field.value }
+					if source_field_decl_is_embed(field, type_text) {
+						continue
+					}
+					schema.fields << AttributeSchemaField{
+						name:      field.value
+						type_text: type_text.trim_space()
+					}
+				}
+				for raw in tc.declaration_attributes[int(node_id)] {
+					if raw.all_before(':').trim_space() != 'attribute' || !raw.contains(':') {
+						continue
+					}
+					target := attribute_string_unquote(raw.all_after(':').trim_space())
+					if target.len > 0 {
+						schema.targets << target
+					}
+				}
+				tc.attribute_schemas[short] << schema
+			}
+			else {}
+		}
+	}
+}
+
+// attribute_use_window returns the source range that holds the attributes of a
+// declaration: the groups written just before its keyword.
+fn attribute_use_window(node flat.Node) (int, int) {
+	anchor := int(node.pos.offset)
+	return int_max(0, anchor - 400), anchor
+}
+
+// attribute_child_window returns the source range that holds the attributes of
+// one struct field or enum value: from the end of the previous sibling to the
+// start of the next one, so a neighbouring sibling's attribute can never be
+// mistaken for this one's.
+fn attribute_child_window(prev_end int, own_start int, next_start int, own_end int) (int, int) {
+	lo := if prev_end > own_start { prev_end } else { own_start }
+	hi := if next_start > own_start { next_start } else { own_end }
+	return lo, hi
+}
+
+// attribute_use_pos locates the attribute named `base` inside the source
+// range [lo, hi), so use-site errors point at the attribute rather than the
+// declaration. Only whole-word matches followed by `:`, `(`, `;`, `]`, `,`, or
+// the end of the group count, so `Route_method` pieces and string contents
+// cannot match `Route`. Falls back to the node position.
+fn (tc &TypeChecker) attribute_use_pos(node flat.Node, base string, lo int, hi int) token.Pos {
+	file := tc.a.source_files[node.pos.id] or { return node.pos }
+	source := tc.source_texts_by_file[file.name] or { return node.pos }
+	// A field or enum value owns exactly the groups inside its span, so the
+	// first match is its own. A declaration's groups precede its keyword, so
+	// the match closest to the keyword is its own: an earlier declaration
+	// using the same schema must not capture the position.
+	nearest_to_end := node.kind !in [.field_decl, .enum_field]
+	idx := attribute_find_in_range(source, lo, hi, base, nearest_to_end) or {
+		return node.pos
+	}
+	return token.new_span(node.pos.id, idx, idx + base.len)
+}
+
+// attribute_find_in_range returns the offset of a `@[...]` group in
+// source[lo..hi) that uses `base` as an attribute name: the first one, or the
+// last one (closest to `hi`) when `nearest_to_end`.
+fn attribute_find_in_range(source string, lo int, hi int, base string, nearest_to_end bool) ?int {
+	start := int_max(0, lo)
+	end := int_min(hi, source.len)
+	if start >= end {
+		return none
+	}
+	window := source[start..end]
+	mut found := ?int(none)
+	mut search_from := 0
+	for search_from < window.len {
+		rel := window[search_from..].index('@[') or { break }
+		group_at := search_from + rel
+		group_end_rel := window[group_at..].index(']') or { break }
+		group := window[group_at..group_at + group_end_rel]
+		if idx := attribute_whole_word_index(group, base) {
+			mut k := idx + base.len
+			for k < group.len && group[k] in [` `, `\t`, `\n`, `\r`] {
+				k++
+			}
+			if k >= group.len || group[k] in [`:`, `(`, `;`, `]`, `,`] {
+				found = start + group_at + idx
+				if !nearest_to_end {
+					return found
+				}
+			}
+		}
+		search_from = group_at + 2
+	}
+	return found
+}
+
+// attribute_whole_word_index finds `word` in `s` at a non-identifier
+// boundary on both sides, so `Route` never matches inside `Route_method`.
+fn attribute_whole_word_index(s string, word string) ?int {
+	if word.len == 0 || word.len > s.len {
+		return none
+	}
+	mut from := 0
+	for from + word.len <= s.len {
+		rel := s[from..].index(word) or { return none }
+		i := from + rel
+		before_ok := i == 0 || !(s[i - 1].is_alnum() || s[i - 1] == `_`)
+		after_ok := i + word.len >= s.len
+			|| !(s[i + word.len].is_alnum() || s[i + word.len] == `_`)
+		if before_ok && after_ok {
+			return i
+		}
+		from = i + 1
+	}
+	return none
+}
+
+// check_custom_attribute_uses validates every attribute use whose name
+// matches a registered `@[attribute]` schema (vlang/rfcs#35, slice 2):
+// target restrictions, argument counts and names, and argument types.
+// Unregistered names stay silent here; they are slice-3 warn-first material.
+fn (mut tc TypeChecker) check_custom_attribute_uses() {
+	if tc.valid_diagnostic_fast {
+		return
+	}
+	tc.collect_attribute_schemas()
+	if tc.attribute_schemas.len == 0 {
+		return
+	}
+	mut cur_module := ''
+	for i in tc.top_level_idx {
+		node := tc.a.nodes[i]
+		match node.kind {
+			.file {
+				tc.enter_file(node.value)
+				cur_module = tc.cur_module
+			}
+			.module_decl {
+				cur_module = node.value
+				tc.enter_module(node.value)
+			}
+			.fn_decl, .struct_decl, .enum_decl, .type_decl, .interface_decl {
+				node_id := flat.NodeId(i)
+				if !tc.should_check_source_name(node_id) {
+					continue
+				}
+				lo, hi := attribute_use_window(node)
+				tc.check_attribute_use_pieces(node_id, node, cur_module, tc.declaration_attributes[int(node_id)], lo, hi)
+			}
+			else {}
+		}
+		if node.kind == .struct_decl {
+			for j in 0 .. node.children_count {
+				field_id := tc.a.child(&node, j)
+				field := tc.a.child_node(&node, j)
+				if field.kind != .field_decl {
+					continue
+				}
+				meta := field.generic_params()
+				if meta.len < 2 || !tc.should_check_source_name(field_id) {
+					continue
+				}
+				lo, hi := attribute_child_window(
+					if j > 0 {
+						int(tc.a.child_node(&node, j - 1).pos.end)
+					} else {
+						int(node.pos.offset)
+					},
+					int(field.pos.offset),
+					if j + 1 < node.children_count {
+						int(tc.a.child_node(&node, j + 1).pos.offset)
+					} else {
+						int(node.pos.end)
+					},
+					int(field.pos.end),
+				)
+				tc.check_attribute_use_pieces(field_id, field, cur_module, meta[1..].clone(), lo, hi)
+			}
+		}
+		if node.kind == .enum_decl {
+			for j in 0 .. node.children_count {
+				value_id := tc.a.child(&node, j)
+				value := tc.a.child_node(&node, j)
+				if value.kind != .enum_field {
+					continue
+				}
+				meta := value.generic_params()
+				if meta.len == 0 || !tc.should_check_source_name(value_id) {
+					continue
+				}
+				lo, hi := attribute_child_window(
+					if j > 0 {
+						int(tc.a.child_node(&node, j - 1).pos.end)
+					} else {
+						int(node.pos.offset)
+					},
+					int(value.pos.offset),
+					if j + 1 < node.children_count {
+						int(tc.a.child_node(&node, j + 1).pos.offset)
+					} else {
+						int(node.pos.end)
+					},
+					int(value.pos.end),
+				)
+				tc.check_attribute_use_pieces(value_id, value, cur_module, meta.clone(), lo, hi)
+			}
+		}
+	}
+}
+
+// check_attribute_use_pieces validates the attribute `pieces` on one
+// declaration, field, or enum value against the registered schemas. `lo` and
+// `hi` bound the source range the attributes of this node occupy.
+fn (mut tc TypeChecker) check_attribute_use_pieces(node_id flat.NodeId, node flat.Node, module string, pieces []string, lo int, hi int) {
+	for use in tc.attribute_use_schemas(pieces, module) {
+		pos := tc.attribute_use_pos(node, use.base, lo, hi)
+		if use.schema.targets.len > 0
+			&& attribute_target_kind_word(node.kind) !in use.schema.targets {
+			tc.record_error_at(.assignment_mismatch, 'attribute `${use.base}` cannot be applied to `${attribute_target_kind_word(node.kind)}`', node_id, pos)
+			continue
+		}
+		tc.check_attribute_use_args(node_id, use.schema, use.base, pieces, pos, module)
+	}
+}
+
+// attribute_use_schemas finds the schemas `pieces` uses, V-strict (RFC
+// vlang/rfcs#35, "Name resolution across modules"): a bare `Name` sees the
+// current module only, and a dotted `mod.Name` sees the schema `Name` of the
+// module `mod`. Resolution is registry-driven rather than a name heuristic,
+// so `Name_key` pieces attach to `Name` and a schema whose own name contains
+// `_` resolves like any other.
+fn (tc &TypeChecker) attribute_use_schemas(pieces []string, module string) []AttributeUse {
+	mut names := []string{}
+	for raw in pieces {
+		name := raw.all_before(':').trim_space()
+		if name.len > 0 && name !in names {
+			names << name
+		}
+	}
+	mut uses := []AttributeUse{}
+	for name in names {
+		mut qualifier := ''
+		mut short := name
+		if idx := name.last_index('.') {
+			qualifier = name[..idx]
+			short = name[idx + 1..]
+		}
+		for schema in tc.attribute_schemas[short] or { []AttributeSchema{} } {
+			resolved := if qualifier.len > 0 {
+				schema.module == qualifier
+			} else {
+				attribute_modules_compatible(schema.module, module)
+			}
+			if resolved {
+				uses << AttributeUse{
+					schema: schema
+					base:   name
+				}
+				break
+			}
+		}
+	}
+	return uses
+}
+
+// check_attribute_use_args reconstructs one schema call from its flattened
+// pieces and checks argument counts, names, and types against the schema.
+// The parser flattens `@[Name(p0, key: v1, p1)]` into `Name: p0`,
+// `Name_key: v1`, `Name_1: p1` (the first positional becomes the base value;
+// later positionals are numbered from 1).
+fn (mut tc TypeChecker) check_attribute_use_args(node_id flat.NodeId, schema AttributeSchema, base string, pieces []string, pos token.Pos, module string) {
+	// Split the flattened pieces into parallel name/value lists first: the
+	// legacy representation stores a dot-prefixed enum value (`.get`) as an empty piece
+	// followed by a numbered positional holding the bare ident
+	// (`Name_key: ` + `Name_1: get`), and the two must be reassembled below.
+	mut names := []string{}
+	mut raw_values := []string{}
+	for raw in pieces {
+		name := raw.all_before(':').trim_space()
+		if name != base && !name.starts_with(base + '_') {
+			continue
+		}
+		value := if raw.contains(':') { raw.all_after(':').trim_space() } else { '' }
+		names << name
+		raw_values << value
+	}
+	mut positional := []string{}
+	mut named_order := []string{}
+	mut named := map[string][]string{}
+	mut idx := 0
+	for idx < names.len {
+		name := names[idx]
+		value := raw_values[idx]
+		if merged := attribute_dot_enum_value(base, names, raw_values, idx) {
+			if name == base || is_attribute_numbered_suffix(base, name) {
+				positional << merged
+			} else {
+				key := name[base.len + 1..]
+				if key !in named {
+					named_order << key
+				}
+				named[key] << merged
+			}
+			idx += 2
+			continue
+		}
+		if name == base {
+			if value.len > 0 {
+				positional << value
+			}
+			idx++
+			continue
+		}
+		if is_attribute_numbered_suffix(base, name) {
+			positional << value
+			idx++
+			continue
+		}
+		key := name[base.len + 1..]
+		if key !in named {
+			named_order << key
+		}
+		named[key] << value
+		idx++
+	}
+	// Numbered positionals (`Name_1`, ...) arrive in source order already.
+	if positional.len > schema.fields.len {
+		want := if schema.fields.len == 1 {
+			'1 positional argument'
+		} else {
+			'${schema.fields.len} positional arguments'
+		}
+		got := if positional.len == 1 {
+			'1 positional argument'
+		} else {
+			'${positional.len} positional arguments'
+		}
+		tc.record_error_at(.assignment_mismatch, 'attribute `${base}` expects ${want}, got ${got}', node_id, pos)
+		positional = positional[..schema.fields.len]
+	}
+	mut bound := map[string]bool{}
+	for idx, value in positional {
+		field := schema.fields[idx]
+		bound[field.name] = true
+		tc.check_attribute_arg_value(node_id, schema, base, field, value, pos, module)
+	}
+	for key in named_order {
+		values := named[key]
+		field_idx := schema_field_index(schema, key)
+		if field_idx < 0 {
+			tc.record_error_at(.assignment_mismatch, 'unknown field `${key}` in attribute `${base}`', node_id, pos)
+			continue
+		}
+		field := schema.fields[field_idx]
+		if bound[field.name] || values.len > 1 {
+			tc.record_error_at(.assignment_mismatch, 'duplicate field `${key}` in attribute `${base}`', node_id, pos)
+		}
+		bound[field.name] = true
+		for value in values {
+			tc.check_attribute_arg_value(node_id, schema, base, field, value, pos, module)
+		}
+	}
+	for field in schema.fields {
+		if !bound[field.name] {
+			tc.record_error_at(.assignment_mismatch, 'attribute `${base}` is missing field `${field.name}`', node_id, pos)
+		}
+	}
+}
+
+// is_attribute_numbered_suffix reports whether `name` is a numbered
+// positional piece (`Base_1`, ...) of the attribute `base`.
+fn is_attribute_numbered_suffix(base string, name string) bool {
+	if !name.starts_with(base + '_') {
+		return false
+	}
+	suffix := name[base.len + 1..]
+	return suffix.len > 0 && suffix.bytes().all(it.is_digit())
+}
+
+// is_bare_ident reports whether `s` is a plain identifier.
+fn is_bare_ident(s string) bool {
+	if s.len == 0 || !(s[0].is_letter() || s[0] == `_`) {
+		return false
+	}
+	for c in s[1..] {
+		if !(c.is_alnum() || c == `_`) {
+			return false
+		}
+	}
+	return true
+}
+
+// attribute_dot_enum_value reassembles a dot-prefixed enum value that the
+// legacy representation splits into an empty piece plus a numbered positional holding the
+// bare ident (`Name_key: ` + `Name_1: get` becomes `.get`). The merge only
+// fires for a bare ident, so an empty piece followed by a quoted string,
+// a number, or nothing keeps its own meaning.
+fn attribute_dot_enum_value(base string, names []string, values []string, idx int) ?string {
+	if values[idx].len > 0 || idx + 1 >= names.len {
+		return none
+	}
+	if !is_attribute_numbered_suffix(base, names[idx + 1]) {
+		return none
+	}
+	if !is_bare_ident(values[idx + 1]) {
+		return none
+	}
+	return '.' + values[idx + 1]
+}
+
+// schema_field_index finds the schema field named `name`, or -1.
+fn schema_field_index(schema AttributeSchema, name string) int {
+	for idx, field in schema.fields {
+		if field.name == name {
+			return idx
+		}
+	}
+	return -1
+}
+
+// check_attribute_arg_value checks one argument value against its schema
+// field: literal kind first, then enum membership for enum fields. Fields
+// whose type is unsupported are skipped here; the schema declaration itself
+// already errors for those.
+fn (mut tc TypeChecker) check_attribute_arg_value(node_id flat.NodeId, schema AttributeSchema, base string, field AttributeSchemaField, value string, pos token.Pos, module string) {
+	kind := tc.attribute_field_kind(field.type_text)
+	if kind == .unsupported {
+		return
+	}
+	got := attribute_arg_kind(value)
+	if got == .unsupported {
+		tc.record_error_at(.assignment_mismatch, 'field `${field.name}` in attribute `${base}` expects ${attribute_kind_word(kind)}, got `${value}`', node_id, pos)
+		return
+	}
+	if got != kind {
+		// An enum value (`.get`) never matches a non-enum field and a plain
+		// literal never matches an enum field.
+		tc.record_error_at(.assignment_mismatch, 'field `${field.name}` in attribute `${base}` expects ${attribute_kind_word(kind)}, got `${value}`', node_id, pos)
+		return
+	}
+	if kind == .enum_ {
+		if decl_id := tc.attribute_enum_decl(field.type_text, module) {
+			name := value[1..]
+			if !tc.attribute_enum_has_value(decl_id, name) {
+				enum_name := field.type_text.trim_space().all_after_last('.')
+				tc.record_error_at(.assignment_mismatch, '`${value}` is not a value of enum `${enum_name}`', node_id, pos)
+			}
+		}
+	}
+}
+
+// attribute_kind_word phrases an expected argument kind for diagnostics.
+fn attribute_kind_word(kind AttributeFieldKind) string {
+	return match kind {
+		.string_ { 'a string' }
+		.integer { 'an integer' }
+		.boolean { 'a boolean' }
+		.enum_ { 'an enum value' }
+		.unsupported { 'a supported value' }
+	}
+}
+
 // check_struct_field_defaults validates check struct field defaults state for types.
 fn (mut tc TypeChecker) check_struct_field_defaults(node_id flat.NodeId, node flat.Node) {
 	saved_generic_params := tc.fn_context.generic_params.clone()
@@ -16760,6 +17607,15 @@ fn (mut tc TypeChecker) check_struct_field_defaults(node_id flat.NodeId, node fl
 				tc.struct_field_declaration_pos(*field)
 			}
 			tc.record_error_at(.assignment_mismatch, message, field_id, diagnostic_pos)
+		}
+		if is_embed {
+			// An attribute schema is inert metadata, so it cannot be embedded.
+			if embedded_decl := tc.source_struct_decl_id_for_name(flat.source_type_id(field_type_text)) {
+				if tc.declaration_has_attribute(embedded_decl, 'attribute') {
+					embedded_name := field_type_text.trim_space().all_after_last('.')
+					tc.record_error_at(.assignment_mismatch, 'cannot embed attribute schema `${embedded_name}`', field_id, tc.struct_field_declaration_pos(*field))
+				}
+			}
 		}
 		if !is_embed && field_type_raw is Alias && field_type is Struct && field_type.name().starts_with('C.') && field_type.name() in tc.c_typedef_structs && (tc.structs[field_type.name()] or {
 			[]StructField{}
@@ -16980,9 +17836,20 @@ fn (tc &TypeChecker) anonymous_struct_embedded_type_pos(field flat.Node) token.P
 	source := tc.source_texts_by_file[file.name] or { return field.pos }
 	start := int_min(int_max(field.pos.offset, 0), source.len)
 	end := int_min(int_max(field.pos.end, start), source.len)
-	if relative := source[start..end].last_index(field.typ_text()) {
+	// An embed inside an anonymous aggregate declaration is parsed without a source
+	// type id, so `typ_text()` is empty and the spelling lives in `value`. An empty
+	// needle matches at the end of the span, which moved the diagnostic past the
+	// type and hid the struct declaration error.
+	mut type_text := field.typ_text()
+	if type_text.len == 0 {
+		type_text = field.value
+	}
+	if type_text.len == 0 {
+		return field.pos
+	}
+	if relative := source[start..end].last_index(type_text) {
 		type_start := start + relative
-		return token.new_span(field.pos.id, type_start, type_start + field.typ_text().len)
+		return token.new_span(field.pos.id, type_start, type_start + type_text.len)
 	}
 	return field.pos
 }

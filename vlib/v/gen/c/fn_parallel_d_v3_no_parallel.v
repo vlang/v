@@ -57,6 +57,11 @@ fn (mut g FlatGen) gen_fns_dispatch(_ bool) {
 	g.gen_synthetic_main_after_fns()
 }
 
+// parallel_decl_task_planned is always false when parallel cgen is compiled out.
+fn (g &FlatGen) parallel_decl_task_planned() bool {
+	return false
+}
+
 // prepare_serial_fn_tables is unnecessary when parallel cgen is compiled out.
 fn (mut g FlatGen) prepare_serial_fn_tables() {}
 
