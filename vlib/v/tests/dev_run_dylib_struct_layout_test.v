@@ -101,7 +101,7 @@ fn test_dev_run_with_clang_keeps_the_struct_layout_of_the_cached_modules() {
 	root := os.join_path(os.vtmp_dir(), 'v_dev_run_dylib_layout_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(os.join_path(root, 'shed'))!
-	saved := ['VTMP', 'V3CACHE', 'VFLAGS'].map(save_env(it))
+	saved := ['VTMP', 'V3CACHE', 'VFLAGS', 'CFLAGS', 'LDFLAGS'].map(save_env(it))
 	defer {
 		for env in saved {
 			env.restore()
@@ -112,6 +112,8 @@ fn test_dev_run_with_clang_keeps_the_struct_layout_of_the_cached_modules() {
 	os.setenv('VTMP', cache, true)
 	os.setenv('V3CACHE', cache, true)
 	os.unsetenv('VFLAGS')
+	os.unsetenv('CFLAGS')
+	os.unsetenv('LDFLAGS')
 	os.write_file(os.join_path(root, 'v.mod'), '')!
 	os.write_file(os.join_path(root, 'shed', 'shed.v'), shed_module)!
 	main_file := os.join_path(root, 'main.v')
