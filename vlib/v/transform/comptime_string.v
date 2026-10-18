@@ -14,7 +14,7 @@ fn (t &Transformer) comptime_scalar_expr_in_context(id flat.NodeId, depth int, m
 	if depth > 64 || int(id) < 0 || int(id) >= t.a.nodes.len {
 		return none
 	}
-	node := t.a.nodes[int(id)]
+	node := t.a.node(id)
 	match node.kind {
 		.string_literal {
 			if node.children_count != 0 {
@@ -42,18 +42,18 @@ fn (t &Transformer) comptime_scalar_expr_in_context(id flat.NodeId, depth int, m
 		}
 		.paren {
 			if node.children_count == 1 {
-				return t.comptime_scalar_expr_in_context(t.a.child(&node, 0), depth + 1, module_name, file, allow_locals)
+				return t.comptime_scalar_expr_in_context(t.a.child(node, 0), depth + 1, module_name, file, allow_locals)
 			}
 		}
 		.selector {
 			if node.value == 'len' && node.children_count == 1 {
-				base := t.comptime_scalar_expr_in_context(t.a.child(&node, 0), depth + 1, module_name, file, allow_locals) or { return none }
+				base := t.comptime_scalar_expr_in_context(t.a.child(node, 0), depth + 1, module_name, file, allow_locals) or { return none }
 				if base.typ == flat.source_type_string {
 					return ComptimeStringScalar{flat.source_type_int, base.value.len.str()}
 				}
 			}
 			if node.children_count == 1 {
-				base := t.a.child_node(&node, 0)
+				base := t.a.child_node(node, 0)
 				if base.kind == .ident && (!allow_locals || (t.var_type(base.value)) == 0) {
 					return t.comptime_scalar_named_const('${base.value}.${node.value}', depth, module_name, file)
 				}
@@ -61,8 +61,8 @@ fn (t &Transformer) comptime_scalar_expr_in_context(id flat.NodeId, depth int, m
 		}
 		.infix {
 			if node.children_count != 2 { return none }
-			left := t.comptime_scalar_expr_in_context(t.a.child(&node, 0), depth + 1, module_name, file, allow_locals)?
-			right := t.comptime_scalar_expr_in_context(t.a.child(&node, 1), depth + 1, module_name, file, allow_locals)?
+			left := t.comptime_scalar_expr_in_context(t.a.child(node, 0), depth + 1, module_name, file, allow_locals)?
+			right := t.comptime_scalar_expr_in_context(t.a.child(node, 1), depth + 1, module_name, file, allow_locals)?
 			if left.typ_text() != right.typ_text() { return none }
 			if left.typ == flat.source_type_string && node.op == .plus {
 				return ComptimeStringScalar{flat.source_type_string, left.value + right.value}
@@ -92,7 +92,7 @@ fn (t &Transformer) comptime_scalar_expr_in_context(id flat.NodeId, depth int, m
 		}
 		.prefix {
 			if node.op == .not && node.children_count == 1 {
-				value := t.comptime_scalar_expr_in_context(t.a.child(&node, 0), depth + 1, module_name, file, allow_locals)?
+				value := t.comptime_scalar_expr_in_context(t.a.child(node, 0), depth + 1, module_name, file, allow_locals)?
 				if value.typ == flat.source_type_bool {
 					return ComptimeStringScalar{flat.source_type_bool, (value.value == 'false').str()}
 				}
@@ -100,9 +100,9 @@ fn (t &Transformer) comptime_scalar_expr_in_context(id flat.NodeId, depth int, m
 		}
 		.in_expr {
 			if node.children_count != 2 { return none }
-			needle := t.comptime_scalar_expr_in_context(t.a.child(&node, 0), depth + 1, module_name, file, allow_locals)?
+			needle := t.comptime_scalar_expr_in_context(t.a.child(node, 0), depth + 1, module_name, file, allow_locals)?
 			if needle.typ != flat.source_type_string { return none }
-			right := t.a.child_node(&node, 1)
+			right := t.a.child_node(node, 1)
 			if right.kind == .array_literal {
 				mut found := false
 				for child in t.a.children_of(right) {
@@ -112,7 +112,7 @@ fn (t &Transformer) comptime_scalar_expr_in_context(id flat.NodeId, depth int, m
 				}
 				return ComptimeStringScalar{flat.source_type_bool, found.str()}
 			}
-			value := t.comptime_scalar_expr_in_context(t.a.child(&node, 1), depth + 1, module_name, file, allow_locals)?
+			value := t.comptime_scalar_expr_in_context(t.a.child(node, 1), depth + 1, module_name, file, allow_locals)?
 			if value.typ == flat.source_type_string {
 				return ComptimeStringScalar{flat.source_type_bool, value.value.contains(needle.value).str()}
 			}
@@ -121,7 +121,7 @@ fn (t &Transformer) comptime_scalar_expr_in_context(id flat.NodeId, depth int, m
 			if node.children_count == 0 {
 				return none
 			}
-			callee := t.a.child_node(&node, 0)
+			callee := t.a.child_node(node, 0)
 			if callee.kind != .selector || callee.children_count != 1 {
 				return none
 			}
@@ -131,7 +131,7 @@ fn (t &Transformer) comptime_scalar_expr_in_context(id flat.NodeId, depth int, m
 			}
 			mut args := []string{}
 			for i in 1 .. node.children_count {
-				arg := t.comptime_scalar_expr_in_context(t.a.child(&node, i), depth + 1, module_name, file, allow_locals) or { return none }
+				arg := t.comptime_scalar_expr_in_context(t.a.child(node, i), depth + 1, module_name, file, allow_locals) or { return none }
 				if arg.typ != flat.source_type_string {
 					return none
 				}
@@ -143,14 +143,14 @@ fn (t &Transformer) comptime_scalar_expr_in_context(id flat.NodeId, depth int, m
 			if node.value != 'range' || node.children_count < 2 {
 				return none
 			}
-			base := t.comptime_scalar_expr_in_context(t.a.child(&node, 0), depth + 1, module_name, file, allow_locals) or { return none }
-			low := t.comptime_scalar_expr_in_context(t.a.child(&node, 1), depth + 1, module_name, file, allow_locals) or { return none }
+			base := t.comptime_scalar_expr_in_context(t.a.child(node, 0), depth + 1, module_name, file, allow_locals) or { return none }
+			low := t.comptime_scalar_expr_in_context(t.a.child(node, 1), depth + 1, module_name, file, allow_locals) or { return none }
 			if base.typ != flat.source_type_string || low.typ != flat.source_type_int {
 				return none
 			}
 			mut high := base.value.len
 			if node.children_count == 3 {
-				bound := t.comptime_scalar_expr_in_context(t.a.child(&node, 2), depth + 1, module_name, file, allow_locals) or { return none }
+				bound := t.comptime_scalar_expr_in_context(t.a.child(node, 2), depth + 1, module_name, file, allow_locals) or { return none }
 				if bound.typ != flat.source_type_int {
 					return none
 				}

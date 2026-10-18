@@ -1111,10 +1111,14 @@ fn (t &Transformer) interface_container_cast_type_id(iface_name_id u32, target_n
 		if type_idx <= 0 {
 			return none
 		}
-		// Interface dispatch IDs are always positive. Reserve the sign bit for
-		// late containers so type_idx() can recover their stable type index even
-		// when specialization introduced them after the immutable index snapshot.
-		return int(u32(type_idx) | (u32(1) << 31))
+		// A late container (introduced by specialization after the immutable index
+		// snapshot) has no dispatch ID. Its value type index leaves the
+		// interface_dispatch_id_marker byte zero, which no dispatch ID does, so the
+		// index itself is an unambiguous tag that type_idx() can return.
+		if type_idx & types.interface_dispatch_id_marker != 0 {
+			return none
+		}
+		return type_idx
 	}
 	index := t.interface_impl_index_for_transform(iface_source_id_2)
 	mut impls := index.names.ids.clone()
@@ -1569,7 +1573,7 @@ fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.No
 			if qv_source_id := t.resolve_interface_pattern(flat.source_type_id(node.value), clean_type0_source_id) {
 				qv := flat.source_type_name(qv_source_id)
 
-				if sc := t.find_smartcast(t.expr_key(expr_id)) {
+				if sc := t.find_smartcast_for_expr(expr_id) {
 					target_source_id := t.trim_pointer_type(t.smartcast_target_type(sc))
 
 					if t.variant_names_match(target_source_id, qv_source_id) {

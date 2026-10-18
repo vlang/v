@@ -434,8 +434,12 @@ mut:
 // TypeCache represents type cache data used by types.
 struct TypeCache {
 mut:
-	parsed_scalars &ParsedScalarTypeCache = unsafe { nil }
-	indexed_types  &IndexedTypeCache      = unsafe { nil }
+	checked_fn_name_node   int = -1
+	checked_fn_name_source string
+	checked_fn_name_module string
+	checked_fn_name_value  string
+	parsed_scalars         &ParsedScalarTypeCache = unsafe { nil }
+	indexed_types          &IndexedTypeCache      = unsafe { nil }
 	// Frozen fallback cache shared by all parallel-check forks: lookups miss the
 	// own (private) maps first, then consult base read-only; writes always go to
 	// the own maps. The master installs its warm post-collect cache as base for
@@ -620,8 +624,10 @@ pub:
 @[heap]
 struct FileImportInfo {
 mut:
-	imports           map[string]string
-	selective_imports map[string][]string
+	imports            map[string]string
+	selective_imports  map[string][]string
+	imports_name_mask  u64
+	imports_mask_ready bool
 }
 
 // TransformForkOverlay holds the call/fn-value resolutions a parallel-transform
@@ -928,6 +934,7 @@ pub mut:
 	c_variadic_fns                   map[string]bool
 	fn_implicit_veb_ctx              map[string]bool
 	receiver_method_suffix_index     map[string]string
+	receiver_method_short_names      map[string]bool
 	generic_receiver_method_index    map[string][]string
 	structs                          map[string][]StructField
 	c_struct_scoped_fields           map[string][]StructField
@@ -1125,6 +1132,7 @@ pub mut:
 	multiple_module_import_lines      map[u64]bool
 	import_line_indexed_files         map[int]bool
 	source_texts_by_file              map[string]string
+	source_texts_by_id                map[int]string
 	ct_update_pos                     map[int]token.Pos
 	ct_update_indexed                 bool
 	insert_include_dirs_by_file       map[string][]string
@@ -1340,6 +1348,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		c_variadic_fns:                          map[string]bool{}
 		fn_implicit_veb_ctx:                     map[string]bool{}
 		receiver_method_suffix_index:            map[string]string{}
+		receiver_method_short_names:             map[string]bool{}
 		generic_receiver_method_index:           map[string][]string{}
 		structs:                                 map[string][]StructField{}
 		c_struct_scoped_fields:                  map[string][]StructField{}
@@ -1506,6 +1515,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		c_variadic_fns:                        tc.c_variadic_fns
 		fn_implicit_veb_ctx:                   tc.fn_implicit_veb_ctx
 		receiver_method_suffix_index:          tc.receiver_method_suffix_index
+		receiver_method_short_names:           tc.receiver_method_short_names
 		generic_receiver_method_index:         tc.generic_receiver_method_index
 		structs:                               tc.structs
 		c_struct_scoped_fields:                tc.c_struct_scoped_fields
@@ -1523,6 +1533,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		params_structs:                        tc.params_structs
 		c_typedef_structs:                     tc.c_typedef_structs
 		unions:                                tc.unions
+		soa_structs:                           tc.soa_structs
 		type_aliases:                          tc.type_aliases
 		type_alias_modules:                    tc.type_alias_modules
 		type_alias_generic_params:             tc.type_alias_generic_params
@@ -1616,6 +1627,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		shadow_dependency_roots:               tc.shadow_dependency_roots
 		multiple_module_import_lines:          tc.multiple_module_import_lines
 		source_texts_by_file:                  tc.source_texts_by_file
+		source_texts_by_id:                    tc.source_texts_by_id
 		ct_update_pos:                         tc.ct_update_pos
 		ct_update_indexed:                     tc.ct_update_indexed
 		has_spawn_expr:                        tc.has_spawn_expr
@@ -1844,6 +1856,7 @@ pub fn (mut tc TypeChecker) ensure_private_transform_signatures() {
 		tc.fn_ret_types = tc.fn_ret_types.clone()
 		tc.fn_param_types = tc.fn_param_types.clone()
 		tc.receiver_method_suffix_index = tc.receiver_method_suffix_index.clone()
+		tc.receiver_method_short_names = tc.receiver_method_short_names.clone()
 		tc.generic_receiver_method_index = clone_string_list_map(tc.generic_receiver_method_index)
 		tc.fn_variadic = tc.fn_variadic.clone()
 		tc.specialized_generic_fns = tc.specialized_generic_fns.clone()
@@ -1933,6 +1946,10 @@ pub fn (mut tc TypeChecker) set_fresh_type_cache(parse_enabled bool) {
 		mut cache := tc.type_cache
 		cache.base = unsafe { nil }
 		cache.parse_enabled = parse_enabled
+		cache.checked_fn_name_node = -1
+		cache.checked_fn_name_source = ''
+		cache.checked_fn_name_module = ''
+		cache.checked_fn_name_value = ''
 		cache.parse_hits = 0
 		cache.parse_misses = 0
 		cache.c_hits = 0
@@ -4768,13 +4785,13 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 				for i in 0 .. node.children_count {
 					f := a.child_node(node_ref, i)
 					if f.kind == .const_field && f.children_count > 0 {
-						qname := tc.qualify_name(f.value)
+						qname := tc.const_decl_key(f.value)
 						tc.const_types[qname] = unknown_type('pending const `${qname}`')
 						tc.const_exprs[qname] = a.child(f, 0)
 						tc.const_modules[qname] = tc.cur_module
 						tc.const_files[qname] = tc.cur_file
 					} else if f.kind == .const_field && f.typ != 0 {
-						qname := tc.qualify_name(f.value)
+						qname := tc.const_decl_key(f.value)
 						tc.const_types[qname] = tc.parse_type(f.typ)
 						tc.const_modules[qname] = tc.cur_module
 						tc.const_files[qname] = tc.cur_file
@@ -5691,7 +5708,69 @@ fn (tc &TypeChecker) const_type_for_name(name string) ?Type {
 	return tc.const_type_from_initializer(key, typ)
 }
 
+// const_decl_key returns the key of the const `name` declared in the current module.
+// The consts of `main` and `builtin` share bare keys, so that main code can use the
+// builtin consts unqualified. When both modules declare the same name, the main
+// const keeps the bare key and the builtin const moves to `builtin.name`; builtin
+// code finds it through shadowed_builtin_const_key.
+fn (mut tc TypeChecker) const_decl_key(name string) string {
+	qname := tc.qualify_name(name)
+	if qname != name || name.contains('.') {
+		return qname
+	}
+	owner := tc.const_modules[name] or { return name }
+	owner_is_builtin := owner == 'builtin'
+	if tc.cur_module == 'builtin' {
+		return if owner_is_builtin { name } else { builtin_const_key(name) }
+	}
+	if owner_is_builtin {
+		builtin_key := builtin_const_key(name)
+		if typ := tc.const_types[name] {
+			tc.const_types[builtin_key] = typ
+		}
+		if expr_id := tc.const_exprs[name] {
+			tc.const_exprs[builtin_key] = expr_id
+			tc.const_exprs.delete(name)
+		}
+		tc.const_modules[builtin_key] = owner
+		if file := tc.const_files[name] {
+			tc.const_files[builtin_key] = file
+		}
+	}
+	return name
+}
+
+fn builtin_const_key(name string) string {
+	return 'builtin.' + name
+}
+
+// shadowed_builtin_const_key returns the key of the builtin const `name`, when the
+// current module is builtin and a main const of the same name holds the bare key.
+pub fn (tc &TypeChecker) shadowed_builtin_const_key(name string) ?string {
+	return tc.shadowed_builtin_const_key_in_module(name, tc.cur_module)
+}
+
+// shadowed_builtin_const_key_in_module is shadowed_builtin_const_key for code in
+// `module_name`.
+pub fn (tc &TypeChecker) shadowed_builtin_const_key_in_module(name string, module_name string) ?string {
+	if module_name != 'builtin' || name.len == 0 {
+		return none
+	}
+	owner := tc.const_modules[name] or { return none }
+	if owner == 'builtin' {
+		return none
+	}
+	key := builtin_const_key(name)
+	if key in tc.const_types {
+		return key
+	}
+	return none
+}
+
 fn (tc &TypeChecker) const_key_for_name(name string) ?string {
+	if key := tc.shadowed_builtin_const_key(name) {
+		return key
+	}
 	qname := tc.qualify_name(name)
 	if qname in tc.const_types {
 		return qname
@@ -6558,8 +6637,9 @@ fn (mut tc TypeChecker) file_import_info() &FileImportInfo {
 		return info
 	}
 	info := &FileImportInfo{
-		imports:           map[string]string{}
-		selective_imports: map[string][]string{}
+		imports:            map[string]string{}
+		selective_imports:  map[string][]string{}
+		imports_mask_ready: true
 	}
 	tc.file_imports_by_file[tc.cur_file] = info
 	return info
@@ -6569,6 +6649,7 @@ fn (mut tc TypeChecker) register_file_import(alias string, module_name string) {
 	tc.file_imports[file_import_key(tc.cur_file, alias)] = module_name
 	mut info := tc.file_import_info()
 	info.imports[alias] = module_name
+	info.imports_name_mask |= scope_name_bit(alias)
 }
 
 // removed_json_module_message explains an unresolved `import json`: the cJSON based
@@ -6728,11 +6809,11 @@ fn (tc &TypeChecker) private_declaration(name string) ?DeclarationVisibility {
 	}
 	mut declaration_name := name
 	if name.contains('.') {
-		receiver_name := visible_mutation_fn_lookup_name(name).all_before_last('.')
+		receiver_name := owner_name_view(visible_mutation_fn_lookup_name(name))
 		if receiver_name in tc.interface_names {
 			// Inherited methods use the base interface's declaration for access checks.
 			declaration_name = tc.interface_method_signature_key(flat.source_type_id(receiver_name),
-				name.all_after_last('.')) or { name }
+				short_name_view(name)) or { name }
 		}
 	}
 	if visibility := tc.declaration_visibility[declaration_name] {
@@ -6921,8 +7002,9 @@ fn (mut tc TypeChecker) check_unused_import_diagnostics() {
 }
 
 // node_uses_qualified_attribute reports whether the attributes of `id`, or of
-// its struct fields, name a schema of `qualifier` or `module_path`, as the
-// dotted form `@[mod.Skip]` of a custom attribute does (vlang/rfcs#35).
+// its struct fields or enum values, name a schema of `qualifier` or
+// `module_path`, as the dotted form `@[mod.Skip]` of a custom attribute does
+// (vlang/rfcs#35).
 fn (tc &TypeChecker) node_uses_qualified_attribute(id flat.NodeId, qualifier string, module_path string) bool {
 	if qualifier.len == 0 && module_path.len == 0 {
 		return false
@@ -6931,8 +7013,17 @@ fn (tc &TypeChecker) node_uses_qualified_attribute(id flat.NodeId, qualifier str
 		return true
 	}
 	node := tc.a.node(id)
+	if node.kind !in [.struct_decl, .enum_decl] {
+		// Only struct fields and enum values keep attributes in their metadata.
+		// Other children use it for unrelated text, like the module path
+		// `te.ui` that a file's `import te.ui` child stores.
+		return false
+	}
 	for i in 0 .. node.children_count {
 		child := tc.a.child_node(node, i)
+		if child.kind !in [.field_decl, .enum_field] {
+			continue
+		}
 		mut meta := child.generic_params()
 		if meta.len == 0 {
 			continue
@@ -7548,6 +7639,12 @@ fn (tc &TypeChecker) resolve_import_alias(alias string) ?string {
 	if isnil(info) {
 		return none
 	}
+	// Most queried names are lexical bindings, not import aliases. The mask
+	// rejects definite misses without hashing them; collisions still probe.
+	// Hand-built checker views without the index keep their map lookup.
+	if info.imports_mask_ready && info.imports_name_mask & scope_name_bit(alias) == 0 {
+		return none
+	}
 	if mod := info.imports[alias] {
 		return mod
 	}
@@ -8055,6 +8152,7 @@ pub fn (mut tc TypeChecker) rebuild_fn_param_suffix_index() {
 	// scope do not retain its keys, values, or backing storage.
 	tc.clear_generic_receiver_pattern_cache()
 	tc.receiver_method_suffix_index = map[string]string{}
+	tc.receiver_method_short_names = map[string]bool{}
 	tc.generic_receiver_method_index = map[string][]string{}
 	tc.receiver_method_suffix_index.reserve(u32(tc.fn_param_types.len * 3))
 	for name, _ in tc.fn_param_types {
@@ -8083,9 +8181,14 @@ fn (mut tc TypeChecker) add_receiver_method_suffix_index(name string) {
 	if tc.method_suffix_prescreen && name.index_u8(`.`) < 0 {
 		return
 	}
+	method := short_name_view(name)
+	tc.receiver_method_short_names[method] = true
+	if method.len > 1 && method[0] == `@` {
+		// Map insertion owns this borrowed suffix of the registered name.
+		tc.receiver_method_short_names[unsafe { method.substr_unsafe(1, method.len) }] = true
+	}
 	receiver := name.all_before_last('.')
 	if receiver.contains('[') && receiver.ends_with(']') {
-		method := name.all_after_last('.')
 		mut indexed := tc.generic_receiver_method_index[method] or { []string{} }
 		if name !in indexed {
 			indexed << name
@@ -10095,7 +10198,7 @@ fn (tc &TypeChecker) resolved_call_type(id flat.NodeId) ?Type {
 	if node.kind != .call {
 		return none
 	}
-	if node.children_count == 3 && tc.call_display_name(node) == 'C.va_arg' {
+	if node.children_count == 3 && tc.c_va_macro_call_name(node) == 'C.va_arg' {
 		type_arg_id := tc.call_arg_value(tc.a.child(&node, 1))
 		type_name_source_id := tc.generic_call_type_arg_name(type_arg_id)
 		type_name := flat.source_type_name(type_name_source_id)
@@ -10379,15 +10482,27 @@ fn (tc &TypeChecker) name_never_returns(name string) bool {
 	if resolved_name_never_returns(name) {
 		return true
 	}
+	if tc.a.noreturn_fns.len == 0 {
+		return false
+	}
 	if name in tc.a.noreturn_fns {
 		return true
 	}
-	if name.contains('.') {
-		for candidate, is_noreturn in tc.a.noreturn_fns {
-			if is_noreturn && candidate.contains('.') && name.ends_with('.${candidate}') {
+	// Only dotted suffixes can match a qualified declaration. Probe those few
+	// names instead of scanning every noreturn declaration for every call.
+	mut has_dot := false
+	for i := name.len - 1; i >= 0; i-- {
+		if name[i] != `.` {
+			continue
+		}
+		if has_dot {
+			// The membership query does not retain the suffix.
+			suffix := unsafe { name.substr_unsafe(i + 1, name.len) }
+			if tc.a.noreturn_fns[suffix] {
 				return true
 			}
 		}
+		has_dot = true
 	}
 	return false
 }
@@ -12851,6 +12966,7 @@ fn (mut tc TypeChecker) collect_selected_file_node_called_fns(id flat.NodeId) {
 			if name := tc.fn_value_decl_key(node) {
 				tc.enqueue_selected_file_fn(name)
 			} else if node.kind == .selector && node.children_count > 0
+				&& tc.selected_file_method_suffix_known(node.value)
 				&& tc.fn_value_shadowed_by_value(node)
 				&& tc.selector_declared_value_type(node) == none {
 				if name := tc.selected_file_receiver_method_name(tc.a.child(node, 0), node.value) {
@@ -13083,7 +13199,7 @@ fn (tc &TypeChecker) bare_call_resolves_to_value(name string) bool {
 }
 
 fn (tc &TypeChecker) selected_file_receiver_method_name(base_id flat.NodeId, method string) ?string {
-	if method == '' {
+	if method == '' || !tc.selected_file_method_suffix_known(method) {
 		return none
 	}
 	base_type := tc.resolve_type(base_id)
@@ -13112,6 +13228,20 @@ fn (tc &TypeChecker) selected_file_receiver_method_name(base_id flat.NodeId, met
 		}
 	}
 	return none
+}
+
+// The collected suffix index covers ordinary, escaped and generic receiver
+// declarations. A missing suffix cannot resolve on any receiver; fields need
+// no receiver-type or embedded-method queries in that case.
+fn (tc &TypeChecker) selected_file_method_suffix_known(method string) bool {
+	if !tc.method_suffix_prescreen || tc.top_level_idx.len == 0 {
+		return true
+	}
+	if method.contains('.') {
+		return method in tc.receiver_method_suffix_index
+			|| '@${method}' in tc.receiver_method_suffix_index
+	}
+	return method in tc.receiver_method_short_names
 }
 
 fn (mut tc TypeChecker) check_export_attrs() {
@@ -18528,12 +18658,10 @@ pub fn (tc &TypeChecker) type_has_declaration_attribute(typ Type, name string) b
 	}
 	base, _, is_generic := generic_type_application_parts(type_name)
 	declaration_name := if is_generic { base } else { type_name }
-	for index in tc.type_declaration_ids[declaration_name.all_after_last('.')] {
-		if tc.declaration_has_attribute(flat.NodeId(index), name) {
-			return true
-		}
-	}
-	return false
+	// Semantic type names already carry their declaring module. The short-name
+	// index also contains unrelated declarations from imported modules.
+	index := tc.first_type_declaration_ids[declaration_name] or { return false }
+	return tc.declaration_has_attribute(flat.NodeId(index), name)
 }
 
 fn (tc &TypeChecker) non_heap_pointer_param_struct(name string) ?string {
@@ -21027,7 +21155,7 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 			clean := unalias_type(unwrap_pointer(container_type))
 			if clean is Array {
 				value_type = clean.elem_type
-				key_type = if int(val_id) >= 0 { Type(int_) } else { value_type }
+				key_type = if int(val_id) >= 0 { builtin_int_type } else { value_type }
 			}
 		} else if container_type := tc.comptime_static_reflected_iterable_type(tc.a.child(&node,
 			2), var_name, field_cases)

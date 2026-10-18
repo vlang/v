@@ -594,6 +594,8 @@ fn (mut t Transformer) lower_array_init_to_runtime(id flat.NodeId, node flat.Nod
 			init_expr = t.zero_value_for_type(clean_elem_type_source_id_2)
 		} else if default_value := t.make_struct_runtime_default_value(clean_elem_type_source_id_2) {
 			init_expr = default_value
+		} else if default_value := t.enum_nonzero_default_value(clean_elem_type_source_id_2) {
+			init_expr = default_value
 		} else {
 			return new_call
 		}
@@ -652,6 +654,64 @@ fn (mut t Transformer) lower_array_init_to_runtime(id flat.NodeId, node flat.Nod
 	result := t.make_ident(tmp_name)
 	t.set_node_typ(int(result), flat.source_type_id('[]${flat.source_type_name(elem_type)}'))
 	return result
+}
+
+// enum_nonzero_default_value is the default value of an enum, its first member, like the
+// default of an enum struct field. `[]Enum{len: n}` fills its elements with it, and a missing
+// map key returns it. It is none when that value is 0 (zeroed storage already holds it), and
+// for flag enums, which default to 0.
+fn (mut t Transformer) enum_nonzero_default_value(type_id u32) ?flat.NodeId {
+	enum_name, field_name := t.enum_nonzero_default_member(type_id) or { return none }
+	return t.a.add_node(flat.Node{
+		kind:  .enum_val
+		value: '${enum_name}.${field_name}'
+		typ:   flat.source_type_id(enum_name)
+	})
+}
+
+// enum_nonzero_default_member returns the enum and first member names behind
+// enum_nonzero_default_value.
+fn (mut t Transformer) enum_nonzero_default_member(type_id u32) ?(string, string) {
+	if isnil(t.tc) {
+		return none
+	}
+	typ := t.tc.parse_type(type_id)
+	if typ !is types.Enum {
+		return none
+	}
+	enum_type := typ as types.Enum
+	if enum_type.is_flag {
+		return none
+	}
+	enum_name := flat.source_type_name(enum_type.name_id).trim_string_left('main.')
+	// The first member of an enum without an explicit first value is 0.
+	if enum_name !in t.enum_explicit_first_values {
+		return none
+	}
+	fields := t.enum_types[enum_name] or { return none }
+	if fields.len == 0 {
+		return none
+	}
+	values := t.tc.comptime_enum_decl_field_values(flat.source_type_id(enum_name))
+	first_value := values[fields[0]] or { return none }
+	if first_value == 0 {
+		return none
+	}
+	return enum_name, fields[0]
+}
+
+// type_has_enum_default reports whether `type_id` is an enum whose default is not 0, or a
+// fixed array of them, possibly nested, so zeroed storage does not hold its default.
+fn (mut t Transformer) type_has_enum_default(type_id u32) bool {
+	clean_type_id := t.normalize_type_alias(type_id)
+	if t.is_fixed_array_type(clean_type_id) {
+		fixed_type := t.resolved_fixed_array_canonical_type(clean_type_id)
+		return t.type_has_enum_default(fixed_array_elem_type(fixed_type))
+	}
+	if _, _ := t.enum_nonzero_default_member(clean_type_id) {
+		return true
+	}
+	return false
 }
 
 fn (mut t Transformer) make_struct_runtime_default_value(struct_type_id u32) ?flat.NodeId {
@@ -743,9 +803,11 @@ fn (mut t Transformer) make_struct_runtime_default_value_guarded(struct_type_id 
 			}
 		} else if clean_type_shape.has(.map_type) || clean_type_shape.has(.array_type) {
 			value = t.zero_value_for_type(clean_type_source_id)
-		} else if t.fixed_array_needs_runtime_default(clean_type_source_id) {
-			// C generation initializes the elements of fixed-array fields that a
-			// struct literal leaves unset; the literal just has to exist.
+		} else if t.fixed_array_needs_runtime_default(clean_type_source_id)
+			|| t.type_has_enum_default(clean_type_source_id) {
+			// C generation initializes the elements of fixed-array fields, and the
+			// enum fields, that a struct literal leaves unset; the literal just has
+			// to exist.
 			needs_literal = true
 			continue
 		} else if nested := t.make_struct_runtime_default_value_guarded(clean_type_source_id, mut visited) {
@@ -1371,6 +1433,9 @@ fn (mut t Transformer) fixed_array_empty_init_needs_values_guarded(elem_type_id 
 		fixed_type := t.resolved_fixed_array_canonical_type(clean_type_source_id_3)
 		return t.fixed_array_empty_init_needs_values_guarded(fixed_array_elem_type(fixed_type), mut visited)
 	}
+	if _, _ := t.enum_nonzero_default_member(clean_type_source_id) {
+		return true
+	}
 	return t.struct_type_needs_runtime_default(clean_type_source_id, mut visited)
 }
 
@@ -1454,6 +1519,29 @@ fn (mut t Transformer) transform_array_value_for_dynamic_target(value_id flat.No
 				return none
 			}
 			return t.convert_forwarded_array_to_dynamic(value_id, actual_type, actual_base.elem_type, expected_type, expected_base.elem_type, true)
+		}
+	}
+	return none
+}
+
+// transform_optional_array_value_for_option_target converts an option of a concrete
+// array (`?[]Item`) stored as an option of an interface or sum type array (`?[]Named`):
+// a present payload is converted element by element, like a returned one.
+fn (mut t Transformer) transform_optional_array_value_for_option_target(value_id flat.NodeId, source_type_id u32, target_type_id u32) ?flat.NodeId {
+	if int(value_id) < 0 || source_type_id == u32(0) || target_type_id == u32(0) || isnil(t.tc) {
+		return none
+	}
+	actual_type := t.tc.parse_type(t.qualify_optional_type(source_type_id))
+	expected_type := t.tc.parse_type(target_type_id)
+	actual_base := forwarded_return_unalias_type(actual_type)
+	expected_base := forwarded_return_unalias_type(expected_type)
+	if actual_base is types.OptionType && expected_base is types.OptionType {
+		actual_payload := forwarded_return_unalias_type(actual_base.base_type)
+		expected_payload := forwarded_return_unalias_type(expected_base.base_type)
+		if expected_payload is types.Array
+			&& (actual_payload is types.Array || actual_payload is types.ArrayFixed)
+			&& t.forwarded_slot_conversion_supported(actual_payload, expected_payload) {
+			return t.transform_forwarded_return_slot(value_id, actual_type, expected_type)
 		}
 	}
 	return none
@@ -2068,7 +2156,445 @@ fn (mut t Transformer) clone_borrowed_array_append_value(source_id flat.NodeId, 
 	if !t.compiler_default_clone_type_needs_work(elem_type_id) {
 		return value
 	}
+	if !t.array_append_type_has_observable_clone(elem_type_id, []u32{})
+		&& t.array_append_consumes_fresh_local(source_id) {
+		return value
+	}
 	return t.make_compiler_default_borrowed_clone_value(value, elem_type_id, true)
+}
+
+// array_append_consumes_fresh_local recognizes a restricted last use that is
+// equivalent to appending the initializer directly. Keep cloning whenever the
+// source could have escaped, could be reused, or crosses delayed/repeated code.
+fn (t &Transformer) array_append_consumes_fresh_local(source_id flat.NodeId) bool {
+	$if ownership ? {
+		return false
+	}
+	if t.tc.autofree_enabled() {
+		return false
+	}
+	if int(source_id) < 0 || int(source_id) >= t.source_parent_ids.len {
+		return false
+	}
+	mut root := t.unwrap_parens(source_id)
+	for {
+		node := t.a.nodes[int(root)]
+		if node.kind != .selector || node.children_count != 1 {
+			break
+		}
+		root = t.unwrap_parens(t.a.child(&node, 0))
+		if flat.source_type_name(t.node_type(root)).starts_with('&') {
+			return false
+		}
+	}
+	root_node := t.a.nodes[int(root)]
+	if root_node.kind != .ident || flat.source_type_name(t.node_type(root)).starts_with('&') {
+		return false
+	}
+	name := root_node.value
+	mut stmt_id := int(source_id)
+	mut scope_id := -1
+	mut found_append := false
+	for stmt_id >= 0 {
+		parent_id := t.source_parent_id(stmt_id)
+		if parent_id < 0 {
+			return false
+		}
+		parent := t.a.nodes[parent_id]
+		if parent.kind in [.block, .fn_decl] {
+			scope_id = parent_id
+			break
+		}
+		if parent.kind == .infix && parent.op == .left_shift && parent.children_count == 2
+			&& int(t.a.child(&parent, 1)) == stmt_id && !found_append {
+			if t.subtree_references_var(t.a.child(&parent, 0), name) {
+				return false
+			}
+			found_append = true
+		} else if parent.kind !in [.paren, .expr_stmt] {
+			return false
+		}
+		stmt_id = parent_id
+	}
+	if scope_id < 0 || !found_append {
+		return false
+	}
+	// Sources outside this lexical scope, such as loop bindings and parameters,
+	// are deliberately excluded: their initializer cannot be moved here.
+	scope := t.a.nodes[scope_id]
+	mut declared := false
+	mut appended := false
+	for i in 0 .. scope.children_count {
+		child_id := t.a.child(&scope, i)
+		child := t.a.nodes[int(child_id)]
+		if int(child_id) == stmt_id {
+			if !declared {
+				return false
+			}
+			appended = true
+			continue
+		}
+		if !declared {
+			if child.kind == .decl_assign && child.children_count == 2 {
+				lhs := t.a.child_node(&child, 0)
+				if lhs.kind == .ident && lhs.value == name {
+					if child.is_mut || lhs.is_mut || child.value == 'static'
+						|| !t.array_append_initializer_is_fresh(t.a.child(&child, 1)) {
+						return false
+					}
+					declared = true
+				}
+			}
+			continue
+		}
+		if t.subtree_references_var(child_id, name)
+			|| t.array_append_has_execution_barrier(child_id) {
+			return false
+		}
+	}
+	return appended
+}
+
+fn (t &Transformer) array_append_has_execution_barrier(id flat.NodeId) bool {
+	node := t.a.nodes[int(id)]
+	if node.kind in [.for_stmt, .for_in_stmt, .fn_literal, .lambda_expr, .defer_stmt, .spawn_expr,
+		.goto_stmt, .label_stmt] {
+		return true
+	}
+	for i in 0 .. node.children_count {
+		if t.array_append_has_execution_barrier(t.a.child(&node, i)) {
+			return true
+		}
+	}
+	return false
+}
+
+// Build the proof before parallel workers can rewrite other functions. A tree
+// factory has only scalar inputs, no nonlocal reads or opaque calls, and consumes
+// each storage-bearing local at most once. Recursive factory calls are allowed.
+fn (mut t Transformer) prepare_array_append_tree_factories() {
+	t.array_append_tree_factories = map[string]bool{}
+	if isnil(t.tc) || t.tc.enable_globals {
+		return
+	}
+	t.ensure_call_param_types_decl_index()
+	mut safe := map[int]bool{}
+	mut dependencies := map[int][]int{}
+	mut seen := map[int]bool{}
+	for _, decl in t.call_param_types_decl_index {
+		if seen[decl.idx] {
+			continue
+		}
+		seen[decl.idx] = true
+		node := t.a.nodes[decl.idx]
+		if node.generic_params().len > 0 || t.tc.has_globals_files[decl.file]
+			|| t.tc.translated_files[decl.file] {
+			continue
+		}
+		mut locals := map[string]bool{}
+		mut uses := map[string]int{}
+		mut calls := []int{}
+		mut valid := true
+		mut has_body := false
+		mut param_index := 0
+		param_types := t.tc.fn_param_types[transform_qualified_fn_name(decl.module, node.value)] or {
+			continue
+		}
+		for i in 0 .. node.children_count {
+			child_id := t.a.child(&node, i)
+			child := t.a.nodes[int(child_id)]
+			if child.kind == .param {
+				param_type := param_types[param_index] or {
+					valid = false
+					break
+				}
+				param_index++
+				if child.is_mut || !array_append_is_scalar(param_type) {
+					valid = false
+					break
+				}
+				locals[child.value] = false
+				continue
+			}
+			has_body = has_body || child.kind != .empty
+			if !t.array_append_factory_body_is_fresh(child_id, mut locals, mut uses, mut calls) {
+				valid = false
+				break
+			}
+		}
+		if valid && has_body {
+			safe[decl.idx] = true
+			dependencies[decl.idx] = calls
+		}
+	}
+	// Propagate rejections from callees to callers along reverse edges, so each
+	// dependency is visited once even for long chains of forwarding wrappers.
+	mut callers := map[int][]int{}
+	mut rejected := []int{}
+	for idx, calls in dependencies {
+		for callee in calls {
+			if safe[callee] {
+				callers[callee] << idx
+			} else {
+				rejected << idx
+			}
+		}
+	}
+	for rejected.len > 0 {
+		idx := rejected.pop()
+		if !safe[idx] {
+			continue
+		}
+		safe[idx] = false
+		rejected << callers[idx]
+	}
+	for name, decl in t.call_param_types_decl_index {
+		if safe[decl.idx] {
+			t.array_append_tree_factories[name] = true
+		}
+	}
+}
+
+fn (t &Transformer) array_append_expr_owns_storage(id flat.NodeId) bool {
+	typ := t.tc.expr_type(id) or { return true }
+	name := typ.name()
+	return name.starts_with('&') || typ is types.FnType || typ is types.Unknown
+		|| t.compiler_default_clone_type_needs_work(flat.source_type_id(name))
+}
+
+fn array_append_is_scalar(typ types.Type) bool {
+	clean := types.unalias_type(typ)
+	return clean is types.Primitive || clean is types.Enum || clean is types.ISize
+		|| clean is types.USize
+}
+
+// Literal and operator nodes need not have a cached checker type. Only built-in
+// scalar operators can use this fallback; storage-valued operands stay excluded.
+fn (t &Transformer) array_append_expr_is_scalar(id flat.NodeId, locals map[string]bool) bool {
+	node := t.a.nodes[int(id)]
+	if node.kind in [.int_literal, .float_literal, .bool_literal, .char_literal] {
+		return true
+	}
+	if node.kind == .ident && node.value in locals {
+		return !locals[node.value]
+	}
+	if node.kind == .paren && node.children_count == 1 {
+		return t.array_append_expr_is_scalar(t.a.child(&node, 0), locals)
+	}
+	if (node.kind == .infix && node.children_count == 2
+		&& node.op in [.plus, .minus, .mul, .div, .mod, .eq, .ne, .lt, .le, .gt, .ge, .amp, .pipe,
+			.xor, .left_shift, .right_shift, .logical_and, .logical_or])
+		|| (node.kind == .prefix && node.children_count == 1
+			&& node.op in [.plus, .minus, .not, .bit_not]) {
+		for i in 0 .. node.children_count {
+			if !t.array_append_expr_is_scalar(t.a.child(&node, i), locals) {
+				return false
+			}
+		}
+		return true
+	}
+	typ := t.tc.expr_type(id) or { return false }
+	return array_append_is_scalar(typ)
+}
+
+fn (t &Transformer) array_append_factory_body_is_fresh(id flat.NodeId, mut locals map[string]bool, mut uses map[string]int, mut calls []int) bool {
+	node := t.a.nodes[int(id)]
+	if node.kind !in [.empty, .int_literal, .float_literal, .bool_literal, .char_literal,
+		.string_literal, .enum_val, .ident, .infix, .prefix, .paren, .call, .selector, .if_expr,
+		.struct_init, .field_init, .array_literal, .array_init, .expr_stmt, .decl_assign, .return_stmt,
+		.block] {
+		return false
+	}
+	if node.kind == .struct_init {
+		typ := t.tc.expr_type(id) or { return false }
+		if t.array_append_type_has_observable_clone(flat.source_type_id(typ.name()), []u32{}) {
+			return false
+		}
+	}
+	if (node.kind == .prefix && node.op in [.amp, .mul])
+		|| (node.kind == .array_init && node.children_count > 0) {
+		return false
+	}
+	if node.kind == .decl_assign {
+		if node.children_count != 2 || node.value == 'static' {
+			return false
+		}
+		lhs := t.a.child_node(&node, 0)
+		rhs := t.a.child(&node, 1)
+		if lhs.kind != .ident || lhs.value in locals {
+			return false
+		}
+		owns := !t.array_append_expr_is_scalar(rhs, locals) && t.array_append_expr_owns_storage(rhs)
+		if owns && t.a.nodes[int(t.unwrap_parens(rhs))].kind !in [.call, .struct_init, .array_literal,
+			.array_init, .map_init, .string_literal] {
+			return false
+		}
+		if !t.array_append_factory_body_is_fresh(rhs, mut locals, mut uses, mut calls) {
+			return false
+		}
+		locals[lhs.value] = owns
+		return true
+	}
+	if node.kind == .block {
+		// A block's bindings end with it. A later use of the same name resolves
+		// to an outer declaration, such as a storage-bearing module constant.
+		outer := locals.clone()
+		for i in 0 .. node.children_count {
+			if !t.array_append_factory_body_is_fresh(t.a.child(&node, i), mut locals, mut uses, mut calls) {
+				return false
+			}
+		}
+		mut scoped := []string{}
+		for name, _ in locals {
+			if name !in outer {
+				scoped << name
+			}
+		}
+		for name in scoped {
+			locals.delete(name)
+			uses.delete(name)
+		}
+		return true
+	}
+	if node.kind == .ident {
+		if node.value !in locals {
+			return false
+		}
+		if locals[node.value] {
+			uses[node.value]++
+			return uses[node.value] == 1
+		}
+		return true
+	}
+	mut start := 0
+	if node.kind == .call {
+		if node.children_count == 0 || t.a.child_node(&node, 0).kind != .ident {
+			return false
+		}
+		name := t.tc.resolved_call_name(id) or { return false }
+		if t.a.child_node(&node, 0).value.all_after_last('.') != name.all_after_last('.') {
+			return false
+		}
+		decl := t.call_param_types_decl_index[name] or { return false }
+		calls << decl.idx
+		start = 1
+	} else if node.kind == .infix && node.op == .left_shift && node.children_count == 2 {
+		lhs := t.a.child_node(&node, 0)
+		lhs_type := t.tc.expr_type(t.a.child(&node, 0)) or { return false }
+		if lhs.kind != .ident || !locals[lhs.value] || types.unalias_type(lhs_type) !is types.Array {
+			return false
+		}
+		// Appending consumes the RHS, without exposing the builder's storage.
+		start = 1
+	} else if node.kind in [.infix, .prefix] {
+		if !t.array_append_expr_is_scalar(id, locals) {
+			return false
+		}
+	}
+	for i in start .. node.children_count {
+		if !t.array_append_factory_body_is_fresh(t.a.child(&node, i), mut locals, mut uses, mut calls) {
+			return false
+		}
+	}
+	return true
+}
+
+fn (t &Transformer) array_append_initializer_is_fresh(id flat.NodeId) bool {
+	value_id := t.unwrap_parens(id)
+	node := t.a.nodes[int(value_id)]
+	if node.kind == .field_init {
+		return node.children_count == 1
+			&& t.array_append_initializer_is_fresh(t.a.child(&node, 0))
+	}
+	if node.kind == .struct_init {
+		// Lowering can invalidate the checked type of the original initializer.
+		// Its explicit source type still names the same checked declaration.
+		mut type_name := node.value
+		if typ := t.tc.expr_type(value_id) {
+			if typ !is types.Unknown && typ !is types.Void {
+				type_name = typ.name()
+			}
+		}
+		if t.array_append_type_has_observable_clone(flat.source_type_id(type_name), []u32{}) {
+			return false
+		}
+	}
+	if node.kind !in [.struct_init, .array_literal, .map_init]
+		&& !t.array_append_expr_owns_storage(value_id) {
+		return true
+	}
+	if node.kind == .call {
+		name := t.tc.resolved_call_name(value_id) or { return false }
+		if node.children_count == 0 || t.a.child_node(&node, 0).kind != .ident
+			|| t.a.child_node(&node, 0).value.all_after_last('.') != name.all_after_last('.') {
+			return false
+		}
+
+		if !t.array_append_tree_factories[name] {
+			return false
+		}
+		for i in 1 .. node.children_count {
+			arg := t.a.child(&node, i)
+			// Only the scalar result reaches the factory. Lowering can invalidate
+			// child caches of a checked arithmetic expression such as depth - 1.
+			if typ := t.tc.expr_type(arg) {
+				if !array_append_is_scalar(typ) {
+					return false
+				}
+			} else if !t.array_append_expr_is_scalar(arg, map[string]bool{}) {
+				return false
+			}
+		}
+		return true
+	}
+	if node.kind == .array_init {
+		return node.children_count == 0
+	}
+	if node.kind !in [.struct_init, .field_init, .array_literal, .map_init, .string_literal,
+		.int_literal, .float_literal, .bool_literal, .nil_literal] {
+		return false
+	}
+	for i in 0 .. node.children_count {
+		if !t.array_append_initializer_is_fresh(t.a.child(&node, i)) {
+			return false
+		}
+	}
+	return true
+}
+
+fn (t &Transformer) array_append_type_has_observable_clone(typ_id u32, seen []u32) bool {
+	clean_id := t.normalize_type_alias(typ_id)
+	clean := flat.source_type_name(clean_id)
+	if clean_id in seen || clean.starts_with('&') {
+		return false
+	}
+	if t.tc.ownership_type_has_clone_method(t.tc.parse_type(clean_id))
+		|| t.tc.named_type_implements_marker(clean_id, flat.source_type_id('IClone')) {
+		return true
+	}
+	if clean.starts_with('[]') {
+		return t.array_append_type_has_observable_clone(flat.source_type_id(clean[2..]), seen)
+	}
+	if clean.starts_with('?') || clean.starts_with('!') || clean.starts_with('map[')
+		|| t.is_fixed_array_type(clean_id) {
+		return true
+	}
+	if info := t.lookup_struct_info(clean_id) {
+		mut next := seen.clone()
+		next << clean_id
+		for field in info.fields {
+			field_type := t.compiler_default_clone_field_type(clean_id, field)
+			if t.array_append_type_has_observable_clone(field_type, next)
+				|| (field.default_expr != flat.empty_node
+					&& t.compiler_default_clone_type_needs_work(field_type)) {
+				return true
+			}
+		}
+		return false
+	}
+	parsed := types.unalias_type(t.tc.parse_type(clean_id))
+	return parsed !is types.Primitive && parsed !is types.Enum && parsed !is types.String
+		&& parsed !is types.ISize && parsed !is types.USize
 }
 
 fn (mut t Transformer) clone_borrowed_array_append_many_value(source_id flat.NodeId, value flat.NodeId, array_type_id u32, elem_type_id u32) (flat.NodeId, bool) {
@@ -2117,6 +2643,11 @@ fn (mut t Transformer) clone_borrowed_storage_projection(source_id flat.NodeId, 
 		return cloned
 	}
 	source := t.a.node(t.unwrap_parens(source_id))
+	if source.kind == .block && source.value == 'unsafe' {
+		// `mut alias := unsafe { values[..] }` explicitly keeps borrowing the source's
+		// storage, so writes through the alias stay visible through `values`.
+		return value
+	}
 	if source.kind == .prefix && source.op == .amp
 		&& flat.source_type_shape(t.comptime_normalize_type_alias_chain(typ_id)).has(.pointer) {
 		return t.clone_owned_array_storage_value_with_pointer_borrow(value, typ_id,

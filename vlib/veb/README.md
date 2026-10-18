@@ -261,7 +261,8 @@ running with `-d new_veb` without SSL.
 
 To add endpoints to your web server, you must extend the `App` struct.
 For routing you can either use auto-mapping of function names or specify the path as an attribute.
-The function expects a parameter of your Context type and a response of the type `veb.Result`.
+The function expects a parameter of your Context type and a response of the type `veb.Result`
+(or `!veb.Result` when the endpoint can fail, see Handlers that return `!veb.Result`).
 
 **Example:**
 
@@ -326,6 +327,20 @@ pub fn (app &App) login(mut ctx Context) veb.Result {
 	}
 }
 ```
+
+### Request forms
+
+For `POST`, `PUT` and `PATCH` requests, `ctx.form` contains decoded form fields.
+With `Content-Type: application/json`, a JSON object supplies its string, number and boolean
+fields as strings: `{"name":"x","id":3}` becomes `{'name': 'x', 'id': '3'}`.
+Media type matching ignores case and accepts parameters such as `charset=utf-8`.
+Whitespace around a JSON object is accepted. Nested objects, arrays and `null` fields are skipped;
+use `ctx.req.data` or `ctx.bind[T]()` when you need the full structure.
+The original request body remains available in `ctx.req.data`.
+Malformed JSON and a root value other than an object, including `null`, receive `400 Bad Request`.
+
+URL-encoded bodies continue to populate `ctx.form`, and multipart requests also populate
+`ctx.files`. A JSON body requires its JSON content type; veb does not infer it from the body.
 
 ### Routes with Parameters
 
@@ -500,6 +515,12 @@ on the url http://localhost:port/normal we will not see `from normal`, but
 Routes with a variadic parameter such as `/:path...` are an exception. veb keeps
 them as fallbacks, so a later exact or non-variadic parameter route can still match
 before the variadic route handles the request.
+
+If the path matches a route for the request's host but the method does not, veb
+answers `405 Method Not Allowed`. Its `Allow` header lists the distinct methods
+from all handlers for the selected route pattern, including handlers whose path
+parameters use different names. Methods from other hosts or overlapping route
+patterns are excluded. A path with no matching route still answers `404 Not Found`.
 
 ### Custom not found page
 
@@ -1247,6 +1268,32 @@ embed `veb.Context`. Below are some of the most used methods, look at the
 
 You can directly access the HTTP request on the `.req` field.
 
+#### Get the client IP address
+
+`ctx.ip()` returns the socket peer's IP address by default. Forwarding headers from direct
+clients are ignored. To accept them from your reverse proxies, declare their IP addresses on
+the app:
+
+```v ignore
+pub struct App {
+	trusted_proxies []string = ['10.0.0.1', '10.0.0.2']
+}
+```
+
+Only list proxies you control and configure to append the actual peer to `X-Forwarded-For`.
+Addresses must be individual IPv4 or IPv6 literals; CIDR ranges are not supported.
+When the socket peer is trusted, `ip()` combines all `X-Forwarded-For` fields in their received
+order and walks the chain from right to left, stopping at the nearest untrusted address.
+For example, trusted peer `10.0.0.2` with `203.0.113.66, 198.51.100.9, 10.0.0.1` returns
+`198.51.100.9`: an earlier prefix supplied by that client cannot choose its identity.
+If every hop is trusted, the left-most address is returned. Empty or malformed entries stop
+the walk at the last trusted hop, and IPv6 addresses are returned in canonical form.
+
+Only when `X-Forwarded-For` is absent may a trusted peer supply `CF-Connecting-IP`, followed
+by `X-Real-Ip`. These must contain a single valid IP address. Configure trusted proxies to
+overwrite or remove these headers from untrusted clients, since they carry no proxy chain.
+An empty or malformed `X-Forwarded-For` never falls back to these headers.
+
 #### Get request headers
 
 **Example:**
@@ -1384,6 +1431,52 @@ pub fn (app &App) login(mut ctx Context) veb.Result {
 
 You can also use `ctx.server_error(msg string)` to send an HTTP 500 internal server
 error with a message.
+
+If a handler panics, veb logs the panic and responds with HTTP 500 and the plain-text
+body `Internal Server Error`. This replaces any prepared body or file response and
+its content, framing, and cache metadata. After-middleware is skipped. A connection
+taken over with `ctx.takeover_conn()` or `ctx.takeover_conn_reusable()` remains under
+the handler's control; recovery does not write another response to it.
+
+## Handlers that return `!veb.Result`
+
+A handler that can fail may return `!veb.Result` instead of rolling its own
+error responses. Answer by returning the value, decline by returning an error,
+and veb turns the error into a JSON envelope carrying its message. When the
+handler already chose a status with `ctx.res.set_status`, it is kept, so 4xx
+stays in the handler's hands; otherwise the envelope is a 500.
+
+**Example:**
+
+```v
+module main
+
+import veb
+
+pub struct Context {
+	veb.Context
+}
+
+pub struct App {}
+
+fn user_name_by_id(id int) !string {
+	if id != 42 {
+		return error('no such user')
+	}
+	return 'douglas'
+}
+
+@['/user/:id']
+pub fn (app &App) user(mut ctx Context, id int) !veb.Result {
+	// A status the handler chose is kept, so `return error(...)` here answers
+	// 404 with a JSON envelope carrying the message.
+	name := user_name_by_id(id) or {
+		ctx.res.set_status(.not_found)
+		return error('no user with id ${id}')
+	}
+	return ctx.text('Hello ${name}!')
+}
+```
 
 ## Advanced usage
 

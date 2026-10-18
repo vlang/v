@@ -11525,11 +11525,9 @@ pub fn run(args []string) {
 			exit(1)
 		}
 	}
-	// A `-freestanding` program has no libc for a collector to run on. The ARM64 backend
-	// links its Mach-O output itself, against libSystem only, so a collector call would
-	// be left unresolved until dyld fails to bind it at startup.
-	disable_gc := 'freestanding' in user_defines || backend == 'arm64'
-		|| v3_gc_is_disabled(building_v, cross_output, target_os, target_arch)
+	// Freestanding programs have no libc collector. Native builds also omit it.
+	disable_gc := 'freestanding' in user_defines
+		|| v3_gc_is_disabled(building_v, cross_output, target_os, target_arch, backend)
 	apply_v3_gc_mode(gc_mode, disable_gc, mut user_defines, mut compile_values) or {
 		eprintln(err.msg())
 		exit(1)
@@ -13963,6 +13961,10 @@ pub fn run(args []string) {
 				b.step('eval')
 				b.print_report()
 				return
+			} $else {
+				eprintln('eval support is not compiled into this executable')
+				eprintln('Rebuild with `v -compile-backend eval self` or `-all-backends`.')
+				exit(1)
 			}
 		}
 		_ = flat.TypeTextList{ ids: pre_tc.ierror_impl_names() }.names()
@@ -21766,7 +21768,8 @@ fn scan_implicit_imports(a &flat.FlatAst, end_node int, mut scan ImplicitImportS
 		}
 		if !scan.needs_sync {
 			if node.kind == .lock_expr
-				|| (node.kind in [.field_decl, .param] && type_text_is_shared(node.typ))
+				|| (node.kind in [.field_decl, .param, .array_init, .array_literal]
+					&& type_text_has_shared_modifier(node.typ))
 				|| (node.kind == .decl_assign && decl_assign_value_is_shared(node.value))
 				|| (node.kind == .struct_init && node.value.starts_with('chan '))
 				|| (node.kind == .infix && node.op == .arrow)
@@ -22962,13 +22965,26 @@ fn type_text_is_channel_bytes(typ string) bool {
 	return clean.starts_with('chan ') || clean == 'chan'
 }
 
-fn type_text_is_shared(raw_id u32) bool {
-	return type_text_is_shared_bytes(flat.source_type_name(raw_id))
+// type_text_has_shared_modifier reports whether a type spelling contains `shared`, also after
+// a container prefix: the elements of `[]shared T` and `map[K]shared T` are shared wrappers.
+fn type_text_has_shared_modifier(raw_id u32) bool {
+	raw := flat.source_type_name(raw_id)
+	if !raw.contains('shared ') {
+		return false
+	}
+	mut start := 0
+	for {
+		idx := raw.index_after('shared ', start) or { return false }
+		if idx == 0 || !implicit_type_name_byte(raw[idx - 1]) {
+			return true
+		}
+		start = idx + 'shared '.len
+	}
+	return false
 }
 
-// type_text_is_shared_bytes inspects spelling syntax within the numeric predicate boundary.
-fn type_text_is_shared_bytes(raw string) bool {
-	return implicit_trim_space(raw).starts_with('shared ')
+fn implicit_type_name_byte(c u8) bool {
+	return c.is_letter() || c.is_digit() || c == `_` || c == `.`
 }
 
 fn decl_assign_value_is_shared(value string) bool {

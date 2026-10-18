@@ -188,6 +188,14 @@ fn gen_expr_lvalue(mut g FlatGen, id flat.NodeId) {
 			}
 			op := if is_ptr { '->' } else { '.' }
 			g.write('${op}${g.field_c_name(field_owner, node.value)}')
+			// A `shared` field stores a lock wrapper; its value is the wrapper's `val`,
+			// as for a field of any other struct value (`m[k].values.mutate()`).
+			owner := cgen_unalias_type(types.unwrap_pointer(field_owner))
+			if owner is types.Struct {
+				if _ := g.shared_field_info(owner.source_type_id(), node.value) {
+					g.write('->val')
+				}
+			}
 			return
 		}
 	}

@@ -508,7 +508,9 @@ fn authenticate_live_state_commit_value(state_git_dir string, trust LiveStateTru
 	if shallow.exit_code != 0 || shallow.output.trim_space() != 'false' {
 		return error('history_recovery_required: live state public proof cannot authenticate a shallow history')
 	}
-	local_tree := live_git_args(state_git_dir, ['rev-parse', '${proof.commit_sha}^{tree}'], .scalar)
+	// `<commit>:` names the same root tree as `<commit>^{tree}` without a caret, which cmd.exe would
+	// otherwise reject when git is a `.cmd` wrapper.
+	local_tree := live_git_args(state_git_dir, ['rev-parse', '${proof.commit_sha}:'], .scalar)
 	local_line := live_git_args(state_git_dir,
 		['rev-list', '--parents', '-n', '1', proof.commit_sha], .scalar)
 	if local_tree.exit_code != 0 || local_tree.output.trim_space() != proof.tree_sha
@@ -1185,8 +1187,9 @@ fn validate_live_state_bare_repository(state_git_dir string, expected_state_head
 	}
 	validate_live_git_preflight(state_git_dir)!
 	bare := live_git_args(state_git_dir, ['rev-parse', '--is-bare-repository'], .scalar)
-	commit := live_git_args(state_git_dir, ['rev-parse', '${expected_state_head}^{commit}'],
-		.scalar)
+	// `rev-list -n 1` names the same commit as `^{commit}` for a commit or a tag, without a caret. It also
+	// reads the commit's parents, so a missing parent fails it where `^{commit}` would pass; that fails closed.
+	commit := live_git_args(state_git_dir, ['rev-list', '-n', '1', expected_state_head], .scalar)
 	if bare.exit_code != 0 || bare.output.trim_space() != 'true' || commit.exit_code != 0
 		|| commit.output.trim_space() != expected_state_head {
 		return error('live state snapshot is not the exact immutable bare commit')
@@ -2848,20 +2851,18 @@ fn live_git_args(state_git_dir string, command []string, class DurableGitReadCla
 			output:    result.stdout
 		}
 	}
-	mut quoted := []string{cap: command.len}
-	for argument in command {
-		quoted << os.quoted_path(argument)
-	}
-	return os.execute('git --no-replace-objects --git-dir ${os.quoted_path(state_git_dir)} ${quoted.join(' ')}')
+	return live_git_fallback(state_git_dir, command)
 }
 
 // This legacy adapter remains for the dormant T2c3b authority. While T2c3c1 owns the lease it
-// accepts only the exact target ls-tree form; arbitrary shell text cannot cross the new runner.
-fn live_git(state_git_dir string, arguments string) os.Result {
+// accepts only the exact target ls-tree argv; arbitrary argv cannot cross the new runner.
+// Without a lease, `arguments` goes to git as separate argv elements. On Windows a `.cmd` git is run
+// by cmd.exe, so live_git_fallback refuses a command line that cmd.exe would interpret.
+fn live_git(state_git_dir string, arguments []string) os.Result {
 	if durable_git_runner_lease_load() != unsafe { nil } {
-		prefix := 'ls-tree -l -z --full-tree '
-		separator := ' -- '
-		if !arguments.starts_with(prefix) || !arguments.contains(separator) {
+		if arguments.len != 7 || arguments[0] != 'ls-tree' || arguments[1] != '-l'
+			|| arguments[2] != '-z' || arguments[3] != '--full-tree' || arguments[5] != '--'
+			|| !is_lower_hex_40(arguments[4]) || !contract_relative_path_is_safe(arguments[6]) {
 			if mut session := durable_git_runner_session() {
 				durable_git_record_first_failure(mut session,
 					'durable Git authority adapter rejected noncanonical arguments')
@@ -2871,22 +2872,187 @@ fn live_git(state_git_dir string, arguments string) os.Result {
 				output:    'durable Git authority adapter rejected noncanonical arguments'
 			}
 		}
-		remainder := arguments[prefix.len..]
-		parts := remainder.split(separator)
-		if parts.len != 2 || !is_lower_hex_40(parts[0]) || !contract_relative_path_is_safe(parts[1]) {
-			if mut session := durable_git_runner_session() {
-				durable_git_record_first_failure(mut session,
-					'durable Git authority adapter rejected noncanonical arguments')
-			}
-			return os.Result{
-				exit_code: 125
-				output:    'durable Git authority adapter rejected noncanonical arguments'
-			}
-		}
-		return live_git_args(state_git_dir, ['ls-tree', '-l', '-z', '--full-tree', parts[0], '--',
-			parts[1]], .scalar)
+		return live_git_args(state_git_dir, arguments, .scalar)
 	}
-	return os.execute('git --no-replace-objects --git-dir ${os.quoted_path(state_git_dir)} ${arguments}')
+	return live_git_fallback(state_git_dir, arguments)
+}
+
+// windows_git_program returns the git that cmd.exe would start from `path_env` and `pathext`, with
+// three deliberate differences. It does not search the current directory: a PATH entry that names the
+// current directory or drive is skipped (see windows_git_search_dir). A `.cmd` wrapper that runs a bare
+// `git.exe` is a separate matter, because cmd.exe searches the current directory for that name, so the
+// wrapper is the trust boundary. It does not search the application directory either: a bare `git`
+// passed to CreateProcess used to be found there, and that lookup is gone, so git must be on PATH. And
+// it starts only the program types os.exec can run, so a PATHEXT entry such as `.js` is skipped, and a
+// PATHEXT with no such type is an error. Within PATH, the first directory with a candidate wins, and
+// inside it the candidates follow PATHEXT's order (see windows_git_suffixes). CreateProcess also searches
+// the System32, System, and Windows directories for a bare name; this resolver does not, so git must be
+// on PATH there too. find_abs_path_of_executable tries each suffix across all of PATH first, so it is not
+// used here.
+fn windows_git_program(path_env string, pathext string) !string {
+	suffixes := windows_git_suffixes(pathext)
+	if suffixes.len == 0 {
+		return error('PATHEXT lists no program type that os.exec can start: `${pathext}`')
+	}
+	for entry in windows_git_path_entries(path_env) {
+		dir := windows_git_search_dir(entry)
+		if dir == '' {
+			continue
+		}
+		for suffix in suffixes {
+			candidate := os.join_path(dir, 'git${suffix}')
+			if os.is_file(candidate) {
+				return os.abs_path(candidate)
+			}
+		}
+	}
+	return error('git was not found on PATH')
+}
+
+// windows_git_path_entries splits `path_env` on the `;` that lie outside double quotes, as cmd.exe
+// does, so a quoted entry may contain `;`. The quotes stay in the entries for windows_git_search_dir
+// to remove. An unbalanced quote runs its entry on to the end of the string. How cmd.exe reads that
+// case was not checked, so it is only the fallback's own reading.
+fn windows_git_path_entries(path_env string) []string {
+	mut entries := []string{}
+	mut current := []u8{}
+	mut in_quotes := false
+	for ch in path_env.bytes() {
+		if ch == `"` {
+			in_quotes = !in_quotes
+		}
+		if ch == `;` && !in_quotes {
+			entries << current.bytestr()
+			current = []u8{}
+			continue
+		}
+		current << ch
+	}
+	entries << current.bytestr()
+	return entries
+}
+
+// windows_git_search_dir returns the directory that a PATH entry names, with the surrounding quotes
+// that cmd.exe strips removed. It returns '' for an entry that is relative (`.`, `bin`) or rooted
+// without a drive (`\bin`): those name the current directory or drive, which cmd.exe would search.
+fn windows_git_search_dir(entry string) string {
+	dir := entry.trim('"')
+	has_drive := dir.len >= 3 && dir[1] == `:` && (dir[2] == `\\` || dir[2] == `/`)
+	// Two leading separators make a UNC path, and either separator style counts.
+	is_unc := dir.len >= 2 && (dir[0] == `\\` || dir[0] == `/`) && (dir[1] == `\\` || dir[1] == `/`)
+	if has_drive || is_unc {
+		return dir
+	}
+	return ''
+}
+
+// windows_git_suffixes returns the suffixes of `pathext` that windows_git_program can start, in
+// PATHEXT's order. An empty PATHEXT gets cmd.exe's default order: `.com`, `.exe`, `.bat`, `.cmd`.
+fn windows_git_suffixes(pathext string) []string {
+	if pathext.trim_space() == '' {
+		return ['.com', '.exe', '.bat', '.cmd']
+	}
+	mut suffixes := []string{}
+	for entry in pathext.split(';') {
+		suffix := entry.trim_space().to_lower()
+		if suffix in ['.com', '.exe', '.bat', '.cmd'] && suffix !in suffixes {
+			suffixes << suffix
+		}
+	}
+	return suffixes
+}
+
+// live_git_fallback runs git for the state repository without the durable runner. On Windows the
+// executable is resolved first with windows_git_program, which follows cmd.exe's PATH order, so a
+// `.cmd` wrapper is found as cmd.exe would find it. A batch wrapper is run by cmd.exe, which reads
+// the whole command line as syntax, so live_git_fallback refuses a line cmd.exe would interpret
+// instead of passing it through.
+fn live_git_fallback(state_git_dir string, arguments []string) os.Result {
+	mut program := 'git'
+	$if windows {
+		program = windows_git_program(os.getenv('PATH'), os.getenv('PATHEXT')) or {
+			return os.Result{
+				exit_code: -1
+				output:    err.msg()
+			}
+		}
+	}
+	mut argv := [program, '--no-replace-objects', '--git-dir', state_git_dir]
+	argv << arguments
+	return windows_git_run(argv)
+}
+
+// windows_git_run runs `argv`, whose program is already resolved. On Windows a batch wrapper that
+// batch_git_refuses flags is refused here, so cmd.exe never reads the command line as syntax.
+fn windows_git_run(argv []string) os.Result {
+	$if windows {
+		if batch_git_refuses(argv) {
+			return os.Result{
+				exit_code: -1
+				output:    'refusing to pass cmd.exe metacharacters or %-expansion to the batch git wrapper ${argv[0]}'
+			}
+		}
+	}
+	return os.exec(argv)
+}
+
+// batch_git_refuses reports whether argv runs a batch git wrapper that cmd.exe would read as syntax.
+// The program path and each argument are checked for metacharacters. The program path is not always
+// quoted: os.exec quotes an argument only when it has a space, tab, or quote, so a path such as
+// `C:\x&calc\git.cmd` reaches cmd.exe bare and `&` would start a second command. A bare program path
+// also ends the command name at `(`, `)`, `,`, and `=`, and at U+00A0, so those are refused there too,
+// and so is any other non-ASCII byte. A quoted path reads them as text. The `%` rule then runs on the whole joined line, program path included, because
+// cmd.exe pairs `%` marks across argument boundaries: two parts that each pass alone can form a
+// `%...%` pair once joined. A `+`, `[`, or `]` in a bare path is not refused: a probe on Windows ran a
+// `.cmd` at such a path, so cmd.exe does not end the command name there.
+fn batch_git_refuses(argv []string) bool {
+	if argv.len == 0 {
+		return false
+	}
+	program := argv[0].to_lower()
+	if !program.ends_with('.cmd') && !program.ends_with('.bat') {
+		return false
+	}
+	for part in argv {
+		if part.contains_any('&|<>^"!\r\n') {
+			return true
+		}
+	}
+	if !argv[0].contains_any(' \t"') {
+		if argv[0].contains_any('(),=') {
+			return true
+		}
+		// cmd.exe ends a bare command name at U+00A0 (bytes C2 A0), and the list of such characters is not
+		// known in full. So a bare path with any non-ASCII byte is refused. A quoted path reads them as text.
+		for b in argv[0].bytes() {
+			if b >= 0x80 {
+				return true
+			}
+		}
+	}
+	return cmd_percent_is_unsafe(argv.join(' '))
+}
+
+// cmd_percent_is_unsafe reports whether cmd.exe could expand a `%` in text. cmd.exe pairs `%` marks
+// and expands whatever lies between them, including `%NAME:~0,20%`. A `%` followed by `~`, a digit,
+// or `*` is a batch parameter. So a line passes only when its single `%` is followed by `(`, as in
+// the `%(refname)` token, or by a letter, as in the `%H` of `--format=@@%H`. Neither pairs with a
+// second `%`. This models the command line that `cmd /c` parses. A `.cmd` wrapper that runs `FOR`,
+// `CALL`, or `%1` to `%9` parses its arguments again in batch mode, and that is not modeled here: the
+// wrapper is the trust boundary.
+fn cmd_percent_is_unsafe(text string) bool {
+	if !text.contains('%') {
+		return false
+	}
+	if text.count('%') != 1 {
+		return true
+	}
+	next := text.all_after('%')
+	if next.len == 0 {
+		return true
+	}
+	first := next[0]
+	return !(first == `(` || (first >= `a` && first <= `z`) || (first >= `A` && first <= `Z`))
 }
 
 fn validate_live_git_preflight(state_git_dir string) ! {
@@ -2932,7 +3098,7 @@ fn validate_live_git_preflight(state_git_dir string) ! {
 	if os.exists(os.join_path(state_git_dir, 'shallow')) {
 		return error('history_recovery_required: live state Git repository is shallow')
 	}
-	replace_refs := live_git(state_git_dir, "for-each-ref --format='%(refname)' refs/replace")
+	replace_refs := live_git(state_git_dir, ['for-each-ref', '--format=%(refname)', 'refs/replace'])
 	if replace_refs.exit_code != 0 || replace_refs.output.trim_space() != '' {
 		return error('live state Git repository contains or cannot exclude replacement refs')
 	}
@@ -4215,8 +4381,11 @@ $if test {
 		return trace
 	}
 
+	// durable_git_authority_adapter_rejection_for_test runs the legacy live_git adapter once with
+	// the given argv while the runner lease is held. It returns the rejection text for noncanonical
+	// arguments and fails if the adapter accepts them.
 	pub fn durable_git_authority_adapter_rejection_for_test(state_git_dir string,
-		arguments string) !string {
+		arguments []string) !string {
 		mut session := durable_git_runner_begin(state_git_dir)!
 		result := live_git(state_git_dir, arguments)
 		durable_git_runner_end(mut session)!
@@ -4251,6 +4420,41 @@ $if test {
 		} $else {
 			return error('durable Git pipe test is unavailable on this platform')
 		}
+	}
+
+	// live_git_fallback_for_test runs the non-lease fallback of the legacy adapter once. A Windows
+	// test uses it to prove that bare `git` resolves through the same path as production code.
+	pub fn live_git_fallback_for_test(state_git_dir string, arguments []string) os.Result {
+		return live_git_fallback(state_git_dir, arguments)
+	}
+
+	// windows_git_search_dir_for_test returns the directory windows_git_search_dir takes from one PATH entry.
+	pub fn windows_git_search_dir_for_test(entry string) string {
+		return windows_git_search_dir(entry)
+	}
+
+	// windows_git_program_for_test returns the git program the fallback starts from the current PATH and PATHEXT.
+	pub fn windows_git_program_for_test() !string {
+		return windows_git_program(os.getenv('PATH'), os.getenv('PATHEXT'))
+	}
+
+	// git_exec_for_test runs argv like os.exec. On Windows a leading `git` is resolved with the same
+	// PATH order as the fallback, and a `.cmd` wrapper gets the same command-line refusal, so a test
+	// that starts git reaches a `.cmd` wrapper as production does.
+	pub fn git_exec_for_test(argv []string) os.Result {
+		mut resolved := argv.clone()
+		$if windows {
+			if resolved.len > 0 && resolved[0] == 'git' {
+				program := windows_git_program(os.getenv('PATH'), os.getenv('PATHEXT')) or {
+					return os.Result{
+						exit_code: -1
+						output:    err.msg()
+					}
+				}
+				resolved[0] = program
+			}
+		}
+		return windows_git_run(resolved)
 	}
 
 	pub fn durable_git_deadline_constants_for_test() []u64 {

@@ -1030,6 +1030,12 @@ pub fn is_test_file_for_backend(path string, backend string) bool {
 	if suffix_is_backend_name(backend_suffix) {
 		// A backend name wins over an architecture alias: `wasm` spells both, and
 		// `foo_test.wasm.v` is a WASM backend test, not an amd64/arm64 one.
+		if backend_suffix == 'native' {
+			// `.native.v` is the backend-specific file suffix for ARM64 code.
+			// The CLI uses `-b arm64`; keep suffix selection independent of the
+			// removed `-b native` option.
+			return backend in ['native', 'arm64']
+		}
 		return backend_suffix == backend
 	}
 	if _ := arch_from_string(backend_suffix) {

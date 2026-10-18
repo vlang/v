@@ -3064,6 +3064,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		c_extern_forced_decls:              g.c_extern_forced_decls
 		export_c_abi_decls:                 g.export_c_abi_decls
 		main_export_owners:                 g.main_export_owners
+		main_export_c_abi_wrappers:         g.main_export_c_abi_wrappers
 		c_extern_global_names:              g.c_extern_global_names
 		export_global_names:                g.export_global_names
 		global_linker_sections:             g.global_linker_sections

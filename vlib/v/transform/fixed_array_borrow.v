@@ -16,6 +16,21 @@ struct BorrowParamRef {
 	index int
 }
 
+// The AST stays immutable during summary preparation. One mask answers the
+// mention queries for all parameters of a function, including repeated queries
+// of nested calls and selectors. Exact node IDs make collisions harmless.
+struct BorrowParamMentions {
+mut:
+	decl        int = -1
+	params      []string
+	param       string
+	bit         u64
+	generation  u32
+	ids         [4096]int
+	masks       [4096]u64
+	generations [4096]u32
+}
+
 // Compute summaries before workers rewrite function bodies. A parameter borrows when no
 // reference to its storage outlives the call: every use reads or writes scalars through it,
 // or hands it — the parameter itself, or the address of storage inline in it — straight to a
@@ -34,6 +49,8 @@ fn (mut t Transformer) prepare_fixed_array_borrow_params() {
 	if isnil(t.tc) {
 		return
 	}
+	t.borrow_param_mentions = &BorrowParamMentions{}
+	defer { t.borrow_param_mentions = unsafe { nil } }
 	t.ensure_call_param_types_decl_index()
 	mut summarised := 0
 	if t.borrow_params_after_transform && t.tc.transform_borrow_node_count <= t.a.nodes.len {
@@ -132,6 +149,7 @@ fn (mut t Transformer) prepare_fixed_array_borrow_params() {
 
 fn (mut t Transformer) fixed_array_param_body_borrows(c BorrowCandidate, mut dependencies []BorrowParamRef) bool {
 	fn_node := t.a.node(flat.NodeId(c.decl))
+	t.begin_borrow_param_mentions(c, fn_node)
 	mut has_body := false
 	for j in 0 .. fn_node.children_count {
 		body_id := t.a.child(fn_node, j)
@@ -144,6 +162,65 @@ fn (mut t Transformer) fixed_array_param_body_borrows(c BorrowCandidate, mut dep
 		}
 	}
 	return has_body
+}
+
+fn (mut t Transformer) begin_borrow_param_mentions(c BorrowCandidate, node &flat.Node) {
+	if isnil(t.borrow_param_mentions) {
+		return
+	}
+	mut memo := t.borrow_param_mentions
+	if memo.decl != c.decl {
+		memo.decl = c.decl
+		memo.params.clear()
+		memo.generation++
+		if memo.generation == 0 {
+			memo.generations = [4096]u32{}
+			memo.generation = 1
+		}
+		for i in 0 .. node.children_count {
+			param := t.a.child_node(node, i)
+			if param.kind == .param {
+				memo.params << param.value
+			}
+		}
+	}
+	memo.param = c.name
+	memo.bit = 0
+	if memo.params.len <= 64 {
+		for i, name in memo.params {
+			if name == c.name {
+				memo.bit |= u64(1) << i
+			}
+		}
+	}
+}
+
+fn (t &Transformer) fixed_array_mentioned_params(id flat.NodeId) u64 {
+	idx := int(id)
+	if idx < 0 || idx >= t.a.nodes.len {
+		return 0
+	}
+	mut memo := t.borrow_param_mentions
+	slot := idx & 4095
+	if memo.generations[slot] == memo.generation && memo.ids[slot] == idx {
+		return memo.masks[slot]
+	}
+	node := t.a.node(id)
+	mut mask := u64(0)
+	if node.kind == .ident {
+		for i, param in memo.params {
+			if node.value == param {
+				mask |= u64(1) << i
+			}
+		}
+	}
+	for i in 0 .. node.children_count {
+		mask |= t.fixed_array_mentioned_params(t.a.child(node, i))
+	}
+	memo.ids[slot] = idx
+	memo.masks[slot] = mask
+	memo.generations[slot] = memo.generation
+	return mask
 }
 
 fn (t &Transformer) fixed_array_call_param_borrows(name string, call flat.Node, index int) bool {
@@ -189,6 +266,10 @@ fn (t &Transformer) fixed_array_borrow_type(id flat.NodeId) ?types.Type {
 }
 
 fn (t &Transformer) fixed_array_expr_mentions_param(id flat.NodeId, param string) bool {
+	if !isnil(t.borrow_param_mentions) && t.borrow_param_mentions.bit != 0
+		&& t.borrow_param_mentions.param == param {
+		return t.fixed_array_mentioned_params(id) & t.borrow_param_mentions.bit != 0
+	}
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return false
 	}

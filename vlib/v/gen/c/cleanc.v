@@ -14,6 +14,9 @@ import v.types
 import v.util
 import v.util.cache_refresh
 
+// Reuse the immutable boxed void payload in default and negative query paths.
+const cgen_void_type = types.Type(types.void_)
+
 const spread_index_expected_type_marker = '__v3_spread_index_expected_type'
 const bound_method_array_index_marker = '__v3_bound_method_array_index'
 const array_accessor_index_marker = '__v3_array_accessor_index'
@@ -44,6 +47,17 @@ fn c_short_name_view(name string) string {
 	for i := name.len - 1; i >= 0; i-- {
 		if name[i] == `.` {
 			return unsafe { name.substr_unsafe(i + 1, name.len) }
+		}
+	}
+	return name
+}
+
+// c_owner_name_view borrows the prefix before the final dot for local name comparisons.
+@[direct_array_access; inline]
+fn c_owner_name_view(name string) string {
+	for i := name.len - 1; i >= 0; i-- {
+		if name[i] == `.` {
+			return unsafe { name.substr_unsafe(0, i) }
 		}
 	}
 	return name
@@ -832,6 +846,7 @@ mut:
 	c_extern_forced_decls         map[string]bool
 	export_c_abi_decls            map[string]flat.NodeId
 	main_export_owners            map[string][]string
+	main_export_c_abi_wrappers    map[string]bool
 	c_extern_global_names         map[string]string
 	export_global_names           map[string]string
 	global_linker_sections        map[string]string
@@ -849,7 +864,7 @@ mut:
 	spawn_detached                bool // the spawn being emitted has its handle discarded
 	spawn_comparable              bool // keep a discarded spawn's handle until its comparison finishes
 	detached_spawn_drop           bool // ownership traversal also joins nested handles and destroys closures
-	spawn_return_type             types.Type = types.Type(types.void_)
+	spawn_return_type             types.Type = cgen_void_type
 	const_runtime_inits           []string
 	const_runtime_init_modules    []string
 	runtime_inits                 []string
@@ -915,9 +930,9 @@ mut:
 	cur_explicit_mut_pointer_params map[string]bool
 	cur_mut_param_owners            map[string]types.ScopeBindingOwner
 	cur_c_fn_calls                  map[string]bool
-	cur_fn_ret                      types.Type = types.Type(types.void_)
+	cur_fn_ret                      types.Type = cgen_void_type
 	cur_fn_ret_is_optional          bool
-	cur_fn_ret_base                 types.Type = types.Type(types.void_)
+	cur_fn_ret_base                 types.Type = cgen_void_type
 	defer_return_tmp_var            string
 	active_locks                    []ActiveLock
 	unsafe_depth                    int
@@ -948,10 +963,10 @@ mut:
 	ownership_scope_index          int
 	cur_return_drops               []types.OwnershipDropEntry
 	pending_return_scope_drops     []types.OwnershipDropEntry
-	expected_expr_type             types.Type = types.Type(types.void_)
+	expected_expr_type             types.Type = cgen_void_type
 	expected_enum                  u32
 	known_expr_type_id             int        = -1
-	known_expr_type                types.Type = types.Type(types.void_)
+	known_expr_type                types.Type = cgen_void_type
 	memo_usable_expr_types         bool
 	cache_struct_fields            bool
 	dedup_fn_decl_aliases          bool
@@ -1125,6 +1140,7 @@ struct NativeSourceContextDirective {
 struct ObjectiveCppSourceRequest {
 	module                 string
 	source_path            string
+	defined_fns            []string
 	local_context          []NativeSourceContextDirective
 	source_macros_possible bool
 }
@@ -1720,6 +1736,7 @@ pub fn FlatGen.new() FlatGen {
 		c_extern_forced_decls:              map[string]bool{}
 		export_c_abi_decls:                 map[string]flat.NodeId{}
 		main_export_owners:                 map[string][]string{}
+		main_export_c_abi_wrappers:         map[string]bool{}
 		c_extern_global_names:              map[string]string{}
 		export_global_names:                map[string]string{}
 		global_linker_sections:             map[string]string{}
@@ -2667,15 +2684,24 @@ pub fn cache_native_input_language(path string, c_flags []string, c99_mode bool,
 // cache_native_inputs_language reports the richest preprocessor language any
 // native input requires. The shared compiler-macro probe uses it so it never omits
 // a language macro (`__OBJC__`, `__cplusplus`) that an input's active branches
-// depend on.
+// depend on. An Objective-C(++) source include inside a `#if` branch that is
+// definitely inactive is skipped: cgen omits such an include too, so it must not
+// force the generated unit into Objective-C or rule out TCC.
 pub fn cache_native_inputs_language(a &flat.FlatAst, vroot string, c_flags []string, c99_mode bool, ccompiler string, target pref.Target) string {
 	include_dirs := c_flag_include_dirs(c_flags)
+	mut contexts := CacheNativeSourceContexts{}
 	mut need_objc := false
 	mut need_cpp := false
 	mut cur_file := ''
-	for node in a.nodes {
+	mut cur_module := 'main'
+	for node_idx, node in a.nodes {
 		if node.kind == .file {
 			cur_file = node.value
+			cur_module = 'main'
+			continue
+		}
+		if node.kind == .module_decl {
+			cur_module = node.value
 			continue
 		}
 		if node.kind != .directive
@@ -2688,7 +2714,16 @@ pub fn cache_native_inputs_language(a &flat.FlatAst, vroot string, c_flags []str
 		}
 		if c_include_arg_is_source_file(include_arg) {
 			for path in c_include_file_paths(include_arg, vroot, cur_file, include_dirs) {
-				match cache_native_input_language(path, c_flags, c99_mode, target) {
+				language := cache_native_input_language(path, c_flags, c99_mode, target)
+				if node.value == 'include' && (path.ends_with('.m') || path.ends_with('.mm')) {
+					if !contexts.ready {
+						contexts = cache_native_source_contexts(a, vroot, c_flags, target)
+					}
+					if contexts.include_definitely_inactive(node_idx, cur_module, c99_mode, target) {
+						continue
+					}
+				}
+				match language {
 					'objective-c++' {
 						need_objc = true
 						need_cpp = true
@@ -2710,6 +2745,127 @@ pub fn cache_native_inputs_language(a &flat.FlatAst, vroot string, c_flags []str
 		}
 	}
 	return c_native_language_from_features(need_objc, need_cpp)
+}
+
+struct CacheNativeSourceDirective {
+	node_idx      int
+	text          string
+	native_source bool // part of the context cgen gives a native source include
+}
+
+// CacheNativeSourceContexts mirrors, per module, the preprocessor context that cgen
+// evaluates before it omits an inactive Objective-C(++) source include
+// (collect_c_directive_at, native_source_context_has_macro_inputs).
+struct CacheNativeSourceContexts {
+	ready      bool
+	flags      []string
+	directives map[string][]CacheNativeSourceDirective
+	imports    map[string][]string
+}
+
+fn cache_native_source_contexts(a &flat.FlatAst, vroot string, c_flags []string, target pref.Target) CacheNativeSourceContexts {
+	include_dirs := c_flag_include_dirs(c_flags)
+	mut flags := c_flags.clone()
+	flags << cache_directive_flags_skipping(a, vroot, target, map[string]string{}, map[int]bool{})
+	mut directives := map[string][]CacheNativeSourceDirective{}
+	mut imports := map[string][]string{}
+	mut cur_file := ''
+	mut cur_module := 'main'
+	for node_idx, node in a.nodes {
+		if node.kind == .file {
+			cur_file = node.value
+			cur_module = 'main'
+			continue
+		}
+		if node.kind == .module_decl {
+			cur_module = node.value
+			continue
+		}
+		if node.kind == .import_decl {
+			if node.value.len > 0 && node.value !in imports[cur_module] {
+				imports[cur_module] << node.value
+			}
+			continue
+		}
+		if node.kind != .directive {
+			continue
+		}
+		mut text := ''
+		mut native_source := true
+		if node.value in ['define', 'undef', 'ifdef', 'ifndef', 'if', 'elif', 'else', 'endif',
+			'pragma', 'error', 'warning'] {
+			text = c_preprocessor_directive_line(node.value, node.typ_text())
+		} else if node.value == 'include' && node.typ != 0 {
+			include_arg := c_include_arg_for_target(node.typ_text(), vroot, cur_file, target)
+			if include_arg.len == 0 || c_include_arg_is_builtin_abi_helper(include_arg, vroot) {
+				continue
+			}
+			if c_include_arg_is_source_file(include_arg) {
+				// A source include can define macros, but it is not part of the
+				// directive context itself (see native_source_context_has_macro_inputs).
+				text = '#include ${include_arg}'
+				native_source = false
+			} else {
+				text = c_native_source_context_header_include(include_arg, vroot, cur_file,
+					include_dirs)
+			}
+		}
+		if text.len > 0 {
+			directives[cur_module] << CacheNativeSourceDirective{
+				node_idx:      node_idx
+				text:          text
+				native_source: native_source
+			}
+		}
+	}
+	return CacheNativeSourceContexts{
+		ready:      true
+		flags:      flags
+		directives: directives
+		imports:    imports
+	}
+}
+
+// include_definitely_inactive reports whether the source include at `node_idx` is
+// in a branch that the directives before it, and those of the modules it imports,
+// prove inactive.
+fn (c &CacheNativeSourceContexts) include_definitely_inactive(node_idx int, module_name string, c99_mode bool, target pref.Target) bool {
+	mut context := []string{}
+	mut macro_inputs := []string{}
+	mut visited := map[string]bool{}
+	c.collect_imported(module_name, mut visited, mut context, mut macro_inputs)
+	for directive in c.directives[module_name] or { []CacheNativeSourceDirective{} } {
+		if directive.node_idx >= node_idx {
+			break
+		}
+		if directive.native_source {
+			context << directive.text
+		}
+		macro_inputs << directive.text
+	}
+	if context.len == 0 {
+		return false
+	}
+	source_macros_possible := c_native_source_context_state(macro_inputs, c.flags, c99_mode, target,
+		false).source_macros_possible
+	return c_native_source_context_definitely_inactive(context, c.flags, c99_mode, target,
+		source_macros_possible)
+}
+
+fn (c &CacheNativeSourceContexts) collect_imported(module_name string, mut visited map[string]bool, mut context []string, mut macro_inputs []string) {
+	visited[module_name] = true
+	for dependency in c.imports[module_name] or { []string{} } {
+		if dependency in visited {
+			continue
+		}
+		c.collect_imported(dependency, mut visited, mut context, mut macro_inputs)
+		for directive in c.directives[dependency] or { []CacheNativeSourceDirective{} } {
+			if directive.native_source {
+				context << directive.text
+			}
+			macro_inputs << directive.text
+		}
+	}
 }
 
 fn c_native_language_from_features(need_objc bool, need_cpp bool) string {
@@ -3580,6 +3736,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.c_extern_forced_decls.clear()
 	g.export_c_abi_decls.clear()
 	g.main_export_owners.clear()
+	g.main_export_c_abi_wrappers.clear()
 	g.c_extern_global_names.clear()
 	g.export_global_names.clear()
 	g.global_linker_sections.clear()
@@ -3862,6 +4019,13 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	}
 	// Function workers collect only the C symbols reached by emitted bodies.
 	// Finalize their declarations and function-pointer types after the merge.
+	// A serial dispatch has no workers to merge, and unless the item prep
+	// already collected the refs, the master holds none: collect them from the
+	// selected bodies before freezing the set, or a C function used only as a
+	// value (`&C.DefWindowProc`) loses its prototype.
+	if !g.parallel_used {
+		_ = g.c_extern_referenced_symbols()
+	}
 	g.c_extern_refs_ready = true
 	$if !v3_no_parallel ? {
 		if g.scope_parallel_workers {
@@ -4688,7 +4852,7 @@ mut:
 	prepared           bool
 	ptypes             []types.Type
 	shared_params      []bool
-	return_type        types.Type = types.Type(types.void_)
+	return_type        types.Type = cgen_void_type
 	decl_is_variadic   bool
 	first_param_is_mut bool
 	// registration is precomputed by the parallel prep when signature
@@ -5164,20 +5328,12 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 			for i in 0 .. node.children_count {
 				f := g.a.child_node(node_ref, i)
 				if node_kind_id(f) == 66 && (f.children_count > 0 || f.typ != 0) {
-					qname := g.const_storage_name(cur_module, f.value)
 					value_id := if f.children_count > 0 {
 						g.a.child(f, 0)
 					} else {
 						g.a.child(node_ref, i)
 					}
-					g.const_vals[qname] = value_id
-					g.const_modules[qname] = cur_module
-					g.const_files[qname] = cur_file
-					if (cur_module.len == 0 || cur_module == 'main' || cur_module == 'builtin') && f.value !in g.const_vals {
-						g.const_vals[f.value] = value_id
-						g.const_modules[f.value] = cur_module
-						g.const_files[f.value] = cur_file
-					}
+					g.register_const_value(cur_module, cur_file, f.value, value_id)
 				}
 			}
 			continue
@@ -6263,6 +6419,7 @@ fn (mut g FlatGen) collect_c_directive_at(node_idx int, module_name string, node
 					g.objective_cpp_source_requests << ObjectiveCppSourceRequest{
 						module:                 module_name
 						source_path:            source_path
+						defined_fns:            c_source_defined_fn_names(source_text)
 						source_macros_possible: g.native_source_context_has_macro_inputs(module_name)
 						local_context:          (g.native_source_contexts[module_name] or {
 							[]NativeSourceContextDirective{}
@@ -9582,6 +9739,86 @@ fn c_ident_char(ch u8) bool {
 	return (ch >= `a` && ch <= `z`) || (ch >= `A` && ch <= `Z`) || (ch >= `0` && ch <= `9`) || ch == `_`
 }
 
+const c_source_non_fn_keywords = ['if', 'for', 'while', 'switch', 'catch', 'return', 'sizeof',
+	'defined', 'decltype', 'alignof', '_Alignof', 'typeof', '__attribute__', '__declspec']
+
+// c_source_defined_fn_names returns the names of the functions that a C, C++ or
+// Objective-C source defines: an identifier directly followed by a parameter list
+// and then a body. Calls and prototypes are not followed by `{`.
+fn c_source_defined_fn_names(text string) []string {
+	src := c_strip_comments(text)
+	mut names := []string{}
+	mut i := 0
+	mut line_start := true
+	for i < src.len {
+		ch := src[i]
+		if ch == `\n` {
+			line_start = true
+			i++
+			continue
+		}
+		if line_start && ch == `#` {
+			// Skip a preprocessor line, including its backslash continuations.
+			for i < src.len && !(src[i] == `\n` && src[i - 1] != `\\`) {
+				i++
+			}
+			continue
+		}
+		if ch == ` ` || ch == `\t` || ch == `\r` {
+			i++
+			continue
+		}
+		line_start = false
+		if ch == `"` || ch == `'` {
+			i++
+			for i < src.len && src[i] != ch && src[i] != `\n` {
+				if src[i] == `\\` {
+					i++
+				}
+				i++
+			}
+			i++
+			continue
+		}
+		if !c_ident_char(ch) || (ch >= `0` && ch <= `9`) {
+			i++
+			continue
+		}
+		start := i
+		for i < src.len && c_ident_char(src[i]) {
+			i++
+		}
+		name := src[start..i]
+		mut j := i
+		for j < src.len && src[j] in [` `, `\t`, `\r`, `\n`] {
+			j++
+		}
+		if j >= src.len || src[j] != `(` || name in c_source_non_fn_keywords {
+			continue
+		}
+		mut depth := 0
+		for j < src.len {
+			if src[j] == `(` {
+				depth++
+			} else if src[j] == `)` {
+				depth--
+				if depth == 0 {
+					break
+				}
+			}
+			j++
+		}
+		j++
+		for j < src.len && src[j] in [` `, `\t`, `\r`, `\n`] {
+			j++
+		}
+		if j < src.len && src[j] == `{` && name !in names {
+			names << name
+		}
+	}
+	return names
+}
+
 fn c_include_file_path(include_arg string, vroot string, source_file string) string {
 	clean := trimmed_space(include_arg)
 	if clean.len < 2 {
@@ -10171,10 +10408,20 @@ fn c_preprocessor_condition_state(raw string, defined map[string]bool, undefined
 }
 
 fn (mut g FlatGen) materialize_objective_cpp_sources() {
+	mut header_texts := map[string]string{}
 	for request in g.objective_cpp_source_requests {
 		context_directives := g.ordered_native_source_context(request.module, request.local_context)
 		if context_directives.len > 0 && c_native_source_context_definitely_inactive(context_directives, g.c_flags, g.c99_mode, g.target, request.source_macros_possible) {
 			continue
+		}
+		// The source is compiled on its own, so it declares nothing in the generated
+		// unit, even when its V file includes headers. Like `@[c_extern]`, the V
+		// declarations of the functions it defines need their prototypes, unless an
+		// included header declares them itself.
+		for name in request.defined_fns {
+			if !g.c_quoted_headers_mention(name, mut header_texts) {
+				g.c_extern_forced_decls[name] = true
+			}
 		}
 		if context_directives.len > 0 || c_source_include_has_preprocessor_context(context_directives) {
 			g.add_native_source_context_wrapper(request.source_path, context_directives)
@@ -10182,6 +10429,41 @@ fn (mut g FlatGen) materialize_objective_cpp_sources() {
 			g.c_flags << request.source_path
 		}
 	}
+}
+
+// c_quoted_headers_mention reports whether a quoted header of the generated unit
+// spells `name`. System headers cannot declare a project's own functions.
+fn (g &FlatGen) c_quoted_headers_mention(name string, mut texts map[string]string) bool {
+	for directive in g.c_directives {
+		clean := trimmed_space(directive.text)
+		if !clean.starts_with('#include "') || !clean.ends_with('"') {
+			continue
+		}
+		path := clean['#include "'.len..clean.len - 1]
+		if c_include_arg_is_source_file('"${path}"') {
+			continue
+		}
+		if path !in texts {
+			texts[path] = os.read_file(path) or { '' }
+		}
+		if c_text_has_identifier(texts[path], name) {
+			return true
+		}
+	}
+	return false
+}
+
+fn c_text_has_identifier(text string, name string) bool {
+	mut start := 0
+	for {
+		idx := text.index_after(name, start) or { return false }
+		end := idx + name.len
+		if (idx == 0 || !c_ident_char(text[idx - 1])) && (end >= text.len || !c_ident_char(text[end])) {
+			return true
+		}
+		start = end
+	}
+	return false
 }
 
 fn (mut g FlatGen) add_native_source_context_wrapper(source_path string, directives []string) {
@@ -10333,15 +10615,7 @@ pub fn module_const_init_order(a &flat.FlatAst, tc &types.TypeChecker) []string 
 					if field.kind != .const_field || field.children_count == 0 {
 						continue
 					}
-					qname := g.const_storage_name(cur_module, field.value)
-					g.const_vals[qname] = a.child(field, 0)
-					g.const_modules[qname] = cur_module
-					g.const_files[qname] = cur_file
-					if cur_module in ['', 'main', 'builtin'] && field.value !in g.const_vals {
-						g.const_vals[field.value] = a.child(field, 0)
-						g.const_modules[field.value] = cur_module
-						g.const_files[field.value] = cur_file
-					}
+					g.register_const_value(cur_module, cur_file, field.value, a.child(field, 0))
 				}
 			}
 			.import_decl {
@@ -13452,7 +13726,7 @@ fn (mut g FlatGen) gen_sum_pointer_value_expr(id flat.NodeId, expected types.Typ
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
 		return false
 	}
-	mut sum_type0 := types.Type(types.void_)
+	mut sum_type0 := cgen_void_type
 	if expected is types.Pointer {
 		sum_type0 = expected.base_type
 	} else {
@@ -13819,7 +14093,7 @@ fn (mut g FlatGen) gen_sum_cast_expr(target_type types.SumType, inner_id flat.No
 	pointer_base_type := if clean_variant_type is types.Pointer {
 		clean_variant_type.base_type
 	} else {
-		types.Type(types.void_)
+		cgen_void_type
 	}
 	variant_is_pointer_arg := if actual_value_type is types.Pointer {
 		variant_is_pointer && g.type_names_match(actual_value_type.base_type, pointer_base_type)
@@ -14073,7 +14347,7 @@ fn (g &FlatGen) sum_shared_field_type_inner(base_type0 types.Type, field string,
 	if sum_name in seen_ids { return none }
 	variants := g.tc.sum_types.type_ids(flat.source_type_name(sum_name)) or { return none }
 	if variants.len == 0 { return none }
-	mut common_type := types.Type(types.void_)
+	mut common_type := cgen_void_type
 	mut has_common := false
 	mut next_seen := seen_ids.clone()
 	next_seen << sum_name
@@ -14678,7 +14952,7 @@ fn (mut g FlatGen) optional_none_type(id flat.NodeId) types.Type {
 		return g.cur_fn_ret
 	}
 	return types.Type(types.OptionType{
-		base_type: types.Type(types.void_)
+		base_type: cgen_void_type
 	})
 }
 
@@ -14718,7 +14992,46 @@ fn (g &FlatGen) const_storage_name(module_name string, name string) string {
 	if module_name.len > 0 && module_name != 'main' && module_name != 'builtin' && !name.contains('.') {
 		return '${module_name}.${name}'
 	}
+	if module_name == 'builtin' && !name.contains('.') {
+		// A main const of the same name moved this builtin const off the shared
+		// bare key; see register_const_value.
+		if owner := g.const_modules[name] {
+			if owner != 'builtin' {
+				builtin_key := 'builtin.${name}'
+				if builtin_key in g.const_vals {
+					return builtin_key
+				}
+			}
+		}
+	}
 	return name
+}
+
+// register_const_value records the initializer of the const `name` declared in
+// `module_name`. The consts of `main` and `builtin` share bare storage keys, so
+// that main code can use the builtin consts unqualified. When both declare the
+// same name, the main const keeps the bare key and the builtin const moves to
+// `builtin.name`, as in the checker (TypeChecker.const_decl_key).
+fn (mut g FlatGen) register_const_value(module_name string, file string, name string, value_id flat.NodeId) {
+	mut key := g.const_storage_name(module_name, name)
+	if key == name && !name.contains('.') {
+		if owner := g.const_modules[name] {
+			owner_is_builtin := owner == 'builtin'
+			if module_name == 'builtin' && !owner_is_builtin {
+				key = 'builtin.${name}'
+			} else if module_name != 'builtin' && owner_is_builtin {
+				builtin_key := 'builtin.${name}'
+				g.const_vals[builtin_key] = g.const_vals[name]
+				g.const_modules[builtin_key] = owner
+				if owner_file := g.const_files[name] {
+					g.const_files[builtin_key] = owner_file
+				}
+			}
+		}
+	}
+	g.const_vals[key] = value_id
+	g.const_modules[key] = module_name
+	g.const_files[key] = file
 }
 
 // const_primary_name supports const primary name handling for FlatGen.
@@ -15638,7 +15951,7 @@ fn (mut g FlatGen) const_array_literal_storage_type_for_name(name string, val_id
 	if fallback is types.ArrayFixed {
 		return fallback
 	}
-	mut elem_type := types.Type(types.void_)
+	mut elem_type := cgen_void_type
 	if fallback is types.Array {
 		elem_type = fallback.elem_type
 	} else {
@@ -16094,7 +16407,7 @@ fn (mut g FlatGen) fixed_array_len_c_expr(raw_len string) ?string {
 			if const_name.len > 0 {
 				expr := g.const_expr_to_string(g.const_vals[const_name], []string{})
 				if trimmed_space(expr).len > 0 {
-					out.write_string(expr)
+					out.write_string('(${expr})')
 				} else {
 					out.write_string(g.const_ident_c_name(const_name))
 				}
@@ -16319,13 +16632,19 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 		}
 	}
 	node := unsafe { &g.a.nodes[int(id)] }
+	if node.kind in [.int_literal, .float_literal] {
+		g.write(numeric_literal_c_text(node))
+		return
+	}
+	if node.kind == .bool_literal {
+		g.write(node.value)
+		return
+	}
+	g.gen_nonliteral_expr(id, node)
+}
+
+fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 	match node.kind {
-		.int_literal, .float_literal {
-			g.write(numeric_literal_c_text(node))
-		}
-		.bool_literal {
-			g.write(node.value)
-		}
 		.comptime_if {
 			// Only portable output (`-os cross`) keeps a target-dependent `$if` this
 			// far; every other build selected a branch before codegen.
@@ -16439,7 +16758,8 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				g.write(c_fn_name)
 				return
 			}
-			if node.value.contains('sizeof') || fixed_array_len_has_operator(node.value) {
+			if (node.value.contains('sizeof') && node.value.contains('('))
+				|| fixed_array_len_has_operator(node.value) {
 				if expr := g.fixed_array_len_c_expr(node.value) {
 					g.write(expr)
 					return
@@ -16802,7 +17122,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			fn_value_type := if node.op == .amp {
 				cgen_unalias_type(g.fn_value_candidate_type(child_id, child))
 			} else {
-				types.Type(types.void_)
+				cgen_void_type
 			}
 			if node.op == .amp && fn_value_type is types.FnType {
 				operand_id, operand := g.unwrapped_fn_value_operand(child_id, child)
@@ -17307,7 +17627,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			// base rewrites the wrapper literal as the sum itself before `.ok`/`.value`.
 			old_selector_expected := g.expected_expr_type
 			old_selector_enum := g.expected_enum
-			g.expected_expr_type = types.Type(types.void_)
+			g.expected_expr_type = cgen_void_type
 			g.expected_enum = 0
 			defer {
 				g.expected_expr_type = old_selector_expected
@@ -18989,10 +19309,10 @@ fn (mut g FlatGen) gen_array_infix_eq(node flat.Node, lhs_id flat.NodeId, rhs_id
 		return true
 	}
 	mut lhs_arr := types.Array{
-		elem_type: types.Type(types.void_)
+		elem_type: cgen_void_type
 	}
 	mut rhs_arr := types.Array{
-		elem_type: types.Type(types.void_)
+		elem_type: cgen_void_type
 	}
 	mut lhs_is_arr := false
 	mut rhs_is_arr := false
@@ -19105,10 +19425,10 @@ fn (g &FlatGen) array_equality_literal_elem_type(id flat.NodeId) ?types.Type {
 
 fn (mut g FlatGen) gen_fixed_array_infix_eq(node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type) bool {
 	mut lhs_fixed := types.ArrayFixed{
-		elem_type: types.Type(types.void_)
+		elem_type: cgen_void_type
 	}
 	mut rhs_fixed := types.ArrayFixed{
-		elem_type: types.Type(types.void_)
+		elem_type: cgen_void_type
 	}
 	mut lhs_is_fixed := false
 	mut rhs_is_fixed := false
@@ -22685,6 +23005,19 @@ fn (mut g FlatGen) float_exponent_helpers() {
 	g.writeln('static inline string v3_f64_general(double x, int precision, int upper) { char tmp[128]; int n = upper ? snprintf(tmp, sizeof(tmp), "%.*G", precision, x) : snprintf(tmp, sizeof(tmp), "%.*g", precision, x); if (n < 0) return v3_c_lit("", 0); if (n < (int)sizeof(tmp)) { n = v3_float_normalize_exponent(tmp, n); u8* out = malloc_noscan(n + 1); memcpy(out, tmp, n + 1); return (string){.str = out, .len = n, .is_lit = 0}; } u8* out = malloc_noscan(n + 1); if (upper) snprintf((char*)out, (size_t)n + 1, "%.*G", precision, x); else snprintf((char*)out, (size_t)n + 1, "%.*g", precision, x); n = v3_float_normalize_exponent((char*)out, n); return (string){.str = out, .len = n, .is_lit = 0}; }')
 }
 
+// headerless_linux_rwlockattr_setkind_np continues the `#if` that stubs out
+// pthread_rwlockattr_setkind_np. Headerless C whose Linux libc is unknown (`-cross`
+// snapshots such as vc/v.c, `-o file.c`, `-os linux` from another host) defines
+// PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP itself, so the stub's checks cannot
+// tell glibc, which has the function, from musl, which does not. A weak reference
+// links on both: glibc keeps writer-preferring rwlocks, musl skips the call.
+fn (mut g FlatGen) headerless_linux_rwlockattr_setkind_np() {
+	g.writeln('#elif defined(__linux__) && !defined(__ANDROID__) && !defined(CUSTOM_DEFINE_glibc)')
+	g.writeln('int pthread_rwlockattr_setkind_np(void* attr, int kind) __attribute__((weak));')
+	g.writeln('static inline int v3_pthread_rwlockattr_setkind_np(void* attr, int kind) { int (*setkind)(void*, int) = pthread_rwlockattr_setkind_np; return setkind != 0 ? setkind(attr, kind) : 0; }')
+	g.writeln('#define pthread_rwlockattr_setkind_np(attr, kind) v3_pthread_rwlockattr_setkind_np((attr), (kind))')
+}
+
 fn (mut g FlatGen) builtin_abi_decls() {
 	if !g.has_builtins {
 		return
@@ -22692,6 +23025,9 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.libc_compat_decls()
 	g.writeln('#if !defined(PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP) || defined(CUSTOM_DEFINE_musl) || defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) || defined(__DragonFly__)')
 	g.writeln('#define pthread_rwlockattr_setkind_np(attr, kind) (0)')
+	if !g.target_libc_headers && !g.c_directives_use_system_libc() {
+		g.headerless_linux_rwlockattr_setkind_np()
+	}
 	g.writeln('#endif')
 	g.filelock_compat_decls()
 	// Empty array headers need no allocation. Keep this small wrapper inline so
@@ -24292,6 +24628,12 @@ fn (mut g FlatGen) queue_global_struct_field_defaults(target string, struct_name
 				continue
 			}
 			clean_field_type := default_init_unalias_type(field_type)
+			if clean_field_type is types.ArrayFixed
+				&& g.fixed_array_has_enum_default(clean_field_type) {
+				g.queue_runtime_init_for_module(g.fixed_array_default_fill_stmt(field_target,
+					clean_field_type), init_module)
+				continue
+			}
 			if clean_field_type is types.Struct && !clean_field_type.name().starts_with('C.') && g.struct_needs_default_init(clean_field_type.source_type_id()) {
 				g.queue_global_struct_field_defaults(field_target, clean_field_type.source_type_id(), init_module, mut visited)
 			}
@@ -24320,8 +24662,8 @@ fn (mut g FlatGen) queue_global_struct_field_defaults(target string, struct_name
 }
 
 // global_struct_unset_field_value returns the value `Struct{}` gives an omitted
-// dynamic array, map, channel or `shared` field. C's zero initialization of a
-// global leaves those fields unusable.
+// dynamic array, map, channel or `shared` field, or an enum field whose default is
+// not 0. C's zero initialization of a global leaves those fields unusable or wrong.
 fn (mut g FlatGen) global_struct_unset_field_value(struct_name_id u32, field_name string, field_type types.Type) ?string {
 	if raw_source_id_2, module_name := g.shared_array_field_raw_type(struct_name_id, field_name) {
 		raw := raw_source_id_2
@@ -24347,7 +24689,15 @@ fn (mut g FlatGen) global_struct_unset_field_value(struct_name_id u32, field_nam
 	if clean is types.Map || clean is types.Array || clean is types.Channel {
 		return g.default_value_to_string(field_type)
 	}
-	return none
+	return g.enum_nonzero_default_expr(clean)
+}
+
+// fixed_array_default_fill_stmt copies the default elements of `fixed` into the fixed
+// array storage `target`.
+fn (mut g FlatGen) fixed_array_default_fill_stmt(target string, fixed types.ArrayFixed) string {
+	c_elem, dims := g.fixed_array_decl_parts(fixed)
+	initializer := g.empty_fixed_array_initializer_string(fixed)
+	return '\tmemmove(${target}, (${c_elem}${dims})${initializer}, sizeof(${target}));'
 }
 
 fn (mut g FlatGen) global_storage_type(name string, typ types.Type) types.Type {
@@ -24597,6 +24947,12 @@ fn (mut g FlatGen) emit_global_inits() {
 				if clean_type is types.Channel {
 					elem_ct := g.value_sizeof_target(clean_type.elem_type)
 					g.queue_runtime_init('\t${g.global_c_name(qname)} = sync__new_channel_st((u32)(0), (u32)(sizeof(${elem_ct})));')
+					continue
+				}
+				if clean_type is types.ArrayFixed && g.fixed_array_has_enum_default(clean_type) {
+					// Static zero initialization does not hold the first enum value.
+					g.queue_runtime_init(g.fixed_array_default_fill_stmt(g.global_c_name(qname),
+						clean_type))
 					continue
 				}
 				g.queue_global_struct_default_init(qname, typ)
@@ -24922,7 +25278,8 @@ fn (mut g FlatGen) queue_global_array_init(target string, val_id flat.NodeId, ty
 			return false
 		}
 		callee := g.a.child_node(&node, 0)
-		if callee.kind != .ident || callee.value != 'array_new' {
+		// Scalar and enum rows are lowered to the noscan allocator.
+		if callee.kind != .ident || callee.value !in ['array_new', '__new_array_noscan'] {
 			return false
 		}
 		if default_expr := g.global_array_default_elem_expr(typ.elem_type) {
@@ -25655,7 +26012,7 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 	} else if ct == 'Array' {
 		arr := array_like_type(default_init_unalias_type(v_type)) or {
 			types.Array{
-				elem_type: types.Type(types.void_)
+				elem_type: cgen_void_type
 			}
 		}
 		elem_type := if (arr.elem_type is types.Void || arr.elem_type is types.Unknown) && val_node.children_count > 0 {
@@ -25978,7 +26335,7 @@ fn (mut g FlatGen) write_fixed_array_value_initializer_from_text(mut builder str
 }
 
 fn (mut g FlatGen) write_empty_fixed_array_initializer(mut builder strings.Builder, fixed types.ArrayFixed) {
-	if fixed_array_empty_initializer_is_zero(fixed) {
+	if g.fixed_array_empty_initializer_is_zero(fixed) {
 		builder.write_string('{0}')
 		return
 	}
@@ -26003,10 +26360,13 @@ fn (mut g FlatGen) write_empty_fixed_array_initializer(mut builder strings.Build
 	builder.write_u8(`}`)
 }
 
-fn fixed_array_empty_initializer_is_zero(fixed types.ArrayFixed) bool {
+fn (g &FlatGen) fixed_array_empty_initializer_is_zero(fixed types.ArrayFixed) bool {
 	elem_type := default_init_unalias_type(fixed.elem_type)
 	if elem_type is types.ArrayFixed {
-		return fixed_array_empty_initializer_is_zero(elem_type)
+		return g.fixed_array_empty_initializer_is_zero(elem_type)
+	}
+	if elem_type is types.Enum {
+		return !g.fixed_array_has_enum_default(fixed)
 	}
 	return elem_type !is types.Array && elem_type !is types.Struct && elem_type !is types.Map
 }
@@ -26023,6 +26383,10 @@ fn (mut g FlatGen) write_fixed_array_default_elem_initializer(mut builder string
 	}
 	if elem_type is types.Map {
 		builder.write_string(g.new_map_expr_string(elem_type.key_type, elem_type.value_type))
+		return
+	}
+	if default_expr := g.enum_nonzero_default_expr(elem_type) {
+		builder.write_string(default_expr)
 		return
 	}
 	builder.write_u8(`0`)
@@ -26144,12 +26508,23 @@ fn numeric_literal_c_text(node &flat.Node) string {
 }
 
 // negated_long_long_literal finds a wide integer operand through parentheses for signed C negation.
+// A translated file keeps C's literal types: a nondecimal literal that fits 32 bits is an
+// `unsigned int` there, and its negation must wrap at 32 bits, so it gets no `LL` suffix.
 fn (g &FlatGen) negated_long_long_literal(id flat.NodeId) ?flat.Node {
+	mut literal_id := id
 	mut node := g.a.nodes[int(id)]
 	for node.kind == .paren && node.children_count == 1 {
-		node = g.a.nodes[int(g.a.child(&node, 0))]
+		literal_id = g.a.child(&node, 0)
+		node = g.a.nodes[int(literal_id)]
 	}
 	if node.kind == .int_literal && int_literal_needs_long_long_suffix(&node) {
+		if g.expr_is_in_translated_file(literal_id) {
+			if typ := g.tc.translated_integer_literal_type(literal_id) {
+				if integer_sign_kind(typ) > 0 {
+					return none
+				}
+			}
+		}
 		return node
 	}
 	return none
@@ -26897,7 +27272,7 @@ fn translated_integer_scalar_type(typ types.Type) bool {
 }
 
 fn (g &FlatGen) translated_bool_destination(id flat.NodeId, typ types.Type) bool {
-	return cgen_unalias_type(typ) == types.Type(types.bool_) && g.expr_is_in_translated_file(id)
+	return g.expr_is_in_translated_file(id) && cgen_unalias_type(typ) == types.Type(types.bool_)
 }
 
 fn (mut g FlatGen) gen_checked_integer_infix(id flat.NodeId, node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type) bool {
@@ -27212,7 +27587,7 @@ fn (mut g FlatGen) gen_translated_numeric_arithmetic(id flat.NodeId, node flat.N
 }
 
 fn (g &FlatGen) expr_is_in_translated_file(id flat.NodeId) bool {
-	if isnil(g.tc) || int(id) < 0 || int(id) >= g.a.nodes.len {
+	if isnil(g.tc) || g.tc.translated_files.len == 0 || int(id) < 0 || int(id) >= g.a.nodes.len {
 		return false
 	}
 	file := g.a.source_files[g.a.node(id).pos.id] or { return false }

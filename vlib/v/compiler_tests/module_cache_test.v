@@ -2652,9 +2652,10 @@ fn main() {
 	assert result.exit_code != 0
 	stdout := os.read_file(stdout_file) or { panic(err) }
 	stderr := os.read_file(stderr_file) or { panic(err) }
-	assert stderr.contains('failed to build cached program main:'), 'stdout:\n${stdout}\nstderr:\n${stderr}'
+	// The C binding has a prototype, so the build fails when it links.
+	assert stderr.contains('C compilation failed:'), 'stdout:\n${stdout}\nstderr:\n${stderr}'
 	assert stderr.contains('v3_missing_restart_stdio_symbol'), stderr
-	assert !stdout.contains('failed to build cached program main:'), 'stdout:\n${stdout}\nstderr:\n${stderr}'
+	assert !stdout.contains('C compilation failed:'), 'stdout:\n${stdout}\nstderr:\n${stderr}'
 }
 
 fn test_module_cache_restart_preserves_macos_fallback_transport() {

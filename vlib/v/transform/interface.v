@@ -370,7 +370,7 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 		}
 	}
 	if t.expr_has_option_unwrap_smartcast(id) {
-		if smartcast := t.find_smartcast(t.expr_key(id)) {
+		if smartcast := t.find_smartcast_for_expr(id) {
 			unwrapped_type_source_id := t.smartcast_target_type(smartcast)
 			unwrapped_type_source_id_3 := unwrapped_type_source_id
 
@@ -937,7 +937,7 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 	mut source_id := id
 	mut source_type := t.node_type(id)
 	if t.expr_has_option_unwrap_smartcast(id) {
-		if smartcast := t.find_smartcast(t.expr_key(id)) {
+		if smartcast := t.find_smartcast_for_expr(id) {
 			unwrapped_type_source_id_2 := t.smartcast_target_type(smartcast)
 			unwrapped_type_source_id_4 := unwrapped_type_source_id_2
 

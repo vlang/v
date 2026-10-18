@@ -780,6 +780,13 @@ fn (mut g FlatGen) gen_unset_struct_field_default(struct_name_id u32, field_name
 			g.write('}')
 			return true
 		}
+		if g.fixed_array_has_enum_default(fixed) {
+			if has {
+				g.write(', ')
+			}
+			g.write('.${field_c_name} = ${g.empty_fixed_array_initializer_string(fixed)}')
+			return true
+		}
 	}
 	if g.field_needs_default_init(clean_type) {
 		if has {
@@ -3161,6 +3168,74 @@ fn (g &FlatGen) enum_default_value_expr_for_type(type_name_id u32) ?string {
 	return '0'
 }
 
+// enum_nonzero_default_expr returns the C value of an enum's default, its first member,
+// when that value is not 0. Zeroed storage already holds the default of the other enums,
+// and of flag enums, whose default is 0.
+fn (g &FlatGen) enum_nonzero_default_expr(typ types.Type) ?string {
+	clean := default_init_unalias_type(typ)
+	if clean !is types.Enum {
+		return none
+	}
+	enum_type := clean as types.Enum
+	type_name_id := enum_type.name_id
+	if enum_type.is_flag || g.enum_type_name_is_flag(type_name_id) {
+		return none
+	}
+	fields := g.enum_fields_for_type(type_name_id) or { return none }
+	if fields.len == 0 {
+		return none
+	}
+	mut first_value := i64(0)
+	if value := g.enum_value_for_type(type_name_id, fields[0]) {
+		first_value = i64(value)
+	} else if _ := g.enum_backing_info(type_name_id) {
+		// Backed enums (`enum E as u8`) keep only symbolic values.
+		enum_name := flat.source_type_name(type_name_id).trim_string_left('main.')
+		values := g.tc.comptime_enum_decl_field_values(flat.source_type_id(enum_name))
+		first_value = values[fields[0]] or { return none }
+	} else {
+		return none
+	}
+	if first_value == 0 {
+		return none
+	}
+	return g.enum_value_expr_for_type(type_name_id, fields[0])
+}
+
+// fixed_array_has_enum_default reports whether the default elements of `fixed` hold an enum
+// whose default is not 0, so zeroed storage does not hold them.
+fn (g &FlatGen) fixed_array_has_enum_default(fixed types.ArrayFixed) bool {
+	mut visited := map[u32]bool{}
+	return g.type_has_enum_default(fixed.elem_type, mut visited)
+}
+
+// type_has_enum_default reports whether the default value of `typ` holds an enum whose
+// default is not 0: the enum itself, or a fixed array element or by-value struct field of it.
+fn (g &FlatGen) type_has_enum_default(typ types.Type, mut visited map[u32]bool) bool {
+	clean := default_init_unalias_type(typ)
+	if clean is types.ArrayFixed {
+		return g.type_has_enum_default(clean.elem_type, mut visited)
+	}
+	if clean is types.Struct {
+		type_id := clean.source_type_id()
+		if clean.name().starts_with('C.') || visited[type_id] {
+			return false
+		}
+		visited[type_id] = true
+		fields := g.struct_fields_for_type(type_id) or { return false }
+		for field in fields {
+			if g.type_has_enum_default(field.typ, mut visited) {
+				return true
+			}
+		}
+		return false
+	}
+	if _ := g.enum_nonzero_default_expr(clean) {
+		return true
+	}
+	return false
+}
+
 fn (g &FlatGen) enum_type_name_is_flag(type_name_id u32) bool {
 	type_name := flat.source_type_name(type_name_id)
 	if type_name in g.tc.flag_enums || g.tc.qualify_name(type_name) in g.tc.flag_enums {
@@ -3296,7 +3371,8 @@ fn (mut g FlatGen) struct_needs_default_init_inner(type_name_id u32, mut visited
 			continue
 		}
 		if fixed := array_fixed_type(clean_ftyp) {
-			if fixed_array_elem_needs_runtime_header(fixed.elem_type) {
+			if fixed_array_elem_needs_runtime_header(fixed.elem_type)
+				|| g.fixed_array_has_enum_default(fixed) {
 				found = true
 			}
 		}
@@ -4101,6 +4177,15 @@ fn (mut g FlatGen) collect_local_shared_type_names() {
 			if node.kind == .fn_decl {
 				module_name := g.a.specialized_fn_modules[i] or { cur_module }
 				g.collect_fn_shared_param_type_names(node, module_name)
+			} else if node.kind == .decl_assign {
+				// `mut items := []shared T{}` stores `shared T` wrappers, although the
+				// declaration itself is not `shared`.
+				g.tc.cur_module = cur_module
+				for j := 0; j + 1 < node.children_count; j += 2 {
+					rhs := g.a.child_node(&node, j + 1)
+					inner := shared_array_inner_type_text(rhs.typ) or { continue }
+					g.register_shared_type_name_in_file(inner, cur_module, node.pos.id)
+				}
 			}
 			continue
 		}
@@ -4136,12 +4221,47 @@ fn (mut g FlatGen) collect_fn_shared_param_type_names(node flat.Node, module_nam
 		if param.kind != .param {
 			continue
 		}
-		inner := shared_inner_type_text(param.typ) or { continue }
+		if inner := shared_inner_type_text(param.typ) {
+			if shared_type_text_uses_generic_params(inner, node.generic_params()) {
+				continue
+			}
+			g.register_shared_type_name_in_file(inner, module_name, node.pos.id)
+			continue
+		}
+		// The elements of a `[]shared T` parameter are `shared T` wrappers too.
+		inner := shared_array_inner_type_text(param.typ) or { continue }
 		if shared_type_text_uses_generic_params(inner, node.generic_params()) {
 			continue
 		}
-		g.register_shared_type_name(g.shared_qualify_type_text(inner, module_name), module_name)
+		g.register_shared_type_name_in_file(inner, module_name, node.pos.id)
 	}
+}
+
+// register_shared_type_name_in_file registers the wrapper of a `shared T` value. The type is
+// resolved in its source file (`file_id`, so `renamed.T` after `import m as renamed` is `m.T`)
+// and then named outside it, as the code that uses the wrapper names it.
+fn (mut g FlatGen) register_shared_type_name_in_file(inner u32, module_name string, file_id int) {
+	qualified := g.shared_canonical_inner(inner, module_name, file_id)
+	old_file := g.tc.cur_file
+	g.tc.cur_file = ''
+	g.register_shared_type_name(qualified, module_name)
+	g.tc.cur_file = old_file
+}
+
+// shared_canonical_inner qualifies the type spelled in a `shared` declaration of the source
+// file `file_id` and returns the name that the checker declared it under.
+fn (mut g FlatGen) shared_canonical_inner(inner u32, module_name string, file_id int) u32 {
+	old_file := g.tc.cur_file
+	if source_file := g.a.source_files[file_id] {
+		g.tc.cur_file = source_file.name
+	}
+	mut qualified := g.shared_qualify_type_text(inner, module_name)
+	typ := g.tc.parse_type(qualified)
+	if typ !is types.Unknown && typ !is types.Void {
+		qualified = typ.source_type_id()
+	}
+	g.tc.cur_file = old_file
+	return qualified
 }
 
 fn (mut g FlatGen) register_shared_type_name(inner u32, module_name string) {
@@ -4197,15 +4317,13 @@ fn (mut g FlatGen) collect_shared_type_names_from_info(info StructDeclInfo, args
 		}
 		if array_inner := shared_array_inner_type_text(field.typ) {
 			concrete_inner := substitute_shared_generic_type_text(array_inner, info.node.generic_params(), args_ids)
-			qualified_inner := g.shared_qualify_type_text(concrete_inner, info.module)
-			g.register_shared_type_name(qualified_inner, info.module)
+			g.register_shared_type_name_in_file(concrete_inner, info.module, info.node.pos.id)
 			continue
 		}
 		inner := shared_inner_type_text(field.typ) or { continue }
 		concrete_inner :=
 			substitute_shared_generic_type_text(inner, info.node.generic_params(), args_ids)
-		qualified_inner := g.shared_qualify_type_text(concrete_inner, info.module)
-		g.register_shared_type_name(qualified_inner, info.module)
+		g.register_shared_type_name_in_file(concrete_inner, info.module, info.node.pos.id)
 	}
 }
 
@@ -4218,8 +4336,33 @@ fn (g &FlatGen) sorted_shared_wrapper_names() []string {
 	return names
 }
 
-fn (mut g FlatGen) shared_value_type_name(inner u32) string {
+// shared_inner_type parses the type that a `shared` wrapper holds. A spelling through an
+// import alias (`renamed.T` for `import m as renamed`) parsed in another file becomes a
+// placeholder struct named `m.T`; parse `m.T` outside any file instead, so every use names
+// the same wrapper.
+fn (mut g FlatGen) shared_inner_type(inner u32) types.Type {
 	typ := g.tc.parse_type(inner)
+	if typ is types.Struct && typ.name() !in g.tc.structs {
+		old_file := g.tc.cur_file
+		g.tc.cur_file = ''
+		resolved := g.tc.parse_type(flat.source_type_id(typ.name()))
+		g.tc.cur_file = old_file
+		if resolved !is types.Unknown && resolved !is types.Void {
+			return resolved
+		}
+	}
+	return typ
+}
+
+fn (mut g FlatGen) shared_value_type_name(inner u32) string {
+	mut typ := g.shared_inner_type(inner)
+	// An alias of an array or map has the same storage as its target, and both spellings
+	// reach this function (`[]shared Names` elements, or `[]shared []string` after
+	// alias normalization), so they must name the same wrapper.
+	unaliased := cgen_unalias_type(typ)
+	if unaliased is types.Array || unaliased is types.Map {
+		typ = unaliased
+	}
 	if typ is types.Array {
 		return 'Array_${naming.type_name_part(g.tc.c_type(typ.elem_type))}'
 	}
@@ -4231,6 +4374,9 @@ fn (mut g FlatGen) shared_value_type_name(inner u32) string {
 	if typ is types.OptionType || typ is types.ResultType {
 		return naming.type_name_part(g.optional_type_name(typ))
 	}
+	if enum_ct := g.shared_backed_enum_c_type(typ) {
+		return naming.type_name_part(enum_ct)
+	}
 	mut ct := g.tc.c_type(typ)
 	if ct.starts_with('fn_ptr:') {
 		ct = g.resolve_fn_ptr_type(ct)
@@ -4241,8 +4387,35 @@ fn (mut g FlatGen) shared_value_type_name(inner u32) string {
 	return naming.type_name_part(ct)
 }
 
+// shared_backed_enum_c_type returns the C storage type of a `shared` value that is an enum
+// with a backing type (`enum E as u8`), or a fixed array of them. `TypeChecker.c_type`
+// spells every enum `int`, while cgen stores a backed enum, and the elements of a fixed
+// array of it, in the backing type, so the wrapper must take its type from cgen too.
+fn (mut g FlatGen) shared_backed_enum_c_type(typ types.Type) ?string {
+	if !g.type_is_backed_enum_storage(typ) {
+		return none
+	}
+	return g.value_c_type(typ)
+}
+
+fn (g &FlatGen) type_is_backed_enum_storage(typ types.Type) bool {
+	clean := cgen_unalias_type(typ)
+	if clean is types.ArrayFixed {
+		return g.type_is_backed_enum_storage(clean.elem_type)
+	}
+	if clean is types.Enum {
+		if _ := g.enum_backing_info(clean.source_type_id()) {
+			return true
+		}
+	}
+	return false
+}
+
 fn (mut g FlatGen) shared_value_c_type(inner u32) string {
-	typ := g.tc.parse_type(inner)
+	typ := g.shared_inner_type(inner)
+	if enum_ct := g.shared_backed_enum_c_type(typ) {
+		return enum_ct
+	}
 	mut ct := if typ is types.OptionType || typ is types.ResultType {
 		g.optional_type_name(typ)
 	} else {
@@ -4471,10 +4644,14 @@ fn (mut g FlatGen) shared_field_info(type_name_id u32, field_name string) ?Share
 			continue
 		}
 		inner := shared_inner_type_text(field.typ) or { return none }
-		qualified_inner := g.shared_qualify_type_text(inner, info.module)
+		qualified_inner := g.shared_canonical_inner(inner, info.module, info.node.pos.id)
+		old_file := g.tc.cur_file
+		g.tc.cur_file = ''
+		wrapper := g.shared_wrapper_c_name(qualified_inner)
+		g.tc.cur_file = old_file
 		return SharedFieldInfo{
 			inner:   qualified_inner
-			wrapper: g.shared_wrapper_c_name(qualified_inner)
+			wrapper: wrapper
 			module:  info.module
 		}
 	}
@@ -4763,8 +4940,14 @@ fn (mut g FlatGen) gen_shared_default_value_for_field(struct_name_id u32, field_
 	if inner_type is types.Map {
 		g.write_new_map(inner_type.key_type, inner_type.value_type)
 	} else if inner_type is types.Array {
-		c_elem := g.tc.c_type(inner_type.elem_type)
+		c_elem := g.shared_backed_enum_c_type(inner_type.elem_type) or {
+			g.tc.c_type(inner_type.elem_type)
+		}
 		g.write('array_new(sizeof(${c_elem}), 0, 0)')
+	} else if fixed := array_fixed_type(inner_type) {
+		// `.val` is an array member: a `(Array_fixed_T_N){0}` compound literal would decay
+		// to a pointer there and initialize the first element with its address.
+		g.write(g.empty_fixed_array_initializer_string(fixed))
 	} else {
 		g.gen_default_value_for_type(inner_type)
 	}

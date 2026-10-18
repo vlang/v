@@ -6852,7 +6852,7 @@ fn (mut t Transformer) infer_generic_call_args_from_params(decl GenericFnDecl, c
 			elem_param_type := generic_variadic_elem_param_text(child.typ)
 			arg_ids := t.generic_call_arg_ids_from_param(node, param_idx, is_receiver)
 			for arg_id in arg_ids {
-				t.infer_generic_variadic_call_arg(child.typ, elem_param_type, arg_id, arg_ids.len == 1, mut inferred)
+				t.infer_generic_variadic_call_arg(child.typ, elem_param_type, arg_id, mut inferred)
 			}
 			param_idx++
 			continue
@@ -6957,26 +6957,15 @@ fn (t &Transformer) generic_call_arg_ids_from_param(node flat.Node, param_idx in
 	return ids
 }
 
-fn (mut t Transformer) infer_generic_variadic_call_arg(param_type_id u32, elem_param_type_id u32, arg_id flat.NodeId, prefer_array_spread bool, mut inferred map[string]u32) {
-	if spread_id := t.generic_call_spread_arg_child(arg_id) {
-		inferred_arg_type := t.generic_call_arg_type_for_inference(spread_id)
-		arg_type := generic_arg_type_for_param(param_type_id, inferred_arg_type)
-		if arg_type != 0 {
-			infer_generic_type_args(param_type_id, arg_type, mut inferred)
-		}
-		return
-	}
-	inferred_arg_type := t.generic_call_arg_type_for_inference(arg_id)
-	if prefer_array_spread && flat.source_type_shape(inferred_arg_type).has(.array_type) {
-		arg_type := generic_arg_type_for_param(param_type_id, inferred_arg_type)
-		if arg_type != 0 {
-			infer_generic_type_args(param_type_id, arg_type, mut inferred)
-		}
-		return
-	}
-	arg_type := generic_arg_type_for_param(elem_param_type_id, inferred_arg_type)
+fn (mut t Transformer) infer_generic_variadic_call_arg(param_type_id u32, elem_param_type_id u32, arg_id flat.NodeId, mut inferred map[string]u32) {
+	inference_param_type, value_id := t.generic_variadic_arg_for_inference(param_type_id, elem_param_type_id, arg_id)
+	inferred_arg_type := t.generic_call_arg_type_for_inference(value_id)
+	arg_type := generic_arg_type_for_param(inference_param_type, inferred_arg_type)
 	if arg_type != 0 {
-		infer_generic_type_args(elem_param_type_id, arg_type, mut inferred)
+		infer_generic_type_args(inference_param_type, arg_type, mut inferred)
+	}
+	if inference_param_type == param_type_id {
+		return
 	}
 	t.infer_generic_struct_init_args(elem_param_type_id, arg_id, mut inferred)
 	// The short struct-init call syntax for a variadic generic struct param
@@ -6985,6 +6974,31 @@ fn (mut t Transformer) infer_generic_variadic_call_arg(param_type_id u32, elem_p
 	// `infer_generic_struct_init_args` above cannot see them. Infer T from the
 	// field's declared type the same way the non-variadic path does.
 	t.infer_generic_field_init_type_arg(elem_param_type_id, arg_id, mut inferred)
+}
+
+fn (t &Transformer) generic_variadic_arg_for_inference(param_type_id u32, elem_param_type_id u32, arg_id flat.NodeId) (u32, flat.NodeId) {
+	if spread_id := t.generic_call_spread_arg_child(arg_id) {
+		return param_type_id, spread_id
+	}
+	if t.generic_call_arg_is_packed_variadic_tail(arg_id) {
+		return param_type_id, arg_id
+	}
+	return elem_param_type_id, arg_id
+}
+
+// An array's dimensions alone do not distinguish one variadic element from
+// a tail produced by an earlier call transformation.
+fn (t &Transformer) generic_call_arg_is_packed_variadic_tail(arg_id flat.NodeId) bool {
+	if int(arg_id) < 0 || int(arg_id) >= t.a.nodes.len {
+		return false
+	}
+	if int(arg_id) in t.packed_variadic_tail_types {
+		return true
+	}
+	arg := t.a.nodes[int(arg_id)]
+	return arg.kind == .ident
+		&& (arg.value == t.cur_fn_variadic_param
+			|| (!arg.pos.is_valid() && arg.value.starts_with('__varargs_')))
 }
 
 // infer_generic_field_init_type_arg infers generic type args from a single
@@ -8124,12 +8138,21 @@ fn (mut t Transformer) infer_generic_call_args_from_raw_node_types(decl GenericF
 		&& !t.generic_call_is_static_assoc_selector(node, decl)
 	mut inferred := map[string]u32{}
 	mut param_idx := 0
+	param_count := t.generic_decl_param_count(decl.node)
 	for i in 0 .. decl.node.children_count {
 		param := t.a.child_node(&decl.node, i)
 		if param.kind != .param {
 			if t.prefix_param_scan {
 				break
 			}
+			continue
+		}
+		if generic_param_text_is_variadic(param.typ) && param_idx == param_count - 1 {
+			elem_param_type := generic_variadic_elem_param_text(param.typ)
+			for arg_id in t.generic_call_arg_ids_from_param(node, param_idx, is_receiver) {
+				t.infer_generic_variadic_call_arg(param.typ, elem_param_type, arg_id, mut inferred)
+			}
+			param_idx++
 			continue
 		}
 		arg_id := t.generic_call_arg_id_for_param(node, param_idx, is_receiver) or {
@@ -8492,7 +8515,7 @@ fn (mut t Transformer) unshadowed_generic_call_decl_key(id flat.NodeId, node fla
 		}
 		// Calls in a generic match branch must bind to the concrete variant, even
 		// when the sum type declares a same-named generic method.
-		if sc := t.find_smartcast(t.expr_key(base_id)) {
+		if sc := t.find_smartcast_for_expr(base_id) {
 			target_type_source_id := t.smartcast_target_type(sc)
 			target_type := flat.source_type_name(target_type_source_id)
 			if target_type_source_id != 0 {
@@ -9437,7 +9460,7 @@ fn (mut t Transformer) infer_generic_call_args_seeded(decl GenericFnDecl, _id fl
 			elem_param_type := generic_variadic_elem_param_text(child.typ)
 			arg_ids := t.generic_call_arg_ids_from_param(node, param_idx, is_receiver)
 			for arg_id in arg_ids {
-				t.infer_generic_variadic_call_arg(child.typ, elem_param_type, arg_id, arg_ids.len == 1, mut inferred)
+				t.infer_generic_variadic_call_arg(child.typ, elem_param_type, arg_id, mut inferred)
 			}
 			param_idx++
 			continue
@@ -11412,7 +11435,11 @@ fn infer_generic_type_args_bytes(param_type string, arg_type string, mut inferre
 		return
 	}
 	if param.starts_with('...') {
-		infer_generic_type_args_bytes(param[3..], arg.trim_left('[]'), mut inferred)
+		// A variadic parameter here denotes its packed array. Source call
+		// arguments are matched to the element parameter before reaching here.
+		if arg.starts_with('[]') {
+			infer_generic_type_args_bytes(param[3..], arg[2..], mut inferred)
+		}
 		return
 	}
 	if is_generic_fn_placeholder_name(param) {
@@ -11436,8 +11463,27 @@ fn infer_generic_type_args_bytes(param_type string, arg_type string, mut inferre
 		infer_generic_type_args_bytes(param[4..], arg.trim_left('&'), mut inferred)
 		return
 	}
+	if param.starts_with('thread ') {
+		// `thread T` binds its payload type from a `thread string` argument the
+		// same way `[]T` does from `[]string`; without this arm an implicit call
+		// of a generic fn taking a thread handle is never specialized (sibling of
+		// the `chan T` gap in #30842).
+		if arg.starts_with('thread ') {
+			infer_generic_type_args_bytes(param[7..], arg[7..], mut inferred)
+		}
+		return
+	}
 	if param.starts_with('[]') && arg.starts_with('[]') {
 		infer_generic_type_args_bytes(param[2..], arg[2..], mut inferred)
+		return
+	}
+	if param.starts_with('chan ') {
+		// `chan T` binds its element type from a `chan string` argument the same
+		// way `[]T` does from `[]string`; without this arm an implicit call of a
+		// generic fn taking a channel is never specialized (#30842).
+		if arg.starts_with('chan ') {
+			infer_generic_type_args_bytes(param[5..], arg[5..], mut inferred)
+		}
 		return
 	}
 	if param.starts_with('[') && arg.starts_with('[') {
@@ -11813,10 +11859,23 @@ fn (mut t Transformer) generic_clone_call_type_args(node flat.Node, decl Generic
 	receiver_params := if is_receiver { t.generic_receiver_param_names(decl) } else { []string{} }
 	mut inferred := map[string]u32{}
 	mut param_idx := 0
+	param_count := t.generic_decl_param_count(decl.node)
 	for i in 0 .. decl.node.children_count {
 		param := t.a.child_node(&decl.node, i)
 		if param.kind != .param {
 			if t.prefix_param_scan { break }
+			continue
+		}
+		if generic_param_text_is_variadic(param.typ) && param_idx == param_count - 1 {
+			elem_param_type := generic_variadic_elem_param_text(param.typ)
+			for arg_id in t.generic_call_arg_ids_from_param(node, param_idx, is_receiver) {
+				param_type, value_id := t.generic_variadic_arg_for_inference(param.typ, elem_param_type, arg_id)
+				arg_type := t.generic_clone_argument_type(value_id, args_ids)
+				if decl_type_is_usable(arg_type) && !t.generic_arg_is_unresolved(arg_type) {
+					infer_generic_type_args(param_type, generic_arg_type_for_param(param_type, arg_type), mut inferred)
+				}
+			}
+			param_idx++
 			continue
 		}
 		arg_id := t.generic_call_arg_id_for_param(node, param_idx, is_receiver) or {
@@ -13194,6 +13253,7 @@ fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children
 		}
 		mut inferred := map[string]u32{}
 		mut param_idx := 0
+		param_count := t.generic_decl_param_count(decl.node)
 		for i in 0 .. decl.node.children_count {
 			child := t.a.child_node(&decl.node, i)
 			if child.kind != .param {
@@ -13209,6 +13269,14 @@ fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children
 			} else if arg_pos < children.len {
 				arg_id = children[arg_pos]
 			} else {
+				param_idx++
+				continue
+			}
+			if generic_param_text_is_variadic(child.typ) && param_idx == param_count - 1 {
+				elem_param_type := generic_variadic_elem_param_text(child.typ)
+				for tail_id in children[arg_pos..] {
+					t.infer_generic_variadic_call_arg(child.typ, elem_param_type, tail_id, mut inferred)
+				}
 				param_idx++
 				continue
 			}
@@ -13522,12 +13590,21 @@ fn (mut t Transformer) retarget_cloned_implicit_generic_call(clone_id flat.NodeI
 			[]string{}
 		}
 		mut param_idx := 0
+		param_count := t.generic_decl_param_count(decl.node)
 		for i in 0 .. decl.node.children_count {
 			child := t.a.child_node(&decl.node, i)
 			if child.kind != .param {
 				if t.prefix_param_scan {
 					break
 				}
+				continue
+			}
+			if generic_param_text_is_variadic(child.typ) && param_idx == param_count - 1 {
+				elem_param_type := generic_variadic_elem_param_text(child.typ)
+				for arg_id in t.generic_call_arg_ids_from_param(clone, param_idx, is_receiver) {
+					t.infer_generic_variadic_call_arg(child.typ, elem_param_type, arg_id, mut inferred)
+				}
+				param_idx++
 				continue
 			}
 			clone_arg_id := t.generic_call_arg_id_for_param(clone, param_idx, is_receiver) or {
@@ -16726,6 +16803,17 @@ fn (t &Transformer) generic_arg_is_unresolved(arg_id u32) bool {
 		// Anonymous literals still need materialization in nongeneric programs.
 		// Skipping generic specialization must not make their provisional storage
 		// type authoritative over the concrete literal type.
+		if !isnil(t.generic_unresolved_cache) {
+			mut cache := t.generic_unresolved_cache
+			slot := int(arg_id & 1023)
+			if cache.anonymous_states[slot] != 0 && cache.anonymous_ids[slot] == arg_id {
+				return cache.anonymous_states[slot] > 0
+			}
+			result := inferred_anonymous_struct_placeholder(flat.source_type_name(arg_id))
+			cache.anonymous_ids[slot] = arg_id
+			cache.anonymous_states[slot] = if result { i8(1) } else { i8(-1) }
+			return result
+		}
 		return inferred_anonymous_struct_placeholder(flat.source_type_name(arg_id))
 	}
 	// Hot: called for every call/assign type text during body transforms, with
@@ -16774,7 +16862,7 @@ fn inferred_anonymous_struct_placeholder(typ string) bool {
 			return inferred_anonymous_struct_placeholder(clean[end + 1..])
 		}
 	}
-	return clean.all_after_last('.') == 'struct'
+	return short_name_view(clean) == 'struct'
 }
 
 fn (t &Transformer) generic_arg_is_unresolved_uncached(arg string) bool {

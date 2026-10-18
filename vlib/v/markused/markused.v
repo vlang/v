@@ -7971,7 +7971,7 @@ fn markused_infer_generic_type_text_bytes(pattern string, actual string, generic
 		}
 		return
 	}
-	for prefix in ['mut ', 'shared ', 'atomic ', '...', '[]', 'chan ', '?', '!', '&'] {
+	for prefix in ['mut ', 'shared ', 'atomic ', '...', '[]', 'chan ', 'thread ', '?', '!', '&'] {
 		if clean.starts_with(prefix) {
 			if value.starts_with(prefix) {
 				markused_infer_generic_type_text_bytes(clean[prefix.len..], value[prefix.len..],
@@ -10545,6 +10545,11 @@ fn (c &CallCollector) const_initializer_type_name(info ConstDeclInfo) u32 {
 
 fn (c &CallCollector) value_name_candidates(name string, cur_module string, imports map[string]string) []string {
 	mut candidates := []string{cap: 3}
+	if !isnil(c.tc) {
+		if key := c.tc.shadowed_builtin_const_key_in_module(name, cur_module) {
+			candidates << key
+		}
+	}
 	qname := qualify_fn(cur_module, name)
 	candidates << qname
 	if qname != name {

@@ -2607,7 +2607,7 @@ fn (t &Transformer) is_string_type(id flat.NodeId) bool {
 		return t.normalize_type_alias(raw_const_type_source_id) == flat.source_type_string
 	}
 	mut typ := u32(0)
-	if sc := t.find_smartcast(t.expr_key(id)) {
+	if sc := t.find_smartcast_for_expr(id) {
 		typ = t.smartcast_target_type(sc)
 	}
 	if typ == 0 {

@@ -214,6 +214,9 @@ and ``!#$%&'*+-.^_`|~``. For any other name, such as one with a space, `;`, `,`,
 `Header` provides both `CommonHeader` enum access (`get`, `set`, `add`) and
 string access (`get_custom`, `set_custom`, `add_custom`). `http.parse_form`,
 `http.parse_multipart_form` and `http.post_multipart_form` cover form bodies.
+`http.parse_form` decodes URL-encoded fields only; it does not detect or decode JSON.
+Select a JSON decoder by the request's content type when handling JSON bodies directly.
+[`veb`](../../veb) makes JSON object fields available in its `ctx.form` map.
 
 A `Header` holds at most `http.max_headers` (50) fields. `add_custom` and `set_custom`
 return an `http.HeaderLimitError` for a field that does not fit, and so do

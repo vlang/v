@@ -98,21 +98,42 @@ fn test_udp_read_timeout_is_honored_for_blocking_reads() ! {
 	assert buf[..read].bytestr() == payload
 }
 
-fn test_udp_read_deadline_wins_over_the_default_timeout() ! {
+fn test_udp_empty_datagram_reads_as_zero_bytes() ! {
 	mut listener := net.listen_udp('127.0.0.1:0')!
 	defer {
 		listener.close() or {}
 	}
-	// the default read timeout is 100 ms; a later deadline is what the read waits for
-	listener.set_read_deadline(time.now().add(400 * time.millisecond))
-	mut buf := []u8{len: 8}
-	sw := time.new_stopwatch()
-	if _, _ := listener.read(mut buf) {
-		assert false, 'nothing was sent'
-	} else {
-		assert err.code() == net.err_timed_out_code
+	addr := listener.sock.address()!.str()
+	mut sender := net.dial_udp(addr)!
+	defer {
+		sender.close() or {}
 	}
-	assert sw.elapsed() >= 350 * time.millisecond, 'returned after ${sw.elapsed()}'
+	sender.write([]u8{})!
+	sender.write_string('after')!
+	listener.set_read_timeout(time.second)
+	mut buf := []u8{len: 16}
+	// an empty datagram is a datagram, not an error or the end of a stream
+	n, from := listener.read(mut buf)!
+	assert n == 0
+	assert from.str().starts_with('127.0.0.1:')
+	n2, _ := listener.read(mut buf)!
+	assert buf[..n2].bytestr() == 'after'
+}
+
+fn test_udp_empty_datagram_arriving_during_the_read_is_zero_bytes() ! {
+	mut listener := net.listen_udp('127.0.0.1:0')!
+	defer {
+		listener.close() or {}
+	}
+	addr := listener.sock.address()!.str()
+	done := chan bool{cap: 1}
+	// sent once the read is waiting, so a non-blocking socket takes its EAGAIN retry
+	spawn udp_write_after_delay(addr, 50 * time.millisecond, '', done)
+	listener.set_read_timeout(time.second)
+	mut buf := []u8{len: 16}
+	n, _ := listener.read(mut buf)!
+	assert n == 0
+	_ = <-done
 }
 
 fn test_udp_multicast_ipv4_socket_options() ! {
@@ -155,4 +176,21 @@ fn test_udp_multicast_validates_inputs() ! {
 		assert err.msg().contains('ipv4 multicast interface')
 	}
 	assert iface_failed
+}
+
+fn test_udp_read_deadline_wins_over_the_default_timeout() ! {
+	mut listener := net.listen_udp('127.0.0.1:0')!
+	defer {
+		listener.close() or {}
+	}
+	// the default read timeout is 100 ms; a later deadline is what the read waits for
+	listener.set_read_deadline(time.now().add(400 * time.millisecond))
+	mut buf := []u8{len: 8}
+	sw := time.new_stopwatch()
+	if _, _ := listener.read(mut buf) {
+		assert false, 'nothing was sent'
+	} else {
+		assert err.code() == net.err_timed_out_code
+	}
+	assert sw.elapsed() >= 350 * time.millisecond, 'returned after ${sw.elapsed()}'
 }

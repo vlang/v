@@ -1244,7 +1244,7 @@ fn (t &Transformer) lookup_checker_struct_info(name_id u32) ?StructInfo {
 			name:        field.name
 			typ:         field_type
 			raw_typ:     field_type
-			is_embedded: field.name == flat.source_type_name(field_type)
+			is_embedded: field.is_embed
 		}
 	}
 	return StructInfo{
@@ -1281,16 +1281,16 @@ fn (t &Transformer) resolve_imported_type_name(name_id u32) ?u32 {
 fn (t &Transformer) lookup_struct_info_preferred(name_id u32) ?StructInfo {
 	name := flat.source_type_name(name_id)
 	if name.contains('.') {
-		if name in t.structs {
-			return t.structs[name]
+		if info := t.structs[name] {
+			return info
 		}
 	} else if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
 		qname := '${t.cur_module}.${name}'
-		if qname in t.structs {
-			return t.structs[qname]
+		if info := t.structs[qname] {
+			return info
 		}
-	} else if name in t.structs {
-		return t.structs[name]
+	} else if info := t.structs[name] {
+		return info
 	}
 	return none
 }
@@ -1298,17 +1298,17 @@ fn (t &Transformer) lookup_struct_info_preferred(name_id u32) ?StructInfo {
 fn (t &Transformer) lookup_struct_info_direct(name_id u32) ?StructInfo {
 	name := flat.source_type_name(name_id)
 	if name.contains('.') {
-		if name in t.structs {
-			return t.structs[name]
+		if info := t.structs[name] {
+			return info
 		}
 	} else if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
 		qname := '${t.cur_module}.${name}'
-		if qname in t.structs {
-			return t.structs[qname]
+		if info := t.structs[qname] {
+			return info
 		}
 	}
-	if name in t.structs {
-		return t.structs[name]
+	if info := t.structs[name] {
+		return info
 	}
 	if name.contains('.') {
 		short_name := name.all_after_last('.')
@@ -1393,14 +1393,12 @@ fn (t &Transformer) is_embedded_field(field FieldInfo) bool {
 	return field.is_embedded
 }
 
-fn field_decl_is_embedded(name string, typ_id u32) bool {
-	typ := flat.source_type_name(typ_id)
-	if name == '' || typ == '' {
-		return false
-	}
-	short_typ := if typ.contains('.') { typ.all_after_last('.') } else { typ }
-	short_name := if name.contains('.') { name.all_after_last('.') } else { name }
-	return short_name == short_typ
+fn field_decl_is_embedded(field flat.Node) bool {
+	meta := field.generic_params()
+	// An embed with a default value (`Inner = Inner{...}`) is parsed as a field without a
+	// type and without the embed marker; the checker treats it as an embed as well
+	// (source_field_decl_is_embed).
+	return (meta.len > 0 && meta[0].contains('e')) || field.typ == 0 || field.value.len == 0
 }
 
 // transform_assoc_expr transforms transform assoc expr data for transform.

@@ -62,3 +62,34 @@ fn main() {
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('`values[0]` must be declared as `shared` struct element to be locked'), result.output
 }
+
+// As in V1, a method call on an element of a `[]shared T` array needs that element's lock:
+// `rlock` or `lock` for a value receiver, `lock` for a `mut` receiver.
+fn test_method_calls_on_shared_array_elements_need_their_lock() {
+	result := check_shared_element_lock('receivers', '
+fn main() {
+	mut items := []shared Foo{}
+	items << Foo{}
+	mut other := []shared Foo{}
+	other << Foo{}
+	println(items[0].get())
+	println(items[0].bump())
+	rlock items[0] {
+		println(items[0].bump())
+		println(other[0].get())
+	}
+	lock items[0] {
+		println(items[0].bump())
+		println(items[0].get())
+	}
+}
+')
+	assert result.exit_code != 0, result.output
+	errors := result.output.split_into_lines().filter(it.contains(' error: ')).map(it.all_after(' error: '))
+	assert errors == [
+		'you have to create a handle and `rlock` it to use a `shared` element as non-mut receiver',
+		'you have to create a handle and `lock` it to modify `shared` array element',
+		'items[0] has an `rlock` but needs a `lock`',
+		'`other[0]` is `shared` and must be `rlock`ed or `lock`ed to be used as non-mut receiver',
+	], result.output
+}

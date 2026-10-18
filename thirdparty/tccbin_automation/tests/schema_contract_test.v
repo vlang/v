@@ -1400,6 +1400,101 @@ fn test_full_contract_report_is_green() {
 	assert report.hygiene_files == 106
 }
 
+fn test_schema_reference_is_reread_for_each_validation() {
+	dir := os.join_path(os.vtmp_dir(), 'v_schema_reference_cache_${os.getpid()}')
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	root_path := os.join_path(dir, 'root.schema.json')
+	leaf_path := os.join_path(dir, 'leaf.schema.json')
+	os.write_file(root_path, '{"type": "object", "properties": {"a": {"\$ref": "leaf.schema.json"}, "b": {"\$ref": "leaf.schema.json"}}}') or {
+		panic(err)
+	}
+	os.write_file(leaf_path, '{"type": "integer", "minimum": 0}') or { panic(err) }
+	instance := bin.parse_strict_json('{"a": 1, "b": 2}') or { panic(err) }
+	first := bin.validate_json_value(root_path, instance) or { panic(err) }
+	assert first.len == 0, '${first}'
+	// The reference cache lives for one validation, so a later validation must see the edited leaf.
+	os.write_file(leaf_path, '{"type": "string"}') or { panic(err) }
+	second := bin.validate_json_value(root_path, instance) or { panic(err) }
+	assert second.len == 2, '${second}'
+}
+
+// The seeded cache shows that a $ref already in the cache is used before the file is read. It does not
+// count reads, so it proves lookup order, not how many times one validation touches the disk.
+fn test_schema_reference_is_served_from_the_cache_within_one_validation() {
+	dir := os.join_path(os.vtmp_dir(), 'v_schema_reference_seed_${os.getpid()}')
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	root_path := os.join_path(dir, 'root.schema.json')
+	leaf_path := os.join_path(dir, 'leaf.schema.json')
+	os.write_file(root_path, '{"type": "object", "properties": {"a": {"\$ref": "leaf.schema.json"}}}') or {
+		panic(err)
+	}
+	// On disk the leaf accepts only strings, so reading it rejects the integer.
+	os.write_file(leaf_path, '{"type": "string"}') or { panic(err) }
+	instance := bin.parse_strict_json('{"a": 1}') or { panic(err) }
+	from_disk := bin.validate_json_value(root_path, instance) or { panic(err) }
+	assert from_disk.len == 1, '${from_disk}'
+	// The cached leaf accepts integers. The same $ref must resolve to it and not to the file.
+	seeded_leaf := bin.parse_strict_json('{"type": "integer"}') or { panic(err) }
+	from_cache := bin.validate_json_value_with_seeded_reference_for_test(root_path, instance,
+		os.real_path(leaf_path), seeded_leaf) or { panic(err) }
+	assert from_cache.len == 0, '${from_cache}'
+}
+
+fn schema_target_with_last_native(target_root bin.JsonValue, record bin.JsonValue) string {
+	return replace_canonical_root_member(bin.canonical_json(target_root), target_root,
+		'last_native_validation', bin.canonical_json(record))
+}
+
+// The record bounds are checked on a semantically valid target whose last_native_validation is a complete,
+// replayable record. A partial record fails its outer oneOf whatever its bounds are, so it cannot show that
+// a bound exists. The 3 and 2147483648 documents fail their schema pass at the oneOf path. The at-bound (2)
+// document is only checked for the absence of that outer failure, not for full validity.
+fn test_native_validation_record_int_bounds_are_pinned_on_a_valid_record() {
+	base := os.join_path(os.temp_dir(), 'tccbin-native-record-bounds-${os.getpid()}')
+	os.rmdir_all(base) or {}
+	authority := t2a_prepare_toolchain_authority(base, 'linux-amd64')
+	defer {
+		os.rmdir_all(base) or { panic(err) }
+	}
+	case := schema_blocked_red_source(authority, 'rollback_candidate', 'candidate_failed', 'functional')
+	valid_issues := validate_schema_source_at(authority.root, 'target-state.schema.json', case.source,
+		'native-record-valid-base')
+	assert valid_issues.len == 0, '${valid_issues}'
+	root := bin.parse_strict_json(case.source) or { panic(err) }
+	record := root.object_value('last_native_validation') or { panic('last native validation missing') }
+
+	version := schema_replace_json_member(record, 'schema_version', '2147483648')
+	version_issues := validate_schema_source_at(authority.root, 'target-state.schema.json',
+		schema_target_with_last_native(root, version), 'native-record-schema-version-overflow')
+	// The record is one oneOf branch, so an inner bound failure is reported only at its oneOf path.
+	outer_oneof := 'expected exactly one oneOf branch, got 0'
+	assert version_issues.len == 1 && version_issues[0].path == '$/last_native_validation'
+		&& version_issues[0].message == outer_oneof, '${version_issues}'
+
+	for gate_key in ['native_gate', 'v_smoke_gate'] {
+		gate := record.object_value(gate_key) or { panic('${gate_key} missing') }
+		at_bound := schema_replace_json_member(record, gate_key,
+			bin.canonical_json(schema_replace_json_member(gate, 'run_attempt', '2')))
+		at_bound_issues := validate_schema_source_at(authority.root, 'target-state.schema.json',
+			schema_target_with_last_native(root, at_bound), 'native-record-${gate_key}-at-bound')
+		assert !at_bound_issues.any(it.message == outer_oneof), '${gate_key} at bound: ${at_bound_issues}'
+		for value in ['3', '2147483648'] {
+			above := schema_replace_json_member(record, gate_key,
+				bin.canonical_json(schema_replace_json_member(gate, 'run_attempt', value)))
+			above_issues := validate_schema_source_at(authority.root, 'target-state.schema.json',
+				schema_target_with_last_native(root, above), 'native-record-${gate_key}-${value}')
+			assert above_issues.len == 1 && above_issues[0].path == '$/last_native_validation'
+				&& above_issues[0].message == outer_oneof, '${gate_key} ${value}: ${above_issues}'
+		}
+	}
+}
+
 fn test_durable_git_sigchld_snapshot_uses_the_linked_posix_header_helper() {
 	header := os.read_file(os.join_path(automation_root(), 'bin', 'provenance_native_nix.h')) or {
 		panic(err)

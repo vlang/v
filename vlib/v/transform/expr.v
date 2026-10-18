@@ -3034,7 +3034,7 @@ fn (mut t Transformer) lower_type_pattern_membership(lhs_id flat.NodeId, rhs fla
 	}
 	mut patterns := []string{cap: int(rhs.children_count)}
 	mut sum_name := ''
-	if sc := t.find_smartcast(t.expr_key(lhs_id)) {
+	if sc := t.find_smartcast_for_expr(lhs_id) {
 		sum_name = flat.source_type_name(t.trim_pointer_type(t.smartcast_target_type(sc)))
 	}
 	if sum_name.len == 0 {
@@ -4920,7 +4920,43 @@ pub fn (mut t Transformer) make_call_typed(fn_name string, args []flat.NodeId, t
 	if !fn_name.starts_with('__v3_') {
 		t.set_generated_resolved_call(call_id, fn_name)
 	}
+	if fn_name.starts_with('v3_') {
+		t.mark_prelude_helper_callees(fn_name)
+	}
 	return call_id
+}
+
+// mark_prelude_helper_callees keeps the V functions that a C helper of the cgen
+// prelude (`v3_*`, written by `vlib/v/gen/c/cleanc.v`) calls. Markused keeps them
+// for the expressions that it can type, but a generic specialization is lowered
+// after markused, so a helper call created there has to keep them itself.
+fn (mut t Transformer) mark_prelude_helper_callees(helper string) {
+	match helper {
+		'v3_f64_fixed', 'v3_f64_trimmed' {
+			t.mark_fn_used('f64.str')
+		}
+		'v3_map_str', 'v3_map_str_piece' {
+			// The map formatter has a branch for every scalar kind, whatever the
+			// map's own key and value types are.
+			t.mark_fn_used('i64.str')
+			t.mark_fn_used('u64.str')
+			t.mark_fn_used('f64.str')
+			t.mark_fn_used('rune.str')
+		}
+		'v3_char_string' {
+			t.mark_fn_used('rune.str')
+		}
+		'v3_int_zpad' {
+			t.mark_fn_used('int.str')
+		}
+		'v3_i64_zpad' {
+			t.mark_fn_used('i64.str')
+		}
+		'v3_u64_zpad' {
+			t.mark_fn_used('u64.str')
+		}
+		else {}
+	}
 }
 
 fn (mut t Transformer) mark_fn_used(fn_name string) {

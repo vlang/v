@@ -1783,7 +1783,9 @@ fn (mut t Transformer) sql_transform_value_call(call flat.NodeId) flat.NodeId {
 		callee := t.a.child_node(&node, 0)
 		if callee.kind == .selector && callee.children_count > 0 {
 			receiver := t.a.child(callee, 0)
-			receiver_type_source_id := t.raw_var_type_for_expr(receiver) or { t.node_type(receiver) }
+			receiver_type_source_id := t.sql_indexed_element_type(receiver) or {
+				t.raw_var_type_for_expr(receiver) or { t.node_type(receiver) }
+			}
 			receiver_type := flat.source_type_name(receiver_type_source_id)
 			if method := t.tc.concrete_method_signature_key(t.trim_all_pointer_type(receiver_type_source_id),
 				callee.value) {
@@ -1823,6 +1825,44 @@ fn (mut t Transformer) sql_transform_value_call(call flat.NodeId) flat.NodeId {
 		t.set_node_typ(int(result), alias_return)
 	}
 	return result
+}
+
+// sql_indexed_element_type returns the declared element type of `items[i]` for an array
+// variable or field, also a `[]shared T` or `shared []T` one. The index node that SQL
+// lowering builds is typed with the alias-normalized element (`[]string` for `Names`), which
+// would select the array's builtin method instead of the method of the declared alias.
+fn (t &Transformer) sql_indexed_element_type(receiver flat.NodeId) ?u32 {
+	node := t.a.nodes[int(receiver)]
+	if node.kind != .index || node.children_count < 2 || node.value == 'range' {
+		return none
+	}
+	mut base_id := t.a.child(&node, 0)
+	for t.a.nodes[int(base_id)].kind == .paren && t.a.nodes[int(base_id)].children_count > 0 {
+		base_id = t.a.child(t.a.nodes[int(base_id)], 0)
+	}
+	base := t.a.nodes[int(base_id)]
+	mut raw_id := u32(0)
+	if base.kind == .ident {
+		raw_id = t.raw_var_type(base.value)
+	} else if base.kind == .selector && base.children_count > 0 {
+		owner_id := t.trim_pointer_type(t.raw_expr_type_without_smartcast(t.a.child(&base, 0)))
+		raw_id, _ = t.lookup_struct_field_raw_type_with_owner(owner_id, base.value) or {
+			return none
+		}
+	}
+	mut raw := trimmed_transform_text(flat.source_type_name(raw_id)).trim_left('&')
+	if raw.starts_with('shared ') {
+		raw = trimmed_transform_text(raw['shared '.len..])
+	}
+	if !raw.starts_with('[]') {
+		return none
+	}
+	mut elem := trimmed_transform_text(raw[2..])
+	if elem.starts_with('shared ') {
+		elem = trimmed_transform_text(elem['shared '.len..])
+	}
+	elem_id := flat.source_type_id(elem)
+	return t.resolve_imported_type_name(elem_id) or { elem_id }
 }
 
 fn (mut t Transformer) sql_value_call_callee(callee_name string) flat.NodeId {

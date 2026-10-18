@@ -1,5 +1,57 @@
-# GraphQL parsing
+# GraphQL
 
-`graphql.parse(source, none)` parses a GraphQL document and returns a Result.
-Malformed or truncated tokens return errors. Trailing whitespace, including a carriage return,
-is accepted after a complete document.
+The `x.graphql` module provides parser and AST definitions for GraphQL queries,
+mutations, subscriptions, and Schema Definition Language (SDL) documents.
+
+## Usage
+
+### Parsing a query
+
+```v
+import x.graphql
+
+doc := graphql.parse('{ hero { name } }', none)!
+for def in doc.definitions {
+	if def is graphql.OperationDefinitionNode {
+		for sel in def.selection_set.selections {
+			if sel is graphql.FieldNode {
+				println('Field: ${sel.name.value}')
+			}
+		}
+	}
+}
+```
+
+### Parsing schema definition (SDL)
+
+```v
+import x.graphql
+
+sdl := '
+type User {
+	id: ID!
+	name: String!
+}
+'
+
+doc := graphql.parse(sdl, none)!
+for def in doc.definitions {
+	if def is graphql.ObjectTypeDefinitionNode {
+		println('Type: ${def.name.value}')
+	}
+}
+```
+
+### Parser options
+
+You can control token limits and source location tracking via `ParserOptions`:
+
+```v
+import x.graphql
+
+options := graphql.ParserOptions{
+	no_location: true
+	max_tokens:  10_000
+}
+doc := graphql.parse('{ ping }', options)!
+```

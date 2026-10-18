@@ -7377,7 +7377,7 @@ fn struct_text(a &flat.FlatAst, node flat.Node, declaration_attrs []string, sour
 			out.writeln('\t@[${field_params[1..].join('; ')}]')
 		}
 		mut line := '\t${field.value}'
-		if field.typ != 0 && field.typ_text() != field.value {
+		if field.typ != 0 && !flags.contains('e') {
 			line += ' ${field.typ_text()}'
 		}
 		if field.children_count > 0 {

@@ -16,6 +16,60 @@ fn literal_binding_test_node(mut a flat.FlatAst, kind flat.NodeKind, children []
 	})
 }
 
+fn test_array_append_does_not_consume_a_pointer_local() {
+	mut a := flat.FlatAst.new()
+	lhs := a.add_val(.ident, 'value')
+	callee := a.add_val(.ident, 'make_pointer')
+	init := literal_binding_test_node(mut a, .call, [callee])
+	decl := literal_binding_test_node(mut a, .decl_assign, [lhs, init])
+	source := a.add_node(flat.Node{
+		kind:  .ident
+		value: 'value'
+		typ:   flat.source_type_id('&AppendNode')
+	})
+	destination := a.add_val(.ident, 'out')
+	append := literal_binding_test_node(mut a, .infix, [destination, source])
+	a.nodes[int(append)].op = .left_shift
+	stmt := literal_binding_test_node(mut a, .expr_stmt, [append])
+	literal_binding_test_node(mut a, .fn_decl, [decl, stmt])
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.build_source_parent_index()
+	assert !t.array_append_consumes_fresh_local(source)
+}
+
+fn test_array_append_does_not_consume_static_storage() {
+	mut a := flat.FlatAst.new()
+	lhs := a.add_val(.ident, 'value')
+	init := a.add_val(.struct_init, 'AppendNode')
+	decl := literal_binding_test_node(mut a, .decl_assign, [lhs, init])
+	a.nodes[int(decl)].value = 'static'
+	source := a.add_val(.ident, 'value')
+	destination := a.add_val(.ident, 'out')
+	append := literal_binding_test_node(mut a, .infix, [destination, source])
+	a.nodes[int(append)].op = .left_shift
+	stmt := literal_binding_test_node(mut a, .expr_stmt, [append])
+	literal_binding_test_node(mut a, .fn_decl, [decl, stmt])
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.build_source_parent_index()
+	assert !t.array_append_consumes_fresh_local(source)
+	mut locals := map[string]bool{}
+	mut uses := map[string]int{}
+	mut calls := []int{}
+	assert !t.array_append_factory_body_is_fresh(decl, mut locals, mut uses, mut calls)
+}
+
+fn test_array_append_does_not_trust_a_bodyless_factory() {
+	mut a := flat.FlatAst.new()
+	a.add_val(.fn_decl, 'opaque_factory')
+	mut tc := types.TypeChecker.new(&a)
+	tc.fn_param_types['opaque_factory'] = []types.Type{}
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.prepare_array_append_tree_factories()
+	assert !t.array_append_tree_factories['opaque_factory']
+}
+
 fn literal_string_test_call(mut a flat.FlatAst, receiver flat.NodeId, method string, args []flat.NodeId) flat.NodeId {
 	selector_start := a.begin_children()
 	a.add_child(receiver)
@@ -222,8 +276,10 @@ fn test_zeroed_staging_values_keep_heap_structs_on_the_stack() {
 	mut a := flat.FlatAst.new()
 	decl := a.add_node(flat.Node{ kind: .struct_decl, value: 'HeapValue' })
 	mut tc := types.TypeChecker.new(&a)
+	// Type attributes are found through the checker's declaration index,
+	// which collect builds from the declarations in the AST.
+	tc.collect(&a)
 	tc.structs['HeapValue'] = []types.StructField{}
-	tc.type_declaration_ids['HeapValue'] = [int(decl)]
 	tc.declaration_attributes[int(decl)] = ['heap']
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	assert t.heap_attr_struct_type(flat.source_type_id('HeapValue'))
@@ -1943,4 +1999,22 @@ fn test_sum_variant_parent_ids_preserve_order_deduplication_and_owned_results() 
 	parents[0] = second
 	assert t.sum_type_parents_for_variant(variant) == [first, second]
 	assert t.sum_type_parents_for_variant(flat.source_type_id('Child')) == [first, second]
+}
+
+fn test_generic_cast_prescreen_keeps_selectively_imported_type_spellings() {
+	mut a := flat.FlatAst.new()
+	callee := a.add_val(.ident, 'Imported')
+	value := a.add_val(.int_literal, '1')
+	call := literal_binding_test_node(mut a, .call, [callee, value])
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['library.Box'] = []types.StructField{}
+	tc.structs['library.Box[int]'] = []types.StructField{}
+	tc.file_selective_imports['caller.v\nImported'] = ['library.Box[int]']
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cur_file = 'caller.v'
+	lowered := t.try_lower_generic_named_type_cast_call(a.nodes[int(call)]) or {
+		panic('selectively imported generic cast was skipped')
+	}
+	assert a.nodes[int(lowered)].kind == .cast_expr
+	assert a.nodes[int(lowered)].value == 'library.Box[int]'
 }

@@ -2085,6 +2085,7 @@ fn (b &Builder) skip_source_fn(name string) bool {
 	}
 	return name.starts_with('print_backtrace') || name.starts_with('backtrace_')
 		|| name.starts_with('map.')
+		|| name in ['map_map_eq', 'map_map_ne', 'VMapData.free']
 		|| name in ['print_libbacktrace', 'eprint_libbacktrace', 'bsd_backtrace_resolve_atos']
 }
 
@@ -7331,7 +7332,8 @@ fn (b &Builder) fn_is_used_for_decl(name string, qualified_method bool) bool {
 	}
 	if name in ['new_map', 'memdup', 'int_str', 'bool_str', 'print', 'println', 'eprint', 'eprintln',
 		'exit', 'arguments', 'tos', 'tos2', 'tos3', 'tos_clone', 'cstring_to_vstring', 'malloc_noscan',
-		'isnil', 'error', 'error_with_code', 'join_path_single'] {
+		'isnil', 'error', 'error_with_code', 'join_path_single', 'DenseArray.has_index',
+		'DenseArray__has_index', 'has_index'] {
 		return true
 	}
 	return false
@@ -9777,10 +9779,7 @@ fn (mut b Builder) build_fixed_array_init(node flat.Node) ValueID {
 		if child.kind == .field_init {
 			continue
 		}
-		mut value := b.build_expr(child_id)
-		if b.is_int_type(elem_type) && b.is_int_type(b.value_type(value)) {
-			value = b.coerce_int_value(value, elem_type)
-		}
+		value := b.coerce_numeric_value(b.build_expr(child_id), elem_type)
 		offset := b.m.get_or_add_const(b.i64_type, '${elem_index * actual_elem_size}')
 		slot_i8 := b.emit2(.get_element_ptr, ptr_i8, data, offset)
 		slot := if ptr_elem == ptr_i8 {
@@ -11680,7 +11679,15 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 		} else if fn_node.kind == .selector && b.is_function_value_expr(fn_node_id) {
 			return b.build_indirect_call(id, node, fn_node_id)
 		}
-		panic('ssa: unknown function `${actual_name}`')
+		// Name the caller as well as the callee: when the missing callee is a
+		// skipped runtime function, the interesting half is which body still
+		// mentions it.
+		caller := if b.cur_func >= 0 && b.cur_func < b.m.funcs.len {
+			b.m.funcs[b.cur_func].name
+		} else {
+			'<none>'
+		}
+		panic('ssa: unknown function `${actual_name}` (called from `${caller}` in module `${b.cur_module}`)')
 	}
 	fn_ref := b.m.add_value(.func_ref, b.void_type, resolved_name, fn_idx)
 	ret_type := b.m.funcs[fn_idx].typ
@@ -11981,6 +11988,9 @@ fn (mut b Builder) coerce_value_for_param(value ValueID, param_type TypeID) Valu
 		if typ.kind == .ptr_t && typ.elem_type == param_type {
 			return b.emit1(.load, param_type, value)
 		}
+	}
+	if b.is_float_type(param_type) {
+		return b.coerce_numeric_value(value, param_type)
 	}
 	return value
 }
