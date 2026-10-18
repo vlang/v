@@ -344,16 +344,17 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 	}
 	mut source_type := t.node_type(id)
 	if node.kind == .ident && t.pointer_value_rvalues[node.value] {
-		storage_type := flat.source_type_name(t.var_type(node.value))
-		if storage_type.starts_with('&&') {
+		storage_type := t.var_type(node.value)
+		storage_shape := flat.source_type_shape(storage_type)
+		if storage_shape.has(.pointer_chain) {
 			// A mutable []&Iface element (or mut p &Iface parameter) has &&Iface
 			// storage, but transform_expr reads it as &Iface. Do not restore the
 			// storage type on that dereference and make cgen box it again.
-			source_type = flat.source_type_id(storage_type[1..])
-		} else if node.value in t.heaped_amp_locals && storage_type.starts_with('&') {
+			source_type = t.trim_pointer_type(storage_type)
+		} else if node.value in t.heaped_amp_locals && storage_shape.has(.pointer) {
 			// A local moved to the heap is stored as `&Iface` but read as its `Iface`
 			// value; keeping the storage type would dereference that value again.
-			source_type = flat.source_type_id(storage_type[1..])
+			source_type = t.trim_pointer_type(storage_type)
 		}
 	}
 	mut source_is_smartcast_interface := false
@@ -466,7 +467,7 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 		}
 	}
 	if target_is_ptr && flat.source_type_shape(source_type).has(.pointer)
-		&& flat.source_type_name(t.resolve_interface_type_name(flat.source_type_id(flat.source_type_name(source_type)[1..]))) == iface_name {
+		&& flat.source_type_name(t.resolve_interface_type_name(t.trim_pointer_type(source_type))) == iface_name {
 		if node.kind == .cast_expr {
 			return id
 		}
@@ -986,7 +987,7 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 		&& flat.source_type_shape(t.var_type(source_node.value)).has(.pointer_chain)
 	if source_is_mut_pointer_slot {
 		// `mut p &T` has `&&T` storage but its expression value is `&T`.
-		source_type = flat.source_type_id(flat.source_type_name(t.var_type(source_node.value))[1..])
+		source_type = t.trim_pointer_type(t.var_type(source_node.value))
 	}
 	if source_type == 0 {
 		return none
@@ -1017,16 +1018,16 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 	}
 	mut source := t.stable_transformed_expr_for_reuse(source_expr, source_type, 'iface_src')
 	normalized_source_type_source_id := t.normalize_type_alias(source_type)
-	normalized_source_type := flat.source_type_name(normalized_source_type_source_id)
-	source_is_pointer_alias := !flat.source_type_shape(source_type).has(.pointer)
-		&& normalized_source_type.starts_with('&')
-	source_has_pointer_storage := flat.source_type_shape(source_type).has(.pointer) || source_is_pointer_alias
+	source_is_pointer := flat.source_type_shape(source_type).has(.pointer)
+	source_is_pointer_alias := !source_is_pointer
+		&& flat.source_type_shape(normalized_source_type_source_id).has(.pointer)
+	source_has_pointer_storage := source_is_pointer || source_is_pointer_alias
 	alias_implements_interface := source_is_pointer_alias && !isnil(t.tc)
 		&& t.tc.type_text_implements_interface(source_type, iface_name_id)
 	if source_is_pointer_alias && !share_source
 		&& t.interface_pointer_alias_source_needs_heap_copy(id) {
-		pointee_type := normalized_source_type[1..]
-		dup := t.make_memdup_call_for_type(source, flat.source_type_id(pointee_type))
+		pointee_type := t.trim_pointer_type(normalized_source_type_source_id)
+		dup := t.make_memdup_call_for_type(source, pointee_type)
 		copied := t.make_cast(normalized_source_type_source_id, dup, normalized_source_type_source_id)
 		tmp_name := t.new_temp('iface_ptr')
 		t.pending_stmts << t.make_decl_assign_typed(tmp_name, copied, source_type)
@@ -1034,9 +1035,9 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 	}
 	is_ptr := source_has_pointer_storage && !alias_implements_interface
 	concrete_type := (if source_is_pointer_alias && !alias_implements_interface {
-		flat.source_type_id(normalized_source_type[1..])
+		t.trim_pointer_type(normalized_source_type_source_id)
 	} else if is_ptr {
-		flat.source_type_id(flat.source_type_name(source_type)[1..])
+		t.trim_pointer_type(source_type)
 	} else {
 		source_type
 	})
@@ -1207,11 +1208,11 @@ fn (t &Transformer) type_is_pointer_to_interface(typ types.Type, iface_name_id u
 }
 
 fn (t &Transformer) type_text_is_pointer_to_interface(typ_id u32, iface_name_id u32) bool {
-	typ := flat.source_type_name(typ_id)
-	clean := trimmed_transform_text(typ)
-	if clean.starts_with('&') {
-		return t.resolve_interface_type_name(flat.source_type_id(clean[1..])) == iface_name_id
+	clean_id := t.trimmed_type_id(typ_id)
+	if flat.source_type_shape(clean_id).has(.pointer) {
+		return t.resolve_interface_type_name(t.trim_pointer_type(clean_id)) == iface_name_id
 	}
+	clean := flat.source_type_name(clean_id)
 	if clean.starts_with('mut ') {
 		return t.resolve_interface_type_name(flat.source_type_id(clean[4..])) == iface_name_id
 	}

@@ -10633,25 +10633,25 @@ fn (g &FlatGen) type_arg_text(id flat.NodeId) string {
 }
 
 fn (g &FlatGen) embedded_method_name_for_type(base_type types.Type, method string) ?string {
-	type_name := flat.source_type_name(g.type_lookup_name(base_type))
-	if type_name.len == 0 || method.len == 0 {
+	type_name := g.type_lookup_name(base_type)
+	if type_name == 0 || method.len == 0 {
 		return none
 	}
-	return g.embedded_method_name_for_struct(flat.source_type_id(type_name), method)
+	return g.embedded_method_name_for_struct(type_name, method)
 }
 
 fn (g &FlatGen) embedded_method_name_for_struct(type_name_id u32, method string) ?string {
 	fields := g.struct_fields_for_type(type_name_id) or { return none }
 	for field in fields {
-		embedded_type_name := flat.source_type_name(g.embedded_field_type_name(field))
-		if embedded_type_name.len == 0 {
+		embedded_type_name := g.embedded_field_type_name(field)
+		if embedded_type_name == 0 {
 			continue
 		}
-		method_name := '${embedded_type_name}.${method}'
+		method_name := '${flat.source_type_name(embedded_type_name)}.${method}'
 		if method_name in g.tc.fn_param_types {
 			return method_name
 		}
-		if found := g.embedded_method_name_for_struct(flat.source_type_id(embedded_type_name), method) {
+		if found := g.embedded_method_name_for_struct(embedded_type_name, method) {
 			return found
 		}
 	}
@@ -10948,11 +10948,11 @@ fn (g &FlatGen) embedded_receiver_path_for_expected_name(base_name_id u32, expec
 	}
 	seen[base_name_id] = true
 	for field in g.struct_embedded_fields(base_name_id) {
-		embedded_type_name := flat.source_type_name(g.embedded_field_type_name(field))
-		if g.embedded_receiver_type_names_match(flat.source_type_id(embedded_type_name), expected_name_id) {
+		embedded_type_name := g.embedded_field_type_name(field)
+		if g.embedded_receiver_type_names_match(embedded_type_name, expected_name_id) {
 			return [field]
 		}
-		if nested := g.embedded_receiver_path_for_expected_name(flat.source_type_id(embedded_type_name), expected_name_id, mut seen) {
+		if nested := g.embedded_receiver_path_for_expected_name(embedded_type_name, expected_name_id, mut seen) {
 			mut path := [field]
 			path << nested
 			return path

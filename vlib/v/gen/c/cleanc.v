@@ -14104,11 +14104,11 @@ fn (g &FlatGen) struct_promoted_field_type(type_name_id u32, field string) ?type
 	if path.len == 0 {
 		return none
 	}
-	owner := flat.source_type_name(g.embedded_field_type_name(path[path.len - 1]))
-	if owner.len == 0 {
+	owner := g.embedded_field_type_name(path[path.len - 1])
+	if owner == 0 {
 		return none
 	}
-	return g.usable_struct_field_type(flat.source_type_id(owner), field)
+	return g.usable_struct_field_type(owner, field)
 }
 
 fn (g &FlatGen) struct_promoted_field_suffix(type_name_id u32, field string, initial_ptr bool) ?string {
@@ -14211,10 +14211,10 @@ fn (mut g FlatGen) gen_pointer_pointer_struct_selector(base_id flat.NodeId, base
 }
 
 fn (mut g FlatGen) gen_sum_shared_field_selector(base_id flat.NodeId, base_type0 types.Type, field string) bool {
-	sum_name := flat.source_type_name(g.sum_type_name_for_type(base_type0) or { return false })
+	sum_name := g.sum_type_name_for_type(base_type0) or { return false }
 	common_type := g.sum_shared_field_type(base_type0, field) or { return false }
 	ct := g.value_c_type(common_type)
-	sum_ct := g.tc.c_type(g.interface_concrete_type(flat.source_type_id(sum_name)))
+	sum_ct := g.tc.c_type(g.interface_concrete_type(sum_name))
 	g.write('({ ${sum_ct} __sum = ')
 	if base_type0 is types.Pointer {
 		g.write('*(')
@@ -14224,7 +14224,7 @@ fn (mut g FlatGen) gen_sum_shared_field_selector(base_id flat.NodeId, base_type0
 		g.gen_expr(base_id)
 	}
 	g.writeln('; ${ct} __field = {0};')
-	g.gen_sum_shared_field_switch('__sum', flat.source_type_id(sum_name), field, []u32{})
+	g.gen_sum_shared_field_switch('__sum', sum_name, field, []u32{})
 	g.write('__field; })')
 	return true
 }
@@ -14239,8 +14239,8 @@ fn (g &FlatGen) pointer_pointer_selector_base_type(base &flat.Node, fallback typ
 }
 
 fn (mut g FlatGen) gen_sum_type_tag_selector(base_id flat.NodeId, base_type0 types.Type, op flat.Op) bool {
-	sum_name := flat.source_type_name(g.sum_type_name_for_type(base_type0) or { return false })
-	sum_ct := g.tc.c_type(g.interface_concrete_type(flat.source_type_id(sum_name)))
+	sum_name := g.sum_type_name_for_type(base_type0) or { return false }
+	sum_ct := g.tc.c_type(g.interface_concrete_type(sum_name))
 	if g.ccompiler == 'msvc' {
 		// MSVC has no statement expressions; a plain member read evaluates the base once too.
 		g.write('(')
@@ -15794,12 +15794,12 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 				} else {
 					g.tc.resolve_type(inner_id).name()
 				}
-				variant_name := flat.source_type_name(g.resolve_variant(target_type.source_type_id(), flat.source_type_id(variant_name0)))
-				idx := g.sum_type_index(target_type.source_type_id(), flat.source_type_id(variant_name))
-				field := g.sum_field_name(variant_name)
+				variant_name := g.resolve_variant(target_type.source_type_id(), flat.source_type_id(variant_name0))
+				idx := g.sum_type_index(target_type.source_type_id(), variant_name)
+				field := g.sum_field_name(flat.source_type_name(variant_name))
 				inner_val := g.const_expr_to_string(inner_id, seen)
 				payload := if trimmed_space(inner_val).len == 0 { '0' } else { inner_val }
-				variant_type := select_receive_unalias_type(g.tc.parse_type(flat.source_type_id(variant_name)))
+				variant_type := select_receive_unalias_type(g.tc.parse_type(variant_name))
 				if variant_type is types.Pointer {
 					return '(${ct}){.typ = ${idx}, .${field} = ${payload}}'
 				}
@@ -18110,9 +18110,9 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			}
 			clean := types.unwrap_pointer(expr_type)
 			if clean is types.SumType {
-				qv := flat.source_type_name(g.resolve_variant(clean.source_type_id(), flat.source_type_id(node.value)))
-				field := g.sum_field_name(qv)
-				if g.variant_references_sum(flat.source_type_id(qv), clean.source_type_id()) {
+				qv := g.resolve_variant(clean.source_type_id(), flat.source_type_id(node.value))
+				field := g.sum_field_name(flat.source_type_name(qv))
+				if g.variant_references_sum(qv, clean.source_type_id()) {
 					g.write('(*')
 					if expr_type.is_pointer() {
 						g.gen_expr(expr_id)
