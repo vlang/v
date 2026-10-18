@@ -21617,7 +21617,7 @@ fn receiver_type_module_names(t Type) []string {
 
 fn push_receiver_method_candidate(mut names []string, name string) {
 	if name != '' && name !in names {
-		names << name
+		names << keep_string(name)
 	}
 }
 
@@ -21760,15 +21760,23 @@ fn append_map_receiver_method_candidates(mut names []string, t Map, method strin
 }
 
 fn receiver_method_name_candidates(t Type, method string, module_name string) []string {
-	mut names := []string{}
-	type_name := resolve_type_name_for_method(t)
-	if type_name != 0 {
-		push_receiver_method_candidate(mut names, '${flat.source_type_name(type_name)}.${method}')
-		push_receiver_method_candidate(mut names, '${flat.source_type_name(type_name)}.@${method}')
-	}
 	mut clean := t
 	if clean is Alias {
 		clean = clean.base_type
+	}
+	type_name := resolve_type_name_for_method(t)
+	if clean !is Array && clean !is Map {
+		// The common receiver: its own method, plain or with an escaped name.
+		if type_name == 0 {
+			return []string{}
+		}
+		type_text := flat.source_type_name(type_name)
+		return ['${type_text}.${method}', '${type_text}.@${method}']
+	}
+	mut names := []string{}
+	if type_name != 0 {
+		push_receiver_method_candidate(mut names, '${flat.source_type_name(type_name)}.${method}')
+		push_receiver_method_candidate(mut names, '${flat.source_type_name(type_name)}.@${method}')
 	}
 	if clean is Array {
 		append_array_receiver_method_candidates(mut names, clean, method, module_name)

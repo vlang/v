@@ -5697,6 +5697,9 @@ fn (mut tc TypeChecker) check_call_privacy(id flat.NodeId, node flat.Node, info 
 		return false
 	}
 	mut declaration_name := info.name
+	// private_declaration(info.name), when the receiver checks below already asked.
+	mut selected_visibility := ?DeclarationVisibility(none)
+	mut selected_visibility_known := false
 	if info.has_receiver {
 		callee := tc.a.child_node(&node, 0)
 		if callee.kind == .selector && callee.children_count > 0 {
@@ -5723,10 +5726,9 @@ fn (mut tc TypeChecker) check_call_privacy(id flat.NodeId, node flat.Node, info 
 			}
 			receiver_name := flat.source_type_name(method_type_name(direct_type))
 			mut has_direct_method := '${receiver_name}.${callee.value}' in tc.fn_ret_types
-			mut selected_is_private := false
-			if _ := tc.private_declaration(info.name) {
-				selected_is_private = true
-			}
+			selected_visibility = tc.private_declaration(info.name)
+			selected_visibility_known = true
+			selected_is_private := selected_visibility != none
 			if !has_direct_method && !selected_is_private {
 				if direct_info := tc.resolve_generic_struct_method(flat.source_type_id(receiver_name), callee.value) {
 					has_direct_method = direct_info.name == info.name
@@ -5740,7 +5742,12 @@ fn (mut tc TypeChecker) check_call_privacy(id flat.NodeId, node flat.Node, info 
 			}
 		}
 	}
-	if _ := tc.private_declaration(declaration_name) {
+	declaration_visibility := if selected_visibility_known && declaration_name == info.name {
+		selected_visibility
+	} else {
+		tc.private_declaration(declaration_name)
+	}
+	if _ := declaration_visibility {
 		callee := tc.a.child_node(&node, 0)
 		if info.has_receiver && callee.kind == .selector && callee.children_count > 0 {
 			receiver_id := tc.a.child(callee, 0)

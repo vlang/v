@@ -52,6 +52,12 @@ fn scope_fast_slot(name string) int {
 	return int((u32(name[0]) * 11 + u32(name[name.len - 1]) * 2 + u32(name.len) * 3) & 31)
 }
 
+// scope_linear_names is how many bindings a scope finds by scanning its names.
+// Most scopes bind a few names; hashing a name, on insert and on a lookup that
+// misses the fast slots, costs more than comparing it with each of them. A
+// scope indexes its names in name_indexes only once it has more.
+const scope_linear_names = 8
+
 @[direct_array_access; inline]
 fn (s &Scope) own_binding_index(name string) ?int {
 	if s.fast_lookup {
@@ -63,8 +69,26 @@ fn (s &Scope) own_binding_index(name string) ?int {
 			return int(s.fast_indexes[slot])
 		}
 	}
+	$if !ownership ? {
+		if s.names.len <= scope_linear_names {
+			return s.scan_own_binding_index(name)
+		}
+	}
 	if i := s.name_indexes[name] {
 		return i
+	}
+	return none
+}
+
+// scan_own_binding_index finds `name` among the names of a scope that has not
+// indexed them (see scope_linear_names).
+@[direct_array_access]
+fn (s &Scope) scan_own_binding_index(name string) ?int {
+	for i := s.names.len - 1; i >= 0; i-- {
+		bound := s.names[i]
+		if bound.len == name.len && (bound.str == name.str || bound == name) {
+			return i
+		}
 	}
 	return none
 }
@@ -116,7 +140,11 @@ pub fn (mut s Scope) reset(parent &Scope) {
 		s.fast_generation = 1
 	}
 	$if !ownership ? {
-		s.name_indexes.clear()
+		// A small scope never indexed its names, and clearing an empty map
+		// still zeroes all of its retained capacity.
+		if s.name_indexes.len > 0 {
+			s.name_indexes.clear()
+		}
 	}
 	$if ownership ? {
 		s.generations.clear()
@@ -406,6 +434,13 @@ pub fn (s &Scope) nearest_binding_owned_by(name string, owner ScopeBindingOwner)
 	return false
 }
 
+// keep_string returns `text` itself. `arr << s` stores a copy of an addressable
+// string `s`; strings are immutable, so pushing `keep_string(s)` stores `s`.
+@[inline]
+fn keep_string(text string) string {
+	return text
+}
+
 // insert records or updates a type binding in this scope.
 pub fn (mut s Scope) insert(name string, typ Type) {
 	_ := s.insert_with_owner(name, typ)
@@ -415,31 +450,46 @@ pub fn (mut s Scope) insert(name string, typ Type) {
 // binding identity now visible for `name`.
 pub fn (mut s Scope) insert_with_owner(name string, typ Type) ScopeBindingOwner {
 	$if !ownership ? {
-		if i := s.name_indexes[name] {
-			s.types[i] = typ
-			s.remember_fast_binding(name, i)
+		mut existing := -1
+		if s.names.len <= scope_linear_names {
+			if i := s.scan_own_binding_index(name) {
+				existing = i
+			}
+		} else if i := s.name_indexes[name] {
+			existing = i
+		}
+		if existing >= 0 {
+			s.types[existing] = typ
+			s.remember_fast_binding(name, existing)
 			return ScopeBindingOwner{
 				scope:       s
-				index:       i
+				index:       existing
 				lifetime:    s.lifetime
 				name:        name
-				storage_key: s.storage_keys[i]
+				storage_key: s.storage_keys[existing]
 			}
 		}
-		s.names << name
+		// Strings are immutable: the binding keeps the caller's name and the
+		// fresh key instead of a pushed copy of each.
+		s.names << keep_string(name)
 		s.types << typ
 		s.name_mask |= scope_name_bit(name)
 		index := s.names.len - 1
-		s.name_indexes[name] = index
+		if index == scope_linear_names {
+			for i, bound in s.names {
+				s.name_indexes[bound] = i
+			}
+		} else if index > scope_linear_names {
+			s.name_indexes[name] = index
+		}
 		s.remember_fast_binding(name, index)
-		storage_key := scope_binding_storage_key(s, s.lifetime, index, 0)
-		s.storage_keys << storage_key
+		s.storage_keys << scope_binding_storage_key(s, s.lifetime, index, 0)
 		return ScopeBindingOwner{
 			scope:       s
 			index:       index
 			lifetime:    s.lifetime
 			name:        name
-			storage_key: storage_key
+			storage_key: s.storage_keys[index]
 		}
 	}
 	for i := s.names.len - 1; i >= 0; i-- {

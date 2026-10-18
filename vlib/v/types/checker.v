@@ -6860,31 +6860,48 @@ fn (tc &TypeChecker) private_declaration(name string) ?DeclarationVisibility {
 		}
 		return none
 	}
-	mut candidates := []string{}
-	for candidate in [declaration_name, visible_mutation_fn_lookup_name(declaration_name)] {
-		if candidate.len > 0 && candidate !in candidates {
-			candidates << candidate
-		}
+	// The first declared candidate decides: the generic-free spelling, then each
+	// shorter owner path with its generic-free spelling. A repeated candidate
+	// misses again, so the candidates need no list.
+	if visibility := tc.declaration_visibility_candidate(visible_mutation_fn_lookup_name(declaration_name)) {
+		return tc.private_visibility_or_none(visibility)
 	}
 	mut shortened := declaration_name
-	for shortened.contains('.') {
-		tail := shortened.all_after('.')
-		if !tail.contains('.') {
+	for {
+		dot := shortened.index_u8(`.`)
+		if dot < 0 {
+			break
+		}
+		tail := unsafe { shortened.substr_unsafe(dot + 1, shortened.len) }
+		if tail.index_u8(`.`) < 0 {
 			break
 		}
 		shortened = tail
-		for candidate in [shortened, visible_mutation_fn_lookup_name(shortened)] {
-			if candidate.len > 0 && candidate !in candidates {
-				candidates << candidate
-			}
+		if visibility := tc.declaration_visibility_candidate(shortened) {
+			return tc.private_visibility_or_none(visibility)
+		}
+		if visibility := tc.declaration_visibility_candidate(visible_mutation_fn_lookup_name(shortened)) {
+			return tc.private_visibility_or_none(visibility)
 		}
 	}
-	for candidate in candidates {
-		visibility := tc.declaration_visibility[candidate] or { continue }
-		if declaration_visibility_is_private(visibility, tc.cur_module) {
-			return visibility
-		}
+	return none
+}
+
+fn (tc &TypeChecker) declaration_visibility_candidate(candidate string) ?DeclarationVisibility {
+	if candidate.len == 0 {
 		return none
+	}
+	if visibility := tc.declaration_visibility[candidate] {
+		return visibility
+	}
+	return none
+}
+
+// private_visibility_or_none is the decision for a declared candidate: its
+// visibility when it is private here, none when it is visible.
+fn (tc &TypeChecker) private_visibility_or_none(visibility DeclarationVisibility) ?DeclarationVisibility {
+	if declaration_visibility_is_private(visibility, tc.cur_module) {
+		return visibility
 	}
 	return none
 }
