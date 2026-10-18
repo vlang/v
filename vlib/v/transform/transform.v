@@ -22155,6 +22155,24 @@ fn (mut t Transformer) materialize_value_branch_operand_for_type(id flat.NodeId,
 		t.transform_value_operand(id)
 	}
 	if value != id && t.operand_hoists_value_branch(value) {
+		// A block operand (`unsafe { match x { ... } }`) lowered with its value type stays a
+		// statement expression whose body holds the lowered branch, so the check above cannot
+		// tell it from a branch rebuilt unchanged. Once its value tail is no longer a branch it
+		// was materialized: spill it to a value temp, so the caller re-dispatches over a plain
+		// operand instead of lowering the block again without its type (which emits empty
+		// propagation arms such as `(!opt.ok ?  : )` for `i64(unsafe { match ... })`).
+		if t.a.nodes[int(value)].kind == .block && !t.is_value_match_or_if_operand(value) {
+			mut value_type := target_type_id
+			if value_type == 0 {
+				value_type = t.node_type(value)
+			}
+			if value_type == 0 {
+				value_type = t.node_type(id)
+			}
+			if value_type != 0 && value_type != flat.source_type_void {
+				return t.snapshot_transformed_expr_for_reuse(value, value_type, 'value_block')
+			}
+		}
 		if t.pending_stmts.len > pending_mark {
 			t.pending_stmts = t.pending_stmts[..pending_mark].clone()
 		}
@@ -23412,15 +23430,30 @@ fn (mut t Transformer) transform_index_expr(id flat.NodeId, node flat.Node) flat
 		// stabilize an earlier side-effecting operand before a later hoisting one.
 		// The index base (`i == 0`) keeps master's dedicated base lowering.
 		mut new_child := if i == 0 {
+			// A side-effecting base (`tr.values()[match n { ... }]`) left inline would run
+			// after a later child's hoisted prelude. An lvalue base keeps its identity, with
+			// only its dynamic components spilled; an rvalue base is spilled by value.
+			mut base_id := child_id
+			mut spill_base := false
+			if last_value_branch > 0 && !t.is_value_match_or_if_operand(child_id)
+				&& !t.is_stable_expr_for_reuse(child_id) {
+				if stabilized := t.stabilize_original_lvalue_receiver(child_id) {
+					base_id = stabilized
+				} else {
+					spill_base = true
+				}
+			}
 			base := if index_node_is_range(t.a, node) {
-				t.transform_index_base_expr(child_id)
+				t.transform_index_base_expr(base_id)
 			} else {
-				t.transform_element_index_base_expr(child_id)
+				t.transform_element_index_base_expr(base_id)
 			}
 			if node.value == 'range' && node.children_count < 3 {
 				base_type_source_id := t.node_type(base)
 
 				t.stable_transformed_expr_for_reuse(base, base_type_source_id, 'slice_base')
+			} else if spill_base && t.node_type(base) != 0 {
+				t.snapshot_transformed_expr_for_reuse(base, t.node_type(base), 'index_base')
 			} else {
 				base
 			}
