@@ -1533,6 +1533,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		params_structs:                        tc.params_structs
 		c_typedef_structs:                     tc.c_typedef_structs
 		unions:                                tc.unions
+		soa_structs:                           tc.soa_structs
 		type_aliases:                          tc.type_aliases
 		type_alias_modules:                    tc.type_alias_modules
 		type_alias_generic_params:             tc.type_alias_generic_params
