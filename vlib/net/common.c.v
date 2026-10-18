@@ -175,7 +175,7 @@ fn select_deadline(handle int, test Select, deadline time.Time) !bool {
 // starts with and the `time.unix(0)` that select_deadline reads as infinite. A deadline already in
 // the past, even before 1970, is set: it is due.
 fn deadline_set(deadline time.Time) bool {
-	return deadline != time.Time{} && deadline.unix() != 0
+	return !deadline.is_zero() && deadline != time.unix(0)
 }
 
 // wait_for_common wraps the common wait code

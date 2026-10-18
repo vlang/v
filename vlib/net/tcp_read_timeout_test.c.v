@@ -95,6 +95,7 @@ fn test_a_deadline_before_1970_is_set_and_due() ! {
 	assert !deadline_set(time.Time{})
 	assert !deadline_set(time.unix(0)) // select_deadline reads it as infinite
 	assert deadline_set(time.unix(-1))
+	assert deadline_set(time.unix_nanosecond(0, 1)) // the same second as the sentinel
 	$if windows || is_coroutine ? {
 		return
 	}
