@@ -10,9 +10,12 @@ import v.token
 fn (g &Parser) render_fixed_array_layout_argument(tokens []FastcExpressionToken, expected_type u32) ?string {
 	if !g.selfhost { return none }
 	expected_layout := g.underlying_alias_type(expected_type)
+	if !flat.source_type_name(expected_layout).starts_with('FixedArray_') {
+		return none
+	}
 	actual_type := g.infer_expression_type(tokens) or { return none }
 	actual_layout := g.underlying_alias_type(actual_type)
-	if expected_layout == actual_layout || !flat.source_type_name(expected_layout).starts_with('FixedArray_')
+	if expected_layout == actual_layout
 		|| !flat.source_type_name(actual_layout).starts_with('FixedArray_')
 		|| flat.source_type_name(expected_layout).count('*') != flat.source_type_name(actual_layout).count('*') {
 		return none
@@ -825,8 +828,12 @@ fn (g &Parser) fastc_inline_array_element_equality(array_type_source_id u32, lef
 }
 
 fn (g &Parser) render_membership_candidate(tokens []FastcExpressionToken, expected_type_source_id u32) ?string {
+	return g.render_membership_candidate_with_raw(tokens, expected_type_source_id, '', false)
+}
+
+fn (g &Parser) render_membership_candidate_with_raw(tokens []FastcExpressionToken, expected_type_source_id u32, rendered_expression string, special_already_missed bool) ?string {
 	expected_type := flat.source_type_name(expected_type_source_id)
-	rendered := g.render_membership_candidate_source(tokens, expected_type_source_id)?
+	rendered := g.render_membership_candidate_source(tokens, expected_type_source_id, rendered_expression, special_already_missed)?
 	// A subject narrowed earlier in the same condition (`e is string && e !in xs`) reads
 	// through the variant pointer; the membership test compares its value.
 	if expected_type != '' && !expected_type.ends_with('*') && g.member_smartcasts.len > 0
@@ -839,7 +846,7 @@ fn (g &Parser) render_membership_candidate(tokens []FastcExpressionToken, expect
 	return rendered
 }
 
-fn (g &Parser) render_membership_candidate_source(tokens []FastcExpressionToken, expected_type_source_id u32) ?string {
+fn (g &Parser) render_membership_candidate_source(tokens []FastcExpressionToken, expected_type_source_id u32, rendered_expression string, special_already_missed bool) ?string {
 	expected_type := flat.source_type_name(expected_type_source_id)
 	if tokens.len == 1 && tokens[0].source != '' {
 		// A synthetic atom (an `or`-unwrap, interpolation, etc.) carries its complete C
@@ -852,9 +859,15 @@ fn (g &Parser) render_membership_candidate_source(tokens []FastcExpressionToken,
 	if array_access := g.render_array_access_expression(tokens) {
 		return array_access.source
 	}
-	raw := g.render_raw_expression_tokens(tokens) or { return none }
-	if special := g.render_special_expression(tokens, raw) {
-		return special.source
+	raw := if special_already_missed {
+		rendered_expression
+	} else {
+		g.render_raw_expression_tokens(tokens) or { return none }
+	}
+	if !special_already_missed {
+		if special := g.render_special_expression(tokens, raw) {
+			return special.source
+		}
 	}
 	if map_expression := g.render_map_expression(tokens) {
 		return map_expression.source
@@ -921,6 +934,7 @@ fn (g &Parser) render_leading_member_chain_promotion(tokens []FastcExpressionTok
 }
 
 fn (g &Parser) render_raw_expression_tokens(tokens []FastcExpressionToken) ?string {
+	if direct := g.render_raw_local_direct_member(tokens) { return direct }
 	if tokens.len == 1 {
 		item := tokens[0]
 		if item.source != '' {
@@ -1189,6 +1203,11 @@ fn fastc_token_is_prefix_operator(tokens []FastcExpressionToken, index int) bool
 	if index == 0 {
 		return true
 	}
+	// `?` and `!` can start an optional cast / negation or propagate an
+	// existing operand. Only the latter makes the following operator binary.
+	if tokens[index - 1].tok in [.question, .not] {
+		return fastc_token_is_prefix_operator(tokens, index - 1)
+	}
 	return !fastc_token_ends_operand(tokens[index - 1].tok)
 }
 
@@ -1380,25 +1399,17 @@ fn fastc_array_initializer_c_type(array_type string) string {
 fn fastc_collect_referenced_fixed_array_types(source string, mut fixed_array_types flat.TypeTextBindings) {
 	mut i := 0
 	for i < source.len {
-		c := source[i]
-		if !(c.is_letter() || c == `_`) {
-			i++
+		i = source.index_after('FixedArray_', i) or { break }
+		if i > 0 && fastc_identifier_byte(source[i - 1]) {
+			i += 'FixedArray_'.len
 			continue
 		}
-		if i > 0 {
-			p := source[i - 1]
-			if p.is_letter() || p.is_digit() || p == `_` {
-				i++
-				continue
-			}
-		}
-		mut end := i
-		for end < source.len && (source[end].is_letter() || source[end].is_digit() || source[end] == `_`) {
+		mut end := i + 'FixedArray_'.len
+		for end < source.len && fastc_identifier_byte(source[end]) {
 			end++
 		}
 		name := source[i..end]
-		if name.starts_with('FixedArray_') && fastc_contains(name, '_FASTC_ARRAY_OF_')
-			&& !fixed_array_types.contains(name) {
+		if fastc_contains(name, '_FASTC_ARRAY_OF_') && !fixed_array_types.contains(name) {
 			// A registered nested initializer alias contains its element's marker;
 			// it already names a valid wrapper, rather than a new scanner type.
 			fastc_register_fixed_array_type(flat.source_type_id(name), mut fixed_array_types)

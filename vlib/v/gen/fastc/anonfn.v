@@ -87,7 +87,7 @@ fn (mut g Parser) parse_anonymous_function() !(string, string, bool) {
 		}
 		g.next()
 	}
-	name := '__vf_anon_${g.module_name.replace('.', '_')}_${os.file_name(g.path).replace('.', '_')}_${anon_start}'
+	name := '__vf_anon_${g.module_name.replace('.', '_')}_${os.file_name(g.path).replace('.', '_')}_${g.source_offset + anon_start}'
 	// Rewrite `fn (...) ...` as `fn <name> (...) ...` so `parse_function` reads it as
 	// an ordinary declaration.
 	function_source := g.s.src[params_start..body_end]
@@ -132,6 +132,8 @@ fn (mut g Parser) parse_anonymous_function() !(string, string, bool) {
 	resume_tok := g.tok
 	resume_lit := g.lit
 	resume_source_offset := g.source_offset
+	resume_source_line_offset := g.source_line_offset
+	resume_source_column_offset := g.source_column_offset
 	resume_source_origins := g.source_origins
 	saved_locals := g.locals.clone()
 	saved_temp_id := g.temp_id
@@ -152,6 +154,8 @@ fn (mut g Parser) parse_anonymous_function() !(string, string, bool) {
 	g.s.init(file, synthetic.source)
 	g.source_offset = synthetic.source_offset
 	g.source_origins = synthetic.source_origins
+	g.source_line_offset = 0
+	g.source_column_offset = 0
 	g.next()
 	g.parse_function(true) or {
 		// Restore before propagating so the outer parse can report cleanly.
@@ -159,6 +163,8 @@ fn (mut g Parser) parse_anonymous_function() !(string, string, bool) {
 		g.tok = resume_tok
 		g.lit = resume_lit
 		g.source_offset = resume_source_offset
+		g.source_line_offset = resume_source_line_offset
+		g.source_column_offset = resume_source_column_offset
 		g.source_origins = resume_source_origins
 		g.locals = saved_locals.clone()
 		g.temp_id = saved_temp_id
@@ -181,6 +187,8 @@ fn (mut g Parser) parse_anonymous_function() !(string, string, bool) {
 	g.tok = resume_tok
 	g.lit = resume_lit
 	g.source_offset = resume_source_offset
+	g.source_line_offset = resume_source_line_offset
+	g.source_column_offset = resume_source_column_offset
 	g.source_origins = resume_source_origins
 	g.locals = saved_locals.clone()
 	g.temp_id = saved_temp_id

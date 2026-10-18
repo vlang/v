@@ -83,7 +83,7 @@ fn fastc_collect_generic_method_sources(mut sources []FastcSourceFile, prefs &pr
 
 fn fastc_collect_generic_and_declaration_indexes(mut sources []FastcSourceFile, prefs &pref.Preferences, mut declared_types map[string]bool, mut declared_kinds map[string]FastcDeclaredTypeKind, mut enum_flags map[string]bool, mut params_structs map[string]bool, mut type_source_paths map[string]bool, mut type_sources map[string]FastcDeclarationSource, mut constants map[string]string, mut public_constants map[string]bool, mut constant_sources map[string]FastcDeclarationSource, mut constant_spans map[string][]int, mut global_sources map[string]FastcDeclarationSource, mut globals map[string]string, mut public_globals map[string]bool) !map[string]FastcGenericMethodSource {
 	generic_method_sources := fastc_collect_generic_method_sources(mut sources, prefs)
-	fastc_collect_declaration_indexes(sources, prefs, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs, mut type_source_paths, mut type_sources, mut constants, mut public_constants, mut constant_sources, mut constant_spans, mut global_sources, mut globals, mut public_globals)!
+	fastc_collect_declaration_indexes(mut sources, prefs, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs, mut type_source_paths, mut type_sources, mut constants, mut public_constants, mut constant_sources, mut constant_spans, mut global_sources, mut globals, mut public_globals)!
 	return generic_method_sources
 }
 
@@ -140,8 +140,12 @@ fn fastc_wait_generation_fragments(mut pending FastcPendingFragments) []FastcSou
 
 fn fastc_generate_file_outputs(ctx &FastcFileGenContext, sources []FastcSourceFile) FastcFileGenResult {
 	mut outputs := []FastcFileGenOutput{cap: sources.len}
+	mut scratch := FastcFileScratch{}
+	defer {
+		scratch.free()
+	}
 	for source_file in sources {
-		outputs << fastc_generate_single_file(ctx, source_file)
+		outputs << scratch.generate(ctx, source_file)
 	}
 	return fastc_file_gen_result(outputs)
 }
@@ -152,9 +156,10 @@ fn fastc_collect_reference_partials(sources []FastcSourceFile, prefs &pref.Prefe
 	}
 }
 
-fn fastc_collect_declaration_indexes(sources []FastcSourceFile, prefs &pref.Preferences, mut declared_types map[string]bool, mut declared_kinds map[string]FastcDeclaredTypeKind, mut enum_flags map[string]bool, mut params_structs map[string]bool, mut type_source_paths map[string]bool, mut type_sources map[string]FastcDeclarationSource, mut constants map[string]string, mut public_constants map[string]bool, mut constant_sources map[string]FastcDeclarationSource, mut constant_spans map[string][]int, mut global_sources map[string]FastcDeclarationSource, mut globals map[string]string, mut public_globals map[string]bool) ! {
+fn fastc_collect_declaration_indexes(mut sources []FastcSourceFile, prefs &pref.Preferences, mut declared_types map[string]bool, mut declared_kinds map[string]FastcDeclaredTypeKind, mut enum_flags map[string]bool, mut params_structs map[string]bool, mut type_source_paths map[string]bool, mut type_sources map[string]FastcDeclarationSource, mut constants map[string]string, mut public_constants map[string]bool, mut constant_sources map[string]FastcDeclarationSource, mut constant_spans map[string][]int, mut global_sources map[string]FastcDeclarationSource, mut globals map[string]string, mut public_globals map[string]bool) ! {
 	partial := fastc_collect_declaration_chunk(sources, prefs, 0, sources.len)
 	fastc_merge_declaration_partial(partial, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs, mut type_source_paths, mut type_sources, mut constants, mut public_constants, mut constant_sources, mut constant_spans, mut global_sources, mut globals, mut public_globals)!
+	fastc_apply_declaration_body_spans(mut sources, partial.body_spans, 0, sources.len)
 }
 
 fn fastc_collect_signatures(sources []FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names flat.TypeTextBindings, params_structs map[string]bool, mut functions map[string]FastcFunctionSignature, mut interface_methods map[string]bool, mut interface_fields map[string]FastcInterfaceField, mut embed_embedders []u32, mut embed_embeddeds []u32) ! {

@@ -525,7 +525,7 @@ fn fastc_collect_generic_and_declaration_indexes(mut sources []FastcSourceFile, 
 	jobs := fastc_parallel_jobs(sources, prefs)
 	if jobs <= 1 {
 		generic_method_sources := fastc_collect_generic_method_sources(mut sources, prefs)
-		fastc_collect_declaration_indexes(sources, prefs, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs, mut type_source_paths, mut type_sources, mut constants, mut public_constants, mut constant_sources, mut constant_spans, mut global_sources, mut globals, mut public_globals)!
+		fastc_collect_declaration_indexes(mut sources, prefs, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs, mut type_source_paths, mut type_sources, mut constants, mut public_constants, mut constant_sources, mut constant_spans, mut global_sources, mut globals, mut public_globals)!
 		return generic_method_sources
 	}
 	order := fastc_file_generation_order(sources)
@@ -615,6 +615,10 @@ fn fastc_file_generation_order(sources []FastcSourceFile) []int {
 // shared and read-only. It runs as a value-returning spawn: under -prealloc, V
 // frees a void thread's arena on exit, so outputs travel through the return value.
 fn fastc_generate_file_steal(ctx &FastcFileGenContext, sources []FastcSourceFile, order []int, queue &FastcGenQueue) FastcFileGenWorkerResult {
+	mut scratch := FastcFileScratch{}
+	defer {
+		scratch.free()
+	}
 	mut outputs := []FastcIndexedFileGenOutput{}
 	mut composite_types := map[string]bool{}
 	mut fixed_array_types := flat.TypeTextBindings{}
@@ -632,7 +636,7 @@ fn fastc_generate_file_steal(ctx &FastcFileGenContext, sources []FastcSourceFile
 		}
 		file_index := order[claimed]
 		start_us := sw.elapsed().microseconds()
-		output := fastc_generate_single_file(ctx, sources[file_index])
+		output := scratch.generate(ctx, sources[file_index])
 		for name, _ in output.composite_types {
 			composite_types[name] = true
 		}
@@ -655,7 +659,7 @@ fn fastc_generate_file_steal(ctx &FastcFileGenContext, sources []FastcSourceFile
 	}
 }
 
-const fastc_generation_fragment_size = 16 * 1024
+const fastc_generation_fragment_size = 32 * 1024
 
 fn fastc_generation_fragment_is_followed_by_comptime_else(scan scanner.Scanner) bool {
 	mut lookahead := scan
@@ -763,7 +767,7 @@ fn fastc_source_generation_fragments(source_file FastcSourceFile, prefs &pref.Pr
 }
 
 fn fastc_source_needs_fragmentation(source_file FastcSourceFile, prefs &pref.Preferences) bool {
-	return prefs.building_v && source_file.header.module_name.ends_with('fastc') && source_file.source.len > fastc_generation_fragment_size
+	return prefs.building_v && source_file.source.len > fastc_generation_fragment_size
 }
 
 struct FastcFragmentedSource {
@@ -930,8 +934,12 @@ fn fastc_generate_file_outputs(ctx &FastcFileGenContext, sources []FastcSourceFi
 	jobs := fastc_parallel_jobs(sources, ctx.prefs)
 	if jobs <= 1 {
 		mut outputs := []FastcFileGenOutput{cap: sources.len}
+		mut scratch := FastcFileScratch{}
+		defer {
+			scratch.free()
+		}
 		for source_file in sources {
-			outputs << fastc_generate_single_file(ctx, source_file)
+			outputs << scratch.generate(ctx, source_file)
 		}
 		return fastc_file_gen_result(outputs)
 	}
@@ -1067,11 +1075,12 @@ fn fastc_collect_declaration_worker(sources []FastcSourceFile, prefs &pref.Prefe
 	return partials
 }
 
-fn fastc_collect_declaration_indexes(sources []FastcSourceFile, prefs &pref.Preferences, mut declared_types map[string]bool, mut declared_kinds map[string]FastcDeclaredTypeKind, mut enum_flags map[string]bool, mut params_structs map[string]bool, mut type_source_paths map[string]bool, mut type_sources map[string]FastcDeclarationSource, mut constants map[string]string, mut public_constants map[string]bool, mut constant_sources map[string]FastcDeclarationSource, mut constant_spans map[string][]int, mut global_sources map[string]FastcDeclarationSource, mut globals map[string]string, mut public_globals map[string]bool) ! {
+fn fastc_collect_declaration_indexes(mut sources []FastcSourceFile, prefs &pref.Preferences, mut declared_types map[string]bool, mut declared_kinds map[string]FastcDeclaredTypeKind, mut enum_flags map[string]bool, mut params_structs map[string]bool, mut type_source_paths map[string]bool, mut type_sources map[string]FastcDeclarationSource, mut constants map[string]string, mut public_constants map[string]bool, mut constant_sources map[string]FastcDeclarationSource, mut constant_spans map[string][]int, mut global_sources map[string]FastcDeclarationSource, mut globals map[string]string, mut public_globals map[string]bool) ! {
 	jobs := fastc_parallel_jobs(sources, prefs)
 	if jobs <= 1 {
 		partial := fastc_collect_declaration_chunk(sources, prefs, 0, sources.len)
 		fastc_merge_declaration_partial(partial, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs, mut type_source_paths, mut type_sources, mut constants, mut public_constants, mut constant_sources, mut constant_spans, mut global_sources, mut globals, mut public_globals)!
+		fastc_apply_declaration_body_spans(mut sources, partial.body_spans, 0, sources.len)
 		return
 	}
 	order := fastc_file_generation_order(sources)
@@ -1097,6 +1106,9 @@ fn fastc_collect_declaration_indexes(sources []FastcSourceFile, prefs &pref.Pref
 	}
 	for partial in partials {
 		fastc_merge_declaration_partial(partial, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs, mut type_source_paths, mut type_sources, mut constants, mut public_constants, mut constant_sources, mut constant_spans, mut global_sources, mut globals, mut public_globals)!
+	}
+	for index, partial in partials {
+		fastc_apply_declaration_body_spans(mut sources, partial.body_spans, index, index + 1)
 	}
 }
 
