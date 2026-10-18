@@ -119,12 +119,16 @@ fn run_good_with_flags(v3_bin string, name string, flags string, src string) str
 }
 
 fn run_good_with_env(v3_bin string, name string, env string, src string) string {
+	return run_good_with_env_and_flags(v3_bin, name, env, '', src)
+}
+
+fn run_good_with_env_and_flags(v3_bin string, name string, env string, flags string, src string) string {
 	good_src := os.join_path(os.temp_dir(), 'v3_${name}.v')
 	os.write_file(good_src, src) or { panic(err) }
 	good_bin := os.join_path(os.temp_dir(), 'v3_${name}')
 	// `env` holds `NAME=value` assignments for the compiler process, not a program.
 	compile := os.exec(['env', ...(os.split_args(env) or { panic(err) }), v3_bin, '-nocache',
-		'${good_src}', '-b', 'c', '-o', good_bin])
+		...(os.split_args(flags) or { panic(err) }), '${good_src}', '-b', 'c', '-o', good_bin])
 	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed\n${compile.output}'
 	run := os.exec([good_bin])
@@ -8191,8 +8195,9 @@ pub fn invoke(callback fn (&Item), value &Item) {
 		local := Item{
 			text: "local"
 		}
-		alias := &local
-		_ = alias
+		// V forbids shadowing `alias`; a distinct inner alias keeps the same scope shape.
+		inner_alias := &local
+		_ = inner_alias
 	}
 	callback(alias)
 }
@@ -12758,7 +12763,9 @@ fn test_parallel_transform_defers_external_const_collection_clone_expansion() {
 		calls << '\ttotal += read_${i}()'
 	}
 	source := "struct Wide implements IClone {\n${fields.join('\n')}\n}\n\nfn make_items() []Wide {\n\treturn [Wide{\n\t\tfield_255: 'ok'\n\t}]\n}\n\nconst clone_lookup = {\n\t'items': make_items().clone()\n}\n\n${readers.join('\n\n')}\n\nfn main() {\n\tmut total := 0\n${calls.join('\n')}\n\tprintln(total)\n}\n"
-	out := run_good_with_env(v3_bin, 'parallel_const_collection_clone', 'VJOBS=4', source)
+	// `IClone` is declared only in ownership builds of the program.
+	out := run_good_with_env_and_flags(v3_bin, 'parallel_const_collection_clone', 'VJOBS=4',
+		'-ownership', source)
 	assert out == '2016'
 }
 
