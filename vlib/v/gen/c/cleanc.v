@@ -3876,6 +3876,13 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	}
 	// Function workers collect only the C symbols reached by emitted bodies.
 	// Finalize their declarations and function-pointer types after the merge.
+	// A serial dispatch has no workers to merge, and unless the item prep
+	// already collected the refs, the master holds none: collect them from the
+	// selected bodies before freezing the set, or a C function used only as a
+	// value (`&C.DefWindowProc`) loses its prototype.
+	if !g.parallel_used {
+		_ = g.c_extern_referenced_symbols()
+	}
 	g.c_extern_refs_ready = true
 	$if !v3_no_parallel ? {
 		if g.scope_parallel_workers {
@@ -24942,7 +24949,8 @@ fn (mut g FlatGen) queue_global_array_init(target string, val_id flat.NodeId, ty
 			return false
 		}
 		callee := g.a.child_node(&node, 0)
-		if callee.kind != .ident || callee.value != 'array_new' {
+		// Scalar and enum rows are lowered to the noscan allocator.
+		if callee.kind != .ident || callee.value !in ['array_new', '__new_array_noscan'] {
 			return false
 		}
 		if default_expr := g.global_array_default_elem_expr(typ.elem_type) {

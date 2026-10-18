@@ -554,6 +554,35 @@ fn main() {
 	wait_header_check_windows_c('winapi_unsuffixed_wide_exports')
 }
 
+fn test_c_fn_value_keeps_its_prototype_in_serial_and_parallel_cgen() {
+	v3_bin := wait_header_build_v3()
+	source := 'module main
+
+fn C.V3WaitHeaderCallback(voidptr, u32) isize
+
+fn main() {
+	_ = voidptr(&C.V3WaitHeaderCallback)
+}
+'
+	// A serial dispatch (`VJOBS=1`, as in CI) has no workers that collect the C
+	// symbols reached by the emitted bodies, so a C function that is used only as a
+	// value lost its prototype there.
+	old_vjobs := os.getenv_opt('VJOBS')
+	defer {
+		if vjobs := old_vjobs {
+			os.setenv('VJOBS', vjobs, true)
+		} else {
+			os.unsetenv('VJOBS')
+		}
+	}
+	for jobs in ['1', '4'] {
+		os.setenv('VJOBS', jobs, true)
+		c_code := wait_header_gen_c(v3_bin, 'c_fn_value_prototype_jobs_${jobs}', source)
+		assert wait_header_declares(c_code, 'V3WaitHeaderCallback'), 'VJOBS=${jobs}\n${c_code}'
+		assert c_code.contains('(void*)(V3WaitHeaderCallback)'), 'VJOBS=${jobs}\n${c_code}'
+	}
+}
+
 fn test_synthesized_c_extern_prototypes_preserve_const_pointer_params() {
 	v3_bin := wait_header_build_v3()
 	c_code := wait_header_gen_c(v3_bin, 'c_extern_const_pointer_params', 'module main

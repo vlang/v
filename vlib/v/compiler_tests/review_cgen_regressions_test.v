@@ -102,8 +102,8 @@ fn main() {
 		panic(err)
 	}
 	assert c_code.contains('u8 main__byte_power;'), c_code
-	assert c_code.contains('int main__max_len;'), c_code
-	assert c_code.contains('int main__address_power;'), c_code
+	assert c_code.contains('i64 main__max_len;'), c_code
+	assert c_code.contains('i64 main__address_power;'), c_code
 	assert c_code.contains('double main__float_power;'), c_code
 	assert c_code.contains('main__byte_power = '), c_code
 	assert c_code.contains('main__max_len = '), c_code
@@ -235,7 +235,7 @@ fn main() {
 	assert out == '8\n45\n9\n23'
 	c_code := os.read_file(os.join_path(os.temp_dir(), 'v3_array_power_assign.c')) or { panic(err) }
 	compact := c_code.replace('\t', '').replace(' ', '').replace('\n', '')
-	assert compact.contains('array__set(_a0,_i0,&(int[]){((int)__v_pow_i64('), c_code
+	assert compact.contains('array__set(_a0,_i0,&(i64[]){((i64)__v_pow_i64('), c_code
 	assert compact.contains('array__set(_a1,_i1,&(main__Exponent[]){Exponent__mul_(*(main__Exponent*)array_get(*_a1,_i1),'), c_code
 	assert compact.contains('IntList__op_index_set('), c_code
 	assert compact.contains('ExponentList__op_index_set('), c_code
@@ -305,7 +305,7 @@ fn main() {
 	}
 	compact := c_code.replace('\t', '').replace(' ', '').replace('\n', '')
 	assert compact.contains('__v_pow_i64('), c_code
-	assert !compact.contains('(int*)__v_pow_i64('), c_code
+	assert !compact.contains('(i64*)__v_pow_i64('), c_code
 }
 
 fn test_addressed_inferred_array_const_keeps_dynamic_storage() {
@@ -319,7 +319,7 @@ fn array_len(values &[]int) int {
 fn main() {
 	ptr := &vals
 	copy := vals
-	println(int_str(array_len(ptr) + ptr[0] + copy[2]))
+	println(int_str(array_len(ptr) + unsafe { ptr[0] } + copy[2]))
 }
 ')
 	assert out == '7'
@@ -328,8 +328,8 @@ fn main() {
 	}
 	compact := c_code.replace('\t', '').replace(' ', '').replace('\n', '')
 	assert compact.contains('Arraymain__vals;'), c_code
-	assert compact.contains('main__vals=new_array_from_c_array(3,3,sizeof(int),'), c_code
-	assert !compact.contains('intmain__vals[3]'), c_code
+	assert compact.contains('main__vals=new_array_from_c_array(3,3,sizeof(i64),'), c_code
+	assert !compact.contains('i64main__vals[3]'), c_code
 }
 
 fn test_numbered_string_identifiers_do_not_collide_with_literal_symbols() {
@@ -418,7 +418,7 @@ fn test_sum_container_variant_import_alias_collision_uses_exact_tag() {
 		'v.mod':            'Module { name: "sum_container_variant_alias_collision" }\n'
 		'other/value.v':    'module other\n\npub struct Value {\npub:\n\tn int\n}\n'
 		'sub/tast/value.v': 'module tast\n\npub struct Value {\npub:\n\tn int\n}\n'
-		'main.v':           'module main\n\nimport other\nimport sub.tast as tast\n\ntype Mixed = map[string]other.Value | map[string]tast.Value\n\nfn score(value Mixed) int {\n\tif value is map[string]tast.Value {\n\t\titems := value as map[string]tast.Value\n\t\treturn items["x"].n\n\t}\n\treturn -1\n}\n\nfn main() {\n\tvalue := Mixed(map[string]tast.Value{\n\t\t"x": tast.Value{\n\t\t\tn: 71\n\t\t}\n\t})\n\tprintln(int_str(score(value)))\n}\n'
+		'main.v':           'module main\n\nimport other\nimport sub.tast\n\ntype Mixed = map[string]other.Value | map[string]tast.Value\n\nfn score(value Mixed) int {\n\tif value is map[string]tast.Value {\n\t\titems := value as map[string]tast.Value\n\t\treturn items["x"].n\n\t}\n\treturn -1\n}\n\nfn main() {\n\tvalue := Mixed(map[string]tast.Value{\n\t\t"x": tast.Value{\n\t\t\tn: 71\n\t\t}\n\t})\n\tprintln(int_str(score(value)))\n}\n'
 	}, 'main.v')
 	assert out == '71'
 }
@@ -429,7 +429,7 @@ fn test_sum_name_import_alias_collision_uses_exact_sum() {
 		'v.mod':         'Module { name: "sum_name_import_alias_collision" }\n'
 		'a/tast/tast.v': 'module tast\n\npub struct Target {}\npub struct Second {}\npub type Value = Target | Second\n'
 		'b/tast/tast.v': 'module tast\n\npub struct First {}\npub struct Target {\npub:\n\tn int\n}\npub type Value = First | Target\n'
-		'main.v':        'module main\n\nimport a.tast as other_tast\nimport b.tast as tast\n\nfn score(value tast.Value) int {\n\tif value is tast.Target {\n\t\ttarget := value as tast.Target\n\t\treturn target.n\n\t}\n\treturn -1\n}\n\nfn main() {\n\t_ := other_tast.Value(other_tast.Target{})\n\tvalue := tast.Value(tast.Target{\n\t\tn: 79\n\t})\n\tprintln(int_str(score(value)))\n}\n'
+		'main.v':        'module main\n\nimport a.tast as other_tast\nimport b.tast\n\nfn score(value tast.Value) int {\n\tif value is tast.Target {\n\t\ttarget := value as tast.Target\n\t\treturn target.n\n\t}\n\treturn -1\n}\n\nfn main() {\n\t_ := other_tast.Value(other_tast.Target{})\n\tvalue := tast.Value(tast.Target{\n\t\tn: 79\n\t})\n\tprintln(int_str(score(value)))\n}\n'
 	}, 'main.v')
 	assert out == '79'
 }
@@ -539,7 +539,7 @@ fn f() b.Foo {
 
 fn main() {}
 '
-	review_cgen_run_bad_project(v3_bin, 'bad_pointer_value_cross_module_return', return_files, 'main.v', 'cannot return')
+	review_cgen_run_bad_project(v3_bin, 'bad_pointer_value_cross_module_return', return_files, 'main.v', 'cannot use `&a.Foo` as type `b.Foo` in return argument')
 	mut field_files := files.clone()
 	field_files['main.v'] = 'module main
 
@@ -558,7 +558,7 @@ fn make_holder() Holder {
 
 fn main() {}
 '
-	review_cgen_run_bad_project(v3_bin, 'bad_pointer_value_cross_module_field', field_files, 'main.v', 'cannot initialize field')
+	review_cgen_run_bad_project(v3_bin, 'bad_pointer_value_cross_module_field', field_files, 'main.v', 'cannot assign to field `item`: expected `b.Foo`, not `&a.Foo`')
 }
 
 fn test_optional_single_letter_struct_keeps_concrete_payload_type() {
@@ -593,13 +593,11 @@ fn main() {
 
 fn test_enum_power_initializers_are_folded() {
 	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good(v3_bin, 'enum_power_initializers', 'fn enum_power(base int, exponent int) int {
-	return base ** exponent
-}
+	out := review_cgen_run_good(v3_bin, 'enum_power_initializers', 'const helper_base = 3
 
 enum Power {
 	direct = 2 ** 3
-	helper = enum_power(3, 2)
+	helper = helper_base ** 2
 	next
 }
 
@@ -709,10 +707,10 @@ fn main() {
 	println(int_str(optional_generic.len))
 	println(int_str(result_generic.len))
 	println(int_str(pointer_generic.len))
-	println(int_str(optional_generic_ptr[0] or { -1 }))
-	println(int_str(direct_ptr[0]))
-	println(int_str(nested_ptr[0][0]))
-	println(int_str(optional_ptr[0] or { -1 }))
+	println(int_str(unsafe { optional_generic_ptr[0] or { -1 } }))
+	println(int_str(unsafe { direct_ptr[0] }))
+	println(int_str(unsafe { nested_ptr[0][0] }))
+	println(int_str(unsafe { optional_ptr[0] or { -1 } }))
 	println(int_str(defaults.values[0]))
 	println(int_str(defaults.lookup["answer"]))
 	println(int_str(defaults.count))

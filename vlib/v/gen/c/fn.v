@@ -7853,8 +7853,15 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 		return
 	}
 	// C.free must keep the C allocation family even after an aligned pointer cast.
-	if (target_name in ['free', 'builtin.free']
-		|| resolved_target_name in ['free', 'builtin.free']) && node.children_count == 2 {
+	// A bare `free` can also be another module's selectively imported function
+	// (`import m { free }`): only a call the checker resolved to the builtin is
+	// rewritten.
+	calls_builtin_free := if resolved_target_name.len > 0 {
+		resolved_target_name in ['free', 'builtin.free']
+	} else {
+		target_name in ['free', 'builtin.free']
+	}
+	if calls_builtin_free && node.children_count == 2 {
 		arg_id := g.a.child(node, 1)
 		arg_type := g.usable_expr_type(arg_id)
 		clean_type := types.unwrap_pointer(arg_type)
