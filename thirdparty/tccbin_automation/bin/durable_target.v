@@ -371,9 +371,8 @@ fn durable_target_model_from_value(root JsonValue) !TargetModel {
 }
 
 // durable_checked_int accepts only the signed 32-bit range on every host. V's int is 64-bit on the
-// current toolchain, so the bound is explicit here. target-state.schema.json gives
-// manual_green_publications only a minimum, so a schema-valid value above 2^31-1 is rejected here
-// before schema validation runs. durable_target_test pins this rejection.
+// current toolchain, so the bound is explicit here. target-state.schema.json bounds each narrowed
+// integer to the same range, and durable_target_test pins both.
 fn durable_checked_int(value i64, path string) !int {
 	narrowed := i32(value)
 	if i64(narrowed) != value {

@@ -12,6 +12,7 @@ pub:
 
 struct SchemaContext {
 	root_dir string
+	cache    &map[string]JsonValue
 }
 
 // validate_json_file validates one strict JSON document against a local contract schema.
@@ -22,6 +23,7 @@ pub fn validate_json_file(schema_path string, input_path string) ![]SchemaIssue 
 	instance := parse_strict_json(input_source)!
 	context := SchemaContext{
 		root_dir: os.dir(os.real_path(schema_path))
+		cache:    &map[string]JsonValue{}
 	}
 	mut issues := context.validate(schema, instance, '$', os.real_path(schema_path))!
 	if issues.len == 0 && os.file_name(schema_path) == 'target-state.schema.json' {
@@ -37,6 +39,7 @@ pub fn validate_json_value(schema_path string, instance JsonValue) ![]SchemaIssu
 	schema := parse_strict_json(os.read_file(schema_path)!)!
 	context := SchemaContext{
 		root_dir: os.dir(os.real_path(schema_path))
+		cache:    &map[string]JsonValue{}
 	}
 	mut issues := context.validate(schema, instance, '$', os.real_path(schema_path))!
 	if issues.len == 0 && os.file_name(schema_path) == 'target-state.schema.json' {
@@ -411,7 +414,16 @@ fn (context SchemaContext) resolve_reference(reference string,
 	if os.dir(resolved_path) != context.root_dir {
 		return error('schema reference escaped the contract schema directory')
 	}
-	mut resolved := parse_strict_json(os.read_file(resolved_path)!)!
+	// The cache is a pointer so every value-receiver copy of SchemaContext shares one map, and V
+	// needs unsafe to index through a pointer. Each top-level validation owns its cache.
+	cache := context.cache
+	mut resolved := unsafe {
+		(*cache)[resolved_path] or {
+			parsed := parse_strict_json(os.read_file(resolved_path)!)!
+			(*cache)[resolved_path] = parsed
+			parsed
+		}
+	}
 	if pointer != '' {
 		if !pointer.starts_with('/') {
 			return error('schema fragment must be a JSON pointer')

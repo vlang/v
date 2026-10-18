@@ -1400,6 +1400,27 @@ fn test_full_contract_report_is_green() {
 	assert report.hygiene_files == 106
 }
 
+fn test_schema_reference_is_reread_for_each_validation() {
+	dir := os.join_path(os.vtmp_dir(), 'v_schema_reference_cache_${os.getpid()}')
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	root_path := os.join_path(dir, 'root.schema.json')
+	leaf_path := os.join_path(dir, 'leaf.schema.json')
+	os.write_file(root_path, '{"type": "object", "properties": {"a": {"\$ref": "leaf.schema.json"}, "b": {"\$ref": "leaf.schema.json"}}}') or {
+		panic(err)
+	}
+	os.write_file(leaf_path, '{"type": "integer", "minimum": 0}') or { panic(err) }
+	instance := bin.parse_strict_json('{"a": 1, "b": 2}') or { panic(err) }
+	first := bin.validate_json_value(root_path, instance) or { panic(err) }
+	assert first.len == 0, '${first}'
+	// The reference cache lives for one validation, so a later validation must see the edited leaf.
+	os.write_file(leaf_path, '{"type": "string"}') or { panic(err) }
+	second := bin.validate_json_value(root_path, instance) or { panic(err) }
+	assert second.len == 2, '${second}'
+}
+
 fn test_durable_git_sigchld_snapshot_uses_the_linked_posix_header_helper() {
 	header := os.read_file(os.join_path(automation_root(), 'bin', 'provenance_native_nix.h')) or {
 		panic(err)
