@@ -100,7 +100,9 @@ fn run_good_with_env(v3_bin string, name string, env string, src string) string 
 	good_src := os.join_path(os.temp_dir(), 'v3_${name}.v')
 	os.write_file(good_src, src) or { panic(err) }
 	good_bin := os.join_path(os.temp_dir(), 'v3_${name}')
-	compile := os.exec(['${env}', v3_bin, '-nocache', '${good_src}', '-b', 'c', '-o', good_bin])
+	// `env` holds `NAME=value` assignments for the compiler process, not a program.
+	compile := os.exec(['env', ...(os.split_args(env) or { panic(err) }), v3_bin, '-nocache',
+		'${good_src}', '-b', 'c', '-o', good_bin])
 	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed\n${compile.output}'
 	run := os.exec([good_bin])
