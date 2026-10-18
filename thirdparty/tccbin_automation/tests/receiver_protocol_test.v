@@ -2815,18 +2815,9 @@ fn test_terminal_projection_v3_and_revalidation_v5_cover_native_validation_witho
 }
 
 // write_cmd_git_wrapper_for_receiver_test writes a git.cmd that runs the installed git.exe.
-fn write_cmd_git_wrapper_for_receiver_test() !string {
-	real_git := os.find_abs_path_of_executable('git')!
-	wrapper_dir := os.join_path(os.temp_dir(), 'tccbin-receiver-cmd-only-${os.getpid()}')
-	os.rmdir_all(wrapper_dir) or {}
-	os.mkdir_all(wrapper_dir)!
-	os.write_file(os.join_path(wrapper_dir, 'git.cmd'), '@"${real_git}" %*\r\n')!
-	return wrapper_dir
-}
-
 fn test_receiver_git_resolves_a_cmd_only_git_on_windows() {
 	$if windows {
-		wrapper_dir := write_cmd_git_wrapper_for_receiver_test() or { panic(err) }
+		wrapper_dir := write_cmd_git_wrapper('receiver') or { panic(err) }
 		defer {
 			os.rmdir_all(wrapper_dir) or {}
 		}

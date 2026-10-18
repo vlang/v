@@ -2883,12 +2883,17 @@ fn live_git(state_git_dir string, arguments []string) os.Result {
 // `git.exe` is a separate matter, because cmd.exe searches the current directory for that name, so the
 // wrapper is the trust boundary. It does not search the application directory either: a bare `git`
 // passed to CreateProcess used to be found there, and that lookup is gone, so git must be on PATH. And
-// it starts only the program types os.exec can run, so a PATHEXT entry such as `.js` is skipped. Within
-// PATH, the first directory with a candidate wins, and inside it the candidates follow PATHEXT's order
-// (see windows_git_suffixes). find_abs_path_of_executable tries each suffix across all of PATH first, so
-// it is not used here.
+// it starts only the program types os.exec can run, so a PATHEXT entry such as `.js` is skipped, and a
+// PATHEXT with no such type is an error. Within PATH, the first directory with a candidate wins, and
+// inside it the candidates follow PATHEXT's order (see windows_git_suffixes). CreateProcess also searches
+// the System32, System, and Windows directories for a bare name; this resolver does not, so git must be
+// on PATH there too. find_abs_path_of_executable tries each suffix across all of PATH first, so it is not
+// used here.
 fn windows_git_program(path_env string, pathext string) !string {
 	suffixes := windows_git_suffixes(pathext)
+	if suffixes.len == 0 {
+		return error('PATHEXT lists no program type that os.exec can start: `${pathext}`')
+	}
 	for entry in windows_git_path_entries(path_env) {
 		dir := windows_git_search_dir(entry)
 		if dir == '' {
@@ -2933,7 +2938,8 @@ fn windows_git_path_entries(path_env string) []string {
 fn windows_git_search_dir(entry string) string {
 	dir := entry.trim('"')
 	has_drive := dir.len >= 3 && dir[1] == `:` && (dir[2] == `\\` || dir[2] == `/`)
-	is_unc := dir.len >= 2 && dir[0] == `\\` && dir[1] == `\\`
+	// Two leading separators make a UNC path, and either separator style counts.
+	is_unc := dir.len >= 2 && (dir[0] == `\\` || dir[0] == `/`) && (dir[1] == `\\` || dir[1] == `/`)
 	if has_drive || is_unc {
 		return dir
 	}
@@ -2973,10 +2979,18 @@ fn live_git_fallback(state_git_dir string, arguments []string) os.Result {
 	}
 	mut argv := [program, '--no-replace-objects', '--git-dir', state_git_dir]
 	argv << arguments
-	if batch_git_refuses(argv) {
-		return os.Result{
-			exit_code: -1
-			output:    'refusing to pass cmd.exe metacharacters or %-expansion to the batch git wrapper ${program}'
+	return windows_git_run(argv)
+}
+
+// windows_git_run runs `argv`, whose program is already resolved. On Windows a batch wrapper that
+// batch_git_refuses flags is refused here, so cmd.exe never reads the command line as syntax.
+fn windows_git_run(argv []string) os.Result {
+	$if windows {
+		if batch_git_refuses(argv) {
+			return os.Result{
+				exit_code: -1
+				output:    'refusing to pass cmd.exe metacharacters or %-expansion to the batch git wrapper ${argv[0]}'
+			}
 		}
 	}
 	return os.exec(argv)
@@ -2986,10 +3000,11 @@ fn live_git_fallback(state_git_dir string, arguments []string) os.Result {
 // The program path and each argument are checked for metacharacters. The program path is not always
 // quoted: os.exec quotes an argument only when it has a space, tab, or quote, so a path such as
 // `C:\x&calc\git.cmd` reaches cmd.exe bare and `&` would start a second command. A bare program path
-// also ends the command name at `(`, `)`, `,`, and `=`, so those are refused there too; a quoted path
-// reads them as text. The `%` rule then runs on the whole joined line, program path included, because
+// also ends the command name at `(`, `)`, `,`, and `=`, and at U+00A0, so those are refused there too,
+// and so is any other non-ASCII byte. A quoted path reads them as text. The `%` rule then runs on the whole joined line, program path included, because
 // cmd.exe pairs `%` marks across argument boundaries: two parts that each pass alone can form a
-// `%...%` pair once joined.
+// `%...%` pair once joined. A `+`, `[`, or `]` in a bare path is not refused: a probe on Windows ran a
+// `.cmd` at such a path, so cmd.exe does not end the command name there.
 fn batch_git_refuses(argv []string) bool {
 	if argv.len == 0 {
 		return false
@@ -3003,8 +3018,17 @@ fn batch_git_refuses(argv []string) bool {
 			return true
 		}
 	}
-	if !argv[0].contains_any(' \t"') && argv[0].contains_any('(),=') {
-		return true
+	if !argv[0].contains_any(' \t"') {
+		if argv[0].contains_any('(),=') {
+			return true
+		}
+		// cmd.exe ends a bare command name at U+00A0 (bytes C2 A0), and the list of such characters is not
+		// known in full. So a bare path with any non-ASCII byte is refused. A quoted path reads them as text.
+		for b in argv[0].bytes() {
+			if b >= 0x80 {
+				return true
+			}
+		}
 	}
 	return cmd_percent_is_unsafe(argv.join(' '))
 }
@@ -3013,7 +3037,9 @@ fn batch_git_refuses(argv []string) bool {
 // and expands whatever lies between them, including `%NAME:~0,20%`. A `%` followed by `~`, a digit,
 // or `*` is a batch parameter. So a line passes only when its single `%` is followed by `(`, as in
 // the `%(refname)` token, or by a letter, as in the `%H` of `--format=@@%H`. Neither pairs with a
-// second `%`.
+// second `%`. This models the command line that `cmd /c` parses. A `.cmd` wrapper that runs `FOR`,
+// `CALL`, or `%1` to `%9` parses its arguments again in batch mode, and that is not modeled here: the
+// wrapper is the trust boundary.
 fn cmd_percent_is_unsafe(text string) bool {
 	if !text.contains('%') {
 		return false
@@ -4402,6 +4428,11 @@ $if test {
 		return live_git_fallback(state_git_dir, arguments)
 	}
 
+	// windows_git_search_dir_for_test returns the directory windows_git_search_dir takes from one PATH entry.
+	pub fn windows_git_search_dir_for_test(entry string) string {
+		return windows_git_search_dir(entry)
+	}
+
 	// windows_git_program_for_test returns the git program the fallback starts from the current PATH and PATHEXT.
 	pub fn windows_git_program_for_test() !string {
 		return windows_git_program(os.getenv('PATH'), os.getenv('PATHEXT'))
@@ -4421,15 +4452,9 @@ $if test {
 					}
 				}
 				resolved[0] = program
-				if batch_git_refuses(resolved) {
-					return os.Result{
-						exit_code: -1
-						output:    'refusing to pass cmd.exe metacharacters or %-expansion to the batch git wrapper ${program}'
-					}
-				}
 			}
 		}
-		return os.exec(resolved)
+		return windows_git_run(resolved)
 	}
 
 	pub fn durable_git_deadline_constants_for_test() []u64 {

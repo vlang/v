@@ -489,19 +489,9 @@ fn test_durable_target_authority_rejects_invalid_proof_inventory_entry_and_targe
 		'schema or path identity is invalid')
 }
 
-// write_cmd_git_wrapper_for_test writes a git.cmd that runs the installed git.exe and returns its dir.
-fn write_cmd_git_wrapper_for_test() !string {
-	real_git := os.find_abs_path_of_executable('git')!
-	wrapper_dir := os.join_path(os.temp_dir(), 'tccbin-authority-cmd-only-${os.getpid()}')
-	os.rmdir_all(wrapper_dir) or {}
-	os.mkdir_all(wrapper_dir)!
-	os.write_file(os.join_path(wrapper_dir, 'git.cmd'), '@"${real_git}" %*\r\n')!
-	return wrapper_dir
-}
-
 fn test_authority_run_resolves_a_cmd_only_git_on_windows() {
 	$if windows {
-		wrapper_dir := write_cmd_git_wrapper_for_test() or { panic(err) }
+		wrapper_dir := write_cmd_git_wrapper('authority') or { panic(err) }
 		defer {
 			os.rmdir_all(wrapper_dir) or {}
 		}

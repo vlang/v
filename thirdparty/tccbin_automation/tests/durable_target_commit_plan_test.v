@@ -784,15 +784,6 @@ fn test_durable_git_fallback_resolves_a_cmd_only_git_on_windows() {
 
 // write_cmd_git_wrapper writes a git.cmd that runs the installed git.exe and returns its directory.
 // It must run before PATH is changed, because it resolves the real git first.
-fn write_cmd_git_wrapper(tag string) !string {
-	real_git := os.find_abs_path_of_executable('git')!
-	wrapper_dir := os.join_path(os.temp_dir(), 'tccbin-git-cmd-${tag}-${os.getpid()}')
-	os.rmdir_all(wrapper_dir) or {}
-	os.mkdir_all(wrapper_dir)!
-	os.write_file(os.join_path(wrapper_dir, 'git.cmd'), '@"${real_git}" %*\r\n')!
-	return wrapper_dir
-}
-
 fn test_durable_git_fallback_refuses_cmd_metacharacters_through_a_cmd_wrapper_on_windows() {
 	$if windows {
 		repository := prepare_plan_repository('fallback-metachar', plan_seeded_unknown_target(false),
@@ -1039,7 +1030,7 @@ fn test_windows_git_program_honors_pathext_order_on_windows() {
 			assert err.msg() == 'git was not found on PATH', err.msg()
 			return
 		}
-		panic('windows_git_program found a program whose extension PATHEXT does not list')
+		assert false, 'windows_git_program found a program whose extension PATHEXT does not list'
 	}
 }
 
@@ -1100,7 +1091,7 @@ fn test_windows_git_program_skips_a_relative_path_entry_on_windows() {
 			assert err.msg() == 'git was not found on PATH', err.msg()
 			return
 		}
-		panic('windows_git_program resolved a relative PATH entry against the current directory')
+		assert false, 'windows_git_program resolved a relative PATH entry against the current directory'
 	}
 }
 
@@ -1156,6 +1147,160 @@ fn test_windows_git_program_keeps_a_quoted_path_entry_with_a_semicolon_on_window
 		os.setenv('PATH', '"${semi}";${later}', true)
 		picked := bin.windows_git_program_for_test() or { panic(err) }
 		assert picked == os.abs_path(os.join_path(semi, 'git.exe')), picked
+	}
+}
+
+// windows_git_search_dir_for_test is pure string logic, so this test runs on every platform.
+fn test_windows_git_search_dir_searches_only_drive_absolute_or_unc_entries() {
+	assert bin.windows_git_search_dir_for_test('C:\\git\\cmd') == 'C:\\git\\cmd'
+	assert bin.windows_git_search_dir_for_test('C:/git/cmd') == 'C:/git/cmd'
+	assert bin.windows_git_search_dir_for_test('"C:\\Program Files\\Git\\cmd"') == 'C:\\Program Files\\Git\\cmd'
+	assert bin.windows_git_search_dir_for_test('//server/share/bin') == '//server/share/bin'
+	assert bin.windows_git_search_dir_for_test('\\\\server\\share\\bin') == '\\\\server\\share\\bin'
+	for entry in ['.', 'bin', '\\bin', '/bin', 'C:bin', '', '"."'] {
+		assert bin.windows_git_search_dir_for_test(entry) == '', entry
+	}
+}
+
+fn test_windows_git_program_finds_a_batch_wrapper_when_pathext_lists_bat_on_windows() {
+	$if windows {
+		root := os.join_path(os.temp_dir(), 'tccbin-git-bat-${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		os.write_file(os.join_path(root, 'git.bat'), '@echo off\r\n') or { panic(err) }
+		original_path := os.getenv('PATH')
+		original_pathext := os.getenv('PATHEXT')
+		defer {
+			os.setenv('PATH', original_path, true)
+			os.setenv('PATHEXT', original_pathext, true)
+		}
+		os.setenv('PATHEXT', '.BAT', true)
+		os.setenv('PATH', root, true)
+		picked := bin.windows_git_program_for_test() or { panic(err) }
+		assert picked == os.abs_path(os.join_path(root, 'git.bat')), picked
+	}
+}
+
+fn test_windows_git_program_takes_cmd_exe_default_pathext_order_when_pathext_is_empty_on_windows() {
+	$if windows {
+		root := os.join_path(os.temp_dir(), 'tccbin-git-default-${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		os.write_file(os.join_path(root, 'git.cmd'), '@echo off\r\n') or { panic(err) }
+		os.write_file(os.join_path(root, 'git.exe'), '') or { panic(err) }
+		original_path := os.getenv('PATH')
+		original_pathext := os.getenv('PATHEXT')
+		defer {
+			os.setenv('PATH', original_path, true)
+			os.setenv('PATHEXT', original_pathext, true)
+		}
+		// An empty PATHEXT gets cmd.exe's default order, `.com`, `.exe`, `.bat`, `.cmd`, so `.exe` wins.
+		os.setenv('PATHEXT', '', true)
+		os.setenv('PATH', root, true)
+		picked := bin.windows_git_program_for_test() or { panic(err) }
+		assert picked == os.abs_path(os.join_path(root, 'git.exe')), picked
+	}
+}
+
+fn test_windows_git_program_ignores_pathext_types_it_cannot_start_and_matches_case_on_windows() {
+	$if windows {
+		root := os.join_path(os.temp_dir(), 'tccbin-git-pathext-case-${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		os.write_file(os.join_path(root, 'git.exe'), '') or { panic(err) }
+		original_path := os.getenv('PATH')
+		original_pathext := os.getenv('PATHEXT')
+		defer {
+			os.setenv('PATH', original_path, true)
+			os.setenv('PATHEXT', original_pathext, true)
+		}
+		// `.JS` is not a type os.exec can start, and `.Exe` must match `.exe` regardless of case.
+		os.setenv('PATHEXT', '.JS;.Exe', true)
+		os.setenv('PATH', root, true)
+		picked := bin.windows_git_program_for_test() or { panic(err) }
+		assert picked == os.abs_path(os.join_path(root, 'git.exe')), picked
+	}
+}
+
+fn test_windows_git_program_reports_a_pathext_with_no_startable_type_on_windows() {
+	$if windows {
+		root := os.join_path(os.temp_dir(), 'tccbin-git-no-type-${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		os.write_file(os.join_path(root, 'git.exe'), '') or { panic(err) }
+		original_path := os.getenv('PATH')
+		original_pathext := os.getenv('PATHEXT')
+		defer {
+			os.setenv('PATH', original_path, true)
+			os.setenv('PATHEXT', original_pathext, true)
+		}
+		os.setenv('PATHEXT', '.JS;.VBS', true)
+		os.setenv('PATH', root, true)
+		bin.windows_git_program_for_test() or {
+			assert err.msg().contains('PATHEXT'), err.msg()
+			return
+		}
+		assert false, 'windows_git_program found git with a PATHEXT that lists no startable type'
+	}
+}
+
+fn test_durable_git_fallback_runs_a_cmd_wrapper_whose_path_has_plus_and_brackets_on_windows() {
+	$if windows {
+		// cmd.exe does not end a bare command name at `+`, `[`, or `]`, so this wrapper must run.
+		wrapper_dir := os.join_path(os.temp_dir(), 'tccbin-git-cmd-plus+[x]-${os.getpid()}')
+		os.rmdir_all(wrapper_dir) or {}
+		os.mkdir_all(wrapper_dir) or { panic(err) }
+		defer {
+			os.rmdir_all(wrapper_dir) or {}
+		}
+		os.write_file(os.join_path(wrapper_dir, 'git.cmd'), '@echo SHIM-RAN %*\r\n') or { panic(err) }
+		original_path := os.getenv('PATH')
+		defer {
+			os.setenv('PATH', original_path, true)
+		}
+		os.setenv('PATH', '${wrapper_dir};${os.getenv('SystemRoot')}\\System32', true)
+		result := bin.live_git_fallback_for_test(os.temp_dir(), ['rev-parse', '--is-bare-repository'])
+		assert result.exit_code == 0, result.output
+		assert result.output.contains('SHIM-RAN'), result.output
+	}
+}
+
+fn test_durable_git_fallback_refuses_a_bare_cmd_wrapper_path_with_a_no_break_space_on_windows() {
+	$if windows {
+		// cmd.exe ends a bare command name at U+00A0 (bytes C2 A0). So `p<nbsp>q\git.cmd` runs `p.cmd`
+		// beside it, with the rest as arguments. os.exec does not quote a path with no space or tab.
+		nbsp := [u8(0xc2), u8(0xa0)].bytestr()
+		root := os.join_path(os.temp_dir(), 'tccbin-git-nbsp-${os.getpid()}')
+		os.rmdir_all(root) or {}
+		wrapper_dir := os.join_path(root, 'p${nbsp}q')
+		os.mkdir_all(wrapper_dir) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		os.write_file(os.join_path(root, 'p.cmd'), '@echo SHIM-PREFIX %*\r\n') or { panic(err) }
+		os.write_file(os.join_path(wrapper_dir, 'git.cmd'), '@echo SHIM-RAN %*\r\n') or { panic(err) }
+		original_path := os.getenv('PATH')
+		defer {
+			os.setenv('PATH', original_path, true)
+		}
+		os.setenv('PATH', '${wrapper_dir};${os.getenv('SystemRoot')}\\System32', true)
+		result := bin.live_git_fallback_for_test(os.temp_dir(), ['rev-parse', '--is-bare-repository'])
+		assert result.exit_code != 0, result.output
+		assert result.output.contains('metacharacters'), result.output
+		assert !result.output.contains('SHIM-PREFIX'), result.output
+		assert !result.output.contains('SHIM-RAN'), result.output
 	}
 }
 
