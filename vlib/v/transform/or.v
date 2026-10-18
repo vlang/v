@@ -332,7 +332,7 @@ fn (mut t Transformer) channel_receive_info(expr_id flat.NodeId) ?ChannelReceive
 	channel_type = t.trimmed_type_id(t.normalize_type_alias(channel_type))
 	fallback_needs_deref := flat.source_type_shape(channel_type).has(.pointer)
 	for flat.source_type_shape(channel_type).has(.pointer) {
-		channel_type = flat.source_type_id(trimmed_transform_text(flat.source_type_name(channel_type)[1..]))
+		channel_type = t.trimmed_type_id(t.trim_pointer_type(channel_type))
 	}
 	if !flat.source_type_shape(channel_type).has(.channel_type) {
 		if field_channel_type_source_id := t.channel_receive_selector_source_type(channel_id) {
@@ -981,25 +981,26 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type_id u32) 
 	}
 	if expr_node.kind == .ident {
 		raw_type_source_id := t.raw_var_type(expr_node.value)
-		raw_type := flat.source_type_name(raw_type_source_id)
 		if t.is_optional_type_name(raw_type_source_id) && !t.generic_arg_is_unresolved(raw_type_source_id) {
 			return t.canonical_or_expr_types(raw_type_source_id)
 		}
-		if raw_type.starts_with('&') && t.is_optional_type_name(flat.source_type_id(raw_type[1..]))
-			&& !t.generic_arg_is_unresolved(flat.source_type_id(raw_type[1..])) {
-			return t.canonical_or_expr_types(flat.source_type_id(raw_type[1..]))
+		if flat.source_type_shape(raw_type_source_id).has(.pointer) {
+			base_type := t.trim_pointer_type(raw_type_source_id)
+			if t.is_optional_type_name(base_type) && !t.generic_arg_is_unresolved(base_type) {
+				return t.canonical_or_expr_types(base_type)
+			}
 		}
 	}
 	if expr_node.kind == .selector {
 		if raw_type_source_id := t.raw_selector_field_type(expr_id) {
-			raw_type := flat.source_type_name(raw_type_source_id)
-
 			if t.is_optional_type_name(raw_type_source_id) && !t.generic_arg_is_unresolved(raw_type_source_id) {
 				return t.canonical_or_expr_types(raw_type_source_id)
 			}
-			if raw_type.starts_with('&') && t.is_optional_type_name(flat.source_type_id(raw_type[1..]))
-				&& !t.generic_arg_is_unresolved(flat.source_type_id(raw_type[1..])) {
-				return t.canonical_or_expr_types(flat.source_type_id(raw_type[1..]))
+			if flat.source_type_shape(raw_type_source_id).has(.pointer) {
+				base_type := t.trim_pointer_type(raw_type_source_id)
+				if t.is_optional_type_name(base_type) && !t.generic_arg_is_unresolved(base_type) {
+					return t.canonical_or_expr_types(base_type)
+				}
 			}
 		}
 	}
@@ -2308,16 +2309,16 @@ fn (mut t Transformer) optional_source_value_expr(source_id flat.NodeId, expr fl
 	}
 	raw_type := match source.kind {
 		.ident {
-			flat.source_type_name(t.raw_var_type(source.value))
+			t.raw_var_type(source.value)
 		}
 		.selector {
-			flat.source_type_name(t.raw_selector_field_type(source_id) or { return expr })
+			t.raw_selector_field_type(source_id) or { return expr }
 		}
 		else {
 			return expr
 		}
 	}
-	if !raw_type.starts_with('&') || !t.is_optional_type_name(flat.source_type_id(raw_type[1..])) {
+	if !flat.source_type_shape(raw_type).has(.pointer) || !t.is_optional_type_name(t.trim_pointer_type(raw_type)) {
 		return expr
 	}
 	value := t.make_prefix(.mul, expr)

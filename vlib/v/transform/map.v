@@ -852,7 +852,7 @@ fn (mut t Transformer) disabled_struct_operator_zero_value_expansion_estimate(id
 	lhs_is_pointer := flat.source_type_shape(lhs_type).has(.pointer) || checker_lhs_type_shape.has(.pointer)
 		|| (lhs_node.kind == .ident && t.mut_param_values[lhs_node.value])
 	if lhs_is_pointer && flat.source_type_shape(lhs_type).has(.pointer) {
-		lhs_type = flat.source_type_id(flat.source_type_name(lhs_type)[1..])
+		lhs_type = t.trim_pointer_type(lhs_type)
 	}
 	mut struct_type := u32(0)
 	mut is_alias_operator := false

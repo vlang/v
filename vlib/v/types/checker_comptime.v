@@ -5254,7 +5254,7 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 		return
 	}
 	if clean_actual is Interface
-		&& flat.source_type_name(tc.interface_metadata_name(clean_actual.source_type_id())) != flat.source_type_name(tc.interface_metadata_name(target_iface.source_type_id())) {
+		&& tc.interface_metadata_name(clean_actual.source_type_id()) != tc.interface_metadata_name(target_iface.source_type_id()) {
 		tc.record_error_at(.assignment_mismatch, 'cannot implement interface `${target_iface.name()}` with a different interface `${clean_actual.name()}`', id, node.pos)
 		return
 	}
@@ -5741,7 +5741,7 @@ fn (mut tc TypeChecker) record_interface_implementation_error(kind TypeErrorKind
 fn (mut tc TypeChecker) record_interface_implementation_error_with_mut_receiver(kind TypeErrorKind, actual Type, expected Interface, id flat.NodeId, pos token.Pos, allow_mut_receiver bool) bool {
 	clean_actual := unalias_type(unwrap_pointer(actual))
 	if clean_actual is Interface
-		&& (flat.source_type_name(tc.interface_metadata_name(clean_actual.source_type_id())) == flat.source_type_name(tc.interface_metadata_name(expected.source_type_id()))
+		&& (tc.interface_metadata_name(clean_actual.source_type_id()) == tc.interface_metadata_name(expected.source_type_id())
 			|| tc.interface_implements_interface(clean_actual.source_type_id(), expected.source_type_id())) {
 		return false
 	}
@@ -7218,7 +7218,7 @@ fn (tc &TypeChecker) interface_pointer_target_cast_needs_heap_copy(target Type, 
 		return false
 	}
 	actual_iface := cast_target_interface(clean_actual) or { return true }
-	return flat.source_type_name(tc.interface_metadata_name(actual_iface.source_type_id())) != flat.source_type_name(tc.interface_metadata_name(target_iface.source_type_id()))
+	return tc.interface_metadata_name(actual_iface.source_type_id()) != tc.interface_metadata_name(target_iface.source_type_id())
 }
 
 fn (tc &TypeChecker) first_parsed_child(id flat.NodeId) flat.NodeId {

@@ -39,7 +39,6 @@ fn interface_pattern_is_collapsed_container_type(name_id u32) bool {
 }
 
 fn (mut t Transformer) pointer_sum_access_expr(expr_id flat.NodeId, expr_type_id u32) (flat.NodeId, u32, flat.Op) {
-	expr_type := flat.source_type_name(expr_type_id)
 	has_smartcast := t.expr_has_smartcast(expr_id)
 	mut access := if has_smartcast {
 		// A runtime tag check always starts from the stored sum/interface value.
@@ -48,26 +47,25 @@ fn (mut t Transformer) pointer_sum_access_expr(expr_id flat.NodeId, expr_type_id
 	} else {
 		t.transform_selector_base_expr(expr_id)
 	}
-	mut access_type := expr_type
+	mut access_type := expr_type_id
 	if has_smartcast {
-		raw_type_source_id := t.raw_expr_type_without_smartcast(expr_id)
-		raw_type := flat.source_type_name(raw_type_source_id)
-		if raw_type_source_id != 0 {
+		raw_type := t.raw_expr_type_without_smartcast(expr_id)
+		if raw_type != 0 {
 			access_type = raw_type
 		}
 	}
-	for access_type.starts_with('&&') {
+	for flat.source_type_shape(access_type).has(.pointer_chain) {
 		access = t.make_prefix(.mul, access)
-		access_type = access_type[1..]
-		t.set_node_typ(int(access), flat.source_type_id(access_type))
+		access_type = t.trim_pointer_type(access_type)
+		t.set_node_typ(int(access), access_type)
 	}
 	mut value_type := (if has_smartcast {
-		flat.source_type_id(access_type)
+		access_type
 	} else {
 		t.node_type(access)
 	})
 	if value_type == 0 {
-		value_type = flat.source_type_id(access_type)
+		value_type = access_type
 	}
 	op := if flat.source_type_shape(value_type).has(.pointer) { flat.Op.arrow } else { flat.Op.dot }
 	return access, value_type, op
@@ -1978,7 +1976,7 @@ fn (mut t Transformer) wrap_sum_value_with_storage(expr_id flat.NodeId, target_s
 		return t.transform_expr(expr_id)
 	}
 	if !has_expr_smartcast && flat.source_type_shape(expr_type).has(.pointer)
-		&& flat.source_type_name(t.resolve_sum_name(flat.source_type_id(flat.source_type_name(expr_type)[1..]))) == resolved_sum {
+		&& flat.source_type_name(t.resolve_sum_name(t.trim_pointer_type(expr_type))) == resolved_sum {
 		if expr.kind == .prefix && expr.op == .mul {
 			return t.transform_expr(expr_id)
 		}
