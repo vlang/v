@@ -10662,7 +10662,7 @@ fn (mut tc TypeChecker) ownership_mark_from_return_param_source_expr(target_name
 	if tc.ownership_mark_cloned_return_source(target_name, expr_id, pos) {
 		return true
 	}
-	if tc.ownership_borrowed_projection_action(expr_id, pos) == .string_view {
+	if tc.ownership_projection_is_string_view(expr_id, pos) {
 		tc.ownership_mark_string_view(target_name, expr_id, pos)
 		return false
 	}
@@ -11179,7 +11179,7 @@ fn (mut tc TypeChecker) ownership_mark_from_return_param(lhs_name string, call_i
 	if tc.ownership_mark_cloned_return_source(lhs_name, arg_id, pos) {
 		return true
 	}
-	if tc.ownership_borrowed_projection_action(arg_id, pos) == .string_view {
+	if tc.ownership_projection_is_string_view(arg_id, pos) {
 		tc.ownership_mark_string_view(lhs_name, arg_id, pos)
 		return true
 	}
@@ -12201,6 +12201,27 @@ fn (mut tc TypeChecker) ownership_borrowed_projection_action(id flat.NodeId, pos
 		st.borrowed_projection_actions[int(clean_id)] = action
 	}
 	return action
+}
+
+// ownership_projection_is_string_view reports whether `id` reads a string view. Unlike
+// ownership_borrowed_projection_action, it records no decision for any other value. The
+// call itself decides whether a by-value argument is copied; a `mut values[..]` argument
+// is only borrowed, so tracking what the call returns must not reject it as a copy.
+fn (mut tc TypeChecker) ownership_projection_is_string_view(id flat.NodeId, pos flat.NodeId) bool {
+	st := tc.ownership_state()
+	if action := st.borrowed_projection_actions[int(id)] {
+		return action == .string_view
+	}
+	clean_id := tc.ownership_unwrap_expr(id)
+	if clean_id != id {
+		if action := st.borrowed_projection_actions[int(clean_id)] {
+			return action == .string_view
+		}
+	}
+	if tc.ownership_expr_is_owned_string_range(clean_id) || !tc.ownership_expr_is_string_view(id) {
+		return false
+	}
+	return tc.ownership_borrowed_projection_action(id, pos) == .string_view
 }
 
 // ownership_borrowed_copy_missing_clone returns the type that prevents an independent copy of

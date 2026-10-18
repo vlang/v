@@ -20,5 +20,15 @@ fn test_nested_marker_only_iclone_uses_structural_clone() {
 	out := os.exec([v3_bin, '-ownership', '-d', 'ownership', '-nocache', '-no-parallel', 'run',
 		source])
 	assert out.exit_code == 0, out.output
-	assert out.output.contains('\nok\n'), out.output
+	assert out.output.split_into_lines().contains('ok'), out.output
+	// `DropClone.drop()` frees its text and then assigns it; that assignment must not free it again.
+	assert !out.output.contains('double string.free() detected'), out.output
+
+	// After an explicit `free()`, reassigning a string or leaving its scope must not free it again.
+	explicit_free_source := os.join_path(os.temp_dir(), 'v3_nested_default_clone_explicit_free.v')
+	os.write_file(explicit_free_source, "struct Holder {\nmut:\n\ttext string\n}\n\nfn release(mut holder Holder) {\n\tunsafe { holder.text.free() }\n\tholder.text = 'released'\n}\n\nfn main() {\n\tmut local := 'local'.repeat(2)\n\tunsafe { local.free() }\n\tlocal = ''\n\tmut holder := Holder{\n\t\ttext: 'field'.repeat(2)\n\t}\n\tunsafe { holder.text.free() }\n\tholder.text = 'replaced'\n\tmut param := Holder{\n\t\ttext: 'param'.repeat(2)\n\t}\n\trelease(mut param)\n\tmut deferred := 'deferred'.repeat(2)\n\tdefer {\n\t\tunsafe { deferred.free() }\n\t}\n\tprintln('\${local}|\${holder.text}|\${param.text}|\${deferred}')\n}\n")!
+	explicit_free := os.exec([v3_bin, '-ownership', '-d', 'ownership', '-nocache', '-no-parallel',
+		'run', explicit_free_source])
+	assert explicit_free.exit_code == 0, explicit_free.output
+	assert explicit_free.output.split_into_lines() == ['|replaced|released|deferreddeferred'], explicit_free.output
 }

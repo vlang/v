@@ -13790,6 +13790,9 @@ fn (mut t Transformer) transform_return_stmt(id flat.NodeId, node flat.Node) []f
 	if node.children_count == 0 {
 		return [id]
 	}
+	if !t.validate_specialized_return_wrapper(node) {
+		return [t.make_empty()]
+	}
 	source_return_id := t.return_drop_source_id(id, node)
 	if rewritten := t.return_or_result_tail_as_return(node, source_return_id) {
 		return t.transform_return_stmt(rewritten, t.a.nodes[int(rewritten)])
@@ -13841,6 +13844,42 @@ fn (mut t Transformer) transform_return_stmt(id flat.NodeId, node flat.Node) []f
 		typ:            node.typ
 	})
 	return t.with_pending_before(new_id)
+}
+
+// validate_specialized_return_wrapper reports a generic specialization that returns an
+// Option from a Result function or a Result from an Option function, such as
+// `fn parse[T](x int) ?T { return T.from(x) }` (`T.from` returns `!T`). The checker
+// rejects that return in an ordinary function, but it leaves bodies with unconstrained
+// type parameters to their instances, so without this the mismatch reached the C compiler.
+fn (mut t Transformer) validate_specialized_return_wrapper(node flat.Node) bool {
+	if !t.validating_generic_spec || node.children_count != 1
+		|| !t.is_optional_type_name(t.cur_fn_ret_type) {
+		return true
+	}
+	child_id := t.a.child(&node, 0)
+	child := t.a.nodes[int(child_id)]
+	if child.kind != .call {
+		return true
+	}
+	mut actual := ''
+	if enum_type := t.builtin_enum_from_type(child_id, child) {
+		if enum_type != 0 {
+			actual = '!' + flat.source_type_name(enum_type)
+		}
+	}
+	if actual == '' {
+		if !t.return_expr_is_optional_result(child_id) {
+			return true
+		}
+		actual = flat.source_type_name(t.qualify_optional_type(t.optional_result_expr_type_name(child_id)))
+	}
+	expected := flat.source_type_name(t.qualify_optional_type(t.cur_fn_ret_type))
+	if expected.len < 2 || actual.len < 2 || !t.is_optional_type_name(flat.source_type_id(actual))
+		|| actual[0] == expected[0] {
+		return true
+	}
+	t.record_monomorph_error('cannot use `${actual}` as type `${expected}` in return argument')
+	return false
 }
 
 fn (mut t Transformer) return_values_with_extra(first_id flat.NodeId, extra_ids []flat.NodeId) []flat.NodeId {
