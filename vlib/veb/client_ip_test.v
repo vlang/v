@@ -7,6 +7,7 @@
 // copies into every request context; the default stays the socket peer.
 module veb
 
+import net
 import net.http
 
 struct IpApp {
@@ -71,8 +72,8 @@ fn test_a_trusted_peer_reveals_the_client_behind_it() {
 }
 
 fn test_a_chain_skips_proxies_we_trust() {
-	// The header is left-most client first, and each proxy appends: the client
-	// is the first entry that is not one of our own proxies.
+	// Each proxy appends its peer: walk back from our proxy to the nearest
+	// address it cannot vouch for.
 	assert resolved_client_ip('10.0.0.2', '198.51.100.9, 10.0.0.1', ['10.0.0.1', '10.0.0.2']) == '198.51.100.9'
 }
 
@@ -86,4 +87,115 @@ fn test_an_empty_peer_is_never_trusted() {
 	// No socket address is available in this path (for example a test render),
 	// and an empty peer must not unlock the forwarding headers.
 	assert resolved_client_ip('', '198.51.100.9', ['']) == ''
+}
+
+fn test_an_attacker_prefix_cannot_select_the_client_address() {
+	assert resolved_client_ip('10.0.0.2', '203.0.113.66, 198.51.100.9', ['10.0.0.2']) == '198.51.100.9'
+	assert resolved_client_ip('10.0.0.2', '203.0.113.66, 198.51.100.9, 10.0.0.1', [
+		'10.0.0.1',
+		'10.0.0.2',
+	]) == '198.51.100.9'
+}
+
+fn test_the_chain_stops_before_a_trusted_address_in_an_untrusted_prefix() {
+	assert resolved_client_ip('10.0.0.2', '10.0.0.1, 203.0.113.66, 198.51.100.9', [
+		'10.0.0.1',
+		'10.0.0.2',
+	]) == '198.51.100.9'
+}
+
+fn test_empty_or_malformed_entries_do_not_cross_the_trust_boundary() {
+	for invalid in ['', ' ', 'unknown', '999.1.2.3', '198.51.100.9:80', '[2001:db8::1]',
+		'2001:db8::not-an-ip'] {
+		assert resolved_client_ip('10.0.0.2', invalid, ['10.0.0.2']) == '10.0.0.2'
+		assert resolved_client_ip('10.0.0.2', '203.0.113.66, ${invalid}, 10.0.0.1', [
+			'10.0.0.1',
+			'10.0.0.2',
+		]) == '10.0.0.1'
+	}
+	// Unverified data to the left of the boundary is never examined.
+	assert resolved_client_ip('10.0.0.2', 'unknown, 198.51.100.9', ['10.0.0.2']) == '198.51.100.9'
+}
+
+fn test_ipv6_and_mixed_family_trusted_hops() {
+	assert resolved_client_ip('2001:db8::2', '203.0.113.66, 2001:db8::9, 10.0.0.1', [
+		'2001:0db8:0:0:0:0:0:2',
+		'10.0.0.1',
+	]) == '2001:db8::9'
+	assert resolved_client_ip('10.0.0.2', '203.0.113.66, 198.51.100.9, 2001:0db8::1', [
+		'10.0.0.2',
+		'2001:db8::1',
+	]) == '198.51.100.9'
+	assert resolved_client_ip('2001:db8::2', '2001:0db8::1', [
+		'2001:db8::1',
+		'2001:db8::2',
+	]) == '2001:db8::1'
+}
+
+// socket_client_ip exercises Context.ip with a real loopback socket peer.
+fn socket_client_ip(header http.Header, trusted_proxies []string) string {
+	mut listener := net.listen_tcp(.ip, '127.0.0.1:0') or { panic(err) }
+	defer {
+		listener.close() or {}
+	}
+	address := listener.addr() or { panic(err) }
+	mut client := net.dial_tcp(address.str()) or { panic(err) }
+	defer {
+		client.close() or {}
+	}
+	mut conn := listener.accept() or { panic(err) }
+	defer {
+		conn.close() or {}
+	}
+	ctx := Context{
+		conn:            conn
+		trusted_proxies: trusted_proxies
+		req:             http.Request{
+			header: header
+		}
+	}
+	return ctx.ip()
+}
+
+fn test_context_ip_combines_duplicate_forwarded_fields_in_order() {
+	mut header := http.new_header()
+	header.add(.x_forwarded_for, '203.0.113.66')
+	header.add_custom('x-forwarded-for', '198.51.100.9, 10.0.0.1') or { panic(err) }
+	assert socket_client_ip(header, ['127.0.0.1', '10.0.0.1']) == '198.51.100.9'
+}
+
+fn test_single_address_headers_cannot_override_the_forwarded_boundary() {
+	mut header := http.new_header()
+	header.set_custom('CF-Connecting-IP', '203.0.113.66') or { panic(err) }
+	header.set_custom('X-Real-Ip', '203.0.113.67') or { panic(err) }
+	header.set(.x_forwarded_for, '203.0.113.68, 198.51.100.9')
+	assert socket_client_ip(header, ['127.0.0.1']) == '198.51.100.9'
+	for invalid in ['', 'unknown', '203.0.113.68, , 10.0.0.1'] {
+		header.set(.x_forwarded_for, invalid)
+		expected := if invalid.ends_with('10.0.0.1') { '10.0.0.1' } else { '127.0.0.1' }
+		assert socket_client_ip(header, ['127.0.0.1', '10.0.0.1']) == expected
+	}
+}
+
+fn test_untrusted_socket_peers_ignore_all_forwarding_headers() {
+	mut header := http.new_header()
+	header.set(.x_forwarded_for, '198.51.100.9')
+	header.set_custom('CF-Connecting-IP', '203.0.113.66') or { panic(err) }
+	header.set_custom('X-Real-Ip', '203.0.113.67') or { panic(err) }
+	assert socket_client_ip(header, []) == '127.0.0.1'
+	assert socket_client_ip(header, ['10.0.0.1']) == '127.0.0.1'
+}
+
+fn test_single_address_headers_require_valid_ip_literals() {
+	for name in ['CF-Connecting-IP', 'X-Real-Ip'] {
+		mut header := http.new_header()
+		header.set_custom(name, ' 198.51.100.9 ') or { panic(err) }
+		assert socket_client_ip(header, ['127.0.0.1']) == '198.51.100.9'
+		header.set_custom(name, '2001:0db8::9') or { panic(err) }
+		assert socket_client_ip(header, ['127.0.0.1']) == '2001:db8::9'
+		for invalid in ['unknown', '198.51.100.9, 203.0.113.66'] {
+			header.set_custom(name, invalid) or { panic(err) }
+			assert socket_client_ip(header, ['127.0.0.1']) == '127.0.0.1'
+		}
+	}
 }

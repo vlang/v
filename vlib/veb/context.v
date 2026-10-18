@@ -638,34 +638,49 @@ fn peer_ip_from_socket_handle(handle int) string {
 	return address.all_before(':')
 }
 
-
-// resolved_client_ip picks the client address from a socket peer, the
-// `X-Forwarded-For` value that peer sent, and the peers `ip()` may believe.
-// When the peer is not trusted the header is ignored and the peer wins. When
-// it is trusted the answer is the left-most entry that is not itself a proxy
-// we trust; when every entry is trusted the left-most one is the best answer
-// there is.
-fn resolved_client_ip(peer string, forwarded_for string, trusted_proxies []string) string {
-	if peer == '' || peer !in trusted_proxies {
-		return peer
+fn normalized_client_ip(address string) !string {
+	if address.contains(':') {
+		return net.canonical_ipv6(address)
 	}
-	mut entries := forwarded_for.split(',').map(it.trim_space()).filter(it != '')
-	for entry in entries {
-		if entry !in trusted_proxies {
-			return entry
-		}
-	}
-	return entries[0] or { peer }
+	return net.format_ip(net.parse_ip(address)!)
 }
 
-// Returns the ip address of the client.
-// By default this is the address of the socket peer, which a client cannot
-// spoof. Forwarding headers (`CF-Connecting-IP`, `X-Forwarded-For`,
-// `X-Real-Ip`) are honoured only when that peer is trusted: the application
-// declares the peers veb may believe from with a `trusted_proxies` field on
-// its app struct, which the framework copies into every request context.
-// Anything built on `ip()` — rate limiting, audit logs, geo — is only as
-// truthful as that list.
+fn is_trusted_proxy(address string, trusted_proxies []string) bool {
+	ip := normalized_client_ip(address) or { return false }
+	for proxy in trusted_proxies {
+		trusted_ip := normalized_client_ip(proxy) or { continue }
+		if ip == trusted_ip {
+			return true
+		}
+	}
+	return false
+}
+
+// resolved_client_ip walks from the trusted socket peer toward the client,
+// stopping at the nearest untrusted address. An earlier prefix is unverified.
+// An invalid entry stops the walk at the last trusted hop; if every entry is
+// trusted, the left-most entry is the client address.
+fn resolved_client_ip(peer string, forwarded_for string, trusted_proxies []string) string {
+	if !is_trusted_proxy(peer, trusted_proxies) {
+		return peer
+	}
+	mut client := peer
+	entries := forwarded_for.split(',')
+	for i := entries.len - 1; i >= 0; i-- {
+		client = normalized_client_ip(entries[i].trim_space()) or { return client }
+		if !is_trusted_proxy(client, trusted_proxies) {
+			return client
+		}
+	}
+	return client
+}
+
+// ip returns the client's IP address, defaulting to the socket peer.
+// Forwarding headers are honoured only when the peer is in the app's
+// `trusted_proxies []string` field. X-Forwarded-For is walked right to left
+// until the nearest untrusted address. Only when it is absent are
+// CF-Connecting-IP and then X-Real-Ip used; trusted proxies must overwrite
+// or remove these single-address headers received from untrusted clients.
 pub fn (ctx &Context) ip() string {
 	mut peer := ''
 	if ctx.conn != unsafe { nil } {
@@ -674,21 +689,19 @@ pub fn (ctx &Context) ip() string {
 	if peer == '' && ctx.client_fd >= 0 {
 		peer = peer_ip_from_socket_handle(ctx.client_fd)
 	}
-	if peer != '' && peer in ctx.trusted_proxies {
+	if is_trusted_proxy(peer, ctx.trusted_proxies) {
+		xff := ctx.req.header.values(.x_forwarded_for)
+		if xff.len > 0 {
+			return resolved_client_ip(peer, xff.join(','), ctx.trusted_proxies)
+		}
 		if cf := ctx.req.header.get_custom('CF-Connecting-IP') {
-			if cf != '' {
-				return cf
+			if cf.trim_space() != '' {
+				return normalized_client_ip(cf.trim_space()) or { peer }
 			}
 		}
-		xff := ctx.req.header.get(.x_forwarded_for) or {
-			ctx.req.header.get_custom('X-Forwarded-For') or { '' }
-		}
-		if xff != '' {
-			return resolved_client_ip(peer, xff, ctx.trusted_proxies)
-		}
 		if real_ip := ctx.req.header.get_custom('X-Real-Ip') {
-			if real_ip != '' {
-				return real_ip
+			if real_ip.trim_space() != '' {
+				return normalized_client_ip(real_ip.trim_space()) or { peer }
 			}
 		}
 	}
