@@ -13995,6 +13995,7 @@ pub fn run(args []string) {
 				exit(1)
 			}
 		}
+		mut mu_stage_sw := time.new_stopwatch()
 		_ = flat.TypeTextList{ ids: pre_tc.ierror_impl_names() }.names()
 		// Self-host markused is dominated by serial reachability/index work. Build
 		// transform's read-only indexes beside it so the otherwise-idle cores do
@@ -14025,6 +14026,10 @@ pub fn run(args []string) {
 			markused_tc.share_direct_dependencies_from(&pre_tc)
 			markused_tc.enable_scoped_parallel_workers()
 			markused_tc.verbose = prefs.verbose
+		}
+		if verbose {
+			eprintln('  [ttime] mu pre             ${f64(mu_stage_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+			mu_stage_sw.restart()
 		}
 		if no_skip_unused {
 			used_fns, uses_generics = markused.mark_all_used_with_generic_usage(a, markused_tc, test_files)
@@ -14124,10 +14129,17 @@ pub fn run(args []string) {
 		if skip_library_bodies && verbose {
 			eprintln('  [ttime] mu library bodies   ${pre_tc.skipped_library_bodies()} left unchecked, ${pre_tc.library_bodies_checked_late()} checked late (worker threads: ${a.worker_count()})')
 		}
+		if verbose {
+			eprintln('  [ttime] mu mark            ${f64(mu_stage_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+			mu_stage_sw.restart()
+		}
 		mut prepared_transform := if prepare_transform_overlap {
 			prepared_transform_threads[0].wait()
 		} else {
 			transform.prepare_selfhost_transform(a, &pre_tc, false)
+		}
+		if verbose {
+			eprintln('  [ttime] mu tf prepare wait ${f64(mu_stage_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		}
 		b.step('markused')
 		b.metric('reachable symbols', used_fns.len, 'symbols')
