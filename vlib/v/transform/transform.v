@@ -12112,8 +12112,8 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 					raw_source_typ = flat.source_type_id(flat.source_type_name(raw_source_typ)[1..])
 				}
 			} else {
-				typ = mut_optional_param_value_type(typ)
-				raw_source_typ = mut_optional_param_value_type(raw_source_typ)
+				typ = t.mut_optional_param_value_type(typ)
+				raw_source_typ = t.mut_optional_param_value_type(raw_source_typ)
 			}
 		}
 		if flat.source_type_shape(typ).has(.pointer) && raw_typ.len > 0 && !raw_typ.starts_with('&')
@@ -12259,7 +12259,11 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 	t.temp_counter = outer_temp_counter
 }
 
-fn mut_optional_param_value_type(typ_id u32) u32 {
+// mut_optional_param_value_type returns the type of a `mut` optional parameter in the
+// function body. Like the checker (`mut_param_semantic_type`), only a struct payload is
+// passed by reference (`mut a ?T` is `&?&T`, its value `?&T`); any other payload keeps the
+// `&?T` parameter, whose value is `?T`.
+fn (t &Transformer) mut_optional_param_value_type(typ_id u32) u32 {
 	typ := flat.source_type_name(typ_id)
 	mut clean := trimmed_transform_text(typ)
 	if clean.starts_with('mut ') {
@@ -12272,10 +12276,17 @@ fn mut_optional_param_value_type(typ_id u32) u32 {
 		return typ_id
 	}
 	payload := trimmed_transform_text(clean[1..])
-	if payload.starts_with('&') {
+	if payload.starts_with('&') || !t.mut_optional_payload_is_struct(payload) {
 		return flat.source_type_id('?${payload}')
 	}
 	return flat.source_type_id('?&${payload}')
+}
+
+fn (t &Transformer) mut_optional_payload_is_struct(payload string) bool {
+	if isnil(t.tc) {
+		return false
+	}
+	return t.tc.parse_type(t.qualify_type(flat.source_type_id(payload))) is types.Struct
 }
 
 // fn_body_param_types supports fn body param types handling for Transformer.
