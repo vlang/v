@@ -157,10 +157,30 @@ fn (g &FlatGen) interface_dispatch_receiver_expr(concrete_id u32, concrete_param
 			'*(${concrete_cct}*)i->_object'
 		}
 	}
-	concrete_type := g.interface_concrete_type(concrete_id)
+	mut concrete_type := g.interface_concrete_type(concrete_id)
 	expected_type := concrete_params[0]
+	expected_value_type := types.unwrap_pointer(expected_type)
+	mut object_cct := concrete_cct
+	mut object := 'i->_object'
+	if concrete_type is types.Alias && expected_value_type !is types.Unknown {
+		// The box of a pointer alias (`type RecordPtr = &Record`) is a slot holding
+		// the alias pointer. A method that the alias inherits from its pointee takes
+		// the object behind that pointer, not the slot, so follow the stored
+		// pointers down to the storage of the receiver.
+		expected_cct := g.interface_storage_c_type(expected_value_type)
+		for object_cct != expected_cct {
+			stored := types.unalias_type(concrete_type)
+			if stored is types.Pointer {
+				object = '(*(${object_cct}*)${object})'
+				concrete_type = stored.base_type
+				object_cct = g.interface_storage_c_type(concrete_type)
+			} else {
+				break
+			}
+		}
+	}
 	if path := g.embedded_receiver_path_for_expected(concrete_type, expected_type) {
-		base := '(${concrete_cct}*)i->_object'
+		base := '(${object_cct}*)${object}'
 		mut access := base
 		mut access_is_ptr := true
 		for field in path {
@@ -176,16 +196,15 @@ fn (g &FlatGen) interface_dispatch_receiver_expr(concrete_id u32, concrete_param
 	// Generic interface indexes retain the open receiver spelling (Box), while
 	// the selected method signature carries its materialized receiver
 	// (Box[Local]). The boxed object uses the latter storage type.
-	expected_value_type := types.unwrap_pointer(expected_type)
 	storage_cct := if expected_value_type is types.Unknown {
-		concrete_cct
+		object_cct
 	} else {
 		g.interface_storage_c_type(expected_value_type)
 	}
 	return if wants_ptr {
-		'(${storage_cct}*)i->_object'
+		'(${storage_cct}*)${object}'
 	} else {
-		'*(${storage_cct}*)i->_object'
+		'*(${storage_cct}*)${object}'
 	}
 }
 
