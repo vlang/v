@@ -3202,14 +3202,35 @@ fn (g &FlatGen) enum_nonzero_default_expr(typ types.Type) ?string {
 	return g.enum_value_expr_for_type(type_name_id, fields[0])
 }
 
-// fixed_array_has_enum_default reports whether the elements of `fixed`, or of its nested
-// fixed arrays, are enums whose default is not 0, so zeroed storage does not hold them.
+// fixed_array_has_enum_default reports whether the default elements of `fixed` hold an enum
+// whose default is not 0, so zeroed storage does not hold them.
 fn (g &FlatGen) fixed_array_has_enum_default(fixed types.ArrayFixed) bool {
-	elem_type := default_init_unalias_type(fixed.elem_type)
-	if elem_type is types.ArrayFixed {
-		return g.fixed_array_has_enum_default(elem_type)
+	mut visited := map[u32]bool{}
+	return g.type_has_enum_default(fixed.elem_type, mut visited)
+}
+
+// type_has_enum_default reports whether the default value of `typ` holds an enum whose
+// default is not 0: the enum itself, or a fixed array element or by-value struct field of it.
+fn (g &FlatGen) type_has_enum_default(typ types.Type, mut visited map[u32]bool) bool {
+	clean := default_init_unalias_type(typ)
+	if clean is types.ArrayFixed {
+		return g.type_has_enum_default(clean.elem_type, mut visited)
 	}
-	if _ := g.enum_nonzero_default_expr(elem_type) {
+	if clean is types.Struct {
+		type_id := clean.source_type_id()
+		if clean.name().starts_with('C.') || visited[type_id] {
+			return false
+		}
+		visited[type_id] = true
+		fields := g.struct_fields_for_type(type_id) or { return false }
+		for field in fields {
+			if g.type_has_enum_default(field.typ, mut visited) {
+				return true
+			}
+		}
+		return false
+	}
+	if _ := g.enum_nonzero_default_expr(clean) {
 		return true
 	}
 	return false

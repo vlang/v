@@ -2,6 +2,8 @@
 // The default value of an enum is its first member, wherever V fills in a default:
 // fixed array elements, struct fields, the elements of `[]T{len: n}` and the value
 // of a missing map key.
+import os
+
 enum Mode {
 	ready = 3
 	busy
@@ -10,6 +12,11 @@ enum Mode {
 enum Zero {
 	a
 	b
+}
+
+enum Small as u8 {
+	one = 1
+	two
 }
 
 @[flag]
@@ -37,6 +44,7 @@ struct Outer {
 __global global_modes [2]Mode
 __global global_nested [2][2]Mode
 __global global_item Item
+__global global_items [2]Item
 __global global_with_fixed WithFixed
 __global global_map map[string]Mode
 
@@ -108,9 +116,21 @@ fn test_globals() {
 	assert global_modes == [Mode.ready, .ready]!
 	assert global_nested[1] == [Mode.ready, .ready]!
 	assert global_item.mode == .ready
+	assert global_items[1].mode == .ready
 	assert global_with_fixed.modes == [Mode.ready, .ready]!
 	assert global_with_fixed.nested[1] == [Mode.ready, .ready]!
 	assert global_map['missing'] == .ready
+}
+
+fn test_backed_and_module_enums() {
+	small := [2]Small{}
+	assert small == [Small.one, .one]!
+	small_map := map[string]Small{}
+	assert small_map['missing'] == .one
+	signals := [2]os.Signal{}
+	assert signals == [os.Signal.hup, .hup]!
+	signal_map := map[string]os.Signal{}
+	assert signal_map['missing'] == .hup
 }
 
 fn test_zero_and_flag_enums_keep_zero() {
