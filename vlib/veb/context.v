@@ -481,6 +481,20 @@ pub fn (mut ctx Context) server_error(msg string) Result {
 	return ctx.send_response_to_client('text/plain', msg)
 }
 
+// error_with answers a handler that declined to respond and returned an error
+// instead, which is what a `!veb.Result` handler does. The response is a JSON
+// envelope carrying the message. When the handler already chose a status with
+// `ctx.res.set_status`, it is kept, so such handlers still control 4xx
+// themselves; otherwise this is a 500.
+pub fn (mut ctx Context) error_with(err IError) Result {
+	if ctx.res.status_code == 0 {
+		ctx.res.set_status(.internal_server_error)
+	}
+	return ctx.json({
+		'error': err.msg()
+	})
+}
+
 // send an error with a custom status
 pub fn (mut ctx Context) server_error_with_status(s http.Status) Result {
 	ctx.res.set_status(s)
