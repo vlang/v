@@ -9518,6 +9518,11 @@ fn (mut tc TypeChecker) record_invalid_enum_infix(id flat.NodeId, node flat.Node
 }
 
 fn (tc &TypeChecker) expr_is_inside_unsafe_block(id flat.NodeId) bool {
+	// The walk below stops at the function declaration, so a node of a function
+	// without any `unsafe` block is outside of one.
+	if tc.node_outside_unsafe_blocks(int(id)) {
+		return false
+	}
 	mut current := id
 	for _ in 0 .. 32 {
 		// No block holds a function declaration. The parent of a specialized

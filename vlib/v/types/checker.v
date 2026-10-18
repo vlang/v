@@ -1170,6 +1170,8 @@ pub mut:
 	alias_short_names          map[string]bool
 	alias_short_names_count    int = -1
 	const_suffix_key_count     int = -1
+	global_name_bloom          NameBloom // of global_names
+	call_flag_bloom            NameBloom // of the call_info flag tables (call_flag_tables_count)
 	// The last call whose callee generic_compile_error_instantiation found to be
 	// no generic function: its children start, callee name and module.
 	nongeneric_call_start  int = -1
@@ -1635,6 +1637,8 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		sum_type_short_names_count:            tc.sum_type_short_names_count
 		alias_short_names:                     tc.alias_short_names
 		alias_short_names_count:               tc.alias_short_names_count
+		global_name_bloom:                     tc.global_name_bloom
+		call_flag_bloom:                       tc.call_flag_bloom
 		declaration_visibility:                tc.declaration_visibility
 		imports:                               tc.imports
 		file_imports:                          tc.file_imports
@@ -5549,6 +5553,75 @@ fn (mut tc TypeChecker) prepare_check_name_filters() {
 	}
 	tc.alias_short_names = aliases.move()
 	tc.alias_short_names_count = tc.type_aliases.ids.len
+	tc.global_name_bloom = NameBloom{}
+	for name, _ in tc.global_names {
+		tc.global_name_bloom.add(name)
+	}
+	tc.global_name_bloom.count = tc.global_names.len
+	tc.call_flag_bloom = NameBloom{}
+	for name, _ in tc.fn_shared_params {
+		tc.call_flag_bloom.add(name)
+	}
+	for name, _ in tc.fn_variadic {
+		tc.call_flag_bloom.add(name)
+	}
+	for name, _ in tc.c_variadic_fns {
+		tc.call_flag_bloom.add(name)
+	}
+	for name, _ in tc.fn_implicit_veb_ctx {
+		tc.call_flag_bloom.add(name)
+	}
+	tc.call_flag_bloom.count = tc.call_flag_tables_count()
+}
+
+// call_flag_tables_count identifies the sizes of the sparse tables that
+// call_info reads besides the signatures (all smaller than 2^16 entries).
+@[inline]
+fn (tc &TypeChecker) call_flag_tables_count() int {
+	counts := [tc.fn_shared_params.len, tc.fn_variadic.len, tc.c_variadic_fns.len,
+		tc.fn_implicit_veb_ctx.len]!
+	mut count := 0
+	for n in counts {
+		if n >= 65535 {
+			return -2
+		}
+		count = (count << 16) | n
+	}
+	return count
+}
+
+// NameBloom is a 4096-bit bloom filter over the names of a table that had
+// `count` entries when it was filled. A clear bit proves that a name is not in
+// the table, without hashing all of its bytes.
+struct NameBloom {
+mut:
+	count int = -1
+	bits  [64]u64
+}
+
+@[direct_array_access; inline]
+fn name_bloom_bit(name string) u32 {
+	if name.len == 0 {
+		return 0
+	}
+	mut h := u32(name.len) * 0x9e3779b1 ^ u32(name[0]) * 0x85ebca6b
+	h ^= u32(name[name.len - 1]) * 0xc2b2ae35 ^ u32(name[name.len / 2]) * 0x27d4eb2f
+	return (h ^ (h >> 15)) & 4095
+}
+
+fn (mut bloom NameBloom) add(name string) {
+	bit := name_bloom_bit(name)
+	bloom.bits[bit >> 6] |= u64(1) << (bit & 63)
+}
+
+// excludes reports whether `name` is surely not in a table of `count` entries.
+@[direct_array_access; inline]
+fn (bloom &NameBloom) excludes(name string, count int) bool {
+	if bloom.count != count {
+		return false
+	}
+	bit := name_bloom_bit(name)
+	return bloom.bits[bit >> 6] & (u64(1) << (bit & 63)) == 0
 }
 
 // generic_base_view is strip_generic_args_name without a copy of the base.

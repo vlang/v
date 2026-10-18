@@ -9193,7 +9193,8 @@ fn (tc &TypeChecker) non_file_scope_type(name string) ?Type {
 }
 
 fn (tc &TypeChecker) bare_name_is_const_owned_over_global(name string) bool {
-	if name.contains('.') || name !in tc.global_names {
+	if tc.global_name_bloom.excludes(name, tc.global_names.len) || name.contains('.')
+		|| name !in tc.global_names {
 		return false
 	}
 	qname := tc.qualify_name(name)

@@ -4819,7 +4819,8 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 					}
 				}
 			}
-			if !(receiver.kind == .ident && receiver.value == 'C') {
+			// Without bodyless declarations there is no such method to find.
+			if tc.source_no_body_fns.len > 0 && !(receiver.kind == .ident && receiver.value == 'C') {
 				receiver_name := resolve_type_name_for_method(unwrap_pointer(tc.resolve_type(receiver_id)))
 				method_name := '${flat.source_type_name(receiver_name)}.${callee.value}'
 				if method_name in tc.source_no_body_fns && !tc.v_source_fn_has_body(method_name) {
@@ -11394,14 +11395,23 @@ fn (tc &TypeChecker) call_info(name string, has_receiver bool) CallInfo {
 	return_type := tc.alias_return_type_from_text(name) or {
 		tc.fn_ret_types[name] or { unknown_type('unknown return type for `${name}`') }
 	}
-	info := CallInfo{
-		name:                 name
-		shared_params:        tc.fn_shared_params[name] or { []bool{} }
-		return_type:          return_type
-		has_receiver:         has_receiver
-		is_variadic:          tc.fn_variadic[name] or { false }
-		is_c_variadic:        tc.c_variadic_fns[name] or { false }
-		has_implicit_veb_ctx: tc.fn_implicit_veb_ctx[name] or { false }
+	// Most functions are in none of the sparse flag tables.
+	info := if tc.call_flag_bloom.excludes(name, tc.call_flag_tables_count()) {
+		CallInfo{
+			name:         name
+			return_type:  return_type
+			has_receiver: has_receiver
+		}
+	} else {
+		CallInfo{
+			name:                 name
+			shared_params:        tc.fn_shared_params[name] or { []bool{} }
+			return_type:          return_type
+			has_receiver:         has_receiver
+			is_variadic:          tc.fn_variadic[name] or { false }
+			is_c_variadic:        tc.c_variadic_fns[name] or { false }
+			has_implicit_veb_ctx: tc.fn_implicit_veb_ctx[name] or { false }
+		}
 	}
 	if params := tc.fn_param_types[name] {
 		return CallInfo{

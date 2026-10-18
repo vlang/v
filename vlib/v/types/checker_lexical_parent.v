@@ -109,16 +109,18 @@ fn (tc &TypeChecker) lexical_parent_link(id flat.NodeId) (flat.NodeId, flat.Node
 // tests (negated or not), the operands of its `== none` / `!= none` (or nil)
 // comparisons, and its match subjects. Every narrowing the lexical walk finds
 // is named by one of them, also through a bool condition saved in a local
-// (whose initializer is in the same function). The keys are taken on the first
-// query of the range.
+// (whose initializer is in the same function). It also records whether the
+// range has an `unsafe` block at all. Both are taken on the first query of the
+// range.
 @[heap]
 struct SmartcastKeyFilter {
 mut:
-	lo    int = -1
-	hi    int = -1
-	ready bool
-	keys  []string
-	index map[string]bool
+	lo               int = -1
+	hi               int = -1
+	ready            bool
+	has_unsafe_block bool
+	keys             []string
+	index            map[string]bool
 }
 
 const smartcast_key_filter_linear = 16
@@ -161,10 +163,16 @@ fn (tc &TypeChecker) collect_smartcast_keys(mut filter SmartcastKeyFilter) {
 	if filter.index.len > 0 {
 		filter.index.clear()
 	}
+	filter.has_unsafe_block = false
 	hi := int_min(filter.hi, tc.a.nodes.len - 1)
 	for i in filter.lo .. hi + 1 {
 		node := unsafe { &tc.a.nodes[i] }
 		match node.kind {
+			.block {
+				if node.value == 'unsafe' {
+					filter.has_unsafe_block = true
+				}
+			}
 			.is_expr, .match_stmt {
 				if node.children_count > 0 {
 					filter.add(tc.expr_key(tc.a.child(node, 0)))
@@ -185,6 +193,22 @@ fn (tc &TypeChecker) collect_smartcast_keys(mut filter SmartcastKeyFilter) {
 		}
 	}
 	filter.ready = true
+}
+
+// node_outside_unsafe_blocks reports that the node `idx` of the function being
+// checked has no `unsafe` block around it, as that function has none.
+fn (tc &TypeChecker) node_outside_unsafe_blocks(idx int) bool {
+	if isnil(tc.smartcast_key_filter) {
+		return false
+	}
+	mut filter := tc.smartcast_key_filter
+	if idx < filter.lo || idx > filter.hi || filter.lo < 0 {
+		return false
+	}
+	if !filter.ready {
+		tc.collect_smartcast_keys(mut filter)
+	}
+	return !filter.has_unsafe_block
 }
 
 // lexical_smartcast_key_unused reports that no lexical smartcast of the
