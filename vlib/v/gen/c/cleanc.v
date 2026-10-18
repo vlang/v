@@ -24627,6 +24627,12 @@ fn (mut g FlatGen) queue_global_struct_field_defaults(target string, struct_name
 				continue
 			}
 			clean_field_type := default_init_unalias_type(field_type)
+			if clean_field_type is types.ArrayFixed
+				&& g.fixed_array_has_enum_default(clean_field_type) {
+				g.queue_runtime_init_for_module(g.fixed_array_default_fill_stmt(field_target,
+					clean_field_type), init_module)
+				continue
+			}
 			if clean_field_type is types.Struct && !clean_field_type.name().starts_with('C.') && g.struct_needs_default_init(clean_field_type.source_type_id()) {
 				g.queue_global_struct_field_defaults(field_target, clean_field_type.source_type_id(), init_module, mut visited)
 			}
@@ -24655,8 +24661,8 @@ fn (mut g FlatGen) queue_global_struct_field_defaults(target string, struct_name
 }
 
 // global_struct_unset_field_value returns the value `Struct{}` gives an omitted
-// dynamic array, map, channel or `shared` field. C's zero initialization of a
-// global leaves those fields unusable.
+// dynamic array, map, channel or `shared` field, or an enum field whose default is
+// not 0. C's zero initialization of a global leaves those fields unusable or wrong.
 fn (mut g FlatGen) global_struct_unset_field_value(struct_name_id u32, field_name string, field_type types.Type) ?string {
 	if raw_source_id_2, module_name := g.shared_array_field_raw_type(struct_name_id, field_name) {
 		raw := raw_source_id_2
@@ -24682,7 +24688,15 @@ fn (mut g FlatGen) global_struct_unset_field_value(struct_name_id u32, field_nam
 	if clean is types.Map || clean is types.Array || clean is types.Channel {
 		return g.default_value_to_string(field_type)
 	}
-	return none
+	return g.enum_nonzero_default_expr(clean)
+}
+
+// fixed_array_default_fill_stmt copies the default elements of `fixed` into the fixed
+// array storage `target`.
+fn (mut g FlatGen) fixed_array_default_fill_stmt(target string, fixed types.ArrayFixed) string {
+	c_elem, dims := g.fixed_array_decl_parts(fixed)
+	initializer := g.empty_fixed_array_initializer_string(fixed)
+	return '\tmemmove(${target}, (${c_elem}${dims})${initializer}, sizeof(${target}));'
 }
 
 fn (mut g FlatGen) global_storage_type(name string, typ types.Type) types.Type {
@@ -24932,6 +24946,12 @@ fn (mut g FlatGen) emit_global_inits() {
 				if clean_type is types.Channel {
 					elem_ct := g.value_sizeof_target(clean_type.elem_type)
 					g.queue_runtime_init('\t${g.global_c_name(qname)} = sync__new_channel_st((u32)(0), (u32)(sizeof(${elem_ct})));')
+					continue
+				}
+				if clean_type is types.ArrayFixed && g.fixed_array_has_enum_default(clean_type) {
+					// Static zero initialization does not hold the first enum value.
+					g.queue_runtime_init(g.fixed_array_default_fill_stmt(g.global_c_name(qname),
+						clean_type))
 					continue
 				}
 				g.queue_global_struct_default_init(qname, typ)
@@ -26314,7 +26334,7 @@ fn (mut g FlatGen) write_fixed_array_value_initializer_from_text(mut builder str
 }
 
 fn (mut g FlatGen) write_empty_fixed_array_initializer(mut builder strings.Builder, fixed types.ArrayFixed) {
-	if fixed_array_empty_initializer_is_zero(fixed) {
+	if g.fixed_array_empty_initializer_is_zero(fixed) {
 		builder.write_string('{0}')
 		return
 	}
@@ -26339,10 +26359,13 @@ fn (mut g FlatGen) write_empty_fixed_array_initializer(mut builder strings.Build
 	builder.write_u8(`}`)
 }
 
-fn fixed_array_empty_initializer_is_zero(fixed types.ArrayFixed) bool {
+fn (g &FlatGen) fixed_array_empty_initializer_is_zero(fixed types.ArrayFixed) bool {
 	elem_type := default_init_unalias_type(fixed.elem_type)
 	if elem_type is types.ArrayFixed {
-		return fixed_array_empty_initializer_is_zero(elem_type)
+		return g.fixed_array_empty_initializer_is_zero(elem_type)
+	}
+	if elem_type is types.Enum {
+		return !g.fixed_array_has_enum_default(fixed)
 	}
 	return elem_type !is types.Array && elem_type !is types.Struct && elem_type !is types.Map
 }
@@ -26359,6 +26382,10 @@ fn (mut g FlatGen) write_fixed_array_default_elem_initializer(mut builder string
 	}
 	if elem_type is types.Map {
 		builder.write_string(g.new_map_expr_string(elem_type.key_type, elem_type.value_type))
+		return
+	}
+	if default_expr := g.enum_nonzero_default_expr(elem_type) {
+		builder.write_string(default_expr)
 		return
 	}
 	builder.write_u8(`0`)

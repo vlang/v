@@ -780,6 +780,13 @@ fn (mut g FlatGen) gen_unset_struct_field_default(struct_name_id u32, field_name
 			g.write('}')
 			return true
 		}
+		if g.fixed_array_has_enum_default(fixed) {
+			if has {
+				g.write(', ')
+			}
+			g.write('.${field_c_name} = ${g.empty_fixed_array_initializer_string(fixed)}')
+			return true
+		}
 	}
 	if g.field_needs_default_init(clean_type) {
 		if has {
@@ -3161,6 +3168,74 @@ fn (g &FlatGen) enum_default_value_expr_for_type(type_name_id u32) ?string {
 	return '0'
 }
 
+// enum_nonzero_default_expr returns the C value of an enum's default, its first member,
+// when that value is not 0. Zeroed storage already holds the default of the other enums,
+// and of flag enums, whose default is 0.
+fn (g &FlatGen) enum_nonzero_default_expr(typ types.Type) ?string {
+	clean := default_init_unalias_type(typ)
+	if clean !is types.Enum {
+		return none
+	}
+	enum_type := clean as types.Enum
+	type_name_id := enum_type.name_id
+	if enum_type.is_flag || g.enum_type_name_is_flag(type_name_id) {
+		return none
+	}
+	fields := g.enum_fields_for_type(type_name_id) or { return none }
+	if fields.len == 0 {
+		return none
+	}
+	mut first_value := i64(0)
+	if value := g.enum_value_for_type(type_name_id, fields[0]) {
+		first_value = i64(value)
+	} else if _ := g.enum_backing_info(type_name_id) {
+		// Backed enums (`enum E as u8`) keep only symbolic values.
+		enum_name := flat.source_type_name(type_name_id).trim_string_left('main.')
+		values := g.tc.comptime_enum_decl_field_values(flat.source_type_id(enum_name))
+		first_value = values[fields[0]] or { return none }
+	} else {
+		return none
+	}
+	if first_value == 0 {
+		return none
+	}
+	return g.enum_value_expr_for_type(type_name_id, fields[0])
+}
+
+// fixed_array_has_enum_default reports whether the default elements of `fixed` hold an enum
+// whose default is not 0, so zeroed storage does not hold them.
+fn (g &FlatGen) fixed_array_has_enum_default(fixed types.ArrayFixed) bool {
+	mut visited := map[u32]bool{}
+	return g.type_has_enum_default(fixed.elem_type, mut visited)
+}
+
+// type_has_enum_default reports whether the default value of `typ` holds an enum whose
+// default is not 0: the enum itself, or a fixed array element or by-value struct field of it.
+fn (g &FlatGen) type_has_enum_default(typ types.Type, mut visited map[u32]bool) bool {
+	clean := default_init_unalias_type(typ)
+	if clean is types.ArrayFixed {
+		return g.type_has_enum_default(clean.elem_type, mut visited)
+	}
+	if clean is types.Struct {
+		type_id := clean.source_type_id()
+		if clean.name().starts_with('C.') || visited[type_id] {
+			return false
+		}
+		visited[type_id] = true
+		fields := g.struct_fields_for_type(type_id) or { return false }
+		for field in fields {
+			if g.type_has_enum_default(field.typ, mut visited) {
+				return true
+			}
+		}
+		return false
+	}
+	if _ := g.enum_nonzero_default_expr(clean) {
+		return true
+	}
+	return false
+}
+
 fn (g &FlatGen) enum_type_name_is_flag(type_name_id u32) bool {
 	type_name := flat.source_type_name(type_name_id)
 	if type_name in g.tc.flag_enums || g.tc.qualify_name(type_name) in g.tc.flag_enums {
@@ -3296,7 +3371,8 @@ fn (mut g FlatGen) struct_needs_default_init_inner(type_name_id u32, mut visited
 			continue
 		}
 		if fixed := array_fixed_type(clean_ftyp) {
-			if fixed_array_elem_needs_runtime_header(fixed.elem_type) {
+			if fixed_array_elem_needs_runtime_header(fixed.elem_type)
+				|| g.fixed_array_has_enum_default(fixed) {
 				found = true
 			}
 		}

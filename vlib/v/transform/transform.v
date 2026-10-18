@@ -239,6 +239,7 @@ mut:
 	// repeated uses of the same array constant in one transform worker.
 	const_array_fixed_storage_cache     map[string]i8
 	enum_types                          map[string][]string
+	enum_explicit_first_values          map[string]bool // the first member has a value, maybe not 0
 	enum_backing_types                  flat.TypeTextBindings
 	runtime_type_indexes                map[u32]int
 	cur_file                            string
@@ -3869,9 +3870,13 @@ fn (mut t Transformer) collect_types() {
 			}
 			.enum_decl {
 				mut field_names := []string{}
+				mut explicit_first_value := false
 				for i in 0 .. node.children_count {
 					f := t.a.child_node(&node, i)
 					if f.kind == .enum_field {
+						if field_names.len == 0 {
+							explicit_first_value = f.children_count > 0
+						}
 						field_names << f.value
 					}
 				}
@@ -3884,8 +3889,14 @@ fn (mut t Transformer) collect_types() {
 				if cur_mod.len > 0 && cur_mod != 'main' && cur_mod != 'builtin' {
 					qname := '${cur_mod}.${node.value}'
 					t.enum_types[qname] = field_names
+					if explicit_first_value {
+						t.enum_explicit_first_values[qname] = true
+					}
 					if node.value !in t.enum_types {
 						t.enum_types[node.value] = field_names
+						if explicit_first_value {
+							t.enum_explicit_first_values[node.value] = true
+						}
 						if backing_storage_type != 0 {
 							t.enum_backing_types.set_id(node.value, backing_storage_type)
 						}
@@ -3895,6 +3906,9 @@ fn (mut t Transformer) collect_types() {
 					}
 				} else {
 					t.enum_types[node.value] = field_names
+					if explicit_first_value {
+						t.enum_explicit_first_values[node.value] = true
+					}
 					if backing_storage_type != 0 {
 						t.enum_backing_types.set_id(node.value, backing_storage_type)
 					}
@@ -5208,6 +5222,7 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 			map[string]i8{}
 		}
 		enum_types:                          t.enum_types
+		enum_explicit_first_values:          t.enum_explicit_first_values
 		enum_backing_types:                  fork_prepared_type_bindings(t.enum_backing_types)
 		runtime_type_indexes:                t.runtime_type_indexes
 		generic_alias_names:                 t.generic_alias_names
