@@ -84,6 +84,62 @@ fn main() {
 	}
 }
 
+fn test_calls_in_sort_receivers_are_kept() {
+	a, tc, mut prepared := check_builtin_method_receiver_source('sort', 'module main
+
+fn pick() int {
+	return 0
+}
+
+fn pick_descending() int {
+	return 0
+}
+
+fn pick_fixed() int {
+	return 0
+}
+
+fn main() {
+	mut groups := [[3, 1]]
+	groups[pick()].sort()
+	groups[pick_descending()].sort(a > b)
+	mut fixed_groups := [[3, 1]!]
+	fixed_groups[pick_fixed()].sort()
+}
+')
+	assert tc.errors.len == 0, tc.errors.str()
+	used := mark_used_without_generic_detection_prepared(a, tc, mut prepared)
+	prepared.release()
+	dependencies := main_fn_dependencies(a, tc)
+	for name in ['pick', 'pick_descending', 'pick_fixed'] {
+		assert used[name], name
+		assert name in dependencies, name
+	}
+}
+
+fn test_errors_in_sort_receivers_are_reported() {
+	_, tc, mut prepared := check_builtin_method_receiver_source('sort_errors', "module main
+
+fn pick(x int) int {
+	return x
+}
+
+fn main() {
+	mut groups := [[3, 1]]
+	groups[pick('a')].sort()
+	groups[pick('b')].sort(a > b)
+	mut fixed_groups := [[3, 1]!]
+	fixed_groups[pick('c')].sort()
+}
+")
+	prepared.release()
+	messages := tc.errors.map(it.msg)
+	assert messages.len == 3, messages.str()
+	for message in messages {
+		assert message == 'cannot use `string` as `int` in argument 1 to `pick`', message
+	}
+}
+
 // The receiver of a builtin array or map method is checked like any other receiver.
 fn test_errors_in_builtin_method_receivers_are_reported() {
 	_, tc, mut prepared := check_builtin_method_receiver_source('errors', "module main
