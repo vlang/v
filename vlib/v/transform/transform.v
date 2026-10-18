@@ -501,6 +501,9 @@ mut:
 	// Discarded call results may be reclaimed only for functions in this frozen pre-pass map.
 	exclusive_closure_return_fns   map[string]bool
 	exclusive_closure_returns_done bool
+	// closure_scan_beside_borrow_prescan lets the master run the closure-return
+	// scan while the borrow-summary prescan helpers work (self-host preparation).
+	closure_scan_beside_borrow_prescan bool
 	// mut_fixed_array_capture_sources records locals captured as `mut` fixed arrays by
 	// closures that are not proven local. Their storage is moved to the heap so the outer
 	// binding and escaped closure context keep sharing the same durable array.
@@ -1340,9 +1343,12 @@ pub fn prepare_selfhost_transform(a &flat.FlatAst, tc &types.TypeChecker, enable
 	mut t := new_transformer_view(a, prep_tc, map[string]bool{})
 	configure_transformer(mut t, true, true, true, true, false, unsafe { nil })
 	t.retain_prescan_scopes = true
+	t.closure_scan_beside_borrow_prescan = true
 	t.prepare_with_pre_scans()
+	t.closure_scan_beside_borrow_prescan = false
 	// This whole-AST scan is independent of reachability and otherwise leaves
-	// the persistent worker pool idle at the start of transform.
+	// the persistent worker pool idle at the start of transform. It has usually
+	// run already, beside the borrow-summary prescan.
 	t.collect_exclusive_closure_return_fns()
 	prepared = &PreparedSelfhostTransform{
 		transformer: t

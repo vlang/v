@@ -3472,11 +3472,21 @@ fn (mut t Transformer) prescan_fixed_array_borrow_bodies(candidates []BorrowCand
 			end:        bounds[ci + 1]
 		}
 	}
-	mut threads := []thread voidptr{cap: n_jobs - 1}
-	for ci in 1 .. n_jobs {
+	// The self-host preparation gives the master the closure-return scan instead
+	// of a share. It reads only the AST and the checker, whose type cache is
+	// frozen for the helpers; the helpers forked the map it fills.
+	scan_closures := t.closure_scan_beside_borrow_prescan && !t.exclusive_closure_returns_done
+	first_helper := if scan_closures { 0 } else { 1 }
+	mut threads := []thread voidptr{cap: n_jobs}
+	for ci in first_helper .. n_jobs {
 		threads << spawn borrow_prescan_thread(unsafe { voidptr(&args[ci]) })
 	}
-	borrow_prescan_thread(unsafe { voidptr(&args[0]) })
+	if scan_closures {
+		t.exclusive_closure_return_fns = map[string]bool{}
+		t.collect_exclusive_closure_return_fns()
+	} else {
+		borrow_prescan_thread(unsafe { voidptr(&args[0]) })
+	}
 	threads.wait()
 	t.tc.unfreeze_type_cache_after_forks()
 	mut scopes := []voidptr{cap: n_jobs}
