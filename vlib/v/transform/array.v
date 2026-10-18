@@ -2152,6 +2152,11 @@ fn (mut t Transformer) clone_borrowed_storage_projection(source_id flat.NodeId, 
 		return cloned
 	}
 	source := t.a.node(t.unwrap_parens(source_id))
+	if source.kind == .block && source.value == 'unsafe' {
+		// `mut alias := unsafe { values[..] }` explicitly keeps borrowing the source's
+		// storage, so writes through the alias stay visible through `values`.
+		return value
+	}
 	if source.kind == .prefix && source.op == .amp
 		&& flat.source_type_shape(t.comptime_normalize_type_alias_chain(typ_id)).has(.pointer) {
 		return t.clone_owned_array_storage_value_with_pointer_borrow(value, typ_id,
