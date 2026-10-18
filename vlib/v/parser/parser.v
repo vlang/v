@@ -157,6 +157,8 @@ mut:
 	// it indexes, and whether a scan holds it right now.
 	sizeof_scan_tokens []InlineAsmScanToken
 	sizeof_scan_busy   bool
+	// The line table that the resolvers of a const prepass share.
+	prepass_lines PrepassLineFile
 	// The sources that a parallel parse batch read once for all of its passes
 	// (see parse_files_dispatch); nil outside of such a batch.
 	batch_sources                     &BatchSources = unsafe { nil }

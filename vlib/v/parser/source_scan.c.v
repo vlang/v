@@ -1,5 +1,7 @@
 module parser
 
+import v.token
+
 // source_index_u8 returns the index of the first byte `c` of `src` at or after
 // `start`, or -1 without one. The parser asks a few questions of a whole source
 // before it parses it; this answers them at the speed of the C library's scan
@@ -16,6 +18,15 @@ fn source_index_u8(src string, c u8, start int) int {
 	return int(unsafe { found - src.str })
 }
 
+// PrepassLineFile is the line table of the source that a const prepass reads,
+// for the positions of pseudo variables in its comptime conditions.
+struct PrepassLineFile {
+	src  voidptr
+	len  int
+	path string
+	file &token.File = unsafe { nil }
+}
+
 // BatchSources holds the sources of the files of one parallel parse batch, by
 // the index of each file in the batch paths. The first pass of the batch reads
 // them once for all of its passes, into memory of the C allocator, so the
@@ -26,6 +37,9 @@ struct BatchSources {
 mut:
 	sources []string
 	index   map[string]int
+	// The const names of the batch and before it, once the first pass found them.
+	const_names     map[string]bool
+	has_const_names bool
 }
 
 fn new_batch_sources(paths []string) &BatchSources {
