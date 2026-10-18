@@ -4512,9 +4512,12 @@ fn (tc &TypeChecker) fixed_array_reference_is_call_borrow(id flat.NodeId) bool {
 			continue
 		}
 		// Like V1, a cast such as `voidptr(&buf[0])` or `u64(&buf[0]) + 8` that
-		// goes straight into a call is still only a borrow for that call.
+		// goes straight into a call is still only a borrow for that call, and so
+		// is a comparison such as `voidptr(&buf[0]) == p`, whose bool result
+		// cannot carry the pointer anywhere.
 		if parent.kind != .paren && parent.kind != .cast_expr
-			&& !(parent.kind == .infix && parent.op in [.plus, .minus]) {
+			&& !(parent.kind == .infix && parent.op in [.plus, .minus, .eq, .ne, .lt, .gt, .le,
+				.ge]) {
 			return false
 		}
 		current = parent_id
