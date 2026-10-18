@@ -19674,13 +19674,21 @@ fn collect_v3_directory_user_files_rec(mut a flat.FlatAst, module_root string, d
 }
 
 fn append_v3_directory_user_files(mut a flat.FlatAst, dir string, prefs &pref.Preferences, is_test_command bool, mut seen map[string]bool, mut files []string) {
+	// Every listed file resolves through `dir`: resolve the directory once.
+	mut real_dir := ''
 	for file in prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(dir, prefs.user_defines,
 		prefs.backend, prefs.target)) {
-		append_unique_file(mut a, mut files, mut seen, file)
+		if real_dir.len == 0 {
+			real_dir = os.real_path(dir)
+		}
+		append_unique_listed_file(mut a, mut files, mut seen, file, real_dir)
 	}
 	if is_test_command {
 		for file in prefs.without_excluded(pref.get_test_v_files_from_dir_for_target(dir, prefs.user_defines, prefs.backend, prefs.target)) {
-			append_unique_file(mut a, mut files, mut seen, file)
+			if real_dir.len == 0 {
+				real_dir = os.real_path(dir)
+			}
+			append_unique_listed_file(mut a, mut files, mut seen, file, real_dir)
 		}
 	}
 }
@@ -19899,6 +19907,17 @@ fn v3_rerun_with_builtin_arena(args []string, question string) {
 
 fn append_unique_file(mut a flat.FlatAst, mut files []string, mut seen map[string]bool, file string) {
 	key := a.record_source_path(file)
+	if seen[key] {
+		return
+	}
+	seen[key] = true
+	files << file
+}
+
+// append_unique_listed_file is append_unique_file for an entry of the directory
+// listing that `real_dir` is the os.real_path of.
+fn append_unique_listed_file(mut a flat.FlatAst, mut files []string, mut seen map[string]bool, file string, real_dir string) {
+	key := a.record_listed_source_path(file, real_dir)
 	if seen[key] {
 		return
 	}
