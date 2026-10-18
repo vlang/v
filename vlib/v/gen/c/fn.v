@@ -7924,7 +7924,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 		arg_id := g.a.child(node, 1)
 		arg_node := g.a.nodes[int(arg_id)]
 		if !g.gen_isnil_fn_value_arg(arg_id, arg_node) {
-			if arg_node.kind == .ident || cgen_type_is_pointer_like(g.tc.resolve_type(arg_id)) {
+			if arg_node.kind == .ident || cgen_type_is_pointer_like(g.body_resolve_type(arg_id)) {
 				g.gen_expr(arg_id)
 			} else {
 				g.gen_call_args('isnil', node, 1)
@@ -8031,7 +8031,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 	}
 	if fn_node.kind == .selector && fn_node.value == 'close' {
 		base_id := g.a.child(fn_node, 0)
-		base_type := g.tc.resolve_type(base_id)
+		base_type := g.body_resolve_type(base_id)
 		if cgen_is_channel_close_receiver_type(base_type) {
 			g.gen_channel_close_call(base_id, node)
 			return
@@ -8835,7 +8835,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 				// local fn variable): the callee is not a named function, so recover the
 				// parameter types from the value's own function type. This lets `mut` /
 				// pointer arguments receive their `&` exactly as a direct call would.
-				if ft := fn_type_from(g.tc.resolve_type(g.a.child(node, 0))) {
+				if ft := fn_type_from(g.body_resolve_type(g.a.child(node, 0))) {
 					param_types = ft.params.clone()
 				}
 			}
@@ -9093,14 +9093,14 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 				}
 				if is_c_call && arg_idx < typed_param_count {
 					if fixed := array_fixed_type(param_types[arg_idx]) {
-						if _ := array_fixed_type(g.tc.resolve_type(arg_id)) {
+						if _ := array_fixed_type(g.body_resolve_type(arg_id)) {
 							if g.gen_cabi_fixed_array_data_arg(arg_id, fixed) {
 								continue
 							}
 						}
 					}
 				}
-				if fixed := array_fixed_type(g.tc.resolve_type(arg_id)) {
+				if fixed := array_fixed_type(g.body_resolve_type(arg_id)) {
 					g.gen_fixed_array_data_arg(arg_id, fixed)
 					continue
 				}
@@ -9163,7 +9163,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 							g.gen_variadic_array_args(node, i, variadic_type.elem_type)
 							break
 						}
-						arg_type := cgen_unalias_type(g.tc.resolve_type(arg_id))
+						arg_type := cgen_unalias_type(g.body_resolve_type(arg_id))
 						if arg_type !is types.Array || arg_node.kind == .struct_init {
 							c_elem := g.tc.c_type(variadic_type.elem_type)
 							g.write('new_array_from_c_array(1, 1, sizeof(${c_elem}), (${c_elem}[]){')
@@ -9667,7 +9667,7 @@ fn (g &FlatGen) receiver_base_type(base_id flat.NodeId) types.Type {
 			return typ
 		}
 	}
-	return g.tc.resolve_type(base_id)
+	return g.body_resolve_type(base_id)
 }
 
 fn (g &FlatGen) global_type_for_ident(name string) ?types.Type {
@@ -14280,7 +14280,7 @@ fn (g &FlatGen) fn_value_call_param_types(callee_id flat.NodeId) ?[]types.Type {
 		}
 	}
 	if node.kind != .ident {
-		if ft := fn_type_from(g.tc.resolve_type(callee_id)) {
+		if ft := fn_type_from(g.body_resolve_type(callee_id)) {
 			return fn_type_effective_params(ft)
 		}
 	}
@@ -14950,14 +14950,14 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 		}
 		if is_c_call && arg_idx < typed_param_count {
 			if fixed := array_fixed_type(param_types[arg_idx]) {
-				if _ := array_fixed_type(g.tc.resolve_type(arg_id)) {
+				if _ := array_fixed_type(g.body_resolve_type(arg_id)) {
 					if g.gen_cabi_fixed_array_data_arg(arg_id, fixed) {
 						continue
 					}
 				}
 			}
 		}
-		if fixed := array_fixed_type(g.tc.resolve_type(arg_id)) {
+		if fixed := array_fixed_type(g.body_resolve_type(arg_id)) {
 			g.gen_fixed_array_data_arg(arg_id, fixed)
 			continue
 		}
@@ -15086,7 +15086,7 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 			break
 		}
 		if variadic_idx >= 0 && arg_idx == variadic_idx && num_args == param_types.len {
-			arg_type := cgen_unalias_type(g.tc.resolve_type(arg_id))
+			arg_type := cgen_unalias_type(g.body_resolve_type(arg_id))
 			// A struct literal can never itself be the variadic array; the checker
 			// propagates the expected `[]T` onto the node, masking its own type.
 			if arg_type !is types.Array || arg_node.kind == .struct_init {
@@ -16529,7 +16529,7 @@ fn (g &FlatGen) find_alias_method(target_id u32, method string) ?string {
 
 // gen_sum_variant_arg emits sum variant arg output for c.
 fn (mut g FlatGen) gen_sum_variant_arg(arg_id flat.NodeId, expected types.Type) bool {
-	actual0 := types.unwrap_pointer(g.tc.resolve_type(arg_id))
+	actual0 := types.unwrap_pointer(g.body_resolve_type(arg_id))
 	mut actual := actual0
 	if actual0 is types.Alias {
 		actual = actual0.base_type
@@ -16552,7 +16552,7 @@ fn (mut g FlatGen) gen_sum_variant_arg(arg_id flat.NodeId, expected types.Type) 
 	if variant_id !in variants {
 		return false
 	}
-	is_ptr_arg := g.tc.resolve_type(arg_id) is types.Pointer
+	is_ptr_arg := g.body_resolve_type(arg_id) is types.Pointer
 	is_ref_variant := g.variant_references_sum(variant_id, sum_name_id)
 	if is_ref_variant {
 		g.write('(*')

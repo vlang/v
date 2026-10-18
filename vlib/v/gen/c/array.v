@@ -550,7 +550,7 @@ fn (mut g FlatGen) gen_fixed_array_pointer_lvalue_arg(id flat.NodeId, expected t
 		return false
 	}
 	node := g.a.nodes[int(id)]
-	mut actual := g.tc.resolve_type(id)
+	mut actual := g.body_resolve_type(id)
 	if node.kind == .ident {
 		if param_type := g.current_param_type(node.value) {
 			actual = param_type

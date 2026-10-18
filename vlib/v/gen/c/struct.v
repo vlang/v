@@ -212,7 +212,7 @@ fn (mut g FlatGen) struct_init_effective_type_name(id flat.NodeId, node flat.Nod
 	// (`geometry.Box[int]`) for this expression.
 	source_base := node.value.trim_left('&?!').all_before('[').all_after_last('.')
 	if source_base.len > 0 {
-		resolved := g.tc.expr_type(id) or { g.tc.resolve_type(id) }
+		resolved := g.tc.expr_type(id) or { g.body_resolve_type(id) }
 		resolved_value := default_init_unalias_type(types.unwrap_pointer(resolved))
 		if resolved_value is types.Struct
 			&& resolved_value.name().all_before('[').all_after_last('.') == source_base {

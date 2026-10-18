@@ -562,6 +562,15 @@ mut:
 	call_ret_values []types.Type
 	field_queries   []BodyFieldTypeQuery
 	method_queries  []BodyMethodQuery
+	// selector_declared_type results of selector nodes, tagged like `ids`/`gens`.
+	sel_ids    []int
+	sel_gens   []u32
+	sel_found  []bool
+	sel_values []types.Type
+	// Checker resolutions of nodes (body_resolve_type), tagged like `ids`/`gens`.
+	resolve_ids    []int
+	resolve_gens   []u32
+	resolve_values []types.Type
 }
 
 @[heap]
@@ -592,6 +601,13 @@ fn (mut g FlatGen) begin_usable_expr_type_memo() {
 			call_ret_values: unsafe { []types.Type{len: usable_expr_type_memo_slots} }
 			field_queries:   []BodyFieldTypeQuery{len: body_field_type_query_slots}
 			method_queries:  []BodyMethodQuery{len: body_method_query_slots}
+			sel_ids:         []int{len: usable_expr_type_memo_slots}
+			sel_gens:        []u32{len: usable_expr_type_memo_slots}
+			sel_found:       []bool{len: usable_expr_type_memo_slots}
+			sel_values:      unsafe { []types.Type{len: usable_expr_type_memo_slots} }
+			resolve_ids:     []int{len: usable_expr_type_memo_slots}
+			resolve_gens:    []u32{len: usable_expr_type_memo_slots}
+			resolve_values:  unsafe { []types.Type{len: usable_expr_type_memo_slots} }
 		}
 	}
 	mut memo := g.usable_expr_type_memo
@@ -605,6 +621,12 @@ fn (mut g FlatGen) begin_usable_expr_type_memo() {
 		}
 		for i in 0 .. memo.call_ret_gens.len {
 			memo.call_ret_gens[i] = 0
+		}
+		for i in 0 .. memo.sel_gens.len {
+			memo.sel_gens[i] = 0
+		}
+		for i in 0 .. memo.resolve_gens.len {
+			memo.resolve_gens[i] = 0
 		}
 		for i in 0 .. memo.field_queries.len {
 			memo.field_queries[i] = BodyFieldTypeQuery{}
@@ -1039,6 +1061,9 @@ mut:
 	emitted_fn_ptr_typedefs         map[string]bool
 	c_extern_refs                   map[string]bool
 	c_extern_refs_ready             bool
+	// Set on forks that read the master's complete, frozen c_extern_refs instead
+	// of a copy; they have nothing of their own to merge back.
+	c_extern_refs_shared            bool
 	parallel_prepared               bool
 	scoped_fn_items_scope           voidptr
 	scoped_fn_output_path           string
@@ -1049,9 +1074,13 @@ mut:
 	local_global_shadow_facts       &ContextNameFactCache = unsafe { nil }
 	local_global_suffix_names       map[string]bool
 	local_global_suffix_names_ready bool
-	generic_app_cache               &GenericAppCache = unsafe { nil }
-	want_parallel_prep              bool
-	want_parallel_c_extern_prep     bool
+	// C names a local must not take because a typedef already uses them; see
+	// precompute_c_typedef_shadow_names.
+	c_typedef_shadow_names       map[string]bool
+	c_typedef_shadow_names_ready bool
+	generic_app_cache            &GenericAppCache = unsafe { nil }
+	want_parallel_prep           bool
+	want_parallel_c_extern_prep  bool
 	// Set while selected items' C-extern refs still have to be collected: the
 	// fused prep walk defers them to the parallel exact-cost pass, which falls
 	// back to a serial top-up when it cannot run.
@@ -1824,6 +1853,7 @@ pub fn FlatGen.new() FlatGen {
 		mut_recv_facts:                     &FnNameFactCache{}
 		local_global_shadow_facts:          &ContextNameFactCache{}
 		local_global_suffix_names:          map[string]bool{}
+		c_typedef_shadow_names:             map[string]bool{}
 		generic_app_cache:                  &GenericAppCache{}
 		cached_support_identifiers:         map[string]bool{}
 		str_lits:                           []string{}
@@ -3845,6 +3875,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.local_global_shadow_facts = &ContextNameFactCache{}
 	g.local_global_suffix_names.clear()
 	g.local_global_suffix_names_ready = false
+	g.c_typedef_shadow_names.clear()
+	g.c_typedef_shadow_names_ready = false
 	g.generic_app_cache = &GenericAppCache{}
 	g.want_parallel_prep = false
 	g.want_parallel_c_extern_prep = false
@@ -3885,6 +3917,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.precompute_qualified_struct_c_types()
 	g.precompute_const_short_index()
 	g.precompute_local_global_suffix_names()
+	g.precompute_c_typedef_shadow_names()
 	g.timing_profile('  [ttime] cg collect_info    ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	cgsw.restart()
 	mut parallel_support_precomputed := false
@@ -14010,7 +14043,7 @@ fn (g &FlatGen) sum_variant_accepts_actual(actual types.Type, variant types.Type
 }
 
 fn (mut g FlatGen) sum_cast_actual_type(id flat.NodeId) types.Type {
-	mut actual_type := g.tc.resolve_type(id)
+	mut actual_type := g.body_resolve_type(id)
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
 		return actual_type
 	}
@@ -14269,7 +14302,35 @@ fn (g &FlatGen) pointer_variant_expr_creates_owned_value(id flat.NodeId) bool {
 }
 
 // selector_declared_type supports selector declared type handling for FlatGen.
+@[direct_array_access]
 fn (g &FlatGen) selector_declared_type(id flat.NodeId) ?types.Type {
+	idx := int(id)
+	if idx >= 0 {
+		mut memo := g.body_context_type_memo()
+		if !isnil(memo) && memo.sel_gens.len > 0 {
+			slot := idx & usable_expr_type_memo_mask
+			if memo.sel_gens[slot] == memo.generation && memo.sel_ids[slot] == idx {
+				if memo.sel_found[slot] {
+					return memo.sel_values[slot]
+				}
+				return none
+			}
+			result := g.selector_declared_type_uncached(id)
+			memo.sel_ids[slot] = idx
+			memo.sel_gens[slot] = memo.generation
+			if typ := result {
+				memo.sel_found[slot] = true
+				memo.sel_values[slot] = typ
+			} else {
+				memo.sel_found[slot] = false
+			}
+			return result
+		}
+	}
+	return g.selector_declared_type_uncached(id)
+}
+
+fn (g &FlatGen) selector_declared_type_uncached(id flat.NodeId) ?types.Type {
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
 		return none
 	}

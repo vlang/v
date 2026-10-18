@@ -6312,6 +6312,84 @@ fn (g &FlatGen) declared_call_return_type(call_id flat.NodeId) types.Type {
 	return g.declared_call_return_type_uncached(call_id)
 }
 
+// body_resolve_type is tc.resolve_type memoized for the nodes of the active body,
+// like usable_expr_type. Results with an unknown part stay uncached, as in the
+// checker's own resolve memo: a later registration can still resolve them.
+@[direct_array_access]
+fn (g &FlatGen) body_resolve_type(id flat.NodeId) types.Type {
+	idx := int(id)
+	if idx >= 0 {
+		mut memo := g.body_context_type_memo()
+		if !isnil(memo) && memo.resolve_gens.len > 0 {
+			slot := idx & usable_expr_type_memo_mask
+			if memo.resolve_gens[slot] == memo.generation && memo.resolve_ids[slot] == idx {
+				return memo.resolve_values[slot]
+			}
+			result := g.tc.resolve_type(id)
+			if !cgen_type_contains_unknown(result) {
+				memo.resolve_ids[slot] = idx
+				memo.resolve_gens[slot] = memo.generation
+				memo.resolve_values[slot] = result
+			}
+			return result
+		}
+	}
+	return g.tc.resolve_type(id)
+}
+
+// cgen_type_contains_unknown reports an unknown type anywhere in `typ`.
+fn cgen_type_contains_unknown(typ types.Type) bool {
+	match typ {
+		types.Primitive, types.Struct {
+			return false
+		}
+		types.Unknown {
+			return true
+		}
+		types.Alias {
+			return cgen_type_contains_unknown(typ.base_type)
+		}
+		types.Array {
+			return cgen_type_contains_unknown(typ.elem_type)
+		}
+		types.ArrayFixed {
+			return cgen_type_contains_unknown(typ.elem_type)
+		}
+		types.Map {
+			return cgen_type_contains_unknown(typ.key_type)
+				|| cgen_type_contains_unknown(typ.value_type)
+		}
+		types.Pointer {
+			return cgen_type_contains_unknown(typ.base_type)
+		}
+		types.OptionType {
+			return cgen_type_contains_unknown(typ.base_type)
+		}
+		types.ResultType {
+			return cgen_type_contains_unknown(typ.base_type)
+		}
+		types.FnType {
+			for param in typ.params {
+				if cgen_type_contains_unknown(param) {
+					return true
+				}
+			}
+			return cgen_type_contains_unknown(typ.return_type)
+		}
+		types.MultiReturn {
+			for part in typ.types {
+				if cgen_type_contains_unknown(part) {
+					return true
+				}
+			}
+			return false
+		}
+		else {
+			return false
+		}
+	}
+}
+
 // body_context_type_memo returns the active body memo while the generator is in
 // that body's own declaration context, or nil (const initializers and struct
 // defaults resolve names in another context).
@@ -6367,7 +6445,7 @@ fn (g &FlatGen) declared_call_return_type_uncached(call_id flat.NodeId) types.Ty
 	// and read the fn type's return. Unwrap alias (`type MakeArr = fn () [2]string`)
 	// and pointer layers first. Lets fixed-array-returning callbacks unwrap `.ret_arr`
 	// at the call site whether reached through a local, a param, or a struct field.
-	mut callee_t := types.unwrap_pointer(g.tc.resolve_type(g.a.child(&call_node, 0)))
+	mut callee_t := types.unwrap_pointer(g.body_resolve_type(g.a.child(&call_node, 0)))
 	for callee_t is types.Alias {
 		callee_t = types.unwrap_pointer((callee_t as types.Alias).base_type)
 	}
@@ -6949,7 +7027,7 @@ fn (g &FlatGen) usable_expr_type_uncached(id flat.NodeId) types.Type {
 					return types.Type(fnt)
 				}
 			}
-			resolved := g.tc.resolve_type(id)
+			resolved := g.body_resolve_type(id)
 			if fnt := fn_type_from(resolved) {
 				return types.Type(fnt)
 			}
@@ -7144,7 +7222,7 @@ fn (g &FlatGen) usable_expr_type_uncached(id flat.NodeId) types.Type {
 			return typ
 		}
 	}
-	return g.tc.resolve_type(id)
+	return g.body_resolve_type(id)
 }
 
 fn (g &FlatGen) specialized_selector_method_call_return_type(node flat.Node, fn_node flat.Node) ?types.Type {
@@ -10154,6 +10232,9 @@ const v_runtime_typedef_names = {
 }
 
 fn (g &FlatGen) local_name_shadows_c_typedef(name string) bool {
+	if g.c_typedef_shadow_names_ready {
+		return g.cname(name) in g.c_typedef_shadow_names
+	}
 	if !isnil(g.local_typedef_shadow_facts) {
 		mut cache := g.local_typedef_shadow_facts
 		cached := cache.get(name)
@@ -10173,6 +10254,25 @@ fn (g &FlatGen) local_name_shadows_c_typedef(name string) bool {
 
 fn (g &FlatGen) local_name_shadows_c_function(name string) bool {
 	return g.cname(name) in g.cur_c_fn_calls
+}
+
+// precompute_c_typedef_shadow_names collects every C name that
+// local_name_shadows_c_typedef accepts. The typedef tables are complete once the
+// declarations and directives are collected, and fixed for the rest of cgen.
+fn (mut g FlatGen) precompute_c_typedef_shadow_names() {
+	for name, _ in v_runtime_typedef_names {
+		g.c_typedef_shadow_names[name] = true
+	}
+	for name, _ in g.inlined_c_typedef_names {
+		g.c_typedef_shadow_names[name] = true
+	}
+	for name, _ in g.tc.c_typedef_structs {
+		g.c_typedef_shadow_names[name] = true
+		if name.starts_with('C.') {
+			g.c_typedef_shadow_names[name[2..]] = true
+		}
+	}
+	g.c_typedef_shadow_names_ready = true
 }
 
 fn local_name_shadows_c_runtime(name string) bool {

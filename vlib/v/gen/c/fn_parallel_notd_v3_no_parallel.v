@@ -1545,9 +1545,8 @@ fn (mut g FlatGen) absorb_scoped_cgen_batch(batch &FlatGen, output_streamed bool
 	}
 	unsafe { b.sb.free() }
 	for opt_name, val_type_id in batch.needed_optional_types.ids {
-		val_type := flat.source_type_name(val_type_id)
 		if !g.needed_optional_types.contains(opt_name) {
-			g.needed_optional_types.set_id(opt_name.clone(), flat.source_type_id(val_type.clone()))
+			g.needed_optional_types.set_id(opt_name.clone(), val_type_id)
 		}
 	}
 	for opt_name, val_type in batch.optional_pointer_struct_tags {
@@ -1565,9 +1564,11 @@ fn (mut g FlatGen) absorb_scoped_cgen_batch(batch &FlatGen, output_streamed bool
 			g.used_fn_ptr_types[encoded.clone()] = true
 		}
 	}
-	for name, used in batch.c_extern_refs {
-		if used {
-			g.c_extern_refs[name.clone()] = true
+	if !batch.c_extern_refs_shared {
+		for name, used in batch.c_extern_refs {
+			if used {
+				g.c_extern_refs[name.clone()] = true
+			}
 		}
 	}
 	if batch.needs_thread_runtime {
@@ -3302,8 +3303,14 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		callback_wrapper_defs_seen:         g.callback_wrapper_defs_seen.clone()
 		callback_identity_used:             g.callback_identity_used
 		callback_target_overrides:          map[int]string{}
-		c_extern_refs:                      g.c_extern_refs.clone()
+		// Body generation only reads the collected refs once they are complete.
+		c_extern_refs:                      if g.c_extern_refs_ready {
+			g.c_extern_refs
+		} else {
+			g.c_extern_refs.clone()
+		}
 		c_extern_refs_ready:                g.c_extern_refs_ready
+		c_extern_refs_shared:               g.c_extern_refs_ready
 		scope_parallel_workers:             g.scope_parallel_workers
 		c_name_cache:                       &CNameCache{
 			base: if !isnil(g.c_name_cache.base) { g.c_name_cache.base } else { g.c_name_cache }
@@ -3316,6 +3323,8 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		local_global_shadow_facts:          &ContextNameFactCache{}
 		local_global_suffix_names:          g.local_global_suffix_names
 		local_global_suffix_names_ready:    g.local_global_suffix_names_ready
+		c_typedef_shadow_names:             g.c_typedef_shadow_names
+		c_typedef_shadow_names_ready:       g.c_typedef_shadow_names_ready
 		generic_app_cache:                  &GenericAppCache{
 			base: if !isnil(g.generic_app_cache.base) {
 				g.generic_app_cache.base
@@ -3674,9 +3683,11 @@ fn (mut g FlatGen) merge_parallel_worker_into(w &FlatGen, mut ordered []string, 
 			g.used_fn_ptr_types[encoded.clone()] = true
 		}
 	}
-	for name, used in w.c_extern_refs {
-		if used {
-			g.c_extern_refs[name.clone()] = true
+	if !w.c_extern_refs_shared {
+		for name, used in w.c_extern_refs {
+			if used {
+				g.c_extern_refs[name.clone()] = true
+			}
 		}
 	}
 	if w.needs_thread_runtime {
