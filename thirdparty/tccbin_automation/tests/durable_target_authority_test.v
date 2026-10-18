@@ -57,7 +57,7 @@ fn authority_write(root string, relative_path string, source string) {
 
 fn authority_proof_source(root string, head string) string {
 	tree := authority_run(['git', '--no-replace-objects', '--git-dir', root, 'rev-parse',
-		'${head}^{tree}'])
+		'${head}:'])
 	line := authority_run(['git', '--no-replace-objects', '--git-dir', root, 'rev-list', '--parents',
 		'-n', '1', head])
 	parts := line.split(' ')
@@ -130,8 +130,8 @@ fn prepare_authority_repository(suffix string, target_source string,
 	authority_run(['git', '-C', work_root, 'add', '-A', '--', 'targets', 'sources'])
 	authority_run(['git', '-C', work_root, 'commit', '-qm', 'authority-target'])
 	head := authority_run(['git', '-C', work_root, 'rev-parse', 'HEAD'])
-	tree := authority_run(['git', '-C', work_root, 'rev-parse', 'HEAD^{tree}'])
-	parent := authority_run(['git', '-C', work_root, 'rev-parse', 'HEAD^'])
+	tree := authority_run(['git', '-C', work_root, 'rev-parse', 'HEAD:'])
+	parent := authority_run(['git', '-C', work_root, 'rev-parse', 'HEAD~1'])
 	authority_run(['git', 'clone', '-q', '--bare', work_root, bare_root])
 	os.rmdir_all(work_root) or {}
 	real_root := os.real_path(bare_root)
@@ -275,7 +275,7 @@ fn test_durable_target_authority_reauthenticates_twice_and_returns_only_copies()
 	assert authority_run(['git', '--no-replace-objects', '--git-dir', repository.root, 'rev-list',
 		'--objects', '--all']) == objects_before
 	assert authority_run(['git', '--no-replace-objects', '--git-dir', repository.root, 'rev-parse',
-		'${repository.head}^{tree}']) == repository.tree
+		'${repository.head}:']) == repository.tree
 
 	source := os.read_file(os.join_path(automation_root(), 'bin', 'durable_target_authority.v')) or {
 		panic(err)
@@ -510,6 +510,9 @@ fn test_authority_run_resolves_a_cmd_only_git_on_windows() {
 			os.setenv('PATH', original_path, true)
 		}
 		os.setenv('PATH', '${wrapper_dir};${os.getenv('SystemRoot')}\\System32', true)
-		assert authority_run(['git', '--version']).starts_with('git version'), 'authority_run did not start the cmd-only git'
+		// The helper asserts on failure, which would skip the defers above, so the check stays here.
+		result := bin.git_exec_for_test(['git', '--version'])
+		assert result.exit_code == 0, result.output
+		assert result.output.starts_with('git version'), result.output
 	}
 }

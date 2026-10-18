@@ -119,9 +119,27 @@ jobs:
               throw "pkg-config regression failed for $test with exit code $LASTEXITCODE"
             }
           }
+      - name: tccbin Windows cmd-wrapper regressions (GCC)
+        id: tccbin_windows_cmd_wrapper_regressions_gcc
+        if: ${{ success() && !cancelled() && steps.pkg_config_regressions_gcc.outcome == 'success' }}
+        run: |
+          # Only the *_on_windows tests run here: the other tests in these files use the POSIX
+          # durable runner. -no-retry-compilation stops a C compile error from silently rerunning
+          # the test under the fallback compiler, which quotes every argument and hides the cases.
+          $tests = @(
+            'thirdparty\tccbin_automation\tests\durable_target_commit_plan_test.v'
+            'thirdparty\tccbin_automation\tests\durable_target_authority_test.v'
+            'thirdparty\tccbin_automation\tests\receiver_protocol_test.v'
+          )
+          foreach ($test in $tests) {
+            .\v.exe -cc gcc -no-retry-compilation -run-only '*_on_windows' test $test
+            if ($LASTEXITCODE -ne 0) {
+              throw "tccbin Windows regression failed for $test with exit code $LASTEXITCODE"
+            }
+          }
       - name: Legacy gg import multiwindow isolation
         id: legacy_gg_import_multiwindow_isolation
-        if: ${{ success() && !cancelled() && steps.pkg_config_regressions_gcc.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.tccbin_windows_cmd_wrapper_regressions_gcc.outcome == 'success' }}
         run: v -cc gcc test vlib/gg/legacy_import_multiwindow_isolation_test.v
       - name: Test v binaries
         id: test_v_binaries

@@ -1644,7 +1644,7 @@ fn live_state_proof(root string, head string) string {
 }
 
 fn live_state_proof_for(root string, commit string, remote_head string) string {
-	tree := bin.git_exec_for_test(['git', '--git-dir', root, 'rev-parse', '${commit}^{tree}'])
+	tree := bin.git_exec_for_test(['git', '--git-dir', root, 'rev-parse', '${commit}:'])
 	line := bin.git_exec_for_test(['git', '--git-dir', root, 'rev-list', '--parents', '-n', '1',
 		commit])
 	assert tree.exit_code == 0
@@ -2616,17 +2616,15 @@ fn test_live_state_proof_commit_cannot_select_its_parent_inventory() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	parent_result := bin.git_exec_for_test(['git', '--git-dir', root, 'rev-parse', '${head}^'])
+	parent_result := bin.git_exec_for_test(['git', '--git-dir', root, 'rev-parse', '${head}~1'])
 	assert parent_result.exit_code == 0
 	parent := parent_result.output.trim_space()
 	assert parent.len == 40
-	assert bin.git_exec_for_test(['git', '--git-dir', root, 'rev-parse', '${parent}^{tree}']).output.trim_space() != bin.git_exec_for_test([
-		'git',
-		'--git-dir',
-		root,
-		'rev-parse',
-		'${head}^{tree}',
-	]).output.trim_space()
+	parent_tree_result := bin.git_exec_for_test(['git', '--git-dir', root, 'rev-parse', '${parent}:'])
+	head_tree_result := bin.git_exec_for_test(['git', '--git-dir', root, 'rev-parse', '${head}:'])
+	assert parent_tree_result.exit_code == 0, parent_tree_result.output
+	assert head_tree_result.exit_code == 0, head_tree_result.output
+	assert parent_tree_result.output.trim_space() != head_tree_result.output.trim_space()
 	mismatched_proof := live_state_mutated_proof_bundle(root, head, [], 'commit-binding', head,
 		'"commit_sha":"${head}"', '"commit_sha":"${parent}"')
 	inspection := bin.inspect_live_receiver_state(automation_root(), root, live_state_trust(),
@@ -2837,7 +2835,7 @@ fn test_receiver_git_resolves_a_cmd_only_git_on_windows() {
 			os.setenv('PATH', original_path, true)
 		}
 		os.setenv('PATH', '${wrapper_dir};${os.getenv('SystemRoot')}\\System32', true)
-		result := receiver_git(os.getwd(), ['--version'])
+		result := receiver_git('.', ['--version'])
 		assert result.exit_code == 0, result.output
 		assert result.output.starts_with('git version'), result.output
 	}
