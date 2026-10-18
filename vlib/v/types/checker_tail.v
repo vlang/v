@@ -19095,6 +19095,15 @@ fn (mut tc TypeChecker) infer_generic_type_text_from_type_bytes(param_text strin
 		}
 		return
 	}
+	if clean.starts_with('thread ') {
+		// A thread handle keeps its payload type in its struct name (`thread string`,
+		// see parse_type), so `thread T` binds `T` from that payload.
+		if payload := thread_payload_type(actual) {
+			tc.infer_generic_type_text_from_type_bytes(clean[7..], tc.parse_type(payload),
+				generic_params, mut inferred)
+		}
+		return
+	}
 	if clean.starts_with('[') {
 		close := find_matching_bracket(clean, 0)
 		if close > 0 && close + 1 < clean.len && actual is ArrayFixed {
@@ -19161,6 +19170,16 @@ fn (mut tc TypeChecker) infer_generic_type_text_from_type_bytes(param_text strin
 			return
 		}
 	}
+}
+
+// thread_payload_type returns the source type id of a thread handle's payload
+// (`string` for `thread string`), or none when `actual` is not a typed thread handle.
+fn thread_payload_type(actual Type) ?u32 {
+	name := actual.name()
+	if !name.starts_with('thread ') {
+		return none
+	}
+	return flat.source_type_id(name[7..])
 }
 
 // infer_generic_reachability_type_args infers generic arguments for a call whose checked type
@@ -19237,6 +19256,13 @@ fn (mut tc TypeChecker) infer_generic_type_value_from_type_bytes(param_text stri
 	if clean.starts_with('[]') {
 		if actual_array := array_type_from_receiver(actual) {
 			tc.infer_generic_type_value_from_type_bytes(clean[2..], actual_array.elem_type, generic_params, mut inferred)
+		}
+		return
+	}
+	if clean.starts_with('thread ') {
+		if payload := thread_payload_type(actual) {
+			tc.infer_generic_type_value_from_type_bytes(clean[7..], tc.parse_type(payload),
+				generic_params, mut inferred)
 		}
 		return
 	}

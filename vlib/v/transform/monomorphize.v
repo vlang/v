@@ -11463,6 +11463,16 @@ fn infer_generic_type_args_bytes(param_type string, arg_type string, mut inferre
 		infer_generic_type_args_bytes(param[4..], arg.trim_left('&'), mut inferred)
 		return
 	}
+	if param.starts_with('thread ') {
+		// `thread T` binds its payload type from a `thread string` argument the
+		// same way `[]T` does from `[]string`; without this arm an implicit call
+		// of a generic fn taking a thread handle is never specialized (sibling of
+		// the `chan T` gap in #30842).
+		if arg.starts_with('thread ') {
+			infer_generic_type_args_bytes(param[7..], arg[7..], mut inferred)
+		}
+		return
+	}
 	if param.starts_with('[]') && arg.starts_with('[]') {
 		infer_generic_type_args_bytes(param[2..], arg[2..], mut inferred)
 		return
