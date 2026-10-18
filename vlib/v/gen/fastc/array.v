@@ -1203,6 +1203,11 @@ fn fastc_token_is_prefix_operator(tokens []FastcExpressionToken, index int) bool
 	if index == 0 {
 		return true
 	}
+	// `?` and `!` can start an optional cast / negation or propagate an
+	// existing operand. Only the latter makes the following operator binary.
+	if tokens[index - 1].tok in [.question, .not] {
+		return fastc_token_is_prefix_operator(tokens, index - 1)
+	}
 	return !fastc_token_ends_operand(tokens[index - 1].tok)
 }
 
