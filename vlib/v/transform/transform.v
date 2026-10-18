@@ -7160,12 +7160,9 @@ fn (mut t Transformer) transform_string_interp_part(child_id flat.NodeId) flat.N
 	// transformed expression is the narrowed `.value` selector. Prefer that
 	// smartcast type so interpolation stringifies `T`, not a second Option wrapper.
 	mut typ := u32(0)
-	key := t.expr_key(expr_id)
-	if key.len > 0 {
-		for sc in t.smartcasts_for(key) {
-			if sc.sum_type_name_text() == option_unwrap_marker {
-				typ = sc.variant_name
-			}
+	for sc in t.smartcasts_for_expr(expr_id) {
+		if sc.sum_type_name_text() == option_unwrap_marker {
+			typ = sc.variant_name
 		}
 	}
 	expr_node := t.a.nodes[int(expr_id)]
@@ -13203,13 +13200,10 @@ fn (mut t Transformer) transform_dump_expr(node flat.Node) flat.NodeId {
 	child_id := t.a.child(&node, 0)
 	mut typ := t.node_type(child_id)
 	mut has_active_smartcast := false
-	child_key := t.expr_key(child_id)
-	if child_key.len > 0 {
-		contexts := t.smartcasts_for(child_key)
-		if contexts.len > 0 {
-			typ = t.smartcast_target_type(contexts.last())
-			has_active_smartcast = true
-		}
+	dump_smartcasts := t.smartcasts_for_expr(child_id)
+	if dump_smartcasts.len > 0 {
+		typ = t.smartcast_target_type(dump_smartcasts.last())
+		has_active_smartcast = true
 	}
 	child_node := t.a.nodes[int(child_id)]
 	if closure_type_source_id := t.fresh_runtime_closure_type(child_id) {
@@ -19310,16 +19304,13 @@ fn (mut t Transformer) try_expand_plain_multi_decl(node flat.Node) ?[]flat.NodeI
 
 // expr_has_smartcast converts expr has smartcast data for transform.
 fn (t &Transformer) expr_has_smartcast(id flat.NodeId) bool {
+	if t.smartcast_stack.len == 0 { return false }
 	key := t.expr_key(id)
 	return t.has_smartcast(key)
 }
 
 fn (t &Transformer) expr_has_option_unwrap_smartcast(id flat.NodeId) bool {
-	key := t.expr_key(id)
-	if key.len == 0 {
-		return false
-	}
-	for sc in t.smartcasts_for(key) {
+	for sc in t.smartcasts_for_expr(id) {
 		if sc.sum_type_name_text() == option_unwrap_marker {
 			return true
 		}
@@ -23755,13 +23746,10 @@ fn (mut t Transformer) transform_index_expr(id flat.NodeId, node flat.Node) flat
 	if node.children_count == 0 {
 		return id
 	}
-	full_key := t.expr_key(id)
-	if full_key.len > 0 {
-		contexts := t.smartcasts_for(full_key)
-		if contexts.len > 0 {
-			plain := t.make_plain_expr_for_smartcast(id)
-			return t.apply_smartcast_contexts(plain, t.original_expr_type(id), contexts)
-		}
+	index_smartcasts := t.smartcasts_for_expr(id)
+	if index_smartcasts.len > 0 {
+		plain := t.make_plain_expr_for_smartcast(id)
+		return t.apply_smartcast_contexts(plain, t.original_expr_type(id), index_smartcasts)
 	}
 	if lowered := t.try_lower_map_index_expr(id, node) {
 		return lowered
@@ -24843,20 +24831,16 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 	if fixed_len := t.transform_fixed_array_len(id, node) {
 		return fixed_len
 	}
-	full_key := t.expr_key(id)
-	if full_key.len > 0 {
-		contexts := t.smartcasts_for(full_key)
-		if contexts.len > 0 {
-			plain_type_source_id := t.raw_selector_type_without_smartcast(id)
+	selector_smartcasts := t.smartcasts_for_expr(id)
+	if selector_smartcasts.len > 0 {
+		plain_type_source_id := t.raw_selector_type_without_smartcast(id)
 
-			plain := t.make_plain_selector_expr(id, node)
-			return t.apply_smartcast_contexts(plain, plain_type_source_id, contexts)
-		}
+		plain := t.make_plain_selector_expr(id, node)
+		return t.apply_smartcast_contexts(plain, plain_type_source_id, selector_smartcasts)
 	}
 	base_id := base_id0
-	sc_key := t.expr_key(base_id)
-	if !t.selector_base_is_explicit_as_expr(base_id) && sc_key.len > 0 {
-		contexts := t.smartcasts_for(sc_key)
+	if !t.selector_base_is_explicit_as_expr(base_id) {
+		contexts := t.smartcasts_for_expr(base_id)
 		if contexts.len > 0 {
 			plain_base_type_source_id := t.raw_expr_type_without_smartcast(base_id)
 
@@ -26427,7 +26411,7 @@ fn (t &Transformer) raw_selector_type_without_smartcast(id flat.NodeId) u32 {
 	// base. For `child.layout as Widget` inside `child is SubWindow`, the raw
 	// selector type comes from `SubWindow.layout` (Layout), not from the outer
 	// `child.layout is Widget` smartcast recorded on the full expression.
-	if sc := t.find_smartcast(t.expr_key(base_id)) {
+	if sc := t.find_smartcast_for_expr(base_id) {
 		base_target_source_id := t.trim_pointer_type(t.smartcast_target_type(sc))
 
 		if base_target_source_id != 0 {
@@ -26821,7 +26805,7 @@ fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.
 			if t.pointer_cast_target_implements_source_iface(flat.source_type_id(target_type[1..]), source_iface) {
 				// Read `_object` from the interface before a concrete smartcast, while
 				// preserving any option unwrap that exposes the interface value.
-				contexts := t.smartcasts_for(t.expr_key(child_id))
+				contexts := t.smartcasts_for_expr(child_id)
 				source := if contexts.len > 0 {
 					t.apply_smartcast_contexts(t.make_plain_expr_for_smartcast(child_id),
 						t.original_expr_type(child_id), contexts.filter(it.sum_type_name_text() == option_unwrap_marker))
@@ -27259,7 +27243,7 @@ fn (mut t Transformer) transform_typeof_expr_mode(id flat.NodeId, node flat.Node
 		return t.make_string_literal('int literal')
 	}
 	mut typ := u32(0)
-	if sc := t.find_smartcast(t.expr_key(expr_id)) {
+	if sc := t.find_smartcast_for_expr(expr_id) {
 		typ = (if t.is_interface_type_name(sc.sum_type_name) {
 			flat.source_type_id('&${flat.source_type_name(t.interface_variant_type(sc.variant_name))}')
 		} else {
@@ -27769,7 +27753,7 @@ fn (t &Transformer) typeof_type_name(node flat.Node) u32 {
 	expr_id := t.a.child(&node, 0)
 	expr := t.a.nodes[int(expr_id)]
 	mut typ := u32(0)
-	if sc := t.find_smartcast(t.expr_key(expr_id)) {
+	if sc := t.find_smartcast_for_expr(expr_id) {
 		typ = t.resolve_variant(sc.sum_type_name, sc.variant_name)
 	}
 	if expr.kind == .ident {
@@ -28275,12 +28259,21 @@ fn (t &Transformer) original_expr_type(id flat.NodeId) u32 {
 	}
 }
 
+// smartcasts_for_expr avoids building a key when no active context can match.
+@[inline]
+fn (t &Transformer) smartcasts_for_expr(id flat.NodeId) []SmartcastContext {
+	if t.smartcast_stack.len == 0 {
+		return []SmartcastContext{}
+	}
+	return t.smartcasts_for(t.expr_key(id))
+}
+
 // smartcasts_for supports smartcasts for handling for Transformer.
 fn (t &Transformer) smartcasts_for(expr_name string) []SmartcastContext {
 	if expr_name == '' || t.smartcast_stack.len == 0 {
 		return []SmartcastContext{}
 	}
-	mut result := []SmartcastContext{cap: 1}
+	mut result := []SmartcastContext{}
 	for sc in t.smartcast_stack {
 		if sc.expr_name == expr_name {
 			mut duplicate := false
@@ -28293,6 +28286,9 @@ fn (t &Transformer) smartcasts_for(expr_name string) []SmartcastContext {
 			}
 			if duplicate {
 				continue
+			}
+			if result.len == 0 {
+				result = []SmartcastContext{cap: 1}
 			}
 			result << sc
 		}
@@ -28590,6 +28586,15 @@ pub fn (t &Transformer) find_smartcast(expr_name string) ?SmartcastContext {
 		i--
 	}
 	return none
+}
+
+// find_smartcast_for_expr avoids building a key when no active context can match.
+@[inline]
+fn (t &Transformer) find_smartcast_for_expr(id flat.NodeId) ?SmartcastContext {
+	if t.smartcast_stack.len == 0 {
+		return none
+	}
+	return t.find_smartcast(t.expr_key(id))
 }
 
 // expr_key supports expr key handling for Transformer.

@@ -331,6 +331,7 @@ fn (t &Transformer) resolve_receiver_method_name(base_id flat.NodeId, method str
 }
 
 fn (t &Transformer) smartcast_receiver_type_name(base_id flat.NodeId) ?u32 {
+	if t.smartcast_stack.len == 0 { return none }
 	key := t.expr_key(base_id)
 	if key.len == 0 {
 		return none
@@ -11930,7 +11931,7 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 		}
 	}
 	mut smartcast_container := false
-	if sc := t.find_smartcast(t.expr_key(base_id)) {
+	if sc := t.find_smartcast_for_expr(base_id) {
 		variant_type_source_id := t.resolve_variant(sc.sum_type_name, sc.variant_name)
 		variant_type_source_id_2 := variant_type_source_id
 		variant_type_shape := flat.source_type_shape(variant_type_source_id_2)
@@ -14248,7 +14249,7 @@ fn (mut t Transformer) try_lower_smartcast_target_receiver_method_call(_call_id 
 
 	t.mark_fn_used_name(method_name)
 	if fn_node.value == 'str' {
-		if sc := t.find_smartcast(t.expr_key(base_id)) {
+		if sc := t.find_smartcast_for_expr(base_id) {
 			if t.is_interface_type_name(sc.sum_type_name) && args.len > 0 {
 				target_source_id := t.trim_pointer_type(t.smartcast_target_type(sc))
 
@@ -16056,6 +16057,7 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 }
 
 fn (mut t Transformer) smartcast_sum_str_call(base_id flat.NodeId) ?flat.NodeId {
+	if t.smartcast_stack.len == 0 { return none }
 	key := t.expr_key(base_id)
 	sc := t.find_smartcast(key) or { return none }
 	sum_name_source_id := t.resolve_sum_name(sc.sum_type_name)
@@ -17264,7 +17266,7 @@ fn (t &Transformer) resolved_call_uses_receiver_type(base_id flat.NodeId, receiv
 	if flat.source_type_shape(param_type).has(.pointer) {
 		param_type = flat.source_type_id(flat.source_type_name(param_type)[1..])
 	}
-	if sc := t.find_smartcast(t.expr_key(base_id)) {
+	if sc := t.find_smartcast_for_expr(base_id) {
 		sc_type_source_id := t.trim_pointer_type(t.smartcast_target_type(sc))
 
 		if sc_type_source_id != 0 && t.normalize_type_alias(sc_type_source_id) == t.normalize_type_alias(param_type) {
@@ -17981,6 +17983,7 @@ fn name_part_eq(name string, start int, expected string) bool {
 
 // resolve_smartcast_sum_receiver_method supports resolve_smartcast_sum_receiver_method handling.
 fn (t &Transformer) resolve_smartcast_sum_receiver_method(base_id flat.NodeId, method string) ?string {
+	if t.smartcast_stack.len == 0 { return none }
 	key := t.expr_key(base_id)
 	sc := t.find_smartcast(key) or { return none }
 	variant := t.resolve_variant(sc.sum_type_name, sc.variant_name)
@@ -18008,6 +18011,7 @@ fn (t &Transformer) resolve_smartcast_sum_receiver_method(base_id flat.NodeId, m
 }
 
 fn (t &Transformer) resolve_smartcast_target_receiver_method(base_id flat.NodeId, method string) ?string {
+	if t.smartcast_stack.len == 0 { return none }
 	if method == '' { return none }
 	key := t.expr_key(base_id)
 	sc := t.find_smartcast(key) or { return none }
