@@ -827,3 +827,71 @@ fn test_durable_git_fallback_refuses_cmd_metacharacters_through_a_cmd_wrapper_on
 		assert refname.output.trim_space() == 'refs/heads/tccbin-automation-state', refname.output
 	}
 }
+
+fn test_durable_git_fallback_refuses_cmd_substring_expansion_through_a_cmd_wrapper_on_windows() {
+	$if windows {
+		repository := prepare_plan_repository('fallback-substring', plan_seeded_unknown_target(false),
+			false)
+		defer {
+			os.rmdir_all(repository.root) or {}
+		}
+		wrapper_dir := write_cmd_git_wrapper('substring') or { panic(err) }
+		defer {
+			os.rmdir_all(wrapper_dir) or {}
+		}
+		// `%NAME:~0,200%` is a substring expansion, not a plain `%NAME%`. Its value contains `&`, so a
+		// pass-through argument would hand cmd.exe a second command that writes the marker file.
+		marker := os.join_path(wrapper_dir, 'injected-substring.txt')
+		os.setenv('TCCBIN_SUBSTRING_PROBE', 'x&echo injected>"${marker}"', true)
+		defer {
+			os.unsetenv('TCCBIN_SUBSTRING_PROBE')
+		}
+		original_path := os.getenv('PATH')
+		defer {
+			os.setenv('PATH', original_path, true)
+		}
+		os.setenv('PATH', '${wrapper_dir};${os.getenv('SystemRoot')}\\System32', true)
+		injected := bin.live_git_fallback_for_test(repository.root, ['for-each-ref',
+			'--format=%TCCBIN_SUBSTRING_PROBE:~0,200%', 'refs/heads/tccbin-automation-state'])
+		assert !os.exists(marker), 'cmd.exe expanded the substring and ran echo>file'
+		assert injected.exit_code != 0, injected.output
+		assert injected.output.contains('metacharacters'), injected.output
+	}
+}
+
+fn test_durable_git_fallback_uses_caret_free_revisions_through_a_cmd_wrapper_on_windows() {
+	$if windows {
+		repository := prepare_plan_repository('fallback-caret', plan_seeded_unknown_target(false),
+			false)
+		defer {
+			os.rmdir_all(repository.root) or {}
+		}
+		wrapper_dir := write_cmd_git_wrapper('caret') or { panic(err) }
+		defer {
+			os.rmdir_all(wrapper_dir) or {}
+		}
+		branch := 'refs/heads/tccbin-automation-state'
+		// cmd.exe reads a `^` as its escape character, so a caret revision is refused through a batch
+		// wrapper. The live state reads use `<ref>:` for the tree and `rev-list -n 1` for the commit,
+		// which need no caret and must answer as git.exe does.
+		tree := os.exec(['git', '--git-dir', repository.root, 'rev-parse', '${branch}:'])
+		commit := os.exec(['git', '--git-dir', repository.root, 'rev-list', '-n', '1', branch])
+		assert tree.exit_code == 0, tree.output
+		assert commit.exit_code == 0, commit.output
+		original_path := os.getenv('PATH')
+		defer {
+			os.setenv('PATH', original_path, true)
+		}
+		os.setenv('PATH', '${wrapper_dir};${os.getenv('SystemRoot')}\\System32', true)
+		wrapped_tree := bin.live_git_fallback_for_test(repository.root, ['rev-parse', '${branch}:'])
+		wrapped_commit := bin.live_git_fallback_for_test(repository.root, ['rev-list', '-n', '1',
+			branch])
+		caret := bin.live_git_fallback_for_test(repository.root, ['rev-parse', '${branch}^{tree}'])
+		assert wrapped_tree.exit_code == 0, wrapped_tree.output
+		assert wrapped_tree.output.trim_space() == tree.output.trim_space(), wrapped_tree.output
+		assert wrapped_commit.exit_code == 0, wrapped_commit.output
+		assert wrapped_commit.output.trim_space() == commit.output.trim_space(), wrapped_commit.output
+		assert caret.exit_code != 0, caret.output
+		assert caret.output.contains('metacharacters'), caret.output
+	}
+}

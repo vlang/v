@@ -508,7 +508,9 @@ fn authenticate_live_state_commit_value(state_git_dir string, trust LiveStateTru
 	if shallow.exit_code != 0 || shallow.output.trim_space() != 'false' {
 		return error('history_recovery_required: live state public proof cannot authenticate a shallow history')
 	}
-	local_tree := live_git_args(state_git_dir, ['rev-parse', '${proof.commit_sha}^{tree}'], .scalar)
+	// `<commit>:` names the same root tree as `<commit>^{tree}` without a caret, which cmd.exe would
+	// otherwise reject when git is a `.cmd` wrapper.
+	local_tree := live_git_args(state_git_dir, ['rev-parse', '${proof.commit_sha}:'], .scalar)
 	local_line := live_git_args(state_git_dir,
 		['rev-list', '--parents', '-n', '1', proof.commit_sha], .scalar)
 	if local_tree.exit_code != 0 || local_tree.output.trim_space() != proof.tree_sha
@@ -1185,8 +1187,8 @@ fn validate_live_state_bare_repository(state_git_dir string, expected_state_head
 	}
 	validate_live_git_preflight(state_git_dir)!
 	bare := live_git_args(state_git_dir, ['rev-parse', '--is-bare-repository'], .scalar)
-	commit := live_git_args(state_git_dir, ['rev-parse', '${expected_state_head}^{commit}'],
-		.scalar)
+	// `rev-list -n 1` peels a commit or tag to the same commit that `^{commit}` names, without a caret.
+	commit := live_git_args(state_git_dir, ['rev-list', '-n', '1', expected_state_head], .scalar)
 	if bare.exit_code != 0 || bare.output.trim_space() != 'true' || commit.exit_code != 0
 		|| commit.output.trim_space() != expected_state_head {
 		return error('live state snapshot is not the exact immutable bare commit')
@@ -2892,10 +2894,10 @@ fn live_git_fallback(state_git_dir string, arguments []string) os.Result {
 			mut checked := [state_git_dir]
 			checked << arguments
 			for argument in checked {
-				if argument.contains_any('&|<>^"!\r\n') || cmd_expands_percent(argument) {
+				if argument.contains_any('&|<>^"!\r\n') || cmd_percent_is_unsafe(argument) {
 					return os.Result{
 						exit_code: -1
-						output:    'refusing to pass cmd.exe metacharacters or %VAR% to the batch git wrapper ${program}'
+						output:    'refusing to pass cmd.exe metacharacters or %-expansion to the batch git wrapper ${program}'
 					}
 				}
 			}
@@ -2906,25 +2908,11 @@ fn live_git_fallback(state_git_dir string, arguments []string) os.Result {
 	return os.exec(argv)
 }
 
-// cmd_expands_percent reports whether cmd.exe would expand a `%NAME%` reference in text. A `%(refname)`
-// format token is not a variable name, so it passes through.
-fn cmd_expands_percent(text string) bool {
-	mut open := -1
-	for i, ch in text {
-		if ch != `%` {
-			continue
-		}
-		if open < 0 {
-			open = i
-			continue
-		}
-		name := text[open + 1..i]
-		if name.len > 0 && name.bytes().all(it.is_alnum() || it == `_`) {
-			return true
-		}
-		open = i
-	}
-	return false
+// cmd_percent_is_unsafe reports whether cmd.exe could expand a `%` in text. cmd.exe pairs `%` marks
+// and expands whatever lies between them, including `%NAME:~0,20%` and `%~dp0`, so the only `%` that
+// passes is the single `%(` of a git format token such as `%(refname)`.
+fn cmd_percent_is_unsafe(text string) bool {
+	return text.contains('%') && (text.count('%') != 1 || !text.contains('%('))
 }
 
 fn validate_live_git_preflight(state_git_dir string) ! {
