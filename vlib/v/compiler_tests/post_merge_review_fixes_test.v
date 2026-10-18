@@ -6187,7 +6187,7 @@ fn test_cached_native_parameter_name_does_not_suppress_c_type() {
 
 fn test_bare_macro_objective_c_guards_stay_inactive() {
 	v3_bin := build_v3()
-	result := run_good_project_result(v3_bin, 'bare_macro_objective_c_guards', '', {
+	result := run_good_project_result(v3_bin, 'bare_macro_objective_c_guards', '-showcc', {
 		'v.mod':           "Module { name: 'bare_macro_objective_c_guards' }\n"
 		'disabled.m':      '#error inactive Objective-C source must not be compiled\n'
 		'disabled.mm':     '#error inactive Objective-C++ source must not be compiled\n'
@@ -6196,6 +6196,8 @@ fn test_bare_macro_objective_c_guards_stay_inactive() {
 	}, 'main.v')
 	assert result.run_output == '70'
 	assert result.compile_output.contains('tcc.exe'), result.compile_output
+	assert !result.compile_output.contains('-x objective-c'), result.compile_output
+	assert !result.compile_output.contains('implicit tcc was not attempted'), result.compile_output
 	assert !result.compile_output.contains('v3_native_source_context_'), result.compile_output
 }
 

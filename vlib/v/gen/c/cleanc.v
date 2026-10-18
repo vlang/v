@@ -2684,15 +2684,24 @@ pub fn cache_native_input_language(path string, c_flags []string, c99_mode bool,
 // cache_native_inputs_language reports the richest preprocessor language any
 // native input requires. The shared compiler-macro probe uses it so it never omits
 // a language macro (`__OBJC__`, `__cplusplus`) that an input's active branches
-// depend on.
+// depend on. An Objective-C(++) source include inside a `#if` branch that is
+// definitely inactive is skipped: cgen omits such an include too, so it must not
+// force the generated unit into Objective-C or rule out TCC.
 pub fn cache_native_inputs_language(a &flat.FlatAst, vroot string, c_flags []string, c99_mode bool, ccompiler string, target pref.Target) string {
 	include_dirs := c_flag_include_dirs(c_flags)
+	mut contexts := CacheNativeSourceContexts{}
 	mut need_objc := false
 	mut need_cpp := false
 	mut cur_file := ''
-	for node in a.nodes {
+	mut cur_module := 'main'
+	for node_idx, node in a.nodes {
 		if node.kind == .file {
 			cur_file = node.value
+			cur_module = 'main'
+			continue
+		}
+		if node.kind == .module_decl {
+			cur_module = node.value
 			continue
 		}
 		if node.kind != .directive
@@ -2705,7 +2714,16 @@ pub fn cache_native_inputs_language(a &flat.FlatAst, vroot string, c_flags []str
 		}
 		if c_include_arg_is_source_file(include_arg) {
 			for path in c_include_file_paths(include_arg, vroot, cur_file, include_dirs) {
-				match cache_native_input_language(path, c_flags, c99_mode, target) {
+				language := cache_native_input_language(path, c_flags, c99_mode, target)
+				if node.value == 'include' && (path.ends_with('.m') || path.ends_with('.mm')) {
+					if !contexts.ready {
+						contexts = cache_native_source_contexts(a, vroot, c_flags, target)
+					}
+					if contexts.include_definitely_inactive(node_idx, cur_module, c99_mode, target) {
+						continue
+					}
+				}
+				match language {
 					'objective-c++' {
 						need_objc = true
 						need_cpp = true
@@ -2727,6 +2745,127 @@ pub fn cache_native_inputs_language(a &flat.FlatAst, vroot string, c_flags []str
 		}
 	}
 	return c_native_language_from_features(need_objc, need_cpp)
+}
+
+struct CacheNativeSourceDirective {
+	node_idx      int
+	text          string
+	native_source bool // part of the context cgen gives a native source include
+}
+
+// CacheNativeSourceContexts mirrors, per module, the preprocessor context that cgen
+// evaluates before it omits an inactive Objective-C(++) source include
+// (collect_c_directive_at, native_source_context_has_macro_inputs).
+struct CacheNativeSourceContexts {
+	ready      bool
+	flags      []string
+	directives map[string][]CacheNativeSourceDirective
+	imports    map[string][]string
+}
+
+fn cache_native_source_contexts(a &flat.FlatAst, vroot string, c_flags []string, target pref.Target) CacheNativeSourceContexts {
+	include_dirs := c_flag_include_dirs(c_flags)
+	mut flags := c_flags.clone()
+	flags << cache_directive_flags_skipping(a, vroot, target, map[string]string{}, map[int]bool{})
+	mut directives := map[string][]CacheNativeSourceDirective{}
+	mut imports := map[string][]string{}
+	mut cur_file := ''
+	mut cur_module := 'main'
+	for node_idx, node in a.nodes {
+		if node.kind == .file {
+			cur_file = node.value
+			cur_module = 'main'
+			continue
+		}
+		if node.kind == .module_decl {
+			cur_module = node.value
+			continue
+		}
+		if node.kind == .import_decl {
+			if node.value.len > 0 && node.value !in imports[cur_module] {
+				imports[cur_module] << node.value
+			}
+			continue
+		}
+		if node.kind != .directive {
+			continue
+		}
+		mut text := ''
+		mut native_source := true
+		if node.value in ['define', 'undef', 'ifdef', 'ifndef', 'if', 'elif', 'else', 'endif',
+			'pragma', 'error', 'warning'] {
+			text = c_preprocessor_directive_line(node.value, node.typ_text())
+		} else if node.value == 'include' && node.typ != 0 {
+			include_arg := c_include_arg_for_target(node.typ_text(), vroot, cur_file, target)
+			if include_arg.len == 0 || c_include_arg_is_builtin_abi_helper(include_arg, vroot) {
+				continue
+			}
+			if c_include_arg_is_source_file(include_arg) {
+				// A source include can define macros, but it is not part of the
+				// directive context itself (see native_source_context_has_macro_inputs).
+				text = '#include ${include_arg}'
+				native_source = false
+			} else {
+				text = c_native_source_context_header_include(include_arg, vroot, cur_file,
+					include_dirs)
+			}
+		}
+		if text.len > 0 {
+			directives[cur_module] << CacheNativeSourceDirective{
+				node_idx:      node_idx
+				text:          text
+				native_source: native_source
+			}
+		}
+	}
+	return CacheNativeSourceContexts{
+		ready:      true
+		flags:      flags
+		directives: directives
+		imports:    imports
+	}
+}
+
+// include_definitely_inactive reports whether the source include at `node_idx` is
+// in a branch that the directives before it, and those of the modules it imports,
+// prove inactive.
+fn (c &CacheNativeSourceContexts) include_definitely_inactive(node_idx int, module_name string, c99_mode bool, target pref.Target) bool {
+	mut context := []string{}
+	mut macro_inputs := []string{}
+	mut visited := map[string]bool{}
+	c.collect_imported(module_name, mut visited, mut context, mut macro_inputs)
+	for directive in c.directives[module_name] or { []CacheNativeSourceDirective{} } {
+		if directive.node_idx >= node_idx {
+			break
+		}
+		if directive.native_source {
+			context << directive.text
+		}
+		macro_inputs << directive.text
+	}
+	if context.len == 0 {
+		return false
+	}
+	source_macros_possible := c_native_source_context_state(macro_inputs, c.flags, c99_mode, target,
+		false).source_macros_possible
+	return c_native_source_context_definitely_inactive(context, c.flags, c99_mode, target,
+		source_macros_possible)
+}
+
+fn (c &CacheNativeSourceContexts) collect_imported(module_name string, mut visited map[string]bool, mut context []string, mut macro_inputs []string) {
+	visited[module_name] = true
+	for dependency in c.imports[module_name] or { []string{} } {
+		if dependency in visited {
+			continue
+		}
+		c.collect_imported(dependency, mut visited, mut context, mut macro_inputs)
+		for directive in c.directives[dependency] or { []CacheNativeSourceDirective{} } {
+			if directive.native_source {
+				context << directive.text
+			}
+			macro_inputs << directive.text
+		}
+	}
 }
 
 fn c_native_language_from_features(need_objc bool, need_cpp bool) string {
