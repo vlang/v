@@ -109,7 +109,7 @@ fn (g &Parser) render_fixed_array_as_dynamic(tokens []FastcExpressionToken, expe
 // fastc_fixed_array_view is the address of a dynamic array whose elements are the
 // fixed array's own storage, for a `mut []T` parameter.
 fn fastc_fixed_array_view(array_type string, length string, size string, storage string) string {
-	return '({ ${array_type} __vf_fixed_view = (${array_type}){.data=(void*)(${storage}), .len=${length}, .cap=${length}, .element_size=${size}}; &__vf_fixed_view; })'
+	return '(&(${array_type}){.data=(void*)(${storage}), .len=${length}, .cap=${length}, .element_size=${size}})'
 }
 
 fn fastc_array_values_call_source(element_type string, items []string, values_name string, call_source string) string {

@@ -367,6 +367,52 @@ fn test_fastc_fixed_array_mut_argument_is_its_storage_runtime() {
 	assert run.output.trim_space() == 'fixed arrays work', run.output
 }
 
+// A fixed-array view passed to a mut parameter must remain alive during the call.
+// Clang's scope instrumentation catches an address escaping a statement-expression block.
+fn test_fastc_fixed_array_mut_view_lifetime() {
+	$if !macos && !linux {
+		return
+	}
+	clang := os.find_abs_path_of_executable('clang') or { return }
+	root := os.join_path(os.vtmp_dir(), 'fastc_fixed_view_lifetime_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	source_path := os.join_path(root, 'main.c')
+	program := os.join_path(root, 'program')
+	flags := ['-O1', '-fno-omit-frame-pointer', '-fsanitize=address',
+		'-fsanitize-address-use-after-scope', source_path, '-o', program]
+	// Some Clang installations lack the sanitizer runtime. Probe it independently.
+	os.write_file(source_path, 'int main(void) { return 0; }') or { panic(err) }
+	available := cmdexec.run(clang, flags)
+	if available.exit_code != 0 {
+		return
+	}
+	probe := cmdexec.run(program, [])
+	if probe.exit_code != 0 {
+		return
+	}
+	view := fastc_fixed_array_view('Array', '2', 'sizeof(int)', 'data')
+	os.write_file(source_path, '#include <assert.h>
+typedef struct { void *data; int len; int cap; int element_size; } Array;
+__attribute__((noinline)) static void fill(Array *a) {
+	assert(a->len == 2 && a->element_size == sizeof(int));
+	((int *)a->data)[0] = 42;
+}
+int main(void) {
+	int data[2] = {1, 2};
+	fill(${view});
+	assert(data[0] == 42 && data[1] == 2);
+	return 0;
+}
+') or { panic(err) }
+	build := cmdexec.run(clang, flags)
+	assert build.exit_code == 0, build.output
+	run := cmdexec.run_in_merged_with_env(program, [], root, {
+		'ASAN_OPTIONS': 'detect_leaks=0:halt_on_error=1'
+	})
+	assert run.exit_code == 0, run.output
+}
+
 // `@[_pack: '1']` lays a struct out without padding, as net.Ip6 needs; fastc ignored it, so
 // net.Addr's address sat two bytes late and `127.0.0.1:81` read back as `0.1.0.0:32512`.
 // TinyCC honours only `#pragma pack`, so that is what is emitted.
