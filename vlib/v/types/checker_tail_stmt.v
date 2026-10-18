@@ -7198,7 +7198,9 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 		return
 	} else {
 		if tc.should_diagnose(id) {
-			if base_type is Unknown {
+			// An unresolved base (`unknown`, or a pointer to it such as the result of a
+			// generic call inferred from a comptime field) is resolved per instance.
+			if base_type is Unknown || unwrap_pointer(base_type) is Unknown {
 				return
 			}
 			clean_base := unalias_type(unwrap_pointer(base_type))
