@@ -8328,7 +8328,9 @@ fn mut_param_semantic_type(typ Type) Type {
 	if option_type.base_type is Pointer {
 		return typ
 	}
-	if option_type.base_type !is Struct {
+	// An alias of a struct is passed like the struct: the call site builds the `?&T`
+	// temporary for it too (`transform_mut_optional_value_call_arg`).
+	if unalias_type(option_type.base_type) !is Struct {
 		return typ
 	}
 	return Type(Pointer{

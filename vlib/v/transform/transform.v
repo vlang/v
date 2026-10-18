@@ -12286,7 +12286,7 @@ fn (t &Transformer) mut_optional_payload_is_struct(payload string) bool {
 	if isnil(t.tc) {
 		return false
 	}
-	return t.tc.parse_type(t.qualify_type(flat.source_type_id(payload))) is types.Struct
+	return types.unalias_type(t.tc.parse_type(t.qualify_type(flat.source_type_id(payload)))) is types.Struct
 }
 
 // fn_body_param_types supports fn body param types handling for Transformer.

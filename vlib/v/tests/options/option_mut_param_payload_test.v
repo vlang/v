@@ -1,11 +1,14 @@
 // A `mut` optional parameter is a pointer to the caller's option (`&?T`). Only a struct
-// payload is passed by reference as well (`&?&T`); arrays, maps, fixed arrays, sum types
-// and enums keep their value payload, in the function body as in its signature.
+// payload, or an alias of one, is passed by reference as well (`&?&T`); arrays, maps,
+// fixed arrays, sum types and enums keep their value payload, in the function body as in
+// its signature and at the call site.
 struct Named {
 	name string
 }
 
 type Names = []Named
+
+type NamedAlias = Named
 
 type Shape = Named | int
 
@@ -80,6 +83,19 @@ fn set_struct(mut a ?Named) {
 	a = Named{'struct'}
 }
 
+fn clear_struct_alias(mut a ?NamedAlias) {
+	a = none
+}
+
+fn set_struct_alias(mut a ?NamedAlias) {
+	a = NamedAlias(Named{'alias'})
+}
+
+fn struct_alias_name(mut a ?NamedAlias) string {
+	v := a or { return 'none' }
+	return v.name
+}
+
 fn clear_generic[T](mut a ?T) {
 	a = none
 }
@@ -140,4 +156,14 @@ fn test_mut_option_other_payloads() {
 	mut gs := ?Named(Named{'g'})
 	clear_generic(mut gs)
 	assert gs == none
+}
+
+fn test_mut_option_struct_alias_param() {
+	mut a := ?NamedAlias(NamedAlias(Named{'a'}))
+	assert struct_alias_name(mut a) == 'a'
+	clear_struct_alias(mut a)
+	assert a == none
+	assert struct_alias_name(mut a) == 'none'
+	set_struct_alias(mut a)
+	assert struct_alias_name(mut a) == 'alias'
 }
