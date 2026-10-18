@@ -11023,9 +11023,19 @@ fn (mut t Transformer) mark_fixed_array_reference_argument_escapes(call_id flat.
 	}
 	call_name := t.call_name_for_node(call_id, call)
 	mut params := t.call_param_types_for_node(call_name, call)
-	mut is_variadic := t.call_is_variadic_for_node(call_name, call)
+	mut concrete := false
 	if concrete_params := t.concrete_generic_call_param_types(call_id, call) {
 		params = concrete_params.clone()
+		concrete = true
+	}
+	// Every mark below needs a parameter that takes a reference (the element of a
+	// trailing array included, for a variadic call). Without one, skip resolving
+	// the variadic form and the receiver offset.
+	if !escape_params_may_take_reference(params) {
+		return
+	}
+	mut is_variadic := t.call_is_variadic_for_node(call_name, call)
+	if concrete {
 		is_variadic = is_variadic || t.concrete_generic_call_is_variadic(call_id, call)
 	}
 	offset := if t.call_is_selector_form(call) && t.concrete_generic_call_is_method(call_id) {
@@ -11053,6 +11063,21 @@ fn (mut t Transformer) mark_fixed_array_reference_argument_escapes(call_id flat.
 		}
 		t.mark_fixed_array_reference_argument_escape(t.a.child(&call, child_idx), param_type, amp_ptrs, amp_sources, ptr_aliases, local_stack_names)
 	}
+}
+
+// escape_params_may_take_reference reports whether a call argument can bind a
+// parameter that mark_fixed_array_reference_argument_escape follows.
+fn escape_params_may_take_reference(params []types.Type) bool {
+	for param in params {
+		if escape_type_is_pointer(fixed_array_reference_param_payload(param)) {
+			return true
+		}
+		if param is types.Array
+			&& escape_type_is_pointer(fixed_array_reference_param_payload(param.elem_type)) {
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut t Transformer) mark_fixed_array_reference_argument_escape(arg_id flat.NodeId, param_type types.Type, amp_ptrs map[string]bool, amp_sources map[string][]string, ptr_aliases map[string]string, local_stack_names map[string]bool) {
