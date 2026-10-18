@@ -19734,6 +19734,10 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 			}
 			return tc.resolve_type(tc.a.child(node, node.children_count - 1))
 		}
+		.select_stmt {
+			// as an expression, `select` is `false` once every channel is closed
+			return builtin_bool_type
+		}
 		.match_stmt {
 			return tc.match_expr_tail_type(id)
 		}
