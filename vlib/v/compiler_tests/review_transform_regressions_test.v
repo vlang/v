@@ -7686,7 +7686,8 @@ fn main() {
 	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_struct_update_pointer_origins_c', '-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
-	assert compact_main.count('array__free(&(__map_source_') == 1, main_body
+	// Known failure: the map origin scan does not carry `box` through `...base`.
+	assert compact_main.count('array__free(&(__map_source_') == 1, 'only the overridden source may be freed; the inherited `...base` box points into the first one\n${main_body}'
 	out := run_good_with_flags(v3_bin, 'array_map_struct_update_pointer_origins', '-ownership', source)
 	assert out == '0\nsource\n0\nexternal'
 }
@@ -9479,7 +9480,9 @@ fn main() {
 	c_source := gen_c_from_project_with_flags(v3_bin, 'array_map_branch_callback_alias_c', '-ownership', files, 'main.v')
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
-	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	// Known failure: call_param_flows_to_callback reads the callee bodies after transform
+	// lowered them, so `chosen := match ...`, `or { callback }` and `[callback]` are temps.
+	assert !compact_main.contains('array__free(&(__map_source_'), 'api.save retains the mapped element through a selected callback alias\n${main_body}'
 	out := run_good_project_with_flags(v3_bin, 'array_map_branch_callback_alias', '-ownership', files, 'main.v')
 	assert out == '0\nsource\n0\nsource\n0\nsource\n0\nsource'
 }
