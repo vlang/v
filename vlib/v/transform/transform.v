@@ -206,6 +206,7 @@ mut:
 	variadic_suffix_index         map[string]i8
 	const_suffixes                map[string]string
 	source_parent_ids             []i32
+	array_append_tree_factories   map[string]bool // immutable freshness proof, shared by workers
 	shared_local_decl_names       map[string]bool
 	has_shared_decls              bool            // any `shared` variable, parameter, global or field, see shared_map_autolock_possible
 	shared_field_names            map[string]bool // names of `shared` fields and globals
@@ -239,6 +240,7 @@ mut:
 	// repeated uses of the same array constant in one transform worker.
 	const_array_fixed_storage_cache     map[string]i8
 	enum_types                          map[string][]string
+	enum_explicit_first_values          map[string]bool // the first member has a value, maybe not 0
 	enum_backing_types                  flat.TypeTextBindings
 	runtime_type_indexes                map[u32]int
 	cur_file                            string
@@ -2509,6 +2511,7 @@ fn (mut t Transformer) prepare() {
 	if !t.defer_fixed_array_borrow_prep {
 		t.prepare_fixed_array_borrow_params()
 	}
+	t.prepare_array_append_tree_factories()
 }
 
 fn (mut t Transformer) rebuild_embedded_fields_index() {
@@ -3869,9 +3872,13 @@ fn (mut t Transformer) collect_types() {
 			}
 			.enum_decl {
 				mut field_names := []string{}
+				mut explicit_first_value := false
 				for i in 0 .. node.children_count {
 					f := t.a.child_node(&node, i)
 					if f.kind == .enum_field {
+						if field_names.len == 0 {
+							explicit_first_value = f.children_count > 0
+						}
 						field_names << f.value
 					}
 				}
@@ -3884,8 +3891,14 @@ fn (mut t Transformer) collect_types() {
 				if cur_mod.len > 0 && cur_mod != 'main' && cur_mod != 'builtin' {
 					qname := '${cur_mod}.${node.value}'
 					t.enum_types[qname] = field_names
+					if explicit_first_value {
+						t.enum_explicit_first_values[qname] = true
+					}
 					if node.value !in t.enum_types {
 						t.enum_types[node.value] = field_names
+						if explicit_first_value {
+							t.enum_explicit_first_values[node.value] = true
+						}
 						if backing_storage_type != 0 {
 							t.enum_backing_types.set_id(node.value, backing_storage_type)
 						}
@@ -3895,6 +3908,9 @@ fn (mut t Transformer) collect_types() {
 					}
 				} else {
 					t.enum_types[node.value] = field_names
+					if explicit_first_value {
+						t.enum_explicit_first_values[node.value] = true
+					}
 					if backing_storage_type != 0 {
 						t.enum_backing_types.set_id(node.value, backing_storage_type)
 					}
@@ -5195,6 +5211,7 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		variadic_suffix_index:               t.variadic_suffix_index
 		const_suffixes:                      t.const_suffixes
 		source_parent_ids:                   t.source_parent_ids
+		array_append_tree_factories:         t.array_append_tree_factories
 		shared_local_decl_names:             t.shared_local_decl_names
 		has_shared_decls:                    t.has_shared_decls
 		shared_field_names:                  t.shared_field_names
@@ -5208,6 +5225,7 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 			map[string]i8{}
 		}
 		enum_types:                          t.enum_types
+		enum_explicit_first_values:          t.enum_explicit_first_values
 		enum_backing_types:                  fork_prepared_type_bindings(t.enum_backing_types)
 		runtime_type_indexes:                t.runtime_type_indexes
 		generic_alias_names:                 t.generic_alias_names
@@ -17376,6 +17394,22 @@ fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type_id u3
 				value := t.transform_sum_value_for_type(id, target_payload_source_id)
 				return t.make_optional_some(value, optional_target_source_id_5)
 			}
+			// A `[]Item` stored as a `?[]Named` (or `?[]Shape`) is converted element by
+			// element, as for a plain `[]Named` target; wrapped as is, the option would
+			// hold concrete values where interface or sum values are read. A `?[]Item`
+			// has its payload converted when it is present, as `return` does.
+			if payload_conversion && !t.is_optional_type_name(source_type_source_id_3) {
+				if value := t.transform_array_value_for_dynamic_target(id, target_payload_source_id) {
+					return t.make_optional_some(value, optional_target_source_id_5)
+				}
+			}
+			if payload_conversion && t.is_optional_type_name(source_type_source_id_3)
+				&& !same_option_source {
+				if value := t.transform_optional_array_value_for_option_target(id, source_type_source_id_3,
+					optional_target_source_id_5) {
+					return value
+				}
+			}
 			if payload_conversion && t.is_optional_type_name(source_type_source_id_3)
 				&& t.is_sum_type_name(target_payload_source_id) {
 				if t.sum_target_accepts_variant_type(target_payload_source_id, source_type_source_id_3) {
@@ -27073,6 +27107,16 @@ fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.
 		if t.is_fixed_array_type(target_type_source_id) {
 			if lowered := t.transform_fixed_array_literal_for_type(cast_child_id, child, target_type_source_id) {
 				return lowered
+			}
+		}
+	} else if target_type.starts_with('[]') {
+		// `[]Named(items)` (or `[][]Named(rows)`) boxes every element, like an implicit
+		// `[]Named` target; a plain C cast would leave concrete values where interface
+		// values are read.
+		cast_elem_type := flat.source_type_id(target_type.trim_left('[]'))
+		if t.is_interface_type(cast_elem_type) || t.is_sum_type_name(cast_elem_type) {
+			if converted := t.transform_array_value_for_dynamic_target(cast_child_id, target_type_source_id) {
+				return converted
 			}
 		}
 	}

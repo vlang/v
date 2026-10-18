@@ -11477,6 +11477,15 @@ fn infer_generic_type_args_bytes(param_type string, arg_type string, mut inferre
 		infer_generic_type_args_bytes(param[2..], arg[2..], mut inferred)
 		return
 	}
+	if param.starts_with('chan ') {
+		// `chan T` binds its element type from a `chan string` argument the same
+		// way `[]T` does from `[]string`; without this arm an implicit call of a
+		// generic fn taking a channel is never specialized (#30842).
+		if arg.starts_with('chan ') {
+			infer_generic_type_args_bytes(param[5..], arg[5..], mut inferred)
+		}
+		return
+	}
 	if param.starts_with('[') && arg.starts_with('[') {
 		p_end := generic_matching_bracket(param, 0)
 		a_end := generic_matching_bracket(arg, 0)

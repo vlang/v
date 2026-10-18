@@ -11,7 +11,7 @@ struct DurablePlanTestRepository {
 }
 
 fn plan_run(argv []string) string {
-	result := os.exec(argv)
+	result := bin.git_exec_for_test(argv)
 	assert result.exit_code == 0, '${argv.join(' ')}\n${result.output}'
 	return result.output.trim_space()
 }
@@ -155,7 +155,7 @@ fn plan_seeded_unknown_target(with_blockers bool) string {
 }
 
 fn plan_proof_source(root string, head string) string {
-	tree := plan_run(['git', '--no-replace-objects', '--git-dir', root, 'rev-parse', '${head}^{tree}'])
+	tree := plan_run(['git', '--no-replace-objects', '--git-dir', root, 'rev-parse', '${head}:'])
 	line := plan_run(['git', '--no-replace-objects', '--git-dir', root, 'rev-list', '--parents',
 		'-n', '1', head])
 	parts := line.split(' ')
@@ -203,7 +203,7 @@ fn prepare_plan_repository(suffix string, selected_source string,
 	plan_run(['git', '-C', work_root, 'add', '--', 'targets/linux-amd64.json'])
 	plan_run(['git', '-C', work_root, 'commit', '-qm', 'plan-target'])
 	head := plan_run(['git', '-C', work_root, 'rev-parse', 'HEAD'])
-	tree := plan_run(['git', '-C', work_root, 'rev-parse', 'HEAD^{tree}'])
+	tree := plan_run(['git', '-C', work_root, 'rev-parse', 'HEAD:'])
 	plan_run(['git', 'clone', '-q', '--bare', work_root, bare_root])
 	os.rmdir_all(work_root) or {}
 	real_root := os.real_path(bare_root)
@@ -758,4 +758,654 @@ fn test_durable_git_deadlines_keep_nanosecond_scale() {
 		u64(120_000_000_000),
 		u64(5_000_000_000),
 	]
+}
+
+fn test_durable_git_fallback_resolves_a_cmd_only_git_on_windows() {
+	$if windows {
+		repository := prepare_plan_repository('fallback-cmd-only', plan_seeded_unknown_target(false),
+			false)
+		defer {
+			os.rmdir_all(repository.root) or {}
+		}
+		wrapper_dir := write_cmd_git_wrapper('cmd-only') or { panic(err) }
+		defer {
+			os.rmdir_all(wrapper_dir) or {}
+		}
+		original_path := os.getenv('PATH')
+		defer {
+			os.setenv('PATH', original_path, true)
+		}
+		os.setenv('PATH', '${wrapper_dir};${os.getenv('SystemRoot')}\\System32', true)
+		result := bin.live_git_fallback_for_test(repository.root, ['rev-parse', '--is-bare-repository'])
+		assert result.exit_code == 0, result.output
+		assert result.output.trim_space() == 'true'
+	}
+}
+
+// write_cmd_git_wrapper writes a git.cmd that runs the installed git.exe and returns its directory.
+// It must run before PATH is changed, because it resolves the real git first.
+fn test_durable_git_fallback_refuses_cmd_metacharacters_through_a_cmd_wrapper_on_windows() {
+	$if windows {
+		repository := prepare_plan_repository('fallback-metachar', plan_seeded_unknown_target(false),
+			false)
+		defer {
+			os.rmdir_all(repository.root) or {}
+		}
+		wrapper_dir := write_cmd_git_wrapper('metachar') or { panic(err) }
+		defer {
+			os.rmdir_all(wrapper_dir) or {}
+		}
+		original_path := os.getenv('PATH')
+		defer {
+			os.setenv('PATH', original_path, true)
+		}
+		os.setenv('PATH', '${wrapper_dir};${os.getenv('SystemRoot')}\\System32', true)
+		// Each argument has no spaces, so cmd.exe would read `&` as an operator and run `copy`.
+		marker := os.join_path(wrapper_dir, 'injected.txt')
+		injected := bin.live_git_fallback_for_test(repository.root, ['rev-parse', '--is-bare-repository',
+			'&copy', 'nul', marker])
+		assert !os.exists(marker), 'cmd.exe ran the injected copy'
+		assert injected.exit_code != 0, injected.output
+		assert injected.output.contains('metacharacters'), injected.output
+		// `%PATH%` would be expanded by cmd.exe into the environment; `%(refname)` is still needed.
+		expanded := bin.live_git_fallback_for_test(repository.root, ['for-each-ref', '--format=%PATH%',
+			'refs/heads/tccbin-automation-state'])
+		assert expanded.exit_code != 0, expanded.output
+		assert !expanded.output.contains('System32'), expanded.output
+		refname := bin.live_git_fallback_for_test(repository.root, ['for-each-ref',
+			'--format=%(refname)', 'refs/heads/tccbin-automation-state'])
+		assert refname.exit_code == 0, refname.output
+		assert refname.output.trim_space() == 'refs/heads/tccbin-automation-state', refname.output
+	}
+}
+
+fn test_durable_git_fallback_refuses_cmd_substring_expansion_through_a_cmd_wrapper_on_windows() {
+	$if windows {
+		repository := prepare_plan_repository('fallback-substring', plan_seeded_unknown_target(false),
+			false)
+		defer {
+			os.rmdir_all(repository.root) or {}
+		}
+		wrapper_dir := write_cmd_git_wrapper('substring') or { panic(err) }
+		defer {
+			os.rmdir_all(wrapper_dir) or {}
+		}
+		// `%NAME:~0,200%` is a substring expansion, not a plain `%NAME%`. Its value contains `&`, so a
+		// pass-through argument would hand cmd.exe a second command that writes the marker file.
+		marker := os.join_path(wrapper_dir, 'injected-substring.txt')
+		os.setenv('TCCBIN_SUBSTRING_PROBE', 'x&echo injected>"${marker}"', true)
+		defer {
+			os.unsetenv('TCCBIN_SUBSTRING_PROBE')
+		}
+		original_path := os.getenv('PATH')
+		defer {
+			os.setenv('PATH', original_path, true)
+		}
+		os.setenv('PATH', '${wrapper_dir};${os.getenv('SystemRoot')}\\System32', true)
+		injected := bin.live_git_fallback_for_test(repository.root, ['for-each-ref',
+			'--format=%TCCBIN_SUBSTRING_PROBE:~0,200%', 'refs/heads/tccbin-automation-state'])
+		assert !os.exists(marker), 'cmd.exe expanded the substring and ran echo>file'
+		assert injected.exit_code != 0, injected.output
+		assert injected.output.contains('metacharacters'), injected.output
+	}
+}
+
+fn test_durable_git_fallback_refuses_a_percent_pair_split_across_two_arguments_on_windows() {
+	$if windows {
+		repository := prepare_plan_repository('fallback-split-pair', plan_seeded_unknown_target(false),
+			false)
+		defer {
+			os.rmdir_all(repository.root) or {}
+		}
+		wrapper_dir := write_cmd_git_wrapper('split-pair') or { panic(err) }
+		defer {
+			os.rmdir_all(wrapper_dir) or {}
+		}
+		original_path := os.getenv('PATH')
+		defer {
+			os.setenv('PATH', original_path, true)
+		}
+		// Each argument holds one `%` and passes alone. Joined by the space between them, `%TCCBIN PAIR%`
+		// is a pair that cmd.exe substitutes with the variable's value, so the line must be refused.
+		os.setenv('TCCBIN PAIR', 'EXPANDED', true)
+		defer {
+			os.unsetenv('TCCBIN PAIR')
+		}
+		os.setenv('PATH', '${wrapper_dir};${os.getenv('SystemRoot')}\\System32', true)
+		result := bin.live_git_fallback_for_test(repository.root, ['for-each-ref', '--format=%TCCBIN',
+			'PAIR%x', 'refs/heads/tccbin-automation-state'])
+		assert result.exit_code != 0, result.output
+		assert result.output.contains('metacharacters'), result.output
+		assert !result.output.contains('EXPANDED'), result.output
+	}
+}
+
+fn test_durable_git_fallback_refuses_a_percent_in_the_wrapper_path_on_windows() {
+	$if windows {
+		repository := prepare_plan_repository('fallback-path-percent', plan_seeded_unknown_target(false),
+			false)
+		defer {
+			os.rmdir_all(repository.root) or {}
+		}
+		// The wrapper's directory holds a `%` too. The line then has two `%` marks, one in the path and
+		// one in the format. cmd.exe pairs `%` marks across the whole line, so the wrapper is refused
+		// even though no variable of that name is set.
+		wrapper_dir := write_cmd_git_wrapper('%x') or { panic(err) }
+		defer {
+			os.rmdir_all(wrapper_dir) or {}
+		}
+		original_path := os.getenv('PATH')
+		defer {
+			os.setenv('PATH', original_path, true)
+		}
+		os.setenv('PATH', '${wrapper_dir};${os.getenv('SystemRoot')}\\System32', true)
+		result := bin.live_git_fallback_for_test(repository.root, ['for-each-ref', '--format=%H',
+			'refs/heads/tccbin-automation-state'])
+		assert result.exit_code != 0, result.output
+		assert result.output.contains('metacharacters'), result.output
+	}
+}
+
+fn test_durable_git_fallback_refuses_a_bare_cmd_wrapper_path_with_cmd_delimiters_on_windows() {
+	$if windows {
+		// The bare-path cases need the wrapper dirs under TEMP to be unquoted by os.exec, which
+		// quotes any path that contains a space, so a TEMP with a space would hide the case.
+		assert !os.temp_dir().contains(' '), 'TEMP contains a space: ${os.temp_dir()}'
+		repository := prepare_plan_repository('fallback-bare-path', plan_seeded_unknown_target(false),
+			false)
+		defer {
+			os.rmdir_all(repository.root) or {}
+		}
+		original_path := os.getenv('PATH')
+		defer {
+			os.setenv('PATH', original_path, true)
+		}
+		// os.exec leaves a path with no space bare, so cmd.exe ends the command name at `(`, `)`, `,`,
+		// or `=`. The wrapper must be refused with a message, not left to fail as "not recognized".
+		for tag in ['paren(x)', 'comma,x', 'equal=x'] {
+			wrapper_dir := os.join_path(os.temp_dir(), 'tccbin-git-cmd-${tag}-${os.getpid()}')
+			os.rmdir_all(wrapper_dir) or {}
+			os.mkdir_all(wrapper_dir) or { panic(err) }
+			os.write_file(os.join_path(wrapper_dir, 'git.cmd'), '@echo SHIM-RAN %*\r\n') or { panic(err) }
+			os.setenv('PATH', '${wrapper_dir};${os.getenv('SystemRoot')}\\System32', true)
+			result := bin.live_git_fallback_for_test(repository.root, ['rev-parse',
+				'--is-bare-repository'])
+			os.rmdir_all(wrapper_dir) or {}
+			assert result.exit_code != 0, '${tag}: ${result.output}'
+			assert result.output.contains('metacharacters'), '${tag}: ${result.output}'
+			assert !result.output.contains('SHIM-RAN'), '${tag}: ${result.output}'
+		}
+	}
+}
+
+fn test_durable_git_fallback_runs_a_cmd_wrapper_in_a_spaced_directory_with_cmd_delimiters_on_windows() {
+	$if windows {
+		repository := prepare_plan_repository('fallback-spaced-delims', plan_seeded_unknown_target(false),
+			false)
+		defer {
+			os.rmdir_all(repository.root) or {}
+		}
+		// A space makes os.exec quote the path, and cmd.exe reads `(`, `)`, `,`, and `=` as text inside
+		// quotes. So this wrapper must still run, as the Program Files (x86) layout needs.
+		wrapper_dir := os.join_path(os.temp_dir(), 'tccbin spaced (x), y=z ${os.getpid()}')
+		os.rmdir_all(wrapper_dir) or {}
+		os.mkdir_all(wrapper_dir) or { panic(err) }
+		defer {
+			os.rmdir_all(wrapper_dir) or {}
+		}
+		os.write_file(os.join_path(wrapper_dir, 'git.cmd'), '@echo SHIM-RAN %*\r\n') or { panic(err) }
+		original_path := os.getenv('PATH')
+		defer {
+			os.setenv('PATH', original_path, true)
+		}
+		os.setenv('PATH', '${wrapper_dir};${os.getenv('SystemRoot')}\\System32', true)
+		result := bin.live_git_fallback_for_test(repository.root, ['rev-parse', '--is-bare-repository'])
+		assert result.exit_code == 0, result.output
+		assert result.output.contains('SHIM-RAN'), result.output
+	}
+}
+
+fn test_durable_git_fallback_uses_caret_free_revisions_through_a_cmd_wrapper_on_windows() {
+	$if windows {
+		repository := prepare_plan_repository('fallback-caret', plan_seeded_unknown_target(false),
+			false)
+		defer {
+			os.rmdir_all(repository.root) or {}
+		}
+		wrapper_dir := write_cmd_git_wrapper('caret') or { panic(err) }
+		defer {
+			os.rmdir_all(wrapper_dir) or {}
+		}
+		branch := 'refs/heads/tccbin-automation-state'
+		// cmd.exe reads a `^` as its escape character, so a caret revision is refused through a batch
+		// wrapper. The live state reads use `<ref>:` for the tree and `rev-list -n 1` for the commit,
+		// which need no caret and must answer as git.exe does.
+		tree := bin.git_exec_for_test(['git', '--git-dir', repository.root, 'rev-parse', '${branch}:'])
+		commit := bin.git_exec_for_test(['git', '--git-dir', repository.root, 'rev-list', '-n',
+			'1', branch])
+		assert tree.exit_code == 0, tree.output
+		assert commit.exit_code == 0, commit.output
+		original_path := os.getenv('PATH')
+		defer {
+			os.setenv('PATH', original_path, true)
+		}
+		os.setenv('PATH', '${wrapper_dir};${os.getenv('SystemRoot')}\\System32', true)
+		wrapped_tree := bin.live_git_fallback_for_test(repository.root, ['rev-parse', '${branch}:'])
+		wrapped_commit := bin.live_git_fallback_for_test(repository.root, ['rev-list', '-n', '1',
+			branch])
+		caret := bin.live_git_fallback_for_test(repository.root, ['rev-parse', '${branch}^{tree}'])
+		assert wrapped_tree.exit_code == 0, wrapped_tree.output
+		assert wrapped_tree.output.trim_space() == tree.output.trim_space(), wrapped_tree.output
+		assert wrapped_commit.exit_code == 0, wrapped_commit.output
+		assert wrapped_commit.output.trim_space() == commit.output.trim_space(), wrapped_commit.output
+		assert caret.exit_code != 0, caret.output
+		assert caret.output.contains('metacharacters'), caret.output
+	}
+}
+
+fn test_windows_git_program_honors_pathext_order_on_windows() {
+	$if windows {
+		root := os.join_path(os.temp_dir(), 'tccbin-git-pathext-${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		os.write_file(os.join_path(root, 'git.com'), '') or { panic(err) }
+		os.write_file(os.join_path(root, 'git.cmd'), '@echo off\r\n') or { panic(err) }
+		original_path := os.getenv('PATH')
+		original_pathext := os.getenv('PATHEXT')
+		defer {
+			os.setenv('PATH', original_path, true)
+			os.setenv('PATHEXT', original_pathext, true)
+		}
+		os.setenv('PATH', root, true)
+		// cmd.exe tries the extensions in PATHEXT's order, so `.CMD` listed before `.COM` picks the wrapper.
+		os.setenv('PATHEXT', '.CMD;.COM', true)
+		picked := bin.windows_git_program_for_test() or { panic(err) }
+		assert picked == os.abs_path(os.join_path(root, 'git.cmd')), picked
+		// An extension that PATHEXT does not list is not a candidate, so with only `.EXE` no git is found.
+		os.setenv('PATHEXT', '.EXE', true)
+		bin.windows_git_program_for_test() or {
+			assert err.msg() == 'git was not found on PATH', err.msg()
+			return
+		}
+		assert false, 'windows_git_program found a program whose extension PATHEXT does not list'
+	}
+}
+
+fn test_windows_git_program_follows_cmd_exe_path_order_on_windows() {
+	$if windows {
+		root := os.join_path(os.temp_dir(), 'tccbin-git-order-${os.getpid()}')
+		os.rmdir_all(root) or {}
+		first := os.join_path(root, 'first')
+		second := os.join_path(root, 'second')
+		os.mkdir_all(first) or { panic(err) }
+		os.mkdir_all(second) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		os.write_file(os.join_path(first, 'git.cmd'), '@echo off\r\n') or { panic(err) }
+		os.write_file(os.join_path(second, 'git.exe'), '') or { panic(err) }
+		original_path := os.getenv('PATH')
+		original_pathext := os.getenv('PATHEXT')
+		defer {
+			os.setenv('PATH', original_path, true)
+			os.setenv('PATHEXT', original_pathext, true)
+		}
+		os.setenv('PATHEXT', '.EXE;.CMD', true)
+		// cmd.exe starts the .cmd in the earlier PATH directory, not the .exe in a later one.
+		os.setenv('PATH', '${first};${second}', true)
+		picked := bin.windows_git_program_for_test() or { panic(err) }
+		assert picked == os.abs_path(os.join_path(first, 'git.cmd')), picked
+		// Inside one directory, cmd.exe tries `.exe` before `.cmd`.
+		os.write_file(os.join_path(first, 'git.exe'), '') or { panic(err) }
+		os.setenv('PATH', first, true)
+		same := bin.windows_git_program_for_test() or { panic(err) }
+		assert same == os.abs_path(os.join_path(first, 'git.exe')), same
+	}
+}
+
+fn test_windows_git_program_skips_a_relative_path_entry_on_windows() {
+	$if windows {
+		root := os.join_path(os.temp_dir(), 'tccbin-git-relative-${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		os.write_file(os.join_path(root, 'git.cmd'), '@echo off\r\n') or { panic(err) }
+		original_cwd := os.getwd()
+		original_path := os.getenv('PATH')
+		original_pathext := os.getenv('PATHEXT')
+		defer {
+			os.setenv('PATH', original_path, true)
+			os.setenv('PATHEXT', original_pathext, true)
+			os.chdir(original_cwd) or {}
+		}
+		os.setenv('PATHEXT', '.EXE;.CMD', true)
+		os.chdir(root) or { panic(err) }
+		// `.` names the current directory, which cmd.exe would search, so the resolver must skip it.
+		os.setenv('PATH', '.', true)
+		bin.windows_git_program_for_test() or {
+			assert err.msg() == 'git was not found on PATH', err.msg()
+			return
+		}
+		assert false, 'windows_git_program resolved a relative PATH entry against the current directory'
+	}
+}
+
+fn test_windows_git_program_strips_quotes_from_a_path_entry_on_windows() {
+	$if windows {
+		root := os.join_path(os.temp_dir(), 'tccbin-git-quoted-${os.getpid()}')
+		os.rmdir_all(root) or {}
+		quoted := os.join_path(root, 'quoted dir')
+		later := os.join_path(root, 'later')
+		os.mkdir_all(quoted) or { panic(err) }
+		os.mkdir_all(later) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		os.write_file(os.join_path(quoted, 'git.exe'), '') or { panic(err) }
+		os.write_file(os.join_path(later, 'git.cmd'), '@echo off\r\n') or { panic(err) }
+		original_path := os.getenv('PATH')
+		original_pathext := os.getenv('PATHEXT')
+		defer {
+			os.setenv('PATH', original_path, true)
+			os.setenv('PATHEXT', original_pathext, true)
+		}
+		os.setenv('PATHEXT', '.EXE;.CMD', true)
+		// cmd.exe strips the quotes from a PATH entry, so the quoted directory holds the first candidate.
+		os.setenv('PATH', '"${quoted}";${later}', true)
+		picked := bin.windows_git_program_for_test() or { panic(err) }
+		assert picked == os.abs_path(os.join_path(quoted, 'git.exe')), picked
+	}
+}
+
+fn test_windows_git_program_keeps_a_quoted_path_entry_with_a_semicolon_on_windows() {
+	$if windows {
+		root := os.join_path(os.temp_dir(), 'tccbin-git-semicolon-${os.getpid()}')
+		os.rmdir_all(root) or {}
+		semi := os.join_path(root, 'semi;dir')
+		later := os.join_path(root, 'later')
+		os.mkdir_all(semi) or { panic(err) }
+		os.mkdir_all(later) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		os.write_file(os.join_path(semi, 'git.exe'), '') or { panic(err) }
+		os.write_file(os.join_path(later, 'git.cmd'), '@echo off\r\n') or { panic(err) }
+		original_path := os.getenv('PATH')
+		original_pathext := os.getenv('PATHEXT')
+		defer {
+			os.setenv('PATH', original_path, true)
+			os.setenv('PATHEXT', original_pathext, true)
+		}
+		os.setenv('PATHEXT', '.EXE;.CMD', true)
+		// cmd.exe reads a `;` inside a quoted PATH entry as part of the directory name, so the first
+		// entry is `semi;dir` and its git.exe is the program, not the git.cmd in the later entry.
+		os.setenv('PATH', '"${semi}";${later}', true)
+		picked := bin.windows_git_program_for_test() or { panic(err) }
+		assert picked == os.abs_path(os.join_path(semi, 'git.exe')), picked
+	}
+}
+
+// windows_git_search_dir_for_test is pure string logic, so this test runs on every platform.
+fn test_windows_git_search_dir_searches_only_drive_absolute_or_unc_entries() {
+	assert bin.windows_git_search_dir_for_test('C:\\git\\cmd') == 'C:\\git\\cmd'
+	assert bin.windows_git_search_dir_for_test('C:/git/cmd') == 'C:/git/cmd'
+	assert bin.windows_git_search_dir_for_test('"C:\\Program Files\\Git\\cmd"') == 'C:\\Program Files\\Git\\cmd'
+	assert bin.windows_git_search_dir_for_test('//server/share/bin') == '//server/share/bin'
+	assert bin.windows_git_search_dir_for_test('\\\\server\\share\\bin') == '\\\\server\\share\\bin'
+	for entry in ['.', 'bin', '\\bin', '/bin', 'C:bin', '', '"."'] {
+		assert bin.windows_git_search_dir_for_test(entry) == '', entry
+	}
+}
+
+fn test_windows_git_program_finds_a_batch_wrapper_when_pathext_lists_bat_on_windows() {
+	$if windows {
+		root := os.join_path(os.temp_dir(), 'tccbin-git-bat-${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		os.write_file(os.join_path(root, 'git.bat'), '@echo off\r\n') or { panic(err) }
+		original_path := os.getenv('PATH')
+		original_pathext := os.getenv('PATHEXT')
+		defer {
+			os.setenv('PATH', original_path, true)
+			os.setenv('PATHEXT', original_pathext, true)
+		}
+		os.setenv('PATHEXT', '.BAT', true)
+		os.setenv('PATH', root, true)
+		picked := bin.windows_git_program_for_test() or { panic(err) }
+		assert picked == os.abs_path(os.join_path(root, 'git.bat')), picked
+	}
+}
+
+fn test_windows_git_program_takes_cmd_exe_default_pathext_order_when_pathext_is_empty_on_windows() {
+	$if windows {
+		root := os.join_path(os.temp_dir(), 'tccbin-git-default-${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		os.write_file(os.join_path(root, 'git.cmd'), '@echo off\r\n') or { panic(err) }
+		os.write_file(os.join_path(root, 'git.exe'), '') or { panic(err) }
+		original_path := os.getenv('PATH')
+		original_pathext := os.getenv('PATHEXT')
+		defer {
+			os.setenv('PATH', original_path, true)
+			os.setenv('PATHEXT', original_pathext, true)
+		}
+		// An empty PATHEXT gets cmd.exe's default order, `.com`, `.exe`, `.bat`, `.cmd`, so `.exe` wins.
+		os.setenv('PATHEXT', '', true)
+		os.setenv('PATH', root, true)
+		picked := bin.windows_git_program_for_test() or { panic(err) }
+		assert picked == os.abs_path(os.join_path(root, 'git.exe')), picked
+	}
+}
+
+fn test_windows_git_program_ignores_pathext_types_it_cannot_start_and_matches_case_on_windows() {
+	$if windows {
+		root := os.join_path(os.temp_dir(), 'tccbin-git-pathext-case-${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		os.write_file(os.join_path(root, 'git.exe'), '') or { panic(err) }
+		original_path := os.getenv('PATH')
+		original_pathext := os.getenv('PATHEXT')
+		defer {
+			os.setenv('PATH', original_path, true)
+			os.setenv('PATHEXT', original_pathext, true)
+		}
+		// `.JS` is not a type os.exec can start, and `.Exe` must match `.exe` regardless of case.
+		os.setenv('PATHEXT', '.JS;.Exe', true)
+		os.setenv('PATH', root, true)
+		picked := bin.windows_git_program_for_test() or { panic(err) }
+		assert picked == os.abs_path(os.join_path(root, 'git.exe')), picked
+	}
+}
+
+fn test_windows_git_program_reports_a_pathext_with_no_startable_type_on_windows() {
+	$if windows {
+		root := os.join_path(os.temp_dir(), 'tccbin-git-no-type-${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		os.write_file(os.join_path(root, 'git.exe'), '') or { panic(err) }
+		original_path := os.getenv('PATH')
+		original_pathext := os.getenv('PATHEXT')
+		defer {
+			os.setenv('PATH', original_path, true)
+			os.setenv('PATHEXT', original_pathext, true)
+		}
+		os.setenv('PATHEXT', '.JS;.VBS', true)
+		os.setenv('PATH', root, true)
+		bin.windows_git_program_for_test() or {
+			assert err.msg().contains('PATHEXT'), err.msg()
+			return
+		}
+		assert false, 'windows_git_program found git with a PATHEXT that lists no startable type'
+	}
+}
+
+fn test_durable_git_fallback_runs_a_cmd_wrapper_whose_path_has_plus_and_brackets_on_windows() {
+	$if windows {
+		// cmd.exe does not end a bare command name at `+`, `[`, or `]`, so this wrapper must run.
+		wrapper_dir := os.join_path(os.temp_dir(), 'tccbin-git-cmd-plus+[x]-${os.getpid()}')
+		os.rmdir_all(wrapper_dir) or {}
+		os.mkdir_all(wrapper_dir) or { panic(err) }
+		defer {
+			os.rmdir_all(wrapper_dir) or {}
+		}
+		os.write_file(os.join_path(wrapper_dir, 'git.cmd'), '@echo SHIM-RAN %*\r\n') or { panic(err) }
+		original_path := os.getenv('PATH')
+		defer {
+			os.setenv('PATH', original_path, true)
+		}
+		os.setenv('PATH', '${wrapper_dir};${os.getenv('SystemRoot')}\\System32', true)
+		result := bin.live_git_fallback_for_test(os.temp_dir(), ['rev-parse', '--is-bare-repository'])
+		assert result.exit_code == 0, result.output
+		assert result.output.contains('SHIM-RAN'), result.output
+	}
+}
+
+fn test_durable_git_fallback_refuses_a_bare_cmd_wrapper_path_with_a_no_break_space_on_windows() {
+	$if windows {
+		// cmd.exe ends a bare command name at U+00A0 (bytes C2 A0). So `p<nbsp>q\git.cmd` runs `p.cmd`
+		// beside it, with the rest as arguments. os.exec does not quote a path with no space or tab.
+		nbsp := [u8(0xc2), u8(0xa0)].bytestr()
+		root := os.join_path(os.temp_dir(), 'tccbin-git-nbsp-${os.getpid()}')
+		os.rmdir_all(root) or {}
+		wrapper_dir := os.join_path(root, 'p${nbsp}q')
+		os.mkdir_all(wrapper_dir) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		os.write_file(os.join_path(root, 'p.cmd'), '@echo SHIM-PREFIX %*\r\n') or { panic(err) }
+		os.write_file(os.join_path(wrapper_dir, 'git.cmd'), '@echo SHIM-RAN %*\r\n') or { panic(err) }
+		original_path := os.getenv('PATH')
+		defer {
+			os.setenv('PATH', original_path, true)
+		}
+		os.setenv('PATH', '${wrapper_dir};${os.getenv('SystemRoot')}\\System32', true)
+		result := bin.live_git_fallback_for_test(os.temp_dir(), ['rev-parse', '--is-bare-repository'])
+		assert result.exit_code != 0, result.output
+		assert result.output.contains('metacharacters'), result.output
+		assert !result.output.contains('SHIM-PREFIX'), result.output
+		assert !result.output.contains('SHIM-RAN'), result.output
+	}
+}
+
+fn test_durable_git_fallback_refuses_a_cmd_wrapper_in_a_directory_with_cmd_metacharacters_on_windows() {
+	$if windows {
+		repository := prepare_plan_repository('fallback-program-path', plan_seeded_unknown_target(false),
+			false)
+		defer {
+			os.rmdir_all(repository.root) or {}
+		}
+		original_path := os.getenv('PATH')
+		defer {
+			os.setenv('PATH', original_path, true)
+		}
+		// os.exec leaves a path without a space bare, so cmd.exe reads `&`, `^`, and `!` in the PATH
+		// directory as syntax. The wrapper must be refused before it runs.
+		for tag in ['R&D', 'caret^x', 'bang!x'] {
+			wrapper_dir := os.join_path(os.temp_dir(), 'tccbin-git-cmd-${tag}-${os.getpid()}')
+			os.rmdir_all(wrapper_dir) or {}
+			os.mkdir_all(wrapper_dir) or { panic(err) }
+			os.write_file(os.join_path(wrapper_dir, 'git.cmd'), '@echo SHIM-RAN %*\r\n') or { panic(err) }
+			os.setenv('PATH', '${wrapper_dir};${os.getenv('SystemRoot')}\\System32', true)
+			result := bin.live_git_fallback_for_test(repository.root, ['rev-parse',
+				'--is-bare-repository'])
+			os.rmdir_all(wrapper_dir) or {}
+			assert result.exit_code != 0, '${tag}: ${result.output}'
+			assert result.output.contains('metacharacters'), '${tag}: ${result.output}'
+			assert !result.output.contains('SHIM-RAN'), '${tag}: ${result.output}'
+		}
+	}
+}
+
+fn test_plan_run_resolves_a_cmd_only_git_on_windows() {
+	$if windows {
+		repository := prepare_plan_repository('plan-run-cmd-only', plan_seeded_unknown_target(false),
+			false)
+		defer {
+			os.rmdir_all(repository.root) or {}
+		}
+		wrapper_dir := write_cmd_git_wrapper('plan-run') or { panic(err) }
+		defer {
+			os.rmdir_all(wrapper_dir) or {}
+		}
+		original_path := os.getenv('PATH')
+		defer {
+			os.setenv('PATH', original_path, true)
+		}
+		os.setenv('PATH', '${wrapper_dir};${os.getenv('SystemRoot')}\\System32', true)
+		// The helper asserts on failure, which would skip the defers above, so the check stays here.
+		result := bin.git_exec_for_test(['git', '--git-dir', repository.root, 'rev-parse', '--is-bare-repository'])
+		assert result.exit_code == 0, result.output
+		assert result.output.trim_space() == 'true', result.output
+	}
+}
+
+fn test_durable_git_fallback_passes_a_lone_percent_format_through_a_cmd_wrapper_on_windows() {
+	$if windows {
+		repository := prepare_plan_repository('fallback-lone-percent', plan_seeded_unknown_target(false),
+			false)
+		defer {
+			os.rmdir_all(repository.root) or {}
+		}
+		wrapper_dir := write_cmd_git_wrapper('lone-percent') or { panic(err) }
+		defer {
+			os.rmdir_all(wrapper_dir) or {}
+		}
+		branch := 'refs/heads/tccbin-automation-state'
+		// `log --format=@@%H` is the evidence-addition query. Its single `%H` is not a cmd.exe variable,
+		// so the batch wrapper must deliver it to git unchanged, with the answer git.exe gives.
+		expected := plan_run(['git', '--git-dir', repository.root, 'log', '-1', '--format=@@%H',
+			branch])
+		original_path := os.getenv('PATH')
+		defer {
+			os.setenv('PATH', original_path, true)
+		}
+		os.setenv('PATH', '${wrapper_dir};${os.getenv('SystemRoot')}\\System32', true)
+		actual := bin.live_git_fallback_for_test(repository.root, ['log', '-1', '--format=@@%H',
+			branch])
+		assert actual.exit_code == 0, actual.output
+		assert actual.output.trim_space() == expected, actual.output
+	}
+}
+
+fn test_durable_git_fallback_passes_spaces_through_a_cmd_wrapper_in_a_spaced_directory_on_windows() {
+	$if windows {
+		repository := prepare_plan_repository('fallback-spaced-dir', plan_seeded_unknown_target(false),
+			false)
+		defer {
+			os.rmdir_all(repository.root) or {}
+		}
+		// The wrapper's directory and one argument both contain spaces, so os.exec quotes both.
+		spaced_dir := os.join_path(os.temp_dir(), 'tccbin spaced dir ${os.getpid()}')
+		os.rmdir_all(spaced_dir) or {}
+		os.mkdir_all(spaced_dir) or { panic(err) }
+		defer {
+			os.rmdir_all(spaced_dir) or {}
+		}
+		os.write_file(os.join_path(spaced_dir, 'git.cmd'), '@echo ARGS=%*\r\n') or { panic(err) }
+		original_path := os.getenv('PATH')
+		defer {
+			os.setenv('PATH', original_path, true)
+		}
+		os.setenv('PATH', '${spaced_dir};${os.getenv('SystemRoot')}\\System32', true)
+		result := bin.live_git_fallback_for_test(repository.root, ['x y', 'z'])
+		assert result.exit_code == 0, result.output
+		assert result.output.contains('x y'), result.output
+	}
 }

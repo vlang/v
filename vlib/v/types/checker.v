@@ -7002,8 +7002,9 @@ fn (mut tc TypeChecker) check_unused_import_diagnostics() {
 }
 
 // node_uses_qualified_attribute reports whether the attributes of `id`, or of
-// its struct fields, name a schema of `qualifier` or `module_path`, as the
-// dotted form `@[mod.Skip]` of a custom attribute does (vlang/rfcs#35).
+// its struct fields or enum values, name a schema of `qualifier` or
+// `module_path`, as the dotted form `@[mod.Skip]` of a custom attribute does
+// (vlang/rfcs#35).
 fn (tc &TypeChecker) node_uses_qualified_attribute(id flat.NodeId, qualifier string, module_path string) bool {
 	if qualifier.len == 0 && module_path.len == 0 {
 		return false
@@ -7012,8 +7013,17 @@ fn (tc &TypeChecker) node_uses_qualified_attribute(id flat.NodeId, qualifier str
 		return true
 	}
 	node := tc.a.node(id)
+	if node.kind !in [.struct_decl, .enum_decl] {
+		// Only struct fields and enum values keep attributes in their metadata.
+		// Other children use it for unrelated text, like the module path
+		// `te.ui` that a file's `import te.ui` child stores.
+		return false
+	}
 	for i in 0 .. node.children_count {
 		child := tc.a.child_node(node, i)
+		if child.kind !in [.field_decl, .enum_field] {
+			continue
+		}
 		mut meta := child.generic_params()
 		if meta.len == 0 {
 			continue

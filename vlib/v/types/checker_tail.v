@@ -16545,7 +16545,12 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			&& unalias_type(actual_pointer_base) is Array
 			&& unalias_type(expected_pointer_base) is Array
 			&& actual_pointer_base.name() != expected_pointer_base.name() && !pointer_value_arg
-		if pointer_depth_mismatch || pointer_array_mismatch {
+		// A `mut` or `shared` argument is the caller's own container, so unlike a value
+		// argument it is never converted: a `[]Item` cannot stand for a `mut []Named`.
+		mut_container_mismatch := ((arg_node.is_mut && param_is_mut)
+			|| call_param_is_shared(info, param_idx))
+			&& tc.mut_arg_container_layouts_differ(actual, expected)
+		if pointer_depth_mismatch || pointer_array_mismatch || mut_container_mismatch {
 			actual_name := tc.diagnostic_expr_type_name(arg_id, actual)
 			actual_display := if mut_arg_node.is_mut && param_is_mut && actual !is Pointer {
 				'&${actual_name}'

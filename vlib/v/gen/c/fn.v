@@ -14037,6 +14037,13 @@ fn infer_codegen_generic_type_args_bytes(param_type string, arg_type string, mut
 		infer_codegen_generic_type_args_bytes(param[2..], arg[2..], mut inferred)
 		return
 	}
+	if param.starts_with('chan ') {
+		// Mirror the transformer: `chan T` binds from a `chan string` argument (#30842).
+		if arg.starts_with('chan ') {
+			infer_codegen_generic_type_args_bytes(param[5..], arg[5..], mut inferred)
+		}
+		return
+	}
 	if (param.starts_with('?') && arg.starts_with('?'))
 		|| (param.starts_with('!') && arg.starts_with('!')) {
 		infer_codegen_generic_type_args_bytes(param[1..], arg[1..], mut inferred)

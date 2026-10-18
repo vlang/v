@@ -3550,7 +3550,9 @@ fn (tc &TypeChecker) choose_translated_if_tail_type(id flat.NodeId, current Type
 	return tc.choose_if_tail_type(current, next)
 }
 
-fn (tc &TypeChecker) translated_integer_literal_type(id flat.NodeId) ?Type {
+// translated_integer_literal_type returns the C type of an integer literal in a translated file:
+// `int`, then `unsigned int` (nondecimal only), then a signed or unsigned 64-bit type.
+pub fn (tc &TypeChecker) translated_integer_literal_type(id flat.NodeId) ?Type {
 	literal := (tc.integer_literal_source(id) or { return none }).replace('_', '').to_lower()
 	value, parse_error := strconv.common_parse_uint2(literal, util.v_literal_parse_base(literal), 64)
 	if parse_error != 0 {
@@ -4752,8 +4754,17 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 			if expected !is Void {
 				mut actual := tc.resolve_expr(value_id, expected)
 				if value_node.kind == .call {
-					if call_info := tc.resolve_call_info(value_id, value_node) {
-						if call_info.return_type !is Unknown && call_info.return_type !is Void {
+					if info := tc.resolve_call_info(value_id, value_node) {
+						// An implicit generic call resolves to its declared signature, so
+						// specialize it from the arguments first. A return type that still
+						// carries a placeholder (`map[T]int` -> `map[unknown]int`, an open
+						// `Box[T]` or `chan T` spelling) must not replace the type inferred
+						// from the expected field type.
+						call_info := tc.specialized_plain_generic_call_info(value_node, info)
+						if !type_contains_unknown(call_info.return_type)
+							&& call_info.return_type !is Void
+							&& !generic_semantic_type_has_placeholder(call_info.return_type)
+							&& !tc.type_text_has_generic_placeholder(call_info.return_type.source_type_id()) {
 							actual = call_info.return_type
 						}
 					}
@@ -9458,7 +9469,7 @@ fn (mut tc TypeChecker) resolve_expr(id flat.NodeId, expected Type) Type {
 			return array_actual
 		}
 	}
-	if node.kind == .array_literal {
+	if node.kind == .array_literal && tc.explicit_array_literal_type_fits(node, expected) {
 		mut elem_expected := builtin_void_type
 		mut expected_is_array := false
 		if expected is Array {
@@ -9524,8 +9535,8 @@ fn (mut tc TypeChecker) resolve_expr(id flat.NodeId, expected Type) Type {
 					}
 					if !tc.receiver_compatible(update_actual.key_type, expected_map.key_type)
 						|| !tc.receiver_compatible(update_actual.value_type, expected_map.value_type)
-						|| tc.map_entry_layouts_differ(update_actual.key_type, expected_map.key_type)
-						|| tc.map_entry_layouts_differ(update_actual.value_type, expected_map.value_type) {
+						|| tc.container_elem_layouts_differ(update_actual.key_type, expected_map.key_type)
+						|| tc.container_elem_layouts_differ(update_actual.value_type, expected_map.value_type) {
 						all_ok = false
 						break
 					}
@@ -10669,21 +10680,29 @@ fn (tc &TypeChecker) type_compatible(actual Type, expected Type) bool {
 				|| (actual.base_type.name() == 'u8' && expected.base_type is Char) {
 				return true
 			}
-			return tc.type_compatible(actual.base_type, expected.base_type)
+			if !tc.type_compatible(actual.base_type, expected.base_type) {
+				return false
+			}
+			// A referenced array or map is shared, never converted: a `&[]Item` is not
+			// a `&[]Named`, and a `&[]u8` is not a `&[]u64`.
+			if is_container_type(actual.base_type) && is_container_type(expected.base_type) {
+				return !tc.container_elem_layouts_differ(actual.base_type, expected.base_type)
+			}
+			return true
 		}
 	}
 	if expected is Array {
 		if actual is Array {
-			return tc.type_compatible(actual.elem_type, expected.elem_type)
+			return tc.dynamic_array_elem_types_compatible(actual.elem_type, expected.elem_type)
 		}
 		if actual is ArrayFixed {
-			return tc.type_compatible(actual.elem_type, expected.elem_type)
+			return tc.dynamic_array_elem_types_compatible(actual.elem_type, expected.elem_type)
 		}
 	}
 	if expected is ArrayFixed {
 		if actual is ArrayFixed {
 			return tc.fixed_array_lengths_compatible(actual, expected)
-				&& tc.type_compatible(actual.elem_type, expected.elem_type)
+				&& tc.container_elem_types_compatible(actual.elem_type, expected.elem_type)
 		}
 	}
 	if expected is Channel {
@@ -10694,8 +10713,8 @@ fn (tc &TypeChecker) type_compatible(actual Type, expected Type) bool {
 	}
 	if expected is Map {
 		if actual is Map {
-			return tc.map_entry_types_compatible(actual.key_type, expected.key_type)
-				&& tc.map_entry_types_compatible(actual.value_type, expected.value_type)
+			return tc.container_elem_types_compatible(actual.key_type, expected.key_type)
+				&& tc.container_elem_types_compatible(actual.value_type, expected.value_type)
 		}
 	}
 	if expected is FnType {
@@ -10729,18 +10748,83 @@ fn (tc &TypeChecker) explicit_map_literal_type_fits(node flat.Node, expected Typ
 	return tc.type_compatible(tc.parse_type(flat.source_type_id(node.value)), expected)
 }
 
-// map_entry_types_compatible reports whether a map with key or value type `actual`
-// can be used where one with `expected` is required.
-fn (tc &TypeChecker) map_entry_types_compatible(actual Type, expected Type) bool {
-	return tc.type_compatible(actual, expected) && !tc.map_entry_layouts_differ(actual, expected)
+// explicit_array_literal_type_fits reports whether the array literal `node` may take
+// the `expected` array type. An untyped `[...]` literal may; an explicitly typed
+// `[N]T[...]` keeps its own type unless that is the expected one (up to aliases).
+fn (tc &TypeChecker) explicit_array_literal_type_fits(node flat.Node, expected Type) bool {
+	if node.typ == 0 || (expected !is Array && expected !is ArrayFixed) {
+		return true
+	}
+	return tc.type_compatible(tc.parse_type(node.typ), expected)
 }
 
-// map_entry_layouts_differ reports whether otherwise compatible map key or value
-// types store their entries differently. A map is not converted entry by entry, so
-// unlike plain values the types must match: aliases are transparent, but `u32` is
-// not a `u64`, `int` is not a `?int`, and a concrete type is not the interface or
-// sum type that would box it.
-fn (tc &TypeChecker) map_entry_layouts_differ(actual Type, expected Type) bool {
+// container_elem_types_compatible reports whether a fixed array with element type
+// `actual` (or a map with key or value type `actual`) can be used where one with
+// `expected` is required.
+fn (tc &TypeChecker) container_elem_types_compatible(actual Type, expected Type) bool {
+	return tc.type_compatible(actual, expected) && !tc.container_elem_layouts_differ(actual, expected)
+}
+
+// dynamic_array_elem_types_compatible reports whether a dynamic array with element
+// type `actual` can be used where one with `expected` is required. The elements must
+// have the same layout, except that concrete values may be boxed into the interface or
+// sum type they implement: the transform converts such an array element by element
+// (`transform_array_value_for_dynamic_target`), also inside nested dynamic arrays,
+// whose elements the recursive type_compatible call has already checked this way.
+fn (tc &TypeChecker) dynamic_array_elem_types_compatible(actual Type, expected Type) bool {
+	if !tc.type_compatible(actual, expected) {
+		return false
+	}
+	clean_actual := unalias_type(actual)
+	clean_expected := unalias_type(expected)
+	if clean_expected is Interface || clean_expected is SumType
+		|| (clean_expected is Array && clean_actual is Array) {
+		return true
+	}
+	return !tc.container_elem_layouts_differ(actual, expected)
+}
+
+fn is_container_type(typ Type) bool {
+	clean := unalias_type(typ)
+	return clean is Array || clean is ArrayFixed || clean is Map
+}
+
+// mut_arg_container_layouts_differ reports whether the array or map `actual`, passed
+// as `mut` or `shared`, stores its elements differently from the container behind the
+// parameter type `expected`. The callee works on the caller's container, so it cannot
+// be converted element by element like a value argument: a `[]Item` is not a
+// `mut []Named` (or `mut ?[]Named`, or `shared []Named`).
+fn (tc &TypeChecker) mut_arg_container_layouts_differ(actual Type, expected Type) bool {
+	mut clean_actual := unalias_type(actual)
+	if clean_actual is Pointer {
+		clean_actual = unalias_type(clean_actual.base_type)
+	}
+	mut clean_expected := unalias_type(expected)
+	if clean_expected is Pointer {
+		clean_expected = unalias_type(clean_expected.base_type)
+	}
+	if clean_expected is OptionType && clean_actual !is OptionType {
+		clean_expected = unalias_type(clean_expected.base_type)
+		if clean_expected is Pointer {
+			clean_expected = unalias_type(clean_expected.base_type)
+		}
+	}
+	if !is_container_type(clean_actual) || !is_container_type(clean_expected) {
+		return false
+	}
+	if clean_actual is ArrayFixed && clean_expected is Array {
+		// A fixed array passed as a `mut` dynamic array keeps its elements as they are.
+		return tc.container_elem_layouts_differ(clean_actual.elem_type, clean_expected.elem_type)
+	}
+	return tc.container_elem_layouts_differ(clean_actual, clean_expected)
+}
+
+// container_elem_layouts_differ reports whether otherwise compatible array element,
+// map key or map value types store their elements differently. A container is not
+// converted element by element, so unlike plain values the types must match: aliases
+// are transparent, but `u32` is not a `u64`, `int` is not a `?int` or a flag enum, and
+// a concrete type is not the interface or sum type that would box it.
+fn (tc &TypeChecker) container_elem_layouts_differ(actual Type, expected Type) bool {
 	clean_actual := unalias_type(actual)
 	clean_expected := unalias_type(expected)
 	if type_contains_unknown(clean_actual) || type_contains_unknown(clean_expected) {
@@ -10750,39 +10834,42 @@ fn (tc &TypeChecker) map_entry_layouts_differ(actual Type, expected Type) bool {
 		&& (clean_expected.is_integer() || clean_expected.is_float()) {
 		return clean_actual.name() != clean_expected.name()
 	}
+	if (clean_actual is Enum) != (clean_expected is Enum) {
+		return true
+	}
 	match clean_expected {
 		OptionType {
 			if clean_actual is OptionType {
-				return tc.map_entry_layouts_differ(clean_actual.base_type, clean_expected.base_type)
+				return tc.container_elem_layouts_differ(clean_actual.base_type, clean_expected.base_type)
 			}
 			return true
 		}
 		ResultType {
 			if clean_actual is ResultType {
-				return tc.map_entry_layouts_differ(clean_actual.base_type, clean_expected.base_type)
+				return tc.container_elem_layouts_differ(clean_actual.base_type, clean_expected.base_type)
 			}
 			return true
 		}
 		Array {
 			if clean_actual is Array {
-				return tc.map_entry_layouts_differ(clean_actual.elem_type, clean_expected.elem_type)
+				return tc.container_elem_layouts_differ(clean_actual.elem_type, clean_expected.elem_type)
 			}
 		}
 		ArrayFixed {
 			if clean_actual is ArrayFixed {
-				return tc.map_entry_layouts_differ(clean_actual.elem_type, clean_expected.elem_type)
+				return tc.container_elem_layouts_differ(clean_actual.elem_type, clean_expected.elem_type)
 			}
 		}
 		Map {
 			if clean_actual is Map {
-				return tc.map_entry_layouts_differ(clean_actual.key_type, clean_expected.key_type)
-					|| tc.map_entry_layouts_differ(clean_actual.value_type, clean_expected.value_type)
+				return tc.container_elem_layouts_differ(clean_actual.key_type, clean_expected.key_type)
+					|| tc.container_elem_layouts_differ(clean_actual.value_type, clean_expected.value_type)
 			}
 		}
 		Pointer {
 			if clean_actual is Pointer && clean_actual.base_type !is Void
 				&& clean_expected.base_type !is Void {
-				return tc.map_entry_layouts_differ(clean_actual.base_type, clean_expected.base_type)
+				return tc.container_elem_layouts_differ(clean_actual.base_type, clean_expected.base_type)
 			}
 		}
 		Interface {
@@ -10872,6 +10959,9 @@ fn type_contains_unknown_nested(typ Type) bool {
 	}
 	if typ is Map {
 		return type_contains_unknown(typ.key_type) || type_contains_unknown(typ.value_type)
+	}
+	if typ is Channel {
+		return type_contains_unknown(typ.elem_type)
 	}
 	if typ is Pointer {
 		return type_contains_unknown(typ.base_type)
@@ -14466,6 +14556,12 @@ fn (tc &TypeChecker) substitute_generic_type_values(typ Type, args []Type, param
 		return Type(Map{
 			key_type:   tc.substitute_generic_type_values(typ.key_type, args, param_names)
 			value_type: tc.substitute_generic_type_values(typ.value_type, args, param_names)
+		})
+	}
+	if typ is Channel {
+		return Type(Channel{
+			elem_type: tc.substitute_generic_type_values(typ.elem_type, args, param_names)
+			is_mut:    typ.is_mut
 		})
 	}
 	if typ is Pointer {
@@ -19822,6 +19918,10 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 				return builtin_void_type
 			}
 			return tc.resolve_type(tc.a.child(node, node.children_count - 1))
+		}
+		.select_stmt {
+			// as an expression, `select` is `false` once every channel is closed
+			return builtin_bool_type
 		}
 		.match_stmt {
 			return tc.match_expr_tail_type(id)

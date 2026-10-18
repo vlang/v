@@ -16407,7 +16407,7 @@ fn (mut g FlatGen) fixed_array_len_c_expr(raw_len string) ?string {
 			if const_name.len > 0 {
 				expr := g.const_expr_to_string(g.const_vals[const_name], []string{})
 				if trimmed_space(expr).len > 0 {
-					out.write_string(expr)
+					out.write_string('(${expr})')
 				} else {
 					out.write_string(g.const_ident_c_name(const_name))
 				}
@@ -16758,7 +16758,8 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 				g.write(c_fn_name)
 				return
 			}
-			if node.value.contains('sizeof') || fixed_array_len_has_operator(node.value) {
+			if (node.value.contains('sizeof') && node.value.contains('('))
+				|| fixed_array_len_has_operator(node.value) {
 				if expr := g.fixed_array_len_c_expr(node.value) {
 					g.write(expr)
 					return
@@ -23004,6 +23005,19 @@ fn (mut g FlatGen) float_exponent_helpers() {
 	g.writeln('static inline string v3_f64_general(double x, int precision, int upper) { char tmp[128]; int n = upper ? snprintf(tmp, sizeof(tmp), "%.*G", precision, x) : snprintf(tmp, sizeof(tmp), "%.*g", precision, x); if (n < 0) return v3_c_lit("", 0); if (n < (int)sizeof(tmp)) { n = v3_float_normalize_exponent(tmp, n); u8* out = malloc_noscan(n + 1); memcpy(out, tmp, n + 1); return (string){.str = out, .len = n, .is_lit = 0}; } u8* out = malloc_noscan(n + 1); if (upper) snprintf((char*)out, (size_t)n + 1, "%.*G", precision, x); else snprintf((char*)out, (size_t)n + 1, "%.*g", precision, x); n = v3_float_normalize_exponent((char*)out, n); return (string){.str = out, .len = n, .is_lit = 0}; }')
 }
 
+// headerless_linux_rwlockattr_setkind_np continues the `#if` that stubs out
+// pthread_rwlockattr_setkind_np. Headerless C whose Linux libc is unknown (`-cross`
+// snapshots such as vc/v.c, `-o file.c`, `-os linux` from another host) defines
+// PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP itself, so the stub's checks cannot
+// tell glibc, which has the function, from musl, which does not. A weak reference
+// links on both: glibc keeps writer-preferring rwlocks, musl skips the call.
+fn (mut g FlatGen) headerless_linux_rwlockattr_setkind_np() {
+	g.writeln('#elif defined(__linux__) && !defined(__ANDROID__) && !defined(CUSTOM_DEFINE_glibc)')
+	g.writeln('int pthread_rwlockattr_setkind_np(void* attr, int kind) __attribute__((weak));')
+	g.writeln('static inline int v3_pthread_rwlockattr_setkind_np(void* attr, int kind) { int (*setkind)(void*, int) = pthread_rwlockattr_setkind_np; return setkind != 0 ? setkind(attr, kind) : 0; }')
+	g.writeln('#define pthread_rwlockattr_setkind_np(attr, kind) v3_pthread_rwlockattr_setkind_np((attr), (kind))')
+}
+
 fn (mut g FlatGen) builtin_abi_decls() {
 	if !g.has_builtins {
 		return
@@ -23011,6 +23025,9 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.libc_compat_decls()
 	g.writeln('#if !defined(PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP) || defined(CUSTOM_DEFINE_musl) || defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) || defined(__DragonFly__)')
 	g.writeln('#define pthread_rwlockattr_setkind_np(attr, kind) (0)')
+	if !g.target_libc_headers && !g.c_directives_use_system_libc() {
+		g.headerless_linux_rwlockattr_setkind_np()
+	}
 	g.writeln('#endif')
 	g.filelock_compat_decls()
 	// Empty array headers need no allocation. Keep this small wrapper inline so
@@ -24611,6 +24628,12 @@ fn (mut g FlatGen) queue_global_struct_field_defaults(target string, struct_name
 				continue
 			}
 			clean_field_type := default_init_unalias_type(field_type)
+			if clean_field_type is types.ArrayFixed
+				&& g.fixed_array_has_enum_default(clean_field_type) {
+				g.queue_runtime_init_for_module(g.fixed_array_default_fill_stmt(field_target,
+					clean_field_type), init_module)
+				continue
+			}
 			if clean_field_type is types.Struct && !clean_field_type.name().starts_with('C.') && g.struct_needs_default_init(clean_field_type.source_type_id()) {
 				g.queue_global_struct_field_defaults(field_target, clean_field_type.source_type_id(), init_module, mut visited)
 			}
@@ -24639,8 +24662,8 @@ fn (mut g FlatGen) queue_global_struct_field_defaults(target string, struct_name
 }
 
 // global_struct_unset_field_value returns the value `Struct{}` gives an omitted
-// dynamic array, map, channel or `shared` field. C's zero initialization of a
-// global leaves those fields unusable.
+// dynamic array, map, channel or `shared` field, or an enum field whose default is
+// not 0. C's zero initialization of a global leaves those fields unusable or wrong.
 fn (mut g FlatGen) global_struct_unset_field_value(struct_name_id u32, field_name string, field_type types.Type) ?string {
 	if raw_source_id_2, module_name := g.shared_array_field_raw_type(struct_name_id, field_name) {
 		raw := raw_source_id_2
@@ -24666,7 +24689,15 @@ fn (mut g FlatGen) global_struct_unset_field_value(struct_name_id u32, field_nam
 	if clean is types.Map || clean is types.Array || clean is types.Channel {
 		return g.default_value_to_string(field_type)
 	}
-	return none
+	return g.enum_nonzero_default_expr(clean)
+}
+
+// fixed_array_default_fill_stmt copies the default elements of `fixed` into the fixed
+// array storage `target`.
+fn (mut g FlatGen) fixed_array_default_fill_stmt(target string, fixed types.ArrayFixed) string {
+	c_elem, dims := g.fixed_array_decl_parts(fixed)
+	initializer := g.empty_fixed_array_initializer_string(fixed)
+	return '\tmemmove(${target}, (${c_elem}${dims})${initializer}, sizeof(${target}));'
 }
 
 fn (mut g FlatGen) global_storage_type(name string, typ types.Type) types.Type {
@@ -24916,6 +24947,12 @@ fn (mut g FlatGen) emit_global_inits() {
 				if clean_type is types.Channel {
 					elem_ct := g.value_sizeof_target(clean_type.elem_type)
 					g.queue_runtime_init('\t${g.global_c_name(qname)} = sync__new_channel_st((u32)(0), (u32)(sizeof(${elem_ct})));')
+					continue
+				}
+				if clean_type is types.ArrayFixed && g.fixed_array_has_enum_default(clean_type) {
+					// Static zero initialization does not hold the first enum value.
+					g.queue_runtime_init(g.fixed_array_default_fill_stmt(g.global_c_name(qname),
+						clean_type))
 					continue
 				}
 				g.queue_global_struct_default_init(qname, typ)
@@ -26298,7 +26335,7 @@ fn (mut g FlatGen) write_fixed_array_value_initializer_from_text(mut builder str
 }
 
 fn (mut g FlatGen) write_empty_fixed_array_initializer(mut builder strings.Builder, fixed types.ArrayFixed) {
-	if fixed_array_empty_initializer_is_zero(fixed) {
+	if g.fixed_array_empty_initializer_is_zero(fixed) {
 		builder.write_string('{0}')
 		return
 	}
@@ -26323,10 +26360,13 @@ fn (mut g FlatGen) write_empty_fixed_array_initializer(mut builder strings.Build
 	builder.write_u8(`}`)
 }
 
-fn fixed_array_empty_initializer_is_zero(fixed types.ArrayFixed) bool {
+fn (g &FlatGen) fixed_array_empty_initializer_is_zero(fixed types.ArrayFixed) bool {
 	elem_type := default_init_unalias_type(fixed.elem_type)
 	if elem_type is types.ArrayFixed {
-		return fixed_array_empty_initializer_is_zero(elem_type)
+		return g.fixed_array_empty_initializer_is_zero(elem_type)
+	}
+	if elem_type is types.Enum {
+		return !g.fixed_array_has_enum_default(fixed)
 	}
 	return elem_type !is types.Array && elem_type !is types.Struct && elem_type !is types.Map
 }
@@ -26343,6 +26383,10 @@ fn (mut g FlatGen) write_fixed_array_default_elem_initializer(mut builder string
 	}
 	if elem_type is types.Map {
 		builder.write_string(g.new_map_expr_string(elem_type.key_type, elem_type.value_type))
+		return
+	}
+	if default_expr := g.enum_nonzero_default_expr(elem_type) {
+		builder.write_string(default_expr)
 		return
 	}
 	builder.write_u8(`0`)
@@ -26464,12 +26508,23 @@ fn numeric_literal_c_text(node &flat.Node) string {
 }
 
 // negated_long_long_literal finds a wide integer operand through parentheses for signed C negation.
+// A translated file keeps C's literal types: a nondecimal literal that fits 32 bits is an
+// `unsigned int` there, and its negation must wrap at 32 bits, so it gets no `LL` suffix.
 fn (g &FlatGen) negated_long_long_literal(id flat.NodeId) ?flat.Node {
+	mut literal_id := id
 	mut node := g.a.nodes[int(id)]
 	for node.kind == .paren && node.children_count == 1 {
-		node = g.a.nodes[int(g.a.child(&node, 0))]
+		literal_id = g.a.child(&node, 0)
+		node = g.a.nodes[int(literal_id)]
 	}
 	if node.kind == .int_literal && int_literal_needs_long_long_suffix(&node) {
+		if g.expr_is_in_translated_file(literal_id) {
+			if typ := g.tc.translated_integer_literal_type(literal_id) {
+				if integer_sign_kind(typ) > 0 {
+					return none
+				}
+			}
+		}
 		return node
 	}
 	return none

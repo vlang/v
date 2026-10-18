@@ -5150,7 +5150,7 @@ fn test_parallel_master_detaches_metadata_maps_before_writing() {
 	assert 'main.master_generated' in master.tc.fn_param_types
 	assert 'main.master_generated' !in worker.tc.fn_param_types
 
-	master.add_fn_literal_capture_context('CaptureContext', 'main', []string{}, map[string]string{})
+	master.add_fn_literal_capture_context('CaptureContext', 'main', []string{}, map[string]u32{})
 	assert 'CaptureContext' in master.structs
 	assert 'CaptureContext' !in worker.structs
 	assert 'CaptureContext' in master.tc.structs

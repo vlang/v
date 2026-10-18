@@ -21,6 +21,18 @@ fn test_codegen_generic_inference_retains_source_ids_and_first_binding() {
 	assert !codegen_generic_arg_is_unresolved(flat.source_type_id('map[string][]int'))
 }
 
+// https://github.com/vlang/v/issues/30842
+fn test_codegen_generic_inference_binds_chan_element_type() {
+	mut inferred := map[string]u32{}
+	infer_codegen_generic_type_args(flat.source_type_id('chan T'), flat.source_type_id('chan string'),
+		mut inferred)
+	assert inferred['T'] == flat.source_type_string
+	mut mismatched := map[string]u32{}
+	infer_codegen_generic_type_args(flat.source_type_id('chan T'), flat.source_type_id('[]string'),
+		mut mismatched)
+	assert 'T' !in mismatched
+}
+
 // sibling of https://github.com/vlang/v/issues/30842 for `thread T`
 fn test_codegen_generic_inference_binds_thread_payload_type() {
 	mut inferred := map[string]u32{}
