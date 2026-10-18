@@ -26479,7 +26479,7 @@ fn decimal_literal_needs_unsigned_suffix(value string) bool {
 		return false
 	}
 	n := strconv.parse_uint(value, 10, 64) or { return false }
-	return n > 9223372036854775808
+	return n > 0x8000000000000000
 }
 
 // negated_long_long_literal finds a wide integer operand through parentheses for signed C negation.
