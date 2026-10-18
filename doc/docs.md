@@ -5658,6 +5658,9 @@ Inference also follows receivers obtained by unwrapping an option or propagating
 Nested generic calls preserve reference return types when passed directly to another generic
 call, including references stored as map values.
 
+Generic variadic calls in a reflected field loop infer each scalar or array argument as one
+element. Spreading an array with `...` instead infers the variadic element type from its contents.
+
 Another example:
 
 ```v
