@@ -10131,7 +10131,7 @@ fn static_format_width(format string) ?int {
 	if i == format.len {
 		return sign * width
 	}
-	if i == format.len - 1 && format[i] in [`s`, `d`, `b`, `x`, `o`, `p`] {
+	if i == format.len - 1 && format[i] in [`s`, `d`, `u`, `b`, `x`, `o`, `p`] {
 		return sign * width
 	}
 	return none
@@ -10178,7 +10178,8 @@ fn zero_padded_decimal_width(format string) ?int {
 		return none
 	}
 	mut end := format.len
-	if format[end - 1] == `d` {
+	// `u` is the decimal verb of an unsigned integer; the checker rejects `d` there.
+	if format[end - 1] in [`d`, `u`] {
 		end--
 	}
 	if end >= 3 && format[end - 2] == `.` && format[end - 1] == `0` {
@@ -10206,7 +10207,7 @@ fn left_zero_padded_decimal_width(format string) ?int {
 		return none
 	}
 	mut end := format.len
-	if format[end - 1] == `d` {
+	if format[end - 1] in [`d`, `u`] {
 		end--
 	}
 	mut width := 0

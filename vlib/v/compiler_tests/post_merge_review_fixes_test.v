@@ -3246,7 +3246,7 @@ fn test_array_equality_marks_struct_operator_used() {
 
 fn test_zero_padded_interpolation_preserves_wide_integers() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'wide_zero_padded_interpolation', "fn main() {\n\tbig := i64(5000000000)\n\tubig := u64(18446744073709551615)\n\tsmall := u64(42)\n\tprintln('\${big:012d}')\n\tprintln('\${ubig:020d}')\n\tprintln('\${small:08d}')\n}\n")
+	out := run_good(v3_bin, 'wide_zero_padded_interpolation', "fn main() {\n\tbig := i64(5000000000)\n\tubig := u64(18446744073709551615)\n\tsmall := u64(42)\n\tprintln('\${big:012d}')\n\tprintln('\${ubig:020u}')\n\tprintln('\${small:08u}')\n}\n")
 	assert out == '005000000000\n18446744073709551615\n00000042'
 }
 
