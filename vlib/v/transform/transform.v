@@ -10412,8 +10412,17 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 				t.escape_decl_depths[binding] = t.escape_scope_depth
 			}
 		}
+		// The init, cond and post of a `for` loop are its first three children. Its body
+		// is created again for every iteration, while `for state := ...` lives on.
+		body_start := if node.kind == .for_stmt { 3 } else { int(node.children_count) }
 		for i in 0 .. node.children_count {
+			if i == body_start {
+				t.escape_scope_depth++
+			}
 			t.scan_escape_pass(t.a.child(node, i), mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut method_value_receivers, mut closure_capture_aliases, mut interface_boxes, mut returned, mut local_stack_names, mut local_stack_added, mut reference_backing_sources, false)
+		}
+		if body_start < node.children_count {
+			t.escape_scope_depth--
 		}
 		if is_guard {
 			t.restore_escape_decl_depth('err', previous_err_depth)
@@ -10506,7 +10515,7 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 			lhs := t.a.nodes[int(t.multi_assign_lhs_id(*node, i))]
 			rhs_id := t.multi_assign_rhs_id(*node, i)
 			rhs := t.a.nodes[int(rhs_id)]
-			if node.kind == .assign && node.op == .assign {
+			if node.kind == .decl_assign || (node.kind == .assign && node.op == .assign) {
 				stores << t.multi_assign_lhs_id(*node, i)
 				stores << rhs_id
 			}
@@ -10672,7 +10681,7 @@ fn (t &Transformer) record_aggregate_address_write(lhs_id flat.NodeId, rhs_id fl
 	if stored.len == 0 {
 		return
 	}
-	holders := if t.escape_address_root_is_value(lhs_id) {
+	holders := if t.escape_write_reaches_root(lhs_id) {
 		[root]
 	} else {
 		escape_alias_sources(root, amp_sources, ptr_aliases).clone()
@@ -10685,6 +10694,28 @@ fn (t &Transformer) record_aggregate_address_write(lhs_id flat.NodeId, rhs_id fl
 			}
 		}
 	}
+}
+
+// escape_write_reaches_root reports whether a write to `v.field`, `v[i]` or `v.items[i].x`
+// is held by the local `v` itself: its own storage, or the elements of a dynamic array or
+// map that copies of `v` share. A write through a pointer is held by the pointee instead.
+fn (t &Transformer) escape_write_reaches_root(id flat.NodeId) bool {
+	mut current := id
+	for int(current) >= 0 && int(current) < t.a.nodes.len {
+		node := t.a.nodes[int(current)]
+		if node.kind == .ident {
+			return isnil(t.tc) || !escape_type_is_pointer(t.tc.resolve_type(current))
+		}
+		if node.kind !in [.paren, .selector, .index] || node.children_count == 0 {
+			return false
+		}
+		if node.kind != .paren && !isnil(t.tc)
+			&& escape_type_is_pointer(t.tc.resolve_type(t.a.child(&node, 0))) {
+			return false
+		}
+		current = t.a.child(&node, 0)
+	}
+	return false
 }
 
 fn (mut t Transformer) return_slot_is_boxed_pointer(id flat.NodeId) bool {
@@ -11350,9 +11381,9 @@ fn (mut t Transformer) mark_outer_scope_address_store(lhs_id flat.NodeId, rhs_id
 }
 
 // escape_stored_address_sources returns the locals whose addresses an assigned value
-// stores itself: `&v`, a literal, cast or branch value holding one, a field or element of
-// such a value, or a pointer alias.
-// Unlike escape_aggregate_address_sources, it does not follow call results: a call
+// stores itself: `&v`, a literal, cast, branch, `dump` or `lock` value holding one, a field,
+// element or clone of such a value, or a pointer alias.
+// Unlike escape_aggregate_address_sources, it does not follow other call results: a call
 // like `C.realpath(&buf[0], &out[0])` rarely returns the address it was given.
 fn (t &Transformer) escape_stored_address_sources(id flat.NodeId, amp_sources map[string][]string, ptr_aliases map[string]string) []string {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
@@ -11395,7 +11426,7 @@ fn (t &Transformer) escape_stored_address_sources(id flat.NodeId, amp_sources ma
 			}
 			return held
 		}
-		.or_expr, .if_expr, .comptime_if, .match_stmt, .block {
+		.or_expr, .if_expr, .comptime_if, .match_stmt, .block, .lock_expr, .dump_expr {
 			children = t.escape_value_tails(id)
 		}
 		.field_init, .paren, .cast_expr, .as_expr, .struct_init, .assoc, .array_literal,
@@ -11403,6 +11434,15 @@ fn (t &Transformer) escape_stored_address_sources(id flat.NodeId, amp_sources ma
 			for i in 0 .. node.children_count {
 				children << t.a.child(node, i)
 			}
+		}
+		.call {
+			// `tmp.clone()` copies what `tmp` holds, the addresses in its elements included.
+			callee := if node.children_count == 1 { t.a.child_node(node, 0) } else { node }
+			if node.children_count != 1 || callee.kind != .selector || callee.value != 'clone'
+				|| callee.children_count == 0 {
+				return []string{}
+			}
+			children << t.a.child(callee, 0)
 		}
 		else {
 			return []string{}
