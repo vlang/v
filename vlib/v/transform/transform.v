@@ -23112,14 +23112,13 @@ fn (mut t Transformer) transform_call_expr_inner(id flat.NodeId, node flat.Node)
 		// `(match node { ... make_cb(node)! ... })()` — must materialize operand 0 too;
 		// otherwise transform_call_args lowers child 0 with plain transform_expr and leaves the
 		// propagating branch tail in a value-less statement context, emitting an empty callee.
-		callee_is_value_branch := !is_method && t.is_value_match_or_if_operand(recv_fn_id)
+		mut callee_is_value_branch := !is_method && t.is_value_match_or_if_operand(recv_fn_id)
 		// Position of the last operand that hoists a value branch (0 = method receiver or a
 		// branch callee, 1.. = arguments). An argument counts even when the branch is nested
 		// inside a compound expression (`1 + (match ...)`, `i64(match ...)`): lowering it still
 		// materializes the inner branch into pending_stmts, so an earlier operand must be
 		// stabilized to keep source order.
-		mut last_branch := if (is_method && t.is_value_match_or_if_operand(recv_id))
-			|| callee_is_value_branch {
+		mut last_branch := if is_method && t.is_value_match_or_if_operand(recv_id) {
 			0
 		} else {
 			-1
@@ -23131,6 +23130,17 @@ fn (mut t Transformer) transform_call_expr_inner(id flat.NodeId, node flat.Node)
 			if !(array_dsl_callback && i == 1)
 				&& t.operand_hoists_value_branch(t.a.child(&node, i)) {
 				last_branch = i
+			}
+		}
+		if callee_is_value_branch {
+			if last_branch < 0 && t.immediate_bound_method_value_allocates_runtime_closure(recv_fn_id) {
+				// `(if c { a.read } else { b.read })()`: every branch allocates a fresh
+				// runtime closure. transform_call_args types the value temp as the
+				// callback (not the callee's return type) and releases the closure
+				// after the call, which a value temp materialized here would hide.
+				callee_is_value_branch = false
+			} else if last_branch < 0 {
+				last_branch = 0
 			}
 		}
 		if last_branch >= 0 {
