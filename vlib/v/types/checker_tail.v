@@ -13693,12 +13693,45 @@ fn (tc &TypeChecker) call_param_has_open_generic_source(call flat.Node, info Cal
 	return tc.type_text_has_generic_placeholder(flat.source_type_id(clean))
 }
 
+// is_channel_builtin_method_call_name reports whether `name`, behind any `&`
+// prefixes, spells the builtin `chan` method `method`. It scans the spelling in
+// place: call argument checks ask this for every argument of every call.
+@[direct_array_access]
 fn is_channel_builtin_method_call_name(name string, method string) bool {
-	mut clean := name.trim_space()
-	for clean.starts_with('&') {
-		clean = clean[1..].trim_space()
+	mut start := 0
+	mut end := name.len
+	for start < end && is_trim_space_byte(name[start]) {
+		start++
 	}
-	return clean.starts_with('chan ') && clean.ends_with('.${method}')
+	for end > start && is_trim_space_byte(name[end - 1]) {
+		end--
+	}
+	for start < end && name[start] == `&` {
+		start++
+		for start < end && is_trim_space_byte(name[start]) {
+			start++
+		}
+	}
+	suffix_start := end - method.len
+	if end - start < 5 || suffix_start - 1 < start || name[suffix_start - 1] != `.` {
+		return false
+	}
+	if name[start] != `c` || name[start + 1] != `h` || name[start + 2] != `a`
+		|| name[start + 3] != `n` || name[start + 4] != ` ` {
+		return false
+	}
+	for i in 0 .. method.len {
+		if name[suffix_start + i] != method[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// is_trim_space_byte reports whether `trim_space` strips the byte `c`.
+@[inline]
+fn is_trim_space_byte(c u8) bool {
+	return c == ` ` || c == `\n` || c == `\t` || c == `\v` || c == `\f` || c == `\r`
 }
 
 fn (tc &TypeChecker) call_param_is_mut(info CallInfo, param_idx int) bool {
