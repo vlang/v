@@ -1395,7 +1395,10 @@ fn (t &Transformer) is_embedded_field(field FieldInfo) bool {
 
 fn field_decl_is_embedded(field flat.Node) bool {
 	meta := field.generic_params()
-	return meta.len > 0 && meta[0].contains('e')
+	// An embed with a default value (`Inner = Inner{...}`) is parsed as a field without a
+	// type and without the embed marker; the checker treats it as an embed as well
+	// (source_field_decl_is_embed).
+	return (meta.len > 0 && meta[0].contains('e')) || field.typ == 0 || field.value.len == 0
 }
 
 // transform_assoc_expr transforms transform assoc expr data for transform.
