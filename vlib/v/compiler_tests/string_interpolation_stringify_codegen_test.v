@@ -192,11 +192,10 @@ fn main() {
 "
 	bin := os.join_path(os.temp_dir(), 'v3_defer_generic_string_interp_${os.getpid()}')
 	compile := compile_v3_input(v3_bin, 'v3_defer_generic_string_interp', src, bin)
-	// Known bug, still open: a `-b c` build of a `map[string]PlainBox[T]` interpolation
-	// emits the C helpers `v3_map_str_piece` and `v3_f64_array_str`, which call `f64__str`,
-	// without keeping `f64__str` itself, so the link fails with an undefined `f64__str`.
-	// A build through the module cache links it from the cached builtin object instead.
-	assert compile.exit_code == 0, 'undefined f64__str bug: ${compile.output}'
+	// A `-b c` build of a `map[string]PlainBox[T]` interpolation calls prelude helpers
+	// (`v3_map_str_piece`, `v3_f64_array_str`) that need `f64__str`; before #30850 it was not
+	// kept and the link failed. The module cache hid it by linking the cached builtin object.
+	assert compile.exit_code == 0, 'undefined f64__str: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
