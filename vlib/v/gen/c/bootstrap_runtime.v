@@ -159,6 +159,7 @@ fn (mut g FlatGen) portable_run_signal_helpers(headerless bool) {
 	if headerless {
 		g.writeln('#ifndef _WIN32')
 		g.emit_c_runtime_declarations(['signal', 'kill', 'getpid', '_exit'])
+		g.write(headerless_run_signal_declarations)
 		g.writeln('#endif')
 		mut lines := []string{}
 		for line in source.split_into_lines() {
@@ -174,3 +175,38 @@ fn (mut g FlatGen) portable_run_signal_helpers(headerless bool) {
 	g.writeln('')
 	g.collect_preserved_c_fns(['v3_run_signals_begin', 'v3_run_signals_set_pid', 'v3_run_signals_finish'])
 }
+
+// Use libc aliases with opaque arguments so V's partial C bindings do not own the ABI.
+const headerless_run_signal_declarations = r'
+#define V3_RUN_SIGNALS_HEADERLESS 1
+#ifndef SIG_SETMASK
+#if defined(__linux__) || defined(__ANDROID__)
+#define SIG_SETMASK 2
+#else
+#define SIG_SETMASK 3
+#endif
+#endif
+#ifdef __APPLE__
+#define V3_RUN_LIBC_SYMBOL(name) "_" name
+#else
+#define V3_RUN_LIBC_SYMBOL(name) name
+#endif
+/* Solaris signal() resets caught handlers; bsd_signal keeps them installed. */
+#ifdef __sun
+void (*v3_run_bsd_signal(int, void (*)(int)))(int) __asm__("bsd_signal");
+#define v3_run_set_signal v3_run_bsd_signal
+#endif
+int v3_run_siginterrupt(int, int) __asm__(V3_RUN_LIBC_SYMBOL("siginterrupt"));
+#ifdef __NetBSD__
+/* The 14 ABI retains the full sigaction/sigset_t layouts on old and current libc. */
+int v3_run_sigaction(int, const void*, void*) __asm__("__sigaction14");
+int v3_run_sigprocmask(int, const void*, void*) __asm__("__sigprocmask14");
+int v3_run_sigemptyset(void*) __asm__("__sigemptyset14");
+int v3_run_sigaddset(void*, int) __asm__("__sigaddset14");
+#else
+int v3_run_sigaction(int, const void*, void*) __asm__(V3_RUN_LIBC_SYMBOL("sigaction"));
+int v3_run_sigprocmask(int, const void*, void*) __asm__(V3_RUN_LIBC_SYMBOL("sigprocmask"));
+int v3_run_sigemptyset(void*) __asm__(V3_RUN_LIBC_SYMBOL("sigemptyset"));
+int v3_run_sigaddset(void*, int) __asm__(V3_RUN_LIBC_SYMBOL("sigaddset"));
+#endif
+'

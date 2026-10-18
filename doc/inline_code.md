@@ -14,7 +14,8 @@ The command returns the program's exit status. A temporary source file in the cu
 working directory and the implicit executable are removed when the compilation or program
 finishes, including when interrupted with `Ctrl-C` or `Ctrl-\`.
 On Unix, `SIGTERM` and `SIGHUP` are forwarded to the running child. V waits for
-the child, removes the temporary files, and exits with `128 + signal`.
+the child, removes the temporary files, and exits with `128 + signal`. Signals inherited as
+ignored remain ignored, including `SIGHUP` when running under `nohup`.
 
 Use `v -http` to serve the current directory on `localhost:4001`. This is equivalent to:
 
