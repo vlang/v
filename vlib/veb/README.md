@@ -502,6 +502,12 @@ Routes with a variadic parameter such as `/:path...` are an exception. veb keeps
 them as fallbacks, so a later exact or non-variadic parameter route can still match
 before the variadic route handles the request.
 
+If the path matches a route for the request's host but the method does not, veb
+answers `405 Method Not Allowed`. Its `Allow` header lists the distinct methods
+from all handlers for the selected route pattern, including handlers whose path
+parameters use different names. Methods from other hosts or overlapping route
+patterns are excluded. A path with no matching route still answers `404 Not Found`.
+
 ### Custom not found page
 
 You can implement a `not_found` endpoint that is called when a request is made, and no

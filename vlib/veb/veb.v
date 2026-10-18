@@ -691,7 +691,7 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 	// `not_found` is deliberately left false, so after-middleware such as
 	// compression still runs over the response this function sends.
 	if mismatch := select_route_ignoring_method(routes, url.path, host) {
-		user_context.method_not_allowed(mismatch.route.methods)
+		user_context.method_not_allowed(allowed_methods_for_route(routes, mismatch, url.path, host))
 		return
 	}
 	// return 404
@@ -822,6 +822,56 @@ fn select_route_ignoring_method(routes &map[string]Route, path string, host stri
 		return variadic_match
 	}
 	return none
+}
+
+// allowed_methods_for_route combines handlers for the selected resource without
+// including other route patterns that happen to match this particular URL.
+fn allowed_methods_for_route(routes &map[string]Route, selected RouteMatch, path string, host string) []http.Method {
+	is_root := path.len == 0 || path == '/'
+	selected_words := if is_root && selected.name == 'index' {
+		[]string{}
+	} else {
+		selected.route.words
+	}
+	mut allowed := []http.Method{}
+	for name, route in *routes {
+		if route.host != '' && route.host != host {
+			continue
+		}
+		// Only the index handler has the implicit / alias for /index.
+		words := if is_root && name == 'index' && route.path in ['/', '/index'] {
+			[]string{}
+		} else {
+			route.words
+		}
+		if !same_route_pattern(selected_words, words) {
+			continue
+		}
+		for method in route.methods {
+			if method !in allowed {
+				allowed << method
+			}
+		}
+	}
+	return allowed
+}
+
+fn same_route_pattern(left []string, right []string) bool {
+	if left.len != right.len {
+		return false
+	}
+	for i, word in left {
+		if word == right[i] {
+			continue
+		}
+		// Parameter names do not change the resource, but a variadic tail does.
+		if word.starts_with(':') && right[i].starts_with(':')
+			&& word.ends_with('...') == right[i].ends_with('...') {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 fn should_prefer_variadic_route(candidate []string, current []string) bool {
