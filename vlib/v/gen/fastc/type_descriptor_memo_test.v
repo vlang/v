@@ -128,8 +128,11 @@ fn test_fastc_descriptor_memos_are_parser_local_and_module_independent() {
 	assert a.underlying_alias_type(alias) == flat.source_type_id('int*')
 	assert b.underlying_alias_type(alias) == flat.source_type_id('i64*')
 	a.parse_mono_instance(FastcSourceFile{
-		path:   'descriptor_memo_context.v'
-		header: FastcSourceHeader{
+		path:                 'descriptor_memo_context.v'
+		source_offset:        137
+		source_line_offset:   23
+		source_column_offset: 9
+		header:               FastcSourceHeader{
 			module_name: 'different'
 
 			imports: {
@@ -137,6 +140,9 @@ fn test_fastc_descriptor_memos_are_parser_local_and_module_independent() {
 			}
 		}
 	}) or { panic(err) }
+	assert a.source_offset == 137
+	assert a.source_line_offset == 23
+	assert a.source_column_offset == 9
 	assert a.semantic_type_key(typ) == flat.source_type_id('memo.ContextA')
 	assert a.underlying_alias_type(alias) == flat.source_type_id('int*')
 	assert a.type_descriptor_memo.semantic_keys[int(typ & 63)].key == typ

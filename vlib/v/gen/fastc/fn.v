@@ -94,9 +94,8 @@ fn (mut g Parser) parse_mono_instance(instance FastcSourceFile) ! {
 	// The lookup memos are keyed by bare name and answer for the current
 	// module and imports, so they must not carry over into another module.
 	g.reset_lookup_memos()
-	g.source_offset = 0
-	g.source_line_offset = 0
-	g.source_column_offset = 0
+	g.source_line_offset = instance.source_line_offset
+	g.source_column_offset = instance.source_column_offset
 	g.s = scanner.new_scanner(g.prefs, .normal)
 	g.s.init(file, instance.source)
 	g.next()
