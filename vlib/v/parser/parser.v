@@ -12557,7 +12557,11 @@ fn (mut p Parser) keyword_token_is_ident_expr() bool {
 	return match p.tok {
 		.key_module, .key_type { true }
 		.key_shared { p.shared_token_is_identifier(false) }
-		.key_lock, .key_rlock, .key_match, .key_select { p.peek() in [.lpar, .lsbr] }
+		.key_lock, .key_rlock, .key_select { p.peek() in [.lpar, .lsbr] }
+		// `match [1, 2] {` and `match []int{} {` match an array, as a statement
+		// `match` does. Only a `[` right after the keyword indexes or specializes a
+		// function named `match` (V1 used the same rule).
+		.key_match { p.peek() == .lpar || (p.peek() == .lsbr && p.peek_pos == p.tok_end) }
 		else { false }
 	}
 }

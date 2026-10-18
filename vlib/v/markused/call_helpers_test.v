@@ -212,7 +212,10 @@ fn test_generic_factory_inference_uses_call_site_shadowing() {
 			tc.fn_ret_types['gates.make_gate'] = types.Type(types.Pointer{
 				base_type: types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 			})
-			shadow_name := if imported { 'g' } else { 'make_gate' }
+			// A local cannot take the name of an import alias: the checker reports a
+			// `duplicate of an import symbol`. The alias call keeps its meaning beside a
+			// local of another name.
+			shadow_name := if imported { 'other' } else { 'make_gate' }
 			shadow_lhs := a.add_val(.ident, shadow_name)
 			shadow_rhs := a.add_val(.int_literal, '1')
 			shadow := call_helper_node(mut a, flat.Node{ kind: .decl_assign }, [
@@ -237,11 +240,24 @@ fn test_generic_factory_inference_uses_call_site_shadowing() {
 			}
 			body := call_helper_node(mut a, flat.Node{ kind: .block }, stmts)
 			fn_id := call_helper_node(mut a, flat.Node{ kind: .fn_decl, value: 'use_gate' }, [body])
-			collector := CallCollector{ a: &a, tc: &tc }
+			// Scopes are tracked only for the locals that can also name a function or a
+			// constant, as the declaration indexes of the pass tell.
+			collector := CallCollector{
+				a:           &a
+				tc:          &tc
+				fn_decls:    {
+					'gates.make_gate': FnDeclInfo{
+						module: 'gates'
+					}
+				}
+				fn_suffixes: {
+					'make_gate': true
+				}
+			}
 			_, local_types, _ := collector.local_value_info(a.node(fn_id), 'gates', {
 				'g': 'gates'
 			})
-			assert (local_types.get('gate') or { '' }) == if placement == 'before' {
+			assert (local_types.get('gate') or { '' }) == if placement == 'before' && !imported {
 				''
 			} else {
 				'gates.Gate[T]'
