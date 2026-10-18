@@ -21,6 +21,18 @@ fn test_codegen_generic_inference_retains_source_ids_and_first_binding() {
 	assert !codegen_generic_arg_is_unresolved(flat.source_type_id('map[string][]int'))
 }
 
+// https://github.com/vlang/v/issues/30842
+fn test_codegen_generic_inference_binds_chan_element_type() {
+	mut inferred := map[string]u32{}
+	infer_codegen_generic_type_args(flat.source_type_id('chan T'), flat.source_type_id('chan string'),
+		mut inferred)
+	assert inferred['T'] == flat.source_type_string
+	mut mismatched := map[string]u32{}
+	infer_codegen_generic_type_args(flat.source_type_id('chan T'), flat.source_type_id('[]string'),
+		mut mismatched)
+	assert 'T' !in mismatched
+}
+
 fn test_fixed_array_alias_chains_and_pointer_sizes_use_array_typedefs() {
 	mut ast := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&ast)
