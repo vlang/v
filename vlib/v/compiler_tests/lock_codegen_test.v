@@ -70,7 +70,8 @@ fn lock_codegen_counter_fn_fragment(c_code string, name string, return_type stri
 	body_start := rest.index(') {') or { return rest }
 	after_body_start := rest[body_start + 3..]
 	mut next_fn := after_body_start.len
-	for marker in ['\nvoid ', '\nint ', '\nstring ', '\nArray_', '\n__v_option_'] {
+	for marker in ['\nvoid ', '\nint ', '\ni64 ', '\nstring ', '\nArray_', '\n__v_option_',
+		'\n__v_result_'] {
 		if idx := after_body_start.index(marker) {
 			if idx < next_fn {
 				next_fn = idx
@@ -129,7 +130,7 @@ fn assert_lock_scope_goto_rejected(c_code string, name string, branch string) {
 }
 
 fn assert_return_read_before_lock_cleanup(c_code string, name string) {
-	fragment := lock_codegen_counter_fn_fragment(c_code, name, 'int')
+	fragment := lock_codegen_counter_fn_fragment(c_code, name, 'i64')
 	assert fragment.len > 0, c_code
 	read_idx := fragment.index('->val') or { -1 }
 	assert read_idx >= 0, fragment
@@ -142,7 +143,7 @@ fn assert_return_read_before_lock_cleanup(c_code string, name string) {
 }
 
 fn assert_outer_defer_runs_after_lock_cleanup(c_code string, name string) {
-	fragment := lock_codegen_counter_fn_fragment(c_code, name, 'int')
+	fragment := lock_codegen_counter_fn_fragment(c_code, name, 'i64')
 	assert fragment.len > 0, c_code
 	first_lock_idx := fragment.index('sync__RwMutex__lock((sync__RwMutex*)') or { -1 }
 	assert first_lock_idx >= 0, fragment
@@ -162,7 +163,7 @@ fn assert_outer_defer_runs_after_lock_cleanup(c_code string, name string) {
 }
 
 fn assert_lock_expr_defer_runs_before_unlock(c_code string, name string) {
-	fragment := lock_codegen_counter_fn_fragment(c_code, name, 'int')
+	fragment := lock_codegen_counter_fn_fragment(c_code, name, 'i64')
 	assert fragment.len > 0, c_code
 	result_idx := fragment.index(' = 1;') or { -1 }
 	assert result_idx >= 0, fragment
@@ -177,8 +178,25 @@ fn assert_lock_expr_defer_runs_before_unlock(c_code string, name string) {
 	assert unlock_idx < return_idx, fragment
 }
 
+// The value of an `if` tail is chosen while the lock is held.
+fn assert_lock_if_tail_value_set_before_unlock(c_code string) {
+	start := c_code.index('\ni64 lock_if_tail(main__Counter* c, bool cond) {') or { -1 }
+	assert start >= 0, c_code
+	fragment := c_code[start + 1..].all_before('\n}\n')
+	lock_idx := fragment.index('sync__RwMutex__lock((sync__RwMutex*)') or { -1 }
+	cond_idx := fragment.index('if (cond) {') or { -1 }
+	then_idx := fragment.index(' = 1;') or { -1 }
+	else_idx := fragment.index(' = 2;') or { -1 }
+	unlock_idx := fragment.index('sync__RwMutex__unlock((sync__RwMutex*)') or { -1 }
+	assert lock_idx >= 0, fragment
+	assert lock_idx < cond_idx, fragment
+	assert cond_idx < then_idx, fragment
+	assert then_idx < else_idx, fragment
+	assert else_idx < unlock_idx, fragment
+}
+
 fn assert_lock_question_defer_runs_before_error_return(c_code string, name string) {
-	fragment := lock_codegen_counter_fn_fragment(c_code, name, '__v_result')
+	fragment := lock_codegen_counter_fn_fragment(c_code, name, '__v_result_i64')
 	assert fragment.len > 0, c_code
 	defer_idx := fragment.index('->val = 2;') or { -1 }
 	assert defer_idx >= 0, fragment
@@ -365,7 +383,7 @@ fn main() {
 	assert_lock_defer_runs_before_branch(c_code, 'goto_out_of_lock', 'goto __v_user_goto_0;')
 	assert_no_lock_cleanup_before_branch(c_code, 'goto_inside_lock', 'goto __v_user_goto_0;')
 	assert_lock_scope_goto_rejected(c_code, 'goto_into_different_lock', 'goto other;')
-	assert c_code.contains(' = (cond ? 1 : 2);'), c_code
+	assert_lock_if_tail_value_set_before_unlock(c_code)
 	assert_return_read_before_lock_cleanup(c_code, 'return_shared')
 	assert_outer_defer_runs_after_lock_cleanup(c_code, 'defer_after_lock')
 	assert_lock_expr_defer_runs_before_unlock(c_code, 'lock_expr_defer_tail')
@@ -428,10 +446,10 @@ fn main() {
 	_ := read_box(mut b)
 }
 ')
-	assert c_code.contains('struct __shared__int {'), c_code
-	assert c_code.contains('\tint val;'), c_code
-	assert c_code.contains('struct main__Box_int {\n\t__shared__int* item;'), c_code
-	assert !c_code.contains('struct main__Box_int {\n\tint item;'), c_code
+	assert c_code.contains('struct __shared__i64 {'), c_code
+	assert c_code.contains('\ti64 val;'), c_code
+	assert c_code.contains('struct main__Box_int {\n\t__shared__i64* item;'), c_code
+	assert !c_code.contains('struct main__Box_int {\n\ti64 item;'), c_code
 	assert !c_code.contains('__shared__T'), c_code
 	assert c_code.contains('b->item->val'), c_code
 }
@@ -447,13 +465,13 @@ fn main() {
 	_ := Holder{}
 }
 ')
-	assert c_code.contains('struct __shared____v_option {'), c_code
-	assert c_code.contains('\t__v_option val;'), c_code
+	assert c_code.contains('struct __shared____v_option_i64 {'), c_code
+	assert c_code.contains('\t__v_option_i64 val;'), c_code
 	assert c_code.contains('struct __shared____v_option_string {'), c_code
 	assert c_code.contains('\t__v_option_string val;'), c_code
-	assert c_code.contains('\t__shared____v_option* a;'), c_code
+	assert c_code.contains('\t__shared____v_option_i64* a;'), c_code
 	assert c_code.contains('\t__shared____v_option_string* b;'), c_code
-	assert !c_code.contains('struct __shared____v_option {\n\tsync__RwMutex mtx;\n\t__v_option_string val;'), c_code
+	assert !c_code.contains('struct __shared____v_option_i64 {\n\tsync__RwMutex mtx;\n\t__v_option_string val;'), c_code
 }
 
 fn test_shared_wrapper_uses_gc_aware_allocator() {
@@ -498,8 +516,9 @@ fn main() {
 }
 ")
 	compact := c_code.replace('\t', '').replace(' ', '').replace('\n', '')
-	assert compact.contains('map__get_or_set(&s->values->val,'), c_code
+	assert compact.contains('map__set(&s->values->val,'), c_code
 	assert compact.contains('map__get_check(&s->values->val,'), c_code
+	assert !compact.contains('map__set(&s->values,'), c_code
 	assert !compact.contains('map__get_or_set(&s->values,'), c_code
 	assert !compact.contains('map__get_check(&s->values,'), c_code
 }
@@ -576,7 +595,7 @@ fn main() {
 	items << item
 }
 ')
-	assert c_code.contains('array_push(&items, &(__shared__main__main__Item*[]){'), c_code
-	assert c_code.contains('__dup__shared__main__main__Item'), c_code
+	assert c_code.contains('array_push(&items, &(__shared__main__Item*[]){'), c_code
+	assert c_code.contains('__dup__shared__main__Item'), c_code
 	assert !c_code.contains('main__Item __arr_val_0 = item;\n\tarray_push(&items, &__arr_val_0);'), c_code
 }

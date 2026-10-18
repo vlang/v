@@ -74,7 +74,7 @@ fn test_trailing_string_escape_is_diagnosed_without_scanning_past_eof() {
 
 fn test_unterminated_nested_comment_is_diagnosed() {
 	diagnostics := scan_source_diagnostics('/* outer /* inner */')
-	assert diagnostics.any(it.message.contains('unterminated block comment')), diagnostics.str()
+	assert diagnostics.any(it.message.contains('unterminated multiline comment')), diagnostics.str()
 }
 
 fn test_malformed_numeric_literals_are_lexical_diagnostics() {
@@ -84,7 +84,7 @@ fn test_malformed_numeric_literals_are_lexical_diagnostics() {
 	assert messages.any(it.contains('number part of this binary is not provided')), messages.str()
 	assert messages.any(it.contains('number part of this octal is not provided')), messages.str()
 	assert messages.any(it.contains('exponent has no digits')), messages.str()
-	assert messages.any(it.contains('separators must occur between digits')), messages.str()
+	assert messages.any(it.contains('separator `_` is only valid between digits')), messages.str()
 	assert messages.any(it.contains('cannot end with a separator')), messages.str()
 }
 

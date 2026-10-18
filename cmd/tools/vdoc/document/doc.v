@@ -611,9 +611,6 @@ fn (d &Doc) node_from_flat(a &flat.FlatAst, source string, id flat.NodeId, path 
 		attrs[key] = attribute
 		tags << attribute
 	}
-	if function_signature(a, source, node).contains('unsafe fn ') {
-		tags << 'unsafe'
-	}
 	return DocNode{
 		name:        name
 		content:     declaration_content(a, source, id, attributes)

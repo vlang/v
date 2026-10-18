@@ -98,7 +98,7 @@ fn test_numeric_literal_cast_keeps_builtin_spelling_metadata_behavior() {
 	for sum_type in [true, false] {
 		mut tc := TypeChecker.new(&a)
 		tc.diagnose_unknown_calls = true
-		tc.type_aliases.set('u64', 'i8')
+		tc.type_aliases.set_id('u64', flat.source_type_i8)
 		if sum_type {
 			tc.sum_generic_params['u64'] = ['T']
 		} else {
@@ -106,7 +106,7 @@ fn test_numeric_literal_cast_keeps_builtin_spelling_metadata_behavior() {
 		}
 		assert (tc.bare_generic_decl_type_name('u64') or { panic('missing generic declaration') }) == 'u64'
 		assert tc.qualify_name('u64') == 'u64'
-		assert tc.parse_type('u64').name() == 'u64'
+		assert tc.parse_type(flat.source_type_u64).name() == 'u64'
 		tc.check_cast_expr(cast, *a.node(cast))
 		assert tc.errors.len == 1, tc.errors.str()
 		expected := if sum_type {

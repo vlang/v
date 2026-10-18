@@ -20,12 +20,12 @@ fn test_array_literal_compound_literal_carries_its_length() {
 	first := g.a.add_node(flat.Node{
 		kind:  .ident
 		value: 'first'
-		typ:   flat.source_type_id('string')
+		typ:   flat.source_type_string
 	})
 	second := g.a.add_node(flat.Node{
 		kind:  .ident
 		value: 'second'
-		typ:   flat.source_type_id('string')
+		typ:   flat.source_type_string
 	})
 	start := g.a.children.len
 	g.a.children << first

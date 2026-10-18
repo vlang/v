@@ -28,19 +28,19 @@ fn test_expansion_type_memo_preserves_estimates_and_does_not_survive_context_cha
 	hi := int(lookup) + 1
 	large_map := 'map[int][4096][]int'
 	for typ in [large_map, '[]int', 'map[int]int', large_map] {
-		t.set_var_type('values', typ)
+		t.set_var_type('values', flat.source_type_id(typ))
 		uncached := t.fn_span_map_expansion_estimate_uncached(0, hi)
 		cached := t.fn_span_map_expansion_estimate(0, hi)
 		assert cached == uncached
 		assert (cached > deferred_map_expansion_threshold) == (typ == large_map)
 		assert isnil(t.node_type_memo)
 		assert !t.expansion_node_type_memo.active
-		assert t.node_type(values) == typ
+		assert flat.source_type_name(t.node_type(values)) == typ
 	}
 	// The read-only analysis also runs while a body memo is active. Its scratch
 	// tags must not clear that memo or change the range that the body owns.
 	t.begin_node_type_memo(0, hi - 1)
-	assert t.node_type(values) == large_map
+	assert flat.source_type_name(t.node_type(values)) == large_map
 	outer_memo := t.node_type_memo
 	assert outer_memo.filled[int(values)] != 0
 	assert t.fn_span_map_expansion_estimate(0, hi) == t.fn_span_map_expansion_estimate_uncached(0,
@@ -49,7 +49,7 @@ fn test_expansion_type_memo_preserves_estimates_and_does_not_survive_context_cha
 	assert outer_memo.active
 	assert outer_memo.lo == 0 && outer_memo.hi == hi - 1
 	assert outer_memo.filled[int(values)] != 0
-	assert t.node_type(values) == large_map
+	assert flat.source_type_name(t.node_type(values)) == large_map
 	assert t.fn_span_map_expansion_estimate(hi, hi) == 0
 	assert t.node_type_memo == outer_memo && outer_memo.active
 	t.end_node_type_memo()
@@ -58,16 +58,16 @@ fn test_expansion_type_memo_preserves_estimates_and_does_not_survive_context_cha
 	// both in ordinary type queries and in the next expansion estimate.
 	tc.sum_types.set('Collection', [large_map, '[]int'])
 	t.sum_types.set('Collection', [large_map, '[]int'])
-	t.set_var_type('values', 'Collection')
+	t.set_var_type('values', flat.source_type_id('Collection'))
 	for variant in [large_map, '[]int', large_map] {
-		t.push_smartcast('values', variant, 'Collection')
+		t.push_smartcast('values', flat.source_type_id(variant), flat.source_type_id('Collection'))
 		uncached := t.fn_span_map_expansion_estimate_uncached(0, hi)
 		cached := t.fn_span_map_expansion_estimate(0, hi)
 		assert cached == uncached
 		assert (cached > deferred_map_expansion_threshold) == (variant == large_map)
-		assert t.node_type(values) == variant
+		assert flat.source_type_name(t.node_type(values)) == variant
 		t.pop_smartcast()
-		assert t.node_type(values) == 'Collection'
+		assert flat.source_type_name(t.node_type(values)) == 'Collection'
 	}
 	// Forks carry the declaration view, while each worker owns its scratch cache.
 	worker := t.fork_scan_worker(&tc)

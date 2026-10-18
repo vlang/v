@@ -182,6 +182,52 @@ pub fn (s &Scope) lookup(name string) ?Type {
 	return none
 }
 
+// lookup_before returns the nearest binding for `name` in the scopes from this one
+// up to, but not including, `stop` (the whole chain when `stop` is nil).
+pub fn (s &Scope) lookup_before(name string, stop &Scope) ?Type {
+	if name.len == 0 {
+		return none
+	}
+	// Only the local pointer is reassigned; the scopes remain read-only.
+	mut scope := unsafe { &Scope(s) }
+	$if !ownership ? {
+		bit := scope_name_bit(name)
+		for scope != unsafe { nil } && voidptr(scope) != voidptr(stop) {
+			if scope.name_mask & bit != 0 {
+				if i := scope.own_binding_index(name) {
+					return scope.types[i]
+				}
+			}
+			scope = scope.parent
+		}
+		return none
+	}
+	for scope != unsafe { nil } && voidptr(scope) != voidptr(stop) {
+		for i := scope.names.len - 1; i >= 0; i-- {
+			if scope.names[i] == name {
+				return scope.types[i]
+			}
+		}
+		scope = scope.parent
+	}
+	return none
+}
+
+// binds_own reports whether this scope itself, not a parent, binds `name`.
+@[inline]
+pub fn (s &Scope) binds_own(name string) bool {
+	$if !ownership ? {
+		if s.name_mask & scope_name_bit(name) == 0 {
+			return false
+		}
+		if _ := s.own_binding_index(name) {
+			return true
+		}
+		return false
+	}
+	return name in s.names
+}
+
 // lookup_owner returns the nearest scope that owns a visible binding for `name`.
 pub fn (s &Scope) lookup_owner(name string) ?ScopeBindingOwner {
 	if name.len == 0 {
