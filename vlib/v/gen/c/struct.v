@@ -4374,7 +4374,7 @@ fn (mut g FlatGen) shared_value_type_name(inner u32) string {
 	if typ is types.OptionType || typ is types.ResultType {
 		return naming.type_name_part(g.optional_type_name(typ))
 	}
-	if enum_ct := g.shared_backed_enum_c_type(typ) {
+	if enum_ct := g.backed_enum_storage_c_type(typ) {
 		return naming.type_name_part(enum_ct)
 	}
 	mut ct := g.tc.c_type(typ)
@@ -4387,11 +4387,12 @@ fn (mut g FlatGen) shared_value_type_name(inner u32) string {
 	return naming.type_name_part(ct)
 }
 
-// shared_backed_enum_c_type returns the C storage type of a `shared` value that is an enum
-// with a backing type (`enum E as u8`), or a fixed array of them. `TypeChecker.c_type`
-// spells every enum `int`, while cgen stores a backed enum, and the elements of a fixed
-// array of it, in the backing type, so the wrapper must take its type from cgen too.
-fn (mut g FlatGen) shared_backed_enum_c_type(typ types.Type) ?string {
+// backed_enum_storage_c_type returns the C storage type of a value that is an enum with a
+// backing type (`enum E as u8`), or a fixed array of them. `TypeChecker.c_type` spells
+// every enum `int`, while cgen stores a backed enum, and the elements of a fixed array of
+// it, in the backing type, so code that names the type of such a value (a `shared`
+// wrapper, a pointer cast that reads it back) must take it from cgen too.
+fn (mut g FlatGen) backed_enum_storage_c_type(typ types.Type) ?string {
 	if !g.type_is_backed_enum_storage(typ) {
 		return none
 	}
@@ -4413,7 +4414,7 @@ fn (g &FlatGen) type_is_backed_enum_storage(typ types.Type) bool {
 
 fn (mut g FlatGen) shared_value_c_type(inner u32) string {
 	typ := g.shared_inner_type(inner)
-	if enum_ct := g.shared_backed_enum_c_type(typ) {
+	if enum_ct := g.backed_enum_storage_c_type(typ) {
 		return enum_ct
 	}
 	mut ct := if typ is types.OptionType || typ is types.ResultType {
@@ -4940,7 +4941,7 @@ fn (mut g FlatGen) gen_shared_default_value_for_field(struct_name_id u32, field_
 	if inner_type is types.Map {
 		g.write_new_map(inner_type.key_type, inner_type.value_type)
 	} else if inner_type is types.Array {
-		c_elem := g.shared_backed_enum_c_type(inner_type.elem_type) or {
+		c_elem := g.backed_enum_storage_c_type(inner_type.elem_type) or {
 			g.tc.c_type(inner_type.elem_type)
 		}
 		g.write('array_new(sizeof(${c_elem}), 0, 0)')

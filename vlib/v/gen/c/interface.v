@@ -2895,8 +2895,15 @@ fn (mut g FlatGen) interface_result_str_expr(base_type types.Type, expr string, 
 	return '((${expr}).ok ? ${ok} : ${failed})'
 }
 
+// interface_str_storage_c_type names the C type that an element, key or value is read back
+// as. A backed enum (and a fixed array of them) is stored in its backing type, which
+// `TypeChecker.c_type` does not know; reading it as an `int` reads past the element.
+fn (mut g FlatGen) interface_str_storage_c_type(typ types.Type) string {
+	return g.backed_enum_storage_c_type(typ) or { g.tc.c_type(typ) }
+}
+
 fn (mut g FlatGen) interface_array_str_expr(arr types.Array, expr string, mut stack []InterfaceStringifyVisit) ?string {
-	elem_ct := g.tc.c_type(arr.elem_type)
+	elem_ct := g.interface_str_storage_c_type(arr.elem_type)
 	tmp := g.interface_tmp('iface_str_arr')
 	out := g.interface_tmp('iface_str_out')
 	idx := g.interface_tmp('iface_str_i')
@@ -2909,7 +2916,7 @@ fn (mut g FlatGen) interface_array_str_expr(arr types.Array, expr string, mut st
 }
 
 fn (mut g FlatGen) interface_fixed_array_str_expr(arr types.ArrayFixed, expr string, mut stack []InterfaceStringifyVisit) ?string {
-	elem_ct := g.tc.c_type(arr.elem_type)
+	elem_ct := g.interface_str_storage_c_type(arr.elem_type)
 	tmp := g.interface_tmp('iface_str_fixed')
 	out := g.interface_tmp('iface_str_out')
 	idx := g.interface_tmp('iface_str_i')
@@ -2922,8 +2929,8 @@ fn (mut g FlatGen) interface_fixed_array_str_expr(arr types.ArrayFixed, expr str
 }
 
 fn (mut g FlatGen) interface_map_str_expr(map_type types.Map, expr string, mut stack []InterfaceStringifyVisit) ?string {
-	key_ct := g.tc.c_type(map_type.key_type)
-	value_ct := g.tc.c_type(map_type.value_type)
+	key_ct := g.interface_str_storage_c_type(map_type.key_type)
+	value_ct := g.interface_str_storage_c_type(map_type.value_type)
 	tmp := g.interface_tmp('iface_str_map')
 	out := g.interface_tmp('iface_str_out')
 	idx := g.interface_tmp('iface_str_i')
