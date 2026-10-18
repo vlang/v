@@ -31,9 +31,21 @@ struct Route {
 	words           []string
 	host            string
 	parameter_names []string
+	parameter_kinds []ParamKind
 mut:
 	middlewares       []RouteMiddleware
 	after_middlewares []RouteMiddleware
+}
+
+// ParamKind is the declared type of one handler parameter beyond the context,
+// recorded so the dispatcher can reject a value that cannot fill it instead
+// of coercing it to a zero. Only the types route parameters support are
+// distinguished; anything else rides through unchecked.
+enum ParamKind {
+	string_
+	integer
+	boolean
+	other
 }
 
 fn route_path_words(path string) []string {
@@ -44,16 +56,17 @@ fn route_path_words(path string) []string {
 }
 
 // Parse and assemble route metadata once, outside controller specializations.
-fn insert_route_metadata(mut routes map[string]Route, name string, attrs []string, parameter_names []string) ! {
+fn insert_route_metadata(mut routes map[string]Route, name string, attrs []string, parameter_names []string, parameter_kinds []ParamKind) ! {
 	http_methods, route_path, host := parse_attrs(name, attrs) or {
 		return error('error parsing method attributes: ${err}')
 	}
 	routes[name] = Route{
-		methods: http_methods
-		path: route_path
-		words: route_path_words(route_path)
-		host: host
+		methods:         http_methods
+		path:            route_path
+		words:           route_path_words(route_path)
+		host:            host
 		parameter_names: parameter_names
+		parameter_kinds: parameter_kinds
 	}
 }
 
@@ -68,7 +81,26 @@ fn generate_routes[A, X](app &A) !map[string]Route {
 					parameter_names << param.name
 				}
 			}
-			insert_route_metadata(mut routes, method.name, method.attrs, parameter_names)!
+			// The kinds ride alongside the names by index. A nested `$for` over a
+			// sliced `method.args` unrolls to nothing, so this walks the full
+			// `method.params` instead and drops index 0, the request context,
+			// which the dispatcher passes separately.
+			mut parameter_kinds := []ParamKind{}
+			$for param in method.params {
+				$if param.typ is string {
+					parameter_kinds << .string_
+				} $else $if param.typ is int {
+					parameter_kinds << .integer
+				} $else $if param.typ is bool {
+					parameter_kinds << .boolean
+				} $else {
+					parameter_kinds << .other
+				}
+			}
+			if parameter_kinds.len > 0 {
+				parameter_kinds = parameter_kinds[1..]
+			}
+			insert_route_metadata(mut routes, method.name, method.attrs, parameter_names, parameter_kinds)!
 		} $else {
 			// If we have route attributes, but the wrong return type, return an error
 			if has_route_attributes(method.attrs) {
@@ -559,8 +591,29 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 			} else {
 				user_context.Context.form
 			}
-			for name in route.parameter_names {
-				args << data[name]
+			for i, name in route.parameter_names {
+				value := data[name]
+				if i < route.parameter_kinds.len {
+					msg := route_param_error(name, route.parameter_kinds[i], value)
+					if msg != '' {
+						user_context.request_error(msg)
+						return
+					}
+				}
+				args << value
+			}
+		} else {
+			// Path parameters arrive positionally, in the order the route declares
+			// them, which is the order the dispatcher passes them on.
+			for i, value in args {
+				if i < route.parameter_kinds.len && i < route.parameter_names.len {
+					msg := route_param_error(route.parameter_names[i], route.parameter_kinds[i],
+						value)
+					if msg != '' {
+						user_context.request_error(msg)
+						return
+					}
+				}
 			}
 		}
 		$for method in A.methods {
@@ -645,6 +698,33 @@ struct RouteMatch {
 	route     Route
 	params    []string
 	from_data bool
+}
+
+// route_param_error checks one request value against the kind of handler
+// parameter it will fill, and returns '' when the value is acceptable. A
+// missing or unparsable value for a non-string parameter used to be coerced to
+// a zero while the handler answered 200; now it is the message for a 400.
+fn route_param_error(name string, kind ParamKind, value string) string {
+	match kind {
+		.string_, .other {
+			return ''
+		}
+		.integer {
+			if value == '' {
+				return 'missing integer value for parameter "${name}"'
+			}
+			_ = strconv.atoi(value) or {
+				return 'invalid integer value "${value}" for parameter "${name}"'
+			}
+			return ''
+		}
+		.boolean {
+			if value != 'true' && value != 'false' {
+				return 'invalid boolean value "${value}" for parameter "${name}": expected true or false'
+			}
+			return ''
+		}
+	}
 }
 
 fn select_route(routes &map[string]Route, path string, host string, method http.Method) ?RouteMatch {
