@@ -457,6 +457,11 @@ mut:
 	// each possible source whose address may leave the frame is moved to the heap at its
 	// declaration so mutations before the return remain visible to the caller.
 	escaping_amp_sources map[string]bool
+	// escape_decl_depths maps a local to the block depth of its declaration during the escape
+	// scan, and escape_scope_depth is the depth of the statement being scanned. A block's
+	// local is gone when the block ends, and a loop reuses it in the next iteration.
+	escape_decl_depths map[string]int
+	escape_scope_depth int
 	// escaping_fixed_array_view_sources holds local storage exposed through a reference
 	// parameter that can retain an inline fixed array as a dynamic view. Promote the root
 	// before any aliases form, including when a containing struct is forwarded by reference.
@@ -4969,6 +4974,7 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 	w.sql_query_data_aliases = map[string][]string{}
 	w.escaping_amp_ptrs = map[string]bool{}
 	w.escaping_amp_sources = map[string]bool{}
+	w.escape_decl_depths = map[string]int{}
 	w.escaping_fixed_array_view_sources = map[string]bool{}
 	w.heaped_amp_locals = map[string]bool{}
 	w.escaping_interface_box_locals = map[string]bool{}
@@ -5092,6 +5098,7 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	w.fixed_array_value_rvalues = map[string]bool{}
 	w.escaping_amp_ptrs = map[string]bool{}
 	w.escaping_amp_sources = map[string]bool{}
+	w.escape_decl_depths = map[string]int{}
 	w.escaping_fixed_array_view_sources = map[string]bool{}
 	w.heaped_amp_locals = map[string]bool{}
 	w.escaping_interface_box_locals = map[string]bool{}
@@ -5279,6 +5286,7 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		smartcast_reestablishment_event_ids: map[string]int{}
 		escaping_amp_ptrs:                   map[string]bool{}
 		escaping_amp_sources:                map[string]bool{}
+		escape_decl_depths:                  map[string]int{}
 		escaping_fixed_array_view_sources:   map[string]bool{}
 		heaped_amp_locals:                   map[string]bool{}
 		local_closure_cleanup_decls:         map[int]string{}
@@ -8717,6 +8725,8 @@ fn (mut t Transformer) transform_scope_stmts(ids []flat.NodeId) []flat.NodeId {
 fn (mut t Transformer) reset_escaping_amp_state() {
 	t.escaping_amp_ptrs.clear()
 	t.escaping_amp_sources.clear()
+	t.escape_decl_depths.clear()
+	t.escape_scope_depth = 0
 	t.escaping_fixed_array_view_sources.clear()
 	t.heaped_amp_locals.clear()
 	t.escaping_interface_box_locals.clear()
@@ -10112,6 +10122,42 @@ fn (t &Transformer) escape_address_sources(id flat.NodeId, amp_sources map[strin
 	return [root]
 }
 
+// escape_explicit_address_sources returns the sources of an explicit `&expr`. A value
+// that refers to other storage (`t := views[0].v as Term`) is still a local of its own:
+// `&t` and `&t.field` address `t` as well as what `t` refers to.
+fn (t &Transformer) escape_explicit_address_sources(id flat.NodeId, amp_sources map[string][]string, ptr_aliases map[string]string) []string {
+	sources := t.escape_address_sources(id, amp_sources, ptr_aliases)
+	root := t.escape_address_root_name(id) or { return sources }
+	if root in sources || !t.escape_address_root_is_value(id) {
+		return sources
+	}
+	mut with_root := sources.clone()
+	with_root << root
+	return with_root
+}
+
+// escape_address_root_is_value reports whether the variable at the root of `&v` or
+// `&v.field` holds the addressed storage itself, rather than a pointer to it.
+fn (t &Transformer) escape_address_root_is_value(id flat.NodeId) bool {
+	mut current := id
+	for int(current) >= 0 && int(current) < t.a.nodes.len {
+		node := t.a.nodes[int(current)]
+		if node.kind == .ident {
+			return isnil(t.tc) || !escape_type_is_pointer(t.tc.resolve_type(current))
+		}
+		if node.kind !in [.paren, .selector] || node.children_count == 0 {
+			return false
+		}
+		if node.kind == .selector && !isnil(t.tc)
+			&& escape_type_is_pointer(t.tc.resolve_type(t.a.child(&node, 0))) {
+			// `&p.field` through a pointer addresses the pointee, not `p`.
+			return false
+		}
+		current = t.a.child(&node, 0)
+	}
+	return false
+}
+
 fn (t &Transformer) escape_method_value_receiver(id flat.NodeId) ?string {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return none
@@ -10207,7 +10253,7 @@ fn (mut t Transformer) scan_escape_pointer_write(lhs flat.Node, rhs flat.Node, m
 		return
 	}
 	if rhs.kind == .prefix && rhs.op == .amp && rhs.children_count > 0 {
-		sources := t.escape_address_sources(t.a.child(&rhs, 0), amp_sources, ptr_aliases)
+		sources := t.escape_explicit_address_sources(t.a.child(&rhs, 0), amp_sources, ptr_aliases)
 		if sources.len > 0 {
 			amp_ptrs[lhs.value] = true
 			for source_name in sources {
@@ -10332,13 +10378,24 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 	node_storage := t.a.nodes[int(id)]
 	node := &node_storage
 	if node.kind in [.if_expr, .comptime_if, .match_stmt, .match_branch, .for_stmt, .select_stmt] {
+		// A match branch holds its statements directly, scoped to the branch.
+		if node.kind == .match_branch {
+			t.escape_scope_depth++
+		}
 		for i in 0 .. node.children_count {
 			t.scan_escape_pass(t.a.child(node, i), mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut method_value_receivers, mut closure_capture_aliases, mut interface_boxes, mut returned, mut local_stack_names, mut local_stack_added, mut reference_backing_sources, false)
+		}
+		if node.kind == .match_branch {
+			t.escape_scope_depth--
 		}
 		return
 	}
 	if node.kind == .select_branch {
 		scope_mark := local_stack_added.len
+		t.escape_scope_depth++
+		defer {
+			t.escape_scope_depth--
+		}
 		mut body_start := if node.value == 'else' { 0 } else { 1 }
 		if node.children_count >= 2 {
 			second := t.a.child_node(node, 1)
@@ -10366,9 +10423,11 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 	}
 	if node.kind == .block {
 		scope_mark := local_stack_added.len
+		t.escape_scope_depth++
 		for i in 0 .. node.children_count {
 			t.scan_escape_pass(t.a.child(node, i), mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut method_value_receivers, mut closure_capture_aliases, mut interface_boxes, mut returned, mut local_stack_names, mut local_stack_added, mut reference_backing_sources, can_clear_interface_boxes)
 		}
+		t.escape_scope_depth--
 		pop_escape_local_stack_names(scope_mark, mut local_stack_names, mut local_stack_added)
 		return
 	}
@@ -10451,6 +10510,7 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 		}
 		for name in declared_names {
 			add_escape_local_stack_name(name, mut local_stack_names, mut local_stack_added)
+			t.escape_decl_depths[name] = t.escape_scope_depth
 		}
 	}
 	if node.kind == .return_stmt {
@@ -10498,9 +10558,19 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 		lhs_id := t.a.child(node, 0)
 		rhs_id := t.a.child(node, 1)
 		lhs_root := t.escape_address_root_name(lhs_id) or { '' }
+		// `outer = Node{next: &inner}`: the assigned variable outlives a local of a nested
+		// block, whose storage a loop also reuses in its next iteration.
 		for source_name in t.escape_aggregate_address_sources(rhs_id, amp_sources, ptr_aliases) {
 			if source_name == lhs_root && source_name in local_stack_names {
 				t.escaping_amp_sources[source_name] = true
+			}
+		}
+		lhs_depth := t.escape_decl_depths[lhs_root] or { 0 }
+		for source_name in t.escape_stored_address_sources(rhs_id, amp_sources, ptr_aliases) {
+			if source_depth := t.escape_decl_depths[source_name] {
+				if source_depth > lhs_depth {
+					t.escaping_amp_sources[source_name] = true
+				}
 			}
 		}
 		if t.escape_index_assign_retains_value(lhs_id)
@@ -11042,7 +11112,8 @@ fn (t &Transformer) escape_aggregate_address_sources(id flat.NodeId, amp_sources
 		}
 		.prefix {
 			if node.op == .amp && node.children_count > 0 {
-				return t.escape_address_sources(t.a.child(node, 0), amp_sources, ptr_aliases)
+				return t.escape_explicit_address_sources(t.a.child(node, 0), amp_sources,
+					ptr_aliases)
 			}
 			return []string{}
 		}
@@ -11157,6 +11228,51 @@ fn (t &Transformer) escape_aggregate_address_sources(id flat.NodeId, amp_sources
 	return []string{}
 }
 
+// escape_stored_address_sources returns the locals whose addresses an assigned value
+// stores itself: `&v`, a literal, cast or branch value holding one, or a pointer alias.
+// Unlike escape_aggregate_address_sources, it does not follow call results: a call
+// like `C.realpath(&buf[0], &out[0])` rarely returns the address it was given.
+fn (t &Transformer) escape_stored_address_sources(id flat.NodeId, amp_sources map[string][]string, ptr_aliases map[string]string) []string {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return []string{}
+	}
+	node := t.a.node(id)
+	mut children := []flat.NodeId{}
+	match node.kind {
+		.prefix {
+			if node.op == .amp && node.children_count > 0 {
+				return t.escape_explicit_address_sources(t.a.child(node, 0), amp_sources,
+					ptr_aliases)
+			}
+			return []string{}
+		}
+		.ident {
+			return escape_alias_sources(node.value, amp_sources, ptr_aliases)
+		}
+		.or_expr, .if_expr, .comptime_if, .match_stmt, .block {
+			children = t.escape_value_tails(id)
+		}
+		.field_init, .paren, .cast_expr, .as_expr, .struct_init, .assoc, .array_literal,
+		.array_init, .map_init {
+			for i in 0 .. node.children_count {
+				children << t.a.child(node, i)
+			}
+		}
+		else {
+			return []string{}
+		}
+	}
+	mut sources := []string{}
+	for child_id in children {
+		for source_name in t.escape_stored_address_sources(child_id, amp_sources, ptr_aliases) {
+			if source_name !in sources {
+				sources << source_name
+			}
+		}
+	}
+	return sources
+}
+
 fn escape_type_is_scalar_value(typ types.Type) bool {
 	return match typ {
 		types.Alias { escape_type_is_scalar_value(typ.base_type) }
@@ -11264,6 +11380,7 @@ fn (mut t Transformer) scan_for_in_escape_pass(node &flat.Node, mut amp_ptrs map
 		}
 	}
 	scope_mark := local_stack_added.len
+	t.escape_scope_depth++
 	for i in 0 .. 2 {
 		if i >= int(node.children_count) {
 			break
@@ -11273,12 +11390,14 @@ fn (mut t Transformer) scan_for_in_escape_pass(node &flat.Node, mut amp_ptrs map
 			part := t.a.nodes[int(part_id)]
 			if part.kind == .ident && part.value.len > 0 {
 				add_escape_local_stack_name(part.value, mut local_stack_names, mut local_stack_added)
+				t.escape_decl_depths[part.value] = t.escape_scope_depth
 			}
 		}
 	}
 	for i in header_end .. node.children_count {
 		t.scan_escape_pass(t.a.child(node, i), mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut method_value_receivers, mut closure_capture_aliases, mut interface_boxes, mut returned, mut local_stack_names, mut local_stack_added, mut reference_backing_sources, false)
 	}
+	t.escape_scope_depth--
 	pop_escape_local_stack_names(scope_mark, mut local_stack_names, mut local_stack_added)
 }
 
