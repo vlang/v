@@ -10,9 +10,11 @@ read timeout directly in `recv`, avoiding a readiness poll before each read.
 disable it. Deadline-only reads and nonblocking reads continue to use readiness
 polling, as do sockets that do not support the receive-timeout option.
 
-A deadline set with `set_read_deadline` or `set_write_deadline` takes precedence over the
-connection's timeout for as long as it is set, wherever a wait chooses between the two: the
-`wait_for_read`/`wait_for_write` methods, UDP reads and blocking TCP reads. A UDP read with a
+A deadline set with `set_read_deadline`, `set_write_deadline` or `set_accept_deadline` takes
+precedence over the matching timeout for as long as it is set, wherever a wait chooses between the
+two: the `wait_for_read`/`wait_for_write`/`wait_for_accept` methods (so a TCP or Unix listener's
+accept, whose default timeout is infinite, now ends at its deadline), UDP reads and blocking TCP
+reads. A UDP read with a
 400 ms deadline waits 400 ms even under the 100 ms default timeout. Set the deadline back to
 `time.Time{}` to return to the timeout. Paths that block before any wait bound by neither: blocking
 Unix stream reads and writes, blocking TCP writes, and reads under `-use-coroutines` (which pass

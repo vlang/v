@@ -73,3 +73,20 @@ fn test_tcp_read_deadline_wins_over_the_socket_timeout() ! {
 	}
 	assert false, 'a silent peer must time out'
 }
+
+fn test_tcp_accept_deadline_wins_over_the_infinite_accept_timeout() ! {
+	$if windows || is_coroutine ? {
+		return
+	}
+	mut listener := listen_tcp(.ip, '127.0.0.1:0')!
+	defer { listener.close() or {} }
+	// the default accept timeout is infinite; a deadline set ends the wait
+	listener.set_accept_deadline(time.now().add(200 * time.millisecond))
+	started := time.new_stopwatch()
+	listener.wait_for_accept() or {
+		assert err.code() == err_timed_out.code()
+		assert started.elapsed() < 2 * time.second, 'returned after ${started.elapsed()}'
+		return
+	}
+	assert false, 'nobody connected'
+}
