@@ -21,9 +21,9 @@ fn fastc_wait_referenced_function_names(mut pending FastcPendingReferences) map[
 	return pending.references
 }
 
-fn fastc_start_interface_dispatches(declared_kinds map[string]FastcDeclaredTypeKind, functions map[string]FastcFunctionSignature, function_c_names map[string]string, interface_methods map[string]bool, used_function_names map[string]bool, selfhost bool, _prefs &pref.Preferences) FastcPendingInterfaceDispatches {
+fn fastc_start_interface_dispatches(declared_kinds map[string]FastcDeclaredTypeKind, functions map[string]FastcFunctionSignature, function_c_names map[string]string, interface_methods map[string]bool, struct_field_info map[string][]FastcStructField, used_function_names map[string]bool, selfhost bool, _prefs &pref.Preferences) FastcPendingInterfaceDispatches {
 	return FastcPendingInterfaceDispatches{
-		dispatches: fastc_generate_interface_dispatches(declared_kinds, functions, function_c_names, interface_methods, used_function_names, selfhost)
+		dispatches: fastc_generate_interface_dispatches(declared_kinds, functions, function_c_names, interface_methods, struct_field_info, used_function_names, selfhost)
 	}
 }
 

@@ -417,6 +417,13 @@ mut:
 	values map[string]int
 }
 
+// SumVariantPatternEntry retains the resolution context for one source-type pair.
+struct SumVariantPatternEntry {
+	file        string
+	module_name string
+	result      u32
+}
+
 // TypeCache represents type cache data used by types.
 struct TypeCache {
 mut:
@@ -496,7 +503,7 @@ mut:
 	struct_field_recent_values   [256]Type
 	struct_field_recent_states   [256]i8
 	struct_field_fn_diagnostics  map[string]string
-	sum_variant_pattern_entries  flat.TypeTextBindings
+	sum_variant_pattern_entries  map[u64][]SumVariantPatternEntry
 	recv_pattern_entries         map[string]GenericReceiverMethodPatternMatch
 	recv_pattern_misses          map[string]bool
 	lexical_smartcast_entries    map[int]Type
@@ -550,7 +557,7 @@ fn new_type_cache(parse_enabled bool) &TypeCache {
 	cache.struct_field_shared = map[u32]&StructFieldTypeEntries{}
 	cache.struct_field_complete = map[u32]bool{}
 	cache.struct_field_fn_diagnostics = map[string]string{}
-	cache.sum_variant_pattern_entries = flat.TypeTextBindings{}
+	cache.sum_variant_pattern_entries = map[u64][]SumVariantPatternEntry{}
 	cache.recv_pattern_entries = map[string]GenericReceiverMethodPatternMatch{}
 	cache.recv_pattern_misses = map[string]bool{}
 	cache.lexical_smartcast_entries = map[int]Type{}
@@ -2404,6 +2411,13 @@ fn (mut tc TypeChecker) build_fn_declaration_indexes(a &flat.FlatAst) {
 fn (mut tc TypeChecker) build_declaration_param_mutability_index(a &flat.FlatAst) {
 	tc.declaration_param_mutability = map[string][]bool{}
 	tc.index_declaration_param_mutability(a, tc.top_level_idx, '')
+}
+
+// declaration_param_mutability_for returns which parameters of the declaration `key`
+// are `mut`, with the receiver first for a method, or an empty array when unknown.
+// The returned array is shared with the index; clone it before changing it.
+pub fn (tc &TypeChecker) declaration_param_mutability_for(key string) []bool {
+	return tc.declaration_param_mutability[key] or { []bool{} }
 }
 
 fn (mut tc TypeChecker) index_declaration_param_mutability(a &flat.FlatAst, entries []i32, start_module string) {
@@ -5942,7 +5956,7 @@ fn (tc &TypeChecker) local_fn_decl_exists_scan(name string) bool {
 }
 
 // qualify_name supports qualify name handling for TypeChecker.
-// QualifyNameCache memoizes qualify_name per source and type-resolution context.
+// QualifyNameCache memoizes both qualification interfaces per source and type-resolution context.
 // Its table fingerprint invalidates entries while collection is still growing
 // the declared-type tables; every checker fork gets its own instance.
 pub struct QualifyNameCache {
@@ -5979,38 +5993,71 @@ pub fn (tc &TypeChecker) qualify_name(name string) string {
 	if is_builtin_type_name(name) {
 		return name
 	}
-	if !isnil(tc.qualify_name_cache) {
-		mut cache := tc.qualify_name_cache
-		fingerprint := tc.qualify_table_fingerprint()
-		if cache.module != tc.cur_module || cache.file != tc.cur_file
-			|| cache.resolution_type_mode != tc.resolution_type_mode
-			|| cache.fingerprint != fingerprint {
-			cache.module = tc.cur_module
-			cache.file = tc.cur_file
-			cache.resolution_type_mode = tc.resolution_type_mode
-			cache.fingerprint = fingerprint
-			cache.entries.clear()
-			cache.last_valid = false
-		}
-		name_id := cache.texts.intern(name)
-		if cache.last_valid && cache.last_name == name_id {
-			return flat.source_type_name(cache.last_value)
-		}
-		if cached := cache.entries[name_id] {
-			cache.last_name = name_id
-			cache.last_value = cached
-			cache.last_valid = true
-			return flat.source_type_name(cached)
-		}
-		result := tc.qualify_name_uncached(name)
-		result_id := cache.texts.intern(result)
-		cache.entries[name_id] = result_id
-		cache.last_name = name_id
-		cache.last_value = result_id
-		cache.last_valid = true
-		return result
+	if isnil(tc.qualify_name_cache) {
+		return tc.qualify_name_uncached(name)
 	}
-	return tc.qualify_name_uncached(name)
+	mut cache := tc.qualify_name_cache
+	name_id := cache.texts.intern(name)
+	return flat.source_type_name(tc.qualify_type_name_cached(name_id, name))
+}
+
+const qualify_source_type_i128 = flat.source_type_id('i128')
+const qualify_source_type_u128 = flat.source_type_id('u128')
+const qualify_source_type_uint = flat.source_type_id('uint')
+const qualify_source_type_map = flat.source_type_id('map')
+const qualify_source_type_array = flat.source_type_id('array')
+
+// qualify_type_name resolves a source spelling ID in the current file, module,
+// and resolution context. Its cache is shared with qualify_name; spelling IDs
+// remain distinct from checker-local semantic TypeId values.
+pub fn (tc &TypeChecker) qualify_type_name(name_id u32) u32 {
+	// Preserve qualify_name's exact builtin exclusions before cache invalidation.
+	if flat.source_type_shape(name_id).has(.builtin_alias)
+		|| name_id == flat.source_type_char || name_id == flat.source_type_nil
+		|| name_id == flat.source_type_none || name_id == qualify_source_type_i128
+		|| name_id == qualify_source_type_u128 || name_id == qualify_source_type_uint
+		|| name_id == qualify_source_type_map || name_id == qualify_source_type_array {
+		return name_id
+	}
+	if isnil(tc.qualify_name_cache) {
+		name := flat.source_type_name(name_id)
+		result := tc.qualify_name_uncached(name)
+		return if result == name { name_id } else { flat.source_type_id(result) }
+	}
+	return tc.qualify_type_name_cached(name_id, '')
+}
+
+fn (tc &TypeChecker) qualify_type_name_cached(name_id u32, provided_name string) u32 {
+	mut cache := tc.qualify_name_cache
+	fingerprint := tc.qualify_table_fingerprint()
+	if cache.module != tc.cur_module || cache.file != tc.cur_file
+		|| cache.resolution_type_mode != tc.resolution_type_mode
+		|| cache.fingerprint != fingerprint {
+		cache.module = tc.cur_module
+		cache.file = tc.cur_file
+		cache.resolution_type_mode = tc.resolution_type_mode
+		cache.fingerprint = fingerprint
+		cache.entries.clear()
+		cache.last_valid = false
+	}
+	if cache.last_valid && cache.last_name == name_id {
+		return cache.last_value
+	}
+	if cached := cache.entries[name_id] {
+		cache.last_name = name_id
+		cache.last_value = cached
+		cache.last_valid = true
+		return cached
+	}
+	// Only a miss needs spelling bytes. String callers already have those bytes.
+	name := if provided_name.len > 0 { provided_name } else { flat.source_type_name(name_id) }
+	result := tc.qualify_name_uncached(name)
+	result_id := if result == name { name_id } else { cache.texts.intern(result) }
+	cache.entries[name_id] = result_id
+	cache.last_name = name_id
+	cache.last_value = result_id
+	cache.last_valid = true
+	return result_id
 }
 
 fn (tc &TypeChecker) qualify_name_uncached(name string) string {
@@ -6183,12 +6230,14 @@ fn (tc &TypeChecker) qualify_sum_variant_name(name string, generic_params []stri
 // get the current module prefix (order-independent during collect).
 fn (tc &TypeChecker) qualify_type_text(typ_id u32) u32 {
 	typ := flat.source_type_name(typ_id)
-	return flat.source_type_id(tc.qualify_type_text_impl(typ, false, []string{}))
+	qualified := tc.qualify_type_text_impl(typ, false, []string{})
+	return if qualified == typ { typ_id } else { flat.source_type_id(qualified) }
 }
 
 fn (tc &TypeChecker) qualify_type_text_with_generic_params(typ_id u32, generic_params []string) u32 {
 	typ := flat.source_type_name(typ_id)
-	return flat.source_type_id(tc.qualify_type_text_impl(typ, false, generic_params))
+	qualified := tc.qualify_type_text_impl(typ, false, generic_params)
+	return if qualified == typ { typ_id } else { flat.source_type_id(qualified) }
 }
 
 // qualify_resolution_type_text qualifies a type text in a resolution-only
@@ -6197,7 +6246,8 @@ fn (tc &TypeChecker) qualify_type_text_with_generic_params(typ_id u32, generic_p
 // exist. Never use for registration.
 fn (tc &TypeChecker) qualify_resolution_type_text(typ_id u32) u32 {
 	typ := flat.source_type_name(typ_id)
-	return flat.source_type_id(tc.qualify_type_text_impl(typ, true, []string{}))
+	qualified := tc.qualify_type_text_impl(typ, true, []string{})
+	return if qualified == typ { typ_id } else { flat.source_type_id(qualified) }
 }
 
 // parse_resolution_type parses type text that can mix declaration-local names with concrete
@@ -13937,7 +13987,7 @@ fn (mut tc TypeChecker) check_decl_type_strings(node_id flat.NodeId, node flat.N
 		if node.kind == .interface_decl && child.kind == .interface_field && child.op != .dot {
 			field_type := unalias_type(tc.parse_type(child.typ))
 			if field_type is Interface
-				&& flat.source_type_name(tc.interface_metadata_name(field_type.source_type_id())) == flat.source_type_name(tc.interface_metadata_name(flat.source_type_id(node.value))) {
+				&& tc.interface_metadata_name(field_type.source_type_id()) == tc.interface_metadata_name(flat.source_type_id(node.value)) {
 				tc.record_error_at(.assignment_mismatch, 'recursive interface fields are not allowed because they cannot be initialised', child_id, tc.type_diagnostic_pos(child_id, child.typ_text()))
 			}
 		}
@@ -15585,7 +15635,7 @@ fn (tc &TypeChecker) sum_type_variant_source_pos(node flat.Node, variant string)
 fn (tc &TypeChecker) sum_type_reaches_sum(current_id u32, target_id u32, mut seen map[u32]bool) bool {
 	current_base := tc.sum_base_name(current_id)
 	target_base := tc.sum_base_name(target_id)
-	if flat.source_type_name(current_base) == flat.source_type_name(target_base) {
+	if current_base == target_base {
 		return true
 	}
 	if seen[current_base] {
@@ -16663,7 +16713,7 @@ fn (tc &TypeChecker) type_name_known(typ_id u32) bool {
 	if generic_base != typ {
 		return tc.type_name_known(flat.source_type_id(generic_base))
 	}
-	qtyp := tc.qualify_name(typ)
+	qtyp := flat.source_type_name(tc.qualify_type_name(typ_id))
 	if !typ.contains('.') {
 		if resolved := tc.resolve_selective_import_type_symbol(typ) {
 			return tc.type_symbol_known(resolved)
@@ -16681,8 +16731,7 @@ fn (tc &TypeChecker) type_name_known(typ_id u32) bool {
 }
 
 fn (tc &TypeChecker) type_name_known_in_current_module(typ_id u32) bool {
-	typ := flat.source_type_name(typ_id)
-	qtyp := tc.qualify_name(typ)
+	qtyp := flat.source_type_name(tc.qualify_type_name(typ_id))
 	return tc.type_aliases.contains(qtyp) || qtyp in tc.structs || qtyp in tc.interface_names
 		|| qtyp in tc.enum_names || tc.sum_types.contains(qtyp)
 }

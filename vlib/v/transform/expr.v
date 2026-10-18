@@ -308,13 +308,13 @@ fn (mut t Transformer) transform_infix_array_ops(_id flat.NodeId, node flat.Node
 		if (lhs_is_fixed && rhs_is_fixed)
 			|| (lhs_is_fixed && t.expr_can_be_fixed_array_literal(rhs_id))
 			|| (rhs_is_fixed && t.expr_can_be_fixed_array_literal(lhs_id)) {
-			mut fixed_type := flat.source_type_name(t.resolved_fixed_array_canonical_type(lhs_type))
+			mut fixed_type := t.resolved_fixed_array_canonical_type(lhs_type)
 			if !lhs_is_fixed {
-				fixed_type = flat.source_type_name(t.resolved_fixed_array_canonical_type(rhs_type))
+				fixed_type = t.resolved_fixed_array_canonical_type(rhs_type)
 			}
-			new_lhs := t.transform_expr_for_type(lhs_id, flat.source_type_id(fixed_type))
-			new_rhs := t.transform_expr_for_type(rhs_id, flat.source_type_id(fixed_type))
-			eq_call := t.make_membership_eq_expr(new_lhs, new_rhs, flat.source_type_id(fixed_type))
+			new_lhs := t.transform_expr_for_type(lhs_id, fixed_type)
+			new_rhs := t.transform_expr_for_type(rhs_id, fixed_type)
+			eq_call := t.make_membership_eq_expr(new_lhs, new_rhs, fixed_type)
 			if node.op == .ne {
 				return t.make_prefix(.not, eq_call)
 			}

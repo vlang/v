@@ -1083,7 +1083,7 @@ fn test_fastc_overlap_workers_honor_serial_preferences() {
 	for name in ['a', 'b', 'c', 'd'] {
 		functions[name] = FastcFunctionSignature{}
 	}
-	mut pending_dispatches := fastc_start_interface_dispatches(map[string]FastcDeclaredTypeKind{}, functions, map[string]string{}, map[string]bool{}, map[string]bool{}, false, prefs)
+	mut pending_dispatches := fastc_start_interface_dispatches(map[string]FastcDeclaredTypeKind{}, functions, map[string]string{}, map[string]bool{}, map[string][]FastcStructField{}, map[string]bool{}, false, prefs)
 	assert pending_dispatches.workers.len == 0
 	assert fastc_wait_interface_dispatches(mut pending_dispatches) == ''
 }

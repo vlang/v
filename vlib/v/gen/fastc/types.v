@@ -1933,6 +1933,25 @@ fn fastc_c_number(literal string) !string {
 	return clean[first_digit..]
 }
 
+// fastc_number_is_float reports whether a rendered number literal is a floating point
+// one; the `e` of a hexadecimal literal is a digit, not an exponent.
+fn fastc_number_is_float(number string) bool {
+	if number.len > 1 && number[0] == `0` && number[1] in [`x`, `X`] {
+		return false
+	}
+	return number.contains_any('.eE')
+}
+
+// fastc_shift_operand_number types an integer literal that is the left operand of `<<`.
+// A V integer literal is an `int`, the platform's width; a bare C literal is a 32-bit
+// `int`, so `1 << 51` would overflow.
+fn fastc_shift_operand_number(number string) string {
+	if number.ends_with('ULL') || fastc_number_is_float(number) {
+		return number
+	}
+	return '((${fastc_output_c_type('int')})${number})'
+}
+
 fn fastc_c_selfhost_number(literal string) string {
 	clean := fastc_number_without_separators(literal)
 	if clean.len > 2 && clean[0] == `0` && clean[1] in [`o`, `O`] {
