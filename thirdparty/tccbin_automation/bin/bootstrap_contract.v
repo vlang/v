@@ -121,9 +121,9 @@ pub fn validate_vc_bootstrap_contract(automation_root string) !VcBootstrapLock {
 			return error('VC bootstrap helper omits a required closed-world control')
 		}
 	}
-	// The three cmd/v stages all call build_v_program; its Linux branch holds the one direct invocation.
+	// The three cmd/v stages all call build_v_program; each of its two branches holds one direct invocation.
 	if script.count('build_v_program "$private_contract_root/') != 3
-		|| script.count('-no-parallel -nocache -cc "$cc_command"') != 1 {
+		|| script.count('-no-parallel -nocache -cc "$cc_command"') != 2 {
 		return error('VC bootstrap helper must compile all three V stages with explicit flags')
 	}
 	if script.count('-gc none') != 3 {

@@ -441,7 +441,7 @@ build_v_program() {
 	local -a flags=("${@:3:$(($# - 3))}")
 	case "$(uname -s)" in
 		MINGW* | MSYS* | CYGWIN*)
-			"$compiler" -no-parallel -nocache "${flags[@]}" -o "$output.c" "$package"
+			"$compiler" -no-parallel -nocache -cc "$cc_command" "${flags[@]}" -o "$output.c" "$package"
 			"$cc_command" -std=gnu11 -municode -w -fwrapv -o "$output" "$output.c" \
 				vlib/builtin/core_windows.c vlib/v/modulecache/file_metadata.c \
 				vlib/time/ticks_windows.c vlib/v/winthread_helper_windows.c \

@@ -110,8 +110,8 @@ fn test_bootstrap_script_is_syntax_valid_network_free_and_ordered() {
 	assert v2_index < cli_index
 	assert cli_index < oracle_index
 	assert source.contains(r'-d "tccbin_contract_sha=${contract_sha}"')
-	// build_v_program holds the only direct invocation; every cmd/v build goes through it.
-		assert source.count('-no-parallel -nocache -cc "$cc_command"') == 1
+	// build_v_program holds one direct invocation per branch; every cmd/v build goes through it.
+		assert source.count('-no-parallel -nocache -cc "$cc_command"') == 2
 	assert source.count('-gc none') == 3
 	cli_path_assignment := r'cli_path="$work_root/tccbin-automation${exe_suffix}"'
 	assert source.count(cli_path_assignment) == 1
