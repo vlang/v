@@ -6255,6 +6255,102 @@ struct WorkItemRank {
 	idx  int
 }
 
+// work_items_in_source_order returns a copy of `items` sorted by declaration node.
+fn work_items_in_source_order(items []FnWorkItem) []FnWorkItem {
+	mut ordered := items.clone()
+	ordered.sort(a.fn_idx < b.fn_idx)
+	return ordered
+}
+
+// WorkItemRun is a run of consecutive work items of one source file.
+struct WorkItemRun {
+	start int
+	end   int
+	cost  i64
+}
+
+// split_work_items_by_file_runs balances runs of consecutive same-file items
+// across `n` buckets like split_work_items_with_first_share balances items.
+// The transformer's normalization caches are per source file and start cold
+// at every file change, so a bucket that gets every item of a run reuses them
+// instead of each bucket warming them for its share of every file. A run is
+// capped at 1/(8n) of the total cost, so every bucket still gets many runs and
+// its append region keeps tracking its cost.
+fn split_work_items_by_file_runs(items []FnWorkItem, n int, first_share_percent int) [][]FnWorkItem {
+	if n <= 1 || items.len < 2 * n {
+		return split_work_items_with_first_share(items, n, first_share_percent)
+	}
+	mut strictly_ordered := true
+	for i in 1 .. items.len {
+		if items[i].fn_idx <= items[i - 1].fn_idx {
+			strictly_ordered = false
+			break
+		}
+	}
+	ordered := if strictly_ordered { items } else { work_items_in_source_order(items) }
+	mut total := i64(0)
+	for it in ordered {
+		total += i64(it.cost) + 1
+	}
+	run_cost_cap := total / i64(8 * n)
+	max_run_cost := if run_cost_cap > 0 { run_cost_cap } else { i64(1) }
+	mut runs := []WorkItemRun{cap: ordered.len / 4 + 1}
+	mut run_start := 0
+	mut run_cost := i64(0)
+	for i, it in ordered {
+		item_cost := i64(it.cost) + 1
+		over_cap := run_cost + item_cost > max_run_cost
+		if i > run_start && (over_cap || it.file != ordered[i - 1].file) {
+			runs << WorkItemRun{
+				start: run_start
+				end:   i
+				cost:  run_cost
+			}
+			run_start = i
+			run_cost = 0
+		}
+		run_cost += item_cost
+	}
+	runs << WorkItemRun{
+		start: run_start
+		end:   ordered.len
+		cost:  run_cost
+	}
+	if runs.len < 2 * n {
+		return split_work_items_with_first_share(items, n, first_share_percent)
+	}
+	mut loads := []i64{len: n}
+	if first_share_percent > 0 && first_share_percent < 100 {
+		loads[0] = total * i64(100 - first_share_percent) / i64(first_share_percent +
+			100 * (n - 1))
+	}
+	mut ranked := []WorkItemRank{cap: runs.len}
+	for i, run in runs {
+		ranked << WorkItemRank{
+			rank: run.cost
+			idx:  i
+		}
+	}
+	// Stable: equal runs keep their source order.
+	ranked.sort(a.rank > b.rank)
+	mut bucket_of := []int{len: runs.len}
+	for r in ranked {
+		mut best := 0
+		for b in 1 .. n {
+			if loads[b] < loads[best] {
+				best = b
+			}
+		}
+		bucket_of[r.idx] = best
+		loads[best] += runs[r.idx].cost
+	}
+	mut buckets := [][]FnWorkItem{len: n, init: []FnWorkItem{}}
+	for i, run in runs {
+		buckets[bucket_of[i]] << ordered[run.start..run.end]
+	}
+	return buckets
+}
+
 // Keep each self-host worker's writes in adjacent source pages so snapshots
 // copy a page for its owning worker instead of for many scattered writers.
 fn split_work_items_by_source(items []FnWorkItem, n int) [][]FnWorkItem {

@@ -3100,7 +3100,7 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 	if chunk_target > bounded_items.len {
 		chunk_target = bounded_items.len
 	}
-	mut chunks := split_work_items_with_first_share(bounded_items, chunk_target, shared_master_chunk_share_percent)
+	mut chunks := split_work_items_by_file_runs(bounded_items, chunk_target, shared_master_chunk_share_percent)
 	chunk_count := chunks.len
 	thread_count := chunk_count - 1
 	// Pool.run queues asynchronous work before running synchronous tasks. Give
