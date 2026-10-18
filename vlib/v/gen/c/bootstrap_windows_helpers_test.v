@@ -96,3 +96,80 @@ fn test_bootstrap_windows_createfile_matches_os_spelling() {
 	}
 	assert builtin.contains('lpSecurityAttributes voidptr'), 'builtin CreateFile spelling drifted from vlib/os'
 }
+
+fn bootstrap_windows_run_c(cc string, name string, code string) ! {
+	dir := os.join_path(os.vtmp_dir(), 'bootstrap_windows_${name}_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	source := os.join_path(dir, 'probe.c')
+	binary := os.join_path(dir, 'probe.exe')
+	os.write_file(source, code)!
+	compiled := os.exec([cc, '-std=c11', '-Werror=implicit-function-declaration',
+		'-Werror=incompatible-pointer-types', source, '-o', binary])
+	assert compiled.exit_code == 0, compiled.output
+	ran := os.exec([binary])
+	assert ran.exit_code == 0, '${name}: ${ran.output}'
+}
+
+fn test_bootstrap_windows_acl_values_match_sdk() ! {
+	cc := os.find_abs_path_of_executable('clang') or { return }
+	code := bootstrap_windows_test_gen().sb.str()
+	acl := code.all_after('#define V_BOOTSTRAP_WIN_ACL\n').all_before('#endif')
+	assert acl.len > 0
+	// Pin the Win32 ABI independently of the headerless declarations. See
+	// Microsoft's winnt.h: ACL_INFORMATION_CLASS, WELL_KNOWN_SID_TYPE and ACE types.
+	// https://github.com/microsoft/win32metadata/blob/main/generation/WinSDK/RecompiledIdlHeaders/um/winnt.h
+	mut assertions := ''
+	for name, value in {
+		'AclSizeInformation':                      2
+		'WinCreatorOwnerSid':                      3
+		'WinLocalSystemSid':                       22
+		'WinBuiltinAdministratorsSid':             26
+		'ACCESS_ALLOWED_ACE_TYPE':                 0
+		'ACCESS_ALLOWED_COMPOUND_ACE_TYPE':        4
+		'ACCESS_ALLOWED_OBJECT_ACE_TYPE':          5
+		'ACCESS_ALLOWED_CALLBACK_ACE_TYPE':        9
+		'ACCESS_ALLOWED_CALLBACK_OBJECT_ACE_TYPE': 11
+	} {
+		assertions += '_Static_assert(${name} == ${value}, "${name} ABI");\n'
+	}
+	bootstrap_windows_run_c(cc, 'acl', 'typedef unsigned int DWORD; typedef unsigned short u16; typedef void* PSID;\n' +
+		acl + assertions + 'int main(void) { return 0; }\n')!
+}
+
+fn test_bootstrap_windows_streams_reuse_crt_owned_file_objects() ! {
+	cc := os.find_abs_path_of_executable('clang') or { return }
+	mut g := FlatGen.new()
+	g.emit_bootstrap_windows_stdio()
+	code := g.sb.str()
+	emitted := bootstrap_windows_test_gen().sb.str()
+	signature := 'void *v_builtin_windows_stream(unsigned int index) {'
+	assert emitted.contains(signature)
+	body := emitted.all_after(signature).all_before('\n}')
+	stream_helper := signature + body + '\n}\n'
+	// No descriptor or FILE allocation functions are linked into these probes.
+	// The mock CRT owns the stream objects; all lookups must return those exact
+	// addresses, including their existing buffers and descriptor associations.
+	for variant in ['ucrt', 'tcc64', 'tcc32_dll', 'tcc32_crt'] {
+		mut defines := '#define __cdecl\n'
+		mut crt := ''
+		mut expected := 'streams'
+		if variant == 'ucrt' {
+			crt = 'static int streams[3];\nvoid* __acrt_iob_func(unsigned int index) { return &streams[index]; }\n'
+		} else {
+			defines += '#define __TINYC__ 1\n'
+			if variant == 'tcc64' {
+				defines += '#define _WIN64 1\n'
+				crt = 'static struct v_bootstrap_msvcrt_file streams[3];\nstruct v_bootstrap_msvcrt_file* __iob_func(void) { return streams; }\n'
+			} else if variant == 'tcc32_crt' {
+				defines += '#define _MSVCRT_ 1\n'
+				crt = 'struct v_bootstrap_msvcrt_file _iob[3];\n'
+				expected = '_iob'
+			} else {
+				crt = 'static struct v_bootstrap_msvcrt_file streams[3];\nstruct v_bootstrap_msvcrt_file (*_imp___iob)[] = &streams;\n'
+			}
+		}
+		probe := 'int main(void) { for (int n = 0; n < 100000; ++n) { for (unsigned int i = 0; i < 3; ++i) { if (v_builtin_windows_stream(i) != &${expected}[i]) return 1; } } return 0; }\n'
+		bootstrap_windows_run_c(cc, variant, defines + code + stream_helper + crt + probe)!
+	}
+}

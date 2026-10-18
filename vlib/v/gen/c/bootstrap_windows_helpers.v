@@ -67,16 +67,16 @@ fn (mut g FlatGen) bootstrap_windows_runtime_helpers() {
 	g.writeln('typedef enum { TokenUser = 1 } TOKEN_INFORMATION_CLASS;')
 	g.writeln('typedef struct _SID_AND_ATTRIBUTES { PSID Sid; DWORD Attributes; } SID_AND_ATTRIBUTES;')
 	g.writeln('typedef struct _TOKEN_USER { SID_AND_ATTRIBUTES User; } TOKEN_USER;')
-	g.writeln('typedef enum { AclSizeInformation = 0 } ACL_INFORMATION_CLASS;')
+	g.writeln('typedef enum { AclSizeInformation = 2 } ACL_INFORMATION_CLASS;')
 	g.writeln('typedef struct _ACL_SIZE_INFORMATION { DWORD AceCount; DWORD AceBytesInUse; DWORD AceBytesFree; } ACL_SIZE_INFORMATION;')
 	g.writeln('typedef struct _ACE_HEADER { unsigned char AceType; unsigned char AceFlags; u16 AceSize; } ACE_HEADER;')
 	g.writeln('typedef struct _ACCESS_ALLOWED_ACE { ACE_HEADER Header; DWORD Mask; DWORD SidStart; } ACCESS_ALLOWED_ACE;')
 	g.writeln('#define ACCESS_ALLOWED_ACE_TYPE 0')
 	g.writeln('#define ACCESS_ALLOWED_COMPOUND_ACE_TYPE 4')
 	g.writeln('#define ACCESS_ALLOWED_OBJECT_ACE_TYPE 5')
-	g.writeln('#define ACCESS_ALLOWED_CALLBACK_ACE_TYPE 6')
-	g.writeln('#define ACCESS_ALLOWED_CALLBACK_OBJECT_ACE_TYPE 7')
-	g.writeln('#define WinCreatorOwnerSid 11')
+	g.writeln('#define ACCESS_ALLOWED_CALLBACK_ACE_TYPE 9')
+	g.writeln('#define ACCESS_ALLOWED_CALLBACK_OBJECT_ACE_TYPE 11')
+	g.writeln('#define WinCreatorOwnerSid 3')
 	g.writeln('#define WinLocalSystemSid 22')
 	g.writeln('#define WinBuiltinAdministratorsSid 26')
 	g.writeln('#define TOKEN_QUERY 0x0008')
@@ -90,8 +90,6 @@ fn (mut g FlatGen) bootstrap_windows_runtime_helpers() {
 	g.writeln('#define FILE_APPEND_DATA 0x0004')
 	g.writeln('#define FILE_WRITE_EA 0x0010')
 	g.writeln('#define FILE_DELETE_CHILD 0x0040')
-	g.writeln('#define _O_RDONLY 0x0000')
-	g.writeln('#define _O_WRONLY 0x0001')
 	g.writeln('#endif')
 	// These are provided by `<windows.h>` in a normal build and by the fallback
 	// declarations in `toolcache_windows_helpers.h` when `aclapi.h` is missing,
@@ -255,17 +253,7 @@ fn (mut g FlatGen) emit_bootstrap_windows_atomics() {
 // `$embed_file` takes a literal path, so each header is read here rather than
 // through a helper that takes a name.
 fn (mut g FlatGen) emit_bootstrap_windows_helper_sources() {
-	// `v_builtin_windows_stream` hands out the standard streams, which arrive
-	// through `<stdio.h>` in a normal build. There is no SDK header on this
-	// path, and the headerless preamble routes `stdin` through that function
-	// itself, so it is built here from the console handles instead.
-	g.writeln('int _open_osfhandle(intptr_t osfhandle, int flags);')
-	g.writeln('void* _fdopen(int fd, const char* mode);')
-	g.writeln('static void* v_bootstrap_stdio_stream(unsigned int index) {')
-	g.writeln('	void* handle = GetStdHandle(index == 0 ? STD_INPUT_HANDLE : index == 1 ? STD_OUTPUT_HANDLE : STD_ERROR_HANDLE);')
-	g.writeln('	int fd = _open_osfhandle((intptr_t)handle, index == 0 ? _O_RDONLY : _O_WRONLY);')
-	g.writeln('	return _fdopen(fd, index == 0 ? "r" : "w");')
-	g.writeln('}')
+	g.emit_bootstrap_windows_stdio()
 	g.write($embed_file('@VEXEROOT/vlib/builtin/core_windows.c').to_string()
 		.replace('#include <windows.h>\n', '')
 		.replace('#include <stdio.h>\n', '')
@@ -292,4 +280,27 @@ fn (mut g FlatGen) emit_bootstrap_windows_helper_sources() {
 		.replace('#define V_TOOLCACHE_HAS_ACLAPI_H 1', '/* bootstrap: keep the fallback declarations */')
 	g.write($embed_file('@VEXEROOT/cmd/v/toolcache_windows_helpers.c').to_string()
 		.replace('#include "toolcache_windows_helpers.h"', toolcache_header))
+}
+
+// emit_bootstrap_windows_stdio retrieves the CRT-owned streams without routing
+// through the headerless stdin/stdout macros (which call v_builtin_windows_stream).
+// TinyCC uses the legacy MSVCRT FILE layout; the other Windows toolchains use
+// UCRT's opaque accessor, as in manual_stdlib_c_headers.h.
+fn (mut g FlatGen) emit_bootstrap_windows_stdio() {
+	g.writeln('#ifdef __TINYC__')
+	g.writeln('struct v_bootstrap_msvcrt_file { char* ptr; int cnt; char* base; int flag; int file; int charbuf; int bufsiz; char* tmpfname; };')
+	g.writeln('#ifdef _WIN64')
+	g.writeln('struct v_bootstrap_msvcrt_file* __cdecl __iob_func(void);')
+	g.writeln('static void* v_bootstrap_stdio_stream(unsigned int index) { return &__iob_func()[index]; }')
+	g.writeln('#elif defined(_MSVCRT_)')
+	g.writeln('extern struct v_bootstrap_msvcrt_file _iob[];')
+	g.writeln('static void* v_bootstrap_stdio_stream(unsigned int index) { return &_iob[index]; }')
+	g.writeln('#else')
+	g.writeln('extern struct v_bootstrap_msvcrt_file (*_imp___iob)[];')
+	g.writeln('static void* v_bootstrap_stdio_stream(unsigned int index) { return &(*_imp___iob)[index]; }')
+	g.writeln('#endif')
+	g.writeln('#else')
+	g.writeln('void* __cdecl __acrt_iob_func(unsigned int);')
+	g.writeln('static void* v_bootstrap_stdio_stream(unsigned int index) { return __acrt_iob_func(index); }')
+	g.writeln('#endif')
 }
