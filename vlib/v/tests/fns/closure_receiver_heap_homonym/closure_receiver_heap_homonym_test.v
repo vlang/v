@@ -26,6 +26,18 @@ fn (mut receiver Receiver) change_copy() {
 			assert nested_copy.n == 13
 		}()
 		// vfmt on
+		mut effects := 0
+		// Keep mixed wrappers to exercise non-heap receiver value copies.
+		// vfmt off
+		mut block_copy := (unsafe {
+			effects++
+			((receiver))
+		})
+		// vfmt on
+		assert effects == 1
+		assert typeof(block_copy).name == 'Receiver'
+		block_copy.n = 14
+		assert block_copy.n == 14
 	}()
 }
 
@@ -67,4 +79,20 @@ fn test_imported_heap_alias_parenthesized_capture_retains_reference() {
 	mut receiver := &HeapAlias{}
 	receiver.change_grouped_alias()
 	assert receiver.n == 11
+}
+
+fn (mut receiver HeapAlias) change_block_alias() {
+	fn [mut receiver] () {
+		// Keep mixed wrappers to exercise imported heap alias inference.
+		// vfmt off
+		mut alias := (unsafe { ((receiver)) })
+		// vfmt on
+		alias.n = 12
+	}()
+}
+
+fn test_imported_heap_alias_value_block_capture_retains_reference() {
+	mut receiver := &HeapAlias{}
+	receiver.change_block_alias()
+	assert receiver.n == 12
 }

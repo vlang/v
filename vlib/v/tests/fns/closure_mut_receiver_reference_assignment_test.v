@@ -63,6 +63,19 @@ fn (mut receiver CapturedHeapReceiver) setup_without_closure() {
 	grouped_copy.bump(10)
 	assert grouped_copy.n == before + 10
 	assert receiver.n == before
+	mut effects := 0
+	// Keep the block's parenthesized tail to exercise value-copy inference.
+	// vfmt off
+	mut block_copy := (unsafe {
+		effects++
+		((receiver))
+	})
+	// vfmt on
+	assert effects == 1
+	assert typeof(block_copy).name == 'CapturedHeapReceiver'
+	block_copy.bump(20)
+	assert block_copy.n == before + 20
+	assert receiver.n == before
 }
 
 fn test_mut_receiver_reference_assignment_inside_closures() {
@@ -89,4 +102,47 @@ fn test_parenthesized_mut_receiver_reference_assignment_inside_closures() {
 	assert receiver.n == 1111
 	receiver.setup_without_closure()
 	assert receiver.n == 1111
+}
+
+fn (mut receiver CapturedHeapReceiver) setup_with_value_blocks() {
+	fn [mut receiver] () {
+		mut alias := unsafe { receiver }
+		assert typeof(alias).name == '&CapturedHeapReceiver'
+		alias.bump(1)
+		mut effects := 0
+		mut with_effects := unsafe {
+			effects++
+			receiver.bump(2)
+			receiver
+		}
+		assert effects == 1
+		assert typeof(with_effects).name == '&CapturedHeapReceiver'
+		with_effects.bump(10)
+		// Keep mixed parentheses and blocks to exercise receiver inference.
+		// vfmt off
+		mut mixed := (unsafe {
+			effects++
+			((receiver))
+		})
+		// vfmt on
+		assert effects == 2
+		assert typeof(mixed).name == '&CapturedHeapReceiver'
+		mixed.bump(100)
+		fn [mut receiver] () {
+			mut nested := unsafe { receiver }
+			assert typeof(nested).name == '&CapturedHeapReceiver'
+			nested.bump(1000)
+		}()
+		mut explicit := unsafe { &CapturedHeapReceiver(receiver) }
+		assert typeof(explicit).name == '&CapturedHeapReceiver'
+		explicit.bump(10000)
+		address := unsafe { usize(receiver) }
+		assert address == unsafe { usize(explicit) }
+	}()
+}
+
+fn test_mut_receiver_reference_assignment_through_value_blocks() {
+	mut receiver := &CapturedHeapReceiver{}
+	receiver.setup_with_value_blocks()
+	assert receiver.n == 11113
 }

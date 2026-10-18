@@ -4299,15 +4299,26 @@ fn (tc &TypeChecker) expr_tail_is_zero_literal(id flat.NodeId) bool {
 	}
 }
 
+// unwrap_value_expr_id follows transparent wrappers without crossing casts or branches.
+fn (tc &TypeChecker) unwrap_value_expr_id(expr_id flat.NodeId) flat.NodeId {
+	mut current_id := expr_id
+	for tc.valid_node_id(current_id) {
+		node := tc.a.node(current_id)
+		if node.kind !in [.block, .expr_stmt, .paren] || node.children_count == 0 {
+			break
+		}
+		child_idx := if node.kind == .block { node.children_count - 1 } else { 0 }
+		current_id = tc.a.child(node, child_idx)
+	}
+	return current_id
+}
+
 fn (tc &TypeChecker) mut_param_expr_base(expr_id flat.NodeId, typ Type) ?Type {
-	if int(expr_id) < 0 || int(expr_id) >= tc.a.nodes.len {
+	value_id := tc.unwrap_value_expr_id(expr_id)
+	if !tc.valid_node_id(value_id) {
 		return none
 	}
-	node := tc.a.nodes[int(expr_id)]
-	if node.kind in [.block, .expr_stmt, .paren] && node.children_count > 0 {
-		child_idx := if node.kind == .block { node.children_count - 1 } else { 0 }
-		return tc.mut_param_expr_base(tc.a.child(&node, child_idx), typ)
-	}
+	node := tc.a.nodes[int(value_id)]
 	if node.kind == .ident && node.value.len > 0 {
 		return tc.mut_param_base_for_current_ident(node.value, typ)
 	}
