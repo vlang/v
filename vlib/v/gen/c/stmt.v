@@ -10233,6 +10233,14 @@ const v_runtime_typedef_names = {
 
 fn (g &FlatGen) local_name_shadows_c_typedef(name string) bool {
 	if g.c_typedef_shadow_names_ready {
+		// cname keeps an identifier of letters, digits and `_` as it is or
+		// renames it to a spelling that no shadow name has (see
+		// precompute_c_typedef_shadow_names), so only a shadow name itself can
+		// map to one.
+		if g.c_typedef_shadow_names_plain && cgen_is_word_identifier(name)
+			&& name !in g.c_typedef_shadow_names {
+			return false
+		}
 		return g.cname(name) in g.c_typedef_shadow_names
 	}
 	if !isnil(g.local_typedef_shadow_facts) {
@@ -10272,7 +10280,31 @@ fn (mut g FlatGen) precompute_c_typedef_shadow_names() {
 			g.c_typedef_shadow_names[name[2..]] = true
 		}
 	}
+	mut plain := true
+	for name, _ in g.c_typedef_shadow_names {
+		if name.starts_with('v_') || name.starts_with('_v_') || name == 'int__str'
+			|| name.starts_with('__v3_internal_symbol_') {
+			plain = false
+			break
+		}
+	}
+	g.c_typedef_shadow_names_plain = plain
 	g.c_typedef_shadow_names_ready = true
+}
+
+// cgen_is_word_identifier reports a non-empty name of ASCII letters, digits and `_`.
+@[direct_array_access; inline]
+fn cgen_is_word_identifier(name string) bool {
+	if name.len == 0 {
+		return false
+	}
+	for i in 0 .. name.len {
+		c := name[i]
+		if (c < `a` || c > `z`) && (c < `A` || c > `Z`) && (c < `0` || c > `9`) && c != `_` {
+			return false
+		}
+	}
+	return true
 }
 
 fn local_name_shadows_c_runtime(name string) bool {

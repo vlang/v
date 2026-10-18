@@ -8713,10 +8713,12 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 				fn_id := g.a.child(node, 0)
 				fn_ident := g.a.nodes[int(fn_id)]
 				if fn_ident.kind == .ident {
-					qname := g.tc.qualify_name(fn_ident.value)
+					// Most callees are functions; only a type name can be a cast here.
+					may_name_type := g.ident_may_name_type(fn_ident.value)
+					qname := if may_name_type { g.tc.qualify_name(fn_ident.value) } else { '' }
 					is_local_fn_value := g.current_param_type(fn_ident.value) != none
 						|| g.cur_scope_has_local_name(fn_ident.value)
-					if !is_local_fn_value && (g.tc.type_aliases.contains(fn_ident.value) || g.tc.type_aliases.contains(qname)
+					if may_name_type && !is_local_fn_value && (g.tc.type_aliases.contains(fn_ident.value) || g.tc.type_aliases.contains(qname)
 						|| fn_ident.value in g.tc.structs || qname in g.tc.structs
 						|| fn_ident.value in g.tc.enum_names || qname in g.tc.enum_names
 						|| g.tc.sum_types.contains(fn_ident.value) || g.tc.sum_types.contains(qname)

@@ -1078,6 +1078,9 @@ mut:
 	// precompute_c_typedef_shadow_names.
 	c_typedef_shadow_names       map[string]bool
 	c_typedef_shadow_names_ready bool
+	// None of the shadow names is a spelling that cname produces by renaming
+	// another identifier (`v_x`, `int__str`, internal symbols).
+	c_typedef_shadow_names_plain bool
 	generic_app_cache            &GenericAppCache = unsafe { nil }
 	want_parallel_prep           bool
 	want_parallel_c_extern_prep  bool
@@ -1096,6 +1099,7 @@ mut:
 	preseed_sig_type_seen              &PreseedTypeSeen      = unsafe { nil }
 	struct_decl_pref_cache             &StructDeclPrefCache  = unsafe { nil }
 	struct_field_index_base            &StructFieldIndexBase = unsafe { nil }
+	type_name_short_index              &TypeNameShortIndex   = unsafe { nil }
 	qualified_struct_c_types_by_suffix flat.TypeTextListBindings
 	qualified_struct_c_types_ready     bool
 	unused_param_seen                  &UnusedParamSeen = unsafe { nil }
@@ -3877,12 +3881,14 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.scoped_fn_output_paths = []string{}
 	g.const_short_index = &ConstShortIndex{}
 	g.struct_field_index_base = unsafe { nil }
+	g.type_name_short_index = unsafe { nil }
 	g.mut_recv_facts = &FnNameFactCache{}
 	g.local_global_shadow_facts = &ContextNameFactCache{}
 	g.local_global_suffix_names.clear()
 	g.local_global_suffix_names_ready = false
 	g.c_typedef_shadow_names.clear()
 	g.c_typedef_shadow_names_ready = false
+	g.c_typedef_shadow_names_plain = false
 	g.generic_app_cache = &GenericAppCache{}
 	g.want_parallel_prep = false
 	g.want_parallel_c_extern_prep = false

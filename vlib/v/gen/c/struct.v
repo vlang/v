@@ -5569,6 +5569,57 @@ mut:
 	by_fields map[u64]map[string]int
 }
 
+// TypeNameShortIndex holds the last name component of every struct, alias,
+// enum, sum type and interface declaration. A name whose last component is not
+// in it cannot denote such a type, qualified or not. Generic applications
+// (names with `[`) are left out; lookups with `[` must not use the index.
+@[heap]
+struct TypeNameShortIndex {
+mut:
+	shorts map[string]bool
+}
+
+fn (mut index TypeNameShortIndex) add(name string) {
+	if name.contains('[') {
+		return
+	}
+	short := c_short_name_view(name)
+	if short !in index.shorts {
+		index.shorts[short] = true
+	}
+}
+
+fn new_type_name_short_index(tc &types.TypeChecker) &TypeNameShortIndex {
+	mut index := &TypeNameShortIndex{}
+	for name, _ in tc.structs {
+		index.add(name)
+	}
+	for name, _ in tc.type_aliases.ids {
+		index.add(name)
+	}
+	for name, _ in tc.enum_names {
+		index.add(name)
+	}
+	for name, _ in tc.sum_types.ids {
+		index.add(name)
+	}
+	for name, _ in tc.interface_names {
+		index.add(name)
+	}
+	return index
+}
+
+// ident_may_name_type is false when `name` (as written, or as the checker
+// qualifies it) cannot be the name of a struct, alias, enum, sum type or
+// interface.
+@[inline]
+fn (g &FlatGen) ident_may_name_type(name string) bool {
+	if isnil(g.type_name_short_index) || name.contains('[') {
+		return true
+	}
+	return c_short_name_view(name) in g.type_name_short_index.shorts
+}
+
 // struct_field_list_key identifies a field list by its storage and length.
 @[inline]
 fn struct_field_list_key(fields []types.StructField) u64 {

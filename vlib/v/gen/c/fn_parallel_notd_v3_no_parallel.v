@@ -635,6 +635,7 @@ struct StructFieldIndexArgs {
 mut:
 	scope                voidptr
 	base                 &StructFieldIndexBase = unsafe { nil }
+	type_names           &TypeNameShortIndex   = unsafe { nil }
 	param_types_by_short map[string][]types.Type
 }
 
@@ -642,6 +643,7 @@ fn struct_field_index_thread(arg voidptr) voidptr {
 	mut a := unsafe { &StructFieldIndexArgs(arg) }
 	a.scope = cgen_worker_scope_begin(true)
 	a.base = new_struct_field_index_base(a.tc.structs)
+	a.type_names = new_type_name_short_index(a.tc)
 	a.param_types_by_short = cgen_param_types_by_short(a.g.fn_decl_param_types, a.tc.fn_param_types)
 	cgen_worker_scope_leave(a.scope)
 	return unsafe { nil }
@@ -3315,6 +3317,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		import_type_cache:                  &ImportTypeCache{}
 		struct_decl_pref_cache:             &StructDeclPrefCache{}
 		struct_field_index_base:            g.struct_field_index_base
+		type_name_short_index:              g.type_name_short_index
 		qualified_struct_c_types_by_suffix: g.qualified_struct_c_types_by_suffix
 		qualified_struct_c_types_ready:     g.qualified_struct_c_types_ready
 		embedded_fields_by_type:            g.embedded_fields_by_type
@@ -3350,6 +3353,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		local_global_suffix_names_ready:    g.local_global_suffix_names_ready
 		c_typedef_shadow_names:             g.c_typedef_shadow_names
 		c_typedef_shadow_names_ready:       g.c_typedef_shadow_names_ready
+		c_typedef_shadow_names_plain:       g.c_typedef_shadow_names_plain
 		generic_app_cache:                  &GenericAppCache{
 			base: if !isnil(g.generic_app_cache.base) {
 				g.generic_app_cache.base
@@ -3947,6 +3951,7 @@ fn (mut g FlatGen) run_pre_dispatch_parallel(no_parallel bool) bool {
 		_ = call_optional_thread.wait()
 		_ = field_index_thread.wait()
 		g.struct_field_index_base = field_index_args.base
+		g.type_name_short_index = field_index_args.type_names
 		g.param_types_by_short = field_index_args.param_types_by_short.move()
 		if field_index_args.scope != unsafe { nil } {
 			g.parallel_worker_scopes << field_index_args.scope
