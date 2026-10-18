@@ -31,3 +31,6 @@ insert at those positions. Empty arrays return position zero; unsorted input is 
 `group` zips its input arrays into rows. A single array is one input: `arrays.group([1, 2])`
 returns `[[1], [2]]`. To supply an array of inputs, spread it with `arrays.group(...inputs)`.
 Generic element types can be inferred from the input arrays, including inside interpolation.
+
+Nested arrays follow the same rule: `arrays.group([[1, 2], [3, 4]])` returns
+`[[[1, 2]], [[3, 4]]]`, while `arrays.group(...[[1, 2], [3, 4]])` returns `[[1, 3], [2, 4]]`.

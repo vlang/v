@@ -8139,12 +8139,21 @@ fn (mut t Transformer) infer_generic_call_args_from_raw_node_types(decl GenericF
 		&& !t.generic_call_is_static_assoc_selector(node, decl)
 	mut inferred := map[string]u32{}
 	mut param_idx := 0
+	param_count := t.generic_decl_param_count(decl.node)
 	for i in 0 .. decl.node.children_count {
 		param := t.a.child_node(&decl.node, i)
 		if param.kind != .param {
 			if t.prefix_param_scan {
 				break
 			}
+			continue
+		}
+		if generic_param_text_is_variadic(param.typ) && param_idx == param_count - 1 {
+			elem_param_type := generic_variadic_elem_param_text(param.typ)
+			for arg_id in t.generic_call_arg_ids_from_param(node, param_idx, is_receiver) {
+				t.infer_generic_variadic_call_arg(param.typ, elem_param_type, arg_id, mut inferred)
+			}
+			param_idx++
 			continue
 		}
 		arg_id := t.generic_call_arg_id_for_param(node, param_idx, is_receiver) or {
@@ -13213,6 +13222,7 @@ fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children
 		}
 		mut inferred := map[string]u32{}
 		mut param_idx := 0
+		param_count := t.generic_decl_param_count(decl.node)
 		for i in 0 .. decl.node.children_count {
 			child := t.a.child_node(&decl.node, i)
 			if child.kind != .param {
@@ -13228,6 +13238,14 @@ fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children
 			} else if arg_pos < children.len {
 				arg_id = children[arg_pos]
 			} else {
+				param_idx++
+				continue
+			}
+			if generic_param_text_is_variadic(child.typ) && param_idx == param_count - 1 {
+				elem_param_type := generic_variadic_elem_param_text(child.typ)
+				for tail_id in children[arg_pos..] {
+					t.infer_generic_variadic_call_arg(child.typ, elem_param_type, tail_id, mut inferred)
+				}
 				param_idx++
 				continue
 			}
@@ -13541,12 +13559,21 @@ fn (mut t Transformer) retarget_cloned_implicit_generic_call(clone_id flat.NodeI
 			[]string{}
 		}
 		mut param_idx := 0
+		param_count := t.generic_decl_param_count(decl.node)
 		for i in 0 .. decl.node.children_count {
 			child := t.a.child_node(&decl.node, i)
 			if child.kind != .param {
 				if t.prefix_param_scan {
 					break
 				}
+				continue
+			}
+			if generic_param_text_is_variadic(child.typ) && param_idx == param_count - 1 {
+				elem_param_type := generic_variadic_elem_param_text(child.typ)
+				for arg_id in t.generic_call_arg_ids_from_param(clone, param_idx, is_receiver) {
+					t.infer_generic_variadic_call_arg(child.typ, elem_param_type, arg_id, mut inferred)
+				}
+				param_idx++
 				continue
 			}
 			clone_arg_id := t.generic_call_arg_id_for_param(clone, param_idx, is_receiver) or {

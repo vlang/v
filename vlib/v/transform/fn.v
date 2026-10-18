@@ -1793,6 +1793,11 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 	return t.finish_mut_optional_value_call(call, typ, mut_optional_value_writebacks)
 }
 
+fn (mut t Transformer) mark_packed_variadic_tail(value flat.NodeId, array_type u32) flat.NodeId {
+	t.packed_variadic_tail_types[int(value)] = array_type
+	return value
+}
+
 fn (t &Transformer) call_arg_is_packed_variadic_tail(arg_id flat.NodeId, variadic_type types.Array) bool {
 	if int(arg_id) < 0 || int(arg_id) >= t.a.nodes.len {
 		return false
@@ -5475,7 +5480,7 @@ fn (mut t Transformer) pack_variadic_args(node flat.Node, first_arg int, elem_ty
 	if t.next_non_field_init_arg(node, first_arg) == node.children_count {
 		if named_arg := t.transform_variadic_struct_fields(node, first_arg, elem_type) {
 			if t.in_const_init {
-				return t.make_array_literal_typed([named_arg], array_type)
+				return t.mark_packed_variadic_tail(t.make_array_literal_typed([named_arg], array_type), array_type)
 			}
 			tmp_name := t.new_temp('varargs')
 			t.pending_stmts << t.make_decl_assign_typed(tmp_name, t.make_array_new_call(expected_enum_source_id, t.make_int_literal(0), t.make_int_literal(1)), array_type)
@@ -5486,7 +5491,7 @@ fn (mut t Transformer) pack_variadic_args(node flat.Node, first_arg int, elem_ty
 				t.make_prefix(.amp, t.make_ident(value_name)),
 			], flat.source_type_void))
 			t.set_var_type(tmp_name, array_type)
-			return t.make_ident(tmp_name)
+			return t.mark_packed_variadic_tail(t.make_ident(tmp_name), array_type)
 		}
 	}
 	if t.in_const_init {
@@ -5509,7 +5514,7 @@ fn (mut t Transformer) pack_variadic_args(node flat.Node, first_arg int, elem_ty
 			}
 			i++
 		}
-		return t.make_array_literal_typed(values, array_type)
+		return t.mark_packed_variadic_tail(t.make_array_literal_typed(values, array_type), array_type)
 	}
 	tmp_name := t.new_temp('varargs')
 	t.pending_stmts << t.make_decl_assign_typed(tmp_name, t.make_array_new_call(expected_enum_source_id, t.make_int_literal(0), t.make_int_literal(int(node.children_count) - first_arg)), array_type)
@@ -5524,7 +5529,7 @@ fn (mut t Transformer) pack_variadic_args(node flat.Node, first_arg int, elem_ty
 		i++
 	}
 	t.set_var_type(tmp_name, array_type)
-	return t.make_ident(tmp_name)
+	return t.mark_packed_variadic_tail(t.make_ident(tmp_name), array_type)
 }
 
 fn (mut t Transformer) append_trailing_args_to_variadic_tail(tail flat.NodeId, node flat.Node, first_arg int, variadic_type types.Array) flat.NodeId {
