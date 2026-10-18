@@ -439,7 +439,7 @@ case "$(uname -s)" in
 		exe_suffix='.exe'
 		"$cc_command" -std=c99 -DCUSTOM_DEFINE_v1_fallback -municode -w \
 			-o "$private_contract_root/v1.exe" "$vc_source" \
-			-ladvapi32 -lws2_32 -Wl,-stack=33554432
+			-ladvapi32 -lws2_32 -lbcrypt -Wl,-stack=33554432
 		;;
 	*)
 		vc_source=$vc_source_v
