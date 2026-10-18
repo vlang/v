@@ -313,3 +313,35 @@ fn main() {
 	result := os.exec([output])
 	assert result.exit_code == 0, 'exit ${result.exit_code}: ${result.output}'
 }
+
+fn test_native_f32_arguments_convert_numeric_literals() {
+	$if !macos || !arm64 {
+		return
+	}
+	path := os.join_path(os.vtmp_dir(), 'arm64_f32_literal_arguments_${os.getpid()}.v')
+	output := path.all_before_last('.')
+	defer {
+		os.rm(path) or {}
+		os.rm(output) or {}
+	}
+	os.write_file(path, 'module main
+fn C.exit(int)
+@[noinline]
+fn identity(value f32) f32 { return value }
+@[noinline]
+fn arithmetic(value f32) f32 { return (value * 2 + 4) / 2 - 1 }
+fn main() {
+    if identity(7.25) != f32(7.25) { C.exit(1) }
+    if identity(-7.25) != f32(-7.25) { C.exit(2) }
+    if identity(7) != f32(7) { C.exit(3) }
+    if identity(-7) != f32(-7) { C.exit(4) }
+    if identity(f32(7.25)) != f32(7.25) { C.exit(5) }
+    if arithmetic(7.25) != f32(8.25) { C.exit(6) }
+    if arithmetic(-7.25) != f32(-6.25) { C.exit(7) }
+}
+')!
+	compiled := exec_native([@VEXE, '-gc', 'none', '-nocache', '-b', 'arm64', '-o', output, path])
+	assert compiled.exit_code == 0, compiled.output
+	result := os.exec([output])
+	assert result.exit_code == 0, 'exit ${result.exit_code}: ${result.output}'
+}

@@ -11989,6 +11989,9 @@ fn (mut b Builder) coerce_value_for_param(value ValueID, param_type TypeID) Valu
 			return b.emit1(.load, param_type, value)
 		}
 	}
+	if b.is_float_type(param_type) {
+		return b.coerce_numeric_value(value, param_type)
+	}
 	return value
 }
 
