@@ -142,6 +142,9 @@ fn (mut tc TypeChecker) call_may_rebind_mut_map_arg(call_id flat.NodeId, arg_chi
 			body << child_id
 			continue
 		}
+		if child.value == fn_short_name {
+			return true
+		}
 		param_index++
 		if param_index == arg_child {
 			param_name = child.value
@@ -161,6 +164,20 @@ fn (mut tc TypeChecker) call_may_rebind_mut_map_arg(call_id flat.NodeId, arg_chi
 			.fn_literal {
 				// It can only reach the map through a captured copy.
 				continue
+			}
+			.decl_assign, .for_in_stmt {
+				bindings := if current.kind == .decl_assign {
+					tc.multi_assign_lhs_ids(*current)
+				} else {
+					tc.a.children_of(current)[..int_min(2, current.children_count)]
+				}
+				for binding_id in bindings {
+					binding := tc.a.node(binding_id)
+					// A local callback can shadow the apparent recursive callee.
+					if binding.kind == .ident && binding.value == fn_short_name {
+						return true
+					}
+				}
 			}
 			.assign {
 				for lhs_id in tc.multi_assign_lhs_ids(*current) {

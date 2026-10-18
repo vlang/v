@@ -26,7 +26,7 @@ fn borrowed(values map[string]Row) map[string]Row {
 }
 '
 	cases := {
-		'nested':         header + '
+		'nested':                   header + '
 fn main() {
 	scope := {"old": Row{cells: [1]}}
 	mut copy := scope.clone()
@@ -34,7 +34,7 @@ fn main() {
 	copy["old"].cells[0] = 9
 }
 '
-		'rebound':        header + '
+		'rebound':                  header + '
 fn main() {
 	scope := {"old": Row{cells: [1]}}
 	mut copy := scope.clone()
@@ -42,7 +42,7 @@ fn main() {
 	copy["new"] = Row{cells: [2]}
 }
 '
-		'loop_rebound':   header + '
+		'loop_rebound':             header + '
 fn main() {
 	scope := {"old": Row{cells: [1]}}
 	mut copy := scope.clone()
@@ -54,7 +54,7 @@ fn main() {
 	}
 }
 '
-		'mutable_escape': header + '
+		'mutable_escape':           header + '
 fn replace_map(mut dst map[string]Row, src map[string]Row) {
 	dst = borrowed(src)
 }
@@ -66,7 +66,7 @@ fn main() {
 	copy["new"] = Row{cells: [2]}
 }
 '
-		'user_clone':     header + '
+		'user_clone':               header + '
 struct Holder {
 	values map[string]Row
 }
@@ -81,7 +81,7 @@ fn main() {
 	copy["new"] = Row{cells: [2]}
 }
 '
-		'closure_rebind': header + '
+		'closure_rebind':           header + '
 fn main() {
 	scope := {"old": Row{cells: [1]}}
 	mut copy := scope.clone()
@@ -93,7 +93,7 @@ fn main() {
 	copy["new"] = Row{cells: [2]}
 }
 '
-		'field_branch':   header + '
+		'field_branch':             header + '
 struct Ctx {
 mut:
 	values map[string]Row
@@ -111,7 +111,7 @@ fn main() {
 	update(Ctx{}, true)
 }
 '
-		'field_loop':     header + '
+		'field_loop':               header + '
 struct Ctx {
 mut:
 	values map[string]Row
@@ -132,7 +132,7 @@ fn main() {
 	update(Ctx{})
 }
 '
-		'field_alias':    header + '
+		'field_alias':              header + '
 struct Ctx {
 mut:
 	values map[string]Row
@@ -150,7 +150,46 @@ fn main() {
 	update(Ctx{})
 }
 '
-		'field_escape':   header + '
+		'field_prior_alias_escape': header + '
+struct Ctx {
+mut:
+	values map[string]Row
+}
+
+fn reset(mut dst Ctx, src Ctx) {
+	dst = src
+}
+
+fn update(ctx Ctx) {
+	mut copy := ctx
+	mut alias := &copy
+	copy.values = ctx.values.clone()
+	reset(mut alias, ctx)
+	copy.values["old"] = Row{cells: [42]}
+}
+
+fn main() {
+	update(Ctx{values: {"old": Row{cells: [1]}}})
+}
+'
+		'shadowed_recursion':       header + '
+fn reset(mut dst map[string]Row, src map[string]Row) {
+	dst = borrowed(src)
+}
+
+fn recursive_name(mut dst map[string]Row, src map[string]Row) {
+	recursive_name := reset
+	recursive_name(mut dst, src)
+}
+
+fn main() {
+	scope := {"old": Row{cells: [1]}}
+	mut copy := scope.clone()
+	recursive_name(mut copy, scope)
+	copy["old"] = Row{cells: [42]}
+}
+'
+		'field_escape':             header + '
 struct Ctx {
 mut:
 	values map[string]Row
