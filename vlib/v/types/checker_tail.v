@@ -262,8 +262,10 @@ fn (tc &TypeChecker) source_text_for_node(id flat.NodeId) string {
 		return ''
 	}
 	node := tc.a.nodes[int(id)]
-	file := tc.a.source_files[node.pos.id] or { return node.value }
-	source := tc.source_texts_by_file[file.name] or { return node.value }
+	source := tc.source_texts_by_id[node.pos.id] or {
+		file := tc.a.source_files[node.pos.id] or { return node.value }
+		tc.source_texts_by_file[file.name] or { return node.value }
+	}
 	mut start := int_max(0, int_min(node.pos.offset, source.len))
 	mut end := int_max(start, int_min(node.pos.end, source.len))
 	if end <= start {
@@ -4332,6 +4334,20 @@ fn (tc &TypeChecker) current_checked_fn_qname() ?string {
 	if fn_node.kind != .fn_decl || fn_node.value.len == 0 {
 		return none
 	}
+	if !isnil(tc.type_cache) {
+		mut cache := unsafe { tc.type_cache }
+		if cache.checked_fn_name_node == tc.fn_context.node_id
+			&& cache.checked_fn_name_source == fn_node.value
+			&& cache.checked_fn_name_module == tc.cur_module {
+			return cache.checked_fn_name_value
+		}
+		name := checker_qualified_fn_name(tc.cur_module, fn_node.value)
+		cache.checked_fn_name_node = tc.fn_context.node_id
+		cache.checked_fn_name_source = fn_node.value
+		cache.checked_fn_name_module = tc.cur_module
+		cache.checked_fn_name_value = name
+		return name
+	}
 	return checker_qualified_fn_name(tc.cur_module, fn_node.value)
 }
 
@@ -4524,7 +4540,7 @@ fn (tc &TypeChecker) c_fn_decl_is_explicit_c(node flat.Node) bool {
 
 fn (tc &TypeChecker) source_declares_bodyless_function(name string) bool {
 	return name in tc.source_no_body_fn_suffixes
-		|| name.all_after_last('.') in tc.source_no_body_fn_suffixes
+		|| short_name_view(name) in tc.source_no_body_fn_suffixes
 }
 
 fn multi_return_payload_type(typ Type) ?MultiReturn {
@@ -5344,8 +5360,8 @@ fn (tc &TypeChecker) source_file_declares_bare_fn(name string, file_id int) bool
 }
 
 fn (mut tc TypeChecker) check_c_va_macro_call(id flat.NodeId, node flat.Node) bool {
-	name := tc.call_display_name(node)
-	if name !in ['C.va_arg', 'C.va_start', 'C.va_end', 'C.va_copy'] {
+	name := tc.c_va_macro_call_name(node)
+	if name == '' {
 		return false
 	}
 	expected_args := if name in ['C.va_arg', 'C.va_start', 'C.va_copy'] { 2 } else { 1 }
@@ -7134,7 +7150,7 @@ fn (tc &TypeChecker) wrapped_receiver_has_method(payload Type, method string) bo
 
 fn (mut tc TypeChecker) check_call_deprecation(id flat.NodeId, node flat.Node, info CallInfo) {
 	deprecation := tc.deprecated_symbols[info.name] or {
-		tc.deprecated_symbols[info.name.all_after_last('.')] or { return }
+		tc.deprecated_symbols[short_name_view(info.name)] or { return }
 	}
 	is_method := deprecation.name.contains('.')
 	kind := if is_method { 'method' } else { 'function' }
@@ -7531,6 +7547,14 @@ fn (tc &TypeChecker) sum_constructor_call_name(node flat.Node) ?u32 {
 
 fn (tc &TypeChecker) generic_named_type_cast_call_type(node flat.Node) ?Type {
 	if node.children_count != 2 {
+		return none
+	}
+	callee := tc.a.child_node(&node, 0)
+	if callee.kind == .selector && !callee.value.ends_with(']') {
+		return none
+	}
+	if callee.kind == .ident && !callee.value.ends_with(']')
+		&& tc.file_selective_imports.len == 0 {
 		return none
 	}
 	target := flat.source_type_name(tc.type_expr_name(tc.a.child(&node, 0)))
@@ -8747,6 +8771,7 @@ fn source_line_has_multiple_module_imports(raw_line string) bool {
 fn (mut tc TypeChecker) index_multiple_module_import_lines(a &flat.FlatAst) {
 	tc.multiple_module_import_lines = map[u64]bool{}
 	tc.source_texts_by_file = map[string]string{}
+	tc.source_texts_by_id = map[int]string{}
 	tc.import_line_indexed_files = map[int]bool{}
 	tc.index_module_import_lines_of_new_files(a)
 }
@@ -8798,6 +8823,7 @@ fn (mut tc TypeChecker) index_module_import_lines_of_new_files(a &flat.FlatAst) 
 			continue
 		}
 		tc.source_texts_by_file[scan.name] = scan.source
+		tc.source_texts_by_id[scan.file_id] = scan.source
 		for line in scan.lines {
 			tc.multiple_module_import_lines[multiple_module_import_line_key(scan.file_id, line)] = true
 		}
@@ -8956,7 +8982,7 @@ fn (tc &TypeChecker) imported_fn_key(module_name string, fn_name string) ?string
 // resolve_call_info resolves resolve call info information for types.
 @[direct_array_access]
 fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallInfo {
-	if tc.call_display_name(node) == 'C.va_arg' && node.children_count == 3 {
+	if node.children_count == 3 && tc.c_va_macro_call_name(node) == 'C.va_arg' {
 		type_arg_id := tc.call_arg_value(tc.a.child(&node, 1))
 		type_name_source_id_3 := tc.generic_call_type_arg_name(type_arg_id)
 		type_name := flat.source_type_name(type_name_source_id_3)
@@ -11292,7 +11318,7 @@ fn (tc &TypeChecker) call_info(name string, has_receiver bool) CallInfo {
 			params := tc.c_fn_module_param_types[module_key] or { []Type{} }
 			return CallInfo{
 				name:          name
-				params:        params.clone()
+				params:        params
 				return_type:   return_type
 				has_receiver:  has_receiver
 				is_variadic:   is_variadic
@@ -11301,30 +11327,32 @@ fn (tc &TypeChecker) call_info(name string, has_receiver bool) CallInfo {
 			}
 		}
 	}
-	mut params := []Type{}
-	mut params_known := false
-	if p := tc.fn_param_types[name] {
-		params = p.clone()
-		params_known = true
-	}
-	if params.len == 1 && (is_print_style_fn_name(name) || is_builtin_panic_fn_name(name))
-		&& print_style_param_accepts_string(params[0]) {
-		params[0] = unknown_type('print argument')
-	}
 	return_type := tc.alias_return_type_from_text(name) or {
 		tc.fn_ret_types[name] or { unknown_type('unknown return type for `${name}`') }
 	}
-	return CallInfo{
+	info := CallInfo{
 		name:                 name
-		params:               params
 		shared_params:        tc.fn_shared_params[name] or { []bool{} }
 		return_type:          return_type
 		has_receiver:         has_receiver
 		is_variadic:          tc.fn_variadic[name] or { false }
 		is_c_variadic:        tc.c_variadic_fns[name] or { false }
-		params_known:         params_known
 		has_implicit_veb_ctx: tc.fn_implicit_veb_ctx[name] or { false }
 	}
+	if params := tc.fn_param_types[name] {
+		return CallInfo{
+			...info
+			params:       if params.len == 1
+				&& (is_print_style_fn_name(name) || is_builtin_panic_fn_name(name))
+				&& print_style_param_accepts_string(params[0]) {
+				[unknown_type('print argument')]
+			} else {
+				params
+			}
+			params_known: true
+		}
+	}
+	return info
 }
 
 fn (tc &TypeChecker) alias_return_type_from_text(fn_name string) ?Type {
@@ -11948,6 +11976,11 @@ fn receiver_mutation_is_visible(vis ReceiverMutationVisibility) bool {
 }
 
 fn visible_mutation_receiver_type_name(type_id u32) u32 {
+	shape := flat.source_type_shape(type_id)
+	if !shape.has(.pointer) && !shape.has(.mutable_type) && !shape.has(.shared_type)
+		&& !shape.has(.padded) && !shape.has(.bracketed) {
+		return type_id
+	}
 	return flat.source_type_id(visible_mutation_receiver_type_name_bytes(flat.source_type_name(type_id)))
 }
 
@@ -16239,7 +16272,6 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		} else {
 			0
 		})
-		target_name := tc.call_argument_target_name(node, info)
 		if info.name.starts_with('C.') && expected_value is ArrayFixed
 			&& (actual_value is Pointer || actual_value is Nil) {
 			// C adjusts fixed-array parameters to element pointers. The V array
@@ -16252,7 +16284,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				|| tc.c_type(pointer.base_type) == tc.c_type(c_fixed_array_pointee_storage_type(expected_value.elem_type)) {
 				continue
 			}
-			tc.record_error_at(.call_arg_mismatch, 'cannot use `${tc.diagnostic_expr_type_name(arg_id, actual)}` as `${call_argument_type_name(expected)}` in argument ${argument_number} to `${target_name}`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
+			tc.record_error_at(.call_arg_mismatch, 'cannot use `${tc.diagnostic_expr_type_name(arg_id, actual)}` as `${call_argument_type_name(expected)}` in argument ${argument_number} to `${tc.call_argument_target_name(node, info)}`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
 			continue
 		}
 		// IError stringification is valid in interpolation/printing, but an error
@@ -16262,14 +16294,14 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			if info.name == 'error' {
 				tc.record_warning_at(.call_arg_mismatch, '`error(err)` can be shortened to just `err`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
 			}
-			tc.record_error_at(.call_arg_mismatch, 'cannot use `${tc.diagnostic_expr_type_name(arg_id, actual)}` as `string` in argument 1 to `${target_name}`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
+			tc.record_error_at(.call_arg_mismatch, 'cannot use `${tc.diagnostic_expr_type_name(arg_id, actual)}` as `string` in argument 1 to `${tc.call_argument_target_name(node, info)}`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
 			continue
 		}
 		if expected_display := tc.bare_generic_fntype_call_param_display(info.name, param_idx) {
 			if unalias_type(actual) is FnType {
 				actual_display := call_argument_type_name(actual)
 				if actual_display != expected_display {
-					tc.record_error_at(.call_arg_mismatch, 'cannot use `${actual_display}` as `${expected_display}` in argument ${argument_number} to `${target_name}`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
+					tc.record_error_at(.call_arg_mismatch, 'cannot use `${actual_display}` as `${expected_display}` in argument ${argument_number} to `${tc.call_argument_target_name(node, info)}`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
 					continue
 				}
 			}
@@ -16293,7 +16325,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			return
 		}
 		if negative_unsigned_literal {
-			tc.record_error_at(.call_arg_mismatch, 'cannot use literal signed integer as `${call_argument_type_name(expected)}` in argument ${argument_number} to `${target_name}`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
+			tc.record_error_at(.call_arg_mismatch, 'cannot use literal signed integer as `${call_argument_type_name(expected)}` in argument ${argument_number} to `${tc.call_argument_target_name(node, info)}`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
 			continue
 		}
 		if expected is Pointer
@@ -16343,7 +16375,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				tc.record_error_at(.call_arg_mismatch, 'cannot use `${tc.diagnostic_expr_type_name(arg_id, actual)}` as argument for `try_pop` (`${call_argument_type_name(expected)}` expected)', arg_id, tc.call_argument_diagnostic_pos(arg_id))
 				continue
 			}
-			tc.record_error_at(.call_arg_mismatch, 'cannot use `${tc.diagnostic_expr_type_name(arg_id, actual)}` as `${call_argument_type_name(expected)}` in argument ${argument_number} to `${target_name}`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
+			tc.record_error_at(.call_arg_mismatch, 'cannot use `${tc.diagnostic_expr_type_name(arg_id, actual)}` as `${call_argument_type_name(expected)}` in argument ${argument_number} to `${tc.call_argument_target_name(node, info)}`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
 			continue
 		}
 		arg_node := tc.a.node(arg_id)
@@ -16420,12 +16452,12 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				actual_name
 			}
 			expected_display := call_argument_type_name(expected)
-			tc.record_error_at(.call_arg_mismatch, 'cannot use `${actual_display}` as `${expected_display}` in argument ${argument_number} to `${target_name}`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
+			tc.record_error_at(.call_arg_mismatch, 'cannot use `${actual_display}` as `${expected_display}` in argument ${argument_number} to `${tc.call_argument_target_name(node, info)}`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
 			continue
 		}
 		if expected_value is OptionType && actual is Pointer
 			&& unalias_type(expected_value.base_type) !is Pointer && !compatible_interface_value_arg {
-			tc.record_error_at(.call_arg_mismatch, 'cannot use `&${actual.base_type.name()}` as `?${expected_value.base_type.name()}` in argument ${argument_number} to `${target_name}`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
+			tc.record_error_at(.call_arg_mismatch, 'cannot use `&${actual.base_type.name()}` as `?${expected_value.base_type.name()}` in argument ${argument_number} to `${tc.call_argument_target_name(node, info)}`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
 			continue
 		}
 		if tc.addressed_bare_generic_value_mismatch(arg_id, actual, expected) {
@@ -16553,7 +16585,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				continue
 			}
 			if actual is OptionType && expected !is OptionType {
-				tc.record_error_at(.call_arg_mismatch, 'cannot use `?${actual.base_type.name()}` as `${expected.name()}`, it must be unwrapped first in argument ${argument_number} to `${target_name}`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
+				tc.record_error_at(.call_arg_mismatch, 'cannot use `?${actual.base_type.name()}` as `${expected.name()}`, it must be unwrapped first in argument ${argument_number} to `${tc.call_argument_target_name(node, info)}`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
 				continue
 			}
 			actual_display := tc.diagnostic_expr_type_name(arg_id, actual)
@@ -16561,7 +16593,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			message := if tc.is_js_backend && expected_display == 'JS.Number' {
 				'cannot use `${actual_display}` as `JS.Number` without an explicit cast (e.g. `JS.Number(value)`)'
 			} else {
-				'cannot use `${actual_display}` as `${expected_display}` in argument ${argument_number} to `${target_name}`'
+				'cannot use `${actual_display}` as `${expected_display}` in argument ${argument_number} to `${tc.call_argument_target_name(node, info)}`'
 			}
 			if unalias_type(expected) is FnType && unalias_type(actual) is FnType {
 				expected_alias := if expected is Alias { expected.name() } else { '' }
@@ -18008,7 +18040,7 @@ fn free_array_arg_compatible(name string, param_idx int, expected Type, actual T
 fn c_fixed_array_pointee_storage_type(typ Type) Type {
 	clean := fn_param_unalias_type(typ)
 	if fn_param_is_platform_int(clean) {
-		return Type(i32_)
+		return builtin_i32_type
 	}
 	return match clean {
 		Pointer {
@@ -21683,6 +21715,35 @@ fn (tc &TypeChecker) call_has_ambiguous_selective_import(node flat.Node) bool {
 		return base.kind == .ident && tc.selective_import_symbol_is_ambiguous(base.value)
 	}
 	return fn_node.kind == .ident && tc.selective_import_symbol_is_ambiguous(fn_node.value)
+}
+
+// c_va_macro_call_name recognizes the macro without allocating a display name
+// for every ordinary selector call.
+fn (tc &TypeChecker) c_va_macro_call_name(node flat.Node) string {
+	if node.children_count == 0 {
+		return ''
+	}
+	callee := tc.a.child_node(&node, 0)
+	if callee.kind == .selector && callee.children_count > 0 {
+		if tc.a.child_node(callee, 0).value != 'C' {
+			return ''
+		}
+		return match callee.value {
+			'va_arg' { 'C.va_arg' }
+			'va_start' { 'C.va_start' }
+			'va_end' { 'C.va_end' }
+			'va_copy' { 'C.va_copy' }
+			else { '' }
+		}
+	}
+	name := if callee.kind == .ident {
+		callee.value
+	} else if callee.kind in [.index, .prefix, .array_init] {
+		tc.call_display_name(node)
+	} else {
+		''
+	}
+	return if name in ['C.va_arg', 'C.va_start', 'C.va_end', 'C.va_copy'] { name } else { '' }
 }
 
 // call_display_name updates call display name state for TypeChecker.

@@ -102,7 +102,7 @@ fn (mut g FlatGen) optional_type_name(t types.Type) string {
 			return g.optional_type_name(clean_type.base_type) + '*'
 		}
 	}
-	mut base_type := types.Type(types.void_)
+	mut base_type := cgen_void_type
 	if clean_type is types.OptionType {
 		base_type = clean_type.base_type
 	} else if clean_type is types.ResultType {
@@ -1036,22 +1036,23 @@ fn (mut g FlatGen) collect_unresolved_call_optional_types() {
 	// optional-type sources not covered by the shared declaration-signature scan.
 	mut seen_type_ids := map[u32]bool{}
 	for idx in g.type_metadata_nodes() {
-		node := g.a.nodes[idx]
+		// This scan only publishes type metadata; keep source nodes borrowed.
+		node := unsafe { &g.a.nodes[idx] }
 		if node.kind != .call {
+			continue
+		}
+		if node.typ == 0 || (idx < g.tc.expr_type_set.len && g.tc.expr_type_set[idx]) {
 			continue
 		}
 		// Only a complete type spelling that was not collected yet can add a
 		// typedef. Rule the rest out before the checker metadata below, which
 		// costs a map lookup per resolved call.
-		if node.typ == 0 || node.typ_text() in ['int', 'array', 'map', 'unknown']
+		if node.typ_text() in ['int', 'array', 'map', 'unknown']
 			|| !cgen_type_text_is_complete(node.typ) {
 			continue
 		}
 		type_id := node.type_text_id()
 		if seen_type_ids[type_id] {
-			continue
-		}
-		if idx < g.tc.expr_type_set.len && g.tc.expr_type_set[idx] {
 			continue
 		}
 		if idx < g.tc.resolved_call_set.len && g.tc.resolved_call_set[idx] {
@@ -1064,7 +1065,7 @@ fn (mut g FlatGen) collect_unresolved_call_optional_types() {
 			}
 		}
 		seen_type_ids[type_id] = true
-		g.collect_optional_typedef_type(g.parse_node_type(&node))
+		g.collect_optional_typedef_type(g.parse_node_type(node))
 	}
 	g.collect_sizeof_optional_types()
 }
@@ -1271,6 +1272,9 @@ fn (mut g FlatGen) collect_checker_declaration_signature_types() {
 }
 
 fn (mut g FlatGen) collect_selected_declaration_signature_types() {
+	if g.selected_decl_types_ready {
+		return
+	}
 	old_module := g.tc.cur_module
 	old_file := g.tc.cur_file
 	defer {
@@ -1299,6 +1303,7 @@ fn (mut g FlatGen) collect_selected_declaration_signature_types() {
 			g.collect_known_declaration_signature_type(g.fn_node_effective_param_type(param, raw_type))
 		}
 	}
+	g.selected_decl_types_ready = true
 }
 
 @[inline]

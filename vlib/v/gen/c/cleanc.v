@@ -14,6 +14,9 @@ import v.types
 import v.util
 import v.util.cache_refresh
 
+// Reuse the immutable boxed void payload in default and negative query paths.
+const cgen_void_type = types.Type(types.void_)
+
 const spread_index_expected_type_marker = '__v3_spread_index_expected_type'
 const bound_method_array_index_marker = '__v3_bound_method_array_index'
 const array_accessor_index_marker = '__v3_array_accessor_index'
@@ -44,6 +47,17 @@ fn c_short_name_view(name string) string {
 	for i := name.len - 1; i >= 0; i-- {
 		if name[i] == `.` {
 			return unsafe { name.substr_unsafe(i + 1, name.len) }
+		}
+	}
+	return name
+}
+
+// c_owner_name_view borrows the prefix before the final dot for local name comparisons.
+@[direct_array_access; inline]
+fn c_owner_name_view(name string) string {
+	for i := name.len - 1; i >= 0; i-- {
+		if name[i] == `.` {
+			return unsafe { name.substr_unsafe(0, i) }
 		}
 	}
 	return name
@@ -849,7 +863,7 @@ mut:
 	spawn_detached                bool // the spawn being emitted has its handle discarded
 	spawn_comparable              bool // keep a discarded spawn's handle until its comparison finishes
 	detached_spawn_drop           bool // ownership traversal also joins nested handles and destroys closures
-	spawn_return_type             types.Type = types.Type(types.void_)
+	spawn_return_type             types.Type = cgen_void_type
 	const_runtime_inits           []string
 	const_runtime_init_modules    []string
 	runtime_inits                 []string
@@ -915,9 +929,9 @@ mut:
 	cur_explicit_mut_pointer_params map[string]bool
 	cur_mut_param_owners            map[string]types.ScopeBindingOwner
 	cur_c_fn_calls                  map[string]bool
-	cur_fn_ret                      types.Type = types.Type(types.void_)
+	cur_fn_ret                      types.Type = cgen_void_type
 	cur_fn_ret_is_optional          bool
-	cur_fn_ret_base                 types.Type = types.Type(types.void_)
+	cur_fn_ret_base                 types.Type = cgen_void_type
 	defer_return_tmp_var            string
 	active_locks                    []ActiveLock
 	unsafe_depth                    int
@@ -948,10 +962,10 @@ mut:
 	ownership_scope_index          int
 	cur_return_drops               []types.OwnershipDropEntry
 	pending_return_scope_drops     []types.OwnershipDropEntry
-	expected_expr_type             types.Type = types.Type(types.void_)
+	expected_expr_type             types.Type = cgen_void_type
 	expected_enum                  u32
 	known_expr_type_id             int        = -1
-	known_expr_type                types.Type = types.Type(types.void_)
+	known_expr_type                types.Type = cgen_void_type
 	memo_usable_expr_types         bool
 	cache_struct_fields            bool
 	dedup_fn_decl_aliases          bool
@@ -4688,7 +4702,7 @@ mut:
 	prepared           bool
 	ptypes             []types.Type
 	shared_params      []bool
-	return_type        types.Type = types.Type(types.void_)
+	return_type        types.Type = cgen_void_type
 	decl_is_variadic   bool
 	first_param_is_mut bool
 	// registration is precomputed by the parallel prep when signature
@@ -13452,7 +13466,7 @@ fn (mut g FlatGen) gen_sum_pointer_value_expr(id flat.NodeId, expected types.Typ
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
 		return false
 	}
-	mut sum_type0 := types.Type(types.void_)
+	mut sum_type0 := cgen_void_type
 	if expected is types.Pointer {
 		sum_type0 = expected.base_type
 	} else {
@@ -13819,7 +13833,7 @@ fn (mut g FlatGen) gen_sum_cast_expr(target_type types.SumType, inner_id flat.No
 	pointer_base_type := if clean_variant_type is types.Pointer {
 		clean_variant_type.base_type
 	} else {
-		types.Type(types.void_)
+		cgen_void_type
 	}
 	variant_is_pointer_arg := if actual_value_type is types.Pointer {
 		variant_is_pointer && g.type_names_match(actual_value_type.base_type, pointer_base_type)
@@ -14073,7 +14087,7 @@ fn (g &FlatGen) sum_shared_field_type_inner(base_type0 types.Type, field string,
 	if sum_name in seen_ids { return none }
 	variants := g.tc.sum_types.type_ids(flat.source_type_name(sum_name)) or { return none }
 	if variants.len == 0 { return none }
-	mut common_type := types.Type(types.void_)
+	mut common_type := cgen_void_type
 	mut has_common := false
 	mut next_seen := seen_ids.clone()
 	next_seen << sum_name
@@ -14678,7 +14692,7 @@ fn (mut g FlatGen) optional_none_type(id flat.NodeId) types.Type {
 		return g.cur_fn_ret
 	}
 	return types.Type(types.OptionType{
-		base_type: types.Type(types.void_)
+		base_type: cgen_void_type
 	})
 }
 
@@ -15638,7 +15652,7 @@ fn (mut g FlatGen) const_array_literal_storage_type_for_name(name string, val_id
 	if fallback is types.ArrayFixed {
 		return fallback
 	}
-	mut elem_type := types.Type(types.void_)
+	mut elem_type := cgen_void_type
 	if fallback is types.Array {
 		elem_type = fallback.elem_type
 	} else {
@@ -16319,13 +16333,19 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 		}
 	}
 	node := unsafe { &g.a.nodes[int(id)] }
+	if node.kind in [.int_literal, .float_literal] {
+		g.write(numeric_literal_c_text(node))
+		return
+	}
+	if node.kind == .bool_literal {
+		g.write(node.value)
+		return
+	}
+	g.gen_nonliteral_expr(id, node)
+}
+
+fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 	match node.kind {
-		.int_literal, .float_literal {
-			g.write(numeric_literal_c_text(node))
-		}
-		.bool_literal {
-			g.write(node.value)
-		}
 		.comptime_if {
 			// Only portable output (`-os cross`) keeps a target-dependent `$if` this
 			// far; every other build selected a branch before codegen.
@@ -16802,7 +16822,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			fn_value_type := if node.op == .amp {
 				cgen_unalias_type(g.fn_value_candidate_type(child_id, child))
 			} else {
-				types.Type(types.void_)
+				cgen_void_type
 			}
 			if node.op == .amp && fn_value_type is types.FnType {
 				operand_id, operand := g.unwrapped_fn_value_operand(child_id, child)
@@ -17307,7 +17327,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			// base rewrites the wrapper literal as the sum itself before `.ok`/`.value`.
 			old_selector_expected := g.expected_expr_type
 			old_selector_enum := g.expected_enum
-			g.expected_expr_type = types.Type(types.void_)
+			g.expected_expr_type = cgen_void_type
 			g.expected_enum = 0
 			defer {
 				g.expected_expr_type = old_selector_expected
@@ -18989,10 +19009,10 @@ fn (mut g FlatGen) gen_array_infix_eq(node flat.Node, lhs_id flat.NodeId, rhs_id
 		return true
 	}
 	mut lhs_arr := types.Array{
-		elem_type: types.Type(types.void_)
+		elem_type: cgen_void_type
 	}
 	mut rhs_arr := types.Array{
-		elem_type: types.Type(types.void_)
+		elem_type: cgen_void_type
 	}
 	mut lhs_is_arr := false
 	mut rhs_is_arr := false
@@ -19105,10 +19125,10 @@ fn (g &FlatGen) array_equality_literal_elem_type(id flat.NodeId) ?types.Type {
 
 fn (mut g FlatGen) gen_fixed_array_infix_eq(node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type) bool {
 	mut lhs_fixed := types.ArrayFixed{
-		elem_type: types.Type(types.void_)
+		elem_type: cgen_void_type
 	}
 	mut rhs_fixed := types.ArrayFixed{
-		elem_type: types.Type(types.void_)
+		elem_type: cgen_void_type
 	}
 	mut lhs_is_fixed := false
 	mut rhs_is_fixed := false
@@ -25655,7 +25675,7 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 	} else if ct == 'Array' {
 		arr := array_like_type(default_init_unalias_type(v_type)) or {
 			types.Array{
-				elem_type: types.Type(types.void_)
+				elem_type: cgen_void_type
 			}
 		}
 		elem_type := if (arr.elem_type is types.Void || arr.elem_type is types.Unknown) && val_node.children_count > 0 {
@@ -26897,7 +26917,7 @@ fn translated_integer_scalar_type(typ types.Type) bool {
 }
 
 fn (g &FlatGen) translated_bool_destination(id flat.NodeId, typ types.Type) bool {
-	return cgen_unalias_type(typ) == types.Type(types.bool_) && g.expr_is_in_translated_file(id)
+	return g.expr_is_in_translated_file(id) && cgen_unalias_type(typ) == types.Type(types.bool_)
 }
 
 fn (mut g FlatGen) gen_checked_integer_infix(id flat.NodeId, node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type) bool {
@@ -27212,7 +27232,7 @@ fn (mut g FlatGen) gen_translated_numeric_arithmetic(id flat.NodeId, node flat.N
 }
 
 fn (g &FlatGen) expr_is_in_translated_file(id flat.NodeId) bool {
-	if isnil(g.tc) || int(id) < 0 || int(id) >= g.a.nodes.len {
+	if isnil(g.tc) || g.tc.translated_files.len == 0 || int(id) < 0 || int(id) >= g.a.nodes.len {
 		return false
 	}
 	file := g.a.source_files[g.a.node(id).pos.id] or { return false }

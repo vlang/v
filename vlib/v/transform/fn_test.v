@@ -1944,3 +1944,21 @@ fn test_sum_variant_parent_ids_preserve_order_deduplication_and_owned_results() 
 	assert t.sum_type_parents_for_variant(variant) == [first, second]
 	assert t.sum_type_parents_for_variant(flat.source_type_id('Child')) == [first, second]
 }
+
+fn test_generic_cast_prescreen_keeps_selectively_imported_type_spellings() {
+	mut a := flat.FlatAst.new()
+	callee := a.add_val(.ident, 'Imported')
+	value := a.add_val(.int_literal, '1')
+	call := literal_binding_test_node(mut a, .call, [callee, value])
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['library.Box'] = []types.StructField{}
+	tc.structs['library.Box[int]'] = []types.StructField{}
+	tc.file_selective_imports['caller.v\nImported'] = ['library.Box[int]']
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cur_file = 'caller.v'
+	lowered := t.try_lower_generic_named_type_cast_call(a.nodes[int(call)]) or {
+		panic('selectively imported generic cast was skipped')
+	}
+	assert a.nodes[int(lowered)].kind == .cast_expr
+	assert a.nodes[int(lowered)].value == 'library.Box[int]'
+}
