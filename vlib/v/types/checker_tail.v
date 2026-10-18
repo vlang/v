@@ -10586,36 +10586,54 @@ fn (tc &TypeChecker) current_receiver_param_method_call_info(base_id flat.NodeId
 	if receiver_name.len == 0 {
 		return none
 	}
+	if !tc.receiver_param_has_receiver_type(fn_node, base.value, receiver_name) {
+		return none
+	}
+	method_name := '${receiver_name}.${method}'
+	qualified_method_name := checker_qualified_fn_name(tc.cur_module, method_name)
+	if qualified_method_name != method_name && qualified_method_name in tc.fn_ret_types {
+		return tc.call_info(qualified_method_name, true)
+	}
+	if method_name in tc.fn_ret_types {
+		return tc.call_info(method_name, true)
+	}
+	return none
+}
+
+// receiver_param_has_receiver_type reports whether the parameter `param_name`
+// of the current method `fn_node` (its receiver) has the type of the receiver
+// `receiver_name` that the method name declares. It is the same for every call
+// in one body, so the semantic check remembers the answer per function.
+fn (tc &TypeChecker) receiver_param_has_receiver_type(fn_node flat.Node, param_name string, receiver_name string) bool {
+	fn_id := tc.fn_context.node_id
+	memo_usable := !tc.trust_checked_expr_types
+	if memo_usable && tc.receiver_memo_fn == fn_id
+		&& tc.receiver_memo_file.str == tc.cur_file.str
+		&& tc.receiver_memo_file.len == tc.cur_file.len
+		&& tc.receiver_memo_module.str == tc.cur_module.str
+		&& tc.receiver_memo_module.len == tc.cur_module.len {
+		return tc.receiver_memo_ok
+	}
 	mut param_type := builtin_void_type
 	mut found_param := false
 	for i in 0 .. fn_node.children_count {
 		param := tc.a.child_node(&fn_node, i)
-		if param.kind == .param && param.value == base.value {
+		if param.kind == .param && param.value == param_name {
 			param_type = tc.parse_type(param.typ)
 			found_param = true
 			break
 		}
 	}
-	if !found_param {
-		return none
+	ok := found_param
+		&& tc.receiver_compatible(param_type, tc.parse_type(flat.source_type_id(receiver_name)))
+	if memo_usable {
+		mut w := unsafe { tc }
+		w.receiver_memo_fn = fn_id
+		w.receiver_memo_file = tc.cur_file
+		w.receiver_memo_module = tc.cur_module
+		w.receiver_memo_ok = ok
 	}
-	receiver_type := tc.parse_type(flat.source_type_id(receiver_name))
-	if !tc.receiver_compatible(param_type, receiver_type) {
-		return none
-	}
-	method_name := '${receiver_name}.${method}'
-	qualified_method_name := checker_qualified_fn_name(tc.cur_module, method_name)
-	mut candidates := []string{}
-	if qualified_method_name != method_name {
-		candidates << qualified_method_name
-	}
-	candidates << method_name
-	for candidate in candidates {
-		if candidate in tc.fn_ret_types {
-			return tc.call_info(candidate, true)
-		}
-	}
-	return none
+	return ok
 }
 
 fn (tc &TypeChecker) type_is_pointer_receiver(typ Type) bool {

@@ -1175,6 +1175,13 @@ pub mut:
 	nongeneric_call_start  int = -1
 	nongeneric_call_name   string
 	nongeneric_call_module string
+	// Whether the receiver parameter of fn_decl node receiver_memo_fn, checked in
+	// file and module receiver_memo_file / receiver_memo_module, has the type of
+	// the receiver its name declares (current_receiver_param_method_call_info).
+	receiver_memo_fn     int = -1
+	receiver_memo_file   string
+	receiver_memo_module string
+	receiver_memo_ok     bool
 	// Set by markused only after convergence for its returned reachability set.
 	// Adding roots requires the ordinary late-body convergence check again.
 	library_body_convergence_complete bool
@@ -5888,6 +5895,11 @@ pub fn (tc &TypeChecker) shadowed_builtin_const_key_in_module(name string, modul
 }
 
 fn (tc &TypeChecker) const_key_for_name(name string) ?string {
+	// Every key below is `name`, or ends in `.` and the last segment of `name`.
+	if tc.const_suffix_key_count == tc.const_types.len
+		&& short_name_view(name) !in tc.const_suffixes && name !in tc.const_types {
+		return none
+	}
 	if key := tc.shadowed_builtin_const_key(name) {
 		return key
 	}
@@ -6222,6 +6234,13 @@ pub fn (tc &TypeChecker) qualify_name(name string) string {
 	return flat.source_type_name(tc.qualify_type_name_cached(name_id, name))
 }
 
+// same_string is `a == b`, without comparing the bytes of one string object
+// with themselves (the checker's current file and module usually are).
+@[inline]
+fn same_string(a string, b string) bool {
+	return a.len == b.len && (a.str == b.str || a == b)
+}
+
 const qualify_source_type_i128 = flat.source_type_id('i128')
 const qualify_source_type_u128 = flat.source_type_id('u128')
 const qualify_source_type_uint = flat.source_type_id('uint')
@@ -6251,7 +6270,7 @@ pub fn (tc &TypeChecker) qualify_type_name(name_id u32) u32 {
 fn (tc &TypeChecker) qualify_type_name_cached(name_id u32, provided_name string) u32 {
 	mut cache := tc.qualify_name_cache
 	fingerprint := tc.qualify_table_fingerprint()
-	if cache.module != tc.cur_module || cache.file != tc.cur_file
+	if !same_string(cache.module, tc.cur_module) || !same_string(cache.file, tc.cur_file)
 		|| cache.resolution_type_mode != tc.resolution_type_mode
 		|| cache.fingerprint != fingerprint {
 		cache.module = tc.cur_module
