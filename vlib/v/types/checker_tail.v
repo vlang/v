@@ -12809,7 +12809,8 @@ fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name s
 					storage_param_sources_merge(mut next_aliases, exit.aliases)
 				} else if !exit.is_continue && !exit.is_goto
 					&& (exit.label.len == 0 || tc.loop_has_label(id, exit.label)) {
-					storage_param_sources_merge(mut break_aliases, exit.aliases)
+					// `break_aliases` starts empty; merge would keep none of its names.
+					storage_param_sources_join(mut break_aliases, exit.aliases)
 				} else if exit.label.len > 0 && !tc.loop_has_label(id, exit.label) {
 					loop_exits << exit
 				}
@@ -13024,15 +13025,60 @@ fn (tc &TypeChecker) param_storage_writes_for_decl_unscoped(decl VisibleMutation
 	mut exited_aliases := []map[string][]int{}
 	mut exited_defer_counts := []int{}
 	mut deferred_stmts := []flat.NodeId{}
+	// A block resolves jumps to its own labels; the function body is not a block, so a
+	// forward `goto` to a body-level label is joined here. Statements it skips do not run.
+	mut body_labels := map[string]bool{}
+	for i in body_start .. fn_node.children_count {
+		child := tc.a.child_node(&fn_node, i)
+		if child.kind == .label_stmt && child.value.len > 0 {
+			body_labels[child.value] = true
+		}
+	}
+	mut label_aliases := map[string]map[string][]int{}
+	mut label_writes := map[string]map[string][]int{}
+	mut continues := true
 	for i in body_start .. fn_node.children_count {
 		child_id := tc.a.child(&fn_node, i)
-		if tc.a.nodes[int(child_id)].kind == .defer_stmt {
-			deferred_stmts << child_id
+		child := tc.a.nodes[int(child_id)]
+		if child.kind == .defer_stmt {
+			if continues {
+				deferred_stmts << child_id
+			}
 			continue
 		}
+		if child.kind == .label_stmt {
+			if incoming := label_aliases[child.value] {
+				if continues {
+					storage_param_sources_join(mut aliases, incoming)
+					storage_param_writes_merge(mut writes, label_writes[child.value])
+				} else {
+					aliases = storage_param_sources_clone(incoming)
+					writes = storage_param_sources_clone(label_writes[child.value])
+				}
+				continues = true
+			}
+		}
+		if !continues {
+			continue
+		}
+		exit_start := loop_exits.len
 		tc.collect_param_storage_sources(child_id, target_param.value, target_param.typ, target_param_idx, decl.mod, mut aliases, mut visiting, mut writes, mut exited_writes, mut loop_exits, mut exited_aliases, deferred_stmts.len, mut exited_defer_counts)
-		if tc.a.nodes[int(child_id)].kind == .return_stmt {
+		for exit in loop_exits[exit_start..] {
+			if !exit.is_goto || exit.label !in body_labels {
+				continue
+			}
+			mut joined_aliases := storage_param_sources_clone(label_aliases[exit.label])
+			storage_param_sources_join(mut joined_aliases, exit.aliases)
+			label_aliases[exit.label] = joined_aliases.move()
+			mut joined_writes := storage_param_sources_clone(label_writes[exit.label])
+			storage_param_writes_merge(mut joined_writes, exit.writes)
+			label_writes[exit.label] = joined_writes.move()
+		}
+		if child.kind == .return_stmt {
 			break
+		}
+		if tc.storage_node_ends_control_flow(child_id) {
+			continues = false
 		}
 	}
 	storage_param_writes_merge(mut exited_writes, writes)
