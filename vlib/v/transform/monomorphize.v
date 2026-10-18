@@ -6968,7 +6968,11 @@ fn (mut t Transformer) infer_generic_variadic_call_arg(param_type_id u32, elem_p
 		return
 	}
 	t.infer_generic_struct_init_args(elem_param_type_id, arg_id, mut inferred)
-	// Short struct-init arguments belong to one variadic struct element.
+	// The short struct-init call syntax for a variadic generic struct param
+	// (`f(a: x, b: y)` for `fn f[T](items ...Params[T])`) packs the element's
+	// fields as bare `field_init` args rather than a wrapped `struct_init`, so
+	// `infer_generic_struct_init_args` above cannot see them. Infer T from the
+	// field's declared type the same way the non-variadic path does.
 	t.infer_generic_field_init_type_arg(elem_param_type_id, arg_id, mut inferred)
 }
 

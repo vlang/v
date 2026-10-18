@@ -86,7 +86,16 @@ fn test_cloned_variadic_call_inference_preserves_a_nested_element() {
 		children_start: call_start
 		children_count: 2
 	}
+	call_id := a.add_node(call)
 	mut tc := types.TypeChecker.new(&a)
+	tc.fn_generic_params['collect'] = ['T']
+	tc.fn_param_type_texts.set('collect', ['...[]T'])
+	tc.fn_ret_type_texts.set_id('collect', flat.source_type_id('[][]T'))
+	tc.fn_type_modules['collect'] = 'main'
+	tc.sparse_resolved_call_names[int(call_id)] = 'collect'
+	tc.parallel_check_sparse = true
+	tc.check_range_lo = -1
+	tc.check_range_hi = -1
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	decl := GenericFnDecl{
 		id: decl_id
@@ -97,4 +106,6 @@ fn test_cloned_variadic_call_inference_preserves_a_nested_element() {
 	}
 	inferred := t.generic_clone_call_type_args(call, decl, []u32{}, u32(0))
 	assert inferred == [flat.source_type_id('[]int')]
+	return_type := t.generic_call_declared_return_type(call_id, call) or { u32(0) }
+	assert flat.source_type_name(return_type) == '[][][]int'
 }
