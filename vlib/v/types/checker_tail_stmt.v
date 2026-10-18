@@ -19090,6 +19090,18 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 							}
 						}
 					}
+					// A method that the alias inherits through another alias (`type
+					// WrappedNames = Names` with `fn (n Names) clone()`) wins over the
+					// builtin collection method of the same name, as in a direct call.
+					if mname := tc.concrete_method_signature_key(clean_type.source_type_id(),
+						fn_node.value)
+					{
+						if mname.all_before_last('.') in tc.type_aliases.ids {
+							if ret := tc.fn_ret_types[mname] {
+								return tc.alias_return_type_from_text(mname) or { ret }
+							}
+						}
+					}
 				}
 				if clean_array := array_like_type_for_method(clean_type, fn_node.value) {
 					if fn_node.value in ['clone', 'move', 'reverse'] {

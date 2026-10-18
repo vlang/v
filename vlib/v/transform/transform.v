@@ -12102,6 +12102,24 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 			&& flat.source_type_name(t.normalize_type_alias(flat.source_type_id(flat.source_type_name(typ)[1..]))) == raw_typ {
 			typ = flat.source_type_id(raw_typ)
 		}
+		// The checker's parameter type drops the `shared` element modifier of `[]shared T`.
+		// Keep it, as a `[]shared T{}` local does: the elements are lock wrapper pointers.
+		if typ != 0 && flat.source_type_shape(typ).has(.array_type)
+			&& !flat.source_type_shape(typ).has(.pointer) {
+			if _ := t.shared_array_inner_type(raw_source_typ) {
+				// The wrapper is named after the declared element type, not its alias target.
+				elem := if param_idx < param_types.len && param_types[param_idx] is types.Array {
+					(param_types[param_idx] as types.Array).elem_type.source_type_id()
+				} else {
+					t.trimmed_type_id(t.array_elem_type(typ))
+				}
+				if !flat.source_type_shape(elem).has(.shared_type) {
+					typ = flat.source_type_id('[]shared ${flat.source_type_name(elem)}')
+					// The source spelling can name the element through an import alias.
+					raw_source_typ = typ
+				}
+			}
+		}
 		if typ != 0 {
 			t.set_var_type_with_raw(child.value, typ, raw_source_typ)
 			if !child.is_mut && flat.source_type_shape(t.comptime_normalize_type_alias_chain(typ)).has(.pointer) {
@@ -18698,6 +18716,17 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 						op_raw_typ_source_id_2 := op_raw_typ_source_id
 
 						raw_typ = op_raw_typ_source_id_2
+					}
+				}
+				// `mut items := []shared T{}`: the checker's type has no `shared` element
+				// modifier, but the elements are lock wrappers, also in closures capturing it.
+				if rhs.kind in [.array_init, .array_literal]
+					&& !flat.source_type_name(raw_typ).contains('shared ') {
+					if inner := t.shared_array_inner_type(rhs.typ) {
+						// Resolve `renamed.T` here: a capture copies this type into another
+						// function, where the file's import aliases are not known.
+						elem := t.resolve_imported_type_name(inner) or { inner }
+						raw_typ = flat.source_type_id('[]shared ${flat.source_type_name(elem)}')
 					}
 				}
 				if node.value == 'shared' || node.value.starts_with('shared:') {

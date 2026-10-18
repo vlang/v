@@ -14816,6 +14816,35 @@ fn (tc &TypeChecker) expr_is_shared_arg(id flat.NodeId) bool {
 	return tc.current_binding_is_shared(node.value)
 }
 
+// check_shared_array_element_receiver requires the lock that V1 requires for a method call
+// on an element of a `[]shared T` array (or on a field of one): `rlock` or `lock` for a
+// value receiver, `lock` for a `mut` receiver.
+fn (mut tc TypeChecker) check_shared_array_element_receiver(recv_id flat.NodeId, mutating_receiver bool) {
+	element_id := tc.shared_array_element_index(recv_id) or { return }
+	key := tc.shared_lock_key(element_id)
+	mode := tc.current_shared_lock_mode(key)
+	pos := tc.a.node(element_id).pos
+	if mutating_receiver {
+		if mode == `r` {
+			tc.record_error_at(.call_arg_mismatch, '${key} has an `rlock` but needs a `lock`',
+				element_id, pos)
+		} else if mode == 0 {
+			tc.record_error_at(.call_arg_mismatch, 'you have to create a handle and `lock` it to modify `shared` array element',
+				element_id, pos)
+		}
+		return
+	}
+	if mode != 0 {
+		return
+	}
+	message := if tc.lock_depth > 0 {
+		'`${key}` is `shared` and must be `rlock`ed or `lock`ed to be used as non-mut receiver'
+	} else {
+		'you have to create a handle and `rlock` it to use a `shared` element as non-mut receiver'
+	}
+	tc.record_error_at(.call_arg_mismatch, message, element_id, pos)
+}
+
 fn (tc &TypeChecker) unlocked_shared_access(id flat.NodeId) ?SharedAccessDiagnostic {
 	return tc.unlocked_shared_access_impl(id, false)
 }
@@ -15563,6 +15592,9 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			tc.check_locked_shared_mut_receiver_mutation(recv_id)
 		}
 		receiver_is_shared_param := call_param_is_shared(info, 0)
+		if !receiver_is_shared_param {
+			tc.check_shared_array_element_receiver(recv_id, mutating_receiver)
+		}
 		if receiver_is_shared_param && tc.lock_depth > 0 {
 			tc.record_error_at(.call_arg_mismatch, 'method with `shared` receiver cannot be called inside `lock`/`rlock` block', recv_id, tc.method_call_name_pos(node, fn_node))
 		}

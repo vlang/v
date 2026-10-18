@@ -11894,6 +11894,9 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 			}
 		}
 	}
+	if alias_call := t.try_lower_checker_selected_alias_method(call_id, node, base_id) {
+		return alias_call
+	}
 	array_builtin_method := t.array_builtin_method_name(fn_node.value) or { '' }
 	if fn_node.value !in ['clone', 'reverse', 'contains', 'index', 'last_index', 'join', 'any',
 		'all', 'count', 'equals', 'prepend', 'insert', 'push_many', 'str', 'to_fixed_size', 'wait'] {
@@ -17652,6 +17655,33 @@ fn (mut t Transformer) lower_checker_selected_receiver_method(call_id flat.NodeI
 
 	t.mark_fn_used_name(resolved)
 	return t.make_receiver_method_call_typed(node, resolved, args, ret_type_source_id_5)
+}
+
+// try_lower_checker_selected_alias_method lowers a call that the checker resolved to a method
+// declared on a type alias, including one inherited through another alias (`type
+// WrappedNames = Names`, `fn (n Names) clone()`), before the builtin collection method of the
+// same name: `arr[0].clone()` or `(*p).clone()` on such an array alias.
+fn (mut t Transformer) try_lower_checker_selected_alias_method(call_id flat.NodeId, node flat.Node, base_id flat.NodeId) ?flat.NodeId {
+	if isnil(t.tc) {
+		return none
+	}
+	resolved := t.tc.resolved_call_name(call_id) or { return none }
+	receiver := resolved.all_before_last('.')
+	if receiver !in t.tc.type_aliases.ids || t.receiver_method_name_is_open_generic(resolved)
+		|| !t.is_known_fn_name(resolved) {
+		return none
+	}
+	// Only an alias of an array competes with the builtin array methods. The receiver
+	// must have that alias' storage: the checker records one name for a call that a
+	// multi-variant match branch repeats for each variant.
+	base_type := t.normalize_type_alias(t.unshared_type_id(t.trim_all_pointer_type(t.node_type(base_id))))
+	if base_type == 0 || !flat.source_type_shape(base_type).has(.array_type)
+		|| t.normalize_type_alias(flat.source_type_id(receiver)) != base_type {
+		return none
+	}
+	args := t.transform_receiver_method_args(node, base_id, resolved)
+	return t.make_receiver_method_call_typed(node, resolved, args, t.receiver_method_return_type(resolved,
+		node.typ))
 }
 
 fn (mut t Transformer) make_receiver_method_call_typed(node flat.Node, method_name string, args []flat.NodeId, typ_id u32) flat.NodeId {
