@@ -467,6 +467,18 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 	mut middleware_has_sent_response := false
 	mut not_found := false
 
+	// An app declares the peers veb may believe forwarding headers from with a
+	// `trusted_proxies` field; copy it into the request context where `ip()`
+	// reads it. This is comptime-unrolled like the middleware lookup below, so
+	// an app without the field compiles to nothing here.
+	$if A is $struct {
+		$for field in A.fields {
+			$if field.name == 'trusted_proxies' {
+				user_context.Context.trusted_proxies = app.$(field.name)
+			}
+		}
+	}
+
 	defer {
 		// execute middleware functions after veb is done and before the response is send
 		mut was_done := true

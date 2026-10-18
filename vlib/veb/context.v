@@ -63,6 +63,11 @@ mut:
 	// requests a middleware refuses skip the after-middleware, so an
 	// after-middleware could not free them reliably.
 	throttle_leases []ThrottleLease
+	// trusted_proxies are the socket peer addresses whose forwarding headers
+	// `ip()` may believe. The framework copies this from a `trusted_proxies`
+	// field on the app struct into every request context; an app that does not
+	// declare one gets the empty list, so `ip()` answers the socket peer.
+	trusted_proxies []string
 	// access_log_start_ns is the monotonic clock reading (`time.sys_mono_now()`)
 	// the access-log middleware stamped when the request arrived, so its finish
 	// half can log the latency. Zero means unstamped.
@@ -645,28 +650,74 @@ fn peer_ip_from_socket_handle(handle int) string {
 	return address.all_before(':')
 }
 
-// Returns the ip address from the current user
+fn normalized_client_ip(address string) !string {
+	if address.contains(':') {
+		return net.canonical_ipv6(address)
+	}
+	return net.format_ip(net.parse_ip(address)!)
+}
+
+fn is_trusted_proxy(address string, trusted_proxies []string) bool {
+	ip := normalized_client_ip(address) or { return false }
+	for proxy in trusted_proxies {
+		trusted_ip := normalized_client_ip(proxy) or { continue }
+		if ip == trusted_ip {
+			return true
+		}
+	}
+	return false
+}
+
+// resolved_client_ip walks from the trusted socket peer toward the client,
+// stopping at the nearest untrusted address. An earlier prefix is unverified.
+// An invalid entry stops the walk at the last trusted hop; if every entry is
+// trusted, the left-most entry is the client address.
+fn resolved_client_ip(peer string, forwarded_for string, trusted_proxies []string) string {
+	if !is_trusted_proxy(peer, trusted_proxies) {
+		return peer
+	}
+	mut client := peer
+	entries := forwarded_for.split(',')
+	for i := entries.len - 1; i >= 0; i-- {
+		client = normalized_client_ip(entries[i].trim_space()) or { return client }
+		if !is_trusted_proxy(client, trusted_proxies) {
+			return client
+		}
+	}
+	return client
+}
+
+// ip returns the client's IP address, defaulting to the socket peer.
+// Forwarding headers are honoured only when the peer is in the app's
+// `trusted_proxies []string` field. X-Forwarded-For is walked right to left
+// until the nearest untrusted address. Only when it is absent are
+// CF-Connecting-IP and then X-Real-Ip used; trusted proxies must overwrite
+// or remove these single-address headers received from untrusted clients.
 pub fn (ctx &Context) ip() string {
-	mut ip := ctx.req.header.get_custom('CF-Connecting-IP') or { '' }
-	if ip == '' {
-		ip = ctx.req.header.get(.x_forwarded_for) or { '' }
+	mut peer := ''
+	if ctx.conn != unsafe { nil } {
+		peer = ctx.conn.peer_ip() or { '' }
 	}
-	if ip == '' {
-		ip = ctx.req.header.get_custom('X-Forwarded-For') or { '' }
+	if peer == '' && ctx.client_fd >= 0 {
+		peer = peer_ip_from_socket_handle(ctx.client_fd)
 	}
-	if ip == '' {
-		ip = ctx.req.header.get_custom('X-Real-Ip') or { '' }
+	if is_trusted_proxy(peer, ctx.trusted_proxies) {
+		xff := ctx.req.header.values(.x_forwarded_for)
+		if xff.len > 0 {
+			return resolved_client_ip(peer, xff.join(','), ctx.trusted_proxies)
+		}
+		if cf := ctx.req.header.get_custom('CF-Connecting-IP') {
+			if cf.trim_space() != '' {
+				return normalized_client_ip(cf.trim_space()) or { peer }
+			}
+		}
+		if real_ip := ctx.req.header.get_custom('X-Real-Ip') {
+			if real_ip.trim_space() != '' {
+				return normalized_client_ip(real_ip.trim_space()) or { peer }
+			}
+		}
 	}
-	if ip.contains(',') {
-		ip = ip.all_before(',')
-	}
-	if ip == '' && ctx.conn != unsafe { nil } {
-		ip = ctx.conn.peer_ip() or { '' }
-	}
-	if ip == '' && ctx.client_fd >= 0 {
-		ip = peer_ip_from_socket_handle(ctx.client_fd)
-	}
-	return ip
+	return peer
 }
 
 // time_to_render returns the time in milliseconds that it took to render the page

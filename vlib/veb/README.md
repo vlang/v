@@ -1268,6 +1268,32 @@ embed `veb.Context`. Below are some of the most used methods, look at the
 
 You can directly access the HTTP request on the `.req` field.
 
+#### Get the client IP address
+
+`ctx.ip()` returns the socket peer's IP address by default. Forwarding headers from direct
+clients are ignored. To accept them from your reverse proxies, declare their IP addresses on
+the app:
+
+```v ignore
+pub struct App {
+	trusted_proxies []string = ['10.0.0.1', '10.0.0.2']
+}
+```
+
+Only list proxies you control and configure to append the actual peer to `X-Forwarded-For`.
+Addresses must be individual IPv4 or IPv6 literals; CIDR ranges are not supported.
+When the socket peer is trusted, `ip()` combines all `X-Forwarded-For` fields in their received
+order and walks the chain from right to left, stopping at the nearest untrusted address.
+For example, trusted peer `10.0.0.2` with `203.0.113.66, 198.51.100.9, 10.0.0.1` returns
+`198.51.100.9`: an earlier prefix supplied by that client cannot choose its identity.
+If every hop is trusted, the left-most address is returned. Empty or malformed entries stop
+the walk at the last trusted hop, and IPv6 addresses are returned in canonical form.
+
+Only when `X-Forwarded-For` is absent may a trusted peer supply `CF-Connecting-IP`, followed
+by `X-Real-Ip`. These must contain a single valid IP address. Configure trusted proxies to
+overwrite or remove these headers from untrusted clients, since they carry no proxy chain.
+An empty or malformed `X-Forwarded-For` never falls back to these headers.
+
 #### Get request headers
 
 **Example:**
