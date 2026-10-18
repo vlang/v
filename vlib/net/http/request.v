@@ -1155,7 +1155,7 @@ fn parse_request_line(line string) !(Method, urllib.URL, Version) {
 	return method, target, version
 }
 
-// Parse URL encoded key=value&key=value forms
+// parse_form decodes URL-encoded key=value&key=value forms without detecting JSON bodies.
 //
 // FIXME: Some servers can require the
 // parameter in a specific order.

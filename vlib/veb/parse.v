@@ -94,7 +94,7 @@ fn parse_form_from_request(request http.Request) !(map[string]string, map[string
 		// Firefox and other browsers, do not use quotes around the boundary:
 		return http.parse_multipart_form(request.data, boundary)
 	}
-	if json_media_type in ct {
+	if ct[0].trim(' \t').to_lower() == json_media_type {
 		return parse_json_form(request.data)
 	}
 	return http.parse_form(request.data), map[string][]http.FileData{}
@@ -111,8 +111,11 @@ const json_media_type = 'application/json'
 // would hide the fact that it needs a typed decode instead. A body that is not
 // a JSON object is an error, so it never looks like an empty form.
 fn parse_json_form(body string) !(map[string]string, map[string][]http.FileData) {
-	values := json2.decode[map[string]json2.Any](body) or {
+	values := json2.decode[json2.Any](body) or {
 		return error('the JSON body is not an object: ${err.msg()}')
+	}
+	if values !is map[string]json2.Any {
+		return error('the JSON body is not an object')
 	}
 	mut form := map[string]string{}
 	for key, value in values {

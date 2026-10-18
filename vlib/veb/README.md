@@ -328,6 +328,20 @@ pub fn (app &App) login(mut ctx Context) veb.Result {
 }
 ```
 
+### Request forms
+
+For `POST`, `PUT` and `PATCH` requests, `ctx.form` contains decoded form fields.
+With `Content-Type: application/json`, a JSON object supplies its string, number and boolean
+fields as strings: `{"name":"x","id":3}` becomes `{'name': 'x', 'id': '3'}`.
+Media type matching ignores case and accepts parameters such as `charset=utf-8`.
+Whitespace around a JSON object is accepted. Nested objects, arrays and `null` fields are skipped;
+use `ctx.req.data` or `ctx.bind[T]()` when you need the full structure.
+The original request body remains available in `ctx.req.data`.
+Malformed JSON and a root value other than an object, including `null`, receive `400 Bad Request`.
+
+URL-encoded bodies continue to populate `ctx.form`, and multipart requests also populate
+`ctx.files`. A JSON body requires its JSON content type; veb does not infer it from the body.
+
 ### Routes with Parameters
 
 Parameters are passed directly to an endpoint route using the colon sign `:`. The route
