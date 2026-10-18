@@ -16977,6 +16977,8 @@ fn (mut tc TypeChecker) check_builtin_map_call_args(_id flat.NodeId, node flat.N
 	if method !in ['clone', 'move', 'keys', 'values'] {
 		return false
 	}
+	// See check_builtin_array_call_args: the receiver, like `{'a': f()}`, is checked here.
+	tc.check_node(receiver_id)
 	for i in 1 .. node.children_count {
 		tc.check_node(tc.call_arg_value(tc.a.child(&node, i)))
 	}
@@ -17087,6 +17089,12 @@ fn copy_arg_elem_type(typ Type) ?Type {
 	return none
 }
 
+// builtin_array_fully_checked_methods lists the builtin array methods whose calls
+// check_builtin_array_call_args checks by itself (it returns true for them).
+const builtin_array_fully_checked_methods = ['clone', 'reverse', 'first', 'last', 'pop', 'pop_left',
+	'delete', 'insert', 'prepend', 'index', 'last_index', 'contains', 'sort_with_compare',
+	'sorted_with_compare', 'map', 'any', 'all', 'filter', 'count']!
+
 fn (mut tc TypeChecker) check_builtin_array_call_args(id flat.NodeId, node flat.Node, info CallInfo) bool {
 	if node.children_count == 0 || info.arg_offset != 0 {
 		return false
@@ -17105,6 +17113,13 @@ fn (mut tc TypeChecker) check_builtin_array_call_args(id flat.NodeId, node flat.
 		return false
 	}
 	method := callee.value
+	if method in builtin_array_fully_checked_methods {
+		// This call skips the generic method path, which checks the receiver first.
+		// Without that, nothing in a receiver like `[a(), b()]` is checked: its errors
+		// are lost, and markused, which follows the call edges that the checker records,
+		// drops `a` and `b`.
+		tc.check_node(receiver_id)
+	}
 	short_struct_start := if method == 'prepend' {
 		1
 	} else if method == 'insert' {
@@ -17566,13 +17581,15 @@ fn (mut tc TypeChecker) record_array_compare_callback_param_errors(method string
 }
 
 fn (mut tc TypeChecker) check_array_sort_call(id flat.NodeId, node flat.Node, callee flat.Node) {
+	receiver_id := tc.a.child(&callee, 0)
+	// Both sort call paths return early, so check the receiver before the comparator.
+	tc.check_node(receiver_id)
 	explicit_count := int(node.children_count) - 1
 	if explicit_count > 1 {
 		tc.record_error_at(.call_arg_mismatch, 'expected 0 or 1 argument, but got ${explicit_count}', id, tc.method_call_name_pos(node, callee))
 		return
 	}
 	if explicit_count == 0 {
-		receiver_id := tc.a.child(&callee, 0)
 		receiver_type := unalias_and_unwrap_pointer_type(tc.resolve_type(receiver_id))
 		if array_type := array_like_type_for_method(receiver_type, 'sort') {
 			elem_type := unalias_type(array_type.elem_type)
@@ -17592,7 +17609,6 @@ fn (mut tc TypeChecker) check_array_sort_call(id flat.NodeId, node flat.Node, ca
 				arg.pos)
 			return
 		}
-		receiver_id := tc.a.child(&callee, 0)
 		receiver_type := unalias_and_unwrap_pointer_type(tc.resolve_type(receiver_id))
 		array_type := array_like_type_for_method(receiver_type, 'sort') or { return }
 		mut param_types := []Type{cap: 2}
