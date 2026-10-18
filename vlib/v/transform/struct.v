@@ -1244,7 +1244,7 @@ fn (t &Transformer) lookup_checker_struct_info(name_id u32) ?StructInfo {
 			name:        field.name
 			typ:         field_type
 			raw_typ:     field_type
-			is_embedded: field.name == flat.source_type_name(field_type)
+			is_embedded: field.is_embed
 		}
 	}
 	return StructInfo{
@@ -1393,14 +1393,9 @@ fn (t &Transformer) is_embedded_field(field FieldInfo) bool {
 	return field.is_embedded
 }
 
-fn field_decl_is_embedded(name string, typ_id u32) bool {
-	typ := flat.source_type_name(typ_id)
-	if name == '' || typ == '' {
-		return false
-	}
-	short_typ := if typ.contains('.') { typ.all_after_last('.') } else { typ }
-	short_name := if name.contains('.') { name.all_after_last('.') } else { name }
-	return short_name == short_typ
+fn field_decl_is_embedded(field flat.Node) bool {
+	meta := field.generic_params()
+	return meta.len > 0 && meta[0].contains('e')
 }
 
 // transform_assoc_expr transforms transform assoc expr data for transform.

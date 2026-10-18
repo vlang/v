@@ -173,6 +173,9 @@ fn main() {
 }
 ```
 
+Struct fields are encoded under their names or `@[json: '...']` keys, including fields
+named after builtin types such as `i64` and `string`. Embedded structs contribute their fields.
+
 Enums encode as strings by default. Use `@[json_as_number]` on an enum to emit
 its integer value instead.
 

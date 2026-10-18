@@ -3802,7 +3802,7 @@ fn (mut t Transformer) collect_types() {
 						typ:          field_typ_source_id
 						raw_typ:      raw_field_typ
 						default_expr: default_expr
-						is_embedded:  field_decl_is_embedded(f.value, raw_field_typ)
+						is_embedded:  field_decl_is_embedded(*f)
 					}
 				}
 				info := StructInfo{
