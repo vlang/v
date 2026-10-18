@@ -12,7 +12,7 @@ Source annotations and dynamically resolved call types remain separate.
 
 Inside a closure that captures a `@[heap]` struct receiver with `[mut receiver]`,
 assigning the captured receiver to a new variable retains its reference, including when the
-receiver is enclosed in parentheses.
+receiver is enclosed in parentheses or is the final value of an `unsafe` block.
 Mutations through that variable reach the same heap object. Attributes are resolved on the
 receiver's own declaration, including through aliases and generic instantiations; importing a
 heap struct with the same short name does not change a non-heap receiver's value-copy behavior.

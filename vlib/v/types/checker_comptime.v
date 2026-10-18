@@ -18418,7 +18418,7 @@ fn (mut tc TypeChecker) decl_assign_inferred_type(rhs_id flat.NodeId) Type {
 		}
 		return smartcast
 	}
-	ident_id := tc.unwrap_paren_expr_id(rhs_id)
+	ident_id := tc.unwrap_value_expr_id(rhs_id)
 	ident := tc.a.node(ident_id)
 	if ident.kind == .ident {
 		raw_type := tc.resolve_type(ident_id)
