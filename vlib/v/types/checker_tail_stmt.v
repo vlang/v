@@ -10780,6 +10780,36 @@ fn is_container_type(typ Type) bool {
 	return clean is Array || clean is ArrayFixed || clean is Map
 }
 
+// mut_arg_container_layouts_differ reports whether the array or map `actual`, passed
+// as `mut` or `shared`, stores its elements differently from the container behind the
+// parameter type `expected`. The callee works on the caller's container, so it cannot
+// be converted element by element like a value argument: a `[]Item` is not a
+// `mut []Named` (or `mut ?[]Named`, or `shared []Named`).
+fn (tc &TypeChecker) mut_arg_container_layouts_differ(actual Type, expected Type) bool {
+	mut clean_actual := unalias_type(actual)
+	if clean_actual is Pointer {
+		clean_actual = unalias_type(clean_actual.base_type)
+	}
+	mut clean_expected := unalias_type(expected)
+	if clean_expected is Pointer {
+		clean_expected = unalias_type(clean_expected.base_type)
+	}
+	if clean_expected is OptionType && clean_actual !is OptionType {
+		clean_expected = unalias_type(clean_expected.base_type)
+		if clean_expected is Pointer {
+			clean_expected = unalias_type(clean_expected.base_type)
+		}
+	}
+	if !is_container_type(clean_actual) || !is_container_type(clean_expected) {
+		return false
+	}
+	if clean_actual is ArrayFixed && clean_expected is Array {
+		// A fixed array passed as a `mut` dynamic array keeps its elements as they are.
+		return tc.container_elem_layouts_differ(clean_actual.elem_type, clean_expected.elem_type)
+	}
+	return tc.container_elem_layouts_differ(clean_actual, clean_expected)
+}
+
 // container_elem_layouts_differ reports whether otherwise compatible array element,
 // map key or map value types store their elements differently. A container is not
 // converted element by element, so unlike plain values the types must match: aliases
