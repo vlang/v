@@ -1569,7 +1569,7 @@ fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.No
 			if qv_source_id := t.resolve_interface_pattern(flat.source_type_id(node.value), clean_type0_source_id) {
 				qv := flat.source_type_name(qv_source_id)
 
-				if sc := t.find_smartcast(t.expr_key(expr_id)) {
+				if sc := t.find_smartcast_for_expr(expr_id) {
 					target_source_id := t.trim_pointer_type(t.smartcast_target_type(sc))
 
 					if t.variant_names_match(target_source_id, qv_source_id) {

@@ -287,7 +287,7 @@ fn (t &Transformer) return_ierror_expr_type(id flat.NodeId) u32 {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return u32(0)
 	}
-	if sc := t.find_smartcast(t.expr_key(id)) {
+	if sc := t.find_smartcast_for_expr(id) {
 		return t.return_ierror_type_candidate(t.smartcast_target_type(sc)) or { u32(0) }
 	}
 	node := t.a.nodes[int(id)]

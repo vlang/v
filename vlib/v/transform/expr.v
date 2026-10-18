@@ -3034,7 +3034,7 @@ fn (mut t Transformer) lower_type_pattern_membership(lhs_id flat.NodeId, rhs fla
 	}
 	mut patterns := []string{cap: int(rhs.children_count)}
 	mut sum_name := ''
-	if sc := t.find_smartcast(t.expr_key(lhs_id)) {
+	if sc := t.find_smartcast_for_expr(lhs_id) {
 		sum_name = flat.source_type_name(t.trim_pointer_type(t.smartcast_target_type(sc)))
 	}
 	if sum_name.len == 0 {

@@ -8492,7 +8492,7 @@ fn (mut t Transformer) unshadowed_generic_call_decl_key(id flat.NodeId, node fla
 		}
 		// Calls in a generic match branch must bind to the concrete variant, even
 		// when the sum type declares a same-named generic method.
-		if sc := t.find_smartcast(t.expr_key(base_id)) {
+		if sc := t.find_smartcast_for_expr(base_id) {
 			target_type_source_id := t.smartcast_target_type(sc)
 			target_type := flat.source_type_name(target_type_source_id)
 			if target_type_source_id != 0 {
