@@ -473,7 +473,13 @@ fn (mut tc TypeChecker) check_comptime_static_method_var_call(id flat.NodeId, no
 					param_index)
 				source := tc.mut_pointer_slot_arg_source_type(arg_id)
 				value := if source is Pointer { source.base_type } else { source }
-				if expected is Pointer && !tc.type_compatible(value, expected.base_type) {
+				// The transformer passes the embedded struct of the first argument
+				// when that is what the method expects (`&ctx->veb__Context`), see
+				// transform_comptime_method_embedded_arg.
+				passes_embedded := arg_index == 0 && !has_implicit_ctx && expected is Pointer
+					&& tc.receiver_embeds(value, expected)
+				if expected is Pointer && !passes_embedded
+					&& !tc.type_compatible(value, expected.base_type) {
 					mut actual_ref := source
 					if source !is Pointer {
 						actual_ref = Type(Pointer{
@@ -3603,6 +3609,10 @@ fn (mut tc TypeChecker) check_array_literal_element_types(id flat.NodeId, node f
 		return
 	}
 	mut array_type := unalias_type(tc.resolve_type(id))
+	// A literal with a different number of values than an expected `[N]T` keeps its
+	// own dynamic type: its elements are still checked against `T` below, but the
+	// literal must not satisfy the fixed array it does not fill.
+	mut record_array_type := true
 	if node.typ == 0 {
 		if expected := tc.expected_context_for_expr(id) {
 			context_type := unalias_type(contextual_payload_type(expected) or { expected })
@@ -3611,9 +3621,11 @@ fn (mut tc TypeChecker) check_array_literal_element_types(id flat.NodeId, node f
 				tc.register_synth_type(id, context_type)
 			} else if context_type is ArrayFixed {
 				array_type = context_type
+				record_array_type = false
 				if expected_len := tc.fixed_array_len_value(context_type) {
 					if expected_len == node.children_count {
 						tc.register_synth_type(id, context_type)
+						record_array_type = true
 					}
 				}
 			}
@@ -3641,7 +3653,9 @@ fn (mut tc TypeChecker) check_array_literal_element_types(id flat.NodeId, node f
 	// type after checking has moved on resolves a parameter that shadowed a
 	// module-level function to that function instead, and types the literal as an
 	// array of function pointers.
-	tc.register_synth_type(id, array_type)
+	if record_array_type {
+		tc.register_synth_type(id, array_type)
+	}
 	if elem_type is Unknown {
 		return
 	}
@@ -8467,14 +8481,15 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 	if rhs_node.kind == .enum_val && lhs_node.kind != .enum_val {
 		if unalias_type(rhs_enum_expected) is Enum {
 			rhs_type = tc.resolve_expr(rhs_id, rhs_enum_expected)
-		} else if rhs_enum_expected !is Unknown && rhs_enum_expected !is Void {
+		} else if rhs_enum_expected !is Unknown && rhs_enum_expected !is Void
+			&& tc.enum_field_value_depth == 0 {
 			tc.record_error_at(.assignment_mismatch, 'expected type is not an enum (`${tc.diagnostic_expr_type_name(lhs_id, rhs_enum_expected)}`)', id, rhs_node.pos)
 			tc.register_synth_type(id, Type(void_))
 			return
 		}
 	}
 	if lhs_node.kind == .enum_val && rhs_node.kind != .enum_val && unalias_type(rhs_type) !is Enum
-		&& rhs_type !is Unknown && rhs_type !is Void {
+		&& rhs_type !is Unknown && rhs_type !is Void && tc.enum_field_value_depth == 0 {
 		tc.record_error_at(.assignment_mismatch, 'expected type is not an enum (`${tc.diagnostic_expr_type_name(rhs_id, rhs_type)}`)', id, lhs_node.pos)
 		tc.register_synth_type(id, Type(void_))
 		return

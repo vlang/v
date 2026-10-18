@@ -1011,6 +1011,7 @@ pub mut:
 	lock_depth             int
 	autolocked_map         string // the `shared` map locked by the operation being checked, see SharedMapAutolock
 	comptime_static_depth  int
+	enum_field_value_depth int // > 0 while an enum field initializer is checked
 	errors                 []TypeError
 	notices                []TypeError
 	resolved_call_names    []&CachedName // node_id -> resolved function name
@@ -18371,7 +18372,11 @@ fn (mut tc TypeChecker) check_enum_field_values(node_id flat.NodeId, node flat.N
 					}
 				}
 			}
+			// `.base + 2` refers to an earlier field of this enum, so its `.base`
+			// is not an enum shorthand that needs an enum-typed operand.
+			tc.enum_field_value_depth++
 			tc.check_node(value_id)
+			tc.enum_field_value_depth--
 			value_node := tc.a.node(value_id)
 			if value_node.kind == .enum_val {
 				if duplicate_name {
@@ -21024,9 +21029,41 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 				value_type = clean.elem_type
 				key_type = if int(val_id) >= 0 { Type(int_) } else { value_type }
 			}
+		} else if container_type := tc.comptime_static_reflected_iterable_type(tc.a.child(&node,
+			2), var_name, field_cases)
+		{
+			// `for v in obj.$(field.name)` iterates the reflected field itself; when
+			// every field the loop can reach has the same type, so do its bindings.
+			has_val := int(val_id) >= 0
+			mut elem_type := Type(Unknown{})
+			mut index_type := Type(int_)
+			clean := unalias_type(unwrap_pointer(container_type))
+			if clean is Array {
+				elem_type = clean.elem_type
+			} else if clean is ArrayFixed {
+				elem_type = clean.elem_type
+			} else if clean is Map {
+				elem_type = clean.value_type
+				index_type = clean.key_type
+			} else if clean is String {
+				elem_type = Type(u8_)
+			}
+			if elem_type !is Unknown {
+				value_type = for_in_ref_binding_type(elem_type, node.op == .amp)
+				key_type = if has_val { index_type } else { value_type }
+			}
 		}
-		tc.insert_loop_var(key_id, key_type)
-		tc.insert_loop_var(val_id, value_type)
+		if node.op == .amp && value_type !is Unknown {
+			if int(val_id) >= 0 {
+				tc.insert_loop_var(key_id, key_type)
+				tc.insert_mut_loop_var(val_id, value_type)
+			} else {
+				tc.insert_mut_loop_var(key_id, key_type)
+			}
+		} else {
+			tc.insert_loop_var(key_id, key_type)
+			tc.insert_loop_var(val_id, value_type)
+		}
 		for i in header .. node.children_count {
 			tc.check_comptime_static_body(tc.a.child(&node, i), var_name, loop_kind, field_cases, value_cases)
 		}
@@ -21390,6 +21427,32 @@ fn (tc &TypeChecker) comptime_static_reflected_field_expr_type(id flat.NodeId, v
 		}
 	}
 	return tc.parse_type(first_source_id)
+}
+
+// comptime_static_reflected_iterable_type returns the type a `for in` loop iterates when its
+// container is a reflected field (`obj.$(field.name)`, optionally with an `or` fallback).
+fn (tc &TypeChecker) comptime_static_reflected_iterable_type(id flat.NodeId, var_name string, field_cases ComptimeStaticFieldCases) ?Type {
+	if !tc.valid_node_id(id) {
+		return none
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind == .or_expr && node.value !in ['?', '!'] && node.children_count > 0 {
+		typ := tc.comptime_static_reflected_field_expr_type(tc.a.child(&node, 0), var_name,
+			field_cases)?
+		if typ is OptionType {
+			return typ.base_type
+		}
+		if typ is ResultType {
+			return typ.base_type
+		}
+		return typ
+	}
+	typ := tc.comptime_static_reflected_field_expr_type(id, var_name, field_cases)?
+	if typ is OptionType || typ is ResultType {
+		// Iterating an unhandled option is reported once the loop is unrolled.
+		return none
+	}
+	return typ
 }
 
 fn (mut tc TypeChecker) check_comptime_static_deferred_metadata_if(node flat.Node, var_name string, loop_kind string, field_cases ComptimeStaticFieldCases, value_cases ComptimeStaticValueCases) {
