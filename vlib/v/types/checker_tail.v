@@ -12203,6 +12203,12 @@ fn (tc &TypeChecker) visible_mutation_fn_param(decl VisibleMutationFnDecl, param
 	return none
 }
 
+// visible_mutation_fn_param_is_mut reports whether parameter `param_idx` of `decl` is `mut`.
+fn (tc &TypeChecker) visible_mutation_fn_param_is_mut(decl VisibleMutationFnDecl, param_idx int) bool {
+	param := tc.visible_mutation_fn_param(decl, param_idx) or { return false }
+	return param.is_mut
+}
+
 fn storage_param_sources_clone(source map[string][]int) map[string][]int {
 	mut cloned := map[string][]int{}
 	for name, params in source {
@@ -12892,10 +12898,13 @@ fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name s
 				for i in 1 .. node.children_count {
 					arg_id := tc.a.child(&node, i)
 					arg := tc.a.nodes[int(arg_id)]
-					if !arg.is_mut {
+					nested_target_idx := i - 1 + param_offset
+					// Transform lowers `mut x` arguments in place, dropping the marker, and a
+					// later storage query can read that lowered body. The callee's `mut`
+					// parameter is what lets it write through the argument.
+					if !arg.is_mut && !tc.visible_mutation_fn_param_is_mut(decl, nested_target_idx) {
 						continue
 					}
-					nested_target_idx := i - 1 + param_offset
 					if tc.storage_lvalue_is_rooted_at_param_alias(arg_id, target_name, aliases, target_param_idx) {
 						if nested_target_idx !in nested_target_idxs {
 							nested_target_idxs << nested_target_idx
