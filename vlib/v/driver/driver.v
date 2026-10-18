@@ -13961,6 +13961,10 @@ pub fn run(args []string) {
 				b.step('eval')
 				b.print_report()
 				return
+			} $else {
+				eprintln('eval support is not compiled into this executable')
+				eprintln('Rebuild with `v -compile-backend eval self` or `-all-backends`.')
+				exit(1)
 			}
 		}
 		_ = flat.TypeTextList{ ids: pre_tc.ierror_impl_names() }.names()

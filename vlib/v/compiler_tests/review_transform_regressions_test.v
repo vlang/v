@@ -15,6 +15,10 @@ fn review_v3_ownership_bin_path() string {
 	return os.join_path(os.temp_dir(), 'v3_review_transform_ownership_regressions_test')
 }
 
+fn review_v3_eval_bin_path() string {
+	return os.join_path(os.temp_dir(), 'v3_review_transform_eval_regressions_test')
+}
+
 fn testsuite_begin() {
 	v3_bin := review_v3_bin_path()
 	if os.exists(v3_bin) {
@@ -23,6 +27,10 @@ fn testsuite_begin() {
 	ownership_bin := review_v3_ownership_bin_path()
 	if os.exists(ownership_bin) {
 		os.rm(ownership_bin) or {}
+	}
+	eval_bin := review_v3_eval_bin_path()
+	if os.exists(eval_bin) {
+		os.rm(eval_bin) or {}
 	}
 	// The test runner executes test functions in parallel. Build both shared
 	// compiler fixtures here so workers never race while replacing the same bin.
@@ -50,6 +58,20 @@ fn build_v3_review_transform_ownership() string {
 	build :=
 		os.exec([vexe, '-prealloc', '-d', 'ownership', '-path', '${vlib_dir}' + '|@vlib|@vmodules',
 			'-o', v3_bin, '${v3_src}'])
+	assert build.exit_code == 0, build.output
+	return v3_bin
+}
+
+// build_v3_review_transform_eval builds a compiler that includes the eval backend,
+// which plain `vlib/v/v.v` builds omit. Only one test uses it, so it is built on demand.
+fn build_v3_review_transform_eval() string {
+	v3_bin := review_v3_eval_bin_path()
+	if os.exists(v3_bin) {
+		return v3_bin
+	}
+	build :=
+		os.exec([vexe, '-prealloc', '-compile-backend', 'eval', '-path', '${vlib_dir}' +
+			'|@vlib|@vmodules', '-o', v3_bin, '${v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -3381,8 +3403,7 @@ fn main() {
 }
 
 fn test_eval_backend_rejects_active_defer_results() {
-	v3_bin := build_v3_review_transform()
-	run_bad_backend(v3_bin, 'eval_defer_result', 'eval', 'fn f() int {
+	source := 'fn f() int {
 	defer {
 		assert $res() == 42
 	}
@@ -3392,7 +3413,13 @@ fn test_eval_backend_rejects_active_defer_results() {
 fn main() {
 	println(int_str(f()))
 }
-', '`\$res()` is not supported by the V3 eval backend')
+'
+	// A compiler built without the eval backend must refuse `-b eval` instead of
+	// silently producing nothing.
+	run_bad_backend(build_v3_review_transform(), 'eval_backend_not_compiled_in', 'eval',
+		source, 'eval support is not compiled into this executable')
+	run_bad_backend(build_v3_review_transform_eval(), 'eval_defer_result', 'eval', source,
+		'`\$res()` is not supported by the V3 eval backend')
 }
 
 fn test_wasm_backend_rejects_defer_results_before_codegen() {
