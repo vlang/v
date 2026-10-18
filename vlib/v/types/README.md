@@ -169,6 +169,9 @@ are all excluded by conditional compilation reports a missing-test error. When t
 has no active function declarations, this diagnostic points to the start of the file;
 a helper-only file points to its helper function.
 
+Map literals cannot use postfix `!`: they are ordinary map values and do not return a Result.
+This rule also applies to map literals in constant declarations.
+
 Generic specialization requests, signature argument lists, and inferred type bindings carry source
 IDs. Generic parameter names remain declaration strings. Numeric list queries preserve caller-owned
 array storage; the specialization miss cache invalidates when local or parent bindings grow or its
