@@ -15440,33 +15440,27 @@ pub fn (tc &TypeChecker) sum_variant_type_for_pattern(sum_name_id u32, variant_n
 	}
 	mut cache := tc.type_cache
 	key := (u64(sum_name_id) << 32) | u64(variant_name_id)
-	entries := cache.sum_variant_pattern_entries[key] or { []SumVariantPatternEntry{} }
-	for entry in entries {
-		if entry.file == tc.cur_file && entry.module_name == tc.cur_module {
-			if entry.result == 0 { return none }
-			return entry.result
+	if file_entries := cache.sum_variant_pattern_entries[tc.cur_file] {
+		if module_entries := file_entries.modules[tc.cur_module] {
+			if result := module_entries.values[key] {
+				if result == 0 { return none }
+				return result
+			}
 		}
 	}
 	result := tc.sum_variant_type_for_pattern_depth(sum_name_id, variant_name_id, 0) or { u32(0) }
-	// Resolution may recursively populate this pair; acquire its current array again.
-	mut current_entries := cache.sum_variant_pattern_entries[key] or { []SumVariantPatternEntry{} }
-	entry := SumVariantPatternEntry{
-		file:        tc.cur_file.clone()
-		module_name: tc.cur_module.clone()
-		result:      result
+	// Resolution can populate this context recursively; acquire its current tables again.
+	mut file_entries := cache.sum_variant_pattern_entries[tc.cur_file] or {
+		created := &SumVariantPatternFileEntries{}
+		cache.sum_variant_pattern_entries[tc.cur_file.clone()] = created
+		created
 	}
-	mut replaced := false
-	for i, current in current_entries {
-		if current.file == tc.cur_file && current.module_name == tc.cur_module {
-			current_entries[i] = entry
-			replaced = true
-			break
-		}
+	mut module_entries := file_entries.modules[tc.cur_module] or {
+		created := &SumVariantPatternModuleEntries{}
+		file_entries.modules[tc.cur_module.clone()] = created
+		created
 	}
-	if !replaced {
-		current_entries << entry
-	}
-	cache.sum_variant_pattern_entries[key] = current_entries
+	module_entries.values[key] = result
 	if result == 0 { return none }
 	return result
 }
