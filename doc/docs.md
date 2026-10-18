@@ -7436,6 +7436,8 @@ On Windows the hook runs under Git Bash, MSYS2 or Cygwin, which resolve `v`
 through `env`. That only works if `v` is visible there: after `v symlink`,
 a native symlink covers all shells, and where only the `v.bat` fallback can
 be created, a POSIX shell shim is installed next to it for the same purpose.
+The shim preserves arguments and treats spaces, dollar signs, backticks, and apostrophes
+in the compiler's path literally.
 If the hook fails with `env: 'v': No such file or directory`, re-run
 `v symlink` with a current V and restart the shell.
 
