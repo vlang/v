@@ -17391,6 +17391,22 @@ fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type_id u3
 				value := t.transform_sum_value_for_type(id, target_payload_source_id)
 				return t.make_optional_some(value, optional_target_source_id_5)
 			}
+			// A `[]Item` stored as a `?[]Named` (or `?[]Shape`) is converted element by
+			// element, as for a plain `[]Named` target; wrapped as is, the option would
+			// hold concrete values where interface or sum values are read. A `?[]Item`
+			// has its payload converted when it is present, as `return` does.
+			if payload_conversion && !t.is_optional_type_name(source_type_source_id_3) {
+				if value := t.transform_array_value_for_dynamic_target(id, target_payload_source_id) {
+					return t.make_optional_some(value, optional_target_source_id_5)
+				}
+			}
+			if payload_conversion && t.is_optional_type_name(source_type_source_id_3)
+				&& !same_option_source {
+				if value := t.transform_optional_array_value_for_option_target(id, source_type_source_id_3,
+					optional_target_source_id_5) {
+					return value
+				}
+			}
 			if payload_conversion && t.is_optional_type_name(source_type_source_id_3)
 				&& t.is_sum_type_name(target_payload_source_id) {
 				if t.sum_target_accepts_variant_type(target_payload_source_id, source_type_source_id_3) {
@@ -27088,6 +27104,16 @@ fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.
 		if t.is_fixed_array_type(target_type_source_id) {
 			if lowered := t.transform_fixed_array_literal_for_type(cast_child_id, child, target_type_source_id) {
 				return lowered
+			}
+		}
+	} else if target_type.starts_with('[]') {
+		// `[]Named(items)` (or `[][]Named(rows)`) boxes every element, like an implicit
+		// `[]Named` target; a plain C cast would leave concrete values where interface
+		// values are read.
+		cast_elem_type := flat.source_type_id(target_type.trim_left('[]'))
+		if t.is_interface_type(cast_elem_type) || t.is_sum_type_name(cast_elem_type) {
+			if converted := t.transform_array_value_for_dynamic_target(cast_child_id, target_type_source_id) {
+				return converted
 			}
 		}
 	}
