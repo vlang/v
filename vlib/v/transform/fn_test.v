@@ -222,8 +222,10 @@ fn test_zeroed_staging_values_keep_heap_structs_on_the_stack() {
 	mut a := flat.FlatAst.new()
 	decl := a.add_node(flat.Node{ kind: .struct_decl, value: 'HeapValue' })
 	mut tc := types.TypeChecker.new(&a)
+	// Type attributes are found through the checker's declaration index,
+	// which collect builds from the declarations in the AST.
+	tc.collect(&a)
 	tc.structs['HeapValue'] = []types.StructField{}
-	tc.type_declaration_ids['HeapValue'] = [int(decl)]
 	tc.declaration_attributes[int(decl)] = ['heap']
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	assert t.heap_attr_struct_type(flat.source_type_id('HeapValue'))
