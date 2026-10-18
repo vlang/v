@@ -173,5 +173,9 @@ fn test_precise_gc_keeps_explicit_c_compiler_selection() {
 		target:      windows_target
 	})
 	assert windows_selection.implicit_tcc == ''
-	assert windows_selection.c_compiler == 'gcc'
+	// On Windows the platform compiler is resolved to an absolute path, so a child
+	// re-exec can find it (v3_platform_c_compiler_command). Without gcc on PATH the
+	// helper falls back to the bare name, which keeps the basename check valid.
+	assert windows_selection.c_compiler == v3_platform_c_compiler_command('windows')
+	assert os.file_name(windows_selection.c_compiler).starts_with('gcc')
 }

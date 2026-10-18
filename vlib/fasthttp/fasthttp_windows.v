@@ -60,6 +60,7 @@ mut:
 	pos        int
 }
 
+@[heap]
 pub struct Server {
 pub:
 	family                  net.AddrFamily = .ip6

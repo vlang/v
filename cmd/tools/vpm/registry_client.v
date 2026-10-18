@@ -59,16 +59,25 @@ fn registry_get(url string, path string) !string {
 	return resp.body
 }
 
-// decode_registry_module reads one module body. A body that is valid JSON but
-// names no module is refused, because a registry that reports not-found in the
-// body rather than in the status line produces exactly that, and decoding it
-// would hand back a module with an empty name.
-fn decode_registry_module(url string, name string, body string) !RegistryModule {
+// decode_registry_module reads one module body and checks it against the
+// requested route. A body that is valid JSON but names no module is refused,
+// because a registry that reports not-found in the body rather than in the
+// status line produces exactly that, and decoding it would hand back a module
+// with an empty name. A body naming another module or, when a version was
+// requested, another version is refused for the same reason: the caller must
+// be able to trust that the response belongs to the requested route.
+fn decode_registry_module(url string, name string, version string, body string) !RegistryModule {
 	info := json2.decode[RegistryModule](body) or {
 		return error('the registry at `${url}` did not describe `${name}` as JSON: ${err.msg()}')
 	}
 	if info.name == '' {
 		return error('the registry at `${url}` holds no metadata for `${name}`.')
+	}
+	if info.name != name {
+		return error('the registry at `${url}` answered for `${name}` with metadata for `${info.name}`.')
+	}
+	if version != '' && info.version != version {
+		return error('the registry at `${url}` answered `${info.name}@${info.version}` for `${name}@${version}`.')
 	}
 	return info
 }
@@ -101,7 +110,7 @@ pub fn fetch_registry_versions(url string, name string) ![]string {
 // returned as a zero-valued RegistryModule, because a caller resolving a module
 // has to be able to go on to the next candidate registry.
 pub fn fetch_registry_latest(url string, name string) !RegistryModule {
-	return decode_registry_module(url, name, registry_get(url, '/${name}/@latest')!)
+	return decode_registry_module(url, name, '', registry_get(url, '/${name}/@latest')!)
 }
 
 // fetch_registry_info returns the metadata for `name` at `version`, as served by
@@ -112,7 +121,7 @@ pub fn fetch_registry_latest(url string, name string) !RegistryModule {
 // version. It is never returned as a zero-valued RegistryModule, so a caller can
 // tell a version that was never published from one whose metadata is empty.
 pub fn fetch_registry_info(url string, name string, version string) !RegistryModule {
-	return decode_registry_module(url, name, registry_get(url, '/${name}/@v/${version}.info')!)
+	return decode_registry_module(url, name, version, registry_get(url, '/${name}/@v/${version}.info')!)
 }
 
 // fetch_registry_config returns the configuration document the registry at `url`

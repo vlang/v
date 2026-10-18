@@ -1,0 +1,13 @@
+vlib/v/checker/tests/fixed_array_param_literal_len_err.vv:7:16: error: cannot use `[]int` as `[4]int` in argument 1 to `take4`
+    5 | fn main() {
+    6 |     println(take4([1, 2, 3, 4]))
+    7 |     println(take4([1, 2]))
+      |                   ~~~~~~
+    8 |     println(take4([1, 2, 3, 4, 5]))
+    9 | }
+vlib/v/checker/tests/fixed_array_param_literal_len_err.vv:8:16: error: cannot use `[]int` as `[4]int` in argument 1 to `take4`
+    6 |     println(take4([1, 2, 3, 4]))
+    7 |     println(take4([1, 2]))
+    8 |     println(take4([1, 2, 3, 4, 5]))
+      |                   ~~~~~~~~~~~~~~~
+    9 | }

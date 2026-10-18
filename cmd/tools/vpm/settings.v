@@ -74,13 +74,14 @@ fn init_settings() VpmSettings {
 	is_no_inc := os.getenv('VPM_NO_INCREMENT') != ''
 	is_dbg := os.getenv('VPM_DEBUG') != ''
 	is_ci := os.getenv('CI') != ''
+	skip_client_home_setup := is_registry_command(args)
 
 	mut logger := &log.Log{}
 	logger.set_output_stream(os.stderr())
 	if is_dbg {
 		logger.set_level(.debug)
 	}
-	if !is_ci && !is_dbg {
+	if !is_ci && !is_dbg && !skip_client_home_setup {
 		// Log by default, but only in the global location, no matter if --local was passed:
 		cache_path := os.join_path(global_vmodules_path, '.cache')
 		os.mkdir_all(cache_path, mode: 0o700) or { panic(err) }

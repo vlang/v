@@ -1,5 +1,80 @@
 module builtin
 
+// string_index_byte searches exactly size readable bytes, including embedded NULs.
+@[inline]
+fn string_index_byte(data &u8, size int, needle u8) int {
+	if size <= 0 {
+		return -1
+	}
+	$if freestanding || vinix || native || v2_native_windows_pe_minimal ? {
+		for i in 0 .. size {
+			if unsafe { data[i] } == needle {
+				return i
+			}
+		}
+		return -1
+	} $else {
+		found := unsafe { C.memchr(data, i32(needle), usize(size)) }
+		if isnil(found) {
+			return -1
+		}
+		return int(usize(found) - usize(data))
+	}
+}
+
+// string_bytes_equal compares readable byte spans without allocating or reading past size.
+@[inline]
+fn string_bytes_equal(a &u8, b &u8, size int) bool {
+	$if prod && !tinyc && !msvc && !native {
+		if size >= 0 && size <= 16 {
+			if size >= 8 {
+				mut ah := u64(0)
+				mut at := u64(0)
+				mut bh := u64(0)
+				mut bt := u64(0)
+				// memcpy permits unaligned views; these fixed-size copies become loads.
+				unsafe {
+					C.memcpy(&ah, a, 8)
+					C.memcpy(&at, a + size - 8, 8)
+					C.memcpy(&bh, b, 8)
+					C.memcpy(&bt, b + size - 8, 8)
+				}
+				return ((ah ^ bh) | (at ^ bt)) == 0
+			}
+			if size >= 4 {
+				mut ah := u32(0)
+				mut at := u32(0)
+				mut bh := u32(0)
+				mut bt := u32(0)
+				unsafe {
+					C.memcpy(&ah, a, 4)
+					C.memcpy(&at, a + size - 4, 4)
+					C.memcpy(&bh, b, 4)
+					C.memcpy(&bt, b + size - 4, 4)
+				}
+				return ((ah ^ bh) | (at ^ bt)) == 0
+			}
+			if size == 0 {
+				return true
+			}
+			return unsafe { ((a[0] ^ b[0]) | (a[size >> 1] ^ b[size >> 1]) | (a[size - 1] ^ b[size - 1])) == 0 }
+		}
+	}
+	return unsafe { C.memcmp(a, b, usize(size)) == 0 }
+}
+
+// string_content_equal preserves vmemcmp's guarded and traced string comparison.
+@[inline]
+fn string_content_equal(a &u8, b &u8, size int) bool {
+	$if trace_vmemcmp ? {
+		return unsafe { vmemcmp(a, b, size) == 0 }
+	}
+	if size == 0 || u64(a) <= 0xFFFF || u64(b) <= 0xFFFF {
+		return true
+	}
+	return string_bytes_equal(a, b, size)
+}
+
 // vstrlen returns the V length of the C string `s` (0 terminator is not counted).
 // The C string is expected to be a &u8 pointer.
 @[inline; unsafe]
