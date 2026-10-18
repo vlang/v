@@ -212,3 +212,63 @@ fn test_named_variant_payload_binding() {
 	}
 	assert node_depth(cur) == 3
 }
+
+fn chain_depth(n &Node) int {
+	if n == unsafe { nil } {
+		return 0
+	}
+	return 1 + chain_depth(n.next)
+}
+
+struct FixedNodes {
+	items [1]Node
+}
+
+// `&w.items[0]` addresses the inline storage of the local `w` (a fixed array
+// local itself can only be referenced in `unsafe`).
+fn test_address_of_an_element_of_a_fixed_array_field() {
+	mut saved := unsafe { &Node(nil) }
+	for f in [2, 3, 5] {
+		x := Node{
+			next:   saved
+			factor: f
+		}
+		w := FixedNodes{
+			items: [Node{
+				next:   &x
+				factor: f * 10
+			}]!
+		}
+		saved = &w.items[0]
+	}
+	assert saved.factor == 50
+	assert chain_depth(saved) == 6
+}
+
+fn test_address_stored_through_an_aggregate_projection() {
+	mut saved := Holder{}
+	for f in [2, 3, 5] {
+		x := Node{
+			next:   saved.next
+			factor: f
+		}
+		saved = [Holder{&x}][0]
+	}
+	assert saved.next.factor == 5
+	assert holder_depth(saved) == 3
+}
+
+fn test_address_read_through_a_pointer_to_an_aggregate() {
+	mut saved := Holder{}
+	for f in [2, 3, 5] {
+		x := Node{
+			next:   saved.next
+			factor: f
+		}
+		h := Holder{&x}
+		p := &h
+		saved = Holder{p.next}
+	}
+	assert saved.next.factor == 5
+	assert holder_depth(saved) == 3
+}

@@ -10136,8 +10136,9 @@ fn (t &Transformer) escape_explicit_address_sources(id flat.NodeId, amp_sources 
 	return with_root
 }
 
-// escape_address_root_is_value reports whether the variable at the root of `&v` or
-// `&v.field` holds the addressed storage itself, rather than a pointer to it.
+// escape_address_root_is_value reports whether the variable at the root of `&v`,
+// `&v.field` or `&v.fixed[i]` holds the addressed storage itself, rather than a
+// pointer to it.
 fn (t &Transformer) escape_address_root_is_value(id flat.NodeId) bool {
 	mut current := id
 	for int(current) >= 0 && int(current) < t.a.nodes.len {
@@ -10145,13 +10146,22 @@ fn (t &Transformer) escape_address_root_is_value(id flat.NodeId) bool {
 		if node.kind == .ident {
 			return isnil(t.tc) || !escape_type_is_pointer(t.tc.resolve_type(current))
 		}
-		if node.kind !in [.paren, .selector] || node.children_count == 0 {
+		if node.kind !in [.paren, .selector, .index] || node.children_count == 0 {
 			return false
 		}
-		if node.kind == .selector && !isnil(t.tc)
-			&& escape_type_is_pointer(t.tc.resolve_type(t.a.child(&node, 0))) {
-			// `&p.field` through a pointer addresses the pointee, not `p`.
-			return false
+		if node.kind in [.selector, .index] {
+			if isnil(t.tc) {
+				return node.kind == .selector
+			}
+			base_type := t.tc.resolve_type(t.a.child(&node, 0))
+			if escape_type_is_pointer(base_type) {
+				// `&p.field` through a pointer addresses the pointee, not `p`.
+				return false
+			}
+			if node.kind == .index && types.unalias_type(base_type) !is types.ArrayFixed {
+				// A dynamic array or a map keeps its elements in storage of its own.
+				return false
+			}
 		}
 		current = t.a.child(&node, 0)
 	}
@@ -11270,7 +11280,8 @@ fn (mut t Transformer) mark_outer_scope_address_store(lhs_id flat.NodeId, rhs_id
 }
 
 // escape_stored_address_sources returns the locals whose addresses an assigned value
-// stores itself: `&v`, a literal, cast or branch value holding one, or a pointer alias.
+// stores itself: `&v`, a literal, cast or branch value holding one, a field or element of
+// such a value, or a pointer alias.
 // Unlike escape_aggregate_address_sources, it does not follow call results: a call
 // like `C.realpath(&buf[0], &out[0])` rarely returns the address it was given.
 fn (t &Transformer) escape_stored_address_sources(id flat.NodeId, amp_sources map[string][]string, ptr_aliases map[string]string) []string {
@@ -11289,6 +11300,30 @@ fn (t &Transformer) escape_stored_address_sources(id flat.NodeId, amp_sources ma
 		}
 		.ident {
 			return escape_alias_sources(node.value, amp_sources, ptr_aliases)
+		}
+		.selector, .index {
+			// A part of an aggregate keeps the addresses that it holds:
+			// `saved = [Holder{next: &x}][0]`.
+			if node.children_count == 0
+				|| (!isnil(t.tc) && escape_type_is_scalar_value(t.tc.resolve_type(id))) {
+				return []string{}
+			}
+			base_id := t.a.child(node, 0)
+			base_sources := t.escape_stored_address_sources(base_id, amp_sources, ptr_aliases)
+			if isnil(t.tc) || !escape_type_is_pointer(t.tc.resolve_type(base_id)) {
+				return base_sources
+			}
+			// Through a pointer, the part is read from the pointee: it holds what the
+			// pointee holds, not the address of the pointee.
+			mut held := []string{}
+			for pointee in base_sources {
+				for source_name in escape_alias_sources(pointee, amp_sources, ptr_aliases) {
+					if source_name !in held {
+						held << source_name
+					}
+				}
+			}
+			return held
 		}
 		.or_expr, .if_expr, .comptime_if, .match_stmt, .block {
 			children = t.escape_value_tails(id)
