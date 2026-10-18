@@ -252,6 +252,27 @@ fn test_fastc_result_interface_payload_returns_runtime() {
 	assert run.output.trim_space() == 'result interface payloads work', run.output
 }
 
+fn test_fastc_result_pointer_payload_returns_runtime() {
+	$if !macos && !linux {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'fastc_result_pointer_payload_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	program := os.join_path(root, 'program')
+	fixture := os.real_path(os.join_path(@DIR, '../../tests/options/result_pointer_error_payload_test.v'))
+	build := cmdexec.run_in_merged_with_env(@VEXE, ['-b', 'fastc', '-gc', 'none', '-nocache', '-o',
+		program, fixture], os.real_path(os.join_path(@DIR, '../../../..')), {
+		'VEXE':                   @VEXE
+		'VFLAGS':                 ''
+		'VOSARGS':                ''
+		'V_MACOS_V3_NO_FALLBACK': '1'
+	})
+	assert build.exit_code == 0, build.output
+	run := cmdexec.run(program, [])
+	assert run.exit_code == 0, run.output
+}
+
 // A one-line definition (every interface's) ends at its own `};`. Ending it at the next
 // definition's `\n};` made a move carry the following struct along without updating its
 // index, and a later move then spliced `struct os__File` into the middle of another struct.

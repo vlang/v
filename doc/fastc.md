@@ -128,6 +128,7 @@ the following statement. Option/Result tuple fallbacks can return an enclosing f
 Grouped Option/Result propagation preserves payload types and early returns, including in call
 arguments.
 Optional sum-type lookups preserve `none` fallbacks and successful payloads.
+Typed pointers to `IError` implementations can be successful `voidptr` Result payloads.
 Direct integer tuple returns store each component at its declared width, including literal values.
 Assertions preserve the following fallback statement when it begins with a unary operator.
 Standalone `unsafe` blocks preserve local scopes. Forward labels remain reachable after a return
