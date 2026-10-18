@@ -45,7 +45,7 @@ fn assert_driver_n_diagnostics(result os.Result, hidden bool) {
 	assert result.output.contains('warning:'), result.output
 	assert result.output.contains('notice flag warning'), result.output
 	assert result.output.contains('notice:') == !hidden, result.output
-	assert result.output.contains('unused variable: `notice_only`') == !hidden, result.output
+	assert result.output.contains('unused parameter: `notice_only`') == !hidden, result.output
 }
 
 fn test_driver_n_hides_notices() {
@@ -59,14 +59,19 @@ fn test_driver_n_hides_notices() {
 	source_dir := os.join_path(root, 'input')
 	os.mkdir_all(source_dir)!
 	source := os.join_path(source_dir, 'main.v')
+	// An unused parameter is a notice. (An unused variable, which this used, is a warning,
+	// as in V1, so `-n` keeps it.)
 	os.write_file(source, r'module main
 
 import os
 
-fn main() {
-	notice_only := 1
-	$compile_warn("notice flag warning")
+fn show(notice_only int) {
 	println(os.args[1..].join("|"))
+}
+
+fn main() {
+	$compile_warn("notice flag warning")
+	show(1)
 }
 ')!
 	output := os.join_path(root, 'program')
@@ -89,9 +94,11 @@ fn main() {
 	directory := cmdexec.run_in(v3_bin, ['-n', '-nocolor', '-o', output, '.'], source_dir)
 	assert_driver_n_diagnostics(directory, true)
 
+	// VFLAGS is merged into the arguments by the `v` launcher (cmd/v `merged_v_args`); the
+	// compiler built from vlib/v/v.v reads only its own arguments.
 	mut environment := os.environ()
 	environment['VFLAGS'] = '-n'
-	assert_driver_n_diagnostics(run_driver_with_environment(v3_bin, args, environment), true)
+	assert_driver_n_diagnostics(run_driver_with_environment(@VEXE, args, environment), true)
 
 	// A second -n after the run target belongs to the program, not V.
 	run := cmdexec.run(v3_bin, ['-n', '-nocolor', 'run', source, '-n'])
@@ -99,9 +106,12 @@ fn main() {
 	assert '-n' in run.output.split_into_lines(), run.output
 
 	error_source := os.join_path(root, 'error.v')
-	os.write_file(error_source, 'fn main() {
-	notice_only := 1
+	os.write_file(error_source, 'fn show(notice_only int) {
 	println(missing_value)
+}
+
+fn main() {
+	show(1)
 }
 ')!
 	// A hidden notice must not consume the one diagnostic slot and
@@ -284,8 +294,11 @@ pub fn profiled_answer() int {
 ")!
 	no_main_c := os.join_path(root, 'profile_no_main.c')
 	no_main_profile := os.join_path(root, 'profile_no_main.txt')
-	no_main_compile := cmdexec.run(v3_bin, ['-silent', '-d', 'no_main', '-profile', no_main_profile,
-		'-o', no_main_c, no_main_source])
+	// The C is linked by a plain `cc` below, without the runtime objects that V links in
+	// itself: the Boehm GC (the default since 02ab53a091) and the native segfault handler
+	// object (aae3f51f7d).
+	no_main_compile := cmdexec.run(v3_bin, ['-silent', '-gc', 'none', '-d', 'no_segfault_handler',
+		'-d', 'no_main', '-profile', no_main_profile, '-o', no_main_c, no_main_source])
 	assert no_main_compile.exit_code == 0, no_main_compile.output
 	no_main_c_source := os.read_file(no_main_c)!
 	no_main_init_body :=
@@ -1038,15 +1051,23 @@ fn test_driver_doc_detection_skips_all_option_values() {
 	assert file_list_run.exit_code == 0, file_list_run.output
 	assert file_list_run.output == 'option-value-doc\n', file_list_run.output
 
-	for option in ['-message-limit', '-dump-c-flags'] {
-		option_case := os.join_path(root, option.trim_left('-'))
-		os.mkdir_all(option_case)!
-		output := os.join_path(option_case, 'out')
-		result := run_driver_in_work_folder(v3_bin, ['-silent', option, 'doc', '-o', output, source], option_case)
-		assert result.exit_code == 0, '${option}: ${result.output}'
-		assert os.is_file(output), option
-		assert option != '-dump-c-flags' || os.is_file(os.join_path(option_case, 'doc'))
-	}
+	dump_case := os.join_path(root, 'dump-c-flags')
+	os.mkdir_all(dump_case)!
+	dump_output := os.join_path(dump_case, 'out')
+	dump_result := run_driver_in_work_folder(v3_bin, ['-silent', '-dump-c-flags', 'doc', '-o',
+		dump_output, source], dump_case)
+	assert dump_result.exit_code == 0, dump_result.output
+	assert os.is_file(dump_output)
+	assert os.is_file(os.join_path(dump_case, 'doc'))
+
+	// `-message-limit` takes a number (156d46a47f), so `doc` is an invalid limit; it is
+	// still read as the option's value, not as the `doc` command.
+	limit_case := os.join_path(root, 'message-limit')
+	os.mkdir_all(limit_case)!
+	limit := run_driver_in_work_folder(v3_bin, ['-silent', '-message-limit', 'doc', '-o',
+		os.join_path(limit_case, 'out'), source], limit_case)
+	assert limit.exit_code != 0, limit.output
+	assert limit.output.contains('invalid message limit: doc'), limit.output
 }
 
 fn test_driver_no_skip_unused_bypasses_warm_cgen_cache() {
@@ -1768,8 +1789,10 @@ fn test_explicit_c_backend_retains_complete_cached_translation_unit() {
 	mut retained_c := ''
 	for build_name in ['cold', 'warm'] {
 		output := os.join_path(root, build_name)
-		compile := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', '-b', 'c', '-o',
-			output, source], environment)
+		// The retained C is linked by a plain `cc` below, without the runtime objects that V
+		// links in itself (Boehm GC since 02ab53a091, the segfault handler since aae3f51f7d).
+		compile := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', '-gc', 'none',
+			'-d', 'no_segfault_handler', '-b', 'c', '-o', output, source], environment)
 		assert compile.exit_code == 0, compile.output
 		retained_c = output + '.c'
 		assert os.is_file(retained_c)
@@ -2116,7 +2139,8 @@ fn test_driver_platform_pseudo_uses_selected_target_arch() {
 			target_arch, '-o', output, source])
 		assert compile.exit_code == 0, compile.output
 		generated_c := os.read_file(output)!
-		assert generated_c.contains('{"${platform}", ${platform.len}'), generated_c
+		// String literals are declared with the `_SL(id, "text", len)` macro (f2b0baa611).
+		assert generated_c.contains(', "${platform}", ${platform.len});'), generated_c
 		assert generated_c.contains('selected-${platform}'), generated_c
 		other_platform := if platform == 'amd64' { 'arm64' } else { 'amd64' }
 		assert !generated_c.contains('selected-${other_platform}'), generated_c
@@ -2130,7 +2154,8 @@ fn test_wasm_backend_defaults_target_unless_explicit() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	v3_bin := build_driver_cli_v3(root)
+	// A compiler built from vlib/v/v.v includes WebAssembly only on request (a35cd0a69f).
+	v3_bin := build_driver_cli_v3_with_flags(root, ['-compile-backend', 'wasm'])
 
 	default_dir := os.join_path(root, 'default_target')
 	os.mkdir_all(default_dir) or { panic(err) }
