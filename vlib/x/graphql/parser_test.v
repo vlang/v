@@ -224,3 +224,37 @@ fn test_variable_definition_parse() ! {
 	assert result.kind == Kind.document
 	assert result.token_count == 23
 }
+
+fn test_sdl_parse() ! {
+	body := '
+		type User {
+			id: ID!
+			name: String!
+			age: Int
+		}
+
+		type Query {
+			me: User
+		}
+	'
+
+	result := parse(body, none)!
+	assert result.kind == Kind.document
+	assert result.definitions.len == 2
+
+	user_def := result.definitions[0]
+	assert user_def is ObjectTypeDefinitionNode
+	user_type := user_def as ObjectTypeDefinitionNode
+	assert user_type.name.value == 'User'
+
+	fields := user_type.fields or { panic('expected fields') }
+	assert fields.len == 3
+	assert fields[0].name.value == 'id'
+	assert fields[1].name.value == 'name'
+	assert fields[2].name.value == 'age'
+
+	query_def := result.definitions[1]
+	assert query_def is ObjectTypeDefinitionNode
+	query_type := query_def as ObjectTypeDefinitionNode
+	assert query_type.name.value == 'Query'
+}
