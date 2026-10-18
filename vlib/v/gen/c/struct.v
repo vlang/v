@@ -3592,7 +3592,11 @@ fn shared_array_inner_type_text(raw_id u32) ?u32 {
 	if !shape.has(.padded) && !shape.has(.array_type) && !shape.has(.pointer) {
 		return none
 	}
-	mut clean := trimmed_space(flat.source_type_name(raw_id))
+	text := flat.source_type_name(raw_id)
+	if !type_text_may_be_shared_array(text) {
+		return none
+	}
+	mut clean := trimmed_space(text)
 	for clean.starts_with('&') {
 		clean = trimmed_space(clean[1..])
 	}
@@ -3600,6 +3604,32 @@ fn shared_array_inner_type_text(raw_id u32) ?u32 {
 		return none
 	}
 	return shared_inner_type_text_bytes(trimmed_space(clean[2..]))
+}
+
+// type_text_may_be_shared_array scans `&... []shared ` in place. It rejects
+// every text that shared_array_inner_type_text rejects, without its copies.
+@[direct_array_access]
+fn type_text_may_be_shared_array(text string) bool {
+	mut i := 0
+	for {
+		for i < text.len && text[i] in [` `, `\n`, `\t`, `\v`, `\f`, `\r`] {
+			i++
+		}
+		if i < text.len && text[i] == `&` {
+			i++
+			continue
+		}
+		break
+	}
+	if i + 1 >= text.len || text[i] != `[` || text[i + 1] != `]` {
+		return false
+	}
+	i += 2
+	for i < text.len && text[i] in [` `, `\n`, `\t`, `\v`, `\f`, `\r`] {
+		i++
+	}
+	return i + 7 <= text.len && text[i] == `s` && text[i + 1] == `h` && text[i + 2] == `a`
+		&& text[i + 3] == `r` && text[i + 4] == `e` && text[i + 5] == `d` && text[i + 6] == ` `
 }
 
 fn shared_array_raw_is_ptr(raw_id u32) bool {
@@ -5447,6 +5477,46 @@ fn (g &FlatGen) find_struct_decl(type_name_id u32) ?StructDeclInfo {
 	return g.find_struct_decl_fallback(type_name_id)
 }
 
+// StructFieldIndexBase maps each large checked field list, by the identity of
+// its storage, to the position of every field name. The checker's struct
+// tables do not change during codegen, so the index is built once before the
+// body workers start and then shared by all of them read-only.
+@[heap]
+struct StructFieldIndexBase {
+mut:
+	by_fields map[u64]map[string]int
+}
+
+// struct_field_list_key identifies a field list by its storage and length.
+@[inline]
+fn struct_field_list_key(fields []types.StructField) u64 {
+	return u64(voidptr(fields.data)) | (u64(fields.len) << 48)
+}
+
+// new_struct_field_index_base indexes the checked field lists that
+// struct_field_type_cached would otherwise index once per worker batch.
+fn new_struct_field_index_base(structs map[string][]types.StructField) &StructFieldIndexBase {
+	mut base := &StructFieldIndexBase{}
+	for _, fields in structs {
+		if fields.len < 32 || fields.len >= 65536 {
+			continue
+		}
+		key := struct_field_list_key(fields)
+		if key in base.by_fields {
+			continue
+		}
+		mut indexed := map[string]int{}
+		indexed.reserve(u32(fields.len))
+		for i, field in fields {
+			if field.name !in indexed {
+				indexed[field.name] = i
+			}
+		}
+		base.by_fields[key] = indexed
+	}
+	return base
+}
+
 // StructDeclPrefCache memoizes find_struct_decl_preferred per module context.
 // The struct declaration tables are immutable during codegen; each worker owns
 // a private instance (new_parallel_worker_config).
@@ -5752,7 +5822,17 @@ fn (g &FlatGen) struct_field_type_cached(type_name_id u32, field_name string) ?t
 	}
 	fields := g.struct_fields_for_type(type_name_id) or { return none }
 	mut field_index := -1
-	if cache_enabled && fields.len >= 32 {
+	mut shared_index_hit := false
+	if cache_enabled && fields.len >= 32 && !isnil(g.struct_field_index_base) {
+		// Checked field lists are frozen during codegen: one shared index serves
+		// every worker and module context.
+		if indexed := g.struct_field_index_base.by_fields[struct_field_list_key(fields)] {
+			field_index = indexed[field_name] or { -1 }
+			shared_index_hit = true
+		}
+	}
+	if shared_index_hit {
+	} else if cache_enabled && fields.len >= 32 {
 		// The fields and module context are already memoized. Index large
 		// contexts once per worker instead of rescanning them on every miss.
 		if type_id !in cache.field_indices {

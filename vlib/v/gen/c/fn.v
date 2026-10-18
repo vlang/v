@@ -393,7 +393,7 @@ fn (g &FlatGen) fn_gen_selection_info() (DirectArrayAccessFns, DirectArrayAccess
 		mut has_direct_array_access := false
 		mut has_ignore_overflow := false
 		for raw_attr in directive.generic_params() {
-			attr_name := raw_attr.all_before(':').trim_space()
+			attr_name := cgen_attr_name_view(raw_attr)
 			if attr_name == 'direct_array_access' && !g.force_bounds_checking {
 				has_direct_array_access = true
 			} else if attr_name == 'ignore_overflow' {
@@ -2338,7 +2338,7 @@ fn (g &FlatGen) fn_decl_c_attribute(node_id flat.NodeId) string {
 	attrs := g.fn_decl_attributes(node_id)
 	mut c_attrs := []string{}
 	for raw_attr in attrs {
-		match raw_attr.all_before(':').trim_space() {
+		match cgen_attr_name_view(raw_attr) {
 			'_constructor' { c_attrs << 'constructor' }
 			'_destructor' { c_attrs << 'destructor' }
 			else {}
@@ -2355,7 +2355,7 @@ fn (g &FlatGen) fn_decl_c_attribute(node_id flat.NodeId) string {
 fn (g &FlatGen) fn_decl_inlining_prefix(node_id flat.NodeId) string {
 	mut inline_hint := false
 	for raw_attr in g.fn_decl_attributes(node_id) {
-		attr := raw_attr.all_before(':').trim_space()
+		attr := cgen_attr_name_view(raw_attr)
 		if attr == 'noinline' {
 			return if g.ccompiler == 'msvc' {
 				'__declspec(noinline) '
@@ -2388,7 +2388,7 @@ fn (g &FlatGen) fn_decl_naked_prefix(node_id flat.NodeId) string {
 		return ''
 	}
 	for raw_attr in g.fn_decl_attributes(node_id) {
-		if raw_attr.all_before(':').trim_space() == '_naked' {
+		if cgen_attr_name_view(raw_attr) == '_naked' {
 			return '__attribute__((naked)) '
 		}
 	}

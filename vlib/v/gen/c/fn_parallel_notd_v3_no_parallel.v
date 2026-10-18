@@ -611,6 +611,23 @@ fn optional_support_selection_thread(arg voidptr) voidptr {
 	return unsafe { nil }
 }
 
+// StructFieldIndexArgs carries the shared struct field index built beside the
+// pre-dispatch helpers; `scope` holds its storage until cgen output is done.
+struct StructFieldIndexArgs {
+	tc &types.TypeChecker
+mut:
+	scope voidptr
+	base  &StructFieldIndexBase = unsafe { nil }
+}
+
+fn struct_field_index_thread(arg voidptr) voidptr {
+	mut a := unsafe { &StructFieldIndexArgs(arg) }
+	a.scope = cgen_worker_scope_begin(true)
+	a.base = new_struct_field_index_base(a.tc.structs)
+	cgen_worker_scope_leave(a.scope)
+	return unsafe { nil }
+}
+
 fn unresolved_call_optional_thread(arg voidptr) voidptr {
 	mut w := unsafe { &FlatGen(arg) }
 	usw := time.new_stopwatch()
@@ -3271,6 +3288,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		qualified_enum_method_cache:        &ContextStringLookupCache{}
 		import_type_cache:                  &ImportTypeCache{}
 		struct_decl_pref_cache:             &StructDeclPrefCache{}
+		struct_field_index_base:            g.struct_field_index_base
 		qualified_struct_c_types_by_suffix: g.qualified_struct_c_types_by_suffix
 		qualified_struct_c_types_ready:     g.qualified_struct_c_types_ready
 		embedded_fields_by_type:            g.embedded_fields_by_type
@@ -3845,6 +3863,10 @@ fn (mut g FlatGen) run_pre_dispatch_parallel(no_parallel bool) bool {
 		// its exact-cost pass use the otherwise-idle pool while the independent
 		// fixed-storage scan finishes on a helper thread.
 		mut psw := time.new_stopwatch()
+		mut field_index_args := &StructFieldIndexArgs{
+			tc: g.tc
+		}
+		field_index_thread := spawn struct_field_index_thread(voidptr(field_index_args))
 		fixed_storage_thread := spawn fixed_storage_scan_thread(voidptr(fs_worker))
 		fixed_array_thread := spawn fixed_array_support_thread(voidptr(fixed_array_worker))
 		call_optional_thread := spawn unresolved_call_optional_thread(voidptr(call_optional_worker))
@@ -3879,6 +3901,11 @@ fn (mut g FlatGen) run_pre_dispatch_parallel(no_parallel bool) bool {
 		_ = fixed_array_thread.wait()
 		_ = optional_thread.wait()
 		_ = call_optional_thread.wait()
+		_ = field_index_thread.wait()
+		g.struct_field_index_base = field_index_args.base
+		if field_index_args.scope != unsafe { nil } {
+			g.parallel_worker_scopes << field_index_args.scope
+		}
 		g.timing_profile('  [ttime]     cg fs wait     ${f64(psw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		if overlap_wrappers {
 			psw.restart()

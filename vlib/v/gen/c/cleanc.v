@@ -63,6 +63,31 @@ fn c_owner_name_view(name string) string {
 	return name
 }
 
+// cgen_attr_name_view borrows the name of a raw attribute: the text before its
+// first `:`, without surrounding whitespace. It is the allocation-free spelling
+// of `raw.all_before(':').trim_space()`.
+@[direct_array_access]
+fn cgen_attr_name_view(raw string) string {
+	mut end := raw.len
+	for i in 0 .. raw.len {
+		if raw[i] == `:` {
+			end = i
+			break
+		}
+	}
+	mut start := 0
+	for start < end && raw[start] in [` `, `\n`, `\t`, `\v`, `\f`, `\r`] {
+		start++
+	}
+	for end > start && raw[end - 1] in [` `, `\n`, `\t`, `\v`, `\f`, `\r`] {
+		end--
+	}
+	if start == 0 && end == raw.len {
+		return raw
+	}
+	return unsafe { raw.substr_unsafe(start, end) }
+}
+
 fn manual_stdlib_c_headers() string {
 	// Some platform headers expose formatted I/O and memory functions as fortified
 	// macros. Undefine those macros before replaying V1's manual declarations.
@@ -1039,8 +1064,9 @@ mut:
 	// (preseed_fn_ptr_type has optional-typedef side effects the body-walk
 	// preseed does not); armed only for the contiguous pre-dispatch preseed
 	// block, while no arena scope can be freed and reused.
-	preseed_sig_type_seen              &PreseedTypeSeen     = unsafe { nil }
-	struct_decl_pref_cache             &StructDeclPrefCache = unsafe { nil }
+	preseed_sig_type_seen              &PreseedTypeSeen      = unsafe { nil }
+	struct_decl_pref_cache             &StructDeclPrefCache  = unsafe { nil }
+	struct_field_index_base            &StructFieldIndexBase = unsafe { nil }
 	qualified_struct_c_types_by_suffix flat.TypeTextListBindings
 	qualified_struct_c_types_ready     bool
 	unused_param_seen                  &UnusedParamSeen = unsafe { nil }
@@ -3814,6 +3840,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.scoped_fn_output_path = ''
 	g.scoped_fn_output_paths = []string{}
 	g.const_short_index = &ConstShortIndex{}
+	g.struct_field_index_base = unsafe { nil }
 	g.mut_recv_facts = &FnNameFactCache{}
 	g.local_global_shadow_facts = &ContextNameFactCache{}
 	g.local_global_suffix_names.clear()
@@ -12325,7 +12352,16 @@ fn (mut g FlatGen) register_fn_decl_node(name string, module_name string, id fla
 	if short !in g.fn_decl_nodes_by_short {
 		g.fn_decl_nodes_by_short[short] = id
 	}
-	module_key := '${module_name}\x01${short}'
+	if module_name.len + 1 + short.len > module_key_view_cap {
+		module_key := '${module_name}\x01${short}'
+		if module_key !in g.fn_decl_nodes_by_module_short {
+			g.fn_decl_nodes_by_module_short[module_key] = id
+		}
+		return
+	}
+	// The map insert clones the key, so build it in a stack buffer.
+	mut buf := [module_key_view_cap]u8{}
+	module_key := unsafe { joined_key_view(&buf[0], module_name, 1, short, 0, '') }
 	if module_key !in g.fn_decl_nodes_by_module_short {
 		g.fn_decl_nodes_by_module_short[module_key] = id
 	}
@@ -12333,7 +12369,7 @@ fn (mut g FlatGen) register_fn_decl_node(name string, module_name string, id fla
 
 fn cgen_decl_attr_arg(attrs []string, attr_name string) ?string {
 	for raw_attr in attrs {
-		if raw_attr.all_before(':').trim_space() != attr_name || !raw_attr.contains(':') {
+		if cgen_attr_name_view(raw_attr) != attr_name || !raw_attr.contains(':') {
 			continue
 		}
 		value := raw_attr.all_after(':').trim_space().trim('\'"')
@@ -12346,7 +12382,7 @@ fn cgen_decl_attr_arg(attrs []string, attr_name string) ?string {
 
 fn cgen_decl_has_attr(attrs []string, attr_name string) bool {
 	for raw_attr in attrs {
-		if raw_attr.all_before(':').trim_space() == attr_name {
+		if cgen_attr_name_view(raw_attr) == attr_name {
 			return true
 		}
 	}
