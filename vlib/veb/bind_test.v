@@ -75,6 +75,25 @@ fn test_bind_decodes_a_json_body_into_the_struct() {
 	assert ctx.res.body == 'amy:amy@example.com:20:a:true'
 }
 
+fn test_bind_recognizes_json_media_types_without_case_or_parameters() {
+	for content_type in ['Application/JSON', 'application/json; charset=utf-8',
+		'APPLICATION/JSON ; charset=UTF-8'] {
+		ctx := bind_request(.post, '/signup', valid_signup_json(), content_type)
+		assert ctx.res.status_code == int(http.Status.ok), content_type
+		assert ctx.res.body == 'amy:amy@example.com:20:a:true', content_type
+	}
+}
+
+fn test_bind_does_not_treat_json_substrings_as_the_json_media_type() {
+	for content_type in ['application/jsonp', 'application/json-seq', 'text/application/json',
+		'text/plain; note=application/json'] {
+		ctx := bind_request(.post, '/search?name=query&age=20', '{"name":"body","age":30}',
+			content_type)
+		assert ctx.res.status_code == int(http.Status.ok), content_type
+		assert ctx.res.body == 'query:20', content_type
+	}
+}
+
 fn test_bind_rejects_a_missing_required_field() {
 	ctx := bind_request(.post, '/signup', '{"email":"amy@example.com","password":"twelve-chars-here","age":20}',
 		'application/json')

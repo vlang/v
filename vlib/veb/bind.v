@@ -51,7 +51,7 @@ fn (ctx &Context) is_json_request() bool {
 		return false
 	}
 	content_type := ctx.req.header.get(.content_type) or { return false }
-	return content_type.contains('application/json')
+	return content_type.all_before(';').trim_space().to_lower() == 'application/json'
 }
 
 // bind_json decodes a JSON object body into `T`, checking `required` against
