@@ -109,6 +109,16 @@ fn main() {
 	assert c_code.contains('main__max_len = '), c_code
 	assert c_code.contains('main__address_power = '), c_code
 	assert c_code.contains('main__float_power = '), c_code
+	// `max_len` also names a private builtin const, which sizes the SortedMap
+	// nodes; the builtin consts derived from it must not use the main const.
+	mut builtin_max_len_uses := 0
+	for line in c_code.split_into_lines() {
+		if line.contains('builtin__max_len') || line.contains('builtin__children_bytes') {
+			builtin_max_len_uses++
+			assert !line.contains('main__max_len'), line
+		}
+	}
+	assert builtin_max_len_uses > 0, c_code
 }
 
 fn test_struct_const_with_sum_type_uses_portable_runtime_init() {

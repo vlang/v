@@ -4535,7 +4535,7 @@ fn (tc &TypeChecker) fixed_array_reference_has_static_storage(id flat.NodeId) bo
 	if tc.ident_is_global_binding(name) {
 		return true
 	}
-	qname := tc.qualify_name(name)
+	qname := tc.shadowed_builtin_const_key(name) or { tc.qualify_name(name) }
 	typ := tc.const_types[qname] or { tc.const_types[name] or { return false } }
 	return typ is ArrayFixed
 }

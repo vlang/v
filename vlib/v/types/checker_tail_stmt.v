@@ -8911,6 +8911,10 @@ fn (mut tc TypeChecker) check_ident(id flat.NodeId, node flat.Node) {
 		tc.register_synth_type(id, tc.parse_type(flat.source_type_id('IError')))
 		return
 	}
+	if key := tc.shadowed_builtin_const_key(node.value) {
+		tc.register_synth_type(id, tc.const_types[key] or { builtin_void_type })
+		return
+	}
 	if typ := tc.const_types[qname] {
 		tc.register_synth_type(id, typ)
 		return
@@ -11307,6 +11311,9 @@ pub fn (tc &TypeChecker) const_int_value_in_module(name string, module_name stri
 			// An import alias takes precedence over a module with the same name.
 			candidates << alias_key
 		}
+	}
+	if key := tc.shadowed_builtin_const_key_in_module(name, module_name) {
+		candidates << key
 	}
 	candidates << name
 	if module_name != '' && module_name != 'main' && module_name != 'builtin'
@@ -17750,6 +17757,9 @@ fn (tc &TypeChecker) type_from_simple_expr_text(expr string) ?Type {
 	if typ := tc.file_scope.lookup(clean) {
 		return typ
 	}
+	if key := tc.shadowed_builtin_const_key(clean) {
+		return tc.const_types[key] or { builtin_void_type }
+	}
 	qname := tc.qualify_name(clean)
 	if qname != clean {
 		if typ := tc.file_scope.lookup(qname) {
@@ -18901,6 +18911,9 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 				if typ := tc.file_scope.lookup(qname) {
 					return typ
 				}
+			}
+			if key := tc.shadowed_builtin_const_key(node.value) {
+				return tc.const_types[key] or { builtin_void_type }
 			}
 			if typ := tc.const_types[qname] {
 				return typ

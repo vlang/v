@@ -5185,20 +5185,12 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 			for i in 0 .. node.children_count {
 				f := g.a.child_node(node_ref, i)
 				if node_kind_id(f) == 66 && (f.children_count > 0 || f.typ != 0) {
-					qname := g.const_storage_name(cur_module, f.value)
 					value_id := if f.children_count > 0 {
 						g.a.child(f, 0)
 					} else {
 						g.a.child(node_ref, i)
 					}
-					g.const_vals[qname] = value_id
-					g.const_modules[qname] = cur_module
-					g.const_files[qname] = cur_file
-					if (cur_module.len == 0 || cur_module == 'main' || cur_module == 'builtin') && f.value !in g.const_vals {
-						g.const_vals[f.value] = value_id
-						g.const_modules[f.value] = cur_module
-						g.const_files[f.value] = cur_file
-					}
+					g.register_const_value(cur_module, cur_file, f.value, value_id)
 				}
 			}
 			continue
@@ -10354,15 +10346,7 @@ pub fn module_const_init_order(a &flat.FlatAst, tc &types.TypeChecker) []string 
 					if field.kind != .const_field || field.children_count == 0 {
 						continue
 					}
-					qname := g.const_storage_name(cur_module, field.value)
-					g.const_vals[qname] = a.child(field, 0)
-					g.const_modules[qname] = cur_module
-					g.const_files[qname] = cur_file
-					if cur_module in ['', 'main', 'builtin'] && field.value !in g.const_vals {
-						g.const_vals[field.value] = a.child(field, 0)
-						g.const_modules[field.value] = cur_module
-						g.const_files[field.value] = cur_file
-					}
+					g.register_const_value(cur_module, cur_file, field.value, a.child(field, 0))
 				}
 			}
 			.import_decl {
@@ -14739,7 +14723,46 @@ fn (g &FlatGen) const_storage_name(module_name string, name string) string {
 	if module_name.len > 0 && module_name != 'main' && module_name != 'builtin' && !name.contains('.') {
 		return '${module_name}.${name}'
 	}
+	if module_name == 'builtin' && !name.contains('.') {
+		// A main const of the same name moved this builtin const off the shared
+		// bare key; see register_const_value.
+		if owner := g.const_modules[name] {
+			if owner != 'builtin' {
+				builtin_key := 'builtin.${name}'
+				if builtin_key in g.const_vals {
+					return builtin_key
+				}
+			}
+		}
+	}
 	return name
+}
+
+// register_const_value records the initializer of the const `name` declared in
+// `module_name`. The consts of `main` and `builtin` share bare storage keys, so
+// that main code can use the builtin consts unqualified. When both declare the
+// same name, the main const keeps the bare key and the builtin const moves to
+// `builtin.name`, as in the checker (TypeChecker.const_decl_key).
+fn (mut g FlatGen) register_const_value(module_name string, file string, name string, value_id flat.NodeId) {
+	mut key := g.const_storage_name(module_name, name)
+	if key == name && !name.contains('.') {
+		if owner := g.const_modules[name] {
+			owner_is_builtin := owner == 'builtin'
+			if module_name == 'builtin' && !owner_is_builtin {
+				key = 'builtin.${name}'
+			} else if module_name != 'builtin' && owner_is_builtin {
+				builtin_key := 'builtin.${name}'
+				g.const_vals[builtin_key] = g.const_vals[name]
+				g.const_modules[builtin_key] = owner
+				if owner_file := g.const_files[name] {
+					g.const_files[builtin_key] = owner_file
+				}
+			}
+		}
+	}
+	g.const_vals[key] = value_id
+	g.const_modules[key] = module_name
+	g.const_files[key] = file
 }
 
 // const_primary_name supports const primary name handling for FlatGen.
