@@ -18,6 +18,13 @@ import models
 fn read() !int { return 20 }
 fn maybe() ?int { return 10 }
 fn next() ?int { return maybe()? + 1 }
+fn text(ok bool) ?string { if !ok { return none }; return "value" }
+fn result_text(ok bool) !string { if !ok { return error("missing") }; return "result" }
+fn optional_concat(ok bool) ?string { return "map[" + text(ok)? + "]" + text(true)? }
+fn result_concat(ok bool) !string { return "map[" + result_text(ok)! + "]" + result_text(true)! }
+fn arithmetic() ?int { return maybe()? + maybe()? * 2 }
+fn identity(value string) string { return value }
+fn concat_argument() ?string { return identity("[" + text(true)?) }
 fn main() {
 	mut pointer := ?&models.Record(none)
 	if _ := pointer { assert false }
@@ -27,6 +34,12 @@ fn main() {
 	if _ := local { assert false }
 	assert read()! & 7 == 4
 	assert (next() or { 0 }) == 11
+	assert (optional_concat(true) or { "bad" }) == "map[value]value"
+	assert (optional_concat(false) or { "none" }) == "none"
+	assert (result_concat(true) or { "bad" }) == "map[result]result"
+	assert (result_concat(false) or { "error" }) == "error"
+	assert (arithmetic() or { 0 }) == 30
+	assert (concat_argument() or { "bad" }) == "[value"
 	println("optional pointer prefixes work")
 }
 ') or { panic(err) }

@@ -4199,7 +4199,10 @@ fn (g &Parser) render_call_argument_expression(tokens []FastcExpressionToken, ex
 		return g.render_call_argument_expression(normalized, expected_type_source_id)
 	}
 	if g.selfhost && tokens.len > 1 && tokens.last().tok == .not
-		&& !fastc_trailing_not_marks_fixed_array_literal(tokens) {
+		&& !fastc_trailing_not_marks_fixed_array_literal(tokens)
+		&& fastc_or_operand_token_start(tokens[..tokens.len - 1]) == 0 {
+		// A postfix propagation belongs to its final operand; the binary/concatenation
+		// renderer owns a longer expression such as `"map[" + key()?`.
 		// `x.m()!` as an operand (`assert a.b().m()! == 0`): lower the propagation here, as
 		// render_comparison_operand does, rather than leave a raw `!` in the C. A value the
 		// parameter boxes (a sum-type variant, an interface) is left to the paths below.
