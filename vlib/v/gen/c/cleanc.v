@@ -1140,6 +1140,7 @@ struct NativeSourceContextDirective {
 struct ObjectiveCppSourceRequest {
 	module                 string
 	source_path            string
+	defined_fns            []string
 	local_context          []NativeSourceContextDirective
 	source_macros_possible bool
 }
@@ -6287,6 +6288,7 @@ fn (mut g FlatGen) collect_c_directive_at(node_idx int, module_name string, node
 					g.objective_cpp_source_requests << ObjectiveCppSourceRequest{
 						module:                 module_name
 						source_path:            source_path
+						defined_fns:            c_source_defined_fn_names(source_text)
 						source_macros_possible: g.native_source_context_has_macro_inputs(module_name)
 						local_context:          (g.native_source_contexts[module_name] or {
 							[]NativeSourceContextDirective{}
@@ -9606,6 +9608,86 @@ fn c_ident_char(ch u8) bool {
 	return (ch >= `a` && ch <= `z`) || (ch >= `A` && ch <= `Z`) || (ch >= `0` && ch <= `9`) || ch == `_`
 }
 
+const c_source_non_fn_keywords = ['if', 'for', 'while', 'switch', 'catch', 'return', 'sizeof',
+	'defined', 'decltype', 'alignof', '_Alignof', 'typeof', '__attribute__', '__declspec']
+
+// c_source_defined_fn_names returns the names of the functions that a C, C++ or
+// Objective-C source defines: an identifier directly followed by a parameter list
+// and then a body. Calls and prototypes are not followed by `{`.
+fn c_source_defined_fn_names(text string) []string {
+	src := c_strip_comments(text)
+	mut names := []string{}
+	mut i := 0
+	mut line_start := true
+	for i < src.len {
+		ch := src[i]
+		if ch == `\n` {
+			line_start = true
+			i++
+			continue
+		}
+		if line_start && ch == `#` {
+			// Skip a preprocessor line, including its backslash continuations.
+			for i < src.len && !(src[i] == `\n` && src[i - 1] != `\\`) {
+				i++
+			}
+			continue
+		}
+		if ch == ` ` || ch == `\t` || ch == `\r` {
+			i++
+			continue
+		}
+		line_start = false
+		if ch == `"` || ch == `'` {
+			i++
+			for i < src.len && src[i] != ch && src[i] != `\n` {
+				if src[i] == `\\` {
+					i++
+				}
+				i++
+			}
+			i++
+			continue
+		}
+		if !c_ident_char(ch) || (ch >= `0` && ch <= `9`) {
+			i++
+			continue
+		}
+		start := i
+		for i < src.len && c_ident_char(src[i]) {
+			i++
+		}
+		name := src[start..i]
+		mut j := i
+		for j < src.len && src[j] in [` `, `\t`, `\r`, `\n`] {
+			j++
+		}
+		if j >= src.len || src[j] != `(` || name in c_source_non_fn_keywords {
+			continue
+		}
+		mut depth := 0
+		for j < src.len {
+			if src[j] == `(` {
+				depth++
+			} else if src[j] == `)` {
+				depth--
+				if depth == 0 {
+					break
+				}
+			}
+			j++
+		}
+		j++
+		for j < src.len && src[j] in [` `, `\t`, `\r`, `\n`] {
+			j++
+		}
+		if j < src.len && src[j] == `{` && name !in names {
+			names << name
+		}
+	}
+	return names
+}
+
 fn c_include_file_path(include_arg string, vroot string, source_file string) string {
 	clean := trimmed_space(include_arg)
 	if clean.len < 2 {
@@ -10195,10 +10277,20 @@ fn c_preprocessor_condition_state(raw string, defined map[string]bool, undefined
 }
 
 fn (mut g FlatGen) materialize_objective_cpp_sources() {
+	mut header_texts := map[string]string{}
 	for request in g.objective_cpp_source_requests {
 		context_directives := g.ordered_native_source_context(request.module, request.local_context)
 		if context_directives.len > 0 && c_native_source_context_definitely_inactive(context_directives, g.c_flags, g.c99_mode, g.target, request.source_macros_possible) {
 			continue
+		}
+		// The source is compiled on its own, so it declares nothing in the generated
+		// unit, even when its V file includes headers. Like `@[c_extern]`, the V
+		// declarations of the functions it defines need their prototypes, unless an
+		// included header declares them itself.
+		for name in request.defined_fns {
+			if !g.c_quoted_headers_mention(name, mut header_texts) {
+				g.c_extern_forced_decls[name] = true
+			}
 		}
 		if context_directives.len > 0 || c_source_include_has_preprocessor_context(context_directives) {
 			g.add_native_source_context_wrapper(request.source_path, context_directives)
@@ -10206,6 +10298,41 @@ fn (mut g FlatGen) materialize_objective_cpp_sources() {
 			g.c_flags << request.source_path
 		}
 	}
+}
+
+// c_quoted_headers_mention reports whether a quoted header of the generated unit
+// spells `name`. System headers cannot declare a project's own functions.
+fn (g &FlatGen) c_quoted_headers_mention(name string, mut texts map[string]string) bool {
+	for directive in g.c_directives {
+		clean := trimmed_space(directive.text)
+		if !clean.starts_with('#include "') || !clean.ends_with('"') {
+			continue
+		}
+		path := clean['#include "'.len..clean.len - 1]
+		if c_include_arg_is_source_file('"${path}"') {
+			continue
+		}
+		if path !in texts {
+			texts[path] = os.read_file(path) or { '' }
+		}
+		if c_text_has_identifier(texts[path], name) {
+			return true
+		}
+	}
+	return false
+}
+
+fn c_text_has_identifier(text string, name string) bool {
+	mut start := 0
+	for {
+		idx := text.index_after(name, start) or { return false }
+		end := idx + name.len
+		if (idx == 0 || !c_ident_char(text[idx - 1])) && (end >= text.len || !c_ident_char(text[end])) {
+			return true
+		}
+		start = end
+	}
+	return false
 }
 
 fn (mut g FlatGen) add_native_source_context_wrapper(source_path string, directives []string) {
