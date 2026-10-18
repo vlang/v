@@ -39,7 +39,13 @@ pub fn vtest_build_environment(vroot string, args []string) TestBuildEnvironment
 		arg := args[i]
 		has_value := i + 1 < args.len
 		if arg in ['-b', '-backend'] && has_value {
-			backend = if args[i + 1] in ['js_browser', 'js_node'] { 'js' } else { args[i + 1] }
+			backend = if args[i + 1] in ['js_browser', 'js_node'] {
+				'js'
+			} else if args[i + 1] == 'native' {
+				'arm64'
+			} else {
+				args[i + 1]
+			}
 			i += 2
 		} else if arg == '-os' && has_value {
 			target_os = args[i + 1]
@@ -102,8 +108,9 @@ pub fn vtest_build_environment(vroot string, args []string) TestBuildEnvironment
 	target := pref.target_from(target_os, target_arch) or { pref.host_target() }
 	host_target := pref.host_target()
 	mut compiler_defines := user_defines.clone()
-	apply_v3_gc_mode(gc_mode, v3_gc_is_disabled(false, cross_output, target.os, target.arch), mut
-		compiler_defines, mut compile_values) or {}
+	disable_gc := 'freestanding' in user_defines
+		|| v3_gc_is_disabled(false, cross_output, target.os, target.arch, backend)
+	apply_v3_gc_mode(gc_mode, disable_gc, mut compiler_defines, mut compile_values) or {}
 	selection := v3_select_c_compiler(vroot, V3BundledTccProbeOptions{
 		prefer_platform_cc:  v3_gc_prefers_platform_cc(compiler_defines)
 		backend:             backend
