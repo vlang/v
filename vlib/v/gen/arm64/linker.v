@@ -569,19 +569,26 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 	if C.chmod(&char(tmp_output_path.str), output_file_permissions) != 0 {
 		panic('failed to chmod output file')
 	}
-	mut renamed := C.rename(&char(tmp_output_path.str), &char(output_path.str)) == 0
-	if !renamed {
-		// POSIX rename replaces an existing destination; MSVCRT's rename does
-		// not. Remove the old file first so both platforms behave alike.
-		C.remove(&char(output_path.str))
-		renamed = C.rename(&char(tmp_output_path.str), &char(output_path.str)) == 0
-	}
-	if !renamed {
+	if !replace_output_file(tmp_output_path, output_path) {
 		panic('failed to rename output file')
 	}
 
 	println('  file write: ${time.since(t)}')
 	println('  TOTAL linker: ${time.since(t_total)}')
+}
+
+// replace_output_file publishes the completed output using the host rename semantics.
+fn replace_output_file(tmp_output_path string, output_path string) bool {
+	if C.rename(&char(tmp_output_path.str), &char(output_path.str)) == 0 {
+		return true
+	}
+	$if windows {
+		// MSVCRT rename cannot replace an existing destination. POSIX rename
+		// already can, so its failure must preserve the previous output.
+		C.remove(&char(output_path.str))
+		return C.rename(&char(tmp_output_path.str), &char(output_path.str)) == 0
+	}
+	return false
 }
 
 // write_file_array_raw writes file array raw output for arm64.
