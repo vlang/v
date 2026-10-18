@@ -22971,7 +22971,9 @@ fn (mut g FlatGen) atomic_thread_fence_compat_decls() {
 	g.writeln('extern void _V_atomic_thread_fence(int order);')
 	g.writeln('#define atomic_thread_fence(order) _V_atomic_thread_fence(order)')
 	g.writeln('#define __atomic_thread_fence(order) _V_atomic_thread_fence(order)')
-	g.writeln('#else')
+	// a C11 <stdatomic.h> already included defines the macro (as __atomic_thread_fence (MO) on
+	// gcc); defining it again with other spelling is a redefinition warning in every program
+	g.writeln('#elif !defined(atomic_thread_fence)')
 	g.writeln('#define atomic_thread_fence(order) __atomic_thread_fence(order)')
 	g.writeln('#endif')
 }
@@ -26459,8 +26461,25 @@ fn numeric_literal_c_text(node &flat.Node) string {
 		if value.starts_with('0o') {
 			return '0${value[2..]}'
 		}
+		if decimal_literal_needs_unsigned_suffix(value) {
+			return '${value}ULL'
+		}
 	}
 	return value
+}
+
+// decimal_literal_needs_unsigned_suffix reports whether a decimal integer literal is above the
+// signed 64-bit range. C types such a decimal constant as unsigned only by an extension, with
+// "integer constant is so large that it is unsigned" (strconv's u64 power table, max_u64); hex
+// and octal constants become unsigned by the standard and need nothing. 2^63 itself is left
+// alone: min_i64 spells it as a negated literal, and an unsigned suffix would make the negation
+// unsigned.
+fn decimal_literal_needs_unsigned_suffix(value string) bool {
+	if value.len < 19 || !value.bytes().all(it.is_digit()) {
+		return false
+	}
+	n := strconv.parse_uint(value, 10, 64) or { return false }
+	return n > 9223372036854775808
 }
 
 // negated_long_long_literal finds a wide integer operand through parentheses for signed C negation.
