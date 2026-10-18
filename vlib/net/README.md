@@ -10,6 +10,11 @@ read timeout directly in `recv`, avoiding a readiness poll before each read.
 disable it. Deadline-only reads and nonblocking reads continue to use readiness
 polling, as do sockets that do not support the receive-timeout option.
 
+A deadline set with `set_read_deadline` or `set_write_deadline` takes precedence over the
+connection's timeout for as long as it is set, on TCP, UDP and Unix sockets alike: a read with a
+400 ms deadline waits 400 ms even under UDP's 100 ms default timeout. Set the deadline back to
+`time.Time{}` to return to the timeout.
+
 Networking APIs support `-autofree`. Invalid-port and timeout results own their error values,
 while preserving the messages and codes of the corresponding `net.err_*` constants.
 

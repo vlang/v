@@ -183,11 +183,12 @@ pub fn (mut c TcpConn) close() ! {
 pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 	mut res := 0
 	mut ecode := 0
-	// A deadline-only read still uses select; ordinary blocking reads let recv enforce the timeout.
+	// A read with a deadline set still uses select, so the deadline bounds it (see wait_for_common);
+	// ordinary blocking reads let recv enforce the timeout.
 	socket_read_timeout := c.is_blocking && c.read_timeout_in_socket
 		&& c.read_timeout == c.socket_read_timeout_value
 		&& c.sock.handle == c.socket_read_timeout_handle
-		&& (c.read_timeout != 0 || c.read_deadline.unix() == 0)
+		&& (c.read_timeout != 0 || c.read_deadline.unix() == 0) && c.read_deadline.unix() <= 0
 	$if is_coroutine ? {
 		res = C.photon_recv(c.sock.handle, voidptr(buf_ptr), len, 0, c.read_timeout)
 		ecode = error_code()

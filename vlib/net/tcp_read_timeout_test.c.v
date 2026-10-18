@@ -51,3 +51,25 @@ fn test_tcp_blocking_read_uses_socket_timeout() ! {
 	}
 	assert false, 'a silent peer must time out'
 }
+
+fn test_tcp_read_deadline_wins_over_the_socket_timeout() ! {
+	$if windows || is_coroutine ? {
+		return
+	}
+	mut listener := listen_tcp(.ip, '127.0.0.1:0')!
+	defer { listener.close() or {} }
+	mut client := dial_tcp(listener.addr()!.str())!
+	defer { client.close() or {} }
+	mut server := listener.accept()!
+	defer { server.close() or {} }
+	// the default read timeout (30 s) is in the socket; a deadline set is what the read waits for
+	server.set_read_deadline(time.now().add(200 * time.millisecond))
+	mut buffer := []u8{len: 8}
+	started := time.new_stopwatch()
+	server.read(mut buffer) or {
+		assert err.code() == err_timed_out.code()
+		assert started.elapsed() < 2 * time.second, 'returned after ${started.elapsed()}'
+		return
+	}
+	assert false, 'a silent peer must time out'
+}

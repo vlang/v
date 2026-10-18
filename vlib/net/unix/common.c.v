@@ -91,8 +91,10 @@ fn select_deadline(handle int, test Select, deadline time.Time) !bool {
 
 // wait_for_common wraps the common wait code
 fn wait_for_common(handle int, deadline time.Time, timeout time.Duration, test Select) ! {
-	// Convert timeouts to deadlines
-	real_deadline := if timeout == net.infinite_timeout {
+	// Convert timeouts to deadlines. A deadline the caller set wins over the timeout, as in net.
+	real_deadline := if deadline.unix() > 0 {
+		deadline
+	} else if timeout == net.infinite_timeout {
 		time.unix(0)
 	} else if timeout <= 0 {
 		// No timeout set, so assume deadline
