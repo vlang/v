@@ -23004,6 +23004,19 @@ fn (mut g FlatGen) float_exponent_helpers() {
 	g.writeln('static inline string v3_f64_general(double x, int precision, int upper) { char tmp[128]; int n = upper ? snprintf(tmp, sizeof(tmp), "%.*G", precision, x) : snprintf(tmp, sizeof(tmp), "%.*g", precision, x); if (n < 0) return v3_c_lit("", 0); if (n < (int)sizeof(tmp)) { n = v3_float_normalize_exponent(tmp, n); u8* out = malloc_noscan(n + 1); memcpy(out, tmp, n + 1); return (string){.str = out, .len = n, .is_lit = 0}; } u8* out = malloc_noscan(n + 1); if (upper) snprintf((char*)out, (size_t)n + 1, "%.*G", precision, x); else snprintf((char*)out, (size_t)n + 1, "%.*g", precision, x); n = v3_float_normalize_exponent((char*)out, n); return (string){.str = out, .len = n, .is_lit = 0}; }')
 }
 
+// headerless_linux_rwlockattr_setkind_np continues the `#if` that stubs out
+// pthread_rwlockattr_setkind_np. Headerless C whose Linux libc is unknown (`-cross`
+// snapshots such as vc/v.c, `-o file.c`, `-os linux` from another host) defines
+// PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP itself, so the stub's checks cannot
+// tell glibc, which has the function, from musl, which does not. A weak reference
+// links on both: glibc keeps writer-preferring rwlocks, musl skips the call.
+fn (mut g FlatGen) headerless_linux_rwlockattr_setkind_np() {
+	g.writeln('#elif defined(__linux__) && !defined(__ANDROID__) && !defined(CUSTOM_DEFINE_glibc)')
+	g.writeln('int pthread_rwlockattr_setkind_np(void* attr, int kind) __attribute__((weak));')
+	g.writeln('static inline int v3_pthread_rwlockattr_setkind_np(void* attr, int kind) { int (*setkind)(void*, int) = pthread_rwlockattr_setkind_np; return setkind != 0 ? setkind(attr, kind) : 0; }')
+	g.writeln('#define pthread_rwlockattr_setkind_np(attr, kind) v3_pthread_rwlockattr_setkind_np((attr), (kind))')
+}
+
 fn (mut g FlatGen) builtin_abi_decls() {
 	if !g.has_builtins {
 		return
@@ -23011,6 +23024,9 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.libc_compat_decls()
 	g.writeln('#if !defined(PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP) || defined(CUSTOM_DEFINE_musl) || defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) || defined(__DragonFly__)')
 	g.writeln('#define pthread_rwlockattr_setkind_np(attr, kind) (0)')
+	if !g.target_libc_headers && !g.c_directives_use_system_libc() {
+		g.headerless_linux_rwlockattr_setkind_np()
+	}
 	g.writeln('#endif')
 	g.filelock_compat_decls()
 	// Empty array headers need no allocation. Keep this small wrapper inline so
