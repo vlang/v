@@ -1331,11 +1331,17 @@ fn (mut g Parser) parse_return() !bool {
 // `!T` function, is its error: a struct implementing IError (`msg` and `code`, its own or
 // through an embedded `Error`) that is not assignable to the success type `T`.
 fn (g &Parser) returns_error_value(actual_type u32) bool {
-	value_type := flat.source_type_id(fastc_trim_pointer_suffix(flat.source_type_name(g.underlying_alias_type(fastc_normalize_inferred_type(actual_type)))))
+	value_layout := g.underlying_alias_type(fastc_normalize_inferred_type(actual_type))
+	payload_layout := g.underlying_alias_type(fastc_normalize_inferred_type(g.option_return_type))
+	// Preserve pointer conversions before reducing types to their method-bearing structs.
+	if payload_layout == flat.source_type_voidptr && fastc_is_pointer_type(value_layout) {
+		return false
+	}
+	value_type := flat.source_type_id(fastc_trim_pointer_suffix(flat.source_type_name(value_layout)))
 	if value_type == 0 || g.declared_kinds[flat.source_type_name(g.semantic_type_key(value_type))] != .struct_ {
 		return false
 	}
-	payload_type := flat.source_type_id(fastc_trim_pointer_suffix(flat.source_type_name(g.underlying_alias_type(fastc_normalize_inferred_type(g.option_return_type)))))
+	payload_type := flat.source_type_id(fastc_trim_pointer_suffix(flat.source_type_name(payload_layout)))
 	// IError is an intrinsic C struct rather than a source-level interface declaration.
 	if payload_type == value_type || flat.source_type_name(payload_type) == 'IError'
 		|| g.sumtype_has_variant(payload_type, value_type)
