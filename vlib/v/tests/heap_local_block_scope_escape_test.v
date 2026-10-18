@@ -272,3 +272,76 @@ fn test_address_read_through_a_pointer_to_an_aggregate() {
 	assert saved.next.factor == 5
 	assert holder_depth(saved) == 3
 }
+
+fn test_local_declared_in_a_branch_of_the_assigned_value() {
+	mut saved := Holder{}
+	for f in [2, 3, 5] {
+		saved = if f > 0 {
+			x := Node{
+				next:   saved.next
+				factor: f
+			}
+			Holder{&x}
+		} else {
+			Holder{}
+		}
+	}
+	assert saved.next.factor == 5
+	assert holder_depth(saved) == 3
+}
+
+fn test_address_written_into_a_field_of_a_local_aggregate() {
+	mut saved := Chain{}
+	for f in [2, 3, 5] {
+		mut tmp := Chain{}
+		mut x := Node{
+			next:   saved.next
+			factor: f
+		}
+		tmp.next = &x
+		saved = tmp
+	}
+	assert saved.next.factor == 5
+	assert node_depth(*saved.next) == 2
+}
+
+struct ErrHolder {
+	err &IError = unsafe { nil }
+}
+
+fn fail(n int) !int {
+	return error('fail ${n}')
+}
+
+fn test_implicit_err_binding_of_an_or_block() {
+	mut first := ErrHolder{}
+	for i in 0 .. 3 {
+		mut saved := ErrHolder{}
+		n := fail(i) or {
+			saved = ErrHolder{&err}
+			0
+		}
+		assert n == 0
+		if i == 0 {
+			first = saved
+		}
+	}
+	// Each execution of the `or` block has an `err` of its own.
+	assert first.err.msg() == 'fail 0'
+}
+
+fn test_implicit_err_binding_of_an_if_guard_else() {
+	mut first := ErrHolder{}
+	for i in 0 .. 3 {
+		mut saved := ErrHolder{}
+		if n := fail(i) {
+			assert n < 0
+		} else {
+			saved = ErrHolder{&err}
+		}
+		if i == 0 {
+			first = saved
+		}
+	}
+	assert first.err.msg() == 'fail 0'
+}
