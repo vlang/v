@@ -123,13 +123,10 @@ pub fn (c &UdpConn) read_ptr(buf_ptr &u8, len int) !(int, Addr) {
 	if c.is_blocking {
 		// Honor read deadlines/timeouts before entering a blocking recvfrom call.
 		c.wait_for_read()!
-		res = wrap_read_result(C.recvfrom(c.sock.handle, voidptr(buf_ptr), len, 0, voidptr(&addr),
-			&addr_len))!
-	} else {
-		res = wrap_read_result(C.recvfrom(c.sock.handle, voidptr(buf_ptr), len, 0, voidptr(&addr),
-			&addr_len))!
 	}
-	if res > 0 {
+	res = C.recvfrom(c.sock.handle, voidptr(buf_ptr), len, 0, voidptr(&addr), &addr_len)
+	// A datagram may be empty: 0 bytes is a datagram received, not the end of a stream.
+	if res >= 0 {
 		return res, addr
 	}
 	code := error_code()
