@@ -1586,8 +1586,14 @@ fn (mut t Transformer) zero_value_for_type(typ_id u32) flat.NodeId {
 		return t.make_int_literal(0)
 	}
 	if clean in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'u16', 'u32', 'u64',
-		'rune', 'char']
-		|| clean in t.enum_types {
+		'rune', 'char'] {
+		return t.make_int_literal(0)
+	}
+	if clean in t.enum_types {
+		// An enum defaults to its first member, for example for a missing map key.
+		if default_value := t.enum_nonzero_default_value(flat.source_type_id(clean)) {
+			return default_value
+		}
 		return t.make_int_literal(0)
 	}
 	if default_sum := t.make_default_sum_value(flat.source_type_id(clean)) {

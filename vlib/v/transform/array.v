@@ -594,7 +594,7 @@ fn (mut t Transformer) lower_array_init_to_runtime(id flat.NodeId, node flat.Nod
 			init_expr = t.zero_value_for_type(clean_elem_type_source_id_2)
 		} else if default_value := t.make_struct_runtime_default_value(clean_elem_type_source_id_2) {
 			init_expr = default_value
-		} else if default_value := t.enum_array_default_elem_value(clean_elem_type_source_id_2) {
+		} else if default_value := t.enum_nonzero_default_value(clean_elem_type_source_id_2) {
 			init_expr = default_value
 		} else {
 			return new_call
@@ -656,37 +656,62 @@ fn (mut t Transformer) lower_array_init_to_runtime(id flat.NodeId, node flat.Nod
 	return result
 }
 
-// enum_array_default_elem_value is the value that `[]Enum{len: n}` fills its elements with:
-// the enum's first member, like the default of an enum struct field. It is none when that
-// value is 0 (zeroed storage already holds it), and for flag enums, which default to 0.
-fn (mut t Transformer) enum_array_default_elem_value(elem_type_id u32) ?flat.NodeId {
+// enum_nonzero_default_value is the default value of an enum, its first member, like the
+// default of an enum struct field. `[]Enum{len: n}` fills its elements with it, and a missing
+// map key returns it. It is none when that value is 0 (zeroed storage already holds it), and
+// for flag enums, which default to 0.
+fn (mut t Transformer) enum_nonzero_default_value(type_id u32) ?flat.NodeId {
+	enum_name, field_name := t.enum_nonzero_default_member(type_id) or { return none }
+	return t.a.add_node(flat.Node{
+		kind:  .enum_val
+		value: '${enum_name}.${field_name}'
+		typ:   flat.source_type_id(enum_name)
+	})
+}
+
+// enum_nonzero_default_member returns the enum and first member names behind
+// enum_nonzero_default_value.
+fn (mut t Transformer) enum_nonzero_default_member(type_id u32) ?(string, string) {
 	if isnil(t.tc) {
 		return none
 	}
-	elem_type := t.tc.parse_type(elem_type_id)
-	if elem_type !is types.Enum {
+	typ := t.tc.parse_type(type_id)
+	if typ !is types.Enum {
 		return none
 	}
-	enum_type := elem_type as types.Enum
+	enum_type := typ as types.Enum
 	if enum_type.is_flag {
 		return none
 	}
 	enum_name := flat.source_type_name(enum_type.name_id).trim_string_left('main.')
+	// The first member of an enum without an explicit first value is 0.
+	if enum_name !in t.enum_explicit_first_values {
+		return none
+	}
 	fields := t.enum_types[enum_name] or { return none }
 	if fields.len == 0 {
 		return none
 	}
-	enum_name_id := flat.source_type_id(enum_name)
-	values := t.tc.comptime_enum_decl_field_values(enum_name_id)
+	values := t.tc.comptime_enum_decl_field_values(flat.source_type_id(enum_name))
 	first_value := values[fields[0]] or { return none }
 	if first_value == 0 {
 		return none
 	}
-	return t.make_comptime_enum_value(EnumValueMeta{
-		name:      fields[0]
-		value:     first_value
-		enum_name: enum_name_id
-	})
+	return enum_name, fields[0]
+}
+
+// type_has_enum_default reports whether `type_id` is an enum whose default is not 0, or a
+// fixed array of them, possibly nested, so zeroed storage does not hold its default.
+fn (mut t Transformer) type_has_enum_default(type_id u32) bool {
+	clean_type_id := t.normalize_type_alias(type_id)
+	if t.is_fixed_array_type(clean_type_id) {
+		fixed_type := t.resolved_fixed_array_canonical_type(clean_type_id)
+		return t.type_has_enum_default(fixed_array_elem_type(fixed_type))
+	}
+	if _, _ := t.enum_nonzero_default_member(clean_type_id) {
+		return true
+	}
+	return false
 }
 
 fn (mut t Transformer) make_struct_runtime_default_value(struct_type_id u32) ?flat.NodeId {
@@ -778,9 +803,11 @@ fn (mut t Transformer) make_struct_runtime_default_value_guarded(struct_type_id 
 			}
 		} else if clean_type_shape.has(.map_type) || clean_type_shape.has(.array_type) {
 			value = t.zero_value_for_type(clean_type_source_id)
-		} else if t.fixed_array_needs_runtime_default(clean_type_source_id) {
-			// C generation initializes the elements of fixed-array fields that a
-			// struct literal leaves unset; the literal just has to exist.
+		} else if t.fixed_array_needs_runtime_default(clean_type_source_id)
+			|| t.type_has_enum_default(clean_type_source_id) {
+			// C generation initializes the elements of fixed-array fields, and the
+			// enum fields, that a struct literal leaves unset; the literal just has
+			// to exist.
 			needs_literal = true
 			continue
 		} else if nested := t.make_struct_runtime_default_value_guarded(clean_type_source_id, mut visited) {
@@ -1405,6 +1432,9 @@ fn (mut t Transformer) fixed_array_empty_init_needs_values_guarded(elem_type_id 
 	if t.is_fixed_array_type(clean_type_source_id) {
 		fixed_type := t.resolved_fixed_array_canonical_type(clean_type_source_id_3)
 		return t.fixed_array_empty_init_needs_values_guarded(fixed_array_elem_type(fixed_type), mut visited)
+	}
+	if _, _ := t.enum_nonzero_default_member(clean_type_source_id) {
+		return true
 	}
 	return t.struct_type_needs_runtime_default(clean_type_source_id, mut visited)
 }
