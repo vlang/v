@@ -11,7 +11,7 @@ struct DurablePlanTestRepository {
 }
 
 fn plan_run(argv []string) string {
-	result := os.exec(argv)
+	result := bin.git_exec_for_test(argv)
 	assert result.exit_code == 0, '${argv.join(' ')}\n${result.output}'
 	return result.output.trim_space()
 }
@@ -874,8 +874,9 @@ fn test_durable_git_fallback_uses_caret_free_revisions_through_a_cmd_wrapper_on_
 		// cmd.exe reads a `^` as its escape character, so a caret revision is refused through a batch
 		// wrapper. The live state reads use `<ref>:` for the tree and `rev-list -n 1` for the commit,
 		// which need no caret and must answer as git.exe does.
-		tree := os.exec(['git', '--git-dir', repository.root, 'rev-parse', '${branch}:'])
-		commit := os.exec(['git', '--git-dir', repository.root, 'rev-list', '-n', '1', branch])
+		tree := bin.git_exec_for_test(['git', '--git-dir', repository.root, 'rev-parse', '${branch}:'])
+		commit := bin.git_exec_for_test(['git', '--git-dir', repository.root, 'rev-list', '-n',
+			'1', branch])
 		assert tree.exit_code == 0, tree.output
 		assert commit.exit_code == 0, commit.output
 		original_path := os.getenv('PATH')
@@ -893,5 +894,81 @@ fn test_durable_git_fallback_uses_caret_free_revisions_through_a_cmd_wrapper_on_
 		assert wrapped_commit.output.trim_space() == commit.output.trim_space(), wrapped_commit.output
 		assert caret.exit_code != 0, caret.output
 		assert caret.output.contains('metacharacters'), caret.output
+	}
+}
+
+fn test_windows_git_program_follows_cmd_exe_path_order() {
+	$if windows {
+		root := os.join_path(os.temp_dir(), 'tccbin-git-order-${os.getpid()}')
+		os.rmdir_all(root) or {}
+		first := os.join_path(root, 'first')
+		second := os.join_path(root, 'second')
+		os.mkdir_all(first) or { panic(err) }
+		os.mkdir_all(second) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		os.write_file(os.join_path(first, 'git.cmd'), '@echo off\r\n') or { panic(err) }
+		os.write_file(os.join_path(second, 'git.exe'), '') or { panic(err) }
+		original_path := os.getenv('PATH')
+		defer {
+			os.setenv('PATH', original_path, true)
+		}
+		// cmd.exe starts the .cmd in the earlier PATH directory, not the .exe in a later one.
+		os.setenv('PATH', '${first};${second}', true)
+		picked := bin.windows_git_program_for_test() or { panic(err) }
+		assert picked == os.abs_path(os.join_path(first, 'git.cmd')), picked
+		// Inside one directory, cmd.exe tries `.exe` before `.cmd`.
+		os.write_file(os.join_path(first, 'git.exe'), '') or { panic(err) }
+		os.setenv('PATH', first, true)
+		same := bin.windows_git_program_for_test() or { panic(err) }
+		assert same == os.abs_path(os.join_path(first, 'git.exe')), same
+	}
+}
+
+fn test_durable_git_fallback_runs_a_cmd_wrapper_in_a_directory_with_an_ampersand_on_windows() {
+	$if windows {
+		repository := prepare_plan_repository('fallback-program-path', plan_seeded_unknown_target(false),
+			false)
+		defer {
+			os.rmdir_all(repository.root) or {}
+		}
+		// The directory name contains `&`. The wrapper must still run: its path is not an argument, and
+		// refusing it would reject a working PATH entry.
+		amp_dir := os.join_path(os.temp_dir(), 'tccbin-git-cmd-R&D-${os.getpid()}')
+		os.rmdir_all(amp_dir) or {}
+		os.mkdir_all(amp_dir) or { panic(err) }
+		defer {
+			os.rmdir_all(amp_dir) or {}
+		}
+		os.write_file(os.join_path(amp_dir, 'git.cmd'), '@echo SHIM-RAN %*\r\n') or { panic(err) }
+		original_path := os.getenv('PATH')
+		defer {
+			os.setenv('PATH', original_path, true)
+		}
+		os.setenv('PATH', '${amp_dir};${os.getenv('SystemRoot')}\\System32', true)
+		result := bin.live_git_fallback_for_test(repository.root, ['rev-parse', '--is-bare-repository'])
+		assert result.exit_code == 0, result.output
+		assert result.output.contains('SHIM-RAN'), result.output
+	}
+}
+
+fn test_plan_run_resolves_a_cmd_only_git_on_windows() {
+	$if windows {
+		repository := prepare_plan_repository('plan-run-cmd-only', plan_seeded_unknown_target(false),
+			false)
+		defer {
+			os.rmdir_all(repository.root) or {}
+		}
+		wrapper_dir := write_cmd_git_wrapper('plan-run') or { panic(err) }
+		defer {
+			os.rmdir_all(wrapper_dir) or {}
+		}
+		original_path := os.getenv('PATH')
+		defer {
+			os.setenv('PATH', original_path, true)
+		}
+		os.setenv('PATH', '${wrapper_dir};${os.getenv('SystemRoot')}\\System32', true)
+		assert plan_run(['git', '--git-dir', repository.root, 'rev-parse', '--is-bare-repository']) == 'true'
 	}
 }

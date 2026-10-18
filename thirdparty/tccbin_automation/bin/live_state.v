@@ -2876,15 +2876,34 @@ fn live_git(state_git_dir string, arguments []string) os.Result {
 	return live_git_fallback(state_git_dir, arguments)
 }
 
+// windows_git_program returns the git that cmd.exe would start from `path_env`. cmd.exe searches each
+// PATH directory in order, and inside one directory it tries `.com`, `.exe`, `.bat`, then `.cmd`.
+// find_abs_path_of_executable tries each suffix across all of PATH first, so a `.exe` in a later
+// directory would replace a `.cmd` in an earlier one.
+fn windows_git_program(path_env string) !string {
+	for dir in path_env.split(os.path_delimiter) {
+		if dir == '' {
+			continue
+		}
+		for suffix in ['.com', '.exe', '.bat', '.cmd'] {
+			candidate := os.join_path(dir, 'git${suffix}')
+			if os.is_file(candidate) {
+				return os.abs_path(candidate)
+			}
+		}
+	}
+	return error('git was not found on PATH')
+}
+
 // live_git_fallback runs git for the state repository without the durable runner. On Windows the
-// executable is resolved first: CreateProcess resolves a bare name only with `.exe`, so a PATH whose
-// git is a `.cmd` wrapper would fail here even though cmd.exe found it before this change. A batch
-// wrapper is run by cmd.exe, which reads its arguments as commands, so live_git_fallback refuses any
-// argument cmd.exe would interpret instead of passing it through.
+// executable is resolved first with windows_git_program, which follows cmd.exe's PATH order, so a
+// `.cmd` wrapper is found as cmd.exe would find it. A batch wrapper is run by cmd.exe, which reads
+// its arguments as commands, so live_git_fallback refuses any argument cmd.exe would interpret
+// instead of passing it through.
 fn live_git_fallback(state_git_dir string, arguments []string) os.Result {
 	mut program := 'git'
 	$if windows {
-		program = os.find_abs_path_of_executable('git') or {
+		program = windows_git_program(os.getenv('PATH')) or {
 			return os.Result{
 				exit_code: -1
 				output:    err.msg()
@@ -4286,6 +4305,28 @@ $if test {
 	// test uses it to prove that bare `git` resolves through the same path as production code.
 	pub fn live_git_fallback_for_test(state_git_dir string, arguments []string) os.Result {
 		return live_git(state_git_dir, arguments)
+	}
+
+	// windows_git_program_for_test returns the git program the fallback starts from the current PATH.
+	pub fn windows_git_program_for_test() !string {
+		return windows_git_program(os.getenv('PATH'))
+	}
+
+	// git_exec_for_test runs argv like os.exec. On Windows a leading `git` is resolved with the same
+	// PATH order as the fallback, so a test that starts git reaches a `.cmd` wrapper as production does.
+	pub fn git_exec_for_test(argv []string) os.Result {
+		mut resolved := argv.clone()
+		$if windows {
+			if resolved.len > 0 && resolved[0] == 'git' {
+				resolved[0] = windows_git_program(os.getenv('PATH')) or {
+					return os.Result{
+						exit_code: -1
+						output:    err.msg()
+					}
+				}
+			}
+		}
+		return os.exec(resolved)
 	}
 
 	pub fn durable_git_deadline_constants_for_test() []u64 {

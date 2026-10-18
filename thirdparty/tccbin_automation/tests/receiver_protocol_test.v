@@ -104,7 +104,7 @@ struct LiveMultiAtomicStateRepository {
 fn receiver_git(repo_root string, args []string) os.Result {
 	mut argv := ['git', '-C', repo_root]
 	argv << args
-	return os.exec(argv)
+	return bin.git_exec_for_test(argv)
 }
 
 fn write_live_state_blob(root string, relative_path string, source string) {
@@ -1216,7 +1216,7 @@ fn prepare_live_multi_source_atomic_state(suffix string,
 	assert receiver_git(work_root, ['commit', '--allow-empty', '-qm', 'atomic-head-k2']).exit_code == 0
 	head := receiver_git(work_root, ['rev-parse', 'HEAD']).output.trim_space()
 	clone :=
-		os.exec(['git', 'clone', '-q', '--bare', '--no-local', work_root, bare_root])
+		bin.git_exec_for_test(['git', 'clone', '-q', '--bare', '--no-local', work_root, bare_root])
 	assert clone.exit_code == 0, clone.output
 	proof := live_state_proof_set(os.real_path(bare_root), head, [target_commit])
 	freebsd_root := bin.parse_strict_json(freebsd_target) or { panic(err) }
@@ -1543,7 +1543,7 @@ fn prepare_live_source_atomic_state(suffix string,
 		head = receiver_git(work_root, ['rev-parse', 'HEAD']).output.trim_space()
 	}
 	clone :=
-		os.exec(['git', 'clone', '-q', '--bare', '--no-local', work_root, bare_root])
+		bin.git_exec_for_test(['git', 'clone', '-q', '--bare', '--no-local', work_root, bare_root])
 	assert clone.exit_code == 0, clone.output
 	proof := if options.non_first_parent_evidence_at_h {
 		live_state_proof(os.real_path(bare_root), head)
@@ -1633,7 +1633,7 @@ fn prepare_live_state_inventory(suffix string, target_source string, removed_rel
 	bare_root := '${root}.git'
 	os.rmdir_all(bare_root) or {}
 	clone :=
-		os.exec(['git', 'clone', '-q', '--bare', '--no-local', root, bare_root])
+		bin.git_exec_for_test(['git', 'clone', '-q', '--bare', '--no-local', root, bare_root])
 	assert clone.exit_code == 0, clone.output
 	os.rmdir_all(root) or {}
 	return os.real_path(bare_root), head.output.trim_space()
@@ -1644,8 +1644,9 @@ fn live_state_proof(root string, head string) string {
 }
 
 fn live_state_proof_for(root string, commit string, remote_head string) string {
-	tree := os.exec(['git', '--git-dir', root, 'rev-parse', '${commit}^{tree}'])
-	line := os.exec(['git', '--git-dir', root, 'rev-list', '--parents', '-n', '1', commit])
+	tree := bin.git_exec_for_test(['git', '--git-dir', root, 'rev-parse', '${commit}^{tree}'])
+	line := bin.git_exec_for_test(['git', '--git-dir', root, 'rev-list', '--parents', '-n', '1',
+		commit])
 	assert tree.exit_code == 0
 	assert line.exit_code == 0
 	parts := line.output.trim_space().split(' ')
@@ -2415,8 +2416,8 @@ fn test_live_source_atomic_rejects_shallow_history() {
 		os.rmdir_all(shallow) or {}
 	}
 	clone :=
-		os.exec(['git', 'clone', '-q', '--bare', '--depth', '1', '--branch', 'tccbin-automation-state',
-			'file://${repository.root}', shallow])
+		bin.git_exec_for_test(['git', 'clone', '-q', '--bare', '--depth', '1', '--branch',
+			'tccbin-automation-state', 'file://${repository.root}', shallow])
 	assert clone.exit_code == 0, clone.output
 	inspection := bin.inspect_live_receiver_state(automation_root(), os.real_path(shallow),
 		live_state_trust(), repository.proof, live_handoff_id) or { panic(err) }
@@ -2426,7 +2427,7 @@ fn test_live_source_atomic_rejects_shallow_history() {
 fn test_live_source_atomic_rejects_replace_graft_alternate_and_environment_redirects() {
 	replace_repository := prepare_live_source_atomic_state('replace-ref', LiveAtomicStateOptions{})
 	replace_result :=
-		os.exec(['git', '--git-dir', replace_repository.root, 'update-ref',
+		bin.git_exec_for_test(['git', '--git-dir', replace_repository.root, 'update-ref',
 			'refs/replace/${replace_repository.head}', replace_repository.parent])
 	assert replace_result.exit_code == 0, replace_result.output
 	replace_inspection := bin.inspect_live_receiver_state(automation_root(),
@@ -2587,7 +2588,7 @@ fn test_live_state_reader_fails_closed_on_corrupt_duplicate_symlink_or_wrong_che
 	symlink_bare := '${work_root}.git'
 	os.rmdir_all(work_root) or {}
 	os.rmdir_all(symlink_bare) or {}
-	assert os.exec(['git', 'clone', '-q', base_bare, work_root]).exit_code == 0
+	assert bin.git_exec_for_test(['git', 'clone', '-q', base_bare, work_root]).exit_code == 0
 	assert receiver_git(work_root, ['config', 'user.email', 'ci@example.invalid']).exit_code == 0
 	assert receiver_git(work_root, ['config', 'user.name', 'Contract Test']).exit_code == 0
 	os.rm(os.join_path(work_root, 'targets', 'linux-amd64.json')) or { panic(err) }
@@ -2598,7 +2599,8 @@ fn test_live_state_reader_fails_closed_on_corrupt_duplicate_symlink_or_wrong_che
 	assert receiver_git(work_root, ['commit', '-qm', 'symlink']).exit_code == 0
 	symlink_head :=
 		receiver_git(work_root, ['rev-parse', 'HEAD']).output.trim_space()
-	assert os.exec(['git', 'clone', '-q', '--bare', '--no-local', work_root, symlink_bare]).exit_code == 0
+	assert bin.git_exec_for_test(['git', 'clone', '-q', '--bare', '--no-local', work_root,
+		symlink_bare]).exit_code == 0
 	symlinked := bin.inspect_live_receiver_state(automation_root(), os.real_path(symlink_bare),
 		live_state_trust(), live_state_proof(os.real_path(symlink_bare), symlink_head),
 		live_handoff_id) or { panic(err) }
@@ -2614,11 +2616,11 @@ fn test_live_state_proof_commit_cannot_select_its_parent_inventory() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	parent_result := os.exec(['git', '--git-dir', root, 'rev-parse', '${head}^'])
+	parent_result := bin.git_exec_for_test(['git', '--git-dir', root, 'rev-parse', '${head}^'])
 	assert parent_result.exit_code == 0
 	parent := parent_result.output.trim_space()
 	assert parent.len == 40
-	assert os.exec(['git', '--git-dir', root, 'rev-parse', '${parent}^{tree}']).output.trim_space() != os.exec([
+	assert bin.git_exec_for_test(['git', '--git-dir', root, 'rev-parse', '${parent}^{tree}']).output.trim_space() != bin.git_exec_for_test([
 		'git',
 		'--git-dir',
 		root,
@@ -2811,5 +2813,32 @@ fn test_terminal_projection_v3_and_revalidation_v5_cover_native_validation_witho
 		'"final_projection":${bin.canonical_json(mutated_final)}')) or { panic(err) }
 	assert bin.terminal_revalidation_facts_digest(proof) or { panic(err) } != bin.terminal_revalidation_facts_digest(mutated_proof) or {
 		panic(err)
+	}
+}
+
+// write_cmd_git_wrapper_for_receiver_test writes a git.cmd that runs the installed git.exe.
+fn write_cmd_git_wrapper_for_receiver_test() !string {
+	real_git := os.find_abs_path_of_executable('git')!
+	wrapper_dir := os.join_path(os.temp_dir(), 'tccbin-receiver-cmd-only-${os.getpid()}')
+	os.rmdir_all(wrapper_dir) or {}
+	os.mkdir_all(wrapper_dir)!
+	os.write_file(os.join_path(wrapper_dir, 'git.cmd'), '@"${real_git}" %*\r\n')!
+	return wrapper_dir
+}
+
+fn test_receiver_git_resolves_a_cmd_only_git_on_windows() {
+	$if windows {
+		wrapper_dir := write_cmd_git_wrapper_for_receiver_test() or { panic(err) }
+		defer {
+			os.rmdir_all(wrapper_dir) or {}
+		}
+		original_path := os.getenv('PATH')
+		defer {
+			os.setenv('PATH', original_path, true)
+		}
+		os.setenv('PATH', '${wrapper_dir};${os.getenv('SystemRoot')}\\System32', true)
+		result := receiver_git(os.getwd(), ['--version'])
+		assert result.exit_code == 0, result.output
+		assert result.output.starts_with('git version'), result.output
 	}
 }
