@@ -102,9 +102,10 @@ pub:
 }
 
 // VerifyOptions provides configuration options for validating and verifying tokens.
+// algorithm must be explicitly set to the trusted algorithm associated with the verification key.
 pub struct VerifyOptions {
 pub:
-	algorithm         ?Algorithm
+	algorithm         Algorithm @[required]
 	validate_exp      bool = true
 	validate_nbf      bool = true
 	leeway            i64
@@ -161,6 +162,7 @@ pub fn sign_raw(header Header, payload_json string, key []u8) !string {
 }
 
 // verify validates token signature, header, standard claims, and decodes claims into `T`.
+// options.algorithm must specify the trusted algorithm associated with `key`.
 pub fn verify[T](token string, key []u8, options VerifyOptions) !Token[T] {
 	parts := token.split('.')
 	if parts.len != 3 {
@@ -181,12 +183,14 @@ pub fn verify[T](token string, key []u8, options VerifyOptions) !Token[T] {
 }
 
 // verify_with_secret is a convenience helper for verifying a token with a string secret key.
+// options.algorithm must specify the trusted algorithm associated with `secret`.
 pub fn verify_with_secret[T](token string, secret string, options VerifyOptions) !Token[T] {
 	return verify[T](token, secret.bytes(), options)
 }
 
 // verify_raw verifies token structure, algorithm, signature, and standard claims,
 // returning the decoded payload JSON string.
+// options.algorithm must specify the trusted algorithm associated with `key`.
 pub fn verify_raw(token string, key []u8, options VerifyOptions) !string {
 	parts := token.split('.')
 	if parts.len != 3 {
@@ -196,10 +200,8 @@ pub fn verify_raw(token string, key []u8, options VerifyOptions) !string {
 	header, payload_json := decode_raw(token)!
 	alg := parse_algorithm(header.alg)!
 
-	if expected_alg := options.algorithm {
-		if alg != expected_alg {
-			return error('algorithm mismatch: expected ${expected_alg}, got ${alg}')
-		}
+	if alg != options.algorithm {
+		return error('algorithm mismatch: expected ${options.algorithm}, got ${alg}')
 	}
 
 	signing_input := '${parts[0]}.${parts[1]}'
@@ -236,7 +238,9 @@ pub fn verify_raw(token string, key []u8, options VerifyOptions) !string {
 	}
 
 	// Validate standard claims
-	std_claims := json2.decode[StandardClaims](payload_json) or { StandardClaims{} }
+	std_claims := json2.decode[StandardClaims](payload_json) or {
+		return error('invalid JWT claims: ${err.msg()}')
+	}
 	now := options.current_time or { time.now().unix() }
 
 	if options.validate_exp {

@@ -13,6 +13,15 @@ according to RFC 7519, RFC 7515 (JWS), RFC 7518 (JWA), and RFC 8037 (EdDSA).
 In accordance with security best practices, `none` and arbitrary unapproved
 algorithms are rejected by default.
 
+Every verification call requires `VerifyOptions.algorithm`. Choose this algorithm
+from trusted application configuration for the verification key. Do not derive it
+from the token header. For Ed25519 public keys, always select `.eddsa`; selecting an
+HMAC algorithm would allow anyone who knows the public key to forge tokens.
+
+Registered timestamp claims (`exp`, `nbf`, `iat`) use signed 64-bit integer Unix
+seconds. Verification rejects malformed JSON and claims that cannot be decoded as
+`StandardClaims`, even when `validate_exp` or `validate_nbf` is disabled.
+
 ## Usage
 
 ### Signing and Verifying with StandardClaims
@@ -39,6 +48,7 @@ fn main() {
 
 	// Verify token
 	tok := jwt.verify_with_secret[jwt.StandardClaims](token, secret, jwt.VerifyOptions{
+		algorithm:         .hs256
 		expected_issuer:   'auth.example.com'
 		expected_audience: 'api.example.com'
 	})!
@@ -74,7 +84,9 @@ fn main() {
 	}
 
 	token := jwt.sign_with_secret(claims, secret, jwt.SignOptions{})!
-	tok := jwt.verify_with_secret[MyClaims](token, secret, jwt.VerifyOptions{})!
+	tok := jwt.verify_with_secret[MyClaims](token, secret, jwt.VerifyOptions{
+		algorithm: .hs256
+	})!
 
 	println('User ID: ${tok.claims.user_id}, Role: ${tok.claims.role}')
 }

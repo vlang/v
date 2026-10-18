@@ -93,7 +93,7 @@ fn test_eddsa_sign_and_verify() {
 
 	// Verification with wrong public key should fail
 	wrong_pubkey, _ := ed25519.generate_key()!
-	if _ := verify[StandardClaims](tok_str, wrong_pubkey, VerifyOptions{}) {
+	if _ := verify[StandardClaims](tok_str, wrong_pubkey, VerifyOptions{ algorithm: .eddsa }) {
 		assert false
 	} else {
 		assert true
@@ -115,6 +115,7 @@ fn test_custom_claims_struct() {
 
 	tok_str := sign_with_secret(claims, secret, SignOptions{})!
 	tok := verify_with_secret[CustomUserClaims](tok_str, secret, VerifyOptions{
+		algorithm:       .hs256
 		expected_issuer: 'admin-portal'
 	})!
 
@@ -131,7 +132,7 @@ fn test_map_claims() {
 	}
 
 	tok_str := sign_with_secret(claims, secret, SignOptions{})!
-	tok := verify_with_secret[map[string]string](tok_str, secret, VerifyOptions{})!
+	tok := verify_with_secret[map[string]string](tok_str, secret, VerifyOptions{ algorithm: .hs256 })!
 
 	assert tok.claims['sub'] == 'service-worker'
 	assert tok.claims['role'] == 'worker'
@@ -149,6 +150,7 @@ fn test_expiration_validation() {
 
 	// Default validation should reject expired token
 	if _ := verify_with_secret[StandardClaims](tok_str, secret, VerifyOptions{
+		algorithm:    .hs256
 		current_time: now
 	}) {
 		assert false
@@ -158,6 +160,7 @@ fn test_expiration_validation() {
 
 	// With validate_exp = false, it should succeed
 	tok := verify_with_secret[StandardClaims](tok_str, secret, VerifyOptions{
+		algorithm:    .hs256
 		validate_exp: false
 	})!
 	assert tok.claims.sub or { '' } == 'expired-user'
@@ -175,6 +178,7 @@ fn test_not_before_validation() {
 
 	// Default validation should reject premature token
 	if _ := verify_with_secret[StandardClaims](tok_str, secret, VerifyOptions{
+		algorithm:    .hs256
 		current_time: now
 	}) {
 		assert false
@@ -184,6 +188,7 @@ fn test_not_before_validation() {
 
 	// With validate_nbf = false, it should succeed
 	tok := verify_with_secret[StandardClaims](tok_str, secret, VerifyOptions{
+		algorithm:    .hs256
 		validate_nbf: false
 	})!
 	assert tok.claims.sub or { '' } == 'future-user'
@@ -201,6 +206,7 @@ fn test_leeway() {
 
 	// Without leeway, it fails
 	if _ := verify_with_secret[StandardClaims](tok_str, secret, VerifyOptions{
+		algorithm:    .hs256
 		current_time: now
 		leeway:       0
 	}) {
@@ -211,6 +217,7 @@ fn test_leeway() {
 
 	// With 10 seconds leeway, it passes
 	tok := verify_with_secret[StandardClaims](tok_str, secret, VerifyOptions{
+		algorithm:    .hs256
 		current_time: now
 		leeway:       10
 	})!
@@ -227,7 +234,7 @@ fn test_tampered_token_fails() {
 
 	// Tamper payload
 	tampered_tok := '${parts[0]}.eyabc.${parts[2]}'
-	if _ := verify_with_secret[StandardClaims](tampered_tok, secret, VerifyOptions{}) {
+	if _ := verify_with_secret[StandardClaims](tampered_tok, secret, VerifyOptions{ algorithm: .hs256 }) {
 		assert false
 	} else {
 		assert true
@@ -240,7 +247,7 @@ fn test_wrong_secret_fails() {
 	}
 	tok_str := sign_with_secret(claims, 'correct-secret', SignOptions{})!
 
-	if _ := verify_with_secret[StandardClaims](tok_str, 'wrong-secret', VerifyOptions{}) {
+	if _ := verify_with_secret[StandardClaims](tok_str, 'wrong-secret', VerifyOptions{ algorithm: .hs256 }) {
 		assert false
 	} else {
 		assert err.msg().contains('invalid token signature')
@@ -292,4 +299,50 @@ fn test_rfc7515_vector() {
 		validate_exp: false
 	})!
 	assert verified_payload == payload
+}
+
+fn test_eddsa_verification_rejects_hmac_with_public_key() {
+	pubkey, _ := ed25519.generate_key()!
+	for algorithm in [Algorithm.hs256, .hs384, .hs512] {
+		// An attacker knows the public key and can use it as an HMAC secret.
+		forged := sign(StandardClaims{ sub: 'admin' }, pubkey, SignOptions{
+			algorithm: algorithm
+		})!
+		if _ := verify_raw(forged, pubkey, VerifyOptions{ algorithm: .eddsa }) {
+			assert false, 'accepted ${algorithm} token with an Ed25519 verification key'
+		} else {
+			assert err.msg().contains('algorithm mismatch')
+		}
+		if _ := verify[StandardClaims](forged, pubkey, VerifyOptions{ algorithm: .eddsa }) {
+			assert false, 'accepted ${algorithm} token with an Ed25519 verification key'
+		} else {
+			assert err.msg().contains('algorithm mismatch')
+		}
+	}
+}
+
+fn test_invalid_registered_claims_are_rejected() {
+	key := 'claims-secret'.bytes()
+	for payload in [
+		'not json',
+		'{"exp":1.5}',
+		'{"exp":1,"iat":"not-a-date"}',
+		'{"exp":1,"nbf":9223372036854775808}',
+		'{"exp":1,"iat":9223372036854775808}',
+		'{"nbf":1000,"exp":9223372036854775808}',
+	] {
+		token := sign_raw(Header{}, payload, key)!
+		for validate_times in [true, false] {
+			if _ := verify_raw(token, key, VerifyOptions{
+				algorithm:    .hs256
+				current_time: 200
+				validate_exp: validate_times
+				validate_nbf: validate_times
+			}) {
+				assert false, 'accepted invalid registered claims: ${payload}'
+			} else {
+				assert err.msg().starts_with('invalid JWT claims:')
+			}
+		}
+	}
 }
