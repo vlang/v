@@ -860,7 +860,7 @@ fn test_enum_value_metadata_handles_unsigned_shift() {
 fn main() {
 	mut rows := []string{}
 	$for item in Shifted.values {
-		rows << item.value.str()
+		rows << i64(item.value).str()
 	}
 	println(rows.join('|'))
 }
@@ -878,7 +878,7 @@ fn test_enum_value_metadata_folds_power() {
 fn main() {
 	mut rows := []string{}
 	$for item in Powered.values {
-		rows << item.name + ':' + item.value.str()
+		rows << item.name + ':' + i64(item.value).str()
 	}
 	println(rows.join('|'))
 }
@@ -905,6 +905,8 @@ fn main() {
 	assert out == 'a'
 }
 
+// `item.value` is the enum value itself (as in V1), so it interpolates as the
+// field name; its numeric form, including width formatting, needs a cast.
 fn test_enum_value_metadata_interpolation_stays_numeric() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'enum_value_metadata_numeric_interpolation', "enum Color {
@@ -915,12 +917,12 @@ fn test_enum_value_metadata_interpolation_stays_numeric() {
 fn main() {
 	mut rows := []string{}
 	$for item in Color.values {
-		rows << '\${item.value}:\${item.value:4}'
+		rows << '\${item.value}=\${i64(item.value)}:\${i64(item.value):4}'
 	}
 	println(rows.join('|'))
 }
 ")
-	assert out == '7:   7|42:  42'
+	assert out == 'red=7:   7|blue=42:  42'
 }
 
 fn test_enum_value_metadata_preserves_wide_backed_values() {
@@ -933,7 +935,7 @@ fn test_enum_value_metadata_preserves_wide_backed_values() {
 fn main() {
 	mut rows := []string{}
 	$for item in Wide.values {
-		rows << '\${item.value}'
+		rows << '\${u64(item.value)}'
 	}
 	println(rows.join('|'))
 }
@@ -1595,7 +1597,7 @@ fn main() {
 	mut rows := []string{}
 	mut bare := []EnumData{}
 	$for item in Perm.values {
-		rows << item.name + ':' + item.value.str() + ':' + item.attrs.join(',')
+		rows << item.name + ':' + i64(item.value).str() + ':' + item.attrs.join(',')
 		bare << item
 	}
 	rows << bare[0].name + ':' + bare[0].value.str() + ':' + bare[0].attrs.join(',')

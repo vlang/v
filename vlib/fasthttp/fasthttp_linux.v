@@ -5,6 +5,9 @@ import sync.stdatomic
 import time
 
 const epoll_wait_timeout_ms = 100
+
+// Pending readiness stays queued in epoll; a worker need not reserve one slot per connection.
+const epoll_event_batch_size = 256
 const status_408_response = 'HTTP/1.1 408 Request Timeout\r\nContent-Type: text/plain\r\nContent-Length: 19\r\nConnection: close\r\n\r\n408 Request Timeout'.bytes()
 
 // Per-connection buffer capacities. Both buffers are allocated once per connection
@@ -140,13 +143,14 @@ mut:
 // table plus the free-list of retired ConnStates (each keeping its buffers).
 struct Worker {
 mut:
-	server       &Server = unsafe { nil }
-	epoll_fd     int
-	listen_fd    int
-	conns        []&ConnState
-	free_conns   []&ConnState
-	parked       int     // connections with an armed read/write deadline (gates the sweep)
-	worker_state voidptr // this worker thread's ServerConfig.make_state value (nil if unset)
+	server                &Server = unsafe { nil }
+	epoll_fd              int
+	listen_fd             int
+	conns                 []&ConnState
+	free_conns            []&ConnState
+	last_timeout_sweep_ns i64
+	parked                int     // connections with an armed read/write deadline (gates the sweep)
+	worker_state          voidptr // this worker thread's ServerConfig.make_state value (nil if unset)
 }
 
 fn close_socket(fd int) bool {
@@ -949,13 +953,17 @@ fn handle_accept_loop(mut w Worker) {
 }
 
 // sweep_timeouts closes connections whose read/write deadline elapsed. Only runs
-// when something is parked, so it costs nothing on an idle/fast server.
+// when something is parked, at most once per epoll wait timeout interval.
 @[direct_array_access]
 fn sweep_timeouts(mut w Worker) {
 	if w.server.timeout_in_seconds <= 0 || w.parked == 0 {
 		return
 	}
 	now := time.sys_mono_now()
+	if now - w.last_timeout_sweep_ns < i64(epoll_wait_timeout_ms) * time.millisecond {
+		return
+	}
+	w.last_timeout_sweep_ns = now
 	timeout_ns := i64(w.server.timeout_in_seconds) * 1_000_000_000
 	for fd in 0 .. w.conns.len {
 		cs := w.conns[fd]
@@ -994,13 +1002,23 @@ fn process_events(server &Server, epoll_fd int, listen_fd int) {
 	if server.make_state != unsafe { nil } {
 		w.worker_state = server.make_state()
 	}
-	mut events := [max_connection_size]C.epoll_event{}
+	mut events := [epoll_event_batch_size]C.epoll_event{}
 	for {
 		if server.is_shutting_down() && server.active_request_count() == 0 {
 			close_worker_clients(mut w)
 			return
 		}
-		num_events := C.epoll_wait(epoll_fd, &events[0], max_connection_size, epoll_wait_timeout_ms)
+		mut wait_ms := epoll_wait_timeout_ms
+		if server.timeout_in_seconds > 0 && w.parked > 0 {
+			// A skipped batch must not postpone the next sweep by another full wait.
+			elapsed_ms := (time.sys_mono_now() - w.last_timeout_sweep_ns) / time.millisecond
+			wait_ms = if elapsed_ms >= epoll_wait_timeout_ms {
+				0
+			} else {
+				epoll_wait_timeout_ms - int(elapsed_ms)
+			}
+		}
+		num_events := C.epoll_wait(epoll_fd, &events[0], events.len, wait_ms)
 		if num_events < 0 {
 			if C.errno == C.EINTR {
 				continue

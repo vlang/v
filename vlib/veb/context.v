@@ -58,6 +58,15 @@ mut:
 	// already_compressed indicates that the response body is already compressed (zstd/gzip)
 	// and the compression middlewares should skip it
 	already_compressed bool
+	// throttle_leases are the handler slots throttle middleware took for this
+	// request. `handle_route` frees them however the request ends: 404s and
+	// requests a middleware refuses skip the after-middleware, so an
+	// after-middleware could not free them reliably.
+	throttle_leases []ThrottleLease
+	// access_log_start_ns is the monotonic clock reading (`time.sys_mono_now()`)
+	// the access-log middleware stamped when the request arrived, so its finish
+	// half can log the latency. Zero means unstamped.
+	access_log_start_ns i64
 pub:
 	// TODO: move this to `handle_request`
 	// time.ticks() from start of veb connection handle.
@@ -470,6 +479,20 @@ pub fn (mut ctx Context) request_error(msg string) Result {
 pub fn (mut ctx Context) server_error(msg string) Result {
 	ctx.res.set_status(.internal_server_error)
 	return ctx.send_response_to_client('text/plain', msg)
+}
+
+// error_with answers a handler that declined to respond and returned an error
+// instead, which is what a `!veb.Result` handler does. The response is a JSON
+// envelope carrying the message. When the handler already chose a status with
+// `ctx.res.set_status`, it is kept, so such handlers still control 4xx
+// themselves; otherwise this is a 500.
+pub fn (mut ctx Context) error_with(err IError) Result {
+	if ctx.res.status_code == 0 {
+		ctx.res.set_status(.internal_server_error)
+	}
+	return ctx.json({
+		'error': err.msg()
+	})
 }
 
 // send an error with a custom status

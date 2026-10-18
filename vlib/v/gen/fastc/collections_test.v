@@ -171,7 +171,7 @@ fn main() {
 '
 	selfhost_source := generate(selfhost_fixture, 'selfhost_nested_array_membership.v', selfhost_prefs) or { panic(err) }
 	for side in ['l', 'r'] {
-		assert selfhost_source.contains('((int *)__vf_meq_${side}.data)[__vf_meq_k]'), selfhost_source
+		assert selfhost_source.contains('((${fastc_output_c_type('int')} *)__vf_meq_${side}.data)[__vf_meq_k]'), selfhost_source
 	}
 	root := os.join_path(os.vtmp_dir(), 'fastc_nested_array_membership_${os.getpid()}')
 	os.mkdir_all(root) or { panic(err) }

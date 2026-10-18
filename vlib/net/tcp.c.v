@@ -217,7 +217,7 @@ pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 		return res
 	}
 	if socket_read_timeout && ecode in [int(error_ewouldblock), int(error_eagain)] {
-		return err_timed_out
+		return error_with_code(err_timed_out.msg(), err_timed_out.code())
 	}
 	if ecode in [int(error_ewouldblock), int(error_eagain), C.EINTR] {
 		c.wait_for_read()!
@@ -823,7 +823,7 @@ fn (mut s TcpSocket) connect(a Addr) ! {
 				}
 				return
 			}
-			return err_timed_out
+			return error_with_code(err_timed_out.msg(), err_timed_out.code())
 		}
 		wrap_error(ecode)!
 		return

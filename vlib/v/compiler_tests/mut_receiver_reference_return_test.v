@@ -1,3 +1,4 @@
+// vtest ownership
 import os
 
 fn run_mut_receiver_reference_return(name string, source string, ownership bool) os.Result {

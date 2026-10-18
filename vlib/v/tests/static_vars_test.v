@@ -46,3 +46,22 @@ fn test_static_vars_with_array_initializers() {
 	assert unsafe { next_fib() } == 3
 	assert unsafe { next_fib() } == 5
 }
+
+struct StaticCounter {
+mut:
+	value int
+}
+
+@[unsafe]
+fn next_struct_counter() int {
+	mut static zero := StaticCounter{}
+	mut static initialized := StaticCounter{ value: 40 }
+	zero.value++
+	initialized.value++
+	return zero.value + initialized.value
+}
+
+fn test_static_struct_initializers_preserve_values_between_calls() {
+	assert unsafe { next_struct_counter() } == 42
+	assert unsafe { next_struct_counter() } == 44
+}
