@@ -2854,7 +2854,8 @@ fn live_git_args(state_git_dir string, command []string, class DurableGitReadCla
 }
 
 // This legacy adapter remains for the dormant T2c3b authority. While T2c3c1 owns the lease it
-// accepts only the exact target ls-tree form; arbitrary shell text cannot cross the new runner.
+// accepts only the exact target ls-tree argv; arbitrary argv cannot cross the new runner.
+// Without a lease, `arguments` goes to git as separate argv elements, never through a shell.
 fn live_git(state_git_dir string, arguments []string) os.Result {
 	if durable_git_runner_lease_load() != unsafe { nil } {
 		if arguments.len != 7 || arguments[0] != 'ls-tree' || arguments[1] != '-l'
@@ -4202,6 +4203,9 @@ $if test {
 		return trace
 	}
 
+	// durable_git_authority_adapter_rejection_for_test runs the legacy live_git adapter once with
+	// the given argv while the runner lease is held. It returns the rejection text for noncanonical
+	// arguments and fails if the adapter accepts them.
 	pub fn durable_git_authority_adapter_rejection_for_test(state_git_dir string,
 		arguments []string) !string {
 		mut session := durable_git_runner_begin(state_git_dir)!
