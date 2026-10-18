@@ -63,17 +63,21 @@ struct FastArm64MapLoopWriteback {
 }
 
 struct FastArm64FieldDecl {
-	name           string
-	typ            u32
-	default_source string
-	default_path   string
-	default_header FastcSourceHeader
+	name                   string
+	typ                    u32
+	default_source         string
+	default_source_offset  int
+	default_source_origins []FastcSourceOrigin
+	default_path           string
+	default_header         FastcSourceHeader
 }
 
 struct FastArm64ConstantDecl {
-	source string
-	path   string
-	header FastcSourceHeader
+	source         string
+	source_offset  int
+	source_origins []FastcSourceOrigin
+	path           string
+	header         FastcSourceHeader
 }
 
 struct FastArm64InterpolationFormat {
@@ -155,6 +159,7 @@ mut:
 struct FastArm64Parser {
 mut:
 	source_file              FastcSourceFile
+	source_offset            int
 	program                  &FastArm64Program = unsafe { nil }
 	s                        scanner.Scanner
 	tok                      token.Token
@@ -174,6 +179,7 @@ mut:
 	continue_scopes          []int
 	map_loop_writebacks      []FastArm64MapLoopWriteback
 	defer_sources            []string
+	defer_source_offsets     []int
 	defer_starts             []int
 	local_names              []string
 	local_values             []FastArm64Local
@@ -240,10 +246,10 @@ pub fn generate_arm64_files(paths []string, prefs &pref.Preferences, output stri
 	// rely on, and indexes the declarations. The generic-method sources and
 	// the per-file declaration texts and spans are not used here: the native
 	// path collects its type and constant declarations itself below.
-	mut index_type_sources := map[string]string{}
-	mut index_constant_sources := map[string]string{}
+	mut index_type_sources := map[string]FastcDeclarationSource{}
+	mut index_constant_sources := map[string]FastcDeclarationSource{}
 	mut index_constant_spans := map[string][]int{}
-	mut index_global_sources := map[string]string{}
+	mut index_global_sources := map[string]FastcDeclarationSource{}
 	_ = fastc_collect_generic_and_declaration_indexes(mut sources, prefs, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs, mut type_source_paths, mut index_type_sources, mut constants, mut public_constants, mut index_constant_sources, mut index_constant_spans, mut index_global_sources, mut globals, mut public_globals)!
 	timer.mark('arm64.declaration_indexes')
 	// Non-selfhost programs do not resolve builtin source files, but imported module
@@ -614,9 +620,11 @@ fn fast_arm64_collect_enum_values(sources []FastcSourceFile, prefs &pref.Prefere
 					field := scan.lit
 					tok = scan.scan()
 					mut value := ordinal.str()
+					mut value_offset := 0
 					if tok == .assign {
 						tok = scan.scan()
 						start := scan.pos
+						value_offset = source_file.source_offset + start
 						value, tok = fast_arm64_constant_expression_source(mut scan, tok, start, false)!
 					}
 					module_prefix := if source_file.header.module_name in ['', 'main'] {
@@ -625,9 +633,11 @@ fn fast_arm64_collect_enum_values(sources []FastcSourceFile, prefs &pref.Prefere
 						'${source_file.header.module_name}.'
 					}
 					declaration := FastArm64ConstantDecl{
-						source: value
-						path:   source_file.path
-						header: source_file.header
+						source:         value
+						source_offset:  value_offset
+						source_origins: source_file.source_origins
+						path:           source_file.path
+						header:         source_file.header
 					}
 					values['${module_prefix}${enum_name}.${field}'] = declaration
 					values['${enum_name}.${field}'] = declaration
@@ -679,9 +689,11 @@ fn fast_arm64_collect_constant_declaration(mut scan scanner.Scanner, source_file
 			expression_start := scan.pos
 			expression, next_token := fast_arm64_constant_expression_source(mut scan, tok, expression_start, true)!
 			constants[fastc_constant_key(source_file.header.module_name, name)] = FastArm64ConstantDecl{
-				source: expression
-				path:   source_file.path
-				header: source_file.header
+				source:         expression
+				source_offset:  source_file.source_offset + expression_start
+				source_origins: source_file.source_origins
+				path:           source_file.path
+				header:         source_file.header
 			}
 			tok = next_token
 		}
@@ -711,9 +723,11 @@ fn fast_arm64_collect_constant_declaration(mut scan scanner.Scanner, source_file
 	expression_start := scan.pos
 	expression, next_token := fast_arm64_constant_expression_source(mut scan, tok, expression_start, false)!
 	constants[fastc_constant_key(source_file.header.module_name, name)] = FastArm64ConstantDecl{
-		source: expression
-		path:   source_file.path
-		header: source_file.header
+		source:         expression
+		source_offset:  source_file.source_offset + expression_start
+		source_origins: source_file.source_origins
+		path:           source_file.path
+		header:         source_file.header
 	}
 	return next_token
 }
@@ -804,9 +818,11 @@ fn fast_arm64_collect_source_declarations(source_file FastcSourceFile, prefs &pr
 				selected := fastc_scan_selected_comptime_branch(mut scan, scan.scan(), source_file.path, prefs)!
 				if selected.source != '' {
 					fast_arm64_collect_source_declarations(FastcSourceFile{
-						path:   source_file.path
-						source: selected.source
-						header: source_file.header
+						path:           source_file.path
+						source:         selected.source
+						source_offset:  source_file.source_offset + selected.offset
+						source_origins: source_file.source_origins
+						header:         source_file.header
 					}, prefs, declared_types, enum_flags, mut declarations, mut constants, mut enum_values)!
 				}
 				tok = selected.tok
@@ -916,17 +932,21 @@ fn fast_arm64_collect_source_declarations(source_file FastcSourceFile, prefs &pr
 
 				tok = next_token
 				mut default_source := ''
+				mut default_source_offset := 0
 				if tok == .assign {
 					tok = scan.scan()
 					expression_start := scan.pos
+					default_source_offset = source_file.source_offset + expression_start
 					default_source, tok = fast_arm64_constant_expression_source(mut scan, tok, expression_start, false)!
 				}
 				fields << FastArm64FieldDecl{
-					name:           field_name
-					typ:            field_type
-					default_source: default_source
-					default_path:   source_file.path
-					default_header: source_file.header
+					name:                   field_name
+					typ:                    field_type
+					default_source:         default_source
+					default_source_offset:  default_source_offset
+					default_source_origins: source_file.source_origins
+					default_path:           source_file.path
+					default_header:         source_file.header
 				}
 			}
 			declaration := FastArm64TypeDecl{
@@ -992,12 +1012,14 @@ fn fast_arm64_collect_source_declarations(source_file FastcSourceFile, prefs &pr
 					} else {
 						ordinal.str()
 					}
+					mut value_offset := 0
 					if tok == .assign {
 						if is_flag {
 							return error('fastc arm64 does not support custom value for flag enum field `${short_name}.${field}` in ${source_file.path}')
 						}
 						tok = scan.scan()
 						start := scan.pos
+						value_offset = source_file.source_offset + start
 						value, tok = fast_arm64_constant_expression_source(mut scan, tok, start, false)!
 					}
 					module_prefix := if source_file.header.module_name in ['', 'main'] {
@@ -1006,9 +1028,11 @@ fn fast_arm64_collect_source_declarations(source_file FastcSourceFile, prefs &pr
 						'${source_file.header.module_name}.'
 					}
 					declaration := FastArm64ConstantDecl{
-						source: value
-						path:   source_file.path
-						header: source_file.header
+						source:         value
+						source_offset:  value_offset
+						source_origins: source_file.source_origins
+						path:           source_file.path
+						header:         source_file.header
 					}
 					enum_values['${module_prefix}${short_name}.${field}'] = declaration
 					enum_values['${short_name}.${field}'] = declaration
@@ -3870,14 +3894,15 @@ fn FastArm64Parser.new(mut program FastArm64Program, source_file FastcSourceFile
 	mut scan := scanner.new_scanner(program.prefs, .normal)
 	scan.init(file, source_file.source)
 	return &FastArm64Parser{
-		program:     unsafe { &program }
-		source_file: source_file
-		s:           scan
-		locals:      map[string]FastArm64Local{}
-		terminated:  map[int]bool{}
-		labels:      map[string]ssa.BlockID{}
-		break_to:    []ssa.BlockID{}
-		continue_to: []ssa.BlockID{}
+		program:       unsafe { &program }
+		source_file:   source_file
+		source_offset: source_file.source_offset
+		s:             scan
+		locals:        map[string]FastArm64Local{}
+		terminated:    map[int]bool{}
+		labels:        map[string]ssa.BlockID{}
+		break_to:      []ssa.BlockID{}
+		continue_to:   []ssa.BlockID{}
 	}
 }
 
@@ -3887,7 +3912,8 @@ fn (mut p FastArm64Parser) next() {
 }
 
 fn (p &FastArm64Parser) unsupported(feature string) IError {
-	return error('fastc arm64 parser does not support ${feature} at byte ${p.s.pos} in ${p.source_file.path}')
+	offset := fastc_original_source_offset(p.source_file.source_origins, p.source_offset + p.s.pos)
+	return error('fastc arm64 parser does not support ${feature} at byte ${offset} in ${p.source_file.path}')
 }
 
 fn (mut p FastArm64Parser) expect(wanted token.Token) ! {
@@ -4015,38 +4041,42 @@ fn (mut p FastArm64Parser) skip_value_declaration() {
 	}
 }
 
-fn (mut p FastArm64Parser) enter_source(source string) {
+fn (mut p FastArm64Parser) enter_source(source string, source_offset int) {
 	file := token.File.unindexed(p.source_file.path, source.len)
 	mut scan := scanner.new_scanner(p.program.prefs, .normal)
 	scan.init(file, source)
 	p.s = scan
+	p.source_offset = source_offset
 	p.next()
 }
 
-fn (mut p FastArm64Parser) parse_selected_top_level(source string) ! {
+fn (mut p FastArm64Parser) parse_selected_top_level(source string, source_offset int) ! {
 	if source == '' {
 		return
 	}
 	outer_scanner := p.s
 	outer_tok := p.tok
 	outer_lit := p.lit
-	p.enter_source(source)
+	outer_source_offset := p.source_offset
+	p.enter_source(source, source_offset)
 	p.parse_file_from_current_token()!
 	p.s = outer_scanner
 	p.tok = outer_tok
 	p.lit = outer_lit
+	p.source_offset = outer_source_offset
 }
 
-fn (mut p FastArm64Parser) parse_selected_statements(source string) ! {
+fn (mut p FastArm64Parser) parse_selected_statements(source string, source_offset int) ! {
 	if source == '' {
 		return
 	}
 	outer_scanner := p.s
 	outer_tok := p.tok
 	outer_lit := p.lit
+	outer_source_offset := p.source_offset
 	p.push_local_scope()
 	p.push_defer_scope()
-	p.enter_source(source)
+	p.enter_source(source, source_offset)
 	for p.tok != .eof {
 		if p.tok == .semicolon {
 			p.next()
@@ -4062,6 +4092,7 @@ fn (mut p FastArm64Parser) parse_selected_statements(source string) ! {
 	p.s = outer_scanner
 	p.tok = outer_tok
 	p.lit = outer_lit
+	p.source_offset = outer_source_offset
 }
 
 fn (mut p FastArm64Parser) parse_file() ! {
@@ -4104,7 +4135,7 @@ fn (mut p FastArm64Parser) parse_file_from_current_token() ! {
 			selected := fastc_scan_selected_comptime_branch(mut p.s, p.s.scan(), p.source_file.path, p.program.prefs)!
 			p.tok = selected.tok
 			p.lit = p.s.lit
-			p.parse_selected_top_level(selected.source)!
+			p.parse_selected_top_level(selected.source, p.source_offset + selected.offset)!
 			continue
 		}
 		if p.source_file.header.module_name in ['', 'main'] {
@@ -4130,6 +4161,7 @@ fn (mut p FastArm64Parser) parse_script() ! {
 	p.terminated = map[int]bool{}
 	p.labels = map[string]ssa.BlockID{}
 	p.defer_sources = []string{}
+	p.defer_source_offsets = []int{}
 	p.defer_starts = []int{}
 	p.push_defer_scope()
 	p.local_names = []string{}
@@ -4329,6 +4361,7 @@ fn (mut p FastArm64Parser) parse_function() ! {
 	p.locals = map[string]FastArm64Local{}
 	p.terminated = map[int]bool{}
 	p.defer_sources = []string{}
+	p.defer_source_offsets = []int{}
 	p.defer_starts = []int{}
 	p.local_names = []string{}
 	p.local_values = []FastArm64Local{}
@@ -4478,7 +4511,7 @@ fn (mut p FastArm64Parser) parse_statement() ! {
 			selected := fastc_scan_selected_comptime_branch(mut p.s, p.s.scan(), p.source_file.path, p.program.prefs)!
 			p.tok = selected.tok
 			p.lit = p.s.lit
-			p.parse_selected_statements(selected.source)!
+			p.parse_selected_statements(selected.source, p.source_offset + selected.offset)!
 		}
 		.key_mut {
 			p.next()
@@ -4500,6 +4533,7 @@ fn (mut p FastArm64Parser) parse_statement() ! {
 				return p.unsupported('`defer` outside a lexical scope')
 			}
 			p.defer_sources << block.source
+			p.defer_source_offsets << p.source_offset + block.offset
 			p.tok = block.tok
 			p.lit = p.s.lit
 		}
@@ -5176,7 +5210,7 @@ fn (mut p FastArm64Parser) emit_deferred_scopes(first_scope int) ! {
 	first_defer := p.defer_starts[first_scope]
 	for defer_index := p.defer_sources.len - 1; defer_index >= first_defer; defer_index-- {
 		source := p.defer_sources[defer_index]
-		p.parse_selected_statements(source)!
+		p.parse_selected_statements(source, p.defer_source_offsets[defer_index])!
 	}
 }
 
@@ -5188,6 +5222,7 @@ fn (mut p FastArm64Parser) pop_defer_scope() {
 	start := p.defer_starts.last()
 	for p.defer_sources.len > start {
 		p.defer_sources.delete_last()
+		p.defer_source_offsets.delete_last()
 	}
 	p.defer_starts.delete_last()
 }
@@ -5285,9 +5320,14 @@ fn (mut p FastArm64Parser) pop_loop() {
 	p.map_loop_writebacks.delete_last()
 }
 
+fn (p &FastArm64Parser) validate_if_condition() ! {
+	fastc_validate_if_condition(p.tok, p.s, p.source_file.header.translated, p.source_offset, p.source_file.source_origins, p.source_file.path)!
+}
+
 fn (mut p FastArm64Parser) parse_if() ! {
 	p.push_local_scope()
 	p.next()
+	p.validate_if_condition()!
 	mut condition := FastArm64Value{}
 	if p.tok == .name {
 		mut look := p.s
@@ -7185,11 +7225,13 @@ fn (mut p FastArm64Parser) parse_comptime_if_expression() !FastArm64Value {
 	outer_scanner := p.s
 	outer_tok := selected.tok
 	outer_lit := p.s.lit
-	p.enter_source(selected.source)
+	outer_source_offset := p.source_offset
+	p.enter_source(selected.source, outer_source_offset + selected.offset)
 	value := p.parse_expression(0)!
 	p.s = outer_scanner
 	p.tok = outer_tok
 	p.lit = outer_lit
+	p.source_offset = outer_source_offset
 	return value
 }
 
@@ -7547,6 +7589,7 @@ fn (mut p FastArm64Parser) parse_if_expression(expected_type_name_source_id u32)
 	expected_type_name := flat.source_type_name(expected_type_name_source_id)
 	p.push_local_scope()
 	p.expect(.key_if)!
+	p.validate_if_condition()!
 	mut condition := FastArm64Value{}
 	if p.tok == .name {
 		mut look := p.s
@@ -8281,20 +8324,24 @@ fn (mut p FastArm64Parser) parse_constant_expression(source string) !FastArm64Va
 	outer_scanner := p.s
 	outer_tok := p.tok
 	outer_lit := p.lit
-	p.enter_source(source)
+	outer_source_offset := p.source_offset
+	p.enter_source(source, p.source_file.source_offset)
 	value := p.parse_expression(0)!
 	p.s = outer_scanner
 	p.tok = outer_tok
 	p.lit = outer_lit
+	p.source_offset = outer_source_offset
 	return value
 }
 
 fn (mut p FastArm64Parser) parse_constant_declaration(declaration FastArm64ConstantDecl) !FastArm64Value {
 	outer_source_file := p.source_file
 	p.source_file = FastcSourceFile{
-		path:   declaration.path
-		source: declaration.source
-		header: declaration.header
+		path:           declaration.path
+		source:         declaration.source
+		source_offset:  declaration.source_offset
+		source_origins: declaration.source_origins
+		header:         declaration.header
 	}
 	defer {
 		p.source_file = outer_source_file
@@ -10953,18 +11000,22 @@ fn (mut p FastArm64Parser) parse_struct_field_default(field FastArm64FieldDecl) 
 	outer_tok := p.tok
 	outer_lit := p.lit
 	outer_source_file := p.source_file
+	outer_source_offset := p.source_offset
 	defer {
 		p.s = outer_scanner
 		p.tok = outer_tok
 		p.lit = outer_lit
 		p.source_file = outer_source_file
+		p.source_offset = outer_source_offset
 	}
 	p.source_file = FastcSourceFile{
-		path:   field.default_path
-		source: field.default_source
-		header: field.default_header
+		path:           field.default_path
+		source:         field.default_source
+		source_offset:  field.default_source_offset
+		source_origins: field.default_source_origins
+		header:         field.default_header
 	}
-	p.enter_source(field.default_source)
+	p.enter_source(field.default_source, field.default_source_offset)
 	value := if p.tok == .dot {
 		p.parse_enum_shorthand(field.typ)!
 	} else {

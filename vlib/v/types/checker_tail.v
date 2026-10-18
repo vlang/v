@@ -8817,6 +8817,9 @@ fn module_import_lines(source string) []int {
 }
 
 fn (tc &TypeChecker) node_is_on_multiple_module_import_line(id flat.NodeId) bool {
+	if tc.multiple_module_import_lines.len == 0 {
+		return false
+	}
 	pos := tc.a.node(id).pos
 	file := tc.a.source_files[pos.id] or { return false }
 	if pos.offset < 0 || pos.offset > file.size {
@@ -18792,6 +18795,23 @@ fn (mut tc TypeChecker) infer_generic_type_text_from_type_bytes(param_text strin
 	if clean.len == 0 {
 		return
 	}
+	if clean.starts_with('map[') {
+		end := find_matching_bracket(clean, 3)
+		if end > 3 && end + 1 < clean.len && actual is Map {
+			tc.infer_generic_type_text_from_type_bytes(clean[4..end], actual.key_type, generic_params, mut inferred)
+			tc.infer_generic_type_text_from_type_bytes(clean[end + 1..], actual.value_type, generic_params, mut inferred)
+		}
+		return
+	}
+	if clean.starts_with('(') && clean.ends_with(')') && actual is MultiReturn {
+		parts := split_params(clean[1..clean.len - 1])
+		if parts.len == actual.types.len {
+			for i, part in parts {
+				tc.infer_generic_type_text_from_type_bytes(part, actual.types[i], generic_params, mut inferred)
+			}
+		}
+		return
+	}
 	if clean.starts_with('&') {
 		if actual is Pointer {
 			tc.infer_generic_type_text_from_type_bytes(clean[1..], actual.base_type, generic_params, mut inferred)
@@ -18929,6 +18949,23 @@ fn (mut tc TypeChecker) infer_generic_type_value_from_type(param_id u32, actual 
 fn (mut tc TypeChecker) infer_generic_type_value_from_type_bytes(param_text string, actual Type, generic_params []string, mut inferred map[string]Type) {
 	clean := trimmed_space(param_text)
 	if clean.len == 0 {
+		return
+	}
+	if clean.starts_with('map[') {
+		end := find_matching_bracket(clean, 3)
+		if end > 3 && end + 1 < clean.len && actual is Map {
+			tc.infer_generic_type_value_from_type_bytes(clean[4..end], actual.key_type, generic_params, mut inferred)
+			tc.infer_generic_type_value_from_type_bytes(clean[end + 1..], actual.value_type, generic_params, mut inferred)
+		}
+		return
+	}
+	if clean.starts_with('(') && clean.ends_with(')') && actual is MultiReturn {
+		parts := split_params(clean[1..clean.len - 1])
+		if parts.len == actual.types.len {
+			for i, part in parts {
+				tc.infer_generic_type_value_from_type_bytes(part, actual.types[i], generic_params, mut inferred)
+			}
+		}
 		return
 	}
 	if clean.starts_with('&') {
@@ -20808,6 +20845,22 @@ fn valid_string_data(s string) bool {
 	return ptr >= 4096 && ptr < 281474976710656 && s.len < 1048576
 }
 
+// Reused function contexts can retain large maps after clear(). An empty
+// branch snapshot needs none of that capacity, but must remain independently writable.
+fn clone_mut_local_owners(src map[string]ScopeBindingOwner) map[string]ScopeBindingOwner {
+	if src.len == 0 {
+		return map[string]ScopeBindingOwner{}
+	}
+	return src.clone()
+}
+
+fn clone_unsafe_alias_owners(src map[string]bool) map[string]bool {
+	if src.len == 0 {
+		return map[string]bool{}
+	}
+	return src.clone()
+}
+
 // clone_smartcasts supports clone smartcasts handling for types.
 fn clone_smartcasts(src map[string]Type) map[string]Type {
 	mut dst := map[string]Type{}
@@ -21491,14 +21544,14 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 		&& tc.node_source_starts_with(cond_id, '(') {
 		tc.record_warning_at(.condition_mismatch, 'unnecessary `()` in `if` condition, use `if expr {` instead of `if (expr) {`.', cond_id, tc.if_parenthesized_condition_pos(condition))
 	}
-	saved_mut_local_owners := tc.fn_context.mut_local_owners.clone()
+	saved_mut_local_owners := clone_mut_local_owners(tc.fn_context.mut_local_owners)
 	defer {
 		tc.fn_context.mut_local_owners = saved_mut_local_owners
 	}
 	tc.enable_explicit_mut_smartcasts(cond_id)
 	guard_bindings := tc.check_condition(cond_id)
 	tc.record_constant_condition_diagnostics(cond_id)
-	unsafe_alias_base := tc.fn_context.unsafe_reference_alias_owners.clone()
+	unsafe_alias_base := clone_unsafe_alias_owners(tc.fn_context.unsafe_reference_alias_owners)
 	mut unsafe_alias_paths := []map[string]bool{}
 	pointer_alias_base := clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 	mut pointer_alias_paths := []map[string][]string{}
@@ -21552,10 +21605,10 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 		tc.ownership_end_branch(then_id)
 	}
 	if !condition_is_false && !tc.stmt_definitely_returns(then_id) {
-		unsafe_alias_paths << tc.fn_context.unsafe_reference_alias_owners.clone()
+		unsafe_alias_paths << clone_unsafe_alias_owners(tc.fn_context.unsafe_reference_alias_owners)
 		pointer_alias_paths << clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 	}
-	tc.fn_context.unsafe_reference_alias_owners = unsafe_alias_base.clone()
+	tc.fn_context.unsafe_reference_alias_owners = clone_unsafe_alias_owners(unsafe_alias_base)
 	tc.fn_context.pointer_binding_value_keys = clone_pointer_binding_value_keys(pointer_alias_base)
 	if had_saved_smartcasts {
 		tc.smartcasts = clone_smartcasts(saved_smartcasts)
@@ -21574,14 +21627,14 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 			tc.ownership_begin_branch()
 		}
 		if tc.valid_node_id(else_id) && tc.a.node(else_id).kind == .if_expr {
-			tc.fn_context.mut_local_owners = saved_mut_local_owners.clone()
+			tc.fn_context.mut_local_owners = clone_mut_local_owners(saved_mut_local_owners)
 		}
 		tc.check_if_else_branch(cond_id, else_id, value_context)
 		$if ownership ? {
 			tc.ownership_end_branch(else_id)
 		}
 		if !condition_is_true && !tc.stmt_definitely_returns(else_id) {
-			unsafe_alias_paths << tc.fn_context.unsafe_reference_alias_owners.clone()
+			unsafe_alias_paths << clone_unsafe_alias_owners(tc.fn_context.unsafe_reference_alias_owners)
 			pointer_alias_paths << clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 		}
 		if else_smartcasts.len > 0 {
@@ -21593,7 +21646,7 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 		}
 	} else {
 		if !condition_is_true {
-			unsafe_alias_paths << unsafe_alias_base.clone()
+			unsafe_alias_paths << clone_unsafe_alias_owners(unsafe_alias_base)
 			pointer_alias_paths << clone_pointer_binding_value_keys(pointer_alias_base)
 		}
 		$if ownership ? {
@@ -21774,7 +21827,7 @@ fn (tc &TypeChecker) err_block_holds(id flat.NodeId) bool {
 fn (mut tc TypeChecker) check_valid_if_expr(id flat.NodeId, node flat.Node) {
 	value_context := !tc.is_statement_node(id) && tc.expression_node_used_as_value(id)
 	cond_id := tc.a.child(&node, 0)
-	saved_mut_local_owners := tc.fn_context.mut_local_owners.clone()
+	saved_mut_local_owners := clone_mut_local_owners(tc.fn_context.mut_local_owners)
 	defer {
 		tc.fn_context.mut_local_owners = saved_mut_local_owners
 	}
@@ -21819,7 +21872,7 @@ fn (mut tc TypeChecker) check_valid_if_expr(id flat.NodeId, node flat.Node) {
 			}
 		}
 		if tc.valid_node_id(else_id) && tc.a.node(else_id).kind == .if_expr {
-			tc.fn_context.mut_local_owners = saved_mut_local_owners.clone()
+			tc.fn_context.mut_local_owners = clone_mut_local_owners(saved_mut_local_owners)
 		}
 		tc.check_if_else_branch(cond_id, else_id, value_context)
 		if value_context {

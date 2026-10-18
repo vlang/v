@@ -91,10 +91,20 @@ fn (mut g Parser) parse_anonymous_function() !(string, string, bool) {
 	// Rewrite `fn (...) ...` as `fn <name> (...) ...` so `parse_function` reads it as
 	// an ordinary declaration.
 	function_source := g.s.src[params_start..body_end]
-	plain_synthetic := 'fn ${name} ${function_source}'
+	prefix := 'fn ${name} '
+	plain_synthetic := fastc_apply_mapped_source_edits(FastcSourceFile{
+		path:           g.path
+		source:         g.s.src[anon_start..body_end]
+		source_offset:  g.source_offset + anon_start
+		source_origins: g.source_origins
+	}, [FastcSourceEdit{
+		start:       0
+		end:         params_start - anon_start
+		replacement: prefix
+	}])
 	c_name := fastc_c_function_name(g.module_name, name)
 	mut signatures := map[string]FastcFunctionSignature{}
-	collect_function_signatures(plain_synthetic, g.path, FastcSourceHeader{
+	collect_function_signatures(plain_synthetic.source, g.path, FastcSourceHeader{
 		module_name: g.module_name
 		imports:     g.imports
 	}, g.prefs, []int{}, g.declared_types, g.declared_type_c_names, map[string]bool{},
@@ -105,11 +115,15 @@ fn (mut g Parser) parse_anonymous_function() !(string, string, bool) {
 	synthetic := if capture_names.len == 0 {
 		plain_synthetic
 	} else {
-		'fn ${name} (${capture_params.join(', ')}${if function_source[1..].trim_left(' \t\r\n').starts_with(')') {
-			''
-		} else {
-			', '
-		}}${function_source[1..]}'
+		fastc_apply_mapped_source_edits(plain_synthetic, [FastcSourceEdit{
+			start:       prefix.len + 1
+			end:         prefix.len + 1
+			replacement: capture_params.join(', ') + if function_source[1..].trim_left(' \t\r\n').starts_with(')') {
+				''
+			} else {
+				', '
+			}
+		}])
 	}
 
 	// Save the resume position (already advanced past the literal) and every piece of
@@ -117,6 +131,8 @@ fn (mut g Parser) parse_anonymous_function() !(string, string, bool) {
 	resume_s := g.s
 	resume_tok := g.tok
 	resume_lit := g.lit
+	resume_source_offset := g.source_offset
+	resume_source_origins := g.source_origins
 	saved_locals := g.locals.clone()
 	saved_temp_id := g.temp_id
 	saved_indent := g.indent
@@ -130,16 +146,20 @@ fn (mut g Parser) parse_anonymous_function() !(string, string, bool) {
 	// set, exactly as the mono drain does for on-demand instances.
 	g.in_mono_drain = true
 	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file(g.path, synthetic.len)
-	file.index_lines_without_digest(synthetic)
+	mut file := file_set.add_file(g.path, synthetic.source.len)
+	file.index_lines_without_digest(synthetic.source)
 	g.s = scanner.new_scanner(g.prefs, .normal)
-	g.s.init(file, synthetic)
+	g.s.init(file, synthetic.source)
+	g.source_offset = synthetic.source_offset
+	g.source_origins = synthetic.source_origins
 	g.next()
 	g.parse_function(true) or {
 		// Restore before propagating so the outer parse can report cleanly.
 		g.s = resume_s
 		g.tok = resume_tok
 		g.lit = resume_lit
+		g.source_offset = resume_source_offset
+		g.source_origins = resume_source_origins
 		g.locals = saved_locals.clone()
 		g.temp_id = saved_temp_id
 		g.indent = saved_indent
@@ -160,6 +180,8 @@ fn (mut g Parser) parse_anonymous_function() !(string, string, bool) {
 	g.s = resume_s
 	g.tok = resume_tok
 	g.lit = resume_lit
+	g.source_offset = resume_source_offset
+	g.source_origins = resume_source_origins
 	g.locals = saved_locals.clone()
 	g.temp_id = saved_temp_id
 	g.indent = saved_indent
@@ -281,7 +303,7 @@ fn (g &Parser) capture_type_source_bytes(typ string) ?string {
 		return '&' + g.capture_type_source_bytes(typ[..typ.len - 1])?
 	}
 	if typ.starts_with('Array_') {
-		element := (g.array_element_type(flat.source_type_id(typ))?)
+		element := g.array_element_type(flat.source_type_id(typ))?
 		return '[]' + g.capture_type_source_bytes(flat.source_type_name(element))?
 	}
 	if typ.starts_with('Map_') {

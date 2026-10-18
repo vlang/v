@@ -182,10 +182,21 @@ fn (mut t Transformer) transformed_branch_error_return(value_id flat.NodeId, ret
 	if !t.return_expr_is_propagated_err(value_id, payload_type_source_id) {
 		return none
 	}
-	err_expr := t.transform_expr(value_id)
-	ret := t.make_none_return_stmt_with_err_expr(err_expr)
+	ret := t.make_none_return_stmt_with_err_expr(t.transform_returned_error(value_id))
 	t.mark_transformed_return(ret, source_return_id)
 	return ret
+}
+
+// transform_returned_error lowers the error of a failed-result return. When ownership analysis
+// decided that the error is read from borrowed storage, such as a module-level `IError`
+// constant, the caller receives an independent clone that it may free.
+fn (mut t Transformer) transform_returned_error(value_id flat.NodeId) flat.NodeId {
+	err_expr := t.transform_expr(value_id)
+	mut err_type := t.return_ierror_expr_type(value_id)
+	if err_type == 0 {
+		err_type = flat.source_type_id('IError')
+	}
+	return t.clone_borrowed_projection(value_id, err_expr, err_type)
 }
 
 fn (mut t Transformer) return_expr_is_propagated_err(id flat.NodeId, payload_type_id u32) bool {
@@ -1465,7 +1476,12 @@ fn (mut t Transformer) build_return_match_type_branch_chain(match_expr_id flat.N
 		t.push_smartcast(orig_subj, sc.variant_name, sc.sum_type_name)
 		sc_pushed++
 	}
+	// Every variant of the arm transforms the same body nodes, and a lowered
+	// body can keep the source nodes it did not change, so none of them may be
+	// rewritten in place.
+	t.inplace_rewrite_holds++
 	body_block := t.match_branch_return_block(branch, n_conds, ret_typ_id, source_return_id, []flat.NodeId{})
+	t.inplace_rewrite_holds--
 	for _ in 0 .. sc_pushed {
 		t.pop_smartcast()
 	}

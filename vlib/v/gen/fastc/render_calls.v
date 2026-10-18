@@ -90,7 +90,7 @@ fn (g &Parser) render_call_result_member_expression(tokens []FastcExpressionToke
 	source := g.render_member_receiver(members) or { return none }
 	return FastcRenderedExpression{
 		source: source
-		typ:    (g.infer_expression_type(members) or { return none })
+		typ:    g.infer_expression_type(members) or { return none }
 	}
 }
 
@@ -179,7 +179,7 @@ fn (g &Parser) render_typeof_name_expression(tokens []FastcExpressionToken) ?Fas
 		return none
 	}
 	inner_tokens := tokens[2..close]
-	mut type_name := (g.infer_expression_type(inner_tokens) or { return none })
+	mut type_name := g.infer_expression_type(inner_tokens) or { return none }
 	if inner_tokens.len == 1 && inner_tokens[0].tok == .name {
 		if local := g.locals[inner_tokens[0].lit] {
 			if local.is_reference {
@@ -258,7 +258,7 @@ fn (g &Parser) render_disabled_call_expression(tokens []FastcExpressionToken) ?F
 		if static_key := g.static_function_key_for_call(tokens, name_index) {
 			static_key
 		} else {
-			receiver_type := (g.infer_expression_type(tokens[..1]) or { return none })
+			receiver_type := g.infer_expression_type(tokens[..1]) or { return none }
 			g.method_function_key(receiver_type, tokens[name_index].lit)
 		}
 	} else {
@@ -519,7 +519,7 @@ fn (g &Parser) render_flag_method_expression(tokens []FastcExpressionToken, rend
 		}
 		receiver_start := fastc_method_receiver_start(tokens, i - 1)
 		receiver_tokens := tokens[receiver_start..i - 1]
-		receiver_type := (g.infer_expression_type(receiver_tokens) or { return none })
+		receiver_type := g.infer_expression_type(receiver_tokens) or { return none }
 		receiver_key := g.flag_enum_type_key(receiver_type) or { continue }
 		mut receiver := strings.new_builder(32)
 		for token_item in receiver_tokens {
@@ -880,7 +880,7 @@ fn (g &Parser) render_interface_cast_expression(tokens []FastcExpressionToken, r
 	if !rendered_expression.starts_with(prefix) || !rendered_expression.ends_with('))') {
 		return none
 	}
-	actual_type := (g.infer_expression_type(tokens[open_index + 1..close]) or { return none })
+	actual_type := g.infer_expression_type(tokens[open_index + 1..close]) or { return none }
 	if actual_type == u32(0) {
 		return none
 	}
@@ -972,7 +972,7 @@ fn (g &Parser) render_mutable_map_value_pointer(tokens []FastcExpressionToken) ?
 		return none
 	}
 	base_tokens := tokens[..open]
-	map_type := (g.infer_expression_type(base_tokens) or { return none })
+	map_type := g.infer_expression_type(base_tokens) or { return none }
 	key_type_source_id, value_type_source_id := g.map_key_value_types(map_type) or { return none }
 	key_type := key_type_source_id
 	value_type := value_type_source_id

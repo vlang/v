@@ -1572,6 +1572,8 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 		lhs = t.stabilize_transformed_lvalue_for_reuse(lhs)
 	}
 	t.drain_pending(mut result)
+	// The clone decisions below read the source operand again.
+	t.inplace_rewrite_holds++
 	mut rhs := flat.empty_node
 	if !push_many {
 		if !rhs_is_sum_variant {
@@ -1636,6 +1638,7 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 		rhs = cloned_rhs
 		borrowed_push_many_clone = cloned
 	}
+	t.inplace_rewrite_holds--
 	t.drain_pending(mut result)
 	if rhs_type == 0 {
 		rhs_type = t.node_type(rhs)
@@ -1925,6 +1928,8 @@ fn (mut t Transformer) try_lower_optional_array_append_stmt(_node flat.Node, lhs
 		t.drain_pending(mut result)
 	}
 
+	// The clone decisions below read the source operand again.
+	t.inplace_rewrite_holds++
 	mut rhs := flat.empty_node
 	if !push_many {
 		if !rhs_is_sum_variant {
@@ -1989,6 +1994,7 @@ fn (mut t Transformer) try_lower_optional_array_append_stmt(_node flat.Node, lhs
 		rhs = cloned_rhs
 		borrowed_push_many_clone = cloned
 	}
+	t.inplace_rewrite_holds--
 	t.drain_pending(mut result)
 	if rhs_type == 0 {
 		rhs_type = t.node_type(rhs)
@@ -2723,6 +2729,8 @@ fn (mut t Transformer) lower_array_prepend_call(node flat.Node, fn_node flat.Nod
 	if prepend_many {
 		mut value := flat.empty_node
 		mut converted_bulk_append := false
+		// The clone decision below reads the source operand again.
+		t.inplace_rewrite_holds++
 		if converted := t.transform_array_value_for_dynamic_target(value_id, base_type_id) {
 			// `[]Iface.prepend(...[]Concrete)` has to box every element. A bare
 			// insert_many would memcpy the concrete values into interface-sized slots
@@ -2735,6 +2743,7 @@ fn (mut t Transformer) lower_array_prepend_call(node flat.Node, fn_node flat.Nod
 			value = t.transform_array_many_rhs(value_id, value_node, base_type_id)
 		}
 		cloned_value, cloned := t.clone_borrowed_array_append_many_value(value_id, value, rhs_type, elem_type_id)
+		t.inplace_rewrite_holds--
 		value = cloned_value
 		mut changes := t.make_bool_literal(true)
 		if t.owned_array_slice_detach_needed(elem_type_id) {
@@ -2758,6 +2767,8 @@ fn (mut t Transformer) lower_array_prepend_call(node flat.Node, fn_node flat.Nod
 		return t.finish_borrowed_array_insert_many_call(call, value, rhs_type, cloned,
 			converted_bulk_append)
 	}
+	// The clone decisions below read the source operand again.
+	t.inplace_rewrite_holds++
 	mut value := if t.sum_types.contains(elem_type) || flat.source_type_name(t.resolve_sum_name(elem_type_id)) in t.sum_types.ids {
 		t.wrap_sum_value(value_id, elem_type_id)
 	} else {
@@ -2770,6 +2781,7 @@ fn (mut t Transformer) lower_array_prepend_call(node flat.Node, fn_node flat.Nod
 	} else {
 		cloned_value
 	}
+	t.inplace_rewrite_holds--
 	value_name := t.new_temp('arr_val')
 	t.pending_stmts << t.make_decl_assign_typed(value_name, value, elem_type_id)
 	t.detach_owned_array_slice_for_mutation(t.array_lvalue_value(base, base_type_id),
@@ -2836,6 +2848,8 @@ fn (mut t Transformer) lower_array_insert_call(node flat.Node, fn_node flat.Node
 	if insert_many {
 		mut value := flat.empty_node
 		mut converted_bulk_append := false
+		// The clone decision below reads the source operand again.
+		t.inplace_rewrite_holds++
 		if converted := t.transform_array_value_for_dynamic_target(value_id, base_type_id) {
 			// `[]Iface.insert(i, ...[]Concrete)` has to box every element. A bare
 			// insert_many would memcpy the concrete values into interface-sized slots
@@ -2848,6 +2862,7 @@ fn (mut t Transformer) lower_array_insert_call(node flat.Node, fn_node flat.Node
 			value = t.transform_array_many_rhs(value_id, value_node, base_type_id)
 		}
 		cloned_value, cloned := t.clone_borrowed_array_append_many_value(value_id, value, rhs_type, elem_type_id)
+		t.inplace_rewrite_holds--
 		value = cloned_value
 		mut changes := t.make_bool_literal(true)
 		if t.owned_array_slice_detach_needed(elem_type_id) {
@@ -2872,6 +2887,8 @@ fn (mut t Transformer) lower_array_insert_call(node flat.Node, fn_node flat.Node
 		return t.finish_borrowed_array_insert_many_call(call, value, rhs_type, cloned,
 			converted_bulk_append)
 	}
+	// The clone decisions below read the source operand again.
+	t.inplace_rewrite_holds++
 	mut value := if t.sum_types.contains(elem_type) || flat.source_type_name(t.resolve_sum_name(elem_type_id)) in t.sum_types.ids {
 		t.wrap_sum_value(value_id, elem_type_id)
 	} else {
@@ -2884,6 +2901,7 @@ fn (mut t Transformer) lower_array_insert_call(node flat.Node, fn_node flat.Node
 	} else {
 		cloned_value
 	}
+	t.inplace_rewrite_holds--
 	value_name := t.new_temp('arr_val')
 	t.pending_stmts << t.make_decl_assign_typed(value_name, value, elem_type_id)
 	t.detach_owned_array_slice_for_mutation(array_value, t.trim_all_pointer_type(base_type_id), valid_index)

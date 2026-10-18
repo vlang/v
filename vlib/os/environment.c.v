@@ -24,7 +24,7 @@ pub fn getenv_opt(key string) ?string {
 		$if windows {
 			kw := key.to_wide()
 			defer {
-				free(voidptr(kw))
+				unsafe { free(voidptr(kw)) }
 			}
 			s := C._wgetenv(kw)
 			if s == 0 {

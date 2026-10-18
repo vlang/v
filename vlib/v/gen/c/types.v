@@ -345,14 +345,43 @@ fn (mut g FlatGen) value_unalias_type(typ types.Type) types.Type {
 		// Generic substitution can preserve a caller alias only as its type name
 		// after the specialized body has moved into the generic function's module.
 		// Recover the registered alias before selecting the C storage type.
-		if target_source_id := g.tc.type_aliases.type_id(clean_type.name()) {
+		name := clean_type.name()
+		if target_source_id := g.tc.type_aliases.type_id(name) {
 			return cgen_unalias_type(g.tc.parse_type(target_source_id))
 		}
-		if target_source_id := g.tc.type_aliases.type_id('main.${clean_type.name()}') {
+		if target_source_id := main_type_alias_id(g.tc.type_aliases, name) {
 			return cgen_unalias_type(g.tc.parse_type(target_source_id))
 		}
 	}
 	return clean_type
+}
+
+// known_type_id returns `id` when it is set, else interns `text`.
+@[inline]
+fn known_type_id(id u32, text string) u32 {
+	return if id != 0 { id } else { flat.source_type_id(text) }
+}
+
+// main_type_alias_id reads the `main.<name>` alias. Struct values reach this for
+// every C type query; join the key on the stack, as map reads do not keep it.
+@[direct_array_access]
+fn main_type_alias_id(aliases flat.TypeTextBindings, name string) ?u32 {
+	key_len := name.len + 5
+	if key_len > module_key_view_cap {
+		return aliases.type_id('main.${name}')
+	}
+	mut buf := [module_key_view_cap]u8{}
+	// Declarations stay outside the `unsafe` blocks: the FastC parser, which builds
+	// the compiler with `-b fastc`, rejects `:=` inside a value block.
+	p := unsafe { &u8(&buf[0]) }
+	unsafe {
+		vmemcpy(p, c'main.', 5)
+		if name.len > 0 {
+			vmemcpy(p + 5, name.str, name.len)
+		}
+	}
+	key := unsafe { tos(p, key_len) }
+	return aliases.type_id(key)
 }
 
 // cgen_type_is_map reports whether typ is a map, looking through any alias
@@ -665,19 +694,23 @@ fn (g &FlatGen) canonical_import_alias_type_for_node(typ types.Type, node &flat.
 	if !type_has_import_alias_text(typ) {
 		return typ
 	}
-	source := typ.name()
+	// A nominal type carries the ID of its name; other types intern theirs once.
+	source_id := typ.source_type_id()
 	// This function receives a semantic Type, not raw source text. Preserve an
 	// exact registered name before repairing stale alias-qualified spellings;
 	// otherwise a current file import can retarget a canonical type from a call.
-	if exact := g.exact_known_import_type_text(flat.source_type_id(source)) {
+	if exact := g.exact_known_import_type_text(source_id) {
 		return exact
 	}
 	// Only dotted names can reference an import alias. Primitive and local
 	// type spellings do not need a walk through synthesized child nodes.
-	file := if source.contains('.') { g.node_source_file(node) } else { '' }
-	canonical_source_id := g.canonical_import_alias_type_text_in_file(flat.source_type_id(source), file)
-	canonical := flat.source_type_name(canonical_source_id)
-	if canonical != source {
+	file := if flat.source_type_shape(source_id).has(.dotted) {
+		g.node_source_file(node)
+	} else {
+		''
+	}
+	canonical_source_id := g.canonical_import_alias_type_text_in_file(source_id, file)
+	if canonical_source_id != source_id {
 		if exact := g.exact_known_import_type_text(canonical_source_id) {
 			return exact
 		}
@@ -731,6 +764,9 @@ fn (mut g FlatGen) import_alias_sizeof_target_in_file(value_id u32, file string)
 fn (g &FlatGen) exact_known_import_type_text(typ_id u32) ?types.Type {
 	typ := flat.source_type_name(typ_id)
 	clean := trimmed_space(typ)
+	// An unpadded spelling is its own clean text; reuse its ID instead of hashing
+	// it. A padded one is interned only where a branch needs it, as before.
+	unpadded_id := if clean.len == typ.len { typ_id } else { u32(0) }
 	if clean.starts_with('&') {
 		return types.Type(types.Pointer{
 			base_type: g.exact_known_import_type_text(flat.source_type_id(clean[1..]))?
@@ -752,40 +788,42 @@ fn (g &FlatGen) exact_known_import_type_text(typ_id u32) ?types.Type {
 		})
 	}
 	if g.tc.type_aliases.contains(clean) {
-		return g.tc.parse_canonical_type(flat.source_type_id(clean))
+		return g.tc.parse_canonical_type_cached(known_type_id(unpadded_id, clean))
 	}
 	if clean in g.tc.structs {
 		return types.Type(types.Struct{
-			name_id: flat.source_type_id(clean)
+			name_id: known_type_id(unpadded_id, clean)
 		})
 	}
 	if clean.contains('.') {
-		module_name := clean.all_before_last('.')
-		short_name := clean.all_after_last('.')
+		// Views over `clean`: they only key a read and compare text.
+		dot := clean.last_index_u8(`.`)
+		module_name := unsafe { clean.substr_unsafe(0, dot) }
+		short_name := unsafe { clean.substr_unsafe(dot + 1, clean.len) }
 		// Declaration collection already indexes the qualified name. Program
 		// and builtin declarations use bare keys, matching qualify_name_in_module.
 		key := if module_name in ['', 'main', 'builtin'] { short_name } else { clean }
 		if info := g.struct_decl_infos[key] {
 			if info.module == module_name && info.node.value == short_name {
 				return types.Type(types.Struct{
-					name_id: flat.source_type_id(clean)
+					name_id: known_type_id(unpadded_id, clean)
 				})
 			}
 		}
 	}
 	if clean in g.tc.interface_names {
 		return types.Type(types.Interface{
-			name_id: flat.source_type_id(clean)
+			name_id: known_type_id(unpadded_id, clean)
 		})
 	}
 	if g.tc.sum_types.contains(clean) {
 		return types.Type(types.SumType{
-			name_id: flat.source_type_id(clean)
+			name_id: known_type_id(unpadded_id, clean)
 		})
 	}
 	if clean in g.tc.enum_names {
 		return types.Type(types.Enum{
-			name_id: flat.source_type_id(clean)
+			name_id: known_type_id(unpadded_id, clean)
 			is_flag: clean in g.tc.flag_enums
 		})
 	}
@@ -1388,16 +1426,18 @@ fn (g &FlatGen) type_contains_generic_placeholder(t types.Type) bool {
 			// Inferred anonymous literals are materialized during transform. Their
 			// earlier checker entry has no nominal storage type; prefer the concrete
 			// lowered annotation instead of emitting `v_struct` for its container.
-			if t.name().all_after_last('.') == 'struct' {
+			if c_short_name_view(t.name()) == 'struct' {
 				return true
 			}
 			// A stale generic-call annotation can carry the concrete C function name
 			// as a nominal type. It is not a payload type and must not create an
 			// `__v_option_<function>` typedef in the program prefix.
-			if t.name().contains('_T_') && !g.type_name_known(t.name()) {
+			if t.name().index_u8(`_`) >= 0 && t.name().contains('_T_')
+				&& !g.type_name_known(t.name()) {
 				return true
 			}
-			if !g.skip_generics && flat.source_type_shape(t.source_type_id()).has(.bracketed) && g.type_name_is_unbound_generic_decl(t.source_type_id(), g.struct_generic_params_for_name(t.source_type_id()), t.name() in g.tc.structs || g.tc.qualify_name(t.name()) in g.tc.structs) {
+			if !g.skip_generics && flat.source_type_shape(t.name_id).has(.bracketed)
+				&& g.type_name_is_unbound_generic_decl(t.source_type_id(), g.struct_generic_params_for_name(t.source_type_id()), t.name() in g.tc.structs || g.tc.qualify_name(t.name()) in g.tc.structs) {
 				return true
 			}
 			return g.type_name_contains_generic_placeholder(t.source_type_id())
@@ -1409,7 +1449,8 @@ fn (g &FlatGen) type_contains_generic_placeholder(t types.Type) bool {
 			return g.type_name_contains_generic_placeholder(t.source_type_id())
 		}
 		types.SumType {
-			if !g.skip_generics && flat.source_type_shape(t.source_type_id()).has(.bracketed) && g.type_name_is_unbound_generic_decl(t.source_type_id(), g.sum_generic_params_for_name(t.source_type_id()), t.name() in g.tc.sum_types.ids || g.tc.qualify_name(t.name()) in g.tc.sum_types.ids) {
+			if !g.skip_generics && flat.source_type_shape(t.name_id).has(.bracketed)
+				&& g.type_name_is_unbound_generic_decl(t.source_type_id(), g.sum_generic_params_for_name(t.source_type_id()), t.name() in g.tc.sum_types.ids || g.tc.qualify_name(t.name()) in g.tc.sum_types.ids) {
 				return true
 			}
 			return g.type_name_contains_generic_placeholder(t.source_type_id())
@@ -1478,7 +1519,13 @@ fn (g &FlatGen) type_name_contains_generic_placeholder(name_id u32) bool {
 	if g.skip_generics && !g.placeholder_check_forced {
 		return false
 	}
-	return g.type_name_contains_generic_placeholder_bytes(flat.source_type_name(name_id))
+	name := flat.source_type_name(name_id)
+	if !flat.source_type_shape(name_id).has(.bracketed) {
+		// Without brackets only a bare placeholder (`T`) qualifies.
+		clean := trimmed_space(name)
+		return clean.len > 0 && g.is_bare_generic_placeholder_name(clean)
+	}
+	return g.type_name_contains_generic_placeholder_bytes(name)
 }
 
 fn (g &FlatGen) type_name_contains_generic_placeholder_bytes(name string) bool {

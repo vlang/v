@@ -622,7 +622,11 @@ pub mut:
 	nodes           []Node
 	children        []NodeId
 	user_code_start int
-	disabled_fns    map[string]bool
+	// parsed_node_count is the number of nodes the parser produced, or 0 when
+	// it was not recorded. Later stages append synthesized nodes past it, in an
+	// order that can depend on how their work was split across threads.
+	parsed_node_count int
+	disabled_fns      map[string]bool
 	// The names spelled inside a `$if`/`$match` body this build does not take,
 	// keyed by `<file>:<fn name offset>|<name>`. The body is never parsed, so
 	// nothing in the AST records its identifier occurrences or reads.
@@ -663,6 +667,12 @@ pub mut:
 	// formatter_local_sels records selectors whose direct receiver is a lexical binding.
 	formatter_local_sels    map[int]bool
 	formatter_migrate_json2 bool
+	// monomorph_tail_nodes and monomorph_tail_children are the capacity at the end
+	// of nodes and children that the transform stage reserves for the specializer
+	// of the monomorphization stage; the transform stage's own append regions
+	// leave it alone.
+	monomorph_tail_nodes    int
+	monomorph_tail_children int
 	// Template-generated nodes keep their original template source location while
 	// retaining the comptime call site used for v1-compatible diagnostic stacks.
 	template_call_sites map[int]token.Pos

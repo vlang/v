@@ -3686,6 +3686,7 @@ pub fn (mut t Transformer) synthesize_sum_eq_helpers() []string {
 	old_helper_module := t.sum_eq_helper_module
 	old_tc_module := if isnil(t.tc) { '' } else { t.tc.cur_module }
 	old_tc_file := if isnil(t.tc) { '' } else { t.tc.cur_file }
+	old_temp_counter := t.temp_counter
 	was_log_active := t.used_fns_log_active
 	log_start := t.used_fns_log.len
 	t.used_fns_log_active = true
@@ -3724,6 +3725,9 @@ pub fn (mut t Transformer) synthesize_sum_eq_helpers() []string {
 				t.tc.cur_module = req.module
 				t.tc.cur_file = req.file
 			}
+			// A helper is a function of its own: number its temporaries from zero,
+			// not from whatever the transform lowered before it.
+			t.temp_counter = 0
 			if req.struct_name != 0 {
 				t.build_struct_eq_helper_fn(req.struct_name, helper)
 			} else {
@@ -3746,6 +3750,7 @@ pub fn (mut t Transformer) synthesize_sum_eq_helpers() []string {
 	}
 	t.cur_module = old_module
 	t.cur_file = old_file
+	t.temp_counter = old_temp_counter
 	t.sum_eq_helper_module = old_helper_module
 	if !isnil(t.tc) {
 		t.tc.cur_module = old_tc_module

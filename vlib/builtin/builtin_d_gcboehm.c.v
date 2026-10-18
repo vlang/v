@@ -2,6 +2,11 @@ module builtin
 
 $if macos || linux {
 	// The bundled amalgamation otherwise enables unmapping only with HAVE_CONFIG_H.
+	// Unmapping requires the mmap-based heap. libgc selects it on its own only on
+	// macOS and on glibc x86_64 Linux; elsewhere (e.g. arm64/riscv64 Linux, or
+	// musl) gc.c stops with `USE_MUNMAP requires USE_MMAP`. libgc's configure
+	// defines both together too.
+	#flag -DUSE_MMAP=1
 	#flag -DUSE_MUNMAP=1
 }
 

@@ -18,6 +18,8 @@ For equal non-NaN values, including opposite signs of zero, both return their se
 `modf` preserves the input sign on both its integer and fractional results, including zero.
 `log_gamma` returns the logarithm of the absolute value of Gamma; either positive or negative
 infinity as input returns positive infinity.
+`log2(x)` returns an exact integer exponent for every representable positive power of two,
+including subnormal inputs.
 `log1p(x)` returns positive infinity for positive infinity, negative infinity for `-1`,
 and NaN for values below `-1`.
 

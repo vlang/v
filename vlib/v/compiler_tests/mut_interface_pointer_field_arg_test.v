@@ -1,3 +1,4 @@
+// vtest ownership
 import os
 
 fn test_mut_interface_pointer_field_call_keeps_the_pointer_slot() {

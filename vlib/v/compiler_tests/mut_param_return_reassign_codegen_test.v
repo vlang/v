@@ -1,3 +1,4 @@
+// vtest ownership
 import os
 
 const mut_param_return_reassign_vexe = @VEXE
