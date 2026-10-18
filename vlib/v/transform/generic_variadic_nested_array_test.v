@@ -25,17 +25,17 @@ fn test_variadic_call_inference_distinguishes_source_elements_and_packed_tails()
 	for mode in ['element', 'spread', 'packed', 'temporary', 'forwarded'] {
 		mut a := flat.FlatAst.new()
 		value := a.add_node(flat.Node{
-			kind: .ident
+			kind:  .ident
 			value: if mode == 'temporary' { '__varargs_1' } else { 'argument' }
-			typ: flat.source_type_id('[][]int')
+			typ:   flat.source_type_id('[][]int')
 		})
 		mut arg := value
 		if mode == 'spread' {
 			start := a.children.len
 			a.children << value
 			arg = a.add_node(flat.Node{
-				kind: .prefix
-				value: '...'
+				kind:           .prefix
+				value:          '...'
 				children_start: start
 				children_count: 1
 			})

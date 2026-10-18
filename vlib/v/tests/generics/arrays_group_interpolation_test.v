@@ -50,6 +50,12 @@ fn test_spread_tail_preserves_fixed_argument_evaluation_order() {
 	counter.log.clear()
 	assert '${group_take[int](group_fixed_arg(mut counter), ...group_spread_arg(mut counter))}' == '1'
 	assert counter.log == ['fixed', 'spread']
+	counter.log.clear()
+	assert group_take(group_fixed_arg(mut counter), ...group_spread_arg(mut counter)) == 1
+	assert counter.log == ['fixed', 'spread']
+	counter.log.clear()
+	assert '${group_take(group_fixed_arg(mut counter), ...group_spread_arg(mut counter))}' == '1'
+	assert counter.log == ['fixed', 'spread']
 }
 
 fn test_nested_arrays_are_single_variadic_elements() {
@@ -91,4 +97,17 @@ fn test_nested_generic_body_variadic_inference() {
 	assert '${group_spread_in_generic_body(inputs)}' == '[[[1, 2]], [[3, 4]]]'
 	assert group_spread_in_generic_body(...inputs) == [[1, 3], [2, 4]]
 	assert '${group_spread_in_generic_body(...inputs)}' == '[[1, 3], [2, 4]]'
+}
+
+fn group_collect[T](values ...T) []T {
+	return values
+}
+
+fn test_single_array_against_a_direct_variadic_placeholder() {
+	assert group_collect([1, 2]) == [[1, 2]]
+	assert '${group_collect([1, 2])}' == '[[1, 2]]'
+	assert group_collect([[1, 2]]) == [[[1, 2]]]
+	assert '${group_collect([[1, 2]])}' == '[[[1, 2]]]'
+	assert group_collect(...[[1, 2], [3, 4]]) == [[1, 2], [3, 4]]
+	assert '${group_collect(...[[1, 2], [3, 4]])}' == '[[1, 2], [3, 4]]'
 }
