@@ -261,7 +261,8 @@ running with `-d new_veb` without SSL.
 
 To add endpoints to your web server, you must extend the `App` struct.
 For routing you can either use auto-mapping of function names or specify the path as an attribute.
-The function expects a parameter of your Context type and a response of the type `veb.Result`.
+The function expects a parameter of your Context type and a response of the type `veb.Result`
+(or `!veb.Result` when the endpoint can fail, see Handlers that return `!veb.Result`).
 
 **Example:**
 
@@ -1384,6 +1385,46 @@ pub fn (app &App) login(mut ctx Context) veb.Result {
 
 You can also use `ctx.server_error(msg string)` to send an HTTP 500 internal server
 error with a message.
+
+## Handlers that return `!veb.Result`
+
+A handler that can fail may return `!veb.Result` instead of rolling its own
+error responses. Answer by returning the value, decline by returning an error,
+and veb turns the error into a JSON envelope carrying its message. When the
+handler already chose a status with `ctx.res.set_status`, it is kept, so 4xx
+stays in the handler's hands; otherwise the envelope is a 500.
+
+**Example:**
+
+```v
+module main
+
+import veb
+
+pub struct Context {
+	veb.Context
+}
+
+pub struct App {}
+
+fn user_name_by_id(id int) !string {
+	if id != 42 {
+		return error('no such user')
+	}
+	return 'douglas'
+}
+
+@['/user/:id']
+pub fn (app &App) user(mut ctx Context, id int) !veb.Result {
+	// A status the handler chose is kept, so `return error(...)` here answers
+	// 404 with a JSON envelope carrying the message.
+	name := user_name_by_id(id) or {
+		ctx.res.set_status(.not_found)
+		return error('no user with id ${id}')
+	}
+	return ctx.text('Hello ${name}!')
+}
+```
 
 ## Advanced usage
 

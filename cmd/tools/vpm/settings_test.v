@@ -17,6 +17,13 @@ fn test_get_mirror_urls_from_args_supports_short_and_long_flags() {
 	assert mirror_urls == ['https://mirror1.example', 'https://mirror2.example']
 }
 
+fn test_registry_command_skips_client_home_setup() {
+	assert is_registry_command(['registry', 'serve'])
+	assert is_registry_command(['--local', 'registry', 'serve'])
+	assert !is_registry_command(['install', 'registry'])
+	assert !is_registry_command(['install', '-m', 'https://mirror.example', 'registry'])
+}
+
 fn test_build_install_server_urls_prioritizes_default_servers() {
 	server_urls := build_install_server_urls(['https://official1.example', 'https://official2.example'], [
 		'https://mirror1.example',
