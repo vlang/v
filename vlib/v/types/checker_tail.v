@@ -22093,7 +22093,10 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 		pointer_alias_paths << clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 	}
 	tc.fn_context.unsafe_reference_alias_owners = clone_unsafe_alias_owners(unsafe_alias_base)
-	tc.fn_context.pointer_binding_value_keys = clone_pointer_binding_value_keys(pointer_alias_base)
+	// A then branch that changed no pointer binding already left the base state.
+	if !pointer_binding_states_same(pointer_alias_base, tc.fn_context.pointer_binding_value_keys) {
+		tc.fn_context.pointer_binding_value_keys = clone_pointer_binding_value_keys(pointer_alias_base)
+	}
 	if had_saved_smartcasts {
 		tc.smartcasts = clone_smartcasts(saved_smartcasts)
 	} else {

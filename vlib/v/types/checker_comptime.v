@@ -20589,8 +20589,38 @@ fn clone_pointer_binding_value_keys(src map[string][]string) map[string][]string
 	return result
 }
 
+// pointer_binding_states_same reports whether `a` and `b` bind the same keys to
+// the same value lists, each without repeated values: then merging them, in
+// either order, gives `a` again.
+fn pointer_binding_states_same(a map[string][]string, b map[string][]string) bool {
+	if a.len != b.len {
+		return false
+	}
+	for key, values in a {
+		other := b[key] or { return false }
+		if values.len != other.len {
+			return false
+		}
+		for i, value in values {
+			if value != other[i] {
+				return false
+			}
+			for j in 0 .. i {
+				if values[j] == value {
+					return false
+				}
+			}
+		}
+	}
+	return true
+}
+
 fn merge_pointer_binding_value_states(states []map[string][]string, fallback map[string][]string) map[string][]string {
 	if states.len == 0 {
+		return clone_pointer_binding_value_keys(fallback)
+	}
+	// Branches that left every binding as it was merge into the fallback itself.
+	if states.all(pointer_binding_states_same(fallback, it)) {
 		return clone_pointer_binding_value_keys(fallback)
 	}
 	// Merge each key once, in first-seen order: the fallback's keys, then the new
@@ -20742,6 +20772,11 @@ fn (mut tc TypeChecker) merge_unsafe_reference_alias_short_circuit_state(op flat
 }
 
 fn (mut tc TypeChecker) merge_pointer_binding_short_circuit_state(op flat.Op, lhs_id flat.NodeId, skipped_rhs map[string][]string) {
+	// An RHS that left every binding as it was leaves nothing to merge: whether it
+	// runs or not, the bindings stay those of the current state.
+	if pointer_binding_states_same(skipped_rhs, tc.fn_context.pointer_binding_value_keys) {
+		return
+	}
 	executed_rhs := clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 	if lhs := tc.constant_bool_value(lhs_id) {
 		rhs_executes := (op == .logical_and && lhs) || (op == .logical_or && !lhs)

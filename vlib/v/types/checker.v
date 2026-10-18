@@ -8457,9 +8457,40 @@ fn (mut tc TypeChecker) insert_fn_param_binding(id flat.NodeId, p flat.Node) {
 		if unalias_and_unwrap_pointer_type(parsed_type) is Array {
 			tc.mark_shared_array_binding_owner(p.value, owner)
 		}
-	} else if p.typ_text().trim_space().trim_left('&').trim_space().starts_with('[]shared ') {
+	} else if type_text_is_shared_array(p.typ_text()) {
 		tc.mark_shared_array_binding_owner(p.value, owner)
 	}
+}
+
+// type_text_is_shared_array reports whether
+// `text.trim_space().trim_left('&').trim_space().starts_with('[]shared ')`,
+// without the trimmed copies.
+@[direct_array_access]
+fn type_text_is_shared_array(text string) bool {
+	mut start := 0
+	mut end := text.len
+	for end > start && is_trim_space_byte(text[end - 1]) {
+		end--
+	}
+	for start < end && is_trim_space_byte(text[start]) {
+		start++
+	}
+	for start < end && text[start] == `&` {
+		start++
+	}
+	for start < end && is_trim_space_byte(text[start]) {
+		start++
+	}
+	prefix := '[]shared '
+	if end - start < prefix.len {
+		return false
+	}
+	for i in 0 .. prefix.len {
+		if text[start + i] != prefix[i] {
+			return false
+		}
+	}
+	return true
 }
 
 fn mut_param_type_is_allowed(typ Type) bool {
@@ -13637,7 +13668,7 @@ fn (tc &TypeChecker) has_export_attribute() bool {
 	for _, attrs in tc.declaration_attributes {
 		for raw in attrs {
 			if raw.trim_left(' \t').starts_with('export')
-				&& raw.all_before(':').trim_space() == 'export' {
+				&& attribute_name_is(raw, 'export') {
 				return true
 			}
 		}
@@ -13647,7 +13678,7 @@ fn (tc &TypeChecker) has_export_attribute() bool {
 
 fn (tc &TypeChecker) declaration_attribute_value(node_id flat.NodeId, name string) ?string {
 	for raw in tc.declaration_attributes[int(node_id)] {
-		if raw.all_before(':').trim_space() != name || !raw.contains(':') {
+		if !attribute_name_is(raw, name) || !raw.contains(':') {
 			continue
 		}
 		value := raw.all_after(':').trim_space()
@@ -14050,7 +14081,7 @@ fn (tc &TypeChecker) source_type_name_in_module(raw_type_id u32, module_name str
 }
 
 fn (tc &TypeChecker) fn_returns_veb_result(node flat.Node) bool {
-	raw_type := node.typ_text().trim_space()
+	raw_type := trimmed_space(node.typ_text())
 	if raw_type == 'veb.Result' {
 		return true
 	}
@@ -17178,7 +17209,7 @@ fn (mut tc TypeChecker) check_attribute_schema_decl(node_id flat.NodeId, node fl
 		}
 	}
 	for raw in tc.declaration_attributes[int(node_id)] {
-		if raw.all_before(':').trim_space() != 'attribute' || !raw.contains(':') {
+		if !attribute_name_is(raw, 'attribute') || !raw.contains(':') {
 			continue
 		}
 		target := attribute_string_unquote(raw.all_after(':').trim_space())
@@ -17442,7 +17473,7 @@ fn (mut tc TypeChecker) collect_attribute_schemas() {
 					}
 				}
 				for raw in tc.declaration_attributes[int(node_id)] {
-					if raw.all_before(':').trim_space() != 'attribute' || !raw.contains(':') {
+					if !attribute_name_is(raw, 'attribute') || !raw.contains(':') {
 						continue
 					}
 					target := attribute_string_unquote(raw.all_after(':').trim_space())
@@ -18808,11 +18839,37 @@ fn (tc &TypeChecker) node_contains_runtime_call(id flat.NodeId) bool {
 // declaration_has_attribute reports whether a declaration has the named attribute.
 pub fn (tc &TypeChecker) declaration_has_attribute(node_id flat.NodeId, name string) bool {
 	for raw in tc.declaration_attributes[int(node_id)] {
-		if raw.all_before(':').trim_space() == name {
+		if attribute_name_is(raw, name) {
 			return true
 		}
 	}
 	return false
+}
+
+// attribute_name_is reports whether `raw.all_before(':').trim_space() == name`,
+// without the substrings.
+@[direct_array_access]
+fn attribute_name_is(raw string, name string) bool {
+	mut end := raw.index_u8(`:`)
+	if end < 0 {
+		end = raw.len
+	}
+	mut start := 0
+	for start < end && is_trim_space_byte(raw[start]) {
+		start++
+	}
+	for end > start && is_trim_space_byte(raw[end - 1]) {
+		end--
+	}
+	if end - start != name.len {
+		return false
+	}
+	for i in 0 .. name.len {
+		if raw[start + i] != name[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // autofree_enabled reports whether compatibility autofree lowering is active.
