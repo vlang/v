@@ -50,6 +50,28 @@ pub fn validate_json_value(schema_path string, instance JsonValue) ![]SchemaIssu
 	return issues
 }
 
+// validate_json_value_with_seeded_reference_for_test runs the schema pass of validate_json_value, but the
+// reference cache starts with seeded_value at seeded_path. A test uses it to show that a $ref resolved to
+// that path is served from the cache rather than read from disk.
+pub fn validate_json_value_with_seeded_reference_for_test(schema_path string, instance JsonValue,
+	seeded_path string, seeded_value JsonValue) ![]SchemaIssue {
+	schema := parse_strict_json(os.read_file(schema_path)!)!
+	cache := &map[string]JsonValue{}
+	seed_schema_reference_cache(cache, seeded_path, seeded_value)
+	context := SchemaContext{
+		root_dir: os.dir(os.real_path(schema_path))
+		cache:    cache
+	}
+	return context.validate(schema, instance, '$', os.real_path(schema_path))
+}
+
+// seed_schema_reference_cache writes one entry through the shared cache pointer.
+fn seed_schema_reference_cache(cache &map[string]JsonValue, path string, value JsonValue) {
+	unsafe {
+		(*cache)[path] = value
+	}
+}
+
 fn (context SchemaContext) validate(schema JsonValue, instance JsonValue, path string,
 	current_schema_path string) ![]SchemaIssue {
 	if schema.kind == .boolean {
@@ -415,15 +437,16 @@ fn (context SchemaContext) resolve_reference(reference string,
 		return error('schema reference escaped the contract schema directory')
 	}
 	// The cache is a pointer so every value-receiver copy of SchemaContext shares one map, and V
-	// needs unsafe to index through a pointer. Each top-level validation owns its cache.
+	// needs unsafe to reach through the pointer. Each top-level validation owns its cache. The unsafe
+	// blocks cover only the map access; the file read and parse run outside them.
 	cache := context.cache
-	mut resolved := unsafe {
-		(*cache)[resolved_path] or {
-			parsed := parse_strict_json(os.read_file(resolved_path)!)!
+	if !(unsafe { resolved_path in *cache }) {
+		parsed := parse_strict_json(os.read_file(resolved_path)!)!
+		unsafe {
 			(*cache)[resolved_path] = parsed
-			parsed
 		}
 	}
+	mut resolved := unsafe { (*cache)[resolved_path] }
 	if pointer != '' {
 		if !pointer.starts_with('/') {
 			return error('schema fragment must be a JSON pointer')
