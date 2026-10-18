@@ -3043,7 +3043,14 @@ fn (mut tc TypeChecker) check_map_literal_element_types(id flat.NodeId, node fla
 	}
 	mut expected_key := Type(void_)
 	mut expected_value := Type(void_)
-	if expected := tc.expected_context_for_expr(id) {
+	// The entries of `map[K]V{...}` must fit its own key and value types, whatever
+	// the context expects; a mismatch with the context is reported for the literal.
+	if node.value.len > 0 {
+		if declared_map := map_type_from_receiver(tc.parse_type(flat.source_type_id(node.value))) {
+			expected_key = declared_map.key_type
+			expected_value = declared_map.value_type
+		}
+	} else if expected := tc.expected_context_for_expr(id) {
 		if expected_map := map_type_from_receiver(expected) {
 			expected_key = expected_map.key_type
 			expected_value = expected_map.value_type
@@ -3080,7 +3087,9 @@ fn (mut tc TypeChecker) check_map_literal_element_types(id flat.NodeId, node fla
 			update_id := tc.a.child(key, 0)
 			if update_type := map_type_from_receiver(tc.resolve_type(update_id)) {
 				if !tc.receiver_compatible(update_type.key_type, expected_key)
-					|| !tc.receiver_compatible(update_type.value_type, expected_value) {
+					|| !tc.receiver_compatible(update_type.value_type, expected_value)
+					|| tc.map_entry_layouts_differ(update_type.key_type, expected_key)
+					|| tc.map_entry_layouts_differ(update_type.value_type, expected_value) {
 					expected_map := Type(Map{
 						key_type:   expected_key
 						value_type: expected_value

@@ -18094,7 +18094,7 @@ fn enum_backing_value_bounds(typ Type) ?EnumBackingValueBounds {
 
 fn (mut tc TypeChecker) check_backed_enum_field_value_ranges(node flat.Node, backing string, bounds EnumBackingValueBounds) {
 	is_flag := node.typ_text() == 'flag'
-	mut field_values := map[string]int{}
+	mut field_values := map[string]i64{}
 	mut field_exprs := map[string]flat.NodeId{}
 	mut field_ids := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {
@@ -18326,7 +18326,7 @@ fn (mut tc TypeChecker) check_enum_field_values(node_id flat.NodeId, node flat.N
 	}
 	mut seen_names := map[string]bool{}
 	mut seen_values := map[int]bool{}
-	mut field_values := map[string]int{}
+	mut field_values := map[string]i64{}
 	mut next_value := 0
 	for i in 0 .. node.children_count {
 		field_id := tc.a.child(&node, i)

@@ -1,0 +1,112 @@
+vlib/v/checker/tests/map_init_explicit_type_mismatch_err.vv:17:15: error: cannot initialize field `ids` with `map[string]bool`; expected `Ids`
+   15 |     misses map[u64]bool
+   16 |     nested map[string]map[u64]bool
+   17 |     ids    Ids = map[string]bool{}
+      |                  ~~~~~~~~~~~~~~~~~
+   18 |     named  map[string]Named
+   19 |     refs   map[string]&Named
+vlib/v/checker/tests/map_init_explicit_type_mismatch_err.vv:28:9: error: cannot use `map[string]bool` as type `map[u64]bool` in return argument
+   26 | 
+   27 | fn make_misses() map[u64]bool {
+   28 |     return map[string]bool{}
+      |            ~~~~~~~~~~~~~~~~~
+   29 | }
+   30 |
+vlib/v/checker/tests/map_init_explicit_type_mismatch_err.vv:33:3: error: cannot assign to field `misses`: expected `map[u64]bool`, not `map[string]bool`
+   31 | fn main() {
+   32 |     mut cache := Cache{
+   33 |         misses: map[string]bool{}
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~
+   34 |     }
+   35 |     cache.misses = map[string]bool{}
+vlib/v/checker/tests/map_init_explicit_type_mismatch_err.vv:35:17: error: cannot assign to `cache.misses`: expected `map[u64]bool`, not `map[string]bool`
+   33 |         misses: map[string]bool{}
+   34 |     }
+   35 |     cache.misses = map[string]bool{}
+      |                    ~~~~~~~~~~~~~~~~~
+   36 |     cache.misses = map[u32]bool{}
+   37 |     cache.misses = map[string]bool{
+vlib/v/checker/tests/map_init_explicit_type_mismatch_err.vv:36:17: error: cannot assign to `cache.misses`: expected `map[u64]bool`, not `map[u32]bool`
+   34 |     }
+   35 |     cache.misses = map[string]bool{}
+   36 |     cache.misses = map[u32]bool{}
+      |                    ~~~~~~~~~~~~~~
+   37 |     cache.misses = map[string]bool{
+   38 |         'a': true
+vlib/v/checker/tests/map_init_explicit_type_mismatch_err.vv:37:17: error: cannot assign to `cache.misses`: expected `map[u64]bool`, not `map[string]bool`
+   35 |     cache.misses = map[string]bool{}
+   36 |     cache.misses = map[u32]bool{}
+   37 |     cache.misses = map[string]bool{
+      |                    ~~~~~~~~~~~~~~~~
+   38 |         'a': true
+   39 |     }
+vlib/v/checker/tests/map_init_explicit_type_mismatch_err.vv:40:17: error: cannot assign to `cache.nested`: expected `map[string]map[u64]bool`, not `map[string]map[string]bool`
+   38 |         'a': true
+   39 |     }
+   40 |     cache.nested = map[string]map[string]bool{}
+      |                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   41 |     cache.nested['a'] = map[string]bool{}
+   42 |     mut misses := map[u64]bool{}
+vlib/v/checker/tests/map_init_explicit_type_mismatch_err.vv:41:22: error: cannot assign to `cache.nested['a']`: expected `map[u64]bool`, not `map[string]bool`
+   39 |     }
+   40 |     cache.nested = map[string]map[string]bool{}
+   41 |     cache.nested['a'] = map[string]bool{}
+      |                         ~~~~~~~~~~~~~~~~~
+   42 |     mut misses := map[u64]bool{}
+   43 |     misses = map[string]bool{}
+vlib/v/checker/tests/map_init_explicit_type_mismatch_err.vv:43:11: error: cannot assign to `misses`: expected `map[u64]bool`, not `map[string]bool`
+   41 |     cache.nested['a'] = map[string]bool{}
+   42 |     mut misses := map[u64]bool{}
+   43 |     misses = map[string]bool{}
+      |              ~~~~~~~~~~~~~~~~~
+   44 |     other := map[u32]bool{}
+   45 |     misses = {
+vlib/v/checker/tests/map_init_explicit_type_mismatch_err.vv:46:6: error: invalid map update: expected `map[u64]bool`, not `map[u32]bool`
+   44 |     other := map[u32]bool{}
+   45 |     misses = {
+   46 |         ...other
+      |            ~~~~~
+   47 |     }
+   48 |     cache.named = map[string]Item{}
+vlib/v/checker/tests/map_init_explicit_type_mismatch_err.vv:45:11: error: cannot assign to `misses`: expected `map[u64]bool`, not `map[u32]bool`
+   43 |     misses = map[string]bool{}
+   44 |     other := map[u32]bool{}
+   45 |     misses = {
+      |              ^
+   46 |         ...other
+   47 |     }
+vlib/v/checker/tests/map_init_explicit_type_mismatch_err.vv:48:16: error: cannot assign to `cache.named`: expected `map[string]Named`, not `map[string]Item`
+   46 |         ...other
+   47 |     }
+   48 |     cache.named = map[string]Item{}
+      |                   ~~~~~~~~~~~~~~~~~
+   49 |     cache.refs = map[string]&Item{}
+   50 |     cache.scores = map[string]int{}
+vlib/v/checker/tests/map_init_explicit_type_mismatch_err.vv:49:15: error: cannot assign to `cache.refs`: expected `map[string]&Named`, not `map[string]&Item`
+   47 |     }
+   48 |     cache.named = map[string]Item{}
+   49 |     cache.refs = map[string]&Item{}
+      |                  ~~~~~~~~~~~~~~~~~~
+   50 |     cache.scores = map[string]int{}
+   51 |     counts := map[string]int{
+vlib/v/checker/tests/map_init_explicit_type_mismatch_err.vv:50:17: error: cannot assign to `cache.scores`: expected `map[string]?int`, not `map[string]int`
+   48 |     cache.named = map[string]Item{}
+   49 |     cache.refs = map[string]&Item{}
+   50 |     cache.scores = map[string]int{}
+      |                    ~~~~~~~~~~~~~~~~
+   51 |     counts := map[string]int{
+   52 |         'a': 'b'
+vlib/v/checker/tests/map_init_explicit_type_mismatch_err.vv:52:8: error: invalid map value: expected `int`, not `string`
+   50 |     cache.scores = map[string]int{}
+   51 |     counts := map[string]int{
+   52 |         'a': 'b'
+      |              ~~~
+   53 |     }
+   54 |     println(take(map[string]bool{}))
+vlib/v/checker/tests/map_init_explicit_type_mismatch_err.vv:54:15: error: cannot use `map[string]bool` as `map[u64]bool` in argument 1 to `take`
+   52 |         'a': 'b'
+   53 |     }
+   54 |     println(take(map[string]bool{}))
+      |                  ~~~~~~~~~~~~~~~~~
+   55 |     println(make_misses())
+   56 |     println(cache)
