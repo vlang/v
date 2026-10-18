@@ -3193,8 +3193,14 @@ fn (mut t Transformer) comptime_field_call_generic_args(node flat.Node, mut chil
 		if int(arg_id) < 0 {
 			break
 		}
-		arg := t.a.nodes[int(arg_id)]
-		mut arg_type := t.comptime_field_generic_arg_type(arg_id, fm)
+		mut inference_param_type := param.typ
+		mut value_id := arg_id
+		if generic_param_text_is_variadic(param.typ) {
+			inference_param_type, value_id = t.generic_variadic_arg_for_inference(param.typ,
+				generic_variadic_elem_param_text(param.typ), arg_id)
+		}
+		arg := t.a.nodes[int(value_id)]
+		mut arg_type := t.comptime_field_generic_arg_type(value_id, fm)
 		if arg.kind == .ident {
 			if payload_source_id := t.comptime_option_unwrapped_local_type(arg.value, node, fm) {
 				arg_type = payload_source_id
@@ -3209,7 +3215,7 @@ fn (mut t Transformer) comptime_field_call_generic_args(node flat.Node, mut chil
 		if inference_type == 0 {
 			inference_type = fm.comptime_unaliased
 		}
-		infer_generic_type_args(param.typ, inference_type, mut inferred)
+		infer_generic_type_args(inference_param_type, inference_type, mut inferred)
 		param_idx++
 	}
 	mut inferred_args := []u32{cap: param_names.len}
