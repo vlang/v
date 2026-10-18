@@ -761,6 +761,9 @@ pub:
 
 // render renders the Header into a string for use in sending HTTP
 // requests. All header lines will end in `\r\n`
+// The SP and HTAB bytes at the start and end of a value are not written, as
+// in Go's `Header.Write`: they are not part of a field value (RFC 9110 section
+// 5.5). `get` and `values` still return the value as it was stored.
 @[manualfree]
 pub fn (h Header) render(flags HeaderRenderConfig) string {
 	// estimate ~48 bytes per header
@@ -809,7 +812,7 @@ pub fn (h Header) render_into_sb(mut sb strings.Builder, flags HeaderRenderConfi
 		// for v in vs {
 		sb.write_string(key)
 		sb.write_string(': ')
-		sb.write_string(kv.value)
+		sb.write_string(header_value_without_ows(kv.value))
 		sb.write_string('\r\n')
 		//}
 	}
@@ -988,6 +991,19 @@ fn header_value_without_crlf_nul(value string) string {
 		}
 	}
 	return b.bytestr()
+}
+
+// header_value_without_ows returns `value` without the SP and HTAB bytes at
+// its start and end. That optional whitespace is not part of a field value
+// (RFC 9110 section 5.5), and a recipient removes it. It returns `value`
+// itself, without a copy, when it has none.
+@[direct_array_access; inline]
+fn header_value_without_ows(value string) string {
+	if value.len == 0 || (value[0] != ` ` && value[0] != `\t` && value[value.len - 1] != ` `
+		&& value[value.len - 1] != `\t`) {
+		return value
+	}
+	return value.trim(' \t')
 }
 
 // is_valid checks if the header token contains all valid bytes

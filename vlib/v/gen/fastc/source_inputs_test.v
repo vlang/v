@@ -35,11 +35,11 @@ fn test_overlapping_directory_and_file_inputs_keep_module_siblings() {
 	os.write_file(helper_file, 'module main\nfn answer() int { return 42 }\n') or { panic(err) }
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
-	// Repeated resolutions also exercise a memo written for an overlapping input.
-	for paths in [[root, main_file], [main_file, root], [root, main_file]] {
+	// These expand to the same paths, so also exercise memo reuse across origins.
+	for paths in [[root, main_file], [main_file, main_file], [main_file, root], [root, main_file]] {
 		sources, _ := fastc_resolve_source_files(paths, prefs) or { panic(err) }
 		assert sources.filter(it.path == main_file).len == 1
-		assert sources.filter(it.path == helper_file).len == 1
+		assert sources.filter(it.path == helper_file).len == if root in paths { 1 } else { 0 }
 	}
 }
 

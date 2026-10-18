@@ -183,9 +183,8 @@ fn (mut g Parser) parse_c_directive() ! {
 			// inert for this build; skip it instead of rejecting the whole program,
 			// mirroring the `#include <os>` target filtering below.
 			qualifier := rest.all_before(' ')
-			if qualifier in ['windows', 'macos', 'darwin', 'ios', 'mac', 'linux', 'freebsd', 'openbsd',
-				'netbsd', 'dragonfly', 'solaris', 'android'] {
-				if !pref.comptime_flag_value(g.prefs, qualifier) {
+			if enabled := fastc_directive_target_enabled(qualifier, g.prefs) {
+				if !enabled {
 					return
 				}
 				rest = rest.all_after(qualifier).trim_space()
@@ -206,7 +205,7 @@ fn (mut g Parser) parse_c_directive() ! {
 			if defines := fastc_flag_defines(rest) {
 				g.c_flags << fastc_c_flag_args(rest, g.prefs.vroot, g.path)!
 				for define in defines {
-					g.out.writeln('#define ${define}')
+					g.out.writeln(define)
 				}
 				return
 			}
@@ -225,9 +224,8 @@ fn (mut g Parser) parse_c_directive() ! {
 	if c_directive.starts_with('include ') {
 		remainder := c_directive['include '.len..]
 		qualifier := remainder.all_before(' ')
-		if qualifier in ['windows', 'macos', 'linux', 'freebsd', 'openbsd', 'netbsd', 'dragonfly',
-			'solaris', 'android'] {
-			if !pref.comptime_flag_value(g.prefs, qualifier) {
+		if enabled := fastc_directive_target_enabled(qualifier, g.prefs) {
+			if !enabled {
 				return
 			}
 			c_directive = 'include ' + remainder.all_after(' ')
@@ -433,9 +431,22 @@ fn fastc_flag_is_skippable(flag string) bool {
 	return true
 }
 
-// fastc_flag_defines returns the `#define` bodies for a `#flag` payload made up of
-// `-DNAME` / `-DNAME=value` preprocessor defines (link/header flags mixed in are
-// skipped). Returns none if the payload has no define or contains anything else.
+// fastc_directive_target_enabled reports, for a `#flag` or `#include` target prefix,
+// whether it names this build's target, by the C backend's rule; none when the word
+// is not a target prefix.
+fn fastc_directive_target_enabled(prefix string, prefs &pref.Preferences) ?bool {
+	if target_os := pref.directive_target_os(prefix) {
+		return target_os == prefs.target.os
+	}
+	if target_arch := pref.directive_target_arch(prefix) {
+		return target_arch == prefs.target.arch
+	}
+	return none
+}
+
+// fastc_flag_defines returns the `#define` and `#undef` lines for a `#flag` payload made
+// up of `-DNAME` / `-DNAME=value` / `-UNAME` preprocessor options (link/header flags mixed
+// in are skipped). Returns none if the payload has no such option or contains anything else.
 fn fastc_flag_defines(flag string) ?[]string {
 	tokens := flag.fields()
 	if tokens.len == 0 {
@@ -451,10 +462,15 @@ fn fastc_flag_defines(flag string) ?[]string {
 			}
 			has_define = true
 			if body.contains('=') {
-				defines << '${body.all_before('=')} ${body.all_after('=')}'
+				defines << '#define ${body.all_before('=')} ${body.all_after('=')}'
 			} else {
-				defines << '${body} 1'
+				defines << '#define ${body} 1'
 			}
+			continue
+		}
+		if part.starts_with('-U') && part.len > 2 {
+			has_define = true
+			defines << '#undef ${part[2..]}'
 			continue
 		}
 		if part.starts_with('-l') || part.starts_with('-L') || part.starts_with('-I') || part.starts_with('-Wl') || part.starts_with('-rpath') || part == '-pthread' {
@@ -990,6 +1006,8 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	previous_function_defer_declarations := g.function_defer_declarations.clone()
 	previous_loop_defer_block_starts := g.loop_defer_block_starts.clone()
 	previous_loop_has_breaks := g.loop_has_breaks.clone()
+	previous_loop_labels := g.loop_labels.clone()
+	previous_parsing_loop_labels := g.parsing_loop_labels.clone()
 	previous_statement_reachable := g.statement_reachable
 	previous_unsafe_depth := g.unsafe_depth
 	// Defer-capture state must never span function boundaries; a render path that reads a
@@ -1018,6 +1036,8 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	g.function_defer_declarations.clear()
 	g.loop_defer_block_starts.clear()
 	g.loop_has_breaks.clear()
+	g.loop_labels.clear()
+	g.parsing_loop_labels.clear()
 	g.capturing_defer = false
 	g.captured_defer_lines.clear()
 	g.defer_depth = 0
@@ -1127,6 +1147,8 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	g.function_defer_declarations = previous_function_defer_declarations.clone()
 	g.loop_defer_block_starts = previous_loop_defer_block_starts.clone()
 	g.loop_has_breaks = previous_loop_has_breaks.clone()
+	g.loop_labels = previous_loop_labels.clone()
+	g.parsing_loop_labels = previous_parsing_loop_labels.clone()
 	g.capturing_defer = previous_capturing_defer
 	g.captured_defer_lines = previous_captured_defer_lines.clone()
 	g.defer_depth = previous_defer_depth
