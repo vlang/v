@@ -150,9 +150,13 @@ mut:
 	parsed_type_decls_module string
 	// The sibling-file declarations the workers of one parse batch share (see
 	// scan_translated_sizeof_declarations), and this worker's place among them.
-	translated_sizeof_shared          &TranslatedSizeofShared = unsafe { nil }
-	translated_sizeof_worker          int
-	translated_sizeof_branch_evals    int
+	translated_sizeof_shared       &TranslatedSizeofShared = unsafe { nil }
+	translated_sizeof_worker       int
+	translated_sizeof_branch_evals int
+	// The token buffer that scan_translated_sizeof_source reuses for every source
+	// it indexes, and whether a scan holds it right now.
+	sizeof_scan_tokens                []InlineAsmScanToken
+	sizeof_scan_busy                  bool
 	local_binding_undos               []string
 	local_binding_scopes              []int
 	active_lambda_param_counts        map[string]int
@@ -16060,22 +16064,43 @@ fn (mut p Parser) scan_translated_sizeof_source(source string) {
 	}
 	mut scan := scanner.new_scanner(p.prefs, .skip_interpolation)
 	scan.init(p.s.current_file(), source)
-	mut tokens := []InlineAsmScanToken{}
+	// Index every source in one reused token buffer: growing a fresh one token
+	// by token copied the tokens of each large source over and over.
+	reuse := !p.sizeof_scan_busy
+	mut local_tokens := []InlineAsmScanToken{}
+	if reuse {
+		p.sizeof_scan_busy = true
+		p.sizeof_scan_tokens.clear()
+	}
 	for {
 		kind := scan.scan()
 		if kind == .eof {
 			break
 		}
-		tokens << InlineAsmScanToken{
-			kind: kind
-			lit:  scan.lit
-			pos:  scan.pos
-			end:  scan.offset
+		if reuse {
+			p.sizeof_scan_tokens << InlineAsmScanToken{
+				kind: kind
+				lit:  scan.lit
+				pos:  scan.pos
+				end:  scan.offset
+			}
+		} else {
+			local_tokens << InlineAsmScanToken{
+				kind: kind
+				lit:  scan.lit
+				pos:  scan.pos
+				end:  scan.offset
+			}
 		}
 	}
 	mut saved_consts := p.comptime_const_values.clone()
-	defer { p.comptime_const_values = saved_consts.move() }
-	p.scan_translated_sizeof_range(source, tokens, 0, tokens.len)
+	if reuse {
+		p.scan_translated_sizeof_range(source, p.sizeof_scan_tokens, 0, p.sizeof_scan_tokens.len)
+		p.sizeof_scan_busy = false
+	} else {
+		p.scan_translated_sizeof_range(source, local_tokens, 0, local_tokens.len)
+	}
+	p.comptime_const_values = saved_consts.move()
 }
 
 fn (mut p Parser) scan_translated_sizeof_range(source string, tokens []InlineAsmScanToken, start int, end int) {
