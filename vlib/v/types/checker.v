@@ -17392,8 +17392,8 @@ fn (mut tc TypeChecker) check_attribute_use_args(node_id flat.NodeId, schema Att
 		positional = positional[..schema.fields.len]
 	}
 	mut bound := map[string]bool{}
-	for idx, value in positional {
-		field := schema.fields[idx]
+	for positional_idx, value in positional {
+		field := schema.fields[positional_idx]
 		bound[field.name] = true
 		tc.check_attribute_arg_value(node_id, schema, base, field, value, pos, module)
 	}
