@@ -2853,7 +2853,8 @@ fn live_git_args(state_git_dir string, command []string, class DurableGitReadCla
 
 // This legacy adapter remains for the dormant T2c3b authority. While T2c3c1 owns the lease it
 // accepts only the exact target ls-tree argv; arbitrary argv cannot cross the new runner.
-// Without a lease, `arguments` goes to git as separate argv elements, never through a shell.
+// Without a lease, `arguments` goes to git as separate argv elements. On Windows a `.cmd` git is run
+// by cmd.exe, so live_git_fallback refuses any argument that cmd.exe would interpret.
 fn live_git(state_git_dir string, arguments []string) os.Result {
 	if durable_git_runner_lease_load() != unsafe { nil } {
 		if arguments.len != 7 || arguments[0] != 'ls-tree' || arguments[1] != '-l'
@@ -2875,7 +2876,9 @@ fn live_git(state_git_dir string, arguments []string) os.Result {
 
 // live_git_fallback runs git for the state repository without the durable runner. On Windows the
 // executable is resolved first: CreateProcess resolves a bare name only with `.exe`, so a PATH whose
-// git is a `.cmd` wrapper would fail here even though cmd.exe found it before this change.
+// git is a `.cmd` wrapper would fail here even though cmd.exe found it before this change. A batch
+// wrapper is run by cmd.exe, which reads its arguments as commands, so live_git_fallback refuses any
+// argument cmd.exe would interpret instead of passing it through.
 fn live_git_fallback(state_git_dir string, arguments []string) os.Result {
 	mut program := 'git'
 	$if windows {
@@ -2885,10 +2888,43 @@ fn live_git_fallback(state_git_dir string, arguments []string) os.Result {
 				output:    err.msg()
 			}
 		}
+		if program.to_lower().ends_with('.cmd') || program.to_lower().ends_with('.bat') {
+			mut checked := [state_git_dir]
+			checked << arguments
+			for argument in checked {
+				if argument.contains_any('&|<>^"!\r\n') || cmd_expands_percent(argument) {
+					return os.Result{
+						exit_code: -1
+						output:    'refusing to pass cmd.exe metacharacters or %VAR% to the batch git wrapper ${program}'
+					}
+				}
+			}
+		}
 	}
 	mut argv := [program, '--no-replace-objects', '--git-dir', state_git_dir]
 	argv << arguments
 	return os.exec(argv)
+}
+
+// cmd_expands_percent reports whether cmd.exe would expand a `%NAME%` reference in text. A `%(refname)`
+// format token is not a variable name, so it passes through.
+fn cmd_expands_percent(text string) bool {
+	mut open := -1
+	for i, ch in text {
+		if ch != `%` {
+			continue
+		}
+		if open < 0 {
+			open = i
+			continue
+		}
+		name := text[open + 1..i]
+		if name.len > 0 && name.bytes().all(it.is_alnum() || it == `_`) {
+			return true
+		}
+		open = i
+	}
+	return false
 }
 
 fn validate_live_git_preflight(state_git_dir string) ! {

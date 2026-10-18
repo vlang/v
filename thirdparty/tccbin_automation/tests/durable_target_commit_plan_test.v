@@ -767,15 +767,9 @@ fn test_durable_git_fallback_resolves_a_cmd_only_git_on_windows() {
 		defer {
 			os.rmdir_all(repository.root) or {}
 		}
-		real_git := os.find_abs_path_of_executable('git') or { panic(err) }
-		wrapper_dir := os.join_path(os.temp_dir(), 'tccbin-git-cmd-only-${os.getpid()}')
-		os.rmdir_all(wrapper_dir) or {}
-		os.mkdir_all(wrapper_dir) or { panic(err) }
+		wrapper_dir := write_cmd_git_wrapper('cmd-only') or { panic(err) }
 		defer {
 			os.rmdir_all(wrapper_dir) or {}
-		}
-		os.write_file(os.join_path(wrapper_dir, 'git.cmd'), '@"${real_git}" %*\r\n') or {
-			panic(err)
 		}
 		original_path := os.getenv('PATH')
 		defer {
@@ -785,5 +779,51 @@ fn test_durable_git_fallback_resolves_a_cmd_only_git_on_windows() {
 		result := bin.live_git_fallback_for_test(repository.root, ['rev-parse', '--is-bare-repository'])
 		assert result.exit_code == 0, result.output
 		assert result.output.trim_space() == 'true'
+	}
+}
+
+// write_cmd_git_wrapper writes a git.cmd that runs the installed git.exe and returns its directory.
+// It must run before PATH is changed, because it resolves the real git first.
+fn write_cmd_git_wrapper(tag string) !string {
+	real_git := os.find_abs_path_of_executable('git')!
+	wrapper_dir := os.join_path(os.temp_dir(), 'tccbin-git-cmd-${tag}-${os.getpid()}')
+	os.rmdir_all(wrapper_dir) or {}
+	os.mkdir_all(wrapper_dir)!
+	os.write_file(os.join_path(wrapper_dir, 'git.cmd'), '@"${real_git}" %*\r\n')!
+	return wrapper_dir
+}
+
+fn test_durable_git_fallback_refuses_cmd_metacharacters_through_a_cmd_wrapper_on_windows() {
+	$if windows {
+		repository := prepare_plan_repository('fallback-metachar', plan_seeded_unknown_target(false),
+			false)
+		defer {
+			os.rmdir_all(repository.root) or {}
+		}
+		wrapper_dir := write_cmd_git_wrapper('metachar') or { panic(err) }
+		defer {
+			os.rmdir_all(wrapper_dir) or {}
+		}
+		original_path := os.getenv('PATH')
+		defer {
+			os.setenv('PATH', original_path, true)
+		}
+		os.setenv('PATH', '${wrapper_dir};${os.getenv('SystemRoot')}\\System32', true)
+		// Each argument has no spaces, so cmd.exe would read `&` as an operator and run `copy`.
+		marker := os.join_path(wrapper_dir, 'injected.txt')
+		injected := bin.live_git_fallback_for_test(repository.root, ['rev-parse', '--is-bare-repository',
+			'&copy', 'nul', marker])
+		assert !os.exists(marker), 'cmd.exe ran the injected copy'
+		assert injected.exit_code != 0, injected.output
+		assert injected.output.contains('metacharacters'), injected.output
+		// `%PATH%` would be expanded by cmd.exe into the environment; `%(refname)` is still needed.
+		expanded := bin.live_git_fallback_for_test(repository.root, ['for-each-ref', '--format=%PATH%',
+			'refs/heads/tccbin-automation-state'])
+		assert expanded.exit_code != 0, expanded.output
+		assert !expanded.output.contains('System32'), expanded.output
+		refname := bin.live_git_fallback_for_test(repository.root, ['for-each-ref',
+			'--format=%(refname)', 'refs/heads/tccbin-automation-state'])
+		assert refname.exit_code == 0, refname.output
+		assert refname.output.trim_space() == 'refs/heads/tccbin-automation-state', refname.output
 	}
 }
