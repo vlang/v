@@ -7,7 +7,7 @@ fn test_enum_initializer_references_use_the_declaring_module_and_exact_name() {
 	mut tc := TypeChecker.new(&a)
 	tc.enum_fields['models.Kind'] = ['struct', '@none', 'type', '@type']
 	mut values := {
-		'struct': 4
+		'struct': i64(4)
 		'@none':  11
 		'type':   17
 		'@type':  23
