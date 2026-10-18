@@ -16108,7 +16108,7 @@ fn (mut g FlatGen) fixed_array_len_c_expr(raw_len string) ?string {
 			if const_name.len > 0 {
 				expr := g.const_expr_to_string(g.const_vals[const_name], []string{})
 				if trimmed_space(expr).len > 0 {
-					out.write_string(expr)
+					out.write_string('(${expr})')
 				} else {
 					out.write_string(g.const_ident_c_name(const_name))
 				}
@@ -16459,7 +16459,8 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 				g.write(c_fn_name)
 				return
 			}
-			if node.value.contains('sizeof') || fixed_array_len_has_operator(node.value) {
+			if (node.value.contains('sizeof') && node.value.contains('('))
+				|| fixed_array_len_has_operator(node.value) {
 				if expr := g.fixed_array_len_c_expr(node.value) {
 					g.write(expr)
 					return
