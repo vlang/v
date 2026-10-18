@@ -2848,9 +2848,7 @@ fn live_git_args(state_git_dir string, command []string, class DurableGitReadCla
 			output:    result.stdout
 		}
 	}
-	mut argv := ['git', '--no-replace-objects', '--git-dir', state_git_dir]
-	argv << command
-	return os.exec(argv)
+	return live_git_fallback(state_git_dir, command)
 }
 
 // This legacy adapter remains for the dormant T2c3b authority. While T2c3c1 owns the lease it
@@ -2872,7 +2870,23 @@ fn live_git(state_git_dir string, arguments []string) os.Result {
 		}
 		return live_git_args(state_git_dir, arguments, .scalar)
 	}
-	mut argv := ['git', '--no-replace-objects', '--git-dir', state_git_dir]
+	return live_git_fallback(state_git_dir, arguments)
+}
+
+// live_git_fallback runs git for the state repository without the durable runner. On Windows the
+// executable is resolved first: CreateProcess resolves a bare name only with `.exe`, so a PATH whose
+// git is a `.cmd` wrapper would fail here even though cmd.exe found it before this change.
+fn live_git_fallback(state_git_dir string, arguments []string) os.Result {
+	mut program := 'git'
+	$if windows {
+		program = os.find_abs_path_of_executable('git') or {
+			return os.Result{
+				exit_code: -1
+				output:    err.msg()
+			}
+		}
+	}
+	mut argv := [program, '--no-replace-objects', '--git-dir', state_git_dir]
 	argv << arguments
 	return os.exec(argv)
 }
@@ -4242,6 +4256,12 @@ $if test {
 		} $else {
 			return error('durable Git pipe test is unavailable on this platform')
 		}
+	}
+
+	// live_git_fallback_for_test runs the non-lease fallback of the legacy adapter once. A Windows
+	// test uses it to prove that bare `git` resolves through the same path as production code.
+	pub fn live_git_fallback_for_test(state_git_dir string, arguments []string) os.Result {
+		return live_git(state_git_dir, arguments)
 	}
 
 	pub fn durable_git_deadline_constants_for_test() []u64 {

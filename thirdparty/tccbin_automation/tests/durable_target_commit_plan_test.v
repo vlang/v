@@ -759,3 +759,31 @@ fn test_durable_git_deadlines_keep_nanosecond_scale() {
 		u64(5_000_000_000),
 	]
 }
+
+fn test_durable_git_fallback_resolves_a_cmd_only_git_on_windows() {
+	$if windows {
+		repository := prepare_plan_repository('fallback-cmd-only', plan_seeded_unknown_target(false),
+			false)
+		defer {
+			os.rmdir_all(repository.root) or {}
+		}
+		real_git := os.find_abs_path_of_executable('git') or { panic(err) }
+		wrapper_dir := os.join_path(os.temp_dir(), 'tccbin-git-cmd-only-${os.getpid()}')
+		os.rmdir_all(wrapper_dir) or {}
+		os.mkdir_all(wrapper_dir) or { panic(err) }
+		defer {
+			os.rmdir_all(wrapper_dir) or {}
+		}
+		os.write_file(os.join_path(wrapper_dir, 'git.cmd'), '@"${real_git}" %*\r\n') or {
+			panic(err)
+		}
+		original_path := os.getenv('PATH')
+		defer {
+			os.setenv('PATH', original_path, true)
+		}
+		os.setenv('PATH', '${wrapper_dir};${os.getenv('SystemRoot')}\\System32', true)
+		result := bin.live_git_fallback_for_test(repository.root, ['rev-parse', '--is-bare-repository'])
+		assert result.exit_code == 0, result.output
+		assert result.output.trim_space() == 'true'
+	}
+}
