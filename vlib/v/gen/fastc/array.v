@@ -57,11 +57,11 @@ fn (g &Parser) render_fixed_array_dynamic_argument(tokens []FastcExpressionToken
 	if expected_type.ends_with('*') || !flat.source_type_name(g.underlying_alias_type(expected_type_source_id)).starts_with('Array_') {
 		return none
 	}
-	actual_type := (g.infer_expression_type(tokens) or { return none })
+	actual_type := g.infer_expression_type(tokens) or { return none }
 	actual_layout := g.underlying_alias_type(actual_type)
 	length := fastc_fixed_array_length(flat.source_type_name(actual_layout).trim_right('*')) or { return none }
-	element_type := (g.array_element_type(actual_layout) or { return none })
-	expected_element := (g.array_element_type(expected_type_source_id) or { return none })
+	element_type := g.array_element_type(actual_layout) or { return none }
+	expected_element := g.array_element_type(expected_type_source_id) or { return none }
 	if g.underlying_alias_type(element_type) != g.underlying_alias_type(expected_element) {
 		return none
 	}
@@ -126,7 +126,7 @@ fn (g &Parser) render_higher_order_method_expression(tokens []FastcExpressionTok
 	if !flat.source_type_name(receiver_type).starts_with('Array_') {
 		return none
 	}
-	element_type := (g.array_element_type(receiver_type) or { return none })
+	element_type := g.array_element_type(receiver_type) or { return none }
 	mut closure_tokens := tokens[open + 1..tokens.len - 1].clone()
 	if closure_tokens.len == 0 {
 		return none
@@ -367,7 +367,7 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 	if fastc_top_level_boolean_split(base_tokens, .and) != none || fastc_top_level_boolean_split(base_tokens, .logical_or) != none {
 		return none
 	}
-	base_type := (g.infer_expression_type(base_tokens) or { return none })
+	base_type := g.infer_expression_type(base_tokens) or { return none }
 	base_layout_type := g.underlying_alias_type(base_type)
 	base_source := if base_tokens.len == 1 && base_tokens[0].source != '' {
 		// A pre-rendered synthetic base token (e.g. an `(x as T).field` group the reader
@@ -452,7 +452,7 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 		} else if is_fixed_array {
 			// Slicing a fixed array yields a NEW dynamic array copied from the element
 			// range; the raw `u8 x[N]` / wrapped `.data` storage differs by receiver kind.
-			element := (g.array_element_type(flat.source_type_id(flat.source_type_name(base_layout_type).trim_right('*'))) or { return none })
+			element := g.array_element_type(flat.source_type_id(flat.source_type_name(base_layout_type).trim_right('*'))) or { return none }
 			norm_element := fastc_normalize_inferred_type(element)
 			data_expr := if is_raw_fixed_array {
 				'(${receiver_source})'
@@ -770,7 +770,7 @@ fn (g &Parser) resolved_root_expression_name(name string) string {
 // cannot be compared with C `==`. The inner element type must be a scalar or string.
 fn (g &Parser) fastc_inline_array_element_equality(array_type_source_id u32, left string, right string) !string {
 	array_type := flat.source_type_name(array_type_source_id)
-	inner_element := (g.array_element_type(array_type_source_id) or { return error('no element type') })
+	inner_element := g.array_element_type(array_type_source_id) or { return error('no element type') }
 	if fastc_trim_pointer_suffix(flat.source_type_name(g.underlying_alias_type(inner_element))).starts_with('Array_') {
 		// A further-nested array element would need another loop level; not supported yet.
 		return error('nested array element')
@@ -1327,7 +1327,7 @@ fn (g &Parser) type_from_expression_tokens_bytes(tokens []FastcExpressionToken) 
 
 fn fastc_array_initializer_c_type(array_type string) string {
 	length := fastc_fixed_array_length(array_type) or { return array_type }
-	element_type := (fastc_fixed_array_element_type(flat.source_type_id(array_type)) or { return array_type })
+	element_type := fastc_fixed_array_element_type(flat.source_type_id(array_type)) or { return array_type }
 	return 'FixedArray_${fastc_fixed_array_length_part(length)}_${fastc_composite_type_part(flat.source_type_name(element_type))}'
 }
 

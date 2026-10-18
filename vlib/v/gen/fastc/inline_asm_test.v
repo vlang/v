@@ -25,13 +25,13 @@ fn test_fastc_inline_asm_operand_lowering() {
 	assert fastc_asm_lower_template('add qword ptr memory, amount', 'amd64', aliases, true, true, []) == 'add qword ptr [%V[__v0]], %c[amount]'
 	assert fastc_asm_lower_template('mov value, rax', 'amd64', aliases, true, true, []) == 'mov %V[value], rax'
 	assert fastc_asm_rendered_operand_source(FastcAsmOperand{ constraint: '+&rm', alias: 'memory' }, FastcAsmRenderedOperand{ source: '(*__v0)', address_alias: '__v0' }) == '[memory] "+&m" ((*__v0))'
-	operands := fastc_asm_operands('+m (*target) as address\n=@ccz (ok)\n+r (value)', true) or { panic(err) }
+	operands := fastc_asm_operands(FastcSourceFile{ source: '+m (*target) as address\n=@ccz (ok)\n+r (value)' }, true) or { panic(err) }
 	assert operands.len == 3
 	assert operands[0].constraint == '+m'
 	assert operands[0].expression == '*target'
 	assert operands[0].alias == 'address'
 	assert operands[1].constraint == '=@ccz'
-	assert fastc_asm_sections(fastc_asm_strip_comments('nop /* ; */\n; ; ; memory')).len == 4
+	assert fastc_asm_sections(fastc_asm_strip_comments(FastcSourceFile{ source: 'nop /* ; */\n; ; ; memory' })).len == 4
 }
 
 fn test_fastc_inline_asm_generated_code_runs_and_cross_compiles() {

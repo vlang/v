@@ -5,6 +5,20 @@ without the regular parser, checker, or AST pipeline, then compiles with bundled
 FastC is experimental and supports a subset of V. An unsupported construct produces an error
 with its source byte offset; FastC does not silently switch to the C backend.
 
+As in the default C backend, an `if` condition cannot start with another `if` expression,
+even behind opening parentheses. Assign the inner expression to a variable first.
+Both the C emitter and the native ARM64 parser enforce this rule.
+The condition diagnostic preserves original source-file byte offsets through generic rewrites,
+selected compile-time branches, and declaration initializers. The C emitter also preserves these
+positions when it reparses function literals, substituted compile-time loop bodies, or
+inline-assembly operands, including comment removal and nested rewrites. The common diagnostics
+for unsupported constructs do the same in both parsers.
+The C emitter also maps scanner errors in struct-field defaults.
+
+Files marked `@[translated]` retain support for these conditions, including constant, global, and
+struct-field initializers. On-demand generic instances use their defining file's translated status
+and source positions.
+
 Ordinary programs support the following constructs:
 
 - Functions, primitive parameters and return values, local variables, constants, and explicit

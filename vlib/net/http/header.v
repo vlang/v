@@ -483,11 +483,26 @@ pub fn (mut h Header) set(key CommonHeader, value string) {
 	safe_value := header_value_without_crlf_nul(value)
 
 	// for i, kv in h.data {
-	for i := 0; i < h.cur_pos; i++ {
-		if h.data[i].key == key_str {
-			h.data[i] = HeaderKV{key_str, safe_value}
-			return
+	// Match case-insensitively like set_custom does: a value stored under
+	// another casing of the same field (e.g. via add_custom) must be
+	// replaced, not left next to the new one.
+	mut set := false
+	mut i := 0
+	for i < h.cur_pos {
+		if header_key_eq(h.data[i].key, key_str) {
+			if !set {
+				h.data[i] = HeaderKV{key_str, safe_value}
+				set = true
+				i++
+			} else {
+				h.delete_at(i)
+			}
+		} else {
+			i++
 		}
+	}
+	if set {
+		return
 	}
 	// Not updated, add a new one
 	h.append(key_str, safe_value)

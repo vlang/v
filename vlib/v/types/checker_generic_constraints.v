@@ -503,6 +503,9 @@ fn (tc &TypeChecker) generic_constraint_pos(decl flat.Node, name string, text st
 // an interface parameter.
 fn (mut tc TypeChecker) check_generic_call_constraints(call_id flat.NodeId, call flat.Node, info CallInfo) {
 	instantiation := tc.generic_compile_error_instantiation(call, info) or { return }
+	for k, arg_id in instantiation.concrete_args.ids {
+		tc.check_attribute_type_argument(call_id, tc.explicit_type_arg_pos(call, k) or { call.pos }, arg_id)
+	}
 	decl := tc.a.node(instantiation.decl_id)
 	names := decl.generic_params()
 	constraints := decl.generic_constraint_ids()
@@ -603,11 +606,25 @@ fn (tc &TypeChecker) explicit_type_arg_pos(call flat.Node, k int) ?token.Pos {
 	return none
 }
 
+// check_attribute_type_argument rejects metadata schemas in generic instantiations.
+fn (mut tc TypeChecker) check_attribute_type_argument(id flat.NodeId, pos token.Pos, arg_id u32) {
+	clean := unalias_type(unwrap_pointer(tc.parse_type(arg_id)))
+	if clean is Struct {
+		if tc.type_has_declaration_attribute(Type(clean as Struct), 'attribute') {
+			arg_name := flat.source_type_name(arg_id).trim_space()
+			tc.record_error_at(.assignment_mismatch, 'attribute `${arg_name}` cannot be used as a type argument', id, pos)
+		}
+	}
+}
+
 // check_generic_type_constraints reports a type argument of a generic type,
 // `Box[int]` or `Shelf[int]`, that does not satisfy the constraint of its type
 // parameter: written in a struct literal, inferred from one, or written in a
 // declaration. `pos` is where the type is written.
 fn (mut tc TypeChecker) check_generic_type_constraints(id flat.NodeId, pos token.Pos, base_id u32, args_ids []u32, scope TypeParamScope) {
+	for arg_id in args_ids {
+		tc.check_attribute_type_argument(id, pos, arg_id)
+	}
 	decl := tc.generic_type_decl(base_id) or { return }
 	params := decl.generic_params()
 	constraints := decl.generic_constraint_ids()
@@ -855,6 +872,10 @@ fn (mut tc TypeChecker) drop_repeated_errors(start int) {
 fn (mut tc TypeChecker) check_generic_fn_value_constraints(id flat.NodeId, node flat.Node) {
 	name := tc.generic_call_base_name(tc.a.child_node(&node, 0)) or { return }
 	type_args := tc.generic_call_type_arg_names(node)
+	for k, arg_id in type_args {
+		tc.check_attribute_type_argument(id, tc.explicit_type_arg_pos(node, k) or { node.pos },
+			tc.explicit_generic_concrete_arg_text(arg_id))
+	}
 	decl_module := tc.fn_type_modules[name] or { tc.cur_module }
 	found := tc.visible_mutation_fn_decl(name, decl_module) or { return }
 	decl := tc.a.node(flat.NodeId(found.idx))
