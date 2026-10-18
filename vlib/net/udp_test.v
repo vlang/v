@@ -120,6 +120,22 @@ fn test_udp_empty_datagram_reads_as_zero_bytes() ! {
 	assert buf[..n2].bytestr() == 'after'
 }
 
+fn test_udp_empty_datagram_arriving_during_the_read_is_zero_bytes() ! {
+	mut listener := net.listen_udp('127.0.0.1:0')!
+	defer {
+		listener.close() or {}
+	}
+	addr := listener.sock.address()!.str()
+	done := chan bool{cap: 1}
+	// sent once the read is waiting, so a non-blocking socket takes its EAGAIN retry
+	spawn udp_write_after_delay(addr, 50 * time.millisecond, '', done)
+	listener.set_read_timeout(time.second)
+	mut buf := []u8{len: 16}
+	n, _ := listener.read(mut buf)!
+	assert n == 0
+	_ = <-done
+}
+
 fn test_udp_multicast_ipv4_socket_options() ! {
 	mut listener := net.listen_udp('0.0.0.0:0')!
 	defer {

@@ -132,9 +132,8 @@ pub fn (c &UdpConn) read_ptr(buf_ptr &u8, len int) !(int, Addr) {
 	code := error_code()
 	if code in [int(error_ewouldblock), int(error_eagain), C.EINTR] {
 		c.wait_for_read()!
-		// same setup as in tcp
-		res = wrap_read_result(C.recvfrom(c.sock.handle, voidptr(buf_ptr), len, 0, voidptr(&addr),
-			&addr_len))!
+		// the retry keeps the same rule: an empty datagram is 0 bytes, not an error
+		res = C.recvfrom(c.sock.handle, voidptr(buf_ptr), len, 0, voidptr(&addr), &addr_len)
 		res2 := socket_error(res)!
 		return res2, addr
 	} else {
