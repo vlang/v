@@ -57,32 +57,32 @@ fn test_variadic_call_inference_distinguishes_source_elements_and_packed_tails()
 fn test_cloned_variadic_call_inference_preserves_a_nested_element() {
 	mut a := flat.FlatAst.new()
 	param_id := a.add_node(flat.Node{
-		kind: .param
+		kind:  .param
 		value: 'values'
-		typ: flat.source_type_id('...[]T')
+		typ:   flat.source_type_id('...[]T')
 	})
 	param_start := a.children.len
 	a.children << param_id
 	mut decl_node := flat.Node{
-		kind: .fn_decl
-		value: 'collect'
-		typ: flat.source_type_id('[][]T')
+		kind:           .fn_decl
+		value:          'collect'
+		typ:            flat.source_type_id('[][]T')
 		children_start: param_start
 		children_count: 1
 	}
 	decl_node.set_generic_params(['T'])
 	decl_id := a.add_node(decl_node)
-	callee_id := a.add_node(flat.Node{kind: .ident, value: 'collect'})
+	callee_id := a.add_node(flat.Node{ kind: .ident, value: 'collect' })
 	value_id := a.add_node(flat.Node{
-		kind: .ident
+		kind:  .ident
 		value: 'input'
-		typ: flat.source_type_id('[][]int')
+		typ:   flat.source_type_id('[][]int')
 	})
 	call_start := a.children.len
 	a.children << callee_id
 	a.children << value_id
 	call := flat.Node{
-		kind: .call
+		kind:           .call
 		children_start: call_start
 		children_count: 2
 	}
@@ -98,11 +98,11 @@ fn test_cloned_variadic_call_inference_preserves_a_nested_element() {
 	tc.check_range_hi = -1
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	decl := GenericFnDecl{
-		id: decl_id
-		node: decl_node
+		id:     decl_id
+		node:   decl_node
 		module: 'main'
-		file: 'main.v'
-		key: 'collect'
+		file:   'main.v'
+		key:    'collect'
 	}
 	inferred := t.generic_clone_call_type_args(call, decl, []u32{}, u32(0))
 	assert inferred == [flat.source_type_id('[]int')]
