@@ -972,3 +972,57 @@ fn test_plan_run_resolves_a_cmd_only_git_on_windows() {
 		assert plan_run(['git', '--git-dir', repository.root, 'rev-parse', '--is-bare-repository']) == 'true'
 	}
 }
+
+fn test_durable_git_fallback_passes_a_lone_percent_format_through_a_cmd_wrapper_on_windows() {
+	$if windows {
+		repository := prepare_plan_repository('fallback-lone-percent', plan_seeded_unknown_target(false),
+			false)
+		defer {
+			os.rmdir_all(repository.root) or {}
+		}
+		wrapper_dir := write_cmd_git_wrapper('lone-percent') or { panic(err) }
+		defer {
+			os.rmdir_all(wrapper_dir) or {}
+		}
+		branch := 'refs/heads/tccbin-automation-state'
+		// `log --format=@@%H` is the evidence-addition query. Its single `%H` is not a cmd.exe variable,
+		// so the batch wrapper must deliver it to git unchanged, with the answer git.exe gives.
+		expected := plan_run(['git', '--git-dir', repository.root, 'log', '-1', '--format=@@%H',
+			branch])
+		original_path := os.getenv('PATH')
+		defer {
+			os.setenv('PATH', original_path, true)
+		}
+		os.setenv('PATH', '${wrapper_dir};${os.getenv('SystemRoot')}\\System32', true)
+		actual := bin.live_git_fallback_for_test(repository.root, ['log', '-1', '--format=@@%H',
+			branch])
+		assert actual.exit_code == 0, actual.output
+		assert actual.output.trim_space() == expected, actual.output
+	}
+}
+
+fn test_durable_git_fallback_passes_spaces_through_a_cmd_wrapper_in_a_spaced_directory_on_windows() {
+	$if windows {
+		repository := prepare_plan_repository('fallback-spaced-dir', plan_seeded_unknown_target(false),
+			false)
+		defer {
+			os.rmdir_all(repository.root) or {}
+		}
+		// The wrapper's directory and one argument both contain spaces, so os.exec quotes both.
+		spaced_dir := os.join_path(os.temp_dir(), 'tccbin spaced dir ${os.getpid()}')
+		os.rmdir_all(spaced_dir) or {}
+		os.mkdir_all(spaced_dir) or { panic(err) }
+		defer {
+			os.rmdir_all(spaced_dir) or {}
+		}
+		os.write_file(os.join_path(spaced_dir, 'git.cmd'), '@echo ARGS=%*\r\n') or { panic(err) }
+		original_path := os.getenv('PATH')
+		defer {
+			os.setenv('PATH', original_path, true)
+		}
+		os.setenv('PATH', '${spaced_dir};${os.getenv('SystemRoot')}\\System32', true)
+		result := bin.live_git_fallback_for_test(repository.root, ['x y', 'z'])
+		assert result.exit_code == 0, result.output
+		assert result.output.contains('x y'), result.output
+	}
+}

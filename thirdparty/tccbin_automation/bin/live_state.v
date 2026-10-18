@@ -2876,10 +2876,12 @@ fn live_git(state_git_dir string, arguments []string) os.Result {
 	return live_git_fallback(state_git_dir, arguments)
 }
 
-// windows_git_program returns the git that cmd.exe would start from `path_env`. cmd.exe searches each
-// PATH directory in order, and inside one directory it tries `.com`, `.exe`, `.bat`, then `.cmd`.
-// find_abs_path_of_executable tries each suffix across all of PATH first, so a `.exe` in a later
-// directory would replace a `.cmd` in an earlier one.
+// windows_git_program returns the git that cmd.exe would start from `path_env`, with one deliberate
+// difference: cmd.exe also searches the current directory first, and this function does not. A git
+// planted in the working directory therefore never runs. Within the PATH directories, cmd.exe's order
+// is kept: the first directory with any candidate wins, and inside it `.com`, `.exe`, `.bat`, then
+// `.cmd`. find_abs_path_of_executable tries each suffix across all of PATH first, so a `.exe` in a
+// later directory would replace a `.cmd` in an earlier one.
 fn windows_git_program(path_env string) !string {
 	for dir in path_env.split(os.path_delimiter) {
 		if dir == '' {
@@ -2913,7 +2915,7 @@ fn live_git_fallback(state_git_dir string, arguments []string) os.Result {
 			mut checked := [state_git_dir]
 			checked << arguments
 			for argument in checked {
-				if argument.contains_any('&|<>^"!\r\n') || cmd_percent_is_unsafe(argument) {
+				if cmd_wrapper_refuses(argument) {
 					return os.Result{
 						exit_code: -1
 						output:    'refusing to pass cmd.exe metacharacters or %-expansion to the batch git wrapper ${program}'
@@ -2927,11 +2929,29 @@ fn live_git_fallback(state_git_dir string, arguments []string) os.Result {
 	return os.exec(argv)
 }
 
+// cmd_wrapper_refuses reports whether a batch git wrapper would read `argument` as cmd.exe syntax.
+fn cmd_wrapper_refuses(argument string) bool {
+	return argument.contains_any('&|<>^"!\r\n') || cmd_percent_is_unsafe(argument)
+}
+
 // cmd_percent_is_unsafe reports whether cmd.exe could expand a `%` in text. cmd.exe pairs `%` marks
-// and expands whatever lies between them, including `%NAME:~0,20%` and `%~dp0`, so the only `%` that
-// passes is the single `%(` of a git format token such as `%(refname)`.
+// and expands whatever lies between them, including `%NAME:~0,20%`. A `%` followed by `~`, a digit,
+// or `*` is a batch parameter. So an argument passes only when its single `%` is followed by `(`, as in
+// the `%(refname)` token, or by a letter, as in the `%H` of `--format=@@%H`. Neither pairs with a
+// second `%`.
 fn cmd_percent_is_unsafe(text string) bool {
-	return text.contains('%') && (text.count('%') != 1 || !text.contains('%('))
+	if !text.contains('%') {
+		return false
+	}
+	if text.count('%') != 1 {
+		return true
+	}
+	next := text.all_after('%')
+	if next.len == 0 {
+		return true
+	}
+	first := next[0]
+	return !(first == `(` || (first >= `a` && first <= `z`) || (first >= `A` && first <= `Z`))
 }
 
 fn validate_live_git_preflight(state_git_dir string) ! {
@@ -4313,17 +4333,29 @@ $if test {
 	}
 
 	// git_exec_for_test runs argv like os.exec. On Windows a leading `git` is resolved with the same
-	// PATH order as the fallback, so a test that starts git reaches a `.cmd` wrapper as production does.
+	// PATH order as the fallback, and a `.cmd` wrapper gets the same argument refusal, so a test that
+	// starts git reaches a `.cmd` wrapper as production does.
 	pub fn git_exec_for_test(argv []string) os.Result {
 		mut resolved := argv.clone()
 		$if windows {
 			if resolved.len > 0 && resolved[0] == 'git' {
-				resolved[0] = windows_git_program(os.getenv('PATH')) or {
+				program := windows_git_program(os.getenv('PATH')) or {
 					return os.Result{
 						exit_code: -1
 						output:    err.msg()
 					}
 				}
+				if program.to_lower().ends_with('.cmd') || program.to_lower().ends_with('.bat') {
+					for argument in resolved[1..] {
+						if cmd_wrapper_refuses(argument) {
+							return os.Result{
+								exit_code: -1
+								output:    'refusing to pass cmd.exe metacharacters or %-expansion to the batch git wrapper ${program}'
+							}
+						}
+					}
+				}
+				resolved[0] = program
 			}
 		}
 		return os.exec(resolved)
