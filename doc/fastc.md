@@ -76,7 +76,8 @@ This path supports standard-library imports such as `os` and `toml`,
 composite sum-type tests, integer and floating point interpolation formats, anonymous functions,
 and immutable closure captures. Float formats support precision, width, left alignment, and the
 `f` suffix to retain trailing zeros. A single-file entry can select the same runtime with
-`-d fastc_real_builtin`; its module siblings are included.
+`-d fastc_real_builtin`. As with the C backend, a program file named on its own is compiled
+alone, while a test file also brings in the other files of its module.
 A test file entry (`foo_test.v`, `foo_test.c.v`, or an architecture-qualified one) always uses
 it, and builds as a program that runs its tests in source order between `testsuite_begin` and
 `testsuite_end`, each between `before_each` and `after_each`; a failed assert or a returned error

@@ -104,11 +104,21 @@ fn fastc_resolution_path(path string, prefs &pref.Preferences) string {
 	return if prefs.target_libc_headers { os.abs_path(path) } else { os.real_path(path) }
 }
 
-fn fastc_expand_entry_paths(paths []string, prefs &pref.Preferences) ![]string {
-	mut entries := []string{}
+// FastcEntryPath keeps the input's origin when directory expansion and an
+// explicit file name the same source. Only explicit program files compile alone.
+struct FastcEntryPath {
+	path string
+	lone bool
+}
+
+fn fastc_expand_entry_paths(paths []string, prefs &pref.Preferences) ![]FastcEntryPath {
+	mut entries := []FastcEntryPath{}
 	for path in paths {
 		if !os.is_dir(path) {
-			entries << path
+			entries << FastcEntryPath{
+				path: path
+				lone: !fastc_is_test_source(path, prefs)
+			}
 			continue
 		}
 		files := fastc_list_module_sources(fastc_resolution_path(path, prefs), prefs)
@@ -117,9 +127,11 @@ fn fastc_expand_entry_paths(paths []string, prefs &pref.Preferences) ![]string {
 		}
 		if prefs.building_v {
 			// The real-builtin resolver gathers the entry file's module siblings.
-			entries << files[0]
+			entries << FastcEntryPath{ path: files[0] }
 		} else {
-			entries << files
+			for file in files {
+				entries << FastcEntryPath{ path: file }
+			}
 		}
 	}
 	return entries
@@ -224,12 +236,16 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) !([]Fastc
 	return sources, module_aliases
 }
 
-// fastc_resolve_source_files_deferring_memo resolves the sources of `paths`;
+// fastc_resolve_source_files_deferring_memo resolves the sources of `entries`;
 // the memo of the resolution is written in the background and the caller
 // joins it through `pending_memo_store` (fastc_wait_memo_store) once its own
 // work is done.
-fn fastc_resolve_source_files_deferring_memo(paths []string, prefs &pref.Preferences, mut pending_memo_store FastcPendingMemoStore) !([]FastcSourceFile, map[string]string) {
+fn fastc_resolve_source_files_deferring_memo(entries []FastcEntryPath, prefs &pref.Preferences, mut pending_memo_store FastcPendingMemoStore) !([]FastcSourceFile, map[string]string) {
 	mut timer := fastc_new_phase_timer()
+	mut paths := []string{cap: entries.len}
+	for entry in entries {
+		paths << entry.path
+	}
 	// The entries' canonical paths key the memo and seed the walk's cache.
 	mut entry_real_paths := []string{cap: paths.len}
 	for path in paths {
@@ -286,7 +302,7 @@ fn fastc_resolve_source_files_deferring_memo(paths []string, prefs &pref.Prefere
 			}
 		}
 	}
-	for path in paths {
+	for i, path in paths {
 		entry_path := if prefs.building_v {
 			real_path_cache[path] or { fastc_resolution_path(path, prefs) }
 		} else {
@@ -301,8 +317,9 @@ fn fastc_resolve_source_files_deferring_memo(paths []string, prefs &pref.Prefere
 		// `repo/`, ... all declare `module main`). The entry file names only one of
 		// them, so gather the rest of the entry module here. Only the real-builtin
 		// path does this: the bootstrap runtime compiles single entry files, and its
-		// tests place several independent programs in one scratch directory.
-		if prefs.building_v {
+		// tests place several independent programs in one scratch directory. A lone
+		// program file is compiled by itself, as by the C backend.
+		if prefs.building_v && !entries[i].lone {
 			entry_module_files := entry_files[entry_path] or {
 				fastc_entry_module_files(entry_path, prefs)
 			}
