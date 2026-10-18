@@ -188,7 +188,7 @@ pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 	socket_read_timeout := c.is_blocking && c.read_timeout_in_socket
 		&& c.read_timeout == c.socket_read_timeout_value
 		&& c.sock.handle == c.socket_read_timeout_handle
-		&& (c.read_timeout != 0 || c.read_deadline.unix() == 0) && c.read_deadline.unix() <= 0
+		&& (c.read_timeout != 0 || c.read_deadline.unix() == 0) && !deadline_set(c.read_deadline)
 	$if is_coroutine ? {
 		res = C.photon_recv(c.sock.handle, voidptr(buf_ptr), len, 0, c.read_timeout)
 		ecode = error_code()

@@ -90,3 +90,22 @@ fn test_tcp_accept_deadline_wins_over_the_infinite_accept_timeout() ! {
 	}
 	assert false, 'nobody connected'
 }
+
+fn test_a_deadline_before_1970_is_set_and_due() ! {
+	assert !deadline_set(time.Time{})
+	assert !deadline_set(time.unix(0)) // select_deadline reads it as infinite
+	assert deadline_set(time.unix(-1))
+	$if windows || is_coroutine ? {
+		return
+	}
+	mut listener := listen_tcp(.ip, '127.0.0.1:0')!
+	defer { listener.close() or {} }
+	listener.set_accept_deadline(time.unix(-1))
+	started := time.new_stopwatch()
+	listener.wait_for_accept() or {
+		assert err.code() == err_timed_out.code()
+		assert started.elapsed() < time.second, 'returned after ${started.elapsed()}'
+		return
+	}
+	assert false, 'nobody connected'
+}

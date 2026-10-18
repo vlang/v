@@ -89,10 +89,17 @@ fn select_deadline(handle int, test Select, deadline time.Time) !bool {
 	return error_with_code(net.err_timed_out.msg(), net.err_timed_out.code())
 }
 
+// deadline_set is whether a deadline was set: anything but the zero `time.Time{}` a connection
+// starts with and the `time.unix(0)` that select_deadline reads as infinite. A deadline already in
+// the past, even before 1970, is set: it is due.
+fn deadline_set(deadline time.Time) bool {
+	return deadline != time.Time{} && deadline.unix() != 0
+}
+
 // wait_for_common wraps the common wait code
 fn wait_for_common(handle int, deadline time.Time, timeout time.Duration, test Select) ! {
 	// Convert timeouts to deadlines. A deadline the caller set wins over the timeout, as in net.
-	real_deadline := if deadline.unix() > 0 {
+	real_deadline := if deadline_set(deadline) {
 		deadline
 	} else if timeout == net.infinite_timeout {
 		time.unix(0)

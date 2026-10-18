@@ -15,13 +15,11 @@ precedence over the matching timeout for as long as it is set: a UDP read with a
 waits 400 ms even under the 100 ms default timeout, and a TCP accept, whose timeout is infinite by
 default, ends at its deadline. Set the deadline back to `time.Time{}` to return to the timeout.
 
-A deadline applies only where an operation WAITS before its system call. That is the
-`wait_for_read`/`wait_for_write`/`wait_for_accept` methods, and in a build without
-`-use-coroutines` TCP reads and accepts and UDP reads. Writes (TCP, UDP and Unix: they `send`
-first), Unix stream reads and accepts (they `recv`/`accept` first), and every operation under
-`-use-coroutines` (which passes only the timeout to Photon) block in the system call, where no
-deadline reaches them; apart from the socket timeout of blocking TCP reads above, no timeout does
-either.
+A deadline applies where an operation waits before its system call: the
+`wait_for_read`/`wait_for_write`/`wait_for_accept` methods, and in the default build TCP reads and
+accepts and UDP reads. In the default build, writes (TCP, UDP and Unix) and Unix stream reads and
+accepts call `send`/`recv`/`accept` first and block there, where no deadline reaches them. Builds
+with `-d net_nonblocking_sockets` or `-use-coroutines` take other paths.
 
 Networking APIs support `-autofree`. Invalid-port and timeout results own their error values,
 while preserving the messages and codes of the corresponding `net.err_*` constants.
