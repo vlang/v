@@ -4047,7 +4047,10 @@ fn main() {
 '
 	c_source := gen_c_from_source(v3_bin, 'local_mut_fixed_array_capture_c', source)
 	assert c_source.contains('closure__closure_try_destroy(callback);'), c_source
-	assert !c_source.contains('memdup(&__esc'), c_source
+	// Only the captured array matters; builtin code may heap-promote its own locals.
+	body := c_fn_body(c_source, 'i64 exercise(void) {')
+	assert body.len > 0, c_source
+	assert !body.contains('memdup(&__esc'), body
 	out := run_good(v3_bin, 'local_mut_fixed_array_capture', source)
 	assert out == '42'
 }
@@ -4072,7 +4075,10 @@ fn main() {
 '
 	c_source := gen_c_from_source(v3_bin, 'immediate_mut_fixed_array_capture_c', source)
 	assert c_source.contains('closure__closure_try_destroy(__immediate_closure_'), c_source
-	assert !c_source.contains('memdup(&__esc'), c_source
+	// Only the captured array matters; builtin code may heap-promote its own locals.
+	body := c_fn_body(c_source, 'i64 exercise(void) {')
+	assert body.len > 0, c_source
+	assert !body.contains('memdup(&__esc'), body
 	out := run_good(v3_bin, 'immediate_mut_fixed_array_capture', source)
 	assert out == '42'
 }
