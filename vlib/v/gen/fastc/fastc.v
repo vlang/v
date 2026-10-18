@@ -1035,11 +1035,14 @@ struct FastcStructField {
 	is_declared_voidptr bool
 	// Shared map fields keep pointer identity even though FastC currently erases locking.
 	// Without this, copying their containing struct detaches subsequent map header updates.
-	is_shared_pointer bool
-	module_name       string
-	path              string
-	imports           map[string]string
-	default_source    string
+	is_shared_pointer      bool
+	module_name            string
+	path                   string
+	imports                map[string]string
+	default_source         string
+	default_source_offset  int
+	default_source_origins []FastcSourceOrigin
+	translated             bool
 mut:
 	default_value string
 	storage_path  []string
@@ -1088,10 +1091,22 @@ struct FastcSourceHeader {
 	body_spans []int
 }
 
+// FastcSourceOrigin maps a copied span in a rewritten or filtered buffer to its source file.
+struct FastcSourceOrigin {
+	filtered_offset int
+	source_offset   int
+}
+
+struct FastcDeclarationSource {
+	source  string
+	origins []FastcSourceOrigin
+}
+
 struct FastcSourceFile {
 	path                 string
 	source               string
 	source_offset        int
+	source_origins       []FastcSourceOrigin
 	source_line_offset   int
 	source_column_offset int
 	header               FastcSourceHeader
@@ -1428,7 +1443,6 @@ struct Parser {
 	// source-level functions. It is immutable and shared by file generators.
 	function_c_names map[string]string
 	selfhost         bool
-	translated       bool
 	header_free      bool
 	// source_has_select is false only when the file provably holds no `select`
 	// word (see fastc_source_scan_flags), so block pre-scans for channel
@@ -1441,8 +1455,10 @@ struct Parser {
 	has_cleanup_hooks       bool
 mut:
 	uses_pthread_tls     bool
+	translated           bool
 	path                 string
 	source_offset        int
+	source_origins       []FastcSourceOrigin
 	source_line_offset   int
 	source_column_offset int
 	module_name          string
@@ -1825,6 +1841,7 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 		declared_type_key_memo:    map[string]FastcMemoEntry{}
 		path:                      source_file.path
 		source_offset:             source_file.source_offset
+		source_origins:            source_file.source_origins
 		source_line_offset:        source_file.source_line_offset
 		source_column_offset:      source_file.source_column_offset
 		module_name:               source_file.header.module_name
@@ -1997,10 +2014,10 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	mut globals := map[string]string{}
 	mut public_globals := map[string]bool{}
 	mut type_source_paths := map[string]bool{}
-	mut type_sources := map[string]string{}
-	mut constant_sources := map[string]string{}
+	mut type_sources := map[string]FastcDeclarationSource{}
+	mut constant_sources := map[string]FastcDeclarationSource{}
 	mut constant_spans := map[string][]int{}
-	mut global_sources := map[string]string{}
+	mut global_sources := map[string]FastcDeclarationSource{}
 	generic_method_sources := fastc_collect_generic_and_declaration_indexes(mut sources, prefs, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs, mut type_source_paths, mut type_sources, mut constants, mut public_constants, mut constant_sources, mut constant_spans, mut global_sources, mut globals, mut public_globals)!
 	timer.mark('declaration_indexes')
 	// builtin declares IError as `pub struct C.IError`, which the index does not record, so
@@ -2327,8 +2344,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		fastc_synthesized_test_main(functions, function_c_names, prefs, startup_initializers.len > 0,
 			module_cleanup_calls.len > 0)!
 	} else if has_entry_module && !entry_has_main {
-		fastc_synthesized_main(prefs.building_v, startup_initializers.len > 0, module_cleanup_calls.len > 0,
-			prefs.target_libc_headers)
+		fastc_synthesized_main(prefs, startup_initializers.len > 0, module_cleanup_calls.len > 0)
 	} else {
 		''
 	}
@@ -3694,10 +3710,32 @@ fn fastc_build_struct_field_lookup(struct_field_info map[string][]FastcStructFie
 	return struct_field_lookup
 }
 
-fn fastc_synthesized_main(selfhost bool, has_startup_inits bool, has_cleanup_hooks bool, target_libc_headers bool) string {
+// fastc_c_main_name returns the C entry point name for the target. Windows
+// executables link with `-municode` (v.driver's Windows linker flags), whose CRT
+// startup calls `wmain` instead of `main`; the C backend emits the same entry.
+fn fastc_c_main_name(prefs &pref.Preferences) string {
+	return if prefs.normalized_target_os() == 'windows' { 'wmain' } else { 'main' }
+}
+
+// fastc_c_main_parameters returns the entry point parameter list. Selfhost builds
+// store argv in g_main_argv, which builtin.arguments decodes as wide strings on
+// Windows, so the Windows entry receives `wchar_t **argv`.
+fn fastc_c_main_parameters(prefs &pref.Preferences) string {
+	if !prefs.building_v {
+		return 'void'
+	}
+	return if prefs.normalized_target_os() == 'windows' {
+		'int argc, wchar_t **argv'
+	} else {
+		'int argc, char **argv'
+	}
+}
+
+fn fastc_synthesized_main(prefs &pref.Preferences, has_startup_inits bool, has_cleanup_hooks bool) string {
 	mut result := strings.new_builder(256)
-	parameters := if selfhost { 'int argc, char **argv' } else { 'void' }
-	result.writeln('int main(${parameters}) {')
+	selfhost := prefs.building_v
+	target_libc_headers := prefs.target_libc_headers
+	result.writeln('int ${fastc_c_main_name(prefs)}(${fastc_c_main_parameters(prefs)}) {')
 	if !target_libc_headers {
 		result.writeln('\tsetvbuf(stdout, NULL, _IONBF, 0);')
 	}

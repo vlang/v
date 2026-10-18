@@ -21,7 +21,7 @@ fn test_enum_initializer_references_use_the_declaring_module_and_exact_name() {
 		'@type':   23
 	} {
 		for enum_name in ['Kind', 'models.Kind'] {
-			actual := tc.comptime_static_enum_field_ref_value(field, 'models', enum_name,
+			actual := tc.comptime_static_enum_field_ref_value(field, 'models', flat.source_type_id(enum_name),
 				mut values, expressions, mut resolving) or { -1 }
 			assert actual == expected, field
 		}

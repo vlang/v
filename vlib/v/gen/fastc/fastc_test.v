@@ -1380,7 +1380,7 @@ pub fn answer() int {
 	return 42
 }
 ', 'declaration_only_entry.v', prefs) or { panic(err) }
-	assert c_source.contains('int main(void) {'), c_source
+	assert c_source.contains('int ${fastc_c_main_name(prefs)}(void) {'), c_source
 	assert c_source.contains('\tsetvbuf(stdout, NULL, _IONBF, 0);\n\treturn 0;'), c_source
 
 	root := os.join_path(os.vtmp_dir(), 'v3_fastc_declaration_only_${os.getpid()}')
@@ -2078,7 +2078,7 @@ fn test_ordinary_print_rejects_types_without_runtime_support() {
 fn test_top_level_statements_emit_main_directly() {
 	prefs := pref.new_preferences()
 	c_source := generate("println('Hello, World!')\n", 'hello_world.v', prefs) or { panic(err) }
-	assert c_source.contains('int main(void) {')
+	assert c_source.contains('int ${fastc_c_main_name(prefs)}(void) {')
 	assert c_source.contains('println("Hello, World!");')
 	assert c_source.contains('setvbuf(stdout, NULL, _IONBF, 0);')
 }
@@ -3360,7 +3360,7 @@ fn logical_shift(value int) int { value >>>= 1; return value }
 		}
 		c_file := os.join_path(root, 'matrix.c')
 		bin_file := os.join_path(root, 'matrix')
-		os.write_file(c_file, '#define main unused_main\n' + generated +
+		os.write_file(c_file, '#define ${fastc_c_main_name(prefs)} unused_main\n' + generated +
 			'\n#undef main\nint main(void) {\n' + checks.join('\n') + '\nreturn 0;\n}\n')!
 		tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
 		compiled := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
@@ -4489,7 +4489,7 @@ fn init() {
 
 println(answer)
 ', 'initialized_script_global.v', prefs) or { panic(err) }
-	main_source := c_source.all_after('int main(void) {')
+	main_source := c_source.all_after('int ${fastc_c_main_name(prefs)}(void) {')
 	startup_source := c_source.all_after('void v_fastc_init_globals(void) {')
 	initializer := startup_source.index('answer = 42;') or { -1 }
 	module_initializer := startup_source.index('\n\tinit();') or { -1 }
@@ -4681,7 +4681,7 @@ pub fn value() int {
 	prefs.enable_globals = true
 	prefs.module_search_paths = [root]
 	c_source := generate_files([main_file], prefs) or { panic(err) }
-	main_source := c_source.all_after('int main(void) {')
+	main_source := c_source.all_after('int ${fastc_c_main_name(prefs)}(void) {')
 	startup_source := c_source.all_after('void v_fastc_init_globals(void) {')
 	dependency_initializer := startup_source.index('dep__state = 1;') or { -1 }
 	dependency_init := startup_source.index('\tdep__init();') or { -1 }
@@ -4767,7 +4767,7 @@ pub fn ping() {}
 	dependency_cleanup := cleanup_source.index('\n\tdep__cleanup();') or { -1 }
 	assert main_cleanup >= 0, c_source
 	assert dependency_cleanup > main_cleanup, c_source
-	main_source := c_source.all_after('int main(void) {')
+	main_source := c_source.all_after('int ${fastc_c_main_name(prefs)}(void) {')
 	startup_call := main_source.index('v_fastc_init_globals();') or { -1 }
 	cleanup_registration := main_source.index('atexit(v_fastc_cleanup_modules);') or { -1 }
 	early_return := main_source.index('return 0;') or { -1 }
@@ -4803,7 +4803,7 @@ fn main() {
 	println('unreachable')
 }
 ", 'cleanup_after_exit.c.v', prefs) or { panic(err) }
-	main_source := c_source.all_after('int main(void) {')
+	main_source := c_source.all_after('int ${fastc_c_main_name(prefs)}(void) {')
 	registration := main_source.index('atexit(v_fastc_cleanup_modules);') or { -1 }
 	exit_call := main_source.index('exit(0);') or { -1 }
 	assert registration >= 0, c_source
@@ -7031,7 +7031,7 @@ fn main() {
 fn test_main_return_type_is_not_validated() {
 	prefs := pref.new_preferences()
 	c_source := generate('module main\nfn main() int { return 7 }\n', 'value_returning_main.v', prefs) or { panic(err) }
-	assert c_source.contains('int main(void)'), c_source
+	assert c_source.contains('int ${fastc_c_main_name(prefs)}(void)'), c_source
 	assert c_source.contains('return 7;'), c_source
 }
 
@@ -14139,7 +14139,7 @@ fn literal_unsigned(count int) u64 { return -1 >>> count }
 		if selfhost { continue }
 		c_file := os.join_path(root, 'shifts.c')
 		bin_file := os.join_path(root, 'shifts')
-		os.write_file(c_file, '#define main unused_main\n' + generated + '\n#undef main\nint main(void) {\n' + checks.join('\n') + '\nreturn 0;\n}\n')!
+		os.write_file(c_file, '#define ${fastc_c_main_name(prefs)} unused_main\n' + generated + '\n#undef main\nint main(void) {\n' + checks.join('\n') + '\nreturn 0;\n}\n')!
 		tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
 		compiled := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
 		assert compiled.exit_code == 0, compiled.output + '\n' + generated

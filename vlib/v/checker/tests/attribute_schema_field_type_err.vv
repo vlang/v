@@ -1,0 +1,12 @@
+struct Inner {
+	x int
+}
+
+@[attribute]
+struct Route {
+	items []string
+	inner Inner
+}
+
+fn main() {
+}

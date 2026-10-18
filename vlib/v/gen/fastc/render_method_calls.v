@@ -86,7 +86,7 @@ fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken) ?Fas
 			return none
 		}
 		variadic_type := signature.parameter_types.ids.last()
-		element_type := (g.array_element_type(variadic_type) or { return none })
+		element_type := g.array_element_type(variadic_type) or { return none }
 		if named_start == fixed_arguments {
 			mut c_arguments := []string{cap: fixed_arguments + 1}
 			for argument_index, argument in call_args[..fixed_arguments] {
@@ -960,7 +960,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				continue
 			}
 			variadic_type := signature.parameter_types.ids.last()
-			element_type := (g.array_element_type(variadic_type) or { continue })
+			element_type := g.array_element_type(variadic_type) or { continue }
 			variadic_count := direct_arguments.len - fixed_arguments
 			variadic_values := direct_arguments[fixed_arguments..].clone()
 			packed := if variadic_count == 0 {
@@ -1029,7 +1029,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			'pop',
 			'pop_left',
 		] {
-			element_type := (g.array_element_type(receiver_type) or { continue })
+			element_type := g.array_element_type(receiver_type) or { continue }
 			call_needle = '${needle})'
 			call_replacement = '(*(((${g.collection_storage_type(element_type)} *)${replacement}))))'
 		}

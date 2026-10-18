@@ -5278,13 +5278,13 @@ fn (mut cache StructDeclPrefCache) select_module(module_name string) {
 }
 
 fn (g &FlatGen) find_struct_decl_preferred(type_name_id u32) ?StructDeclInfo {
-	type_name := flat.source_type_name(type_name_id)
 	mut cache := g.struct_decl_pref_cache
 	if isnil(cache) {
 		return g.find_struct_decl_preferred_uncached(type_name_id)
 	}
 	cache.select_module(g.tc.cur_module)
-	type_id := cache.texts.intern(type_name)
+	// The source spelling ID is the identity the text table would intern.
+	type_id := type_name_id
 	if cached := cache.entries[type_id] {
 		return cached
 	}
@@ -5523,7 +5523,7 @@ fn (g &FlatGen) struct_field_type_cached(type_name_id u32, field_name string) ?t
 	mut type_id := u32(0)
 	if cache_enabled {
 		cache.select_module(g.tc.cur_module)
-		type_id = cache.texts.intern(type_name)
+		type_id = type_name_id
 		// The complete owner/field comparison keeps sampled-key collisions harmless.
 		mut hash := u32(type_name.len * 31 + field_name.len)
 		if type_name.len > 0 {
@@ -5658,11 +5658,10 @@ fn (g &FlatGen) struct_embedded_fields(type_name_id u32) []types.StructField {
 }
 
 fn (g &FlatGen) struct_fields_for_type(type_name_id u32) ?[]types.StructField {
-	type_name := flat.source_type_name(type_name_id)
 	mut cache := g.struct_decl_pref_cache
 	if g.cache_struct_fields && !isnil(cache) {
 		cache.select_module(g.tc.cur_module)
-		type_id := cache.texts.intern(type_name)
+		type_id := type_name_id
 		if cache.field_last_state != 0 && cache.field_last_name == type_id {
 			if cache.field_last_state > 0 {
 				return cache.field_last_value

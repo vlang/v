@@ -144,6 +144,10 @@ jobs:
             lsan_options: detect_leaks=0
     name: sanitize-${{ matrix.name }}
     env:
+      # Stop a failing test session at its first failure instead of
+      # running the whole suite to completion; the remaining files
+      # add no signal.
+      VTEST_FAIL_FAST: '1'
       SANITIZER_GITHUB_JOB: sanitize-${{ matrix.name }}
       VFLAGS: ${{ matrix.vflags }}
       VJOBS: 1
@@ -236,6 +240,10 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 30
     env:
+      # Stop a failing test session at its first failure instead of
+      # running the whole suite to completion; the remaining files
+      # add no signal.
+      VTEST_FAIL_FAST: '1'
       VFLAGS: -cc msvc
       VJOBS: 1
       VNATIVE_SKIP_LIBC_VV: 1

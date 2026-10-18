@@ -422,7 +422,7 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 	if flat.source_type_name(layout_type) == 'array' && update_source == ''
 		&& flat.source_type_name(c_type).trim_right('*').starts_with('Array_') {
 		array_type := flat.source_type_name(c_type).trim_right('*')
-		element_type := (g.array_element_type(flat.source_type_id(array_type)) or { return none })
+		element_type := g.array_element_type(flat.source_type_id(array_type)) or { return none }
 		storage_type := g.collection_storage_type(element_type)
 		length := field_values['len'] or { '0' }
 		capacity := field_values['cap'] or { '0' }

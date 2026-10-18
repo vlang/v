@@ -26,17 +26,21 @@ fn (mut g Parser) drain_pending_mono() ! {
 		g.pending_mono = g.pending_mono[1..].clone()
 		src := g.generic_method_sources[req.source_key] or { continue }
 		mut instance := g.render_mono_method(src, req.concrete)
-		if instance == '' {
+		if instance.source == '' {
 			continue
 		}
 		instance = g.erase_mono_generic_type_arguments(instance, src)
 		if fastc_is_json2_voidptr_element_check(req, src) {
-			if body_open := instance.index('{') {
-				instance = instance[..body_open + 1] + '\nreturn false\n}'
+			if body_open := instance.source.index('{') {
+				instance = fastc_apply_mapped_source_edits(instance, [FastcSourceEdit{
+					start:       body_open + 1
+					end:         instance.source.len
+					replacement: '\nreturn false\n}'
+				}])
 			}
 		}
 		start := g.out.len
-		g.parse_mono_instance(instance, src) or {
+		g.parse_mono_instance(instance) or {
 			return error('generic instance `${req.source_key}[${req.concrete_text()}]`: ${err.msg()}')
 		}
 		definition := g.out.after(start)
@@ -77,13 +81,16 @@ fn (mut g Parser) reset_lookup_memos() {
 	g.last_field_known = false
 }
 
-// parse_mono_instance re-parses one concrete instance in its defining module, so its body
-// (including any `$for`/`$if`) resolves unqualified functions and imported types correctly.
-fn (mut g Parser) parse_mono_instance(instance string, source FastcGenericMethodSource) ! {
-	file := token.File.unindexed(source.path, instance.len)
-	g.path = source.path
-	g.module_name = source.module_name
-	g.imports = source.imports.clone()
+// parse_mono_instance reparses a concrete instance with its defining file's module,
+// imports, translated status, and original source positions.
+fn (mut g Parser) parse_mono_instance(instance FastcSourceFile) ! {
+	file := token.File.unindexed(instance.path, instance.source.len)
+	g.path = instance.path
+	g.module_name = instance.header.module_name
+	g.imports = instance.header.imports.clone()
+	g.translated = instance.header.translated
+	g.source_offset = instance.source_offset
+	g.source_origins = instance.source_origins
 	// The lookup memos are keyed by bare name and answer for the current
 	// module and imports, so they must not carry over into another module.
 	g.reset_lookup_memos()
@@ -91,7 +98,7 @@ fn (mut g Parser) parse_mono_instance(instance string, source FastcGenericMethod
 	g.source_line_offset = 0
 	g.source_column_offset = 0
 	g.s = scanner.new_scanner(g.prefs, .normal)
-	g.s.init(file, instance)
+	g.s.init(file, instance.source)
 	g.next()
 	if g.tok in [.key_pub, .key_static] {
 		g.next()
@@ -646,7 +653,8 @@ fn (mut g Parser) skip_semicolons() {
 }
 
 fn (g &Parser) unsupported(feature string) IError {
-	return error('fastc parser does not support ${feature} at byte ${g.s.pos + g.source_offset} in ${g.path}')
+	offset := fastc_original_source_offset(g.source_origins, g.s.pos + g.source_offset)
+	return error('fastc parser does not support ${feature} at byte ${offset} in ${g.path}')
 }
 
 fn (mut g Parser) expect(expected token.Token) ! {
@@ -775,7 +783,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		} else if g.tok == .key_none {
 			receiver_key = 'none'
 		}
-		receiver_type = (g.parse_type()!)
+		receiver_type = g.parse_type()!
 		if receiver_key == '' {
 			receiver_key = flat.source_type_name(g.semantic_type_key(receiver_type))
 		}
@@ -863,13 +871,13 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 				return_types, return_types_are_functions = g.parse_multi_return_types()!
 				option_return_type = flat.source_type_id('MultiReturn')
 			} else {
-				option_return_type = (g.parse_type()!)
+				option_return_type = g.parse_type()!
 			}
 		} else if g.tok == .lpar {
 			return_types, return_types_are_functions = g.parse_multi_return_types()!
 			return_type = flat.source_type_id('MultiReturn')
 		} else {
-			return_type = (g.parse_type()!)
+			return_type = g.parse_type()!
 		}
 	}
 	return_type_is_function := g.pending_fn_pointer
@@ -922,6 +930,8 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	} else {
 		fastc_method_c_name(g.module_name, fastc_c_declared_type_name(receiver_key), name)
 	}
+	// The entry's target-specific name (`wmain` on Windows) is resolved here too,
+	// so its definition and every reference to it share one symbol.
 	c_name := g.c_function_name_or(function_key, conventional_c_name)
 	g.last_function_c_name = c_name
 	c_return_type := if is_main {
@@ -930,7 +940,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		fastc_output_c_type(flat.source_type_name(return_type))
 	}
 	c_params := if is_main && g.selfhost {
-		'int argc, char **argv'
+		fastc_c_main_parameters(g.prefs)
 	} else if params.len == 0 {
 		'void'
 	} else {
@@ -1381,8 +1391,9 @@ fn (mut g Parser) parse_script() ! {
 	g.type_memo.clear()
 	g.locals = map[string]FastcLocal{}
 	g.has_main = true
-	g.protos.writeln('int main(void);')
-	g.write_line('int main(void) {')
+	main_name := fastc_c_main_name(g.prefs)
+	g.protos.writeln('int ${main_name}(void);')
+	g.write_line('int ${main_name}(void) {')
 	g.indent++
 	if !g.prefs.target_libc_headers {
 		g.write_line('setvbuf(stdout, NULL, _IONBF, 0);')
@@ -1438,7 +1449,7 @@ fn (mut g Parser) parse_parameters(function_key string, parameter_offset int) ![
 		} else {
 			u32(0)
 		}
-		mut type_name := (g.parse_type()!)
+		mut type_name := g.parse_type()!
 		option_value_type := g.pending_option_value_type
 		is_fn_pointer := g.pending_fn_pointer
 		fn_return_type := g.pending_fn_return_type

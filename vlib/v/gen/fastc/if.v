@@ -25,7 +25,7 @@ fn (g &Parser) optional_function_field_for_expression(tokens []FastcExpressionTo
 	if tokens.len < 3 || tokens[tokens.len - 2].tok != .dot || tokens.last().tok != .name {
 		return none
 	}
-	receiver_type := (g.infer_expression_type(tokens[..tokens.len - 2]) or { return none })
+	receiver_type := g.infer_expression_type(tokens[..tokens.len - 2]) or { return none }
 	field := g.struct_field_metadata(receiver_type, tokens.last().lit) or { return none }
 	if !field.is_optional_function {
 		return none
@@ -363,8 +363,29 @@ fn (g &Parser) detect_option_none_narrowings(cond_tokens []FastcExpressionToken)
 	return names
 }
 
+fn (g &Parser) validate_if_condition() ! {
+	fastc_validate_if_condition(g.tok, g.s, g.translated, g.source_offset, g.source_origins, g.path)!
+}
+
+fn fastc_validate_if_condition(tok token.Token, scan &scanner.Scanner, translated bool, source_offset int, source_origins []FastcSourceOrigin, path string) ! {
+	if translated || tok !in [.key_if, .lpar] {
+		return
+	}
+	// Match the regular parser, including conditions hidden behind opening parentheses.
+	mut lookahead := *scan
+	mut next := tok
+	for next == .lpar {
+		next = lookahead.scan()
+	}
+	if next == .key_if {
+		offset := fastc_original_source_offset(source_origins, lookahead.pos + source_offset)
+		return error('the condition of an `if` cannot start with another `if` expression; assign it to a variable first at byte ${offset} in ${path}')
+	}
+}
+
 fn (mut g Parser) parse_if() !bool {
 	g.next()
+	g.validate_if_condition()!
 	// `if a, b := opt_fn() { ... }` unwraps an option whose value is a multi-return
 	// tuple and binds each component. The comma would otherwise trip the condition
 	// reader as a parallel assignment, so detect the `name (, name)+ :=` prefix here.
@@ -1624,6 +1645,7 @@ fn (mut g Parser) read_if_expression() !string {
 		u32(0)
 	}
 	g.expect(.key_if)!
+	g.validate_if_condition()!
 	// `pos := if a, _, _ := opt_multi() { … } else { … }`: a multi-return option guard
 	// used as an if-expression value.
 	if g.tok == .name {

@@ -190,7 +190,7 @@ fn (g &Parser) nil_target_is_voidptr(tokens []FastcExpressionToken, previous tok
 		if target[target.len - 2].tok != .dot || target.last().tok != .name {
 			return false
 		}
-		receiver_type := (g.infer_expression_type(target[..target.len - 2]) or { return false })
+		receiver_type := g.infer_expression_type(target[..target.len - 2]) or { return false }
 		field := g.struct_field_metadata(receiver_type, target.last().lit) or { return false }
 		return g.nil_field_is_allowed(field)
 	}
@@ -799,7 +799,7 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 			if call_args.len != 1 {
 				return g.unsupported('function `${name}` call with ${call_args.len} arguments')
 			}
-			argument_type := (g.infer_expression_type(call_args[0])!)
+			argument_type := g.infer_expression_type(call_args[0])!
 			if !g.selfhost && !g.ordinary_print_type_is_supported(argument_type) {
 				return g.unsupported('printing value of type `${flat.source_type_name(argument_type)}`')
 			}
@@ -921,7 +921,7 @@ fn (g &Parser) validate_mutating_method_receiver(receiver []FastcExpressionToken
 			continue
 		}
 		receiver_start := fastc_method_receiver_start(receiver, i)
-		receiver_type := (g.infer_expression_type(receiver[receiver_start..i]) or { continue })
+		receiver_type := g.infer_expression_type(receiver[receiver_start..i]) or { continue }
 		field := g.struct_field_metadata(receiver_type, receiver[i + 1].lit) or { continue }
 		if field.module_name !in ['', g.module_name] && !field.is_mutable && item.unsafe_depth == 0 {
 			type_name := flat.source_type_name(g.semantic_type_key(receiver_type)).all_after_last('.')
@@ -948,7 +948,7 @@ fn (g &Parser) validate_mutable_argument_fields(argument []FastcExpressionToken,
 			continue
 		}
 		receiver_start := fastc_method_receiver_start(argument, i)
-		receiver_type := (g.infer_expression_type(argument[receiver_start..i]) or { continue })
+		receiver_type := g.infer_expression_type(argument[receiver_start..i]) or { continue }
 		field := g.struct_field_metadata(receiver_type, argument[i + 1].lit) or { continue }
 		if field.module_name !in ['', g.module_name] && !field.is_mutable {
 			type_name := flat.source_type_name(g.semantic_type_key(receiver_type)).all_after_last('.')
@@ -1093,7 +1093,7 @@ fn (g &Parser) validate_expression_mutation_lvalue(tokens []FastcExpressionToken
 				continue
 			}
 			receiver_start := fastc_method_receiver_start(lvalue, i)
-			receiver_type := (g.infer_expression_type(lvalue[receiver_start..i]) or { continue })
+			receiver_type := g.infer_expression_type(lvalue[receiver_start..i]) or { continue }
 			if fastc_is_pointer_type(g.underlying_alias_type(receiver_type)) {
 				can_mutate_root = true
 				break
@@ -1129,7 +1129,7 @@ fn (g &Parser) validate_expression_mutation_lvalue(tokens []FastcExpressionToken
 			continue
 		}
 		receiver_start := fastc_method_receiver_start(lvalue, i)
-		receiver_type := (g.infer_expression_type(lvalue[receiver_start..i]) or { continue })
+		receiver_type := g.infer_expression_type(lvalue[receiver_start..i]) or { continue }
 		field := g.struct_field_metadata(receiver_type, lvalue[i + 1].lit) or { continue }
 		// A late generic specialization may be a reflection setter (for example
 		// json2's `$for field in T.fields { value.$(field.name) = ... }`). V permits
@@ -1355,7 +1355,7 @@ fn (g &Parser) validate_expression_field_visibility(tokens []FastcExpressionToke
 			continue
 		}
 		receiver_start := fastc_method_receiver_start(tokens, i)
-		receiver_type := (g.infer_expression_type(tokens[receiver_start..i]) or { continue })
+		receiver_type := g.infer_expression_type(tokens[receiver_start..i]) or { continue }
 		if i + 2 < tokens.len && tokens[i + 2].tok == .lpar && g.method_function_key(receiver_type, tokens[i + 1].lit) in g.functions {
 			continue
 		}
@@ -1375,7 +1375,7 @@ fn (g &Parser) validate_struct_literal_field_visibility(tokens []FastcExpression
 	if type_start < 0 {
 		return
 	}
-	c_type := (g.type_from_expression_tokens(tokens[type_start..open]) or { return })
+	c_type := g.type_from_expression_tokens(tokens[type_start..open]) or { return }
 	layout_type := fastc_trim_pointer_suffix(flat.source_type_name(c_type))
 	if layout_type !in g.struct_field_info {
 		return

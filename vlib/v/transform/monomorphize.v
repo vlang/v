@@ -61,6 +61,8 @@ fn (mut t Transformer) collect_generic_specs_range_scoped(struct_decls map[strin
 		w.node_file_map_cache = t.node_file_map_cache
 		w.node_context_texts = t.node_context_texts
 		w.node_module_map_nodes = t.node_module_map_nodes
+		w.node_context_lazy_end = t.node_context_lazy_end
+		w.node_context_read_only = true
 		mut batch_struct_specs := map[u32]u32{}
 		mut batch_sum_specs := map[u32]GenericSpecContext{}
 		w.collect_generic_struct_specs_range(struct_decls, mut batch_struct_specs, start, end)
@@ -90,6 +92,21 @@ fn (mut t Transformer) collect_generic_specs_range_scoped(struct_decls map[strin
 struct GenericCallSite {
 	id     flat.NodeId
 	module string
+}
+
+// MonomorphPassState is what a monomorphize_pass has scanned. The next pass of
+// the wrapper loop continues from it instead of scanning the whole tree again.
+struct MonomorphPassState {
+mut:
+	ready                       bool
+	ignored_nodes               []bool
+	emitted                     map[string]bool
+	generic_call_sites          []GenericCallSite
+	recorded_call_sites         map[int]bool
+	scan_start                  int
+	generic_fn_value_scan_start int
+	interface_box_scan_start    int
+	used_fns_at_scan            int
 }
 
 struct PendingGenericFnSpec {
@@ -158,24 +175,41 @@ fn (mut t Transformer) monomorphize_pass() []string {
 	// program; let exceptional deep trees grow it instead of reserving millions
 	// of entries up front.
 	t.generic_clone_children.ensure_cap(65536)
+	// A later pass continues the previous one: it scans the nodes appended since
+	// and the bodies that became reachable, not the whole tree again. Nodes the
+	// previous pass scanned keep their specializations and recorded call sites;
+	// the type refresh below still covers the whole tree.
+	resume := t.mono_pass_state.ready
 	struct_decls := t.collect_generic_struct_decls()
 	t.monomorph_profile('mono driver struct decls: ${time.ticks() - debug_started} ms')
-	t.materialize_generic_sum_types(false)
+	if !resume {
+		t.materialize_generic_sum_types(false)
+	}
 	t.monomorph_profile('mono driver sum materialize: ${time.ticks() - debug_started} ms')
 	t.seed_generic_specialization_args(struct_decls)
 	sum_decls := t.collect_generic_sum_decls()
 	t.materialize_generic_struct_specs(t.generic_struct_specs_cache, struct_decls)
 	t.monomorph_profile('mono driver struct materialize: ${time.ticks() - debug_started} ms')
-	mut ignored_nodes := t.monomorphize_ignored_nodes(decls)
-	mut emitted := map[string]bool{}
+	state := if resume {
+		t.mono_pass_state
+	} else {
+		MonomorphPassState{
+			ignored_nodes:            t.monomorphize_ignored_nodes(decls)
+			interface_box_scan_start: t.a.nodes.len
+			used_fns_at_scan:         t.used_fn_count()
+		}
+	}
+	t.mono_pass_state = MonomorphPassState{}
+	mut ignored_nodes := unsafe { state.ignored_nodes }
+	mut emitted := state.emitted
 	mut generated := []string{}
-	mut generic_call_sites := []GenericCallSite{}
-	mut recorded_call_sites := map[int]bool{}
+	mut generic_call_sites := unsafe { state.generic_call_sites }
+	mut recorded_call_sites := state.recorded_call_sites
 	mut changed := true
-	mut scan_start := 0
-	mut generic_fn_value_scan_start := 0
-	mut interface_box_scan_start := t.a.nodes.len
-	mut used_fns_at_scan := t.used_fn_count()
+	mut scan_start := state.scan_start
+	mut generic_fn_value_scan_start := state.generic_fn_value_scan_start
+	mut interface_box_scan_start := state.interface_box_scan_start
+	mut used_fns_at_scan := state.used_fns_at_scan
 	mut generic_struct_specs := if t.generic_materialization_ready {
 		t.generic_struct_specs_cache.clone()
 	} else {
@@ -186,9 +220,13 @@ fn (mut t Transformer) monomorphize_pass() []string {
 	} else {
 		map[u32]GenericSpecContext{}
 	}
-	mut generic_struct_specs_scan_start := t.a.nodes.len
+	mut generic_struct_specs_scan_start := if resume {
+		t.generic_materialization_scan_from
+	} else {
+		t.a.nodes.len
+	}
 	mut lowered_operator_uses := t.lowered_generic_struct_operator_uses_for_specs(generic_struct_specs, decls)
-	if t.parallel_monomorphize {
+	if t.parallel_monomorphize && !resume {
 		t.prepare_parallel_monomorph_scan(0, t.a.nodes.len)
 	}
 	t.monomorph_profile('mono driver setup: ${time.ticks() - debug_started} ms')
@@ -258,12 +296,7 @@ fn (mut t Transformer) monomorphize_pass() []string {
 		mut rescan := []int{}
 		if scan_start > 0 && t.used_fn_count() != used_fns_at_scan {
 			new_ignored := t.monomorphize_ignored_nodes(decls)
-			for i in 0 .. scan_start {
-				if i < ignored_nodes.len && ignored_nodes[i] && !(i < new_ignored.len
-					&& new_ignored[i]) {
-					rescan << i
-				}
-			}
+			rescan = unignored_nodes(ignored_nodes, new_ignored, scan_start)
 			ignored_nodes = unsafe { new_ignored }
 		}
 		used_fns_at_scan = t.used_fn_count()
@@ -501,6 +534,17 @@ fn (mut t Transformer) monomorphize_pass() []string {
 	t.generic_sum_specs_cache = generic_sum_specs.move()
 	t.generic_materialization_scan_from = t.a.nodes.len
 	t.generic_materialization_ready = true
+	t.mono_pass_state = MonomorphPassState{
+		ready:                       true
+		ignored_nodes:               ignored_nodes
+		emitted:                     emitted
+		generic_call_sites:          generic_call_sites
+		recorded_call_sites:         recorded_call_sites
+		scan_start:                  scan_start
+		generic_fn_value_scan_start: generic_fn_value_scan_start
+		interface_box_scan_start:    interface_box_scan_start
+		used_fns_at_scan:            used_fns_at_scan
+	}
 	t.monomorph_profile('mono driver finish: ${time.ticks() - debug_started} ms')
 	return generated
 }
@@ -1461,8 +1505,72 @@ fn add_lowered_generic_struct_operator_use(mut uses map[string][]string, call_na
 	}
 }
 
+// has_generic_index_operators tells whether the checker registered a generic
+// `[]` or `[]=` method, the only signatures generic_struct_operator_fn_name finds
+// for an index.
+fn (mut t Transformer) has_generic_index_operators() bool {
+	if t.generic_index_operators_known == 0 {
+		t.generic_index_operators_known = -1
+		if !isnil(t.tc) {
+			for name, _ in t.tc.fn_ret_types {
+				if name.ends_with('].[]') || name.ends_with('].[]=') {
+					t.generic_index_operators_known = 1
+					break
+				}
+			}
+			if t.generic_index_operators_known < 0 {
+				for name, _ in t.tc.fn_param_types {
+					if name.ends_with('].[]') || name.ends_with('].[]=') {
+						t.generic_index_operators_known = 1
+						break
+					}
+				}
+			}
+		}
+	}
+	return t.generic_index_operators_known > 0
+}
+
+// unignored_nodes lists in order the nodes below `end` that `old` flags and
+// `new` does not, testing eight flags at a time: they are bytes of 0 or 1.
+@[direct_array_access]
+fn unignored_nodes(old []bool, new []bool, end int) []int {
+	mut result := []int{}
+	limit := int_min(int_min(end, old.len), new.len)
+	words := limit / 8
+	old_words := unsafe { &u64(old.data) }
+	new_words := unsafe { &u64(new.data) }
+	for w in 0 .. words {
+		if unsafe { old_words[w] & ~new_words[w] } == 0 {
+			continue
+		}
+		for i in w * 8 .. w * 8 + 8 {
+			if old[i] && !new[i] {
+				result << i
+			}
+		}
+	}
+	for i in words * 8 .. limit {
+		if old[i] && !new[i] {
+			result << i
+		}
+	}
+	// Past the new flags' end every old flag counts as cleared.
+	for i in limit .. int_min(end, old.len) {
+		if old[i] {
+			result << i
+		}
+	}
+	return result
+}
+
 fn (mut t Transformer) record_index_operator_fn_name(node flat.Node, method string) {
 	if node.kind != .index || node.value == 'range' || node.children_count < 2 {
+		return
+	}
+	// The operator is found only as a generic method signature such as
+	// `Box[T].[]`, which the checker registered before this stage.
+	if !t.has_generic_index_operators() {
 		return
 	}
 	base_id := t.a.child(&node, 0)
@@ -2028,8 +2136,33 @@ fn (mut t Transformer) collect_interface_boxed_types() {
 		t.tc.cur_file = old_tc_file
 		t.tc.cur_module = old_tc_module
 	}
-	t.collect_interface_boxed_types_range(0, t.a.nodes.len)
+	handed_over := t.tc.transform_boxed_node_count
+	if handed_over >= 0 && handed_over <= t.a.nodes.len && t.interface_boxed_types.len == 0 {
+		t.collect_interface_boxed_types_after_transform(handed_over)
+	} else {
+		t.collect_interface_boxed_types_range(0, t.a.nodes.len)
+	}
 	t.interface_boxed_types_frozen = true
+}
+
+// collect_interface_boxed_types_after_transform starts from the boxes the
+// transform stage collected from the first `scanned` nodes before lowering and
+// scans only what that scan did not see: the library bodies it skipped and the
+// nodes lowering appended. File and module markers are read for their context.
+fn (mut t Transformer) collect_interface_boxed_types_after_transform(scanned int) {
+	for i, key in t.tc.transform_boxed_types {
+		t.interface_boxed_types[key] = t.tc.transform_boxed_values[i]
+	}
+	skipped := t.tc.transform_boxed_skipped
+	mut skip := []bool{len: scanned}
+	for idx in 0 .. scanned {
+		kind := t.a.nodes[idx].kind
+		skip[idx] = kind != .file && kind != .module_decl && !(idx < skipped.len && skipped[idx])
+	}
+	old_skip := t.interface_boxed_skip_nodes
+	t.interface_boxed_skip_nodes = skip
+	t.collect_interface_boxed_types_range(0, t.a.nodes.len)
+	t.interface_boxed_skip_nodes = old_skip
 }
 
 // unchecked_library_box_nodes snapshots only unchecked concrete library body ranges.
@@ -2099,6 +2232,18 @@ fn interface_box_scan_reads_kind(kind flat.NodeKind) bool {
 @[direct_array_access]
 fn (mut t Transformer) collect_interface_boxed_types_range(start int, end int) {
 	limit := if end < t.a.nodes.len { end } else { t.a.nodes.len }
+	own_cache := isnil(t.box_type_text_cache)
+	if own_cache {
+		t.box_type_text_cache = &BoxTypeTextCache{
+			ids:     []u32{len: 4096}
+			results: []bool{len: 4096}
+		}
+	}
+	defer {
+		if own_cache {
+			t.box_type_text_cache = unsafe { nil }
+		}
+	}
 	for idx in start .. limit {
 		if idx < t.interface_boxed_skip_nodes.len && t.interface_boxed_skip_nodes[idx] {
 			continue
@@ -2723,10 +2868,34 @@ fn interface_box_unalias_type(typ types.Type) types.Type {
 	return typ
 }
 
+// BoxTypeTextCache remembers interface_box_type_text_maybe by type id while a
+// box scan runs, which registers no type or alias the test reads.
+@[heap]
+struct BoxTypeTextCache {
+mut:
+	ids     []u32
+	results []bool
+}
+
 fn (t &Transformer) interface_box_type_text_maybe(raw_type_id u32) bool {
 	if raw_type_id == 0 {
 		return false
 	}
+	if isnil(t.box_type_text_cache) {
+		return t.interface_box_type_text_maybe_uncached(raw_type_id)
+	}
+	mut cache := t.box_type_text_cache
+	slot := int(raw_type_id & 4095)
+	if cache.ids[slot] == raw_type_id {
+		return cache.results[slot]
+	}
+	result := t.interface_box_type_text_maybe_uncached(raw_type_id)
+	cache.ids[slot] = raw_type_id
+	cache.results[slot] = result
+	return result
+}
+
+fn (t &Transformer) interface_box_type_text_maybe_uncached(raw_type_id u32) bool {
 	clean_id := t.trimmed_type_id(t.normalize_type_alias(raw_type_id))
 	clean := flat.source_type_name(clean_id)
 	if flat.source_type_shape(clean_id).has(.optional) {
@@ -4300,8 +4469,32 @@ fn (mut t Transformer) collect_generic_fn_decls() map[string]GenericFnDecl {
 	return decls
 }
 
+// IgnoredFn is a function monomorphize_ignored_nodes flagged as unused, with the
+// module it is declared in.
+struct IgnoredFn {
+	id     int
+	module string
+}
+
+// IgnoredNodesState is what the last monomorphize_ignored_nodes call flagged.
+// The used set only grows, so a function it flagged stays unused until the used
+// set gains one of the spellings should_transform_fn_in_module tests for it.
+struct IgnoredNodesState {
+mut:
+	ready       bool
+	nodes       []bool
+	node_count  int
+	log_start   int
+	scan_module string
+	// by_spelling lists the flagged functions under each of those spellings.
+	by_spelling map[string][]IgnoredFn
+}
+
 @[direct_array_access]
 fn (mut t Transformer) monomorphize_ignored_nodes(decls map[string]GenericFnDecl) []bool {
+	if t.ignored_state.ready && t.used_fns_log_active && t.has_used_fn_filter() {
+		return t.monomorphize_ignored_nodes_since(decls)
+	}
 	mut nodes := []bool{len: t.a.nodes.len}
 	mut stack := []flat.NodeId{cap: 256}
 	for _, decl in decls {
@@ -4309,6 +4502,12 @@ fn (mut t Transformer) monomorphize_ignored_nodes(decls map[string]GenericFnDecl
 	}
 	if !t.has_used_fn_filter() {
 		return nodes
+	}
+	// Later calls start from this result while every growth of the used set is
+	// logged (see monomorphize_ignored_nodes_since).
+	keep := t.used_fns_log_active
+	mut state := IgnoredNodesState{
+		log_start: t.used_fns_log.len
 	}
 	old_module := t.cur_module
 	t.cur_module = ''
@@ -4339,13 +4538,117 @@ fn (mut t Transformer) monomorphize_ignored_nodes(decls map[string]GenericFnDecl
 				t.cur_module = t.node_module_or(i, t.cur_module)
 				if !t.should_transform_fn(*node) {
 					t.collect_node_subtree_flags(flat.NodeId(i), mut nodes, mut stack)
+					if keep {
+						state.add(node.value, i, t.cur_module)
+					}
 				}
 			}
 			else {}
 		}
 	}
+	if keep {
+		state.ready = true
+		state.nodes = nodes
+		state.node_count = t.a.nodes.len
+		state.scan_module = t.cur_module
+		t.ignored_state = state
+	}
 	t.cur_module = old_module
 	return nodes
+}
+
+// monomorphize_ignored_nodes_since updates the last result: it clears the
+// subtrees of the flagged functions that the used set named since, and flags the
+// generic and unused declarations appended since. The previous result is left
+// as it was; callers compare the two.
+fn (mut t Transformer) monomorphize_ignored_nodes_since(decls map[string]GenericFnDecl) []bool {
+	mut state := t.ignored_state
+	mut nodes := state.nodes.clone()
+	if nodes.len < t.a.nodes.len {
+		nodes << []bool{len: t.a.nodes.len - nodes.len}
+	}
+	mut stack := []flat.NodeId{cap: 256}
+	old_module := t.cur_module
+	for li in state.log_start .. t.used_fns_log.len {
+		named := state.by_spelling[t.used_fns_log[li]] or { continue }
+		for entry in named {
+			if entry.id >= nodes.len || !nodes[entry.id] {
+				continue
+			}
+			node := t.a.nodes[entry.id]
+			if t.should_transform_fn_in_module(node, entry.module) {
+				t.clear_node_subtree_flags(flat.NodeId(entry.id), mut nodes, mut stack)
+			}
+		}
+	}
+	for _, decl in decls {
+		if int(decl.id) >= state.node_count {
+			t.collect_node_subtree_flags(decl.id, mut nodes, mut stack)
+		}
+	}
+	t.cur_module = state.scan_module
+	for i in state.node_count .. t.a.nodes.len {
+		kind := t.a.nodes[i].kind
+		if kind == .module_decl {
+			t.cur_module = t.a.nodes[i].value
+			continue
+		}
+		if kind != .fn_decl {
+			continue
+		}
+		node := unsafe { &t.a.nodes[i] }
+		if node.value.starts_with('test_') {
+			continue
+		}
+		t.cur_module = t.node_module_or(i, t.cur_module)
+		if !t.should_transform_fn(*node) {
+			t.collect_node_subtree_flags(flat.NodeId(i), mut nodes, mut stack)
+			state.add(node.value, i, t.cur_module)
+		}
+	}
+	state.scan_module = t.cur_module
+	t.cur_module = old_module
+	state.nodes = nodes
+	state.node_count = t.a.nodes.len
+	state.log_start = t.used_fns_log.len
+	t.ignored_state = state
+	return nodes
+}
+
+// add records an unused function under each spelling of `value` declared in
+// `module_name` that should_transform_fn_in_module tests.
+fn (mut s IgnoredNodesState) add(value string, id int, module_name string) {
+	entry := IgnoredFn{
+		id:     id
+		module: module_name
+	}
+	s.add_spellings(value, entry)
+	if value.contains('[') {
+		base := generic_fn_decl_base_value(value)
+		if base != value {
+			s.add_spellings(base, entry)
+		}
+	}
+}
+
+// add_spellings mirrors the lookups of used_fn_contains_in_module.
+fn (mut s IgnoredNodesState) add_spellings(name string, entry IgnoredFn) {
+	module_name := entry.module
+	plain_module := module_name == '' || module_name == 'main' || module_name == 'builtin'
+	if !plain_module && name.len > module_name.len && name[module_name.len] == `.`
+		&& name.starts_with(module_name) {
+		s.add_spelling(name, entry)
+		s.add_spelling(c_name(name), entry)
+	}
+	dfn := transform_dotted_fn_name(module_name, name)
+	s.add_spelling(dfn, entry)
+	s.add_spelling(c_name(dfn), entry)
+}
+
+fn (mut s IgnoredNodesState) add_spelling(spelling string, entry IgnoredFn) {
+	mut entries := s.by_spelling[spelling] or { []IgnoredFn{} }
+	entries << entry
+	s.by_spelling[spelling] = entries
 }
 
 @[direct_array_access]
@@ -4363,6 +4666,12 @@ fn (mut t Transformer) ensure_node_module_map() {
 	} else {
 		t.ensure_node_context_map_capacity()
 	}
+	// The nodes the parent index covers take their context on demand, from their
+	// nearest marked ancestor (see node_context_owner): only files and
+	// declarations are marked here, not every node below them.
+	if t.node_module_map_nodes == 0 {
+		t.node_context_lazy_end = int_min(t.source_parent_ids.len, t.a.nodes.len)
+	}
 	mut cur_module := ''
 	mut cur_file := ''
 	for i := t.node_module_map_nodes; i < t.a.nodes.len; i++ {
@@ -4372,7 +4681,7 @@ fn (mut t Transformer) ensure_node_module_map() {
 			.file {
 				cur_file = node.value
 				cur_module = t.tc.file_modules[node.value] or { '' }
-				t.mark_node_context(flat.NodeId(i), cur_module, cur_file)
+				t.mark_node_context_root(i, cur_module, cur_file)
 			}
 			.module_decl {
 				cur_module = node.value
@@ -4384,12 +4693,68 @@ fn (mut t Transformer) ensure_node_module_map() {
 				// marker of its own.
 				context_module := t.node_module_or(i, cur_module)
 				context_file := t.node_file_or(i, cur_file)
-				t.mark_node_context(flat.NodeId(i), context_module, context_file)
+				t.mark_node_context_root(i, context_module, context_file)
 			}
 			else {}
 		}
 	}
 	t.node_module_map_nodes = t.a.nodes.len
+}
+
+// mark_node_context_root marks a file or declaration with its context: the node
+// alone where its subtree takes contexts on demand, else the whole subtree.
+@[direct_array_access]
+fn (mut t Transformer) mark_node_context_root(idx int, module_name string, file_name string) {
+	if idx >= t.node_context_lazy_end {
+		t.mark_node_context(flat.NodeId(idx), module_name, file_name)
+		return
+	}
+	t.node_module_map_cache[idx] = t.node_context_text_id(module_name)
+	t.node_file_map_cache[idx] = t.node_context_text_id(file_name)
+}
+
+// node_context_owner is the nearest ancestor of node `idx` with a recorded
+// context, or -1, for a node whose context is taken on demand. The transformer
+// that owns the context arrays records the context it finds on the nodes it
+// walked through, so asking again, or for a node below them, is short.
+@[direct_array_access]
+fn (t &Transformer) node_context_owner(idx int) int {
+	if idx >= t.node_context_lazy_end {
+		return -1
+	}
+	mut owner := -1
+	mut cursor := idx
+	// The bound only guards against a cycle in a rewritten tree.
+	for _ in 0 .. 1 << 16 {
+		if cursor < 0 || cursor >= t.source_parent_ids.len {
+			break
+		}
+		cursor = int(t.source_parent_ids[cursor])
+		if cursor < 0 || cursor >= t.node_module_map_cache.len
+			|| cursor >= t.node_file_map_cache.len {
+			break
+		}
+		if t.node_module_map_cache[cursor] != 0 || t.node_file_map_cache[cursor] != 0 {
+			owner = cursor
+			break
+		}
+	}
+	if owner < 0 || t.node_context_read_only {
+		return owner
+	}
+	module_id := t.node_module_map_cache[owner]
+	file_id := t.node_file_map_cache[owner]
+	unsafe {
+		mut modules := &u16(t.node_module_map_cache.data)
+		mut files := &u16(t.node_file_map_cache.data)
+		cursor = idx
+		for cursor != owner {
+			modules[cursor] = module_id
+			files[cursor] = file_id
+			cursor = int(t.source_parent_ids[cursor])
+		}
+	}
+	return owner
 }
 
 fn (mut t Transformer) ensure_node_context_map_capacity() {
@@ -4458,6 +4823,12 @@ fn (t &Transformer) node_file_or(idx int, fallback string) string {
 		if file_id != 0 {
 			return t.node_context_text(file_id)
 		}
+		if t.node_module_map_cache[idx] == 0 {
+			owner := t.node_context_owner(idx)
+			if owner >= 0 {
+				return t.node_file_or(owner, fallback)
+			}
+		}
 	}
 	return fallback
 }
@@ -4468,6 +4839,12 @@ fn (t &Transformer) node_module_or(idx int, fallback string) string {
 		module_id := t.node_module_map_cache[idx]
 		if module_id != 0 {
 			return t.node_context_text(module_id)
+		}
+		if idx < t.node_file_map_cache.len && t.node_file_map_cache[idx] == 0 {
+			owner := t.node_context_owner(idx)
+			if owner >= 0 {
+				return t.node_module_or(owner, fallback)
+			}
 		}
 		if !isnil(t.tc) && idx < t.node_file_map_cache.len {
 			file_name := t.node_context_text(t.node_file_map_cache[idx])
@@ -4542,6 +4919,34 @@ fn (mut t Transformer) collect_node_subtree_ids(id flat.NodeId, mut nodes map[in
 	node := t.a.node(id)
 	for i in 0 .. node.children_count {
 		t.collect_node_subtree_ids(t.a.child(node, i), mut nodes)
+	}
+}
+
+// clear_node_subtree_flags clears the flags collect_node_subtree_flags set for
+// the subtree of `id`.
+@[direct_array_access]
+fn (mut t Transformer) clear_node_subtree_flags(id flat.NodeId, mut nodes []bool, mut stack []flat.NodeId) {
+	limit := if nodes.len < t.a.nodes.len { nodes.len } else { t.a.nodes.len }
+	stack.clear()
+	stack << id
+	for stack.len > 0 {
+		idx := int(stack.pop())
+		if idx < 0 || idx >= limit || !nodes[idx] {
+			continue
+		}
+		nodes[idx] = false
+		node := &t.a.nodes[idx]
+		start := int(node.children_start)
+		end := start + int(node.children_count)
+		if start < 0 || end > t.a.children.len {
+			continue
+		}
+		for i in start .. end {
+			child_id := t.a.children[i]
+			if int(child_id) >= 0 {
+				stack << child_id
+			}
+		}
 	}
 }
 
@@ -5796,12 +6201,32 @@ fn (mut t Transformer) rewrite_generic_call_sites(decls map[string]GenericFnDecl
 
 fn (mut t Transformer) refresh_decl_assign_types_after_generic_rewrite() bool {
 	mut changed := false
+	// Whether a callee returns a generic application depends on its name alone,
+	// and the same names are called over and over: remember, by the address of
+	// the name, those that do not.
+	mut plain_callee_ptrs := []voidptr{len: 4096}
+	mut plain_callee_lens := []int{len: 4096}
 	for i in 0 .. t.a.nodes.len {
 		if t.a.nodes[i].kind !in [.call, .or_expr, .decl_assign] {
 			continue
 		}
 		// Only candidate nodes need copies before AST rewriting.
 		node := t.a.nodes[i]
+		if node.kind == .call && node.children_count > 0 && !isnil(t.tc) {
+			callee := t.a.child_node(&node, 0)
+			if callee.kind == .ident && callee.value.len > 0 {
+				slot := int((usize(callee.value.str) >> 3) & 4095)
+				if plain_callee_ptrs[slot] == voidptr(callee.value.str)
+					&& plain_callee_lens[slot] == callee.value.len {
+					continue
+				}
+				if !t.fn_ret_type_is_generic_app(callee.value) {
+					plain_callee_ptrs[slot] = voidptr(callee.value.str)
+					plain_callee_lens[slot] = callee.value.len
+					continue
+				}
+			}
+		}
 		if node.kind == .call {
 			if concrete_type_source_id := t.concrete_fn_alias_call_return_type(i, node) {
 				concrete_type := flat.source_type_name(concrete_type_source_id)
@@ -5855,6 +6280,12 @@ fn (mut t Transformer) refresh_decl_assign_types_after_generic_rewrite() bool {
 				specialized_call_or = callee.kind == .ident
 					&& t.generic_callee_is_specialization(callee.value)
 			}
+			// Unless the callee is a specialization, a usable annotation stays as it
+			// is (see below); do not resolve the result type of the call for it.
+			if !specialized_call_or && decl_type_is_usable(node.typ)
+				&& !t.generic_arg_is_unresolved(node.typ) {
+				continue
+			}
 			_, concrete_rhs_type_source_id := t.or_expr_types(call_id, rhs.typ)
 			concrete_rhs_type = concrete_rhs_type_source_id
 		} else if rhs.kind != .call {
@@ -5880,6 +6311,15 @@ fn (mut t Transformer) refresh_decl_assign_types_after_generic_rewrite() bool {
 		}
 	}
 	return changed
+}
+
+// fn_ret_type_is_generic_app tells whether the checker's return type of the
+// function `name` is a generic application, the first test of
+// concrete_fn_alias_call_return_type.
+fn (t &Transformer) fn_ret_type_is_generic_app(name string) bool {
+	ret := t.tc.fn_ret_types[name] or { return false }
+	_, _, is_generic_alias := generic_app_parts(ret.name())
+	return is_generic_alias
 }
 
 fn (mut t Transformer) concrete_fn_alias_call_return_type(id int, node flat.Node) ?u32 {

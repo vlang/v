@@ -17,10 +17,20 @@ set V_OLD=./v_old.exe
 set V_UPDATED=./v_up.exe
 set V_STAGE=./v_stage.exe
 set V_STAGE_C=./v_stage.c
+REM Current vc snapshots declare these Windows helpers as external functions.
+REM Older snapshots embed static definitions, which can coexist with these.
+set V_BOOTSTRAP_NATIVE="%~dp0vlib\time\ticks_windows.c" "%~dp0vlib\v\winthread_helper_windows.c" "%~dp0cmd\v\toolcache_windows_helpers.c"
 REM Native core helpers are cached objects in normal builds. The direct stage
 REM compile must link them too; this stage explicitly uses -gc none.
-set V_STAGE_NATIVE="%~dp0vlib\builtin\core_windows.c" "%~dp0vlib\v\modulecache\file_metadata.c" "%~dp0vlib\time\ticks_windows.c" "%~dp0vlib\v\winthread_helper_windows.c" "%~dp0cmd\v\toolcache_windows_helpers.c" "%~dp0vlib\sync\thread_helper.c"
+set V_STAGE_NATIVE="%~dp0vlib\builtin\core_windows.c" "%~dp0vlib\v\modulecache\file_metadata.c" %V_BOOTSTRAP_NATIVE% "%~dp0vlib\sync\thread_helper.c"
 set V_C_FILE=./vc/v_win.c
+REM Snapshots generated before vlang/v#30606 declare the SDK-backed Windows
+REM helpers (time ticks, Win32 threads, toolcache file/ACL probes) but do not
+REM embed their bodies, so the bootstrap must link these sources explicitly.
+REM Newer snapshots embed them with static linkage, so linking the external
+REM definitions as well is harmless. The other V_STAGE_NATIVE helpers are not
+REM referenced by existing vc snapshots and are left out of the bootstrap.
+set V_BOOTSTRAP_NATIVE="%~dp0vlib\time\ticks_windows.c" "%~dp0vlib\v\winthread_helper_windows.c" "%~dp0cmd\v\toolcache_windows_helpers.c"
 REM Portable vc snapshots need the full V1 compiler until the new driver is built.
 REM Keep this aligned with VC_BOOTSTRAP_DEFINE in the Unix makefiles.
 set VC_BOOTSTRAP_DEFINE=-DCUSTOM_DEFINE_v1_fallback
@@ -497,13 +507,23 @@ set stage_error=!ERRORLEVEL!
 if !stage_error! NEQ 0 call :try_delete "%V_STAGE%"
 exit /b !stage_error!
 
+:select_tcc_openlibm
+REM Direct TCC links need OpenLibm for C99 math that msvcrt lacks (remainder).
+REM Every Windows TCC bundle ships lib\openlibm.o built for its own compiler, as
+REM vlib/math expects. Use the installed checkout's object before each link: an
+REM existing checkout keeps its branch, so it can differ from tcc_branch.
+set "TCC_OPENLIBM="
+if exist "%tcc_dir%\lib\openlibm.o" set TCC_OPENLIBM="%tcc_dir%\lib\openlibm.o"
+exit /b 0
+
 :build_bootstrap_with_tcc
 if not exist "!tcc_exe!" (
 	echo  ^> TCC not found
 	exit /b 1
 )
+call :select_tcc_openlibm
 echo  ^> Attempting to build "%V_BOOTSTRAP%" (from %V_C_FILE%) with "!tcc_exe!"
-"!tcc_exe!" %VC_BOOTSTRAP_DEFINE% -B"%tcc_dir%" -bt10 -g -w -o "%V_BOOTSTRAP%" "%V_C_FILE%" -ladvapi32 -lws2_32 -lbcrypt -Wl,-stack=33554432
+"!tcc_exe!" %VC_BOOTSTRAP_DEFINE% -B"%tcc_dir%" -bt10 -g -w -o "%V_BOOTSTRAP%" "%V_C_FILE%" %V_BOOTSTRAP_NATIVE% %TCC_OPENLIBM% -ladvapi32 -lws2_32 -lbcrypt -Wl,-stack=33554432
 exit /b !ERRORLEVEL!
 
 :build_bootstrap_with_msvc
@@ -520,7 +540,7 @@ if !ERRORLEVEL! NEQ 0 (
 	exit /b 1
 )
 echo  ^> Attempting to build "%V_BOOTSTRAP%" (from %V_C_FILE%) with MSVC
-cl /nologo %VC_BOOTSTRAP_DEFINE% /volatile:ms /bigobj /MD /we4013 /utf-8 /w /std:c11 /D_CRT_DECLARE_NONSTDC_NAMES=1 /Fe"%V_BOOTSTRAP%" "%V_C_FILE%" kernel32.lib user32.lib dbghelp.lib ws2_32.lib bcrypt.lib advapi32.lib /link /STACK:33554432
+cl /nologo %VC_BOOTSTRAP_DEFINE% /volatile:ms /bigobj /MD /we4013 /utf-8 /w /std:c11 /D_CRT_DECLARE_NONSTDC_NAMES=1 /Fe"%V_BOOTSTRAP%" "%V_C_FILE%" %V_BOOTSTRAP_NATIVE% kernel32.lib user32.lib dbghelp.lib ws2_32.lib bcrypt.lib advapi32.lib /link /STACK:33554432
 set msvc_bootstrap_error=!ERRORLEVEL!
 call :try_delete "%ObjFile%"
 exit /b !msvc_bootstrap_error!
@@ -534,7 +554,7 @@ if [!resolved_exe!] == [] (
 set "clang_exe=!resolved_exe!"
 if "%PROCESSOR_ARCHITECTURE%" == "x86" ( set clang_target=i686-w64-mingw32 ) else ( set clang_target=x86_64-w64-mingw32 )
 echo  ^> Attempting to build "%V_BOOTSTRAP%" (from %V_C_FILE%) with Clang
-"!clang_exe!" %VC_BOOTSTRAP_DEFINE% --target=!clang_target! -std=c99 -municode -g -w -Wno-error=implicit-function-declaration -Wno-error=incompatible-function-pointer-types -o "%V_BOOTSTRAP%" "%V_C_FILE%" -ladvapi32 -lws2_32 -lbcrypt -Wl,-stack=33554432
+"!clang_exe!" %VC_BOOTSTRAP_DEFINE% --target=!clang_target! -std=c99 -municode -g -w -Wno-error=implicit-function-declaration -Wno-error=incompatible-function-pointer-types -o "%V_BOOTSTRAP%" "%V_C_FILE%" %V_BOOTSTRAP_NATIVE% -ladvapi32 -lws2_32 -lbcrypt -Wl,-stack=33554432
 if !ERRORLEVEL! NEQ 0 (
 	echo In most cases, compile errors happen because the version of Clang installed is too old
 	"!clang_exe!" --version
@@ -556,8 +576,9 @@ exit /b !stage_error!
 set stage_vflags=-cc "!tcc_exe!"
 call :generate_stage_c
 if !ERRORLEVEL! NEQ 0 exit /b !ERRORLEVEL!
+call :select_tcc_openlibm
 echo  ^> Compiling "%V_STAGE%" from "%V_STAGE_C%" with TCC
-"!tcc_exe!" -B"%tcc_dir%" -bt10 -g -w -o "%V_STAGE%" "%V_STAGE_C%" %V_STAGE_NATIVE% -ldbghelp -lws2_32 -L"%~dp0vlib\crypto\rand\internal\libraries\bcrypt" -lbcrypt -I "%~dp0thirdparty\stdatomic\win" -ladvapi32 -Wl,-stack=33554432
+"!tcc_exe!" -B"%tcc_dir%" -bt10 -g -w -o "%V_STAGE%" "%V_STAGE_C%" %V_STAGE_NATIVE% %TCC_OPENLIBM% -ldbghelp -lws2_32 -L"%~dp0vlib\crypto\rand\internal\libraries\bcrypt" -lbcrypt -I "%~dp0thirdparty\stdatomic\win" -ladvapi32 -Wl,-stack=33554432
 set stage_error=!ERRORLEVEL!
 call :try_delete "%V_STAGE_C%"
 exit /b !stage_error!
@@ -600,7 +621,7 @@ if !ERRORLEVEL! NEQ 0 (
 	exit /b 1
 )
 echo  ^> Attempting to build "%V_BOOTSTRAP%" (from %V_C_FILE%) with GCC "!gcc_exe!"
-"!gcc_exe!" %VC_BOOTSTRAP_DEFINE% -std=c99 -municode -g -w -o "%V_BOOTSTRAP%" "%V_C_FILE%" -ladvapi32 -lws2_32 -lbcrypt -Wl,-stack=33554432
+"!gcc_exe!" %VC_BOOTSTRAP_DEFINE% -std=c99 -municode -g -w -o "%V_BOOTSTRAP%" "%V_C_FILE%" %V_BOOTSTRAP_NATIVE% -ladvapi32 -lws2_32 -lbcrypt -Wl,-stack=33554432
 if !ERRORLEVEL! NEQ 0 (
 	echo In most cases, compile errors happen because the version of GCC installed is too old
 	"!gcc_exe!" --version

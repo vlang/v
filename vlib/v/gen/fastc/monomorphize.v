@@ -1,5 +1,6 @@
 module fastc
 
+import strings
 import v.flat
 import v.pref
 import v.scanner
@@ -38,6 +39,9 @@ struct FastcGenericMethodSource {
 	module_name                string
 	path                       string
 	imports                    map[string]string
+	header                     FastcSourceHeader
+	source_offset              int
+	source_origins             []FastcSourceOrigin
 	return_type_source         u32
 	first_param_is_type_param  bool
 	type_param_parameter_index int
@@ -95,6 +99,9 @@ fn fastc_collect_generic_methods_in_file(source_file FastcSourceFile, prefs &pre
 			module_name:                module_name
 			path:                       source_file.path
 			imports:                    source_file.header.imports
+			header:                     source_file.header
+			source_offset:              source_file.source_offset + generic.fn_start
+			source_origins:             source_file.source_origins
 			return_type_source:         generic.return_type_source
 			first_param_is_type_param:  generic.first_param_is_type_param
 			type_param_parameter_index: generic.type_param_parameter_index
@@ -305,7 +312,7 @@ fn (mut g Parser) queue_explicit_mono_method(tokens []FastcExpressionToken) ?str
 	}
 	dot_index := tokens.len - 2
 	receiver_start := fastc_method_receiver_start(tokens, dot_index)
-	receiver_type := (g.infer_expression_type(tokens[receiver_start..dot_index]) or { return none })
+	receiver_type := g.infer_expression_type(tokens[receiver_start..dot_index]) or { return none }
 	receiver_base := flat.source_type_name(fastc_normalize_inferred_type(receiver_type)).trim_right('*')
 	method := tokens.last().lit
 	if '${receiver_base}.${method}' !in g.generic_method_sources {
@@ -338,7 +345,7 @@ fn (mut g Parser) queue_implicit_mono_method(tokens []FastcExpressionToken) ?str
 	}
 	dot_index := tokens.len - 2
 	receiver_start := fastc_method_receiver_start(tokens, dot_index)
-	receiver_type := (g.infer_expression_type(tokens[receiver_start..dot_index]) or { return none })
+	receiver_type := g.infer_expression_type(tokens[receiver_start..dot_index]) or { return none }
 	receiver_base := flat.source_type_name(fastc_normalize_inferred_type(receiver_type)).trim_right('*')
 	method := tokens.last().lit
 	source_key := '${receiver_base}.${method}'
@@ -473,7 +480,8 @@ fn (g &Parser) mono_parameter_types(source FastcGenericMethodSource, concrete u3
 		fallback[index] = fastc_specialized_generic_result_type(fallback[index], concrete)
 	}
 	mut signatures := map[string]FastcFunctionSignature{}
-	collect_function_signatures(g.render_mono_method(source, concrete), source.path,
+	instance := g.render_mono_method(source, concrete)
+	collect_function_signatures(instance.source, source.path,
 		FastcSourceHeader{
 			module_name: source.module_name
 			imports:     source.imports
@@ -579,15 +587,20 @@ fn fastc_generic_type_source_uses_parameter(source string, type_params string, p
 	return false
 }
 
-// render_mono_method produces the concrete source of one generic-method instance by
-// reusing the generic-function renderer: it re-scans the stored method source to locate
-// its `[T]` bracket + name, then substitutes the type parameter and renames the method.
-fn (g &Parser) render_mono_method(src FastcGenericMethodSource, concrete u32) string {
-	generics := fastc_scan_generic_fns(src.source, g.path, g.prefs, 0)
+// render_mono_method produces a concrete instance and preserves its defining source positions
+// through type substitution and renaming.
+fn (g &Parser) render_mono_method(src FastcGenericMethodSource, concrete u32) FastcSourceFile {
+	generics := fastc_scan_generic_fns(src.source, src.path, g.prefs, 0)
 	if generics.len == 0 {
-		return ''
+		return FastcSourceFile{}
 	}
-	return fastc_render_generic_instance(src.source, generics[0], flat.source_type_name(concrete), g.prefs)
+	return fastc_render_mapped_generic_instance(FastcSourceFile{
+		path:           src.path
+		source:         src.source
+		header:         src.header
+		source_offset:  src.source_offset
+		source_origins: src.source_origins
+	}, generics[0], flat.source_type_name(concrete), g.prefs, []FastcGenericCall{})
 }
 
 // erase_mono_generic_type_arguments removes type arguments from references to generic
@@ -596,10 +609,10 @@ fn (g &Parser) render_mono_method(src FastcGenericMethodSource, concrete u32) st
 // already does for signatures. The generated instance must receive the same treatment
 // before expression parsing, otherwise `Result[Concrete]{...}` is mistaken for an array
 // access followed by an ordinary block.
-fn (g &Parser) erase_mono_generic_type_arguments(source string, src FastcGenericMethodSource) string {
-	file := token.File.unindexed(src.path, source.len)
+fn (g &Parser) erase_mono_generic_type_arguments(source_file FastcSourceFile, src FastcGenericMethodSource) FastcSourceFile {
+	file := token.File.unindexed(src.path, source_file.source.len)
 	mut scan := scanner.new_scanner(g.prefs, .normal)
-	scan.init(file, source)
+	scan.init(file, source_file.source)
 	mut edits := []FastcSourceEdit{}
 	mut tok := scan.scan()
 	for tok != .eof {
@@ -627,7 +640,7 @@ fn (g &Parser) erase_mono_generic_type_arguments(source string, src FastcGeneric
 		for depth > 0 {
 			tok = scan.scan()
 			if tok == .eof {
-				return source
+				return source_file
 			}
 			if tok == .lsbr {
 				depth++
@@ -641,10 +654,7 @@ fn (g &Parser) erase_mono_generic_type_arguments(source string, src FastcGeneric
 		}
 		tok = scan.scan()
 	}
-	if edits.len == 0 {
-		return source
-	}
-	return fastc_apply_source_edits(source, edits)
+	return fastc_apply_mapped_source_edits(source_file, edits)
 }
 
 struct FastcGenericFn {
@@ -828,11 +838,11 @@ fn fastc_monomorphize_functions_once(sources []FastcSourceFile, prefs &pref.Pref
 	// Build a flat edit list: blank each active generic definition, append its
 	// concrete copies to that source, and rewrite each resolved call site.
 	mut edits := []FastcSourceEdit{}
-	mut appends := []string{len: sources.len, init: ''}
+	mut copies := []FastcSourceFile{}
+	mut copy_indices := []int{}
 	for name in active.keys() {
 		generic := by_name[name] or { FastcGenericFn{} }
 		definition_file := sources[generic.source_index]
-		definition_source := definition_file.source
 		edits << FastcSourceEdit{
 			source_index: generic.source_index
 			start:        generic.fn_start
@@ -845,14 +855,13 @@ fn fastc_monomorphize_functions_once(sources []FastcSourceFile, prefs &pref.Pref
 				nested_calls << call
 			}
 		}
-		mut copies := ''
 		for pair in pairs {
 			if pair.name != name {
 				continue
 			}
-			copies = copies + '\n' + fastc_render_generic_instance_with_call_rewrites(definition_source, generic, pair.concrete_text(), prefs, nested_calls) + '\n'
+			copies << fastc_render_mapped_generic_instance(definition_file, generic, pair.concrete_text(), prefs, nested_calls)
+			copy_indices << generic.source_index
 		}
-		appends[generic.source_index] = appends[generic.source_index] + copies
 	}
 	for call in calls {
 		if call.name !in active {
@@ -883,26 +892,19 @@ fn fastc_monomorphize_functions_once(sources []FastcSourceFile, prefs &pref.Pref
 				file_edits << edit
 			}
 		}
-		mut new_source := source_file.source
-		if file_edits.len > 0 {
-			new_source = fastc_apply_source_edits(new_source, file_edits)
+		mut rewritten := fastc_apply_mapped_source_edits(source_file, file_edits)
+		for copy_index, copy in copies {
+			if copy_indices[copy_index] == i {
+				rewritten = fastc_append_mapped_source(rewritten, copy)
+			}
 		}
-		if appends[i] != '' {
-			new_source = new_source + appends[i]
-		}
-		result << FastcSourceFile{
-			path:   source_file.path
-			source: new_source
-			header: source_file.header
-		}
+		result << rewritten
 	}
 	return result, true
 }
 
-// fastc_apply_source_edits applies non-overlapping [start,end) replacements,
-// processed right-to-left so earlier offsets stay valid. Sorted with a manual
-// selection sort to keep the pass self-hostable.
-fn fastc_apply_source_edits(source string, edits []FastcSourceEdit) string {
+// fastc_order_source_edits sorts replacements right-to-left with a self-hostable selection sort.
+fn fastc_order_source_edits(edits []FastcSourceEdit) []FastcSourceEdit {
 	mut ordered := edits.clone()
 	for i in 0 .. ordered.len {
 		mut max_index := i
@@ -921,11 +923,61 @@ fn fastc_apply_source_edits(source string, edits []FastcSourceEdit) string {
 			ordered[max_index] = swap
 		}
 	}
+	return ordered
+}
+
+// fastc_apply_source_edits applies non-overlapping [start,end) replacements,
+// processed right-to-left so earlier offsets stay valid.
+fn fastc_apply_source_edits(source string, edits []FastcSourceEdit) string {
+	ordered := fastc_order_source_edits(edits)
 	mut result := source
 	for edit in ordered {
 		result = result[..edit.start] + edit.replacement + result[edit.end..]
 	}
 	return result
+}
+
+// fastc_apply_mapped_source_edits composes edits with the source's existing origin map.
+fn fastc_apply_mapped_source_edits(source_file FastcSourceFile, edits []FastcSourceEdit) FastcSourceFile {
+	if edits.len == 0 {
+		return source_file
+	}
+	ordered := fastc_order_source_edits(edits)
+	mut out := strings.new_builder(source_file.source.len)
+	mut origins := []FastcSourceOrigin{}
+	mut cursor := 0
+	for i := ordered.len - 1; i >= 0; i-- {
+		edit := ordered[i]
+		origins << fastc_source_range_origins(source_file, cursor, edit.start, out.len)
+		out.write_string(source_file.source[cursor..edit.start])
+		if edit.replacement != '' {
+			origins << FastcSourceOrigin{
+				filtered_offset: out.len
+				source_offset:   fastc_original_source_offset(source_file.source_origins, source_file.source_offset + edit.start)
+			}
+			out.write_string(edit.replacement)
+		}
+		cursor = edit.end
+	}
+	origins << fastc_source_range_origins(source_file, cursor, source_file.source.len, out.len)
+	out.write_string(source_file.source[cursor..])
+	return FastcSourceFile{
+		...source_file
+		source:         out.str()
+		source_offset:  0
+		source_origins: origins
+	}
+}
+
+fn fastc_append_mapped_source(source_file FastcSourceFile, copy FastcSourceFile) FastcSourceFile {
+	mut origins := fastc_source_range_origins(source_file, 0, source_file.source.len, 0)
+	origins << fastc_source_range_origins(copy, 0, copy.source.len, source_file.source.len + 1)
+	return FastcSourceFile{
+		...source_file
+		source:         source_file.source + '\n' + copy.source + '\n'
+		source_offset:  0
+		source_origins: origins
+	}
 }
 
 fn fastc_monomorphized_name(name string, concrete string) string {
@@ -976,11 +1028,11 @@ fn fastc_type_param_substitutions(type_param string, concrete string) map[string
 // the generic definition with `[T]` removed, the type parameter substituted, and
 // the function renamed.
 fn fastc_render_generic_instance(source string, generic FastcGenericFn, concrete string, prefs &pref.Preferences) string {
-	return fastc_render_generic_instance_with_call_rewrites(source, generic, concrete, prefs, []FastcGenericCall{})
+	return fastc_render_mapped_generic_instance(FastcSourceFile{ source: source }, generic, concrete, prefs, []FastcGenericCall{}).source
 }
 
-fn fastc_render_generic_instance_with_call_rewrites(source string, generic FastcGenericFn, concrete string, prefs &pref.Preferences, nested_calls []FastcGenericCall) string {
-	definition := source[generic.fn_start..generic.def_end]
+fn fastc_render_mapped_generic_instance(source_file FastcSourceFile, generic FastcGenericFn, concrete string, prefs &pref.Preferences, nested_calls []FastcGenericCall) FastcSourceFile {
+	definition := source_file.source[generic.fn_start..generic.def_end]
 	base := generic.fn_start
 	mut edits := []FastcSourceEdit{}
 	edits << FastcSourceEdit{
@@ -1026,7 +1078,11 @@ fn fastc_render_generic_instance_with_call_rewrites(source string, generic Fastc
 		}
 		tok = s.scan()
 	}
-	return fastc_apply_source_edits(definition, edits)
+	return fastc_apply_mapped_source_edits(FastcSourceFile{
+		...source_file
+		source:        definition
+		source_offset: source_file.source_offset + base
+	}, edits)
 }
 
 // fastc_scan_generic_fns finds free functions with a single type parameter whose
@@ -1812,25 +1868,24 @@ fn fastc_monomorphize_structs(sources []FastcSourceFile, prefs &pref.Preferences
 		return sources
 	}
 	mut edits := []FastcSourceEdit{}
-	mut appends := []string{len: sources.len, init: ''}
+	mut copies := []FastcSourceFile{}
+	mut copy_indices := []int{}
 	for name in active.keys() {
 		generic := by_name[name] or { FastcGenericFn{} }
 		definition_file := sources[generic.source_index]
-		definition_source := definition_file.source
 		edits << FastcSourceEdit{
 			source_index: generic.source_index
 			start:        generic.fn_start
 			end:          generic.def_end
 			replacement:  ''
 		}
-		mut copies := ''
 		for pair in pairs {
 			if pair.name != name {
 				continue
 			}
-			copies = copies + '\n' + fastc_render_generic_instance(definition_source, generic, pair.concrete_text(), prefs) + '\n'
+			copies << fastc_render_mapped_generic_instance(definition_file, generic, pair.concrete_text(), prefs, []FastcGenericCall{})
+			copy_indices << generic.source_index
 		}
-		appends[generic.source_index] = appends[generic.source_index] + copies
 	}
 	// Emit each generic method once per instantiation of its struct and blank the
 	// original generic method definition.
@@ -1839,21 +1894,19 @@ fn fastc_monomorphize_structs(sources []FastcSourceFile, prefs &pref.Preferences
 			continue
 		}
 		method_file := sources[method.source_index]
-		method_source := method_file.source
 		edits << FastcSourceEdit{
 			source_index: method.source_index
 			start:        method.fn_start
 			end:          method.def_end
 			replacement:  ''
 		}
-		mut method_copies := ''
 		for pair in pairs {
 			if pair.name != method.struct_name_text() {
 				continue
 			}
-			method_copies = method_copies + '\n' + fastc_render_generic_method(method_source, method, pair.concrete_text(), prefs) + '\n'
+			copies << fastc_render_mapped_generic_method(method_file, method, pair.concrete_text(), prefs)
+			copy_indices << method.source_index
 		}
-		appends[method.source_index] = appends[method.source_index] + method_copies
 	}
 	for ref in refs {
 		if ref.name !in active {
@@ -1874,18 +1927,13 @@ fn fastc_monomorphize_structs(sources []FastcSourceFile, prefs &pref.Preferences
 				file_edits << edit
 			}
 		}
-		mut new_source := source_file.source
-		if file_edits.len > 0 {
-			new_source = fastc_apply_source_edits(new_source, file_edits)
+		mut rewritten := fastc_apply_mapped_source_edits(source_file, file_edits)
+		for copy_index, copy in copies {
+			if copy_indices[copy_index] == i {
+				rewritten = fastc_append_mapped_source(rewritten, copy)
+			}
 		}
-		if appends[i] != '' {
-			new_source = new_source + appends[i]
-		}
-		result << FastcSourceFile{
-			path:   source_file.path
-			source: new_source
-			header: source_file.header
-		}
+		result << rewritten
 	}
 	return result
 }
@@ -2237,11 +2285,11 @@ fn fastc_scan_generic_methods(source string, path string, prefs &pref.Preference
 	}
 }
 
-// fastc_render_generic_method produces the concrete source of one method
+// fastc_render_mapped_generic_method produces the concrete source of one method
 // instance: the receiver reference `S[T]` becomes `S__mono_<C>` and the type
 // parameter is substituted everywhere else (parameters, return type, body).
-fn fastc_render_generic_method(source string, method FastcGenericMethod, concrete string, prefs &pref.Preferences) string {
-	definition := source[method.fn_start..method.def_end]
+fn fastc_render_mapped_generic_method(source_file FastcSourceFile, method FastcGenericMethod, concrete string, prefs &pref.Preferences) FastcSourceFile {
+	definition := source_file.source[method.fn_start..method.def_end]
 	base := method.fn_start
 	receiver_low := method.receiver_ref_start - base
 	receiver_high := method.receiver_ref_end - base
@@ -2268,7 +2316,11 @@ fn fastc_render_generic_method(source string, method FastcGenericMethod, concret
 		}
 		tok = s.scan()
 	}
-	return fastc_apply_source_edits(definition, edits)
+	return fastc_apply_mapped_source_edits(FastcSourceFile{
+		...source_file
+		source:        definition
+		source_offset: source_file.source_offset + base
+	}, edits)
 }
 
 // struct_name_text resolves the indexed source type spelling.

@@ -250,6 +250,29 @@ fn test_self_c_has_no_include_directives() {
 	}
 }
 
+// vc/v.c is generated on Linux (gen_vc_ci.yml), and every non-Windows `make` compiles
+// it. It includes no headers, so clang can check it for each target without a sysroot.
+fn test_linux_generated_self_c_compiles_for_bootstrap_targets() {
+	$if !(macos || linux) || freestanding {
+		return
+	}
+	clang := os.find_abs_path_of_executable('clang') or { return }
+	root := os.join_path(os.vtmp_dir(), 'headerless_self_targets_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	c_file := os.join_path(root, 'v.c')
+	generated := cmdexec.run(@VEXE, ['-nocache', '-os', 'linux', '-cross', '-o', c_file,
+		os.join_path(@VEXEROOT, 'cmd', 'v')])
+	assert generated.exit_code == 0, generated.output
+	for target in ['x86_64-unknown-linux-gnu', 'aarch64-unknown-linux-gnu', 'aarch64-linux-android24',
+		'arm64-apple-macos13', 'x86_64-apple-macos12', 'x86_64-unknown-freebsd14',
+		'x86_64-unknown-openbsd7', 'x86_64-unknown-netbsd10', 'x86_64-unknown-dragonfly6'] {
+		checked := os.exec([clang, '-target', target, '-std=c99', '-fsyntax-only', '-Wno-everything',
+			'-Werror=implicit-function-declaration', '-DCUSTOM_DEFINE_v1_fallback', c_file])
+		assert checked.exit_code == 0, '${target}: ${checked.output}'
+	}
+}
+
 fn test_headerless_standard_modules_and_native_helpers() {
 	$if !macos {
 		return
