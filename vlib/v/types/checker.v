@@ -417,11 +417,18 @@ mut:
 	values map[string]int
 }
 
-// SumVariantPatternEntry retains the resolution context for one source-type pair.
-struct SumVariantPatternEntry {
-	file        string
-	module_name string
-	result      u32
+// SumVariantPatternFileEntries owns the module tables for one source file.
+@[heap]
+struct SumVariantPatternFileEntries {
+mut:
+	modules map[string]&SumVariantPatternModuleEntries
+}
+
+// SumVariantPatternModuleEntries owns the numeric source-type pairs in one context.
+@[heap]
+struct SumVariantPatternModuleEntries {
+mut:
+	values map[u64]u32
 }
 
 // TypeCache represents type cache data used by types.
@@ -503,7 +510,7 @@ mut:
 	struct_field_recent_values   [256]Type
 	struct_field_recent_states   [256]i8
 	struct_field_fn_diagnostics  map[string]string
-	sum_variant_pattern_entries  map[u64][]SumVariantPatternEntry
+	sum_variant_pattern_entries  map[string]&SumVariantPatternFileEntries
 	recv_pattern_entries         map[string]GenericReceiverMethodPatternMatch
 	recv_pattern_misses          map[string]bool
 	lexical_smartcast_entries    map[int]Type
@@ -557,7 +564,7 @@ fn new_type_cache(parse_enabled bool) &TypeCache {
 	cache.struct_field_shared = map[u32]&StructFieldTypeEntries{}
 	cache.struct_field_complete = map[u32]bool{}
 	cache.struct_field_fn_diagnostics = map[string]string{}
-	cache.sum_variant_pattern_entries = map[u64][]SumVariantPatternEntry{}
+	cache.sum_variant_pattern_entries = map[string]&SumVariantPatternFileEntries{}
 	cache.recv_pattern_entries = map[string]GenericReceiverMethodPatternMatch{}
 	cache.recv_pattern_misses = map[string]bool{}
 	cache.lexical_smartcast_entries = map[int]Type{}
