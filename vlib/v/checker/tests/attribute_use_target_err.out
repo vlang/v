@@ -1,0 +1,7 @@
+vlib/v/checker/tests/attribute_use_target_err.vv:6:3: error: attribute `OnlyFn` cannot be applied to `struct`
+    4 | }
+    5 | 
+    6 | @[OnlyFn('x')]
+      |   ~~~~~~
+    7 | struct Cfg {
+    8 | }

@@ -37,15 +37,15 @@ pub fn (app &App) index() veb.Result {
 			return app.$method()
 		}
 	}
-	return veb.Result{}
+	return veb.no_result()
 }
 
 pub fn (app &App) helper() veb.Result {
-	return veb.Result{}
+	return veb.no_result()
 }
 
 pub fn (app &App) show(id int) veb.Result {
-	return veb.Result{}
+	return veb.no_result()
 }
 
 fn main() {
@@ -94,7 +94,7 @@ pub fn (app &App) index(mut array Context) veb.Result {
 }
 
 pub fn (app &App) helper() veb.Result {
-	return veb.Result{}
+	return veb.no_result()
 }
 
 fn main() {
@@ -269,7 +269,7 @@ fn (mut ctx Context) not_found() veb.Result {
 fn (app App) bookmark(kind string, id string) veb.Result {
 	_ = app
 	println(kind + ":" + id)
-	return veb.Result{}
+	return veb.no_result()
 }
 
 fn dispatch[A, X](app A, mut ctx X, args []string) {
@@ -301,7 +301,8 @@ fn main() {
 // A reflected `app.$method(mut ctx)` call passes the hidden veb context as its
 // only argument. Handlers that declare no parameters of their own still accept
 // it, so the specialization must be kept: dropping it as an arity mismatch made
-// veb answer `HTTP/ 0` for every route whose handler omitted `ctx`.
+// veb answer `HTTP/ 0` for every route whose handler omitted `ctx`. (A handler
+// that needs more arguments is a reflected-call arity error, so none is here.)
 fn test_veb_reflected_implicit_ctx_call_without_spread_args() {
 	v3_bin := build_v3()
 	src := '
@@ -315,17 +316,12 @@ pub struct App {}
 
 pub fn (mut app App) index() veb.Result {
 	println("index called")
-	return veb.Result{}
+	return veb.no_result()
 }
 
 pub fn (mut app App) explicit(mut ctx Context) veb.Result {
 	println("explicit called")
-	return veb.Result{}
-}
-
-pub fn (mut app App) show(id string) veb.Result {
-	println(id)
-	return veb.Result{}
+	return veb.no_result()
 }
 
 fn dispatch[A, X](mut app A, mut ctx X) {
@@ -357,6 +353,8 @@ fn main() {
 // A Context value can therefore bind to a declared interface route parameter
 // when that interface accepts Context; it must not be consumed as an explicit
 // copy of the hidden parameter merely because its concrete type is Context.
+// (A `string` route parameter would leave the argument in the hidden slot and
+// the route short of an argument, which is a reflected-call arity error.)
 fn test_veb_reflected_context_value_binds_to_declared_interface_param() {
 	v3_bin := build_v3()
 	src := '
@@ -373,12 +371,7 @@ pub struct App {}
 pub fn (mut app App) accepts(value RouteArg) veb.Result {
 	_ = value
 	println("interface called")
-	return veb.Result{}
-}
-
-pub fn (mut app App) needs_string(value string) veb.Result {
-	println(value)
-	return veb.Result{}
+	return veb.no_result()
 }
 
 fn dispatch[A](mut app A, ctx &Context) {
@@ -415,8 +408,8 @@ fn test_veb_reflected_base_context_uses_embedded_field() {
 import veb
 
 pub struct Context {
-	marker int
 	veb.Context
+	marker int
 }
 
 pub struct App {}

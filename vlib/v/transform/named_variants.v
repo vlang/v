@@ -28,17 +28,18 @@ fn (mut t Transformer) named_variant_binding_decls(match_expr_id flat.NodeId, br
 	}
 	subject := t.expr_key(match_expr_id)
 	sc := t.match_type_smartcast_context(match_expr_id, cond_id) or { return []flat.NodeId{} }
-	payload_type := t.tc.named_variant_payload_type(sc.variant_name_text()) or {
+	payload_type := t.tc.named_variant_payload_type(sc.variant_name) or {
 		return []flat.NodeId{}
 	}
 	if subject.len == 0 {
 		return []flat.NodeId{}
 	}
-	payload_name := t.tc.type_name(payload_type)
+	payload_name_source_id := t.tc.type_name(payload_type)
+
 	base := t.make_ident(subject)
-	t.set_node_typ(int(base), sc.variant_name_text())
-	payload := t.make_selector_op(base, flat.named_variant_payload_field, payload_name, .dot)
-	return [t.make_decl_assign_typed(binding, payload, payload_name)]
+	t.set_node_typ(int(base), sc.variant_name)
+	payload := t.make_selector_op(base, flat.named_variant_payload_field, payload_name_source_id, .dot)
+	return [t.make_decl_assign_typed(binding, payload, payload_name_source_id)]
 }
 
 // named_variant_display_short returns the source spelling of a hidden variant
@@ -53,32 +54,35 @@ fn named_variant_display_short(variant string) string {
 
 // named_variant_str stringifies a hidden variant struct value as
 // `Expr.Count(3)`, `Expr.Str('text')` or `Expr.Void`.
-fn (mut t Transformer) named_variant_str(expr flat.NodeId, variant string, is_ref bool) flat.NodeId {
+fn (mut t Transformer) named_variant_str(expr flat.NodeId, variant_id u32, is_ref bool) flat.NodeId {
+	variant := flat.source_type_name(variant_id)
 	display := named_variant_display_short(variant)
 	if isnil(t.tc) {
 		return t.make_string_literal(display)
 	}
-	payload_type := t.tc.named_variant_payload_type(variant) or {
+	payload_type := t.tc.named_variant_payload_type(variant_id) or {
 		return t.make_string_literal(display)
 	}
 	// Keep the payload's variant on the stack, as ordinary struct formatting
 	// does, so an array of the enclosing sum is not mistaken for a direct cycle.
-	t.stringify_stack << flat.source_type_id(variant)
+	t.stringify_stack << variant_id
 	defer {
 		t.stringify_stack.delete_last()
 	}
-	payload_name := t.tc.type_name(payload_type)
+	payload_name_source_id := t.tc.type_name(payload_type)
+
 	mut value := expr
 	if is_ref {
 		value = t.make_prefix(.mul, expr)
-		t.set_node_typ(int(value), variant)
+		t.set_node_typ(int(value), variant_id)
 	}
-	payload := t.make_selector_op(value, flat.named_variant_payload_field, payload_name, .dot)
-	mut text := t.wrap_string_conversion(payload, payload_name)
-	clean_payload := flat.source_type_name(t.normalize_type_alias(flat.source_type_id(payload_name)))
-	if clean_payload == 'string' {
+	payload := t.make_selector_op(value, flat.named_variant_payload_field, payload_name_source_id, .dot)
+	mut text := t.wrap_string_conversion(payload, payload_name_source_id)
+	clean_payload_source_id := t.normalize_type_alias(payload_name_source_id)
+
+	if clean_payload_source_id == flat.source_type_string {
 		text = t.string_plus(t.string_plus(t.make_string_literal("'"), text), t.make_string_literal("'"))
-	} else if clean_payload == 'rune' {
+	} else if clean_payload_source_id == flat.source_type_rune {
 		text = t.string_plus(t.string_plus(t.make_string_literal('`'), text), t.make_string_literal('`'))
 	}
 	return t.string_plus(t.string_plus(t.make_string_literal('${display}('), text), t.make_string_literal(')'))

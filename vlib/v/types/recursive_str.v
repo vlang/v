@@ -283,7 +283,7 @@ fn (mut tc TypeChecker) recursive_str_process_stmt(id flat.NodeId, mut env Recur
 				if lhs.kind != .ident || lhs.value == '_' {
 					continue
 				}
-				if binding.typ_name_text().len == 0 && tc.valid_node_id(value.rhs_id) {
+				if binding.typ_name == 0 && tc.valid_node_id(value.rhs_id) {
 					binding.typ_name = tc.resolve_type(value.rhs_id).source_type_id()
 				}
 				if binding.storage_id == 0 {
@@ -310,7 +310,7 @@ fn (mut tc TypeChecker) recursive_str_process_stmt(id flat.NodeId, mut env Recur
 				mut binding := value.binding
 				lhs := tc.a.node(lhs_id)
 				if lhs.kind == .ident {
-					if binding.typ_name_text().len == 0 {
+					if binding.typ_name == 0 {
 						binding.typ_name = tc.resolve_type(value.rhs_id).source_type_id()
 					}
 					if binding.storage_id == 0 {
@@ -448,7 +448,7 @@ fn (mut tc TypeChecker) recursive_str_assignment_values(node flat.Node, lhs_coun
 					} else {
 						RecursiveStrBinding{}
 					}
-					if binding.typ_name_text().len == 0 && i < multi.types.len {
+					if binding.typ_name == 0 && i < multi.types.len {
 						binding.typ_name = multi.types[i].source_type_id()
 					}
 					values << RecursiveStrAssignmentValue{
@@ -584,7 +584,7 @@ fn (tc &TypeChecker) recursive_str_bind_for_in_vars(node flat.Node, container Re
 	} else {
 		tc.recursive_str_merge_bindings(container.elements)
 	}
-	if binding.typ_name_text().len == 0 {
+	if binding.typ_name == 0 {
 		binding.typ_name = tc.resolve_type(target_id).source_type_id()
 	}
 	env.bindings[target_name] = binding
@@ -1066,7 +1066,7 @@ fn (mut tc TypeChecker) recursive_str_eval_struct_init(id flat.NodeId, node flat
 		}
 		return aggregate
 	}
-	fields := tc.struct_fields_for_init(target_struct.name())
+	fields := tc.struct_fields_for_init(target_struct.source_type_id())
 	for i in 0 .. node.children_count {
 		field := tc.a.child_node(&node, i)
 		mut field_binding := RecursiveStrBinding{}
@@ -1385,7 +1385,7 @@ fn (tc &TypeChecker) recursive_str_slice_binding(base RecursiveStrBinding, node 
 fn (tc &TypeChecker) recursive_str_named_element_binding(base RecursiveStrBinding, key string, result_id flat.NodeId) ?RecursiveStrBinding {
 	index := recursive_str_named_element_index(base, key) or { return none }
 	mut binding := base.elements[index]
-	if binding.typ_name_text().len == 0 {
+	if binding.typ_name == 0 {
 		binding.typ_name = tc.resolve_type(result_id).source_type_id()
 	}
 	return binding
@@ -1550,7 +1550,7 @@ fn (mut tc TypeChecker) recursive_str_eval_call(id flat.NodeId, mut env Recursiv
 		return returned
 	}
 	if mut returned := tc.recursive_str_call_return_binding(id, env) {
-		if returned.typ_name_text().len == 0 {
+		if returned.typ_name == 0 {
 			returned.typ_name = tc.resolve_type(id).source_type_id()
 		}
 		return returned
@@ -1682,7 +1682,7 @@ fn (mut tc TypeChecker) recursive_str_apply_builtin_array_mutator(call_id flat.N
 				if !binding.repeated_element {
 					binding.elements.delete(index)
 				}
-				if result.typ_name_text().len == 0 {
+				if result.typ_name == 0 {
 					result.typ_name = tc.resolve_type(call_id).source_type_id()
 				}
 			}
@@ -1979,8 +1979,9 @@ fn (tc &TypeChecker) recursive_str_receiver_is_concrete_match_variant(call_id fl
 			condition_count := if parent.value.is_int() { parent.value.int() } else { 0 }
 			for i in 0 .. int_min(condition_count, int(parent.children_count)) {
 				pattern := tc.a.child_node(parent, i)
-				pattern_name := tc.match_type_pattern(pattern) or { continue }
-				pattern_type := unalias_and_unwrap_pointer_type(tc.parse_type(flat.source_type_id(pattern_name)))
+				pattern_name_source_id := tc.match_type_pattern(pattern) or { continue }
+
+				pattern_type := unalias_and_unwrap_pointer_type(tc.parse_type(pattern_name_source_id))
 				if pattern_type !is Unknown && pattern_type.name() != expected.name() {
 					return true
 				}
@@ -2128,13 +2129,13 @@ fn (tc &TypeChecker) recursive_str_apply_match_branch_progress(subject_id flat.N
 	receiver_type := unalias_type(unwrap_pointer(ctx.receiver_type))
 	for i in 0 .. condition_count {
 		condition := tc.a.child_node(&branch, i)
-		pattern := tc.match_type_pattern(*condition) or { return }
+		pattern_source_id := tc.match_type_pattern(*condition) or { return }
 		smartcast_text := if subject_type is SumType {
-			tc.sum_variant_type_for_pattern(subject_type.name(), pattern) or { return }
+			flat.source_type_name(tc.sum_variant_type_for_pattern(subject_type.source_type_id(), pattern_source_id) or { return })
 		} else if is_ierror_type(subject_type) {
-			tc.resolve_ierror_match_pattern(pattern) or { return }
+			flat.source_type_name(tc.resolve_ierror_match_pattern(pattern_source_id) or { return })
 		} else if subject_type is Interface {
-			tc.resolve_interface_match_pattern(pattern) or { return }
+			flat.source_type_name(tc.resolve_interface_match_pattern(pattern_source_id) or { return })
 		} else {
 			return
 		}
@@ -2163,7 +2164,7 @@ fn (mut tc TypeChecker) recursive_str_eval_if_expr(id flat.NodeId, mut env Recur
 		if child.kind == .block {
 			mut branch_env := base.clone_env()
 			result := tc.recursive_str_eval_block_value(*child, mut branch_env, ctx)
-			if result.typ_name_text().len > 0 || result.can_recurse {
+			if result.typ_name != 0 || result.can_recurse {
 				results << result
 				branch_envs << branch_env
 			}
@@ -2186,7 +2187,7 @@ fn (mut tc TypeChecker) recursive_str_eval_if_expr(id flat.NodeId, mut env Recur
 					mut branch_env := condition_env.clone_env()
 					tc.recursive_str_apply_condition_facts(child_id, true, mut branch_env)
 					result := tc.recursive_str_eval_block_value(*block, mut branch_env, ctx)
-					if result.typ_name_text().len > 0 || result.can_recurse {
+					if result.typ_name != 0 || result.can_recurse {
 						results << result
 						branch_envs << branch_env
 					}
@@ -2241,7 +2242,7 @@ fn (mut tc TypeChecker) recursive_str_eval_match_expr(id flat.NodeId, mut env Re
 			}
 		}
 		tc.recursive_str_run_current_defer_scope(mut branch_env, ctx)
-		if falls && (result.typ_name_text().len > 0 || result.can_recurse) {
+		if falls && (result.typ_name != 0 || result.can_recurse) {
 			results << result
 			branch_envs << branch_env
 		}
@@ -2672,7 +2673,7 @@ fn (mut tc TypeChecker) recursive_str_eval_channel_receive(result_id flat.NodeId
 		}
 	}
 	mut payload := channel.elements[0]
-	if payload.typ_name_text().len == 0 {
+	if payload.typ_name == 0 {
 		payload.typ_name = tc.resolve_type(result_id).source_type_id()
 	}
 	tc.recursive_str_set_channel_payloads(name, channel.elements[1..].clone(), mut env)
@@ -3241,7 +3242,7 @@ fn (tc &TypeChecker) recursive_str_struct_binding_for_expr(id flat.NodeId, node 
 		typ_name: target_type.source_type_id()
 	}
 	target_struct := struct_type_from_type(target_type) or { return aggregate }
-	fields := tc.struct_fields_for_init(target_struct.name())
+	fields := tc.struct_fields_for_init(target_struct.source_type_id())
 	for i in 0 .. node.children_count {
 		field := tc.a.child_node(&node, i)
 		if field.kind != .field_init || field.children_count != 1 {
@@ -3421,7 +3422,7 @@ fn (mut tc TypeChecker) recursive_str_call_return_binding(call_id flat.NodeId, e
 	mut elements := []RecursiveStrBinding{cap: slot_count}
 	for i in 0 .. slot_count {
 		mut binding := tc.recursive_str_merge_bindings(slot_bindings[i])
-		if binding.typ_name_text().len == 0 {
+		if binding.typ_name == 0 {
 			binding.typ_name = multi.types[i].source_type_id()
 		}
 		elements << binding
@@ -3492,7 +3493,7 @@ fn (mut tc TypeChecker) recursive_str_apply_effect_to_target(target_id flat.Node
 			if effect.source_param.len > 0
 				&& (source_binding.can_recurse || source_binding.storage_id != 0) {
 				mut rebound := source_binding
-				if rebound.typ_name_text().len == 0 {
+				if rebound.typ_name == 0 {
 					rebound.typ_name = old.typ_name
 				}
 				env.bindings[name] = rebound

@@ -228,6 +228,14 @@ whose value has a bare CR or a NUL. `add`, `set`, `new_header` and `join` store 
 in place of each of these bytes. `Request.do` and `http.fetch` return the error for a
 `user_agent` that contains one of them.
 
+The spaces and tabs at the start and end of a field value are optional whitespace, not part
+of the value (RFC 9110 section 5.5). `Header.render` and the HTTP/1 response writers remove
+this edge whitespace. The HTTP/1 request writer also trims values in `Request.header` other
+than `Cookie`: `add_custom('X-Pad', '  padded  ')` is sent as `X-Pad: padded`, as Go's
+`Header.Write` does. The `Request.user_agent` fallback and explicit `Cookie` header values
+are not trimmed. This trimming guarantee does not apply to the HTTP/2 and HTTP/3 writers.
+`get` and `values` still return the value as it was stored.
+
 `Cookie.str()` and `sanitize_cookie_value` remove invalid bytes from cookie values,
 including control characters, quotes, semicolons and backslashes. Spaces and commas
 are preserved; the sanitized value is quoted when it contains a space or comma.

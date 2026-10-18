@@ -110,6 +110,16 @@ by-value string parameters still consume owned strings. When a parameter takes o
 string or borrowed view passed to it is copied for the callee, leaving the caller's value available.
 Returned copies remain owned; use `.clone()` when retaining another copy.
 
+Standard library modules other than `builtin` keep V's value semantics in their own function
+bodies. Their parameters, locals and loop variables never become owners, so library code does not
+move them or drop them at scope exit, and no ownership errors are reported inside it. Assignments
+and array or map updates in library code (`delete`, `clear`, overwriting an element or a map entry)
+do not destroy the value they replace or remove either. The values library code shares are left to
+the garbage collector, so with `-gc none` they are not freed. Call sites in your code are
+unchanged: an owned value passed to a library function that does not borrow it is still moved, and
+the library does not free it. When library code passes a value to a `builtin` or program function
+whose parameter has taken ownership, that function receives an independent copy.
+
 ## Move semantics
 
 Assigning an owned value to another variable **moves** it. The original variable
@@ -336,3 +346,5 @@ v -d ownership -o v_ownership vlib/v/v.v
 When compiling `cmd/v` with `-autofree`, the launcher first selects the ownership-enabled compiler.
 The regular compiler handles the initial `-d ownership cmd/v` support build directly.
 With `-prealloc`, automatic cleanup runs destructors and leaves boxed storage to its arena.
+A `break` or `continue` at the end of an `or`, `if`, or `match` value branch runs cleanup
+before the jump. Only locals whose declarations have been reached are cleaned up.

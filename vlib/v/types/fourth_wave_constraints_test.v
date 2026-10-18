@@ -106,8 +106,8 @@ fn test_fourth_constraints_struct_embedding_cycles_terminate() {
 			'Exit':   ['Base']
 		})
 	}
-	assert tc.struct_embeds('CycleA', 'Base')
-	assert !tc.struct_embeds('CycleA', 'Missing')
+	assert tc.struct_embeds(flat.source_type_id('CycleA'), flat.source_type_id('Base'))
+	assert !tc.struct_embeds(flat.source_type_id('CycleA'), flat.source_type_id('Missing'))
 }
 
 fn test_fourth_constraints_preserve_finite_changing_recursive_instances() {

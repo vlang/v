@@ -219,11 +219,12 @@ fn main() {}
 	',
 		'unsupported generic declaration `helper`')
 
+	// Single-letter capital names are reserved for generic parameters.
 	run_selfhost_bad(v3_bin, 'generic_interface_marker_only', '
-interface I[T] {}
+interface Marker[T] {}
 fn main() {}
 	',
-		'unsupported generic declaration `I`')
+		'unsupported generic declaration `Marker`')
 
 	run_selfhost_bad(v3_bin, 'generic_type_alias_marker_only', '
 type Alias[T] = int
@@ -457,7 +458,8 @@ fn main() {
 	assert !one_letter_compile.output.contains('unsupported generic'), one_letter_compile.output
 	assert !one_letter_compile.output.contains('type checker found'), one_letter_compile.output
 	one_letter_c := os.read_file(one_letter_bin + '.c') or { '' }
-	assert one_letter_c.contains('struct Box_A'), one_letter_c
+	// Generic struct instances declared in main use the `main__` C namespace.
+	assert one_letter_c.contains('struct main__Box_A'), one_letter_c
 
 	// transitive generic calls: outer[T] calls id[T]
 	run_generic_ok(v3_bin, 'run_transitive', '

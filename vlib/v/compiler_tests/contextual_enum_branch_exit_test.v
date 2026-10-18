@@ -1,3 +1,4 @@
+// vtest ownership
 import os
 
 fn test_enum_assignment_with_returning_match_branch_in_parallel_checker() {

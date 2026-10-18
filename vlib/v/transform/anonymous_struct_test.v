@@ -8,10 +8,10 @@ fn test_anonymous_struct_placeholders_inside_fixed_arrays_are_unresolved() {
 	for skip_generics in [false, true] {
 		t := Transformer{ skip_generics: skip_generics }
 		for typ in ['[2]struct', '[2][3]struct', '[][2]struct', '?[2]struct', 'map[string][2]struct'] {
-			assert t.generic_arg_is_unresolved(typ), typ
+			assert t.generic_arg_is_unresolved(flat.source_type_id(typ)), typ
 		}
 		for typ in ['[2]int', '[2][3]string', '[][2]int', '?[2]int'] {
-			assert !t.generic_arg_is_unresolved(typ), typ
+			assert !t.generic_arg_is_unresolved(flat.source_type_id(typ)), typ
 		}
 	}
 }

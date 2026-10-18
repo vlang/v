@@ -99,3 +99,61 @@ fn test_windows_sdk_owns_metadata_handle_declarations() {
 		assert !g.should_emit_c_extern_decl('GetFileInformationByHandle')
 	}
 }
+
+fn test_portable_windows_helpers_link_without_checkout_objects() ! {
+	cc_name := $if windows { 'gcc' } $else { 'x86_64-w64-mingw32-gcc' }
+	cc := os.find_abs_path_of_executable(cc_name) or { return }
+	root := os.join_path(os.vtmp_dir(), 'portable_windows_helpers_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	mut g := windows_core_test_gen()
+	g.set_output_cross_c(true)
+	g.portable_windows_runtime_helpers()
+	code := g.sb.str()
+	for name in ['v_builtin_windows_stream', 'v_builtin_windows_debugbreak',
+		'v_set_unhandled_exception_filter', 'v_time_ticks_ms', 'v3_win_thread_create',
+		'v3_win_thread_join', 'v3_win_thread_is_current', 'v_toolcache_move_file_ex_w',
+		'v_toolcache_create_file_w', 'v_toolcache_get_file_information', 'v_toolcache_close_handle',
+		'v_toolcache_file_is_disk', 'v_toolcache_read_file', 'v_toolcache_root_is_private'] {
+		assert g.inlined_c_declared_fns[name], name
+	}
+	source := os.join_path(root, 'helpers.c')
+	os.write_file(source, code + '\nint main(void) { return v_builtin_windows_stream(1) == 0 || v_time_ticks_ms() == 0; }\n')!
+	// Compile the emitted text after moving it away from the checkout. The SDK
+	// supplies platform declarations, and every native definition travels with it.
+	moved := os.join_path(root, 'relocated.c')
+	os.mv(source, moved)!
+	result := os.exec([cc, '-std=gnu11', '-Werror=implicit-function-declaration',
+		'-Werror=incompatible-pointer-types', '-o', os.join_path(root, 'helpers.exe'), moved,
+		'-ladvapi32'])
+	assert result.exit_code == 0, result.output
+}
+
+fn test_windows_error_macros_match_sdk() {
+	cc_name := $if windows { 'gcc' } $else { 'x86_64-w64-mingw32-gcc' }
+	cc := os.find_abs_path_of_executable(cc_name) or { return }
+	mut g := windows_core_test_gen()
+	g.headerless_windows_core_declarations()
+	prelude := g.sb.str()
+	assert prelude.contains('#define ERROR_INSUFFICIENT_BUFFER 122'), 'vlib/os uses C.ERROR_INSUFFICIENT_BUFFER, so the prelude must define it'
+	// carry only the ERROR_ defines into the SDK check: the prelude structs
+	// intentionally collide with windows.h by design (that is why V is
+	// headerless), so only the macro values are compared
+	mut defines := []string{}
+	for line in prelude.split_into_lines() {
+		if line.starts_with('#define ERROR_') {
+			defines << line.replace('ERROR_', 'SDK_ERROR_')
+		}
+	}
+	assert defines.len > 0, 'prelude must define at least one ERROR_ macro'
+	lines := defines.join('\n') + '\n#include <windows.h>\n_Static_assert(SDK_ERROR_INSUFFICIENT_BUFFER == ERROR_INSUFFICIENT_BUFFER, "ERROR_INSUFFICIENT_BUFFER value");\n'
+	dir := os.join_path(os.vtmp_dir(), 'windows_core_errmacros_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	source := os.join_path(dir, 'errmacros.c')
+	os.write_file(source, lines)!
+	result := os.execute('${os.quoted_path(cc)} -std=gnu11 -fsyntax-only ${os.quoted_path(source)}')
+	assert result.exit_code == 0, result.output
+}

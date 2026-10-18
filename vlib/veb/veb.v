@@ -31,9 +31,21 @@ struct Route {
 	words           []string
 	host            string
 	parameter_names []string
+	parameter_kinds []ParamKind
 mut:
 	middlewares       []RouteMiddleware
 	after_middlewares []RouteMiddleware
+}
+
+// ParamKind is the declared type of one handler parameter beyond the context,
+// recorded so the dispatcher can reject a value that cannot fill it instead
+// of coercing it to a zero. Only the types route parameters support are
+// distinguished; anything else rides through unchecked.
+enum ParamKind {
+	string_
+	integer
+	boolean
+	other
 }
 
 fn route_path_words(path string) []string {
@@ -43,39 +55,65 @@ fn route_path_words(path string) []string {
 	return path.split('/').filter(it != '')
 }
 
+// Parse and assemble route metadata once, outside controller specializations.
+fn insert_route_metadata(mut routes map[string]Route, name string, attrs []string, parameter_names []string, parameter_kinds []ParamKind) ! {
+	http_methods, route_path, host := parse_attrs(name, attrs) or {
+		return error('error parsing method attributes: ${err}')
+	}
+	routes[name] = Route{
+		methods:         http_methods
+		path:            route_path
+		words:           route_path_words(route_path)
+		host:            host
+		parameter_names: parameter_names
+		parameter_kinds: parameter_kinds
+	}
+}
+
 // Generate route structs for an app
 fn generate_routes[A, X](app &A) !map[string]Route {
-	// Parsing methods attributes
 	mut routes := map[string]Route{}
 	$for method in A.methods {
-		$if method.return_type is Result {
-			http_methods, route_path, host := parse_attrs(method.name, method.attrs) or {
-				return error('error parsing method attributes: ${err}')
-			}
-
+		$if method.return_type is Result || method.return_type is !Result {
 			mut parameter_names := []string{}
-			for param in method.args[1..] {
-				parameter_names << param.name
+			$if method.args.len > 1 {
+				for param in method.args[1..] {
+					parameter_names << param.name
+				}
 			}
-			mut route := Route{
-				methods:         http_methods
-				path:            route_path
-				words:           route_path_words(route_path)
-				host:            host
-				parameter_names: parameter_names
+			// The kinds ride alongside the names by index. A nested `$for` over a
+			// sliced `method.args` unrolls to nothing, so this walks the full
+			// `method.params` instead and drops index 0, the request context,
+			// which the dispatcher passes separately.
+			mut parameter_kinds := []ParamKind{}
+			$for param in method.params {
+				$if param.typ is string {
+					parameter_kinds << .string_
+				} $else $if param.typ is int {
+					parameter_kinds << .integer
+				} $else $if param.typ is bool {
+					parameter_kinds << .boolean
+				} $else {
+					parameter_kinds << .other
+				}
 			}
-
-			$if A is MiddlewareApp {
-				route.middlewares = app_route_handlers(app, route_path)
-				route.after_middlewares = app_route_handlers_after(app, route_path)
+			if parameter_kinds.len > 0 {
+				parameter_kinds = parameter_kinds[1..]
 			}
-
-			routes[method.name] = route
+			insert_route_metadata(mut routes, method.name, method.attrs, parameter_names, parameter_kinds)!
 		} $else {
 			// If we have route attributes, but the wrong return type, return an error
 			if has_route_attributes(method.attrs) {
-				return error('method `${method.name}` at `${method.location}` has route attributes but invalid return type. Handler methods must return `veb.Result`, not `!veb.Result` or other types')
+				return error('method `${method.name}` at `${method.location}` has route attributes but invalid return type. Handler methods must return `veb.Result` or `!veb.Result`')
 			}
+		}
+	}
+	$if A is MiddlewareApp {
+		for name, initial in routes {
+			mut route := initial
+			route.middlewares = app_route_handlers(app, route.path)
+			route.after_middlewares = app_route_handlers_after(app, route.path)
+			routes[name] = route
 		}
 	}
 	return routes
@@ -454,6 +492,12 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 				}
 			}
 		}
+		// Free the handler slots a throttle took for this request on every way
+		// out, including the 404 and refusing-middleware paths that skip the
+		// after-middleware above.
+		if user_context.Context.throttle_leases.len > 0 {
+			user_context.Context.release_throttle_leases()
+		}
 		// send only the headers, because if the response body is too big, TcpConn code will
 		// actually block, because it has to wait for the socket to become ready to write. veb
 		// will handle this case.
@@ -547,8 +591,29 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 			} else {
 				user_context.Context.form
 			}
-			for name in route.parameter_names {
-				args << data[name]
+			for i, name in route.parameter_names {
+				value := data[name]
+				if i < route.parameter_kinds.len {
+					msg := route_param_error(name, route.parameter_kinds[i], value)
+					if msg != '' {
+						user_context.request_error(msg)
+						return
+					}
+				}
+				args << value
+			}
+		} else {
+			// Path parameters arrive positionally, in the order the route declares
+			// them, which is the order the dispatcher passes them on.
+			for i, value in args {
+				if i < route.parameter_kinds.len && i < route.parameter_names.len {
+					msg := route_param_error(route.parameter_names[i], route.parameter_kinds[i],
+						value)
+					if msg != '' {
+						user_context.request_error(msg)
+						return
+					}
+				}
 			}
 		}
 		$for method in A.methods {
@@ -581,6 +646,42 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 					}
 					return
 				}
+			} $else $if method.return_type is !Result {
+				// A handler that returns `!veb.Result` answers by returning the
+				// value, and declines by returning an error, which becomes a
+				// JSON envelope through `error_with`.
+				if method.name == matched.name {
+					$if method.args.len > 1 {
+						if !matched.from_data || user_context.Context.req.method in [
+							.get,
+							.post,
+						] {
+							if !matched.from_data && args.len + 1 != method.args.len {
+								eprintln('[veb] warning: uneven parameters count (${method.args.len}) in `${method.name}`, compared to the veb route `${method.attrs}` (${args.len})')
+							}
+							$if trace_prealloc ? {
+								unsafe { prealloc_scope_checkpoint(c'veb before route handler') }
+							}
+							app.$method(mut user_context, ...args) or {
+								user_context.error_with(err)
+							}
+							$if trace_prealloc ? {
+								unsafe { prealloc_scope_checkpoint(c'veb after route handler') }
+							}
+						}
+					} $else {
+						$if trace_prealloc ? {
+							unsafe { prealloc_scope_checkpoint(c'veb before route handler') }
+						}
+						app.$method(mut user_context) or {
+							user_context.error_with(err)
+						}
+						$if trace_prealloc ? {
+							unsafe { prealloc_scope_checkpoint(c'veb after route handler') }
+						}
+					}
+					return
+				}
 			}
 		}
 	}
@@ -597,6 +698,33 @@ struct RouteMatch {
 	route     Route
 	params    []string
 	from_data bool
+}
+
+// route_param_error checks one request value against the kind of handler
+// parameter it will fill, and returns '' when the value is acceptable. A
+// missing or unparsable value for a non-string parameter used to be coerced to
+// a zero while the handler answered 200; now it is the message for a 400.
+fn route_param_error(name string, kind ParamKind, value string) string {
+	match kind {
+		.string_, .other {
+			return ''
+		}
+		.integer {
+			if value == '' {
+				return 'missing integer value for parameter "${name}"'
+			}
+			_ = strconv.atoi(value) or {
+				return 'invalid integer value "${value}" for parameter "${name}"'
+			}
+			return ''
+		}
+		.boolean {
+			if value != 'true' && value != 'false' {
+				return 'invalid boolean value "${value}" for parameter "${name}": expected true or false'
+			}
+			return ''
+		}
+	}
 }
 
 fn select_route(routes &map[string]Route, path string, host string, method http.Method) ?RouteMatch {

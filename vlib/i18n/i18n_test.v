@@ -131,3 +131,85 @@ fn test_clean_slash_path_folds_dot_segments_on_every_platform() {
 	assert clean_slash_path('a/b/../../../en.tr') == '../en.tr'
 	assert embedded_relative_path('./translations', 'translations/./zh/../en.tr') == 'en.tr'
 }
+
+fn test_option_lookup_uses_inline_fallback_for_missing_or_empty_values() {
+	translations := {
+		'en': {
+			'hello': 'Hello'
+			'empty': ''
+		}
+	}
+	assert tr_from_map_opt(translations, 'en', 'hello') or { 'Fallback' } == 'Hello'
+	assert tr_from_map_opt(translations, 'en', 'missing') or { 'Fallback' } == 'Fallback'
+	assert tr_from_map_opt(translations, 'en', 'empty') or { 'Fallback' } == 'Fallback'
+	assert tr_from_map_opt(translations, 'unknown', 'hello') or { 'Fallback' } == 'Fallback'
+	assert tr_opt('unknown', 'missing') or { 'Fallback' } == 'Fallback'
+	assert tr_plural_opt('unknown', 'missing', 2) or { 'Fallback' } == 'Fallback'
+}
+
+fn test_option_lookup_checks_default_language_before_missing_policy() {
+	translations := {
+		'zh': {
+			'hello': '你好'
+			'empty': ''
+		}
+		'en': {
+			'hello':   'Hello'
+			'empty':   'Present'
+			'only_en': 'English'
+		}
+	}
+	config := LookupConfig{ default_language: 'en' }
+	assert tr_from_map_opt(translations, 'zh', 'hello', config) or { 'Fallback' } == '你好'
+	assert tr_from_map_opt(translations, 'zh', 'empty', config) or { 'Fallback' } == 'Present'
+	assert tr_from_map_opt(translations, 'zh', 'only_en', config) or { 'Fallback' } == 'English'
+	assert tr_from_map_opt(translations, 'unknown', 'only_en', config) or { 'Fallback' } == 'English'
+	assert tr_from_map_opt(translations, 'zh', 'missing', config) or { 'Fallback' } == 'Fallback'
+	assert tr_from_map_opt(translations, 'zh', 'hello', missing_key_behavior: .key) or { 'Fallback' } == '你好'
+}
+
+fn test_option_lookup_missing_policy_is_local_and_preserves_legacy_behavior() {
+	translations := {
+		'en': {
+			'empty': ''
+		}
+	}
+	for key in ['missing', 'empty', 'a|b|c'] {
+		assert tr_from_map_opt(translations, 'en', key, missing_key_behavior: .key) or { 'Fallback' } == key
+		assert tr_from_map_opt(translations, 'en', key, missing_key_behavior: .empty) or { 'Fallback' } == ''
+		assert tr_plural_from_map_opt(translations, 'en', key, 2, missing_key_behavior: .key) or { 'Fallback' } == key
+		assert tr_plural_from_map_opt(translations, 'en', key, 2, missing_key_behavior: .empty) or { 'Fallback' } == ''
+		assert tr_from_map_opt(translations, 'en', key) or { 'Fallback' } == 'Fallback'
+		assert tr_from_map(translations, 'en', key) == key
+		assert tr_plural_from_map(translations, 'en', key, 2) == key
+	}
+}
+
+fn test_option_plural_lookup_uses_the_existing_plural_rules_and_fallback() {
+	translations := {
+		'ru': {
+			'goods':     'товар|а|ов'
+			'plain':     'Plain'
+			'malformed': 'a|b'
+			'empty':     ''
+		}
+		'en': {
+			'empty':   'item|s|s'
+			'only_en': 'item|s|s'
+		}
+	}
+	for amount, expected in {
+		1:  'товар'
+		2:  'товара'
+		5:  'товаров'
+		11: 'товаров'
+		22: 'товара'
+	} {
+		assert tr_plural_from_map_opt(translations, 'ru', 'goods', amount) or { 'Fallback' } == expected
+	}
+	assert tr_plural_from_map_opt(translations, 'ru', 'plain', 2) or { 'Fallback' } == 'Plain'
+	assert tr_plural_from_map_opt(translations, 'ru', 'malformed', 2) or { 'Fallback' } == 'a|b'
+	assert tr_plural_from_map_opt(translations, 'ru', 'empty', 2) or { 'Fallback' } == 'Fallback'
+	assert tr_plural_from_map_opt(translations, 'ru', 'empty', 2, default_language: 'en') or { 'Fallback' } == 'items'
+	assert tr_plural_from_map_opt(translations, 'unknown', 'only_en', 1, default_language: 'en') or { 'Fallback' } == 'item'
+}

@@ -66,6 +66,6 @@ fn test_for_in_slice_type_uses_current_container_before_checker_metadata() {
 			'main': true
 		})
 		t.set_var_type('route_words', flat.source_type_id(container_type))
-		assert t.detect_for_in_type(a.nodes[int(loop)]) == expected
+		assert flat.source_type_name(t.detect_for_in_type(a.nodes[int(loop)])) == expected
 	}
 }

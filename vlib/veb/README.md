@@ -261,7 +261,8 @@ running with `-d new_veb` without SSL.
 
 To add endpoints to your web server, you must extend the `App` struct.
 For routing you can either use auto-mapping of function names or specify the path as an attribute.
-The function expects a parameter of your Context type and a response of the type `veb.Result`.
+The function expects a parameter of your Context type and a response of the type `veb.Result`
+(or `!veb.Result` when the endpoint can fail, see Handlers that return `!veb.Result`).
 
 **Example:**
 
@@ -437,6 +438,14 @@ all chunks. Invalid or overflowing `Content-Length` values and malformed chunk s
 with `400` before allocating their declared body; TLS reads also reject truncated bodies.
 Conflicting lengths and requests containing both `Transfer-Encoding` and `Content-Length`
 are rejected with `400`.
+
+To give some routes a lower limit, register `veb.body_limit` on them with `route_use`. It
+answers a larger body with `413` without closing the connection. It runs after veb has read
+the body, so it does not lower the memory that a request can use:
+
+```v ignore
+app.route_use('/api/profile', veb.body_limit[Context](100 * 1024))
+```
 
 ### Host
 
@@ -1013,6 +1022,14 @@ app.route_use('/admin/auth', handler: auth_middleware, methods: [.get, .delete])
 
 If `methods` is omitted, route middleware applies to all HTTP methods on that route.
 
+### CORS header allow-lists
+
+`veb.CorsOptions.allowed_headers` names the CORS request headers that the application accepts,
+such as `X-Token` and `Content-Type`. Validation compares these names case-insensitively with
+the comma-separated `Access-Control-Request-Headers` value. The `origins` option validates
+the browser's `Origin` header separately. Normal browser headers such as `User-Agent` can
+therefore accompany a request when an application header allow-list is configured.
+
 ### Evaluation moment
 
 By default, the registered middleware functions are executed *before* a method on your
@@ -1079,6 +1096,30 @@ app.use(handler: logger)
 ```
 
 Because we register `early_exit` before `logger` our logging middleware will never be executed!
+
+### Limiting concurrent requests
+
+`veb.throttle` caps how many requests run their handlers at once. A request over the cap
+waits for a free slot; when `max_waiting` requests are already waiting, or the wait passes
+`wait_timeout`, it is refused with `503 Service Unavailable` and a `Retry-After` header.
+
+```v ignore
+th := veb.throttle[Context](max_concurrent: 8, max_waiting: 16, wait_timeout: 2 * time.second)
+// register it after middleware that refuses requests cheaply, such as authentication
+app.use(th.acquire())
+// or only for some routes; every registration of `th` shares the same cap
+app.route_use('/reports/:path...', th.acquire())
+```
+
+The middleware takes a slot, and veb frees it when the request finishes, whichever way it
+finishes: after the handler and the "after" middleware, on a 404, or when a later middleware
+refuses the request. There is nothing to register for the release.
+
+A waiting request sleeps on the thread that serves it. veb serves each connection inline on
+a fixed set of worker threads, so a waiting request also delays the other connections of its
+thread, and no more requests than there are worker threads run handlers at once. Keep
+`max_concurrent` below the worker count for the cap to matter, and use `max_waiting: 0` to
+refuse at once instead of queueing.
 
 ## Controllers
 
@@ -1344,6 +1385,46 @@ pub fn (app &App) login(mut ctx Context) veb.Result {
 
 You can also use `ctx.server_error(msg string)` to send an HTTP 500 internal server
 error with a message.
+
+## Handlers that return `!veb.Result`
+
+A handler that can fail may return `!veb.Result` instead of rolling its own
+error responses. Answer by returning the value, decline by returning an error,
+and veb turns the error into a JSON envelope carrying its message. When the
+handler already chose a status with `ctx.res.set_status`, it is kept, so 4xx
+stays in the handler's hands; otherwise the envelope is a 500.
+
+**Example:**
+
+```v
+module main
+
+import veb
+
+pub struct Context {
+	veb.Context
+}
+
+pub struct App {}
+
+fn user_name_by_id(id int) !string {
+	if id != 42 {
+		return error('no such user')
+	}
+	return 'douglas'
+}
+
+@['/user/:id']
+pub fn (app &App) user(mut ctx Context, id int) !veb.Result {
+	// A status the handler chose is kept, so `return error(...)` here answers
+	// 404 with a JSON envelope carrying the message.
+	name := user_name_by_id(id) or {
+		ctx.res.set_status(.not_found)
+		return error('no user with id ${id}')
+	}
+	return ctx.text('Hello ${name}!')
+}
+```
 
 ## Advanced usage
 

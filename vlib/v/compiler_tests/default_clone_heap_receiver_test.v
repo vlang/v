@@ -1,3 +1,4 @@
+// vtest ownership
 import os
 
 fn test_default_clone_reads_heap_receivers_once() {
