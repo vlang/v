@@ -5263,7 +5263,9 @@ fn (g &Parser) render_selfhost_special_expression(tokens []FastcExpressionToken,
 		if tokens.len > 1 && tokens.last().tok == .not && rendered_expression.ends_with('!') && !fastc_trailing_not_marks_fixed_array_literal(tokens) {
 			inner_tokens := tokens[..tokens.len - 1]
 			mut inner_source := rendered_expression[..rendered_expression.len - 1]
-			if explicit_generic := g.render_explicit_generic_call_expression(inner_tokens) {
+			if call_member := g.render_call_result_member_expression(inner_tokens) {
+				inner_source = call_member.source
+			} else if explicit_generic := g.render_explicit_generic_call_expression(inner_tokens) {
 				inner_source = explicit_generic.source
 			} else if static_expression := g.render_static_call_expression(inner_tokens, inner_source) {
 				inner_source = static_expression.source

@@ -49,6 +49,17 @@ fn (g &Parser) render_member_root_expression(tokens []FastcExpressionToken) ?Fas
 }
 
 fn (g &Parser) render_call_result_member_expression(tokens []FastcExpressionToken) ?FastcRenderedExpression {
+	// Propagation is lowered by the caller, after rendering the member call itself.
+	mut propagation_depth := 0
+	for item in tokens {
+		if item.tok in [.lpar, .lsbr, .lcbr] {
+			propagation_depth++
+		} else if item.tok in [.rpar, .rsbr, .rcbr] {
+			propagation_depth--
+		} else if propagation_depth == 0 && item.tok in [.not, .question] {
+			return none
+		}
+	}
 	if tokens.len > 1 && tokens[0].source != '' && tokens[0].typ != 0 {
 		if source := g.render_member_receiver(tokens) {
 			return FastcRenderedExpression{

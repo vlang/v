@@ -415,6 +415,13 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 		// index below lowers to `string_at`, not a raw C index on the `string` struct.
 		literal := fastc_c_string(base_tokens[0].lit) or { return none }
 		if g.selfhost { '_S(${literal})' } else { literal }
+	} else if g.selfhost && base_tokens.len > 1 && base_tokens.last().tok in [.not, .question]
+		&& !fastc_trailing_not_marks_fixed_array_literal(base_tokens) {
+		// `f(.a, b)![i]` indexes the propagated value of the call.
+		propagation := g.render_option_propagation(base_tokens[..base_tokens.len - 1]) or {
+			return none
+		}
+		propagation.source
 	} else if base_tokens.len >= 2 && base_tokens[0].tok == .mul {
 		// `(*names)[i]` indexes through a pointer-to-array; render the pointee array value.
 		inner := g.render_member_receiver(base_tokens[1..]) or {
@@ -1196,8 +1203,7 @@ fn fastc_token_is_prefix_operator(tokens []FastcExpressionToken, index int) bool
 	if index == 0 {
 		return true
 	}
-	return tokens[index - 1].tok !in [.name, .number, .string, .char, .key_true, .key_false, .key_nil,
-		.key_none, .rpar, .rsbr, .rcbr, .inc, .dec]
+	return !fastc_token_ends_operand(tokens[index - 1].tok)
 }
 
 fn (g &Parser) array_initializer_type(tokens []FastcExpressionToken) ?u32 {
