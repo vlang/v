@@ -107,7 +107,13 @@ fn test_json_objects_with_surrounding_whitespace_are_accepted() {
 	for body in [' \r\n\t{"name":"x"}\n\t ', ' \t{}\r\n'] {
 		ctx := json_request('/echo', body, 'application/json')
 		assert ctx.res.status_code == int(http.Status.ok)
-		assert ctx.form == if body.contains('name') { {'name': 'x'} } else { map[string]string{} }
+		assert ctx.form == if body.contains('name') {
+			{
+				'name': 'x'
+			}
+		} else {
+			map[string]string{}
+		}
 		assert ctx.req.data == body
 	}
 }
