@@ -1189,8 +1189,7 @@ fn fastc_token_is_prefix_operator(tokens []FastcExpressionToken, index int) bool
 	if index == 0 {
 		return true
 	}
-	return tokens[index - 1].tok !in [.name, .number, .string, .char, .key_true, .key_false, .key_nil,
-		.key_none, .rpar, .rsbr, .rcbr, .inc, .dec]
+	return !fastc_token_ends_operand(tokens[index - 1].tok)
 }
 
 fn (g &Parser) array_initializer_type(tokens []FastcExpressionToken) ?u32 {
