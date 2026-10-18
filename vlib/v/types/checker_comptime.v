@@ -3105,8 +3105,8 @@ fn (mut tc TypeChecker) check_map_literal_element_types(id flat.NodeId, node fla
 			if update_type := map_type_from_receiver(tc.resolve_type(update_id)) {
 				if !tc.receiver_compatible(update_type.key_type, expected_key)
 					|| !tc.receiver_compatible(update_type.value_type, expected_value)
-					|| tc.map_entry_layouts_differ(update_type.key_type, expected_key)
-					|| tc.map_entry_layouts_differ(update_type.value_type, expected_value) {
+					|| tc.container_elem_layouts_differ(update_type.key_type, expected_key)
+					|| tc.container_elem_layouts_differ(update_type.value_type, expected_value) {
 					expected_map := Type(Map{
 						key_type:   expected_key
 						value_type: expected_value
