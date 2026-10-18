@@ -16561,11 +16561,6 @@ fn (g &FlatGen) find_alias_method(target_id u32, method string) ?string {
 
 // gen_sum_variant_arg emits sum variant arg output for c.
 fn (mut g FlatGen) gen_sum_variant_arg(arg_id flat.NodeId, expected types.Type) bool {
-	actual0 := types.unwrap_pointer(g.body_resolve_type(arg_id))
-	mut actual := actual0
-	if actual0 is types.Alias {
-		actual = actual0.base_type
-	}
 	expected0 := expected
 	mut expected_type := expected0
 	if expected0 is types.Alias {
@@ -16573,6 +16568,11 @@ fn (mut g FlatGen) gen_sum_variant_arg(arg_id flat.NodeId, expected types.Type) 
 	}
 	if expected_type is types.SumType {
 		return false
+	}
+	actual0 := types.unwrap_pointer(g.body_resolve_type(arg_id))
+	mut actual := actual0
+	if actual0 is types.Alias {
+		actual = actual0.base_type
 	}
 	if actual !is types.SumType {
 		return false

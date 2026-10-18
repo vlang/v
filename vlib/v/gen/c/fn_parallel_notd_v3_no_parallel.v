@@ -1714,19 +1714,27 @@ fn (mut g FlatGen) absorb_scoped_cgen_batch(batch &FlatGen, output_streamed bool
 		}
 	}
 	unsafe { b.sb.free() }
-	for opt_name, val_type_id in batch.needed_optional_types.ids {
-		if !g.needed_optional_types.contains(opt_name) {
-			g.needed_optional_types.set_id(opt_name.clone(), val_type_id)
+	// A batch starts from a copy of these tables and only adds to them, so a
+	// table of unchanged size holds nothing new.
+	if batch.needed_optional_types.ids.len != g.needed_optional_types.ids.len {
+		for opt_name, val_type_id in batch.needed_optional_types.ids {
+			if !g.needed_optional_types.contains(opt_name) {
+				g.needed_optional_types.set_id(opt_name.clone(), val_type_id)
+			}
 		}
 	}
-	for opt_name, val_type in batch.optional_pointer_struct_tags {
-		if opt_name !in g.optional_pointer_struct_tags {
-			g.optional_pointer_struct_tags[opt_name.clone()] = val_type.clone()
+	if batch.optional_pointer_struct_tags.len != g.optional_pointer_struct_tags.len {
+		for opt_name, val_type in batch.optional_pointer_struct_tags {
+			if opt_name !in g.optional_pointer_struct_tags {
+				g.optional_pointer_struct_tags[opt_name.clone()] = val_type.clone()
+			}
 		}
 	}
-	for encoded, name in batch.fn_ptr_types {
-		if encoded !in g.fn_ptr_types {
-			g.fn_ptr_types[encoded.clone()] = name.clone()
+	if batch.fn_ptr_types.len != g.fn_ptr_types.len {
+		for encoded, name in batch.fn_ptr_types {
+			if encoded !in g.fn_ptr_types {
+				g.fn_ptr_types[encoded.clone()] = name.clone()
+			}
 		}
 	}
 	for encoded, used in batch.used_fn_ptr_types {
