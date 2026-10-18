@@ -9147,7 +9147,9 @@ fn (mut t Transformer) lower_sum_str(expr flat.NodeId, sum_name_id u32) flat.Nod
 		t.stringify_stack.delete_last()
 	}
 	base := t.stable_transformed_expr_for_reuse(expr, resolved_sum_source_id_2, 'sum_str')
-	tag := t.make_selector_op(base, 'typ', flat.source_type_int, if sum_name.starts_with('&') {
+	// A variant can declare its own `typ` field; the internal tag selector cannot collide
+	// with it, unlike a plain `.typ` selector, which cgen resolves as that field.
+	tag := t.make_sum_tag_selector(base, if sum_name.starts_with('&') {
 		.arrow
 	} else {
 		.dot
