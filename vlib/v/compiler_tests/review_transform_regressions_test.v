@@ -3080,6 +3080,29 @@ fn test_immediately_invoked_closure_keeps_spawned_nested_capture_alive() {
 	assert out == '42'
 }
 
+fn test_nested_capture_of_a_mut_capture_copies_its_value() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'nested_capture_of_mut_capture', 'fn main() {
+	mut value := 41
+	outer := fn [mut value] () int {
+		inner := fn [mut value] () int {
+			value += 10
+			return value + 1
+		}
+		first := inner()
+		snapshot := fn [value] () int {
+			return value + 100
+		}
+		return first + snapshot() + value
+	}
+	println(int_str(outer()))
+	println(int_str(value))
+}
+')
+	// `[mut value]` gives each closure its own copy: 52 + 141 + 41.
+	assert out == '234\n41'
+}
+
 fn test_immediately_invoked_closure_keeps_aliased_spawn_capture_alive() {
 	v3_bin := build_v3_review_transform()
 	source := 'fn main() {

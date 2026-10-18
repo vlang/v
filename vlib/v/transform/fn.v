@@ -13483,6 +13483,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	mut capture_heap_slots := map[string]bool{}
 	mut capture_heap_snapshots := map[string]bool{}
 	mut capture_array_param_snapshots := map[string]bool{}
+	mut capture_pointer_value_aliases := map[string]bool{}
 	mut capture_is_ref_param := map[string]bool{}
 	mut body_ids := []flat.NodeId{}
 	for i in 0 .. node.children_count {
@@ -13551,6 +13552,19 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 						capture_heap_slots[child.value] = true
 						capture_from_heap[child.value] = true
 					} else {
+						capture_heap_snapshots[child.value] = true
+					}
+				} else if t.pointer_value_rvalues[child.value] && !t.mut_param_values[child.value]
+					&& flat.source_type_shape(capture_type).has(.pointer) {
+					// An enclosing lifted closure exposes its own `[mut x]` capture
+					// as a synthetic `&T` alias of its context slot. A nested capture
+					// still captures the `T` value, so snapshot it. Fixed arrays keep
+					// sharing the captured storage, through the same pointer alias.
+					pointee := t.trim_pointer_type(capture_type)
+					if t.is_fixed_array_type(pointee) {
+						capture_pointer_value_aliases[child.value] = true
+					} else {
+						capture_type = pointee
 						capture_heap_snapshots[child.value] = true
 					}
 				}
@@ -13668,6 +13682,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 		is_ref_capture := capture_by_ref[capture_name] or { false }
 		is_context_capture := capture_from_context[capture_name] or { false }
 		is_heap_slot := capture_heap_slots[capture_name] && flat.source_type_shape(capture_type).has(.pointer)
+		is_pointer_value_alias := capture_pointer_value_aliases[capture_name] or { false }
 		t.set_var_type(capture_name, capture_type)
 		// Captures rewritten into synthetic `&T` pointer-value locals need pointer-value
 		// lvalue/rvalue lowering. A mut capture whose original type is already a pointer
@@ -13678,7 +13693,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 		if is_heap_slot {
 			t.heaped_amp_locals[capture_name] = true
 		}
-		if is_ref_capture || is_context_capture || is_heap_slot {
+		if is_ref_capture || is_context_capture || is_heap_slot || is_pointer_value_alias {
 			t.pointer_value_lvalues[capture_name] = true
 			t.pointer_value_rvalues[capture_name] = true
 		}
