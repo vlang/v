@@ -59,7 +59,7 @@ fn (mut tc TypeChecker) vls_hover_declaration(target VlsTarget) string {
 			return tc.vls_type_declaration(node.value) or { '' }
 		}
 		.param {
-			declared := tc.parse_type(node.typ_text())
+			declared := tc.parse_type(node.typ)
 			if type_contains_unknown(declared) {
 				return tc.vls_generic_value_text(id, node.value, node.typ_text())
 			}
@@ -86,7 +86,7 @@ fn (tc &TypeChecker) vls_field_init_owner(id flat.NodeId) ?Type {
 	parent := tc.a.node(parent_id)
 	if parent.kind == .struct_init {
 		// The checker keeps no type for a struct literal: it is the one it names.
-		return tc.expr_type(parent_id) or { tc.parse_type(parent.value.all_before('[')) }
+		return tc.expr_type(parent_id) or { tc.parse_type(flat.source_type_id(parent.value.all_before('['))) }
 	}
 	if parent.kind != .call || parent.children_count < 2 {
 		return none
@@ -188,10 +188,10 @@ fn (tc &TypeChecker) vls_method_target(receiver_id flat.NodeId, method string) ?
 	if name in tc.fn_type_files || tc.vls_builtin_method_decl(name) != none {
 		return name
 	}
-	if info := tc.resolve_generic_struct_method(owner, method) {
+	if info := tc.resolve_generic_struct_method(flat.source_type_id(owner), method) {
 		return info.name
 	}
-	owners := tc.embedded_method_candidates(owner, method)
+	owners := flat.TypeTextList{ ids: tc.embedded_method_candidates(flat.source_type_id(owner), method) }.names()
 	if owners.len == 1 {
 		return '${owners[0]}.${method}'
 	}
@@ -286,10 +286,10 @@ fn (tc &TypeChecker) vls_expr_type(id flat.NodeId) ?Type {
 	// The other literals, as the elements of `[1, 2].map()`: the type V gives
 	// them by default.
 	match node.kind {
-		.int_literal { return tc.parse_type('int') }
-		.float_literal { return tc.parse_type('f64') }
-		.bool_literal { return tc.parse_type('bool') }
-		.char_literal { return tc.parse_type('rune') }
+		.int_literal { return tc.parse_type(flat.source_type_int) }
+		.float_literal { return tc.parse_type(flat.source_type_f64) }
+		.bool_literal { return tc.parse_type(flat.source_type_bool) }
+		.char_literal { return tc.parse_type(flat.source_type_rune) }
 		else {}
 	}
 	// The receiver of a builtin method, which the checker handles without
@@ -308,7 +308,7 @@ fn (tc &TypeChecker) vls_expr_type(id flat.NodeId) ?Type {
 		decl_id := binding.decl_id
 		decl := tc.a.node(decl_id)
 		if decl.kind == .param {
-			declared := tc.parse_type(decl.typ_text())
+			declared := tc.parse_type(decl.typ)
 			if constrained := tc.vls_constrained_type(id, declared) {
 				return constrained
 			}
@@ -352,10 +352,10 @@ fn (tc &TypeChecker) vls_array_method_call_type(call flat.Node) ?Type {
 			return receiver
 		}
 		'array.any', 'array.all' {
-			return tc.parse_type('bool')
+			return tc.parse_type(flat.source_type_bool)
 		}
 		'array.count' {
-			return tc.parse_type('int')
+			return tc.parse_type(flat.source_type_int)
 		}
 		'array.map' {
 			if call.children_count < 2 {
@@ -394,7 +394,7 @@ fn (tc &TypeChecker) vls_implicit_type(binding VlsBinding) ?Type {
 	}
 	site := tc.a.node(binding.site)
 	if site.kind == .block {
-		return tc.parse_type('IError')
+		return tc.parse_type(flat.source_type_id('IError'))
 	}
 	return tc.vls_array_method_elem(*site)
 }
@@ -442,14 +442,14 @@ fn (tc &TypeChecker) vls_value_type(id flat.NodeId) ?Type {
 	if node.kind == .ident {
 		decl_id := tc.vls_local_declaration(id)?
 		decl := tc.a.node(decl_id)
-		if decl.kind == .param && decl.typ_text().len > 0 {
-			return tc.parse_type(decl.typ_text())
+		if decl.kind == .param && decl.typ != 0 {
+			return tc.parse_type(decl.typ)
 		}
 	}
 	// A struct literal is a value of the type it writes: `Host{}` of
 	// `Host{}.first_of(values)` in a body the checker did not type.
 	if node.kind == .struct_init && node.value.len > 0 {
-		return tc.parse_type(node.value)
+		return tc.parse_type(flat.source_type_id(node.value))
 	}
 	return none
 }
@@ -624,7 +624,7 @@ fn (tc &TypeChecker) vls_enclosing_decl(id flat.NodeId) ?(flat.Node, []flat.Node
 fn (tc &TypeChecker) vls_constraint_known(decl flat.Node, constraint GenericConstraint) bool {
 	// A type parameter without a constraint, which a `$if` decided (see
 	// comptime_ways_constraints).
-	if constraint.name_text() == '' {
+	if constraint.name == u32(0) {
 		return true
 	}
 	file := tc.a.source_files[int(decl.pos.id)] or { return false }
@@ -697,7 +697,7 @@ fn (tc &TypeChecker) vls_generic_value_text(id flat.NodeId, name string, type_te
 		}
 	}
 	mut text := if names.len > 0 {
-		'${name} ${subst_generic_text(type_text, args, names)}'
+		'${name} ${flat.source_type_name(subst_generic_text(flat.source_type_id(type_text), flat.TypeTextList.from_names(args).ids, names))}'
 	} else {
 		'${name} ${type_text}'
 	}
@@ -895,8 +895,8 @@ fn (tc &TypeChecker) vls_unconstrained_type(id flat.NodeId) ?Type {
 				return tc.vls_implicit_type(binding)
 			}
 			decl := tc.a.node(binding.decl_id)
-			if decl.kind == .param && decl.typ_text().len > 0 {
-				return tc.parse_type(decl.typ_text())
+			if decl.kind == .param && decl.typ != 0 {
+				return tc.parse_type(decl.typ)
 			}
 			if elem := tc.vls_lambda_param_type(binding.decl_id) {
 				return elem
@@ -910,10 +910,10 @@ fn (tc &TypeChecker) vls_unconstrained_type(id flat.NodeId) ?Type {
 	// `T(0)`: a value of the type it casts to, a type parameter kept as one; a
 	// literal that writes its type, `[]T{}` or `map[string]T{}`, of that type.
 	if node.kind == .cast_expr && node.value.len > 0 {
-		return tc.parse_type(node.value)
+		return tc.parse_type(flat.source_type_id(node.value))
 	}
-	if node.kind in [.array_init, .map_init] && node.typ_text().len > 0 {
-		return tc.parse_type(node.typ_text())
+	if node.kind in [.array_init, .map_init] && node.typ != 0 {
+		return tc.parse_type(node.typ)
 	}
 	// A generic call returns what its arguments bind: `identity(a)` of `a A` is
 	// an `A`, not the `T` that `identity` declares.
@@ -1022,7 +1022,7 @@ fn (tc &TypeChecker) vls_fn_literal_type(literal flat.Node) Type {
 		if param.kind != .param {
 			continue
 		}
-		params << tc.parse_type(param.typ_text())
+		params << tc.parse_type(param.typ)
 		is_variadic = param.typ_text().trim_space().starts_with('...')
 		params_mut << param.is_mut
 	}
@@ -1033,7 +1033,7 @@ fn (tc &TypeChecker) vls_fn_literal_type(literal flat.Node) Type {
 		return_type: if literal.typ_text() in ['', 'void'] {
 			Type(void_)
 		} else {
-			tc.parse_type(literal.typ_text())
+			tc.parse_type(literal.typ)
 		}
 	})
 }
@@ -1080,8 +1080,8 @@ fn (mut tc TypeChecker) vls_hover_ident(id flat.NodeId, node flat.Node) string {
 		decl := tc.a.node(decl_id)
 		// A parameter keeps the type it was declared with: `mut` makes a
 		// receiver a reference.
-		if decl.kind == .param && decl.typ_text().len > 0 {
-			declared := tc.parse_type(decl.typ_text())
+		if decl.kind == .param && decl.typ != 0 {
+			declared := tc.parse_type(decl.typ)
 			if type_contains_unknown(declared) {
 				// A generic parameter, `items []T`, and what `T` is there.
 				return tc.vls_generic_value_text(id, name, decl.typ_text())
@@ -1233,7 +1233,7 @@ fn (tc &TypeChecker) vls_module_receiver_member(id flat.NodeId) ?string {
 // behind `typ`, through pointers and aliases.
 fn (tc &TypeChecker) vls_field_type(typ Type, name string) ?Type {
 	type_name := tc.vls_member_owner(typ) or { return none }
-	if declared := tc.vls_declared_field_type(type_name, name) {
+	if declared := tc.vls_declared_field_type(flat.source_type_id(type_name), name) {
 		return declared
 	}
 	// A generic type applied to type arguments, `Box[T]` or `Box[User]`: the
@@ -1243,8 +1243,8 @@ fn (tc &TypeChecker) vls_field_type(typ Type, name string) ?Type {
 	if !is_generic {
 		return none
 	}
-	declared := tc.vls_declared_field_type(base, name)?
-	decl := tc.generic_type_decl(base) or { return declared }
+	declared := tc.vls_declared_field_type(flat.source_type_id(base), name)?
+	decl := tc.generic_type_decl(flat.source_type_id(base)) or { return declared }
 	params := decl.generic_params().map(it.trim_space())
 	if params.len != args.len {
 		return declared
@@ -1254,7 +1254,7 @@ fn (tc &TypeChecker) vls_field_type(typ Type, name string) ?Type {
 		values << if is_bare_generic_param(arg) {
 			unknown_type('generic placeholder `${arg}`')
 		} else {
-			tc.parse_type(arg)
+			tc.parse_type(flat.source_type_id(arg))
 		}
 	}
 	return tc.substitute_generic_type_values(declared, values, params)
@@ -1262,7 +1262,8 @@ fn (tc &TypeChecker) vls_field_type(typ Type, name string) ?Type {
 
 // vls_declared_field_type is the type of the field `name` as the struct or the
 // interface `type_name` declares it.
-fn (tc &TypeChecker) vls_declared_field_type(type_name string, name string) ?Type {
+fn (tc &TypeChecker) vls_declared_field_type(type_name_id u32, name string) ?Type {
+	type_name := flat.source_type_name(type_name_id)
 	fields := tc.structs[type_name] or { tc.interface_fields[type_name] or { return none } }
 	for field in fields {
 		if field.name == name {
@@ -1372,7 +1373,7 @@ fn (tc &TypeChecker) vls_enum_values(decl flat.Node) map[string]string {
 		}
 		return texts
 	}
-	mut values := map[string]int{}
+	mut values := map[string]i64{}
 	mut next := i64(0)
 	mut known := true
 	for name in field_names {
@@ -1385,7 +1386,7 @@ fn (tc &TypeChecker) vls_enum_values(decl flat.Node) map[string]string {
 				value = expr.value.i64()
 				known = true
 			} else if computed := tc.comptime_static_enum_field_value(expr_id, module_name,
-				decl.value, mut values, field_exprs, mut resolving)
+				flat.source_type_id(decl.value), mut values, field_exprs, mut resolving)
 			{
 				value = computed
 				known = true
@@ -1395,7 +1396,7 @@ fn (tc &TypeChecker) vls_enum_values(decl flat.Node) map[string]string {
 		}
 		if known {
 			texts[name] = value.str()
-			values[name] = int(value)
+			values[name] = value
 			next = value + 1
 		}
 	}
@@ -1436,12 +1437,14 @@ fn (tc &TypeChecker) vls_type_declaration(name string) ?string {
 		if key in tc.interface_names {
 			return 'interface ${short}'
 		}
-		if variants := tc.sum_types.get(key) {
+		if variants_source_ids := tc.sum_types.type_ids(key) {
+			variants := flat.TypeTextList{ ids: variants_source_ids }.names()
+
 			texts := variants.map(tc.vls_named_type_text(it))
 			return 'type ${short} = ${texts.join(' | ')}'
 		}
-		if parent := tc.type_aliases.get(key) {
-			return 'type ${short} = ${tc.vls_type_text(tc.parse_type(parent))}'
+		if parent_source_id := tc.type_aliases.type_id(key) {
+			return 'type ${short} = ${tc.vls_type_text(tc.parse_type(parent_source_id))}'
 		}
 	}
 	return none
@@ -1535,7 +1538,7 @@ fn (tc &TypeChecker) vls_signature(resolved string) ?VlsSignature {
 		} else {
 			' ${tc.vls_type_text(ret)}'
 		}
-	} else if decl.typ_text().len == 0 || decl.typ_text() == 'void' {
+	} else if decl.typ == 0 || decl.typ == flat.source_type_void {
 		''
 	} else {
 		' ${decl.typ_text()}'
@@ -1569,7 +1572,7 @@ fn (tc &TypeChecker) vls_param_text(param &flat.Node, types []Type, idx int) str
 	mut type_text := param.typ_text()
 	if idx < types.len && !type_contains_unknown(types[idx]) {
 		typ := types[idx]
-		type_text = if param.typ_text().starts_with('...') && typ is Array {
+		type_text = if flat.source_type_shape(param.typ).has(.variadic) && typ is Array {
 			'...${tc.vls_type_text(typ.elem_type)}'
 		} else {
 			tc.vls_type_text(typ)
@@ -1603,16 +1606,16 @@ fn (tc &TypeChecker) vls_interface_method_signature(resolved string) ?VlsSignatu
 			if param.kind != .param {
 				continue
 			}
-			text := tc.vls_written_type_text(subst_generic_text(param.typ_text(), type_args,
-				type_params))
+			text := tc.vls_written_type_text(flat.source_type_name(subst_generic_text(param.typ, flat.TypeTextList.from_names(type_args).ids,
+				type_params)))
 			params << '${param.value} ${text.replace('fn(', 'fn (')}'
 			names << param.value
 			types << Type(void_)
 		}
-		ret_text := if member.typ_text().len == 0 || member.typ_text() == 'void' {
+		ret_text := if member.typ == 0 || member.typ == flat.source_type_void {
 			''
 		} else {
-			' ${tc.vls_written_type_text(subst_generic_text(member.typ_text(), type_args, type_params))}'
+			' ${tc.vls_written_type_text(flat.source_type_name(subst_generic_text(member.typ, flat.TypeTextList.from_names(type_args).ids, type_params)))}'
 		}
 		return VlsSignature{
 			name:   method
@@ -1652,7 +1655,7 @@ fn (tc &TypeChecker) vls_interface_method_signature(resolved string) ?VlsSignatu
 			types << if param_idx < param_types.len { param_types[param_idx] } else { Type(void_) }
 			param_idx++
 		}
-		ret_text := if member.typ_text().len == 0 || member.typ_text() == 'void' {
+		ret_text := if member.typ == 0 || member.typ == flat.source_type_void {
 			''
 		} else if ret := tc.fn_ret_types[resolved] {
 			if ret is Void { '' } else { ' ${tc.vls_type_text(ret)}' }
@@ -1673,7 +1676,7 @@ fn (tc &TypeChecker) vls_interface_method_signature(resolved string) ?VlsSignatu
 // vls_written_type_text writes the type `text` as vls_type_text does, or as it
 // is written when it names a type parameter, `T` or `[]T`.
 fn (tc &TypeChecker) vls_written_type_text(text string) string {
-	typ := tc.parse_type(text)
+	typ := tc.parse_type(flat.source_type_id(text))
 	if type_contains_unknown(typ) {
 		return text
 	}

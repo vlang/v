@@ -38,8 +38,25 @@ functions retain their bodies when their names overlap synthetic runtime helpers
 
 WebAssembly uses 32-bit pointers and target-specific SSA memory layouts. Control flow is emitted
 from SSA basic blocks, with parallel copies on phi edges. Unsupported operations produce a compiler
-error. Aggregate language features remain experimental; options, results, arrays, maps, and general
-struct operations are not supported by this backend.
+error. Aggregate language features remain experimental. Dynamic arrays of primitive elements,
+structs whose fields all have a lowering, options and results are supported; maps, fixed and
+nested arrays, aggregate array elements, and structs holding an unlifted field type are not, and
+still produce a compiler error rather than a wrong answer.
+
+Floating-point calculations are supported, but formatting a float as text remains unsupported.
+Fixed float interpolation is rejected instead of returning a placeholder value.
+
+Host functions can be declared in a `.wasm.v` file with a module import namespace:
+
+```v
+@[wasm_import_namespace: 'host']
+fn WASM.read_value(address &u8, count i64) int
+```
+
+The host supplies `host.read_value` when instantiating the module. Scalar parameters and results
+map to WebAssembly value types; pointers are 32-bit offsets into the module's linear memory.
+Aggregate import parameters and results are rejected. Only called imports are emitted.
+WebAssembly builds select `.wasm.v` sources and exclude other backend file families.
 
 Runtime allocations use a zeroing bump allocator. Heap storage remains allocated for the module's
 lifetime. Function calls use a separate 1 MiB stack in linear memory and trap if it is exhausted.

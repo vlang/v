@@ -669,7 +669,7 @@ fn test_fastc_emits_explicit_c_extern_prototype() {
 	functions := {
 		'C.external_api': FastcFunctionSignature{
 			parameter_types: flat.TypeTextList.from_names(['int', 'voidptr'])
-			return_type:     flat.source_type_id('int')
+			return_type:     flat.source_type_int
 			is_c_extern:     true
 		}
 	}
@@ -955,6 +955,83 @@ fn test_fastc_fragmented_generation_matches_serial_output() {
 	assert fragmented_length == sources[0].source.len
 }
 
+fn test_fastc_fragmented_dependency_preserves_imports_and_source_positions() {
+	large_comment := '// ' + 'x'.repeat(fastc_generation_fragment_size + 1024)
+	dependency := 'module transform\nimport math\npub fn first() int {\n${large_comment}\n\tx := 1.25\n\tprintln("\${x:.2f}")\n\tprintln(["first"].str())\n\treturn 1\n}\n' + r'pub fn second() int {
+	println(@LINE)
+	println(@COLUMN)
+	println(@FILE_LINE)
+	println(@LOCATION)
+	x := 1.25
+	println("${x:.2f}")
+	println(["second"].str())
+	plain := fn (value int) int { return value * 2 }
+	base := 7
+	captured := fn [base] (value int) int {
+		nested := fn (inner int) int { return inner + 1 }
+		println(@LINE)
+		return base + nested(value)
+	}
+	return plain(captured(int(math.sqrt(16)))) + Identity{}.callback(2)
+}
+struct Identity {}
+fn (identity Identity) callback[T](value T) int {
+	callback := fn [value] () int { return int(value) }
+	return callback()
+}
+'
+	root := os.join_path(os.vtmp_dir(), 'fastc_fragmented_dependency_${os.getpid()}')
+	os.mkdir_all(os.join_path(root, 'transform')) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'main.v'), 'module main\nimport transform\nfn main() {\n\tassert transform.first() == 1\n\tassert transform.second() == 26\n}\n') or {
+		panic(err)
+	}
+	path := os.join_path(root, 'transform', 'large.v')
+	os.write_file(path, dependency) or { panic(err) }
+	mut parallel_prefs := pref.new_preferences()
+	parallel_prefs.vroot = @VEXEROOT
+	parallel_prefs.building_v = true
+	parallel_prefs.backend = 'fastc'
+	parallel_prefs.ccompiler = 'clang'
+	parallel_prefs.user_defines = ['gc_none', 'no_backtrace', 'v3_backend']
+	parallel := generate_files([root], parallel_prefs) or { panic(err) }
+	mut serial_prefs := pref.new_preferences()
+	serial_prefs.vroot = @VEXEROOT
+	serial_prefs.building_v = true
+	serial_prefs.no_parallel = true
+	serial_prefs.backend = 'fastc'
+	serial_prefs.ccompiler = 'clang'
+	serial_prefs.user_defines = ['gc_none', 'no_backtrace', 'v3_backend']
+	serial := generate_files([root], serial_prefs) or { panic(err) }
+	assert parallel == serial
+	plain_offset := dependency.index('fn (value') or { panic('missing plain callback') }
+	capture_offset := dependency.index('fn [base]') or { panic('missing captured callback') }
+	assert parallel.contains('__vf_anon_transform_large_v_${plain_offset}')
+	assert parallel.contains('__vf_anon_transform_large_v_${capture_offset}')
+	$if macos || linux {
+		c_path := os.join_path(root, 'program.c')
+		program := os.join_path(root, 'program')
+		os.write_file(c_path, parallel) or { panic(err) }
+		build := cmdexec.run('cc', ['-std=gnu11', '-pthread', '-include', 'math.h', '-o', program,
+			c_path, '-lm'])
+		assert build.exit_code == 0, build.output
+		run := cmdexec.run(program, [])
+		assert run.exit_code == 0, run.output
+	}
+	fragments := fastc_source_generation_fragments(FastcSourceFile{
+		path:   path
+		source: dependency
+		header: FastcSourceHeader{
+			module_name: 'transform'
+			imports:     {
+				'math': 'math'
+			}
+		}
+	}, parallel_prefs)
+	assert fragments.len == 2
+	assert fragments[1].header.imports['math'] == 'math'
+}
+
 fn test_fastc_generation_fragments_keep_top_level_comptime_chain_together() {
 	large_comment := '// ' + 'x'.repeat(fastc_generation_fragment_size + 1024)
 	source := 'module fastc\n\$if linux {\n\tfn fastc_fragment_comptime_branch() {\n\t\t${large_comment}\n\t}\n} \$else \$if windows {\n\tfn fastc_fragment_comptime_else_if() {}\n} \$else {\n\tfn fastc_fragment_comptime_else() {}\n}\nfn fastc_fragment_after_chain() {}\n'
@@ -1006,7 +1083,7 @@ fn test_fastc_overlap_workers_honor_serial_preferences() {
 	for name in ['a', 'b', 'c', 'd'] {
 		functions[name] = FastcFunctionSignature{}
 	}
-	mut pending_dispatches := fastc_start_interface_dispatches(map[string]FastcDeclaredTypeKind{}, functions, map[string]string{}, map[string]bool{}, map[string]bool{}, false, prefs)
+	mut pending_dispatches := fastc_start_interface_dispatches(map[string]FastcDeclaredTypeKind{}, functions, map[string]string{}, map[string]bool{}, map[string][]FastcStructField{}, map[string]bool{}, false, prefs)
 	assert pending_dispatches.workers.len == 0
 	assert fastc_wait_interface_dispatches(mut pending_dispatches) == ''
 }
@@ -1303,7 +1380,7 @@ pub fn answer() int {
 	return 42
 }
 ', 'declaration_only_entry.v', prefs) or { panic(err) }
-	assert c_source.contains('int main(void) {'), c_source
+	assert c_source.contains('int ${fastc_c_main_name(prefs)}(void) {'), c_source
 	assert c_source.contains('\tsetvbuf(stdout, NULL, _IONBF, 0);\n\treturn 0;'), c_source
 
 	root := os.join_path(os.vtmp_dir(), 'v3_fastc_declaration_only_${os.getpid()}')
@@ -2001,7 +2078,7 @@ fn test_ordinary_print_rejects_types_without_runtime_support() {
 fn test_top_level_statements_emit_main_directly() {
 	prefs := pref.new_preferences()
 	c_source := generate("println('Hello, World!')\n", 'hello_world.v', prefs) or { panic(err) }
-	assert c_source.contains('int main(void) {')
+	assert c_source.contains('int ${fastc_c_main_name(prefs)}(void) {')
 	assert c_source.contains('println("Hello, World!");')
 	assert c_source.contains('setvbuf(stdout, NULL, _IONBF, 0);')
 }
@@ -2915,7 +2992,7 @@ fn main() {
 	_ := missing_map_len(values)
 }
 ', 'map_value_lookup.v', prefs) or { panic(err) }
-	assert c_source.contains('__vf_ml.state ? (Map_string_int)builtin__new_map(sizeof(string), sizeof(int)'), c_source
+	assert c_source.contains('__vf_ml.state ? (Map_string_int)builtin__new_map(sizeof(string), sizeof(${fastc_output_c_type('int')})'), c_source
 	assert c_source.contains('return inner.data->count;'), c_source
 	assert !c_source.contains('Map_string_int){0}'), c_source
 	assert !c_source.contains('__vf_map_zero'), c_source
@@ -3283,7 +3360,7 @@ fn logical_shift(value int) int { value >>>= 1; return value }
 		}
 		c_file := os.join_path(root, 'matrix.c')
 		bin_file := os.join_path(root, 'matrix')
-		os.write_file(c_file, '#define main unused_main\n' + generated +
+		os.write_file(c_file, '#define ${fastc_c_main_name(prefs)} unused_main\n' + generated +
 			'\n#undef main\nint main(void) {\n' + checks.join('\n') + '\nreturn 0;\n}\n')!
 		tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
 		compiled := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
@@ -3948,21 +4025,6 @@ fn main() {
 	_ := Worker(Wrong{})
 }
 ',
-		'module main
-
-interface Worker {
-mut:
-	work()
-}
-
-struct Wrong {}
-
-fn (wrong Wrong) work() {}
-
-fn main() {
-	_ := Worker(Wrong{})
-}
-',
 	] {
 		mut message := ''
 		_ := generate(source, 'invalid_interface_receiver_mutability.v', prefs) or {
@@ -3971,6 +4033,23 @@ fn main() {
 		}
 		assert message.contains('incompatible mutability for interface `Worker` method `work`'), message
 	}
+	read_only_implementation := generate('module main
+
+interface Worker {
+mut:
+	work()
+}
+
+struct Good {}
+
+fn (good Good) work() {}
+
+fn main() {
+	mut worker := Worker(Good{})
+	worker.work()
+}
+', 'mutable_interface_read_only_implementation.v', prefs) or { panic(err) }
+	assert read_only_implementation.contains('case __v_typeid_Good: Good_work(*(Good *)value._object); return;'), read_only_implementation
 
 	mut immutable_message := ''
 	_ := generate('module main
@@ -4410,7 +4489,7 @@ fn init() {
 
 println(answer)
 ', 'initialized_script_global.v', prefs) or { panic(err) }
-	main_source := c_source.all_after('int main(void) {')
+	main_source := c_source.all_after('int ${fastc_c_main_name(prefs)}(void) {')
 	startup_source := c_source.all_after('void v_fastc_init_globals(void) {')
 	initializer := startup_source.index('answer = 42;') or { -1 }
 	module_initializer := startup_source.index('\n\tinit();') or { -1 }
@@ -4602,7 +4681,7 @@ pub fn value() int {
 	prefs.enable_globals = true
 	prefs.module_search_paths = [root]
 	c_source := generate_files([main_file], prefs) or { panic(err) }
-	main_source := c_source.all_after('int main(void) {')
+	main_source := c_source.all_after('int ${fastc_c_main_name(prefs)}(void) {')
 	startup_source := c_source.all_after('void v_fastc_init_globals(void) {')
 	dependency_initializer := startup_source.index('dep__state = 1;') or { -1 }
 	dependency_init := startup_source.index('\tdep__init();') or { -1 }
@@ -4688,7 +4767,7 @@ pub fn ping() {}
 	dependency_cleanup := cleanup_source.index('\n\tdep__cleanup();') or { -1 }
 	assert main_cleanup >= 0, c_source
 	assert dependency_cleanup > main_cleanup, c_source
-	main_source := c_source.all_after('int main(void) {')
+	main_source := c_source.all_after('int ${fastc_c_main_name(prefs)}(void) {')
 	startup_call := main_source.index('v_fastc_init_globals();') or { -1 }
 	cleanup_registration := main_source.index('atexit(v_fastc_cleanup_modules);') or { -1 }
 	early_return := main_source.index('return 0;') or { -1 }
@@ -4724,7 +4803,7 @@ fn main() {
 	println('unreachable')
 }
 ", 'cleanup_after_exit.c.v', prefs) or { panic(err) }
-	main_source := c_source.all_after('int main(void) {')
+	main_source := c_source.all_after('int ${fastc_c_main_name(prefs)}(void) {')
 	registration := main_source.index('atexit(v_fastc_cleanup_modules);') or { -1 }
 	exit_call := main_source.index('exit(0);') or { -1 }
 	assert registration >= 0, c_source
@@ -5367,7 +5446,7 @@ fn main() {
 	values := [1, true]
 }
 ', 'inferred_array_element_types.v', prefs) or { panic(err) }
-	assert c_source.contains('builtin__new_array_from_c_array(2, 2, sizeof(int)'), c_source
+	assert c_source.contains('builtin__new_array_from_c_array(2, 2, sizeof(${fastc_output_c_type('int')})'), c_source
 }
 
 fn test_undeclared_function_signature_types_are_rejected() {
@@ -5765,7 +5844,7 @@ fn test_literal_membership_materializes_candidates_before_comparison() {
 		s:        scanner.new_scanner(prefs, .normal)
 		locals:   {
 			'subject': FastcLocal{
-				typ: flat.source_type_id('int')
+				typ: flat.source_type_int
 			}
 		}
 	}
@@ -5816,9 +5895,9 @@ fn main() {
 	if 1 in [__vf_m_c0] {}
 }
 ', 'membership_temporary_collision.v', prefs) or { panic(err) }
-	assert c_source.contains('int __vf_m_1_x = (1);'), c_source
+	assert c_source.contains('${fastc_output_c_type('int')} __vf_m_1_x = (1);'), c_source
 	assert c_source.contains('__vf_m_1_a'), c_source
-	assert !c_source.contains('int __vf_m_x = (1);'), c_source
+	assert !c_source.contains('${fastc_output_c_type('int')} __vf_m_x = (1);'), c_source
 }
 
 fn test_selfhost_string_membership_uses_substring_semantics() {
@@ -6278,7 +6357,7 @@ fn main() {}
 		panic(err)
 	}
 	c_source := generate_files([main_file], prefs) or { panic(err) }
-	assert c_source.contains('change(&config.writable);'), c_source
+	assert c_source.contains('change(&(config->writable));'), c_source
 }
 
 fn test_match_expression_requires_else() {
@@ -6952,7 +7031,7 @@ fn main() {
 fn test_main_return_type_is_not_validated() {
 	prefs := pref.new_preferences()
 	c_source := generate('module main\nfn main() int { return 7 }\n', 'value_returning_main.v', prefs) or { panic(err) }
-	assert c_source.contains('int main(void)'), c_source
+	assert c_source.contains('int ${fastc_c_main_name(prefs)}(void)'), c_source
 	assert c_source.contains('return 7;'), c_source
 }
 
@@ -7008,7 +7087,7 @@ fn main() {
 	}
 }
 ', 'mutable_iteration.v', prefs) or { panic(err) }
-	assert c_source.contains('int *item = &(((int *)'), c_source
+	assert c_source.contains('${fastc_output_c_type('int')} *item = &(((${fastc_output_c_type('int')} *)'), c_source
 	assert c_source.contains('println((*(item)));'), c_source
 	assert c_source.contains('(*item)=3;'), c_source
 	assert c_source.contains('change(item);'), c_source
@@ -7055,21 +7134,25 @@ fn main() {
 }
 '
 	c32 := generate(source, 'map_usize_32.v', prefs) or { panic(err) }
+	int32_type := fastc_output_c_type('int')
+	assert int32_type == 'i32'
 	for key_type in ['usize', 'voidptr'] {
-		assert c32.contains('sizeof(${key_type}), sizeof(int), &builtin__map_hash_int_4, &builtin__map_eq_int_4, &builtin__map_clone_int_4'), c32
+		assert c32.contains('sizeof(${key_type}), sizeof(${int32_type}), &builtin__map_hash_int_4, &builtin__map_eq_int_4, &builtin__map_clone_int_4'), c32
 	}
 
 	prefs.target = pref.target_from('linux', 'arm64') or { panic(err) }
 	c64 := generate(source, 'map_usize_64.v', prefs) or { panic(err) }
+	int64_type := fastc_output_c_type('int')
+	assert int64_type == 'i64'
 	for key_type in ['usize', 'voidptr'] {
-		assert c64.contains('sizeof(${key_type}), sizeof(int), &builtin__map_hash_int_8, &builtin__map_eq_int_8, &builtin__map_clone_int_8'), c64
+		assert c64.contains('sizeof(${key_type}), sizeof(${int64_type}), &builtin__map_hash_int_8, &builtin__map_eq_int_8, &builtin__map_clone_int_8'), c64
 	}
 
-	hash_fn, eq_fn, clone_fn, _ := fastc_map_runtime_functions('int*', 32)
+	hash_fn, eq_fn, clone_fn, _ := fastc_map_runtime_functions(flat.source_type_id('int*'), 32)
 	assert hash_fn == 'builtin__map_hash_int_4'
 	assert eq_fn == 'builtin__map_eq_int_4'
 	assert clone_fn == 'builtin__map_clone_int_4'
-	i64_hash_fn, _, _, _ := fastc_map_runtime_functions('i64', 32)
+	i64_hash_fn, _, _, _ := fastc_map_runtime_functions(flat.source_type_id('i64'), 32)
 	assert i64_hash_fn == 'builtin__map_hash_int_8'
 }
 
@@ -7106,13 +7189,13 @@ fn main() {
 	println(permissions.len)
 }
 ", 'map_alias_callbacks.v', prefs) or { panic(err) }
-	assert c_source.contains('sizeof(WideKey), sizeof(int), &builtin__map_hash_int_8, &builtin__map_eq_int_8, &builtin__map_clone_int_8'), c_source
+	assert c_source.contains('sizeof(WideKey), sizeof(${fastc_output_c_type('int')}), &builtin__map_hash_int_8, &builtin__map_eq_int_8, &builtin__map_clone_int_8'), c_source
 
-	assert c_source.contains('sizeof(TextKey), sizeof(int), &builtin__map_hash_string, &builtin__map_eq_string, &builtin__map_clone_string'), c_source
+	assert c_source.contains('sizeof(TextKey), sizeof(${fastc_output_c_type('int')}), &builtin__map_hash_string, &builtin__map_eq_string, &builtin__map_clone_string'), c_source
 
-	assert c_source.contains('sizeof(KindKey), sizeof(int), &builtin__map_hash_int_4, &builtin__map_eq_int_4, &builtin__map_clone_int_4'), c_source
+	assert c_source.contains('sizeof(KindKey), sizeof(${fastc_output_c_type('int')}), &builtin__map_hash_int_4, &builtin__map_eq_int_4, &builtin__map_clone_int_4'), c_source
 
-	assert c_source.contains('sizeof(PermissionsKey), sizeof(int), &builtin__map_hash_int_8, &builtin__map_eq_int_8, &builtin__map_clone_int_8'), c_source
+	assert c_source.contains('sizeof(PermissionsKey), sizeof(${fastc_output_c_type('int')}), &builtin__map_hash_int_8, &builtin__map_eq_int_8, &builtin__map_clone_int_8'), c_source
 }
 
 fn test_array_pointer_iteration_preserves_element_references() {
@@ -7133,7 +7216,7 @@ fn main() {
 	}
 }
 ', 'array_pointer_iteration.v', prefs) or { panic(err) }
-	assert c_source.count('int *value = &(((int *)__v') == 2, c_source
+	assert c_source.count('${fastc_output_c_type('int')} *value = &(((${fastc_output_c_type('int')} *)__v') == 2, c_source
 	assert c_source.count('take(value);') == 2, c_source
 }
 
@@ -12492,7 +12575,7 @@ fn test_failed_generic_placeholder_block_unwinds_local_scope() {
 		locals:                 {
 			'result': FastcLocal{
 				is_mut: true
-				typ:    flat.source_type_id('voidptr')
+				typ:    flat.source_type_voidptr
 			}
 		}
 		s:                      scanner.new_scanner(prefs, .normal)
@@ -12516,7 +12599,7 @@ fn test_failed_generic_placeholder_block_unwinds_local_scope() {
 				body_depth--
 			}
 		}
-		assert g.parse_generic_body_or_stub('voidptr', out_checkpoint, 0, body_end, false)
+		assert g.parse_generic_body_or_stub(flat.source_type_id('voidptr'), out_checkpoint, 0, body_end, false)
 		assert g.local_scope_depth == 0
 		assert g.local_scope_changes.len == 0
 		assert 'local' !in g.locals
@@ -13684,8 +13767,8 @@ fn main() {
 	assert c_source.contains('Array_int util__Wrapper_wrap_method_mono_int('), c_source
 	assert c_source.contains('__typeof__((util__wrap_mono_int(1))) values'), c_source
 	assert !c_source.contains('Array_voidptr values'), c_source
-	assert fastc_specialized_generic_result_type('Map_string_Array_voidptr', 'int') == 'Map_string_Array_int'
-	assert fastc_specialized_generic_result_type('voidptr*', 'int') == 'int*'
+	assert fastc_specialized_generic_result_type(flat.source_type_id('Map_string_Array_voidptr'), flat.source_type_int) == flat.source_type_id('Map_string_Array_int')
+	assert fastc_specialized_generic_result_type(flat.source_type_id('voidptr*'), flat.source_type_int) == flat.source_type_id('int*')
 }
 
 fn test_selfhost_on_demand_generic_infers_composite_parameter_type() {
@@ -13729,8 +13812,8 @@ fn main() {
 	assert c_source.contains('int util__lookup_mono_int(Map_string_int items)'), c_source
 	assert c_source.contains('util__head_mono_int(items)'), c_source
 	assert c_source.contains('util__lookup_mono_int(mapped)'), c_source
-	assert fastc_infer_generic_type_from_parameter('Array_voidptr', 'Array_int') == 'int'
-	assert fastc_infer_generic_type_from_parameter('Map_string_Array_voidptr', 'Map_string_Array_example__Item_ptr') == 'example__Item*'
+	assert fastc_infer_generic_type_from_parameter(flat.source_type_id('Array_voidptr'), flat.source_type_id('Array_int')) == flat.source_type_int
+	assert fastc_infer_generic_type_from_parameter(flat.source_type_id('Map_string_Array_voidptr'), flat.source_type_id('Map_string_Array_example__Item_ptr')) == flat.source_type_id('example__Item*')
 }
 
 fn test_selfhost_on_demand_generic_does_not_partially_infer_multiple_type_parameters() {
@@ -14056,7 +14139,7 @@ fn literal_unsigned(count int) u64 { return -1 >>> count }
 		if selfhost { continue }
 		c_file := os.join_path(root, 'shifts.c')
 		bin_file := os.join_path(root, 'shifts')
-		os.write_file(c_file, '#define main unused_main\n' + generated + '\n#undef main\nint main(void) {\n' + checks.join('\n') + '\nreturn 0;\n}\n')!
+		os.write_file(c_file, '#define ${fastc_c_main_name(prefs)} unused_main\n' + generated + '\n#undef main\nint main(void) {\n' + checks.join('\n') + '\nreturn 0;\n}\n')!
 		tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
 		compiled := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
 		assert compiled.exit_code == 0, compiled.output + '\n' + generated

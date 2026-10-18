@@ -1,3 +1,4 @@
+// vtest ownership
 import os
 import strings
 

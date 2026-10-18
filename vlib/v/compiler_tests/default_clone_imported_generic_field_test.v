@@ -1,3 +1,4 @@
+// vtest ownership
 import os
 
 fn test_default_clone_qualifies_imported_generic_field_method() {

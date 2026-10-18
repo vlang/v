@@ -9,19 +9,19 @@ fn test_local_decl_type_before_pos_uses_indexed_same_file_function() {
 	first_lhs := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'value'
-		typ:   flat.source_type_id('int')
+		typ:   flat.source_type_int
 	})
 	first_rhs := a.add_node(flat.Node{
 		kind:  .int_literal
 		value: '1'
-		typ:   flat.source_type_id('int')
+		typ:   flat.source_type_int
 	})
 	first_children := a.children.len
 	a.children << first_lhs
 	a.children << first_rhs
 	a.add_node(flat.Node{
 		kind:           .decl_assign
-		typ:            flat.source_type_id('int')
+		typ:            flat.source_type_int
 		pos:            token.new_pos(1, 20)
 		children_start: first_children
 		children_count: 2
@@ -34,19 +34,19 @@ fn test_local_decl_type_before_pos_uses_indexed_same_file_function() {
 	other_lhs := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'value'
-		typ:   flat.source_type_id('string')
+		typ:   flat.source_type_string
 	})
 	other_rhs := a.add_node(flat.Node{
 		kind:  .string_literal
 		value: 'other'
-		typ:   flat.source_type_id('string')
+		typ:   flat.source_type_string
 	})
 	other_children := a.children.len
 	a.children << other_lhs
 	a.children << other_rhs
 	a.add_node(flat.Node{
 		kind:           .decl_assign
-		typ:            flat.source_type_id('string')
+		typ:            flat.source_type_string
 		pos:            token.new_pos(2, 80)
 		children_start: other_children
 		children_count: 2
@@ -64,7 +64,7 @@ fn test_local_decl_type_before_pos_uses_indexed_same_file_function() {
 	assert t.fn_decl_offsets_by_file[2] == [10]
 	assert t.local_decl_type_before_pos('value', flat.Node{
 		pos: token.new_pos(1, 90)
-	})? == 'int'
+	})? == flat.source_type_int
 }
 
 fn test_comptime_option_unwrap_uses_indexed_alias_and_if_body() {
@@ -124,7 +124,7 @@ fn test_comptime_option_unwrap_uses_indexed_alias_and_if_body() {
 	}, FieldMeta{
 		is_option:    true
 		comptime_typ: flat.source_type_id('?int')
-	})? == 'int'
+	})? == flat.source_type_int
 }
 
 fn test_monomorph_job_limit_keeps_four_workers_for_large_programs() {

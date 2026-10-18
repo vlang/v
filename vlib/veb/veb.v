@@ -43,39 +43,45 @@ fn route_path_words(path string) []string {
 	return path.split('/').filter(it != '')
 }
 
+// Parse and assemble route metadata once, outside controller specializations.
+fn insert_route_metadata(mut routes map[string]Route, name string, attrs []string, parameter_names []string) ! {
+	http_methods, route_path, host := parse_attrs(name, attrs) or {
+		return error('error parsing method attributes: ${err}')
+	}
+	routes[name] = Route{
+		methods: http_methods
+		path: route_path
+		words: route_path_words(route_path)
+		host: host
+		parameter_names: parameter_names
+	}
+}
+
 // Generate route structs for an app
 fn generate_routes[A, X](app &A) !map[string]Route {
-	// Parsing methods attributes
 	mut routes := map[string]Route{}
 	$for method in A.methods {
 		$if method.return_type is Result {
-			http_methods, route_path, host := parse_attrs(method.name, method.attrs) or {
-				return error('error parsing method attributes: ${err}')
-			}
-
 			mut parameter_names := []string{}
-			for param in method.args[1..] {
-				parameter_names << param.name
+			$if method.args.len > 1 {
+				for param in method.args[1..] {
+					parameter_names << param.name
+				}
 			}
-			mut route := Route{
-				methods:         http_methods
-				path:            route_path
-				words:           route_path_words(route_path)
-				host:            host
-				parameter_names: parameter_names
-			}
-
-			$if A is MiddlewareApp {
-				route.middlewares = app_route_handlers(app, route_path)
-				route.after_middlewares = app_route_handlers_after(app, route_path)
-			}
-
-			routes[method.name] = route
+			insert_route_metadata(mut routes, method.name, method.attrs, parameter_names)!
 		} $else {
 			// If we have route attributes, but the wrong return type, return an error
 			if has_route_attributes(method.attrs) {
 				return error('method `${method.name}` at `${method.location}` has route attributes but invalid return type. Handler methods must return `veb.Result`, not `!veb.Result` or other types')
 			}
+		}
+	}
+	$if A is MiddlewareApp {
+		for name, initial in routes {
+			mut route := initial
+			route.middlewares = app_route_handlers(app, route.path)
+			route.after_middlewares = app_route_handlers_after(app, route.path)
+			routes[name] = route
 		}
 	}
 	return routes
@@ -453,6 +459,12 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 					user_context.Context.done = user_context.Context.done || was_done
 				}
 			}
+		}
+		// Free the handler slots a throttle took for this request on every way
+		// out, including the 404 and refusing-middleware paths that skip the
+		// after-middleware above.
+		if user_context.Context.throttle_leases.len > 0 {
+			user_context.Context.release_throttle_leases()
 		}
 		// send only the headers, because if the response body is too big, TcpConn code will
 		// actually block, because it has to wait for the socket to become ready to write. veb

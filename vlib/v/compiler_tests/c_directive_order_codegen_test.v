@@ -1326,6 +1326,10 @@ fn test_request_named_c_function_keeps_extern_prototype() {
 
 fn test_header_backed_request_macro_does_not_get_extern_prototype() {
 	c_code := directive_order_gen_c_request_macro(directive_order_build_v3())
-	assert c_code.contains('#include "request.h"'), c_code
+	// request.h sits beside main.v, and the generated C is compiled elsewhere,
+	// so the include names the header by its resolved path.
+	header := os.real_path(os.join_path(os.temp_dir(),
+		'v3_c_directive_order_request_macro_project', 'request.h')).replace('\\', '/')
+	assert c_code.contains('#include "${header}"'), c_code
 	assert !c_code.contains('int request(int'), c_code
 }

@@ -2,6 +2,11 @@ module builtin
 
 $if macos || linux {
 	// The bundled amalgamation otherwise enables unmapping only with HAVE_CONFIG_H.
+	// Unmapping requires the mmap-based heap. libgc selects it on its own only on
+	// macOS and on glibc x86_64 Linux; elsewhere (e.g. arm64/riscv64 Linux, or
+	// musl) gc.c stops with `USE_MUNMAP requires USE_MMAP`. libgc's configure
+	// defines both together too.
+	#flag -DUSE_MMAP=1
 	#flag -DUSE_MUNMAP=1
 }
 
@@ -40,6 +45,7 @@ $if dynamic_boehm ? {
 			#flag -I @VEXEROOT/thirdparty/libgc/include
 			#flag -L @VEXEROOT/thirdparty/tcc/lib
 			#flag -lgc
+			#flag -luser32
 		} $else $if msvc {
 			#flag -DGC_BUILTIN_ATOMIC=1
 			#flag -I @VEXEROOT/thirdparty/libgc/include

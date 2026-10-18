@@ -31,7 +31,10 @@ fn vpm_install(query []string) {
 			// Case: `v install` was run in a directory of another V-module to install its dependencies
 			// - without additional module arguments.
 			println('Detected v.mod file inside the project directory. Using it...')
-			manifest := vmod.from_file('./v.mod') or { panic(err) }
+			manifest := vmod.from_file('./v.mod') or {
+				vpm_error('failed to read `./v.mod`', details: err.msg())
+				exit(1)
+			}
 			project_dependencies(manifest)
 		} else {
 			vpm_error('specify at least one module for installation.',

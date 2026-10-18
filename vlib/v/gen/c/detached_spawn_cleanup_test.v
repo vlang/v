@@ -13,6 +13,6 @@ fn test_detached_spawn_cleanup_reaches_deep_thread_results() {
 	for _ in 0 .. 18 {
 		name = 'thread ${name}'
 	}
-	cleanup := g.detached_spawn_result_cleanup(tc.parse_type(name), 'result', 0)
+	cleanup := g.detached_spawn_result_cleanup(tc.parse_type(flat.source_type_id(name)), 'result', 0)
 	assert cleanup.count('__v_thread_join') == 18, cleanup
 }

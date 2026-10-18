@@ -2,6 +2,7 @@ module fastc
 
 import os
 import v.cmdexec
+import v.flat
 import v.pref
 import v.scanner
 import v.token
@@ -28,12 +29,12 @@ fn test_fastc_compound_generic_arguments_do_not_use_the_first_literal_type() {
 	assert scan.scan() == .name
 	assert scan.scan() == .lpar
 	assert fastc_call_argument_simple_types(mut scan, {
-		'x': 'string'
+		'x': flat.source_type_string
 	}, map[string]bool{}) == [
-		'f64',
-		'int',
-		'Box',
-		'string',
+		flat.source_type_f64,
+		flat.source_type_int,
+		flat.source_type_id('Box'),
+		flat.source_type_string,
 	]
 }
 

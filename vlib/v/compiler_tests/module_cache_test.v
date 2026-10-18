@@ -4731,13 +4731,13 @@ fn test_cached_header_preserves_comptime_struct_fields() {
 	direct_field := a.add_node(flat.Node{
 		kind:    .field_decl
 		value:   'value'
-		typ:     flat.source_type_id('int')
+		typ:     flat.source_type_int
 		payload: flat.node_payload(['p'])
 	})
 	comptime_field := a.add_node(flat.Node{
 		kind:    .field_decl
 		value:   'enabled'
-		typ:     flat.source_type_id('bool')
+		typ:     flat.source_type_bool
 		payload: flat.node_payload(['p'])
 	})
 	block_children := a.begin_children()

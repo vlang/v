@@ -74,7 +74,7 @@ pub fn dial_udp(raddr string) !&UdpConn {
 // }
 
 pub fn (mut c UdpConn) write_ptr(b &u8, len int) !int {
-	remote := c.sock.remote() or { return err_no_udp_remote }
+	remote := c.sock.remote() or { return error_with_code(err_no_udp_remote.msg(), err_no_udp_remote.code()) }
 	return c.write_to_ptr(remote, b, len)
 }
 

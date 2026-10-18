@@ -29,9 +29,9 @@ struct WindowsFileBasicInformation {
 }
 
 fn C._get_osfhandle(fd int) voidptr
-fn C.GetFileInformationByHandle(handle voidptr, information voidptr) bool
+fn C.GetFileInformationByHandle(handle voidptr, information voidptr) i32
 fn C.GetFileInformationByHandleEx(handle voidptr, information_class int, information voidptr,
-	information_size u32) bool
+	information_size u32) i32
 fn C.GetFileType(handle voidptr) u32
 fn C.ReadFile(handle voidptr, buffer voidptr, bytes_to_read u32, bytes_read &u32,
 	overlapped voidptr) bool
@@ -61,8 +61,9 @@ fn windows_snapshot_from_handle(handle voidptr) !NativeFileSnapshot {
 	}
 	mut information := WindowsByHandleFileInformation{}
 	mut basic := WindowsFileBasicInformation{}
-	if !C.GetFileInformationByHandle(handle, voidptr(&information))
-		|| !C.GetFileInformationByHandleEx(handle, windows_file_basic_info_class, voidptr(&basic), u32(sizeof(WindowsFileBasicInformation)))
+	if C.GetFileInformationByHandle(handle, voidptr(&information)) == 0
+		|| C.GetFileInformationByHandleEx(handle, windows_file_basic_info_class, voidptr(&basic),
+			u32(sizeof(WindowsFileBasicInformation))) == 0
 		|| information.file_attributes & windows_file_attribute_reparse_point != 0
 		|| basic.file_attributes & windows_file_attribute_reparse_point != 0 {
 		return error('Windows payload file identity query failed or found a reparse point')

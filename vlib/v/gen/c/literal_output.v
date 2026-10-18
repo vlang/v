@@ -60,6 +60,10 @@ fn (mut g FlatGen) literal_output_program() ?string {
 			}
 		}
 	}
+	// Windows executables link with `-municode` (see v.driver's Windows linker
+	// flags), whose CRT startup calls `wmain`; GCC's libmingw32 then has no `main`
+	// fallback. Keep the same entry as c_main_declaration emits for full programs.
+	entry := if windows { 'int wmain(void) {' } else { 'int main(void) {' }
 	mut out := strings.new_builder(256)
 	defer { unsafe { out.free() } }
 	// libc handles the complete write and adds the newline. No V string value,
@@ -70,7 +74,7 @@ fn (mut g FlatGen) literal_output_program() ?string {
 		if windows {
 			out.writeln(g.literal_output_c_declaration('_setmode')?)
 		}
-		out.writeln('int main(void) {')
+		out.writeln(entry)
 		if windows {
 			out.writeln('\t_setmode(1, 0x8000);')
 		}
@@ -92,7 +96,7 @@ fn (mut g FlatGen) literal_output_program() ?string {
 			out.writeln(g.literal_output_c_declaration('_setmode')?)
 		}
 	}
-	out.writeln('int main(void) {')
+	out.writeln(entry)
 	if windows {
 		for fd in [1, 2] {
 			if writes.any(it.fd == fd) {

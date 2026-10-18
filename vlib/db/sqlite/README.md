@@ -14,6 +14,13 @@ This downloads the SQLite amalgamation source and places it in
 `v/thirdparty/sqlite`. V will then compile it automatically
 during your build.
 
+The installer pins one amalgamation version (currently 3.53.4) instead of
+taking the newest. SQLite 3.54.0 uses the `SRWLOCK` type in its Windows mutex
+code, which tcc's `windows.h` does not declare, so `v -cc tcc` on Windows
+cannot build 3.54.0. The pin moves only when someone updates it by hand, after
+checking that tcc builds the new amalgamation. SQLite fixes released after
+3.53.4 are not picked up automatically.
+
 If you need to install SQLite manually, use the SQLite
 **amalgamation** package. `v/thirdparty/sqlite` must contain
 `sqlite3.c` and `sqlite3.h` directly.
@@ -22,8 +29,9 @@ Do not use the autoconf/source package here, and do not rename
 `sqlite3.c` to `sqlite3.cpp`.
 
 On **macOS**, V can also fall back to the system `libsqlite3`
-when `pkg-config` is not available, so an extra install is often
-not needed.
+when `pkg-config` is not available. It includes `sqlite3.h` from
+the macOS SDK and links the system library, so an extra SQLite install is not needed.
+Install Xcode Command Line Tools if the SDK headers are missing.
 
 On **Linux**, you can also install the system development package
 instead:

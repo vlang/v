@@ -69,7 +69,7 @@ fn test_fastc_field_defaults_reference_constants_inside_interpolations() {
 		fields := {
 			'main.Item': [FastcStructField{
 				name:           'label'
-				typ:            flat.source_type_id('string')
+				typ:            flat.source_type_string
 				default_source: default_source
 			}]
 		}
