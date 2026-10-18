@@ -128,14 +128,20 @@ fn test_405_combines_separate_handlers_and_deduplicates_methods() {
 }
 
 fn test_405_combines_root_handlers_and_the_index_alias() {
-	for path in ['', '/'] {
-		ctx := method_request(.put, path)
-		assert ctx.res.status_code == int(http.Status.method_not_allowed)
-		assert ctx.res.header.get_custom('Allow') or { '' } == 'GET,POST'
-	}
+	root := method_request(.put, '/')
+	assert root.res.status_code == int(http.Status.method_not_allowed)
+	assert root.res.header.get_custom('Allow') or { '' } == 'GET,POST'
 	ctx := method_request(.put, '/index')
 	assert ctx.res.status_code == int(http.Status.method_not_allowed)
 	assert ctx.res.header.get_custom('Allow') or { '' } == 'GET'
+	// Empty paths can reach the selector, but are not valid HTTP request URIs.
+	app := MethodApp{}
+	routes := generate_routes[MethodApp, MethodContext](&app) or { panic(err) }
+	selected := select_route_ignoring_method(&routes, '', 'localhost') or { panic('missing route') }
+	assert allowed_methods_for_route(&routes, selected, '', 'localhost') == [
+		http.Method.get,
+		.post,
+	]
 }
 
 fn test_405_combines_only_handlers_for_the_request_host() {
