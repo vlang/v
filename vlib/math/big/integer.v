@@ -538,21 +538,19 @@ fn (a Integer) mask_bits(n u32) Integer {
 		return a
 	}
 
+	mut storage := []u64{len: int(w) + if b == 0 { 0 } else { 1 }}
+	for i in 0 .. storage.len {
+		storage[i] = a.digits[i]
+	}
+	if b != 0 {
+		storage[w] &= ~(u64(-1) << b)
+	}
+	shrink_tail_zeros(mut storage)
+	if storage.len == 0 {
+		return zero_int
+	}
 	return Integer{
-		digits: if b == 0 {
-			mut storage := []u64{len: int(w)}
-			for i := 0; i < storage.len; i++ {
-				storage[i] = a.digits[i]
-			}
-			storage
-		} else {
-			mut storage := []u64{len: int(w) + 1}
-			for i := 0; i < storage.len; i++ {
-				storage[i] = a.digits[i]
-			}
-			storage[w] &= ~(u64(-1) << b)
-			storage
-		}
+		digits: storage
 		signum: 1
 	}
 }
@@ -578,73 +576,84 @@ pub fn (base Integer) pow(exponent u32) Integer {
 	return x * y
 }
 
-// mod_pow returns the integer `base` raised to the power of the u32 `exponent` modulo the integer `modulus`.
+// mod_pow returns `base` raised to the u64 `exponent`, reduced into [0, |modulus|).
+// WARNING: this method will panic if `modulus == 0`.
 pub fn (base Integer) mod_pow(exponent u64, modulus Integer) Integer {
+	m := modulus.abs()
 	if exponent == 0 {
-		return one_int
+		return one_int.mod_euclid(m)
 	}
+	mut x := base.mod_euclid(m)
 	if exponent == 1 {
-		return base % modulus
+		return x
 	}
 	mut n := exponent
-	mut x := base % modulus
 	mut y := one_int
 	for n > 1 {
 		if n & 1 == 1 {
-			y = (y * x) % modulus
+			y = (y * x) % m
 		}
-		x = (x * x) % modulus
+		x = (x * x) % m
 		n >>= 1
 	}
-	return x * y % modulus
+	return x * y % m
 }
 
-// big_mod_pow returns the integer `base` raised to the power of the integer `exponent` modulo the integer `modulus`.
+// big_mod_pow returns `base` raised to the non-negative `exponent`,
+// reduced into [0, |modulus|). A modulus of zero or absolute value one returns zero.
 @[direct_array_access]
 pub fn (base Integer) big_mod_pow(exponent Integer, modulus Integer) !Integer {
 	if exponent.signum < 0 {
 		return error('math.big: Exponent needs to be non-negative.')
 	}
 
+	m := modulus.abs()
 	// this goes first as otherwise 1 could be returned incorrectly if base == 1
-	if modulus.bit_len() <= 1 {
+	if m.bit_len() <= 1 {
 		return zero_int
 	}
 
-	// x^0 == 1 || 1^x == 1
-	if exponent.signum == 0 || base.bit_len() == 1 {
+	// x^0 == 1
+	if exponent.signum == 0 {
 		return one_int
 	}
 
-	// 0^x == 0 (x != 0 due to previous clause)
-	if base.signum == 0 {
-		return zero_int
-	}
-
-	if exponent.bit_len() == 1 {
-		// x^1 without mod == x
-		if modulus.signum == 0 {
-			return base
+	// Reduce modulo a power of two by masking the low bits of |base|, instead of dividing
+	// a large base. A negative base then maps a nonzero `|base| mod m` to `m - |base| mod m`.
+	x := if m.is_power_of_2() {
+		low := Integer{
+			digits:   base.digits
+			signum:   if base.signum == 0 { 0 } else { 1 }
+			is_const: base.is_const
+		}.mask_bits(u32(m.bit_len() - 1))
+		if base.signum < 0 && low.signum != 0 {
+			m - low
+		} else {
+			low
 		}
-		// x^1 (mod m) === x % m
-		return base % modulus
+	} else {
+		base.mod_euclid(m)
+	}
+	// 0^n == 0 || 1^n == 1 || x^1 == x
+	if x == zero_int || x == one_int || exponent.bit_len() == 1 {
+		return x
 	}
 
 	// the amount of precomputation in windowed exponentiation (done in the montgomery and binary
 	// windowed exponentiation algorithms) is far too costly for small sized exponents, so
 	// we redirect the call to mod_pow
 	return if exponent.digits.len > 1 {
-		if modulus.is_odd() {
+		if m.is_odd() {
 			// modulus is odd, therefore we use the normal
 			// montgomery modular exponentiation algorithm
-			base.mont_odd(exponent, modulus)
-		} else if modulus.is_power_of_2() {
-			base.exp_binary(exponent, modulus)
+			x.mont_odd(exponent, m)
+		} else if m.is_power_of_2() {
+			x.exp_binary(exponent, m)
 		} else {
-			base.mont_even(exponent, modulus)
+			x.mont_even(exponent, m)
 		}
 	} else {
-		base.mod_pow(exponent.digits[0], modulus)
+		x.mod_pow(exponent.digits[0], m)
 	}
 }
 
@@ -690,15 +699,28 @@ pub fn (a Integer) < (b Integer) bool {
 	return if signum < 0 { cmp > 0 } else { cmp < 0 }
 }
 
-// get_bit checks whether the bit at the given index is set.
+// get_bit checks whether the bit at the given index is set in the infinite
+// two's-complement representation. Negative integers have set bits above their magnitude.
 @[direct_array_access]
 pub fn (a Integer) get_bit(i u32) bool {
 	target_index := i / digit_bits
 	offset := i % digit_bits
 	if target_index >= a.digits.len {
-		return false
+		return a.signum < 0
 	}
-	return (a.digits[target_index] >> offset) & 1 != 0
+	mut digit := a.digits[target_index]
+	if a.signum < 0 {
+		// -a = ~(a - 1); a borrow reaches this digit only when all lower digits are zero.
+		mut borrow := u64(1)
+		for j in 0 .. int(target_index) {
+			if a.digits[j] != 0 {
+				borrow = 0
+				break
+			}
+		}
+		digit = ~(digit - borrow)
+	}
+	return (digit >> offset) & 1 != 0
 }
 
 // set_bit sets the bit at the given index to the given value.
@@ -1103,10 +1125,10 @@ pub fn (a Integer) gcd_euclid(b Integer) Integer {
 // mod_inverse calculates the multiplicative inverse of the integer `a` in the ring `ℤ/nℤ`.
 // Therefore, the return value `x` satisfies `a * x == 1 (mod m)`.
 // An error is returned if `a` and `n` are not relatively prime, i.e. `gcd(a, n) != 1` or
-// if n <= 1
+// if n <= 1. The inverse is reduced into [0, n), including for negative `a`.
 @[inline]
 pub fn (a Integer) mod_inverse(n Integer) !Integer {
-	return if n.bit_len() <= 1 {
+	return if n <= one_int {
 		error('math.big: Modulus `n` must be greater than 1')
 	} else if a.gcd(n) != one_int {
 		error('math.big: No multiplicative inverse')
@@ -1137,7 +1159,7 @@ fn (a Integer) mod_inv(m Integer) Integer {
 	mut x := one_int
 	mut y := zero_int
 	if b.signum < 0 || b.abs_cmp(n) >= 0 {
-		b = b % n
+		b = b.mod_euclid(n)
 	}
 	mut sign := -1
 

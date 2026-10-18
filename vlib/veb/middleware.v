@@ -379,7 +379,8 @@ pub:
 	// indicate whether the server allows credentials, e.g. cookies, in cross-origin requests.
 	// ;`Access-Control-Allow-Credentials`
 	allow_credentials bool
-	// allowed HTTP headers for a cross-origin request; `Access-Control-Allow-Headers`
+	// allowed CORS request header names; `Access-Control-Allow-Headers`.
+	// Compared case-insensitively with `Access-Control-Request-Headers`.
 	allowed_headers []string
 	// allowed HTTP methods for a cross-origin request; `Access-Control-Allow-Methods`
 	allowed_methods []http.Method
@@ -435,6 +436,7 @@ pub fn (options &CorsOptions) set_headers(mut ctx Context) {
 // validate_request checks if a cross-origin request is made and verifies the CORS
 // headers. If a cross-origin request is invalid this method will send a response
 // using `ctx`.
+// Header allow-lists apply to names advertised in `Access-Control-Request-Headers`.
 pub fn (options &CorsOptions) validate_request(mut ctx Context) bool {
 	origin := ctx.req.header.get(.origin) or { return true }
 	if options.origins != ['*'] && origin !in options.origins {
@@ -466,9 +468,11 @@ pub fn (options &CorsOptions) validate_request(mut ctx Context) bool {
 	}
 
 	if options.allowed_headers.len > 0 && options.allowed_headers != ['*'] {
-		// validate request headers
-		for header in ctx.req.header.keys() {
-			if header !in options.allowed_headers {
+		allowed_headers := options.allowed_headers.map(it.to_lower())
+		requested_headers := ctx.req.header.get(.access_control_request_headers) or { '' }
+		for name in requested_headers.split(',') {
+			header := name.trim_space()
+			if header.len > 0 && header.to_lower() !in allowed_headers {
 				ctx.res.set_status(.forbidden)
 				ctx.text('invalid Header "${header}"')
 

@@ -116,7 +116,7 @@ fn run_compiler_windows(executable string, args []string, root string) CompilerR
 	for {
 		// ReadFile writes at most buffer.len bytes into the fixed buffer.
 		read_ok := unsafe {
-			C.ReadFile(reader, &buffer[0], u32(buffer.len), &read_count, voidptr(0))
+			C.ReadFile(reader, &buffer[0], u32(buffer.len), &C.DWORD(&read_count), voidptr(0))
 		}
 		if !read_ok || read_count == 0 {
 			break
@@ -125,7 +125,7 @@ fn run_compiler_windows(executable string, args []string, root string) CompilerR
 	}
 	mut exit_code := u32(0)
 	C.WaitForSingleObject(child.process, C.INFINITE)
-	C.GetExitCodeProcess(child.process, &exit_code)
+	C.GetExitCodeProcess(child.process, unsafe { &C.DWORD(&exit_code) })
 	return CompilerRun{
 		exit_code: int(exit_code)
 		output:    windows_compiler_output(output.str())

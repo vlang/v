@@ -1,5 +1,6 @@
 module eval
 
+import v.flat
 import os
 import v.parser
 
@@ -417,11 +418,11 @@ fn main() { println(sizeof(byte)); println(sizeof(other)) }
 fn test_eval_declared_pointer_metadata_keeps_module_and_depth() {
 	mut e := create()
 	e.call_stack << CallFrame{ module_name: 'worker' }
-	e.declare_var_typed('byte', Value(i64(0)), '&&Holder')
-	assert e.lookup_var_type('byte') or { '' } == '&&worker.Holder'
-	e.set_var_type('byte', '&u8')
-	assert e.lookup_var_type('byte') or { '' } == '&u8'
-	assert e.qualify_nested_type_name('worker', '[2]&u16') == '[2]&u16'
+	e.declare_var_typed('byte', Value(i64(0)), flat.source_type_id('&&Holder'))
+	assert e.lookup_var_type('byte') or { u32(0) } == flat.source_type_id('&&worker.Holder')
+	e.set_var_type('byte', flat.source_type_id('&u8'))
+	assert e.lookup_var_type('byte') or { u32(0) } == flat.source_type_id('&u8')
+	assert flat.source_type_name(e.qualify_nested_type_name('worker', flat.source_type_id('[2]&u16'))) == '[2]&u16'
 }
 
 fn test_eval_sizeof_imported_constants_uses_declaration_context() {
@@ -480,6 +481,23 @@ fn main() {
 	p.parse_files([widths, nested, bridge, main_file])
 	e.run_files(p.a) or { panic(err) }
 	assert e.stdout() == '1\n2\n8\n1\n1\n2\n1\n1\n4\n2\n'
+}
+
+fn test_eval_enum_backing_identity_is_independent_of_attribute_markers() {
+	mut e := create()
+	e.run_text('
+enum Ordinary { first }
+enum Narrow as u8 { first }
+@[json_as_number]
+enum Wide as u64 { first }
+@[json_as_number]
+enum Marked { first }
+fn main() {}
+') or { panic(err) }
+	assert e.enum_types['Ordinary'].target == flat.source_type_i32
+	assert e.enum_types['Narrow'].target == flat.source_type_u8
+	assert e.enum_types['Wide'].target == flat.source_type_u64
+	assert e.enum_types['Marked'].target == flat.source_type_i32
 }
 
 fn test_eval_sizeof_fixed_array_aggregate_elements_matches_compiler() {

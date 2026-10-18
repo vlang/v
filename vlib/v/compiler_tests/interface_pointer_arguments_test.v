@@ -1,3 +1,4 @@
+// vtest ownership
 import os
 
 const interface_pointer_args_vexe = @VEXE
@@ -35,8 +36,13 @@ fn read_x(w &Widget) int {
 	return w.x
 }
 
-fn make_label(mut calls int) &Label {
-	calls++
+struct Counter {
+mut:
+	calls int
+}
+
+fn make_label(mut counter Counter) &Label {
+	counter.calls++
 	return &Label{ x: 42 }
 }
 
@@ -48,9 +54,9 @@ fn main() {
 	assert read_x(probe) == 42
 	value := Widget(probe)
 	assert read_x(value) == 42
-	mut calls := 0
-	assert read_x(Widget(make_label(mut calls))) == 42
-	assert calls == 1
+	mut counter := Counter{}
+	assert read_x(Widget(make_label(mut counter))) == 42
+	assert counter.calls == 1
 	println('ok')
 }
 ")

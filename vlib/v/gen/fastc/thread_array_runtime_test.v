@@ -17,12 +17,13 @@ fn integer(value int) int { return value }
 fn item(value int) Item { return Item{value: value} }
 fn mark(value int, mut values []int) { values[value] = value + 1 }
 fn main() {
+	large := int(1) << 40
 	mut integers := []thread int{}
 	mut items := []thread Item{}
 	mut completed := []thread{}
 	mut marks := []int{len: 8}
 	for i in 0 .. 8 {
-		integers << spawn integer(i + 100)
+		integers << spawn integer(large + i + 100)
 		items << spawn item(i + 200)
 		completed << spawn mark(i, mut marks)
 	}
@@ -30,14 +31,13 @@ fn main() {
 	records := items.wait()
 	completed.wait()
 	for i in 0 .. 8 {
-		assert values[i] == i + 100
+		assert values[i] == large + i + 100
 		assert records[i].value == i + 200
 		assert marks[i] == i + 1
 	}
 	mut direct := []thread{}
 	direct << spawn mark(0, mut marks)
 	for handle in direct { handle.wait() }
-	large := int(1) << 40
 	wide := spawn integer(large)
 	assert wide.wait() == large
 	println("thread arrays work")

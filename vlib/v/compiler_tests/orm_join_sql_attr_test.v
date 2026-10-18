@@ -7,7 +7,8 @@ const orm_join_sql_attr_vlib_dir = os.dir(orm_join_sql_attr_v3_dir)
 const orm_join_sql_attr_v3_src = os.join_path(orm_join_sql_attr_v3_dir, 'v.v')
 
 fn orm_join_sql_attr_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_orm_join_sql_attr_${os.getpid()}')
+	// Not `v3_orm_join_sql_attr_<pid>`: the `orm_join_sql_attr` case uses that as its directory.
+	v3_bin := os.join_path(os.temp_dir(), 'v3_orm_join_sql_attr_compiler_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
 		os.exec([orm_join_sql_attr_vexe, '-gc', 'none', '-path',
@@ -28,7 +29,8 @@ fn orm_join_sql_attr_run(v3_bin string, name string, src string) string {
 	src_path := os.join_path(root, 'main.v')
 	os.write_file(src_path, src) or { panic(err) }
 	bin_path := os.join_path(root, 'program')
-	compile := os.exec([v3_bin, src_path, '-b', 'c', '-o', bin_path])
+	// Some cases count calls through `__global` variables.
+	compile := os.exec([v3_bin, '-enable-globals', src_path, '-b', 'c', '-o', bin_path])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output

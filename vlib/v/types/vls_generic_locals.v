@@ -62,14 +62,14 @@ fn (mut tc TypeChecker) vls_type_generic_body(id flat.NodeId) {
 	tc.fn_context.generic_params = generic_params
 	tc.vls_enter_file(int(node.pos.id))
 	tc.cur_scope = tc.file_scope
-	return_text := if node.typ_text().ends_with('?') && !node.typ_text().starts_with('?') {
+	return_text := if node.typ_text().ends_with('?') && !flat.source_type_shape(node.typ).has(.option_type) {
 		node.typ_text().trim_right('?')
 	} else {
 		node.typ_text()
 	}
-	tc.cur_fn_ret_type = tc.parse_type(return_text)
+	tc.cur_fn_ret_type = tc.parse_type(flat.source_type_id(return_text))
 	tc.fn_context.return_type = tc.cur_fn_ret_type
-	w := tc.checked_generic_fn_body(node, int(fn_id), map[string]string{}, true)
+	w := tc.checked_generic_fn_body(node, int(fn_id), map[string]u32{}, true)
 	tc.fn_context = saved_context
 	tc.cur_fn_ret_type = saved_return
 	tc.cur_scope = saved_scope
@@ -261,12 +261,14 @@ fn (tc &TypeChecker) vls_generic_call_type(id flat.NodeId, node flat.Node) ?Type
 	// `first_of[A](values)`: its type arguments, a type parameter of the body
 	// kept as one.
 	if callee.kind == .index && tc.call_has_explicit_generic_type_args(node) {
-		for k, text in tc.generic_call_type_arg_names(*callee) {
+		for k, text_source_id in tc.generic_call_type_arg_names(*callee) {
+			text := flat.source_type_name(text_source_id)
+
 			if k < fn_params.len {
 				bound[fn_params[k]] = if is_bare_generic_param(text.trim_space()) {
 					unknown_type('generic placeholder `${text.trim_space()}`')
 				} else {
-					tc.parse_type(text)
+					tc.parse_type(text_source_id)
 				}
 			}
 		}
@@ -276,7 +278,7 @@ fn (tc &TypeChecker) vls_generic_call_type(id flat.NodeId, node flat.Node) ?Type
 	} else {
 		*callee
 	}
-	param_texts := tc.fn_param_type_texts.get(target) or { []string{} }
+	param_texts := flat.TypeTextList{ ids: tc.fn_param_type_texts.type_ids(target) or { []u32{} } }.names()
 	mut first := 0
 	if method.kind == .selector && method.children_count > 0 {
 		if receiver := tc.vls_unconstrained_type(tc.a.child(&method, 0)) {
@@ -375,7 +377,7 @@ fn (tc &TypeChecker) vls_bind_type_params(text string, actual Type, names []stri
 		arg_type := if is_bare_generic_param(arg_text) {
 			unknown_type('generic placeholder `${arg_text}`')
 		} else {
-			tc.parse_type(arg_text)
+			tc.parse_type(flat.source_type_id(arg_text))
 		}
 		tc.vls_bind_type_params(arg, arg_type, names, mut bound)
 	}
