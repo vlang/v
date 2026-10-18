@@ -4101,6 +4101,15 @@ fn (mut g FlatGen) collect_local_shared_type_names() {
 			if node.kind == .fn_decl {
 				module_name := g.a.specialized_fn_modules[i] or { cur_module }
 				g.collect_fn_shared_param_type_names(node, module_name)
+			} else if node.kind == .decl_assign {
+				// `mut items := []shared T{}` stores `shared T` wrappers, although the
+				// declaration itself is not `shared`.
+				g.tc.cur_module = cur_module
+				for j := 0; j + 1 < node.children_count; j += 2 {
+					rhs := g.a.child_node(&node, j + 1)
+					inner := shared_array_inner_type_text(rhs.typ) or { continue }
+					g.register_shared_type_name_in_file(inner, cur_module, node.pos.id)
+				}
 			}
 			continue
 		}
@@ -4136,12 +4145,47 @@ fn (mut g FlatGen) collect_fn_shared_param_type_names(node flat.Node, module_nam
 		if param.kind != .param {
 			continue
 		}
-		inner := shared_inner_type_text(param.typ) or { continue }
+		if inner := shared_inner_type_text(param.typ) {
+			if shared_type_text_uses_generic_params(inner, node.generic_params()) {
+				continue
+			}
+			g.register_shared_type_name_in_file(inner, module_name, node.pos.id)
+			continue
+		}
+		// The elements of a `[]shared T` parameter are `shared T` wrappers too.
+		inner := shared_array_inner_type_text(param.typ) or { continue }
 		if shared_type_text_uses_generic_params(inner, node.generic_params()) {
 			continue
 		}
-		g.register_shared_type_name(g.shared_qualify_type_text(inner, module_name), module_name)
+		g.register_shared_type_name_in_file(inner, module_name, node.pos.id)
 	}
+}
+
+// register_shared_type_name_in_file registers the wrapper of a `shared T` value. The type is
+// resolved in its source file (`file_id`, so `renamed.T` after `import m as renamed` is `m.T`)
+// and then named outside it, as the code that uses the wrapper names it.
+fn (mut g FlatGen) register_shared_type_name_in_file(inner u32, module_name string, file_id int) {
+	qualified := g.shared_canonical_inner(inner, module_name, file_id)
+	old_file := g.tc.cur_file
+	g.tc.cur_file = ''
+	g.register_shared_type_name(qualified, module_name)
+	g.tc.cur_file = old_file
+}
+
+// shared_canonical_inner qualifies the type spelled in a `shared` declaration of the source
+// file `file_id` and returns the name that the checker declared it under.
+fn (mut g FlatGen) shared_canonical_inner(inner u32, module_name string, file_id int) u32 {
+	old_file := g.tc.cur_file
+	if source_file := g.a.source_files[file_id] {
+		g.tc.cur_file = source_file.name
+	}
+	mut qualified := g.shared_qualify_type_text(inner, module_name)
+	typ := g.tc.parse_type(qualified)
+	if typ !is types.Unknown && typ !is types.Void {
+		qualified = typ.source_type_id()
+	}
+	g.tc.cur_file = old_file
+	return qualified
 }
 
 fn (mut g FlatGen) register_shared_type_name(inner u32, module_name string) {
@@ -4197,15 +4241,13 @@ fn (mut g FlatGen) collect_shared_type_names_from_info(info StructDeclInfo, args
 		}
 		if array_inner := shared_array_inner_type_text(field.typ) {
 			concrete_inner := substitute_shared_generic_type_text(array_inner, info.node.generic_params(), args_ids)
-			qualified_inner := g.shared_qualify_type_text(concrete_inner, info.module)
-			g.register_shared_type_name(qualified_inner, info.module)
+			g.register_shared_type_name_in_file(concrete_inner, info.module, info.node.pos.id)
 			continue
 		}
 		inner := shared_inner_type_text(field.typ) or { continue }
 		concrete_inner :=
 			substitute_shared_generic_type_text(inner, info.node.generic_params(), args_ids)
-		qualified_inner := g.shared_qualify_type_text(concrete_inner, info.module)
-		g.register_shared_type_name(qualified_inner, info.module)
+		g.register_shared_type_name_in_file(concrete_inner, info.module, info.node.pos.id)
 	}
 }
 
@@ -4218,8 +4260,33 @@ fn (g &FlatGen) sorted_shared_wrapper_names() []string {
 	return names
 }
 
-fn (mut g FlatGen) shared_value_type_name(inner u32) string {
+// shared_inner_type parses the type that a `shared` wrapper holds. A spelling through an
+// import alias (`renamed.T` for `import m as renamed`) parsed in another file becomes a
+// placeholder struct named `m.T`; parse `m.T` outside any file instead, so every use names
+// the same wrapper.
+fn (mut g FlatGen) shared_inner_type(inner u32) types.Type {
 	typ := g.tc.parse_type(inner)
+	if typ is types.Struct && typ.name() !in g.tc.structs {
+		old_file := g.tc.cur_file
+		g.tc.cur_file = ''
+		resolved := g.tc.parse_type(flat.source_type_id(typ.name()))
+		g.tc.cur_file = old_file
+		if resolved !is types.Unknown && resolved !is types.Void {
+			return resolved
+		}
+	}
+	return typ
+}
+
+fn (mut g FlatGen) shared_value_type_name(inner u32) string {
+	mut typ := g.shared_inner_type(inner)
+	// An alias of an array or map has the same storage as its target, and both spellings
+	// reach this function (`[]shared Names` elements, or `[]shared []string` after
+	// alias normalization), so they must name the same wrapper.
+	unaliased := cgen_unalias_type(typ)
+	if unaliased is types.Array || unaliased is types.Map {
+		typ = unaliased
+	}
 	if typ is types.Array {
 		return 'Array_${naming.type_name_part(g.tc.c_type(typ.elem_type))}'
 	}
@@ -4242,7 +4309,7 @@ fn (mut g FlatGen) shared_value_type_name(inner u32) string {
 }
 
 fn (mut g FlatGen) shared_value_c_type(inner u32) string {
-	typ := g.tc.parse_type(inner)
+	typ := g.shared_inner_type(inner)
 	mut ct := if typ is types.OptionType || typ is types.ResultType {
 		g.optional_type_name(typ)
 	} else {
@@ -4471,10 +4538,14 @@ fn (mut g FlatGen) shared_field_info(type_name_id u32, field_name string) ?Share
 			continue
 		}
 		inner := shared_inner_type_text(field.typ) or { return none }
-		qualified_inner := g.shared_qualify_type_text(inner, info.module)
+		qualified_inner := g.shared_canonical_inner(inner, info.module, info.node.pos.id)
+		old_file := g.tc.cur_file
+		g.tc.cur_file = ''
+		wrapper := g.shared_wrapper_c_name(qualified_inner)
+		g.tc.cur_file = old_file
 		return SharedFieldInfo{
 			inner:   qualified_inner
-			wrapper: g.shared_wrapper_c_name(qualified_inner)
+			wrapper: wrapper
 			module:  info.module
 		}
 	}
