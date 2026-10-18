@@ -11,10 +11,6 @@ const css_js_assets = ['doc.css', 'normalize.css', 'doc.js', 'dark-mode.js']
 const default_theme = os.join_path(@VEXEROOT, 'cmd', 'tools', 'vdoc', 'theme')
 const link_svg = '<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24"><path d="M0 0h24v24H0z" fill="none"/><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/></svg>'
 
-const single_quote = "'"
-const double_quote = '"'
-const quote_escape_seq = [single_quote, '', double_quote, '']
-
 fn tabs(n int) string {
 	return '\t'.repeat(n)
 }
@@ -512,14 +508,15 @@ fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, md_link_base string, he
 	md_content := markdown.render(prepare_markdown_for_html(only_comments_text), mut renderer) or {
 		''
 	}
-	highlighted_code := html_highlight(dn.content)
+	// The attributes are shown above the signature, so they are left out of it.
+	highlighted_code := html_highlight(without_attribute_lines(dn.content))
 	node_class := if dn.kind == .const_group { ' const' } else { '' }
 	sym_name := get_sym_name(dn)
-	mut deprecated_tags := dn.tags.filter(it.starts_with('deprecated'))
+	mut deprecated_tags := dn.tags.filter(is_deprecated_attribute(it))
 	if doc.should_sort {
 		deprecated_tags.sort()
 	}
-	mut tags := dn.tags.filter(!it.starts_with('deprecated'))
+	mut tags := dn.tags.filter(!is_deprecated_attribute(it))
 	if doc.should_sort {
 		tags.sort()
 	}
@@ -543,11 +540,11 @@ fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, md_link_base string, he
 	}
 	if deprecated_tags.len > 0 {
 		attributes :=
-			deprecated_tags.map('<div class="attribute attribute-deprecated">${it.replace_each(quote_escape_seq)}</div>\n').join('')
+			deprecated_tags.map('<div class="attribute attribute-deprecated">${html.escape(it)}</div>\n').join('')
 		dnw.writeln('<div class="attributes">${attributes}</div>\n')
 	}
 	if tags.len > 0 {
-		attributes := tags.map('<div class="attribute">${it}</div>').join('')
+		attributes := tags.map('<div class="attribute">${html.escape(it)}</div>').join('')
 		dnw.writeln('<div class="attributes">${attributes}</div>')
 	}
 	if !head && dn.content.len > 0 {
