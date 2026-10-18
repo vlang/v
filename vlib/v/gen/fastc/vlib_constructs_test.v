@@ -12,7 +12,7 @@ const vlib_constructs_source = 'module main
 #flag termux -L/data/missing -lmissing
 #flag -DFASTC_UNDEFINED_LATER=1
 #flag linux -DFASTC_FLAG_VALUE=7 -UFASTC_UNDEFINED_LATER
-#flag macos -DFASTC_FLAG_VALUE=7
+#flag macos -DFASTC_FLAG_VALUE=7 -UFASTC_UNDEFINED_LATER
 
 #insert "@DIR/check.h"
 
