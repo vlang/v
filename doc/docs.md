@@ -4891,6 +4891,9 @@ fn get_component[T](entity Entity) !T {
 
 If you want to return the smart-casted pointer itself, use `!&T` as the return type instead.
 
+After an optional interface passes a `!= none` check, an unsafe cast such as
+`unsafe { &T(value) }` uses its unwrapped interface value.
+
 Appending a smart-casted value to an array of its original interface type preserves the
 complete interface value. Both `animals << animal` and `animals << Animal(animal)` retain
 the underlying type and allow interface method calls on the appended element.

@@ -59,3 +59,33 @@ fn test_pointer_cast_of_a_smartcast_interface_value() {
 	assert animated.current == 1
 	assert !advance_data(SmartcastImageData(&SmartcastStillData{}))
 }
+
+fn optional_frame_count(data ?SmartcastImageData) int {
+	if data != none {
+		animated := unsafe { &SmartcastAnimatedData(data) }
+		return animated.frames
+	}
+	return -1
+}
+
+struct OptionalImageDataHolder {
+	data ?SmartcastImageData
+}
+
+fn optional_field_frame_count(holder OptionalImageDataHolder) int {
+	if holder.data != none {
+		animated := unsafe { &SmartcastAnimatedData(holder.data) }
+		return animated.frames
+	}
+	return -1
+}
+
+fn test_pointer_cast_preserves_optional_interface_unwrap() {
+	data := SmartcastImageData(&SmartcastAnimatedData{
+		frames: 42
+	})
+	assert optional_frame_count(data) == 42
+	assert optional_frame_count(none) == -1
+	assert optional_field_frame_count(OptionalImageDataHolder{ data: data }) == 42
+	assert optional_field_frame_count(OptionalImageDataHolder{}) == -1
+}

@@ -26426,15 +26426,16 @@ fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.
 			}
 			source_iface := t.resolve_interface_type_name(flat.source_type_id(child_type))
 			if t.pointer_cast_target_implements_source_iface(flat.source_type_id(target_type[1..]), source_iface) {
-				// `if data is Impl { &Impl(data) }`: `child_type` is the interface, so read
-				// `_object` from the interface value itself, not from the smartcast `Impl`.
-				child_key := t.expr_key(child_id)
-				source := if child_key.len > 0 && t.has_smartcast(child_key) {
-					t.make_plain_expr_for_smartcast(child_id)
+				// Read `_object` from the interface before a concrete smartcast, while
+				// preserving any option unwrap that exposes the interface value.
+				contexts := t.smartcasts_for(t.expr_key(child_id))
+				source := if contexts.len > 0 {
+					t.apply_smartcast_contexts(t.make_plain_expr_for_smartcast(child_id),
+						t.original_expr_type(child_id), contexts.filter(it.sum_type_name_text() == option_unwrap_marker))
 				} else {
 					t.transform_expr(child_id)
 				}
-				object := t.make_selector_op(source, '_object', flat.source_type_voidptr, if child_type.starts_with('&') {
+				object := t.make_selector_op(source, '_object', flat.source_type_voidptr, if flat.source_type_shape(t.node_type(source)).has(.pointer) {
 					.arrow
 				} else {
 					.dot
