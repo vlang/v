@@ -12,6 +12,24 @@
 #ifdef _WIN32
 #include <windows.h>
 
+/* Boehm only scans threads it created or registered. gc.h redirects CreateThread to
+ * GC_CreateThread only when it precedes this header, so declare GC_CreateThread here
+ * for Boehm builds. A plain CreateThread thread aborts the next collection it triggers. */
+#if (defined(_VGCBOEHM) || defined(CUSTOM_DEFINE_gcboehm)) && !defined(GC_H)
+/* gc.h renames GC_CreateThread under GC_UNDERSCORE_STDCALL. Mirror that rename so the
+ * declaration matches the libgc export. */
+#if defined(GC_UNDERSCORE_STDCALL)
+#define GC_CreateThread _GC_CreateThread
+#endif
+HANDLE WINAPI GC_CreateThread(LPSECURITY_ATTRIBUTES, SIZE_T, LPTHREAD_START_ROUTINE,
+	LPVOID, DWORD, LPDWORD);
+#endif
+#if defined(_VGCBOEHM) || defined(CUSTOM_DEFINE_gcboehm)
+#define v_sync_create_thread GC_CreateThread
+#else
+#define v_sync_create_thread CreateThread
+#endif
+
 typedef struct {
 	unsigned int (*start)(void *);
 	void *arg;
@@ -33,7 +51,7 @@ V_SYNC_THREAD_SCOPE int v_sync_thread_create_detached_with_stack(void *start, vo
 	}
 	context->start = (unsigned int (*)(void *))start;
 	context->arg = arg;
-	HANDLE handle = CreateThread(NULL, stack_size, v_sync_windows_thread_start, context, 0, NULL);
+	HANDLE handle = v_sync_create_thread(NULL, stack_size, v_sync_windows_thread_start, context, 0, NULL);
 	if (handle == NULL) {
 		DWORD error = GetLastError();
 		HeapFree(GetProcessHeap(), 0, context);

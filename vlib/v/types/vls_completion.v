@@ -48,7 +48,7 @@ fn (tc &TypeChecker) vls_constraint_set_types(id flat.NodeId) ?[]Type {
 		if decl_id := tc.vls_local_declaration(id) {
 			decl := tc.a.node(decl_id)
 			if decl.kind == .param {
-				typ = tc.parse_type(decl.typ_text())
+				typ = tc.parse_type(decl.typ)
 			}
 		}
 	}
@@ -194,9 +194,9 @@ fn (tc &TypeChecker) vls_field_is_usable(typ Type, owner string, field string) b
 	}
 	if visibility := tc.private_declaration(owner) {
 		return tc.is_synthesized_anon_struct(owner)
-			&& tc.anonymous_struct_field_is_public(owner, field, visibility.module_name)
+			&& tc.anonymous_struct_field_is_public(flat.source_type_id(owner), field, visibility.module_name)
 	}
-	return !tc.struct_field_is_private_outside_module(owner, field)
+	return !tc.struct_field_is_private_outside_module(flat.source_type_id(owner), field)
 }
 
 // vls_method_details adds the methods of the type `owner` the file being

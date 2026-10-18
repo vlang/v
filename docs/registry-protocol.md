@@ -158,6 +158,7 @@ its own registry requests. The registry server in this repository reads no crede
 authenticates nothing.
 
 - `Authorization: Bearer <token>` is set by the VPM client only.
+- Registry requests over HTTPS validate TLS certificates, whether or not they carry a token.
 - The token comes from `VPM_TOKEN_<HOST>`, where `<HOST>` is the registry's hostname with `.` and
   `-` folded to `_` and uppercased, so `https://vpm.example.com/` reads
   `VPM_TOKEN_VPM_EXAMPLE_COM`. `VPM_TOKEN` is the fallback when no scoped variable is set, and

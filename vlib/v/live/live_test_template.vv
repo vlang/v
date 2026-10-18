@@ -32,6 +32,12 @@ fn myprintln(s string) {
 @[live]
 fn pmessage() string {
 	_ := some_constant * math.sin(2.0 * math.pi * f64(time.ticks() % 6000) / 6000)
+	return live_label(42)
+}
+
+@[live]
+fn live_label(value int) string {
+	assert value == 42
 	return 'ORIGINAL'
 }
 
@@ -45,7 +51,7 @@ pub fn mymain() {
 	pmessage()
 	pmessage()
 	max_cycles := os.getenv_opt('LIVE_CYCLES') or { '1' }.int()
-	// NB: 1000 * 20 = maximum of ~20s runtime
+	// The test requests STOP after observing all reloads.
 	for i := 0; i < max_cycles; i++ {
 		s := pmessage()
 		myprintln(s)

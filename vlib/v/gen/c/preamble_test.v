@@ -509,6 +509,28 @@ fn test_headerless_thread_runtime_can_spawn_detached_threads() {
 	assert c_code.contains('pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED)'), c_code
 }
 
+fn test_boehm_windows_spawn_threads_are_created_by_gc_create_thread() {
+	// Every Windows spawn thread under Boehm goes through GC_CreateThread, which registers
+	// it with the collector. Each preamble emits three spawn creates: __v_thread_spawn,
+	// __v_thread_spawn_detached and __v_thread_spawn_comparable. A partial change fails the count.
+	for preamble in ['system', 'headerless'] {
+		mut g := windows_preamble_test_gen()
+		g.compile_defines << 'gcboehm'
+		if preamble == 'system' {
+			g.system_libc_preamble()
+		} else {
+			g.headerless_libc_preamble()
+		}
+		c_code := g.sb.str()
+		assert !c_code.contains('= CreateThread(NULL'), '${preamble}: raw CreateThread spawn remains'
+		assert c_code.count('GC_CreateThread(NULL, __v_thread_stack_size') == 3, '${preamble}: ${c_code.count('GC_CreateThread(NULL, __v_thread_stack_size')} spawn creates through GC_CreateThread'
+		assert c_code.contains('HANDLE WINAPI GC_CreateThread('), preamble
+		// libgc exports the stdcall name with an underscore when built with GC_UNDERSCORE_STDCALL.
+		// Mirror gc.h's rename, so the declaration matches that export.
+		assert c_code.contains('#if defined(GC_UNDERSCORE_STDCALL)\n#define GC_CreateThread _GC_CreateThread\n#endif'), preamble
+	}
+}
+
 fn test_cross_c_system_libc_preamble_keeps_posix_environ() {
 	mut g := windows_preamble_test_gen()
 	g.set_output_cross_c(true)
@@ -659,6 +681,23 @@ fn test_target_libc_preamble_emits_pthread_runtime_when_threads_are_used() {
 	assert c_code.contains('pthread_equal(a.handle, b.handle) != 0')
 	assert c_code.contains('void* p = v_gc_malloc_uncollectable(size);')
 	assert c_code.contains('v_gc_free(ptr);')
+}
+
+fn test_object_file_boehm_declares_gc_helpers_before_thread_allocation() {
+	mut g := FlatGen.new()
+	g.compile_defines = ['gcboehm']
+	g.set_object_file_mode(true)
+	g.needs_thread_runtime = true
+	g.preamble()
+	c_code := g.sb.str()
+	alloc := c_code.index('static void* __v_thread_alloc(') or { -1 }
+	assert alloc >= 0
+	// The helper definitions are embedded as `static` in object-file mode, so their
+	// prototypes must be `static` too and must precede the first call site.
+	alloc_decl := c_code.index('static void* v_gc_malloc_uncollectable(size_t size);') or { -1 }
+	assert alloc_decl >= 0 && alloc_decl < alloc
+	free_decl := c_code.index('static void v_gc_free(void* ptr);') or { -1 }
+	assert free_decl >= 0 && free_decl < alloc
 }
 
 fn test_vinix_target_libc_thread_runtime_uses_freestanding_pthread_abi() {

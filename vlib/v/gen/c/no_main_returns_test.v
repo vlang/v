@@ -2,6 +2,9 @@ module c
 
 import os
 
+// exe_suffix is needed because os.exec spawns an absolute path as written, without adding .exe.
+const exe_suffix = $if windows { '.exe' } $else { '' }
+
 fn test_no_main_object_keeps_void_returns() {
 	root := os.join_path(os.vtmp_dir(), 'no_main_returns_${os.getpid()}')
 	os.mkdir_all(root)!
@@ -21,7 +24,7 @@ fn main() {
 		assert result.exit_code == 0, result.output
 		assert os.exists(object)
 	}
-	executable := os.join_path(root, 'program')
+	executable := os.join_path(root, 'program${exe_suffix}')
 	result := os.exec([@VEXE, '-gc', 'none', '-o', executable, source])
 	assert result.exit_code == 0, result.output
 	run := os.exec([executable])

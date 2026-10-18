@@ -34,15 +34,26 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 150
     env:
+      # Stop a failing test session at its first failure instead of
+      # running the whole suite to completion; the remaining files
+      # add no signal.
+      VTEST_FAIL_FAST: '1'
+      # Four test workers fit comfortably: a worker peaks near 0.25 GB and
+      # the runner has 4 CPUs and 16 GB, so this is CPU-bound, not
+      # memory-bound.
+      VJOBS: '4'
       VFLAGS: -cc gcc
       VTEST_SHOW_LONGEST_BY_RUNTIME: 3
       VTEST_SHOW_LONGEST_BY_COMPTIME: 3
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
       - uses: actions/checkout@v7
+        id: uses_checkout_v7
         with:
           persist-credentials: false
       - name: Show tool versions
+        id: show_tool_versions
+        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         run: |
           gcc --version
           pkg-config --version
@@ -59,13 +70,21 @@ jobs:
           echo "Lib Include files for openssl:"
           dir "c:/Program Files/OpenSSL/lib/VC/x64/"
       - name: Build
+        if: ${{ success() && !cancelled() && steps.show_tool_versions.outcome == 'success' }}
+        id: build
         run: |
           .\makev.bat -gcc
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           .\v.exe symlink
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           .\v.exe -stats vlib/crypto/ecdsa/ecdsa_test.v
+      - name: All code is formatted
+        id: all_code_is_formatted
+        if: ${{ success() && !cancelled() && steps.build.outcome == 'success' }}
+        run: v -silent test-cleancode
       - name: Build and run hello world with -b fastc
+        id: build_and_run_hello_world_with_b_fastc
+        if: ${{ success() && !cancelled() && steps.all_code_is_formatted.outcome == 'success' }}
         env:
           # FastC always compiles with the bundled TinyCC and rejects `-cc`.
           VFLAGS: ''
@@ -83,6 +102,8 @@ jobs:
           }
           Remove-Item hello_fastc.exe, hello_fastc.c -ErrorAction SilentlyContinue
       - name: Pkg-config regressions (GCC)
+        id: pkg_config_regressions_gcc
+        if: ${{ success() && !cancelled() && steps.build_and_run_hello_world_with_b_fastc.outcome == 'success' }}
         run: |
           $tests = @(
             'vlib\v\pkgconfig\pkgconfig_define_prefix_test.v'
@@ -99,12 +120,16 @@ jobs:
             }
           }
       - name: Legacy gg import multiwindow isolation
+        id: legacy_gg_import_multiwindow_isolation
+        if: ${{ success() && !cancelled() && steps.pkg_config_regressions_gcc.outcome == 'success' }}
         run: v -cc gcc test vlib/gg/legacy_import_multiwindow_isolation_test.v
       - name: Test v binaries
+        id: test_v_binaries
+        if: ${{ success() && !cancelled() && steps.legacy_gg_import_multiwindow_isolation.outcome == 'success' }}
         run: v build-vbinaries
-      - name: All code is formatted
-        run: v -silent test-cleancode
       - name: Test new v.c
+        id: test_new_v_c
+        if: ${{ success() && !cancelled() && steps.test_v_binaries.outcome == 'success' }}
         run: |
           v -o v.c cmd/v
           $direct_c_flags = @(
@@ -118,37 +143,61 @@ jobs:
           )
           gcc -Werror -municode -w @direct_c_flags v.c -lws2_32 -std=c99
       - name: Install dependencies
+        id: install_dependencies
+        if: ${{ success() && !cancelled() && steps.test_new_v_c.outcome == 'success' }}
         run: |
           v retry -- v setup-freetype
           .\.github\workflows\windows-install-sqlite.bat
       - name: v doctor
+        id: v_doctor
+        if: ${{ success() && !cancelled() && steps.install_dependencies.outcome == 'success' }}
         run: |
           v doctor
       - name: Verify `v test` works
+        id: verify_v_test_works
+        if: ${{ success() && !cancelled() && steps.v_doctor.outcome == 'success' }}
         run: |
           echo $VFLAGS
           v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
       - name: Test pure V math module
+        id: test_pure_v_math_module
+        if: ${{ success() && !cancelled() && steps.verify_v_test_works.outcome == 'success' }}
         run: v -silent -exclude @vlib/math/*.c.v test vlib/math/
       - name: Self tests
+        id: self_tests
+        if: ${{ success() && !cancelled() && steps.test_pure_v_math_module.outcome == 'success' }}
         run: v -silent test-self vlib
       - name: Build option_test.c.v with -autofree
         if: ${{ false }} # Ownership/autofree coverage is temporarily disabled on GitHub CI.
         run: v -autofree vlib/v/tests/options/option_test.c.v
       - name: Test v->js
+        id: test_v_js
+        if: ${{ success() && !cancelled() && steps.self_tests.outcome == 'success' }}
         run: v -o hi.js examples/js_hello_world.v && node hi.js
       - name: Build examples
+        id: build_examples
+        if: ${{ success() && !cancelled() && steps.test_v_js.outcome == 'success' }}
         run: v build-examples
       - name: Compile and run the veb example (fasthttp) and check its HTML
+        id: compile_and_run_the_veb_example_fasthttp_and_check_its_html
+        if: ${{ success() && !cancelled() && steps.build_examples.outcome == 'success' }}
         run: v run .github/workflows/veb_example_windows_smoke.v
       - name: v2 self compilation
+        id: v2_self_compilation
+        if: ${{ success() && !cancelled() && steps.compile_and_run_the_veb_example_fasthttp_and_check_its_html.outcome == 'success' }}
         run: v -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
       - name: compile vdoctor.v with -prod
+        id: compile_vdoctor_v_with_prod
+        if: ${{ success() && !cancelled() && steps.v2_self_compilation.outcome == 'success' }}
         run: v -showcc -prod cmd/tools/vdoctor.v
       - name: compile vup.v with -prod
+        id: compile_vup_v_with_prod
+        if: ${{ success() && !cancelled() && steps.compile_vdoctor_v_with_prod.outcome == 'success' }}
         run: v -showcc -prod cmd/tools/vup.v
       - name: Setup MinGW-w64 D3D11 headers for GCC
+        id: setup_mingw_w64_d3d11_headers_for_gcc
+        if: ${{ success() && !cancelled() && steps.compile_vup_v_with_prod.outcome == 'success' }}
         uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2.33.0
         with:
           msystem: UCRT64
@@ -157,6 +206,8 @@ jobs:
           install: >-
             mingw-w64-ucrt-x86_64-gcc
       - name: Verify MinGW-w64 D3D11 headers and import libraries
+        id: verify_mingw_w64_d3d11_headers_and_import_libraries
+        if: ${{ success() && !cancelled() && steps.setup_mingw_w64_d3d11_headers_for_gcc.outcome == 'success' }}
         shell: msys2 {0}
         run: |
           set -euo pipefail
@@ -189,6 +240,8 @@ jobs:
           printf '#include <d3d11.h>\n#include <dxgi.h>\nint main(void) { return 0; }\n' > /tmp/d3d11_probe.c
           gcc /tmp/d3d11_probe.c -ld3d11 -ldxgi -o /tmp/d3d11_probe.exe
       - name: Multiwindow D3D11 WARP regressions and runtime probes with GCC
+        id: multiwindow_d3d11_warp_regressions_and_runtime_probes_with_gcc
+        if: ${{ success() && !cancelled() && steps.verify_mingw_w64_d3d11_headers_and_import_libraries.outcome == 'success' }}
         shell: msys2 {0}
         env:
           VFLAGS: -cc gcc -d gg_multiwindow_d3d11_warp
@@ -312,34 +365,55 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 150
     env:
+      # Stop a failing test session at its first failure instead of
+      # running the whole suite to completion; the remaining files
+      # add no signal.
+      VTEST_FAIL_FAST: '1'
+      # Four test workers fit comfortably: a worker peaks near 0.25 GB and
+      # the runner has 4 CPUs and 16 GB, so this is CPU-bound, not
+      # memory-bound.
+      VJOBS: '4'
       VFLAGS: -cc gcc
       VTEST_SHOW_LONGEST_BY_RUNTIME: 3
       VTEST_SHOW_LONGEST_BY_COMPTIME: 3
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
       - uses: actions/checkout@v7
+        id: uses_checkout_v7
         with:
           persist-credentials: false
       - name: Build
+        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
+        id: build
         run: |
           .\makev.bat -gcc
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           .\v.exe symlink
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Legacy gg import multiwindow isolation
+        id: legacy_gg_import_multiwindow_isolation
+        if: ${{ success() && !cancelled() && steps.build.outcome == 'success' }}
         run: v -cc gcc test vlib/gg/legacy_import_multiwindow_isolation_test.v
       - name: Public gg Win32 services no-flag contract
+        id: public_gg_win32_services_no_flag_contract
+        if: ${{ success() && !cancelled() && steps.legacy_gg_import_multiwindow_isolation.outcome == 'success' }}
         run: v -cc gcc test vlib/gg/multiwindow_win32_public_services_contract_windows_test.v
       - name: Win32 W3 native/public GREEN contracts
+        id: win32_w3_native_public_green_contracts
+        if: ${{ success() && !cancelled() && steps.public_gg_win32_services_no_flag_contract.outcome == 'success' }}
         shell: pwsh
         run: |
           .\.github\workflows\run_multiwindow_win32_w3_green.ps1 -Compiler gcc `
             -ExpectedCompositeSha256 '1567c7a3a81d6a7cfe14ec231fd1f138e2fb7b116a3a944a30acd51c93f40e69' `
             -ExpectedRunnerSha256 'a0e080811b904d44113e024aa9cb831475d0ad91d33f92c2d8b57491015646d6'
       - name: Package 2 native Win32 RED matrix
+        id: package_2_native_win32_red_matrix
+        if: ${{ success() && !cancelled() && steps.win32_w3_native_public_green_contracts.outcome == 'success' }}
         shell: pwsh
         run: .\.github\workflows\run_multiwindow_win32_package2_red.ps1 -Compiler gcc
       - name: Win32 W4 clipboard contracts
+        id: win32_w4_clipboard_contracts
+        if: ${{ success() && !cancelled() && steps.package_2_native_win32_red_matrix.outcome == 'success' }}
         shell: pwsh
         env:
           VFLAGS: ''
@@ -360,6 +434,8 @@ jobs:
             -ExpectedGreenSurfaceSha256 '7703f28d10cb60e000a016e4dbd4a2ec85d7501e54c2fdcff07933368e89231d' `
             -ExpectedRunnerSha256 'adaab1bcabdce34ae6f9b103d770c6fab0b6a63870a90829e56b245e2b245835'
       - name: Win32 W5 raw-input A0 preflight
+        id: win32_w5_raw_input_a0_preflight
+        if: ${{ success() && !cancelled() && steps.win32_w4_clipboard_contracts.outcome == 'success' }}
         shell: pwsh
         run: |
           .\.github\workflows\run_multiwindow_win32_w5_a0.ps1 -Compiler gcc `
@@ -368,6 +444,8 @@ jobs:
             -ExpectedTupleSha256 '99ef24bf101dc83543f26f86cb23a80c82607e0f1b35c32e9dbb431368ecc7c4' `
             -ExpectedRunnerSha256 'ce4da58e24730899f970a7566dc65d82eb0c07d38f74efcaeeb02c450a011b68'
       - name: Win32 W5 raw-input A1 public GREEN
+        id: win32_w5_raw_input_a1_public_green
+        if: ${{ success() && !cancelled() && steps.win32_w5_raw_input_a0_preflight.outcome == 'success' }}
         shell: pwsh
         env:
           VFLAGS: ''
@@ -401,6 +479,8 @@ jobs:
             -ExpectedGreenProductionSurfaceSha256 'f570ae10e0479b4628df305ea51ba44779f528a6767886e2b2fed4dbfa4e4f9e' `
             -ExpectedRunnerSha256 'f9b63749bad6064f8de48744ef8d828ba6fe31b53c6a224568c6bf10805aae5e'
       - name: Setup MinGW-w64 D3D11 headers for GCC and Clang
+        id: setup_mingw_w64_d3d11_headers_for_gcc_and_clang
+        if: ${{ success() && !cancelled() && steps.win32_w5_raw_input_a1_public_green.outcome == 'success' }}
         uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2.33.0
         with:
           msystem: UCRT64
@@ -410,6 +490,8 @@ jobs:
             mingw-w64-ucrt-x86_64-gcc
             mingw-w64-ucrt-x86_64-clang
       - name: Verify MinGW-w64 D3D11 headers and import libraries
+        id: verify_mingw_w64_d3d11_headers_and_import_libraries
+        if: ${{ success() && !cancelled() && steps.setup_mingw_w64_d3d11_headers_for_gcc_and_clang.outcome == 'success' }}
         shell: msys2 {0}
         run: |
           set -euo pipefail
@@ -445,6 +527,8 @@ jobs:
           gcc /tmp/d3d11_probe.c -ld3d11 -ldxgi -o /tmp/d3d11_probe.exe
           clang /tmp/d3d11_probe.c -ld3d11 -ldxgi -o /tmp/d3d11_probe_clang.exe
       - name: Multiwindow D3D11 WARP regressions and runtime probes with GCC
+        id: multiwindow_d3d11_warp_regressions_and_runtime_probes_with_gcc
+        if: ${{ success() && !cancelled() && steps.verify_mingw_w64_d3d11_headers_and_import_libraries.outcome == 'success' }}
         shell: msys2 {0}
         env:
           VFLAGS: -cc gcc -d gg_multiwindow_d3d11_warp

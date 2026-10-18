@@ -25,6 +25,23 @@ fn span_text(src string, node flat.Node) string {
 	return src[node.pos.offset..node.pos.end]
 }
 
+fn test_enum_backing_storage_is_separate_from_attribute_metadata() {
+	ast, _ := parse_span_source('enum_backing_storage', 'enum Bare { one }
+@[json_as_number]
+enum Number as u64 { one }
+@[json_as_number]
+enum Marked { one }
+')
+	enums := ast.nodes.filter(it.kind == .enum_decl)
+	assert enums.len == 3
+	assert enums[0].enum_backing_type_id() == 0
+	assert enums[0].generic_params().len == 0
+	assert enums[1].enum_backing_type_id() == flat.source_type_u64
+	assert enums[1].generic_params() == ['json_as_number']
+	assert enums[2].enum_backing_type_id() == 0
+	assert enums[2].generic_params() == ['json_as_number']
+}
+
 fn test_keyword_module_import_keeps_source_alias() {
 	ast, _ := parse_span_source('keyword_module_imports', 'import type\nimport pkg.type\nimport type.bar\nimport foo as renamed\n')
 	imports := ast.nodes.filter(it.kind == .import_decl)

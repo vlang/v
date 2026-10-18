@@ -71,6 +71,9 @@ fn main() {
 	mut local := Snapshot{amount: 4}
 	(local).bump()
 	assert local.amount == 5
+	mut grouped := Holder{value: Snapshot{amount: 30}}
+	(grouped.value).bump()
+	assert grouped.value.amount == 31
 	mut items := [Snapshot{amount: 10}]
 	items[index()].bump()
 	assert items[0].amount == 11
