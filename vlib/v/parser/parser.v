@@ -155,8 +155,11 @@ mut:
 	translated_sizeof_branch_evals int
 	// The token buffer that scan_translated_sizeof_source reuses for every source
 	// it indexes, and whether a scan holds it right now.
-	sizeof_scan_tokens                []InlineAsmScanToken
-	sizeof_scan_busy                  bool
+	sizeof_scan_tokens []InlineAsmScanToken
+	sizeof_scan_busy   bool
+	// The sources that a parallel parse batch read once for all of its passes
+	// (see parse_files_dispatch); nil outside of such a batch.
+	batch_sources                     &BatchSources = unsafe { nil }
 	local_binding_undos               []string
 	local_binding_scopes              []int
 	active_lambda_param_counts        map[string]int
@@ -497,6 +500,12 @@ fn (mut p Parser) reset_file_state(path string) {
 
 // parse_into reads parse into input for parser.
 pub fn (mut p Parser) parse_into(path string) {
+	p.parse_into_source(path, '')
+}
+
+// parse_into_source is parse_into for a file that a parallel parse batch has
+// already read into `source`; an empty `source` reads the file here.
+fn (mut p Parser) parse_into_source(path string, source string) {
 	if p.diagnostic_limit_reached {
 		return
 	}
@@ -515,14 +524,24 @@ pub fn (mut p Parser) parse_into(path string) {
 	// every source buffer so those views remain valid through later phases.
 	// The buffer is appended as it is read: appending a named string would copy
 	// the whole source first.
-	p.a.source_buffers << read_source_file_raw(path) or {
-		p.record_diagnostic('error reading source: ${err.msg()}', 0)
-		// The trailing .file node is never added: the (marker, trailing)
-		// pairing in file_node_ids is broken for this AST.
-		p.a.file_index_incomplete = true
-		return
+	if source.len > 0 {
+		p.a.source_buffers << borrowed_source(source)
+	} else {
+		p.a.source_buffers << read_source_file_raw(path) or {
+			p.record_diagnostic('error reading source: ${err.msg()}', 0)
+			// The trailing .file node is never added: the (marker, trailing)
+			// pairing in file_node_ids is broken for this AST.
+			p.a.file_index_incomplete = true
+			return
+		}
 	}
 	p.parse_buffer(path, p.a.source_buffers.last())
+}
+
+// borrowed_source returns `source` itself. Appending a call result to an array
+// keeps the string, where appending a named string would copy all of it.
+fn borrowed_source(source string) string {
+	return source
 }
 
 // parse_buffer parses source text already owned by the AST's source_buffers.
@@ -15986,7 +16005,7 @@ pub fn TranslatedSizeofShared.new() &TranslatedSizeofShared {
 
 fn (mut p Parser) scan_translated_sizeof_sibling(path string) {
 	if isnil(p.translated_sizeof_shared) {
-		source := os.read_file(path) or { return }
+		source := p.sibling_source(path) or { return }
 		p.scan_translated_sizeof_source(source)
 		return
 	}
@@ -16010,14 +16029,14 @@ fn (mut p Parser) scan_translated_sizeof_sibling(path string) {
 		// Another worker scans it right now, or its result depended on that
 		// worker's comptime state: scan it here as well.
 		shared_files.mu.unlock()
-		source := os.read_file(path) or { return }
+		source := p.sibling_source(path) or { return }
 		p.scan_translated_sizeof_source(source)
 		return
 	}
 	mut entry := &TranslatedSizeofFile{}
 	shared_files.files[file_key] = entry
 	shared_files.mu.unlock()
-	source := os.read_file(path) or { return }
+	source := p.sibling_source(path) or { return }
 	// Scan into empty tables to learn what this file adds, then merge.
 	types := p.translated_sizeof_type_names.move()
 	consts := p.translated_sizeof_const_names.move()
@@ -16054,6 +16073,17 @@ fn (mut p Parser) scan_translated_sizeof_sibling(path string) {
 	entry.globals = file_globals
 	entry.ready = true
 	shared_files.mu.unlock()
+}
+
+// sibling_source returns the source of the sibling file `path`: from the
+// sources the parse batch already read when it is one of them.
+fn (p &Parser) sibling_source(path string) ?string {
+	if !isnil(p.batch_sources) {
+		if source := p.batch_sources.source_of(path) {
+			return source
+		}
+	}
+	return os.read_file(path) or { return none }
 }
 
 fn (mut p Parser) scan_translated_sizeof_source(source string) {

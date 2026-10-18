@@ -47,6 +47,7 @@ struct ParseChunkArgs {
 	paths_ptr     voidptr // &[]string
 	starts_ptr    voidptr // &[]int (worker-local starts; the master shifts them on merge)
 	prepass_chunk voidptr // &ComptimeConstPrepassChunk
+	batch         voidptr // &BatchSources
 	start         int
 	end           int
 	chunk_bytes   int
@@ -66,12 +67,13 @@ fn parse_chunk_thread(arg voidptr) voidptr {
 	w.reserve_for_source(a.chunk_bytes)
 	paths := unsafe { &[]string(a.paths_ptr) }
 	mut starts := unsafe { &[]int(a.starts_ptr) }
+	batch := unsafe { &BatchSources(a.batch) }
 	w.begin_text_cache_batch(a.end - a.start)
 	for i in a.start .. a.end {
 		unsafe {
 			(*starts)[i] = w.a.nodes.len
 		}
-		w.parse_into((*paths)[i])
+		w.parse_into_source((*paths)[i], batch.source_at(i) or { '' })
 	}
 	w.end_text_cache_batch()
 	parser_worker_scope_leave(a.scope)
@@ -96,9 +98,14 @@ fn precollect_const_names_chunk_thread(arg voidptr) voidptr {
 	mut w := unsafe { &Parser(a.worker) }
 	paths := unsafe { &[]string(a.paths_ptr) }
 	mut chunk := unsafe { &ComptimeConstPrepassChunk(a.prepass_chunk) }
+	// This first pass of the batch reads the sources for all of its passes.
+	mut batch := unsafe { &BatchSources(a.batch) }
+	for i in a.start .. a.end {
+		batch.read(i, (*paths)[i])
+	}
 	// Only the collected names survive this pass, including on the caller thread.
 	a.scope = parser_worker_scope_begin(true)
-	chunk.names = w.parallel_comptime_const_names((*paths)[a.start..a.end])
+	chunk.names = w.parallel_comptime_const_names(*paths, a.start, a.end)
 	parser_worker_scope_leave(a.scope)
 	return unsafe { nil }
 }
@@ -216,12 +223,20 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 	for i in bounds[0] .. bounds[1] {
 		master_chunk_bytes += sizes[i]
 	}
+	// The first pass reads every source once; the later passes and the sizeof
+	// declaration scans of sibling files take them from here.
+	mut batch := new_batch_sources(paths)
+	p.batch_sources = batch
+	for mut worker in parser_workers {
+		worker.batch_sources = batch
+	}
 	mut args := []ParseChunkArgs{cap: n_chunks}
 	args << ParseChunkArgs{
 		worker:        voidptr(p)
 		paths_ptr:     unsafe { voidptr(&paths) }
 		starts_ptr:    unsafe { voidptr(&starts) }
 		prepass_chunk: voidptr(prepass_chunks[0])
+		batch:         voidptr(batch)
 		start:         bounds[0]
 		end:           bounds[1]
 		chunk_bytes:   int(master_chunk_bytes)
@@ -233,6 +248,7 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 			paths_ptr:     unsafe { voidptr(&paths) }
 			starts_ptr:    unsafe { voidptr(&starts) }
 			prepass_chunk: voidptr(prepass_chunks[ci + 1])
+			batch:         voidptr(batch)
 			start:         bounds[ci + 1]
 			end:           bounds[ci + 2]
 			chunk_bytes:   worker_chunk_bytes[ci]
@@ -370,6 +386,16 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 		}
 	}
 	p.timing_profile('  [ttime]   pp merge         ${f64(ppsw3.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	// The merge rebound every text of a scoped worker to the master AST, and the
+	// worker's own source buffers died with its arena: nothing refers to those
+	// sources any more. The master keeps its own chunk's sources, and so does a
+	// worker without a scope, whose buffers moved to the master AST.
+	p.batch_sources = unsafe { nil }
+	for ci in 1 .. n_chunks {
+		if args[ci].scope != unsafe { nil } {
+			batch.release(bounds[ci], bounds[ci + 1])
+		}
+	}
 	p.next_file_id = next_chunk_file_id
 	p.timing_profile('  [ttime]   pp dispatch      ${f64(pdsw.elapsed().microseconds()) / 1000.0:7.2f} ms (files: ${paths.len})')
 	return starts, any_started
@@ -439,12 +465,13 @@ fn (mut p Parser) remap_worker_file_ids(first_file_id int, delta int) {
 }
 
 @[direct_array_access]
-fn (mut p Parser) parallel_comptime_const_names(paths []string) map[string]bool {
+fn (mut p Parser) parallel_comptime_const_names(paths []string, start int, end int) map[string]bool {
 	// This superset is only for prepass guard proofs. Full parser workers receive
 	// ordered prefixes, so disabled and later declarations cannot enter their scope.
 	mut names := map[string]bool{}
-	for path in paths {
-		src := read_source_file_raw(path) or { continue }
+	for i in start .. end {
+		path := paths[i]
+		src := p.batch_source(i, path) or { continue }
 		mut files := token.FileSet.new()
 		file := files.add_file(path, src.len)
 		mut s := scanner.new_scanner(p.prefs, .normal)
@@ -498,13 +525,25 @@ fn scan_parallel_const_name_token(mut s scanner.Scanner) token.Token {
 	return .eof
 }
 
+// batch_source returns the source of the file at `idx` of the parse batch,
+// `path`: the one the batch read, or else the file read here.
+fn (p &Parser) batch_source(idx int, path string) !string {
+	if !isnil(p.batch_sources) {
+		if source := p.batch_sources.source_at(idx) {
+			return source
+		}
+	}
+	return read_source_file_raw(path)
+}
+
 @[direct_array_access]
 fn (mut p Parser) precollect_parallel_comptime_consts(paths []string, start int, end int, mut decls []ComptimeConstPrepassDecl) {
 	mut values := p.comptime_const_values.clone()
-	for path in paths[start..end] {
+	for i in start .. end {
+		path := paths[i]
 		// The full parse records the structured I/O diagnostic. The prepass only
 		// supplies ordered const snapshots and must not consume a failed read.
-		src := read_source_file_raw(path) or { continue }
+		src := p.batch_source(i, path) or { continue }
 		if src.len == 0 {
 			continue
 		}
