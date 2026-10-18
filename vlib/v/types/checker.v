@@ -1159,6 +1159,22 @@ pub mut:
 	suppress_dump_output          bool
 	diagnostic_files              map[string]bool
 	skips_library_bodies          bool // see skip_unreachable_library_bodies
+	// The short names of the globals, the sum types and the type aliases, and how
+	// many entries the tables had when they were taken (see prepare_check_name_filters), so that a
+	// selector or callee can be rejected without hashing its qualified spellings.
+	// const_suffix_key_count is the size of const_types that const_suffixes covers.
+	global_short_names         map[string]bool
+	global_short_names_count   int = -1
+	sum_type_short_names       map[string]bool
+	sum_type_short_names_count int = -1
+	alias_short_names          map[string]bool
+	alias_short_names_count    int = -1
+	const_suffix_key_count     int = -1
+	// The last call whose callee generic_compile_error_instantiation found to be
+	// no generic function: its children start, callee name and module.
+	nongeneric_call_start  int = -1
+	nongeneric_call_name   string
+	nongeneric_call_module string
 	// Set by markused only after convergence for its returned reachability set.
 	// Adding roots requires the ordinary late-body convergence check again.
 	library_body_convergence_complete bool
@@ -1602,6 +1618,13 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		const_modules:                         tc.const_modules
 		const_files:                           tc.const_files
 		const_suffixes:                        tc.const_suffixes
+		const_suffix_key_count:                tc.const_suffix_key_count
+		global_short_names:                    tc.global_short_names
+		global_short_names_count:              tc.global_short_names_count
+		sum_type_short_names:                  tc.sum_type_short_names
+		sum_type_short_names_count:            tc.sum_type_short_names_count
+		alias_short_names:                     tc.alias_short_names
+		alias_short_names_count:               tc.alias_short_names_count
 		declaration_visibility:                tc.declaration_visibility
 		imports:                               tc.imports
 		file_imports:                          tc.file_imports
@@ -5491,6 +5514,65 @@ fn (mut tc TypeChecker) build_const_suffixes() {
 			i++
 		}
 	}
+	tc.const_suffix_key_count = tc.const_types.len
+}
+
+// prepare_check_name_filters takes the short names of the globals, the sum
+// types and the type aliases before the semantic check, on the checker whose forks check the bodies.
+// A filter is only consulted while its table still has the counted entries.
+fn (mut tc TypeChecker) prepare_check_name_filters() {
+	mut globals := map[string]bool{}
+	for name, _ in tc.global_names {
+		globals[short_name_view(name)] = true
+	}
+	tc.global_short_names = globals.move()
+	tc.global_short_names_count = tc.global_names.len
+	mut sums := map[string]bool{}
+	for name, _ in tc.sum_types.ids {
+		sums[short_name_view(generic_base_view(name))] = true
+	}
+	tc.sum_type_short_names = sums.move()
+	tc.sum_type_short_names_count = tc.sum_types.ids.len
+	mut aliases := map[string]bool{}
+	for name, _ in tc.type_aliases.ids {
+		aliases[short_name_view(name)] = true
+	}
+	tc.alias_short_names = aliases.move()
+	tc.alias_short_names_count = tc.type_aliases.ids.len
+}
+
+// generic_base_view is strip_generic_args_name without a copy of the base.
+@[inline]
+fn generic_base_view(name string) string {
+	bracket := name.index_u8(`[`)
+	if bracket <= 0 {
+		return name
+	}
+	return unsafe { name.substr_unsafe(0, bracket) }
+}
+
+// selector_names_no_const reports that `node.value` is no const's last name
+// segment and no bare const key, so no selector with this field names a const.
+@[inline]
+fn (tc &TypeChecker) selector_names_no_const(field string) bool {
+	return tc.const_suffix_key_count == tc.const_types.len && field !in tc.const_suffixes
+		&& field !in tc.const_types
+}
+
+// selector_names_no_global reports that no global has the last name segment of
+// `field` as its own, so no selector with this field names a global.
+@[inline]
+fn (tc &TypeChecker) selector_names_no_global(field string) bool {
+	return tc.global_short_names_count == tc.global_names.len
+		&& short_name_view(field) !in tc.global_short_names
+}
+
+// name_names_no_sum_type reports that no sum type has the last segment of the
+// generic base of `name`, so neither `name` nor its qualified spelling is one.
+@[inline]
+fn (tc &TypeChecker) name_names_no_sum_type(name string) bool {
+	return tc.sum_type_short_names_count == tc.sum_types.ids.len
+		&& short_name_view(generic_base_view(name)) !in tc.sum_type_short_names
 }
 
 // const_key_for_suffix returns the const key matching `.${name}` as a suffix,
@@ -5835,6 +5917,9 @@ fn (tc &TypeChecker) const_type_for_selector(node flat.Node) ?Type {
 	if base_node.kind != .ident {
 		return none
 	}
+	if tc.selector_names_no_const(node.value) {
+		return none
+	}
 	resolved := tc.resolve_import_alias(base_node.value) or { base_node.value }
 	qname := '${resolved}.${node.value}'
 	if typ := tc.const_types[qname] {
@@ -5858,6 +5943,9 @@ fn (tc &TypeChecker) global_type_for_selector(node flat.Node) ?Type {
 	}
 	base_node := tc.a.child_node(&node, 0)
 	if base_node.kind != .ident {
+		return none
+	}
+	if tc.selector_names_no_global(node.value) {
 		return none
 	}
 	resolved := tc.resolve_import_alias(base_node.value) or {

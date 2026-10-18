@@ -6135,6 +6135,12 @@ fn (mut tc TypeChecker) record_empty_array_generic_call_errors(node flat.Node, i
 	return found
 }
 
+fn (mut tc TypeChecker) remember_nongeneric_call(call flat.Node, info CallInfo) {
+	tc.nongeneric_call_start = call.children_start
+	tc.nongeneric_call_name = info.name
+	tc.nongeneric_call_module = tc.cur_module
+}
+
 struct GenericCompileErrorInstantiation {
 	decl_id        flat.NodeId
 	generic_params []string
@@ -6214,8 +6220,20 @@ fn (mut tc TypeChecker) generic_compile_error_instantiation(call flat.Node, info
 	if call.children_count == 0 {
 		return none
 	}
+	// check_call asks three times for each call; a callee that is no generic
+	// function stays one for the same call, name and module.
+	if tc.nongeneric_call_start == call.children_start
+		&& tc.nongeneric_call_name.str == info.name.str
+		&& tc.nongeneric_call_name.len == info.name.len
+		&& tc.nongeneric_call_module.str == tc.cur_module.str
+		&& tc.nongeneric_call_module.len == tc.cur_module.len {
+		return none
+	}
 	decl_module := tc.fn_type_modules[info.name] or { tc.cur_module }
-	decl := tc.visible_mutation_fn_decl(info.name, decl_module) or { return none }
+	decl := tc.visible_mutation_fn_decl(info.name, decl_module) or {
+		tc.remember_nongeneric_call(call, info)
+		return none
+	}
 	decl_id := flat.NodeId(decl.idx)
 	fn_node := tc.a.node(decl_id)
 	generic_params := tc.fn_generic_params[info.name] or {
@@ -6224,6 +6242,7 @@ fn (mut tc TypeChecker) generic_compile_error_instantiation(call flat.Node, info
 		}
 	}
 	if generic_params.len == 0 {
+		tc.remember_nongeneric_call(call, info)
 		return none
 	}
 	saved_generic_decl_file := tc.generic_decl_file
@@ -7538,15 +7557,24 @@ fn (tc &TypeChecker) sum_constructor_call_name(node flat.Node) ?u32 {
 	match callee.kind {
 		.ident {
 			if resolved := tc.resolve_selective_import_type_symbol(callee.value) {
-				if sum_name_source_id := tc.known_sum_constructor_name(flat.source_type_id(resolved)) {
-					return sum_name_source_id
+				if !tc.name_names_no_sum_type(resolved) {
+					if sum_name_source_id := tc.known_sum_constructor_name(flat.source_type_id(resolved)) {
+						return sum_name_source_id
+					}
 				}
+			}
+			if tc.name_names_no_sum_type(callee.value) {
+				return none
 			}
 			return tc.known_sum_constructor_name(flat.source_type_id(callee.value))
 		}
 		.selector {
 			base := tc.a.child_node(callee, 0)
 			if base.kind == .ident {
+				// `mod.Name` has the last segment of `Name`.
+				if tc.name_names_no_sum_type(callee.value) {
+					return none
+				}
 				mod_name := tc.resolve_import_alias(base.value) or { base.value }
 				return tc.known_sum_constructor_name(flat.source_type_id('${mod_name}.${callee.value}'))
 			}
@@ -11379,6 +11407,11 @@ fn (tc &TypeChecker) alias_return_type_from_text(fn_name string) ?Type {
 	if clean.len == 0 {
 		return none
 	}
+	// Both aliases below, `clean` and `mod.clean`, end in the last segment of clean.
+	if tc.alias_short_names_count == tc.type_aliases.ids.len
+		&& short_name_view(clean) !in tc.alias_short_names {
+		return none
+	}
 	if _ := tc.type_aliases.type_id(clean) {
 		return tc.parse_canonical_type(flat.source_type_id(clean))
 	}
@@ -12124,7 +12157,22 @@ fn (mut tc TypeChecker) register_visible_mutation_fn_decl_keys(idx int, module_n
 }
 
 fn (tc &TypeChecker) visible_mutation_fn_decl(name string, fallback_mod string) ?VisibleMutationFnDecl {
-	cache_key := '${fallback_mod}\x01${visible_mutation_fn_lookup_name(name)}'
+	lookup_name := visible_mutation_fn_lookup_name(name)
+	// The key is only probed and inserted below, and an insert copies it, so a
+	// short key is spelled in a stack buffer instead of a new string.
+	mut key_buf := [192]u8{}
+	key_len := fallback_mod.len + 1 + lookup_name.len
+	cache_key := if key_len <= key_buf.len {
+		unsafe {
+			key_start := &u8(&key_buf[0])
+			vmemcpy(key_start, fallback_mod.str, fallback_mod.len)
+			key_start[fallback_mod.len] = 0x01
+			vmemcpy(key_start + fallback_mod.len + 1, lookup_name.str, lookup_name.len)
+			tos(key_start, key_len)
+		}
+	} else {
+		'${fallback_mod}\x01${lookup_name}'
+	}
 	if !isnil(tc.visible_mutation_cache) {
 		mut cache := tc.visible_mutation_cache
 		for !isnil(cache) {
