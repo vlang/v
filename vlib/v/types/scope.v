@@ -284,9 +284,68 @@ fn scope_binding_storage_key(scope &Scope, lifetime int, index int, generation i
 	$if !ownership ? {
 		// The name alone would collapse every same-named binding in a
 		// function to one storage entry; keep the exact binding identity.
-		return '${voidptr(scope)}:${lifetime}:${index}'
+		// Spelled as `${voidptr(scope)}:${lifetime}:${index}`, without the
+		// interpolation machinery: every scope binding gets one.
+		return scope_binding_storage_key_text(u64(voidptr(scope)), lifetime, index)
 	}
 	return '${voidptr(scope)}:${lifetime}:${index}:${generation}'
+}
+
+// scope_binding_storage_key_text writes the lowercase hex digits of `ptr` (no
+// leading zeros, `0` for zero), then `:lifetime:index` in decimal.
+@[direct_array_access]
+fn scope_binding_storage_key_text(ptr u64, lifetime int, index int) string {
+	if lifetime < 0 || index < 0 {
+		return '${voidptr(ptr)}:${lifetime}:${index}'
+	}
+	mut buf := [64]u8{}
+	mut n := 0
+	mut shift := 60
+	for shift > 0 && (ptr >> u64(shift)) & 0xf == 0 {
+		shift -= 4
+	}
+	for shift >= 0 {
+		digit := u8((ptr >> u64(shift)) & 0xf)
+		buf[n] = if digit < 10 { `0` + digit } else { `a` + digit - 10 }
+		n++
+		shift -= 4
+	}
+	buf[n] = `:`
+	n++
+	n += write_storage_key_decimal(unsafe { &buf[n] }, lifetime)
+	buf[n] = `:`
+	n++
+	n += write_storage_key_decimal(unsafe { &buf[n] }, index)
+	// The key owns a standalone allocation, like an interpolated string.
+	mut out := unsafe { malloc_noscan(n + 1) }
+	unsafe {
+		vmemcpy(out, &buf[0], n)
+		out[n] = 0
+	}
+	return unsafe { tos(out, n) }
+}
+
+// write_storage_key_decimal writes the decimal digits of `value` (at least 0)
+// to `dst`, which has room for 20 bytes, and returns how many it wrote.
+@[direct_array_access]
+fn write_storage_key_decimal(dst &u8, value int) int {
+	mut digits := [20]u8{}
+	mut count := 0
+	mut rest := value
+	for {
+		digits[count] = u8(`0` + rest % 10)
+		count++
+		rest /= 10
+		if rest == 0 {
+			break
+		}
+	}
+	for i in 0 .. count {
+		unsafe {
+			dst[i] = digits[count - 1 - i]
+		}
+	}
+	return count
 }
 
 // belongs_to_scope reports whether this binding owner was declared directly in `scope`.
