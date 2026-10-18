@@ -15404,9 +15404,11 @@ fn (mut t Transformer) try_lower_interface_runtime_method_call(node flat.Node) ?
 
 fn (mut t Transformer) build_interface_type_idx_chain(tag flat.NodeId, iface_name_id u32, impls_ids []u32, idx int) flat.NodeId {
 	if idx >= impls_ids.len {
-		is_container := t.make_infix(.lt, tag, t.make_int_literal(0))
-		container_idx := t.make_infix(.amp, tag, t.make_int_literal(0x7fffffff))
-		then_block := t.make_block([t.make_expr_stmt(container_idx)])
+		// A tag without a dispatch ID marker bit is a late container's type index
+		// (see interface_container_cast_type_id); a zero tag stays zero.
+		marker := t.make_paren(t.make_infix(.amp, tag, t.make_int_literal(types.interface_dispatch_id_marker)))
+		is_container := t.make_infix(.eq, marker, t.make_int_literal(0))
+		then_block := t.make_block([t.make_expr_stmt(tag)])
 		else_block := t.make_block([t.make_expr_stmt(t.make_int_literal(0))])
 		start := t.a.children.len
 		t.a.children << is_container

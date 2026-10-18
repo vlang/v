@@ -12368,17 +12368,25 @@ fn assign_stable_interface_type_ids(mut ids map[u32]int, mut used map[int]bool, 
 		if name_id in ids {
 			continue
 		}
-		mut id := stable_interface_type_id_hash(flat.source_type_name(name_id))
+		mut id := interface_dispatch_id(stable_interface_type_id_hash(flat.source_type_name(name_id)))
 		for used[id] {
-			if id == 0x7fffffff {
-				id = 1
-			} else {
-				id++
-			}
+			id = interface_dispatch_id(if id == 0x7fffffff { 1 } else { id + 1 })
 		}
 		used[id] = true
 		ids[name_id] = id
 	}
+}
+
+// interface_dispatch_id_marker is the byte that runtime type indexes reserve for
+// pointer indirections (see stable_type_index). A value type's index leaves it zero.
+pub const interface_dispatch_id_marker = 0xff << 16
+
+// interface_dispatch_id keeps every interface `_typ` dispatch ID disjoint from
+// value type indexes by setting a bit of interface_dispatch_id_marker. A boxed
+// container that has no dispatch ID stores its type index as the tag instead, so
+// `type_idx()` can still recover it from the 31-bit `_typ` field.
+fn interface_dispatch_id(id int) int {
+	return if id & interface_dispatch_id_marker == 0 { id | (1 << 16) } else { id }
 }
 
 fn compare_interface_impl_spelling_ids(a &u32, b &u32) int {
