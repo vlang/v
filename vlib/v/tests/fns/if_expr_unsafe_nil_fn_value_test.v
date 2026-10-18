@@ -68,3 +68,25 @@ fn test_if_and_match_expr_with_unsafe_nil_in_fn_assignment() {
 	assert pick(0) == unsafe { nil }
 	assert pick(1)(3) == 6
 }
+
+type CallbackChoice = int | string
+
+fn callback_with_branch_local(choice CallbackChoice, off bool) Callback {
+	if choice is int {
+		holder := Holder{
+			cb: if off {
+				unsafe { nil }
+			} else {
+				callback := Callback(double)
+				callback
+			}
+		}
+		return holder.cb
+	}
+	return Callback(double)
+}
+
+fn test_branch_local_function_type_survives_outer_smartcast() {
+	assert callback_with_branch_local(CallbackChoice(1), false)(6) == 12
+	assert callback_with_branch_local(CallbackChoice(1), true) == unsafe { nil }
+}

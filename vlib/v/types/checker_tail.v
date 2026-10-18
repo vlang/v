@@ -887,7 +887,10 @@ fn (tc &TypeChecker) branch_values_are_unsafe_nil_or_typed(id flat.NodeId) bool 
 		if tc.branch_tail_is_nil(tail_id) || tc.branch_values_are_unsafe_nil_or_typed(tail_id) {
 			continue
 		}
-		if fn_param_is_voidptr_type(tc.resolve_type(tail_id)) {
+		// Branch locals are out of scope here; use the type recorded while checking
+		// the tail instead of resolving its identifier in the enclosing scope.
+		tail_type := tc.expr_type(tail_id) or { tc.resolve_type(tail_id) }
+		if type_contains_unknown(tail_type) || fn_param_is_voidptr_type(tail_type) {
 			return false
 		}
 	}
