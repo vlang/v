@@ -15726,7 +15726,7 @@ fn (mut tc TypeChecker) check_for_in_const_conflicts_preflight() {
 			}
 			full_qname := '${if module_name.len > 0 { module_name } else { 'main' }}.${binding.value}'
 			if qname !in tc.const_types && full_qname !in tc.const_types
-				&& binding.value !in tc.const_types {
+				&& !tc.bare_const_belongs_to_module(binding.value, module_name) {
 				continue
 			}
 			saved_file := tc.cur_file
@@ -15738,6 +15738,19 @@ fn (mut tc TypeChecker) check_for_in_const_conflicts_preflight() {
 			tc.cur_module = saved_module
 		}
 	}
+}
+
+// bare_const_belongs_to_module reports whether the unqualified const key `name`
+// (a `main` or `builtin` const) was declared by `module_name`. Another module may
+// reuse that name for its own locals.
+fn (tc &TypeChecker) bare_const_belongs_to_module(name string, module_name string) bool {
+	if name !in tc.const_types {
+		return false
+	}
+	owner := tc.const_modules[name] or { return true }
+	normalized_owner := if owner.len == 0 { 'main' } else { owner }
+	normalized_module := if module_name.len == 0 { 'main' } else { module_name }
+	return normalized_owner == normalized_module
 }
 
 fn (mut tc TypeChecker) check_for_in_binding_name(id flat.NodeId, role string) {

@@ -12203,6 +12203,12 @@ fn (tc &TypeChecker) visible_mutation_fn_param(decl VisibleMutationFnDecl, param
 	return none
 }
 
+// visible_mutation_fn_param_is_mut reports whether parameter `param_idx` of `decl` is `mut`.
+fn (tc &TypeChecker) visible_mutation_fn_param_is_mut(decl VisibleMutationFnDecl, param_idx int) bool {
+	param := tc.visible_mutation_fn_param(decl, param_idx) or { return false }
+	return param.is_mut
+}
+
 fn storage_param_sources_clone(source map[string][]int) map[string][]int {
 	mut cloned := map[string][]int{}
 	for name, params in source {
@@ -12803,7 +12809,8 @@ fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name s
 					storage_param_sources_merge(mut next_aliases, exit.aliases)
 				} else if !exit.is_continue && !exit.is_goto
 					&& (exit.label.len == 0 || tc.loop_has_label(id, exit.label)) {
-					storage_param_sources_merge(mut break_aliases, exit.aliases)
+					// `break_aliases` starts empty; merge would keep none of its names.
+					storage_param_sources_join(mut break_aliases, exit.aliases)
 				} else if exit.label.len > 0 && !tc.loop_has_label(id, exit.label) {
 					loop_exits << exit
 				}
@@ -12892,10 +12899,13 @@ fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name s
 				for i in 1 .. node.children_count {
 					arg_id := tc.a.child(&node, i)
 					arg := tc.a.nodes[int(arg_id)]
-					if !arg.is_mut {
+					nested_target_idx := i - 1 + param_offset
+					// Transform lowers `mut x` arguments in place, dropping the marker, and a
+					// later storage query can read that lowered body. The callee's `mut`
+					// parameter is what lets it write through the argument.
+					if !arg.is_mut && !tc.visible_mutation_fn_param_is_mut(decl, nested_target_idx) {
 						continue
 					}
-					nested_target_idx := i - 1 + param_offset
 					if tc.storage_lvalue_is_rooted_at_param_alias(arg_id, target_name, aliases, target_param_idx) {
 						if nested_target_idx !in nested_target_idxs {
 							nested_target_idxs << nested_target_idx
@@ -13015,15 +13025,60 @@ fn (tc &TypeChecker) param_storage_writes_for_decl_unscoped(decl VisibleMutation
 	mut exited_aliases := []map[string][]int{}
 	mut exited_defer_counts := []int{}
 	mut deferred_stmts := []flat.NodeId{}
+	// A block resolves jumps to its own labels; the function body is not a block, so a
+	// forward `goto` to a body-level label is joined here. Statements it skips do not run.
+	mut body_labels := map[string]bool{}
+	for i in body_start .. fn_node.children_count {
+		child := tc.a.child_node(&fn_node, i)
+		if child.kind == .label_stmt && child.value.len > 0 {
+			body_labels[child.value] = true
+		}
+	}
+	mut label_aliases := map[string]map[string][]int{}
+	mut label_writes := map[string]map[string][]int{}
+	mut continues := true
 	for i in body_start .. fn_node.children_count {
 		child_id := tc.a.child(&fn_node, i)
-		if tc.a.nodes[int(child_id)].kind == .defer_stmt {
-			deferred_stmts << child_id
+		child := tc.a.nodes[int(child_id)]
+		if child.kind == .defer_stmt {
+			if continues {
+				deferred_stmts << child_id
+			}
 			continue
 		}
+		if child.kind == .label_stmt {
+			if incoming := label_aliases[child.value] {
+				if continues {
+					storage_param_sources_join(mut aliases, incoming)
+					storage_param_writes_merge(mut writes, label_writes[child.value])
+				} else {
+					aliases = storage_param_sources_clone(incoming)
+					writes = storage_param_sources_clone(label_writes[child.value])
+				}
+				continues = true
+			}
+		}
+		if !continues {
+			continue
+		}
+		exit_start := loop_exits.len
 		tc.collect_param_storage_sources(child_id, target_param.value, target_param.typ, target_param_idx, decl.mod, mut aliases, mut visiting, mut writes, mut exited_writes, mut loop_exits, mut exited_aliases, deferred_stmts.len, mut exited_defer_counts)
-		if tc.a.nodes[int(child_id)].kind == .return_stmt {
+		for exit in loop_exits[exit_start..] {
+			if !exit.is_goto || exit.label !in body_labels {
+				continue
+			}
+			mut joined_aliases := storage_param_sources_clone(label_aliases[exit.label])
+			storage_param_sources_join(mut joined_aliases, exit.aliases)
+			label_aliases[exit.label] = joined_aliases.move()
+			mut joined_writes := storage_param_sources_clone(label_writes[exit.label])
+			storage_param_writes_merge(mut joined_writes, exit.writes)
+			label_writes[exit.label] = joined_writes.move()
+		}
+		if child.kind == .return_stmt {
 			break
+		}
+		if tc.storage_node_ends_control_flow(child_id) {
+			continues = false
 		}
 	}
 	storage_param_writes_merge(mut exited_writes, writes)

@@ -22996,6 +22996,55 @@ fn (mut t Transformer) call_argument_borrows_fixed_array(id flat.NodeId, node fl
 	return param_type.starts_with('&') || param_type in ['voidptr', 'byteptr', 'charptr']
 }
 
+// mut_pointer_slot_arg_keeps_binding reports whether call operand `child_index` passes a plain
+// pointer binding to a `mut x &T` parameter. That passes the binding's own address, which a
+// later operand cannot change, and the callee may retarget the binding. Snapshotting its pointer
+// value would hand the callee a temporary slot instead.
+fn (mut t Transformer) mut_pointer_slot_arg_keeps_binding(id flat.NodeId, node flat.Node, child_index int) bool {
+	arg_id := t.a.child(&node, child_index)
+	binding_id := t.unwrap_parens(arg_id)
+	arg := t.a.nodes[int(binding_id)]
+	if arg.kind != .ident || (!t.a.nodes[int(arg_id)].is_mut && !arg.is_mut)
+		|| t.pointer_value_rvalues[arg.value] || t.mut_param_values[arg.value]
+		|| !flat.source_type_shape(t.lvalue_type(binding_id)).has(.pointer) {
+		return false
+	}
+	call_name := t.call_name_for_node(id, node)
+	params := t.call_param_types_for_node(call_name, node)
+	offset := if t.call_is_selector_form(node) && t.concrete_generic_call_is_method(id) {
+		1
+	} else {
+		t.call_param_offset_for_node(call_name, node, params)
+	}
+	return t.call_decl_param_is_mut_pointer_slot(call_name, child_index - 1 + offset)
+}
+
+// call_decl_param_is_mut_pointer_slot reports whether parameter `param_index` of the
+// declaration named `call_name` is declared `mut x &T`.
+fn (mut t Transformer) call_decl_param_is_mut_pointer_slot(call_name string, param_index int) bool {
+	if call_name == '' || param_index < 0 {
+		return false
+	}
+	t.ensure_call_param_types_decl_index()
+	decl := t.call_param_types_decl_index[call_name] or { return false }
+	if decl.idx < 0 || decl.idx >= t.a.nodes.len {
+		return false
+	}
+	decl_node := t.a.nodes[decl.idx]
+	mut index := 0
+	for i in 0 .. decl_node.children_count {
+		param := t.a.child_node(&decl_node, i)
+		if param.kind != .param {
+			continue
+		}
+		if index == param_index {
+			return param.is_mut && param.op == .amp && flat.source_type_shape(param.typ).has(.pointer)
+		}
+		index++
+	}
+	return false
+}
+
 // A mutable pointer parameter borrows the loop entry's slot, while a mutable
 // struct parameter borrows its pointee. Preserve the slot only for the former.
 fn (mut t Transformer) snapshot_mut_pointer_slot_arg(id flat.NodeId, node flat.Node, child_index int) ?flat.NodeId {
@@ -23103,14 +23152,13 @@ fn (mut t Transformer) transform_call_expr_inner(id flat.NodeId, node flat.Node)
 		// `(match node { ... make_cb(node)! ... })()` — must materialize operand 0 too;
 		// otherwise transform_call_args lowers child 0 with plain transform_expr and leaves the
 		// propagating branch tail in a value-less statement context, emitting an empty callee.
-		callee_is_value_branch := !is_method && t.is_value_match_or_if_operand(recv_fn_id)
+		mut callee_is_value_branch := !is_method && t.is_value_match_or_if_operand(recv_fn_id)
 		// Position of the last operand that hoists a value branch (0 = method receiver or a
 		// branch callee, 1.. = arguments). An argument counts even when the branch is nested
 		// inside a compound expression (`1 + (match ...)`, `i64(match ...)`): lowering it still
 		// materializes the inner branch into pending_stmts, so an earlier operand must be
 		// stabilized to keep source order.
-		mut last_branch := if (is_method && t.is_value_match_or_if_operand(recv_id))
-			|| callee_is_value_branch {
+		mut last_branch := if is_method && t.is_value_match_or_if_operand(recv_id) {
 			0
 		} else {
 			-1
@@ -23119,9 +23167,26 @@ fn (mut t Transformer) transform_call_expr_inner(id flat.NodeId, node flat.Node)
 			// Array callback expressions bind `it` inside their lowering. Materializing
 			// an `if`/`match` callback here would hoist it outside the generated loop,
 			// before that binding exists.
-			if !(array_dsl_callback && i == 1)
-				&& t.operand_hoists_value_branch(t.a.child(&node, i)) {
+			if array_dsl_callback && i == 1 {
+				continue
+			}
+			arg_id := t.a.child(&node, i)
+			// V evaluates call operands left to right; C leaves their order unspecified
+			// (x86 TinyCC evaluates them right to left). An operand that writes storage
+			// is ordered like a hoisted branch: earlier operands are read first.
+			if t.operand_hoists_value_branch(arg_id) || t.operand_writes_storage(arg_id) {
 				last_branch = i
+			}
+		}
+		if callee_is_value_branch {
+			if last_branch < 0 && t.immediate_bound_method_value_allocates_runtime_closure(recv_fn_id) {
+				// `(if c { a.read } else { b.read })()`: every branch allocates a fresh
+				// runtime closure. transform_call_args types the value temp as the
+				// callback (not the callee's return type) and releases the closure
+				// after the call, which a value temp materialized here would hide.
+				callee_is_value_branch = false
+			} else if last_branch < 0 {
+				last_branch = 0
 			}
 		}
 		if last_branch >= 0 {
@@ -23224,6 +23289,8 @@ fn (mut t Transformer) transform_call_expr_inner(id flat.NodeId, node flat.Node)
 					// Fixed arrays decaying to pointers also borrow their original storage.
 					if slot := t.snapshot_mut_pointer_slot_arg(id, node, i) {
 						slot
+					} else if t.mut_pointer_slot_arg_keeps_binding(id, node, i) {
+						arg_id
 					} else if t.a.nodes[int(arg_id)].is_mut
 						|| t.call_argument_borrows_fixed_array(id, node, i) {
 						if stabilized := t.stabilize_original_lvalue_receiver(arg_id) {
@@ -26645,6 +26712,39 @@ fn (t &Transformer) operand_hoists_value_branch(id flat.NodeId) bool {
 	}
 	for i in 0 .. node.children_count {
 		if t.operand_hoists_value_branch(t.a.child(&node, i)) {
+			return true
+		}
+	}
+	return false
+}
+
+// operand_writes_storage reports whether evaluating call operand `id` can write storage that an
+// earlier operand reads: it passes a `mut` argument to a call, or it contains an assignment.
+// Like operand_hoists_value_branch, recursion stops at nested function bodies, and
+// over-detection only spills an extra preceding operand to a temp.
+fn (t &Transformer) operand_writes_storage(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	match node.kind {
+		.fn_literal, .lambda_expr, .spawn_expr {
+			return false
+		}
+		.assign, .selector_assign, .index_assign {
+			return true
+		}
+		.call {
+			for i in 1 .. node.children_count {
+				if t.a.child_node(&node, i).is_mut {
+					return true
+				}
+			}
+		}
+		else {}
+	}
+	for i in 0 .. node.children_count {
+		if t.operand_writes_storage(t.a.child(&node, i)) {
 			return true
 		}
 	}
