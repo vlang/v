@@ -1717,6 +1717,11 @@ fn (mut t Transformer) detect_for_in_global_fixed_array_type(id flat.NodeId) ?u3
 	if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
 		candidates << '${t.cur_module}.${node.value}'
 	}
+	if !isnil(t.tc) {
+		if key := t.tc.shadowed_builtin_const_key_in_module(node.value, t.cur_module) {
+			candidates << key
+		}
+	}
 	candidates << node.value
 	for candidate in candidates {
 		if typ_source_id := t.globals.type_id(candidate) {

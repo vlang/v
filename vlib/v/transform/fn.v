@@ -5463,6 +5463,9 @@ fn (t &Transformer) const_expr_for_name_in_context(name string, module_name stri
 	if isnil(t.tc) || name == '' {
 		return none
 	}
+	if key := t.tc.shadowed_builtin_const_key_in_module(name, module_name) {
+		return t.tc.const_exprs[key] or { return none }
+	}
 	if expr_id := t.tc.const_exprs[name] {
 		return expr_id
 	}

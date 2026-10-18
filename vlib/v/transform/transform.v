@@ -30340,6 +30340,9 @@ fn (t &Transformer) const_type_key_in_context(name string, module_name string, f
 				return qname
 			}
 		}
+		if key := t.tc.shadowed_builtin_const_key_in_module(name, module_name) {
+			return key
+		}
 		if name in t.tc.const_types {
 			return name
 		}

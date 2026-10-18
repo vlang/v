@@ -4785,13 +4785,13 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 				for i in 0 .. node.children_count {
 					f := a.child_node(node_ref, i)
 					if f.kind == .const_field && f.children_count > 0 {
-						qname := tc.qualify_name(f.value)
+						qname := tc.const_decl_key(f.value)
 						tc.const_types[qname] = unknown_type('pending const `${qname}`')
 						tc.const_exprs[qname] = a.child(f, 0)
 						tc.const_modules[qname] = tc.cur_module
 						tc.const_files[qname] = tc.cur_file
 					} else if f.kind == .const_field && f.typ != 0 {
-						qname := tc.qualify_name(f.value)
+						qname := tc.const_decl_key(f.value)
 						tc.const_types[qname] = tc.parse_type(f.typ)
 						tc.const_modules[qname] = tc.cur_module
 						tc.const_files[qname] = tc.cur_file
@@ -5708,7 +5708,69 @@ fn (tc &TypeChecker) const_type_for_name(name string) ?Type {
 	return tc.const_type_from_initializer(key, typ)
 }
 
+// const_decl_key returns the key of the const `name` declared in the current module.
+// The consts of `main` and `builtin` share bare keys, so that main code can use the
+// builtin consts unqualified. When both modules declare the same name, the main
+// const keeps the bare key and the builtin const moves to `builtin.name`; builtin
+// code finds it through shadowed_builtin_const_key.
+fn (mut tc TypeChecker) const_decl_key(name string) string {
+	qname := tc.qualify_name(name)
+	if qname != name || name.contains('.') {
+		return qname
+	}
+	owner := tc.const_modules[name] or { return name }
+	owner_is_builtin := owner == 'builtin'
+	if tc.cur_module == 'builtin' {
+		return if owner_is_builtin { name } else { builtin_const_key(name) }
+	}
+	if owner_is_builtin {
+		builtin_key := builtin_const_key(name)
+		if typ := tc.const_types[name] {
+			tc.const_types[builtin_key] = typ
+		}
+		if expr_id := tc.const_exprs[name] {
+			tc.const_exprs[builtin_key] = expr_id
+			tc.const_exprs.delete(name)
+		}
+		tc.const_modules[builtin_key] = owner
+		if file := tc.const_files[name] {
+			tc.const_files[builtin_key] = file
+		}
+	}
+	return name
+}
+
+fn builtin_const_key(name string) string {
+	return 'builtin.' + name
+}
+
+// shadowed_builtin_const_key returns the key of the builtin const `name`, when the
+// current module is builtin and a main const of the same name holds the bare key.
+pub fn (tc &TypeChecker) shadowed_builtin_const_key(name string) ?string {
+	return tc.shadowed_builtin_const_key_in_module(name, tc.cur_module)
+}
+
+// shadowed_builtin_const_key_in_module is shadowed_builtin_const_key for code in
+// `module_name`.
+pub fn (tc &TypeChecker) shadowed_builtin_const_key_in_module(name string, module_name string) ?string {
+	if module_name != 'builtin' || name.len == 0 {
+		return none
+	}
+	owner := tc.const_modules[name] or { return none }
+	if owner == 'builtin' {
+		return none
+	}
+	key := builtin_const_key(name)
+	if key in tc.const_types {
+		return key
+	}
+	return none
+}
+
 fn (tc &TypeChecker) const_key_for_name(name string) ?string {
+	if key := tc.shadowed_builtin_const_key(name) {
+		return key
+	}
 	qname := tc.qualify_name(name)
 	if qname in tc.const_types {
 		return qname
