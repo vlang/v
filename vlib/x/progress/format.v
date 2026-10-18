@@ -65,12 +65,12 @@ pub fn RateUnit.bytes_iec() RateUnit {
 // TimeFormat selects how a duration is displayed.
 pub enum TimeFormat {
 	mmss    // mm:ss
-	mmssf   // mm:ss.xx
 	hhmm    // hh:mm
 	hhmmss  // hh:mm:ss
-	hhmmssf // hh:mm:ss.xx
 	s       // xs
 	sf      // x.xxs
+	mmssf   // mm:ss.xx
+	hhmmssf // hh:mm:ss.xx
 }
 
 // frac returns the two-digit hundredths of a second ("00".."99").
