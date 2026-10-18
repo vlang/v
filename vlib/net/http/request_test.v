@@ -130,9 +130,11 @@ fn test_parse_form() {
 		'a': 'b'
 		'c': ' d '
 	}
-	assert http.parse_form('{json}') == {
-		'json': '{json}'
-	}
+	// `parse_form` is the urlencoded path only. A body that looked like a JSON
+	// object used to be glob-matched and stored whole under a literal `json` key,
+	// so a caller passing JSON got one unusable field instead of the keys it
+	// needed; decoding a JSON body is now the caller's job, by content type.
+	assert http.parse_form('{json}') == {}
 	assert http.parse_form('{
     "_id": "76c",
     "friends": [
@@ -142,18 +144,7 @@ fn test_parse_form() {
       }
     ],
     "greeting": "Hello."
-  }') == {
-		'json': '{
-    "_id": "76c",
-    "friends": [
-      {
-        "id": 0,
-        "name": "Mason Luna"
-      }
-    ],
-    "greeting": "Hello."
-  }'
-	}
+  }') == {}
 }
 
 fn test_parse_multipart_form() {
