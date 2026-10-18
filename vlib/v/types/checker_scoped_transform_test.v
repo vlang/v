@@ -8,20 +8,21 @@ fn test_power_assignment_reads_index_lhs() {
 
 fn test_stable_type_index_keeps_custom_types_above_builtin_range() {
 	assert stable_interface_type_id_hash('BwoZ') & ~(0xff << 16) == 19
-	type_id := stable_type_index('BwoZ')
+	type_id := stable_type_index(flat.source_type_id('BwoZ'))
 	assert type_id > 65535
 	assert type_id != 19
 	assert type_id & (0xff << 16) == 0
 }
 
 fn test_stable_type_indexes_resolve_custom_type_collisions() {
-	assert stable_type_index('ULz') == stable_type_index('AAbA')
-	assert stable_type_index('main.Uc') == stable_type_index('main.ACRB')
-	indexes := stable_type_indexes(['ULz', 'AAbA', 'main.Uc', 'main.ACRB'])
-	reversed := stable_type_indexes(['main.ACRB', 'main.Uc', 'AAbA', 'ULz'])
+	assert stable_type_index(flat.source_type_id('ULz')) == stable_type_index(flat.source_type_id('AAbA'))
+	assert stable_type_index(flat.source_type_id('main.Uc')) == stable_type_index(flat.source_type_id('main.ACRB'))
+	indexes := stable_type_indexes(flat.TypeTextList.from_names(['ULz', 'AAbA', 'main.Uc', 'main.ACRB']).ids)
+	reversed := stable_type_indexes(flat.TypeTextList.from_names(['main.ACRB', 'main.Uc', 'AAbA',
+		'ULz']).ids)
 	assert indexes == reversed
-	assert indexes['ULz'] != indexes['AAbA']
-	assert indexes['main.Uc'] != indexes['main.ACRB']
+	assert indexes[flat.source_type_id('ULz')] != indexes[flat.source_type_id('AAbA')]
+	assert indexes[flat.source_type_id('main.Uc')] != indexes[flat.source_type_id('main.ACRB')]
 	for _, type_idx in indexes {
 		assert type_idx > 65535
 		assert type_idx & (0xff << 16) == 0
@@ -29,12 +30,12 @@ fn test_stable_type_indexes_resolve_custom_type_collisions() {
 }
 
 fn test_stable_type_indexes_extend_without_renumbering_existing_types() {
-	assert stable_type_index('Box[Dxw]') == stable_type_index('Box[Kdd]')
-	mut indexes := stable_type_indexes(['Existing'])
-	existing_idx := indexes['Existing']
-	extend_stable_type_indexes(mut indexes, ['Box[Kdd]', 'Box[Dxw]'])
-	assert indexes['Existing'] == existing_idx
-	assert indexes['Box[Dxw]'] != indexes['Box[Kdd]']
+	assert stable_type_index(flat.source_type_id('Box[Dxw]')) == stable_type_index(flat.source_type_id('Box[Kdd]'))
+	mut indexes := stable_type_indexes(flat.TypeTextList.from_names(['Existing']).ids)
+	existing_idx := indexes[flat.source_type_id('Existing')]
+	extend_stable_type_indexes(mut indexes, flat.TypeTextList.from_names(['Box[Kdd]', 'Box[Dxw]']).ids)
+	assert indexes[flat.source_type_id('Existing')] == existing_idx
+	assert indexes[flat.source_type_id('Box[Dxw]')] != indexes[flat.source_type_id('Box[Kdd]')]
 	for _, type_idx in indexes {
 		assert type_idx > 65535
 		assert type_idx & (0xff << 16) == 0
@@ -42,11 +43,31 @@ fn test_stable_type_indexes_extend_without_renumbering_existing_types() {
 }
 
 fn test_stable_type_indexes_resolve_boxed_container_collisions() {
-	assert stable_type_index('[]main.AQVA') == stable_type_index('[]main.CFGS')
-	assert stable_type_index('[]Aaxtc') == stable_type_index('[]Abddb')
-	indexes := stable_type_indexes(['[]main.AQVA', '[]main.CFGS', '[]Aaxtc', '[]Abddb'])
-	assert indexes['[]main.AQVA'] != indexes['[]main.CFGS']
-	assert indexes['[]Aaxtc'] != indexes['[]Abddb']
+	assert stable_type_index(flat.source_type_id('[]main.AQVA')) == stable_type_index(flat.source_type_id('[]main.CFGS'))
+	assert stable_type_index(flat.source_type_id('[]Aaxtc')) == stable_type_index(flat.source_type_id('[]Abddb'))
+	indexes := stable_type_indexes(flat.TypeTextList.from_names(['[]main.AQVA', '[]main.CFGS',
+		'[]Aaxtc', '[]Abddb']).ids)
+	assert indexes[flat.source_type_id('[]main.AQVA')] != indexes[flat.source_type_id('[]main.CFGS')]
+	assert indexes[flat.source_type_id('[]Aaxtc')] != indexes[flat.source_type_id('[]Abddb')]
+}
+
+fn test_stable_type_indexes_sort_raw_spellings_before_trimming() {
+	padded := flat.source_type_id(' ULz ')
+	clean := flat.source_type_id('ULz')
+	other := flat.source_type_id('AAbA')
+	empty := flat.source_type_id(' \t ')
+	indexes := stable_type_indexes([padded, other, clean, empty, u32(0)])
+	reversed := stable_type_indexes([u32(0), empty, clean, other, padded])
+	assert indexes == reversed
+	assert indexes.len == 2
+	assert indexes[clean] == stable_type_index(clean)
+	assert indexes[other] != indexes[clean]
+	mut extended := stable_type_indexes([other])
+	existing := extended[other]
+	extend_stable_type_indexes(mut extended, [padded, clean, empty])
+	assert extended[other] == existing
+	assert extended.len == 2
+	assert extended[clean] != extended[other]
 }
 
 fn test_const_int_power_string_respects_unary_minus_precedence() {
@@ -221,11 +242,11 @@ fn test_type_qualification_preserves_channel_and_thread_wrappers() {
 	mut tc := TypeChecker.new(&a)
 	tc.cur_module = 'worker'
 
-	assert tc.qualify_type_text('chan bool') == 'chan bool'
-	assert tc.qualify_type_text('[]chan bool') == '[]chan bool'
-	assert tc.qualify_type_text('thread int') == 'thread int'
+	assert flat.source_type_name(tc.qualify_type_text(flat.source_type_id('chan bool'))) == 'chan bool'
+	assert flat.source_type_name(tc.qualify_type_text(flat.source_type_id('[]chan bool'))) == '[]chan bool'
+	assert flat.source_type_name(tc.qualify_type_text(flat.source_type_id('thread int'))) == 'thread int'
 
-	channel_type := tc.parse_resolution_type('chan bool')
+	channel_type := tc.parse_resolution_type(flat.source_type_id('chan bool'))
 	if channel_type is Channel {
 		assert channel_type.elem_type is Primitive
 	} else {

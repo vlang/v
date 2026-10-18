@@ -152,6 +152,42 @@ fn test_parallel_workers_preserve_unresolved_constant_names_for_later_batches() 
 	assert p.comptime_const_values[comptime_const_value_key('main', 'chosen')] == "'yes'", p.comptime_const_values.str()
 }
 
+fn test_parallel_guard_names_survive_prepass_scopes_and_thread_fallback() {
+	root := os.join_path(os.vtmp_dir(), 'comptime_parallel_name_scopes_${os.getpid()}')
+	os.mkdir_all(root)!
+	old_fail := os.getenv_opt('V3_TEST_PTHREAD_CREATE_FAIL')
+	defer {
+		os.rmdir_all(root) or {}
+		if value := old_fail {
+			os.setenv('V3_TEST_PTHREAD_CREATE_FAIL', value, true)
+		} else {
+			os.unsetenv('V3_TEST_PTHREAD_CREATE_FAIL')
+		}
+	}
+	mut paths := []string{}
+	for i in 0 .. 4 {
+		path := os.join_path(root, '${i}.v')
+		// Guards also read names in later chunks, before their values are known.
+		content := "module main\nconst flag_${i} = 'GET /users'.starts_with('GET')\n\$if flag_${(i + 1) % 4} { const chosen_${i} = 'yes' } \$else { const chosen_${i} = 'no' }\n"
+		os.write_file(path, content + '\n'.repeat(40000 - content.len))!
+		paths << path
+	}
+	for fail in ['serial', '', 'parser:all', 'parser:0'] {
+		os.setenv('V3_TEST_PTHREAD_CREATE_FAIL', fail, true)
+		mut p := Parser.new(pref.new_preferences())
+		p.a.worker_pool = workers.new(3)
+		defer { p.a.worker_pool.close() }
+		p.parse_files_dispatch(paths, fail != 'serial')
+		assert p.diagnostics.len == 0, p.diagnostics.str()
+		assert p.resolve_comptime_string_declarations().len == 0
+		for i in 0 .. 4 {
+			// A later declaration must not enter an earlier chunk's prefix.
+			expected := if i == 3 { "'yes'" } else { "'no'" }
+			assert p.comptime_const_values[comptime_const_value_key('main', 'chosen_${i}')] == expected, '${fail}: ${i}: ${p.comptime_const_values}'
+		}
+	}
+}
+
 fn test_comptime_metadata_headers_do_not_leave_orphan_selectors() {
 	path := os.join_path(os.vtmp_dir(), 'comptime_metadata_headers_${os.getpid()}.v')
 	defer { os.rm(path) or {} }

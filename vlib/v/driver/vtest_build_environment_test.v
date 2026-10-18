@@ -180,3 +180,13 @@ fn test_prod_build_facts_distinguish_implicit_and_explicit_tcc() {
 		}
 	})
 }
+
+fn test_arm64_backend_and_freestanding_skip_gc_defines() {
+	with_clean_build_environment(fn () {
+		for args in [['-b', 'arm64'], ['-d', 'freestanding']] {
+			environment := vtest_build_environment(@VEXEROOT, args)
+			assert 'gcboehm' !in environment.defines, '${args}: ${environment.defines}'
+			assert 'vgc' !in environment.defines, '${args}: ${environment.defines}'
+		}
+	})
+}

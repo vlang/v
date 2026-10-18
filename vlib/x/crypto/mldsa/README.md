@@ -7,13 +7,12 @@ Pure V implementation of [ML-DSA](https://csrc.nist.gov/pubs/fips/204/final) (FI
 > [signing](./nist_siggen_test.v), and [verification](./nist_sigver_test.v),
 > but not yet production-ready.
 
-## OpenSSL interoperability on Windows
+## Dependencies
 
-The OpenSSL interoperability code searches `C:/Program Files/OpenSSL-Win64` and
-`C:/Program Files/OpenSSL`. The bundled include and library flags quote these paths so
-the space in `Program Files` stays within one compiler argument. If you add custom
-`-I` or `-L` flags for another installation, quote paths containing spaces too.
-OpenSSL headers and libraries must still be installed.
+This module implements key generation, signing, and verification in V. It does not require
+OpenSSL headers or libraries. Its tests run without the `has_modern_openssl` condition.
+
+The separate `x.crypto.slhdsa` module wraps OpenSSL and requires OpenSSL 3.5 or newer.
 
 ## Example
 

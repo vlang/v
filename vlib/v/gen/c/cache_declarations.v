@@ -390,6 +390,7 @@ fn (mut g FlatGen) finish_cache_declaration_demand(const_code string) {
 		}
 	}
 	g.decl_types_ready = false
+	g.selected_decl_types_ready = false
 	g.collect_declaration_signature_types()
 	for init in g.runtime_inits {
 		g.cache_collect_declaration_refs(init)
@@ -407,7 +408,7 @@ fn (mut g FlatGen) finish_cache_declaration_demand(const_code string) {
 		payload := flat.source_type_name(payload_id)
 		g.cache_collect_declaration_refs(payload)
 	}
-	mut seen := map[string]bool{}
+	mut seen := map[u32]bool{}
 	// Fixed-array typedefs are emitted even when their only use is an optional
 	// payload or an alias. Their element layouts must survive declaration pruning.
 	for _, info in g.collect_fixed_array_typedefs_needed() {
@@ -463,8 +464,8 @@ fn (g &FlatGen) cache_function_declaration_needed(name string) bool {
 		|| g.cache_decl_refs[g.fn_c_name_in_module(owner, name)]
 }
 
-fn (mut g FlatGen) cache_require_declaration_type(typ types.Type, mut seen map[string]bool) {
-	key := typ.name()
+fn (mut g FlatGen) cache_require_declaration_type(typ types.Type, mut seen map[u32]bool) {
+	key := typ.source_type_id()
 	if seen[key] {
 		return
 	}
@@ -479,13 +480,13 @@ fn (mut g FlatGen) cache_require_declaration_type(typ types.Type, mut seen map[s
 			}
 		}
 		types.Interface {
-			for field in g.tc.interface_field_list(typ.name()) {
+			for field in g.tc.interface_field_list(typ.source_type_id()) {
 				g.cache_require_declaration_type(field.typ, mut seen)
 			}
 		}
 		types.SumType {
-			for variant in g.tc.sum_types.get(typ.name()) or { []string{} } {
-				g.cache_require_declaration_type(g.tc.parse_type(variant), mut seen)
+			for variant_source_id in g.tc.sum_types.type_ids(typ.name()) or { []u32{} } {
+				g.cache_require_declaration_type(g.tc.parse_type(variant_source_id), mut seen)
 			}
 		}
 		types.Pointer, types.OptionType, types.ResultType, types.Alias {

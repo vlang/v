@@ -804,7 +804,7 @@ fn test_intel_asm_rejects_narrow_register_operands() {
 }
 ')
 	assert generate.exit_code != 0, generate.output
-	assert generate.output.contains('structured `intel` assembly cannot represent a 32-bit register operand'), generate.output
+	assert generate.output.contains('hard register `eax` is 32-bit, but named operands in structured `intel` assembly expand to 64-bit registers'), generate.output
 }
 
 fn test_intel_asm_validates_enum_backing_widths() {
@@ -821,7 +821,24 @@ fn main() {
 }
 ')
 	assert default_generate.exit_code != 0, default_generate.output
-	assert default_generate.output.contains('structured `intel` assembly cannot represent a 32-bit register operand'), default_generate.output
+	assert default_generate.output.contains('hard register `eax` is 32-bit, but named operands in structured `intel` assembly expand to 64-bit registers'), default_generate.output
+
+	// The same 64-bit instruction that accepts a `u64` backed enum below must see the
+	// default enum as a 32-bit signed value.
+	default_wide_generate, _ := generate_inline_asm_c('intel_default_enum_wide_register_program', 'enum Kind {
+	one
+}
+
+fn main() {
+	value := Kind.one
+	asm amd64 intel {
+		mov rax, value
+		; ; r (value)
+	}
+}
+')
+	assert default_wide_generate.exit_code != 0, default_wide_generate.output
+	assert default_wide_generate.output.contains('named source `value` has 32-bit signed type `Kind`, but instruction `mov` consumes the wider 64-bit register'), default_wide_generate.output
 
 	narrow_generate, _ := generate_inline_asm_c('intel_narrow_enum_register_program', 'enum Kind as u8 {
 	one
@@ -836,7 +853,7 @@ fn main() {
 }
 ')
 	assert narrow_generate.exit_code != 0, narrow_generate.output
-	assert narrow_generate.output.contains('structured `intel` assembly cannot represent a 8-bit register operand'), narrow_generate.output
+	assert narrow_generate.output.contains('hard register `al` is 8-bit, but named operands in structured `intel` assembly expand to 64-bit registers'), narrow_generate.output
 
 	wide_generate, c_source := generate_inline_asm_c('intel_wide_enum_register_program', 'enum Kind as u64 {
 	one

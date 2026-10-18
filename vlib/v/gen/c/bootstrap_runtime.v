@@ -1,5 +1,21 @@
 module c
 
+// portable_windows_runtime_helpers embeds SDK-backed helpers without checkout-local objects.
+fn (mut g FlatGen) portable_windows_runtime_helpers() {
+	g.writeln('#ifdef _WIN32')
+	g.write($embed_file('@VEXEROOT/vlib/builtin/core_windows.c').to_string()
+		.replace('void *v_', 'static void *v_').replace('void v_', 'static void v_'))
+	g.write($embed_file('@VEXEROOT/vlib/time/ticks_windows.h').to_string())
+	g.write($embed_file('@VEXEROOT/vlib/v/winthread_helper.h').to_string())
+	g.write($embed_file('@VEXEROOT/cmd/v/toolcache_windows_helpers.h').to_string())
+	g.writeln('#endif')
+	g.collect_preserved_c_fns(['v_builtin_windows_stream', 'v_builtin_windows_debugbreak',
+		'v_set_unhandled_exception_filter', 'v_time_ticks_ms', 'v3_win_thread_create',
+		'v3_win_thread_join', 'v3_win_thread_is_current', 'v_toolcache_move_file_ex_w',
+		'v_toolcache_create_file_w', 'v_toolcache_get_file_information', 'v_toolcache_close_handle',
+		'v_toolcache_file_is_disk', 'v_toolcache_read_file', 'v_toolcache_root_is_private'])
+}
+
 // headerless_compiler_runtime_helpers supplies the runtime facades needed by a
 // relocatable compiler bootstrap without consulting the consumer's SDK headers.
 fn (mut g FlatGen) headerless_compiler_runtime_helpers() {
@@ -27,6 +43,7 @@ fn (mut g FlatGen) headerless_compiler_runtime_helpers() {
 		'v_os_fd_write_all'])
 	g.portable_run_signal_helpers(true)
 	g.headerless_compiler_platform_helpers()
+	g.bootstrap_windows_runtime_helpers()
 }
 
 const headerless_compiler_pthread_helpers = r'

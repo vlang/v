@@ -6,18 +6,18 @@ import v.types
 fn test_nested_generic_defaults_skip_pointer_aliases() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases.set('BoxPointer', '&Box[int]')
-	tc.type_aliases.set('BoxPointerChain', 'BoxPointer')
+	tc.type_aliases.set_id('BoxPointer', flat.source_type_id('&Box[int]'))
+	tc.type_aliases.set_id('BoxPointerChain', flat.source_type_id('BoxPointer'))
 	mut t := new_transformer(mut a, &tc, {
 		'main': true
 	})
 	t.structs['Box'] = StructInfo{
 		name:   flat.source_type_id('Box')
-		fields: [FieldInfo{ name: 'value', typ: flat.source_type_id('int'), default_expr: 0 }]
+		fields: [FieldInfo{ name: 'value', typ: flat.source_type_int, default_expr: 0 }]
 	}
 	for alias in ['BoxPointer', 'BoxPointerChain'] {
-		mut visited := map[string]bool{}
-		assert !t.nested_generic_defaults_need_lowering(alias, mut visited)
+		mut visited := map[u32]bool{}
+		assert !t.nested_generic_defaults_need_lowering(flat.source_type_id(alias), mut visited)
 	}
 }
 
@@ -27,12 +27,12 @@ fn test_struct_field_lookup_preserves_first_field_and_missing_names() {
 		for i in 0 .. count {
 			fields << FieldInfo{
 				name:    'field_${i}'
-				typ:     flat.source_type_id('int')
+				typ:     flat.source_type_int
 				raw_typ: flat.source_type_id('Counter')
 			}
 		}
 		if count > 0 {
-			fields << FieldInfo{ name: 'field_0', typ: flat.source_type_id('string') }
+			fields << FieldInfo{ name: 'field_0', typ: flat.source_type_string }
 		}
 		info := StructInfo{
 			fields:        fields
@@ -80,9 +80,9 @@ fn test_foreign_generic_field_arguments_keep_instantiation_module() {
 	tc.structs['ck.Type'] = []types.StructField{}
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'ck'
-	assert t.normalize_field_type('T', 'rt.Cell[[]&Type]') == '[]&ck.Type'
-	assert t.normalize_field_type('T', 'rt.Cell[map[string]&Type]') == 'map[string]&ck.Type'
-	assert t.normalize_field_type('T', 'rt.Cell[[2]&Type]') == '[2]&ck.Type'
-	assert t.normalize_field_type('Type', 'rt.Cell[[]&Type]') == 'rt.Type'
-	assert t.normalize_field_type('T', 'rt.Cell[[]&rt.Type]') == '[]&rt.Type'
+	assert flat.source_type_name(t.normalize_field_type(flat.source_type_id('T'), flat.source_type_id('rt.Cell[[]&Type]'))) == '[]&ck.Type'
+	assert flat.source_type_name(t.normalize_field_type(flat.source_type_id('T'), flat.source_type_id('rt.Cell[map[string]&Type]'))) == 'map[string]&ck.Type'
+	assert flat.source_type_name(t.normalize_field_type(flat.source_type_id('T'), flat.source_type_id('rt.Cell[[2]&Type]'))) == '[2]&ck.Type'
+	assert flat.source_type_name(t.normalize_field_type(flat.source_type_id('Type'), flat.source_type_id('rt.Cell[[]&Type]'))) == 'rt.Type'
+	assert flat.source_type_name(t.normalize_field_type(flat.source_type_id('T'), flat.source_type_id('rt.Cell[[]&rt.Type]'))) == '[]&rt.Type'
 }

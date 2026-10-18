@@ -187,8 +187,12 @@ fn test_ownership_recursive_drop_helpers_deduplicate_emitted_c_symbol() {
 	g.tc = &tc
 	// Distinct logical ownership keys can refer to the same runtime struct after
 	// lifetime erasure. Only one C helper definition may be emitted for it.
-	g.recursive_drop_helpers.set('struct:pkg.Sink[^p,^s,Writer]', 'pkg.Sink[Writer]')
-	g.recursive_drop_helpers.set('struct:pkg.Sink[^s,^s,Writer]', 'pkg.Sink[Writer]')
+	g.recursive_drop_helpers[ownership_drop_expansion_key(types.Type(types.Struct{
+		name_id: flat.source_type_id('pkg.Sink[^p,^s,Writer]')
+	}))] = flat.source_type_id('pkg.Sink[Writer]')
+	g.recursive_drop_helpers[ownership_drop_expansion_key(types.Type(types.Struct{
+		name_id: flat.source_type_id('pkg.Sink[^s,^s,Writer]')
+	}))] = flat.source_type_id('pkg.Sink[Writer]')
 	g.gen_ownership_recursive_drop_helpers()
 	assert g.sb.str().count('static void __v3_ownership_drop_pkg__Sink_Writer(') == 1
 }
@@ -236,7 +240,7 @@ fn test_fixed_array_address_to_byte_pointer_decl_uses_data_pointer() {
 	tc.cur_scope.insert('buf', fixed_type)
 	buf_id := stmt_test_node(mut a, .ident, 'buf', [])
 	rhs_id := stmt_test_prefix(mut a, .amp, buf_id)
-	g.gen_decl_init_expr(rhs_id, a.nodes[int(rhs_id)], byte_pointer, 'u8*', true)
+	g.gen_decl_init_expr(rhs_id, a.nodes[int(rhs_id)], byte_pointer, 'u8*', true, '')
 	assert g.sb.str() == '((u8*)(buf))'
 	fixed_pointer := types.Type(types.Pointer{
 		base_type: fixed_type
@@ -349,7 +353,7 @@ fn test_fn_decl_signature_registration_preserves_call_name_aliases() {
 	full_name := qualify_name_in_module(tc.cur_module, name)
 	params := [types.Type(types.int_)]
 	shared_flags := [true]
-	g.register_fn_decl_signature(name, full_name, params, shared_flags, true, true, 'int')
+	g.register_fn_decl_signature(name, full_name, params, shared_flags, true, true, flat.source_type_int)
 	aliases := [
 		fn_decl_module_key(tc.cur_module, name),
 		name,
@@ -789,7 +793,23 @@ fn test_lowered_ident_annotation_precedes_outer_checker_binding() {
 	value := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'err'
-		typ:   flat.source_type_id('int')
+		typ:   flat.source_type_int
 	})
 	assert g.usable_expr_type(value) == types.Type(types.int_)
+}
+
+fn test_ownership_drop_expansion_keys_keep_kind_and_spelling_order() {
+	late_id := flat.source_type_id('pkg.ZOwnershipKey')
+	early_id := flat.source_type_id('pkg.AOwnershipKey')
+	struct_key := ownership_drop_expansion_key(types.Type(types.Struct{ name_id: early_id }))
+	interface_key := ownership_drop_expansion_key(types.Type(types.Interface{ name_id: early_id }))
+	sum_key := ownership_drop_expansion_key(types.Type(types.SumType{ name_id: early_id }))
+	assert struct_key != interface_key && struct_key != sum_key && interface_key != sum_key
+	assert ownership_drop_expansion_key(types.Type(types.int_)) == 0
+	mut keys := [sum_key, ownership_drop_expansion_key(types.Type(types.Struct{ name_id: late_id })),
+		struct_key, interface_key]
+	keys.sort_with_compare(compare_ownership_drop_expansion_keys)
+	assert keys[0] == interface_key
+	assert keys[1] == struct_key
+	assert keys[3] == sum_key
 }
