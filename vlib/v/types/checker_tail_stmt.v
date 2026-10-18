@@ -3550,7 +3550,9 @@ fn (tc &TypeChecker) choose_translated_if_tail_type(id flat.NodeId, current Type
 	return tc.choose_if_tail_type(current, next)
 }
 
-fn (tc &TypeChecker) translated_integer_literal_type(id flat.NodeId) ?Type {
+// translated_integer_literal_type returns the C type of an integer literal in a translated file:
+// `int`, then `unsigned int` (nondecimal only), then a signed or unsigned 64-bit type.
+pub fn (tc &TypeChecker) translated_integer_literal_type(id flat.NodeId) ?Type {
 	literal := (tc.integer_literal_source(id) or { return none }).replace('_', '').to_lower()
 	value, parse_error := strconv.common_parse_uint2(literal, util.v_literal_parse_base(literal), 64)
 	if parse_error != 0 {

@@ -26507,12 +26507,23 @@ fn numeric_literal_c_text(node &flat.Node) string {
 }
 
 // negated_long_long_literal finds a wide integer operand through parentheses for signed C negation.
+// A translated file keeps C's literal types: a nondecimal literal that fits 32 bits is an
+// `unsigned int` there, and its negation must wrap at 32 bits, so it gets no `LL` suffix.
 fn (g &FlatGen) negated_long_long_literal(id flat.NodeId) ?flat.Node {
+	mut literal_id := id
 	mut node := g.a.nodes[int(id)]
 	for node.kind == .paren && node.children_count == 1 {
-		node = g.a.nodes[int(g.a.child(&node, 0))]
+		literal_id = g.a.child(&node, 0)
+		node = g.a.nodes[int(literal_id)]
 	}
 	if node.kind == .int_literal && int_literal_needs_long_long_suffix(&node) {
+		if g.expr_is_in_translated_file(literal_id) {
+			if typ := g.tc.translated_integer_literal_type(literal_id) {
+				if integer_sign_kind(typ) > 0 {
+					return none
+				}
+			}
+		}
 		return node
 	}
 	return none
