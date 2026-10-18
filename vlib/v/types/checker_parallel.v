@@ -912,6 +912,7 @@ fn (mut tc TypeChecker) check_semantics_scoped_serial() {
 	tc.defer_ierror_gating = tc.diagnostic_files.len > 0
 	tc.collect_selected_file_called_fns()
 	tc.check_export_attrs()
+	tc.check_custom_attribute_uses()
 	tc.check_c_js_generic_declarations()
 	tc.check_interface_reserved_parameter_names()
 	tc.check_goto_labels()
@@ -955,6 +956,7 @@ pub fn (mut tc TypeChecker) check_semantics_selected(selected map[string]bool) {
 	tc.resolution_type_mode = false
 	tc.check_duplicate_fn_declarations()
 	tc.check_export_attrs()
+	tc.check_custom_attribute_uses()
 	items := tc.collect_parallel_check_items()
 	tc.check_top_level_declarations()
 	mut selected_items := []CheckWorkItem{cap: selected.len}
@@ -1163,6 +1165,7 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 	tc.timing_profile('  [ttime]   ck called fns    ${f64(selsw.elapsed().microseconds()) / 1000.0:7.2f} ms (${tc.selected_file_called_fns.len})')
 	mut cksw := time.new_stopwatch()
 	tc.check_export_attrs()
+	tc.check_custom_attribute_uses()
 	tc.check_c_js_generic_declarations()
 	tc.check_interface_reserved_parameter_names()
 	tc.check_goto_labels()
@@ -1386,6 +1389,9 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, al
 					}
 					tc.check_decl_type_strings(flat.NodeId(i), node)
 					tc.check_struct_implements(flat.NodeId(i), node)
+					if tc.declaration_has_attribute(node_id, 'attribute') {
+						tc.check_attribute_schema_decl(node_id, node)
+					}
 				}
 				if file_values {
 					tc.check_struct_field_defaults(node_id, node)
@@ -1396,6 +1402,7 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, al
 					continue
 				}
 				node_id := flat.NodeId(i)
+				tc.check_attribute_marker_target(node_id, node)
 				tc.check_type_declaration_conflict(node_id, node)
 				if node.kind == .interface_decl {
 					if tc.should_check_type_declaration_name(node_id, node)
@@ -1421,6 +1428,7 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, al
 			.enum_decl {
 				if do_signatures {
 					node_id := flat.NodeId(i)
+					tc.check_attribute_marker_target(node_id, node)
 					tc.check_type_declaration_conflict(node_id, node)
 					if tc.should_check_type_declaration_name(node_id, node)
 						&& !pascal_case_name_is_valid(node.value) {
@@ -1453,6 +1461,7 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, al
 				if !do_signatures {
 					continue
 				}
+				tc.check_attribute_marker_target(flat.NodeId(i), node)
 				tc.check_fn_declaration_name(flat.NodeId(i), node)
 				tc.check_method_field_name_collision(flat.NodeId(i), node)
 				tc.check_main_fn_signature(flat.NodeId(i), node)
@@ -3339,7 +3348,7 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 				operator_params_match = false
 				tc.record_error_at(.call_arg_mismatch, 'the receiver type `${receiver.typ_text()}` should be the same type as the operand `${param.typ_text()}`', id, tc.fn_declaration_diagnostic_pos(node))
 			}
-			if receiver_type.name() != param_type.name() && param_type !is FnType {
+			if receiver_type.name() != param_type.name() {
 				operator_params_match = false
 				tc.record_error_at(.call_arg_mismatch, 'expected `${receiver_type.name()}` not `${param_type.name()}` - both operands must be the same type for operator overloading', param_id, tc.type_diagnostic_pos(param_id, param_type.name()))
 			}

@@ -1,3 +1,4 @@
+// vtest ownership
 import os
 
 const borrowed_array_clone_vexe = @VEXE

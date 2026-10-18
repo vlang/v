@@ -1974,7 +1974,7 @@ fn (t &Transformer) interface_alias_names(iface_name_id u32) []u32 {
 	mut aliases := []u32{}
 	for alias, target_id in t.tc.type_aliases.ids {
 		if target_id == iface_name_id
-			|| flat.source_type_id(t.tc.qualify_name(flat.source_type_name(target_id))) == iface_name_id {
+			|| t.tc.qualify_type_name(target_id) == iface_name_id {
 			aliases << flat.source_type_id(alias)
 		}
 	}
@@ -5864,19 +5864,19 @@ fn (mut t Transformer) register_specialized_fn_signature_value(decl GenericFnDec
 			}
 			continue
 		}
-		param_type := flat.source_type_name(explicit_mut_pointer_param_type_text(child, t.specialized_signature_type_text(decl, child.typ, concrete_args_source_ids, generic_params)))
+		param_type := explicit_mut_pointer_param_type_text(child, t.specialized_signature_type_text(decl, child.typ, concrete_args_source_ids, generic_params))
 		if record_signature_types {
 			t.monomorph_signature_types << MonomorphSignatureType{
-				typ:    flat.source_type_id(param_type)
+				typ:    param_type
 				module: decl.module
 				file:   decl.file
 			}
 		}
-		if param_type.starts_with('...') {
+		if flat.source_type_shape(param_type).has(.variadic) {
 			variadic = true
 		}
 		if !isnil(t.tc) {
-			params << t.tc.parse_resolution_type(flat.source_type_id(param_type))
+			params << t.tc.parse_resolution_type(param_type)
 		}
 	}
 	qname := transform_qualified_fn_name(decl.module, clone_value)
@@ -6551,8 +6551,8 @@ fn (mut t Transformer) concrete_generic_call_param_types(id flat.NodeId, node fl
 			}
 			continue
 		}
-		param_type := flat.source_type_name(explicit_mut_pointer_param_type_text(child, t.specialized_signature_type_text(decl, child.typ, args, params)))
-		result << t.tc.parse_canonical_type(flat.source_type_id(param_type))
+		param_type := explicit_mut_pointer_param_type_text(child, t.specialized_signature_type_text(decl, child.typ, args, params))
+		result << t.tc.parse_canonical_type(param_type)
 	}
 	if result.len == 0 {
 		return none
@@ -16726,6 +16726,17 @@ fn (t &Transformer) generic_arg_is_unresolved(arg_id u32) bool {
 		// Anonymous literals still need materialization in nongeneric programs.
 		// Skipping generic specialization must not make their provisional storage
 		// type authoritative over the concrete literal type.
+		if !isnil(t.generic_unresolved_cache) {
+			mut cache := t.generic_unresolved_cache
+			slot := int(arg_id & 1023)
+			if cache.anonymous_states[slot] != 0 && cache.anonymous_ids[slot] == arg_id {
+				return cache.anonymous_states[slot] > 0
+			}
+			result := inferred_anonymous_struct_placeholder(flat.source_type_name(arg_id))
+			cache.anonymous_ids[slot] = arg_id
+			cache.anonymous_states[slot] = if result { i8(1) } else { i8(-1) }
+			return result
+		}
 		return inferred_anonymous_struct_placeholder(flat.source_type_name(arg_id))
 	}
 	// Hot: called for every call/assign type text during body transforms, with
@@ -16774,7 +16785,7 @@ fn inferred_anonymous_struct_placeholder(typ string) bool {
 			return inferred_anonymous_struct_placeholder(clean[end + 1..])
 		}
 	}
-	return clean.all_after_last('.') == 'struct'
+	return short_name_view(clean) == 'struct'
 }
 
 fn (t &Transformer) generic_arg_is_unresolved_uncached(arg string) bool {

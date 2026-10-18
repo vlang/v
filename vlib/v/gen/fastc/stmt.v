@@ -537,7 +537,8 @@ fn (g &Parser) method_uses_undefined_receiver() bool {
 			// (not a bare `R.f` / `R.f < x`) avoids flagging `.sort(a.x < b.x)` comparison
 			// closures. Only the base of an `a.b.c` chain is flagged (inner members have
 			// `previous == .dot`).
-			if previous != .dot && next == .dot {
+			if previous != .dot && next == .dot
+				&& lit !in bound && lit !in g.locals && lit !in g.imports {
 				mut ahead2 := ahead
 				if ahead2.scan() == .name {
 					after := ahead2.scan()
@@ -546,6 +547,11 @@ fn (g &Parser) method_uses_undefined_receiver() bool {
 					}
 				}
 			}
+			previous = tok
+			lookahead = ahead
+			tok = next
+			lit = lookahead.lit
+			continue
 		}
 		previous = tok
 		tok = lookahead.scan()
@@ -1295,6 +1301,12 @@ fn (mut g Parser) parse_return() !bool {
 		&& !g.should_box_variant(g.option_return_type, actual_type) {
 		return g.unsupported('an Option cannot carry an error as its failure state')
 	}
+	if g.selfhost && g.return_type_text() == '__v_result' && flat.source_type_name(actual_type).trim_right('*') != 'IError'
+		&& g.returns_error_value(actual_type) {
+		// `return MyError{}` in a `!T` function returns that error, not a `T`.
+		expression = g.interface_value_expression(flat.source_type_id('IError'), actual_type, expression)
+		actual_type = flat.source_type_id('IError')
+	}
 	if g.selfhost && g.return_type_text() == '__v_result' && flat.source_type_name(actual_type).trim_right('*') == 'IError' {
 		expression = '(__v_result){.err=${expression}, .state=1}'
 		actual_type = g.return_type
@@ -1303,7 +1315,7 @@ fn (mut g Parser) parse_return() !bool {
 		'__v_result',
 	] {
 		mut payload_type := fastc_normalize_inferred_type(actual_type)
-		if g.option_return_type != u32(0) && (g.should_box_variant(g.option_return_type, payload_type) || (g.declared_kinds[flat.source_type_name(g.semantic_type_key(g.option_return_type))] == .interface_ && g.declared_kinds[flat.source_type_name(g.semantic_type_key(payload_type))] != .interface_)) {
+		if g.option_return_type != u32(0) && (g.should_box_variant(g.option_return_type, payload_type) || ((g.option_return_type_text() == 'IError' || g.declared_kinds[flat.source_type_name(g.semantic_type_key(g.option_return_type))] == .interface_) && g.declared_kinds[flat.source_type_name(g.semantic_type_key(payload_type))] != .interface_)) {
 			expression = g.interface_value_expression(g.option_return_type, payload_type, expression)
 			payload_type = g.option_return_type
 		}
@@ -1312,6 +1324,64 @@ fn (mut g Parser) parse_return() !bool {
 	}
 	g.consume_statement_end()
 	g.write_return_expression(expression, actual_type)
+	return true
+}
+
+// returns_error_value reports whether a value of `actual_type`, returned from the current
+// `!T` function, is its error: a struct implementing IError (`msg` and `code`, its own or
+// through an embedded `Error`) that is not assignable to the success type `T`.
+fn (g &Parser) returns_error_value(actual_type u32) bool {
+	value_layout := g.underlying_alias_type(fastc_normalize_inferred_type(actual_type))
+	payload_layout := g.underlying_alias_type(fastc_normalize_inferred_type(g.option_return_type))
+	// Preserve pointer conversions before reducing types to their method-bearing structs.
+	if payload_layout == flat.source_type_voidptr && fastc_is_pointer_type(value_layout) {
+		return false
+	}
+	value_type := flat.source_type_id(fastc_trim_pointer_suffix(flat.source_type_name(value_layout)))
+	if value_type == 0 || g.declared_kinds[flat.source_type_name(g.semantic_type_key(value_type))] != .struct_ {
+		return false
+	}
+	payload_type := flat.source_type_id(fastc_trim_pointer_suffix(flat.source_type_name(payload_layout)))
+	// IError is an intrinsic C struct rather than a source-level interface declaration.
+	if payload_type == value_type || flat.source_type_name(payload_type) == 'IError'
+		|| g.sumtype_has_variant(payload_type, value_type)
+		|| g.result_payload_interface_accepts(payload_type, value_type) {
+		return false
+	}
+	msg_key, _ := g.resolve_method(value_type, 'msg')
+	code_key, _ := g.resolve_method(value_type, 'code')
+	return msg_key in g.functions && code_key in g.functions
+}
+
+// result_payload_interface_accepts checks the complete interface shape before an
+// IError implementer is classified as a failure instead of a successful payload.
+fn (g &Parser) result_payload_interface_accepts(payload_type u32, value_type u32) bool {
+	payload_key := g.semantic_type_key(payload_type)
+	if g.declared_kinds[flat.source_type_name(payload_key)] != .interface_ {
+		return false
+	}
+	prefix := flat.source_type_name(payload_key) + '.'
+	for method_key, signature in g.functions {
+		if !method_key.starts_with(prefix) || signature.parameter_types.ids.len == 0
+			|| signature.parameter_types.ids[0] != payload_type {
+			continue
+		}
+		candidate_key, _ := g.resolve_method(value_type, method_key.all_after_last('.'))
+		candidate := g.functions[candidate_key] or { return false }
+		if !fastc_interface_method_signatures_match(signature, candidate) {
+			return false
+		}
+	}
+	for field_key, required in g.interface_fields {
+		if !field_key.starts_with(prefix) {
+			continue
+		}
+		actual := g.interface_implementation_field(value_type, flat.source_type_name(g.semantic_type_key(value_type)),
+			required.name) or { return false }
+		if actual.typ_text() != required.typ_text() || (required.is_mutable && !actual.is_mutable) {
+			return false
+		}
+	}
 	return true
 }
 
@@ -2560,6 +2630,17 @@ fn (g &Parser) option_value_type_for_expression(tokens []FastcExpressionToken) u
 			}
 		}
 	}
+	// A bare option variable carries its wrapped value type on the token or local.
+	if tokens.len == 1 && tokens[0].tok == .name {
+		if tokens[0].option_value_type != 0 {
+			return tokens[0].option_value_type
+		}
+		local := g.locals[tokens[0].lit] or { return u32(0) }
+		return local.option_value_type
+	}
+	if tokens.len <= 1 {
+		return u32(0)
+	}
 	if signature := g.function_alias_call_signature(tokens) {
 		return signature.option_type
 	}
@@ -2616,15 +2697,6 @@ fn (g &Parser) option_value_type_for_expression(tokens []FastcExpressionToken) u
 		mut normalized := tokens[..open].clone()
 		normalized << tokens[close + 1..]
 		return g.option_value_type_for_expression(normalized)
-	}
-	// A bare option variable (`if x := opt`): recover the wrapped value type recorded
-	// when the variable was declared, since its C type is the type-erased `Option`.
-	if tokens.len == 1 && tokens[0].tok == .name {
-		if tokens[0].option_value_type != 0 {
-			return tokens[0].option_value_type
-		}
-		local := g.locals[tokens[0].lit] or { return u32(0) }
-		return local.option_value_type
 	}
 	// A member access to an option FIELD (`if mut v := x.f {` where `f ?T`): the field's
 	// erased C type is `Option`, so recover the wrapped value type recorded on the field.
@@ -2708,7 +2780,7 @@ fn (g &Parser) option_value_type_for_expression(tokens []FastcExpressionToken) u
 		return static_signature.option_type
 	}
 	function_key := if name_index == 2 && tokens[0].lit !in g.imports && tokens[0].lit != 'C' {
-		receiver_type := (g.infer_expression_type(tokens[..1]) or { return u32(0) })
+		receiver_type := g.infer_expression_type(tokens[..1]) or { return u32(0) }
 		method_key, _ := g.resolve_method(receiver_type, tokens[name_index].lit)
 		method_key
 	} else {
@@ -2746,7 +2818,7 @@ fn (g &Parser) erased_generic_option_value_type_for_expression(tokens []FastcExp
 		if field.generic_argument_type == u32(0) {
 			return none
 		}
-		receiver_type := (g.infer_expression_type(receiver_tokens) or { return none })
+		receiver_type := g.infer_expression_type(receiver_tokens) or { return none }
 		method_key, _ := g.resolve_method(receiver_type, tokens[i].lit)
 		signature := g.functions[method_key] or { return none }
 		if signature.return_type_text() in ['Option', '__v_result'] && signature.option_type == flat.source_type_voidptr {
@@ -2812,7 +2884,7 @@ fn (g &Parser) expression_tokens_are_statement(expression_tokens []FastcExpressi
 				continue
 			}
 			receiver_start := fastc_method_receiver_start(tokens, i - 1)
-			receiver_type := (g.infer_expression_type(tokens[receiver_start..i - 1]) or { continue })
+			receiver_type := g.infer_expression_type(tokens[receiver_start..i - 1]) or { continue }
 			if tokens[i].lit == 'wait' && (flat.source_type_name(receiver_type).starts_with(fastc_thread_type_prefix) || (flat.source_type_name(receiver_type).trim_right('*').starts_with('Array_') && (flat.source_type_name(g.array_element_type(receiver_type) or { u32(0) })).starts_with(fastc_thread_type_prefix))) {
 				// Generated thread waiters are absent from g.functions, but joining a spawn
 				// (or every spawn in a `[]thread` via `.wait()`) is a valid standalone

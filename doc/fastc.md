@@ -5,6 +5,20 @@ without the regular parser, checker, or AST pipeline, then compiles with bundled
 FastC is experimental and supports a subset of V. An unsupported construct produces an error
 with its source byte offset; FastC does not silently switch to the C backend.
 
+As in the default C backend, an `if` condition cannot start with another `if` expression,
+even behind opening parentheses. Assign the inner expression to a variable first.
+Both the C emitter and the native ARM64 parser enforce this rule.
+The condition diagnostic preserves original source-file byte offsets through generic rewrites,
+selected compile-time branches, and declaration initializers. The C emitter also preserves these
+positions when it reparses function literals, substituted compile-time loop bodies, or
+inline-assembly operands, including comment removal and nested rewrites. The common diagnostics
+for unsupported constructs do the same in both parsers.
+The C emitter also maps scanner errors in struct-field defaults.
+
+Files marked `@[translated]` retain support for these conditions, including constant, global, and
+struct-field initializers. On-demand generic instances use their defining file's translated status
+and source positions.
+
 Ordinary programs support the following constructs:
 
 - Functions, primitive parameters and return values, local variables, constants, and explicit
@@ -52,6 +66,7 @@ v -b fastc -enable-globals -o program path/to/project
 Directory entries select the full builtin runtime, including V strings, maps, errors, and
 garbage collection. Generic calls infer their concrete type from a mutable variable argument.
 Mutable field arguments also retain their type when inferring a generic instance.
+Empty map initializers use their expected key and value storage, including map aliases.
 On glibc Linux, thread IDs use the system call without requiring glibc 2.30. Generic
 parameter shadowing ends with its function and does not affect later constants.
 Function-pointer fields and parameters support mixed named and unnamed parameter types.
@@ -61,7 +76,8 @@ This path supports standard-library imports such as `os` and `toml`,
 composite sum-type tests, integer and floating point interpolation formats, anonymous functions,
 and immutable closure captures. Float formats support precision, width, left alignment, and the
 `f` suffix to retain trailing zeros. A single-file entry can select the same runtime with
-`-d fastc_real_builtin`; its module siblings are included.
+`-d fastc_real_builtin`. As with the C backend, a program file named on its own is compiled
+alone, while a test file also brings in the other files of its module.
 A test file entry (`foo_test.v`, `foo_test.c.v`, or an architecture-qualified one) always uses
 it, and builds as a program that runs its tests in source order between `testsuite_begin` and
 `testsuite_end`, each between `before_each` and `after_each`; a failed assert or a returned error
@@ -109,6 +125,10 @@ Escaped keyword fields and locals, and the ESC escape `\e` in runes and strings,
 Multiline values can continue with leading binary operators or a following `else` branch.
 Postfix updates used as values return the old value, and trailing variable attributes preserve
 the following statement. Option/Result tuple fallbacks can return an enclosing function's tuple.
+Grouped Option/Result propagation preserves payload types and early returns, including in call
+arguments.
+Optional sum-type lookups preserve `none` fallbacks and successful payloads.
+Typed pointers to `IError` implementations can be successful `voidptr` Result payloads.
 Direct integer tuple returns store each component at its declared width, including literal values.
 Assertions preserve the following fallback statement when it begins with a unary operator.
 Standalone `unsafe` blocks preserve local scopes. Forward labels remain reachable after a return
@@ -207,6 +227,9 @@ v -b fastc -nocache -o v_fastc1 cmd/v
 
 Each generation retains the full command-line entry and can compile programs with either
 the C or FastC backend. `-nocache` forces each generation to rebuild its generated C units.
+On macOS ARM64, standard full-compiler builds compile the owned native support files together
+so TinyCC processes shared SDK declarations once. Debug builds, custom preprocessing flags,
+and other native source sets retain separate compilation. FastC does not read their C headers.
 
 `v -b fastc self` builds a smaller standalone FastC compiler from `vlib/v/v.v`.
 Its `self` command keeps FastC for subsequent generations; use `v -b fastc self x2` to
@@ -216,3 +239,24 @@ option disables TinyCC object and executable caching, including in repeated self
 The launcher helper runs on the host C backend. Native source flags are retained during
 self-builds, and a missing `.o` input is compiled from its matching `.c` source when available.
 Use `-keepc` to retain generated C, including when TinyCC rejects it.
+
+For throughput measurements, first build a production compiler with `v -prod -cc clang self`.
+On macOS, measure a complete uncached executable build with an external timer:
+
+```sh
+FASTC_BENCH=1 /usr/bin/time -l v -b fastc -nocache -o v_fastc_bench cmd/v
+```
+
+Count physical lines in the selected V source files, including blank lines and comments.
+Divide that count by the external elapsed time to include compiler startup, C generation,
+TinyCC compilation, linking, signing, retained C output, and process exit. The internal
+`FASTC_BENCH` total omits early command-line processing and final output publication.
+Generated C lines and C header lines are not V source lines. FastC does not scan C headers.
+
+Keep the source snapshot, compiler build options, toolchain, worker count, and output paths
+fixed when comparing revisions. Warm both compiler executables before timing; on macOS,
+replacing an executable can add first-execution validation time. Then retain two warmups
+and ten alternating baseline/candidate pairs. Compare retired instructions, elapsed time,
+and peak memory, and verify that both revisions generate equivalent C. Record whether
+third-party helper objects were already built; `-nocache` rebuilds generated V units but
+does not remove those toolchain dependencies.

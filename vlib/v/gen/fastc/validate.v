@@ -10,7 +10,13 @@ fn (g &Parser) expression_token(previous token.Token, previous_lit string, quali
 		}
 		.number {
 			if g.selfhost {
-				fastc_c_selfhost_number(g.lit)
+				number := fastc_c_selfhost_number(g.lit)
+				mut after := g.s
+				if after.scan() == .left_shift {
+					fastc_shift_operand_number(number)
+				} else {
+					number
+				}
 			} else {
 				fastc_c_number(g.lit)!
 			}
@@ -190,7 +196,7 @@ fn (g &Parser) nil_target_is_voidptr(tokens []FastcExpressionToken, previous tok
 		if target[target.len - 2].tok != .dot || target.last().tok != .name {
 			return false
 		}
-		receiver_type := (g.infer_expression_type(target[..target.len - 2]) or { return false })
+		receiver_type := g.infer_expression_type(target[..target.len - 2]) or { return false }
 		field := g.struct_field_metadata(receiver_type, target.last().lit) or { return false }
 		return g.nil_field_is_allowed(field)
 	}
@@ -261,7 +267,7 @@ fn (g &Parser) nil_type_is_allowed(typ u32) bool {
 		|| ((g.path.ends_with('.c.v') || g.path.contains('.c.v:')) && fastc_is_pointer_type(underlying))
 }
 
-fn (g &Parser) nil_field_is_allowed(field FastcStructField) bool {
+fn (g &Parser) nil_field_is_allowed(field &FastcStructField) bool {
 	return !field.is_function && (field.is_declared_voidptr
 		|| (field.typ != flat.source_type_voidptr && g.nil_type_is_allowed(field.typ)))
 }
@@ -391,6 +397,22 @@ fn (g &Parser) resolved_nonlocal_expression_name_cached(name string) string {
 // unqualified_global_key applies the same module precedence to global reads
 // and mutations, including globals declared outside the current module.
 fn (g &Parser) unqualified_global_key(name string) ?string {
+	if cached := g.global_key_memo[name] {
+		if cached == '' {
+			return none
+		}
+		return cached
+	}
+	key := g.unqualified_global_key_impl(name) or { '' }
+	mut w := unsafe { &Parser(g) }
+	w.global_key_memo[name] = key
+	if key == '' {
+		return none
+	}
+	return key
+}
+
+fn (g &Parser) unqualified_global_key_impl(name string) ?string {
 	key := fastc_global_key(g.module_name, name)
 	if key in g.globals {
 		return key
@@ -398,6 +420,9 @@ fn (g &Parser) unqualified_global_key(name string) ?string {
 	builtin_key := fastc_global_key('builtin', name)
 	if builtin_key in g.globals {
 		return builtin_key
+	}
+	if g.global_suffix_index.ready && !g.declaration_initializer_mode {
+		return g.global_suffix_index.keys[name] or { return none }
 	}
 	suffix := '.${name}'
 	for global_key, _ in g.globals {
@@ -780,7 +805,7 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 			if call_args.len != 1 {
 				return g.unsupported('function `${name}` call with ${call_args.len} arguments')
 			}
-			argument_type := (g.infer_expression_type(call_args[0])!)
+			argument_type := g.infer_expression_type(call_args[0])!
 			if !g.selfhost && !g.ordinary_print_type_is_supported(argument_type) {
 				return g.unsupported('printing value of type `${flat.source_type_name(argument_type)}`')
 			}
@@ -902,7 +927,7 @@ fn (g &Parser) validate_mutating_method_receiver(receiver []FastcExpressionToken
 			continue
 		}
 		receiver_start := fastc_method_receiver_start(receiver, i)
-		receiver_type := (g.infer_expression_type(receiver[receiver_start..i]) or { continue })
+		receiver_type := g.infer_expression_type(receiver[receiver_start..i]) or { continue }
 		field := g.struct_field_metadata(receiver_type, receiver[i + 1].lit) or { continue }
 		if field.module_name !in ['', g.module_name] && !field.is_mutable && item.unsafe_depth == 0 {
 			type_name := flat.source_type_name(g.semantic_type_key(receiver_type)).all_after_last('.')
@@ -929,7 +954,7 @@ fn (g &Parser) validate_mutable_argument_fields(argument []FastcExpressionToken,
 			continue
 		}
 		receiver_start := fastc_method_receiver_start(argument, i)
-		receiver_type := (g.infer_expression_type(argument[receiver_start..i]) or { continue })
+		receiver_type := g.infer_expression_type(argument[receiver_start..i]) or { continue }
 		field := g.struct_field_metadata(receiver_type, argument[i + 1].lit) or { continue }
 		if field.module_name !in ['', g.module_name] && !field.is_mutable {
 			type_name := flat.source_type_name(g.semantic_type_key(receiver_type)).all_after_last('.')
@@ -1074,7 +1099,7 @@ fn (g &Parser) validate_expression_mutation_lvalue(tokens []FastcExpressionToken
 				continue
 			}
 			receiver_start := fastc_method_receiver_start(lvalue, i)
-			receiver_type := (g.infer_expression_type(lvalue[receiver_start..i]) or { continue })
+			receiver_type := g.infer_expression_type(lvalue[receiver_start..i]) or { continue }
 			if fastc_is_pointer_type(g.underlying_alias_type(receiver_type)) {
 				can_mutate_root = true
 				break
@@ -1110,7 +1135,7 @@ fn (g &Parser) validate_expression_mutation_lvalue(tokens []FastcExpressionToken
 			continue
 		}
 		receiver_start := fastc_method_receiver_start(lvalue, i)
-		receiver_type := (g.infer_expression_type(lvalue[receiver_start..i]) or { continue })
+		receiver_type := g.infer_expression_type(lvalue[receiver_start..i]) or { continue }
 		field := g.struct_field_metadata(receiver_type, lvalue[i + 1].lit) or { continue }
 		// A late generic specialization may be a reflection setter (for example
 		// json2's `$for field in T.fields { value.$(field.name) = ... }`). V permits
@@ -1159,9 +1184,9 @@ fn (g &Parser) struct_member_type(receiver_type_id u32, field_name string) u32 {
 	return field.typ
 }
 
-fn (g &Parser) struct_field_metadata(receiver_type u32, field_name string) ?FastcStructField {
+fn (g &Parser) struct_field_metadata(receiver_type u32, field_name string) ?&FastcStructField {
 	if g.last_field_known && receiver_type == g.last_field_receiver && field_name == g.last_field_name {
-		if g.last_field.name == '' {
+		if g.last_field == unsafe { nil } {
 			return none
 		}
 		return g.last_field
@@ -1183,24 +1208,25 @@ fn (g &Parser) struct_field_metadata(receiver_type u32, field_name string) ?Fast
 			w.last_field_name = field_name
 			w.last_field = cached
 			w.last_field_known = true
-			if cached.name == '' {
+			if cached == unsafe { nil } {
 				return none
 			}
 			return cached
 		}
 	}
 	if receiver_type !in w.field_memo {
-		w.field_memo[receiver_type] = map[string]FastcStructField{}
+		w.field_memo[receiver_type] = map[string]&FastcStructField{}
 	}
 	if field := g.struct_field_metadata_impl(receiver_type, field_name) {
-		w.field_memo[receiver_type][field_name] = field
+		stored := &FastcStructField{ ...field }
+		w.field_memo[receiver_type][field_name] = stored
 		w.last_field_receiver = receiver_type
 		w.last_field_name = field_name
-		w.last_field = field
+		w.last_field = stored
 		w.last_field_known = true
-		return field
+		return stored
 	}
-	miss := FastcStructField{}
+	miss := unsafe { &FastcStructField(nil) }
 	w.field_memo[receiver_type][field_name] = miss
 	w.last_field_receiver = receiver_type
 	w.last_field_name = field_name
@@ -1209,7 +1235,7 @@ fn (g &Parser) struct_field_metadata(receiver_type u32, field_name string) ?Fast
 	return none
 }
 
-fn (g &Parser) direct_struct_field_metadata(receiver_type u32, field_name string) ?FastcStructField {
+fn (g &Parser) direct_struct_field_metadata(receiver_type u32, field_name string) ?&FastcStructField {
 	mut layout_type := fastc_trim_pointer_suffix(flat.source_type_name(receiver_type))
 	if layout_type.starts_with('Array_') {
 		layout_type = 'array'
@@ -1240,7 +1266,9 @@ fn (g &Parser) struct_field_metadata_impl(receiver_type u32, field_name string) 
 			is_mutable: true
 		}
 	}
-	for field in g.struct_field_info[layout_type] {
+	fields := g.struct_field_info[layout_type] or { return none }
+	for index in 0 .. fields.len {
+		field := &fields[index]
 		if !field.name.starts_with('__embedded_') {
 			continue
 		}
@@ -1249,10 +1277,12 @@ fn (g &Parser) struct_field_metadata_impl(receiver_type u32, field_name string) 
 		if field.typ_text() == field_name || field.typ_text().all_after_last('__') == field_name {
 			// The `__embedded_N` field IS the target; its name already renders the
 			// access, so return it as-is (no extra storage path).
-			return field
+			return *field
 		}
 		if embedded := g.struct_field_metadata(field.typ, field_name) {
-			mut promoted := embedded
+			// A direct field belongs to the shared index, and a promoted field
+			// may already be cached for another receiver. Never change either.
+			mut promoted := *embedded
 			mut storage_path := [field.name]
 			storage_path << embedded.storage_path
 			promoted.storage_path = storage_path
@@ -1316,7 +1346,7 @@ fn (g &Parser) embedded_field_dot_piece_for_type(receiver_type u32, field_name s
 	return piece
 }
 
-fn (g &Parser) struct_field_is_visible(field FastcStructField) bool {
+fn (g &Parser) struct_field_is_visible(field &FastcStructField) bool {
 	// A compiler-generated generic specialization keeps V's reflection privileges:
 	// json2's `$for field in T.fields` may access private fields of the concrete caller type.
 	return g.in_mono_drain || field.is_public || field.module_name in ['', g.module_name]
@@ -1331,7 +1361,7 @@ fn (g &Parser) validate_expression_field_visibility(tokens []FastcExpressionToke
 			continue
 		}
 		receiver_start := fastc_method_receiver_start(tokens, i)
-		receiver_type := (g.infer_expression_type(tokens[receiver_start..i]) or { continue })
+		receiver_type := g.infer_expression_type(tokens[receiver_start..i]) or { continue }
 		if i + 2 < tokens.len && tokens[i + 2].tok == .lpar && g.method_function_key(receiver_type, tokens[i + 1].lit) in g.functions {
 			continue
 		}
@@ -1351,7 +1381,7 @@ fn (g &Parser) validate_struct_literal_field_visibility(tokens []FastcExpression
 	if type_start < 0 {
 		return
 	}
-	c_type := (g.type_from_expression_tokens(tokens[type_start..open]) or { return })
+	c_type := g.type_from_expression_tokens(tokens[type_start..open]) or { return }
 	layout_type := fastc_trim_pointer_suffix(flat.source_type_name(c_type))
 	if layout_type !in g.struct_field_info {
 		return
@@ -1457,7 +1487,7 @@ fn (g &Parser) validate_struct_literal_field_visibility(tokens []FastcExpression
 	}
 }
 
-fn (g &Parser) validate_fixed_array_struct_field_length(c_type_source_id u32, field FastcStructField, value_tokens []FastcExpressionToken) ! {
+fn (g &Parser) validate_fixed_array_struct_field_length(c_type_source_id u32, field &FastcStructField, value_tokens []FastcExpressionToken) ! {
 	element_type := (fastc_fixed_array_element_type(field.typ) or {
 		return g.unsupported('unverifiable fixed-array type for struct field `${field.name}`')
 	})

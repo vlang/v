@@ -2,7 +2,21 @@ module fastc
 
 import os
 import v.cmdexec
+import v.flat
 import v.pref
+
+fn test_fastc_fixed_array_markers_require_identifier_boundaries() {
+	mut types := flat.TypeTextBindings{}
+	fastc_collect_referenced_fixed_array_types('NotFixedArray_99_FASTC_ARRAY_OF_u8 ' +
+		'FixedArray_2_FASTC_ARRAY_OF_FixedArray_3_FASTC_ARRAY_OF_u8 data; FixedArray_5_u8; FixedAr', mut types)
+	mut values := []string{}
+	for name in types.keys() {
+		values << types.value(name)
+	}
+	assert values.len == 2
+	assert 'FixedArray_2_FASTC_ARRAY_OF_FixedArray_3_FASTC_ARRAY_OF_u8' in values
+	assert 'FixedArray_3_FASTC_ARRAY_OF_u8' in values
+}
 
 fn test_fastc_nested_fixed_array_initializer_preserves_function_scope() {
 	$if !macos && !linux {

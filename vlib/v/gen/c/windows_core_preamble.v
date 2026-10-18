@@ -9,6 +9,7 @@ fn (mut g FlatGen) headerless_windows_core_declarations() {
 	g.writeln('#define FILE_WRITE_ATTRIBUTES 0x00000100U')
 	g.writeln('#define FILE_FLAG_BACKUP_SEMANTICS 0x02000000U')
 	g.writeln('#define ERROR_INVALID_PARAMETER 87')
+	g.writeln('#define ERROR_INSUFFICIENT_BUFFER 122')
 	g.writeln('typedef union ULARGE_INTEGER { struct { u32 LowPart; u32 HighPart; }; u64 QuadPart; } ULARGE_INTEGER;')
 	g.writeln('typedef struct _FILETIME { u32 dwLowDateTime; u32 dwHighDateTime; } FILETIME;')
 	g.writeln('typedef struct _SYSTEM_INFO { union { u32 dwOemId; struct { u16 wProcessorArchitecture; u16 wReserved; }; }; u32 dwPageSize; void* lpMinimumApplicationAddress; void* lpMaximumApplicationAddress; uintptr_t dwActiveProcessorMask; u32 dwNumberOfProcessors; u32 dwProcessorType; u32 dwAllocationGranularity; u16 wProcessorLevel; u16 wProcessorRevision; } SYSTEM_INFO;')

@@ -67,6 +67,14 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      - name: Check out bundled TCC for the native bootstrap regression
+        if: runner.os == 'Windows'
+        uses: actions/checkout@v7
+        with:
+          repository: vlang/tccbin
+          ref: thirdparty-windows-amd64
+          path: thirdparty/tcc
+          persist-credentials: false
       - name: Test bootstrap configuration and batch error handling
         run: python cmd/tools/makev_test.py
       - name: Test Windows CI build failures and W3 integrity pins

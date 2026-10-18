@@ -40,6 +40,11 @@ static inline v_fastc_native_pair_u64 v_fastc_native_pair_from_multi(MultiReturn
 // ownership in V source, following only selected compile-time branches. C headers
 // belong to the C compiler and are never opened or parsed by FastC.
 fn fastc_target_collect_native_context(source string, path string, prefs &pref.Preferences, mut references map[string]bool, mut declarations map[string]bool) bool {
+	// Only these V-source lexemes can produce a native reference,
+	// declaration or header directive. Comments and strings stay candidates.
+	if !source.contains('#') && !fastc_source_contains_word(source, 'C') {
+		return false
+	}
 	mut scan := scanner.new_scanner(prefs, .normal)
 	file := token.File.unindexed(path, source.len)
 	scan.init(file, source)
@@ -102,9 +107,10 @@ mut:
 	declaration_paths  map[string][]string
 }
 
-fn fastc_native_source_context(sources []FastcSourceFile, prefs &pref.Preferences) FastcNativeSourceContext {
+fn fastc_native_source_context_chunk(sources []FastcSourceFile, prefs &pref.Preferences, start int, end int) FastcNativeSourceContext {
 	mut context := FastcNativeSourceContext{}
-	for source in sources {
+	for i in start .. end {
+		source := sources[i]
 		mut declarations := map[string]bool{}
 		if fastc_target_collect_native_context(source.source, source.path, prefs, mut context.references, mut declarations) {
 			context.files_with_headers[source.path] = true
@@ -116,6 +122,22 @@ fn fastc_native_source_context(sources []FastcSourceFile, prefs &pref.Preference
 		}
 	}
 	return context
+}
+
+// Merge contiguous source chunks in order so duplicate declarations retain
+// every origin in the same order as the serial scanner.
+fn fastc_merge_native_source_context(mut context FastcNativeSourceContext, chunk FastcNativeSourceContext) {
+	for name, _ in chunk.references {
+		context.references[name] = true
+	}
+	for path, _ in chunk.files_with_headers {
+		context.files_with_headers[path] = true
+	}
+	for name, chunk_paths in chunk.declaration_paths {
+		mut paths := context.declaration_paths[name] or { []string{} }
+		paths << chunk_paths
+		context.declaration_paths[name] = paths
+	}
 }
 
 // fastc_target_libc_declares leaves the standard headers' exact qualifiers

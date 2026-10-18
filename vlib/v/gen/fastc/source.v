@@ -28,6 +28,24 @@ fn fastc_preferences_for_entry_paths(paths []string, prefs &pref.Preferences) pr
 	return scoped
 }
 
+// fastc_builtin_file_excluded reports whether a `builtin` source file is left out of
+// FastC builds, whether it is reached as the runtime or as a sibling of a test entry.
+fn fastc_builtin_file_excluded(path string, prefs &pref.Preferences) bool {
+	name := os.file_name(path)
+	// V3 uses the pointer-sized map implementation selected by `v3_backend`.
+	// The legacy layout in map.v belongs to the compatibility compiler.
+	if name == 'map.v' && 'v3_backend' in prefs.user_defines {
+		return true
+	}
+	if prefs.target_libc_headers && name == 'prealloc.c.v'
+		&& 'prealloc' !in prefs.user_defines {
+		// The target allocator does not use the hosted arena's atomics header.
+		return true
+	}
+	// FastC has no 128-bit integer lowering yet.
+	return name in ['int_d_v3_backend.v', 'string_d_v3_backend.v']
+}
+
 // fastc_sources_with_self_module_qualifiers adds the current module's short
 // qualifier after source resolution, without loading it as a new import.
 fn fastc_sources_with_self_module_qualifiers(sources []FastcSourceFile, prefs &pref.Preferences) ![]FastcSourceFile {
@@ -44,9 +62,10 @@ fn fastc_sources_with_self_module_qualifiers(sources []FastcSourceFile, prefs &p
 			continue
 		}
 		mut declarations := strings.new_builder(64)
+		mut declaration_origins := []FastcSourceOrigin{}
 		collect_global_names(source.source, source.path, source.header, prefs,
 			source.header.body_spans, mut globals, mut public_globals, mut global_paths,
-			mut declarations)!
+			mut declarations, mut declaration_origins)!
 		declarations.free()
 	}
 	mut result := []FastcSourceFile{cap: sources.len}
@@ -85,11 +104,21 @@ fn fastc_resolution_path(path string, prefs &pref.Preferences) string {
 	return if prefs.target_libc_headers { os.abs_path(path) } else { os.real_path(path) }
 }
 
-fn fastc_expand_entry_paths(paths []string, prefs &pref.Preferences) ![]string {
-	mut entries := []string{}
+// FastcEntryPath keeps the input's origin when directory expansion and an
+// explicit file name the same source. Only explicit program files compile alone.
+struct FastcEntryPath {
+	path string
+	lone bool
+}
+
+fn fastc_expand_entry_paths(paths []string, prefs &pref.Preferences) ![]FastcEntryPath {
+	mut entries := []FastcEntryPath{}
 	for path in paths {
 		if !os.is_dir(path) {
-			entries << path
+			entries << FastcEntryPath{
+				path: path
+				lone: !fastc_is_test_source(path, prefs)
+			}
 			continue
 		}
 		files := fastc_list_module_sources(fastc_resolution_path(path, prefs), prefs)
@@ -98,9 +127,11 @@ fn fastc_expand_entry_paths(paths []string, prefs &pref.Preferences) ![]string {
 		}
 		if prefs.building_v {
 			// The real-builtin resolver gathers the entry file's module siblings.
-			entries << files[0]
+			entries << FastcEntryPath{ path: files[0] }
 		} else {
-			entries << files
+			for file in files {
+				entries << FastcEntryPath{ path: file }
+			}
 		}
 	}
 	return entries
@@ -166,7 +197,11 @@ fn fastc_load_source(path string, prefs &pref.Preferences) FastcLoadedSource {
 }
 
 fn fastc_header_with_channel_runtime(header FastcSourceHeader, source string, prefs &pref.Preferences) FastcSourceHeader {
-	if !prefs.building_v || header.module_name in ['sync', 'builtin'] || !source.contains('chan') {
+	if !prefs.building_v || header.module_name in ['sync', 'builtin'] {
+		return header
+	}
+	last_channel_offset := fastc_source_last_word_index(source, 'chan')
+	if last_channel_offset < 0 {
 		return header
 	}
 	mut scan := scanner.new_scanner(prefs, .normal)
@@ -174,7 +209,8 @@ fn fastc_header_with_channel_runtime(header FastcSourceHeader, source string, pr
 	scan.init(file, source)
 	mut has_channel := false
 	mut tok := scan.scan()
-	for tok != .eof {
+	// A real chan token cannot begin after the final raw-word candidate.
+	for tok != .eof && scan.pos <= last_channel_offset {
 		if tok == .name && scan.lit == 'chan' {
 			has_channel = true
 			break
@@ -200,12 +236,16 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) !([]Fastc
 	return sources, module_aliases
 }
 
-// fastc_resolve_source_files_deferring_memo resolves the sources of `paths`;
+// fastc_resolve_source_files_deferring_memo resolves the sources of `entries`;
 // the memo of the resolution is written in the background and the caller
 // joins it through `pending_memo_store` (fastc_wait_memo_store) once its own
 // work is done.
-fn fastc_resolve_source_files_deferring_memo(paths []string, prefs &pref.Preferences, mut pending_memo_store FastcPendingMemoStore) !([]FastcSourceFile, map[string]string) {
+fn fastc_resolve_source_files_deferring_memo(entries []FastcEntryPath, prefs &pref.Preferences, mut pending_memo_store FastcPendingMemoStore) !([]FastcSourceFile, map[string]string) {
 	mut timer := fastc_new_phase_timer()
+	mut paths := []string{cap: entries.len}
+	for entry in entries {
+		paths << entry.path
+	}
 	// The entries' canonical paths key the memo and seed the walk's cache.
 	mut entry_real_paths := []string{cap: paths.len}
 	for path in paths {
@@ -251,18 +291,7 @@ fn fastc_resolve_source_files_deferring_memo(paths []string, prefs &pref.Prefere
 	mut queue := []FastcQueuedSource{}
 	if prefs.building_v {
 		for builtin_file in fastc_module_source_files(builtin_dir, prefs, mut module_dir_files) {
-			// V3 uses the pointer-sized map implementation selected by `v3_backend`.
-			// The legacy layout in map.v belongs to the compatibility compiler.
-			if os.file_name(builtin_file) == 'map.v' && 'v3_backend' in prefs.user_defines {
-				continue
-			}
-			if prefs.target_libc_headers && os.file_name(builtin_file) == 'prealloc.c.v'
-				&& 'prealloc' !in prefs.user_defines {
-				// The target allocator does not use the hosted arena's atomics header.
-				continue
-			}
-			// FastC has no 128-bit integer lowering yet.
-			if os.file_name(builtin_file) in ['int_d_v3_backend.v', 'string_d_v3_backend.v'] {
+			if fastc_builtin_file_excluded(builtin_file, prefs) {
 				continue
 			}
 			queue << FastcQueuedSource{
@@ -273,7 +302,7 @@ fn fastc_resolve_source_files_deferring_memo(paths []string, prefs &pref.Prefere
 			}
 		}
 	}
-	for path in paths {
+	for i, path in paths {
 		entry_path := if prefs.building_v {
 			real_path_cache[path] or { fastc_resolution_path(path, prefs) }
 		} else {
@@ -288,13 +317,19 @@ fn fastc_resolve_source_files_deferring_memo(paths []string, prefs &pref.Prefere
 		// `repo/`, ... all declare `module main`). The entry file names only one of
 		// them, so gather the rest of the entry module here. Only the real-builtin
 		// path does this: the bootstrap runtime compiles single entry files, and its
-		// tests place several independent programs in one scratch directory.
-		if prefs.building_v {
+		// tests place several independent programs in one scratch directory. A lone
+		// program file is compiled by itself, as by the C backend.
+		if prefs.building_v && !entries[i].lone {
 			entry_module_files := entry_files[entry_path] or {
 				fastc_entry_module_files(entry_path, prefs)
 			}
 			entry_files[entry_path] = entry_module_files
+			// Both are canonical here, so a test in vlib/builtin compares as a string.
+			entry_in_builtin := os.dir(entry_path) == builtin_dir
 			for module_file in entry_module_files {
+				if entry_in_builtin && fastc_builtin_file_excluded(module_file, prefs) {
+					continue
+				}
 				if fastc_source_file_matches_backend(module_file) {
 					queue << FastcQueuedSource{
 						path:         module_file
@@ -462,10 +497,8 @@ fn fastc_resolve_source_files_deferring_memo(paths []string, prefs &pref.Prefere
 	if module_aliases.len > 0 {
 		for index in 0 .. sources.len {
 			sources[index] = FastcSourceFile{
-				path:          sources[index].path
-				source:        sources[index].source
-				source_offset: sources[index].source_offset
-				header:        fastc_canonicalize_header_imports(sources[index].header, module_aliases)
+				...sources[index]
+				header: fastc_canonicalize_header_imports(sources[index].header, module_aliases)
 			}
 		}
 	}
@@ -1240,7 +1273,7 @@ fn fastc_memo_body(text string) string {
 
 // fastc_source_load_chunk_size is the number of files one loader thread reads;
 // reads are short syscalls, so a few per spawn amortize the thread start.
-const fastc_source_load_chunk_size = 4
+const fastc_source_load_chunk_size = 12
 
 // fastc_resolve_module_dir resolves and memoizes the directory of an imported
 // module. A directory below the canonical vlib root is canonical already.
@@ -1596,8 +1629,24 @@ fn fastc_source_file_matches_backend(path string) bool {
 	return !path.ends_with('.arm64.v') && !path.ends_with('.amd64.v') && !path.ends_with('.native.v') && !path.ends_with('.wasm.v') && !path.ends_with('.rv64.v') && !path.ends_with('.js.v')
 }
 
+// fastc_source_has_capture_syntax is a byte-level superset of a `fn` token
+// followed by `[`. Comments and string literals remain scanner candidates.
+fn fastc_source_has_capture_syntax(source string) bool {
+	mut start := 0
+	for {
+		index := source.index_after_('fn', start)
+		if index < 0 { return false }
+		if fastc_source_word_at(source, index, 'fn') {
+			after := fastc_source_skip_blank(source, index + 2)
+			if after < source.len && source[after] == `[` { return true }
+		}
+		start = index + 2
+	}
+	return false
+}
+
 fn fastc_source_uses_captures(source string, prefs &pref.Preferences) bool {
-	if !source.contains('fn') || !source.contains('[') {
+	if !fastc_source_has_capture_syntax(source) {
 		return false
 	}
 	mut scan := scanner.new_scanner(prefs, .normal)
@@ -1617,6 +1666,50 @@ fn fastc_source_uses_captures(source string, prefs &pref.Preferences) bool {
 	return false
 }
 
+// fastc_skip_header_block skips tokens that cannot affect a brace block's end.
+// Header discovery ignores the block's contents. Existing scanner routines
+// still own comments, numbers, strings, interpolation and punctuation.
+// A matching closing token leaves the scanner ready to resume. At unmatched
+// EOF, header discovery discards this scanner and its unreported diagnostics.
+@[direct_array_access]
+fn fastc_skip_header_block(mut scan scanner.Scanner) token.Token {
+	mut depth := 1
+	for scan.offset < scan.src.len {
+		mut tok := token.Token.unknown
+		if scan.in_str_incomplete {
+			tok = scan.scan()
+		} else {
+			c := scan.src[scan.offset]
+			if fastc_source_space_byte(c) {
+				scan.offset++
+				continue
+			}
+			if (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || c == `_` {
+				start := scan.offset
+				mut end := start + 1
+				for end < scan.src.len && fastc_identifier_byte(scan.src[end]) { end++ }
+				quoted := end < scan.src.len && scan.src[end] in [`'`, `"`]
+				prefix := (end == start + 1 && c in [`c`, `r`])
+					|| (end == start + 2 && c == `j` && scan.src[start + 1] == `s`)
+				if !quoted || !prefix {
+					scan.offset = end
+					continue
+				}
+			}
+			tok = scan.scan()
+		}
+		if tok == .lcbr {
+			depth++
+		} else if tok == .rcbr {
+			depth--
+			if depth == 0 { return tok }
+		} else if tok == .eof {
+			return tok
+		}
+	}
+	return .eof
+}
+
 fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences) !FastcSourceHeader {
 	file := token.File.unindexed(path, source.len)
 	mut scan := scanner.new_scanner(prefs, .normal)
@@ -1630,7 +1723,7 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 	mut brace_depth := 0
 	// Imports can follow declarations. A byte bound keeps ordinary files from
 	// tokenizing function bodies once their final possible import is behind us.
-	last_import_offset := source.last_index('import') or { -1 }
+	last_import_offset := fastc_source_last_word_index(source, 'import')
 	mut tok := scan.scan()
 	for tok != .eof {
 		if brace_depth == 0 && fastc_keyword_is_qualifier(tok, scan) {
@@ -1691,6 +1784,10 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 		if tok != .key_import || brace_depth > 0 {
 			if tok == .lcbr {
 				brace_depth++
+				if module_name != '' {
+					tok = fastc_skip_header_block(mut scan)
+					continue
+				}
 			} else if tok == .rcbr && brace_depth > 0 {
 				brace_depth--
 			}
@@ -1790,10 +1887,8 @@ fn fastc_apply_scan_flags(mut sources []FastcSourceFile, flags []FastcSourceScan
 	for i, file_flags in flags {
 		source_file := sources[start + i]
 		sources[start + i] = FastcSourceFile{
-			path:          source_file.path
-			source:        source_file.source
-			source_offset: source_file.source_offset
-			header:        fastc_header_with_scan_flags(source_file.header, file_flags)
+			...source_file
+			header: fastc_header_with_scan_flags(source_file.header, file_flags)
 		}
 	}
 }
@@ -1868,6 +1963,31 @@ mut:
 	has_select              bool
 }
 
+// fastc_source_contains_word is a byte-level superset check: words in comments
+// and strings remain candidates for the scanner to disambiguate.
+fn fastc_source_contains_word(source string, word string) bool {
+	if word.len == 0 { return false }
+	mut start := 0
+	for {
+		index := source.index_after_(word, start)
+		if index < 0 { return false }
+		if fastc_source_word_at(source, index, word) { return true }
+		start = index + word.len
+	}
+	return false
+}
+
+// fastc_source_last_word_index bounds keyword scans without treating longer
+// identifiers, such as `imports`, as possible keyword occurrences.
+@[direct_array_access]
+fn fastc_source_last_word_index(source string, word string) int {
+	if word.len == 0 { return -1 }
+	for i := source.len - word.len; i >= 0; i-- {
+		if source[i] == word[0] && fastc_source_word_at(source, i, word) { return i }
+	}
+	return -1
+}
+
 @[direct_array_access]
 fn fastc_source_word_at(source string, i int, word string) bool {
 	if i + word.len > source.len {
@@ -1905,11 +2025,12 @@ fn fastc_source_skip_blank(source string, start int) int {
 				j++
 			}
 		} else if c == `/` && j + 1 < source.len && source[j + 1] == `*` {
-			// Block comments nest, as in the scanner.
+			// Match Scanner.comment, including its `/*/` and `//*/` closing idioms.
 			mut depth := 1
 			j += 2
 			for j < source.len && depth > 0 {
-				if source[j] == `/` && j + 1 < source.len && source[j + 1] == `*` {
+				if source[j] == `/` && j + 1 < source.len && source[j + 1] == `*`
+					&& (j + 2 >= source.len || source[j + 2] != `/`) {
 					depth++
 					j += 2
 				} else if source[j] == `*` && j + 1 < source.len && source[j + 1] == `/` {
@@ -2053,7 +2174,7 @@ fn fastc_identifier_byte(value u8) bool {
 // block (statement or expression form). `sql` is not a keyword, so it is matched as a
 // name not preceded by `.` and followed by a connection expression and then `{`.
 fn fastc_source_uses_sql(source string, prefs &pref.Preferences) bool {
-	if !source.contains('sql') {
+	if !fastc_source_contains_word(source, 'sql') {
 		return false
 	}
 	file := token.File.unindexed('orm_sql_probe', source.len)

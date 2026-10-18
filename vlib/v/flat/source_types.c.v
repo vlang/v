@@ -130,6 +130,7 @@ struct SourceTypeIndex {
 
 __global g_source_types &SourceTypeTable
 __global g_source_types_lock u32
+__global g_source_type_recent_ids [4096]u32
 
 fn source_type_lock() {
 	for {
@@ -235,7 +236,34 @@ fn source_type_find(table &SourceTypeTable, index &SourceTypeIndex, text string,
 // Zero denotes an empty spelling. IDs are spelling identities, not checked types:
 // resolving an unqualified name still requires its module and import context.
 // Existing spellings are read without taking the insertion lock.
+@[direct_array_access]
 pub fn source_type_id(text string) u32 {
+	if text.len == 0 {
+		return 0
+	}
+	// Only immutable process-owned IDs are cached. Inputs can be borrowed from
+	// a disposable arena, so every hit still checks the canonical spelling.
+	slot := source_type_recent_slot(text)
+	cached_id := C.atomic_load_u32(&g_source_type_recent_ids[slot])
+	if cached_id != 0 {
+		cached := source_type_name(cached_id)
+		if cached.len == text.len && (cached.str == text.str
+			|| unsafe { C.memcmp(cached.str, text.str, usize(text.len)) == 0 }) {
+			return cached_id
+		}
+	}
+	id := source_type_id_uncached(text)
+	C.atomic_store_u32(&g_source_type_recent_ids[slot], id)
+	return id
+}
+
+@[inline]
+fn source_type_recent_slot(text string) int {
+	address := usize(text.str)
+	return int(((address >> 3) ^ (address >> 13) ^ (address >> 21)) & 4095)
+}
+
+fn source_type_id_uncached(text string) u32 {
 	if text.len == 0 {
 		return 0
 	}
