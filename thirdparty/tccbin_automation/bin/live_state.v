@@ -2848,20 +2848,18 @@ fn live_git_args(state_git_dir string, command []string, class DurableGitReadCla
 			output:    result.stdout
 		}
 	}
-	mut quoted := []string{cap: command.len}
-	for argument in command {
-		quoted << os.quoted_path(argument)
-	}
-	return os.execute('git --no-replace-objects --git-dir ${os.quoted_path(state_git_dir)} ${quoted.join(' ')}')
+	mut argv := ['git', '--no-replace-objects', '--git-dir', state_git_dir]
+	argv << command
+	return os.exec(argv)
 }
 
 // This legacy adapter remains for the dormant T2c3b authority. While T2c3c1 owns the lease it
 // accepts only the exact target ls-tree form; arbitrary shell text cannot cross the new runner.
-fn live_git(state_git_dir string, arguments string) os.Result {
+fn live_git(state_git_dir string, arguments []string) os.Result {
 	if durable_git_runner_lease_load() != unsafe { nil } {
-		prefix := 'ls-tree -l -z --full-tree '
-		separator := ' -- '
-		if !arguments.starts_with(prefix) || !arguments.contains(separator) {
+		if arguments.len != 7 || arguments[0] != 'ls-tree' || arguments[1] != '-l'
+			|| arguments[2] != '-z' || arguments[3] != '--full-tree' || arguments[5] != '--'
+			|| !is_lower_hex_40(arguments[4]) || !contract_relative_path_is_safe(arguments[6]) {
 			if mut session := durable_git_runner_session() {
 				durable_git_record_first_failure(mut session,
 					'durable Git authority adapter rejected noncanonical arguments')
@@ -2871,22 +2869,11 @@ fn live_git(state_git_dir string, arguments string) os.Result {
 				output:    'durable Git authority adapter rejected noncanonical arguments'
 			}
 		}
-		remainder := arguments[prefix.len..]
-		parts := remainder.split(separator)
-		if parts.len != 2 || !is_lower_hex_40(parts[0]) || !contract_relative_path_is_safe(parts[1]) {
-			if mut session := durable_git_runner_session() {
-				durable_git_record_first_failure(mut session,
-					'durable Git authority adapter rejected noncanonical arguments')
-			}
-			return os.Result{
-				exit_code: 125
-				output:    'durable Git authority adapter rejected noncanonical arguments'
-			}
-		}
-		return live_git_args(state_git_dir, ['ls-tree', '-l', '-z', '--full-tree', parts[0], '--',
-			parts[1]], .scalar)
+		return live_git_args(state_git_dir, arguments, .scalar)
 	}
-	return os.execute('git --no-replace-objects --git-dir ${os.quoted_path(state_git_dir)} ${arguments}')
+	mut argv := ['git', '--no-replace-objects', '--git-dir', state_git_dir]
+	argv << arguments
+	return os.exec(argv)
 }
 
 fn validate_live_git_preflight(state_git_dir string) ! {
@@ -2932,7 +2919,7 @@ fn validate_live_git_preflight(state_git_dir string) ! {
 	if os.exists(os.join_path(state_git_dir, 'shallow')) {
 		return error('history_recovery_required: live state Git repository is shallow')
 	}
-	replace_refs := live_git(state_git_dir, "for-each-ref --format='%(refname)' refs/replace")
+	replace_refs := live_git(state_git_dir, ['for-each-ref', '--format=%(refname)', 'refs/replace'])
 	if replace_refs.exit_code != 0 || replace_refs.output.trim_space() != '' {
 		return error('live state Git repository contains or cannot exclude replacement refs')
 	}
@@ -4216,7 +4203,7 @@ $if test {
 	}
 
 	pub fn durable_git_authority_adapter_rejection_for_test(state_git_dir string,
-		arguments string) !string {
+		arguments []string) !string {
 		mut session := durable_git_runner_begin(state_git_dir)!
 		result := live_git(state_git_dir, arguments)
 		durable_git_runner_end(mut session)!
