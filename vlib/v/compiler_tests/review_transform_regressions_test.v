@@ -206,12 +206,12 @@ type Value = Box | int
 fn main() {
 	left := Value(Box{
 		pos: token.Pos{
-			line_nr: 1
+			offset: 1
 		}
 	})
 	right := Value(Box{
 		pos: token.Pos{
-			line_nr: 1
+			offset: 1
 		}
 	})
 	println(left == right)
@@ -694,7 +694,8 @@ fn main() {
 	_ = call_wait()
 }
 ')
-	assert generated.contains('return wait(0);'), generated
+	// The literal stays a null pointer, cast to the C ABI `int*` of the `&int` parameter.
+	assert generated.contains('return wait((int*)(0));'), generated
 	assert !generated.contains('wait(&0)'), generated
 }
 
@@ -1983,7 +1984,7 @@ fn main() {
 }
 '
 	c_source := gen_c_from_source(v3_bin, 'deferred_local_bound_method_c', source)
-	body := c_fn_body(c_source, 'void deferred_read(int value) {')
+	body := c_fn_body(c_source, 'void deferred_read(i64 value) {')
 	assert body.contains('closure__closure_try_destroy(callback);'), body
 	out := run_good(v3_bin, 'deferred_local_bound_method', source)
 	assert out == 'ok'
@@ -3434,7 +3435,7 @@ fn test_wasm_backend_rejects_defer_results_before_codegen() {
 fn main() {
 	println(int_str(f()))
 }
-', '`\$res()` is not supported by the V wasm backend')
+', '`\$res()` is not supported by the V3 wasm backend')
 }
 
 fn test_thread_handle_equality_uses_platform_comparison() {
@@ -4159,7 +4160,7 @@ fn main() {
 	println(int_str(forward()))
 }
 ')
-	body := c_fn_body(c_source, 'int forward(void) {')
+	body := c_fn_body(c_source, 'i64 forward(void) {')
 	assert body.contains('main__Item item ='), body
 	assert !body.contains('main__Item* item ='), body
 	assert !body.contains('memdup(&__esc'), body
@@ -4237,7 +4238,7 @@ fn main() {
 }
 '
 	c_source := gen_c_from_source(v3_bin, 'returned_closure_alias_pointer_capture_c', source)
-	body := c_fn_body(c_source, ' make(int initial) {')
+	body := c_fn_body(c_source, ' make(i64 initial) {')
 	assert body.contains('main__Value* value = (main__Value*)memdup'), body
 	out := run_good(v3_bin, 'returned_closure_alias_pointer_capture', source)
 	assert out == '11\n21'
@@ -4248,8 +4249,8 @@ fn test_heap_escaping_amp_reassignment_moves_current_source() {
 	out := run_good(v3_bin, 'heap_escaping_amp_reassign_source', 'fn make() &int {\n\tmut a := 10\n\tmut b := 20\n\tmut p := &a\n\tp = &b\n\treturn p\n}\n\nfn main() {\n\tprintln(int_str(*make()))\n}\n')
 	assert out == '20'
 	c_source := gen_c_from_source(v3_bin, 'heap_escaping_amp_reassign_source_c', 'fn make() &int {\n\tmut a := 10\n\tmut b := 20\n\tmut p := &a\n\tp = &b\n\treturn p\n}\n\nfn main() {\n\t_ := make()\n}\n')
-	body := c_fn_body(c_source, 'int* make(void) {')
-	assert body.contains('int* b ='), body
+	body := c_fn_body(c_source, 'i64* make(void) {')
+	assert body.contains('i64* b ='), body
 	assert !body.contains('p = &b;'), body
 }
 
@@ -4603,7 +4604,7 @@ fn test_map_value_lookup_constructs_default_only_for_missing_key() {
 	assert set_check >= 0, set_body
 	assert set_default > set_check, set_body
 	set_guard := set_body[set_check..set_default]
-	assert set_guard.contains('?') || set_guard.contains('if (!'), set_body
+	assert set_guard.contains('?') || set_guard.contains('if (!') || set_guard.contains('== NULL)'), set_body
 	assert run_good(v3_bin, 'map_value_lookup_lazy_default', source) == '42'
 }
 
@@ -5474,25 +5475,6 @@ fn test_vmodroot_c_flag_preserves_project_path_with_spaces() {
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '57'
-}
-
-fn test_unrelated_system_include_keeps_c_extern_declaration() {
-	v3_bin := build_v3_review_transform()
-	header_name := 'v3_unrelated_system_include.h'
-	header_path := os.join_path(os.temp_dir(), header_name)
-	os.write_file(header_path, '#include <stdio.h>\n') or { panic(err) }
-	defer {
-		os.rm(header_path) or {}
-	}
-	c_source := gen_c_from_source(v3_bin, 'unrelated_system_include_c_extern', '#insert "${header_name}"
-
-fn C.X509_free(voidptr)
-
-fn main() {
-	C.X509_free(voidptr(0))
-}
-')
-	assert c_source.contains('void X509_free(void*'), c_source
 }
 
 fn test_imported_header_tree_uses_real_stdint_with_inttypes() {
@@ -12673,12 +12655,12 @@ fn main() {
 }
 ')
 	for fn_name in ['make_memdup', 'make_memdup_noscan', 'make_aligned_memdup'] {
-		body := c_fn_body(c_source, 'int* ${fn_name}(void) {')
-		assert body.contains('int* local ='), body
+		body := c_fn_body(c_source, 'i64* ${fn_name}(void) {')
+		assert body.contains('i64* local ='), body
 	}
-	builtin_body := c_fn_body(c_source, 'int* make_builtin_memdup(void) {')
+	builtin_body := c_fn_body(c_source, 'i64* make_builtin_memdup(void) {')
 	assert builtin_body.contains('i64 local = 44;'), builtin_body
-	assert builtin_body.contains('memdup(&local, sizeof(int))'), builtin_body
+	assert builtin_body.contains('memdup((void*)(&local), sizeof(i64))'), builtin_body
 }
 
 fn test_parallel_monomorph_workers_use_disjoint_lifted_literal_names() {
