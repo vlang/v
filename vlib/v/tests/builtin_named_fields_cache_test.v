@@ -35,6 +35,7 @@ pub:
 	string string
 	bool bool
 }
+pub fn value() Fields { return Fields{ i64: 42, string: "text", bool: true } }
 pub struct Embedded {
 	Fields
 pub:
@@ -45,7 +46,7 @@ pub:
 	program := 'import json2
 import namedfields
 fn main() {
-	value := namedfields.Fields{ i64: 42, string: "text", bool: true }
+	value := namedfields.value()
 	println(json2.encode(value))
 	println(json2.encode(namedfields.Embedded{ Fields: value, extra: "more" }))
 	\$for field in namedfields.Fields.fields { assert !field.is_embed }

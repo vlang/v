@@ -35,7 +35,7 @@ struct Private { string string }
 	mut fields := []flat.Node{}
 	for node in a.nodes {
 		if node.kind == .struct_decl {
-			headers << struct_text(&a, node, []string{}, true)
+			headers << struct_text(a, node, []string{}, true)
 		} else if node.kind == .field_decl {
 			fields << node
 		}
