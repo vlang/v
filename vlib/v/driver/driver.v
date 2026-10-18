@@ -1841,10 +1841,40 @@ fn c_object_compiler_identity(compiler string, mut stats CObjectCacheStats) (str
 	if compiler_path in stats.compiler_versions {
 		return compiler_path, stats.compiler_versions[compiler_path]
 	}
-	compiler_result := cmdexec.run(compiler, ['--version'])
-	version := compiler_result.output
+	version := c_object_compiler_version(compiler, compiler_path)
 	stats.compiler_versions[compiler_path] = version
 	return compiler_path, version
+}
+
+// c_object_compiler_version returns the output of `compiler --version`. TinyCC
+// is a plain executable whose answer depends on that file only, so the answer is
+// kept beside the C object cache under the file's metadata: starting the
+// compiler for it was most of the C object cache stage of every build. Other
+// compilers can be shims that run a toolchain chosen elsewhere; they are asked
+// every time.
+fn c_object_compiler_version(compiler string, compiler_path string) string {
+	if !os.file_name(compiler_path).to_lower_ascii().contains('tcc') || !os.is_file(compiler_path) {
+		return cmdexec.run(compiler, ['--version']).output
+	}
+	metadata := modulecache.file_metadata_signature(compiler_path)
+	if metadata.len == 0 {
+		return cmdexec.run(compiler, ['--version']).output
+	}
+	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
+	path_hash := c_hash_bytes(u64(1469598103934665603), compiler_path.bytes()).hex()
+	memo_path := os.join_path(cache_dir, 'compiler_${path_hash}.version')
+	if content := os.read_file(memo_path) {
+		if content.starts_with(metadata + '\n') {
+			return content[metadata.len + 1..]
+		}
+	}
+	result := cmdexec.run(compiler, ['--version'])
+	if result.exit_code == 0 && os.is_dir(cache_dir) {
+		temp_path := '${memo_path}.tmp.${tempname.unique_token()}'
+		os.write_file(temp_path, metadata + '\n' + result.output) or { return result.output }
+		os.mv(temp_path, memo_path) or { os.rm(temp_path) or {} }
+	}
+	return result.output
 }
 
 fn c_object_file_signature(path string, refresh bool, mut stats CObjectCacheStats) string {
