@@ -68,3 +68,110 @@ fn test_option_reference_field_of_a_parser_rule() {
 	result := stack[0].v as Term
 	assert result.eval() == 210
 }
+
+struct Holder {
+	next &Node = unsafe { nil }
+}
+
+fn maybe_node(n Node) ?Node {
+	return n
+}
+
+fn test_c_style_and_infinite_for_loop_bodies() {
+	mut cur := Node{
+		factor: 1
+	}
+	for i := 0; i < 3; i++ {
+		prev := cur
+		cur = Node{&prev, i}
+	}
+	assert node_depth(cur) == 3
+	mut n := 0
+	for {
+		if n == 2 {
+			break
+		}
+		prev := cur
+		cur = Node{&prev, n}
+		n++
+	}
+	assert node_depth(cur) == 5
+}
+
+fn test_multi_assignment_pairs() {
+	mut cur := Node{
+		factor: 1
+	}
+	mut count := 0
+	for f in [2, 3, 5] {
+		prev := cur
+		count, cur = count + 1, Node{&prev, f}
+	}
+	assert count == 3
+	assert node_depth(cur) == 3
+	mut saved := Holder{}
+	mut steps := 0
+	for f in [2, 3] {
+		x := Node{
+			next:   saved.next
+			factor: f
+		}
+		steps, saved = steps + 1, Holder{&x}
+	}
+	assert steps == 2
+	assert saved.next.factor == 3
+	assert saved.next.next.factor == 2
+}
+
+fn holder_depth(h Holder) int {
+	if h.next == unsafe { nil } {
+		return 0
+	}
+	return 1 + node_depth(*h.next)
+}
+
+// link_through_guard keeps `&x` past its `if`, in a `mut` parameter that is declared
+// in the same block as that `if`. Each call reuses the frame of the previous one.
+fn link_through_guard(mut saved Holder, f int) {
+	if x := maybe_node(Node{
+		next:   saved.next
+		factor: f
+	})
+	{
+		saved = Holder{&x}
+	}
+}
+
+fn test_if_guard_binding() {
+	mut saved := Holder{}
+	for f in [2, 3, 5] {
+		link_through_guard(mut saved, f)
+	}
+	assert holder_depth(saved) == 3
+	assert saved.next.factor == 5
+	mut cur := Node{
+		factor: 1
+	}
+	for f in [2, 3, 5] {
+		if prev := maybe_node(cur) {
+			cur = Node{&prev, f}
+		}
+	}
+	assert node_depth(cur) == 3
+}
+
+fn test_select_receive_binding() {
+	ch := chan Node{cap: 1}
+	mut cur := Node{
+		factor: 1
+	}
+	for f in [2, 3, 5] {
+		ch <- cur
+		select {
+			prev := <-ch {
+				cur = Node{&prev, f}
+			}
+		}
+	}
+	assert node_depth(cur) == 3
+}

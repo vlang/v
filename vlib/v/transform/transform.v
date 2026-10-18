@@ -10378,14 +10378,17 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 	node_storage := t.a.nodes[int(id)]
 	node := &node_storage
 	if node.kind in [.if_expr, .comptime_if, .match_stmt, .match_branch, .for_stmt, .select_stmt] {
-		// A match branch holds its statements directly, scoped to the branch.
-		if node.kind == .match_branch {
+		// These hold declarations scoped to them outside of a block: the statements of a
+		// match branch and of a `for i := 0; ...` or `for cond` loop, and the binding of an
+		// `if x := opt` guard.
+		scoped := node.kind in [.if_expr, .match_branch, .for_stmt]
+		if scoped {
 			t.escape_scope_depth++
 		}
 		for i in 0 .. node.children_count {
 			t.scan_escape_pass(t.a.child(node, i), mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut method_value_receivers, mut closure_capture_aliases, mut interface_boxes, mut returned, mut local_stack_names, mut local_stack_added, mut reference_backing_sources, false)
 		}
-		if node.kind == .match_branch {
+		if scoped {
 			t.escape_scope_depth--
 		}
 		return
@@ -10413,6 +10416,7 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 			lhs := t.a.child_node(node, 0)
 			if lhs.kind == .ident && lhs.value.len > 0 && lhs.value != '_' {
 				add_escape_local_stack_name(lhs.value, mut local_stack_names, mut local_stack_added)
+				t.escape_decl_depths[lhs.value] = t.escape_scope_depth
 			}
 		}
 		for i in body_start .. node.children_count {
@@ -10461,6 +10465,10 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 			lhs := t.a.nodes[int(t.multi_assign_lhs_id(*node, i))]
 			rhs_id := t.multi_assign_rhs_id(*node, i)
 			rhs := t.a.nodes[int(rhs_id)]
+			if node.kind == .assign && node.op == .assign {
+				t.mark_outer_scope_address_store(t.multi_assign_lhs_id(*node, i), rhs_id,
+					amp_sources, ptr_aliases)
+			}
 			mut lhs_marks_interface_box := false
 			t.scan_escape_pointer_write(lhs, rhs, mut amp_ptrs, mut amp_sources, mut ptr_aliases)
 			mut lhs_marks_method_value := false
@@ -10558,20 +10566,14 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 		lhs_id := t.a.child(node, 0)
 		rhs_id := t.a.child(node, 1)
 		lhs_root := t.escape_address_root_name(lhs_id) or { '' }
-		// `outer = Node{next: &inner}`: the assigned variable outlives a local of a nested
-		// block, whose storage a loop also reuses in its next iteration.
 		for source_name in t.escape_aggregate_address_sources(rhs_id, amp_sources, ptr_aliases) {
 			if source_name == lhs_root && source_name in local_stack_names {
 				t.escaping_amp_sources[source_name] = true
 			}
 		}
-		lhs_depth := t.escape_decl_depths[lhs_root] or { 0 }
-		for source_name in t.escape_stored_address_sources(rhs_id, amp_sources, ptr_aliases) {
-			if source_depth := t.escape_decl_depths[source_name] {
-				if source_depth > lhs_depth {
-					t.escaping_amp_sources[source_name] = true
-				}
-			}
+		// Plain assignments, including each pair of a multi-assignment, are checked above.
+		if node.kind != .assign {
+			t.mark_outer_scope_address_store(lhs_id, rhs_id, amp_sources, ptr_aliases)
 		}
 		if t.escape_index_assign_retains_value(lhs_id)
 			|| (node.kind == .selector_assign
@@ -11226,6 +11228,21 @@ fn (t &Transformer) escape_aggregate_address_sources(id flat.NodeId, amp_sources
 	}
 
 	return []string{}
+}
+
+// mark_outer_scope_address_store moves to the heap the locals of a nested block whose
+// addresses `lhs = rhs` stores in a variable of an outer block (`outer = Node{next: &inner}`):
+// the local is gone when its block ends, and a loop reuses it in its next iteration.
+fn (mut t Transformer) mark_outer_scope_address_store(lhs_id flat.NodeId, rhs_id flat.NodeId, amp_sources map[string][]string, ptr_aliases map[string]string) {
+	lhs_root := t.escape_address_root_name(lhs_id) or { '' }
+	lhs_depth := t.escape_decl_depths[lhs_root] or { 0 }
+	for source_name in t.escape_stored_address_sources(rhs_id, amp_sources, ptr_aliases) {
+		if source_depth := t.escape_decl_depths[source_name] {
+			if source_depth > lhs_depth {
+				t.escaping_amp_sources[source_name] = true
+			}
+		}
+	}
 }
 
 // escape_stored_address_sources returns the locals whose addresses an assigned value
