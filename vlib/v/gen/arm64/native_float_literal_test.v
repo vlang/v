@@ -285,3 +285,31 @@ fn main() {
 		assert result.exit_code == 0, 'exit ${result.exit_code}: ${result.output}'
 	}
 }
+
+fn test_native_mixed_fixed_f32_literal_preserves_fractional_lanes() {
+	$if !macos || !arm64 {
+		return
+	}
+	path := os.join_path(os.vtmp_dir(), 'arm64_mixed_fixed_float_${os.getpid()}.v')
+	output := path.all_before_last('.')
+	defer {
+		os.rm(path) or {}
+		os.rm(output) or {}
+	}
+	os.write_file(path, 'module main
+fn C.exit(int)
+fn main() {
+    values := [f32(0.5), 2, 4.5, 8]!
+    if values[0] != f32(0.5) { C.exit(1) }
+    if values[1] != f32(2) { C.exit(2) }
+    if values[2] != f32(4.5) { C.exit(3) }
+    if values[3] != f32(8) { C.exit(4) }
+    negative := [f32(1), -2.5]!
+    if negative[1] != f32(-2.5) { C.exit(5) }
+}
+')!
+	compiled := exec_native([@VEXE, '-gc', 'none', '-nocache', '-b', 'arm64', '-o', output, path])
+	assert compiled.exit_code == 0, compiled.output
+	result := os.exec([output])
+	assert result.exit_code == 0, 'exit ${result.exit_code}: ${result.output}'
+}

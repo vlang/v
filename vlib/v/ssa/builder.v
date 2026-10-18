@@ -9779,10 +9779,7 @@ fn (mut b Builder) build_fixed_array_init(node flat.Node) ValueID {
 		if child.kind == .field_init {
 			continue
 		}
-		mut value := b.build_expr(child_id)
-		if b.is_int_type(elem_type) && b.is_int_type(b.value_type(value)) {
-			value = b.coerce_int_value(value, elem_type)
-		}
+		value := b.coerce_numeric_value(b.build_expr(child_id), elem_type)
 		offset := b.m.get_or_add_const(b.i64_type, '${elem_index * actual_elem_size}')
 		slot_i8 := b.emit2(.get_element_ptr, ptr_i8, data, offset)
 		slot := if ptr_elem == ptr_i8 {
