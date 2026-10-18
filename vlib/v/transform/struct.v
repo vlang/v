@@ -1281,16 +1281,16 @@ fn (t &Transformer) resolve_imported_type_name(name_id u32) ?u32 {
 fn (t &Transformer) lookup_struct_info_preferred(name_id u32) ?StructInfo {
 	name := flat.source_type_name(name_id)
 	if name.contains('.') {
-		if name in t.structs {
-			return t.structs[name]
+		if info := t.structs[name] {
+			return info
 		}
 	} else if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
 		qname := '${t.cur_module}.${name}'
-		if qname in t.structs {
-			return t.structs[qname]
+		if info := t.structs[qname] {
+			return info
 		}
-	} else if name in t.structs {
-		return t.structs[name]
+	} else if info := t.structs[name] {
+		return info
 	}
 	return none
 }
@@ -1298,17 +1298,17 @@ fn (t &Transformer) lookup_struct_info_preferred(name_id u32) ?StructInfo {
 fn (t &Transformer) lookup_struct_info_direct(name_id u32) ?StructInfo {
 	name := flat.source_type_name(name_id)
 	if name.contains('.') {
-		if name in t.structs {
-			return t.structs[name]
+		if info := t.structs[name] {
+			return info
 		}
 	} else if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
 		qname := '${t.cur_module}.${name}'
-		if qname in t.structs {
-			return t.structs[qname]
+		if info := t.structs[qname] {
+			return info
 		}
 	}
-	if name in t.structs {
-		return t.structs[name]
+	if info := t.structs[name] {
+		return info
 	}
 	if name.contains('.') {
 		short_name := name.all_after_last('.')

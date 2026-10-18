@@ -358,6 +358,7 @@ mut:
 	call_param_types_index_ready  bool
 	call_param_types_prepared     bool
 	fixed_array_borrow_params     map[int][]bool
+	borrow_param_mentions         &BorrowParamMentions = unsafe { nil }
 	used_fns                      map[string]bool
 	used_fns_parent               &map[string]bool = unsafe { nil }
 	used_fns_root                 &map[string]bool = unsafe { nil }
@@ -1049,6 +1050,10 @@ mut:
 	entries    map[u32]i8 // 1 = unresolved, -1 = resolved
 	last_name  u32
 	last_value i8
+	// Anonymous placeholders depend only on the immutable source spelling,
+	// including when generic specialization is disabled.
+	anonymous_ids    [1024]u32
+	anonymous_states [1024]i8
 }
 
 @[inline]
@@ -10273,6 +10278,10 @@ fn (t &Transformer) escape_fn_literal_capture_names(id flat.NodeId) []string {
 @[direct_array_access]
 fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]bool, mut amp_sources map[string][]string, mut ptr_aliases map[string]string, mut method_value_receivers map[string]string, mut closure_capture_aliases map[string][]string, mut interface_boxes map[string]bool, mut returned map[string]bool, mut local_stack_names map[string]bool, mut local_stack_added []string, mut reference_backing_sources map[string][]string, can_clear_interface_boxes bool) {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return
+	}
+	// A childless node cannot introduce an alias or retain a local address.
+	if t.a.nodes[int(id)].children_count == 0 && t.a.nodes[int(id)].kind != .comptime_for {
 		return
 	}
 	// Resolve reflected method bodies before borrowing a node header: cloning

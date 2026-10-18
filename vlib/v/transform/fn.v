@@ -751,6 +751,15 @@ fn (t &Transformer) resolve_specialized_generic_receiver_method(receiver_type_id
 
 // resolve_alias_receiver_method converts resolve alias receiver method data for transform.
 fn (t &Transformer) resolve_alias_receiver_method(base_type_id u32, method string) ?string {
+	// With unchanged declaration tables, no alias receiver can supply a method
+	// absent from the suffix index. Avoid constructing type/name candidates for
+	// these negative queries, even on the first lookup in a worker batch.
+	if !isnil(t.tc) && t.alias_method_candidates_ready
+		&& t.alias_receiver_fns_signatures == t.tc.fn_param_types.len
+		&& t.alias_receiver_fns_aliases == t.tc.type_aliases.ids.len
+		&& t.alias_receiver_fns[short_name_view(method)].len == 0 {
+		return none
+	}
 	if isnil(t.tc) || base_type_id == u32(0) || method == '' || isnil(t.alias_receiver_method_cache) {
 		return t.resolve_alias_receiver_method_keyed(base_type_id, method)
 	}
@@ -15153,6 +15162,17 @@ fn (mut t Transformer) try_lower_generic_named_type_cast_call(node flat.Node) ?f
 	}
 	fn_id := t.a.child(&node, 0)
 	fn_node := t.a.node(fn_id)
+	// A selector's final component determines the end of its type spelling.
+	// Ordinary method calls cannot be generic casts; avoid resolving their
+	// receiver and imports just to reject a spelling that does not end in ']'.
+	if fn_node.kind == .selector && !fn_node.value.ends_with(']') {
+		return none
+	}
+	if fn_node.kind == .ident && !fn_node.value.ends_with(']')
+		&& !flat.source_type_shape(fn_node.typ).has(.map_type)
+		&& (isnil(t.tc) || t.tc.file_selective_imports.len == 0) {
+		return none
+	}
 	// A monomorphized method callee such as `Tree[int].size` contains a generic
 	// type spelling, but it is a function name rather than a named-type cast.
 	if fn_node.kind == .ident && t.generic_callee_is_specialization(fn_node.value) {
@@ -17612,10 +17632,10 @@ fn (mut t Transformer) make_receiver_method_call_typed(node flat.Node, method_na
 }
 
 fn closure_lifetime_borrowed_callback_method(method_name string) bool {
-	method := method_name.all_after_last('.')
-	receiver := method_name.all_before_last('.')
-	return method in ['frame', 'suspend', 'untracked']
-		&& (receiver == 'builtin.closure.Lifetime' || receiver == 'closure.Lifetime')
+	if short_name_view(method_name) !in ['frame', 'suspend', 'untracked'] {
+		return false
+	}
+	return owner_name_view(method_name) in ['builtin.closure.Lifetime', 'closure.Lifetime']
 }
 
 fn (mut t Transformer) finish_borrowed_closure_call(call flat.NodeId, closure_name string, typ_id u32) flat.NodeId {

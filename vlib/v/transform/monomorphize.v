@@ -16726,6 +16726,17 @@ fn (t &Transformer) generic_arg_is_unresolved(arg_id u32) bool {
 		// Anonymous literals still need materialization in nongeneric programs.
 		// Skipping generic specialization must not make their provisional storage
 		// type authoritative over the concrete literal type.
+		if !isnil(t.generic_unresolved_cache) {
+			mut cache := t.generic_unresolved_cache
+			slot := int(arg_id & 1023)
+			if cache.anonymous_states[slot] != 0 && cache.anonymous_ids[slot] == arg_id {
+				return cache.anonymous_states[slot] > 0
+			}
+			result := inferred_anonymous_struct_placeholder(flat.source_type_name(arg_id))
+			cache.anonymous_ids[slot] = arg_id
+			cache.anonymous_states[slot] = if result { i8(1) } else { i8(-1) }
+			return result
+		}
 		return inferred_anonymous_struct_placeholder(flat.source_type_name(arg_id))
 	}
 	// Hot: called for every call/assign type text during body transforms, with
@@ -16774,7 +16785,7 @@ fn inferred_anonymous_struct_placeholder(typ string) bool {
 			return inferred_anonymous_struct_placeholder(clean[end + 1..])
 		}
 	}
-	return clean.all_after_last('.') == 'struct'
+	return short_name_view(clean) == 'struct'
 }
 
 fn (t &Transformer) generic_arg_is_unresolved_uncached(arg string) bool {

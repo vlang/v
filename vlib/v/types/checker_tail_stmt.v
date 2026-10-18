@@ -10465,6 +10465,11 @@ fn (tc &TypeChecker) type_compatible(actual Type, expected Type) bool {
 			return true
 		}
 	}
+	// Equal semantic values have equal spellings even when their immutable
+	// payloads were allocated separately. Compare them before interning names.
+	if semantic_types_equal(actual, expected) {
+		return true
+	}
 	// One memoized spelling per side: the former per-comparison name() calls
 	// composed fresh strings up to eight times per invocation (1.3M+ calls per
 	// self-host build), and equal compound types now compare via the shared
@@ -10478,10 +10483,10 @@ fn (tc &TypeChecker) type_compatible(actual Type, expected Type) bool {
 	actual_name := flat.source_type_name(actual_name_comparison_type_id)
 	expected_name := flat.source_type_name(expected_name_comparison_type_id)
 	if actual_name.contains('.') && expected_name.contains('.')
-		&& actual_name.all_after_last('.') == expected_name.all_after_last('.')
+		&& short_name_view(actual_name) == short_name_view(expected_name)
 		&& qualified_type_modifiers(actual_name) == qualified_type_modifiers(expected_name) {
-		actual_prefix := actual_name.all_before_last('.')
-		expected_prefix := expected_name.all_before_last('.')
+		actual_prefix := owner_name_view(actual_name)
+		expected_prefix := owner_name_view(expected_name)
 		actual_module := tc.resolve_import_alias(actual_prefix) or { actual_prefix }
 		expected_module := tc.resolve_import_alias(expected_prefix) or { expected_prefix }
 		if actual_module == expected_module {
@@ -10837,7 +10842,16 @@ fn canonical_thread_handle_type_name(name string) string {
 	return clean
 }
 
+@[inline]
 fn type_contains_unknown(typ Type) bool {
+	// These dominate checked expression queries and cannot contain another type.
+	if typ is Primitive || typ is Struct {
+		return false
+	}
+	return type_contains_unknown_nested(typ)
+}
+
+fn type_contains_unknown_nested(typ Type) bool {
 	if typ is Unknown {
 		return true
 	}
@@ -10892,6 +10906,9 @@ pub fn (tc &TypeChecker) fn_param_compatible(actual Type, expected Type) bool {
 			return true
 		}
 	}
+	if semantic_types_equal(actual, expected) {
+		return true
+	}
 	// V's platform `int` and a fixed-width integer such as `i64`/`i32` may share an
 	// emitted C spelling on a given target, but they remain distinct, target-
 	// independent source types. Function-parameter identity must not depend on the C
@@ -10923,6 +10940,9 @@ fn (tc &TypeChecker) fn_return_compatible(actual Type, expected Type) bool {
 		if actual_w0 == expected_w0 && actual_w1 == expected_w1 {
 			return true
 		}
+	}
+	if semantic_types_equal(actual, expected) {
+		return true
 	}
 	if tc.type_name(actual) == tc.type_name(expected) {
 		return true
@@ -10970,8 +10990,26 @@ fn fn_param_pointer_slot_compatible(slot Type, other Type) bool {
 }
 
 fn fn_param_is_voidptr_type(typ Type) bool {
-	if typ.name() in ['voidptr', '&void'] {
-		return true
+	// Only nominal types and pointers can have either spelling. Formatting a
+	// callback or container here creates names that cannot match.
+	match typ {
+		Struct, Alias, Enum, Interface, SumType {
+			if typ.source_type_id() == flat.source_type_voidptr
+				|| flat.source_type_name(typ.source_type_id()) == '&void' {
+				return true
+			}
+		}
+		Pointer {
+			match typ.base_type {
+				Struct, Alias, Enum, Interface, SumType {
+					if typ.base_type.source_type_id() == flat.source_type_void {
+						return true
+					}
+				}
+				else {}
+			}
+		}
+		else {}
 	}
 	clean := fn_param_unalias_type(typ)
 	if clean is Pointer {
@@ -10999,9 +11037,20 @@ fn fn_param_unalias_type(typ Type) Type {
 
 fn call_arg_integer_type(typ Type) bool {
 	clean := fn_param_unalias_type(typ)
-	return clean.is_integer()
-		|| clean.name() in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'u16', 'u32', 'u64',
-			'usize', 'rune']
+	if clean.is_integer() {
+		return true
+	}
+	return match clean {
+		Primitive {
+			// A primitive with no numeric or boolean property is spelled `int`.
+			!clean.props.has(.boolean) && !clean.props.has(.float)
+		}
+		Struct, Enum, Interface, SumType {
+			clean.name() in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'u16', 'u32', 'u64',
+				'usize', 'rune']
+		}
+		else { false }
+	}
 }
 
 fn call_arg_numeric_type(typ Type) bool {
