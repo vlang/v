@@ -1,6 +1,7 @@
 module scheduler
 
 import time
+import sync.stdatomic
 
 // Job is one named unit of scheduled work. Create it through
 // `Scheduler.every` or `Scheduler.daily_at` and never touch it again: the
@@ -47,18 +48,23 @@ fn is_daily_due(now_unix i64, hour int, minute int, last_run i64) bool {
 pub struct Scheduler {
 mut:
 	jobs    []&Job
-	stopped bool
+	stopped &stdatomic.AtomicVal[bool] = stdatomic.new_atomic(false)
 	started bool
 	thread  thread
 }
 
 // every schedules `f` to run every `interval` under `name`. The job also runs
-// on the first tick after `start`, since it has never run.
+// on the first tick after `start`, since it has never run. Positive intervals
+// are rounded up to whole seconds to match the loop's tick resolution.
 pub fn (mut s Scheduler) every(name string, interval time.Duration, f fn ()) &Job {
+	mut every_secs := i64(interval) / i64(time.second)
+	if interval % time.second > 0 {
+		every_secs++
+	}
 	job := &Job{
 		name:       name
 		f:          f
-		every_secs: i64(interval) / i64(time.second)
+		every_secs: every_secs
 	}
 	s.jobs << job
 	return job
@@ -78,7 +84,7 @@ pub fn (mut s Scheduler) daily_at(name string, hour int, minute int, f fn ()) &J
 	return job
 }
 
-// run_pending runs every job that is due at `now`, sequentially and to
+// run_pending runs every job that is due at `now_unix` (Unix seconds), sequentially and to
 // completion, and returns how many ran. It is the loop body factored out so
 // tests can drive time directly. Keep jobs short: a long job delays the ticks
 // behind it.
@@ -102,14 +108,14 @@ pub fn (mut s Scheduler) start() {
 		return
 	}
 	s.started = true
-	s.stopped = false
+	s.stopped.store(false)
 	s.thread = spawn s.run_loop()
 }
 
 // stop asks the loop to exit after its current tick and waits for it. A job
 // that is running finishes first, because jobs run inside the loop thread.
 pub fn (mut s Scheduler) stop() {
-	s.stopped = true
+	s.stopped.store(true)
 	if s.started {
 		s.thread.wait()
 		s.started = false
@@ -117,7 +123,7 @@ pub fn (mut s Scheduler) stop() {
 }
 
 fn (mut s Scheduler) run_loop() {
-	for !s.stopped {
+	for !s.stopped.load() {
 		s.run_pending(time.now().unix())
 		time.sleep(time.second)
 	}

@@ -36,6 +36,23 @@ fn test_an_interval_job_runs_on_its_first_tick() {
 	assert job.is_due(t(2026, 10, 15, 9, 0, 0))
 }
 
+fn test_fractional_intervals_round_up_to_whole_seconds() {
+	intervals := [time.nanosecond, 500 * time.millisecond, time.second, 1500 * time.millisecond,
+		2 * time.second, 2 * time.second + time.nanosecond]
+	expected_seconds := [i64(1), 1, 1, 2, 2, 3]
+	for i, interval in intervals {
+		mut s := &Scheduler{}
+		s.every('tick', interval, fn () {})
+		assert s.run_pending(1000) == 1
+		assert s.run_pending(1000) == 0
+		for elapsed in i64(1) .. expected_seconds[i] {
+			assert s.run_pending(1000 + elapsed) == 0
+		}
+		assert s.run_pending(1000 + expected_seconds[i]) == 1
+		assert s.run_pending(1000 + expected_seconds[i]) == 0
+	}
+}
+
 fn test_a_daily_job_is_due_inside_its_minute() {
 	mut s := &Scheduler{}
 	mut job := s.daily_at('report', 9, 30, fn () {})
