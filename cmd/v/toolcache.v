@@ -82,6 +82,29 @@ fn tool_cache_is_verbose() bool {
 	return os.getenv(tool_cache_verbose_env).trim_space().to_lower() in ['1', 'true', 'yes', 'on']
 }
 
+// tool_cache_default_candidates returns the default tool cache directories tried in order when
+// `VTOOLS_CACHE_DIR` is unset or unusable. Besides the XDG/platform cache and `VTMP`, home
+// directories are tried last so that systems where `~/.cache` is
+// group-writable or `/tmp` is owned by another account still have a private default candidate.
+fn tool_cache_default_candidates() []string {
+	mut candidates := [
+		os.join_path(os.cache_dir(), 'v', 'tools'),
+		os.join_path(os.vtmp_dir(), 'tools'),
+	]
+	home := os.home_dir().trim_space()
+	if home != '' {
+		private_home := os.join_path(home, '.vtools')
+		if private_home !in candidates {
+			candidates << private_home
+		}
+		fallback := os.join_path(home, '.v', 'tools')
+		if fallback !in candidates {
+			candidates << fallback
+		}
+	}
+	return candidates
+}
+
 // ToolCacheRejection records why one candidate folder was not used for the tool cache.
 struct ToolCacheRejection {
 	candidate string
@@ -98,13 +121,12 @@ fn tool_cache_dir() !string {
 			candidates << custom.trim_space()
 		}
 	}
-	mut default_candidates := [os.join_path(os.cache_dir(), 'v', 'tools'),
-		os.join_path(os.vtmp_dir(), 'tools')]
-	home_candidate := tool_cache_home_candidate()
-	// A VTOOLS_CACHE_DIR that names `~/.vtools` stays the user's own choice, like any other
-	// folder set there: the folders above it are not checked, and it is never moved aside.
-	if home_candidate != '' && !candidates.any(os.abs_path(it) == os.abs_path(home_candidate)) {
-		default_candidates << home_candidate
+	// Explicit paths keep the custom-root policy, even when they name a default.
+	mut default_candidates := []string{}
+	for candidate in tool_cache_default_candidates() {
+		if !candidates.any(os.abs_path(it) == os.abs_path(candidate)) {
+			default_candidates << candidate
+		}
 	}
 	candidates << default_candidates
 	mut rejected := []ToolCacheRejection{}
@@ -203,7 +225,8 @@ fn prepare_default_tool_cache_root(candidate string) []string {
 	parent := os.dir(candidate)
 	os.mkdir_all(parent, mode: 0o700) or { return ['cannot create `${parent}`: ${err.msg()}'] }
 	// A `VTMP` folder set by the user may be shared on purpose, so it is left as it is.
-	if !tool_cache_root_can_stage(parent) && parent == os.join_path(os.cache_dir(), 'v') {
+	if !tool_cache_root_can_stage(parent) && (parent == os.join_path(os.cache_dir(), 'v')
+		|| parent == os.join_path(os.home_dir(), '.v')) {
 		make_tool_cache_root_private(parent)
 	}
 	if !tool_cache_parents_are_trusted(parent) {
@@ -1341,4 +1364,348 @@ fn exec_cached_tool(executable string, tool_args []string) {
 	// The explicit exit keeps both the current and the bootstrap compiler satisfied that
 	// every path out of this `@[noreturn]` function ends in one.
 	exit(1)
+}
+
+struct WipeCacheOptions {
+	dry_run           bool
+	verbose           bool
+	vcache            bool
+	vtmp              bool
+	v3cache           bool
+	tools             bool
+	explicit_selector bool
+	show_help         bool
+}
+
+const wipe_cache_help_text = 'Remove V cache folders (VCACHE, VTMP, V3CACHE, and compiled tool caches).
+
+Usage:
+  v wipe-cache [options]
+
+Options:
+  -n, --dry-run   Show what would be wiped without deleting any files.
+  -v, --verbose   Show detailed output, skipped paths, and tool cache diagnostics.
+      --tools     Wipe only compiled tool caches (VTOOLS_CACHE_DIR, ~/.cache/v/tools,
+                  <VTMP>/tools, ~/.vtools, ~/.v/tools, and moved-aside .untrusted-* folders).
+      --vcache    Wipe only the V module/object cache (VCACHE or ~/.vmodules/.cache).
+      --vtmp      Wipe only the V temporary folder (VTMP).
+      --v3cache   Wipe only the V3 module and object caches (V3CACHE).
+  -h, --help      Display this help message.'
+
+fn parse_wipe_cache_options(prefix_args []string, command_args []string) !WipeCacheOptions {
+	mut dry_run := false
+	mut verbose := false
+	mut vcache := false
+	mut vtmp := false
+	mut v3cache := false
+	mut tools := false
+	mut explicit_selector := false
+	mut show_help := false
+	for arg in prefix_args {
+		if arg in ['-v', '-verbose', '--verbose'] {
+			verbose = true
+		}
+	}
+	for arg in command_args {
+		match arg {
+			'-n', '-dry-run', '--dry-run' {
+				dry_run = true
+			}
+			'-v', '-verbose', '--verbose' {
+				verbose = true
+			}
+			'-tools', '--tools' {
+				tools = true
+				explicit_selector = true
+			}
+			'-vcache', '--vcache' {
+				vcache = true
+				explicit_selector = true
+			}
+			'-vtmp', '--vtmp' {
+				vtmp = true
+				explicit_selector = true
+			}
+			'-v3cache', '--v3cache' {
+				v3cache = true
+				explicit_selector = true
+			}
+			'-h', '-help', '--help' {
+				show_help = true
+			}
+			else {
+				return error('v wipe-cache: unknown option `${arg}`')
+			}
+		}
+	}
+	if !explicit_selector {
+		vcache = true
+		vtmp = true
+		v3cache = true
+		tools = true
+	}
+	return WipeCacheOptions{
+		dry_run:           dry_run
+		verbose:           verbose
+		vcache:            vcache
+		vtmp:              vtmp
+		v3cache:           v3cache
+		tools:             tools
+		explicit_selector: explicit_selector
+		show_help:         show_help
+	}
+}
+
+fn append_unique_wipe_target(path string, mut targets []string, mut seen map[string]bool) {
+	trimmed := path.trim_space()
+	if trimmed == '' {
+		return
+	}
+	key := os.abs_path(trimmed)
+	if seen[key] {
+		return
+	}
+	seen[key] = true
+	targets << trimmed
+}
+
+fn append_untrusted_tool_cache_siblings(candidate string, mut targets []string, mut seen map[string]bool) {
+	parent := os.dir(candidate)
+	if !os.is_dir(parent) {
+		return
+	}
+	prefix := '${os.file_name(candidate)}.untrusted-'
+	mut entries := os.ls(parent) or { return }
+	entries.sort()
+	for entry in entries {
+		if entry.starts_with(prefix) {
+			append_unique_wipe_target(os.join_path(parent, entry), mut targets, mut seen)
+		}
+	}
+}
+
+// tool_cache_wipe_targets returns every configured and default tool cache folder, together with
+// any `*.untrusted-*` folders moved aside by `prepare_default_tool_cache_root`.
+fn tool_cache_wipe_targets() []string {
+	mut targets := []string{}
+	mut seen := map[string]bool{}
+	if configured := os.getenv_opt(tool_cache_dir_env) {
+		trimmed := configured.trim_space()
+		if trimmed != '' {
+			append_unique_wipe_target(trimmed, mut targets, mut seen)
+			append_untrusted_tool_cache_siblings(trimmed, mut targets, mut seen)
+		}
+	}
+	for candidate in tool_cache_default_candidates() {
+		append_unique_wipe_target(candidate, mut targets, mut seen)
+		append_untrusted_tool_cache_siblings(candidate, mut targets, mut seen)
+	}
+	return targets
+}
+
+// inspect_tool_cache_candidates reports the status of each tool cache candidate without
+// creating or modifying any directory on disk.
+fn inspect_tool_cache_candidates() []string {
+	mut lines := []string{}
+	if configured := os.getenv_opt(tool_cache_dir_env) {
+		trimmed := configured.trim_space()
+		if trimmed != '' {
+			status := if !os.exists(trimmed) && !os.is_link(trimmed) {
+				'does not exist (will be created on demand)'
+			} else if !os.is_dir(trimmed) {
+				'rejected: is not a directory'
+			} else if !directory_is_writable(trimmed) {
+				'rejected: directory is not writable'
+			} else if !tool_cache_root_can_stage(trimmed) {
+				'rejected: ${tool_cache_root_problem(trimmed)}'
+			} else {
+				'usable (exists)'
+			}
+			lines << '  - `${trimmed}` (${tool_cache_dir_env}): ${status}'
+		}
+	}
+	for candidate in tool_cache_default_candidates() {
+		parent := os.dir(candidate)
+		mut existing_parent := parent
+		for !os.is_dir(existing_parent) {
+			next_parent := os.dir(existing_parent)
+			if next_parent == existing_parent {
+				break
+			}
+			existing_parent = next_parent
+		}
+		mut status := 'usable (will be created on demand)'
+		if os.is_dir(existing_parent) {
+			problems := tool_cache_parent_problems(existing_parent)
+			if problems.len > 0 {
+				reason := problems.join('; ')
+				status = 'rejected: ${reason}'
+			}
+		}
+		if !status.starts_with('rejected:') {
+			if os.is_link(candidate) {
+				status = 'untrusted symbolic link (will be moved aside on next tool build)'
+			} else if os.is_dir(candidate) && !tool_cache_root_can_stage(candidate) {
+				status = 'untrusted (${tool_cache_root_problem(candidate)}; will be moved aside on next tool build)'
+			} else if os.is_dir(candidate) {
+				status = 'usable (exists)'
+			}
+		}
+		lines << '  - `${candidate}`: ${status}'
+	}
+	return lines
+}
+
+fn is_v3_cache_subdir(name string) bool {
+	if name in ['v3_thirdparty_objs', 'v3_fastc_unit_cache', 'v3_fastc_link_cache', 'v3_crun_cache'] {
+		return true
+	}
+	for prefix in ['v3_module_cache_', 'v3_test_cache_'] {
+		if name.starts_with(prefix) {
+			suffix := name[prefix.len..]
+			if suffix.len > 0 && suffix.bytes().all(it.is_hex_digit()) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+fn wipe_cache_directory(path string, label string, recreate bool, opts WipeCacheOptions, mut lines []string) {
+	if opts.dry_run {
+		if os.is_link(path) {
+			lines << 'Would wipe ${label} folder ${path} (symbolic link).'
+		} else if os.is_dir(path) {
+			lines << 'Would wipe ${label} folder ${path}.'
+			if opts.verbose {
+				mut entries := os.ls(path) or { []string{} }
+				entries.sort()
+				for entry in entries {
+					lines << '  would remove ${os.join_path(path, entry)}'
+				}
+			}
+		} else if os.exists(path) {
+			lines << 'Would wipe ${label} folder ${path}.'
+		} else {
+			lines << 'Would wipe ${label} folder ${path} (does not exist).'
+		}
+		return
+	}
+	if os.is_link(path) {
+		if opts.verbose {
+			lines << '  removing symbolic link ${path}'
+		}
+		os.rm(path) or {}
+	} else if os.is_dir(path) {
+		if opts.verbose {
+			mut entries := os.ls(path) or { []string{} }
+			entries.sort()
+			for entry in entries {
+				lines << '  removing ${os.join_path(path, entry)}'
+			}
+		}
+		os.rmdir_all(path) or {}
+	} else if os.exists(path) {
+		os.rm(path) or {}
+	} else if opts.verbose {
+		lines << '  ${path} does not exist'
+	}
+	if recreate {
+		os.mkdir_all(path) or {}
+	}
+	lines << '${label} folder ${path} was wiped.'
+}
+
+// wipe_caches executes the requested cache cleanup (or dry-run) and returns the output lines.
+fn wipe_caches(opts WipeCacheOptions) []string {
+	mut lines := []string{}
+	if opts.vcache {
+		cache_path := os.getenv_opt('VCACHE') or { os.join_path(os.vmodules_dir(), '.cache') }
+		wipe_cache_directory(cache_path, 'V cache', true, opts, mut lines)
+	}
+	mut tool_lines := []string{}
+	if opts.tools {
+		if opts.dry_run || opts.verbose {
+			tool_lines << 'Tool cache candidates:'
+			tool_lines << inspect_tool_cache_candidates()
+		}
+		mut wiped_any_tool_cache := false
+		for target in tool_cache_wipe_targets() {
+			label := if os.file_name(target).contains('.untrusted-') {
+				'Moved-aside V tool cache'
+			} else {
+				'V tool cache'
+			}
+			if os.exists(target) || os.is_link(target) {
+				wiped_any_tool_cache = true
+				wipe_cache_directory(target, label, false, opts, mut tool_lines)
+			} else if opts.verbose {
+				tool_lines << '${label} folder ${target} does not exist, skipping.'
+			}
+		}
+		if opts.explicit_selector && !opts.vcache && !opts.vtmp && !opts.v3cache
+			&& !wiped_any_tool_cache && !opts.verbose {
+			if opts.dry_run {
+				tool_lines << 'No existing V tool cache folders to wipe.'
+			} else {
+				tool_lines << 'V tool cache folders were already clean.'
+			}
+		}
+	}
+	if opts.vtmp {
+		wipe_cache_directory(os.vtmp_dir(), 'V tmp.c and tests', true, opts, mut lines)
+	}
+	if opts.v3cache {
+		vtmp_path := os.vtmp_dir()
+		configured_v3 := os.getenv('V3CACHE').trim_space()
+		if configured_v3 != '' && os.abs_path(configured_v3) != os.abs_path(vtmp_path) {
+			wipe_cache_directory(configured_v3, 'V3 cache', true, opts, mut lines)
+		} else if !opts.vtmp {
+			mut v3_dirs := []string{}
+			if os.is_dir(vtmp_path) {
+				mut entries := os.ls(vtmp_path) or { []string{} }
+				entries.sort()
+				for entry in entries {
+					if is_v3_cache_subdir(entry) {
+						candidate := os.join_path(vtmp_path, entry)
+						if os.is_dir(candidate) || os.is_link(candidate) {
+							v3_dirs << candidate
+						}
+					}
+				}
+			}
+			if v3_dirs.len > 0 {
+				for dir in v3_dirs {
+					wipe_cache_directory(dir, 'V3 cache', false, opts, mut lines)
+				}
+			} else if opts.dry_run {
+				lines << 'Would wipe V3 cache folders in ${vtmp_path} (none exist).'
+			} else {
+				lines << 'V3 cache folders in ${vtmp_path} were already clean.'
+			}
+		}
+	}
+	lines << tool_lines
+	return lines
+}
+
+fn run_wipe_cache(args []string, command_index int) {
+	prefix_args := if command_index > 0 { args[..command_index] } else { []string{} }
+	command_args := if command_index >= 0 && command_index + 1 < args.len {
+		args[command_index + 1..]
+	} else {
+		[]string{}
+	}
+	opts := parse_wipe_cache_options(prefix_args, command_args) or {
+		eprintln(err.msg())
+		eprintln(wipe_cache_help_text)
+		exit(1)
+	}
+	if opts.show_help {
+		println(wipe_cache_help_text)
+		return
+	}
+	for line in wipe_caches(opts) {
+		println(line)
+	}
 }

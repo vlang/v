@@ -288,6 +288,7 @@ fn test_a_tolerated_folder_is_not_reported_as_a_problem() {
 					os.join_path(tree.cache, 'v', 'tools'): [cache_problem, home_problem]
 					os.join_path(tree.tmp, 'tools'):        [world_problem]
 					os.join_path(tree.home, '.vtools'):     [home_problem]
+					os.join_path(tree.home, '.v', 'tools'): [home_problem]
 				}, err.msg()
 			}
 			// Fixing the home folder alone is enough, while `world` stays writable by everybody.

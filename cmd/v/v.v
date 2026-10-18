@@ -204,6 +204,10 @@ fn main() {
 		eprintln('The eval backend has been removed.')
 		exit(1)
 	}
+	if command == 'wipe-cache' {
+		run_wipe_cache(args, command_index)
+		return
+	}
 	if command in external_commands
 		|| command in ['new', 'init', 'generate', 'install', 'link', 'list', 'outdated', 'remove',
 			'registry', 'search', 'show', 'unlink', 'update', 'upgrade', 'vlib-docs'] {
