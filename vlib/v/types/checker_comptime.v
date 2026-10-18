@@ -5132,6 +5132,20 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 		}
 	}
 	tc.check_integer_literal_cast_overflow(id, node, child_id, target)
+	if tc.container_cast_reinterprets_elems(child_id, actual, target) {
+		mut alias_target := target
+		mut pos := node.pos
+		if target is OptionType {
+			alias_target = target.base_type
+			pos = tc.cast_expression_diagnostic_pos(node, target.base_type.name())
+		}
+		if alias_target is Alias {
+			tc.record_error_at(.assignment_mismatch, 'cannot cast `${actual.name()}` to `${target.name()}` (alias to `${unalias_type(alias_target).name()}`)', id, pos)
+		} else {
+			tc.record_error_at(.assignment_mismatch, 'cannot cast array `${actual.name()}` to `${target.name()}`', id, pos)
+		}
+		return
+	}
 	clean_target := unalias_type(target)
 	clean_actual := unalias_type(actual)
 	if clean_target is SumType && (actual.name() == target.name()
@@ -5482,6 +5496,37 @@ fn (tc &TypeChecker) option_cast_payload_compatible(actual Type, target Type) bo
 				|| clean_target.props.has(.boolean))
 	}
 	return false
+}
+
+// container_cast_reinterprets_elems reports whether casting the array or map `actual`
+// to the array or map `target` (or an option of one) would read its elements as
+// another type. Such a cast keeps the elements as they are, so they must already have
+// the target layout, as for an assignment: `[]u64(u8s)` or `[]f64(ints)` would read
+// the elements with the wrong size. Casts to arrays of interfaces or sum types convert
+// each element instead, and untyped literals are built with the target type.
+fn (tc &TypeChecker) container_cast_reinterprets_elems(child_id flat.NodeId, actual Type, target Type) bool {
+	clean_actual := unalias_type(actual)
+	mut clean_target := unalias_type(target)
+	if clean_target is OptionType {
+		clean_target = unalias_type(clean_target.base_type)
+	}
+	if !is_container_type(clean_actual) || !is_container_type(clean_target) {
+		return false
+	}
+	mut child := tc.a.node(tc.unwrap_paren_expr_id(child_id))
+	if child.kind == .postfix && child.op == .not && child.children_count == 1 {
+		// `[1, 2, 3]!` is a fixed array literal.
+		child = tc.a.node(tc.a.child(child, 0))
+	}
+	if (child.kind == .array_literal && child.typ == 0)
+		|| (child.kind == .map_init && child.value.len == 0) {
+		return false
+	}
+	if clean_actual is Array && clean_target is ArrayFixed {
+		// The elements are copied into the fixed array as they are.
+		return !tc.container_elem_types_compatible(clean_actual.elem_type, clean_target.elem_type)
+	}
+	return !tc.type_compatible(clean_actual, clean_target)
 }
 
 fn (tc &TypeChecker) interface_embedding_exceeds(iface_name_id u32, depth int, mut path map[u32]bool) bool {
