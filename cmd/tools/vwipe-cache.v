@@ -22,7 +22,7 @@ Options:
   -n, --dry-run   Show what would be wiped without deleting any files.
   -v, --verbose   Show detailed output, skipped paths, and tool cache diagnostics.
       --tools     Wipe only compiled tool caches (VTOOLS_CACHE_DIR, ~/.cache/v/tools,
-                  <VTMP>/tools, ~/.v/tools, and moved-aside .untrusted-* folders).
+                  <VTMP>/tools, ~/.vtools, ~/.v/tools, and moved-aside .untrusted-* folders).
       --vcache    Wipe only the V module/object cache (VCACHE or ~/.vmodules/.cache).
       --vtmp      Wipe only the V temporary folder (VTMP).
       --v3cache   Wipe only the V3 module and object caches (V3CACHE).
@@ -115,6 +115,7 @@ fn tool_cache_default_candidates() []string {
 	]
 	home := os.home_dir().trim_space()
 	if home != '' {
+		candidates << os.join_path(home, '.vtools')
 		candidates << os.join_path(home, '.v', 'tools')
 	}
 	return candidates

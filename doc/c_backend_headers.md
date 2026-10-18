@@ -13,9 +13,14 @@ runtime even for literal output. Native execution must be validated on each
 platform; generating C for a target alone does not verify its runtime ABI.
 The compiler's string literals can contain the text of includes for other generated programs.
 The C backend emits libc prototypes from bodyless V declarations such as
-`fn C.strlen(const_s &char) usize`. Runtime bindings are marked used so cached modules
+`fn C.strlen(const_s &char) usize`. Without system headers, this includes the bindings that a
+program declares itself, such as `fn C.getpgrp() int` or a Win32 function in Windows C,
+which nothing else would declare. Runtime bindings are marked used so cached modules
 retain their prototypes. Native backends retain C declarations without rooting same-named
 V functions.
+With `-target-libc-headers`, `<errno.h>` owns the errno accessor declarations.
+This avoids conflicting `i32*` prototypes on targets whose `int32_t` is `long`,
+such as ARM newlib.
 Explicit headers for other C libraries remain included. Core SDK headers are also
 restored when another binding requests headers, so native declarations stay authoritative
 regardless of source collection order.
@@ -78,6 +83,9 @@ length, including embedded NUL bytes, so the C compiler needs no compound litera
 Literal IDs remain ordinary identifiers so they do not expand C struct member names. This form also
 works in portable snapshots and MSVC output. Cached modules retain explicit literal initializers
 for sharing and rewriting through their declaration prefix.
+The `_SL` helper is defined only around each literal table and undefined before generated functions,
+so a C binding can declare and call a function named `_SL`. A `_SL` macro defined by an included C
+header or a `-D` flag is saved with `#pragma push_macro` before the table and restored after it.
 
 Generated C still needs the native objects and library flags when linked. Use V to build
 executables, or `-generate-c-project` to export a build command with the native sources
@@ -113,3 +121,8 @@ created by another compiler process; filesystem failures remain errors.
 Negated integer literals above `INT_MAX` and within the signed 64-bit range receive an `LL`
 suffix in C output, including parenthesized operands and constant initializers. This preserves
 their sign with MSVC.
+
+With `-target-libc-headers`, the target libc owns the accessor behind its `errno` macro.
+The generated C includes `<errno.h>` and leaves the libc accessor declaration to that header,
+avoiding conflicts where the target's `int32_t` differs from C's `int`. Headerless output
+retains the V-owned declarations.

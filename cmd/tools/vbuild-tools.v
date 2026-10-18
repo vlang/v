@@ -12,7 +12,7 @@ import v.util
 // To implement that, these folders are initially skipped, then added
 // as a whole *after the testing.prepare_test_session call*.
 const tools_in_subfolders = ['fast', 'vast', 'vcreate', 'vdoc', 'vpbgen', 'vpm', 'vsqlite', 'vsymlink',
-	'vvet', 'vwhere', 'vcover', 'vmcp', 'vskills']
+	'vvet', 'vwhere', 'vcover', 'vmcp', 'vskills', 'vgenerate']
 
 // v2 is temporarily disabled, so tools that depend on it are skipped too.
 const temporarily_disabled_tool_subfolders = ['vast2']

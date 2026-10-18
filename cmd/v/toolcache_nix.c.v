@@ -112,30 +112,46 @@ fn ensure_tool_cache_lock_file(path string) ! {
 }
 
 fn tool_cache_root_can_stage(path string) bool {
-	root := os.real_path(path)
-	information := os.stat(root) or { return false }
-	if information.uid !in [os.getuid(), u32(0)] {
-		return false
-	}
-	return information.mode & 0o022 == 0 || information.mode & 0o1000 != 0
+	return tool_cache_root_problem(path) == ''
 }
 
-fn tool_cache_root_stage_rejection_reason(path string) string {
+// tool_cache_root_problem explains why `path` cannot hold the tool cache, or be a folder above
+// it, and returns an empty string when it can. Such a folder has to belong to the current user
+// or to root, and nobody else may write to it unless it has the sticky bit, which stops them from
+// renaming what they do not own.
+fn tool_cache_root_problem(path string) string {
 	root := os.real_path(path)
-	information := os.stat(root) or { return 'cannot inspect `${path}` (${err.msg()})' }
-	mode := information.mode & 0o7777
-	if information.uid !in [os.getuid(), u32(0)] {
-		return '`${root}` (mode 0${mode:o}) is owned by user id ${information.uid}, not by the current user or root'
+	information := os.stat(root) or { return '`${path}` cannot be inspected: ${err.msg()}' }
+	label := if root == path { '`${path}`' } else { '`${path}` (`${root}`)' }
+	return tool_cache_folder_problem(label, information.mode, information.uid, u32(os.getuid()))
+}
+
+// tool_cache_folder_problem describes what is wrong with the folder `label`, given its mode and
+// owner, for the user `uid`, or returns an empty string when nothing is.
+fn tool_cache_folder_problem(label string, mode u32, owner u32, uid u32) string {
+	mut problems := []string{}
+	if owner !in [uid, u32(0)] {
+		problems << 'is owned by user id ${owner}, not by the current user (id ${uid}) or root'
 	}
-	if information.mode & 0o022 != 0 && information.mode & 0o1000 == 0 {
-		return '`${root}` (mode 0${mode:o}) is writable by group/others without the sticky bit'
+	if mode & 0o022 != 0 && mode & 0o1000 == 0 {
+		writers := match mode & 0o022 {
+			0o020 { 'its group' }
+			0o002 { 'others' }
+			else { 'its group and others' }
+		}
+		problems << 'is writable by ${writers} without the sticky bit'
 	}
-	return '`${root}` is not a private or sticky cache folder'
+	if problems.len == 0 {
+		return ''
+	}
+	return '${label} (mode 0${mode & 0o7777:o}) ${problems.join(', and ')}'
 }
 
 // tool_cache_parents_are_trusted reports whether `path` and every folder above it pass
 // `tool_cache_root_can_stage`. If any of them is writable by others (without the sticky bit),
-// someone else could rename the folder below it and put their own one in its place.
+// someone else could rename the folder below it and put their own one in its place. Folders
+// above everything that `path` shares with the V executable are the one exception, see
+// `tool_cache_folder_common_with_compiler`.
 // The folders are checked both as written and with symlinks resolved: when `~/.cache/v` is a
 // symlink, someone who can write to `~/.cache` could point it somewhere else at any time.
 fn tool_cache_parents_are_trusted(path string) bool {
@@ -143,45 +159,82 @@ fn tool_cache_parents_are_trusted(path string) bool {
 		&& tool_cache_ancestors_can_stage(os.abs_path(path))
 }
 
+// tool_cache_ancestors_can_stage walks up from `path`. A folder that does not pass
+// `tool_cache_root_can_stage` rejects it, unless the folder is above everything that `path`
+// and the V executable have in common, see `tool_cache_folder_common_with_compiler`.
 fn tool_cache_ancestors_can_stage(path string) bool {
+	common := tool_cache_folder_common_with_compiler(path)
 	mut current := path
 	for {
+		if !tool_cache_root_can_stage(current) && !tool_cache_folder_is_above(current, common) {
+			return false
+		}
 		parent := os.dir(current)
 		if parent == current {
-			// The filesystem root `/` itself cannot be renamed or swapped out, and top-level
-			// system mountpoints such as `/home` or `/tmp` cannot be unlinked while non-empty
-			// or mounted. Checking `/` would reject every default candidate on overlay/container
-			// roots where `/` has mode 0777 or is owned by `nobody`.
 			return true
-		}
-		if !tool_cache_root_can_stage(current) {
-			return false
 		}
 		current = parent
 	}
 	return true
 }
 
-fn tool_cache_untrusted_parent_reason(path string) ?string {
-	if reason := tool_cache_untrusted_ancestor_reason(os.real_path(path)) {
-		return reason
+// tool_cache_folder_common_with_compiler returns the deepest folder that holds both `path` and
+// the V executable that the user runs, or an empty string when that executable is unknown.
+//
+// Someone who can write to a folder above that common folder, or who owns it, can rename the
+// entry in it that leads to the common folder, and put their own tree in its place. But that
+// entry leads to the V executable as well: they could replace V itself in the same way, and the
+// user runs V all the time. So such a folder does not make a cache below it any less safe than
+// V already is, and it is tolerated. This keeps the cache working when, say, `/` is writable by
+// everybody, while V and the cache are both in the home folder. The common folder itself, and
+// any folder below it, is still checked: there, the cache and V are reached through different
+// entries, so a change there could swap the cache alone.
+fn tool_cache_folder_common_with_compiler(path string) string {
+	executable := tool_cache_compiler_executable()
+	if executable == '' {
+		return ''
 	}
-	return tool_cache_untrusted_ancestor_reason(os.abs_path(path))
+	mut common := path
+	for !tool_cache_path_is_inside(executable, common) {
+		parent := os.dir(common)
+		if parent == common {
+			return ''
+		}
+		common = parent
+	}
+	return common
 }
 
-fn tool_cache_untrusted_ancestor_reason(path string) ?string {
-	mut current := path
-	for {
-		parent := os.dir(current)
-		if parent == current {
-			return none
-		}
-		if !tool_cache_root_can_stage(current) {
-			return 'the parent ${tool_cache_root_stage_rejection_reason(current)}'
-		}
-		current = parent
+// tool_cache_compiler_executable returns the real path of the V executable that the user ran.
+// For the ownership compiler, which runs from the tool cache, that is the one that started it.
+fn tool_cache_compiler_executable() string {
+	primary := os.getenv('V3_PRIMARY_VEXE')
+	executable := os.real_path(if primary != '' { primary } else { os.executable() })
+	if !os.is_abs_path(executable) || !os.is_file(executable) {
+		return ''
 	}
-	return none
+	return executable
+}
+
+// tool_cache_path_is_inside reports whether `path` is `folder`, or is somewhere below it.
+fn tool_cache_path_is_inside(path string, folder string) bool {
+	if path == folder {
+		return true
+	}
+	return path.starts_with(if folder.ends_with('/') { folder } else { folder + '/' })
+}
+
+// tool_cache_parent_is_tolerated reports whether `tool_cache_ancestors_can_stage` accepts
+// `folder`, a folder above `path`, whatever its permissions are, because it is above everything
+// that `path` shares with the V executable. Checked on its own, `folder` is not tolerated: then
+// it is itself the folder that it shares with the V executable.
+fn tool_cache_parent_is_tolerated(path string, folder string) bool {
+	return tool_cache_folder_is_above(folder, tool_cache_folder_common_with_compiler(path))
+}
+
+// tool_cache_folder_is_above reports whether `folder` is above `common`, and is not `common`.
+fn tool_cache_folder_is_above(folder string, common string) bool {
+	return common != '' && folder != common && tool_cache_path_is_inside(common, folder)
 }
 
 // make_tool_cache_root_private makes sure that only the current user can write to a cache
@@ -217,8 +270,9 @@ fn make_tool_cache_root_private(path string) {
 // filesystem and inaccessible to other accounts.
 fn (entry ToolCacheEntryDir) stage_parent(path string) !string {
 	parent := os.real_path(os.dir(path))
-	if !tool_cache_root_can_stage(parent) {
-		return error('the tool cache directory `${parent}` cannot safely hold staged files')
+	problem := tool_cache_root_problem(parent)
+	if problem != '' {
+		return error('the tool cache directory `${parent}` cannot safely hold staged files: ${problem}')
 	}
 	return path
 }

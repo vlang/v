@@ -390,6 +390,7 @@ fn (mut g FlatGen) finish_cache_declaration_demand(const_code string) {
 		}
 	}
 	g.decl_types_ready = false
+	g.selected_decl_types_ready = false
 	g.collect_declaration_signature_types()
 	for init in g.runtime_inits {
 		g.cache_collect_declaration_refs(init)

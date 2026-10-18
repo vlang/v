@@ -83,8 +83,8 @@ fn tool_cache_is_verbose() bool {
 }
 
 // tool_cache_default_candidates returns the default tool cache directories tried in order when
-// `VTOOLS_CACHE_DIR` is unset or unusable. Besides the XDG/platform cache and `VTMP`, a
-// dot-directory directly under `HOME` is tried last so that systems where `~/.cache` is
+// `VTOOLS_CACHE_DIR` is unset or unusable. Besides the XDG/platform cache and `VTMP`, home
+// directories are tried last so that systems where `~/.cache` is
 // group-writable or `/tmp` is owned by another account still have a private default candidate.
 fn tool_cache_default_candidates() []string {
 	mut candidates := [
@@ -93,6 +93,10 @@ fn tool_cache_default_candidates() []string {
 	]
 	home := os.home_dir().trim_space()
 	if home != '' {
+		private_home := os.join_path(home, '.vtools')
+		if private_home !in candidates {
+			candidates << private_home
+		}
 		fallback := os.join_path(home, '.v', 'tools')
 		if fallback !in candidates {
 			candidates << fallback
@@ -101,144 +105,184 @@ fn tool_cache_default_candidates() []string {
 	return candidates
 }
 
-// tool_cache_dir_or_error returns the chosen tool cache directory, or an empty string and the
-// per-candidate rejection reasons when no candidate could be used.
-fn tool_cache_dir_or_error() (string, []string) {
+// ToolCacheRejection records why one candidate folder was not used for the tool cache.
+struct ToolCacheRejection {
+	candidate string
+	problems  []string
+}
+
+// tool_cache_dir returns a writable directory for the compiled tools, creating it on demand.
+// It deliberately lives outside of the V source tree, next to the other V caches. When no
+// candidate can be used, the error names each of them, and why it was rejected.
+fn tool_cache_dir() !string {
 	mut candidates := []string{}
 	if custom := os.getenv_opt(tool_cache_dir_env) {
 		if custom.trim_space() != '' {
 			candidates << custom.trim_space()
 		}
 	}
-	default_candidates := tool_cache_default_candidates()
-	for default_candidate in default_candidates {
-		if default_candidate !in candidates {
-			candidates << default_candidate
+	// Explicit paths keep the custom-root policy, even when they name a default.
+	mut default_candidates := []string{}
+	for candidate in tool_cache_default_candidates() {
+		if !candidates.any(os.abs_path(it) == os.abs_path(candidate)) {
+			default_candidates << candidate
 		}
 	}
-	mut rejections := []string{}
+	candidates << default_candidates
+	mut rejected := []ToolCacheRejection{}
 	for candidate in candidates {
-		if candidate in default_candidates {
-			if !prepare_default_tool_cache_root(candidate) {
-				reason := default_tool_cache_root_rejection_reason(candidate)
-				rejections << '  - `${candidate}`: ${reason}'
-				continue
+		problems := tool_cache_candidate_problems(candidate, candidate in default_candidates)
+		if problems.len > 0 {
+			rejected << ToolCacheRejection{
+				candidate: candidate
+				problems:  problems
 			}
-		}
-		if !os.is_dir(candidate) {
-			os.mkdir_all(os.dir(candidate)) or {
-				rejections << '  - `${candidate}`: cannot create parent folder `${os.dir(candidate)}` (${err.msg()})'
-				continue
-			}
-			// Create the folder so that only the current user can access it (mode 0700).
-			// With the default mode, a umask like 002 would let the whole group write to it.
-			// `tool_cache_root_can_stage` would then reject the folder, and every tool would
-			// be recompiled on each run instead of being cached.
-			os.mkdir(candidate, mode: 0o700) or {
-				if !os.is_dir(candidate) {
-					rejections << '  - `${candidate}`: cannot create folder (${err.msg()})'
-					continue
-				}
-			}
-		}
-		if !os.is_dir(candidate) {
-			rejections << '  - `${candidate}`: is not a directory'
 			continue
 		}
-		if !directory_is_writable(candidate) {
-			rejections << '  - `${candidate}`: directory is not writable'
-			continue
+		if tool_cache_is_verbose() {
+			for rejection in rejected {
+				eprintln('> not using the tool cache folder `${rejection.candidate}`: ${rejection.problems.join('; ')}')
+			}
 		}
-		if !tool_cache_root_can_stage(candidate) {
-			reason := tool_cache_root_stage_rejection_reason(candidate)
-			rejections << '  - `${candidate}`: ${reason}'
-			continue
-		}
-		return os.real_path(candidate), rejections
+		return os.real_path(candidate)
 	}
-	return '', rejections
+	return error(tool_cache_unavailable_message(rejected))
 }
 
-// tool_cache_unavailable_message formats an actionable diagnostic listing why every tool cache
-// candidate was rejected and how to configure `VTOOLS_CACHE_DIR`.
-fn tool_cache_unavailable_message(rejections []string) string {
+// tool_cache_candidate_problems prepares one candidate folder for the tool cache, creating it
+// when needed, and returns why it cannot be used, or nothing when it can.
+fn tool_cache_candidate_problems(candidate string, is_default bool) []string {
+	if is_default {
+		problems := prepare_default_tool_cache_root(candidate)
+		if problems.len > 0 {
+			return problems
+		}
+	}
+	if !os.is_dir(candidate) {
+		os.mkdir_all(os.dir(candidate)) or {
+			return ['cannot create `${os.dir(candidate)}`: ${err.msg()}']
+		}
+		// Create the folder so that only the current user can access it (mode 0700).
+		// With the default mode, a umask like 002 would let the whole group write to it.
+		// `tool_cache_root_can_stage` would then reject the folder, and every tool would
+		// be recompiled on each run instead of being cached.
+		os.mkdir(candidate, mode: 0o700) or {
+			if !os.is_dir(candidate) {
+				return ['cannot create it: ${err.msg()}']
+			}
+		}
+	}
+	if !directory_is_writable(candidate) {
+		return ['the current user cannot create files in it']
+	}
+	problem := tool_cache_root_problem(candidate)
+	if problem != '' {
+		return [problem]
+	}
+	return []
+}
+
+// tool_cache_unavailable_message explains why no tool cache folder can be used, and how to
+// get one: every caller that needs the cache reports it the same way.
+fn tool_cache_unavailable_message(rejected []ToolCacheRejection) string {
 	mut lines := ['no usable tool cache folder was found:']
-	lines << rejections
-	lines << 'set a private cache folder explicitly, for example:'
-	lines << '  mkdir -p ~/.cache/vtools && chmod 700 ~/.cache/vtools'
-	lines << '  export ${tool_cache_dir_env}=\$HOME/.cache/vtools'
+	for rejection in rejected {
+		lines << '  - `${rejection.candidate}`:'
+		for problem in rejection.problems {
+			lines << '      ${problem}'
+		}
+	}
+	$if windows {
+		lines << 'The tool cache folder has to belong to you, and no other account may be allowed to change it.'
+		lines << 'Fix its permissions, or set ${tool_cache_dir_env} to a folder that only you can change.'
+	} $else {
+		lines << 'The tool cache folder, and every folder above it up to the first one that also holds the V'
+		lines << 'executable, has to belong to you or to root, and nobody else may write to it unless it has the'
+		lines << 'sticky bit. Otherwise someone else could replace the tools that V runs.'
+		lines << 'Fix the permissions listed above, or set ${tool_cache_dir_env} to a folder that only you can'
+		lines << 'write to (V does not check the folders above that one), for example:'
+		lines << '  mkdir -p -m 700 "\$HOME/.vtools" && export ${tool_cache_dir_env}="\$HOME/.vtools"'
+	}
 	return lines.join('\n')
 }
 
 // prepare_default_tool_cache_root makes sure that nobody else can change a default cache
-// folder, or what is inside it. It reports whether the folder can be used.
+// folder, or what is inside it. It returns why the folder cannot be used, or nothing when it
+// can.
 //
-// The parent is V's own folder (`~/.cache/v` or `~/.v`) or the `VTMP` folder (`/tmp/v_<uid>`
-// by default). It has to be private, along with every folder above it, or someone else could
-// swap the cache folder for their own one at any time. V tightens `~/.cache/v` and `~/.v`
-// itself, when the current user owns them.
+// The parent is V's own folder (`~/.cache/v`), the `VTMP` folder (`/tmp/v_<uid>` by default), or
+// the home folder, for `~/.vtools`. It has to be private, along with every folder above it, or
+// someone else could swap the cache folder for their own one at any time; the one exception is
+// described at `tool_cache_folder_common_with_compiler`. V tightens `~/.cache/v` itself, when
+// the current user owns it.
 //
 // A cache folder that others could write to earlier may hold entries that someone else put
 // there, and fixing its permissions afterwards does not make those entries trustworthy. So
 // such a folder is moved aside and never read again, and a new, empty one is created instead.
 // A symlink is moved aside too: it could have been planted while the parent was writable,
 // and the folder it points to lives under parents that were never checked.
-fn prepare_default_tool_cache_root(candidate string) bool {
+fn prepare_default_tool_cache_root(candidate string) []string {
 	parent := os.dir(candidate)
-	os.mkdir_all(parent, mode: 0o700) or { return false }
+	os.mkdir_all(parent, mode: 0o700) or { return ['cannot create `${parent}`: ${err.msg()}'] }
 	// A `VTMP` folder set by the user may be shared on purpose, so it is left as it is.
-	mut v_owned_parents := [os.join_path(os.cache_dir(), 'v')]
-	home := os.home_dir().trim_space()
-	if home != '' {
-		v_owned_parents << os.join_path(home, '.v')
-	}
-	if !tool_cache_root_can_stage(parent) && parent in v_owned_parents {
+	if !tool_cache_root_can_stage(parent) && (parent == os.join_path(os.cache_dir(), 'v')
+		|| parent == os.join_path(os.home_dir(), '.v')) {
 		make_tool_cache_root_private(parent)
 	}
 	if !tool_cache_parents_are_trusted(parent) {
-		return false
+		problems := tool_cache_parent_problems(parent)
+		if problems.len == 0 {
+			return ['a folder above `${parent}` can be changed by someone else']
+		}
+		return problems
 	}
 	if os.is_link(candidate) || (os.is_dir(candidate) && !tool_cache_root_can_stage(candidate)) {
 		$if windows {
 			// Privacy is decided by ACLs there, and a new folder would get the same ACL.
-			return false
+			if os.is_link(candidate) {
+				return ['it is a symbolic link']
+			}
+			return [tool_cache_root_problem(candidate)]
 		}
 		aside := '${candidate}.untrusted-${time.now().unix()}-${os.getpid()}'
 		// If this fails, e.g. because another V process just did the same, the check after
 		// the folder is created again decides. A symlink that is still there is never used.
-		os.rename(candidate, aside) or { return !os.is_link(candidate) }
+		os.rename(candidate, aside) or {
+			if os.is_link(candidate) {
+				return ['it is a symbolic link, and it could not be moved aside: ${err.msg()}']
+			}
+			return []
+		}
 		if tool_cache_is_verbose() {
 			eprintln('> moved the untrusted tool cache folder `${candidate}` aside, to `${aside}`')
 		}
 	}
-	return true
+	return []
 }
 
-fn default_tool_cache_root_rejection_reason(candidate string) string {
-	parent := os.dir(candidate)
-	mut existing_parent := parent
-	for !os.is_dir(existing_parent) {
-		next_parent := os.dir(existing_parent)
-		if next_parent == existing_parent {
-			break
+// tool_cache_parent_problems explains why `tool_cache_parents_are_trusted` rejects `path`. It
+// walks up from `path`, both as written and with symlinks resolved, like the check does, and
+// lists every folder that does not pass `tool_cache_root_can_stage`, nearest first, for as long
+// as the check still rejects the folders from there upwards. So all of them can be fixed at once.
+// The walk stops at the folders that the check tolerates for `path`, see
+// `tool_cache_parent_is_tolerated`: they do not need to be fixed.
+fn tool_cache_parent_problems(path string) []string {
+	mut problems := []string{}
+	for start in [os.real_path(path), os.abs_path(path)] {
+		mut current := start
+		for !tool_cache_parents_are_trusted(current) && !tool_cache_parent_is_tolerated(start, current) {
+			problem := tool_cache_root_problem(current)
+			if problem != '' && problem !in problems {
+				problems << problem
+			}
+			parent := os.dir(current)
+			if parent == current {
+				break
+			}
+			current = parent
 		}
-		existing_parent = next_parent
 	}
-	if os.is_dir(existing_parent) {
-		if reason := tool_cache_untrusted_parent_reason(existing_parent) {
-			return reason
-		}
-	}
-	if !os.is_dir(parent) {
-		return 'the parent `${parent}` does not exist or is not a directory'
-	}
-	if os.is_link(candidate) {
-		return 'is an untrusted symbolic link'
-	}
-	if os.is_dir(candidate) && !tool_cache_root_can_stage(candidate) {
-		return tool_cache_root_stage_rejection_reason(candidate)
-	}
-	return 'cannot prepare default cache folder'
+	return problems
 }
 
 // directory_is_writable reports whether this process can actually create files in a
@@ -252,6 +296,19 @@ fn directory_is_writable(directory string) bool {
 	os.write_file(probe, '') or { return false }
 	os.rm(probe) or {}
 	return true
+}
+
+// tool_cache_home_candidate returns the last default tool cache folder, `~/.vtools`, or an empty
+// string without a home folder. It is for the hosts where the folders above both other defaults
+// can be changed by someone else: with a umask of 002, `~/.cache` is writable by its group, and
+// in some containers `/tmp` belongs to another user. The home folder itself normally is private.
+// V creates the folder with mode 0700, and never changes the permissions of the home folder.
+fn tool_cache_home_candidate() string {
+	home := os.home_dir()
+	if home == '' {
+		return ''
+	}
+	return os.join_path(home, '.vtools')
 }
 
 // tool_key_sources returns the files that make up the tool itself, in a stable order.
@@ -418,13 +475,10 @@ fn tool_cache_entry_dir_for_uid(directory string, tool_name string, key string, 
 	return os.join_path(directory, '${tool_name}-${key}.${uid}')
 }
 
-// tool_cache_entry_or_error locates the cache slot for a tool, or returns an actionable
-// diagnostic explaining why every candidate cache directory was rejected.
-fn tool_cache_entry_or_error(vexe string, vroot string, tool_name string, tool_source string, build_args []string) !ToolCacheEntry {
-	directory, rejections := tool_cache_dir_or_error()
-	if directory == '' {
-		return error(tool_cache_unavailable_message(rejections))
-	}
+// tool_cache_entry locates the cache slot for a tool. When no cache is usable, the error says
+// which folders were tried, and why each one was rejected.
+fn tool_cache_entry(vexe string, vroot string, tool_name string, tool_source string, build_args []string) !ToolCacheEntry {
+	directory := tool_cache_dir()!
 	key := tool_cache_key(vexe, tool_name, tool_key_sources(tool_source), build_args)
 	entry_dir := tool_cache_entry_dir_for_uid(directory, tool_name, key, os.getuid())
 	binary := os.join_path(entry_dir, '${tool_name}${tool_exe_suffix()}')
@@ -1332,7 +1386,7 @@ Options:
   -n, --dry-run   Show what would be wiped without deleting any files.
   -v, --verbose   Show detailed output, skipped paths, and tool cache diagnostics.
       --tools     Wipe only compiled tool caches (VTOOLS_CACHE_DIR, ~/.cache/v/tools,
-                  <VTMP>/tools, ~/.v/tools, and moved-aside .untrusted-* folders).
+                  <VTMP>/tools, ~/.vtools, ~/.v/tools, and moved-aside .untrusted-* folders).
       --vcache    Wipe only the V module/object cache (VCACHE or ~/.vmodules/.cache).
       --vtmp      Wipe only the V temporary folder (VTMP).
       --v3cache   Wipe only the V3 module and object caches (V3CACHE).
@@ -1463,7 +1517,7 @@ fn inspect_tool_cache_candidates() []string {
 			} else if !directory_is_writable(trimmed) {
 				'rejected: directory is not writable'
 			} else if !tool_cache_root_can_stage(trimmed) {
-				'rejected: ${tool_cache_root_stage_rejection_reason(trimmed)}'
+				'rejected: ${tool_cache_root_problem(trimmed)}'
 			} else {
 				'usable (exists)'
 			}
@@ -1482,7 +1536,9 @@ fn inspect_tool_cache_candidates() []string {
 		}
 		mut status := 'usable (will be created on demand)'
 		if os.is_dir(existing_parent) {
-			if reason := tool_cache_untrusted_parent_reason(existing_parent) {
+			problems := tool_cache_parent_problems(existing_parent)
+			if problems.len > 0 {
+				reason := problems.join('; ')
 				status = 'rejected: ${reason}'
 			}
 		}
@@ -1490,7 +1546,7 @@ fn inspect_tool_cache_candidates() []string {
 			if os.is_link(candidate) {
 				status = 'untrusted symbolic link (will be moved aside on next tool build)'
 			} else if os.is_dir(candidate) && !tool_cache_root_can_stage(candidate) {
-				status = 'untrusted (${tool_cache_root_stage_rejection_reason(candidate)}; will be moved aside on next tool build)'
+				status = 'untrusted (${tool_cache_root_problem(candidate)}; will be moved aside on next tool build)'
 			} else if os.is_dir(candidate) {
 				status = 'usable (exists)'
 			}

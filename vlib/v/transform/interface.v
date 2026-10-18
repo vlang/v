@@ -307,6 +307,16 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 			return lowered
 		}
 	}
+	if target_is_ptr && node.kind == .match_stmt {
+		if lowered := t.transform_match_expr_for_type(id, node, target_type_id) {
+			return lowered
+		}
+	}
+	if target_is_ptr && node.kind == .if_expr {
+		if lowered := t.try_expand_if_expr_value_for_type(id, node, target_type_id) {
+			return lowered
+		}
+	}
 	// IError has bespoke handling (built via `error()`, fields accessed directly);
 	// do not route it through the generic interface boxing.
 	if t.is_builtin_ierror_interface_name(iface_name_source_id) {
@@ -505,7 +515,9 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 		} else {
 			t.transform_expr(id)
 		}
-		if converted := t.convert_interface_expr_to_interface(expr, source_type, iface_name_comparison_type_id_3) {
+		if converted := t.convert_interface_expr_to_interface(expr, source_type, iface_name_comparison_type_id_3,
+			.implicit)
+		{
 			if target_is_ptr {
 				return t.heap_copy_interface_expr(converted, iface_name_comparison_type_id_3, target_type_id)
 			}
@@ -524,7 +536,20 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 	return t.heap_copy_interface_expr(literal, iface_name_comparison_type_id_3, target_type_id)
 }
 
-fn (mut t Transformer) convert_interface_expr_to_interface(source_expr flat.NodeId, source_type_id_2 u32, target_iface_id u32) ?flat.NodeId {
+// InterfaceConversion says what convert_interface_expr_to_interface does with a value whose
+// dynamic type does not implement the target interface.
+enum InterfaceConversion {
+	// The checker proved that every value converts. Nothing is built when no implementer
+	// of the source interface implements the target one.
+	implicit
+	// A smartcast after a passed `is` test. An unmatched value converts to a target value
+	// without a type (`_typ` 0); the test makes it unreachable.
+	tested
+	// An explicit `as` panics for an unmatched value.
+	checked
+}
+
+fn (mut t Transformer) convert_interface_expr_to_interface(source_expr flat.NodeId, source_type_id_2 u32, target_iface_id u32, mode InterfaceConversion) ?flat.NodeId {
 	target_iface_comparison_type_id := target_iface_id
 	source_type_shape_2 := flat.source_type_shape(source_type_id_2)
 	source_iface_source_id_2 := t.resolve_interface_type_name(source_type_id_2)
@@ -537,7 +562,7 @@ fn (mut t Transformer) convert_interface_expr_to_interface(source_expr flat.Node
 		return source_expr
 	}
 	matching := t.interface_conversion_impl_mappings(source_iface_source_id_2, target_iface_id)
-	if matching.len == 0 {
+	if matching.len == 0 && mode == .implicit {
 		return none
 	}
 	source_carries_fields := t.source_interface_carries_target_fields(source_iface_source_id_2, target_iface_id)
@@ -587,9 +612,83 @@ fn (mut t Transformer) convert_interface_expr_to_interface(source_expr flat.Node
 		}
 		t.pending_stmts << t.make_if(cond, t.make_block(body), t.make_empty())
 	}
+	if mode == .checked {
+		t.pending_stmts << t.make_interface_as_mismatch_panic(source_typ, source_iface_source_id_2,
+			target_iface_id, matching)
+	}
 	result := t.make_ident(out_name)
 	t.set_node_typ(int(result), target_iface_id)
 	return result
+}
+
+// interface_as_display_type names a type in the message of a failed interface `as` cast.
+// Like the sum type cast message, it qualifies the name with its module, unless the type
+// is builtin. Type spellings are already qualified, except for `main` and builtin types.
+fn (t &Transformer) interface_as_display_type(name_id u32) string {
+	name := flat.source_type_name(name_id)
+	if name.len == 0 || name.contains('.') || !name[0].is_capital() || isnil(t.tc)
+		|| t.is_builtin_ierror_interface_name(name_id) {
+		return name
+	}
+	module_name := t.tc.struct_module_for_type(name_id)
+	if module_name == 'builtin' {
+		return name
+	}
+	if module_name.len == 0 {
+		return 'main.${name}'
+	}
+	return '${module_name}.${name}'
+}
+
+// make_interface_as_mismatch_panic makes the statement that panics, like a failed `as` cast
+// of a sum type, when the dynamic type `source_typ` of a value of interface `source_iface_id`
+// has none of the `matching` conversions to interface `target_iface_id`.
+fn (mut t Transformer) make_interface_as_mismatch_panic(source_typ flat.NodeId, source_iface_id u32, target_iface_id u32, matching []InterfaceImplMapping) flat.NodeId {
+	target := t.interface_as_display_type(target_iface_id)
+	mut matched := map[u32]bool{}
+	for mapping in matching {
+		matched[mapping.impl] = true
+	}
+	// Name the dynamic type in the message: one branch per implementer that fails the cast.
+	mut message := t.make_string_literal('as cast: cannot cast interface value to `${target}`')
+	source_index := t.interface_impl_index_for_transform(source_iface_id)
+	for i := source_index.names.ids.len - 1; i >= 0; i-- {
+		impl := source_index.names.ids[i]
+		if impl in matched {
+			continue
+		}
+		type_id := source_index.ids[impl] or { continue }
+		display := t.interface_as_display_type(impl)
+		cond := t.make_infix(.eq, source_typ, t.make_int_literal(type_id))
+		then_block := t.make_block([
+			t.make_expr_stmt(t.make_string_literal('as cast: cannot cast `${display}` to `${target}`')),
+		])
+		else_block := t.make_block([t.make_expr_stmt(message)])
+		start := t.a.children.len
+		t.a.children << cond
+		t.a.children << then_block
+		t.a.children << else_block
+		message = t.a.add_node(flat.Node{
+			kind:           .if_expr
+			children_start: start
+			children_count: 3
+			typ:            flat.source_type_string
+		})
+	}
+	panic_stmt := t.make_expr_stmt(t.make_call('panic', [message]))
+	if matching.len == 0 {
+		return panic_stmt
+	}
+	mut mismatch := flat.empty_node
+	for mapping in matching {
+		not_mapped := t.make_infix(.ne, source_typ, t.make_int_literal(mapping.source_id))
+		mismatch = if int(mismatch) < 0 {
+			not_mapped
+		} else {
+			t.make_infix(.logical_and, mismatch, not_mapped)
+		}
+	}
+	return t.make_if(mismatch, t.make_block([panic_stmt]), t.make_empty())
 }
 
 fn (mut t Transformer) make_interface_conversion_init(iface_id u32, fields []flat.NodeId) flat.NodeId {
@@ -672,7 +771,11 @@ fn (mut t Transformer) make_interface_target_is_check(source_expr flat.NodeId, s
 	source_type_shape_3 := flat.source_type_shape(source_type_id)
 	mappings := t.interface_conversion_impl_mappings(source_iface_id, target_iface_id)
 	if mappings.len == 0 {
-		return none
+		if source_iface_id == u32(0) || target_iface_id == u32(0) || isnil(t.tc) {
+			return none
+		}
+		// No type in the program implements both interfaces, so no value passes the test.
+		return t.make_bool_literal(false)
 	}
 	op := if source_type_shape_3.has(.pointer) { flat.Op.arrow } else { flat.Op.dot }
 	typ := t.make_selector_op(source_expr, '_typ', flat.source_type_int, op)

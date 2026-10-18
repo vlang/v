@@ -44,14 +44,6 @@ fn tool_cache_is_fresh(entry ToolCacheEntry) bool {
 	return tool_cache_stale_reason(entry) == ''
 }
 
-fn tool_cache_dir() ?string {
-	directory, _ := tool_cache_dir_or_error()
-	if directory != '' {
-		return directory
-	}
-	return none
-}
-
 // record_unbuildable_tool writes a failed build and its inputs for cache test fixtures.
 fn record_unbuildable_tool(entry ToolCacheEntry, dumped string, started i64, details string) {
 	manifest := encode_unbuildable_tool_manifest(entry, dumped, started, details)
@@ -1891,8 +1883,9 @@ fn test_a_symlinked_v_folder_inside_a_writable_cache_folder_is_not_used() {
 // private `$HOME` provides a usable default cache without modifying `~/.cache`.
 fn test_home_dot_v_tools_is_used_when_cache_and_vtmp_are_untrusted() {
 	candidates := tool_cache_default_candidates()
-	assert candidates.len == 3
-	assert candidates[2].ends_with(os.join_path('.v', 'tools'))
+	assert candidates.len == 4
+	assert candidates[2].ends_with('.vtools')
+	assert candidates[3].ends_with(os.join_path('.v', 'tools'))
 	$if windows {
 		return
 	}
@@ -1909,6 +1902,7 @@ fn test_home_dot_v_tools_is_used_when_cache_and_vtmp_are_untrusted() {
 		home := os.join_path(directory, 'home')
 		os.chmod(cache, 0o775)!
 		os.chmod(vtmp, 0o775)!
+		os.write_file(os.join_path(home, '.vtools'), 'occupied')!
 		dot_v := os.join_path(home, '.v')
 		os.mkdir_all(dot_v)!
 		os.chmod(dot_v, 0o775)!
@@ -1921,17 +1915,17 @@ fn test_home_dot_v_tools_is_used_when_cache_and_vtmp_are_untrusted() {
 	})!
 }
 
-// When every candidate fails, `tool_cache_entry_or_error` lists each rejected candidate and
+// When every candidate fails, `tool_cache_entry` lists each rejected candidate and
 // shows how to configure a private `VTOOLS_CACHE_DIR`.
 fn test_tool_cache_unavailable_error_lists_rejected_candidates_and_workaround() {
 	formatted := tool_cache_unavailable_message([
-		'  - `/home/user/.cache/v/tools`: an ancestor `/home/user/.cache` (mode 0775) is writable by group/others without the sticky bit',
-		'  - `/tmp/v_1000/tools`: the parent `/tmp` (mode 01777) is owned by user id 65534, not by the current user or root',
+		ToolCacheRejection{ candidate: '/home/user/.cache/v/tools', problems: ['is writable by group/others without the sticky bit'] },
+		ToolCacheRejection{ candidate: '/tmp/v_1000/tools', problems: ['is owned by user id 65534, not by the current user or root'] },
 	])
 	assert formatted.contains('no usable tool cache folder was found:')
 	assert formatted.contains('is writable by group/others without the sticky bit')
 	assert formatted.contains('is owned by user id 65534, not by the current user or root')
-	assert formatted.contains('export VTOOLS_CACHE_DIR=\$HOME/.cache/vtools')
+	assert formatted.contains('export VTOOLS_CACHE_DIR="\$HOME/.vtools"')
 	$if windows {
 		return
 	}
@@ -1949,7 +1943,7 @@ fn test_tool_cache_unavailable_error_lists_rejected_candidates_and_workaround() 
 		os.chmod(cache, 0o775)!
 		os.chmod(vtmp, 0o775)!
 		os.chmod(home, 0o775)!
-		if entry := tool_cache_entry_or_error('v', directory, 'v3_ownership', directory, []) {
+		if entry := tool_cache_entry('v', directory, 'v3_ownership', directory, []) {
 			assert false, 'expected no usable cache, got `${entry.dir}`'
 		} else {
 			message := err.msg()
@@ -1957,8 +1951,8 @@ fn test_tool_cache_unavailable_error_lists_rejected_candidates_and_workaround() 
 			assert message.contains(os.join_path(v_dir, 'tools')), message
 			assert message.contains(os.join_path(vtmp, 'tools')), message
 			assert message.contains(os.join_path(home, '.v', 'tools')), message
-			assert message.contains('is writable by group/others without the sticky bit'), message
-			assert message.contains('export VTOOLS_CACHE_DIR=\$HOME/.cache/vtools'), message
+			assert message.contains('without the sticky bit'), message
+			assert message.contains('export VTOOLS_CACHE_DIR="\$HOME/.vtools"'), message
 		}
 	})!
 }

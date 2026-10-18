@@ -38,6 +38,7 @@ struct ComptimeConstPrepassDecl {
 struct ComptimeConstPrepassChunk {
 mut:
 	decls []ComptimeConstPrepassDecl
+	names map[string]bool
 }
 
 // ParseChunkArgs is the payload handed to each worker thread.
@@ -86,6 +87,18 @@ fn precollect_const_chunk_thread(arg voidptr) voidptr {
 	unsafe {
 		w.precollect_parallel_comptime_consts(*paths, a.start, a.end, mut chunk.decls)
 	}
+	parser_worker_scope_leave(a.scope)
+	return unsafe { nil }
+}
+
+fn precollect_const_names_chunk_thread(arg voidptr) voidptr {
+	mut a := unsafe { &ParseChunkArgs(arg) }
+	mut w := unsafe { &Parser(a.worker) }
+	paths := unsafe { &[]string(a.paths_ptr) }
+	mut chunk := unsafe { &ComptimeConstPrepassChunk(a.prepass_chunk) }
+	// Only the collected names survive this pass, including on the caller thread.
+	a.scope = parser_worker_scope_begin(true)
+	chunk.names = w.parallel_comptime_const_names((*paths)[a.start..a.end])
 	parser_worker_scope_leave(a.scope)
 	return unsafe { nil }
 }
@@ -175,7 +188,6 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 	bounds := parse_chunk_bounds(sizes, n_chunks)
 	thread_count := n_chunks - 1
 	previous_const_names := p.comptime_string_consts.clone()
-	prepass_const_names := p.parallel_comptime_const_names(paths)
 	dispatch_file_id_start := p.next_file_id
 	mut starts := []int{len: paths.len}
 	mut prepass_chunks := []&ComptimeConstPrepassChunk{cap: n_chunks}
@@ -193,7 +205,6 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 		w.next_file_id = dispatch_file_id_start + bounds[ci + 1]
 		w.quick_source_sums = p.quick_source_sums
 		w.no_source_digests = p.no_source_digests
-		w.comptime_string_consts = prepass_const_names.clone()
 		mut chunk_bytes := i64(0)
 		for i in bounds[ci + 1] .. bounds[ci + 2] {
 			chunk_bytes += sizes[i]
@@ -229,6 +240,30 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 		}
 	}
 	fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
+	// The guard-proof superset needs every chunk's names before the ordered
+	// prepass starts. Scan it in parallel too, then retain only owned keys.
+	mut name_tasks := []workers.Task{cap: n_chunks}
+	for ci in 0 .. n_chunks {
+		helper_idx := ci - 1
+		name_tasks << workers.Task{
+			run:        precollect_const_names_chunk_thread
+			arg:        unsafe { voidptr(&args[ci]) }
+			force_sync: ci == 0 || fail == 'parser:all' || fail == 'parser:${helper_idx}'
+		}
+	}
+	p.a.worker_pool.run(name_tasks)
+	mut prepass_const_names := previous_const_names.clone()
+	for ci in 0 .. n_chunks {
+		for name, _ in prepass_chunks[ci].names {
+			prepass_const_names[name.clone()] = true
+		}
+		prepass_chunks[ci].names = map[string]bool{}
+		parser_worker_scope_free(args[ci].scope)
+		args[ci].scope = unsafe { nil }
+	}
+	for mut worker in parser_workers {
+		worker.comptime_string_consts = prepass_const_names.clone()
+	}
 	// Collect ordered foldable-const declarations in parallel. Once every
 	// chunk is scanned, replay the declarations in input order to make a
 	// prefix snapshot for each worker: later chunks inherit earlier consts,
@@ -407,7 +442,7 @@ fn (mut p Parser) remap_worker_file_ids(first_file_id int, delta int) {
 fn (mut p Parser) parallel_comptime_const_names(paths []string) map[string]bool {
 	// This superset is only for prepass guard proofs. Full parser workers receive
 	// ordered prefixes, so disabled and later declarations cannot enter their scope.
-	mut names := p.comptime_string_consts.clone()
+	mut names := map[string]bool{}
 	for path in paths {
 		src := read_source_file_raw(path) or { continue }
 		mut files := token.FileSet.new()
@@ -416,7 +451,7 @@ fn (mut p Parser) parallel_comptime_const_names(paths []string) map[string]bool 
 		s.init(file, src)
 		mut module_name := ''
 		for {
-			tok := s.scan()
+			tok := scan_parallel_const_name_token(mut s)
 			if tok == .eof { break }
 			if tok == .key_module && s.scan() == .name {
 				module_name = s.lit
@@ -428,6 +463,37 @@ fn (mut p Parser) parallel_comptime_const_names(paths []string) map[string]bool 
 		}
 	}
 	return names
+}
+
+// Only declaration keywords matter to the name superset. Preserve the scanner's
+// handling of comments, directives, strings and interpolation; skip unrelated
+// ASCII words whole so a suffix such as `some_const` cannot become a keyword.
+@[direct_array_access]
+fn scan_parallel_const_name_token(mut s scanner.Scanner) token.Token {
+	for {
+		if !s.in_str_incomplete && !s.in_str_inter {
+			for s.offset < s.src.len {
+				c := s.src[s.offset]
+				if c >= 0x80 || c in [`c`, `m`, `/`, `'`, `"`, `\``, `#`, `@`]
+					|| (c == `r` && s.offset + 1 < s.src.len
+						&& s.src[s.offset + 1] in [`'`, `"`]) {
+					break
+				}
+				s.offset++
+				if c.is_alnum() || c == `_` {
+					for s.offset < s.src.len
+						&& (s.src[s.offset].is_alnum() || s.src[s.offset] == `_`) {
+						s.offset++
+					}
+				}
+			}
+		}
+		tok := s.scan()
+		if tok in [.key_module, .key_const, .eof] {
+			return tok
+		}
+	}
+	return .eof
 }
 
 @[direct_array_access]
