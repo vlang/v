@@ -31,6 +31,17 @@ fn if_first_branch_value(use_option bool, value ?int) string {
 	return '${typeof(result).name} ${result or { -1 }}'
 }
 
+fn if_first_branch_none_chain(use_option bool, other bool, value ?int) ?int {
+	result := if use_option {
+		value
+	} else if other {
+		7
+	} else {
+		none
+	}
+	return result
+}
+
 fn test_if_expr_first_option_branch_wraps_later_payloads() {
 	assert if_first_branch_height(true, false, false, 1.0, 2.0) or { 0 } == 1.0
 	assert if_first_branch_height(true, false, false, none, 2.0) == none
@@ -49,4 +60,7 @@ fn test_if_expr_first_option_scalar_branch() {
 	assert if_first_branch_value(true, 5) == '?int 5'
 	assert if_first_branch_value(true, none) == '?int -1'
 	assert if_first_branch_value(false, none) == '?int 7'
+	assert if_first_branch_none_chain(true, false, 5) or { -1 } == 5
+	assert if_first_branch_none_chain(false, true, 5) or { -1 } == 7
+	assert if_first_branch_none_chain(false, false, 5) == none
 }

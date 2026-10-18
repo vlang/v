@@ -21008,18 +21008,24 @@ fn (tc &TypeChecker) if_chain_option_head_accepts(id flat.NodeId, then_id flat.N
 	if head_option !is OptionType {
 		return false
 	}
-	return tc.if_branch_converts_to_option(then_type, head_type)
-		&& tc.if_branch_converts_to_option(else_type, head_type)
+	return tc.if_branch_converts_to_option(then_id, then_type, head_type)
+		&& tc.if_branch_converts_to_option(else_id, else_type, head_type)
 }
 
-fn (tc &TypeChecker) if_branch_converts_to_option(typ Type, option Type) bool {
+fn (tc &TypeChecker) if_branch_converts_to_option(branch_id flat.NodeId, typ Type, option Type) bool {
 	clean_option := unalias_type(option)
 	if clean_option !is OptionType {
 		return false
 	}
 	clean := unalias_type(typ)
-	if clean is None || is_option_void_type(clean) {
+	if clean is None {
 		return true
+	}
+	if is_option_void_type(clean) {
+		tail_id := tc.branch_tail_expr_id(branch_id)
+		if tc.branch_tail_is_none_literal(tail_id) {
+			return true
+		}
 	}
 	if clean is OptionType {
 		return tc.type_compatible(typ, option)

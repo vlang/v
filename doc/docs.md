@@ -2271,6 +2271,10 @@ Branch-local values keep their declared types; unrelated enum types cannot be co
 Appending an `if` or `match` expression to an enum array also supplies the element type
 for shorthand values in its branches. Every branch must produce a compatible enum value.
 
+When the first branch has type `?T`, later branches may supply `T` or `none`.
+A function returning `?void` supplies an optional value without a payload; it cannot replace
+`none` in a branch that needs `?int` or another option with a payload.
+
 An `if` or `match` expression stored as a function value may combine compatible functions
 with `unsafe { nil }`. Branch-local variables retain their types: a `voidptr` variable
 cannot be stored as a function value.
