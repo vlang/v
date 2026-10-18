@@ -734,7 +734,14 @@ fn valid_c_link_plan(plan_path string, mut stats CObjectCacheStats) ?CLinkPlan {
 	mut saw_requests := false
 	mut saw_direct_objects := false
 	mut saw_dependency_files := false
-	for line in lines[1..] {
+	// Dependencies whose metadata no longer identifies them, but whose contents
+	// still match: the plan with their current metadata, written back below.
+	mut refreshed_lines := []string{}
+	mut refreshed := false
+	for line_index, line in lines {
+		if line_index == 0 {
+			continue
+		}
 		if line.starts_with('requests=') {
 			plan.requests = line.all_after('requests=').int()
 			saw_requests = true
@@ -767,11 +774,26 @@ fn valid_c_link_plan(plan_path string, mut stats CObjectCacheStats) ?CLinkPlan {
 				if actual_signature.len == 0 || actual_signature != expected_signature {
 					return none
 				}
+				if actual_metadata.len > 0 {
+					// The metadata was read before the contents that matched. A plan
+					// whose metadata is stale, as after any rebuild of the compiler
+					// (the compiler's commit is part of the metadata), would make every
+					// later build read and hash every dependency again.
+					if !refreshed {
+						refreshed = true
+						refreshed_lines = lines[..line_index].clone()
+					}
+					refreshed_lines << 'dependency=${path}\t${actual_metadata}\t${expected_signature}'
+					continue
+				}
 			}
 		} else if line == 'complete=1' {
 			complete = true
 		} else {
 			return none
+		}
+		if refreshed {
+			refreshed_lines << line
 		}
 	}
 	if !complete || !saw_requests || !saw_direct_objects || !saw_dependency_files
@@ -783,6 +805,11 @@ fn valid_c_link_plan(plan_path string, mut stats CObjectCacheStats) ?CLinkPlan {
 		if !os.is_file(object_path) {
 			return none
 		}
+	}
+	if refreshed {
+		temp_path := '${plan_path}.tmp.${tempname.unique_token()}'
+		os.write_file(temp_path, refreshed_lines.join('\n') + '\n') or {}
+		os.mv(temp_path, plan_path) or { os.rm(temp_path) or {} }
 	}
 	return plan
 }
