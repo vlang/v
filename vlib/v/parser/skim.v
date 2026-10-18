@@ -56,3 +56,31 @@ fn new_const_name_skim_classes() [256]u8 {
 	classes[u8(`r`)] = skim_quote_prefix | skim_word
 	return classes
 }
+
+// A byte that continues an identifier or a number.
+const skim_word_tail = u8(32)
+// A bracket or brace.
+const skim_bracket = u8(64)
+
+// decl_block_skim_classes classes the bytes that skip_sizeof_block skims: the
+// starts of literals, comments and directives stop it, identifier and number
+// bytes are skipped whole, brackets are counted (a zero class is any other byte).
+const decl_block_skim_classes = new_decl_block_skim_classes()
+
+fn new_decl_block_skim_classes() [256]u8 {
+	mut classes := [256]u8{}
+	for i in 0 .. 128 {
+		c := u8(i)
+		if c.is_letter() || c.is_digit() || c == `_` {
+			classes[i] = skim_word | skim_word_tail
+		}
+	}
+	classes[u8(`@`)] = skim_word
+	for c in [u8(`'`), `"`, `\``, `/`, `#`] {
+		classes[c] = skim_stop
+	}
+	for c in [u8(`(`), `)`, `[`, `]`, `{`, `}`] {
+		classes[c] = skim_bracket
+	}
+	return classes
+}

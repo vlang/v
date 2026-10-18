@@ -16092,45 +16092,217 @@ fn (mut p Parser) scan_translated_sizeof_source(source string) {
 		&& !source.contains('__global') {
 		return
 	}
-	mut scan := scanner.new_scanner(p.prefs, .skip_interpolation)
-	scan.init(p.s.current_file(), source)
+	mut saved_consts := p.comptime_const_values.clone()
 	// Index every source in one reused token buffer: growing a fresh one token
 	// by token copied the tokens of each large source over and over.
-	reuse := !p.sizeof_scan_busy
-	mut local_tokens := []InlineAsmScanToken{}
-	if reuse {
+	if !p.sizeof_scan_busy {
 		p.sizeof_scan_busy = true
 		p.sizeof_scan_tokens.clear()
+		sizeof_declaration_tokens(p.prefs, p.s.current_file(), source, true, mut p.sizeof_scan_tokens)
+		p.scan_translated_sizeof_range(source, p.sizeof_scan_tokens, 0, p.sizeof_scan_tokens.len)
+		p.sizeof_scan_busy = false
+	} else {
+		mut tokens := []InlineAsmScanToken{}
+		sizeof_declaration_tokens(p.prefs, p.s.current_file(), source, true, mut tokens)
+		p.scan_translated_sizeof_range(source, tokens, 0, tokens.len)
 	}
+	p.comptime_const_values = saved_consts.move()
+}
+
+// sizeof_declaration_tokens appends the tokens of `source` that
+// scan_translated_sizeof_range reads. That scan steps over every block it meets
+// at its own level, enters only the branches of `$if`/`$else`/`$match`, and
+// walks the blocks inside const and global values only to count their brackets.
+// With `collapse`, a block that is no such branch, and whose brackets balance
+// inside of it, is left as its two braces: every part of the scan reads such a
+// pair exactly like the whole block, and skimming the block's bytes costs much
+// less than tokenizing them. Any other block keeps all of its tokens.
+fn sizeof_declaration_tokens(prefs &pref.Preferences, file &token.File, source string, collapse bool, mut tokens []InlineAsmScanToken) {
+	mut scan := scanner.new_scanner(prefs, .skip_interpolation)
+	scan.init(file, source)
+	// For every open block that keeps its tokens: whether it is a `$match` body,
+	// whose own blocks are its arms.
+	mut match_bodies := []bool{}
+	// The first block after a `$` is the branch of a comptime `$if`, `$else` or
+	// `$match` (the token after the `$` tells which).
+	mut after_dollar := false
+	mut dollar_kind := token.Token.unknown
 	for {
 		kind := scan.scan()
 		if kind == .eof {
 			break
 		}
-		if reuse {
-			p.sizeof_scan_tokens << InlineAsmScanToken{
-				kind: kind
-				lit:  scan.lit
-				pos:  scan.pos
-				end:  scan.offset
+		if kind == .lcbr {
+			is_branch := after_dollar || (match_bodies.len > 0 && match_bodies.last())
+			open_lit := scan.lit
+			open_pos := scan.pos
+			open_end := scan.offset
+			if collapse && !is_branch {
+				if close := skip_sizeof_block(mut scan) {
+					tokens << InlineAsmScanToken{
+						kind: kind
+						lit:  open_lit
+						pos:  open_pos
+						end:  open_end
+					}
+					tokens << close
+					continue
+				}
 			}
-		} else {
-			local_tokens << InlineAsmScanToken{
-				kind: kind
-				lit:  scan.lit
-				pos:  scan.pos
-				end:  scan.offset
+			match_bodies << (after_dollar && dollar_kind == .key_match)
+			after_dollar = false
+		} else if kind == .rcbr {
+			if match_bodies.len > 0 {
+				match_bodies.delete_last()
 			}
+		} else if kind == .dollar {
+			after_dollar = true
+			dollar_kind = .unknown
+		} else if after_dollar && dollar_kind == .unknown {
+			dollar_kind = kind
+		}
+		tokens << InlineAsmScanToken{
+			kind: kind
+			lit:  scan.lit
+			pos:  scan.pos
+			end:  scan.offset
 		}
 	}
-	mut saved_consts := p.comptime_const_values.clone()
-	if reuse {
-		p.scan_translated_sizeof_range(source, p.sizeof_scan_tokens, 0, p.sizeof_scan_tokens.len)
-		p.sizeof_scan_busy = false
-	} else {
-		p.scan_translated_sizeof_range(source, local_tokens, 0, local_tokens.len)
+}
+
+// skip_sizeof_block skims the contents of the block whose `{` the scanner `s`
+// just returned, up to its matching `}`, and returns that token. It gives up,
+// and leaves `s` where it was, when a `(` or `[` in the block is unbalanced, or
+// at an attribute (`@[` is no `[` token): the bracket counts of a const value
+// would read such contents differently from the bare braces. Only bytes that can
+// start a literal, a comment or a directive go through the scanner; identifiers
+// are skipped whole, so that only the scanner reads `r`, `c` and `js` literals.
+@[direct_array_access]
+fn skip_sizeof_block(mut s scanner.Scanner) ?InlineAsmScanToken {
+	saved := s
+	src := s.src
+	mut off := s.offset
+	mut depth := 1
+	mut parens := 0
+	mut brackets := 0
+	for {
+		for off < src.len {
+			c := src[off]
+			class := decl_block_skim_classes[c]
+			if class == 0 {
+				off++
+				continue
+			}
+			if class & skim_word != 0 {
+				start := off
+				off++
+				for off < src.len && decl_block_skim_classes[src[off]] & skim_word_tail != 0 {
+					off++
+				}
+				if off < src.len && (src[off] == `'` || src[off] == `"`) {
+					// Only a raw, C or JS string prefix touches a quote in valid code;
+					// the scanner reads such a literal from the prefix. Leave anything
+					// else to the full tokenization.
+					len := off - start
+					if (len == 1 && (src[start] == `r` || src[start] == `c`))
+						|| (len == 2 && src[start] == `j` && src[start + 1] == `s`) {
+						off = start
+						break
+					}
+					s = saved
+					return none
+				}
+				if off - start == 1 && c == `@` && off < src.len && src[off] == `[` {
+					s = saved
+					return none
+				}
+				continue
+			}
+			if class == skim_stop {
+				break
+			}
+			// A bracket byte outside of literals and comments is a bracket token.
+			if c == `{` {
+				depth++
+			} else if c == `}` {
+				if depth == 1 {
+					// The scanner returns the closing brace itself.
+					break
+				}
+				depth--
+			} else if c == `(` {
+				parens++
+			} else if c == `)` {
+				if parens == 0 {
+					s = saved
+					return none
+				}
+				parens--
+			} else if c == `[` {
+				brackets++
+			} else if c == `]` {
+				if brackets == 0 {
+					s = saved
+					return none
+				}
+				brackets--
+			}
+			off++
+		}
+		if off >= src.len {
+			s = saved
+			return none
+		}
+		s.offset = off
+		kind := s.scan()
+		match kind {
+			.eof, .attribute {
+				s = saved
+				return none
+			}
+			.lcbr {
+				depth++
+			}
+			.rcbr {
+				depth--
+				if depth == 0 {
+					if parens != 0 || brackets != 0 {
+						s = saved
+						return none
+					}
+					return InlineAsmScanToken{
+						kind: kind
+						lit:  s.lit
+						pos:  s.pos
+						end:  s.offset
+					}
+				}
+			}
+			.lpar {
+				parens++
+			}
+			.rpar {
+				if parens == 0 {
+					s = saved
+					return none
+				}
+				parens--
+			}
+			.lsbr {
+				brackets++
+			}
+			.rsbr {
+				if brackets == 0 {
+					s = saved
+					return none
+				}
+				brackets--
+			}
+			else {}
+		}
+		off = s.offset
 	}
-	p.comptime_const_values = saved_consts.move()
+	return none
 }
 
 fn (mut p Parser) scan_translated_sizeof_range(source string, tokens []InlineAsmScanToken, start int, end int) {
