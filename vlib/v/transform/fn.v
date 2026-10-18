@@ -3757,10 +3757,9 @@ fn (t &Transformer) call_is_variadic_keyed(call_name string) bool {
 		&& t.tc.fn_variadic[call_name.all_before('_T_')] {
 		return true
 	}
-	key := '${t.cur_file}\n${call_name}'
 	if !isnil(t.call_variadic_cache) {
 		mut cache := t.call_variadic_cache
-		cached := cache.get(key)
+		cached := cache.get(t.cur_file, call_name)
 		if cached != 0 {
 			return cached > 0
 		}
@@ -3768,7 +3767,7 @@ fn (t &Transformer) call_is_variadic_keyed(call_name string) bool {
 	result := t.call_is_variadic_uncached(call_name)
 	if !isnil(t.call_variadic_cache) {
 		mut cache := t.call_variadic_cache
-		cache.put(key, if result { i8(1) } else { i8(-1) })
+		cache.put(t.cur_file, call_name, if result { i8(1) } else { i8(-1) })
 	}
 	return result
 }

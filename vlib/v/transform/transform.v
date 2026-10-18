@@ -936,12 +936,20 @@ mut:
 	results     [2048]i8
 }
 
+// BoolLookupFileCache holds the answers of the names looked up from one file.
+struct BoolLookupFileCache {
+mut:
+	entries map[string]i8 // 1 = true, -1 = false
+}
+
+// BoolLookupCache answers name lookups whose result depends on the current
+// file. Names are grouped by file, so a lookup hashes only the name.
 struct BoolLookupCache {
 mut:
-	entries    map[string]i8 // 1 = true, -1 = false
-	last_name  string
-	last_value i8
-	recent     &util.KeyRecentCache = unsafe { nil }
+	file    string // owned spelling of the file `current` belongs to
+	current &BoolLookupFileCache = unsafe { nil }
+	files   map[string]&BoolLookupFileCache
+	recent  &util.KeyRecentCache = unsafe { nil }
 }
 
 // recent_cache returns this cache's front cache, allocating it on first use.
@@ -974,25 +982,31 @@ mut:
 	answers   GenericUnresolvedCache
 }
 
-@[inline]
-fn (mut c BoolLookupCache) get(name string) i8 {
-	if c.last_value != 0 && c.last_name.len == name.len
-		&& (unsafe { c.last_name.str == name.str } || c.last_name == name) {
-		return c.last_value
+// file_cache returns the answers for names looked up from `file`.
+fn (mut c BoolLookupCache) file_cache(file string) &BoolLookupFileCache {
+	if !isnil(c.current) && c.file == file {
+		return c.current
 	}
-	if cached := c.entries[name] {
-		c.last_name = name
-		c.last_value = cached
-		return cached
+	mut entries := c.files[file] or {
+		created := &BoolLookupFileCache{}
+		c.files[file] = created
+		created
 	}
-	return 0
+	c.file = file.clone()
+	c.current = entries
+	return entries
 }
 
 @[inline]
-fn (mut c BoolLookupCache) put(name string, value i8) {
-	c.entries[name] = value
-	c.last_name = name
-	c.last_value = value
+fn (mut c BoolLookupCache) get(file string, name string) i8 {
+	mut entries := c.file_cache(file)
+	return entries.entries[name] or { i8(0) }
+}
+
+@[inline]
+fn (mut c BoolLookupCache) put(file string, name string, value i8) {
+	mut entries := c.file_cache(file)
+	entries.entries[name] = value
 }
 
 @[inline]
@@ -2317,9 +2331,7 @@ fn new_transformer_view(a &flat.FlatAst, tc &types.TypeChecker, used_fns map[str
 		used_fns:                    used_fns.clone()
 		interface_box_param_cache:   &SourceTypeBoolCache{}
 		alias_receiver_method_cache: &LookupCache{}
-		call_variadic_cache:         &BoolLookupCache{
-			entries: map[string]i8{}
-		}
+		call_variadic_cache:         &BoolLookupCache{}
 		str_alias_cache:             &StrAliasCache{}
 		file_import_cache:           &util.KeyRecentCache{}
 	}
@@ -3081,8 +3093,9 @@ fn (mut t Transformer) clear_struct_field_type_cache() {
 		return
 	}
 	mut cache := t.struct_field_type_cache
-	cache.entries.clear()
-	cache.misses.clear()
+	cache.module_entries = unsafe { nil }
+	cache.module_name = ''
+	cache.modules.clear()
 }
 
 const receiver_method_suffix_ambiguous = '__v_receiver_method_suffix_ambiguous__'
@@ -4953,9 +4966,7 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 		misses:  map[u64]bool{}
 	}
 	w.interface_box_param_cache = &SourceTypeBoolCache{}
-	w.call_variadic_cache = &BoolLookupCache{
-		entries: map[string]i8{}
-	}
+	w.call_variadic_cache = &BoolLookupCache{}
 	w.str_alias_cache = &StrAliasCache{}
 	w.file_import_cache = &util.KeyRecentCache{}
 	w.generic_fn_decls_cache = map[string]GenericFnDecl{}
@@ -5093,9 +5104,7 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 		misses:  map[u64]bool{}
 	}
 	w.interface_box_param_cache = &SourceTypeBoolCache{}
-	w.call_variadic_cache = &BoolLookupCache{
-		entries: map[string]i8{}
-	}
+	w.call_variadic_cache = &BoolLookupCache{}
 	w.str_alias_cache = &StrAliasCache{}
 	w.file_import_cache = &util.KeyRecentCache{}
 	w.generic_fn_decls_cache = map[string]GenericFnDecl{}
