@@ -18112,18 +18112,21 @@ fn (mut p Parser) index_local_type_declarations() {
 			src_len := src.len
 			mut off := s.offset
 			for off < src_len {
-				c := src[off]
-				if c == `{` || c == `}` || c == `/` || c == `'` || c == `"` || c == `\``
-					|| c == `#` {
+				class := local_type_skim_classes[src[off]]
+				if class == 0 {
+					off++
+					continue
+				}
+				if class == skim_stop {
 					break
 				}
-				if c == `r` || c == `c` {
+				if class == skim_quote_prefix {
 					if off + 1 < src_len && (src[off + 1] == `'` || src[off + 1] == `"`) {
 						break
 					}
-				} else if (c == `s` && off + 6 <= src_len && src[off + 1] == `t`
+				} else if (class == skim_struct_start && off + 6 <= src_len && src[off + 1] == `t`
 					&& src[off + 2] == `r` && src[off + 3] == `u` && src[off + 4] == `c`
-					&& src[off + 5] == `t`) || (c == `u` && off + 5 <= src_len
+					&& src[off + 5] == `t`) || (class == skim_union_start && off + 5 <= src_len
 					&& src[off + 1] == `n` && src[off + 2] == `i` && src[off + 3] == `o`
 					&& src[off + 4] == `n`) {
 					prev := if off > 0 { src[off - 1] } else { u8(0) }

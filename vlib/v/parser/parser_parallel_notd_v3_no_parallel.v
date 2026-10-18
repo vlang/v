@@ -472,21 +472,23 @@ fn (mut p Parser) parallel_comptime_const_names(paths []string) map[string]bool 
 fn scan_parallel_const_name_token(mut s scanner.Scanner) token.Token {
 	for {
 		if !s.in_str_incomplete && !s.in_str_inter {
-			for s.offset < s.src.len {
-				c := s.src[s.offset]
-				if c >= 0x80 || c in [`c`, `m`, `/`, `'`, `"`, `\``, `#`, `@`]
-					|| (c == `r` && s.offset + 1 < s.src.len
-						&& s.src[s.offset + 1] in [`'`, `"`]) {
+			src := s.src
+			src_len := src.len
+			mut off := s.offset
+			for off < src_len {
+				class := const_name_skim_classes[src[off]]
+				if class & skim_stop != 0 || (class & skim_quote_prefix != 0 && off + 1 < src_len
+					&& (src[off + 1] == `'` || src[off + 1] == `"`)) {
 					break
 				}
-				s.offset++
-				if c.is_alnum() || c == `_` {
-					for s.offset < s.src.len
-						&& (s.src[s.offset].is_alnum() || s.src[s.offset] == `_`) {
-						s.offset++
+				off++
+				if class & skim_word != 0 {
+					for off < src_len && const_name_skim_classes[src[off]] & skim_word != 0 {
+						off++
 					}
 				}
 			}
+			s.offset = off
 		}
 		tok := s.scan()
 		if tok in [.key_module, .key_const, .eof] {
@@ -867,15 +869,18 @@ fn skip_parallel_comptime_block(mut s scanner.Scanner) {
 		// scanner handle comments, directives and quoted/interpolated text, but
 		// avoid classifying every identifier and operator in the body twice.
 		if !s.in_str_incomplete && !s.in_str_inter {
-			for s.offset < s.src.len {
-				c := s.src[s.offset]
-				if c in [`{`, `}`, `/`, `'`, `"`, `\``, `#`]
-					|| (c in [`r`, `c`] && s.offset + 1 < s.src.len
-						&& s.src[s.offset + 1] in [`'`, `"`]) {
+			src := s.src
+			src_len := src.len
+			mut off := s.offset
+			for off < src_len {
+				class := comptime_block_skim_classes[src[off]]
+				if class == skim_stop || (class == skim_quote_prefix && off + 1 < src_len
+					&& (src[off + 1] == `'` || src[off + 1] == `"`)) {
 					break
 				}
-				s.offset++
+				off++
 			}
+			s.offset = off
 		}
 		tok := s.scan()
 		if tok == .eof {
