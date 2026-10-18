@@ -1522,6 +1522,7 @@ fn (mut p Parser) merge_parsed_worker_bookkeeping(mut w Parser, mut starts []int
 		w.a.file_node_ids.len = 0
 	}
 	p.a.file_index_incomplete = p.a.file_index_incomplete || w.a.file_index_incomplete
+	p.a.debugger_stmts += w.a.debugger_stmts
 	p.a.has_vsh_source = p.a.has_vsh_source || w.a.has_vsh_source
 	if w.a.raw_vsh_file != '' {
 		p.a.raw_vsh_file = w.a.raw_vsh_file

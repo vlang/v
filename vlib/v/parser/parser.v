@@ -9022,6 +9022,7 @@ fn (mut p Parser) debugger_stmt() flat.NodeId {
 	if p.tok == .semicolon {
 		p.next()
 	}
+	p.a.debugger_stmts++
 	return p.a.add_node(flat.Node{
 		kind: .debugger_stmt
 		pos:  p.span_to(start)

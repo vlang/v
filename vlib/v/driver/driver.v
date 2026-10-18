@@ -21805,6 +21805,14 @@ fn cache_bundle_import_file(builtin_dir string) string {
 }
 
 fn scan_implicit_imports(a &flat.FlatAst, end_node int, mut scan ImplicitImportScan) {
+	// Once every requirement that a node can raise is raised, and the parser made
+	// no `$dbg` statement, only the import declarations of the range still change
+	// the scan: find them from the file index instead of reading every node.
+	if scan.needs_sync && scan.needs_embed && scan.needs_closure
+		&& (scan.needs_debugger || a.debugger_stmts == 0)
+		&& scan_implicit_import_decls(a, end_node, mut scan) {
+		return
+	}
 	mut call_callees := map[int]bool{}
 	if !scan.needs_closure {
 		for i in scan.node_idx .. end_node {
@@ -21894,6 +21902,75 @@ fn scan_implicit_imports(a &flat.FlatAst, end_node int, mut scan ImplicitImportS
 		}
 	}
 	scan.node_idx = end_node
+}
+
+// scan_implicit_import_decls records the implicit-import declarations of the
+// nodes [scan.node_idx, end_node) for scan_implicit_imports. It visits the import
+// declarations the way the import resolver finds them (collect_import_scan_ids):
+// the top-level declarations of every file in the range and the nodes between
+// files. It returns false, scanning nothing, when the file index cannot answer.
+@[direct_array_access]
+fn scan_implicit_import_decls(a &flat.FlatAst, end_node int, mut scan ImplicitImportScan) bool {
+	start := scan.node_idx
+	if !file_index_usable_for_imports(a) || start < 0 || end_node > a.nodes.len {
+		return false
+	}
+	ids := a.file_node_ids
+	// The first file of the range: file markers grow with their node ids.
+	mut lo := 0
+	mut hi := ids.len / 2
+	for lo < hi {
+		mid := (lo + hi) / 2
+		if ids[mid * 2] < start {
+			lo = mid + 1
+		} else {
+			hi = mid
+		}
+	}
+	mut decls := []i32{cap: 64}
+	mut last := start - 1
+	for cursor := lo * 2; cursor + 1 < ids.len; cursor += 2 {
+		marker := int(ids[cursor])
+		trailing := int(ids[cursor + 1])
+		if marker >= end_node {
+			break
+		}
+		if trailing >= end_node || trailing <= marker || marker <= last {
+			return false
+		}
+		for i in last + 1 .. marker {
+			if a.nodes[i].kind == .import_decl {
+				decls << i32(i)
+			}
+		}
+		file_node := a.nodes[trailing]
+		collect_import_scan_children(a, &file_node, mut decls)
+		last = trailing
+	}
+	for i in last + 1 .. end_node {
+		if a.nodes[i].kind == .import_decl {
+			decls << i32(i)
+		}
+	}
+	for id in decls {
+		node := a.nodes[id]
+		if node.kind != .import_decl {
+			continue
+		}
+		if node.value == 'sync' {
+			scan.has_sync = true
+		} else if node.value == 'v.embed_file' {
+			scan.has_embed_import = true
+		} else if node.value == 'builtin.closure' {
+			scan.has_closure = true
+		} else if node.value == 'v.debug' {
+			scan.has_debugger = true
+		} else if node.value == 'builtin.overflow' {
+			scan.has_overflow = true
+		}
+	}
+	scan.node_idx = end_node
+	return true
 }
 
 fn no_closures_error(a &flat.FlatAst, tc &types.TypeChecker) ?types.TypeError {
