@@ -513,7 +513,7 @@ struct Params {
 	name ?string
 }
 
-fn (mut app App) middleware(mut ctx Context) bool {
+fn (mut server App) middleware(mut ctx Context) bool {
 	return true
 }
 
@@ -526,10 +526,10 @@ pub fn new() &App {
 	if name := params.name {
 		assert name == "item"
 	}
-	mut app := &App{}
-	app.use(handler: app.middleware)
-	app.route_use("/admin", handler: app.middleware, after: true)
-	return app
+	mut server := &App{}
+	server.use(handler: server.middleware)
+	server.route_use("/admin", handler: server.middleware, after: true)
+	return server
 }
 '
 	}, '')
@@ -1032,7 +1032,7 @@ fn test_import_aliased_variadic_call_uses_exact_module() {
 		'v.mod':         "Module { name: 'import_aliased_variadic_call' }\n"
 		'a/http/http.v': 'module http\n\npub fn total(values []int) int {\n\treturn values.len\n}\n'
 		'b/http/http.v': 'module http\n\npub fn total(values ...int) int {\n\treturn values.len\n}\n'
-		'main.v':        'module main\n\nimport a.http as other_http\nimport b.http as http\n\nfn main() {\n\t_ := other_http.total([1, 2])\n\tprintln(int_str(http.total(3, 4, 5)))\n}\n'
+		'main.v':        'module main\n\nimport a.http as other_http\nimport b.http\n\nfn main() {\n\t_ := other_http.total([1, 2])\n\tprintln(int_str(http.total(3, 4, 5)))\n}\n'
 	}, 'main.v')
 	assert out == '3'
 }
@@ -1370,7 +1370,7 @@ fn test_generic_specializations_keep_full_aliased_import_paths() {
 		'v.mod':          "Module { name: 'generic_specialization_aliased_import_paths' }\n"
 		'a/tast/value.v': 'module tast\n\npub struct Value {\npub:\n\tn int\n}\n'
 		'b/tast/value.v': 'module tast\n\npub struct Value {\npub:\n\ttext string\n}\n'
-		'main.v':         "module main\n\nimport a.tast as left\nimport b.tast as tast\n\nfn keep[T](value T) T {\n\treturn value\n}\n\nfn main() {\n\tleft_value := keep(left.Value{\n\t\tn: 41\n\t})\n\tright_value := keep(tast.Value{\n\t\ttext: 'ok'\n\t})\n\tprintln(int_str(left_value.n))\n\tprintln(right_value.text)\n}\n"
+		'main.v':         "module main\n\nimport a.tast as left\nimport b.tast\n\nfn keep[T](value T) T {\n\treturn value\n}\n\nfn main() {\n\tleft_value := keep(left.Value{\n\t\tn: 41\n\t})\n\tright_value := keep(tast.Value{\n\t\ttext: 'ok'\n\t})\n\tprintln(int_str(left_value.n))\n\tprintln(right_value.text)\n}\n"
 	}, 'main.v')
 	assert out == '41\nok'
 }
@@ -1468,7 +1468,7 @@ fn test_nested_shared_field_lock_rejects_aliased_index_mutation() {
 
 fn test_nested_shared_field_lock_rejects_promoted_field_alias_mutation() {
 	v3_bin := build_v3_review_transform()
-	run_bad(v3_bin, 'nested_shared_field_lock_promoted_field_alias_mutation', 'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nstruct Holder {\nmut:\n\tcurrent &Coordinator = unsafe { nil }\n}\n\nstruct Wrapper {\nmut:\n\tHolder\n}\n\nfn main() {\n\tmut first := Coordinator{}\n\tmut replacement := Coordinator{}\n\tmut wrapper := Wrapper{}\n\twrapper.Holder.current = &first\n\tlock wrapper.current.state {\n\t\twrapper.Holder.current = &replacement\n\t\twrapper.current.state.value++\n\t}\n}\n', 'used to locate locked shared value `wrapper.current.state`')
+	run_bad(v3_bin, 'nested_shared_field_lock_promoted_field_alias_mutation', 'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nstruct Holder {\nmut:\n\tcurrent &Coordinator = unsafe { nil }\n}\n\nstruct Wrapper {\n\tHolder\n}\n\nfn main() {\n\tmut first := Coordinator{}\n\tmut replacement := Coordinator{}\n\tmut wrapper := Wrapper{}\n\twrapper.Holder.current = &first\n\tlock wrapper.current.state {\n\t\twrapper.Holder.current = &replacement\n\t\twrapper.current.state.value++\n\t}\n}\n', 'used to locate locked shared value `wrapper.current.state`')
 }
 
 fn test_nested_shared_field_lock_rejects_pointer_alias_mutation() {
@@ -1572,8 +1572,10 @@ fn test_nested_shared_field_lock_preserves_labelled_loop_exit_pointer_aliases() 
 
 fn test_nested_shared_field_lock_rejects_global_parameter_alias_mutation() {
 	v3_bin := build_v3_review_transform()
-	run_bad(v3_bin, 'nested_shared_field_lock_global_parameter_alias_mutation', 'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nstruct Holder {\nmut:\n\tcurrent &Coordinator\n}\n\n__global (\n\tglobal_coordinator = Coordinator{}\n\tglobal_holder = &Holder{\n\t\tcurrent: &global_coordinator\n\t}\n)\n\nfn mutate(mut alias &Holder) {\n\tmut replacement := Coordinator{}\n\tlock global_holder.current.state {\n\t\talias.current = &replacement\n\t\tglobal_holder.current.state.value++\n\t}\n}\n\nfn main() {\n\tmutate(mut global_holder)\n}\n', 'may alias locked shared value `global_holder.current.state`')
-	out := run_good(v3_bin, 'nested_shared_field_lock_rebound_global_parameter', 'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nstruct Holder {\nmut:\n\tcurrent &Coordinator\n}\n\n__global (\n\tglobal_coordinator = Coordinator{}\n\tglobal_holder = &Holder{\n\t\tcurrent: &global_coordinator\n\t}\n)\n\nfn mutate(mut alias &Holder) {\n\tmut replacement := Coordinator{}\n\tmut local_holder := &Holder{\n\t\tcurrent: &replacement\n\t}\n\talias = local_holder\n\tlock global_holder.current.state {\n\t\talias.current = &replacement\n\t\tglobal_holder.current.state.value = 19\n\t\tprintln(int_str(global_holder.current.state.value))\n\t}\n}\n\nfn main() {\n\tmut incoming := global_holder\n\tmutate(mut incoming)\n}\n')
+	run_bad_with_flags(v3_bin, 'nested_shared_field_lock_global_parameter_alias_mutation',
+		'-enable-globals', 'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nstruct Holder {\nmut:\n\tcurrent &Coordinator\n}\n\n__global (\n\tglobal_coordinator = Coordinator{}\n\tglobal_holder = &Holder{\n\t\tcurrent: &global_coordinator\n\t}\n)\n\nfn mutate(mut alias &Holder) {\n\tmut replacement := Coordinator{}\n\tlock global_holder.current.state {\n\t\talias.current = &replacement\n\t\tglobal_holder.current.state.value++\n\t}\n}\n\nfn main() {\n\tmutate(mut global_holder)\n}\n', 'may alias locked shared value `global_holder.current.state`')
+	out := run_good_with_flags(v3_bin, 'nested_shared_field_lock_rebound_global_parameter',
+		'-enable-globals', 'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nstruct Holder {\nmut:\n\tcurrent &Coordinator\n}\n\n__global (\n\tglobal_coordinator = Coordinator{}\n\tglobal_holder = &Holder{\n\t\tcurrent: &global_coordinator\n\t}\n)\n\nfn mutate(mut alias &Holder) {\n\tmut replacement := Coordinator{}\n\tmut local_holder := &Holder{\n\t\tcurrent: &replacement\n\t}\n\talias = local_holder\n\tlock global_holder.current.state {\n\t\talias.current = &replacement\n\t\tglobal_holder.current.state.value = 19\n\t\tprintln(int_str(global_holder.current.state.value))\n\t}\n}\n\nfn main() {\n\tmut incoming := global_holder\n\tmutate(mut incoming)\n}\n')
 	assert out == '19'
 }
 
@@ -3019,6 +3021,7 @@ fn test_immediately_invoked_closure_keeps_aliased_integer_capture_address_alive(
 fn test_immediately_invoked_closure_keeps_aliased_result_error_alive() {
 	v3_bin := build_v3_review_transform()
 	source := 'struct CaptureError {
+	Error
 	ptr &int
 }
 
@@ -3048,7 +3051,7 @@ fn main() {
 fn test_immediately_invoked_closure_keeps_aliased_slice_result_alive() {
 	v3_bin := build_v3_review_transform()
 	source := 'fn main() {
-	fixed := [3]int{41, 42, 43}
+	fixed := [41, 42, 43]!
 	slice := (fn [fixed] () []int {
 		return fixed[..]
 	})()
@@ -4654,7 +4657,7 @@ fn test_cyclic_interface_default_does_not_deref_nil_global() {
 	v3_bin := build_v3_review_transform()
 	out := run_good_project(v3_bin, 'cyclic_interface_default', {
 		'v.mod':         "Module { name: 'cyclic_interface_default' }\n"
-		'cycle/cycle.v': "module cycle\n\ninterface Named {\n\tid string\n}\n\nconst empty_stack = stack(id: 'empty')\n\nstruct Stack {\n\tparent Named = empty_stack\n\tid     string\n}\n\nfn stack(id string) &Stack {\n\treturn &Stack{\n\t\tid: id\n\t}\n}\n\npub fn empty_id() string {\n\treturn empty_stack.id\n}\n"
+		'cycle/cycle.v': "module cycle\n\ninterface Named {\n\tid string\n}\n\nconst empty_stack = stack('empty')\n\nstruct Stack {\n\tparent Named = empty_stack\n\tid     string\n}\n\nfn stack(id string) &Stack {\n\treturn &Stack{\n\t\tid: id\n\t}\n}\n\npub fn empty_id() string {\n\treturn empty_stack.id\n}\n"
 		'main.v':        "module main\n\nimport cycle\n\nfn main() {\n\t_ = cycle.empty_id()\n\tprintln('alive')\n}\n"
 	}, 'main.v')
 	assert out == 'alive'
@@ -4677,7 +4680,7 @@ fn test_const_length_fixed_array_map_values_compare_semantically() {
 
 fn test_interface_array_repeat_evaluates_receiver_once() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'interface_repeat_side_effects', 'interface Thing {\n\tvalue() int\n}\n\nstruct Item {\n\tn int\n}\n\nfn (i Item) value() int {\n\treturn i.n\n}\n\n__global calls int\n\nfn make_item() Thing {\n\tcalls++\n\treturn Item{\n\t\tn: calls\n\t}\n}\n\nfn main() {\n\titems := [make_item()].repeat(3)\n\tprintln(int_str(calls))\n\tprintln(int_str(items[0].value() + items[1].value() + items[2].value()))\n}\n')
+	out := run_good_with_flags(v3_bin, 'interface_repeat_side_effects', '-enable-globals', 'interface Thing {\n\tvalue() int\n}\n\nstruct Item {\n\tn int\n}\n\nfn (i Item) value() int {\n\treturn i.n\n}\n\n__global calls int\n\nfn make_item() Thing {\n\tcalls++\n\treturn Item{\n\t\tn: calls\n\t}\n}\n\nfn main() {\n\titems := [make_item()].repeat(3)\n\tprintln(int_str(calls))\n\tprintln(int_str(items[0].value() + items[1].value() + items[2].value()))\n}\n')
 	assert out == '1\n3'
 }
 
@@ -4835,13 +4838,13 @@ fn test_mut_map_param_interpolation_preserves_pointer() {
 
 fn test_map_literal_stringification_evaluates_entries_once() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'map_literal_str_side_effects', "__global key_calls int\n__global val_calls int\n\nfn next_key() string {\n\tkey_calls++\n\treturn 'k' + int_str(key_calls)\n}\n\nfn next_val() int {\n\tval_calls++\n\treturn val_calls * 10\n}\n\nfn main() {\n\tprintln({\n\t\tnext_key(): next_val()\n\t})\n\tprintln(int_str(key_calls) + ',' + int_str(val_calls))\n}\n")
+	out := run_good_with_flags(v3_bin, 'map_literal_str_side_effects', '-enable-globals', "__global key_calls int\n__global val_calls int\n\nfn next_key() string {\n\tkey_calls++\n\treturn 'k' + int_str(key_calls)\n}\n\nfn next_val() int {\n\tval_calls++\n\treturn val_calls * 10\n}\n\nfn main() {\n\tprintln({\n\t\tnext_key(): next_val()\n\t})\n\tprintln(int_str(key_calls) + ',' + int_str(val_calls))\n}\n")
 	assert out == "{'k1': 10}\n1,1"
 }
 
 fn test_map_literal_declaration_evaluates_entries_once() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'map_literal_decl_side_effects', "__global key_calls int\n__global val_calls int\n\nfn next_key() string {\n\tkey_calls++\n\treturn 'key'\n}\n\nfn next_val() int {\n\tval_calls++\n\treturn val_calls * 10\n}\n\nfn main() {\n\tvalues := {\n\t\tnext_key(): next_val()\n\t}\n\tprintln(int_str(values['key']))\n\tprintln(int_str(key_calls) + ',' + int_str(val_calls))\n}\n")
+	out := run_good_with_flags(v3_bin, 'map_literal_decl_side_effects', '-enable-globals', "__global key_calls int\n__global val_calls int\n\nfn next_key() string {\n\tkey_calls++\n\treturn 'key'\n}\n\nfn next_val() int {\n\tval_calls++\n\treturn val_calls * 10\n}\n\nfn main() {\n\tvalues := {\n\t\tnext_key(): next_val()\n\t}\n\tprintln(int_str(values['key']))\n\tprintln(int_str(key_calls) + ',' + int_str(val_calls))\n}\n")
 	assert out == '10\n1,1'
 }
 
@@ -5127,12 +5130,16 @@ fn read_named(n Named) string {
 	return n.name
 }
 
+fn as_named(n Named) Named {
+	return n
+}
+
 fn main() {
 	rich := Rich(User{
 		name: "Ada"
 	})
 	println(read_named(rich))
-	named := Named(rich)
+	named := as_named(rich)
 	println(named.name)
 }
 ')
@@ -5158,8 +5165,13 @@ fn (u User) describe() string {
 	return "user:" + u.name
 }
 
+fn as_named(n Named) Named {
+	return n
+}
+
 fn make_named(r Rich) &Named {
-	return &Named(r)
+	named := as_named(r)
+	return &named
 }
 
 fn read_named(n &Named) string {
@@ -5395,7 +5407,7 @@ fn test_optional_assignment_invalidates_payload_smartcast() {
 
 fn test_optional_variant_to_optional_sum_cast_preserves_wrapper() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'optional_variant_to_optional_sum_cast', "struct Cat {}\n\nstruct Dog {\n\tname string\n}\n\ntype Animal = Cat | Dog\n\nfn maybe_dog(ok bool) ?Dog {\n\tif !ok {\n\t\treturn none\n\t}\n\treturn Dog{\n\t\tname: 'Rex'\n\t}\n}\n\nfn show(ok bool) string {\n\tmaybe_animal := ?Animal(maybe_dog(ok))\n\tanimal := maybe_animal or { return 'missing' }\n\tif animal is Dog {\n\t\treturn animal.name\n\t}\n\treturn 'cat'\n}\n\nfn main() {\n\tprintln(show(true))\n\tprintln(show(false))\n}\n")
+	out := run_good(v3_bin, 'optional_variant_to_optional_sum_cast', "struct Cat {}\n\nstruct Dog {\n\tname string\n}\n\ntype Animal = Cat | Dog\n\nfn maybe_dog(ok bool) ?Dog {\n\tif !ok {\n\t\treturn none\n\t}\n\treturn Dog{\n\t\tname: 'Rex'\n\t}\n}\n\nfn maybe_animal(ok bool) ?Animal {\n\treturn maybe_dog(ok)\n}\n\nfn show(ok bool) string {\n\tanimal := maybe_animal(ok) or { return 'missing' }\n\tif animal is Dog {\n\t\treturn animal.name\n\t}\n\treturn 'cat'\n}\n\nfn main() {\n\tprintln(show(true))\n\tprintln(show(false))\n}\n")
 	assert out == 'Rex\nmissing'
 }
 
@@ -5419,7 +5431,7 @@ fn test_normalized_option_result_fixed_array_names_keep_outer_wrapper() {
 
 fn test_hierarchical_import_runtime_inits_before_importer_init() {
 	v3_bin := build_v3_review_transform()
-	out := run_good_project(v3_bin, 'hierarchical_runtime_init_order', {
+	out := run_good_project_with_flags(v3_bin, 'hierarchical_runtime_init_order', '-enable-globals', {
 		'main.v':            'module main\n\nimport foo.user\nimport bar as shortbar\n\nfn main() {\n\t_ := shortbar.value()\n\tprintln(int_str(user.value()))\n}\n'
 		'foo/user/user.v':   'module user\n\nimport foo.bar as foobar\n\n__global seen int\n\nfn init() {\n\tseen = foobar.value() + 1\n}\n\npub fn value() int {\n\treturn seen\n}\n'
 		'foo/bar/bar.v':     'module bar\n\n__global flag = make_flag()\n\nfn make_flag() int {\n\treturn 40\n}\n\npub fn value() int {\n\treturn flag\n}\n'
@@ -5749,23 +5761,34 @@ fn test_json2_reflected_main_type_does_not_use_imported_homonym() {
 	assert out == '42'
 }
 
-fn test_comptime_main_fielddata_uses_main_field_metadata() {
+fn test_comptime_user_fielddata_uses_its_own_field_metadata() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'comptime_main_fielddata_metadata', 'struct FieldData {
+	// `main` cannot redeclare the builtin `FieldData`; a module type with that name
+	// still has to reflect its own fields, not the builtin metadata struct.
+	out := run_good_project(v3_bin, 'comptime_user_fielddata_metadata', {
+		'v.mod':       "Module { name: 'comptime_user_fielddata_metadata' }\n"
+		'meta/meta.v': 'module meta
+
+pub struct FieldData {
 pub mut:
 	@[main_attr]
 	value int
 }
+'
+		'main.v':      'module main
+
+import meta
 
 fn main() {
-	$for field in FieldData.fields {
+	$for field in meta.FieldData.fields {
 		println(field.name)
 		println(field.is_pub)
 		println(field.is_mut)
 		println(field.attrs.join(","))
 	}
 }
-')
+'
+	}, 'main.v')
 	assert out == 'value\ntrue\ntrue\nmain_attr'
 }
 
@@ -5862,8 +5885,8 @@ fn test_json2_explicit_generic_type_keeps_calling_module() {
 	v3_bin := build_v3_review_transform()
 	out := run_good_project(v3_bin, 'json2_explicit_generic_calling_module', {
 		'v.mod':             "Module { name: 'json2_explicit_generic_calling_module' }\n"
-		'discord/discord.v': 'module discord\n\nimport x.json2\n\npub struct Packet {\npub:\n\tvalue int\n}\n\npub fn encode_packet(value int) string {\n\treturn json2.encode[Packet](Packet{\n\t\tvalue: value\n\t})\n}\n\npub fn decode_packet(src string) Packet {\n\treturn json2.decode[Packet](src)!\n}\n'
-		'main.v':            'module main\n\nimport discord\n\nfn main() {\n\tsrc := discord.encode_packet(42)\n\tprintln(discord.decode_packet(src).value)\n}\n'
+		'discord/discord.v': 'module discord\n\nimport x.json2\n\npub struct Packet {\npub:\n\tvalue int\n}\n\npub fn encode_packet(value int) string {\n\treturn json2.encode[Packet](Packet{\n\t\tvalue: value\n\t})\n}\n\npub fn decode_packet(src string) !Packet {\n\treturn json2.decode[Packet](src)!\n}\n'
+		'main.v':            'module main\n\nimport discord\n\nfn main() {\n\tsrc := discord.encode_packet(42)\n\tprintln(discord.decode_packet(src)!.value)\n}\n'
 	}, 'main.v')
 	assert out == '42'
 }
@@ -6382,8 +6405,9 @@ fn main() {
 		true {
 			mut p := unsafe { &external }
 			if flag {
-				mut p := unsafe { &other }
-				p = unsafe { &it }
+				// V forbids shadowing `p`; a distinct nested alias keeps the same shape.
+				mut nested := unsafe { &other }
+				nested = unsafe { &it }
 			}
 			p
 		}
@@ -8161,7 +8185,7 @@ pub fn retained_text() string {
 		'api/invoke.v': 'module api
 
 pub fn invoke(callback fn (&Item), value &Item) {
-	alias := value
+	alias := unsafe { value }
 	unsafe {
 		local := Item{
 			text: "local"
@@ -9028,7 +9052,7 @@ pub fn retained_text() string {
 
 pub fn invoke(callback fn (&Item), value &Item) {
 	callback_alias := callback
-	value_alias := value
+	value_alias := unsafe { value }
 	callback_alias(value_alias)
 }
 '
@@ -9283,7 +9307,7 @@ pub fn invoke(callback fn (&Item), value &Item, use_local bool) {
 	mut local := Item{
 		text: "local"
 	}
-	mut alias := value
+	mut alias := unsafe { value }
 	if use_local {
 		alias = &local
 	}
@@ -11193,7 +11217,14 @@ fn main() {
 			pair
 		}
 		else {
-			Pair{}
+			Pair{
+				first:  PointerBox{
+					value: unsafe { &external }
+				}
+				second: PointerBox{
+					value: unsafe { &external }
+				}
+			}
 		}
 	})
 	indexed := make_items().map(match true {
@@ -12301,7 +12332,7 @@ fn main() {
 
 fn test_interface_pointer_arg_prefers_current_module_global_over_homonymous_const() {
 	v3_bin := build_v3_review_transform()
-	out := run_good_project(v3_bin, 'interface_pointer_global_const_collision', {
+	out := run_good_project_with_flags(v3_bin, 'interface_pointer_global_const_collision', '-enable-globals', {
 		'v.mod':               "Module { name: 'interface_pointer_global_const_collision' }\n"
 		'api/api.v':           'module api
 
@@ -12364,7 +12395,7 @@ fn main() {
 
 fn test_params_struct_default_prefers_declaring_module_const_over_homonymous_global() {
 	v3_bin := build_v3_review_transform()
-	out := run_good_project(v3_bin, 'params_default_const_global_collision', {
+	out := run_good_project_with_flags(v3_bin, 'params_default_const_global_collision', '-enable-globals', {
 		'v.mod':               "Module { name: 'params_default_const_global_collision' }\n"
 		'api/api.v':           'module api
 
@@ -12599,7 +12630,7 @@ fn main() {
 
 fn test_last_lvalue_stabilizes_side_effecting_receiver() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'last_lvalue_side_effecting_receiver', '__global calls int
+	out := run_good_with_flags(v3_bin, 'last_lvalue_side_effecting_receiver', '-enable-globals', '__global calls int
 
 fn next() int {
 	index := calls
@@ -13237,7 +13268,9 @@ fn test_later_block_call_arg_does_not_capture_earlier_sum_temporary() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'call_arg_sum_temp_before_block', 'struct Item {}
 
-type Node = Item
+struct Other {}
+
+type Node = Item | Other
 
 fn inspect(node &Node, data voidptr) {
 	println(node is Item)
@@ -13438,6 +13471,7 @@ mut:
 }
 
 struct Holder {
+mut:
 	box &PointerBox
 }
 
@@ -13463,12 +13497,12 @@ fn main() {
 	}
 	_ := make_items().map(match true {
 		true {
-			or_holder := fallback_holder() or {
+			mut or_holder := fallback_holder() or {
 				Holder{
 					box: &or_saved
 				}
 			}
-			comptime_holder := $if true {
+			mut comptime_holder := $if true {
 				Holder{
 					box: &comptime_saved
 				}
@@ -13494,7 +13528,7 @@ fn main() {
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
 	out := run_good_with_flags(v3_bin, 'array_map_aggregate_join_origins', '-ownership', source)
-	assert out == 'sourcesource'
+	assert out == 'source\nsource'
 }
 
 fn test_nested_string_interpolation_restores_outer_scanner_state() {
