@@ -471,11 +471,26 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 		// A panicking handler must not take the server down with it. Nothing between
 		// here and the accept loop recovers, so without this the process exits.
 		// `recover()` only stops the panic when called directly in a defer block, and
-		// V does not allow `return` in one, so the recovered case answers 500 here and
+		// V does not allow `return` in one, so recovery prepares its response here and
 		// skips the after-middleware through the else branch.
 		if msg := recover() {
 			eprintln('[veb] handler for route "${url.path}" panicked: ${msg}')
-			user_context.server_error('Internal Server Error')
+			// A takeover handler owns the connection and may already have written to it.
+			if user_context.Context.takeover_mode == .none {
+				// Discard the prepared representation, including file streaming and framing.
+				// server_error replaces and frees the old body through send_response_to_client.
+				user_context.Context.done = false
+				user_context.Context.return_type = .normal
+				user_context.Context.return_file = ''
+				user_context.Context.content_type = ''
+				user_context.Context.already_compressed = false
+				for header in [http.CommonHeader.content_type, .content_length, .content_encoding,
+					.transfer_encoding, .trailer, .content_range, .content_disposition, .accept_ranges,
+					.etag, .last_modified, .cache_control, .expires, .age, .location] {
+					user_context.Context.res.header.delete(header)
+				}
+				user_context.server_error('Internal Server Error')
+			}
 		} else {
 			// execute middleware functions after veb is done and before the response is send
 			mut was_done := true

@@ -1386,6 +1386,12 @@ pub fn (app &App) login(mut ctx Context) veb.Result {
 You can also use `ctx.server_error(msg string)` to send an HTTP 500 internal server
 error with a message.
 
+If a handler panics, veb logs the panic and responds with HTTP 500 and the plain-text
+body `Internal Server Error`. This replaces any prepared body or file response and
+its content, framing, and cache metadata. After-middleware is skipped. A connection
+taken over with `ctx.takeover_conn()` or `ctx.takeover_conn_reusable()` remains under
+the handler's control; recovery does not write another response to it.
+
 ## Handlers that return `!veb.Result`
 
 A handler that can fail may return `!veb.Result` instead of rolling its own
