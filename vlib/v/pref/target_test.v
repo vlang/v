@@ -386,6 +386,48 @@ fn test_architecture_suffixes_are_still_c_backend_tests() {
 	assert is_test_file_for_backend('foo_test.amd64.v', 'c')
 }
 
+// `-b native` is the documented spelling of the native backend, which the driver rewrites to
+// the internal name `arm64` before prefs.backend is read. Both spellings therefore select a
+// `foo_test.native.v` file; selecting only the literal one is why the native backend has no
+// tests of its own.
+fn test_native_backend_tests_answer_to_both_spellings() {
+	assert is_test_file_for_backend('foo_test.native.v', 'native')
+	assert is_test_file_for_backend('foo_test.native.v', 'arm64')
+	assert !is_test_file_for_backend('foo_test.native.v', 'c')
+	assert !is_test_file_for_backend('foo_test.native.v', 'fastc')
+	assert !is_test_file_for_backend('foo_test.native.v', 'js')
+	assert !is_test_file_for_backend('foo_test.native.v', 'wasm')
+	for arch in ['amd64', 'arm64'] {
+		target := target_from('linux', arch) or { panic(err) }
+		assert is_test_file_for_platform('foo_test.native.v', 'arm64', target), 'native test on ${arch}'
+		assert !is_test_file_for_platform('foo_test.native.v', 'c', target), 'native test on ${arch}'
+	}
+	// The other spelling still names the architecture, so it stays a C-backend test and never
+	// becomes a native one: `bits.arm64.v`-style assembly files are unchanged by this rule.
+	assert is_test_file_for_backend('foo_test.arm64.v', 'c')
+	assert !is_test_file_for_backend('foo_test.arm64.v', 'native')
+	assert !is_test_file_for_backend('foo_test.arm64.v', 'arm64')
+}
+
+fn test_native_backend_test_files_are_selected_from_a_directory() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_native_backend_pref_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	for name in ['basic_test.v', 'basic_test.native.v', 'basic_test.arm64.v', 'basic_test.c.v'] {
+		os.write_file(os.join_path(dir, name), 'module sample\n') or { panic(err) }
+	}
+	arm := target_from('linux', 'arm64') or { panic(err) }
+	selected := get_test_v_files_from_dir_for_target(dir, [], 'arm64', arm).map(os.base(it))
+	assert selected == ['basic_test.native.v', 'basic_test.v'], '${selected}'
+	// The C backend keeps selecting the architecture and `.c.v` files and still skips the
+	// native one, which is the spelling rule seen end to end.
+	c_selected := get_test_v_files_from_dir_for_target(dir, [], 'c', arm).map(os.base(it))
+	assert c_selected == ['basic_test.arm64.v', 'basic_test.c.v', 'basic_test.v'], '${c_selected}'
+}
+
 // A WASM backend test is not architecture qualified, so a native host must not filter it out
 // as a foreign architecture before the backend selection is even consulted.
 fn test_wasm_backend_tests_are_not_filtered_by_host_architecture() {

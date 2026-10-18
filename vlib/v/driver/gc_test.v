@@ -62,12 +62,14 @@ fn test_v3_gc_is_disabled_for_cross_compilation() {
 	host := pref.host_target()
 	cross_os := if host.os == 'linux' { 'macos' } else { 'linux' }
 	cross_arch := if host.arch == 'amd64' { 'arm64' } else { 'amd64' }
-	assert !v3_gc_is_disabled(false, false, host.os, host.arch)
-	assert v3_gc_is_disabled(true, false, host.os, host.arch)
-	assert v3_gc_is_disabled(false, true, host.os, host.arch)
-	assert v3_gc_is_disabled(false, false, cross_os, host.arch)
-	assert v3_gc_is_disabled(false, false, host.os, cross_arch)
-	assert v3_gc_is_disabled(false, false, 'cross', host.arch)
+	assert !v3_gc_is_disabled(false, false, host.os, host.arch, 'c')
+	assert v3_gc_is_disabled(true, false, host.os, host.arch, 'c')
+	assert v3_gc_is_disabled(false, true, host.os, host.arch, 'c')
+	assert v3_gc_is_disabled(false, false, cross_os, host.arch, 'c')
+	assert v3_gc_is_disabled(false, false, host.os, cross_arch, 'c')
+	assert v3_gc_is_disabled(false, false, 'cross', host.arch, 'c')
+	// The native backend never has a collector, on any host and target.
+	assert v3_gc_is_disabled(false, false, host.os, host.arch, 'arm64')
 }
 
 fn test_v3_gc_mode_keeps_dynamic_boehm_define() {
