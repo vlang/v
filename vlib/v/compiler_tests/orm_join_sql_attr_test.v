@@ -28,7 +28,8 @@ fn orm_join_sql_attr_run(v3_bin string, name string, src string) string {
 	src_path := os.join_path(root, 'main.v')
 	os.write_file(src_path, src) or { panic(err) }
 	bin_path := os.join_path(root, 'program')
-	compile := os.exec([v3_bin, src_path, '-b', 'c', '-o', bin_path])
+	// Some cases count calls through `__global` variables.
+	compile := os.exec([v3_bin, '-enable-globals', src_path, '-b', 'c', '-o', bin_path])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
