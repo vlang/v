@@ -54,6 +54,8 @@ If V is already installed on a machine, it can be upgraded to its latest version
 by using the V's built-in self-updater.
 To do so, run the command `v up`.
 This also refreshes the bundled TCC binaries used for fast C compilation.
+On macOS, TCC builds use its runtime thread fence directly, including when
+preprocessed C identifies ARM64 with `__arm64__` alone.
 
 After updating, `v up` refreshes previously cached vlib modules with the compiler
 and flags used to cache them, including normal and `-prod` builds. Unchanged
