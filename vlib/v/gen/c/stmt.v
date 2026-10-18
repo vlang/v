@@ -1987,9 +1987,7 @@ fn (mut g FlatGen) gen_lock_expr_result_assign(tmp string, result_type types.Typ
 		}
 	}
 	if node.kind == .expr_stmt && node.children_count > 0 {
-		g.write('${tmp} = ')
-		g.gen_expr_with_expected_type(g.a.child(&node, 0), result_type)
-		g.writeln(';')
+		g.gen_lock_expr_result_value_assign(tmp, result_type, g.a.child(&node, 0))
 		return
 	}
 	if node.kind == .block {
@@ -2004,12 +2002,21 @@ fn (mut g FlatGen) gen_lock_expr_result_assign(tmp string, result_type types.Typ
 		return
 	}
 	if g.is_expr_kind(node.kind) {
-		g.write('${tmp} = ')
-		g.gen_expr_with_expected_type(id, result_type)
-		g.writeln(';')
+		g.gen_lock_expr_result_value_assign(tmp, result_type, id)
 		return
 	}
 	g.gen_node(id)
+}
+
+fn (mut g FlatGen) gen_lock_expr_result_value_assign(tmp string, result_type types.Type, value_id flat.NodeId) {
+	if fixed := array_fixed_type(result_type) {
+		// C arrays are not assignable; the result is a wrapper struct (see gen_lock_expr).
+		g.gen_fixed_array_copy_from_node('${tmp}.ret_arr', value_id, fixed)
+		return
+	}
+	g.write('${tmp} = ')
+	g.gen_expr_with_expected_type(value_id, result_type)
+	g.writeln(';')
 }
 
 fn (mut g FlatGen) gen_lock_expr_multi_return_assign(tmp string, result_type types.MultiReturn, _id flat.NodeId, node flat.Node) bool {
@@ -2126,8 +2133,17 @@ fn (mut g FlatGen) gen_lock_expr(id flat.NodeId, node flat.Node) {
 		g.write('0;})')
 		return
 	}
-	ct := g.value_c_type(result_type)
+	// A fixed array is returned in a one-field struct, as an `if` expression does: a C
+	// array can neither be assigned nor be the value of a statement expression (it would
+	// decay to the address of the block-scoped temporary).
+	fixed := array_fixed_type(result_type)
+	ct := if fixed_type := fixed {
+		'struct { ${g.fixed_array_c_type(fixed_type)} ret_arr; }'
+	} else {
+		g.value_c_type(result_type)
+	}
 	tmp := g.tmp_name()
+	result_expr := if fixed != none { '${tmp};}).ret_arr' } else { '${tmp};})' }
 	g.write('({ ${ct} ${tmp};')
 	active := g.gen_lock_enter(int(id), node) or {
 		if node.children_count > 0 {
@@ -2136,7 +2152,7 @@ fn (mut g FlatGen) gen_lock_expr(id flat.NodeId, node flat.Node) {
 				g.gen_lock_expr_result_assign(tmp, result_type, body_id)
 			}
 		}
-		g.write('${tmp};})')
+		g.write(result_expr)
 		return
 	}
 	g.active_locks << active
@@ -2163,7 +2179,7 @@ fn (mut g FlatGen) gen_lock_expr(id flat.NodeId, node flat.Node) {
 	}
 	g.active_locks.delete_last()
 	g.gen_lock_leave(active)
-	g.write('${tmp};})')
+	g.write(result_expr)
 }
 
 struct FlatSelectCase {
@@ -6940,6 +6956,13 @@ fn (g &FlatGen) usable_expr_type_uncached(id flat.NodeId) types.Type {
 		}
 		if node.kind == .ident {
 			if typ := g.current_param_type(node.value) {
+				// A `shared T` parameter is typed `&T` (its wrapper pointer), but the
+				// identifier is emitted as the wrapper's `val`, a `T` value, as for a
+				// `shared` local.
+				if typ is types.Pointer && g.local_shared_storage_by_owner.len > 0
+					&& g.local_storage_is_shared(node.value) {
+					return typ.base_type
+				}
 				return typ
 			}
 			// A global's C declaration follows its registered storage type. Its
