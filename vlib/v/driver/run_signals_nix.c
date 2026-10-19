@@ -20,6 +20,14 @@ static volatile sig_atomic_t v3_run_received_signal;
 static volatile sig_atomic_t v3_run_termination_signal;
 static volatile sig_atomic_t v3_run_forwarded_stop;
 static volatile sig_atomic_t v3_run_bridging_stop;
+static volatile sig_atomic_t v3_run_bridging_interrupt;
+static volatile sig_atomic_t v3_run_observer_pid;
+static volatile sig_atomic_t v3_run_observer_forwarded_int;
+static volatile sig_atomic_t v3_run_observer_forwarded_quit;
+static int v3_run_observer_control = -1;
+static int v3_run_observer_stopped;
+static volatile sig_atomic_t v3_run_observer_notice_read = -1;
+static volatile sig_atomic_t v3_run_observer_notice_write = -1;
 static int v3_run_owner_group;
 static int v3_run_terminal_fd = -1;
 static int v3_run_handoff_terminal;
@@ -49,6 +57,11 @@ typedef struct sigaction v3_run_action;
 #define v3_run_close close
 #define v3_run_fcntl fcntl
 #define v3_run_waitpid waitpid
+#define v3_run_fork fork
+#define v3_run_pipe pipe
+#define v3_run_read read
+#define v3_run_write write
+#define v3_run_set_signal signal
 #endif
 static v3_run_action v3_run_previous_term;
 static v3_run_action v3_run_previous_hup;
@@ -62,9 +75,19 @@ enum { v3_run_hup = 1, v3_run_int = 2, v3_run_quit = 3, v3_run_term = 15 };
 #if defined(V3_RUN_SIGNALS_HEADERLESS) && (defined(__QNX__) || defined(__QNXNTO__))
 #define V3_RUN_BLOCK 0
 #define V3_RUN_SETMASK 2
+#define V3_RUN_UNBLOCK 1
 #else
 #define V3_RUN_BLOCK SIG_BLOCK
 #define V3_RUN_SETMASK SIG_SETMASK
+#if defined(V3_RUN_SIGNALS_HEADERLESS)
+#if defined(__linux__) || defined(__ANDROID__)
+#define V3_RUN_UNBLOCK 1
+#else
+#define V3_RUN_UNBLOCK 2
+#endif
+#else
+#define V3_RUN_UNBLOCK SIG_UNBLOCK
+#endif
 #endif
 #ifdef V3_RUN_SIGNALS_HEADERLESS
 #ifndef WUNTRACED
@@ -106,6 +129,21 @@ enum { v3_run_hup = 1, v3_run_int = 2, v3_run_quit = 3, v3_run_term = 15 };
 #define V3_RUN_TSTP SIGTSTP
 #endif
 
+/* Signals forwarded by the parent must not be relayed back by its observer. */
+static void v3_run_send_child_signal(int signal_number) {
+    if (v3_run_observer_pid > 0 && v3_run_observer_notice_write >= 0) {
+        volatile sig_atomic_t *announced = signal_number == v3_run_int
+            ? &v3_run_observer_forwarded_int : &v3_run_observer_forwarded_quit;
+        if ((signal_number == v3_run_int || signal_number == v3_run_quit) && !*announced) {
+            *announced = 1;
+            unsigned char notice = (unsigned char)signal_number;
+            while (v3_run_write((int)v3_run_observer_notice_write, &notice, 1) < 0
+                && errno == EINTR) {}
+        }
+    }
+    if (v3_run_child_pid > 0) kill(-(int)v3_run_child_pid, signal_number);
+}
+
 static void v3_run_forward_signal(int signal_number) {
     int saved_errno = errno;
     int is_stop = signal_number == V3_RUN_TSTP || signal_number == V3_RUN_TTIN
@@ -119,7 +157,7 @@ static void v3_run_forward_signal(int signal_number) {
         }
         _exit(128 + signal_number);
     }
-    if (is_stop && v3_run_bridging_stop) {
+    if ((is_stop && v3_run_bridging_stop) || signal_number == v3_run_bridging_interrupt) {
         errno = saved_errno;
         return;
     }
@@ -128,10 +166,7 @@ static void v3_run_forward_signal(int signal_number) {
     if (signal_number == v3_run_hup || signal_number == v3_run_term) {
         v3_run_termination_signal = signal_number;
     }
-    sig_atomic_t child_pid = v3_run_child_pid;
-    if (child_pid > 0) {
-        kill(-(int)child_pid, signal_number);
-    }
+    v3_run_send_child_signal(signal_number);
     errno = saved_errno;
 }
 
@@ -207,6 +242,153 @@ static int v3_run_foreground_child(void) {
     return 0;
 }
 
+static void v3_run_observer_interrupt(int signal_number) {
+    unsigned char notices[2];
+    int forwarded = 0;
+    for (;;) {
+        long count = v3_run_read((int)v3_run_observer_notice_read, notices, sizeof(notices));
+        if (count < 0 && errno == EINTR) continue;
+        if (count <= 0) break;
+        for (long i = 0; i < count; i++) if (notices[i] == signal_number) forwarded = 1;
+    }
+    /* Classification commits here: later parent notifications cannot change it. */
+    _exit((forwarded ? 64 : 128) + signal_number);
+}
+
+/* The app is already forked, so it cannot inherit this control pipe. EOF also
+ * shuts down the observer if its parent exits unexpectedly. Signals stay blocked
+ * until its group and dispositions are ready, including a fast terminal handoff. */
+static int v3_run_start_observer(const sigset_t *previous_mask) {
+    if (!v3_run_handoff_terminal) return 0;
+    int control[2];
+    if (v3_run_pipe(control)) return -1;
+    if (v3_run_fcntl(control[0], F_SETFD, FD_CLOEXEC) < 0
+        || v3_run_fcntl(control[1], F_SETFD, FD_CLOEXEC) < 0) {
+        v3_run_close(control[0]); v3_run_close(control[1]);
+        return -1;
+    }
+    int notices[2];
+    if (v3_run_pipe(notices)) {
+        v3_run_close(control[0]); v3_run_close(control[1]);
+        return -1;
+    }
+    int flags = v3_run_fcntl(notices[0], F_GETFL, 0);
+    if (flags < 0 || v3_run_fcntl(notices[0], F_SETFL, flags | O_NONBLOCK) < 0
+        || v3_run_fcntl(notices[0], F_SETFD, FD_CLOEXEC) < 0
+        || v3_run_fcntl(notices[1], F_SETFD, FD_CLOEXEC) < 0) {
+        v3_run_close(control[0]); v3_run_close(control[1]);
+        v3_run_close(notices[0]); v3_run_close(notices[1]);
+        return -1;
+    }
+    int observer = v3_run_fork();
+    if (observer < 0) {
+        v3_run_close(control[0]); v3_run_close(control[1]);
+        v3_run_close(notices[0]); v3_run_close(notices[1]);
+        return -1;
+    }
+    if (!observer) {
+        v3_run_close(control[1]);
+        v3_run_close(notices[1]);
+        v3_run_observer_notice_read = notices[0];
+        if (v3_run_setpgid(0, (int)v3_run_child_pid)) _exit(125);
+        int ignored[] = {v3_run_hup, v3_run_term, V3_RUN_TSTP, V3_RUN_TTIN, V3_RUN_TTOU};
+        for (int i = 0; i < 5; i++) {
+            if (v3_run_set_signal(ignored[i], SIG_IGN) == (void (*)(int))-1) _exit(125);
+        }
+        int interrupts[] = {v3_run_int, v3_run_quit};
+        for (int i = 0; i < 2; i++) {
+            void (*previous)(int) = v3_run_set_signal(interrupts[i], v3_run_observer_interrupt);
+            if (previous == (void (*)(int))-1) _exit(125);
+            if (previous == (void (*)(int))SIG_IGN) v3_run_set_signal(interrupts[i], SIG_IGN);
+        }
+        if (v3_run_terminal_fd >= 0) v3_run_close(v3_run_terminal_fd);
+        for (int fd = 0; fd < 3; fd++) {
+            if (fd != control[0] && fd != notices[0]) v3_run_close(fd);
+        }
+        if (v3_run_sigprocmask(V3_RUN_SETMASK, previous_mask, 0)) _exit(125);
+        unsigned char byte;
+        for (;;) {
+            long count = v3_run_read(control[0], &byte, 1);
+            if (count < 0 && errno == EINTR) continue;
+            if (count <= 0) _exit(count < 0 ? 125 : 0);
+        }
+    }
+    v3_run_close(control[0]);
+    if (v3_run_setpgid(observer, (int)v3_run_child_pid)
+        && v3_run_getpgid(observer) != v3_run_child_pid) {
+        v3_run_close(control[1]);
+        v3_run_close(notices[0]); v3_run_close(notices[1]);
+        kill(observer, SIGKILL);
+        while (v3_run_waitpid(observer, 0, 0) < 0 && errno == EINTR) {}
+        return -1;
+    }
+    v3_run_observer_pid = observer;
+    v3_run_observer_control = control[1];
+    /* Retain a reader so a late handler write cannot generate SIGPIPE after exit. */
+    v3_run_observer_notice_read = notices[0];
+    v3_run_observer_notice_write = notices[1];
+    v3_run_observer_stopped = 0;
+    v3_run_observer_forwarded_int = 0;
+    v3_run_observer_forwarded_quit = 0;
+    return 0;
+}
+
+/* A tty interrupt reaches the app's foreground group. Relay it to the original
+ * pipeline even when the app handles the signal and keeps running. */
+static int v3_run_observer_exit(int status) {
+    sigset_t previous_mask, selected;
+    if (v3_run_block_signals(&previous_mask)) return -1;
+    int signal_number = WIFEXITED(status) ? WEXITSTATUS(status) - 128 : 0;
+    v3_run_observer_pid = 0;
+    v3_run_observer_stopped = 0;
+    if (v3_run_observer_control >= 0) v3_run_close(v3_run_observer_control);
+    v3_run_observer_control = -1;
+    if (v3_run_observer_notice_read >= 0) v3_run_close((int)v3_run_observer_notice_read);
+    if (v3_run_observer_notice_write >= 0) v3_run_close((int)v3_run_observer_notice_write);
+    v3_run_observer_notice_read = v3_run_observer_notice_write = -1;
+    if (signal_number == v3_run_int || signal_number == v3_run_quit) {
+        if (v3_run_sigemptyset(&selected) || v3_run_sigaddset(&selected, signal_number)) {
+            v3_run_sigprocmask(V3_RUN_SETMASK, &previous_mask, 0);
+            return -1;
+        }
+        v3_run_bridging_interrupt = signal_number;
+        kill(-v3_run_owner_group, signal_number);
+        /* Drain our own group notification under the existing handler, including
+         * when finish entered with all forwarded signals blocked. */
+        v3_run_sigprocmask(V3_RUN_UNBLOCK, &selected, 0);
+        v3_run_bridging_interrupt = 0;
+    }
+    v3_run_sigprocmask(V3_RUN_SETMASK, &previous_mask, 0);
+    return WIFEXITED(status) && WEXITSTATUS(status) == 125 ? -1 : 0;
+}
+
+static int v3_run_close_observer(void) {
+    if (v3_run_observer_control >= 0) v3_run_close(v3_run_observer_control);
+    v3_run_observer_control = -1;
+    if (v3_run_observer_pid > 0 && v3_run_observer_stopped) {
+        kill((int)v3_run_observer_pid, V3_RUN_CONT);
+    }
+    while (v3_run_observer_pid > 0) {
+        int status;
+        int waited = v3_run_waitpid((int)v3_run_observer_pid, &status, WUNTRACED);
+        if (waited < 0) {
+            if (errno == EINTR) continue;
+            v3_run_observer_pid = 0;
+            v3_run_observer_stopped = 0;
+            if (v3_run_observer_notice_read >= 0) v3_run_close((int)v3_run_observer_notice_read);
+            if (v3_run_observer_notice_write >= 0) v3_run_close((int)v3_run_observer_notice_write);
+            v3_run_observer_notice_read = v3_run_observer_notice_write = -1;
+            return -1;
+        }
+        if (WIFSTOPPED(status)) {
+            kill(waited, V3_RUN_CONT);
+            continue;
+        }
+        return v3_run_observer_exit(status);
+    }
+    return 0;
+}
+
 int v3_run_signals_begin(void) {
     sigset_t previous_mask;
     if (v3_run_block_signals(&previous_mask)) return -1;
@@ -217,6 +399,10 @@ int v3_run_signals_begin(void) {
     v3_run_termination_signal = 0;
     v3_run_forwarded_stop = 0;
     v3_run_bridging_stop = 0;
+    v3_run_bridging_interrupt = 0;
+    v3_run_observer_pid = 0;
+    v3_run_observer_control = -1;
+    v3_run_observer_stopped = 0;
     v3_run_terminal_fd = v3_run_open("/dev/tty", O_RDWR);
     /* Keep tty-reading pipeline peers foreground when the program reads a pipe. */
     v3_run_handoff_terminal = v3_run_terminal_fd >= 0
@@ -271,11 +457,12 @@ int v3_run_signals_set_pid(int child_pid) {
     }
     if (!result) {
         v3_run_child_pid = child_pid;
-        result = v3_run_foreground_child();
+        result = v3_run_start_observer(&previous_mask);
+        if (!result) result = v3_run_foreground_child();
         if (result && kill(child_pid, 0) < 0 && errno == ESRCH) result = 0;
         if (!result) {
             sig_atomic_t signal_number = v3_run_received_signal;
-            if (signal_number != 0) kill(-child_pid, (int)signal_number);
+            if (signal_number != 0) v3_run_send_child_signal((int)signal_number);
         }
     }
     int saved_errno = errno;
@@ -288,14 +475,29 @@ int v3_run_signals_wait(int *code, int *signal_number) {
     if (v3_run_child_pid <= 0) return -1;
     int status;
     for (;;) {
-        int waited = v3_run_waitpid((int)v3_run_child_pid, &status, WUNTRACED);
+        /* The driver enters this phase after build children have finished. Wait
+         * for either owned PID even if the app changes its process group. */
+        int target = v3_run_observer_pid > 0 ? -1 : (int)v3_run_child_pid;
+        int waited = v3_run_waitpid(target, &status, WUNTRACED);
         if (waited < 0) {
             if (errno == EINTR) continue;
             return -1;
         }
+        if (waited == v3_run_observer_pid) {
+            if (WIFSTOPPED(status)) { v3_run_observer_stopped = 1; continue; }
+            if (v3_run_observer_exit(status)) return -1;
+            sigset_t previous_mask;
+            if (v3_run_block_signals(&previous_mask)) return -1;
+            int result = v3_run_start_observer(&previous_mask);
+            v3_run_sigprocmask(V3_RUN_SETMASK, &previous_mask, 0);
+            if (result) return -1;
+            continue;
+        }
+        if (waited != v3_run_child_pid) continue;
         if (WIFSTOPPED(status)) {
-            /* Reading can stop the child before the parent finishes the handoff. */
-            if (WSTOPSIG(status) == V3_RUN_TTIN && v3_run_handoff_terminal
+            /* Terminal reads and TOSTOP writes can race the initial handoff. */
+            if ((WSTOPSIG(status) == V3_RUN_TTIN || WSTOPSIG(status) == V3_RUN_TTOU)
+                && !v3_run_forwarded_stop && v3_run_handoff_terminal
                 && v3_run_terminal_fd >= 0
                 && v3_run_tcgetpgrp(v3_run_terminal_fd) == v3_run_child_pid) {
                 kill(-(int)v3_run_child_pid, V3_RUN_CONT);
@@ -321,6 +523,7 @@ int v3_run_signals_wait(int *code, int *signal_number) {
             continue;
         }
         v3_run_restore_terminal();
+        if (v3_run_close_observer()) return -1;
         *signal_number = WIFSIGNALED(status) ? WTERMSIG(status) : 0;
         *code = *signal_number ? 128 + *signal_number : WEXITSTATUS(status);
         return 0;
@@ -331,6 +534,7 @@ int v3_run_signals_finish(void) {
     sigset_t previous_mask;
     if (v3_run_block_signals(&previous_mask)) return -1;
     v3_run_restore_terminal();
+    v3_run_close_observer();
     if (v3_run_terminal_fd >= 0) v3_run_close(v3_run_terminal_fd);
     v3_run_terminal_fd = -1;
     v3_run_child_pid = 0;

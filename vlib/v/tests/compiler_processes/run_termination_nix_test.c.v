@@ -243,6 +243,10 @@ int test_siginterrupt(int, int) __asm__("siginterrupt");
 #define v3_run_close close
 #define v3_run_fcntl fcntl
 #define v3_run_waitpid test_waitpid
+#define v3_run_fork fork
+#define v3_run_pipe pipe
+#define v3_run_read read
+#define v3_run_write write
 #else
 #define sigaction(...) test_sigaction(__VA_ARGS__)
 #define waitpid(...) test_waitpid(__VA_ARGS__)

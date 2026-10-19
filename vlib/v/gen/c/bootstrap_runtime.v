@@ -225,6 +225,10 @@ int v3_run_open(const char*, int, ...) __asm__(V3_RUN_LIBC_SYMBOL("open"));
 int v3_run_close(int) __asm__(V3_RUN_LIBC_SYMBOL("close"));
 int v3_run_fcntl(int, int, ...) __asm__(V3_RUN_LIBC_SYMBOL("fcntl"));
 int v3_run_waitpid(int, int*, int) __asm__(V3_RUN_LIBC_SYMBOL("waitpid"));
+int v3_run_fork(void) __asm__(V3_RUN_LIBC_SYMBOL("fork"));
+int v3_run_pipe(int*) __asm__(V3_RUN_LIBC_SYMBOL("pipe"));
+long v3_run_read(int, void*, size_t) __asm__(V3_RUN_LIBC_SYMBOL("read"));
+long v3_run_write(int, const void*, size_t) __asm__(V3_RUN_LIBC_SYMBOL("write"));
 #ifdef __NetBSD__
 /* The 14 ABI retains the full sigaction/sigset_t layouts on old and current libc. */
 int v3_run_sigaction(int, const void*, void*) __asm__("__sigaction14");

@@ -19,7 +19,9 @@ program before removing temporary files. After `SIGTERM` or `SIGHUP`, V exits wi
 `128 + signal`. Signals inherited as ignored remain ignored, including `SIGHUP` under `nohup`.
 
 Interactive programs receive the foreground terminal while running. Terminal input and
-shell job control (`Ctrl-Z`, `fg`, and `bg`) continue to work. Catchable job-control stop signals
+shell job control (`Ctrl-Z`, `fg`, and `bg`) continue to work. Terminal interrupts also reach
+peers in an output pipeline, even if the program handles the interrupt and keeps running.
+Catchable job-control stop signals
 sent to V are forwarded to the program. Uncatchable `SIGKILL` and `SIGSTOP` sent only to V
 cannot be forwarded to the separate program group. With piped or redirected stdin, the
 original job keeps the foreground terminal so pipeline peers can read it. A program that
