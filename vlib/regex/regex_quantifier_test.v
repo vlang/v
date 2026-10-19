@@ -183,3 +183,20 @@ fn test_greedy_star_runs_to_the_last_possible_match() {
 	start, end := re.match_string('axbxb')
 	assert start == 0 && end == 3
 }
+
+fn test_zero_repeat_tokens_do_not_control_lookahead() {
+	for pattern in [r'.*a{0}', r'.*(ab){0}', r'.*[ab]{0}', r'.*\w{0}', r'[b]*a{0}', r'[b]*(ab){0}',
+		r'\w*a{0}', r'\w*(ab){0}'] {
+		mut re := regex.regex_opt(pattern)!
+		start, end := re.match_string('bbb')
+		assert start == 0 && end == 3, '${pattern}: ${start}, ${end}'
+	}
+}
+
+fn test_large_empty_group_minimum_does_not_repeat_the_body() {
+	for pattern in [r'(a{0}){1000000000}', r'((a{0})){1000000000}'] {
+		mut re := regex.regex_opt(pattern)!
+		start, end := re.match_string('')
+		assert start == 0 && end == 0, '${pattern}: ${start}, ${end}'
+	}
+}
