@@ -88,6 +88,19 @@ fn test_resolve_source_paths_freezes_the_table() {
 	assert late !in a.resolved_source_paths
 }
 
+// A frozen source-path table stays read-only for listed files too.
+fn test_record_listed_source_path_does_not_grow_a_frozen_table() {
+	root := os.join_path(os.vtmp_dir(), 'v3_flat_listed_frozen_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	late := os.join_path(root, 'late.v')
+	os.write_file(late, 'module main\n')!
+	mut a := FlatAst.new()
+	a.resolve_source_paths()
+	assert a.record_listed_source_path(late, os.real_path(root)) == os.real_path(late)
+	assert a.resolved_source_paths.len == 0
+}
+
 // A listed entry resolves through the real path of its directory, and like
 // os.real_path through its target when the entry is a symbolic link.
 fn test_record_listed_source_path_matches_os_real_path() {

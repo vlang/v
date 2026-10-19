@@ -1,7 +1,6 @@
 module parser
 
 import v.flat
-import os
 import v.pref
 import v.token
 
@@ -306,7 +305,7 @@ fn (mut p Parser) is_imported_named_variant_owner_name(module_alias string, name
 			}
 			for path in p.prefs.without_excluded(pref.get_v_files_from_dir_for_target(dir,
 				p.prefs.user_defines, p.prefs.target)) {
-				source := os.read_file(path) or { continue }
+				source := p.sibling_source(path) or { continue }
 				mut declarations := Parser.new(p.prefs)
 				declarations.cur_file = path
 				declarations.s.init(p.s.current_file(), source)

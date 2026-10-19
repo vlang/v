@@ -12532,6 +12532,10 @@ pub fn run(args []string) {
 		p.quick_source_sums = true
 	}
 	p.no_source_digests = !macos_v3_source_manifest
+	// The checker indexes the text of every parsed source. Hand it the text the
+	// parser read instead of letting it read each file a second time. A
+	// diagnostics server keeps its ASTs across requests, so it reads as before.
+	p.keep_source_texts = os.getenv('V_DIAGNOSTICS_SERVER') == ''
 	if building_v || cmd_v_build {
 		p.reserve_selfhost_ast()
 	}
@@ -17636,8 +17640,9 @@ fn checker_fixture_header_exists(target string, source_file string, c_compiler s
 fn builtin_bundle_source_files(mut a flat.FlatAst, prefs &pref.Preferences, builtin_files []string) []string {
 	mut files := builtin_files.clone()
 	mut seen := map[string]bool{}
+	// Every file here is an entry of a listed directory.
 	for file in files {
-		seen[a.record_source_path(file)] = true
+		seen[a.record_listed_source_path(file, a.record_source_path(os.dir(file)))] = true
 	}
 	for rel in ['strconv', 'strings', 'hash', os.join_path('math', 'bits')] {
 		dir := os.join_path(prefs.vroot, 'vlib', rel)
@@ -17646,7 +17651,7 @@ fn builtin_bundle_source_files(mut a flat.FlatAst, prefs &pref.Preferences, buil
 		}
 		for file in prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(dir, prefs.user_defines,
 			prefs.backend, prefs.target)) {
-			key := a.record_source_path(file)
+			key := a.record_listed_source_path(file, a.record_source_path(dir))
 			if seen[key] {
 				continue
 			}
@@ -19760,7 +19765,7 @@ fn v3_imports_resolve_as_before(prefs &pref.Preferences, project_root string, im
 // a.resolve_source_paths() freezes the table, it records each file's resolved
 // path in `a` for later stages, so it must run on the thread that owns `a`.
 fn v3_directory_user_files(mut a flat.FlatAst, dir string, prefs &pref.Preferences, is_test_command bool, recursive bool) ![]string {
-	source_dir := v3_directory_source_root(dir)
+	source_dir := v3_directory_source_root_of(dir, a.record_source_path(dir))
 	mut files := []string{}
 	mut seen_files := map[string]bool{}
 	mut seen_dirs := map[string]bool{}
@@ -19828,7 +19833,12 @@ fn append_v3_directory_user_files(mut a flat.FlatAst, dir string, prefs &pref.Pr
 }
 
 fn v3_directory_source_root(dir string) string {
-	vmod_root := os.real_path(dir)
+	return v3_directory_source_root_of(dir, os.real_path(dir))
+}
+
+// v3_directory_source_root_of is v3_directory_source_root for a directory whose
+// resolved path the caller already has.
+fn v3_directory_source_root_of(dir string, vmod_root string) string {
 	vmod_path := os.join_path_single(vmod_root, 'v.mod')
 	if !os.is_file(vmod_path) {
 		return dir
@@ -20061,6 +20071,12 @@ fn append_unique_listed_file(mut a flat.FlatAst, mut files []string, mut seen ma
 
 fn declared_module_in_file(path string) string {
 	content := os.read_file(path) or { return '' }
+	return declared_module_in_source(content)
+}
+
+// declared_module_in_source returns the module that the source text `content`
+// declares, or an empty string when it declares none.
+fn declared_module_in_source(content string) string {
 	mut in_block_comment := false
 	mut in_attr := false
 	mut line_start := 0
@@ -21336,8 +21352,8 @@ fn set_diagnostic_files_judged(mut tc types.TypeChecker, user_files []string, mu
 		if ownership.not_owned[owner] {
 			continue
 		}
-		if resolver.owns_file(owner, tc.shadow_diagnostic_root, tc.shadow_explicit_roots,
-			tc.shadow_dependency_roots) {
+		if resolver.owns_resolved_file(owner, tc.a.real_source_path(owner), tc.shadow_diagnostic_root,
+			tc.shadow_explicit_roots, tc.shadow_dependency_roots) {
 			tc.diagnostic_files[node.value] = true
 		} else {
 			ownership.not_owned[owner] = true
@@ -24572,7 +24588,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 				resolve_project_or_pref_module_path_cached(prefs, mod_name, importing_file, project_root, mut module_path_cache)
 			}
 			mod_dir_exists := mod_dir.len > 0 && os.is_dir(mod_dir)
-			mod_real_dir := if mod_dir_exists { os.real_path(mod_dir) } else { '' }
+			mod_real_dir := if mod_dir_exists { a.record_source_path(mod_dir) } else { '' }
 			mut module_identity := import_module_identity_cached(prefs, mod_name, importing_file, project_root, mod_dir, mut module_path_cache, mut module_identity_cache)
 			// Set when this import spells the path of an already parsed directory in a
 			// new way, so its module declarations still get checked below.
@@ -24647,7 +24663,18 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 				&& !import_uses_explicit_module_alias(prefs, mod_name, importing_file, project_root) {
 				expected_module := mod_name.all_after_last('.')
 				for imported_file in mod_files {
-					declared := declared_module_in_file(imported_file)
+					// The parser is about to read the same file: keep the text for it.
+					mut imported_source_read := true
+					imported_source := os.read_file(imported_file) or {
+						imported_source_read = false
+						''
+					}
+					// Cache signatures still come from disk. Keep their parsing on
+					// that path until cache validation also accepts source snapshots.
+					if imported_source_read && !already_parsed && !cache_state.manager.enabled {
+						p.preload_source(imported_file, imported_source)
+					}
+					declared := declared_module_in_source(imported_source)
 					// A source file without a module declaration (including an
 					// entirely commented file) belongs to `main`.
 					declared_module := if declared.len > 0 { declared } else { 'main' }
@@ -24789,6 +24816,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			break
 		}
 		starts, wave_parallel := parse_files_dispatch_profiled(mut p, wave_files, allow_parallel, mut parse_timing)
+		p.clear_preloaded_sources()
 		was_parallel = was_parallel || wave_parallel
 		wave_end_nodes := a.nodes.len
 		for i, canon in wave_canon {
@@ -25174,25 +25202,38 @@ fn import_module_identity_with_path_cache(prefs &pref.Preferences, import_path s
 		return import_path
 	}
 	short_name := import_path.all_after_last('.')
+	// Each probe below compares a candidate with the imported directory: resolve
+	// that one once, and only when a candidate exists under another spelling.
+	mut real_import_dir := ''
 	if import_dir.len > 0 {
 		module_root := module_root_for_import_dir(import_path, import_dir)
 		short_sibling_dir := os.join_path_single(module_root, short_name)
-		if os.is_dir(short_sibling_dir)
-			&& os.real_path(short_sibling_dir) != os.real_path(import_dir) {
-			return import_path
+		if short_sibling_dir != import_dir && os.is_dir(short_sibling_dir) {
+			real_import_dir = os.real_path(import_dir)
+			if os.real_path(short_sibling_dir) != real_import_dir {
+				return import_path
+			}
 		}
 	}
 	if project_root.len > 0 && import_dir.len > 0 {
 		short_project_dir := os.join_path_single(project_root, short_name)
-		if os.is_dir(short_project_dir)
-			&& os.real_path(short_project_dir) != os.real_path(import_dir) {
-			return import_path
+		if short_project_dir != import_dir && os.is_dir(short_project_dir) {
+			if real_import_dir.len == 0 {
+				real_import_dir = os.real_path(import_dir)
+			}
+			if os.real_path(short_project_dir) != real_import_dir {
+				return import_path
+			}
 		}
 	}
 	short_dir := resolve_project_or_pref_module_path_cached(prefs, short_name, importing_file, project_root, mut path_cache)
-	if short_dir.len > 0 && import_dir.len > 0 && os.is_dir(short_dir)
-		&& os.real_path(short_dir) != os.real_path(import_dir) {
-		return import_path
+	if short_dir.len > 0 && import_dir.len > 0 && short_dir != import_dir && os.is_dir(short_dir) {
+		if real_import_dir.len == 0 {
+			real_import_dir = os.real_path(import_dir)
+		}
+		if os.real_path(short_dir) != real_import_dir {
+			return import_path
+		}
 	}
 	return short_name
 }
@@ -25203,7 +25244,8 @@ fn aliased_import_module_identity(prefs &pref.Preferences, import_path string, i
 	}
 	module_root := module_root_for_import_dir(import_path, import_dir)
 	requested_dir := os.join_path_single(module_root, import_path.replace('.', os.path_separator))
-	if os.real_path(requested_dir) == os.real_path(import_dir) {
+	// One spelling names one directory: only two spellings need resolving.
+	if requested_dir == import_dir || os.real_path(requested_dir) == os.real_path(import_dir) {
 		return none
 	}
 	for file in prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(import_dir,
