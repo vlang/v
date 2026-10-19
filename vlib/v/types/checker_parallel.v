@@ -2900,7 +2900,8 @@ pub fn (mut tc TypeChecker) check_concrete_instance_members(fn_idx int, file str
 	for err in tc.errors[errors_start..] {
 		if (is_concrete_member_error(err.msg) && !tc.member_of_an_alias_argument(err.msg, args))
 			|| (is_concrete_operator_error(err.msg) && tc.operator_operands_are_plain(err.node))
-			|| tc.is_container_layout_error(err.msg) {
+			|| tc.is_container_layout_error(err.msg)
+			|| (tc.is_container_type_error(err.msg) && !tc.node_is_in_comptime_for(err.node)) {
 			kept << err
 		}
 	}
@@ -3050,6 +3051,112 @@ fn (tc &TypeChecker) is_container_layout_error(msg string) bool {
 	return tc.container_value_layouts_differ(actual, expected)
 }
 
+// is_container_type_error reports whether `msg` says that an array or map is
+// used as one whose elements have a type that its elements cannot be used as at
+// all: `[]string` as `[]u64`, `[]Foo` as `[]Bar` (container_elems_incompatible).
+// A cast is a layout error (is_container_layout_error).
+fn (tc &TypeChecker) is_container_type_error(msg string) bool {
+	actual_name, expected_name, use := container_layout_error_parts(msg) or { return false }
+	if use == .cast || actual_name.contains('voidptr') || expected_name.contains('voidptr') {
+		return false
+	}
+	actual := tc.parse_type(flat.source_type_id(actual_name))
+	mut expected := tc.parse_type(flat.source_type_id(expected_name))
+	if use == .append {
+		clean_expected := unalias_type(expected)
+		if clean_expected is Array {
+			expected = clean_expected.elem_type
+		} else {
+			return false
+		}
+	}
+	return tc.container_elems_incompatible(actual, expected)
+}
+
+// node_is_in_comptime_for reports whether the node `id` of a clone is in the
+// body of a `$for`. The check of a clone does not see the locals declared in
+// such a body, so a name there can resolve to another declaration of it, as a
+// constant of the program's main module.
+fn (tc &TypeChecker) node_is_in_comptime_for(id flat.NodeId) bool {
+	mut current := id
+	for _ in 0 .. 10000 {
+		parent := tc.direct_parent_id(current)
+		if !tc.valid_node_id(parent) {
+			return false
+		}
+		kind := tc.a.node(parent).kind
+		if kind == .comptime_for {
+			return true
+		}
+		if kind == .fn_decl {
+			return false
+		}
+		current = parent
+	}
+	return false
+}
+
+// container_elems_incompatible reports whether the array or map `actual` is used
+// as the one `expected` although its elements, keys or values cannot be used as
+// those of `expected` at all: `[]string` as `[]u64`, `[]Foo` as `[]Bar`,
+// `map[string]string` as `map[string]int`. An option or a result holds the
+// container as it is, and a referenced container is shared. Whether a type
+// implements an interface or is a variant of a sum type is left out: the clone
+// spells an alias among the types of its instance by its base type, which lacks
+// the methods of the alias (see member_of_an_alias_argument).
+fn (tc &TypeChecker) container_elems_incompatible(actual Type, expected Type) bool {
+	mut clean_actual := unalias_type(actual)
+	mut clean_expected := unalias_type(expected)
+	for {
+		if clean_expected is OptionType {
+			if clean_actual is OptionType {
+				clean_actual = unalias_type(clean_actual.base_type)
+			}
+			clean_expected = unalias_type(clean_expected.base_type)
+			continue
+		}
+		if clean_expected is ResultType {
+			if clean_actual is ResultType {
+				clean_actual = unalias_type(clean_actual.base_type)
+			}
+			clean_expected = unalias_type(clean_expected.base_type)
+			continue
+		}
+		break
+	}
+	if clean_actual is Pointer && clean_expected is Pointer {
+		clean_actual = unalias_type(clean_actual.base_type)
+		clean_expected = unalias_type(clean_expected.base_type)
+	}
+	if !is_container_type(clean_actual) || !is_container_type(clean_expected)
+		|| type_contains_unknown(clean_actual) || type_contains_unknown(clean_expected)
+		|| container_elems_name_an_abstract_type(clean_actual)
+		|| container_elems_name_an_abstract_type(clean_expected) {
+		return false
+	}
+	return !tc.type_compatible(clean_actual, clean_expected)
+}
+
+// container_elems_name_an_abstract_type reports whether an element, key or value
+// of the array or map `typ`, or of one nested in it, is an interface or a sum
+// type (see container_elems_incompatible).
+fn container_elems_name_an_abstract_type(typ Type) bool {
+	clean := unalias_type(typ)
+	return match clean {
+		Array { container_elems_name_an_abstract_type(clean.elem_type) }
+		ArrayFixed { container_elems_name_an_abstract_type(clean.elem_type) }
+		Map {
+			container_elems_name_an_abstract_type(clean.key_type)
+				|| container_elems_name_an_abstract_type(clean.value_type)
+		}
+		OptionType { container_elems_name_an_abstract_type(clean.base_type) }
+		ResultType { container_elems_name_an_abstract_type(clean.base_type) }
+		Pointer { container_elems_name_an_abstract_type(clean.base_type) }
+		Interface, SumType { true }
+		else { false }
+	}
+}
+
 // container_layout_error_parts returns the type of the array or map that the
 // error `msg` names, the type it is used as, and what is done with it, for the
 // errors that report a value of the wrong type in a slot (assignment, argument,
@@ -3060,8 +3167,8 @@ fn container_layout_error_parts(msg string) ?(string, string, ContainerLayoutUse
 	}
 	parts := msg.split('`')
 	if parts.len == 5 && parts[4] == '' && parts[2] == ' to ' {
-		if parts[0] == 'cannot cast array ' {
-			// cannot cast array `A` to `B`
+		if parts[0] in ['cannot cast array ', 'cannot cast map '] {
+			// cannot cast array `A` to `B`, cannot cast map `A` to `B`
 			return parts[1], parts[3], ContainerLayoutUse.cast
 		}
 		if parts[0] == 'cannot append ' {
