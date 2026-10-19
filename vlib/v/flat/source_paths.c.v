@@ -7,10 +7,12 @@ const dirent_type_symlink = u8(10)
 
 // scan_listed_symlinks lists `dir` once and returns the names of its entries that
 // are symbolic links, from the entry types the listing reports. The result is not
-// known when the directory cannot be read or the file system does not report an
-// entry's type; record_listed_source_path_in then asks lstat about each entry.
+// known when the directory cannot be read, the file system does not report an
+// entry's type, or the platform's `struct dirent` has no `d_type` member (Haiku,
+// Solaris and illumos, for example); record_listed_source_path_in then asks
+// lstat about each entry.
 pub fn scan_listed_symlinks(dir string) ListedSymlinks {
-	$if windows {
+	$if !(linux || android || termux || macos || darwin || ios || freebsd || openbsd || netbsd || dragonfly) {
 		return ListedSymlinks{}
 	} $else {
 		dir_ptr := C.opendir(&char(dir.str))

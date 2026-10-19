@@ -1650,12 +1650,33 @@ fn (mut tc TypeChecker) merge_scoped_signature_checks(mut a SignatureCheckArgs) 
 		return
 	}
 	mut w := unsafe { &TypeChecker(a.checker) }
-	w.errors = w.errors[a.errors..]
-	w.notices = w.notices[a.notices..]
+	// The fork started from the master's diagnostics, and the checks do not only
+	// append: they can remove or replace earlier ones (a nongeneric declaration's
+	// unknown types give way to its missing generic parameters). The fork's lists
+	// therefore replace the master's start, followed by anything the master
+	// reported after the fork was made.
+	tc.errors = merged_scoped_diagnostics(w.errors, tc.errors, a.errors)
+	tc.notices = merged_scoped_diagnostics(w.notices, tc.notices, a.notices)
+	w.errors = []TypeError{}
+	w.notices = []TypeError{}
 	tc.merge_parallel_check_worker_scoped(w, true)
 	a.checker = unsafe { nil }
 	check_worker_scope_free(a.scope)
 	a.scope = unsafe { nil }
+}
+
+// merged_scoped_diagnostics returns the diagnostics of a fork that started from
+// the first `forked` of `master`, copied out of the fork's arena, followed by
+// those the master reported after it.
+fn merged_scoped_diagnostics(fork []TypeError, master []TypeError, forked int) []TypeError {
+	mut merged := []TypeError{cap: fork.len + int_max(master.len - forked, 0)}
+	for err in fork {
+		merged << clone_parallel_type_error(err)
+	}
+	for i in forked .. master.len {
+		merged << master[i]
+	}
+	return merged
 }
 
 // run_parallel_check checks the bodies of `items` on the worker pool, and the
