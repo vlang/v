@@ -547,10 +547,14 @@ const layout_errors = ['17:9: cannot cast array `[]int` to `[]u8`',
 // uses them as is reported where the body does so, once for each such instance,
 // with the wording of the same error outside a generic function: such an array
 // or map is not converted, so `[]u8(a)` for an `a []int` would read its elements
-// with the wrong size.
+// with the wrong size. A check and a build report the same. A Windows build leaves
+// the instances to the C compiler (see instance_check_windows.c.v).
 fn test_an_instance_that_uses_an_array_or_map_with_other_elements_is_reported() {
 	source := layout_program + "\tprintln(to_bytes([1, 2]))\n\tprintln(to_bytes([i32(1)]))\n\tprintln(widen([u8(1)]))\n\tprintln(assign([u32(1)]))\n\tprintln(wrap([u8(1)]))\n\tprintln(total([i32(1)]))\n\tprintln(narrow_map({\n\t\t'a': 1\n\t}))\n\tprintln(widen_map({\n\t\t'a': u8(1)\n\t}))\n\tprintln(total_map({\n\t\t'a': i32(1)\n\t}))\n}\n"
-	results := [check_program('layout_check', source)]
+	mut results := [check_program('layout_check', source)]
+	$if !windows {
+		results << build_program('layout_build', source)
+	}
 	for res in results {
 		assert res.exit_code != 0, res.output
 		assert !res.output.contains('C compilation error'), res.output
@@ -627,7 +631,10 @@ fn main() {
 // append keep the elements as they are too.
 fn test_an_instance_that_wraps_or_nests_an_array_with_other_elements_is_reported() {
 	source := wrapped_layout_program + '\tprintln(opt[u8]([u8(1)]))\n\tprintln(res([u8(1)]) or { [] })\n\tprintln(fixed([u8(1), 2, 3]!))\n\tprintln(nested([[u8(1)]]))\n\tmut narrow := [u8(1)]\n\tgrow(mut narrow)\n\tprintln(append([u8(1)]))\n}\n'
-	results := [check_program('wrapped_layout_check', source)]
+	mut results := [check_program('wrapped_layout_check', source)]
+	$if !windows {
+		results << build_program('wrapped_layout_build', source)
+	}
 	for res in results {
 		assert res.exit_code != 0, res.output
 		assert !res.output.contains('C compilation error'), res.output

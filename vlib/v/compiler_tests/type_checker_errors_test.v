@@ -2229,18 +2229,18 @@ fn test_generic_specialization_rejects_incompatible_array_element_return() {
 	// compiling.
 	rows := run_good(v3_bin, 'good_generic_array_elem_alias_return', 'type NodeId = int\n\nfn take[T](rows [][]T) [][]NodeId {\n\treturn rows\n}\n\nfn main() {\n\trows := take([[1, 2], [3]])\n\tprintln(int_str(rows.len + rows[0].len))\n}\n')
 	assert rows == '4'
-	// Elements the copy loop does coerce are legal slots, not mismatches: the
-	// declared element type only has to be assignment-compatible, which covers
-	// integer into float, float into float and integer into a `@[flag]` enum.
-	widened := run_good(v3_bin, 'good_generic_array_elem_int_to_float', 'fn take[T](items []T) []f64 {\n\treturn items\n}\n\nfn main() {\n\tprintln(take([1, 2, 3])[0] + 0.5)\n}\n')
-	assert widened == '1.5'
-	narrowed := run_good(v3_bin, 'good_generic_array_elem_float_to_float', 'fn take[T](items []T) []f32 {\n\treturn items\n}\n\nfn main() {\n\tprintln(take([1.5, 2.5])[0])\n}\n')
-	assert narrowed == '1.5'
-	flag_slot := run_good(v3_bin, 'good_generic_array_elem_int_to_flag_enum', '@[flag]\nenum Access {\n\tread\n\twrite\n}\n\nfn take[T](items []T) []Access {\n\treturn items\n}\n\nfn main() {\n\tprintln(int_str(take([1, 2]).len))\n}\n')
-	assert flag_slot == '2'
-	// An integer is not converted to any other enum implicitly, in a
-	// specialization as in `fn f(items []int) []Color { return items }`.
-	run_bad(v3_bin, 'bad_generic_array_elem_int_to_enum', 'enum Color {\n\tred\n\tgreen\n}\n\nfn take[T](items []T) []Color {\n\treturn items\n}\n\nfn main() {\n\t_ := take([0, 1])\n}\n', 'cannot return `[]int` as `[]Color`')
+	// Elements of another number or enum type are not converted either: the array
+	// would be read with the wrong element size, so a specialization is rejected as
+	// `fn f(items []int) []f64 { return items }` is, an integer array also for a
+	// `@[flag]` enum array.
+	run_bad(v3_bin, 'bad_generic_array_elem_int_to_float', 'fn take[T](items []T) []f64 {\n\treturn items\n}\n\nfn main() {\n\tprintln(take([1, 2, 3])[0] + 0.5)\n}\n',
+		generic_array_return_error('[]int', '[]f64'))
+	run_bad(v3_bin, 'bad_generic_array_elem_float_to_float', 'fn take[T](items []T) []f32 {\n\treturn items\n}\n\nfn main() {\n\tprintln(take([1.5, 2.5])[0])\n}\n',
+		generic_array_return_error('[]f64', '[]f32'))
+	run_bad(v3_bin, 'bad_generic_array_elem_int_to_flag_enum', '@[flag]\nenum Access {\n\tread\n\twrite\n}\n\nfn take[T](items []T) []Access {\n\treturn items\n}\n\nfn main() {\n\tprintln(int_str(take([1, 2]).len))\n}\n',
+		generic_array_return_error('[]int', '[]Access'))
+	run_bad(v3_bin, 'bad_generic_array_elem_int_to_enum', 'enum Color {\n\tred\n\tgreen\n}\n\nfn take[T](items []T) []Color {\n\treturn items\n}\n\nfn main() {\n\t_ := take([0, 1])\n}\n',
+		generic_array_return_error('[]int', '[]Color'))
 	// Having a lowering is not the same as being legal: the element copy boxes
 	// any struct into an interface, so an element that does not implement the
 	// target has to be rejected here rather than at `.id = src.id` in the C.
@@ -2251,4 +2251,16 @@ fn test_generic_specialization_rejects_incompatible_array_element_return() {
 	assert spoken == 'woof'
 	variants := run_good(v3_bin, 'good_generic_array_elem_sum_variant', 'struct Foo {\n\tv int\n}\n\nstruct Bar {\n\tw int\n}\n\ntype FB = Bar | Foo\n\nfn take[T](items []T) []FB {\n\treturn items\n}\n\nfn main() {\n\tprintln(int_str(take([Foo{\n\t\tv: 3\n\t}]).len))\n}\n')
 	assert variants == '1'
+}
+
+// generic_array_return_error is the error for an array of `actual` returned as
+// one of `expected` by a specialization, when their elements are stored
+// differently. The check of the program's instances reports it with the wording
+// of any other function. A Windows build has no such check (see
+// instance_check_windows.c.v), so the specialization reports it.
+fn generic_array_return_error(actual string, expected string) string {
+	$if windows {
+		return 'cannot return `${actual}` as `${expected}`'
+	}
+	return 'cannot use `${actual}` as type `${expected}` in return argument'
 }
