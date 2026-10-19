@@ -17039,6 +17039,12 @@ fn (mut g FlatGen) c_extern_forward_decls() {
 			g.writeln('#endif')
 		} else if (name == 'task_info' || name == 'mach_task_self')
 			&& g.c_directives_use_system_libc() {
+			if g.output_cross_c {
+				// Portable C includes <mach/mach.h> for these on Apple targets (see
+				// emit_preserved_c_directives). Elsewhere there is no `task_t`, and
+				// their calls are compiled out.
+				continue
+			}
 			g.writeln('#ifndef __APPLE__')
 			g.writeln(line)
 			g.writeln('#endif')
