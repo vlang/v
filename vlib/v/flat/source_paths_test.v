@@ -137,9 +137,12 @@ fn test_record_listed_source_path_in_matches_os_real_path() {
 	}
 	real_dir := os.real_path(linked_dir)
 	symlinks := scan_listed_symlinks(linked_dir)
-	$if !windows {
-		assert symlinks.known
+	// A platform or file system that reports no entry types leaves the result
+	// unknown; the paths below must resolve the same either way.
+	if symlinks.known {
 		assert symlinks.names.len == 2
+		assert 'alias.v' in symlinks.names
+		assert 'outside.v' in symlinks.names
 	}
 	mut a := FlatAst.new()
 	for name in ['main.v', 'target.v', 'alias.v', 'outside.v'] {
