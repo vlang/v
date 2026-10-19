@@ -12751,7 +12751,16 @@ fn (mut tc TypeChecker) check_sql_statement_constraints(id flat.NodeId, node fla
 
 fn (mut tc TypeChecker) check_sql_insert_type(id flat.NodeId, node flat.Node, tokens []string) {
 	for i := 0; i + 3 < tokens.len; i++ {
-		if tokens[i] != 'insert' || tokens[i + 2] != 'into' {
+		if tokens[i] != 'insert' {
+			continue
+		}
+		if tokens[i + 2] != 'into' {
+			for j := i + 1; j < tokens.len && tokens[j] != 'into'; j++ {
+				if tokens[j] == '{' {
+					tc.record_sql_error_at(.assignment_mismatch, 'ORM insert requires a variable; assign the struct literal to a variable first', id, tc.sql_expr_text_pos(node, 'insert ${tokens[i + 1]}', 'insert '.len, tokens[i + 1].len))
+					break
+				}
+			}
 			continue
 		}
 		value_name := tokens[i + 1]

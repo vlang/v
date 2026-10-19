@@ -21,6 +21,19 @@ and returns an error for `UNIQUE`, `DEFAULT` and `REFERENCES`, which it cannot d
 > the removal date; until then the compiler emits a migration notice.
 > See https://github.com/vlang/v/issues/27001 for details.
 
+## Inserting records
+
+Bind a struct literal to a variable before inserting it:
+
+```v ignore
+product := Product{name: 'b'}
+sql db {
+    insert product into Product
+}!
+```
+
+An inline struct literal after `insert` is rejected during compilation.
+
 ## Nullable
 
 For a nullable column, use an option field. If the field is non-option, the column will be defined
