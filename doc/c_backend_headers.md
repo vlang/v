@@ -18,6 +18,8 @@ program declares itself, such as `fn C.getpgrp() int` or a Win32 function in Win
 which nothing else would declare. Runtime bindings are marked used so cached modules
 retain their prototypes. Native backends retain C declarations without rooting same-named
 V functions.
+Mark C functions supplied by linked objects with `@[c_extern]` so their prototypes remain
+available even when the same V file includes an unrelated system header.
 With `-target-libc-headers`, `<errno.h>` owns the errno accessor declarations.
 This avoids conflicting `i32*` prototypes on targets whose `int32_t` is `long`,
 such as ARM newlib.
