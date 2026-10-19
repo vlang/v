@@ -21,3 +21,20 @@ pub fn (a &FlatAst) discard_unused_capacity() {
 		}
 	}
 }
+
+// discard_replaced_storage releases the resident pages of node and children
+// buffers that were replaced by larger copies, for example when the transform
+// stage reserves its append regions. Nothing reads a replaced buffer: every
+// stage reaches the AST through `nodes`/`children`, which point to the copy.
+// A buffer that is still current is left alone.
+@[unsafe]
+pub fn (a &FlatAst) discard_replaced_storage(old_nodes voidptr, old_nodes_cap int, old_children voidptr, old_children_cap int) {
+	$if prealloc {
+		if old_nodes != nil && old_nodes != a.nodes.data && old_nodes_cap > 0 {
+			unsafe { prealloc_discard_pages(old_nodes, usize(old_nodes_cap) * sizeof(Node)) }
+		}
+		if old_children != nil && old_children != a.children.data && old_children_cap > 0 {
+			unsafe { prealloc_discard_pages(old_children, usize(old_children_cap) * sizeof(NodeId)) }
+		}
+	}
+}

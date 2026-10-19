@@ -14310,12 +14310,22 @@ pub fn run(args []string) {
 			}
 			// Keep the large escaping AST/cache slabs in the compilation arena, while
 			// transformer indexes and per-body temporary state use a stage arena.
+			unreserved_nodes := unsafe { a.nodes.data }
+			unreserved_nodes_cap := a.nodes.cap
+			unreserved_children := unsafe { a.children.data }
+			unreserved_children_cap := a.children.cap
 			if cache_state.manager.enabled {
 				transform.reserve_parallel_transform_cache_ast(mut a, skip_transform_generics)
 			} else if uses_generics {
 				transform.reserve_parallel_transform_ast_before_monomorph(mut a, skip_transform_generics)
 			} else {
 				transform.reserve_parallel_transform_ast(mut a, skip_transform_generics)
+			}
+			// A grown reservation copied the parsed tree; the old buffers (the
+			// size of the parsed AST) would otherwise stay resident through Cgen.
+			unsafe {
+				a.discard_replaced_storage(unreserved_nodes, unreserved_nodes_cap,
+					unreserved_children, unreserved_children_cap)
 			}
 			if verbose {
 				eprintln('  [leakcheck] post-reserve: nodes ${a.nodes.len}/${a.nodes.cap} children ${a.children.len}/${a.children.cap}')
