@@ -199,3 +199,22 @@ fn main() {
 	}
 	assert msg.contains('.v:1:1: error: inline assembly is not supported'), msg
 }
+
+fn test_a_build_for_clang_cl_reaches_the_c_compiler_with_inline_asm() ! {
+	$if windows {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'clang_cl_inline_asm_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	compiler := os.join_path(root, 'clang-cl')
+	os.write_file(compiler, '#!/bin/sh\nprintf "CLANG_CL_REACHED\\n" >&2\nexit 99\n')!
+	os.chmod(compiler, 0o755)!
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, msvc_inline_asm_used_source)!
+	result := cmdexec.run(os.join_path(@VMODROOT, 'v'), ['-nocache', '-os', 'windows', '-arch',
+		'amd64', '-cc', compiler, '-o', os.join_path(root, 'main.exe'), source])
+	assert result.exit_code != 0
+	assert result.output.contains('CLANG_CL_REACHED'), result.output
+	assert !result.output.contains('inline assembly is not supported when the C compiler is MSVC'), result.output
+}

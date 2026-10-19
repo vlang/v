@@ -31,6 +31,13 @@ fn c_compiler_is_msvc(compiler string) bool {
 	return name in ['cl', 'cl.exe', 'clang-cl', 'clang-cl.exe'] || name.contains('msvc')
 }
 
+// c_compiler_rejects_gnu_asm reports whether an MSVC command uses cl.exe's C frontend.
+// clang-cl shares the MSVC ABI and arguments but accepts GNU inline assembly.
+fn c_compiler_rejects_gnu_asm(compiler string) bool {
+	name := os.file_name(compiler).to_lower_ascii()
+	return c_compiler_is_msvc(compiler) && name !in ['clang-cl', 'clang-cl.exe']
+}
+
 // v3_msvc_link_flags returns the linker options for a Windows program linked by MSVC,
 // in `-Wl,` form so msvc_cl_args passes them after `/link`.
 fn v3_msvc_link_flags(target_os string, is_shared bool, is_o bool, subsystem pref.Subsystem, windows_gui_app bool) []string {

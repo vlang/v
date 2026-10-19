@@ -83,3 +83,11 @@ fn test_msvc_missing_cl_message_targets_windows_off_windows() {
 	}
 	assert msvc_missing_cl_message('cl', 'windows', windows_x64).contains('Developer Command Prompt')
 }
+
+fn test_only_cl_rejects_gnu_inline_assembly() {
+	assert c_compiler_rejects_gnu_asm('msvc')
+	assert c_compiler_rejects_gnu_asm('C:/Program Files/VC/bin/CL.EXE')
+	assert !c_compiler_rejects_gnu_asm('clang-cl')
+	assert !c_compiler_rejects_gnu_asm('C:/Program Files/LLVM/bin/clang-cl.exe')
+	assert !c_compiler_rejects_gnu_asm('clang')
+}

@@ -8,3 +8,6 @@ Portable `-os cross` C snapshots retain their existing behavior.
 
 `-cc clang-cl` (or the path to `clang-cl.exe`) uses the same MSVC SDK and argument
 translation as `-cc msvc`. It also requires a Windows target.
+
+`clang-cl` also accepts GNU inline assembly emitted by V. The inline assembly restriction
+applies to the `cl.exe` frontend.
