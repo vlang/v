@@ -34,20 +34,55 @@ fn (g &Parser) optional_function_field_for_expression(tokens []FastcExpressionTo
 }
 
 fn (g &Parser) or_block_has_statements() bool {
-	if g.tok == .string && fastc_string_literal_is_incomplete(g.lit) {
+	return g.block_has_statements_from(g.tok, g.lit, g.s.offset)
+}
+
+// unsafe_block_has_statements reports whether the `unsafe { ... }` starting at the
+// current token holds statements before its value (`unsafe { p := f(); g(p) }`), as
+// opposed to a single value that the expression reader can treat transparently.
+fn (g &Parser) unsafe_block_has_statements() bool {
+	if g.tok != .key_unsafe {
 		return false
 	}
-	if g.tok == .name && g.lit == 'panic' {
+	mut probe := g.s
+	if probe.scan() != .lcbr {
+		return false
+	}
+	first := probe.scan()
+	if first == .rcbr {
+		return false
+	}
+	if first in [.key_if, .key_match, .dollar] || (first == .name && probe.lit == 'panic') {
+		// These may be the block's whole value (`unsafe { if c { a } else { b } }`), which the
+		// transparent reader handles; only a statement before the value needs the block reader.
+		return g.block_scan_has_statements(first, probe.offset)
+	}
+	return g.block_has_statements_from(first, probe.lit, probe.offset)
+}
+
+// block_has_statements_from reports whether the block body whose first token is `first_tok`
+// (with the source offset just past it) holds statements rather than a single value.
+fn (g &Parser) block_has_statements_from(first_tok token.Token, first_lit string, offset int) bool {
+	if first_tok == .string && fastc_string_literal_is_incomplete(first_lit) {
+		return false
+	}
+	if first_tok == .name && first_lit == 'panic' {
 		return true
 	}
-	if g.tok in [.dollar, .key_return, .key_if, .key_for, .key_match, .key_mut, .key_defer, .key_break,
-		.key_continue, .key_assert] {
+	if first_tok in [.dollar, .key_return, .key_if, .key_for, .key_match, .key_mut, .key_defer,
+		.key_break, .key_continue, .key_assert] {
 		return true
 	}
+	return g.block_scan_has_statements(first_tok, offset)
+}
+
+// block_scan_has_statements scans the block body from `first_tok` for a top-level
+// assignment, `return` or statement boundary before the block's closing `}`.
+fn (g &Parser) block_scan_has_statements(first_tok token.Token, offset int) bool {
 	mut lookahead := scanner.new_scanner(g.prefs, .normal)
 	lookahead.init(g.s.current_file(), g.s.src)
-	lookahead.offset = g.s.offset
-	mut tok := g.tok
+	lookahead.offset = offset
+	mut tok := first_tok
 	mut depth := 0
 	for tok != .eof {
 		if tok == .lcbr {
