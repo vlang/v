@@ -19640,11 +19640,34 @@ fn (mut t Transformer) try_expand_multi_return_assign(node flat.Node) ?[]flat.No
 				t.drain_pending(mut result)
 				t.append_owned_lvalue_drop_before_assign(lvalue, flat.source_type_id(field_type_name), mut result)
 			}
-			result << t.make_assign_after_owned_drop(lvalue, field)
+			mut value := field
+			// A `[]Item` slot assigned to a `[]Named` (or `[]Shape`) target is converted
+			// element by element, as a single assignment or a forwarded return does.
+			if converted := t.transform_array_value_for_dynamic_target(field, t.multi_assign_slot_target_type(lhs_id,
+				lhs, field_type_name))
+			{
+				t.drain_pending(mut result)
+				value = converted
+			}
+			result << t.make_assign_after_owned_drop(lvalue, value)
 		}
 		return result
 	}
 	return none
+}
+
+// multi_assign_slot_target_type returns the value type that the slot `lhs` of a
+// multi-return assignment stores: a `mut` parameter or a local moved to the heap is
+// assigned through its pointer.
+fn (t &Transformer) multi_assign_slot_target_type(lhs_id flat.NodeId, lhs flat.Node, field_type_name string) u32 {
+	target := t.lvalue_type(lhs_id)
+	target_name := flat.source_type_name(target)
+	if lhs.kind == .ident && target_name.starts_with('&') && !target_name.starts_with('&&')
+		&& !field_type_name.starts_with('&')
+		&& (t.mut_param_values[lhs.value] || lhs.value in t.heaped_amp_locals) {
+		return flat.source_type_id(target_name[1..])
+	}
+	return target
 }
 
 // try_expand_plain_multi_assign supports try expand plain multi assign handling for Transformer.
