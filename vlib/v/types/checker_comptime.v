@@ -9686,7 +9686,9 @@ fn (tc &TypeChecker) expr_is_inside_unsafe_block(id flat.NodeId) bool {
 		return false
 	}
 	mut current := id
-	for _ in 0 .. 32 {
+	// A valid parent path can contain arbitrarily many nested blocks. The arena
+	// length still bounds the walk if malformed parent links form a cycle.
+	for _ in 0 .. tc.a.nodes.len {
 		// No block holds a function declaration. The parent of a specialized
 		// one, which nothing holds, is a scan of the whole node arena.
 		if tc.valid_node_id(current) && tc.a.node(current).kind == .fn_decl {
@@ -9697,9 +9699,6 @@ fn (tc &TypeChecker) expr_is_inside_unsafe_block(id flat.NodeId) bool {
 			return false
 		}
 		parent := tc.a.node(parent_id)
-		if parent.kind == .defer_stmt {
-			return false
-		}
 		if parent.kind == .block && parent.value == 'unsafe' {
 			return true
 		}
@@ -14004,12 +14003,24 @@ fn (mut tc TypeChecker) ownership_record_or_fallback_error_return_drops(id flat.
 	}
 }
 
+// check_defer_stmt checks a `defer` body with the `unsafe` depth of the place where it is
+// written, so a `defer` nested in an `unsafe` block stays inside that block.
+// `defer_unsafe_depth` keeps an `unsafe` block written in the body from counting as nested.
 fn (mut tc TypeChecker) check_defer_stmt(node flat.Node) {
-	outer_unsafe_depth := tc.unsafe_depth
-	tc.unsafe_depth = 0
+	outer_defer_unsafe_depth := tc.defer_unsafe_depth
+	tc.defer_unsafe_depth = tc.unsafe_depth
 	for i in 0 .. node.children_count {
 		tc.check_node(tc.a.child(&node, i))
 	}
+	tc.defer_unsafe_depth = outer_defer_unsafe_depth
+}
+
+// check_defer_body_at_lexical_unsafe_context checks a deferred body again at an exit,
+// using the unsafe context where it was declared instead of the exit's context.
+fn (mut tc TypeChecker) check_defer_body_at_lexical_unsafe_context(id flat.NodeId, node flat.Node) {
+	outer_unsafe_depth := tc.unsafe_depth
+	tc.unsafe_depth = if tc.expr_is_inside_unsafe_block(id) { 1 } else { 0 }
+	tc.check_defer_stmt(node)
 	tc.unsafe_depth = outer_unsafe_depth
 }
 
@@ -19907,7 +19918,8 @@ fn (mut tc TypeChecker) insert_decl_lhs(lhs_id flat.NodeId, typ Type, is_mut boo
 	if lhs.kind in [.ident, .param] && lhs.value.len > 0 {
 		if lhs.value != '_' && (tc.visible_local_scope_owns_name(lhs.value)
 			|| tc.visible_mut_param_binding_owns_name(lhs.value))
-			&& !(tc.unsafe_depth > 1 && !tc.current_local_scope_owns_name(lhs.value))
+			&& !(tc.unsafe_depth > tc.defer_unsafe_depth + 1
+				&& !tc.current_local_scope_owns_name(lhs.value))
 			&& !tc.decl_shadows_implicit_or_err(lhs_id, lhs.value) {
 			tc.record_error(.assignment_mismatch, 'redefinition of `${lhs.value}`', lhs_id)
 			return ScopeBindingOwner{}

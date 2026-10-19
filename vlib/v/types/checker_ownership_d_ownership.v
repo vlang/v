@@ -1136,12 +1136,12 @@ fn (mut tc TypeChecker) ownership_mark_scope_node(id flat.NodeId) {
 
 fn (mut tc TypeChecker) ownership_check_defer_stmt(id flat.NodeId, node flat.Node) {
 	if tc.ownership_effects_disabled() {
-		tc.ownership_check_defer_body(node)
+		tc.check_defer_body_at_lexical_unsafe_context(id, node)
 		return
 	}
 	frame := tc.ownership_snapshot_frame()
 	tc.ownership_begin_suppressed_checks()
-	tc.ownership_check_defer_body(node)
+	tc.check_defer_body_at_lexical_unsafe_context(id, node)
 	tc.ownership_end_suppressed_checks()
 	tc.ownership_restore_frame(frame)
 	tc.ownership_register_defer_stmt(id)
@@ -1189,7 +1189,7 @@ fn (mut tc TypeChecker) ownership_run_scope_defers() {
 			continue
 		}
 		defer_node := tc.a.nodes[int(defer_id)]
-		tc.ownership_check_defer_body(defer_node)
+		tc.check_defer_body_at_lexical_unsafe_context(defer_id, defer_node)
 	}
 }
 
@@ -1221,15 +1221,9 @@ fn (mut tc TypeChecker) ownership_check_return_defers() {
 			continue
 		}
 		defer_node := tc.a.nodes[int(defer_id)]
-		tc.ownership_check_defer_body(defer_node)
+		tc.check_defer_body_at_lexical_unsafe_context(defer_id, defer_node)
 	}
 	tc.ownership_restore_frame(frame)
-}
-
-fn (mut tc TypeChecker) ownership_check_defer_body(node flat.Node) {
-	for i in 0 .. node.children_count {
-		tc.check_node(tc.a.child(&node, i))
-	}
 }
 
 fn (mut tc TypeChecker) ownership_pop_scope() {

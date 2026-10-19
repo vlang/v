@@ -1,0 +1,56 @@
+vlib/v/checker/tests/unsafe_defer_outside_unsafe_block.vv:8:3: warning: function `free` must be called from an `unsafe` block
+    6 | fn plain(p &u8) {
+    7 |     defer {
+    8 |         free(p)
+      |         ~~~~~~~
+    9 |     }
+   10 | }
+vlib/v/checker/tests/unsafe_defer_outside_unsafe_block.vv:19:3: warning: function `free` must be called from an `unsafe` block
+   17 |     }
+   18 |     defer {
+   19 |         free(q)
+      |         ~~~~~~~
+   20 |     }
+   21 | }
+vlib/v/checker/tests/unsafe_defer_outside_unsafe_block.vv:28:3: warning: function `free` must be called from an `unsafe` block
+   26 |             free(p)
+   27 |         }
+   28 |         free(q)
+      |         ~~~~~~~
+   29 |     }
+   30 | }
+vlib/v/checker/tests/unsafe_defer_outside_unsafe_block.vv:35:4: warning: function `free` must be called from an `unsafe` block
+   33 |     cb := fn (q &u8) {
+   34 |         defer {
+   35 |             free(q)
+      |             ~~~~~~~
+   36 |         }
+   37 |     }
+vlib/v/checker/tests/unsafe_defer_outside_unsafe_block.vv:43:11: warning: function `risky` must be called from an `unsafe` block
+   41 | fn other_operations(p &u8, n int) {
+   42 |     defer {
+   43 |         println(risky(n))
+      |                 ~~~~~~~~
+   44 |         q := p + n
+   45 |         println(q[0])
+vlib/v/checker/tests/unsafe_defer_outside_unsafe_block.vv:44:8: warning: pointer arithmetic is only allowed in `unsafe` blocks
+   42 |     defer {
+   43 |         println(risky(n))
+   44 |         q := p + n
+      |              ~~~~~
+   45 |         println(q[0])
+   46 |     }
+vlib/v/checker/tests/unsafe_defer_outside_unsafe_block.vv:45:12: error: pointer indexing is only allowed in `unsafe` blocks
+   43 |         println(risky(n))
+   44 |         q := p + n
+   45 |         println(q[0])
+      |                  ~~~
+   46 |     }
+   47 | }
+vlib/v/checker/tests/unsafe_defer_outside_unsafe_block.vv:54:5: error: redefinition of `x`
+   52 |         defer {
+   53 |             unsafe {
+   54 |                 x := n + 1
+      |                 ^
+   55 |                 println(x)
+   56 |             }

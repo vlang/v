@@ -2902,6 +2902,10 @@ that allows you to group related actions (getting access to a resource
 and cleaning/freeing it after you are done) closely together, instead
 of spreading them across multiple potentially very remote lines of code.
 
+A `defer` body inherits the `unsafe` context where it is written, including `defer(fn)`
+bodies that run later outside that block. It may also contain its own explicit `unsafe` block.
+An `unsafe` block at a later return does not make a previously declared safe `defer` unsafe.
+
 ```v
 import os
 

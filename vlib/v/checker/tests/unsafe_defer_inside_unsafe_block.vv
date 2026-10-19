@@ -1,0 +1,135 @@
+// A `defer` nested in an `unsafe` block is inside that block: no line here needs its own `unsafe`.
+enum Color {
+	red
+	green
+}
+
+union Num {
+mut:
+	i int
+	f f32
+}
+
+struct Buf {
+mut:
+	data &u8 = unsafe { nil }
+}
+
+@[unsafe]
+fn (mut b Buf) release() {
+	unsafe { free(b.data) }
+}
+
+@[unsafe]
+fn risky(x int) int {
+	return x + 1
+}
+
+fn direct() {
+	unsafe {
+		p := malloc_noscan(10)
+		defer {
+			free(p)
+		}
+		println('ok')
+	}
+}
+
+fn calls(n int) {
+	unsafe {
+		mut b := Buf{
+			data: malloc_noscan(4)
+		}
+		mut arr := []int{len: n}
+		defer {
+			b.release()
+			arr.free()
+			println(risky(n))
+			println(typeof(n))
+		}
+	}
+}
+
+fn pointers(n int) {
+	unsafe {
+		p := malloc_noscan(16)
+		defer {
+			p[0] = 1
+			mut q := p + n
+			*q = p[0]
+			q++
+			free(p)
+		}
+	}
+}
+
+fn casts_and_addresses(n int) {
+	unsafe {
+		mut m := {
+			'a': 1
+		}
+		mut arr := [1, 2, 3]
+		num := Num{
+			i: n
+		}
+		defer {
+			pm := &m['a']
+			pa := &arr[0]
+			*pa = *pm
+			println(num.f)
+			println(Color(n))
+			println(&int(4096) != pa)
+		}
+	}
+}
+
+fn nested(mut buf []u8, k Color, n int) {
+	unsafe {
+		p := &buf[0]
+		if n > 0 {
+			for i in 0 .. n {
+				match k {
+					.red {
+						$if windows {
+							{
+								defer {
+									p[i] = 1
+								}
+							}
+						} $else {
+							{
+								defer {
+									p[i] = 2
+								}
+							}
+						}
+					}
+					.green {}
+				}
+			}
+		}
+		defer(fn) {
+			p[0] = 3
+		}
+	}
+}
+
+fn own_unsafe_block(p &u8) {
+	unsafe {
+		defer {
+			unsafe {
+				free(p)
+			}
+		}
+	}
+}
+
+fn main() {
+	direct()
+	calls(1)
+	pointers(1)
+	casts_and_addresses(1)
+	mut buf := [u8(0), 0]
+	nested(mut buf, .red, 2)
+	own_unsafe_block(unsafe { malloc_noscan(1) })
+}
