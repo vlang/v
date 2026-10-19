@@ -111,14 +111,29 @@ fn nested_owner_copy_factory() Choice {
 fn loop_factory() Choice {
  mut owner := Choice(0)
  for code in 10 .. 13 {
+  assert C.transfer_count(14) == code - 10
+  temporary := Item{code: 14}
+  assert temporary.code == 14
   local := Item{code: code}
   wrapped := Choice(&local)
   owner = wrapped
+  assert C.transfer_count(code) == 0
  }
+ assert C.transfer_count(14) == 3
  assert C.transfer_count(10) == 1
  assert C.transfer_count(11) == 1
  assert C.transfer_count(12) == 0
  return owner
+}
+@[noinline]
+fn loop_scope_cleanup() {
+ mut owner := Choice(0)
+ for _ in 0 .. 2 {
+  local := Item{code: 15}
+  owner = Choice(&local)
+ }
+ assert C.transfer_count(15) == 1
+ assert (owner as &Item).code == 15
 }
 @[noinline]
 fn churn_stack() u64 {
@@ -203,6 +218,8 @@ fn main() {
  assert C.transfer_count(8) == 2
  exercise_borrowed()
  assert C.transfer_count(4) == 1
+ loop_scope_cleanup()
+ assert C.transfer_count(15) == 2
 }')!
 	for mode in ['-autofree', '-ownership'] {
 		for prealloc in [false, true] {
@@ -245,7 +262,7 @@ fn consume(flag bool, item &Item) {
  }
  assert result is int || result is &Item
 }
-fn main() { item := Item{code: 8}; consume(true, &item) }': 'ambiguous local pointer source outside its scope'
+fn main() { item := Item{code: 8}; consume(true, &item) }':                                                                                                        'ambiguous local pointer source outside its scope'
 		'struct Item { code int }
 type Choice = int | &Item
 fn borrow(item &Item) &Item { return item }
@@ -257,7 +274,7 @@ fn factory() Choice {
  }
  return result
 }
-fn main() { value := factory(); assert value is &Item }':                                              'ambiguous local pointer source outside its scope'
+fn main() { value := factory(); assert value is &Item }':                                                                                                                                                     'ambiguous local pointer source outside its scope'
 		'struct Item { code int }
 type Choice = int | &Item
 fn factory(flag bool) Choice {
@@ -266,13 +283,49 @@ fn factory(flag bool) Choice {
   Choice(&local)
  } else { Choice(0) }
 }
-fn main() { value := factory(true); assert value is &Item }':                                                                                                            'local declared inside an if or match expression'
+fn main() { value := factory(true); assert value is &Item }':                                                                                                                                                                                                                   'local declared inside an if or match expression'
 		'struct Item { code int }
 type Choice = int | &Item
 fn factory(flag bool, item &Item) Choice {
  return Choice(if flag { local := Item{code: 5}; &local } else { item })
 }
-fn main() { item := Item{code: 8}; value := factory(true, &item); assert value is &Item }':                                                                           'local declared inside an if or match expression'
+fn main() { item := Item{code: 8}; value := factory(true, &item); assert value is &Item }':                                                                                                                                                                                  'local declared inside an if or match expression'
+		'struct Item implements Drop { code int }
+fn (item &Item) free() {}
+fn (mut item Item) drop() {}
+type Choice = int | &Item
+fn factory() Choice {
+ mut owner := Choice(0)
+ mut loan := Choice(0)
+ for _ in 0 .. 1 {
+  local := Item{code: 1}
+  owner = Choice(&local)
+  loan = Choice(&local)
+ }
+ assert loan is &Item
+ return owner
+}
+fn main() { value := factory(); assert value is &Item }':                                                        'borrowed by `loan`'
+		'struct Item implements Drop { code int }
+fn (item &Item) free() {}
+fn (mut item Item) drop() {}
+type Choice = int | &Item
+fn factory() Choice {
+ mut owner := Choice(0)
+ mut loan := Choice(0)
+ if true {
+  local := Item{code: 1}
+  owner = Choice(&local)
+  loan = Choice(&local)
+ }
+ for _ in 0 .. 1 {
+  loan := Choice(0)
+  assert loan is int
+ }
+ assert loan is &Item
+ return owner
+}
+fn main() { value := factory(); assert value is &Item }': 'borrowed by `loan`'
 	}
 	for source, expected in unsupported {
 		os.write_file(invalid, source)!

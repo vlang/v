@@ -7634,7 +7634,8 @@ fn (tc &TypeChecker) is_namespace_selector(node flat.Node, base flat.Node) bool 
 	}
 	if base.value == 'main' || base.value == tc.cur_module
 		|| base.value == tc.cur_module.all_after_last('.') {
-		if node.value in tc.const_types || '${base.value}.${node.value}' in tc.const_types {
+		if (node.value in tc.const_types && tc.bare_const_key_is_visible(node.value))
+			|| '${base.value}.${node.value}' in tc.const_types {
 			return true
 		}
 		if tc.global_type_for_selector(node) != none
@@ -8960,8 +8961,10 @@ fn (mut tc TypeChecker) check_ident(id flat.NodeId, node flat.Node) {
 		return
 	}
 	if typ := tc.const_types[qname] {
-		tc.register_synth_type(id, typ)
-		return
+		if tc.bare_const_key_is_visible(qname) {
+			tc.register_synth_type(id, typ)
+			return
+		}
 	}
 	// A module-local const shadows an unrelated bare global collected from
 	// another module (notably `time.seconds_per_minute` vs a main global).
@@ -8970,8 +8973,10 @@ fn (mut tc TypeChecker) check_ident(id flat.NodeId, node flat.Node) {
 		return
 	}
 	if typ := tc.const_types[node.value] {
-		tc.register_synth_type(id, typ)
-		return
+		if tc.bare_const_key_is_visible(node.value) {
+			tc.register_synth_type(id, typ)
+			return
+		}
 	}
 	if key := tc.vsh_os_const_key(node.value) {
 		tc.register_synth_type(id, tc.const_type_from_initializer(key, tc.const_types[key] or {
@@ -19060,13 +19065,17 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 				return tc.const_types[key] or { builtin_void_type }
 			}
 			if typ := tc.const_types[qname] {
-				return typ
+				if tc.bare_const_key_is_visible(qname) {
+					return typ
+				}
 			}
 			if typ := tc.file_scope.lookup(node.value) {
 				return typ
 			}
 			if typ := tc.const_types[node.value] {
-				return typ
+				if tc.bare_const_key_is_visible(node.value) {
+					return typ
+				}
 			}
 			// A `.vsh` script uses `os` constants such as `args` unqualified.
 			if key := tc.vsh_os_const_key(node.value) {

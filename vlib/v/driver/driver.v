@@ -13962,7 +13962,8 @@ pub fn run(args []string) {
 		}
 		if !check_only && !is_checker_fixture && !prefs.building_v && pre_tc.errors.len == 0
 			&& os.getenv('V_CHECK_INSTANCES_IN_BUILD') != '0'
-			&& pre_tc.diagnosed_files_declare_generics() {
+			&& (pre_tc.diagnosed_files_declare_generics() || (program_instance_check_forks()
+				&& pre_tc.diagnosed_files_call_library_generics())) {
 			// A build checks each instance of the program's generics as a check
 			// does, and as V1 did: an instance that lacks a field, a method or an
 			// operator (`show(1)` reading `x.name`, `add(1)` adding a string to
@@ -13996,7 +13997,7 @@ pub fn run(args []string) {
 				report_unused_declarations_of_check(a, mut pre_tc, no_skip_unused, test_files,
 					input_file.ends_with('.vsh') || is_checker_fixture)
 			}
-			monomorphized := check_concrete_generic_bodies_of_check(mut a, mut pre_tc)
+			monomorphized := check_concrete_generic_bodies_of_check(mut a, mut pre_tc, true)
 			if monomorphized && kept_incremental_record != '' {
 				// For the next check to put back (see
 				// types.TypeChecker.put_back_incremental_instances).
@@ -21306,13 +21307,21 @@ fn report_unused_declarations_of_check(a &flat.FlatAst, mut tc types.TypeChecker
 
 // check_concrete_generic_bodies_of_check checks each concrete instance of the
 // program's generic functions, as the monomorphization of a fixture does:
-// `show(1)` has to fail where `show` reads `x.name`, not in the C compiler. It
-// runs only when a diagnosed file declares a generic function, and reports
-// whether it monomorphized the tree.
-fn check_concrete_generic_bodies_of_check(mut a flat.FlatAst, mut tc types.TypeChecker) bool {
-	if tc.errors.len > 0 || tc.checker_fixture_mode || !tc.diagnosed_files_declare_generics() {
+// `show(1)` has to fail where `show` reads `x.name`, not in the C compiler. With
+// `library_instances`, it checks the instances of library generics that the
+// program's own code asks for too, as `chklib.to_bytes([1, 2])` does (see
+// transform.LibraryBodies). It runs only when a diagnosed file declares a
+// generic function, or calls such a library generic, and reports whether it
+// monomorphized the tree.
+fn check_concrete_generic_bodies_of_check(mut a flat.FlatAst, mut tc types.TypeChecker, library_instances bool) bool {
+	if tc.errors.len > 0 || tc.checker_fixture_mode {
 		return false
 	}
+	if !tc.diagnosed_files_declare_generics()
+		&& !(library_instances && tc.diagnosed_files_call_library_generics()) {
+		return false
+	}
+	tc.check_program_lib_instances = library_instances
 	// An incremental check whose bodies checked again touch nothing generic has
 	// the instances of the check before: their errors are put back.
 	if tc.put_back_incremental_instances() {
@@ -21332,6 +21341,7 @@ fn check_concrete_generic_bodies_of_check(mut a flat.FlatAst, mut tc types.TypeC
 	tc.library_bodies_kept_for = ''
 	_, _ = transform.monomorphize_with_used_checked_config(mut a, tc, used_fns, false)
 	tc.check_concrete_generic_bodies = false
+	tc.check_program_lib_instances = false
 	// With V_DIAGNOSTICS_INCREMENTAL_VERIFY, what was to be put back instead.
 	tc.verify_incremental_instances()
 	trace_incremental_check(mut tc)

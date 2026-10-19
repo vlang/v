@@ -1,0 +1,34 @@
+struct Foo {
+	a int
+}
+
+fn as_ints() []u64 {
+	$for field in Foo.fields {
+		println(field.name)
+		bytes := [u8(1)]
+		return bytes
+	}
+	return []
+}
+
+fn count() int {
+	$for field in Foo.fields {
+		println(field.name)
+		return 'a'
+	}
+	return 0
+}
+
+// A return that depends on the field is left to the unrolled body.
+fn first(x Foo) int {
+	$for field in Foo.fields {
+		return x.$(field.name)
+	}
+	return 0
+}
+
+fn main() {
+	println(as_ints())
+	println(count())
+	println(first(Foo{}))
+}

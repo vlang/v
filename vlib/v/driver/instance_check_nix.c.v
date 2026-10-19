@@ -39,7 +39,7 @@ fn start_program_instance_check(mut a flat.FlatAst, mut tc types.TypeChecker, ar
 		C.dup2(fds[1], 2)
 		// The parent's workers stayed in the parent: the child's pools start their own.
 		workers.note_fork()
-		check_concrete_generic_bodies_of_check(mut a, mut tc)
+		check_concrete_generic_bodies_of_check(mut a, mut tc, true)
 		code := if tc.errors.len > 0 { 1 } else { 0 }
 		if code == 1 {
 			print_type_diagnostics(a, []types.TypeError{}, tc.errors, is_checker_fixture,
@@ -56,6 +56,14 @@ fn start_program_instance_check(mut a flat.FlatAst, mut tc types.TypeChecker, ar
 		pid:    pid
 		output: fds[0]
 	}
+}
+
+// program_instance_check_forks reports whether a build checks the instances of
+// the program's generics in a fork of itself, which costs little more than the
+// check: then it also checks the instances of library generics that the
+// program's own code asks for (see types.TypeChecker.check_program_lib_instances).
+fn program_instance_check_forks() bool {
+	return os.getenv('V_CHECK_INSTANCES_IN_BUILD') != 'process'
 }
 
 // finish prints what the check printed and returns the exit code of its child:

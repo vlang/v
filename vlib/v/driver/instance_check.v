@@ -104,7 +104,7 @@ fn run_program_instance_check_child(mut a flat.FlatAst, mut tc types.TypeChecker
 	flush_stderr()
 	println(instance_check_report_marker)
 	flush_stdout()
-	check_concrete_generic_bodies_of_check(mut a, mut tc)
+	check_concrete_generic_bodies_of_check(mut a, mut tc, false)
 	code := if tc.errors.len > 0 { 1 } else { 0 }
 	if code == 1 {
 		print_type_diagnostics(a, []types.TypeError{}, tc.errors, is_checker_fixture, fatal_errors,

@@ -213,3 +213,6 @@ These lifetime checks also apply inside functions returning `void` and when a su
 wraps the conditional expression. The checker records heap promotion before validating a local
 pointer return. Return and assignment lowering preserve the original transfer decision through
 their generated nodes, and only the matching runtime pointer acquires the cleanup obligation.
+An outer sum assigned inside a loop keeps its cleanup at the outer binding's scope. Replacing its
+payload releases the previous owner; values declared inside each iteration still clean up there.
+Iteration-local loans end there too; loans held by outer bindings remain active across the loop.

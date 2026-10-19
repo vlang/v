@@ -3098,7 +3098,7 @@ pub fn (mut tc TypeChecker) check_concrete_instance_members(fn_idx int, file str
 		if (is_concrete_member_error(err.msg) && !tc.member_of_an_alias_argument(err.msg, args))
 			|| (is_concrete_operator_error(err.msg) && tc.operator_operands_are_plain(err.node))
 			|| tc.is_container_layout_error(err.msg)
-			|| (tc.is_container_type_error(err.msg) && !tc.node_is_in_comptime_for(err.node)) {
+			|| tc.is_container_type_error(err.msg) {
 			kept << err
 		}
 	}
@@ -3268,29 +3268,6 @@ fn (tc &TypeChecker) is_container_type_error(msg string) bool {
 		}
 	}
 	return tc.container_elems_incompatible(actual, expected)
-}
-
-// node_is_in_comptime_for reports whether the node `id` of a clone is in the
-// body of a `$for`. The check of a clone does not see the locals declared in
-// such a body, so a name there can resolve to another declaration of it, as a
-// constant of the program's main module.
-fn (tc &TypeChecker) node_is_in_comptime_for(id flat.NodeId) bool {
-	mut current := id
-	for _ in 0 .. 10000 {
-		parent := tc.direct_parent_id(current)
-		if !tc.valid_node_id(parent) {
-			return false
-		}
-		kind := tc.a.node(parent).kind
-		if kind == .comptime_for {
-			return true
-		}
-		if kind == .fn_decl {
-			return false
-		}
-		current = parent
-	}
-	return false
 }
 
 // container_elems_incompatible reports whether the array or map `actual` is used

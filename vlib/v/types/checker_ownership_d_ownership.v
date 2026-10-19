@@ -2214,7 +2214,7 @@ fn (mut tc TypeChecker) ownership_collect_global_decl(cur_module string, node fl
 	mut st := tc.ownership_state()
 	for i in 0 .. node.children_count {
 		field := tc.a.child_node(&node, i)
-		mut typ := tc.parse_type(field.typ)
+		mut typ := *tc.parse_type(field.typ)
 		mut init_owned := false
 		if field.children_count > 0 {
 			init_id := tc.a.child(field, 0)
@@ -6242,6 +6242,9 @@ fn (mut tc TypeChecker) ownership_drop_entries_for_loop_base_scope(base Ownershi
 fn (mut tc TypeChecker) ownership_drop_entries_since_frame(base OwnershipFrame, snapshot OwnershipFrame) []OwnershipDropEntry {
 	mut candidates := []OwnershipDropCandidate{}
 	for name, pos in snapshot.owned_vars {
+		if ownership_frames_share_binding(base, snapshot, name) {
+			continue
+		}
 		base_pos := base.owned_vars[name] or { flat.NodeId(-1) }
 		if pos != base_pos && name !in snapshot.moved_vars && !name.contains('.')
 			&& !name.contains('[') {
@@ -6270,19 +6273,20 @@ fn ownership_frame_without_loop_locals(base OwnershipFrame, snapshot OwnershipFr
 	mut local_names := []string{}
 	for name, pos in snapshot.owned_vars {
 		base_pos := base.owned_vars[name] or { flat.NodeId(-1) }
-		if pos != base_pos {
+		if pos != base_pos && !ownership_frames_share_binding(base, snapshot, name) {
 			local_names << name
 		}
 	}
 	for name in snapshot.moved_vars.keys() {
-		if name !in base.owned_vars && name !in local_names {
+		if name !in base.owned_vars && name !in local_names
+			&& !ownership_frames_share_binding(base, snapshot, name) {
 			local_names << name
 		}
 	}
 	mut owned_vars := snapshot.owned_vars.clone()
 	mut owned_var_types := snapshot.owned_var_types.clone()
 	mut moved_vars := snapshot.moved_vars.clone()
-	mut borrowed_vars := snapshot.borrowed_vars.clone()
+	borrowed_vars := ownership_loop_borrows_without_locals(base, snapshot)
 	mut array_lengths := snapshot.array_lengths.clone()
 	mut fn_value_vars := snapshot.fn_value_vars.clone()
 	mut pointer_aliases := snapshot.pointer_aliases.clone()
@@ -6290,7 +6294,6 @@ fn ownership_frame_without_loop_locals(base OwnershipFrame, snapshot OwnershipFr
 		owned_vars.delete(name)
 		owned_var_types.delete(name)
 		moved_vars.delete(name)
-		borrowed_vars.delete(name)
 		array_lengths.delete(name)
 		fn_value_vars.delete(name)
 		pointer_aliases.delete(name)
@@ -6312,6 +6315,71 @@ fn ownership_frame_without_loop_locals(base OwnershipFrame, snapshot OwnershipFr
 		scope_frames:    ownership_clone_scope_frames(base.scope_frames)
 		path_active:     snapshot.path_active
 	}
+}
+
+// A transferred local can cease owning storage before its declaration ends.
+// End its loan by lexical identity, restoring any alias it shadowed as pop_scope does.
+fn ownership_loop_borrows_without_locals(base OwnershipFrame, snapshot OwnershipFrame) map[string][]BorrowInfo {
+	mut borrowed_vars := snapshot.borrowed_vars.clone()
+	for i := snapshot.scope_frames.len - 1; i >= 0; i-- {
+		scope := snapshot.scope_frames[i]
+		if scope.cur_fn != snapshot.cur_fn { continue }
+		for j := scope.decl_order.len - 1; j >= 0; j-- {
+			name := scope.decl_order[j]
+			if i < base.scope_frames.len && scope.cur_fn == base.scope_frames[i].cur_fn
+				&& scope.scope_id == base.scope_frames[i].scope_id
+				&& name in base.scope_frames[i].names {
+				continue
+			}
+			for source in borrowed_vars.keys() {
+				borrows := borrowed_vars[source] or { continue }
+				mut remaining := []BorrowInfo{}
+				for borrow in borrows {
+					if borrow.borrower != name
+						&& !ownership_storage_key_is_descendant(borrow.borrower, name) {
+						remaining << borrow
+					}
+				}
+				if remaining.len == 0 {
+					borrowed_vars.delete(source)
+				} else {
+					borrowed_vars[source] = remaining
+				}
+			}
+			saved := scope.names[name] or { continue }
+			for previous in saved.borrows {
+				mut borrows := (borrowed_vars[previous.var_name] or { []BorrowInfo{} }).clone()
+				if previous.borrow !in borrows {
+					borrows << previous.borrow
+					borrowed_vars[previous.var_name] = borrows
+				}
+			}
+		}
+	}
+	return borrowed_vars
+}
+
+// Ownership may change at an assignment while the binding keeps its outer
+// lifetime. An inner declaration with the same spelling has another frame.
+fn ownership_frames_share_binding(base OwnershipFrame, snapshot OwnershipFrame, name string) bool {
+	root := name.all_before('.').all_before('[')
+	mut base_index := -1
+	for i := base.scope_frames.len - 1; i >= 0; i-- {
+		scope := base.scope_frames[i]
+		if scope.cur_fn == base.cur_fn && root in scope.names {
+			base_index = i
+			break
+		}
+	}
+	if base_index < 0 { return false }
+	for i := snapshot.scope_frames.len - 1; i >= 0; i-- {
+		scope := snapshot.scope_frames[i]
+		if scope.cur_fn == snapshot.cur_fn && root in scope.names {
+			return i == base_index && scope.cur_fn == base.scope_frames[base_index].cur_fn
+				&& scope.scope_id == base.scope_frames[base_index].scope_id
+		}
+	}
+	return false
 }
 
 fn ownership_frame_declares_name(frame OwnershipFrame, name string) bool {
@@ -8607,7 +8675,7 @@ fn (mut tc TypeChecker) ownership_mark_struct_literal_fields_with_mode(lhs_name 
 			field_key := '${lhs_name}.${field.value}'
 			default_id := tc.a.child(field, 0)
 			field_type := tc.struct_field_type(flat.source_type_id((init_type as Struct).name()), field.value) or {
-				tc.parse_type(field.typ)
+				*tc.parse_type(field.typ)
 			}
 			if tc.ownership_mark_storage_from_expr_with_mode(field_key, default_id, field_type, pos, clear_unowned) {
 				marked = true
@@ -11130,9 +11198,9 @@ fn (tc &TypeChecker) ownership_cloned_array_accessor_elem_type(recv_id flat.Node
 		if _ := tc.ownership_default_clone_missing_method(array_type.elem_type) {
 			// Call checking reports the missing clone. Keep ownership recovery on the
 			// rejected clone path instead of transferring a shallow array slot.
-			return array_type.elem_type
+			return *array_type.elem_type
 		}
-		return array_type.elem_type
+		return *array_type.elem_type
 	}
 	return none
 }
@@ -13405,7 +13473,7 @@ fn (mut tc TypeChecker) ownership_type_for_var(name string, fallback Type) Type 
 	if tname == flat.source_type_string {
 		return Type(String{})
 	}
-	return tc.parse_type(tname)
+	return *tc.parse_type(tname)
 }
 
 fn (mut tc TypeChecker) ownership_type_for_name(name string, fallback Type) Type {

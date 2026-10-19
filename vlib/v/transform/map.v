@@ -2155,7 +2155,9 @@ fn (t &Transformer) const_expr_for_ident(id flat.NodeId) ?flat.NodeId {
 		return t.tc.const_exprs[key] or { return none }
 	}
 	if expr_id := t.tc.const_exprs[node.value] {
-		return expr_id
+		if t.tc.bare_const_key_is_visible_in_module(node.value, t.cur_module) {
+			return expr_id
+		}
 	}
 	return none
 }
