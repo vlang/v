@@ -8,17 +8,43 @@ module types
 // target is configured; `set_platform_int_bits` updates it for cross builds.
 __global platform_int_c_type = 'i64'
 
+// platform_int_width is the bit width of V's platform `int` on the target that
+// the program is checked for. It is kept apart from the C spelling, because
+// portable C (`-os cross`) spells `int` with `portable_int_c_type`, whatever
+// the width it was checked for.
+__global platform_int_width = 64
+
+// portable_int_c_type is the C spelling of V's `int` in portable C (`-os cross`).
+// The generated C defines it as `i64` or `i32` from the width of the C compiler's
+// target, so one portable file serves 64-bit and 32-bit hosts. Being a name of
+// its own, it also keeps `int` apart from both `i64` and `i32` in the C type
+// names derived from it (`Array_fixed___v_int_4`, `multi_return___v_int_string`).
+pub const portable_int_c_type = '__v_int'
+
 // set_platform_int_bits selects the C spelling for the platform `int` from the
 // target pointer width. The driver calls this once, before checking or code
 // generation, so every `c_type` lowering agrees on the width.
 pub fn set_platform_int_bits(bits int) {
+	platform_int_width = if bits == 32 { 32 } else { 64 }
 	platform_int_c_type = if bits == 32 { 'i32' } else { 'i64' }
+}
+
+// set_portable_platform_int makes `int` lower to `portable_int_c_type`, for
+// portable C whose consumer decides the width. Call it after
+// `set_platform_int_bits`, which still sets the width that checking uses.
+pub fn set_portable_platform_int() {
+	platform_int_c_type = portable_int_c_type
+}
+
+// platform_int_c_spelling returns the C spelling that `int` lowers to.
+pub fn platform_int_c_spelling() string {
+	return platform_int_c_type
 }
 
 // platform_int_bits returns the bit width of V's platform `int` (64 or 32),
 // used for literal-overflow and range checks so they match the emitted width.
 pub fn platform_int_bits() int {
-	return if platform_int_c_type == 'i64' { 64 } else { 32 }
+	return platform_int_width
 }
 
 pub const bool_ = Primitive{

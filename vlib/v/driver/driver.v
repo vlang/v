@@ -11707,6 +11707,12 @@ pub fn run(args []string) {
 	// V's platform `int` is 64-bit on 64-bit targets and 32-bit on 32-bit ones;
 	// pin the C spelling from the target width before any checking or codegen.
 	types.set_platform_int_bits(target.pointer_bits)
+	if output_cross_c && backend == 'c' {
+		// Portable C is compiled later for a target of either width, so `int`
+		// is spelled with a typedef that the generated C defines from the width
+		// of the C compiler's target. Checking still uses the width above.
+		types.set_portable_platform_int()
+	}
 	if is_linux_wayland_only_session(target.os, os.getenv('DISPLAY'), os.getenv('WAYLAND_DISPLAY'), os.getenv('XDG_SESSION_TYPE'))
 		&& !user_defines.any(it.all_before('=').trim_space() == 'linux_wayland_session') {
 		user_defines << 'linux_wayland_session'

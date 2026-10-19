@@ -1765,7 +1765,15 @@ fn map_callback_names(key_type string) (string, string, string, string) {
 	} else if key_type in ['int', 'isize', 'usize', 'uint', 'voidptr', 'charptr', 'byteptr']
 		|| key_type.starts_with('&') {
 		// Match the target's key storage, not the host or a fixed 32-bit int.
-		size_suffix = if types.platform_int_bits() == 32 { '4' } else { '8' }
+		// Portable C (`-os cross`) defines the `_w` callbacks as the ones for the
+		// pointer width of the C compiler's target.
+		size_suffix = if types.platform_int_c_spelling() == types.portable_int_c_type {
+			'w'
+		} else if types.platform_int_bits() == 32 {
+			'4'
+		} else {
+			'8'
+		}
 	} else if key_type in ['i64', 'u64', 'f64']
 		|| key_type.contains('Arc[') || key_type.contains('Arc_') {
 		size_suffix = '8'
