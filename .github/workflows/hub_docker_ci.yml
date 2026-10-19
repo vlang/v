@@ -26,7 +26,7 @@ on:
         required: true
   push:
     tags:
-      - '[0-9].[0-9]+.[0-9]+'
+      - '[0-9]+.[0-9]+.[0-9]+'
       - 'weekly.*'
 
 concurrency:

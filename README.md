@@ -164,13 +164,13 @@ The published variants are:
 | `:latest`, `:debian` | Debian | the default: programs built here run on Debian, Ubuntu, Fedora |
 | `:alpine` | Alpine | musl; use this one for static executables |
 | `:nix` | `nixos/nix` | pinned nixpkgs toolchain; `nix-shell -p <pkg>` works inside |
-| `:static` | `scratch` | a static V compiler, for running already-compiled programs |
+| `:static-<version>` | `scratch` | a static V compiler; base for compiled static programs |
 | `:<dist>-dev` | the `-build` image | a full V checkout; excludes the `scratch` static variant |
 
 Both `linux/amd64` and `linux/arm64` are published. Podman reads the same
 Dockerfiles and needs no daemon, so `podman build -f ... .` works too;
-it also runs containers as your own user, so files written into a mounted
-source tree stay owned by you.
+In rootless mode, Podman maps the container's root user to your user, so files written
+into a mounted source tree stay owned by you.
 
 Manual release publishing accepts a numeric release tag such as `0.5.2`, or a `weekly.*` tag.
 The input is limited to 120 characters so each generated Docker image tag fits its limit.
