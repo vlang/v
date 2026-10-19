@@ -5888,7 +5888,13 @@ fn (mut t Transformer) register_specialized_fn_signature_value(decl GenericFnDec
 			variadic = true
 		}
 		if !isnil(t.tc) {
-			params << t.tc.parse_resolution_type(param_type)
+			parsed := t.tc.parse_resolution_type(param_type)
+			// A `mut a ?T` is `&?&T`, as in a named fn's signature.
+			params << if child.is_mut && child.op != .amp {
+				types.mut_param_semantic_type(parsed)
+			} else {
+				parsed
+			}
 		}
 	}
 	qname := transform_qualified_fn_name(decl.module, clone_value)
@@ -10725,6 +10731,10 @@ fn (mut t Transformer) generic_call_arg_type_for_inference(id flat.NodeId) u32 {
 		return u32(0)
 	}
 	node := t.a.nodes[int(id)]
+	if view_type := mut_optional_arg_view_type(node) {
+		// The `&?&T` built for a `mut a ?T` parameter: `T` is the payload's type.
+		return view_type
+	}
 	if node.kind == .string_literal
 		&& !(node.children_count == 1 && node.value in ['__v3_comptime_zero', '__v3_comptime_new']) {
 		// Raw and JavaScript string literals keep their quote mode in `typ` as

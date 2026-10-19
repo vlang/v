@@ -1891,19 +1891,28 @@ fn (mut t Transformer) transform_mut_optional_value_call_arg(arg_id flat.NodeId,
 		return none
 	}
 	arg_node := t.a.nodes[int(arg_id)]
-	if !arg_node.is_mut {
+	// The checker only passes an option to a `mut` parameter with `mut`, but the field
+	// selector a `$for` body substitutes for `mut s.$(field.name)` no longer carries it.
+	if !arg_node.is_mut && !param_type.starts_with('&?&') {
 		return none
 	}
-	arg_type_source_id := t.qualify_optional_type(t.node_type(arg_id))
+	if _ := t.unwrapped_mut_optional_view_param(arg_id) {
+		// Forwarded as it is (transform_mut_optional_view_forward_arg).
+		return none
+	}
+	// A local moved to the heap is a pointer to its option.
+	heaped_local := t.heaped_amp_local_arg_name(arg_id)
+	mut arg_type_source_id := t.node_type(arg_id)
+	if heaped_local.len > 0 && flat.source_type_name(arg_type_source_id).starts_with('&?') {
+		arg_type_source_id = flat.source_type_id(flat.source_type_name(arg_type_source_id)[1..])
+	}
+	arg_type_source_id = t.qualify_optional_type(arg_type_source_id)
 	arg_type_shape := flat.source_type_shape(arg_type_source_id)
 	if !arg_type_shape.has(.option_type) {
 		return none
 	}
 	payload_type_source_id := t.optional_base_type(arg_type_source_id)
 
-	if isnil(t.tc) || types.unalias_type(t.tc.parse_type(payload_type_source_id)) !is types.Struct {
-		return none
-	}
 	param_option_source_id := t.qualify_optional_type(flat.source_type_id(param_type[1..]))
 	param_option := flat.source_type_name(param_option_source_id)
 	param_payload := flat.source_type_name(t.optional_base_type(param_option_source_id))
@@ -1917,7 +1926,13 @@ fn (mut t Transformer) transform_mut_optional_value_call_arg(arg_id flat.NodeId,
 	}
 	target_option := '${param_option[..1]}${target_payload}'
 
-	lvalue := t.stabilize_transformed_lvalue_for_reuse(t.transform_lvalue(arg_id))
+	lvalue := if heaped_local.len > 0 {
+		deref := t.make_prefix(.mul, t.make_ident(heaped_local))
+		t.set_node_typ(int(deref), arg_type_source_id)
+		deref
+	} else {
+		t.stabilize_transformed_lvalue_for_reuse(t.transform_lvalue(arg_id))
+	}
 	tmp_name := t.new_temp('mut_optional_arg')
 	initial := t.make_optional_none(flat.source_type_id(target_option))
 	t.pending_stmts << t.make_decl_assign_typed(tmp_name, initial, flat.source_type_id(target_option))
@@ -1938,6 +1953,7 @@ fn (mut t Transformer) transform_mut_optional_value_call_arg(arg_id flat.NodeId,
 
 	addr := t.make_prefix(.amp, tmp)
 	t.set_node_typ(int(addr), param_type_id)
+	t.mark_mut_optional_arg(addr, arg_type_source_id)
 	return MutOptionalValueCallArg{
 		value:     addr
 		writeback: writeback
@@ -1946,22 +1962,19 @@ fn (mut t Transformer) transform_mut_optional_value_call_arg(arg_id flat.NodeId,
 
 // transform_mut_plain_value_optional_call_arg passes a `mut` value that is not an option
 // to a `mut a ?T` parameter, like V 0.5.2: in a temporary option, so that `a = none` or
-// `a = value` in the callee only replaces the temporary. A struct payload is passed by
-// reference (`&?&T`, see mut_optional_param_value_type), so the temporary refers to the
-// caller's value, and the callee's changes to its fields reach it. Other payloads are
-// passed by value (`&?T`), so the temporary holds a copy.
+// `a = value` in the callee only replaces the temporary. The payload is passed by reference
+// (`&?&T`, see `types.mut_param_semantic_type`), so the temporary refers to the caller's
+// value, and the callee's changes to it (`if mut v := a { v << 1 }`) reach the caller.
 fn (mut t Transformer) transform_mut_plain_value_optional_call_arg(arg_id flat.NodeId, param_type_id u32) ?flat.NodeId {
 	param_type := flat.source_type_name(param_type_id)
 	arg_type_source_id := t.node_type(arg_id)
 	if arg_type_source_id == 0 || flat.source_type_shape(arg_type_source_id).has(.option_type) {
 		return none
 	}
-	mut payload := param_type[2..]
+	payload := param_type[2..].trim_string_left('&')
 	if payload.len == 0 {
 		return none
 	}
-	by_reference := payload.starts_with('&') || t.mut_optional_payload_is_struct(payload)
-	payload = payload.trim_string_left('&')
 	payload_type_source_id := flat.source_type_id(payload)
 	clean_payload := t.normalize_type_alias(payload_type_source_id)
 	if !t.type_is_value_or_reference_of(arg_type_source_id, clean_payload) {
@@ -1976,27 +1989,90 @@ fn (mut t Transformer) transform_mut_plain_value_optional_call_arg(arg_id flat.N
 	}
 	value_is_reference := t.normalize_type_alias(value_type_source_id) != clean_payload
 	pointer_type := flat.source_type_id('&${payload}')
-	payload_value := if by_reference == value_is_reference {
+	payload_value := if value_is_reference {
 		value
-	} else if by_reference {
-		t.make_prefix(.amp, value)
 	} else {
-		t.make_prefix(.mul, value)
+		t.make_prefix(.amp, value)
 	}
 	if payload_value != value {
-		t.set_node_typ(int(payload_value), if by_reference {
-			pointer_type
-		} else {
-			payload_type_source_id
-		})
+		t.set_node_typ(int(payload_value), pointer_type)
 	}
-	option_type := flat.source_type_id('?${if by_reference { '&' } else { '' }}${payload}')
+	option_type := flat.source_type_id('?&${payload}')
 	tmp_name := t.new_temp('mut_optional_arg')
 	t.pending_stmts << t.make_decl_assign_typed(tmp_name, t.make_optional_some(payload_value,
 		option_type), option_type)
 	option_addr := t.make_prefix(.amp, t.make_ident(tmp_name))
 	t.set_node_typ(int(option_addr), param_type_id)
+	t.mark_mut_optional_arg(option_addr, flat.source_type_id('?${payload}'))
 	return option_addr
+}
+
+// transform_mut_optional_view_forward_arg passes `mut a` on to another `mut ?T` parameter,
+// where `a` is a `mut a ?T` parameter that its body reads as `?T` (mut_optional_view_param).
+// Both are `&?&T`, so the callee gets the option that refers to the caller's value.
+fn (mut t Transformer) transform_mut_optional_view_forward_arg(arg_id flat.NodeId) ?flat.NodeId {
+	view_param := t.unwrapped_mut_optional_view_param(arg_id)?
+	slot_type := flat.source_type_id('&${flat.source_type_name(view_param.storage)}')
+	addr := t.make_prefix(.amp, t.mut_optional_view_storage(view_param))
+	t.set_node_typ(int(addr), slot_type)
+	t.mark_mut_optional_arg(addr, view_param.view)
+	return addr
+}
+
+// mark_mut_optional_arg marks `addr`, the `&?&T` argument built for a `mut a ?T` parameter,
+// with the `?T` it stands for, which generic inference matches against the parameter.
+fn (mut t Transformer) mark_mut_optional_arg(addr flat.NodeId, view_type u32) {
+	if view_type == 0 {
+		return
+	}
+	mut params := t.a.nodes[int(addr)].generic_params().clone()
+	params << mut_optional_arg_marker
+	params << flat.source_type_name(view_type)
+	t.set_node_generic_params(int(addr), params)
+}
+
+// mut_optional_arg_view_type returns the `?T` that a `&?&T` argument built for a `mut a ?T`
+// parameter stands for (mark_mut_optional_arg).
+fn mut_optional_arg_view_type(node flat.Node) ?u32 {
+	if node.kind != .prefix || node.op != .amp || node.payload == 0 {
+		return none
+	}
+	params := node.generic_params()
+	idx := params.index(mut_optional_arg_marker)
+	if idx < 0 || idx + 1 >= params.len {
+		return none
+	}
+	return flat.source_type_id(params[idx + 1])
+}
+
+// heaped_amp_local_arg_name returns the name of the local `arg_id` names when the local was
+// moved to the heap (its value is a pointer to it), or ''.
+fn (t &Transformer) heaped_amp_local_arg_name(arg_id flat.NodeId) string {
+	mut source_id := arg_id
+	for t.a.nodes[int(source_id)].kind == .paren && t.a.nodes[int(source_id)].children_count == 1 {
+		source_id = t.a.child(&t.a.nodes[int(source_id)], 0)
+	}
+	source := t.a.nodes[int(source_id)]
+	if source.kind != .ident || !t.heaped_amp_locals[source.value] {
+		return ''
+	}
+	return source.value
+}
+
+// unwrapped_mut_optional_view_param returns the view parameter `arg_id` names, if any.
+fn (t &Transformer) unwrapped_mut_optional_view_param(arg_id flat.NodeId) ?MutOptionalViewParam {
+	if int(arg_id) < 0 {
+		return none
+	}
+	mut source_id := arg_id
+	for t.a.nodes[int(source_id)].kind == .paren && t.a.nodes[int(source_id)].children_count == 1 {
+		source_id = t.a.child(&t.a.nodes[int(source_id)], 0)
+	}
+	source := t.a.nodes[int(source_id)]
+	if source.kind != .ident || t.has_smartcast(source.value) {
+		return none
+	}
+	return t.mut_optional_view_param(source.value)
 }
 
 // type_is_value_or_reference_of reports whether `type_id` is `clean_type`, or a reference to
@@ -4267,6 +4343,9 @@ fn (mut t Transformer) transform_call_arg_for_param_isolated(arg_id flat.NodeId,
 	}
 	mut arg_node := &t.a.nodes[int(arg_id)]
 	if arg_node.is_mut && param_type.starts_with('&?') {
+		if forwarded := t.transform_mut_optional_view_forward_arg(arg_id) {
+			return forwarded
+		}
 		if wrapped := t.transform_mut_plain_value_optional_call_arg(arg_id, param_type_id) {
 			return wrapped
 		}
@@ -13604,8 +13683,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 			}
 			if !isnil(t.tc) {
 				slot := t.tc.parse_type(slot_type)
-				// The lifted declaration is called like a named fn: a `mut a ?T` with a
-				// struct payload is `&?&T`.
+				// The lifted declaration is called like a named fn: a `mut a ?T` is `&?&T`.
 				param_types << if child.is_mut && child.op != .amp {
 					types.mut_param_semantic_type(slot)
 				} else {
@@ -13744,10 +13822,21 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	for param_id in param_ids {
 		param := t.a.nodes[int(param_id)]
 		if param.value.len > 0 && param.typ != 0 {
-			param_type_source_id := t.lifted_mut_optional_param_type(param)
+			// A `mut a ?T` holds a `?&T`, which the body reads as `?T` unless the payload is a
+			// struct (see mut_optional_view_param).
+			storage_type_source_id := t.lifted_mut_optional_param_type(param)
+			param_type_source_id := t.lifted_mut_optional_param_view_type(param)
 			resolved_param_type_source_id := t.comptime_normalize_type_alias_chain(param_type_source_id)
 			resolved_param_type_shape := flat.source_type_shape(resolved_param_type_source_id)
 			t.set_var_type_with_raw(param.value, resolved_param_type_source_id, param_type_source_id)
+			if storage_type_source_id != param_type_source_id
+				&& flat.source_type_shape(storage_type_source_id).has(.pointer) {
+				storage := flat.source_type_id(flat.source_type_name(storage_type_source_id)[1..])
+				view := flat.source_type_id(flat.source_type_name(param_type_source_id)[1..])
+				if _ := mut_optional_param_storage_view(storage, view) {
+					t.set_var_mut_optional_storage(param.value, storage)
+				}
+			}
 			// An immutable `.amp` parameter was inferred for a pipe lambda and retains
 			// the source language's auto-dereferenced value semantics. Adapted function
 			// literals preserve their source parameter operator instead.
@@ -13914,6 +14003,12 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	for capture_name in capture_names {
 		context_field_type := context_field_types[capture_name] or { continue }
 		mut value := t.make_ident(capture_name)
+		if !(capture_by_ref[capture_name] or { false }) {
+			if view_param := t.mut_optional_view_param(capture_name) {
+				// A `mut a ?T` parameter is captured as the `?T` its body reads.
+				value = t.mut_optional_view_read(view_param)
+			}
+		}
 		if capture_array_param_snapshots[capture_name] or { false } {
 			value = t.make_prefix(.mul, value)
 			t.set_node_typ(int(value), context_field_type)
@@ -18806,6 +18901,12 @@ fn (mut t Transformer) transform_receiver_method_args_with_base(node flat.Node, 
 				continue
 			}
 		}
+		if converted := t.transform_mut_optional_value_call_arg(arg_id, param_type) {
+			args << converted.value
+			t.mut_optional_call_writebacks << converted.writeback
+			i++
+			continue
+		}
 		args << t.clone_receiver_aliased_arg(recv_root, arg_id, t.transform_call_arg_for_param(arg_id, param_type), param_type)
 		i++
 	}
@@ -19713,12 +19814,22 @@ fn (value &CompilerDefaultCloneCallInfo) raw_base_type_text() string {
 
 // lifted_mut_optional_param_type returns the type of a lifted fn literal's parameter in its
 // body. The parameter keeps the `&` of its `mut` slot, and like a named fn's (see
-// mut_optional_param_value_type), a `mut a ?T` with a struct payload is `&?&T`.
+// mut_optional_param_value_type), a `mut a ?T` is `&?&T`.
 fn (t &Transformer) lifted_mut_optional_param_type(param flat.Node) u32 {
+	return t.lifted_mut_optional_param_slot_type(param, t.mut_optional_param_value_type(param.typ))
+}
+
+// lifted_mut_optional_param_view_type returns what the body of a lifted fn literal reads
+// its parameter as: like lifted_mut_optional_param_type, with the view of a `mut a ?T`
+// (`&?T`, see mut_optional_param_view_type).
+fn (t &Transformer) lifted_mut_optional_param_view_type(param flat.Node) u32 {
+	return t.lifted_mut_optional_param_slot_type(param, t.mut_optional_param_view_type(param.typ))
+}
+
+fn (t &Transformer) lifted_mut_optional_param_slot_type(param flat.Node, value_type u32) u32 {
 	if !param.is_mut || param.op == .amp {
 		return param.typ
 	}
-	value_type := t.mut_optional_param_value_type(param.typ)
 	if value_type == param.typ || !flat.source_type_shape(value_type).has(.option_type) {
 		return param.typ
 	}

@@ -8688,8 +8688,11 @@ fn mut_param_base_type(typ Type) Type {
 }
 
 // mut_param_semantic_type returns the type of a `mut` parameter declared as `typ` (`&T`).
-// A `mut a ?T` with a struct payload, or an alias of one, is `&?&T`: the callee gets the
-// caller's struct by reference. Every other type is returned unchanged.
+// A `mut a ?T` is `&?&T`, whatever its payload: the option the callee gets refers to the
+// caller's value, so changes made through it reach the caller, as in V 0.5.2. The call
+// site builds that option (`transform_mut_optional_value_call_arg` for an option argument,
+// `transform_mut_plain_value_optional_call_arg` for a plain value). Every other type is
+// returned unchanged.
 pub fn mut_param_semantic_type(typ Type) Type {
 	if typ !is Pointer {
 		return typ
@@ -8702,11 +8705,6 @@ pub fn mut_param_semantic_type(typ Type) Type {
 	if option_type.base_type is Pointer {
 		return typ
 	}
-	// An alias of a struct is passed like the struct: the call site builds the `?&T`
-	// temporary for it too (`transform_mut_optional_value_call_arg`).
-	if unalias_type(option_type.base_type) !is Struct {
-		return typ
-	}
 	return Type(Pointer{
 		base_type: OptionType{
 			base_type: Pointer{
@@ -8716,11 +8714,34 @@ pub fn mut_param_semantic_type(typ Type) Type {
 	})
 }
 
+// mut_optional_param_view_type returns `?T` for a `mut a ?T` parameter (`typ` is `&?T`)
+// whose payload is not a struct. Its body reads it as `?T`, although it is passed as
+// `&?&T` (see mut_param_semantic_type): the transform reads the payload through the
+// reference. A struct payload reads as `?&T`, so that changes to its fields reach the
+// caller.
+fn mut_optional_param_view_type(typ Type) ?Type {
+	if typ !is Pointer {
+		return none
+	}
+	pointer_type := typ as Pointer
+	if pointer_type.base_type !is OptionType {
+		return none
+	}
+	option_type := pointer_type.base_type as OptionType
+	if option_type.base_type is Pointer || unalias_type(option_type.base_type) is Struct {
+		return none
+	}
+	return pointer_type.base_type
+}
+
 fn mut_param_binding_type(typ Type, is_mut bool, is_explicit_reference bool) Type {
 	if !is_mut || is_explicit_reference {
 		return typ
 	}
 	if typ is Pointer {
+		if view_type := mut_optional_param_view_type(typ) {
+			return view_type
+		}
 		semantic_type := mut_param_semantic_type(typ)
 		if semantic_type is Pointer {
 			if unalias_type(semantic_type.base_type) is Interface {
