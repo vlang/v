@@ -212,9 +212,13 @@ fn test_a_build_for_clang_cl_reaches_the_c_compiler_with_inline_asm() ! {
 	os.chmod(compiler, 0o755)!
 	source := os.join_path(root, 'main.v')
 	os.write_file(source, msvc_inline_asm_used_source)!
-	result := cmdexec.run(os.join_path(@VMODROOT, 'v'), ['-nocache', '-os', 'windows', '-arch',
-		'amd64', '-cc', compiler, '-o', os.join_path(root, 'main.exe'), source])
-	assert result.exit_code != 0
+	// Keep the deliberate C failure in this driver instead of retrying with a legacy compiler.
+	result := cmdexec.run_in_merged_with_env(os.join_path(@VMODROOT, 'v'), ['-nocache', '-os',
+		'windows', '-arch', 'amd64', '-cc', compiler, '-o', os.join_path(root, 'main.exe'), source],
+		'', {
+			'V_MACOS_V3_NO_FALLBACK': '1'
+		})
+	assert result.exit_code != 0, result.output
 	assert result.output.contains('CLANG_CL_REACHED'), result.output
 	assert !result.output.contains('inline assembly is not supported when the C compiler is MSVC'), result.output
 }
