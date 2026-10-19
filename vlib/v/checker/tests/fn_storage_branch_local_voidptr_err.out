@@ -1,0 +1,14 @@
+vlib/v/checker/tests/fn_storage_branch_local_voidptr_err.vv:10:4: error: cannot assign to field `callback`: expected `fn()`, not `voidptr`
+    8 |     if choice is int {
+    9 |         holder := CallbackHolder{
+   10 |             callback: if use_nil {
+      |             ~~~~~~~~~~~~~~~~~~~~~~
+   11 |                 unsafe { nil }
+   12 |             } else {
+vlib/v/checker/tests/fn_storage_branch_local_voidptr_err.vv:19:4: error: cannot assign to field `callback`: expected `fn()`, not `voidptr`
+   17 |         println(holder)
+   18 |         holder_match := CallbackHolder{
+   19 |             callback: match use_nil {
+      |             ~~~~~~~~~~~~~~~~~~~~~~~~~
+   20 |                 true { unsafe { nil } }
+   21 |                 false {

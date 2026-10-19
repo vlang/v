@@ -17,6 +17,7 @@ concurrency:
 jobs:
   deploy:
     runs-on: [self-hosted, macOS, gitly-ci]
+    timeout-minutes: 60
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

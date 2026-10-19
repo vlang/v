@@ -90,7 +90,7 @@ fn test_independent_numeric_const_initializer_rejects_type_annotation_dependenci
 	mut a := flat.FlatAst.new()
 	literal := a.add_node(flat.Node{ kind: .int_literal, value: '1', typ: flat.source_type_id('Number') })
 	assert !independent_numeric_const_initializer(&a, literal)
-	a.nodes[int(literal)].typ = flat.source_type_id('u64')
+	a.nodes[int(literal)].typ = flat.source_type_u64
 	assert independent_numeric_const_initializer(&a, literal)
 	children := a.begin_children()
 	a.add_child(literal)

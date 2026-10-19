@@ -31,7 +31,10 @@ fn vpm_install(query []string) {
 			// Case: `v install` was run in a directory of another V-module to install its dependencies
 			// - without additional module arguments.
 			println('Detected v.mod file inside the project directory. Using it...')
-			manifest := vmod.from_file('./v.mod') or { panic(err) }
+			manifest := vmod.from_file('./v.mod') or {
+				vpm_error('failed to read `./v.mod`', details: err.msg())
+				exit(1)
+			}
 			project_dependencies(manifest)
 		} else {
 			vpm_error('specify at least one module for installation.',
@@ -102,6 +105,48 @@ fn vpm_install(query []string) {
 		exit(1)
 	}
 	scope.finish()
+	suggest_fmt_hook()
+}
+
+// suggest_fmt_hook prints a one-line pointer to the pre-commit hook when the
+// current directory is a git repository holding V files without one installed.
+// Silent otherwise, so bulk installs stay quiet.
+fn suggest_fmt_hook() {
+	top := git_top_level(os.getwd()) or { return }
+	if os.exists(os.join_path(top, '.git', 'hooks', 'pre-commit')) {
+		return
+	}
+	if !dir_has_v_files(top) {
+		return
+	}
+	println('Tip: run `v git-fmt-hook install` to format V files automatically before every commit.')
+}
+
+// git_top_level climbs from `start` to the nearest directory holding `.git`.
+fn git_top_level(start string) ?string {
+	mut dir := os.abs_path(start)
+	for _ in 0 .. 255 {
+		if os.is_dir(os.join_path(dir, '.git')) {
+			return dir
+		}
+		parent := os.dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return none
+}
+
+// dir_has_v_files reports whether `dir` itself holds V source files. Only the
+// top level is listed: cheap, and enough to tell a V project from elsewhere.
+fn dir_has_v_files(dir string) bool {
+	for entry in os.ls(dir) or { return false } {
+		if entry.ends_with('.v') || entry.ends_with('.vsh') {
+			return true
+		}
+	}
+	return false
 }
 
 fn install_modules(modules []Module, selected_server_url string, mut scope LockScope) {

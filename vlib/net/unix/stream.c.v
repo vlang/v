@@ -166,9 +166,9 @@ pub fn (mut c StreamConn) read(mut buf []u8) !int {
 	return c.read_ptr(buf.data, buf.len)
 }
 
-// read_deadline returns the read deadline
+// read_deadline returns the current read deadline, or an error when it is unset.
 pub fn (mut c StreamConn) read_deadline() !time.Time {
-	if c.read_deadline.unix() == 0 {
+	if deadline_set(c.read_deadline) {
 		return c.read_deadline
 	}
 	return error('none')
@@ -179,9 +179,9 @@ pub fn (mut c StreamConn) set_read_deadline(deadline time.Time) {
 	c.read_deadline = deadline
 }
 
-// write_deadline returns the write deadline
+// write_deadline returns the current write deadline, or an error when it is unset.
 pub fn (mut c StreamConn) write_deadline() !time.Time {
-	if c.write_deadline.unix() == 0 {
+	if deadline_set(c.write_deadline) {
 		return c.write_deadline
 	}
 	return error('none')
@@ -313,9 +313,9 @@ pub fn (mut l StreamListener) accept() !&StreamConn {
 	return c
 }
 
-// accept_deadline returns the deadline until a new client is accepted
+// accept_deadline returns the current accept deadline, or an error when it is unset.
 pub fn (l &StreamListener) accept_deadline() !time.Time {
-	if l.accept_deadline.unix() != 0 {
+	if deadline_set(l.accept_deadline) {
 		return l.accept_deadline
 	}
 	return error('no deadline')
@@ -419,10 +419,10 @@ fn (mut s StreamSocket) set_option(level int, opt int, value int) ! {
 // set_option_bool sets a boolean option on the socket
 pub fn (mut s StreamSocket) set_option_bool(opt net.SocketOption, value bool) ! {
 	if opt !in net.opts_can_set {
-		return net.err_option_not_settable
+		return error_with_code(net.err_option_not_settable.msg(), net.err_option_not_settable.code())
 	}
 	if opt !in net.opts_bool {
-		return net.err_option_wrong_type
+		return error_with_code(net.err_option_wrong_type.msg(), net.err_option_wrong_type.code())
 	}
 	x := int(value)
 	s.set_option(C.SOL_SOCKET, int(opt), x)!
@@ -477,7 +477,7 @@ fn (mut s StreamSocket) connect(socket_path string) ! {
 					}
 					return
 				}
-				return net.err_timed_out
+				return error_with_code(net.err_timed_out.msg(), net.err_timed_out.code())
 			}
 		}
 		net.wrap_error(ecode)!

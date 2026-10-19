@@ -25,7 +25,7 @@ fn test_parse_canonical_builtin_type_ignores_registered_struct() {
 	mut tc := TypeChecker.new(&a)
 	tc.structs['string'] = []StructField{}
 
-	assert tc.parse_canonical_type(flat.source_type_id('string')) is String
+	assert tc.parse_canonical_type(flat.source_type_string) is String
 }
 
 fn test_parse_canonical_type_cached_does_not_reuse_typeof_across_scopes() {

@@ -339,10 +339,13 @@ fn C.GetModuleFileName(hModule voidptr, lpFilename &u16, nSize u32) u32
 
 fn C.GetModuleFileNameW(hModule voidptr, lpFilename &u16, nSize u32) u32
 
-fn C.CreateFile(lpFilename &u16, dwDesiredAccess u32, dwShareMode u32, lpSecurityAttributes &u16, dwCreationDisposition u32,
+// The security-attributes argument is the opaque `LPSECURITY_ATTRIBUTES` of the C
+// API, not a `u16` buffer: `vlib/os` spells it `voidptr` for the same reason, and
+// the two spellings must agree because a portable snapshot emits both side by side.
+fn C.CreateFile(lpFilename &u16, dwDesiredAccess u32, dwShareMode u32, lpSecurityAttributes voidptr, dwCreationDisposition u32,
 	dwFlagsAndAttributes u32, hTemplateFile voidptr) voidptr
 
-fn C.CreateFileW(lpFilename &u16, dwDesiredAccess u32, dwShareMode u32, lpSecurityAttributes &u16, dwCreationDisposition u32,
+fn C.CreateFileW(lpFilename &u16, dwDesiredAccess u32, dwShareMode u32, lpSecurityAttributes voidptr, dwCreationDisposition u32,
 	dwFlagsAndAttributes u32, hTemplateFile voidptr) voidptr
 
 $if windows {
@@ -372,7 +375,7 @@ fn C.CreateProcessW(lpApplicationName &u16, lpCommandLine &u16, lpProcessAttribu
 	bInheritHandles bool, dwCreationFlags u32, lpEnvironment voidptr, lpCurrentDirectory &u16, lpStartupInfo voidptr,
 	lpProcessInformation voidptr) bool
 
-fn C.ReadFile(hFile voidptr, lpBuffer voidptr, nNumberOfBytesToRead u32, lpNumberOfBytesRead &u32, lpOverlapped voidptr) bool
+fn C.ReadFile(hFile voidptr, lpBuffer voidptr, nNumberOfBytesToRead C.DWORD, lpNumberOfBytesRead &C.DWORD, lpOverlapped voidptr) bool
 
 fn C.GetFileAttributesW(const_lpFileName &u16) u32
 
@@ -398,7 +401,7 @@ fn C.GetStdHandle(u32) voidptr
 
 fn C.SetConsoleMode(voidptr, u32) bool
 
-fn C.GetConsoleMode(voidptr, &u32) bool
+fn C.GetConsoleMode(voidptr, &C.DWORD) bool
 
 // fn C.setbuf()
 fn C.setbuf(voidptr, &char)
@@ -439,7 +442,7 @@ fn C.ReadConsole(in_input_handle voidptr, out_buffer voidptr, in_chars_to_read u
 
 fn C.WriteConsole() voidptr
 
-fn C.WriteFile(hFile voidptr, lpBuffer &u8, nNumberOfBytesToWrite u32, lpNumberOfBytesWritten &u32, lpOverlapped voidptr) bool
+fn C.WriteFile(hFile voidptr, lpBuffer &u8, nNumberOfBytesToWrite C.DWORD, lpNumberOfBytesWritten &C.DWORD, lpOverlapped voidptr) bool
 
 fn C._wchdir(dirname &u16) i32
 
@@ -525,8 +528,13 @@ $if windows {
 }
 
 // pthread.h
-@[markused]
-fn C.pthread_self() usize
+$if macos {
+	@[markused]
+	fn C.pthread_self() voidptr
+} $else {
+	@[markused]
+	fn C.pthread_self() usize
+}
 
 @[markused]
 fn C.pthread_create(thread voidptr, attr voidptr, start_routine voidptr, arg voidptr) i32

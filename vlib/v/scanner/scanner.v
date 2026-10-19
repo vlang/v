@@ -435,15 +435,20 @@ pub fn (mut s Scanner) scan() token.Token {
 			s.offset++
 			return .attribute
 		}
-		for s.offset < s.src.len {
-			c3 := s.src[s.offset]
+		// Scan the name in locals: a store to the offset field per byte cannot
+		// be kept out of the loop, since the source bytes could alias it.
+		src := s.src
+		mut off := s.offset
+		for off < src.len {
+			c3 := src[off]
 			if (c3 >= `a` && c3 <= `z`) || (c3 >= `A` && c3 <= `Z`)
 				|| (c3 >= `0` && c3 <= `9`) || c3 == `_` {
-				s.offset++
+				off++
 				continue
 			}
 			break
 		}
+		s.offset = off
 		s.lit = s.source_lit(s.pos, s.offset)
 		if s.lit == 'c' && s.offset < s.src.len
 			&& (s.src[s.offset] == `'` || s.src[s.offset] == `"`) {
@@ -484,6 +489,13 @@ pub fn (mut s Scanner) scan() token.Token {
 			return .string
 		}
 		tok := token.Token.from_string_tinyv(s.lit)
+		// FastC reads tokens without a parser, so it receives an escaped keyword
+		// (`@type`, `@none`) as the plain identifier it names; `@FILE` and the other
+		// compile-time values are not keywords and keep their `@`.
+		if c == `@` && tok == .name && s.lit.len > 1 && !isnil(s.pref) && s.pref.backend == 'fastc'
+			&& token.Token.from_string_tinyv(s.lit[1..]).is_keyword() {
+			s.lit = s.lit[1..]
+		}
 		if tok in [.key_break, .key_continue, .key_nil, .key_none, .key_return, .key_false, .key_true,
 			.name]
 			|| (follows_dot && tok.is_keyword()) {
@@ -770,30 +782,36 @@ pub fn (mut s Scanner) scan() token.Token {
 
 @[direct_array_access]
 fn (mut s Scanner) whitespace() {
-	for s.offset < s.src.len {
-		c := s.src[s.offset]
+	src := s.src
+	mut off := s.offset
+	for off < src.len {
+		c := src[off]
 		if c == ` ` || c == `\t` || c == `\r` {
-			s.offset++
+			off++
 			continue
 		} else if c == `\n` {
 			if s.insert_semi {
-				return
+				break
 			}
-			s.offset++
+			off++
 			continue
 		}
 		break
 	}
+	s.offset = off
 }
 
 @[direct_array_access]
 fn (mut s Scanner) line() {
-	for s.offset < s.src.len {
-		if s.src[s.offset] == `\n` {
+	src := s.src
+	mut off := s.offset
+	for off < src.len {
+		if src[off] == `\n` {
 			break
 		}
-		s.offset++
+		off++
 	}
+	s.offset = off
 }
 
 @[direct_array_access]
@@ -860,6 +878,23 @@ fn (mut s Scanner) string_literal(scan_as_raw bool, c_quote u8) {
 		return
 	}
 	for s.offset < s.src.len {
+		if !s.skip_interpolation || !s.in_str_inter {
+			// Only escapes, interpolations and the closing quote end a run of
+			// literal bytes here; skip such a run in locals.
+			src := s.src
+			mut off := s.offset
+			for off < src.len {
+				b := src[off]
+				if b == `\\` || b == `$` || b == c_quote {
+					break
+				}
+				off++
+			}
+			s.offset = off
+			if off >= src.len {
+				break
+			}
+		}
 		c := s.src[s.offset]
 		if c == `\\` {
 			if s.offset + 1 >= s.src.len {

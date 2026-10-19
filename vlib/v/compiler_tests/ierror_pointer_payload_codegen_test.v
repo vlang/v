@@ -16,7 +16,10 @@ fn build_v3() string {
 }
 
 fn c_fn_body(c_code string, header string) string {
-	start := c_code.index(header) or { return '' }
+	start := c_code.index(header) or {
+		assert false, 'missing C function `${header}`'
+		return ''
+	}
 	tail := c_code[start..]
 	end := tail.index('\n}\n') or { return tail }
 	return tail[..end + 3]
@@ -170,13 +173,15 @@ fn maybe_ptr(stable &Holder) ?&PtrErr {
 }
 
 fn guard_shadow_stable(stable &Holder) !int {
-	holder := Holder{
-		err: PtrErr{
-			text: 'guard shadow stack field'
+	{
+		holder := Holder{
+			err: PtrErr{
+				text: 'guard shadow stack field'
+			}
 		}
+		p := &holder.err
+		assert p.msg() == 'guard shadow stack field'
 	}
-	p := &holder.err
-	assert p.msg() == 'guard shadow stack field'
 	if p := maybe_ptr(stable) {
 		return p
 	}
@@ -220,8 +225,7 @@ fn for_in_stack_field() !int {
 }
 
 fn shadow_stable_outer(stable &Holder) !int {
-	p := &stable.err
-	if true {
+	{
 		holder := Holder{
 			err: PtrErr{
 				text: 'shadow stack field'
@@ -230,6 +234,7 @@ fn shadow_stable_outer(stable &Holder) !int {
 		p := &holder.err
 		assert p.msg() == 'shadow stack field'
 	}
+	p := &stable.err
 	return p
 }
 
@@ -411,12 +416,14 @@ fn main() {
 	assert run.output.trim_space() == 'ok'
 
 	c_code := os.read_file(bin + '.c') or { panic(err) }
-	local_body := c_fn_body(c_code, '__v_result local_ptr(void) {')
+	// `!int` returns a `__v_result_i64`: results are typed by payload, and V `int`
+	// is `i64` on 64-bit targets.
+	local_body := c_fn_body(c_code, '__v_result_i64 local_ptr(void) {')
 	assert local_body.contains('._object = memdup('), local_body
 	assert local_body.contains('sizeof(main__PtrErr)'), local_body
 	assert !local_body.contains('._object = &err'), local_body
 
-	alias_local_body := c_fn_body(c_code, '__v_result alias_local_ptr(void) {')
+	alias_local_body := c_fn_body(c_code, '__v_result_i64 alias_local_ptr(void) {')
 	assert alias_local_body.contains('main__PtrErr* err = (main__PtrErr*)memdup('), alias_local_body
 	assert alias_local_body.contains('main__PtrErr* p = err;'), alias_local_body
 	assert alias_local_body.contains('sizeof(main__PtrErr)'), alias_local_body
@@ -427,37 +434,37 @@ fn main() {
 	assert direct_body.contains('sizeof(main__PtrErr)'), direct_body
 	assert !direct_body.contains('._object = &err'), direct_body
 
-	param_body := c_fn_body(c_code, '__v_result from_param(main__PtrErr err) {')
+	param_body := c_fn_body(c_code, '__v_result_i64 from_param(main__PtrErr err) {')
 	assert param_body.contains('._object = memdup('), param_body
 	assert param_body.contains('sizeof(main__PtrErr)'), param_body
 	assert !param_body.contains('._object = &err'), param_body
 
-	local_field_body := c_fn_body(c_code, '__v_result local_field(void) {')
+	local_field_body := c_fn_body(c_code, '__v_result_i64 local_field(void) {')
 	assert local_field_body.contains('._object = memdup('), local_field_body
 	assert local_field_body.contains('sizeof(main__PtrErr)'), local_field_body
 	assert !local_field_body.contains('._object = &holder.err'), local_field_body
 
-	param_field_body := c_fn_body(c_code, '__v_result from_param_field(main__Holder holder) {')
+	param_field_body := c_fn_body(c_code, '__v_result_i64 from_param_field(main__Holder holder) {')
 	assert param_field_body.contains('._object = memdup('), param_field_body
 	assert param_field_body.contains('sizeof(main__PtrErr)'), param_field_body
 	assert !param_field_body.contains('._object = &holder.err'), param_field_body
 
-	alias_field_body := c_fn_body(c_code, '__v_result alias_local_field(void) {')
+	alias_field_body := c_fn_body(c_code, '__v_result_i64 alias_local_field(void) {')
 	assert alias_field_body.contains('._object = memdup('), alias_field_body
 	assert alias_field_body.contains('sizeof(main__PtrErr)'), alias_field_body
 	assert !alias_field_body.contains('._object = p'), alias_field_body
 
-	alias_chain_body := c_fn_body(c_code, '__v_result alias_chain_local_field(void) {')
+	alias_chain_body := c_fn_body(c_code, '__v_result_i64 alias_chain_local_field(void) {')
 	assert alias_chain_body.contains('._object = memdup('), alias_chain_body
 	assert alias_chain_body.contains('sizeof(main__PtrErr)'), alias_chain_body
 	assert !alias_chain_body.contains('._object = q'), alias_chain_body
 
-	paren_alias_body := c_fn_body(c_code, '__v_result paren_alias_local_field(void) {')
+	paren_alias_body := c_fn_body(c_code, '__v_result_i64 paren_alias_local_field(void) {')
 	assert paren_alias_body.contains('._object = memdup('), paren_alias_body
 	assert paren_alias_body.contains('sizeof(main__PtrErr)'), paren_alias_body
 	assert !paren_alias_body.contains('._object = p'), paren_alias_body
 
-	cast_alias_body := c_fn_body(c_code, '__v_result cast_alias_local_field(void) {')
+	cast_alias_body := c_fn_body(c_code, '__v_result_i64 cast_alias_local_field(void) {')
 	assert cast_alias_body.contains('._object = memdup('), cast_alias_body
 	assert cast_alias_body.contains('sizeof(main__PtrErr)'), cast_alias_body
 	assert !cast_alias_body.contains('._object = p'), cast_alias_body
@@ -468,58 +475,58 @@ fn main() {
 	assert !direct_alias_field_body.contains('._object = p'), direct_alias_field_body
 
 	pointer_param_field_body := c_fn_body(c_code,
-		'__v_result from_pointer_param_field(main__Holder* holder) {')
+		'__v_result_i64 from_pointer_param_field(main__Holder* holder) {')
 	assert !pointer_param_field_body.contains('._object = memdup('), pointer_param_field_body
 
 	alias_pointer_param_field_body := c_fn_body(c_code,
-		'__v_result alias_pointer_param_field(main__Holder* holder) {')
+		'__v_result_i64 alias_pointer_param_field(main__Holder* holder) {')
 	assert !alias_pointer_param_field_body.contains('._object = memdup('), alias_pointer_param_field_body
 
-	alias_after_range_body := c_fn_body(c_code, '__v_result alias_after_range_for_in(int limit) {')
+	alias_after_range_body := c_fn_body(c_code, '__v_result_i64 alias_after_range_for_in(i64 limit) {')
 	alias_after_range_body_compact := c_compact(alias_after_range_body)
 	assert alias_after_range_body.contains('._object = memdup('), alias_after_range_body
 	assert alias_after_range_body.contains('sizeof(main__PtrErr)'), alias_after_range_body
 	assert !alias_after_range_body_compact.contains('._object=p'), alias_after_range_body
 
 	reassign_stable_to_stack_body := c_fn_body(c_code,
-		'__v_result reassign_stable_to_stack(main__Holder* stable) {')
+		'__v_result_i64 reassign_stable_to_stack(main__Holder* stable) {')
 	assert reassign_stable_to_stack_body.contains('._object = memdup('), reassign_stable_to_stack_body
 	assert reassign_stable_to_stack_body.contains('sizeof(main__PtrErr)'), reassign_stable_to_stack_body
 	assert !reassign_stable_to_stack_body.contains('._object = p'), reassign_stable_to_stack_body
 
 	reassign_stack_to_stable_body := c_fn_body(c_code,
-		'__v_result reassign_stack_to_stable(main__Holder* stable) {')
+		'__v_result_i64 reassign_stack_to_stable(main__Holder* stable) {')
 	assert !reassign_stack_to_stable_body.contains('._object = memdup('), reassign_stack_to_stable_body
 
 	conditional_stack_to_stable_body := c_fn_body(c_code,
-		'__v_result conditional_stack_to_stable(bool cond, main__Holder* stable) {')
+		'__v_result_i64 conditional_stack_to_stable(bool cond, main__Holder* stable) {')
 	assert conditional_stack_to_stable_body.contains('._object = memdup('), conditional_stack_to_stable_body
 	assert conditional_stack_to_stable_body.contains('sizeof(main__PtrErr)'), conditional_stack_to_stable_body
 	assert !conditional_stack_to_stable_body.contains('._object = p'), conditional_stack_to_stable_body
 
 	conditional_stable_to_stack_body := c_fn_body(c_code,
-		'__v_result conditional_stable_to_stack(bool cond, main__Holder* stable) {')
+		'__v_result_i64 conditional_stable_to_stack(bool cond, main__Holder* stable) {')
 	assert conditional_stable_to_stack_body.contains('._object = memdup('), conditional_stable_to_stack_body
 	assert conditional_stable_to_stack_body.contains('sizeof(main__PtrErr)'), conditional_stable_to_stack_body
 	assert !conditional_stable_to_stack_body.contains('._object = p'), conditional_stable_to_stack_body
 
 	guard_shadow_stable_body := c_fn_body(c_code,
-		'__v_result guard_shadow_stable(main__Holder* stable) {')
+		'__v_result_i64 guard_shadow_stable(main__Holder* stable) {')
 	assert !guard_shadow_stable_body.contains('._object = memdup('), guard_shadow_stable_body
 
 	for_in_shadow_stable_body := c_fn_body(c_code,
-		'__v_result for_in_shadow_stable(main__Holder* stable) {')
+		'__v_result_i64 for_in_shadow_stable(main__Holder* stable) {')
 	for_in_shadow_stable_loop_return := c_first_loop_return(for_in_shadow_stable_body)
 	assert !for_in_shadow_stable_loop_return.contains('._object = memdup('), for_in_shadow_stable_loop_return
 
-	for_in_stack_direct_body := c_fn_body(c_code, '__v_result for_in_stack_direct(void) {')
+	for_in_stack_direct_body := c_fn_body(c_code, '__v_result_i64 for_in_stack_direct(void) {')
 	for_in_stack_direct_loop_return := c_first_loop_return(for_in_stack_direct_body)
 	for_in_stack_direct_loop_return_compact := c_compact(for_in_stack_direct_loop_return)
 	assert for_in_stack_direct_loop_return.contains('._object = memdup('), for_in_stack_direct_loop_return
 	assert for_in_stack_direct_loop_return.contains('sizeof(main__PtrErr)'), for_in_stack_direct_loop_return
 	assert !for_in_stack_direct_loop_return_compact.contains('._object=p'), for_in_stack_direct_loop_return
 
-	for_in_stack_field_body := c_fn_body(c_code, '__v_result for_in_stack_field(void) {')
+	for_in_stack_field_body := c_fn_body(c_code, '__v_result_i64 for_in_stack_field(void) {')
 	for_in_stack_field_loop_return := c_first_loop_return(for_in_stack_field_body)
 	for_in_stack_field_loop_return_compact := c_compact(for_in_stack_field_loop_return)
 	assert for_in_stack_field_loop_return.contains('._object = memdup('), for_in_stack_field_loop_return
@@ -527,6 +534,6 @@ fn main() {
 	assert !for_in_stack_field_loop_return_compact.contains('._object=p'), for_in_stack_field_loop_return
 
 	shadow_stable_outer_body := c_fn_body(c_code,
-		'__v_result shadow_stable_outer(main__Holder* stable) {')
+		'__v_result_i64 shadow_stable_outer(main__Holder* stable) {')
 	assert !shadow_stable_outer_body.contains('._object = memdup('), shadow_stable_outer_body
 }

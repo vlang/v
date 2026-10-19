@@ -71,3 +71,60 @@ fn test_const_mut_receiver_is_immutable() {
 	}))
 	assert !tc.mut_receiver_expr_is_mutable_lvalue(value_id)
 }
+
+fn test_mut_param_value_wrappers_preserve_tail_and_binding_identity() {
+	mut a := flat.FlatAst.new()
+	receiver_id := a.add_val(.ident, 'receiver')
+	side_effect_id := a.add_val(.ident, 'other')
+	mut wrapped_id := receiver_id
+	for kind in [flat.NodeKind.paren, .expr_stmt, .block, .paren, .expr_stmt, .block] {
+		start := a.begin_children()
+		if kind == .block {
+			a.add_child(side_effect_id)
+		}
+		a.add_child(wrapped_id)
+		wrapped_id = a.add_node(flat.Node{
+			kind:           kind
+			children_start: start
+			children_count: if kind == .block { 2 } else { 1 }
+		})
+	}
+	mut empty_tail_ids := []flat.NodeId{}
+	for kind in [flat.NodeKind.block, .expr_stmt, .paren] {
+		empty_id := a.add(kind)
+		start := a.begin_children()
+		a.add_child(receiver_id)
+		a.add_child(empty_id)
+		empty_tail_ids << a.add_node(flat.Node{
+			kind:           .block
+			children_start: start
+			children_count: 2
+		})
+	}
+	start := a.begin_children()
+	a.add_child(wrapped_id)
+	cast_id := a.add_node(flat.Node{
+		kind:           .cast_expr
+		value:          'int'
+		children_start: start
+		children_count: 1
+	})
+	base := Type(Struct{ name_id: flat.source_type_id('Receiver') })
+	raw := Type(Pointer{ base_type: base })
+	mut tc := TypeChecker.new(&a)
+	tc.cur_scope = new_scope(tc.file_scope)
+	owner := tc.cur_scope.insert_with_owner('receiver', raw)
+	tc.fn_context.node_id = int(receiver_id)
+	tc.fn_context.mut_param_base_types['receiver'] = base
+	tc.fn_context.mut_param_owners['receiver'] = owner
+	assert tc.mut_param_expr_base(wrapped_id, raw) or { panic('missing wrapped receiver') } == base
+	assert tc.mut_param_expr_base(cast_id, raw) == none
+	for id in empty_tail_ids {
+		assert tc.mut_param_expr_base(id, raw) == none
+	}
+	assert tc.mut_param_expr_base(flat.empty_node, raw) == none
+	assert tc.mut_param_expr_base(flat.NodeId(a.nodes.len), raw) == none
+	tc.cur_scope = new_scope(tc.cur_scope)
+	tc.cur_scope.insert('receiver', raw)
+	assert tc.mut_param_expr_base(wrapped_id, raw) == none
+}

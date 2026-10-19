@@ -1,0 +1,36 @@
+struct Foo {
+	a int
+}
+
+struct Bar {
+	b string
+}
+
+type Rows = [][]u8
+
+fn takes_bars(bars []Bar) int {
+	return bars.len
+}
+
+fn main() {
+	// the first element against the element type of the context
+	bars := []Bar([Foo{1}])
+	println(bars)
+	mut more := []Bar{}
+	more = [Foo{2}]
+	println(more)
+	println(takes_bars([Foo{3}, Bar{'x'}]))
+	// integer literals whose bits do not fit the element type, also in nested literals
+	rows := Rows([[1, 300]])
+	println(rows)
+	nested := [][]u8([[u8(1), 2], [3, 256]])
+	println(nested)
+	bytes := []u8([1, 300])
+	println(bytes)
+	inferred := [u8(1), -129]
+	println(inferred)
+	small := []i8([-129, 127, 128, 256])
+	println(small)
+	fits := []u8([0, 255])
+	println(fits)
+}

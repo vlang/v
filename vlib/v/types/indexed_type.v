@@ -82,7 +82,7 @@ pub fn (tc &TypeChecker) type_by_id(id TypeId) ?Type {
 
 // type_name_by_id returns the source spelling ID of an interned semantic type.
 pub fn (tc &TypeChecker) type_name_by_id(id TypeId) u32 {
-	if isnil(tc.type_interner) { return flat.source_type_id('unknown') }
+	if isnil(tc.type_interner) { return flat.source_type_unknown }
 	if isnil(tc.type_cache) {
 		mut interner := unsafe { tc.type_interner }
 		return interner.source_type_id(id)
@@ -93,7 +93,7 @@ pub fn (tc &TypeChecker) type_name_by_id(id TypeId) u32 {
 	mut interner := unsafe { tc.type_interner }
 	name := interner.source_type_id(id)
 	// Invalid IDs may become valid after growth; don't retain their placeholder.
-	if name != flat.source_type_id('unknown') {
+	if name != flat.source_type_unknown {
 		cache.name_ids[slot] = id
 		cache.names[slot] = name
 		cache.name_set[slot] = true

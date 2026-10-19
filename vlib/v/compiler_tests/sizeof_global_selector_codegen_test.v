@@ -88,18 +88,18 @@ fn test_sizeof_selector_qualifies_global_without_rewriting_locals_or_types() {
 	v3_bin := sizeof_global_build_v3()
 	root := sizeof_global_write_project()
 	c_path := os.join_path(root, 'out.c')
-	compile := os.exec([v3_bin, root, '-b', 'c', '-o', c_path])
+	compile := os.exec([v3_bin, '-enable-globals', root, '-b', 'c', '-o', c_path])
 	assert compile.exit_code == 0, compile.output
 
 	c_code := os.read_file(c_path) or { panic(err) }
 	compact := c_code.replace('\t', '').replace(' ', '').replace('\n', '')
-	assert compact.contains('intmain_size(void){return(int)(sizeof(global_sizeof_state.event));}'), c_code
+	assert compact.contains('i64main_size(void){return(i64)(sizeof(global_sizeof_state.event));}'), c_code
 
 	assert compact.contains('sizeof(moda__global_sizeof_state.event)'), c_code
-	assert compact.contains('intmoda__global_field_size(void){return(int)(sizeof(moda__global_sizeof_state.event));}'), c_code
+	assert compact.contains('i64moda__global_field_size(void){return(i64)(sizeof(moda__global_sizeof_state.event));}'), c_code
 
 	assert compact.contains('sizeof(local_sizeof_state.event)'), c_code
-	assert compact.contains('moda__Statelocal_sizeof_state=(moda__State){.event=3};return(int)(sizeof(local_sizeof_state.event));'), c_code
+	assert compact.contains('moda__Statelocal_sizeof_state=(moda__State){.event=3};return(i64)(sizeof(local_sizeof_state.event));'), c_code
 
 	assert compact.count('sizeof(local_sizeof_state.event)') == 1, c_code
 	assert compact.contains('sizeof(main__State)'), c_code

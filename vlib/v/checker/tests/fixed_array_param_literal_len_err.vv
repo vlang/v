@@ -1,0 +1,9 @@
+fn take4(a [4]int) int {
+	return a[0] + a[3]
+}
+
+fn main() {
+	println(take4([1, 2, 3, 4]))
+	println(take4([1, 2]))
+	println(take4([1, 2, 3, 4, 5]))
+}
