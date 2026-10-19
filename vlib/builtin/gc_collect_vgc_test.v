@@ -148,3 +148,32 @@ fn test_free_slots_of_partly_used_spans_are_reused() {
 		assert kept.len == 80
 	}
 }
+
+fn test_gc_collect_frees_garbage() {
+	$if vgc ? {
+		gc_collect()
+		cycles := vgc_heap.gc_cycle
+		live := C.vgc_atomic_load_u64(&vgc_heap.heap_live)
+		vgc_test_churn(20000)
+		with_garbage := C.vgc_atomic_load_u64(&vgc_heap.heap_live)
+		assert with_garbage > live + 4 * 1024 * 1024
+		gc_collect()
+		assert vgc_heap.gc_cycle == cycles + 1
+		assert C.vgc_atomic_load_u64(&vgc_heap.heap_live) < live + 1024 * 1024
+	}
+}
+
+fn test_gc_collect_does_nothing_while_the_gc_is_disabled() {
+	$if vgc ? {
+		assert gc_is_enabled()
+		gc_disable()
+		assert !gc_is_enabled()
+		cycles := vgc_heap.gc_cycle
+		gc_collect()
+		assert vgc_heap.gc_cycle == cycles
+		gc_enable()
+		assert gc_is_enabled()
+		gc_collect()
+		assert vgc_heap.gc_cycle == cycles + 1
+	}
+}

@@ -29,6 +29,32 @@ fn vgc_gc_start() {
 	C.vgc_mutex_unlock(&vgc_heap.cache_lock)
 }
 
+// vgc_collect runs a full collection now (gc_collect()), unless the collector is disabled.
+// When another thread is collecting already, it waits for that collection instead.
+fn vgc_collect() {
+	if C.vgc_atomic_load_u32(&vgc_heap.gc_enabled) == 0 {
+		return
+	}
+	vgc_ensure_registered()
+	if C.vgc_atomic_load_u32(&vgc_heap.gc_stop_flag) != 0 {
+		vgc_safepoint()
+	}
+	vgc_gc_start()
+	if C.vgc_atomic_load_u32(&vgc_heap.gc_stop_flag) != 0 {
+		vgc_safepoint()
+	}
+}
+
+// vgc_enable turns the automatic and the explicit collections on or off (gc_enable() and
+// gc_disable()).
+fn vgc_enable(on bool) {
+	C.vgc_atomic_store_u32(&vgc_heap.gc_enabled, if on { u32(1) } else { u32(0) })
+}
+
+fn vgc_is_enabled() bool {
+	return C.vgc_atomic_load_u32(&vgc_heap.gc_enabled) != 0
+}
+
 fn vgc_gc_run(_ voidptr) {
 	// === Phase 1: Sweep Termination (STW) ===
 	// Ensure any previous sweep is complete
