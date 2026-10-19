@@ -430,15 +430,46 @@ fn vgc_write_barrier(new_val voidptr) {
 
 // Sweep all spans synchronously.
 fn vgc_do_sweep() {
+	// The sweep files every span again, by the free slots it leaves in it: a span that a
+	// thread filled becomes partial when some of its objects are garbage, and its slots are
+	// reused instead of a new span.
+	for span_class in 0 .. vgc_num_span_classes {
+		central := unsafe { &vgc_heap.central[span_class] }
+		C.vgc_mutex_lock(&central.lock)
+		unsafe {
+			vgc_heap.central[span_class].partial = nil
+			vgc_heap.central[span_class].full = nil
+		}
+		C.vgc_mutex_unlock(&central.lock)
+	}
 	for i in 0 .. vgc_heap.nspans {
 		span := unsafe { vgc_heap.allspans[i] }
-		// A thread allocates from a cached span; it is swept after the thread gives it back.
-		if span == unsafe { nil } || !span.in_use || span.cached_by != 0 {
-			continue
+		if span != unsafe { nil } {
+			vgc_sweep_and_file_span(span)
 		}
-		vgc_sweep_span(span)
 	}
 	C.vgc_atomic_store_u32(&vgc_heap.sweep_done, 1)
+}
+
+// vgc_sweep_and_file_span sweeps a span that no thread allocates from, and puts it on the
+// free list when it is empty, or on its central list.
+fn vgc_sweep_and_file_span(span &VGC_Span) {
+	span_class := int(span.class_idx) * 2 + if span.noscan { 1 } else { 0 }
+	central := unsafe { &vgc_heap.central[span_class] }
+	C.vgc_mutex_lock(&central.lock)
+	// A thread allocates from a cached span; it is swept after the thread gives it back. A
+	// span that a thread gave back during this sweep is on a list already.
+	if !span.in_use || span.cached_by != 0 || span.sweep_gen == vgc_heap.sweep_gen {
+		C.vgc_mutex_unlock(&central.lock)
+		return
+	}
+	mut mspan := unsafe { &VGC_Span(span) }
+	mspan.sweep_gen = vgc_heap.sweep_gen
+	vgc_sweep_span(span)
+	if span.in_use && span.class_idx > 0 {
+		vgc_central_file_span(span_class, mut mspan)
+	}
+	C.vgc_mutex_unlock(&central.lock)
 }
 
 // Sweep a single span: free unmarked objects.
@@ -496,8 +527,8 @@ fn vgc_sweep_finish() {
 			idx := vgc_heap.sweep_idx
 			vgc_heap.sweep_idx = idx + 1
 			span := unsafe { vgc_heap.allspans[idx] }
-			if span != unsafe { nil } && span.in_use && span.cached_by == 0 {
-				vgc_sweep_span(span)
+			if span != unsafe { nil } {
+				vgc_sweep_and_file_span(span)
 			}
 		}
 		C.vgc_atomic_store_u32(&vgc_heap.sweep_done, 1)

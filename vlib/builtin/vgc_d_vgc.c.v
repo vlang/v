@@ -692,7 +692,15 @@ fn vgc_central_return_span(span_class int, mut span VGC_Span) {
 	central := unsafe { &vgc_heap.central[span_class] }
 	C.vgc_mutex_lock(&central.lock)
 	span.cached_by = 0
+	// A sweep that runs now must not file the span a second time.
+	span.sweep_gen = vgc_heap.sweep_gen
+	vgc_central_file_span(span_class, mut span)
+	C.vgc_mutex_unlock(&central.lock)
+}
 
+// vgc_central_file_span puts a span that no thread allocates from on the partial or the full
+// list of its class. The caller holds the central lock.
+fn vgc_central_file_span(span_class int, mut span VGC_Span) {
 	if span.alloc_count < span.nelems {
 		// Has free objects - add to partial
 		unsafe {
@@ -722,8 +730,6 @@ fn vgc_central_return_span(span_class int, mut span VGC_Span) {
 			vgc_heap.central[span_class].full = span
 		}
 	}
-
-	C.vgc_mutex_unlock(&central.lock)
 }
 
 // ============================================================

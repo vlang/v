@@ -125,3 +125,26 @@ fn test_threads_allocate_while_another_thread_collects() {
 		}
 	}
 }
+
+fn test_free_slots_of_partly_used_spans_are_reused() {
+	$if vgc ? {
+		// 1500 bytes: five objects per span, a size class that nothing else uses.
+		mut kept := []voidptr{cap: 80}
+		for i in 0 .. 400 {
+			p := vgc_malloc_noscan(1500)
+			if i % 5 == 0 {
+				kept << p
+			}
+		}
+		mut again := []voidptr{cap: 300}
+		vgc_gc_start()
+		in_use, _, _, _, _ := vgc_heap_usage()
+		// 320 slots are free in the 80 spans that hold the kept objects.
+		for _ in 0 .. 300 {
+			again << vgc_malloc_noscan(1500)
+		}
+		in_use_after, _, _, _, _ := vgc_heap_usage()
+		assert in_use_after == in_use
+		assert kept.len == 80
+	}
+}
