@@ -4140,6 +4140,9 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 			g.fixed_array_typedefs()
 			g.optional_typedefs()
 			g.forward_decls()
+			g.cached_header_forward_decls()
+			g.fixed_array_map_key_forward_decls()
+			g.fixed_array_map_key_definitions()
 		}
 		g.gen_ownership_recursive_drop_helpers()
 		if g.incremental_fn_names.len > 0 {

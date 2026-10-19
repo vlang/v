@@ -290,7 +290,8 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		&& is_trivial_literal_output_program(a, tc.diagnostic_files)
 	// An exact literal-output program has no user expressions or declarations that
 	// can instantiate a generic. Skip generic indexes and per-node generic checks,
-	// just as the known non-generic self-host path does.
+	// just as the known non-generic self-host path does. A mark-all build also emits
+	// library bodies, whose generic calls still need specialization.
 	detect_reachable_generics := detect_generics && !trivial_literal_output
 	// Full-runtime fixtures, tests, module caches, and self-host builds retain the
 	// conservative whole-program scan. Ordinary builds discover expression helpers

@@ -3,6 +3,79 @@ module driver
 import os
 import v.pref
 
+fn test_cached_module_closure_dependencies_outlive_prepare_scope() {
+	mut state := V3ModuleCacheState{
+		module_sources: {
+			'closure': ['/vlib/builtin/closure/closure.v']
+		}
+		headers:        {
+			'closure': 'module closure\nfn closure_data()\n'
+		}
+	}
+	for i in 0 .. 64 {
+		name := 'module_${i}'
+		state.module_sources[name] = ['/vlib/${name}/module.v']
+		state.headers[name] = 'module ${name}\nfn value()\n'
+	}
+	scope := prealloc_scope_begin_for_v3()
+	mut bodies := map[string]string{}
+	for i in 0 .. 64 {
+		bodies['module_${i}'] = 'void value() { closure__closure_data(); }'
+	}
+	cache_record_closure_dependencies(bodies, '', scope, mut state)
+	$if prealloc {
+		for i in 0 .. 64 {
+			name := 'module_${i}'
+			header := state.headers[name]
+			dependencies := state.module_dependencies[name]
+			assert !unsafe { prealloc_scope_owns(scope, header.str) }, name
+			assert !unsafe { prealloc_scope_owns(scope, dependencies.data) }, name
+		}
+	}
+	prealloc_scope_leave_for_v3(scope)
+	prealloc_scope_free_for_v3(scope)
+	// The preparation arena has gone away, including temporary module names and
+	// the storage that growing dependency maps and arrays would allocate there.
+	for i in 0 .. 64 {
+		name := 'module_${i}'
+		assert state.headers[name].contains('import builtin.closure as ${closure_runtime_import_alias}')
+		assert state.module_dependencies[name] == ['closure']
+	}
+}
+
+fn test_cached_module_preserves_generated_closure_dependencies() {
+	mut state := V3ModuleCacheState{
+		module_sources: {
+			'os':      ['/vlib/os/os.v']
+			'closure': ['/vlib/builtin/closure/closure.v']
+			'other':   ['/vlib/other/other.v']
+		}
+		headers:        {
+			'os':      'module os\nfn execvp()\n'
+			'closure': 'module closure\nfn closure_try_destroy()\n'
+			'other':   'module other\nfn unrelated()\n'
+		}
+	}
+	cache_record_closure_dependencies({
+		'os':      'void os__execvp() { closure__closure_try_destroy(value); }'
+		'closure': 'void closure__closure_try_destroy() {}'
+		'other':   'void other__unrelated() { puts("closure__fake"); /* closure__unused */ }'
+	}, '', unsafe { nil }, mut state)
+	assert state.headers['os'].contains('import builtin.closure as ${closure_runtime_import_alias}')
+	assert cache_dependency_modules(&state, ['os']) == ['closure']
+	assert !state.headers['closure'].contains('import builtin.closure')
+	assert !state.headers['other'].contains('import builtin.closure')
+	first_header := state.headers['os']
+	cache_record_closure_dependencies({
+		'os': 'void os__execvp() { closure__closure_try_destroy(value); }'
+	}, '', unsafe { nil }, mut state)
+	assert state.headers['os'] == first_header
+	cache_record_closure_dependencies({
+		'other': 'void other__use() { kept_wrapper(); }'
+	}, '${v3_program_wrappers_begin}\nstatic void kept_wrapper(void) { closure__closure_data(); }\nstatic void unused_wrapper(void) { missing(); }\n${v3_program_wrappers_end}\n', unsafe { nil }, mut state)
+	assert cache_dependency_modules(&state, ['other']) == ['closure']
+}
+
 fn test_module_cache_compiler_identity_changes_when_executable_changes() {
 	root := os.join_path(os.vtmp_dir(), 'v3_cache_vexe_identity_${os.getpid()}')
 	os.rmdir_all(root) or {}
