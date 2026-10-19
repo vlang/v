@@ -6497,6 +6497,13 @@ fn (mut g FlatGen) collect_c_directive_at(node_idx int, module_name string, node
 			}
 			return true
 		}
+		if node.value == 'include' && include_arg == '<sys/mman.h>'
+			&& g.headerless_compiler_bootstrap() {
+			// The headerless preamble declares mmap with a pointer-width offset. A kept
+			// <sys/mman.h> (32-bit targets, where glibc and musl disagree on `off_t`)
+			// declares the real prototype, which a second declaration would contradict.
+			g.collect_preserved_c_fns(['mmap'])
+		}
 		g.note_c_include_directive(module_name, source_file)
 		// `#insert` is an explicit request to inline the source text. Delay only
 		// ordinary source includes until after generated type declarations.
