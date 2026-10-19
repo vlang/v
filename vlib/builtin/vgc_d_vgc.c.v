@@ -1055,10 +1055,16 @@ fn vgc_is_heap_ptr(addr usize) bool {
 
 // Safepoint: called when GC needs threads to stop
 fn vgc_safepoint() {
-	cache_idx := C.vgc_get_cache_idx()
-	if cache_idx < 0 {
+	if C.vgc_get_cache_idx() < 0 {
 		return
 	}
+	// Wait below a frame that holds this thread's callee-saved registers, so that the
+	// collector's scan of this stack sees them.
+	C.vgc_call_with_registers_spilled(vgc_safepoint_wait)
+}
+
+fn vgc_safepoint_wait() {
+	cache_idx := C.vgc_get_cache_idx()
 	// Update the live stack range for root scanning.
 	vgc_refresh_stack_range_for_sp(cache_idx, usize(C.vgc_get_sp()))
 	// Mark ourselves as stopped

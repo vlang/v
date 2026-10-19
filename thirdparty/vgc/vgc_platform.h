@@ -230,6 +230,119 @@ static inline void vgc_set_cache_idx(int idx) { _vgc_cache_idx_plus1 = idx + 1; 
 #endif
 
 // ============================================================
+// Registers as roots
+// ============================================================
+#include <setjmp.h>
+typedef void (*vgc_void_fn)(void);
+static void* volatile vgc_spill_sink;
+
+// Calls fn() after saving the callee-saved registers in a jmp_buf in this frame. A conservative
+// scan of the stack from fn's frame upwards then also sees pointers that the callers only kept
+// in registers.
+static void vgc_call_with_registers_spilled(vgc_void_fn fn) {
+    jmp_buf regs;
+    if (setjmp(regs) == 0) {
+        vgc_spill_sink = (void*)&regs;
+        fn();
+    }
+    // The store after the call keeps fn() from becoming a tail call that would drop this frame.
+    vgc_spill_sink = NULL;
+}
+
+// ============================================================
+// Data segments (globals and consts) as roots
+// vgc_data_ranges stores the writable segments of the executable in lo/hi and returns how many
+// there are, or 0 when the platform has no way to find them.
+// ============================================================
+#if defined(__APPLE__)
+  #include <mach-o/dyld.h>
+  #include <mach-o/loader.h>
+  static int vgc_data_ranges(uintptr_t* lo, uintptr_t* hi, int max) {
+      // Image 0 is the main executable.
+      const struct mach_header* mh = _dyld_get_image_header(0);
+      if (mh == NULL || mh->magic != MH_MAGIC_64) return 0;
+      intptr_t slide = _dyld_get_image_vmaddr_slide(0);
+      const uint8_t* cmd = (const uint8_t*)mh + sizeof(struct mach_header_64);
+      int n = 0;
+      for (uint32_t i = 0; i < mh->ncmds && n < max; i++) {
+          const struct load_command* lc = (const struct load_command*)cmd;
+          if (lc->cmd == LC_SEGMENT_64) {
+              const struct segment_command_64* seg = (const struct segment_command_64*)cmd;
+              if ((seg->initprot & VM_PROT_WRITE) != 0 && seg->vmsize != 0) {
+                  lo[n] = (uintptr_t)(seg->vmaddr + slide);
+                  hi[n] = lo[n] + (uintptr_t)seg->vmsize;
+                  n++;
+              }
+          }
+          cmd += lc->cmdsize;
+      }
+      return n;
+  }
+#elif defined(__linux__) || defined(__ANDROID__) || defined(__FreeBSD__) || defined(__DragonFly__) || defined(__NetBSD__) || defined(__OpenBSD__)
+  #include <link.h>
+  #if defined(__GLIBC__) && !defined(__USE_GNU)
+    // glibc declares dl_iterate_phdr and struct dl_phdr_info only with _GNU_SOURCE, which V's
+    // C output does not define before its first libc header. Declare the function, and read the
+    // leading fields of the struct through a copy of its layout.
+    struct dl_phdr_info;
+    extern int dl_iterate_phdr(int (*callback)(struct dl_phdr_info*, size_t, void*), void* data);
+    struct vgc_dl_phdr_info {
+        ElfW(Addr) dlpi_addr;
+        const char* dlpi_name;
+        const ElfW(Phdr)* dlpi_phdr;
+        ElfW(Half) dlpi_phnum;
+    };
+    #define VGC_DL_PHDR_INFO struct vgc_dl_phdr_info
+  #else
+    #define VGC_DL_PHDR_INFO struct dl_phdr_info
+  #endif
+  typedef struct { uintptr_t* lo; uintptr_t* hi; int max; int n; } vgc_data_ranges_acc;
+  static int vgc_data_ranges_cb(struct dl_phdr_info* info_arg, size_t size, void* data) {
+      (void)size;
+      VGC_DL_PHDR_INFO* info = (VGC_DL_PHDR_INFO*)(void*)info_arg;
+      vgc_data_ranges_acc* acc = (vgc_data_ranges_acc*)data;
+      for (int i = 0; i < (int)info->dlpi_phnum && acc->n < acc->max; i++) {
+          if (info->dlpi_phdr[i].p_type == PT_LOAD && (info->dlpi_phdr[i].p_flags & PF_W) != 0) {
+              uintptr_t start = (uintptr_t)info->dlpi_addr + (uintptr_t)info->dlpi_phdr[i].p_vaddr;
+              acc->lo[acc->n] = start;
+              acc->hi[acc->n] = start + (uintptr_t)info->dlpi_phdr[i].p_memsz;
+              acc->n++;
+          }
+      }
+      // The first object is the main program, which holds all of V's globals.
+      return 1;
+  }
+  static int vgc_data_ranges(uintptr_t* lo, uintptr_t* hi, int max) {
+      vgc_data_ranges_acc acc = { lo, hi, max, 0 };
+      dl_iterate_phdr(vgc_data_ranges_cb, &acc);
+      return acc.n;
+  }
+#elif defined(_WIN32)
+  static int vgc_data_ranges(uintptr_t* lo, uintptr_t* hi, int max) {
+      uint8_t* base = (uint8_t*)GetModuleHandleW(NULL);
+      if (base == NULL) return 0;
+      IMAGE_NT_HEADERS* nt = (IMAGE_NT_HEADERS*)(base + ((IMAGE_DOS_HEADER*)base)->e_lfanew);
+      IMAGE_SECTION_HEADER* sec = IMAGE_FIRST_SECTION(nt);
+      int n = 0;
+      for (int i = 0; i < (int)nt->FileHeader.NumberOfSections && n < max; i++) {
+          if ((sec[i].Characteristics & IMAGE_SCN_MEM_WRITE) != 0 && sec[i].Misc.VirtualSize != 0) {
+              lo[n] = (uintptr_t)(base + sec[i].VirtualAddress);
+              hi[n] = lo[n] + (uintptr_t)sec[i].Misc.VirtualSize;
+              n++;
+          }
+      }
+      return n;
+  }
+#else
+  static int vgc_data_ranges(uintptr_t* lo, uintptr_t* hi, int max) {
+      (void)lo;
+      (void)hi;
+      (void)max;
+      return 0;
+  }
+#endif
+
+// ============================================================
 // Bitmap operations (for mark/alloc bitmaps)
 // ============================================================
 static inline int vgc_bitmap_get(const uint8_t* bits, uint32_t idx) {

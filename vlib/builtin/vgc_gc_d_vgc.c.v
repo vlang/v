@@ -6,6 +6,8 @@
 module builtin
 
 fn C.v3_vgc_mark_global_arrays()
+fn C.vgc_call_with_registers_spilled(f fn ())
+fn C.vgc_data_ranges(lo &usize, hi &usize, max int) int
 
 // ============================================================
 // GC Orchestration (translated from Go's runtime.gcStart, gcMarkDone, gcMarkTermination)
@@ -20,7 +22,12 @@ fn vgc_gc_start() {
 	if !C.vgc_atomic_cas_u32(&vgc_heap.gc_phase, &expected, vgc_phase_mark) {
 		return
 	}
+	// The collection runs below a frame that holds this thread's callee-saved registers, so
+	// that pointers the callers only kept in registers are seen by the stack scan.
+	C.vgc_call_with_registers_spilled(vgc_gc_run)
+}
 
+fn vgc_gc_run() {
 	// === Phase 1: Sweep Termination (STW) ===
 	// Ensure any previous sweep is complete
 	vgc_sweep_finish()
@@ -110,10 +117,11 @@ fn vgc_clear_mark_bits() {
 	}
 }
 
-// Conservative root scanning: scan registered global arrays and thread stacks.
+// Conservative root scanning: scan the globals, registered global arrays and thread stacks.
 // Translated from Go's markroot() / scanblock() - but using conservative scanning
 // since V compiles to C and we don't have precise type info at runtime.
 fn vgc_mark_roots() {
+	vgc_mark_data_segments()
 	C.v3_vgc_mark_global_arrays()
 	// Scan each registered thread's stack
 	for i in 0 .. vgc_heap.ncaches {
@@ -124,6 +132,17 @@ fn vgc_mark_roots() {
 		if cache.stack_lo > 0 && cache.stack_hi > 0 && cache.stack_hi > cache.stack_lo {
 			vgc_scan_range(cache.stack_lo, cache.stack_hi)
 		}
+	}
+}
+
+// vgc_mark_data_segments scans the writable segments of the executable: every global and
+// const, including the ones that are initialized at run time and point into the GC heap.
+fn vgc_mark_data_segments() {
+	mut lo := [16]usize{}
+	mut hi := [16]usize{}
+	n := C.vgc_data_ranges(&lo[0], &hi[0], 16)
+	for i in 0 .. n {
+		vgc_scan_range(lo[i], hi[i])
 	}
 }
 
