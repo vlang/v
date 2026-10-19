@@ -51,6 +51,7 @@ jobs:
       # One broken variant must not stop the others being published.
       fail-fast: false
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
         with:

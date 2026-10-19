@@ -718,7 +718,7 @@ fn test_clone_after_transform_keeps_cached_vlib_flag_ownership() {
 	a.cached_header_sources[header] = source
 	a.add_node(flat.Node{ kind: .file, value: header })
 	a.add_node(flat.Node{ kind: .module_decl, value: 'builtin' })
-	a.add_node(flat.Node{ kind: .directive, value: 'flag', typ: '@VEXEROOT/vlib/builtin/segfault_handler_nix.o' })
+	a.add_node(flat.Node{ kind: .directive, value: 'flag', typ: flat.source_type_id('@VEXEROOT/vlib/builtin/segfault_handler_nix.o') })
 	cloned := clone_flat_ast_after_transform(&a)
 	// Changing the original map must not reclassify the clone's vlib directive.
 	a.cached_header_sources[header] = os.join_path(os.vtmp_dir(), 'project', 'main.v')
@@ -744,7 +744,7 @@ fn test_scoped_type_metadata_preserves_generic_interface_parameters() {
 	assert !scoped_value_owned(scope, params.data)
 	assert !scoped_value_owned(scope, params[0].str)
 	prealloc_scope_free_for_v3(scope)
-	key := tc.interface_method_signature_key('Store', 'get') or { panic('missing interface method') }
+	key := tc.interface_method_signature_key(flat.source_type_id('Store'), 'get') or { panic('missing interface method') }
 	assert key == 'Store[T].get'
 }
 
@@ -773,7 +773,7 @@ fn test_scoped_ast_storage_copy_preserves_persistent_text_and_promotes_retiring_
 	value := 'retiring value'.clone()
 	typ := 'retiring type'.clone()
 	param := 'retiring parameter'.clone()
-	mut generated := flat.Node{ kind: .fn_decl, value: value, typ: typ }
+	mut generated := flat.Node{ kind: .fn_decl, value: value, typ: flat.source_type_id(typ) }
 	generated.set_generic_params_and_constraints([param], constraints)
 	a.nodes << generated
 	prealloc_scope_leave_for_v3(scope)
@@ -781,13 +781,13 @@ fn test_scoped_ast_storage_copy_preserves_persistent_text_and_promotes_retiring_
 	assert usize(voidptr(cloned.nodes[0].value.str)) == persistent_ptr
 	assert !scoped_value_owned(scope, cloned.nodes.data)
 	assert !scoped_value_owned(scope, cloned.nodes[1].value.str)
-	assert !scoped_value_owned(scope, cloned.nodes[1].typ.str)
+	assert !scoped_value_owned(scope, cloned.nodes[1].typ_text().str)
 	assert !scoped_value_owned(scope, cloned.nodes[1].payload_ptr())
 	assert !scoped_value_owned(scope, cloned.nodes[1].generic_params().data)
 	assert !scoped_value_owned(scope, cloned.nodes[1].generic_params()[0].str)
 	prealloc_scope_free_for_v3(scope)
 	assert cloned.nodes[1].value == 'retiring value'
-	assert cloned.nodes[1].typ == 'retiring type'
+	assert cloned.nodes[1].typ_text() == 'retiring type'
 	assert cloned.nodes[1].generic_params() == ['retiring parameter']
 	assert cloned.nodes[1].generic_constraints() == constraints
 }

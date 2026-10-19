@@ -744,7 +744,7 @@ fn test_storage_query_views_keep_parent_identity_tables_private() {
 		tc.v_fn_semantic_names['getenv'] = true
 		parent_type := Type(ArrayFixed{ elem_type: builtin_int_type, len: 2 })
 		parent_c := tc.c_type(parent_type)
-		parent_array := tc.parse_type('[]u8')
+		parent_array := tc.parse_type(flat.source_type_id('[]u8'))
 		parent_symbol, _ := tc.intern_symbol('parent_symbol')
 		parent_type_count := tc.type_count()
 		parent_c_count := tc.type_cache.c_entries.len
@@ -759,7 +759,7 @@ fn test_storage_query_views_keep_parent_identity_tables_private() {
 		assert child_symbol == parent_symbol
 		assert child_name == 'child_symbol'
 		assert tc.symbol_name(parent_symbol) == 'parent_symbol'
-		assert view.type_name(view.parse_type('[]u8')) == parent_array.name()
+		assert view.type_name(view.parse_type(flat.source_type_id('[]u8'))) == parent_array.source_type_id()
 		assert view.visible_mutation_cache.base == tc.visible_mutation_cache
 		assert view.type_cache.base == tc.type_cache
 		assert view.vsh_os_fn_key('getenv') == none

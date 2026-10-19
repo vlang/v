@@ -358,3 +358,21 @@ pipe does not append a previous chunk again. Commands with no output return an e
 or a pipe reader closes. The write error is still returned to the caller.
 
 `os.cp` reports source read failures as `cp: failed to read from <source>` and closes both files.
+
+### File identity and user directories
+
+`is_absolute` requires a drive root or UNC volume on Windows. Drive-relative paths such as
+`C:file` and paths rooted on the current drive such as `/file` return false. `volume_name`
+returns the drive or UNC root on Windows and an empty string elsewhere.
+
+`same_file(a, b)` follows symbolic links and compares filesystem object identity. It supports
+Unicode paths and directories on Windows; missing or inaccessible paths return an error.
+`copy_file(src, dst)` follows source links, copies contents and basic permission bits (`0o777`),
+and reports read, write, or permission-setting errors. Copying to the source or a hard link to it
+is rejected.
+
+`user_home_dir` uses a nonempty `HOME` on POSIX or `USERPROFILE` on Windows, where
+`HOMEDRIVE` plus `HOMEPATH` is a fallback. `user_cache_dir` and `user_config_dir` use
+`LOCALAPPDATA` and `APPDATA` on Windows, falling back to `AppData/Local` and `AppData/Roaming`.
+On POSIX they use nonempty, absolute `XDG_CACHE_HOME` and `XDG_CONFIG_HOME`; empty values
+fall back to `~/.cache` and `~/.config`. Variables from the other platform are ignored.

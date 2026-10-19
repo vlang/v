@@ -1,0 +1,146 @@
+vlib/v/checker/tests/array_cast_elem_layout_mismatch_err.vv:33:6: error: cannot cast array `[]u8` to `[]u64`
+   31 |     }
+   32 |     // numeric elements of another size or kind
+   33 |     _ = []u64(u8s)
+      |         ~~~~~~~~~~
+   34 |     _ = []f64(ints)
+   35 |     _ = []i32(ints)
+vlib/v/checker/tests/array_cast_elem_layout_mismatch_err.vv:34:6: error: cannot cast array `[]int` to `[]f64`
+   32 |     // numeric elements of another size or kind
+   33 |     _ = []u64(u8s)
+   34 |     _ = []f64(ints)
+      |         ~~~~~~~~~~~
+   35 |     _ = []i32(ints)
+   36 |     _ = []i64(ints)
+vlib/v/checker/tests/array_cast_elem_layout_mismatch_err.vv:35:6: error: cannot cast array `[]int` to `[]i32`
+   33 |     _ = []u64(u8s)
+   34 |     _ = []f64(ints)
+   35 |     _ = []i32(ints)
+      |         ~~~~~~~~~~~
+   36 |     _ = []i64(ints)
+   37 |     _ = []u8(runes)
+vlib/v/checker/tests/array_cast_elem_layout_mismatch_err.vv:36:6: error: cannot cast array `[]int` to `[]i64`
+   34 |     _ = []f64(ints)
+   35 |     _ = []i32(ints)
+   36 |     _ = []i64(ints)
+      |         ~~~~~~~~~~~
+   37 |     _ = []u8(runes)
+   38 |     _ = []u8(i8s)
+vlib/v/checker/tests/array_cast_elem_layout_mismatch_err.vv:37:6: error: cannot cast array `[]rune` to `[]u8`
+   35 |     _ = []i32(ints)
+   36 |     _ = []i64(ints)
+   37 |     _ = []u8(runes)
+      |         ~~~~~~~~~~~
+   38 |     _ = []u8(i8s)
+   39 |     _ = [3]u64(fixed_u8)
+vlib/v/checker/tests/array_cast_elem_layout_mismatch_err.vv:38:6: error: cannot cast array `[]i8` to `[]u8`
+   36 |     _ = []i64(ints)
+   37 |     _ = []u8(runes)
+   38 |     _ = []u8(i8s)
+      |         ~~~~~~~~~
+   39 |     _ = [3]u64(fixed_u8)
+   40 |     _ = [4]u8(fixed_u8)
+vlib/v/checker/tests/array_cast_elem_layout_mismatch_err.vv:39:6: error: cannot cast array `[3]u8` to `[3]u64`
+   37 |     _ = []u8(runes)
+   38 |     _ = []u8(i8s)
+   39 |     _ = [3]u64(fixed_u8)
+      |         ~~~~~~~~~~~~~~~~
+   40 |     _ = [4]u8(fixed_u8)
+   41 |     _ = [3]u64(u8s)
+vlib/v/checker/tests/array_cast_elem_layout_mismatch_err.vv:40:6: error: cannot cast array `[3]u8` to `[4]u8`
+   38 |     _ = []u8(i8s)
+   39 |     _ = [3]u64(fixed_u8)
+   40 |     _ = [4]u8(fixed_u8)
+      |         ~~~~~~~~~~~~~~~
+   41 |     _ = [3]u64(u8s)
+   42 |     _ = []u64(bytes)
+vlib/v/checker/tests/array_cast_elem_layout_mismatch_err.vv:41:6: error: cannot cast array `[]u8` to `[3]u64`
+   39 |     _ = [3]u64(fixed_u8)
+   40 |     _ = [4]u8(fixed_u8)
+   41 |     _ = [3]u64(u8s)
+      |         ~~~~~~~~~~~
+   42 |     _ = []u64(bytes)
+   43 |     _ = []u64([]u8{len: 3})
+vlib/v/checker/tests/array_cast_elem_layout_mismatch_err.vv:42:6: error: cannot cast array `Bytes` to `[]u64`
+   40 |     _ = [4]u8(fixed_u8)
+   41 |     _ = [3]u64(u8s)
+   42 |     _ = []u64(bytes)
+      |         ~~~~~~~~~~~~
+   43 |     _ = []u64([]u8{len: 3})
+   44 |     _ = unsafe { []u64(u8s) }
+vlib/v/checker/tests/array_cast_elem_layout_mismatch_err.vv:43:6: error: cannot cast array `[]u8` to `[]u64`
+   41 |     _ = [3]u64(u8s)
+   42 |     _ = []u64(bytes)
+   43 |     _ = []u64([]u8{len: 3})
+      |         ~~~~~~~~~~~~~~~~~~~
+   44 |     _ = unsafe { []u64(u8s) }
+   45 |     // aliases and options
+vlib/v/checker/tests/array_cast_elem_layout_mismatch_err.vv:44:15: error: cannot cast array `[]u8` to `[]u64`
+   42 |     _ = []u64(bytes)
+   43 |     _ = []u64([]u8{len: 3})
+   44 |     _ = unsafe { []u64(u8s) }
+      |                  ~~~~~~~~~~
+   45 |     // aliases and options
+   46 |     _ = Bytes(u64s)
+vlib/v/checker/tests/array_cast_elem_layout_mismatch_err.vv:46:6: error: cannot cast `[]u64` to `Bytes` (alias to `[]u8`)
+   44 |     _ = unsafe { []u64(u8s) }
+   45 |     // aliases and options
+   46 |     _ = Bytes(u64s)
+      |         ~~~~~~~~~~~
+   47 |     _ = ?[]u64(ints)
+   48 |     _ = ?Bytes(u64s)
+vlib/v/checker/tests/array_cast_elem_layout_mismatch_err.vv:47:7: error: cannot cast array `[]int` to `?[]u64`
+   45 |     // aliases and options
+   46 |     _ = Bytes(u64s)
+   47 |     _ = ?[]u64(ints)
+      |          ~~~~~~~~~~~
+   48 |     _ = ?Bytes(u64s)
+   49 |     // other element types
+vlib/v/checker/tests/array_cast_elem_layout_mismatch_err.vv:48:7: error: cannot cast `[]u64` to `?Bytes` (alias to `[]u8`)
+   46 |     _ = Bytes(u64s)
+   47 |     _ = ?[]u64(ints)
+   48 |     _ = ?Bytes(u64s)
+      |          ~~~~~~~~~~~
+   49 |     // other element types
+   50 |     _ = []string(ints)
+vlib/v/checker/tests/array_cast_elem_layout_mismatch_err.vv:50:6: error: cannot cast array `[]int` to `[]string`
+   48 |     _ = ?Bytes(u64s)
+   49 |     // other element types
+   50 |     _ = []string(ints)
+      |         ~~~~~~~~~~~~~~
+   51 |     _ = []Bar(foos)
+   52 |     _ = []int(colors)
+vlib/v/checker/tests/array_cast_elem_layout_mismatch_err.vv:51:6: error: cannot cast array `[]Foo` to `[]Bar`
+   49 |     // other element types
+   50 |     _ = []string(ints)
+   51 |     _ = []Bar(foos)
+      |         ~~~~~~~~~~~
+   52 |     _ = []int(colors)
+   53 |     _ = []Color(ints)
+vlib/v/checker/tests/array_cast_elem_layout_mismatch_err.vv:52:6: error: cannot cast array `[]Color` to `[]int`
+   50 |     _ = []string(ints)
+   51 |     _ = []Bar(foos)
+   52 |     _ = []int(colors)
+      |         ~~~~~~~~~~~~~
+   53 |     _ = []Color(ints)
+   54 |     _ = Rows(nested)
+vlib/v/checker/tests/array_cast_elem_layout_mismatch_err.vv:53:6: error: cannot cast array `[]int` to `[]Color`
+   51 |     _ = []Bar(foos)
+   52 |     _ = []int(colors)
+   53 |     _ = []Color(ints)
+      |         ~~~~~~~~~~~~~
+   54 |     _ = Rows(nested)
+   55 |     _ = Counts8(counts)
+vlib/v/checker/tests/array_cast_elem_layout_mismatch_err.vv:54:6: error: cannot cast `[][]int` to `Rows` (alias to `[][]u8`)
+   52 |     _ = []int(colors)
+   53 |     _ = []Color(ints)
+   54 |     _ = Rows(nested)
+      |         ~~~~~~~~~~~~
+   55 |     _ = Counts8(counts)
+   56 | }
+vlib/v/checker/tests/array_cast_elem_layout_mismatch_err.vv:55:6: error: cannot cast `map[string]int` to `Counts8` (alias to `map[string]u8`)
+   53 |     _ = []Color(ints)
+   54 |     _ = Rows(nested)
+   55 |     _ = Counts8(counts)
+      |         ~~~~~~~~~~~~~~~
+   56 | }

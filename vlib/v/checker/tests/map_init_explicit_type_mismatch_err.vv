@@ -1,0 +1,59 @@
+type Ids = map[u64]bool
+
+interface Named {
+	name() string
+}
+
+struct Item {}
+
+fn (i Item) name() string {
+	return 'item'
+}
+
+struct Cache {
+mut:
+	misses map[u64]bool
+	nested map[string]map[u64]bool
+	ids    Ids = map[string]bool{}
+	named  map[string]Named
+	refs   map[string]&Named
+	scores map[string]?int
+}
+
+fn take(misses map[u64]bool) int {
+	return misses.len
+}
+
+fn make_misses() map[u64]bool {
+	return map[string]bool{}
+}
+
+fn main() {
+	mut cache := Cache{
+		misses: map[string]bool{}
+	}
+	cache.misses = map[string]bool{}
+	cache.misses = map[u32]bool{}
+	cache.misses = map[string]bool{
+		'a': true
+	}
+	cache.nested = map[string]map[string]bool{}
+	cache.nested['a'] = map[string]bool{}
+	mut misses := map[u64]bool{}
+	misses = map[string]bool{}
+	other := map[u32]bool{}
+	misses = {
+		...other
+	}
+	cache.named = map[string]Item{}
+	cache.refs = map[string]&Item{}
+	cache.scores = map[string]int{}
+	counts := map[string]int{
+		'a': 'b'
+	}
+	println(take(map[string]bool{}))
+	println(make_misses())
+	println(cache)
+	println(misses)
+	println(counts)
+}

@@ -104,31 +104,32 @@ fn (mut g FlatGen) gen_fixed_array_index(index_id flat.NodeId, len string) {
 	g.write(', ${len})')
 }
 
-fn (g &FlatGen) fixed_array_type_from_alias_text(type_name string) ?types.ArrayFixed {
+fn (g &FlatGen) fixed_array_type_from_alias_text(type_name_id u32) ?types.ArrayFixed {
+	type_name := flat.source_type_name(type_name_id)
 	mut cur := trimmed_space(type_name)
 	for _ in 0 .. 16 {
 		if cur.len == 0 {
 			return none
 		}
-		if fixed := array_fixed_type(g.tc.parse_type(cur)) {
+		if fixed := array_fixed_type(g.tc.parse_type(flat.source_type_id(cur))) {
 			return fixed
 		}
-		mut next := g.tc.type_aliases[cur] or { '' }
-		if next.len == 0 {
+		mut next := g.tc.type_aliases.type_id(cur) or { u32(0) }
+		if next == 0 {
 			qname := g.tc.qualify_name(cur)
-			next = g.tc.type_aliases[qname] or { '' }
+			next = g.tc.type_aliases.type_id(qname) or { u32(0) }
 		}
-		if next.len == 0 || next == cur {
+		if next == 0 || flat.source_type_name(next) == cur {
 			return none
 		}
-		cur = next
+		cur = flat.source_type_name(next)
 	}
 	return none
 }
 
 fn runtime_array_struct_type(t types.Type) bool {
 	if t is types.Struct {
-		return t.name == 'array' || t.name == 'Array'
+		return t.name() == 'array' || t.name() == 'Array'
 	}
 	if t is types.Alias {
 		return runtime_array_struct_type(t.base_type)
@@ -405,7 +406,7 @@ fn (mut g FlatGen) gen_fixed_array_data_arg(id flat.NodeId, arr types.ArrayFixed
 			return
 		}
 	}
-	annotated_is_fixed := node.typ.len > 0 && array_fixed_type(g.parse_node_type(&node)) != none
+	annotated_is_fixed := node.typ != 0 && array_fixed_type(g.parse_node_type(&node)) != none
 	if !annotated_is_fixed
 		&& fixed_array_option_payload_type(types.unwrap_pointer(g.usable_expr_type(id))) != none {
 		g.gen_expr(id)
@@ -466,7 +467,7 @@ fn (mut g FlatGen) gen_new_array_fixed_data_arg(call flat.Node, arg_start int, a
 	if sizeof_node.kind != .sizeof_expr || sizeof_node.value.len == 0 {
 		return false
 	}
-	elem_type := g.tc.parse_type(sizeof_node.value)
+	elem_type := g.tc.parse_type(flat.source_type_id(sizeof_node.value))
 	g.gen_fixed_array_data_arg(arg_id, types.ArrayFixed{
 		elem_type: elem_type
 	})
@@ -549,7 +550,7 @@ fn (mut g FlatGen) gen_fixed_array_pointer_lvalue_arg(id flat.NodeId, expected t
 		return false
 	}
 	node := g.a.nodes[int(id)]
-	mut actual := g.tc.resolve_type(id)
+	mut actual := g.body_resolve_type(id)
 	if node.kind == .ident {
 		if param_type := g.current_param_type(node.value) {
 			actual = param_type
@@ -980,7 +981,7 @@ fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr
 			mut is_thread := false
 			elem := cgen_unalias_type(arr.elem_type)
 			if elem is types.Struct {
-				tn := trimmed_space(elem.name)
+				tn := trimmed_space(elem.name())
 				is_thread = tn == 'thread' || tn.starts_with('thread ')
 			}
 			if is_thread {
@@ -1007,7 +1008,7 @@ fn (mut g FlatGen) to_fixed_size_call_fixed_type(id flat.NodeId) ?types.ArrayFix
 	if fn_node.kind != .selector || fn_node.value != 'to_fixed_size' || fn_node.children_count == 0 {
 		return none
 	}
-	if node.typ.len > 0 {
+	if node.typ != 0 {
 		if fixed := array_fixed_type(g.parse_node_type(&node)) {
 			return fixed
 		}
@@ -1118,14 +1119,14 @@ fn (mut g FlatGen) gen_fixed_array_pointers_expr(base_id flat.NodeId, is_ptr boo
 // name (`thread T`); a bare `thread` denotes a void payload.
 fn (mut g FlatGen) gen_thread_array_wait(base_id flat.NodeId, is_ptr bool, elem_type types.Type) {
 	g.needs_thread_runtime = true
-	mut ret_name := ''
+	mut ret_name_id := u32(0)
 	if elem_type is types.Struct {
-		trimmed := trimmed_space(elem_type.name)
+		trimmed := trimmed_space(elem_type.name())
 		if trimmed != 'thread' && trimmed.starts_with('thread ') {
-			ret_name = trimmed_space(trimmed[7..])
+			ret_name_id = flat.source_type_id(trimmed_space(trimmed[7..]))
 		}
 	}
-	fn_name := g.ensure_thread_arr_wait_fn(ret_name)
+	fn_name := g.ensure_thread_arr_wait_fn(ret_name_id)
 	g.write('${fn_name}(')
 	if is_ptr {
 		g.write('*')
@@ -1137,10 +1138,10 @@ fn (mut g FlatGen) gen_thread_array_wait(base_id flat.NodeId, is_ptr bool, elem_
 // ensure_thread_arr_wait_fn registers (once per payload type) a function that joins
 // every thread handle in the array and, for a non-void payload, copies each thread's
 // heap-returned value into a result `[]T` (freeing the per-thread allocation).
-fn (mut g FlatGen) ensure_thread_arr_wait_fn(ret_name string) string {
-	is_void := ret_name.len == 0
+fn (mut g FlatGen) ensure_thread_arr_wait_fn(ret_name_id u32) string {
+	is_void := ret_name_id == 0
 	if !is_void {
-		ret_type := cgen_unalias_type(g.tc.parse_type(ret_name))
+		ret_type := cgen_unalias_type(g.tc.parse_type(ret_name_id))
 		if ret_type is types.OptionType || ret_type is types.ResultType {
 			return g.ensure_thread_optional_arr_wait_fn(ret_type)
 		}
@@ -1148,7 +1149,11 @@ fn (mut g FlatGen) ensure_thread_arr_wait_fn(ret_name string) string {
 	// Match the ABI return type the spawn wrapper stores (gen_spawn_expr): an
 	// option/result payload is `__v_option_T`, a fixed-array payload its `_v_ret_*`
 	// wrapper — not the bare `c_type`, or the malloc'd and read-back layouts diverge.
-	ret_ct := if is_void { 'void' } else { g.fn_return_type_name(g.tc.parse_type(ret_name)) }
+	ret_ct := if is_void {
+		'void'
+	} else {
+		g.fn_return_type_name(g.tc.parse_type(ret_name_id))
+	}
 	key := 'threadwait|${ret_ct}'
 	if name := g.spawn_wrapper_names[key] {
 		return name
@@ -1274,20 +1279,24 @@ fn (mut g FlatGen) array_method_fallback(method string) string {
 	return best_mname
 }
 
+fn array_method_receiver_key(receiver_name_id u32, elem_type_id u32) u64 {
+	return u64(receiver_name_id) << 32 | u64(elem_type_id)
+}
+
 fn (mut g FlatGen) array_method_fallback_for_receiver(method string, base_id flat.NodeId, arr types.Array) string {
 	receiver_type := types.unwrap_pointer(g.usable_expr_type(base_id))
-	receiver_name := receiver_type.name()
-	key := '${receiver_name}|${arr.elem_type.name()}.${method}'
-	if key in g.array_method_cache {
-		return g.array_method_cache[key]
+	receiver_name_id := receiver_type.source_type_id()
+	key := array_method_receiver_key(receiver_name_id, arr.elem_type.source_type_id())
+	if cached := g.array_method_receiver_cache[key][method] {
+		return cached
 	}
 	// Preserve custom methods on aliases such as `strings.Builder = []u8`.
 	// Falling back through the erased array type can select an unrelated method
 	// that happens to have the same short name.
 	if receiver_type is types.Alias {
-		alias_method := g.resolve_method_name(receiver_name, method)
+		alias_method := g.resolve_method_name(receiver_name_id, method)
 		if alias_method.len > 0 {
-			g.array_method_cache[key] = alias_method
+			g.array_method_receiver_cache[key][method] = alias_method
 			return alias_method
 		}
 	}
@@ -1315,7 +1324,7 @@ fn (mut g FlatGen) array_method_fallback_for_receiver(method string, base_id fla
 	if best_mname.len == 0 {
 		best_mname = g.array_method_fallback(method)
 	}
-	g.array_method_cache[key] = best_mname
+	g.array_method_receiver_cache[key][method] = best_mname
 	return best_mname
 }
 
@@ -1569,7 +1578,7 @@ fn (mut g FlatGen) gen_slice_index_array_value(node flat.Node, elem_type types.T
 }
 
 fn (mut g FlatGen) gen_slice_index_value_from_index_range(node flat.Node) {
-	slice_type := g.tc.parse_type('SliceIndex')
+	slice_type := g.tc.parse_type(flat.source_type_id('SliceIndex'))
 	ct := g.value_c_type(slice_type)
 	g.write('(${ct}){.is_range = true')
 	if node.children_count > 1 {
@@ -1594,7 +1603,7 @@ fn (mut g FlatGen) gen_slice_index_value_from_index_range(node flat.Node) {
 }
 
 fn (mut g FlatGen) gen_slice_index_value(id flat.NodeId) {
-	slice_type := g.tc.parse_type('SliceIndex')
+	slice_type := g.tc.parse_type(flat.source_type_id('SliceIndex'))
 	ct := g.value_c_type(slice_type)
 	if int(id) < 0 {
 		g.write('(${ct}){0}')
@@ -1820,10 +1829,10 @@ fn (g &FlatGen) index_operator_call_name(info types.CallInfo, base_type types.Ty
 	if receiver_name.len == 0 {
 		return info.name
 	}
-	if resolved := g.resolve_concrete_generic_method_name(receiver_name, method) {
+	if resolved := g.resolve_concrete_generic_method_name(flat.source_type_id(receiver_name), method) {
 		return resolved
 	}
-	resolved := g.resolve_method_name(receiver_name, method)
+	resolved := g.resolve_method_name(flat.source_type_id(receiver_name), method)
 	if resolved.len > 0 {
 		return resolved
 	}

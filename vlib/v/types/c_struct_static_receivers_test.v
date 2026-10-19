@@ -87,14 +87,14 @@ fn main() {
 fn test_static_c_receiver_metadata_keeps_canonical_declaration_in_both_orders() {
 	for imported_first in [false, true] {
 		mut a := flat.FlatAst.new()
-		mut declarations := []int{}
+		mut declarations := []i32{}
 		modules := if imported_first { ['bridge', 'main'] } else { ['main', 'bridge'] }
 		for module_name in modules {
-			declarations << int(a.add_val(.module_decl, module_name))
+			declarations << i32(a.add_val(.module_decl, module_name))
 			mut param := flat.Node{
 				kind:  .param
 				value: 'c'
-				typ:   'C.Counter'
+				typ:   flat.source_type_id('C.Counter')
 			}
 			if module_name == 'main' {
 				param.op = .dot
@@ -102,14 +102,14 @@ fn test_static_c_receiver_metadata_keeps_canonical_declaration_in_both_orders() 
 			param_id := a.add_node(param)
 			start := a.children.len
 			a.children << param_id
-			declarations << int(a.add_node(flat.Node{
+			declarations << i32(a.add_node(flat.Node{
 				kind:           if module_name == 'main' { .fn_decl } else { .c_fn_decl }
 				value:          if module_name == 'main' {
 					'C.Counter.read'
 				} else {
 					'Counter.read'
 				}
-				typ:            'int'
+				typ:            flat.source_type_int
 				children_start: start
 				children_count: 1
 			}))
@@ -119,9 +119,9 @@ fn test_static_c_receiver_metadata_keeps_canonical_declaration_in_both_orders() 
 		tc.build_fn_name_indexes(&a)
 		assert tc.fn_key_is_static_associated('bridge.C.Counter.read')
 		assert !tc.fn_key_is_static_associated('C.Counter.read')
-		assert !tc.method_can_be_called_on_receiver(Type(Struct{ name: 'C.Counter' }),
+		assert !tc.method_can_be_called_on_receiver(Type(Struct{ name_id: flat.source_type_id('C.Counter') }),
 			'read', 'bridge.C.Counter.read')
-		assert tc.method_can_be_called_on_receiver(Type(Struct{ name: 'C.Counter' }), 'read',
+		assert tc.method_can_be_called_on_receiver(Type(Struct{ name_id: flat.source_type_id('C.Counter') }), 'read',
 			'C.Counter.read')
 	}
 }

@@ -66,11 +66,19 @@ fn test_program_links_its_own_c_functions_named_like_win32_apis() {
 	}
 	root := winapi_names_project('linked')!
 	defer { os.rmdir_all(root) or {} }
-	executable := os.join_path(root, 'program')
-	build := os.exec([@VEXE, '-new-compiler', '-nocache', '-gc', 'none', '-o', executable,
-		os.join_path(root, 'main.v')])
-	assert build.exit_code == 0, build.output
-	run := os.exec([executable])
-	assert run.exit_code == 0, run.output
-	assert run.output.split_into_lines() == ['42', '42', '101', '42', 'true'], run.output
+	// Portable output must also keep these program-owned declarations outside
+	// Windows guards, or compiling the generated C loses their prototypes.
+	for mode in ['native', 'cross'] {
+		executable := os.join_path(root, 'program_${mode}')
+		mut args := [@VEXE, '-new-compiler', '-nocache', '-gc', 'none']
+		if mode == 'cross' {
+			args << '-cross'
+		}
+		args << ['-o', executable, os.join_path(root, 'main.v')]
+		build := os.exec(args)
+		assert build.exit_code == 0, '${mode}: ${build.output}'
+		run := os.exec([executable])
+		assert run.exit_code == 0, '${mode}: ${run.output}'
+		assert run.output.split_into_lines() == ['42', '42', '101', '42', 'true'], '${mode}: ${run.output}'
+	}
 }

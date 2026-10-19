@@ -11,18 +11,19 @@ fn (mut t Transformer) match_has_sum_type_subject(node flat.Node) bool {
 		return false
 	}
 	subject_id := t.a.child(&node, 0)
-	subject_type := t.resolve_expr_type(subject_id)
-	if subject_type.len == 0 {
+	subject_type_source_id := t.resolve_expr_type(subject_id)
+	subject_type := flat.source_type_name(subject_type_source_id)
+	if subject_type_source_id == 0 {
 		return false
 	}
-	return subject_type in t.sum_types
+	return t.sum_types.contains(subject_type)
 }
 
 // resolve_match_subject_type determines the type of a match subject expression.
 // Uses resolve_expr_type on child 0 (the match expression).
-fn (mut t Transformer) resolve_match_subject_type(node flat.Node) string {
+fn (mut t Transformer) resolve_match_subject_type(node flat.Node) u32 {
 	if node.children_count == 0 {
-		return ''
+		return u32(0)
 	}
 	subject_id := t.a.child(&node, 0)
 	return t.resolve_expr_type(subject_id)
@@ -38,7 +39,7 @@ fn (mut t Transformer) resolve_match_subject_type(node flat.Node) string {
 //   2. Transform the body statements under that context
 //   3. Pop the smartcast context
 //   4. Rebuild the block with the transformed statements
-fn (mut t Transformer) transform_match_branch_body(branch_id flat.NodeId, subject_name string, variant_name string) flat.NodeId {
+fn (mut t Transformer) transform_match_branch_body(branch_id flat.NodeId, subject_name string, variant_name_id u32) flat.NodeId {
 	if int(branch_id) < 0 {
 		return branch_id
 	}
@@ -57,11 +58,12 @@ fn (mut t Transformer) transform_match_branch_body(branch_id flat.NodeId, subjec
 		return branch_id
 	}
 	// Push smartcast if we have a sum type variant match
-	mut has_sc := subject_name != '' && variant_name != ''
+	mut has_sc := subject_name != '' && variant_name_id != u32(0)
 	if has_sc {
-		sum_type_name := t.find_sum_type_for_variant(variant_name)
-		if sum_type_name.len > 0 {
-			t.push_smartcast(subject_name, variant_name, sum_type_name)
+		sum_type_name_source_id := t.find_sum_type_for_variant(variant_name_id)
+
+		if sum_type_name_source_id != 0 {
+			t.push_smartcast(subject_name, variant_name_id, sum_type_name_source_id)
 		} else {
 			has_sc = false
 		}

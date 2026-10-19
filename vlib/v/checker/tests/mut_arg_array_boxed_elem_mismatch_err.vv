@@ -1,0 +1,80 @@
+interface Named {
+	name() string
+}
+
+struct Item {}
+
+fn (i Item) name() string {
+	return 'item'
+}
+
+struct Circle {}
+
+struct Square {}
+
+type Shape = Circle | Square
+
+struct Box {
+mut:
+	items []Item
+	rows  [][]Item
+}
+
+fn rename(mut named []Named) {
+	named << Item{}
+}
+
+fn grow(mut shapes []Shape) {
+	shapes << Square{}
+}
+
+fn rename_rows(mut rows [][]Named) {
+	rows << []Named{}
+}
+
+fn maybe_rename(mut named ?[]Named) {
+	println(named != none)
+}
+
+fn read_shared(shared named []Named) int {
+	return rlock named {
+		named.len
+	}
+}
+
+fn (b Box) put(mut named []Named) {
+	named << Item{}
+}
+
+fn count(named []Named) int {
+	return named.len
+}
+
+fn forward(mut items []Item) {
+	rename(mut items)
+}
+
+fn main() {
+	mut items := [Item{}]
+	rename(mut items)
+	mut circles := [Circle{}]
+	grow(mut circles)
+	mut b := Box{}
+	rename(mut b.items)
+	rename_rows(mut b.rows)
+	maybe_rename(mut items)
+	b.put(mut items)
+	f := rename
+	f(mut items)
+	forward(mut items)
+	mut fixed := [Item{}, Item{}]!
+	rename(mut fixed)
+	shared shared_items := [Item{}]
+	println(read_shared(shared shared_items))
+	// By value the array is converted, and identical element types are
+	// shared as `mut`.
+	println(count(items))
+	mut named := []Named{}
+	rename(mut named)
+	println(named.len)
+}

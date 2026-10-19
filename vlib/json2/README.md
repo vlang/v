@@ -173,8 +173,18 @@ fn main() {
 }
 ```
 
+Struct fields are encoded under their names or `@[json: '...']` keys, including fields
+named after builtin types such as `i64` and `string`. Embedded structs contribute their fields.
+
 Enums encode as strings by default. Use `@[json_as_number]` on an enum to emit
 its integer value instead.
+
+Integer encoding preserves the width of the input type, including `int` and its aliases.
+An `int` is not narrowed to `i32` when written as a value, struct field, or collection element.
+
+Floats use decimal notation for zero and magnitudes from `1e-6` (inclusive) to
+`1e21` (exclusive), and scientific notation outside that range, matching Go's
+`encoding/json`. Exponents omit leading zeros, for example `1e-7`.
 
 Use `@[omitempty]` to omit empty struct fields. For boolean fields, including optional
 booleans, `false` is empty and `true` is encoded. `@[omitempty]` only affects encoding:
@@ -197,6 +207,12 @@ With garbage collection, assigning `DecodeBuffer{}` releases the retained alloca
 for collection when it is no longer needed.
 
 Struct field renaming attributes are also honored when compiling with `-autofree`.
+
+Floating-point values outside the target type's finite range return a decoding error.
+The overflow check also applies with C finite-math flags, such as `-cflags '-ffast-math'`.
+This also applies to numbers inside `json2.Any`, collections, and struct fields, and to
+quoted numeric strings accepted in default mode. Finite subnormal values remain valid;
+values too small to represent may round to zero.
 
 JSON object keys are decoded to the target map key type, including signed and unsigned
 integer keys. Nested maps and maps stored in struct fields follow the same conversion.
@@ -244,6 +260,9 @@ decode[T] is smart and can auto-convert the types of struct fields - this means
 examples below will have the same result
 
 Embedded struct fields are decoded from the surrounding object, including reference fields.
+
+Decoding a pointer allocates an initialized value. Nested arrays keep their element types,
+and omitted struct fields retain their declared defaults, as for value fields.
 
 ```v ignore
 json2.decode[Person]('{"name": "Bob", "age": 20, "birthday": "2022-03-11T13:54:25.000Z"}')!

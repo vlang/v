@@ -3,6 +3,7 @@ module c
 import os
 import v.cmdexec
 import v.flat
+import v.pref
 import v.types
 
 fn test_partial_c_closure_view_keeps_the_v_runtime_layout() {
@@ -84,6 +85,9 @@ fn main() {
 
 fn test_portable_native_helpers_precede_gc_runtime_redirects() {
 	mut g := FlatGen.new()
+	// The gc pthread redirects are emitted only for non-Windows targets, so pin one
+	// rather than inheriting the host's target.
+	g.set_target(pref.target_from('linux', 'amd64') or { panic(err) })
 	g.set_output_cross_c(true)
 	g.compile_defines << 'gcboehm'
 	g.portable_native_runtime_helpers()

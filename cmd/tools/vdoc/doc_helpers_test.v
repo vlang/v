@@ -97,6 +97,27 @@ fn test_is_module_readme_needs_a_comment_or_the_readme_flag() {
 	})
 }
 
+fn test_without_pub_keyword_keeps_the_attributes() {
+	assert without_pub_keyword('pub fn f()') == 'fn f()'
+	assert without_pub_keyword("@[deprecated: 'use pub fn g']\n@[inline]\npub fn f()") == "@[deprecated: 'use pub fn g']\n@[inline]\nfn f()"
+	assert without_pub_keyword('pub struct S {\npub:\n\tx int\n}') == 'struct S {\npub:\n\tx int\n}'
+	assert without_pub_keyword('fn T.zero() T') == 'fn T.zero() T'
+}
+
+fn test_without_attribute_lines_removes_only_the_leading_attributes() {
+	assert without_attribute_lines('fn f()') == 'fn f()'
+	assert without_attribute_lines("@[deprecated: 'x']\n@[inline]\nfn f()") == 'fn f()'
+	assert without_attribute_lines('@[params]\nstruct S {\n\ta int\n}') == 'struct S {\n\ta int\n}'
+}
+
+fn test_is_deprecated_attribute_matches_both_deprecation_attributes() {
+	assert is_deprecated_attribute("@[deprecated: 'use g']")
+	assert is_deprecated_attribute('@[deprecated]')
+	assert is_deprecated_attribute("@[deprecated_after: '2999-01-01']")
+	assert !is_deprecated_attribute('@[inline]')
+	assert !is_deprecated_attribute("@[export: 'deprecated']")
+}
+
 fn test_get_repo_file_link_builds_a_per_host_blob_url() {
 	assert get_repo_file_link('https://github.com/vlang/v', 'master', 'vlib/foo.v') == 'https://github.com/vlang/v/blob/master/vlib/foo.v'
 	assert get_repo_file_link('https://gitlab.com/a/b', 'master', 'vlib/foo.v') == 'https://gitlab.com/a/b/-/blob/master/vlib/foo.v'

@@ -5,6 +5,9 @@ import time
 import dl
 import v.live
 
+fn C.v_live_mutex_lock(mutex voidptr) int
+fn C.v_live_mutex_unlock(mutex voidptr) int
+
 // The live reloader code is implemented here.
 // Note: new_live_reload_info will be called by generated C code inside main()
 @[markused]
@@ -105,7 +108,11 @@ fn current_shared_library_path(mut r live.LiveReloadInfo) (string, string) {
 
 fn load_lib(mut r live.LiveReloadInfo, new_lib_path string) {
 	elog(r, 'live mutex locking...')
-	C.pthread_mutex_lock(r.live_fn_mutex)
+	$if windows {
+		C.v_live_mutex_lock(r.live_fn_mutex)
+	} $else {
+		C.pthread_mutex_lock(r.live_fn_mutex)
+	}
 	elog(r, 'live mutex locked')
 
 	if r.cb_locked_before != unsafe { nil } {
@@ -120,7 +127,11 @@ fn load_lib(mut r live.LiveReloadInfo, new_lib_path string) {
 	}
 
 	elog(r, 'live mutex unlocking...')
-	C.pthread_mutex_unlock(r.live_fn_mutex)
+	$if windows {
+		C.v_live_mutex_unlock(r.live_fn_mutex)
+	} $else {
+		C.pthread_mutex_unlock(r.live_fn_mutex)
+	}
 	elog(r, 'live mutex unlocked')
 }
 

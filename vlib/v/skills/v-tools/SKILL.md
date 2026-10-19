@@ -41,6 +41,31 @@ such as `unknown function: nope` needs its text passed in. The reduction lands i
 `v bug`, which opens a prefilled issue, and the report carries a minimal
 reproducer instead of the file you happened to be editing.
 
+## Measure test coverage
+
+```sh
+v -no-skip-unused -coverage vcov/ test ./   # record what the run entered
+v cover vcov/                               # one percentage per file
+v cover vcov/ -H                            # the hottest lines
+v cover vcov/ --lcov out.info               # the format CI tools read
+v cover vcov/ --uncovered                   # `path:line function` per untested function
+v cover vcov/ --functions                   # every function, covered or not
+v cover vcov/ --json report.json            # machine-readable, both levels
+v cover vcov/ --write-tests --filter dir/   # the test bodies it is missing
+```
+
+Two steps: the run records, `v cover` reads. Delete the directory between runs —
+the counters are appended, so a stale one reports coverage that no longer
+exists.
+
+`--write-tests` generates a `test_` function per untested function, beside its
+source, as a starting point and not a test: a call with zero values and a
+`// TODO:` line. It appends to an existing `_test.v`, leaves a test function
+that is already there alone, and refuses without `--filter`, because a coverage
+directory holds every file a run reached.
+
+See [v-testing](../v-testing/SKILL.md) for the details.
+
 ## Project hygiene
 
 ```sh

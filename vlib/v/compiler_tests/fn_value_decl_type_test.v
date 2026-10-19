@@ -502,8 +502,7 @@ fn main() {
 }
 '
 	})
-	assert bad_output.contains('cannot use `fn (string) int`'), bad_output
-	assert bad_output.contains('expected `fn (int) int`'), bad_output
+	assert bad_output.contains('cannot use `fn (string) int` as `fn (int) int` in argument 1 to `invoke`'), bad_output
 }
 
 fn test_resolved_fn_value_wins_over_imported_const_suffix() {
@@ -635,6 +634,8 @@ fn test_fn_value_expected_context_respects_value_shadowing() {
 	assert !struct_output.contains('main__foo'), struct_output
 }
 
+// A local cannot be redefined in a nested block, so the same name is bound in
+// sibling blocks: each call must check against the binding of its own block.
 fn test_variadic_fn_value_marker_uses_nearest_binding() {
 	v3_bin := build_v3()
 	output := run_bad(v3_bin, 'variadic_fn_value_shadowed_by_plain_fn', 'fn variadic(values ...int) int {
@@ -646,23 +647,28 @@ fn one(value int) int {
 }
 
 fn main() {
-	cb := variadic
+	{
+		cb := variadic
+		assert cb(1, 2) == 2
+	}
 	{
 		cb := one
 		_ := cb(1, 2)
 	}
-	assert cb(1, 2) == 2
 }
 ')
 	assert output.contains('expected 1 argument, but got 2'), output
+	assert output.count('error:') == 1, output
 }
 
 fn test_local_fn_literal_decl_generates_fn_pointer_locals() {
 	v3_bin := build_v3()
 	optional_c := gen_c(v3_bin, 'fn_value_optional_void_local_c', optional_fn_src)
+	// `fn (i int) !` returns a result, so its fn pointer returns `__v_result`.
 	assert !optional_c.contains('__v_option f = __anon_fn'), optional_c
+	assert !optional_c.contains('__v_result f = __anon_fn'), optional_c
 	assert !optional_c.contains('i64 f = __anon_fn'), optional_c
-	assert optional_c.contains('typedef struct __v_option (*_fn_ptr_'), optional_c
+	assert optional_c.contains('typedef struct __v_result (*_fn_ptr_'), optional_c
 	assert optional_c.contains(' f = __anon_fn_'), optional_c
 
 	optional_callback_c := gen_c(v3_bin, 'fn_value_optional_callback_param_c',

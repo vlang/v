@@ -17,7 +17,7 @@ fn selective_import_setup_v3_cache() {
 
 fn selective_import_build_v3() string {
 	selective_import_setup_v3_cache()
-	v3_bin := os.join_path(os.temp_dir(), 'v3_selective_import_test_${os.getpid()}')
+	v3_bin := os.join_path(os.temp_dir(), 'v3_selective_import_test_${os.getpid()}') + $if windows { '.exe' } $else { '' }
 	if os.is_executable(v3_bin) {
 		return v3_bin
 	}
@@ -548,7 +548,7 @@ fn main() {
 	println(int_str(hidden_xy(2, 3)))
 }
 ')
-	assert output.contains('unknown function `hidden_xy`'), output
+	assert output.contains('unknown function: hidden_xy'), output
 }
 
 fn test_selective_import_scope_is_file_local() {
@@ -568,7 +568,7 @@ fn from_other_file() int {
 }
 '
 	})
-	assert output.contains('unknown function `add_xy`'), output
+	assert output.contains('unknown function: add_xy'), output
 }
 
 fn test_selective_import_same_symbol_from_two_modules_is_ambiguous() {
@@ -637,9 +637,11 @@ fn main() {
 	assert !output.contains('unknown identifier `hit`'), output
 }
 
-fn test_local_function_keeps_priority_over_selective_import_homonym() {
+// A local function used to take priority over a selectively imported homonym. Defining
+// one is an error now, as in V1 (f39e8541d8), so neither function is silently picked.
+fn test_local_function_cannot_redefine_selective_import_homonym() {
 	v3_bin := selective_import_build_v3()
-	output, generated := selective_import_compile_run(v3_bin, 'local_homonym', 'module main
+	output := selective_import_compile_bad(v3_bin, 'local_homonym', 'module main
 
 import mymodules { add_xy }
 
@@ -651,10 +653,7 @@ fn main() {
 	println(int_str(add_xy(2, 3)))
 }
 ')
-	assert output == '6'
-	assert generated.contains('i64 add_xy(i64 x, i64 y)'), generated
-	assert generated.contains('int__str(add_xy(2, 3))'), generated
-	assert !generated.contains('int__str(mymodules__add_xy(2, 3))'), generated
+	assert output.contains('main.v:5:4: error: cannot redefine imported function `add_xy`'), output
 }
 
 fn test_module_homonym_function_signature_uses_module_key() {
@@ -1007,8 +1006,10 @@ fn main() {
 ',
 		selective_import_type_collision_modules())
 	assert output == '3'
-	assert generated.contains('i64 m = 1 | 2;'), generated
-	assert !generated.contains('i64 m = 1 | 4;'), generated
+	// `m` is a `geometry.Perm`, whose C type is `int`; the C type is not what is checked
+	// here, the flag values are: `.b` is 2 in geometry and 4 in pixels.
+	assert generated.contains(' m = 1 | 2;'), generated
+	assert !generated.contains(' m = 1 | 4;'), generated
 	assert !generated.contains('Perm.a'), generated
 }
 
@@ -1058,7 +1059,10 @@ fn main() {
 }
 ',
 		selective_import_type_collision_modules())
-	assert output.contains('cannot use `geometry.Mode` as argument 1 to `takes_pixel`; expected `pixels.Mode`'), output
+	// The V1 wording (238dd3add8). A module of the compiled project directory is named
+	// after that directory in diagnostics (9aa2b7350f), so only its tail is checked.
+	assert output.contains('.geometry.Mode` as `'), output
+	assert output.contains('pixels.Mode` in argument 1 to `takes_pixel`'), output
 }
 
 fn test_unselected_type_from_selective_import_is_not_resolved_by_suffix() {

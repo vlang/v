@@ -108,7 +108,7 @@ fn (mut tc TypeChecker) prepare_for_checks(a &flat.FlatAst) {
 	for name, _ in tc.structs {
 		// These two depend on the file and the module that ask.
 		if name !in ['Error', 'MessageError'] {
-			tc.named_type_compatible_with_ierror(name)
+			tc.named_type_compatible_with_ierror(flat.source_type_id(name))
 		}
 	}
 	room := a.nodes.len + int_max(a.nodes.len, 1 << 20)
@@ -190,7 +190,7 @@ fn (mut found DeclarationKeys) add_declaration_keys(a &flat.FlatAst, i int, mark
 		}
 		.import_decl {
 			short_name := node.value.all_after_last('.')
-			alias := if node.typ.len > 0 { node.typ } else { short_name }
+			alias := if node.typ_text().len > 0 { node.typ_text() } else { short_name }
 			found.aliases[alias] << AliasUse{
 				path:   node.value
 				marker: marker

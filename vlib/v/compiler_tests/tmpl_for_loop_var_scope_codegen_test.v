@@ -18,20 +18,25 @@ fn flvs_build_v3() string {
 }
 
 // A template lowered into an IIFE (here because `$tmpl()` is a subexpression of `+`) that loops
-// with a `@for item in items` and then references `@{item}` AFTER the loop must capture the
-// OUTER `item`. The loop variable shadows the outer name only inside the loop body, so the
-// capture collector must scope the loop declaration: without a nested scope the loop var stays
-// "declared", the post-loop use is treated as builder-local, and the generated closure omits
-// `item` from its capture list, leaving the reference undefined.
+// with `@for row in items` and then references the outer `@{item}` AFTER the loop must keep the
+// loop variable local to the loop and capture the OUTER `item`: the capture collector scopes the
+// loop declaration, so `row` is never captured and the post-loop `item` is.
+//
+// The loop variable used to be named `item` too, shadowing the outer name. 5c44a423cf made that
+// a `redefinition of value iteration variable` error (the V1 rule), so the shadowing form now
+// has to be rejected by the parser with a diagnostic in the template, never reach C.
 fn test_template_loop_var_does_not_shadow_outer_capture_after_loop() {
 	v3_bin := flvs_build_v3()
 	pid := os.getpid()
 	root := os.join_path(os.temp_dir(), 'v3_tmpl_for_loop_var_scope_${pid}_project')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
 	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'flvs' }\n") or { panic(err) }
 	// Loop over `items` printing each element, then print the OUTER `item` after the loop.
-	os.write_file(os.join_path(root, 't.html'), '@for item in items\n@{item}\n@end\n|@{item}\n') or {
+	os.write_file(os.join_path(root, 't.html'), '@for row in items\n@{row}\n@end\n|@{item}\n') or {
 		panic(err)
 	}
 	source := "module main\n\nfn build(item string, items []string) string {\n\treturn ('[' + \$tmpl('t.html') + ']').replace('\\n', '')\n}\n\nfn main() {\n\tprintln(build('OUTER', ['a', 'b']))\n}\n"
@@ -44,4 +49,13 @@ fn test_template_loop_var_does_not_shadow_outer_capture_after_loop() {
 	assert run.exit_code == 0, run.output
 	// Loop body concatenated the two elements, then the OUTER `item` printed after the loop.
 	assert run.output.trim_space() == '[ab|OUTER]', run.output
+
+	// A loop variable that shadows the outer `item` is a V error reported in the template.
+	os.write_file(os.join_path(root, 't.html'), '@for item in items\n@{item}\n@end\n|@{item}\n') or {
+		panic(err)
+	}
+	shadow := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', bin])
+	assert shadow.exit_code != 0, shadow.output
+	assert shadow.output.contains('t.html:1:6: error: redefinition of value iteration variable `item`'), shadow.output
+	assert !shadow.output.contains('C compilation failed'), shadow.output
 }

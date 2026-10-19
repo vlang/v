@@ -51,4 +51,28 @@ jobs:
           ./v retry -- sudo apt update
           ./v retry -- sudo apt install --quiet -y gobjc
       - name: Test compiler
-        run: ./v run vlib/v/test_all.vsh
+        run: ./v run vlib/v/test_all.vsh --skip-units
+
+  # Section 1 of test_all.vsh, the V3 unit tests, takes several hours of serial work. Each job
+  # runs every n-th file of the sorted list (`--shard i/n`); n is the number of shards below.
+  unit-tests:
+    name: V3 unit tests (${{ matrix.shard }}/${{ strategy.job-total }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build V
+        run: make -j4
+      - name: Install Objective-C compiler
+        run: |
+          .github/workflows/disable_azure_mirror.sh
+          ./v retry -- sudo apt update
+          ./v retry -- sudo apt install --quiet -y gobjc
+      - name: Test compiler
+        run: ./v run vlib/v/test_all.vsh --units-only --shard ${{ matrix.shard }}/${{ strategy.job-total }}

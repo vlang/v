@@ -92,8 +92,8 @@ fn is_name_alpha(chr u8) bool {
 fn (mut s Scanner) create_string(q u8) string {
 	mut str := ''
 	for s.pos < s.text.len && s.text[s.pos] != q {
-		if s.text[s.pos] == `\\` && s.text[s.pos + 1] == q {
-			str += s.text[s.pos..s.pos + 1]
+		if s.text[s.pos] == `\\` && s.pos + 1 < s.text.len && s.text[s.pos + 1] == q {
+			str += s.text[s.pos + 1].ascii_str()
 			s.pos += 2
 		} else {
 			str += s.text[s.pos].ascii_str()
@@ -122,7 +122,7 @@ fn (mut s Scanner) create_number() string {
 }
 
 fn (s &Scanner) peek_char(c u8) bool {
-	return s.pos - 1 < s.text.len && s.text[s.pos - 1] == c
+	return s.pos > 0 && s.pos - 1 < s.text.len && s.text[s.pos - 1] == c
 }
 
 fn (mut s Scanner) scan_all() {
