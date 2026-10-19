@@ -1,6 +1,7 @@
 #ifdef _WIN32
 int v3_run_signals_begin(void) { return 0; }
 int v3_run_signals_set_pid(int child_pid) { (void)child_pid; return 0; }
+void v3_run_signals_kill(int child_pid) { (void)child_pid; }
 int v3_run_signals_wait(int *code, int *signal_number) { *code = 0; *signal_number = 0; return 0; }
 int v3_run_signals_finish(void) { return 0; }
 #else
@@ -24,6 +25,8 @@ static volatile sig_atomic_t v3_run_bridging_interrupt;
 static volatile sig_atomic_t v3_run_observer_pid;
 static volatile sig_atomic_t v3_run_observer_forwarded_int;
 static volatile sig_atomic_t v3_run_observer_forwarded_quit;
+static volatile sig_atomic_t v3_run_observer_forwarded_stop;
+static int v3_run_observed_stop;
 static int v3_run_observer_control = -1;
 static int v3_run_observer_stopped;
 static volatile sig_atomic_t v3_run_observer_notice_read = -1;
@@ -133,8 +136,10 @@ enum { v3_run_hup = 1, v3_run_int = 2, v3_run_quit = 3, v3_run_term = 15 };
 static void v3_run_send_child_signal(int signal_number) {
     if (v3_run_observer_pid > 0 && v3_run_observer_notice_write >= 0) {
         volatile sig_atomic_t *announced = signal_number == v3_run_int
-            ? &v3_run_observer_forwarded_int : &v3_run_observer_forwarded_quit;
-        if ((signal_number == v3_run_int || signal_number == v3_run_quit) && !*announced) {
+            ? &v3_run_observer_forwarded_int : signal_number == v3_run_quit
+            ? &v3_run_observer_forwarded_quit : &v3_run_observer_forwarded_stop;
+        if ((signal_number == v3_run_int || signal_number == v3_run_quit
+            || signal_number == V3_RUN_TSTP) && !*announced) {
             *announced = 1;
             unsigned char notice = (unsigned char)signal_number;
             while (v3_run_write((int)v3_run_observer_notice_write, &notice, 1) < 0
@@ -243,7 +248,7 @@ static int v3_run_foreground_child(void) {
 }
 
 static void v3_run_observer_interrupt(int signal_number) {
-    unsigned char notices[2];
+    unsigned char notices[3];
     int forwarded = 0;
     for (;;) {
         long count = v3_run_read((int)v3_run_observer_notice_read, notices, sizeof(notices));
@@ -291,12 +296,12 @@ static int v3_run_start_observer(const sigset_t *previous_mask) {
         v3_run_close(notices[1]);
         v3_run_observer_notice_read = notices[0];
         if (v3_run_setpgid(0, (int)v3_run_child_pid)) _exit(125);
-        int ignored[] = {v3_run_hup, v3_run_term, V3_RUN_TSTP, V3_RUN_TTIN, V3_RUN_TTOU};
-        for (int i = 0; i < 5; i++) {
+        int ignored[] = {v3_run_hup, v3_run_term, V3_RUN_TTIN, V3_RUN_TTOU};
+        for (int i = 0; i < 4; i++) {
             if (v3_run_set_signal(ignored[i], SIG_IGN) == (void (*)(int))-1) _exit(125);
         }
-        int interrupts[] = {v3_run_int, v3_run_quit};
-        for (int i = 0; i < 2; i++) {
+        int interrupts[] = {v3_run_int, v3_run_quit, V3_RUN_TSTP};
+        for (int i = 0; i < 3; i++) {
             void (*previous)(int) = v3_run_set_signal(interrupts[i], v3_run_observer_interrupt);
             if (previous == (void (*)(int))-1) _exit(125);
             if (previous == (void (*)(int))SIG_IGN) v3_run_set_signal(interrupts[i], SIG_IGN);
@@ -330,6 +335,7 @@ static int v3_run_start_observer(const sigset_t *previous_mask) {
     v3_run_observer_stopped = 0;
     v3_run_observer_forwarded_int = 0;
     v3_run_observer_forwarded_quit = 0;
+    v3_run_observer_forwarded_stop = 0;
     return 0;
 }
 
@@ -346,6 +352,7 @@ static int v3_run_observer_exit(int status) {
     if (v3_run_observer_notice_read >= 0) v3_run_close((int)v3_run_observer_notice_read);
     if (v3_run_observer_notice_write >= 0) v3_run_close((int)v3_run_observer_notice_write);
     v3_run_observer_notice_read = v3_run_observer_notice_write = -1;
+    if (signal_number == V3_RUN_TSTP) v3_run_observed_stop = 1;
     if (signal_number == v3_run_int || signal_number == v3_run_quit) {
         if (v3_run_sigemptyset(&selected) || v3_run_sigaddset(&selected, signal_number)) {
             v3_run_sigprocmask(V3_RUN_SETMASK, &previous_mask, 0);
@@ -398,6 +405,7 @@ int v3_run_signals_begin(void) {
     v3_run_received_signal = 0;
     v3_run_termination_signal = 0;
     v3_run_forwarded_stop = 0;
+    v3_run_observed_stop = 0;
     v3_run_bridging_stop = 0;
     v3_run_bridging_interrupt = 0;
     v3_run_observer_pid = 0;
@@ -471,6 +479,30 @@ int v3_run_signals_set_pid(int child_pid) {
     return result;
 }
 
+/* A terminal stop can be caught by the app. The observer still suspends the
+ * shell's original job and restores its terminal, without re-signalling the app. */
+static int v3_run_suspend_owner(int stop_signal, int forwarded_stop) {
+    v3_run_restore_terminal();
+    v3_run_bridging_stop = 1;
+    if (v3_run_terminal_fd >= 0 && !forwarded_stop
+        && (stop_signal == V3_RUN_TSTP || stop_signal == V3_RUN_TTIN
+            || stop_signal == V3_RUN_TTOU)) {
+        kill(-v3_run_owner_group, stop_signal);
+    }
+    kill((int)v3_run_owner_pid, V3_RUN_STOP);
+    v3_run_bridging_stop = 0;
+    if (v3_run_foreground_child()) return -1;
+    kill(-(int)v3_run_child_pid, V3_RUN_CONT);
+    return 0;
+}
+
+void v3_run_signals_kill(int child_pid) {
+    /* Publish the group only after setpgid/getpgid verified it. A setup failure
+     * before that point must never target an unverified process group. */
+    if (child_pid > 0 && v3_run_child_pid == child_pid) kill(-child_pid, SIGKILL);
+    if (child_pid > 0) kill(child_pid, SIGKILL);
+}
+
 int v3_run_signals_wait(int *code, int *signal_number) {
     if (v3_run_child_pid <= 0) return -1;
     int status;
@@ -486,6 +518,10 @@ int v3_run_signals_wait(int *code, int *signal_number) {
         if (waited == v3_run_observer_pid) {
             if (WIFSTOPPED(status)) { v3_run_observer_stopped = 1; continue; }
             if (v3_run_observer_exit(status)) return -1;
+            if (v3_run_observed_stop) {
+                v3_run_observed_stop = 0;
+                if (v3_run_suspend_owner(V3_RUN_TSTP, 0)) return -1;
+            }
             sigset_t previous_mask;
             if (v3_run_block_signals(&previous_mask)) return -1;
             int result = v3_run_start_observer(&previous_mask);
@@ -507,19 +543,17 @@ int v3_run_signals_wait(int *code, int *signal_number) {
             v3_run_forwarded_stop = 0;
             /* A debugger can stop/resume only the child without stopping its waiter. */
             if (v3_run_terminal_fd < 0 && !forwarded_stop) continue;
-            v3_run_restore_terminal();
             int stop_signal = WSTOPSIG(status);
-            v3_run_bridging_stop = 1;
-            if (v3_run_terminal_fd >= 0 && !forwarded_stop
-                && (stop_signal == V3_RUN_TSTP || stop_signal == V3_RUN_TTIN
-                    || stop_signal == V3_RUN_TTOU)) {
-                /* Preserve ignored peer dispositions, including a non-job-control shell. */
-                kill(-v3_run_owner_group, stop_signal);
-            }
-            kill((int)v3_run_owner_pid, V3_RUN_STOP);
-            v3_run_bridging_stop = 0;
-            if (v3_run_foreground_child()) return -1;
-            kill(-(int)v3_run_child_pid, V3_RUN_CONT);
+            /* Reap the observer before suspending: otherwise its pending stop
+             * notification could suspend the same job again after fg. */
+            if (v3_run_close_observer()) return -1;
+            v3_run_observed_stop = 0;
+            if (v3_run_suspend_owner(stop_signal, forwarded_stop)) return -1;
+            sigset_t previous_mask;
+            if (v3_run_block_signals(&previous_mask)) return -1;
+            int result = v3_run_start_observer(&previous_mask);
+            v3_run_sigprocmask(V3_RUN_SETMASK, &previous_mask, 0);
+            if (result) return -1;
             continue;
         }
         v3_run_restore_terminal();

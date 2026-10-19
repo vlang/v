@@ -172,7 +172,7 @@ fn test_run_signal_dispositions_restart_and_finish() ! {
 		assert compiled.exit_code == 0, compiled.output
 		for check in ['ignore-hup', 'ignore-term', 'ignore-int', 'ignore-quit', 'ignore-tstp',
 			'ignore-ttin', 'ignore-ttou', 'pending', 'restart', 'finish', 'group-hup', 'group-term',
-			'group-int', 'group-quit', 'debugger-stop'] {
+			'group-int', 'group-quit', 'debugger-stop', 'setup-failure'] {
 			result := os.exec([binary, check])
 			assert result.exit_code == 0, '${mode} ${check}: ${result.output}'
 		}
@@ -202,6 +202,11 @@ static void timeout_cleanup(int signo) {
     timed_out = 1;
     if (timeout_child > 0) kill((int)timeout_child, SIGKILL);
     if (timeout_sender > 0) kill((int)timeout_sender, SIGKILL);
+}
+static int fail_pipe;
+static int test_pipe(int fds[2]) {
+    if (fail_pipe) { errno = EMFILE; return -1; }
+    return pipe(fds);
 }
 static int stop_notification = -1;
 static pid_t test_waitpid(pid_t child, int *status, int options) {
@@ -244,16 +249,18 @@ int test_siginterrupt(int, int) __asm__("siginterrupt");
 #define v3_run_fcntl fcntl
 #define v3_run_waitpid test_waitpid
 #define v3_run_fork fork
-#define v3_run_pipe pipe
+#define v3_run_pipe test_pipe
 #define v3_run_read read
 #define v3_run_write write
 #else
 #define sigaction(...) test_sigaction(__VA_ARGS__)
 #define waitpid(...) test_waitpid(__VA_ARGS__)
+#define pipe(...) test_pipe(__VA_ARGS__)
 #endif
 #include "@RUN_SIGNAL_HELPER@"
 #undef sigaction
 #undef waitpid
+#undef pipe
 #ifdef V3_TEST_HEADERLESS
 _Static_assert(sizeof(struct sigaction) <= sizeof(v3_run_action), "sigaction storage too small");
 _Static_assert(__alignof__(struct sigaction) <= __alignof__(v3_run_action), "sigaction alignment");
@@ -417,6 +424,41 @@ static int check_debugger_stop(void) {
     timeout_child = timeout_sender = 0;
     return stopped || waited != worker || !WIFEXITED(status) || WEXITSTATUS(status);
 }
+/* Exhaust observer descriptors after the child has forked a descendant. Both
+ * retain report[1], so EOF proves that group cleanup removed both processes. */
+static int check_setup_failure(void) {
+    int report[2];
+    if (pipe(report) || v3_run_signals_begin()) return 3;
+    pid_t child = fork();
+    if (child < 0) return 4;
+    if (!child) {
+        close(report[0]);
+        if (setpgid(0, 0)) _exit(5);
+        pid_t descendant = fork();
+        if (descendant < 0) _exit(6);
+        if (descendant) write(report[1], &descendant, sizeof(descendant));
+        for (;;) pause();
+    }
+    close(report[1]);
+    timeout_child = child;
+    pid_t descendant;
+    if (read_exact(report[0], &descendant, sizeof(descendant))) return 7;
+    timeout_sender = descendant;
+    v3_run_handoff_terminal = 1;
+    fail_pipe = 1;
+    if (!v3_run_signals_set_pid((int)child)) return 8;
+    v3_run_signals_kill((int)child);
+    int status;
+    if (reap(child, &status) != child) return 9;
+    timeout_child = 0;
+    unsigned char byte;
+    long count;
+    do { count = read(report[0], &byte, 1); } while (count < 0 && errno == EINTR);
+    close(report[0]);
+    timeout_sender = 0;
+    return v3_run_signals_finish() || count != 0 || !WIFSIGNALED(status)
+        || WTERMSIG(status) != SIGKILL;
+}
 static int check_restart(void) {
     int ready[2];
     if (pipe(ready) || v3_run_signals_begin()) return 3;
@@ -508,6 +550,7 @@ int main(int argc, char **argv) {
     if (argc > 1 && !strcmp(argv[1], "group-quit")) result = check_group(SIGQUIT);
     if (argc > 1 && !strcmp(argv[1], "debugger-stop")) result = check_debugger_stop();
     if (argc > 1 && !strcmp(argv[1], "pending")) result = check_pending();
+    if (argc > 1 && !strcmp(argv[1], "setup-failure")) result = check_setup_failure();
     if (argc > 1 && !strcmp(argv[1], "restart")) result = check_restart();
     if (argc > 1 && !strcmp(argv[1], "finish")) result = check_finish();
     alarm(0);

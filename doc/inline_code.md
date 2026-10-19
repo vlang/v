@@ -21,6 +21,8 @@ program before removing temporary files. After `SIGTERM` or `SIGHUP`, V exits wi
 Interactive programs receive the foreground terminal while running. Terminal input and
 shell job control (`Ctrl-Z`, `fg`, and `bg`) continue to work. Terminal interrupts also reach
 peers in an output pipeline, even if the program handles the interrupt and keeps running.
+Terminal `Ctrl-Z` also suspends the original pipeline when the program catches or ignores
+`SIGTSTP`. Failed signal setup terminates the verified program group, including its descendants.
 Catchable job-control stop signals
 sent to V are forwarded to the program. Uncatchable `SIGKILL` and `SIGSTOP` sent only to V
 cannot be forwarded to the separate program group. With piped or redirected stdin, the

@@ -188,11 +188,12 @@ fn (mut g FlatGen) portable_run_signal_helpers(headerless bool) {
 	}
 	g.write(source.replace('int v3_run_signals_begin(', 'static int v3_run_signals_begin(')
 		.replace('int v3_run_signals_set_pid(', 'static int v3_run_signals_set_pid(')
+		.replace('void v3_run_signals_kill(', 'static void v3_run_signals_kill(')
 		.replace('int v3_run_signals_wait(', 'static int v3_run_signals_wait(')
 		.replace('int v3_run_signals_finish(', 'static int v3_run_signals_finish('))
 	g.writeln('')
 	g.collect_preserved_c_fns(['v3_run_signals_begin', 'v3_run_signals_set_pid', 'v3_run_signals_wait',
-		'v3_run_signals_finish'])
+		'v3_run_signals_finish', 'v3_run_signals_kill'])
 }
 
 // Use libc aliases with opaque arguments so V's partial C bindings do not own the ABI.

@@ -220,6 +220,7 @@ int install_interrupt(int signo) {
     sigemptyset(&action.sa_mask);
     return sigaction(signo, &action, 0);
 }
+int ignore_interrupt(int signo) { return signal(signo, SIG_IGN) == SIG_ERR ? -1 : 0; }
 int interrupt_calls(void) { return calls; }
 int close_stdout(void) { return close(1); }
 int leave_app_group(void) { return setpgid(0, getpgid(getppid())); }
@@ -227,14 +228,14 @@ int leave_app_group(void) { return setpgid(0, getpgid(getppid())); }
     output_source = Path(root) / "output.c.v"
     output_source.write_text("import os\nimport time\n#flag " + str(reader) + "\n#flag " + str(extra) + "\n"
         "fn C.read_terminal_line(&u8, i32) i32\nfn C.install_interrupt(i32) i32\n"
-        "fn C.interrupt_calls() i32\nfn C.close_stdout() i32\nfn C.leave_app_group() i32\n"
-        "fn main() { mode := os.args[1]; if mode in ['catch', 'parent'] { assert C.install_interrupt(i32(os.args[4].int())) == 0 }; "
-        "if mode == 'close' { assert C.close_stdout() == 0 }; if mode == 'move' { assert C.leave_app_group() == 0 }; os.write_file(os.args[2], os.getpid().str())!; if mode == 'move' { return }; "
+        "fn C.ignore_interrupt(i32) i32\nfn C.interrupt_calls() i32\nfn C.close_stdout() i32\nfn C.leave_app_group() i32\n"
+        "fn main() { mode := os.args[1]; if mode in ['catch', 'parent', 'stop'] { assert C.install_interrupt(i32(os.args[4].int())) == 0 }; "
+        "if mode == 'ignorestop' { assert C.ignore_interrupt(i32(os.args[4].int())) == 0 }; if mode == 'close' { assert C.close_stdout() == 0 }; if mode == 'move' { assert C.leave_app_group() == 0 }; os.write_file(os.args[2], os.getpid().str())!; if mode == 'move' { return }; "
         "mut bytes := []u8{len:4096}; _ = C.read_terminal_line(bytes.data, i32(bytes.len)); "
         "if mode == 'parent' { for C.interrupt_calls() == 0 { time.sleep(time.millisecond) } }; "
         "os.write_file(os.args[3], C.interrupt_calls().str())! }\n")
     for mode, signo in [("default", signal.SIGINT), ("catch", signal.SIGINT),
-                         ("catch", signal.SIGQUIT), ("parent", signal.SIGINT), ("close", signal.SIGINT), ("move", signal.SIGINT)]:
+                         ("catch", signal.SIGQUIT), ("stop", signal.SIGTSTP), ("ignorestop", signal.SIGTSTP), ("parent", signal.SIGINT), ("close", signal.SIGINT), ("move", signal.SIGINT)]:
         signo = int(signo)
         ready = Path(root) / (mode + str(signo) + ".ready")
         counts = Path(root) / (mode + str(signo) + ".counts")
@@ -252,7 +253,24 @@ int leave_app_group(void) { return setpgid(0, getpgid(getppid())); }
         child = int(ready.read_text())
         if mode != "move":
             assert os.tcgetpgrp(terminal) == child
-        if mode == "parent":
+        if mode in ["stop", "ignorestop"]:
+            send(b"\x1a")
+            read_until(b"VPTY> ")
+            wait_stopped(compiler)
+            wait_stopped(peer)
+            send(b"fg\n")
+            deadline = time.monotonic() + 5
+            while os.tcgetpgrp(terminal) != child and time.monotonic() < deadline:
+                time.sleep(0.02)
+            assert os.tcgetpgrp(terminal) == child
+            send(b"done\n")
+            deadline = time.monotonic() + 5
+            while not counts.exists() and time.monotonic() < deadline:
+                time.sleep(0.02)
+            assert counts.exists()
+            assert counts.read_text() == ("1" if mode == "stop" else "0")
+            os.kill(peer, signal.SIGTERM)
+        elif mode == "parent":
             os.kill(compiler, signal.SIGINT)
             send(b"done\n")
             deadline = time.monotonic() + 5
