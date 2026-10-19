@@ -6325,6 +6325,10 @@ locked, so `m[k] = m[k] * 2` is atomic too. Reads (`m[k]`, `m[k] or { ... }`, `k
 `m.len`, `m.keys()`, `m.values()` and `m.clone()`) take an `rlock`. This works for
 `shared` variables, parameters, globals and struct fields.
 
+Custom map methods can operate on a `shared` map inside an explicit lock block.
+A method with a `mut map` receiver updates the map's contents, including when the method
+is defined in an imported module.
+
 Operations that must happen together still need an explicit block, and so do iterating
 over the map, `if v := m[k] {` and statements that use two `shared` maps:
 
