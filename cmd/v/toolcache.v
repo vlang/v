@@ -91,16 +91,16 @@ fn tool_cache_default_candidates() []string {
 		os.join_path(os.cache_dir(), 'v', 'tools'),
 		os.join_path(os.vtmp_dir(), 'tools'),
 	]
-	home := os.home_dir().trim_space()
-	if home != '' {
-		private_home := os.join_path(home, '.vtools')
-		if private_home !in candidates {
-			candidates << private_home
-		}
-		fallback := os.join_path(home, '.v', 'tools')
-		if fallback !in candidates {
-			candidates << fallback
-		}
+	private_home := tool_cache_home_candidate()
+	if private_home == '' {
+		return candidates
+	}
+	if private_home !in candidates {
+		candidates << private_home
+	}
+	fallback := os.join_path(os.home_dir().trim_space(), '.v', 'tools')
+	if fallback !in candidates {
+		candidates << fallback
 	}
 	return candidates
 }
@@ -298,13 +298,13 @@ fn directory_is_writable(directory string) bool {
 	return true
 }
 
-// tool_cache_home_candidate returns the last default tool cache folder, `~/.vtools`, or an empty
+// tool_cache_home_candidate returns the private home tool cache folder, `~/.vtools`, or an empty
 // string without a home folder. It is for the hosts where the folders above both other defaults
 // can be changed by someone else: with a umask of 002, `~/.cache` is writable by its group, and
 // in some containers `/tmp` belongs to another user. The home folder itself normally is private.
 // V creates the folder with mode 0700, and never changes the permissions of the home folder.
 fn tool_cache_home_candidate() string {
-	home := os.home_dir()
+	home := os.home_dir().trim_space()
 	if home == '' {
 		return ''
 	}
