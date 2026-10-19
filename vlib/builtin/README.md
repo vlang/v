@@ -12,6 +12,8 @@ For floating point elements, NaNs follow all other values. Equal signed zeros an
 keep their original order; an explicit comparison controls its own ordering.
 Maps with empty struct values support growth, reservation, and deletion with every C compiler,
 including compilers where the empty struct occupies zero bytes.
+Mutable map receivers can update nested struct fields through array elements, including
+when the map value and array element structs use `@[heap]`.
 It also includes Unicode-aware string helpers such as `string.graphemes()`
 for splitting text into grapheme clusters.
 The `.string()` method converts dynamic and fixed arrays of runes to UTF-8 strings,

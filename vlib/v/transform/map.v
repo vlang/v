@@ -1900,8 +1900,15 @@ fn (mut t Transformer) make_map_get_expr(map_expr flat.NodeId, base_type_id u32,
 	} else {
 		effective_value_type
 	})
+	map_addr := t.runtime_addr(map_expr, base_type_id)
+	// Lowered mutable receivers already use pointer storage. Keep that type on a
+	// fresh expression so later generic annotation does not resolve the source value.
+	mut typed_map_addr := map_addr
+	if flat.source_type_shape(base_type_id).has(.pointer) {
+		typed_map_addr = t.make_cast(base_type_id, map_addr, base_type_id)
+	}
 	call := t.make_call_typed('map__get', [
-		t.runtime_addr(map_expr, base_type_id),
+		typed_map_addr,
 		t.make_prefix(.amp, t.make_ident(key_name)),
 		t.make_prefix(.amp, t.make_ident(zero_name)),
 	], flat.source_type_voidptr)
