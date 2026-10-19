@@ -283,3 +283,26 @@ request headers, method, and body. `-d no_vschannel` continues to select `net.ss
 
 Redirect responses without a `Location` header, or with an empty `Location`, are returned
 to the caller without following another URL.
+
+## Reverse Proxy
+
+`http.new_single_host_reverse_proxy` creates an HTTP reverse proxy that routes incoming
+requests to a target upstream server. It satisfies the `http.Handler` interface:
+
+```v ignore
+import net.http
+
+fn main() {
+	mut rp := http.new_single_host_reverse_proxy('http://127.0.0.1:8080')!
+	mut server := &http.Server{
+		addr:    ':9000'
+		handler: rp
+	}
+	server.listen_and_serve()
+}
+```
+
+The reverse proxy strips hop-by-hop headers (such as `Connection`, `Keep-Alive`,
+`Transfer-Encoding`), manages forwarding headers (`X-Forwarded-For`, `X-Forwarded-Host`,
+`X-Forwarded-Proto`), and supports `director`, `modify_response`, and `error_handler` hooks.
+
