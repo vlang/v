@@ -1,9 +1,11 @@
 module ssa
 
+import v.flat
+
 fn (mut b Builder) register_at_exit_runtime() {
-	params := [b.resolve_type('FnExitCb')]
+	params := [b.resolve_type(flat.source_type_id('FnExitCb'))]
 	b.register_extern('atexit', b.i32_type, params)
-	result_type := b.option_type_id('void', true)
+	result_type := b.option_type_id(flat.source_type_void, true)
 	func_id := b.register_synthetic_function('at_exit', result_type, params)
 	b.generate_at_exit_body(func_id, result_type, params[0])
 }

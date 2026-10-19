@@ -139,14 +139,14 @@ fn add_all[T](items []T) T {
 
 	c_code := os.read_file(bin + '.c') or { panic(err) }
 	c_compact := numeric_array_literal_compact_c(c_code)
-	assert c_compact.contains('array_new(sizeof(double),0,6)'), c_code
+	assert c_compact.contains('__new_array_noscan(0,6,sizeof(double))'), c_code
 	assert c_code.contains('double x = *(double*)(array_get(xs,'), c_code
 	assert c_compact.contains('new_array_from_c_array(3,3,sizeof(i64)'), c_code
 	assert !c_code.contains('i64 x = *(i64*)(array_get(xs,'), c_code
-	assert c_compact.contains('array_new(sizeof(float),0,2)'), c_code
+	assert c_compact.contains('__new_array_noscan(0,2,sizeof(float))'), c_code
 	assert c_code.contains('float z = *(float*)(array_get(zs,'), c_code
 	assert c_code.contains('float w = *(float*)(array_get(ws,'), c_code
-	assert c_compact.contains('array_new(sizeof(float),0,4)'), c_code
+	assert c_compact.contains('__new_array_noscan(0,4,sizeof(float))'), c_code
 	assert c_code.contains('float f = *(float*)(array_get(fs,'), c_code
 	assert c_code.contains('float g = *(float*)(array_get(gs,'), c_code
 	assert c_code.contains('float h = *(float*)(array_get(hs,'), c_code
@@ -159,5 +159,5 @@ fn add_all[T](items []T) T {
 	assert c_code.contains('head = MyAlias__plus(head, item);'), c_code
 	assert !c_code.contains('head += item;'), c_code
 	assert !c_code.contains('UnusedAlias__plus'), c_code
-	assert !c_compact.contains('array_new(sizeof(double),0,4)'), c_code
+	assert !c_compact.contains('__new_array_noscan(0,4,sizeof(double))'), c_code
 }

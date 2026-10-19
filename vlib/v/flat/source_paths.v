@@ -19,6 +19,45 @@ pub fn (mut a FlatAst) record_source_path(path string) string {
 	return resolved
 }
 
+// record_listed_source_path is record_source_path for `path`, an entry of the
+// directory listing that `real_dir` is the os.real_path of. Unless the entry is
+// a symbolic link, os.real_path(path) is `real_dir` joined with the entry's own
+// name, which one lstat confirms: resolving every listed file anew walked all of
+// its parent directories once per file.
+pub fn (mut a FlatAst) record_listed_source_path(path string, real_dir string) string {
+	if a.source_paths_frozen {
+		return a.real_source_path(path)
+	}
+	if resolved := a.resolved_source_paths[path] {
+		return resolved
+	}
+	resolved := listed_real_path(path, real_dir)
+	a.resolved_source_paths[path] = resolved
+	return resolved
+}
+
+// listed_real_path returns os.real_path(path) for an entry of the directory
+// that `real_dir` is the os.real_path of.
+fn listed_real_path(path string, real_dir string) string {
+	$if windows {
+		return os.real_path(path)
+	} $else {
+		base := os.file_name(path)
+		if base in ['', '.', '..'] || real_dir.len == 0 || !os.is_abs_path(real_dir) {
+			return os.real_path(path)
+		}
+		st := os.lstat(path) or { return os.real_path(path) }
+		if st.get_filetype() == .symbolic_link {
+			return os.real_path(path)
+		}
+		return if real_dir.ends_with(os.path_separator) {
+			real_dir + base
+		} else {
+			real_dir + os.path_separator + base
+		}
+	}
+}
+
 // resolve_source_paths completes the table of resolved source paths with every
 // parsed source file, reusing the answers record_source_path already recorded,
 // and freezes it: nothing adds to it afterwards, including another call to

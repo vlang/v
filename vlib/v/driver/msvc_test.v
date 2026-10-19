@@ -52,6 +52,10 @@ fn test_c_compiler_is_msvc() {
 	assert c_compiler_is_msvc('cl')
 	assert c_compiler_is_msvc('C:/Program Files/Microsoft Visual Studio/VC/bin/CL.EXE')
 	assert c_compiler_is_msvc('msvc')
+	assert c_compiler_is_msvc('clang-cl')
+	assert c_compiler_is_msvc('C:/Program Files/LLVM/bin/clang-cl.exe')
+	assert effective_c_compiler_name('clang-cl', pref.host_target()) == 'msvc'
+	assert effective_c_compiler_name('clang-cl.exe', pref.host_target()) == 'msvc'
 	assert !c_compiler_is_msvc('clang')
 	assert !c_compiler_is_msvc('cc')
 }
@@ -78,4 +82,12 @@ fn test_msvc_missing_cl_message_targets_windows_off_windows() {
 		arch: 'amd64'
 	}
 	assert msvc_missing_cl_message('cl', 'windows', windows_x64).contains('Developer Command Prompt')
+}
+
+fn test_only_cl_rejects_gnu_inline_assembly() {
+	assert c_compiler_rejects_gnu_asm('msvc')
+	assert c_compiler_rejects_gnu_asm('C:/Program Files/VC/bin/CL.EXE')
+	assert !c_compiler_rejects_gnu_asm('clang-cl')
+	assert !c_compiler_rejects_gnu_asm('C:/Program Files/LLVM/bin/clang-cl.exe')
+	assert !c_compiler_rejects_gnu_asm('clang')
 }

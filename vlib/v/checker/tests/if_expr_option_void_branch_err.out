@@ -1,0 +1,14 @@
+vlib/v/checker/tests/if_expr_option_void_branch_err.vv:8:12: error: mismatched types `?int` and `?void`
+    6 |
+    7 | fn choose(take_value bool, value ?int) ?int {
+    8 |     result := if take_value { value } else { maybe_void(true) }
+      |               ~~
+    9 |     return result
+   10 | }
+vlib/v/checker/tests/if_expr_option_void_branch_err.vv:13:12: error: mismatched types `?int` and `?void`
+   11 |
+   12 | fn choose_chain(take_value bool, other bool, value ?int) ?int {
+   13 |     result := if take_value {
+      |               ~~
+   14 |         value
+   15 |     } else if other {

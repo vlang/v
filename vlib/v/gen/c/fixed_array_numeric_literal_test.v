@@ -20,7 +20,7 @@ fn test_fixed_array_numeric_literals_match_const_expression_emission() {
 		for text in texts {
 			for typ in [types.Type(types.u64_), types.Type(types.u128_), types.Type(types.i128_),
 				types.Type(types.f32_), types.Type(types.f64_), types.Type(types.Alias{
-					name:      'main.Number'
+					name_id:   flat.source_type_id('main.Number')
 					base_type: types.Type(types.u128_)
 				})] {
 				mut a := flat.FlatAst.new()
@@ -100,7 +100,7 @@ fn test_nested_fixed_array_literal_keeps_wide_alias_elements() {
 	g.a = &a
 	g.tc = &tc
 	inner_type := types.ArrayFixed{
-		elem_type: types.Type(types.Alias{ name: 'main.Number', base_type: types.Type(types.u128_) })
+		elem_type: types.Type(types.Alias{ name_id: flat.source_type_id('main.Number'), base_type: types.Type(types.u128_) })
 		len:       2
 	}
 	outer_type := types.ArrayFixed{ elem_type: types.Type(inner_type), len: 2 }

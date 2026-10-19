@@ -19,6 +19,8 @@ assert strconv.parse_int('0777', 10, 64)! == 777
 
 Digits must be valid for the selected base, so `08` and `09` fail with base 0.
 An explicit prefix, with its optional underscore separator, must be followed by digits.
+Empty strings and a sign without digits are syntax errors for `parse_int` and `parse_uint`.
+The string conveniences `.int()`, `.i64()` and their narrower variants still return 0 for `''`.
 V integer literal analysis keeps bare leading zeros decimal; octal literals use `0o`.
 
 Bit size 0 uses the width of `int` in the selected target and backend, as given by
@@ -292,3 +294,6 @@ Like the quoting functions, all three are checked against Go 1.26.1: over
 two-byte body whose second byte is 0x00-0x28 in the two quoted styles), and
 over 54 hand-picked inputs covering the numeric escape forms and their
 boundaries, invalid UTF-8, multi-byte runes and the error cases.
+
+On the C backend, `fxx_to_str_l_parse` and `fxx_to_str_l_parse_with_dot` return `inf`, `+inf`,
+`-inf`, and `nan` unchanged when expanding a scientific-format string to decimal notation.

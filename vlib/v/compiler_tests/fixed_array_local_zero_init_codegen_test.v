@@ -56,16 +56,17 @@ fn main() {
 	assert run.output.trim_space() == '12'
 	generated := os.read_file(bin + '.c') or { panic(err) }
 	compact := generated.replace('\t', '').replace(' ', '').replace('\n', '')
-	assert compact.contains('intdirect[4]={0};')
-		|| compact.contains('intdirect[4];memmove(direct,(int[4]){0},sizeof(direct));')
-		|| compact.contains('intdirect[4];memmove(direct,(int[4]){0,0,0,0},sizeof(direct));'), generated
+	// V `int` is `i64` on 64-bit targets.
+	assert compact.contains('i64direct[4]={0};')
+		|| compact.contains('i64direct[4];memmove(direct,(i64[4]){0},sizeof(direct));')
+		|| compact.contains('i64direct[4];memmove(direct,(i64[4]){0,0,0,0},sizeof(direct));'), generated
 
-	assert compact.contains('intwrapped[4]={0};') || compact.contains('intwrapped[4]={0,0,0,0};'), generated
+	assert compact.contains('i64wrapped[4]={0};') || compact.contains('i64wrapped[4]={0,0,0,0};'), generated
 	assert compact.contains('void*handles[32]={0};')
 		|| compact.contains('void*handles[32]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};'), generated
 
-	assert compact.contains('intnested[2][3]={0};')
-		|| compact.contains('intnested[2][3]={{0,0,0},{0,0,0}};'), generated
+	assert compact.contains('i64nested[2][3]={0};')
+		|| compact.contains('i64nested[2][3]={{0,0,0},{0,0,0}};'), generated
 	assert !generated.contains(' = (Array_fixed_'), generated
 	assert !generated.contains('Array_fixed_voidptr_32 handles'), generated
 }

@@ -1,0 +1,56 @@
+type Bytes = []u8
+type Rows = [][]u8
+type Counts8 = map[string]u8
+
+enum Color {
+	red
+	green
+}
+
+struct Foo {
+	a int
+}
+
+struct Bar {
+	b string
+}
+
+fn main() {
+	u8s := [u8(1), 2, 3]
+	ints := [1, 2, 3]
+	runes := [`a`, `b`]
+	fixed_u8 := [u8(1), 2, 3]!
+	u64s := [u64(1), 2]
+	bytes := Bytes(u8s)
+	i8s := [i8(1), 2]
+	foos := [Foo{1}]
+	colors := [Color.red, .green]
+	nested := [[1, 2]]
+	counts := {
+		'a': 1
+	}
+	// numeric elements of another size or kind
+	_ = []u64(u8s)
+	_ = []f64(ints)
+	_ = []i32(ints)
+	_ = []i64(ints)
+	_ = []u8(runes)
+	_ = []u8(i8s)
+	_ = [3]u64(fixed_u8)
+	_ = [4]u8(fixed_u8)
+	_ = [3]u64(u8s)
+	_ = []u64(bytes)
+	_ = []u64([]u8{len: 3})
+	_ = unsafe { []u64(u8s) }
+	// aliases and options
+	_ = Bytes(u64s)
+	_ = ?[]u64(ints)
+	_ = ?Bytes(u64s)
+	// other element types
+	_ = []string(ints)
+	_ = []Bar(foos)
+	_ = []int(colors)
+	_ = []Color(ints)
+	_ = Rows(nested)
+	_ = Counts8(counts)
+}

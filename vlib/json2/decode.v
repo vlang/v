@@ -2,6 +2,7 @@ module json2
 
 import strconv
 import time
+import math
 
 const null_in_string = 'null'
 
@@ -547,11 +548,9 @@ fn create_decoded_ptr[T](_ &T) &T {
 		return unsafe { nil }
 	} $else $if T.unaliased_typ is voidptr {
 		return unsafe { nil }
-	} $else $if T is $sumtype {
-		// `&T(ptr)` would wrap the pointer in the sum type instead of casting it.
-		return $new(T)
 	} $else {
-		return unsafe { &T(vcalloc(sizeof(T))) }
+		// Typed initialization retains struct defaults and container element metadata.
+		return $new(T)
 	}
 }
 
@@ -1899,22 +1898,25 @@ fn parse_int_number(str string) !int {
 }
 
 fn parse_float_number[T](str string) !T {
-	$if js {
-		$if T.unaliased_typ is f32 {
-			return T(f32(strconv.atof64(str)!))
-		} $else $if T.unaliased_typ is f64 {
-			return T(strconv.atof64(str)!)
-		} $else {
-			return error('`parse_float_number` cannot decode ${T.name} type')
-		}
+	value := $if js {
+		strconv.atof64(str)!
 	} $else {
-		$if T.unaliased_typ is f32 {
-			return T(f32(strconv.atof64(str, allow_extra_chars: false)!))
-		} $else $if T.unaliased_typ is f64 {
-			return T(strconv.atof64(str, allow_extra_chars: false)!)
-		} $else {
-			return error('`parse_float_number` cannot decode ${T.name} type')
+		strconv.atof64(str, allow_extra_chars: false)!
+	}
+	$if T.unaliased_typ is f32 {
+		narrowed := f32(value)
+		// Test the representation so finite-math optimizations cannot erase the guard.
+		if math.f32_bits(narrowed) & u32(0x7fffffff) == u32(0x7f800000) {
+			return error('number `${str}` exceeds ${T.name} range')
 		}
+		return T(narrowed)
+	} $else $if T.unaliased_typ is f64 {
+		if math.f64_bits(value) & u64(0x7fffffffffffffff) == u64(0x7ff0000000000000) {
+			return error('number `${str}` exceeds ${T.name} range')
+		}
+		return T(value)
+	} $else {
+		return error('`parse_float_number` cannot decode ${T.name} type')
 	}
 }
 

@@ -12,7 +12,7 @@ fn C.nanosleep(&C.timespec, &C.timespec) i32
 fn sync_mono_now() i64 {
 	mut ts := C.timespec{}
 	C.clock_gettime(C.CLOCK_MONOTONIC, &ts)
-	return ts.tv_sec * 1_000_000_000 + ts.tv_nsec
+	return i64(ts.tv_sec) * 1_000_000_000 + i64(ts.tv_nsec)
 }
 
 fn sync_realtime_deadline(timeout i64) C.timespec {

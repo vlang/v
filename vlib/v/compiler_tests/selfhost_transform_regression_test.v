@@ -7,7 +7,7 @@ const selfhost_regression_vlib_dir = os.dir(selfhost_regression_v3_dir)
 const selfhost_regression_v3_src = os.join_path(selfhost_regression_v3_dir, 'v.v')
 
 fn selfhost_regression_v3_bin_path() string {
-	return os.join_path(os.temp_dir(), 'v3_selfhost_transform_regression_test')
+	return os.join_path(os.temp_dir(), 'v3_selfhost_transform_regression_test') + $if windows { '.exe' } $else { '' }
 }
 
 fn testsuite_begin() {

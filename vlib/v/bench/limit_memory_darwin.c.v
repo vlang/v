@@ -20,11 +20,13 @@ struct V3RusageInfo {
 fn C.proc_pid_rusage(pid int, flavor int, usage &V3RusageInfo) int
 
 fn current_limit_memory() LimitMemory {
-	mut usage := V3RusageInfo{}
-	if C.proc_pid_rusage(os.getpid(), 0, &usage) == 0 {
-		return LimitMemory{
-			kb:     i64(usage.ri_phys_footprint / 1024)
-			metric: 'physical footprint'
+	$if macos || ios {
+		mut usage := V3RusageInfo{}
+		if C.proc_pid_rusage(os.getpid(), 0, &usage) == 0 {
+			return LimitMemory{
+				kb:     i64(usage.ri_phys_footprint / 1024)
+				metric: 'physical footprint'
+			}
 		}
 	}
 	return LimitMemory{

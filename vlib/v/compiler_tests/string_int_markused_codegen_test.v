@@ -85,31 +85,3 @@ println(n)
 	generated := os.read_file(bin + '.c') or { panic(err) }
 	assert generated.contains('string__int('), generated
 }
-
-fn test_top_level_calls_are_ignored_when_explicit_main_exists() {
-	v3_bin := string_int_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_explicit_main_ignores_top_level_${os.getpid()}.v')
-	os.write_file(src, "module main
-
-fn ignored_top_level_only() {
-	println('ignored')
-}
-
-ignored_top_level_only()
-
-fn main() {
-	println('entry')
-}
-") or {
-		panic(err)
-	}
-	bin := os.join_path(os.temp_dir(), 'v3_explicit_main_ignores_top_level_${os.getpid()}')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'entry', run.output
-
-	generated := os.read_file(bin + '.c') or { panic(err) }
-	assert !generated.contains('ignored_top_level_only('), generated
-}

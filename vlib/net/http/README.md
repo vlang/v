@@ -199,12 +199,24 @@ remains in `Cookie.unparsed`, which holds only the attributes that were not read
 `Response.cookies` parses `Expires` with `time.parse_http_header_string`. Invalid dates
 and years before 1601 remain in `Cookie.unparsed`; they do not replace a valid expiry.
 `Cookie.raw_expires` retains date text even when it cannot be parsed.
+`Cookie.str()` writes the attribute names `Path`, `Domain` and `Expires` as RFC 6265
+spells them; `Response.cookies` matches attribute names in any case.
 When serializing `Cookie`, IPv4 literals such as `127.0.0.1` are accepted as domains;
 invalid domains are omitted.
+`Cookie.str()` omits `SameSite` for `.same_site_not_set` and `.same_site_default_mode`.
+The explicit modes write `SameSite=Lax`, `SameSite=Strict` or `SameSite=None`.
+
+`Cookie.str()` writes a cookie only when its name is an RFC 9110 token: letters, digits
+and ``!#$%&'*+-.^_`|~``. For any other name, such as one with a space, `;`, `,`, `=` or
+`[`, it returns an empty string. Reading is more lenient: `Request.cookie`,
+`Response.cookies` and `read_cookies` return any name made of visible ASCII characters.
 
 `Header` provides both `CommonHeader` enum access (`get`, `set`, `add`) and
 string access (`get_custom`, `set_custom`, `add_custom`). `http.parse_form`,
 `http.parse_multipart_form` and `http.post_multipart_form` cover form bodies.
+`http.parse_form` decodes URL-encoded fields only; it does not detect or decode JSON.
+Select a JSON decoder by the request's content type when handling JSON bodies directly.
+[`veb`](../../veb) makes JSON object fields available in its `ctx.form` map.
 
 A `Header` holds at most `http.max_headers` (50) fields. `add_custom` and `set_custom`
 return an `http.HeaderLimitError` for a field that does not fit, and so do
@@ -219,10 +231,44 @@ whose value has a bare CR or a NUL. `add`, `set`, `new_header` and `join` store 
 in place of each of these bytes. `Request.do` and `http.fetch` return the error for a
 `user_agent` that contains one of them.
 
+The spaces and tabs at the start and end of a field value are optional whitespace, not part
+of the value (RFC 9110 section 5.5). `Header.render` and the HTTP/1 response writers remove
+this edge whitespace. The HTTP/1 request writer also trims values in `Request.header` other
+than `Cookie`: `add_custom('X-Pad', '  padded  ')` is sent as `X-Pad: padded`, as Go's
+`Header.Write` does. The `Request.user_agent` fallback and explicit `Cookie` header values
+are not trimmed. This trimming guarantee does not apply to the HTTP/2 and HTTP/3 writers.
+`get` and `values` still return the value as it was stored.
+
 `Cookie.str()` and `sanitize_cookie_value` remove invalid bytes from cookie values,
 including control characters, quotes, semicolons and backslashes. Spaces and commas
-inside the value are preserved; the sanitized value is quoted when it begins or ends
-with a space or comma.
+are preserved; the sanitized value is quoted when it contains a space or comma.
+
+`Header.render(canonicalize: true)` writes each field name in a canonical spelling instead of
+the stored one. A name that has a `CommonHeader` is spelled like `CommonHeader.str()`, the
+spelling of the IANA HTTP Field Name Registry for the names registered there: `ETag`, `TE`,
+`WWW-Authenticate`. Any other name gets its first letter and each letter after a `-` in upper
+case and the rest in lower case: `x-request-id` becomes `X-Request-Id`. Go's
+`textproto.CanonicalMIMEHeaderKey` applies the second rule to every name, so it has `Etag`,
+`Te` and `Www-Authenticate` instead; field names are case-insensitive (RFC 9110, section 5.1),
+so both spellings name the same field.
+
+`add_custom` and `set_custom` return an error for a name that is not a valid HTTP field
+name: an empty one, or one with a space, a colon, a control character or any other byte
+that is not an RFC 9110 token character. The name is checked when it is added, because it
+is not checked again when the header is sent.
+
+`http.canonical_header_key(name)` returns the canonical spelling of a header name in any
+case, for example `Accept-Encoding` for `accept-ENCODING`. It never fails: like Go's
+`http.CanonicalHeaderKey`, it returns a name that is not valid unchanged.
+
+### Idle connection reuse
+
+Before reusing an idle plain TCP connection, the client checks for a server-side close.
+A closed connection is discarded before sending request bytes, so a POST can use a fresh
+connection safely. Healthy idle connections remain reusable.
+
+If a non-idempotent request fails after transmission starts, the client returns an error
+without replaying it: a missing response does not prove that the server ignored the request.
 
 ### Windows TLS handshake compatibility
 

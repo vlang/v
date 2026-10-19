@@ -17,11 +17,30 @@ fn (mut g FlatGen) scan_collect_gen_info(_ bool) CollectGenInfoScanCounts {
 	return g.scan_collect_gen_info_serial()
 }
 
-fn (mut g FlatGen) apply_fn_signature_registrations(registrations []FnSignatureRegistration) {
-	for group in 0 .. 4 {
+// sorted_fn_gen_item_keys sorts the keys by C name, stably.
+fn (g &FlatGen) sorted_fn_gen_item_keys(keys []FlatFnGenItemSortKey) []FlatFnGenItemSortKey {
+	mut sorted := keys.clone()
+	sorted.sort(a.c_name < b.c_name)
+	return sorted
+}
+
+// TypeIndexArgs is empty: v3_no_parallel builds share no type indexes.
+struct TypeIndexArgs {}
+
+fn (mut g FlatGen) start_type_indexes(_ bool) (&TypeIndexArgs, []int) {
+	return &TypeIndexArgs{}, []int{}
+}
+
+fn (mut g FlatGen) finish_type_indexes(_ &TypeIndexArgs, _ []int) {}
+
+fn (mut g FlatGen) apply_fn_signature_registrations(registrations []FnSignatureRegistration, node_regs []FnDeclNodeReg) {
+	for group in 0 .. fn_signature_registration_groups {
 		for registration in registrations {
 			g.apply_fn_signature_registration_group(registration, group)
 		}
+	}
+	for which in 0 .. 3 {
+		g.register_fn_decl_nodes(node_regs, which)
 	}
 }
 
@@ -57,6 +76,11 @@ fn (mut g FlatGen) gen_fns_dispatch(_ bool) {
 	g.gen_synthetic_main_after_fns()
 }
 
+// parallel_decl_task_planned is always false when parallel cgen is compiled out.
+fn (g &FlatGen) parallel_decl_task_planned() bool {
+	return false
+}
+
 // prepare_serial_fn_tables is unnecessary when parallel cgen is compiled out.
 fn (mut g FlatGen) prepare_serial_fn_tables() {}
 
@@ -67,7 +91,7 @@ fn (mut g FlatGen) run_pre_dispatch_parallel(_ bool) bool {
 
 // fn_item_cost_and_prep never pre-seeds in `v3_no_parallel` builds; it is only
 // reachable with want_parallel_prep set, which nothing sets here.
-fn (mut g FlatGen) fn_item_cost_and_prep(node_id flat.NodeId, mut _stack []flat.NodeId, mut _type_text_cache map[string]bool) int {
+fn (mut g FlatGen) fn_item_cost_and_prep(node_id flat.NodeId, mut _stack []flat.NodeId, mut _type_text_cache map[u32]bool) int {
 	return flat_fn_gen_item_cost(g.a, node_id)
 }
 
