@@ -1,3 +1,5 @@
+// vtest build: !openbsd
+
 module main
 
 import sokol.audio

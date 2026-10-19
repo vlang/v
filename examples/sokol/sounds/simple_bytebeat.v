@@ -20,6 +20,7 @@ fn audio_callback(mut soundbuffer &f32, num_frames i32, num_channels i32, mut st
 		for ch := 0; ch < channel_count; ch++ {
 			idx := frame * channel_count + ch
 			a := f32(y - 127) / 255.0
+			// Sokol provides num_frames * num_channels writable samples.
 			unsafe {
 				soundbuffer[idx] = a
 			}
@@ -34,6 +35,7 @@ unbuffer_stdout()
 
 println('The ByteBeat formula used in this example is from https://www.youtube.com/watch?v=V4GfkFbDojc , "Techno" by Gabriel Miceli')
 
+// After setup, only the audio callback accesses the frame counter.
 mut state := &ByteBeatState{}
 audio.setup(stream_userdata_cb: audio_callback, user_data: state)
 if !audio.is_valid() {
@@ -45,7 +47,7 @@ defer {
 }
 
 for t in 0 .. 600 {
-	print('\r> t: ${t:5}s , frame_0: ${state.frame_0:10} samples')
+	print('\r> t: ${t:5}s')
 	time.sleep(1 * time.second)
 }
 println('\nGood bye.')
