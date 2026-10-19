@@ -164,6 +164,32 @@ fn test_parallel_dispatch_worker_shares_checker_as_scoped_accumulator() {
 	assert w.tc == tc
 }
 
+fn test_scoped_dispatcher_snapshots_optional_types_before_declaration_growth() {
+	mut g, _ := parallel_worker_test_gen(true)
+	g.emitted_optional_types['__v_option_int'] = true
+	mut dispatcher := g.new_parallel_dispatch_worker(1)
+	// Declaration emission grows the master's map while dispatchers create
+	// chunk workers. Their snapshots must not read that mutable backing.
+	for i in 0 .. 256 {
+		g.emitted_optional_types['__v_option_decl_${i}'] = true
+	}
+	mut first := dispatcher.new_parallel_worker(0)
+	assert first.emitted_optional_types == {
+		'__v_option_int': true
+	}
+	for i in 256 .. 512 {
+		g.emitted_optional_types['__v_option_decl_${i}'] = true
+	}
+	first.emitted_optional_types['__v_option_chunk'] = true
+	second := dispatcher.new_parallel_worker(1)
+	assert second.emitted_optional_types == {
+		'__v_option_int': true
+	}
+	assert dispatcher.emitted_optional_types == second.emitted_optional_types
+	assert g.emitted_optional_types.len == 513
+	assert '__v_option_chunk' !in g.emitted_optional_types
+}
+
 fn test_scoped_parallel_dispatch_worker_owns_string_snapshot() {
 	mut g, _ := parallel_worker_test_gen(true)
 	assert g.intern_string('source') == 0

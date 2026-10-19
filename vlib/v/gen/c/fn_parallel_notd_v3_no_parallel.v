@@ -3458,11 +3458,9 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		needed_optional_types:              g.needed_optional_types.clone()
 		optional_pointer_struct_tags:       g.optional_pointer_struct_tags.clone()
 		optional_types_ready:               g.optional_types_ready
-		emitted_optional_types:             if result_only {
-			g.emitted_optional_types
-		} else {
-			g.emitted_optional_types.clone()
-		}
+		// Declaration emission grows the master's set while scoped dispatchers
+		// fork chunk workers. Keep their snapshot private before tasks start.
+		emitted_optional_types:             g.emitted_optional_types.clone()
 		array_method_cache:                 if result_only {
 			g.array_method_cache
 		} else {
