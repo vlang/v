@@ -1685,6 +1685,8 @@ fn cgen_publish_builder_text(mut sb strings.Builder, scope voidptr) string {
 // before it is written again.
 fn cgen_take_builder_text(mut sb strings.Builder) string {
 	if sb.len == 0 {
+		unsafe { sb.free() }
+		sb = strings.new_builder(0)
 		return ''
 	}
 	sb << u8(0)

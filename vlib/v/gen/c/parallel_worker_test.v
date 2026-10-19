@@ -15,8 +15,11 @@ fn test_taken_builder_text_owns_a_terminated_string() {
 	assert text == 'prefix'
 	assert unsafe { text.str[text.len] } == 0
 	unsafe { text.free() }
-	mut empty := strings.new_builder(0)
+	mut empty := strings.new_builder(16)
+	assert empty.cap >= 16
 	assert cgen_take_builder_text(mut empty) == ''
+	assert empty.cap == 0
+	assert isnil(empty.data)
 	unsafe { empty.free() }
 }
 
