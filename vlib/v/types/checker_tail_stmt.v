@@ -12375,10 +12375,9 @@ fn (tc &TypeChecker) interface_impl_names_uncached_after(iface_name_id u32, excl
 			add_interface_impl_candidate(mut candidate_set, candidate, excluded)
 		}
 	}
-	if has_no_requirements || accepts_implicit_str {
-		for name, _ in tc.enum_names {
-			add_interface_impl_candidate(mut candidate_set, interface_impl_candidate_name(flat.source_type_id(name)), excluded)
-		}
+	// Enums can declare methods, so like structs they may implement any interface.
+	for name, _ in tc.enum_names {
+		add_interface_impl_candidate(mut candidate_set, interface_impl_candidate_name(flat.source_type_id(name)), excluded)
 	}
 	for name, target_id in tc.type_aliases.ids {
 		candidate_name := interface_impl_candidate_name(flat.source_type_id(name))

@@ -2688,7 +2688,8 @@ fn (t &Transformer) interface_boxed_impl_name_is_direct(name_id u32) bool {
 	if name == '' {
 		return false
 	}
-	if name.starts_with('fn(') || name.starts_with('fn ') || name.starts_with('[]')
+	// `[` covers both dynamic (`[]T`) and fixed (`[N]T`) arrays.
+	if name.starts_with('fn(') || name.starts_with('fn ') || name.starts_with('[')
 		|| name.starts_with('map[') || name.starts_with('builtin.') {
 		return true
 	}
@@ -2696,7 +2697,7 @@ fn (t &Transformer) interface_boxed_impl_name_is_direct(name_id u32) bool {
 		'u64', 'f32', 'f64', 'string', 'char', 'rune', 'voidptr'] {
 		return true
 	}
-	if name in t.tc.structs || t.tc.type_aliases.contains(name) {
+	if name in t.tc.structs || t.tc.type_aliases.contains(name) || name in t.tc.enum_names {
 		return true
 	}
 	base, _, is_generic_app := generic_app_parts(name)

@@ -653,16 +653,18 @@ fn (mut g FlatGen) collect_interface_impls() {
 		}
 		iface := flat.source_type_name(iface_id)
 		mut concrete := flat.source_type_name(concrete_id)
-		is_container := concrete.starts_with('[]') || concrete.starts_with('map[')
+		// `[` covers both dynamic (`[]T`) and fixed (`[N]T`) arrays.
+		is_container := concrete.starts_with('[') || concrete.starts_with('map[')
 		concrete_base, _, concrete_is_generic := parse_shared_generic_app_parts(concrete)
 		is_materializable_generic := concrete_is_generic
 			&& (concrete_base in g.tc.structs || g.tc.type_aliases.contains(concrete_base) || g.tc.qualify_name(concrete_base) in g.tc.structs
 				|| g.tc.qualify_name(concrete_base) in g.tc.type_aliases.ids)
 		if !is_container && concrete != 'voidptr' && !is_materializable_generic
-			&& concrete !in g.tc.structs
+			&& concrete !in g.tc.structs && concrete !in g.tc.enum_names
 			&& !g.tc.type_aliases.contains(concrete) {
 			qualified := g.tc.qualify_name(concrete)
-			if qualified !in g.tc.structs && !g.tc.type_aliases.contains(qualified) {
+			if qualified !in g.tc.structs && qualified !in g.tc.enum_names
+				&& !g.tc.type_aliases.contains(qualified) {
 				continue
 			}
 			concrete = qualified
@@ -2815,6 +2817,10 @@ fn (g &FlatGen) interface_unaliased_type(typ types.Type) types.Type {
 // interface_method_call_cname resolves a method to the symbol its definition is emitted
 // under: autofree renames a `main` module method to `main__Recv_method`.
 fn (g &FlatGen) interface_method_call_cname(method_key string) string {
+	// Enum methods use `Enum_method`, since `Enum__name` is the C name of a value.
+	if enum_method := g.enum_method_c_name_in_module('', method_key) {
+		return enum_method
+	}
 	plain := g.cname(method_key)
 	if !g.tc.autofree_mode {
 		return plain

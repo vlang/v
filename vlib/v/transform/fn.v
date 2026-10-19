@@ -15520,7 +15520,7 @@ fn (mut t Transformer) build_interface_type_name_chain(tag flat.NodeId, iface_na
 	type_id := t.interface_impl_type_id(iface_name_id, impl_source_id) or {
 		return t.build_interface_type_name_chain(tag, iface_name_id, impls_ids.clone(), idx + 1)
 	}
-	display := if impl.contains('.') { impl.all_after_last('.') } else { impl }
+	display := interface_type_name_display(impl)
 	cond := t.make_infix(.eq, tag, t.make_int_literal(type_id))
 	then_block := t.make_block([t.make_expr_stmt(t.make_string_literal(display))])
 	else_expr := t.build_interface_type_name_chain(tag, iface_name_id, impls_ids.clone(), idx + 1)
@@ -15535,6 +15535,30 @@ fn (mut t Transformer) build_interface_type_name_chain(tag flat.NodeId, iface_na
 		children_count: 3
 		typ:            flat.source_type_string
 	})
+}
+
+// interface_type_name_display shortens every module-qualified name in a type spelling,
+// so `[2]shapes.Box` reads `[2]Box`, as `shapes.Box` reads `Box`.
+fn interface_type_name_display(name string) string {
+	if !name.contains('.') {
+		return name
+	}
+	mut out := []u8{cap: name.len}
+	mut word_start := 0
+	for i := 0; i <= name.len; i++ {
+		c := if i < name.len { name[i] } else { u8(` `) }
+		if c.is_letter() || c.is_digit() || c == `_` || c == `.` {
+			continue
+		}
+		if word_start < i {
+			out << name[word_start..i].all_after_last('.').bytes()
+		}
+		if i < name.len {
+			out << c
+		}
+		word_start = i + 1
+	}
+	return out.bytestr()
 }
 
 // build_sum_type_name_chain builds sum type name chain data for transform.
