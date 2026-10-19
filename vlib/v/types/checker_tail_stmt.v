@@ -20119,13 +20119,23 @@ fn (tc &TypeChecker) resolve_index_type(node flat.Node) Type {
 	if generic_fn_type := tc.explicit_generic_fn_value_type(node) {
 		return generic_fn_type
 	}
-	base_type0 := tc.resolve_type(tc.a.child(&node, 0))
+	base_id := tc.a.child(&node, 0)
+	base_type0 := tc.resolve_type(base_id)
 	if node.value == 'range' {
 		if sliced_alias := range_slice_alias_type(base_type0) {
 			return sliced_alias
 		}
 	}
-	base_type := unalias_type(base_type0)
+	mut base_type := unalias_type(base_type0)
+	if base_type is Pointer {
+		// A `mut` binding (`for mut word in words`) is a pointer to the value it names,
+		// and indexing it indexes that value: `word[0]` is a byte of the string.
+		if mut_base := tc.mut_param_expr_base(base_id, base_type0) {
+			if unalias_type(mut_base) !is Pointer {
+				base_type = unalias_type(mut_base)
+			}
+		}
+	}
 	if base_type is OptionType {
 		inner := unalias_type(base_type.base_type)
 		result := tc.resolve_index_base_type(inner, node)
