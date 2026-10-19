@@ -44,3 +44,45 @@ fn test_accept_deadline_getter_agrees_with_wait_state() ! {
 		}
 	}
 }
+
+fn send_after_deadline_chunk_delay(addr string) {
+	time.sleep(50 * time.millisecond)
+	mut sender := dial_udp(addr) or { panic(err) }
+	defer {
+		sender.close() or {}
+	}
+	sender.write_string('chunked') or { panic(err) }
+}
+
+fn test_select_deadline_retries_chunks_and_preserves_unset_sentinels() ! {
+	future := time.parse_iso8601('9999-12-31T23:59:59Z')!
+	for deadline in [time.Time{}, time.unix(0), future] {
+		mut listener := listen_udp('127.0.0.1:0')!
+		defer {
+			listener.close() or {}
+		}
+		writer := spawn send_after_deadline_chunk_delay(listener.sock.address()!.str())
+		ready := select_deadline_chunked(listener.sock.handle, .read, deadline,
+			5 * time.millisecond)!
+		writer.wait()
+		assert ready
+		mut buf := []u8{len: 16}
+		read, _ := listener.read(mut buf)!
+		assert buf[..read].bytestr() == 'chunked'
+	}
+}
+
+fn test_select_deadline_chunks_still_expire_at_the_real_deadline() ! {
+	mut listener := listen_udp('127.0.0.1:0')!
+	defer {
+		listener.close() or {}
+	}
+	writer := spawn send_after_deadline_chunk_delay(listener.sock.address()!.str())
+	ready := select_deadline_chunked(listener.sock.handle, .read,
+		time.now().add(20 * time.millisecond), 5 * time.millisecond) or {
+		assert err.code() == err_timed_out.code()
+		false
+	}
+	writer.wait()
+	assert !ready, 'wait continued past its finite deadline until data arrived'
+}

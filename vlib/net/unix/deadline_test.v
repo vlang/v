@@ -72,3 +72,41 @@ fn test_unset_accept_deadlines_allow_waiting_without_a_timeout() ! {
 		connector.wait()
 	}
 }
+
+fn unix_write_after_deadline_delay(path string) {
+	time.sleep(100 * time.millisecond)
+	mut client := unix.connect_stream(path) or { panic(err) }
+	defer {
+		client.close() or {}
+	}
+	time.sleep(100 * time.millisecond)
+	client.write_string('future') or { panic(err) }
+}
+
+fn test_far_future_unix_deadlines_allow_delayed_readiness() ! {
+	deadline := time.parse_iso8601('9999-12-31T23:59:59Z')!
+	path := os.join_path(os.vtmp_dir(), 'v_unix_future_${os.getpid()}.sock')
+	os.rm(path) or {}
+	mut listener := unix.listen_stream(path)!
+	defer {
+		listener.close() or {}
+		os.rm(path) or {}
+	}
+	listener.set_accept_timeout(20 * time.millisecond)
+	listener.set_accept_deadline(deadline)
+	writer := spawn unix_write_after_deadline_delay(path)
+	listener.wait_for_accept()!
+	mut server := listener.accept()!
+	defer {
+		server.close() or {}
+	}
+	server.set_read_timeout(20 * time.millisecond)
+	server.set_read_deadline(deadline)
+	server.wait_for_read()!
+	mut buf := []u8{len: 16}
+	read := server.read(mut buf)!
+	writer.wait()
+	assert buf[..read].bytestr() == 'future'
+	assert listener.accept_deadline()! == deadline
+	assert server.read_deadline()! == deadline
+}

@@ -19,6 +19,8 @@ within the first second of 1970, expire when they are in the past. The same rule
 `net.unix` waits. With an unset deadline and `no_timeout` or `infinite_timeout`, a wait has no
 time limit. The deadline getters return an error for either unset value and otherwise return
 the timestamp, including when it has already expired.
+Far-future deadlines, including dates in year 9999, remain finite and retain their full timestamp.
+Waits use bounded intervals internally so the remaining time cannot overflow a duration.
 
 A deadline applies where an operation waits before its system call: the
 `wait_for_read`/`wait_for_write`/`wait_for_accept` methods, and in the default build TCP reads and

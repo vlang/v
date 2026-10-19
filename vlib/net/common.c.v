@@ -150,10 +150,26 @@ fn select(handle int, test Select, timeout time.Duration) !bool {
 
 @[inline]
 fn select_deadline(handle int, test Select, deadline time.Time) !bool {
+	return select_deadline_chunked(handle, test, deadline, 24 * time.hour)
+}
+
+fn select_deadline_chunked(handle int, test Select, deadline time.Time, max_wait time.Duration) !bool {
 	// Only the unset deadline sentinels mean an infinite wait.
 	infinite := !deadline_set(deadline)
-	for infinite || time.now() <= deadline {
-		timeout := time.Duration(if infinite { infinite_timeout } else { deadline - time.now() })
+	for {
+		now := time.now()
+		if !infinite && now > deadline {
+			break
+		}
+		// Clamp before subtracting: distant dates may not fit in a Duration.
+		chunked := !infinite && deadline > now.add(max_wait)
+		timeout := if infinite {
+			infinite_timeout
+		} else if chunked {
+			max_wait
+		} else {
+			deadline - now
+		}
 		ready := select(handle, test, timeout) or {
 			if err.code() == C.EINTR {
 				// errno is 4, Spurious wakeup from signal, keep waiting
@@ -164,6 +180,9 @@ fn select_deadline(handle int, test Select, deadline time.Time) !bool {
 			return err
 		}
 
+		if !ready && chunked {
+			continue
+		}
 		return ready
 	}
 
