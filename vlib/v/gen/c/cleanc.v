@@ -4429,6 +4429,7 @@ fn (mut g FlatGen) gen_pre_body_support_declarations() {
 }
 
 fn (mut g FlatGen) gen_translation_unit_prefix() {
+	g.undef_target_identifier_macros()
 	g.c99_feature_test_macros()
 	if g.profile_file.len > 0 {
 		g.writeln('#define _VPROFILE (1)')
@@ -20567,6 +20568,17 @@ fn (mut g FlatGen) thread_stack_size_definition() {
 	g.writeln('#ifndef V_THREAD_STACK_SIZE')
 	g.writeln('#define V_THREAD_STACK_SIZE ${g.thread_stack_size}')
 	g.writeln('#endif')
+}
+
+// undef_target_identifier_macros removes macros that a C compiler predefines for
+// the target under ordinary identifier names. TinyCC defines `arm` and `arm_elf`
+// on 32-bit ARM, so a V local named `arm` became `bool 1 = ...` in the C output.
+fn (mut g FlatGen) undef_target_identifier_macros() {
+	if g.target.arch != 'arm32' {
+		return
+	}
+	g.writeln('#undef arm')
+	g.writeln('#undef arm_elf')
 }
 
 fn (mut g FlatGen) c99_feature_test_macros() {
