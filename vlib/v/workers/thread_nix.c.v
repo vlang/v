@@ -1,9 +1,12 @@
 module workers
 
+#include "@VMODROOT/vlib/v/pthread_helper.h"
+
 #flag @VMODROOT/vlib/v/pthread_helper.o
 
 $if linux {
 	#include <sys/prctl.h>
+	#flag @VEXEROOT/vlib/v/diagserver/syscalls_linux.o
 }
 
 // C.pthread_t is the platform pthread handle type.
@@ -11,10 +14,9 @@ $if linux {
 struct C.pthread_t {}
 
 fn C.pthread_join(worker C.pthread_t, retval voidptr) int
-fn C.prctl(option int, arg2 voidptr, arg3 u64, arg4 u64, arg5 u64) int
+fn C.v3_linux_name_worker() int
 
-// pthread_helper.o supplies these, and no header that this file includes
-// declares them: `@[c_extern]` has their prototypes written.
+// Keep linked-object prototypes explicit alongside unrelated system headers.
 @[c_extern]
 fn C.v3_pthread_zero() C.pthread_t
 
@@ -54,6 +56,6 @@ fn worker_thread_is_current(worker WorkerThread) bool {
 // server forks only when every other thread of the process is one of these.
 fn name_worker_thread() {
 	$if linux {
-		C.prctl(C.PR_SET_NAME, c'v3-pool', 0, 0, 0)
+		C.v3_linux_name_worker()
 	}
 }

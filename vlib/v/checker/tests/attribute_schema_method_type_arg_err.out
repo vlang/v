@@ -1,0 +1,6 @@
+vlib/v/checker/tests/attribute_schema_method_type_arg_err.vv:14:19: error: attribute `main.Route` cannot be used as a type argument
+   12 | fn main() {
+   13 |     r := Receiver{}
+   14 |     println(r.marker[Route]())
+      |                      ~~~~~
+   15 | }

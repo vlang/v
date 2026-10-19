@@ -178,6 +178,19 @@ pub fn malloc_noscan(n isize) &u8 {
 	return res
 }
 
+// String contents contain bytes only, including when a string view starts at an
+// unaligned offset. Keep normal allocator hooks and tracing on their existing path.
+@[inline; unsafe]
+fn malloc_string_buffer(n isize) &u8 {
+	$if prealloc && !builtin_arena ?&& !trace_malloc ? {
+		if n < 0 {
+			_memory_panic('malloc_noscan', n)
+		}
+		return unsafe { vmemory_block_malloc_aligned(n, 1) }
+	}
+	return unsafe { malloc_noscan(n) }
+}
+
 @[unsafe]
 fn malloc_uninit(n isize) &u8 {
 	if n < 0 {

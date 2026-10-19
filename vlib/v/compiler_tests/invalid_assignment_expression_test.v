@@ -24,7 +24,7 @@ fn invalid_assignment_run_bad(v3_bin string, name string, source string) {
 	os.rm(bin + '.c') or {}
 	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('unexpected assignment operator `=`'), compile.output
+	assert compile.output.contains('invalid expression: unexpected token `=`'), compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 }
 

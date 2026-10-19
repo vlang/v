@@ -1,3 +1,4 @@
+// vtest ownership
 import os
 
 fn test_borrowed_array_parameter_indexing_survives_generic_annotation() {

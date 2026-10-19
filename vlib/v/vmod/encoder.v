@@ -3,10 +3,19 @@ module vmod
 import strings
 
 fn quote(input string) string {
-	if input.contains("'") {
+	if !input.contains("'") {
+		return "'" + input + "'"
+	}
+	if !input.contains('"') {
 		return '"' + input + '"'
 	}
-	return "'" + input + "'"
+	// The value holds both quote kinds, so the delimiter has to be escaped
+	// instead of swapped; Scanner.create_string reads `\'` back as `'`.
+	mut out := "'"
+	for chr in input {
+		out += if chr == `'` { "\\'" } else { chr.ascii_str() }
+	}
+	return out + "'"
 }
 
 fn encode_array(mut b strings.Builder, input []string) {
@@ -48,6 +57,10 @@ pub fn encode(manifest Manifest) string {
 	if manifest.repo_url != '' {
 		b.write_string('\trepo_url: ')
 		b.writeln(quote(manifest.repo_url))
+	}
+	if manifest.repo_branch != 'master' {
+		b.write_string('\trepo_branch: ')
+		b.writeln(quote(manifest.repo_branch))
 	}
 	if manifest.author != '' {
 		b.write_string('\tauthor: ')

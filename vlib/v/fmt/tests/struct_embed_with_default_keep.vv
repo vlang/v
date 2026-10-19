@@ -1,0 +1,34 @@
+struct Inner {
+	a int
+	b int
+}
+
+struct Outer {
+	Inner = Inner{
+		a: 1
+		b: 2
+	}
+}
+
+struct OneLine {
+	Inner = Inner{} // the embed's default
+}
+
+// The name of the embed still counts for the alignment of the fields after it.
+struct WithFields {
+	Inner = Inner{}
+	x     int
+	name  string = 'abc'
+}
+
+struct ShorterThanField {
+	Inner = Inner{}
+	longer_name int
+	y           int = 4
+}
+
+// Here the `=` lines up with the default of the next field.
+struct AlignedDefault {
+	Inner     = Inner{} // c1
+	x     int = 1       // c2
+}

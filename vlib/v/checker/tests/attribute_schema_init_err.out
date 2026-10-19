@@ -1,0 +1,7 @@
+vlib/v/checker/tests/attribute_schema_init_err.vv:7:7: error: cannot initialize struct `Route` marked with `@[attribute]`
+    5 | 
+    6 | fn main() {
+    7 |     _ := Route{
+      |          ~~~~~~
+    8 |         path: '/x'
+    9 |     }

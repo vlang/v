@@ -29,7 +29,7 @@ fn test_forced_headers_invalidate_every_cached_module_and_follow_nested_includes
 		mut a := flat.FlatAst.new()
 		a.add_val(.file, source)
 		a.add_val(.module_decl, 'forced')
-		a.add_node(flat.Node{ kind: .directive, value: 'flag', typ: flags })
+		a.add_node(flat.Node{ kind: .directive, value: 'flag', typ: flat.source_type_id(flags) })
 		inputs := cgen.cache_native_inputs(&a, root, pref.host_target(), []string{}, map[string]string{}, map[string]bool{})
 		assert inputs.user_supplied == ''
 		assert inputs.module_inputs['__v3_c_flags__'] == [os.real_path(outer)]
@@ -70,7 +70,7 @@ fn test_macro_include_requires_a_complete_dependency_closure() ! {
 	mut a := flat.FlatAst.new()
 	a.add_val(.file, source)
 	a.add_val(.module_decl, 'forced')
-	a.add_node(flat.Node{ kind: .directive, value: 'flag', typ: '-include @DIR/outer.h' })
+	a.add_node(flat.Node{ kind: .directive, value: 'flag', typ: flat.source_type_id('-include @DIR/outer.h') })
 	inputs := cgen.cache_native_inputs(&a, root, pref.host_target(), []string{}, map[string]string{}, map[string]bool{})
 	for replication in [true, false] {
 		closure := v3_native_input_closure(&inputs, root, replication, '')
@@ -95,7 +95,7 @@ fn test_imacros_discards_declarations_but_keeps_dependency_signatures() ! {
 		mut a := flat.FlatAst.new()
 		a.add_val(.file, source)
 		a.add_val(.module_decl, 'forced')
-		a.add_node(flat.Node{ kind: .directive, value: 'flag', typ: flags })
+		a.add_node(flat.Node{ kind: .directive, value: 'flag', typ: flat.source_type_id(flags) })
 		inputs := cgen.cache_native_inputs(&a, root, pref.host_target(), []string{}, map[string]string{}, map[string]bool{})
 		closure := v3_native_input_closure(&inputs, root, true, '')
 		assert closure.inputs['__v3_c_flags__'] == [os.real_path(macros), os.real_path(nested)].sorted()

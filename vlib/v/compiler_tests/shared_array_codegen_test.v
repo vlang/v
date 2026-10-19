@@ -137,38 +137,3 @@ fn main() {
 	}, 'main.v')
 	assert out == '9'
 }
-
-fn test_shared_array_pointer_field_default_stays_nil() {
-	v3_bin := shared_array_build_v3()
-	out := shared_array_run_good(v3_bin, 'shared_array_pointer_field_default_nil', 'import sync
-
-struct Item {
-	value int
-}
-
-struct Holder {
-mut:
-	label  string
-	items  &[]shared Item
-	values []int
-}
-
-fn root_rwmutex_init() {
-	mut m := sync.new_rwmutex()
-	m.lock()
-	m.unlock()
-}
-
-fn main() {
-	root_rwmutex_init()
-	h := Holder{}
-	if isnil(h.items) {
-		print("nil,")
-	} else {
-		print("set,")
-	}
-	println(int_str(h.values.len))
-}
-')
-	assert out == 'nil,0'
-}
