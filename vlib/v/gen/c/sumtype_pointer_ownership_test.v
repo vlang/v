@@ -27,12 +27,14 @@ static void* sum_last_drop(int code) { return dropped_addresses[code]; }
 ')!
 	source := os.join_path(dir, 'main.c.v')
 	os.write_file(source, '#include "${header}"
+import strconv
 fn C.sum_record_drop(code int, address voidptr)
 fn C.sum_drop_count(code int) int
 fn C.sum_last_drop(code int) voidptr
-struct Item { code int }
+interface Drop { mut: drop() }
+struct Item implements Drop { code int }
 fn (item &Item) free() { C.sum_record_drop(item.code, voidptr(item)) }
-fn (item &Item) drop() { C.sum_record_drop(item.code, voidptr(item)) }
+fn (mut item Item) drop() { C.sum_record_drop(item.code, voidptr(&item)) }
 type Choice = int | &Item
 type ItemPointer = &Item
 type AliasPointer = ItemPointer
@@ -43,6 +45,7 @@ struct Empty {}
 type EmptyChoice = Empty | int
 struct Holder { item &Item }
 fn borrowed(item &Item) &Item { return item }
+fn borrowed_sum(item &Item) Choice { return Choice(item) }
 fn fresh(code int) Choice { return Choice(&Item{code: code}) }
 fn mixed(owned bool, item &Item) Choice {
  if owned { return Choice(&Item{code: 4}) }
@@ -66,20 +69,25 @@ fn copy_reassignment_after_move() {
  assert C.sum_drop_count(2) == 1
  assert C.sum_last_drop(2) == address
 }
-fn borrowed_copies(item &Item) {
+fn borrowed_copies(item &Item, holder &Holder) {
  value := Choice(item)
  copy := value
  another := value
  assert voidptr(value as &Item) == voidptr(item)
  assert voidptr(copy as &Item) == voidptr(item)
  assert voidptr(another as &Item) == voidptr(item)
- holder := Holder{item: item}
  projected := Choice(holder.item)
  projected_copy := projected
  assert voidptr(projected as &Item) == voidptr(projected_copy as &Item)
  returned := Choice(borrowed(item))
  returned_copy := returned
  assert voidptr(returned as &Item) == voidptr(returned_copy as &Item)
+ borrowed_result := borrowed_sum(item)
+ result_copy := borrowed_result
+ another_result := borrowed_result
+ assert voidptr(borrowed_result as &Item) == voidptr(item)
+ assert voidptr(result_copy as &Item) == voidptr(item)
+ assert voidptr(another_result as &Item) == voidptr(item)
  mut replacement := returned
  replacement = Choice(0)
  assert replacement is int
@@ -92,7 +100,8 @@ fn conditional(owned bool, item &Item) {
 }
 fn borrowed_scope() {
  local := Item{code: 3}
- borrowed_copies(&local)
+ holder := Holder{item: &local}
+ borrowed_copies(&local, &holder)
  from_call := mixed(false, &local)
  assert voidptr(from_call as &Item) == voidptr(&local)
  conditional(false, &local)
@@ -126,6 +135,10 @@ fn scalar_copies() {
  assert another_empty is Empty
 }
 fn main() {
+ parsed := strconv.atoi("12") or { panic(err) }
+ floating := strconv.atof64("1.5") or { panic(err) }
+ assert parsed == 12
+ assert floating == 1.5
  scalar_copies()
  original_reassignment_after_move()
  assert C.sum_drop_count(1) == 1
@@ -141,14 +154,48 @@ fn main() {
  assert C.sum_drop_count(7) == 1
 }
 ')!
+	// A method named drop is ordinary user code unless the type implements Drop.
+	// Keep it unreachable so a spurious destructor also exposes missing C retention.
+	ordinary_source := os.join_path(dir, 'ordinary_drop.c.v')
+	os.write_file(ordinary_source, '#include "${header}"
+fn C.sum_record_drop(code int, address voidptr)
+fn C.sum_drop_count(code int) int
+struct Item { code int }
+fn (mut item Item) drop() { C.sum_record_drop(item.code, voidptr(&item)) }
+type Choice = int | &Item
+fn ordinary_scope() {
+ mut value := Choice(&Item{code: 8})
+ value = Choice(0)
+ assert value is int
+ assert C.sum_drop_count(8) == 0
+ mut original := Choice(&Item{code: 9})
+ copy := original
+ original = Choice(0)
+ assert original is int
+ assert (copy as &Item).code == 9
+ assert C.sum_drop_count(9) == 0
+ plain := Item{code: 10}
+ plain_copy := plain
+ assert plain.code == 10
+ assert plain_copy.code == 10
+}
+fn main() {
+ ordinary_scope()
+ assert C.sum_drop_count(8) == 0
+ assert C.sum_drop_count(9) == 0
+ assert C.sum_drop_count(10) == 0
+}
+')!
 	for mode in ['-autofree', '-ownership'] {
 		for prealloc in [false, true] {
-			mut command := [compiler, '-new-compiler', '-nocache', '-no-closures', '-gc', 'none',
-				'-cc', cc, mode]
-			if prealloc { command << '-prealloc' }
-			command << ['run', source]
-			result := os.exec(command)
-			assert result.exit_code == 0, '${mode}, prealloc=${prealloc}: ${result.output}'
+			for program in [source, ordinary_source] {
+				mut command := [compiler, '-new-compiler', '-nocache', '-no-closures', '-gc', 'none',
+					'-cc', cc, mode]
+				if prealloc { command << '-prealloc' }
+				command << ['run', program]
+				result := os.exec(command)
+				assert result.exit_code == 0, '${os.base(program)}, ${mode}, prealloc=${prealloc}: ${result.output}'
+			}
 		}
 	}
 }

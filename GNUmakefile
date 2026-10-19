@@ -104,6 +104,18 @@ TCCOS := windows
 endif
 
 TCCARCH := $(shell uname -m 2>/dev/null || echo unknown)
+# A 32-bit userland can run on a 64-bit kernel (Raspberry Pi OS 32-bit on a Pi 4/5,
+# an armhf or i386 container), where `uname -m` names the kernel's architecture.
+# The C compiler, the TCC bundle and the bootstrap follow the userland, whose word
+# size `getconf LONG_BIT` reports.
+ifeq ($(shell getconf LONG_BIT 2>/dev/null),32)
+ifneq ($(filter aarch64 arm64 armv8%,$(TCCARCH)),)
+	TCCARCH := armv7l
+endif
+ifeq ($(TCCARCH),x86_64)
+	TCCARCH := i686
+endif
+endif
 
 ifeq ($(TCCARCH),x86_64)
 	TCCARCH := amd64
@@ -186,12 +198,14 @@ ifeq ($(filter -gc -gc=%,$(VFLAGS)),)
 	BOOTSTRAP_GC_VFLAG := -gc none
 endif
 ifneq ($(filter $(_SYS),Linux FreeBSD NetBSD OpenBSD DragonFly),)
-ifneq ($(filter $(TCCARCH),arm64 aarch64),)
+ifneq ($(filter $(TCCARCH),arm64 aarch64 arm),)
 ifeq ($(filter -cc,$(VFLAGS)),)
 ifeq ($(findstring -cc=,$(VFLAGS)),)
 	# Bundled TCC can hang, fail, or miscompile V while bootstrapping on ARM64,
 	# so keep both `v1 -> v2` and `v2 -> v` on the same system compiler
-	# unless the user overrode it explicitly.
+	# unless the user overrode it explicitly. On 32-bit ARM, TCC cannot link V
+	# itself: the Thumb-2 C startup code of armhf distributions calls into libc
+	# with a branch that cannot reach across V's text, and TCC adds no veneer.
 	BOOTSTRAP_CCOMPILER_VFLAG := -cc "$(CC)"
 	BOOTSTRAP_VC_CCOMPILER_VFLAG := $(BOOTSTRAP_CCOMPILER_VFLAG)
 endif

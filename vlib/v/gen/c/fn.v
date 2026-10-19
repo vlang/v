@@ -4496,7 +4496,7 @@ fn (mut g FlatGen) detached_spawn_aggregate_cleanup(typ types.Type, expr string)
 			|| name.ends_with('.thread') || name.starts_with('thread ')
 			|| g.is_generic_struct(name) || g.type_contains_generic_placeholder(parsed)
 			|| g.type_name_contains_generic_placeholder(name_id) || g.skip_builtin_struct(name)
-			|| g.resolve_method_name(name_id, g.ownership_destructor_method_name()).len > 0 {
+			|| g.ownership_struct_destructor_method(name_id).len > 0 {
 			continue
 		}
 		key := ownership_drop_expansion_key(types.Type(types.Struct{
@@ -9512,7 +9512,7 @@ fn (g &FlatGen) expr_is_non_string_scalar_value(id flat.NodeId) bool {
 	if node.kind == .ident {
 		if c_type := g.local_storage_c_type(node.value) {
 			return c_type in ['bool', 'char', 'i8', 'i16', 'int', 'i64', 'isize', 'u8', 'u16',
-				'u32', 'u64', 'usize', 'f32', 'f64', 'rune']
+				'u32', 'u64', 'usize', 'f32', 'f64', 'rune', types.portable_int_c_type]
 		}
 		if raw_type_source_id := g.local_storage_raw_type(node.value) {
 			raw_type_source_id_2 := raw_type_source_id
@@ -12960,7 +12960,7 @@ fn callback_can_cast_scalar_int_param(actual_ct string, expected_ct string) bool
 
 fn callback_is_scalar_int_c_type(ct string) bool {
 	return trimmed_space(ct) in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'char',
-		'bool', 'isize', 'usize', 'ptrdiff_t', 'size_t']
+		'bool', 'isize', 'usize', 'ptrdiff_t', 'size_t', types.portable_int_c_type]
 }
 
 fn (mut g FlatGen) callback_c_type(typ types.Type) string {
@@ -15994,8 +15994,9 @@ fn (g &FlatGen) voidptr_variadic_storage_c_type(actual &types.Type) string {
 			return g.int_ct
 		}
 		'int', 'i32', 'u32' {
-			// Narrower than V's `int` only where that is 64 bits wide.
-			return if g.int_ct == 'i64' { g.int_ct } else { storage_ct }
+			// Narrower than V's `int` only where that is 64 bits wide. The
+			// portable `int` is never narrower, so widening to it is right for both.
+			return if g.int_ct == 'i64' || g.portable_int() { g.int_ct } else { storage_ct }
 		}
 		else {
 			return storage_ct
@@ -17069,6 +17070,12 @@ fn (mut g FlatGen) c_extern_forward_decls() {
 			g.writeln('#endif')
 		} else if (name == 'task_info' || name == 'mach_task_self')
 			&& g.c_directives_use_system_libc() {
+			if g.output_cross_c {
+				// Portable C includes <mach/mach.h> for these on Apple targets (see
+				// emit_preserved_c_directives). Elsewhere there is no `task_t`, and
+				// their calls are compiled out.
+				continue
+			}
 			g.writeln('#ifndef __APPLE__')
 			g.writeln(line)
 			g.writeln('#endif')

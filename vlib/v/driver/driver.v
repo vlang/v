@@ -11662,6 +11662,16 @@ pub fn run(args []string) {
 		output_cross_c = true
 		target_os = os.user_os()
 	}
+	// Set when this run writes the header-based libc variant of a portable compiler
+	// snapshot for the run that started it; see `add_cross_libc_headers_variant`.
+	cross_libc_headers_output := if output_cross_c {
+		os.getenv(cross_libc_headers_output_env)
+	} else {
+		''
+	}
+	if cross_libc_headers_output.len > 0 {
+		output_file = cross_libc_headers_output
+	}
 	if output_cross_c {
 		// A portable snapshot cannot use the platform backtrace APIs, and the
 		// `$if cross ?` guards in vlib select the portable path from this. Keep
@@ -11703,6 +11713,12 @@ pub fn run(args []string) {
 	// V's platform `int` is 64-bit on 64-bit targets and 32-bit on 32-bit ones;
 	// pin the C spelling from the target width before any checking or codegen.
 	types.set_platform_int_bits(target.pointer_bits)
+	if output_cross_c && backend == 'c' {
+		// Portable C is compiled later for a target of either width, so `int`
+		// is spelled with a typedef that the generated C defines from the width
+		// of the C compiler's target. Checking still uses the width above.
+		types.set_portable_platform_int()
+	}
 	if is_linux_wayland_only_session(target.os, os.getenv('DISPLAY'), os.getenv('WAYLAND_DISPLAY'), os.getenv('XDG_SESSION_TYPE'))
 		&& !user_defines.any(it.all_before('=').trim_space() == 'linux_wayland_session') {
 		user_defines << 'linux_wayland_session'
@@ -12047,13 +12063,17 @@ pub fn run(args []string) {
 	if backend != 'fastc' {
 		record_user_define(mut user_defines, mut compile_values, 'v3_c_extern_declarations')
 	}
+	mut headerless_snapshot := false
 	if cmd_v_build && output_cross_c && backend == 'c' && !no_builtin && !is_o
 		&& !target_libc_headers
 		&& target.os in ['macos', 'linux', 'freebsd', 'openbsd', 'dragonfly', 'windows', 'android',
 			'termux', 'ios'] {
 		// Windows snapshots embed SDK-backed helpers, including the ACL and atomic
 		// compatibility surface. Other hosted snapshots use V-owned declarations.
-		if !explicit_windows_target {
+		// The run that writes the header-based variant for 32-bit hosts (see
+		// `add_cross_libc_headers_variant`) uses the system headers instead.
+		headerless_snapshot = !explicit_windows_target
+		if headerless_snapshot && cross_libc_headers_output.len == 0 {
 			record_user_define(mut user_defines, mut compile_values, 'v3_headerless_bootstrap')
 		}
 		// Keep the signal-context ABI out of portable compiler snapshots.
@@ -15792,6 +15812,14 @@ pub fn run(args []string) {
 			}
 		}
 		if c_only {
+			if headerless_snapshot && cross_libc_headers_output.len == 0
+				&& types.platform_int_c_spelling() == types.portable_int_c_type {
+				add_cross_libc_headers_variant(cc_src) or {
+					eprintln(err.msg())
+					os.rm(cc_src) or {}
+					exit(1)
+				}
+			}
 			b.metric('generated C size', i64(os.file_size(cc_src)), 'bytes')
 			if c_to_stdout {
 				source := os.read_file(cc_src) or {

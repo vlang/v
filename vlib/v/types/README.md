@@ -199,3 +199,17 @@ When a later struct field or call argument contains an `or` expression, earlier 
 evaluated first. Specialized mutable method receivers keep their original storage, and indexed
 callbacks are selected before a later fallible argument can replace them.
 Declared function references remain inline so their expected callback adapter type is preserved.
+
+Pointer sum variants preserve the referenced object's identity. Returning a wrapper of a local
+promotes that local and transfers its cleanup to the returned sum. Storing an inner local's pointer
+in an outer sum similarly transfers cleanup at the store, including through named sum wrappers.
+An outer store with an ambiguous local pointer source is rejected; store each pointer alternative
+separately so the checker can identify which allocation supplies its cleanup obligation.
+This also applies to outer stores whose local source is hidden behind a borrowed-return call.
+Returning an existing local through a known borrowed-return call retains its allocation, while
+calls borrowing caller-owned storage remain non-owning. A local declared inside a returned
+`if` or `match` expression cannot supply a sum pointer; declare it before that expression.
+These lifetime checks also apply inside functions returning `void` and when a sum constructor
+wraps the conditional expression. The checker records heap promotion before validating a local
+pointer return. Return and assignment lowering preserve the original transfer decision through
+their generated nodes, and only the matching runtime pointer acquires the cleanup obligation.

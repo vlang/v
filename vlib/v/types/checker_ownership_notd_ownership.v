@@ -144,3 +144,18 @@ pub fn (tc &TypeChecker) ownership_default_clone_missing_method(_ Type) ?string 
 
 // inherit_ownership_codegen_metadata_from is a no-op when ownership checking is disabled.
 pub fn (mut tc TypeChecker) inherit_ownership_codegen_metadata_from(_ &TypeChecker) {}
+
+// ownership_sum_return_sources returns no transfer sources when ownership checking is disabled.
+pub fn (tc &TypeChecker) ownership_sum_return_sources(_ string, _ flat.NodeId) []OwnershipDropEntry {
+	return []OwnershipDropEntry{}
+}
+
+// ownership_sum_transfer_source returns no source when ownership checking is disabled.
+pub fn (tc &TypeChecker) ownership_sum_transfer_source(_ flat.NodeId) string {
+	return ''
+}
+
+// ownership_sum_heap_sources returns no promoted sum sources when ownership checking is disabled.
+pub fn (tc &TypeChecker) ownership_sum_heap_sources(_ string) []OwnershipDropEntry {
+	return []OwnershipDropEntry{}
+}

@@ -235,6 +235,11 @@ mut:
 	drop_at_fn_exit                  map[string][]OwnershipDropEntry
 	drop_at_returns                  map[string][]OwnershipDropEntry
 	drop_at_return_nodes             map[string][]OwnershipDropEntry
+	sum_return_local_sources         map[string][]OwnershipDropEntry
+	sum_value_transfer_sources       map[int]string
+	sum_outer_store_local_sources    map[string][]OwnershipDropEntry
+	sum_local_heap_sources           map[string][]OwnershipDropEntry
+	sum_promoted_local_bindings      map[string]bool
 	drop_at_propagations             map[string][]OwnershipDropEntry
 	drop_at_loop_controls            map[string][]OwnershipDropEntry
 	drop_at_loop_iterations          map[string][]OwnershipDropEntry
@@ -335,6 +340,11 @@ fn new_ownership_state() &OwnershipState {
 		drop_at_fn_exit:                  map[string][]OwnershipDropEntry{}
 		drop_at_returns:                  map[string][]OwnershipDropEntry{}
 		drop_at_return_nodes:             map[string][]OwnershipDropEntry{}
+		sum_return_local_sources:         map[string][]OwnershipDropEntry{}
+		sum_value_transfer_sources:       map[int]string{}
+		sum_outer_store_local_sources:    map[string][]OwnershipDropEntry{}
+		sum_local_heap_sources:           map[string][]OwnershipDropEntry{}
+		sum_promoted_local_bindings:      map[string]bool{}
 		drop_at_propagations:             map[string][]OwnershipDropEntry{}
 		drop_at_loop_controls:            map[string][]OwnershipDropEntry{}
 		drop_at_loop_iterations:          map[string][]OwnershipDropEntry{}
@@ -453,6 +463,11 @@ fn ownership_clone_state_for_parallel(src &OwnershipState) &OwnershipState {
 		drop_at_fn_exit:                  map[string][]OwnershipDropEntry{}
 		drop_at_returns:                  map[string][]OwnershipDropEntry{}
 		drop_at_return_nodes:             map[string][]OwnershipDropEntry{}
+		sum_return_local_sources:         ownership_clone_drop_lists(src.sum_return_local_sources)
+		sum_value_transfer_sources:       src.sum_value_transfer_sources.clone()
+		sum_outer_store_local_sources:    ownership_clone_drop_lists(src.sum_outer_store_local_sources)
+		sum_local_heap_sources:           ownership_clone_drop_lists(src.sum_local_heap_sources)
+		sum_promoted_local_bindings:      src.sum_promoted_local_bindings.clone()
 		drop_at_propagations:             map[string][]OwnershipDropEntry{}
 		drop_at_loop_controls:            map[string][]OwnershipDropEntry{}
 		drop_at_loop_iterations:          map[string][]OwnershipDropEntry{}
@@ -830,6 +845,13 @@ fn (mut tc TypeChecker) ownership_merge_parallel_check_worker(w &TypeChecker) {
 	ownership_merge_drop_lists_by_name(mut dst.drop_at_fn_exit, src.drop_at_fn_exit)
 	ownership_merge_drop_lists_by_name(mut dst.drop_at_returns, src.drop_at_returns)
 	ownership_merge_drop_lists_by_name(mut dst.drop_at_return_nodes, src.drop_at_return_nodes)
+	ownership_merge_drop_lists_by_name(mut dst.sum_return_local_sources, src.sum_return_local_sources)
+	ownership_merge_drop_lists_by_name(mut dst.sum_outer_store_local_sources, src.sum_outer_store_local_sources)
+	ownership_merge_drop_lists_by_name(mut dst.sum_local_heap_sources, src.sum_local_heap_sources)
+	ownership_merge_bool_map(mut dst.sum_promoted_local_bindings, src.sum_promoted_local_bindings)
+	for expr, source in src.sum_value_transfer_sources {
+		dst.sum_value_transfer_sources[expr] = source
+	}
 	ownership_merge_drop_lists_by_name(mut dst.drop_at_propagations, src.drop_at_propagations)
 	ownership_merge_drop_lists_by_name(mut dst.drop_at_loop_controls, src.drop_at_loop_controls)
 	ownership_merge_drop_lists_by_name(mut dst.drop_at_loop_iterations, src.drop_at_loop_iterations)
@@ -2734,6 +2756,10 @@ fn (mut tc TypeChecker) ownership_prescan_fn_returns(items []OwnershipFnScanItem
 			tc.cur_module = item.module
 			node := tc.a.nodes[item.idx]
 			if node.typ == 0 || node.typ == flat.source_type_void {
+				previous_fn := tc.ownership_state().cur_fn
+				tc.ownership_state().cur_fn = item.name
+				tc.ownership_prescan_sum_local_returns(item.name, node)
+				tc.ownership_state().cur_fn = previous_fn
 				continue
 			}
 			tc.ownership_prescan_fn_return_node(item.name, node)
@@ -2802,6 +2828,7 @@ fn (mut tc TypeChecker) ownership_prescan_fn_return_node(fn_name string, fn_node
 	saved_fn_value_vars := st.ownership_fn_value_vars.clone()
 	st.cur_fn = fn_name
 	st.ownership_fn_value_vars = map[string]string{}
+	tc.ownership_prescan_sum_local_returns(fn_name, fn_node)
 	mut param_names := []string{}
 	mut owned_locals := map[string]bool{}
 	mut local_types := map[string]Type{}
@@ -4568,8 +4595,11 @@ fn (mut tc TypeChecker) ownership_prescan_expr_for_owned_calls(id flat.NodeId, m
 	if !tc.valid_node_id(id) {
 		return false
 	}
-	if tc.ownership_sum_value_creates_owner(id, tc.resolve_type(id)) {
-		return true
+	// Prescanning runs before lexical scopes are seeded. Recognize constructors
+	// from their declared names, then follow payloads with the local type map.
+	if payload_id := tc.ownership_sum_constructor_payload(id) {
+		if tc.ownership_sum_payload_is_fresh_literal(payload_id) { return true }
+		return tc.ownership_prescan_expr_for_owned_calls(payload_id, mut owned_locals, mut local_types)
 	}
 	name := tc.ownership_expr_ident_name(id)
 	if name.len > 0 && name in owned_locals {
@@ -7509,6 +7539,7 @@ fn (mut tc TypeChecker) ownership_assign_to_name(lhs_name string, rhs_id flat.No
 	if lhs_name != rhs_name {
 		tc.ownership_clear_descendant_state(lhs_name)
 	}
+	if tc.ownership_transfer_inner_sum_local(lhs_name, rhs_id, lhs_type, assign_id) { return }
 	if tc.ownership_expr_is_borrow(rhs_id) {
 		if tc.ownership_sum_value_creates_owner(rhs_id, lhs_type) {
 			tc.ownership_mark_owned(lhs_name, lhs_type, assign_id)
@@ -10156,6 +10187,7 @@ fn (mut tc TypeChecker) ownership_after_return(id flat.NodeId, node flat.Node) {
 	}
 	for i in 0 .. node.children_count {
 		expr_id := tc.a.child(&node, i)
+		tc.ownership_prepare_sum_return_transfer(id, expr_id)
 		if returned_value_is_scalar_copy(tc.resolve_type(expr_id)) {
 			continue
 		}
@@ -11523,39 +11555,60 @@ pub fn (tc &TypeChecker) ownership_expr_creates_owned_value(id flat.NodeId) bool
 		&& tc.ownership_type_requires_destruction(tc.resolve_type(call_id))
 }
 
-// A sum owns fresh payload storage without making borrowed pointer wrappers
-// move-only. Existing named owners are transferred by the ordinary move paths.
-fn (tc &TypeChecker) ownership_sum_value_creates_owner(id flat.NodeId, target_type Type) bool {
-	if unalias_type(target_type) !is SumType || !tc.valid_node_id(id) {
-		return false
+// ownership_sum_constructor_payload reads only constructor syntax and declaration
+// metadata, so it is safe before lexical checker scopes are seeded.
+fn (tc &TypeChecker) ownership_sum_constructor_payload(id flat.NodeId) ?flat.NodeId {
+	current := tc.ownership_unwrap_expr(id)
+	if !tc.valid_node_id(current) { return none }
+	node := tc.a.node(current)
+	if node.kind == .cast_expr && node.children_count > 0 && node.value.len > 0
+		&& unalias_type(tc.parse_type(flat.source_type_id(node.value))) is SumType {
+		return tc.ownership_unwrap_expr(tc.a.child(node, 0))
 	}
-	mut payload_id := tc.ownership_unwrap_expr(id)
-	mut payload := tc.a.nodes[int(payload_id)]
-	if payload.kind == .cast_expr && payload.children_count > 0
-		&& unalias_type(tc.resolve_type(payload_id)) is SumType {
-		payload_id = tc.ownership_unwrap_expr(tc.a.child(&payload, 0))
-		payload = tc.a.nodes[int(payload_id)]
+	if node.kind == .call && node.children_count == 2 {
+		if _ := tc.sum_constructor_call_name(*node) {
+			return tc.ownership_unwrap_expr(tc.call_arg_value(tc.a.child(node, 1)))
+		}
 	}
-	for payload.kind == .cast_expr && payload.children_count > 0
-		&& unalias_type(tc.resolve_type(payload_id)) is Pointer {
-		payload_id = tc.ownership_unwrap_expr(tc.a.child(&payload, 0))
-		payload = tc.a.nodes[int(payload_id)]
+	return none
+}
+
+fn (tc &TypeChecker) ownership_sum_pointer_alias_payload(id flat.NodeId) flat.NodeId {
+	mut current := tc.ownership_unwrap_expr(id)
+	for tc.valid_node_id(current) {
+		node := tc.a.node(current)
+		if node.kind != .cast_expr || node.children_count == 0 || node.value.len == 0
+			|| unalias_type(tc.parse_type(flat.source_type_id(node.value))) !is Pointer {
+			break
+		}
+		current = tc.ownership_unwrap_expr(tc.a.child(node, 0))
 	}
+	return current
+}
+
+// Literal ownership needs no expression resolution. In particular, an expected
+// Sum annotation must not turn a scalar-only value variant into an owner.
+fn (tc &TypeChecker) ownership_sum_payload_is_fresh_literal(id flat.NodeId) bool {
+	payload_id := tc.ownership_sum_pointer_alias_payload(id)
+	if !tc.valid_node_id(payload_id) { return false }
+	payload := tc.a.node(payload_id)
 	if payload.kind == .prefix && payload.op == .amp && payload.children_count > 0 {
-		value := tc.a.child_node(&payload, 0)
+		value := tc.a.child_node(payload, 0)
 		return value.kind in [.struct_init, .assoc, .array_literal, .array_init, .map_init]
 	}
 	if payload.kind in [.struct_init, .assoc] && payload.value.len > 0 {
-		// Expected-type propagation may annotate the literal as the sum itself.
-		// Its declared variant decides whether it owns any value storage.
 		return tc.ownership_type_requires_destruction(tc.parse_type(flat.source_type_id(payload.value)))
 	}
-	if payload.kind in [.array_literal, .array_init, .map_init] {
-		return true
-	}
-	if payload_id == id || tc.ownership_expr_ident_name(payload_id).len > 0 {
-		return false
-	}
+	return payload.kind in [.array_literal, .array_init, .map_init]
+}
+
+// A sum owns fresh payload storage without making borrowed pointer wrappers
+// move-only. Existing named owners are transferred by the ordinary move paths.
+fn (tc &TypeChecker) ownership_sum_value_creates_owner(id flat.NodeId, target_type Type) bool {
+	if unalias_type(target_type) !is SumType || !tc.valid_node_id(id) { return false }
+	payload_id := tc.ownership_sum_constructor_payload(id) or { tc.ownership_unwrap_expr(id) }
+	if tc.ownership_sum_payload_is_fresh_literal(payload_id) { return true }
+	if payload_id == id || tc.ownership_expr_ident_name(payload_id).len > 0 { return false }
 	return tc.ownership_expr_creates_owned_value(payload_id)
 }
 
@@ -11604,7 +11657,15 @@ pub fn (mut tc TypeChecker) ownership_call_result_source_args(id flat.NodeId) []
 		return []flat.NodeId{}
 	}
 	info := tc.resolve_call_info(call_id, node) or { return []flat.NodeId{} }
-	call_name := if info.name.len > 0 { info.name } else { tc.ownership_call_name(call_id) }
+	return tc.ownership_call_result_source_args_with_info(projection, node, info)
+}
+
+fn (mut tc TypeChecker) ownership_call_result_source_args_with_info(projection OwnershipCallProjection, node flat.Node, info CallInfo) []flat.NodeId {
+	call_name := if info.name.len > 0 {
+		info.name
+	} else {
+		tc.ownership_call_name(projection.call_id)
+	}
 	mut param_indices := []int{}
 	mut direct_param_indices := map[int]bool{}
 	for param_idx in tc.ownership_state().ownership_fn_returns_param[call_name] {
@@ -11882,13 +11943,19 @@ fn (tc &TypeChecker) ownership_pointer_alias_target(id flat.NodeId) ?string {
 			cur = tc.a.child(&n, 0)
 			continue
 		}
+		if n.kind == .call && n.children_count == 2 {
+			if _ := tc.sum_constructor_call_name(n) {
+				cur = tc.call_arg_value(tc.a.child(&n, 1))
+				continue
+			}
+		}
 		break
 	}
 	if !tc.valid_node_id(cur) {
 		return none
 	}
 	node := tc.a.nodes[int(cur)]
-	if node.kind == .ident && tc.resolve_type(cur) is Pointer {
+	if node.kind == .ident && (unalias_type(tc.resolve_type(cur)) is Pointer || unalias_type(tc.resolve_type(cur)) is SumType) {
 		name := tc.ownership_expr_ident_name(cur)
 		if name.len > 0 {
 			return tc.ownership.pointer_index_aliases[name] or { none }

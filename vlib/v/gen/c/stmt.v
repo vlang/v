@@ -1102,6 +1102,16 @@ fn (g &FlatGen) ownership_destructor_method_name() string {
 	return if g.tc.autofree_mode { 'free' } else { 'drop' }
 }
 
+// Strict scope cleanup only invokes explicitly declared Drop implementations.
+// Detached spawn results retain their separate conventional drop() policy.
+fn (g &FlatGen) ownership_struct_destructor_method(type_name_id u32) string {
+	if !g.tc.autofree_mode && !g.detached_spawn_drop
+		&& !g.tc.named_type_implements_marker(type_name_id, flat.source_type_id('Drop')) {
+		return ''
+	}
+	return g.resolve_method_name(type_name_id, g.ownership_destructor_method_name())
+}
+
 // ownership_free_call releases boxed storage with the allocator used to create it.
 // memdup uses the prealloc arena even for boxes inside detached spawn results.
 fn (g &FlatGen) ownership_free_call(ptr string) string {
@@ -1201,7 +1211,7 @@ fn (mut g FlatGen) precompute_ownership_recursive_drop_helpers() {
 		if name.starts_with('C.') || name in g.tc.unions || g.is_generic_struct(name)
 			|| g.type_contains_generic_placeholder(parsed)
 			|| g.type_name_contains_generic_placeholder(name_id) || g.skip_builtin_struct(name)
-			|| g.resolve_method_name(name_id, g.ownership_destructor_method_name()).len > 0 {
+			|| g.ownership_struct_destructor_method(name_id).len > 0 {
 			continue
 		}
 		target_key := ownership_drop_expansion_key(types.Type(types.Struct{
@@ -1253,7 +1263,7 @@ fn (g &FlatGen) ownership_collect_drop_struct_names(typ types.Type, depth int, m
 			g.ownership_collect_drop_struct_names(typ.value_type, depth + 1, mut names, mut seen)
 		}
 		types.Struct {
-			if g.resolve_method_name(typ.source_type_id(), g.ownership_destructor_method_name()).len > 0 {
+			if g.ownership_struct_destructor_method(typ.source_type_id()).len > 0 {
 				return
 			}
 			names[typ.source_type_id()] = true
@@ -1330,7 +1340,7 @@ fn (g &FlatGen) ownership_drop_type_reaches_recursive_struct(typ &types.Type, ta
 				|| g.ownership_drop_type_reaches_recursive_struct(typ.value_type, target_key, true, depth + 1, mut seen)
 		}
 		types.Struct {
-			if g.resolve_method_name(typ.source_type_id(), g.ownership_destructor_method_name()).len > 0 {
+			if g.ownership_struct_destructor_method(typ.source_type_id()).len > 0 {
 				return false
 			}
 			for field in g.tc.struct_fields_for_type(typ.source_type_id()) {
@@ -1572,8 +1582,7 @@ fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, d
 				g.writeln(g.detached_spawn_result_cleanup(typ, expr, depth))
 				return
 			}
-			method_name := g.ownership_destructor_method_name()
-			method := g.resolve_method_name(typ.source_type_id(), method_name)
+			method := g.ownership_struct_destructor_method(typ.source_type_id())
 			if method.len > 0 {
 				drop_cname := if g.tc.autofree_mode {
 					decl_module := g.tc.struct_module_for_type(typ.source_type_id())
@@ -1859,7 +1868,7 @@ fn (g &FlatGen) ownership_type_requires_destruction(typ &types.Type, depth int) 
 				|| thread_name.ends_with('.thread') || thread_name.starts_with('thread ')) {
 				return true
 			}
-			if g.resolve_method_name(typ.source_type_id(), g.ownership_destructor_method_name()).len > 0 {
+			if g.ownership_struct_destructor_method(typ.source_type_id()).len > 0 {
 				return true
 			}
 			for field in g.tc.struct_fields_for_type(typ.source_type_id()) {
@@ -1908,7 +1917,7 @@ fn (g &FlatGen) ownership_type_needs_drop(typ &types.Type, depth int) bool {
 			}
 		}
 		types.Struct {
-			if g.resolve_method_name(typ.source_type_id(), g.ownership_destructor_method_name()).len > 0 {
+			if g.ownership_struct_destructor_method(typ.source_type_id()).len > 0 {
 				return true
 			}
 			for field in g.tc.struct_fields_for_type(typ.source_type_id()) {
@@ -2844,6 +2853,9 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 			defer {
 				g.cur_return_node_id = old_return_node_id
 				g.cur_return_drops = old_return_drops
+			}
+			if g.gen_sum_local_transfer_return(node, id) {
+				return
 			}
 			if g.cur_fn_ret is types.Enum {
 				g.expected_enum = g.cur_fn_ret.source_type_id()

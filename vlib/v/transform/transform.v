@@ -3887,6 +3887,20 @@ fn (mut t Transformer) collect_types() {
 						v := t.a.child_node(&node, i)
 						variants << flat.source_type_name(t.normalize_sum_variant_type(flat.source_type_id(v.value), cur_mod, node.generic_params()))
 					}
+					decl_name := if cur_mod !in ['', 'main', 'builtin'] {
+						'${cur_mod}.${node.value}'
+					} else {
+						node.value
+					}
+					// Checked spellings keep selective imports and inline field names
+					// identical across the transformer and code generator.
+					if !isnil(t.tc) {
+						if checked_variants := t.tc.sum_types.type_ids(decl_name) {
+							if checked_variants.len > 0 {
+								variants = checked_variants.map(flat.source_type_name(it))
+							}
+						}
+					}
 					if cur_mod.len > 0 && cur_mod != 'main' && cur_mod != 'builtin' {
 						qname := '${cur_mod}.${node.value}'
 						t.sum_types.set(qname, variants)
@@ -8268,10 +8282,15 @@ fn (mut t Transformer) heap_value(value flat.NodeId, typ_id u32) flat.NodeId {
 // closure creators, allowing the immediately following cleanup walk to be skipped.
 fn (mut t Transformer) mark_escaping_amp_ptrs(body_ids []flat.NodeId) bool {
 	t.reset_escaping_amp_state()
-	if t.ordinary_escape_precheck && t.ordinary_escape_scan_can_be_skipped(body_ids) {
+	if !isnil(t.tc) {
+		for source in t.tc.ownership_sum_heap_sources(t.tc.qualify_fn_name(t.cur_fn_name)) {
+			t.escaping_amp_sources[source.name] = true
+		}
+	}
+	if t.escaping_amp_sources.len == 0 && t.ordinary_escape_precheck && t.ordinary_escape_scan_can_be_skipped(body_ids) {
 		return true
 	}
-	if t.fast_escape_precheck {
+	if t.escaping_amp_sources.len == 0 && t.fast_escape_precheck {
 		if t.item_escape_scan_known {
 			if !t.item_escape_scan_needed && !t.escape_scan_may_be_needed(body_ids) {
 				return false
@@ -14188,6 +14207,7 @@ fn (mut t Transformer) transform_return_stmt(id flat.NodeId, node flat.Node) []f
 		value:          node.value
 		typ:            node.typ
 	})
+	t.mark_transformed_return(new_id, source_return_id)
 	return t.with_pending_before(new_id)
 }
 
@@ -17016,11 +17036,34 @@ fn (t &Transformer) assignment_sum_target(lhs_type_id u32) u32 {
 }
 
 fn (mut t Transformer) transform_sum_value_for_type(rhs_id flat.NodeId, sum_target_id u32) flat.NodeId {
-	return t.transform_sum_value_with_storage(rhs_id, sum_target_id, false)
+	value := t.transform_sum_value_with_storage(rhs_id, sum_target_id, false)
+	return t.mark_sum_local_acquisition(rhs_id, sum_target_id, value)
 }
 
 fn (mut t Transformer) transform_sum_value_for_storage(rhs_id flat.NodeId, sum_target_id u32) flat.NodeId {
-	return t.transform_sum_value_with_storage(rhs_id, sum_target_id, true)
+	value := t.transform_sum_value_with_storage(rhs_id, sum_target_id, true)
+	return t.mark_sum_local_acquisition(rhs_id, sum_target_id, value)
+}
+
+fn (mut t Transformer) mark_sum_local_acquisition(rhs_id flat.NodeId, sum_target_id u32, value flat.NodeId) flat.NodeId {
+	if !isnil(t.tc) {
+		source := t.tc.ownership_sum_transfer_source(rhs_id)
+		if source.len > 0 && t.heaped_amp_locals[source] {
+			pointer := t.make_ident(source)
+			t.set_node_typ(int(pointer), t.var_type(source))
+			start := t.a.children.len
+			t.a.children << value
+			t.a.children << pointer
+			return t.a.add_node(flat.Node{
+				kind:           .paren
+				children_start: start
+				children_count: 2
+				value:          '__v3_transferred_sum_value'
+				typ:            sum_target_id
+			})
+		}
+	}
+	return value
 }
 
 fn (mut t Transformer) transform_sum_value_with_storage(rhs_id flat.NodeId, sum_target_id u32, storage_boundary bool) flat.NodeId {

@@ -3215,7 +3215,8 @@ fn (g &FlatGen) is_scalar_c_type(c_type string) bool {
 		return true
 	}
 	return c_type in ['bool', 'char', 'byte', 'u8', 'i8', 'u16', 'i16', 'u32', 'i32', 'u64', 'i64',
-		'int', 'isize', 'usize', 'size_t', 'ptrdiff_t', 'float', 'double', 'voidptr']
+		'int', 'isize', 'usize', 'size_t', 'ptrdiff_t', 'float', 'double', 'voidptr',
+		types.portable_int_c_type]
 }
 
 // is_aggregate_zero_init_type reports whether is aggregate zero init type applies in c.
@@ -4585,6 +4586,8 @@ fn (g &FlatGen) atomic_helper_suffix(typ &types.Type) string {
 		'i8', 'u8', 'byte', 'bool', 'char' { 'byte' }
 		'i16', 'u16' { 'u16' }
 		'i64', 'u64', 'isize', 'usize' { 'u64' }
+		// Portable C defines the `_w` helpers for the C compiler's `int` width.
+		types.portable_int_c_type { pointer_width_suffix }
 		else { 'u32' }
 	}
 }
@@ -6741,9 +6744,27 @@ fn (g &FlatGen) map_callback_names(key_type types.Type) (string, string, string,
 	} else {
 		g.tc.c_type(clean_key)
 	}
-	size_suffix := map_integer_callback_size_suffix(clean_key, c_key, g.target.pointer_bits)
+	size_suffix := if g.portable_int() && map_key_has_pointer_width(clean_key, c_key) {
+		// Portable C picks the callbacks of the C compiler's pointer width.
+		pointer_width_suffix
+	} else {
+		map_integer_callback_size_suffix(clean_key, c_key, g.target.pointer_bits)
+	}
 
 	return 'map_hash_int_${size_suffix}', 'map_eq_int_${size_suffix}', 'map_clone_int_${size_suffix}', 'map_free_nop'
+}
+
+// pointer_width_suffix names the runtime helpers for values as wide as a pointer in
+// portable C: the map callbacks for such keys (`map_hash_int_w`, ...) and the atomic
+// helpers for `int` (`atomic_fetch_add_w`, ...). The generated C defines them as the
+// 4 or 8 byte helpers of the C compiler's target.
+const pointer_width_suffix = 'w'
+
+// map_key_has_pointer_width reports whether map keys of this type are as wide as a
+// pointer: V's `int`, `isize`, `usize` and pointers.
+fn map_key_has_pointer_width(key_type &types.Type, c_key string) bool {
+	return c_key == types.portable_int_c_type || key_type is types.Pointer
+		|| key_type is types.ISize || key_type is types.USize
 }
 
 fn map_integer_callback_size_suffix(key_type &types.Type, c_key string, pointer_bits int) string {

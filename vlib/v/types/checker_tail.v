@@ -2133,6 +2133,9 @@ fn (mut tc TypeChecker) returned_receiver_local_storage_name(name string) ?strin
 		}
 		root := source_name.all_before('.').all_before('[')
 		owner := tc.cur_scope.lookup_owner(root) or { return none }
+		if !isnil(tc.ownership) && tc.ownership.sum_promoted_local_bindings[owner.storage_key()] {
+			return none
+		}
 		if tc.binding_owner_is_global(owner) {
 			return none
 		}

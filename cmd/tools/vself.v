@@ -61,9 +61,12 @@ fn main() {
 				'cc'
 			}
 			args << ['-cc', os.getenv_opt('CC') or { default_cc }]
-		} else if host_os == 'linux' && unam.machine in ['arm64', 'aarch64'] {
+		} else if host_os == 'linux'
+			&& (unam.machine in ['arm64', 'aarch64'] || pref.host_arch() == 'arm32') {
 			// Bundled TCC can hang while bootstrapping V on Linux ARM64, so
-			// prefer the system compiler for self-builds there.
+			// prefer the system compiler for self-builds there. On 32-bit ARM, the
+			// compiler that TCC links crashes at startup: the Thumb-2 C startup code
+			// cannot reach libc across V's text, and TCC adds no veneer.
 			args << ['-cc', os.getenv_opt('CC') or { 'cc' }]
 		} else if host_os in ['freebsd', 'openbsd', 'netbsd', 'dragonfly'] {
 			// Keep the ordinary BSD self-build on the platform's system toolchain.

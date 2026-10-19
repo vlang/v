@@ -1932,6 +1932,11 @@ fn (t &Transformer) single_pointer_sum_nil_variant(expr_id flat.NodeId, sum_name
 fn (t &Transformer) sum_nil_expr_type(id flat.NodeId) u32 {
 	node := t.a.nodes[int(id)]
 	if node.kind == .int_literal { return flat.source_type_int }
+	// An explicit cast keeps its scalar/pointer identity even if expected-type
+	// propagation annotated the node with the surrounding sum type.
+	if node.kind == .cast_expr && node.value.len > 0 {
+		return t.normalize_type_alias(flat.source_type_id(node.value))
+	}
 	if node.kind in [.paren, .expr_stmt] && node.children_count > 0 {
 		return t.sum_nil_expr_type(t.a.child(&node, 0))
 	}
