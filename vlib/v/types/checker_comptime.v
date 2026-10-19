@@ -4958,6 +4958,13 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 		&& array_like_elem_type(unalias_type(target)) != none {
 		tc.annotate_expected_expr(child_id, unalias_type(target))
 		tc.check_node_with_expected_context(child_id, unalias_type(target))
+	} else if cast_child.kind == .postfix && cast_child.op == .not
+		&& cast_child.children_count == 1
+		&& tc.a.node(tc.a.child(cast_child, 0)).kind == .array_literal
+		&& unalias_type(target) is ArrayFixed {
+		// `[2]u8([1, 2]!)` types the fixed array literal as the target, as
+		// `[]u8([1, 2])` does for a dynamic one.
+		tc.check_node_with_expected_context(child_id, unalias_type(target))
 	} else if cast_child.kind == .struct_init
 		&& is_contextual_anonymous_struct_literal(cast_child.value)
 		&& tc.anonymous_struct_literal_compatible(cast_child, unalias_type(target)) {
