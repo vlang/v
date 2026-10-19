@@ -335,6 +335,24 @@ pub fn (tc &TypeChecker) ownership_sum_return_sources(fn_name string, id flat.No
 	return (tc.ownership.sum_return_local_sources['${fn_name}\x01${int(id)}'] or { []OwnershipDropEntry{} }).clone()
 }
 
+fn (mut tc TypeChecker) sum_aggregate_expr_local_sources(id flat.NodeId, aliases map[string][]SumReturnLocal, locals map[string]SumReturnLocal) []SumReturnLocal {
+	if !tc.valid_node_id(id) { return []SumReturnLocal{} }
+	node := tc.a.node(id)
+	if node.kind != .field_init && tc.sum_escape_has_pointer_variant(tc.sum_escape_prescan_expr_type(id, locals)) {
+		return tc.sum_return_expr_sources(id, aliases, locals)
+	}
+	mut sources := []SumReturnLocal{}
+	if node.kind in [.struct_init, .assoc, .array_literal, .array_init, .map_init, .field_init,
+		.paren, .expr_stmt] {
+		for i in 0 .. node.children_count {
+			for source in tc.sum_aggregate_expr_local_sources(tc.a.child(node, i), aliases, locals) {
+				if source !in sources { sources << source }
+			}
+		}
+	}
+	return sources
+}
+
 fn (mut tc TypeChecker) ownership_sum_return_branch_has_local(id flat.NodeId, aliases map[string][]SumReturnLocal, locals map[string]SumReturnLocal) bool {
 	if !tc.valid_node_id(id) { return false }
 	node := tc.a.node(id)
@@ -361,7 +379,11 @@ fn (mut tc TypeChecker) ownership_sum_return_branch_has_local(id flat.NodeId, al
 			lhs := tc.a.child_node(statement, 0)
 			if lhs.kind != .ident { continue }
 			rhs := tc.a.child(statement, 1)
-			inner_aliases[lhs.value] = tc.sum_return_expr_sources(rhs, inner_aliases, inner_locals)
+			mut sources := tc.sum_return_expr_sources(rhs, inner_aliases, inner_locals)
+			for source in tc.sum_aggregate_expr_local_sources(rhs, inner_aliases, inner_locals) {
+				if source !in sources { sources << source }
+			}
+			inner_aliases[lhs.value] = sources
 			inner_locals[lhs.value] = SumReturnLocal{
 				name:      lhs.value
 				type_name: tc.sum_escape_prescan_expr_type(rhs, inner_locals).source_type_id()
@@ -369,7 +391,11 @@ fn (mut tc TypeChecker) ownership_sum_return_branch_has_local(id flat.NodeId, al
 			}
 		}
 		tail := tc.a.child(node, node.children_count - 1)
-		for source in tc.sum_return_expr_sources(tail, inner_aliases, inner_locals) {
+		mut sources := tc.sum_return_expr_sources(tail, inner_aliases, inner_locals)
+		for source in tc.sum_aggregate_expr_local_sources(tail, inner_aliases, inner_locals) {
+			if source !in sources { sources << source }
+		}
+		for source in sources {
 			original := locals[source.name] or { return true }
 			if original.decl != source.decl { return true }
 		}
@@ -591,12 +617,33 @@ fn (mut tc TypeChecker) ownership_sum_aggregate_scope(storage string) int {
 }
 
 fn (mut tc TypeChecker) ownership_reject_sum_aggregate_store(target string, rhs flat.NodeId, typ Type, pos flat.NodeId) bool {
-	if !tc.sum_escape_has_pointer_variant(typ) || (!target.contains('.') && !target.contains('[')) {
+	pointer_sum := tc.sum_escape_has_pointer_variant(typ)
+	clean := unalias_type(typ)
+	if pointer_sum {
+		if !target.contains('.') && !target.contains('[') { return false }
+	} else if clean !is Struct && clean !is Array && clean !is ArrayFixed && clean !is Map {
 		return false
 	}
 	target_scope := tc.ownership_sum_aggregate_scope(target)
+	target_root := target.all_before('.').all_before('[')
+	if target_scope < 0 && tc.cur_scope.lookup_owner(target_root) == none {
+		mut global_storage := false
+		for name, _ in tc.ownership.owned_globals.ids {
+			if ownership_storage_keys_overlap(name, target) {
+				global_storage = true
+				break
+			}
+		}
+		// Internal expression temporaries do not establish a longer-lived store.
+		if !global_storage { return false }
+	}
 	mut shorter_lifetime := tc.ownership_sum_return_branch_has_local(rhs, map[string][]SumReturnLocal{}, map[string]SumReturnLocal{})
-	for source in tc.ownership_sum_borrow_sources(rhs, []flat.NodeId{}) {
+	sources := if pointer_sum {
+		tc.ownership_sum_borrow_sources(rhs, []flat.NodeId{})
+	} else {
+		tc.ownership_sum_aggregate_return_sources(rhs, []flat.NodeId{})
+	}
+	for source in sources {
 		root := source.all_before('.').all_before('[')
 		source_scope := tc.ownership_sum_local_scope(root)
 		if source_scope >= 0 && source_scope > target_scope { shorter_lifetime = true }

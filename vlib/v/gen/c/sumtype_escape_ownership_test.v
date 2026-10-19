@@ -13,7 +13,7 @@ fn test_returned_pointer_sum_acquires_promoted_local_once() {
 		'-path', vlib, '-o', compiler, os.join_path(vlib, 'v', 'v.v')])
 	assert build.exit_code == 0, build.output
 	header := os.join_path(dir, 'drops.h')
-	os.write_file(header, 'static int transfer_drops[26];
+	os.write_file(header, 'static int transfer_drops[29];
 static void transfer_record(int code) { transfer_drops[code]++; }
 static int transfer_count(int code) { return transfer_drops[code]; }
 static int transfer_visits;
@@ -33,6 +33,7 @@ fn (mut item Item) drop() { C.transfer_record(item.code) }
 type Choice = int | &Item
 struct Holder { item &Item }
 struct SumHolder { mut: value Choice }
+struct MixedSumHolder { borrowed Choice; owned Choice }
 fn borrow(item &Item) &Item { return item }
 @[noinline]
 fn ordinary_factory() Choice {
@@ -194,6 +195,28 @@ fn forward_loop_cleanup() {
  assert C.transfer_count(23) == 0
 }
 @[noinline]
+fn aggregate_borrow_cleanup() {
+ local := Item{code: 27}
+ mut same_scope := SumHolder{value: Choice(0)}
+ same_scope = SumHolder{value: Choice(&local)}
+ assert voidptr(same_scope.value as &Item) == voidptr(&local)
+ mixed := MixedSumHolder{borrowed: Choice(&local), owned: Choice(&Item{code: 26})}
+ alias := mixed
+ moved := alias
+ assert voidptr(moved.borrowed as &Item) == voidptr(&local)
+ assert (moved.owned as &Item).code == 26
+ values := [SumHolder{value: Choice(&local)}]
+ array_alias := values
+ assert voidptr(array_alias[0].value as &Item) == voidptr(&local)
+ flag := local.code == 27
+ conditional := if flag { SumHolder{value: Choice(&local)} } else { SumHolder{value: Choice(0)} }
+ assert voidptr(conditional.value as &Item) == voidptr(&local)
+ fresh := if flag { SumHolder{value: Choice(&Item{code: 28})} } else { SumHolder{value: Choice(0)} }
+ assert (fresh.value as &Item).code == 28
+ assert C.transfer_count(26) == 0
+ assert C.transfer_count(27) == 0
+}
+@[noinline]
 fn forward_range_loop_factory() Choice {
  mut owner := Choice(0)
  for _ in 0 .. 1 {
@@ -310,6 +333,10 @@ fn main() {
  assert C.transfer_count(23) == 1
  assert C.transfer_count(24) == 1
  assert C.transfer_count(25) == 1
+ aggregate_borrow_cleanup()
+ assert C.transfer_count(26) == 1
+ assert C.transfer_count(27) == 1
+ assert C.transfer_count(28) == 1
 }')!
 	previous_jobs := os.getenv('VJOBS')
 	defer {
@@ -501,6 +528,102 @@ fn main() { value := factory(); assert value.value is &Item }'
 				'-check', invalid])
 			assert result.exit_code != 0
 			assert result.output.contains('cannot return a sum field or element borrowing local storage'), result.output
+		}
+	}
+	aggregate_stores := [
+		'struct Item { code int }
+type Choice = int | &Item
+struct Holder { mut: value Choice }
+fn main() {
+ mut outer := Holder{value: Choice(0)}
+ if true {
+  local := Item{code: 1}
+  outer = Holder{value: Choice(&local)}
+ }
+ assert (outer.value as &Item).code == 1
+}',
+		'struct Item { code int }
+type Choice = int | &Item
+struct Holder { value Choice }
+struct Nested { mut: inner Holder }
+fn main() {
+ mut outer := Nested{inner: Holder{value: Choice(0)}}
+ if true {
+  local := Item{code: 1}
+  outer.inner = Holder{value: Choice(&local)}
+ }
+ assert outer.inner.value is &Item
+}',
+		'struct Item { code int }
+type Choice = int | &Item
+struct Holder { value Choice }
+fn main() {
+ mut outer := [Holder{value: Choice(0)}]
+ if true {
+  local := Item{code: 1}
+  outer[0] = Holder{value: Choice(&local)}
+ }
+ assert outer[0].value is &Item
+}',
+		'struct Item { code int }
+type Choice = int | &Item
+fn main() {
+ mut outer := [Choice(0)]
+ if true {
+  local := Item{code: 1}
+  outer = [Choice(&local)]
+ }
+ assert outer[0] is &Item
+}',
+		'struct Item { code int }
+type Choice = int | &Item
+struct Holder { value Choice }
+fn main() {
+ mut outer := Holder{value: Choice(0)}
+ if true {
+  local := Item{code: 1}
+  holder := Holder{value: Choice(&local)}
+  alias := holder
+  outer = alias
+ }
+ assert outer.value is &Item
+}',
+		'struct Item { code int }
+type Choice = int | &Item
+struct Holder { value Choice }
+struct Nested { inner Holder }
+fn main() {
+ mut outer := Nested{inner: Holder{value: Choice(0)}}
+ if true {
+  local := Item{code: 1}
+  holder := Holder{value: Choice(&local)}
+  nested := Nested{inner: holder}
+  alias := nested
+  outer = alias
+ }
+ assert outer.inner.value is &Item
+}',
+		'struct Item { code int }
+type Choice = int | &Item
+struct Holder { value Choice }
+fn consume(flag bool) {
+ mut outer := Holder{value: Choice(0)}
+ outer = if flag {
+  local := Item{code: 1}
+  holder := Holder{value: Choice(&local)}
+  holder
+ } else { Holder{value: Choice(0)} }
+ assert outer.value is &Item
+}
+fn main() { consume(true) }',
+	]
+	for source in aggregate_stores {
+		os.write_file(invalid, source)!
+		for mode in ['-autofree', '-ownership'] {
+			result := os.exec([compiler, '-new-compiler', '-no-closures', '-gc', 'none', mode,
+				'-check', invalid])
+			assert result.exit_code != 0
+			assert result.output.contains('shorter lifetime in aggregate storage'), result.output
 		}
 	}
 	for source, expected in unsupported {

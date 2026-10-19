@@ -8900,6 +8900,7 @@ fn (mut tc TypeChecker) ownership_mark_storage_from_expr_with_mode(target_name s
 	if !tc.valid_node_id(id) {
 		return false
 	}
+	if tc.ownership_reject_sum_aggregate_store(target_name, id, target_type, pos) { return false }
 	if tc.ownership_mark_aggregate_literal_storage(target_name, id, pos, clear_unowned) {
 		return true
 	}
@@ -8939,6 +8940,9 @@ fn (mut tc TypeChecker) ownership_mark_storage_from_expr_with_mode(target_name s
 		if moved := tc.ownership_moved_conflict(source_name) {
 			tc.ownership_report_moved(moved.name, moved.info, id)
 			return false
+		}
+		if tc.ownership_borrowed_alias_source(source_name, false) == none {
+			_ = tc.ownership_alias_borrower(target_name, source_name, pos)
 		}
 	}
 	if source_name.len > 0 && source_name in tc.ownership_state().owned_vars {
@@ -8995,28 +8999,43 @@ fn (mut tc TypeChecker) ownership_alias_borrower(lhs_name string, rhs_name strin
 	}
 	st := tc.ownership_state()
 	mut aliases := []OwnershipBorrowerSnapshot{}
+	mut has_direct_alias := false
+	root := rhs_name.all_before('.').all_before('[')
+	mut source_type := Type(Unknown{})
+	if root_type := tc.cur_scope.lookup(root) {
+		source_type = tc.returned_receiver_projection_type(root_type, rhs_name[root.len..]) or { Type(Unknown{}) }
+	}
 	for var_name, borrows in st.borrowed_vars {
 		for borrow in borrows {
 			if borrow.borrower == rhs_name {
-				aliases << OwnershipBorrowerSnapshot{
-					var_name: var_name
-					borrow:   borrow
-				}
+				has_direct_alias = true
+			} else if ownership_storage_key_is_descendant(borrow.borrower, rhs_name) {
+				projected := tc.returned_receiver_projection_type(source_type, borrow.borrower[rhs_name.len..]) or { continue }
+				if !tc.sum_escape_has_pointer_variant(projected) { continue }
+			} else {
+				continue
+			}
+			aliases << OwnershipBorrowerSnapshot{
+				var_name: var_name
+				borrow:   borrow
 			}
 		}
 	}
 	if aliases.len == 0 {
 		return false
 	}
-	{
+	if has_direct_alias {
 		mut st_mut := tc.ownership_state()
 		st_mut.owned_vars.delete(lhs_name)
 		st_mut.owned_var_types.delete(lhs_name)
 	}
 	for alias in aliases {
-		tc.ownership_add_borrow(alias.var_name, lhs_name, pos, alias.borrow.is_mut)
+		suffix := alias.borrow.borrower[rhs_name.len..]
+		tc.ownership_add_borrow(alias.var_name, lhs_name + suffix, pos, alias.borrow.is_mut)
 	}
-	return true
+	// Descendant loans follow an aggregate copy without replacing the ordinary
+	// ownership transfer of its other fields or its base value.
+	return has_direct_alias
 }
 
 fn (mut tc TypeChecker) ownership_mark_from_conditional_expr(lhs_name string, rhs_id flat.NodeId, lhs_type Type, pos flat.NodeId) bool {

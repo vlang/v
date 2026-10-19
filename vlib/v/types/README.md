@@ -226,3 +226,6 @@ Aggregate fields and elements cannot retain a pointer to a local from a shorter 
 a sum field or element that borrows local storage is also rejected, including through a named alias
 or an enclosing aggregate. Keep an escaping allocation in a separately owned outer sum before
 borrowing it into an aggregate in the same scope.
+The same lifetime check applies when replacing the enclosing struct or array literal. Borrowed sum
+fields keep their source loans through named aggregate aliases, including nested storage.
+Conditional aggregate expressions cannot retain a sum pointer to a local declared inside them.
