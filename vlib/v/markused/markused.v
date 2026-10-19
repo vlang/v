@@ -2551,14 +2551,20 @@ fn markused_selective_alias_targets(tc &types.TypeChecker) map[string][]u32 {
 // may_target_interface_params reports whether `name` (a raw callee spelling)
 // could expand to a signature in iface_param_gate.
 fn (c &CallCollector) may_target_interface_params(name string) bool {
-	if name.len == 0 {
+	if name.len == 0 || c.iface_param_gate.len == 0 {
 		return false
 	}
 	if name in c.iface_param_gate {
 		return true
 	}
-	short := name.all_after_last('.')
-	return short != name && short in c.iface_param_gate
+	dot := name.last_index_u8(`.`)
+	if dot < 0 {
+		return false
+	}
+	// A view of the name after the last dot, not a copy: the map lookup only
+	// reads `len` bytes of it.
+	short := unsafe { tos(name.str + dot + 1, name.len - dot - 1) }
+	return short in c.iface_param_gate
 }
 
 // enqueue_auto_roots supports enqueue auto roots handling for markused.
@@ -7008,8 +7014,11 @@ fn markused_restore_visible_local_scope(mark int, mut locals map[string]int, mut
 	}
 }
 
-fn markused_local_visible(name string, local_values map[string]bool, locals map[string]int) bool {
-	return name.len > 0 && name in local_values && (locals[name] or { 0 }) > 0
+// markused_local_visible reports whether `name` is a visible local binding. Only
+// names of `local_values` are ever pushed onto `locals`, so a positive count
+// alone proves both, with one hash instead of two.
+fn markused_local_visible(name string, _ map[string]bool, locals map[string]int) bool {
+	return name.len > 0 && locals.len > 0 && (locals[name] or { 0 }) > 0
 }
 
 @[direct_array_access]
