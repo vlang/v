@@ -19,7 +19,20 @@ fn test_preflight_defers_source_backed_objects_without_dropping_operands() {
 	os.write_file(existing, '')!
 	flags := ['-L', pending, pending, existing, missing, '-lm']
 	assert v3_tcc_preflight_link_flags(flags) == ['-L', pending, existing, missing, '-lm']
-	assert v3_implicit_tcc_flags_incompatibility([pending], 'macos') != none
+	assert v3_implicit_tcc_flags_incompatibility([pending], 'macos', @VEXEROOT) != none
+}
+
+fn test_implicit_tcc_accepts_only_missing_shipped_c_objects() ! {
+	root := os.join_path(os.vtmp_dir(), 'v_tcc_shipped_source_${os.getpid()}')
+	os.mkdir_all(os.join_path(root, 'vlib', 'builtin'))!
+	defer { os.rmdir_all(root) or {} }
+	object := os.join_path(root, 'vlib', 'builtin', 'helper.o')
+	os.write_file(object.replace('.o', '.c'), 'int helper(void) { return 42; }\n')!
+	assert v3_implicit_tcc_flags_incompatibility([object], 'macos', root) == none
+	assert v3_implicit_tcc_flags_incompatibility([object], 'macos', @VEXEROOT) != none
+	// An existing object can have a foreign format even beside a shipped source.
+	os.write_file(object, '')!
+	assert v3_implicit_tcc_flags_incompatibility([object], 'macos', root) != none
 }
 
 fn test_dependency_probe_does_not_reject_program_supplied_symbols() {
@@ -53,10 +66,23 @@ fn test_preflight_defers_source_flags_guarded_by_type_conditions() {
 fn test_implicit_tcc_fallback_warning_cites_the_error_line_of_the_failure() {
 	warning := v3_implicit_tcc_fallback_warning('gcc', "\n  tcc: error: unresolved reference to 'GetThreadId'\ntcc: error: second\n")
 	assert warning == "warning: implicit tcc could not be used for this build (tcc: error: unresolved reference to 'GetThreadId'), regenerating it with gcc"
-	assert v3_implicit_tcc_fallback_warning('cc', ' \n\t\n') == 'warning: implicit tcc could not be used for this build, regenerating it with cc'
+	assert v3_implicit_tcc_fallback_warning('cc', ' \n\t\n') == 'warning: implicit tcc was not attempted for this build, regenerating it with cc'
 	// tcc names the including file first when the error is in a header.
 	assert v3_implicit_tcc_fallback_warning('gcc', 'In file included from src.c:3:\n/usr/include/x.h:7: error: bad\n') == 'warning: implicit tcc could not be used for this build (/usr/include/x.h:7: error: bad), regenerating it with gcc'
 	assert v3_implicit_tcc_fallback_warning('gcc', 'tcc exited with code 1') == 'warning: implicit tcc could not be used for this build (tcc exited with code 1), regenerating it with gcc'
+}
+
+// The selection and the gates that run the selected TCC share one answer for
+// `-cg`: Windows keeps its bundled TCC, every other host wants the platform
+// compiler's debug information.
+fn test_tcc_builds_c_debug_only_on_windows() {
+	assert v3_tcc_builds_c_debug(false, 'linux', 'linux')
+	assert v3_tcc_builds_c_debug(false, 'windows', 'windows')
+	assert v3_tcc_builds_c_debug(true, 'windows', 'windows')
+	assert !v3_tcc_builds_c_debug(true, 'linux', 'linux')
+	assert !v3_tcc_builds_c_debug(true, 'macos', 'macos')
+	assert !v3_tcc_builds_c_debug(true, 'windows', 'linux')
+	assert !v3_tcc_builds_c_debug(true, 'linux', 'windows')
 }
 
 // A program that the bundled tcc cannot link must still build through the

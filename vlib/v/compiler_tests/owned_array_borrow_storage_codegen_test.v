@@ -1,3 +1,4 @@
+// vtest ownership
 import os
 
 const borrow_storage_vexe = @VEXE

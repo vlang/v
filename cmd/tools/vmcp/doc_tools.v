@@ -198,12 +198,18 @@ fn signature_of(decl astquery.Declaration) string {
 	}
 }
 
+// stdlib_page_limit is how many documented symbols a bare module query lists
+// before it truncates. A full `os` listing is ~85 KB; a page of 100 is ~30 KB.
+const stdlib_page_limit = 100
+
 // stdlib_doc_json answers `v_stdlib_doc`.
 //
 // `symbol` is either a module name such as `strings` or a symbol such as
-// `strings.Builder`. Without a member it lists the module's documented symbols;
-// with one it returns that symbol in full.
-fn stdlib_doc_json(ws &Workspace, symbol string) string {
+// `strings.Builder`. Without a member it lists the module's documented symbols,
+// paged by `limit` and `offset`; with one it returns that symbol in full.
+// `symbol_count` is always the total, so a paged answer still says how big the
+// module is.
+fn stdlib_doc_json(ws &Workspace, symbol string, limit int, offset int) string {
 	trimmed := symbol.trim_space()
 	mut name := trimmed
 	mut member := ''
@@ -231,11 +237,28 @@ fn stdlib_doc_json(ws &Workspace, symbol string) string {
 	w.string(module_doc(files))
 	if member == '' {
 		docs := symbol_docs(ws, dir)
+		mut start := if offset < 0 { 0 } else { offset }
+		if start > docs.len {
+			start = docs.len
+		}
+		size := if limit < 1 { stdlib_page_limit } else { limit }
+		remaining := docs.len - start
+		end := if size > remaining { docs.len } else { start + size }
 		w.key('symbol_count')
 		w.number(docs.len)
+		w.key('returned')
+		w.number(end - start)
+		w.key('truncated')
+		w.boolean(end < docs.len)
+		if end < docs.len {
+			w.key('limit')
+			w.number(size)
+			w.key('hint')
+			w.string('Only part of `${name}` is shown; narrow it with `symbol: "${name}.<member>"` or page with `limit` and `offset`.')
+		}
 		w.key('symbols')
 		w.begin_array()
-		for doc in docs {
+		for doc in docs[start..end] {
 			w.array_raw(symbol_doc_json(doc))
 		}
 		w.end_array()

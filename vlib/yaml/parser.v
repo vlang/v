@@ -713,7 +713,7 @@ fn parse_scalar(text string) !Any {
 		return Any(numeric.parse_uint(0, 64)!)
 	}
 	if is_float(numeric) {
-		return Any(strconv.atof64(numeric)!)
+		return Any(strconv.atof64(numeric, allow_overflow: true)!)
 	}
 	return Any(value)
 }
@@ -995,7 +995,10 @@ fn strip_comments(line string) string {
 				}
 			}
 			`#` {
-				if bracket_depth == 0 && brace_depth == 0 {
+				// a comment starts at a `#` that begins the line or follows white space;
+				// elsewhere (`a#b`, `file.arxml#Cluster`) it is part of the scalar
+				if bracket_depth == 0 && brace_depth == 0
+					&& (i == 0 || line[i - 1] == ` ` || line[i - 1] == `\t`) {
 					return line[..i].trim_right(' \t')
 				}
 			}
@@ -1073,7 +1076,7 @@ fn is_float(value string) bool {
 	if !value.contains('.') && !value.contains('e') && !value.contains('E') {
 		return false
 	}
-	strconv.atof64(value) or { return false }
+	strconv.atof64(value, allow_overflow: true) or { return false }
 	return true
 }
 

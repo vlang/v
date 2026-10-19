@@ -1,9 +1,9 @@
 module overflow
 
 // Functions for integer arithmetic overflow.
-fn C.__builtin_add_overflow(x any, y any, z voidptr) bool
-fn C.__builtin_sub_overflow(x any, y any, z voidptr) bool
-fn C.__builtin_mul_overflow(x any, y any, z voidptr) bool
+fn C.__builtin_add_overflow(...) bool
+fn C.__builtin_sub_overflow(...) bool
+fn C.__builtin_mul_overflow(...) bool
 
 // add_i8 computes `x` + `y` for i8 values, and panic if overflow occurs
 @[inline]

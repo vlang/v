@@ -366,20 +366,52 @@ fn test_load_location_local_ignores_tz_local() {
 }
 
 fn test_load_location_local_empty_tz_is_utc() {
-	old_tz := os.getenv_opt('TZ')
-	os.setenv('TZ', '', true)
-	defer {
-		if old := old_tz {
-			os.setenv('TZ', old, true)
-		} else {
-			os.unsetenv('TZ')
+	$if !windows {
+		// Windows removes TZ when it is set to an empty value.
+		old_tz := os.getenv_opt('TZ')
+		os.setenv('TZ', '', true)
+		defer {
+			if old := old_tz {
+				os.setenv('TZ', old, true)
+			} else {
+				os.unsetenv('TZ')
+			}
+		}
+		loc := time.load_location('Local')!
+		zone := loc.zone_at(1_704_067_200)!
+		assert loc.name == 'UTC'
+		assert zone.name == 'UTC'
+		assert zone.offset == 0
+	}
+}
+
+fn test_load_location_local_empty_tz_uses_system_zone_on_windows() {
+	$if windows {
+		old_tz := os.getenv_opt('TZ')
+		defer {
+			if old := old_tz {
+				os.setenv('TZ', old, true)
+			} else {
+				os.unsetenv('TZ')
+			}
+		}
+		os.unsetenv('TZ')
+		system_loc := time.load_location('Local')!
+		os.setenv('TZ', 'UTC0', true)
+		utc_loc := time.load_location('Local')!
+		assert (utc_loc.zone_at(1_704_067_200)!).offset == 0
+		os.setenv('TZ', '', true)
+		assert os.getenv_opt('TZ') == none
+		loc := time.load_location('Local')!
+		assert loc.name == system_loc.name
+		for timestamp in [i64(1_704_067_200), i64(1_719_792_000)] {
+			zone := loc.zone_at(timestamp)!
+			system_zone := system_loc.zone_at(timestamp)!
+			assert zone.name == system_zone.name
+			assert zone.offset == system_zone.offset
+			assert zone.is_dst == system_zone.is_dst
 		}
 	}
-	loc := time.load_location('Local')!
-	zone := loc.zone_at(1_704_067_200)!
-	assert loc.name == 'UTC'
-	assert zone.name == 'UTC'
-	assert zone.offset == 0
 }
 
 fn test_load_location_local_posix_tz() {

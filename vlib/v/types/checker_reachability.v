@@ -35,11 +35,9 @@ fn selected_fn_frontier_scan_batch(arg voidptr) {
 	// Type resolution consults prior diagnostics for erroneous expressions.
 	// This pass only reads them, and the master stays idle until all scans join.
 	worker.errors = master.errors
+	mut smartcast_keys := &SmartcastKeyFilter{}
 	for i in args.start .. args.end {
-		decl := unsafe { frontier[i] }
-		worker.cur_file = decl.file
-		worker.cur_module = decl.mod
-		worker.collect_selected_file_fn_body_called_fns(worker.a.node(flat.NodeId(decl.idx)))
+		worker.collect_selected_decl_called_fns(unsafe { frontier[i] }, mut smartcast_keys)
 	}
 	check_worker_scope_leave(scratch)
 	// Resolution can create qualified names in the disposable arena. Publish

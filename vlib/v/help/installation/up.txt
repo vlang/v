@@ -5,6 +5,52 @@ sources and dependencies have not changed since the executable's recorded revisi
 Documentation and test-only changes do not trigger a rebuild. An unknown revision,
 a failed source comparison, or -prod, -skip_v_self or -skip_current forces rebuilding.
 
+It then refreshes previously cached vlib modules for TinyCC, the default C compiler,
+with their original build flags, including normal and -prod builds and tests.
+Caches for other C compilers are refreshed when a program next uses that compiler.
+Only changed module code or compilation inputs require another C compilation.
+Unchanged modules reuse their cached objects without a Caching module message.
+After rebuilding V, module interfaces are validated with the new compiler. Matching
+generated C, C compilers, flags, and native inputs reuse previously compiled objects
+across compiler configurations without creating another copy of the object data.
+Object flags include source #flag directives. Records with vanished project
+directories, required compile inputs, or C compilers are skipped. Test selectors
+and assertion display modes are retained. Builds without relative inputs or
+project interface scopes share refresh records across projects.
+Project directives are merged with flags read from the updated vlib modules.
+The original entry preserves project interface implementers when needed; only its
+module objects are rebuilt. Isolated ownership caches use the primary V compiler.
+Temporary importers also stop after module object validation, before compiling
+program objects, building development libraries, or linking an executable.
+Live entries replay absolute -file-list operands and re-expand directories to
+include their current files. Records with vanished listed files or directories
+are skipped. Equivalent live commands run once despite historical source flags.
+Equivalent synthetic import sequences also run once per build configuration.
+Import order is retained for order-sensitive module C flags, so different
+orderings remain separate configurations without generating new permutations.
+Unreadable, truncated, and unsupported inventory files are skipped. Live-entry
+source identities retire obsolete configurations after project source changes;
+a successful build records the current inputs. Older live records without source
+identities require rebuilding the project once.
+Ownership dispatch preserves V3_PRIMARY_VEXE independently of the helper's VEXE.
+Each module compiled into a new cached object is printed to stdout as
+`Caching module <name>...`. Different build configurations can compile the same
+module separately. Successful cache checks that produce no output remain quiet.
+When a refresh build produces output, its mode and original compiler flags appear
+before that output, for example:
+`> Refreshing module cache (normal program; -cc tcc).`
+A final summary counts the distinct build configurations checked, including reused
+ones, only when a build produced output. Pass -v to show every checked build's
+cache record index and total, and the summary even when all objects are reused.
+Verbose indices can jump as equivalent builds and unavailable inputs are skipped.
+Production TinyCC builds are skipped: TinyCC is not a `-prod` compiler.
+This also runs when the compiler itself is already updated. A cache refresh
+failure makes the update fail. TinyCC object failures are reported instead of
+retrying a program without caching. Older caches without recorded settings are
+refreshed in both modes with TinyCC, for programs and tests.
+Successful legacy migrations mark the old headers to avoid repeating that matrix.
+A disk-full error stops the remaining refresh builds; free space before retrying.
+
 It also reports the agent skills installed for this user, in ~/.agents/skills,
 that the new revision left behind. Skills with local changes, and skills
 installed before V recorded what it installed, are reported but left alone;
@@ -14,7 +60,7 @@ Usage:
   v up [options]
 
 Options:
-  -v                 Print more details about the update.
+  -v                 Print more details, including unchanged cache configurations.
   -prod              Compile the updated V with the -prod flag.
   -skills            Refresh the installed agent skills that fell behind, in
                      ~/.agents/skills, like `v skills update --global` does.

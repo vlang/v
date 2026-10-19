@@ -8,6 +8,13 @@ import v.pref
 import v.types
 
 fn numeric_infix_fixture_c(source string, shortcut bool) (string, int) {
+	return numeric_infix_fixture_c_for(source, shortcut, false)
+}
+
+// numeric_infix_fixture_c_for lowers `source` as a program without generic declarations
+// would be, or with `generic_program` as one that has them, where the shortcut is kept to
+// the checked source of the function being lowered.
+fn numeric_infix_fixture_c_for(source string, shortcut bool, generic_program bool) (string, int) {
 	path := os.join_path(os.vtmp_dir(), 'numeric_infix_${os.getpid()}.v')
 	os.write_file(path, source) or { panic(err) }
 	defer { os.rm(path) or {} }
@@ -18,13 +25,19 @@ fn numeric_infix_fixture_c(source string, shortcut bool) (string, int) {
 	tc.check_semantics()
 	assert tc.errors.len == 0, tc.errors.str()
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.skip_generics = shortcut
+	t.skip_generics = shortcut && !generic_program
+	t.no_checked_numeric_infix = !shortcut
 	t.cur_module = 'main'
 	t.cur_file = path
 	t.transformed_fns = []bool{len: a.nodes.len}
 	t.prepare()
 	mut hits := 0
 	mut used := map[string]bool{}
+	if generic_program {
+		// Lowering sets the range of each function in turn; count over all of them.
+		t.item_range_lo = 0
+		t.item_range_hi = a.nodes.len - 1
+	}
 	for node in a.nodes {
 		if node.kind == .infix && t.checked_numeric_infix_can_skip_handlers(node) {
 			hits++
@@ -33,6 +46,8 @@ fn numeric_infix_fixture_c(source string, shortcut bool) (string, int) {
 			used[node.value] = true
 		}
 	}
+	t.item_range_lo = -1
+	t.item_range_hi = -1
 	t.transform_all()
 	assert t.monomorph_errors.len == 0, t.monomorph_errors.str()
 	mut gen := cgen.FlatGen.new()
@@ -63,6 +78,96 @@ fn main() {}
 	expected, _ := numeric_infix_fixture_c(source, false)
 	assert hits >= 10
 	assert actual == expected
+}
+
+fn test_checked_numeric_infix_covers_checked_functions_of_generic_programs() {
+	source := 'type Lane = u64
+type Count = int
+fn (a Count) + (b Count) Count { return Count(int(a) + int(b) + 7) }
+fn scalar(a u64, b u64, shift u32) u64 {
+	mut value := (a ^ b) | (a & b)
+	value += (a + b) * (a - b)
+	if a < b || a == b || a >= b {
+		value += b >> shift
+	}
+	return value
+}
+fn alias(a Lane, b Lane, values []Lane) Lane {
+	return Lane((a ^ b) | (values[0] & values[1]))
+}
+fn overloaded(a Count, b Count) Count {
+	return a + b
+}
+fn text(a string, b string) bool {
+	return a + b == b + a || a < b
+}
+fn main() {}
+'
+	actual, hits := numeric_infix_fixture_c_for(source, true, true)
+	expected, no_hits := numeric_infix_fixture_c_for(source, false, true)
+	assert hits >= 8
+	assert no_hits == 0
+	assert actual == expected
+	assert actual.contains('Count__plus(')
+	assert actual.contains('string__plus(')
+}
+
+fn test_checked_numeric_infix_in_generic_programs_requires_checked_item_operands() {
+	path := os.join_path(os.vtmp_dir(), 'numeric_infix_item_${os.getpid()}.v')
+	os.write_file(path, 'fn add(a int, b int) int {\n\treturn a + b\n}\nfn main() {}\n') or {
+		panic(err)
+	}
+	defer { os.rm(path) or {} }
+	mut p := parser.Parser.new(pref.new_preferences())
+	mut a := p.parse_file(path)
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.check_semantics()
+	assert tc.errors.len == 0, tc.errors.str()
+	checked_nodes := a.nodes.len
+	mut infix_id := -1
+	for i, node in a.nodes {
+		if node.kind == .infix && node.op == .plus {
+			infix_id = i
+		}
+	}
+	assert infix_id >= 0
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.skip_generics = false
+	t.cur_module = 'main'
+	t.cur_file = path
+	// No function is being lowered.
+	assert !t.checked_numeric_infix_can_skip_handlers(a.nodes[infix_id])
+	t.item_range_lo = 0
+	t.item_range_hi = checked_nodes - 1
+	assert t.checked_numeric_infix_can_skip_handlers(a.nodes[infix_id])
+	// The operands belong to another function.
+	t.item_range_lo = checked_nodes
+	t.item_range_hi = checked_nodes
+	assert !t.checked_numeric_infix_can_skip_handlers(a.nodes[infix_id])
+	// A copy made after checking, as a specialized clone is, was never typed.
+	source_infix := a.nodes[infix_id]
+	lhs := a.add_val(.ident, 'a')
+	rhs := a.add_val(.ident, 'b')
+	start := a.children.len
+	a.children << [lhs, rhs]
+	copy_id := a.add_node(flat.Node{
+		kind:           .infix
+		op:             source_infix.op
+		children_start: start
+		children_count: 2
+	})
+	tc.register_synth_type(lhs, types.Type(types.int_))
+	tc.register_synth_type(rhs, types.Type(types.int_))
+	t.item_range_lo = 0
+	t.item_range_hi = a.nodes.len - 1
+	assert !t.checked_numeric_infix_can_skip_handlers(a.nodes[int(copy_id)])
+	t.skip_generics = true
+	assert t.checked_numeric_infix_can_skip_handlers(a.nodes[int(copy_id)])
+	t.skip_generics = false
+	t.no_checked_numeric_infix = true
+	t.item_range_hi = checked_nodes - 1
+	assert !t.checked_numeric_infix_can_skip_handlers(a.nodes[infix_id])
 }
 
 fn test_checked_numeric_infix_preserves_alias_operator_and_index_lowering() {
@@ -141,9 +246,9 @@ fn test_checked_numeric_infix_requires_ordinary_checked_operands() {
 	t.active_generic_params = ['T']
 	assert !t.checked_numeric_infix_can_skip_handlers(a.nodes[int(id)])
 	t.active_generic_params = []string{}
-	t.active_specialization_args = ['int']
+	t.active_specialization_args = flat.TypeTextList.from_names(['int'])
 	assert !t.checked_numeric_infix_can_skip_handlers(a.nodes[int(id)])
-	t.active_specialization_args = []string{}
+	t.active_specialization_args = flat.TypeTextList{}
 	t.smartcast_stack = [SmartcastContext{}]
 	assert !t.checked_numeric_infix_can_skip_handlers(a.nodes[int(id)])
 }
@@ -160,20 +265,20 @@ fn test_checked_numeric_infix_recovers_index_alias_overrides_from_raw_element_ty
 	a.children << [lhs, rhs]
 	id := a.add_node(flat.Node{ kind: .infix, op: .plus, children_start: start, children_count: 2 })
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases['Count'] = 'int'
+	tc.type_aliases.set_id('Count', flat.source_type_int)
 	// A flattened index sidecar alone must not hide a declared alias operator.
 	tc.register_synth_type(lhs, types.Type(types.int_))
 	tc.register_synth_type(rhs, types.Type(types.int_))
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.skip_generics = true
 	t.cur_module = 'main'
-	t.set_var_type_with_raw('values', '[]int', '[]Count')
-	t.fn_ret_types['Count.+'] = 'Count'
-	t.fn_ret_types['Count.=='] = 'bool'
-	t.fn_ret_types['Count.<'] = 'bool'
+	t.set_var_type_with_raw('values', flat.source_type_id('[]int'), flat.source_type_id('[]Count'))
+	t.fn_ret_types.set_id('Count.+', flat.source_type_id('Count'))
+	t.fn_ret_types.set_id('Count.==', flat.source_type_bool)
+	t.fn_ret_types.set_id('Count.<', flat.source_type_bool)
 	for op in [flat.Op.plus, .eq, .ne, .lt, .gt, .le, .ge] {
 		a.nodes[int(id)].op = op
-		assert t.operator_alias_type_for_operand(lhs, op) or { '' } == 'Count'
+		assert flat.source_type_name(t.operator_alias_type_for_operand(lhs, op) or { u32(0) }) == 'Count'
 		assert !t.checked_numeric_infix_can_skip_handlers(a.nodes[int(id)])
 	}
 	// The existing struct path dispatches on LHS, but the conservative shortcut
@@ -192,25 +297,25 @@ fn test_checked_numeric_infix_keeps_named_annotations_and_casts_on_operator_path
 	a.children << [lhs, rhs]
 	id := a.add_node(flat.Node{ kind: .infix, op: .plus, children_start: start, children_count: 2 })
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases['Count'] = 'int'
+	tc.type_aliases.set_id('Count', flat.source_type_int)
 	tc.register_synth_type(lhs, types.Type(types.int_))
 	tc.register_synth_type(rhs, types.Type(types.int_))
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.skip_generics = true
 	t.cur_module = 'main'
-	t.fn_ret_types['Count.+'] = 'Count'
+	t.fn_ret_types.set_id('Count.+', flat.source_type_id('Count'))
 	assert t.checked_numeric_infix_can_skip_handlers(a.nodes[int(id)])
 	// Both textual candidates used by the original alias lookup must survive
 	// a primitive sidecar; only builtin annotations are free of nominal lookup.
-	a.nodes[int(lhs)].typ = 'Count'
-	assert t.operator_alias_type_for_operand(lhs, .plus) or { '' } == 'Count'
+	a.nodes[int(lhs)].typ = flat.source_type_id('Count')
+	assert flat.source_type_name(t.operator_alias_type_for_operand(lhs, .plus) or { u32(0) }) == 'Count'
 	assert !t.checked_numeric_infix_can_skip_handlers(a.nodes[int(id)])
-	a.nodes[int(lhs)].typ = 'int'
+	a.nodes[int(lhs)].typ = flat.source_type_int
 	assert t.checked_numeric_infix_can_skip_handlers(a.nodes[int(id)])
-	a.nodes[int(lhs)].typ = ''
+	a.nodes[int(lhs)].typ = u32(0)
 	a.nodes[int(lhs)].kind = .cast_expr
 	a.nodes[int(lhs)].value = 'Count'
-	assert t.operator_alias_type_for_operand(lhs, .plus) or { '' } == 'Count'
+	assert flat.source_type_name(t.operator_alias_type_for_operand(lhs, .plus) or { u32(0) }) == 'Count'
 	assert !t.checked_numeric_infix_can_skip_handlers(a.nodes[int(id)])
 	a.nodes[int(lhs)].value = 'int'
 	assert t.checked_numeric_infix_can_skip_handlers(a.nodes[int(id)])
@@ -266,4 +371,25 @@ fn main() {}
 	assert actual.contains('string__plus(')
 	assert actual.contains('string__lt(')
 	assert actual.contains('__v_u128_')
+}
+
+fn test_numeric_infix_control_is_set_for_fresh_monomorphize_transformers() {
+	previous := os.getenv_opt('V3_NO_CHECKED_NUMERIC_INFIX')
+	defer {
+		if value := previous {
+			os.setenv('V3_NO_CHECKED_NUMERIC_INFIX', value, true)
+		} else {
+			os.unsetenv('V3_NO_CHECKED_NUMERIC_INFIX')
+		}
+	}
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	os.setenv('V3_NO_CHECKED_NUMERIC_INFIX', '1', true)
+	t := new_transformer(mut a, &tc, map[string]bool{})
+	assert t.no_checked_numeric_infix
+	w := new_transformer_view(&a, &tc, map[string]bool{})
+	assert w.no_checked_numeric_infix
+	os.unsetenv('V3_NO_CHECKED_NUMERIC_INFIX')
+	enabled := new_transformer(mut a, &tc, map[string]bool{})
+	assert !enabled.no_checked_numeric_infix
 }

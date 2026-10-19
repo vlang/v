@@ -1,5 +1,80 @@
 module builtin
 
+// string_index_byte searches exactly size readable bytes, including embedded NULs.
+@[inline]
+fn string_index_byte(data &u8, size int, needle u8) int {
+	if size <= 0 {
+		return -1
+	}
+	$if freestanding || vinix || native || v2_native_windows_pe_minimal ? {
+		for i in 0 .. size {
+			if unsafe { data[i] } == needle {
+				return i
+			}
+		}
+		return -1
+	} $else {
+		found := unsafe { C.memchr(data, i32(needle), usize(size)) }
+		if isnil(found) {
+			return -1
+		}
+		return int(usize(found) - usize(data))
+	}
+}
+
+// string_bytes_equal compares readable byte spans without allocating or reading past size.
+@[inline]
+fn string_bytes_equal(a &u8, b &u8, size int) bool {
+	$if prod && !tinyc && !msvc && !native {
+		if size >= 0 && size <= 16 {
+			if size >= 8 {
+				mut ah := u64(0)
+				mut at := u64(0)
+				mut bh := u64(0)
+				mut bt := u64(0)
+				// memcpy permits unaligned views; these fixed-size copies become loads.
+				unsafe {
+					C.memcpy(&ah, a, 8)
+					C.memcpy(&at, a + size - 8, 8)
+					C.memcpy(&bh, b, 8)
+					C.memcpy(&bt, b + size - 8, 8)
+				}
+				return ((ah ^ bh) | (at ^ bt)) == 0
+			}
+			if size >= 4 {
+				mut ah := u32(0)
+				mut at := u32(0)
+				mut bh := u32(0)
+				mut bt := u32(0)
+				unsafe {
+					C.memcpy(&ah, a, 4)
+					C.memcpy(&at, a + size - 4, 4)
+					C.memcpy(&bh, b, 4)
+					C.memcpy(&bt, b + size - 4, 4)
+				}
+				return ((ah ^ bh) | (at ^ bt)) == 0
+			}
+			if size == 0 {
+				return true
+			}
+			return unsafe { ((a[0] ^ b[0]) | (a[size >> 1] ^ b[size >> 1]) | (a[size - 1] ^ b[size - 1])) == 0 }
+		}
+	}
+	return unsafe { C.memcmp(a, b, usize(size)) == 0 }
+}
+
+// string_content_equal preserves vmemcmp's guarded and traced string comparison.
+@[inline]
+fn string_content_equal(a &u8, b &u8, size int) bool {
+	$if trace_vmemcmp ? {
+		return unsafe { vmemcmp(a, b, size) == 0 }
+	}
+	if size == 0 || usize(a) <= 0xFFFF || usize(b) <= 0xFFFF {
+		return true
+	}
+	return string_bytes_equal(a, b, size)
+}
+
 // vstrlen returns the V length of the C string `s` (0 terminator is not counted).
 // The C string is expected to be a &u8 pointer.
 @[inline; unsafe]
@@ -29,7 +104,7 @@ pub fn vmemcpy(dest voidptr, const_src voidptr, n isize) voidptr {
 			print_backtrace()
 		}
 	}
-	if n == 0 || u64(dest) <= 0xFFFF || u64(const_src) <= 0xFFFF {
+	if n == 0 || usize(dest) <= 0xFFFF || usize(const_src) <= 0xFFFF {
 		return dest
 	}
 	unsafe {
@@ -47,7 +122,7 @@ pub fn vmemmove(dest voidptr, const_src voidptr, n isize) voidptr {
 	$if trace_vmemmove ? {
 		C.fprintf(C.stderr, c'vmemmove dest: %p src: %p n: %6ld\n', dest, const_src, n)
 	}
-	if n == 0 || u64(dest) <= 0xFFFF || u64(const_src) <= 0xFFFF {
+	if n == 0 || usize(dest) <= 0xFFFF || usize(const_src) <= 0xFFFF {
 		return dest
 	}
 	unsafe {
@@ -72,7 +147,7 @@ pub fn vmemcmp(const_s1 voidptr, const_s2 voidptr, n isize) int {
 	$if trace_vmemcmp ? {
 		C.fprintf(C.stderr, c'vmemcmp s1: %p s2: %p n: %6ld\n', const_s1, const_s2, n)
 	}
-	if n == 0 || u64(const_s1) <= 0xFFFF || u64(const_s2) <= 0xFFFF {
+	if n == 0 || usize(const_s1) <= 0xFFFF || usize(const_s2) <= 0xFFFF {
 		return 0
 	}
 	unsafe {
@@ -93,7 +168,7 @@ pub fn vmemset(s voidptr, c int, n isize) voidptr {
 			print_backtrace()
 		}
 	}
-	if n == 0 || u64(s) <= 0xFFFF {
+	if n == 0 || usize(s) <= 0xFFFF {
 		return s
 	}
 	unsafe {

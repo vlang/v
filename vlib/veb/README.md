@@ -18,16 +18,44 @@ features.
 
 ## Quick Start
 
-Run your veb app with a live reload via `v -d veb_livereload watch run .`
+Run your veb app with a live reload via `v watch -d veb_livereload run .`
 
-Now modifying any file in your web app (whether it's a .v file with the backend logic
-or a compiled .html template file) will result in an instant refresh of your app
-in the browser. No need to quit the app, rebuild it, and refresh the page in the browser!
+Stylesheet changes are applied in place. Changes to other static assets trigger a
+full reload so updated scripts and images are fetched. Page or template changes
+preserve the DOM state unless scripts or head elements changed; those changes
+also reload the page so the browser applies them.
+
+Page and template edits update the browser while preserving scroll position, focus,
+and typed form values when scripts and head elements stay the same.
+No need to quit the app, rebuild it, and refresh the page in the browser!
+
+* A `.v` file or a template (anywhere under `templates/`): `v watch` rebuilds and
+  restarts the app, then the page fetches itself again and updates only what changed.
+  The previous version keeps serving while the new one builds. If the build fails, it
+  keeps running, and the page shows the compiler errors until the next successful build.
+  `v watch --no-build-first` stops the app before each build instead.
+* A file served by a `veb.StaticHandler` (for example `static/css/main.css`): the
+  running app notices the change itself, with no rebuild. Stylesheets are swapped in
+  place; other files reload the page.
 
 Note: this works by injecting a small `<script>` tag before the ending `</html>` tag of the page,
-that will check periodically if the current page has to be reloaded. In other words, it works for
+that keeps one Server-Sent Events connection open to the app. In other words, it works for
 template pages that have that `</html>` tag, or for ones that were produced by `ctx.html()` and that
 also have that closing tag, but not for ones produced by `ctx.text()` .
+Pages that were the result of a POST request, and pages that fail to update, are reloaded instead.
+A small notice in the corner of the page shows when the app is rebuilding and when the
+page was updated; hide it with `-d veb_livereload_no_toast`.
+
+The live updates are not available for apps served over HTTPS (`veb.run_at` with an `ssl_config`),
+or behind a proxy that blocks long-lived connections. Those can keep using the older script, which
+polls the app and reloads the whole page after a restart:
+`v watch -d veb_livereload -d veb_livereload_polling run .`
+(set its interval with `-d veb_livereload_poll_ms=500`).
+
+While the app restarts, the page retries the connection every 250 ms; each failed attempt
+shows up in the browser's network log. With `v watch --no-build-first`, the app is down for
+the whole build: `-d veb_livereload_retry_max_ms=1000` makes the retries back off, doubling
+from 250 ms up to that cap, for fewer failed attempts at the cost of a slower update.
 
 ## Port already in use
 
@@ -233,7 +261,8 @@ running with `-d new_veb` without SSL.
 
 To add endpoints to your web server, you must extend the `App` struct.
 For routing you can either use auto-mapping of function names or specify the path as an attribute.
-The function expects a parameter of your Context type and a response of the type `veb.Result`.
+The function expects a parameter of your Context type and a response of the type `veb.Result`
+(or `!veb.Result` when the endpoint can fail, see Handlers that return `!veb.Result`).
 
 **Example:**
 
@@ -298,6 +327,20 @@ pub fn (app &App) login(mut ctx Context) veb.Result {
 	}
 }
 ```
+
+### Request forms
+
+For `POST`, `PUT` and `PATCH` requests, `ctx.form` contains decoded form fields.
+With `Content-Type: application/json`, a JSON object supplies its string, number and boolean
+fields as strings: `{"name":"x","id":3}` becomes `{'name': 'x', 'id': '3'}`.
+Media type matching ignores case and accepts parameters such as `charset=utf-8`.
+Whitespace around a JSON object is accepted. Nested objects, arrays and `null` fields are skipped;
+use `ctx.req.data` or `ctx.bind[T]()` when you need the full structure.
+The original request body remains available in `ctx.req.data`.
+Malformed JSON and a root value other than an object, including `null`, receive `400 Bad Request`.
+
+URL-encoded bodies continue to populate `ctx.form`, and multipart requests also populate
+`ctx.files`. A JSON body requires its JSON content type; veb does not infer it from the body.
 
 ### Routes with Parameters
 
@@ -386,6 +429,38 @@ pub fn (app &App) get_user_by_id(mut ctx Context) veb.Result {
 }
 ```
 
+### Request body size
+
+veb reads the whole request body into memory before it calls the route. A body can have up
+to `max_request_body_size` bytes, a field of `RunParams` that is 64 MiB by default. veb answers
+a request that has a larger body with `413`, and closes the connection. Raise the limit to
+accept larger uploads:
+
+```v ignore
+veb.run_at[App, Context](mut app,
+	port:                  8080
+	max_request_body_size: 512 * 1024 * 1024
+)!
+```
+
+`max_request_body_size: 0` removes the limit; use it only where every client is trusted.
+A negative value is an error. `max_request_buffer_size` is a different setting, which does
+not limit the body.
+
+The limit applies to both plain HTTP and HTTPS. Chunked bodies count the combined payload of
+all chunks. Invalid or overflowing `Content-Length` values and malformed chunk sizes are rejected
+with `400` before allocating their declared body; TLS reads also reject truncated bodies.
+Conflicting lengths and requests containing both `Transfer-Encoding` and `Content-Length`
+are rejected with `400`.
+
+To give some routes a lower limit, register `veb.body_limit` on them with `route_use`. It
+answers a larger body with `413` without closing the connection. It runs after veb has read
+the body, so it does not lower the memory that a request can use:
+
+```v ignore
+app.route_use('/api/profile', veb.body_limit[Context](100 * 1024))
+```
+
 ### Host
 
 To restrict an endpoint to a specific host, you can use the `host` attribute
@@ -441,6 +516,12 @@ Routes with a variadic parameter such as `/:path...` are an exception. veb keeps
 them as fallbacks, so a later exact or non-variadic parameter route can still match
 before the variadic route handles the request.
 
+If the path matches a route for the request's host but the method does not, veb
+answers `405 Method Not Allowed`. Its `Allow` header lists the distinct methods
+from all handlers for the selected route pattern, including handlers whose path
+parameters use different names. Methods from other hosts or overlapping route
+patterns are excluded. A path with no matching route still answers `404 Not Found`.
+
 ### Custom not found page
 
 You can implement a `not_found` endpoint that is called when a request is made, and no
@@ -456,6 +537,31 @@ pub fn (mut ctx Context) not_found() veb.Result {
 	return ctx.html('<h1>Page not found!</h1>')
 }
 ```
+
+## Rendering without a server
+
+`veb.render_request[A, X](mut app, req)` dispatches an `http.Request` through the
+same routes, middleware, and registered controllers as the server, without opening
+a listener. It returns `!&veb.Context`: read the completed response from `ctx.res`.
+`X` must embed `veb.Context`.
+Context, route, and controller configuration errors are returned to the caller. Custom
+fields on `X` remain local to the handler; they are not part of the returned context.
+
+```v ignore
+ctx := veb.render_request[App, Context](mut app, http.Request{
+	method: .get
+	url: '/'
+})!
+os.write_file('index.html', ctx.res.body)!
+```
+
+Initialize static handlers and controllers before rendering, as before `veb.run`.
+Static file responses expose `ctx.return_file` and `ctx.return_type` instead of
+reading the file into `ctx.res.body`. Handlers that take over a connection require
+a real server connection and are unsuitable for this helper.
+
+See `examples/veb/static_export/` for an HTML export using the same page handlers
+as its preview server.
 
 ## Static files and website
 
@@ -936,6 +1042,14 @@ app.route_use('/admin/auth', handler: auth_middleware, methods: [.get, .delete])
 
 If `methods` is omitted, route middleware applies to all HTTP methods on that route.
 
+### CORS header allow-lists
+
+`veb.CorsOptions.allowed_headers` names the CORS request headers that the application accepts,
+such as `X-Token` and `Content-Type`. Validation compares these names case-insensitively with
+the comma-separated `Access-Control-Request-Headers` value. The `origins` option validates
+the browser's `Origin` header separately. Normal browser headers such as `User-Agent` can
+therefore accompany a request when an application header allow-list is configured.
+
 ### Evaluation moment
 
 By default, the registered middleware functions are executed *before* a method on your
@@ -1002,6 +1116,30 @@ app.use(handler: logger)
 ```
 
 Because we register `early_exit` before `logger` our logging middleware will never be executed!
+
+### Limiting concurrent requests
+
+`veb.throttle` caps how many requests run their handlers at once. A request over the cap
+waits for a free slot; when `max_waiting` requests are already waiting, or the wait passes
+`wait_timeout`, it is refused with `503 Service Unavailable` and a `Retry-After` header.
+
+```v ignore
+th := veb.throttle[Context](max_concurrent: 8, max_waiting: 16, wait_timeout: 2 * time.second)
+// register it after middleware that refuses requests cheaply, such as authentication
+app.use(th.acquire())
+// or only for some routes; every registration of `th` shares the same cap
+app.route_use('/reports/:path...', th.acquire())
+```
+
+The middleware takes a slot, and veb frees it when the request finishes, whichever way it
+finishes: after the handler and the "after" middleware, on a 404, or when a later middleware
+refuses the request. There is nothing to register for the release.
+
+A waiting request sleeps on the thread that serves it. veb serves each connection inline on
+a fixed set of worker threads, so a waiting request also delays the other connections of its
+thread, and no more requests than there are worker threads run handlers at once. Keep
+`max_concurrent` below the worker count for the cap to matter, and use `max_waiting: 0` to
+refuse at once instead of queueing.
 
 ## Controllers
 
@@ -1130,6 +1268,32 @@ embed `veb.Context`. Below are some of the most used methods, look at the
 
 You can directly access the HTTP request on the `.req` field.
 
+#### Get the client IP address
+
+`ctx.ip()` returns the socket peer's IP address by default. Forwarding headers from direct
+clients are ignored. To accept them from your reverse proxies, declare their IP addresses on
+the app:
+
+```v ignore
+pub struct App {
+	trusted_proxies []string = ['10.0.0.1', '10.0.0.2']
+}
+```
+
+Only list proxies you control and configure to append the actual peer to `X-Forwarded-For`.
+Addresses must be individual IPv4 or IPv6 literals; CIDR ranges are not supported.
+When the socket peer is trusted, `ip()` combines all `X-Forwarded-For` fields in their received
+order and walks the chain from right to left, stopping at the nearest untrusted address.
+For example, trusted peer `10.0.0.2` with `203.0.113.66, 198.51.100.9, 10.0.0.1` returns
+`198.51.100.9`: an earlier prefix supplied by that client cannot choose its identity.
+If every hop is trusted, the left-most address is returned. Empty or malformed entries stop
+the walk at the last trusted hop, and IPv6 addresses are returned in canonical form.
+
+Only when `X-Forwarded-For` is absent may a trusted peer supply `CF-Connecting-IP`, followed
+by `X-Real-Ip`. These must contain a single valid IP address. Configure trusted proxies to
+overwrite or remove these headers from untrusted clients, since they carry no proxy chain.
+An empty or malformed `X-Forwarded-For` never falls back to these headers.
+
 #### Get request headers
 
 **Example:**
@@ -1142,6 +1306,9 @@ pub fn (app &App) index(mut ctx Context) veb.Result {
 	// ...
 }
 ```
+
+A request can have up to `http.max_headers` (50) header fields. veb answers a request
+that has more with `431 Request Header Fields Too Large`, and closes the connection.
 
 #### Get a cookie
 
@@ -1264,6 +1431,52 @@ pub fn (app &App) login(mut ctx Context) veb.Result {
 
 You can also use `ctx.server_error(msg string)` to send an HTTP 500 internal server
 error with a message.
+
+If a handler panics, veb logs the panic and responds with HTTP 500 and the plain-text
+body `Internal Server Error`. This replaces any prepared body or file response and
+its content, framing, and cache metadata. After-middleware is skipped. A connection
+taken over with `ctx.takeover_conn()` or `ctx.takeover_conn_reusable()` remains under
+the handler's control; recovery does not write another response to it.
+
+## Handlers that return `!veb.Result`
+
+A handler that can fail may return `!veb.Result` instead of rolling its own
+error responses. Answer by returning the value, decline by returning an error,
+and veb turns the error into a JSON envelope carrying its message. When the
+handler already chose a status with `ctx.res.set_status`, it is kept, so 4xx
+stays in the handler's hands; otherwise the envelope is a 500.
+
+**Example:**
+
+```v
+module main
+
+import veb
+
+pub struct Context {
+	veb.Context
+}
+
+pub struct App {}
+
+fn user_name_by_id(id int) !string {
+	if id != 42 {
+		return error('no such user')
+	}
+	return 'douglas'
+}
+
+@['/user/:id']
+pub fn (app &App) user(mut ctx Context, id int) !veb.Result {
+	// A status the handler chose is kept, so `return error(...)` here answers
+	// 404 with a JSON envelope carrying the message.
+	name := user_name_by_id(id) or {
+		ctx.res.set_status(.not_found)
+		return error('no user with id ${id}')
+	}
+	return ctx.text('Hello ${name}!')
+}
+```
 
 ## Advanced usage
 

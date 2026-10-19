@@ -25,8 +25,16 @@ fn v3_gc_mode_defines(gc_mode string, disable_gc bool) ![]string {
 	return defines
 }
 
-fn v3_gc_is_disabled(building_v bool, cross_output bool, target_os string, target_arch string) bool {
+// v3_gc_is_disabled reports whether a collector must be left out of the build.
+// The native backend is in that group for its own reason: it links against
+// libSystem alone and allocates through libc, so no collector is ever compiled
+// in. Selecting the Boehm builtin set anyway would only add source files whose
+// declarations the backend cannot satisfy.
+fn v3_gc_is_disabled(building_v bool, cross_output bool, target_os string, target_arch string, backend string) bool {
 	if building_v || cross_output {
+		return true
+	}
+	if backend == 'arm64' {
 		return true
 	}
 	host := pref.host_target()
@@ -38,6 +46,16 @@ fn apply_v3_gc_mode(gc_mode string, disable_gc bool, mut user_defines []string, 
 	for define in v3_gc_mode_defines(gc_mode, disable_gc)! {
 		record_user_define(mut user_defines, mut compile_values, define)
 	}
+	if v3_gc_prefers_platform_cc(user_defines) {
+		// The prebuilt archives already enable thread-local allocation. Omitting
+		// THREAD_LOCAL_ALLOC only affects a collector compiled from source.
+		record_user_define(mut user_defines, mut compile_values, 'use_bundled_libgc')
+	}
+}
+
+fn v3_gc_prefers_platform_cc(user_defines []string) bool {
+	return 'gcboehm' in user_defines && 'no_gc_thread_local_alloc' in user_defines
+		&& 'dynamic_boehm' !in user_defines
 }
 
 fn v3_missing_bundled_gc_library(flags []string, vroot string) ?string {

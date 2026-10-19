@@ -367,6 +367,31 @@ fn test_translated_large_integer_literal_types() {
 	assert decimal + int(1) == i64(4294967296)
 }
 
+const translated_negated_hex = -0xffff_ffff
+const translated_negated_octal = -0o37777777777
+const translated_negated_paren_hex = -(0x8000_0000)
+const translated_negated_decimal = -4294967295
+
+fn test_translated_negated_unsigned_literals_wrap_at_32_bits() {
+	local := -0xffff_ffff
+	assert typeof(local).name == 'u32'
+	assert local == u32(1)
+	assert i64(-0xffff_ffff) == 1
+	assert i64(-(0xffff_ffff)) == 1
+	assert i64(-0o37777777777) == 1
+	assert i64(-0b11111111111111111111111111111111) == 1
+	assert -0x8000_0000 + i64(0) == 2147483648
+	assert i64(~0xffff_ffff) == 0
+	assert typeof(translated_negated_hex).name == 'u32'
+	assert i64(translated_negated_hex) == 1
+	assert i64(translated_negated_octal) == 1
+	assert i64(translated_negated_paren_hex) == 2147483648
+	// Decimal and wider literals have a signed C type, so their negation stays signed.
+	assert translated_negated_decimal.str() == '-4294967295'
+	assert (-4294967295 + int(0)).str() == '-4294967295'
+	assert (-0x1_0000_0000 + int(0)).str() == '-4294967296'
+}
+
 const translated_literal_shift = 1 << 40
 const translated_wide_literal_shift = 0x1_0000_0000 << 1
 

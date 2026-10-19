@@ -87,3 +87,29 @@ fn test_resolve_source_paths_freezes_the_table() {
 	assert a.resolved_source_paths.len == 1
 	assert late !in a.resolved_source_paths
 }
+
+// A listed entry resolves through the real path of its directory, and like
+// os.real_path through its target when the entry is a symbolic link.
+fn test_record_listed_source_path_matches_os_real_path() {
+	root := os.join_path(os.vtmp_dir(), 'v3_flat_listed_source_paths_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(os.join_path(root, 'real')) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	os.write_file(os.join_path(root, 'real', 'main.v'), 'module main\n')!
+	os.write_file(os.join_path(root, 'real', 'target.v'), 'module main\n')!
+	// The listed directory is reached through a link, and one entry is a link.
+	linked_dir := os.join_path(root, 'linked')
+	os.symlink(os.join_path(root, 'real'), linked_dir) or { return }
+	os.symlink(os.join_path(root, 'real', 'target.v'), os.join_path(root, 'real', 'alias.v')) or {
+		return
+	}
+	real_dir := os.real_path(linked_dir)
+	mut a := FlatAst.new()
+	for name in ['main.v', 'alias.v', 'missing.v'] {
+		path := os.join_path(linked_dir, name)
+		assert a.record_listed_source_path(path, real_dir) == os.real_path(path)
+		assert a.resolved_source_paths[path] == os.real_path(path)
+	}
+}

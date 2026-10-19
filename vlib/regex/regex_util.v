@@ -101,7 +101,7 @@ pub fn (re &RE) get_group_list() []Re_group {
 			txt_en := re.groups[gi + 1]
 
 			// println("#${gi/2} start: ${re.groups[gi]} end: ${re.groups[gi + 1]} ")
-			if txt_st >= 0 && txt_en > txt_st {
+			if txt_st >= 0 && txt_en >= txt_st {
 				tmp := Re_group{
 					start: re.groups[gi]
 					end:   re.groups[gi + 1]
@@ -126,7 +126,7 @@ pub fn (re &RE) get_group_list() []Re_group {
 @[direct_array_access]
 pub fn (re &RE) match_string(in_txt string) (int, int) {
 	unsafe {
-		start, mut end := re.match_base(in_txt.str, in_txt.len + 1)
+		start, mut end := re.match_base(in_txt.str, in_txt.len)
 		if end > in_txt.len {
 			end = in_txt.len
 		}
@@ -177,7 +177,7 @@ fn (mut re RE) find_imp(in_txt string) (int,int) {
 	old_flag := re.flag
 	re.flag |= f_src  // enable search mode
 
-	start, mut end := re.match_base(in_txt.str, in_txt.len + 1)
+	start, mut end := re.match_base(in_txt.str, in_txt.len)
 	//print("Find [${start},${end}] '${in_txt[start..end]}'")
 	if end > in_txt.len {
 		end = in_txt.len
@@ -204,7 +204,7 @@ pub fn (mut re RE) find(in_txt string) (int, int) {
 		unsafe {
 			// tmp_str := tos(in_txt.str + i, in_txt.len - i)
 			// println("Check: [${tmp_str}]")
-			s, e = re.match_base(in_txt.str + i, in_txt.len - i + 1)
+			s, e = re.match_base(in_txt.str + i, in_txt.len - i)
 
 			if s >= 0 && e >= s {
 				abs_start := i + s
@@ -221,7 +221,9 @@ pub fn (mut re RE) find(in_txt string) (int, int) {
 				// re.flag = old_flag
 				mut gi := 0
 				for gi < re.groups.len {
-					re.groups[gi] += i
+					if re.groups[gi] >= 0 {
+						re.groups[gi] += i
+					}
 					gi++
 				}
 				return abs_start, abs_end
@@ -271,7 +273,9 @@ pub fn (mut re RE) find_from(in_txt string, start int) (int, int) {
 			re.flag = old_flag
 			mut gi := 0
 			for gi < re.groups.len {
-				re.groups[gi] += i
+				if re.groups[gi] >= 0 {
+					re.groups[gi] += i
+				}
 				gi++
 			}
 			return abs_start, abs_end
@@ -306,7 +310,7 @@ pub fn (mut re RE) find_all(in_txt string) []int {
 			// tmp_str := in_txt[i..]
 			// tmp_str := tos(in_txt.str + i, in_txt.len - i)
 			// println("Check: [${tmp_str}]")
-			s, e = re.match_base(in_txt.str + i, in_txt.len + 1 - i)
+			s, e = re.match_base(in_txt.str + i, in_txt.len - i)
 
 			if s >= 0 && e >= s {
 				abs_start := i + s
@@ -357,14 +361,17 @@ pub fn (mut re RE) split(in_txt string) []string {
 	if pos.len == 0 {
 		return [in_txt]
 	}
+	mut last_end := 0
 	for i := 0; i < pos.len; i += 2 {
-		if i == 0 {
-			sections << in_txt[..pos[i]]
-		} else {
-			sections << in_txt[pos[i - 1]..pos[i]]
+		start, end := pos[i], pos[i + 1]
+		// A zero-width separator at either boundary does not create a section.
+		if start == end && (start == 0 || start == in_txt.len) {
+			continue
 		}
+		sections << in_txt[last_end..start]
+		last_end = end
 	}
-	sections << in_txt[pos[pos.len - 1]..]
+	sections << in_txt[last_end..]
 	return sections
 }
 
@@ -384,7 +391,7 @@ pub fn (mut re RE) find_all_str(in_txt string) []string {
 			// tmp_str := in_txt[i..]
 			// tmp_str := tos(in_txt.str + i, in_txt.len - i)
 			// println("Check: [${tmp_str}]")
-			s, e = re.match_base(in_txt.str + i, in_txt.len + 1 - i)
+			s, e = re.match_base(in_txt.str + i, in_txt.len - i)
 
 			if s >= 0 && e >= s {
 				abs_start := i + s

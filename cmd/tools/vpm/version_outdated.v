@@ -18,7 +18,7 @@ fn version_outdated_rows(dir string, manifest vmod.Manifest) ![]VersionStatus {
 	if lf := read_lockfile(dir) {
 		scope.entries = lf.modules
 	}
-	selected := resolve_module_query(manifest.dependencies, mut selector, mut scope, false, map[string]string{})!
+	selected := resolve_module_query(project_dependencies(manifest), mut selector, mut scope, false, map[string]string{})!
 	defer {
 		for m in selected { rmdir_all(m.tmp_path) or {} }
 	}

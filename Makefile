@@ -113,7 +113,7 @@ v:
 			esac; \
 			;; \
 	esac; \
-	$(CC) $$bootstrap_ccflags $(VC_BOOTSTRAP_DEFINE) -std=gnu11 -w -o v1 vc/v.c -lm -lpthread $$ldflags || cmd/tools/cc_compilation_failed_non_windows.sh; \
+	sh cmd/tools/vc_compat.sh vc/v.c $(CC) $$bootstrap_ccflags $(VC_BOOTSTRAP_DEFINE) -std=gnu11 -w -o v1 -- -lm -lpthread $$ldflags || cmd/tools/cc_compilation_failed_non_windows.sh; \
 	set -- ./v1 -no-parallel -o v2 $$bootstrap_gcflags $(VFLAGS); \
 	if [ -n "$$bootstrap_ccompiler" ]; then \
 		set -- "$$@" -cc "$$bootstrap_ccompiler"; \

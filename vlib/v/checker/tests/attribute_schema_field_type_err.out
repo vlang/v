@@ -1,0 +1,14 @@
+vlib/v/checker/tests/attribute_schema_field_type_err.vv:7:2: error: attribute schema field `Route.items` must be a string, integer, bool, or enum, not `[]string`
+    5 | @[attribute]
+    6 | struct Route {
+    7 |     items []string
+      |     ~~~~~~~~~~~~~~
+    8 |     inner Inner
+    9 | }
+vlib/v/checker/tests/attribute_schema_field_type_err.vv:8:2: error: attribute schema field `Route.inner` must be a string, integer, bool, or enum, not `Inner`
+    6 | struct Route {
+    7 |     items []string
+    8 |     inner Inner
+      |     ~~~~~~~~~~~
+    9 | }
+   10 |

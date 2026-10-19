@@ -54,7 +54,8 @@ fn main() {
 	println("OK")
 }
 ') or { panic(err) }
-	generated := cmdexec.run(@VEXE, ['-gc', 'none', '-cc', 'msvc', '-o', c_file, v_file])
+	generated := cmdexec.run(@VEXE, ['-gc', 'none', '-os', 'windows', '-cc', 'msvc', '-o', c_file,
+		v_file])
 	assert generated.exit_code == 0, generated.output
 	source := os.read_file(c_file) or { panic(err) }
 	assert source.contains('const my_ctx_t minmod__context = {.id = 0x00010001};')

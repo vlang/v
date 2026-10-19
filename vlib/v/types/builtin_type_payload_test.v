@@ -105,7 +105,7 @@ fn test_forwarded_types_keep_signature_and_numeric_compatibility() {
 	a := flat.FlatAst.new()
 	tc := TypeChecker.new(&a)
 	aliased_integer := Type(Alias{
-		name:      'Measure'
+		name_id:   flat.source_type_id('Measure')
 		base_type: builtin_int_type
 	})
 	actual := Type(FnType{

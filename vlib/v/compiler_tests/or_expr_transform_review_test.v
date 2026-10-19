@@ -7,7 +7,7 @@ const or_review_vlib_dir = os.dir(or_review_v3_dir)
 const or_review_v3_src = os.join_path(or_review_v3_dir, 'v.v')
 
 fn or_review_v3_bin_path() string {
-	return os.join_path(os.temp_dir(), 'v3_or_expr_transform_review_test')
+	return os.join_path(os.temp_dir(), 'v3_or_expr_transform_review_test') + $if windows { '.exe' } $else { '' }
 }
 
 fn testsuite_begin() {
@@ -34,7 +34,8 @@ fn or_review_gen_c(v3_bin string, name string, src string) string {
 	os.write_file(src_path, src) or { panic(err) }
 	c_path := os.join_path(os.temp_dir(), 'v3_${name}.c')
 	os.rm(c_path) or {}
-	compile := os.exec([v3_bin, src_path, '-b', 'c', '-o', c_path])
+	// Some cases count calls through `__global` variables.
+	compile := os.exec([v3_bin, '-enable-globals', src_path, '-b', 'c', '-o', c_path])
 	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
 	assert os.exists(c_path), '${name}: missing generated C'
 	return os.read_file(c_path) or { panic(err) }
@@ -44,7 +45,7 @@ fn or_review_run(v3_bin string, name string, src string) string {
 	src_path := os.join_path(os.temp_dir(), 'v3_${name}.v')
 	os.write_file(src_path, src) or { panic(err) }
 	bin_path := os.join_path(os.temp_dir(), 'v3_${name}')
-	compile := os.exec([v3_bin, src_path, '-b', 'c', '-o', bin_path])
+	compile := os.exec([v3_bin, '-enable-globals', src_path, '-b', 'c', '-o', bin_path])
 	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
 	run := os.exec([bin_path])
 	assert run.exit_code == 0, '${name}: run failed\n${run.output}'
@@ -158,7 +159,7 @@ fn test_backed_enum_map_key_uses_backing_storage_size() {
 	v3_bin := build_v3_or_review()
 	c_source := or_review_gen_c(v3_bin, 'backed_enum_map_key_size',
 		'enum Wide as u64 {\n\ta = 1\n\tb = 2\n}\n\nfn main() {\n\tmut m := map[Wide]int{}\n\tm[.a] = 3\n\tm[.b] = 4\n\tm.delete(.a)\n\tprintln(int_str(m[.b] or { 0 }))\n}\n')
-	assert c_source.contains('new_map(sizeof(u64), sizeof(int), map_hash_int_8, map_eq_int_8'), 'backed enum map key size does not match 8-byte callbacks'
+	assert c_source.contains('new_map(sizeof(u64), sizeof(i64), map_hash_int_8, map_eq_int_8'), 'backed enum map key size does not match 8-byte callbacks'
 	assert c_source.contains('u64 __map_key_'), 'backed enum map key temp does not use backing storage'
 	assert !c_source.contains('Wide __map_key_'), 'backed enum map key temp still uses enum typedef storage'
 	assert !c_source.contains('new_map(sizeof(main__Wide)'), 'backed enum map allocation still uses enum typedef size'

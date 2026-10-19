@@ -1,5 +1,6 @@
 module fastc
 
+import v.flat
 import v.token
 
 fn (mut g Parser) parse_for() !bool {
@@ -22,8 +23,10 @@ fn (mut g Parser) parse_for() !bool {
 		g.next()
 		condition := g.read_condition_expression([token.Token.semicolon])!
 		g.expect(.semicolon)!
-		update := g.read_statement_expression([token.Token.lcbr])!
-		if update == '' || !g.last_expression_is_statement() {
+		// `for ; cond; {` has no update.
+		has_update := g.tok != .lcbr
+		update := if has_update { g.read_statement_expression([token.Token.lcbr])! } else { '' }
+		if has_update && (update == '' || !g.last_expression_is_statement()) {
 			return g.unsupported('C-style for update expression')
 		}
 		g.expect(.lcbr)!
@@ -129,10 +132,13 @@ fn (mut g Parser) parse_for() !bool {
 					return g.unsupported('mutable iteration over immutable collection `${start}`')
 				}
 			}
-			if collection_layout_type.trim_right('*').starts_with('Map_') {
-				key_type, map_value_type := g.map_key_value_types(collection_layout_type) or {
-					return g.unsupported('map iteration type `${collection_type}`')
+			if flat.source_type_name(collection_layout_type).trim_right('*').starts_with('Map_') {
+				key_type_source_id, map_value_type_source_id := g.map_key_value_types(collection_layout_type) or {
+					return g.unsupported('map iteration type `${flat.source_type_name(collection_type)}`')
 				}
+				key_type := key_type_source_id
+				map_value_type := map_value_type_source_id
+
 				g.next()
 				collection_name := g.temporary_name('map_collection')
 				keys_name := g.temporary_name('map_keys')
@@ -140,7 +146,7 @@ fn (mut g Parser) parse_for() !bool {
 				index_name := g.temporary_name('map_index')
 				collection_c_type := g.declaration_c_type(start_expression_type, start)
 				g.write_line('${collection_c_type} ${collection_name} = (${start});')
-				map_pointer := if collection_layout_type.ends_with('*') {
+				map_pointer := if flat.source_type_name(collection_layout_type).ends_with('*') {
 					collection_name
 				} else {
 					'&${collection_name}'
@@ -152,13 +158,13 @@ fn (mut g Parser) parse_for() !bool {
 				g.write_line('for (int ${index_name} = 0; ${index_name} < ${keys_name}.len; ${index_name}++) {')
 				g.indent++
 				if name != '_' {
-					g.write_line('${key_type} ${fastc_c_identifier(name)} = ((${key_type} *)${keys_name}.data)[${index_name}];')
+					g.write_line('${g.collection_storage_type(key_type)} ${fastc_c_identifier(name)} = ((${g.collection_storage_type(key_type)} *)${keys_name}.data)[${index_name}];')
 					g.locals[name] = FastcLocal{
 						typ: key_type
 					}
 				}
 				if value_name != '' && value_name != '_' {
-					g.write_line('${map_value_type} ${fastc_c_identifier(value_name)} = ((${map_value_type} *)${values_name}.data)[${index_name}];')
+					g.write_line('${g.collection_storage_type(map_value_type)} ${fastc_c_identifier(value_name)} = ((${g.collection_storage_type(map_value_type)} *)${values_name}.data)[${index_name}];')
 					g.locals[value_name] = FastcLocal{
 						is_mut: value_is_mut
 						typ:    map_value_type
@@ -173,21 +179,31 @@ fn (mut g Parser) parse_for() !bool {
 				g.write_line('}')
 				return false
 			}
-			element_type := if collection_layout_type.trim_right('*') == 'string' {
-				'u8'
-			} else {
-				g.array_element_type(collection_layout_type) or {
-					return g.unsupported('for-in collection `${start}` of type `${collection_type}`')
+			if !item_is_mut && flat.source_type_name(collection_layout_type).trim_right('*') != 'string'
+				&& g.array_element_type(collection_layout_type) == none {
+				if iterator := g.iterator_next_method(collection_layout_type) {
+					g.next()
+					g.parse_for_in_iterator(iterator, start, start_expression_type, collection_layout_type,
+						name, value_name)!
+					return false
 				}
 			}
-			fixed_length := fastc_fixed_array_length(collection_layout_type.trim_right('*')) or {
+			element_type := if flat.source_type_name(collection_layout_type).trim_right('*') == 'string' {
+				flat.source_type_u8
+			} else {
+				g.array_element_type(collection_layout_type) or {
+					return g.unsupported('for-in collection `${start}` of type `${flat.source_type_name(collection_type)}`')
+				}
+			}
+			element_c_type := fastc_output_c_type(flat.source_type_name(element_type))
+			fixed_length := fastc_fixed_array_length(flat.source_type_name(collection_layout_type).trim_right('*')) or {
 				''
 			}
 			is_fixed_array := fixed_length != ''
-			is_raw_fixed_array := is_fixed_array && (start_expression.len > 1 || (start_expression.len == 1 && fastc_global_key(g.module_name, start_expression[0].lit) in g.globals))
+			is_raw_fixed_array := is_fixed_array && g.fixed_array_uses_raw_storage(fastc_strip_paren_tokens(start_expression))
 			g.next()
 			collection_name := g.temporary_name('collection')
-			is_ordinary_string := !g.selfhost && collection_layout_type == 'string'
+			is_ordinary_string := !g.selfhost && collection_layout_type == flat.source_type_string
 			index_name := if value_name == '' && name != '_' {
 				g.temporary_name('index')
 			} else if name == '_' {
@@ -195,8 +211,12 @@ fn (mut g Parser) parse_for() !bool {
 			} else {
 				fastc_c_identifier(name)
 			}
-			access := if collection_layout_type.ends_with('*') { '->' } else { '.' }
-			data_field := if collection_layout_type.trim_right('*') == 'string' {
+			access := if flat.source_type_name(collection_layout_type).ends_with('*') {
+				'->'
+			} else {
+				'.'
+			}
+			data_field := if flat.source_type_name(collection_layout_type).trim_right('*') == 'string' {
 				'str'
 			} else {
 				'data'
@@ -205,10 +225,14 @@ fn (mut g Parser) parse_for() !bool {
 				fixed_data := if is_raw_fixed_array {
 					'((${start})[0])'
 				} else {
-					fixed_access := if collection_layout_type.ends_with('*') { '->' } else { '.' }
+					fixed_access := if flat.source_type_name(collection_layout_type).ends_with('*') {
+						'->'
+					} else {
+						'.'
+					}
 					'((${start})${fixed_access}data[0])'
 				}
-				g.write_line('${element_type} *${collection_name} = &${fixed_data};')
+				g.write_line('${element_c_type} *${collection_name} = &${fixed_data};')
 			} else if is_ordinary_string {
 				g.write_line('string ${collection_name} = (${start});')
 			} else {
@@ -236,34 +260,34 @@ fn (mut g Parser) parse_for() !bool {
 				// element exactly like `for mut x in arr`; the `mut` is just carried on the
 				// second binding (`value_is_mut`) instead of the first.
 				if item_is_mut || value_is_mut {
-					if element_type.ends_with('*') {
+					if flat.source_type_name(element_type).ends_with('*') {
 						// Pointer elements are already references to mutable values. Taking the
 						// array slot's address here would incorrectly bind `x` as `&&T`.
-						g.write_line('${element_type} ${c_value_name} = ((${element_type} *)${collection_data})[${index_name}];')
+						g.write_line('${element_c_type} ${c_value_name} = ((${element_c_type} *)${collection_data})[${index_name}];')
 						g.locals[actual_value_name] = FastcLocal{
 							is_mut: true
 							typ:    element_type
 						}
 					} else {
-						g.write_line('${element_type} *${c_value_name} = &(((${element_type} *)${collection_data})[${index_name}]);')
+						g.write_line('${element_c_type} *${c_value_name} = &(((${element_c_type} *)${collection_data})[${index_name}]);')
 						g.locals[actual_value_name] = FastcLocal{
 							is_mut:       true
 							is_reference: true
-							typ:          element_type + '*'
+							typ:          flat.source_type_id(flat.source_type_name(element_type) + '*')
 						}
 					}
 				} else if is_ordinary_string {
 					g.write_line('u8 ${c_value_name} = ((const unsigned char *)${collection_name})[${index_name}];')
 					g.locals[actual_value_name] = FastcLocal{
-						typ: 'u8'
+						typ: flat.source_type_u8
 					}
-				} else if !is_fixed_array && collection_layout_type.ends_with('*') && collection_layout_type.trim_right('*') != 'string' {
-					g.write_line('${element_type} *${c_value_name} = &(((${element_type} *)${collection_data})[${index_name}]);')
+				} else if !is_fixed_array && flat.source_type_name(collection_layout_type).ends_with('*') && flat.source_type_name(collection_layout_type).trim_right('*') != 'string' {
+					g.write_line('${element_c_type} *${c_value_name} = &(((${element_c_type} *)${collection_data})[${index_name}]);')
 					g.locals[actual_value_name] = FastcLocal{
-						typ: element_type + '*'
+						typ: flat.source_type_id(flat.source_type_name(element_type) + '*')
 					}
 				} else {
-					g.write_line('${element_type} ${c_value_name} = ((${element_type} *)${collection_data})[${index_name}];')
+					g.write_line('${element_c_type} ${c_value_name} = ((${element_c_type} *)${collection_data})[${index_name}];')
 					g.locals[actual_value_name] = FastcLocal{
 						typ: element_type
 					}
@@ -271,7 +295,7 @@ fn (mut g Parser) parse_for() !bool {
 			}
 			if value_name != '' && name != '_' {
 				g.locals[name] = FastcLocal{
-					typ: 'int'
+					typ: flat.source_type_int
 				}
 			}
 			_ = g.parse_loop_block_body()!
@@ -292,7 +316,7 @@ fn (mut g Parser) parse_for() !bool {
 				local := g.locals[name] or {
 					return g.unsupported('assignment to undeclared loop variable `${name}`')
 				}
-				if !local.is_mut {
+				if !local.is_mut && g.unsafe_depth == 0 {
 					return g.unsupported('assignment to immutable loop variable `${name}`')
 				}
 			}
@@ -371,19 +395,19 @@ fn (mut g Parser) write_condition_loop(condition string, condition_tokens []Fast
 	g.write_line('while (1) {')
 	g.indent++
 	for plan in plans {
-		boxed_zero := if plan.boxed_type.ends_with('*') {
+		boxed_zero := if plan.boxed_type_text().ends_with('*') {
 			'NULL'
 		} else {
-			'(${plan.boxed_type}){0}'
+			'(${plan.boxed_type_text()}){0}'
 		}
-		g.write_line('${plan.boxed_type} ${plan.boxed_tmp} = ${boxed_zero};')
+		g.write_line('${plan.boxed_type_text()} ${plan.boxed_tmp} = ${boxed_zero};')
 	}
 	g.write_line('if (!(${loop_condition})) { break; }')
 	mut previous_member_smartcasts := map[string]FastcMemberSmartcast{}
 	mut had_member_smartcasts := map[string]bool{}
 	for plan in plans {
-		plan_access := if plan.boxed_type.ends_with('*') { '->' } else { '.' }
-		g.write_line('${plan.type_c} *${plan.member_tmp} = (${plan.type_c} *)${plan.boxed_tmp}${plan_access}_object;')
+		plan_access := if plan.boxed_type_text().ends_with('*') { '->' } else { '.' }
+		g.write_line('${plan.type_c_text()} *${plan.member_tmp} = (${plan.type_c_text()} *)${plan.boxed_tmp}${plan_access}_object;')
 		if plan.path !in previous_member_smartcasts {
 			had_member_smartcasts[plan.path] = plan.path in g.member_smartcasts
 			previous_member_smartcasts[plan.path] = g.member_smartcasts[plan.path] or {
@@ -391,7 +415,7 @@ fn (mut g Parser) write_condition_loop(condition string, condition_tokens []Fast
 			}
 		}
 		g.member_smartcasts[plan.path] = FastcMemberSmartcast{
-			typ:    plan.type_c + '*'
+			typ:    flat.source_type_id(plan.type_c_text() + '*')
 			source: plan.member_tmp
 		}
 	}
@@ -409,7 +433,7 @@ fn (mut g Parser) write_condition_loop(condition string, condition_tokens []Fast
 }
 
 fn (g &Parser) mutable_collection_expression(tokens []FastcExpressionToken) bool {
-	for item in tokens {
+	for i, item in tokens {
 		if item.tok != .name {
 			continue
 		}
@@ -419,8 +443,93 @@ fn (g &Parser) mutable_collection_expression(tokens []FastcExpressionToken) bool
 			// array's data is shared regardless, so the mutation reaches the source.
 			return local.is_mut || item.unsafe_depth > 0
 		}
-		global_key := fastc_global_key(g.module_name, item.lit)
-		return item.unsafe_depth > 0 && global_key in g.globals
+		if imported_module := g.imports[item.lit] {
+			if i + 2 >= tokens.len || tokens[i + 1].tok != .dot
+				|| tokens[i + 2].tok != .name {
+				return false
+			}
+			global_key := fastc_global_key(g.resolve_module_alias(imported_module),
+				tokens[i + 2].lit)
+			return global_key in g.globals
+		}
+		// A global is mutable storage, including a member collection rooted
+		// in it. Local bindings above retain precedence over global names.
+		return g.unqualified_global_key(item.lit) != none
 	}
 	return false
+}
+
+// FastcIteratorNext is the `next() ?T` method that makes a value iterable in a for-in.
+struct FastcIteratorNext {
+	c_name       string
+	element_type u32
+	by_pointer   bool
+}
+
+// iterator_next_method finds the `next() ?T` method of `collection_type`, if it has one.
+fn (g &Parser) iterator_next_method(collection_type_source_id u32) ?FastcIteratorNext {
+	collection_type := flat.source_type_name(collection_type_source_id)
+	key, path := g.resolve_method(flat.source_type_id(fastc_trim_pointer_suffix(collection_type)), 'next')
+	signature := g.functions[key] or { return none }
+	if path.len > 0 || signature.parameter_types.ids.len != 1 || signature.return_type_text() != 'Option'
+		|| signature.option_type_text() in ['', 'void', 'MultiReturn'] {
+		return none
+	}
+	receiver := signature.parameter_types.at(0)
+	return FastcIteratorNext{
+		c_name:       g.c_function_name_or(key, fastc_method_c_name(signature.module_name, receiver,
+			'next'))
+		element_type: signature.option_type
+		by_pointer:   receiver.ends_with('*')
+	}
+}
+
+// parse_for_in_iterator lowers `for x in it {` and `for i, x in it {` over an iterator:
+// `next()` is called on a copy of `it` until it returns none.
+fn (mut g Parser) parse_for_in_iterator(iterator FastcIteratorNext, start string, start_type_source_id u32, layout_type_source_id u32, name string, value_name string) ! {
+	layout_type := flat.source_type_name(layout_type_source_id)
+	iterator_name := g.temporary_name('iterator')
+	option_name := g.temporary_name('iterator_next')
+	index_name := if value_name != '' && name != '_' {
+		fastc_c_identifier(name)
+	} else {
+		g.temporary_name('index')
+	}
+	is_pointer := layout_type.ends_with('*')
+	receiver := if iterator.by_pointer && !is_pointer {
+		'&${iterator_name}'
+	} else if !iterator.by_pointer && is_pointer {
+		'*${iterator_name}'
+	} else {
+		iterator_name
+	}
+	g.write_line('${g.declaration_c_type(start_type_source_id, start)} ${iterator_name} = (${start});')
+	g.write_line('for (int ${index_name} = 0;; ${index_name}++) {')
+	g.indent++
+	g.write_line('Option ${option_name} = ${iterator.c_name}(${receiver});')
+	g.write_line('if (${option_name}.state != 0) break;')
+	value := if value_name == '' { name } else { value_name }
+	if value != '_' {
+		payload := if g.prefs.target_libc_headers {
+			g.option_value_expression(iterator.element_type, option_name)
+		} else {
+			'*((${flat.source_type_name(iterator.element_type)} *)${option_name}.data)'
+		}
+		g.write_line('${flat.source_type_name(iterator.element_type)} ${fastc_c_identifier(value)} = ${payload};')
+		g.locals[value] = FastcLocal{
+			typ: iterator.element_type
+		}
+	}
+	if value_name != '' && name != '_' {
+		g.locals[name] = FastcLocal{
+			typ: flat.source_type_int
+		}
+	}
+	_ = g.parse_loop_block_body()!
+	g.indent--
+	g.locals.delete(name)
+	if value_name != '' {
+		g.locals.delete(value_name)
+	}
+	g.write_line('}')
 }

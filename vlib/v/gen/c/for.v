@@ -350,7 +350,9 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				} else {
 					g.writeln('${c_key} ${key_var} = *(${c_key}*)(${key_slot});')
 					if has_index && idx_binding_name != '_'
-						&& clean_container_type.key_type is types.String {
+						&& clean_container_type.key_type is types.String && !node.borrows_map_key() {
+						// Authored keys may escape or survive map mutation. Equality
+						// keys only serve read-only lookups while both maps are alive.
 						g.writeln('${key_var} = string__clone(${key_var});')
 					}
 				}
@@ -430,7 +432,9 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				container_node := g.a.nodes[int(container_id)]
 				mut container_str := g.expr_to_string(container_id)
 				if container_node.kind == .ident {
-					if raw := g.local_storage_raw_type(container_node.value) {
+					if raw_source_id := g.local_storage_raw_type(container_node.value) {
+						raw := flat.source_type_name(raw_source_id)
+
 						clean_raw := raw.trim_space()
 						if clean_raw.starts_with('?')
 							&& clean_raw[1..].trim_space().starts_with('[]') {
@@ -604,7 +608,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 }
 
 fn (g &FlatGen) for_in_container_type(node flat.Node, container_id flat.NodeId) types.Type {
-	if node.typ.starts_with('map[') {
+	if flat.source_type_shape(node.typ).has(.map_type) {
 		typ := g.parse_node_type(&node)
 		if typ is types.Map {
 			return typ

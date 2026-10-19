@@ -186,12 +186,11 @@ fn unescape(s_ string, mode EncodingMode) !string {
 					// That is, you can use escaping in the zone identifier but not
 					// to introduce bytes you couldn't just write directly.
 					// But Windows puts spaces here! Yay.
-					if i + 3 >= s.len {
-						return error(error_msg('unescape: invalid escape sequence', ''))
-					}
+					// The escape's two hex digits were checked above; a complete
+					// escape is valid even when it ends the zone identifier.
 					v := ((unhex(s[i + 1]) << u8(4)) | unhex(s[i + 2]))
 					if s[i..i + 3] != '%25' && v != ` ` && should_escape(v, .encode_host) {
-						error(error_msg(err_msg_escape, s[i..i + 3]))
+						return error(error_msg(err_msg_escape, s[i..i + 3]))
 					}
 				}
 				i += 3
@@ -429,6 +428,8 @@ fn split(s string, sep u8, cutc bool) (string, string) {
 }
 
 // parse parses rawurl into a URL structure.
+// IPv6 zone identifiers permit escaped percent signs (%25) and spaces (%20),
+// including at the end of the zone. Invalid or prohibited escapes return an error.
 //
 // The rawurl may be relative (a path, without a host) or absolute
 // (starting with a scheme). Trying to parse a hostname and path
@@ -486,8 +487,7 @@ fn parse_url(rawurl string, via_request bool) !URL {
 	url.scheme = p[0]
 	mut rest := p[1]
 	url.scheme = url.scheme.to_lower()
-	// if rest.ends_with('?') && strings.count(rest, '?') == 1 {
-	if rest.ends_with('?') && !rest[..1].contains('?') {
+	if rest.ends_with('?') && rest.count('?') == 1 {
 		url.force_query = true
 		rest = rest[..rest.len - 1]
 	} else {

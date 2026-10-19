@@ -2,6 +2,13 @@
 
 The V3 formatter formats source syntax without type checking.
 
+## Anonymous aggregate indentation
+
+Multiline anonymous `struct` and `union` bodies follow the surrounding field's
+indentation. Nested aggregate bodies add a level, and access sections align with
+their opening aggregate. Continuation text inside multiline literals and block
+comments keeps its original whitespace. Blank lines remain empty.
+
 ## Formatting in-memory source
 
 Use `format_text` to format a string without staging the input in a file or
