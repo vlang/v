@@ -15343,7 +15343,15 @@ fn (mut t Transformer) try_lower_sum_type_name_method_call(node flat.Node) ?flat
 	if variants_source_ids_3.len == 0 {
 		return none
 	}
-	base := t.stable_transformed_expr_for_reuse(t.transform_expr(base_id), base_type, 'sum_type')
+	base_expr := t.transform_expr(base_id)
+	if flat.source_type_shape(base_type).has(.pointer) {
+		// A heap-escaped local is declared as a pointer but read as `*name`, its value.
+		expr_type := t.node_type(base_expr)
+		if expr_type != 0 && !flat.source_type_shape(expr_type).has(.pointer) {
+			base_type = expr_type
+		}
+	}
+	base := t.stable_transformed_expr_for_reuse(base_expr, base_type, 'sum_type')
 	tag := t.make_sum_tag_selector(base, if flat.source_type_shape(base_type).has(.pointer) {
 		.arrow
 	} else {
