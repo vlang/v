@@ -1401,7 +1401,7 @@ pub fn (a &array) free() {
 	if a.flags.has(.nofree) || a.buffer_has_retained_fixed_views() {
 		return
 	}
-	mblock_ptr := &u8(u64(a.data) - u64(a.offset))
+	mblock_ptr := &u8(usize(a.data) - usize(a.offset))
 	if mblock_ptr != unsafe { nil } {
 		unsafe {
 			if a.flags.has(.managed) {

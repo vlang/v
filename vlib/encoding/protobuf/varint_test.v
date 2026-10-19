@@ -70,7 +70,7 @@ fn test_read_varint_round_trip() {
 }
 
 fn test_read_varint_at_offset() {
-	data := [0xaa, 0xac, 0x02, 0xbb]
+	data := [u8(0xaa), 0xac, 0x02, 0xbb]
 	got, pos := read_varint(data, 1)!
 	assert got == 300
 	assert pos == 3

@@ -15,26 +15,11 @@ mut:
 }
 
 fn (mut cache TypeNameLookupCache) get(name string) ?string {
-	if cache.last_valid && flat.source_type_name(cache.last_name) == name {
-		return flat.source_type_name(cache.last_value)
-	}
-	id := cache.texts.intern(name)
-	if value := cache.entries[id] {
-		cache.last_name = id
-		cache.last_value = value
-		cache.last_valid = true
-		return flat.source_type_name(value)
-	}
-	return none
+	return flat.source_type_name(cache.get_id(cache.texts.intern(name))?)
 }
 
 fn (mut cache TypeNameLookupCache) put(name string, value string) {
-	id := cache.texts.intern(name)
-	value_id := cache.texts.intern(value)
-	cache.entries[id] = value_id
-	cache.last_name = id
-	cache.last_value = value_id
-	cache.last_valid = true
+	cache.put_id(cache.texts.intern(name), cache.texts.intern(value))
 }
 
 fn scratch_type_name_lookup_cache(cache &TypeNameLookupCache) &TypeNameLookupCache {
@@ -42,4 +27,22 @@ fn scratch_type_name_lookup_cache(cache &TypeNameLookupCache) &TypeNameLookupCac
 		return unsafe { nil }
 	}
 	return &TypeNameLookupCache{}
+}
+
+fn (mut cache TypeNameLookupCache) get_id(id u32) ?u32 {
+	if cache.last_valid && cache.last_name == id { return cache.last_value }
+	if value := cache.entries[id] {
+		cache.last_name = id
+		cache.last_value = value
+		cache.last_valid = true
+		return value
+	}
+	return none
+}
+
+fn (mut cache TypeNameLookupCache) put_id(id u32, value u32) {
+	cache.entries[id] = value
+	cache.last_name = id
+	cache.last_value = value
+	cache.last_valid = true
 }

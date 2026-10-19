@@ -8,3 +8,7 @@ matching branch dispatches through `inner` on that concrete object.
 An imported interface keeps its identity when the importing module declares a struct
 with the same short name. For example, a local `struct Reader` does not change a
 `streamreader.Reader` interface value's type tests, boxed data or method dispatch.
+
+Assigning an optional concrete value or pointer to an optional interface field preserves
+`none`. A present value keeps its methods and interface fields. A concrete pointer retains
+its backing object, so mutable method calls update that same object.

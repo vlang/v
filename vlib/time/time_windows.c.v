@@ -4,6 +4,7 @@
 module time
 
 #include <time.h>
+#include "@VEXEROOT/vlib/time/ticks_windows_api.h"
 
 #flag @VEXEROOT/vlib/time/ticks_windows.o
 

@@ -20,9 +20,9 @@ fn test_voidptr_variadic_storage_c_type_widens_integers_narrower_than_the_target
 		g.a = &a
 		g.tc = &tc
 		g.set_target(target)
-		g.register_enum_backing_info('Tiny', 'u8')
-		g.register_enum_backing_info('Whole', 'int')
-		g.register_enum_backing_info('Wide', 'u64')
+		g.register_enum_backing_info(flat.source_type_id('Tiny'), flat.source_type_id('u8'))
+		g.register_enum_backing_info(flat.source_type_id('Whole'), flat.source_type_id('int'))
+		g.register_enum_backing_info(flat.source_type_id('Wide'), flat.source_type_id('u64'))
 		int_ct := if target.pointer_bits == 64 { 'i64' } else { 'i32' }
 		small_alias := types.Type(types.Alias{
 			name_id:   flat.source_type_id('Small')

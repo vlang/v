@@ -200,7 +200,7 @@ const split_cases = [
 	SplitCase{
 		pattern: r'-*'
 		text:    'ab'
-		want:    ['', 'a', 'b', '']
+		want:    ['a', 'b']
 	},
 ]
 
@@ -326,4 +326,13 @@ fn test_replace_on_a_const_regex_is_repeatable() {
 	assert shared_digits.replace('abc 123 def', r'[\0]') == 'abc [123] def'
 	assert shared_digits.groups.len == 0
 	assert shared_digits.replace('4 5 6', r'[\0]') == '[4] [5] [6]'
+}
+
+fn test_zero_width_split_does_not_invent_boundary_sections() {
+	for pattern in ['', r'a{0}', r'()', r'(?:)'] {
+		mut re := regex.regex_opt(pattern) or { panic(err) }
+		assert re.split('a') == ['a'], pattern
+		assert re.split('ab') == ['a', 'b'], pattern
+		assert re.split('') == [''], pattern
+	}
 }

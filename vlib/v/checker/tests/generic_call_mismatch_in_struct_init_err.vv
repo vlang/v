@@ -1,0 +1,18 @@
+fn same_counts[T](counts map[T]int) map[T]int {
+	return counts
+}
+
+struct Attribute {
+	counts map[string]int
+}
+
+fn main() {
+	numbers := {
+		1: 2
+		3: 4
+	}
+	att := Attribute{
+		counts: same_counts(numbers)
+	}
+	println(att)
+}

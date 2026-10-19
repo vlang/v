@@ -34,6 +34,8 @@ fn main() {
 }
 
 fn test_log_use_stdout_preserves_embedded_defaults() {
+	// use_stdout builds its logger from log_default_level (info by default), so the
+	// level it leaves is info. The embedded Log default (debug) applies only to direct use.
 	source := 'import log
 fn main() {
 	mut direct := log.ThreadSafeLog{}

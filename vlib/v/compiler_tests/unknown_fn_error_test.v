@@ -16,6 +16,6 @@ fn test_unknown_function_stops_in_type_checker() {
 	bad_bin := os.join_path(os.temp_dir(), 'v3_unknown_fn_error_input')
 	result := os.exec([v3_bin, '${bad_src}', '-b', 'c', '-o', bad_bin])
 	assert result.exit_code != 0
-	assert result.output.contains('unknown function `missing_fn`')
+	assert result.output.contains('unknown function: missing_fn')
 	assert !result.output.contains('C compilation failed')
 }

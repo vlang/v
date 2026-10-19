@@ -509,6 +509,28 @@ fn test_headerless_thread_runtime_can_spawn_detached_threads() {
 	assert c_code.contains('pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED)'), c_code
 }
 
+fn test_boehm_windows_spawn_threads_are_created_by_gc_create_thread() {
+	// Every Windows spawn thread under Boehm goes through GC_CreateThread, which registers
+	// it with the collector. Each preamble emits three spawn creates: __v_thread_spawn,
+	// __v_thread_spawn_detached and __v_thread_spawn_comparable. A partial change fails the count.
+	for preamble in ['system', 'headerless'] {
+		mut g := windows_preamble_test_gen()
+		g.compile_defines << 'gcboehm'
+		if preamble == 'system' {
+			g.system_libc_preamble()
+		} else {
+			g.headerless_libc_preamble()
+		}
+		c_code := g.sb.str()
+		assert !c_code.contains('= CreateThread(NULL'), '${preamble}: raw CreateThread spawn remains'
+		assert c_code.count('GC_CreateThread(NULL, __v_thread_stack_size') == 3, '${preamble}: ${c_code.count('GC_CreateThread(NULL, __v_thread_stack_size')} spawn creates through GC_CreateThread'
+		assert c_code.contains('HANDLE WINAPI GC_CreateThread('), preamble
+		// libgc exports the stdcall name with an underscore when built with GC_UNDERSCORE_STDCALL.
+		// Mirror gc.h's rename, so the declaration matches that export.
+		assert c_code.contains('#if defined(GC_UNDERSCORE_STDCALL)\n#define GC_CreateThread _GC_CreateThread\n#endif'), preamble
+	}
+}
+
 fn test_cross_c_system_libc_preamble_keeps_posix_environ() {
 	mut g := windows_preamble_test_gen()
 	g.set_output_cross_c(true)
@@ -661,6 +683,23 @@ fn test_target_libc_preamble_emits_pthread_runtime_when_threads_are_used() {
 	assert c_code.contains('v_gc_free(ptr);')
 }
 
+fn test_object_file_boehm_declares_gc_helpers_before_thread_allocation() {
+	mut g := FlatGen.new()
+	g.compile_defines = ['gcboehm']
+	g.set_object_file_mode(true)
+	g.needs_thread_runtime = true
+	g.preamble()
+	c_code := g.sb.str()
+	alloc := c_code.index('static void* __v_thread_alloc(') or { -1 }
+	assert alloc >= 0
+	// The helper definitions are embedded as `static` in object-file mode, so their
+	// prototypes must be `static` too and must precede the first call site.
+	alloc_decl := c_code.index('static void* v_gc_malloc_uncollectable(size_t size);') or { -1 }
+	assert alloc_decl >= 0 && alloc_decl < alloc
+	free_decl := c_code.index('static void v_gc_free(void* ptr);') or { -1 }
+	assert free_decl >= 0 && free_decl < alloc
+}
+
 fn test_vinix_target_libc_thread_runtime_uses_freestanding_pthread_abi() {
 	mut g := FlatGen.new()
 	g.target = pref.target_from('vinix', 'arm64') or { panic(err) }
@@ -773,6 +812,8 @@ fn test_builtin_abi_decls_reuse_tcc_x64_stdatomic_fence_declaration() {
 	assert c_code.contains('#if defined(_WIN32) && (defined(__TINYC__) || (defined(_MSC_VER) && !defined(__clang__)))\n/* V atomic.h supplies atomic_thread_fence on Windows TCC and MSVC. */')
 	assert c_code.contains('#define atomic_thread_fence(order) __atomic_thread_fence(order)')
 	assert !c_code.contains('extern void __atomic_thread_fence(int order);')
+	// a <stdatomic.h> included first already defines the macro; defining it again is a warning
+	assert c_code.contains('#elif !defined(atomic_thread_fence)\n#define atomic_thread_fence(order) __atomic_thread_fence(order)')
 }
 
 fn test_map_equality_fallback_does_not_infer_value_type_from_size() {
@@ -918,4 +959,29 @@ fn test_manual_header_preflight_matches_portable_no_builtin_and_object_generatio
 			}
 		}
 	}
+}
+
+fn test_arm32_output_undefines_tinycc_identifier_macros() {
+	mut g := FlatGen.new()
+	g.set_target(pref.target_from('linux', 'amd64')!)
+	g.undef_target_identifier_macros()
+	assert g.sb.len == 0, '64-bit output is unchanged'
+	g.set_target(pref.target_from('linux', 'arm32')!)
+	g.undef_target_identifier_macros()
+	assert g.sb.str() == '#undef arm\n#undef arm_elf\n'
+	$if !macos && !linux {
+		return
+	}
+	clang := os.find_abs_path_of_executable('clang') or { return }
+	root := os.join_path(os.vtmp_dir(), 'arm32_identifier_macros_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	c_file := os.join_path(root, 'main.c')
+	os.write_file(source, 'fn main() {\n\tarm := 3\n\tarm_elf := 4\n\tprintln(arm + arm_elf)\n}\n')!
+	generated := os.execute('${os.quoted_path(@VEXE)} -nocache -gc none -os linux -arch arm32 -cross -d v3_headerless_bootstrap -o ${os.quoted_path(c_file)} ${os.quoted_path(source)}')
+	assert generated.exit_code == 0, generated.output
+	// TinyCC predefines both macros on 32-bit ARM.
+	checked := os.execute('${os.quoted_path(clang)} -target armv7-unknown-linux-gnueabihf -std=c99 -fsyntax-only -Wno-everything -Darm=1 -Darm_elf=1 ${os.quoted_path(c_file)}')
+	assert checked.exit_code == 0, checked.output
 }

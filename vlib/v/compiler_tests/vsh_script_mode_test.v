@@ -50,9 +50,11 @@ println(path_separator.len)
 // whose bare name is also registered while `os` is compiled.
 setenv('V3_VSH_SCRIPT_MODE_VALUE', 'from-env', true)
 println(getenv('V3_VSH_SCRIPT_MODE_VALUE'))
+value := getenv('V3_VSH_SCRIPT_MODE_VALUE')
+println(value.len)
 ")
 	assert result.exit_code == 0, result.output
-	assert result.output.split_into_lines() == ['[1, 2, 3]', 'true', 'true', '1', 'from-env'], result.output
+	assert result.output.split_into_lines() == ['[1, 2, 3]', 'true', 'true', '1', 'from-env', '8'], result.output
 }
 
 fn test_vsh_script_can_import_local_module_without_explicit_main() {

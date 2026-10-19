@@ -86,17 +86,19 @@ fn test_route_arguments_get_query() {
 }
 
 fn test_route_arguments_missing_values() {
+	// A missing value for an `int` parameter is a 400 naming it (see
+	// param_validation_test.v), so these no longer answer 200 with a coerced 0.
+	// A missing `string` is still `''` with a 200, because a string has no
+	// invalid shape.
 	query := route_arguments_request(.get, '/query', '')
-	assert query.res.status_code == int(http.Status.ok)
-	assert query.res.body == ':0'
+	assert query.res.status_code == int(http.Status.bad_request)
 
 	form := route_arguments_request(.post, '/forms', '')
 	assert form.res.status_code == int(http.Status.ok)
 	assert form.res.body == ''
 
 	index := route_arguments_request(.get, '/', '')
-	assert index.res.status_code == int(http.Status.ok)
-	assert index.res.body == ':0'
+	assert index.res.status_code == int(http.Status.bad_request)
 }
 
 fn test_route_arguments_path_parameter_on_delete() {
@@ -115,7 +117,9 @@ fn test_route_arguments_path_parameters_take_precedence_over_query_and_form() {
 fn test_route_arguments_boolean_conversion_and_missing_value() {
 	assert route_arguments_request(.get, '/bools?enabled=true', '').res.body == 'true'
 	assert route_arguments_request(.post, '/bools?enabled=false', 'enabled=true').res.body == 'true'
-	assert route_arguments_request(.get, '/bools', '').res.body == 'false'
+	// A missing `bool` used to coerce to `false` with a 200; it is a 400 now.
+	missing := route_arguments_request(.get, '/bools', '')
+	assert missing.res.status_code == int(http.Status.bad_request)
 }
 
 fn test_route_arguments_context_only_handlers() {

@@ -2628,9 +2628,17 @@ pub fn rewrite_cached_runtime_strings(cached_source string, old_values []string,
 	if replacements.len == 0 {
 		return cached_source.clone()
 	}
-	mut source := cached_source
 	mut replacement_values := replacements.keys()
 	replacement_values.sort()
+	// Definitions are found by symbol: cgen splits a long literal over several
+	// lines, so its text is not the single-line form written here.
+	units := c_source_units(cached_source)
+	mut defined_symbols := map[string]bool{}
+	for unit in units {
+		if unit.symbol != '' {
+			defined_symbols[unit.symbol] = true
+		}
+	}
 	mut symbol_replacements := map[string]string{}
 	mut target_definitions := map[string]string{}
 	mut target_definitions_present := map[string]bool{}
@@ -2642,19 +2650,24 @@ pub fn rewrite_cached_runtime_strings(cached_source string, old_values []string,
 			continue
 		}
 		new_symbol := cached_c_string_symbol(new_value)
-		old_definition := 'static const string ${old_symbol} = {"${cached_c_escape(old_value)}", ${old_value.len}, 1};'
 		new_definition := 'static const string ${new_symbol} = {"${cached_c_escape(new_value)}", ${new_value.len}, 1};'
-		if cached_source.contains(new_definition) {
+		if defined_symbols[new_symbol] {
 			target_definitions_present[new_symbol] = true
 		}
-		if source.contains(old_definition) {
-			source = source.replace('${old_definition}\n', '').replace(old_definition, '')
+		if defined_symbols[old_symbol] {
 			removed_definition_symbols[old_symbol] = true
 		}
 		symbol_replacements[old_symbol] = new_symbol
 		target_definitions[new_symbol] = new_definition
 	}
-	source = rewrite_c_identifier_tokens(source, symbol_replacements)
+	mut kept := strings.new_builder(cached_source.len)
+	for unit in units {
+		if unit.symbol != '' && removed_definition_symbols[unit.symbol] {
+			continue
+		}
+		kept.writeln(unit.text)
+	}
+	mut source := rewrite_c_identifier_tokens(kept.str(), symbol_replacements)
 	mut definitions := []string{}
 	mut target_symbols := target_definitions.keys()
 	target_symbols.sort()
@@ -2748,38 +2761,97 @@ fn rewrite_c_identifier_tokens(source string, replacements map[string]string) st
 	return out.str()
 }
 
+// CSourceUnit is one line of generated C, or all lines of one generated literal
+// definition.
+struct CSourceUnit {
+	text   string // without the final newline
+	symbol string // the generated literal this unit defines, if any
+}
+
+// c_source_units splits generated C into lines, keeping each generated literal
+// definition in one unit however many lines it spans.
+fn c_source_units(source string) []CSourceUnit {
+	lines := source.split_into_lines()
+	mut units := []CSourceUnit{cap: lines.len}
+	mut i := 0
+	for i < lines.len {
+		symbol := generated_static_string_definition_symbol(lines[i]) or {
+			units << CSourceUnit{
+				text: lines[i]
+			}
+			i++
+			continue
+		}
+		end := static_string_definition_end(lines, i, '')
+		units << CSourceUnit{
+			text:   if end == i + 1 { lines[i] } else { lines[i..end].join('\n') }
+			symbol: symbol
+		}
+		i = end
+	}
+	return units
+}
+
+// static_string_definition_end returns the index just past the last line of the
+// generated literal definition that starts at lines[start]. cgen continues a long
+// literal in adjacent literals on the following lines, because C compilers limit
+// the length of one literal and of one source line. A definition therefore runs to
+// the line that ends its initializer; keeping or dropping only its first line
+// leaves bare string lines, which no C compiler accepts. Every line of the
+// definition begins with prefix.
+fn static_string_definition_end(lines []string, start int, prefix string) int {
+	mut end := start + 1
+	for end < lines.len && !lines[end - 1].trim_space().ends_with(';') {
+		next := lines[end]
+		if !next.starts_with(prefix) || !next[prefix.len..].trim_space().starts_with('"') {
+			break
+		}
+		end++
+	}
+	return end
+}
+
 // prune_unreferenced_static_string_definitions removes generated string storage
 // that is referenced only by the program body. Cached module objects carry
 // their own static copies, while the program translation unit retains the full
 // prefix. Keeping body-only strings out of the shared dylib prefix makes an
 // ordinary program literal edit reuse the same cached dylib.
 pub fn prune_unreferenced_static_string_definitions(prefix string) string {
+	units := c_source_units(prefix)
 	mut references := map[string]int{}
-	for line in prefix.split_into_lines() {
-		for symbol in generated_string_symbols(line) {
+	for unit in units {
+		for symbol in generated_string_symbols(unit.text) {
 			references[symbol]++
 		}
 	}
 	mut out := strings.new_builder(prefix.len)
-	for line in prefix.split_into_lines() {
-		if symbol := generated_static_string_definition_symbol(line) {
-			if references[symbol] == 1 {
-				continue
-			}
+	for unit in units {
+		if unit.symbol != '' && references[unit.symbol] == 1 {
+			continue
 		}
-		out.writeln(line)
+		out.writeln(unit.text)
 	}
 	return out.str()
+}
+
+// static_string_definition_texts returns each generated literal definition of
+// source, without its final newline. A definition can span several lines.
+pub fn static_string_definition_texts(source string) []string {
+	mut definitions := []string{}
+	for unit in c_source_units(source) {
+		if unit.symbol != '' {
+			definitions << unit.text
+		}
+	}
+	return definitions
 }
 
 // static_string_definitions returns generated literal storage needed by the
 // current program body. Cached dependency declarations omit these records.
 pub fn static_string_definitions(source string) string {
 	mut out := strings.new_builder(4096)
-	for line in source.split_into_lines() {
-		if _ := generated_static_string_definition_symbol(line) {
-			out.writeln(line)
-		}
+	for definition in static_string_definition_texts(source) {
+		out.writeln(definition)
 	}
 	return out.str()
 }
@@ -2799,13 +2871,11 @@ pub fn without_duplicate_static_string_definitions(source string, existing_sourc
 		}
 	}
 	mut out := strings.new_builder(source.len)
-	for line in source.split_into_lines() {
-		if symbol := generated_static_string_definition_symbol(line) {
-			if existing[symbol] {
-				continue
-			}
+	for unit in c_source_units(source) {
+		if unit.symbol != '' && existing[unit.symbol] {
+			continue
 		}
-		out.writeln(line)
+		out.writeln(unit.text)
 	}
 	return out.str()
 }
@@ -2817,8 +2887,9 @@ pub fn materialize_cached_body_string_definitions(source string) string {
 	if !source.contains(marker) {
 		return source.clone()
 	}
+	lines := source.split_into_lines()
 	mut actual_symbols := map[string]bool{}
-	for line in source.split_into_lines() {
+	for line in lines {
 		if line.starts_with(marker) {
 			continue
 		}
@@ -2828,24 +2899,36 @@ pub fn materialize_cached_body_string_definitions(source string) string {
 	}
 	mut emitted_symbols := map[string]bool{}
 	mut out := strings.new_builder(source.len)
-	for line in source.split_into_lines() {
+	mut i := 0
+	for i < lines.len {
+		line := lines[i]
 		if line.starts_with(marker) {
-			definition := line[marker.len..]
-			if symbol := generated_static_string_definition_symbol(definition) {
+			if symbol := generated_static_string_definition_symbol(line[marker.len..]) {
+				// A long definition is recorded as one marker line per source line.
+				end := static_string_definition_end(lines, i, marker)
 				if !actual_symbols[symbol] && !emitted_symbols[symbol] {
-					out.writeln(definition)
+					for definition_line in lines[i..end] {
+						out.writeln(definition_line[marker.len..])
+					}
 					emitted_symbols[symbol] = true
 				}
+				i = end
 				continue
 			}
 		}
 		if symbol := generated_static_string_definition_symbol(line) {
-			if emitted_symbols[symbol] {
-				continue
+			end := static_string_definition_end(lines, i, '')
+			if !emitted_symbols[symbol] {
+				for definition_line in lines[i..end] {
+					out.writeln(definition_line)
+				}
+				emitted_symbols[symbol] = true
 			}
-			emitted_symbols[symbol] = true
+			i = end
+			continue
 		}
 		out.writeln(line)
+		i++
 	}
 	return out.str()
 }
@@ -5570,7 +5653,7 @@ fn cached_declaration_attrs(a &flat.FlatAst) map[int]CachedDeclarationAttrs {
 		}
 		result[decl_id] = CachedDeclarationAttrs{
 			attrs: params.clone()
-			kinds: if node.typ_text().len > 0 {
+			kinds: if node.typ != 0 {
 				node.typ_text().split(',').map(it.int())
 			} else {
 				[]int{}
@@ -6845,6 +6928,17 @@ fn cached_directive_text(node flat.Node, vroot string, source_file string) strin
 }
 
 fn cached_directive_value(directive string, value string, vroot string, source_file string) string {
+	if directive == 'flag' {
+		return cached_resolve_flag_value(value, vroot, source_file)
+	}
+	result := cached_expand_pseudo_paths(value, vroot, source_file)
+	if directive in ['include', 'insert'] {
+		return cached_resolve_relative_include_path(result, source_file)
+	}
+	return result
+}
+
+fn cached_expand_pseudo_paths(value string, vroot string, source_file string) string {
 	mut result := value.replace('@VEXEROOT', vroot)
 	result = result.replace('@VROOT', '@VMODROOT')
 	if result.contains('@VMODROOT') {
@@ -6852,12 +6946,6 @@ fn cached_directive_value(directive string, value string, vroot string, source_f
 	}
 	if result.contains('@DIR') {
 		result = result.replace('@DIR', os.real_path(os.dir(source_file)))
-	}
-	if directive in ['include', 'insert'] {
-		return cached_resolve_relative_include_path(result, source_file)
-	}
-	if directive == 'flag' {
-		return cached_resolve_relative_flag_paths(result, source_file)
 	}
 	return result
 }
@@ -6888,23 +6976,60 @@ fn cached_resolve_relative_include_path(value string, source_file string) string
 	return value[..quote_start + 1] + resolved + value[quote_end..]
 }
 
-fn cached_resolve_relative_flag_paths(value string, source_file string) string {
-	if source_file.len == 0 || !value.contains('/') {
-		return value
-	}
-	base_dir := os.dir(source_file)
-	if base_dir.len == 0 {
-		return value
-	}
+// cached_resolve_flag_value resolves the pseudo variables and the relative paths of
+// a `#flag` value for a cached header, one argument at a time. The header is parsed
+// again later, so a path that has white space or quotes in it (a V root such as
+// `/Volumes/Data 4TB/v`) is quoted where it replaces plain text. Unquoted, it split
+// `@VEXEROOT/vlib/builtin/gc_boehm_helpers.o` into two arguments, and the second one
+// was then resolved as a path relative to the directory of the header.
+fn cached_resolve_flag_value(value string, vroot string, source_file string) string {
 	tokens, valid := cached_split_flag_tokens(value)
 	if !valid {
-		return value
+		return cached_expand_pseudo_paths(value, vroot, source_file)
 	}
-	mut resolved := []string{}
+	base_dir := if source_file.len > 0 { os.dir(source_file) } else { '' }
+	mut changed := false
+	mut resolved := []string{cap: tokens.len}
 	for token in tokens {
-		resolved << cached_resolve_relative_flag_path_token(token, base_dir)
+		mut arg := cached_expand_pseudo_paths(token, vroot, source_file)
+		if base_dir.len > 0 {
+			arg = cached_resolve_relative_flag_path_token(arg, base_dir)
+		}
+		if arg != token {
+			// Without quotes or escapes, the token is plain text, and so is the path
+			// that it became. A token with them keeps its own quoting.
+			if !token.contains_any('\'"\\') {
+				arg = cached_quote_flag_arg(arg)
+			}
+			changed = true
+		}
+		resolved << arg
 	}
-	return resolved.join(' ')
+	return if changed { resolved.join(' ') } else { value }
+}
+
+// cached_quote_flag_arg quotes a plain `#flag` argument that has white space or quotes
+// in it. A joined `-I` or `-L` stays outside of the quotes, so that the argument still
+// starts with it. Path-selection expressions are evaluated from their text when the
+// header is read, and are kept as they are.
+fn cached_quote_flag_arg(arg string) string {
+	if !arg.contains_any(' \t\r\n\'"') || arg.contains(r'$first_existing')
+		|| arg.contains(r'$when_first_existing') {
+		return arg
+	}
+	for prefix in ['-I', '-L'] {
+		if arg.starts_with(prefix) && arg.len > prefix.len {
+			return prefix + cached_single_quoted(arg[prefix.len..])
+		}
+	}
+	return cached_single_quoted(arg)
+}
+
+// cached_single_quoted quotes `text` for the flag parsers that read cached headers.
+// Single quotes have no escapes in them, so the backslashes of a Windows path stay as
+// they are on every platform.
+fn cached_single_quoted(text string) string {
+	return "'" + text.replace("'", "'\\''") + "'"
 }
 
 fn cached_split_flag_tokens(value string) ([]string, bool) {
@@ -7002,7 +7127,7 @@ fn import_text(a &flat.FlatAst, node flat.Node, import_paths map[string]string) 
 	import_path := import_paths[node.value] or { node.value }
 	mut text := 'import ${import_path}'
 	default_alias := import_path.all_after_last('.')
-	if node.typ_text().len > 0 && node.typ_text() != default_alias {
+	if node.typ != 0 && node.typ_text() != default_alias {
 		text += ' as ${node.typ_text()}'
 	}
 	if node.children_count > 0 {
@@ -7081,7 +7206,7 @@ fn fn_text(a &flat.FlatAst, module_name string, node flat.Node, is_c bool, decla
 		ptexts << '${prefix}${pname} ${ptype}'
 	}
 	head += '(${ptexts.join(', ')})'
-	if node.typ_text().len > 0 && node.typ_text() != 'void' {
+	if node.typ != 0 && node.typ != flat.source_type_void {
 		head += ' ${node.typ_text()}'
 	}
 	mut attr_lines := []string{}
@@ -7252,7 +7377,7 @@ fn struct_text(a &flat.FlatAst, node flat.Node, declaration_attrs []string, sour
 			out.writeln('\t@[${field_params[1..].join('; ')}]')
 		}
 		mut line := '\t${field.value}'
-		if field.typ_text().len > 0 && field.typ_text() != field.value {
+		if field.typ != 0 && !flags.contains('e') {
 			line += ' ${field.typ_text()}'
 		}
 		if field.children_count > 0 {
@@ -7322,7 +7447,7 @@ fn cached_global_type_name(tc &types.TypeChecker, module_name string, name strin
 }
 
 fn cached_type_source_text(tc &types.TypeChecker, type_text string) string {
-	typ := tc.parse_resolution_type(type_text)
+	typ := tc.parse_resolution_type(flat.source_type_id(type_text))
 	if typ is types.ArrayFixed {
 		len_text := if typ.len_expr.len > 0 { typ.len_expr } else { typ.len.str() }
 		return '[${len_text}]${cached_type_source_name(typ.elem_type)}'
@@ -7361,7 +7486,7 @@ fn const_text(a &flat.FlatAst, tc &types.TypeChecker, node flat.Node, source_is_
 			} else {
 				line += ' int'
 			}
-		} else if field.typ_text().len > 0 {
+		} else if field.typ != 0 {
 			line += ' ${field.typ_text()}'
 		} else {
 			line += ' int'
@@ -7393,8 +7518,9 @@ fn enum_text(a &flat.FlatAst, node flat.Node, declaration_attrs []string, source
 	}
 	visibility := if source_is_public { 'pub ' } else { '' }
 	mut head := '${visibility}enum ${node.value}'
-	if params.len > 0 && params[0].len > 0 {
-		head += ' as ${params[0]}'
+	backing := node.enum_backing_type_id()
+	if backing != 0 {
+		head += ' as ${flat.source_type_name(backing)}'
 	}
 	out.writeln('${head} {')
 	for i in 0 .. node.children_count {
@@ -7473,10 +7599,10 @@ fn interface_field_text(a &flat.FlatAst, field &flat.Node) string {
 			}
 			params << '${prefix}arg${pi} ${param_type}'
 		}
-		ret := if field.typ_text().len > 0 { ' ${field.typ_text()}' } else { '' }
+		ret := if field.typ != 0 { ' ${field.typ_text()}' } else { '' }
 		return '\t${field.value}(${params.join(', ')})${ret}'
 	}
-	if field.typ_text().len > 0 {
+	if field.typ != 0 {
 		return '\t${field.value} ${field.typ_text()}'
 	}
 	return '\t${field.value}'
@@ -7533,7 +7659,7 @@ fn expr_text(a &flat.FlatAst, id flat.NodeId) string {
 			call_expr_text(a, node)
 		}
 		.cast_expr, .as_expr {
-			target := if node.typ_text().len > 0 { node.typ_text() } else { node.value }
+			target := if node.typ != 0 { node.typ_text() } else { node.value }
 			'${target}(${expr_text(a, a.child(&node, 0))})'
 		}
 		.sizeof_expr {
@@ -7603,7 +7729,7 @@ fn expr_can_serialize(a &flat.FlatAst, id flat.NodeId) bool {
 			expr_children_can_serialize(a, node)
 		}
 		.map_init {
-			(node.value.len > 0 || node.typ_text().len > 0) && node.children_count % 2 == 0
+			(node.value.len > 0 || node.typ != 0) && node.children_count % 2 == 0
 				&& expr_children_can_serialize(a, node)
 		}
 		.cast_expr, .as_expr {
@@ -7636,7 +7762,7 @@ fn array_init_expr_text(a &flat.FlatAst, node flat.Node) string {
 	for i in 0 .. node.children_count {
 		values << expr_text(a, a.child(&node, i))
 	}
-	typ := if node.typ_text().len > 0 { node.typ_text() } else { node.value }
+	typ := if node.typ != 0 { node.typ_text() } else { node.value }
 	return '${typ}{${values.join(', ')}}'
 }
 
@@ -7657,7 +7783,7 @@ fn list_expr_text(a &flat.FlatAst, node flat.Node, open string, close string) st
 	for i in 0 .. node.children_count {
 		values << expr_text(a, a.child(&node, i))
 	}
-	prefix := if node.typ_text().len > 0 { node.typ_text() } else { '' }
+	prefix := if node.typ != 0 { node.typ_text() } else { '' }
 	return '${prefix}${open}${values.join(', ')}${close}'
 }
 
@@ -7668,7 +7794,7 @@ fn map_expr_text(a &flat.FlatAst, node flat.Node) string {
 	}
 	prefix := if node.value.len > 0 {
 		node.value
-	} else if node.typ_text().len > 0 {
+	} else if node.typ != 0 {
 		node.typ_text()
 	} else {
 		'map[string]string'

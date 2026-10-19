@@ -5,7 +5,10 @@ const single_file_test_v3_dir = os.dir(os.dir(@FILE))
 const single_file_test_vlib_dir = os.dir(single_file_test_v3_dir)
 const single_file_test_v3_src = os.join_path(single_file_test_v3_dir, 'v.v')
 
-fn test_explicit_main_test_excludes_moduleless_sibling() {
+// An explicit `module main` test is compiled with the `main` sources beside it, and a file
+// without a module declaration is in `main` too. This used to exclude the module-less sibling;
+// 946a1aad85 includes it, as V1 did (a module test compiles every .v file of its directory).
+fn test_explicit_main_test_includes_moduleless_sibling() {
 	root := os.join_path(os.vtmp_dir(), 'v3_single_file_test_input_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
@@ -22,6 +25,7 @@ fn test_explicit_main_test_excludes_moduleless_sibling() {
 
 fn test_selected_value() {
 	assert helper_value() == 42
+	assert bench_value() == 7
 }
 ') or {
 		panic(err)
@@ -34,12 +38,8 @@ fn helper_value() int {
 ') or {
 		panic(err)
 	}
-	os.write_file(os.join_path(root, 'bench.v'), 'fn helper_value() int {
-	return -1
-}
-
-fn main() {
-	println(helper_value())
+	os.write_file(os.join_path(root, 'bench.v'), 'fn bench_value() int {
+	return 7
 }
 ') or {
 		panic(err)

@@ -805,6 +805,24 @@ fn test_replace() {
 	assert v.replace('  ', ' ') == 'a  b c d'
 }
 
+fn test_replace_once() {
+	assert 'abcabc'.replace_once('abc', 'X') == 'Xabc'
+	assert 'abc'.replace_once('b', 'XYZ') == 'aXYZc'
+	assert 'abc'.replace_once('c', '') == 'ab'
+	assert 'abc'.replace_once('missing', 'X') == 'abc'
+	assert 'abc'.replace_once('abcd', 'X') == 'abc'
+	assert ''.replace_once('a', 'X') == ''
+	assert 'abc'.replace_once('', 'X') == 'Xabc'
+	assert ''.replace_once('', 'X') == 'X'
+	assert 'abc'.replace_once('', '') == 'abc'
+	assert ''.replace_once('', '') == ''
+	assert 'é🙂'.replace_once('', '前') == '前é🙂'
+	assert 'abc'.replace_once('b', r'$&') == r'a$&c'
+	assert 'abc'.replace_once('b', r'$$') == r'a$$c'
+	assert 'abc'.replace_once('b', r'$`') == r'a$`c'
+	assert 'abc'.replace_once('b', r"$'") == r"a$'c"
+}
+
 fn test_replace_each() {
 	s := 'hello man man :)'
 	q := s.replace_each([
@@ -1966,4 +1984,28 @@ fn test_split_any_invalid_utf8_matches_replacement_runes() {
 	parts := s.split_any('�')
 	assert parts.len == 4097
 	assert s.rsplit_any('�') == parts.reverse()
+}
+
+fn test_after_empty_missing_and_multibyte_delimiters() {
+	for s in ['abc', '', 'é🙂'] {
+		assert s.after('') == s
+		assert s.after('missing') == s
+	}
+	assert '23:34:45.234'.after(':') == '45.234'
+	assert 'abc--def--ghi'.after('--') == 'ghi'
+	assert 'α🙂β🙂γ'.after('🙂') == 'γ'
+}
+
+fn test_string_equality_with_shared_storage_still_compares_lengths() {
+	text := 'prefix:value'.clone()
+	full := unsafe { text.substr_unsafe(0, text.len) }
+	short := unsafe { text.substr_unsafe(0, 6) }
+	assert text.str == full.str
+	assert text.str == short.str
+	assert text == full
+	assert text != short
+	assert short == 'prefix'
+	assert text == text.clone()
+	assert text != 'prefix:other'
+	assert '' == ''.clone()
 }

@@ -4564,16 +4564,27 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId, body_start int, end int, comp
 			}
 			g.write(f.value)
 			width := alignments[int(fid)] or { prefix.len + f.value.len }
-			g.write(' '.repeat(width - prefix.len - f.value.len + 1))
 			type_text := g.type_text(f.typ_text())
+			mut default_pad := 0
+			if f.children_count > 0 {
+				if pad := default_align[int(fid)] {
+					default_pad = int_max(pad - type_text.len, 0)
+				}
+			}
+			mut name_pad := width - prefix.len - f.value.len + 1
+			// An embed with a default (`Inner = Inner{}`) is a field without a type. Its `=` can
+			// only line up with the defaults of the fields around it. Without those, padding the
+			// name to the empty type column would leave two or more spaces before ` = `.
+			if type_text.len == 0 && f.children_count > 0 && default_pad == 0 {
+				name_pad = 0
+			}
+			g.write(' '.repeat(name_pad))
 			g.write(type_text)
 			suffix_width = type_text.len
 			if f.children_count > 0 {
-				if pad := default_align[int(fid)] {
-					if pad > type_text.len {
-						g.write(' '.repeat(pad - type_text.len))
-						suffix_width = pad
-					}
+				if default_pad > 0 {
+					g.write(' '.repeat(default_pad))
+					suffix_width = type_text.len + default_pad
 				}
 				g.write(' = ')
 				default_start := g.out.len
@@ -4638,9 +4649,9 @@ fn (mut g Gen) enum_decl(id flat.NodeId) {
 		g.write('pub ')
 	}
 	g.write('enum ${n.value}')
-	gp := n.generic_params()
-	if gp.len > 0 && gp[0].len > 0 {
-		g.write(' as ${gp[0]}')
+	backing := n.enum_backing_type_id()
+	if backing != 0 {
+		g.write(' as ${flat.source_type_name(backing)}')
 	}
 	end := g.a.formatter_node_ends[int(id)] or { n.pos.end }
 	// The parser can leave a nameless member behind, e.g. when the `{` sits on its own line

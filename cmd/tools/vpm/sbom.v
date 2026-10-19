@@ -117,7 +117,10 @@ pub fn (r &Registry) spdx_document(namespace string, download_base string) SpdxD
 				spdxid:            spdx_id_for(v.name, v.version)
 				version_info:      v.version
 				download_location: '${artifact_base}/${v.name}/@v/${v.version}.zip'
-				license_concluded: if v.license == '' { 'NOASSERTION' } else { v.license }
+				// A conclusion is a derived result, and nothing here derives one:
+				// the publisher's declaration is recorded as declared, while
+				// concluded stays NOASSERTION even when a license is present.
+				license_concluded: 'NOASSERTION'
 				license_declared:  if v.license == '' { 'NOASSERTION' } else { v.license }
 				copyright_text:    'NOASSERTION'
 				checksums:         checksums

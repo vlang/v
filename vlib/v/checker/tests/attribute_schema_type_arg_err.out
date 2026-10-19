@@ -1,0 +1,6 @@
+vlib/v/checker/tests/attribute_schema_type_arg_err.vv:11:7: error: attribute `Route` cannot be used as a type argument
+    9 | 
+   10 | fn main() {
+   11 |     _ := Box[Route]{}
+      |          ~~~~~~~~~~~~
+   12 | }

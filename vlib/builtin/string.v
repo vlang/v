@@ -346,7 +346,7 @@ pub fn (a string) clone() string {
 		return ''
 	}
 	mut b := string{
-		str: unsafe { malloc_noscan(a.len + 1) }
+		str: unsafe { malloc_string_buffer(a.len + 1) }
 		len: a.len
 	}
 	unsafe {
@@ -357,7 +357,11 @@ pub fn (a string) clone() string {
 }
 
 // replace_once replaces the first occurrence of `rep` with the string passed in `with`.
+// An empty `rep` inserts `with` at the start of `s`.
 pub fn (s string) replace_once(rep string, with string) string {
+	if rep.len == 0 {
+		return with + s
+	}
 	idx := s.index_(rep)
 	if idx == -1 {
 		return s.clone()
@@ -412,7 +416,7 @@ pub fn (s string) replace(rep string, with string) string {
 	}
 	// Now we know the number of replacements we need to do and we can calc the len of the new string
 	new_len := s.len + pidxs_len * (with.len - rep.len)
-	mut b := unsafe { malloc_noscan(new_len + 1) } // add space for the null byte at the end
+	mut b := unsafe { malloc_string_buffer(new_len + 1) } // add space for the null byte at the end
 	// Fill the new string
 	mut b_i := 0
 	mut s_idx := 0
@@ -502,7 +506,7 @@ pub fn (s string) replace_each(vals []string) string {
 		return s.clone()
 	}
 	idxs.sort(a.idx < b.idx)
-	mut buf := unsafe { malloc_noscan(new_len + 1) } // add space for 0 terminator
+	mut buf := unsafe { malloc_string_buffer(new_len + 1) } // add space for 0 terminator
 	// Fill the new string
 	mut idx_pos := 0
 	mut cur_idx := idxs[idx_pos]
@@ -625,7 +629,7 @@ pub fn (s string) replace_char(rep u8, with u8, repeat int) string {
 	}
 	// Now we know the number of replacements we need to do and we can calc the len of the new string
 	new_len := s.len + idxs.len * (repeat - 1)
-	mut b := unsafe { malloc_noscan(new_len + 1) } // add space for the null byte at the end
+	mut b := unsafe { malloc_string_buffer(new_len + 1) } // add space for the null byte at the end
 	// Fill the new string
 	mut b_i := 0
 	mut s_idx := 0
@@ -870,7 +874,7 @@ pub fn (s string) parse_int(_base int, _bit_size int) !i64 {
 	return strconv.parse_int(s, _base, _bit_size)
 }
 
-@[direct_array_access]
+@[direct_array_access; inline]
 fn (s string) == (a string) bool {
 	if s.str == 0 {
 		// Nil string: equal only to another nil/empty string.
@@ -880,9 +884,13 @@ fn (s string) == (a string) bool {
 	if s.len != a.len {
 		return false
 	}
-	unsafe {
-		return vmemcmp(s.str, a.str, a.len) == 0
+	if s.str == a.str {
+		return true
 	}
+	$if prod && !tinyc && !msvc && !native {
+		return string_content_equal(s.str, a.str, a.len)
+	}
+	return unsafe { vmemcmp(s.str, a.str, a.len) == 0 }
 }
 
 // compare returns -1 if `s` < `a`, 0 if `s` == `a`, and 1 if `s` > `a`
@@ -921,11 +929,16 @@ fn (s string) < (a string) bool {
 
 @[direct_array_access]
 fn (s string) + (a string) string {
+	return string_concat_pair(s, a)
+}
+
+@[direct_array_access]
+fn string_concat_pair(s string, a string) string {
 	slen := if s.len > 0 { s.len } else { 0 }
 	alen := if a.len > 0 { a.len } else { 0 }
 	new_len := alen + slen
 	mut res := string{
-		str: unsafe { malloc_noscan(new_len + 1) }
+		str: unsafe { malloc_string_buffer(new_len + 1) }
 		len: new_len
 	}
 	unsafe {
@@ -941,15 +954,28 @@ fn (s string) + (a string) string {
 }
 
 // string_plus_many concatenates several strings with a single allocation.
-@[direct_array_access; markused]
+@[direct_array_access; inline; markused]
 fn string_plus_many(data_len int, input_base &string) string {
+	// Most interpolation and qualified-name joins have two or three parts.
+	// Keep their lengths and copies straight-line, without two dynamic loops.
+	if data_len == 3 {
+		return unsafe { input_base[0].plus_two(input_base[1], input_base[2]) }
+	}
+	if data_len == 2 {
+		return unsafe { string_concat_pair(input_base[0], input_base[1]) }
+	}
+	return string_plus_many_general(data_len, input_base)
+}
+
+@[direct_array_access]
+fn string_plus_many_general(data_len int, input_base &string) string {
 	mut new_len := 0
 	for i := 0; i < data_len; i++ {
 		part := unsafe { input_base[i] }
 		new_len += if part.len > 0 { part.len } else { 0 }
 	}
 	mut res := string{
-		str: unsafe { malloc_noscan(new_len + 1) }
+		str: unsafe { malloc_string_buffer(new_len + 1) }
 		len: new_len
 	}
 	mut offset := 0
@@ -975,7 +1001,7 @@ fn (s string) plus_two(a string, b string) string {
 	blen := if b.len > 0 { b.len } else { 0 }
 	new_len := alen + blen + slen
 	mut res := string{
-		str: unsafe { malloc_noscan(new_len + 1) }
+		str: unsafe { malloc_string_buffer(new_len + 1) }
 		len: new_len
 	}
 	unsafe {
@@ -1353,7 +1379,7 @@ pub fn (s string) substr(start int, _end int) string {
 		return s.clone()
 	}
 	mut res := string{
-		str: unsafe { malloc_noscan(len + 1) }
+		str: unsafe { malloc_string_buffer(len + 1) }
 		len: len
 	}
 	unsafe {
@@ -1419,7 +1445,7 @@ pub fn (s string) substr_with_check(start int, _end int) !string {
 		return s.clone()
 	}
 	mut res := string{
-		str: unsafe { malloc_noscan(len + 1) }
+		str: unsafe { malloc_string_buffer(len + 1) }
 		len: len
 	}
 	unsafe {
@@ -1463,7 +1489,7 @@ pub fn (s string) substr_ni(_start int, _end int) string {
 
 	// string copy
 	mut res := string{
-		str: unsafe { malloc_noscan(len + 1) }
+		str: unsafe { malloc_string_buffer(len + 1) }
 		len: len
 	}
 	unsafe {
@@ -1480,8 +1506,11 @@ pub fn (s string) index_(p string) int {
 	if p.len == 0 {
 		return 0
 	}
-	if p.len > s.len || u64(s.str) <= 0xFFFF || u64(p.str) <= 0xFFFF {
+	if p.len > s.len || usize(s.str) <= 0xFFFF || usize(p.str) <= 0xFFFF {
 		return -1
+	}
+	if p.len == 1 {
+		return string_index_byte(s.str, s.len, unsafe { p.str[0] })
 	}
 	if p.len > max_direct_index_needle_len {
 		return s.index_kmp(p)
@@ -1492,7 +1521,11 @@ pub fn (s string) index_(p string) int {
 	last_start := s.len - p.len
 	for i := 0; i <= last_start; i++ {
 		if unsafe { s.str[i] } != first {
-			continue
+			next := string_index_byte(unsafe { s.str + i + 1 }, last_start - i, first)
+			if next < 0 {
+				return -1
+			}
+			i += next + 1
 		}
 		mut j := 1
 		for j < p.len && unsafe { s.str[i + j] == p.str[j] } {
@@ -1599,6 +1632,9 @@ fn (s string) index_last_(p string) int {
 	if p.len > s.len {
 		return -1
 	}
+	if p.len == 1 {
+		return s.last_index_u8(unsafe { p.str[0] })
+	}
 	mut i := s.len - p.len
 	for i >= 0 {
 		mut j := 0
@@ -1675,12 +1711,7 @@ pub fn (s string) index_after_(p string, start int) int {
 // index_u8 returns -1 if the byte can not be found.
 @[direct_array_access]
 pub fn (s string) index_u8(c u8) int {
-	for i, b in s {
-		if b == c {
-			return i
-		}
-	}
-	return -1
+	return string_index_byte(s.str, s.len, c)
 }
 
 // last_index_u8 returns the index of the last occurrence of byte `c` if it was found in the string.
@@ -1734,12 +1765,7 @@ pub fn (s string) count(substr string) int {
 // contains_u8 returns `true` if the string contains the byte value `x`.
 // See also: [`string.index_u8`](#string.index_u8) , to get the index of the byte as well.
 pub fn (s string) contains_u8(x u8) bool {
-	for c in s {
-		if x == c {
-			return true
-		}
-	}
-	return false
+	return string_index_byte(s.str, s.len, x) >= 0
 }
 
 // contains returns `true` if the string contains `substr`.
@@ -1797,7 +1823,7 @@ pub fn (s string) contains_any_substr(substrs []string) bool {
 // starts_with returns `true` if the string starts with `p`.
 @[direct_array_access]
 pub fn (s string) starts_with(p string) bool {
-	if p.len > s.len || u64(s.str) <= 0xFFFF || u64(p.str) <= 0xFFFF {
+	if p.len > s.len || usize(s.str) <= 0xFFFF || usize(p.str) <= 0xFFFF {
 		return false
 	} else if unsafe { vmemcmp(s.str, p.str, p.len) == 0 } {
 		return true
@@ -1808,7 +1834,7 @@ pub fn (s string) starts_with(p string) bool {
 // ends_with returns `true` if the string ends with `p`.
 @[direct_array_access]
 pub fn (s string) ends_with(p string) bool {
-	if p.len > s.len || u64(s.str) <= 0xFFFF || u64(p.str) <= 0xFFFF {
+	if p.len > s.len || usize(s.str) <= 0xFFFF || usize(p.str) <= 0xFFFF {
 		return false
 	} else if unsafe { vmemcmp(s.str + s.len - p.len, p.str, p.len) == 0 } {
 		return true
@@ -1823,7 +1849,7 @@ pub fn (s string) ends_with(p string) bool {
 @[direct_array_access]
 pub fn (s string) to_lower_ascii() string {
 	unsafe {
-		mut b := malloc_noscan(s.len + 1)
+		mut b := malloc_string_buffer(s.len + 1)
 		for i in 0 .. s.len {
 			if s.str[i] >= `A` && s.str[i] <= `Z` {
 				b[i] = s.str[i] + 32
@@ -1878,7 +1904,7 @@ pub fn (s string) is_lower() bool {
 @[direct_array_access]
 pub fn (s string) to_upper_ascii() string {
 	unsafe {
-		mut b := malloc_noscan(s.len + 1)
+		mut b := malloc_string_buffer(s.len + 1)
 		for i in 0 .. s.len {
 			if s.str[i] >= `a` && s.str[i] <= `z` {
 				b[i] = s.str[i] - 32
@@ -2715,7 +2741,7 @@ pub fn (a []string) join(sep string) string {
 	len -= sep.len
 	// Allocate enough memory
 	mut res := string{
-		str: unsafe { malloc_noscan(len + 1) }
+		str: unsafe { malloc_string_buffer(len + 1) }
 		len: len
 	}
 	mut idx := 0
@@ -2752,7 +2778,7 @@ pub fn (s string) reverse() string {
 		return s.clone()
 	}
 	mut res := string{
-		str: unsafe { malloc_noscan(s.len + 1) }
+		str: unsafe { malloc_string_buffer(s.len + 1) }
 		len: s.len
 	}
 	for i := s.len - 1; i >= 0; i-- {
@@ -2810,7 +2836,7 @@ pub fn (s string) repeat(count int) string {
 	} else if count == 1 {
 		return s.clone()
 	}
-	mut ret := unsafe { malloc_noscan(s.len * count + 1) }
+	mut ret := unsafe { malloc_string_buffer(s.len * count + 1) }
 	for i in 0 .. count {
 		unsafe {
 			vmemcpy(ret + i * s.len, s.str, s.len)
@@ -2894,7 +2920,7 @@ pub fn (s string) strip_margin_custom(del u8) string {
 	}
 	// don't know how much space the resulting string will be, but the max it
 	// can be is this big
-	mut ret := unsafe { malloc_noscan(s.len + 1) }
+	mut ret := unsafe { malloc_string_buffer(s.len + 1) }
 	mut count := 0
 	mut exhausted := false
 	mut tail_content_end := s.len - 1
@@ -3183,7 +3209,7 @@ pub fn (s string) camel_to_snake() string {
 	if s.len == 1 {
 		return s.to_lower_ascii()
 	}
-	mut b := unsafe { malloc_noscan(2 * s.len + 1) }
+	mut b := unsafe { malloc_string_buffer(2 * s.len + 1) }
 	// Rather than checking whether the iterator variable is > 1 inside the loop,
 	// handle the first two chars separately to reduce load.
 	mut pos := 2
@@ -3277,7 +3303,7 @@ pub fn (s string) snake_to_camel() string {
 	}
 	mut need_upper := true
 	mut upper_c := `_`
-	mut b := unsafe { malloc_noscan(s.len + 1) }
+	mut b := unsafe { malloc_string_buffer(s.len + 1) }
 	mut i := 0
 	for c in s {
 		upper_c = if c >= `a` && c <= `z` { c - 32 } else { c }
@@ -3348,7 +3374,7 @@ pub fn (s string) hex() string {
 
 @[unsafe]
 fn data_to_hex_string(data &u8, len int) string {
-	mut hex := malloc_noscan(u64(len) * 2 + 1)
+	mut hex := malloc_string_buffer(u64(len) * 2 + 1)
 	mut dst := 0
 	for c in 0 .. len {
 		b := data[c]

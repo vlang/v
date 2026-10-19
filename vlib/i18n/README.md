@@ -67,6 +67,33 @@ println(i18n.tr_plural('en', 'goods', 2))
 `tr` and `tr_plural` read from the `translations` directory. Use `load_tr_map_from_dir`
 with `tr_from_map` / `tr_plural_from_map` to read from another directory.
 
+## Inline defaults and missing translations
+
+The Option APIs `tr_opt`, `tr_from_map_opt`, `tr_plural_opt`, and
+`tr_plural_from_map_opt` return `none` for a missing or empty translation. Use `or`
+to supply display text at the call site:
+
+```v ignore
+label := i18n.tr_opt('zh', 'common.success') or { 'Successfully' }
+items := i18n.tr_plural_opt('zh', 'goods', 2) or { 'Items' }
+```
+
+Each Option lookup accepts an optional final `LookupConfig`. Set `default_language`
+to try another language before the inline fallback, or choose a missing-key policy:
+
+```v ignore
+label := i18n.tr_from_map_opt(translations, 'zh', 'common.success',
+    default_language: 'en'
+) or { 'Successfully' }
+key := i18n.tr_opt('zh', 'missing', missing_key_behavior: .key) or { 'Fallback' }
+blank := i18n.tr_opt('zh', 'missing', missing_key_behavior: .empty) or { 'Fallback' }
+```
+
+The default policy is `.or_text`, which returns `none`; `.key` returns the key and
+`.empty` returns a present empty string. A real translation always takes precedence.
+Configuration belongs to each call and does not change other lookups. The existing
+string APIs retain their key fallback and missing-translation diagnostic.
+
 ## Embedding translations in the executable
 
 Reading translations from a directory at run time means shipping that directory next

@@ -31,8 +31,8 @@ fn (mut b Builder) register_struct_field_defaults() {
 	}
 }
 
-fn (mut b Builder) declared_field_default_value(struct_name string, field_name string) ?ValueID {
-	typ, _ := b.struct_literal_type(struct_name)
+fn (mut b Builder) declared_field_default_value(struct_name_id u32, field_name string) ?ValueID {
+	typ, _ := b.struct_literal_type(struct_name_id)
 	initializer := b.struct_field_defaults['${typ}.${field_name}'] or { return none }
 	old_module := b.cur_module
 	old_vars := b.vars
@@ -56,9 +56,10 @@ fn (mut b Builder) declared_field_default_value(struct_name string, field_name s
 		b.vars = old_vars
 		b.var_type_names = old_types
 	}
-	field_type_name := b.field_type_name(struct_name, field_name)
-	field_type := b.resolve_type(field_type_name)
-	mut value := b.build_field_value(initializer.expr, field_type_name)
+	field_type_name_source_id := b.field_type_name(struct_name_id, field_name)
+
+	field_type := b.resolve_type(field_type_name_source_id)
+	mut value := b.build_field_value(initializer.expr, field_type_name_source_id)
 	if b.is_option_type(field_type) && b.value_type(value) != field_type {
 		is_some := b.a.nodes[int(initializer.expr)].kind != .none_expr
 		if is_some {
@@ -72,8 +73,8 @@ fn (mut b Builder) declared_field_default_value(struct_name string, field_name s
 	return b.coerce_store_value(value, field_type)
 }
 
-fn (b &Builder) struct_field_storage_type(struct_name string, field_name string) ?TypeID {
-	typ, _ := b.struct_literal_type(struct_name)
+fn (b &Builder) struct_field_storage_type(struct_name_id u32, field_name string) ?TypeID {
+	typ, _ := b.struct_literal_type(struct_name_id)
 	if typ <= 0 || typ >= b.m.type_store.types.len {
 		return none
 	}
@@ -85,7 +86,8 @@ fn (b &Builder) struct_field_storage_type(struct_name string, field_name string)
 	return structure.fields[index]
 }
 
-fn (mut b Builder) nested_struct_default_value(type_name string, storage_type TypeID) ?ValueID {
+fn (mut b Builder) nested_struct_default_value(type_name_id u32, storage_type TypeID) ?ValueID {
+	type_name := flat.source_type_name(type_name_id)
 	if type_name in ['string', 'array', 'map'] || type_name.starts_with('&') || type_name.starts_with('[') || type_name.starts_with('?')
 		|| type_name.starts_with('!') || type_name.starts_with('map[') {
 		return none
@@ -93,11 +95,11 @@ fn (mut b Builder) nested_struct_default_value(type_name string, storage_type Ty
 	if storage_type > 0 && storage_type < b.m.type_store.types.len
 		&& b.m.type_store.types[storage_type].kind == .struct_t
 		&& b.default_struct_types[storage_type]
-		&& b.resolve_type(type_name) == storage_type {
+		&& b.resolve_type(type_name_id) == storage_type {
 		return b.build_struct_init(flat.Node{
 			kind:  .struct_init
 			value: type_name
-			typ:   flat.source_type_id(type_name)
+			typ:   type_name_id
 		})
 	}
 	return none

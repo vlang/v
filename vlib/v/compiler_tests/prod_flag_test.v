@@ -23,7 +23,7 @@ fn test_prod_flag_before_input_uses_optimized_c_compile() {
 	assert build.exit_code == 0, build.output
 
 	out_bin := os.join_path(os.temp_dir(), 'v3_prod_hello')
-	compile := os.exec([v3_bin, '-prod', '${hello_src}', '-o', out_bin])
+	compile := os.exec([v3_bin, '-prod', '-showcc', '${hello_src}', '-o', out_bin])
 	assert compile.exit_code == 0, compile.output
 	assert compile.output.contains('cc -std=gnu11 -O3')
 	assert !compile.output.contains('tcc.exe')
@@ -40,7 +40,7 @@ fn test_c99_flag_uses_c99_c_compile_mode() {
 	assert build.exit_code == 0, build.output
 
 	out_bin := os.join_path(os.temp_dir(), 'v3_c99_hello')
-	compile := os.exec([v3_bin, '-prod', '-c99', '${hello_src}', '-o', out_bin])
+	compile := os.exec([v3_bin, '-prod', '-c99', '-showcc', '${hello_src}', '-o', out_bin])
 	assert compile.exit_code == 0, compile.output
 	assert compile.output.contains('cc -std=c99 -O3')
 	assert !compile.output.contains('cc -std=gnu11')
@@ -99,8 +99,9 @@ fn test_c99_flag_uses_headerless_stdatomic_fallback() {
 	assert run.output.trim_space() == 'atomic helpers ok'
 }
 
-// test_c99_flag_system_stdatomic_include_is_headerless validates this v3 regression case.
-fn test_c99_flag_system_stdatomic_include_is_headerless() {
+// test_c99_flag_system_stdatomic_include_keeps_the_header validates this v3 regression case.
+// An explicit system header stays in the C output and owns its declarations.
+fn test_c99_flag_system_stdatomic_include_keeps_the_header() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_c99_system_stdatomic_test')
 	build := os.exec([vexe, '-gc', 'none', '-o', v3_bin, '${v3_src}'])
 	assert build.exit_code == 0, build.output
@@ -115,9 +116,9 @@ fn test_c99_flag_system_stdatomic_include_is_headerless() {
 	gen_c := os.exec([v3_bin, '-c99', '${src}', '-o', '${out_c}'])
 	assert gen_c.exit_code == 0, gen_c.output
 	c_code := os.read_file(out_c) or { panic(err) }
-	assert !has_non_runtime_include(c_code), c_code
+	assert c_code.contains('#include <stdatomic.h>'), c_code
 	assert !c_code.contains('typedef volatile uintptr_t atomic_uintptr_t;'), c_code
-	assert c_code.contains('typedef void* atomic_uintptr_t;'), c_code
+	assert !c_code.contains('typedef void* atomic_uintptr_t;'), c_code
 	assert c_code.contains('static inline byte atomic_fetch_add_byte'), c_code
 	assert c_code.contains('static inline u16 atomic_fetch_add_u16'), c_code
 	assert c_code.contains('static inline u64 atomic_fetch_add_u64'), c_code

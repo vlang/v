@@ -408,9 +408,9 @@ fn (mut vd VDoc) generate_docs_from_file() {
 		}
 		if cfg.pub_only {
 			for name, dc in dcs.contents {
-				dcs.contents[name].content = dc.content.all_after('pub ')
+				dcs.contents[name].content = without_pub_keyword(dc.content)
 				for i, cc in dc.children {
-					dcs.contents[name].children[i].content = cc.content.all_after('pub ')
+					dcs.contents[name].children[i].content = without_pub_keyword(cc.content)
 				}
 			}
 		}
