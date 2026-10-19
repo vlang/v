@@ -12994,6 +12994,20 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				if p.tok == .lcbr {
 					return p.map_init_after_type(flat.source_type_id(map_type), name_pos)
 				}
+				// type cast: map[K]V(expr), as `?map[K]V(expr)` and `[]T(expr)`
+				if p.tok == .lpar {
+					p.next() // skip (
+					inner := p.expr(.lowest)
+					p.check(.rpar)
+					cstart := p.add_child(inner)
+					return p.add_node(flat.Node{
+						kind:           .cast_expr
+						value:          map_type
+						children_start: cstart
+						children_count: 1
+						pos:            p.span_to(name_pos)
+					})
+				}
 				return p.a.add_node(flat.Node{
 					kind:  .map_init
 					value: map_type

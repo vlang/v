@@ -3101,7 +3101,8 @@ pub fn (mut tc TypeChecker) check_concrete_instance_members(fn_idx int, file str
 	for err in tc.errors[errors_start..] {
 		if (is_concrete_member_error(err.msg) && !tc.member_of_an_alias_argument(err.msg, args))
 			|| (is_concrete_operator_error(err.msg) && tc.operator_operands_are_plain(err.node))
-			|| tc.is_container_layout_error(err.msg) {
+			|| tc.is_container_layout_error(err.msg)
+			|| (tc.is_container_type_error(err.msg) && !tc.node_is_in_comptime_for(err.node)) {
 			kept << err
 		}
 	}
@@ -3251,6 +3252,112 @@ fn (tc &TypeChecker) is_container_layout_error(msg string) bool {
 	return tc.container_value_layouts_differ(actual, expected)
 }
 
+// is_container_type_error reports whether `msg` says that an array or map is
+// used as one whose elements have a type that its elements cannot be used as at
+// all: `[]string` as `[]u64`, `[]Foo` as `[]Bar` (container_elems_incompatible).
+// A cast is a layout error (is_container_layout_error).
+fn (tc &TypeChecker) is_container_type_error(msg string) bool {
+	actual_name, expected_name, use := container_layout_error_parts(msg) or { return false }
+	if use == .cast || actual_name.contains('voidptr') || expected_name.contains('voidptr') {
+		return false
+	}
+	actual := tc.parse_type(flat.source_type_id(actual_name))
+	mut expected := tc.parse_type(flat.source_type_id(expected_name))
+	if use == .append {
+		clean_expected := unalias_type(expected)
+		if clean_expected is Array {
+			expected = clean_expected.elem_type
+		} else {
+			return false
+		}
+	}
+	return tc.container_elems_incompatible(actual, expected)
+}
+
+// node_is_in_comptime_for reports whether the node `id` of a clone is in the
+// body of a `$for`. The check of a clone does not see the locals declared in
+// such a body, so a name there can resolve to another declaration of it, as a
+// constant of the program's main module.
+fn (tc &TypeChecker) node_is_in_comptime_for(id flat.NodeId) bool {
+	mut current := id
+	for _ in 0 .. 10000 {
+		parent := tc.direct_parent_id(current)
+		if !tc.valid_node_id(parent) {
+			return false
+		}
+		kind := tc.a.node(parent).kind
+		if kind == .comptime_for {
+			return true
+		}
+		if kind == .fn_decl {
+			return false
+		}
+		current = parent
+	}
+	return false
+}
+
+// container_elems_incompatible reports whether the array or map `actual` is used
+// as the one `expected` although its elements, keys or values cannot be used as
+// those of `expected` at all: `[]string` as `[]u64`, `[]Foo` as `[]Bar`,
+// `map[string]string` as `map[string]int`. An option or a result holds the
+// container as it is, and a referenced container is shared. Whether a type
+// implements an interface or is a variant of a sum type is left out: the clone
+// spells an alias among the types of its instance by its base type, which lacks
+// the methods of the alias (see member_of_an_alias_argument).
+fn (tc &TypeChecker) container_elems_incompatible(actual Type, expected Type) bool {
+	mut clean_actual := unalias_type(actual)
+	mut clean_expected := unalias_type(expected)
+	for {
+		if clean_expected is OptionType {
+			if clean_actual is OptionType {
+				clean_actual = unalias_type(clean_actual.base_type)
+			}
+			clean_expected = unalias_type(clean_expected.base_type)
+			continue
+		}
+		if clean_expected is ResultType {
+			if clean_actual is ResultType {
+				clean_actual = unalias_type(clean_actual.base_type)
+			}
+			clean_expected = unalias_type(clean_expected.base_type)
+			continue
+		}
+		break
+	}
+	if clean_actual is Pointer && clean_expected is Pointer {
+		clean_actual = unalias_type(clean_actual.base_type)
+		clean_expected = unalias_type(clean_expected.base_type)
+	}
+	if !is_container_type(clean_actual) || !is_container_type(clean_expected)
+		|| type_contains_unknown(clean_actual) || type_contains_unknown(clean_expected)
+		|| container_elems_name_an_abstract_type(clean_actual)
+		|| container_elems_name_an_abstract_type(clean_expected) {
+		return false
+	}
+	return !tc.type_compatible(clean_actual, clean_expected)
+}
+
+// container_elems_name_an_abstract_type reports whether an element, key or value
+// of the array or map `typ`, or of one nested in it, is an interface or a sum
+// type (see container_elems_incompatible).
+fn container_elems_name_an_abstract_type(typ Type) bool {
+	clean := unalias_type(typ)
+	return match clean {
+		Array { container_elems_name_an_abstract_type(clean.elem_type) }
+		ArrayFixed { container_elems_name_an_abstract_type(clean.elem_type) }
+		Map {
+			container_elems_name_an_abstract_type(clean.key_type)
+				|| container_elems_name_an_abstract_type(clean.value_type)
+		}
+		OptionType { container_elems_name_an_abstract_type(clean.base_type) }
+		ResultType { container_elems_name_an_abstract_type(clean.base_type) }
+		Pointer { container_elems_name_an_abstract_type(clean.base_type) }
+		Interface, SumType { true }
+		else { false }
+	}
+}
+
 // container_layout_error_parts returns the type of the array or map that the
 // error `msg` names, the type it is used as, and what is done with it, for the
 // errors that report a value of the wrong type in a slot (assignment, argument,
@@ -3261,8 +3368,8 @@ fn container_layout_error_parts(msg string) ?(string, string, ContainerLayoutUse
 	}
 	parts := msg.split('`')
 	if parts.len == 5 && parts[4] == '' && parts[2] == ' to ' {
-		if parts[0] == 'cannot cast array ' {
-			// cannot cast array `A` to `B`
+		if parts[0] in ['cannot cast array ', 'cannot cast map '] {
+			// cannot cast array `A` to `B`, cannot cast map `A` to `B`
 			return parts[1], parts[3], ContainerLayoutUse.cast
 		}
 		if parts[0] == 'cannot append ' {
@@ -3844,16 +3951,29 @@ fn (mut tc TypeChecker) record_unused_fn_vars(node flat.Node) {
 	mut candidates := []UnusedFnVarCandidate{}
 	mut candidate_names := map[string]bool{}
 	mut stack := []flat.NodeId{}
+	mut mut_option_params := map[string]bool{}
 	for i in 0 .. node.children_count {
 		child_id := tc.a.child(&node, i)
-		if tc.a.node(child_id).kind != .param {
+		child := tc.a.node(child_id)
+		if child.kind != .param {
 			stack << child_id
+		} else if child.is_mut && child.value.len > 0 && param_type_text_is_option(child.typ_text()) {
+			mut_option_params[child.value] = true
 		}
 	}
+	// `if mut v := a` over a `mut a ?T` parameter binds the caller's payload, so
+	// assigning to `v` is a use (transform `mut_optional_param_payload_ref`).
+	mut payload_ref_guards := map[int]bool{}
 	for stack.len > 0 {
 		id := stack.pop()
 		current := tc.a.node(id)
-		if current.kind == .decl_assign {
+		if current.kind == .if_expr && current.children_count > 0 && mut_option_params.len > 0 {
+			cond_id := tc.a.child(current, 0)
+			if tc.guard_binds_mut_param_payload(cond_id, mut_option_params) {
+				payload_ref_guards[int(cond_id)] = true
+			}
+		}
+		if current.kind == .decl_assign && !payload_ref_guards[int(id)] {
 			lhs_ids := tc.multi_assign_lhs_ids(current)
 			rhs_count := tc.multi_assign_rhs_count(current)
 			for lhs_index, lhs_id in lhs_ids {
@@ -3901,6 +4021,35 @@ fn (mut tc TypeChecker) record_unused_fn_vars(node flat.Node) {
 		}
 		tc.record_warning_at(.unknown_ident, 'unused variable: `${candidate.name}`', candidate.lhs_id, tc.node_value_diagnostic_pos(candidate.lhs_id))
 	}
+}
+
+fn param_type_text_is_option(typ string) bool {
+	mut clean := typ.trim_space()
+	if clean.starts_with('mut ') {
+		clean = clean[4..].trim_space()
+	}
+	return clean.trim_left('&').starts_with('?')
+}
+
+// guard_binds_mut_param_payload reports whether `cond_id` is `mut v := a` with `a` one of
+// `params`.
+fn (tc &TypeChecker) guard_binds_mut_param_payload(cond_id flat.NodeId, params map[string]bool) bool {
+	if !tc.valid_node_id(cond_id) {
+		return false
+	}
+	cond := tc.a.node(cond_id)
+	if cond.kind != .decl_assign || cond.children_count != 2 {
+		return false
+	}
+	lhs := tc.a.child_node(cond, 0)
+	if lhs.kind != .ident || !lhs.is_mut {
+		return false
+	}
+	mut rhs := tc.a.child_node(cond, 1)
+	for rhs.kind == .paren && rhs.children_count == 1 {
+		rhs = tc.a.child_node(rhs, 0)
+	}
+	return rhs.kind == .ident && params[rhs.value]
 }
 
 fn (tc &TypeChecker) expr_calls_fn_with_duplicate_parameters(id flat.NodeId) bool {

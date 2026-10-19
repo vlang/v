@@ -403,9 +403,27 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 	if fastc_top_level_boolean_split(base_tokens, .and) != none || fastc_top_level_boolean_split(base_tokens, .logical_or) != none {
 		return none
 	}
-	base_type := g.infer_expression_type(base_tokens) or { return none }
+	mut base_type := g.infer_expression_type(base_tokens) or { return none }
+	// A `mut` reference local (`for mut word in words`, a `mut` parameter) is a C pointer to
+	// the value it names, so `word[i]` indexes that value, not the pointer as a C array.
+	mut is_reference_base := g.is_reference_local_base(base_tokens, base_type)
+	if is_reference_base {
+		pointee := flat.source_type_id(flat.source_type_name(base_type).all_before_last('*'))
+		pointee_layout := g.underlying_alias_type(pointee)
+		if flat.source_type_name(pointee_layout).starts_with('Map_') {
+			// A map entry is not an array element; the map renderers read and update it.
+			return none
+		}
+		if pointee_layout == flat.source_type_string {
+			base_type = pointee
+		} else {
+			is_reference_base = false
+		}
+	}
 	base_layout_type := g.underlying_alias_type(base_type)
-	base_source := if base_tokens.len == 1 && base_tokens[0].source != '' {
+	base_source := if is_reference_base {
+		'(*(${g.resolved_root_expression_name(base_tokens[0].lit)}))'
+	} else if base_tokens.len == 1 && base_tokens[0].source != '' {
 		// A pre-rendered synthetic base token (e.g. an `(x as T).field` group the reader
 		// already lowered and folded into one token) carries its C text in `.source`, not
 		// `.lit`; reading `.lit` here would yield an empty collection (`array_get(, i)`).
@@ -597,6 +615,17 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 		source: '(*(${g.collection_storage_type(flat.source_type_id(element_type))} *)builtin__array_get(${array_value}, ${index_source}))'
 		typ:    flat.source_type_id(element_type)
 	}
+}
+
+// is_reference_local_base reports whether `base_tokens` name a `mut` reference local, whose C
+// variable points at the V value it stands for and is dereferenced on use.
+fn (g &Parser) is_reference_local_base(base_tokens []FastcExpressionToken, base_type u32) bool {
+	if base_tokens.len != 1 || base_tokens[0].tok != .name || base_tokens[0].source != ''
+		|| !flat.source_type_name(base_type).ends_with('*') {
+		return false
+	}
+	local := g.locals[base_tokens[0].lit] or { return false }
+	return local.is_reference
 }
 
 fn (g &Parser) render_array_inc_dec_expression(tokens []FastcExpressionToken) ?FastcRenderedExpression {
