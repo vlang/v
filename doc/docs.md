@@ -967,6 +967,9 @@ For more advanced `string` processing and conversions, refer to the
 
 #### String interpolation
 
+Array interpolation resolves each element in its declaring module, including when another
+imported module declares an enum with the same type name.
+
 Basic interpolation syntax is pretty simple - use `${` before a variable name and `}` after. The
 variable will be converted to a string and embedded into the literal:
 
