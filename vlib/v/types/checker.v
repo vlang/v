@@ -1202,6 +1202,7 @@ pub mut:
 	checked_comptime_method_calls map[string]bool
 	comptime_method_calls_by_decl map[int]map[int]bool
 	check_concrete_generic_bodies bool                  // `-check` checks the concrete clones of the program's generics for fields and methods their types lack, and for arrays and maps with the wrong element layout
+	check_program_lib_instances   bool                  // such a check also checks the instances of library generics that the program's own code asks for (see transform.LibraryBodies)
 	library_instances             int                   // the instances of library generics that such a check cloned
 	library_headers               int                   // how many of them it cloned without their bodies (see transform.LibraryBodies)
 	library_bodies_kept_for       string                // why every one of them kept its body, when one had to
@@ -9037,6 +9038,52 @@ pub fn (mut tc TypeChecker) diagnosed_files_declare_generics() bool {
 	tc.cur_file = saved_file
 	tc.cur_module = saved_module
 	return found
+}
+
+// diagnosed_files_call_library_generics reports whether a function of a file
+// whose diagnostics are reported calls a generic function that a file outside
+// of them declares, as `arrays.sum(foos)` does: the check of the instances that
+// the program asks for checks that instance too (see
+// check_program_lib_instances).
+pub fn (tc &TypeChecker) diagnosed_files_call_library_generics() bool {
+	mut diagnosed := false
+	mut stack := []flat.NodeId{}
+	for idx in tc.top_level_idx {
+		node := tc.a.nodes[idx]
+		if node.kind == .file {
+			// Once per file: most top-level nodes are the library's.
+			diagnosed = node.value in tc.diagnostic_files
+			continue
+		}
+		if !diagnosed || node.kind != .fn_decl {
+			continue
+		}
+		stack << flat.NodeId(idx)
+		for stack.len > 0 {
+			id := stack.pop()
+			current := tc.a.nodes[int(id)]
+			if current.kind == .call && tc.calls_library_generic(id) {
+				return true
+			}
+			for i in 0 .. current.children_count {
+				child := tc.a.child(&current, i)
+				if int(child) >= 0 && int(child) < tc.a.nodes.len {
+					stack << child
+				}
+			}
+		}
+	}
+	return false
+}
+
+// calls_library_generic reports whether the call `id` resolves to a generic
+// function that a file outside of the diagnosed ones declares.
+fn (tc &TypeChecker) calls_library_generic(id flat.NodeId) bool {
+	name := tc.resolved_call_name(id) or { return false }
+	if (tc.fn_generic_params[name] or { return false }).len == 0 {
+		return false
+	}
+	return (tc.fn_type_files[name] or { return false }) !in tc.diagnostic_files
 }
 
 // diagnosed_fn_keys returns every name that a function of a diagnosed file goes

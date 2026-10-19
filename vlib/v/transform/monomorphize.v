@@ -274,7 +274,9 @@ fn (mut t Transformer) monomorphize_pass() []string {
 			concrete_args_source_ids := t.canonical_generic_specialization_args(args_source_ids_3)
 
 			if !t.generic_specialization_registered(decl, concrete_args_source_ids) {
+				t.library_bodies.request_file = t.node_file_or(i, '')
 				t.request_generic_fn_specialization(decl, concrete_args_source_ids)
+				t.library_bodies.request_file = ''
 				changed = true
 			}
 			spec_value := specialized_generic_fn_value(decl.node.value, concrete_args_source_ids)
@@ -361,7 +363,9 @@ fn (mut t Transformer) monomorphize_pass() []string {
 					concrete_args_source_ids_2 := t.canonical_generic_specialization_args(args_source_ids_4)
 
 					if !t.generic_specialization_registered(decl, concrete_args_source_ids_2) {
+						t.library_bodies.request_file = t.node_file_or(i, '')
 						t.request_generic_fn_specialization(decl, concrete_args_source_ids_2)
+						t.library_bodies.request_file = ''
 						changed = true
 					}
 					spec_value := specialized_generic_fn_value(decl.node.value, concrete_args_source_ids_2)
@@ -437,7 +441,9 @@ fn (mut t Transformer) monomorphize_pass() []string {
 						emitted[spec_key] = true
 						continue
 					}
+					t.library_bodies.request_file = t.node_file_or(i, '')
 					t.request_generic_fn_specialization(decl, concrete_args_source_ids_3)
+					t.library_bodies.request_file = ''
 					emitted[spec_key] = true
 					changed = true
 				}
@@ -940,6 +946,7 @@ fn (mut t Transformer) request_generic_fn_specialization(decl GenericFnDecl, arg
 	concrete_args := args_ids.clone()
 	key := t.generic_specialization_progress_key(decl, concrete_args)
 	t.record_monomorph_cache_spec(key, decl.key, decl.module, concrete_args)
+	t.note_library_instance_request(decl, key)
 	if key in t.generic_fn_spec_nodes || t.generic_fn_specs_in_progress[key]
 		|| t.pending_generic_fn_spec_keys[key] {
 		return
@@ -1119,7 +1126,9 @@ fn (mut t Transformer) collect_generic_call_sites_after_type_refresh(generic_str
 			emitted[spec_key] = true
 			continue
 		}
+		t.library_bodies.request_file = t.node_file_or(i, '')
 		t.request_generic_fn_specialization(decl, concrete_args_source_ids)
+		t.library_bodies.request_file = ''
 		emitted[spec_key] = true
 	}
 	return sites
@@ -5084,7 +5093,10 @@ fn (mut t Transformer) emit_generic_fn_specialization(decl GenericFnDecl, args_i
 	// ask for an instance of the program (see LibraryBodies).
 	library_clone := !isnil(t.tc) && t.tc.check_concrete_generic_bodies
 		&& decl.file !in t.tc.diagnostic_files
+	// An instance that the program's code asks for is checked (see LibraryBodies).
+	program_library_instance := library_clone && t.library_bodies.program_specs[spec_key]
 	header_only := library_clone && !t.library_instance_needs_body(concrete_args_source_ids.clone())
+		&& !program_library_instance
 	if library_clone {
 		t.tc.library_instances++
 		if header_only {
@@ -5144,7 +5156,7 @@ fn (mut t Transformer) emit_generic_fn_specialization(decl GenericFnDecl, args_i
 		concrete_error_count = t.tc.errors.len
 		t.tc.check_concrete_fn_semantics(int(clone_id), decl.file, decl.module)
 	} else if !isnil(t.tc) && t.tc.check_concrete_generic_bodies && instance_satisfies
-		&& decl.file in t.tc.diagnostic_files {
+		&& (decl.file in t.tc.diagnostic_files || program_library_instance) {
 		t.tc.check_concrete_instance_members(int(clone_id), decl.file, decl.module, concrete_args_source_ids)
 	}
 	// A check only looks at the program's own instances. A library clone stays as

@@ -100,6 +100,11 @@ pub fn label_of[T](x T) string {
 	return x.label()
 }
 
+// label_twice asks for label_of[T], an instance that the library asks for.
+pub fn label_twice[T](x T) string {
+	return label_of(x) + label_of(x)
+}
+
 // with_namer calls an interface method on a value that does not depend on T.
 pub fn with_namer[T](xs []T, n Namer) string {
 	return n.name() + xs.len.str()
@@ -236,16 +241,17 @@ fn main() {
 }
 '
 
-const header_program = 'import advlib\n\nstruct User {\n\tname string\n}\n\nfn (u User) label() string {\n\treturn u.name\n}\n\nfn show[T](x T) string {\n\treturn x.label()\n}\n\nfn main() {\n\tprintln(show(User{}))\n\tprintln(advlib.label_of(User{}))\n}\n'
+const header_program = 'import advlib\n\nstruct User {\n\tname string\n}\n\nfn (u User) label() string {\n\treturn u.name\n}\n\nfn show[T](x T) string {\n\treturn x.label()\n}\n\nfn main() {\n\tprintln(show(User{}))\n\tprintln(advlib.label_twice(User{}))\n}\n'
 
 const method_level_program = 'import advlib\n\nstruct Runner {}\n\nfn (r Runner) run[T](x T) string {\n\treturn x.name\n}\n\nstruct Job {\n\trunner Runner\n}\n\nfn main() {\n\tprintln(advlib.run_job(Job{}))\n}\n'
 
 fn test_a_check_clones_a_library_instance_without_its_body() {
-	// `label_of[User]` calls `User.label`, which is no instance: its body can
-	// give the check nothing to look at.
+	// `label_of[User]`, which the library asks for, calls `User.label`, which is
+	// no instance: its body can give the check nothing to look at. The program
+	// asks for `label_twice[User]`, which keeps its body to be checked.
 	check := check_with_library('headers', header_program)
 	assert check.res.exit_code == 0, check.res.output
-	assert check.trace == ['1 of 1 library instances cloned without their bodies'], check.trace.str()
+	assert check.trace == ['1 of 2 library instances cloned without their bodies'], check.trace.str()
 }
 
 fn test_v_check_library_bodies_keeps_the_body_of_every_library_instance() {
@@ -255,7 +261,7 @@ fn test_v_check_library_bodies_keeps_the_body_of_every_library_instance() {
 		'advlib/advlib.v': library_module
 	})
 	assert check.res.exit_code == 0, check.res.output
-	assert check.trace == ['0 of 1 library instances cloned without their bodies',
+	assert check.trace == ['0 of 2 library instances cloned without their bodies',
 		'every library instance keeps its body: V_CHECK_LIBRARY_BODIES=all asks for them'], check.trace.str()
 }
 
@@ -267,7 +273,7 @@ fn test_only_all_keeps_every_library_body() {
 			'advlib/advlib.v': library_module
 		})
 		assert check.res.exit_code == 0, check.res.output
-		assert check.trace == ['1 of 1 library instances cloned without their bodies'], check.trace.str()
+		assert check.trace == ['1 of 2 library instances cloned without their bodies'], check.trace.str()
 	}
 }
 
@@ -867,6 +873,118 @@ fn test_a_local_of_a_comptime_for_body_shadows_a_constant_of_its_module() {
 	source := "const routes = ['/', '/x']\n\nstruct Foo {\n\ta int\n}\n\nstruct Holder {\n\troutes &map[string]int\n}\n\nfn make_routes() map[string]int {\n\treturn {\n\t\t'a': 1\n\t}\n}\n\nfn first_routes[T](x T) int {\n\t\$for field in T.fields {\n\t\troutes := make_routes()\n\t\th := Holder{\n\t\t\troutes: &routes\n\t\t}\n\t\treturn h.routes.len\n\t}\n\treturn 0\n}\n\nfn main() {\n\tprintln(routes)\n\tprintln(first_routes(Foo{}))\n}\n"
 	for res in [check_program('comptime_for_shadow_check', source),
 		build_program('comptime_for_shadow_build', source)] {
+		assert res.exit_code == 0, res.output
+		assert error_lines(res.output) == [], res.output
+	}
+}
+
+// A library module outside the program whose generic functions are wrong for
+// some type arguments.
+const checked_library_module = 'module chklib
+
+pub fn to_bytes[T](a []T) []u8 {
+	return []u8(a)
+}
+
+pub fn label_of[T](x T) string {
+	return x.label()
+}
+
+pub fn widen[T](a []T) []u64 {
+	return a
+}
+
+fn inner[T](a []T) []u8 {
+	return []u8(a)
+}
+
+// outer asks for `inner[int]` whatever `T` is.
+pub fn outer[T](x T) int {
+	return inner([1, 2]).len
+}
+'
+
+const checked_library_program = "import chklib
+
+struct User {
+	name string
+}
+
+fn (u User) label() string {
+	return u.name
+}
+
+fn main() {
+	println(chklib.to_bytes([u8(1)]))
+	println(chklib.label_of(User{}))
+	println(chklib.widen([u64(1)]))
+	println(chklib.outer('x'))
+"
+
+// build_with_modules builds the program `files` with the library `modules`
+// outside it, as check_with_modules checks it.
+fn build_with_modules(name string, files map[string]string, modules map[string]string) os.Result {
+	dir := os.join_path(os.vtmp_dir(), 'v3_build_generic_library_${name}_${os.getpid()}')
+	modules_dir := os.join_path(dir, 'modules')
+	program := os.join_path(dir, 'program')
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	for root, contents in {
+		modules_dir: modules
+		program:     files
+	} {
+		for relative, content in contents {
+			path := os.join_path(root, relative)
+			os.mkdir_all(os.dir(path)) or { panic(err) }
+			os.write_file(path, content) or { panic(err) }
+		}
+	}
+	return os.exec(['env', 'V_MACOS_V3_NO_FALLBACK=1', 'VMODULES=${modules_dir}', @VEXE, '-new-compiler',
+		'-nocolor', '-o', os.join_path(dir, 'main'), os.join_path(program, 'main.v')])
+}
+
+// An instance of a library generic that the program's own code asks for is
+// checked as an instance of the program's generics is, and reported in the
+// library's body, as V 0.5.2 does, also when the program declares no generic
+// function itself: in a check, and in a build that checks the instances in a
+// fork of itself, which Windows cannot. An instance that the library asks for,
+// `inner[int]`, is the library's and is not checked.
+fn test_an_instance_of_a_library_generic_that_the_program_asks_for_is_checked() {
+	files := {
+		'main.v': checked_library_program +
+			"\tprintln(chklib.to_bytes([1, 2]))\n\tprintln(chklib.label_of(1))\n\tprintln(chklib.widen(['a']))\n}\n"
+	}
+	modules := {
+		'chklib/chklib.v': checked_library_module
+	}
+	mut results := [check_with_modules('checked_library', files, modules).res]
+	$if !windows {
+		results << build_with_modules('checked_library_build', files, modules)
+	}
+	for res in results {
+		assert res.exit_code != 0, res.output
+		assert !res.output.contains('C compilation error'), res.output
+		assert error_lines(res.output) == [
+			'4:9: cannot cast array `[]int` to `[]u8`',
+			'8:11: unknown method or field: `int.label`.',
+			'12:9: cannot use `[]string` as type `[]u64` in return argument',
+		], res.output
+		assert res.output.contains('chklib.v:4:9: error:'), res.output
+	}
+}
+
+// The instances that the program asks for with the types the library's bodies
+// expect stay valid.
+fn test_instances_of_a_library_generic_with_the_expected_types_stay_valid() {
+	files := {
+		'main.v': checked_library_program + '}\n'
+	}
+	modules := {
+		'chklib/chklib.v': checked_library_module
+	}
+	check := check_with_modules('checked_library_valid', files, modules)
+	for res in [check.res, build_with_modules('checked_library_valid_build', files, modules)] {
 		assert res.exit_code == 0, res.output
 		assert error_lines(res.output) == [], res.output
 	}

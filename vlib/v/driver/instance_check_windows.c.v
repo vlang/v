@@ -10,6 +10,13 @@ fn start_program_instance_check(mut a flat.FlatAst, mut tc types.TypeChecker, ar
 	return start_program_instance_check_process(args)
 }
 
+// program_instance_check_forks reports whether a build checks the instances of
+// the program's generics in a fork of itself: never on Windows, where the check
+// is a second compiler process.
+fn program_instance_check_forks() bool {
+	return false
+}
+
 // finish prints what the check printed and returns 1 when it found errors, -1
 // when it gave no report.
 fn (check ProgramInstanceCheck) finish() int {
