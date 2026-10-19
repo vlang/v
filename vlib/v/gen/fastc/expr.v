@@ -992,17 +992,15 @@ fn (mut g Parser) lower_or_expression(mut result strings.Builder, mut expression
 				// A parenthesized RHS operand is handled by operand scoping below.
 				continue
 			}
-			if assignment_token.tok == .assign {
-				if map_wrap := g.render_map_index_assignment_wrapping(left_tokens) {
-					assignment_prefix_tokens = expression_tokens[..i + 1].clone()
-					assignment_prefix = map_wrap.prefix
-					assignment_suffix = map_wrap.suffix
-					value_type = map_wrap.value_type
-					option_tokens = expression_tokens[i + 1..].clone()
-					option_expression = g.render_call_argument_expression(option_tokens, value_type) or { '' }
-					wrapper_parens = 0
-					break
-				}
+			if map_wrap := g.render_map_index_assignment_wrapping(left_tokens, assignment_token.tok) {
+				assignment_prefix_tokens = expression_tokens[..i + 1].clone()
+				assignment_prefix = map_wrap.prefix
+				assignment_suffix = map_wrap.suffix
+				value_type = map_wrap.value_type
+				option_tokens = expression_tokens[i + 1..].clone()
+				option_expression = g.render_call_argument_expression(option_tokens, value_type) or { '' }
+				wrapper_parens = 0
+				break
 			}
 			left_type := (g.infer_expression_type(left_tokens) or { u32(0) })
 			if left_type != u32(0) {
