@@ -9896,6 +9896,13 @@ compile time. However, in the case of a segmentation fault, the output will not 
 information, making debugging more challenging. A stack overflow (for example from unbounded
 recursion) is then also no longer reported as `V panic: stack overflow`.
 
+On Windows, V reserves exception handling stack space for the main thread and threads
+started with `spawn`. An overflow-only vectored handler writes `V panic: stack overflow` to
+stderr and terminates the process with a nonzero exit code, even with `-d no_backtrace`.
+Other exceptions continue to their existing handlers.
+Address, Thread, Memory, and HWAddress sanitizer builds leave stack overflow handling to
+the sanitizer runtime.
+
 On macOS, signal handlers installed before V starts retain precedence, including TCC's
 backtrace handlers. V reports stack overflows when the signal still has its default disposition;
 compile with `-cc clang` to use this reporter without TCC's earlier handlers.
@@ -10829,6 +10836,7 @@ Module-cache builds keep that runtime in the program prefix; cached objects use 
 Exports in builds without a V `main` also share one guarded runtime initializer across
 cached modules, including the backtrace stubs used on musl systems.
 Native headers that cannot safely share state across units use a single compilation unit.
+The Windows stack overflow reporter supports parallel C compilation.
 
 To select C23 with a compiler that supports it, use
 `v -cc gcc -cflags '-std=gnu23' program.v`. Generated C uses the standard boolean keywords
