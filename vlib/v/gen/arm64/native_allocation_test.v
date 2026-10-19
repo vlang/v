@@ -13,24 +13,24 @@ fn C.exit(int)
 fn C.free(voidptr)
 fn v3_aligned_memdup(src voidptr, size i64, alignment u64) voidptr { return unsafe { nil } }
 fn main() {
-    mut source := [4]u8{}
-    source[0] = 1
-    source[1] = 2
-    source[2] = 3
-    source[3] = 4
-    copy := &u8(v3_aligned_memdup(&source[0], 4, 64))
-    if usize(copy) == 0 || usize(copy) % 64 != 0 { C.exit(1) }
-    unsafe {
-        if copy[0] != 1 || copy[1] != 2 || copy[2] != 3 || copy[3] != 4 { C.exit(2) }
-        copy[1] = 9
-    }
-    if source[1] != 2 { C.exit(3) }
-    C.free(copy)
-    small := v3_aligned_memdup(&source[0], 4, 1)
-    if usize(small) == 0 || usize(small) % 8 != 0 { C.exit(4) }
-    C.free(small)
-    invalid := v3_aligned_memdup(&source[0], 4, 24)
-    if usize(invalid) != 0 { C.exit(5) }
+	mut source := [4]u8{}
+	source[0] = 1
+	source[1] = 2
+	source[2] = 3
+	source[3] = 4
+	copy := &u8(v3_aligned_memdup(&source[0], 4, 64))
+	if usize(copy) == 0 || usize(copy) % 64 != 0 { C.exit(1) }
+	unsafe {
+		if copy[0] != 1 || copy[1] != 2 || copy[2] != 3 || copy[3] != 4 { C.exit(2) }
+		copy[1] = 9
+	}
+	if source[1] != 2 { C.exit(3) }
+	C.free(copy)
+	small := v3_aligned_memdup(&source[0], 4, 1)
+	if usize(small) == 0 || usize(small) % 8 != 0 { C.exit(4) }
+	C.free(small)
+	invalid := v3_aligned_memdup(&source[0], 4, 24)
+	if usize(invalid) != 0 { C.exit(5) }
 }
 ')
 	}
@@ -43,14 +43,14 @@ fn C.exit(int)
 fn C.free(voidptr)
 fn v3_heap_array(value []i64) &[]i64 { return unsafe { nil } }
 fn main() {
-    mut values := [i64(11), i64(22)]
-    mut boxed := v3_heap_array(values)
-    if boxed.len != 2 || boxed[0] != 11 || boxed[1] != 22 { C.exit(1) }
-    values[0] = 33
-    if boxed[0] != 33 { C.exit(2) }
-    unsafe { boxed.len = 1 }
-    if values.len != 2 || boxed.len != 1 { C.exit(3) }
-    C.free(boxed)
+	mut values := [i64(11), i64(22)]
+	mut boxed := v3_heap_array(values)
+	if boxed.len != 2 || boxed[0] != 11 || boxed[1] != 22 { C.exit(1) }
+	values[0] = 33
+	if boxed[0] != 33 { C.exit(2) }
+	unsafe { boxed.len = 1 }
+	if values.len != 2 || boxed.len != 1 { C.exit(3) }
+	C.free(boxed)
 }
 ')
 	}
@@ -61,16 +61,16 @@ fn test_native_void_pointer_tables_use_pointer_sized_slots() {
 		run_native_allocation_fixture('pointers', 'module main
 fn C.exit(int)
 fn pointer_slots(data voidptr) &voidptr {
-    return unsafe { &voidptr(data) }
+	return unsafe { &voidptr(data) }
 }
 fn main() {
-    mut values := [2]voidptr{}
-    mut slots := pointer_slots(&values[0])
-    unsafe {
-        slots[0] = voidptr(11)
-        slots[1] = voidptr(22)
-    }
-    if usize(values[0]) != 11 || usize(values[1]) != 22 { C.exit(1) }
+	mut values := [2]voidptr{}
+	mut slots := pointer_slots(&values[0])
+	unsafe {
+		slots[0] = voidptr(11)
+		slots[1] = voidptr(22)
+	}
+	if usize(values[0]) != 11 || usize(values[1]) != 22 { C.exit(1) }
 }
 ')
 	}
