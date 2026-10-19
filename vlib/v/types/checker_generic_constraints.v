@@ -661,7 +661,7 @@ fn (mut tc TypeChecker) check_generic_type_constraints(id flat.NodeId, pos token
 // `Box[int](x)`, `fn (b Box[int]) {}`, as it is checked where the declared
 // types and the struct literals are. An error one of those checks reported
 // already, at the same place, is not repeated.
-fn (mut tc TypeChecker) check_written_generic_types(top_id flat.NodeId) {
+fn (mut tc TypeChecker) check_written_generic_types(top_id flat.NodeId, mut stack []WrittenTypeItem) {
 	if !tc.should_diagnose(top_id) || !tc.program_declares_constraints() {
 		return
 	}
@@ -672,7 +672,8 @@ fn (mut tc TypeChecker) check_written_generic_types(top_id flat.NodeId) {
 	generic_body := top.kind == .fn_decl && scope.names.len > 0
 	// A node the compiler wrote, as the argument of `isreftype(Box[int])`, has
 	// no place of its own: its type is found in the nearest node that has one.
-	mut stack := [WrittenTypeItem{top_id, top_id}]
+	stack.clear()
+	stack << WrittenTypeItem{top_id, top_id}
 	for stack.len > 0 {
 		item := stack.pop()
 		if !tc.valid_node_id(item.id) {

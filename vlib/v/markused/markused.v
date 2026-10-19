@@ -2551,14 +2551,20 @@ fn markused_selective_alias_targets(tc &types.TypeChecker) map[string][]u32 {
 // may_target_interface_params reports whether `name` (a raw callee spelling)
 // could expand to a signature in iface_param_gate.
 fn (c &CallCollector) may_target_interface_params(name string) bool {
-	if name.len == 0 {
+	if name.len == 0 || c.iface_param_gate.len == 0 {
 		return false
 	}
 	if name in c.iface_param_gate {
 		return true
 	}
-	short := name.all_after_last('.')
-	return short != name && short in c.iface_param_gate
+	dot := name.last_index_u8(`.`)
+	if dot < 0 {
+		return false
+	}
+	// A view of the name after the last dot, not a copy: the map lookup only
+	// reads `len` bytes of it.
+	short := unsafe { tos(name.str + dot + 1, name.len - dot - 1) }
+	return short in c.iface_param_gate
 }
 
 // enqueue_auto_roots supports enqueue auto roots handling for markused.
@@ -7045,8 +7051,11 @@ fn markused_restore_visible_local_scope(mark int, mut locals map[string]int, mut
 	}
 }
 
-fn markused_local_visible(name string, local_values map[string]bool, locals map[string]int) bool {
-	return name.len > 0 && name in local_values && (locals[name] or { 0 }) > 0
+// markused_local_visible reports whether `name` is a visible local binding. Only
+// names of `local_values` are ever pushed onto `locals`, so a positive count
+// alone proves both, with one hash instead of two.
+fn markused_local_visible(name string, _ map[string]bool, locals map[string]int) bool {
+	return name.len > 0 && locals.len > 0 && (locals[name] or { 0 }) > 0
 }
 
 @[direct_array_access]
@@ -7868,27 +7877,51 @@ fn (c &CallCollector) syntax_alias_expr_type(id flat.NodeId, cur_module string, 
 
 fn (c &CallCollector) alias_type_from_callee(callee &flat.Node, cur_module string, imports map[string]string) ?types.Type {
 	if callee.kind == .ident && callee.value.len > 0 {
-		return c.alias_type_from_name(flat.source_type_id(callee.value), cur_module, imports)
+		return c.alias_type_from_name_text(callee.value, cur_module, imports)
 	}
 	if callee.kind == .selector && callee.value.len > 0 && callee.children_count > 0 {
 		base := c.a.child_node(callee, 0)
 		if base.kind == .ident && base.value.len > 0 {
 			if imported := imports[base.value] {
-				if alias_type := c.alias_type_from_name(flat.source_type_id('${imported}.${callee.value}'), cur_module, imports) {
+				if alias_type := c.alias_type_from_name_text('${imported}.${callee.value}', cur_module, imports) {
 					return alias_type
 				}
 			}
-			return c.alias_type_from_name(flat.source_type_id('${base.value}.${callee.value}'), cur_module, imports)
+			return c.alias_type_from_name_text('${base.value}.${callee.value}', cur_module, imports)
 		}
 	}
 	return none
 }
 
 fn (c &CallCollector) alias_type_from_name(name_id u32, cur_module string, imports map[string]string) ?types.Type {
-	resolved := markused_resolve_imported_source_type(name_id, imports)
-	for candidate in markused_alias_type_candidates(resolved, name_id, cur_module) {
-		if c.tc.type_aliases.contains(flat.source_type_name(candidate)) {
-			return c.tc.parse_canonical_type(candidate)
+	return c.alias_type_from_name_text(flat.source_type_name(name_id), cur_module, imports)
+}
+
+// alias_type_from_name_text checks the spellings of markused_alias_type_candidates,
+// in the same order, for a type alias. Only a spelling that names one gets a
+// source type ID: most names here are callees, and interning all of their
+// candidate spellings filled the process-wide type text table.
+fn (c &CallCollector) alias_type_from_name_text(name string, cur_module string, imports map[string]string) ?types.Type {
+	if c.tc.type_aliases.ids.len == 0 {
+		return none
+	}
+	resolved := markused_resolve_imported_name(name, imports)
+	if resolved.len > 0 && c.tc.type_aliases.contains(resolved) {
+		return c.tc.parse_canonical_type(flat.source_type_id(resolved))
+	}
+	if name != resolved && name.len > 0 && c.tc.type_aliases.contains(name) {
+		return c.tc.parse_canonical_type(flat.source_type_id(name))
+	}
+	if cur_module.len > 0 && cur_module != 'main' && cur_module != 'builtin' {
+		qualified := '${cur_module}.${resolved}'
+		if c.tc.type_aliases.contains(qualified) {
+			return c.tc.parse_canonical_type(flat.source_type_id(qualified))
+		}
+		if name != resolved {
+			qualified_name := '${cur_module}.${name}'
+			if c.tc.type_aliases.contains(qualified_name) {
+				return c.tc.parse_canonical_type(flat.source_type_id(qualified_name))
+			}
 		}
 	}
 	return none

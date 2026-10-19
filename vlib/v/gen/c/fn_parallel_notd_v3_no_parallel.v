@@ -400,8 +400,9 @@ fn forward_decl_lane_thread(arg voidptr) voidptr {
 	w.sb = strings.new_builder((a.end - a.start) * 96)
 	w.line_start = true
 	w.forward_decl_batches(*items, a.start, a.end)
-	a.output = w.sb.str()
-	unsafe { w.sb.free() }
+	// Hand the builder storage over instead of copying every prototype once more
+	// into this pool thread's arena.
+	a.output = cgen_take_builder_text(mut w.sb)
 	w.sb = strings.new_builder(0)
 	w.timing_profile('  [ttime]     cg fwd decls   ${f64(fdsw.elapsed().microseconds()) / 1000.0:7.2f} ms (task, items: ${a.end - a.start})')
 	return unsafe { nil }
@@ -447,8 +448,8 @@ fn parallel_type_decls_thread(arg voidptr) voidptr {
 	w.gen_translation_unit_prefix()
 	w.gen_type_declaration_block()
 	w.timing_profile('  [ttime]       td prefix+type ${f64(tdpsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
-	w.parallel_type_decls = w.sb.str()
-	unsafe { w.sb.free() }
+	// The reserved builder holds only this text; keep it instead of copying it.
+	w.parallel_type_decls = cgen_take_builder_text(mut w.sb)
 	w.sb = strings.new_builder(4096)
 	tdpsw.restart()
 	w.gen_global_declaration_block()
@@ -1679,6 +1680,20 @@ fn cgen_publish_builder_text(mut sb strings.Builder, scope voidptr) string {
 	return text
 }
 
+// cgen_take_builder_text returns the text accumulated in `sb` without copying
+// it; the builder's storage now belongs to the result, so `sb` must be replaced
+// before it is written again.
+fn cgen_take_builder_text(mut sb strings.Builder) string {
+	if sb.len == 0 {
+		unsafe { sb.free() }
+		sb = strings.new_builder(0)
+		return ''
+	}
+	sb << u8(0)
+	output := unsafe { sb.reuse_as_plain_u8_array() }
+	return unsafe { tos(&u8(output.data), output.len - 1) }
+}
+
 // moved_segment returns its argument unchanged. Appending an addressable
 // string (a local or field) to an array clones its bytes; passing the value
 // through a call appends the existing storage instead. Output segments are
@@ -1717,7 +1732,7 @@ fn (mut g FlatGen) absorb_scoped_cgen_batch(batch &FlatGen, output_streamed bool
 				user_c_symbols)
 			unsafe { batch_output.free() }
 		} else {
-			g.fn_segs << batch_output
+			g.fn_segs << moved_segment(batch_output)
 		}
 	}
 	unsafe { b.sb.free() }
@@ -1744,14 +1759,16 @@ fn (mut g FlatGen) absorb_scoped_cgen_batch(batch &FlatGen, output_streamed bool
 			}
 		}
 	}
+	// Batches of one dispatcher keep reporting the same names; copy a key only
+	// when it is new, so repeats do not pile up in the result arena.
 	for encoded, used in batch.used_fn_ptr_types {
-		if used {
+		if used && !g.used_fn_ptr_types[encoded] {
 			g.used_fn_ptr_types[encoded.clone()] = true
 		}
 	}
 	if !batch.c_extern_refs_shared {
 		for name, used in batch.c_extern_refs {
-			if used {
+			if used && !g.c_extern_refs[name] {
 				g.c_extern_refs[name.clone()] = true
 			}
 		}
@@ -1766,7 +1783,7 @@ fn (mut g FlatGen) absorb_scoped_cgen_batch(batch &FlatGen, output_streamed bool
 		g.needs_thread_type = true
 	}
 	for name, enabled in batch.libc_compat_fns {
-		if enabled {
+		if enabled && !g.libc_compat_fns[name] {
 			g.libc_compat_fns[name.clone()] = true
 		}
 	}
@@ -2148,7 +2165,7 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 					prefix := g.sb.str()
 					unsafe { g.sb.free() }
 					g.sb = strings.new_builder(4096)
-					g.fn_segs << prefix
+					g.fn_segs << moved_segment(prefix)
 				}
 				g.split_body_fn_ptr_types_from_decls(items.len)
 				g.gen_fn_items_scoped_master_batches(items)
@@ -2308,7 +2325,8 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 			g.parallel_used = g.a.worker_pool.run(tasks)
 			g.timing_profile('  [ttime]   cg pool.run      ${f64(dsw.elapsed().microseconds()) / 1000.0:7.2f} ms (chunks: ${chunk_count}, workers: ${worker_count})')
 			for fwd_arg in fwd_args {
-				g.parallel_forward_decl_parts << fwd_arg.output
+				// The lane text lives in its pool thread's arena for the rest of the run.
+				g.parallel_forward_decl_parts << moved_segment(fwd_arg.output)
 			}
 			cgen_worker_scope_free(fwd_scope)
 		}
@@ -3440,11 +3458,9 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		needed_optional_types:              g.needed_optional_types.clone()
 		optional_pointer_struct_tags:       g.optional_pointer_struct_tags.clone()
 		optional_types_ready:               g.optional_types_ready
-		emitted_optional_types:             if result_only {
-			g.emitted_optional_types
-		} else {
-			g.emitted_optional_types.clone()
-		}
+		// Declaration emission grows the master's set while scoped dispatchers
+		// fork chunk workers. Keep their snapshot private before tasks start.
+		emitted_optional_types:             g.emitted_optional_types.clone()
 		array_method_cache:                 if result_only {
 			g.array_method_cache
 		} else {
