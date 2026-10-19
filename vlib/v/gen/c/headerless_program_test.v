@@ -273,6 +273,19 @@ fn test_linux_generated_self_c_compiles_for_bootstrap_targets() {
 	}
 }
 
+fn test_compiler_source_checks_for_32_bit_hosts() {
+	// A 32-bit host builds cmd/v with every backend, so an `int` literal that only
+	// fits 64 bits stops its `make` at v1 -> v2.
+	for os_name, arch in {
+		'linux':   'arm32'
+		'freebsd': 'x86'
+	} {
+		checked := cmdexec.run(@VEXE, ['-nocache', '-os', os_name, '-arch', arch, '-check',
+			os.join_path(@VEXEROOT, 'cmd', 'v')])
+		assert checked.exit_code == 0, '${os_name}/${arch}: ${checked.output}'
+	}
+}
+
 fn test_headerless_standard_modules_and_native_helpers() {
 	$if !macos {
 		return
