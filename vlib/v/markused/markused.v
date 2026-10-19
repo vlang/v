@@ -7840,27 +7840,51 @@ fn (c &CallCollector) syntax_alias_expr_type(id flat.NodeId, cur_module string, 
 
 fn (c &CallCollector) alias_type_from_callee(callee &flat.Node, cur_module string, imports map[string]string) ?types.Type {
 	if callee.kind == .ident && callee.value.len > 0 {
-		return c.alias_type_from_name(flat.source_type_id(callee.value), cur_module, imports)
+		return c.alias_type_from_name_text(callee.value, cur_module, imports)
 	}
 	if callee.kind == .selector && callee.value.len > 0 && callee.children_count > 0 {
 		base := c.a.child_node(callee, 0)
 		if base.kind == .ident && base.value.len > 0 {
 			if imported := imports[base.value] {
-				if alias_type := c.alias_type_from_name(flat.source_type_id('${imported}.${callee.value}'), cur_module, imports) {
+				if alias_type := c.alias_type_from_name_text('${imported}.${callee.value}', cur_module, imports) {
 					return alias_type
 				}
 			}
-			return c.alias_type_from_name(flat.source_type_id('${base.value}.${callee.value}'), cur_module, imports)
+			return c.alias_type_from_name_text('${base.value}.${callee.value}', cur_module, imports)
 		}
 	}
 	return none
 }
 
 fn (c &CallCollector) alias_type_from_name(name_id u32, cur_module string, imports map[string]string) ?types.Type {
-	resolved := markused_resolve_imported_source_type(name_id, imports)
-	for candidate in markused_alias_type_candidates(resolved, name_id, cur_module) {
-		if c.tc.type_aliases.contains(flat.source_type_name(candidate)) {
-			return c.tc.parse_canonical_type(candidate)
+	return c.alias_type_from_name_text(flat.source_type_name(name_id), cur_module, imports)
+}
+
+// alias_type_from_name_text checks the spellings of markused_alias_type_candidates,
+// in the same order, for a type alias. Only a spelling that names one gets a
+// source type ID: most names here are callees, and interning all of their
+// candidate spellings filled the process-wide type text table.
+fn (c &CallCollector) alias_type_from_name_text(name string, cur_module string, imports map[string]string) ?types.Type {
+	if c.tc.type_aliases.ids.len == 0 {
+		return none
+	}
+	resolved := markused_resolve_imported_name(name, imports)
+	if resolved.len > 0 && c.tc.type_aliases.contains(resolved) {
+		return c.tc.parse_canonical_type(flat.source_type_id(resolved))
+	}
+	if name != resolved && name.len > 0 && c.tc.type_aliases.contains(name) {
+		return c.tc.parse_canonical_type(flat.source_type_id(name))
+	}
+	if cur_module.len > 0 && cur_module != 'main' && cur_module != 'builtin' {
+		qualified := '${cur_module}.${resolved}'
+		if c.tc.type_aliases.contains(qualified) {
+			return c.tc.parse_canonical_type(flat.source_type_id(qualified))
+		}
+		if name != resolved {
+			qualified_name := '${cur_module}.${name}'
+			if c.tc.type_aliases.contains(qualified_name) {
+				return c.tc.parse_canonical_type(flat.source_type_id(qualified_name))
+			}
 		}
 	}
 	return none
