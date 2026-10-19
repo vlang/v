@@ -36,7 +36,7 @@ class BootstrapConfigurationTests(unittest.TestCase):
             with self.subTest(compiler=compiler):
                 commands = [
                     line for line in routine("build_bootstrap_with_" + compiler).splitlines()
-                    if line.startswith('"!' + compiler + '_exe!" ')
+                    if line.lstrip().startswith('"!' + compiler + '_exe!" ')
                     and '"%V_C_FILE%"' in line
                 ]
                 self.assertEqual(len(commands), 1)
@@ -48,7 +48,7 @@ class BootstrapConfigurationTests(unittest.TestCase):
         # assertion rather than joining the compiler loop above.
         commands = [
             line for line in routine("build_bootstrap_with_msvc").splitlines()
-            if line.startswith("cl ") and '"%V_C_FILE%"' in line
+            if line.lstrip().startswith("cl ") and '"%V_C_FILE%"' in line
         ]
         self.assertEqual(len(commands), 1)
         self.assertIn("%VC_BOOTSTRAP_DEFINE%", commands[0])
@@ -70,8 +70,9 @@ class BootstrapConfigurationTests(unittest.TestCase):
                     line for line in routine("build_bootstrap_with_" + compiler).splitlines()
                     if '"%V_C_FILE%"' in line and not line.startswith("echo ")
                 ]
-                self.assertEqual(len(commands), 1)
-                self.assertIn("%V_BOOTSTRAP_NATIVE%", commands[0])
+                self.assertEqual(len(commands), 2 if compiler == "clang" else 1)
+                for command in commands:
+                    self.assertIn("%V_BOOTSTRAP_NATIVE%", command)
 
     def test_tcc_links_select_the_installed_bundle_openlibm(self):
         # Every Windows TCC bundle ships lib/openlibm.o for its own compiler. An
@@ -91,7 +92,8 @@ class BootstrapConfigurationTests(unittest.TestCase):
                 with self.subTest(compiler=compiler, stage=stage):
                     body = routine("build_" + stage + "_with_" + compiler)
                     prefix = "cl " if compiler == "msvc" else '"!' + compiler + '_exe!" '
-                    links = [line for line in body.splitlines() if line.startswith(prefix)]
+                    links = [line for line in body.splitlines() if line.lstrip().startswith(prefix)
+                             and ('"%V_C_FILE%"' in line or '"%V_STAGE_C%"' in line)]
                     self.assertEqual(len(links), 1)
                     if compiler != "tcc":
                         self.assertNotIn("OPENLIBM", body.upper())
@@ -116,23 +118,43 @@ class BootstrapConfigurationTests(unittest.TestCase):
     def test_clang_generation_matches_the_stage_compiler(self):
         commands = routine("build_stage_with_clang").splitlines()
         configure = next(line for line in commands if line.startswith("set stage_vflags="))
-        compile_c = next(line for line in commands if line.startswith('"!clang_exe!" '))
-        self.assertIn('-cc "!clang_exe!"', configure)
-        self.assertIn('-cflags "--target=!clang_target!"', configure)
-        self.assertIn("--target=!clang_target!", compile_c)
+        compile_c = next(line for line in commands if line.lstrip().startswith('"!clang_exe!" '))
+        self.assertIn('!clang_vflags!', configure)
+        self.assertIn('if !clang_msvc! EQU 1 set stage_vflags=-cc msvc', routine('build_stage_with_clang'))
+        self.assertNotIn('--target=', compile_c)
+        self.assertNotIn('--target=', SOURCE)
+        self.assertIn('-fwrapv', compile_c)
         self.assertNotIn("%VC_BOOTSTRAP_DEFINE%", compile_c)
+
+    def test_clang_uses_its_installed_target_and_msvc_driver_when_needed(self):
+        bootstrap = routine("build_bootstrap_with_clang")
+        self.assertIn("-dumpmachine", bootstrap)
+        self.assertIn("call :configure_clang_target", bootstrap)
+        self.assertNotIn("too old", bootstrap)
+        config = routine("configure_clang_target")
+        self.assertIn('!clang_target:msvc=!', config)
+        self.assertIn('clang-cl.exe', config)
+        self.assertIn('set clang_vflags=-cc "!clang_cl_exe!"', config)
+        for label in ("build_bootstrap_with_clang", "build_stage_with_clang"):
+            with self.subTest(label=label):
+                command = next(line.strip() for line in routine(label).splitlines()
+                               if line.lstrip().startswith('"!clang_cl_exe!" '))
+                self.assertIn('/std:c11', command)
+                self.assertIn('/link /STACK:33554432', command)
+                self.assertNotIn('-municode', command)
+        self.assertIn('set updated_vflags=!clang_vflags!', routine('clang_strap'))
 
     def test_directly_linked_stage_does_not_require_gc(self):
         generate = next(
             line for line in routine("generate_stage_c").splitlines()
-            if line.startswith('"%V_BOOTSTRAP%" ')
+            if line.lstrip().startswith('"%V_BOOTSTRAP%" ')
         )
         self.assertIn("-gc none", generate)
 
     def test_bootstrap_only_emits_c_and_never_spawns_a_stage_compiler(self):
         commands = [
             line for line in SOURCE.splitlines()
-            if line.startswith('"%V_BOOTSTRAP%" ')
+            if line.lstrip().startswith('"%V_BOOTSTRAP%" ')
         ]
         self.assertEqual(len(commands), 1)
         self.assertIn('-o "%V_STAGE_C%" cmd/v', commands[0])
@@ -148,14 +170,11 @@ class BootstrapConfigurationTests(unittest.TestCase):
                     "if !ERRORLEVEL! NEQ 0 exit /b !ERRORLEVEL!", body
                 )
                 prefix = "cl " if compiler == "msvc" else '"!' + compiler + '_exe!" '
-                link = next(line for line in body.splitlines() if line.startswith(prefix))
+                link = next(line for line in body.splitlines() if line.lstrip().startswith(prefix))
                 self.assertIn('"%V_STAGE_C%"', link)
                 self.assertIn('"%V_STAGE%"', link)
                 self.assertNotIn("%VC_BOOTSTRAP_DEFINE%", link)
-                self.assertIn(
-                    link + '\nset stage_error=!ERRORLEVEL!\n'
-                    'call :try_delete "%V_STAGE_C%"', body
-                )
+                self.assertIn('set stage_error=!ERRORLEVEL!\ncall :try_delete "%V_STAGE_C%"', body)
                 self.assertIn("exit /b !stage_error!", body)
 
     def test_all_routes_use_the_fresh_stage_to_build_the_installed_compiler(self):
@@ -203,6 +222,77 @@ class BootstrapConfigurationTests(unittest.TestCase):
 
 @unittest.skipUnless(os.name == "nt", "requires the Windows cmd.exe interpreter")
 class BatchExecutionTests(unittest.TestCase):
+    def test_clang_queries_a_compiler_path_with_spaces(self):
+        with tempfile.TemporaryDirectory(prefix="makev clang discovery ") as directory:
+            workdir = Path(directory)
+            clang = workdir / "LLVM with spaces" / "clang.cmd"
+            clang.parent.mkdir()
+            clang.write_text('@echo off\necho x86_64-w64-windows-gnu\n', encoding="utf-8")
+            lines = routine("build_bootstrap_with_clang").splitlines()
+            for index, line in enumerate(lines):
+                if line.lstrip().startswith(('"!clang_exe!" ', '"!clang_cl_exe!" ')):
+                    lines[index] = "call :stub_compile"
+            script = "\n".join([
+                "@echo off", "setlocal EnableExtensions EnableDelayedExpansion",
+                'set "test_clang=' + str(clang) + '"',
+                "call :build_bootstrap_with_clang",
+                "set test_status=!ERRORLEVEL!",
+                "echo target=!clang_target!", "echo mode=!clang_msvc!",
+                "exit /b !test_status!", "\n".join(lines), routine("configure_clang_target"),
+                ":resolve_executable", 'set "resolved_exe=!test_clang!"', "exit /b 0",
+                ":stub_compile", "exit /b 0",
+            ])
+            harness = workdir / "discovery harness.bat"
+            harness.write_bytes(script.replace("\n", "\r\n").encode("utf-8"))
+            result = subprocess.run(
+                [os.environ.get("ComSpec", "cmd.exe"), "/d", "/c", str(harness)],
+                cwd=workdir, capture_output=True, text=True, errors="replace",
+                timeout=15, check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("target=x86_64-w64-windows-gnu", result.stdout)
+            self.assertIn("mode=0", result.stdout)
+
+    def test_clang_target_configuration_preserves_the_installed_runtime(self):
+        with tempfile.TemporaryDirectory(prefix="makev clang target ") as directory:
+            workdir = Path(directory)
+            clang = workdir / "clang.exe"
+            clang_cl = workdir / "clang-cl.exe"
+            for target, has_clang_cl, expected_status, expected_mode in (
+                ("x86_64-w64-windows-gnu", False, 0, "0"),
+                ("i686-w64-mingw32", False, 0, "0"),
+                ("x86_64-pc-windows-msvc", True, 0, "1"),
+                ("x86_64-pc-windows-msvc", False, 1, None),
+            ):
+                with self.subTest(target=target, clang_cl=has_clang_cl):
+                    if has_clang_cl:
+                        clang_cl.touch()
+                    else:
+                        clang_cl.unlink(missing_ok=True)
+                    script = "\n".join([
+                        "@echo off", "setlocal EnableExtensions EnableDelayedExpansion",
+                        'set "clang_exe=' + str(clang) + '"',
+                        'set "clang_target=' + target + '"',
+                        "call :configure_clang_target",
+                        "set target_status=!ERRORLEVEL!",
+                        "echo mode=!clang_msvc!",
+                        "echo flags=!clang_vflags!",
+                        "exit /b !target_status!",
+                        routine("configure_clang_target"),
+                    ])
+                    harness = workdir / "target harness.bat"
+                    harness.write_bytes(script.replace("\n", "\r\n").encode("utf-8"))
+                    result = subprocess.run(
+                        [os.environ.get("ComSpec", "cmd.exe"), "/d", "/c", str(harness)],
+                        cwd=workdir, capture_output=True, text=True, errors="replace",
+                        timeout=15, check=False,
+                    )
+                    self.assertEqual(result.returncode, expected_status, result.stdout + result.stderr)
+                    if expected_mode is not None:
+                        self.assertIn("mode=" + expected_mode, result.stdout)
+                        self.assertIn(str(clang_cl if expected_mode == "1" else clang), result.stdout)
+                        self.assertNotIn("--target", result.stdout)
+
     def test_tcc_links_use_the_installed_bundle_openlibm(self):
         # Updating an existing checkout does not switch its branch, and --local
         # skips the update. The host, -tcc32 and TCC_BRANCH must not matter:
@@ -412,6 +502,9 @@ int main(void) {
             elif command.startswith('"%V_STAGE%" '):
                 lines[index] = "call :stub_final"
                 replacements["final"] += 1
+            elif command.startswith('"!clang_cl_exe!" '):
+                lines[index] = "call :stub_link clang"
+                replacements["link"] += 1
             elif command.startswith("ping 192.0.2.1 "):
                 lines[index] = "rem No cleanup delay in tests"
             else:
@@ -420,7 +513,7 @@ int main(void) {
                     if command.startswith(prefix):
                         lines[index] = "call :stub_link " + compiler
                         replacements["link"] += 1
-        self.assertEqual(replacements, {"generate": 1, "link": 4, "final": 1})
+        self.assertEqual(replacements, {"generate": 1, "link": 5, "final": 1})
         body = "\n".join(lines)
         calls = workdir / "bootstrap calls.txt"
         stubs = []
@@ -494,6 +587,8 @@ int main(void) {
             'set "clang_exe=' + str(workdir / "clang.exe") + '"',
             'set "gcc_exe=' + str(workdir / "gcc.exe") + '"',
             'set "clang_target=x86_64-w64-mingw32"',
+            'set clang_msvc=0',
+            'set clang_vflags=-cc "!clang_exe!"',
             "call :msvc_strap",
             "exit /b !ERRORLEVEL!",
             body,
@@ -613,6 +708,7 @@ int main(void) {
         body = body.replace('"%V_BOOTSTRAP%" ', "call :stub_generate ")
         prefix = "cl " if compiler == "msvc" else '"!' + compiler + '_exe!" '
         body = body.replace(prefix, "call :stub_link ")
+        body = body.replace('"!clang_cl_exe!" ', "call :stub_link ")
         body = body.replace('"%V_STAGE%" ', "call :stub_final ")
         if compiler == "tcc":
             body += "\n" + routine("select_tcc_openlibm")
@@ -636,6 +732,8 @@ int main(void) {
             'set "gcc_exe=C:\\fake tools\\gcc.exe"',
             'set "clang_exe=C:\\fake tools\\clang.exe"',
             "set clang_target=x86_64-w64-mingw32",
+            "set clang_msvc=0",
+            'set clang_vflags=-cc "!clang_exe!"',
             "call :" + label,
             "exit /b !ERRORLEVEL!",
             body,
@@ -1075,7 +1173,7 @@ int main(void) {
                 self.assertEqual((workdir / "v.exe").read_text(), "working compiler")
                 self.assertFalse((workdir / "v_old.exe").exists())
 
-    def run_install(self, workdir, path):
+    def run_install(self, workdir, path, clang_target="x86_64-w64-mingw32"):
         # Runs one install route from the build of "%V_UPDATED%" through
         # :move_updated_to_v, with every compiler stubbed. The stub for the new
         # compiler builds hello world only with the toolchain that built it, like
@@ -1124,7 +1222,17 @@ int main(void) {
         self.assertEqual(replaced, {"build": 1, "updated": 2, "run": 1})
         stubs = []
         for label, status in stubbed.items():
-            stubs.extend([":" + label, '>>"%test_calls%" echo ' + label, "exit /b " + str(status)])
+            stubs.extend([":" + label, '>>"%test_calls%" echo ' + label])
+            if label == "build_bootstrap_with_clang":
+                # Keep target discovery's configuration side effects while
+                # stubbing the C compilation and executable lookup.
+                stubs.extend(["call :configure_clang_target", "exit /b !ERRORLEVEL!"])
+            else:
+                stubs.append("exit /b " + str(status))
+        if path == "clang":
+            stubs.append(routine("configure_clang_target"))
+            if "msvc" in clang_target:
+                (workdir / "clang-cl.exe").touch()
         for stub in ("build", "updated"):
             stubs.extend([
                 ":stub_" + stub,
@@ -1167,7 +1275,7 @@ int main(void) {
             'set "tcc_exe=' + str(workdir / "tcc.exe") + '"',
             'set "clang_exe=' + str(workdir / "clang.exe") + '"',
             'set "gcc_exe=' + str(workdir / "gcc.exe") + '"',
-            'set "clang_target=x86_64-w64-mingw32"',
+            'set "clang_target=' + clang_target + '"',
             "call :" + entry,
             "exit /b !ERRORLEVEL!",
             "\n".join(lines),
@@ -1188,20 +1296,21 @@ int main(void) {
         return result, [line.strip() for line in recorded]
 
     def test_install_smoke_tests_with_the_toolchain_that_built_the_compiler(self):
-        for path, cc, cflags in (
+        for path, cc, clang_target in (
             ("tcc", "tcc.exe", ""),
             ("self_hosted", "tcc.exe", ""),
-            ("clang", "clang.exe", "--target=x86_64-w64-mingw32"),
+            ("clang", "clang.exe", "x86_64-w64-mingw32"),
+            ("clang", "clang-cl.exe", "x86_64-pc-windows-msvc"),
             ("gcc", "gcc.exe", ""),
             ("msvc", "msvc", ""),
         ):
-            with self.subTest(path=path), tempfile.TemporaryDirectory(
+            with self.subTest(path=path, target=clang_target), tempfile.TemporaryDirectory(
                 prefix="makev tests "
             ) as directory:
                 workdir = Path(directory)
-                result, calls = self.run_install(workdir, path)
+                result, calls = self.run_install(workdir, path, clang_target)
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-                toolchain = (cc if cc == "msvc" else str(workdir / cc)) + " " + cflags
+                toolchain = cc if cc == "msvc" else str(workdir / cc)
                 self.assertEqual(
                     [call for call in calls if not call.startswith("build_")],
                     ["build " + toolchain.strip(), "updated " + toolchain.strip(), "run", "success"],

@@ -8235,6 +8235,9 @@ fn effective_c_compiler_name(compiler string, target pref.Target) string {
 	if pref.tinycc_file_name(name) {
 		return 'tinyc'
 	}
+	if c_compiler_is_msvc(compiler) {
+		return 'msvc'
+	}
 	if name.contains('clang') {
 		return 'clang'
 	}
@@ -15076,7 +15079,7 @@ pub fn run(args []string) {
 				exit(1)
 			}
 		}
-		if effective_c_compiler == 'msvc' && !c_only && !output_cross_c {
+		if c_compiler_rejects_gnu_asm(c_compiler) && !c_only && !output_cross_c {
 			if msg := msvc_inline_asm_error(a, used_fns) {
 				eprintln(msg)
 				exit(1)
