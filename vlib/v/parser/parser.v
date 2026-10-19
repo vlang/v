@@ -13970,8 +13970,14 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 		}
 		mut arg_is_shared := false
 		mut arg_is_mut := false
-		if p.tok == .key_shared && !p.shared_token_is_identifier(true) {
+		shared_address_arg := p.tok == .key_shared && p.peek() == .amp
+			&& !p.is_local_binding('shared')
+		if p.tok == .key_shared
+			&& (shared_address_arg || !p.shared_token_is_identifier(true)) {
 			arg_is_shared = true
+			if shared_address_arg && !p.prefs.is_fmt {
+				p.record_diagnostic_span('shared address arguments are not supported; remove `&` from the shared parameter type and argument', p.tok_pos, p.peek_end)
+			}
 			p.next()
 		} else if p.tok == .key_mut {
 			arg_is_mut = true
