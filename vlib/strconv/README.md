@@ -297,3 +297,10 @@ boundaries, invalid UTF-8, multi-byte runes and the error cases.
 
 On the C backend, `fxx_to_str_l_parse` and `fxx_to_str_l_parse_with_dot` return `inf`, `+inf`,
 `-inf`, and `nan` unchanged when expanding a scientific-format string to decimal notation.
+
+## Boolean parsing
+
+`parse_bool` accepts `1`, `t`, `T`, `true`, `TRUE`, and `True` as true, and
+`0`, `f`, `F`, `false`, `FALSE`, and `False` as false. It returns an error for any other input,
+including whitespace or mixed casing. Unlike `string.bool()`, invalid text does not default
+to false.
