@@ -74,6 +74,8 @@ it reports the limit and exits with status 1, without running cleanup against ac
 
 Map `clear()` and `free()` release owned entries through their stored values, including
 when the map is accessed through a pointer or a generic pointer parameter.
+String map keys retain their cloned storage until the map releases it. Boxed values use the
+selected allocator during ownership cleanup, including VGC.
 
 ## Creating owned values
 
