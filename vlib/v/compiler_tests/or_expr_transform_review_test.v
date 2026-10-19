@@ -7,7 +7,7 @@ const or_review_vlib_dir = os.dir(or_review_v3_dir)
 const or_review_v3_src = os.join_path(or_review_v3_dir, 'v.v')
 
 fn or_review_v3_bin_path() string {
-	return os.join_path(os.temp_dir(), 'v3_or_expr_transform_review_test')
+	return os.join_path(os.temp_dir(), 'v3_or_expr_transform_review_test') + $if windows { '.exe' } $else { '' }
 }
 
 fn testsuite_begin() {

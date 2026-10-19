@@ -7,7 +7,7 @@ const directive_order_vlib_dir = os.dir(directive_order_v3_dir)
 const directive_order_v3_src = os.join_path(directive_order_v3_dir, 'v.v')
 
 fn directive_order_v3_bin_path() string {
-	return os.join_path(os.temp_dir(), 'v3_c_directive_order_test_${os.getpid()}')
+	return os.join_path(os.temp_dir(), 'v3_c_directive_order_test_${os.getpid()}') + $if windows { '.exe' } $else { '' }
 }
 
 fn testsuite_begin() {

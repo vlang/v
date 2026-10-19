@@ -7,7 +7,7 @@ const generic_sum_type_vlib_dir = os.dir(generic_sum_type_v3_dir)
 const generic_sum_type_v3_src = os.join_path(generic_sum_type_v3_dir, 'v.v')
 
 fn generic_sum_type_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_generic_sum_type_test_${os.getpid()}')
+	v3_bin := os.join_path(os.temp_dir(), 'v3_generic_sum_type_test_${os.getpid()}') + $if windows { '.exe' } $else { '' }
 	if os.exists(v3_bin) {
 		return v3_bin
 	}

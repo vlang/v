@@ -8,7 +8,7 @@ const mini_calc_v3_src = os.join_path(mini_calc_v3_dir, 'v.v')
 const mini_calc_repo_root = os.dir(mini_calc_vlib_dir)
 
 fn mini_calc_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_mini_calc_markused_test_${os.getpid()}')
+	v3_bin := os.join_path(os.temp_dir(), 'v3_mini_calc_markused_test_${os.getpid()}') + $if windows { '.exe' } $else { '' }
 	if os.exists(v3_bin) {
 		return v3_bin
 	}
