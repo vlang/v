@@ -675,3 +675,117 @@ fn test_a_build_checks_the_instances_in_a_compiler_process_where_it_cannot_fork(
 	assert valid.exit_code == 0, valid.output
 	assert error_lines(valid.output) == [], valid.output
 }
+
+// container_type_program uses arrays and maps of `T` where ones of other element
+// types are expected. Each generic function has an instance with the elements
+// it expects.
+const container_type_program = 'struct Foo {
+	a int
+}
+
+struct Bar {
+	b string
+}
+
+struct Wide {
+	vals []u64
+}
+
+fn as_u64[T](a []T) []u64 {
+	return a
+}
+
+fn as_bars[T](a []T) []Bar {
+	return a
+}
+
+fn take_u64(a []u64) int {
+	return a.len
+}
+
+fn pass[T](a []T) int {
+	return take_u64(a)
+}
+
+fn assign[T](a []T) []u64 {
+	mut b := []u64{}
+	b = a.clone()
+	return b
+}
+
+fn wrap[T](a []T) Wide {
+	return Wide{
+		vals: a
+	}
+}
+
+fn nest[T](a []T) [][]u64 {
+	mut out := [][]u64{}
+	out << a
+	return out
+}
+
+fn counts[T](m map[string]T) map[string]int {
+	return m
+}
+
+fn main() {
+	println(as_u64([u64(1)]))
+	println(as_bars([Bar{}]))
+	println(pass([u64(1)]))
+	println(assign([u64(1)]))
+	println(wrap([u64(1)]))
+	println(nest([u64(1)]))
+	println(counts({
+		"a": 1
+	}))
+'
+
+// An instance that uses an array or a map as one whose elements have another
+// type, which its elements cannot be used as at all (`[]string` as `[]u64`,
+// `[]Foo` as `[]Bar`), is reported where the body does so, once for that
+// instance, with the wording of the same error outside a generic function, which
+// is V 0.5.2's. A check and a build report the same; the build used to report
+// only a return, without its position.
+fn test_an_instance_that_uses_an_array_or_map_of_another_type_is_reported() {
+	source := container_type_program + "\tprintln(as_u64(['a']))\n\tprintln(as_bars([Foo{}]))\n\tprintln(pass(['x']))\n\tprintln(assign(['y']))\n\tprintln(wrap(['z']))\n\tprintln(nest(['w']))\n\tprintln(counts({\n\t\t'a': 'b'\n\t}))\n}\n"
+	for res in [check_program('container_type_check', source),
+		build_program('container_type_build', source), build_program_with_env('container_type_build_process', source, [
+			'V_CHECK_INSTANCES_IN_BUILD=process',
+		])] {
+		assert res.exit_code != 0, res.output
+		assert !res.output.contains('C compilation error'), res.output
+		assert error_lines(res.output) == [
+			'23:9: cannot use `[]string` as type `[]u64` in return argument',
+			'27:9: cannot use `[]Foo` as type `[]Bar` in return argument',
+			'35:18: cannot use `[]string` as `[]u64` in argument 1 to `take_u64`',
+			'40:6: cannot assign to `b`: expected `[]u64`, not `[]string`',
+			'46:3: cannot assign to field `vals`: expected `[]u64`, not `[]string`',
+			'52:9: cannot append `[]string` to `[][]u64`',
+			'57:9: cannot use `map[string]string` as type `map[string]int` in return argument',
+		], res.output
+	}
+}
+
+// The instances with the expected elements stay valid.
+fn test_instances_with_arrays_and_maps_of_the_expected_type_stay_valid() {
+	source := container_type_program + '}\n'
+	for res in [check_program('container_type_valid_check', source),
+		build_program('container_type_valid_build', source)] {
+		assert res.exit_code == 0, res.output
+		assert error_lines(res.output) == [], res.output
+	}
+}
+
+// The check of an instance does not see the locals declared in a `$for` body,
+// and a name there can then resolve to a constant of the main module, an
+// `[]string` here. Such a body gives no error about the elements of an array or
+// a map.
+fn test_a_local_of_a_comptime_for_body_is_not_taken_for_a_constant() {
+	check := check_with_modules('comptime_for_local', {
+		'main.v':            "import progmod\n\nconst routes = ['/', '/x']\n\nstruct Foo {\n\ta int\n}\n\nfn main() {\n\tprintln(routes)\n\tprintln(progmod.first_routes(Foo{}).routes)\n}\n"
+		'progmod/progmod.v': "module progmod\n\npub struct Holder {\npub:\n\troutes &map[string]int\n}\n\nfn make_routes() map[string]int {\n\treturn {\n\t\t'a': 1\n\t}\n}\n\npub fn first_routes[T](x T) Holder {\n\t\$for field in T.fields {\n\t\troutes := make_routes()\n\t\treturn Holder{\n\t\t\troutes: &routes\n\t\t}\n\t}\n\treturn Holder{\n\t\troutes: unsafe { nil }\n\t}\n}\n"
+	}, {})
+	assert check.res.exit_code == 0, check.res.output
+	assert error_lines(check.res.output) == [], check.res.output
+}

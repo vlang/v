@@ -981,7 +981,7 @@ fn invoke[T](sink T, values []string) {
 fn main() {
 	invoke(Sink{}, ["bad"])
 }
-', 'cannot use `[]string` as argument 1 to `sink.take`; expected `[]int`')
+', 'cannot use `...string` as `...int` in argument 1 to `Sink.take`')
 	variadic_out := run_good(v3_bin, 'good_generic_receiver_variadic_spread_type', 'struct Sink {}
 
 fn (s Sink) take(values ...int) {}
@@ -2222,8 +2222,10 @@ fn test_bool_condition_alias_rejects_pointer_pointee_writes() {
 // generated C instead of naming the offending return.
 fn test_generic_specialization_rejects_incompatible_array_element_return() {
 	v3_bin := build_v3()
-	run_bad(v3_bin, 'bad_generic_array_elem_return_mismatch', 'struct Foo {\n\tv int\n}\n\nstruct Bar {\n\tv int\n}\n\nfn take[T](items []T) []Bar {\n\treturn items\n}\n\nfn main() {\n\t_ := take([Foo{\n\t\tv: 1\n\t}])\n}\n', 'cannot return `[]Foo` as `[]Bar`')
-	run_bad(v3_bin, 'bad_generic_array_elem_return_unrelated_scalar', 'fn take[T](items []T) []string {\n\treturn items\n}\n\nfn main() {\n\t_ := take([1, 2])\n}\n', 'cannot return `[]int` as `[]string`')
+	run_bad(v3_bin, 'bad_generic_array_elem_return_mismatch', 'struct Foo {\n\tv int\n}\n\nstruct Bar {\n\tv int\n}\n\nfn take[T](items []T) []Bar {\n\treturn items\n}\n\nfn main() {\n\t_ := take([Foo{\n\t\tv: 1\n\t}])\n}\n',
+		generic_array_return_error('[]Foo', '[]Bar'))
+	run_bad(v3_bin, 'bad_generic_array_elem_return_unrelated_scalar', 'fn take[T](items []T) []string {\n\treturn items\n}\n\nfn main() {\n\t_ := take([1, 2])\n}\n',
+		generic_array_return_error('[]int', '[]string'))
 	// Elements that only differ in spelling (a registered alias next to its base
 	// type, one level down) are storage-identical, so the same slot must keep
 	// compiling.
@@ -2255,8 +2257,8 @@ fn test_generic_specialization_rejects_incompatible_array_element_return() {
 
 // generic_array_return_error is the error for an array of `actual` returned as
 // one of `expected` by a specialization, when their elements are stored
-// differently. The check of the program's instances reports it with the wording
-// of any other function.
+// differently or have another type. The check of the program's instances
+// reports it with the wording of any other function.
 fn generic_array_return_error(actual string, expected string) string {
 	return 'cannot use `${actual}` as type `${expected}` in return argument'
 }
