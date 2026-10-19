@@ -7699,8 +7699,18 @@ fn main() {
 	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_struct_update_pointer_origins_c', '-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
-	// Known failure: the map origin scan does not carry `box` through `...base`.
-	assert compact_main.count('array__free(&(__map_source_') == 1, 'only the overridden source may be freed; the inherited `...base` box points into the first one\n${main_body}'
+	// A dropped source is freed after its loop and again in the guarded cleanup of an
+	// early exit, so compare the sources by name: inherited first, overridden second.
+	mut sources := []string{}
+	for part in compact_main.split('Array__map_source_')[1..] {
+		number := part.all_before('=')
+		if part.starts_with('${number}=make_items()') {
+			sources << '__map_source_${number}'
+		}
+	}
+	assert sources.len == 2, main_body
+	assert !compact_main.contains('array__free(&(${sources[0]}))'), 'the inherited `...base` box points into the first source\n${main_body}'
+	assert compact_main.contains('array__free(&(${sources[1]}))'), 'only the overridden box leaves the second source unreferenced\n${main_body}'
 	out := run_good_with_flags(v3_bin, 'array_map_struct_update_pointer_origins', '-ownership', source)
 	assert out == '0\nsource\n0\nexternal'
 }
