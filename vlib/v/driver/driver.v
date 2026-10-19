@@ -734,7 +734,14 @@ fn valid_c_link_plan(plan_path string, mut stats CObjectCacheStats) ?CLinkPlan {
 	mut saw_requests := false
 	mut saw_direct_objects := false
 	mut saw_dependency_files := false
-	for line in lines[1..] {
+	// Dependencies whose metadata no longer identifies them, but whose contents
+	// still match: the plan with their current metadata, written back below.
+	mut refreshed_lines := []string{}
+	mut refreshed := false
+	for line_index, line in lines {
+		if line_index == 0 {
+			continue
+		}
 		if line.starts_with('requests=') {
 			plan.requests = line.all_after('requests=').int()
 			saw_requests = true
@@ -767,11 +774,26 @@ fn valid_c_link_plan(plan_path string, mut stats CObjectCacheStats) ?CLinkPlan {
 				if actual_signature.len == 0 || actual_signature != expected_signature {
 					return none
 				}
+				if actual_metadata.len > 0 {
+					// The metadata was read before the contents that matched. A plan
+					// whose metadata is stale, as after any rebuild of the compiler
+					// (the compiler's commit is part of the metadata), would make every
+					// later build read and hash every dependency again.
+					if !refreshed {
+						refreshed = true
+						refreshed_lines = lines[..line_index].clone()
+					}
+					refreshed_lines << 'dependency=${path}\t${actual_metadata}\t${expected_signature}'
+					continue
+				}
 			}
 		} else if line == 'complete=1' {
 			complete = true
 		} else {
 			return none
+		}
+		if refreshed {
+			refreshed_lines << line
 		}
 	}
 	if !complete || !saw_requests || !saw_direct_objects || !saw_dependency_files
@@ -783,6 +805,11 @@ fn valid_c_link_plan(plan_path string, mut stats CObjectCacheStats) ?CLinkPlan {
 		if !os.is_file(object_path) {
 			return none
 		}
+	}
+	if refreshed {
+		temp_path := '${plan_path}.tmp.${tempname.unique_token()}'
+		os.write_file(temp_path, refreshed_lines.join('\n') + '\n') or {}
+		os.mv(temp_path, plan_path) or { os.rm(temp_path) or {} }
 	}
 	return plan
 }
@@ -1814,10 +1841,40 @@ fn c_object_compiler_identity(compiler string, mut stats CObjectCacheStats) (str
 	if compiler_path in stats.compiler_versions {
 		return compiler_path, stats.compiler_versions[compiler_path]
 	}
-	compiler_result := cmdexec.run(compiler, ['--version'])
-	version := compiler_result.output
+	version := c_object_compiler_version(compiler, compiler_path)
 	stats.compiler_versions[compiler_path] = version
 	return compiler_path, version
+}
+
+// c_object_compiler_version returns the output of `compiler --version`. TinyCC
+// is a plain executable whose answer depends on that file only, so the answer is
+// kept beside the C object cache under the file's metadata: starting the
+// compiler for it was most of the C object cache stage of every build. Other
+// compilers can be shims that run a toolchain chosen elsewhere; they are asked
+// every time.
+fn c_object_compiler_version(compiler string, compiler_path string) string {
+	if !os.file_name(compiler_path).to_lower_ascii().contains('tcc') || !os.is_file(compiler_path) {
+		return cmdexec.run(compiler, ['--version']).output
+	}
+	metadata := modulecache.file_metadata_signature(compiler_path)
+	if metadata.len == 0 {
+		return cmdexec.run(compiler, ['--version']).output
+	}
+	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
+	path_hash := c_hash_bytes(u64(1469598103934665603), compiler_path.bytes()).hex()
+	memo_path := os.join_path(cache_dir, 'compiler_${path_hash}.version')
+	if content := os.read_file(memo_path) {
+		if content.starts_with(metadata + '\n') {
+			return content[metadata.len + 1..]
+		}
+	}
+	result := cmdexec.run(compiler, ['--version'])
+	if result.exit_code == 0 && os.is_dir(cache_dir) {
+		temp_path := '${memo_path}.tmp.${tempname.unique_token()}'
+		os.write_file(temp_path, metadata + '\n' + result.output) or { return result.output }
+		os.mv(temp_path, memo_path) or { os.rm(temp_path) or {} }
+	}
+	return result.output
 }
 
 fn c_object_file_signature(path string, refresh bool, mut stats CObjectCacheStats) string {
@@ -13430,6 +13487,7 @@ pub fn run(args []string) {
 		}
 	}
 	mut pre_tc := types.TypeChecker.new(a)
+	mut pre_tc_file_ownership := DiagnosticFileOwnership{}
 	mut checker_notice_count := 0
 	mut checker_warning_count := 0
 	mut cached_checker_diagnostics := []V3CachedTypeDiagnostic{}
@@ -13490,7 +13548,7 @@ pub fn run(args []string) {
 		if continue_collect {
 			pre_tc.diagnostic_files = map[string]bool{}
 		}
-		set_diagnostic_files(mut pre_tc, user_files)
+		set_diagnostic_files_judged(mut pre_tc, user_files, mut pre_tc_file_ownership)
 		// The C generator has a dedicated literal-output path. The SSA/native backend
 		// still builds ordinary builtin bodies, so it needs their full dependency set.
 		// MSVC's regular runtime demangles backtraces with string slices, which only
@@ -13967,6 +14025,7 @@ pub fn run(args []string) {
 				exit(1)
 			}
 		}
+		mut mu_stage_sw := time.new_stopwatch()
 		_ = flat.TypeTextList{ ids: pre_tc.ierror_impl_names() }.names()
 		// Self-host markused is dominated by serial reachability/index work. Build
 		// transform's read-only indexes beside it so the otherwise-idle cores do
@@ -13997,6 +14056,10 @@ pub fn run(args []string) {
 			markused_tc.share_direct_dependencies_from(&pre_tc)
 			markused_tc.enable_scoped_parallel_workers()
 			markused_tc.verbose = prefs.verbose
+		}
+		if verbose {
+			eprintln('  [ttime] mu pre             ${f64(mu_stage_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+			mu_stage_sw.restart()
 		}
 		if no_skip_unused {
 			used_fns, uses_generics = markused.mark_all_used_with_generic_usage(a, markused_tc, test_files)
@@ -14096,10 +14159,17 @@ pub fn run(args []string) {
 		if skip_library_bodies && verbose {
 			eprintln('  [ttime] mu library bodies   ${pre_tc.skipped_library_bodies()} left unchecked, ${pre_tc.library_bodies_checked_late()} checked late (worker threads: ${a.worker_count()})')
 		}
+		if verbose {
+			eprintln('  [ttime] mu mark            ${f64(mu_stage_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+			mu_stage_sw.restart()
+		}
 		mut prepared_transform := if prepare_transform_overlap {
 			prepared_transform_threads[0].wait()
 		} else {
 			transform.prepare_selfhost_transform(a, &pre_tc, false)
+		}
+		if verbose {
+			eprintln('  [ttime] mu tf prepare wait ${f64(mu_stage_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		}
 		b.step('markused')
 		b.metric('reachable symbols', used_fns.len, 'symbols')
@@ -14599,7 +14669,7 @@ pub fn run(args []string) {
 		// declarations, and v1/v2 do not run a second semantic checker after lowering.
 		pre_tc.diagnose_unknown_calls = false
 		pre_tc.reject_unlowered_map_mutation = true
-		set_diagnostic_files(mut pre_tc, user_files)
+		set_diagnostic_files_judged(mut pre_tc, user_files, mut pre_tc_file_ownership)
 		set_unsupported_generic_files(mut pre_tc, a, is_selfhost, diagnostic_root)
 		incremental_needs_monomorphize := incremental_cache_hit && (incremental_uses_generics
 			|| transformed_used_fns_need_monomorphize(incremental_stage_used_fns))
@@ -19674,13 +19744,21 @@ fn collect_v3_directory_user_files_rec(mut a flat.FlatAst, module_root string, d
 }
 
 fn append_v3_directory_user_files(mut a flat.FlatAst, dir string, prefs &pref.Preferences, is_test_command bool, mut seen map[string]bool, mut files []string) {
+	// Every listed file resolves through `dir`: resolve the directory once.
+	mut real_dir := ''
 	for file in prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(dir, prefs.user_defines,
 		prefs.backend, prefs.target)) {
-		append_unique_file(mut a, mut files, mut seen, file)
+		if real_dir.len == 0 {
+			real_dir = os.real_path(dir)
+		}
+		append_unique_listed_file(mut a, mut files, mut seen, file, real_dir)
 	}
 	if is_test_command {
 		for file in prefs.without_excluded(pref.get_test_v_files_from_dir_for_target(dir, prefs.user_defines, prefs.backend, prefs.target)) {
-			append_unique_file(mut a, mut files, mut seen, file)
+			if real_dir.len == 0 {
+				real_dir = os.real_path(dir)
+			}
+			append_unique_listed_file(mut a, mut files, mut seen, file, real_dir)
 		}
 	}
 }
@@ -19899,6 +19977,17 @@ fn v3_rerun_with_builtin_arena(args []string, question string) {
 
 fn append_unique_file(mut a flat.FlatAst, mut files []string, mut seen map[string]bool, file string) {
 	key := a.record_source_path(file)
+	if seen[key] {
+		return
+	}
+	seen[key] = true
+	files << file
+}
+
+// append_unique_listed_file is append_unique_file for an entry of the directory
+// listing that `real_dir` is the os.real_path of.
+fn append_unique_listed_file(mut a flat.FlatAst, mut files []string, mut seen map[string]bool, file string, real_dir string) {
+	key := a.record_listed_source_path(file, real_dir)
 	if seen[key] {
 		return
 	}
@@ -21121,13 +21210,34 @@ fn check_markused(a &flat.FlatAst, mut tc types.TypeChecker, no_skip_unused bool
 	return used
 }
 
+// DiagnosticFileOwnership remembers the files that set_diagnostic_files found
+// outside of the project, together with what it judged them by, so that a later
+// call for the same checker does not judge them again.
+struct DiagnosticFileOwnership {
+mut:
+	key       string
+	not_owned map[string]bool
+}
+
 fn set_diagnostic_files(mut tc types.TypeChecker, user_files []string) {
+	mut ownership := DiagnosticFileOwnership{}
+	set_diagnostic_files_judged(mut tc, user_files, mut ownership)
+}
+
+// set_diagnostic_files_judged is set_diagnostic_files that keeps, in `ownership`,
+// the files it found outside of the project for its next call.
+fn set_diagnostic_files_judged(mut tc types.TypeChecker, user_files []string, mut ownership DiagnosticFileOwnership) {
 	for uf in user_files {
 		tc.diagnostic_files[uf] = true
 	}
 	// Exact-output fixtures deliberately diagnose only their selected input.
 	if tc.checker_fixture_mode {
 		return
+	}
+	ownership_key := '${os.getwd()}\x00${tc.shadow_diagnostic_root}\x00${tc.shadow_explicit_roots.join('\x01')}\x00${tc.shadow_dependency_roots.join('\x01')}'
+	if ownership.key != ownership_key {
+		ownership.key = ownership_key
+		ownership.not_owned = map[string]bool{}
 	}
 	// Imported project modules need the same checks as the entry files.
 	// Resolve ownership once here, rather than for every checked expression.
@@ -21157,9 +21267,16 @@ fn set_diagnostic_files(mut tc types.TypeChecker, user_files []string) {
 		} else {
 			node.value
 		}
+		// Each file has two `.file` nodes, and a later call sees the same files
+		// again: judge every owner only once.
+		if ownership.not_owned[owner] {
+			continue
+		}
 		if resolver.owns_file(owner, tc.shadow_diagnostic_root, tc.shadow_explicit_roots,
 			tc.shadow_dependency_roots) {
 			tc.diagnostic_files[node.value] = true
+		} else {
+			ownership.not_owned[owner] = true
 		}
 	}
 }
@@ -21718,6 +21835,14 @@ fn cache_bundle_import_file(builtin_dir string) string {
 }
 
 fn scan_implicit_imports(a &flat.FlatAst, end_node int, mut scan ImplicitImportScan) {
+	// Once every requirement that a node can raise is raised, and the parser made
+	// no `$dbg` statement, only the import declarations of the range still change
+	// the scan: find them from the file index instead of reading every node.
+	if scan.needs_sync && scan.needs_embed && scan.needs_closure
+		&& (scan.needs_debugger || a.debugger_stmts == 0)
+		&& scan_implicit_import_decls(a, end_node, mut scan) {
+		return
+	}
 	mut call_callees := map[int]bool{}
 	if !scan.needs_closure {
 		for i in scan.node_idx .. end_node {
@@ -21807,6 +21932,75 @@ fn scan_implicit_imports(a &flat.FlatAst, end_node int, mut scan ImplicitImportS
 		}
 	}
 	scan.node_idx = end_node
+}
+
+// scan_implicit_import_decls records the implicit-import declarations of the
+// nodes [scan.node_idx, end_node) for scan_implicit_imports. It visits the import
+// declarations the way the import resolver finds them (collect_import_scan_ids):
+// the top-level declarations of every file in the range and the nodes between
+// files. It returns false, scanning nothing, when the file index cannot answer.
+@[direct_array_access]
+fn scan_implicit_import_decls(a &flat.FlatAst, end_node int, mut scan ImplicitImportScan) bool {
+	start := scan.node_idx
+	if !file_index_usable_for_imports(a) || start < 0 || end_node > a.nodes.len {
+		return false
+	}
+	ids := a.file_node_ids
+	// The first file of the range: file markers grow with their node ids.
+	mut lo := 0
+	mut hi := ids.len / 2
+	for lo < hi {
+		mid := (lo + hi) / 2
+		if ids[mid * 2] < start {
+			lo = mid + 1
+		} else {
+			hi = mid
+		}
+	}
+	mut decls := []i32{cap: 64}
+	mut last := start - 1
+	for cursor := lo * 2; cursor + 1 < ids.len; cursor += 2 {
+		marker := int(ids[cursor])
+		trailing := int(ids[cursor + 1])
+		if marker >= end_node {
+			break
+		}
+		if trailing >= end_node || trailing <= marker || marker <= last {
+			return false
+		}
+		for i in last + 1 .. marker {
+			if a.nodes[i].kind == .import_decl {
+				decls << i32(i)
+			}
+		}
+		file_node := a.nodes[trailing]
+		collect_import_scan_children(a, &file_node, mut decls)
+		last = trailing
+	}
+	for i in last + 1 .. end_node {
+		if a.nodes[i].kind == .import_decl {
+			decls << i32(i)
+		}
+	}
+	for id in decls {
+		node := a.nodes[id]
+		if node.kind != .import_decl {
+			continue
+		}
+		if node.value == 'sync' {
+			scan.has_sync = true
+		} else if node.value == 'v.embed_file' {
+			scan.has_embed_import = true
+		} else if node.value == 'builtin.closure' {
+			scan.has_closure = true
+		} else if node.value == 'v.debug' {
+			scan.has_debugger = true
+		} else if node.value == 'builtin.overflow' {
+			scan.has_overflow = true
+		}
+	}
+	scan.node_idx = end_node
+	return true
 }
 
 fn no_closures_error(a &flat.FlatAst, tc &types.TypeChecker) ?types.TypeError {

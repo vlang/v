@@ -5191,7 +5191,7 @@ fn struct_field_has_attr(field flat.Node, name string) bool {
 		return false
 	}
 	for attr in meta[1..] {
-		if attr.all_before(':').trim_space() == name {
+		if attribute_name_is(attr, name) {
 			return true
 		}
 	}
@@ -8874,9 +8874,8 @@ fn (mut tc TypeChecker) check_ident(id flat.NodeId, node flat.Node) {
 		tc.register_synth_type(id, builtin_void_type)
 		return
 	}
-	is_escaped_keyword := node.value.len > 1
-		&& token.Token.from_string_tinyv(node.value[1..]).is_keyword()
-	if node.value.starts_with('@') && !is_escaped_keyword {
+	if node.value[0] == `@` && !(node.value.len > 1
+		&& token.Token.from_string_tinyv(node.value[1..]).is_keyword()) {
 		pos := token.new_pos(node.pos.id, int_max(node.pos.offset, node.pos.end - 1))
 		tc.record_error_with_details_at(.unknown_ident, '@ must be used before keywords or compile time variables (e.g. `@type string` or `@FN`)', id, pos, [
 			'available compile time variables: @VROOT, @VMODROOT, @VEXEROOT, @FN, @METHOD, @MOD,\n@STRUCT, @VEXE, @FILE, @DIR, @LINE, @COLUMN, @VHASH, @VCURRENTHASH, @VMOD_FILE, @VMODHASH,\n@FILE_LINE, @LOCATION, @BUILD_DATE, @BUILD_TIME, @BUILD_TIMESTAMP, @OS, @CCOMPILER,\n@BACKEND, @PLATFORM',
@@ -9194,7 +9193,8 @@ fn (tc &TypeChecker) non_file_scope_type(name string) ?Type {
 }
 
 fn (tc &TypeChecker) bare_name_is_const_owned_over_global(name string) bool {
-	if name.contains('.') || name !in tc.global_names {
+	if tc.global_name_bloom.excludes(name, u64(tc.global_names.len)) || name.contains('.')
+		|| name !in tc.global_names {
 		return false
 	}
 	qname := tc.qualify_name(name)
@@ -15946,6 +15946,60 @@ fn (tc &TypeChecker) expr_key(id flat.NodeId) string {
 	return ''
 }
 
+// expr_key_matches reports whether `tc.expr_key(id) == key`. It compares ident
+// and selector keys in place instead of building them.
+fn (tc &TypeChecker) expr_key_matches(id flat.NodeId, key string) bool {
+	if key.len == 0 {
+		return tc.expr_key(id).len == 0
+	}
+	return tc.expr_key_matches_prefix(id, key, key.len)
+}
+
+// expr_key_matches_prefix reports whether `tc.expr_key(id)` equals `key[..end]`,
+// for `0 < end <= key.len`.
+@[direct_array_access]
+fn (tc &TypeChecker) expr_key_matches_prefix(id flat.NodeId, key string, end int) bool {
+	if int(id) < 0 {
+		return false
+	}
+	node := tc.a.node(id)
+	if node.kind in [.as_expr, .paren] && node.children_count > 0 {
+		return tc.expr_key_matches_prefix(tc.a.child(node, 0), key, end)
+	}
+	if node.kind == .ident {
+		return valid_string_data(node.value) && node.value.len == end
+			&& string_bytes_equal_at(key, 0, node.value)
+	}
+	if node.kind == .selector && node.children_count > 0 {
+		field := node.value
+		base_end := end - field.len - 1
+		if field.len == 0 || base_end <= 0 || !valid_string_data(field) || key[base_end] != `.`
+			|| !string_bytes_equal_at(key, base_end + 1, field) {
+			return false
+		}
+		return tc.expr_key_matches_prefix(tc.a.child(node, 0), key, base_end)
+	}
+	if node.kind == .index && node.children_count >= 2 {
+		full := tc.expr_key(id)
+		return full.len == end && string_bytes_equal_at(key, 0, full)
+	}
+	return false
+}
+
+// string_bytes_equal_at reports whether `s` holds `part` at byte offset `at`.
+@[direct_array_access; inline]
+fn string_bytes_equal_at(s string, at int, part string) bool {
+	if at < 0 || at + part.len > s.len {
+		return false
+	}
+	for i in 0 .. part.len {
+		if s[at + i] != part[i] {
+			return false
+		}
+	}
+	return true
+}
+
 fn (tc &TypeChecker) expr_key_part(id flat.NodeId) string {
 	if int(id) < 0 {
 		return ''
@@ -15975,17 +16029,23 @@ fn (tc &TypeChecker) smartcast_type(id flat.NodeId) ?Type {
 	// Most checker contexts have no active dynamic smartcast. Consult the
 	// node-indexed lexical cache first so repeated type queries do not rebuild an
 	// expression key merely to rediscover the same lexical hit or miss.
-	if tc.smartcasts.len == 0 && idx >= 0 && idx < tc.lexical_smartcast_misses.len
+	if tc.smartcasts.len == 0 && idx < tc.lexical_smartcast_misses.len
 		&& tc.lexical_smartcast_misses[idx] {
 		return none
 	}
-	if tc.smartcasts.len == 0 && idx >= 0 && idx < tc.direct_parent_ids.len && !isnil(cache) {
-		if typ := cache.lexical_smartcast_entries[idx] {
-			return typ
-		}
-		if cache.lexical_smartcast_misses[idx] {
+	// Lexical smartcasts belong to parsed source nodes. Transform-created nodes
+	// are appended after the parent index was built and carry explicit/synthetic
+	// types; walking the full arena to rediscover a parent for each such lookup
+	// makes self-host transformation quadratic.
+	parsed := idx < tc.direct_parent_ids.len
+	// Neither the expression key nor the dynamic smartcast lookup below changes
+	// the cache, so one read of the cached state serves both of its checks.
+	state := if parsed && !isnil(cache) { cache.lexical_smartcast_state(idx) } else { u32(0) }
+	if tc.smartcasts.len == 0 && state != 0 {
+		if state == 1 {
 			return none
 		}
+		return cache.lexical_smartcast_types[int(state) - 2]
 	}
 	key := tc.expr_key(id)
 	if key.len == 0 {
@@ -15997,37 +16057,36 @@ fn (tc &TypeChecker) smartcast_type(id flat.NodeId) ?Type {
 	if typ := tc.smartcasts[key] {
 		return typ
 	}
-	// Lexical smartcasts belong to parsed source nodes. Transform-created nodes
-	// are appended after the parent index was built and carry explicit/synthetic
-	// types; walking the full arena to rediscover a parent for each such lookup
-	// makes self-host transformation quadratic.
-	if idx < 0 || idx >= tc.direct_parent_ids.len {
+	if !parsed {
 		return none
 	}
 	if idx < tc.lexical_smartcast_misses.len && tc.lexical_smartcast_misses[idx] {
 		return none
 	}
-	if !isnil(cache) {
-		if typ := cache.lexical_smartcast_entries[idx] {
-			return typ
-		}
-		if cache.lexical_smartcast_misses[idx] {
-			return none
-		}
+	if state == 1 {
+		return none
 	}
-	result := tc.lexical_smartcast_type(id, key) or {
+	if state != 0 {
+		return cache.lexical_smartcast_types[int(state) - 2]
+	}
+	mut found := ?Type(none)
+	if !tc.lexical_smartcast_key_unused(idx, key) {
+		found = tc.lexical_smartcast_type(id, key)
+	}
+	result := found or {
 		if isnil(tc.storage_query_probe) && !tc.resolution_type_mode && idx < tc.lexical_smartcast_misses.len
 			&& (!tc.parallel_check_sparse || (idx >= tc.check_range_lo && idx <= tc.check_range_hi)) {
 			mut writable := unsafe { tc }
 			writable.lexical_smartcast_misses[idx] = true
 		}
 		if !isnil(cache) {
-			cache.lexical_smartcast_misses[idx] = true
+			cache.set_lexical_smartcast_state(idx, 1)
 		}
 		return none
 	}
 	if !isnil(cache) {
-		cache.lexical_smartcast_entries[idx] = result
+		cache.lexical_smartcast_types << result
+		cache.set_lexical_smartcast_state(idx, u32(cache.lexical_smartcast_types.len + 1))
 	}
 	return result
 }
@@ -16052,7 +16111,7 @@ fn (tc &TypeChecker) condition_may_smartcast_key(id flat.NodeId, key string) boo
 				&& tc.condition_may_smartcast_key(tc.a.child(node, 0), key)
 		}
 		.is_expr {
-			return node.children_count > 0 && tc.expr_key(tc.a.child(node, 0)) == key
+			return node.children_count > 0 && tc.expr_key_matches(tc.a.child(node, 0), key)
 		}
 		.infix {
 			if node.children_count < 2 {
@@ -16065,10 +16124,10 @@ fn (tc &TypeChecker) condition_may_smartcast_key(id flat.NodeId, key string) boo
 			}
 			if node.op in [.eq, .ne] {
 				if tc.a.node(rhs).kind in [.none_expr, .nil_literal] {
-					return tc.expr_key(lhs) == key
+					return tc.expr_key_matches(lhs, key)
 				}
 				if tc.a.node(lhs).kind in [.none_expr, .nil_literal] {
-					return tc.expr_key(rhs) == key
+					return tc.expr_key_matches(rhs, key)
 				}
 			}
 		}
@@ -16382,7 +16441,7 @@ fn (tc &TypeChecker) lexical_match_branch_smartcast_type(parent &flat.Node, bran
 		return none
 	}
 	subject_id := tc.a.child(parent, 0)
-	if tc.expr_key(subject_id) != key {
+	if !tc.expr_key_matches(subject_id, key) {
 		return none
 	}
 	subject_type := unalias_and_unwrap_pointer_type(tc.resolve_type(subject_id))
@@ -18994,9 +19053,8 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 					return unknown_type('generic placeholder `${node.value}`')
 				}
 			}
-			if smart_type := tc.smartcast_type(id) {
-				return smart_type
-			}
+			// The smartcast of this ident was looked up before the cached and
+			// declared types above, and none of those lookups narrow it.
 			if !tc.bare_name_is_const_owned_over_global(node.value) {
 				if typ := tc.non_file_scope_type(node.value) {
 					return typ
@@ -21563,7 +21621,7 @@ fn receiver_type_module_names(t Type) []string {
 
 fn push_receiver_method_candidate(mut names []string, name string) {
 	if name != '' && name !in names {
-		names << name
+		names << keep_string(name)
 	}
 }
 
@@ -21706,15 +21764,23 @@ fn append_map_receiver_method_candidates(mut names []string, t Map, method strin
 }
 
 fn receiver_method_name_candidates(t Type, method string, module_name string) []string {
-	mut names := []string{}
-	type_name := resolve_type_name_for_method(t)
-	if type_name != 0 {
-		push_receiver_method_candidate(mut names, '${flat.source_type_name(type_name)}.${method}')
-		push_receiver_method_candidate(mut names, '${flat.source_type_name(type_name)}.@${method}')
-	}
 	mut clean := t
 	if clean is Alias {
 		clean = clean.base_type
+	}
+	type_name := resolve_type_name_for_method(t)
+	if clean !is Array && clean !is Map {
+		// The common receiver: its own method, plain or with an escaped name.
+		if type_name == 0 {
+			return []string{}
+		}
+		type_text := flat.source_type_name(type_name)
+		return ['${type_text}.${method}', '${type_text}.@${method}']
+	}
+	mut names := []string{}
+	if type_name != 0 {
+		push_receiver_method_candidate(mut names, '${flat.source_type_name(type_name)}.${method}')
+		push_receiver_method_candidate(mut names, '${flat.source_type_name(type_name)}.@${method}')
 	}
 	if clean is Array {
 		append_array_receiver_method_candidates(mut names, clean, method, module_name)

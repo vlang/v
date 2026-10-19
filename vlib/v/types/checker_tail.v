@@ -4819,7 +4819,8 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 					}
 				}
 			}
-			if !(receiver.kind == .ident && receiver.value == 'C') {
+			// Without bodyless declarations there is no such method to find.
+			if tc.source_no_body_fns.len > 0 && !(receiver.kind == .ident && receiver.value == 'C') {
 				receiver_name := resolve_type_name_for_method(unwrap_pointer(tc.resolve_type(receiver_id)))
 				method_name := '${flat.source_type_name(receiver_name)}.${callee.value}'
 				if method_name in tc.source_no_body_fns && !tc.v_source_fn_has_body(method_name) {
@@ -5697,6 +5698,9 @@ fn (mut tc TypeChecker) check_call_privacy(id flat.NodeId, node flat.Node, info 
 		return false
 	}
 	mut declaration_name := info.name
+	// private_declaration(info.name), when the receiver checks below already asked.
+	mut selected_visibility := ?DeclarationVisibility(none)
+	mut selected_visibility_known := false
 	if info.has_receiver {
 		callee := tc.a.child_node(&node, 0)
 		if callee.kind == .selector && callee.children_count > 0 {
@@ -5723,10 +5727,9 @@ fn (mut tc TypeChecker) check_call_privacy(id flat.NodeId, node flat.Node, info 
 			}
 			receiver_name := flat.source_type_name(method_type_name(direct_type))
 			mut has_direct_method := '${receiver_name}.${callee.value}' in tc.fn_ret_types
-			mut selected_is_private := false
-			if _ := tc.private_declaration(info.name) {
-				selected_is_private = true
-			}
+			selected_visibility = tc.private_declaration(info.name)
+			selected_visibility_known = true
+			selected_is_private := selected_visibility != none
 			if !has_direct_method && !selected_is_private {
 				if direct_info := tc.resolve_generic_struct_method(flat.source_type_id(receiver_name), callee.value) {
 					has_direct_method = direct_info.name == info.name
@@ -5740,7 +5743,12 @@ fn (mut tc TypeChecker) check_call_privacy(id flat.NodeId, node flat.Node, info 
 			}
 		}
 	}
-	if _ := tc.private_declaration(declaration_name) {
+	declaration_visibility := if selected_visibility_known && declaration_name == info.name {
+		selected_visibility
+	} else {
+		tc.private_declaration(declaration_name)
+	}
+	if _ := declaration_visibility {
 		callee := tc.a.child_node(&node, 0)
 		if info.has_receiver && callee.kind == .selector && callee.children_count > 0 {
 			receiver_id := tc.a.child(callee, 0)
@@ -6128,6 +6136,12 @@ fn (mut tc TypeChecker) record_empty_array_generic_call_errors(node flat.Node, i
 	return found
 }
 
+fn (mut tc TypeChecker) remember_nongeneric_call(call flat.Node, info CallInfo) {
+	tc.nongeneric_call_start = call.children_start
+	tc.nongeneric_call_name = info.name
+	tc.nongeneric_call_module = tc.cur_module
+}
+
 struct GenericCompileErrorInstantiation {
 	decl_id        flat.NodeId
 	generic_params []string
@@ -6207,8 +6221,20 @@ fn (mut tc TypeChecker) generic_compile_error_instantiation(call flat.Node, info
 	if call.children_count == 0 {
 		return none
 	}
+	// check_call asks three times for each call; a callee that is no generic
+	// function stays one for the same call, name and module.
+	if tc.nongeneric_call_start == call.children_start
+		&& tc.nongeneric_call_name.str == info.name.str
+		&& tc.nongeneric_call_name.len == info.name.len
+		&& tc.nongeneric_call_module.str == tc.cur_module.str
+		&& tc.nongeneric_call_module.len == tc.cur_module.len {
+		return none
+	}
 	decl_module := tc.fn_type_modules[info.name] or { tc.cur_module }
-	decl := tc.visible_mutation_fn_decl(info.name, decl_module) or { return none }
+	decl := tc.visible_mutation_fn_decl(info.name, decl_module) or {
+		tc.remember_nongeneric_call(call, info)
+		return none
+	}
 	decl_id := flat.NodeId(decl.idx)
 	fn_node := tc.a.node(decl_id)
 	generic_params := tc.fn_generic_params[info.name] or {
@@ -6217,6 +6243,7 @@ fn (mut tc TypeChecker) generic_compile_error_instantiation(call flat.Node, info
 		}
 	}
 	if generic_params.len == 0 {
+		tc.remember_nongeneric_call(call, info)
 		return none
 	}
 	saved_generic_decl_file := tc.generic_decl_file
@@ -7531,15 +7558,24 @@ fn (tc &TypeChecker) sum_constructor_call_name(node flat.Node) ?u32 {
 	match callee.kind {
 		.ident {
 			if resolved := tc.resolve_selective_import_type_symbol(callee.value) {
-				if sum_name_source_id := tc.known_sum_constructor_name(flat.source_type_id(resolved)) {
-					return sum_name_source_id
+				if !tc.name_names_no_sum_type(resolved) {
+					if sum_name_source_id := tc.known_sum_constructor_name(flat.source_type_id(resolved)) {
+						return sum_name_source_id
+					}
 				}
+			}
+			if tc.name_names_no_sum_type(callee.value) {
+				return none
 			}
 			return tc.known_sum_constructor_name(flat.source_type_id(callee.value))
 		}
 		.selector {
 			base := tc.a.child_node(callee, 0)
 			if base.kind == .ident {
+				// `mod.Name` has the last segment of `Name`.
+				if tc.name_names_no_sum_type(callee.value) {
+					return none
+				}
 				mod_name := tc.resolve_import_alias(base.value) or { base.value }
 				return tc.known_sum_constructor_name(flat.source_type_id('${mod_name}.${callee.value}'))
 			}
@@ -10551,36 +10587,54 @@ fn (tc &TypeChecker) current_receiver_param_method_call_info(base_id flat.NodeId
 	if receiver_name.len == 0 {
 		return none
 	}
+	if !tc.receiver_param_has_receiver_type(fn_node, base.value, receiver_name) {
+		return none
+	}
+	method_name := '${receiver_name}.${method}'
+	qualified_method_name := checker_qualified_fn_name(tc.cur_module, method_name)
+	if qualified_method_name != method_name && qualified_method_name in tc.fn_ret_types {
+		return tc.call_info(qualified_method_name, true)
+	}
+	if method_name in tc.fn_ret_types {
+		return tc.call_info(method_name, true)
+	}
+	return none
+}
+
+// receiver_param_has_receiver_type reports whether the parameter `param_name`
+// of the current method `fn_node` (its receiver) has the type of the receiver
+// `receiver_name` that the method name declares. It is the same for every call
+// in one body, so the semantic check remembers the answer per function.
+fn (tc &TypeChecker) receiver_param_has_receiver_type(fn_node flat.Node, param_name string, receiver_name string) bool {
+	fn_id := tc.fn_context.node_id
+	memo_usable := !tc.trust_checked_expr_types
+	if memo_usable && tc.receiver_memo_fn == fn_id
+		&& tc.receiver_memo_file.str == tc.cur_file.str
+		&& tc.receiver_memo_file.len == tc.cur_file.len
+		&& tc.receiver_memo_module.str == tc.cur_module.str
+		&& tc.receiver_memo_module.len == tc.cur_module.len {
+		return tc.receiver_memo_ok
+	}
 	mut param_type := builtin_void_type
 	mut found_param := false
 	for i in 0 .. fn_node.children_count {
 		param := tc.a.child_node(&fn_node, i)
-		if param.kind == .param && param.value == base.value {
+		if param.kind == .param && param.value == param_name {
 			param_type = tc.parse_type(param.typ)
 			found_param = true
 			break
 		}
 	}
-	if !found_param {
-		return none
+	ok := found_param
+		&& tc.receiver_compatible(param_type, tc.parse_type(flat.source_type_id(receiver_name)))
+	if memo_usable {
+		mut w := unsafe { tc }
+		w.receiver_memo_fn = fn_id
+		w.receiver_memo_file = tc.cur_file
+		w.receiver_memo_module = tc.cur_module
+		w.receiver_memo_ok = ok
 	}
-	receiver_type := tc.parse_type(flat.source_type_id(receiver_name))
-	if !tc.receiver_compatible(param_type, receiver_type) {
-		return none
-	}
-	method_name := '${receiver_name}.${method}'
-	qualified_method_name := checker_qualified_fn_name(tc.cur_module, method_name)
-	mut candidates := []string{}
-	if qualified_method_name != method_name {
-		candidates << qualified_method_name
-	}
-	candidates << method_name
-	for candidate in candidates {
-		if candidate in tc.fn_ret_types {
-			return tc.call_info(candidate, true)
-		}
-	}
-	return none
+	return ok
 }
 
 fn (tc &TypeChecker) type_is_pointer_receiver(typ Type) bool {
@@ -11341,14 +11395,23 @@ fn (tc &TypeChecker) call_info(name string, has_receiver bool) CallInfo {
 	return_type := tc.alias_return_type_from_text(name) or {
 		tc.fn_ret_types[name] or { unknown_type('unknown return type for `${name}`') }
 	}
-	info := CallInfo{
-		name:                 name
-		shared_params:        tc.fn_shared_params[name] or { []bool{} }
-		return_type:          return_type
-		has_receiver:         has_receiver
-		is_variadic:          tc.fn_variadic[name] or { false }
-		is_c_variadic:        tc.c_variadic_fns[name] or { false }
-		has_implicit_veb_ctx: tc.fn_implicit_veb_ctx[name] or { false }
+	// Most functions are in none of the sparse flag tables.
+	info := if tc.call_flag_bloom.excludes(name, tc.call_flag_tables_count()) {
+		CallInfo{
+			name:         name
+			return_type:  return_type
+			has_receiver: has_receiver
+		}
+	} else {
+		CallInfo{
+			name:                 name
+			shared_params:        tc.fn_shared_params[name] or { []bool{} }
+			return_type:          return_type
+			has_receiver:         has_receiver
+			is_variadic:          tc.fn_variadic[name] or { false }
+			is_c_variadic:        tc.c_variadic_fns[name] or { false }
+			has_implicit_veb_ctx: tc.fn_implicit_veb_ctx[name] or { false }
+		}
 	}
 	if params := tc.fn_param_types[name] {
 		return CallInfo{
@@ -11370,6 +11433,11 @@ fn (tc &TypeChecker) alias_return_type_from_text(fn_name string) ?Type {
 	ret_text := flat.source_type_name(tc.fn_ret_type_texts.type_id(fn_name) or { return none })
 	clean := trimmed_space(ret_text)
 	if clean.len == 0 {
+		return none
+	}
+	// Both aliases below, `clean` and `mod.clean`, end in the last segment of clean.
+	if tc.alias_short_names_count == tc.type_aliases.ids.len
+		&& short_name_view(clean) !in tc.alias_short_names {
 		return none
 	}
 	if _ := tc.type_aliases.type_id(clean) {
@@ -12117,7 +12185,22 @@ fn (mut tc TypeChecker) register_visible_mutation_fn_decl_keys(idx int, module_n
 }
 
 fn (tc &TypeChecker) visible_mutation_fn_decl(name string, fallback_mod string) ?VisibleMutationFnDecl {
-	cache_key := '${fallback_mod}\x01${visible_mutation_fn_lookup_name(name)}'
+	lookup_name := visible_mutation_fn_lookup_name(name)
+	// The key is only probed and inserted below, and an insert copies it, so a
+	// short key is spelled in a stack buffer instead of a new string.
+	mut key_buf := [192]u8{}
+	key_len := fallback_mod.len + 1 + lookup_name.len
+	cache_key := if key_len <= key_buf.len {
+		unsafe {
+			key_start := &u8(&key_buf[0])
+			vmemcpy(key_start, fallback_mod.str, fallback_mod.len)
+			key_start[fallback_mod.len] = 0x01
+			vmemcpy(key_start + fallback_mod.len + 1, lookup_name.str, lookup_name.len)
+			tos(key_start, key_len)
+		}
+	} else {
+		'${fallback_mod}\x01${lookup_name}'
+	}
 	if !isnil(tc.visible_mutation_cache) {
 		mut cache := tc.visible_mutation_cache
 		for !isnil(cache) {
@@ -13693,12 +13776,45 @@ fn (tc &TypeChecker) call_param_has_open_generic_source(call flat.Node, info Cal
 	return tc.type_text_has_generic_placeholder(flat.source_type_id(clean))
 }
 
+// is_channel_builtin_method_call_name reports whether `name`, behind any `&`
+// prefixes, spells the builtin `chan` method `method`. It scans the spelling in
+// place: call argument checks ask this for every argument of every call.
+@[direct_array_access]
 fn is_channel_builtin_method_call_name(name string, method string) bool {
-	mut clean := name.trim_space()
-	for clean.starts_with('&') {
-		clean = clean[1..].trim_space()
+	mut start := 0
+	mut end := name.len
+	for start < end && is_trim_space_byte(name[start]) {
+		start++
 	}
-	return clean.starts_with('chan ') && clean.ends_with('.${method}')
+	for end > start && is_trim_space_byte(name[end - 1]) {
+		end--
+	}
+	for start < end && name[start] == `&` {
+		start++
+		for start < end && is_trim_space_byte(name[start]) {
+			start++
+		}
+	}
+	suffix_start := end - method.len
+	if end - start < 5 || suffix_start - 1 < start || name[suffix_start - 1] != `.` {
+		return false
+	}
+	if name[start] != `c` || name[start + 1] != `h` || name[start + 2] != `a`
+		|| name[start + 3] != `n` || name[start + 4] != ` ` {
+		return false
+	}
+	for i in 0 .. method.len {
+		if name[suffix_start + i] != method[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// is_trim_space_byte reports whether `trim_space` strips the byte `c`.
+@[inline]
+fn is_trim_space_byte(c u8) bool {
+	return c == ` ` || c == `\n` || c == `\t` || c == `\v` || c == `\f` || c == `\r`
 }
 
 fn (tc &TypeChecker) call_param_is_mut(info CallInfo, param_idx int) bool {
@@ -21987,7 +22103,10 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 		pointer_alias_paths << clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 	}
 	tc.fn_context.unsafe_reference_alias_owners = clone_unsafe_alias_owners(unsafe_alias_base)
-	tc.fn_context.pointer_binding_value_keys = clone_pointer_binding_value_keys(pointer_alias_base)
+	// A then branch that changed no pointer binding already left the base state.
+	if !pointer_binding_states_same(pointer_alias_base, tc.fn_context.pointer_binding_value_keys) {
+		tc.fn_context.pointer_binding_value_keys = clone_pointer_binding_value_keys(pointer_alias_base)
+	}
 	if had_saved_smartcasts {
 		tc.smartcasts = clone_smartcasts(saved_smartcasts)
 	} else {

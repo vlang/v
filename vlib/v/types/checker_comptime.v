@@ -9518,6 +9518,11 @@ fn (mut tc TypeChecker) record_invalid_enum_infix(id flat.NodeId, node flat.Node
 }
 
 fn (tc &TypeChecker) expr_is_inside_unsafe_block(id flat.NodeId) bool {
+	// The walk below stops at the function declaration, so a node of a function
+	// without any `unsafe` block is outside of one.
+	if tc.node_outside_unsafe_blocks(int(id)) {
+		return false
+	}
 	mut current := id
 	for _ in 0 .. 32 {
 		// No block holds a function declaration. The parent of a specialized
@@ -18279,16 +18284,19 @@ fn (tc &TypeChecker) current_binding_is_shared(name string) bool {
 	if name == '' || tc.cur_scope == unsafe { nil } {
 		return false
 	}
-	if owner := tc.cur_scope.lookup_owner(name) {
-		if tc.binding_owner_is_global(owner) && tc.shared_global_names[name] {
-			return true
-		}
-	}
-	qname := tc.qualify_name(name)
-	if qname != name {
-		if owner := tc.cur_scope.lookup_owner(qname) {
-			if tc.binding_owner_is_global(owner) && tc.shared_global_names[qname] {
+	// Without a `shared` global only the local bindings below can be shared.
+	if tc.shared_global_names.len > 0 {
+		if owner := tc.cur_scope.lookup_owner(name) {
+			if tc.binding_owner_is_global(owner) && tc.shared_global_names[name] {
 				return true
+			}
+		}
+		qname := tc.qualify_name(name)
+		if qname != name {
+			if owner := tc.cur_scope.lookup_owner(qname) {
+				if tc.binding_owner_is_global(owner) && tc.shared_global_names[qname] {
+					return true
+				}
 			}
 		}
 	}
@@ -20586,33 +20594,67 @@ fn clone_pointer_binding_value_keys(src map[string][]string) map[string][]string
 	return result
 }
 
+// pointer_binding_states_same reports whether `a` and `b` bind the same keys to
+// the same value lists, each without repeated values: then merging them, in
+// either order, gives `a` again.
+fn pointer_binding_states_same(a map[string][]string, b map[string][]string) bool {
+	if a.len != b.len {
+		return false
+	}
+	for key, values in a {
+		other := b[key] or { return false }
+		if values.len != other.len {
+			return false
+		}
+		for i, value in values {
+			if value != other[i] {
+				return false
+			}
+			for j in 0 .. i {
+				if values[j] == value {
+					return false
+				}
+			}
+		}
+	}
+	return true
+}
+
 fn merge_pointer_binding_value_states(states []map[string][]string, fallback map[string][]string) map[string][]string {
 	if states.len == 0 {
 		return clone_pointer_binding_value_keys(fallback)
 	}
-	mut all_keys := map[string]bool{}
+	// Branches that left every binding as it was merge into the fallback itself.
+	if states.all(pointer_binding_states_same(fallback, it)) {
+		return clone_pointer_binding_value_keys(fallback)
+	}
+	// Merge each key once, in first-seen order: the fallback's keys, then the new
+	// keys of each state in turn.
+	mut result := map[string][]string{}
 	for key, _ in fallback {
-		all_keys[key] = true
+		result[key] = merge_pointer_binding_key_values(states, fallback, key)
 	}
 	for state in states {
 		for key, _ in state {
-			all_keys[key] = true
-		}
-	}
-	mut result := map[string][]string{}
-	for key, _ in all_keys {
-		mut merged := []string{}
-		for state in states {
-			values := state[key] or { fallback[key] or { [key] } }
-			for value in values {
-				if value !in merged {
-					merged << value
-				}
+			if key !in result {
+				result[key] = merge_pointer_binding_key_values(states, fallback, key)
 			}
 		}
-		result[key] = merged
 	}
 	return result
+}
+
+fn merge_pointer_binding_key_values(states []map[string][]string, fallback map[string][]string, key string) []string {
+	mut merged := []string{}
+	for state in states {
+		values := state[key] or { fallback[key] or { [key] } }
+		for value in values {
+			if value !in merged {
+				merged << value
+			}
+		}
+	}
+	return merged
 }
 
 fn (mut tc TypeChecker) pointer_binding_state_after_loop_post(loop_node flat.Node, incoming map[string][]string, base map[string][]string, precomputed map[string][]string, has_cond_smartcasts bool, precondition_smartcasts map[string]Type) map[string][]string {
@@ -20735,6 +20777,11 @@ fn (mut tc TypeChecker) merge_unsafe_reference_alias_short_circuit_state(op flat
 }
 
 fn (mut tc TypeChecker) merge_pointer_binding_short_circuit_state(op flat.Op, lhs_id flat.NodeId, skipped_rhs map[string][]string) {
+	// An RHS that left every binding as it was leaves nothing to merge: whether it
+	// runs or not, the bindings stay those of the current state.
+	if pointer_binding_states_same(skipped_rhs, tc.fn_context.pointer_binding_value_keys) {
+		return
+	}
 	executed_rhs := clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 	if lhs := tc.constant_bool_value(lhs_id) {
 		rhs_executes := (op == .logical_and && lhs) || (op == .logical_or && !lhs)

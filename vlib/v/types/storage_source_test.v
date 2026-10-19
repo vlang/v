@@ -332,7 +332,7 @@ fn main() {
 	mut narrowed := cold.fork_smartcast_query_view()
 	assert narrowed.smartcast_type(use_id) == none
 	assert !tc.lexical_smartcast_misses[int(use_id)]
-	assert narrowed.type_cache.lexical_smartcast_misses[int(use_id)]
+	assert narrowed.type_cache.lexical_smartcast_miss(int(use_id))
 	mut memo := tc.fork_storage_observation_view()
 	key := memo.storage_query_probe_history_key(use_id, [use_id, call_id], map[string]flat.NodeId{}) or { panic('missing history key') }
 	permuted := memo.storage_query_probe_history_key(use_id, [call_id, use_id, call_id], map[string]flat.NodeId{}) or { panic('missing history key') }

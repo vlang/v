@@ -3100,7 +3100,7 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 	if chunk_target > bounded_items.len {
 		chunk_target = bounded_items.len
 	}
-	mut chunks := split_work_items_with_first_share(bounded_items, chunk_target, shared_master_chunk_share_percent)
+	mut chunks := split_work_items_by_file_runs(bounded_items, chunk_target, shared_master_chunk_share_percent)
 	chunk_count := chunks.len
 	thread_count := chunk_count - 1
 	// Pool.run queues asynchronous work before running synchronous tasks. Give
@@ -3361,6 +3361,144 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 	transform_worker_scope_free(setup_scope)
 	t.timing_profile('  [ttime]   shared tail      ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	return any_started
+}
+
+// The borrow-summary body analyses of a compiler-sized program take most of
+// the transform preparation. Below this many candidates a serial pass is cheap.
+const min_borrow_prescan_candidates = 512
+// Preparation overlaps markused, whose workers keep most cores busy.
+const max_borrow_prescan_jobs = 6
+
+// BorrowPrescanArgs is the payload of one borrow-summary prescan thread.
+struct BorrowPrescanArgs {
+	worker     voidptr // &Transformer
+	candidates voidptr // &[]BorrowCandidate
+	results    voidptr // &[]BorrowBodyResult
+	start      int
+	end        int
+mut:
+	scope voidptr
+}
+
+// borrow_prescan_thread analyses one contiguous range of borrow candidates on
+// a private transformer. The results stay in the thread's arena until the
+// fixed point has read them (see BorrowPrescan.free).
+fn borrow_prescan_thread(arg voidptr) voidptr {
+	mut a := unsafe { &BorrowPrescanArgs(arg) }
+	mut w := unsafe { &Transformer(a.worker) }
+	candidates := unsafe { &[]BorrowCandidate(a.candidates) }
+	mut results := unsafe { &[]BorrowBodyResult(a.results) }
+	scope := transform_worker_scope_begin(true)
+	w.borrow_param_mentions = &BorrowParamMentions{}
+	for i in a.start .. a.end {
+		result := w.prescan_fixed_array_borrow_body(unsafe { (*candidates)[i] })
+		unsafe {
+			(*results)[i] = result
+		}
+	}
+	transform_worker_scope_leave(scope)
+	a.scope = scope
+	return unsafe { nil }
+}
+
+// prescan_fixed_array_borrow_bodies analyses the candidates' bodies on helper
+// threads before the serial fixed point, with no summary proven. While none of
+// the summaries an analysis read is proven, the serial analysis would take the
+// same path, so the fixed point reuses the result (see BorrowBodyResult).
+fn (mut t Transformer) prescan_fixed_array_borrow_bodies(candidates []BorrowCandidate) BorrowPrescan {
+	n_jobs := int_min(runtime.nr_jobs(), max_borrow_prescan_jobs)
+	if n_jobs < 2 || candidates.len < min_borrow_prescan_candidates || isnil(t.tc)
+		|| !t.parallel_enabled || t.var_types.len > 0 || t.smartcast_stack.len > 0 {
+		return BorrowPrescan{}
+	}
+	// A body costs about the node span of its declaration, and is walked once
+	// per pointer parameter.
+	mut decls := []int{cap: candidates.len}
+	for c in candidates {
+		decls << c.decl
+	}
+	decls.sort()
+	mut spans := map[int]i64{}
+	mut previous := 0
+	for decl in decls {
+		if decl in spans {
+			continue
+		}
+		spans[decl] = i64(int_max(1, decl - previous))
+		previous = decl
+	}
+	mut total := i64(0)
+	for c in candidates {
+		total += spans[c.decl]
+	}
+	mut bounds := []int{cap: n_jobs + 1}
+	bounds << 0
+	mut acc := i64(0)
+	for i, c in candidates {
+		acc += spans[c.decl]
+		if bounds.len < n_jobs && acc >= total * i64(bounds.len) / i64(n_jobs) {
+			bounds << i + 1
+		}
+	}
+	for bounds.len < n_jobs + 1 {
+		bounds << candidates.len
+	}
+	mut results := []BorrowBodyResult{len: candidates.len}
+	t.tc.freeze_type_cache_for_forks()
+	mut args := []BorrowPrescanArgs{cap: n_jobs}
+	for ci in 0 .. n_jobs {
+		wtc := t.tc.fork_for_parallel_transform(t.a)
+		mut w := t.fork_scan_worker(wtc)
+		// The analysis reads the transformer's current declaration context.
+		w.cur_file = t.cur_file
+		w.cur_module = t.cur_module
+		w.cur_fn_name = t.cur_fn_name
+		w.cur_fn_source_file = t.cur_fn_source_file
+		w.cur_fn_source_module = t.cur_fn_source_module
+		w.cur_fn_receiver_name = t.cur_fn_receiver_name
+		w.set_cur_fn_ret_type(t.cur_fn_ret_type)
+		w.in_call_callee = t.in_call_callee
+		w.in_const_init = t.in_const_init
+		w.in_return_expr = t.in_return_expr
+		w.expected_expr_node = t.expected_expr_node
+		w.set_expected_expr_type(t.expected_expr_type)
+		// Helpers analyse against no proven summaries (see BorrowBodyResult).
+		w.fixed_array_borrow_params = map[int][]bool{}
+		args << BorrowPrescanArgs{
+			worker:     voidptr(w)
+			candidates: unsafe { voidptr(&candidates) }
+			results:    unsafe { voidptr(&results) }
+			start:      bounds[ci]
+			end:        bounds[ci + 1]
+		}
+	}
+	// The self-host preparation gives the master the closure-return scan instead
+	// of a share. It reads only the AST and the checker, whose type cache is
+	// frozen for the helpers; the helpers forked the map it fills.
+	scan_closures := t.closure_scan_beside_borrow_prescan && !t.exclusive_closure_returns_done
+	first_helper := if scan_closures { 0 } else { 1 }
+	mut threads := []thread voidptr{cap: n_jobs}
+	for ci in first_helper .. n_jobs {
+		threads << spawn borrow_prescan_thread(unsafe { voidptr(&args[ci]) })
+	}
+	if scan_closures {
+		t.exclusive_closure_return_fns = map[string]bool{}
+		t.collect_exclusive_closure_return_fns()
+	} else {
+		borrow_prescan_thread(unsafe { voidptr(&args[0]) })
+	}
+	threads.wait()
+	t.tc.unfreeze_type_cache_after_forks()
+	mut scopes := []voidptr{cap: n_jobs}
+	for arg in args {
+		if arg.scope != unsafe { nil } {
+			scopes << arg.scope
+		}
+	}
+	return BorrowPrescan{
+		results: results
+		scopes:  scopes
+	}
 }
 
 // LateScanChunkArgs is the payload handed to each late-name-scan worker.
