@@ -6961,6 +6961,10 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 		}
 	}
 	tc.register_synth_type(base_id, base_type)
+	if is_unresolved_name_type(base_type) {
+		tc.register_synth_type(id, base_type)
+		return
+	}
 	if base_type is Void {
 		if tc.fn_context.undefined_variable_context_depth > 0 && tc.errors.any(it.node == base_id
 			&& it.kind == .unknown_ident) {
@@ -8147,6 +8151,13 @@ fn (mut tc TypeChecker) check_index(id flat.NodeId, node flat.Node) {
 	base_id := tc.a.child(&node, 0)
 	tc.check_storage_path_base_node(base_id)
 	mut base_type_raw := tc.resolve_type(base_id)
+	if is_unresolved_name_type(base_type_raw) {
+		for i in 1 .. node.children_count {
+			tc.check_node(tc.a.child(&node, i))
+		}
+		tc.register_synth_type(id, base_type_raw)
+		return
+	}
 	if base_type_raw is OptionType && node.op == .gated_index {
 		base_type_raw = base_type_raw.base_type
 	} else if base_type_raw is OptionType {
@@ -9013,7 +9024,7 @@ fn (mut tc TypeChecker) check_ident(id flat.NodeId, node flat.Node) {
 		}
 		tc.record_error_at(.unknown_ident, message, id,
 			tc.checker_fixture_template_ident_pos(id, node.pos))
-		tc.register_synth_type(id, builtin_void_type)
+		tc.register_synth_type(id, unresolved_name_type())
 	}
 }
 
@@ -18812,8 +18823,10 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 			return typ
 		}
 	}
-	if node.kind == .ident && tc.errors.any(it.node == id && it.kind == .unknown_ident) {
-		return builtin_void_type
+	if node.kind == .ident && tc.errors.len > 0 {
+		if typ := tc.ident_error_type(id) {
+			return typ
+		}
 	}
 	if node.kind == .selector && tc.errors.any(it.node == id
 		&& it.msg.contains(' does not return a value')) {

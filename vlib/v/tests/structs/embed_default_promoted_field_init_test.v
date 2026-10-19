@@ -4,7 +4,7 @@ struct DefaultInner {
 }
 
 struct DefaultOuter {
-	DefaultInner  = DefaultInner{
+	DefaultInner = DefaultInner{
 		a: 3
 		b: 4
 	}
@@ -20,7 +20,7 @@ struct NestedDefaultMid {
 }
 
 struct NestedDefaultOuter {
-	NestedDefaultMid  = NestedDefaultMid{
+	NestedDefaultMid = NestedDefaultMid{
 		NestedDefaultInner: NestedDefaultInner{
 			x: 1
 			y: 2

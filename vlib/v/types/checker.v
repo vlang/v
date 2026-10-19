@@ -193,6 +193,66 @@ fn unknown_type(reason string) Type {
 	})
 }
 
+const unresolved_name_reason = 'unresolved name'
+
+// unresolved_name_type is the type of an expression built on a name that did not
+// resolve, and of a variable declared from one. That error is already reported,
+// so the checks of anything that depends on the type stay silent.
+fn unresolved_name_type() Type {
+	return unknown_type(unresolved_name_reason)
+}
+
+// is_unresolved_name_type reports whether `typ` comes from a name that did not
+// resolve (see unresolved_name_type).
+fn is_unresolved_name_type(typ Type) bool {
+	return typ is Unknown && typ.reason == unresolved_name_reason
+}
+
+// unresolved_initializer_type is the type of a variable whose initializer uses a
+// name that did not resolve: the initializer's type when it is still known
+// (`n := len(missing)`), and unresolved_name_type otherwise.
+fn unresolved_initializer_type(initializer Type) Type {
+	if initializer is Void || initializer is Unknown || initializer is MultiReturn {
+		return unresolved_name_type()
+	}
+	return initializer
+}
+
+// ident_error_type is the type of an identifier that was reported as unknown:
+// unresolved_name_type when its name did not resolve, `void` for the other
+// reports (an invalid variable, a missing closure capture).
+fn (tc &TypeChecker) ident_error_type(id flat.NodeId) ?Type {
+	mut reported := false
+	for err in tc.errors {
+		if err.node != id || err.kind != .unknown_ident {
+			continue
+		}
+		if err.msg.starts_with('undefined ') {
+			return unresolved_name_type()
+		}
+		reported = true
+	}
+	if reported {
+		return builtin_void_type
+	}
+	return none
+}
+
+// mark_unresolved_receiver_call gives a method call on a receiver that did not
+// resolve the unresolved type, whatever its check made of the unknown method.
+fn (mut tc TypeChecker) mark_unresolved_receiver_call(id flat.NodeId, node flat.Node) {
+	if node.children_count == 0 {
+		return
+	}
+	callee := tc.a.child_node(&node, 0)
+	if callee.kind != .selector || callee.children_count == 0 {
+		return
+	}
+	if is_unresolved_name_type(tc.resolve_type(tc.a.child(callee, 0))) {
+		tc.register_synth_type(id, unresolved_name_type())
+	}
+}
+
 // TypeError represents type error data used by types.
 pub struct TypeError {
 pub:
@@ -1069,6 +1129,9 @@ pub mut:
 	// Read-only post-check call graph for transform forks (see
 	// fork_for_parallel_transform); nil in the checker that owns the graph.
 	post_check_dependencies &DependencyGraphView = unsafe { nil }
+	// call_param_flows_to_callback results computed before transform lowers the
+	// bodies they read (see prepare_callback_param_flows); shared with forks.
+	callback_param_flows &CallbackParamFlows = unsafe { nil }
 	// The interface boxes the transform stage collected from the tree before
 	// lowering, the node count it scanned and the library bodies it skipped, for
 	// the monomorphization stage to start from. transform_boxed_node_count is -1
@@ -1137,7 +1200,7 @@ pub mut:
 	is_test                       bool
 	checked_comptime_method_calls map[string]bool
 	comptime_method_calls_by_decl map[int]map[int]bool
-	check_concrete_generic_bodies bool                  // `-check` checks the concrete clones of the program's generics for fields and methods their types lack
+	check_concrete_generic_bodies bool                  // `-check` checks the concrete clones of the program's generics for fields and methods their types lack, and for arrays and maps with the wrong element layout
 	library_instances             int                   // the instances of library generics that such a check cloned
 	library_headers               int                   // how many of them it cloned without their bodies (see transform.LibraryBodies)
 	library_bodies_kept_for       string                // why every one of them kept its body, when one had to
@@ -1747,6 +1810,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		expected_expr_type:                    builtin_void_type
 		smartcasts:                            tc.smartcasts
 		ownership:                             tc.ownership
+		callback_param_flows:                  tc.callback_param_flows
 		selfhost:                              tc.selfhost
 		fn_context:                            new_function_check_context()
 		resolution_type_views:                 &ResolutionTypeViewCache{
@@ -11241,7 +11305,9 @@ fn should_cache_expr_type(kind flat.NodeKind, typ Type) bool {
 		return kind in [.sql_expr, .or_expr]
 	}
 	if typ is Unknown {
-		return false
+		// Every check that depends on an unresolved name must see it as unresolved,
+		// so its type is kept, while other unknowns may still be resolved later.
+		return typ.reason == unresolved_name_reason
 	}
 	if typ is Array || typ is ArrayFixed || typ is Map || typ is Pointer || typ is FnType
 		|| typ is OptionType || typ is ResultType || typ is Struct || typ is Interface

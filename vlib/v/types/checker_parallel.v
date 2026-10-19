@@ -3055,7 +3055,10 @@ pub fn (mut tc TypeChecker) check_concrete_fn_semantics(fn_idx int, file string,
 // check_concrete_instance_members checks a concrete clone of one of the
 // program's generic functions for what only its concrete types decide: a field,
 // a method or an operator that such a type lacks, as when `show(1)` reads
-// `x.name` or `add(1)` adds a string to `a`. Every other error and warning of the
+// `x.name` or `add(1)` adds a string to `a`, and an array or map whose elements
+// are stored differently from the one it is used or cast as, as when
+// `to_bytes([1, 2])` returns `[]u8(a)` for an `a []int` (see
+// is_container_layout_error). Every other error and warning of the
 // clone is dropped: checked before the clone is lowered, only these are reliable
 // outside checker fixtures, where many valid generic programs would fail. `args`
 // are source-spelling IDs of the types of the instance: the clone spells an
@@ -3076,7 +3079,8 @@ pub fn (mut tc TypeChecker) check_concrete_instance_members(fn_idx int, file str
 	mut kept := []TypeError{}
 	for err in tc.errors[errors_start..] {
 		if (is_concrete_member_error(err.msg) && !tc.member_of_an_alias_argument(err.msg, args))
-			|| (is_concrete_operator_error(err.msg) && tc.operator_operands_are_plain(err.node)) {
+			|| (is_concrete_operator_error(err.msg) && tc.operator_operands_are_plain(err.node))
+			|| tc.is_container_layout_error(err.msg) {
 			kept << err
 		}
 	}
@@ -3180,6 +3184,146 @@ fn (tc &TypeChecker) operand_is_plain(id flat.NodeId) bool {
 			false
 		}
 	}
+}
+
+// ContainerLayoutUse is what a container layout error (see
+// is_container_layout_error) does with the array or map it names.
+enum ContainerLayoutUse {
+	value  // assigns, passes, returns or stores it
+	cast   // casts it
+	append // appends it to an array
+}
+
+// is_container_layout_error reports whether `msg` says that an array or map is
+// used or cast as one whose elements are stored differently: `[]u8(a)` for an
+// `a []int`, an `[]i32` passed for an `[]i64`, a `map[string]u8` returned as a
+// `map[string]u64`. Such a container is not converted element by element (see
+// container_elem_layouts_differ and container_cast_reinterprets_elems), and in
+// the clone of an instance the elements have the types of that instance, which
+// decide their layout. A `voidptr` in it is a type the clone did not resolve.
+fn (tc &TypeChecker) is_container_layout_error(msg string) bool {
+	actual_name, expected_name, use := container_layout_error_parts(msg) or { return false }
+	if actual_name.contains('voidptr') || expected_name.contains('voidptr') {
+		return false
+	}
+	actual := tc.parse_type(flat.source_type_id(actual_name))
+	mut expected := tc.parse_type(flat.source_type_id(expected_name))
+	match use {
+		.cast {
+			// The only error of a cast from one array or map to another.
+			mut target := unalias_type(expected)
+			if target is OptionType {
+				target = unalias_type(target.base_type)
+			}
+			return is_container_type(actual) && is_container_type(target)
+		}
+		.append {
+			clean_expected := unalias_type(expected)
+			if clean_expected is Array {
+				expected = clean_expected.elem_type
+			} else {
+				return false
+			}
+		}
+		.value {}
+	}
+	return tc.container_value_layouts_differ(actual, expected)
+}
+
+// container_layout_error_parts returns the type of the array or map that the
+// error `msg` names, the type it is used as, and what is done with it, for the
+// errors that report a value of the wrong type in a slot (assignment, argument,
+// return, field) and a cast or an append that reinterprets the elements.
+fn container_layout_error_parts(msg string) ?(string, string, ContainerLayoutUse) {
+	if !msg.starts_with('cannot ') {
+		return none
+	}
+	parts := msg.split('`')
+	if parts.len == 5 && parts[4] == '' && parts[2] == ' to ' {
+		if parts[0] == 'cannot cast array ' {
+			// cannot cast array `A` to `B`
+			return parts[1], parts[3], ContainerLayoutUse.cast
+		}
+		if parts[0] == 'cannot append ' {
+			// cannot append `A` to `B`
+			return parts[1], parts[3], ContainerLayoutUse.append
+		}
+	}
+	if parts.len == 7 && parts[0] == 'cannot cast ' && parts[2] == ' to '
+		&& parts[4] == ' (alias to ' && parts[6] == ')' {
+		// cannot cast `A` to `B` (alias to `C`)
+		return parts[1], parts[5], ContainerLayoutUse.cast
+	}
+	if parts.len == 5 && parts[0] == 'cannot use ' && parts[2] == ' as type '
+		&& parts[4] == ' in return argument' {
+		// cannot use `A` as type `B` in return argument
+		return parts[1], parts[3], ContainerLayoutUse.value
+	}
+	if parts.len == 7 && parts[0] == 'cannot use ' && parts[2] == ' as '
+		&& parts[4].starts_with(' in argument ') && parts[6] == '' {
+		// cannot use `A` as `B` in argument 1 to `f`
+		return parts[1], parts[3], ContainerLayoutUse.value
+	}
+	if parts.len == 7 && parts[0] == 'cannot initialize field ' && parts[2] == ' with '
+		&& parts[4] == '; expected ' && parts[6] == '' {
+		// cannot initialize field `x` with `A`; expected `B`
+		return parts[3], parts[5], ContainerLayoutUse.value
+	}
+	if parts.len >= 7 && parts[0].starts_with('cannot assign to ')
+		&& parts[parts.len - 5] == ': expected ' && parts[parts.len - 3] == ', not '
+		&& parts[parts.len - 1] == '' {
+		// cannot assign to `x`: expected `B`, not `A`
+		return parts[parts.len - 2], parts[parts.len - 4], ContainerLayoutUse.value
+	}
+	return none
+}
+
+// container_value_layouts_differ reports whether the array or map `actual` is
+// used as the one `expected` although their elements are stored differently
+// (container_elem_layouts_differ). An option or a result holds the container as
+// it is, and a value may be wrapped in one. A dynamic array of concrete values is
+// converted to one of their interface or sum type
+// (dynamic_array_elem_types_compatible): an error about that says that a value
+// does not implement it, not how it is stored.
+fn (tc &TypeChecker) container_value_layouts_differ(actual Type, expected Type) bool {
+	mut clean_actual := unalias_type(actual)
+	mut clean_expected := unalias_type(expected)
+	for {
+		if clean_expected is OptionType {
+			if clean_actual is OptionType {
+				clean_actual = unalias_type(clean_actual.base_type)
+			}
+			clean_expected = unalias_type(clean_expected.base_type)
+			continue
+		}
+		if clean_expected is ResultType {
+			if clean_actual is ResultType {
+				clean_actual = unalias_type(clean_actual.base_type)
+			}
+			clean_expected = unalias_type(clean_expected.base_type)
+			continue
+		}
+		break
+	}
+	if clean_actual is Pointer && clean_expected is Pointer {
+		// A referenced array or map is shared, never converted.
+		return is_container_type(clean_actual.base_type)
+			&& is_container_type(clean_expected.base_type)
+			&& tc.container_elem_layouts_differ(clean_actual, clean_expected)
+	}
+	if !is_container_type(clean_actual) || !is_container_type(clean_expected) {
+		return false
+	}
+	mut actual_elem := clean_actual
+	mut expected_elem := clean_expected
+	for actual_elem is Array && expected_elem is Array {
+		actual_elem = unalias_type(actual_elem.elem_type)
+		expected_elem = unalias_type(expected_elem.elem_type)
+	}
+	if clean_expected is Array && (expected_elem is Interface || expected_elem is SumType) {
+		return false
+	}
+	return tc.container_elem_layouts_differ(clean_actual, clean_expected)
 }
 
 fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file string, module_name string) {

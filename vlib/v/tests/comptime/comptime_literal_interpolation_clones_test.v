@@ -179,7 +179,7 @@ struct LiteralInterpolationDefault {
 }
 
 struct LiteralInterpolationPromotedDefault {
-	LiteralInterpolationDefault  = LiteralInterpolationDefault{
+	LiteralInterpolationDefault = LiteralInterpolationDefault{
 		text:   '\${if true {A} else {B}}'
 		marker: 1
 	}

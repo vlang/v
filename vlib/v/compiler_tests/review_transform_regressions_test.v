@@ -1317,6 +1317,19 @@ fn test_selectively_imported_generic_function_value_is_specialized() {
 	assert out == '42'
 }
 
+// A generic function value alone, with no generic call, still needs the
+// specialization pass.
+fn test_qualified_generic_function_value_without_generic_calls_is_specialized() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'qualified_generic_function_value_only', {
+		'v.mod':              "Module { name: 'qualified_generic_function_value_only' }\n"
+		'deep/lib/lib.v':     'module lib\n\npub fn id[T](value T) T {\n\treturn value + 1\n}\n'
+		'deep/other/other.v': 'module other\n\npub fn twice[T](value T) T {\n\treturn value * 2\n}\n'
+		'main.v':             'module main\n\nimport deep.lib\nimport deep.other as o\n\nfn main() {\n\tcallback := lib.id[int]\n\taliased := o.twice[i64]\n\tprintln(callback(41))\n\tprintln(aliased(21))\n}\n'
+	}, 'main.v')
+	assert out == '42\n42'
+}
+
 fn test_generic_struct_default_for_pointer_type_uses_heap_storage() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'generic_pointer_struct_default', 'struct Item {
@@ -7686,8 +7699,18 @@ fn main() {
 	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_struct_update_pointer_origins_c', '-ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
-	// Known failure: the map origin scan does not carry `box` through `...base`.
-	assert compact_main.count('array__free(&(__map_source_') == 1, 'only the overridden source may be freed; the inherited `...base` box points into the first one\n${main_body}'
+	// A dropped source is freed after its loop and again in the guarded cleanup of an
+	// early exit, so compare the sources by name: inherited first, overridden second.
+	mut sources := []string{}
+	for part in compact_main.split('Array__map_source_')[1..] {
+		number := part.all_before('=')
+		if part.starts_with('${number}=make_items()') {
+			sources << '__map_source_${number}'
+		}
+	}
+	assert sources.len == 2, main_body
+	assert !compact_main.contains('array__free(&(${sources[0]}))'), 'the inherited `...base` box points into the first source\n${main_body}'
+	assert compact_main.contains('array__free(&(${sources[1]}))'), 'only the overridden box leaves the second source unreferenced\n${main_body}'
 	out := run_good_with_flags(v3_bin, 'array_map_struct_update_pointer_origins', '-ownership', source)
 	assert out == '0\nsource\n0\nexternal'
 }
@@ -9480,8 +9503,6 @@ fn main() {
 	c_source := gen_c_from_project_with_flags(v3_bin, 'array_map_branch_callback_alias_c', '-ownership', files, 'main.v')
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
-	// Known failure: call_param_flows_to_callback reads the callee bodies after transform
-	// lowered them, so `chosen := match ...`, `or { callback }` and `[callback]` are temps.
 	assert !compact_main.contains('array__free(&(__map_source_'), 'api.save retains the mapped element through a selected callback alias\n${main_body}'
 	out := run_good_project_with_flags(v3_bin, 'array_map_branch_callback_alias', '-ownership', files, 'main.v')
 	assert out == '0\nsource\n0\nsource\n0\nsource\n0\nsource'

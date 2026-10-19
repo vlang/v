@@ -7,10 +7,10 @@ import v.util.vtest
 const total_steps = 8
 const temp_prefix = 'v3_test_all'
 const unit_test_batch_size = 16
-const unit_wrapper_mode_env = 'V3_TEST_UNIT_WRAPPER_MODE'
-const unit_wrapper_real_vexe_env = 'V3_TEST_UNIT_REAL_VEXE'
-const unit_wrapper_shared_v3_env = 'V3_TEST_UNIT_SHARED_V3'
-const unit_wrapper_v3_src_env = 'V3_TEST_UNIT_V3_SRC'
+// The `v` launcher serves plain builds of the V3 source with a copy of the compiler named here
+// (cmd/v/shared_test_compiler.v).
+const unit_shared_v3_env = 'V3_TEST_UNIT_SHARED_V3'
+const unit_v3_src_env = 'V3_TEST_UNIT_V3_SRC'
 const requested_vlib_tests = [
 	'vlib/builtin/string_test.v',
 	'vlib/math/math_test.v',
@@ -99,6 +99,31 @@ struct Config {
 	host_backend string
 	host_os      string
 	temp_prefix  string
+	units        UnitMode
+	shard        UnitShard
+	list_units   bool
+}
+
+struct Options {
+	c99        bool
+	units      UnitMode
+	shard      UnitShard
+	list_units bool
+}
+
+// UnitMode selects which sections run. CI runs the unit tests of section 1 in several jobs,
+// and the other sections in one more.
+enum UnitMode {
+	all
+	units_only
+	skip_units
+}
+
+// UnitShard is the 1-based shard `index` of `count` that a `--shard index/count` run takes
+// from the unit tests of section 1.
+struct UnitShard {
+	index int = 1
+	count int = 1
 }
 
 struct ExampleCase {
@@ -122,18 +147,21 @@ enum ExampleRunMode {
 }
 
 fn main() {
-	if os.getenv(unit_wrapper_mode_env) == '1' {
-		run_unit_vexe_wrapper()
-		return
-	}
 	self_check_gui_smoke_timeout_status()
-	self_check_unit_shared_compiler_request()
+	self_check_unit_shards()
+	// Parse the arguments first: an invalid one exits, and exit skips the deferred cleanup.
+	cfg := parse_config()
 	isolated_vtmp := setup_isolated_vtmp()
 	defer {
 		os.rmdir_all(isolated_vtmp) or {}
 	}
-	cfg := parse_config()
 	os.chdir(cfg.repo_root) or { fail('failed to enter ${cfg.repo_root}: ${err}') }
+	if cfg.list_units {
+		for path in unit_test_files(cfg) {
+			println(repo_relative_path(cfg, path))
+		}
+		return
+	}
 
 	v3_bin := temp_path(cfg, 'v3')
 	v3_ownership_bin := temp_path(cfg, 'v3_ownership')
@@ -161,8 +189,15 @@ fn main() {
 		v6_bin + '.c',
 	])
 
-	section(1, 'V3 unit tests')
-	run_v3_unit_tests(cfg)
+	if cfg.units != .skip_units {
+		section(1, 'V3 unit tests${shard_label(cfg.shard)}')
+		run_v3_unit_tests(cfg)
+	}
+	if cfg.units == .units_only {
+		println('')
+		println('=== UNIT TESTS PASSED${shard_label(cfg.shard)} ===')
+		return
+	}
 
 	section(2, 'Build v3')
 	run('${host_v_cmd(cfg)} -o ${q(v3_bin)} ${q(cfg.v3_src)}')
@@ -231,32 +266,23 @@ fn main() {
 	cleanup_files([v3_bin, v3_ownership_bin, v3_lang_bin, v3_lang_bin + '.c'])
 
 	println('')
-	println('=== ALL TESTS PASSED ===')
+	if cfg.units == .skip_units {
+		println('=== ALL TESTS PASSED (unit tests skipped) ===')
+	} else {
+		println('=== ALL TESTS PASSED ===')
+	}
 }
 
 fn run_v3_unit_tests(cfg Config) {
 	old_vflags := os.getenv('VFLAGS')
 	old_vjobs := os.getenv('VJOBS')
 	old_v3cache := os.getenv_opt('V3CACHE')
-	old_vexe := os.getenv_opt('VEXE')
-	old_wrapper_mode := os.getenv_opt(unit_wrapper_mode_env)
-	old_wrapper_real_vexe := os.getenv_opt(unit_wrapper_real_vexe_env)
-	old_wrapper_shared_v3 := os.getenv_opt(unit_wrapper_shared_v3_env)
-	old_wrapper_v3_src := os.getenv_opt(unit_wrapper_v3_src_env)
+	old_shared_v3 := os.getenv_opt(unit_shared_v3_env)
+	old_v3_src := os.getenv_opt(unit_v3_src_env)
 	unit_cache := temp_path(cfg, 'unit_cache')
 	shared_v3 := temp_path(cfg, 'unit_shared_v3')
-	wrapper_vexe := os.join_path(cfg.repo_root, '.v3_test_unit_wrapper_${os.getpid()}')
-	cleanup_files([shared_v3, wrapper_vexe])
-	println('  Building shared V3 test compiler...')
-	run('${host_v_cmd(cfg)} -o ${q(shared_v3)} ${q(cfg.v3_src)}')
-	os.link(os.executable(), wrapper_vexe) or {
-		os.cp(os.executable(), wrapper_vexe) or {
-			fail('failed to create unit-test V wrapper ${wrapper_vexe}: ${err}')
-		}
-		os.chmod(wrapper_vexe, 0o755) or {
-			fail('failed to make unit-test V wrapper executable: ${err}')
-		}
-	}
+	reuse_log := shared_v3 + '.reused'
+	cleanup_files([shared_v3, reuse_log])
 	os.setenv('VFLAGS', '${old_vflags} -gc none'.trim_space(), true)
 	// Many V3 tests build compilers that share V3CACHE. Keep the outer test runner
 	// serial so two nested compilers cannot publish overlapping cache generations.
@@ -266,12 +292,19 @@ fn run_v3_unit_tests(cfg Config) {
 	// programs. Run bounded batches and reset only this suite-owned cache between them.
 	// Cache regression tests use their own roots and still exercise reuse within a test.
 	os.setenv('V3CACHE', unit_cache, true)
-	os.setenv(unit_wrapper_mode_env, '1', true)
-	os.setenv(unit_wrapper_real_vexe_env, cfg.vexe, true)
-	os.setenv(unit_wrapper_shared_v3_env, shared_v3, true)
-	os.setenv(unit_wrapper_v3_src_env, cfg.v3_src, true)
-	os.setenv('VEXE', wrapper_vexe, true)
-	test_files := enabled_unit_tests(cfg, os.walk_ext(cfg.script_dir, '_test.v').sorted())
+	// Hundreds of tests build V3 from cfg.v3_src with only `-gc none` and `-path`, many of
+	// them once per test function. Build that compiler once, in the environment the tests
+	// inherit, and let the `v` launcher serve their builds with a copy of it.
+	os.unsetenv(unit_shared_v3_env)
+	os.unsetenv(unit_v3_src_env)
+	println('  Building shared V3 test compiler...')
+	run('${host_v_cmd(cfg)} -o ${q(shared_v3)} ${q(cfg.v3_src)}')
+	os.setenv(unit_shared_v3_env, shared_v3, true)
+	os.setenv(unit_v3_src_env, cfg.v3_src, true)
+	test_files := unit_test_files(cfg)
+	// Run every file, so that one failure does not hide the others, and print how long each
+	// one took, so that the shards can be kept within the job time limit.
+	mut failed := []string{}
 	for start := 0; start < test_files.len; start += unit_test_batch_size {
 		end := if start + unit_test_batch_size < test_files.len {
 			start + unit_test_batch_size
@@ -280,8 +313,19 @@ fn run_v3_unit_tests(cfg Config) {
 		}
 		println('  Unit test batch ${start / unit_test_batch_size + 1}: ${start + 1}-${end}/${test_files.len}')
 		for path in test_files[start..end] {
+			relative_path := repo_relative_path(cfg, path)
 			run_only_arg := unit_test_run_only_arg(cfg, path)
-			run('${q(wrapper_vexe)} -gc none -path ${q(cfg.vlib_dir)} -enable-globals -silent test ${run_only_arg} ${q(path)}')
+			cmd := '${q(cfg.vexe)} -gc none -path ${q(cfg.vlib_dir)} -enable-globals -silent test ${run_only_arg} ${q(path)}'
+			println('> ${cmd}')
+			sw := time.new_stopwatch()
+			code := os.system_args(os.split_args(cmd) or { panic(err) })
+			seconds := int(sw.elapsed().seconds())
+			if code == 0 {
+				println('  ok     ${seconds:4} s  ${relative_path}')
+			} else {
+				println('  FAILED ${seconds:4} s  ${relative_path} (exit code ${code})')
+				failed << relative_path
+			}
 		}
 		if os.exists(unit_cache) {
 			os.rmdir_all(unit_cache) or {
@@ -289,6 +333,8 @@ fn run_v3_unit_tests(cfg Config) {
 			}
 		}
 	}
+	reused := os.read_lines(reuse_log) or { []string{} }
+	println('  The shared V3 test compiler served ${reused.len} V3 builds')
 	if old_vflags == '' {
 		os.unsetenv('VFLAGS')
 	} else {
@@ -304,12 +350,50 @@ fn run_v3_unit_tests(cfg Config) {
 	} else {
 		os.unsetenv('V3CACHE')
 	}
-	restore_env('VEXE', old_vexe)
-	restore_env(unit_wrapper_mode_env, old_wrapper_mode)
-	restore_env(unit_wrapper_real_vexe_env, old_wrapper_real_vexe)
-	restore_env(unit_wrapper_shared_v3_env, old_wrapper_shared_v3)
-	restore_env(unit_wrapper_v3_src_env, old_wrapper_v3_src)
-	cleanup_files([shared_v3, wrapper_vexe])
+	restore_env(unit_shared_v3_env, old_shared_v3)
+	restore_env(unit_v3_src_env, old_v3_src)
+	cleanup_files([shared_v3, reuse_log])
+	if failed.len > 0 {
+		println('  ${failed.len} of ${test_files.len} unit test files failed:')
+		for path in failed {
+			println('    ${path}')
+		}
+		exit(1)
+	}
+}
+
+// unit_test_files returns the enabled unit tests of the shard that `cfg` selects, in the order
+// they run.
+fn unit_test_files(cfg Config) []string {
+	enabled := enabled_unit_tests(cfg, os.walk_ext(cfg.script_dir, '_test.v').sorted())
+	return unit_shard_files(enabled, cfg.shard)
+}
+
+// unit_shard_files deals the sorted `paths` out to `shard.count` shards in turn and returns the
+// ones of `shard.index`. Every path lands in exactly one shard, and neighbours, which tend to be
+// alike in cost, land in different ones.
+fn unit_shard_files(paths []string, shard UnitShard) []string {
+	mut files := []string{cap: paths.len / shard.count + 1}
+	for i := shard.index - 1; i < paths.len; i += shard.count {
+		files << paths[i]
+	}
+	return files
+}
+
+fn self_check_unit_shards() {
+	paths := []string{len: 11, init: 'test_${index:02}.v'}
+	mut dealt := []string{}
+	for index in 1 .. 4 {
+		dealt << unit_shard_files(paths, UnitShard{ index: index, count: 3 })
+	}
+	assert dealt.sorted() == paths
+	assert unit_shard_files(paths, UnitShard{ index: 2, count: 3 }) == ['test_01.v', 'test_04.v',
+		'test_07.v', 'test_10.v']
+	assert unit_shard_files(paths, UnitShard{}) == paths
+}
+
+fn shard_label(shard UnitShard) string {
+	return if shard.count > 1 { ' (shard ${shard.index}/${shard.count})' } else { '' }
 }
 
 fn unit_test_run_only_arg(cfg Config, path string) string {
@@ -360,11 +444,11 @@ fn enabled_unit_tests(cfg Config, paths []string) []string {
 			continue
 		}
 		if disabled[relative_path] {
-			println('  Skipping ${relative_path} (temporarily disabled)')
+			note(cfg, '  Skipping ${relative_path} (temporarily disabled)')
 			continue
 		}
 		if vtest.skip_ownership_autofree_tests() && vtest.is_ownership_autofree_test(path) {
-			println('  Skipping ${relative_path} (ownership/autofree tests disabled)')
+			note(cfg, '  Skipping ${relative_path} (ownership/autofree tests disabled)')
 			continue
 		}
 		enabled << path
@@ -376,89 +460,6 @@ fn repo_relative_path(cfg Config, path string) string {
 	prefix := cfg.repo_root + os.path_separator
 	trimmed := if path.starts_with(prefix) { path[prefix.len..] } else { path }
 	return trimmed.replace(os.path_separator, '/')
-}
-
-fn run_unit_vexe_wrapper() {
-	real_vexe := os.getenv(unit_wrapper_real_vexe_env)
-	shared_v3 := os.getenv(unit_wrapper_shared_v3_env)
-	v3_src := os.getenv(unit_wrapper_v3_src_env)
-	if !os.is_executable(real_vexe) {
-		fail('unit-test V wrapper cannot find real compiler: ${real_vexe}')
-	}
-	args := os.args[1..]
-	if output := unit_shared_compiler_request(args, v3_src) {
-		if !os.is_executable(shared_v3) {
-			fail('unit-test V wrapper cannot find shared V3 compiler: ${shared_v3}')
-		}
-		if os.exists(output) {
-			os.rm(output) or { fail('failed to replace unit-test V3 compiler ${output}: ${err}') }
-		}
-		os.link(shared_v3, output) or {
-			os.cp(shared_v3, output) or {
-				fail('failed to reuse unit-test V3 compiler at ${output}: ${err}')
-			}
-			os.chmod(output, 0o755) or {
-				fail('failed to make reused unit-test V3 compiler executable: ${err}')
-			}
-		}
-		exit(0)
-	}
-	// On macOS `os.executable()` resolves a hard link back to this script's
-	// original temporary binary. Preserve the repo-root wrapper path used to
-	// invoke us so nested test runners derive the correct V root.
-	os.setenv('VEXE', absolute_path(os.args[0]), true)
-	os.execvp(real_vexe, args) or { fail('failed to run real V compiler ${real_vexe}: ${err}') }
-}
-
-fn unit_shared_compiler_request(args []string, v3_src string) ?string {
-	if v3_src.len == 0 {
-		return none
-	}
-	mut output := ''
-	mut saw_source := false
-	mut i := 0
-	for i < args.len {
-		arg := args[i]
-		if arg == v3_src {
-			saw_source = true
-			i++
-			continue
-		}
-		if arg in ['-o', '-path', '-gc'] {
-			if i + 1 >= args.len {
-				return none
-			}
-			if arg == '-gc' && args[i + 1] != 'none' {
-				return none
-			}
-			if arg == '-o' {
-				output = args[i + 1]
-			}
-			i += 2
-			continue
-		}
-		// Compiler-build flags can change compiled-in behavior. Those requests
-		// must keep building their own dedicated V3 binary.
-		if arg.starts_with('-') {
-			return none
-		}
-		return none
-	}
-	if saw_source && output.len > 0 {
-		return output
-	}
-	return none
-}
-
-fn self_check_unit_shared_compiler_request() {
-	source := '/repo/vlib/v/v.v'
-	assert unit_shared_compiler_request(['-gc', 'none', '-path', '/repo/vlib', '-o', '/tmp/plain-v3',
-		source], source) or { '' } == '/tmp/plain-v3'
-	assert unit_shared_compiler_request(['-gc', 'boehm', '-o', '/tmp/boehm-v3', source], source) == none
-	assert unit_shared_compiler_request(['-gc', 'none', '-prealloc', '-o', '/tmp/prealloc-v3',
-		source], source) == none
-	assert unit_shared_compiler_request(['-gc', 'none', '-d', 'ownership', '-o', '/tmp/ownership-v3',
-		source], source) == none
 }
 
 fn restore_env(name string, old_value ?string) {
@@ -483,7 +484,7 @@ fn setup_isolated_vtmp() string {
 }
 
 fn parse_config() Config {
-	c99 := parse_args()
+	options := parse_args()
 	script_dir := os.real_path(@DIR)
 	repo_root := os.real_path(os.join_path(script_dir, '..', '..'))
 	tests_dir := os.join_path(script_dir, 'compiler_tests')
@@ -498,31 +499,103 @@ fn parse_config() Config {
 		vlib_dir:     os.join_path(repo_root, 'vlib')
 		tests_dir:    tests_dir
 		v3_src:       os.join_path(script_dir, 'v.v')
-		c99:          c99
-		c99_flag:     if c99 { '-c99' } else { '' }
+		c99:          options.c99
+		c99_flag:     if options.c99 { '-c99' } else { '' }
 		host_backend: native_backend_arch()
 		host_os:      os.user_os()
 		temp_prefix:  '${temp_prefix}_${os.getpid()}'
+		units:        options.units
+		shard:        options.shard
+		list_units:   options.list_units
 	}
 }
 
-fn parse_args() bool {
+const usage = 'usage: test_all.vsh [-c99] [--units-only | --skip-units] [--shard i/n] [--list-units]
+
+  --units-only   run only section 1, the V3 unit tests
+  --skip-units   run every section except section 1
+  --shard i/n    run only the i-th of n near-equal parts of the unit tests (1 <= i <= n)
+  --list-units   print the unit tests that would run, and exit'
+
+fn parse_args() Options {
 	mut c99 := false
-	for arg in os.args[1..] {
+	mut units_only := false
+	mut skip_units := false
+	mut shard := UnitShard{}
+	mut list_units := false
+	args := os.args[1..]
+	mut i := 0
+	for i < args.len {
+		arg := args[i]
 		match arg {
 			'-c99', '--c99' {
 				c99 = true
 			}
+			'-units-only', '--units-only' {
+				units_only = true
+			}
+			'-skip-units', '--skip-units' {
+				skip_units = true
+			}
+			'-shard', '--shard' {
+				if i + 1 >= args.len {
+					fail('--shard needs a value like 2/8')
+				}
+				i++
+				shard = parse_unit_shard(args[i])
+			}
+			'-list-units', '--list-units' {
+				list_units = true
+			}
 			'-h', '--help' {
-				println('usage: test_all.vsh [-c99]')
+				println(usage)
 				exit(0)
 			}
 			else {
-				fail('unknown argument: ${arg}')
+				fail('unknown argument: ${arg}\n${usage}')
+			}
+		}
+		i++
+	}
+	if units_only && skip_units {
+		fail('--units-only and --skip-units exclude each other')
+	}
+	if skip_units && (shard.count > 1 || list_units) {
+		fail('--skip-units runs no unit tests, so --shard and --list-units do not apply')
+	}
+	// A shard of the unit tests must not run the other sections once per shard.
+	if shard.count > 1 && !units_only && !list_units {
+		fail('--shard needs --units-only')
+	}
+	units := if units_only {
+		UnitMode.units_only
+	} else if skip_units {
+		UnitMode.skip_units
+	} else {
+		UnitMode.all
+	}
+	return Options{
+		c99:        c99
+		units:      units
+		shard:      shard
+		list_units: list_units
+	}
+}
+
+fn parse_unit_shard(value string) UnitShard {
+	parts := value.split('/')
+	if parts.len == 2 && is_decimal(parts[0]) && is_decimal(parts[1]) {
+		index := parts[0].int()
+		count := parts[1].int()
+		if count >= 1 && index >= 1 && index <= count {
+			return UnitShard{
+				index: index
+				count: count
 			}
 		}
 	}
-	return c99
+	fail('invalid --shard ${value}: expected i/n with 1 <= i <= n')
+	return UnitShard{}
 }
 
 fn host_v_cmd(cfg Config) string {
@@ -556,6 +629,19 @@ fn absolute_path(path string) string {
 		return path
 	}
 	return os.join_path(os.getwd(), path)
+}
+
+fn is_decimal(text string) bool {
+	return text.len > 0 && text.len < 6 && text.bytes().all(it.is_digit())
+}
+
+// note prints a progress line. `--list-units` keeps stdout for the file names.
+fn note(cfg Config, line string) {
+	if cfg.list_units {
+		eprintln(line)
+	} else {
+		println(line)
+	}
 }
 
 fn section(step int, title string) {

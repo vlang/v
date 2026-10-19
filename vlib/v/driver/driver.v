@@ -13938,8 +13938,9 @@ pub fn run(args []string) {
 			// A build checks each instance of the program's generics as a check
 			// does, and as V1 did: an instance that lacks a field, a method or an
 			// operator (`show(1)` reading `x.name`, `add(1)` adding a string to
-			// `a`) fails here, not in the C compiler. V_CHECK_INSTANCES_IN_BUILD=0
-			// leaves them to the C compiler.
+			// `a`), or that reads an array or map as one with other elements
+			// (`[]u8(a)` for an `a []int`), fails here, not in the C compiler or at
+			// run time. V_CHECK_INSTANCES_IN_BUILD=0 leaves them to the C compiler.
 			// It runs beside the transform; C generation waits for it below.
 			program_instance_check = start_program_instance_check(mut a, mut pre_tc, is_checker_fixture,
 				fatal_errors, message_limit, skip_notices)
@@ -14292,6 +14293,11 @@ pub fn run(args []string) {
 		}
 		mut transform_used_fns := map[string]bool{}
 		pre_transform_node_count := a.nodes.len
+		if ownership_checker_compiled() && (ownership_mode || 'ownership' in prefs.user_defines) {
+			// Ownership lowering asks which wrapper parameters reach a callback; answer
+			// from the bodies as checked, before transform lowers them in place.
+			pre_tc.prepare_callback_param_flows(used_fns)
+		}
 		if incremental_cache_hit {
 			transform_used_fns = clone_string_bool_map(incremental_changed_names)
 			// `main` activates the transformer's used-function filter. If another
@@ -14900,6 +14906,13 @@ pub fn run(args []string) {
 			exit(1)
 		}
 		if monomorph_errors.len > 0 {
+			// The check of the instances of the program's generics finds an error
+			// of such an instance too, and tells where it is, as a check does: an
+			// `[]u8` returned as an `[]u64` (see start_program_instance_check).
+			if program_instance_check.finish() == 1 {
+				clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+				exit(1)
+			}
 			if monomorph_errors.any(it.contains('compile-time error:')) {
 				clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 			}
@@ -15219,8 +15232,9 @@ pub fn run(args []string) {
 			}
 		}
 		// An instance of the program's generics that lacks a field, a method or an
-		// operator stops the build here, before C generation takes it to the C
-		// compiler (see start_program_instance_check).
+		// operator, or that reads an array or map as one with other elements,
+		// stops the build here, before C generation takes it to the C compiler
+		// (see start_program_instance_check).
 		if program_instance_check.finish() == 1 {
 			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 			exit(1)

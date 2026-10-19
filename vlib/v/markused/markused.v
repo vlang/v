@@ -4979,6 +4979,44 @@ fn (c &CallCollector) selective_alias_uses_generics(name_id u32, cur_module stri
 	return false
 }
 
+// generic_fn_value_name returns the generic function that the index `node`
+// names with its type arguments without calling it: `f[int]` of the current
+// module, a selectively imported `f[int]`, or `mod.f[int]`. Monomorphization
+// specializes such a value, so it is a generic use even without a generic call.
+fn (c &CallCollector) generic_fn_value_name(node &flat.Node, base &flat.Node, cur_module string, imports map[string]string, local_values map[string]bool) ?string {
+	if base.kind == .ident {
+		if base.value.len == 0 || base.value in local_values {
+			return none
+		}
+		if c.generic_fn_name_is_known(base.value, cur_module) {
+			qname := qualify_fn(cur_module, base.value)
+			return if c.is_known_fn_name(qname) { qname } else { base.value }
+		}
+		source := c.a.source_files[node.pos.id] or { return none }
+		for candidate in c.tc.file_selective_imports['${source.name}\n${base.value}'] or {
+			return none
+		} {
+			if candidate in c.tc.fn_generic_params {
+				return candidate
+			}
+		}
+		return none
+	}
+	if base.kind != .selector || base.children_count == 0 {
+		return none
+	}
+	qualifier := c.a.child_node(base, 0)
+	if qualifier.kind != .ident || qualifier.value in local_values {
+		return none
+	}
+	module_name := imports[qualifier.value] or { return none }
+	name := '${module_name}.${base.value}'
+	if name in c.tc.fn_generic_params {
+		return name
+	}
+	return none
+}
+
 fn (c &CallCollector) generic_fn_name_is_known(name string, cur_module string) bool {
 	if name in c.tc.fn_generic_params || c.generic_receiver_method_name_is_known(name) {
 		return true
@@ -5959,9 +5997,8 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 				if child.value != 'range' && child.children_count >= 2 {
 					base_id := c.a.child(child, 0)
 					base := c.a.node(base_id)
-					if base.kind == .ident && base.value !in local_values && c.generic_fn_name_is_known(base.value, cur_module) {
-						qname := qualify_fn(cur_module, base.value)
-						calls << if c.is_known_fn_name(qname) { qname } else { base.value }
+					if generic_fn := c.generic_fn_value_name(child, base, cur_module, imports, local_values) {
+						calls << generic_fn
 						uses_generics = true
 					} else if base.kind == .selector {
 						// A generic method named on a value with its type arguments,

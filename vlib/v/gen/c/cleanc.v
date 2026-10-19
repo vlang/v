@@ -4429,6 +4429,7 @@ fn (mut g FlatGen) gen_pre_body_support_declarations() {
 }
 
 fn (mut g FlatGen) gen_translation_unit_prefix() {
+	g.undef_target_identifier_macros()
 	g.c99_feature_test_macros()
 	if g.profile_file.len > 0 {
 		g.writeln('#define _VPROFILE (1)')
@@ -6496,6 +6497,13 @@ fn (mut g FlatGen) collect_c_directive_at(node_idx int, module_name string, node
 				directive:   CDirective{ module: module_name, text: g.c_include_directive_text(node_idx, cross_prefix_condition, include_arg, source_file), before_import: before_import }
 			}
 			return true
+		}
+		if node.value == 'include' && include_arg == '<sys/mman.h>'
+			&& g.headerless_compiler_bootstrap() {
+			// The headerless preamble declares mmap with a pointer-width offset. A kept
+			// <sys/mman.h> (32-bit targets, where glibc and musl disagree on `off_t`)
+			// declares the real prototype, which a second declaration would contradict.
+			g.collect_preserved_c_fns(['mmap'])
 		}
 		g.note_c_include_directive(module_name, source_file)
 		// `#insert` is an explicit request to inline the source text. Delay only
@@ -20560,6 +20568,17 @@ fn (mut g FlatGen) thread_stack_size_definition() {
 	g.writeln('#ifndef V_THREAD_STACK_SIZE')
 	g.writeln('#define V_THREAD_STACK_SIZE ${g.thread_stack_size}')
 	g.writeln('#endif')
+}
+
+// undef_target_identifier_macros removes macros that a C compiler predefines for
+// the target under ordinary identifier names. TinyCC defines `arm` and `arm_elf`
+// on 32-bit ARM, so a V local named `arm` became `bool 1 = ...` in the C output.
+fn (mut g FlatGen) undef_target_identifier_macros() {
+	if g.target.arch != 'arm32' {
+		return
+	}
+	g.writeln('#undef arm')
+	g.writeln('#undef arm_elf')
 }
 
 fn (mut g FlatGen) c99_feature_test_macros() {

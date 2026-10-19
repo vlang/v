@@ -2280,6 +2280,9 @@ fn (mut tc TypeChecker) check_nonliteral_node(id flat.NodeId) {
 	}
 	if kind_id == 12 {
 		tc.check_call(id, node)
+		if tc.errors.len > 0 {
+			tc.mark_unresolved_receiver_call(id, node)
+		}
 		return
 	}
 	if kind_id == 21 {
@@ -2670,7 +2673,8 @@ fn (mut tc TypeChecker) check_nonliteral_node(id flat.NodeId) {
 			} else if node.kind == .infix && node.op == .left_shift && i == 1 {
 				lhs_type := unwrap_pointer(tc.resolve_type(tc.a.child(&node, 0)))
 				if lhs_type is Array {
-					expected := if tc.array_literal_nesting_depth(child_id) >= type_array_nesting_depth(lhs_type) {
+					expected := if tc.array_literal_nesting_depth(child_id) >= type_array_nesting_depth(lhs_type)
+						|| tc.array_literal_first_elem_fits(child_id, lhs_type.elem_type) {
 						Type(Array{
 							elem_type: lhs_type.elem_type
 						})
@@ -2769,6 +2773,30 @@ fn (tc &TypeChecker) array_literal_nesting_depth(id flat.NodeId) int {
 		child_depth = int_max(child_depth, tc.array_literal_nesting_depth(tc.a.child(node, i)))
 	}
 	return child_depth + 1
+}
+
+// array_literal_first_elem_fits reports whether the first element of the array
+// literal `id` is not itself a literal and already has the type `elem_type`. An
+// appended `[row]` with `row []string` then appends rows to a `[][]string`, even
+// though the literal is nested less deeply than the array it is appended to.
+fn (tc &TypeChecker) array_literal_first_elem_fits(id flat.NodeId, elem_type Type) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.node(id)
+	if node.kind != .array_literal || node.children_count == 0 {
+		return false
+	}
+	first_id := tc.a.child(node, 0)
+	clean_elem := unalias_type(elem_type)
+	if tc.a.node(first_id).kind == .array_literal
+		|| (clean_elem !is Array && clean_elem !is ArrayFixed) {
+		return false
+	}
+	first_type := tc.resolve_type(first_id)
+	clean_first := unalias_type(first_type)
+	return (clean_first is Array || clean_first is ArrayFixed)
+		&& tc.type_compatible(first_type, elem_type)
 }
 
 fn type_array_nesting_depth(typ Type) int {
@@ -3698,10 +3726,10 @@ fn (mut tc TypeChecker) check_array_literal_element_types(id flat.NodeId, node f
 		tc.record_error(.assignment_mismatch, 'invalid void array element type', tc.a.child(&node, 0))
 		return
 	}
-	if node.children_count < 2 {
-		return
-	}
-	for i in 1 .. node.children_count {
+	elem_range := integer_type_range(elem_type)
+	// The first element is checked as well, since the element type can come from
+	// the context (`[]Bar([Foo{1}])`) instead of from that element.
+	for i in 0 .. node.children_count {
 		child_id := tc.a.child(&node, i)
 		if spread_id := tc.spread_arg_value(child_id) {
 			spread_type := unalias_type(tc.resolve_type(spread_id))
@@ -3717,20 +3745,49 @@ fn (mut tc TypeChecker) check_array_literal_element_types(id flat.NodeId, node f
 				continue
 			}
 		}
-		actual := tc.resolve_expr(child_id, elem_type)
+		// An integer literal takes the integer element type only when its bits fit;
+		// otherwise it is an `int`, and building the array would truncate it.
+		if type_range := elem_range {
+			if literal := tc.integer_literal_source(child_id) {
+				if integer_literal_loses_bits(literal.replace('_', ''), type_range.bits) {
+					tc.record_error_at(.assignment_mismatch, 'invalid array element: expected `${tc.array_literal_elem_diagnostic_name(node, i, elem_type)}`, not `int`', child_id, tc.array_element_diagnostic_pos(child_id))
+					continue
+				}
+			}
+		}
+		// The first element is first taken as it is: without a context the element
+		// type was taken from it, and resolving it against that type would retype it.
+		mut actual := if i == 0 {
+			tc.resolve_type(child_id)
+		} else {
+			tc.resolve_expr(child_id, elem_type)
+		}
+		if i == 0 && actual !is Unknown && !tc.array_elem_type_fits(child_id, actual, elem_type) {
+			if tc.array_first_elem_keeps_its_type(child_id, actual, elem_type) {
+				continue
+			}
+			// The element type comes from the context: type the element in it, as the
+			// later elements are.
+			actual = tc.resolve_expr(child_id, elem_type)
+		}
 		is_option_mismatch := (actual is OptionType) != (elem_type is OptionType)
 		is_pointer_mismatch := elem_type is Pointer && actual !is Pointer
 		child := tc.a.node(child_id)
 		if elem_type is OptionType && actual !is OptionType
 			&& tc.expr_compatible(child_id, actual, elem_type.base_type)
-			&& child.kind in [.int_literal, .float_literal, .bool_literal, .char_literal,
-				.string_literal, .none_expr] {
+			&& (i == 0 || child.kind in [.int_literal, .float_literal, .bool_literal, .char_literal,
+				.string_literal, .none_expr]) {
 			// Literal values are lifted into an Option when the array's element type
-			// is fixed by an earlier explicit Option element.
+			// is fixed by an earlier explicit Option element. The first element can
+			// only be of an Option type it was not written with through the context
+			// (`[]?int([x])`), which lifts any value.
 			continue
 		}
-		if actual is Unknown || (tc.expr_compatible(child_id, actual, elem_type)
-			&& !is_option_mismatch && !is_pointer_mismatch) {
+		// `()` is the value of a call to an unknown function or method, which is
+		// reported already.
+		if actual is Unknown || (actual is MultiReturn && actual.types.len == 0)
+			|| (tc.expr_compatible(child_id, actual, elem_type) && !is_option_mismatch
+				&& !is_pointer_mismatch) {
 			continue
 		}
 		if child.kind == .postfix && child.op == .not && actual is ArrayFixed
@@ -3739,7 +3796,7 @@ fn (mut tc TypeChecker) check_array_literal_element_types(id flat.NodeId, node f
 			continue
 		}
 		actual_name := tc.array_element_diagnostic_type_name(child_id, actual)
-		elem_name := tc.array_element_diagnostic_type_name(tc.a.child(&node, 0), elem_type)
+		elem_name := tc.array_literal_elem_diagnostic_name(node, i, elem_type)
 		if actual is OptionType && elem_type !is OptionType {
 			tc.record_error_at(.assignment_mismatch, 'cannot use `?${actual.base_type.name()}` as `${elem_name}`, it must be unwrapped first', child_id, tc.array_element_value_pos(child_id))
 			continue
@@ -3832,6 +3889,74 @@ fn (mut tc TypeChecker) record_implicit_slice_clone_notice(id flat.NodeId) {
 	tc.record_notice_with_details_at(.assignment_mismatch, 'an implicit clone of the slice was done here', id, pos, [
 		detail,
 	])
+}
+
+// array_elem_type_fits reports whether an element of type `actual` can be stored
+// in an array of `elem_type` as it is.
+fn (tc &TypeChecker) array_elem_type_fits(id flat.NodeId, actual Type, elem_type Type) bool {
+	if (actual is OptionType) != (elem_type is OptionType) {
+		return false
+	}
+	if elem_type is Pointer && actual !is Pointer {
+		return false
+	}
+	return tc.expr_compatible(id, actual, elem_type)
+}
+
+// array_first_elem_keeps_its_type reports whether the first element of an array
+// literal is stored as it is although its type differs from `elem_type`: the
+// element type was derived from it (`[v, 5]` with a `for mut v` binding), or it is
+// a value stored by reference in an array of pointers to its type (#29074).
+fn (tc &TypeChecker) array_first_elem_keeps_its_type(id flat.NodeId, actual Type, elem_type Type) bool {
+	derived := tc.array_literal_child_elem_type(id)
+	if derived !is Unknown && tc.array_elem_type_fits(id, derived, elem_type) {
+		return true
+	}
+	clean_elem := unalias_type(elem_type)
+	if clean_elem !is Pointer || unalias_type(actual) is Pointer {
+		return false
+	}
+	return tc.type_compatible(actual, unwrap_all_pointers(clean_elem))
+}
+
+// integer_literal_loses_bits reports whether the integer literal `literal` needs
+// more than `bits` bits, in two's complement or unsigned, so that storing it in an
+// integer of that width changes it beyond a reinterpretation of its bits:
+// `300` or `-129` for 8 bits, but not `255` or `-128`. 64-bit literals are left
+// to the checks of the literal itself.
+fn integer_literal_loses_bits(literal string, bits int) bool {
+	if literal == '' || bits <= 0 || bits >= 64 {
+		return false
+	}
+	is_negative := literal[0] == `-`
+	mut magnitude := literal
+	if literal[0] == `-` || literal[0] == `+` {
+		magnitude = literal[1..]
+	}
+	if magnitude.len == 0 {
+		return false
+	}
+	value, parse_error := strconv.common_parse_uint2(magnitude, util.v_literal_parse_base(magnitude), 64)
+	if parse_error == -3 {
+		return true
+	}
+	if parse_error != 0 {
+		return false
+	}
+	if is_negative {
+		return value > u64(1) << (bits - 1)
+	}
+	return value > (u64(1) << bits) - 1
+}
+
+// array_literal_elem_diagnostic_name spells the element type an array literal
+// expects when its element `index` does not fit. Later elements name it after the
+// first one; the first element itself is the mismatch, so only the type remains.
+fn (tc &TypeChecker) array_literal_elem_diagnostic_name(node flat.Node, index int, elem_type Type) string {
+	if index > 0 {
+		return tc.array_element_diagnostic_type_name(tc.a.child(&node, 0), elem_type)
+	}
+	return tc.diagnostic_type_name(elem_type).replace_once('fn(', 'fn (')
 }
 
 fn (tc &TypeChecker) array_element_diagnostic_type_name(id flat.NodeId, typ Type) string {
@@ -5869,6 +5994,10 @@ fn (mut tc TypeChecker) record_interface_implementation_error(kind TypeErrorKind
 }
 
 fn (mut tc TypeChecker) record_interface_implementation_error_with_mut_receiver(kind TypeErrorKind, actual Type, expected Interface, id flat.NodeId, pos token.Pos, allow_mut_receiver bool) bool {
+	if is_unresolved_name_type(unwrap_pointer(actual)) {
+		// The value names something that did not resolve, which is reported already.
+		return true
+	}
 	clean_actual := unalias_type(unwrap_pointer(actual))
 	if clean_actual is Interface
 		&& (tc.interface_metadata_name(clean_actual.source_type_id()) == tc.interface_metadata_name(expected.source_type_id())
@@ -6924,6 +7053,9 @@ fn (mut tc TypeChecker) check_as_expr(id flat.NodeId, node flat.Node) {
 				return
 			}
 		}
+	}
+	if is_unresolved_name_type(child_type) {
+		return
 	}
 	as_child_type := if child_type is OptionType { child_type.base_type } else { child_type }
 	mut clean_child := unalias_type(unwrap_pointer(as_child_type))
@@ -10729,6 +10861,12 @@ fn (mut tc TypeChecker) check_or_expr(id flat.NodeId, node flat.Node) {
 	}
 	inner_id := tc.a.child(&node, 0)
 	tc.check_node(inner_id)
+	if tc.errors.len > 0 && is_unresolved_name_type(tc.resolve_type(inner_id)) {
+		// Whether `missing.get() or {}` or `missing?` can fail, and what it holds, are
+		// unknown: the name it is built on did not resolve.
+		tc.register_synth_type(id, unresolved_name_type())
+		return
+	}
 	if node.children_count >= 2 {
 		inner := tc.a.node(inner_id)
 		if inner.kind == .call && inner.children_count > 0 {
@@ -15652,6 +15790,18 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 				} else {
 					tc.insert_loop_var(key_id, tc.range_loop_var_type(tc.a.child(&container, 0), tc.a.child(&container, 1)))
 				}
+			} else if is_unresolved_name_type(clean) {
+				// The container did not resolve, and neither do the values it holds.
+				if has_val {
+					tc.insert_loop_var(key_id, builtin_int_type)
+					if node.op == .amp {
+						tc.insert_mut_loop_var(val_id, clean)
+					} else {
+						tc.insert_loop_var(val_id, clean)
+					}
+				} else {
+					tc.insert_loop_var(key_id, clean)
+				}
 			} else if (clean is Unknown || clean is Void) && tc.expr_subtree_has_error(container_id) {
 				if has_val {
 					if container.kind == .selector {
@@ -16457,6 +16607,18 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 				}
 				i += 2
 				continue
+			}
+			// The initializer uses a name that does not resolve. The variables are still
+			// declared, so that their uses are not reported as undefined as well. As
+			// before, the initializers after this one are not checked.
+			tc.insert_decl_lhs(lhs_id, unresolved_initializer_type(tc.resolve_type(rhs_id)),
+				lhs_is_mut)
+			for j := i + 2; j + 1 < node.children_count; j += 2 {
+				next_lhs_id := tc.a.child(&node, j)
+				if tc.a.nodes[int(next_lhs_id)].kind == .ident {
+					tc.insert_decl_lhs(next_lhs_id, unresolved_name_type(), tc.decl_lhs_is_mut(node,
+						next_lhs_id))
+				}
 			}
 			return
 		}
@@ -18709,6 +18871,14 @@ fn (mut tc TypeChecker) check_multi_return_decl_assign(id flat.NodeId, node flat
 	if lhs_ids.len > 1 {
 		if call_name := tc.unresolved_multi_assign_method_call_name(rhs_id) {
 			tc.check_node(rhs_id)
+			if tc.errors.len > 0 && is_unresolved_name_type(tc.resolve_type(rhs_id)) {
+				// The receiver did not resolve, so the number of values is unknown.
+				for lhs_id in lhs_ids {
+					tc.insert_decl_lhs(lhs_id, unresolved_name_type(), tc.decl_lhs_is_mut(node,
+						lhs_id))
+				}
+				return true
+			}
 			if tc.should_diagnose(id) {
 				tc.record_error_at(.assignment_mismatch, 'assignment mismatch: ${lhs_ids.len} variables but `${call_name}()` returns 0 values', id, tc.assignment_operator_pos(node, lhs_ids[0], rhs_id))
 			}
@@ -21145,6 +21315,9 @@ fn (tc &TypeChecker) assignment_source_line_pos(node flat.Node, lhs_id flat.Node
 }
 
 fn (mut tc TypeChecker) record_compound_assignment_operand_errors(op flat.Op, lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type Type, rhs_type Type) {
+	if is_unresolved_name_type(lhs_type) || is_unresolved_name_type(rhs_type) {
+		return
+	}
 	mut op_text := tc.compound_assignment_source_operator(lhs_id, rhs_id, op)
 	if op_text.len == 0 {
 		return

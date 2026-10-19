@@ -1417,6 +1417,9 @@ fn (mut tc TypeChecker) check_postfix(id flat.NodeId, node flat.Node) {
 			return
 		}
 		child_type := unalias_type(tc.resolve_type(child_id))
+		if is_unresolved_name_type(child_type) {
+			return
+		}
 		if child_type is Pointer {
 			if tc.pointer_diagnostic_binding_type_name(child_id, Type(child_type)) in [
 				'voidptr',
@@ -10688,6 +10691,12 @@ fn (mut tc TypeChecker) resolve_generic_call_info(id flat.NodeId, fn_node flat.N
 	if fn_node.kind != .index || fn_node.children_count < 2 || fn_node.value == 'range' {
 		return none
 	}
+	// `name[i]()` indexes a local array or map of functions when `name` is one, even
+	// if a generic function of the same name is in scope: the local shadows it, as
+	// it does for a plain `name()` call.
+	if tc.call_callee_index_is_value(fn_node) {
+		return none
+	}
 	base_id := tc.a.child(&fn_node, 0)
 	type_args_source_ids := tc.generic_call_type_arg_names(fn_node).clone()
 	type_args := flat.TypeTextList{ ids: type_args_source_ids }.names()
@@ -13273,8 +13282,103 @@ pub fn (tc &TypeChecker) call_param_flows_to_callback(id flat.NodeId, callback_p
 	call_name := tc.resolved_call_name(id) or { return false }
 	decl_module := tc.visible_mutation_call_module(call, call_name)
 	decl := tc.visible_mutation_fn_decl(call_name, decl_module) or { return false }
+	if !isnil(tc.callback_param_flows) {
+		if pairs := tc.callback_param_flows.flows[decl.idx] {
+			if flows := pairs[callback_param_flow_key(callback_param_idx, source_param_idx)] {
+				return flows
+			}
+		}
+	}
 	mut visiting := map[u64]bool{}
 	return tc.visible_fn_param_flows_to_callback(decl, callback_param_idx, source_param_idx, mut visiting)
+}
+
+// CallbackParamFlows holds call_param_flows_to_callback results computed while the
+// function bodies were still as checked.
+@[heap]
+struct CallbackParamFlows {
+mut:
+	// fn_decl node index -> callback_param_flow_key -> whether the source parameter
+	// reaches an invocation of the callback parameter. A missing pair was not computed.
+	flows map[int]map[u32]bool
+}
+
+fn callback_param_flow_key(callback_param_idx int, source_param_idx int) u32 {
+	return (u32(callback_param_idx) << 16) | u32(source_param_idx & 0xffff)
+}
+
+// prepare_callback_param_flows computes call_param_flows_to_callback for each
+// function-valued parameter of every source function before transform runs.
+// Transform lowers bodies in place, in parallel workers, so a later query can read
+// a callee that is already lowered or being lowered: `chosen := match c { true {
+// callback } else { other } }` then reads `chosen := __match_val_1`, and the flow
+// from `callback` to `chosen(value)` is lost. Only functions in `used_fns` are
+// summarized when it is not empty: the queries come from calls in reachable bodies.
+// Queries for other pairs and functions, such as generic specializations created
+// later, still walk the body.
+pub fn (mut tc TypeChecker) prepare_callback_param_flows(used_fns map[string]bool) {
+	mut summary := &CallbackParamFlows{}
+	old_file := tc.cur_file
+	old_module := tc.cur_module
+	mut cur_mod := ''
+	for i in tc.top_level_idx {
+		node := tc.a.nodes[i]
+		match node.kind {
+			.file {
+				tc.cur_file = node.value
+				cur_mod = tc.file_modules[node.value] or { '' }
+			}
+			.module_decl {
+				cur_mod = node.value
+			}
+			.fn_decl {
+				if used_fns.len > 0 {
+					qname := checker_qualified_fn_name(cur_mod, node.value)
+					if !used_fns[qname] && !used_fns[tc.cached_c_name(qname)] {
+						continue
+					}
+				}
+				tc.cur_module = if cur_mod.len > 0 { cur_mod } else { 'main' }
+				mut params := []flat.Node{}
+				for j in 0 .. node.children_count {
+					child := tc.a.child_node(&node, j)
+					if child.kind != .param {
+						break
+					}
+					params << *child
+				}
+				if params.len < 2 {
+					continue
+				}
+				decl := VisibleMutationFnDecl{
+					idx: i
+					mod: cur_mod
+				}
+				mut pairs := map[u32]bool{}
+				for callback_idx, param in params {
+					if flat.source_type_shape(param.typ).has(.variadic)
+						|| fn_type_from_type(unalias_type(tc.parse_type(param.typ))) == none {
+						continue
+					}
+					for source_idx in 0 .. params.len {
+						if source_idx == callback_idx {
+							continue
+						}
+						mut visiting := map[u64]bool{}
+						pairs[callback_param_flow_key(callback_idx, source_idx)] = tc.visible_fn_param_flows_to_callback(decl,
+							callback_idx, source_idx, mut visiting)
+					}
+				}
+				if pairs.len > 0 {
+					summary.flows[i] = pairs.move()
+				}
+			}
+			else {}
+		}
+	}
+	tc.cur_file = old_file
+	tc.cur_module = old_module
+	tc.callback_param_flows = summary
 }
 
 fn (tc &TypeChecker) visible_fn_param_flows_to_callback(decl VisibleMutationFnDecl, callback_param_idx int, source_param_idx int, mut visiting map[u64]bool) bool {
@@ -21243,7 +21347,9 @@ fn valid_string_data(s string) bool {
 	if s == '' {
 		return true
 	}
-	ptr := unsafe { u64(voidptr(s.str)) }
+	// Go through usize: C sign-extends a 32-bit pointer converted to a wider
+	// integer, which put every address above 2 GiB out of range on 32-bit hosts.
+	ptr := unsafe { u64(usize(voidptr(s.str))) }
 	return ptr >= 4096 && ptr < 281474976710656 && s.len < 1048576
 }
 
