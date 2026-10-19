@@ -66,6 +66,7 @@ concurrency:
 jobs:
   control:
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     outputs:
       target: ${{ steps.control.outputs.target }}
       publish: ${{ steps.control.outputs.publish }}
@@ -289,6 +290,7 @@ jobs:
     needs: control
     if: needs.control.outputs.has_hosted == 'true' || needs.control.outputs.has_bsd == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     outputs:
       tinycc_hash: ${{ steps.tinycc.outputs.hash }}
       libgc_hash: ${{ steps.bdwgc.outputs.libgc_hash }}
@@ -356,6 +358,7 @@ jobs:
           echo "libatomic_ops $LIBATOMIC_OPS_COMMIT resolves to $libatomic_ops_hash"
 
   update-tccbin-hosted:
+    timeout-minutes: 120
     needs:
       - control
       - resolve-sources
@@ -395,13 +398,40 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: vlang/vc
-          ref: dfc458a13ba8923ebc249e262c331f8169aa728b
+          ref: c3063f8ca58150f6c6d98d86dc95bd3543e620f3
           path: .tccbin-bootstrap-vc
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Checkout the TCC bootstrap bundle for the macOS validator
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          ## The validator is built for this runner, so libtcc.a must match its
+          ## architecture: the arm64 managed baseline or the x86_64 one.
+          TCC_BOOTSTRAP_COMMIT: ${{ runner.arch == 'X64' && '199fa78395ca413aac23d02ec69cc5e7b1d805a2' || '1d0ad0ecf70a91a1df64cebf215e683b1d5aedb5' }}
+        run: |
+          set -euo pipefail
+          tcc_root="$RUNNER_TEMP/tccbin-bootstrap-tcc"
+          test ! -e "$tcc_root"
+          git init --quiet "$tcc_root"
+          git -C "$tcc_root" config --local core.autocrlf false
+          git -C "$tcc_root" remote add origin https://github.com/vlang/tccbin
+          git -C "$tcc_root" fetch --quiet --filter=blob:none origin "$TCC_BOOTSTRAP_COMMIT"
+          git -C "$tcc_root" checkout --quiet --detach "$TCC_BOOTSTRAP_COMMIT"
+          test "$(git -C "$tcc_root" rev-parse HEAD)" = "$TCC_BOOTSTRAP_COMMIT"
+          test -f "$tcc_root/include/libtcc.h"
+          test -f "$tcc_root/lib/libtcc.a"
+          {
+            echo "TCCBIN_BOOTSTRAP_TCC_ROOT=$tcc_root"
+            echo "TCCBIN_BOOTSTRAP_TCC_COMMIT=$TCC_BOOTSTRAP_COMMIT"
+          } >> "$GITHUB_ENV"
+
       - name: Bootstrap the contract-bound Phase A validator before staging
         shell: bash
+        env:
+          ## A compile failure must stop here, not retry with the 0.5.2 release.
+          V_MACOS_V3_NO_FALLBACK: '1'
         run: |
           set -euo pipefail
           contract_input="$RUNNER_TEMP/tccbin-validator-contract-input"
@@ -1680,6 +1710,7 @@ jobs:
             git -C thirdparty/tcc push origin "HEAD:${{ matrix.branch }}"
 
   update-tccbin-bsd:
+    timeout-minutes: 120
     needs:
       - control
       - resolve-sources
@@ -1706,7 +1737,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: vlang/vc
-          ref: dfc458a13ba8923ebc249e262c331f8169aa728b
+          ref: c3063f8ca58150f6c6d98d86dc95bd3543e620f3
           path: .tccbin-bootstrap-vc
           fetch-depth: 0
           persist-credentials: false

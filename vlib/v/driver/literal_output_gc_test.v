@@ -11,10 +11,29 @@ fn literal_output_gc_test_root() !string {
 	return root
 }
 
+// remove_literal_output_gc_test_root removes a test root. On Windows an executable that
+// has just run can stay locked for a moment (virus scanning), so retry briefly first.
+fn remove_literal_output_gc_test_root(root string) {
+	mut attempts := 0
+	for {
+		os.rmdir_all(root) or {
+			$if windows {
+				attempts++
+				if attempts < 50 {
+					time.sleep(100 * time.millisecond)
+					continue
+				}
+			}
+			panic(err)
+		}
+		break
+	}
+}
+
 fn test_minimal_literal_output_supports_boehm_and_no_gc_runtime() {
 	root := literal_output_gc_test_root()!
 	defer {
-		os.rmdir_all(root) or { panic(err) }
+		remove_literal_output_gc_test_root(root)
 	}
 	source := os.join_path(root, 'literal_output.v')
 	os.write_file(source, "fn main() { print('\\n') }\n")!
@@ -50,10 +69,24 @@ fn test_minimal_literal_output_builtin_keeps_collector_support_files() {
 	}
 }
 
+fn test_minimal_literal_output_builtin_rejects_portable_snapshots() {
+	root := literal_output_gc_test_root()!
+	defer { remove_literal_output_gc_test_root(root) }
+	source := os.join_path(root, 'literal_output.v')
+	os.write_file(source, "fn main() { println('hello') }\n")!
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.target_from('macos', 'arm64')!
+	assert input_uses_minimal_literal_output_builtin(source, prefs, false, false)
+	prefs.output_cross_c = true
+	assert !input_uses_minimal_literal_output_builtin(source, prefs, false, false)
+	prefs.output_cross_c = false
+	assert input_uses_minimal_literal_output_builtin(source, prefs, false, false)
+}
+
 fn test_minimal_literal_output_gc_keeps_existing_eligibility_gates() {
 	root := literal_output_gc_test_root()!
 	defer {
-		os.rmdir_all(root) or { panic(err) }
+		remove_literal_output_gc_test_root(root)
 	}
 	source := os.join_path(root, 'literal_output.v')
 	os.write_file(source, "fn main() { print('hello') }\n")!
@@ -64,7 +97,30 @@ fn test_minimal_literal_output_gc_keeps_existing_eligibility_gates() {
 	assert !input_uses_minimal_literal_output_builtin(source, prefs, true, false)
 	assert !input_uses_minimal_literal_output_builtin(source, prefs, false, true)
 	prefs.target = pref.target_from('linux', 'arm64')!
+	assert input_uses_minimal_literal_output_builtin(source, prefs, false, false)
+	for target in ['freebsd', 'openbsd', 'netbsd', 'dragonfly', 'solaris', 'haiku', 'qnx', 'serenity',
+		'termux', 'wasm32_emscripten'] {
+		prefs.target = pref.target_from(target, if target == 'wasm32_emscripten' {
+			'wasm32'
+		} else {
+			'arm64'
+		})!
+		assert input_uses_minimal_literal_output_builtin(source, prefs, false, false), target
+	}
+	prefs.target = pref.target_from('windows', 'amd64')!
+	assert input_uses_minimal_literal_output_builtin(source, prefs, false, false)
+	os.write_file(source, "fn main() { println('привет') }\n")!
 	assert !input_uses_minimal_literal_output_builtin(source, prefs, false, false)
+	os.write_file(source, "fn main() { print('hello') }\n")!
+	prefs.target = pref.target_from('vinix', 'amd64')!
+	assert !input_uses_minimal_literal_output_builtin(source, prefs, false, false)
+	prefs.target = pref.target_from('android', 'arm64')!
+	assert input_uses_minimal_literal_output_builtin(source, prefs, false, false)
+	prefs.target = pref.target_from('ios', 'arm64')!
+	assert input_uses_minimal_literal_output_builtin(source, prefs, false, false)
+	os.write_file(source, "fn main() { println('100%') }\n")!
+	assert !input_uses_minimal_literal_output_builtin(source, prefs, false, false)
+	os.write_file(source, "fn main() { print('hello') }\n")!
 	prefs.target = pref.target_from('macos', 'arm64')!
 	prefs.backend = 'arm64'
 	assert !input_uses_minimal_literal_output_builtin(source, prefs, false, false)
@@ -76,7 +132,7 @@ fn test_minimal_literal_output_gc_keeps_existing_eligibility_gates() {
 fn test_literal_output_keeps_linux_backtrace_array_iteration_runtime() {
 	root := literal_output_gc_test_root()!
 	defer {
-		os.rmdir_all(root) or { panic(err) }
+		remove_literal_output_gc_test_root(root)
 	}
 	keys := ['VFLAGS', 'VOSARGS', 'V_C_ERROR_BUG_REPORT_DISABLED']
 	mut old_values := map[string]string{}
@@ -103,7 +159,7 @@ fn test_literal_output_keeps_linux_backtrace_array_iteration_runtime() {
 		@VEXE
 	}
 	source := os.join_path(root, 'hello.v')
-	os.write_file(source, "fn main() { println('Hello, World!') }\n")!
+	os.write_file(source, "fn main() { message := 'Hello, World!'; println(message) }\n")!
 	flags := ['-new-compiler', '-no-retry-compilation', '-nocache', '-show-timings']
 	for arch in ['amd64', 'arm64'] {
 		c_path := os.join_path(root, 'hello_${arch}.c')
@@ -133,7 +189,7 @@ fn test_macos_literal_output_with_gc_has_no_compiler_diagnostics() {
 	}
 	root := literal_output_gc_test_root()!
 	defer {
-		os.rmdir_all(root) or { panic(err) }
+		remove_literal_output_gc_test_root(root)
 	}
 	// Keep the subprocess independent of the test runner's flags, and make a
 	// V3 failure fail the test instead of accepting output from a V1 fallback.
@@ -187,15 +243,37 @@ fn test_macos_literal_output_with_gc_has_no_compiler_diagnostics() {
 				generated := cmdexec.run_with_timeout(vexe, c_args, 120_000)
 				assert generated.exit_code == 0, generated.output
 				output := os.read_file(c_path)!
-				if mode == 'none' {
-					assert !output.contains('GC_INIT();'), mode
-				} else {
-					assert output.contains('GC_INIT();'), mode
-					assert output.contains('GC_MALLOC'), mode
-					assert output.contains('GC_REGISTER_DISPLACEMENT'), mode
-					assert output.contains('gc_runtime_init();'), mode
-				}
+				assert !output.contains('v_gc_init();'), mode
+				assert !output.contains('v_gc_malloc'), mode
+				assert !output.contains('v_gc_register_displacement'), mode
+				assert !output.contains('gc_runtime_init();'), mode
 			}
+		}
+		// Allocating programs still need the selected collector's startup and
+		// allocation support, even though literal output does not.
+		runtime_source := os.join_path(root, 'runtime_${mode}.v')
+		os.write_file(runtime_source, 'fn main() {
+	mut values := []string{}
+	values << "runtime"
+	println(values[0])
+}
+')!
+		runtime_c := os.join_path(root, 'runtime_${mode}.c')
+		mut runtime_args := ['-new-compiler', '-no-retry-compilation', '-nocache', '-cc', 'clang']
+		if mode.len > 0 {
+			runtime_args << ['-gc', mode]
+		}
+		runtime_args << ['-o', runtime_c, runtime_source]
+		generated := cmdexec.run_with_timeout(vexe, runtime_args, 120_000)
+		assert generated.exit_code == 0, generated.output
+		output := os.read_file(runtime_c)!
+		if mode == 'none' {
+			assert !output.contains('v_gc_init();'), mode
+		} else {
+			assert output.contains('v_gc_init();'), mode
+			assert output.contains('v_gc_malloc'), mode
+			assert output.contains('v_gc_register_displacement'), mode
+			assert output.contains('gc_runtime_init();'), mode
 		}
 	}
 }

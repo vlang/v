@@ -2,6 +2,7 @@ module json2
 
 import strconv
 import time
+import math
 
 const null_in_string = 'null'
 
@@ -76,10 +77,13 @@ struct StructKeyDecodeResult[T] {
 }
 
 // DecoderOptions provides options for JSON decoding.
-// By default, decoding is lenient. Use `strict: true` for strict JSON spec compliance.
+// By default, decoding is lenient. Use `strict: true` for strict type conversion
+// and `json5: true` to accept JSON5 syntax.
 @[markused; params]
 pub struct DecoderOptions {
 pub:
+	// json5 accepts JSON5 comments, keys, strings, trailing commas and numbers.
+	json5 bool
 	// In strict mode, quoted strings are not accepted as numbers.
 	// For example, '"123"' will fail to decode as int in strict mode,
 	// but will succeed in default mode.
@@ -106,8 +110,11 @@ mut:
 // Decoder is the internal decoding state.
 @[markused]
 struct Decoder {
-	json   string // json is the JSON data to be decoded.
-	strict bool   // strict mode rejects quoted strings as numbers, fixed arrays of another length, and null values
+	json               string // json is the JSON data to be decoded.
+	json5              bool
+	source_json        string // Original JSON5 input, used only for decoding diagnostics.
+	source_values_info []Json5SourceSpan
+	strict             bool // strict mode rejects quoted strings as numbers, fixed arrays of another length, and null values
 mut:
 	// Scratch result of check_string, copied to the corresponding ValueInfo.
 	string_has_escape bool
@@ -314,30 +321,46 @@ fn (mut checker Decoder) checker_error(message string) ! {
 @[markused]
 fn (mut decoder Decoder) decode_error(message string) ! {
 	mut error_info := ValueInfo{}
+	mut error_idx := -1
 	if decoder.current_idx < decoder.values_info.len {
+		error_idx = decoder.current_idx
 		error_info = decoder.current_value()
 	} else if decoder.values_info.len > 0 {
+		error_idx = decoder.values_info.len - 1
 		error_info = decoder.values_info.last()
+	}
+	json := if decoder.json5 { decoder.source_json } else { decoder.json }
+	if decoder.json5 && error_idx >= 0 {
+		source_info := decoder.source_values_info[error_idx]
+		error_info.position = source_info.position
+		error_info.length = source_info.length
 	}
 
 	start := error_info.position
+	if decoder.json5 {
+		line, column, line_start := json5_source_location(json, start)
+		return JsonDecodeError{
+			context:   json5_decode_context(json, start, error_info.length, line_start, column)
+			message:   'Data: ${message}'
+			line:      line + 1
+			character: column + 1
+		}
+	}
 	end := start + int_min(error_info.length, max_context_length)
-
 	mut line_number := 0
 	mut character_number := 0
 	mut last_newline := 0
-
 	for i := start - 1; i >= 0; i-- {
 		if last_newline == 0 {
-			if decoder.json[i] == `\n` {
+			if json[i] == `\n` {
 				last_newline = i + 1
-			} else if decoder.json[i] == `\t` {
+			} else if json[i] == `\t` {
 				character_number += tab_width
 			} else {
 				character_number++
 			}
 		}
-		if decoder.json[i] == `\n` {
+		if json[i] == `\n` {
 			line_number++
 		}
 	}
@@ -353,9 +376,8 @@ fn (mut decoder Decoder) decode_error(message string) ! {
 	}
 
 	// print some extra characters
-	mut context_end := int_min(decoder.json.len, end + max_extra_characters)
-	context_end_newline := decoder.json[end..context_end].index_u8(`\n`)
-
+	mut context_end := int_min(json.len, end + max_extra_characters)
+	context_end_newline := json[end..context_end].index_u8(`\n`)
 	if context_end_newline != -1 {
 		context_end = end + context_end_newline
 	}
@@ -365,9 +387,9 @@ fn (mut decoder Decoder) decode_error(message string) ! {
 	if cutoff {
 		context += '...'
 	}
-	context += decoder.json[context_start..start]
-	context += '\\e[31m${decoder.json[start..end]}\\e[0m'
-	context += decoder.json[end..context_end]
+	context += json[context_start..start]
+	context += '\\e[31m${json[start..end]}\\e[0m'
+	context += json[end..context_end]
 	context += '\n'
 
 	if cutoff {
@@ -385,10 +407,10 @@ fn (mut decoder Decoder) decode_error(message string) ! {
 	}
 }
 
-// decode decodes a JSON string into a specified type.
-// By default, decoding is lenient. Use `strict: true` for strict JSON spec compliance.
+// decoder_for_text performs input validation and token allocation once in shared
+// code rather than specializing the same setup for every target type.
 @[manualfree]
-pub fn decode[T](val string, params DecoderOptions) !T {
+fn decoder_for_text(val string, params DecoderOptions) !Decoder {
 	if val == '' {
 		return JsonDecodeError{
 			message:   'empty string'
@@ -401,13 +423,34 @@ pub fn decode[T](val string, params DecoderOptions) !T {
 		strict:      params.strict
 		values_info: []ValueInfo{len: value_count_bound(val)}
 	}
+	decoder.check_json_format() or {
+		unsafe { decoder.values_info.free() }
+		return err
+	}
+	decoder.values_info.trim(decoder.values_len)
+	return decoder
+}
+
+// decode decodes a JSON string into a specified type.
+// By default, decoding is lenient. Use `strict: true` for strict type conversion
+// and `json5: true` to accept JSON5 syntax.
+@[manualfree]
+pub fn decode[T](val string, params DecoderOptions) !T {
+	if params.json5 {
+		mut buffer := DecodeBuffer{}
+		defer {
+			unsafe { buffer.values_info.free() }
+		}
+		return decode_json5[T](val, mut buffer, params)
+	}
+	mut decoder := decoder_for_text(val, params)!
 	// Nothing that is decoded refers to values_info, so it is released right away.
 	defer {
-		unsafe { decoder.values_info.free() }
+		unsafe {
+			decoder.values_info.free()
+			decoder.source_values_info.free()
+		}
 	}
-
-	decoder.check_json_format()!
-	decoder.values_info.trim(decoder.values_len)
 	return decoder.decode_root[T]()
 }
 
@@ -417,6 +460,9 @@ pub fn decode[T](val string, params DecoderOptions) !T {
 // including after an error. The caller must provide exclusive access to buffer.
 @[manualfree]
 pub fn decode_reuse[T](val string, mut buffer DecodeBuffer, params DecoderOptions) !T {
+	if params.json5 {
+		return decode_json5[T](val, mut buffer, params)
+	}
 	if val == '' {
 		return JsonDecodeError{
 			message:   'empty string'
@@ -432,6 +478,7 @@ pub fn decode_reuse[T](val string, mut buffer DecodeBuffer, params DecoderOption
 	}
 	defer {
 		buffer.values_info = unsafe { decoder.values_info }
+		unsafe { decoder.source_values_info.free() }
 	}
 	decoder.check_json_format()!
 	decoder.values_info.trim(decoder.values_len)
@@ -501,11 +548,9 @@ fn create_decoded_ptr[T](_ &T) &T {
 		return unsafe { nil }
 	} $else $if T.unaliased_typ is voidptr {
 		return unsafe { nil }
-	} $else $if T is $sumtype {
-		// `&T(ptr)` would wrap the pointer in the sum type instead of casting it.
-		return $new(T)
 	} $else {
-		return unsafe { &T(vcalloc(sizeof(T))) }
+		// Typed initialization retains struct defaults and container element metadata.
+		return $new(T)
 	}
 }
 
@@ -576,7 +621,8 @@ fn mark_struct_field_decoded(decoded_mask u64, mut decoded_fields []bool, field_
 // length, and memory-comparison checks once for every struct field.
 @[noinline]
 fn (decoder &Decoder) find_struct_field(field_infos []StructFieldInfo, key_ptr voidptr, key_len int) int {
-	for field_idx, field_info in field_infos {
+	for field_idx in 0 .. field_infos.len {
+		field_info := &field_infos[field_idx]
 		// `@[omitempty]` only affects encoding: an explicit empty value (`0`, `""`) is
 		// decoded like any other, as in the removed `json` module.
 		field_can_match := !field_info.is_skip || field_info.is_required
@@ -773,31 +819,17 @@ fn (mut decoder Decoder) decode_struct_with_embeds[T](mut val T, struct_info Val
 // by all structs. That keeps the code generated for each struct small.
 @[manualfree]
 fn (mut decoder Decoder) decode_struct_fields[T](mut val T, struct_info ValueInfo) ! {
-	struct_end := struct_info.position + struct_info.length
 	field_info_cache := unsafe { decoder.cached_struct_field_infos[T]() }
-	mut decoded_mask := u64(0)
-	mut decoded_fields := []bool{}
-	if field_info_cache.field_infos.len > 64 {
-		decoded_fields = []bool{len: field_info_cache.field_infos.len}
-	}
+	mut state := struct_decode_state(field_info_cache.field_infos, struct_info.position + struct_info.length)
 	decoder.current_idx++
 
 	// json object loop
 	for {
-		field_idx := decoder.next_struct_field_idx(field_info_cache.field_infos, struct_end)!
+		field_idx := decoder.next_decoded_struct_field(mut state)!
 		if field_idx == struct_key_object_end {
 			break
 		}
-		if field_idx == struct_key_no_field {
-			continue
-		}
-		decoded_mask = mark_struct_field_decoded(decoded_mask, mut decoded_fields, field_idx)
 		field_info := field_info_cache.field_infos[field_idx]
-		if field_info.is_skip {
-			// Preserve the existing decode behavior for `skip`+`required`.
-			decoder.current_idx++
-			continue
-		}
 		mut i := 0
 		$for field in T.fields {
 			if field.attrs.contains('skip') {
@@ -817,8 +849,48 @@ fn (mut decoder Decoder) decode_struct_fields[T](mut val T, struct_info ValueInf
 		}
 	}
 
-	decoder.check_required_struct_fields_decoded(field_info_cache.field_infos, decoded_mask,
-		decoded_fields)!
+	decoder.check_required_struct_fields_decoded(field_info_cache.field_infos, state.decoded_mask,
+		state.decoded_fields)!
+}
+
+struct StructDecodeState {
+	field_infos []StructFieldInfo // Borrowed from the immutable per-type cache.
+	struct_end  int
+mut:
+	decoded_mask   u64
+	decoded_fields []bool
+}
+
+@[manualfree]
+fn struct_decode_state(field_infos []StructFieldInfo, struct_end int) StructDecodeState {
+	mut state := StructDecodeState{ field_infos: field_infos, struct_end: struct_end }
+	if field_infos.len > 64 {
+		state.decoded_fields = []bool{len: field_infos.len}
+	}
+	return state
+}
+
+// next_decoded_struct_field shares key skipping and required-field tracking among
+// all struct types. It returns only fields that need a typed value decoder.
+@[manualfree]
+fn (mut decoder Decoder) next_decoded_struct_field(mut state StructDecodeState) !int {
+	for {
+		field_idx := decoder.next_struct_field_idx(state.field_infos, state.struct_end)!
+		if field_idx == struct_key_object_end {
+			return field_idx
+		}
+		if field_idx == struct_key_no_field {
+			continue
+		}
+		state.decoded_mask = mark_struct_field_decoded(state.decoded_mask, mut state.decoded_fields, field_idx)
+		if state.field_infos[field_idx].is_skip {
+			// Preserve the existing decode behavior for `skip`+`required`.
+			decoder.current_idx++
+			continue
+		}
+		return field_idx
+	}
+	return struct_key_object_end
 }
 
 const struct_key_no_field = -1
@@ -863,7 +935,8 @@ fn (mut decoder Decoder) next_struct_field_idx(field_infos []StructFieldInfo, st
 
 // check_required_struct_fields_decoded reports a required field that got no value.
 fn (mut decoder Decoder) check_required_struct_fields_decoded(field_infos []StructFieldInfo, decoded_mask u64, decoded_fields []bool) ! {
-	for field_idx, field_info in field_infos {
+	for field_idx in 0 .. field_infos.len {
+		field_info := &field_infos[field_idx]
 		if field_info.is_required
 			&& !struct_field_is_decoded(decoded_mask, decoded_fields, field_idx) {
 			decoder.decode_error('missing required field `${field_info.name}`')!
@@ -978,9 +1051,15 @@ fn (mut decoder Decoder) reject_shared_struct_field(is_raw bool, is_required boo
 // moves past it.
 fn (mut decoder Decoder) decode_raw_value() string {
 	value_info := decoder.current_value()
-	raw := decoder.json[value_info.position..value_info.position + value_info.length]
+	raw := decoder.retained_text(value_info.position, value_info.position + value_info.length)
 	decoder.skip_current_value()
 	return raw
+}
+
+// retained_text copies text that may outlive the decoder's input buffer.
+@[manualfree]
+fn (decoder &Decoder) retained_text(start int, end int) string {
+	return decoder.json.substr(start, end)
 }
 
 // decode_value decodes a value from the JSON nodes.
@@ -1006,12 +1085,18 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 		return
 	} $else {
 		// Custom Decoders
+		$if val is ValueDecoder {
+			mut value := Any(null)
+			decoder.decode_sumtype(mut value)!
+			val.from_json(value)
+			return
+		}
 		$if val is StringDecoder {
 			struct_info := decoder.current_value()
 
 			if struct_info.value_kind == .string {
-				val.from_json_string(decoder.json[struct_info.position + 1..struct_info.position +
-					struct_info.length - 1]) or {
+				val.from_json_string(decoder.retained_text(struct_info.position + 1, struct_info.position +
+					struct_info.length - 1)) or {
 					decoder.decode_error('${typeof(val).name}: ${err.msg()}')!
 				}
 				decoder.current_idx++
@@ -1023,8 +1108,8 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 			struct_info := decoder.current_value()
 
 			if struct_info.value_kind == .number {
-				val.from_json_number(decoder.json[struct_info.position..struct_info.position +
-					struct_info.length]) or {
+				val.from_json_number(decoder.retained_text(struct_info.position, struct_info.position +
+					struct_info.length)) or {
 					decoder.decode_error('${typeof(val).name}: ${err.msg()}')!
 				}
 				decoder.current_idx++
@@ -1072,7 +1157,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 				// Like a string field (and the removed `json` module), an object or array
 				// decodes into a string as its JSON text, also as an element or map value.
 				// The removed module had no string root, which stays an error.
-				val = T(decoder.json[value_info.position..value_info.position + value_info.length])
+				val = T(decoder.retained_text(value_info.position, value_info.position + value_info.length))
 				decoder.skip_current_value()
 				return
 			}
@@ -1205,15 +1290,18 @@ fn (mut decoder Decoder) decode_string[T](mut val T) ! {
 }
 
 // decode_string_value returns the unescaped content of the JSON string described by `string_info`.
+@[manualfree]
 fn (mut decoder Decoder) decode_string_value(string_info ValueInfo) !string {
 	string_start := string_info.position + 1
 	string_end := string_info.position + string_info.length - 1
-	string_body := decoder.json[string_start..string_end]
 	if !string_info.has_escape {
-		return string_body
+		return decoder.retained_text(string_start, string_end)
 	}
 
 	mut string_buffer := []u8{cap: string_info.length} // might be too long but most json strings don't contain many escape characters anyways
+	defer {
+		unsafe { string_buffer.free() }
+	}
 
 	mut buffer_index := 1
 	mut string_index := 1
@@ -1513,6 +1601,7 @@ fn (mut decoder Decoder) decode_map[K, V](mut val map[K]V) ! {
 				key_str := if decoder.key_has_escape(key_info) {
 					decoder.decode_string_value(key_info)!
 				} else {
+					// Map insertion clones string keys before the normalized document is freed.
 					decoder.json[key_info.position + 1..key_info.position + key_info.length - 1]
 				}
 
@@ -1809,31 +1898,46 @@ fn parse_int_number(str string) !int {
 }
 
 fn parse_float_number[T](str string) !T {
-	$if js {
-		$if T.unaliased_typ is f32 {
-			return T(f32(strconv.atof64(str)!))
-		} $else $if T.unaliased_typ is f64 {
-			return T(strconv.atof64(str)!)
-		} $else {
-			return error('`parse_float_number` cannot decode ${T.name} type')
-		}
+	value := $if js {
+		strconv.atof64(str)!
 	} $else {
-		$if T.unaliased_typ is f32 {
-			return T(f32(strconv.atof64(str, allow_extra_chars: false)!))
-		} $else $if T.unaliased_typ is f64 {
-			return T(strconv.atof64(str, allow_extra_chars: false)!)
-		} $else {
-			return error('`parse_float_number` cannot decode ${T.name} type')
+		strconv.atof64(str, allow_extra_chars: false)!
+	}
+	$if T.unaliased_typ is f32 {
+		narrowed := f32(value)
+		// Test the representation so finite-math optimizations cannot erase the guard.
+		if math.f32_bits(narrowed) & u32(0x7fffffff) == u32(0x7f800000) {
+			return error('number `${str}` exceeds ${T.name} range')
 		}
+		return T(narrowed)
+	} $else $if T.unaliased_typ is f64 {
+		if math.f64_bits(value) & u64(0x7fffffffffffffff) == u64(0x7ff0000000000000) {
+			return error('number `${str}` exceeds ${T.name} range')
+		}
+		return T(value)
+	} $else {
+		return error('`parse_float_number` cannot decode ${T.name} type')
 	}
 }
 
 // use pointer instead of mut so enum cast works
-@[unsafe]
+@[manualfree; unsafe]
 fn (mut decoder Decoder) decode_number[T](val &T) ! {
 	_ = val
 	number_info := decoder.current_value()
-	str := decoder.json[number_info.position..number_info.position + number_info.length]
+	raw := decoder.json.substr_unsafe(number_info.position, number_info.position + number_info.length)
+	$if T.unaliased_typ is $float {
+		if decoder.json5 {
+			*val = T(parse_json5_float(raw)!)
+			return
+		}
+	}
+	str := if decoder.json5 { normalize_json5_number(raw)! } else { raw }
+	defer {
+		if decoder.json5 {
+			unsafe { str.free() }
+		}
+	}
 	$match T.unaliased_typ {
 		i8 { *val = parse_integer_number[T](str)! }
 		i16 { *val = parse_integer_number[T](str)! }
@@ -1854,13 +1958,14 @@ fn (mut decoder Decoder) decode_number[T](val &T) ! {
 
 // decode_number_from_string parses a number from a JSON string value (default mode).
 // This extracts the content between quotes and parses it as a number.
+@[manualfree]
 fn (mut decoder Decoder) decode_number_from_string[T]() !T {
 	string_info := decoder.current_value()
 	// Extract string content without quotes (position+1 to skip opening quote, length-2 to exclude both quotes)
 	if string_info.length < 2 {
 		return error('invalid string for number conversion')
 	}
-	str := decoder.json[string_info.position + 1..string_info.position + string_info.length - 1]
+	str := decoder.json.substr_unsafe(string_info.position + 1, string_info.position + string_info.length - 1)
 	$if T.unaliased_typ is i8 {
 		return parse_integer_number[T](str)!
 	} $else $if T.unaliased_typ is i16 {

@@ -209,7 +209,10 @@ fn describe(value Payload) string {
 }
 
 fn main() {
-	println(if modes[0] == .ready { 'ready' } else { 'wrong' })
+	println(if modes[0] == .ready && modes[1] == .ready { 'ready' } else { 'wrong' })
+	// A local array gets the same default elements as a global one.
+	local_modes := []Mode{len: 2}
+	println(if local_modes[0] == .ready && local_modes[1] == .ready { 'local-ready' } else { 'local-wrong' })
 	shared_mode_description := rlock shared_mode {
 		if shared_mode == .ready { 'shared-ready' } else { 'shared-wrong' }
 	}
@@ -221,7 +224,7 @@ fn main() {
 	println(shared_description)
 }
 ")
-	assert out == 'ready\nshared-ready\nstring:\nstring:'
+	assert out == 'ready\nlocal-ready\nshared-ready\nstring:\nstring:'
 }
 
 fn test_inferred_generic_atomic_globals_keep_concrete_types() {

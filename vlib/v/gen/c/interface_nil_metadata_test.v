@@ -23,8 +23,8 @@ fn test_literal_nil_interface_initializes_the_entire_metadata_word() {
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
-	iface := types.Type(types.Interface{ name: 'Reader' })
-	alias := types.Type(types.Alias{ name: 'ReaderAlias', base_type: iface })
+	iface := types.Type(types.Interface{ name_id: flat.source_type_id('Reader') })
+	alias := types.Type(types.Alias{ name_id: flat.source_type_id('ReaderAlias'), base_type: iface })
 	for target in [iface, alias] {
 		for value in [nil_id, block, paren] {
 			g.sb.clear()
@@ -49,7 +49,7 @@ fn test_literal_nil_interface_preserves_block_effects() {
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
-	assert g.gen_interface_value_expr(block, types.Type(types.Interface{ name: 'Reader' }))
+	assert g.gen_interface_value_expr(block, types.Type(types.Interface{ name_id: flat.source_type_id('Reader') }))
 	output := g.sb.str()
 	assert output.count('record_nil_effect(') == 1, output
 	assert output.contains('._interface_meta = NULL'), output

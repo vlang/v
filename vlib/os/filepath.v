@@ -346,10 +346,9 @@ pub fn parent_dir(path string) string {
 	for end > root_len + 1 && is_slash(path[end - 1]) {
 		end--
 	}
-	// Scan for the last separator instead of delegating to `dir`, which commits
-	// to one separator kind for the whole path (`/` whenever the path holds any)
-	// and so answers `C:` for the mixed `C:/one\two` that Windows accepts,
-	// skipping the real parent `C:/one`.
+	// Scan for the last separator instead of delegating to `dir`, which knows
+	// neither the root nor the trimmed end, and which outside Windows splits a
+	// path that holds no `/` on `\`.
 	mut pos := -1
 	for i := end - 1; i >= root_len; i-- {
 		if is_slash(path[i]) {

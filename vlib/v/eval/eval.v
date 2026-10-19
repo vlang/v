@@ -9,6 +9,12 @@ import v.parser
 import v.pref
 import v.token as vtoken
 
+const eval_type_array = flat.source_type_id('array')
+const eval_type_module = flat.source_type_id('module')
+const eval_type_range = flat.source_type_id('range')
+const eval_type_tuple = flat.source_type_id('tuple')
+const eval_type_fn = flat.source_type_id('fn')
+
 pub type Value = ArrayValue
 	| EnumValue
 	| FnValue
@@ -27,13 +33,13 @@ pub type Value = ArrayValue
 
 pub struct ArrayValue {
 pub mut:
-	elem_type_name string
+	elem_type_name u32
 	values         []Value
 }
 
 pub struct EnumValue {
 pub:
-	type_name string
+	type_name u32
 	value     i64
 }
 
@@ -42,7 +48,7 @@ pub struct FnValue {
 	module_name   string
 	file_name     string
 	captures      map[string]Value
-	capture_types map[string]string
+	capture_types flat.TypeTextBindings
 }
 
 pub struct MapEntry {
@@ -54,8 +60,8 @@ pub mut:
 
 pub struct MapValue {
 pub mut:
-	key_type_name   string
-	value_type_name string
+	key_type_name   u32
+	value_type_name u32
 	default_value   Value
 	entries         []MapEntry
 }
@@ -74,15 +80,15 @@ pub:
 
 pub struct StructValue {
 pub:
-	type_name string
+	type_name u32
 pub mut:
 	fields map[string]Value
 }
 
 pub struct SumValue {
 pub:
-	type_name    string
-	variant_name string
+	type_name    u32
+	variant_name u32
 pub mut:
 	payload Value
 }
@@ -94,7 +100,7 @@ pub:
 
 pub struct TypeValue {
 pub:
-	name string
+	name u32
 }
 
 pub struct VoidValue {}
@@ -118,7 +124,7 @@ mut:
 
 struct GlobalEntry {
 	name         string
-	typ          string
+	typ          u32
 	default_node flat.NodeId
 	module_name  string
 	file_name    string
@@ -136,6 +142,11 @@ struct TopLevelStmt {
 	file_name   string
 }
 
+struct TypeLayoutVisit {
+	source_id   u32
+	module_name string
+}
+
 struct TypeLayout {
 	size  i64
 	align i64 = 1
@@ -145,7 +156,7 @@ struct StructInfo {
 	params      []string
 	module_name string
 	file_name   string
-	name        string
+	name        u32
 	is_union    bool
 	pack        i64
 	align       i64
@@ -157,12 +168,12 @@ struct TypeAliasInfo {
 	params      []string
 	module_name string
 	file_name   string
-	target      string
+	target      u32
 }
 
 struct FieldInfo {
 	name         string
-	typ          string
+	typ          u32
 	default_node flat.NodeId
 	module_name  string
 	file_name    string
@@ -171,7 +182,7 @@ struct FieldInfo {
 struct ScopeFrame {
 mut:
 	vars        map[string]Value
-	types       map[string]string
+	types       flat.TypeTextBindings
 	defer_stmts []flat.NodeId
 }
 
@@ -179,7 +190,7 @@ struct CallFrame {
 	module_name string
 	file_name   string
 	fn_name     string
-	return_type string
+	return_type u32
 	scope_idx   int = -1
 }
 
@@ -191,7 +202,7 @@ struct MaybeValue {
 struct SmartcastBinding {
 	name      string
 	value     Value
-	type_name string
+	type_name u32
 }
 
 struct CallResult {
@@ -255,7 +266,7 @@ mut:
 	functions            map[string]map[string]FunctionDef
 	consts               map[string]map[string]ConstEntry
 	globals              map[string]map[string]Value
-	global_types         map[string]map[string]string
+	global_types         map[string]map[string]u32
 	global_inits         []GlobalEntry
 	enum_inits           []EnumInitEntry
 	implicit_main        []TopLevelStmt
@@ -263,7 +274,7 @@ mut:
 	enum_fields          map[string][]string
 	enum_types           map[string]TypeAliasInfo
 	sizeof_type_bindings map[string]TypeLayout
-	sum_types            map[string][]string
+	sum_types            flat.TypeTextListBindings
 	type_aliases         map[string]TypeAliasInfo
 	type_names           map[string]map[string]bool
 	module_imports       map[string][]string
@@ -345,7 +356,7 @@ fn (mut e Eval) reset(a &flat.FlatAst) {
 	e.functions = map[string]map[string]FunctionDef{}
 	e.consts = map[string]map[string]ConstEntry{}
 	e.globals = map[string]map[string]Value{}
-	e.global_types = map[string]map[string]string{}
+	e.global_types = map[string]map[string]u32{}
 	e.global_inits = []GlobalEntry{}
 	e.enum_inits = []EnumInitEntry{}
 	e.implicit_main = []TopLevelStmt{}
@@ -353,7 +364,7 @@ fn (mut e Eval) reset(a &flat.FlatAst) {
 	e.enum_fields = map[string][]string{}
 	e.enum_types = map[string]TypeAliasInfo{}
 	e.sizeof_type_bindings = map[string]TypeLayout{}
-	e.sum_types = map[string][]string{}
+	e.sum_types = flat.TypeTextListBindings{}
 	e.type_aliases = map[string]TypeAliasInfo{}
 	e.type_names = map[string]map[string]bool{}
 	e.module_imports = map[string][]string{}
@@ -391,7 +402,7 @@ fn (mut e Eval) ensure_module_maps(module_name string) {
 		e.globals[module_name] = map[string]Value{}
 	}
 	if module_name !in e.global_types {
-		e.global_types[module_name] = map[string]string{}
+		e.global_types[module_name] = map[string]u32{}
 	}
 	if module_name !in e.type_names {
 		e.type_names[module_name] = map[string]bool{}
@@ -479,7 +490,7 @@ fn (mut e Eval) register_files() ! {
 				&& imported_module !in e.module_imports[module_name] {
 				e.module_imports[module_name] << imported_module
 			}
-			import_aliases[child.typ] = imported_module
+			import_aliases[child.typ_text()] = imported_module
 			import_aliases[imported_module] = imported_module
 		}
 		e.file_import_alias[file_name] = import_aliases.clone()
@@ -524,7 +535,7 @@ fn (mut e Eval) register_files() ! {
 				}
 				.enum_decl {
 					e.type_names[module_name][child.value] = true
-					enum_name := e.qualify_type_name(module_name, child.value)
+					enum_name := e.qualify_type_name(module_name, flat.source_type_id(child.value))
 					mut enum_fields := []string{}
 					for field_id in e.children(child) {
 						field := e.node(field_id)
@@ -533,17 +544,17 @@ fn (mut e Eval) register_files() ! {
 						}
 						enum_fields << field.value
 					}
-					backing := child.generic_params()
-					e.enum_types[enum_name] = TypeAliasInfo{
+					backing := child.enum_backing_type_id()
+					e.enum_types[flat.source_type_name(enum_name)] = TypeAliasInfo{
 						module_name: module_name
 						file_name:   file_name
-						target:      if backing.len > 0 && backing[0].len > 0 {
-							backing[0]
+						target:      (if backing != 0 {
+							backing
 						} else {
-							'i32'
-						}
+							flat.source_type_i32
+						})
 					}
-					e.enum_fields[enum_name] = enum_fields
+					e.enum_fields[flat.source_type_name(enum_name)] = enum_fields
 					if module_name in ['main', 'builtin'] {
 						e.enum_fields[child.value] = enum_fields
 					}
@@ -585,7 +596,7 @@ fn (mut e Eval) register_files() ! {
 						}
 					}
 					mut align := i64(0)
-					for part in child.typ.split(',') {
+					for part in child.typ_text().split(',') {
 						if part == 'aligned' { align = 16 }
 						if part.starts_with('aligned=') { align = part.all_after('=').i64() }
 					}
@@ -593,13 +604,13 @@ fn (mut e Eval) register_files() ! {
 						params:      child.generic_params().clone()
 						module_name: module_name
 						file_name:   file_name
-						is_union:    'union' in child.typ.split(',')
+						is_union:    'union' in child.typ_text().split(',')
 						pack:        pack
 						align:       align
-						name:        child.value
+						name:        flat.source_type_id(child.value)
 						fields:      fields
 					}
-					qualified_name := e.qualify_type_name(module_name, child.value)
+					qualified_name := flat.source_type_name(e.qualify_type_name(module_name, flat.source_type_id(child.value)))
 					e.structs[qualified_name] = info
 					if module_name in ['main', 'builtin'] {
 						e.structs[child.value] = info
@@ -608,24 +619,24 @@ fn (mut e Eval) register_files() ! {
 				.type_decl {
 					e.type_names[module_name][child.value] = true
 					if child.children_count > 0 {
-						mut variants := []string{}
+						mut variants := []u32{}
 						for variant_id in e.children(child) {
 							variant := e.node(variant_id)
-							variants << e.qualify_type_name(module_name, variant.value)
+							variants << e.qualify_type_name(module_name, flat.source_type_id(variant.value))
 						}
-						qualified_name := e.qualify_type_name(module_name, child.value)
-						e.sum_types[qualified_name] = variants
+						qualified_name := flat.source_type_name(e.qualify_type_name(module_name, flat.source_type_id(child.value)))
+						e.sum_types.set_ids(qualified_name, variants)
 						if module_name in ['main', 'builtin'] {
-							e.sum_types[child.value] = variants
+							e.sum_types.set_ids(child.value, variants)
 						}
-					} else if child.typ.len > 0 {
+					} else if child.typ != 0 {
 						info := TypeAliasInfo{
 							params:      child.generic_params().clone()
 							module_name: module_name
 							file_name:   file_name
 							target:      child.typ
 						}
-						qualified_name := e.qualify_type_name(module_name, child.value)
+						qualified_name := flat.source_type_name(e.qualify_type_name(module_name, flat.source_type_id(child.value)))
 						e.type_aliases[qualified_name] = info
 						if module_name in ['main', 'builtin'] {
 							e.type_aliases[child.value] = info
@@ -649,7 +660,7 @@ fn (mut e Eval) register_files() ! {
 fn (mut e Eval) evaluate_enum_inits() ! {
 	for entry in e.enum_inits {
 		node := e.node(entry.node)
-		mut next_value := if node.typ == 'flag' { i64(1) } else { i64(0) }
+		mut next_value := if node.typ_text() == 'flag' { i64(1) } else { i64(0) }
 		for field_id in e.children(node) {
 			field := e.node(field_id)
 			if field.kind != .enum_field {
@@ -675,7 +686,7 @@ fn (mut e Eval) evaluate_enum_inits() ! {
 				cached:      true
 				value:       Value(value)
 			}
-			next_value = if node.typ == 'flag' {
+			next_value = if node.typ_text() == 'flag' {
 				if value <= 0 { i64(1) } else { value * 2 }
 			} else {
 				value + 1
@@ -691,7 +702,7 @@ fn (mut e Eval) run_implicit_main() ![]Value {
 		module_name: 'main'
 		file_name:   if e.implicit_main.len > 0 { e.implicit_main[0].file_name } else { '' }
 		fn_name:     'main'
-		return_type: 'void'
+		return_type: flat.source_type_void
 		scope_idx:   scope_idx
 	}
 	e.call_stack << frame
@@ -702,7 +713,7 @@ fn (mut e Eval) run_implicit_main() ![]Value {
 			module_name: stmt.module_name
 			file_name:   stmt.file_name
 			fn_name:     'main'
-			return_type: 'void'
+			return_type: flat.source_type_void
 			scope_idx:   scope_idx
 		}
 		e.call_stack[e.call_stack.len - 1] = frame
@@ -835,7 +846,7 @@ fn (mut e Eval) run_module_init(module_name string, mut visited map[string]bool,
 fn (mut e Eval) open_scope() {
 	e.scopes << ScopeFrame{
 		vars:        map[string]Value{}
-		types:       map[string]string{}
+		types:       flat.TypeTextBindings{}
 		defer_stmts: []flat.NodeId{}
 	}
 }
@@ -848,21 +859,15 @@ fn (mut e Eval) close_scope() ! {
 }
 
 fn (mut e Eval) declare_var(name string, value Value) {
-	e.declare_var_typed(name, value, '')
+	e.declare_var_typed(name, value, u32(0))
 }
 
-fn (mut e Eval) declare_var_typed(name string, value Value, type_name string) {
-	if name == '_' {
-		return
-	}
-	if e.scopes.len == 0 {
-		e.open_scope()
-	}
+fn (mut e Eval) declare_var_typed(name string, value Value, type_name_id u32) {
+	if name == '_' { return }
+	if e.scopes.len == 0 { e.open_scope() }
 	e.scopes[e.scopes.len - 1].vars[name] = value
-	declared := e.qualify_expected_type_name(e.current_module_name(), type_name)
-	if declared.len > 0 {
-		e.scopes[e.scopes.len - 1].types[name] = declared
-	}
+	declared := e.qualify_expected_type_name(e.current_module_name(), type_name_id)
+	if declared != 0 { e.scopes[e.scopes.len - 1].types.set_id(name, declared) }
 }
 
 fn (mut e Eval) set_var(name string, value Value) ! {
@@ -883,14 +888,12 @@ fn (mut e Eval) set_var(name string, value Value) ! {
 	return e.unknown_variable_error(name)
 }
 
-fn (mut e Eval) set_var_type(name string, type_name string) {
-	declared := e.qualify_expected_type_name(e.current_module_name(), type_name)
-	if declared.len == 0 {
-		return
-	}
+fn (mut e Eval) set_var_type(name string, type_name_id u32) {
+	declared := e.qualify_expected_type_name(e.current_module_name(), type_name_id)
+	if declared == 0 { return }
 	for i := e.scopes.len - 1; i >= 0; i-- {
 		if name in e.scopes[i].vars {
-			e.scopes[i].types[name] = declared
+			e.scopes[i].types.set_id(name, declared)
 			return
 		}
 	}
@@ -915,15 +918,15 @@ fn (e &Eval) lookup_var(name string) MaybeValue {
 	return MaybeValue{}
 }
 
-fn (e &Eval) lookup_var_type(name string) ?string {
+fn (e &Eval) lookup_var_type(name string) ?u32 {
 	scope_start := if e.call_stack.len > 0 && e.call_stack[e.call_stack.len - 1].scope_idx >= 0 {
 		e.call_stack[e.call_stack.len - 1].scope_idx
 	} else {
 		0
 	}
 	for i := e.scopes.len - 1; i >= scope_start; i-- {
-		if name in e.scopes[i].types {
-			return e.scopes[i].types[name]
+		if e.scopes[i].types.contains(name) {
+			return e.scopes[i].types.value_id(name)
 		}
 	}
 	module_name := e.current_module_name()
@@ -1294,7 +1297,7 @@ fn (mut e Eval) exec_assign(node &flat.Node, declare bool) !FlowSignal {
 		if signal.kind != .normal {
 			return signal
 		}
-		assign_signal := e.assign_target_typed_flow(lhs_id, flow_value(signal), declare, if target_type.len > 0 {
+		assign_signal := e.assign_target_typed_flow(lhs_id, flow_value(signal), declare, if target_type != 0 {
 			target_type
 		} else {
 			e.infer_expr_type_name(rhs_id)
@@ -1401,14 +1404,14 @@ fn (mut e Eval) exec_compound_assignment_pair_flow(op flat.Op, lhs_id flat.NodeI
 		return rhs_signal
 	}
 	rhs := flow_value(rhs_signal)
-	return e.apply_compound_target_flow(op, lhs_id, rhs, declare, if target_type.len > 0 {
+	return e.apply_compound_target_flow(op, lhs_id, rhs, declare, if target_type != 0 {
 		target_type
 	} else {
 		e.infer_expr_type_name(rhs_id)
 	})
 }
 
-fn (mut e Eval) apply_compound_target_flow(op flat.Op, lhs_id flat.NodeId, rhs Value, declare bool, type_name string) !FlowSignal {
+fn (mut e Eval) apply_compound_target_flow(op flat.Op, lhs_id flat.NodeId, rhs Value, declare bool, type_name_id u32) !FlowSignal {
 	node := e.node(lhs_id)
 	match node.kind {
 		.index {
@@ -1423,7 +1426,7 @@ fn (mut e Eval) apply_compound_target_flow(op flat.Op, lhs_id flat.NodeId, rhs V
 				return left_signal
 			}
 			value := e.apply_assignment_op(op, flow_value(left_signal), rhs)!
-			return e.assign_target_typed_flow(lhs_id, value, declare, type_name)
+			return e.assign_target_typed_flow(lhs_id, value, declare, type_name_id)
 		}
 	}
 }
@@ -1451,8 +1454,8 @@ fn (mut e Eval) assignment_value(op flat.Op, lhs_id flat.NodeId, rhs_id flat.Nod
 	}
 }
 
-fn (mut e Eval) assignment_value_flow(op flat.Op, lhs_id flat.NodeId, rhs_id flat.NodeId, expected_type string) !FlowSignal {
-	rhs_signal := e.eval_expr_flow_expected(rhs_id, expected_type)!
+fn (mut e Eval) assignment_value_flow(op flat.Op, lhs_id flat.NodeId, rhs_id flat.NodeId, expected_type_id u32) !FlowSignal {
+	rhs_signal := e.eval_expr_flow_expected(rhs_id, expected_type_id)!
 	if rhs_signal.kind != .normal {
 		return rhs_signal
 	}
@@ -1490,38 +1493,29 @@ fn (mut e Eval) apply_assignment_op(op flat.Op, left Value, rhs Value) !Value {
 	}
 }
 
-fn (mut e Eval) assignment_target_type_name(lhs_id flat.NodeId, declare bool) string {
-	if int(lhs_id) < 0 {
-		return ''
-	}
+fn (mut e Eval) assignment_target_type_name(lhs_id flat.NodeId, declare bool) u32 {
+	if int(lhs_id) < 0 { return 0 }
 	node := e.node(lhs_id)
 	match node.kind {
 		.ident {
 			if !declare {
-				if typ := e.lookup_var_type(node.value) {
-					return typ
-				}
+				if typ := e.lookup_var_type(node.value) { return typ }
 			}
 			return node.typ
 		}
 		.selector {
 			if node.children_count > 0 {
 				base_type := e.infer_expr_type_name(e.child(node, 0))
-				if base_type.len > 0 {
-					return e.struct_field_type_name_by_type(base_type, node.value)
-				}
+				if base_type != 0 { return e.struct_field_type_name_by_type(base_type, node.value) }
 			}
 		}
 		.index {
 			if node.children_count > 0 {
 				container_type := e.infer_expr_type_name(e.child(node, 0))
-				if container_type.starts_with('[]') {
-					return container_type[2..]
-				}
-				if is_fixed_array_type_name(container_type) {
-					return fixed_array_elem_type_name(container_type)
-				}
-				if container_type.starts_with('map[') {
+				elem := array_elem_type_name_from_type(container_type)
+				if elem != 0 { return elem }
+				spelling := flat.source_type_name(container_type)
+				if spelling.starts_with('map[') {
 					_, value_type := split_map_type(container_type)
 					return value_type
 				}
@@ -1529,8 +1523,7 @@ fn (mut e Eval) assignment_target_type_name(lhs_id flat.NodeId, declare bool) st
 		}
 		else {}
 	}
-
-	return ''
+	return 0
 }
 
 fn flow_value(signal FlowSignal) Value {
@@ -1560,102 +1553,76 @@ fn flow_values_or_void(values []Value) []Value {
 }
 
 fn (mut e Eval) assign_target(id flat.NodeId, value Value, declare bool) ! {
-	signal := e.assign_target_typed_flow(id, value, declare, '')!
+	signal := e.assign_target_typed_flow(id, value, declare, u32(0))!
 	if signal.kind != .normal {
 		return error('v.eval: unexpected `${signal.kind}` escaped assignment target')
 	}
 }
 
-fn (mut e Eval) assign_target_typed(id flat.NodeId, value Value, declare bool, type_name string) ! {
-	signal := e.assign_target_typed_flow(id, value, declare, type_name)!
+fn (mut e Eval) assign_target_typed(id flat.NodeId, value Value, declare bool, type_name_id u32) ! {
+	signal := e.assign_target_typed_flow(id, value, declare, type_name_id)!
 	if signal.kind != .normal {
 		return error('v.eval: unexpected `${signal.kind}` escaped assignment target')
 	}
 }
 
 fn (mut e Eval) assign_target_flow(id flat.NodeId, value Value, declare bool) !FlowSignal {
-	return e.assign_target_typed_flow(id, value, declare, '')
+	return e.assign_target_typed_flow(id, value, declare, u32(0))
 }
 
-fn (mut e Eval) assign_target_typed_flow(id flat.NodeId, value Value, declare bool, type_name string) !FlowSignal {
+fn (mut e Eval) assign_target_typed_flow(id flat.NodeId, value Value, declare bool, type_name_id u32) !FlowSignal {
 	node := e.node(id)
 	match node.kind {
 		.ident {
 			if declare {
-				decl_type := if type_name.len > 0 { type_name } else { node.typ }
-				e.declare_var_typed(node.value, e.adapt_value_to_type_name(value, decl_type),
-					decl_type)
+				decl_type := if type_name_id != 0 { type_name_id } else { node.typ }
+				e.declare_var_typed(node.value, e.adapt_value_to_type_name(value, decl_type), decl_type)
 			} else {
 				target_type := if existing := e.lookup_var_type(node.value) {
 					existing
 				} else {
-					if type_name.len > 0 { type_name } else { node.typ }
+					if type_name_id != 0 { type_name_id } else { node.typ }
 				}
 				e.set_var(node.value, e.adapt_value_to_type_name(value, target_type))!
 				e.set_var_type(node.value, target_type)
 			}
 		}
-		.selector {
-			return e.update_resolved_lvalue_flow(id, value)
-		}
-		.index {
-			return e.update_resolved_lvalue_flow(id, value)
-		}
-		else {
-			return error('v.eval: unsupported assignment target `${node.kind}`')
-		}
+		.selector { return e.update_resolved_lvalue_flow(id, value) }
+		.index { return e.update_resolved_lvalue_flow(id, value) }
+		else { return error('v.eval: unsupported assignment target `${node.kind}`') }
 	}
-
 	return normal_flow()
 }
 
-fn (e &Eval) infer_expr_type_name(id flat.NodeId) string {
-	if int(id) < 0 {
-		return ''
-	}
+fn (e &Eval) infer_expr_type_name(id flat.NodeId) u32 {
+	if int(id) < 0 { return 0 }
 	node := e.node(id)
 	if node.kind in [.struct_init, .cast_expr, .as_expr] {
-		return e.qualify_nested_type_name(e.current_module_name(), node.value)
+		return e.qualify_nested_type_name(e.current_module_name(), flat.source_type_id(node.value))
 	}
-	if node.typ.len > 0 {
+	if node.typ != 0 {
 		return e.qualify_expected_type_name(e.current_module_name(), node.typ)
 	}
 	match node.kind {
-		.int_literal {
-			return 'int'
-		}
-		.float_literal {
-			return 'f64'
-		}
-		.bool_literal {
-			return 'bool'
-		}
-		.char_literal {
-			return 'char'
-		}
-		.string_literal, .string_interp {
-			return 'string'
-		}
+		.int_literal { return flat.source_type_int }
+		.float_literal { return flat.source_type_f64 }
+		.bool_literal { return flat.source_type_bool }
+		.char_literal { return flat.source_type_char }
+		.string_literal, .string_interp { return flat.source_type_string }
 		.ident {
-			if typ := e.lookup_var_type(node.value) {
-				return typ
-			}
+			if typ := e.lookup_var_type(node.value) { return typ }
 		}
 		.paren {
-			if node.children_count > 0 {
-				return e.infer_expr_type_name(e.child(node, 0))
-			}
+			if node.children_count > 0 { return e.infer_expr_type_name(e.child(node, 0)) }
 		}
 		.prefix {
 			if node.children_count > 0 {
 				typ := e.infer_expr_type_name(e.child(node, 0))
-				if typ.len > 0 {
+				if typ != 0 {
 					if node.op == .amp {
-						return '&${typ}'
+						return flat.source_type_id('&${flat.source_type_name(typ)}')
 					}
-					if node.op == .mul {
-						return e.dereferenced_type_name(typ)
-					}
+					if node.op == .mul { return e.dereferenced_type_name(typ) }
 				}
 			}
 		}
@@ -1666,25 +1633,20 @@ fn (e &Eval) infer_expr_type_name(id flat.NodeId) string {
 		}
 		.selector {
 			if node.children_count > 0 {
-				if typ := e.type_value_name_from_expr(e.child(node, 0)) {
-					return typ
+				if typ_source_id := e.type_value_name_from_expr(e.child(node, 0)) {
+					return typ_source_id
 				}
 				base_type := e.infer_expr_type_name(e.child(node, 0))
-				if base_type.len > 0 {
-					return e.struct_field_type_name_by_type(base_type, node.value)
-				}
+				if base_type != 0 { return e.struct_field_type_name_by_type(base_type, node.value) }
 			}
 		}
 		.index {
 			if node.children_count > 0 {
 				container_type := e.infer_expr_type_name(e.child(node, 0))
-				if container_type.starts_with('[]') {
-					return container_type[2..]
-				}
-				if is_fixed_array_type_name(container_type) {
-					return fixed_array_elem_type_name(container_type)
-				}
-				if container_type.starts_with('map[') {
+				elem := array_elem_type_name_from_type(container_type)
+				if elem != 0 { return elem }
+				spelling := flat.source_type_name(container_type)
+				if spelling.starts_with('map[') {
 					_, value_type := split_map_type(container_type)
 					return value_type
 				}
@@ -1692,34 +1654,32 @@ fn (e &Eval) infer_expr_type_name(id flat.NodeId) string {
 		}
 		.array_literal {
 			elem_type_name := e.array_literal_elem_type_name(node)
-			if elem_type_name.len > 0 {
-				return '[]${elem_type_name}'
+			if elem_type_name != 0 {
+				return flat.source_type_id('[]${flat.source_type_name(elem_type_name)}')
 			}
 		}
 		else {}
 	}
-
-	return ''
+	return 0
 }
 
-fn (e &Eval) dereferenced_type_name(type_name string) string {
-	mut name := type_name
-	mut seen := map[string]bool{}
-	for name.len > 0 && name !in seen {
+fn (e &Eval) dereferenced_type_name(type_name_id u32) u32 {
+	mut name := type_name_id
+	mut seen := map[u32]bool{}
+	for name != 0 && name !in seen {
 		seen[name] = true
-		if name.starts_with('&') {
-			return name[1..]
-		}
+		spelling := flat.source_type_name(name)
+		if spelling.starts_with('&') { return flat.source_type_id(spelling[1..]) }
 		if alias := e.type_alias_info_in_module(name, e.current_module_name()) {
 			name = e.qualify_declared_type_name(alias.module_name, alias.file_name, alias.target)
 		} else {
 			break
 		}
 	}
-	return ''
+	return 0
 }
 
-fn (e &Eval) infer_call_return_type_name(callee_id flat.NodeId, allow_locals bool) string {
+fn (e &Eval) infer_call_return_type_name(callee_id flat.NodeId, allow_locals bool) u32 {
 	callee := e.node(callee_id)
 	if callee.kind == .ident {
 		if allow_locals {
@@ -1733,7 +1693,7 @@ fn (e &Eval) infer_call_return_type_name(callee_id flat.NodeId, allow_locals boo
 					if value is FnValue {
 						return e.qualify_declared_type_name(value.module_name, value.file_name, e.node(value.node).typ)
 					}
-					return ''
+					return u32(0)
 				}
 			}
 		}
@@ -1744,10 +1704,12 @@ fn (e &Eval) infer_call_return_type_name(callee_id flat.NodeId, allow_locals boo
 	if callee.kind == .selector && callee.children_count > 0 {
 		receiver_id := e.child(callee, 0)
 		receiver := e.node(receiver_id)
-		if type_name := e.type_value_name_from_expr(receiver_id) {
+		if type_name_source_id := e.type_value_name_from_expr(receiver_id) {
+			type_name := flat.source_type_name(type_name_source_id)
+
 			static_name := flat.encode_static_type_method_name(type_name.all_after_last('.'),
 				callee.value)
-			module_name := e.type_value_module_name(TypeValue{ name: type_name })
+			module_name := e.type_value_module_name(TypeValue{ name: type_name_source_id })
 			if target := e.function_def(module_name, static_name) {
 				return e.qualify_declared_type_name(target.module_name, target.file_name, e.node(target.node).typ)
 			}
@@ -1760,20 +1722,20 @@ fn (e &Eval) infer_call_return_type_name(callee_id flat.NodeId, allow_locals boo
 		}
 		mut receiver_type := if !allow_locals && receiver.kind == .ident {
 			module_name := e.current_module_name()
-			e.global_types[module_name][receiver.value] or { '' }
+			e.global_types[module_name][receiver.value] or { u32(0) }
 		} else if !allow_locals && receiver.kind == .call && receiver.children_count > 0 {
 			e.infer_call_return_type_name(e.child(receiver, 0), false)
 		} else {
 			e.infer_expr_type_name(receiver_id)
 		}
-		mut seen := map[string]bool{}
-		for receiver_type.len > 0 && receiver_type !in seen {
+		mut seen := map[u32]bool{}
+		for receiver_type != 0 && receiver_type !in seen {
 			seen[receiver_type] = true
-			if target := e.resolve_method_target(receiver_type.trim_left('&'), callee.value) {
+			if target := e.resolve_method_target(eval_pointer_base_type_id(receiver_type), callee.value) {
 				return e.qualify_declared_type_name(target.module_name, target.file_name, e.node(target.node).typ)
 			}
 			if alias := e.type_alias_info_in_module(receiver_type, e.current_module_name()) {
-				receiver_type = e.qualify_declared_type_name(alias.module_name, alias.file_name, alias.target.trim_left('&'))
+				receiver_type = e.qualify_declared_type_name(alias.module_name, alias.file_name, eval_pointer_base_type_id(alias.target))
 			} else {
 				break
 			}
@@ -1782,30 +1744,31 @@ fn (e &Eval) infer_call_return_type_name(callee_id flat.NodeId, allow_locals boo
 	if callee.kind == .fn_literal {
 		return e.qualify_nested_type_name(e.current_module_name(), callee.typ)
 	}
-	return ''
+	return u32(0)
 }
 
-fn (e &Eval) array_literal_elem_type_name(node &flat.Node) string {
-	if node.typ.len > 0 {
+fn (e &Eval) array_literal_elem_type_name(node &flat.Node) u32 {
+	if node.typ != 0 {
 		return array_elem_type_name_from_type(node.typ)
 	}
 	if node.value.len > 0 {
-		return array_elem_type_name_from_type(node.value)
+		return array_elem_type_name_from_type(flat.source_type_id(node.value))
 	}
 	if node.children_count > 0 {
 		return e.infer_expr_type_name(e.child(node, 0))
 	}
-	return ''
+	return u32(0)
 }
 
-fn array_elem_type_name_from_type(type_name string) string {
+fn array_elem_type_name_from_type(type_name_id u32) u32 {
+	type_name := flat.source_type_name(type_name_id)
 	if type_name.starts_with('[]') {
-		return type_name[2..]
+		return flat.source_type_id(type_name[2..])
 	}
-	if is_fixed_array_type_name(type_name) {
-		return fixed_array_elem_type_name(type_name)
+	if is_fixed_array_type_name(type_name_id) {
+		return fixed_array_elem_type_name(type_name_id)
 	}
-	return ''
+	return u32(0)
 }
 
 fn (mut e Eval) update_target(id flat.NodeId, value Value) ! {
@@ -1982,7 +1945,7 @@ fn (mut e Eval) exec_array_append(node &flat.Node) !FlowSignal {
 	}
 	mut arr := current as ArrayValue
 	rhs_type_name := e.infer_expr_type_name(rhs_id)
-	rhs_expected_type := if rhs_type_name.len > 0
+	rhs_expected_type := if rhs_type_name != 0
 		&& e.array_type_spreads_into_elem(rhs_type_name, arr.elem_type_name) {
 		rhs_type_name
 	} else {
@@ -2003,23 +1966,17 @@ fn (mut e Eval) exec_array_append(node &flat.Node) !FlowSignal {
 	return e.write_resolved_lvalue_flow(resolved, arr)
 }
 
-fn (e &Eval) array_append_rhs_spreads(rhs_id flat.NodeId, rhs ArrayValue, elem_type_name string) bool {
+fn (e &Eval) array_append_rhs_spreads(rhs_id flat.NodeId, rhs ArrayValue, elem_type_name_id u32) bool {
 	rhs_type_name := e.infer_expr_type_name(rhs_id)
-	if rhs_type_name.len > 0 {
-		return e.array_type_spreads_into_elem(rhs_type_name, elem_type_name)
+	if rhs_type_name != 0 {
+		return e.array_type_spreads_into_elem(rhs_type_name, elem_type_name_id)
 	}
-	if rhs.elem_type_name.len > 0 {
-		return e.type_name_matches(rhs.elem_type_name, elem_type_name)
-	}
-	return false
+	return rhs.elem_type_name != 0 && e.type_name_matches(rhs.elem_type_name, elem_type_name_id)
 }
 
-fn (e &Eval) array_type_spreads_into_elem(array_type_name string, elem_type_name string) bool {
-	rhs_elem_type_name := array_elem_type_name_from_type(array_type_name)
-	if rhs_elem_type_name.len == 0 {
-		return false
-	}
-	return e.type_name_matches(rhs_elem_type_name, elem_type_name)
+fn (e &Eval) array_type_spreads_into_elem(array_type_name_id u32, elem_type_name_id u32) bool {
+	rhs_elem_type_name := array_elem_type_name_from_type(array_type_name_id)
+	return rhs_elem_type_name != 0 && e.type_name_matches(rhs_elem_type_name, elem_type_name_id)
 }
 
 fn (mut e Eval) exec_if(node &flat.Node) !FlowSignal {
@@ -2088,20 +2045,19 @@ fn (mut e Eval) smartcast_binding_from_condition(cond_id flat.NodeId) ?Smartcast
 	if !found.found {
 		return none
 	}
-	if value := e.smartcast_value(found.value, node.value) {
+	if value := e.smartcast_value(found.value, flat.source_type_id(node.value)) {
 		return SmartcastBinding{
 			name:      left.value
 			value:     value
-			type_name: e.normalize_type_name(node.value)
+			type_name: e.normalize_type_name(flat.source_type_id(node.value))
 		}
 	}
 	return none
 }
 
-fn (e &Eval) smartcast_value(value Value, target_type string) ?Value {
+fn (e &Eval) smartcast_value(value Value, target_type_id u32) ?Value {
 	if value is SumValue {
-		if e.type_name_matches(value.variant_name, target_type)
-			|| e.value_matches_type_name(value.payload, target_type) {
+		if e.type_name_matches(value.variant_name, target_type_id) || e.value_matches_type_name(value.payload, target_type_id) {
 			return value.payload
 		}
 	}
@@ -2120,7 +2076,7 @@ fn (mut e Eval) eval_condition_flow(id flat.NodeId) !FlowSignal {
 		rhs_node := e.node(rhs_id)
 		mut ok := false
 		mut bind_value := Value(void_value())
-		mut bind_type := ''
+		mut bind_type := u32(0)
 		if rhs_node.kind == .index && rhs_node.value != 'range' && rhs_node.children_count > 1 {
 			container_signal := e.eval_expr_flow(e.child(rhs_node, 0))!
 			if container_signal.kind != .normal {
@@ -2168,16 +2124,13 @@ fn (mut e Eval) eval_condition_flow(id flat.NodeId) !FlowSignal {
 	return value_flow(Value(e.value_as_bool(flow_value(signal))!))
 }
 
-fn (e &Eval) guard_binding_type_name(rhs_id flat.NodeId, value Value) string {
-	rhs_type := e.infer_expr_type_name(rhs_id)
-	name := rhs_type.trim_left('&')
-	if name.starts_with('?') || name.starts_with('!') {
-		return name[1..]
+fn (e &Eval) guard_binding_type_name(rhs_id flat.NodeId, value Value) u32 {
+	name := eval_pointer_base_type_id(e.infer_expr_type_name(rhs_id))
+	if flat.source_type_shape(name).has(.optional) {
+		return flat.source_type_id(flat.source_type_name(name)[1..])
 	}
-	if name.len > 0 {
-		return name
-	}
-	return e.runtime_type_name(e.unwrap_option_like(value))
+	if name != 0 { return name }
+	return e.runtime_type_id(e.unwrap_option_like(value))
 }
 
 fn (e &Eval) unwrap_option_like(value Value) Value {
@@ -2528,7 +2481,9 @@ fn (mut e Eval) eval_expr(id flat.NodeId) !Value {
 			return Value(strconv.parse_int(clean_number_literal(node.value), util.v_literal_parse_base(node.value), 64) or { i64(0) })
 		}
 		.float_literal {
-			return Value(strconv.atof64(clean_number_literal(node.value)) or { 0.0 })
+			return Value(strconv.atof64(clean_number_literal(node.value), allow_overflow: true) or {
+				0.0
+			})
 		}
 		.bool_literal {
 			return Value(node.value == 'true')
@@ -2575,12 +2530,12 @@ fn (mut e Eval) eval_expr(id flat.NodeId) !Value {
 			if e.is_enum_shorthand_expr(e.child(node, 0)) {
 				// A shorthand has no side effects; resolve its type from the other value.
 				right := e.eval_expr(e.child(node, 1))!
-				expected_type := if right is EnumValue { right.type_name } else { '' }
+				expected_type := if right is EnumValue { right.type_name } else { u32(0) }
 				left := e.eval_expr_expected(e.child(node, 0), expected_type)!
 				return e.apply_infix(node.op, left, right)
 			}
 			left := e.eval_expr(e.child(node, 0))!
-			expected_type := if left is EnumValue { left.type_name } else { '' }
+			expected_type := if left is EnumValue { left.type_name } else { u32(0) }
 			right := e.eval_expr_expected(e.child(node, 1), expected_type)!
 			return e.apply_infix(node.op, left, right)
 		}
@@ -2631,11 +2586,11 @@ fn (mut e Eval) eval_expr(id flat.NodeId) !Value {
 		}
 		.cast_expr, .as_expr {
 			value := e.eval_expr(e.child(node, 0))!
-			return e.cast_value(value, node.value)
+			return e.cast_value(value, flat.source_type_id(node.value))
 		}
 		.is_expr {
 			value := e.eval_expr(e.child(node, 0))!
-			return Value(e.value_matches_type_name(value, node.value))
+			return Value(e.value_matches_type_name(value, flat.source_type_id(node.value)))
 		}
 		.in_expr {
 			left := e.eval_expr(e.child(node, 0))!
@@ -2656,18 +2611,18 @@ fn (mut e Eval) eval_expr(id flat.NodeId) !Value {
 				return Value(e.sizeof_type_name(e.infer_sizeof_operand_type_name(e.child(node,
 					0), [], false)))
 			}
-			if typ := e.lookup_var_type(node.value) {
-				return Value(e.sizeof_type_name(typ))
+			if typ_source_id := e.lookup_var_type(node.value) {
+				return Value(e.sizeof_type_name(typ_source_id))
 			}
-			if typ := e.sizeof_const_type_name(node.value, []) {
-				return Value(e.sizeof_type_name(typ))
+			if typ_source_id := e.sizeof_const_type_name(node.value, []) {
+				return Value(e.sizeof_type_name(typ_source_id))
 			}
-			return Value(e.sizeof_type_name(node.value))
+			return Value(e.sizeof_type_name(flat.source_type_id(node.value)))
 		}
 		.typeof_expr {
 			value := e.eval_expr(e.child(node, 0))!
 			return TypeValue{
-				name: e.runtime_type_name(value)
+				name: e.runtime_type_id(value)
 			}
 		}
 		.defer_result {
@@ -2684,7 +2639,7 @@ fn (mut e Eval) eval_expr(id flat.NodeId) !Value {
 
 fn (mut e Eval) eval_fn_literal(id flat.NodeId, node &flat.Node) !FnValue {
 	mut captures := map[string]Value{}
-	mut capture_types := map[string]string{}
+	mut capture_types := flat.TypeTextBindings{}
 	for child_id in e.children(node) {
 		child := e.node(child_id)
 		if child.kind != .ident {
@@ -2695,8 +2650,8 @@ fn (mut e Eval) eval_fn_literal(id flat.NodeId, node &flat.Node) !FnValue {
 			return error('v.eval: unknown captured variable `${child.value}`')
 		}
 		captures[child.value] = found.value
-		if typ := e.lookup_var_type(child.value) {
-			capture_types[child.value] = typ
+		if typ_source_id := e.lookup_var_type(child.value) {
+			capture_types.set_id(child.value, typ_source_id)
 		}
 	}
 	return FnValue{
@@ -2773,14 +2728,14 @@ fn (mut e Eval) eval_expr_flow(id flat.NodeId) !FlowSignal {
 			if value_signal.kind != .normal {
 				return value_signal
 			}
-			return value_flow(e.cast_value(flow_value(value_signal), node.value)!)
+			return value_flow(e.cast_value(flow_value(value_signal), flat.source_type_id(node.value))!)
 		}
 		.is_expr {
 			value_signal := e.eval_expr_flow(e.child(node, 0))!
 			if value_signal.kind != .normal {
 				return value_signal
 			}
-			return value_flow(Value(e.value_matches_type_name(flow_value(value_signal), node.value)))
+			return value_flow(Value(e.value_matches_type_name(flow_value(value_signal), flat.source_type_id(node.value))))
 		}
 		.in_expr {
 			left_signal := e.eval_expr_flow(e.child(node, 0))!
@@ -2831,35 +2786,35 @@ fn (mut e Eval) eval_expr_flow(id flat.NodeId) !FlowSignal {
 	}
 }
 
-fn (mut e Eval) eval_expr_expected(id flat.NodeId, expected_type string) !Value {
-	signal := e.eval_expr_flow_expected(id, expected_type)!
+fn (mut e Eval) eval_expr_expected(id flat.NodeId, expected_type_id u32) !Value {
+	signal := e.eval_expr_flow_expected(id, expected_type_id)!
 	if signal.kind != .normal {
 		return flow_value(signal)
 	}
 	return flow_value(signal)
 }
 
-fn (mut e Eval) eval_expr_flow_expected(id flat.NodeId, expected_type string) !FlowSignal {
+fn (mut e Eval) eval_expr_flow_expected(id flat.NodeId, expected_type_id u32) !FlowSignal {
 	if int(id) >= 0 {
 		node := e.node(id)
-		if node.kind == .enum_val && expected_type.len > 0 {
-			if value := e.lookup_enum_value(expected_type, node.value) {
+		if node.kind == .enum_val && expected_type_id != 0 {
+			if value := e.lookup_enum_value(expected_type_id, node.value) {
 				return value_flow(value)
 			}
 		}
-		if expected_type.len > 0 {
+		if expected_type_id != 0 {
 			match node.kind {
 				.if_expr {
-					return e.eval_if_value_flow_expected(node, expected_type)
+					return e.eval_if_value_flow_expected(node, expected_type_id)
 				}
 				.match_stmt {
-					return e.eval_match_value_flow_expected(node, expected_type)
+					return e.eval_match_value_flow_expected(node, expected_type_id)
 				}
 				.block {
-					return e.eval_block_value_flow_expected(node, expected_type)
+					return e.eval_block_value_flow_expected(node, expected_type_id)
 				}
 				.paren {
-					return e.eval_expr_flow_expected(e.child(node, 0), expected_type)
+					return e.eval_expr_flow_expected(e.child(node, 0), expected_type_id)
 				}
 				else {}
 			}
@@ -2868,24 +2823,19 @@ fn (mut e Eval) eval_expr_flow_expected(id flat.NodeId, expected_type string) !F
 	return e.eval_expr_flow(id)
 }
 
-fn (e &Eval) current_return_type() string {
-	if e.call_stack.len == 0 {
-		return ''
-	}
+fn (e &Eval) current_return_type() u32 {
+	if e.call_stack.len == 0 { return 0 }
 	return e.call_stack[e.call_stack.len - 1].return_type
 }
 
-fn return_child_expected_type(return_type string, return_types []string, child_index int, child_count int) string {
-	if return_types.len > 0 {
-		if child_count == return_types.len && child_index < return_types.len {
-			return return_types[child_index]
+fn return_child_expected_type(return_type_id u32, return_types_ids []u32, child_index int, child_count int) u32 {
+	if return_types_ids.len > 0 {
+		if child_count == return_types_ids.len && child_index < return_types_ids.len {
+			return return_types_ids[child_index]
 		}
-		return ''
+		return 0
 	}
-	if child_count == 1 {
-		return return_type
-	}
-	return ''
+	return if child_count == 1 { return_type_id } else { u32(0) }
 }
 
 fn (e &Eval) is_enum_shorthand_expr(id flat.NodeId) bool {
@@ -2906,7 +2856,7 @@ fn (mut e Eval) eval_infix_flow(node &flat.Node) !FlowSignal {
 			return right_signal
 		}
 		right := flow_value(right_signal)
-		expected_type := if right is EnumValue { right.type_name } else { '' }
+		expected_type := if right is EnumValue { right.type_name } else { u32(0) }
 		left_signal := e.eval_expr_flow_expected(e.child(node, 0), expected_type)!
 		if left_signal.kind != .normal {
 			return left_signal
@@ -2947,7 +2897,7 @@ fn (mut e Eval) eval_infix_flow(node &flat.Node) !FlowSignal {
 		}
 		return value_flow(Value(e.value_as_bool(flow_value(right_signal))!))
 	}
-	expected_type := if left is EnumValue { left.type_name } else { '' }
+	expected_type := if left is EnumValue { left.type_name } else { u32(0) }
 	right_signal := e.eval_expr_flow_expected(e.child(node, 1), expected_type)!
 	if right_signal.kind != .normal {
 		return right_signal
@@ -3007,7 +2957,7 @@ fn (mut e Eval) eval_ident(name string) !Value {
 	}
 	if e.has_type_name(e.current_module_name(), name) {
 		return TypeValue{
-			name: e.qualify_type_name(e.current_module_name(), name)
+			name: e.qualify_type_name(e.current_module_name(), flat.source_type_id(name))
 		}
 	}
 	return e.unknown_variable_error(name)
@@ -3033,7 +2983,7 @@ fn (e &Eval) has_type_name(module_name string, name string) bool {
 		short := name.all_after_last('.')
 		return mod in e.type_names && short in e.type_names[mod]
 	}
-	return name in e.structs || name in e.sum_types
+	return name in e.structs || e.sum_types.contains(name)
 }
 
 fn (mut e Eval) lookup_const(module_name string, name string) ?Value {
@@ -3108,7 +3058,7 @@ fn (mut e Eval) eval_call_flow(id flat.NodeId, node &flat.Node) !FlowSignal {
 		expected_types := if target := e.function_def(e.current_module_name(), fn_name) {
 			e.function_param_type_names(target, 0)
 		} else {
-			[]string{}
+			[]u32{}
 		}
 		args_signal := e.eval_call_arg_values(node, expected_types)!
 		if args_signal.kind != .normal {
@@ -3131,7 +3081,7 @@ fn (mut e Eval) eval_call_flow(id flat.NodeId, node &flat.Node) !FlowSignal {
 			expected_types := if target := e.function_def(left.name, callee.value) {
 				e.function_param_type_names(target, 0)
 			} else {
-				[]string{}
+				[]u32{}
 			}
 			args_signal := e.eval_call_arg_values(node, expected_types)!
 			if args_signal.kind != .normal {
@@ -3144,7 +3094,7 @@ fn (mut e Eval) eval_call_flow(id flat.NodeId, node &flat.Node) !FlowSignal {
 			}
 		}
 		if left is TypeValue {
-			static_name := flat.encode_static_type_method_name(left.name.all_after_last('.'),
+			static_name := flat.encode_static_type_method_name(left.name_text().all_after_last('.'),
 				callee.value)
 			static_module := e.type_value_module_name(left)
 			if value := e.disabled_function_zero_value(static_module, static_name, node) {
@@ -3155,7 +3105,7 @@ fn (mut e Eval) eval_call_flow(id flat.NodeId, node &flat.Node) !FlowSignal {
 			expected_types := if target := e.function_def(static_module, static_name) {
 				e.function_param_type_names(target, 0)
 			} else {
-				[]string{}
+				[]u32{}
 			}
 			args_signal := e.eval_call_arg_values(node, expected_types)!
 			if args_signal.kind != .normal {
@@ -3250,7 +3200,7 @@ fn (mut e Eval) disabled_call_value(call_node &flat.Node, callee &flat.Node) ?Va
 			base_id := e.child(callee, 0)
 			base := e.node(base_id)
 			receiver_type := e.infer_expr_type_name(base_id)
-			if receiver_type.len > 0 {
+			if receiver_type != 0 {
 				if target := e.resolve_method_target(receiver_type, callee.value) {
 					if e.is_disabled_fn_name_in_module(target.module_name, target.name) {
 						return e.zero_value_for_disabled_function(call_node, target)
@@ -3296,73 +3246,53 @@ fn (e &Eval) function_def(module_name string, fn_name string) ?FunctionDef {
 	return none
 }
 
-fn (e &Eval) function_param_type_names(def FunctionDef, skip int) []string {
+fn (e &Eval) function_param_type_names(def FunctionDef, skip int) []u32 {
 	node := e.node(def.node)
-	mut types := []string{}
+	mut types := []u32{}
 	mut param_index := 0
 	for child_id in e.children(node) {
 		child := e.node(child_id)
-		if child.kind != .param {
-			break
-		}
-		if param_index >= skip {
-			types << e.qualify_expected_type_name(def.module_name, child.typ)
-		}
+		if child.kind != .param { break }
+		if param_index >= skip { types << e.qualify_expected_type_name(def.module_name, child.typ) }
 		param_index++
 	}
 	return types
 }
 
-fn (e &Eval) qualify_expected_type_name(module_name string, type_name string) string {
-	name := type_name.trim_space()
-	if name == '' {
-		return ''
-	}
-	if name.starts_with('&') {
-		return '&${e.qualify_expected_type_name(module_name, name[1..])}'
-	}
-	if name.starts_with('...') {
-		return '...${e.qualify_expected_type_name(module_name, name[3..])}'
-	}
-	if name.starts_with('mut ') {
-		return '&${e.qualify_expected_type_name(module_name, name[4..])}'
-	}
-	return e.qualify_nested_type_name(module_name, name)
+fn (e &Eval) qualify_expected_type_name(module_name string, type_name_id u32) u32 {
+	spelling := flat.source_type_name(type_name_id)
+	qualified := e.qualify_expected_type_name_bytes(module_name, spelling)
+	return if qualified == spelling { type_name_id } else { flat.source_type_id(qualified) }
 }
 
-fn (e &Eval) fn_value_param_type_names(fv FnValue) []string {
+fn (e &Eval) fn_value_param_type_names(fv FnValue) []u32 {
 	return e.fn_literal_param_type_names_in_module(e.node(fv.node), fv.module_name)
 }
 
-fn (e &Eval) fn_literal_param_type_names(node &flat.Node) []string {
+fn (e &Eval) fn_literal_param_type_names(node &flat.Node) []u32 {
 	return e.fn_literal_param_type_names_in_module(node, e.current_module_name())
 }
 
-fn (e &Eval) fn_literal_param_type_names_in_module(node &flat.Node, module_name string) []string {
+fn (e &Eval) fn_literal_param_type_names_in_module(node &flat.Node, module_name string) []u32 {
 	children := e.children(node)
 	mut i := 0
 	for i < children.len {
-		child := e.node(children[i])
-		if child.kind != .ident {
-			break
-		}
+		if e.node(children[i]).kind != .ident { break }
 		i++
 	}
-	mut types := []string{}
+	mut types := []u32{}
 	for i < children.len {
 		child := e.node(children[i])
-		if child.kind != .param {
-			break
-		}
+		if child.kind != .param { break }
 		types << e.qualify_expected_type_name(module_name, child.typ)
 		i++
 	}
 	return types
 }
 
-fn (e &Eval) method_call_param_type_names(receiver Value, receiver_type_name string, method_name string) []string {
-	static_type_name := e.normalize_type_name(receiver_type_name)
-	if static_type_name.len > 0 {
+fn (e &Eval) method_call_param_type_names(receiver Value, receiver_type_name_id u32, method_name string) []u32 {
+	static_type_name := e.normalize_type_name(receiver_type_name_id)
+	if static_type_name != 0 {
 		if target := e.resolve_method_target(static_type_name, method_name) {
 			return e.function_param_type_names(target, 1)
 		}
@@ -3372,90 +3302,72 @@ fn (e &Eval) method_call_param_type_names(receiver Value, receiver_type_name str
 			return e.function_param_type_names(target, 1)
 		}
 	}
-	if receiver is ArrayValue {
-		return e.array_method_param_type_names(receiver, method_name)
-	}
-	if receiver is MapValue {
-		return e.map_method_param_type_names(receiver, method_name)
-	}
+	if receiver is ArrayValue { return e.array_method_param_type_names(receiver, method_name) }
+	if receiver is MapValue { return e.map_method_param_type_names(receiver, method_name) }
 	if receiver is SumValue {
 		return e.method_call_param_type_names(receiver.payload, receiver.variant_name, method_name)
 	}
-	return []string{}
+	return []u32{}
 }
 
-fn (e &Eval) array_method_param_type_names(receiver ArrayValue, method_name string) []string {
+fn (e &Eval) array_method_param_type_names(receiver ArrayValue, method_name string) []u32 {
 	return match method_name {
 		'contains', 'index' { [receiver.elem_type_name] }
-		else { []string{} }
+		else { []u32{} }
 	}
 }
 
-fn (e &Eval) map_method_param_type_names(receiver MapValue, method_name string) []string {
+fn (e &Eval) map_method_param_type_names(receiver MapValue, method_name string) []u32 {
 	return match method_name {
 		'delete' { [receiver.key_type_name] }
-		else { []string{} }
+		else { []u32{} }
 	}
 }
 
-fn (mut e Eval) eval_call_arg_values(node &flat.Node, expected_types []string) !FlowSignal {
+fn (mut e Eval) eval_call_arg_values(node &flat.Node, expected_types_ids []u32) !FlowSignal {
 	mut args := []Value{}
 	mut mut_lvalues := map[int]ResolvedLvalue{}
 	for child_index in 1 .. node.children_count {
 		arg_index := child_index - 1
-		expected_type := call_arg_expected_type(expected_types, arg_index)
+		expected_type := call_arg_expected_type(expected_types_ids, arg_index)
 		value_expected_type := call_arg_value_expected_type(expected_type)
 		arg_id := e.child(node, child_index)
-		if expected_type.starts_with('&') && e.is_assignable_target(arg_id) {
+		if flat.source_type_shape(expected_type).has(.pointer) && e.is_assignable_target(arg_id) {
 			resolved := e.resolve_lvalue_flow(arg_id)!
-			if resolved.signal.kind != .normal {
-				return resolved.signal
-			}
+			if resolved.signal.kind != .normal { return resolved.signal }
 			args << resolved.value
 			mut_lvalues[arg_index] = resolved
 			continue
 		}
 		signal := e.eval_expr_flow_expected(arg_id, value_expected_type)!
-		if signal.kind != .normal {
-			return signal
-		}
+		if signal.kind != .normal { return signal }
 		args << flow_value(signal)
 	}
-	return FlowSignal{
-		values:      args
-		mut_lvalues: mut_lvalues
-	}
+	return FlowSignal{ values: args, mut_lvalues: mut_lvalues }
 }
 
-fn call_arg_expected_type(expected_types []string, index int) string {
-	if index < expected_types.len {
-		typ := expected_types[index]
-		if typ.starts_with('...') {
-			return typ[3..]
-		}
-		return typ
-	}
-	if expected_types.len > 0 {
-		last := expected_types[expected_types.len - 1]
-		if last.starts_with('...') {
-			return last[3..]
+fn call_arg_expected_type(expected_types_ids []u32, index int) u32 {
+	if index < expected_types_ids.len {
+		typ := expected_types_ids[index]
+		return if flat.source_type_shape(typ).has(.variadic) {
+			flat.source_type_id(flat.source_type_name(typ)[3..])
+		} else {
+			typ
 		}
 	}
-	return ''
+	if expected_types_ids.len > 0 {
+		last := expected_types_ids.last()
+		if flat.source_type_shape(last).has(.variadic) {
+			return flat.source_type_id(flat.source_type_name(last)[3..])
+		}
+	}
+	return 0
 }
 
-fn call_arg_value_expected_type(type_name string) string {
-	name := type_name.trim_space()
-	if name.starts_with('&') {
-		return call_arg_value_expected_type(name[1..])
-	}
-	if name.starts_with('mut ') {
-		return call_arg_value_expected_type(name[4..])
-	}
-	if name.starts_with('...') {
-		return call_arg_value_expected_type(name[3..])
-	}
-	return name
+fn call_arg_value_expected_type(type_name_id u32) u32 {
+	spelling := flat.source_type_name(type_name_id)
+	value_type := call_arg_value_expected_type_bytes(spelling)
+	return if value_type == spelling { type_name_id } else { flat.source_type_id(value_type) }
 }
 
 fn (mut e Eval) disabled_function_zero_value(module_name string, fn_name string, call_node &flat.Node) ?Value {
@@ -3486,18 +3398,16 @@ fn (mut e Eval) disabled_function_zero_value(module_name string, fn_name string,
 
 fn (mut e Eval) zero_value_for_disabled_function(call_node &flat.Node, target FunctionDef) Value {
 	target_node := e.node(target.node)
-	return e.zero_value_for_disabled_return_type(if call_node.typ.len > 0 {
+	return e.zero_value_for_disabled_return_type(if call_node.typ != 0 {
 		call_node.typ
 	} else {
 		target_node.typ
 	}, target.module_name)
 }
 
-fn (mut e Eval) zero_value_for_disabled_return_type(return_type string, module_name string) Value {
-	if return_type.len == 0 || return_type == 'void' {
-		return void_value()
-	}
-	return e.zero_value_for_type_name_in_module(return_type, module_name)
+fn (mut e Eval) zero_value_for_disabled_return_type(return_type_id u32, module_name string) Value {
+	if return_type_id == 0 || return_type_id == flat.source_type_void { return void_value() }
+	return e.zero_value_for_type_name_in_module(return_type_id, module_name)
 }
 
 fn (e &Eval) is_disabled_fn_name_in_module(module_name string, fn_name string) bool {
@@ -3523,8 +3433,8 @@ fn (mut e Eval) write_back_mutated_args(node &flat.Node, result CallResult, mut_
 	e.write_back_mutated_arg_values(node, result.mutated_args, mut_lvalues)!
 }
 
-fn (mut e Eval) adapt_return_values(values []Value, return_type string) []Value {
-	return_types := split_multi_return_types(return_type)
+fn (mut e Eval) adapt_return_values(values []Value, return_type_id u32) []Value {
+	return_types := split_multi_return_types(return_type_id)
 	if return_types.len > 0 {
 		mut adapted := []Value{cap: values.len}
 		for i, value in values {
@@ -3536,18 +3446,19 @@ fn (mut e Eval) adapt_return_values(values []Value, return_type string) []Value 
 		}
 		return adapted
 	}
-	if values.len == 1 && return_type.len > 0 {
-		return [e.adapt_value_to_type_name(values[0], return_type)]
+	if values.len == 1 && return_type_id != 0 {
+		return [e.adapt_value_to_type_name(values[0], return_type_id)]
 	}
 	return values.clone()
 }
 
-fn split_multi_return_types(return_type string) []string {
+fn split_multi_return_types(return_type_id u32) []u32 {
+	return_type := flat.source_type_name(return_type_id)
 	if !return_type.starts_with('(') || !return_type.ends_with(')') {
-		return []string{}
+		return []u32{}
 	}
 	inner := return_type[1..return_type.len - 1]
-	mut types := []string{}
+	mut types := []u32{}
 	mut start := 0
 	mut paren_depth := 0
 	mut bracket_depth := 0
@@ -3572,7 +3483,7 @@ fn split_multi_return_types(return_type string) []string {
 			}
 			`,` {
 				if paren_depth == 0 && bracket_depth == 0 {
-					types << inner[start..i].trim_space()
+					types << flat.source_type_id(inner[start..i].trim_space())
 					start = i + 1
 				}
 			}
@@ -3581,9 +3492,9 @@ fn split_multi_return_types(return_type string) []string {
 	}
 	last := inner[start..].trim_space()
 	if last.len > 0 {
-		types << last
+		types << flat.source_type_id(last)
 	}
-	return if types.len > 1 { types } else { []string{} }
+	return if types.len > 1 { types } else { []u32{} }
 }
 
 fn (e &Eval) minimum_arg_count(params []flat.NodeId) int {
@@ -3591,7 +3502,7 @@ fn (e &Eval) minimum_arg_count(params []flat.NodeId) int {
 		return 0
 	}
 	last_param := e.node(params[params.len - 1])
-	if last_param.typ.starts_with('...') {
+	if flat.source_type_shape(last_param.typ).has(.variadic) {
 		return params.len - 1
 	}
 	return params.len
@@ -3600,8 +3511,8 @@ fn (e &Eval) minimum_arg_count(params []flat.NodeId) int {
 fn (mut e Eval) bind_call_params(params []flat.NodeId, args []Value) ! {
 	for i, param_id in params {
 		param := e.node(param_id)
-		if param.typ.starts_with('...') {
-			elem_type := param.typ[3..]
+		if flat.source_type_shape(param.typ).has(.variadic) {
+			elem_type := flat.source_type_id(param.typ_text()[3..])
 			mut values := []Value{cap: if args.len > i { args.len - i } else { 0 }}
 			for j := i; j < args.len; j++ {
 				values << e.adapt_value_to_type_name(args[j], elem_type)
@@ -3610,7 +3521,7 @@ fn (mut e Eval) bind_call_params(params []flat.NodeId, args []Value) ! {
 				e.declare_var_typed(param.value, ArrayValue{
 					elem_type_name: elem_type
 					values:         values
-				}, '[]${elem_type}')
+				}, flat.source_type_id('[]${flat.source_type_name(elem_type)}'))
 			}
 			return
 		}
@@ -3628,14 +3539,14 @@ fn (mut e Eval) collect_mutated_param_args(params []flat.NodeId, args []Value) m
 		if param.value.len == 0 {
 			continue
 		}
-		if param.typ.starts_with('...') {
+		if flat.source_type_shape(param.typ).has(.variadic) {
 			continue
 		}
 		found := e.lookup_var(param.value)
 		if !found.found {
 			continue
 		}
-		if param.typ.starts_with('&') {
+		if flat.source_type_shape(param.typ).has(.pointer) {
 			mutated_args[i] = found.value
 			continue
 		}
@@ -3715,7 +3626,7 @@ fn (mut e Eval) call_fn_value(fv FnValue, args []Value) !CallResult {
 		scope_idx:   e.scopes.len - 1
 	}
 	for name, value in fv.captures {
-		e.declare_var_typed(name, value, fv.capture_types[name] or { '' })
+		e.declare_var_typed(name, value, fv.capture_types.value_id(name))
 	}
 	e.bind_call_params(params, args)!
 	signal := e.exec_stmts(children[body_start..])!
@@ -3776,12 +3687,12 @@ fn (mut e Eval) eval_selector_value(left Value, field string) !Value {
 				return value
 			}
 			return TypeValue{
-				name: '${left.name}.${field}'
+				name: flat.source_type_id('${left.name}.${field}')
 			}
 		}
 		TypeValue {
 			if field == 'name' {
-				return Value(left.name)
+				return Value(left.name_text())
 			}
 			mod := e.type_value_module_name(left)
 			if value := e.lookup_enum_value(e.qualify_type_name(mod, left.name), field) {
@@ -3791,7 +3702,7 @@ fn (mut e Eval) eval_selector_value(left Value, field string) !Value {
 				return e.enum_value(left.name, value)
 			}
 			return TypeValue{
-				name: '${left.name}.${field}'
+				name: flat.source_type_id('${left.name_text()}.${field}')
 			}
 		}
 		ArrayValue {
@@ -3836,35 +3747,29 @@ fn (e &Eval) eval_sum_selector(value SumValue, field string) !Value {
 			return payload.fields[field] or { void_value() }
 		}
 	}
-	return error('v.eval: unknown sum type field `${field}` on `${value.type_name}`')
+	return error('v.eval: unknown sum type field `${field}` on `${value.type_name_text()}`')
 }
 
-fn (e &Eval) sum_variant_index(type_name string, variant_name string) int {
-	if type_name in e.sum_types {
-		variants := e.sum_types[type_name]
-		sum_module := if type_name.contains('.') {
-			type_name.all_before_last('.')
+fn (e &Eval) sum_variant_index(type_name_id u32, variant_name_id u32) int {
+	if variants := e.sum_types.type_ids(flat.source_type_name(type_name_id)) {
+		sum_module := if flat.source_type_shape(type_name_id).has(.dotted) {
+			flat.source_type_name(type_name_id).all_before_last('.')
 		} else {
 			e.current_module_name()
 		}
-		expected_name := e.qualify_type_name(sum_module, variant_name)
+		expected_name := e.qualify_type_name(sum_module, variant_name_id)
 		for i, variant in variants {
-			if variant == expected_name || variant == variant_name {
-				return i
-			}
+			if variant == expected_name || variant == variant_name_id { return i }
 		}
 		mut short_match_index := -1
+		short_variant := flat.source_type_name(variant_name_id).all_after_last('.')
 		for i, variant in variants {
-			if variant.all_after_last('.') == variant_name.all_after_last('.') {
-				if short_match_index >= 0 {
-					return 0
-				}
+			if flat.source_type_name(variant).all_after_last('.') == short_variant {
+				if short_match_index >= 0 { return 0 }
 				short_match_index = i
 			}
 		}
-		if short_match_index >= 0 {
-			return short_match_index
-		}
+		if short_match_index >= 0 { return short_match_index }
 	}
 	return 0
 }
@@ -3992,10 +3897,10 @@ fn (mut e Eval) eval_if_value(node &flat.Node) !Value {
 }
 
 fn (mut e Eval) eval_if_value_flow(node &flat.Node) !FlowSignal {
-	return e.eval_if_value_flow_expected(node, '')
+	return e.eval_if_value_flow_expected(node, u32(0))
 }
 
-fn (mut e Eval) eval_if_value_flow_expected(node &flat.Node, expected_type string) !FlowSignal {
+fn (mut e Eval) eval_if_value_flow_expected(node &flat.Node, expected_type_id u32) !FlowSignal {
 	if node.children_count < 2 {
 		return value_flow(void_value())
 	}
@@ -4020,7 +3925,7 @@ fn (mut e Eval) eval_if_value_flow_expected(node &flat.Node, expected_type strin
 				smartcast_scope = true
 			}
 		}
-		signal := e.eval_value_expr_flow_expected(e.child(node, 1), expected_type)!
+		signal := e.eval_value_expr_flow_expected(e.child(node, 1), expected_type_id)!
 		if smartcast_scope {
 			e.close_scope()!
 		}
@@ -4033,23 +3938,23 @@ fn (mut e Eval) eval_if_value_flow_expected(node &flat.Node, expected_type strin
 		e.close_scope()!
 	}
 	if node.children_count > 2 {
-		return e.eval_value_expr_flow_expected(e.child(node, 2), expected_type)
+		return e.eval_value_expr_flow_expected(e.child(node, 2), expected_type_id)
 	}
 	return value_flow(void_value())
 }
 
 fn (mut e Eval) eval_value_expr_flow(id flat.NodeId) !FlowSignal {
-	return e.eval_value_expr_flow_expected(id, '')
+	return e.eval_value_expr_flow_expected(id, u32(0))
 }
 
-fn (mut e Eval) eval_value_expr_flow_expected(id flat.NodeId, expected_type string) !FlowSignal {
+fn (mut e Eval) eval_value_expr_flow_expected(id flat.NodeId, expected_type_id u32) !FlowSignal {
 	if int(id) >= 0 {
 		node := e.node(id)
 		if node.kind == .block {
-			return e.eval_block_value_flow_expected(node, expected_type)
+			return e.eval_block_value_flow_expected(node, expected_type_id)
 		}
 	}
-	return e.eval_expr_flow_expected(id, expected_type)
+	return e.eval_expr_flow_expected(id, expected_type_id)
 }
 
 fn (mut e Eval) eval_block_value(node &flat.Node) !Value {
@@ -4061,14 +3966,14 @@ fn (mut e Eval) eval_block_value(node &flat.Node) !Value {
 }
 
 fn (mut e Eval) eval_block_value_flow(node &flat.Node) !FlowSignal {
-	return e.eval_block_value_flow_expected(node, '')
+	return e.eval_block_value_flow_expected(node, u32(0))
 }
 
-fn (mut e Eval) eval_block_value_flow_expected(node &flat.Node, expected_type string) !FlowSignal {
-	return e.eval_block_value_flow_collect(node, false, expected_type)
+fn (mut e Eval) eval_block_value_flow_expected(node &flat.Node, expected_type_id u32) !FlowSignal {
+	return e.eval_block_value_flow_collect(node, false, expected_type_id)
 }
 
-fn (mut e Eval) eval_block_value_flow_collect(node &flat.Node, collect_expr_values bool, expected_type string) !FlowSignal {
+fn (mut e Eval) eval_block_value_flow_collect(node &flat.Node, collect_expr_values bool, expected_type_id u32) !FlowSignal {
 	e.open_scope()
 	mut values := []Value{}
 	for child_id in e.children(node) {
@@ -4084,7 +3989,7 @@ fn (mut e Eval) eval_block_value_flow_collect(node &flat.Node, collect_expr_valu
 				}
 				continue
 			}
-			signal := e.eval_expr_flow_expected(expr_id, expected_type)!
+			signal := e.eval_expr_flow_expected(expr_id, expected_type_id)!
 			if signal.kind != .normal {
 				e.close_scope()!
 				return signal
@@ -4105,7 +4010,7 @@ fn (mut e Eval) eval_block_value_flow_collect(node &flat.Node, collect_expr_valu
 			collect_child_expr_values := node.children_count == 1
 				&& e.block_has_only_expr_stmts(child) && child.children_count > 1
 			signal := e.eval_block_value_flow_collect(child, collect_child_expr_values,
-				expected_type)!
+				expected_type_id)!
 			if signal.kind != .normal {
 				e.close_scope()!
 				return signal
@@ -4142,12 +4047,12 @@ fn (mut e Eval) eval_array_init(node &flat.Node) !Value {
 }
 
 fn (mut e Eval) eval_array_init_flow(node &flat.Node) !FlowSignal {
-	array_type_name := if node.typ.len > 0 { node.typ } else { node.value }
+	array_type_name := if node.typ != 0 { node.typ } else { flat.source_type_id(node.value) }
 	is_fixed_array := is_fixed_array_type_name(array_type_name)
 	elem_type_name := if is_fixed_array {
 		fixed_array_elem_type_name(array_type_name)
 	} else {
-		node.value
+		flat.source_type_id(node.value)
 	}
 	mut len := 0
 	mut cap := 0
@@ -4197,13 +4102,14 @@ fn (mut e Eval) eval_array_init_flow(node &flat.Node) !FlowSignal {
 	})
 }
 
-fn (mut e Eval) eval_array_init_values(len int, cap int, has_init bool, init_id flat.NodeId, elem_type_name string) !FlowSignal {
+fn (mut e Eval) eval_array_init_values(len int, cap int, has_init bool, init_id flat.NodeId, elem_type_name_id u32) !FlowSignal {
+	elem_type_name := flat.source_type_name(elem_type_name_id)
 	mut values := []Value{cap: cap}
 	for i in 0 .. len {
 		if has_init {
 			e.open_scope()
-			e.declare_var_typed('index', Value(i64(i)), 'int')
-			signal := e.eval_expr_flow_expected(init_id, elem_type_name) or {
+			e.declare_var_typed('index', Value(i64(i)), flat.source_type_int)
+			signal := e.eval_expr_flow_expected(init_id, elem_type_name_id) or {
 				e.close_scope()!
 				return err
 			}
@@ -4211,30 +4117,27 @@ fn (mut e Eval) eval_array_init_values(len int, cap int, has_init bool, init_id 
 			if signal.kind != .normal {
 				return signal
 			}
-			values << e.adapt_value_to_type_name(flow_value(signal), elem_type_name)
+			values << e.adapt_value_to_type_name(flow_value(signal), elem_type_name_id)
 		} else {
-			values << e.zero_value_for_type_name(elem_type_name)
+			values << e.zero_value_for_type_name(elem_type_name_id)
 		}
 	}
 	return value_flow(ArrayValue{
-		elem_type_name: elem_type_name
+		elem_type_name: elem_type_name_id
 		values:         values
 	})
 }
 
-fn is_fixed_array_type_name(type_name string) bool {
-	if type_name.starts_with('[]') || type_name.starts_with('map[') {
-		return false
-	}
-	return type_name.contains('[') && (type_name.ends_with(']') || type_name.starts_with('['))
+fn is_fixed_array_type_name(type_name_id u32) bool {
+	return is_fixed_array_type_name_bytes(flat.source_type_name(type_name_id))
 }
 
-fn (mut e Eval) fixed_array_len(type_name string) !int {
-	return e.fixed_array_len_in_module(type_name, e.current_module_name())
+fn (mut e Eval) fixed_array_len(type_name_id u32) !int {
+	return e.fixed_array_len_in_module(type_name_id, e.current_module_name())
 }
 
-fn (mut e Eval) fixed_array_len_in_module(type_name string, module_name string) !int {
-	text := fixed_array_len_text(type_name)
+fn (mut e Eval) fixed_array_len_in_module(type_name_id u32, module_name string) !int {
+	text := fixed_array_len_text(type_name_id)
 	if len := fixed_array_len_literal(text) {
 		return len
 	}
@@ -4266,15 +4169,12 @@ fn fixed_array_len_literal(text string) ?int {
 	return len
 }
 
-fn fixed_array_len_text(type_name string) string {
-	return type_name.all_after('[').all_before(']').trim_space()
+fn fixed_array_len_text(type_name_id u32) string {
+	return fixed_array_len_text_bytes(flat.source_type_name(type_name_id))
 }
 
-fn fixed_array_elem_type_name(type_name string) string {
-	if type_name.starts_with('[') {
-		return type_name.all_after(']')
-	}
-	return type_name.all_before('[')
+fn fixed_array_elem_type_name(type_name_id u32) u32 {
+	return flat.source_type_id(fixed_array_elem_type_name_bytes(flat.source_type_name(type_name_id)))
 }
 
 fn (mut e Eval) eval_map_init(node &flat.Node) !Value {
@@ -4282,7 +4182,7 @@ fn (mut e Eval) eval_map_init(node &flat.Node) !Value {
 }
 
 fn (mut e Eval) eval_map_init_flow(node &flat.Node) !FlowSignal {
-	map_type := if node.typ.len > 0 { node.typ } else { node.value }
+	map_type := if node.typ != 0 { node.typ } else { flat.source_type_id(node.value) }
 	mut key_type, mut value_type := split_map_type(map_type)
 	children := e.children(node)
 	mut keys := []Value{}
@@ -4294,10 +4194,10 @@ fn (mut e Eval) eval_map_init_flow(node &flat.Node) !FlowSignal {
 			return key_signal
 		}
 		key := flow_value(key_signal)
-		if key_type.len == 0 {
+		if key_type == 0 {
 			key_type = e.infer_expr_type_name(children[i])
-			if key_type.len == 0 {
-				key_type = e.runtime_type_name(key)
+			if key_type == 0 {
+				key_type = e.runtime_type_id(key)
 			}
 		}
 		typed_key := e.adapt_value_to_type_name(key, key_type)
@@ -4306,10 +4206,10 @@ fn (mut e Eval) eval_map_init_flow(node &flat.Node) !FlowSignal {
 			return value_signal
 		}
 		value := flow_value(value_signal)
-		if value_type.len == 0 {
+		if value_type == 0 {
 			value_type = e.infer_expr_type_name(children[i + 1])
-			if value_type.len == 0 {
-				value_type = e.runtime_type_name(value)
+			if value_type == 0 {
+				value_type = e.runtime_type_id(value)
 			}
 		}
 		keys << typed_key
@@ -4344,15 +4244,9 @@ fn (mut e Eval) eval_string_interp_flow(node &flat.Node) !FlowSignal {
 	return value_flow(Value(out))
 }
 
-fn split_map_type(type_name string) (string, string) {
-	if !type_name.starts_with('map[') {
-		return '', ''
-	}
-	inner := type_name[4..]
-	if idx := inner.index(']') {
-		return inner[..idx], inner[idx + 1..]
-	}
-	return '', ''
+fn split_map_type(type_name_id u32) (u32, u32) {
+	key, value := split_map_type_bytes(flat.source_type_name(type_name_id))
+	return flat.source_type_id(key), flat.source_type_id(value)
 }
 
 fn (mut e Eval) eval_struct_init(node &flat.Node) !Value {
@@ -4360,7 +4254,7 @@ fn (mut e Eval) eval_struct_init(node &flat.Node) !Value {
 }
 
 fn (mut e Eval) eval_struct_init_flow(node &flat.Node) !FlowSignal {
-	type_name := e.normalize_type_name(node.value)
+	type_name := e.normalize_type_name(flat.source_type_id(node.value))
 	mut st := e.zero_struct_value(type_name)
 	mut positional := 0
 	for child_id in e.children(node) {
@@ -4401,7 +4295,7 @@ fn (mut e Eval) eval_assoc(node &flat.Node) !Value {
 
 fn (mut e Eval) eval_assoc_flow(node &flat.Node) !FlowSignal {
 	if node.children_count == 0 {
-		return value_flow(e.zero_struct_value(node.value))
+		return value_flow(e.zero_struct_value(flat.source_type_id(node.value)))
 	}
 	base_signal := e.eval_expr_flow(e.child(node, 0))!
 	if base_signal.kind != .normal {
@@ -4559,7 +4453,7 @@ fn (mut e Eval) eval_or_failure(node &flat.Node, value Value) !FlowSignal {
 		or_node := e.node(or_id)
 		if or_node.kind == .block {
 			e.open_scope()
-			if value is StructValue && value.type_name == 'Result' {
+			if value is StructValue && value.type_name_text() == 'Result' {
 				e.declare_var('err', value.fields['err'] or { void_value() })
 			}
 			signal := e.eval_block_value_flow(or_node) or {
@@ -4636,10 +4530,10 @@ fn (mut e Eval) eval_match_value(node &flat.Node) !Value {
 }
 
 fn (mut e Eval) eval_match_value_flow(node &flat.Node) !FlowSignal {
-	return e.eval_match_value_flow_expected(node, '')
+	return e.eval_match_value_flow_expected(node, u32(0))
 }
 
-fn (mut e Eval) eval_match_value_flow_expected(node &flat.Node, expected_type string) !FlowSignal {
+fn (mut e Eval) eval_match_value_flow_expected(node &flat.Node, expected_type_id u32) !FlowSignal {
 	target_id := e.child(node, 0)
 	target_signal := e.eval_expr_flow(target_id)!
 	if target_signal.kind != .normal {
@@ -4686,7 +4580,7 @@ fn (mut e Eval) eval_match_value_flow_expected(node &flat.Node, expected_type st
 						}
 						continue
 					}
-					signal := e.eval_expr_flow_expected(expr_id, expected_type)!
+					signal := e.eval_expr_flow_expected(expr_id, expected_type_id)!
 					if signal.kind != .normal {
 						e.close_scope()!
 						return signal
@@ -4745,15 +4639,15 @@ fn (mut e Eval) eval_match_condition(cond_id flat.NodeId, target_id flat.NodeId)
 fn (mut e Eval) eval_match_condition_flow(cond_id flat.NodeId, target_id flat.NodeId) !FlowSignal {
 	cond := e.node(cond_id)
 	if cond.kind == .enum_val {
-		if enum_type := e.match_target_enum_type_name(target_id) {
-			if value := e.lookup_enum_value(enum_type, cond.value) {
+		if enum_type_source_id := e.match_target_enum_type_name(target_id) {
+			if value := e.lookup_enum_value(enum_type_source_id, cond.value) {
 				return value_flow(value)
 			}
 		}
 	}
-	if cond.kind == .ident && is_builtin_type_name(cond.value) {
+	if cond.kind == .ident && is_builtin_type_name(flat.source_type_id(cond.value)) {
 		return value_flow(TypeValue{
-			name: cond.value
+			name: flat.source_type_id(cond.value)
 		})
 	}
 	signal := e.eval_expr_flow(cond_id)!
@@ -4771,34 +4665,27 @@ fn (mut e Eval) eval_match_condition_flow(cond_id flat.NodeId, target_id flat.No
 	return value_flow(value)
 }
 
-fn (e &Eval) match_target_enum_type_name(target_id flat.NodeId) ?string {
+fn (e &Eval) match_target_enum_type_name(target_id flat.NodeId) ?u32 {
 	target := e.node(target_id)
 	match target.kind {
 		.ident {
-			if typ := e.lookup_var_type(target.value) {
-				return typ
-			}
-			if target.typ.len > 0 {
-				return e.normalize_type_name(target.typ)
-			}
+			if typ := e.lookup_var_type(target.value) { return typ }
+			if target.typ != 0 { return e.normalize_type_name(target.typ) }
 		}
 		.selector {
-			if target.children_count > 0 {
-				return e.type_value_name_from_expr(e.child(target, 0))
-			}
+			if target.children_count > 0 { return e.type_value_name_from_expr(e.child(target, 0)) }
 		}
 		else {}
 	}
-
 	return none
 }
 
-fn (e &Eval) type_value_name_from_expr(id flat.NodeId) ?string {
+fn (e &Eval) type_value_name_from_expr(id flat.NodeId) ?u32 {
 	node := e.node(id)
 	match node.kind {
 		.ident {
 			if e.has_type_name(e.current_module_name(), node.value) {
-				return e.qualify_type_name(e.current_module_name(), node.value)
+				return e.qualify_type_name(e.current_module_name(), flat.source_type_id(node.value))
 			}
 		}
 		.selector {
@@ -4807,18 +4694,18 @@ fn (e &Eval) type_value_name_from_expr(id flat.NodeId) ?string {
 				if left.kind == .ident {
 					mod := e.resolve_module_name(left.value)
 					if e.has_type_name(mod, node.value) {
-						return e.qualify_type_name(mod, node.value)
+						return e.qualify_type_name(mod, flat.source_type_id(node.value))
 					}
 				}
 			}
 		}
 		else {}
 	}
-
 	return none
 }
 
-fn (mut e Eval) lookup_enum_value(enum_type_name string, field string) ?Value {
+fn (mut e Eval) lookup_enum_value(enum_type_name_id u32, field string) ?Value {
+	enum_type_name := flat.source_type_name(enum_type_name_id)
 	mod := if enum_type_name.contains('.') {
 		enum_type_name.all_before_last('.')
 	} else {
@@ -4832,17 +4719,14 @@ fn (mut e Eval) lookup_enum_value(enum_type_name string, field string) ?Value {
 	for name in fields {
 		enum_key := '${enum_type_name.all_after_last('.')}.${name}'
 		if value := e.lookup_const(mod, enum_key) {
-			return e.enum_value(e.qualify_type_name(mod, enum_type_name), value)
+			return e.enum_value(e.qualify_type_name(mod, enum_type_name_id), value)
 		}
 	}
 	return none
 }
 
-fn (e &Eval) enum_value(type_name string, value Value) Value {
-	return EnumValue{
-		type_name: e.normalize_type_name(type_name)
-		value:     e.value_as_int(value) or { i64(0) }
-	}
+fn (e &Eval) enum_value(type_name_id u32, value Value) Value {
+	return EnumValue{ type_name: e.normalize_type_name(type_name_id), value: e.value_as_int(value) or { i64(0) } }
 }
 
 fn (mut e Eval) maybe_call_builtin(module_name string, fn_name string, args []Value) !MaybeValue {
@@ -5016,7 +4900,7 @@ fn (mut e Eval) maybe_call_os_builtin(fn_name string, args []Value) !MaybeValue 
 
 fn os_result_value(result os.Result) Value {
 	return StructValue{
-		type_name: 'os.Result'
+		type_name: flat.source_type_id('os.Result')
 		fields:    {
 			'exit_code': Value(i64(result.exit_code))
 			'output':    Value(result.output)
@@ -5024,15 +4908,15 @@ fn os_result_value(result os.Result) Value {
 	}
 }
 
-fn (mut e Eval) call_value_method(receiver Value, receiver_type_name string, method_name string, args []Value) !MethodCallResult {
-	static_type_name := e.normalize_type_name(receiver_type_name)
+fn (mut e Eval) call_value_method(receiver Value, receiver_type_name_id u32, method_name string, args []Value) !MethodCallResult {
+	static_type_name := e.normalize_type_name(receiver_type_name_id)
 	if value := e.direct_builtin_str_method_value(receiver, static_type_name, method_name, args) {
 		return MethodCallResult{
 			value:    value
 			receiver: receiver
 		}
 	}
-	if static_type_name.len > 0 {
+	if static_type_name != 0 {
 		if target := e.resolve_method_target(static_type_name, method_name) {
 			return e.call_method_target(receiver, target, args)!
 		}
@@ -5089,8 +4973,8 @@ fn (mut e Eval) call_value_method(receiver Value, receiver_type_name string, met
 	return error('v.eval: unsupported method `${method_name}` on `${e.runtime_type_name(receiver)}`')
 }
 
-fn (mut e Eval) direct_builtin_str_method_value(receiver Value, static_type_name string, method_name string, args []Value) ?Value {
-	if !is_builtin_str_receiver_type_name(static_type_name) {
+fn (mut e Eval) direct_builtin_str_method_value(receiver Value, static_type_name_id u32, method_name string, args []Value) ?Value {
+	if !is_builtin_str_receiver_type_name(static_type_name_id) {
 		return none
 	}
 	return e.direct_str_method_value(receiver, method_name, args)
@@ -5116,9 +5000,12 @@ fn (mut e Eval) direct_str_method_value(receiver Value, method_name string, args
 	return none
 }
 
-fn is_builtin_str_receiver_type_name(name string) bool {
-	return name in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'u16', 'u32', 'u64',
-		'usize', 'f32', 'f64', 'rune', 'char', 'string']
+fn is_builtin_str_receiver_type_name(name_id u32) bool {
+	return name_id in [flat.source_type_bool, flat.source_type_int, flat.source_type_i8,
+		flat.source_type_i16, flat.source_type_i32, flat.source_type_i64, flat.source_type_isize,
+		flat.source_type_u8, flat.source_type_u16, flat.source_type_u32, flat.source_type_u64,
+		flat.source_type_usize, flat.source_type_f32, flat.source_type_f64, flat.source_type_rune,
+		flat.source_type_char, flat.source_type_string]
 }
 
 fn (mut e Eval) call_method_target(receiver Value, target FunctionDef, args []Value) !MethodCallResult {
@@ -5154,7 +5041,8 @@ fn (mut e Eval) call_method_target(receiver Value, target FunctionDef, args []Va
 	}
 }
 
-fn (e &Eval) resolve_method_target(type_name string, method_name string) ?FunctionDef {
+fn (e &Eval) resolve_method_target(type_name_id u32, method_name string) ?FunctionDef {
+	type_name := flat.source_type_name(type_name_id)
 	short_type := type_name.all_after_last('.')
 	module_name := if type_name.contains('.') {
 		type_name.all_before_last('.')
@@ -5181,7 +5069,7 @@ fn (e &Eval) resolve_method_target(type_name string, method_name string) ?Functi
 
 fn (e &Eval) infix_operator_call_info(left Value, op flat.Op) ?InfixOperatorCallInfo {
 	type_name := e.infix_operator_receiver_type_name(left)
-	if type_name.len == 0 {
+	if type_name == 0 {
 		return none
 	}
 	if op_name := infix_operator_symbol(op) {
@@ -5231,10 +5119,10 @@ fn (e &Eval) infix_operator_call_info(left Value, op flat.Op) ?InfixOperatorCall
 	return none
 }
 
-fn (e &Eval) infix_operator_receiver_type_name(value Value) string {
+fn (e &Eval) infix_operator_receiver_type_name(value Value) u32 {
 	return match value {
 		StructValue { value.type_name }
-		else { '' }
+		else { u32(0) }
 	}
 }
 
@@ -5279,11 +5167,12 @@ fn (mut e Eval) apply_infix_operator_overload(op flat.Op, left Value, right Valu
 
 fn (mut e Eval) call_string_method(receiver string, method_name string, args []Value) !Value {
 	match method_name {
+		// string.int() accepts `1_000`; strconv.parse_int rejects underscores in base 10.
 		'int' {
-			return Value(strconv.parse_int(receiver, 10, 64) or { i64(0) })
+			return Value(strconv.common_parse_int(receiver, 10, 64, true, false) or { i64(0) })
 		}
 		'i64' {
-			return Value(strconv.parse_int(receiver, 10, 64) or { i64(0) })
+			return Value(strconv.common_parse_int(receiver, 10, 64, true, false) or { i64(0) })
 		}
 		'str' {
 			return Value(receiver)
@@ -5735,47 +5624,37 @@ fn (mut e Eval) zero_value_like(value Value) Value {
 	}
 }
 
-fn (mut e Eval) zero_value_for_type_name(type_name string) Value {
-	return e.zero_value_for_type_name_in_module(type_name, e.current_module_name())
+fn (mut e Eval) zero_value_for_type_name(type_name_id u32) Value {
+	return e.zero_value_for_type_name_in_module(type_name_id, e.current_module_name())
 }
 
-fn (mut e Eval) zero_value_for_type_name_in_module(type_name string, module_name string) Value {
-	name := type_name.trim_left('&')
-	if name == '' || name == 'void' {
-		return void_value()
-	}
+fn (mut e Eval) zero_value_for_type_name_in_module(type_name_id u32, module_name string) Value {
+	name := eval_pointer_base_type_id(type_name_id)
+	if name in [u32(0), flat.source_type_void] { return void_value() }
 	if alias := e.type_alias_info_in_module(name, module_name) {
 		return e.zero_value_for_type_name_in_module(alias.target, alias.module_name)
 	}
-	if name == 'bool' {
-		return Value(false)
-	}
-	if name in ['f32', 'f64'] {
-		return Value(0.0)
-	}
-	if name == 'string' {
-		return Value('')
-	}
-	if name in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'usize',
-		'rune', 'char'] {
+	if name == flat.source_type_bool { return Value(false) }
+	if name in [flat.source_type_f32, flat.source_type_f64] { return Value(0.0) }
+	if name == flat.source_type_string { return Value('') }
+	if name in [flat.source_type_int, flat.source_type_i8, flat.source_type_i16, flat.source_type_i32,
+		flat.source_type_i64, flat.source_type_u8, flat.source_type_u16, flat.source_type_u32,
+		flat.source_type_u64, flat.source_type_isize, flat.source_type_usize, flat.source_type_rune,
+		flat.source_type_char] {
 		return Value(i64(0))
 	}
-	if name.starts_with('[]') {
-		elem_type := e.qualify_nested_type_name(module_name, name[2..])
-		return ArrayValue{
-			elem_type_name: elem_type
-		}
+	if flat.source_type_shape(name).has(.array_type) {
+		return ArrayValue{ elem_type_name: e.qualify_nested_type_name(module_name, flat.source_type_id(flat.source_type_name(name)[2..])) }
 	}
 	if is_fixed_array_type_name(name) {
 		elem_type := e.qualify_nested_type_name(module_name, fixed_array_elem_type_name(name))
 		len := e.fixed_array_len_in_module(name, module_name) or { 0 }
 		return ArrayValue{
 			elem_type_name: elem_type
-			values:         []Value{len: len, cap: len, init: e.zero_value_for_type_name_in_module(elem_type,
-				module_name)}
+			values:         []Value{len: len, cap: len, init: e.zero_value_for_type_name_in_module(elem_type, module_name)}
 		}
 	}
-	if name.starts_with('map[') {
+	if flat.source_type_shape(name).has(.map_type) {
 		key_type, value_type := split_map_type(name)
 		qualified_key_type := e.qualify_nested_type_name(module_name, key_type)
 		qualified_value_type := e.qualify_nested_type_name(module_name, value_type)
@@ -5786,67 +5665,32 @@ fn (mut e Eval) zero_value_for_type_name_in_module(type_name string, module_name
 		}
 	}
 	enum_name := e.qualify_type_name(module_name, name)
-	if fields := e.enum_fields[enum_name] {
+	if fields := e.enum_fields[flat.source_type_name(enum_name)] {
 		if fields.len > 0 {
-			if value := e.lookup_enum_value(enum_name, fields[0]) {
-				return value
-			}
+			if value := e.lookup_enum_value(enum_name, fields[0]) { return value }
 		}
-		return EnumValue{
-			type_name: enum_name
-		}
+		return EnumValue{ type_name: enum_name }
 	}
 	sum_name := e.qualify_type_name(module_name, name)
-	if sum_name in e.sum_types {
-		return SumValue{
-			type_name: sum_name
-			payload:   void_value()
-		}
+	if e.sum_types.contains(flat.source_type_name(sum_name)) {
+		return SumValue{ type_name: sum_name, payload: void_value() }
 	}
-	if name in e.sum_types {
-		return SumValue{
-			type_name: name
-			payload:   void_value()
-		}
+	if e.sum_types.contains(flat.source_type_name(name)) {
+		return SumValue{ type_name: name, payload: void_value() }
 	}
 	struct_name := e.resolve_struct_type_name_in_module(name, module_name)
-	if struct_name in e.structs {
-		return e.zero_struct_value(struct_name)
-	}
+	if flat.source_type_name(struct_name) in e.structs { return e.zero_struct_value(struct_name) }
 	return void_value()
 }
 
-fn (e &Eval) qualify_nested_type_name(module_name string, type_name string) string {
-	name := type_name.trim_space()
-	if name == '' {
-		return ''
-	}
-	if name in e.sizeof_type_bindings { return name }
-	if name.starts_with('&') || name.starts_with('?') || name.starts_with('!') {
-		return '${name[..1]}${e.qualify_nested_type_name(module_name, name[1..])}'
-	}
-	if name.starts_with('[]') {
-		return '[]${e.qualify_nested_type_name(module_name, name[2..])}'
-	}
-	if is_fixed_array_type_name(name) && !e.sizeof_is_generic_aggregate(name, module_name) {
-		elem := e.qualify_nested_type_name(module_name, fixed_array_elem_type_name(name))
-		raw_len := fixed_array_len_text(name)
-		len := if module_name in e.consts && raw_len in e.consts[module_name] {
-			'${module_name}.${raw_len}'
-		} else {
-			raw_len
-		}
-		return if name.starts_with('[') { '[${len}]${elem}' } else { '${elem}[${len}]' }
-	}
-	if name.starts_with('map[') {
-		key_type, value_type := split_map_type(name)
-		return 'map[${e.qualify_nested_type_name(module_name, key_type)}]${e.qualify_nested_type_name(module_name, value_type)}'
-	}
-	return e.qualify_type_name(module_name, name)
+fn (e &Eval) qualify_nested_type_name(module_name string, type_name_id u32) u32 {
+	spelling := flat.source_type_name(type_name_id)
+	qualified := e.qualify_nested_type_name_bytes(module_name, spelling)
+	return if qualified == spelling { type_name_id } else { flat.source_type_id(qualified) }
 }
 
-fn (mut e Eval) zero_struct_value(type_name string) StructValue {
-	name := e.resolve_struct_type_name(type_name)
+fn (mut e Eval) zero_struct_value(type_name_id u32) StructValue {
+	name := e.resolve_struct_type_name(type_name_id)
 	mut fields := map[string]Value{}
 	info := e.struct_info(name)
 	for field in info.fields {
@@ -5856,10 +5700,7 @@ fn (mut e Eval) zero_struct_value(type_name string) StructValue {
 			e.zero_value_for_type_name_in_module(field.typ, info.module_name)
 		}
 	}
-	return StructValue{
-		type_name: type_name
-		fields:    fields
-	}
+	return StructValue{ type_name: type_name_id, fields: fields }
 }
 
 fn (mut e Eval) eval_struct_field_default(field FieldInfo) Value {
@@ -5877,67 +5718,59 @@ fn (mut e Eval) eval_struct_field_default(field FieldInfo) Value {
 	return adapted
 }
 
-fn (e &Eval) struct_fields(type_name string) []FieldInfo {
-	return e.struct_info(type_name).fields
+fn (e &Eval) struct_fields(type_name_id u32) []FieldInfo {
+	return e.struct_info(type_name_id).fields
 }
 
-fn (e &Eval) struct_field_type_name(value StructValue, field_name string) string {
+fn (e &Eval) struct_field_type_name(value StructValue, field_name string) u32 {
 	return e.struct_field_type_name_by_type(value.type_name, field_name)
 }
 
-fn (e &Eval) struct_field_type_name_by_type(type_name string, field_name string) string {
-	info := e.struct_info(type_name)
+fn (e &Eval) struct_field_type_name_by_type(type_name_id u32, field_name string) u32 {
+	info := e.struct_info(type_name_id)
 	for field in info.fields {
 		if field.name == field_name {
 			return e.qualify_declared_type_name(field.module_name, field.file_name, field.typ)
 		}
 	}
-	return ''
+	return u32(0)
 }
 
-fn (e &Eval) struct_info(type_name string) StructInfo {
-	mut name := type_name.trim_left('&')
-	mut seen := map[string]bool{}
-	for name.len > 0 && name !in seen {
+fn (e &Eval) struct_info(type_name_id u32) StructInfo {
+	mut name := eval_pointer_base_type_id(type_name_id)
+	mut seen := map[u32]bool{}
+	for name != 0 && name !in seen {
 		seen[name] = true
 		if alias := e.type_alias_info_in_module(name, e.current_module_name()) {
-			name = e.qualify_declared_type_name(alias.module_name, alias.file_name, alias.target).trim_left('&')
+			qualified := e.qualify_declared_type_name(alias.module_name, alias.file_name, alias.target)
+			name = eval_pointer_base_type_id(qualified)
 		} else {
 			break
 		}
 	}
 	resolved := e.resolve_struct_type_name(name)
-	if resolved in e.structs { return e.structs[resolved] }
+	if info := e.structs[flat.source_type_name(resolved)] { return info }
 	return StructInfo{}
 }
 
-fn (e &Eval) resolve_struct_type_name(type_name string) string {
-	return e.resolve_struct_type_name_in_module(type_name, e.current_module_name())
+fn (e &Eval) resolve_struct_type_name(type_name_id u32) u32 {
+	return e.resolve_struct_type_name_in_module(type_name_id, e.current_module_name())
 }
 
-fn (e &Eval) resolve_struct_type_name_in_module(type_name string, module_name string) string {
-	if type_name.contains('.') {
-		if type_name in e.structs {
-			return type_name
-		}
-		return type_name
-	}
-	qualified := e.qualify_type_name(module_name, type_name)
-	if qualified in e.structs {
-		return qualified
-	}
-	if type_name in e.structs {
-		return type_name
-	}
-	short := type_name.all_after_last('.')
-	if short in e.structs {
-		return short
-	}
-	return type_name
+fn (e &Eval) resolve_struct_type_name_in_module(type_name_id u32, module_name string) u32 {
+	if flat.source_type_shape(type_name_id).has(.dotted) { return type_name_id }
+	qualified := e.qualify_type_name(module_name, type_name_id)
+	if flat.source_type_name(qualified) in e.structs { return qualified }
+	spelling := flat.source_type_name(type_name_id)
+	if spelling in e.structs { return type_name_id }
+	short := spelling.all_after_last('.')
+	if short in e.structs { return flat.source_type_id(short) }
+	return type_name_id
 }
 
-fn (e &Eval) adapt_value_to_type_name(value Value, type_name string) Value {
-	if alias := e.type_alias_info_in_module(type_name, e.current_module_name()) {
+fn (e &Eval) adapt_value_to_type_name(value Value, type_name_id u32) Value {
+	type_name := flat.source_type_name(type_name_id)
+	if alias := e.type_alias_info_in_module(type_name_id, e.current_module_name()) {
 		return e.adapt_value_to_type_name(value, e.qualify_type_name(alias.module_name,
 			alias.target))
 	}
@@ -5947,12 +5780,12 @@ fn (e &Eval) adapt_value_to_type_name(value Value, type_name string) Value {
 		}
 		inner_type := type_name[1..]
 		data := if inner_type.len > 0 {
-			e.adapt_value_to_type_name(value, inner_type)
+			e.adapt_value_to_type_name(value, flat.source_type_id(inner_type))
 		} else {
 			value
 		}
 		return StructValue{
-			type_name: 'Option'
+			type_name: flat.source_type_id('Option')
 			fields:    {
 				'state': Value(i64(0))
 				'data':  data
@@ -5965,12 +5798,12 @@ fn (e &Eval) adapt_value_to_type_name(value Value, type_name string) Value {
 		}
 		inner_type := type_name[1..]
 		data := if inner_type.len > 0 {
-			e.adapt_value_to_type_name(value, inner_type)
+			e.adapt_value_to_type_name(value, flat.source_type_id(inner_type))
 		} else {
 			value
 		}
 		return StructValue{
-			type_name: 'Result'
+			type_name: flat.source_type_id('Result')
 			fields:    {
 				'is_error': Value(false)
 				'err':      Value('')
@@ -5979,7 +5812,7 @@ fn (e &Eval) adapt_value_to_type_name(value Value, type_name string) Value {
 		}
 	}
 	if type_name.starts_with('[]') && value is ArrayValue {
-		elem_type_name := e.qualify_nested_type_name(e.current_module_name(), type_name[2..])
+		elem_type_name := e.qualify_nested_type_name(e.current_module_name(), flat.source_type_id(type_name[2..]))
 		mut arr := value
 		arr.elem_type_name = elem_type_name
 		mut values := []Value{cap: arr.values.cap}
@@ -5990,7 +5823,7 @@ fn (e &Eval) adapt_value_to_type_name(value Value, type_name string) Value {
 		return arr
 	}
 	if type_name.starts_with('map[') && value is MapValue {
-		key_type_name, value_type_name := split_map_type(type_name)
+		key_type_name, value_type_name := split_map_type(type_name_id)
 		qualified_key_type_name := e.qualify_nested_type_name(e.current_module_name(),
 			key_type_name)
 		qualified_value_type_name := e.qualify_nested_type_name(e.current_module_name(),
@@ -6006,18 +5839,18 @@ fn (e &Eval) adapt_value_to_type_name(value Value, type_name string) Value {
 		}
 		return m
 	}
-	target_type_name := e.normalize_type_name(type_name)
-	if target_type_name in e.enum_fields {
+	target_type_name := e.normalize_type_name(type_name_id)
+	if flat.source_type_name(target_type_name) in e.enum_fields {
 		return e.enum_value(target_type_name, value)
 	}
 	if type_name in e.enum_fields {
-		return e.enum_value(type_name, value)
+		return e.enum_value(type_name_id, value)
 	}
-	if target_type_name in e.sum_types && !e.value_matches_type_name(value, target_type_name) {
+	if e.sum_types.contains(flat.source_type_name(target_type_name)) && !e.value_matches_type_name(value, target_type_name) {
 		return e.wrap_sum_value(target_type_name, value)
 	}
-	if type_name in e.sum_types && !e.value_matches_type_name(value, type_name) {
-		return e.wrap_sum_value(type_name, value)
+	if e.sum_types.contains(type_name) && !e.value_matches_type_name(value, type_name_id) {
+		return e.wrap_sum_value(type_name_id, value)
 	}
 	return value
 }
@@ -6029,181 +5862,140 @@ fn (e &Eval) is_option_like_value(value Value) bool {
 	return false
 }
 
-fn (e &Eval) wrap_sum_value(type_name string, value Value) Value {
-	return SumValue{
-		type_name:    type_name
-		variant_name: e.runtime_type_name(value)
-		payload:      value
-	}
+fn (e &Eval) wrap_sum_value(type_name_id u32, value Value) Value {
+	return SumValue{ type_name: type_name_id, variant_name: e.runtime_type_id(value), payload: value }
 }
 
-fn (e &Eval) unwrap_sum_cast_value(value Value, type_name string) Value {
+fn (e &Eval) unwrap_sum_cast_value(value Value, type_name_id u32) Value {
 	if value is SumValue {
-		if !e.type_name_matches(value.type_name, type_name)
-			&& (e.type_name_matches(value.variant_name, type_name)
-				|| e.value_matches_type_name(value.payload, type_name)) {
+		if !e.type_name_matches(value.type_name, type_name_id)
+			&& (e.type_name_matches(value.variant_name, type_name_id) || e.value_matches_type_name(value.payload, type_name_id)) {
 			return value.payload
 		}
 	}
 	return value
 }
 
-fn (e &Eval) cast_value(value Value, type_name string) !Value {
-	return e.cast_value_in_module(value, type_name, e.current_module_name())
+fn (e &Eval) cast_value(value Value, type_name_id u32) !Value {
+	return e.cast_value_in_module(value, type_name_id, e.current_module_name())
 }
 
-fn (e &Eval) cast_value_in_module(value Value, type_name string, module_name string) !Value {
-	name := type_name.trim_left('&')
-	if name == '' {
-		return value
-	}
+fn (e &Eval) cast_value_in_module(value Value, type_name_id u32, module_name string) !Value {
+	name := eval_pointer_base_type_id(type_name_id)
+	if name == 0 { return value }
 	if alias := e.type_alias_info_in_module(name, module_name) {
 		return e.cast_value_in_module(value, alias.target, alias.module_name)
 	}
 	target_name := e.qualify_type_name(module_name, name)
 	source := e.unwrap_sum_cast_value(value, target_name)
-	if name in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'usize',
-		'rune', 'char'] {
+	if name in [flat.source_type_int, flat.source_type_i8, flat.source_type_i16, flat.source_type_i32,
+		flat.source_type_i64, flat.source_type_u8, flat.source_type_u16, flat.source_type_u32,
+		flat.source_type_u64, flat.source_type_isize, flat.source_type_usize, flat.source_type_rune,
+		flat.source_type_char] {
 		return Value(e.value_as_int(source)!)
 	}
-	if name in ['f32', 'f64'] {
+	if name in [flat.source_type_f32, flat.source_type_f64] {
 		return Value(e.value_as_f64(source)!)
 	}
-	if name == 'bool' {
-		return Value(e.value_as_bool(source)!)
-	}
-	if name == 'string' {
-		return Value(e.value_string(source))
-	}
-	if target_name in e.enum_fields {
+	if name == flat.source_type_bool { return Value(e.value_as_bool(source)!) }
+	if name == flat.source_type_string { return Value(e.value_string(source)) }
+	if flat.source_type_name(target_name) in e.enum_fields {
 		return e.enum_value(target_name, source)
 	}
-	if name in e.enum_fields {
-		return e.enum_value(name, source)
-	}
-	if name.starts_with('?') {
-		if source is VoidValue {
-			return source
-		}
-		inner_type := name[1..]
-		data := if inner_type.len > 0 {
+	if flat.source_type_name(name) in e.enum_fields { return e.enum_value(name, source) }
+	if flat.source_type_shape(name).has(.option_type) {
+		if source is VoidValue { return source }
+		inner_type := flat.source_type_id(flat.source_type_name(name)[1..])
+		data := if inner_type != 0 {
 			e.adapt_value_to_type_name(source, inner_type)
 		} else {
 			source
 		}
 		return StructValue{
-			type_name: 'Option'
+			type_name: flat.source_type_id('Option')
 			fields:    {
 				'state': Value(i64(0))
 				'data':  data
 			}
 		}
 	}
-	if target_name in e.sum_types || name in e.sum_types {
-		sum_name := if target_name in e.sum_types { target_name } else { name }
-		if e.value_matches_type_name(source, sum_name) {
-			return source
+	if e.sum_types.contains(flat.source_type_name(target_name)) || e.sum_types.contains(flat.source_type_name(name)) {
+		sum_name := if e.sum_types.contains(flat.source_type_name(target_name)) {
+			target_name
+		} else {
+			name
 		}
+		if e.value_matches_type_name(source, sum_name) { return source }
 		return e.wrap_sum_value(sum_name, source)
 	}
 	return source
 }
 
-fn (e &Eval) type_alias_info_in_module(type_name string, module_name string) ?TypeAliasInfo {
-	name := type_name.trim_left('&')
-	if name == '' {
-		return none
-	}
+fn (e &Eval) type_alias_info_in_module(type_name_id u32, module_name string) ?TypeAliasInfo {
+	name := eval_pointer_base_type_id(type_name_id)
+	if name == 0 { return none }
 	qualified := e.qualify_type_name(module_name, name)
-	if alias := e.type_aliases[qualified] {
-		return alias
-	}
-	if alias := e.type_aliases[name] {
-		return alias
-	}
+	if alias := e.type_aliases[flat.source_type_name(qualified)] { return alias }
+	if alias := e.type_aliases[flat.source_type_name(name)] { return alias }
 	return none
 }
 
-fn (e &Eval) value_matches_type_name(value Value, target_name string) bool {
-	name := e.normalize_type_name(target_name)
+fn (e &Eval) value_matches_type_name(value Value, target_name_id u32) bool {
+	name := e.normalize_type_name(target_name_id)
 	match value {
-		bool {
-			return name == 'bool'
-		}
+		bool { return name == flat.source_type_bool }
 		i64 {
-			return name in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize',
-				'usize', 'rune', 'char']
+			return name in [flat.source_type_int, flat.source_type_i8, flat.source_type_i16,
+				flat.source_type_i32, flat.source_type_i64, flat.source_type_u8, flat.source_type_u16,
+				flat.source_type_u32, flat.source_type_u64, flat.source_type_isize,
+				flat.source_type_usize, flat.source_type_rune, flat.source_type_char]
 		}
-		EnumValue {
-			return e.type_name_matches(value.type_name, name)
-		}
-		f64 {
-			return name in ['f32', 'f64']
-		}
-		string {
-			return name == 'string'
-		}
+		EnumValue { return e.type_name_matches(value.type_name, name) }
+		f64 { return name in [flat.source_type_f32, flat.source_type_f64] }
+		string { return name == flat.source_type_string }
 		ArrayValue {
-			if name == 'array' {
-				return true
-			}
-			if !name.starts_with('[]') {
-				return false
-			}
-			return e.type_name_matches(value.elem_type_name, name[2..])
+			if name == eval_type_array { return true }
+			if !flat.source_type_shape(name).has(.array_type) { return false }
+			return e.type_name_matches(value.elem_type_name, flat.source_type_id(flat.source_type_name(name)[2..]))
 		}
 		MapValue {
-			if !name.starts_with('map[') {
-				return false
-			}
+			if !flat.source_type_shape(name).has(.map_type) { return false }
 			key_type, value_type := split_map_type(name)
 			return e.type_name_matches(value.key_type_name, key_type)
 				&& e.type_name_matches(value.value_type_name, value_type)
 		}
-		StructValue {
-			return e.type_name_matches(value.type_name, name)
-		}
+		StructValue { return e.type_name_matches(value.type_name, name) }
 		SumValue {
 			return e.type_name_matches(value.type_name, name)
 				|| e.type_name_matches(value.variant_name, name)
 				|| e.value_matches_type_name(value.payload, name)
 		}
-		TypeValue {
-			return name == 'Type' || name == 'types.Type'
-		}
-		else {
-			return false
-		}
+		TypeValue { return flat.source_type_name(name) in ['Type', 'types.Type'] }
+		else { return false }
 	}
 }
 
-fn (e &Eval) type_name_matches(actual string, expected string) bool {
-	return e.normalize_type_name(actual) == e.normalize_type_name(expected)
+fn (e &Eval) type_name_matches(actual_id u32, expected_id u32) bool {
+	return e.normalize_type_name(actual_id) == e.normalize_type_name(expected_id)
 }
 
 fn (e &Eval) type_value_module_name(value TypeValue) string {
-	if value.name.contains('.') {
-		return value.name.all_before_last('.')
+	if flat.source_type_shape(value.name).has(.dotted) {
+		return value.name_text().all_before_last('.')
 	}
 	return e.current_module_name()
 }
 
-fn is_builtin_type_name(name string) bool {
-	return name in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'u16', 'u32', 'u64',
-		'usize', 'f32', 'f64', 'rune', 'char', 'string', 'void', 'voidptr', 'charptr', 'byteptr',
-		'array']
+fn is_builtin_type_name(name_id u32) bool {
+	return is_builtin_str_receiver_type_name(name_id)
+		|| name_id in [flat.source_type_void, flat.source_type_voidptr, flat.source_type_charptr,
+			flat.source_type_byteptr, eval_type_array]
 }
 
-fn (e &Eval) qualify_type_name(module_name string, type_name string) string {
-	name := e.resolve_import_alias_type_name(type_name)
-	if name == '' || name.contains('.') || name.starts_with('[]') || name.starts_with('map[')
-		|| is_builtin_type_name(name) {
-		return name
-	}
-	if module_name != '' && module_name != 'main' && module_name != 'builtin' {
-		return '${module_name}.${name}'
-	}
-	return name
+fn (e &Eval) qualify_type_name(module_name string, type_name_id u32) u32 {
+	spelling := flat.source_type_name(type_name_id)
+	qualified := e.qualify_type_name_bytes(module_name, spelling)
+	return if qualified == spelling { type_name_id } else { flat.source_type_id(qualified) }
 }
 
 fn (e &Eval) resolve_import_alias_type_name(type_name string) string {
@@ -6218,17 +6010,15 @@ fn (e &Eval) resolve_import_alias_type_name(type_name string) string {
 	return '${real_module}.${type_name.all_after('.')}'
 }
 
-fn (e &Eval) normalize_type_name(type_name string) string {
-	name := type_name.trim_left('&')
-	if name == '' {
-		return ''
-	}
+fn (e &Eval) normalize_type_name(type_name_id u32) u32 {
+	name := eval_pointer_base_type_id(type_name_id)
+	if name == 0 { return 0 }
 	return e.qualify_type_name(e.current_module_name(), name)
 }
 
-fn (e &Eval) qualify_declared_type_name(module_name string, file_name string, type_name string) string {
+fn (e &Eval) qualify_declared_type_name(module_name string, file_name string, type_name_id u32) u32 {
 	context := e.declaration_type_context(module_name, file_name)
-	return context.qualify_nested_type_name(module_name, type_name)
+	return context.qualify_nested_type_name(module_name, type_name_id)
 }
 
 // Declaration context avoids caller locals and resolves imports from the declaring file.
@@ -6240,49 +6030,50 @@ fn (e &Eval) declaration_type_context(module_name string, file_name string) Eval
 	return context
 }
 
-fn (e &Eval) infer_sizeof_operand_type_name(id flat.NodeId, seen []flat.NodeId, from_const bool) string {
+fn (e &Eval) infer_sizeof_operand_type_name(id flat.NodeId, seen []flat.NodeId, from_const bool) u32 {
 	node := e.node(id)
-	if from_const && node.kind == .ident && node.typ.len == 0 {
-		return e.sizeof_const_type_name(node.value, seen) or { '' }
+	if from_const && node.kind == .ident && node.typ == 0 {
+		return e.sizeof_const_type_name(node.value, seen) or { u32(0) }
 	}
-	if node.typ.len == 0 && node.kind == .selector && node.children_count > 0 {
+	if node.typ == 0 && node.kind == .selector && node.children_count > 0 {
 		base := e.node(e.child(node, 0))
 		if base.kind == .ident && (from_const || !e.lookup_var(base.value).found) {
 			module_name := e.resolve_module_name(base.value)
 			if typ := e.sizeof_const_type_name('${module_name}.${node.value}', seen) { return typ }
 		}
 		base_type := e.infer_sizeof_operand_type_name(e.child(node, 0), seen, from_const)
-		if base_type.len > 0 { return e.struct_field_type_name_by_type(base_type, node.value) }
+		if base_type != 0 { return e.struct_field_type_name_by_type(base_type, node.value) }
 	}
-	if node.typ.len == 0 && node.kind == .paren && node.children_count > 0 {
+	if node.typ == 0 && node.kind == .paren && node.children_count > 0 {
 		return e.infer_sizeof_operand_type_name(e.child(node, 0), seen, from_const)
 	}
-	if node.typ.len == 0 && node.kind == .prefix && node.children_count > 0 {
+	if node.typ == 0 && node.kind == .prefix && node.children_count > 0 {
 		typ := e.infer_sizeof_operand_type_name(e.child(node, 0), seen, from_const)
-		if typ.len > 0 {
-			if node.op == .amp { return '&${typ}' }
+		if typ != 0 {
+			if node.op == .amp { return flat.source_type_id('&${flat.source_type_name(typ)}') }
 			if node.op == .mul { return e.dereferenced_type_name(typ) }
 		}
 	}
-	if node.typ.len == 0 && node.kind == .index && node.children_count > 0 {
+	if node.typ == 0 && node.kind == .index && node.children_count > 0 {
 		typ := e.infer_sizeof_operand_type_name(e.child(node, 0), seen, from_const)
-		if typ.starts_with('[]') { return typ[2..] }
+		spelling := flat.source_type_name(typ)
+		if spelling.starts_with('[]') { return flat.source_type_id(spelling[2..]) }
 		if is_fixed_array_type_name(typ) { return fixed_array_elem_type_name(typ) }
-		if typ.starts_with('map[') {
+		if spelling.starts_with('map[') {
 			_, value_type := split_map_type(typ)
 			return value_type
 		}
 	}
-	if from_const && node.kind == .call && node.typ.len == 0 && node.children_count > 0 {
+	if from_const && node.kind == .call && node.typ == 0 && node.children_count > 0 {
 		return e.infer_call_return_type_name(e.child(node, 0), false)
 	}
 	typ := e.infer_expr_type_name(id)
-	if typ.len > 0 { return typ }
-	if node.kind == .ident { return e.sizeof_const_type_name(node.value, seen) or { '' } }
-	return ''
+	if typ != 0 { return typ }
+	if node.kind == .ident { return e.sizeof_const_type_name(node.value, seen) or { u32(0) } }
+	return 0
 }
 
-fn (e &Eval) sizeof_const_type_name(name string, seen []flat.NodeId) ?string {
+fn (e &Eval) sizeof_const_type_name(name string, seen []flat.NodeId) ?u32 {
 	mut module_name := e.current_module_name()
 	mut constant_name := name
 	if name.contains('.') && name !in e.consts[module_name] {
@@ -6295,7 +6086,9 @@ fn (e &Eval) sizeof_const_type_name(name string, seen []flat.NodeId) ?string {
 		if entry.node in seen { return none }
 		context := e.declaration_type_context(entry.module_name, entry.file_name)
 		node := e.node(entry.node)
-		if node.typ.len > 0 { return context.qualify_nested_type_name(entry.module_name, node.typ) }
+		if node.typ != 0 {
+			return context.qualify_nested_type_name(entry.module_name, node.typ)
+		}
 		if node.children_count > 0 {
 			mut visited := seen.clone()
 			visited << entry.node
@@ -6305,56 +6098,69 @@ fn (e &Eval) sizeof_const_type_name(name string, seen []flat.NodeId) ?string {
 	return none
 }
 
-fn (e &Eval) sizeof_type_name(name string) i64 {
-	return e.sizeof_type_name_in_module(name, e.current_module_name(), [])
+fn (e &Eval) sizeof_type_name(name_id u32) i64 {
+	return e.sizeof_type_name_in_module(name_id, e.current_module_name(), [])
 }
 
-fn (e &Eval) sizeof_type_name_in_module(name string, module_name string, seen []string) i64 {
-	return e.sizeof_type_layout(name, module_name, seen).size
+fn (e &Eval) sizeof_type_name_in_module(name_id u32, module_name string, seen []TypeLayoutVisit) i64 {
+	return e.sizeof_type_layout(name_id, module_name, seen).size
 }
 
 fn sizeof_aligned_size(size i64, align i64) i64 {
 	return if align > 1 { (size + align - 1) / align * align } else { size }
 }
 
-fn (e &Eval) sizeof_is_generic_aggregate(name string, module_name string) bool {
-	if base, _ := sizeof_generic_parts(name) {
+fn (e &Eval) sizeof_is_generic_aggregate(name_id u32, module_name string) bool {
+	if base, _ := sizeof_generic_parts(name_id) {
 		qualified := e.qualify_type_name(module_name, base)
-		if info := e.structs[qualified] { return info.params.len > 0 }
+		if info := e.structs[flat.source_type_name(qualified)] { return info.params.len > 0 }
 		if alias := e.type_alias_info_in_module(base, module_name) { return alias.params.len > 0 }
 	}
 	return false
 }
 
-fn sizeof_generic_parts(name string) ?(string, []string) {
+fn sizeof_generic_parts(name_id u32) ?(u32, []u32) {
+	name := flat.source_type_name(name_id)
 	if !name.ends_with(']') { return none }
 	open := name.index('[') or { return none }
 	if open <= 0 { return none }
 	text := name[open + 1..name.len - 1].trim_space()
 	if text.len == 0 { return none }
-	parts := split_multi_return_types('(${text})')
-	return name[..open], if parts.len > 0 { parts } else { [text] }
+	parts := split_multi_return_types(flat.source_type_id('(${text})'))
+	return flat.source_type_id(name[..open]), if parts.len > 0 {
+		parts
+	} else {
+		[flat.source_type_id(text)]
+	}
 }
 
-fn (e &Eval) sizeof_generic_context(module_name string, file_name string, params []string, args []string, caller_module string, seen []string) Eval {
+fn (e &Eval) sizeof_generic_context(module_name string, file_name string, params []string, args_ids []u32, caller_module string, seen []TypeLayoutVisit) Eval {
 	mut context := e.declaration_type_context(module_name, file_name)
-	if params.len != args.len { return context }
+	if params.len != args_ids.len { return context }
 	// Resolve each argument before entering the declaration's module. Layout bindings
 	// keep caller types distinct from same-named types in imported generic fields.
 	for i, param in params {
-		context.sizeof_type_bindings[param] = e.sizeof_type_layout(args[i], caller_module, seen)
+		context.sizeof_type_bindings[param] = e.sizeof_type_layout(args_ids[i], caller_module, seen)
 	}
 	return context
 }
 
-fn (e &Eval) sizeof_type_layout(raw_name string, module_name string, seen []string) TypeLayout {
-	if layout := e.sizeof_type_bindings[raw_name.trim_space()] { return layout }
-	name := e.qualify_nested_type_name(module_name, raw_name.trim_space())
-	key := '${module_name}:${name}'
-	if name.starts_with('&') || key in seen { return TypeLayout{ size: 8, align: 8 } }
+fn (e &Eval) sizeof_type_layout(raw_name_id u32, module_name string, seen []TypeLayoutVisit) TypeLayout {
+	raw_name := flat.source_type_name(raw_name_id)
+	trimmed := raw_name.trim_space()
+	if layout := e.sizeof_type_bindings[trimmed] { return layout }
+	trimmed_id := if trimmed == raw_name { raw_name_id } else { flat.source_type_id(trimmed) }
+	name_id := e.qualify_nested_type_name(module_name, trimmed_id)
+	name := flat.source_type_name(name_id)
+	if flat.source_type_shape(name_id).has(.pointer) { return TypeLayout{ size: 8, align: 8 } }
+	for entry in seen {
+		if entry.source_id == name_id && entry.module_name == module_name {
+			return TypeLayout{ size: 8, align: 8 }
+		}
+	}
 	mut visited := seen.clone()
-	visited << key
-	if alias := e.type_alias_info_in_module(name, module_name) {
+	visited << TypeLayoutVisit{ source_id: name_id, module_name: module_name }
+	if alias := e.type_alias_info_in_module(name_id, module_name) {
 		context := e.declaration_type_context(alias.module_name, alias.file_name)
 		return context.sizeof_type_layout(alias.target, alias.module_name, visited)
 	}
@@ -6365,8 +6171,8 @@ fn (e &Eval) sizeof_type_layout(raw_name string, module_name string, seen []stri
 	if name.starts_with('?') || name.starts_with('!') {
 		// An option is `{ bool ok; T value; }`, and a result keeps its 16 byte IError
 		// in a union with the value. A bare `?` or `!` stores an `int`.
-		elem_name := name[1..].trim_space()
-		elem := if elem_name in ['', 'void'] {
+		elem_name := flat.source_type_id(name[1..].trim_space())
+		elem := if elem_name in [u32(0), flat.source_type_void] {
 			TypeLayout{ size: 4, align: 4 }
 		} else {
 			e.sizeof_type_layout(elem_name, module_name, visited)
@@ -6379,10 +6185,10 @@ fn (e &Eval) sizeof_type_layout(raw_name string, module_name string, seen []stri
 		union_size := sizeof_aligned_size(if elem.size > 16 { elem.size } else { i64(16) }, align)
 		return TypeLayout{ size: sizeof_aligned_size(1, align) + union_size, align: align }
 	}
-	if is_fixed_array_type_name(name) && !e.sizeof_is_generic_aggregate(name, module_name) {
-		if len := e.sizeof_fixed_array_len(fixed_array_len_text(name), module_name, []) {
+	if is_fixed_array_type_name(name_id) && !e.sizeof_is_generic_aggregate(name_id, module_name) {
+		if len := e.sizeof_fixed_array_len(fixed_array_len_text(name_id), module_name, []) {
 			if len >= 0 {
-				elem := e.sizeof_type_layout(fixed_array_elem_type_name(name), module_name, visited)
+				elem := e.sizeof_type_layout(fixed_array_elem_type_name(name_id), module_name, visited)
 				return TypeLayout{ size: len * elem.size, align: elem.align }
 			}
 		}
@@ -6392,9 +6198,13 @@ fn (e &Eval) sizeof_type_layout(raw_name string, module_name string, seen []stri
 		context := e.declaration_type_context(backing.module_name, backing.file_name)
 		return context.sizeof_type_layout(backing.target, backing.module_name, visited)
 	}
-	mut struct_type_name := if name.starts_with('[]') { 'array' } else { name }
-	mut args := []string{}
-	if base, parameters := sizeof_generic_parts(name) {
+	mut struct_type_name := if flat.source_type_shape(name_id).has(.array_type) {
+		eval_type_array
+	} else {
+		name_id
+	}
+	mut args := []u32{}
+	if base, parameters := sizeof_generic_parts(name_id) {
 		struct_type_name = base
 		args = parameters.clone()
 		if alias := e.type_alias_info_in_module(base, module_name) {
@@ -6405,7 +6215,7 @@ fn (e &Eval) sizeof_type_layout(raw_name string, module_name string, seen []stri
 		}
 	}
 	struct_name := e.resolve_struct_type_name_in_module(struct_type_name, module_name)
-	if info := e.structs[struct_name] {
+	if info := e.structs[flat.source_type_name(struct_name)] {
 		context := e.sizeof_generic_context(info.module_name, info.file_name, info.params, args, module_name, visited)
 		mut size := i64(0)
 		mut align := i64(1)
@@ -6426,7 +6236,9 @@ fn (e &Eval) sizeof_type_layout(raw_name string, module_name string, seen []stri
 		if info.align > align { align = info.align }
 		return TypeLayout{ size: sizeof_aligned_size(size, align), align: align }
 	}
-	if name.starts_with('[]') || name == 'array' { return TypeLayout{ size: 48, align: 8 } }
+	if flat.source_type_shape(name_id).has(.array_type) || name_id == eval_type_array {
+		return TypeLayout{ size: 48, align: 8 }
+	}
 	return match name {
 		'bool', 'i8', 'u8', 'char' { TypeLayout{ size: 1, align: 1 } }
 		'i16', 'u16' { TypeLayout{ size: 2, align: 2 } }
@@ -6560,7 +6372,7 @@ fn (e &Eval) value_as_int(value Value) !i64 {
 			return if value { i64(1) } else { i64(0) }
 		}
 		string {
-			return strconv.parse_int(value, 10, 64) or { i64(0) }
+			return strconv.common_parse_int(value, 10, 64, true, false) or { i64(0) }
 		}
 		StructValue {
 			if 'value' in value.fields {
@@ -6579,7 +6391,7 @@ fn (e &Eval) value_as_f64(value Value) !f64 {
 		i64 { return f64(value) }
 		EnumValue { return f64(value.value) }
 		bool { return if value { 1.0 } else { 0.0 } }
-		string { return strconv.atof64(value) or { 0.0 } }
+		string { return strconv.atof64(value, allow_overflow: true) or { 0.0 } }
 		else { return error('v.eval: `${e.runtime_type_name(value)}` can not be used as float') }
 	}
 }
@@ -6619,7 +6431,7 @@ fn (e &Eval) value_string(value Value) string {
 			return '${value.start}..${value.end}'
 		}
 		StructValue {
-			if value.type_name == 'os.Result' && 'output' in value.fields {
+			if value.type_name_text() == 'os.Result' && 'output' in value.fields {
 				return e.value_string(value.fields['output'] or { void_value() })
 			}
 			return e.default_struct_string(value)
@@ -6631,7 +6443,7 @@ fn (e &Eval) value_string(value Value) string {
 			return value.values.map(e.value_string(it)).join(', ')
 		}
 		TypeValue {
-			return value.name
+			return value.name_text()
 		}
 		FnValue {
 			return '<fn>'
@@ -6658,7 +6470,7 @@ fn (mut e Eval) display_string(value Value) !string {
 			return '{' + parts.join(', ') + '}'
 		}
 		StructValue {
-			if value.type_name == 'os.Result' && 'output' in value.fields {
+			if value.type_name_text() == 'os.Result' && 'output' in value.fields {
 				return e.display_string(value.fields['output'] or { void_value() })
 			}
 			if target := e.resolve_method_target(value.type_name, 'str') {
@@ -6685,7 +6497,7 @@ fn (mut e Eval) display_string(value Value) !string {
 
 fn (e &Eval) default_struct_string(value StructValue) string {
 	if value.fields.len == 0 {
-		return '${value.type_name}{}'
+		return '${value.type_name_text()}{}'
 	}
 	mut names := []string{}
 	fields := e.struct_fields(value.type_name)
@@ -6698,7 +6510,7 @@ fn (e &Eval) default_struct_string(value StructValue) string {
 		names = value.fields.keys()
 		names.sort()
 	}
-	mut out := '${value.type_name}{\n'
+	mut out := '${value.type_name_text()}{\n'
 	for name in names {
 		field_value := value.fields[name] or { void_value() }
 		out += '    ${name}: ${e.struct_field_value_string(field_value)}\n'
@@ -6720,13 +6532,13 @@ fn (e &Eval) struct_field_value_string(value Value) string {
 
 fn (e &Eval) enum_value_string(value EnumValue) string {
 	enum_name := e.normalize_type_name(value.type_name)
-	if fields := e.enum_fields[enum_name] {
-		module_name := if enum_name.contains('.') {
-			enum_name.all_before_last('.')
+	if fields := e.enum_fields[flat.source_type_name(enum_name)] {
+		module_name := if flat.source_type_name(enum_name).contains('.') {
+			flat.source_type_name(enum_name).all_before_last('.')
 		} else {
 			e.current_module_name()
 		}
-		short_name := enum_name.all_after_last('.')
+		short_name := flat.source_type_name(enum_name).all_after_last('.')
 		if module_name in e.consts {
 			for field in fields {
 				if entry := e.consts[module_name]['${short_name}.${field}'] {
@@ -6748,19 +6560,41 @@ fn (e &Eval) runtime_type_name(value Value) string {
 	match value {
 		bool { return 'bool' }
 		i64 { return 'int' }
-		EnumValue { return value.type_name }
+		EnumValue { return value.type_name_text() }
 		f64 { return 'f64' }
 		string { return 'string' }
 		VoidValue { return 'void' }
-		ArrayValue { return '[]${value.elem_type_name}' }
-		MapValue { return 'map[${value.key_type_name}]${value.value_type_name}' }
+		ArrayValue { return '[]${value.elem_type_name_text()}' }
+		MapValue { return 'map[${value.key_type_name_text()}]${value.value_type_name_text()}' }
 		ModuleValue { return 'module' }
 		RangeValue { return 'range' }
-		StructValue { return value.type_name }
-		SumValue { return value.type_name }
+		StructValue { return value.type_name_text() }
+		SumValue { return value.type_name_text() }
 		TupleValue { return 'tuple' }
-		TypeValue { return value.name }
+		TypeValue { return value.name_text() }
 		FnValue { return 'fn' }
+	}
+}
+
+fn (e &Eval) runtime_type_id(value Value) u32 {
+	return match value {
+		bool { flat.source_type_bool }
+		i64 { flat.source_type_int }
+		EnumValue { value.type_name }
+		f64 { flat.source_type_f64 }
+		string { flat.source_type_string }
+		VoidValue { flat.source_type_void }
+		ArrayValue { flat.source_type_id('[]${value.elem_type_name_text()}') }
+		MapValue {
+			flat.source_type_id('map[${value.key_type_name_text()}]${value.value_type_name_text()}')
+		}
+		ModuleValue { eval_type_module }
+		RangeValue { eval_type_range }
+		StructValue { value.type_name }
+		SumValue { value.type_name }
+		TupleValue { eval_type_tuple }
+		TypeValue { value.name }
+		FnValue { eval_type_fn }
 	}
 }
 
@@ -6777,5 +6611,203 @@ fn (mut e Eval) write_stderr(s string) {
 		e.stderr_data += s
 	} else {
 		eprint(s)
+	}
+}
+
+// typ_text resolves the indexed source type spelling.
+@[inline]
+fn (value &GlobalEntry) typ_text() string {
+	return flat.source_type_name(value.typ)
+}
+
+// typ_text resolves the indexed source type spelling.
+@[inline]
+fn (value &FieldInfo) typ_text() string {
+	return flat.source_type_name(value.typ)
+}
+
+// return_type_text resolves the indexed source type spelling.
+@[inline]
+fn (value &CallFrame) return_type_text() string {
+	return flat.source_type_name(value.return_type)
+}
+
+// elem_type_name_text resolves the indexed source type spelling.
+@[inline]
+pub fn (value &ArrayValue) elem_type_name_text() string {
+	return flat.source_type_name(value.elem_type_name)
+}
+
+// type_name_text resolves the indexed source type spelling.
+@[inline]
+pub fn (value &EnumValue) type_name_text() string {
+	return flat.source_type_name(value.type_name)
+}
+
+// key_type_name_text resolves the indexed source type spelling.
+@[inline]
+pub fn (value &MapValue) key_type_name_text() string {
+	return flat.source_type_name(value.key_type_name)
+}
+
+// value_type_name_text resolves the indexed source type spelling.
+@[inline]
+pub fn (value &MapValue) value_type_name_text() string {
+	return flat.source_type_name(value.value_type_name)
+}
+
+// type_name_text resolves the indexed source type spelling.
+@[inline]
+pub fn (value &StructValue) type_name_text() string {
+	return flat.source_type_name(value.type_name)
+}
+
+// type_name_text resolves the indexed source type spelling.
+@[inline]
+pub fn (value &SumValue) type_name_text() string {
+	return flat.source_type_name(value.type_name)
+}
+
+// variant_name_text resolves the indexed source type spelling.
+@[inline]
+pub fn (value &SumValue) variant_name_text() string {
+	return flat.source_type_name(value.variant_name)
+}
+
+// type_name_text resolves the indexed source type spelling.
+@[inline]
+fn (value &SmartcastBinding) type_name_text() string {
+	return flat.source_type_name(value.type_name)
+}
+
+// target_text resolves the stored source spelling for a text consumer.
+fn (value &TypeAliasInfo) target_text() string {
+	return flat.source_type_name(value.target)
+}
+
+// name_text resolves the stored source spelling for a text consumer.
+pub fn (value &TypeValue) name_text() string {
+	return flat.source_type_name(value.name)
+}
+
+// name_text resolves the stored type name at a textual boundary.
+fn (info &StructInfo) name_text() string {
+	return flat.source_type_name(info.name)
+}
+
+// Complete type queries use numeric IDs; recursive qualification renders private byte grammar.
+fn (e &Eval) qualify_expected_type_name_bytes(module_name string, type_name string) string {
+	name := type_name.trim_space()
+	if name == '' {
+		return ''
+	}
+	if name.starts_with('&') {
+		return '&${e.qualify_expected_type_name_bytes(module_name, name[1..])}'
+	}
+	if name.starts_with('...') {
+		return '...${e.qualify_expected_type_name_bytes(module_name, name[3..])}'
+	}
+	if name.starts_with('mut ') {
+		return '&${e.qualify_expected_type_name_bytes(module_name, name[4..])}'
+	}
+	return e.qualify_nested_type_name_bytes(module_name, name)
+}
+
+fn (e &Eval) qualify_nested_type_name_bytes(module_name string, type_name string) string {
+	name := type_name.trim_space()
+	if name == '' {
+		return ''
+	}
+	if name in e.sizeof_type_bindings { return name }
+	if name.starts_with('&') || name.starts_with('?') || name.starts_with('!') {
+		return '${name[..1]}${e.qualify_nested_type_name_bytes(module_name, name[1..])}'
+	}
+	if name.starts_with('[]') {
+		return '[]${e.qualify_nested_type_name_bytes(module_name, name[2..])}'
+	}
+	if is_fixed_array_type_name_bytes(name) && !e.sizeof_is_generic_aggregate(flat.source_type_id(name), module_name) {
+		elem := e.qualify_nested_type_name_bytes(module_name, fixed_array_elem_type_name_bytes(name))
+		raw_len := fixed_array_len_text_bytes(name)
+		len := if module_name in e.consts && raw_len in e.consts[module_name] {
+			'${module_name}.${raw_len}'
+		} else {
+			raw_len
+		}
+		return if name.starts_with('[') { '[${len}]${elem}' } else { '${elem}[${len}]' }
+	}
+	if name.starts_with('map[') {
+		key_type, value_type := split_map_type_bytes(name)
+		return 'map[${e.qualify_nested_type_name_bytes(module_name, key_type)}]${e.qualify_nested_type_name_bytes(module_name, value_type)}'
+	}
+	return e.qualify_type_name_bytes(module_name, name)
+}
+
+fn (e &Eval) qualify_type_name_bytes(module_name string, type_name string) string {
+	name := e.resolve_import_alias_type_name(type_name)
+	if name == '' || name.contains('.') || name.starts_with('[]') || name.starts_with('map[')
+		|| is_builtin_type_name_bytes(name) {
+		return name
+	}
+	if module_name != '' && module_name != 'main' && module_name != 'builtin' {
+		return '${module_name}.${name}'
+	}
+	return name
+}
+
+fn is_builtin_type_name_bytes(name string) bool {
+	return name in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'u16', 'u32', 'u64',
+		'usize', 'f32', 'f64', 'rune', 'char', 'string', 'void', 'voidptr', 'charptr', 'byteptr',
+		'array']
+}
+
+fn call_arg_value_expected_type_bytes(type_name string) string {
+	name := type_name.trim_space()
+	if name.starts_with('&') {
+		return call_arg_value_expected_type_bytes(name[1..])
+	}
+	if name.starts_with('mut ') {
+		return call_arg_value_expected_type_bytes(name[4..])
+	}
+	if name.starts_with('...') {
+		return call_arg_value_expected_type_bytes(name[3..])
+	}
+	return name
+}
+
+fn is_fixed_array_type_name_bytes(type_name string) bool {
+	if type_name.starts_with('[]') || type_name.starts_with('map[') {
+		return false
+	}
+	return type_name.contains('[') && (type_name.ends_with(']') || type_name.starts_with('['))
+}
+
+fn fixed_array_len_text_bytes(type_name string) string {
+	return type_name.all_after('[').all_before(']').trim_space()
+}
+
+fn fixed_array_elem_type_name_bytes(type_name string) string {
+	if type_name.starts_with('[') {
+		return type_name.all_after(']')
+	}
+	return type_name.all_before('[')
+}
+
+fn split_map_type_bytes(type_name string) (string, string) {
+	if !type_name.starts_with('map[') {
+		return '', ''
+	}
+	inner := type_name[4..]
+	if idx := inner.index(']') {
+		return inner[..idx], inner[idx + 1..]
+	}
+	return '', ''
+}
+
+// eval_pointer_base_type_id strips the pointer spelling grammar without decoding plain identities.
+fn eval_pointer_base_type_id(source_id u32) u32 {
+	return if flat.source_type_shape(source_id).has(.pointer) {
+		flat.source_type_id(flat.source_type_name(source_id).trim_left('&'))
+	} else {
+		source_id
 	}
 }

@@ -161,8 +161,9 @@ pub fn frexp(x f64) (f64, int) {
 // expm1(+inf) = +inf
 // expm1(-inf) = -1
 // expm1(nan) = nan
+// expm1(+/-0) = +/-0
 pub fn expm1(x f64) f64 {
-	if is_inf(x, 1) || is_nan(x) {
+	if x == 0 || is_inf(x, 1) || is_nan(x) {
 		return x
 	}
 	if is_inf(x, -1) {

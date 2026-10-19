@@ -1,5 +1,6 @@
 module c
 
+import v.flat
 import strings
 
 // MSVC's C compiler rejects several GNU C extensions that the generated C relies on.
@@ -40,7 +41,7 @@ struct MsvcPre {
 	decl     string // the declaration without its initializer
 	name     string
 	init     string
-	type_txt string
+	type_txt u32
 	dims     string
 }
 
@@ -125,7 +126,7 @@ pub fn msvc_compat_c_source(src string) string {
 			depth--
 			if depth == 0 && body_start >= 0 {
 				body, next_uid := msvc_lower_function_body(src, body_start, i + 1, struct_names,
-					uid)
+					array_names, uid)
 				out.write_string(body)
 				uid = next_uid
 				region_start = i + 1
@@ -412,7 +413,7 @@ fn msvc_lower_file_scope(src string, start int, end int, struct_names map[string
 
 // msvc_lower_function_body lowers one function body. `uid` numbers the renamed locals;
 // the next free number is returned with the body.
-fn msvc_lower_function_body(src string, start int, end int, struct_names map[string]bool, uid int) (string, int) {
+fn msvc_lower_function_body(src string, start int, end int, struct_names map[string]bool, array_names map[string]bool, uid int) (string, int) {
 	toks := msvc_tokenize(src, start, end)
 	if toks.len < 2 {
 		return src[start..end], uid
@@ -422,7 +423,7 @@ fn msvc_lower_function_body(src string, start int, end int, struct_names map[str
 		toks: toks
 		uid:  uid
 	}
-	if !l.prepare(struct_names) {
+	if !l.prepare(struct_names, array_names) {
 		return src[start..end], uid
 	}
 	mut sb := strings.new_builder(end - start + (end - start) / 4)
@@ -457,7 +458,7 @@ fn (mut l MsvcLowerer) new_name(prefix string) string {
 
 // prepare computes matching brackets, statement-expression starts and the local rewrites.
 // It returns false when the body needs no changes.
-fn (mut l MsvcLowerer) prepare(struct_names map[string]bool) bool {
+fn (mut l MsvcLowerer) prepare(struct_names map[string]bool, array_names map[string]bool) bool {
 	n := l.toks.len
 	l.match_idx = []int{len: n, init: -1}
 	l.se_prefix = []int{len: n + 1}
@@ -484,6 +485,7 @@ fn (mut l MsvcLowerer) prepare(struct_names map[string]bool) bool {
 		return false
 	}
 	mut changed := false
+	mut static_end := -1
 	mut is_init_brace := []bool{len: n}
 	for k in 0 .. n {
 		mut se := 0
@@ -492,8 +494,23 @@ fn (mut l MsvcLowerer) prepare(struct_names map[string]bool) bool {
 			changed = true
 		}
 		l.se_prefix[k + 1] = l.se_prefix[k] + se
+		if l.is(k, 'static') {
+			static_end = l.scan_to_semicolon(k)
+		}
 		if l.toks[k].kind != .punct {
 			continue
+		}
+		// Block-scope statics need the same brace initializers as file-scope
+		// declarations. Keep compound literals in ordinary local expressions.
+		if k < static_end && k > 0 && l.is(k, '(') && k + 3 < n
+			&& l.toks[k + 1].kind == .ident && l.is(k + 2, ')') && l.is(k + 3, '{')
+			&& (l.text(k + 1) in struct_names || l.text(k + 1) in array_names)
+			&& l.text(k - 1) in ['=', ',', '{'] {
+			for d in k .. k + 3 {
+				l.dirty[d] = true
+				l.dirty_text[d] = ''
+			}
+			changed = true
 		}
 		if l.is(k, '(') && k + 2 < n && l.toks[k + 1].kind == .ident && l.is(k + 2, ')')
 			&& l.text(k + 1) in struct_names && !l.is(k + 3, '{') && l.is_cast_position(k) {
@@ -1268,7 +1285,7 @@ fn (mut l MsvcLowerer) lower_logical(i int, j int, ops []int, is_or bool) MsvcLo
 			text:     'int ${flag};'
 			decl:     'int ${flag}'
 			name:     flag
-			type_txt: 'int'
+			type_txt: flat.source_type_int
 		}
 		res.pre << MsvcPre{
 			text: '${flag} = !!(${acc});'
@@ -1338,7 +1355,7 @@ fn (mut l MsvcLowerer) lower_conditional(i int, question int, j int) MsvcLowered
 		text:     'int ${flag};'
 		decl:     'int ${flag}'
 		name:     flag
-		type_txt: 'int'
+		type_txt: flat.source_type_int
 	}
 	res.pre << MsvcPre{
 		text: '${flag} = !!(${cond.text});'
@@ -1397,9 +1414,9 @@ fn msvc_guarded_text(pre []MsvcPre) string {
 		init := p.init.trim_space()
 		if init.starts_with('{') {
 			if p.dims.len > 0 {
-				parts << 'memcpy(${p.name}, (${p.type_txt}${p.dims})${init}, sizeof(${p.name}));'
+				parts << 'memcpy(${p.name}, (${p.type_txt_text()}${p.dims})${init}, sizeof(${p.name}));'
 			} else {
-				parts << '${p.name} = (${p.type_txt})${init};'
+				parts << '${p.name} = (${p.type_txt_text()})${init};'
 			}
 		} else {
 			parts << '${p.name} = ${init};'
@@ -1670,8 +1687,14 @@ fn (mut l MsvcLowerer) lower_decl_stmt(i int, j int) []MsvcPre {
 		decl:      decl
 		name:      l.dirty_text[name_idx]
 		init:      init.text
-		type_txt:  type_txt
+		type_txt:  flat.source_type_id(type_txt)
 		dims:      dims
 	}
 	return pre
+}
+
+// type_txt_text resolves the indexed source type spelling.
+@[inline]
+fn (value &MsvcPre) type_txt_text() string {
+	return flat.source_type_name(value.type_txt)
 }

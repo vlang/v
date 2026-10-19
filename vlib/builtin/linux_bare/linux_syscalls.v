@@ -223,6 +223,47 @@ enum WiSiCode {
 	cld_continued = 6 // stopped child has continued
 }
 
+// Syscall numbers. arm64 uses the asm-generic table, which has no open, pipe,
+// fork, vfork or dup2: the wrappers below use openat, pipe2, clone and dup3 there.
+$if arm64 {
+	const sys_nr_read = u64(63)
+	const sys_nr_write = u64(64)
+	const sys_nr_openat = u64(56)
+	const sys_nr_close = u64(57)
+	const sys_nr_mmap = u64(222)
+	const sys_nr_munmap = u64(215)
+	const sys_nr_mremap = u64(216)
+	const sys_nr_pipe2 = u64(59)
+	const sys_nr_sched_yield = u64(124)
+	const sys_nr_madvise = u64(233)
+	const sys_nr_getpid = u64(172)
+	const sys_nr_clone = u64(220)
+	const sys_nr_dup3 = u64(24)
+	const sys_nr_execve = u64(221)
+	const sys_nr_exit = u64(93)
+	const sys_nr_getuid = u64(174)
+	const sys_nr_waitid = u64(95)
+} $else {
+	const sys_nr_read = u64(0)
+	const sys_nr_write = u64(1)
+	const sys_nr_open = u64(2)
+	const sys_nr_close = u64(3)
+	const sys_nr_mmap = u64(9)
+	const sys_nr_munmap = u64(11)
+	const sys_nr_mremap = u64(25)
+	const sys_nr_pipe = u64(22)
+	const sys_nr_sched_yield = u64(24)
+	const sys_nr_madvise = u64(28)
+	const sys_nr_getpid = u64(39)
+	const sys_nr_fork = u64(57)
+	const sys_nr_vfork = u64(58)
+	const sys_nr_dup2 = u64(33)
+	const sys_nr_execve = u64(59)
+	const sys_nr_exit = u64(60)
+	const sys_nr_getuid = u64(102)
+	const sys_nr_waitid = u64(247)
+}
+
 $if !i386 {
 	fn split_int_errno(rc_in u64) (i64, Errno) {
 		rc := i64(rc_in)
@@ -232,167 +273,254 @@ $if !i386 {
 		return rc, Errno.enoerror
 	}
 
-	// 0 sys_read
 	fn sys_read(fd i64, buf &u8, count u64) (i64, Errno) {
-		return split_int_errno(sys_call3(0, u64(fd), u64(buf), count))
+		return split_int_errno(sys_call3(sys_nr_read, u64(fd), u64(buf), count))
 	}
 
-	// 1 sys_write
 	pub fn sys_write(fd i64, buf &u8, count u64) (i64, Errno) {
-		return split_int_errno(sys_call3(1, u64(fd), u64(buf), count))
+		return split_int_errno(sys_call3(sys_nr_write, u64(fd), u64(buf), count))
 	}
 
-	// 2 sys_open
 	fn sys_open(filename &u8, flags i64, mode int) (i64, Errno) {
-		return split_int_errno(sys_call3(2, u64(filename), u64(flags), u64(mode)))
+		$if arm64 {
+			at_fdcwd := u64(-i64(100))
+			return split_int_errno(sys_call4(sys_nr_openat, at_fdcwd, u64(filename), u64(flags),
+				u64(mode)))
+		} $else {
+			return split_int_errno(sys_call3(sys_nr_open, u64(filename), u64(flags), u64(mode)))
+		}
 	}
 
-	// 3 sys_close
 	fn sys_close(fd i64) Errno {
-		return unsafe { Errno(-i64(sys_call1(3, u64(fd)))) }
+		return unsafe { Errno(-i64(sys_call1(sys_nr_close, u64(fd)))) }
 	}
 
-	// 9 sys_mmap
 	fn sys_mmap(addr &u8, len u64, prot MemProt, flags MapFlags, fildes i64, off u64) (&u8, Errno) {
-		rc := sys_call6(9, u64(addr), len, u64(prot), u64(flags), fildes, off)
+		rc := sys_call6(sys_nr_mmap, u64(addr), len, u64(prot), u64(flags), fildes, off)
 		a, e := split_int_errno(rc)
 		return unsafe { &u8(a) }, e
 	}
 
-	// 11 sys_munmap
 	fn sys_munmap(addr voidptr, len u64) Errno {
-		return unsafe { Errno(-sys_call2(11, u64(addr), len)) }
+		return unsafe { Errno(-sys_call2(sys_nr_munmap, u64(addr), len)) }
 	}
 
-	// 25 sys_mremap
 	fn sys_mremap(old_addr voidptr, old_len u64, new_len u64, flags u64) (&u8, Errno) {
-		rc := sys_call4(25, u64(old_addr), old_len, new_len, flags)
+		rc := sys_call4(sys_nr_mremap, u64(old_addr), old_len, new_len, flags)
 		a, e := split_int_errno(rc)
 		return unsafe { &u8(a) }, e
 	}
 
-	// 22  sys_pipe
 	fn sys_pipe(filedes &int) Errno {
-		return unsafe { Errno(sys_call1(22, u64(filedes))) }
+		$if arm64 {
+			return unsafe { Errno(sys_call2(sys_nr_pipe2, u64(filedes), 0)) }
+		} $else {
+			return unsafe { Errno(sys_call1(sys_nr_pipe, u64(filedes))) }
+		}
 	}
 
-	// 24 sys_sched_yield
 	fn sys_sched_yield() Errno {
-		return unsafe { Errno(sys_call0(24)) }
+		return unsafe { Errno(sys_call0(sys_nr_sched_yield)) }
 	}
 
-	// 28 sys_madvise
 	fn sys_madvise(addr voidptr, len u64, advice int) Errno {
-		return unsafe { Errno(sys_call3(28, u64(addr), len, u64(advice))) }
+		return unsafe { Errno(sys_call3(sys_nr_madvise, u64(addr), len, u64(advice))) }
 	}
 
-	// 39 sys_getpid
 	fn sys_getpid() int {
-		return int(sys_call0(39))
+		return int(sys_call0(sys_nr_getpid))
 	}
 
-	// 57 sys_fork
 	fn sys_fork() int {
-		return int(sys_call0(57))
+		$if arm64 {
+			sigchld := u64(Signo.sigchld)
+			return int(sys_call5(sys_nr_clone, sigchld, 0, 0, 0, 0))
+		} $else {
+			return int(sys_call0(sys_nr_fork))
+		}
 	}
 
-	// 58 sys_vfork
 	fn sys_vfork() int {
-		return int(sys_call0(58))
+		$if arm64 {
+			clone_vm_vfork := u64(0x4100) // CLONE_VM | CLONE_VFORK
+			return int(sys_call5(sys_nr_clone, clone_vm_vfork | u64(Signo.sigchld), 0, 0, 0, 0))
+		} $else {
+			return int(sys_call0(sys_nr_vfork))
+		}
 	}
 
-	// 33  sys_dup2
 	fn sys_dup2(oldfd int, newfd int) (i64, Errno) {
-		return split_int_errno(sys_call2(33, u64(oldfd), u64(newfd)))
+		$if arm64 {
+			// dup3 rejects equal descriptors, which dup2 returns unchanged.
+			if oldfd == newfd {
+				return i64(newfd), Errno.enoerror
+			}
+			return split_int_errno(sys_call3(sys_nr_dup3, u64(oldfd), u64(newfd), 0))
+		} $else {
+			return split_int_errno(sys_call2(sys_nr_dup2, u64(oldfd), u64(newfd)))
+		}
 	}
 
-	// 59  sys_execve
 	fn sys_execve(filename &u8, argv []&u8, envp []&u8) int {
-		return int(sys_call3(59, u64(filename), u64(argv.data), u64(envp.data)))
+		return int(sys_call3(sys_nr_execve, u64(filename), u64(argv.data), u64(envp.data)))
 	}
 
-	// 60 sys_exit
 	@[noreturn]
 	fn sys_exit(ec int) {
-		sys_call1(60, u64(ec))
+		sys_call1(sys_nr_exit, u64(ec))
 		for {}
 	}
 
-	// 102 sys_getuid
 	fn sys_getuid() int {
-		return int(sys_call0(102))
+		return int(sys_call0(sys_nr_getuid))
 	}
 
-	// 247 sys_waitid
 	fn sys_waitid(which WiWhich, pid int, infop &int, options int, ru voidptr) Errno {
 		return unsafe {
-			Errno(sys_call5(247, u64(which), u64(pid), u64(infop), u64(options), u64(ru)))
+			Errno(sys_call5(sys_nr_waitid, u64(which), u64(pid), u64(infop), u64(options),
+				u64(ru)))
 		}
 	}
 
 	// The syscall primitives stay defined for every non-i386 arch so the wrappers
-	// above remain resolvable; only the inline asm is amd64-gated. On a non-amd64
-	// target each returns -ENOSYS (38) -- a failed syscall rather than a fake
-	// success -- so e.g. mm_alloc sees the mmap error instead of dereferencing 0.
-	// A real non-x86 freestanding build must supply its own syscall + startup layer.
+	// above remain resolvable; only the inline asm is gated to amd64 and arm64. On
+	// another target each returns -ENOSYS (38) -- a failed syscall rather than a
+	// fake success -- so e.g. mm_alloc sees the mmap error instead of
+	// dereferencing 0. Such a target must supply its own syscall + startup layer.
+	//
+	// The kernel clobbers rcx and r11 on amd64. Every syscall may read or write
+	// memory through its arguments, hence `memory` and `volatile`. On arm64 the
+	// arguments go through x0-x5 and the number through x8; inputs cannot be
+	// allocated to clobbered registers, so moving them there in order is safe.
 	fn sys_call0(scn u64) u64 {
-		mut res := u64(-i64(38)) // -ENOSYS, overwritten by the syscall on amd64
+		mut res := u64(-i64(38)) // -ENOSYS, overwritten by the syscall on amd64 and arm64
 		$if amd64 {
-			asm amd64 {
+			asm volatile amd64 {
 				syscall
 				; =a (res)
 				; 0 (scn)
+				; rcx
+				  r11
+				  memory
+			}
+		} $else $if arm64 {
+			asm volatile arm64 {
+				mov x8, scn
+				svc 0
+				mov res, x0
+				; =r (res)
+				; r (scn)
+				; x0
+				  x8
+				  memory
 			}
 		}
 		return res
 	}
 
 	fn sys_call1(scn u64, arg1 u64) u64 {
-		mut res := u64(-i64(38)) // -ENOSYS, overwritten by the syscall on amd64
+		mut res := u64(-i64(38)) // -ENOSYS, overwritten by the syscall on amd64 and arm64
 		$if amd64 {
-			asm amd64 {
+			asm volatile amd64 {
 				syscall
 				; =a (res)
 				; 0 (scn)
 				  D (arg1)
+				; rcx
+				  r11
+				  memory
+			}
+		} $else $if arm64 {
+			asm volatile arm64 {
+				mov x8, scn
+				mov x0, arg1
+				svc 0
+				mov res, x0
+				; =r (res)
+				; r (scn)
+				  r (arg1)
+				; x0
+				  x8
+				  memory
 			}
 		}
 		return res
 	}
 
 	fn sys_call2(scn u64, arg1 u64, arg2 u64) u64 {
-		mut res := u64(-i64(38)) // -ENOSYS, overwritten by the syscall on amd64
+		mut res := u64(-i64(38)) // -ENOSYS, overwritten by the syscall on amd64 and arm64
 		$if amd64 {
-			asm amd64 {
+			asm volatile amd64 {
 				syscall
 				; =a (res)
 				; 0 (scn)
 				  D (arg1)
 				  S (arg2)
+				; rcx
+				  r11
+				  memory
+			}
+		} $else $if arm64 {
+			asm volatile arm64 {
+				mov x8, scn
+				mov x0, arg1
+				mov x1, arg2
+				svc 0
+				mov res, x0
+				; =r (res)
+				; r (scn)
+				  r (arg1)
+				  r (arg2)
+				; x0
+				  x1
+				  x8
+				  memory
 			}
 		}
 		return res
 	}
 
 	fn sys_call3(scn u64, arg1 u64, arg2 u64, arg3 u64) u64 {
-		mut res := u64(-i64(38)) // -ENOSYS, overwritten by the syscall on amd64
+		mut res := u64(-i64(38)) // -ENOSYS, overwritten by the syscall on amd64 and arm64
 		$if amd64 {
-			asm amd64 {
+			asm volatile amd64 {
 				syscall
 				; =a (res)
 				; 0 (scn)
 				  D (arg1)
 				  S (arg2)
 				  d (arg3)
+				; rcx
+				  r11
+				  memory
+			}
+		} $else $if arm64 {
+			asm volatile arm64 {
+				mov x8, scn
+				mov x0, arg1
+				mov x1, arg2
+				mov x2, arg3
+				svc 0
+				mov res, x0
+				; =r (res)
+				; r (scn)
+				  r (arg1)
+				  r (arg2)
+				  r (arg3)
+				; x0
+				  x1
+				  x2
+				  x8
+				  memory
 			}
 		}
 		return res
 	}
 
 	fn sys_call4(scn u64, arg1 u64, arg2 u64, arg3 u64, arg4 u64) u64 {
-		mut res := u64(-i64(38)) // -ENOSYS, overwritten by the syscall on amd64
+		mut res := u64(-i64(38)) // -ENOSYS, overwritten by the syscall on amd64 and arm64
 		$if amd64 {
-			asm amd64 {
+			asm volatile amd64 {
 				mov r10, arg4
 				syscall
 				; =a (res)
@@ -401,16 +529,41 @@ $if !i386 {
 				  S (arg2)
 				  d (arg3)
 				  g (arg4)
-				; r10
+				; rcx
+				  r10
+				  r11
+				  memory
+			}
+		} $else $if arm64 {
+			asm volatile arm64 {
+				mov x8, scn
+				mov x0, arg1
+				mov x1, arg2
+				mov x2, arg3
+				mov x3, arg4
+				svc 0
+				mov res, x0
+				; =r (res)
+				; r (scn)
+				  r (arg1)
+				  r (arg2)
+				  r (arg3)
+				  r (arg4)
+				; x0
+				  x1
+				  x2
+				  x3
+				  x8
+				  memory
 			}
 		}
 		return res
 	}
 
 	fn sys_call5(scn u64, arg1 u64, arg2 u64, arg3 u64, arg4 u64, arg5 u64) u64 {
-		mut res := u64(-i64(38)) // -ENOSYS, overwritten by the syscall on amd64
+		mut res := u64(-i64(38)) // -ENOSYS, overwritten by the syscall on amd64 and arm64
 		$if amd64 {
-			asm amd64 {
+			asm volatile amd64 {
 				mov r10, arg4
 				mov r8, arg5
 				syscall
@@ -421,17 +574,45 @@ $if !i386 {
 				  d (arg3)
 				  g (arg4)
 				  g (arg5)
-				; r10
+				; rcx
+				  r10
+				  r11
 				  r8
+				  memory
+			}
+		} $else $if arm64 {
+			asm volatile arm64 {
+				mov x8, scn
+				mov x0, arg1
+				mov x1, arg2
+				mov x2, arg3
+				mov x3, arg4
+				mov x4, arg5
+				svc 0
+				mov res, x0
+				; =r (res)
+				; r (scn)
+				  r (arg1)
+				  r (arg2)
+				  r (arg3)
+				  r (arg4)
+				  r (arg5)
+				; x0
+				  x1
+				  x2
+				  x3
+				  x4
+				  x8
+				  memory
 			}
 		}
 		return res
 	}
 
 	fn sys_call6(scn u64, arg1 u64, arg2 u64, arg3 u64, arg4 u64, arg5 i64, arg6 u64) u64 {
-		mut res := u64(-i64(38)) // -ENOSYS, overwritten by the syscall on amd64
+		mut res := u64(-i64(38)) // -ENOSYS, overwritten by the syscall on amd64 and arm64
 		$if amd64 {
-			asm amd64 {
+			asm volatile amd64 {
 				mov r10, arg4
 				mov r8, arg5
 				mov r9, arg6
@@ -444,23 +625,77 @@ $if !i386 {
 				  g (arg4)
 				  g (arg5)
 				  g (arg6)
-				; r10
+				; rcx
+				  r10
+				  r11
 				  r8
 				  r9
+				  memory
+			}
+		} $else $if arm64 {
+			asm volatile arm64 {
+				mov x8, scn
+				mov x0, arg1
+				mov x1, arg2
+				mov x2, arg3
+				mov x3, arg4
+				mov x4, arg5
+				mov x5, arg6
+				svc 0
+				mov res, x0
+				; =r (res)
+				; r (scn)
+				  r (arg1)
+				  r (arg2)
+				  r (arg3)
+				  r (arg4)
+				  r (arg5)
+				  r (arg6)
+				; x0
+				  x1
+				  x2
+				  x3
+				  x4
+				  x5
+				  x8
+				  memory
 			}
 		}
 		return res
 	}
 
+	// _start is the process entry point: the kernel leaves argc at the stack
+	// pointer, followed by the argv array. It calls `main(argc, argv)` and exits
+	// with its result. A top-level asm block lands in whatever section the C
+	// compiler is emitting at that point (gcc: the string literals' `.data`), so
+	// it switches to `.text` itself.
 	$if amd64 {
 		asm amd64 {
+			.pushsection .text
 			.globl _start
 			_start:
+			xor rbp, rbp
+			mov rdi, [rsp]
+			lea rsi, [rsp + 8]
 			call main
+			mov rdi, rax
 			mov rax, 60
-			xor rdi, rdi
 			syscall
-			ret
+			.popsection
+		}
+	} $else $if arm64 {
+		asm arm64 {
+			.pushsection .text
+			.globl _start
+			_start:
+			mov x29, 0
+			mov x30, 0
+			ldr x0, [sp]
+			add x1, sp, 8
+			bl main
+			mov x8, 93
+			svc 0
+			.popsection
 		}
 	}
 }

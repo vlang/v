@@ -124,7 +124,7 @@ fn test_lowered_storage_dereference_prefers_annotated_pointer_type() {
 	deref_id := a.add_node(flat.Node{
 		kind:           .prefix
 		op:             .mul
-		typ:            '&int'
+		typ:            flat.source_type_id('&int')
 		children_start: i32(children_start)
 		children_count: 1
 	})
@@ -187,8 +187,12 @@ fn test_ownership_recursive_drop_helpers_deduplicate_emitted_c_symbol() {
 	g.tc = &tc
 	// Distinct logical ownership keys can refer to the same runtime struct after
 	// lifetime erasure. Only one C helper definition may be emitted for it.
-	g.recursive_drop_helpers['struct:pkg.Sink[^p,^s,Writer]'] = 'pkg.Sink[Writer]'
-	g.recursive_drop_helpers['struct:pkg.Sink[^s,^s,Writer]'] = 'pkg.Sink[Writer]'
+	g.recursive_drop_helpers[ownership_drop_expansion_key(types.Type(types.Struct{
+		name_id: flat.source_type_id('pkg.Sink[^p,^s,Writer]')
+	}))] = flat.source_type_id('pkg.Sink[Writer]')
+	g.recursive_drop_helpers[ownership_drop_expansion_key(types.Type(types.Struct{
+		name_id: flat.source_type_id('pkg.Sink[^s,^s,Writer]')
+	}))] = flat.source_type_id('pkg.Sink[Writer]')
 	g.gen_ownership_recursive_drop_helpers()
 	assert g.sb.str().count('static void __v3_ownership_drop_pkg__Sink_Writer(') == 1
 }
@@ -196,26 +200,26 @@ fn test_ownership_recursive_drop_helpers_deduplicate_emitted_c_symbol() {
 fn test_usable_resolved_sum_type_requires_exact_qualified_name() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.sum_types['bar.Result'] = ['bar.Failed', 'bar.Ok']
-	tc.sum_types['foo.Choice'] = ['foo.Left', 'foo.Right']
+	tc.sum_types.set('bar.Result', ['bar.Failed', 'bar.Ok'])
+	tc.sum_types.set('foo.Choice', ['foo.Left', 'foo.Right'])
 	mut g := FlatGen.new()
 	g.tc = &tc
 	g.precompute_sum_name_lookup()
 
 	preserved := g.usable_resolved_sum_type(types.Type(types.Struct{
-		name: 'foo.Result'
+		name_id: flat.source_type_id('foo.Result')
 	}))
 	assert preserved is types.Struct
 	if preserved is types.Struct {
-		assert preserved.name == 'foo.Result'
+		assert preserved.name() == 'foo.Result'
 	}
 
 	exact := g.usable_resolved_sum_type(types.Type(types.Struct{
-		name: 'foo.Choice'
+		name_id: flat.source_type_id('foo.Choice')
 	}))
 	assert exact is types.SumType
 	if exact is types.SumType {
-		assert exact.name == 'foo.Choice'
+		assert exact.name() == 'foo.Choice'
 	}
 }
 
@@ -236,7 +240,7 @@ fn test_fixed_array_address_to_byte_pointer_decl_uses_data_pointer() {
 	tc.cur_scope.insert('buf', fixed_type)
 	buf_id := stmt_test_node(mut a, .ident, 'buf', [])
 	rhs_id := stmt_test_prefix(mut a, .amp, buf_id)
-	g.gen_decl_init_expr(rhs_id, a.nodes[int(rhs_id)], byte_pointer, 'u8*', true)
+	g.gen_decl_init_expr(rhs_id, a.nodes[int(rhs_id)], byte_pointer, 'u8*', true, '')
 	assert g.sb.str() == '((u8*)(buf))'
 	fixed_pointer := types.Type(types.Pointer{
 		base_type: fixed_type
@@ -349,7 +353,7 @@ fn test_fn_decl_signature_registration_preserves_call_name_aliases() {
 	full_name := qualify_name_in_module(tc.cur_module, name)
 	params := [types.Type(types.int_)]
 	shared_flags := [true]
-	g.register_fn_decl_signature(name, full_name, params, shared_flags, true, true, 'int')
+	g.register_fn_decl_signature(name, full_name, params, shared_flags, true, true, flat.source_type_int)
 	aliases := [
 		fn_decl_module_key(tc.cur_module, name),
 		name,
@@ -539,24 +543,24 @@ fn test_heap_local_memdup_expr_uses_aligned_memdup_for_aligned_structs() {
 	g.tc = &tc
 	g.register_struct_decl_info('Aligned', 'Aligned', 'main', '', flat.Node{
 		value: 'Aligned'
-		typ:   'aligned=64'
+		typ:   flat.source_type_id('aligned=64')
 	})
 	aligned_type := types.Type(types.Struct{
-		name: 'Aligned'
+		name_id: flat.source_type_id('Aligned')
 	})
 	pointer_copy := g.heap_local_memdup_expr('p', aligned_type, 'Aligned', true)
 	assert pointer_copy == '(Aligned*)v3_aligned_memdup(p, sizeof(Aligned), 64)'
 	value_copy := g.heap_local_memdup_expr('x', aligned_type, 'Aligned', false)
 	assert value_copy == '(Aligned*)v3_aligned_memdup(&x, sizeof(Aligned), 64)'
 	plain_type := types.Type(types.Struct{
-		name: 'Plain'
+		name_id: flat.source_type_id('Plain')
 	})
 	assert g.heap_local_memdup_expr('p', plain_type, 'Plain', true) == '(Plain*)memdup(p, sizeof(Plain))'
 	tc.structs['Holder'] = [types.StructField{
 		name: 'values'
 		typ:  types.Type(types.ArrayFixed{ elem_type: aligned_type, len: 2 })
 	}]
-	holder_type := types.Type(types.Struct{ name: 'Holder' })
+	holder_type := types.Type(types.Struct{ name_id: flat.source_type_id('Holder') })
 	assert g.heap_local_memdup_expr('h', holder_type, 'Holder', false) == '(Holder*)v3_aligned_memdup(&h, sizeof(Holder), __alignof__(Holder))'
 	assert g.pointer_free_needs_aligned_free(types.Type(types.Pointer{ base_type: holder_type }))
 	assert !g.pointer_free_needs_aligned_free(types.Type(types.Pointer{ base_type: plain_type }))
@@ -594,7 +598,7 @@ fn test_heap_local_address_expr_copies_selector_from_stack_alias() {
 	g.tc = &tc
 	int_type := types.Type(types.int_)
 	struct_type := types.Type(types.Struct{
-		name: 'S'
+		name_id: flat.source_type_id('S')
 	})
 	struct_ptr := types.Type(types.Pointer{
 		base_type: struct_type
@@ -789,7 +793,23 @@ fn test_lowered_ident_annotation_precedes_outer_checker_binding() {
 	value := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'err'
-		typ:   'int'
+		typ:   flat.source_type_int
 	})
 	assert g.usable_expr_type(value) == types.Type(types.int_)
+}
+
+fn test_ownership_drop_expansion_keys_keep_kind_and_spelling_order() {
+	late_id := flat.source_type_id('pkg.ZOwnershipKey')
+	early_id := flat.source_type_id('pkg.AOwnershipKey')
+	struct_key := ownership_drop_expansion_key(types.Type(types.Struct{ name_id: early_id }))
+	interface_key := ownership_drop_expansion_key(types.Type(types.Interface{ name_id: early_id }))
+	sum_key := ownership_drop_expansion_key(types.Type(types.SumType{ name_id: early_id }))
+	assert struct_key != interface_key && struct_key != sum_key && interface_key != sum_key
+	assert ownership_drop_expansion_key(types.Type(types.int_)) == 0
+	mut keys := [sum_key, ownership_drop_expansion_key(types.Type(types.Struct{ name_id: late_id })),
+		struct_key, interface_key]
+	keys.sort_with_compare(compare_ownership_drop_expansion_keys)
+	assert keys[0] == interface_key
+	assert keys[1] == struct_key
+	assert keys[3] == sum_key
 }

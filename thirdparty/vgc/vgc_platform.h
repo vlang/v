@@ -19,26 +19,64 @@
   #define VGC_TLS __thread
 #endif
 
+#if defined(__TINYC__) && defined(__APPLE__)
+  // TinyCC's Mach-O output has no working thread-local storage: writing a `__thread` variable
+  // crashes. Keep the index in a pthread key instead, stored as idx + 1 so that a thread
+  // without a value reads -1.
+  #include <pthread.h>
+  static pthread_key_t _vgc_cache_idx_key;
+  static pthread_once_t _vgc_cache_idx_once = PTHREAD_ONCE_INIT;
+  static void vgc_cache_idx_key_create(void) { pthread_key_create(&_vgc_cache_idx_key, NULL); }
+  static inline int vgc_get_cache_idx(void) {
+      pthread_once(&_vgc_cache_idx_once, vgc_cache_idx_key_create);
+      return (int)(intptr_t)pthread_getspecific(_vgc_cache_idx_key) - 1;
+  }
+  static inline void vgc_set_cache_idx(int idx) {
+      pthread_once(&_vgc_cache_idx_once, vgc_cache_idx_key_create);
+      pthread_setspecific(_vgc_cache_idx_key, (void*)(intptr_t)(idx + 1));
+  }
+#else
 static VGC_TLS int _vgc_cache_idx = -1;
 
 static inline int vgc_get_cache_idx(void) { return _vgc_cache_idx; }
 static inline void vgc_set_cache_idx(int idx) { _vgc_cache_idx = idx; }
+#endif
 
 // ============================================================
 // Atomic operations
 // ============================================================
 #if defined(__TINYC__)
-  // TCC: use __sync builtins
-  #define vgc_atomic_load_u32(ptr) (*(volatile uint32_t*)(ptr))
-  #define vgc_atomic_store_u32(ptr, val) do { *(volatile uint32_t*)(ptr) = (val); __sync_synchronize(); } while(0)
-  #define vgc_atomic_load_u64(ptr) (*(volatile uint64_t*)(ptr))
-  #define vgc_atomic_store_u64(ptr, val) do { *(volatile uint64_t*)(ptr) = (val); __sync_synchronize(); } while(0)
-  #define vgc_atomic_add_u64(ptr, val) __sync_add_and_fetch((volatile uint64_t*)(ptr), (uint64_t)(val))
-  #define vgc_atomic_sub_u64(ptr, val) __sync_sub_and_fetch((volatile uint64_t*)(ptr), (uint64_t)(val))
-  #define vgc_atomic_add_u32(ptr, val) __sync_add_and_fetch((volatile uint32_t*)(ptr), (uint32_t)(val))
-  #define vgc_atomic_cas_u32(ptr, expected, desired) __sync_bool_compare_and_swap((volatile uint32_t*)(ptr), *(expected), (desired))
-  #define vgc_atomic_exchange_u32(ptr, val) __sync_lock_test_and_set((volatile uint32_t*)(ptr), (val))
-  #define vgc_atomic_fence() __sync_synchronize()
+  // TCC does not implement the legacy __sync_* family: those degrade into
+  // plain function calls and then fail at link time with
+  // "unresolved reference to '__sync_add_and_fetch'" etc.
+  // Use the __atomic_* builtins instead, which lower to fixed-width helper
+  // functions provided by libtcc1.a (same approach as vlib/builtin/prealloc_atomics.h).
+  extern uint32_t __atomic_load_4(uint32_t* ptr, int order);
+  extern uint64_t __atomic_load_8(uint64_t* ptr, int order);
+  extern void __atomic_store_4(uint32_t* ptr, uint32_t val, int order);
+  extern void __atomic_store_8(uint64_t* ptr, uint64_t val, int order);
+  extern uint32_t __atomic_exchange_4(uint32_t* ptr, uint32_t val, int order);
+  extern _Bool __atomic_compare_exchange_4(uint32_t* ptr, uint32_t* expected, uint32_t desired, int success_order, int failure_order);
+  #define vgc_atomic_load_u32(ptr) ((uint32_t)__atomic_load_4((uint32_t*)(ptr), 5))
+  #define vgc_atomic_store_u32(ptr, val) __atomic_store_4((uint32_t*)(ptr), (uint32_t)(val), 5)
+  #define vgc_atomic_load_u64(ptr) ((uint64_t)__atomic_load_8((uint64_t*)(ptr), 5))
+  #define vgc_atomic_store_u64(ptr, val) __atomic_store_8((uint64_t*)(ptr), (uint64_t)(val), 5)
+  #define vgc_atomic_add_u64(ptr, val) __atomic_add_fetch((volatile uint64_t*)(ptr), (uint64_t)(val), 5)
+  #define vgc_atomic_sub_u64(ptr, val) __atomic_sub_fetch((volatile uint64_t*)(ptr), (uint64_t)(val), 5)
+  #define vgc_atomic_add_u32(ptr, val) __atomic_add_fetch((volatile uint32_t*)(ptr), (uint32_t)(val), 5)
+  #define vgc_atomic_cas_u32(ptr, expected, desired) __atomic_compare_exchange_4((uint32_t*)(ptr), (uint32_t*)(expected), (uint32_t)(desired), 5, 5)
+  #define vgc_atomic_exchange_u32(ptr, val) ((uint32_t)__atomic_exchange_4((uint32_t*)(ptr), (uint32_t)(val), 5))
+  #if defined(__x86_64__) || defined(__i386__)
+    #define vgc_atomic_fence() __asm__ __volatile__("mfence" ::: "memory")
+  #elif defined(__aarch64__)
+    #define vgc_atomic_fence() __asm__ __volatile__("dmb ish" ::: "memory")
+  #elif defined(__arm__)
+    #define vgc_atomic_fence() __asm__ __volatile__("dmb ish" ::: "memory")
+  #elif defined(__riscv)
+    #define vgc_atomic_fence() __asm__ __volatile__("fence rw,rw" ::: "memory")
+  #else
+    #define vgc_atomic_fence() __asm__ __volatile__("" ::: "memory")
+  #endif
 #elif defined(_MSC_VER)
   #include <intrin.h>
   #pragma intrinsic(_InterlockedCompareExchange, _InterlockedExchange, _InterlockedExchangeAdd64)
@@ -89,8 +127,14 @@ static inline void vgc_set_cache_idx(int idx) { _vgc_cache_idx = idx; }
       VirtualFree(ptr, size, MEM_DECOMMIT);
   }
   static inline int vgc_num_cpus(void) {
+#if defined(ALL_PROCESSOR_GROUPS)
       DWORD count = GetActiveProcessorCount(ALL_PROCESSOR_GROUPS);
       return count > 0 ? (int)count : 1;
+#else
+      SYSTEM_INFO sysinfo;
+      GetSystemInfo(&sysinfo);
+      return sysinfo.dwNumberOfProcessors > 0 ? (int)sysinfo.dwNumberOfProcessors : 1;
+#endif
   }
 #else
   #include <sys/mman.h>
@@ -136,6 +180,12 @@ static inline void vgc_set_cache_idx(int idx) { _vgc_cache_idx = idx; }
   }
 #elif defined(__linux__) || defined(__ANDROID__)
   #include <pthread.h>
+  #if !defined(__ANDROID__) && !defined(__USE_GNU) && !defined(__cplusplus)
+    // glibc and musl declare pthread_getattr_np only with _GNU_SOURCE, which has to be defined
+    // before the first libc header. V's C output includes <pthread.h> long before this header,
+    // so declare it here; repeating a declaration is fine in C.
+    int pthread_getattr_np(pthread_t thread, pthread_attr_t* attr);
+  #endif
   static inline int vgc_get_stack_bounds(uintptr_t* lo, uintptr_t* hi) {
       pthread_attr_t attr;
       if (pthread_getattr_np(pthread_self(), &attr) != 0) return 0;
@@ -297,9 +347,11 @@ static inline uint8_t vgc_size_class(uint32_t size) {
 // ============================================================
 #if defined(__x86_64__) || defined(__i386__) || defined(_M_X64) || defined(_M_IX86)
   #define vgc_cpu_pause() __asm__ __volatile__("pause")
-#elif defined(__aarch64__) || defined(_M_ARM64)
+#elif (defined(__aarch64__) || defined(_M_ARM64)) && !defined(__TINYC__)
   #define vgc_cpu_pause() __asm__ __volatile__("yield")
 #else
+  // TinyCC's arm64 assembler has no `yield`. The hint is optional: vgc_mutex_lock falls back to
+  // vgc_thread_yield() after a few rounds anyway.
   #define vgc_cpu_pause() ((void)0)
 #endif
 

@@ -31,10 +31,10 @@ fn snapshot_restore_assertion(mut a flat.FlatAst, name string, pattern string) f
 
 fn snapshot_restore_seed(mut tc TypeChecker) string {
 	tc.cur_scope = new_scope(tc.file_scope)
-	tc.sum_types['Value'] = ['int', 'string']
-	tc.cur_scope.insert('value', Type(SumType{ name: 'Value' }))
-	tc.cur_scope.insert('other', Type(SumType{ name: 'Value' }))
-	tc.cur_scope.insert('branch_value', Type(SumType{ name: 'Value' }))
+	tc.sum_types.set('Value', ['int', 'string'])
+	tc.cur_scope.insert('value', Type(SumType{ name_id: flat.source_type_id('Value') }))
+	tc.cur_scope.insert('other', Type(SumType{ name_id: flat.source_type_id('Value') }))
+	tc.cur_scope.insert('branch_value', Type(SumType{ name_id: flat.source_type_id('Value') }))
 	tc.cur_scope.insert('kept', builtin_string_type)
 	tc.smartcasts['kept'] = builtin_string_type
 	owner := tc.cur_scope.insert_with_owner('outer', builtin_int_type)
@@ -151,6 +151,39 @@ fn test_if_guard_snapshot_keeps_mutable_owner_identity_outside_siblings() {
 			tc.fn_context.mut_local_owners['temporary'] = tc.cur_scope.insert_with_owner('temporary',
 				builtin_int_type)
 			tc.fn_context.mut_local_owners.delete('temporary')
+		}
+		assert tc.errors.len == 0, tc.errors.str()
+	}
+}
+
+fn test_if_guard_restores_empty_reused_owner_maps() {
+	for fast in [false, true] {
+		mut a := flat.FlatAst.new()
+		lhs := a.add_val(.ident, 'binding')
+		rhs := a.add_val(.ident, 'optional')
+		guard := snapshot_restore_children(mut a, .decl_assign, [lhs, rhs])
+		a.nodes[int(guard)].op = .assign
+		a.nodes[int(guard)].is_mut = true
+		body := a.add(.block)
+		otherwise := a.add(.block)
+		if_id := snapshot_restore_children(mut a, .if_expr, [guard, body, otherwise])
+		mut tc := TypeChecker.new(&a)
+		tc.build_direct_parent_index(&a)
+		tc.cur_scope = new_scope(tc.file_scope)
+		owner := tc.cur_scope.insert_with_owner('optional', Type(OptionType{ base_type: builtin_int_type }))
+		for i in 0 .. 256 {
+			tc.fn_context.mut_local_owners['previous_${i}'] = owner
+			tc.fn_context.unsafe_reference_alias_owners['previous_${i}'] = true
+		}
+		tc.fn_context.mut_local_owners.clear()
+		tc.fn_context.unsafe_reference_alias_owners.clear()
+		tc.valid_resolution_fast = fast
+		tc.mark_statement_context(if_id)
+		for _ in 0 .. 8 {
+			tc.check_if_expr(if_id, *a.node(if_id))
+			assert tc.fn_context.mut_local_owners.len == 0
+			assert tc.fn_context.unsafe_reference_alias_owners.len == 0
+			assert !tc.cur_scope.contains('binding')
 		}
 		assert tc.errors.len == 0, tc.errors.str()
 	}

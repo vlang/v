@@ -58,6 +58,9 @@ fn (tc &TypeChecker) unhandled_result_spot(id flat.NodeId, call flat.Node) (bool
 	parent := tc.a.node(parent_id)
 	match parent.kind {
 		.expr_stmt {
+			if tc.or_tail_result_is_returned(parent_id) {
+				return false, false
+			}
 			return true, tc.is_in_defer(parent_id)
 		}
 		.string_interp, .array_literal, .dump_expr {
@@ -83,6 +86,42 @@ fn (tc &TypeChecker) unhandled_result_spot(id flat.NodeId, call flat.Node) (bool
 			return false, false
 		}
 	}
+}
+
+// or_tail_result_is_returned reports whether the statement `stmt_id` ends the
+// `or {}` block of `return a() or { b() }` in a function that returns a Result:
+// the Result of `b()` is returned as it is, error included.
+fn (tc &TypeChecker) or_tail_result_is_returned(stmt_id flat.NodeId) bool {
+	block_id := tc.direct_parent_id(stmt_id)
+	if !tc.valid_node_id(block_id) {
+		return false
+	}
+	block := tc.a.node(block_id)
+	if block.kind != .block || block.children_count == 0
+		|| tc.a.child(block, block.children_count - 1) != stmt_id {
+		return false
+	}
+	or_id := tc.direct_parent_id(block_id)
+	if !tc.valid_node_id(or_id) {
+		return false
+	}
+	or_node := tc.a.node(or_id)
+	if or_node.kind != .or_expr || or_node.children_count != 2 || or_node.value in ['!', '?']
+		|| tc.a.child(or_node, 1) != block_id || tc.direct_parent_kind(or_id) != .return_stmt {
+		return false
+	}
+	mut current := tc.direct_parent_id(or_id)
+	for _ in 0 .. 256 {
+		current = tc.direct_parent_id(current)
+		if !tc.valid_node_id(current) {
+			return false
+		}
+		node := tc.a.node(current)
+		if node.kind in [.fn_decl, .fn_literal, .lambda_expr] {
+			return node.typ_text().starts_with('!')
+		}
+	}
+	return false
 }
 
 // is_in_defer reports whether the node `id` is in the body of a `defer` of the

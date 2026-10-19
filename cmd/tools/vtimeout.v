@@ -15,7 +15,6 @@ fn main() {
 	fp.version('0.0.2')
 	fp.description('Run a command with a time limit. Example: `v timeout 0.3 v run examples/hello_world.v`')
 	fp.arguments_description('timeout_in_seconds CMD [ARGS]')
-	fp.skip_executable()
 	fp.limit_free_args_to_at_least(2)!
 
 	if fp.bool('help', `h`, false, 'Show this help screen.') {

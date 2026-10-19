@@ -6,6 +6,9 @@ Install a package from VPM with:
 v install ui2
 ```
 
+`v install -v` reports each candidate module's dependency count and list when it has
+dependencies. The resolver can report a module more than once while backtracking.
+
 Git packages include their file contents in the initial clone, so checkout can complete
 without a second network request for missing file blobs. Submodules are installed recursively.
 Git installs use shallow clones. Branch updates follow their configured upstream using a
@@ -151,6 +154,12 @@ be quoted. Duplicate keys, malformed values and non-string workspaces are errors
 These fields store metadata without expanding dependency aliases.
 Registry-qualified dependency keys remain distinct in lock data.
 
-The internal candidate API named `resolve_with_pubgrub` currently delegates to the consistent
-backtracking search. Dependency constraints are checked in both directions; a complete
-conflict-driven PubGrub algorithm is pending.
+The candidate search behind `resolve_with_pubgrub` is test-only: it delegates to the consistent
+backtracking search, which the test suite exercises. Dependency constraints are checked in both
+directions; a complete conflict-driven PubGrub algorithm is pending.
+
+On Windows, VPM enables Git `core.longpaths` for the Git processes it starts. Existing
+`GIT_CONFIG_PARAMETERS` and indexed `GIT_CONFIG_*` entries are preserved, with the long-path
+setting appended using the assignment syntax supported before Git 2.31. Invalid or unextendable
+indexed counts are left unchanged and reported.
+Local Windows `file:///C:/...` origins compare consistently with ordinary drive paths.

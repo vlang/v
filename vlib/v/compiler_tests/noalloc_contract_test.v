@@ -12,6 +12,96 @@ fn test_noalloc_contracts_in_build_and_check() {
 	defer { os.rmdir_all(root) or {} }
 	cases := [
 		NoallocCase{
+			name:     'boolean_comparisons'
+			accepted: true
+			source:   '@[noalloc]\nfn handler(x int) bool { return (x > 3 && x < 9) || x == 0 }\nfn main() { assert handler(5) }\n'
+		}
+		NoallocCase{
+			name:     'boolean_allocating_operand'
+			accepted: false
+			source:   'fn allocate() bool { return [1, 2].len > 0 }\n@[noalloc]\nfn handler(x bool) bool { return x && allocate() }\nfn main() { _ = handler(true) }\n'
+		}
+		NoallocCase{
+			name:     'overridden_default'
+			accepted: true
+			source:   'fn allocating() int { return [1, 2].len }\nstruct Item { n int = allocating() }\n@[noalloc]\nfn handler() int { return Item{n: 3}.n }\nfn main() { assert handler() == 3 }\n'
+		}
+		NoallocCase{
+			name:     'positional_overridden_default'
+			accepted: true
+			source:   'fn allocating() int { return [1, 2].len }\nstruct Item { n int = allocating() }\n@[noalloc]\nfn handler() int { return Item{3}.n }\nfn main() { assert handler() == 3 }\n'
+		}
+		NoallocCase{
+			name:     'promoted_overridden_default'
+			accepted: true
+			source:   'fn allocating() int { return [1, 2].len }\nstruct Inner { n int = allocating() }\nstruct Outer { Inner }\n@[noalloc]\nfn handler() int { return Outer{n: 3}.n }\nfn main() { assert handler() == 3 }\n'
+		}
+		NoallocCase{
+			name:     'promoted_uninitialized_default'
+			accepted: false
+			source:   'fn allocating() int { return [1, 2].len }\nstruct Inner { n int = allocating() }\nstruct Outer { Inner; other int }\n@[noalloc]\nfn handler() int { return Outer{other: 3}.n }\nfn main() { _ = handler() }\n'
+		}
+		NoallocCase{
+			name:     'negative_int_default'
+			accepted: true
+			source:   'struct Item { n int = -1 }\n@[noalloc]\nfn handler() int { return Item{}.n }\nfn main() { assert handler() == -1 }\n'
+		}
+		NoallocCase{
+			name:     'positive_int_default'
+			accepted: true
+			source:   'struct Item { n int = +1 }\n@[noalloc]\nfn handler() int { return Item{}.n }\nfn main() { assert handler() == +1 }\n'
+		}
+		NoallocCase{
+			name:     'negative_float_default'
+			accepted: true
+			source:   'struct Item { n f64 = -1.5 }\n@[noalloc]\nfn handler() f64 { return Item{}.n }\nfn main() { assert handler() == -1.5 }\n'
+		}
+		NoallocCase{
+			name:     'positive_float_default'
+			accepted: true
+			source:   'struct Item { n f64 = +1.5 }\n@[noalloc]\nfn handler() f64 { return Item{}.n }\nfn main() { assert handler() == +1.5 }\n'
+		}
+		NoallocCase{
+			name:     'parenthesized_signed_default'
+			accepted: true
+			source:   'struct Item { n int = -(1) }\n@[noalloc]\nfn handler() int { return Item{}.n }\nfn main() { assert handler() == -(1) }\n'
+		}
+		NoallocCase{
+			name:     'signed_allocating_default'
+			accepted: false
+			source:   'fn allocating() int { return [1, 2].len }\nstruct Item { n int = -allocating() }\n@[noalloc]\nfn handler() int { return Item{}.n }\nfn main() { _ = handler() }\n'
+		}
+		NoallocCase{
+			name:     'signed_overloaded_allocating_default'
+			accepted: false
+			source:   'struct Value { n int }\nfn (a Value) + (b Value) Value { _ = [a.n, b.n].str(); return Value{n: a.n + b.n} }\nstruct Item { n int = -(Value{n: 1} + Value{n: 2}).n }\n@[noalloc]\nfn handler() int { return Item{}.n }\nfn main() { _ = handler() }\n'
+		}
+		NoallocCase{
+			name:     'nil_default'
+			accepted: true
+			source:   'struct Span { base &u8 = unsafe { nil }; len int }\n@[noalloc]\nfn handler() Span { return Span{} }\nfn main() { _ = handler() }\n'
+		}
+		NoallocCase{
+			name:     'nested_overridden_default'
+			accepted: true
+			source:   'fn allocating() int { return [1, 2].len }\nstruct Inner { n int = allocating() }\nstruct Outer { inner Inner }\n@[noalloc]\nfn handler() int { return Outer{inner: Inner{n: 3}}.inner.n }\nfn main() { assert handler() == 3 }\n'
+		}
+		NoallocCase{
+			name:     'borrowed_string_view'
+			accepted: true
+			source:   "@[noalloc: strict]\nfn handler(s string, n int) string { view := unsafe { tos(s.str, n) }; return view }\nfn main() { assert handler('abc', 2) == 'ab' }\n"
+		}
+		NoallocCase{
+			name:     'string_header_aggregate'
+			accepted: true
+			source:   "struct Item { text string }\n@[noalloc: strict]\nfn handler(s string) Item { return Item{text: s} }\nfn main() { assert handler('abc').text == 'abc' }\n"
+		}
+		NoallocCase{
+			name:     'string_clone'
+			accepted: false
+			source:   "@[noalloc]\nfn handler(s string) string { return s.clone() }\nfn main() { _ = handler('abc') }\n"
+		}
+		NoallocCase{
 			name:     'recursive'
 			accepted: true
 			source:   '@[noalloc]
@@ -505,5 +595,25 @@ fn test_noalloc_rejects_opaque_codegen_instrumentation() {
 		command << source
 		result := os.exec(command)
 		assert result.exit_code != 0 && result.output.contains('noalloc'), result.output
+	}
+}
+
+fn test_noalloc_string_views_with_warm_builtin_cache() {
+	root := os.join_path(os.vtmp_dir(), 'noalloc_warm_views_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	program := 'fn handler(s string) string { return unsafe { tos(s.str, 2) } }\nfn main() { assert handler("abc") == "ab" }\n'
+	os.write_file(source, program)!
+	executable := os.join_path(root, 'program')
+	command := [@VEXE, '-gc', 'none', '-o', executable, source]
+	warmup := os.exec(command)
+	assert warmup.exit_code == 0, warmup.output
+	os.write_file(source, program.replace('fn handler(', '@[noalloc: strict]\nfn handler('))!
+	for _ in 0 .. 2 {
+		compiled := os.exec(command)
+		assert compiled.exit_code == 0, compiled.output
+		ran := os.exec([executable])
+		assert ran.exit_code == 0, ran.output
 	}
 }

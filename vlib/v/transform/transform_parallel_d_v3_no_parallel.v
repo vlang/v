@@ -43,7 +43,7 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, _ int, _ int) 
 // scan_late_call_names_dispatch falls back to the serial late-name scan when
 // v3 is built with the internal `v3_no_parallel` define.
 fn (mut t Transformer) scan_late_call_names_dispatch(cands []LateFnCandidate, used &map[string]bool, candidate_names &map[string]bool) []string {
-	return t.scan_late_call_names_range(cands, used, candidate_names, 0, cands.len)
+	return t.scan_late_call_names_range(cands, used, candidate_names, t.new_late_scan_gate(candidate_names), 0, cands.len)
 }
 
 // promote_scoped_texts_parallel reports that scoped text promotion stays serial in no-parallel builds.
@@ -69,6 +69,12 @@ pub fn scan_scoped_text_flags_parallel_multi(_ &flat.FlatAst, _ []voidptr, mut _
 
 fn free_worker_scopes_parallel(_ &flat.FlatAst, _ []voidptr) bool {
 	return false
+}
+
+// prescan_fixed_array_borrow_bodies leaves every borrow-summary body analysis to
+// the serial fixed point when v3 is built with the internal `v3_no_parallel` define.
+fn (mut _ Transformer) prescan_fixed_array_borrow_bodies(_ []BorrowCandidate) BorrowPrescan {
+	return BorrowPrescan{}
 }
 
 // prepare_with_pre_scans keeps preparation serial when v3 is built with the

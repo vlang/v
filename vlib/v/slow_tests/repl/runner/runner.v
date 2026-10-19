@@ -82,14 +82,15 @@ pub fn run_repl_file(wd string, vexec string, file string) !string {
 	return file.replace('./', '')
 }
 
+// run_prod_file compares production program output, suppressing compiler progress notices.
 pub fn run_prod_file(wd string, vexec string, file string) !string {
 	file_expected := '${file}.expected.txt'
 	f_expected_content := os.read_file(file_expected) or {
 		return error('Could not read expected prod file ${file_expected}')
 	}
 	expected_content := f_expected_content.replace('\r', '')
-	cmd := '${os.quoted_path(vexec)} -prod run ${os.quoted_path(file)}'
-	r := os.exec([vexec, '-prod', 'run', file])
+	cmd := '${os.quoted_path(vexec)} -silent -prod run ${os.quoted_path(file)}'
+	r := os.exec([vexec, '-silent', '-prod', 'run', file])
 	if r.exit_code < 0 {
 		return error('Could not execute: ${cmd}')
 	}
