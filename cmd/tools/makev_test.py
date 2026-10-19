@@ -1173,7 +1173,7 @@ int main(void) {
                 self.assertEqual((workdir / "v.exe").read_text(), "working compiler")
                 self.assertFalse((workdir / "v_old.exe").exists())
 
-    def run_install(self, workdir, path):
+    def run_install(self, workdir, path, clang_target="x86_64-w64-mingw32"):
         # Runs one install route from the build of "%V_UPDATED%" through
         # :move_updated_to_v, with every compiler stubbed. The stub for the new
         # compiler builds hello world only with the toolchain that built it, like
@@ -1222,7 +1222,17 @@ int main(void) {
         self.assertEqual(replaced, {"build": 1, "updated": 2, "run": 1})
         stubs = []
         for label, status in stubbed.items():
-            stubs.extend([":" + label, '>>"%test_calls%" echo ' + label, "exit /b " + str(status)])
+            stubs.extend([":" + label, '>>"%test_calls%" echo ' + label])
+            if label == "build_bootstrap_with_clang":
+                # Keep target discovery's configuration side effects while
+                # stubbing the C compilation and executable lookup.
+                stubs.extend(["call :configure_clang_target", "exit /b !ERRORLEVEL!"])
+            else:
+                stubs.append("exit /b " + str(status))
+        if path == "clang":
+            stubs.append(routine("configure_clang_target"))
+            if "msvc" in clang_target:
+                (workdir / "clang-cl.exe").touch()
         for stub in ("build", "updated"):
             stubs.extend([
                 ":stub_" + stub,
@@ -1265,7 +1275,7 @@ int main(void) {
             'set "tcc_exe=' + str(workdir / "tcc.exe") + '"',
             'set "clang_exe=' + str(workdir / "clang.exe") + '"',
             'set "gcc_exe=' + str(workdir / "gcc.exe") + '"',
-            'set "clang_target=x86_64-w64-mingw32"',
+            'set "clang_target=' + clang_target + '"',
             "call :" + entry,
             "exit /b !ERRORLEVEL!",
             "\n".join(lines),
@@ -1286,20 +1296,21 @@ int main(void) {
         return result, [line.strip() for line in recorded]
 
     def test_install_smoke_tests_with_the_toolchain_that_built_the_compiler(self):
-        for path, cc, cflags in (
+        for path, cc, clang_target in (
             ("tcc", "tcc.exe", ""),
             ("self_hosted", "tcc.exe", ""),
-            ("clang", "clang.exe", "--target=x86_64-w64-mingw32"),
+            ("clang", "clang.exe", "x86_64-w64-mingw32"),
+            ("clang", "clang-cl.exe", "x86_64-pc-windows-msvc"),
             ("gcc", "gcc.exe", ""),
             ("msvc", "msvc", ""),
         ):
-            with self.subTest(path=path), tempfile.TemporaryDirectory(
+            with self.subTest(path=path, target=clang_target), tempfile.TemporaryDirectory(
                 prefix="makev tests "
             ) as directory:
                 workdir = Path(directory)
-                result, calls = self.run_install(workdir, path)
+                result, calls = self.run_install(workdir, path, clang_target)
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-                toolchain = (cc if cc == "msvc" else str(workdir / cc)) + " " + cflags
+                toolchain = cc if cc == "msvc" else str(workdir / cc)
                 self.assertEqual(
                     [call for call in calls if not call.startswith("build_")],
                     ["build " + toolchain.strip(), "updated " + toolchain.strip(), "run", "success"],
