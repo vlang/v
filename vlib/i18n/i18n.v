@@ -235,6 +235,64 @@ fn flatten_tr_json(value json2.Any, key string, mut res map[string]string) {
 	}
 }
 
+// MissingKeyBehavior controls an Option lookup when no non-empty translation is available.
+pub enum MissingKeyBehavior {
+	or_text
+	key
+	empty
+}
+
+// LookupConfig configures Option lookups without changing the legacy string APIs.
+@[params]
+pub struct LookupConfig {
+pub:
+	missing_key_behavior MissingKeyBehavior
+	default_language     string
+}
+
+// tr_opt returns a translation from the default directory, or none when it is missing.
+pub fn tr_opt(lang string, key string, config LookupConfig) ?string {
+	return tr_from_map_opt(default_tr_map, lang, key, config)
+}
+
+// tr_from_map_opt returns a non-empty translation, checking the default language next.
+// Missing translations return none unless config selects the key or an empty string.
+pub fn tr_from_map_opt(translations map[string]map[string]string, lang string, key string, config LookupConfig) ?string {
+	return lookup_opt(translations, lang, key, config, false, 0)
+}
+
+// tr_plural_opt returns a pluralized translation from the default directory, or none.
+pub fn tr_plural_opt(lang string, key string, amount int, config LookupConfig) ?string {
+	return tr_plural_from_map_opt(default_tr_map, lang, key, amount, config)
+}
+
+// tr_plural_from_map_opt returns a pluralized translation, with the same fallback
+// and missing-key policy as tr_from_map_opt.
+pub fn tr_plural_from_map_opt(translations map[string]map[string]string, lang string, key string, amount int, config LookupConfig) ?string {
+	return lookup_opt(translations, lang, key, config, true, amount)
+}
+
+fn lookup_opt(translations map[string]map[string]string, lang string, key string, config LookupConfig, plural bool, amount int) ?string {
+	for language in [lang, config.default_language] {
+		if language == '' {
+			continue
+		}
+		text := translations[language][key]
+		if text == '' {
+			continue
+		}
+		value := if plural { pluralize(text, amount) } else { text }
+		if value != '' {
+			return value
+		}
+	}
+	return match config.missing_key_behavior {
+		.or_text { none }
+		.key { key }
+		.empty { '' }
+	}
+}
+
 // tr returns the translation for key from the default translations directory.
 pub fn tr(lang string, key string) string {
 	return tr_from_map(default_tr_map, lang, key)
@@ -262,6 +320,10 @@ pub fn tr_plural_from_map(translations map[string]map[string]string, lang string
 		eprintln('NO TRANSLATION FOR KEY "${key}"')
 		return key
 	}
+	return pluralize(s, amount)
+}
+
+fn pluralize(s string, amount int) string {
 	if !s.contains('|') {
 		return s
 	}

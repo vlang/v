@@ -12,6 +12,15 @@ produce widely different hashes.
 
 Hash functions are useful for implementing maps, caches etc.
 
+`Hasher` is a streaming 64-bit interface with `write(bytes)!` and `finish()`.
+Successive writes absorb chunks in order; repeated `finish()` calls return the current
+digest without consuming the state.
+
+Create a conforming FNV-1a hasher with `fnv1a.new_fnv1a64()` to initialize its offset basis.
+Its `write` method currently cannot fail. `finish()` agrees with `fnv1a.sum64` over all
+bytes written so far. `hasher.sum(bytes)` computes a separate one-shot digest without
+modifying the streaming state. FNV-1a is a noncryptographic hash.
+
 ## Available submodules
 
 - `hash.adler32` - Adler-32 (RFC 1950 checksum used by zlib)

@@ -40,6 +40,7 @@ pub fn (mut tc TypeChecker) skip_library_bodies_for_reachability(library_files m
 
 fn (mut tc TypeChecker) prepare_library_body_reachability(library_files map[string]bool, seeded_fns []string, follow_names bool, defer_implicit_methods bool) int {
 	tc.checked_library_body_count = 0
+	tc.library_body_convergence_complete = false
 	tc.library_files = library_files.clone()
 	tc.reachable_library_fns = tc.library_fns_reachable_by_name(seeded_fns, follow_names, defer_implicit_methods)
 	tc.skips_library_bodies = library_files.len > 0
@@ -390,6 +391,17 @@ pub fn (mut tc TypeChecker) check_reached_library_bodies(used map[string]bool, p
 	return tc.check_library_body_items(tc.library_body_items(used, true), parallel)
 }
 
+// reached_library_body_nodes returns still-unchecked declarations named by used,
+// including ambiguous short names retained by the convergence check.
+pub fn (mut tc TypeChecker) reached_library_body_nodes(used map[string]bool) []int {
+	items := tc.library_body_items(used, true)
+	mut nodes := []int{cap: items.len}
+	for item in items {
+		nodes << item.fn_idx
+	}
+	return nodes
+}
+
 // LibraryBodyFrontier holds unchanged declaration ranges for one reachability pass.
 pub struct LibraryBodyFrontier {
 	items          []CheckWorkItem
@@ -445,6 +457,8 @@ fn (mut tc TypeChecker) check_library_body_items(items []CheckWorkItem, parallel
 	if items.len == 0 {
 		return 0
 	}
+	notices_before := tc.notices.len
+	notices_sorted := tc.library_sorted_notice_count == notices_before
 	for item in items {
 		name := tc.a.nodes[item.fn_idx].value
 		tc.reachable_library_fns[library_fn_body_key(item.module, name)] = true
@@ -474,7 +488,13 @@ fn (mut tc TypeChecker) check_library_body_items(items []CheckWorkItem, parallel
 		tc.filter_pending_ierror_errors()
 		tc.defer_ierror_gating = false
 	}
-	tc.sort_parallel_check_errors()
+	// Repeated successful frontiers do not reorder or remove existing notices.
+	// Sort once, and again only when diagnostics change. Failures always use
+	// the full sorter, including its error deduplication and priority rules.
+	if !notices_sorted || tc.errors.len > 0 || tc.notices.len != notices_before {
+		tc.sort_parallel_check_errors()
+	}
+	tc.library_sorted_notice_count = tc.notices.len
 	tc.restore_type_cache_base()
 	tc.direct_parent_index_trusted = saved_trusted
 	tc.resolution_type_mode = true

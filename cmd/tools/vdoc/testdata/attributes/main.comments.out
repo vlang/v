@@ -1,0 +1,23 @@
+module main
+
+@[deprecated: 'use pub fn paint instead of <b>draw</b> & co']
+@[deprecated_after: '2999-01-01']
+fn draw(opts Options)
+    draw is shown with the attributes above its signature.
+fn Buttons.from() Buttons
+fn Buttons.zero() Buttons
+@[flag]
+enum Buttons {
+	left
+	right
+}
+    Buttons are flags for the mouse buttons.
+@[inline]
+fn (b Buttons) press()
+    press is a method with an attribute.
+@[params]
+struct Options {
+pub:
+	width int
+}
+    Options are the options for `draw`.

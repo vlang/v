@@ -7,7 +7,7 @@ const vlib_dir = os.dir(v3_dir)
 const v3_src = os.join_path(v3_dir, 'v.v')
 
 fn build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_ierror_promoted_methods_test_${os.getpid()}')
+	v3_bin := os.join_path(os.temp_dir(), 'v3_ierror_promoted_methods_test_${os.getpid()}') + $if windows { '.exe' } $else { '' }
 	if os.exists(v3_bin) {
 		return v3_bin
 	}
@@ -166,6 +166,7 @@ fn main() {
 	assert run.output.trim_space() == 'ok'
 }
 
+// Embedded structs must come first in a struct body.
 fn test_interface_dispatch_uses_nested_promoted_receiver_path() {
 	v3_bin := build_v3()
 
@@ -185,13 +186,13 @@ fn (inner Inner) m() int {
 }
 
 struct Mid {
-	pad int
 	Inner
+	pad int
 }
 
 struct Outer {
-	tag int
 	Mid
+	tag int
 }
 
 fn use(item HasNumber) int {
@@ -328,7 +329,8 @@ fn main() {
 	c_code := os.read_file('${bin}.c') or { '' }
 	assert c_code.contains('string dead__DeadErr__msg(dead__DeadErr err)'), c_code
 	assert c_code.contains('string dead__Helper__text(dead__Helper h)'), c_code
-	assert c_code.contains('return dead__Helper__text((dead__Helper){0});'), c_code
+	// An empty struct literal is `{E_STRUCT}` since empty structs are zero-sized.
+	assert c_code.contains('return dead__Helper__text((dead__Helper){E_STRUCT});'), c_code
 	assert !c_code.contains('dead__unrelated_dead_fn'), c_code
 
 	run := os.exec([bin])

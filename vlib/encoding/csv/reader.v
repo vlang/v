@@ -138,10 +138,10 @@ fn (mut r Reader) read_record() ![]string {
 				}
 				continue
 			} else if l[0] == r.comment {
-				if keep_raw {
-					line += '\n' + l
+				if !keep_raw {
+					continue
 				}
-				continue
+				line += '\n' + l
 			} else {
 				if keep_raw {
 					line += '\n'
@@ -202,7 +202,7 @@ fn (mut r Reader) read_record() ![]string {
 				}
 				continue
 			}
-			return &BareQuoteError{}
+			return &UnexpectedCharacterAfterQuoteError{}
 		}
 	}
 	return fields
@@ -226,4 +226,12 @@ fn (err BareQuoteError) msg() string {
 
 fn valid_delim(b u8) bool {
 	return b != 0 && b != `"` && b != `\r` && b != `\n`
+}
+
+struct UnexpectedCharacterAfterQuoteError {
+	Error
+}
+
+fn (err UnexpectedCharacterAfterQuoteError) msg() string {
+	return 'encoding.csv: unexpected character after closing quote'
 }

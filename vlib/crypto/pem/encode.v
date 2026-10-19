@@ -5,15 +5,18 @@ import arrays
 
 // encode encodes the given block into a
 // string using the EncodeConfig. It returns an error if `block_type` is undefined
-// or if a value in `headers` contains an invalid character ':'
+// or if a key or a value in `headers` contains the invalid character ':'
 //
 // default EncodeConfig values wrap lines at 64 bytes and use '\n' for newlines
 pub fn (block Block) encode(config EncodeConfig) !string {
 	if block.block_type == '' {
 		return error('crypto.pem: `encode` called with undefined `block_type`')
 	}
-	if block.headers.keys().any(it.contains(':')) || block.headers.values().any(it.contains(':')) {
-		return error('crypto.pem: invalid header character `:`')
+	for key, values in block.headers {
+		// look for the substring in each value; `values.contains` would compare whole elements
+		if key.contains(colon) || values.any(it.contains(colon)) {
+			return error('crypto.pem: invalid header character `:`')
+		}
 	}
 
 	// to avoid repeated struct access

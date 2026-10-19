@@ -1,3 +1,4 @@
+// vtest ownership
 import os
 
 const owned_map_delete_vexe = @VEXE
@@ -19,5 +20,5 @@ fn test_owned_map_delete_snapshots_and_drops_the_stored_value() {
 		"fn main() {\n\tmut values := map[string][]string{}\n\tvalues['letters'] = ['a', 'b']\n\tvalues.delete('letters')\n\tassert values.len == 0\n\tprintln('ok')\n}\n")!
 	out := os.exec([v3_bin, '-ownership', '-d', 'ownership', '-no-parallel', 'run', source])
 	assert out.exit_code == 0, out.output
-	assert out.output.contains('\nok\n'), out.output
+	assert out.output.split_into_lines().contains('ok'), out.output
 }

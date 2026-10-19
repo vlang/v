@@ -96,7 +96,9 @@ fn (mut encoder Encoder) encode_value[T](val T) {
 		encoder.encode_number(i8(val))
 	} $else $if T.unaliased_typ is i16 {
 		encoder.encode_number(i16(val))
-	} $else $if T.unaliased_typ is int || T.unaliased_typ is i32 {
+	} $else $if T.unaliased_typ is int {
+		encoder.encode_number(int(val))
+	} $else $if T.unaliased_typ is i32 {
 		encoder.encode_number(i32(val))
 	} $else $if T.unaliased_typ is i64 {
 		encoder.encode_number(i64(val))
@@ -410,7 +412,9 @@ fn (mut encoder Encoder) encode_number[T](val T) {
 		integer_val = i8(val).str()
 	} $else $if T is i16 {
 		integer_val = i16(val).str()
-	} $else $if T is int || T is i32 {
+	} $else $if T is int {
+		integer_val = int(val).str()
+	} $else $if T is i32 {
 		integer_val = i32(val).str()
 	} $else $if T is i64 {
 		integer_val = i64(val).str()
@@ -419,9 +423,27 @@ fn (mut encoder Encoder) encode_number[T](val T) {
 	} $else $if T is isize {
 		integer_val = isize(val).str()
 	} $else $if T is f32 {
-		integer_val = f32(val).str()
+		$if js {
+			integer_val = f32(val).str()
+		} $else {
+			magnitude := f32_abs(val)
+			integer_val = if magnitude == 0 || (magnitude >= f32(1e-6) && magnitude < f32(1e21)) {
+				f32(val).strlong()
+			} else {
+				f32(val).str()
+			}
+		}
 	} $else $if T is f64 {
-		integer_val = f64(val).str()
+		$if js {
+			integer_val = f64(val).str()
+		} $else {
+			magnitude := f64_abs(val)
+			integer_val = if magnitude == 0 || (magnitude >= 1e-6 && magnitude < 1e21) {
+				f64(val).strlong()
+			} else {
+				f64(val).str()
+			}
+		}
 	}
 	defer { unsafe { integer_val.free() } }
 	$if T is $float {
@@ -440,6 +462,11 @@ fn (mut encoder Encoder) encode_number[T](val T) {
 				encoder.encode_null()
 			}
 			return
+		}
+		// JSON uses compact exponents, so `1e-07` becomes `1e-7`.
+		if integer_val.len >= 4 && integer_val[integer_val.len - 4] == `e`
+			&& integer_val[integer_val.len - 2] == `0` {
+			integer_val = integer_val[..integer_val.len - 2] + integer_val[integer_val.len - 1..]
 		}
 		if integer_val.len > 2 && integer_val[integer_val.len - 2] == `.`
 			&& integer_val[integer_val.len - 1] == `0` { // ends in .0
@@ -883,27 +910,34 @@ fn check_not_empty[T](val T) ?bool {
 	return true
 }
 
+struct EncoderFieldInfoInitialization {
+mut:
+	initializing u64
+	initialized  u64
+}
+
+// Only field access and metadata construction depend on T. Keep election and
+// waiting in one function shared by all DTO types.
+@[noinline]
+fn (mut state EncoderFieldInfoInitialization) begin() bool {
+	if stdatomic.fetch_add_u64(&state.initializing, 1) == 0 { return true }
+	for stdatomic.load_u64(&state.initialized) == 0 { time.sleep(time.microsecond) }
+	return false
+}
+
 // TODO: fix compilation with -autofree, and remove the tag @[manualfree] here:
 @[manualfree; unsafe]
 fn (mut encoder Encoder) cached_field_infos[T]() &EncoderFieldInfoCache {
 	static cache := &EncoderFieldInfoCache(nil)
-	static initializing := u64(0)
-	static initialized := u64(0)
-	// Elect one initializer, then publish the completed immutable cache. This makes
-	// every field visible before another thread can read the immutable cache.
-	if stdatomic.load_u64(&initialized) == 0 {
-		if stdatomic.fetch_add_u64(&initializing, 1) == 0 {
-			cache = &EncoderFieldInfoCache{}
-			$for field in T.fields {
-				cache.field_infos << encoder_field_info(field.name, field.attrs)
-			}
-			stdatomic.store_u64(&initialized, 1)
-		} else {
-			// Only concurrent first use waits; warm encodes need one atomic load.
-			for stdatomic.load_u64(&initialized) == 0 {
-				time.sleep(time.microsecond)
-			}
+	static state := EncoderFieldInfoInitialization{}
+	// Warm encodes still need only the existing atomic load and branch.
+	if stdatomic.load_u64(&state.initialized) == 0 && state.begin() {
+		cache = &EncoderFieldInfoCache{}
+		$for field in T.fields {
+			cache.field_infos << encoder_field_info(field.name, field.attrs)
 		}
+		// Publish every field before another thread can read the immutable cache.
+		stdatomic.store_u64(&state.initialized, 1)
 	}
 	return cache
 }

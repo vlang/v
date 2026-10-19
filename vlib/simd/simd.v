@@ -93,3 +93,62 @@ fn f64_to_u64(x f64) u64 {
 	}
 	return u64(x)
 }
+
+// The F32x4 operators generated into vectors_generated.v come in two flavours
+// by backend, which is why they name these helpers instead of inlining an
+// implementation. `simd.c.v` holds the versions that call the C header and is
+// only compiled by the C backend; the bodies below serve every other backend.
+// V's ARM64 backend also replaces a call to one of these with a single NEON
+// instruction — that substitution is invisible from here, and the body is what
+// runs wherever it does not apply.
+$if @BACKEND != 'c' {
+	// Each helper is the one operation a backend lowers to a single vector
+	// instruction, so they are marked `noinline`: an inlined copy is four scalar
+	// lane operations that no backend can recognize any more. The loop (rather
+	// than four written-out lanes) also keeps the call from being expanded into
+	// its caller before the backend sees it.
+	@[noinline]
+	fn add_native(a F32x4, b F32x4) F32x4 {
+		mut r := F32x4{}
+		for i in 0 .. 4 {
+			r.values[i] = a.values[i] + b.values[i]
+		}
+		return r
+	}
+
+	@[noinline]
+	fn sub_native(a F32x4, b F32x4) F32x4 {
+		mut r := F32x4{}
+		for i in 0 .. 4 {
+			r.values[i] = a.values[i] - b.values[i]
+		}
+		return r
+	}
+
+	@[noinline]
+	fn mul_native(a F32x4, b F32x4) F32x4 {
+		mut r := F32x4{}
+		for i in 0 .. 4 {
+			r.values[i] = a.values[i] * b.values[i]
+		}
+		return r
+	}
+
+	@[noinline]
+	fn div_native(a F32x4, b F32x4) F32x4 {
+		mut r := F32x4{}
+		for i in 0 .. 4 {
+			r.values[i] = a.values[i] / b.values[i]
+		}
+		return r
+	}
+
+	@[noinline]
+	fn sqrt_native(a F32x4) F32x4 {
+		mut r := F32x4{}
+		for i in 0 .. 4 {
+			r.values[i] = f32(math.sqrt(a.values[i]))
+		}
+		return r
+	}
+}

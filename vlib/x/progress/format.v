@@ -64,15 +64,24 @@ pub fn RateUnit.bytes_iec() RateUnit {
 
 // TimeFormat selects how a duration is displayed.
 pub enum TimeFormat {
-	mmss   // mm:ss
-	hhmm   // hh:mm
-	hhmmss // hh:mm:ss
-	s      // xs
-	sf     // x.xxs
+	mmss    // mm:ss
+	hhmm    // hh:mm
+	hhmmss  // hh:mm:ss
+	s       // xs
+	sf      // x.xxs
+	mmssf   // mm:ss.xx
+	hhmmssf // hh:mm:ss.xx
+}
+
+// frac returns the two-digit hundredths of a second ("00".."99").
+fn frac(ns i64) string {
+	sec := i64(time.second)
+	hs := (ns % sec) / (sec / 100)
+	return '${hs:02}'
 }
 
 // fmt_time formats `d` (negative durations are shown as zero).
-fn fmt_time(d time.Duration, f TimeFormat) string {
+pub fn fmt_time(d time.Duration, f TimeFormat) string {
 	ns := math.max(i64(d), i64(0))
 	sec := i64(time.second)
 	min := i64(time.minute)
@@ -84,25 +93,33 @@ fn fmt_time(d time.Duration, f TimeFormat) string {
 		.sf {
 			'${time.Duration(ns).seconds():.2f}s'
 		}
-		.hhmmss {
-			'${ns / hr:02}:${(ns % hr) / min:02}:${(ns % min) / sec:02}'
+		.mmss {
+			'${ns / min:02}:${(ns % min) / sec:02}'
+		}
+		.mmssf {
+			'${ns / min:02}:${(ns % min) / sec:02}.${frac(ns)}'
 		}
 		.hhmm {
 			'${ns / hr:02}:${(ns % hr) / min:02}'
 		}
-		.mmss {
-			'${ns / min:02}:${(ns % min) / sec:02}'
+		.hhmmss {
+			'${ns / hr:02}:${(ns % hr) / min:02}:${(ns % min) / sec:02}'
+		}
+		.hhmmssf {
+			'${ns / hr:02}:${(ns % hr) / min:02}:${(ns % min) / sec:02}.${frac(ns)}'
 		}
 	}
 }
 
 // fmt_time_unknown is the placeholder shown when a time cannot be estimated yet.
-fn fmt_time_unknown(f TimeFormat) string {
+pub fn fmt_time_unknown(f TimeFormat) string {
 	return match f {
 		.s { '--s' }
 		.sf { '--.--s' }
 		.hhmmss { '--:--:--' }
 		.hhmm, .mmss { '--:--' }
+		.mmssf { '--:--.--' }
+		.hhmmssf { '--:--:--.--' }
 	}
 }
 
@@ -112,7 +129,7 @@ fn fmt_time_unknown(f TimeFormat) string {
 // fmt_rate formats `per_sec` (items per second) in the units described by `u`,
 // choosing the prefix so the number stays readable: 0.5 -> `  0.5it/s`,
 // 1_500_000 -> `  1.5Mit/s`; with IEC prefixes, 1536 bytes/s -> `  1.5KiB/s`.
-fn fmt_rate(per_sec f64, u RateUnit) string {
+pub fn fmt_rate(per_sec f64, u RateUnit) string {
 	sizes := if u.prefixes.sizes.len > 0 { u.prefixes.sizes } else { [''] }
 	base := if u.prefixes.base > 1.0 { u.prefixes.base } else { 1000.0 }
 	c := per_sec * f64(u.period) / f64(time.second)
@@ -133,6 +150,6 @@ fn fmt_rate(per_sec f64, u RateUnit) string {
 }
 
 // fmt_rate_unknown is shown before enough samples exist to estimate a rate.
-fn fmt_rate_unknown(u RateUnit) string {
+pub fn fmt_rate_unknown(u RateUnit) string {
 	return '  --.-${u.unit}/${u.period_string}'
 }

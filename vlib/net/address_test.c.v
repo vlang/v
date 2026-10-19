@@ -170,3 +170,29 @@ fn test_ip6_str_is_unchanged_without_a_scope() {
 	global[15] = 0x01
 	assert new_ip6(80, global).str() == '[2001:db8::1]:80'
 }
+
+// resolve_ipaddrs indexed addr[0] before validating, so an empty host
+// panicked with string index out of range(idx,s.len):0, 0 instead of
+// returning an error. resolve_addrs_fuzzy already guarded this case.
+fn test_resolve_ipaddrs_rejects_an_empty_host_with_an_error() {
+	for family in [AddrFamily.ip, .ip6, .unspec] {
+		if _ := resolve_ipaddrs('', family, .tcp) {
+			assert false, 'net.resolve_ipaddrs("") should have failed'
+		} else {
+			assert err.msg().contains('empty')
+		}
+	}
+}
+
+// The ":port" forms must keep resolving to the any-addresses.
+fn test_resolve_ipaddrs_bare_port_still_resolves() {
+	addrs := resolve_ipaddrs(':8080', .ip, .tcp)!
+	assert addrs.len == 1
+	assert addrs[0].str() == '0.0.0.0:8080'
+}
+
+fn test_resolve_ipaddrs_ipv6_bare_port_still_resolves() {
+	addrs := resolve_ipaddrs(':8080', .ip6, .tcp)!
+	assert addrs.len == 1
+	assert addrs[0].str() == '[::]:8080'
+}

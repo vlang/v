@@ -29,6 +29,10 @@ response bytes with a small, explicit API, and is the parallel backend used by
   `sendfile(2)`.
 - **Graceful shutdown**: drain in-flight responses, then stop.
 
+Linux workers collect up to 256 epoll events per wait. Each worker reserves only that many
+event slots; the listening backlog and connection capacity remain independent of the batch size.
+Timeout sweeps run at most once per 100 ms, independently of the number of ready event batches.
+
 ## Installation
 
 Part of the standard library:

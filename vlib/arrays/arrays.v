@@ -157,7 +157,7 @@ pub fn append[T](a []T, b []T) []T {
 // group n arrays into a single array of arrays with n elements.
 // This function is analogous to the "zip" function of other languages.
 // To fully interleave two arrays, follow this function with a call to `flatten`.
-// NOTE: An error will be generated if the type annotation is omitted.
+// A single input array produces one-element groups: arrays.group([1, 2]) == [[1], [2]].
 // Example: arrays.group[int]([1, 2, 3], [4, 5, 6]) // => [[1, 4], [2, 5], [3, 6]]
 pub fn group[T](arrs ...[]T) [][]T {
 	mut length := if arrs.len > 0 { arrs[0].len } else { 0 }

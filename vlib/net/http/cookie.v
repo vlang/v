@@ -71,7 +71,7 @@ pub fn read_cookies(h Header, filter string) []&Cookie {
 				continue
 			}
 			mut name, mut val := part.split_once('=') or { part, '' }
-			if !is_cookie_name_valid(name) {
+			if !is_cookie_name_readable(name) {
 				continue
 			}
 			if filter != '' && filter != name {
@@ -91,7 +91,8 @@ pub fn read_cookies(h Header, filter string) []&Cookie {
 // (if only Name and Value are set) or a Set-Cookie response
 // header (if other fields are set).
 //
-// If c.name is invalid, the empty string is returned.
+// If c.name is not an RFC 9110 token (letters, digits and any of !#$%&'*+-.^_`|~),
+// the empty string is returned.
 pub fn (c &Cookie) str() string {
 	if !is_cookie_name_valid(c.name) {
 		return ''
@@ -105,7 +106,7 @@ pub fn (c &Cookie) str() string {
 	b.write_string('=')
 	b.write_string(sanitize_cookie_value(c.value))
 	if c.path.len > 0 {
-		b.write_string('; path=')
+		b.write_string('; Path=')
 		b.write_string(sanitize_cookie_path(c.path))
 	}
 	if c.domain.len > 0 {
@@ -118,7 +119,7 @@ pub fn (c &Cookie) str() string {
 			if d[0] == `.` {
 				d = d.substr(1, d.len)
 			}
-			b.write_string('; domain=')
+			b.write_string('; Domain=')
 			b.write_string(d)
 		} else {
 			// TODO: Log invalid cookie domain warning
@@ -126,7 +127,7 @@ pub fn (c &Cookie) str() string {
 	}
 	if c.expires.year > 1600 {
 		time_str := c.expires.http_header_string()
-		b.write_string('; expires=')
+		b.write_string('; Expires=')
 		b.write_string(time_str)
 	}
 	// TODO: Fix this. Technically a max age of 0 or less should be 0
@@ -146,7 +147,7 @@ pub fn (c &Cookie) str() string {
 	match c.same_site {
 		.same_site_not_set {}
 		.same_site_default_mode {
-			b.write_string('; SameSite')
+			// Skip, the default mode is obtained by not emitting the attribute.
 		}
 		.same_site_none_mode {
 			b.write_string('; SameSite=None')
@@ -183,7 +184,7 @@ fn sanitize_cookie_name(name string) string {
 }
 
 // sanitize_cookie_value removes invalid cookie bytes and quotes the sanitized value
-// when it starts or ends with a space or comma.
+// when it contains a space or comma.
 // https://tools.ietf.org/html/rfc6265#section-4.1.1
 // cookie-value      = *cookie-octet / ( DQUOTE *cookie-octet DQUOTE )
 // cookie-octet      = %x21 / %x23-2B / %x2D-3A / %x3C-5B / %x5D-7E
@@ -191,15 +192,12 @@ fn sanitize_cookie_name(name string) string {
 //           ; whitespace DQUOTE, comma, semicolon,
 //           ; and backslash
 // We loosen this as spaces and commas are common in cookie values
-// but we produce a quoted cookie-value when value starts or ends
-// with a comma or space.
+// but we produce a quoted cookie-value when value contains
+// a comma or space.
 pub fn sanitize_cookie_value(v string) string {
 	val := sanitize(valid_cookie_value_byte, v)
-	if val.len == 0 {
-		return val
-	}
-	// Quote leading or trailing spaces and commas.
-	if val.starts_with(' ') || val.ends_with(' ') || val.starts_with(',') || val.ends_with(',') {
+	// Quote a value that contains spaces or commas.
+	if val.contains_any(' ,') {
 		return '"${val}"'
 	}
 	return val
@@ -298,7 +296,26 @@ fn parse_cookie_value(_raw string, allow_double_quote bool) !string {
 	return raw
 }
 
+// is_cookie_name_valid reports whether `name` is an RFC 9110 token, which is what
+// RFC 6265 requires of a cookie-name. `Cookie.str()` writes no other name: a
+// separator such as `;`, `,` or `=` in it would be read back as a different cookie.
 fn is_cookie_name_valid(name string) bool {
+	if name == '' {
+		return false
+	}
+	for b in name {
+		if !is_token(b) {
+			return false
+		}
+	}
+	return true
+}
+
+// is_cookie_name_readable is the looser rule for a name received in a `Cookie` or
+// `Set-Cookie` header: any visible ASCII byte. The parsers split on `;` and `=`, so
+// neither can be part of a name, and names that peers do send, such as `foo[bar]`
+// or `a:b`, are kept.
+fn is_cookie_name_readable(name string) bool {
 	if name == '' {
 		return false
 	}
@@ -319,7 +336,7 @@ fn parse_cookie(line string) !Cookie {
 	index := parts[0].index('=') or { return error('malformed cookie') }
 	name := parts[0][..index]
 	raw_value := parts[0][index + 1..]
-	if !is_cookie_name_valid(name) {
+	if !is_cookie_name_readable(name) {
 		return error('malformed cookie')
 	}
 	value := parse_cookie_value(raw_value, true) or { return error('malformed cookie') }

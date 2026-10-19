@@ -46,8 +46,8 @@ pub fn init(cfg Config) &Context {
 	if stdin_handle == C.INVALID_HANDLE_VALUE {
 		panic('could not get stdin handle')
 	}
-	// save the current input mode, to be restored on exit
-	if !C.GetConsoleMode(stdin_handle, &stdin_at_startup) {
+	// Save the current input mode with the SDK DWORD pointer type.
+	if !C.GetConsoleMode(stdin_handle, unsafe { &C.DWORD(&stdin_at_startup) }) {
 		panic('could not get stdin console mode')
 	}
 
@@ -142,7 +142,8 @@ fn key_code_for_char(e C.KEY_EVENT_RECORD) KeyCode {
 
 fn (mut ctx Context) parse_events() {
 	nr_events := u32(0)
-	if !C.GetNumberOfConsoleInputEvents(ctx.stdin_handle, &nr_events) {
+	// Both SDK calls write DWORD values into this 32-bit counter.
+	if !C.GetNumberOfConsoleInputEvents(ctx.stdin_handle, unsafe { &C.DWORD(&nr_events) }) {
 		panic('could not get number of events in stdin')
 	}
 	if nr_events < 1 {
@@ -150,7 +151,7 @@ fn (mut ctx Context) parse_events() {
 	}
 
 	// print('${nr_events} | ')
-	if !C.ReadConsoleInput(ctx.stdin_handle, &ctx.read_buf[0], buf_size, &nr_events) {
+	if !C.ReadConsoleInput(ctx.stdin_handle, &ctx.read_buf[0], buf_size, unsafe { &C.DWORD(&nr_events) }) {
 		panic('could not read from stdin')
 	}
 	for i in 0 .. nr_events {
