@@ -24682,6 +24682,14 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			}
 			mod_dir_exists := mod_dir.len > 0 && os.is_dir(mod_dir)
 			mod_real_dir := if mod_dir_exists { a.record_source_path(mod_dir) } else { '' }
+			mod_files := if mod_dir_exists {
+				v3_directory_user_files(mut a, mod_dir, prefs, false, false) or {
+					prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(mod_dir,
+						prefs.user_defines, prefs.backend, prefs.target))
+				}
+			} else {
+				[]string{}
+			}
 			mut module_identity := import_module_identity_cached(prefs, mod_name, importing_file, project_root, mod_dir, mut module_path_cache, mut module_identity_cache)
 			// Set when this import spells the path of an already parsed directory in a
 			// new way, so its module declarations still get checked below.
@@ -24711,7 +24719,8 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 				checked_dir_spellings[spelling_key] = true
 			} else {
 				if forced_full_module_paths[mod_name] {
-					module_identity = mod_name
+					module_identity = v3_cached_collision_identity(&cache_state.manager,
+						mod_name, module_identity, mod_files)
 				}
 				// Two distinct dotted imports can legitimately declare the same short
 				// module name (for example `a.http` and `b.http`). Keep the first short
@@ -24730,14 +24739,6 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			cache_module := if module_identity.len > 0 { module_identity } else { mod_name }
 			record_v3_fallback_module_use(mut cache_state, cache_module, is_bundle_warmup_import)
 			record_cache_module_dependency(mut cache_state, cur_module, cache_module)
-			mod_files := if mod_dir_exists {
-				v3_directory_user_files(mut a, mod_dir, prefs, false, false) or {
-					prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(mod_dir,
-						prefs.user_defines, prefs.backend, prefs.target))
-				}
-			} else {
-				[]string{}
-			}
 			module_resolved := mod_dir_exists && mod_files.len > 0
 			if module_resolved {
 				a.resolved_module_dirs[cache_module] = mod_real_dir
@@ -25271,6 +25272,21 @@ fn source_file_line_count(paths []string, files map[int]&compiler_token.File) in
 		}
 	}
 	return lines
+}
+
+// Cached headers can expose colliding imports in an earlier wave than their sources.
+// Keep the identity already published for these exact files; the resolver still rejects
+// reusing it for a different directory. Otherwise every warm build changes its objects'
+// dependency names and restarts from sources that restore the previous names again.
+fn v3_cached_collision_identity(manager &modulecache.Manager, import_path string, identity string, source_files []string) string {
+	if manager.enabled && identity != import_path && source_files.len > 0 {
+		entry := manager.entry(identity, source_files)
+		if os.is_file(entry.header) && manager.valid_header(identity, source_files) != none
+			&& declared_module_in_file(entry.header) == identity.all_after_last('.') {
+			return identity
+		}
+	}
+	return import_path
 }
 
 fn import_module_identity_cached(prefs &pref.Preferences, import_path string, importing_file string, project_root string, import_dir string, mut path_cache map[string]string, mut identity_cache map[string]string) string {
