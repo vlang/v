@@ -14292,6 +14292,11 @@ pub fn run(args []string) {
 		}
 		mut transform_used_fns := map[string]bool{}
 		pre_transform_node_count := a.nodes.len
+		if ownership_checker_compiled() && (ownership_mode || 'ownership' in prefs.user_defines) {
+			// Ownership lowering asks which wrapper parameters reach a callback; answer
+			// from the bodies as checked, before transform lowers them in place.
+			pre_tc.prepare_callback_param_flows(used_fns)
+		}
 		if incremental_cache_hit {
 			transform_used_fns = clone_string_bool_map(incremental_changed_names)
 			// `main` activates the transformer's used-function filter. If another
