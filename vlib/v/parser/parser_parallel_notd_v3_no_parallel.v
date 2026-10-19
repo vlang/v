@@ -38,6 +38,7 @@ struct ComptimeConstPrepassDecl {
 struct ComptimeConstPrepassChunk {
 mut:
 	decls []ComptimeConstPrepassDecl
+	names map[string]bool
 }
 
 // ParseChunkArgs is the payload handed to each worker thread.
@@ -46,12 +47,42 @@ struct ParseChunkArgs {
 	paths_ptr     voidptr // &[]string
 	starts_ptr    voidptr // &[]int (worker-local starts; the master shifts them on merge)
 	prepass_chunk voidptr // &ComptimeConstPrepassChunk
+	batch         voidptr // &BatchSources
+	chunk_index   int
 	start         int
 	end           int
 	chunk_bytes   int
 	scope_enabled bool
 mut:
-	scope voidptr
+	scope  voidptr
+	prefix voidptr // &ParsePrefixBase
+}
+
+// ParsePrefixBase is what a parse worker builds the comptime const state at the
+// start of its chunk from: the master's state before the batch and, in input
+// order, the foldable const declarations of every chunk. Read-only while the
+// parse pool runs.
+@[heap]
+struct ParsePrefixBase {
+	values map[string]string
+	names  map[string]bool
+	chunks []&ComptimeConstPrepassChunk
+}
+
+// load_parse_prefix gives the worker of chunk `chunk_index` the comptime const
+// state that a serial parse has at the start of that chunk: the base with the
+// declarations of every earlier chunk replayed in input order. The workers build
+// it side by side, instead of the master cloning one snapshot per chunk.
+fn (mut w Parser) load_parse_prefix(base &ParsePrefixBase, chunk_index int) {
+	w.comptime_const_values = base.values.clone()
+	w.comptime_string_consts = base.names.clone()
+	for chunk_idx in 0 .. chunk_index {
+		decls := base.chunks[chunk_idx].decls
+		for decl in decls {
+			w.comptime_string_consts[decl.key] = true
+		}
+		apply_parallel_comptime_const_decls(mut w.comptime_const_values, decls)
+	}
 }
 
 // parse_chunk_thread parses one worker's contiguous range of files into the
@@ -62,15 +93,19 @@ fn parse_chunk_thread(arg voidptr) voidptr {
 	mut a := unsafe { &ParseChunkArgs(arg) }
 	mut w := unsafe { &Parser(a.worker) }
 	a.scope = parser_worker_scope_begin(a.scope_enabled)
+	if a.chunk_index > 0 {
+		w.load_parse_prefix(unsafe { &ParsePrefixBase(a.prefix) }, a.chunk_index)
+	}
 	w.reserve_for_source(a.chunk_bytes)
 	paths := unsafe { &[]string(a.paths_ptr) }
 	mut starts := unsafe { &[]int(a.starts_ptr) }
+	batch := unsafe { &BatchSources(a.batch) }
 	w.begin_text_cache_batch(a.end - a.start)
 	for i in a.start .. a.end {
 		unsafe {
 			(*starts)[i] = w.a.nodes.len
 		}
-		w.parse_into((*paths)[i])
+		w.parse_into_source((*paths)[i], batch.source_at(i) or { '' })
 	}
 	w.end_text_cache_batch()
 	parser_worker_scope_leave(a.scope)
@@ -86,6 +121,28 @@ fn precollect_const_chunk_thread(arg voidptr) voidptr {
 	unsafe {
 		w.precollect_parallel_comptime_consts(*paths, a.start, a.end, mut chunk.decls)
 	}
+	parser_worker_scope_leave(a.scope)
+	return unsafe { nil }
+}
+
+fn precollect_const_names_chunk_thread(arg voidptr) voidptr {
+	mut a := unsafe { &ParseChunkArgs(arg) }
+	mut w := unsafe { &Parser(a.worker) }
+	paths := unsafe { &[]string(a.paths_ptr) }
+	mut chunk := unsafe { &ComptimeConstPrepassChunk(a.prepass_chunk) }
+	// This first pass of the batch reads the sources for all of its passes.
+	mut batch := unsafe { &BatchSources(a.batch) }
+	for i in a.start .. a.end {
+		path := (*paths)[i]
+		if source := w.preloaded_sources[path] {
+			batch.preload(i, source)
+		} else {
+			batch.read(i, path)
+		}
+	}
+	// Only the collected names survive this pass, including on the caller thread.
+	a.scope = parser_worker_scope_begin(true)
+	chunk.names = w.parallel_comptime_const_names(*paths, a.start, a.end)
 	parser_worker_scope_leave(a.scope)
 	return unsafe { nil }
 }
@@ -182,8 +239,7 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 	}
 	bounds := parse_chunk_bounds(sizes, n_chunks)
 	thread_count := n_chunks - 1
-	previous_const_names := p.comptime_string_consts.clone()
-	prepass_const_names := p.parallel_comptime_const_names(paths)
+	mut previous_const_names := p.comptime_string_consts.clone()
 	dispatch_file_id_start := p.next_file_id
 	mut starts := []int{len: paths.len}
 	mut prepass_chunks := []&ComptimeConstPrepassChunk{cap: n_chunks}
@@ -206,7 +262,6 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 			// The workers only read the table, and the texts stay with the master.
 			w.preloaded_sources = p.preloaded_sources.clone()
 		}
-		w.comptime_string_consts = prepass_const_names.clone()
 		mut chunk_bytes := i64(0)
 		for i in bounds[ci + 1] .. bounds[ci + 2] {
 			chunk_bytes += sizes[i]
@@ -218,12 +273,20 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 	for i in bounds[0] .. bounds[1] {
 		master_chunk_bytes += sizes[i]
 	}
+	// The first pass reads every source once; the later passes and the sizeof
+	// declaration scans of sibling files take them from here.
+	mut batch := new_batch_sources(paths)
+	p.batch_sources = batch
+	for mut worker in parser_workers {
+		worker.batch_sources = batch
+	}
 	mut args := []ParseChunkArgs{cap: n_chunks}
 	args << ParseChunkArgs{
 		worker:        voidptr(p)
 		paths_ptr:     unsafe { voidptr(&paths) }
 		starts_ptr:    unsafe { voidptr(&starts) }
 		prepass_chunk: voidptr(prepass_chunks[0])
+		batch:         voidptr(batch)
 		start:         bounds[0]
 		end:           bounds[1]
 		chunk_bytes:   int(master_chunk_bytes)
@@ -235,6 +298,8 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 			paths_ptr:     unsafe { voidptr(&paths) }
 			starts_ptr:    unsafe { voidptr(&starts) }
 			prepass_chunk: voidptr(prepass_chunks[ci + 1])
+			batch:         voidptr(batch)
+			chunk_index:   ci + 1
 			start:         bounds[ci + 1]
 			end:           bounds[ci + 2]
 			chunk_bytes:   worker_chunk_bytes[ci]
@@ -242,6 +307,33 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 		}
 	}
 	fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
+	// The guard-proof superset needs every chunk's names before the ordered
+	// prepass starts. Scan it in parallel too, then retain only owned keys.
+	mut name_tasks := []workers.Task{cap: n_chunks}
+	for ci in 0 .. n_chunks {
+		helper_idx := ci - 1
+		name_tasks << workers.Task{
+			run:        precollect_const_names_chunk_thread
+			arg:        unsafe { voidptr(&args[ci]) }
+			force_sync: ci == 0 || fail == 'parser:all' || fail == 'parser:${helper_idx}'
+		}
+	}
+	ppsw0 := time.new_stopwatch()
+	p.a.worker_pool.run(name_tasks)
+	p.timing_profile('  [ttime]   pp read+names    ${f64(ppsw0.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	mut prepass_const_names := previous_const_names.clone()
+	for ci in 0 .. n_chunks {
+		for name, _ in prepass_chunks[ci].names {
+			prepass_const_names[name.clone()] = true
+		}
+		prepass_chunks[ci].names = map[string]bool{}
+		parser_worker_scope_free(args[ci].scope)
+		args[ci].scope = unsafe { nil }
+	}
+	// The prepasses read the superset from the batch (see
+	// parallel_comptime_branch_enabled); nothing else reads it.
+	batch.const_names = prepass_const_names.move()
+	batch.has_const_names = true
 	// Collect ordered foldable-const declarations in parallel. Once every
 	// chunk is scanned, replay the declarations in input order to make a
 	// prefix snapshot for each worker: later chunks inherit earlier consts,
@@ -256,9 +348,7 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 		}
 	}
 	ppsw := time.new_stopwatch()
-	p.comptime_string_consts = prepass_const_names.clone()
 	p.a.worker_pool.run(prepass_tasks)
-	p.comptime_string_consts = previous_const_names.clone()
 	p.timing_profile('  [ttime]   pp prepass pool  ${f64(ppsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	for ci in 1 .. n_chunks {
 		if args[ci].scope != unsafe { nil } {
@@ -268,17 +358,15 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 			args[ci].scope = unsafe { nil }
 		}
 	}
-	mut prefix_values := p.comptime_const_values.clone()
-	mut prefix_names := previous_const_names.clone()
-	for chunk_idx in 0 .. n_chunks {
-		if chunk_idx > 0 {
-			parser_workers[chunk_idx - 1].comptime_const_values = prefix_values.clone()
-			parser_workers[chunk_idx - 1].comptime_string_consts = prefix_names.clone()
-		}
-		for decl in prepass_chunks[chunk_idx].decls {
-			prefix_names[decl.key] = true
-		}
-		apply_parallel_comptime_const_decls(mut prefix_values, prepass_chunks[chunk_idx].decls)
+	// The master parses its chunk while the workers build their prefixes, so
+	// they start from a snapshot of its state.
+	prefix_base := &ParsePrefixBase{
+		values: p.comptime_const_values.clone()
+		names:  previous_const_names.move()
+		chunks: prepass_chunks.clone()
+	}
+	for ci in 0 .. n_chunks {
+		args[ci].prefix = voidptr(prefix_base)
 	}
 	// Largest chunks first: the queue is drained in submission order, so
 	// front-loading the heavy chunks minimizes the tail.
@@ -348,6 +436,16 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 		}
 	}
 	p.timing_profile('  [ttime]   pp merge         ${f64(ppsw3.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	// The merge rebound every text of a scoped worker to the master AST, and the
+	// worker's own source buffers died with its arena: nothing refers to those
+	// sources any more. The master keeps its own chunk's sources, and so does a
+	// worker without a scope, whose buffers moved to the master AST.
+	p.batch_sources = unsafe { nil }
+	for ci in 1 .. n_chunks {
+		if args[ci].scope != unsafe { nil } {
+			batch.release(bounds[ci], bounds[ci + 1])
+		}
+	}
 	p.next_file_id = next_chunk_file_id
 	p.timing_profile('  [ttime]   pp dispatch      ${f64(pdsw.elapsed().microseconds()) / 1000.0:7.2f} ms (files: ${paths.len})')
 	return starts, any_started
@@ -430,20 +528,20 @@ fn (mut p Parser) remap_worker_file_ids(first_file_id int, delta int) {
 }
 
 @[direct_array_access]
-fn (mut p Parser) parallel_comptime_const_names(paths []string) map[string]bool {
+fn (mut p Parser) parallel_comptime_const_names(paths []string, start int, end int) map[string]bool {
 	// This superset is only for prepass guard proofs. Full parser workers receive
 	// ordered prefixes, so disabled and later declarations cannot enter their scope.
-	mut names := p.comptime_string_consts.clone()
-	for path in paths {
-		// The same text the full parse takes: a preloaded source, or else the file.
-		src := p.read_source_file(path) or { continue }
+	mut names := map[string]bool{}
+	for i in start .. end {
+		path := paths[i]
+		src := p.batch_source(i, path) or { continue }
 		mut files := token.FileSet.new()
 		file := files.add_file(path, src.len)
 		mut s := scanner.new_scanner(p.prefs, .normal)
 		s.init(file, src)
 		mut module_name := ''
 		for {
-			tok := s.scan()
+			tok := scan_parallel_const_name_token(mut s)
 			if tok == .eof { break }
 			if tok == .key_module && s.scan() == .name {
 				module_name = s.lit
@@ -457,13 +555,62 @@ fn (mut p Parser) parallel_comptime_const_names(paths []string) map[string]bool 
 	return names
 }
 
+// Only declaration keywords matter to the name superset. Preserve the scanner's
+// handling of comments, directives, strings and interpolation; skip unrelated
+// ASCII words whole so a suffix such as `some_const` cannot become a keyword.
+@[direct_array_access]
+fn scan_parallel_const_name_token(mut s scanner.Scanner) token.Token {
+	for {
+		if !s.in_str_incomplete && !s.in_str_inter {
+			src := s.src
+			src_len := src.len
+			mut off := s.offset
+			for off < src_len {
+				class := const_name_skim_classes[src[off]]
+				if class & skim_stop != 0 || (class & skim_quote_prefix != 0 && off + 1 < src_len
+					&& (src[off + 1] == `'` || src[off + 1] == `"`)) {
+					break
+				}
+				off++
+				if class & skim_word != 0 {
+					for off < src_len && const_name_skim_classes[src[off]] & skim_word != 0 {
+						off++
+					}
+				}
+			}
+			s.offset = off
+		}
+		tok := s.scan()
+		if tok in [.key_module, .key_const, .eof] {
+			return tok
+		}
+	}
+	return .eof
+}
+
+// batch_source returns the source of the file at `idx` of the parse batch,
+// `path`: the one the batch read, or else the file read here.
+fn (p &Parser) batch_source(idx int, path string) !string {
+	if !isnil(p.batch_sources) {
+		if source := p.batch_sources.source_at(idx) {
+			return source
+		}
+	}
+	return p.read_source_file(path)
+}
+
 @[direct_array_access]
 fn (mut p Parser) precollect_parallel_comptime_consts(paths []string, start int, end int, mut decls []ComptimeConstPrepassDecl) {
+	p.reset_prepass_line_file()
+	defer {
+		p.reset_prepass_line_file()
+	}
 	mut values := p.comptime_const_values.clone()
-	for path in paths[start..end] {
+	for i in start .. end {
+		path := paths[i]
 		// The full parse records the structured I/O diagnostic. The prepass only
 		// supplies ordered const snapshots and must not consume a failed read.
-		src := p.read_source_file(path) or { continue }
+		src := p.batch_source(i, path) or { continue }
 		if src.len == 0 {
 			continue
 		}
@@ -649,7 +796,12 @@ fn (mut p Parser) parallel_comptime_branch_enabled(mut s scanner.Scanner, src st
 	// Leave these declarations for the same proof used by the full parser.
 	mut resolver := p.new_parallel_comptime_prepass_resolver(src, path, module_name)
 	resolver.comptime_const_values = values.clone()
-	resolver.comptime_string_consts = p.comptime_string_consts.clone()
+	// The superset of the const names of the batch and before it.
+	resolver.comptime_string_consts = if !isnil(p.batch_sources) && p.batch_sources.has_const_names {
+		p.batch_sources.const_names.clone()
+	} else {
+		p.comptime_string_consts.clone()
+	}
 	if resolver.comptime_cond_references_unresolved_local(resolved) { return none }
 	return p.eval_comptime_cond(resolved)
 }
@@ -793,10 +945,23 @@ fn (mut p Parser) resolve_parallel_comptime_prepass_at_token(text string, pos in
 	return resolver.resolve_comptime_at_values_at(text, pos)
 }
 
-fn (p &Parser) new_parallel_comptime_prepass_resolver(src string, path string, module_name string) &Parser {
+fn (mut p Parser) new_parallel_comptime_prepass_resolver(src string, path string, module_name string) &Parser {
 	mut resolver := Parser.new(p.prefs)
 	resolver.cur_file = path
 	resolver.cur_module = module_name
+	resolver.s.init(p.prepass_line_file(src, path), src)
+	return resolver
+}
+
+// prepass_line_file returns the line table of `src` for the resolvers of a
+// prepass. Every condition of a source used to index all of its lines anew;
+// they only read the table, so one serves them all. The prepass drops it
+// (reset_prepass_line_file) before the memory of its task is released.
+fn (mut p Parser) prepass_line_file(src string, path string) &token.File {
+	if !isnil(p.prepass_lines.file) && p.prepass_lines.src == voidptr(src.str)
+		&& p.prepass_lines.len == src.len && p.prepass_lines.path == path {
+		return p.prepass_lines.file
+	}
 	mut file_set := token.FileSet.new()
 	mut file := file_set.add_file(path, src.len)
 	// This temporary file is only used for pseudo-variable positions. The full
@@ -806,8 +971,17 @@ fn (p &Parser) new_parallel_comptime_prepass_resolver(src string, path string, m
 			file.add_line(i + 1)
 		}
 	}
-	resolver.s.init(file, src)
-	return resolver
+	p.prepass_lines = PrepassLineFile{
+		src:  voidptr(src.str)
+		len:  src.len
+		path: path
+		file: file
+	}
+	return file
+}
+
+fn (mut p Parser) reset_prepass_line_file() {
+	p.prepass_lines = PrepassLineFile{}
 }
 
 fn parallel_comptime_prepass_token_text(tok token.Token, s &scanner.Scanner, src string) string {
@@ -828,15 +1002,18 @@ fn skip_parallel_comptime_block(mut s scanner.Scanner) {
 		// scanner handle comments, directives and quoted/interpolated text, but
 		// avoid classifying every identifier and operator in the body twice.
 		if !s.in_str_incomplete && !s.in_str_inter {
-			for s.offset < s.src.len {
-				c := s.src[s.offset]
-				if c in [`{`, `}`, `/`, `'`, `"`, `\``, `#`]
-					|| (c in [`r`, `c`] && s.offset + 1 < s.src.len
-						&& s.src[s.offset + 1] in [`'`, `"`]) {
+			src := s.src
+			src_len := src.len
+			mut off := s.offset
+			for off < src_len {
+				class := comptime_block_skim_classes[src[off]]
+				if class == skim_stop || (class == skim_quote_prefix && off + 1 < src_len
+					&& (src[off + 1] == `'` || src[off + 1] == `"`)) {
 					break
 				}
-				s.offset++
+				off++
 			}
+			s.offset = off
 		}
 		tok := s.scan()
 		if tok == .eof {
@@ -1065,6 +1242,30 @@ mut:
 	pending_files []PendingSourceFile
 }
 
+// MergeTextProbeArgs is the task of probe_worker_texts_thread.
+struct MergeTextProbeArgs {
+	master voidptr // &Parser
+	worker voidptr // &Parser
+mut:
+	missing []bool
+}
+
+// probe_worker_texts_thread marks the texts of one worker's table that the
+// master's text table does not hold. Nothing writes the master table while the
+// probes run.
+@[direct_array_access]
+fn probe_worker_texts_thread(arg voidptr) voidptr {
+	mut probe := unsafe { &MergeTextProbeArgs(arg) }
+	p := unsafe { &Parser(probe.master) }
+	w := unsafe { &Parser(probe.worker) }
+	for i, value in w.a.text_values {
+		if value !in p.a.text_ids {
+			probe.missing[i] = true
+		}
+	}
+	return unsafe { nil }
+}
+
 fn new_parse_merge_text_cache() &flat.TextProbeCache {
 	return flat.new_text_probe_cache()
 }
@@ -1090,12 +1291,10 @@ fn parse_merge_copy_thread(arg voidptr) voidptr {
 		}
 	}
 	mut value_cache := new_parse_merge_text_cache()
-	mut type_cache := new_parse_merge_text_cache()
 	defer {
 		// Only the buffers are owned here; their strings borrow the master AST.
 		unsafe {
 			free(value_cache)
-			free(type_cache)
 		}
 	}
 	for k in 0 .. w.a.nodes.len {
@@ -1114,11 +1313,6 @@ fn parse_merge_copy_thread(arg voidptr) voidptr {
 		// canonical table's insertion order matches the serial merge.
 		mut all_hit := true
 		node.value, all_hit = p.a.probe_text_ptr_cached(node.value, mut value_cache.ptrs, mut value_cache.values)
-		mut hit := true
-		mut type_id := u16(0)
-		type_id, node.typ, hit = p.a.probe_type_text_ptr_cached(node.typ, mut type_cache.ptrs, mut type_cache.values, mut type_cache.ids)
-		node.set_type_text_id(type_id)
-		all_hit = all_hit && hit
 		params := node.generic_params()
 		if params.len > 0 {
 			mut canonical_params := []string{cap: params.len}
@@ -1145,6 +1339,10 @@ fn parse_merge_copy_thread(arg voidptr) voidptr {
 			} else {
 				all_hit = false
 			}
+		} else if node.enum_backing_type_id() != 0 || node.debugger_value_type_ids().len > 0 {
+			// The payload itself may belong to the retiring parser scope even
+			// when it has no attribute names. The ordered tail copies it too.
+			all_hit = false
 		}
 		if !all_hit {
 			ma.miss_nodes << node_shift + k
@@ -1203,14 +1401,42 @@ fn (mut p Parser) merge_parsed_workers_parallel(mut parser_workers []&Parser, mu
 	}
 	// Each worker has already interned its node payloads in source order. Merge
 	// those unique tables once, in chunk order, so the copy threads can rebind
-	// every payload without leaving a serial per-node miss pass behind.
-	mut text_headroom := 0
+	// every payload without leaving a serial per-node miss pass behind. The pool
+	// first marks the texts the master table lacks; a text it holds already
+	// stays as it is, so only the marked ones go through the ordered inserts.
+	mut probes := []MergeTextProbeArgs{cap: thread_count}
 	for worker in parser_workers {
-		text_headroom += worker.a.text_count()
+		probes << MergeTextProbeArgs{
+			master:  voidptr(p)
+			worker:  voidptr(worker)
+			missing: []bool{len: worker.a.text_count()}
+		}
+	}
+	mut probe_tasks := []workers.Task{cap: thread_count}
+	for ci in 0 .. thread_count {
+		probe_tasks << workers.Task{
+			run:        probe_worker_texts_thread
+			arg:        unsafe { voidptr(&probes[ci]) }
+			force_sync: ci == 0
+		}
+	}
+	p.a.worker_pool.run(probe_tasks)
+	mut text_headroom := 0
+	for probe in probes {
+		for missing in probe.missing {
+			if missing {
+				text_headroom++
+			}
+		}
 	}
 	p.a.reserve_transform_texts(text_headroom)
-	for worker in parser_workers {
-		p.a.intern_texts_from(worker.a)
+	for ci, worker in parser_workers {
+		missing := probes[ci].missing
+		for i, value in worker.a.text_values {
+			if missing[i] {
+				p.a.intern_text(value)
+			}
+		}
 	}
 	unsafe {
 		p.a.nodes.grow_len(node_offsets[thread_count] - base_nodes)
@@ -1334,6 +1560,7 @@ fn (mut p Parser) merge_parsed_worker_bookkeeping(mut w Parser, mut starts []int
 		w.a.file_node_ids.len = 0
 	}
 	p.a.file_index_incomplete = p.a.file_index_incomplete || w.a.file_index_incomplete
+	p.a.debugger_stmts += w.a.debugger_stmts
 	p.a.has_vsh_source = p.a.has_vsh_source || w.a.has_vsh_source
 	if w.a.raw_vsh_file != '' {
 		p.a.raw_vsh_file = w.a.raw_vsh_file
@@ -1463,7 +1690,10 @@ fn (mut p Parser) merge_parsed_worker_bookkeeping(mut w Parser, mut starts []int
 		}
 	}
 	for key, value in w.comptime_string_consts {
-		p.comptime_string_consts[key.clone()] = value
+		// Every entry is `true`; most come from the prefix that the master holds.
+		if key !in p.comptime_string_consts {
+			p.comptime_string_consts[key.clone()] = value
+		}
 	}
 	p.parsed_v_files += w.parsed_v_files
 	for path in w.parsed_v_file_paths {

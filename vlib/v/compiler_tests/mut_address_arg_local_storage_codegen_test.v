@@ -123,12 +123,20 @@ fn main() {
 	result := os.exec([@VEXE, '-new-compiler', '-gc', 'none', '-nocache', '-warn-about-allocs',
 		'-o', out_path, main_path])
 	assert result.exit_code == 0, result.output
-	moved := 'allocation (local moved to the heap: its address escapes)'
-	on_heap := ['result_on_heap', 'forwarded_result_on_heap', 'pair_on_heap', 'on_heap']
+	moved := 'allocation (local moved to the heap: '
+	escapes := 'its address escapes)'
+	// `Entry` holds a fixed array, so a returned `&Entry` is reported as escaping
+	// fixed-array storage.
+	on_heap := {
+		'result_on_heap':           escapes
+		'forwarded_result_on_heap': escapes
+		'pair_on_heap':             escapes
+		'on_heap':                  'its fixed array storage may escape)'
+	}
 	assert result.output.count(moved) == on_heap.len, result.output
-	for name in on_heap {
+	for name, reason in on_heap {
 		line := source.all_before('mut ${name} := ').count('\n') + 1
-		assert result.output.contains('main.v:${line}:6: warning: ${moved}'), '${name}\n${result.output}'
+		assert result.output.contains('main.v:${line}:6: warning: ${moved}${reason}'), '${name}\n${result.output}'
 	}
 	c_code := os.read_file(out_path) or { panic(err) }
 	assert c_code.contains('main__Entry on_stack = '), 'on_stack was moved to the heap'
@@ -139,7 +147,7 @@ fn main() {
 		assert c_code.contains('main__Entry ${name} = '), '${name} was moved to the heap'
 		assert c_code.contains('(&${name})'), '${name} is not passed by its address'
 	}
-	for name in on_heap {
+	for name, _ in on_heap {
 		assert c_code.contains('main__Entry* ${name} = '), '${name} was left on the stack'
 		assert c_code.contains('(${name})'), '${name} is not passed as its storage'
 		assert !c_code.contains('(&${name})'), '${name} is passed as the address of its storage'

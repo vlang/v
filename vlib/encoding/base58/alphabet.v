@@ -41,7 +41,7 @@ pub fn (alphabet Alphabet) str() string {
 }
 
 // new_alphabet instantiates an Alphabet object based on
-// the provided characters
+// the provided 58 distinct ASCII characters. Invalid alphabets return an error.
 pub fn new_alphabet(str string) !Alphabet {
 	if str.len != 58 {
 		return error(@MOD + '.' + @FN + ': string must be 58 characters in length')
@@ -52,6 +52,9 @@ pub fn new_alphabet(str string) !Alphabet {
 
 	mut distinct := 0
 	for i, b in ret.encode {
+		if b >= ret.decode.len {
+			return error(@MOD + '.' + @FN + ': alphabet must contain only ASCII characters')
+		}
 		if ret.decode[b] == -1 {
 			distinct++
 		}

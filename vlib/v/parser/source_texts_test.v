@@ -82,6 +82,33 @@ fn test_preload_source_is_parsed_in_place_of_the_file() {
 	assert again.diagnostics[0].message.starts_with('error reading source')
 }
 
+fn test_empty_preloaded_source_and_imported_generated_types_use_the_snapshot() {
+	root := source_texts_test_root('imported_generated')
+	defer { os.rmdir_all(root) or {} }
+	os.mkdir_all(os.join_path(root, 'generated_types'))!
+	module_path := os.join_path(root, 'generated_types', 'types.v')
+	os.write_file(module_path, '@[generated]\nmodule generated_types\npub struct disk_only {}\n')!
+	main_path := os.join_path(root, 'main.v')
+	os.write_file(main_path, 'module main\nimport generated_types\nfn main() {}\n')!
+	mut p := Parser.new(pref.new_preferences())
+	p.preload_source(os.real_path(module_path), '@[generated]\nmodule generated_types\npub type lower_result = Good(int) | Bad(string)\n')
+	p.parse_file(main_path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	assert p.is_imported_named_variant_owner_name('generated_types', 'lower_result')
+	assert !p.is_imported_named_variant_owner_name('generated_types', 'disk_only')
+
+	mut empty := Parser.new(pref.new_preferences())
+	empty.keep_source_texts = true
+	empty.preload_source(main_path, '')
+	empty.parse_file(main_path)
+	assert empty.diagnostics.len == 0, empty.diagnostics.str()
+	assert fn_decl_names(empty) == []string{}
+	assert empty.a.source_texts.len == 1
+	for _, text in empty.a.source_texts {
+		assert text == ''
+	}
+}
+
 // declared_texts lists the declarations and string literals of a parsed
 // program, the part of it that the selected compile-time branches decide.
 fn declared_texts(p &Parser) []string {

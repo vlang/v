@@ -111,6 +111,24 @@ fn test_static_initializers_drop_compound_literals() {
 	assert out.contains('P* r = &(P){1, 2};')
 }
 
+fn test_static_local_initializers_drop_compound_literals() {
+	src := 'typedef struct P P;\ntypedef P Alias;\ntypedef struct Outer Outer;\ntypedef P Pair[2];\nvoid f(void) {\nstatic P zero = (P){};\nstatic Alias value = (Alias){1, 2};\nstatic Outer nested = (Outer){.point = (P){3, 4}};\nstatic Pair pair = (Pair){(P){5, 6}, (P){7, 8}};\nstatic int number = (int)9;\nP local = (P){10, 11};\nP* pointer = &(P){12, 13};\n}\n'
+	out := msvc_norm(msvc_compat_c_source(src))
+	assert out.contains('static P zero = {0};')
+	assert out.contains('static Alias value = {1, 2};')
+	assert out.contains('static Outer nested = {.point = {3, 4}};')
+	assert out.contains('static Pair pair = {{5, 6}, {7, 8}};')
+	assert out.contains('static int number = (int)9;')
+	assert out.contains('P local = (P){10, 11};')
+	assert out.contains('P* pointer = &(P){12, 13};')
+}
+
+fn test_nonempty_static_local_initializer_is_lowered_without_other_extensions() {
+	src := 'typedef struct P P;\nint f(void) { static P p = (P){42}; return p.x++; }\n'
+	out := msvc_norm(msvc_compat_c_source(src))
+	assert out.contains('static P p = {42};')
+}
+
 fn test_strings_comments_and_directives_are_kept() {
 	src := 'static const char* s = "({ x; })";\nint f(void) {\n#line 3 "a.v"\n\t// ({ comment })\n\treturn ({ int t = 1; t; });\n}\n'
 	out := msvc_compat_c_source(src)

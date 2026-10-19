@@ -15,12 +15,15 @@ const settings = init_settings()
 const default_vpm_server_urls = ['https://vpm.vlang.io', 'https://vpm.url4e.com']
 const vpm_server_urls = rand.shuffle_clone(default_vpm_server_urls) or { [] } // ensure that all queries are distributed fairly
 const valid_vpm_commands = ['help', 'search', 'install', 'link', 'update', 'upgrade', 'outdated',
-	'list', 'remove', 'show', 'unlink', 'why', 'vendor']
+	'list', 'remove', 'show', 'unlink', 'why', 'vendor', 'registry']
 const excluded_dirs = ['.cache', 'vlib']
 
 fn main() {
 	unbuffer_stdout()
 	os.setenv(selected_server_url_env, '', true)
+	$if windows {
+		enable_git_longpaths()
+	}
 	// This tool is intended to be launched by the v frontend,
 	// which provides the path to V inside os.getenv('VEXE')
 	// args are: vpm [options] SUBCOMMAND module names
@@ -40,6 +43,10 @@ fn main() {
 	}
 	mut query := parse_query_args(args, vpm_command)
 	vpm_log(@FILE_LINE, @FN, 'query: ${query}')
+	if is_registry_command(args) {
+		vpm_registry(query)
+		return
+	}
 	ensure_vmodules_dir_exist()
 	match vpm_command {
 		'help' {
@@ -85,6 +92,9 @@ fn main() {
 			}
 			vpm_vendor()
 		}
+		'registry' {
+			vpm_registry(query)
+		}
 		else {
 			// Unreachable in regular usage. V will catch unknown commands beforehand.
 			vpm_error('unknown command "${vpm_command}"')
@@ -111,6 +121,13 @@ fn parse_vpm_command(args []string) string {
 	return ''
 }
 
+// is_registry_command reports whether the requested command is the registry
+// server. It is checked before client-only home and cache setup, so serving a
+// registry does not require a writable VModules directory.
+fn is_registry_command(args []string) bool {
+	return parse_vpm_command(args) == 'registry'
+}
+
 fn parse_query_args(args []string, vpm_command string) []string {
 	mut query := []string{}
 	mut skip_next := false
@@ -118,6 +135,15 @@ fn parse_query_args(args []string, vpm_command string) []string {
 	for arg in args {
 		if skip_next {
 			skip_next = false
+			continue
+		}
+		// `registry` takes its own options, and the shared value-option list knows
+		// nothing about them: `-p 9090` is its port, not a package name, so neither
+		// the option nor its value may be dropped once the command is found. Every
+		// other subcommand asks for module names, where an option would be a module
+		// that cannot exist.
+		if has_found_command && vpm_command == 'registry' {
+			query << arg
 			continue
 		}
 		if arg in value_option_names {

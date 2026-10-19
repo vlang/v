@@ -28,6 +28,7 @@ permissions:
 jobs:
   release-build:
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     strategy:
       matrix:
         os:
@@ -132,6 +133,7 @@ jobs:
     if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
     needs: release-build
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/download-artifact@v8
       - name: Create release

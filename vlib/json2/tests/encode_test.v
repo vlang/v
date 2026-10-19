@@ -162,7 +162,7 @@ fn test_maps() {
 	assert json.encode({
 		'hi':  0
 		'bye': 1
-	}) == '{"hi":0,"bye":1}'
+	}) == '{"bye":1,"hi":0}'
 }
 
 fn test_enums() {
@@ -228,7 +228,7 @@ fn test_nested() {
 				c: true
 			}
 		},
-	]) == '[{"hi":{"a":1,"b":"a","c":false},"bye":{"a":2,"b":"b","c":true}},{"hi2":{"a":3,"b":"c","c":false},"bye2":{"a":4,"b":"d","c":true}}]'
+	]) == '[{"bye":{"a":2,"b":"b","c":true},"hi":{"a":1,"b":"a","c":false}},{"bye2":{"a":4,"b":"d","c":true},"hi2":{"a":3,"b":"c","c":false}}]'
 	assert json.encode([
 		{
 			'hi':  Basic{ a: 1, b: 'a', c: false }
@@ -254,27 +254,27 @@ fn test_nested() {
 		prettify: true
 	) == '[
     {
-        "hi": {
-            "a": 1,
-            "b": "a",
-            "c": false
-        },
         "bye": {
             "a": 2,
             "b": "b",
             "c": true
+        },
+        "hi": {
+            "a": 1,
+            "b": "a",
+            "c": false
         }
     },
     {
-        "hi2": {
-            "a": 3,
-            "b": "c",
-            "c": false
-        },
         "bye2": {
             "a": 4,
             "b": "d",
             "c": true
+        },
+        "hi2": {
+            "a": 3,
+            "b": "c",
+            "c": false
         }
     }
 ]'

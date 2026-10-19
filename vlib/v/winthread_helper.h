@@ -4,6 +4,10 @@
 #include <windows.h>
 #include <stddef.h>
 
+#ifndef V3_WINTHREAD_SCOPE
+#define V3_WINTHREAD_SCOPE static inline
+#endif
+
 /* The pool callback has the default C calling convention, while CreateThread
  * needs a WINAPI (stdcall on x86) routine returning DWORD. Casting between the
  * two corrupts the stack on 32-bit Windows, so the callback runs behind a real
@@ -14,6 +18,25 @@ typedef struct {
 	void *(*start_routine)(void *);
 	void *arg;
 } v3_win_thread_context;
+
+/* Boehm only scans threads it created or registered. This TU does not include
+ * gc.h, so gc.h's CreateThread -> GC_CreateThread redirect never applies here.
+ * A plain CreateThread worker that allocates then aborts the next collection with
+ * "Collecting from unknown thread". GC_CreateThread registers the worker itself. */
+#if defined(_VGCBOEHM) || defined(CUSTOM_DEFINE_gcboehm)
+#ifndef GC_H
+/* gc.h renames GC_CreateThread under GC_UNDERSCORE_STDCALL. Mirror that rename so the
+ * declaration matches the libgc export. */
+#if defined(GC_UNDERSCORE_STDCALL)
+#define GC_CreateThread _GC_CreateThread
+#endif
+HANDLE WINAPI GC_CreateThread(LPSECURITY_ATTRIBUTES, SIZE_T, LPTHREAD_START_ROUTINE,
+	LPVOID, DWORD, LPDWORD);
+#endif
+#define v3_win_create_thread GC_CreateThread
+#else
+#define v3_win_create_thread CreateThread
+#endif
 
 static DWORD WINAPI v3_win_thread_thunk(LPVOID raw_context) {
 	v3_win_thread_context *context = (v3_win_thread_context *)raw_context;
@@ -31,7 +54,7 @@ static DWORD WINAPI v3_win_thread_thunk(LPVOID raw_context) {
  * pool handles. Stores the new thread's id in *thread_id. Returns NULL when
  * the context or the thread cannot be created; the pool then counts a launch
  * failure. */
-static inline void *v3_win_thread_create(size_t stack_size,
+V3_WINTHREAD_SCOPE void *v3_win_thread_create(size_t stack_size,
 	void *(*start_routine)(void *), void *arg, unsigned int *thread_id) {
 	v3_win_thread_context *context = (v3_win_thread_context *)HeapAlloc(
 		GetProcessHeap(), 0, sizeof(v3_win_thread_context));
@@ -41,7 +64,7 @@ static inline void *v3_win_thread_create(size_t stack_size,
 	context->start_routine = start_routine;
 	context->arg = arg;
 	DWORD id = 0;
-	HANDLE handle = CreateThread(NULL, stack_size, v3_win_thread_thunk, context,
+	HANDLE handle = v3_win_create_thread(NULL, stack_size, v3_win_thread_thunk, context,
 		STACK_SIZE_PARAM_IS_A_RESERVATION, &id);
 	if (handle == NULL) {
 		HeapFree(GetProcessHeap(), 0, context);
@@ -51,7 +74,7 @@ static inline void *v3_win_thread_create(size_t stack_size,
 	return (void *)handle;
 }
 
-static inline int v3_win_thread_join(void *handle) {
+V3_WINTHREAD_SCOPE int v3_win_thread_join(void *handle) {
 	if (WaitForSingleObject((HANDLE)handle, INFINITE) != WAIT_OBJECT_0) {
 		return 1;
 	}
@@ -64,7 +87,7 @@ static inline int v3_win_thread_join(void *handle) {
 /* Compares against the id CreateThread reported, not GetThreadId(handle):
  * the kernel32 import list bundled with tcc has no GetThreadId, so using it
  * makes every tcc link of the compiler fail on Windows. */
-static inline int v3_win_thread_is_current(unsigned int thread_id) {
+V3_WINTHREAD_SCOPE int v3_win_thread_is_current(unsigned int thread_id) {
 	return thread_id == (unsigned int)GetCurrentThreadId();
 }
 

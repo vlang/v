@@ -111,7 +111,8 @@ Custom routes can be defined using attributes like @['/index'].
 
 <img width=662 src="https://github.com/vlang/v/blob/master/tutorials/building_a_simple_web_blog_with_veb/img/time.png?raw=true">
 
-> TIP: run the following command to live-reload the server: `v watch run blog.v`
+> TIP: run `v watch -d veb_livereload run blog.v` to rebuild the server on every change,
+> and update the page open in your browser.
 
 The `.text(string)` method returns a plain text document with the provided
 text, which isn't frequently used in websites.

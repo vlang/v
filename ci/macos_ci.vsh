@@ -64,16 +64,16 @@ fn self_tests() {
 	// test the release's own standard library instead of this repository's.
 	// Individual files still fall back to it when the default compiler cannot
 	// build them.
-	// The module cache setup costs more than it saves for these independent test
-	// builds. Keep cache behavior covered by the dedicated compiler tests, and
-	// use every core on the 7 GB runners instead of the one-job memory default.
+	// Exercise default caching throughout the standard library suite. Use every
+	// core on the 7 GB runners unless the aggregate runner requires fail-fast.
 	if common.is_github_job {
-		exec_args(['env', 'VJOBS=' + '${runtime.nr_cpus()}', 'v', '-nocache', '-no-memory-limit',
-			'-silent', 'test-self', 'vlib'])
+		vjobs := if os.getenv('VTEST_FAIL_FAST') == '1' { '1' } else { '${runtime.nr_cpus()}' }
+		exec_args(['env', 'VJOBS=' + '${vjobs}', 'v', '-no-memory-limit', '-silent', 'test-self',
+			'vlib'])
 	} else {
 		vjobs := os.getenv_opt('VJOBS') or { '1' }
-		exec_args(['env', 'VJOBS=' + '${vjobs}', 'v', '-nocache', '-no-memory-limit', '-progress',
-			'test-self', 'vlib'])
+		exec_args(['env', 'VJOBS=' + '${vjobs}', 'v', '-no-memory-limit', '-progress', 'test-self',
+			'vlib'])
 	}
 }
 
@@ -160,17 +160,17 @@ fn v_self_compilation_usecache() {
 		eprintln('> ${@LOCATION} use `-d enable_usecache_test` in VFLAGS to enable this task')
 		return
 	}
-	exec_args(['v', '-usecache', 'examples/hello_world.v'])
+	exec_args(['v', 'examples/hello_world.v'])
 	exec_args(['./examples/hello_world'])
-	exec_args(['v', '-o', 'v2', '-usecache', 'cmd/v'])
-	exec_args(['./v2', '-o', 'v3', '-usecache', 'cmd/v'])
+	exec_args(['v', '-o', 'v2', 'cmd/v'])
+	exec_args(['./v2', '-o', 'v3', 'cmd/v'])
 	exec_args(['./v3', 'version'])
-	exec_args(['./v3', '-o', 'tetris', '-usecache', 'examples/tetris/tetris.v'])
+	exec_args(['./v3', '-o', 'tetris', 'examples/tetris/tetris.v'])
 }
 
 fn v_self_compilation_parallel_cc() {
 	exec_args(['v', '-o', 'vp', '-parallel-cc', 'cmd/v'])
-	// exec_args(['./v2', '-o', 'v3', '-usecache', 'cmd/v'])
+	// exec_args(['./v2', '-o', 'v3', 'cmd/v'])
 	exec_args(['./vp', 'version'])
 	exec_args(['./vp', '-o', 'tetris', 'examples/tetris/tetris.v'])
 }
@@ -330,7 +330,7 @@ const all_tasks = {
 	'build_examples_v_compiled_with_tcc': Task{build_examples_v_compiled_with_tcc, 'Build examples with V build with tcc'}
 	'v_doctor':                           Task{v_doctor, 'v doctor'}
 	'build_v_with_prealloc':              Task{build_v_with_prealloc, 'Build V with prealloc'}
-	'v_self_compilation_usecache':        Task{v_self_compilation_usecache, 'V self compilation with -usecache'}
+	'v_self_compilation_usecache':        Task{v_self_compilation_usecache, 'V self compilation with default caching'}
 	'v_self_compilation_parallel_cc':     Task{v_self_compilation_parallel_cc, 'V self compilation with -parallel-cc'}
 	'test_password_input':                Task{test_password_input, 'Test password input'}
 	'test_readline':                      Task{test_readline, 'Test readline'}

@@ -23,6 +23,8 @@ fn test_v_literal_parse_base_preserves_decimal_and_explicit_bases() {
 		'0xA':    10
 		'-0X_A':  -10
 	} {
-		assert strconv.parse_int(value, v_literal_parse_base(value), 64)! == expected
+		// Like the compiler, remove the separators first: strconv.parse_int only
+		// accepts them for base 0, not for the base 10 of `0_10`.
+		assert strconv.parse_int(value.replace('_', ''), v_literal_parse_base(value), 64)! == expected
 	}
 }

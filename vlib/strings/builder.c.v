@@ -36,25 +36,22 @@ pub fn (mut b Builder) write_ptr(ptr &u8, len int) {
 	unsafe { b.push_many(ptr, len) }
 }
 
-// write_rune appends a single rune to the accumulated buffer
+// write_rune appends a single rune to the accumulated buffer.
+// An invalid rune (a surrogate half in 0xD800..0xDFFF, or a value above 0x10FFFF)
+// is written as U+FFFD, the replacement character.
 @[manualfree]
 pub fn (mut b Builder) write_rune(r rune) {
 	mut buffer := [5]u8{}
 	res := unsafe { utf32_to_str_no_malloc(u32(r), mut &buffer[0]) }
-	if res.len == 0 {
-		return
-	}
 	unsafe { b.push_many(res.str, res.len) }
 }
 
 // write_runes appends all the given runes to the accumulated buffer.
+// An invalid rune is written as U+FFFD, see `write_rune`.
 pub fn (mut b Builder) write_runes(runes []rune) {
 	mut buffer := [5]u8{}
 	for r in runes {
 		res := unsafe { utf32_to_str_no_malloc(u32(r), mut &buffer[0]) }
-		if res.len == 0 {
-			continue
-		}
 		unsafe { b.push_many(res.str, res.len) }
 	}
 }
@@ -166,25 +163,66 @@ pub fn (mut b Builder) write_string2(s1 string, s2 string) {
 }
 
 // go_back discards the last `n` bytes from the buffer.
+// `n` is clamped to the buffer: when it is larger than the length of the buffer,
+// the whole buffer is discarded. A negative or zero `n` does nothing.
 pub fn (mut b Builder) go_back(n int) {
-	b.trim(b.len - n)
+	if n <= 0 {
+		return
+	}
+	mut new_len := 0
+	if n < b.len {
+		new_len = b.len - n
+	}
+	b.trim(new_len)
 }
 
-// spart returns a part of the buffer as a string
+// spart returns a copy of the `n` bytes of the buffer, that start at `start_pos`, as a string.
+// The requested range is clamped to the buffer: only the bytes of it that exist are
+// returned. The result is shorter than `n` (or empty), when the range reaches outside
+// of the buffer, and it is empty, when `n` is negative or zero.
 @[inline]
 pub fn (b &Builder) spart(start_pos int, n int) string {
+	if n <= 0 {
+		return ''
+	}
+	mut start := start_pos
+	mut count := n
+	if start < 0 {
+		// The bytes before the start of the buffer do not exist.
+		// `count` is positive here, so adding the negative `start` can not overflow.
+		count += start
+		start = 0
+	}
+	// `start` is not negative here, so the subtraction can not overflow.
+	available := b.len - start
+	if count > available {
+		count = available
+	}
+	if count <= 0 {
+		return ''
+	}
 	unsafe {
-		mut x := malloc_noscan(n + 1)
-		vmemcpy(x, &u8(b.data) + start_pos, n)
-		x[n] = 0
-		return tos(x, n)
+		mut x := malloc_noscan(count + 1)
+		vmemcpy(x, &u8(b.data) + start, count)
+		x[count] = 0
+		return tos(x, count)
 	}
 }
 
 // cut_last cuts the last `n` bytes from the buffer and returns them.
+// `n` is clamped to the buffer: when it is larger than the length of the buffer,
+// the whole buffer is cut and returned. A negative or zero `n` cuts nothing,
+// and returns an empty string.
 pub fn (mut b Builder) cut_last(n int) string {
-	cut_pos := b.len - n
-	res := b.spart(cut_pos, n)
+	mut count := n
+	if count > b.len {
+		count = b.len
+	}
+	if count <= 0 {
+		return ''
+	}
+	cut_pos := b.len - count
+	res := b.spart(cut_pos, count)
 	b.trim(cut_pos)
 	return res
 }
@@ -192,17 +230,28 @@ pub fn (mut b Builder) cut_last(n int) string {
 // cut_to cuts the string after `pos` and returns it.
 // if `pos` is superior to builder length, returns an empty string
 // and cancel further operations
+// A negative `pos` is treated as 0: the whole buffer is cut and returned.
 pub fn (mut b Builder) cut_to(pos int) string {
 	if pos > b.len {
 		return ''
 	}
-	return b.cut_last(b.len - pos)
+	mut n := b.len
+	if pos > 0 {
+		n -= pos
+	}
+	return b.cut_last(n)
 }
 
 // go_back_to resets the buffer to the given position `pos`.
 // Note: pos should be < than the existing buffer length.
+// A `pos` that is larger than the length of the buffer does nothing.
+// A negative `pos` is treated as 0: the buffer is emptied.
 pub fn (mut b Builder) go_back_to(pos int) {
-	b.trim(pos)
+	mut new_len := pos
+	if new_len < 0 {
+		new_len = 0
+	}
+	b.trim(new_len)
 }
 
 // writeln appends the string `s`, and then a newline character.
@@ -294,7 +343,8 @@ pub fn (mut b Builder) free() {
 	}
 }
 
-// write_repeated_rune appends multiple copies of the same rune to the accumulated buffer
+// write_repeated_rune appends multiple copies of the same rune to the accumulated buffer.
+// An invalid rune is written as U+FFFD, see `write_rune`.
 @[direct_array_access]
 pub fn (mut b Builder) write_repeated_rune(r rune, count int) {
 	if count <= 0 {
@@ -304,9 +354,6 @@ pub fn (mut b Builder) write_repeated_rune(r rune, count int) {
 	// Convert rune to UTF-8 bytes once
 	mut buffer := [5]u8{}
 	res := unsafe { utf32_to_str_no_malloc(u32(r), mut &buffer[0]) }
-	if res.len == 0 {
-		return
-	}
 
 	if res.len == 1 {
 		b.ensure_cap(b.len + count)

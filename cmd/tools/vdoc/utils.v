@@ -32,6 +32,42 @@ fn get_node_id(dn doc.DocNode) string {
 	return slug(tag)
 }
 
+// attribute_line_count returns how many lines at the start of a declaration
+// are attributes, like `@[inline]`.
+fn attribute_line_count(lines []string) int {
+	mut count := 0
+	for count < lines.len && lines[count].starts_with('@[') {
+		count++
+	}
+	return count
+}
+
+// without_pub_keyword removes `pub ` from the declaration line of `content`.
+// The attribute lines before the declaration are kept.
+fn without_pub_keyword(content string) string {
+	mut lines := content.split('\n')
+	decl := attribute_line_count(lines)
+	if decl < lines.len && lines[decl].starts_with('pub ') {
+		lines[decl] = lines[decl]['pub '.len..]
+	}
+	return lines.join('\n')
+}
+
+// without_attribute_lines removes the attribute lines from the start of `content`.
+fn without_attribute_lines(content string) string {
+	if !content.starts_with('@[') {
+		return content
+	}
+	lines := content.split('\n')
+	return lines[attribute_line_count(lines)..].join('\n')
+}
+
+// is_deprecated_attribute reports whether `tag` is a `@[deprecated]` or a
+// `@[deprecated_after]` attribute.
+fn is_deprecated_attribute(tag string) bool {
+	return tag.trim_string_left('@[').starts_with('deprecated')
+}
+
 fn is_module_readme(dn doc.DocNode) bool {
 	return dn.is_readme || (dn.comments.len > 0 && dn.content == 'module ${dn.name}')
 }

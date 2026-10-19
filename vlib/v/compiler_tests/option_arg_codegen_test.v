@@ -8,7 +8,7 @@ const v3_src = os.join_path(v3_dir, 'v.v')
 
 // build_v3 builds v3 data for v3 tests.
 fn build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_option_arg_codegen_test_${os.getpid()}')
+	v3_bin := os.join_path(os.temp_dir(), 'v3_option_arg_codegen_test_${os.getpid()}') + $if windows { '.exe' } $else { '' }
 	if os.is_executable(v3_bin) {
 		return v3_bin
 	}
@@ -257,6 +257,14 @@ fn main() {
 	out := run_good(v3_bin, 'result_multi_return_optional_wrapper', source)
 	assert out == 'ok'
 	c_code := generated_c(v3_bin, 'result_multi_return_optional_wrapper_c', source)
-	assert c_code.contains('typedef struct __v_option_multi_return_i64_main__Ticket {')
-		|| c_code.contains('typedef struct __v_option_multi_return_i32_main__Ticket {'), c_code
+	// A `!` multi-return is a Result, so its wrapper is `__v_result_...`; it must be
+	// declared before the first function that returns it.
+	mut wrapper := 'multi_return_i64_main__Ticket'
+	if !c_code.contains('__v_result_${wrapper}') {
+		wrapper = 'multi_return_i32_main__Ticket'
+	}
+	typedef_pos := c_code.index('typedef struct __v_result_${wrapper} {') or { -1 }
+	use_pos := c_code.index('__v_result_${wrapper} App__state(') or { -1 }
+	assert typedef_pos >= 0, c_code
+	assert use_pos > typedef_pos, c_code
 }

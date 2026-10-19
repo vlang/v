@@ -1,5 +1,15 @@
 module builtin
 
+$if macos || linux {
+	// The bundled amalgamation otherwise enables unmapping only with HAVE_CONFIG_H.
+	// Unmapping requires the mmap-based heap. libgc selects it on its own only on
+	// macOS and on glibc x86_64 Linux; elsewhere (e.g. arm64/riscv64 Linux, or
+	// musl) gc.c stops with `USE_MUNMAP requires USE_MMAP`. libgc's configure
+	// defines both together too.
+	#flag -DUSE_MMAP=1
+	#flag -DUSE_MUNMAP=1
+}
+
 $if !no_gc_threads ? {
 	#flag -DGC_THREADS=1
 	$if !no_gc_thread_local_alloc ? {
@@ -35,6 +45,7 @@ $if dynamic_boehm ? {
 			#flag -I @VEXEROOT/thirdparty/libgc/include
 			#flag -L @VEXEROOT/thirdparty/tcc/lib
 			#flag -lgc
+			#flag -luser32
 		} $else $if msvc {
 			#flag -DGC_BUILTIN_ATOMIC=1
 			#flag -I @VEXEROOT/thirdparty/libgc/include
@@ -195,38 +206,48 @@ $if gcboehm_leak ? {
 	#flag -DGC_DEBUG=1
 }
 
-$if tinyc && linux {
-	// The legacy gc.h wrapper defines GC_noop1_ptr again; TCC rejects the
-	// duplicate when it loads the object containing GC_noop1 from libgc.a.
-	#include <gc/gc.h>
-} $else {
-	#include <gc.h>
-}
-
-#include "@VEXEROOT/vlib/builtin/gc_debugger_linux.h"
-#define v_gc_set_warn_proc(cb) GC_set_warn_proc((GC_warn_proc)(cb))
-#define v_gc_get_warn_proc() ((void *)GC_get_warn_proc())
-#define v_gc_set_abort_func(cb) GC_set_abort_func((GC_abort_func)(cb))
-#define v_gc_get_abort_func() ((void *)GC_get_abort_func())
-#define v_gc_call_abort_func(fn, msg) ((GC_abort_func)(fn))(msg)
-
-// #include <gc/gc_mark.h>
+#flag @VEXEROOT/vlib/builtin/gc_boehm_helpers.o
+#flag -DV_GCBOEHM_NATIVE
 
 // replacements for `malloc()/calloc()`, `realloc()` and `free()`
 // for use with Boehm-GC
 // Do not use them manually. They are automatically chosen when
 // compiled with `-gc boehm` or `-gc boehm_leak`.
+@[c: 'v_gc_malloc']
 fn C.GC_MALLOC(n usize) voidptr
 
+@[c: 'v_gc_malloc_atomic']
 fn C.GC_MALLOC_ATOMIC(n usize) voidptr
 
+@[c: 'v_gc_malloc_uncollectable']
+@[markused]
 fn C.GC_MALLOC_UNCOLLECTABLE(n usize) voidptr
 
+@[c: 'v_gc_realloc']
 fn C.GC_REALLOC(ptr voidptr, n usize) voidptr
 
+@[c: 'v_gc_free']
+@[markused]
 fn C.GC_FREE(ptr voidptr)
 
-fn C.GC_memalign(align isize, size isize) voidptr
+$if !windows {
+	@[markused]
+	fn C.v_gc_pthread_create(thread voidptr, attr voidptr, start_routine voidptr, arg voidptr) i32
+	@[markused]
+	fn C.v_gc_pthread_join(thread voidptr, retval voidptr) i32
+	@[markused]
+	fn C.v_gc_pthread_detach(thread voidptr) i32
+	@[markused]
+	fn C.v_gc_pthread_sigmask(how i32, const_set voidptr, oldset voidptr) i32
+	@[markused]
+	fn C.v_gc_pthread_cancel(thread voidptr) i32
+	@[markused]
+	fn C.v_gc_pthread_exit(result voidptr)
+	@[markused]
+	fn C.v_gc_dlopen(const_path &char, mode i32) voidptr
+}
+
+fn C.GC_memalign(align usize, size usize) voidptr
 
 // explicitly perform garbage collection now! Garbage collections
 // are done automatically when needed, so this function is hardly needed
@@ -243,6 +264,7 @@ fn C.GC_is_disabled() i32
 fn C.GC_set_no_dls(i32)
 
 // protect memory block from being freed before this call
+@[c: 'GC_noop1_ptr']
 fn C.GC_reachable_here(voidptr)
 
 // gc_is_enabled returns true, if the GC is enabled at runtime.
@@ -322,6 +344,7 @@ fn C.v_gc_set_warn_proc(cb FnGC_WarnCB)
 
 // GC_REGISTER_DISPLACEMENT is `GC_debug_register_displacement` when `GC_DEBUG` is set
 // (`-gc boehm_leak`), and `GC_register_displacement` otherwise.
+@[c: 'v_gc_register_displacement']
 fn C.GC_REGISTER_DISPLACEMENT(offset usize)
 
 // FnGC_AbortCB is the type of Boehm's fatal error handler (`GC_abort_func`).

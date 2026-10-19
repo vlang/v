@@ -19,48 +19,43 @@ pub fn (mut a FlatAst) record_source_path(path string) string {
 	return resolved
 }
 
-// record_listed_source_path is record_source_path for a path whose last
-// component is a directory entry spelled the way the listing of its directory
-// returned it. The resolved form of such a path is the resolved directory
-// followed by the entry, unless the entry is itself a link, so one os.real_path
-// per directory answers for all of its regular files.
-pub fn (mut a FlatAst) record_listed_source_path(path string) string {
+// record_listed_source_path is record_source_path for `path`, an entry of the
+// directory listing that `real_dir` is the os.real_path of. Unless the entry is
+// a symbolic link, os.real_path(path) is `real_dir` joined with the entry's own
+// name, which one lstat confirms: resolving every listed file anew walked all of
+// its parent directories once per file.
+pub fn (mut a FlatAst) record_listed_source_path(path string, real_dir string) string {
 	if a.source_paths_frozen {
 		return a.real_source_path(path)
 	}
 	if resolved := a.resolved_source_paths[path] {
 		return resolved
 	}
-	resolved := a.resolve_listed_source_path(path)
+	resolved := listed_real_path(path, real_dir)
 	a.resolved_source_paths[path] = resolved
 	return resolved
 }
 
-fn (mut a FlatAst) resolve_listed_source_path(path string) string {
+// listed_real_path returns os.real_path(path) for an entry of the directory
+// that `real_dir` is the os.real_path of.
+fn listed_real_path(path string, real_dir string) string {
 	$if windows {
 		return os.real_path(path)
+	} $else {
+		base := os.file_name(path)
+		if base in ['', '.', '..'] || real_dir.len == 0 || !os.is_abs_path(real_dir) {
+			return os.real_path(path)
+		}
+		st := os.lstat(path) or { return os.real_path(path) }
+		if st.get_filetype() == .symbolic_link {
+			return os.real_path(path)
+		}
+		return if real_dir.ends_with(os.path_separator) {
+			real_dir + base
+		} else {
+			real_dir + os.path_separator + base
+		}
 	}
-	sep := path.last_index_u8(`/`)
-	if sep <= 0 || sep == path.len - 1 {
-		return os.real_path(path)
-	}
-	name := path[sep + 1..]
-	if name == '.' || name == '..' {
-		return os.real_path(path)
-	}
-	// A link, or anything else that is not a plain file, resolves the slow way.
-	attr := os.lstat(path) or { return os.real_path(path) }
-	if attr.get_filetype() != .regular {
-		return os.real_path(path)
-	}
-	real_dir := a.record_source_path(path[..sep])
-	if real_dir.len == 0 || real_dir[0] != `/` {
-		return os.real_path(path)
-	}
-	if real_dir.len == 1 {
-		return '/' + name
-	}
-	return real_dir + '/' + name
 }
 
 // resolve_source_paths completes the table of resolved source paths with every

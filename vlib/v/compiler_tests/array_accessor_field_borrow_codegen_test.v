@@ -1,3 +1,4 @@
+// vtest ownership
 import os
 
 const array_accessor_borrow_vexe = @VEXE

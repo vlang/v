@@ -78,7 +78,7 @@ fn interface_method_param_types(a &flat.FlatAst, iface string, method string) []
 			for j in 0 .. field.children_count {
 				param := a.child_node(field, j)
 				if param.kind == .param {
-					params << param.typ
+					params << param.typ_text()
 				}
 			}
 			return params
@@ -96,7 +96,7 @@ fn fn_decl_param_pairs(a &flat.FlatAst, kind flat.NodeKind, name string) []strin
 		for i in 0 .. node.children_count {
 			param := a.child_node(&node, i)
 			if param.kind == .param {
-				pairs << '${param.value}:${param.typ}'
+				pairs << '${param.value}:${param.typ_text()}'
 			}
 		}
 		return pairs
@@ -721,10 +721,10 @@ fn test_local_sibling_types_are_predeclared_before_fields() {
 				continue
 			}
 			if node.value == local_a {
-				a_fields << '${field.value}:${field.typ}'
+				a_fields << '${field.value}:${field.typ_text()}'
 			}
 			if node.value == local_b {
-				b_fields << '${field.value}:${field.typ}'
+				b_fields << '${field.value}:${field.typ_text()}'
 			}
 		}
 	}
@@ -893,7 +893,7 @@ fn main() {
 fn test_normalized_option_result_fixed_array_type_names_parse_as_wrapped_arrays() {
 	mut a := flat.FlatAst.new()
 	tc := types.TypeChecker.new(&a)
-	opt := tc.parse_type('?int[2]')
+	opt := tc.parse_type(flat.source_type_id('?int[2]'))
 	assert opt is types.OptionType
 	if opt is types.OptionType {
 		assert opt.base_type is types.ArrayFixed
@@ -902,7 +902,7 @@ fn test_normalized_option_result_fixed_array_type_names_parse_as_wrapped_arrays(
 			assert opt.base_type.len == 2
 		}
 	}
-	res := tc.parse_type('!Foo[3]')
+	res := tc.parse_type(flat.source_type_id('!Foo[3]'))
 	assert res is types.ResultType
 	if res is types.ResultType {
 		assert res.base_type is types.ArrayFixed

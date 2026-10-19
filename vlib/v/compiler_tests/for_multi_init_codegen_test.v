@@ -7,7 +7,7 @@ const for_multi_init_vlib_dir = os.dir(for_multi_init_v3_dir)
 const for_multi_init_v3_src = os.join_path(for_multi_init_v3_dir, 'v.v')
 
 fn for_multi_init_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_for_multi_init_test_${os.getpid()}')
+	v3_bin := os.join_path(os.temp_dir(), 'v3_for_multi_init_test_${os.getpid()}') + $if windows { '.exe' } $else { '' }
 	if os.is_executable(v3_bin) {
 		return v3_bin
 	}

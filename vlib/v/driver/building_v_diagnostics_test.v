@@ -30,7 +30,12 @@ fn test_ordinary_v_v_file_has_the_same_checker_errors_as_app_v() {
 		assert v.exit_code != 0, v.output
 		assert app.output.contains('field `name` of struct `Foo` is immutable'), app.output
 		assert app.output.contains('`f` is immutable'), app.output
-		assert app.output.replace(os.real_path(app_file), '<input>') == v.output.replace(os.real_path(v_file),
+		// The compiler prints paths with forward slashes while `os.real_path()` returns
+		// backslashes on Windows, so normalise the needle to the printed form; otherwise
+		// the `replace` below never matches and the whole comparison fails.
+		app_needle := os.real_path(app_file).replace('\\', '/')
+		v_needle := os.real_path(v_file).replace('\\', '/')
+		assert app.output.replace(app_needle, '<input>') == v.output.replace(v_needle,
 			'<input>'), v.output
 		forced := os.exec([@VEXE, '-new-compiler', '-nocache', '-nocolor', '-building-v',
 			...(os.split_args(mode) or { panic(err) }), v_file])
