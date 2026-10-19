@@ -4547,7 +4547,8 @@ fn (mut t Transformer) monomorphize_ignored_nodes(decls map[string]GenericFnDecl
 				t.cur_module = t.node_module_or(i, t.cur_module)
 				if !t.should_transform_fn(*node) {
 					t.collect_node_subtree_flags(flat.NodeId(i), mut nodes, mut stack)
-					if keep {
+					// Generic templates stay ignored even when a concrete instance becomes used.
+					if keep && !t.fn_decl_has_unresolved_generics(*node, t.cur_module) {
 						state.add(node.value, i, t.cur_module)
 					}
 				}
@@ -4612,7 +4613,9 @@ fn (mut t Transformer) monomorphize_ignored_nodes_since(decls map[string]Generic
 		t.cur_module = t.node_module_or(i, t.cur_module)
 		if !t.should_transform_fn(*node) {
 			t.collect_node_subtree_flags(flat.NodeId(i), mut nodes, mut stack)
-			state.add(node.value, i, t.cur_module)
+			if !t.fn_decl_has_unresolved_generics(*node, t.cur_module) {
+				state.add(node.value, i, t.cur_module)
+			}
 		}
 	}
 	state.scan_module = t.cur_module
