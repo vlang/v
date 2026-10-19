@@ -8,7 +8,7 @@ const generic_cross_v3_src = os.join_path(generic_cross_v3_dir, 'v.v')
 
 fn generic_cross_build_v3() string {
 	pid := os.getpid()
-	v3_bin := os.join_path(os.temp_dir(), 'v3_generic_cross_module_arg_test_${pid}')
+	v3_bin := os.join_path(os.temp_dir(), 'v3_generic_cross_module_arg_test_${pid}') + $if windows { '.exe' } $else { '' }
 	if os.is_executable(v3_bin) {
 		return v3_bin
 	}
@@ -218,11 +218,13 @@ fn test_static_generic_type_function_with_imported_generic_arg_uses_emitted_name
 	assert out == '61'
 }
 
+// The `mut` interface parameter of `use_sink` is named `value`: a parameter may not
+// share the name of its module, and the argument for it is passed with `mut`.
 fn test_generic_struct_interface_dispatch_emits_required_methods() {
 	v3_bin := generic_cross_build_v3()
 	out := generic_cross_run_project(v3_bin, 'generic_interface_dispatch', {
-		'sink/sink.v': 'module sink\n\npub interface Sink {\nmut:\n\tbegin() bool\n}\n\npub struct Box[W] {\nmut:\n\tvalue W\n\tcount int\n}\n\npub fn Box.new[W](value W) Box[W] {\n\treturn Box[W]{\n\t\tvalue: value\n\t}\n}\n\npub fn (mut b Box[W]) begin() bool {\n\tb.count++\n\treturn true\n}\n\npub fn use_sink(mut sink Sink) bool {\n\treturn sink.begin()\n}\n'
-		'user/user.v': 'module user\n\nimport sink\n\nstruct Local {\n\tn int\n}\n\npub fn run() int {\n\tmut boxed := sink.Box.new(Local{\n\t\tn: 29\n\t})\n\tok := sink.use_sink(&boxed)\n\treturn if ok { 29 } else { 0 }\n}\n'
+		'sink/sink.v': 'module sink\n\npub interface Sink {\nmut:\n\tbegin() bool\n}\n\npub struct Box[W] {\nmut:\n\tvalue W\n\tcount int\n}\n\npub fn Box.new[W](value W) Box[W] {\n\treturn Box[W]{\n\t\tvalue: value\n\t}\n}\n\npub fn (mut b Box[W]) begin() bool {\n\tb.count++\n\treturn true\n}\n\npub fn use_sink(mut value Sink) bool {\n\treturn value.begin()\n}\n'
+		'user/user.v': 'module user\n\nimport sink\n\nstruct Local {\n\tn int\n}\n\npub fn run() int {\n\tmut boxed := sink.Box.new(Local{\n\t\tn: 29\n\t})\n\tok := sink.use_sink(mut boxed)\n\treturn if ok { 29 } else { 0 }\n}\n'
 		'main.v':      'module main\n\nimport user\n\nfn main() {\n\tprintln(int_str(user.run()))\n}\n'
 	})
 	assert out == '29'
@@ -250,7 +252,7 @@ fn test_generic_comptime_if_uses_interface_implementation() {
 fn test_interface_generated_generic_method_body_preserves_cross_module_arg_type() {
 	v3_bin := generic_cross_build_v3()
 	out := generic_cross_run_project(v3_bin, 'generic_interface_nested_cross_module_arg', {
-		'sink/sink.v': 'module sink\n\npub interface Sink {\nmut:\n\tbegin() int\n}\n\npub struct Values[^a] {\n\tn int\n}\n\npub struct Helper {}\n\npub fn (helper Helper) apply[^a, W](values Values[^a], mut writer W) int {\n\t_ = helper\n\t_ = values\n\t_ = writer\n\treturn 31\n}\n\npub struct Counter[W] {\nmut:\n\twriter W\n}\n\npub struct Summary[W] {\nmut:\n\tcounter Counter[W]\n}\n\npub fn Summary.new[W](writer W) Summary[W] {\n\treturn Summary[W]{\n\t\tcounter: Counter[W]{\n\t\t\twriter: writer\n\t\t}\n\t}\n}\n\npub struct Box[^a, W] {\nmut:\n\tsummary &^a Summary[W]\n\thelper Helper\n}\n\npub fn (mut b Box[^a, W]) begin[^a]() int {\n\tvalues := Values[^a]{\n\t\tn: 1\n\t}\n\treturn b.helper.apply(values, mut b.summary.counter)\n}\n\npub fn use_sink(mut sink Sink) int {\n\treturn sink.begin()\n}\n\npub fn use_summary[^a, W](summary &^a Summary[W]) int {\n\tmut boxed := Box[^a, W]{\n\t\tsummary: summary\n\t\thelper: Helper{}\n\t}\n\treturn use_sink(&boxed)\n}\n'
+		'sink/sink.v': 'module sink\n\npub interface Sink {\nmut:\n\tbegin() int\n}\n\npub struct Values[^a] {\n\tn int\n}\n\npub struct Helper {}\n\npub fn (helper Helper) apply[^a, W](values Values[^a], mut writer W) int {\n\t_ = helper\n\t_ = values\n\t_ = writer\n\treturn 31\n}\n\npub struct Counter[W] {\nmut:\n\twriter W\n}\n\npub struct Summary[W] {\nmut:\n\tcounter Counter[W]\n}\n\npub fn Summary.new[W](writer W) Summary[W] {\n\treturn Summary[W]{\n\t\tcounter: Counter[W]{\n\t\t\twriter: writer\n\t\t}\n\t}\n}\n\npub struct Box[^a, W] {\nmut:\n\tsummary &^a Summary[W]\n\thelper Helper\n}\n\npub fn (mut b Box[^a, W]) begin[^a]() int {\n\tvalues := Values[^a]{\n\t\tn: 1\n\t}\n\treturn b.helper.apply(values, mut b.summary.counter)\n}\n\npub fn use_sink(mut value Sink) int {\n\treturn value.begin()\n}\n\npub fn use_summary[^a, W](summary &^a Summary[W]) int {\n\tmut boxed := Box[^a, W]{\n\t\tsummary: summary\n\t\thelper: Helper{}\n\t}\n\treturn use_sink(mut boxed)\n}\n'
 		'user/user.v': 'module user\n\nimport sink\n\nstruct LocalWriter {\n\tn int\n}\n\npub fn run() int {\n\tmut summary := sink.Summary.new(LocalWriter{\n\t\tn: 37\n\t})\n\treturn sink.use_summary(&summary)\n}\n'
 		'main.v':      'module main\n\nimport user\n\nfn main() {\n\tprintln(int_str(user.run()))\n}\n'
 	})
@@ -269,8 +271,8 @@ fn test_generic_receiver_boxes_lifetime_struct_for_interface_dispatch() {
 fn test_generated_generic_body_late_transforms_lifetime_helper() {
 	v3_bin := generic_cross_build_v3()
 	out := generic_cross_run_project(v3_bin, 'generic_interface_late_lifetime_helper', {
-		'sink/sink.v': "module sink\n\npub interface Sink {\nmut:\n\tbegin() int\n}\n\npub struct Link {\n\tn int\n}\n\npub struct Cache[^a] {\n\ttag &^a string\nmut:\n\tlink ?Link\n}\n\npub fn Cache.new[^a](tag &^a string) Cache[^a] {\n\treturn Cache[^a]{\n\t\ttag: tag\n\t}\n}\n\nfn marker_text() string {\n\treturn 'cache'\n}\n\nfn default_link_text() string {\n\treturn '\${marker_text()}'\n}\n\nfn default_link_n() int {\n\t_ := default_link_text()\n\treturn 43\n}\n\npub fn (mut cache Cache[^a]) fill[^a]() {\n\tcache.link = Link{\n\t\tn: default_link_n()\n\t}\n}\n\npub fn (mut cache Cache[^a]) get[^a]() ?&Link {\n\tif cache.link == none {\n\t\tcache.fill()\n\t}\n\treturn unsafe { &cache.link? }\n}\n\npub struct Box[W] {\n\tvalue W\n}\n\npub fn Box.new[W](value W) Box[W] {\n\treturn Box[W]{\n\t\tvalue: value\n\t}\n}\n\npub fn (mut b Box[W]) begin() int {\n\t_ = b\n\tlabel := 'cache'\n\tmut cache := Cache.new(&label)\n\tlink := cache.get() or { return 0 }\n\treturn link.n\n}\n\npub fn use_sink(mut sink Sink) int {\n\treturn sink.begin()\n}\n"
-		'user/user.v': 'module user\n\nimport sink\n\nstruct Local {\n\tn int\n}\n\npub fn run() int {\n\tmut boxed := sink.Box.new(Local{\n\t\tn: 5\n\t})\n\treturn sink.use_sink(&boxed)\n}\n'
+		'sink/sink.v': "module sink\n\npub interface Sink {\nmut:\n\tbegin() int\n}\n\npub struct Link {\n\tn int\n}\n\npub struct Cache[^a] {\n\ttag &^a string\nmut:\n\tlink ?Link\n}\n\npub fn Cache.new[^a](tag &^a string) Cache[^a] {\n\treturn Cache[^a]{\n\t\ttag: tag\n\t}\n}\n\nfn marker_text() string {\n\treturn 'cache'\n}\n\nfn default_link_text() string {\n\treturn '\${marker_text()}'\n}\n\nfn default_link_n() int {\n\t_ := default_link_text()\n\treturn 43\n}\n\npub fn (mut cache Cache[^a]) fill[^a]() {\n\tcache.link = Link{\n\t\tn: default_link_n()\n\t}\n}\n\npub fn (mut cache Cache[^a]) get[^a]() ?&Link {\n\tif cache.link == none {\n\t\tcache.fill()\n\t}\n\treturn unsafe { &cache.link? }\n}\n\npub struct Box[W] {\n\tvalue W\n}\n\npub fn Box.new[W](value W) Box[W] {\n\treturn Box[W]{\n\t\tvalue: value\n\t}\n}\n\npub fn (mut b Box[W]) begin() int {\n\t_ = b\n\tlabel := 'cache'\n\tmut cache := Cache.new(&label)\n\tlink := cache.get() or { return 0 }\n\treturn link.n\n}\n\npub fn use_sink(mut value Sink) int {\n\treturn value.begin()\n}\n"
+		'user/user.v': 'module user\n\nimport sink\n\nstruct Local {\n\tn int\n}\n\npub fn run() int {\n\tmut boxed := sink.Box.new(Local{\n\t\tn: 5\n\t})\n\treturn sink.use_sink(mut boxed)\n}\n'
 		'main.v':      'module main\n\nimport user\n\nfn main() {\n\tprintln(int_str(user.run()))\n}\n'
 	})
 	assert out == '43'

@@ -3,8 +3,12 @@
 V has a powerful, concise ORM baked in! Create tables, insert records, manage relationships, all
 regardless of the DB driver you decide to use.
 
-Driver authors using the shared SQL generators can target SQLite, PostgreSQL, MySQL, and
-H2-backed connections with the built-in ORM dialect helpers.
+Driver authors using the shared SQL generators can target SQLite, PostgreSQL, MySQL, H2 and
+[vsql](https://github.com/elliotchance/vsql) connections with the built-in ORM dialect helpers.
+For `.vsql`, use `orm.orm_select_gen_with_dialect`, which spells a limit and an offset as
+`OFFSET n ROWS FETCH FIRST n ROWS ONLY`, and number the placeholders (`num: true`).
+`orm.orm_table_gen` then leaves out `IF NOT EXISTS` and indexes, which vsql does not have,
+and returns an error for `UNIQUE`, `DEFAULT` and `REFERENCES`, which it cannot declare.
 
 ## Deprecation notice: orm_fn
 

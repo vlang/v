@@ -1,0 +1,19 @@
+module main
+
+@[deprecated: 'use pub fn paint instead of <b>draw</b> & co']
+@[deprecated_after: '2999-01-01']
+fn draw(opts Options)
+fn Buttons.from() Buttons
+fn Buttons.zero() Buttons
+@[flag]
+enum Buttons {
+	left
+	right
+}
+@[inline]
+fn (b Buttons) press()
+@[params]
+struct Options {
+pub:
+	width int
+}

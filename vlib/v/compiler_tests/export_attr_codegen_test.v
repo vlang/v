@@ -7,7 +7,7 @@ const export_attr_vlib_dir = os.dir(export_attr_v3_dir)
 const export_attr_v3_src = os.join_path(export_attr_v3_dir, 'v.v')
 
 fn export_attr_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_export_attr_test_${os.getpid()}')
+	v3_bin := os.join_path(os.temp_dir(), 'v3_export_attr_test_${os.getpid()}') + $if windows { '.exe' } $else { '' }
 	if os.is_executable(v3_bin) {
 		return v3_bin
 	}
@@ -84,8 +84,9 @@ fn helper_unused() int {
 	c_code := os.read_file(bin_path + '.c') or { panic(err) }
 	// Imported module bodies and export wrappers live in the module-cache unit. Their
 	// declarations and the successful calls above prove they were rooted and linked.
+	// The function keeps V's 64-bit `int`; its export presents the C ABI's `int`.
 	assert c_code.contains('i64 expmod__exported_answer(void);'), c_code
-	assert c_code.contains('i64 raw_exported_answer(void);'), c_code
+	assert c_code.contains('int raw_exported_answer(void);'), c_code
 	assert c_code.contains('raw_exported_answer()'), c_code
 	assert c_code.contains('take_callback(expmod__exported_answer)'), c_code
 }
@@ -138,7 +139,7 @@ fn main() {
 	assert run.output.trim_space() == '7', run.output
 
 	c_code := os.read_file(bin_path + '.c') or { panic(err) }
-	assert c_code.contains('i64 raw_enabled_export(void) {'), c_code
+	assert c_code.contains('int raw_enabled_export(void) {'), c_code
 	assert !c_code.contains('raw_disabled_export'), c_code
 }
 
@@ -164,8 +165,8 @@ fn test_export_name_matching_natural_symbol_uses_function_directly() {
 		'main.v': "module main
 
 @[export: 'natural_name']
-fn natural_name() int {
-	return 1
+fn natural_name(value f64) f64 {
+	return value
 }
 
 fn main() {}
@@ -175,10 +176,88 @@ fn main() {}
 	compile := export_attr_compile(v3_bin, os.join_path(root, 'main.v'), bin_path)
 	assert compile.exit_code == 0, compile.output
 	c_code := os.read_file(bin_path + '.c') or { panic(err) }
-	assert c_code.count('i64 natural_name(void) {') == 1, c_code
+	assert c_code.count('double natural_name(double value) {') == 1, c_code
+	assert !c_code.contains('main__natural_name'), c_code
 }
 
-fn test_export_name_collision_with_libc_remapped_natural_symbol_is_rejected() {
+fn test_export_name_matching_natural_symbol_keeps_c_abi_int() {
+	v3_bin := export_attr_build_v3()
+	root := export_attr_project('natural_c_abi_int', {
+		'main.v': "module main
+
+@[export: 'natural_add']
+fn natural_add(left int, right int) int {
+	return left + right
+}
+
+@[export: 'renamed_add_export']
+fn renamed_add(left int, right int) int {
+	return left + right
+}
+
+fn take(cb fn (int, int) int) int {
+	return cb(40, 2)
+}
+
+fn main() {
+	println(natural_add(3_000_000_000, 1).str())
+	println(take(natural_add).str())
+	println(renamed_add(3_000_000_000, 2).str())
+}
+"
+	})
+	bin_path := os.join_path(root, 'app')
+	compile := export_attr_compile(v3_bin, os.join_path(root, 'main.v'), bin_path)
+	assert compile.exit_code == 0, compile.output
+	run := os.exec([bin_path])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '3000000001\n42\n3000000002', run.output
+	c_code := os.read_file(bin_path + '.c') or { panic(err) }
+	// An export presents the C ABI whether or not it is renamed: C callers pass and
+	// read C `int`. V callers keep the 64-bit function under an internal name.
+	assert c_code.contains('int renamed_add_export(int left, int right) {'), c_code
+	assert c_code.count('int natural_add(int left, int right) {') == 1, c_code
+	assert c_code.contains('i64 main__natural_add(i64 left, i64 right) {'), c_code
+	assert c_code.contains('return main__natural_add(left, right);'), c_code
+	assert c_code.contains('take(main__natural_add)'), c_code
+	assert !c_code.contains('i64 natural_add('), c_code
+}
+
+fn test_natural_name_export_links_from_c_object_file() {
+	$if windows {
+		return
+	}
+	cc := os.find_abs_path_of_executable('cc') or { return }
+	v3_bin := export_attr_build_v3()
+	root := export_attr_project('natural_object_file', {
+		'lib.v':  "module main
+
+@[export: 'natural_mul']
+pub fn natural_mul(left int, right int) int {
+	return left * right
+}
+"
+		'host.c': '#include <stdio.h>
+extern int natural_mul(int left, int right);
+int main(void) {
+	printf("%d\\n", natural_mul(-6, 7));
+	return 0;
+}
+'
+	})
+	object := os.join_path(root, 'lib.o')
+	compile := os.exec([v3_bin, '-gc', 'none', '-cc', cc, '-is_o', '-o', object,
+		os.join_path(root, 'lib.v')])
+	assert compile.exit_code == 0, compile.output
+	host := os.join_path(root, 'host')
+	link := os.exec([cc, '-o', host, os.join_path(root, 'host.c'), object, '-lm', '-lpthread'])
+	assert link.exit_code == 0, link.output
+	run := os.exec([host])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '-42', run.output
+}
+
+fn test_export_name_of_libc_remapped_natural_symbol_prefixes_main_function() {
 	v3_bin := export_attr_build_v3()
 	root := export_attr_project('libc_remapped_natural_collision', {
 		'main.v': "module main
@@ -192,15 +271,25 @@ fn exported_rint_collision() int {
 	return 2
 }
 
-fn main() {}
+fn main() {
+	println(rint().str())
+	println(exported_rint_collision().str())
+}
 "
 	})
-	compile := export_attr_compile(v3_bin, os.join_path(root, 'main.v'), os.join_path(root, 'app'))
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('export name `v_rint`'), compile.output
-	assert compile.output.contains('collides with `rint`'), compile.output
+	// A main-module function whose natural C symbol an export owns is prefixed in C
+	// instead of rejected, so both functions keep working.
+	bin_path := os.join_path(root, 'app')
+	compile := export_attr_compile(v3_bin, os.join_path(root, 'main.v'), bin_path)
+	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	assert !compile.output.contains('redefinition'), compile.output
+	run := os.exec([bin_path])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '1\n2', run.output
+	c_code := os.read_file(bin_path + '.c') or { panic(err) }
+	assert c_code.count('int v_rint(void) {') == 1, c_code
+	assert c_code.contains('return exported_rint_collision();'), c_code
 }
 
 fn test_export_main_collision_with_top_level_script_entry_is_rejected() {
@@ -400,7 +489,7 @@ fn main() {}
 	})
 	compile := export_attr_compile(v3_bin, os.join_path(root, 'main.v'), os.join_path(root, 'app'))
 	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('generic function `raw_generic` cannot be exported'), compile.output
+	assert compile.output.contains('generic functions cannot be exported'), compile.output
 }
 
 fn test_exported_function_must_name_params() {
@@ -418,7 +507,7 @@ fn main() {}
 	})
 	compile := export_attr_compile(v3_bin, os.join_path(root, 'main.v'), os.join_path(root, 'app'))
 	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('must name all parameters'), compile.output
+	assert compile.output.contains('functions with type only params can not have bodies'), compile.output
 }
 
 fn test_export_wrapper_fixed_array_return_uses_return_wrapper_type() {
@@ -497,7 +586,7 @@ pub struct App {}
 @[export: 'raw_show']
 pub fn (app &App) show(id int) veb.Result {
 	_ = id
-	return veb.Result{}
+	return ctx.text('ok')
 }
 
 fn main() {}
@@ -508,8 +597,8 @@ fn main() {}
 		c_path)
 	assert compile.exit_code == 0, compile.output
 	c_code := os.read_file(c_path) or { panic(err) }
-	assert c_code.contains('veb__Result raw_show(main__App* app, main__Context* ctx, i64 id);'), c_code
-	assert c_code.contains('veb__Result raw_show(main__App* app, main__Context* ctx, i64 id) {'), c_code
+	assert c_code.contains('veb__Result raw_show(main__App* app, main__Context* ctx, int id);'), c_code
+	assert c_code.contains('veb__Result raw_show(main__App* app, main__Context* ctx, int id) {'), c_code
 	assert c_code.contains('return App__show(app, ctx, id);'), c_code
 }
 
@@ -528,7 +617,7 @@ pub struct App {}
 
 @[export: 'raw_show_underscore']
 pub fn (app &App) show(_ int) veb.Result {
-	return veb.Result{}
+	return ctx.text('ok')
 }
 
 fn main() {}
@@ -539,8 +628,8 @@ fn main() {}
 		c_path)
 	assert compile.exit_code == 0, compile.output
 	c_code := os.read_file(c_path) or { panic(err) }
-	assert c_code.contains('veb__Result raw_show_underscore(main__App* app, main__Context* ctx, i64 _2);'), c_code
-	assert c_code.contains('veb__Result raw_show_underscore(main__App* app, main__Context* ctx, i64 _2) {'), c_code
+	assert c_code.contains('veb__Result raw_show_underscore(main__App* app, main__Context* ctx, int _2);'), c_code
+	assert c_code.contains('veb__Result raw_show_underscore(main__App* app, main__Context* ctx, int _2) {'), c_code
 	assert c_code.contains('return App__show(app, ctx, _2);'), c_code
 	assert !c_code.contains('return App__show(app, ctx, _1);'), c_code
 }

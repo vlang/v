@@ -9,12 +9,12 @@ const shared_flag_v3_src = os.join_path(shared_flag_v3_dir, 'v.v')
 
 // test_shared_flag_builds_no_main_module validates this v3 regression case.
 fn test_shared_flag_builds_no_main_module() {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_shared_flag_test_${os.getpid()}')
+	v3_bin := os.join_path(os.vtmp_dir(), 'v3_shared_flag_test_${os.getpid()}')
 	build :=
 		os.exec([shared_flag_vexe, '-gc', 'none', '-o', v3_bin, '${shared_flag_v3_src}'])
 	assert build.exit_code == 0, build.output
 
-	tmp_dir := os.join_path(os.temp_dir(), 'v3_shared_flag_module_${os.getpid()}')
+	tmp_dir := os.join_path(os.vtmp_dir(), 'v3_shared_flag_module_${os.getpid()}')
 	os.rmdir_all(tmp_dir) or {}
 	os.mkdir_all(tmp_dir)!
 	defer {
@@ -72,7 +72,7 @@ pub fn answer() int {
 	generated_coverage_c := os.read_file(coverage_c)!
 	assert generated_coverage_c.contains('void _vcleanup_caller(void) {\n\tstatic bool once = false;\n\tif (once) { return; }\n\tonce = true;\n\t_vcleanup();\n\tv3_write_coverage_stats();\n}'), generated_coverage_c
 
-	out_lib := os.join_path(os.temp_dir(), 'v3_shared_flag_module_${os.getpid()}')
+	out_lib := os.join_path(os.vtmp_dir(), 'v3_shared_flag_module_${os.getpid()}')
 	out_path := out_lib + shared_flag_library_postfix()
 	os.rm(out_path) or {}
 	defer {
@@ -80,8 +80,10 @@ pub fn answer() int {
 	}
 
 	compile :=
-		os.exec([v3_bin, '-coverage', coverage_dir, '-shared', '-o', '${out_lib}', tmp_dir])
+		os.exec([v3_bin, '-v', '-coverage', coverage_dir, '-shared', '-o', '${out_lib}', tmp_dir])
 	assert compile.exit_code == 0, compile.output
+	// `-v` is what makes the driver print the resolved C command line; without it the
+	// output is empty and the assertions below have nothing to inspect.
 	assert compile.output.contains('-shared'), compile.output
 	assert !compile.output.contains('_main not defined'), compile.output
 	assert os.exists(out_path)
@@ -105,7 +107,12 @@ pub fn answer() int {
 		assert handle != unsafe { nil }, dl.dlerror()
 		assert os.read_file(lifecycle_path)! == 'init\n'
 		assert dl.close(handle), dl.dlerror()
-		assert os.read_file(lifecycle_path)! == 'init\ncleanup\n'
+		// dyld does not unload an image with thread-local variables or Objective-C image
+		// info, and a V shared library has both (`MH_HAS_TLV_DESCRIPTORS`), so on macOS
+		// `dlclose` runs no destructor: the cleanup only runs when the process exits.
+		$if !macos {
+			assert os.read_file(lifecycle_path)! == 'init\ncleanup\n'
+		}
 	}
 }
 
@@ -116,12 +123,12 @@ fn test_shared_flag_builds_object_dependencies_as_pic() {
 		return
 	}
 	pid := os.getpid()
-	v3_bin := os.join_path(os.temp_dir(), 'v3_shared_flag_pic_test_${pid}')
+	v3_bin := os.join_path(os.vtmp_dir(), 'v3_shared_flag_pic_test_${pid}')
 	build :=
 		os.exec([shared_flag_vexe, '-gc', 'none', '-o', v3_bin, '${shared_flag_v3_src}'])
 	assert build.exit_code == 0, build.output
 
-	tmp_dir := os.join_path(os.temp_dir(), 'v3_shared_flag_pic_${pid}')
+	tmp_dir := os.join_path(os.vtmp_dir(), 'v3_shared_flag_pic_${pid}')
 	os.rmdir_all(tmp_dir) or {}
 	os.mkdir_all(tmp_dir)!
 	defer {
@@ -177,17 +184,15 @@ pub fn answer() int {
 	out_lib := os.join_path(tmp_dir, 'shared_pic_dep')
 	out_path := out_lib + shared_flag_library_postfix()
 	compile_shared :=
-		os.exec([v3_bin, '-shared', '-o', '${out_lib}', lib_dir])
+		os.exec([v3_bin, '-v', '-shared', '-o', '${out_lib}', lib_dir])
 	assert compile_shared.exit_code == 0, compile_shared.output
 	assert compile_shared.output.contains('-fPIC'), compile_shared.output
 	cached_after_shared := shared_flag_cached_objects(obj_path)
-	$if macos {
-		// Cached development executables already link through a PIC dylib on macOS,
-		// so the normal and shared builds can reuse the same dependency object.
-		assert cached_after_shared.len == 1, '${compile_shared.output}\n${cached_after_shared}'
-	} $else {
-		assert cached_after_shared.len == 2, '${compile_shared.output}\n${cached_after_shared}'
-	}
+	// A shared build compiles its objects with `-fvisibility=hidden` on Linux and macOS
+	// (9c630fb2e1), which is part of the cached object's key, so even on macOS, where the
+	// development executable already links through a PIC dylib, the shared build gets an
+	// object of its own.
+	assert cached_after_shared.len == 2, '${compile_shared.output}\n${cached_after_shared}'
 	assert os.exists(out_path)
 	assert os.file_size(out_path) > 0
 }

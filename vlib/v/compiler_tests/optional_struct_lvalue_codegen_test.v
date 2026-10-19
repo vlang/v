@@ -129,7 +129,6 @@ fn mutate_explicit_or_none() {
 		opt: none
 	}
 	(holder.opt or {
-		assert err.msg() == ''
 		println('none')
 		return
 	}).name = 'bad'
@@ -172,7 +171,6 @@ fn main() {
 	assert holder.opt?.name == 'ok'
 	mutate_explicit_or_none()
 	guarded_failure() or {
-		assert err.msg() == ''
 		println('ok')
 		return
 	}
@@ -206,8 +204,9 @@ fn main() {
 	assert c_code.contains('if (!m.ok)'), c_code
 	assert c_code.contains('if (!holder.opt.ok)'), c_code
 	assert c_code.contains('if (!outer.ok)'), c_code
-	assert c_code.contains('IError err = holder.opt.err')
-		|| c_code.contains('IError err = holder->opt.err'), c_code
+	// An Option has no error storage, so its `or` block binds no `err`.
+	assert !c_code.contains('holder.opt.err'), c_code
+	assert !c_code.contains('holder->opt.err'), c_code
 	for line in c_code.split_into_lines() {
 		assert !(line.contains('__or_val_') && line.contains('.name =') && !line.contains('= (')), line
 		assert !(line.contains('__or_val_') && line.contains('.inner.name =')

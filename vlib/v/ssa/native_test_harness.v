@@ -46,7 +46,7 @@ fn (mut b Builder) build_native_test_main(test_files []string, run_only []string
 		b.register_synthetic_function('main', b.i32_type, [])
 	}
 	b.cur_func = main_id
-	b.cur_func_ret_type = 'int'
+	b.cur_func_ret_type = flat.source_type_int
 	b.cur_module = 'main'
 	b.reset_function_state()
 	b.cur_block = b.m.add_block(main_id, 'entry')

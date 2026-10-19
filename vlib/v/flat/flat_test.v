@@ -20,7 +20,7 @@ fn test_discard_unused_capacity_allows_arena_teardown() {
 fn test_discard_unused_capacity_preserves_live_nodes_and_later_appends() {
 	mut a := FlatAst.new()
 	// Dirty the full backing, then discard the former worker append regions.
-	a.nodes = []Node{len: 50_000, init: Node{ kind: .ident, value: 'live', typ: 'int' }}
+	a.nodes = []Node{len: 50_000, init: Node{ kind: .ident, value: 'live', typ: source_type_id('int') }}
 	a.children = []NodeId{len: 400_000, init: NodeId(17)}
 	a.nodes.trim(73)
 	a.children.trim(113)
@@ -35,7 +35,7 @@ fn test_discard_unused_capacity_preserves_live_nodes_and_later_appends() {
 	for node in a.nodes {
 		assert node.kind == .ident
 		assert node.value == 'live'
-		assert node.typ == 'int'
+		assert node.typ_text() == 'int'
 	}
 	for child in a.children {
 		assert child == NodeId(17)
@@ -85,17 +85,79 @@ fn test_node_uses_compact_header_and_uncommon_payload() {
 	assert sizeof(NodeId) == 4
 }
 
+fn test_debugger_source_types_are_copied_and_preserved_independently_of_display_metadata() {
+	mut ids := [source_type_int, source_type_id('Alias')]
+	mut node := Node{ kind: .debugger_stmt, payload: node_payload_with_debugger_types(['marker'], ids) }
+	ids[0] = source_type_bool
+	assert node.debugger_value_type_ids() == [source_type_int, source_type_id('Alias')]
+	assert node.debugger_value_type_ids().data == node.payload_ptr().debugger_value_types.ids.data
+	node.set_generic_params(['marker', 'value', 'display'])
+	node.set_generic_params_and_constraints(['marker', 'value', 'display'], []string{})
+	assert node.debugger_value_type_ids() == [source_type_int, source_type_id('Alias')]
+	cloned := node.clone_owned()
+	node.set_debugger_value_type_ids([source_type_string])
+	assert cloned.debugger_value_type_ids() == [source_type_int, source_type_id('Alias')]
+	mut ast := FlatAst.new()
+	id := ast.add_node(cloned)
+	ast.intern_node_texts_range(0, ast.nodes.len)
+	ast.intern_node_texts_at([int(id)])
+	assert ast.node(id).debugger_value_type_ids() == [source_type_int, source_type_id('Alias')]
+	mut bare := Node{ kind: .debugger_stmt }
+	bare.set_debugger_value_type_ids([source_type_u64])
+	bare_id := ast.add_node(bare)
+	ast.intern_node_texts_range(int(bare_id), ast.nodes.len)
+	ast.intern_node_texts_at([int(bare_id)])
+	assert ast.node(bare_id).debugger_value_type_ids() == [source_type_u64]
+	assert ast.node(bare_id).generic_params().len == 0
+}
+
+fn test_enum_backing_type_identity_survives_payload_replacement_and_owned_cloning() {
+	mut node := Node{ kind: .enum_decl, typ: source_type_id('flag') }
+	assert node.enum_backing_type_id() == 0
+	backing := source_type_id('alias.UInt')
+	node.set_enum_backing_type_id(backing)
+	assert node.enum_backing_type_id() == backing
+	assert node.generic_params().len == 0
+	node.set_generic_params(['json_as_number'])
+	assert node.enum_backing_type_id() == backing
+	assert node.generic_params() == ['json_as_number']
+	node.set_generic_params_and_constraints(['json_as_number'], []string{})
+	assert node.enum_backing_type_id() == backing
+	cloned := node.clone_owned()
+	mut ast := FlatAst.new()
+	id := ast.add_node(cloned)
+	ast.intern_node_texts_range(0, ast.nodes.len)
+	assert ast.node(id).enum_backing_type_id() == backing
+	ast.intern_node_texts_at([int(id)])
+	assert ast.node(id).enum_backing_type_id() == backing
+	assert ast.node(id).typ == source_type_id('flag')
+	assert ast.node(id).generic_params() == ['json_as_number']
+	node.set_enum_backing_type_id(0)
+	assert node.enum_backing_type_id() == 0
+	assert node.generic_params() == ['json_as_number']
+	assert cloned.enum_backing_type_id() == backing
+	mut bare := Node{ kind: .enum_decl }
+	bare.set_enum_backing_type_id(source_type_u64)
+	assert bare.clone_owned().enum_backing_type_id() == source_type_u64
+	bare_id := ast.add_node(bare)
+	ast.intern_node_texts_range(int(bare_id), ast.nodes.len)
+	ast.intern_node_texts_at([int(bare_id)])
+	assert ast.node(bare_id).enum_backing_type_id() == source_type_u64
+	assert ast.node(bare_id).generic_params().len == 0
+}
+
 fn test_canonical_comptime_type_payload_survives_owned_cloning() {
 	node := Node{
 		kind:    .comptime_for
-		typ:     'config.Cfg'
+		typ:     source_type_id('config.Cfg')
 		payload: canonical_comptime_type_payload
 	}
 	assert !isnil(node.payload_ptr())
 	assert node.generic_constraints().len == 0
+	assert node.generic_constraint_ids().len == 0
 	assert node.generic_params().len == 0
 	cloned := node.clone_owned()
-	assert cloned.typ == 'config.Cfg'
+	assert cloned.typ_text() == 'config.Cfg'
 	assert cloned.payload == canonical_comptime_type_payload
 	assert !isnil(cloned.payload_ptr())
 	assert cloned.generic_params().len == 0
@@ -108,7 +170,7 @@ fn test_canonical_comptime_type_payload_survives_owned_cloning() {
 fn test_node_owned_clone_preserves_semantic_flags_and_payload() {
 	node := Node{
 		value:          'value'
-		typ:            '[]string'
+		typ:            source_type_id('[]string')
 		payload:        node_payload(['T'])
 		children_start: 12
 		children_count: 3
@@ -119,7 +181,7 @@ fn test_node_owned_clone_preserves_semantic_flags_and_payload() {
 	}
 	cloned := node.clone_owned()
 	assert cloned.value == node.value
-	assert cloned.typ == node.typ
+	assert cloned.typ_text() == node.typ_text()
 	assert cloned.generic_params() == ['T']
 	assert cloned.children_start == node.children_start
 	assert cloned.children_count == node.children_count
@@ -177,7 +239,7 @@ fn test_text_intern_passes_detach_reused_source_storage() {
 		}
 		ast.add_node(Node{
 			value:   borrowed
-			typ:     borrowed
+			typ:     source_type_id(borrowed)
 			payload: node_payload_with_constraints([borrowed, 'U'], [borrowed, ''])
 		})
 		if i % 2 == 0 {
@@ -189,11 +251,13 @@ fn test_text_intern_passes_detach_reused_source_storage() {
 	for i, name in names {
 		node := ast.nodes[i]
 		assert node.value == name
-		assert node.typ == name
+		assert node.typ_text() == name
 		assert node.generic_params() == [name, 'U']
 		assert node.generic_constraints() == [name, '']
-		assert ast.text(TextId(node.type_text_id())) == name
-		assert node.value.str == node.typ.str
+		assert node.generic_constraint_ids() == [source_type_id(name), u32(0)]
+		assert source_type_name(node.type_text_id()) == name
+		assert node.typ == source_type_id(name)
+		assert node.typ_text().str == source_type_name(source_type_id(name)).str
 	}
 }
 
@@ -210,7 +274,7 @@ fn test_text_intern_passes_can_share_probe_caches() {
 		}
 		ast.add_node(Node{
 			value: borrowed
-			typ:   borrowed
+			typ:   source_type_id(borrowed)
 		})
 		// One pair of caches serves every pass, as a parser's does for the files of a
 		// batch: a pass must not reuse what the one before it found at the same address.
@@ -219,9 +283,10 @@ fn test_text_intern_passes_can_share_probe_caches() {
 	for i, name in names {
 		node := ast.nodes[i]
 		assert node.value == name
-		assert node.typ == name
-		assert ast.text(TextId(node.type_text_id())) == name
-		assert node.value.str == node.typ.str
+		assert node.typ_text() == name
+		assert source_type_name(node.type_text_id()) == name
+		assert node.typ == source_type_id(name)
+		assert node.typ_text().str == source_type_name(source_type_id(name)).str
 		assert node.value.str != borrowed.str
 	}
 	assert ast.nodes[0].value.str == ast.nodes[3].value.str

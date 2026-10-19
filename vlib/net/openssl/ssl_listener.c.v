@@ -211,7 +211,7 @@ pub fn (mut conn SSLConn) accept_handshake() ! {
 		if err_res == .ssl_error_want_read {
 			timeout := ssl_remaining_timeout(deadline)
 			if timeout <= 0 {
-				return net.err_timed_out
+				return error_with_code(net.err_timed_out.msg(), net.err_timed_out.code())
 			}
 			conn.wait_for_read(timeout)!
 			continue
@@ -219,7 +219,7 @@ pub fn (mut conn SSLConn) accept_handshake() ! {
 		if err_res == .ssl_error_want_write {
 			timeout := ssl_remaining_timeout(deadline)
 			if timeout <= 0 {
-				return net.err_timed_out
+				return error_with_code(net.err_timed_out.msg(), net.err_timed_out.code())
 			}
 			conn.wait_for_write(timeout)!
 			continue

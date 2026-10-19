@@ -47,8 +47,10 @@ fn main() {
 
 	generated := os.read_file(bin + '.c') or { panic(err) }
 	compact := generated.replace('\t', '').replace(' ', '').replace('\n', '')
-	assert compact.contains('intgnums[3]'), generated
-	assert compact.contains('memmove(gnums,'), generated
+	// A constant fixed-array global is initialized at file scope, and V `int` is
+	// `i64` on 64-bit targets.
+	assert compact.contains('i64gnums[3]={6,7,8};'), generated
+	assert !compact.contains('memmove(gnums,'), generated
 	assert compact.contains('=gnums['), generated
 	assert !compact.contains('array_get(gnums,'), generated
 }
@@ -89,5 +91,7 @@ pub fn sum() int {
 
 	generated := os.read_file(bin + '.c') or { panic(err) }
 	compact := generated.replace('\t', '').replace(' ', '').replace('\n', '')
-	assert compact.contains('memmove(m__table,'), generated
+	// `seed` resolves to the const of module `m` in the file-scope initializer.
+	assert compact.contains('i64m__table[2]={5,0};'), generated
+	assert !compact.contains('memmove(m__table,'), generated
 }

@@ -25,30 +25,30 @@ fn ordinary_escape_fixture_c(mode string, prescreen bool) string {
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.ordinary_escape_precheck = prescreen
 	t.cur_module = 'main'
-	param := a.add_node(flat.Node{ kind: .param, value: 'input', typ: 'int' })
+	param := a.add_node(flat.Node{ kind: .param, value: 'input', typ: flat.source_type_int })
 	value := t.make_ident('input')
 	tc.register_synth_type(value, types.Type(types.int_))
-	decl := t.make_decl_assign_typed('value', value, 'int')
+	decl := t.make_decl_assign_typed('value', value, flat.source_type_int)
 	mut stmts := [decl]
 	if mode == 'call' {
-		call := t.make_call_typed('identity', [t.make_ident('value')], 'int')
+		call := t.make_call_typed('identity', [t.make_ident('value')], flat.source_type_int)
 		stmts << t.make_expr_stmt(call)
 	} else if mode == 'aggregate' {
-		array := escape_prescreen_node(mut a, flat.Node{ kind: .array_literal, typ: '[]int' }, [
+		array := escape_prescreen_node(mut a, flat.Node{ kind: .array_literal, typ: flat.source_type_id('[]int') }, [
 			t.make_ident('value'),
 			t.make_int_literal(2),
 		])
-		stmts << t.make_decl_assign_typed('values', array, '[]int')
+		stmts << t.make_decl_assign_typed('values', array, flat.source_type_id('[]int'))
 	} else if mode == 'branch' {
 		cond := a.add_val(.bool_literal, 'true')
-		then_block := t.make_block([t.make_return(t.make_int_literal(3), 'int')])
-		else_block := t.make_block([t.make_return(t.make_int_literal(4), 'int')])
+		then_block := t.make_block([t.make_return(t.make_int_literal(3), flat.source_type_int)])
+		else_block := t.make_block([t.make_return(t.make_int_literal(4), flat.source_type_int)])
 		stmts << escape_prescreen_node(mut a, flat.Node{ kind: .if_expr }, [cond, then_block,
 			else_block])
 	}
-	stmts << t.make_return(t.make_ident('value'), 'int')
+	stmts << t.make_return(t.make_ident('value'), flat.source_type_int)
 	body := t.make_block(stmts)
-	fn_id := escape_prescreen_node(mut a, flat.Node{ kind: .fn_decl, value: 'compute', typ: 'int' }, [
+	fn_id := escape_prescreen_node(mut a, flat.Node{ kind: .fn_decl, value: 'compute', typ: flat.source_type_int }, [
 		param,
 		body,
 	])
@@ -95,23 +95,23 @@ fn test_ordinary_escape_prescreen_rejects_every_address_source_category() {
 		mut tc := types.TypeChecker.new(&a)
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
 		t.cur_module = 'main'
-		t.cur_fn_ret_type = 'int'
+		t.set_cur_fn_ret_type(flat.source_type_int)
 		value := t.make_ident('value')
 		mut source := value
 		match mode {
 			'address' {
-				t.set_var_type('value', 'int')
-				t.cur_fn_ret_type = '&int'
+				t.set_var_type('value', flat.source_type_int)
+				t.set_cur_fn_ret_type(flat.source_type_id('&int'))
 				source = t.make_prefix(.amp, value)
 				tc.register_synth_type(source, types.Type(types.Pointer{ base_type: types.Type(types.int_) }))
 			}
 			'selector' {
 				// Includes standalone bound methods, even without an explicit &.
-				source = t.make_selector(value, 'read', 'fn () int')
+				source = t.make_selector(value, 'read', flat.source_type_id('fn () int'))
 			}
 			'reference_loop' {
 				container := t.make_ident('items')
-				a.nodes[int(container)].typ = '[2]int'
+				a.nodes[int(container)].typ = flat.source_type_id('[2]int')
 				body := t.make_block([]flat.NodeId{})
 				source = escape_prescreen_node(mut a, flat.Node{ kind: .for_in_stmt, value: '3', op: .amp }, [
 					value,
@@ -131,7 +131,7 @@ fn test_ordinary_escape_prescreen_rejects_every_address_source_category() {
 				}, [body])
 			}
 			'spawn' {
-				call := t.make_call_typed('retain', [value], 'int')
+				call := t.make_call_typed('retain', [value], flat.source_type_int)
 				source = escape_prescreen_node(mut a, flat.Node{ kind: .spawn_expr }, [call])
 			}
 			else {
@@ -139,10 +139,10 @@ fn test_ordinary_escape_prescreen_rejects_every_address_source_category() {
 				param := match mode {
 					'pointer_param' { pointer }
 					'wrapped_pointer' {
-						types.Type(types.OptionType{ base_type: types.Type(types.Alias{ name: 'Ref', base_type: pointer }) })
+						types.Type(types.OptionType{ base_type: types.Type(types.Alias{ name_id: flat.source_type_id('Ref'), base_type: pointer }) })
 					}
 					'variadic_alias_pointer' {
-						types.Type(types.Array{ elem_type: types.Type(types.Alias{ name: 'Ref', base_type: pointer }) })
+						types.Type(types.Array{ elem_type: types.Type(types.Alias{ name_id: flat.source_type_id('Ref'), base_type: pointer }) })
 					}
 					'unknown_param' { types.Type(types.Unknown{ reason: 'unresolved signature' }) }
 					else { types.Type(types.int_) }
@@ -165,12 +165,12 @@ fn test_ordinary_escape_prescreen_rejects_every_address_source_category() {
 						value,
 					])
 				} else {
-					source = t.make_call_typed('retain', [value], 'int')
+					source = t.make_call_typed('retain', [value], flat.source_type_int)
 				}
 			}
 		}
 		body := if mode == 'address' {
-			t.make_block([t.make_return(source, '&int')])
+			t.make_block([t.make_return(source, flat.source_type_id('&int'))])
 		} else {
 			t.make_block([t.make_expr_stmt(source)])
 		}
@@ -199,23 +199,23 @@ fn test_ordinary_escape_prescreen_rejects_inferred_generic_reference_signature()
 	mut tc := types.TypeChecker.new(&a)
 	// The source placeholder T resolves to a scalar alias in the declaration
 	// parameter view, but the inferred call parameter is a fixed-array pointer.
-	tc.file_scope.insert('T', types.Type(types.Alias{ name: 'T', base_type: types.Type(types.int_) }))
+	tc.file_scope.insert('T', types.Type(types.Alias{ name_id: flat.source_type_id('T'), base_type: types.Type(types.int_) }))
 	tc.fn_param_types['retain'] = [types.Type(types.int_)]
 	tc.fn_ret_types['retain'] = types.Type(types.int_)
-	param := a.add_node(flat.Node{ kind: .param, value: 'arg', typ: 'T' })
+	param := a.add_node(flat.Node{ kind: .param, value: 'arg', typ: flat.source_type_id('T') })
 	fn_body := escape_prescreen_node(mut a, flat.Node{ kind: .block }, []flat.NodeId{})
 	_ = escape_prescreen_node(mut a, flat.Node{
 		kind:    .fn_decl
 		value:   'retain'
-		typ:     'int'
+		typ:     flat.source_type_int
 		payload: flat.node_payload(['T'])
 	}, [param, fn_body])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
-	t.set_var_type('value', '&[2]int')
+	t.set_var_type('value', flat.source_type_id('&[2]int'))
 	value := t.make_ident('value')
-	tc.register_synth_type(value, tc.parse_type('&[2]int'))
-	call := t.make_call_typed('retain', [value], 'int')
+	tc.register_synth_type(value, tc.parse_type(flat.source_type_id('&[2]int')))
+	call := t.make_call_typed('retain', [value], flat.source_type_int)
 	call_node := a.nodes[int(call)]
 	declared := t.call_param_types_for_node('retain', call_node)
 	assert declared.len == 1
@@ -260,22 +260,22 @@ fn test_ordinary_escape_proof_keeps_closure_cleanup_fallback_metadata() {
 	for mode in ['literal', 'selector', 'wrapped_selector', 'branch_literal'] {
 		mut a := flat.FlatAst.new()
 		mut tc := types.TypeChecker.new(&a)
-		tc.fn_param_types['Thing.read'] = [types.Type(types.Struct{ name: 'Thing' })]
+		tc.fn_param_types['Thing.read'] = [types.Type(types.Struct{ name_id: flat.source_type_id('Thing') })]
 		tc.fn_ret_types['Thing.read'] = types.Type(types.int_)
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
 		t.cur_module = 'main'
 		value := t.make_ident('value')
-		t.set_var_type('value', 'Thing')
-		tc.register_synth_type(value, types.Type(types.Struct{ name: 'Thing' }))
+		t.set_var_type('value', flat.source_type_id('Thing'))
+		tc.register_synth_type(value, types.Type(types.Struct{ name_id: flat.source_type_id('Thing') }))
 		mut creator := flat.empty_node
 		if mode in ['selector', 'wrapped_selector'] {
-			creator = t.make_selector(value, 'read', 'fn () int')
+			creator = t.make_selector(value, 'read', flat.source_type_id('fn () int'))
 			if mode == 'wrapped_selector' {
 				creator = escape_prescreen_node(mut a, flat.Node{ kind: .paren }, [creator])
 			}
 		} else {
 			literal_body := t.make_block([]flat.NodeId{})
-			creator = escape_prescreen_node(mut a, flat.Node{ kind: .fn_literal, typ: 'fn () int' }, [
+			creator = escape_prescreen_node(mut a, flat.Node{ kind: .fn_literal, typ: flat.source_type_id('fn () int') }, [
 				value,
 				literal_body,
 			])
@@ -290,7 +290,7 @@ fn test_ordinary_escape_proof_keeps_closure_cleanup_fallback_metadata() {
 				])
 			}
 		}
-		decl := t.make_decl_assign_typed('callback', creator, 'fn () int')
+		decl := t.make_decl_assign_typed('callback', creator, flat.source_type_id('fn () int'))
 		body := t.make_block([decl])
 		assert !t.mark_escaping_amp_ptrs([body]), mode
 		// Direct calls retain the full walk, with a real nonescaping creator.

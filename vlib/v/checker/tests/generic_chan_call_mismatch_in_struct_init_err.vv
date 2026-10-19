@@ -1,0 +1,15 @@
+fn identity_chan[T](ch chan T) chan T {
+	return ch
+}
+
+struct S {
+	c chan string
+}
+
+fn main() {
+	ch := chan int{cap: 2}
+	s := S{
+		c: identity_chan(ch)
+	}
+	println(s.c.len)
+}

@@ -2,7 +2,7 @@ module driver
 
 #include <windows.h>
 
-fn C.MoveFileExW(existing_file_name &u16, new_file_name &u16, flags u32) int
+fn C.MoveFileExW(existing_file_name &u16, new_file_name &u16, flags u32) i32
 
 // MOVEFILE_REPLACE_EXISTING makes `MoveFileExW` replace a file that already has the new name.
 const windows_movefile_replace_existing = u32(1)

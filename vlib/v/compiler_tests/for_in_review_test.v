@@ -8,7 +8,7 @@ const for_in_review_vlib_dir = os.dir(for_in_review_v3_dir)
 const for_in_review_v3_src = os.join_path(for_in_review_v3_dir, 'v.v')
 
 fn for_in_review_v3_bin_path() string {
-	return os.join_path(os.temp_dir(), 'v3_for_in_review_test')
+	return os.join_path(os.temp_dir(), 'v3_for_in_review_test') + $if windows { '.exe' } $else { '' }
 }
 
 fn testsuite_begin() {

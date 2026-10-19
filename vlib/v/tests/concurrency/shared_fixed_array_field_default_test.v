@@ -2,14 +2,16 @@
 // array member, so an omitted one has to be initialized inside the compound
 // literal, where the wrapper is allocated. Copying it afterwards, the way a plain
 // fixed-array default is copied, would memcpy into a null pointer.
-//
-// Note: a `shared` fixed-array field with no default is not zero-initialized, on
-// master as much as here. That is a separate bug, so nothing below relies on it.
 struct Holder {
 mut:
 	plain [2]int        = [1, 2]!
 	vals  shared [2]int = [3, 4]!
 	other int
+}
+
+struct NoDefault {
+mut:
+	vals shared [3]int
 }
 
 fn test_an_omitted_shared_fixed_array_default_is_applied() {
@@ -41,4 +43,13 @@ fn test_a_plain_fixed_array_default_beside_a_shared_one() {
 	rlock h.vals {
 		assert h.vals[1] == 4
 	}
+}
+
+fn test_a_shared_fixed_array_field_without_a_default_is_zeroed() {
+	h := NoDefault{}
+	mut vals := [7, 7, 7]!
+	rlock h.vals {
+		vals = h.vals
+	}
+	assert vals == [0, 0, 0]!
 }

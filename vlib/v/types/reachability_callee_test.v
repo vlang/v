@@ -87,12 +87,15 @@ pub fn unused() {}
 		mut p := parser.Parser.new(pref.new_preferences())
 		a := p.parse_files([dep, main])
 		assert p.diagnostics.len == 0, '${case.name}: ${p.diagnostics}'
-		mut tc := TypeChecker.new(a)
-		tc.diagnostic_files[main] = true
-		tc.collect(a)
-		tc.collect_selected_file_called_fns()
-		mut actual := tc.selected_file_called_fns.keys()
-		actual.sort()
-		assert actual == case.expected, '${case.name}: ${actual}'
+		for prescreen in [false, true] {
+			mut tc := TypeChecker.new(a)
+			tc.method_suffix_prescreen = prescreen
+			tc.diagnostic_files[main] = true
+			tc.collect(a)
+			tc.collect_selected_file_called_fns()
+			mut actual := tc.selected_file_called_fns.keys()
+			actual.sort()
+			assert actual == case.expected, '${case.name}: ${actual}'
+		}
 	}
 }

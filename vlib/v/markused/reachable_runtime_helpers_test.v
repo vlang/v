@@ -86,7 +86,7 @@ fn main() {
 
 fn test_runtime_helpers_keep_generated_flag_enum_support() {
 	mut a := flat.FlatAst.new()
-	a.add_node(flat.Node{ kind: .enum_decl, value: 'Flags', typ: 'flag' })
+	a.add_node(flat.Node{ kind: .enum_decl, value: 'Flags', typ: flat.source_type_id('flag') })
 	mut tc := types.TypeChecker.new(&a)
 	mut scan := RuntimeHelpersScan{}
 	mut used := map[string]bool{}
@@ -391,13 +391,13 @@ fn main() { values := [1, 2, 3]; assert values[0] == 1 }
 	a.nodes << flat.Node{
 		kind:  .import_decl
 		value: 'builtin.closure'
-		typ:   '__v3_builtin_closure_runtime'
+		typ:   flat.source_type_id('__v3_builtin_closure_runtime')
 	}
 	used := mark_used(a, tc)
 	assert !used['closure.closure_init']
 	full, _ := mark_used_with_generic_usage_full_runtime(a, tc)
 	assert full['closure.closure_init']
-	a.nodes[a.nodes.len - 1].typ = 'closure'
+	a.nodes[a.nodes.len - 1].typ = flat.source_type_id('closure')
 	explicit := mark_used(a, tc)
 	assert explicit['closure.closure_init']
 }
@@ -436,7 +436,7 @@ fn main() { value := ${source}; assert value == Choice.first }
 		a.nodes << flat.Node{
 			kind:  .import_decl
 			value: 'builtin.closure'
-			typ:   '__v3_builtin_closure_runtime'
+			typ:   flat.source_type_id('__v3_builtin_closure_runtime')
 		}
 		used := mark_used(a, tc)
 		assert !used['closure.closure_init'], source
@@ -461,7 +461,7 @@ fn main() {
 	a.nodes << flat.Node{
 		kind:  .import_decl
 		value: 'builtin.closure'
-		typ:   '__v3_builtin_closure_runtime'
+		typ:   flat.source_type_id('__v3_builtin_closure_runtime')
 	}
 	used := mark_used(a, tc)
 	assert used['AliasChoice.number']
@@ -486,7 +486,7 @@ fn main() {
 		a.nodes << flat.Node{
 			kind:  .import_decl
 			value: 'builtin.closure'
-			typ:   '__v3_builtin_closure_runtime'
+			typ:   flat.source_type_id('__v3_builtin_closure_runtime')
 		}
 		used := mark_used(a, tc)
 		for helper in ['closure.closure_init', 'closure.closure_create_with_data',
@@ -510,7 +510,7 @@ fn main() { item := Item{ number: 3 }; ${source} }
 		a.nodes << flat.Node{
 			kind:  .import_decl
 			value: 'builtin.closure'
-			typ:   '__v3_builtin_closure_runtime'
+			typ:   flat.source_type_id('__v3_builtin_closure_runtime')
 		}
 		used := mark_used(a, tc)
 		assert used['Item.value'], source
@@ -544,7 +544,7 @@ fn main() { values := [1, 2, 3]; assert values[0] == 1; ${call} }
 		mut a := p.parse_files([path, main_path])
 		for mut node in a.nodes {
 			if node.kind == .import_decl && node.value == 'builtin.closure' {
-				node.typ = '__v3_builtin_closure_runtime'
+				node.typ = flat.source_type_id('__v3_builtin_closure_runtime')
 			}
 		}
 		mut tc := types.TypeChecker.new(a)
@@ -610,23 +610,23 @@ ${body}
 		tc.fn_ret_types['math.sin'] = types.Type(types.f64_)
 		tc.fn_ret_types['math.small'] = types.Type(types.f32_)
 		tc.fn_ret_types['math.values'] = types.Type(types.Array{ elem_type: types.Type(types.f64_) })
-		tc.type_aliases['dep.Number'] = 'f64'
+		tc.type_aliases.set('dep.Number', 'f64')
 		tc.type_alias_modules['dep.Number'] = 'dep'
-		tc.type_aliases['other.Number'] = 'int'
+		tc.type_aliases.set('other.Number', 'int')
 		tc.type_alias_modules['other.Number'] = 'other'
 		tc.fn_ret_types['math.alias_value'] = types.Type(types.Alias{
-			name:      'dep.Number'
+			name_id:   flat.source_type_id('dep.Number')
 			base_type: types.Type(types.f64_)
 		})
 		tc.cur_module = 'unrelated'
 		tc.cur_file = 'unrelated.v'
 		tc.register_file_import('dep', 'other')
-		assert types.unalias_type(tc.parse_type('dep.Number')) == types.Type(types.int_)
-		assert types.unalias_type(tc.parse_canonical_type('dep.Number')) == types.Type(types.f64_)
+		assert types.unalias_type(tc.parse_type(flat.source_type_id('dep.Number'))) == types.Type(types.int_)
+		assert types.unalias_type(tc.parse_canonical_type(flat.source_type_id('dep.Number'))) == types.Type(types.f64_)
 		collector := CallCollector{ a: a, tc: &tc }
 		mut calls := []string{}
 		mut local_values := map[string]bool{}
-		mut local_types := map[string]string{}
+		mut local_types := flat.TypeTextBindings.from_names({})
 		for file in a.nodes {
 			if file.kind != .file { continue }
 			for i in 0 .. file.children_count {

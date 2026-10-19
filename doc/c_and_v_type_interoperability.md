@@ -131,6 +131,12 @@ C functions, that accept `int * p` or `int arr[]` parameters.
 The type of a V function, with no receiver, is equivalent to a C function, 
 given that the types of the parameters are equivalent.
 
+Ordinary V functions named `sync` or `syncfs` can coexist with the system C functions.
+Their generated C names also remain distinct from V functions named `main__sync` or `main__syncfs`.
+Use the `C.` prefix to refer to the C function.
+For Linux bindings that declare `fn C.syncfs`, V enables GNU header declarations before
+including C headers, so `<unistd.h>` supplies the `syncfs` prototype.
+
 When a V function returns more than one value, the C function returns a struct.
 For example, these functions have equivalent types:
 ```v ignore

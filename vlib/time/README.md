@@ -12,6 +12,9 @@ V's `time` module, provides utilities for working with time and dates:
 Dates before year 1 use the proleptic Gregorian calendar with astronomical year numbering: year
 0 is 1 BC and is a leap year. Unix timestamp and day-offset conversions preserve dates at the
 400-year cycle boundaries before year 0, including March 1 and 2 of years -400, -800 and -1200.
+`days_from_unix_epoch`, `day_of_week` and `Time.week_of_year()` use the same calendar for
+year zero and negative years. Weekdays remain 1 (Monday) through 7 (Sunday), and ISO week
+numbers repeat every 400 years. The zero `Time` value has Unix timestamp `-62167219200`.
 
 `time.ticks()` returns milliseconds since the UNIX epoch on Unix platforms. On Windows it
 returns a 64-bit count of milliseconds since system startup, which does not wrap after
@@ -107,6 +110,11 @@ or UTC `Time` values to that location's calendar time. `load_location` searches
 `ZONEINFO`, system zoneinfo paths, and V's installed `zoneinfo.zip`. Programs
 that need embedded time zone data (no system zoneinfo, portable binaries) can
 import `time.tzdata`.
+
+`load_location('Local')` uses the system time zone when `TZ` is unset. On POSIX,
+setting `TZ` to an empty string selects UTC. On Windows, `os.setenv('TZ', '', true)`
+removes `TZ`, so the local location uses the system time zone. To select UTC explicitly
+on either platform, use `load_location('UTC')` or set `TZ` to the POSIX rule `UTC0`.
 
 ```v
 import time
