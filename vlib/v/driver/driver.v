@@ -8907,9 +8907,14 @@ const v3_cache_compiler_runtime_inputs = [
 	'vlib/builtin/segfault_handler_nix.c',
 	'vlib/builtin/segfault_handler_nix.h',
 	'vlib/builtin/core_windows.c',
+	'vlib/builtin/core_windows.h',
+	'vlib/time/ticks_windows.c',
 	'vlib/time/ticks_windows.h',
+	'vlib/time/ticks_windows_api.h',
 	'vlib/v/winthread_helper.h',
+	'vlib/v/winthread_helper_windows.c',
 	'cmd/v/toolcache_windows_helpers.h',
+	'cmd/v/toolcache_windows_helpers.c',
 ]
 
 // v3_cache_compiler_runtime_inputs_identity identifies the files in
