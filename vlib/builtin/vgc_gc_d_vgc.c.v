@@ -6,6 +6,7 @@
 module builtin
 
 fn C.v3_vgc_mark_global_arrays()
+fn C.vgc_data_ranges(lo &usize, hi &usize, max int) int
 
 // ============================================================
 // GC Orchestration (translated from Go's runtime.gcStart, gcMarkDone, gcMarkTermination)
@@ -20,14 +21,55 @@ fn vgc_gc_start() {
 	if !C.vgc_atomic_cas_u32(&vgc_heap.gc_phase, &expected, vgc_phase_mark) {
 		return
 	}
+	// Threads cannot register or exit while their stacks are scanned.
+	C.vgc_mutex_lock(&vgc_heap.cache_lock)
+	// The collection runs below a frame that holds this thread's callee-saved registers, so
+	// that pointers the callers only kept in registers are seen by the stack scan.
+	C.vgc_call_with_registers_spilled(vgc_gc_run, unsafe { nil })
+	C.vgc_mutex_unlock(&vgc_heap.cache_lock)
+}
 
+// vgc_collect runs a full collection now (gc_collect()), unless the collector is disabled.
+// When another thread is collecting already, it waits for that collection instead.
+fn vgc_collect() {
+	if C.vgc_atomic_load_u32(&vgc_heap.gc_enabled) == 0 {
+		return
+	}
+	vgc_ensure_registered()
+	if C.vgc_atomic_load_u32(&vgc_heap.gc_stop_flag) != 0 {
+		vgc_safepoint()
+	}
+	vgc_gc_start()
+	if C.vgc_atomic_load_u32(&vgc_heap.gc_stop_flag) != 0 {
+		vgc_safepoint()
+	}
+}
+
+// vgc_enable turns the automatic and the explicit collections on or off (gc_enable() and
+// gc_disable()).
+fn vgc_enable(on bool) {
+	C.vgc_atomic_store_u32(&vgc_heap.gc_enabled, if on { u32(1) } else { u32(0) })
+}
+
+fn vgc_is_enabled() bool {
+	return C.vgc_atomic_load_u32(&vgc_heap.gc_enabled) != 0
+}
+
+fn vgc_gc_run(_ voidptr) {
 	// === Phase 1: Sweep Termination (STW) ===
 	// Ensure any previous sweep is complete
 	vgc_sweep_finish()
 
 	// Stop the world for root scanning
 	// Set stop flag - threads will stop at next safepoint (allocation)
-	vgc_heap.gc_target_stops = u32(vgc_heap.ncaches - 1) // all threads except GC thread
+	self_idx := C.vgc_get_cache_idx()
+	mut targets := u32(0)
+	for i in 0 .. vgc_heap.ncaches {
+		if i != self_idx && unsafe { vgc_heap.caches[i].registered } {
+			targets++
+		}
+	}
+	vgc_heap.gc_target_stops = targets // all threads except GC thread
 	C.vgc_atomic_store_u32(&vgc_heap.gc_stopped_count, 0)
 	C.vgc_atomic_store_u32(&vgc_heap.gc_stop_flag, 1)
 
@@ -54,10 +96,6 @@ fn vgc_gc_start() {
 	// Scan roots: stacks + globals (conservative scanning)
 	vgc_mark_roots()
 
-	// Resume threads - they can allocate but write barrier is on
-	C.vgc_atomic_store_u32(&vgc_heap.gc_stop_flag, 0)
-	C.vgc_atomic_fence()
-
 	// Parallel mark: drain the work queue
 	vgc_parallel_mark()
 
@@ -79,7 +117,6 @@ fn vgc_gc_start() {
 	// === Phase 4: Sweep ===
 	vgc_heap.sweep_gen++
 	C.vgc_atomic_store_u32(&vgc_heap.sweep_done, 0)
-	vgc_heap.sweep_idx = 0
 	C.vgc_atomic_store_u32(&vgc_heap.gc_phase, vgc_phase_sweep)
 
 	// Sweep synchronously - it's fast and avoids race conditions
@@ -89,6 +126,10 @@ fn vgc_gc_start() {
 	vgc_update_trigger()
 
 	vgc_heap.gc_cycle++
+	// Resume the threads only now. Nothing marks the objects that they allocate, so they
+	// must not allocate before the sweep is done, and the sweep must not change a span
+	// while a thread allocates from it.
+	C.vgc_atomic_store_u32(&vgc_heap.gc_stop_flag, 0)
 	C.vgc_atomic_store_u32(&vgc_heap.gc_phase, vgc_phase_off)
 }
 
@@ -98,9 +139,16 @@ fn vgc_gc_start() {
 
 // Clear all mark bits before a new GC cycle
 fn vgc_clear_mark_bits() {
-	for i in 0 .. vgc_heap.nspans {
-		span := unsafe { vgc_heap.allspans[i] }
-		if span == unsafe { nil } || !span.in_use {
+	mut arena := 0
+	mut page := usize(0)
+	for {
+		span, next_arena, next_page := vgc_next_span(arena, page)
+		if span == unsafe { nil } {
+			break
+		}
+		arena = next_arena
+		page = next_page
+		if !span.in_use {
 			continue
 		}
 		if span.mark_bits != unsafe { nil } {
@@ -110,10 +158,11 @@ fn vgc_clear_mark_bits() {
 	}
 }
 
-// Conservative root scanning: scan registered global arrays and thread stacks.
+// Conservative root scanning: scan the globals, registered global arrays and thread stacks.
 // Translated from Go's markroot() / scanblock() - but using conservative scanning
 // since V compiles to C and we don't have precise type info at runtime.
 fn vgc_mark_roots() {
+	vgc_mark_data_segments()
 	C.v3_vgc_mark_global_arrays()
 	// Scan each registered thread's stack
 	for i in 0 .. vgc_heap.ncaches {
@@ -124,6 +173,21 @@ fn vgc_mark_roots() {
 		if cache.stack_lo > 0 && cache.stack_hi > 0 && cache.stack_hi > cache.stack_lo {
 			vgc_scan_range(cache.stack_lo, cache.stack_hi)
 		}
+		// The thread keeps packing small objects into its tiny block.
+		if cache.tiny != 0 {
+			vgc_shade(cache.tiny)
+		}
+	}
+}
+
+// vgc_mark_data_segments scans the writable segments of the executable: every global and
+// const, including the ones that are initialized at run time and point into the GC heap.
+fn vgc_mark_data_segments() {
+	mut lo := [16]usize{}
+	mut hi := [16]usize{}
+	n := C.vgc_data_ranges(&lo[0], &hi[0], 16)
+	for i in 0 .. n {
+		vgc_scan_range(lo[i], hi[i])
 	}
 }
 
@@ -398,14 +462,59 @@ fn vgc_write_barrier(new_val voidptr) {
 
 // Sweep all spans synchronously.
 fn vgc_do_sweep() {
-	for i in 0 .. vgc_heap.nspans {
-		span := unsafe { vgc_heap.allspans[i] }
-		if span == unsafe { nil } || !span.in_use {
-			continue
+	// The sweep files every span again, by the free slots it leaves in it: a span that a
+	// thread filled becomes partial when some of its objects are garbage, and its slots are
+	// reused instead of a new span.
+	for span_class in 0 .. vgc_num_span_classes {
+		central := unsafe { &vgc_heap.central[span_class] }
+		C.vgc_mutex_lock(&central.lock)
+		unsafe {
+			vgc_heap.central[span_class].partial = nil
+			vgc_heap.central[span_class].full = nil
 		}
-		vgc_sweep_span(span)
+		C.vgc_mutex_unlock(&central.lock)
 	}
+	vgc_sweep_spans()
 	C.vgc_atomic_store_u32(&vgc_heap.sweep_done, 1)
+}
+
+// vgc_sweep_spans sweeps and files every span that the current sweep has not handled yet.
+fn vgc_sweep_spans() {
+	// Keep the arenas still while walking them.
+	C.vgc_mutex_lock(&vgc_heap.lock)
+	mut arena := 0
+	mut page := usize(0)
+	for {
+		span, next_arena, next_page := vgc_next_span(arena, page)
+		if span == unsafe { nil } {
+			break
+		}
+		arena = next_arena
+		page = next_page
+		vgc_sweep_and_file_span(span)
+	}
+	C.vgc_mutex_unlock(&vgc_heap.lock)
+}
+
+// vgc_sweep_and_file_span sweeps a span that no thread allocates from, and puts it on the
+// free list when it is empty, or on its central list.
+fn vgc_sweep_and_file_span(span &VGC_Span) {
+	span_class := int(span.class_idx) * 2 + if span.noscan { 1 } else { 0 }
+	central := unsafe { &vgc_heap.central[span_class] }
+	C.vgc_mutex_lock(&central.lock)
+	// A thread allocates from a cached span; it is swept after the thread gives it back. A
+	// span that a thread gave back during this sweep is on a list already.
+	if !span.in_use || span.cached_by != 0 || span.sweep_gen == vgc_heap.sweep_gen {
+		C.vgc_mutex_unlock(&central.lock)
+		return
+	}
+	mut mspan := unsafe { &VGC_Span(span) }
+	mspan.sweep_gen = vgc_heap.sweep_gen
+	vgc_sweep_span(span)
+	if span.in_use && span.class_idx > 0 {
+		vgc_central_file_span(span_class, mut mspan)
+	}
+	C.vgc_mutex_unlock(&central.lock)
 }
 
 // Sweep a single span: free unmarked objects.
@@ -459,14 +568,7 @@ fn vgc_sweep_span(span &VGC_Span) {
 fn vgc_sweep_finish() {
 	if C.vgc_atomic_load_u32(&vgc_heap.sweep_done) == 0 && vgc_heap.gc_cycle > 0 {
 		// Sweep any remaining spans
-		for vgc_heap.sweep_idx < vgc_heap.nspans {
-			idx := vgc_heap.sweep_idx
-			vgc_heap.sweep_idx = idx + 1
-			span := unsafe { vgc_heap.allspans[idx] }
-			if span != unsafe { nil } && span.in_use {
-				vgc_sweep_span(span)
-			}
-		}
+		vgc_sweep_spans()
 		C.vgc_atomic_store_u32(&vgc_heap.sweep_done, 1)
 	}
 }
@@ -478,9 +580,16 @@ fn vgc_sweep_finish() {
 // Count total marked bytes across all spans using byte-level popcount
 fn vgc_count_marked() u64 {
 	mut total := u64(0)
-	for i in 0 .. vgc_heap.nspans {
-		span := unsafe { vgc_heap.allspans[i] }
-		if span == unsafe { nil } || !span.in_use || span.mark_bits == unsafe { nil } {
+	mut arena := 0
+	mut page := usize(0)
+	for {
+		span, next_arena, next_page := vgc_next_span(arena, page)
+		if span == unsafe { nil } {
+			break
+		}
+		arena = next_arena
+		page = next_page
+		if !span.in_use || span.mark_bits == unsafe { nil } {
 			continue
 		}
 		nbytes := (span.nelems + 7) / 8
@@ -521,9 +630,16 @@ fn vgc_heap_usage() (usize, usize, usize, usize, usize) {
 	total_alloc := C.vgc_atomic_load_u64(&vgc_heap.total_alloc)
 	// Count actual in-use span pages as heap size
 	mut in_use_bytes := usize(0)
-	for i in 0 .. vgc_heap.nspans {
-		span := unsafe { vgc_heap.allspans[i] }
-		if span != unsafe { nil } && span.in_use {
+	mut arena := 0
+	mut page := usize(0)
+	for {
+		span, next_arena, next_page := vgc_next_span(arena, page)
+		if span == unsafe { nil } {
+			break
+		}
+		arena = next_arena
+		page = next_page
+		if span.in_use {
 			in_use_bytes += usize(span.npages) * vgc_page_size
 		}
 	}
