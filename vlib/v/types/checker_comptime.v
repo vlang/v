@@ -18088,7 +18088,14 @@ fn (mut tc TypeChecker) check_const_reference_assignment(lhs_id flat.NodeId, rhs
 
 fn (tc &TypeChecker) addressed_const_ident(id flat.NodeId) ?flat.NodeId {
 	ident_id := tc.addressed_ident(id) or { return none }
-	if _ := tc.const_key_for_name(tc.a.node(ident_id).value) {
+	name := tc.a.node(ident_id).value
+	// A local or a parameter of the same name shadows the const, as in check_ident.
+	if tc.cur_scope != unsafe { nil } {
+		if _ := tc.non_file_scope_type(name) {
+			return none
+		}
+	}
+	if _ := tc.const_key_for_name(name) {
 		return ident_id
 	}
 	return none
