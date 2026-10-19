@@ -4262,7 +4262,7 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 	// pool; this serial walk then only replays the order-sensitive table
 	// registrations. Empty when the pool is unavailable — then each fn_decl
 	// computes inline exactly as before.
-	mut pass2_preps := tc.collect_pass2_fn_preps_parallel()
+	mut pass2_preps, pass2_scopes := tc.collect_pass2_fn_preps_parallel()
 	fast_pass2_registration := os.getenv('V3_NO_FAST_PASS2_REGISTRATION') == ''
 	parallel_pass2_ancillary := fast_pass2_registration && tc.building_v_fast
 		&& os.getenv('V3_NO_PAR_PASS2_REGISTRATION') == ''
@@ -4287,6 +4287,7 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 	}
 	// The registrations above copied what they keep of the preparations.
 	unsafe { pass2_preps.free() }
+	free_check_worker_scopes(checker_worker_pool(tc.a), pass2_scopes)
 	tc.collect_deprecated_symbols()
 	if p2_profile {
 		tc.timing_profile('  [ttime]       p2 fns ${f64(p2_fn_ns) / 1000000.0:.2f} ms, structs ${f64(p2_struct_ns) / 1000000.0:.2f} ms')
@@ -4486,6 +4487,8 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 	mut p2_fn_ns := u64(0)
 	mut p2_struct_ns := u64(0)
 	mut p2_t0 := u64(0)
+	// Keyed by the payloads of the lanes' arenas, which outlive this loop.
+	mut promoted_types := &Pass2TypePromotion{}
 	for pi, tl_idx in entries {
 		node := a.nodes[tl_idx]
 		node_ref := a.node(flat.NodeId(tl_idx))
@@ -4500,17 +4503,21 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 				tc.enter_module(node.value)
 			}
 			.fn_decl {
-				names_ready := pi < pass2_preps.len && pass2_preps[pi].prepared
-					&& pass2_preps[pi].names_ready
+				lane_prep := if pi < pass2_preps.len && pass2_preps[pi].prepared {
+					promote_pass2_fn_prep(pass2_preps[pi], mut promoted_types)
+				} else {
+					Pass2FnPrep{}
+				}
+				names_ready := lane_prep.prepared && lane_prep.names_ready
 				qname := if names_ready {
-					pass2_preps[pi].qname
+					lane_prep.qname
 				} else {
 					tc.qualify_fn_name(node.value)
 				}
 				lowered_qname := if !fast_pass2_registration {
 					''
 				} else if names_ready {
-					tc.store_c_name(qname, pass2_preps[pi].lowered_qname)
+					tc.store_c_name(qname, lane_prep.lowered_qname)
 				} else {
 					tc.cached_c_name(qname)
 				}
@@ -4519,7 +4526,7 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 				} else if node.value == qname {
 					lowered_qname
 				} else if names_ready {
-					tc.store_c_name(node.value, pass2_preps[pi].lowered_source_name)
+					tc.store_c_name(node.value, lane_prep.lowered_source_name)
 				} else {
 					tc.cached_c_name(node.value)
 				}
@@ -4539,8 +4546,8 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 				} else {
 					tc.register_visible_mutation_fn_decl(tl_idx, tc.cur_module, qname, node.value)
 				}
-				prep := if pi < pass2_preps.len && pass2_preps[pi].prepared {
-					pass2_preps[pi]
+				prep := if lane_prep.prepared {
+					lane_prep
 				} else {
 					tc.compute_pass2_fn_prep(node)
 				}

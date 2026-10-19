@@ -338,8 +338,11 @@ mut:
 	qname               string
 	lowered_qname       string
 	lowered_source_name string
-	// The lists are a private copy, which pass 2 can keep as they are
-	// (see promote_pass2_fn_preps).
+	// The arena of the lane that computed it, alive until pass 2 has copied
+	// what it keeps (see promote_pass2_fn_prep); nil when there is none.
+	scope voidptr
+	// The lists are a private copy in the collecting thread's arena, which
+	// pass 2 can keep as they are.
 	owned_lists bool
 }
 
@@ -448,12 +451,12 @@ fn (mut tc TypeChecker) collect_pass2_fn_range(start int, end int, mut preps []P
 // private type caches and interners ("TypeIds stay local"), so the produced
 // Type values are plain data and the master's interner keeps its own
 // deterministic id order.
-fn (mut tc TypeChecker) collect_pass2_fn_preps_parallel() []Pass2FnPrep {
+fn (mut tc TypeChecker) collect_pass2_fn_preps_parallel() ([]Pass2FnPrep, []voidptr) {
 	n := tc.top_level_idx.len
 	pool := checker_worker_pool(tc.a)
 	if isnil(pool) || pool.size() == 0 || n < 2048
 		|| os.getenv('V3_NO_PAR_PASS2') != '' {
-		return []Pass2FnPrep{}
+		return []Pass2FnPrep{}, []voidptr{}
 	}
 	mut n_jobs := pool.size() + 1
 	if n_jobs > 10 {
@@ -506,7 +509,13 @@ fn (mut tc TypeChecker) collect_pass2_fn_preps_parallel() []Pass2FnPrep {
 		}
 	}
 	pool.run(tasks)
-	return preps
+	mut scopes := []voidptr{cap: n_jobs}
+	for arg in args {
+		if arg.scope != unsafe { nil } {
+			scopes << arg.scope
+		}
+	}
+	return preps, scopes
 }
 
 // finish_pass2_ancillary_registrations replays independent signature tables on
@@ -625,13 +634,16 @@ struct Pass2PrepArgs {
 	file        string
 	module_name string
 	preps       voidptr // &[]Pass2FnPrep — shards fill disjoint positions
+mut:
+	scope voidptr // the lane's arena, left for the collecting thread to release
 }
 
 fn pass2_fn_prep_thread(arg voidptr) voidptr {
-	a := unsafe { &Pass2PrepArgs(arg) }
+	mut a := unsafe { &Pass2PrepArgs(arg) }
 	master := unsafe { &TypeChecker(a.tc) }
-	// The fork, its caches and the parse scratch die with the lane's arena;
-	// only the computed signatures are copied out of it.
+	// The fork, its caches and the parse scratch die with the lane's arena.
+	// Pass 2 copies what it keeps into the collecting thread's arena: a pool
+	// thread's own arena is released with the pool, while the checker lives on.
 	scope := check_worker_scope_begin(master.scope_parallel_check_workers)
 	mut view := master.fork_for_parallel_transform(master.a)
 	view.cur_file = a.file
@@ -639,11 +651,19 @@ fn pass2_fn_prep_thread(arg voidptr) voidptr {
 	mut preps := unsafe { &[]Pass2FnPrep(a.preps) }
 	view.collect_pass2_fn_range(a.start, a.end, mut *preps)
 	if scope != unsafe { nil } {
+		mark_pass2_fn_prep_scope(mut *preps, a.start, a.end, scope)
 		check_worker_scope_leave(scope)
-		promote_pass2_fn_preps(scope, mut *preps, a.start, a.end)
-		check_worker_scope_free(scope)
+		a.scope = scope
 	}
 	return unsafe { nil }
+}
+
+fn mark_pass2_fn_prep_scope(mut preps []Pass2FnPrep, start int, end int, scope voidptr) {
+	for pi in start .. end {
+		if preps[pi].prepared {
+			preps[pi].scope = scope
+		}
+	}
 }
 
 // Pass2TypePromotion maps the type payloads a pass-2 lane allocated in its
@@ -689,43 +709,45 @@ fn pass2_owned_string(scope voidptr, s string) string {
 	return s
 }
 
-// promote_pass2_fn_preps copies what a pass-2 lane computed for
-// preps[start..end] out of its arena `scope`, which the lane has left but not
-// yet released.
-fn promote_pass2_fn_preps(scope voidptr, mut preps []Pass2FnPrep, start int, end int) {
-	mut types := &Pass2TypePromotion{}
-	for pi in start .. end {
-		if !preps[pi].prepared {
-			continue
-		}
-		mut prep := preps[pi]
-		prep.ret_type = types.promote(scope, prep.ret_type)
-		mut ptypes := []Type{cap: prep.ptypes.len}
-		for typ in prep.ptypes {
-			ptypes << types.promote(scope, typ)
-		}
-		prep.ptypes = ptypes
-		prep.param_type_ids = prep.param_type_ids.clone()
-		prep.shared_params = prep.shared_params.clone()
-		// The three names are often one string.
-		qname := pass2_owned_string(scope, prep.qname)
-		lowered_qname := if same_string_data(prep.lowered_qname, prep.qname) {
-			qname
-		} else {
-			pass2_owned_string(scope, prep.lowered_qname)
-		}
-		prep.lowered_source_name = if same_string_data(prep.lowered_source_name, prep.lowered_qname) {
-			lowered_qname
-		} else if same_string_data(prep.lowered_source_name, prep.qname) {
-			qname
-		} else {
-			pass2_owned_string(scope, prep.lowered_source_name)
-		}
-		prep.qname = qname
-		prep.lowered_qname = lowered_qname
-		prep.owned_lists = true
-		preps[pi] = prep
+// promote_pass2_fn_prep copies what a pass-2 lane computed for one function
+// out of the lane's arena, which is still mapped, into the current one.
+fn promote_pass2_fn_prep(lane_prep Pass2FnPrep, mut types Pass2TypePromotion) Pass2FnPrep {
+	scope := lane_prep.scope
+	if scope == unsafe { nil } {
+		return lane_prep
 	}
+	mut prep := lane_prep
+	prep.scope = unsafe { nil }
+	prep.ret_type = types.promote(scope, lane_prep.ret_type)
+	mut ptypes := []Type{cap: lane_prep.ptypes.len}
+	for typ in lane_prep.ptypes {
+		ptypes << types.promote(scope, typ)
+	}
+	prep.ptypes = ptypes
+	prep.param_type_ids = lane_prep.param_type_ids.clone()
+	prep.shared_params = if lane_prep.shared_params.len > 0 {
+		lane_prep.shared_params.clone()
+	} else {
+		[]bool{}
+	}
+	// The three names are often one string.
+	qname := pass2_owned_string(scope, lane_prep.qname)
+	lowered_qname := if same_string_data(lane_prep.lowered_qname, lane_prep.qname) {
+		qname
+	} else {
+		pass2_owned_string(scope, lane_prep.lowered_qname)
+	}
+	prep.lowered_source_name = if same_string_data(lane_prep.lowered_source_name, lane_prep.lowered_qname) {
+		lowered_qname
+	} else if same_string_data(lane_prep.lowered_source_name, lane_prep.qname) {
+		qname
+	} else {
+		pass2_owned_string(scope, lane_prep.lowered_source_name)
+	}
+	prep.qname = qname
+	prep.lowered_qname = lowered_qname
+	prep.owned_lists = true
+	return prep
 }
 
 // UnusedAliveScanArgs shards the unused-declaration reference scan: each
