@@ -720,6 +720,38 @@ fn main() {
 			mixed_sources << base.replace(' value := maybe(false, &local)', ' value := ${initializer}') + '\nfn main() { consume() or {} }\n'
 		}
 	}
+	flow_base := mixed_loan.replace(') Choice {', ') !Choice {').replace(' return Choice(item)', ' return error("absent")')
+	mut flow_sources := []string{}
+	for flow in [
+		'mut inner := Choice(0); if local.code == 1 { inner = Choice(&local) }; inner',
+		'mut inner := Choice(0); match local.code { 1 { inner = Choice(&local) } else {} }; inner',
+		'mut inner := Choice(0); for i in 0 .. 1 { inner = Choice(&local); assert i == 0 }; inner',
+		'mut inner := Choice(0); for i := 0; i < 1; i++ { inner = Choice(&local) }; inner',
+		'mut inner := Choice(0); if local.code == 1 { if local.code > 0 { inner = Choice(&local) } }; inner',
+		'mut inner := Choice(0); mut next := Choice(0); for i in 0 .. 2 { inner = next; next = Choice(&local); assert i < 2 }; inner',
+		'mut inner := Choice(0); for i in 0 .. 2 { if local.code == 1 { inner = Choice(&local); break }; inner = Choice(0); assert i < 2 }; inner',
+		'mut inner := Choice(0); for i in 0 .. 2 { if local.code == 1 { inner = Choice(&local); continue }; inner = Choice(0); assert i < 2 }; inner',
+		'mut inner := Choice(0); for i in 0 .. 2 { match local.code { 1 { inner = Choice(&local); break } else {} }; inner = Choice(0); assert i < 2 }; inner',
+		'mut inner := Choice(0); outer: for i in 0 .. 2 { for j in 0 .. 2 { if local.code == 1 { inner = Choice(&local); break outer }; inner = Choice(0); assert j < 2 }; inner = Choice(0); assert i < 2 }; inner',
+		'mut inner := Choice(0); outer: for i in 0 .. 2 { for j in 0 .. 1 { if local.code == 1 { inner = Choice(&local); continue outer }; inner = Choice(0); assert j == 0 }; inner = Choice(0); assert i < 2 }; inner',
+		'mut inner := Choice(0); for i := 0; i < 2; i++ { if local.code == 1 { inner = Choice(&local); continue }; inner = Choice(0) }; inner',
+	] {
+		source := flow_base.replace(' value := maybe(false, &local)', ' value := maybe(false, &local) or { ${flow} }')
+		flow_sources << source
+		mixed_sources << source
+	}
+	for source in flow_sources {
+		os.write_file(invalid, source.replace(' local = Item{code: 3}\n', ''))!
+		for mode in ['-autofree', '-ownership'] {
+			for prealloc in [false, true] {
+				mut command := [compiler, '-new-compiler', '-no-closures', '-gc', 'none', mode]
+				if prealloc { command << '-prealloc' }
+				command << ['run', invalid]
+				control := os.exec(command)
+				assert control.exit_code == 0, control.output
+			}
+		}
+	}
 	for source in mixed_sources {
 		os.write_file(invalid, source)!
 		for mode in ['-autofree', '-ownership'] {

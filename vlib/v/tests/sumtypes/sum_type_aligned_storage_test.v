@@ -44,8 +44,9 @@ fn test_fixed_arrays_of_sums_inherit_alignment() {
 
 fn test_existing_fixed_sum_array_references_keep_storage_identity() {
 	mut existing := [AlignedSum(SumSmallValue{4}), AlignedSum(SumSmallValue{5})]!
-	first := &existing
-	second := &existing
+	// Both references stay within the live local array's scope.
+	first := unsafe { &existing }
+	second := unsafe { &existing }
 	assert voidptr(first) == voidptr(second)
 	// Both references borrow the same local array; replacing an element changes it.
 	unsafe { (*first)[0] = AlignedSum(SumSmallValue{9}) }

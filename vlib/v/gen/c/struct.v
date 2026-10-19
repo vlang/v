@@ -7172,6 +7172,8 @@ fn (mut g FlatGen) emit_interface_struct(name_id u32) {
 	for field in iface_fields {
 		mut ct := if field.typ is types.OptionType || field.typ is types.ResultType {
 			g.optional_type_name(field.typ)
+		} else if slot_type := g.sum_slot_aware_field_type(field.typ) {
+			slot_type
 		} else {
 			g.tc.c_type(field.typ)
 		}
@@ -7440,6 +7442,7 @@ fn (mut g FlatGen) struct_decls() {
 				g.emit_sum_option_typedefs((g.tc.sum_types.type_ids(name) or { []u32{} }).clone())
 				g.emit_sum_type(flat.source_type_id(name))
 				emitted[cn] = true
+				g.emit_ready_fixed_array_typedefs(fixed_array_needed, emitted)
 				remaining_cnames.delete(cn)
 				emitted_sums << name
 				progress = true
@@ -7899,7 +7902,7 @@ fn (mut g FlatGen) soa_field_c_type(struct_name_id u32, f types.StructField) str
 	}
 	if field_type is types.FnType {
 		c_abi_fn := g.struct_field_c_abi_fn_ptr_type(struct_name_id, f.name) or {
-			g.tc.c_type(field_type)
+			g.sum_slot_aware_field_type(field_type) or { g.tc.c_type(field_type) }
 		}
 		return g.resolve_fn_ptr_type(c_abi_fn)
 	}
@@ -7910,6 +7913,8 @@ fn (mut g FlatGen) soa_field_c_type(struct_name_id u32, f types.StructField) str
 		g.optional_type_name(field_type)
 	} else if field_type is types.Enum {
 		g.enum_value_c_type(field_type)
+	} else if slot_type := g.sum_slot_aware_field_type(field_type) {
+		slot_type
 	} else {
 		g.tc.c_type(field_type)
 	}
@@ -8101,7 +8106,7 @@ fn (mut g FlatGen) write_struct_field(_struct_name string, f types.StructField) 
 	}
 	if field_type is types.FnType {
 		c_abi_fn := g.struct_field_c_abi_fn_ptr_type(flat.source_type_id(_struct_name), f.name) or {
-			g.tc.c_type(raw_field_type)
+			g.sum_slot_aware_field_type(raw_field_type) or { g.tc.c_type(raw_field_type) }
 		}
 		ct := g.resolve_fn_ptr_type(c_abi_fn)
 		g.writeln('\t${qualifier}${ct} ${g.cname(f.name)};')
@@ -8113,6 +8118,8 @@ fn (mut g FlatGen) write_struct_field(_struct_name string, f types.StructField) 
 			g.optional_type_name(field_type)
 		} else if field_type is types.Enum {
 			g.enum_value_c_type(field_type)
+		} else if slot_type := g.sum_slot_aware_field_type(field_type) {
+			slot_type
 		} else {
 			g.tc.c_type(field_type)
 		}

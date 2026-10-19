@@ -12971,6 +12971,7 @@ fn (mut g FlatGen) callback_c_type(typ types.Type) string {
 	if typ is types.Void {
 		return 'void'
 	}
+	if slot_type := g.sum_pointer_slot_c_type(typ) { return slot_type }
 	mut ct := if typ is types.OptionType || typ is types.ResultType {
 		g.optional_type_name(typ)
 	} else {
@@ -16668,13 +16669,18 @@ fn (mut g FlatGen) gen_sum_variant_arg(arg_id flat.NodeId, expected types.Type) 
 		return false
 	}
 	is_ptr_arg := g.body_resolve_type(arg_id) is types.Pointer
+	variant_type := g.tc.parse_canonical_type(variant_id)
+	erased := sum_pointer_needs_erased_storage(variant_type)
+	if erased { g.write('((${g.value_c_type(variant_type)})((') }
 	g.gen_expr(arg_id)
+	if erased { g.write(')') }
 	if is_ptr_arg {
 		g.write('->')
 	} else {
 		g.write('.')
 	}
 	g.write(sum_field_name(flat.source_type_name(variant_id)))
+	if erased { g.write('))') }
 	return true
 }
 
@@ -19522,6 +19528,10 @@ fn (mut g FlatGen) fn_ptr_typedef_ready(encoded string) bool {
 }
 
 fn (mut g FlatGen) fn_ptr_nested_typedef_ready(ct string) bool {
+	bare := ct.trim_right('*')
+	if bare.starts_with('__v3_sum_fixed_pointer_') {
+		return g.emitted_fixed_array_typedefs[bare] || g.cached_support_identifiers[bare]
+	}
 	if ct.starts_with('fn_ptr:') { return g.fn_ptr_typedef_ready(fn_ptr_typedef_normalized(ct)) }
 	if ct.starts_with('_fn_ptr_') {
 		for encoded, name in g.fn_ptr_types {
@@ -19532,6 +19542,9 @@ fn (mut g FlatGen) fn_ptr_nested_typedef_ready(ct string) bool {
 }
 
 fn (mut g FlatGen) fn_ptr_field_typedef_ready(typ types.Type) bool {
+	if slot_type := g.sum_pointer_slot_c_type(typ) {
+		return g.fn_ptr_nested_typedef_ready(slot_type)
+	}
 	match typ {
 		types.Alias { return g.fn_ptr_field_typedef_ready(typ.base_type) }
 		types.Pointer { return g.fn_ptr_field_typedef_ready(typ.base_type) }
@@ -19817,6 +19830,7 @@ fn (mut g FlatGen) fn_ptr_type_key(typ types.FnType) string {
 
 // fn_ptr_signature_type normalizes fixed arrays and nested callbacks while preserving pointer depth.
 fn (mut g FlatGen) fn_ptr_signature_type(typ types.Type) ?string {
+	if slot_type := g.sum_pointer_slot_c_type(typ) { return slot_type }
 	if typ is types.OptionType || typ is types.ResultType {
 		return g.optional_type_name(typ)
 	}

@@ -9071,7 +9071,7 @@ fn (mut tc TypeChecker) ownership_alias_borrower(lhs_name string, rhs_name strin
 }
 
 fn (mut tc TypeChecker) ownership_mark_from_conditional_expr(lhs_name string, rhs_id flat.NodeId, lhs_type Type, pos flat.NodeId) bool {
-	cond_id := tc.ownership_unwrap_expr(rhs_id)
+	cond_id := tc.ownership_sum_wrapped_value(rhs_id, lhs_type)
 	if !tc.valid_node_id(cond_id) {
 		return false
 	}
@@ -9181,7 +9181,7 @@ fn (mut tc TypeChecker) ownership_collect_expr_result(lhs_name string, expr_id f
 	if !tc.ownership_type_is_owned(lhs_type) && !tc.ownership_type_requires_destruction(lhs_type) {
 		return false
 	}
-	id := tc.ownership_unwrap_expr(expr_id)
+	id := tc.ownership_sum_wrapped_value(expr_id, lhs_type)
 	if !tc.valid_node_id(id) {
 		return false
 	}
@@ -9302,7 +9302,7 @@ fn (mut tc TypeChecker) ownership_consume_conditional_call_arg(fn_name string, p
 	if fn_name == '' || param_idx < 0 {
 		return false
 	}
-	id := tc.ownership_unwrap_expr(arg_id)
+	id := tc.ownership_sum_wrapped_value(arg_id, target_type)
 	if !tc.valid_node_id(id) {
 		return false
 	}
@@ -10564,7 +10564,7 @@ fn (mut tc TypeChecker) ownership_move_conditional_return_sources(fn_name string
 	if fn_name == '' || slot_idx < 0 {
 		return false
 	}
-	cond_id := tc.ownership_unwrap_expr(expr_id)
+	cond_id := tc.ownership_sum_wrapped_value(expr_id, tc.resolve_type(expr_id))
 	if !tc.valid_node_id(cond_id) {
 		return false
 	}
@@ -10675,7 +10675,7 @@ fn (mut tc TypeChecker) ownership_consume_owned_descendants(source_prefix string
 }
 
 fn (mut tc TypeChecker) ownership_consume_conditional_expr(expr_id flat.NodeId, target string, at flat.NodeId) bool {
-	id := tc.ownership_unwrap_expr(expr_id)
+	id := tc.ownership_sum_wrapped_value(expr_id, tc.resolve_type(expr_id))
 	if !tc.valid_node_id(id) {
 		return false
 	}

@@ -518,9 +518,9 @@ fn test_fresh_aligned_fixed_array_addresses_promote_storage_but_existing_values_
 			mut a := flat.FlatAst.new()
 			decl := a.add_node(flat.Node{ kind: .struct_decl, value: 'Aligned' })
 			mut tc := types.TypeChecker.new(&a)
-			tc.first_type_declaration_ids['Aligned'] = int(decl)
-			tc.declaration_attributes[int(decl)] = ['aligned: 64']
 			tc.structs['Aligned'] = []types.StructField{}
+			tc.collect(&a)
+			tc.declaration_attributes[int(decl)] = ['aligned: 64']
 			tc.sum_types.set('Choice', ['Aligned', 'int'])
 			tc.type_aliases.set_id('ChoicePair', flat.source_type_id('[2]Choice'))
 			mut t := new_transformer(mut a, &tc, map[string]bool{})

@@ -4138,6 +4138,9 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 			g.fn_ptr_typedefs()
 			g.struct_decls()
 			g.fixed_array_typedefs()
+			g.sum_pointer_slot_typedefs()
+			g.fn_ptr_typedefs()
+			g.type_alias_decls_at_phase(true, true)
 			g.optional_typedefs()
 			g.forward_decls()
 			g.cached_header_forward_decls()
@@ -4544,7 +4547,9 @@ fn (mut g FlatGen) gen_type_declaration_block() {
 	g.type_alias_decls(true)
 	g.struct_decls()
 	g.fixed_array_typedefs()
+	g.sum_pointer_slot_typedefs()
 	g.fn_ptr_typedefs()
+	g.type_alias_decls_at_phase(true, true)
 	g.multi_return_typedefs()
 	g.optional_typedefs()
 	g.gen_ownership_recursive_drop_helper_forward_decls()
@@ -16799,6 +16804,15 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 		.prefix {
 			child_id := g.a.child(node, 0)
 			child := g.a.nodes[int(child_id)]
+			if node.op == .amp && child.kind == .selector && child.children_count > 0 {
+				base_id := g.a.child(&child, 0)
+				base_type := g.usable_expr_type(base_id)
+				if g.erased_sum_pointer_field_type(base_type, child.value) != none {
+					g.write('&')
+					g.gen_erased_sum_pointer_selector(child, base_id, base_type, true)
+					return
+				}
+			}
 			if g.gen_int128_prefix(node, child_id) {
 				return
 			}
@@ -17418,6 +17432,8 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 				}
 			} else if node.value == '__v_sum_type_tag__' && g.gen_sum_type_tag_selector(base_id, base_type0, node.op) {
 				// handled
+			} else if g.gen_erased_sum_pointer_selector(*node, base_id, base_type0, false) {
+				// Restore the declared pointer after its type definition is available.
 			} else if g.gen_generated_variant_access_selector(node, base_id, base_type0) {
 				// handled
 			} else if g.gen_sum_unique_variant_field_selector(base_id, base_type0, node.value) {
@@ -18134,7 +18150,12 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 			if clean is types.SumType {
 				qv := g.resolve_variant(clean.source_type_id(), flat.source_type_id(node.value))
 				field := sum_field_name(flat.source_type_name(qv))
-				if expr_type.is_pointer() {
+				variant_type := g.tc.parse_canonical_type(qv)
+				if sum_pointer_needs_erased_storage(variant_type) {
+					op := if expr_type.is_pointer() { '->' } else { '.' }
+					raw := '(${g.expr_to_string(expr_id)})${op}${field}'
+					g.write(g.sum_pointer_payload_expr(variant_type, raw))
+				} else if expr_type.is_pointer() {
 					g.gen_expr(expr_id)
 					g.write('->${field}')
 				} else {
@@ -23068,6 +23089,17 @@ fn (mut g FlatGen) collect_fixed_array_typedefs_needed() map[string]FixedArrayTy
 			}
 		}
 	}
+	// Sum pointer fields may erase their C storage while projections still need the
+	// exact array typedef. Use the declaration metadata, including unused variants.
+	for name in g.c_sum_decl_names() {
+		g.tc.cur_module = module_from_qualified_name(name.all_before('['))
+		for variant in g.tc.sum_types.type_ids(name) or { []u32{} } {
+			typ := g.tc.parse_canonical_type(variant)
+			if fixed_array_type_first_seen(typ, g.tc.cur_module, mut type_seen) {
+				g.collect_fixed_array_typedef(*typ, g.tc.cur_module, mut needed)
+			}
+		}
+	}
 	for name, typ in g.global_types {
 		g.tc.cur_module = g.global_modules[name] or { old_module }
 		if fixed_array_type_first_seen(typ, g.tc.cur_module, mut type_seen) {
@@ -23421,6 +23453,7 @@ fn (mut g FlatGen) fn_return_type_name(t types.Type) string {
 		bare := g.fixed_array_c_type(fixed)
 		return fixed_array_ret_wrapper_name(bare)
 	}
+	if slot_type := g.sum_pointer_slot_c_type(t) { return slot_type }
 	if g.tc.autofree_mode && t is types.Alias {
 		ct := g.tc.c_type(t)
 		if ct.starts_with('fn_ptr:') {
@@ -23762,6 +23795,7 @@ fn (mut g FlatGen) emit_fixed_array_typedef(name string, info FixedArrayTypedefI
 	}
 	if g.cached_support_identifiers[name] {
 		emitted[name] = true
+		g.sum_pointer_slot_typedefs_for_array(info.arr)
 		return
 	}
 	arr := info.arr
@@ -23773,6 +23807,8 @@ fn (mut g FlatGen) emit_fixed_array_typedef(name string, info FixedArrayTypedefI
 	g.writeln('typedef ${elem_ct} ${name}[${len_expr}];')
 	g.tc.cur_module = old_module
 	emitted[name] = true
+	// Array-dependent pointer-slot aliases must precede structs/callbacks that use them.
+	g.sum_pointer_slot_typedefs_for_array(arr)
 }
 
 fn (mut g FlatGen) emit_fixed_array_elem_deps(elem types.Type, needed map[string]FixedArrayTypedefInfo, mut emitted map[string]bool) {

@@ -2,7 +2,7 @@ module c
 
 import v.flat
 import v.types { unalias_type }
-import v.gen.c.naming { sum_field_name }
+import v.gen.c.naming { sum_field_name, type_name_part }
 
 struct SumUniqueFieldInfo {
 	variant u32
@@ -28,6 +28,160 @@ fn (g &FlatGen) sum_has_pointer_variant(sum_name_id u32) bool {
 	return false
 }
 
+// A C array needs a complete element type even behind a pointer. Erase only these
+// pointer fields so finite recursive sums such as `int | &[2]Self` remain declarable.
+fn sum_pointer_needs_erased_storage(typ &types.Type) bool {
+	mut target := unalias_type(typ)
+	if target !is types.Pointer { return false }
+	for target is types.Pointer {
+		target = unalias_type(target.base_type)
+	}
+	return target is types.ArrayFixed
+}
+
+fn (mut g FlatGen) sum_pointer_slot_type(typ &types.Type) string {
+	mut target := unalias_type(typ)
+	mut depth := 0
+	for target is types.Pointer {
+		depth++
+		target = unalias_type(target.base_type)
+	}
+	return '__v3_sum_fixed_pointer_${type_name_part(g.value_c_type(target))}${'ptr'.repeat(depth)}'
+}
+
+// Typed pointer-slot views preserve an addressable projection for mutable borrows.
+// may_alias keeps access to the erased void* slot valid under C alias analysis.
+fn (mut g FlatGen) sum_pointer_slot_typedefs() {
+	needed := g.collect_fixed_array_typedefs_needed()
+	for name, info in needed {
+		if g.emitted_fixed_array_typedefs[name] {
+			g.sum_pointer_slot_typedefs_for_array(info.arr)
+		}
+	}
+}
+
+fn (mut g FlatGen) sum_pointer_slot_typedefs_for_array(arr types.ArrayFixed) {
+	old_module := g.tc.cur_module
+	defer { g.tc.cur_module = old_module }
+	mut pointers := map[string]types.Type{}
+	mut depths := map[string]int{}
+	mut modules := map[string]string{}
+	mut max_depth := 0
+	mut sum_names := g.tc.sum_types.keys()
+	sum_names.sort()
+	for name in sum_names {
+		g.tc.cur_module = module_from_qualified_name(name.all_before('['))
+		for variant in g.tc.sum_types.type_ids(name) or { []u32{} } {
+			typ := g.tc.parse_canonical_type(variant)
+			if !sum_pointer_needs_erased_storage(typ) { continue }
+			mut target := unalias_type(typ)
+			mut depth := 0
+			for target is types.Pointer {
+				depth++
+				target = unalias_type(target.base_type)
+			}
+			if !cgen_types_equal_after_alias_erasure(target, types.Type(arr)) { continue }
+			alias := g.sum_pointer_slot_type(typ)
+			pointers[alias] = *typ
+			depths[alias] = depth
+			modules[alias] = g.tc.cur_module
+			if depth > max_depth { max_depth = depth }
+		}
+	}
+	mut names := pointers.keys()
+	names.sort()
+	// A deeper pointer may use the alias for its inner slot. Emit that dependency first.
+	for depth in 1 .. max_depth + 1 {
+		for alias in names {
+			if depths[alias] != depth || g.emitted_fixed_array_typedefs[alias] { continue }
+			g.tc.cur_module = modules[alias]
+			if !g.cached_support_identifiers[alias] {
+				typ := pointers[alias]
+				g.writeln('typedef ${g.value_c_type(typ)} ${alias} __attribute__((may_alias));')
+			}
+			g.emitted_fixed_array_typedefs[alias] = true
+		}
+	}
+}
+
+// Keep the alias on every indirection to an erased slot, including mutable
+// parameters and returned slot references; a value-only cast loses may_alias there.
+fn (mut g FlatGen) sum_pointer_slot_c_type(typ &types.Type) ?string {
+	clean := unalias_type(typ)
+	if clean !is types.Pointer { return none }
+	base := unalias_type(clean.base_type)
+	if !sum_pointer_needs_erased_storage(base) { return none }
+	old_module := g.tc.cur_module
+	defer { g.tc.cur_module = old_module }
+	mut sum_names := g.tc.sum_types.keys()
+	sum_names.sort()
+	for name in sum_names {
+		g.tc.cur_module = module_from_qualified_name(name.all_before('['))
+		for variant in g.tc.sum_types.type_ids(name) or { []u32{} } {
+			candidate := g.tc.parse_canonical_type(variant)
+			if cgen_types_equal_after_alias_erasure(base, candidate) {
+				return '${g.sum_pointer_slot_type(candidate)}*'
+			}
+		}
+	}
+	// A reference to a reference still carries the same annotated pointee slot type.
+	if inner := g.sum_pointer_slot_c_type(base) { return '${inner}*' }
+	return none
+}
+
+fn (mut g FlatGen) sum_pointer_payload_expr(typ &types.Type, raw string) string {
+	if !sum_pointer_needs_erased_storage(typ) { return raw }
+	return '((${g.value_c_type(typ)})(${raw}))'
+}
+
+fn (mut g FlatGen) sum_slot_aware_field_type(typ &types.Type) ?string {
+	if slot_type := g.sum_pointer_slot_c_type(typ) { return slot_type }
+	clean := unalias_type(typ)
+	if clean is types.FnType {
+		encoded := g.fn_ptr_type_key(clean)
+		if encoded.contains('__v3_sum_fixed_pointer_') { return encoded }
+	}
+	return none
+}
+
+fn (mut g FlatGen) erased_sum_pointer_field_type(base_type &types.Type, field string) ?types.Type {
+	sum := g.sum_type_name_for_type(base_type) or { return none }
+	old_module := g.tc.cur_module
+	g.tc.cur_module = module_from_qualified_name(flat.source_type_name(sum).all_before('['))
+	defer { g.tc.cur_module = old_module }
+	for variant in g.tc.sum_types.type_ids(flat.source_type_name(sum)) or { []u32{} } {
+		if sum_field_name(flat.source_type_name(variant)) != field { continue }
+		typ := g.tc.parse_canonical_type(variant)
+		if sum_pointer_needs_erased_storage(typ) { return *typ }
+		return none
+	}
+	return none
+}
+
+fn (mut g FlatGen) gen_erased_sum_pointer_selector(node flat.Node, base_id flat.NodeId, base_type &types.Type, lvalue bool) bool {
+	typ := g.erased_sum_pointer_field_type(base_type, node.value) or { return false }
+	old_expected := g.expected_expr_type
+	old_enum := g.expected_enum
+	g.expected_expr_type = cgen_void_type
+	g.expected_enum = 0
+	defer {
+		g.expected_expr_type = old_expected
+		g.expected_enum = old_enum
+	}
+	if lvalue {
+		g.write('(*(${g.sum_pointer_slot_type(typ)}*)&(')
+	} else {
+		g.write('((${g.value_c_type(typ)})(')
+	}
+	g.write('(')
+	g.gen_expr(base_id)
+	g.write(')')
+	g.write(if node.op == .arrow || unalias_type(base_type) is types.Pointer { '->' } else { '.' })
+	g.write(node.value)
+	g.write('))')
+	return true
+}
+
 // emit_sum_type emits emit sum type output for c.
 fn (mut g FlatGen) emit_sum_type(name_id u32) {
 	g.writeln('struct ${g.cname(flat.source_type_name(name_id))} {')
@@ -38,7 +192,7 @@ fn (mut g FlatGen) emit_sum_type(name_id u32) {
 	g.writeln('\tunion {')
 	for variant in g.tc.sum_types.type_ids(flat.source_type_name(name_id)) or { []u32{} } {
 		typ := g.tc.parse_canonical_type(variant)
-		ct := g.value_c_type(typ)
+		ct := if sum_pointer_needs_erased_storage(typ) { 'void*' } else { g.value_c_type(typ) }
 		field := sum_field_name(flat.source_type_name(variant))
 		g.writeln('\t\t${ct} ${field};')
 	}
@@ -59,6 +213,13 @@ fn (mut g FlatGen) gen_sum_variant_pointer_cast(id flat.NodeId, target types.Poi
 	if variant !in variants { return false }
 	sum_ct := g.tc.c_type(types.Type(source_base))
 	field := sum_field_name(flat.source_type_name(variant))
+	variant_type := g.tc.parse_canonical_type(variant)
+	if sum_pointer_needs_erased_storage(variant_type) {
+		g.write('(${ct})&(*(${g.sum_pointer_slot_type(variant_type)}*)&(((${sum_ct}*)(')
+		g.gen_expr(id)
+		g.write('))->${field}))')
+		return true
+	}
 	g.write('(${ct})&((${sum_ct}*)(')
 	g.gen_expr(id)
 	g.write('))->${field}')

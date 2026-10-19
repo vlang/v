@@ -264,6 +264,57 @@ fn option_value(mode int, item &Item, code int) ?Choice {
 }
 fn borrowed_result(item &Item) !Choice { return Choice(item) }
 fn borrowed_option(item &Item) ?Choice { return Choice(item) }
+fn maybe_fresh(owned bool, code int) !Choice {
+ if owned { return Choice(&Item{code: code}) }
+ return error("absent")
+}
+fn cleared_alias_scope() {
+ mut local := Item{code: 9}
+ value := maybe_fresh(false, 12) or {
+  mut inner := Choice(0)
+  for i in 0 .. 2 {
+   iteration := Choice(&local)
+   assert voidptr(iteration as &Item) == voidptr(&local)
+   inner = iteration
+   assert i < 2
+  }
+  inner = Choice(0)
+  inner
+ }
+ alias := Choice(value)
+ local = Item{code: 10}
+ assert alias is int
+ assert C.sum_drop_count(9) == 1
+}
+fn cleared_exits_scope() {
+ mut local := Item{code: 12}
+ broken := maybe_fresh(false, 14) or {
+  mut inner := Choice(0)
+  for i in 0 .. 2 {
+   if local.code == 12 { inner = Choice(&local); break }
+   inner = Choice(0)
+   assert i < 2
+  }
+  inner = Choice(0)
+  inner
+ }
+ continued := maybe_fresh(false, 14) or {
+  mut inner := Choice(0)
+  for i in 0 .. 2 {
+   if local.code == 12 { continue }
+   inner = Choice(&local)
+   inner = Choice(0)
+   assert i < 2
+  }
+  inner
+ }
+ broken_alias := Choice(broken)
+ continued_alias := Choice(continued)
+ local = Item{code: 13}
+ assert broken_alias is int
+ assert continued_alias is int
+ assert C.sum_drop_count(12) == 1
+}
 fn result_success(item &Item) ! {
  value := result_value(1, item, 1)!
  alias := Choice(value)
@@ -294,8 +345,15 @@ fn forward_scope(item &Item) {
  assert (result as &Item).code == 5
  option := forward_option(item) or { panic("none") }
  assert (option as &Item).code == 6
+ fallback := forward_fallback(item) or { panic(err) }
+ assert (fallback as &Item).code == 11
  assert C.sum_drop_count(5) == 0
  assert C.sum_drop_count(6) == 0
+ assert C.sum_drop_count(11) == 0
+}
+fn forward_fallback(item &Item) !Choice {
+ owned := Choice(&Item{code: 11})
+ return Choice(result_value(0, item, 12) or { owned })
 }
 fn forward_result(item &Item) !Choice {
  value := result_value(1, item, 5)!
@@ -340,6 +398,13 @@ fn main() {
  borrowed_controls(&local) or { panic(err) }
  assert C.sum_drop_count(7) == 0
  assert C.sum_drop_count(8) == 0
+ cleared_alias_scope()
+ assert C.sum_drop_count(9) == 1
+ assert C.sum_drop_count(10) == 1
+ assert C.sum_drop_count(11) == 1
+ cleared_exits_scope()
+ assert C.sum_drop_count(12) == 1
+ assert C.sum_drop_count(13) == 1
 }
 ')!
 	previous_jobs := os.getenv('VJOBS')

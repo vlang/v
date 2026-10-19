@@ -2818,7 +2818,7 @@ fn (mut g FlatGen) interface_sum_str_expr(sum_type types.SumType, expr string, m
 		variant_type := g.tc.parse_type(resolved)
 		idx := g.sum_type_index(sum_name_id, resolved)
 		field := sum_field_name(flat.source_type_name(resolved))
-		value_expr := '${tmp}.${field}'
+		value_expr := g.sum_pointer_payload_expr(variant_type, '${tmp}.${field}')
 		inner := g.interface_implicit_str_expr(variant_type, value_expr, false, mut stack) or {
 			g.interface_str_lit('<value>')
 		}

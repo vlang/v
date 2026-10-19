@@ -173,6 +173,9 @@ fn (mut g FlatGen) value_c_type(t &types.Type) string {
 		return g.tc.c_type(shared_alias_ptr)
 	}
 	clean_type := g.value_unalias_type(t)
+	if slot_type := g.sum_pointer_slot_c_type(clean_type) {
+		return slot_type
+	}
 	if clean_type is types.OptionType || clean_type is types.ResultType {
 		return g.optional_type_name(clean_type)
 	}
@@ -491,6 +494,7 @@ fn (mut g FlatGen) value_sizeof_target(t types.Type) string {
 }
 
 fn (mut g FlatGen) cast_c_type(t types.Type) string {
+	if slot_type := g.sum_pointer_slot_c_type(t) { return slot_type }
 	if t is types.Pointer {
 		return '${g.value_c_type(t.base_type)}*'
 	}
@@ -2874,6 +2878,10 @@ fn enum_ref_prefix_matches(prefix string, enum_module string, enum_name string) 
 
 // type_alias_decls returns type alias decls data for FlatGen.
 fn (mut g FlatGen) type_alias_decls(emit_fn_ptr_aliases bool) {
+	g.type_alias_decls_at_phase(emit_fn_ptr_aliases, false)
+}
+
+fn (mut g FlatGen) type_alias_decls_at_phase(emit_fn_ptr_aliases bool, after_arrays bool) {
 	mut emitted := false
 	mut main_aliases := map[string]bool{}
 	if g.tc.autofree_mode {
@@ -2914,6 +2922,8 @@ fn (mut g FlatGen) type_alias_decls(emit_fn_ptr_aliases bool) {
 			g.tc.c_type(parsed_target)
 		}
 		is_fn_ptr_alias := ct.starts_with('fn_ptr:')
+		late_slot_alias := is_fn_ptr_alias && ct.contains('__v3_sum_fixed_pointer_')
+		if late_slot_alias != after_arrays { continue }
 		if is_fn_ptr_alias {
 			ct = g.resolve_fn_ptr_type(ct)
 		}

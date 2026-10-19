@@ -171,6 +171,9 @@ fn gen_expr_lvalue(mut g FlatGen, id flat.NodeId) {
 	}
 	if node.kind == .selector && node.children_count > 0 {
 		base_id := g.a.child(&node, 0)
+		if g.gen_erased_sum_pointer_selector(node, base_id, g.usable_expr_type(base_id), true) {
+			return
+		}
 		if g.is_map_entry_lvalue(base_id) {
 			gen_expr_lvalue(mut g, base_id)
 			base_type := g.usable_expr_type(base_id)
@@ -1665,7 +1668,7 @@ fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, d
 				clean_variant_type := unalias_type(variant_type)
 				if clean_variant_type is types.Pointer {
 					field := sum_field_name(flat.source_type_name(resolved_variant))
-					payload := '((${expr}).${field})'
+					payload := g.sum_pointer_payload_expr(variant_type, '((${expr}).${field})')
 					g.writeln('if ((${expr})._pointer_variant_is_owned && ${payload} != NULL) {')
 					g.indent++
 					g.gen_ownership_drop_value_inner(clean_variant_type.base_type, '*${payload}', depth + 1, mut expanding)

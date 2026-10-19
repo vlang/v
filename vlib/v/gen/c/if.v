@@ -197,7 +197,8 @@ fn (mut g FlatGen) smartcast_is_expr(cond &flat.Node) {
 			field_name := sum_field_name(variant_name)
 			var_name := g.local_cname(expr_node.value)
 			tmp := g.tmp_name()
-			g.writeln('${variant_ct} ${tmp} = ${var_name}.${field_name};')
+			payload := g.sum_pointer_payload_expr(variant_type, '${var_name}.${field_name}')
+			g.writeln('${variant_ct} ${tmp} = ${payload};')
 			g.writeln('${variant_ct} ${var_name} = ${tmp};')
 			g.tc.cur_scope.insert(expr_node.value, variant_type)
 		}

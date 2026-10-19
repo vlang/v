@@ -14,6 +14,24 @@ struct SumReturnLocal {
 	is_parameter bool
 }
 
+struct SumBorrowAlias {
+	decl    flat.NodeId
+	sources []string
+}
+
+struct SumBorrowExit {
+	aliases map[string]SumBorrowAlias
+	label   string
+}
+
+struct SumBorrowFlow {
+mut:
+	aliases       map[string]SumBorrowAlias
+	falls_through bool = true
+	breaks        []SumBorrowExit
+	continues     []SumBorrowExit
+}
+
 fn (tc &TypeChecker) sum_escape_has_pointer_variant(typ Type) bool {
 	sum := unalias_type(typ)
 	if sum !is SumType { return false }
@@ -27,7 +45,7 @@ fn sum_escape_success_type(typ Type) Type {
 	clean := unalias_type(typ)
 	if clean is ResultType { return *clean.base_type }
 	if clean is OptionType { return *clean.base_type }
-	return clean
+	return *clean
 }
 
 fn (mut tc TypeChecker) ownership_prescan_sum_local_returns(fn_name string, fn_node flat.Node) {
@@ -507,15 +525,15 @@ fn (mut tc TypeChecker) ownership_sum_borrow_source_name(initial string) string 
 }
 
 fn (mut tc TypeChecker) ownership_sum_borrow_sources(id flat.NodeId, ancestors []flat.NodeId) []string {
-	return tc.ownership_sum_borrow_sources_with_aliases(id, ancestors, map[string][]string{})
+	return tc.ownership_sum_borrow_sources_with_aliases(id, ancestors, map[string]SumBorrowAlias{})
 }
 
-fn (mut tc TypeChecker) ownership_sum_borrow_sources_with_aliases(id flat.NodeId, ancestors []flat.NodeId, aliases map[string][]string) []string {
+fn (mut tc TypeChecker) ownership_sum_borrow_sources_with_aliases(id flat.NodeId, ancestors []flat.NodeId, aliases map[string]SumBorrowAlias) []string {
 	if !tc.valid_node_id(id) || id in ancestors { return []string{} }
 	mut visited := ancestors.clone()
 	visited << id
 	node := tc.a.node(id)
-	if node.kind == .ident && node.value in aliases { return aliases[node.value].clone() }
+	if node.kind == .ident && node.value in aliases { return aliases[node.value].sources.clone() }
 	if node.kind in [.paren, .expr_stmt, .cast_expr, .as_expr] && node.children_count > 0 {
 		return tc.ownership_sum_borrow_sources_with_aliases(tc.a.child(node, 0), visited, aliases)
 	}
@@ -556,24 +574,228 @@ fn (mut tc TypeChecker) ownership_sum_borrow_sources_with_aliases(id flat.NodeId
 	} else if node.kind in [.block, .match_branch] && node.children_count > 0 {
 		// Branch-local borrowers have left the live scope by the time the
 		// enclosing result is assigned. Retain their value provenance locally.
-		mut inner_aliases := aliases.clone()
+		flow := tc.ownership_sum_borrow_flow_after(id, ancestors, aliases, '')
+		if !flow.falls_through { return []string{} }
+		return tc.ownership_sum_borrow_sources_with_aliases(tc.a.child(node, node.children_count - 1), visited, flow.aliases)
+	}
+	return sources
+}
+
+// Recover branch-local alias values after their checker scope has closed.
+// Loop exits keep their own state; only continuing paths reach later statements.
+fn (mut tc TypeChecker) ownership_sum_borrow_flow_after(id flat.NodeId, ancestors []flat.NodeId, initial map[string]SumBorrowAlias, loop_label string) SumBorrowFlow {
+	current := tc.ownership_unwrap_expr(id)
+	mut flow := SumBorrowFlow{ aliases: initial.clone() }
+	if !tc.valid_node_id(current) || current in ancestors { return flow }
+	mut visited := ancestors.clone()
+	visited << current
+	node := tc.a.node(current)
+	if node.kind in [.break_stmt, .continue_stmt] {
+		flow.falls_through = false
+		exit := SumBorrowExit{ aliases: initial.clone(), label: node.value }
+		if node.kind == .break_stmt { flow.breaks << exit } else { flow.continues << exit }
+		return flow
+	}
+	if node.kind == .return_stmt {
+		flow.falls_through = false
+		return flow
+	}
+	if node.kind in [.decl_assign, .assign] && node.children_count == 2 {
+		rhs := tc.a.child(node, 1)
+		flow = tc.ownership_sum_borrow_flow_after(rhs, visited, initial, '')
+		lhs := tc.a.child_node(node, 0)
+		if flow.falls_through && lhs.kind == .ident {
+			previous := flow.aliases[lhs.value] or { SumBorrowAlias{} }
+			flow.aliases[lhs.value] = SumBorrowAlias{
+				decl:    if node.kind == .decl_assign { current } else { previous.decl }
+				sources: tc.ownership_sum_borrow_sources_with_aliases(rhs, visited, flow.aliases)
+			}
+		}
+		return flow
+	}
+	if node.kind in [.block, .match_branch] {
 		start := if node.kind == .match_branch && node.value != 'else' {
 			node.value.int()
 		} else {
 			0
 		}
-		for i in start .. int(node.children_count) - 1 {
-			statement := tc.a.child_node(node, i)
-			if statement.kind !in [.decl_assign, .assign] || statement.children_count != 2 {
-				continue
-			}
-			lhs := tc.a.child_node(statement, 0)
-			if lhs.kind != .ident { continue }
-			inner_aliases[lhs.value] = tc.ownership_sum_borrow_sources_with_aliases(tc.a.child(statement, 1), visited, inner_aliases)
-		}
-		return tc.ownership_sum_borrow_sources_with_aliases(tc.a.child(node, node.children_count - 1), visited, inner_aliases)
+		return tc.ownership_sum_borrow_sequence_flow(*node, start, visited, initial)
 	}
-	return sources
+	if node.kind in [.if_expr, .match_stmt, .or_expr] {
+		mut paths := []map[string]SumBorrowAlias{}
+		mut has_else := node.kind == .if_expr && node.children_count > 2
+		if node.kind == .or_expr { paths << initial }
+		for i in 1 .. node.children_count {
+			branch_id := tc.a.child(node, i)
+			branch := tc.a.node(branch_id)
+			if node.kind == .match_stmt && branch.kind != .match_branch { continue }
+			if branch.kind == .match_branch && branch.value == 'else' { has_else = true }
+			branch_flow := sum_borrow_scope_flow(initial, tc.ownership_sum_borrow_flow_after(branch_id, visited, initial, ''))
+			if branch_flow.falls_through { paths << branch_flow.aliases }
+			flow.breaks << branch_flow.breaks
+			flow.continues << branch_flow.continues
+		}
+		if node.kind != .or_expr && !has_else
+			&& (node.kind != .match_stmt || !tc.match_covers_all_variants(*node)) {
+			paths << initial
+		}
+		flow.falls_through = paths.len > 0
+		flow.aliases = sum_borrow_merge_alias_paths(initial, paths)
+		return flow
+	}
+	if node.kind in [.for_stmt, .for_in_stmt] {
+		mut entry := initial.clone()
+		start := if node.kind == .for_in_stmt { node.value.int() } else { 3 }
+		if node.kind == .for_in_stmt {
+			for i in 0 .. int_min(2, int(node.children_count)) {
+				binding := tc.a.child_node(node, i)
+				if binding.kind == .ident && binding.value.len > 0 {
+					entry[binding.value] = SumBorrowAlias{ decl: current }
+				}
+			}
+		} else if node.children_count > 0 {
+			init_flow := tc.ownership_sum_borrow_flow_after(tc.a.child(node, 0), visited, entry, '')
+			if !init_flow.falls_through { return sum_borrow_scope_flow(initial, init_flow) }
+			entry = init_flow.aliases
+		}
+		mut iteration := entry.clone()
+		for {
+			body := tc.ownership_sum_borrow_sequence_flow(*node, start, visited, iteration)
+			mut backedges := []map[string]SumBorrowAlias{}
+			mut exits := []map[string]SumBorrowAlias{}
+			mut outer_breaks := []SumBorrowExit{}
+			mut outer_continues := []SumBorrowExit{}
+			if body.falls_through { backedges << body.aliases }
+			for exit in body.breaks {
+				if exit.label.len == 0 || exit.label == loop_label {
+					exits << exit.aliases
+				} else {
+					outer_breaks << exit
+				}
+			}
+			for exit in body.continues {
+				if exit.label.len == 0 || exit.label == loop_label {
+					backedges << exit.aliases
+				} else {
+					outer_continues << exit
+				}
+			}
+			if node.kind == .for_stmt && node.children_count > 2 {
+				mut posted := []map[string]SumBorrowAlias{}
+				for edge in backedges {
+					post := tc.ownership_sum_borrow_flow_after(tc.a.child(node, 2), visited, edge, '')
+					if post.falls_through { posted << post.aliases }
+					for exit in post.breaks {
+						if exit.label.len == 0 || exit.label == loop_label {
+							exits << exit.aliases
+						} else {
+							outer_breaks << exit
+						}
+					}
+					for exit in post.continues {
+						if exit.label.len == 0 || exit.label == loop_label {
+							posted << exit.aliases
+						} else {
+							outer_continues << exit
+						}
+					}
+				}
+				backedges = posted
+			}
+			mut heads := [entry]
+			heads << backedges
+			merged := sum_borrow_merge_alias_paths(entry, heads)
+			if sum_borrow_aliases_equal(merged, iteration) {
+				if node.kind == .for_in_stmt || (node.children_count > 1
+					&& tc.a.child_node(node, 1).kind != .empty) {
+					exits << merged
+				}
+				flow.aliases = sum_borrow_merge_alias_paths(initial, exits)
+				flow.falls_through = exits.len > 0
+				flow.breaks = outer_breaks
+				flow.continues = outer_continues
+				return sum_borrow_scope_flow(initial, flow)
+			}
+			iteration = merged
+		}
+	}
+	flow.falls_through = !tc.stmt_definitely_returns(current)
+	return flow
+}
+
+fn (mut tc TypeChecker) ownership_sum_borrow_sequence_flow(node flat.Node, start int, ancestors []flat.NodeId, initial map[string]SumBorrowAlias) SumBorrowFlow {
+	mut flow := SumBorrowFlow{ aliases: initial.clone() }
+	mut label := ''
+	for i in start .. node.children_count {
+		if !flow.falls_through { break }
+		statement := tc.a.child(&node, i)
+		statement_id := tc.ownership_unwrap_expr(statement)
+		if !tc.valid_node_id(statement_id) { continue }
+		statement_node := tc.a.node(statement_id)
+		if statement_node.kind == .label_stmt {
+			label = statement_node.value
+			continue
+		}
+		mut next := tc.ownership_sum_borrow_flow_after(statement, ancestors, flow.aliases, label)
+		label = ''
+		if statement_node.kind == .block { next = sum_borrow_scope_flow(flow.aliases, next) }
+		flow.aliases = next.aliases
+		flow.falls_through = next.falls_through
+		flow.breaks << next.breaks
+		flow.continues << next.continues
+	}
+	return flow
+}
+
+fn sum_borrow_scope_flow(base map[string]SumBorrowAlias, source SumBorrowFlow) SumBorrowFlow {
+	mut flow := source
+	flow.aliases = sum_borrow_merge_alias_paths(base, [source.aliases])
+	flow.breaks = []SumBorrowExit{}
+	flow.continues = []SumBorrowExit{}
+	for exit in source.breaks {
+		flow.breaks << SumBorrowExit{ aliases: sum_borrow_merge_alias_paths(base, [exit.aliases]), label: exit.label }
+	}
+	for exit in source.continues {
+		flow.continues << SumBorrowExit{ aliases: sum_borrow_merge_alias_paths(base, [exit.aliases]), label: exit.label }
+	}
+	return flow
+}
+
+fn sum_borrow_merge_alias_paths(base map[string]SumBorrowAlias, paths []map[string]SumBorrowAlias) map[string]SumBorrowAlias {
+	mut names := base.keys()
+	for path in paths {
+		for name in path.keys() {
+			if name !in names { names << name }
+		}
+	}
+	mut merged := map[string]SumBorrowAlias{}
+	for name in names {
+		original := base[name] or { SumBorrowAlias{} }
+		mut sources := []string{}
+		mut exists := name in base
+		for path in paths {
+			candidate := path[name] or { original }
+			value := if candidate.decl == original.decl { candidate } else { original }
+			if name in path && candidate.decl == original.decl { exists = true }
+			for source in value.sources {
+				if source !in sources { sources << source }
+			}
+		}
+		if exists { merged[name] = SumBorrowAlias{ decl: original.decl, sources: sources } }
+	}
+	return merged
+}
+
+fn sum_borrow_aliases_equal(left map[string]SumBorrowAlias, right map[string]SumBorrowAlias) bool {
+	if left.len != right.len { return false }
+	for name, value in left {
+		other := right[name] or { return false }
+		if value.decl != other.decl || value.sources.len != other.sources.len { return false }
+		for source in value.sources {
+			if source !in other.sources { return false }
+		}
+	}
+	return true
 }
 
 // Same-sum constructors preserve the payload's loans and move obligations. This

@@ -238,3 +238,9 @@ when their initializer may return either fresh storage or a borrowed pointer.
 Unwrapping a Result or Option with `or`, `!`, or `?` preserves the successful sum's ownership and
 source loans. An `or` fallback also retains its source loans, including named local wrappers.
 These return lifetime checks reject a pointer to a local declared inside an `or` fallback.
+Fallback aliases keep possible source loans across branches and loop iterations. A later
+unconditional replacement clears the prior loan, and inner declarations keep their own scope.
+Same-sum wrappers preserve conditional cleanup even when their sources are borrowed parameters.
+Loop exits preserve the source loans held at `break` or `continue`, including labeled exits.
+Only paths that continue within the body reach a later replacement; replacements after the loop
+apply to its exited paths too.
