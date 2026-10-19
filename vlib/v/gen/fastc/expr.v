@@ -2363,7 +2363,9 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 	if prefix == '' && g.tok == .key_match && !g.selfhost {
 		return g.read_match_expression()!
 	}
-	if prefix == '' && g.tok == .dollar {
+	// `$embed_file(...).to_string()` may be continued by a member chain, even on the
+	// following lines (`.replace(...)`), so it is read as the first operand below.
+	if prefix == '' && g.tok == .dollar && !g.dollar_keyword_is('embed_file') {
 		return g.read_comptime_if_expression()!
 	}
 	if prefix == '' && g.tok == .key_spawn {
