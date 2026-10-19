@@ -10,6 +10,9 @@ read timeout directly in `recv`, avoiding a readiness poll before each read.
 disable it. Deadline-only reads and nonblocking reads continue to use readiness
 polling, as do sockets that do not support the receive-timeout option.
 
+Networking APIs support `-autofree`. Invalid-port and timeout results own their error values,
+while preserving the messages and codes of the corresponding `net.err_*` constants.
+
 UDP multicast example:
 
 ```v

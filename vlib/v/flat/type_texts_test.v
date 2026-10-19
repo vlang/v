@@ -16,6 +16,8 @@ fn test_type_text_forks_share_immutable_spelling_ids() {
 	assert parent.value('value') == 'pkg.Sum'
 	parent.set_id('imported', right_id)
 	assert parent.value('imported') == 'map[string]pkg.Right'
+	assert parent.value_id('imported') == right_id
+	assert parent.value_id('absent') == 0
 }
 
 fn test_indexed_scope_shadowing_keeps_empty_bindings_present() {
@@ -30,6 +32,21 @@ fn test_indexed_scope_shadowing_keeps_empty_bindings_present() {
 	assert outer.contains('placeholder')
 	assert outer.get('placeholder') or { panic('empty binding was lost') } == ''
 	assert !inner.contains('placeholder')
+	assert outer.value_id('placeholder') == 0
+	assert outer.type_id('placeholder') or { panic('empty identity was lost') } == 0
+}
+
+fn test_source_type_shape_preserves_exact_spelling_probes() {
+	wrapped := source_type_shape(source_type_id('map[string][]pkg.Item'))
+	assert wrapped.has(.dotted)
+	assert wrapped.has(.bracketed)
+	assert !wrapped.has(.wrapped)
+	assert source_type_shape(source_type_id('?pkg.Item')).has(.wrapped)
+	assert source_type_shape(source_type_id('[]typeof(x)')).has(.typeof_expr)
+	assert source_type_shape(source_type_id('typeof_field')).has(.typeof_name)
+	assert !source_type_shape(source_type_id('typeof_field')).has(.typeof_expr)
+	assert !source_type_shape(source_type_id('typeof (x)')).has(.typeof_expr)
+	assert !source_type_shape(0).has(.dotted)
 }
 
 fn test_type_text_pointer_probe_validates_reused_input_bytes() {
@@ -60,4 +77,118 @@ fn test_ast_type_ids_use_the_shared_spelling_namespace() {
 	assert source_type_name(changed) == 'pkg.Other'
 	assert first.node_type_text_id('', changed) == 0
 	assert first.type_text_id('') == 0
+}
+
+fn test_source_type_shapes_and_builtin_ids_share_the_spelling_table() {
+	assert source_type_int == source_type_id('int'.clone())
+	assert source_type_name(source_type_string) == 'string'
+	assert source_type_shape(source_type_int).has(.builtin_alias)
+	shape := source_type_shape(source_type_id('?[]pkg.Item'))
+	assert shape.has(.wrapped)
+	assert shape.has(.bracketed)
+	assert shape.has(.dotted)
+	assert !shape.has(.typeof_expr)
+	assert source_type_shape(source_type_id('typeof(value)')).has(.typeof_expr)
+	assert !source_type_shape(0).has(.builtin_alias)
+	assert source_type_shape(source_type_id('?')).has(.optional)
+	assert source_type_shape(source_type_id('!pkg.Item')).has(.optional)
+	assert !source_type_shape(source_type_id('&pkg.Item')).has(.optional)
+	assert source_type_shape(source_type_id('&pkg.Item')).has(.pointer)
+	assert source_type_shape(source_type_id('shared pkg.Item')).has(.shared_type)
+	assert source_type_shape(source_type_id('...pkg.Item')).has(.variadic)
+	assert source_type_shape(source_type_id(' pkg.Item\t')).has(.padded)
+	assert !source_type_shape(source_type_id('pkg.Item')).has(.padded)
+}
+
+fn test_binding_value_ids_preserve_present_empty_bindings() {
+	mut bindings := TypeTextBindings{}
+	bindings.set('empty', '')
+	bindings.set_id('value', source_type_int)
+	assert bindings.value_id('missing') == 0
+	assert bindings.value_id('empty') == 0
+	assert bindings.contains('empty')
+	assert bindings.value_id('value') == source_type_int
+	mut nodes := NodeTypeTextBindings{}
+	nodes.set_id(12, source_type_string)
+	assert nodes.value_id(12) == source_type_string
+	assert nodes.value_id(13) == 0
+	assert nodes.type_id(12) or { panic('missing node type identity') } == source_type_string
+	assert nodes.type_id(13) == none
+	nodes.set_id(13, 0)
+	assert nodes.type_id(13) or { panic('empty node identity was lost') } == 0
+}
+
+fn test_source_type_prefix_flags_describe_raw_spelling() {
+	assert source_type_shape(source_type_id('[]')).has(.array_type)
+	assert source_type_shape(source_type_id('[]pkg.Item')).has(.array_type)
+	assert !source_type_shape(source_type_id(' []pkg.Item')).has(.array_type)
+	assert !source_type_shape(0).has(.array_type)
+	assert source_type_shape(source_type_id('map[')).has(.map_type)
+	assert source_type_shape(source_type_id('map[pkg.Item')).has(.map_type)
+	assert !source_type_shape(source_type_id(' map[pkg.Item')).has(.map_type)
+	assert !source_type_shape(0).has(.map_type)
+	assert source_type_shape(source_type_id('[')).has(.leading_bracket)
+	assert source_type_shape(source_type_id('[pkg.Item')).has(.leading_bracket)
+	assert !source_type_shape(source_type_id(' [pkg.Item')).has(.leading_bracket)
+	assert !source_type_shape(0).has(.leading_bracket)
+	assert source_type_shape(source_type_id('?')).has(.option_type)
+	assert source_type_shape(source_type_id('?pkg.Item')).has(.option_type)
+	assert !source_type_shape(source_type_id(' ?pkg.Item')).has(.option_type)
+	assert !source_type_shape(0).has(.option_type)
+	assert source_type_shape(source_type_id('!')).has(.result_type)
+	assert source_type_shape(source_type_id('!pkg.Item')).has(.result_type)
+	assert !source_type_shape(source_type_id(' !pkg.Item')).has(.result_type)
+	assert !source_type_shape(0).has(.result_type)
+	assert source_type_shape(source_type_id('mut ')).has(.mutable_type)
+	assert source_type_shape(source_type_id('mut pkg.Item')).has(.mutable_type)
+	assert !source_type_shape(source_type_id(' mut pkg.Item')).has(.mutable_type)
+	assert !source_type_shape(0).has(.mutable_type)
+	assert source_type_shape(source_type_id('atomic ')).has(.atomic_type)
+	assert source_type_shape(source_type_id('atomic pkg.Item')).has(.atomic_type)
+	assert !source_type_shape(source_type_id(' atomic pkg.Item')).has(.atomic_type)
+	assert !source_type_shape(0).has(.atomic_type)
+	assert source_type_shape(source_type_id('chan ')).has(.channel_type)
+	assert source_type_shape(source_type_id('chan pkg.Item')).has(.channel_type)
+	assert !source_type_shape(source_type_id(' chan pkg.Item')).has(.channel_type)
+	assert !source_type_shape(0).has(.channel_type)
+	assert source_type_shape(source_type_id('thread ')).has(.thread_type)
+	assert source_type_shape(source_type_id('thread pkg.Item')).has(.thread_type)
+	assert !source_type_shape(source_type_id(' thread pkg.Item')).has(.thread_type)
+	assert !source_type_shape(0).has(.thread_type)
+	assert source_type_shape(source_type_id('fn(')).has(.function_compact)
+	assert source_type_shape(source_type_id('fn(pkg.Item')).has(.function_compact)
+	assert !source_type_shape(source_type_id(' fn(pkg.Item')).has(.function_compact)
+	assert !source_type_shape(0).has(.function_compact)
+	assert source_type_shape(source_type_id('fn (')).has(.function_spaced)
+	assert source_type_shape(source_type_id('fn (pkg.Item')).has(.function_spaced)
+	assert !source_type_shape(source_type_id(' fn (pkg.Item')).has(.function_spaced)
+	assert !source_type_shape(0).has(.function_spaced)
+	assert source_type_shape(source_type_id('&[]')).has(.pointer_array)
+	assert source_type_shape(source_type_id('&[]pkg.Item')).has(.pointer_array)
+	assert !source_type_shape(source_type_id(' &[]pkg.Item')).has(.pointer_array)
+	assert !source_type_shape(0).has(.pointer_array)
+	assert source_type_shape(source_type_id('&map[')).has(.pointer_map)
+	assert source_type_shape(source_type_id('&map[pkg.Item')).has(.pointer_map)
+	assert !source_type_shape(source_type_id(' &map[pkg.Item')).has(.pointer_map)
+	assert !source_type_shape(0).has(.pointer_map)
+	assert source_type_shape(source_type_id('&?')).has(.pointer_option)
+	assert source_type_shape(source_type_id('&?pkg.Item')).has(.pointer_option)
+	assert !source_type_shape(source_type_id(' &?pkg.Item')).has(.pointer_option)
+	assert !source_type_shape(0).has(.pointer_option)
+	assert source_type_shape(source_type_id('&&')).has(.pointer_chain)
+	assert source_type_shape(source_type_id('&&pkg.Item')).has(.pointer_chain)
+	assert !source_type_shape(source_type_id(' &&pkg.Item')).has(.pointer_chain)
+	assert !source_type_shape(0).has(.pointer_chain)
+
+	wrapped := source_type_shape(source_type_id('?[]pkg.Item'))
+	assert wrapped.has(.option_type)
+	assert wrapped.has(.optional)
+	assert !wrapped.has(.array_type)
+	assert !wrapped.has(.leading_bracket)
+	assert !source_type_shape(source_type_id('map [int]string')).has(.map_type)
+	assert !source_type_shape(source_type_id('fn  ()')).has(.function_spaced)
+	assert !source_type_shape(source_type_id('fn')).has(.function_compact)
+	assert !source_type_shape(source_type_id('shared')).has(.shared_type)
+	assert !source_type_shape(source_type_id('threaded')).has(.thread_type)
+	assert !source_type_shape(source_type_id('typeof(')).has(.typeof_expr)
 }

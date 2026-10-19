@@ -36,6 +36,10 @@ jobs:
     if: github.event_name != 'schedule' || (github.ref == 'refs/heads/master' && github.repository == 'vlang/v')
     timeout-minutes: 30
     env:
+      # Stop a failing test session at its first failure instead of
+      # running the whole suite to completion; the remaining files
+      # add no signal.
+      VTEST_FAIL_FAST: '1'
       VFLAGS: -cc ${{ matrix.cc }}
       V_CI_PERIODIC: 1
     steps:

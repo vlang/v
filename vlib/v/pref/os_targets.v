@@ -96,7 +96,8 @@ fn os_is_bsd_target(this_os string) bool {
 // They take precedence over known_arch_names when a suffix is read, because `wasm` spells
 // both a backend and an architecture and AGENTS.md documents `*.wasm.v` as the WASM backend
 // split. Reading it as an architecture instead both hides the file from `-b wasm` and makes
-// every native host skip it as foreign.
+// every native host skip it as foreign. `arm64` is deliberately absent: `foo_test.arm64.v`
+// names an architecture, while the native backend is spelled `native` in a file name.
 pub const known_backend_suffixes = ['c', 'js', 'native', 'wasm']
 
 // suffix_is_backend_name reports whether a `.<name>.v` suffix names a backend.

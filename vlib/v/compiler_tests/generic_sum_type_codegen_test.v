@@ -38,9 +38,11 @@ fn generic_sum_type_compile_run_source(name string, source string) string {
 	return os.read_file(bin + '.c') or { panic(err) }
 }
 
+// Generic struct instances declared in main use the `main__` C namespace, while
+// the sum type instances keep their bare names.
 fn generic_sum_type_assert_no_bst_branch_wrap_leaks(c_code string) {
-	assert c_code.contains('struct Node_int {'), c_code
-	assert c_code.contains('struct Node_f64 {'), c_code
+	assert c_code.contains('struct main__Node_int {'), c_code
+	assert c_code.contains('struct main__Node_f64 {'), c_code
 	assert c_code.contains('struct Tree_int {'), c_code
 	assert c_code.contains('struct Tree_f64 {'), c_code
 	assert !c_code.contains('Tree_unknown'), c_code
@@ -49,9 +51,9 @@ fn generic_sum_type_assert_no_bst_branch_wrap_leaks(c_code string) {
 	assert !c_code.contains(' Node '), c_code
 	assert !c_code.contains('Node[T]'), c_code
 	assert !c_code.contains('[T]'), c_code
-	assert !c_code.contains('return (Node_f64)'), c_code
-	assert !c_code.contains('return ((Node_f64)'), c_code
-	assert !c_code.contains('return Node_f64'), c_code
+	assert !c_code.contains('return (main__Node_f64)'), c_code
+	assert !c_code.contains('return ((main__Node_f64)'), c_code
+	assert !c_code.contains('return main__Node_f64'), c_code
 	assert !c_code.contains('Node_int main__insert_'), c_code
 	assert !c_code.contains('Node_f64 main__insert_'), c_code
 }
@@ -125,8 +127,8 @@ fn main() {
 	c_code := os.read_file(bin + '.c') or { panic(err) }
 	assert c_code.contains('typedef struct Tree_int Tree_int;'), c_code
 	assert c_code.contains('typedef struct Tree_f64 Tree_f64;'), c_code
-	assert c_code.contains('struct Node_int {'), c_code
-	assert c_code.contains('struct Node_f64 {'), c_code
+	assert c_code.contains('struct main__Node_int {'), c_code
+	assert c_code.contains('struct main__Node_f64 {'), c_code
 	assert c_code.contains('struct Tree_int {'), c_code
 	assert c_code.contains('struct Tree_f64 {'), c_code
 	assert !c_code.contains('Array_fixed_Node_T'), c_code

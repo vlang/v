@@ -19,10 +19,10 @@ pub fn comptime_string_scalar(receiver string, method string, args []string) ?Co
 			'to_upper' { receiver.to_upper() }
 			else { return none }
 		}
-		return ComptimeStringScalar{flat.source_type_id('string'), value}
+		return ComptimeStringScalar{flat.source_type_string, value}
 	}
 	if args.len == 2 && method == 'replace' {
-		return ComptimeStringScalar{flat.source_type_id('string'), receiver.replace(args[0], args[1])}
+		return ComptimeStringScalar{flat.source_type_string, receiver.replace(args[0], args[1])}
 	}
 	if args.len != 1 {
 		return none
@@ -34,10 +34,10 @@ pub fn comptime_string_scalar(receiver string, method string, args []string) ?Co
 			'ends_with' { receiver.ends_with(arg) }
 			else { receiver.contains(arg) }
 		}
-		return ComptimeStringScalar{flat.source_type_id('bool'), value.str()}
+		return ComptimeStringScalar{flat.source_type_bool, value.str()}
 	}
 	if method == 'count' {
-		return ComptimeStringScalar{flat.source_type_id('int'), receiver.count(arg).str()}
+		return ComptimeStringScalar{flat.source_type_int, receiver.count(arg).str()}
 	}
 	value := match method {
 		'all_before' { receiver.all_before(arg) }
@@ -51,7 +51,7 @@ pub fn comptime_string_scalar(receiver string, method string, args []string) ?Co
 		'trim_string_right' { receiver.trim_string_right(arg) }
 		else { return none }
 	}
-	return ComptimeStringScalar{flat.source_type_id('string'), value}
+	return ComptimeStringScalar{flat.source_type_string, value}
 }
 
 // comptime_string_bound parses a literal slice bound without truncating it to int.

@@ -62,12 +62,14 @@ fn test_v3_gc_is_disabled_for_cross_compilation() {
 	host := pref.host_target()
 	cross_os := if host.os == 'linux' { 'macos' } else { 'linux' }
 	cross_arch := if host.arch == 'amd64' { 'arm64' } else { 'amd64' }
-	assert !v3_gc_is_disabled(false, false, host.os, host.arch)
-	assert v3_gc_is_disabled(true, false, host.os, host.arch)
-	assert v3_gc_is_disabled(false, true, host.os, host.arch)
-	assert v3_gc_is_disabled(false, false, cross_os, host.arch)
-	assert v3_gc_is_disabled(false, false, host.os, cross_arch)
-	assert v3_gc_is_disabled(false, false, 'cross', host.arch)
+	assert !v3_gc_is_disabled(false, false, host.os, host.arch, 'c')
+	assert v3_gc_is_disabled(true, false, host.os, host.arch, 'c')
+	assert v3_gc_is_disabled(false, true, host.os, host.arch, 'c')
+	assert v3_gc_is_disabled(false, false, cross_os, host.arch, 'c')
+	assert v3_gc_is_disabled(false, false, host.os, cross_arch, 'c')
+	assert v3_gc_is_disabled(false, false, 'cross', host.arch, 'c')
+	// The native backend never has a collector, on any host and target.
+	assert v3_gc_is_disabled(false, false, host.os, host.arch, 'arm64')
 }
 
 fn test_v3_gc_mode_keeps_dynamic_boehm_define() {
@@ -173,5 +175,9 @@ fn test_precise_gc_keeps_explicit_c_compiler_selection() {
 		target:      windows_target
 	})
 	assert windows_selection.implicit_tcc == ''
-	assert windows_selection.c_compiler == 'gcc'
+	// On Windows the platform compiler is resolved to an absolute path, so a child
+	// re-exec can find it (v3_platform_c_compiler_command). Without gcc on PATH the
+	// helper falls back to the bare name, which keeps the basename check valid.
+	assert windows_selection.c_compiler == v3_platform_c_compiler_command('windows')
+	assert os.file_name(windows_selection.c_compiler).starts_with('gcc')
 }

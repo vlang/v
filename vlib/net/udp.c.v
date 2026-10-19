@@ -74,7 +74,7 @@ pub fn dial_udp(raddr string) !&UdpConn {
 // }
 
 pub fn (mut c UdpConn) write_ptr(b &u8, len int) !int {
-	remote := c.sock.remote() or { return err_no_udp_remote }
+	remote := c.sock.remote() or { return error_with_code(err_no_udp_remote.msg(), err_no_udp_remote.code()) }
 	return c.write_to_ptr(remote, b, len)
 }
 
@@ -123,21 +123,17 @@ pub fn (c &UdpConn) read_ptr(buf_ptr &u8, len int) !(int, Addr) {
 	if c.is_blocking {
 		// Honor read deadlines/timeouts before entering a blocking recvfrom call.
 		c.wait_for_read()!
-		res = wrap_read_result(C.recvfrom(c.sock.handle, voidptr(buf_ptr), len, 0, voidptr(&addr),
-			&addr_len))!
-	} else {
-		res = wrap_read_result(C.recvfrom(c.sock.handle, voidptr(buf_ptr), len, 0, voidptr(&addr),
-			&addr_len))!
 	}
-	if res > 0 {
+	res = C.recvfrom(c.sock.handle, voidptr(buf_ptr), len, 0, voidptr(&addr), &addr_len)
+	// A datagram may be empty: 0 bytes is a datagram received, not the end of a stream.
+	if res >= 0 {
 		return res, addr
 	}
 	code := error_code()
 	if code in [int(error_ewouldblock), int(error_eagain), C.EINTR] {
 		c.wait_for_read()!
-		// same setup as in tcp
-		res = wrap_read_result(C.recvfrom(c.sock.handle, voidptr(buf_ptr), len, 0, voidptr(&addr),
-			&addr_len))!
+		// the retry keeps the same rule: an empty datagram is 0 bytes, not an error
+		res = C.recvfrom(c.sock.handle, voidptr(buf_ptr), len, 0, voidptr(&addr), &addr_len)
 		res2 := socket_error(res)!
 		return res2, addr
 	} else {

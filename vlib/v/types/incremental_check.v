@@ -393,9 +393,20 @@ fn incremental_write_node(mut b strings.Builder, node &flat.Node, children int) 
 	if node.payload != 0 {
 		payload := flat.node_payload_at(node.payload)
 		if !isnil(payload) {
-			for param in payload.generic_params {
+			// Keep enum backing bytes at the same position in the stable source signature.
+			if node.kind == .enum_decl && (payload.enum_backing_type != 0 || payload.generic_params.len > 0) {
+				b.write_string(flat.source_type_name(payload.enum_backing_type))
+				b.write_u8(1)
+			}
+			debugger_types := node.debugger_value_type_ids()
+			debugger_layout := debugger_types.len == int(children) && payload.generic_params.len == 1 + debugger_types.len * 2
+			for i, param in payload.generic_params {
 				b.write_string(param)
 				b.write_u8(1)
+				if debugger_layout && i > 0 && i % 2 == 1 {
+					b.write_string(flat.source_type_name(debugger_types[(i - 1) / 2]))
+					b.write_u8(1)
+				}
 			}
 			b.write_u8(2)
 			for constraint in payload.generic_constraints.names() {

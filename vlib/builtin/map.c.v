@@ -14,9 +14,10 @@ fn fast_string_eq(a string, b string) bool {
 	if a.len != b.len {
 		return false
 	}
-	unsafe {
-		return C.memcmp(a.str, b.str, b.len) == 0
+	$if prod && !tinyc && !msvc && !native {
+		return string_bytes_equal(a.str, b.str, b.len)
 	}
+	return unsafe { C.memcmp(a.str, b.str, b.len) == 0 }
 }
 
 fn map_hash_string(pkey voidptr) u64 {

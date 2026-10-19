@@ -120,12 +120,12 @@ enum Color {
 	red
 }
 
-fn parse[T](x T) ?Color {
+fn parse[T](x T) !Color {
 	return Color.from(x)
 }
 
 fn main() {
-	_ := parse[Foo](Foo{})
+	_ := parse[Foo](Foo{}) or { Color.red }
 }
 ',
 		'cannot use `Foo` as argument 1 to `Color.from`; expected string or integer')
@@ -140,6 +140,38 @@ fn main() {
 }
 ',
 		'unknown function `Foo.from`')
+	// A specialization that returns a Result from an Option function is rejected like the
+	// same return in an ordinary function, instead of failing in the C compiler.
+	enum_from_arity_run_bad(v3_bin, 'bad_generic_enum_from_option_return', 'enum Color {
+	red
+	blue
+}
+
+fn parse[T](x int) ?T {
+	return T.from(x)
+}
+
+fn main() {
+	println(parse[Color](1) or { Color.red })
+}
+',
+		'cannot use `!Color` as type `?Color` in return argument')
+	enum_from_arity_run_bad(v3_bin, 'bad_generic_result_call_option_return', 'fn checked(x int) !int {
+	if x < 0 {
+		return error("negative")
+	}
+	return x
+}
+
+fn forward[T](x int) ?T {
+	return checked(x)
+}
+
+fn main() {
+	println(forward[int](1) or { 0 })
+}
+',
+		'cannot use `!int` as type `?int` in return argument')
 	out := enum_from_arity_run_good(v3_bin, 'numeric_enum_from_ierror', 'enum Color {
 	red
 	blue
@@ -174,7 +206,7 @@ fn main() {
 }
 ')
 	assert alias_out == 'blue'
-	generic_out := enum_from_arity_run_good(v3_bin, 'generic_string_enum_from', 'fn parse[T](s string) ?T {
+	generic_out := enum_from_arity_run_good(v3_bin, 'generic_string_enum_from', 'fn parse[T](s string) !T {
 	return T.from(s)
 }
 
@@ -194,7 +226,7 @@ fn main() {
 	blue
 }
 
-fn parse[T](x T) ?Color {
+fn parse[T](x T) !Color {
 	return Color.from(x)
 }
 
@@ -209,7 +241,7 @@ fn main() {
 	blue
 }
 
-fn parse[T](x int) ?T {
+fn parse[T](x int) !T {
 	return T.from(x)
 }
 
@@ -276,8 +308,8 @@ fn parse[T](value int) ?T {
 }
 
 fn main() {
-	println(int(Color.from(99) or { panic(err) }))
-	println(int(parse[Color](99) or { panic(err) }))
+	println(int(Color.from(99) or { panic("none") }))
+	println(int(parse[Color](99) or { panic("none") }))
 	println(int(Mode.zero()))
 	println(int(StaticSource.zero()))
 	println(int(ValueSource{label: "value"}.zero()))

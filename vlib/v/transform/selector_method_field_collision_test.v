@@ -36,7 +36,7 @@ fn test_known_struct_selector_does_not_inherit_unrelated_field_type() {
 		// optional callback type belonging to another struct. Keep the fallback
 		// for receivers whose struct information is unavailable.
 		expected := if receiver_type == 'Unregistered' { '?fn ()' } else { '' }
-		assert t.resolve_selector_type(a.nodes[int(selector)]) == expected
+		assert flat.source_type_name(t.resolve_selector_type(a.nodes[int(selector)])) == expected
 	}
 }
 
@@ -98,30 +98,30 @@ fn test_known_struct_selector_resolves_nested_promoted_fields_without_checker() 
 				}
 				// No checker or node annotations: Baz -> Bar -> Foo.x must resolve
 				// through its owner, not the unrelated field-name fallback.
-				assert t.resolve_selector_type(a.nodes[int(selector)]) == field_type
-				assert t.raw_expr_type_without_smartcast(selector) == field_type
+				assert flat.source_type_name(t.resolve_selector_type(a.nodes[int(selector)])) == field_type
+				assert flat.source_type_name(t.raw_expr_type_without_smartcast(selector)) == field_type
 
 				// A nearer declaration shadows the field in a deeper embed.
 				t.structs['Bar'] = StructInfo{
 					name:   flat.source_type_id('Bar')
 					fields: [foo_embed, FieldInfo{
 						name: 'x'
-						typ:  flat.source_type_id('string')
+						typ:  flat.source_type_string
 					}]
 				}
-				assert t.resolve_selector_type(a.nodes[int(selector)]) == 'string'
-				assert t.raw_expr_type_without_smartcast(selector) == 'string'
+				assert t.resolve_selector_type(a.nodes[int(selector)]) == flat.source_type_string
+				assert t.raw_expr_type_without_smartcast(selector) == flat.source_type_string
 
 				// The receiver's own field still wins over all promoted fields.
 				t.structs['Baz'] = StructInfo{
 					name:   flat.source_type_id('Baz')
 					fields: [bar_embed, FieldInfo{
 						name: 'x'
-						typ:  flat.source_type_id('bool')
+						typ:  flat.source_type_bool
 					}]
 				}
-				assert t.resolve_selector_type(a.nodes[int(selector)]) == 'bool'
-				assert t.raw_expr_type_without_smartcast(selector) == 'bool'
+				assert t.resolve_selector_type(a.nodes[int(selector)]) == flat.source_type_bool
+				assert t.raw_expr_type_without_smartcast(selector) == flat.source_type_bool
 			}
 		}
 	}
