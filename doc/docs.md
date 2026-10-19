@@ -6938,6 +6938,13 @@ Here `a` is stored on the stack since its address never leaves the function `f()
 However a reference to `b` is part of `e` which is returned. Also a reference to
 `c` is returned. For this reason `b` and `c` will be heap allocated.
 
+Returning an address into a dynamic array, string, or map uses that container's backing
+storage; it does not require moving the containing local or by-value parameter to the heap.
+An address into an inline fixed array can require moving its owner instead.
+Calling through an interface field likewise borrows the interface's object, without retaining
+the address of the interface header. Unwrapping a Result into a scalar value does not make
+the Result's address arguments escape through that value.
+
 Heap allocation preserves value reads in declaration initializers. An initializer reads
 the bindings that are visible before the new declaration is installed.
 Leaving a nested scope restores the storage and type metadata of outer heap-backed bindings.

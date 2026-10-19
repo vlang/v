@@ -10270,7 +10270,39 @@ fn (t &Transformer) escape_address_sources(id flat.NodeId, amp_sources map[strin
 	if sources.len > 0 {
 		return sources
 	}
+	if t.escape_address_uses_separate_storage(id) {
+		// A container's backing storage does not belong to its value header.
+		return []string{}
+	}
 	return [root]
+}
+
+fn (t &Transformer) escape_address_uses_separate_storage(id flat.NodeId) bool {
+	if isnil(t.tc) || int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.node(id)
+	if node.children_count == 0
+		|| node.kind !in [.paren, .selector, .index, .prefix, .cast_expr, .or_expr] {
+		return false
+	}
+	base_id := t.a.child(node, 0)
+	if node.kind == .index {
+		mut base_type := types.unalias_type(t.tc.resolve_type(base_id))
+		if base_type is types.Pointer
+			&& t.a.nodes[int(t.unwrap_parens(base_id))].kind == .selector {
+			// A pointer field points outside its containing value. Recorded aliases
+			// above still preserve any stack storage that the field references.
+			return true
+		}
+		for base_type is types.Pointer {
+			base_type = types.unalias_type(base_type.base_type)
+		}
+		if base_type is types.Array || base_type is types.Map || base_type is types.String {
+			return true
+		}
+	}
+	return t.escape_address_uses_separate_storage(base_id)
 }
 
 // escape_explicit_address_sources returns the sources of an explicit `&expr`. A value
@@ -11400,6 +11432,13 @@ fn (t &Transformer) escape_aggregate_address_sources(id flat.NodeId, amp_sources
 		return []string{}
 	}
 	node := t.a.node(id)
+	if node.kind in [.cast_expr, .as_expr, .or_expr] && !isnil(t.tc)
+		&& escape_call_result_is_scalar(t.tc.resolve_type(id))
+		&& !t.escape_expr_retains_result_error(id) {
+		// Only the unwrapped success value crosses a scalar cast or `or` expression.
+		// A Result's error can retain an address while it is still a Result.
+		return []string{}
+	}
 	match node.kind {
 		.or_expr, .if_expr, .comptime_if, .match_stmt, .block, .lock_expr, .dump_expr {
 			mut sources := []string{}
@@ -11493,7 +11532,15 @@ fn (t &Transformer) escape_aggregate_address_sources(id flat.NodeId, amp_sources
 					receiver_id := t.a.child(callee, 0)
 					if !t.callee_base_is_not_a_runtime_value(receiver_id)
 						&& t.method_receiver_is_reference(id, receiver_id, callee.value) {
-						for source_name in t.escape_address_sources(receiver_id, amp_sources, ptr_aliases) {
+						// Interface dispatch borrows the header to read its object pointer;
+						// the concrete method receives the object, never the header's address.
+						receiver_sources := if !isnil(t.tc)
+							&& types.unalias_type(t.tc.resolve_type(receiver_id)) is types.Interface {
+							t.escape_aggregate_address_sources(receiver_id, amp_sources, ptr_aliases)
+						} else {
+							t.escape_address_sources(receiver_id, amp_sources, ptr_aliases)
+						}
+						for source_name in receiver_sources {
 							if source_name !in sources {
 								sources << source_name
 							}
@@ -11528,6 +11575,54 @@ fn (t &Transformer) escape_aggregate_address_sources(id flat.NodeId, amp_sources
 	}
 
 	return []string{}
+}
+
+// A scalar success value consumes its address arguments, but a propagated Result
+// error or a retained `or` error can still hold them. Keep those paths conservative.
+fn (t &Transformer) escape_expr_retains_result_error(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.node(id)
+	if node.kind == .postfix && node.op == .not && node.children_count > 0
+		&& types.unalias_type(t.tc.resolve_type(t.a.child(node, 0))) is types.ResultType {
+		return true
+	}
+	if node.kind == .or_expr && node.children_count == 2
+		&& t.escape_or_branch_retains_error(t.a.child(node, 1)) {
+		return true
+	}
+	for i in 0 .. node.children_count {
+		if t.escape_expr_retains_result_error(t.a.child(node, i)) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (t &Transformer) escape_or_branch_retains_error(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.node(id)
+	if node.kind == .ident {
+		return node.value == 'err'
+	}
+	if node.kind == .call && node.children_count == 2 {
+		callee := t.a.child_node(node, 0)
+		arg := t.a.child_node(node, 1)
+		if callee.kind == .ident && callee.value == 'panic' && arg.kind == .ident
+			&& arg.value == 'err' && t.var_type('panic') == 0
+			&& !t.tc.module_declares_fn(t.cur_module, 'panic') {
+			return false
+		}
+	}
+	for i in 0 .. node.children_count {
+		if t.escape_or_branch_retains_error(t.a.child(node, i)) {
+			return true
+		}
+	}
+	return false
 }
 
 // mark_outer_scope_address_store moves to the heap the locals of a nested block whose
@@ -11977,6 +12072,11 @@ fn (mut t Transformer) collect_return_escape_idents(id flat.NodeId, mut names ma
 		return
 	}
 	node := t.a.node(id)
+	if node.kind in [.cast_expr, .as_expr, .or_expr] && !isnil(t.tc)
+		&& escape_call_result_is_scalar(t.tc.resolve_type(id))
+		&& !t.escape_expr_retains_result_error(id) {
+		return
+	}
 	match node.kind {
 		.ident {
 			if node.value.len > 0 {
