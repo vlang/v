@@ -30608,11 +30608,13 @@ fn (t &Transformer) const_type_key_in_context(name string, module_name string, f
 		if key := t.tc.shadowed_builtin_const_key_in_module(name, module_name) {
 			return key
 		}
-		if name in t.tc.const_types {
+		// A const of main is not one of another module's (see
+		// TypeChecker.bare_const_key_is_visible_in_module).
+		if name in t.tc.const_types && t.tc.bare_const_key_is_visible_in_module(name, module_name) {
 			return name
 		}
 		if key := t.const_suffixes[name] {
-			if key.len > 0 {
+			if key.len > 0 && t.tc.bare_const_key_is_visible_in_module(key, module_name) {
 				return key
 			}
 		}

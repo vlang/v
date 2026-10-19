@@ -1202,6 +1202,7 @@ pub mut:
 	checked_comptime_method_calls map[string]bool
 	comptime_method_calls_by_decl map[int]map[int]bool
 	check_concrete_generic_bodies bool                  // `-check` checks the concrete clones of the program's generics for fields and methods their types lack, and for arrays and maps with the wrong element layout
+	check_program_lib_instances   bool                  // such a check also checks the instances of library generics that the program's own code asks for (see transform.LibraryBodies)
 	library_instances             int                   // the instances of library generics that such a check cloned
 	library_headers               int                   // how many of them it cloned without their bodies (see transform.LibraryBodies)
 	library_bodies_kept_for       string                // why every one of them kept its body, when one had to
@@ -6031,9 +6032,10 @@ pub fn (tc &TypeChecker) shadowed_builtin_const_key(name string) ?string {
 }
 
 // shadowed_builtin_const_key_in_module is shadowed_builtin_const_key for code in
-// `module_name`.
+// `module_name`. Only main code sees the main const under the bare key, so the code
+// of every other module gets the builtin const.
 pub fn (tc &TypeChecker) shadowed_builtin_const_key_in_module(name string, module_name string) ?string {
-	if module_name != 'builtin' || name.len == 0 {
+	if is_main_module_name(module_name) || name.len == 0 {
 		return none
 	}
 	owner := tc.const_modules[name] or { return none }
@@ -6047,6 +6049,29 @@ pub fn (tc &TypeChecker) shadowed_builtin_const_key_in_module(name string, modul
 	return none
 }
 
+fn is_main_module_name(module_name string) bool {
+	return module_name.len == 0 || module_name == 'main'
+}
+
+// bare_const_key_is_visible reports whether code in the current module sees the
+// const with the bare key `key` unqualified (see bare_const_key_is_visible_in_module).
+fn (tc &TypeChecker) bare_const_key_is_visible(key string) bool {
+	return tc.bare_const_key_is_visible_in_module(key, tc.cur_module)
+}
+
+// bare_const_key_is_visible_in_module reports whether code in `module_name` sees
+// the const with the bare key `key` unqualified. The consts of main and builtin
+// share bare keys (see const_decl_key); the main ones are main's own, so other
+// modules do not see them, as V 0.5.2 reports `undefined ident` for them. A
+// qualified key is always visible.
+pub fn (tc &TypeChecker) bare_const_key_is_visible_in_module(key string, module_name string) bool {
+	if is_main_module_name(module_name) || key.contains('.') {
+		return true
+	}
+	owner := tc.const_modules[key] or { return true }
+	return owner == 'builtin'
+}
+
 fn (tc &TypeChecker) const_key_for_name(name string) ?string {
 	// Every key below is `name`, or ends in `.` and the last segment of `name`.
 	if tc.const_suffix_key_count == tc.const_types.len
@@ -6057,10 +6082,10 @@ fn (tc &TypeChecker) const_key_for_name(name string) ?string {
 		return key
 	}
 	qname := tc.qualify_name(name)
-	if qname in tc.const_types {
+	if qname in tc.const_types && tc.bare_const_key_is_visible(qname) {
 		return qname
 	}
-	if name in tc.const_types {
+	if name in tc.const_types && tc.bare_const_key_is_visible(name) {
 		return name
 	}
 	return tc.vsh_os_const_key(name)
@@ -6090,7 +6115,7 @@ fn (tc &TypeChecker) const_type_for_selector(node flat.Node) ?Type {
 	if typ := tc.const_types[qname] {
 		return tc.const_type_from_initializer(qname, typ)
 	}
-	if resolved == 'main' || resolved == tc.cur_module {
+	if (resolved == 'main' || resolved == tc.cur_module) && tc.bare_const_key_is_visible(node.value) {
 		if typ := tc.const_types[node.value] {
 			return tc.const_type_from_initializer(node.value, typ)
 		}
@@ -9013,6 +9038,52 @@ pub fn (mut tc TypeChecker) diagnosed_files_declare_generics() bool {
 	tc.cur_file = saved_file
 	tc.cur_module = saved_module
 	return found
+}
+
+// diagnosed_files_call_library_generics reports whether a function of a file
+// whose diagnostics are reported calls a generic function that a file outside
+// of them declares, as `arrays.sum(foos)` does: the check of the instances that
+// the program asks for checks that instance too (see
+// check_program_lib_instances).
+pub fn (tc &TypeChecker) diagnosed_files_call_library_generics() bool {
+	mut diagnosed := false
+	mut stack := []flat.NodeId{}
+	for idx in tc.top_level_idx {
+		node := tc.a.nodes[idx]
+		if node.kind == .file {
+			// Once per file: most top-level nodes are the library's.
+			diagnosed = node.value in tc.diagnostic_files
+			continue
+		}
+		if !diagnosed || node.kind != .fn_decl {
+			continue
+		}
+		stack << flat.NodeId(idx)
+		for stack.len > 0 {
+			id := stack.pop()
+			current := tc.a.nodes[int(id)]
+			if current.kind == .call && tc.calls_library_generic(id) {
+				return true
+			}
+			for i in 0 .. current.children_count {
+				child := tc.a.child(&current, i)
+				if int(child) >= 0 && int(child) < tc.a.nodes.len {
+					stack << child
+				}
+			}
+		}
+	}
+	return false
+}
+
+// calls_library_generic reports whether the call `id` resolves to a generic
+// function that a file outside of the diagnosed ones declares.
+fn (tc &TypeChecker) calls_library_generic(id flat.NodeId) bool {
+	name := tc.resolved_call_name(id) or { return false }
+	if (tc.fn_generic_params[name] or { return false }).len == 0 {
+		return false
+	}
+	return (tc.fn_type_files[name] or { return false }) !in tc.diagnostic_files
 }
 
 // diagnosed_fn_keys returns every name that a function of a diagnosed file goes
@@ -21530,6 +21601,14 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 	if node.kind == .expr_stmt && node.children_count == 1
 		&& tc.expr_source_contains_embed_file(tc.a.child(&node, 0)) {
 		tc.check_unused_expression_statement(id)
+	}
+	// A return that does not depend on the loop variable is checked as any other
+	// return: its value has the same type for every member.
+	if node.kind == .return_stmt && !tc.comptime_subtree_references_var(id, var_name) {
+		tc.comptime_static_depth++
+		tc.check_node(id)
+		tc.comptime_static_depth--
+		return
 	}
 	if node.kind in [.expr_stmt, .return_stmt] {
 		for i in 0 .. node.children_count {
