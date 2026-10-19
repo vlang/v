@@ -823,3 +823,51 @@ fn test_a_map_type_cast_to_the_same_elements_builds() {
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space() == "{'a': 7}", res.output
 }
+
+const comptime_for_program = 'struct Foo {\n\ta int\n}\n\nstruct Bar {\n\tb int\n}\n\nfn take_bars(items []Bar) int {\n\treturn items.len\n}\n\nfn wrap[T](x T) []Bar {\n\t\$for field in T.fields {\n\t\titems := [x]\n\t\treturn items\n\t}\n\treturn []\n}\n\nfn count[T](x T) int {\n\t\$for field in T.fields {\n\t\titems := [x]\n\t\treturn take_bars(items)\n\t}\n\treturn 0\n}\n\nfn main() {\n\tprintln(wrap(Bar{ b: 1 }))\n\tprintln(count(Bar{ b: 1 }))\n'
+
+// The body of a `$for` is checked in each instance as the rest of the body is:
+// its locals are seen and its returns are checked. `[x]` is a `[]Bar` for a
+// `Bar`, but a `[]Foo` for a `Foo`, which is no `[]Bar`. It used to pass the
+// check and a build, and reach the C compiler.
+fn test_an_array_of_another_type_in_a_comptime_for_body_is_reported_per_instance() {
+	source := comptime_for_program + '\tprintln(wrap(Foo{ a: 2 }))\n\tprintln(count(Foo{ a: 2 }))\n}\n'
+	for res in [check_program('comptime_for_check', source),
+		build_program('comptime_for_build', source)] {
+		assert res.exit_code != 0, res.output
+		assert !res.output.contains('C compilation error'), res.output
+		assert error_lines(res.output) == [
+			'25:10: cannot use `[]Foo` as type `[]Bar` in return argument',
+			'33:20: cannot use `[]Foo` as `[]Bar` in argument 1 to `take_bars`',
+		], res.output
+	}
+}
+
+// The instances whose `$for` bodies have the expected types build and run.
+fn test_the_instances_of_a_comptime_for_body_with_the_expected_types_build() {
+	source := comptime_for_program + '}\n'
+	assert error_lines(check_program('comptime_for_valid_check', source).output) == []
+	dir := os.join_path(os.vtmp_dir(), 'v3_run_generic_instances_comptime_for_${os.getpid()}')
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	path := os.join_path(dir, 'main.v')
+	os.write_file(path, generic_prelude + source) or { panic(err) }
+	res := os.exec(['env', 'V_MACOS_V3_NO_FALLBACK=1', @VEXE, '-new-compiler', '-nocolor', 'run',
+		path])
+	assert res.exit_code == 0, res.output
+	assert res.output.split_into_lines() == ['[Bar{', '    b: 1', '}]', '1'], res.output
+}
+
+// A local of a `$for` body that has the name of a constant of its own module
+// is the local, in the check of an instance too: `&routes` is a
+// `&map[string]int`, not a `&[]string`.
+fn test_a_local_of_a_comptime_for_body_shadows_a_constant_of_its_module() {
+	source := "const routes = ['/', '/x']\n\nstruct Foo {\n\ta int\n}\n\nstruct Holder {\n\troutes &map[string]int\n}\n\nfn make_routes() map[string]int {\n\treturn {\n\t\t'a': 1\n\t}\n}\n\nfn first_routes[T](x T) int {\n\t\$for field in T.fields {\n\t\troutes := make_routes()\n\t\th := Holder{\n\t\t\troutes: &routes\n\t\t}\n\t\treturn h.routes.len\n\t}\n\treturn 0\n}\n\nfn main() {\n\tprintln(routes)\n\tprintln(first_routes(Foo{}))\n}\n"
+	for res in [check_program('comptime_for_shadow_check', source),
+		build_program('comptime_for_shadow_build', source)] {
+		assert res.exit_code == 0, res.output
+		assert error_lines(res.output) == [], res.output
+	}
+}

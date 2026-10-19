@@ -21555,6 +21555,14 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 		&& tc.expr_source_contains_embed_file(tc.a.child(&node, 0)) {
 		tc.check_unused_expression_statement(id)
 	}
+	// A return that does not depend on the loop variable is checked as any other
+	// return: its value has the same type for every member.
+	if node.kind == .return_stmt && !tc.comptime_subtree_references_var(id, var_name) {
+		tc.comptime_static_depth++
+		tc.check_node(id)
+		tc.comptime_static_depth--
+		return
+	}
 	if node.kind in [.expr_stmt, .return_stmt] {
 		for i in 0 .. node.children_count {
 			tc.check_comptime_static_body(tc.a.child(&node, i), var_name, loop_kind, field_cases, value_cases)

@@ -11783,6 +11783,29 @@ fn (mut t Transformer) clone_generic_node(id flat.NodeId, args_ids []u32) flat.N
 	return t.clone_generic_node_with_return_context(id, args_ids, u32(0))
 }
 
+// subtree_references_comptime_for_vars reports whether the subtree `id` of a
+// generic body names a loop variable of the `$for` bodies being cloned, as
+// `field.name`, `val.$(field.name)` and `$if field.typ is string` do. It looks
+// for the name in every text of the subtree, which can only make it say yes too
+// often.
+fn (t &Transformer) subtree_references_comptime_for_vars(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.node(id)
+	for loop_var in t.cloning_comptime_for_vars {
+		if node.value.contains(loop_var) || node.typ_text().contains(loop_var) {
+			return true
+		}
+	}
+	for i in 0 .. node.children_count {
+		if t.subtree_references_comptime_for_vars(t.a.child(node, i)) {
+			return true
+		}
+	}
+	return false
+}
+
 @[direct_array_access]
 fn (mut t Transformer) clone_generic_node_with_return_context(id flat.NodeId, args_ids []u32, return_context_id u32) flat.NodeId {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
@@ -12384,8 +12407,13 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args_ids []u32, i
 	// Record the local's substituted type as the body is cloned: later sibling
 	// clones (nested generic calls) infer their type args from these locals, and
 	// without a binding the lookup falls back to an arena scan that can land in
-	// an unrelated, previously cloned function with a same-named local.
-	if node.kind == .decl_assign && node.children_count == 2 && t.cloning_comptime_for_depth == 0 {
+	// an unrelated, previously cloned function with a same-named local. A local of
+	// a `$for` body is recorded too when its value does not depend on the loop
+	// variable, which gives it one type for every member: the types that the clone
+	// derives from it, as `&routes` does, came from another declaration of its
+	// name, such as a constant.
+	if node.kind == .decl_assign && node.children_count == 2 && (t.cloning_comptime_for_depth == 0
+		|| !t.subtree_references_comptime_for_vars(t.a.child(&node, 1))) {
 		lhs_clone := t.a.nodes[int(children[0])]
 		if lhs_clone.kind == .ident && lhs_clone.value.len > 0 {
 			// Synthetic declarations created while transforming a generic template
