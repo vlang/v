@@ -5584,7 +5584,7 @@ fn (tc &TypeChecker) call_flag_tables_count() u64 {
 	mut count := u64(0)
 	for n in counts {
 		if n >= 65535 {
-			return u64(0xfffffffffffffffe)
+			return name_bloom_invalid_count
 		}
 		count = (count << 16) | u64(n)
 	}
@@ -5594,6 +5594,8 @@ fn (tc &TypeChecker) call_flag_tables_count() u64 {
 // NameBloom is a 4096-bit bloom filter over the names of a table that had
 // `count` entries when it was filled. A clear bit proves that a name is not in
 // the table, without hashing all of its bytes.
+const name_bloom_invalid_count = u64(0xfffffffffffffffe)
+
 struct NameBloom {
 mut:
 	count u64 = 0xffffffffffffffff
@@ -5618,7 +5620,7 @@ fn (mut bloom NameBloom) add(name string) {
 // excludes reports whether `name` is surely not in a table of `count` entries.
 @[direct_array_access; inline]
 fn (bloom &NameBloom) excludes(name string, count u64) bool {
-	if bloom.count != count {
+	if count == name_bloom_invalid_count || bloom.count != count {
 		return false
 	}
 	bit := name_bloom_bit(name)

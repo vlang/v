@@ -36,3 +36,15 @@ fn test_call_flag_bloom_invalidates_when_any_sparse_table_grows() {
 		}
 	}
 }
+
+fn test_call_flag_bloom_disables_filter_for_an_unrepresentable_table_count() {
+	mut tc := TypeChecker{}
+	for i in 0 .. 65535 {
+		tc.fn_variadic['function_${i}'] = true
+	}
+	tc.prepare_check_name_filters()
+	// This length exceeds its packed slot. Matching invalid fingerprints cannot
+	// prove that a function added after the snapshot has no call flags.
+	tc.fn_shared_params['late_shared'] = [true]
+	assert tc.call_info('late_shared', false).shared_params == [true]
+}
