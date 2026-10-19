@@ -15987,7 +15987,7 @@ pub fn run(args []string) {
 						}
 					}
 				} else {
-					prepared_cache = prepare_v3_module_cache(generated_source, &cgen_used_fns, &program_used_fns, &pre_tc, c_standard, opt_flag, pic_flag, warning_flags, cached_object_c_flags, needs_objective_c, interface_impl_signature, object_flags_signature + generated_suffix, mut cache_state) or {
+					prepared_cache = prepare_v3_module_cache(generated_source, &cgen_used_fns, &program_used_fns, &pre_tc, c_standard, opt_flag, pic_flag, warning_flags, cached_object_c_flags, needs_objective_c, interface_impl_signature, object_flags_signature + generated_suffix, cache_prepare_scope, mut cache_state) or {
 						message := err.msg()
 						if cache_with_tcc && os.getenv('V3_CACHE_REFRESH') != '1' {
 							// TinyCC does not compile every module on its own. The build
@@ -17713,12 +17713,12 @@ fn prepare_v3_cached_generic_body(generated_source string, cached_prefix string,
 	}
 }
 
-fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]bool, program_used_fns &map[string]bool, tc &types.TypeChecker, c_standard string, opt_flag string, pic_flag string, warning_flags string, generated_c_flags []string, objective_c bool, interface_impl_signature string, object_base string, mut state V3ModuleCacheState) !V3PreparedModuleCache {
+fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]bool, program_used_fns &map[string]bool, tc &types.TypeChecker, c_standard string, opt_flag string, pic_flag string, warning_flags string, generated_c_flags []string, objective_c bool, interface_impl_signature string, object_base string, scope voidptr, mut state V3ModuleCacheState) !V3PreparedModuleCache {
 	if !state.manager.ensure_dir() {
 		return error('v3 module cache directory is unavailable')
 	}
 	split := modulecache.split_generated_c(generated_source)!
-	cache_record_closure_dependencies(split.modules, split.prefix, mut state)
+	cache_record_closure_dependencies(split.modules, split.prefix, scope, mut state)
 	mut parsed_modules := state.parsed_from_source.keys()
 	parsed_modules.sort()
 	mut parsed_short_module_counts := map[string]int{}
@@ -17943,7 +17943,7 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 
 // cache_record_closure_dependencies preserves the runtime imports of compiled
 // bodies, which declaration-only headers cannot rediscover by scanning syntax.
-fn cache_record_closure_dependencies(bodies map[string]string, prefix string, mut state V3ModuleCacheState) {
+fn cache_record_closure_dependencies(bodies map[string]string, prefix string, scope voidptr, mut state V3ModuleCacheState) {
 	closure_module := cache_state_module_name(state, 'builtin.closure') or { return }
 	for raw_name, body in bodies {
 		module_name := cache_state_module_name(state, raw_name) or { continue }
@@ -17968,11 +17968,21 @@ fn cache_record_closure_dependencies(bodies map[string]string, prefix string, mu
 		if !needs_closure {
 			continue
 		}
-		record_cache_module_dependency(mut state, module_name, closure_module)
 		header := state.headers[module_name]
-		if !header.split_into_lines().any(it.trim_space() == 'import builtin.closure'
-			|| it.trim_space().starts_with('import builtin.closure ')) {
+		needs_import := !header.split_into_lines().any(it.trim_space() == 'import builtin.closure'
+			|| it.trim_space().starts_with('import builtin.closure '))
+		// These headers and dependency maps/arrays survive cache preparation.
+		// Allocate their new storage in the parent arena, keeping scans temporary.
+		mut scope_state := unsafe { nil }
+		$if prealloc {
+			scope_state = unsafe { prealloc_scope_suspend(scope) }
+		}
+		record_cache_module_dependency(mut state, module_name, closure_module)
+		if needs_import {
 			state.headers[module_name] = header + '\nimport builtin.closure as ${closure_runtime_import_alias}\n'
+		}
+		$if prealloc {
+			unsafe { prealloc_scope_resume(scope, scope_state) }
 		}
 	}
 }
