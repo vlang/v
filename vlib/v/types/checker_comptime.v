@@ -5287,6 +5287,8 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 		}
 		if alias_target is Alias {
 			tc.record_error_at(.assignment_mismatch, 'cannot cast `${actual.name()}` to `${target.name()}` (alias to `${unalias_type(alias_target).name()}`)', id, pos)
+		} else if alias_target is Map {
+			tc.record_error_at(.assignment_mismatch, 'cannot cast map `${actual.name()}` to `${target.name()}`', id, pos)
 		} else {
 			tc.record_error_at(.assignment_mismatch, 'cannot cast array `${actual.name()}` to `${target.name()}`', id, pos)
 		}

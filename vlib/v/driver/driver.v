@@ -12935,7 +12935,7 @@ pub fn run(args []string) {
 			watched_with_resources << path
 		}
 		watched_with_resources.sort()
-		if dump_files != '' {
+		if dump_files != '' && !is_instance_check_child() {
 			// `-dump-files <path>` records the exact source closure of this build, so that
 			// callers (notably the cached `cmd/tools/*` launcher) can tell later whether any
 			// input changed, without having to re-run the compiler frontend.
@@ -13932,6 +13932,12 @@ pub fn run(args []string) {
 			}
 			exit(1)
 		}
+		if is_instance_check_child() {
+			// This process was started by a build to check the instances of its
+			// generics here (see start_program_instance_check_process).
+			run_program_instance_check_child(mut a, mut pre_tc, is_checker_fixture, fatal_errors,
+				message_limit, skip_notices)
+		}
 		if !check_only && !is_checker_fixture && !prefs.building_v && pre_tc.errors.len == 0
 			&& os.getenv('V_CHECK_INSTANCES_IN_BUILD') != '0'
 			&& pre_tc.diagnosed_files_declare_generics() {
@@ -13942,8 +13948,8 @@ pub fn run(args []string) {
 			// (`[]u8(a)` for an `a []int`), fails here, not in the C compiler or at
 			// run time. V_CHECK_INSTANCES_IN_BUILD=0 leaves them to the C compiler.
 			// It runs beside the transform; C generation waits for it below.
-			program_instance_check = start_program_instance_check(mut a, mut pre_tc, is_checker_fixture,
-				fatal_errors, message_limit, skip_notices)
+			program_instance_check = start_program_instance_check(mut a, mut pre_tc, args,
+				is_checker_fixture, fatal_errors, message_limit, skip_notices)
 		}
 		if pre_tc.has_noalloc_contracts() {
 			if cache_state.manager.enabled && !cache_state.force_source {
@@ -14758,6 +14764,9 @@ pub fn run(args []string) {
 			}
 		}
 	}
+	// A process that checks the instances of a build's generics and did not check
+	// the program, as its build did, has nothing to report.
+	leave_instance_check_child()
 	if is_repl {
 		pre_tc.notices.clear()
 	}

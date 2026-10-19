@@ -12,8 +12,14 @@ fn C.waitpid(pid int, status &int, options int) int
 // (check_concrete_generic_bodies_of_check). That check rewrites the tree, which
 // the build still needs as it is, and it can run beside the transform: the
 // build asks for its result before C generation (finish). What the child prints
-// waits in a pipe until then.
-fn start_program_instance_check(mut a flat.FlatAst, mut tc types.TypeChecker, is_checker_fixture bool, fatal_errors bool, message_limit int, skip_notices bool) ProgramInstanceCheck {
+// waits in a pipe until then. The child is a fork of the build, which has the
+// tree and the checker as they are; V_CHECK_INSTANCES_IN_BUILD=process makes it
+// a compiler process with the arguments `args` of the build instead, as on
+// Windows (see start_program_instance_check_process).
+fn start_program_instance_check(mut a flat.FlatAst, mut tc types.TypeChecker, args []string, is_checker_fixture bool, fatal_errors bool, message_limit int, skip_notices bool) ProgramInstanceCheck {
+	if os.getenv('V_CHECK_INSTANCES_IN_BUILD') == 'process' {
+		return start_program_instance_check_process(args)
+	}
 	mut fds := [2]i32{}
 	if C.pipe(&fds[0]) != 0 {
 		return ProgramInstanceCheck{}
@@ -55,6 +61,9 @@ fn start_program_instance_check(mut a flat.FlatAst, mut tc types.TypeChecker, is
 // finish prints what the check printed and returns the exit code of its child:
 // 1 when it found errors, -1 when there was no child.
 fn (check ProgramInstanceCheck) finish() int {
+	if !isnil(check.process) {
+		return check.finish_process()
+	}
 	if check.pid < 0 {
 		return -1
 	}

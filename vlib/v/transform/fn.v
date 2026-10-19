@@ -3319,6 +3319,9 @@ fn (mut t Transformer) call_param_types_for_node(call_name string, node flat.Nod
 					return params
 				}
 			}
+			if params := t.fn_field_mut_optional_param_types(base_type, fn_node.value) {
+				return params
+			}
 		}
 		if (call_name == '' || call_name !in t.tc.fn_ret_types)
 			&& call_name !in t.tc.fn_param_types {
@@ -13570,7 +13573,14 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 				param_names << child.value
 			}
 			if !isnil(t.tc) {
-				param_types << t.tc.parse_type(slot_type)
+				slot := t.tc.parse_type(slot_type)
+				// The lifted declaration is called like a named fn: a `mut a ?T` with a
+				// struct payload is `&?&T`.
+				param_types << if child.is_mut && child.op != .amp {
+					types.mut_param_semantic_type(slot)
+				} else {
+					slot
+				}
 			}
 		} else if child.kind == .ident {
 			// `fn [T] (...)` inside a generic declaration captures the type
@@ -13704,9 +13714,10 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	for param_id in param_ids {
 		param := t.a.nodes[int(param_id)]
 		if param.value.len > 0 && param.typ != 0 {
-			resolved_param_type_source_id := t.comptime_normalize_type_alias_chain(param.typ)
+			param_type_source_id := t.lifted_mut_optional_param_type(param)
+			resolved_param_type_source_id := t.comptime_normalize_type_alias_chain(param_type_source_id)
 			resolved_param_type_shape := flat.source_type_shape(resolved_param_type_source_id)
-			t.set_var_type_with_raw(param.value, resolved_param_type_source_id, param.typ)
+			t.set_var_type_with_raw(param.value, resolved_param_type_source_id, param_type_source_id)
 			// An immutable `.amp` parameter was inferred for a pipe lambda and retains
 			// the source language's auto-dereferenced value semantics. Adapted function
 			// literals preserve their source parameter operator instead.
@@ -17168,6 +17179,26 @@ fn (t &Transformer) specialized_expr_is_none(id flat.NodeId) bool {
 	return false
 }
 
+// fn_field_mut_optional_param_types returns the parameters of a fn-typed field that has a
+// `mut a ?T` parameter. Such an argument is passed like one of a named fn (see
+// transform_mut_optional_value_call_arg); the checker records no callee type for a field
+// call, so the transform has no parameters for it otherwise.
+fn (t &Transformer) fn_field_mut_optional_param_types(base_type_id u32, field string) ?[]types.Type {
+	if isnil(t.tc) {
+		return none
+	}
+	receiver_type_id := t.normalize_type_alias(t.trim_pointer_type(base_type_id))
+	field_type_id := t.lookup_struct_field_type(receiver_type_id, field)?
+	fn_type := transform_fn_type(t.tc.parse_type(t.normalize_type_alias(field_type_id)))?
+	for i, param in fn_type.params {
+		if param is types.Pointer && param.base_type is types.OptionType
+			&& i < fn_type.params_mut.len && fn_type.params_mut[i] {
+			return fn_type.params.clone()
+		}
+	}
+	return none
+}
+
 fn (t &Transformer) receiver_selector_is_fn_field(base_type_id u32, field string) bool {
 	field_type_source_id := t.lookup_struct_field_type(base_type_id, field) or { return false }
 
@@ -19648,4 +19679,18 @@ fn (value &CompilerDefaultCloneCallInfo) base_type_text() string {
 @[inline]
 fn (value &CompilerDefaultCloneCallInfo) raw_base_type_text() string {
 	return flat.source_type_name(value.raw_base_type)
+}
+
+// lifted_mut_optional_param_type returns the type of a lifted fn literal's parameter in its
+// body. The parameter keeps the `&` of its `mut` slot, and like a named fn's (see
+// mut_optional_param_value_type), a `mut a ?T` with a struct payload is `&?&T`.
+fn (t &Transformer) lifted_mut_optional_param_type(param flat.Node) u32 {
+	if !param.is_mut || param.op == .amp {
+		return param.typ
+	}
+	value_type := t.mut_optional_param_value_type(param.typ)
+	if value_type == param.typ || !flat.source_type_shape(value_type).has(.option_type) {
+		return param.typ
+	}
+	return flat.source_type_id('&${flat.source_type_name(value_type)}')
 }

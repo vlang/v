@@ -446,6 +446,14 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 			// array for every outer element, as the main C backend does.
 			inner_default := '((${flat.source_type_name(element_type)})builtin____new_array(0,0,sizeof(${g.collection_storage_type(inner_array_element_type)})))'
 			value_source = '({ ${explicit_initializers.join(' ')} ${array_type} __vf_array_init = ${base}; for (int __vf_array_index = 0; __vf_array_index < __vf_array_init.len; __vf_array_index++) { ((${storage_type} *)__vf_array_init.data)[__vf_array_index] = ${inner_default}; } __vf_array_init; })'
+		} else if length != '0' && element_type != flat.source_type_string
+			&& g.struct_type_has_initializer_defaults(element_type) {
+			// A zeroed struct element leaves its defaulted fields invalid: a dynamic array
+			// field has element_size == 0, so appending to it copies no data. Give every
+			// element the struct's default value, as `Struct{}` builds it. (A zeroed string
+			// is already the empty string.)
+			element_default := g.render_empty_struct_initializer(element_type)
+			value_source = '({ ${explicit_initializers.join(' ')} ${array_type} __vf_array_init = ${base}; for (int __vf_array_index = 0; __vf_array_index < __vf_array_init.len; __vf_array_index++) { ((${storage_type} *)__vf_array_init.data)[__vf_array_index] = ${element_default}; } __vf_array_init; })'
 		} else if explicit_initializers.len > 0 {
 			value_source = '({ ${explicit_initializers.join(' ')} ${base}; })'
 		}

@@ -1,0 +1,28 @@
+vlib/v/checker/tests/map_type_cast_err.vv:13:10: error: cannot cast map `map[string]int` to `map[string]u8`
+   11 |         'a': 258
+   12 |     }
+   13 |     println(map[string]u8(ints))
+      |             ~~~~~~~~~~~~~~~~~~~
+   14 |     println(map[string]string(ints))
+   15 |     println(?map[string]u8(ints))
+vlib/v/checker/tests/map_type_cast_err.vv:14:10: error: cannot cast map `map[string]int` to `map[string]string`
+   12 |     }
+   13 |     println(map[string]u8(ints))
+   14 |     println(map[string]string(ints))
+      |             ~~~~~~~~~~~~~~~~~~~~~~~
+   15 |     println(?map[string]u8(ints))
+   16 |     bytes := {
+vlib/v/checker/tests/map_type_cast_err.vv:15:11: error: cannot cast map `map[string]int` to `?map[string]u8`
+   13 |     println(map[string]u8(ints))
+   14 |     println(map[string]string(ints))
+   15 |     println(?map[string]u8(ints))
+      |              ~~~~~~~~~~~~~~~~~~~
+   16 |     bytes := {
+   17 |         'a': u8(7)
+vlib/v/checker/tests/map_type_cast_err.vv:6:9: error: cannot cast map `map[string]int` to `map[string]u8`
+    4 | 
+    5 | fn to_counts[T](m map[string]T) map[string]u8 {
+    6 |     return map[string]u8(m)
+      |            ~~~~~~~~~~~~~~~~
+    7 | }
+    8 |

@@ -5011,7 +5011,7 @@ fn (mut g FlatGen) compute_collect_gen_fn_prep(node flat.Node, module_name strin
 		raw_pt := if param_idx < typed_params.len {
 			typed_params[param_idx]
 		} else {
-			g.tc.parse_resolution_type(child.typ)
+			g.unregistered_fn_param_type(child)
 		}
 		mut pt := raw_pt
 		if shared_alias_ptr := g.cached_shared_alias_pointer_type_from_text(child.typ) {
@@ -13160,6 +13160,30 @@ fn map_str_fixed_len(typ types.Type) int {
 	return 0
 }
 
+// gen_cast_value_operand emits the operand of a cast to a value type. The identifier of a
+// `mut` parameter is the pointer to the caller's value (`mut c Color` is `int* c`), so a
+// cast such as `int(c)` must read the value through it.
+fn (mut g FlatGen) gen_cast_value_operand(id flat.NodeId, target_type types.Type) {
+	node := g.a.nodes[int(id)]
+	clean_target := cgen_unalias_type(target_type)
+	// An explicit integer cast in `unsafe` keeps the address of the caller's value, as in
+	// V 0.5.2: freestanding code reads pointer bits with `unsafe { u64(value) }`.
+	if g.unsafe_depth > 0 && clean_target.is_integer() {
+		g.gen_expr(id)
+		return
+	}
+	if node.kind == .ident && clean_target !is types.Pointer
+		&& g.current_param_is_mut(node.value) {
+		if param_type := g.current_param_type(node.value) {
+			if param_type is types.Pointer
+				&& g.gen_current_mut_param_value_read(id, param_type.base_type) {
+				return
+			}
+		}
+	}
+	g.gen_expr(id)
+}
+
 // gen_cast_from_mut_param_address emits pointer casts for `&param` where `param`
 // is a mutable V parameter already represented as a C pointer.
 fn (mut g FlatGen) gen_cast_from_mut_param_address(id flat.NodeId, ct string) bool {
@@ -18507,7 +18531,7 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 				return
 			} else {
 				g.write('(${ct})(')
-				g.gen_expr(g.a.child(node, 0))
+				g.gen_cast_value_operand(cast_arg_id, target_type)
 				g.write(')')
 			}
 		}
@@ -27719,7 +27743,7 @@ fn (mut g FlatGen) gen_checked_integer_cast(id flat.NodeId, target_type types.Ty
 	wide := if src.unsigned { 'u64' } else { 'i64' }
 	reporter := if src.unsigned { 'cast_overflow_unsigned' } else { 'cast_overflow_signed' }
 	g.write('({ ${wide} ${tmp} = (${wide})(')
-	g.gen_expr(arg_id)
+	g.gen_cast_value_operand(arg_id, target_type)
 	g.write('); if (${check}) builtin__overflow__${reporter}(${tmp}, _S("${src.name_text()}"), _S("${dst.name_text()}")); (${ct})(${tmp}); })')
 	return true
 }

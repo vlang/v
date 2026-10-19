@@ -55,8 +55,10 @@ jobs:
 
   # Section 1 of test_all.vsh, the V3 unit tests, takes several hours of serial work. Each job
   # runs every n-th file of the sorted list (`--shard i/n`); n is the number of shards below.
+  # The matrix takes ten runners, so it runs only for pushes to master, not for pull requests.
   unit-tests:
     name: V3 unit tests (${{ matrix.shard }}/${{ strategy.job-total }})
+    if: github.event_name == 'push'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     strategy:
