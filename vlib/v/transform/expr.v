@@ -2511,6 +2511,9 @@ fn (mut t Transformer) transform_optional_wrapper_expr(id flat.NodeId) flat.Node
 		if t.a.nodes[int(source_id)].kind == .selector {
 			return t.transform_optional_wrapper_selector_expr(source_id, flat.source_type_id(raw_type))
 		}
+		if view_param := t.mut_optional_view_param(t.a.nodes[int(source_id)].value) {
+			return t.mut_optional_view_read(view_param)
+		}
 		return t.mark_optional_wrapper_expr(source_id, flat.source_type_id(raw_type))
 	}
 	return t.transform_expr(id)

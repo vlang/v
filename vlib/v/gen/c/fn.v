@@ -11380,7 +11380,7 @@ fn (mut g FlatGen) fn_node_param_types_or_decl(node flat.Node, module_name strin
 
 // unregistered_fn_param_type returns the type of a parameter of a declaration the checker
 // has no signature for, such as a lifted fn literal. Like a named fn's (see
-// `types.mut_param_semantic_type`), a `mut a ?T` with a struct payload is `&?&T`.
+// `types.mut_param_semantic_type`), a `mut a ?T` is `&?&T`.
 fn (g &FlatGen) unregistered_fn_param_type(param flat.Node) types.Type {
 	typ := g.tc.parse_resolution_type(param.typ)
 	if param.is_mut && param.op != .amp {

@@ -14542,7 +14542,7 @@ fn (tc &TypeChecker) substitute_generic_type(typ Type, args_ids []u32, param_nam
 		mut params := []Type{}
 		for i, param in typ.params {
 			substituted := tc.substitute_generic_type(param, args_ids, param_names)
-			// `mut a ?T` with a struct `T` is `&?&T`, as parse_fn_type spells it.
+			// `mut a ?T` is `&?&T`, as parse_fn_type spells it.
 			params << if i < typ.params_mut.len && typ.params_mut[i] {
 				mut_param_semantic_type(substituted)
 			} else {
@@ -14658,7 +14658,7 @@ fn (tc &TypeChecker) substitute_generic_type_values(typ Type, args []Type, param
 		mut params := []Type{cap: typ.params.len}
 		for i, param in typ.params {
 			substituted := tc.substitute_generic_type_values(param, args, param_names)
-			// `mut a ?T` with a struct `T` is `&?&T`, as parse_fn_type spells it.
+			// `mut a ?T` is `&?&T`, as parse_fn_type spells it.
 			params << if i < typ.params_mut.len && typ.params_mut[i] {
 				mut_param_semantic_type(substituted)
 			} else {
@@ -18445,7 +18445,7 @@ fn (tc &TypeChecker) parse_fn_type(typ string) Type {
 			is_variadic = param_type.starts_with('...')
 			parsed := tc.parse_type(flat.source_type_id(param_type))
 			is_mut := trimmed.starts_with('mut ')
-			// Like a named fn's, a `mut a ?T` param with a struct payload is `&?&T`.
+			// Like a named fn's, a `mut a ?T` param is `&?&T`.
 			params << if is_mut { mut_param_semantic_type(parsed) } else { parsed }
 			params_mut << is_mut
 		}
@@ -20113,7 +20113,7 @@ fn (tc &TypeChecker) fn_literal_type(node flat.Node) Type {
 			parsed
 		}
 		params << if child.is_mut && child.op != .amp {
-			// A `mut a ?T` param with a struct payload is `&?&T`, as in a named fn.
+			// A `mut a ?T` param is `&?&T`, as in a named fn.
 			mut_param_semantic_type(resolved)
 		} else {
 			explicit_mut_ref_param_slot_type(child, resolved)

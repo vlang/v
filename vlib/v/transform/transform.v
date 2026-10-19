@@ -56,6 +56,9 @@ const optional_wrapper_access_marker = '__v3_optional_wrapper_access'
 const bound_method_array_index_marker = '__v3_bound_method_array_index'
 const array_accessor_index_marker = '__v3_array_accessor_index'
 const transformed_option_unwrap_access_marker = '__v3_transformed_option_unwrap_access'
+// mut_optional_arg_marker marks the `&?&T` argument built for a `mut a ?T` parameter. The
+// `?T` it stands for follows it in the node's generic params (mut_optional_arg_view_type).
+const mut_optional_arg_marker = '__v3_mut_optional_arg'
 const debugger_smartcast_marker = '__v3_debugger_smartcasts'
 const non_aliasing_allocation_call_marker = '__v3_non_aliasing_allocation_call'
 const assert_infix_values_marker = '__v3_assert_infix_values:'
@@ -704,6 +707,9 @@ mut:
 	// `$if`s in `$for` bodies whose conditions cannot be decided; see
 	// reject_unevaluated_comptime_if.
 	unevaluated_comptime_ifs []UnevaluatedComptimeIf
+	// The statements that write the options passed to a method's `mut a ?T` parameters
+	// back after the call (transform_call_expr).
+	mut_optional_call_writebacks []flat.NodeId
 }
 
 // AliasCache memoizes normalize_type_alias results. It lives on the heap so the
@@ -1219,6 +1225,9 @@ struct VarTypeBinding {
 	is_implicit_err bool
 mut:
 	is_ref_param bool
+	// mut_optional_storage is the value type (`?&T`) of a `mut a ?T` parameter whose body
+	// reads it as `?T` (`typ`), see mut_optional_view_param.
+	mut_optional_storage u32
 }
 
 // VarTypeUndo is one binding replaced inside a scope opened by mark_var_type_scope.
@@ -12257,6 +12266,7 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 		if child.is_mut && child.op == .amp && flat.source_type_shape(typ).has(.pointer) {
 			typ = flat.source_type_id('&${flat.source_type_name(typ)}')
 		}
+		mut mut_optional_storage := u32(0)
 		if child.is_mut {
 			if t.validating_generic_spec && child.op != .amp && flat.source_type_shape(typ).has(.pointer_option) {
 				// A specialized `mut value T` parameter adds an outer ABI pointer.
@@ -12266,9 +12276,24 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 				if flat.source_type_shape(raw_source_typ).has(.pointer_option) {
 					raw_source_typ = flat.source_type_id(flat.source_type_name(raw_source_typ)[1..])
 				}
+				// Like a named fn's, a specialized `mut a ?T` holds a `?&T` (its signature
+				// is `&?&T`). The generic body reads it as `?T`, as the checker types it,
+				// even when `T` is a struct.
+				if view_typ := mut_optional_param_storage_view(typ, raw_source_typ) {
+					mut_optional_storage = typ
+					typ = view_typ
+				}
 			} else {
-				typ = t.mut_optional_param_value_type(typ)
-				raw_source_typ = t.mut_optional_param_value_type(raw_source_typ)
+				// The parameter's value is `?&T`; the body reads it as `?T` unless the
+				// payload is a struct (see mut_optional_view_param).
+				storage_typ := t.mut_optional_param_value_type(typ)
+				raw_source_typ = t.mut_optional_param_view_type(raw_source_typ)
+				typ = if view_typ := mut_optional_param_storage_view(storage_typ, raw_source_typ) {
+					mut_optional_storage = storage_typ
+					view_typ
+				} else {
+					storage_typ
+				}
 			}
 		}
 		if flat.source_type_shape(typ).has(.pointer) && raw_typ.len > 0 && !raw_typ.starts_with('&')
@@ -12295,6 +12320,9 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 		}
 		if typ != 0 {
 			t.set_var_type_with_raw(child.value, typ, raw_source_typ)
+			if mut_optional_storage != 0 {
+				t.set_var_mut_optional_storage(child.value, mut_optional_storage)
+			}
 			if !child.is_mut && flat.source_type_shape(t.comptime_normalize_type_alias_chain(typ)).has(.pointer) {
 				t.mark_var_as_ref_param(child.value)
 			}
@@ -12414,13 +12442,30 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 	t.temp_counter = outer_temp_counter
 }
 
-// mut_optional_param_value_type returns the type of a `mut` optional parameter in the
-// function body. Like the checker (`mut_param_semantic_type`), only a struct payload is
-// passed by reference (`mut a ?T` is `&?&T`, its value `?&T`); any other payload keeps the
-// `&?T` parameter, whose value is `?T`.
+// mut_optional_param_value_type returns the type of the value of a `mut` optional
+// parameter in the function body. Like the checker (`mut_param_semantic_type`), every
+// payload is passed by reference: `mut a ?T` is `&?&T`, its value `?&T`.
 fn (t &Transformer) mut_optional_param_value_type(typ_id u32) u32 {
-	typ := flat.source_type_name(typ_id)
-	mut clean := trimmed_transform_text(typ)
+	payload := mut_optional_param_payload_text(typ_id) or { return typ_id }
+	return flat.source_type_id('?&${payload.trim_string_left('&')}')
+}
+
+// mut_optional_param_view_type returns the type that the body of a fn reads a `mut`
+// optional parameter as. As in the checker (`mut_optional_param_view_type`), a struct
+// payload reads as `?&T`, so that changes to its fields reach the caller, while any other
+// payload reads as `?T` (see mut_optional_view_param).
+fn (t &Transformer) mut_optional_param_view_type(typ_id u32) u32 {
+	payload := mut_optional_param_payload_text(typ_id) or { return typ_id }
+	if payload.starts_with('&') || !t.mut_optional_payload_is_struct(payload) {
+		return flat.source_type_id('?${payload}')
+	}
+	return flat.source_type_id('?&${payload}')
+}
+
+// mut_optional_param_payload_text returns `T` for a `mut` optional parameter type
+// (`?T`, `&?T` or `mut ?T`).
+fn mut_optional_param_payload_text(typ_id u32) ?string {
+	mut clean := trimmed_transform_text(flat.source_type_name(typ_id))
 	if clean.starts_with('mut ') {
 		clean = trimmed_transform_text(clean[4..])
 	}
@@ -12428,13 +12473,175 @@ fn (t &Transformer) mut_optional_param_value_type(typ_id u32) u32 {
 		clean = clean[1..]
 	}
 	if !clean.starts_with('?') {
-		return typ_id
+		return none
 	}
 	payload := trimmed_transform_text(clean[1..])
-	if payload.starts_with('&') || !t.mut_optional_payload_is_struct(payload) {
-		return flat.source_type_id('?${payload}')
+	if payload.len == 0 {
+		return none
 	}
-	return flat.source_type_id('?&${payload}')
+	return payload
+}
+
+// MutOptionalViewParam is a `mut a ?T` parameter that is passed as `&?&T`, but whose body
+// reads it as `?T` (every payload but a struct, see `types.mut_param_semantic_type`).
+struct MutOptionalViewParam {
+	name    string
+	storage u32  // `?&T`, the parameter's value
+	view    u32  // `?T`, what the body reads
+	payload u32  // `T`
+	is_slot bool // a lifted fn literal's parameter keeps its `&?&T` slot
+}
+
+// mut_optional_param_storage_view returns the view `?T` (in the spelling of `storage`) of a
+// `mut` optional parameter whose value is `storage` (`?&T`) and that its body reads as
+// `view` (see mut_optional_param_view_type), when the two differ.
+fn mut_optional_param_storage_view(storage u32, view u32) ?u32 {
+	storage_text := flat.source_type_name(storage)
+	view_text := flat.source_type_name(view)
+	if !storage_text.starts_with('?&') || storage_text.starts_with('?&&')
+		|| !view_text.starts_with('?') || view_text.starts_with('?&') {
+		return none
+	}
+	return flat.source_type_id('?${storage_text[2..]}')
+}
+
+// set_var_mut_optional_storage records that the parameter `name`, whose type is the `?T` its
+// body reads, holds a `?&T` (see mut_optional_view_param).
+fn (mut t Transformer) set_var_mut_optional_storage(name string, storage u32) {
+	i := t.var_type_index(name)
+	if i >= 0 {
+		t.var_types[i].mut_optional_storage = storage
+	}
+}
+
+// mut_optional_view_param reports whether `name` is a `mut a ?T` parameter whose body reads
+// it as `?T` (its type) while its value is a `?&T` that refers to the caller's payload. The
+// body's reads go through the reference (mut_optional_view_read), and so do `mut` guard
+// bindings, smartcasts, assignments and `mut a` arguments.
+fn (t &Transformer) mut_optional_view_param(name string) ?MutOptionalViewParam {
+	if name.len == 0 || !t.mut_param_values[name] {
+		return none
+	}
+	i := t.var_type_index(name)
+	if i < 0 || t.var_types[i].mut_optional_storage == 0 {
+		return none
+	}
+	binding := t.var_types[i]
+	mut view := flat.source_type_name(binding.typ)
+	is_slot := view.starts_with('&?')
+	if is_slot {
+		view = view[1..]
+	}
+	return MutOptionalViewParam{
+		name:    name
+		storage: binding.mut_optional_storage
+		view:    flat.source_type_id(view)
+		payload: flat.source_type_id(view[1..])
+		is_slot: is_slot
+	}
+}
+
+// mut_optional_view_storage returns the value of a view parameter, its `?&T` option.
+fn (mut t Transformer) mut_optional_view_storage(param MutOptionalViewParam) flat.NodeId {
+	mut option := t.make_ident(param.name)
+	if param.is_slot {
+		t.set_node_typ(int(option), flat.source_type_id('&${flat.source_type_name(param.storage)}'))
+		option = t.make_prefix(.mul, option)
+	}
+	t.set_node_typ(int(option), param.storage)
+	return option
+}
+
+// mut_optional_view_payload_ref returns `a.value`, the reference to the caller's payload of
+// a view parameter.
+fn (mut t Transformer) mut_optional_view_payload_ref(param MutOptionalViewParam) flat.NodeId {
+	return t.make_selector(t.mut_optional_view_storage(param), 'value', flat.source_type_id('&${flat.source_type_name(param.payload)}'))
+}
+
+// mut_optional_view_read reads a view parameter as the `?T` its body sees: a copy of the
+// caller's payload, or `none`.
+fn (mut t Transformer) mut_optional_view_read(param MutOptionalViewParam) flat.NodeId {
+	pending_start := t.pending_stmts.len
+	payload := t.make_prefix(.mul, t.mut_optional_view_payload_ref(param))
+	t.set_node_typ(int(payload), param.payload)
+	read := t.make_optional_conversion(t.mut_optional_view_storage(param), payload, param.view, pending_start)
+	return t.mark_optional_wrapper_expr(read, param.view)
+}
+
+// try_lower_mut_optional_view_assign lowers `a = value` for a `mut a ?T` parameter that its
+// body reads as `?T` (mut_optional_view_param). As for a struct payload, the parameter's
+// option gets a reference to a copy of the value: the caller's payload is not overwritten.
+// An option argument gets the new value back after the call
+// (`transform_mut_optional_value_call_arg`); a plain value argument keeps its value, as in
+// V 0.5.2.
+fn (mut t Transformer) try_lower_mut_optional_view_assign(node flat.Node) ?[]flat.NodeId {
+	if node.op != .assign || node.children_count != 2 {
+		return none
+	}
+	lhs_id := t.a.child(&node, 0)
+	lhs := t.a.nodes[int(lhs_id)]
+	if lhs.kind != .ident {
+		return none
+	}
+	view_param := t.mut_optional_view_param(lhs.value) or { return none }
+	rhs_id := t.a.child(&node, 1)
+	mut stored := flat.empty_node
+	if t.a.nodes[int(rhs_id)].kind == .none_expr {
+		stored = t.make_optional_none(view_param.storage)
+	} else {
+		mut rhs_type := t.node_type(rhs_id)
+		if rhs_type == 0 {
+			rhs_type = t.resolve_expr_type(rhs_id)
+		}
+		value_type := if t.is_optional_type_name(rhs_type) {
+			view_param.view
+		} else {
+			view_param.payload
+		}
+		sum_target := t.assignment_sum_target(lhs_id, rhs_id, value_type)
+		value := if sum_target != 0 && value_type == view_param.payload {
+			t.transform_sum_value_for_type(rhs_id, sum_target)
+		} else {
+			t.transform_expr_for_type(rhs_id, value_type)
+		}
+		stored = t.mut_optional_view_store(view_param, t.clone_borrowed_assignment_value(rhs_id,
+			value, value_type), value_type)
+	}
+	t.update_option_assignment_smartcast(lhs_id, rhs_id)
+	mut result := []flat.NodeId{}
+	t.drain_pending(mut result)
+	result << t.make_assign(t.mut_optional_view_storage(view_param), stored)
+	return result
+}
+
+// mut_optional_view_store converts `value`, a transformed `?T`, `T` or `none` assigned to a
+// view parameter, to its `?&T` value. The payload is copied to the heap: the option outlives
+// the callee when the caller passed an option variable (it is written back after the call).
+fn (mut t Transformer) mut_optional_view_store(param MutOptionalViewParam, value flat.NodeId, value_type u32) flat.NodeId {
+	value_node := t.a.nodes[int(value)]
+	if value_node.kind == .none_expr {
+		return t.make_optional_none(param.storage)
+	}
+	payload_ptr_type := flat.source_type_id('&${flat.source_type_name(param.payload)}')
+	if !t.is_optional_type_name(value_type) {
+		tmp_name := t.new_temp('mut_optional_value')
+		t.pending_stmts << t.make_decl_assign_typed(tmp_name, value, param.payload)
+		tmp := t.make_ident(tmp_name)
+		t.set_node_typ(int(tmp), param.payload)
+		tmp_addr := t.make_prefix(.amp, tmp)
+		t.set_node_typ(int(tmp_addr), payload_ptr_type)
+		dup := t.make_memdup_call_for_type(tmp_addr, param.payload)
+		return t.make_optional_some(t.make_cast(payload_ptr_type, dup, payload_ptr_type), param.storage)
+	}
+	tmp_name := t.new_temp('mut_optional_value')
+	t.pending_stmts << t.make_decl_assign_typed(tmp_name, value, param.view)
+	tmp := t.make_ident(tmp_name)
+	t.set_node_typ(int(tmp), param.view)
+	pending_start := t.pending_stmts.len
+	payload_addr := t.make_prefix(.amp, t.make_selector(tmp, 'value', param.payload))
+	t.set_node_typ(int(payload_addr), payload_ptr_type)
+	dup := t.make_memdup_call_for_type(payload_addr, param.payload)
+	return t.make_optional_conversion(tmp, t.make_cast(payload_ptr_type, dup, payload_ptr_type), param.storage, pending_start)
 }
 
 fn (t &Transformer) mut_optional_payload_is_struct(payload string) bool {
@@ -14101,6 +14308,9 @@ pub fn (mut t Transformer) transform_lvalue(id flat.NodeId) flat.NodeId {
 	node := t.a.nodes[int(id)]
 	match node.kind {
 		.ident {
+			if payload := t.mut_optional_view_unwrapped_payload(node.value) {
+				return payload
+			}
 			return id
 		}
 		.selector {
@@ -15236,6 +15446,9 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 	}
 	if discarded := t.try_lower_discarded_spawn_assign(node) {
 		return discarded
+	}
+	if lowered := t.try_lower_mut_optional_view_assign(node) {
+		return lowered
 	}
 	t.update_orm_initialized_fields_for_assignment(node)
 	t.update_sql_query_data_aliases_for_assignment(node)
@@ -19732,6 +19945,17 @@ fn (mut t Transformer) try_expand_plain_multi_assign(node flat.Node) ?[]flat.Nod
 		if lhs.kind == .ident && lhs.value == '_' {
 			continue
 		}
+		if lhs.kind == .ident {
+			if view_param := t.mut_optional_view_param(lhs.value) {
+				// See try_lower_mut_optional_view_assign.
+				tmp := t.make_ident(tmp_names[i])
+				t.set_node_typ(int(tmp), view_param.view)
+				stored := t.mut_optional_view_store(view_param, tmp, view_param.view)
+				t.drain_pending(mut result)
+				result << t.make_assign(t.mut_optional_view_storage(view_param), stored)
+				continue
+			}
+		}
 		mut lvalue := if lhs.kind == .ident && t.pointer_value_lvalues[lhs.value] {
 			t.make_prefix(.mul, t.make_ident(lhs.value))
 		} else {
@@ -23334,7 +23558,21 @@ fn (mut t Transformer) snapshot_mut_pointer_slot_arg(id flat.NodeId, node flat.N
 
 // transform_call_expr lowers a checked call and its argument conversions.
 fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.NodeId {
-	return t.transform_call_expr_inner(id, node)
+	outer_writebacks := t.mut_optional_call_writebacks
+	t.mut_optional_call_writebacks = []flat.NodeId{}
+	result := t.transform_call_expr_inner(id, node)
+	writebacks := t.mut_optional_call_writebacks
+	t.mut_optional_call_writebacks = outer_writebacks
+	if writebacks.len == 0 {
+		return result
+	}
+	// A method call's option arguments to `mut a ?T` parameters
+	// (transform_receiver_method_args_with_base) get the callee's option back after it.
+	mut typ := t.node_type(result)
+	if typ == 0 {
+		typ = node.typ
+	}
+	return t.finish_mut_optional_value_call(result, typ, writebacks)
 }
 
 @[direct_array_access]
@@ -25492,6 +25730,9 @@ fn (mut t Transformer) make_plain_expr_for_smartcast(id flat.NodeId) flat.NodeId
 	node := t.a.nodes[int(id)]
 	match node.kind {
 		.ident {
+			if view_param := t.mut_optional_view_param(node.value) {
+				return t.mut_optional_view_read(view_param)
+			}
 			expr := t.make_ident(node.value)
 			typ_source_id_5 := t.original_expr_type(id)
 
@@ -28230,6 +28471,12 @@ fn (mut t Transformer) transform_ident_expr(id flat.NodeId, node flat.Node) flat
 				}
 			}
 			mut typ := t.var_type(node.value)
+			if typ != 0 && (flat.source_type_shape(typ).has(.option_type)
+				|| flat.source_type_shape(typ).has(.pointer_option)) {
+				if view_param := t.mut_optional_view_param(node.value) {
+					return t.mut_optional_view_read(view_param)
+				}
+			}
 			mut is_global := false
 			if typ == 0 {
 				if global_type_source_id := t.current_module_global_type(node.value) {
@@ -28317,7 +28564,37 @@ fn (mut t Transformer) smartcast_ident_value(name string) ?flat.NodeId {
 	if contexts.len == 0 {
 		return none
 	}
+	if view_param := t.mut_optional_view_param(name) {
+		if contexts[0].sum_type_name_text() != option_unwrap_marker {
+			return t.apply_smartcast_contexts(t.mut_optional_view_read(view_param), view_param.view,
+				contexts)
+		}
+		// The unwrapped payload is the caller's: reads and writes go through the reference.
+		payload := t.make_prefix(.mul, t.mut_optional_view_payload_ref(view_param))
+		t.set_node_typ(int(payload), view_param.payload)
+		if contexts.len == 1 {
+			return payload
+		}
+		return t.apply_smartcast_contexts(payload, view_param.payload, contexts[1..])
+	}
 	return t.apply_smartcast_contexts(t.make_ident(name), t.var_type(name), contexts)
+}
+
+// mut_optional_view_unwrapped_payload returns `*a.value`, the caller's payload, when `name`
+// is a `mut a ?T` parameter read as `?T` (mut_optional_view_param) that is smartcast to its
+// payload only (`if a != none { a << 1 }`): the lvalue that changes made through `a` write.
+fn (mut t Transformer) mut_optional_view_unwrapped_payload(name string) ?flat.NodeId {
+	if t.smartcast_stack.len == 0 {
+		return none
+	}
+	contexts := t.smartcasts_for(name)
+	if contexts.len != 1 || contexts[0].sum_type_name_text() != option_unwrap_marker {
+		return none
+	}
+	view_param := t.mut_optional_view_param(name)?
+	payload := t.make_prefix(.mul, t.mut_optional_view_payload_ref(view_param))
+	t.set_node_typ(int(payload), view_param.payload)
+	return payload
 }
 
 // apply_smartcast_contexts supports apply smartcast contexts handling for Transformer.

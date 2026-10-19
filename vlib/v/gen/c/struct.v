@@ -1441,6 +1441,11 @@ fn (g &FlatGen) generic_struct_init_context_matches(init_name_id u32, expected_n
 }
 
 fn (mut g FlatGen) gen_optional_fixed_array_struct_init(node flat.Node, name string, init_type types.Type) bool {
+	// The value of a `mut a ?[N]T` parameter (`?&[N]T`) holds a pointer, while the expected
+	// type names the payload the body reads.
+	if init_type is types.OptionType && init_type.base_type is types.Pointer {
+		return false
+	}
 	payload_type := g.optional_struct_init_payload_type(init_type) or { return false }
 	if _ := array_fixed_type(payload_type) {
 		value_id := g.optional_struct_init_value_id(node) or { return false }
