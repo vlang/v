@@ -1440,12 +1440,22 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 	mut dot_char_count := 0
 	mut last_dot_char_pc := -1
 	for pc1 < pc {
+		next_pc := re.skip_zero_repeat(pc1)
+		if next_pc != pc1 {
+			pc1 = next_pc
+			continue
+		}
 		if re.prog[pc1].ist == ist_dot_char {
 			// println("Dot_char pc: ${pc1}")
 			last_dot_char_pc = pc1
 			dot_char_count++
 			mut pc2 := pc1 + 1
 			for pc2 < pc {
+				next_check_pc := re.skip_zero_repeat(pc2)
+				if next_check_pc != pc2 {
+					pc2 = next_check_pc
+					continue
+				}
 				// consecutive dot chars is an error
 				if re.prog[pc2].ist == ist_dot_char {
 					return err_syntax_error, 0
@@ -1466,6 +1476,11 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 		pc1 = last_dot_char_pc + 1
 		mut is_last_dot := true
 		for pc1 < pc {
+			next_pc := re.skip_zero_repeat(pc1)
+			if next_pc != pc1 {
+				pc1 = next_pc
+				continue
+			}
 			if re.prog[pc1].ist !in [u32(ist_prog_end), ist_group_end] {
 				is_last_dot = false
 				break
@@ -1486,12 +1501,22 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 	mut bsls_char_count := 0
 	mut last_bsls_char_pc := -1
 	for pc1 < pc {
+		next_pc := re.skip_zero_repeat(pc1)
+		if next_pc != pc1 {
+			pc1 = next_pc
+			continue
+		}
 		if re.prog[pc1].ist == ist_bsls_char {
 			// println("bsls_char pc: ${pc1}")
 			last_bsls_char_pc = pc1
 			bsls_char_count++
 			mut pc2 := pc1 + 1
 			for pc2 < pc {
+				next_check_pc := re.skip_zero_repeat(pc2)
+				if next_check_pc != pc2 {
+					pc2 = next_check_pc
+					continue
+				}
 				if re.prog[pc2].ist !in [u32(ist_prog_end), ist_group_end, ist_group_start] {
 					// println("Next bsls check is PC: ${pc2}")
 					re.prog[pc1].bsls_check_pc = pc2
@@ -1508,6 +1533,11 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 		pc1 = last_bsls_char_pc + 1
 		mut is_last_bsls := true
 		for pc1 < pc {
+			next_pc := re.skip_zero_repeat(pc1)
+			if next_pc != pc1 {
+				pc1 = next_pc
+				continue
+			}
 			if re.prog[pc1].ist !in [u32(ist_prog_end), ist_group_end] {
 				is_last_bsls = false
 				break
@@ -1526,11 +1556,21 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 	mut cc_char_count := 0
 	mut last_cc_char_pc := -1
 	for pc1 < pc {
+		next_pc := re.skip_zero_repeat(pc1)
+		if next_pc != pc1 {
+			pc1 = next_pc
+			continue
+		}
 		if re.prog[pc1].ist in [u32(ist_char_class_pos), ist_char_class_neg] {
 			last_cc_char_pc = pc1
 			cc_char_count++
 			mut pc2 := pc1 + 1
 			for pc2 < pc {
+				next_check_pc := re.skip_zero_repeat(pc2)
+				if next_check_pc != pc2 {
+					pc2 = next_check_pc
+					continue
+				}
 				if re.prog[pc2].ist !in [u32(ist_prog_end), ist_group_end, ist_group_start] {
 					// println("Next CC check is PC: ${pc2}")
 					re.prog[pc1].cc_check_pc = pc2
@@ -1547,6 +1587,11 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 		pc1 = last_cc_char_pc + 1
 		mut is_last_cc := true
 		for pc1 < pc {
+			next_pc := re.skip_zero_repeat(pc1)
+			if next_pc != pc1 {
+				pc1 = next_pc
+				continue
+			}
 			if re.prog[pc1].ist !in [u32(ist_prog_end), ist_group_end] {
 				is_last_cc = false
 				break
@@ -1591,6 +1636,11 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 			// match jump, if an OR chain the next token will be an OR token
 			mut pc2 := pc1 + 2
 			for pc2 < pc {
+				next_check_pc := re.skip_zero_repeat(pc2)
+				if next_check_pc != pc2 {
+					pc2 = next_check_pc
+					continue
+				}
 				ist := re.prog[pc2].ist
 				if ist == ist_group_start {
 					re.prog[pc1 + 1].rep_max = re.prog[pc2].goto_pc + 1
@@ -1820,6 +1870,17 @@ pub fn (re &RE) get_query() string {
 	}
 
 	return res.str()
+}
+
+// skip_zero_repeat advances over tokens that never consume input, including whole groups.
+fn (re &RE) skip_zero_repeat(pc int) int {
+	end_pc := if re.prog[pc].ist == ist_group_start { re.prog[pc].goto_pc } else { pc }
+	if re.prog[end_pc].ist in [u32(ist_simple_char), ist_dot_char, ist_bsls_char, ist_char_class_pos,
+		ist_char_class_neg, ist_group_end]
+		&& re.prog[end_pc].rep_min == 0 && re.prog[end_pc].rep_max == 0 {
+		return end_pc + 1
+	}
+	return pc
 }
 
 /******************************************************************************
@@ -2237,8 +2298,47 @@ pub fn (mut re RE) match_base(in_txt &u8, text_len int) (int, int) {
 				m_state = .stop
 				continue
 			}
+			// A token with a zero maximum never examines or consumes the current byte.
+			if ist in [u32(ist_simple_char), ist_dot_char, ist_bsls_char, ist_char_class_pos,
+				ist_char_class_neg] && re.prog[state.pc].rep_min == 0
+				&& re.prog[state.pc].rep_max == 0 {
+				if state.first_match < 0 {
+					state.first_match = state.i
+				}
+				state.match_index = state.i
+				m_state = .ist_next
+				continue
+			}
+
 			// check GROUP start, no quantifier is checkd for this token!!
 			else if ist == ist_group_start {
+				end_pc := re.prog[state.pc].goto_pc
+				if re.prog[end_pc].rep_min == 0 && re.prog[end_pc].rep_max == 0 {
+					if state.first_match < 0 {
+						state.first_match = state.i
+					}
+					state.match_index = state.i
+					state.pc = end_pc
+					m_state = .ist_next
+					continue
+				}
+				if end_pc == state.pc + 1 && !re.prog[end_pc].group_neg
+					&& re.prog[end_pc].rep_min <= re.prog[end_pc].rep_max {
+					group_id := re.prog[end_pc].group_id
+					if group_id >= 0 {
+						re.groups[group_id * 2] = state.i
+						re.groups[group_id * 2 + 1] = state.i
+						re.group_continuous_save(group_id * 2)
+					}
+					if state.first_match < 0 {
+						state.first_match = state.i
+					}
+					state.match_index = state.i
+					state.pc = end_pc
+					m_state = .ist_next
+					continue
+				}
+
 				state.group_index++
 				re.group_data[state.group_index] = re.prog[state.pc].goto_pc // save where is ist_group_end, we will use it for escape
 				re.group_stack[state.group_index] = state.i // index where we start to manage
@@ -2286,7 +2386,8 @@ pub fn (mut re RE) match_base(in_txt &u8, text_len int) (int, int) {
 
 					re.prog[state.pc].group_rep++ // increase repetitions
 					// println("GROUP ${group_index} END ${re.prog[state.pc].group_rep}")
-					if re.prog[state.pc].group_rep > in_txt_len - 1 {
+					if re.prog[state.pc].group_rep > in_txt_len - 1
+						&& state.i > re.group_stack[state.group_index] {
 						m_state = .ist_quant_ng
 						continue
 					}
@@ -2672,14 +2773,23 @@ pub fn (mut re RE) match_base(in_txt &u8, text_len int) (int, int) {
 				continue
 			}
 
-			rep := re.prog[tmp_pc].group_rep
+			mut rep := re.prog[tmp_pc].group_rep
+			// Repeating the same empty match cannot advance the subject. Account for the
+			// remaining mandatory iterations without rerunning their body.
+			if state.group_index >= 0 && state.i == re.group_stack[state.group_index]
+				&& rep < re.prog[tmp_pc].rep_min {
+				rep = re.prog[tmp_pc].rep_min
+				re.prog[tmp_pc].group_rep = rep
+			}
 
 			if rep < re.prog[tmp_pc].rep_min {
 				// println("ist_quant_pg UNDER RANGE")
 				state.pc = re.prog[tmp_pc].goto_pc
 				m_state = .ist_next
 				continue
-			} else if rep == re.prog[tmp_pc].rep_max {
+			} else if rep == re.prog[tmp_pc].rep_max
+				|| (rep >= re.prog[tmp_pc].rep_min && state.group_index >= 0
+					&& state.i == re.group_stack[state.group_index]) {
 				// println("ist_quant_pg MAX RANGE")
 				re.prog[tmp_pc].group_rep = 0 // clear the repetitions
 				state.group_index--

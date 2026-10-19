@@ -146,23 +146,22 @@ fn test_inverted_and_huge_bounds_compile() {
 	assert !huge.matches_string('aa')
 }
 
-// NOTE: a zero-width `{0}` confuses the quantifier state machine, which falls
-// through every range branch and reports `err_internal_error` as the start
-// index. This happens both at the end of the program and in the middle of it,
-// so only a pattern with no `{0}` token at all behaves as documented.
-fn test_zero_width_quantifier_reports_an_internal_error() {
-	mut last := regex.regex_opt(r'a{0}') or { panic(err) }
-	last_start, last_end := last.match_string('aaa')
-	assert last_start == regex.err_internal_error, 'got start ${last_start}'
-	assert last_end == 1
-
+fn test_zero_width_quantifier_does_not_consume_input() {
+	for pattern in [r'a{0}', r'.{0}', r'\w{0}', r'[ab]{0}', r'(ab){0}'] {
+		for text in ['', 'a', 'aaa', 'b'] {
+			mut re := regex.regex_opt(pattern) or { panic(err) }
+			start, end := re.match_string(text)
+			assert start == 0 && end == 0, '${pattern} on "${text}": ${start}, ${end}'
+			found_start, found_end := re.find(text)
+			assert found_start == 0 && found_end == 0
+		}
+	}
 	mut middle := regex.regex_opt(r'a{0}b') or { panic(err) }
-	middle_start, middle_end := middle.match_string('ab')
-	assert middle_start == regex.err_internal_error, 'got start ${middle_start}'
-	assert middle_end == 1
-
-	mut no_input := regex.regex_opt(r'a{0}b') or { panic(err) }
-	ok_start, ok_end := no_input.match_string('b')
+	start, end := middle.match_string('ab')
+	assert start == -1 && end == 0
+	found_start, found_end := middle.find('ab')
+	assert found_start == 1 && found_end == 2
+	ok_start, ok_end := middle.match_string('b')
 	assert ok_start == 0 && ok_end == 1
 }
 
@@ -183,4 +182,21 @@ fn test_greedy_star_runs_to_the_last_possible_match() {
 	mut re := regex.regex_opt(r'a.*b') or { panic(err) }
 	start, end := re.match_string('axbxb')
 	assert start == 0 && end == 3
+}
+
+fn test_zero_repeat_tokens_do_not_control_lookahead() {
+	for pattern in [r'.*a{0}', r'.*(ab){0}', r'.*[ab]{0}', r'.*\w{0}', r'[b]*a{0}', r'[b]*(ab){0}',
+		r'\w*a{0}', r'\w*(ab){0}'] {
+		mut re := regex.regex_opt(pattern)!
+		start, end := re.match_string('bbb')
+		assert start == 0 && end == 3, '${pattern}: ${start}, ${end}'
+	}
+}
+
+fn test_large_empty_group_minimum_does_not_repeat_the_body() {
+	for pattern in [r'(a{0}){1000000000}', r'((a{0})){1000000000}'] {
+		mut re := regex.regex_opt(pattern)!
+		start, end := re.match_string('')
+		assert start == 0 && end == 0, '${pattern}: ${start}, ${end}'
+	}
 }
