@@ -771,6 +771,8 @@ The digits are split into two halves in the compiler, so the C compiler never
 sees a constant it would quietly cut down to its low 64 bits. A value outside
 the range of the target type is an error: `u128(2^128)` is rejected rather than
 wrapped, and `i128(-2^127)` is allowed because that is the minimum.
+Negative literals keep their full magnitude before negation, including values below
+the `i64` minimum: `i128(-9223372036854775809)` is exactly -9223372036854775809.
 
 A bare literal still follows the rule that applies to every other integer in V, so
 it wants an explicit cast.

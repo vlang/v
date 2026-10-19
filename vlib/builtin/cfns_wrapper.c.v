@@ -69,7 +69,7 @@ fn string_content_equal(a &u8, b &u8, size int) bool {
 	$if trace_vmemcmp ? {
 		return unsafe { vmemcmp(a, b, size) == 0 }
 	}
-	if size == 0 || u64(a) <= 0xFFFF || u64(b) <= 0xFFFF {
+	if size == 0 || usize(a) <= 0xFFFF || usize(b) <= 0xFFFF {
 		return true
 	}
 	return string_bytes_equal(a, b, size)
@@ -104,7 +104,7 @@ pub fn vmemcpy(dest voidptr, const_src voidptr, n isize) voidptr {
 			print_backtrace()
 		}
 	}
-	if n == 0 || u64(dest) <= 0xFFFF || u64(const_src) <= 0xFFFF {
+	if n == 0 || usize(dest) <= 0xFFFF || usize(const_src) <= 0xFFFF {
 		return dest
 	}
 	unsafe {
@@ -122,7 +122,7 @@ pub fn vmemmove(dest voidptr, const_src voidptr, n isize) voidptr {
 	$if trace_vmemmove ? {
 		C.fprintf(C.stderr, c'vmemmove dest: %p src: %p n: %6ld\n', dest, const_src, n)
 	}
-	if n == 0 || u64(dest) <= 0xFFFF || u64(const_src) <= 0xFFFF {
+	if n == 0 || usize(dest) <= 0xFFFF || usize(const_src) <= 0xFFFF {
 		return dest
 	}
 	unsafe {
@@ -147,7 +147,7 @@ pub fn vmemcmp(const_s1 voidptr, const_s2 voidptr, n isize) int {
 	$if trace_vmemcmp ? {
 		C.fprintf(C.stderr, c'vmemcmp s1: %p s2: %p n: %6ld\n', const_s1, const_s2, n)
 	}
-	if n == 0 || u64(const_s1) <= 0xFFFF || u64(const_s2) <= 0xFFFF {
+	if n == 0 || usize(const_s1) <= 0xFFFF || usize(const_s2) <= 0xFFFF {
 		return 0
 	}
 	unsafe {
@@ -168,7 +168,7 @@ pub fn vmemset(s voidptr, c int, n isize) voidptr {
 			print_backtrace()
 		}
 	}
-	if n == 0 || u64(s) <= 0xFFFF {
+	if n == 0 || usize(s) <= 0xFFFF {
 		return s
 	}
 	unsafe {

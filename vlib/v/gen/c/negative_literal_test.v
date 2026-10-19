@@ -38,3 +38,17 @@ fn test_wide_literal_suffix_respects_signed_range() {
 		assert int_literal_needs_long_long_suffix(&node)
 	}
 }
+
+fn test_decimal_literals_above_the_signed_range_are_spelled_unsigned() {
+	for spelling in ['9223372036854775809', '10000000000000000000', '18446744073709551615',
+		'18_446_744_073_709_551_615'] {
+		node := flat.Node{ kind: .int_literal, value: spelling }
+		assert numeric_literal_c_text(&node) == spelling.replace('_', '') + 'ULL'
+	}
+	// 2^63 is min_i64's negated operand; hex and octal are unsigned in C by the standard
+	for spelling in ['9223372036854775808', '9223372036854775807', '1000000000', '0xFFFFFFFFFFFFFFFF',
+		'0o1777777777777777777777'] {
+		node := flat.Node{ kind: .int_literal, value: spelling }
+		assert !numeric_literal_c_text(&node).ends_with('ULL'), spelling
+	}
+}

@@ -812,6 +812,8 @@ fn test_builtin_abi_decls_reuse_tcc_x64_stdatomic_fence_declaration() {
 	assert c_code.contains('#if defined(_WIN32) && (defined(__TINYC__) || (defined(_MSC_VER) && !defined(__clang__)))\n/* V atomic.h supplies atomic_thread_fence on Windows TCC and MSVC. */')
 	assert c_code.contains('#define atomic_thread_fence(order) __atomic_thread_fence(order)')
 	assert !c_code.contains('extern void __atomic_thread_fence(int order);')
+	// a <stdatomic.h> included first already defines the macro; defining it again is a warning
+	assert c_code.contains('#elif !defined(atomic_thread_fence)\n#define atomic_thread_fence(order) __atomic_thread_fence(order)')
 }
 
 fn test_map_equality_fallback_does_not_infer_value_type_from_size() {

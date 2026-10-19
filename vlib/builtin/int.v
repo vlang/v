@@ -9,7 +9,7 @@ pub struct VContext {
 
 // ptr_str returns a string with the address of `ptr`.
 pub fn ptr_str(ptr voidptr) string {
-	buf1 := u64_to_hex_no_leading_zeros(u64(ptr), 16)
+	buf1 := u64_to_hex_no_leading_zeros(u64(usize(ptr)), 16)
 	return buf1
 }
 
