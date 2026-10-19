@@ -110,8 +110,10 @@ fn wait_header_gen_c(v3_bin string, name string, source string) string {
 
 // wait_header_gen_windows_c generates headerless Windows C: without a C include
 // directive, V supplies the SDK types and the prototypes of the program's bindings.
+// Disable the stack-overflow handler, which includes the SDK headers by default.
 fn wait_header_gen_windows_c(v3_bin string, name string, source string) string {
-	return wait_header_gen_c_with_args(v3_bin, name, source, ['-os', 'windows'])
+	return wait_header_gen_c_with_args(v3_bin, name, source, ['-os', 'windows', '-d',
+		'no_segfault_handler'])
 }
 
 // wait_header_gen_windows_sdk_c generates Windows C for MSVC, which includes the
