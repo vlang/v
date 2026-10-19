@@ -19,10 +19,28 @@
   #define VGC_TLS __thread
 #endif
 
+#if defined(__TINYC__) && defined(__APPLE__)
+  // TinyCC's Mach-O output has no working thread-local storage: writing a `__thread` variable
+  // crashes. Keep the index in a pthread key instead, stored as idx + 1 so that a thread
+  // without a value reads -1.
+  #include <pthread.h>
+  static pthread_key_t _vgc_cache_idx_key;
+  static pthread_once_t _vgc_cache_idx_once = PTHREAD_ONCE_INIT;
+  static void vgc_cache_idx_key_create(void) { pthread_key_create(&_vgc_cache_idx_key, NULL); }
+  static inline int vgc_get_cache_idx(void) {
+      pthread_once(&_vgc_cache_idx_once, vgc_cache_idx_key_create);
+      return (int)(intptr_t)pthread_getspecific(_vgc_cache_idx_key) - 1;
+  }
+  static inline void vgc_set_cache_idx(int idx) {
+      pthread_once(&_vgc_cache_idx_once, vgc_cache_idx_key_create);
+      pthread_setspecific(_vgc_cache_idx_key, (void*)(intptr_t)(idx + 1));
+  }
+#else
 static VGC_TLS int _vgc_cache_idx = -1;
 
 static inline int vgc_get_cache_idx(void) { return _vgc_cache_idx; }
 static inline void vgc_set_cache_idx(int idx) { _vgc_cache_idx = idx; }
+#endif
 
 // ============================================================
 // Atomic operations
