@@ -23324,6 +23324,9 @@ fn (mut t Transformer) transform_call_expr_inner(id flat.NodeId, node flat.Node)
 	if node.value.len > 0 && node.value == '__v_compile_warn' {
 		return t.make_empty()
 	}
+	if node.value.len > 0 && node.value == '__v_compile_notice' {
+		return t.make_empty()
+	}
 	if node.value.len > 0 && node.value == '__v_compile_error' {
 		t.record_selected_compile_error_call(node)
 		return t.make_empty()
