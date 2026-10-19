@@ -1772,6 +1772,25 @@ fn test_source_preservation_matches_formatter_fixtures() {
 	}
 }
 
+// An embed with a default (`Inner = Inner{}`) is a field without a type. Its empty type column
+// must not add a second space before the `=`, and the fields after it keep their alignment.
+fn test_formatter_writes_embed_defaults_without_an_empty_type_column() {
+	fixture_dir := os.join_path(@VEXEROOT, 'vlib/v/fmt/tests')
+	keep := os.read_file(os.join_path(fixture_dir, 'struct_embed_with_default_keep.vv')) or {
+		panic(err)
+	}
+	assert vfmt('embed_default_keep', keep) == keep
+	input := os.read_file(os.join_path(fixture_dir, 'struct_embed_with_default_input.vv')) or {
+		panic(err)
+	}
+	expected := os.read_file(os.join_path(fixture_dir, 'struct_embed_with_default_expected.vv')) or {
+		panic(err)
+	}
+	formatted := vfmt('embed_default_input', input)
+	assert formatted == expected
+	assert vfmt('embed_default_twice', formatted) == formatted
+}
+
 fn test_channel_ops() {
 	out := vfmt('chan', 'fn f() {\n\tx := <-ch\n\tch <- 5\n}\n')
 	assert out.contains('x := <-ch')
