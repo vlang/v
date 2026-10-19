@@ -1169,8 +1169,9 @@ fn spawn_stateless_server() !(&Server, string) {
 		enable_logging: true
 	)
 	mut server := &server_value
-	server.add_tool(Tool{ name: 'shout' }, fn (mut ctx Context, arguments string) !ToolResult {
-		ctx.server.notify_log(.debug, 'shout', '{"volume":11}')
+	server.add_tool(Tool{ name: 'shout' }, fn (ctx Context, arguments string) !ToolResult {
+		mut handler_server := ctx.server
+		handler_server.notify_log(.debug, 'shout', '{"volume":11}')
 		return tool_text_result('shouting from ${ctx.protocol_version} for ${ctx.client_info.name}')
 	})!
 	server.add_resource(Resource{
@@ -1399,8 +1400,9 @@ fn test_stdio_stateless_logs_need_a_requested_log_level() {
 		version:        '2.0.0'
 		enable_logging: true
 	)
-	server.add_tool(Tool{ name: 'shout' }, fn (mut ctx Context, _ string) !ToolResult {
-		ctx.server.notify_log(.debug, 'shout', '{"volume":11}')
+	server.add_tool(Tool{ name: 'shout' }, fn (ctx Context, _ string) !ToolResult {
+		mut handler_server := ctx.server
+		handler_server.notify_log(.debug, 'shout', '{"volume":11}')
 		return tool_text_result('ok')
 	})!
 
