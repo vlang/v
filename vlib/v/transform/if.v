@@ -53,6 +53,54 @@ fn (mut t Transformer) make_guard_value_decls(name string, value flat.NodeId, va
 	return [t.make_decl_assign_typed(name, value, value_type_id)]
 }
 
+// mut_optional_param_payload_ref returns `&a.value` when `rhs_id` is a `mut a ?T`
+// parameter whose payload is passed by value (`&?T`; a struct payload is already a
+// pointer, `&?&T`). A `mut` guard binding of it refers to the caller's payload, as in
+// V 0.5.2, where the parameter is `?&T`: `if mut v := a { v << 1 }` changes the caller's
+// array, not a copy.
+fn (mut t Transformer) mut_optional_param_payload_ref(rhs_id flat.NodeId, payload_type_id u32) ?flat.NodeId {
+	mut source_id := rhs_id
+	for t.a.nodes[int(source_id)].kind == .paren && t.a.nodes[int(source_id)].children_count == 1 {
+		source_id = t.a.child(&t.a.nodes[int(source_id)], 0)
+	}
+	source := t.a.nodes[int(source_id)]
+	if source.kind != .ident || !t.mut_param_values[source.value] || t.has_smartcast(source.value) {
+		return none
+	}
+	if payload_type_id == 0 || payload_type_id == flat.source_type_void
+		|| flat.source_type_shape(payload_type_id).has(.pointer) {
+		return none
+	}
+	param_type_id := t.var_type(source.value)
+	param_type := flat.source_type_name(param_type_id)
+	// A named fn's parameter has the option type (cgen reads it through the pointer); a
+	// lifted fn literal's keeps the pointer (`&?T`).
+	is_slot := param_type.starts_with('&?')
+	option_type_id := if is_slot { flat.source_type_id(param_type[1..]) } else { param_type_id }
+	option_shape := flat.source_type_shape(option_type_id)
+	if !option_shape.has(.option_type) || option_shape.has(.pointer) {
+		return none
+	}
+	mut option := t.make_ident(source.value)
+	t.set_node_typ(int(option), param_type_id)
+	if is_slot {
+		option = t.make_prefix(.mul, option)
+		t.set_node_typ(int(option), option_type_id)
+	}
+	return t.make_prefix(.amp, t.make_selector(option, 'value', payload_type_id))
+}
+
+// make_payload_ref_binding declares `name` as a pointer to an option payload. Like a
+// `for mut x in a` element, the binding keeps its value type in the source, and its reads
+// and writes go through the pointer.
+fn (mut t Transformer) make_payload_ref_binding(name string, payload_ref flat.NodeId, payload_type_id u32) flat.NodeId {
+	t.clear_heaped_local_binding(name)
+	decl := t.make_decl_assign_typed(name, payload_ref, flat.source_type_id('&${flat.source_type_name(payload_type_id)}'))
+	t.pointer_value_lvalues[name] = true
+	t.pointer_value_rvalues[name] = true
+	return decl
+}
+
 fn (t &Transformer) guard_value_needs_heap_storage(name string, value_type_id u32) bool {
 	clean_type_source_id := t.comptime_normalize_type_alias_chain(value_type_id)
 	clean_type_shape := flat.source_type_shape(clean_type_source_id)
@@ -371,6 +419,12 @@ fn (mut t Transformer) try_expand_if_guard_with_tail(node flat.Node, tail GuardR
 				value_decls << t.make_guard_value_decls(lhs_item.value, field, flat.source_type_id(field_type))
 				binding_names << lhs_item.value
 			}
+		}
+	}
+	if value_decls.len == 0 && lhs.is_mut && lhs_ids.len == 1 && lhs.value != '_' {
+		if payload_ref := t.mut_optional_param_payload_ref(rhs_id, value_type_source_id) {
+			value_decls << t.make_payload_ref_binding(lhs.value, payload_ref, value_type_source_id)
+			binding_names << lhs.value
 		}
 	}
 	if value_decls.len == 0 && lhs.value != '_' && value_type_source_id != flat.source_type_void {

@@ -3643,16 +3643,29 @@ fn (mut tc TypeChecker) record_unused_fn_vars(node flat.Node) {
 	mut candidates := []UnusedFnVarCandidate{}
 	mut candidate_names := map[string]bool{}
 	mut stack := []flat.NodeId{}
+	mut mut_option_params := map[string]bool{}
 	for i in 0 .. node.children_count {
 		child_id := tc.a.child(&node, i)
-		if tc.a.node(child_id).kind != .param {
+		child := tc.a.node(child_id)
+		if child.kind != .param {
 			stack << child_id
+		} else if child.is_mut && child.value.len > 0 && param_type_text_is_option(child.typ_text()) {
+			mut_option_params[child.value] = true
 		}
 	}
+	// `if mut v := a` over a `mut a ?T` parameter binds the caller's payload, so
+	// assigning to `v` is a use (transform `mut_optional_param_payload_ref`).
+	mut payload_ref_guards := map[int]bool{}
 	for stack.len > 0 {
 		id := stack.pop()
 		current := tc.a.node(id)
-		if current.kind == .decl_assign {
+		if current.kind == .if_expr && current.children_count > 0 && mut_option_params.len > 0 {
+			cond_id := tc.a.child(current, 0)
+			if tc.guard_binds_mut_param_payload(cond_id, mut_option_params) {
+				payload_ref_guards[int(cond_id)] = true
+			}
+		}
+		if current.kind == .decl_assign && !payload_ref_guards[int(id)] {
 			lhs_ids := tc.multi_assign_lhs_ids(current)
 			rhs_count := tc.multi_assign_rhs_count(current)
 			for lhs_index, lhs_id in lhs_ids {
@@ -3700,6 +3713,35 @@ fn (mut tc TypeChecker) record_unused_fn_vars(node flat.Node) {
 		}
 		tc.record_warning_at(.unknown_ident, 'unused variable: `${candidate.name}`', candidate.lhs_id, tc.node_value_diagnostic_pos(candidate.lhs_id))
 	}
+}
+
+fn param_type_text_is_option(typ string) bool {
+	mut clean := typ.trim_space()
+	if clean.starts_with('mut ') {
+		clean = clean[4..].trim_space()
+	}
+	return clean.trim_left('&').starts_with('?')
+}
+
+// guard_binds_mut_param_payload reports whether `cond_id` is `mut v := a` with `a` one of
+// `params`.
+fn (tc &TypeChecker) guard_binds_mut_param_payload(cond_id flat.NodeId, params map[string]bool) bool {
+	if !tc.valid_node_id(cond_id) {
+		return false
+	}
+	cond := tc.a.node(cond_id)
+	if cond.kind != .decl_assign || cond.children_count != 2 {
+		return false
+	}
+	lhs := tc.a.child_node(cond, 0)
+	if lhs.kind != .ident || !lhs.is_mut {
+		return false
+	}
+	mut rhs := tc.a.child_node(cond, 1)
+	for rhs.kind == .paren && rhs.children_count == 1 {
+		rhs = tc.a.child_node(rhs, 0)
+	}
+	return rhs.kind == .ident && params[rhs.value]
 }
 
 fn (tc &TypeChecker) expr_calls_fn_with_duplicate_parameters(id flat.NodeId) bool {
