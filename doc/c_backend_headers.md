@@ -126,6 +126,10 @@ Negated integer literals above `INT_MAX` and within the signed 64-bit range rece
 suffix in C output, including parenthesized operands and constant initializers. This preserves
 their sign with MSVC.
 
+Cache-invalidation restarts remove the current temporary C build directory before
+starting the replacement compiler process. Successful cached builds leave no `.v3cc.*`
+directory beside the output.
+
 With `-target-libc-headers`, the target libc owns the accessor behind its `errno` macro.
 The generated C includes `<errno.h>` and leaves the libc accessor declaration to that header,
 avoiding conflicts where the target's `int32_t` differs from C's `int`. Headerless output
