@@ -5557,7 +5557,7 @@ fn (mut tc TypeChecker) prepare_check_name_filters() {
 	for name, _ in tc.global_names {
 		tc.global_name_bloom.add(name)
 	}
-	tc.global_name_bloom.count = tc.global_names.len
+	tc.global_name_bloom.count = u64(tc.global_names.len)
 	tc.call_flag_bloom = NameBloom{}
 	for name, _ in tc.fn_shared_params {
 		tc.call_flag_bloom.add(name)
@@ -5576,16 +5576,17 @@ fn (mut tc TypeChecker) prepare_check_name_filters() {
 
 // call_flag_tables_count identifies the sizes of the sparse tables that
 // call_info reads besides the signatures (all smaller than 2^16 entries).
+// Keep all four lengths even when the compiler runs on a 32-bit host.
 @[inline]
-fn (tc &TypeChecker) call_flag_tables_count() int {
+fn (tc &TypeChecker) call_flag_tables_count() u64 {
 	counts := [tc.fn_shared_params.len, tc.fn_variadic.len, tc.c_variadic_fns.len,
 		tc.fn_implicit_veb_ctx.len]!
-	mut count := 0
+	mut count := u64(0)
 	for n in counts {
 		if n >= 65535 {
-			return -2
+			return u64(0xfffffffffffffffe)
 		}
-		count = (count << 16) | n
+		count = (count << 16) | u64(n)
 	}
 	return count
 }
@@ -5595,7 +5596,7 @@ fn (tc &TypeChecker) call_flag_tables_count() int {
 // the table, without hashing all of its bytes.
 struct NameBloom {
 mut:
-	count int = -1
+	count u64 = 0xffffffffffffffff
 	bits  [64]u64
 }
 
@@ -5616,7 +5617,7 @@ fn (mut bloom NameBloom) add(name string) {
 
 // excludes reports whether `name` is surely not in a table of `count` entries.
 @[direct_array_access; inline]
-fn (bloom &NameBloom) excludes(name string, count int) bool {
+fn (bloom &NameBloom) excludes(name string, count u64) bool {
 	if bloom.count != count {
 		return false
 	}
