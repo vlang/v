@@ -11,7 +11,8 @@ const v3_src = os.join_path(v3_dir, 'v.v')
 // workers. Besides adding diagnostics they can replace earlier ones: the unknown
 // types of a nongeneric declaration give way to its missing generic parameters.
 fn test_parallel_signature_checks_merge_the_diagnostics_they_replace() {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_scoped_signature_${os.getpid()}_${rand.ulid()}')
+	v3_bin := os.join_path(os.temp_dir(), 'v3_scoped_signature_${os.getpid()}_${rand.ulid()}') +
+		$if windows { '.exe' } $else { '' }
 	build := os.exec([vexe, '-gc', 'none', '-prealloc', '-path', '${vlib_dir}' + '|@vlib|@vmodules',
 		'-o', v3_bin, '${v3_src}'])
 	assert build.exit_code == 0, build.output
@@ -30,7 +31,16 @@ fn test_parallel_signature_checks_merge_the_diagnostics_they_replace() {
 		os.rm(base + '.v') or {}
 		os.rm(base + '.c') or {}
 	}
-	res := os.exec(['env', 'VJOBS=4', v3_bin, '-nocache', '-o', base + '.c', base + '.v'])
+	old_vjobs := os.getenv_opt('VJOBS')
+	defer {
+		if jobs := old_vjobs {
+			os.setenv('VJOBS', jobs, true)
+		} else {
+			os.unsetenv('VJOBS')
+		}
+	}
+	os.setenv('VJOBS', '4', true)
+	res := os.exec([v3_bin, '-nocache', '-o', base + '.c', base + '.v'])
 	assert res.exit_code != 0, res.output
 	assert !res.output.contains('V panic'), res.output
 	errors := res.output.split_into_lines().filter(it.contains(': error: ')).map(it.all_after(': error: '))
