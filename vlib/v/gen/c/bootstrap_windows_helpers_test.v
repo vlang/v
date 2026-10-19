@@ -59,6 +59,8 @@ fn test_bootstrap_windows_helpers_carry_no_sdk_include() {
 	// `DWORD` differently, so an SDK include here contradicts the preamble.
 	assert !code.contains('#include <windows.h>'), 'an SDK include slipped into the bootstrap helpers'
 	assert !code.contains('#include <aclapi.h>'), 'the aclapi include defeats the header fallback'
+	assert !code.contains('#include "core_windows.h"'), 'the core facade must travel with the snapshot'
+	assert !code.contains('#include "ticks_windows_api.h"'), 'the ticks facade must travel with the snapshot'
 }
 
 fn test_bootstrap_windows_helpers_force_the_acl_fallback() {

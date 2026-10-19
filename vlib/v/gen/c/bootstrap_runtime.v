@@ -4,6 +4,7 @@ module c
 fn (mut g FlatGen) portable_windows_runtime_helpers() {
 	g.writeln('#ifdef _WIN32')
 	g.write($embed_file('@VEXEROOT/vlib/builtin/core_windows.c').to_string()
+		.replace('#include "core_windows.h"', $embed_file('@VEXEROOT/vlib/builtin/core_windows.h').to_string())
 		.replace('void *v_', 'static void *v_').replace('void v_', 'static void v_'))
 	g.write($embed_file('@VEXEROOT/vlib/time/ticks_windows.h').to_string())
 	g.write($embed_file('@VEXEROOT/vlib/v/winthread_helper.h').to_string())

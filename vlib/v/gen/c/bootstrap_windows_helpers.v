@@ -255,6 +255,7 @@ fn (mut g FlatGen) emit_bootstrap_windows_atomics() {
 fn (mut g FlatGen) emit_bootstrap_windows_helper_sources() {
 	g.emit_bootstrap_windows_stdio()
 	g.write($embed_file('@VEXEROOT/vlib/builtin/core_windows.c').to_string()
+		.replace('#include "core_windows.h"', $embed_file('@VEXEROOT/vlib/builtin/core_windows.h').to_string())
 		.replace('#include <windows.h>\n', '')
 		.replace('#include <stdio.h>\n', '')
 		.replace('(void *)stdin', 'v_bootstrap_stdio_stream(0)')
@@ -262,6 +263,7 @@ fn (mut g FlatGen) emit_bootstrap_windows_helper_sources() {
 		.replace('(void *)stderr', 'v_bootstrap_stdio_stream(2)'))
 	g.writeln('#define V_TIME_TICKS_SCOPE')
 	g.write($embed_file('@VEXEROOT/vlib/time/ticks_windows.c').to_string()
+		.replace('#include "ticks_windows_api.h"', $embed_file('@VEXEROOT/vlib/time/ticks_windows_api.h').to_string())
 		.replace('#include "ticks_windows.h"', $embed_file('@VEXEROOT/vlib/time/ticks_windows.h').to_string()
 			.replace('#include <windows.h>\n', '')))
 	g.writeln('#define V3_WINTHREAD_SCOPE')

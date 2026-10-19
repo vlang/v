@@ -110,6 +110,8 @@ fn test_portable_windows_helpers_link_without_checkout_objects() ! {
 	g.set_output_cross_c(true)
 	g.portable_windows_runtime_helpers()
 	code := g.sb.str()
+	assert !code.contains('#include "core_windows.h"')
+	assert code.contains('struct ExceptionPointers;')
 	for name in ['v_builtin_windows_stream', 'v_builtin_windows_debugbreak',
 		'v_set_unhandled_exception_filter', 'v_time_ticks_ms', 'v3_win_thread_create',
 		'v3_win_thread_join', 'v3_win_thread_is_current', 'v_toolcache_move_file_ex_w',

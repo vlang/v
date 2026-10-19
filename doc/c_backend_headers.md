@@ -45,6 +45,8 @@ the sysctl constants and prototype directly.
 Win32 API names in headerless C declarations receive `WINAPI` and their wide export
 names only for Windows targets. On other targets, names such as `Sleep` and `CreateFile`
 keep the spelling and calling convention of the program's own C functions.
+Windows native helper declaration headers do not request SDK headers in generated C.
+Portable snapshots embed their helper declarations and definitions for relocation.
 
 For a single-file hosted program containing only literal `print`, `println`, `eprint`,
 and `eprintln` calls, the compiler proves that no V allocations are needed. It emits

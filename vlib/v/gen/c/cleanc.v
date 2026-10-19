@@ -5993,7 +5993,10 @@ fn (g &FlatGen) core_native_header_is_redeclared(source_file string, include_arg
 		return include_arg in ['<termios.h>', '<sys/ioctl.h>']
 	}
 	match relative {
-		'builtin/builtin_windows.c.v' { return include_arg in ['<io.h>', '<fcntl.h>'] }
+		'builtin/builtin_windows.c.v' {
+			return include_arg in ['<io.h>', '<fcntl.h>']
+				|| normalized_c_include_arg_path(include_arg) == root + '/vlib/builtin/core_windows.h'
+		}
 		'builtin/closure/closure_windows.c.v' { return include_arg == '<synchapi.h>' }
 		'os/fd.c.v' { return include_arg == '<winsock2.h>' }
 		'os/mmap_nix.c.v' {
@@ -6013,7 +6016,10 @@ fn (g &FlatGen) core_native_header_is_redeclared(source_file string, include_arg
 					'dragonfly', 'ios']
 					&& normalized_c_include_arg_path(include_arg) == root + '/vlib/v/cmdexec/cmdexec_poll.h')
 		}
-		'time/time_windows.c.v' { return include_arg == '<time.h>' }
+		'time/time_windows.c.v' {
+			return include_arg == '<time.h>'
+				|| normalized_c_include_arg_path(include_arg) == root + '/vlib/time/ticks_windows_api.h'
+		}
 		'sync/sync_windows.c.v' { return include_arg in ['<synchapi.h>', '<time.h>'] }
 		'runtime/used_memory_windows.c.v' { return include_arg == '<psapi.h>' }
 		'crypto/rand/internal/rand_windows.c.v' { return include_arg == '<bcrypt.h>' }
