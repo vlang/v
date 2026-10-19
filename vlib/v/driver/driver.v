@@ -2164,27 +2164,31 @@ fn run_binary(bin_file string, args []string) int {
 	process.set_environment(environment)
 	// `v3 run` is interactive: leave all three standard streams inherited so
 	// prompts are visible immediately and the program can read the caller's stdin.
-	// Ignore SIGINT and SIGQUIT while waiting so an interrupted child does not
-	// terminate V3 before it can remove the implicit run executable.
-	prev_int_handler := os.signal_opt(.int, ignore_run_signal) or {
-		eprintln('v3: could not set SIGINT handler: ${err}')
-		return 1
-	}
+	mut prev_int_handler := os.SignalHandler(ignore_run_signal)
 	mut prev_quit_handler := os.SignalHandler(ignore_run_signal)
-	$if !windows {
-		prev_quit_handler = os.signal_opt(.quit, ignore_run_signal) or {
-			os.signal_opt(.int, prev_int_handler) or {}
-			eprintln('v3: could not set SIGQUIT handler: ${err}')
+	$if windows || js {
+		// These backends retain the inherited job group while waiting.
+		prev_int_handler = os.signal_opt(.int, ignore_run_signal) or {
+			eprintln('v3: could not set SIGINT handler: ${err}')
 			return 1
+		}
+		$if !windows {
+			prev_quit_handler = os.signal_opt(.quit, ignore_run_signal) or {
+				os.signal_opt(.int, prev_int_handler) or {}
+				eprintln('v3: could not set SIGQUIT handler: ${err}')
+				return 1
+			}
 		}
 	}
 	defer {
-		os.signal_opt(.int, prev_int_handler) or {
-			eprintln('v3: could not restore SIGINT handler: ${err}')
-		}
-		$if !windows {
-			os.signal_opt(.quit, prev_quit_handler) or {
-				eprintln('v3: could not restore SIGQUIT handler: ${err}')
+		$if windows || js {
+			os.signal_opt(.int, prev_int_handler) or {
+				eprintln('v3: could not restore SIGINT handler: ${err}')
+			}
+			$if !windows {
+				os.signal_opt(.quit, prev_quit_handler) or {
+					eprintln('v3: could not restore SIGQUIT handler: ${err}')
+				}
 			}
 		}
 		process.close()

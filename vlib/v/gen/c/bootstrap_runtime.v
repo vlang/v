@@ -187,17 +187,19 @@ fn (mut g FlatGen) portable_run_signal_helpers(headerless bool) {
 		source = lines.join('\n').replace('sig_atomic_t', 'i32')
 	}
 	g.write(source.replace('int v3_run_signals_begin(', 'static int v3_run_signals_begin(')
-		.replace('void v3_run_signals_set_pid(', 'static void v3_run_signals_set_pid(')
+		.replace('int v3_run_signals_set_pid(', 'static int v3_run_signals_set_pid(')
+		.replace('int v3_run_signals_wait(', 'static int v3_run_signals_wait(')
 		.replace('int v3_run_signals_finish(', 'static int v3_run_signals_finish('))
 	g.writeln('')
-	g.collect_preserved_c_fns(['v3_run_signals_begin', 'v3_run_signals_set_pid', 'v3_run_signals_finish'])
+	g.collect_preserved_c_fns(['v3_run_signals_begin', 'v3_run_signals_set_pid', 'v3_run_signals_wait',
+		'v3_run_signals_finish'])
 }
 
 // Use libc aliases with opaque arguments so V's partial C bindings do not own the ABI.
 const headerless_run_signal_declarations = r'
 #define V3_RUN_SIGNALS_HEADERLESS 1
 #ifndef SIG_SETMASK
-#if defined(__linux__) || defined(__ANDROID__)
+#if defined(__linux__) || defined(__ANDROID__) || defined(__QNX__) || defined(__QNXNTO__)
 #define SIG_SETMASK 2
 #else
 #define SIG_SETMASK 3
@@ -214,6 +216,15 @@ void (*v3_run_bsd_signal(int, void (*)(int)))(int) __asm__("bsd_signal");
 #define v3_run_set_signal v3_run_bsd_signal
 #endif
 int v3_run_siginterrupt(int, int) __asm__(V3_RUN_LIBC_SYMBOL("siginterrupt"));
+int v3_run_setpgid(int, int) __asm__(V3_RUN_LIBC_SYMBOL("setpgid"));
+int v3_run_getpgid(int) __asm__(V3_RUN_LIBC_SYMBOL("getpgid"));
+int v3_run_getpgrp(void) __asm__(V3_RUN_LIBC_SYMBOL("getpgrp"));
+int v3_run_tcgetpgrp(int) __asm__(V3_RUN_LIBC_SYMBOL("tcgetpgrp"));
+int v3_run_tcsetpgrp(int, int) __asm__(V3_RUN_LIBC_SYMBOL("tcsetpgrp"));
+int v3_run_open(const char*, int, ...) __asm__(V3_RUN_LIBC_SYMBOL("open"));
+int v3_run_close(int) __asm__(V3_RUN_LIBC_SYMBOL("close"));
+int v3_run_fcntl(int, int, ...) __asm__(V3_RUN_LIBC_SYMBOL("fcntl"));
+int v3_run_waitpid(int, int*, int) __asm__(V3_RUN_LIBC_SYMBOL("waitpid"));
 #ifdef __NetBSD__
 /* The 14 ABI retains the full sigaction/sigset_t layouts on old and current libc. */
 int v3_run_sigaction(int, const void*, void*) __asm__("__sigaction14");

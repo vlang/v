@@ -1,19 +1,28 @@
 #ifdef _WIN32
 int v3_run_signals_begin(void) { return 0; }
-void v3_run_signals_set_pid(int child_pid) { (void)child_pid; }
+int v3_run_signals_set_pid(int child_pid) { (void)child_pid; return 0; }
+int v3_run_signals_wait(int *code, int *signal_number) { *code = 0; *signal_number = 0; return 0; }
 int v3_run_signals_finish(void) { return 0; }
 #else
 #if !defined(_POSIX_C_SOURCE)
 #define _POSIX_C_SOURCE 200809L
 #endif
 #include <errno.h>
+#include <fcntl.h>
 #include <signal.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 static volatile sig_atomic_t v3_run_owner_pid;
 static volatile sig_atomic_t v3_run_child_pid;
 static volatile sig_atomic_t v3_run_received_signal;
+static volatile sig_atomic_t v3_run_termination_signal;
+static volatile sig_atomic_t v3_run_forwarded_stop;
+static volatile sig_atomic_t v3_run_bridging_stop;
+static int v3_run_owner_group;
+static int v3_run_terminal_fd = -1;
+static int v3_run_handoff_terminal;
 #ifdef V3_RUN_SIGNALS_HEADERLESS
 #ifndef v3_run_set_signal
 #define v3_run_set_signal signal
@@ -31,22 +40,97 @@ typedef struct sigaction v3_run_action;
 #define v3_run_sigprocmask sigprocmask
 #define v3_run_sigemptyset sigemptyset
 #define v3_run_sigaddset sigaddset
+#define v3_run_setpgid setpgid
+#define v3_run_getpgid getpgid
+#define v3_run_getpgrp getpgrp
+#define v3_run_tcgetpgrp tcgetpgrp
+#define v3_run_tcsetpgrp tcsetpgrp
+#define v3_run_open open
+#define v3_run_close close
+#define v3_run_fcntl fcntl
+#define v3_run_waitpid waitpid
 #endif
 static v3_run_action v3_run_previous_term;
 static v3_run_action v3_run_previous_hup;
+static v3_run_action v3_run_previous_int;
+static v3_run_action v3_run_previous_quit;
+static v3_run_action v3_run_previous_tstp;
+static v3_run_action v3_run_previous_ttin;
+static v3_run_action v3_run_previous_ttou;
 /* These match os.Signal on every supported Unix target. */
-enum { v3_run_hup = 1, v3_run_term = 15 };
+enum { v3_run_hup = 1, v3_run_int = 2, v3_run_quit = 3, v3_run_term = 15 };
+#if defined(V3_RUN_SIGNALS_HEADERLESS) && (defined(__QNX__) || defined(__QNXNTO__))
+#define V3_RUN_BLOCK 0
+#define V3_RUN_SETMASK 2
+#else
+#define V3_RUN_BLOCK SIG_BLOCK
+#define V3_RUN_SETMASK SIG_SETMASK
+#endif
+#ifdef V3_RUN_SIGNALS_HEADERLESS
+#ifndef WUNTRACED
+#if defined(__sun) || defined(__QNX__) || defined(__QNXNTO__)
+#define WUNTRACED 4
+#else
+#define WUNTRACED 2
+#endif
+#endif
+#ifndef WIFSTOPPED
+#define WIFSTOPPED(status) (((status) & 0xff) == 0x7f)
+#endif
+#ifndef WSTOPSIG
+#define WSTOPSIG(status) (((status) >> 8) & 0xff)
+#endif
+/* Solaris and QNX use different job-control signal numbers from BSD. */
+#if defined(__sun) || defined(__QNX__) || defined(__QNXNTO__)
+#define V3_RUN_STOP 23
+#define V3_RUN_CONT 25
+#define V3_RUN_TTOU 27
+#define V3_RUN_TTIN 26
+#define V3_RUN_TSTP 24
+#else
+#define V3_RUN_STOP SIGSTOP
+#define V3_RUN_CONT SIGCONT
+#define V3_RUN_TTOU SIGTTOU
+#define V3_RUN_TTIN 21
+#if defined(__linux__) || defined(__ANDROID__)
+#define V3_RUN_TSTP 20
+#else
+#define V3_RUN_TSTP 18
+#endif
+#endif
+#else
+#define V3_RUN_STOP SIGSTOP
+#define V3_RUN_CONT SIGCONT
+#define V3_RUN_TTOU SIGTTOU
+#define V3_RUN_TTIN SIGTTIN
+#define V3_RUN_TSTP SIGTSTP
+#endif
 
 static void v3_run_forward_signal(int signal_number) {
     int saved_errno = errno;
+    int is_stop = signal_number == V3_RUN_TSTP || signal_number == V3_RUN_TTIN
+        || signal_number == V3_RUN_TTOU;
     /* A forked child inherits this handler until exec replaces its image. */
     if (getpid() != v3_run_owner_pid) {
+        if (is_stop) {
+            kill(getpid(), V3_RUN_STOP);
+            errno = saved_errno;
+            return;
+        }
         _exit(128 + signal_number);
     }
+    if (is_stop && v3_run_bridging_stop) {
+        errno = saved_errno;
+        return;
+    }
+    if (is_stop) v3_run_forwarded_stop = signal_number;
     v3_run_received_signal = signal_number;
+    if (signal_number == v3_run_hup || signal_number == v3_run_term) {
+        v3_run_termination_signal = signal_number;
+    }
     sig_atomic_t child_pid = v3_run_child_pid;
     if (child_pid > 0) {
-        kill((int)child_pid, signal_number);
+        kill(-(int)child_pid, signal_number);
     }
     errno = saved_errno;
 }
@@ -54,10 +138,12 @@ static void v3_run_forward_signal(int signal_number) {
 static int v3_run_block_signals(sigset_t *previous_mask) {
     sigset_t mask;
     if (v3_run_sigemptyset(&mask) || v3_run_sigaddset(&mask, v3_run_term)
-        || v3_run_sigaddset(&mask, v3_run_hup)) {
+        || v3_run_sigaddset(&mask, v3_run_hup) || v3_run_sigaddset(&mask, v3_run_int)
+        || v3_run_sigaddset(&mask, v3_run_quit) || v3_run_sigaddset(&mask, V3_RUN_TSTP)
+        || v3_run_sigaddset(&mask, V3_RUN_TTIN) || v3_run_sigaddset(&mask, V3_RUN_TTOU)) {
         return -1;
     }
-    return v3_run_sigprocmask(SIG_BLOCK, &mask, previous_mask);
+    return v3_run_sigprocmask(V3_RUN_BLOCK, &mask, previous_mask);
 }
 
 static int v3_run_install_signal(int signal_number, v3_run_action *previous) {
@@ -94,46 +180,170 @@ static int v3_run_install_signal(int signal_number, v3_run_action *previous) {
 #endif
 }
 
-int v3_run_signals_begin(void) {
-    sigset_t previous_mask;
-    if (v3_run_block_signals(&previous_mask)) {
-        return -1;
-    }
-    v3_run_owner_pid = getpid();
-    v3_run_child_pid = 0;
-    v3_run_received_signal = 0;
-    int result = v3_run_install_signal(v3_run_term, &v3_run_previous_term);
-    if (result == 0 && v3_run_install_signal(v3_run_hup, &v3_run_previous_hup)) {
-        int saved_errno = errno;
-        v3_run_sigaction(v3_run_term, &v3_run_previous_term, 0);
-        errno = saved_errno;
-        result = -1;
-    }
+/* Terminal ownership changes from a background group must not stop the compiler. */
+static int v3_run_set_foreground(int group) {
+    sigset_t mask, previous_mask;
+    if (v3_run_sigemptyset(&mask) || v3_run_sigaddset(&mask, V3_RUN_TTOU)
+        || v3_run_sigprocmask(V3_RUN_BLOCK, &mask, &previous_mask)) return -1;
+    int result = v3_run_tcsetpgrp(v3_run_terminal_fd, group);
     int saved_errno = errno;
-    v3_run_sigprocmask(SIG_SETMASK, &previous_mask, 0);
+    v3_run_sigprocmask(V3_RUN_SETMASK, &previous_mask, 0);
     errno = saved_errno;
     return result;
 }
 
-void v3_run_signals_set_pid(int child_pid) {
-    v3_run_child_pid = child_pid;
-    sig_atomic_t signal_number = v3_run_received_signal;
-    if (signal_number != 0 && child_pid > 0) {
-        kill(child_pid, signal_number);
+static void v3_run_restore_terminal(void) {
+    if (v3_run_terminal_fd >= 0
+        && v3_run_tcgetpgrp(v3_run_terminal_fd) == v3_run_child_pid) {
+        v3_run_set_foreground(v3_run_owner_group);
+    }
+}
+
+static int v3_run_foreground_child(void) {
+    if (v3_run_handoff_terminal && v3_run_terminal_fd >= 0
+        && v3_run_tcgetpgrp(v3_run_terminal_fd) == v3_run_owner_group) {
+        return v3_run_set_foreground((int)v3_run_child_pid);
+    }
+    return 0;
+}
+
+int v3_run_signals_begin(void) {
+    sigset_t previous_mask;
+    if (v3_run_block_signals(&previous_mask)) return -1;
+    v3_run_owner_pid = getpid();
+    v3_run_owner_group = v3_run_getpgrp();
+    v3_run_child_pid = 0;
+    v3_run_received_signal = 0;
+    v3_run_termination_signal = 0;
+    v3_run_forwarded_stop = 0;
+    v3_run_bridging_stop = 0;
+    v3_run_terminal_fd = v3_run_open("/dev/tty", O_RDWR);
+    /* Keep tty-reading pipeline peers foreground when the program reads a pipe. */
+    v3_run_handoff_terminal = v3_run_terminal_fd >= 0
+        && v3_run_tcgetpgrp(0) >= 0;
+    if (v3_run_terminal_fd >= 0
+        && v3_run_fcntl(v3_run_terminal_fd, F_SETFD, FD_CLOEXEC) < 0) {
+        int saved_errno = errno;
+        v3_run_close(v3_run_terminal_fd);
+        v3_run_terminal_fd = -1;
+        v3_run_sigprocmask(V3_RUN_SETMASK, &previous_mask, 0);
+        errno = saved_errno;
+        return -1;
+    }
+    int installed = 0;
+    int signals[] = {v3_run_term, v3_run_hup, v3_run_int, v3_run_quit,
+        V3_RUN_TSTP, V3_RUN_TTIN, V3_RUN_TTOU};
+    v3_run_action *previous[] = {&v3_run_previous_term, &v3_run_previous_hup,
+        &v3_run_previous_int, &v3_run_previous_quit, &v3_run_previous_tstp,
+        &v3_run_previous_ttin, &v3_run_previous_ttou};
+    while (installed < 7 && !v3_run_install_signal(signals[installed], previous[installed])) {
+        installed++;
+    }
+    int result = installed == 7 ? 0 : -1;
+    int saved_errno = errno;
+    if (result) {
+        while (installed > 0) {
+            installed--;
+            v3_run_sigaction(signals[installed], previous[installed], 0);
+        }
+        if (v3_run_terminal_fd >= 0) v3_run_close(v3_run_terminal_fd);
+        v3_run_terminal_fd = -1;
+    }
+    v3_run_sigprocmask(V3_RUN_SETMASK, &previous_mask, 0);
+    errno = saved_errno;
+    return result;
+}
+
+int v3_run_signals_set_pid(int child_pid) {
+    sigset_t previous_mask;
+    if (v3_run_block_signals(&previous_mask)) return -1;
+    /* The child also sets its group before exec. Verify it before publishing the
+     * forwarding target, including when exec won the parent-side setpgid race. */
+    int result = 0;
+    if (child_pid <= 0) {
+        result = -1;
+    } else if (v3_run_setpgid(child_pid, child_pid)) {
+        int set_error = errno;
+        int group = v3_run_getpgid(child_pid);
+        if (group != child_pid && set_error != ESRCH && !(group < 0 && errno == ESRCH)) {
+            result = -1;
+        }
+    }
+    if (!result) {
+        v3_run_child_pid = child_pid;
+        result = v3_run_foreground_child();
+        if (result && kill(child_pid, 0) < 0 && errno == ESRCH) result = 0;
+        if (!result) {
+            sig_atomic_t signal_number = v3_run_received_signal;
+            if (signal_number != 0) kill(-child_pid, (int)signal_number);
+        }
+    }
+    int saved_errno = errno;
+    v3_run_sigprocmask(V3_RUN_SETMASK, &previous_mask, 0);
+    errno = saved_errno;
+    return result;
+}
+
+int v3_run_signals_wait(int *code, int *signal_number) {
+    if (v3_run_child_pid <= 0) return -1;
+    int status;
+    for (;;) {
+        int waited = v3_run_waitpid((int)v3_run_child_pid, &status, WUNTRACED);
+        if (waited < 0) {
+            if (errno == EINTR) continue;
+            return -1;
+        }
+        if (WIFSTOPPED(status)) {
+            /* Reading can stop the child before the parent finishes the handoff. */
+            if (WSTOPSIG(status) == V3_RUN_TTIN && v3_run_handoff_terminal
+                && v3_run_terminal_fd >= 0
+                && v3_run_tcgetpgrp(v3_run_terminal_fd) == v3_run_child_pid) {
+                kill(-(int)v3_run_child_pid, V3_RUN_CONT);
+                continue;
+            }
+            int forwarded_stop = v3_run_forwarded_stop;
+            v3_run_forwarded_stop = 0;
+            /* A debugger can stop/resume only the child without stopping its waiter. */
+            if (v3_run_terminal_fd < 0 && !forwarded_stop) continue;
+            v3_run_restore_terminal();
+            int stop_signal = WSTOPSIG(status);
+            v3_run_bridging_stop = 1;
+            if (v3_run_terminal_fd >= 0 && !forwarded_stop
+                && (stop_signal == V3_RUN_TSTP || stop_signal == V3_RUN_TTIN
+                    || stop_signal == V3_RUN_TTOU)) {
+                /* Preserve ignored peer dispositions, including a non-job-control shell. */
+                kill(-v3_run_owner_group, stop_signal);
+            }
+            kill((int)v3_run_owner_pid, V3_RUN_STOP);
+            v3_run_bridging_stop = 0;
+            if (v3_run_foreground_child()) return -1;
+            kill(-(int)v3_run_child_pid, V3_RUN_CONT);
+            continue;
+        }
+        v3_run_restore_terminal();
+        *signal_number = WIFSIGNALED(status) ? WTERMSIG(status) : 0;
+        *code = *signal_number ? 128 + *signal_number : WEXITSTATUS(status);
+        return 0;
     }
 }
 
 int v3_run_signals_finish(void) {
     sigset_t previous_mask;
-    if (v3_run_block_signals(&previous_mask)) {
-        return -1;
-    }
+    if (v3_run_block_signals(&previous_mask)) return -1;
+    v3_run_restore_terminal();
+    if (v3_run_terminal_fd >= 0) v3_run_close(v3_run_terminal_fd);
+    v3_run_terminal_fd = -1;
     v3_run_child_pid = 0;
-    int received_signal = v3_run_received_signal;
+    int received_signal = v3_run_termination_signal;
+    v3_run_sigaction(V3_RUN_TTOU, &v3_run_previous_ttou, 0);
+    v3_run_sigaction(V3_RUN_TTIN, &v3_run_previous_ttin, 0);
+    v3_run_sigaction(V3_RUN_TSTP, &v3_run_previous_tstp, 0);
+    v3_run_sigaction(v3_run_quit, &v3_run_previous_quit, 0);
+    v3_run_sigaction(v3_run_int, &v3_run_previous_int, 0);
     v3_run_sigaction(v3_run_hup, &v3_run_previous_hup, 0);
     v3_run_sigaction(v3_run_term, &v3_run_previous_term, 0);
     /* Pending signals now use the restored disposition instead of a stale snapshot. */
-    v3_run_sigprocmask(SIG_SETMASK, &previous_mask, 0);
+    v3_run_sigprocmask(V3_RUN_SETMASK, &previous_mask, 0);
     return received_signal;
 }
 #endif

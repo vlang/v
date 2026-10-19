@@ -100,7 +100,7 @@ const run_signal_preexec_harness = r'
 #include <unistd.h>
 
 int v3_run_signals_begin(void);
-void v3_run_signals_set_pid(int child_pid);
+int v3_run_signals_set_pid(int child_pid);
 int v3_run_signals_finish(void);
 static volatile sig_atomic_t timeout_child;
 static volatile sig_atomic_t timed_out;
@@ -170,7 +170,9 @@ fn test_run_signal_dispositions_restart_and_finish() ! {
 		}
 		compiled := os.exec(args)
 		assert compiled.exit_code == 0, compiled.output
-		for check in ['ignore-hup', 'ignore-term', 'pending', 'restart', 'finish'] {
+		for check in ['ignore-hup', 'ignore-term', 'ignore-int', 'ignore-quit', 'ignore-tstp',
+			'ignore-ttin', 'ignore-ttou', 'pending', 'restart', 'finish', 'group-hup', 'group-term',
+			'group-int', 'group-quit', 'debugger-stop'] {
 			result := os.exec([binary, check])
 			assert result.exit_code == 0, '${mode} ${check}: ${result.output}'
 		}
@@ -201,6 +203,15 @@ static void timeout_cleanup(int signo) {
     if (timeout_child > 0) kill((int)timeout_child, SIGKILL);
     if (timeout_sender > 0) kill((int)timeout_sender, SIGKILL);
 }
+static int stop_notification = -1;
+static pid_t test_waitpid(pid_t child, int *status, int options) {
+    pid_t result = waitpid(child, status, options);
+    if (result > 0 && WIFSTOPPED(*status) && stop_notification >= 0) {
+        unsigned char byte = 1;
+        write(stop_notification, &byte, 1);
+    }
+    return result;
+}
 static int test_sigaction(int signo, const struct sigaction *action, struct sigaction *previous) {
     if (inject_finish && signo == SIGTERM && action && action->sa_handler == previous_handler) {
         inject_finish = 0;
@@ -223,11 +234,22 @@ int test_siginterrupt(int, int) __asm__("siginterrupt");
 #define v3_run_sigprocmask sigprocmask
 #define v3_run_sigemptyset sigemptyset
 #define v3_run_sigaddset sigaddset
+#define v3_run_setpgid setpgid
+#define v3_run_getpgid getpgid
+#define v3_run_getpgrp getpgrp
+#define v3_run_tcgetpgrp tcgetpgrp
+#define v3_run_tcsetpgrp tcsetpgrp
+#define v3_run_open open
+#define v3_run_close close
+#define v3_run_fcntl fcntl
+#define v3_run_waitpid test_waitpid
 #else
 #define sigaction(...) test_sigaction(__VA_ARGS__)
+#define waitpid(...) test_waitpid(__VA_ARGS__)
 #endif
 #include "@RUN_SIGNAL_HELPER@"
 #undef sigaction
+#undef waitpid
 #ifdef V3_TEST_HEADERLESS
 _Static_assert(sizeof(struct sigaction) <= sizeof(v3_run_action), "sigaction storage too small");
 _Static_assert(__alignof__(struct sigaction) <= __alignof__(v3_run_action), "sigaction alignment");
@@ -271,6 +293,125 @@ static int check_pending(void) {
     if (sigpending(&pending) || !sigismember(&pending, SIGTERM)) return 4;
     if (sigprocmask(SIG_SETMASK, &previous_mask, 0)) return 5;
     return v3_run_signals_finish() != SIGTERM || previous_calls;
+}
+static volatile sig_atomic_t group_calls, continue_calls;
+static int group_notification;
+static void group_handler(int signo) {
+    (void)signo;
+    group_calls++;
+}
+static void continue_handler(int signo) { (void)signo; continue_calls++; }
+static int read_exact(int fd, void *data, int size) {
+    unsigned char *bytes = data;
+    while (size > 0) {
+        ssize_t count = read(fd, bytes, (size_t)size);
+        if (count < 0 && errno == EINTR) continue;
+        if (count <= 0) return -1;
+        bytes += count;
+        size -= (int)count;
+    }
+    return 0;
+}
+static int check_group(int signo) {
+    int notification[2], command[2];
+    struct sigaction action = {0};
+    action.sa_handler = SIG_DFL;
+    sigemptyset(&action.sa_mask);
+    sigset_t blocked, original_mask;
+    sigemptyset(&blocked);
+    sigaddset(&blocked, signo);
+    if (setpgid(0, 0) || sigaction(signo, &action, 0)
+        || sigprocmask(SIG_BLOCK, &blocked, &original_mask) || pipe(notification)
+        || pipe(command) || v3_run_signals_begin()) return 3;
+    pid_t child = fork();
+    if (child < 0) return 4;
+    if (!child) {
+        close(notification[0]); close(command[1]);
+        group_notification = notification[1];
+        action.sa_handler = group_handler;
+        action.sa_flags = SA_RESTART;
+        if (sigaction(signo, &action, 0)) _exit(5);
+        action.sa_handler = continue_handler;
+        if (sigaction(SIGCONT, &action, 0)) _exit(6);
+        unsigned char byte = 0;
+        write(group_notification, &byte, 1);
+        if (read_exact(command[0], &byte, 1)) _exit(7);
+        /* This barrier proves startup did not deliver an unsolicited SIGCONT. */
+        byte = (unsigned char)continue_calls;
+        write(group_notification, &byte, 1);
+        if (read_exact(command[0], &byte, 1)) _exit(8);
+        /* Drain direct group delivery before allowing the compiler to forward.
+         * Separate unblock phases prevent standard-signal coalescing from hiding
+         * the duplicate that a shared parent/child process group would deliver. */
+        if (sigprocmask(SIG_UNBLOCK, &blocked, 0)
+            || sigprocmask(SIG_BLOCK, &blocked, 0)) _exit(9);
+        byte = (unsigned char)group_calls;
+        write(group_notification, &byte, 1);
+        if (read_exact(command[0], &byte, 1)
+            || sigprocmask(SIG_UNBLOCK, &blocked, 0)) _exit(10);
+        unsigned char counts[2] = {(unsigned char)group_calls, (unsigned char)continue_calls};
+        write(group_notification, counts, sizeof(counts));
+        _exit(42);
+    }
+    timeout_child = child;
+    close(notification[1]); close(command[0]);
+    unsigned char byte;
+    if (read_exact(notification[0], &byte, 1) || v3_run_signals_set_pid((int)child)) return 11;
+    int separate_group = getpgid(child) != getpgrp();
+    byte = 0;
+    if (write(command[1], &byte, 1) != 1 || read_exact(notification[0], &byte, 1) || byte) return 12;
+    if (kill(-getpgrp(), signo) || write(command[1], &byte, 1) != 1
+        || read_exact(notification[0], &byte, 1)) return 13;
+    int direct_calls = byte;
+    if (sigprocmask(SIG_UNBLOCK, &blocked, 0)
+        || sigprocmask(SIG_BLOCK, &blocked, 0) || write(command[1], &byte, 1) != 1) return 14;
+    unsigned char counts[2];
+    if (read_exact(notification[0], counts, sizeof(counts))) return 15;
+    int code, child_signal;
+    if (v3_run_signals_wait(&code, &child_signal)) return 16;
+    timeout_child = 0;
+    int received = v3_run_signals_finish();
+    if (sigprocmask(SIG_SETMASK, &original_mask, 0)) return 17;
+    int expected_signal = signo == SIGHUP || signo == SIGTERM ? signo : 0;
+    if (counts[0] != 1 || counts[1]) {
+        fprintf(stderr, "direct=%d total=%d continues=%d\n", direct_calls, counts[0], counts[1]);
+        return 18;
+    }
+    return !separate_group || code != 42 || child_signal || received != expected_signal;
+}
+/* A debugger stopping only the child must not strand a waiter without a tty. */
+static int check_debugger_stop(void) {
+    int report[2];
+    if (pipe(report)) return 3;
+    pid_t worker = fork();
+    if (worker < 0) return 4;
+    if (!worker) {
+        close(report[0]);
+        if (setsid() < 0 || v3_run_signals_begin()) _exit(5);
+        pid_t child = fork();
+        if (child < 0) _exit(6);
+        if (!child) { raise(SIGSTOP); _exit(42); }
+        if (write(report[1], &child, sizeof(child)) != sizeof(child)) _exit(7);
+        stop_notification = report[1];
+        if (v3_run_signals_set_pid((int)child)) _exit(8);
+        int code, child_signal;
+        if (v3_run_signals_wait(&code, &child_signal)) _exit(9);
+        _exit(v3_run_signals_finish() || code != 42 || child_signal);
+    }
+    timeout_sender = worker;
+    close(report[1]);
+    pid_t child;
+    unsigned char byte;
+    if (read_exact(report[0], &child, sizeof(child))) return 10;
+    timeout_child = child;
+    if (read_exact(report[0], &byte, 1) || kill(child, SIGCONT)) return 11;
+    int status;
+    pid_t waited;
+    do { waited = waitpid(worker, &status, WUNTRACED); } while (waited < 0 && errno == EINTR);
+    int stopped = waited == worker && WIFSTOPPED(status);
+    if (stopped) { kill(worker, SIGCONT); reap(worker, &status); }
+    timeout_child = timeout_sender = 0;
+    return stopped || waited != worker || !WIFEXITED(status) || WEXITSTATUS(status);
 }
 static int check_restart(void) {
     int ready[2];
@@ -352,6 +493,16 @@ int main(int argc, char **argv) {
     int result = 2;
     if (argc > 1 && !strcmp(argv[1], "ignore-hup")) result = check_ignore(argv[0], SIGHUP);
     if (argc > 1 && !strcmp(argv[1], "ignore-term")) result = check_ignore(argv[0], SIGTERM);
+    if (argc > 1 && !strcmp(argv[1], "ignore-int")) result = check_ignore(argv[0], SIGINT);
+    if (argc > 1 && !strcmp(argv[1], "ignore-quit")) result = check_ignore(argv[0], SIGQUIT);
+    if (argc > 1 && !strcmp(argv[1], "ignore-tstp")) result = check_ignore(argv[0], SIGTSTP);
+    if (argc > 1 && !strcmp(argv[1], "ignore-ttin")) result = check_ignore(argv[0], SIGTTIN);
+    if (argc > 1 && !strcmp(argv[1], "ignore-ttou")) result = check_ignore(argv[0], SIGTTOU);
+    if (argc > 1 && !strcmp(argv[1], "group-hup")) result = check_group(SIGHUP);
+    if (argc > 1 && !strcmp(argv[1], "group-term")) result = check_group(SIGTERM);
+    if (argc > 1 && !strcmp(argv[1], "group-int")) result = check_group(SIGINT);
+    if (argc > 1 && !strcmp(argv[1], "group-quit")) result = check_group(SIGQUIT);
+    if (argc > 1 && !strcmp(argv[1], "debugger-stop")) result = check_debugger_stop();
     if (argc > 1 && !strcmp(argv[1], "pending")) result = check_pending();
     if (argc > 1 && !strcmp(argv[1], "restart")) result = check_restart();
     if (argc > 1 && !strcmp(argv[1], "finish")) result = check_finish();
@@ -362,3 +513,77 @@ int main(int argc, char **argv) {
     return result || timed_out;
 }
 '
+
+fn test_run_group_signal_reaches_nonterminating_child_once() ! {
+	for signal_number in [1, 15] {
+		root := os.join_path(os.vtmp_dir(), 'run_group_${os.getpid()}_${time.now().unix_nano()}')
+		os.mkdir_all(root)!
+		defer { os.rmdir_all(root) or {} }
+		ready := os.join_path(root, 'ready')
+		counts := os.join_path(root, 'counts')
+		helper := os.join_path(root, 'counter.c')
+		source := os.join_path(root, 'main.c.v')
+		os.write_file(helper, run_signal_counter_source)!
+		os.write_file(source, "import os\nimport time\n#flag ${helper}\nfn C.run_signal_counter_install(i32) i32\nfn C.run_signal_counter_get() i32\nfn C.run_signal_counter_continues() i32\nfn main() { assert C.run_signal_counter_install(i32(os.args[1].int())) == 0; os.write_file(os.args[2], os.getpid().str())!; _ = os.input(''); for C.run_signal_counter_get() == 0 { time.sleep(time.millisecond) }; os.write_file(os.args[3], C.run_signal_counter_get().str() + ',' + C.run_signal_counter_continues().str())! }\n")!
+		mut process := os.new_process(@VEXE)
+		process.use_pgroup = true
+		process.set_work_folder(root)
+		process.set_redirect_stdio()
+		process.set_args(['-nocache', '-gc', 'none', 'run', source, signal_number.str(), ready,
+			counts])
+		process.run()
+		mut child_pid := 0
+		defer {
+			if process.is_alive() { process.signal_pgkill() }
+			if child_pid > 0 { C.kill(-child_pid, 9) }
+			process.wait()
+			process.close()
+		}
+		deadline := time.now().add(45 * time.second)
+		for !os.exists(ready) && process.is_alive() && time.now() < deadline {
+			time.sleep(10 * time.millisecond)
+		}
+		assert os.exists(ready), 'run process did not become ready'
+		child_pid = os.read_file(ready)!.int()
+		assert C.kill(-process.pid, signal_number) == 0
+		process.stdin_write('done\n')
+		stop_deadline := time.now().add(10 * time.second)
+		for process.is_alive() && time.now() < stop_deadline {
+			time.sleep(10 * time.millisecond)
+		}
+		assert !process.is_alive(), 'run process did not exit'
+		process.wait()
+		assert process.code == 128 + signal_number, process.stderr_slurp()
+		assert os.read_file(counts)! == '1,0'
+		assert !os.exists(os.join_path(root, 'main')), 'implicit executable survived'
+		child_pid = 0
+	}
+}
+
+const run_signal_counter_source = r'
+#include <signal.h>
+static volatile sig_atomic_t run_signal_counter, run_continue_counter;
+static void run_count_signal(int signo) { (void)signo; run_signal_counter++; }
+static void run_count_continue(int signo) { (void)signo; run_continue_counter++; }
+int run_signal_counter_install(int signo) {
+    struct sigaction action = {0};
+    sigemptyset(&action.sa_mask);
+    action.sa_flags = SA_RESTART;
+    action.sa_handler = run_count_signal;
+    if (sigaction(signo, &action, 0)) return -1;
+    action.sa_handler = run_count_continue;
+    return sigaction(SIGCONT, &action, 0);
+}
+int run_signal_counter_get(void) { return (int)run_signal_counter; }
+int run_signal_counter_continues(void) { return (int)run_continue_counter; }
+'
+
+fn test_run_terminal_input_and_job_control() ! {
+	python := os.find_abs_path_of_executable('python3') or { return }
+	root := os.join_path(os.vtmp_dir(), 'run_tty_${os.getpid()}_${time.now().unix_nano()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	script := os.join_path(@VEXEROOT, 'vlib', 'v', 'tests', 'compiler_processes', 'testdata', 'run_terminal_nix.py')
+	result := os.exec([python, script, @VEXE, root])
+	assert result.exit_code == 0, result.output
+}
