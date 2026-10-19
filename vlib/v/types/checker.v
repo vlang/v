@@ -1069,6 +1069,9 @@ pub mut:
 	// Read-only post-check call graph for transform forks (see
 	// fork_for_parallel_transform); nil in the checker that owns the graph.
 	post_check_dependencies &DependencyGraphView = unsafe { nil }
+	// call_param_flows_to_callback results computed before transform lowers the
+	// bodies they read (see prepare_callback_param_flows); shared with forks.
+	callback_param_flows &CallbackParamFlows = unsafe { nil }
 	// The interface boxes the transform stage collected from the tree before
 	// lowering, the node count it scanned and the library bodies it skipped, for
 	// the monomorphization stage to start from. transform_boxed_node_count is -1
@@ -1747,6 +1750,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		expected_expr_type:                    builtin_void_type
 		smartcasts:                            tc.smartcasts
 		ownership:                             tc.ownership
+		callback_param_flows:                  tc.callback_param_flows
 		selfhost:                              tc.selfhost
 		fn_context:                            new_function_check_context()
 		resolution_type_views:                 &ResolutionTypeViewCache{
