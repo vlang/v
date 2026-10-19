@@ -23,6 +23,8 @@ pub type RequestFinishFn = fn (request &Request, final_size u64) !
 pub struct Request {
 mut:
 	cookies map[string]string
+	// ReverseProxy preserves the upstream representation and its encoding headers.
+	raw_response_body bool
 pub mut:
 	version    Version = .v1_1
 	method     Method  = .get
@@ -709,6 +711,7 @@ fn chunked_hex_value(ch u8) u8 {
 }
 
 struct ReceivedResponseInfo {
+	raw_body            bool
 	headers_end         int = -1
 	is_chunked_transfer bool
 	has_truncated_body  bool
@@ -724,14 +727,18 @@ struct ReceivedResponseInfo {
 
 fn parse_received_response(response_text string, info ReceivedResponseInfo) !Response {
 	mut response := if info.body_is_dechunked {
-		parse_response(response_text[..info.headers_end])!
+		parse_response_with_options(response_text[..info.headers_end], raw_body: info.raw_body)!
 	} else {
-		parse_response(response_text)!
+		parse_response_with_options(response_text, raw_body: info.raw_body)!
 	}
 	if info.body_is_dechunked {
 		// Chunk framing is already removed, but Content-Encoding still applies.
-		response.body = decode_response_body(response_text[info.headers_end..],
-			response.header.get(.content_encoding) or { '' })
+		body := response_text[info.headers_end..]
+		response.body = if info.raw_body {
+			body
+		} else {
+			decode_response_body(body, response.header.get(.content_encoding) or { '' })
+		}
 	}
 	// A complete compressed body can expand beyond the copying limit.
 	if info.stop_copying_limit > 0 && response.body.len > info.stop_copying_limit {
@@ -937,6 +944,7 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 		old_len = new_len
 	}
 	return ReceivedResponseInfo{
+		raw_body:            req.raw_response_body
 		headers_end:         headers_end
 		is_chunked_transfer: is_chunked_transfer
 		body_is_dechunked:   is_chunked_transfer && req.stop_copying_limit > 0

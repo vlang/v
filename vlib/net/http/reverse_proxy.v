@@ -104,12 +104,20 @@ pub fn (rp &ReverseProxy) proxy(mut req Request) !Response {
 	mut req_url := urllib.parse(req.url) or {
 		return error('reverse_proxy: malformed request url "${req.url}"')
 	}
+	incoming_host := if req.host != '' { req.host } else { req.header.get(.host) or { '' } }
+	incoming_proto := if req_url.scheme == 'https' { 'https' } else { 'http' }
+	incoming_version := req.version
 
 	// Join paths
 	joined_path := join_url_path(target.path, req_url.path)
+	joined_raw_path := join_url_path(target.escaped_path(), req_url.escaped_path())
 	req_url.scheme = target.scheme
 	req_url.host = target.host
 	req_url.path = joined_path
+	req_url.raw_path = joined_raw_path
+	req_url.opaque = ''
+	req_url.user = target.user
+	req_url.fragment = ''
 
 	// Merge query parameters
 	if target_query != '' && req_url.raw_query != '' {
@@ -120,38 +128,47 @@ pub fn (rp &ReverseProxy) proxy(mut req Request) !Response {
 
 	req.url = req_url.str()
 
+	// Strip client connection options before writing the upstream Host.
+	clean_hop_by_hop_headers(mut req.header)
 	// Update Host header
 	if !rp.config.preserve_host {
 		req.host = target.host
 		req.header.set(.host, target.host)
+	} else if incoming_host != '' {
+		req.header.set(.host, incoming_host)
 	}
-
-	// Strip hop-by-hop headers from client request
-	clean_hop_by_hop_headers(mut req.header)
 
 	// Set standard proxy forwarding headers
 	client_ip := req.remote_ip()
 	if client_ip != '' {
-		if prev_xff := req.header.get(.x_forwarded_for) {
+		previous := req.header.values(.x_forwarded_for)
+		if previous.len > 0 {
+			prev_xff := previous.join(', ')
 			req.header.set(.x_forwarded_for, '${prev_xff}, ${client_ip}')
 		} else {
 			req.header.set(.x_forwarded_for, client_ip)
 		}
 	}
 
-	if !req.header.contains(.x_forwarded_host) && req.host != '' {
-		req.header.set(.x_forwarded_host, req.host)
+	if !req.header.contains(.x_forwarded_host) && incoming_host != '' {
+		req.header.set(.x_forwarded_host, incoming_host)
 	}
 
 	if !req.header.contains(.x_forwarded_proto) {
-		proto := if req.url.starts_with('https://') { 'https' } else { 'http' }
-		req.header.set(.x_forwarded_proto, proto)
+		req.header.set(.x_forwarded_proto, incoming_proto)
 	}
+	// Incoming HTTP/2 requests still use the client's default HTTP/1.1 transport.
+	req.version = .v1_1
+	req.validate = true
+	req.raw_response_body = true
 
 	// Run custom director hook if configured
 	if rp.config.director != unsafe { nil } {
 		rp.config.director(mut req)
 	}
+	// Request bodies are already decoded, and the director may have changed them.
+	clean_hop_by_hop_headers(mut req.header)
+	req.header.delete(.content_length)
 
 	// Reverse proxies do not follow redirects on behalf of the client
 	req.allow_redirect = false
@@ -161,10 +178,17 @@ pub fn (rp &ReverseProxy) proxy(mut req Request) !Response {
 
 	// Strip hop-by-hop headers from upstream response
 	clean_hop_by_hop_headers(mut resp.header)
+	// The upstream protocol does not determine the downstream status line.
+	resp.set_version(if incoming_version == .v1_0 { Version.v1_0 } else { Version.v1_1 })
 
 	// Run custom response modifier if configured
 	if rp.config.modify_response != unsafe { nil } {
+		original_length := resp.body.len
 		rp.config.modify_response(mut resp)!
+		// Let the server frame the possibly modified body with its current length.
+		if resp.body.len != original_length {
+			resp.header.delete(.content_length)
+		}
 	}
 
 	return resp
@@ -180,7 +204,7 @@ fn join_url_path(target_path string, req_path string) string {
 		}
 		return '/' + req_path
 	}
-	if req_path == '' || req_path == '/' {
+	if req_path == '' {
 		return target_path
 	}
 	t_has := target_path.ends_with('/')
@@ -195,6 +219,7 @@ fn join_url_path(target_path string, req_path string) string {
 
 const hop_by_hop_headers = [
 	'connection',
+	'proxy-connection',
 	'keep-alive',
 	'proxy-authenticate',
 	'proxy-authorization',
@@ -206,7 +231,7 @@ const hop_by_hop_headers = [
 ]
 
 fn clean_hop_by_hop_headers(mut h Header) {
-	if conn := h.get(.connection) {
+	for conn in h.values(.connection) {
 		for token in conn.split(',') {
 			trimmed := token.trim_space()
 			if trimmed != '' {

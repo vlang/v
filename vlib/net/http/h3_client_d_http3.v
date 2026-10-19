@@ -88,7 +88,7 @@ fn (req &Request) to_h3_request(method Method, authority string, path string, da
 // malformed response for a field that `add_custom` refuses. H3MuxConn rejects
 // such a field when it receives it (h3_response_field_error), so the second
 // case is left for an H3ClientResponse that was not read by it.
-fn h3_response_to_http(h3resp H3ClientResponse) !Response {
+fn h3_response_to_http(h3resp H3ClientResponse, opts ResponseParseOptions) !Response {
 	mut h := new_header()
 	for f in h3resp.headers {
 		h.add_custom(f.name, f.value) or {
@@ -98,7 +98,11 @@ fn h3_response_to_http(h3resp H3ClientResponse) !Response {
 			return error('h3: malformed response: ${err.msg()}')
 		}
 	}
-	body := decode_response_body(h3resp.body.bytestr(), h.get(.content_encoding) or { '' })
+	body := if opts.raw_body {
+		h3resp.body.bytestr()
+	} else {
+		decode_response_body(h3resp.body.bytestr(), h.get(.content_encoding) or { '' })
+	}
 	status := status_from_int(h3resp.status)
 	return Response{
 		http_version: '3.0'

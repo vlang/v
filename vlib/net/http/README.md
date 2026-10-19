@@ -306,3 +306,16 @@ The reverse proxy strips hop-by-hop headers (such as `Connection`, `Keep-Alive`,
 `Transfer-Encoding`), manages forwarding headers (`X-Forwarded-For`, `X-Forwarded-Host`,
 `X-Forwarded-Proto`), and supports `director`, `modify_response`, and `error_handler` hooks.
 
+Paths retain percent-encoded separators when joined to the upstream base path. Forwarding
+metadata describes the incoming host and URL scheme, while `preserve_host` controls the
+upstream `Host` header. Relative incoming URLs default to `http`; a TLS terminator should
+set `X-Forwarded-Proto` to `https` in its `director` hook. Existing forwarding headers are
+preserved, so clear or replace values from untrusted clients in that hook before using them
+for authentication or access control. HTTPS upstream certificate validation is enabled.
+
+Requests and responses are buffered by the HTTP client. WebSocket upgrades and other
+protocol tunnels are not supported. A director or response modifier may replace the body;
+its content length is recalculated when its size changes. Response modifiers receive the
+upstream representation, including any content encoding. A hook that changes the representation
+must also update or remove `Content-Encoding`. Response hop headers are removed before the hook;
+the hook is responsible for any headers it adds.
