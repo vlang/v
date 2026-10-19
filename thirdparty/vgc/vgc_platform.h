@@ -36,10 +36,15 @@
       pthread_setspecific(_vgc_cache_idx_key, (void*)(intptr_t)(idx + 1));
   }
 #else
-static VGC_TLS int _vgc_cache_idx = -1;
+// Stored as idx + 1 in a zero-initialized variable, so that a thread without a value reads -1.
+// Keep it free of a non-zero initializer: TinyCC's ELF linker (the bundled tcc 85ba3ae8, fixed
+// upstream by 128e7893) places .tdata after .bss in the same PT_LOAD segment, so the loader
+// reads the TLS init image from zero-filled memory. Every thread then started with index 0
+// (the main thread's cache), and the .tdata bytes overwrote the start of .bss instead.
+static VGC_TLS int _vgc_cache_idx_plus1;
 
-static inline int vgc_get_cache_idx(void) { return _vgc_cache_idx; }
-static inline void vgc_set_cache_idx(int idx) { _vgc_cache_idx = idx; }
+static inline int vgc_get_cache_idx(void) { return _vgc_cache_idx_plus1 - 1; }
+static inline void vgc_set_cache_idx(int idx) { _vgc_cache_idx_plus1 = idx + 1; }
 #endif
 
 // ============================================================
