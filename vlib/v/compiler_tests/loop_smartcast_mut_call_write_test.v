@@ -7,7 +7,7 @@ const loop_smartcast_vlib_dir = os.dir(loop_smartcast_v3_dir)
 const loop_smartcast_v3_src = os.join_path(loop_smartcast_v3_dir, 'v.v')
 
 fn loop_smartcast_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_loop_smartcast_mut_call_${os.getpid()}')
+	v3_bin := os.join_path(os.temp_dir(), 'v3_loop_smartcast_mut_call_${os.getpid()}') + $if windows { '.exe' } $else { '' }
 	if os.is_executable(v3_bin) {
 		return v3_bin
 	}

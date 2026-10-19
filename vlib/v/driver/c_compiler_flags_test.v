@@ -4,6 +4,7 @@ import os
 import time
 import v.cmdexec
 import v.pref
+import v.gen.c as cgen
 import v.util.cache_refresh
 
 fn test_refresh_records_entry_only_for_project_interface_scopes() {
@@ -135,7 +136,7 @@ fn test_module_cache_refresh_reads_only_project_flags_in_refresh_children() ! {
 	assert v3_cache_refresh_project_flags()! == []cache_refresh.FlagGroup{}
 }
 
-fn test_cached_tcc_main_command_preserves_production_optimization() ! {
+fn test_cached_tcc_main_command_refuses_production_mode() ! {
 	compiler := v3_driver_test_executable()
 	if !os.is_executable(os.join_path(os.dir(compiler), 'thirdparty', 'tcc', 'tcc.exe')) { return }
 	root := os.join_path(os.vtmp_dir(), 'vup_tcc_optimization_${os.getpid()}')
@@ -154,7 +155,14 @@ fn test_cached_tcc_main_command_preserves_production_optimization() ! {
 	for name in ['VFLAGS', 'CFLAGS', 'LDFLAGS', 'V3_CACHE_REFRESH'] { os.unsetenv(name) }
 	source := os.join_path(root, 'main.v')
 	os.write_file(source, 'import math\nfn main() { println(math.abs(-3.0)) }\n')!
-	for mode in [[]string{}, ['-prod'], ['-prod', '-no-prod-options']] {
+	// TinyCC is not a -prod compiler, so the same build with -prod stops before compiling.
+	for mode in [['-prod'], ['-prod', '-no-prod-options']] {
+		refused := os.exec([compiler, '-cc', 'tcc', '-gc', 'none', '-showcc', ...mode, '-o',
+			os.join_path(root, 'program'), source])
+		assert refused.exit_code == 1, refused.output
+		assert refused.output.contains('tcc is not allowed with -prod'), refused.output
+	}
+	for mode in [[]string{}] {
 		result := os.exec([compiler, '-cc', 'tcc', '-gc', 'none', '-showcc', ...mode, '-o',
 			os.join_path(root, 'program'), source])
 		assert result.exit_code == 0, result.output
@@ -267,10 +275,40 @@ fn test_v3_windows_cross_compiler_replaces_host_tcc() {
 		os:   'windows'
 		arch: 'x86'
 	}
-	assert v3_windows_cross_c_compiler('tcc', linux, windows_amd64) == 'x86_64-w64-mingw32-gcc'
-	assert v3_windows_cross_c_compiler('tinyc', linux, windows_x86) == 'i686-w64-mingw32-gcc'
-	assert v3_windows_cross_c_compiler('clang', linux, windows_amd64) == 'clang'
-	assert v3_windows_cross_c_compiler('tcc', windows_amd64, windows_amd64) == 'tcc'
+	windows_arm64 := pref.Target{
+		os:   'windows'
+		arch: 'arm64'
+	}
+	assert v3_windows_cross_c_compiler('tcc', true, linux, windows_amd64) == 'x86_64-w64-mingw32-gcc'
+	assert v3_windows_cross_c_compiler('tinyc', true, linux, windows_x86) == 'i686-w64-mingw32-gcc'
+	assert v3_windows_cross_c_compiler('clang', true, linux, windows_amd64) == 'clang'
+	assert v3_windows_cross_c_compiler('tcc', true, windows_amd64, windows_amd64) == 'tcc'
+	// The platform default `cc` has no Windows headers; an explicit `-cc cc` is kept.
+	assert v3_windows_cross_c_compiler('cc', false, linux, windows_amd64) == 'x86_64-w64-mingw32-gcc'
+	assert v3_windows_cross_c_compiler('cc', true, linux, windows_amd64) == 'cc'
+	assert v3_windows_cross_c_compiler('cc', false, linux, windows_arm64) == 'cc'
+	assert v3_windows_cross_c_compiler('cc', false, windows_amd64, windows_amd64) == 'cc'
+}
+
+fn test_v3_windows_target_defaults_to_amd64_on_other_hosts() {
+	macos_arm64 := pref.Target{
+		os:   'macos'
+		arch: 'arm64'
+	}
+	linux_arm64 := pref.Target{
+		os:   'linux'
+		arch: 'arm64'
+	}
+	windows_arm64 := pref.Target{
+		os:   'windows'
+		arch: 'arm64'
+	}
+	assert v3_target_arch_for_request(macos_arm64, 'windows', 'arm64', false, false) == 'amd64'
+	assert v3_target_arch_for_request(linux_arm64, 'Windows', 'arm64', false, false) == 'amd64'
+	assert v3_target_arch_for_request(macos_arm64, 'windows', 'arm64', true, false) == 'arm64'
+	assert v3_target_arch_for_request(macos_arm64, 'windows', 'arm64', false, true) == 'arm64'
+	assert v3_target_arch_for_request(windows_arm64, 'windows', 'arm64', false, false) == 'arm64'
+	assert v3_target_arch_for_request(macos_arm64, 'macos', 'arm64', false, false) == 'arm64'
 }
 
 fn test_v3_msvc_alias_selects_cl_on_windows() {
@@ -284,8 +322,8 @@ fn test_v3_no_std_omits_default_c_and_cpp_standards() {
 	assert c_standard_flag(false, false) == '-std=gnu11'
 	assert c_standard_flag(true, false) == '-std=c99'
 	assert c_standard_flag(false, true) == ''
-	assert cxx_standard_flag(false, false) == '-std=gnu++11'
-	assert cxx_standard_flag(true, false) == '-std=c++11'
+	assert cxx_standard_flag(false, false) == '-std=gnu++17'
+	assert cxx_standard_flag(true, false) == '-std=c++17'
 	assert cxx_standard_flag(false, true) == ''
 }
 
@@ -314,7 +352,7 @@ fn test_v3_no_std_command_keeps_the_user_standard_only() {
 	assert build.exit_code == 0, build.output
 	assert '-std=c++11' in build.output.split_into_lines(), build.output
 	assert !build.output.contains('-std=gnu11'), build.output
-	assert !build.output.contains('-std=gnu++11'), build.output
+	assert !build.output.contains('-std=gnu++17'), build.output
 }
 
 fn test_v3_tcc_linux_output_declares_backtrace() {
@@ -351,8 +389,8 @@ fn test_macos_linux_cross_compile_uses_bundled_amd64_sysroot() {
 		os:   'linux'
 		arch: 'amd64'
 	}
-	assert v3_target_arch_for_request(host, 'linux', 'arm64', false) == 'amd64'
-	assert v3_target_arch_for_request(host, 'linux', 'arm64', true) == 'arm64'
+	assert v3_target_arch_for_request(host, 'linux', 'arm64', false, false) == 'amd64'
+	assert v3_target_arch_for_request(host, 'linux', 'arm64', true, false) == 'arm64'
 	assert v3_macos_linux_cross_compile(host, target, 'c', 'cc')
 	assert v3_macos_linux_cross_compile(host, target, 'c', 'clang')
 	assert v3_macos_linux_cross_compile(host, target, 'c', '/usr/bin/clang')
@@ -553,7 +591,8 @@ fn test_v3_bundled_tcc_probe_eligibility() {
 		host_target:   windows_target
 		target:        windows_target
 	})
-	// An explicit `-cc tcc` still wins with -prod on Windows.
+	// The probe still finds the bundled TinyCC for an explicit `-cc tcc` with -prod on Windows;
+	// the driver then refuses that build (see v3_tcc_prod_rejected).
 	assert v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
 		...base
 		is_prod:             true
@@ -563,6 +602,50 @@ fn test_v3_bundled_tcc_probe_eligibility() {
 		host_target:         windows_target
 		target:              windows_target
 	})
+}
+
+fn test_effective_c_compiler_name_does_not_read_tinycc_from_names_that_only_contain_tcc() {
+	root := os.join_path(os.vtmp_dir(), 'v3_notcc_driver_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	// The V executable is a real compiler driver that is not TinyCC.
+	not_tinycc := os.join_path(root, 'distcc.exe')
+	os.cp(@VEXE, not_tinycc) or { panic(err) }
+	assert effective_c_compiler_name(not_tinycc, pref.host_target()) != 'tinyc'
+}
+
+fn test_v3_tcc_prod_rejected_only_for_a_prod_c_build_that_resolves_to_tinycc() {
+	assert v3_tcc_prod_rejected(true, 'c', 'tinyc', 'tcc')
+	assert !v3_tcc_prod_rejected(true, 'c', 'gcc', 'gcc')
+	assert !v3_tcc_prod_rejected(true, 'c', 'clang', 'clang')
+	assert !v3_tcc_prod_rejected(true, 'arm64', 'tinyc', 'tcc')
+	assert !v3_tcc_prod_rejected(false, 'c', 'tinyc', 'tcc')
+}
+
+fn test_v3_tcc_prod_rejected_checks_actual_banner_for_known_compiler_names() {
+	$if windows {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'v3_prod_compiler_banner_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	for name in ['clang-alias', 'gcc-alias'] {
+		alias := os.join_path(root, name)
+		os.write_file(alias, '#!/bin/sh\nprintf "tcc version 0.9.27\\n"\n')!
+		os.chmod(alias, 0o700)!
+		effective := effective_c_compiler_name(alias, pref.host_target())
+		assert effective != 'tinyc'
+		assert v3_tcc_prod_rejected(true, 'c', effective, alias)
+		assert !v3_tcc_prod_rejected(false, 'c', effective, alias)
+		assert !v3_tcc_prod_rejected(true, 'arm64', effective, alias)
+	}
+	clang := os.join_path(root, 'cc')
+	os.write_file(clang, '#!/bin/sh\nprintf "clang version 19.1.7\\nInstalledDir: /opt/tinycc-tcc version-compatible-sdk/bin\\n"\n')!
+	os.chmod(clang, 0o700)!
+	assert effective_c_compiler_name(clang, pref.host_target()) == 'clang'
+	assert !v3_tcc_prod_rejected(true, 'c', 'clang', clang)
 }
 
 fn test_v3_windows_prod_msvc_ready_needs_a_matching_developer_environment() {
@@ -1226,6 +1309,27 @@ fn test_v3_tcc_flag_plan_skips_backtrace_on_macos_arm64() {
 	assert '-B${tcc_install_dir}' in plan.before_inputs
 	assert '-I${os.join_path_single(tcc_install_dir, 'include')}' in plan.before_inputs
 	assert '-L${tcc_install_dir}' in plan.before_inputs
+}
+
+fn test_v3_freestanding_flag_plan_links_no_host_libraries() {
+	for is_tcc in [false, true] {
+		plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+			is_tcc:          is_tcc
+			is_prod:         !is_tcc
+			is_freestanding: true
+			target_os:       'linux'
+			target_arch:     'amd64'
+			c_compiler:      if is_tcc { 'tinyc' } else { 'gcc' }
+			vroot:           os.join_path(os.temp_dir(), 'v3_freestanding_flag_plan')
+		})
+		assert '-ffreestanding' in plan.before_inputs, 'tcc=${is_tcc}'
+		assert '-bt25' !in plan.before_inputs, 'tcc=${is_tcc}'
+		// `_start` calls `main` from a top-level asm block, which LTO does not see.
+		assert '-flto' !in plan.before_inputs, 'tcc=${is_tcc}'
+		assert '-static' in plan.after_inputs && '-nostdlib' in plan.after_inputs, 'tcc=${is_tcc}'
+		assert '-lm' !in plan.after_inputs && '-lpthread' !in plan.after_inputs, 'tcc=${is_tcc}'
+		assert ('-ltcc1' in plan.after_inputs) == is_tcc
+	}
 }
 
 fn test_v3_linux_shared_flag_plan_hides_static_archive_symbols() {
@@ -1958,4 +2062,135 @@ fn test_v3_host_rejecting_tcc_executables_never_selects_tcc_implicitly() {
 		c_compiler:          'tcc'
 		c_compiler_explicit: true
 	})
+}
+
+fn test_v3_cstrict_flag_plan_has_one_conversion_warning_override() {
+	for compiler in ['gcc', 'clang', 'tinyc'] {
+		for strict in [false, true] {
+			plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+				c_compiler: compiler
+				is_tcc:     compiler == 'tinyc'
+				target_os:  'linux'
+				warn_args:  if strict {
+					['-Wall', '-Werror=implicit-function-declaration', '-Wno-int-conversion']
+				} else {
+					['-w']
+				}
+			})
+			assert plan.before_inputs.filter(it == '-Wno-int-conversion').len == 1
+		}
+	}
+}
+
+fn test_v3_tcc_flags_dump_matches_monolithic_command() {
+	$if windows {
+		return
+	}
+	tcc := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe')
+	if !os.is_file(tcc) {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'tcc_flag_dump_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	output := os.join_path(root, 'main')
+	dump_file := os.join_path(root, 'flags.txt')
+	mut sources := ['fn main() {}\n']
+	$if macos {
+		sources << '#flag -F${root}\n#flag -framework CoreFoundation\nfn main() {}\n'
+	}
+	for source_text in sources {
+		os.write_file(source, source_text)!
+		for strict in [false, true] {
+			mut args := ['-new-compiler', '-no-retry-compilation', '-nocache', '-cc', 'tcc', '-gc',
+				'none']
+			if strict {
+				args << '-cstrict'
+			}
+			mut dump_args := args.clone()
+			dump_args << ['-dump-c-flags', '-', '-o', output, source]
+			flags_dump := cmdexec.run(v3_driver_test_executable(), dump_args)
+			assert flags_dump.exit_code == 0, flags_dump.output
+			expected := flags_dump.output.split_into_lines().filter(it.len > 0)
+			for with_dump in [false, true] {
+				mut build_args := args.clone()
+				build_args << ['-showcc', '-o', output, source]
+				if with_dump {
+					build_args << ['-dump-c-flags', dump_file]
+				}
+				build := cmdexec.run(v3_driver_test_executable(), build_args)
+				assert build.exit_code == 0, build.output
+				commands := build.output.split_into_lines().filter(it.trim_space().starts_with('> ')
+					&& it.contains('-o out'))
+				assert commands.len == 1, build.output
+				command := cgen.tokenize_c_flag(commands[0].trim_space().trim_left('> '))
+				output_index := command.index('-o')
+				assert output_index > 0, commands[0]
+				mut actual := command[1..output_index].clone()
+				actual << command[output_index + 3..]
+				assert actual == expected, '${flags_dump.output}\n${commands[0]}'
+				if source_text.contains('-framework') {
+					assert actual.any(it.contains('CoreFoundation.framework'))
+					assert !actual.any(it.starts_with('-F'))
+				}
+				if with_dump {
+					assert os.read_lines(dump_file)! == expected
+				}
+			}
+		}
+	}
+}
+
+fn test_v3_production_object_flag_plan_retains_machine_code() {
+	for compiler in ['gcc', 'clang', 'msvc', 'tinyc'] {
+		for large in [false, true] {
+			options := V3CCompilerFlagOptions{
+				is_prod:      true
+				is_o:         true
+				target_os:    'windows'
+				c_compiler:   compiler
+				large_c_unit: large
+				is_tcc:       compiler == 'tinyc'
+			}
+			plan := v3_c_compiler_flag_plan(options)
+			assert '-flto' !in plan.before_inputs
+			assert '-c' in plan.before_inputs
+			assert (if large { '-O2' } else { '-O3' }) in plan.before_inputs
+		}
+	}
+	program := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{ is_prod: true })
+	assert '-flto' in program.before_inputs
+}
+
+fn test_v3_production_object_links_with_independent_c_main() {
+	$if windows {
+		return
+	}
+	clang := os.find_abs_path_of_executable('clang') or { return }
+	root := os.join_path(os.vtmp_dir(), 'prod_object_link_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'object_probe.v')
+	object := os.join_path(root, 'object_probe.o')
+	main_c := os.join_path(root, 'main.c')
+	exe := os.join_path(root, 'main')
+	os.write_file(source, "module object_probe\n\n@[export: 'v3_object_probe']\n@[markused]\nfn add(a i32, b i32) i32 { return a + b }\n")!
+	compiled := cmdexec.run(v3_driver_test_executable(), ['-new-compiler', '-prod', '-cc', clang,
+		'-gc', 'none', '-o', object, source])
+	assert compiled.exit_code == 0, compiled.output
+	data := os.read_bytes(object)!
+	assert data.len >= 4
+	// Clang's raw bitcode and bitcode-wrapper magic must not replace machine code.
+	assert data[..4] != [u8(0x42), 0x43, 0xc0, 0xde]
+	assert data[..4] != [u8(0xde), 0xc0, 0x17, 0x0b]
+	os.write_file(main_c, '#include <stdint.h>\nextern int32_t v3_object_probe(int32_t, int32_t);\nint main(void) { return v3_object_probe(20, 22) == 42 ? 0 : 1; }\n')!
+	linked := cmdexec.run(clang, [main_c, object, '-lm', '-o', exe])
+	assert linked.exit_code == 0, linked.output
+	ran := cmdexec.run(exe, [])
+	assert ran.exit_code == 0, ran.output
 }

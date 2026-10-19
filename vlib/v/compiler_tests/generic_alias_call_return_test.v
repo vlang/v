@@ -1,3 +1,4 @@
+// vtest ownership
 import os
 
 fn test_generic_alias_call_returns_keep_nominal_local_types() {

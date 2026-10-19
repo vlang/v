@@ -59,6 +59,11 @@ fn override_project(directory string, deps []string, overrides []string) !string
 	return project
 }
 
+// lockfile_repo_path returns a repository path in the form the lockfile stores it: forward slashes.
+fn lockfile_repo_path(path string) string {
+	return path.replace('\\', '/')
+}
+
 fn test_override_selects_source_manifest_dependencies_and_locked_revision() {
 	leaf := override_repo('leaf-source')!
 	leaf_one := override_tag(leaf, 'leaf', 'v1.0.0', '0.0.1', [], [])!
@@ -75,8 +80,8 @@ fn test_override_selects_source_manifest_dependencies_and_locked_revision() {
 	assert override_git(os.join_path(store, 'pkg'), ['rev-parse', 'HEAD']) == parent_two
 	assert override_git(os.join_path(store, 'leaf'), ['rev-parse', 'HEAD']) == leaf_one
 	assert os.read_file(os.join_path(store, 'leaf', 'marker.txt'))! == 'v1.0.0'
-	entry := read_lockfile(project)!.modules[lockfile_module_key(dep)]!
-	assert entry.requested == parent + '@v2.0.0'
+	entry := read_lockfile(project)!.modules[lockfile_module_key(lockfile_repo_path(dep))]!
+	assert entry.requested == lockfile_repo_path(parent) + '@v2.0.0'
 	assert entry.resolved == 'v2.0.0'
 	assert entry.revision == parent_two
 	override_tag(parent, 'pkg', 'v3.0.0', '0.0.1', [leaf + '@v2.0.0'], [])!
@@ -98,7 +103,7 @@ fn test_override_selects_source_manifest_dependencies_and_locked_revision() {
 	cmd_ok_args(@LOCATION, [override_vpm_exe, 'install', '-f'])
 	assert os.read_file(os.join_path(fresh, 'pkg', 'marker.txt'))! == 'v3.0.0'
 	assert os.read_file(os.join_path(fresh, 'leaf', 'marker.txt'))! == 'v2.0.0'
-	assert read_lockfile(project)!.modules[lockfile_module_key(dep)]!.requested == parent + '@v3.0.0'
+	assert read_lockfile(project)!.modules[lockfile_module_key(lockfile_repo_path(dep))]!.requested == lockfile_repo_path(parent) + '@v3.0.0'
 }
 
 fn test_override_range_resolves_and_locks_actual_tag() {
@@ -108,8 +113,8 @@ fn test_override_range_resolves_and_locks_actual_tag() {
 	project := override_project('range-project', [repo + '@missing-tag'], ['range_pkg: ^2.0.0'])!
 	test_utils.set_test_env(os.join_path(override_test_root, 'range-store'))
 	cmd_ok_args(@LOCATION, [override_vpm_exe, 'install'])
-	entry := read_lockfile(project)!.modules[repo]!
-	assert entry.requested == repo + '@^2.0.0'
+	entry := read_lockfile(project)!.modules[lockfile_repo_path(repo)]!
+	assert entry.requested == lockfile_repo_path(repo) + '@^2.0.0'
 	assert entry.resolved == 'v2.1.0'
 	assert entry.revision == selected
 	override_tag(repo, 'range_pkg', 'v2.2.0', '0.0.1', [], [])!
@@ -132,7 +137,7 @@ fn test_selector_override_selects_the_requiring_edges_source_before_min_v() {
 	cmd_ok_args(@LOCATION, [override_vpm_exe, 'install'])
 	assert override_git(os.join_path(store, 'c'), ['rev-parse', 'HEAD']) == selected
 	assert os.read_file(os.join_path(store, 'c', 'marker.txt'))! == 'v1.0.0'
-	assert read_lockfile(project)!.modules[leaf]!.requested == leaf + '@v1.0.0'
+	assert read_lockfile(project)!.modules[lockfile_repo_path(leaf)]!.requested == lockfile_repo_path(leaf) + '@v1.0.0'
 	other := override_repo('selector-other')!
 	override_tag(other, 'other', 'v1.0.0', '0.0.1', [leaf + '@v2.0.0'], [])!
 	override_project('selector-other-project', [other + '@v1.0.0'], ['requiring>c: v1.0.0'])!

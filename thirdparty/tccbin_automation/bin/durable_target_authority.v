@@ -193,7 +193,8 @@ fn read_reauthenticated_target_tree_entry(state_git_dir string, tree_sha string,
 		|| !target_path.starts_with('targets/') {
 		return error('reauthenticated target-state tree selector is malformed')
 	}
-	result := live_git(state_git_dir, 'ls-tree -l -z --full-tree ${tree_sha} -- ${target_path}')
+	result := live_git(state_git_dir, ['ls-tree', '-l', '-z', '--full-tree', tree_sha, '--',
+		target_path])
 	if result.exit_code != 0 || result.output.len > durable_target_authority_tree_record_max_bytes {
 		return error('reauthenticated target-state tree entry cannot be read inside its bound')
 	}

@@ -1,3 +1,4 @@
+// vtest ownership
 import os
 
 fn test_borrowed_array_range_references_preserve_the_owner() {

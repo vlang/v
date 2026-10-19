@@ -3,6 +3,7 @@ module c
 import os
 import v.cmdexec
 import v.flat
+import v.pref
 import v.types
 
 fn test_partial_c_closure_view_keeps_the_v_runtime_layout() {
@@ -57,6 +58,14 @@ fn main() {
 }
 
 ')!
+	// Cached cross builds also link native helper objects; the embedded installer
+	// must not export a second copy of the native signal-handler symbol.
+	for _ in 0 .. 2 {
+		cached := cmdexec.run('env', ['V3CACHE=${os.join_path(root, 'cache')}', @VEXE, '-cc', cc,
+			'-gc', 'none', '-prealloc', '-os', 'cross', 'run', source])
+		assert cached.exit_code == 0, cached.output
+		assert cached.output.trim_space() == 'portable', cached.output
+	}
 	generated := cmdexec.run(@VEXE, ['-gc', 'none', '-prealloc', '-nocache', '-os', 'cross', '-o',
 		c_source, source])
 	assert generated.exit_code == 0, generated.output
@@ -76,6 +85,9 @@ fn main() {
 
 fn test_portable_native_helpers_precede_gc_runtime_redirects() {
 	mut g := FlatGen.new()
+	// The gc pthread redirects are emitted only for non-Windows targets, so pin one
+	// rather than inheriting the host's target.
+	g.set_target(pref.target_from('linux', 'amd64') or { panic(err) })
 	g.set_output_cross_c(true)
 	g.compile_defines << 'gcboehm'
 	g.portable_native_runtime_helpers()
@@ -89,6 +101,35 @@ fn test_portable_native_helpers_precede_gc_runtime_redirects() {
 	assert code.contains('V_SYNC_THREAD_SCOPE int v_sync_thread_create_detached_with_stack(')
 	assert g.inlined_c_declared_fns['v3_modulecache_file_metadata']
 	assert g.inlined_c_declared_fns['v_os_exec_capture_start']
+}
+
+fn test_portable_peak_rss_helper_returns_the_type_of_its_generated_prototype() ! {
+	$if windows || freestanding || vinix {
+		return
+	}
+	cc := os.find_abs_path_of_executable('clang') or {
+		os.find_abs_path_of_executable('cc') or { return }
+	}
+	mut g := FlatGen.new()
+	g.set_output_cross_c(true)
+	g.portable_native_runtime_helpers()
+	code := g.sb.str()
+	result_type := code.index('#define V_PEAK_RSS_INT i64') or { -1 }
+	definition := code.index('V_PEAK_RSS_SCOPE V_PEAK_RSS_INT v3_bench_peak_rss_kb(void)') or { -1 }
+	assert result_type >= 0 && definition > result_type
+	// `i64` is `int64_t` in portable C: `long` on Linux and Android, `long long` on
+	// macOS. A C compiler takes the two for different types whatever their sizes, so
+	// the helper is checked against a prototype with each spelling.
+	header := $embed_file('@VEXEROOT/vlib/v/bench/peak_rss.h').to_string()
+	root := os.join_path(os.vtmp_dir(), 'portable_peak_rss_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	for index, spelling in ['long', 'long long'] {
+		source := os.join_path(root, 'peak_rss_${index}.c')
+		os.write_file(source, 'typedef ${spelling} i64;\n#define V_PEAK_RSS_INT i64\n${header}i64 v3_bench_peak_rss_kb(void);\nint main(void) { return v3_bench_peak_rss_kb() < 0; }\n')!
+		checked := cmdexec.run(cc, ['-std=gnu11', '-fsyntax-only', source])
+		assert checked.exit_code == 0, '${spelling}: ${checked.output}'
+	}
 }
 
 fn test_boehm_object_runs_spawn_and_join_after_relocation() ! {
@@ -200,8 +241,18 @@ fn test_portable_gc_helper_preserves_linux_header_linkage() ! {
 	os.write_file(source, '#include <gc.h>\n#ifndef __linux__\n#define __linux__ 1\n#endif\n' + code)!
 	// Enable the Linux helper branch with the host SDK; this checks preprocessing,
 	// not execution of Linux-specific root registration on another platform.
-	preprocessed := cmdexec.run(cc, ['-E', '-P', '-I',
-		os.join_path(@VEXEROOT, 'thirdparty', 'libgc', 'include'), '-o', output, source])
+	mut args := ['-E', '-P', '-I', os.join_path(@VEXEROOT, 'thirdparty', 'libgc', 'include')]
+	$if !linux {
+		// The portable text also contains the Linux syscall facade. Supply its
+		// unavailable SDK include for preprocessing; this fixture does not compile
+		// or execute that facade, and Linux hosts keep using their real SDK.
+		sdk := os.join_path(root, 'linux_sdk')
+		os.mkdir_all(os.join_path(sdk, 'sys'))!
+		os.write_file(os.join_path(sdk, 'sys', 'prctl.h'), '#pragma once\nint prctl(int, ...);\n')!
+		args << ['-I', sdk]
+	}
+	args << ['-o', output, source]
+	preprocessed := cmdexec.run(cc, args)
 	assert preprocessed.exit_code == 0, preprocessed.output
 	text := os.read_file(output)!
 	assert text.contains('v_gc_can_register_main_data_roots_impl'), text

@@ -1,5 +1,6 @@
 module fastc
 
+import v.flat
 import v.token
 
 fn (g &Parser) expression_token(previous token.Token, previous_lit string, qualified_name_owner string, module_separator bool) !string {
@@ -9,7 +10,13 @@ fn (g &Parser) expression_token(previous token.Token, previous_lit string, quali
 		}
 		.number {
 			if g.selfhost {
-				fastc_c_selfhost_number(g.lit)
+				number := fastc_c_selfhost_number(g.lit)
+				mut after := g.s
+				if after.scan() == .left_shift {
+					fastc_shift_operand_number(number)
+				} else {
+					number
+				}
 			} else {
 				fastc_c_number(g.lit)!
 			}
@@ -47,7 +54,7 @@ fn (g &Parser) expression_token(previous token.Token, previous_lit string, quali
 			'((bool)false)'
 		}
 		.key_nil {
-			g.nil_expression()!
+			'NULL'
 		}
 		.key_none {
 			if g.selfhost {
@@ -76,11 +83,249 @@ fn (g &Parser) expression_token(previous token.Token, previous_lit string, quali
 	}
 }
 
-fn (g &Parser) nil_expression() !string {
-	if g.unsafe_depth == 0 && !g.in_mono_drain {
-		return g.unsupported('`nil` outside an `unsafe` block')
+// validate_nil refuses `nil` outside `unsafe`. With the real vlib it accepts the uses V3
+// accepts that FastC can recognize: `nil` as the whole value of a field declared `voidptr`
+// (`x.f = nil`, `T{f: nil}`, `T{nil}`) or of a `voidptr` argument to a function (os.Mmap.close
+// assigns `nil` to voidptr fields).
+fn (g &Parser) validate_nil(tokens []FastcExpressionToken, previous token.Token, paren_depth int, bracket_depth int, brace_depth int, struct_types []u32, struct_depths []int, struct_paren_depths []int) ! {
+	if g.unsafe_depth > 0 || g.in_mono_drain {
+		return
 	}
-	return 'NULL'
+	if g.selfhost && g.allows_nil_local_assignment && previous == .unknown && tokens.len == 0 && g.nil_ends_value(false) {
+		return
+	}
+	if g.selfhost && g.nil_starts_pointer_comparison(previous) {
+		return
+	}
+	if g.selfhost && g.nil_ends_value(previous in [.eq, .ne])
+		&& g.nil_target_is_voidptr(tokens, previous, paren_depth, bracket_depth, brace_depth, struct_types, struct_depths, struct_paren_depths) {
+		return
+	}
+	return g.unsupported('`nil` outside an `unsafe` block')
+}
+
+// nil_starts_pointer_comparison checks the concrete operand on the right of `nil ==`/`!=`.
+fn (g &Parser) nil_starts_pointer_comparison(previous token.Token) bool {
+	if previous !in [.unknown, .lpar, .lsbr, .lcbr, .comma, .colon, .and, .logical_or, .key_return] {
+		return false
+	}
+	mut look := g.s
+	if look.scan() !in [.eq, .ne] { return false }
+	mut tokens := []FastcExpressionToken{}
+	mut depth := 0
+	for {
+		kind := look.scan()
+		if kind == .lcbr && depth == 0 {
+			last_kind := if tokens.len > 0 { tokens.last().tok } else { token.Token.unknown }
+			last_lit := if tokens.len > 0 { tokens.last().lit } else { '' }
+			if !g.condition_brace_opens_struct_literal(tokens, last_kind, last_lit) { break }
+		}
+		if kind == .eof || (depth == 0 && kind in [.semicolon, .comma, .rpar, .rsbr, .rcbr, .and,
+			.logical_or]) {
+			break
+		}
+		if kind in [.lpar, .lsbr, .lcbr] { depth++ }
+		if kind in [.rpar, .rsbr, .rcbr] { depth-- }
+		tokens << FastcExpressionToken{ tok: kind, lit: look.lit }
+	}
+	typ := g.infer_expression_type(tokens) or { return false }
+	return g.nil_type_is_allowed(typ)
+}
+
+// nil_target_is_voidptr reports whether the value starting at the current `nil` is assigned to
+// a field declared `voidptr`, initializes one in a struct literal, or is a `voidptr` argument.
+fn (g &Parser) nil_target_is_voidptr(tokens []FastcExpressionToken, previous token.Token, paren_depth int, bracket_depth int, brace_depth int, struct_types []u32, struct_depths []int, struct_paren_depths []int) bool {
+	mut end := tokens.len
+	for end > 0 && tokens[end - 1].tok == .lpar
+		&& (end == 1 || tokens[end - 2].tok != .name) {
+		end--
+	}
+	if end < tokens.len {
+		before := if end > 0 { tokens[end - 1].tok } else { token.Token.unknown }
+		return g.nil_target_is_voidptr(tokens[..end], before, paren_depth - (tokens.len - end), bracket_depth, brace_depth, struct_types, struct_depths, struct_paren_depths)
+	}
+	if tokens.len == 0 && g.allows_nil_local_assignment {
+		return true
+	}
+	if previous in [.eq, .ne] && tokens.len > 1 {
+		mut start := 0
+		mut depth := 0
+		for i := tokens.len - 2; i >= 0; i-- {
+			if tokens[i].tok in [.rpar, .rsbr, .rcbr] {
+				depth++
+			} else if tokens[i].tok in [.lpar, .lsbr, .lcbr] {
+				if depth == 0 {
+					start = i + 1
+					break
+				}
+				depth--
+			} else if depth == 0 && (tokens[i].tok.is_assignment()
+				|| tokens[i].tok in [.colon, .comma, .and, .logical_or, .key_return]) {
+				start = i + 1
+				break
+			}
+		}
+		typ := g.infer_expression_type(tokens[start..tokens.len - 1]) or { return false }
+		return g.nil_type_is_allowed(typ)
+	}
+	open := fastc_innermost_open_index(tokens)
+	if open >= 0 && tokens[open].tok == .lsbr
+		&& (open == 0 || tokens[open - 1].tok !in [.name, .rpar, .rsbr, .rcbr]) {
+		mut depth := 0
+		for i in open + 1 .. tokens.len {
+			if tokens[i].tok in [.lpar, .lsbr, .lcbr] { depth++ }
+			if tokens[i].tok in [.rpar, .rsbr, .rcbr] { depth-- }
+			if depth == 0 && tokens[i].tok == .comma {
+				typ := g.infer_expression_type(tokens[open + 1..i]) or { return false }
+				return g.nil_type_is_allowed(typ)
+			}
+		}
+	}
+
+	if previous == .assign && paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 {
+		// A concrete voidptr local keeps the existing safe reset support.
+		if tokens.len == 2 && tokens[0].tok == .name {
+			local := g.locals[tokens[0].lit] or { return false }
+			return !g.in_generic_placeholder && g.underlying_alias_type(local.typ) == flat.source_type_voidptr && !g.fn_alias_return_types.contains(local.typ_text()) && local.fn_return_type_text() == ''
+		}
+		// `receiver.field =`
+		if tokens.len < 4 || tokens.last().tok != .assign {
+			return false
+		}
+		target := tokens[..tokens.len - 1]
+		if target[target.len - 2].tok != .dot || target.last().tok != .name {
+			return false
+		}
+		receiver_type := g.infer_expression_type(target[..target.len - 2]) or { return false }
+		field := g.struct_field_metadata(receiver_type, target.last().lit) or { return false }
+		return g.nil_field_is_allowed(field)
+	}
+	if previous == .colon && struct_depths.len > 0 && brace_depth == struct_depths.last()
+		&& paren_depth == struct_paren_depths.last() && struct_types.len > 0 && tokens.len >= 2
+		&& tokens[tokens.len - 2].tok == .name {
+		// `Struct{field:`
+		field := g.struct_field_metadata(struct_types.last(), tokens[tokens.len - 2].lit) or {
+			return false
+		}
+		return g.nil_field_is_allowed(field)
+	}
+	if previous in [.lcbr, .comma, .semicolon] && struct_depths.len > 0
+		&& brace_depth == struct_depths.last() && paren_depth == struct_paren_depths.last()
+		&& struct_types.len > 0 {
+		// `Struct{value,`
+		return g.nil_positional_field_is_voidptr(tokens, struct_types.last())
+	}
+	if previous in [.lpar, .comma] && paren_depth > 0 {
+		// `function(`
+		return g.nil_argument_is_voidptr(tokens)
+	}
+	return false
+}
+
+// nil_positional_field_is_voidptr reports whether the value being read in a positional literal
+// of `struct_type` initializes a field declared `voidptr`: the field at the value's position.
+fn (g &Parser) nil_positional_field_is_voidptr(tokens []FastcExpressionToken, struct_type_source_id u32) bool {
+	struct_type := flat.source_type_name(struct_type_source_id)
+	open := fastc_innermost_open_index(tokens)
+	if open < 0 || tokens[open].tok != .lcbr {
+		return false
+	}
+	// Count the values before this one; a `field:` or `...` makes the literal not positional.
+	mut index := 0
+	mut inner := 0
+	for i := open + 1; i < tokens.len; i++ {
+		match tokens[i].tok {
+			.lpar, .lsbr, .lcbr {
+				inner++
+			}
+			.rpar, .rsbr, .rcbr {
+				inner--
+			}
+			.comma, .semicolon {
+				if inner == 0 {
+					index++
+				}
+			}
+			.colon, .ellipsis {
+				if inner == 0 {
+					return false
+				}
+			}
+			else {}
+		}
+	}
+	fields := g.struct_field_info[fastc_trim_pointer_suffix(struct_type)] or { return false }
+	return index < fields.len && g.nil_field_is_allowed(fields[index])
+}
+
+fn (g &Parser) nil_type_is_allowed(typ u32) bool {
+	if g.in_generic_placeholder || g.fn_alias_return_types.contains(flat.source_type_name(typ)) || g.is_function_value_type(typ) {
+		return false
+	}
+	underlying := g.underlying_alias_type(typ)
+	return underlying == flat.source_type_voidptr
+		|| ((g.path.ends_with('.c.v') || g.path.contains('.c.v:')) && fastc_is_pointer_type(underlying))
+}
+
+fn (g &Parser) nil_field_is_allowed(field &FastcStructField) bool {
+	return !field.is_function && (field.is_declared_voidptr
+		|| (field.typ != flat.source_type_voidptr && g.nil_type_is_allowed(field.typ)))
+}
+
+// nil_argument_is_voidptr reports whether the argument being read goes to a `voidptr` parameter
+// of a non-generic function, called by its name or through an imported module (`util.f(`).
+// FastC also stores fn-typed parameters as `voidptr`; V3 accepts a `nil` argument for those as
+// well. Methods are not trusted: a generic struct's methods keep their erased type parameters
+// as `voidptr`.
+fn (g &Parser) nil_argument_is_voidptr(tokens []FastcExpressionToken) bool {
+	open := fastc_innermost_open_index(tokens)
+	if open <= 0 || tokens[open].tok != .lpar || tokens[open - 1].tok != .name {
+		return false
+	}
+	name := tokens[open - 1].lit
+	mut key := g.unqualified_function_key(name)
+	mut offset := 0
+	if open >= 2 && tokens[open - 2].tok == .dot {
+		if open >= 3 && tokens[open - 3].tok == .name && tokens[open - 3].lit == 'C' {
+			key = 'C.${name}'
+		} else if static_key := g.static_function_key_for_call(tokens, open - 1) {
+			key = static_key
+		} else if open >= 3 && tokens[open - 3].tok == .name
+			&& tokens[open - 3].lit !in g.locals && tokens[open - 3].lit in g.imports {
+			key = fastc_function_key(g.resolve_module_alias(g.imports[tokens[open - 3].lit]), name)
+		} else {
+			start := fastc_method_receiver_start(tokens, open - 2)
+			receiver := g.infer_expression_type(tokens[start..open - 2]) or { return false }
+			key, _ = g.resolve_method(receiver, name)
+			offset = 1
+		}
+	}
+	if (offset == 0 && name in g.locals) || key in g.generic_method_sources {
+		return false
+	}
+	signature := g.functions[key] or { return false }
+	mut index := fastc_call_argument_index(tokens, open) + offset
+	if signature.is_variadic && signature.parameter_types.ids.len > 0
+		&& index >= signature.parameter_types.ids.len - 1 {
+		index = signature.parameter_types.ids.len - 1
+		return g.nil_type_is_allowed(g.array_element_type(signature.parameter_types.ids[index]) or { return false })
+	}
+	return index < signature.parameter_types.ids.len && g.nil_type_is_allowed(signature.parameter_types.ids[index])
+}
+
+// nil_ends_value reports whether the current `nil` is a whole value: the next token closes it or
+// ends the statement, so no operator applies to it.
+fn (g &Parser) nil_ends_value(allow_boolean bool) bool {
+	mut lookahead := g.s
+	mut next := lookahead.scan()
+	if next == .semicolon && !g.semicolon_continues_expression() {
+		return true
+	}
+	for next == .semicolon {
+		next = lookahead.scan()
+	}
+	return next in [.comma, .rpar, .rsbr, .rcbr, .eof]
+		|| (allow_boolean && next in [.and, .logical_or])
 }
 
 fn (g &Parser) expression_name(previous token.Token, qualified_name_owner string) !string {
@@ -149,6 +394,45 @@ fn (g &Parser) resolved_nonlocal_expression_name_cached(name string) string {
 	return resolved
 }
 
+// unqualified_global_key applies the same module precedence to global reads
+// and mutations, including globals declared outside the current module.
+fn (g &Parser) unqualified_global_key(name string) ?string {
+	if cached := g.global_key_memo[name] {
+		if cached == '' {
+			return none
+		}
+		return cached
+	}
+	key := g.unqualified_global_key_impl(name) or { '' }
+	mut w := unsafe { &Parser(g) }
+	w.global_key_memo[name] = key
+	if key == '' {
+		return none
+	}
+	return key
+}
+
+fn (g &Parser) unqualified_global_key_impl(name string) ?string {
+	key := fastc_global_key(g.module_name, name)
+	if key in g.globals {
+		return key
+	}
+	builtin_key := fastc_global_key('builtin', name)
+	if builtin_key in g.globals {
+		return builtin_key
+	}
+	if g.global_suffix_index.ready && !g.declaration_initializer_mode {
+		return g.global_suffix_index.keys[name] or { return none }
+	}
+	suffix := '.${name}'
+	for global_key, _ in g.globals {
+		if global_key == name || global_key.ends_with(suffix) {
+			return global_key
+		}
+	}
+	return none
+}
+
 // resolved_nonlocal_expression_name renders a bare name that is not a local:
 // an import, function, type, primitive, constant, or global, else the plain
 // C identifier. Every table it consults is fixed for the file, so
@@ -158,7 +442,7 @@ fn (g &Parser) resolved_nonlocal_expression_name(name string) string {
 		return fastc_c_module_name(imported_module)
 	}
 	function_key := g.unqualified_function_key(name)
-	if function_key in g.functions {
+	if function_key in g.functions || function_key in g.mono_functions {
 		return g.c_function_name_for_key(function_key)
 	}
 	if type_key := g.resolve_declared_type_key(name) {
@@ -174,19 +458,8 @@ fn (g &Parser) resolved_nonlocal_expression_name(name string) string {
 	if c_name := g.constants[fastc_constant_key('builtin', name)] {
 		return c_name
 	}
-	global_key := fastc_global_key(g.module_name, name)
-	if c_name := g.globals[global_key] {
-		return c_name
-	}
-	if c_name := g.globals[fastc_global_key('builtin', name)] {
-		return c_name
-	}
-	// A `__global` is truly global, including from a different module than its declaration.
-	suffix := '.${name}'
-	for key, c_name in g.globals {
-		if key == name || key.ends_with(suffix) {
-			return c_name
-		}
+	if global_key := g.unqualified_global_key(name) {
+		return g.globals[global_key]
 	}
 	return fastc_c_identifier(name)
 }
@@ -253,6 +526,8 @@ fn fastc_functions_declare_c(functions map[string]FastcFunctionSignature) bool {
 	return false
 }
 
+// function_key_for_call keys the function a call names. A bare name that is a local, such as
+// a parameter holding a callback, shadows every function of that name, so it keys none ('').
 fn (g &Parser) function_key_for_call(tokens []FastcExpressionToken, name_index int) string {
 	if name_index >= 2 && tokens[name_index - 1].tok == .dot && tokens[name_index - 2].tok == .name {
 		if static_key := g.static_function_key_for_call(tokens, name_index) {
@@ -265,7 +540,21 @@ fn (g &Parser) function_key_for_call(tokens []FastcExpressionToken, name_index i
 			return fastc_function_key(g.resolve_module_alias(imported_module), tokens[name_index].lit)
 		}
 	}
-	return g.unqualified_function_key(tokens[name_index].lit)
+	if (name_index == 0 || tokens[name_index - 1].tok != .dot) && tokens[name_index].lit in g.locals {
+		return ''
+	}
+	function_key := g.unqualified_function_key(tokens[name_index].lit)
+	if function_key in g.functions {
+		return function_key
+	}
+	if global_key := g.unqualified_global_key(tokens[name_index].lit) {
+		if signature := g.functions[global_key] {
+			if signature.is_global {
+				return global_key
+			}
+		}
+	}
+	return function_key
 }
 
 // resolve_module_alias maps an import path that re-exports another module (via an
@@ -297,7 +586,7 @@ fn (g &Parser) static_function_key_for_call(tokens []FastcExpressionToken, name_
 
 fn (g &Parser) local_is_pointer(name string) bool {
 	local := g.locals[name] or { return false }
-	return local.typ.ends_with('*')
+	return local.typ_text().ends_with('*')
 }
 
 fn (g &Parser) is_enum_type_name(name string) bool {
@@ -309,14 +598,18 @@ fn (g &Parser) underlying_enum_type_key(type_key string) ?string {
 	if type_key == '' {
 		return none
 	}
-	resolved_type := g.underlying_alias_type(fastc_c_declared_type_name(type_key))
+	resolved_type := g.underlying_alias_type(flat.source_type_id(fastc_c_declared_type_name(type_key)))
 	resolved_key := g.semantic_type_key(resolved_type)
-	return if g.declared_kinds[resolved_key] == .enum_ { resolved_key } else { none }
+	return if g.declared_kinds[flat.source_type_name(resolved_key)] == .enum_ {
+		flat.source_type_name(resolved_key)
+	} else {
+		none
+	}
 }
 
-fn (g &Parser) flag_enum_type_key(c_type string) ?string {
+fn (g &Parser) flag_enum_type_key(c_type u32) ?string {
 	type_key := g.semantic_type_key(c_type)
-	enum_key := g.underlying_enum_type_key(type_key) or { return none }
+	enum_key := g.underlying_enum_type_key(flat.source_type_name(type_key)) or { return none }
 	return if g.enum_flags[enum_key] { enum_key } else { none }
 }
 
@@ -398,10 +691,10 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 		name_is_module_ref := i >= 2 && tokens[i - 2].tok == .name && (tokens[i - 2].lit in g.imports || tokens[i - 2].lit == 'C') && (i < 3 || tokens[i - 3].tok != .dot)
 		if !is_static_call && i >= 2 && tokens[i - 1].tok == .dot && !name_is_module_ref {
 			receiver_start := fastc_method_receiver_start(tokens, i - 1)
-			receiver_type = g.infer_expression_type(tokens[receiver_start..i - 1])!
+			receiver_type = flat.source_type_name(g.infer_expression_type(tokens[receiver_start..i - 1])!)
 			if receiver_type != '' {
 				has_method_receiver = true
-				function_key, _ = g.resolve_method(receiver_type, name)
+				function_key, _ = g.resolve_method(flat.source_type_id(receiver_type), name)
 				is_method_call = function_key in g.functions
 				if !is_method_call && function_key in g.mono_functions {
 					// An on-demand monomorphized generic method (queued during rendering): its
@@ -444,7 +737,7 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 			}
 			argument_offset := if is_method_call { 1 } else { 0 }
 			is_variadic := signature.is_variadic
-			expected_arguments := signature.parameter_types.len - argument_offset - if is_variadic {
+			expected_arguments := signature.parameter_types.ids.len - argument_offset - if is_variadic {
 				1
 			} else {
 				0
@@ -461,12 +754,12 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 			}
 			// Trailing named args collapse into the callee's last struct parameter — V allows
 			// this for any struct last-parameter (`time.new(year: ...)`), not just `@[params]`.
-			provides_params_struct := expected_arguments > 0 && named_argument_start == expected_arguments - 1 && (signature.last_parameter_is_params || g.fastc_type_is_declared_struct(signature.parameter_types[named_argument_start + argument_offset]))
+			provides_params_struct := expected_arguments > 0 && named_argument_start == expected_arguments - 1 && (signature.last_parameter_is_params || g.fastc_type_is_declared_struct(signature.parameter_types.ids[named_argument_start + argument_offset]))
 			uses_default_array_sort := function_key == 'array.sort' && call_args.len == 0
 			if (!is_variadic && call_args.len != expected_arguments && !omits_params_struct && !provides_params_struct && !uses_default_array_sort) || (is_variadic && call_args.len < expected_arguments) {
 				return g.unsupported('function `${name}` call with ${call_args.len} arguments instead of ${expected_arguments}')
 			}
-			if is_method_call && signature.parameter_types.len > 0 {
+			if is_method_call && signature.parameter_types.ids.len > 0 {
 				receiver_is_mut := signature.parameter_mutability.len > 0 && signature.parameter_mutability[0]
 				if receiver_is_mut {
 					receiver_start := fastc_method_receiver_start(tokens, i - 1)
@@ -479,7 +772,7 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 				}
 				is_variadic_argument := is_variadic && argument_index >= expected_arguments
 				parameter_index := if is_variadic_argument {
-					signature.parameter_types.len - 1
+					signature.parameter_types.ids.len - 1
 				} else {
 					argument_index + argument_offset
 				}
@@ -501,7 +794,7 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 					g.validate_mutable_argument_fields(argument, name, argument_index)!
 				}
 			}
-		} else if has_method_receiver && name in ['has', 'set', 'clear'] && call_args.len == 1 && g.flag_enum_type_key(receiver_type) != none {
+		} else if has_method_receiver && name in ['has', 'set', 'clear'] && call_args.len == 1 && g.flag_enum_type_key(flat.source_type_id(receiver_type)) != none {
 			if name in ['set', 'clear'] {
 				receiver_start := fastc_method_receiver_start(tokens, i - 1)
 				g.validate_mutating_method_receiver(tokens[receiver_start..i - 1], name)!
@@ -514,14 +807,14 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 			}
 			argument_type := g.infer_expression_type(call_args[0])!
 			if !g.selfhost && !g.ordinary_print_type_is_supported(argument_type) {
-				return g.unsupported('printing value of type `${argument_type}`')
+				return g.unsupported('printing value of type `${flat.source_type_name(argument_type)}`')
 			}
 		} else {
 			if g.selfhost && i >= 2 && tokens[i - 2].tok == .name && tokens[i - 2].lit == 'C' && tokens[i - 1].tok == .dot {
 				i = call_end + 1
 				continue
 			}
-			if g.selfhost && (i == 0 || tokens[i - 1].tok != .dot) && name in g.locals {
+			if (i == 0 || tokens[i - 1].tok != .dot) && name in g.locals {
 				// Calling a local/parameter that holds a function pointer (`cb(x, y)`), e.g.
 				// vqsort's `sort_cb`: a plain identifier that is a local can only be called
 				// through its function-pointer value, which renders as a direct C call.
@@ -537,7 +830,7 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 					continue
 				}
 			}
-			if g.selfhost && has_method_receiver && g.struct_member_type(receiver_type, name) != '' {
+			if g.selfhost && has_method_receiver && g.struct_member_type(flat.source_type_id(receiver_type), name) != u32(0) {
 				i = call_end + 1
 				continue
 			}
@@ -555,7 +848,7 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 				continue
 			}
 			if g.selfhost && has_method_receiver {
-				return g.unsupported('unresolved method call `${g.semantic_type_key(receiver_type)}.${name}` of `${receiver_type}`')
+				return g.unsupported('unresolved method call `${flat.source_type_name(g.semantic_type_key(flat.source_type_id(receiver_type)))}.${name}` of `${receiver_type}`')
 			}
 			if g.selfhost {
 				return g.unsupported('unresolved function call `${name}` tokens `${fastc_expression_tokens_debug(tokens)}`')
@@ -566,13 +859,13 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 	}
 }
 
-fn (g &Parser) ordinary_print_type_is_supported(typ string) bool {
+fn (g &Parser) ordinary_print_type_is_supported(typ u32) bool {
 	normalized_type := fastc_normalize_inferred_type(typ)
 	underlying_type := g.underlying_alias_type(normalized_type)
-	if underlying_type in ['string', 'bool'] || fastc_is_integer_type(underlying_type) {
+	if underlying_type in [flat.source_type_string, flat.source_type_bool] || fastc_is_integer_type(underlying_type) {
 		return true
 	}
-	return g.underlying_enum_type_key(g.semantic_type_key(normalized_type)) != none
+	return g.underlying_enum_type_key(flat.source_type_name(g.semantic_type_key(normalized_type))) != none
 }
 
 fn fastc_argument_is_marked_mut(argument []FastcExpressionToken) bool {
@@ -598,8 +891,10 @@ fn (g &Parser) validate_mutating_method_receiver(receiver []FastcExpressionToken
 	// immutable `&Struct` param) already carries mutable access to its pointee, so a
 	// `mut`-receiver method call through it is valid regardless of the root variable's
 	// mutability.
-	if receiver_type := g.infer_expression_type(receiver) {
-		if receiver_type.ends_with('*') {
+	if receiver_type_source_id := g.infer_expression_type(receiver) {
+		receiver_type := receiver_type_source_id
+
+		if flat.source_type_name(receiver_type).ends_with('*') {
 			return
 		}
 	}
@@ -635,7 +930,7 @@ fn (g &Parser) validate_mutating_method_receiver(receiver []FastcExpressionToken
 		receiver_type := g.infer_expression_type(receiver[receiver_start..i]) or { continue }
 		field := g.struct_field_metadata(receiver_type, receiver[i + 1].lit) or { continue }
 		if field.module_name !in ['', g.module_name] && !field.is_mutable && item.unsafe_depth == 0 {
-			type_name := g.semantic_type_key(receiver_type).all_after_last('.')
+			type_name := flat.source_type_name(g.semantic_type_key(receiver_type)).all_after_last('.')
 			return g.unsupported('mutating method `${method_name}` receiver field `${type_name}.${field.name}` is not `pub mut` in imported module `${field.module_name}`')
 		}
 	}
@@ -662,7 +957,7 @@ fn (g &Parser) validate_mutable_argument_fields(argument []FastcExpressionToken,
 		receiver_type := g.infer_expression_type(argument[receiver_start..i]) or { continue }
 		field := g.struct_field_metadata(receiver_type, argument[i + 1].lit) or { continue }
 		if field.module_name !in ['', g.module_name] && !field.is_mutable {
-			type_name := g.semantic_type_key(receiver_type).all_after_last('.')
+			type_name := flat.source_type_name(g.semantic_type_key(receiver_type)).all_after_last('.')
 			return g.unsupported('mutable argument field `${type_name}.${field.name}` to function `${function_name}` parameter ${argument_index + 1} is not `pub mut` in imported module `${field.module_name}`')
 		}
 	}
@@ -670,11 +965,11 @@ fn (g &Parser) validate_mutable_argument_fields(argument []FastcExpressionToken,
 
 fn (g &Parser) validate_interface_cast_shape(interface_key string, operand []FastcExpressionToken) ! {
 	actual_type := fastc_normalize_inferred_type(g.infer_expression_type(operand)!)
-	if actual_type == '' {
+	if actual_type == u32(0) {
 		return
 	}
 	actual_key := g.semantic_type_key(actual_type)
-	if actual_key == interface_key {
+	if flat.source_type_name(actual_key) == interface_key {
 		return
 	}
 	interface_type := fastc_c_declared_type_name(interface_key)
@@ -686,28 +981,29 @@ fn (g &Parser) validate_interface_cast_shape(interface_key string, operand []Fas
 			continue
 		}
 		interface_signature := g.functions[interface_method_key]
-		if interface_signature.parameter_types.len == 0 || interface_signature.parameter_types[0] != interface_type {
+		if interface_signature.parameter_types.ids.len == 0 || interface_signature.parameter_types.at(0) != interface_type {
 			continue
 		}
 		method_name := interface_method_key.all_after_last('.')
-		candidate_signature := g.functions['${actual_key}.${method_name}'] or {
+		candidate_signature := g.functions['${flat.source_type_name(actual_key)}.${method_name}'] or {
 			if g.selfhost {
 				continue
 			}
-			return g.unsupported('type `${actual_type}` does not implement interface `${interface_type}` method `${method_name}`')
+			return g.unsupported('type `${flat.source_type_name(actual_type)}` does not implement interface `${interface_type}` method `${method_name}`')
 		}
-		if candidate_signature.parameter_types.len != interface_signature.parameter_types.len {
-			return g.unsupported('type `${actual_type}` has an incompatible parameter count for interface `${interface_type}` method `${method_name}`')
+		if candidate_signature.parameter_types.ids.len != interface_signature.parameter_types.ids.len {
+			return g.unsupported('type `${flat.source_type_name(actual_type)}` has an incompatible parameter count for interface `${interface_type}` method `${method_name}`')
 		}
-		for i in 0 .. interface_signature.parameter_types.len {
+		for i in 0 .. interface_signature.parameter_types.ids.len {
 			interface_parameter_is_mut := i < interface_signature.parameter_mutability.len && interface_signature.parameter_mutability[i]
 			candidate_parameter_is_mut := i < candidate_signature.parameter_mutability.len && candidate_signature.parameter_mutability[i]
-			if candidate_parameter_is_mut != interface_parameter_is_mut {
-				return g.unsupported('type `${actual_type}` has incompatible mutability for interface `${interface_type}` method `${method_name}` parameter ${i + 1}')
+			if candidate_parameter_is_mut != interface_parameter_is_mut
+				&& !(i == 0 && interface_parameter_is_mut) {
+				return g.unsupported('type `${flat.source_type_name(actual_type)}` has incompatible mutability for interface `${interface_type}` method `${method_name}` parameter ${i + 1}')
 			}
 		}
 	}
-	if g.selfhost && actual_key !in g.declared_kinds {
+	if g.selfhost && flat.source_type_name(actual_key) !in g.declared_kinds {
 		return
 	}
 	mut interface_field_keys := g.interface_fields.keys()
@@ -717,20 +1013,20 @@ fn (g &Parser) validate_interface_cast_shape(interface_key string, operand []Fas
 			continue
 		}
 		required_field := g.interface_fields[field_key]
-		actual_field := g.interface_implementation_field(actual_type, actual_key, required_field.name) or {
-			return g.unsupported('type `${actual_type}` does not implement interface `${interface_type}` field `${required_field.name}`')
+		actual_field := g.interface_implementation_field(actual_type, flat.source_type_name(actual_key), required_field.name) or {
+			return g.unsupported('type `${flat.source_type_name(actual_type)}` does not implement interface `${interface_type}` field `${required_field.name}`')
 		}
 		if required_field.is_mutable && !actual_field.is_mutable {
-			return g.unsupported('type `${actual_type}` does not implement interface `${interface_type}`: field `${required_field.name}` must be mutable')
+			return g.unsupported('type `${flat.source_type_name(actual_type)}` does not implement interface `${interface_type}`: field `${required_field.name}` must be mutable')
 		}
 	}
 }
 
-fn (g &Parser) interface_implementation_field(actual_type string, actual_key string, field_name string) ?FastcInterfaceField {
+fn (g &Parser) interface_implementation_field(actual_type_source_id u32, actual_key string, field_name string) ?FastcInterfaceField {
 	if g.declared_kinds[actual_key] == .interface_ {
 		return g.interface_fields['${actual_key}.${field_name}'] or { return none }
 	}
-	field := g.struct_field_metadata(actual_type, field_name) or { return none }
+	field := g.struct_field_metadata(actual_type_source_id, field_name) or { return none }
 	return FastcInterfaceField{
 		name:       field.name
 		typ:        field.typ
@@ -818,9 +1114,9 @@ fn (g &Parser) validate_expression_mutation_lvalue(tokens []FastcExpressionToken
 		}
 	} else if global_key !in g.globals && !can_mutate_root {
 		return g.unsupported('mutation of immutable or unknown name `${root_name}`')
-	} else if global_type := g.global_types[global_key] {
+	} else if global_type := g.global_types.get(global_key) {
 		can_mutate_root = can_mutate_root || g.translated || (g.selfhost
-			&& fastc_is_pointer_type(g.underlying_alias_type(global_type)))
+			&& fastc_is_pointer_type(g.underlying_alias_type(flat.source_type_id(global_type))))
 	}
 	mut selector_depth := 0
 	for i, item in lvalue {
@@ -847,40 +1143,50 @@ fn (g &Parser) validate_expression_mutation_lvalue(tokens []FastcExpressionToken
 		// `mut`; the specialization therefore needs the same privilege as its private
 		// field access above.
 		if !field.is_mutable && item.unsafe_depth == 0 && !can_mutate_root && !g.in_mono_drain {
-			type_name := g.semantic_type_key(receiver_type).all_after_last('.')
+			type_name := flat.source_type_name(g.semantic_type_key(receiver_type)).all_after_last('.')
 			return g.unsupported('mutation of immutable field `${type_name}.${field.name}`')
 		}
 	}
 }
 
-fn (g &Parser) struct_direct_member_type(receiver_type string, field_name string) string {
-	if field_name == 'len' && g.is_map_type(receiver_type) {
-		return 'int'
+fn (g &Parser) struct_direct_member_type(receiver_type_id u32, field_name string) u32 {
+	if field_name == 'len' && g.is_map_type(receiver_type_id) {
+		return flat.source_type_int
 	}
-	mut layout_type := fastc_trim_pointer_suffix(receiver_type)
+	interface_key := g.semantic_type_key(receiver_type_id)
+	if g.declared_kinds[flat.source_type_name(interface_key)] == .interface_ {
+		if field := g.interface_fields['${flat.source_type_name(interface_key)}.${field_name}'] {
+			return field.typ
+		}
+	}
+	mut layout_type := fastc_trim_pointer_suffix(flat.source_type_name(receiver_type_id))
 	if layout_type.starts_with('Array_') {
 		layout_type = 'array'
 	} else if layout_type.starts_with('Map_') {
 		layout_type = 'map'
 	}
 	if fields := g.struct_fields[layout_type] {
-		return fields[field_name] or { '' }
+		return fields.type_id(field_name) or { u32(0) }
 	}
-	return ''
+	return u32(0)
 }
 
-fn (g &Parser) struct_member_type(receiver_type string, field_name string) string {
-	direct_type := g.struct_direct_member_type(receiver_type, field_name)
-	if direct_type != '' {
+fn (g &Parser) struct_member_type(receiver_type_id u32, field_name string) u32 {
+	if field_name == 'len' && fastc_trim_pointer_suffix(flat.source_type_name(g.underlying_alias_type(receiver_type_id))).starts_with('FixedArray_') {
+		// A fixed array's `len` is its length, an int; the C struct has no such member.
+		return flat.source_type_int
+	}
+	direct_type := g.struct_direct_member_type(receiver_type_id, field_name)
+	if direct_type != 0 {
 		return direct_type
 	}
-	field := g.struct_field_metadata(receiver_type, field_name) or { return '' }
+	field := g.struct_field_metadata(receiver_type_id, field_name) or { return u32(0) }
 	return field.typ
 }
 
-fn (g &Parser) struct_field_metadata(receiver_type string, field_name string) ?FastcStructField {
+fn (g &Parser) struct_field_metadata(receiver_type u32, field_name string) ?&FastcStructField {
 	if g.last_field_known && receiver_type == g.last_field_receiver && field_name == g.last_field_name {
-		if g.last_field.name == '' {
+		if g.last_field == unsafe { nil } {
 			return none
 		}
 		return g.last_field
@@ -902,24 +1208,25 @@ fn (g &Parser) struct_field_metadata(receiver_type string, field_name string) ?F
 			w.last_field_name = field_name
 			w.last_field = cached
 			w.last_field_known = true
-			if cached.name == '' {
+			if cached == unsafe { nil } {
 				return none
 			}
 			return cached
 		}
 	}
 	if receiver_type !in w.field_memo {
-		w.field_memo[receiver_type] = map[string]FastcStructField{}
+		w.field_memo[receiver_type] = map[string]&FastcStructField{}
 	}
 	if field := g.struct_field_metadata_impl(receiver_type, field_name) {
-		w.field_memo[receiver_type][field_name] = field
+		stored := &FastcStructField{ ...field }
+		w.field_memo[receiver_type][field_name] = stored
 		w.last_field_receiver = receiver_type
 		w.last_field_name = field_name
-		w.last_field = field
+		w.last_field = stored
 		w.last_field_known = true
-		return field
+		return stored
 	}
-	miss := FastcStructField{}
+	miss := unsafe { &FastcStructField(nil) }
 	w.field_memo[receiver_type][field_name] = miss
 	w.last_field_receiver = receiver_type
 	w.last_field_name = field_name
@@ -928,8 +1235,8 @@ fn (g &Parser) struct_field_metadata(receiver_type string, field_name string) ?F
 	return none
 }
 
-fn (g &Parser) direct_struct_field_metadata(receiver_type string, field_name string) ?FastcStructField {
-	mut layout_type := fastc_trim_pointer_suffix(receiver_type)
+fn (g &Parser) direct_struct_field_metadata(receiver_type u32, field_name string) ?&FastcStructField {
+	mut layout_type := fastc_trim_pointer_suffix(flat.source_type_name(receiver_type))
 	if layout_type.starts_with('Array_') {
 		layout_type = 'array'
 	} else if layout_type.starts_with('Map_') {
@@ -943,15 +1250,15 @@ fn (g &Parser) direct_struct_field_metadata(receiver_type string, field_name str
 	return none
 }
 
-fn (g &Parser) struct_field_metadata_impl(receiver_type string, field_name string) ?FastcStructField {
-	mut layout_type := fastc_trim_pointer_suffix(receiver_type)
+fn (g &Parser) struct_field_metadata_impl(receiver_type u32, field_name string) ?FastcStructField {
+	mut layout_type := fastc_trim_pointer_suffix(flat.source_type_name(receiver_type))
 	if layout_type.starts_with('Array_') {
 		layout_type = 'array'
 	} else if layout_type.starts_with('Map_') {
 		layout_type = 'map'
 	}
 	direct_type := g.struct_direct_member_type(receiver_type, field_name)
-	if direct_type != '' {
+	if direct_type != 0 {
 		return FastcStructField{
 			name:       field_name
 			typ:        direct_type
@@ -959,19 +1266,23 @@ fn (g &Parser) struct_field_metadata_impl(receiver_type string, field_name strin
 			is_mutable: true
 		}
 	}
-	for field in g.struct_field_info[layout_type] {
+	fields := g.struct_field_info[layout_type] or { return none }
+	for index in 0 .. fields.len {
+		field := &fields[index]
 		if !field.name.starts_with('__embedded_') {
 			continue
 		}
 		// Accessing the embed itself by its type name (`d.SilentStreamingDownloader`):
 		// resolve to the `__embedded_N` field, keeping its concrete type.
-		if field.typ == field_name || field.typ.all_after_last('__') == field_name {
+		if field.typ_text() == field_name || field.typ_text().all_after_last('__') == field_name {
 			// The `__embedded_N` field IS the target; its name already renders the
 			// access, so return it as-is (no extra storage path).
-			return field
+			return *field
 		}
 		if embedded := g.struct_field_metadata(field.typ, field_name) {
-			mut promoted := embedded
+			// A direct field belongs to the shared index, and a promoted field
+			// may already be cached for another receiver. Never change either.
+			mut promoted := *embedded
 			mut storage_path := [field.name]
 			storage_path << embedded.storage_path
 			promoted.storage_path = storage_path
@@ -1006,7 +1317,7 @@ fn (g &Parser) dot_piece(previous token.Token, previous_lit string, module_separ
 // Returns '' when the field is a direct member or cannot be resolved.
 fn (g &Parser) embedded_dot_piece_for_local(receiver_name string) string {
 	local := g.locals[receiver_name] or { return '' }
-	if local.typ == '' {
+	if local.typ_text() == '' {
 		return ''
 	}
 	mut look := g.s
@@ -1020,26 +1331,22 @@ fn (g &Parser) embedded_dot_piece_for_local(receiver_name string) string {
 // the `.` in `receiver.field` when `field` is reached through embedded structs (e.g.
 // `->__embedded_0.`), or '' when `field` is a direct member (or unknown). The field
 // name itself is emitted by the caller after this separator.
-fn (g &Parser) embedded_field_dot_piece_for_type(receiver_type string, field_name string) string {
+fn (g &Parser) embedded_field_dot_piece_for_type(receiver_type u32, field_name string) string {
 	field := g.struct_field_metadata(receiver_type, field_name) or { return '' }
-	if field.storage_path.len == 0 {
-		return ''
-	}
+	if field.storage_path.len == 0 { return '' }
 	mut current_type := receiver_type
 	mut piece := ''
 	for storage_name in field.storage_path {
-		separator := if current_type.ends_with('*') { '->' } else { '.' }
+		separator := if flat.source_type_name(current_type).ends_with('*') { '->' } else { '.' }
 		piece += separator + fastc_c_identifier(storage_name)
 		current_type = g.struct_direct_member_type(current_type, storage_name)
-		if current_type == '' {
-			return ''
-		}
+		if current_type == 0 { return '' }
 	}
-	piece += if current_type.ends_with('*') { '->' } else { '.' }
+	piece += if flat.source_type_name(current_type).ends_with('*') { '->' } else { '.' }
 	return piece
 }
 
-fn (g &Parser) struct_field_is_visible(field FastcStructField) bool {
+fn (g &Parser) struct_field_is_visible(field &FastcStructField) bool {
 	// A compiler-generated generic specialization keeps V's reflection privileges:
 	// json2's `$for field in T.fields` may access private fields of the concrete caller type.
 	return g.in_mono_drain || field.is_public || field.module_name in ['', g.module_name]
@@ -1060,7 +1367,7 @@ fn (g &Parser) validate_expression_field_visibility(tokens []FastcExpressionToke
 		}
 		field := g.struct_field_metadata(receiver_type, tokens[i + 1].lit) or { continue }
 		if !g.struct_field_is_visible(field) {
-			type_name := g.semantic_type_key(receiver_type).all_after_last('.')
+			type_name := flat.source_type_name(g.semantic_type_key(receiver_type)).all_after_last('.')
 			return g.unsupported('private field `${type_name}.${field.name}` from imported module `${field.module_name}`')
 		}
 	}
@@ -1075,7 +1382,7 @@ fn (g &Parser) validate_struct_literal_field_visibility(tokens []FastcExpression
 		return
 	}
 	c_type := g.type_from_expression_tokens(tokens[type_start..open]) or { return }
-	layout_type := fastc_trim_pointer_suffix(c_type)
+	layout_type := fastc_trim_pointer_suffix(flat.source_type_name(c_type))
 	if layout_type !in g.struct_field_info {
 		return
 	}
@@ -1112,13 +1419,13 @@ fn (g &Parser) validate_struct_literal_field_visibility(tokens []FastcExpression
 		field_name := tokens[index].lit
 		has_field = true
 		if field_name in initialized_fields {
-			type_name := g.semantic_type_key(c_type).all_after_last('.')
+			type_name := flat.source_type_name(g.semantic_type_key(c_type)).all_after_last('.')
 			return g.unsupported('duplicate field `${type_name}.${field_name}` in struct literal')
 		}
 		field := g.struct_field_metadata(c_type, field_name) or { return }
 		initialized_fields[field_name] = true
 		if !g.struct_field_is_visible(field) {
-			type_name := g.semantic_type_key(c_type).all_after_last('.')
+			type_name := flat.source_type_name(g.semantic_type_key(c_type)).all_after_last('.')
 			return g.unsupported('private field `${type_name}.${field.name}` from imported module `${field.module_name}`')
 		}
 		index++
@@ -1173,28 +1480,28 @@ fn (g &Parser) validate_struct_literal_field_visibility(tokens []FastcExpression
 	if !has_update {
 		for field in g.struct_field_info[layout_type] {
 			if field.is_required && field.name !in initialized_fields {
-				type_name := g.semantic_type_key(c_type).all_after_last('.')
+				type_name := flat.source_type_name(g.semantic_type_key(c_type)).all_after_last('.')
 				return g.unsupported('field `${type_name}.${field.name}` must be initialized')
 			}
 		}
 	}
 }
 
-fn (g &Parser) validate_fixed_array_struct_field_length(c_type string, field FastcStructField, value_tokens []FastcExpressionToken) ! {
-	element_type := fastc_fixed_array_element_type(field.typ) or {
+fn (g &Parser) validate_fixed_array_struct_field_length(c_type_source_id u32, field &FastcStructField, value_tokens []FastcExpressionToken) ! {
+	element_type := (fastc_fixed_array_element_type(field.typ) or {
 		return g.unsupported('unverifiable fixed-array type for struct field `${field.name}`')
-	}
+	})
 	array_end := if value_tokens.len > 0 && value_tokens.last().tok == .not {
 		value_tokens.len - 1
 	} else {
 		value_tokens.len
 	}
-	type_name := g.semantic_type_key(c_type).all_after_last('.')
+	type_name := flat.source_type_name(g.semantic_type_key(c_type_source_id)).all_after_last('.')
 	if array_end < 2 || value_tokens[0].tok != .lsbr || value_tokens[array_end - 1].tok != .rsbr {
 		return
 	}
 	items := fastc_expression_list_items(value_tokens, 1, array_end - 1)!
-	expected_length_source := fastc_fixed_array_length(field.typ) or {
+	expected_length_source := fastc_fixed_array_length(field.typ_text()) or {
 		return g.unsupported('unverifiable fixed-array length for struct field `${type_name}.${field.name}`')
 	}
 	if expected_length := g.fixed_array_length_value(expected_length_source) {
@@ -1208,7 +1515,7 @@ fn (g &Parser) validate_fixed_array_struct_field_length(c_type string, field Fas
 				name: field.name
 				typ:  element_type
 			}
-			g.validate_fixed_array_struct_field_length(c_type, nested_field, item)!
+			g.validate_fixed_array_struct_field_length(c_type_source_id, nested_field, item)!
 		}
 	}
 }

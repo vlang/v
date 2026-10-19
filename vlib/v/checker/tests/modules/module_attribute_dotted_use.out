@@ -1,0 +1,21 @@
+vlib/v/checker/tests/modules/module_attribute_dotted_use/main.v:7:3: error: attribute `mod.Route` is missing field `method`
+    5 | }
+    6 | 
+    7 | @[mod.Route('/a')]
+      |   ~~~~~~~~~
+    8 | fn missing_arg() {
+    9 | }
+vlib/v/checker/tests/modules/module_attribute_dotted_use/main.v:11:3: error: attribute `mod.Route` is missing field `method`
+    9 | }
+   10 | 
+   11 | @[mod.Route('/a', path: '/b')]
+      |   ~~~~~~~~~
+   12 | fn duplicate_arg() {
+   13 | }
+vlib/v/checker/tests/modules/module_attribute_dotted_use/main.v:11:3: error: duplicate field `path` in attribute `mod.Route`
+    9 | }
+   10 | 
+   11 | @[mod.Route('/a', path: '/b')]
+      |   ~~~~~~~~~
+   12 | fn duplicate_arg() {
+   13 | }

@@ -13,7 +13,9 @@ fn builtin_init() {
 			gc_set_warn_proc(internal_gc_warn_proc_none)
 		}
 	}
-	$if !vinix {
+	// A freestanding `bare_print` writes straight to the file descriptor, so there
+	// is no stdio buffer to turn off.
+	$if !vinix && !freestanding {
 		unbuffer_stdout()
 	}
 	install_segfault_handler()

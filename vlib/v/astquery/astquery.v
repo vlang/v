@@ -172,7 +172,7 @@ fn collect_declarations(a &flat.FlatAst, node &flat.Node) []Declaration {
 				DeclKind.method
 			} else {
 				DeclKind.fn
-			}, node.value.all_after_last('.'), node.typ, if is_method {
+			}, node.value.all_after_last('.'), node.typ_text(), if is_method {
 				node.value.all_before_last('.')
 			} else {
 				''
@@ -205,7 +205,7 @@ fn collect_declarations(a &flat.FlatAst, node &flat.Node) []Declaration {
 				i++
 				continue
 			}
-			out << declaration(a, child_node, .field, child_node.value, child_node.typ, '')
+			out << declaration(a, child_node, .field, child_node.value, child_node.typ_text(), '')
 			i++
 		}
 	}
@@ -214,7 +214,7 @@ fn collect_declarations(a &flat.FlatAst, node &flat.Node) []Declaration {
 			child_node := a.node(child)
 			if child_node.kind == .enum_field {
 				out << declaration(a, child_node, .enum_value, child_node.value,
-					child_node.typ, '')
+					child_node.typ_text(), '')
 			}
 		}
 	}
@@ -223,7 +223,7 @@ fn collect_declarations(a &flat.FlatAst, node &flat.Node) []Declaration {
 			child_node := a.node(child)
 			if child_node.kind == .interface_field {
 				out << declaration(a, child_node, .interface_method, child_node.value,
-					child_node.typ, '')
+					child_node.typ_text(), '')
 			}
 		}
 	}
@@ -413,7 +413,7 @@ fn occurrence(a &flat.FlatAst, node &flat.Node, name string, mut cache map[int]s
 		column:      column
 		end_column:  column + name.len
 		declaration: declares(node, name)
-		type_name:   node.typ
+		type_name:   node.typ_text()
 	}
 }
 

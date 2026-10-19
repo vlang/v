@@ -6,7 +6,7 @@ const issues_vlib_dir = os.dir(issues_v3_dir)
 const issues_v3_src = os.join_path(issues_v3_dir, 'v.v')
 
 fn issues_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_issues_27981_27984_${os.getpid()}')
+	v3_bin := os.join_path(os.temp_dir(), 'v3_issues_27981_27984_${os.getpid()}') + $if windows { '.exe' } $else { '' }
 	if os.is_executable(v3_bin) {
 		return v3_bin
 	}

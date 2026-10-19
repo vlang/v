@@ -118,3 +118,24 @@ fn test_windows_stat_reports_directory_and_file_types() {
 	assert file_stat.get_mode().owner.write
 	assert !file_stat.get_mode().owner.execute
 }
+
+fn test_short_path_empty_string_is_empty() {
+	assert short_path('') == ''
+}
+
+fn test_short_path_accepts_forward_slashes() {
+	// Create an owned fixture so concurrent runs cannot remove each other's files.
+	dir := join_path(vtmp_dir(), 'short_path_${getpid()}')
+	mkdir(dir)!
+	defer {
+		rmdir(dir) or {}
+	}
+	backslashed := short_path(dir)
+	assert backslashed != ''
+	forward_slashed := dir.replace('\\', '/')
+	assert forward_slashed.contains('/')
+	// If short names are unavailable, short_path preserves the original input.
+	assert short_path(forward_slashed).replace('/', '\\') == backslashed
+	assert backslashed.contains('\\')
+	assert !backslashed.contains('/')
+}

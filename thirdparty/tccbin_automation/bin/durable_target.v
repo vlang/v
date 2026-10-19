@@ -370,12 +370,15 @@ fn durable_target_model_from_value(root JsonValue) !TargetModel {
 	}
 }
 
+// durable_checked_int accepts only the signed 32-bit range on every host. V's int is 64-bit on the
+// current toolchain, so the bound is explicit here. The schemas never allow a narrowed integer above that
+// range, and durable_target_test pins each path's own upper bound, which is tighter on some paths.
 fn durable_checked_int(value i64, path string) !int {
-	narrowed := int(value)
+	narrowed := i32(value)
 	if i64(narrowed) != value {
 		return error('${path}: integer is outside the host int range')
 	}
-	return narrowed
+	return int(narrowed)
 }
 
 fn durable_int_member(value JsonValue, key string, path string) !int {

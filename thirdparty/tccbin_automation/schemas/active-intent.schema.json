@@ -55,8 +55,8 @@
       ]
     },
     "run_id": {"$ref": "common.schema.json#/$defs/run_id"},
-    "run_attempt": {"type": "integer", "minimum": 1},
-    "ordinal": {"type": "integer", "minimum": 0},
+    "run_attempt": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "ordinal": {"type": "integer", "minimum": 0, "maximum": 2147483647},
     "input_fingerprint": {"$ref": "common.schema.json#/$defs/sha256"},
     "resolved_inputs": {"$ref": "common.schema.json#/$defs/resolved_inputs"},
     "expected_canonical_head": {"$ref": "common.schema.json#/$defs/sha40"},
@@ -106,7 +106,7 @@
     },
     "deadlines": {"$ref": "common.schema.json#/$defs/intent_deadlines"},
     "infra_retry_count": {"type": "integer", "minimum": 0, "maximum": 1},
-    "source_retry_count": {"type": "integer", "minimum": 0},
+    "source_retry_count": {"type": "integer", "minimum": 0, "maximum": 2147483647},
     "candidate_binding": {
       "oneOf": [
         {"type": "null"},

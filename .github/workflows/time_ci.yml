@@ -26,6 +26,12 @@ permissions:
 jobs:
   time-linux:
     runs-on: ubuntu-latest
+    env:
+      # Stop a failing test session at its first failure instead of
+      # running the whole suite to completion; the remaining files
+      # add no signal.
+      VTEST_FAIL_FAST: '1'
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
         with:
@@ -45,6 +51,12 @@ jobs:
 
   time-macos:
     runs-on: macos-14
+    env:
+      # Stop a failing test session at its first failure instead of
+      # running the whole suite to completion; the remaining files
+      # add no signal.
+      VTEST_FAIL_FAST: '1'
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
         with:
@@ -64,6 +76,12 @@ jobs:
 
   time-windows:
     runs-on: windows-2025
+    env:
+      # Stop a failing test session at its first failure instead of
+      # running the whole suite to completion; the remaining files
+      # add no signal.
+      VTEST_FAIL_FAST: '1'
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
         with:

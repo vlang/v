@@ -16,7 +16,7 @@ fn test_uppercase_fixed_array_fields_are_not_embeds() {
 	mut fields := map[string]string{}
 	for node in p.a.nodes {
 		if node.kind == .field_decl {
-			fields[node.value] = node.typ
+			fields[node.value] = node.typ_text()
 		}
 	}
 	assert fields['Colors'] == '[2]f32'

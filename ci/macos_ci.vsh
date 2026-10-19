@@ -65,10 +65,11 @@ fn self_tests() {
 	// Individual files still fall back to it when the default compiler cannot
 	// build them.
 	// Exercise default caching throughout the standard library suite. Use every
-	// core on the 7 GB runners instead of the one-job memory default.
+	// core on the 7 GB runners unless the aggregate runner requires fail-fast.
 	if common.is_github_job {
-		exec_args(['env', 'VJOBS=' + '${runtime.nr_cpus()}', 'v', '-no-memory-limit', '-silent',
-			'test-self', 'vlib'])
+		vjobs := if os.getenv('VTEST_FAIL_FAST') == '1' { '1' } else { '${runtime.nr_cpus()}' }
+		exec_args(['env', 'VJOBS=' + '${vjobs}', 'v', '-no-memory-limit', '-silent', 'test-self',
+			'vlib'])
 	} else {
 		vjobs := os.getenv_opt('VJOBS') or { '1' }
 		exec_args(['env', 'VJOBS=' + '${vjobs}', 'v', '-no-memory-limit', '-progress', 'test-self',

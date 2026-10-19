@@ -11,10 +11,29 @@ fn literal_output_gc_test_root() !string {
 	return root
 }
 
+// remove_literal_output_gc_test_root removes a test root. On Windows an executable that
+// has just run can stay locked for a moment (virus scanning), so retry briefly first.
+fn remove_literal_output_gc_test_root(root string) {
+	mut attempts := 0
+	for {
+		os.rmdir_all(root) or {
+			$if windows {
+				attempts++
+				if attempts < 50 {
+					time.sleep(100 * time.millisecond)
+					continue
+				}
+			}
+			panic(err)
+		}
+		break
+	}
+}
+
 fn test_minimal_literal_output_supports_boehm_and_no_gc_runtime() {
 	root := literal_output_gc_test_root()!
 	defer {
-		os.rmdir_all(root) or { panic(err) }
+		remove_literal_output_gc_test_root(root)
 	}
 	source := os.join_path(root, 'literal_output.v')
 	os.write_file(source, "fn main() { print('\\n') }\n")!
@@ -52,7 +71,7 @@ fn test_minimal_literal_output_builtin_keeps_collector_support_files() {
 
 fn test_minimal_literal_output_builtin_rejects_portable_snapshots() {
 	root := literal_output_gc_test_root()!
-	defer { os.rmdir_all(root) or { panic(err) } }
+	defer { remove_literal_output_gc_test_root(root) }
 	source := os.join_path(root, 'literal_output.v')
 	os.write_file(source, "fn main() { println('hello') }\n")!
 	mut prefs := pref.new_preferences()
@@ -67,7 +86,7 @@ fn test_minimal_literal_output_builtin_rejects_portable_snapshots() {
 fn test_minimal_literal_output_gc_keeps_existing_eligibility_gates() {
 	root := literal_output_gc_test_root()!
 	defer {
-		os.rmdir_all(root) or { panic(err) }
+		remove_literal_output_gc_test_root(root)
 	}
 	source := os.join_path(root, 'literal_output.v')
 	os.write_file(source, "fn main() { print('hello') }\n")!
@@ -79,8 +98,29 @@ fn test_minimal_literal_output_gc_keeps_existing_eligibility_gates() {
 	assert !input_uses_minimal_literal_output_builtin(source, prefs, false, true)
 	prefs.target = pref.target_from('linux', 'arm64')!
 	assert input_uses_minimal_literal_output_builtin(source, prefs, false, false)
+	for target in ['freebsd', 'openbsd', 'netbsd', 'dragonfly', 'solaris', 'haiku', 'qnx', 'serenity',
+		'termux', 'wasm32_emscripten'] {
+		prefs.target = pref.target_from(target, if target == 'wasm32_emscripten' {
+			'wasm32'
+		} else {
+			'arm64'
+		})!
+		assert input_uses_minimal_literal_output_builtin(source, prefs, false, false), target
+	}
 	prefs.target = pref.target_from('windows', 'amd64')!
+	assert input_uses_minimal_literal_output_builtin(source, prefs, false, false)
+	os.write_file(source, "fn main() { println('привет') }\n")!
 	assert !input_uses_minimal_literal_output_builtin(source, prefs, false, false)
+	os.write_file(source, "fn main() { print('hello') }\n")!
+	prefs.target = pref.target_from('vinix', 'amd64')!
+	assert !input_uses_minimal_literal_output_builtin(source, prefs, false, false)
+	prefs.target = pref.target_from('android', 'arm64')!
+	assert input_uses_minimal_literal_output_builtin(source, prefs, false, false)
+	prefs.target = pref.target_from('ios', 'arm64')!
+	assert input_uses_minimal_literal_output_builtin(source, prefs, false, false)
+	os.write_file(source, "fn main() { println('100%') }\n")!
+	assert !input_uses_minimal_literal_output_builtin(source, prefs, false, false)
+	os.write_file(source, "fn main() { print('hello') }\n")!
 	prefs.target = pref.target_from('macos', 'arm64')!
 	prefs.backend = 'arm64'
 	assert !input_uses_minimal_literal_output_builtin(source, prefs, false, false)
@@ -92,7 +132,7 @@ fn test_minimal_literal_output_gc_keeps_existing_eligibility_gates() {
 fn test_literal_output_keeps_linux_backtrace_array_iteration_runtime() {
 	root := literal_output_gc_test_root()!
 	defer {
-		os.rmdir_all(root) or { panic(err) }
+		remove_literal_output_gc_test_root(root)
 	}
 	keys := ['VFLAGS', 'VOSARGS', 'V_C_ERROR_BUG_REPORT_DISABLED']
 	mut old_values := map[string]string{}
@@ -149,7 +189,7 @@ fn test_macos_literal_output_with_gc_has_no_compiler_diagnostics() {
 	}
 	root := literal_output_gc_test_root()!
 	defer {
-		os.rmdir_all(root) or { panic(err) }
+		remove_literal_output_gc_test_root(root)
 	}
 	// Keep the subprocess independent of the test runner's flags, and make a
 	// V3 failure fail the test instead of accepting output from a V1 fallback.
