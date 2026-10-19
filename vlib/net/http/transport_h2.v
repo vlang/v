@@ -534,5 +534,5 @@ fn do_h2(req &Request, mut conn H2MuxConn, method Method, host string, port int,
 	if req.on_finish != unsafe { nil } {
 		req.on_finish(req, u64(h2resp.body.len))!
 	}
-	return h2_response_to_http(h2resp)
+	return h2_response_to_http(h2resp, raw_body: req.raw_response_body)
 }

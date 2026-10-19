@@ -1,5 +1,7 @@
 module http
 
+import compress.gzip
+
 // Tests for the HTTP/2 <-> net.http conversion glue (h2_client.v). The
 // request/response conversions are pure and need no socket; the end-to-end
 // fetch test is opt-in and network-dependent.
@@ -158,4 +160,15 @@ fn test_to_h2_request_trims_authority_from_host_header() {
 	req := Request{}
 	h2req := req.to_h2_request(.get, 'origin.example', '/', '', h)
 	assert h2req.authority == 'override.example:8443'
+}
+
+fn test_h2_proxy_preserves_content_encoded_body() {
+	compressed := gzip.compress('encoded upstream body'.bytes())!
+	upstream := H2ClientResponse{
+		status:  200
+		headers: [H2HeaderField{'content-encoding', 'gzip'}]
+		body:    compressed
+	}
+	assert h2_response_to_http(upstream)!.body == 'encoded upstream body'
+	assert h2_response_to_http(upstream, raw_body: true)!.body.bytes() == compressed
 }

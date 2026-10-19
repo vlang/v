@@ -369,5 +369,5 @@ fn do_h3(req &Request, mut conn H3MuxConn, method Method, host string, port int,
 	if req.on_finish != unsafe { nil } {
 		req.on_finish(req, u64(h3resp.body.len))!
 	}
-	return h3_response_to_http(h3resp)
+	return h3_response_to_http(h3resp, raw_body: req.raw_response_body)
 }

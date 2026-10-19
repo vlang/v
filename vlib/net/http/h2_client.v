@@ -91,7 +91,7 @@ fn (req &Request) to_h2_request(method Method, authority string, path string, da
 // such a field when they receive it (h2_response_field_with_value_error), so
 // the second case is left for an H2ClientResponse that was not read by one of
 // them.
-fn h2_response_to_http(h2resp H2ClientResponse) !Response {
+fn h2_response_to_http(h2resp H2ClientResponse, opts ResponseParseOptions) !Response {
 	mut h := new_header()
 	for f in h2resp.headers {
 		h.add_custom(f.name, f.value) or {
@@ -101,7 +101,11 @@ fn h2_response_to_http(h2resp H2ClientResponse) !Response {
 			return error('h2: malformed response: ${err.msg()}')
 		}
 	}
-	body := decode_response_body(h2resp.body.bytestr(), h.get(.content_encoding) or { '' })
+	body := if opts.raw_body {
+		h2resp.body.bytestr()
+	} else {
+		decode_response_body(h2resp.body.bytestr(), h.get(.content_encoding) or { '' })
+	}
 	status := status_from_int(h2resp.status)
 	return Response{
 		http_version: '2.0'
