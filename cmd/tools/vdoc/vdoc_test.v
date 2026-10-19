@@ -609,6 +609,21 @@ fn test_markdown_renderer_preserves_wrapped_readme_markdown() ! {
 	assert out.contains('is not <code>abc</code> OR <code>ebc</code>')
 }
 
+fn test_markdown_renderer_highlights_only_v_code_blocks() ! {
+	input := '```sh\nv run server.v\n```\n\n```cpp\n#include <x>\n```\n\n```V\nos.args\n```\n\n```v ignore\nfn f() {}\n```\n\n```\nfn g() {}\n```'
+	mut renderer := markdown.HtmlRenderer{
+		transformer: &MdHtmlCodeHighlighter{}
+	}
+	out := markdown.render(input, mut renderer)!
+	// Code in other languages, or without a language, is shown as it is, and escaped.
+	assert out.contains('<code class="language-sh">v run server.v\n</code>')
+	assert out.contains('<code class="language-cpp">#include &lt;x&gt;\n</code>')
+	assert out.contains('fn g() {}')
+	// The language is the first word of the fence, in any case.
+	assert out.contains('<span class="token module_">os</span>')
+	assert out.contains('<span class="token keyword">fn</span> <span class="token function">f</span>')
+}
+
 fn test_doc_multi_skips_modules_without_valid_files_for_platform() {
 	// https://github.com/vlang/v/issues/27464
 	// A module whose only V files are filtered out for the target platform (e.g.

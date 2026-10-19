@@ -1,0 +1,7 @@
+vlib/v/checker/tests/attribute_schema_field_default_err.vv:3:2: error: attribute schema field `Route.path` cannot have a default value
+    1 | @[attribute]
+    2 | struct Route {
+    3 |     path string = '/x'
+      |     ~~~~~~~~~~~~~~~~~~
+    4 | }
+    5 |

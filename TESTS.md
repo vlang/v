@@ -55,6 +55,11 @@ workload and machine capacity are known.
 Skipped test paths are resolved before comparison, so selecting a file through a symlink
 does not bypass its platform or architecture exclusion.
 
+On Linux, `-race` test builds use `_setjmp` and `_longjmp` to continue after failed assertions,
+avoiding ThreadSanitizer's incompatible `longjmp` interceptor on glibc 2.44. Later tests and
+race detection still run. A later race report can retain frames from the failed test because
+the sanitizer does not observe that jump.
+
 Tests ending in `_windows_test.v` or `_windows_test.c.v` run only on Windows.
 The compound `_android_outside_termux_test.v` and `_android_outside_termux_test.c.v`
 suffixes select Android outside Termux; `_termux_test.v` and `_termux_test.c.v`
@@ -257,6 +262,16 @@ the failing tests too.
 NB 6: Set `VTEST_SKIP_OWNERSHIP=1` to omit ownership and autofree tests from
 `v test`, `v test-self`, and `vlib/v/test_all.vsh`. GitHub Actions enables this
 behavior automatically while ownership/autofree coverage is disabled there.
+A `_test.v` file is an ownership/autofree test when it is in an `ownership`
+folder, its name contains `ownership` or `autofree`, its `// vtest vflags:` line
+has `-ownership`, `-autofree` or `-d ownership`, or it has this line:
+```v ignore
+// vtest ownership
+```
+Add that line to a test that builds the ownership compiler, or compiles with one
+of those flags (for example with `os.exec([vexe, '-ownership', ...])`). Flags
+elsewhere in a test's source are not enough, since many tests pass them only to
+check how they are parsed or rejected.
 
 ## `.github/workflows/ci.yml`
 

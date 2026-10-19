@@ -87,10 +87,10 @@ fn main() {
 fn test_static_c_receiver_metadata_keeps_canonical_declaration_in_both_orders() {
 	for imported_first in [false, true] {
 		mut a := flat.FlatAst.new()
-		mut declarations := []int{}
+		mut declarations := []i32{}
 		modules := if imported_first { ['bridge', 'main'] } else { ['main', 'bridge'] }
 		for module_name in modules {
-			declarations << int(a.add_val(.module_decl, module_name))
+			declarations << i32(a.add_val(.module_decl, module_name))
 			mut param := flat.Node{
 				kind:  .param
 				value: 'c'
@@ -102,14 +102,14 @@ fn test_static_c_receiver_metadata_keeps_canonical_declaration_in_both_orders() 
 			param_id := a.add_node(param)
 			start := a.children.len
 			a.children << param_id
-			declarations << int(a.add_node(flat.Node{
+			declarations << i32(a.add_node(flat.Node{
 				kind:           if module_name == 'main' { .fn_decl } else { .c_fn_decl }
 				value:          if module_name == 'main' {
 					'C.Counter.read'
 				} else {
 					'Counter.read'
 				}
-				typ:            flat.source_type_id('int')
+				typ:            flat.source_type_int
 				children_start: start
 				children_count: 1
 			}))

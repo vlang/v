@@ -2652,9 +2652,10 @@ fn main() {
 	assert result.exit_code != 0
 	stdout := os.read_file(stdout_file) or { panic(err) }
 	stderr := os.read_file(stderr_file) or { panic(err) }
-	assert stderr.contains('failed to build cached program main:'), 'stdout:\n${stdout}\nstderr:\n${stderr}'
+	// The C binding has a prototype, so the build fails when it links.
+	assert stderr.contains('C compilation failed:'), 'stdout:\n${stdout}\nstderr:\n${stderr}'
 	assert stderr.contains('v3_missing_restart_stdio_symbol'), stderr
-	assert !stdout.contains('failed to build cached program main:'), 'stdout:\n${stdout}\nstderr:\n${stderr}'
+	assert !stdout.contains('C compilation failed:'), 'stdout:\n${stdout}\nstderr:\n${stderr}'
 }
 
 fn test_module_cache_restart_preserves_macos_fallback_transport() {
@@ -4731,13 +4732,13 @@ fn test_cached_header_preserves_comptime_struct_fields() {
 	direct_field := a.add_node(flat.Node{
 		kind:    .field_decl
 		value:   'value'
-		typ:     flat.source_type_id('int')
+		typ:     flat.source_type_int
 		payload: flat.node_payload(['p'])
 	})
 	comptime_field := a.add_node(flat.Node{
 		kind:    .field_decl
 		value:   'enabled'
-		typ:     flat.source_type_id('bool')
+		typ:     flat.source_type_bool
 		payload: flat.node_payload(['p'])
 	})
 	block_children := a.begin_children()

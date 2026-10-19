@@ -59,7 +59,7 @@ fn test_indexed_type_names_do_not_cache_missing_future_ids() {
 	future := TypeId(tc.type_count())
 	assert tc.type_by_id(future) == none
 	assert tc.c_type_by_id(future) == none
-	assert flat.source_type_name(tc.type_name_by_id(future)) == 'unknown'
+	assert tc.type_name_by_id(future) == flat.source_type_unknown
 	tc.register_synth_type(id, Type(Array{ elem_type: Type(bool_) }))
 	actual := (tc.checked_expr_type_id(id) or { panic('missing checked type') })
 	assert actual == future
@@ -77,7 +77,7 @@ fn test_checked_type_ids_keep_same_spelling_different_layouts_separate() {
 	first_id := tc.checked_expr_type_id(first) or { panic('missing first layout') }
 	second_id := tc.checked_expr_type_id(second) or { panic('missing second layout') }
 	assert first_id != second_id
-	assert flat.source_type_name(tc.type_name_by_id(first_id)) == flat.source_type_name(tc.type_name_by_id(second_id))
+	assert tc.type_name_by_id(first_id) == tc.type_name_by_id(second_id)
 	first_type := tc.type_by_id(first_id) or { panic('missing first type') }
 	second_type := tc.type_by_id(second_id) or { panic('missing second type') }
 	assert first_type is ArrayFixed && first_type.len == 4
@@ -116,31 +116,31 @@ fn test_parsed_ids_follow_generic_recursive_alias_and_worker_precedence() {
 	a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
 	tc.set_fresh_type_cache(true)
-	integer := tc.parse_type_id(flat.source_type_id('u64')) or { panic('missing integer identity') }
+	integer := tc.parse_type_id(flat.source_type_u64) or { panic('missing integer identity') }
 	tc.cur_module = 'other'
 	tc.cur_file = 'other.v'
-	assert tc.parse_type_id(flat.source_type_id('u64')) or { panic('missing contextual identity') } == integer
-	tc.type_param_texts.set('u64', 'string')
-	bound := tc.parse_type_id(flat.source_type_id('u64')) or { panic('missing bound identity') }
+	assert tc.parse_type_id(flat.source_type_u64) or { panic('missing contextual identity') } == integer
+	tc.type_param_texts.set_id('u64', flat.source_type_string)
+	bound := tc.parse_type_id(flat.source_type_u64) or { panic('missing bound identity') }
 	assert bound != integer
-	assert flat.source_type_name(tc.type_name_by_id(bound)) == 'string'
+	assert tc.type_name_by_id(bound) == flat.source_type_string
 	tc.type_param_texts.clear()
-	tc.type_cache.alias_parse_stack << flat.source_type_id('u64')
-	recursive := tc.parse_type_id(flat.source_type_id('u64')) or { panic('missing recursive identity') }
+	tc.type_cache.alias_parse_stack << flat.source_type_u64
+	recursive := tc.parse_type_id(flat.source_type_u64) or { panic('missing recursive identity') }
 	assert recursive != integer
 	assert tc.type_by_id(recursive) or { panic('missing recursive alias') } is Alias
 	tc.type_cache.alias_parse_stack.clear()
-	assert tc.parse_type_id(flat.source_type_id('u64')) or { panic('missing restored identity') } == integer
+	assert tc.parse_type_id(flat.source_type_u64) or { panic('missing restored identity') } == integer
 	mut worker := tc.fork_for_parallel_transform(&a)
 	worker.set_fresh_type_cache(true)
-	boolean := worker.parse_type_id(flat.source_type_id('bool')) or { panic('missing worker boolean') }
+	boolean := worker.parse_type_id(flat.source_type_bool) or { panic('missing worker boolean') }
 	assert boolean == integer
-	worker_integer := worker.parse_type_id(flat.source_type_id('u64')) or { panic('missing worker integer') }
+	worker_integer := worker.parse_type_id(flat.source_type_u64) or { panic('missing worker integer') }
 	assert worker_integer != integer
-	assert flat.source_type_name(worker.type_name_by_id(boolean)) == 'bool'
-	assert flat.source_type_name(worker.type_name_by_id(worker_integer)) == 'u64'
+	assert worker.type_name_by_id(boolean) == flat.source_type_bool
+	assert worker.type_name_by_id(worker_integer) == flat.source_type_u64
 	tc.reset_type_interners()
-	replacement := tc.parse_type_id(flat.source_type_id('bool')) or { panic('missing replacement identity') }
+	replacement := tc.parse_type_id(flat.source_type_bool) or { panic('missing replacement identity') }
 	assert replacement == integer
-	assert flat.source_type_name(tc.type_name_by_id(replacement)) == 'bool'
+	assert tc.type_name_by_id(replacement) == flat.source_type_bool
 }

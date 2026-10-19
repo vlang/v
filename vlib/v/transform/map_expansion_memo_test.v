@@ -60,7 +60,7 @@ fn test_expansion_type_memo_preserves_estimates_and_does_not_survive_context_cha
 	t.sum_types.set('Collection', [large_map, '[]int'])
 	t.set_var_type('values', flat.source_type_id('Collection'))
 	for variant in [large_map, '[]int', large_map] {
-		t.push_smartcast('values', variant, 'Collection')
+		t.push_smartcast('values', flat.source_type_id(variant), flat.source_type_id('Collection'))
 		uncached := t.fn_span_map_expansion_estimate_uncached(0, hi)
 		cached := t.fn_span_map_expansion_estimate(0, hi)
 		assert cached == uncached

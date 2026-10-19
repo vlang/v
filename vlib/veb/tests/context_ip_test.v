@@ -41,12 +41,12 @@ fn test_context_ip_uses_peer_ip_for_buffered_requests() {
 	assert res.body == 'ip=127.0.0.1 conn_nil=true'
 }
 
-fn test_context_ip_prefers_proxy_headers() {
+fn test_context_ip_ignores_proxy_headers_without_trusted_proxies() {
 	res := http.fetch(
 		url:    localserver
 		header: http.new_header_from_map({
 			.x_forwarded_for: '9.9.9.9, 8.8.8.8'
 		})
 	)!
-	assert res.body == 'ip=9.9.9.9 conn_nil=true'
+	assert res.body == 'ip=127.0.0.1 conn_nil=true'
 }

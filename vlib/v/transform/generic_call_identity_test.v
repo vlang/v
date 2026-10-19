@@ -34,12 +34,14 @@ fn test_rewritten_generic_call_keeps_caller_type_in_foreign_scan() {
 		decl_key: 'callee.run'
 		args:     flat.TypeTextList.from_names(['main.Context'])
 	}
-	key, args := t.cached_generic_call_specialization(id, call, 'main', decls) or {
+	key, args_source_ids := t.cached_generic_call_specialization(id, call, 'main', decls) or {
 		assert false, 'the missing body must retain its recorded type'
 		return
 	}
+	args := flat.TypeTextList{ ids: args_source_ids }.names()
+
 	assert key == 'callee.run'
 	assert args == ['Context']
-	t.generic_fn_spec_nodes[t.generic_specialization_progress_key(decl, args)] = id
+	t.generic_fn_spec_nodes[t.generic_specialization_progress_key(decl, args_source_ids)] = id
 	assert t.cached_generic_call_specialization(id, call, 'main', decls) == none
 }

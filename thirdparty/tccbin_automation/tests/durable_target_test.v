@@ -807,6 +807,95 @@ fn test_durable_all_int_backed_paths_reject_narrowing_before_shared_parsers() {
 	}
 }
 
+fn test_target_state_schema_bounds_manual_green_publications_to_int32() {
+	// The schema must reject what durable_checked_int rejects. Otherwise a value above 2^31-1 passes
+	// schema validation and fails only in the narrowing check.
+	schema_path := os.join_path(automation_root(), 'schemas', 'target-state.schema.json')
+	base := durable_fixture('target-state.v-smoke-terminal-check.schema-fixture.json')
+	over := bin.parse_strict_json(durable_replace_path_source(base, ['manual_green_publications'],
+		durable_integer(durable_test_i32_plus_one))) or { panic(err) }
+	over_issues := bin.validate_json_value(schema_path, over) or { panic(err) }
+	assert over_issues.any(it.path.contains('manual_green_publications')), 'schema accepts manual_green_publications above 2^31-1'
+	at_max := bin.parse_strict_json(durable_replace_path_source(base, ['manual_green_publications'],
+		durable_integer(2147483647))) or { panic(err) }
+	max_issues := bin.validate_json_value(schema_path, at_max) or { panic(err) }
+	assert !max_issues.any(it.path.contains('manual_green_publications')), 'schema rejects manual_green_publications at 2^31-1'
+}
+
+// DurableBoundedPath is one narrowed path with the upper bound its schema must state there.
+struct DurableBoundedPath {
+	path  []string
+	bound i64
+}
+
+// durable_schema_rejects_above reports whether the JSON-schema pass rejected a value above bound at exactly
+// this path, with the maximum keyword's own message. The issue must sit at the mutated path, so a failure
+// elsewhere in the document cannot count as a bound check.
+fn durable_schema_rejects_above(issues []bin.SchemaIssue, path []string, bound i64) bool {
+	expected := '$/' + path.join('/')
+	return issues.any(it.path == expected && it.message == 'integer is above ${bound}')
+}
+
+// durable_schema_issue_at reports whether the JSON-schema pass raised any issue at exactly this path.
+fn durable_schema_issue_at(issues []bin.SchemaIssue, path []string) bool {
+	expected := '$/' + path.join('/')
+	return issues.any(it.path == expected)
+}
+
+fn test_every_narrowed_int_path_is_bounded_to_int32_by_its_schema() {
+	// validate_durable_target_int_ranges narrows each path below before schema validation runs, so the
+	// schema must agree with the narrowing on each path's own upper bound. The bound is 2^31-1 for most
+	// paths and tighter where the schema says so: the infra retry counts allow 1 and gate run attempts
+	// allow 2. The schema must reject bound+1 and accept bound at each one, so both edges are pinned.
+	// The last_native_validation record paths are not listed: this base has no record, and a partial
+	// record fails its outer oneOf whatever the bounds are. schema_contract_test.v pins them on a complete,
+	// schema-valid record.
+	schema_path := os.join_path(automation_root(), 'schemas', 'target-state.schema.json')
+	base := durable_fixture('target-state.v-smoke-terminal-check.schema-fixture.json')
+	base_issues := bin.validate_json_value(schema_path, bin.parse_strict_json(base) or { panic(err) }) or {
+		panic(err)
+	}
+	assert base_issues.len == 0, 'fixture is not schema-valid at ${base_issues[0].path}'
+	bounded := [
+		DurableBoundedPath{ path: ['manual_green_publications'], bound: 2147483647 },
+		DurableBoundedPath{ path: ['active_intent', 'run_attempt'], bound: 2147483647 },
+		DurableBoundedPath{ path: ['active_intent', 'ordinal'], bound: 2147483647 },
+		DurableBoundedPath{ path: ['active_intent', 'infra_retry_count'], bound: 1 },
+		DurableBoundedPath{ path: ['active_intent', 'source_retry_count'], bound: 2147483647 },
+		DurableBoundedPath{ path: ['active_intent', 'gate_runs', '0', 'run_attempt'], bound: 2 },
+		DurableBoundedPath{ path: ['native_gate_execution', 'active_gate_epoch'], bound: 2147483647 },
+		DurableBoundedPath{ path: ['native_gate_execution', 'selected_run_attempt'], bound: 2147483647 },
+		DurableBoundedPath{ path: ['native_gate_execution', 'infra_retry_count'], bound: 1 },
+		DurableBoundedPath{ path: ['native_gate_execution', 'gate_epochs', '0', 'epoch'], bound: 2147483647 },
+		DurableBoundedPath{
+			path:  ['native_gate_execution', 'gate_epochs', '0', 'selected_run_attempt']
+			bound: 2147483647
+		},
+		DurableBoundedPath{ path: ['native_gate_execution', 'gate_runs', '0', 'gate_epoch'], bound: 2147483647 },
+		DurableBoundedPath{ path: ['native_gate_execution', 'gate_runs', '0', 'run_attempt'], bound: 2147483647 },
+	]
+	mut unbounded := []string{}
+	mut narrower := []string{}
+	for entry in bounded {
+		above := durable_replace_path_source(base, entry.path, durable_integer(entry.bound + 1))
+		above_issues := bin.validate_json_value(schema_path, bin.parse_strict_json(above) or { panic(err) }) or {
+			panic(err)
+		}
+		if !durable_schema_rejects_above(above_issues, entry.path, entry.bound) {
+			unbounded << entry.path.join('/')
+		}
+		at_bound := durable_replace_path_source(base, entry.path, durable_integer(entry.bound))
+		at_bound_issues := bin.validate_json_value(schema_path, bin.parse_strict_json(at_bound) or { panic(err) }) or {
+			panic(err)
+		}
+		if durable_schema_issue_at(at_bound_issues, entry.path) {
+			narrower << entry.path.join('/')
+		}
+	}
+	assert unbounded.len == 0, 'schema does not reject bound+1 at: ${unbounded.join(', ')}'
+	assert narrower.len == 0, 'schema rejects its own bound at: ${narrower.join(', ')}'
+}
+
 fn test_durable_replay_collision_full_ledger_and_real_output_bound_fail_closed() {
 	source := durable_unknown_source()
 	prepared := durable_prepare(source, .ledger_repaired_without_blockers, durable_test_operation) or {

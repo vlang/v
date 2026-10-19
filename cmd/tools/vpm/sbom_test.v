@@ -181,3 +181,18 @@ fn test_spdx_json_uses_the_standard_field_names() {
 		}
 	}
 }
+
+// A conclusion is a derived result, and nothing here derives one: the
+// publisher's declaration must be recorded as declared while concluded stays
+// NOASSERTION, or consumers read an unexamined claim as a compliance result.
+fn test_concluded_license_is_never_asserted() {
+	r := new_sbom_demo_registry()
+	doc := r.spdx_document(sbom_namespace, sbom_download_base)
+	assert doc.packages.len == 2
+	for pkg in doc.packages {
+		assert pkg.license_concluded == 'NOASSERTION', 'concluded license for ${pkg.name}: ${pkg.license_concluded}'
+		if pkg.name == 'serde' {
+			assert pkg.license_declared == 'MIT', pkg.license_declared
+		}
+	}
+}

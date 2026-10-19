@@ -103,6 +103,7 @@ fn main() {
 		text: "b"
 	}))
 	xs := []Any{}
+	println(count(...xs))
 	println(count(xs))
 }
 ') or {
@@ -116,7 +117,9 @@ fn main() {
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ab\n0', run.output
+	// A spread array is forwarded as is, while a bare array is packed as one variadic
+	// element (d2e6876e38).
+	assert run.output.trim_space() == 'ab\n0\n1', run.output
 }
 
 fn test_source_var_with_generated_variadic_prefix_is_not_forwarded() {

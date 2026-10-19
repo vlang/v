@@ -15,13 +15,13 @@ fn test_generic_placeholder_token_prescreen_is_conservative() {
 fn test_type_text_generic_placeholder_prescreen_keeps_results() {
 	a := &flat.FlatAst{}
 	tc := TypeChecker.new(a)
-	assert tc.type_text_has_generic_placeholder('T')
-	assert tc.type_text_has_generic_placeholder('os.T')
-	assert tc.type_text_has_generic_placeholder('map[string][]T')
-	assert !tc.type_text_has_generic_placeholder('SomeType')
-	assert !tc.type_text_has_generic_placeholder('map[string]HTTP')
-	assert tc.type_text_has_unbound_generic_placeholder('map[K]V', ['V'])
-	assert !tc.type_text_has_unbound_generic_placeholder('map[string]int', [])
+	assert tc.type_text_has_generic_placeholder(flat.source_type_id('T'))
+	assert tc.type_text_has_generic_placeholder(flat.source_type_id('os.T'))
+	assert tc.type_text_has_generic_placeholder(flat.source_type_id('map[string][]T'))
+	assert !tc.type_text_has_generic_placeholder(flat.source_type_id('SomeType'))
+	assert !tc.type_text_has_generic_placeholder(flat.source_type_id('map[string]HTTP'))
+	assert tc.type_text_has_unbound_generic_placeholder(flat.source_type_id('map[K]V'), ['V'])
+	assert !tc.type_text_has_unbound_generic_placeholder(flat.source_type_id('map[string]int'), [])
 }
 
 fn test_empty_array_generic_diagnostic_prescreen() {
@@ -69,9 +69,9 @@ fn test_function_type_generic_arguments_retain_placeholders() {
 	a := &flat.FlatAst{}
 	tc := TypeChecker.new(a)
 	for typ in ['fn () T', 'fn (T) int', 'fn (value []T) string', 'fn (fn () T) int', 'Cell[fn () T]'] {
-		assert tc.type_text_has_generic_placeholder(typ), typ
+		assert tc.type_text_has_generic_placeholder(flat.source_type_id(typ)), typ
 	}
 	for typ in ['fn ()', 'fn () int', 'fn (string) int', 'Cell[fn () int]'] {
-		assert !tc.type_text_has_generic_placeholder(typ), typ
+		assert !tc.type_text_has_generic_placeholder(flat.source_type_id(typ)), typ
 	}
 }
