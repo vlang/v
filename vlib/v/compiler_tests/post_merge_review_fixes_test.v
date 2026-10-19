@@ -875,6 +875,28 @@ fn forward_values() ([]IValue, map[string]IValue, int) {
 	return make_values()
 }
 
+fn main() {
+	values, indexed, n := forward_values()
+	println(int_str(values[0].get()))
+	println(int_str(indexed["item"].get()))
+	println(int_str(n))
+}
+')
+	assert out == '3\n5\n7'
+	// A fixed array is not converted element by element: since #30863 a `[1]Value`
+	// is not a `[1]IValue`, also in a forwarded multi-return slot (as in V 0.5.2).
+	run_bad(v3_bin, 'forwarded_multi_return_fixed_interface_slot', 'interface IValue {
+	get() int
+}
+
+struct Value {
+	n int
+}
+
+fn (value Value) get() int {
+	return value.n
+}
+
 fn make_fixed() ([1]Value, int) {
 	return [Value{
 		n: 11
@@ -886,16 +908,11 @@ fn forward_fixed() ([1]IValue, int) {
 }
 
 fn main() {
-	values, indexed, n := forward_values()
 	fixed, fixed_n := forward_fixed()
-	println(int_str(values[0].get()))
-	println(int_str(indexed["item"].get()))
-	println(int_str(n))
 	println(int_str(fixed[0].get()))
 	println(int_str(fixed_n))
 }
-')
-	assert out == '3\n5\n7\n11\n13'
+', 'cannot use `[1]Value` as type `[1]IValue` in return argument')
 }
 
 fn test_forwarded_multi_return_option_result_payloads_are_converted() {
