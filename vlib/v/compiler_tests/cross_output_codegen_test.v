@@ -358,20 +358,13 @@ fn test_cross_output_uses_getentropy_instead_of_the_linux_syscall_where_unavaila
 		assert false, 'the Apple entropy implementation is missing from the snapshot: ${body}'
 		return
 	}
-	// The Linux branch calls the libc getrandom through v_crypto_getrandom, which
-	// falls back to the syscall when the libc has no <sys/random.h>.
-	syscall_at := body.index('v_crypto_getrandom(') or {
+	// The Linux implementation calls a helper, which reads from the libc
+	// getrandom, or from the syscall with a libc that has none.
+	linux_at := body.index('v_crypto_getrandom(') or {
 		assert false, 'the Linux entropy implementation is missing from the snapshot: ${body}'
 		return
 	}
-	assert getentropy_at < syscall_at, 'the Apple entropy branch should precede the Linux fallback: ${body}'
-	helper_at := c_code.index('static inline long v_crypto_getrandom(') or {
-		assert false, 'the Linux entropy helper is missing from the snapshot'
-		return
-	}
-	helper_guards := enclosing_guards_at(c_code, helper_at)
-	assert helper_guards.any(!it.starts_with('!') && it.contains('defined(__linux__)')), 'the Linux entropy helper is guarded by ${helper_guards}, which also hold outside Linux'
-	assert c_code[helper_at..].all_before('\n}').contains('syscall(SYS_getrandom'), 'the Linux entropy helper lost its syscall fallback'
+	assert getentropy_at < linux_at, 'the Apple entropy branch should precede the Linux fallback: ${body}'
 	before_getentropy := body[..getentropy_at]
 	guard_at := before_getentropy.last_index('#if ') or {
 		assert false, 'getentropy is not behind an Apple preprocessor guard: ${body}'
@@ -380,7 +373,17 @@ fn test_cross_output_uses_getentropy_instead_of_the_linux_syscall_where_unavaila
 	condition := before_getentropy[guard_at..].all_before('\n')
 	assert condition.contains('__APPLE__'), 'getentropy is guarded by `${condition}`, which does not select Apple'
 	assert condition.contains('__OpenBSD__'), 'getentropy is guarded by `${condition}`, which does not select OpenBSD'
-	assert body[getentropy_at..syscall_at].contains('#else'), 'the Linux syscall is not in the fallback branch: ${body}'
+	assert body[getentropy_at..linux_at].contains('#else'), 'the Linux helper is not in the fallback branch: ${body}'
+	// The helper is defined for Linux alone, with the syscall that the other
+	// hosts lack.
+	helper_signature := 'static inline long v_crypto_getrandom(void* buf, size_t n) {'
+	helper_at := c_code.index(helper_signature) or {
+		assert false, 'the Linux entropy helper is missing from the snapshot'
+		return
+	}
+	guards := enclosing_guards_at(c_code, helper_at)
+	assert guards.any(it in ['#if defined(__linux__)', '#ifdef __linux__']), 'the Linux entropy helper is guarded by ${guards}, which also hold outside Linux'
+	assert function_body(c_code, helper_signature).contains('syscall(SYS_getrandom'), 'the syscall is missing from the Linux entropy helper'
 }
 
 fn test_cross_output_keeps_the_linux_calls_of_the_diagnostics_server_behind_linux_guards() {
