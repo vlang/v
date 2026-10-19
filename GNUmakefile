@@ -177,6 +177,14 @@ ifdef OPENBSD
 BOOTSTRAP_VC_CC_CFLAGS += -DSYS_getrandom=0
 BOOTSTRAP_VC_EXTRA_SOURCES += $(VROOT)/cmd/tools/openbsd_vc_compat.c
 endif
+# Portable vc snapshots guard android_print with `defined(__ANDROID__) && !defined(__TERMUX__)`.
+# Termux's compiler does not predefine __TERMUX__, so a native Termux bootstrap must define it;
+# otherwise v1 references android_print, which only the android target links (#30279).
+ifdef ANDROID
+ifneq ($(or $(TERMUX_VERSION),$(findstring com.termux,$(PREFIX))),)
+BOOTSTRAP_VC_CC_CFLAGS += -D__TERMUX__
+endif
+endif
 BOOTSTRAP_TCC_REQUESTED := $(or $(findstring -cc tcc,$(strip $(VFLAGS))),$(findstring -cc=tcc,$(strip $(VFLAGS))))
 BOOTSTRAP_CCOMPILER_VFLAG :=
 BOOTSTRAP_VC_CCOMPILER_VFLAG :=
@@ -249,7 +257,7 @@ ifdef LEGACY
 	$(eval override LDFLAGS+=-L$(realpath $(LEGACYLIBS))/lib -lMacportsLegacySupport)
 endif
 # Stream compatibility fixes for stale snapshots to the compiler, keeping one v.c.
-	sh "$(VROOT)/cmd/tools/vc_compat.sh" "$(VC)/$(VCFILE)" $(CC) $(CPPFLAGS) $(BOOTSTRAP_VC_CC_CFLAGS) $(VC_BOOTSTRAP_DEFINE) -std=c99 -w -o v1$(EXE_EXT) -- $(BOOTSTRAP_VC_EXTRA_SOURCES) -lm -lpthread $(BOOTSTRAP_LDFLAGS) || cmd/tools/cc_compilation_failed_non_windows.sh
+	sh "$(VROOT)/cmd/tools/vc_compat.sh" "$(VC)/$(VCFILE)" $(CC) $(CPPFLAGS) $(BOOTSTRAP_VC_CC_CFLAGS) $(VC_BOOTSTRAP_DEFINE) -std=c99 -w -o v1$(EXE_EXT) -- $(BOOTSTRAP_VC_EXTRA_SOURCES) -lm -lpthread $(BOOTSTRAP_LDFLAGS) || sh cmd/tools/cc_compilation_failed_non_windows.sh
 ifdef NETBSD
 	paxctl +m v1$(EXE_EXT)
 endif

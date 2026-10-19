@@ -100,7 +100,12 @@ jobs:
         run: |
           set -o xtrace
           uname -a
-          docker run --rm --platform=linux/arm64 --mount type=bind,source=/home/runner/work/v/v,destination=/src -w /src termux/termux-docker:aarch64 bash -c '
+          # The container runs as a non-root user that cannot write to the
+          # runner-owned checkout mounted at /src, so the log gets its own
+          # world-writable bind mount.
+          mkdir -p "$RUNNER_TEMP/termux-logs"
+          chmod 777 "$RUNNER_TEMP/termux-logs"
+          docker run --rm --platform=linux/arm64 --mount type=bind,source=/home/runner/work/v/v,destination=/src --mount type=bind,source="$RUNNER_TEMP/termux-logs",destination=/logs -w /src termux/termux-docker:aarch64 bash -c '
             set -o xtrace
             uname -a
             cp -r /src ~/vproject; cd ~/vproject
@@ -121,7 +126,7 @@ jobs:
             echo "make exit code: $rc"
             # Always copy the log back to the bind-mounted dir so the runner
             # step that uploads the artifact can find it.
-            cp build.log /src/build.log || true
+            cp build.log /logs/build.log || true
             if [ "$rc" -ne 0 ] || [ ! -x ./v ]; then
               echo "===== bootstrap failed; collecting diagnostics ====="
               echo "--- tcc binary ---"
@@ -157,5 +162,5 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: termux-arm64-build-log
-          path: build.log
+          path: ${{ runner.temp }}/termux-logs/build.log
           if-no-files-found: ignore
