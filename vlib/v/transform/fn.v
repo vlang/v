@@ -1920,6 +1920,72 @@ fn (mut t Transformer) transform_mut_optional_value_call_arg(arg_id flat.NodeId,
 	}
 }
 
+// transform_mut_plain_value_optional_call_arg passes a `mut` value that is not an option
+// to a `mut a ?T` parameter, like V 0.5.2: in a temporary option, so that `a = none` or
+// `a = value` in the callee only replaces the temporary. A struct payload is passed by
+// reference (`&?&T`, see mut_optional_param_value_type), so the temporary refers to the
+// caller's value, and the callee's changes to its fields reach it. Other payloads are
+// passed by value (`&?T`), so the temporary holds a copy.
+fn (mut t Transformer) transform_mut_plain_value_optional_call_arg(arg_id flat.NodeId, param_type_id u32) ?flat.NodeId {
+	param_type := flat.source_type_name(param_type_id)
+	arg_type_source_id := t.node_type(arg_id)
+	if arg_type_source_id == 0 || flat.source_type_shape(arg_type_source_id).has(.option_type) {
+		return none
+	}
+	mut payload := param_type[2..]
+	if payload.len == 0 {
+		return none
+	}
+	by_reference := payload.starts_with('&') || t.mut_optional_payload_is_struct(payload)
+	payload = payload.trim_string_left('&')
+	payload_type_source_id := flat.source_type_id(payload)
+	clean_payload := t.normalize_type_alias(payload_type_source_id)
+	if !t.type_is_value_or_reference_of(arg_type_source_id, clean_payload) {
+		return none
+	}
+	value := t.transform_expr(arg_id)
+	// A caller's own `mut` parameter is the address of its value; a heap-escaped local
+	// is already dereferenced by the transform.
+	mut value_type_source_id := t.node_type(value)
+	if value_type_source_id == 0 {
+		value_type_source_id = arg_type_source_id
+	}
+	value_is_reference := t.normalize_type_alias(value_type_source_id) != clean_payload
+	pointer_type := flat.source_type_id('&${payload}')
+	payload_value := if by_reference == value_is_reference {
+		value
+	} else if by_reference {
+		t.make_prefix(.amp, value)
+	} else {
+		t.make_prefix(.mul, value)
+	}
+	if payload_value != value {
+		t.set_node_typ(int(payload_value), if by_reference {
+			pointer_type
+		} else {
+			payload_type_source_id
+		})
+	}
+	option_type := flat.source_type_id('?${if by_reference { '&' } else { '' }}${payload}')
+	tmp_name := t.new_temp('mut_optional_arg')
+	t.pending_stmts << t.make_decl_assign_typed(tmp_name, t.make_optional_some(payload_value,
+		option_type), option_type)
+	option_addr := t.make_prefix(.amp, t.make_ident(tmp_name))
+	t.set_node_typ(int(option_addr), param_type_id)
+	return option_addr
+}
+
+// type_is_value_or_reference_of reports whether `type_id` is `clean_type`, or a reference to
+// it, after aliases are resolved.
+fn (t &Transformer) type_is_value_or_reference_of(type_id u32, clean_type u32) bool {
+	if t.normalize_type_alias(type_id) == clean_type {
+		return true
+	}
+	typ := flat.source_type_name(type_id)
+	return typ.starts_with('&')
+		&& t.normalize_type_alias(flat.source_type_id(typ[1..])) == clean_type
+}
+
 fn (mut t Transformer) finish_mut_optional_value_call(call_id flat.NodeId, typ_id u32, writebacks []flat.NodeId) flat.NodeId {
 	if writebacks.len == 0 {
 		return call_id
@@ -4173,23 +4239,9 @@ fn (mut t Transformer) transform_call_arg_for_param_isolated(arg_id flat.NodeId,
 		return arg_id
 	}
 	mut arg_node := &t.a.nodes[int(arg_id)]
-	if arg_node.is_mut && param_type.starts_with('&?&') {
-		arg_type_source_id := t.node_type(arg_id)
-		arg_type_shape_3 := flat.source_type_shape(arg_type_source_id)
-		payload_type := param_type[3..]
-		if arg_type_source_id != 0 && !arg_type_shape_3.has(.option_type)
-			&& t.normalize_type_alias(arg_type_source_id) == t.normalize_type_alias(flat.source_type_id(payload_type)) {
-			value := t.transform_expr(arg_id)
-			pointer_type := flat.source_type_id('&${payload_type}')
-			addr := t.make_prefix(.amp, value)
-			t.set_node_typ(int(addr), pointer_type)
-			option_type := flat.source_type_id('?${flat.source_type_name(pointer_type)}')
-			wrapped := t.make_optional_some(addr, option_type)
-			tmp_name := t.new_temp('mut_optional_arg')
-			t.pending_stmts << t.make_decl_assign_typed(tmp_name, wrapped, option_type)
-			option_addr := t.make_prefix(.amp, t.make_ident(tmp_name))
-			t.set_node_typ(int(option_addr), param_type_id)
-			return option_addr
+	if arg_node.is_mut && param_type.starts_with('&?') {
+		if wrapped := t.transform_mut_plain_value_optional_call_arg(arg_id, param_type_id) {
+			return wrapped
 		}
 	}
 	if param_type.starts_with('&') && t.call_arg_is_zero_pointer_literal(arg_id) {

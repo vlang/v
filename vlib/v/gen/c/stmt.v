@@ -843,22 +843,22 @@ fn (mut g FlatGen) gen_goto_lock_leaves(label string) bool {
 
 fn (mut g FlatGen) gen_return_cleanup() {
 	g.gen_return_loop_control_copybacks()
-	if g.active_locks.len == 0 {
-		g.gen_all_defers()
-		g.gen_profile_fn_exit()
-		g.gen_current_return_ownership_drops()
-		return
-	}
+	g.gen_fn_exit_lock_leaves_and_defers()
+	g.gen_profile_fn_exit()
+	g.gen_current_return_ownership_drops()
+}
+
+// gen_fn_exit_lock_leaves_and_defers emits what leaving the function from inside its
+// `lock`/`rlock` blocks needs: each active lock is released after the defers declared
+// inside it, then the remaining defers run.
+fn (mut g FlatGen) gen_fn_exit_lock_leaves_and_defers() {
 	mut defer_end := g.defers.len
 	mut i := g.active_locks.len - 1
 	for i >= 0 {
-		active := g.active_locks[i]
-		defer_end = g.gen_lock_scope_cleanup(active, defer_end)
+		defer_end = g.gen_lock_scope_cleanup(g.active_locks[i], defer_end)
 		i--
 	}
 	g.gen_all_defers_range(0, defer_end)
-	g.gen_profile_fn_exit()
-	g.gen_current_return_ownership_drops()
 }
 
 fn (mut g FlatGen) gen_return_cleanup_with_result(tmp string) {
@@ -3273,7 +3273,9 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 				if g.cur_fn_assert_continues {
 					g.writeln('__test_failures++;')
 				} else {
-					g.gen_all_defers()
+					// A failed assert ends the current test. Release this function's locks
+					// like a `return` does, or a later test that locks them blocks forever.
+					g.gen_fn_exit_lock_leaves_and_defers()
 					g.writeln('extern void __v_test_fail_transfer(void);')
 					g.writeln('__v_test_fail_transfer();')
 				}
