@@ -10870,7 +10870,7 @@ fn (tc &TypeChecker) mut_arg_container_layouts_differ(actual Type, expected Type
 // map key or map value types store their elements differently. A container is not
 // converted element by element, so unlike plain values the types must match: aliases
 // are transparent, but `u32` is not a `u64`, `int` is not a `?int` or a flag enum, and
-// a concrete type is not the interface or sum type that would box it.
+// a concrete type (or a sum type) is not the interface or sum type that would box it.
 fn (tc &TypeChecker) container_elem_layouts_differ(actual Type, expected Type) bool {
 	clean_actual := unalias_type(actual)
 	clean_expected := unalias_type(expected)
@@ -10923,7 +10923,12 @@ fn (tc &TypeChecker) container_elem_layouts_differ(actual Type, expected Type) b
 			return clean_actual !is Interface
 		}
 		SumType {
-			return clean_actual !is SumType
+			// A sum type that is a variant of another one (`Inner` in `Outer`) is
+			// boxed into it, not stored as it is.
+			if clean_actual is SumType {
+				return !tc.type_compatible(clean_expected, clean_actual)
+			}
+			return true
 		}
 		else {}
 	}
