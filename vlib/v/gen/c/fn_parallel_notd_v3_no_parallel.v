@@ -1687,8 +1687,9 @@ fn cgen_take_builder_text(mut sb strings.Builder) string {
 	if sb.len == 0 {
 		return ''
 	}
+	sb << u8(0)
 	output := unsafe { sb.reuse_as_plain_u8_array() }
-	return unsafe { tos(&u8(output.data), output.len) }
+	return unsafe { tos(&u8(output.data), output.len - 1) }
 }
 
 // moved_segment returns its argument unchanged. Appending an addressable
