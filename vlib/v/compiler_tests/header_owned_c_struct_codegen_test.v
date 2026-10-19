@@ -7,7 +7,7 @@ const header_owned_vlib_dir = os.dir(header_owned_v3_dir)
 const header_owned_v3_src = os.join_path(header_owned_v3_dir, 'v.v')
 
 fn header_owned_v3_bin_path() string {
-	return os.join_path(os.vtmp_dir(), 'v3_header_owned_test_${os.getpid()}')
+	return os.join_path(os.vtmp_dir(), 'v3_header_owned_test_${os.getpid()}') + $if windows { '.exe' } $else { '' }
 }
 
 fn header_owned_build_v3() string {
@@ -139,12 +139,16 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '42', run.output
 	generated := os.read_file(out + '.c')!
-	assert generated.count('#include "library.h"') == 2, generated
-	first_include := generated.index('#include "library.h"') or { -1 }
+	// library.h sits beside main.v, and the generated C is compiled elsewhere,
+	// so the include names the header by its resolved path.
+	header := os.real_path(os.join_path(root, 'library.h')).replace('\\', '/')
+	include := '#include "${header}"'
+	assert generated.count(include) == 2, generated
+	first_include := generated.index(include) or { -1 }
 	define := generated.index('#define V3_SINGLE_HEADER_IMPLEMENTATION') or { -1 }
 	assert first_include >= 0, generated
 	assert define > first_include, generated
-	assert generated[define..].contains('#include "library.h"'), generated
+	assert generated[define..].contains(include), generated
 }
 
 fn test_macos_header_only_objective_c_uses_objective_c_translation_unit() {

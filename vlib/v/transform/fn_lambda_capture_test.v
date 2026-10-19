@@ -41,16 +41,18 @@ fn test_lambda_capture_collector_scans_callee_and_range_bound() {
 		children_count: 2
 	})
 
+	mut type_texts_44 := &flat.TypeTextTable{}
 	mut t := Transformer{
-		a:         &a
-		var_types: [
+		var_type_texts: type_texts_44
+		a:              &a
+		var_types:      [
 			VarTypeBinding{
 				name: 'cb'
-				typ:  'fn (int) int'
+				typ:  type_texts_44.intern('fn (int) int')
 			},
 			VarTypeBinding{
 				name: 'limit'
-				typ:  'int'
+				typ:  type_texts_44.intern('int')
 			},
 		]
 	}
@@ -74,6 +76,6 @@ fn test_decl_param_type_in_module_qualifies_fn_type_params() {
 			'callee.Result': StructInfo{}
 		}
 	}
-	assert t.decl_param_type_in_module('fn(S) int', 'callee') == 'fn(callee.S) int'
-	assert t.decl_param_type_in_module('fn(cb fn(S) Result) Result', 'callee') == 'fn(fn(callee.S) callee.Result) callee.Result'
+	assert flat.source_type_name(t.decl_param_type_in_module(flat.source_type_id('fn(S) int'), 'callee')) == 'fn(callee.S) int'
+	assert flat.source_type_name(t.decl_param_type_in_module(flat.source_type_id('fn(cb fn(S) Result) Result'), 'callee')) == 'fn(fn(callee.S) callee.Result) callee.Result'
 }

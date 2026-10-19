@@ -4,6 +4,54 @@ import os
 import v.cmdexec
 import v.pref
 
+fn test_selfhost_array_literal_temporaries_preserve_user_values() {
+	root := os.join_path(os.vtmp_dir(), 'fastc_array_literal_names_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	os.write_file(os.join_path(root, 'main.v'), r'module main
+
+fn parameter_values(__vf_array_literal string, __vf_array_1_literal string) []string {
+	return [__vf_array_literal, __vf_array_1_literal]
+}
+
+fn packed_values(values ...string) []string {
+	return values
+}
+
+fn main() {
+	__vf_array_literal := "local"
+	__vf_array_1_literal := "fallback"
+	values := [__vf_array_literal, __vf_array_1_literal]
+	assert values[0] == "local"
+	assert values[1] == "fallback"
+	parameters := parameter_values("parameter", "parameter fallback")
+	assert parameters[0] == "parameter"
+	assert parameters[1] == "parameter fallback"
+	nested := [[__vf_array_literal], [__vf_array_1_literal]]
+	assert nested[0][0] == "local"
+	assert nested[1][0] == "fallback"
+	packed := packed_values(__vf_array_literal, __vf_array_1_literal)
+	assert packed[0] == "local"
+	assert packed[1] == "fallback"
+	filtered := [__vf_array_literal, __vf_array_1_literal].filter(it == __vf_array_literal)
+	assert filtered.len == 1
+	assert filtered[0] == "local"
+	combined := "${__vf_array_literal} ${__vf_array_1_literal}"
+	assert combined == "local fallback"
+	println("preserved values")
+}
+') or { panic(err) }
+	program := os.join_path(root, 'program')
+	build := cmdexec.run(@VEXE, ['-b', 'fastc', '-gc', 'none', '-no-prealloc', '-nocache', '-o',
+		program, root])
+	assert build.exit_code == 0, build.output
+	run := cmdexec.run(program, [])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'preserved values', run.output
+}
+
 fn test_ordinary_collection_literals_and_membership() {
 	source := "module main
 
@@ -123,7 +171,7 @@ fn main() {
 '
 	selfhost_source := generate(selfhost_fixture, 'selfhost_nested_array_membership.v', selfhost_prefs) or { panic(err) }
 	for side in ['l', 'r'] {
-		assert selfhost_source.contains('((int *)__vf_meq_${side}.data)[__vf_meq_k]'), selfhost_source
+		assert selfhost_source.contains('((${fastc_output_c_type('int')} *)__vf_meq_${side}.data)[__vf_meq_k]'), selfhost_source
 	}
 	root := os.join_path(os.vtmp_dir(), 'fastc_nested_array_membership_${os.getpid()}')
 	os.mkdir_all(root) or { panic(err) }

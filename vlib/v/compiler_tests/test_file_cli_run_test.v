@@ -28,7 +28,9 @@ fn test_direct_test_file_run_executes_harness() {
 	os.write_file(fail_src, 'fn test_failure() {\n\tassert false\n}\n')!
 	fail := cmdexec.run_in(v3_bin, ['failing_test.v'], tmp_dir)
 	assert fail.exit_code != 0, fail.output
-	assert fail.output.contains('Assertion failed'), fail.output
+	// The failure is reported in the V test runner format (e814006e31).
+	assert fail.output.contains('failing_test.v:2: fn test_failure'), fail.output
+	assert fail.output.contains('assert false'), fail.output
 
 	pass_src := os.join_path(tmp_dir, 'passing_test.v')
 	os.write_file(pass_src, 'fn test_success() {\n\tassert true\n}\n')!

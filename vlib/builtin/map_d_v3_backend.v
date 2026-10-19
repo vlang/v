@@ -1067,8 +1067,24 @@ pub fn (m &map) clone() map {
 
 @[unsafe]
 fn (m &VMapData) clone() &VMapData {
-	if m.metas == unsafe { nil } {
+	// clear() and deleting every key can leave large backing slabs behind.
+	// An empty clone needs its own writable header, but none of that capacity.
+	if m.count == 0 || m.metas == unsafe { nil } {
 		return new_map_data(m.key_bytes, m.value_bytes, m.hash_fn, m.key_eq_fn, m.clone_fn, m.free_fn)
+	}
+	// Reused checker maps can retain a large reservation after their contents
+	// shrink. Rebuilding a sparse clone copies only live entries, in their
+	// original insertion order, rather than all retained slabs and tombstones.
+	if m.even_index >= 128 && u64(m.count) * 8 < u64(m.even_index) {
+		mut compact := new_map_data(m.key_bytes, m.value_bytes, m.hash_fn, m.key_eq_fn,
+			m.clone_fn, m.free_fn)
+		compact.reserve(u32(m.count))
+		for i in 0 .. m.key_values.len {
+			if m.key_values.has_index(i) {
+				compact.set(m.key_values.key(i), m.key_values.value(i))
+			}
+		}
+		return compact
 	}
 	metasize := int(sizeof(u32) * (m.even_index + 2 + m.extra_metas))
 	res := &VMapData{

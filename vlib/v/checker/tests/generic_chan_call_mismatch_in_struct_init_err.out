@@ -1,0 +1,7 @@
+vlib/v/checker/tests/generic_chan_call_mismatch_in_struct_init_err.vv:12:3: error: cannot assign to field `c`: expected `chan string`, not `chan int`
+   10 |     ch := chan int{cap: 2}
+   11 |     s := S{
+   12 |         c: identity_chan(ch)
+      |         ~~~~~~~~~~~~~~~~~~~~
+   13 |     }
+   14 |     println(s.c.len)

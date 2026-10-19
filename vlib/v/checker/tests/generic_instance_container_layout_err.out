@@ -1,0 +1,119 @@
+vlib/v/checker/tests/generic_instance_container_layout_err.vv:111:4: notice: unused function: `never_called`
+  109 | 
+  110 | // never_called has no instance, so nothing decides its layout.
+  111 | fn never_called[T](a []T) []u64 {
+      |    ~~~~~~~~~~~~
+  112 |     return []u64(a)
+  113 | }
+vlib/v/checker/tests/generic_instance_container_layout_err.vv:10:9: error: cannot cast array `[]int` to `[]u8`
+    8 | 
+    9 | fn to_bytes[T](a []T) []u8 {
+   10 |     return []u8(a)
+      |            ~~~~~~~
+   11 | }
+   12 |
+vlib/v/checker/tests/generic_instance_container_layout_err.vv:10:9: error: cannot cast array `[]i32` to `[]u8`
+    8 | 
+    9 | fn to_bytes[T](a []T) []u8 {
+   10 |     return []u8(a)
+      |            ~~~~~~~
+   11 | }
+   12 |
+vlib/v/checker/tests/generic_instance_container_layout_err.vv:14:9: error: cannot cast `[]int` to `Bytes` (alias to `[]u8`)
+   12 | 
+   13 | fn to_alias[T](a []T) Bytes {
+   14 |     return Bytes(a)
+      |            ~~~~~~~~
+   15 | }
+   16 |
+vlib/v/checker/tests/generic_instance_container_layout_err.vv:18:9: error: cannot use `[]u8` as type `[]u64` in return argument
+   16 | 
+   17 | fn widen[T](a []T) []u64 {
+   18 |     return a
+      |            ^
+   19 | }
+   20 |
+vlib/v/checker/tests/generic_instance_container_layout_err.vv:23:6: error: cannot assign to `b`: expected `[]u64`, not `[]i32`
+   21 | fn assign[T](a []T) []u64 {
+   22 |     mut b := []u64{}
+   23 |     b = a.clone()
+      |         ~~~~~~~~~
+   24 |     return b
+   25 | }
+vlib/v/checker/tests/generic_instance_container_layout_err.vv:29:3: error: cannot assign to field `vals`: expected `[]u64`, not `[]u8`
+   27 | fn wrap[T](a []T) Wide {
+   28 |     return Wide{
+   29 |         vals: a
+      |         ~~~~~~~
+   30 |     }
+   31 | }
+vlib/v/checker/tests/generic_instance_container_layout_err.vv:42:13: error: cannot use `[]i32` as `[]i64` in argument 1 to `sum`
+   40 | 
+   41 | fn total[T](a []T) i64 {
+   42 |     return sum(a)
+      |                ^
+   43 | }
+   44 |
+vlib/v/checker/tests/generic_instance_container_layout_err.vv:46:9: error: cannot cast `map[string]int` to `Counts8` (alias to `map[string]u8`)
+   44 | 
+   45 | fn narrow_map[T](m map[string]T) Counts8 {
+   46 |     return Counts8(m)
+      |            ~~~~~~~~~~
+   47 | }
+   48 |
+vlib/v/checker/tests/generic_instance_container_layout_err.vv:50:9: error: cannot use `map[string]u8` as type `map[string]u64` in return argument
+   48 | 
+   49 | fn widen_map[T](m map[string]T) map[string]u64 {
+   50 |     return m
+      |            ^
+   51 | }
+   52 |
+vlib/v/checker/tests/generic_instance_container_layout_err.vv:62:19: error: cannot use `map[string]i32` as `map[string]i64` in argument 1 to `map_total`
+   60 | 
+   61 | fn total_map[T](m map[string]T) i64 {
+   62 |     return map_total(m)
+      |                      ^
+   63 | }
+   64 |
+vlib/v/checker/tests/generic_instance_container_layout_err.vv:70:9: error: cannot use `[]u8` as type `![]u64` in return argument
+   68 | 
+   69 | fn res[T](a []T) ![]u64 {
+   70 |     return a
+      |            ^
+   71 | }
+   72 |
+vlib/v/checker/tests/generic_instance_container_layout_err.vv:74:9: error: cannot use `[3]u8` as type `[3]u64` in return argument
+   72 | 
+   73 | fn fixed[T](a [3]T) [3]u64 {
+   74 |     return a
+      |            ^
+   75 | }
+   76 |
+vlib/v/checker/tests/generic_instance_container_layout_err.vv:78:9: error: cannot use `[][]u8` as type `[][]u64` in return argument
+   76 | 
+   77 | fn nested[T](a [][]T) [][]u64 {
+   78 |     return a
+      |            ^
+   79 | }
+   80 |
+vlib/v/checker/tests/generic_instance_container_layout_err.vv:91:9: error: cannot append `[]u8` to `[][]u64`
+   89 | fn append[T](a []T) [][]u64 {
+   90 |     mut out := [][]u64{}
+   91 |     out << a
+      |            ^
+   92 |     return out
+   93 | }
+vlib/v/checker/tests/generic_instance_container_layout_err.vv:66:9: error: cannot use `?[]u8` as type `?[]u64` in return argument
+   64 | 
+   65 | fn opt[T](a ?[]T) ?[]u64 {
+   66 |     return a
+      |            ^
+   67 | }
+   68 |
+vlib/v/checker/tests/generic_instance_container_layout_err.vv:86:15: error: cannot use `&[]u8` as `&[]u64` in argument 1 to `take_mut`
+   84 | 
+   85 | fn grow[T](mut a []T) {
+   86 |     take_mut(mut a)
+      |                  ^
+   87 | }
+   88 |

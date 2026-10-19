@@ -48,7 +48,7 @@ fn local_location() !&Location {
 		}
 	}
 	mut info := TimeZoneInformation{}
-	C.GetTimeZoneInformation(&info)
+	C.GetTimeZoneInformation(voidptr(&info))
 	std_zone, dst_zone := windows_zones(info)
 	mut loc := &Location{
 		name: 'Local'
@@ -58,7 +58,7 @@ fn local_location() !&Location {
 		loc.has_posix = true
 	}
 	mut dynamic_info := DynamicTimeZoneInformation{}
-	dynamic_status := C.GetDynamicTimeZoneInformation(&dynamic_info)
+	dynamic_status := C.GetDynamicTimeZoneInformation(voidptr(&dynamic_info))
 	has_dynamic_info := dynamic_status != u32(0xffff_ffff)
 		&& dynamic_info.dynamic_daylight_time_is_disabled == 0
 	current_year := now().year
@@ -67,7 +67,7 @@ fn local_location() !&Location {
 		// history so old dynamic rules do not silently fall back to today's offset.
 		for year in windows_min_system_year .. current_year + 1 {
 			mut candidate := TimeZoneInformation{}
-			if C.GetTimeZoneInformationForYear(u16(year), &dynamic_info, &candidate) == 0 {
+			if C.GetTimeZoneInformationForYear(u16(year), voidptr(&dynamic_info), voidptr(&candidate)) == 0 {
 				continue
 			}
 			loc.add_windows_year_transitions(year, candidate)

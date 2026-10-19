@@ -6,7 +6,7 @@ fn add_array_accessor_spread_for_test(mut a flat.FlatAst, typ string) flat.NodeI
 	value := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'values'
-		typ:   typ
+		typ:   flat.source_type_id(typ)
 	})
 	children_start := a.begin_children()
 	a.add_child(value)
@@ -28,10 +28,10 @@ fn test_array_accessor_map_spread_stability_checks_key_and_value_clones() {
 	tc.structs['Key'] = []StructField{}
 	tc.structs['Mutator'] = []StructField{}
 	key_type := Type(Struct{
-		name: 'Key'
+		name_id: flat.source_type_id('Key')
 	})
 	mutator_type := Type(Struct{
-		name: 'Mutator'
+		name_id: flat.source_type_id('Mutator')
 	})
 	tc.fn_param_types['Key.clone'] = [key_type]
 	tc.fn_ret_types['Key.clone'] = key_type

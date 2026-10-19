@@ -65,7 +65,8 @@ fn test_posix_hello_world_c_has_no_includes() {
 		assert run.exit_code == 0, run.output
 		assert run.output == 'Hello, World!\n', run.output
 	}
-	for target in ['linux', 'macos', 'freebsd'] {
+	for target in ['linux', 'macos', 'freebsd', 'openbsd', 'netbsd', 'dragonfly', 'solaris', 'haiku',
+		'qnx', 'serenity', 'termux', 'wasm32_emscripten', 'windows'] {
 		generated := cmdexec.run(@VEXE, ['-nocache', '-os', target, '-o', c_file, source])
 		assert generated.exit_code == 0, generated.output
 		assert !os.read_file(c_file)!.contains('#include'), target
@@ -96,6 +97,52 @@ fn main() {
 	run := cmdexec.run(@VEXE, ['-nocache', '-gc', 'none', 'run', source])
 	assert run.exit_code == 0, run.output
 	assert run.output == 'OK\n', run.output
+}
+
+fn test_bsd_executable_uses_native_sysctl_ownership() {
+	$if windows || freestanding || vinix {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'bsd_executable_headers_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.c.v')
+	c_file := os.join_path(root, 'main.c')
+	program := 'import os\nfn main() {\n executable := os.executable()\n assert os.is_file(executable)\n assert os.real_path(executable) == os.real_path(os.args[0])\n}\n'
+	for with_explicit_header in [false, true] {
+		os.write_file(source, if with_explicit_header {
+			'#include <time.h>\n' + program
+		} else {
+			program
+		})!
+		for target in ['freebsd', 'openbsd'] {
+			generated := cmdexec.run(@VEXE, ['-nocache', '-gc', 'none', '-os', target, '-o', c_file,
+				source])
+			assert generated.exit_code == 0, generated.output
+			code := os.read_file(c_file)!
+			assert code.contains('sysctl('), target
+			if with_explicit_header {
+				assert code.contains('#include <sys/sysctl.h>'), '${target}: native headers own sysctl declarations'
+			} else {
+				assert !code.contains('#include <sys/sysctl.h>'), '${target}: standalone builds provide the core ABI'
+				assert code.contains('i32 sysctl('), '${target}: standalone builds need the sysctl prototype'
+				assert code.contains('#define CTL_KERN 1'), target
+				assert code.contains('#define KERN_PROC_PATHNAME 12'), target
+				assert code.contains('#define KERN_PROC_ARGS 55'), target
+			}
+		}
+		$if freebsd || openbsd {
+			mut compilers := ['cc']
+			$if freebsd {
+				compilers << 'tcc'
+			}
+			for cc in compilers {
+				run := cmdexec.run(@VEXE, ['-nocache', '-gc', 'none', '-cc', cc, '-no-retry-compilation',
+					'run', source])
+				assert run.exit_code == 0, run.output
+			}
+		}
+	}
 }
 
 fn test_headerless_boehm_registers_spawned_threads() {
@@ -173,22 +220,69 @@ fn main() {
 	assert run.output == 'OK\n', run.output
 }
 
-fn test_macos_self_c_has_no_include_directives() {
-	$if !macos {
+fn test_self_c_has_no_include_directives() {
+	$if !(macos || linux || windows || freebsd || openbsd || dragonfly || android || termux || ios) || freestanding {
 		return
 	}
 	root := os.join_path(os.vtmp_dir(), 'headerless_self_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	c_file := os.join_path(root, 'v.c')
-	generated := cmdexec.run(@VEXE, ['-nocache', '-gc', 'none', '-prealloc', '-compile-backend',
-		'fastc', '-o', c_file, os.join_path(@VEXEROOT, 'cmd', 'v')])
+	for mode in [['-gc', 'none', '-prealloc', '-compile-backend', 'fastc'], ['-cross'],
+		['-os', 'cross']] {
+		mut args := ['-nocache']
+		args << mode
+		args << ['-o', c_file, os.join_path(@VEXEROOT, 'cmd', 'v')]
+		generated := cmdexec.run(@VEXE, args)
+		assert generated.exit_code == 0, generated.output
+		code := os.read_file(c_file)!
+		$if !windows {
+			assert code.split_into_lines().any(it.starts_with('DIR* fdopendir(')), 'the CLI needs the pointer-returning POSIX fdopendir binding'
+			assert code.split_into_lines().any(it.starts_with('DIR* opendir(')), 'the CLI needs the pointer-returning POSIX opendir binding'
+		}
+		if '-cross' in mode || 'cross' in mode {
+			assert code.contains('#define CUSTOM_DEFINE_v3_headerless_bootstrap'), mode.join(' ')
+		}
+		for line in code.split_into_lines() {
+			// Compiler string literals still contain text used to generate other C files.
+			assert !line.trim_space().starts_with('#include'), line
+		}
+	}
+}
+
+// vc/v.c is generated on Linux (gen_vc_ci.yml), and every non-Windows `make` compiles
+// it. It includes no headers, so clang can check it for each target without a sysroot.
+fn test_linux_generated_self_c_compiles_for_bootstrap_targets() {
+	$if !(macos || linux) || freestanding {
+		return
+	}
+	clang := os.find_abs_path_of_executable('clang') or { return }
+	root := os.join_path(os.vtmp_dir(), 'headerless_self_targets_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	c_file := os.join_path(root, 'v.c')
+	generated := cmdexec.run(@VEXE, ['-nocache', '-os', 'linux', '-cross', '-o', c_file,
+		os.join_path(@VEXEROOT, 'cmd', 'v')])
 	assert generated.exit_code == 0, generated.output
-	code := os.read_file(c_file)!
-	assert code.contains('DIR* fdopendir('), 'the CLI needs the pointer-returning POSIX binding'
-	for line in code.split_into_lines() {
-		// Compiler string literals still contain text used to generate other C files.
-		assert !line.trim_space().starts_with('#include'), line
+	for target in ['x86_64-unknown-linux-gnu', 'aarch64-unknown-linux-gnu', 'aarch64-linux-android24',
+		'arm64-apple-macos13', 'x86_64-apple-macos12', 'x86_64-unknown-freebsd14',
+		'x86_64-unknown-openbsd7', 'x86_64-unknown-netbsd10', 'x86_64-unknown-dragonfly6'] {
+		checked := os.exec([clang, '-target', target, '-std=c99', '-fsyntax-only', '-Wno-everything',
+			'-Werror=implicit-function-declaration', '-DCUSTOM_DEFINE_v1_fallback', c_file])
+		assert checked.exit_code == 0, '${target}: ${checked.output}'
+	}
+}
+
+fn test_compiler_source_checks_for_32_bit_hosts() {
+	// A 32-bit host builds cmd/v with every backend, so an `int` literal that only
+	// fits 64 bits stops its `make` at v1 -> v2.
+	for os_name, arch in {
+		'linux':   'arm32'
+		'freebsd': 'x86'
+	} {
+		checked := cmdexec.run(@VEXE, ['-nocache', '-os', os_name, '-arch', arch, '-check',
+			os.join_path(@VEXEROOT, 'cmd', 'v')])
+		assert checked.exit_code == 0, '${os_name}/${arch}: ${checked.output}'
 	}
 }
 

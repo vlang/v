@@ -54,10 +54,16 @@ struct ColdCachedKeyMessage {
 	text string @[json: 'body']
 }
 
+struct OtherColdCachedKeyMessage {
+	active bool
+	nested ColdCachedKeyMessage
+}
+
 fn cached_key_worker(ready chan bool, start chan bool, done chan bool) {
 	ready <- true
 	_ := <-start
 	for _ in 0 .. 50 {
+		assert encode(OtherColdCachedKeyMessage{ active: true, nested: ColdCachedKeyMessage{ id: 2, text: 'y' } }) == '{"active":true,"nested":{"id":2,"body":"y"}}'
 		assert encode(ColdCachedKeyMessage{ id: 1, text: 'x' }) == '{"id":1,"body":"x"}'
 		assert encode(ColdCachedKeyMessage{ id: 1, text: 'x' }, prettify: true) == '{\n    "id": 1,\n    "body": "x"\n}'
 	}

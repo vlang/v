@@ -24,7 +24,7 @@ pub fn getenv_opt(key string) ?string {
 		$if windows {
 			kw := key.to_wide()
 			defer {
-				free(voidptr(kw))
+				unsafe { free(voidptr(kw)) }
 			}
 			s := C._wgetenv(kw)
 			if s == 0 {
@@ -90,19 +90,11 @@ pub fn environ() map[string]string {
 	// const C.environ &&char
 	mut res := map[string]string{}
 	$if windows {
-		mut estrings := C.GetEnvironmentStringsW()
-		mut eline := ''
-		for c := estrings; *c != 0; {
-			eline = unsafe { string_from_wide(c) }
-			eq_index := eline.index_u8(`=`)
-			if eq_index > 0 {
-				res[eline[0..eq_index]] = eline[eq_index + 1..]
-			}
-			unsafe {
-				c = c + eline.len + 1
-			}
+		estrings := C.GetEnvironmentStringsW()
+		res = environ_from_wide_block(estrings)
+		if estrings != unsafe { nil } {
+			C.FreeEnvironmentStringsW(estrings)
 		}
-		C.FreeEnvironmentStringsW(estrings)
 	} $else {
 		// if anything belongs to an unsafe block, this abomination absolutely does.
 		start := unsafe { &&char(voidptr(C.environ)) }
@@ -119,6 +111,32 @@ pub fn environ() map[string]string {
 			}
 			i++
 		}
+	}
+	return res
+}
+
+// environ_from_wide_block reads a NUL-separated Windows UTF-16 environment block.
+fn environ_from_wide_block(block &u16) map[string]string {
+	mut res := map[string]string{}
+	if block == unsafe { nil } {
+		return res
+	}
+	mut p := unsafe { block }
+	// Walk the block in UTF-16 code units: each entry is NUL-terminated,
+	// so find the terminator directly instead of advancing by the
+	// decoded string's UTF-8 byte length, which overshoots on any
+	// non-ASCII entry and mis-parses the rest of the block.
+	for unsafe { *p } != 0 {
+		mut end := unsafe { p }
+		for unsafe { *end } != 0 {
+			unsafe { end = end + 1 }
+		}
+		eline := unsafe { string_from_wide(p) }
+		eq_index := eline.index_u8(`=`)
+		if eq_index > 0 {
+			res[eline[0..eq_index]] = eline[eq_index + 1..]
+		}
+		unsafe { p = end + 1 }
 	}
 	return res
 }

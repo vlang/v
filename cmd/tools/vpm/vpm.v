@@ -21,6 +21,9 @@ const excluded_dirs = ['.cache', 'vlib']
 fn main() {
 	unbuffer_stdout()
 	os.setenv(selected_server_url_env, '', true)
+	$if windows {
+		enable_git_longpaths()
+	}
 	// This tool is intended to be launched by the v frontend,
 	// which provides the path to V inside os.getenv('VEXE')
 	// args are: vpm [options] SUBCOMMAND module names
@@ -40,6 +43,10 @@ fn main() {
 	}
 	mut query := parse_query_args(args, vpm_command)
 	vpm_log(@FILE_LINE, @FN, 'query: ${query}')
+	if is_registry_command(args) {
+		vpm_registry(query)
+		return
+	}
 	ensure_vmodules_dir_exist()
 	match vpm_command {
 		'help' {
@@ -112,6 +119,13 @@ fn parse_vpm_command(args []string) string {
 		}
 	}
 	return ''
+}
+
+// is_registry_command reports whether the requested command is the registry
+// server. It is checked before client-only home and cache setup, so serving a
+// registry does not require a writable VModules directory.
+fn is_registry_command(args []string) bool {
+	return parse_vpm_command(args) == 'registry'
 }
 
 fn parse_query_args(args []string, vpm_command string) []string {

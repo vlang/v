@@ -1,0 +1,7 @@
+@[attribute]
+struct Route[T] {
+	path T
+}
+
+fn main() {
+}
