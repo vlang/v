@@ -861,6 +861,8 @@ pub fn (mut m map) delete(key voidptr) {
 				m.free_fn(pkey)
 				// Mark key as deleted
 				vmemset(pkey, 0, m.key_bytes)
+				// Deleted values must not keep their former pointees reachable by the GC.
+				vmemset(m.key_values.value(kv_index), 0, m.value_bytes)
 			}
 			if m.key_values.len <= 32 {
 				return
