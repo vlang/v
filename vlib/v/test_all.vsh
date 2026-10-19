@@ -99,6 +99,31 @@ struct Config {
 	host_backend string
 	host_os      string
 	temp_prefix  string
+	units        UnitMode
+	shard        UnitShard
+	list_units   bool
+}
+
+struct Options {
+	c99        bool
+	units      UnitMode
+	shard      UnitShard
+	list_units bool
+}
+
+// UnitMode selects which sections run. CI runs the unit tests of section 1 in several jobs,
+// and the other sections in one more.
+enum UnitMode {
+	all
+	units_only
+	skip_units
+}
+
+// UnitShard is the 1-based shard `index` of `count` that a `--shard index/count` run takes
+// from the unit tests of section 1.
+struct UnitShard {
+	index int = 1
+	count int = 1
 }
 
 struct ExampleCase {
@@ -123,12 +148,20 @@ enum ExampleRunMode {
 
 fn main() {
 	self_check_gui_smoke_timeout_status()
+	self_check_unit_shards()
+	// Parse the arguments first: an invalid one exits, and exit skips the deferred cleanup.
+	cfg := parse_config()
 	isolated_vtmp := setup_isolated_vtmp()
 	defer {
 		os.rmdir_all(isolated_vtmp) or {}
 	}
-	cfg := parse_config()
 	os.chdir(cfg.repo_root) or { fail('failed to enter ${cfg.repo_root}: ${err}') }
+	if cfg.list_units {
+		for path in unit_test_files(cfg) {
+			println(repo_relative_path(cfg, path))
+		}
+		return
+	}
 
 	v3_bin := temp_path(cfg, 'v3')
 	v3_ownership_bin := temp_path(cfg, 'v3_ownership')
@@ -156,8 +189,15 @@ fn main() {
 		v6_bin + '.c',
 	])
 
-	section(1, 'V3 unit tests')
-	run_v3_unit_tests(cfg)
+	if cfg.units != .skip_units {
+		section(1, 'V3 unit tests${shard_label(cfg.shard)}')
+		run_v3_unit_tests(cfg)
+	}
+	if cfg.units == .units_only {
+		println('')
+		println('=== UNIT TESTS PASSED${shard_label(cfg.shard)} ===')
+		return
+	}
 
 	section(2, 'Build v3')
 	run('${host_v_cmd(cfg)} -o ${q(v3_bin)} ${q(cfg.v3_src)}')
@@ -226,7 +266,11 @@ fn main() {
 	cleanup_files([v3_bin, v3_ownership_bin, v3_lang_bin, v3_lang_bin + '.c'])
 
 	println('')
-	println('=== ALL TESTS PASSED ===')
+	if cfg.units == .skip_units {
+		println('=== ALL TESTS PASSED (unit tests skipped) ===')
+	} else {
+		println('=== ALL TESTS PASSED ===')
+	}
 }
 
 fn run_v3_unit_tests(cfg Config) {
@@ -257,7 +301,7 @@ fn run_v3_unit_tests(cfg Config) {
 	run('${host_v_cmd(cfg)} -o ${q(shared_v3)} ${q(cfg.v3_src)}')
 	os.setenv(unit_shared_v3_env, shared_v3, true)
 	os.setenv(unit_v3_src_env, cfg.v3_src, true)
-	test_files := enabled_unit_tests(cfg, os.walk_ext(cfg.script_dir, '_test.v').sorted())
+	test_files := unit_test_files(cfg)
 	for start := 0; start < test_files.len; start += unit_test_batch_size {
 		end := if start + unit_test_batch_size < test_files.len {
 			start + unit_test_batch_size
@@ -295,6 +339,40 @@ fn run_v3_unit_tests(cfg Config) {
 	restore_env(unit_shared_v3_env, old_shared_v3)
 	restore_env(unit_v3_src_env, old_v3_src)
 	cleanup_files([shared_v3, reuse_log])
+}
+
+// unit_test_files returns the enabled unit tests of the shard that `cfg` selects, in the order
+// they run.
+fn unit_test_files(cfg Config) []string {
+	enabled := enabled_unit_tests(cfg, os.walk_ext(cfg.script_dir, '_test.v').sorted())
+	return unit_shard_files(enabled, cfg.shard)
+}
+
+// unit_shard_files deals the sorted `paths` out to `shard.count` shards in turn and returns the
+// ones of `shard.index`. Every path lands in exactly one shard, and neighbours, which tend to be
+// alike in cost, land in different ones.
+fn unit_shard_files(paths []string, shard UnitShard) []string {
+	mut files := []string{cap: paths.len / shard.count + 1}
+	for i := shard.index - 1; i < paths.len; i += shard.count {
+		files << paths[i]
+	}
+	return files
+}
+
+fn self_check_unit_shards() {
+	paths := []string{len: 11, init: 'test_${index:02}.v'}
+	mut dealt := []string{}
+	for index in 1 .. 4 {
+		dealt << unit_shard_files(paths, UnitShard{ index: index, count: 3 })
+	}
+	assert dealt.sorted() == paths
+	assert unit_shard_files(paths, UnitShard{ index: 2, count: 3 }) == ['test_01.v', 'test_04.v',
+		'test_07.v', 'test_10.v']
+	assert unit_shard_files(paths, UnitShard{}) == paths
+}
+
+fn shard_label(shard UnitShard) string {
+	return if shard.count > 1 { ' (shard ${shard.index}/${shard.count})' } else { '' }
 }
 
 fn unit_test_run_only_arg(cfg Config, path string) string {
@@ -345,11 +423,11 @@ fn enabled_unit_tests(cfg Config, paths []string) []string {
 			continue
 		}
 		if disabled[relative_path] {
-			println('  Skipping ${relative_path} (temporarily disabled)')
+			note(cfg, '  Skipping ${relative_path} (temporarily disabled)')
 			continue
 		}
 		if vtest.skip_ownership_autofree_tests() && vtest.is_ownership_autofree_test(path) {
-			println('  Skipping ${relative_path} (ownership/autofree tests disabled)')
+			note(cfg, '  Skipping ${relative_path} (ownership/autofree tests disabled)')
 			continue
 		}
 		enabled << path
@@ -385,7 +463,7 @@ fn setup_isolated_vtmp() string {
 }
 
 fn parse_config() Config {
-	c99 := parse_args()
+	options := parse_args()
 	script_dir := os.real_path(@DIR)
 	repo_root := os.real_path(os.join_path(script_dir, '..', '..'))
 	tests_dir := os.join_path(script_dir, 'compiler_tests')
@@ -400,31 +478,103 @@ fn parse_config() Config {
 		vlib_dir:     os.join_path(repo_root, 'vlib')
 		tests_dir:    tests_dir
 		v3_src:       os.join_path(script_dir, 'v.v')
-		c99:          c99
-		c99_flag:     if c99 { '-c99' } else { '' }
+		c99:          options.c99
+		c99_flag:     if options.c99 { '-c99' } else { '' }
 		host_backend: native_backend_arch()
 		host_os:      os.user_os()
 		temp_prefix:  '${temp_prefix}_${os.getpid()}'
+		units:        options.units
+		shard:        options.shard
+		list_units:   options.list_units
 	}
 }
 
-fn parse_args() bool {
+const usage = 'usage: test_all.vsh [-c99] [--units-only | --skip-units] [--shard i/n] [--list-units]
+
+  --units-only   run only section 1, the V3 unit tests
+  --skip-units   run every section except section 1
+  --shard i/n    run only the i-th of n near-equal parts of the unit tests (1 <= i <= n)
+  --list-units   print the unit tests that would run, and exit'
+
+fn parse_args() Options {
 	mut c99 := false
-	for arg in os.args[1..] {
+	mut units_only := false
+	mut skip_units := false
+	mut shard := UnitShard{}
+	mut list_units := false
+	args := os.args[1..]
+	mut i := 0
+	for i < args.len {
+		arg := args[i]
 		match arg {
 			'-c99', '--c99' {
 				c99 = true
 			}
+			'-units-only', '--units-only' {
+				units_only = true
+			}
+			'-skip-units', '--skip-units' {
+				skip_units = true
+			}
+			'-shard', '--shard' {
+				if i + 1 >= args.len {
+					fail('--shard needs a value like 2/8')
+				}
+				i++
+				shard = parse_unit_shard(args[i])
+			}
+			'-list-units', '--list-units' {
+				list_units = true
+			}
 			'-h', '--help' {
-				println('usage: test_all.vsh [-c99]')
+				println(usage)
 				exit(0)
 			}
 			else {
-				fail('unknown argument: ${arg}')
+				fail('unknown argument: ${arg}\n${usage}')
+			}
+		}
+		i++
+	}
+	if units_only && skip_units {
+		fail('--units-only and --skip-units exclude each other')
+	}
+	if skip_units && (shard.count > 1 || list_units) {
+		fail('--skip-units runs no unit tests, so --shard and --list-units do not apply')
+	}
+	// A shard of the unit tests must not run the other sections once per shard.
+	if shard.count > 1 && !units_only && !list_units {
+		fail('--shard needs --units-only')
+	}
+	units := if units_only {
+		UnitMode.units_only
+	} else if skip_units {
+		UnitMode.skip_units
+	} else {
+		UnitMode.all
+	}
+	return Options{
+		c99:        c99
+		units:      units
+		shard:      shard
+		list_units: list_units
+	}
+}
+
+fn parse_unit_shard(value string) UnitShard {
+	parts := value.split('/')
+	if parts.len == 2 && is_decimal(parts[0]) && is_decimal(parts[1]) {
+		index := parts[0].int()
+		count := parts[1].int()
+		if count >= 1 && index >= 1 && index <= count {
+			return UnitShard{
+				index: index
+				count: count
 			}
 		}
 	}
-	return c99
+	fail('invalid --shard ${value}: expected i/n with 1 <= i <= n')
+	return UnitShard{}
 }
 
 fn host_v_cmd(cfg Config) string {
@@ -458,6 +608,19 @@ fn absolute_path(path string) string {
 		return path
 	}
 	return os.join_path(os.getwd(), path)
+}
+
+fn is_decimal(text string) bool {
+	return text.len > 0 && text.len < 6 && text.bytes().all(it.is_digit())
+}
+
+// note prints a progress line. `--list-units` keeps stdout for the file names.
+fn note(cfg Config, line string) {
+	if cfg.list_units {
+		eprintln(line)
+	} else {
+		println(line)
+	}
 }
 
 fn section(step int, title string) {
