@@ -1417,6 +1417,9 @@ fn (mut tc TypeChecker) check_postfix(id flat.NodeId, node flat.Node) {
 			return
 		}
 		child_type := unalias_type(tc.resolve_type(child_id))
+		if is_unresolved_name_type(child_type) {
+			return
+		}
 		if child_type is Pointer {
 			if tc.pointer_diagnostic_binding_type_name(child_id, Type(child_type)) in [
 				'voidptr',
@@ -10686,6 +10689,12 @@ fn is_byte_type(typ Type) bool {
 
 fn (mut tc TypeChecker) resolve_generic_call_info(id flat.NodeId, fn_node flat.Node) ?CallInfo {
 	if fn_node.kind != .index || fn_node.children_count < 2 || fn_node.value == 'range' {
+		return none
+	}
+	// `name[i]()` indexes a local array or map of functions when `name` is one, even
+	// if a generic function of the same name is in scope: the local shadows it, as
+	// it does for a plain `name()` call.
+	if tc.call_callee_index_is_value(fn_node) {
 		return none
 	}
 	base_id := tc.a.child(&fn_node, 0)
