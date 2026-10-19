@@ -7,7 +7,7 @@ const dump_expr_vlib_dir = os.dir(dump_expr_v3_dir)
 const dump_expr_v3_src = os.join_path(dump_expr_v3_dir, 'v.v')
 
 fn dump_expr_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_dump_expr_codegen_test_${os.getpid()}')
+	v3_bin := os.join_path(os.temp_dir(), 'v3_dump_expr_codegen_test_${os.getpid()}') + $if windows { '.exe' } $else { '' }
 	if os.is_executable(v3_bin) {
 		return v3_bin
 	}

@@ -20,13 +20,13 @@ fn setup_v3_cache() {
 		return
 	}
 	os.rmdir_all(cache_dir) or {}
-	os.rm(tmp_test_path('post_merge_review_fixes_test')) or {}
+	os.rm(tmp_test_path('post_merge_review_fixes_test') + $if windows { '.exe' } $else { '' }) or {}
 	os.setenv('V3CACHE', cache_dir, true)
 }
 
 fn build_v3() string {
 	setup_v3_cache()
-	v3_bin := tmp_test_path('post_merge_review_fixes_test')
+	v3_bin := tmp_test_path('post_merge_review_fixes_test') + $if windows { '.exe' } $else { '' }
 	if os.is_executable(v3_bin) {
 		return v3_bin
 	}

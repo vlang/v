@@ -11,7 +11,7 @@ fn inline_asm_tmp_path(name string) string {
 }
 
 fn build_v3_inline_asm() string {
-	v3_bin := inline_asm_tmp_path('compiler')
+	v3_bin := inline_asm_tmp_path('compiler') + $if windows { '.exe' } $else { '' }
 	if os.is_executable(v3_bin) {
 		return v3_bin
 	}

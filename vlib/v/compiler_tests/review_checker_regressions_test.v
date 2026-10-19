@@ -7,7 +7,7 @@ const vlib_dir = os.dir(v3_dir)
 const v3_src = os.join_path(v3_dir, 'v.v')
 
 fn build_v3_review_checker() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_review_checker_regressions_test_${os.getpid()}')
+	v3_bin := os.join_path(os.temp_dir(), 'v3_review_checker_regressions_test_${os.getpid()}') + $if windows { '.exe' } $else { '' }
 	if os.is_executable(v3_bin) {
 		return v3_bin
 	}

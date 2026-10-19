@@ -17,7 +17,7 @@ fn selective_import_setup_v3_cache() {
 
 fn selective_import_build_v3() string {
 	selective_import_setup_v3_cache()
-	v3_bin := os.join_path(os.temp_dir(), 'v3_selective_import_test_${os.getpid()}')
+	v3_bin := os.join_path(os.temp_dir(), 'v3_selective_import_test_${os.getpid()}') + $if windows { '.exe' } $else { '' }
 	if os.is_executable(v3_bin) {
 		return v3_bin
 	}
