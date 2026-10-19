@@ -674,6 +674,90 @@ fn test_conn_state_is_pooled_with_buffers_retained() ! {
 	C.close(client_fd)
 }
 
+fn test_consumed_large_read_buffer_preserves_pipelined_request() {
+	consumed := 'x'.repeat(128 * 1024)
+	pending := 'GET /next HTTP/1.1\r\nHost: x\r\n\r\n'
+	mut cs := ConnState{
+		read_buf: (consumed + pending).bytes()
+	}
+	assert cs.read_buf.cap > max_pooled_read_cap
+	compact_read_buf(mut cs, consumed.len)
+	assert cs.read_buf.bytestr() == pending
+	assert cs.read_buf.cap == read_buf_cap
+	compact_read_buf(mut cs, pending.len)
+	assert cs.read_buf.len == 0
+}
+
+fn test_drained_large_write_buffer_shrinks_on_keep_alive() ! {
+	server := new_server(ServerConfig{
+		family:  .ip
+		port:    0
+		handler: regression_handler
+	})!
+	epoll_fd := C.epoll_create1(0)
+	assert epoll_fd >= 0
+	defer { C.close(epoll_fd) }
+	mut sockets := [2]i32{}
+	assert C.socketpair(C.AF_UNIX, C.SOCK_STREAM, 0, &sockets[0]) == 0
+	defer {
+		C.close(sockets[0])
+		C.close(sockets[1])
+	}
+	mut w := new_regression_worker(server, epoll_fd)
+	assert add_fd_to_epoll(epoll_fd, sockets[0], u32(C.EPOLLIN | C.EPOLLET)) == 0
+	mut cs := state_for(mut w, sockets[0])
+	cs.write_buf = []u8{cap: 128 * 1024}
+	response := 'HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok'
+	cs.write_buf << response.bytes()
+	assert flush_batch(mut w, sockets[0], mut cs) == .drained
+	assert recv_available(sockets[1]) == response
+	assert cs.write_buf.len == 0
+	assert cs.write_buf.cap == write_buf_cap
+}
+
+fn test_closed_and_detached_connection_pools_are_bounded() ! {
+	server := new_server(ServerConfig{
+		family:  .ip
+		port:    0
+		handler: regression_handler
+	})!
+	epoll_fd := C.epoll_create1(0)
+	assert epoll_fd >= 0
+	defer { C.close(epoll_fd) }
+	for detach in [false, true] {
+		mut w := new_regression_worker(server, epoll_fd)
+		mut servers := []int{}
+		mut clients := []int{}
+		for _ in 0 .. max_pooled_conns + 4 {
+			mut sockets := [2]i32{}
+			assert C.socketpair(C.AF_UNIX, C.SOCK_STREAM, 0, &sockets[0]) == 0
+			servers << int(sockets[0])
+			clients << int(sockets[1])
+			mut cs := state_for(mut w, sockets[0])
+			cs.read_buf = []u8{len: 1, cap: 128 * 1024}
+			cs.write_buf = []u8{len: 1, cap: 128 * 1024}
+		}
+		for i, fd in servers {
+			if detach {
+				detach_conn(mut w, fd)
+				C.close(fd)
+			} else {
+				close_conn(mut w, fd)
+			}
+			C.close(clients[i])
+			assert unsafe { w.conns[fd] == nil }
+			assert w.free_conns.len <= max_pooled_conns
+		}
+		assert w.free_conns.len == max_pooled_conns
+		for cs in w.free_conns {
+			assert cs.read_buf.len == 0
+			assert cs.read_buf.cap == read_buf_cap
+			assert cs.write_buf.len == 0
+			assert cs.write_buf.cap == write_buf_cap
+		}
+	}
+}
+
 fn test_timeout_sweep_is_throttled_across_ready_batches() ! {
 	server := new_server(ServerConfig{
 		family:             .ip
