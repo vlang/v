@@ -9,7 +9,7 @@ fn interner_parallel_writer(mut interner TypeInterner, input []Type, ready chan 
 		}
 		id, canonical := interner.canonicalize(typ)
 		assert semantic_types_equal(canonical, typ)
-		assert interner.name(id) == typ.name()
+		assert interner.source_type_id(id) == typ.source_type_id()
 	}
 }
 

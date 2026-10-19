@@ -57,7 +57,7 @@ pub fn new_cipher(key []u8) !&Cipher {
 // Deprecated: Reset can't guarantee that the key will be entirely removed from
 // the process's memory.
 pub fn (mut c Cipher) reset() {
-	for i in c.s {
+	for i in 0 .. 256 {
 		c.s[i] = 0
 	}
 	c.i = 0

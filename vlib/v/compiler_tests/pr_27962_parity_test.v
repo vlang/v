@@ -134,7 +134,7 @@ fn main() {
 	mut wg := sync.new_waitgroup()
 	wg.go(work)
 	wg.wait()
-	timer := time.new_timer(time.nanosecond)
+	timer := sync.new_timer(time.nanosecond)
 	_ = <-timer.c
 }
 '
@@ -145,12 +145,13 @@ fn main() {
 		assert false, custom_stack_c
 		return
 	}
-	thread_helper_index := custom_stack_c.index('#ifndef V_SYNC_THREAD_HELPER_H') or {
-		assert false, custom_stack_c
-		return
-	}
-	assert define_index < thread_helper_index
-	assert custom_stack_c.contains('static const size_t __v_thread_stack_size = V_THREAD_STACK_SIZE;')
+	// The thread helpers that read the size follow its definition.
+	stack_size_index :=
+		custom_stack_c.index('static const size_t __v_thread_stack_size = V_THREAD_STACK_SIZE;') or {
+			assert false, custom_stack_c
+			return
+		}
+	assert define_index < stack_size_index
 
 	x86_c := pr_27962_generate_c(v3_bin, root, 'runtime_x86_stack', 'fn main() {}\n', '-arch i386')
 	assert x86_c.contains('#define V_THREAD_STACK_SIZE 2097152'), x86_c

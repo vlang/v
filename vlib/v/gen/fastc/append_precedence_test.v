@@ -54,6 +54,9 @@ fn main() {
 	values["answer"] << number + 2 * 3
 	values["answer"] << number * 2 + 1
 	assert values["answer"] == [10, 9]
+	large := int(1) << 40
+	values["wide"] << large + number
+	assert values["wide"] == [large + number]
 	reader.append_source("source")
 	assert reader.buffer.lines == ["source"]
 	assert reader.parsed == "source!"
@@ -104,9 +107,9 @@ fn main() {
 	values[owner] << 4 + 2 * 3
 }
 ', 'append_rhs_precedence.v', prefs) or { panic(err) }
-	body := source.all_after_last('int main(')
+	body := source.all_after_last('int ${fastc_c_main_name(prefs)}(')
 	assert body.contains('string __vf_append_value = (builtin__string_plus('), body
-	assert body.contains('int __vf_append_value = ('), body
+	assert body.contains('${fastc_output_c_type('int')} __vf_append_value = ('), body
 	assert !body.contains('<<'), body
 	assert body.count('builtin__array_push(') == 4, body
 }

@@ -17,10 +17,20 @@ set V_OLD=./v_old.exe
 set V_UPDATED=./v_up.exe
 set V_STAGE=./v_stage.exe
 set V_STAGE_C=./v_stage.c
+REM Current vc snapshots declare these Windows helpers as external functions.
+REM Older snapshots embed static definitions, which can coexist with these.
+set V_BOOTSTRAP_NATIVE="%~dp0vlib\time\ticks_windows.c" "%~dp0vlib\v\winthread_helper_windows.c" "%~dp0cmd\v\toolcache_windows_helpers.c"
 REM Native core helpers are cached objects in normal builds. The direct stage
 REM compile must link them too; this stage explicitly uses -gc none.
-set V_STAGE_NATIVE="%~dp0vlib\builtin\core_windows.c" "%~dp0vlib\v\modulecache\file_metadata.c" "%~dp0vlib\time\ticks_windows.c" "%~dp0vlib\v\winthread_helper_windows.c" "%~dp0cmd\v\toolcache_windows_helpers.c" "%~dp0vlib\sync\thread_helper.c"
+set V_STAGE_NATIVE="%~dp0vlib\builtin\core_windows.c" "%~dp0vlib\v\modulecache\file_metadata.c" %V_BOOTSTRAP_NATIVE% "%~dp0vlib\sync\thread_helper.c"
 set V_C_FILE=./vc/v_win.c
+REM Snapshots generated before vlang/v#30606 declare the SDK-backed Windows
+REM helpers (time ticks, Win32 threads, toolcache file/ACL probes) but do not
+REM embed their bodies, so the bootstrap must link these sources explicitly.
+REM Newer snapshots embed them with static linkage, so linking the external
+REM definitions as well is harmless. The other V_STAGE_NATIVE helpers are not
+REM referenced by existing vc snapshots and are left out of the bootstrap.
+set V_BOOTSTRAP_NATIVE="%~dp0vlib\time\ticks_windows.c" "%~dp0vlib\v\winthread_helper_windows.c" "%~dp0cmd\v\toolcache_windows_helpers.c"
 REM Portable vc snapshots need the full V1 compiler until the new driver is built.
 REM Keep this aligned with VC_BOOTSTRAP_DEFINE in the Unix makefiles.
 set VC_BOOTSTRAP_DEFINE=-DCUSTOM_DEFINE_v1_fallback
@@ -169,8 +179,24 @@ REM By default, use tcc, since we have it prebuilt:
 :tcc_strap
 :tcc32_strap
 call :build_bootstrap_with_tcc
-if !ERRORLEVEL! NEQ 0 goto :compile_error
+if !ERRORLEVEL! NEQ 0 goto :bootstrap_self_hosted_fallback
 call :build_fresh_v_with_tcc
+if !ERRORLEVEL! NEQ 0 goto :self_hosted_fallback
+call :move_updated_to_v
+if !ERRORLEVEL! NEQ 0 goto :compile_error
+goto :success
+
+:bootstrap_self_hosted_fallback
+echo  ^> Snapshot bootstrap failed; rebuilding "%V_UPDATED%" with the self-hosted compiler "%V_EXE%"
+call :build_self_hosted_with_tcc
+if !ERRORLEVEL! NEQ 0 goto :compile_error
+call :move_updated_to_v
+if !ERRORLEVEL! NEQ 0 goto :compile_error
+goto :success
+
+:self_hosted_fallback
+echo  ^> Stage build failed; rebuilding "%V_UPDATED%" with the self-hosted compiler "%V_EXE%"
+call :build_self_hosted_with_tcc
 if !ERRORLEVEL! NEQ 0 goto :tcc_retry_with_host_bootstrap
 call :move_updated_to_v
 if !ERRORLEVEL! NEQ 0 goto :compile_error
@@ -203,10 +229,23 @@ if !stage_error! NEQ 0 (
 echo  ^> Compiling "%V_EXE%" with "%V_STAGE%"
 REM V3 supplies the absolute bundled-TCC root itself. A relative -B here would
 REM override it after V3 changes into its isolated link directory.
-"%V_STAGE%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc -cc "!tcc_exe!" -o "%V_UPDATED%" cmd/v
+set updated_vflags=-cc "!tcc_exe!"
+"%V_STAGE%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc !updated_vflags! -o "%V_UPDATED%" cmd/v
 set stage_error=!ERRORLEVEL!
 call :try_delete "%V_STAGE%"
 exit /b !stage_error!
+
+:build_self_hosted_with_tcc
+if not exist "%V_EXE%" (
+	echo  ^> Self-hosted compiler not found: "%V_EXE%"
+	exit /b 1
+)
+echo  ^> Compiling "%V_UPDATED%" from cmd/v with the self-hosted compiler "%V_EXE%"
+set updated_vflags=-cc "!tcc_exe!"
+"%V_EXE%" %V_BOOTSTRAP_VFLAGS% -g !updated_vflags! -o "%V_UPDATED%" cmd/v
+set self_hosted_error=!ERRORLEVEL!
+if !self_hosted_error! NEQ 0 call :try_delete "%V_UPDATED%"
+exit /b !self_hosted_error!
 
 :clang_strap
 call :build_bootstrap_with_clang
@@ -218,7 +257,8 @@ if !ERRORLEVEL! NEQ 0 (
 call :build_stage_with_clang
 if !ERRORLEVEL! NEQ 0 goto :compile_error
 echo  ^> Compiling "%V_EXE%" with "%V_STAGE%"
-"%V_STAGE%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc !clang_vflags! -o "%V_UPDATED%" cmd/v
+set updated_vflags=!clang_vflags!
+"%V_STAGE%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc !updated_vflags! -o "%V_UPDATED%" cmd/v
 set stage_error=!ERRORLEVEL!
 call :try_delete "%V_STAGE%"
 if !stage_error! NEQ 0 goto :compile_error
@@ -236,7 +276,8 @@ if !ERRORLEVEL! NEQ 0 (
 call :build_stage_with_gcc
 if !ERRORLEVEL! NEQ 0 goto :compile_error
 echo  ^> Compiling "%V_EXE%" with "%V_STAGE%"
-"%V_STAGE%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc -cc "!gcc_exe!" -o "%V_UPDATED%" cmd/v
+set updated_vflags=-cc "!gcc_exe!"
+"%V_STAGE%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc !updated_vflags! -o "%V_UPDATED%" cmd/v
 set stage_error=!ERRORLEVEL!
 call :try_delete "%V_STAGE%"
 if !stage_error! NEQ 0 goto :compile_error
@@ -294,7 +335,8 @@ if !ERRORLEVEL! NEQ 0 (
 )
 
 echo  ^> Compiling "%V_EXE%" with "%V_STAGE%"
-"%V_STAGE%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc -cc msvc -o "%V_UPDATED%" cmd/v
+set updated_vflags=-cc msvc
+"%V_STAGE%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc !updated_vflags! -o "%V_UPDATED%" cmd/v
 set msvc_error=!ERRORLEVEL!
 call :try_delete "%ObjFile%"
 call :try_delete "%V_STAGE%"
@@ -465,13 +507,23 @@ set stage_error=!ERRORLEVEL!
 if !stage_error! NEQ 0 call :try_delete "%V_STAGE%"
 exit /b !stage_error!
 
+:select_tcc_openlibm
+REM Direct TCC links need OpenLibm for C99 math that msvcrt lacks (remainder).
+REM Every Windows TCC bundle ships lib\openlibm.o built for its own compiler, as
+REM vlib/math expects. Use the installed checkout's object before each link: an
+REM existing checkout keeps its branch, so it can differ from tcc_branch.
+set "TCC_OPENLIBM="
+if exist "%tcc_dir%\lib\openlibm.o" set TCC_OPENLIBM="%tcc_dir%\lib\openlibm.o"
+exit /b 0
+
 :build_bootstrap_with_tcc
 if not exist "!tcc_exe!" (
 	echo  ^> TCC not found
 	exit /b 1
 )
+call :select_tcc_openlibm
 echo  ^> Attempting to build "%V_BOOTSTRAP%" (from %V_C_FILE%) with "!tcc_exe!"
-"!tcc_exe!" %VC_BOOTSTRAP_DEFINE% -B"%tcc_dir%" -bt10 -g -w -o "%V_BOOTSTRAP%" "%V_C_FILE%" -ladvapi32 -lws2_32 -lbcrypt -Wl,-stack=33554432
+"!tcc_exe!" %VC_BOOTSTRAP_DEFINE% -B"%tcc_dir%" -bt10 -g -w -o "%V_BOOTSTRAP%" "%V_C_FILE%" %V_BOOTSTRAP_NATIVE% %TCC_OPENLIBM% -ladvapi32 -lws2_32 -lbcrypt -Wl,-stack=33554432
 exit /b !ERRORLEVEL!
 
 :build_bootstrap_with_msvc
@@ -488,7 +540,7 @@ if !ERRORLEVEL! NEQ 0 (
 	exit /b 1
 )
 echo  ^> Attempting to build "%V_BOOTSTRAP%" (from %V_C_FILE%) with MSVC
-cl /nologo %VC_BOOTSTRAP_DEFINE% /volatile:ms /bigobj /MD /we4013 /utf-8 /w /std:c11 /D_CRT_DECLARE_NONSTDC_NAMES=1 /Fe"%V_BOOTSTRAP%" "%V_C_FILE%" kernel32.lib user32.lib dbghelp.lib ws2_32.lib bcrypt.lib advapi32.lib /link /STACK:33554432
+cl /nologo %VC_BOOTSTRAP_DEFINE% /volatile:ms /bigobj /MD /we4013 /utf-8 /w /std:c11 /D_CRT_DECLARE_NONSTDC_NAMES=1 /Fe"%V_BOOTSTRAP%" "%V_C_FILE%" %V_BOOTSTRAP_NATIVE% kernel32.lib user32.lib dbghelp.lib ws2_32.lib bcrypt.lib advapi32.lib /link /STACK:33554432
 set msvc_bootstrap_error=!ERRORLEVEL!
 call :try_delete "%ObjFile%"
 exit /b !msvc_bootstrap_error!
@@ -512,9 +564,9 @@ call :configure_clang_target
 if !ERRORLEVEL! NEQ 0 exit /b !ERRORLEVEL!
 echo  ^> Attempting to build "%V_BOOTSTRAP%" (from %V_C_FILE%) with Clang
 if !clang_msvc! EQU 1 (
-	"!clang_cl_exe!" /nologo %VC_BOOTSTRAP_DEFINE% /bigobj /MD /utf-8 /w /std:c11 /D_CRT_DECLARE_NONSTDC_NAMES=1 /Fe"%V_BOOTSTRAP%" "%V_C_FILE%" kernel32.lib user32.lib dbghelp.lib ws2_32.lib bcrypt.lib advapi32.lib /link /STACK:33554432
+	"!clang_cl_exe!" /nologo %VC_BOOTSTRAP_DEFINE% /bigobj /MD /utf-8 /w /std:c11 /D_CRT_DECLARE_NONSTDC_NAMES=1 /Fe"%V_BOOTSTRAP%" "%V_C_FILE%" %V_BOOTSTRAP_NATIVE% kernel32.lib user32.lib dbghelp.lib ws2_32.lib bcrypt.lib advapi32.lib /link /STACK:33554432
 ) else (
-	"!clang_exe!" %VC_BOOTSTRAP_DEFINE% -std=c99 -municode -g -w -fwrapv -Wno-error=implicit-function-declaration -Wno-error=incompatible-function-pointer-types -o "%V_BOOTSTRAP%" "%V_C_FILE%" -ladvapi32 -lws2_32 -lbcrypt -Wl,--stack=33554432
+	"!clang_exe!" %VC_BOOTSTRAP_DEFINE% -std=c99 -municode -g -w -fwrapv -Wno-error=implicit-function-declaration -Wno-error=incompatible-function-pointer-types -o "%V_BOOTSTRAP%" "%V_C_FILE%" %V_BOOTSTRAP_NATIVE% -ladvapi32 -lws2_32 -lbcrypt -Wl,--stack=33554432
 )
 if !ERRORLEVEL! NEQ 0 (
 	echo Clang bootstrap failed for target !clang_target!. Check its Windows SDK, headers, and libraries.
@@ -551,8 +603,9 @@ exit /b !stage_error!
 set stage_vflags=-cc "!tcc_exe!"
 call :generate_stage_c
 if !ERRORLEVEL! NEQ 0 exit /b !ERRORLEVEL!
+call :select_tcc_openlibm
 echo  ^> Compiling "%V_STAGE%" from "%V_STAGE_C%" with TCC
-"!tcc_exe!" -B"%tcc_dir%" -bt10 -g -w -o "%V_STAGE%" "%V_STAGE_C%" %V_STAGE_NATIVE% -ldbghelp -lws2_32 -L"%~dp0vlib\crypto\rand\internal\libraries\bcrypt" -lbcrypt -I "%~dp0thirdparty\stdatomic\win" -ladvapi32 -Wl,-stack=33554432
+"!tcc_exe!" -B"%tcc_dir%" -bt10 -g -w -o "%V_STAGE%" "%V_STAGE_C%" %V_STAGE_NATIVE% %TCC_OPENLIBM% -ldbghelp -lws2_32 -L"%~dp0vlib\crypto\rand\internal\libraries\bcrypt" -lbcrypt -I "%~dp0thirdparty\stdatomic\win" -ladvapi32 -Wl,-stack=33554432
 set stage_error=!ERRORLEVEL!
 call :try_delete "%V_STAGE_C%"
 exit /b !stage_error!
@@ -600,7 +653,7 @@ if !ERRORLEVEL! NEQ 0 (
 	exit /b 1
 )
 echo  ^> Attempting to build "%V_BOOTSTRAP%" (from %V_C_FILE%) with GCC "!gcc_exe!"
-"!gcc_exe!" %VC_BOOTSTRAP_DEFINE% -std=c99 -municode -g -w -o "%V_BOOTSTRAP%" "%V_C_FILE%" -ladvapi32 -lws2_32 -lbcrypt -Wl,-stack=33554432
+"!gcc_exe!" %VC_BOOTSTRAP_DEFINE% -std=c99 -municode -g -w -o "%V_BOOTSTRAP%" "%V_C_FILE%" %V_BOOTSTRAP_NATIVE% -ladvapi32 -lws2_32 -lbcrypt -Wl,-stack=33554432
 if !ERRORLEVEL! NEQ 0 (
 	echo In most cases, compile errors happen because the version of GCC installed is too old
 	"!gcc_exe!" --version
@@ -677,10 +730,47 @@ ping 192.0.2.1 -n 1 -w 250 >nul
 del "%~1" >nul 2>&1
 exit /b 0
 
+:smoke_test_updated
+REM Install only a compiler that builds and runs hello world with the toolchain that
+REM built it: updated_vflags, set beside every build of %V_UPDATED%. The driver's default
+REM C compiler is not usable on every machine that can build V (a -msvc --local clone has
+REM no bundled TCC and may have no gcc), and a working -msvc build must still install.
+REM A compiler that falls back to the V1 compiler still exits 0, so check its output too.
+echo  ^> Smoke testing "%V_UPDATED%"
+"%V_UPDATED%" version
+if !ERRORLEVEL! NEQ 0 (
+	echo  ^> "%V_UPDATED%" version failed
+	exit /b 1
+)
+"%V_UPDATED%" !updated_vflags! -o "%V_UPDATED%.smoke.exe" examples/hello_world.v > "%V_UPDATED%.smoke.log" 2>&1
+set smoke_error=!ERRORLEVEL!
+call :smoke_log_is_clean "%V_UPDATED%.smoke.log"
+if !ERRORLEVEL! NEQ 0 set smoke_error=1
+if !smoke_error! EQU 0 (
+	"%V_UPDATED%.smoke.exe" > nul
+	set smoke_error=!ERRORLEVEL!
+)
+call :try_delete "%V_UPDATED%.smoke.exe"
+call :try_delete "%V_UPDATED%.smoke.log"
+if !smoke_error! NEQ 0 (
+	echo  ^> Smoke test failed; "%V_UPDATED%" was not installed
+	exit /b !smoke_error!
+)
+exit /b 0
+
+:smoke_log_is_clean
+REM Exit 1 when the compile log shows that the compiler fell back to another compiler.
+if not exist "%~1" exit /b 0
+findstr /i /c:"falling back" /c:"could not build" /c:"retrying with" "%~1" >nul
+if !ERRORLEVEL! EQU 0 exit /b 1
+exit /b 0
+
 :move_updated_to_v
 REM The V1 compatibility compiler is installed on demand by `make v1`.
 REM Compiling cmd/v again would only produce another copy of the new driver.
 if not exist "%V_UPDATED%" exit /b 1
+call :smoke_test_updated
+if !ERRORLEVEL! NEQ 0 exit /b !ERRORLEVEL!
 @REM del "%V_EXE%" &:: breaks if `makev.bat` is run from `v up` b/c of held file handle on `%V_EXE%`
 if exist "%V_EXE%" (
 	move /Y "%V_EXE%" "%V_OLD%" >nul

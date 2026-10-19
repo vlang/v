@@ -565,3 +565,24 @@ fn test_set_cookie() {
 	h.add(.set_cookie, 'bar')
 	assert h.render() == 'Set-Cookie: foo\r\nSet-Cookie: bar\r\n'
 }
+
+fn test_header_set_clears_mixed_case_values() {
+	// `set` must replace values stored under another casing of the same
+	// field (e.g. via `add_custom`), like `set_custom` does and like Go's
+	// `Header.Set`. See https://github.com/vlang/v/issues/30616
+	mut h := new_header()
+	h.add_custom('content-type', 'a')!
+	h.set(.content_type, 'b')
+	assert h.values(.content_type) == ['b']
+	mut h2 := new_header()
+	h2.add_custom('ACCEPT', 'old')!
+	h2.set(.accept, 'new')
+	assert h2.values(.accept) == ['new']
+	// duplicates under several casings collapse to one value
+	mut h3 := new_header()
+	h3.add_custom('Content-Type', '1')!
+	h3.add_custom('content-type', '2')!
+	h3.add_custom('CONTENT-TYPE', '3')!
+	h3.set(.content_type, 'only')
+	assert h3.values(.content_type) == ['only']
+}

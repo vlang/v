@@ -19,5 +19,6 @@ fn test_inferred_generic_const_return_has_concrete_global_type() {
 		"import sync.stdatomic\n\nconst flag = stdatomic.new_atomic(false)\nconst number = stdatomic.new_atomic(7)\n\nfn main() {\n\tassert !flag.load()\n\tassert number.load() == 7\n\tprintln('ok')\n}\n")!
 	out := os.exec([v3_bin, '-no-parallel', 'run', source])
 	assert out.exit_code == 0, out.output
-	assert out.output.contains('\nok\n'), out.output
+	// `run` prints no C compiler lines before the program output any more.
+	assert out.output.split_into_lines().any(it == 'ok'), out.output
 }

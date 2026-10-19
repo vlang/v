@@ -30,6 +30,7 @@ println(stack)
 - [x] BTree ordered map and BTreeSet ordered set
 - [x] Quadtree
 - [x] Bloom filter
+- [x] CRDT Conflict-free replicated data types (`datatypes.crdt`)
 - [ ] ...
 
 `heapify(items)` builds a minimum heap from a copy of the input. `pushpop(item)` returns the

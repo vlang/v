@@ -1070,10 +1070,22 @@ fn (mut g Gen) gen_instr(val_id int) {
 			if g.is_float_type(lhs_typ) {
 				// Float comparison: FCMP sets NZCV; the same condition codes used
 				// for signed integers give the expected ordered results (matching
-				// the v2 backend).
-				g.load_float_operand(instr.operands[0], 0)
-				g.load_float_operand(instr.operands[1], 1)
-				g.emit32(asm_fcmp_d(Reg(0), Reg(1)))
+				// the v2 backend). Comparing at the operands' own width avoids
+				// widening two f32 values to f64 just to throw the difference away.
+				lhs_reg, rhs_reg := float_operand_regs(instr.operands[0], instr.operands[1])
+				if g.is_f32_type(lhs_typ) {
+					g.load_f32_operand(instr.operands[0], lhs_reg)
+					if rhs_reg != lhs_reg {
+						g.load_f32_operand(instr.operands[1], rhs_reg)
+					}
+					g.emit32(asm_fcmp_s(Reg(lhs_reg), Reg(rhs_reg)))
+				} else {
+					g.load_float_operand(instr.operands[0], lhs_reg)
+					if rhs_reg != lhs_reg {
+						g.load_float_operand(instr.operands[1], rhs_reg)
+					}
+					g.emit32(asm_fcmp_d(Reg(lhs_reg), Reg(rhs_reg)))
+				}
 			} else {
 				lhs_reg := g.load_val(instr.operands[0], 8)
 				rhs_reg := g.load_val(instr.operands[1], 9)
@@ -1334,6 +1346,166 @@ fn (mut g Gen) gen_instr(val_id int) {
 	}
 }
 
+// ==================== SIMD intrinsics ====================
+//
+// Four f32 lanes are the one case where one instruction does the work of four,
+// and `vlib/simd` is where a V program asks for it: its `F32x4` is exactly four
+// f32 values. The module's helpers carry portable scalar bodies so that every
+// backend can compile them; here the call is replaced by the NEON instruction
+// that operates on all four lanes at once. Any shape the vector path cannot
+// serve falls through to the ordinary call, so the helper's own body stays the
+// safety net rather than dead weight that was assumed away.
+
+// SimdIntrinsicOp names the four-lane operation a recognized callee lowers to.
+enum SimdIntrinsicOp {
+	vadd
+	vsub
+	vmul
+	vdiv
+	vsqrt
+}
+
+// simd_intrinsics maps an SSA callee name to the four-lane operation it means.
+// The same operation can arrive under several names. The four-lane helpers are
+// what the operators call on non-C backends; the SSA builder qualifies each
+// helper with its defining module. The operator
+// methods themselves (`simd.F32x4.+` and the `add`/`sub`/`mul`/`div`
+// convenience wrappers the generator emits beside them) are listed too,
+// because they always reach this backend as calls even when the helper bodies
+// inside them have been expanded away before codegen. The layout guard on the
+// call verifies its representation; the module prefix preserves callee identity.
+const simd_intrinsics = {
+	'simd.add_native':  SimdIntrinsicOp.vadd
+	'simd.F32x4.+':     SimdIntrinsicOp.vadd
+	'simd.F32x4.add':   SimdIntrinsicOp.vadd
+	'simd.sub_native':  SimdIntrinsicOp.vsub
+	'simd.F32x4.-':     SimdIntrinsicOp.vsub
+	'simd.F32x4.sub':   SimdIntrinsicOp.vsub
+	'simd.mul_native':  SimdIntrinsicOp.vmul
+	'simd.F32x4.*':     SimdIntrinsicOp.vmul
+	'simd.F32x4.mul':   SimdIntrinsicOp.vmul
+	'simd.div_native':  SimdIntrinsicOp.vdiv
+	'simd.F32x4./':     SimdIntrinsicOp.vdiv
+	'simd.F32x4.div':   SimdIntrinsicOp.vdiv
+	'simd.sqrt_native': SimdIntrinsicOp.vsqrt
+	'simd.F32x4.sqrt':  SimdIntrinsicOp.vsqrt
+}
+
+// simd_intrinsic_op looks up the four-lane operation a callee means, or none.
+// A call built from source can carry either spelling of a module-qualified
+// name — `a.b` or `a__b` — and the SSA builder picks one per call site, so both
+// have to resolve. The lookup must be an existence test: indexing a map with a
+// missing key yields the zero value, which here is `vadd`, so `map[name] or {}`
+// would quietly return it for every unrelated callee.
+fn simd_intrinsic_op(fn_name string) ?SimdIntrinsicOp {
+	if op := simd_intrinsics[fn_name] {
+		return op
+	}
+	normalized := fn_name.replace('__', '.')
+	if normalized != fn_name {
+		if op := simd_intrinsics[normalized] {
+			return op
+		}
+	}
+	return none
+}
+
+// is_f32x4_layout reports whether a homogeneous float aggregate is exactly four
+// f32 lanes at four-byte strides, which is the shape one `q` register holds.
+fn (g &Gen) is_f32x4_layout(layout Arm64HfaLayout) bool {
+	if layout.elements.len != 4 {
+		return false
+	}
+	for i, element in layout.elements {
+		if !g.is_f32_type(element.typ) {
+			return false
+		}
+		if element.offset != i * 4 {
+			return false
+		}
+	}
+	return true
+}
+
+// simd_intrinsic_operand_count reads simd intrinsic operand count input for arm64.
+fn (op SimdIntrinsicOp) operand_count() int {
+	return if op == .vsqrt {
+		1
+	} else {
+		2
+	}
+}
+
+// gen_simd_intrinsic emits one NEON instruction for a call to a vlib/simd
+// four-lane helper and reports whether it did. Both the operands and the result
+// must be four-lane f32 values with stack slots; anything else is left to the
+// ordinary call path.
+fn (mut g Gen) gen_simd_intrinsic(val_id int, instr ssa.Instruction, fn_name string) bool {
+	op := simd_intrinsic_op(fn_name) or { return false }
+	operand_count := op.operand_count()
+	if instr.operands.len < operand_count + 1 {
+		return false
+	}
+	layout := g.c_homogeneous_float_aggregate(instr.typ) or { return false }
+	if !g.is_f32x4_layout(layout) {
+		return false
+	}
+	mut operand_offsets := []int{cap: operand_count}
+	for i in 0 .. operand_count {
+		arg_id := instr.operands[i + 1]
+		arg_layout := g.c_homogeneous_float_aggregate(g.m.values[arg_id].typ) or { return false }
+		if !g.is_f32x4_layout(arg_layout) {
+			return false
+		}
+		operand_offsets << g.stack_slot(arg_id) or { return false }
+	}
+	result_offset := g.stack_slot(val_id) or { return false }
+
+	for i, offset in operand_offsets {
+		g.emit_lea_fp(8, offset)
+		g.emit32(asm_ldr_q_imm(i, Reg(8), 0))
+	}
+	match op {
+		.vadd { g.emit32(asm_fadd_v4s(0, 0, 1)) }
+		.vsub { g.emit32(asm_fsub_v4s(0, 0, 1)) }
+		.vmul { g.emit32(asm_fmul_v4s(0, 0, 1)) }
+		.vdiv { g.emit32(asm_fdiv_v4s(0, 0, 1)) }
+		.vsqrt { g.emit32(asm_fsqrt_v4s(0, 0)) }
+	}
+	g.emit_lea_fp(8, result_offset)
+	g.emit32(asm_str_q_imm(0, Reg(8), 0))
+	return true
+}
+
+// gen_sqrt_intrinsic emits FSQRT for a call to libm's square root, and reports
+// whether it did. `vlib/math` reaches libm through C declarations, so such a
+// call otherwise survives as a `bl _sqrt` with the argument marshalled around
+// it. IEEE-754 square root is correctly rounded either way, so the instruction
+// and the library call agree bit for bit.
+fn (mut g Gen) gen_sqrt_intrinsic(val_id int, instr ssa.Instruction, fn_name string,
+	is_c_extern bool) bool {
+	if !is_c_extern || fn_name !in ['sqrt', 'sqrtf'] || instr.operands.len != 2 {
+		return false
+	}
+	arg_id := instr.operands[1]
+	if !g.is_float_type(g.m.values[arg_id].typ) {
+		return false
+	}
+	if g.is_f32_type(g.m.values[arg_id].typ) {
+		if !g.is_f32_type(instr.typ) {
+			return false
+		}
+		g.load_f32_operand(arg_id, 0)
+		g.emit32(asm_fsqrt_s(0, 0))
+		g.store_f32_result(val_id)
+		return true
+	}
+	g.load_float_operand(arg_id, 0)
+	g.emit32(asm_fsqrt_d(0, 0))
+	g.store_float_result(val_id)
+	return true
+}
+
 // gen_call emits call output for arm64.
 fn (mut g Gen) gen_call(val_id int, instr ssa.Instruction) {
 	if instr.operands.len < 1 {
@@ -1341,13 +1513,21 @@ fn (mut g Gen) gen_call(val_id int, instr ssa.Instruction) {
 	}
 	fn_ref_id := instr.operands[0]
 	is_indirect := instr.op == .call_indirect
+	is_c_extern := !is_indirect && fn_ref_id >= 0 && fn_ref_id < g.m.values.len
+		&& g.m.values[fn_ref_id].kind == .func_ref && g.m.values[fn_ref_id].index >= 0
+		&& g.m.values[fn_ref_id].index < g.m.funcs.len
+		&& g.m.funcs[g.m.values[fn_ref_id].index].is_c_extern
+	if g.gen_simd_intrinsic(val_id, instr, g.m.values[fn_ref_id].name) {
+		return
+	}
+	if g.gen_sqrt_intrinsic(val_id, instr, g.m.values[fn_ref_id].name, is_c_extern) {
+		return
+	}
 	fn_ref := g.m.values[fn_ref_id]
 	mut fn_name := ''
 	if !is_indirect {
 		fn_name = fn_ref.name
 	}
-	is_c_extern := !is_indirect && fn_ref.kind == .func_ref && fn_ref.index >= 0
-		&& fn_ref.index < g.m.funcs.len && g.m.funcs[fn_ref.index].is_c_extern
 	mut c_return_hfa := Arm64HfaLayout{}
 	if is_c_extern {
 		c_return_hfa = g.c_homogeneous_float_aggregate(instr.typ) or { Arm64HfaLayout{} }
@@ -1620,6 +1800,15 @@ fn (mut g Gen) gen_call(val_id int, instr ssa.Instruction) {
 
 fn (mut g Gen) emit_homogeneous_float_aggregate(arg_id int, layout Arm64HfaLayout, first_reg int) {
 	if !g.emit_value_address(arg_id, 8) {
+		return
+	}
+	if g.is_f32x4_layout(layout) && first_reg + layout.elements.len <= 8 {
+		// A four-lane f32 aggregate is one member per consecutive FP register, so
+		// it takes four single-register loads rather than one 128-bit load: `ldr q0`
+		// fills the lanes of V0, and the callee reads V0..V3.
+		for i, element in layout.elements {
+			g.emit32(asm_ldr_s_imm(first_reg + i, Reg(8), u32(element.offset / 4)))
+		}
 		return
 	}
 	for i, element in layout.elements {
@@ -2409,9 +2598,81 @@ fn (g &Gen) is_f32_type(typ_id ssa.TypeID) bool {
 //
 // Float values live as their raw IEEE-754 bit pattern in ordinary integer
 // stack slots / x-registers, exactly like the v2 backend. They are only moved
-// into the scalar SIMD `d` registers transiently for arithmetic, comparison and
-// conversion. An f32 is stored as its 32-bit pattern; it is widened to f64 in
-// the `d` register for computation and narrowed back before storing.
+// into the scalar SIMD `s`/`d` registers transiently for arithmetic, comparison
+// and conversion. An f32 keeps its 32-bit width end to end: it is loaded into an
+// `s` register, operated on by the single-precision instruction, and stored
+// back. Widening it to f64 and narrowing the result again doubles the register
+// traffic and rounds twice, so only the conversions that genuinely need f64 go
+// through `fcvt`.
+
+// load_d_from_slot loads value `val_id` out of its stack slot into the double
+// register `dreg` with one SIMD&FP load, and reports whether it did. The
+// addressing forms are emit_load_fp's, for the same reason: locals sit below fp,
+// and a frame big enough to need the hi/lo split is not rare in the self-hosted
+// compiler. A slot these forms do not cover falls back to an integer load plus
+// an `fmov`, so the caller keeps one correct path for every frame size.
+fn (mut g Gen) load_d_from_slot(val_id int, dreg int) bool {
+	off := g.stack_slot(val_id) or { return false }
+	sp_offset := g.stack_size + g.transient_stack_size + off
+	if off < 0 && sp_offset >= 0 && sp_offset < 32768 && sp_offset % 8 == 0 {
+		g.emit32(asm_ldr_d_imm(dreg, sp, u32(sp_offset / 8)))
+		return true
+	}
+	if off < 0 && sp_offset >= 32768 && sp_offset < 0x1000000 && sp_offset % 8 == 0 {
+		g.emit32(asm_add_imm_lsl12(Reg(11), sp, u32(sp_offset >> 12)))
+		g.emit32(asm_ldr_d_imm(dreg, Reg(11), u32((sp_offset & 0xFFF) / 8)))
+		return true
+	}
+	if off >= -255 && off < 0 {
+		g.emit32(asm_ldur_d(dreg, fp, i32(off)))
+		return true
+	}
+	return false
+}
+
+// load_s_from_slot is load_d_from_slot at f32 width: the value's four bytes go
+// into the `s` register the instruction names, with no widening.
+fn (mut g Gen) load_s_from_slot(val_id int, sreg int) bool {
+	off := g.stack_slot(val_id) or { return false }
+	sp_offset := g.stack_size + g.transient_stack_size + off
+	if off < 0 && sp_offset >= 0 && sp_offset < 16384 && sp_offset % 8 == 0 {
+		g.emit32(asm_ldr_s_imm(sreg, sp, u32(sp_offset / 4)))
+		return true
+	}
+	if off < 0 && sp_offset >= 16384 && sp_offset < 0x1000000 && sp_offset % 8 == 0 {
+		g.emit32(asm_add_imm_lsl12(Reg(11), sp, u32(sp_offset >> 12)))
+		g.emit32(asm_ldr_s_imm(sreg, Reg(11), u32((sp_offset & 0xFFF) / 4)))
+		return true
+	}
+	if off >= -255 && off < 0 {
+		g.emit32(asm_ldur_s(sreg, fp, i32(off)))
+		return true
+	}
+	return false
+}
+
+// store_d_to_slot writes the double in `dreg` into `val_id`'s slot with one
+// SIMD&FP store, and reports whether it did. It covers emit_store_fp's forms
+// and leaves the rest to that path, so the slot is written exactly as before,
+// only without the `fmov` that copies the bits through x8 first.
+fn (mut g Gen) store_d_to_slot(dreg int, val_id int) bool {
+	off := g.stack_slot(val_id) or { return false }
+	sp_offset := g.stack_size + g.transient_stack_size + off
+	if off < 0 && sp_offset >= 0 && sp_offset < 32768 && sp_offset % 8 == 0 {
+		g.emit32(asm_str_d_imm(dreg, sp, u32(sp_offset / 8)))
+		return true
+	}
+	if off < 0 && sp_offset >= 32768 && sp_offset < 0x1000000 && sp_offset % 8 == 0 {
+		g.emit32(asm_add_imm_lsl12(Reg(11), sp, u32(sp_offset >> 12)))
+		g.emit32(asm_str_d_imm(dreg, Reg(11), u32((sp_offset & 0xFFF) / 8)))
+		return true
+	}
+	if off >= -255 && off < 0 {
+		g.emit32(asm_stur_d(dreg, fp, i32(off)))
+		return true
+	}
+	return false
+}
 
 // load_float_operand materializes value `val_id` into the scalar float register
 // `dreg` (as a double), using x8 as a scratch integer register.
@@ -2436,14 +2697,20 @@ fn (mut g Gen) load_float_operand(val_id int, dreg int) {
 			g.emit_mov_imm(8, i64(bits))
 			g.emit32(asm_fmov_d_x(dreg, Reg(8)))
 		}
+		return
+	}
+	// A double already stored as eight bytes goes straight into the register
+	// the instruction will name; only an f32 source still needs the round trip
+	// through x8, because this load widens it.
+	if !is_f32 && g.load_d_from_slot(val_id, dreg) {
+		return
+	}
+	reg := g.load_val(val_id, 8)
+	if is_f32 {
+		g.emit32(asm_fmov_s_w(dreg, Reg(reg)))
+		g.emit32(asm_fcvt_d_s(dreg, dreg))
 	} else {
-		reg := g.load_val(val_id, 8)
-		if is_f32 {
-			g.emit32(asm_fmov_s_w(dreg, Reg(reg)))
-			g.emit32(asm_fcvt_d_s(dreg, dreg))
-		} else {
-			g.emit32(asm_fmov_d_x(dreg, Reg(reg)))
-		}
+		g.emit32(asm_fmov_d_x(dreg, Reg(reg)))
 	}
 }
 
@@ -2454,34 +2721,115 @@ fn (mut g Gen) store_float_result(val_id int) {
 		g.emit32(asm_fcvt_s_d(0, 0))
 		g.emit32(asm_fmov_w_s(Reg(8), 0))
 	} else {
+		if g.store_d_to_slot(0, val_id) {
+			return
+		}
 		g.emit32(asm_fmov_x_d(Reg(8), 0))
 	}
 	g.store_val(8, val_id)
 }
 
-// gen_float_binop emits a binary float op with both operands loaded into d0/d1
-// and the result left in d0, then stored to `val_id`.
+// load_f32_operand materializes value `val_id` into the scalar float register
+// `sreg` as an f32, with no widening, using x8 as a scratch integer register.
+fn (mut g Gen) load_f32_operand(val_id int, sreg int) {
+	if val_id <= 0 || val_id >= g.m.values.len {
+		g.emit_mov_imm(8, 0)
+		g.emit32(asm_fmov_s_w(sreg, Reg(8)))
+		return
+	}
+	val := g.m.values[val_id]
+	if val.kind == .constant {
+		f_val := f32(val.name.f64())
+		bits := *unsafe { &u32(&f_val) }
+		g.emit_mov_imm(8, i64(bits))
+		g.emit32(asm_fmov_s_w(sreg, Reg(8)))
+		return
+	}
+	if g.load_s_from_slot(val_id, sreg) {
+		return
+	}
+	reg := g.load_val(val_id, 8)
+	if reg != 8 {
+		g.emit32(asm_mov_reg(Reg(8), Reg(reg)))
+	}
+	g.emit32(asm_fmov_s_w(sreg, Reg(8)))
+}
+
+// store_f32_result writes the f32 in s0 back to `val_id`'s slot.
+// The store stays a whole-word one: readers of that slot move all eight bytes,
+// not four — load_float_bits_to_reg for a C argument and emit_phi_copy_value for
+// a phi both do — and a `str s` would leave the upper half undefined.
+fn (mut g Gen) store_f32_result(val_id int) {
+	g.emit32(asm_fmov_w_s(Reg(8), 0))
+	g.store_val(8, val_id)
+}
+
+// float_operand_regs picks the two scalar float registers a float instruction
+// names for `lhs_id` and `rhs_id`, so the loads fill exactly the registers the
+// instruction reads. Both operands being the same SSA value yields one register:
+// the value is loaded once and the three-register form reads it twice, which is
+// what makes `x - x` and `x * x` one load cheaper than they were.
+fn float_operand_regs(lhs_id int, rhs_id int) (int, int) {
+	if lhs_id == rhs_id {
+		return 0, 0
+	}
+	return 0, 1
+}
+
+// gen_float_binop emits a binary float op. The operands are loaded into the
+// registers the instruction names at the width of the result, the instruction is
+// the matching single- or double-precision one, and the result is stored to
+// `val_id`. Nothing is funnelled through a fixed pair: `asm_fadd_d` and friends
+// take the registers, so a value already in a register the instruction names is
+// never moved first.
 fn (mut g Gen) gen_float_binop(fop ssa.OpCode, lhs_id int, rhs_id int, val_id int) {
-	g.load_float_operand(lhs_id, 0) // d0
-	g.load_float_operand(rhs_id, 1) // d1
+	is_f32 := g.is_f32_type(g.m.values[val_id].typ)
+	if is_f32 {
+		lhs_reg, rhs_reg := float_operand_regs(lhs_id, rhs_id)
+		g.load_f32_operand(lhs_id, lhs_reg) // s0
+		if rhs_reg != lhs_reg {
+			g.load_f32_operand(rhs_id, rhs_reg) // s1
+		}
+		match fop {
+			.fadd { g.emit32(asm_fadd_s(0, lhs_reg, rhs_reg)) }
+			.fsub { g.emit32(asm_fsub_s(0, lhs_reg, rhs_reg)) }
+			.fmul { g.emit32(asm_fmul_s(0, lhs_reg, rhs_reg)) }
+			.fdiv { g.emit32(asm_fdiv_s(0, lhs_reg, rhs_reg)) }
+			.frem {
+				// No single frem instruction: s0 = s0 - trunc(s0/s1) * s1
+				g.emit32(asm_fdiv_s(2, lhs_reg, rhs_reg))
+				g.emit32(asm_frintz_s(2, 2))
+				g.emit32(asm_fmsub_s(0, 2, rhs_reg, lhs_reg))
+			}
+			else {}
+		}
+		g.store_f32_result(val_id)
+		return
+	}
+
+	lhs_reg, rhs_reg := float_operand_regs(lhs_id, rhs_id)
+	g.load_float_operand(lhs_id, lhs_reg) // d0
+	if rhs_reg != lhs_reg {
+		g.load_float_operand(rhs_id, rhs_reg) // d1
+	}
 	match fop {
 		.fadd {
-			g.emit32(asm_fadd_d0_d0_d1())
+			g.emit32(asm_fadd_d(0, lhs_reg, rhs_reg))
 		}
 		.fsub {
-			g.emit32(asm_fsub_d0_d0_d1())
+			g.emit32(asm_fsub_d(0, lhs_reg, rhs_reg))
 		}
 		.fmul {
-			g.emit32(asm_fmul_d0_d0_d1())
+			g.emit32(asm_fmul_d(0, lhs_reg, rhs_reg))
 		}
 		.fdiv {
-			g.emit32(asm_fdiv_d0_d0_d1())
+			g.emit32(asm_fdiv_d(0, lhs_reg, rhs_reg))
 		}
 		.frem {
 			// No single frem instruction: d0 = d0 - trunc(d0/d1) * d1
-			g.emit32(asm_fdiv_d2_d0_d1())
-			g.emit32(asm_frintz_d2())
-			g.emit32(asm_fmsub_d0_d2_d1_d0())
+			g.emit32(asm_fdiv_d(2, lhs_reg, rhs_reg))
+			g.emit32(asm_frintz_d(2, 2))
+			g.emit32(asm_fmsub_d(0, 2, rhs_reg, lhs_reg))
 		}
 		else {}
 	}

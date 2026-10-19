@@ -2,7 +2,7 @@ module util
 
 fn must_scalar(receiver string, method string, args []string) ComptimeStringScalar {
 	scalar := comptime_string_scalar(receiver, method, args) or { return ComptimeStringScalar{} }
-	assert scalar.typ in ['string', 'bool', 'int']
+	assert scalar.typ_text() in ['string', 'bool', 'int']
 	return scalar
 }
 
@@ -14,7 +14,7 @@ fn folded(receiver string, method string, args []string) string {
 // not in the table has to come back as none rather than a wrong value.
 fn test_comptime_string_scalar_folds_the_zero_argument_methods() {
 	scalar := must_scalar('  Ab  ', 'trim_space', [])
-	assert scalar.typ == 'string'
+	assert scalar.typ_text() == 'string'
 	assert scalar.value == 'Ab'
 	assert folded('Ab', 'to_lower', []) == 'ab'
 	assert folded('Ab', 'to_upper', []) == 'AB'
@@ -24,7 +24,7 @@ fn test_comptime_string_scalar_folds_the_zero_argument_methods() {
 
 fn test_comptime_string_scalar_folds_the_predicate_methods_as_bool() {
 	scalar := must_scalar('abc', 'contains', ['b'])
-	assert scalar.typ == 'bool'
+	assert scalar.typ_text() == 'bool'
 	assert scalar.value == 'true'
 	assert folded('abc', 'starts_with', ['a']) == 'true'
 	assert folded('abc', 'ends_with', ['c']) == 'true'
@@ -35,10 +35,10 @@ fn test_comptime_string_scalar_folds_the_predicate_methods_as_bool() {
 
 fn test_comptime_string_scalar_folds_replace_and_count() {
 	scalar := must_scalar('a.b.c', 'replace', ['.', '/'])
-	assert scalar.typ == 'string'
+	assert scalar.typ_text() == 'string'
 	assert scalar.value == 'a/b/c'
 	count := must_scalar('a.b.c', 'count', ['.'])
-	assert count.typ == 'int'
+	assert count.typ_text() == 'int'
 	assert count.value == '2'
 	assert folded('abc', 'count', ['x']) == '0'
 	// `replace` is the one two-argument method; anything else with two is none.

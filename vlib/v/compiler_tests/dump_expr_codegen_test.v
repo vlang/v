@@ -72,12 +72,13 @@ fn test_dump_expr_is_transparent_for_c_oracle_output() {
 	compact := dump_expr_compact_c(generated)
 	assert !generated.contains('dump('), generated
 	assert !generated.contains('= ;'), generated
-	assert compact.contains('int__dump_0=1+2;'), generated
-	assert compact.contains('int__dump_1=n+2;'), generated
+	// V `int` is `i64` on 64-bit targets.
+	assert compact.contains('i64__dump_0=1+2;'), generated
+	assert compact.contains('i64__dump_1=n+2;'), generated
 	assert compact.contains('n=__dump_1;'), generated
 	assert compact.contains('return__dump_0;'), generated
 	assert compact.contains('take_int(__dump_2)'), generated
-	assert compact.contains('int__dump_3=bump(0);'), generated
+	assert compact.contains('i64__dump_3=bump(0);'), generated
 }
 
 fn test_dump_expr_writes_to_stderr() {

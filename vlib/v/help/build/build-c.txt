@@ -128,8 +128,11 @@ see also `v help build`.
       cached `.o` files when V can find the corresponding source on disk.
 
    -freestanding
-      Build the executable without dependency on libc.
-      Supported only on `linux` targets currently.
+      Build the executable without dependency on libc. It is linked with
+      `-static -nostdlib` and without a garbage collector, and takes its
+      process entry point, syscalls and memory allocator from the bare builtin
+      implementation (see `-bare-builtin-dir`).
+      Supported only on `linux` targets, on amd64 and arm64, currently.
 
    -bare-builtin-dir <bare-builtin-dir>
       Use with `-freestanding`. This specifies the directory to the
@@ -179,6 +182,7 @@ see also `v help build`.
          __exit(code int)
             Exit with code code. code is allowed to be ignored.
 
+         The implementation also defines the process entry point, `_start`.
          The module declaration should be `builtin`. The default Linux
          implementation can be found in `vlib/builtin/linux_bare`.
 

@@ -212,12 +212,13 @@ fn (tc &TypeChecker) inline_asm_intel_operand_width(typ Type) ?int {
 		Char { 8 }
 		Rune { 32 }
 		ISize, USize, Pointer { platform_int_bits() }
-		Enum { tc.inline_asm_enum_backing_width(clean.name()) }
+		Enum { tc.inline_asm_enum_backing_width(clean.source_type_id()) }
 		else { none }
 	}
 }
 
-fn (tc &TypeChecker) inline_asm_enum_backing_width(name string) int {
+fn (tc &TypeChecker) inline_asm_enum_backing_width(name_id u32) int {
+	name := flat.source_type_name(name_id)
 	for index in tc.top_level_idx {
 		decl := tc.a.nodes[index]
 		if decl.kind != .enum_decl || decl.value != name.all_after_last('.') {
@@ -229,8 +230,8 @@ fn (tc &TypeChecker) inline_asm_enum_backing_width(name string) int {
 		if name.contains('.') && qualified != name {
 			continue
 		}
-		if decl.generic_params().len > 0 && decl.generic_params()[0].len > 0 {
-			if width := tc.inline_asm_intel_operand_width(tc.parse_type(decl.generic_params()[0])) {
+		if decl.enum_backing_type_id() != 0 {
+			if width := tc.inline_asm_intel_operand_width(tc.parse_type(decl.enum_backing_type_id())) {
 				return width
 			}
 		}
@@ -239,7 +240,8 @@ fn (tc &TypeChecker) inline_asm_enum_backing_width(name string) int {
 	return 32
 }
 
-fn (tc &TypeChecker) inline_asm_enum_backing_type(name string) Type {
+fn (tc &TypeChecker) inline_asm_enum_backing_type(name_id u32) Type {
+	name := flat.source_type_name(name_id)
 	for index in tc.top_level_idx {
 		decl := tc.a.nodes[index]
 		if decl.kind != .enum_decl || decl.value != name.all_after_last('.') {
@@ -251,8 +253,8 @@ fn (tc &TypeChecker) inline_asm_enum_backing_type(name string) Type {
 		if name.contains('.') && qualified != name {
 			continue
 		}
-		if decl.generic_params().len > 0 && decl.generic_params()[0].len > 0 {
-			return tc.parse_type(decl.generic_params()[0])
+		if decl.enum_backing_type_id() != 0 {
+			return tc.parse_type(decl.enum_backing_type_id())
 		}
 		break
 	}
@@ -265,7 +267,9 @@ fn (tc &TypeChecker) inline_asm_intel_type_is_signed(typ Type) bool {
 		Primitive { clean.props.has(.integer) && !clean.props.has(.unsigned) }
 		Char, Rune, USize, Pointer { false }
 		ISize { true }
-		Enum { tc.inline_asm_intel_type_is_signed(tc.inline_asm_enum_backing_type(clean.name())) }
+		Enum {
+			tc.inline_asm_intel_type_is_signed(tc.inline_asm_enum_backing_type(clean.source_type_id()))
+		}
 		else { false }
 	}
 }

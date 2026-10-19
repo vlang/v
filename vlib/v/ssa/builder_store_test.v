@@ -1,5 +1,6 @@
 module ssa
 
+import v.flat
 import v.ssa.optimize
 
 struct NumericStoreCase {
@@ -36,8 +37,8 @@ fn test_numeric_store_conversions_survive_scalar_promotion() {
 				f32_type: m.type_store.get_float(32)
 				f64_type: m.type_store.get_float(64)
 			}
-			from := b.resolve_type(scenario.from)
-			to := b.resolve_type(scenario.to)
+			from := b.resolve_type(flat.source_type_id(scenario.from))
+			to := b.resolve_type(flat.source_type_id(scenario.to))
 			func := m.new_function('conversion', to)
 			entry := m.add_block(func, 'entry')
 			input := m.add_value(.argument, from, 'input', 0)

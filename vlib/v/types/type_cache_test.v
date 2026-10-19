@@ -2,6 +2,45 @@ module types
 
 import v.flat
 
+fn test_receiver_pattern_cache_keys_keep_source_argument_order_and_context() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.cur_file = 'caller.v'
+	tc.cur_module = 'main'
+	tc.fn_context.generic_params = ['T']
+	first := flat.source_type_id('Item[int]')
+	second := flat.source_type_id('Item[string]')
+	ordered := tc.generic_receiver_pattern_cache_key(flat.source_type_id('Box'), [
+		first,
+		second,
+	], 'take')
+	reversed := tc.generic_receiver_pattern_cache_key(flat.source_type_id('Box'), [
+		second,
+		first,
+	], 'take')
+	shorter := tc.generic_receiver_pattern_cache_key(flat.source_type_id('Box'), [first], 'take')
+	empty := tc.generic_receiver_pattern_cache_key(flat.source_type_id('Box'), []u32{}, 'take')
+	empty_arg := tc.generic_receiver_pattern_cache_key(flat.source_type_id('Box'), [u32(0)], 'take')
+	keys := {
+		ordered:   1
+		reversed:  2
+		shorter:   3
+		empty:     4
+		empty_arg: 5
+	}
+	assert keys.len == 5
+	assert keys[ordered] == 1
+	assert keys[reversed] == 2
+	tc.cur_file = 'other.v'
+	assert tc.generic_receiver_pattern_cache_key(flat.source_type_id('Box'), [first, second], 'take') != ordered
+	tc.cur_file = 'caller.v'
+	tc.cur_module = 'other'
+	assert tc.generic_receiver_pattern_cache_key(flat.source_type_id('Box'), [first, second], 'take') != ordered
+	tc.cur_module = 'main'
+	tc.fn_context.generic_params = ['U']
+	assert tc.generic_receiver_pattern_cache_key(flat.source_type_id('Box'), [first, second], 'take') != ordered
+}
+
 fn test_wrapped_single_letter_concrete_types_preserve_their_semantic_type() {
 	a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
@@ -10,17 +49,17 @@ fn test_wrapped_single_letter_concrete_types_preserve_their_semantic_type() {
 	tc.structs['single.M'] = []StructField{}
 	for prefix in ['!', '?', '&', '[]', 'chan ', 'thread '] {
 		for _ in 0 .. 2 {
-			parsed := tc.parse_resolution_type('${prefix}M')
+			parsed := tc.parse_resolution_type(flat.source_type_id('${prefix}M'))
 			assert parsed.name() == '${prefix}single.M'
 			assert parsed !is Unknown
 		}
 	}
-	assert tc.parse_type('!single.M') is ResultType
-	assert tc.parse_type('?single.M') is OptionType
-	assert tc.parse_type('[2]single.M') is ArrayFixed
-	assert tc.parse_type('single.T') is Unknown
-	assert tc.parse_type('!single.T') is ResultType
-	assert tc.parse_type('?single.T') is OptionType
+	assert tc.parse_type(flat.source_type_id('!single.M')) is ResultType
+	assert tc.parse_type(flat.source_type_id('?single.M')) is OptionType
+	assert tc.parse_type(flat.source_type_id('[2]single.M')) is ArrayFixed
+	assert tc.parse_type(flat.source_type_id('single.T')) is Unknown
+	assert tc.parse_type(flat.source_type_id('!single.T')) is ResultType
+	assert tc.parse_type(flat.source_type_id('?single.T')) is OptionType
 }
 
 fn test_node_cache_reset_clears_string_slots_and_set_bits() {
@@ -56,7 +95,7 @@ fn test_seeded_field_types_preserve_direct_precedence_and_generic_substitution()
 	mut expected := []string{}
 	for owner in ['Outer', 'Box[int]', 'Box[string]'] {
 		field := if owner == 'Outer' { 'value' } else { 'item' }
-		expected << tc.struct_field_type_name(owner, field)?
+		expected << flat.source_type_name(tc.struct_field_type_name(flat.source_type_id(owner), field)?)
 	}
 	tc.clear_field_lookup_cache()
 	tc.cache_direct_struct_field_types()
@@ -64,21 +103,21 @@ fn test_seeded_field_types_preserve_direct_precedence_and_generic_substitution()
 	mut worker := tc.fork_for_parallel_check()
 	assert worker.type_cache.struct_field_shared.len == tc.type_cache.struct_field_shared.len
 	assert worker.type_cache.struct_field_shared.len > 0
-	assert worker.type_cache.struct_field_complete['Inner']
-	assert !worker.type_cache.struct_field_complete['Outer']
-	assert !worker.type_cache.struct_field_complete['Promoted']
-	assert worker.struct_field_type('Inner', 'missing') == none
-	assert worker.struct_field_type('Promoted', 'value')? == Type(bool_)
+	assert worker.type_cache.struct_field_complete[flat.source_type_id('Inner')]
+	assert !worker.type_cache.struct_field_complete[flat.source_type_id('Outer')]
+	assert !worker.type_cache.struct_field_complete[flat.source_type_id('Promoted')]
+	assert worker.struct_field_type(flat.source_type_id('Inner'), 'missing') == none
+	assert worker.struct_field_type(flat.source_type_id('Promoted'), 'value')? == Type(bool_)
 	for i, owner in ['Outer', 'Box[int]', 'Box[string]'] {
 		field := if owner == 'Outer' { 'value' } else { 'item' }
-		assert worker.struct_field_type_name(owner, field)? == expected[i]
+		assert flat.source_type_name(worker.struct_field_type_name(flat.source_type_id(owner), field)?) == expected[i]
 	}
 	worker.clear_field_lookup_cache()
 	assert tc.type_cache.struct_field_shared.len > 0
-	assert tc.type_cache.struct_field_complete['Inner']
+	assert tc.type_cache.struct_field_complete[flat.source_type_id('Inner')]
 	tc.structs['Inner'] << StructField{ name: 'missing', typ: Type(string_) }
 	tc.clear_field_lookup_cache()
-	assert tc.struct_field_type('Inner', 'missing')? == Type(string_)
+	assert tc.struct_field_type(flat.source_type_id('Inner'), 'missing')? == Type(string_)
 }
 
 fn test_field_cache_handles_collisions_missing_fields_and_invalidation() {
@@ -89,14 +128,14 @@ fn test_field_cache_handles_collisions_missing_fields_and_invalidation() {
 		StructField{ name: 'acca', typ: Type(string_) },
 	]
 	for _ in 0 .. 3 {
-		assert tc.struct_field_type('Box'.clone(), 'abba'.clone())? == Type(int_)
-		assert tc.struct_field_type('Box', 'acca')? == Type(string_)
-		assert tc.struct_field_type('Box', 'adda') == none
+		assert tc.struct_field_type(flat.source_type_id('Box'.clone()), 'abba'.clone())? == Type(int_)
+		assert tc.struct_field_type(flat.source_type_id('Box'), 'acca')? == Type(string_)
+		assert tc.struct_field_type(flat.source_type_id('Box'), 'adda') == none
 	}
 	tc.structs['Box'] = [StructField{ name: 'adda', typ: Type(bool_) }]
 	tc.clear_field_lookup_cache()
-	assert tc.struct_field_type('Box', 'adda')? == Type(bool_)
-	assert tc.struct_field_type('Box', 'acca') == none
+	assert tc.struct_field_type(flat.source_type_id('Box'), 'adda')? == Type(bool_)
+	assert tc.struct_field_type(flat.source_type_id('Box'), 'acca') == none
 }
 
 fn test_type_text_id_cache_keeps_colliding_ids_and_file_context_distinct() {
@@ -108,16 +147,32 @@ fn test_type_text_id_cache_keeps_colliding_ids_and_file_context_distinct() {
 	tc.structs['one.Item'] = []StructField{}
 	tc.structs['two.Item'] = []StructField{}
 	tc.register_file_import('dep', 'one')
+	item_id := flat.source_type_id('dep.Item')
+	mut collision_id := u32(0)
+	mut collision_name := ''
+	// Spellings now own their IDs. Find a real collision in the bounded front cache.
+	for i in 0 .. 8192 {
+		name := 'collision.Item_${item_id}_${i}'
+		id := flat.source_type_id(name)
+		if id != item_id && id & 4095 == item_id & 4095 {
+			collision_id = id
+			collision_name = name
+			break
+		}
+	}
+	assert collision_id != 0
+	tc.structs[collision_name] = []StructField{}
 	for _ in 0 .. 3 {
-		assert tc.parse_type_ref('dep.Item', 1).name() == 'one.Item'
-		assert tc.parse_type_ref('string', 4097).name() == 'string'
-		assert tc.parse_type_ref('bool', 65535).name() == 'bool'
+		assert tc.parse_type_ref(item_id).name() == 'one.Item'
+		assert tc.parse_type_ref(collision_id).name() == collision_name
+		assert tc.parse_type_ref(flat.source_type_string).name() == 'string'
+		assert tc.parse_type_ref(flat.source_type_bool).name() == 'bool'
 	}
 	tc.cur_file = 'two.v'
 	tc.register_file_import('dep', 'two')
-	assert tc.parse_type_ref('dep.Item', 1).name() == 'two.Item'
+	assert tc.parse_type_ref(item_id).name() == 'two.Item'
 	tc.cur_file = 'one.v'
-	assert tc.parse_type_ref('dep.Item', 1).name() == 'one.Item'
+	assert tc.parse_type_ref(item_id).name() == 'one.Item'
 }
 
 fn test_parse_type_cache_keeps_context_components_without_joined_keys() {
@@ -129,16 +184,16 @@ fn test_parse_type_cache_keeps_context_components_without_joined_keys() {
 	// Nominal names require the source context; builtin scalars do not.
 	tc.structs['one.Item'] = []StructField{}
 	tc.structs['two.Item'] = []StructField{}
-	assert tc.parse_type('Item').name() == 'one.Item'
-	assert tc.parse_type('Item').name() == 'one.Item'
+	assert tc.parse_type(flat.source_type_id('Item')).name() == 'one.Item'
+	assert tc.parse_type(flat.source_type_id('Item')).name() == 'one.Item'
 	assert tc.type_cache.parse_entries.len == 1
 
 	tc.cur_module = 'two'
-	assert tc.parse_type('Item').name() == 'two.Item'
+	assert tc.parse_type(flat.source_type_id('Item')).name() == 'two.Item'
 	assert tc.type_cache.parse_entries.len == 2
 
 	tc.cur_file = 'two.v'
-	assert tc.parse_type('Item').name() == 'two.Item'
+	assert tc.parse_type(flat.source_type_id('Item')).name() == 'two.Item'
 	assert tc.type_cache.parse_entries.len == 3
 }
 
@@ -152,10 +207,10 @@ fn test_parse_resolution_type_prefers_file_import_over_known_short_symbol() {
 	tc.cur_module = 'v.ast'
 	tc.register_file_import('token', 'v.token')
 
-	assert tc.parse_resolution_type('token.Pos').name() == 'v.token.Pos'
-	assert tc.parse_resolution_type('[]token.Pos').name() == '[]v.token.Pos'
-	assert tc.parse_resolution_type('?token.Pos').name() == '?v.token.Pos'
-	assert tc.parse_resolution_type('Box[token.Pos]').name() == 'Box[v.token.Pos]'
+	assert tc.parse_resolution_type(flat.source_type_id('token.Pos')).name() == 'v.token.Pos'
+	assert tc.parse_resolution_type(flat.source_type_id('[]token.Pos')).name() == '[]v.token.Pos'
+	assert tc.parse_resolution_type(flat.source_type_id('?token.Pos')).name() == '?v.token.Pos'
+	assert tc.parse_resolution_type(flat.source_type_id('Box[token.Pos]')).name() == 'Box[v.token.Pos]'
 }
 
 fn test_parse_resolution_type_in_file_does_not_require_an_active_file_cursor() {
@@ -170,16 +225,16 @@ fn test_parse_resolution_type_in_file_does_not_require_an_active_file_cursor() {
 	tc.cur_file = ''
 	tc.cur_module = ''
 
-	assert tc.parse_resolution_type_in_file('token.Pos', 'parser.v').name() == 'v.token.Pos'
+	assert tc.parse_resolution_type_in_file(flat.source_type_id('token.Pos'), 'parser.v').name() == 'v.token.Pos'
 	tc.fn_type_files['parser.read'] = 'parser.v'
 	tc.fn_type_modules['parser.read'] = 'parser'
 	for text in ['', '!', '?', 'int', 'bool', 'string', 'voidptr', '&[]u8', '?int', '![]string'] {
 		fresh := tc.fork_type_parse_view('parser.v', 'parser')
-		expected := fresh.parse_resolution_type(text)
-		assert tc.parse_resolution_type_in_file(text, 'parser.v') == expected
-		assert tc.fn_signature_type('parser.read', text) == expected
+		expected := fresh.parse_resolution_type(flat.source_type_id(text))
+		assert tc.parse_resolution_type_in_file(flat.source_type_id(text), 'parser.v') == expected
+		assert tc.fn_signature_type('parser.read', flat.source_type_id(text)) == expected
 	}
-	assert tc.fn_signature_type('parser.read', 'token.Pos').name() == 'v.token.Pos'
+	assert tc.fn_signature_type('parser.read', flat.source_type_id('token.Pos')).name() == 'v.token.Pos'
 }
 
 fn test_parse_thread_type_qualifies_concrete_payloads() {
@@ -189,9 +244,9 @@ fn test_parse_thread_type_qualifies_concrete_payloads() {
 	tc.cur_module = 'fixturetest'
 	tc.structs['fixturetest.FixtureResult'] = []StructField{}
 
-	assert tc.parse_type('thread FixtureResult').name() == 'thread fixturetest.FixtureResult'
-	assert tc.parse_type('thread ?FixtureResult').name() == 'thread ?fixturetest.FixtureResult'
-	assert tc.parse_type('thread T').name() == 'thread T'
+	assert tc.parse_type(flat.source_type_id('thread FixtureResult')).name() == 'thread fixturetest.FixtureResult'
+	assert tc.parse_type(flat.source_type_id('thread ?FixtureResult')).name() == 'thread ?fixturetest.FixtureResult'
+	assert tc.parse_type(flat.source_type_id('thread T')).name() == 'thread T'
 }
 
 fn test_alias_target_parsing_preserves_declaration_module() {
@@ -207,14 +262,14 @@ fn test_alias_target_parsing_preserves_declaration_module() {
 		expected := if text == 'shared int' {
 			Type(Pointer{ base_type: Type(int_) })
 		} else {
-			fresh.parse_type(text)
+			fresh.parse_type(flat.source_type_id(text))
 		}
-		parsed := tc.parse_alias_type('dep.Alias', text)
+		parsed := tc.parse_alias_type('dep.Alias', flat.source_type_id(text))
 		assert parsed is Alias
 		assert parsed.name() == 'dep.Alias'
 		assert parsed.base_type == expected
 	}
-	assert tc.parse_alias_target_type('dep.Alias', 'Item').name() == 'dep.Item'
+	assert tc.parse_alias_target_type('dep.Alias', flat.source_type_id('Item')).name() == 'dep.Item'
 	assert tc.cur_module == 'caller'
 }
 
@@ -231,12 +286,12 @@ fn test_context_independent_container_types_match_declaration_views() {
 		'map[[4]u8][]map[string]bool'] {
 		assert context_independent_type_text(text)
 		fresh := tc.fork_type_parse_view('dep.v', 'dep')
-		expected := fresh.parse_resolution_type(text)
-		assert tc.parse_resolution_type_in_file(text, 'dep.v') == expected
-		assert tc.fn_signature_type('dep.read', text) == expected
-		alias_typ := tc.parse_alias_type('dep.Alias', text)
+		expected := fresh.parse_resolution_type(flat.source_type_id(text))
+		assert tc.parse_resolution_type_in_file(flat.source_type_id(text), 'dep.v') == expected
+		assert tc.fn_signature_type('dep.read', flat.source_type_id(text)) == expected
+		alias_typ := tc.parse_alias_type('dep.Alias', flat.source_type_id(text))
 		assert alias_typ is Alias
-		assert alias_typ.base_type == fresh.parse_type(text)
+		assert alias_typ.base_type == fresh.parse_type(flat.source_type_id(text))
 	}
 	for text in ['map', 'array', 'map[string]Item', 'map[Key]int', 'map[string]int ', '[size]int',
 		'[2 + 3]int', '[0x10]int', 'map[string', '[2', '[2]'] {
@@ -252,7 +307,7 @@ fn test_parse_resolution_fn_type_preserves_nested_main_type_lock() {
 	tc.cur_file = 'veb/middleware.v'
 	tc.cur_module = 'veb'
 
-	locked := tc.parse_resolution_type('fn (mut main.Context) bool')
+	locked := tc.parse_resolution_type(flat.source_type_id('fn (mut main.Context) bool'))
 	assert locked is FnType
 	assert locked.params.len == 1
 	locked_param := locked.params[0]
@@ -263,7 +318,7 @@ fn test_parse_resolution_fn_type_preserves_nested_main_type_lock() {
 	}
 	assert locked.params_mut == [true]
 
-	local := tc.parse_resolution_type('fn (mut Context) bool')
+	local := tc.parse_resolution_type(flat.source_type_id('fn (mut Context) bool'))
 	assert local is FnType
 	local_param := local.params[0]
 	if local_param is Pointer {
@@ -280,12 +335,12 @@ fn test_parse_resolution_main_alias_uses_alias_declaration_scope() {
 	tc.struct_modules['Context'] = 'main'
 	tc.structs['veb.Context'] = []StructField{}
 	tc.struct_modules['veb.Context'] = 'veb'
-	tc.type_aliases.set('AliasContext', 'Context')
+	tc.type_aliases.set_id('AliasContext', flat.source_type_id('Context'))
 	tc.type_alias_modules['AliasContext'] = 'main'
 	tc.cur_file = 'veb/veb.v'
 	tc.cur_module = 'veb'
 
-	locked := tc.parse_resolution_type('main.AliasContext')
+	locked := tc.parse_resolution_type(flat.source_type_id('main.AliasContext'))
 	if locked is Alias {
 		assert locked.name() == 'AliasContext'
 		assert locked.base_type is Struct
@@ -341,9 +396,9 @@ fn test_parse_resolution_type_handles_locked_main_generic_application() {
 	tc.cur_file = 'decode.v'
 	tc.cur_module = 'json2'
 
-	assert tc.parse_resolution_type('main.StructType[string]').name() == 'StructType[string]'
-	assert tc.parse_resolution_type('main.StructType[main.string]').name() == 'StructType[string]'
-	assert tc.parse_type('main.StructType[string]').name() == 'StructType[string]'
+	assert tc.parse_resolution_type(flat.source_type_id('main.StructType[string]')).name() == 'StructType[string]'
+	assert tc.parse_resolution_type(flat.source_type_id('main.StructType[main.string]')).name() == 'StructType[string]'
+	assert tc.parse_type(flat.source_type_id('main.StructType[string]')).name() == 'StructType[string]'
 }
 
 fn test_type_cache_overlay_rebinds_resolution_type_views() {
@@ -354,7 +409,7 @@ fn test_type_cache_overlay_rebinds_resolution_type_views() {
 	tc.cur_module = 'main'
 	tc.structs['Item'] = []StructField{}
 
-	assert tc.parse_resolution_type('Item').name() == 'Item'
+	assert tc.parse_resolution_type(flat.source_type_id('Item')).name() == 'Item'
 	base := tc.type_cache
 	base_view := tc.resolution_type_views.by_file['main.v'] or { panic('missing base view') }
 	assert base_view.type_cache == base
@@ -364,14 +419,14 @@ fn test_type_cache_overlay_rebinds_resolution_type_views() {
 	assert overlay != base
 	assert overlay.base == base
 	assert tc.resolution_type_views.by_file.len == 0
-	assert tc.parse_resolution_type('[]Item').name() == '[]Item'
+	assert tc.parse_resolution_type(flat.source_type_id('[]Item')).name() == '[]Item'
 	overlay_view := tc.resolution_type_views.by_file['main.v'] or { panic('missing overlay view') }
 	assert overlay_view.type_cache == overlay
 
 	tc.unfreeze_type_cache_after_forks()
 	assert tc.type_cache == base
 	assert tc.resolution_type_views.by_file.len == 0
-	assert tc.parse_resolution_type('?Item').name() == '?Item'
+	assert tc.parse_resolution_type(flat.source_type_id('?Item')).name() == '?Item'
 	restored_view := tc.resolution_type_views.by_file['main.v'] or {
 		panic('missing restored view')
 	}
@@ -405,11 +460,11 @@ fn test_type_cache_overlay_can_be_discarded_without_publishing_entries() {
 	tc.cur_file = 'main.v'
 	tc.cur_module = 'main'
 
-	assert tc.parse_type('int').name() == 'int'
+	assert tc.parse_type(flat.source_type_int).name() == 'int'
 	base := tc.type_cache
 	base_entries := base.parse_entries.len
 	tc.freeze_type_cache_for_forks()
-	assert tc.parse_type('string').name() == 'string'
+	assert tc.parse_type(flat.source_type_string).name() == 'string'
 	assert tc.type_cache.parse_entries.len > 0
 
 	tc.discard_type_cache_overlay_after_forks()
@@ -533,17 +588,17 @@ fn test_type_name_is_lazily_cached_by_type_id() {
 	})
 	first := tc.type_name(typ)
 	second := tc.type_name(typ)
-	assert first == 'map[string][]int'
-	assert first.str == second.str
+	assert first == flat.source_type_id('map[string][]int')
+	assert first == second
 }
 
 fn test_recursive_callback_alias_parses_once_and_keeps_its_abi() {
 	a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
-	tc.type_aliases.set('Handlers', 'map[string]fn (Handlers) int')
+	tc.type_aliases.set_id('Handlers', flat.source_type_id('map[string]fn (Handlers) int'))
 	tc.type_cache.parse_enabled = true
 
-	typ := tc.parse_type('Handlers')
+	typ := tc.parse_type(flat.source_type_id('Handlers'))
 	assert typ is Alias
 	base := (typ as Alias).base_type
 	assert base is Map
@@ -553,7 +608,7 @@ fn test_recursive_callback_alias_parses_once_and_keeps_its_abi() {
 	assert param is Alias
 	assert (param as Alias).name() == 'Handlers'
 	assert tc.c_type(param) == 'map'
-	assert tc.parse_type('Handlers').name() == 'Handlers'
+	assert tc.parse_type(flat.source_type_id('Handlers')).name() == 'Handlers'
 	assert tc.type_cache.alias_parse_stack.len == 0
 }
 
@@ -561,7 +616,7 @@ fn test_fn_type_with_spaced_empty_parameter_list_has_no_void_parameter() {
 	a := flat.FlatAst.new()
 	tc := TypeChecker.new(&a)
 
-	typ := tc.parse_type('fn ( ) int')
+	typ := tc.parse_type(flat.source_type_id('fn ( ) int'))
 	assert typ is FnType
 	fn_typ := typ as FnType
 	assert fn_typ.params.len == 0
@@ -573,25 +628,25 @@ fn test_voidptr_is_not_implicitly_compatible_with_callback_type() {
 	a := flat.FlatAst.new()
 	tc := TypeChecker.new(&a)
 
-	void_pointer := tc.parse_type('voidptr')
-	callback := tc.parse_type('fn ()')
+	void_pointer := tc.parse_type(flat.source_type_voidptr)
+	callback := tc.parse_type(flat.source_type_id('fn ()'))
 	assert !tc.type_compatible(void_pointer, callback)
 }
 
 fn test_postfix_fixed_array_of_generic_struct_parses_before_generic_application() {
 	a := flat.FlatAst.new()
 	tc := TypeChecker.new(&a)
-	generic := tc.parse_type('arc.Arc[Resource]')
+	generic := tc.parse_type(flat.source_type_id('arc.Arc[Resource]'))
 	assert generic is Struct
 	assert generic.name() == 'arc.Arc[Resource]'
-	nested_map := tc.parse_type('map[string]map[string]arc.Arc[Resource]')
+	nested_map := tc.parse_type(flat.source_type_id('map[string]map[string]arc.Arc[Resource]'))
 	assert nested_map is Map
 	inner_map := (nested_map as Map).value_type
 	assert inner_map is Map
 	inner_value := (inner_map as Map).value_type
 	assert inner_value is Struct
 	assert inner_value.name() == 'arc.Arc[Resource]'
-	typ := tc.parse_type('arc.Arc[Resource][2]')
+	typ := tc.parse_type(flat.source_type_id('arc.Arc[Resource][2]'))
 	assert typ is ArrayFixed
 	fixed := typ as ArrayFixed
 	assert fixed.len == 2
@@ -599,42 +654,53 @@ fn test_postfix_fixed_array_of_generic_struct_parses_before_generic_application(
 }
 
 fn test_generic_text_substitution_recurses_through_wrappers() {
-	assert subst_generic_text('chan T', ['int'], ['T']) == 'chan int'
-	assert subst_generic_text('thread T', ['string'], ['T']) == 'thread string'
-	assert subst_generic_text('atomic T', ['u64'], ['T']) == 'atomic u64'
-	assert subst_generic_text('chan ?[]T', ['i16'], ['T']) == 'chan ?[]i16'
+	assert flat.source_type_name(subst_generic_text(flat.source_type_id('chan T'), flat.TypeTextList.from_names(['int']).ids, ['T'])) == 'chan int'
+	assert flat.source_type_name(subst_generic_text(flat.source_type_id('thread T'), flat.TypeTextList.from_names(['string']).ids, ['T'])) == 'thread string'
+	assert flat.source_type_name(subst_generic_text(flat.source_type_id('atomic T'), flat.TypeTextList.from_names(['u64']).ids, ['T'])) == 'atomic u64'
+	assert flat.source_type_name(subst_generic_text(flat.source_type_id('chan ?[]T'), flat.TypeTextList.from_names(['i16']).ids, ['T'])) == 'chan ?[]i16'
+}
+
+fn test_generic_type_substitution_preserves_padded_source_argument_semantics() {
+	a := flat.FlatAst.new()
+	tc := TypeChecker.new(&a)
+	typ := tc.parse_type(flat.source_type_id('fn (T) ?[]T'))
+	args := [flat.source_type_id(' \tint\n')]
+	substituted := tc.substitute_generic_type(typ, args, ['T'])
+	expected := tc.parse_type(flat.source_type_id('fn (int) ?[]int'))
+	assert substituted.name() == expected.name()
+	assert flat.source_type_name(args[0]) == ' \tint\n'
 }
 
 fn test_generic_type_substitution_updates_fixed_array_length_expr() {
 	a := flat.FlatAst.new()
 	tc := TypeChecker.new(&a)
-	typ := tc.parse_type('[cache_line_size - sizeof(T)]u8')
+	typ := tc.parse_type(flat.source_type_id('[cache_line_size - sizeof(T)]u8'))
 	assert typ is ArrayFixed
 
-	text_substituted := tc.substitute_generic_type(typ, ['int'], ['T'])
+	text_substituted := tc.substitute_generic_type(typ, flat.TypeTextList.from_names(['int']).ids, ['T'])
 	assert text_substituted is ArrayFixed
 	assert (text_substituted as ArrayFixed).len_expr == 'cache_line_size - sizeof(int)'
 
 	value_substituted := tc.substitute_generic_type_values(typ, [Type(int_)], ['T'])
 	assert value_substituted is ArrayFixed
 	assert (value_substituted as ArrayFixed).len_expr == 'cache_line_size - sizeof(int)'
-	assert subst_generic_const_expr('sizeof(T) + T_SIZE', ['u64'], ['T']) ==
+	assert subst_generic_const_expr('sizeof(T) + T_SIZE', flat.TypeTextList.from_names(['u64']).ids, ['T']) ==
 		'sizeof(u64) + T_SIZE'
 }
 
 fn test_generic_text_substitution_preserves_mut_fn_pointer_params() {
-	substituted := subst_generic_text('fn (mut T) string', ['&Dog'], ['T'])
+	substituted := flat.source_type_name(subst_generic_text(flat.source_type_id('fn (mut T) string'), flat.TypeTextList.from_names(['&Dog']).ids, ['T']))
 	assert substituted == 'fn(mut &Dog) string'
 
 	a := flat.FlatAst.new()
 	tc := TypeChecker.new(&a)
-	callback_type := tc.parse_type(substituted)
+	callback_type := tc.parse_type(flat.source_type_id(substituted))
 	assert callback_type is FnType
 	fn_type := callback_type as FnType
 	assert fn_type.params_mut == [true]
 	assert fn_compatible_param_type(fn_type, 0).name() == '&&Dog'
 	assert tc.c_type(callback_type) == 'fn_ptr:string|Dog**'
-	assert subst_generic_signature_param_text('f fn (mut it T) string', ['&Dog'], ['T']) == 'fn(mut &Dog) string'
+	assert subst_generic_signature_param_text('f fn (mut it T) string', flat.TypeTextList.from_names(['&Dog']).ids, ['T']) == 'fn(mut &Dog) string'
 }
 
 fn test_mut_callback_param_keeps_declared_and_slot_pointers_apart() {
@@ -646,22 +712,22 @@ fn test_mut_callback_param_keeps_declared_and_slot_pointers_apart() {
 
 	a := flat.FlatAst.new()
 	tc := TypeChecker.new(&a)
-	assert tc.c_type(tc.parse_type('fn (Dog)')) == 'fn_ptr:void|Dog'
-	assert tc.c_type(tc.parse_type('fn (mut Dog)')) == 'fn_ptr:void|Dog*'
-	assert tc.c_type(tc.parse_type('fn (&Dog)')) == 'fn_ptr:void|Dog*'
-	assert tc.c_type(tc.parse_type('fn (mut &Dog)')) == 'fn_ptr:void|Dog**'
+	assert tc.c_type(tc.parse_type(flat.source_type_id('fn (Dog)'))) == 'fn_ptr:void|Dog'
+	assert tc.c_type(tc.parse_type(flat.source_type_id('fn (mut Dog)'))) == 'fn_ptr:void|Dog*'
+	assert tc.c_type(tc.parse_type(flat.source_type_id('fn (&Dog)'))) == 'fn_ptr:void|Dog*'
+	assert tc.c_type(tc.parse_type(flat.source_type_id('fn (mut &Dog)'))) == 'fn_ptr:void|Dog**'
 
 	for text in ['fn(Dog)', 'fn(mut Dog)', 'fn(&Dog)', 'fn(mut &Dog)'] {
-		parsed := tc.parse_type(text)
+		parsed := tc.parse_type(flat.source_type_id(text))
 		assert parsed.name() == text
-		assert tc.c_type(tc.parse_type(parsed.name())) == tc.c_type(parsed)
+		assert tc.c_type(tc.parse_type(parsed.source_type_id())) == tc.c_type(parsed)
 	}
 }
 
 fn test_concrete_generic_method_signature_candidates_flatten_nested_pointer_args() {
 	a := flat.FlatAst.new()
 	tc := TypeChecker.new(&a)
-	candidates := tc.concrete_generic_method_signature_candidates('SimpleCache[string, &CacheItem[string, int]]', 'set')
+	candidates := tc.concrete_generic_method_signature_candidates(flat.source_type_id('SimpleCache[string, &CacheItem[string, int]]'), 'set')
 	assert 'SimpleCache[string, ptr_CacheItem_string_int].set' in candidates
 }
 
@@ -695,9 +761,9 @@ fn test_caller_type_name_qualification_preserves_enclosing_generic_parameters() 
 	tc.structs['consumer.Payload'] = []StructField{}
 	tc.cur_module = 'unrelated'
 	tc.enclosing_generic_param_masks = []u32{len: a.nodes.len, init: u32(1) << u32(`T` - `A`)}
-	assert tc.qualify_type_name_at('T', id, 'consumer') == 'T'
-	assert tc.qualify_type_name_at('Payload', id, 'consumer') == 'consumer.Payload'
-	assert tc.qualify_type_name_at('int', id, 'consumer') == 'int'
-	assert tc.qualify_type_name_at('UnknownName', id, 'consumer') == 'UnknownName'
+	assert flat.source_type_name(tc.qualify_type_name_at(flat.source_type_id('T'), id, 'consumer')) == 'T'
+	assert flat.source_type_name(tc.qualify_type_name_at(flat.source_type_id('Payload'), id, 'consumer')) == 'consumer.Payload'
+	assert flat.source_type_name(tc.qualify_type_name_at(flat.source_type_id('int'), id, 'consumer')) == 'int'
+	assert flat.source_type_name(tc.qualify_type_name_at(flat.source_type_id('UnknownName'), id, 'consumer')) == 'UnknownName'
 	assert tc.cur_module == 'unrelated'
 }

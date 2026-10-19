@@ -1,0 +1,7 @@
+vlib/v/checker/tests/attribute_schema_mut_field_err.vv:4:2: error: attribute schema `Route` cannot have `mut` fields
+    2 | struct Route {
+    3 | mut:
+    4 |     path string
+      |     ~~~~~~~~~~~
+    5 | }
+    6 |

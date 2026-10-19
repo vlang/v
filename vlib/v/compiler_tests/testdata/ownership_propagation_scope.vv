@@ -1,0 +1,65 @@
+struct Resource implements Drop {
+	id int
+}
+
+fn (mut value Resource) drop() {
+	println('drop ${value.id}')
+}
+
+fn (mut value Resource) free() {
+	value.drop()
+}
+
+fn consume(value Resource) {
+	println('take ${value.id}')
+}
+
+fn maybe_result(ok bool) !int {
+	if ok { return 1 }
+	return error('failed')
+}
+
+fn maybe_option(ok bool) ?int {
+	if ok { return 1 }
+	return none
+}
+
+fn result_path(ok bool) ! {
+	// An unsafe block nested in a defer must keep its own destructor slot.
+	defer { unsafe { println('result-defer') } }
+	_ := maybe_result(ok)!
+	if ok {
+		first := Resource{ id: 1 }
+		println('body ${first.id}')
+	}
+	if ok {
+		moved := Resource{ id: 2 }
+		consume(moved)
+	}
+	if ok {
+		later := Resource{ id: 3 }
+		println('body ${later.id}')
+	}
+}
+
+fn option_path(ok bool) ? {
+	defer { unsafe { println('option-defer') } }
+	_ := maybe_option(ok)?
+	if ok {
+		local := Resource{ id: 4 }
+		println('body ${local.id}')
+	}
+}
+
+fn main() {
+	defer { unsafe { println('panic-defer') } }
+	main_value := maybe_result(true)!
+	if main_value == 1 {
+		local := Resource{ id: 5 }
+		println('body ${local.id}')
+	}
+	result_path(true) or { panic(err) }
+	result_path(false) or { println('result-failed') }
+	option_path(true) or { panic('unexpected none') }
+	option_path(false) or { println('option-failed') }
+}

@@ -56,6 +56,14 @@ pub fn (mut bindings TypeTextListBindings) append(name string, texts []string) {
 	}
 }
 
+// append_ids copies additional identities into a binding without resolving spellings.
+pub fn (mut bindings TypeTextListBindings) append_ids(name string, ids []u32) {
+	if ids.len == 0 {
+		return
+	}
+	bindings.ids[name] << ids
+}
+
 // contains reports whether a binding exists, including an explicitly empty list.
 pub fn (bindings &TypeTextListBindings) contains(name string) bool {
 	return name in bindings.ids
