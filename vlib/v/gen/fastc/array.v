@@ -1623,7 +1623,7 @@ fn (g &Parser) constant_integer_factor(tokens []FastcExpressionToken, start int)
 }
 
 fn fastc_constant_integer_binary(left int, right int, operator token.Token) ?int {
-	maximum := int(9223372036854775807)
+	maximum := max_int
 	minimum := -maximum - 1
 	match operator {
 		.plus {

@@ -5661,7 +5661,8 @@ fn (g &FlatGen) ident_may_name_type(name string) bool {
 // struct_field_list_key identifies a field list by its storage and length.
 @[inline]
 fn struct_field_list_key(fields []types.StructField) u64 {
-	return u64(voidptr(fields.data)) | (u64(fields.len) << 48)
+	// usize keeps a 32-bit address zero-extended, clear of the length bits.
+	return u64(usize(voidptr(fields.data))) | (u64(fields.len) << 48)
 }
 
 // new_struct_field_index_base indexes the checked field lists that

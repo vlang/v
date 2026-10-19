@@ -21347,7 +21347,9 @@ fn valid_string_data(s string) bool {
 	if s == '' {
 		return true
 	}
-	ptr := unsafe { u64(voidptr(s.str)) }
+	// Go through usize: C sign-extends a 32-bit pointer converted to a wider
+	// integer, which put every address above 2 GiB out of range on 32-bit hosts.
+	ptr := unsafe { u64(usize(voidptr(s.str))) }
 	return ptr >= 4096 && ptr < 281474976710656 && s.len < 1048576
 }
 

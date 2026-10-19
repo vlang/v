@@ -960,3 +960,28 @@ fn test_manual_header_preflight_matches_portable_no_builtin_and_object_generatio
 		}
 	}
 }
+
+fn test_arm32_output_undefines_tinycc_identifier_macros() {
+	mut g := FlatGen.new()
+	g.set_target(pref.target_from('linux', 'amd64')!)
+	g.undef_target_identifier_macros()
+	assert g.sb.len == 0, '64-bit output is unchanged'
+	g.set_target(pref.target_from('linux', 'arm32')!)
+	g.undef_target_identifier_macros()
+	assert g.sb.str() == '#undef arm\n#undef arm_elf\n'
+	$if !macos && !linux {
+		return
+	}
+	clang := os.find_abs_path_of_executable('clang') or { return }
+	root := os.join_path(os.vtmp_dir(), 'arm32_identifier_macros_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	c_file := os.join_path(root, 'main.c')
+	os.write_file(source, 'fn main() {\n\tarm := 3\n\tarm_elf := 4\n\tprintln(arm + arm_elf)\n}\n')!
+	generated := os.execute('${os.quoted_path(@VEXE)} -nocache -gc none -os linux -arch arm32 -cross -d v3_headerless_bootstrap -o ${os.quoted_path(c_file)} ${os.quoted_path(source)}')
+	assert generated.exit_code == 0, generated.output
+	// TinyCC predefines both macros on 32-bit ARM.
+	checked := os.execute('${os.quoted_path(clang)} -target armv7-unknown-linux-gnueabihf -std=c99 -fsyntax-only -Wno-everything -Darm=1 -Darm_elf=1 ${os.quoted_path(c_file)}')
+	assert checked.exit_code == 0, checked.output
+}
