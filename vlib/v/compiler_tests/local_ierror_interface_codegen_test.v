@@ -7,7 +7,7 @@ const vlib_dir = os.dir(v3_dir)
 const v3_src = os.join_path(v3_dir, 'v.v')
 
 fn v3_bin_path() string {
-	return os.join_path(os.temp_dir(), 'v3_local_ierror_interface_test_${os.getpid()}')
+	return os.join_path(os.temp_dir(), 'v3_local_ierror_interface_test_${os.getpid()}') + $if windows { '.exe' } $else { '' }
 }
 
 fn testsuite_begin() {

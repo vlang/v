@@ -7,7 +7,7 @@ const aoc_compat_vlib_dir = os.dir(aoc_compat_v3_dir)
 const aoc_compat_v3_src = os.join_path(aoc_compat_v3_dir, 'v.v')
 
 fn aoc_compat_v3_bin_path() string {
-	return os.join_path(os.temp_dir(), 'v3_aoc_compat_codegen_test')
+	return os.join_path(os.temp_dir(), 'v3_aoc_compat_codegen_test') + $if windows { '.exe' } $else { '' }
 }
 
 fn testsuite_begin() {
