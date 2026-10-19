@@ -2074,8 +2074,7 @@ fn (mut g FlatGen) preseed_libc_compat_fns() {
 	if refs['C.gettid'] || refs['gettid'] || g.used_fn_contains_in_module('v_gettid', 'builtin') {
 		g.libc_compat_fns['gettid'] = true
 	}
-	if refs['C.v_filelock_lock'] || refs['C.v_filelock_unlock'] || refs['v_filelock_lock']
-		|| refs['v_filelock_unlock']
+	if refs['C.v_filelock_lock'] || refs['C.v_filelock_unlock']
 		|| g.used_fn_contains_in_module('FileLock.lock_handle', 'filelock')
 		|| g.used_fn_contains_in_module('FileLock.lock_fd', 'filelock')
 		|| g.used_fn_contains_in_module('FileLock.close_lock', 'filelock') {
@@ -17142,9 +17141,9 @@ fn (mut g FlatGen) collect_c_extern_ref_from_node(node &flat.Node) {
 }
 
 fn (g &FlatGen) collect_c_extern_ref_from_node_into(node &flat.Node, mut refs map[string]bool) {
-	if node.kind == .ident
-		&& (node.value.starts_with('C.') || node.value in ['v_filelock_lock', 'v_filelock_unlock']) {
-		raw_name := if node.value.starts_with('C.') { node.value } else { 'C.${node.value}' }
+	// Only a `C.` name refers to C: a bare name, even `v_filelock_lock`, is a V function.
+	if node.kind == .ident && node.value.starts_with('C.') {
+		raw_name := node.value
 		raw_cfn := g.cname(raw_name)
 		refs[raw_name] = true
 		refs[raw_cfn] = true

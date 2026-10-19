@@ -2069,12 +2069,13 @@ fn (b &Builder) skip_source_fn(name string) bool {
 		'at_exit', 'tos2', 'tos3', 'tos_clone', 'v_prealloc_atomic_add_i32',
 		'v_prealloc_atomic_load_i32', 'v_prealloc_atomic_store_i32', 'v_prealloc_atomic_cas_i32',
 		'FD_ZERO', 'FD_SET', 'FD_ISSET', 'v_signal_with_handler_cast', 'normalize_path_in_builder',
-		'check_fwrite', 'check_fread', 'os.check_fwrite', 'os.check_fread', 'array_eq_raw',
-		'array_eq_string', 'array_eq_array', 'fxx_to_str_l_parse', 'fxx_to_str_l_parse_with_dot',
-		'u8.vstring', 'u8.vstring_with_len', 'char.vstring', 'char.vstring_with_len', 'byteptr.vstring',
-		'byteptr.vstring_with_len', 'charptr.vstring', 'charptr.vstring_with_len', 'u8.vstring_literal',
-		'u8.vstring_literal_with_len', 'char.vstring_literal', 'char.vstring_literal_with_len',
-		'byteptr.vstring_literal', 'byteptr.vstring_literal_with_len', 'charptr.vstring_literal',
+		'check_fwrite', 'check_fread', 'os.check_fwrite', 'os.check_fread', '__v3_array_eq_raw',
+		'__v3_array_eq_string', '__v3_array_eq_array', 'fxx_to_str_l_parse',
+		'fxx_to_str_l_parse_with_dot', 'u8.vstring', 'u8.vstring_with_len', 'char.vstring',
+		'char.vstring_with_len', 'byteptr.vstring', 'byteptr.vstring_with_len', 'charptr.vstring',
+		'charptr.vstring_with_len', 'u8.vstring_literal', 'u8.vstring_literal_with_len',
+		'char.vstring_literal', 'char.vstring_literal_with_len', 'byteptr.vstring_literal',
+		'byteptr.vstring_literal_with_len', 'charptr.vstring_literal',
 		'charptr.vstring_literal_with_len', 'prealloc_malloc', 'prealloc_malloc_align',
 		'prealloc_calloc', 'prealloc_realloc', 'prealloc_scope_begin', 'v_realloc', 'map_map_eq',
 		'v3_string_zpad', 'v3_f64_zpad', 'v3_int_zpad', 'v3_i64_zpad', 'v3_u64_zpad', 'v3_heap_array',
@@ -2103,9 +2104,10 @@ fn (b &Builder) skip_source_fn_in_module(name string, module_name string) bool {
 		return name in b.c_fn_ids || b.skip_source_fn(name)
 			|| name in ['int_str', 'bool_str', 'string.int', 'string__int', 'array_slice',
 				'array__clone', 'array_push_many_ptr', 'IError.msg', 'IError.code', 'Array_str',
-				'array_index_string', 'array_index_int', 'array_contains_string', 'array_contains_int',
-				'fixed_array_contains_string', 'fixed_array_contains_int', 'v3_string_pad',
-				'v3_char_string', 'v3_f64_fixed', 'v3_int_zpad', 'v3_i64_zpad', 'v3_u64_zpad']
+				'__v3_array_index_string', '__v3_array_index_int', '__v3_array_contains_string',
+				'__v3_array_contains_int', '__v3_fixed_array_contains_string',
+				'__v3_fixed_array_contains_int', 'v3_string_pad', 'v3_char_string', 'v3_f64_fixed',
+				'v3_int_zpad', 'v3_i64_zpad', 'v3_u64_zpad']
 			|| name.starts_with('v3_array_sort_')
 	}
 	if module_name in ['ast', 'v.ast']
@@ -3398,7 +3400,7 @@ fn (mut b Builder) register_array_runtime_stubs() {
 	mut p2_array := []TypeID{}
 	p2_array << b.array_type
 	p2_array << b.array_type
-	if array_eq_string_id := b.register_runtime_function('array_eq_string', b.i1_type, p2_array) {
+	if array_eq_string_id := b.register_runtime_function('__v3_array_eq_string', b.i1_type, p2_array) {
 		b.generate_array_eq_string_body(array_eq_string_id)
 	}
 
@@ -3406,7 +3408,7 @@ fn (mut b Builder) register_array_runtime_stubs() {
 	p3_array << b.array_type
 	p3_array << b.array_type
 	p3_array << b.i64_type
-	if array_eq_raw_id := b.register_runtime_function('array_eq_raw', b.i1_type, p3_array) {
+	if array_eq_raw_id := b.register_runtime_function('__v3_array_eq_raw', b.i1_type, p3_array) {
 		b.generate_array_eq_raw_body(array_eq_raw_id)
 	}
 
@@ -3414,7 +3416,7 @@ fn (mut b Builder) register_array_runtime_stubs() {
 	p3_array_depth << b.array_type
 	p3_array_depth << b.array_type
 	p3_array_depth << b.i32_type
-	if array_eq_array_id := b.register_runtime_function('array_eq_array', b.i1_type, p3_array_depth) {
+	if array_eq_array_id := b.register_runtime_function('__v3_array_eq_array', b.i1_type, p3_array_depth) {
 		b.generate_array_eq_array_body(array_eq_array_id)
 	}
 
@@ -5357,7 +5359,7 @@ fn (mut b Builder) register_fixed_array_contains_stubs() {
 	p3_string << ptr_i8
 	p3_string << b.i64_type
 	p3_string << b.str_type
-	if contains_string_id := b.register_runtime_function('fixed_array_contains_string', b.i1_type,
+	if contains_string_id := b.register_runtime_function('__v3_fixed_array_contains_string', b.i1_type,
 		p3_string) {
 		b.generate_fixed_array_contains_string_body(contains_string_id)
 	}
@@ -5366,7 +5368,7 @@ fn (mut b Builder) register_fixed_array_contains_stubs() {
 	p3_int << ptr_i8
 	p3_int << b.i64_type
 	p3_int << b.i64_type
-	if contains_int_id := b.register_runtime_function('fixed_array_contains_int', b.i1_type, p3_int) {
+	if contains_int_id := b.register_runtime_function('__v3_fixed_array_contains_int', b.i1_type, p3_int) {
 		b.generate_const_bool_body(contains_int_id, false)
 	}
 }
@@ -5428,22 +5430,22 @@ fn (mut b Builder) register_array_contains_stubs() {
 	mut p2_string := []TypeID{}
 	p2_string << b.array_type
 	p2_string << b.str_type
-	if index_string_id := b.register_runtime_function('array_index_string', b.i64_type, p2_string) {
+	if index_string_id := b.register_runtime_function('__v3_array_index_string', b.i64_type, p2_string) {
 		b.generate_array_index_string_body(index_string_id)
 	}
-	if contains_string_id := b.register_runtime_function('array_contains_string', b.i1_type,
+	if contains_string_id := b.register_runtime_function('__v3_array_contains_string', b.i1_type,
 		p2_string) {
-		b.generate_array_contains_from_index_body(contains_string_id, 'array_index_string', b.str_type)
+		b.generate_array_contains_from_index_body(contains_string_id, '__v3_array_index_string', b.str_type)
 	}
 
 	mut p2_int := []TypeID{}
 	p2_int << b.array_type
 	p2_int << b.i64_type
-	if index_int_id := b.register_runtime_function('array_index_int', b.i64_type, p2_int) {
+	if index_int_id := b.register_runtime_function('__v3_array_index_int', b.i64_type, p2_int) {
 		b.generate_array_index_int_body(index_int_id)
 	}
-	if contains_int_id := b.register_runtime_function('array_contains_int', b.i1_type, p2_int) {
-		b.generate_array_contains_from_index_body(contains_int_id, 'array_index_int', b.i64_type)
+	if contains_int_id := b.register_runtime_function('__v3_array_contains_int', b.i1_type, p2_int) {
+		b.generate_array_contains_from_index_body(contains_int_id, '__v3_array_index_int', b.i64_type)
 	}
 }
 
@@ -11774,7 +11776,7 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 			args << b.coerce_value_for_param(b.build_expr(arg_id), b.array_type)
 			continue
 		}
-		if resolved_name == 'fixed_array_contains_string' && param_idx == 0 {
+		if resolved_name == '__v3_fixed_array_contains_string' && param_idx == 0 {
 			if arg := b.build_const_string_array_arg(arg_id) {
 				args << arg
 				continue
@@ -12190,7 +12192,11 @@ fn (mut b Builder) build_array_first_last_call(id flat.NodeId, base_id flat.Node
 fn (mut b Builder) build_array_index_call(base_id flat.NodeId, needle_id flat.NodeId) ValueID {
 	base := b.build_expr(base_id)
 	elem_type := b.array_receiver_elem_type(base_id)
-	fn_name := if elem_type == b.str_type { 'array_index_string' } else { 'array_index_int' }
+	fn_name := if elem_type == b.str_type {
+		'__v3_array_index_string'
+	} else {
+		'__v3_array_index_int'
+	}
 	needle_type := if elem_type == b.str_type { b.str_type } else { b.i64_type }
 	mut needle := b.build_expr(needle_id)
 	needle = b.coerce_int_value(needle, needle_type)

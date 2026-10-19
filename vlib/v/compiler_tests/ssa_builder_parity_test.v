@@ -214,8 +214,8 @@ fn main() {
 	_ := same(["x"], ["x"])
 }
 ')
-	assert has_call_to(m, 'same', 'array_eq_string')
-	f := find_func(m, 'array_eq_string')
+	assert has_call_to(m, 'same', '__v3_array_eq_string')
+	f := find_func(m, '__v3_array_eq_string')
 	assert f.blocks.len > 0
 }
 
@@ -599,7 +599,7 @@ fn main() {
 	_ := has_name("malloc")
 }
 ')
-	assert has_call_to(m, 'has_name', 'fixed_array_contains_string')
+	assert has_call_to(m, 'has_name', '__v3_fixed_array_contains_string')
 	assert !has_call_to(m, 'has_name', 'array_new')
 }
 

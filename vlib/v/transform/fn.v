@@ -12326,13 +12326,13 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 				return t.make_array_elementwise_eq_call(receiver, arg, flat.source_type_id(elem_type), clean_base_type, clean_base_type, node)
 			}
 			if elem_type.starts_with('[]') {
-				return t.make_call_typed('array_eq_array', [receiver, arg,
+				return t.make_call_typed('__v3_array_eq_array', [receiver, arg,
 					t.make_int_literal(array_nested_eq_depth(flat.source_type_name(clean_base_type)))], flat.source_type_bool)
 			}
 			if elem_type == 'string' {
-				return t.make_call_typed('array_eq_string', [receiver, arg], flat.source_type_bool)
+				return t.make_call_typed('__v3_array_eq_string', [receiver, arg], flat.source_type_bool)
 			}
-			return t.make_call_typed('array_eq_raw', [receiver, arg,
+			return t.make_call_typed('__v3_array_eq_raw', [receiver, arg,
 				t.make_sizeof_type(flat.source_type_id(elem_type))], flat.source_type_bool)
 		}
 		else {}
@@ -12376,9 +12376,9 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 			receiver := t.transform_expr(base_id)
 			arg := t.transform_expr(arg_id)
 			fn_name := if elem_type == 'string' {
-				'array_contains_string'
+				'__v3_array_contains_string'
 			} else {
-				'array_contains_int'
+				'__v3_array_contains_int'
 			}
 			return t.make_call_typed(fn_name, [receiver, arg], flat.source_type_bool)
 		}
@@ -12392,7 +12392,11 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 			}
 			receiver := t.transform_expr(base_id)
 			arg := t.transform_expr(arg_id)
-			fn_name := if elem_type == 'string' { 'array_index_string' } else { 'array_index_int' }
+			fn_name := if elem_type == 'string' {
+				'__v3_array_index_string'
+			} else {
+				'__v3_array_index_int'
+			}
 			return t.make_call_typed(fn_name, [receiver, arg], flat.source_type_int)
 		}
 		'last_index' {

@@ -439,6 +439,10 @@ mut:
 	// generic calls there must not be specialized (the loop var members are not resolved yet).
 	cloning_comptime_for_depth int
 	cloning_comptime_for_vars  []string
+	// declaring_comptime_field_locals is set while the body of a `$for` over the
+	// fields is cloned for one field. The clone then declares the locals of the
+	// body as it goes (see declare_comptime_field_local).
+	declaring_comptime_field_locals bool
 	// ignored_comptime_for_nodes marks source `$for` subtrees replaced by concrete
 	// unrolled nodes. Keeping the marker outside the shared flat AST lets parallel
 	// workers record their own discarded nodes without racing.
