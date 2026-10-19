@@ -1413,7 +1413,9 @@ fn (t &Transformer) index_callee_is_value_index(index_node flat.Node) bool {
 		return true
 	}
 	if base.kind == .ident && t.type_name_is_indexable(t.var_type(base.value)) {
-		return true
+		// Bindings are kept by name after the block that declared them, so a local
+		// of an earlier block can name the generic function the call resolved to.
+		return !t.index_call_resolved_to_fn(base_id, base.value)
 	}
 	if base.kind == .ident || base.kind == .selector {
 		base_type_source_id_6 := t.resolve_expr_type(base_id)
@@ -1433,6 +1435,28 @@ fn (t &Transformer) index_callee_is_value_index(index_node flat.Node) bool {
 		}
 	}
 	return false
+}
+
+// index_call_resolved_to_fn reports whether the checker, which resolves names in
+// their block scope, resolved the call around `name[...]` to the function `name`.
+fn (t &Transformer) index_call_resolved_to_fn(base_id flat.NodeId, name string) bool {
+	if isnil(t.tc) || int(base_id) < 0 || int(base_id) >= t.source_parent_ids.len {
+		return false
+	}
+	index_id := int(t.source_parent_ids[int(base_id)])
+	if index_id < 0 || index_id >= t.source_parent_ids.len {
+		return false
+	}
+	call_id := int(t.source_parent_ids[index_id])
+	if call_id < 0 {
+		return false
+	}
+	call := t.a.nodes[call_id]
+	if call.kind != .call || call.children_count == 0 || int(t.a.child(&call, 0)) != index_id {
+		return false
+	}
+	resolved := t.tc.resolved_call_name(flat.NodeId(call_id)) or { return false }
+	return resolved.all_before('[').all_after_last('.') == name
 }
 
 fn (t &Transformer) type_name_is_indexable(name_id u32) bool {

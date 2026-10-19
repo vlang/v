@@ -9547,6 +9547,17 @@ fn (tc &TypeChecker) expected_context_for_expr(id flat.NodeId) ?Type {
 				}
 			}
 		}
+		// `[1, 2]!` is the fixed array its literal builds: where a fixed array is
+		// expected, the literal is typed in that context, as an untyped `[1, 2]` is.
+		// Elsewhere it keeps its own type, so that `[5.0]!` for a `[]int` is reported
+		// as a fixed array, not as an element.
+		if parent.kind == .postfix && parent.op == .not && tc.a.node(id).kind == .array_literal {
+			if expected_parent := tc.expected_context_for_expr(parent_id) {
+				if unalias_type(contextual_payload_type(expected_parent) or { expected_parent }) is ArrayFixed {
+					return expected_parent
+				}
+			}
+		}
 		if parent.kind == .array_literal {
 			if expected_parent := tc.expected_context_for_expr(parent_id) {
 				context_type := unalias_type(contextual_payload_type(expected_parent) or {

@@ -1612,6 +1612,9 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 		&& tc.errors.any(it.kind == .unknown_ident && it.node == subject_id) {
 		subject_declared_type = builtin_void_type
 	}
+	if declared := tc.match_retests_smartcast_subject(subject_id, node) {
+		subject_declared_type = declared
+	}
 	if subject.kind == .paren {
 		tc.record_warning_at(.condition_mismatch, 'unnecessary `()` in `match` condition, use `match expr {` instead of `match (expr) {`.', subject_id, subject.pos)
 	}
@@ -4001,6 +4004,34 @@ fn (mut tc TypeChecker) apply_match_branch_context_smartcasts(subject_key string
 	} else {
 		variant_type
 	}
+}
+
+// match_retests_smartcast_subject returns the declared interface type of a match
+// subject that a smartcast narrowed to one concrete type, when the match tests its
+// type again: after `if a is Dog { ... } else { panic('') }`, a
+// `match a { Dog {} else {} }` dispatches on the value `a` holds, as in V 0.5.2.
+// (A narrowed sum type value is not a reference, and is matched as it is.)
+fn (tc &TypeChecker) match_retests_smartcast_subject(subject_id flat.NodeId, node flat.Node) ?Type {
+	declared := tc.declared_smartcast_receiver_type(subject_id) or { return none }
+	if unalias_and_unwrap_pointer_type(declared) !is Interface {
+		return none
+	}
+	narrowed := unalias_and_unwrap_pointer_type(tc.resolve_type(subject_id))
+	if narrowed is Interface || narrowed is SumType || narrowed is Unknown {
+		return none
+	}
+	for i in 1 .. node.children_count {
+		branch := tc.a.child_node(&node, i)
+		if branch.kind != .match_branch || branch.value == 'else' {
+			continue
+		}
+		for j in 0 .. branch.value.int() {
+			if _ := tc.match_type_pattern(tc.a.child_node(branch, j)) {
+				return declared
+			}
+		}
+	}
+	return none
 }
 
 // extract_smartcasts supports extract smartcasts handling for TypeChecker.

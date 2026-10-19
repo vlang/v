@@ -1557,6 +1557,27 @@ fn (mut t Transformer) return_or_result_tail_as_return(node flat.Node, source_re
 	})
 }
 
+// match_retests_smartcast_subject reports whether `node`, a match on the ident
+// `subject_id` that an outer smartcast narrowed, tests the type of its value again:
+// `match a { Dog {} else {} }` after `if a !is Dog { panic('') }`.
+fn (t &Transformer) match_retests_smartcast_subject(node flat.Node, subject_id flat.NodeId) bool {
+	if t.a.nodes[int(subject_id)].kind != .ident || t.smartcasts_for_expr(subject_id).len == 0 {
+		return false
+	}
+	for i in 1 .. node.children_count {
+		branch := t.a.child_node(&node, i)
+		if branch.value == 'else' {
+			continue
+		}
+		for j in 0 .. t.count_conds(branch) {
+			if _ := t.match_type_pattern_for_subject(subject_id, t.a.child(branch, j)) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 fn (mut t Transformer) try_expand_return_match(source_return_id flat.NodeId, node flat.Node) ?[]flat.NodeId {
 	if node.children_count == 0 {
 		return none
@@ -1594,6 +1615,10 @@ fn (mut t Transformer) try_expand_return_match(source_return_id flat.NodeId, nod
 		actual_expr_id = t.make_ident(tmp_name)
 		t.set_node_typ(int(actual_expr_id), match_type_source_id)
 		t.set_var_type(tmp_name, match_type_source_id)
+	} else if t.match_retests_smartcast_subject(val, match_expr_id) {
+		// The branches test the type of the value again, so they need the declared
+		// value, as lower_one_match keeps it, not the one an outer smartcast narrowed.
+		actual_expr_id = match_expr_id
 	} else {
 		actual_expr_id = t.transform_expr(match_expr_id)
 		t.drain_pending(mut result)

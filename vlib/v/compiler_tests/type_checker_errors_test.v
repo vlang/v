@@ -547,7 +547,7 @@ fn main() {
 fn main() {
 	invoke(1)
 }
-', 'unknown function `value.no_such`')
+', 'unknown method or field: `int.no_such`')
 	run_bad(v3_bin, 'bad_generic_missing_array_receiver_method', 'fn invoke[T](value T) {
 	value.no_such()
 }
@@ -652,7 +652,7 @@ fn read[T](value T) int {
 fn main() {
 	_ := read(NoValue{})
 }
-', 'unknown function `value.value`')
+', 'unknown method or field: `NoValue.value`')
 	run_bad(v3_bin, 'bad_generic_receiver_method_argument_count', 'struct HasValue {}
 
 fn (v HasValue) value() int {

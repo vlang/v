@@ -2837,6 +2837,20 @@ fn (g &FlatGen) concrete_generic_method_name_from_call_receiver(node flat.Node, 
 	return none
 }
 
+// index_callee_is_local_value reports whether the callee `name[i]` indexes a local
+// container of functions; such a local shadows a generic function `name`.
+fn (g &FlatGen) index_callee_is_local_value(fn_node &flat.Node) bool {
+	if fn_node.children_count == 0 {
+		return false
+	}
+	base := g.a.child_node(fn_node, 0)
+	if base.kind != .ident {
+		return false
+	}
+	typ := g.local_ident_type(base.value) or { return false }
+	return cgen_type_is_indexable_container(typ)
+}
+
 // cgen_type_is_indexable_container reports whether `typ` is a container value that
 // `x[i]` indexes into. A selector of such a type cannot be a generic method name.
 fn cgen_type_is_indexable_container(typ types.Type) bool {
@@ -7924,7 +7938,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 	if g.gen_map_mutation_call_with_loop_copyback_guard(node, fn_name, target_name, resolved_target_name) {
 		return
 	}
-	if fn_node.kind == .index && fn_node.value != 'range' {
+	if fn_node.kind == .index && fn_node.value != 'range' && !g.index_callee_is_local_value(fn_node) {
 		runtime_start := 1
 		arg_count := int(node.children_count) - runtime_start
 		mut specialized_name := ''
