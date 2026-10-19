@@ -789,3 +789,37 @@ fn test_a_local_of_a_comptime_for_body_is_not_taken_for_a_constant() {
 	assert check.res.exit_code == 0, check.res.output
 	assert error_lines(check.res.output) == [], check.res.output
 }
+
+const map_cast_program = "fn to_counts[T](m map[string]T) map[string]u8 {\n\treturn map[string]u8(m)\n}\n\nfn main() {\n\tprintln(to_counts({\n\t\t'a': u8(7)\n\t}))\n"
+
+// `map[K]V(m)` is a cast, as `?map[K]V(m)` is, and it keeps the elements as
+// they are. An instance that casts a map whose values are stored otherwise is
+// reported where it does so, in a check and in a build. It used to pass the
+// check and give the C compiler an invalid cast.
+fn test_a_map_type_cast_is_checked_for_each_instance() {
+	source := map_cast_program + "\tprintln(to_counts({\n\t\t'a': 258\n\t}))\n}\n"
+	for res in [check_program('map_cast_check', source), build_program('map_cast_build', source)] {
+		assert res.exit_code != 0, res.output
+		assert !res.output.contains('C compilation error'), res.output
+		assert error_lines(res.output) == [
+			'11:9: cannot cast map `map[string]int` to `map[string]u8`',
+		], res.output
+	}
+}
+
+// An instance that casts a map to its own type builds and runs.
+fn test_a_map_type_cast_to_the_same_elements_builds() {
+	source := map_cast_program + '}\n'
+	assert error_lines(check_program('map_cast_valid_check', source).output) == []
+	dir := os.join_path(os.vtmp_dir(), 'v3_run_generic_instances_map_cast_${os.getpid()}')
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	path := os.join_path(dir, 'main.v')
+	os.write_file(path, generic_prelude + source) or { panic(err) }
+	res := os.exec(['env', 'V_MACOS_V3_NO_FALLBACK=1', @VEXE, '-new-compiler', '-nocolor', 'run',
+		path])
+	assert res.exit_code == 0, res.output
+	assert res.output.trim_space() == "{'a': 7}", res.output
+}

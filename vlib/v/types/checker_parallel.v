@@ -3167,8 +3167,8 @@ fn container_layout_error_parts(msg string) ?(string, string, ContainerLayoutUse
 	}
 	parts := msg.split('`')
 	if parts.len == 5 && parts[4] == '' && parts[2] == ' to ' {
-		if parts[0] == 'cannot cast array ' {
-			// cannot cast array `A` to `B`
+		if parts[0] in ['cannot cast array ', 'cannot cast map '] {
+			// cannot cast array `A` to `B`, cannot cast map `A` to `B`
 			return parts[1], parts[3], ContainerLayoutUse.cast
 		}
 		if parts[0] == 'cannot append ' {
