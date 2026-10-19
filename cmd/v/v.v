@@ -130,6 +130,9 @@ fn main() {
 		run_external_tool(args, -1, 'repl')
 		return
 	}
+	if reuse_shared_test_compiler(args) {
+		return
+	}
 	compiler_args := compiler_args_before_program(args)
 	command_index, command := find_command(args)
 	// Tool arguments belong to the tool, including a completion query for the removed flag.
