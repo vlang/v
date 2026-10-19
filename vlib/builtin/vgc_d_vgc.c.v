@@ -856,6 +856,7 @@ fn vgc_malloc_noscan_opts(n usize, zero_fill bool) voidptr {
 
 	class_idx := C.vgc_size_class(u32(n))
 	if class_idx == 0 {
+		vgc_maybe_gc()
 		return vgc_alloc_large(n, true, zero_fill, cache_idx)
 	}
 
@@ -902,6 +903,9 @@ fn vgc_malloc_noscan_opts(n usize, zero_fill bool) voidptr {
 				}
 				C.vgc_atomic_add_u64(&vgc_heap.heap_live, u64(span.elem_size))
 				C.vgc_atomic_add_u64(&vgc_heap.total_alloc, u64(n))
+				if span.alloc_count >= span.nelems {
+					vgc_maybe_gc()
+				}
 				return ptr
 			}
 		}
@@ -919,6 +923,11 @@ fn vgc_malloc_noscan_opts(n usize, zero_fill bool) voidptr {
 		C.vgc_atomic_add_u64(&vgc_heap.total_alloc, u64(n))
 		if zero_fill {
 			unsafe { C.memset(ptr, 0, n) }
+		}
+		// Strings and other pointer-free data count toward the trigger like any allocation;
+		// check it when a span fills up, as for objects with pointers.
+		if span.alloc_count >= span.nelems {
+			vgc_maybe_gc()
 		}
 	}
 	return ptr

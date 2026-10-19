@@ -177,3 +177,19 @@ fn test_gc_collect_does_nothing_while_the_gc_is_disabled() {
 		assert vgc_heap.gc_cycle == cycles + 1
 	}
 }
+
+fn test_pointer_free_allocations_trigger_a_collection() {
+	$if vgc ? {
+		cycles := vgc_heap.gc_cycle
+		// Lower the trigger for the test: 4 MB above the live heap.
+		C.vgc_atomic_store_u64(&vgc_heap.next_gc, C.vgc_atomic_load_u64(&vgc_heap.heap_live) +
+			4 * 1024 * 1024)
+		// About 13 MB of strings, and no other allocations.
+		mut total := 0
+		for i in 0 .. 100000 {
+			total += 'string data '.repeat(1 + i % 20).len
+		}
+		assert total > 0
+		assert vgc_heap.gc_cycle > cycles
+	}
+}
