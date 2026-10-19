@@ -19,10 +19,28 @@
   #define VGC_TLS __thread
 #endif
 
+#if defined(__TINYC__) && defined(__APPLE__)
+  // TinyCC's Mach-O output has no working thread-local storage: writing a `__thread` variable
+  // crashes. Keep the index in a pthread key instead, stored as idx + 1 so that a thread
+  // without a value reads -1.
+  #include <pthread.h>
+  static pthread_key_t _vgc_cache_idx_key;
+  static pthread_once_t _vgc_cache_idx_once = PTHREAD_ONCE_INIT;
+  static void vgc_cache_idx_key_create(void) { pthread_key_create(&_vgc_cache_idx_key, NULL); }
+  static inline int vgc_get_cache_idx(void) {
+      pthread_once(&_vgc_cache_idx_once, vgc_cache_idx_key_create);
+      return (int)(intptr_t)pthread_getspecific(_vgc_cache_idx_key) - 1;
+  }
+  static inline void vgc_set_cache_idx(int idx) {
+      pthread_once(&_vgc_cache_idx_once, vgc_cache_idx_key_create);
+      pthread_setspecific(_vgc_cache_idx_key, (void*)(intptr_t)(idx + 1));
+  }
+#else
 static VGC_TLS int _vgc_cache_idx = -1;
 
 static inline int vgc_get_cache_idx(void) { return _vgc_cache_idx; }
 static inline void vgc_set_cache_idx(int idx) { _vgc_cache_idx = idx; }
+#endif
 
 // ============================================================
 // Atomic operations
@@ -162,6 +180,12 @@ static inline void vgc_set_cache_idx(int idx) { _vgc_cache_idx = idx; }
   }
 #elif defined(__linux__) || defined(__ANDROID__)
   #include <pthread.h>
+  #if !defined(__ANDROID__) && !defined(__USE_GNU) && !defined(__cplusplus)
+    // glibc and musl declare pthread_getattr_np only with _GNU_SOURCE, which has to be defined
+    // before the first libc header. V's C output includes <pthread.h> long before this header,
+    // so declare it here; repeating a declaration is fine in C.
+    int pthread_getattr_np(pthread_t thread, pthread_attr_t* attr);
+  #endif
   static inline int vgc_get_stack_bounds(uintptr_t* lo, uintptr_t* hi) {
       pthread_attr_t attr;
       if (pthread_getattr_np(pthread_self(), &attr) != 0) return 0;
@@ -323,9 +347,11 @@ static inline uint8_t vgc_size_class(uint32_t size) {
 // ============================================================
 #if defined(__x86_64__) || defined(__i386__) || defined(_M_X64) || defined(_M_IX86)
   #define vgc_cpu_pause() __asm__ __volatile__("pause")
-#elif defined(__aarch64__) || defined(_M_ARM64)
+#elif (defined(__aarch64__) || defined(_M_ARM64)) && !defined(__TINYC__)
   #define vgc_cpu_pause() __asm__ __volatile__("yield")
 #else
+  // TinyCC's arm64 assembler has no `yield`. The hint is optional: vgc_mutex_lock falls back to
+  // vgc_thread_yield() after a few rounds anyway.
   #define vgc_cpu_pause() ((void)0)
 #endif
 
