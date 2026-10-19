@@ -1159,6 +1159,13 @@ fn (mut g FlatGen) start_fixed_array_ret_wrappers() ([]&FlatGen, []thread voidpt
 	mut worker := g.new_parallel_worker(3)
 	worker.fixed_array_ret_wrappers = map[string]bool{}
 	mut support_worker := g.new_parallel_worker(5)
+	// Both helpers run beside function selection, which writes the master's C-name
+	// and generic-application caches and may release the arena behind them. Keep
+	// their caches private instead of reading the master's through `base`.
+	worker.c_name_cache = &CNameCache{}
+	worker.generic_app_cache = &GenericAppCache{}
+	support_worker.c_name_cache = &CNameCache{}
+	support_worker.generic_app_cache = &GenericAppCache{}
 	support_worker.recursive_drop_helpers = map[u64]u32{}
 	support_worker.fixed_array_map_key_types = map[string]types.ArrayFixed{}
 	mut threads := []thread voidptr{cap: 2}
