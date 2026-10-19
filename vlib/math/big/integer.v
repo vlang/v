@@ -620,7 +620,12 @@ pub fn (base Integer) big_mod_pow(exponent Integer, modulus Integer) !Integer {
 		return one_int
 	}
 
-	x := base.mod_euclid(m)
+	// Power-of-two reduction only needs the low bits of a nonnegative base.
+	x := if base.signum >= 0 && m.is_power_of_2() {
+		base.mask_bits(u32(m.bit_len() - 1))
+	} else {
+		base.mod_euclid(m)
+	}
 	// 0^n == 0 || 1^n == 1 || x^1 == x
 	if x == zero_int || x == one_int || exponent.bit_len() == 1 {
 		return x
