@@ -71,3 +71,23 @@ fn test_nul_bytes_inside_the_subject_are_still_matchable() {
 	empty_start, empty_end := any.match_base(unsafe { nil }, 0)
 	assert empty_start == -1 && empty_end == 0
 }
+
+fn test_boundary_keeps_the_final_real_character_for_a_required_token() {
+	for pattern in [r'^a+.$', r'^a+a$', r'^[a]+.$', r'^\w+.$', r'^([^a-z]+.)$'] {
+		text := if pattern == r'^([^a-z]+.)$' { '!!!' } else { 'aaa' }
+		mut re := regex.regex_opt(pattern)!
+		start, end := re.match_string(text)
+		assert start == 0 && end == text.len, '${pattern}: ${start}, ${end}'
+	}
+	mut unicode_re := regex.regex_opt(r'^é+.$')!
+	start, end := unicode_re.match_string('ééé')
+	assert start == 0 && end == 'ééé'.len
+}
+
+fn test_exit_on_first_match_respects_the_exact_buffer_length() {
+	bytes := [u8(`a`)]
+	mut re := regex.regex_opt('a')!
+	re.flag |= regex.f_efm
+	start, end := re.match_base(bytes.data, bytes.len)
+	assert start == 1 && end == 1
+}

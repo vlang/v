@@ -2314,6 +2314,23 @@ pub fn (mut re RE) match_base(in_txt &u8, text_len int) (int, int) {
 			// Control instructions and zero-width tokens can still finish at EOF.
 			else if state.i >= text_len && ist in [u32(ist_simple_char), ist_dot_char, ist_bsls_char,
 				ist_char_class_pos, ist_char_class_neg] {
+				// A greedy predecessor may have consumed the last real character needed by
+				// this token. Give it back instead of attempting to match the virtual EOF.
+				previous := state.pc - 1
+				if re.prog[state.pc].rep == 0 && re.prog[state.pc].rep_min > 0
+					&& previous >= 0 && re.prog[previous].ist in [
+					u32(ist_simple_char),
+					ist_dot_char,
+					ist_bsls_char,
+					ist_char_class_pos,
+					ist_char_class_neg,
+				]
+					&& re.prog[previous].rep > re.prog[previous].rep_min
+					&& state.match_index >= 0 && state.match_index < text_len {
+					re.prog[previous].rep--
+					state.i = state.match_index
+					continue
+				}
 				m_state = .ist_quant_n
 				continue
 			}
@@ -2742,7 +2759,7 @@ pub fn (mut re RE) match_base(in_txt &u8, text_len int) (int, int) {
 			// println("Here .ist_quant_p")
 			// exit on first match
 			if (re.flag & f_efm) != 0 {
-				return state.i, state.i + 1
+				return state.i, if state.i < text_len { state.i + 1 } else { text_len }
 			}
 
 			rep := re.prog[state.pc].rep
