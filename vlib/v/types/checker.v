@@ -8652,7 +8652,10 @@ fn mut_param_base_type(typ Type) Type {
 	return typ
 }
 
-fn mut_param_semantic_type(typ Type) Type {
+// mut_param_semantic_type returns the type of a `mut` parameter declared as `typ` (`&T`).
+// A `mut a ?T` with a struct payload, or an alias of one, is `&?&T`: the callee gets the
+// caller's struct by reference. Every other type is returned unchanged.
+pub fn mut_param_semantic_type(typ Type) Type {
 	if typ !is Pointer {
 		return typ
 	}

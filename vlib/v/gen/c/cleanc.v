@@ -5011,7 +5011,7 @@ fn (mut g FlatGen) compute_collect_gen_fn_prep(node flat.Node, module_name strin
 		raw_pt := if param_idx < typed_params.len {
 			typed_params[param_idx]
 		} else {
-			g.tc.parse_resolution_type(child.typ)
+			g.unregistered_fn_param_type(child)
 		}
 		mut pt := raw_pt
 		if shared_alias_ptr := g.cached_shared_alias_pointer_type_from_text(child.typ) {

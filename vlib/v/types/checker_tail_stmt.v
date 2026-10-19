@@ -14504,8 +14504,14 @@ fn (tc &TypeChecker) substitute_generic_type(typ Type, args_ids []u32, param_nam
 	}
 	if typ is FnType {
 		mut params := []Type{}
-		for param in typ.params {
-			params << tc.substitute_generic_type(param, args_ids, param_names)
+		for i, param in typ.params {
+			substituted := tc.substitute_generic_type(param, args_ids, param_names)
+			// `mut a ?T` with a struct `T` is `&?&T`, as parse_fn_type spells it.
+			params << if i < typ.params_mut.len && typ.params_mut[i] {
+				mut_param_semantic_type(substituted)
+			} else {
+				substituted
+			}
 		}
 		return Type(FnType{
 			params:      params
@@ -14614,8 +14620,14 @@ fn (tc &TypeChecker) substitute_generic_type_values(typ Type, args []Type, param
 	}
 	if typ is FnType {
 		mut params := []Type{cap: typ.params.len}
-		for param in typ.params {
-			params << tc.substitute_generic_type_values(param, args, param_names)
+		for i, param in typ.params {
+			substituted := tc.substitute_generic_type_values(param, args, param_names)
+			// `mut a ?T` with a struct `T` is `&?&T`, as parse_fn_type spells it.
+			params << if i < typ.params_mut.len && typ.params_mut[i] {
+				mut_param_semantic_type(substituted)
+			} else {
+				substituted
+			}
 		}
 		return Type(FnType{
 			params:      params
@@ -18395,8 +18407,11 @@ fn (tc &TypeChecker) parse_fn_type(typ string) Type {
 			trimmed := trimmed_space(p)
 			param_type := normalize_fn_type_param_text(trimmed)
 			is_variadic = param_type.starts_with('...')
-			params << tc.parse_type(flat.source_type_id(param_type))
-			params_mut << trimmed.starts_with('mut ')
+			parsed := tc.parse_type(flat.source_type_id(param_type))
+			is_mut := trimmed.starts_with('mut ')
+			// Like a named fn's, a `mut a ?T` param with a struct payload is `&?&T`.
+			params << if is_mut { mut_param_semantic_type(parsed) } else { parsed }
+			params_mut << is_mut
 		}
 	}
 	mut ret_type := Type(Void{})
@@ -20057,7 +20072,12 @@ fn (tc &TypeChecker) fn_literal_type(node flat.Node) Type {
 		} else {
 			parsed
 		}
-		params << explicit_mut_ref_param_slot_type(child, resolved)
+		params << if child.is_mut && child.op != .amp {
+			// A `mut a ?T` param with a struct payload is `&?&T`, as in a named fn.
+			mut_param_semantic_type(resolved)
+		} else {
+			explicit_mut_ref_param_slot_type(child, resolved)
+		}
 	}
 	return Type(FnType{
 		params:      params
@@ -20473,6 +20493,11 @@ fn (tc &TypeChecker) c_type_uncached(t Type) string {
 		return 'map'
 	}
 	if t is Pointer {
+		if t.base_type is OptionType || t.base_type is ResultType {
+			// `&?T`, the type of a `mut a ?T` parameter. Spelled as cgen spells it
+			// (`optional_type_name`), so that fn types and declarations agree.
+			return tc.optional_c_type_name(t.base_type) + '*'
+		}
 		return tc.c_type(t.base_type) + '*'
 	}
 	if t is FnType {
