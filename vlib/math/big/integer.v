@@ -538,21 +538,19 @@ fn (a Integer) mask_bits(n u32) Integer {
 		return a
 	}
 
+	mut storage := []u64{len: int(w) + if b == 0 { 0 } else { 1 }}
+	for i in 0 .. storage.len {
+		storage[i] = a.digits[i]
+	}
+	if b != 0 {
+		storage[w] &= ~(u64(-1) << b)
+	}
+	shrink_tail_zeros(mut storage)
+	if storage.len == 0 {
+		return zero_int
+	}
 	return Integer{
-		digits: if b == 0 {
-			mut storage := []u64{len: int(w)}
-			for i := 0; i < storage.len; i++ {
-				storage[i] = a.digits[i]
-			}
-			storage
-		} else {
-			mut storage := []u64{len: int(w) + 1}
-			for i := 0; i < storage.len; i++ {
-				storage[i] = a.digits[i]
-			}
-			storage[w] &= ~(u64(-1) << b)
-			storage
-		}
+		digits: storage
 		signum: 1
 	}
 }
@@ -620,9 +618,19 @@ pub fn (base Integer) big_mod_pow(exponent Integer, modulus Integer) !Integer {
 		return one_int
 	}
 
-	// Power-of-two reduction only needs the low bits of a nonnegative base.
-	x := if base.signum >= 0 && m.is_power_of_2() {
-		base.mask_bits(u32(m.bit_len() - 1))
+	// Reduce modulo a power of two by masking the low bits of |base|, instead of dividing
+	// a large base. A negative base then maps a nonzero `|base| mod m` to `m - |base| mod m`.
+	x := if m.is_power_of_2() {
+		low := Integer{
+			digits:   base.digits
+			signum:   if base.signum == 0 { 0 } else { 1 }
+			is_const: base.is_const
+		}.mask_bits(u32(m.bit_len() - 1))
+		if base.signum < 0 && low.signum != 0 {
+			m - low
+		} else {
+			low
+		}
 	} else {
 		base.mod_euclid(m)
 	}
@@ -691,15 +699,28 @@ pub fn (a Integer) < (b Integer) bool {
 	return if signum < 0 { cmp > 0 } else { cmp < 0 }
 }
 
-// get_bit checks whether the bit at the given index is set.
+// get_bit checks whether the bit at the given index is set in the infinite
+// two's-complement representation. Negative integers have set bits above their magnitude.
 @[direct_array_access]
 pub fn (a Integer) get_bit(i u32) bool {
 	target_index := i / digit_bits
 	offset := i % digit_bits
 	if target_index >= a.digits.len {
-		return false
+		return a.signum < 0
 	}
-	return (a.digits[target_index] >> offset) & 1 != 0
+	mut digit := a.digits[target_index]
+	if a.signum < 0 {
+		// -a = ~(a - 1); a borrow reaches this digit only when all lower digits are zero.
+		mut borrow := u64(1)
+		for j in 0 .. int(target_index) {
+			if a.digits[j] != 0 {
+				borrow = 0
+				break
+			}
+		}
+		digit = ~(digit - borrow)
+	}
+	return (digit >> offset) & 1 != 0
 }
 
 // set_bit sets the bit at the given index to the given value.

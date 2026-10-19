@@ -143,7 +143,8 @@ fn main() {
 
 	c_code := os.read_file(bin + '.c') or { panic(err) }
 	assert c_code.contains('._typ == '), c_code
-	assert c_code.contains('IError__msg(&err)'), c_code
+	// Interface method calls pass the typed receiver in parentheses.
+	assert c_code.contains('IError__msg(&(err))'), c_code
 	assert !c_code.contains('err == myerrs__FirstError'), c_code
 	assert !c_code.contains('err == myerrs__SecondError'), c_code
 

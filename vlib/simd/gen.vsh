@@ -230,6 +230,23 @@ fn (mut g Gen) native(rt string, call string, n int, scalar []string) {
 	g.l('\treturn r\n}\n')
 }
 
+// vhelper emits the body of an element-wise method the same way `native` does,
+// except that the non-C branch calls a named V function instead of inlining the
+// scalar loop. It is used for the four-lane f32 type, whose operations V's
+// native backend replaces with single NEON instructions: that backend matches
+// the call by name, so an inlined loop of four scalar operations is invisible
+// to it. The helper keeps the scalar body for every other backend.
+fn (mut g Gen) vhelper(rt string, call string, helper string, args []string) {
+	g.l("\t\$if @BACKEND == 'c' {")
+	g.l('\t\tmut r := ${rt}{}')
+	g.l('\t\t${call}')
+	g.l('\t\treturn r')
+	g.l('\t} \$else {')
+	g.l('\t\treturn ${helper}(${args.join(', ')})')
+	g.l('\t}')
+	g.l('}\n')
+}
+
 // store_copy copies `count` lanes to dst[offset..]. V3 compiles element writes
 // into a `mut []T` parameter as checked `array__set` calls, so the C backend
 // copies the bytes directly; the caller has already checked the range.
@@ -330,8 +347,18 @@ fn (mut g Gen) vector(e Elem, n int) {
 	for op in arith {
 		wraps := if e.is_int() { ', wrapping on overflow' } else { '' }
 		g.l('// ${op[0]} ${op[2]} corresponding lanes${wraps}.')
+		if t == 'F32x4' {
+			// The call inside must reach the native backend, so the operator
+			// itself must not be inlined away first.
+			g.l('@[noinline]')
+		}
 		g.l('@[direct_array_access]')
 		g.l('pub fn (a ${t}) ${op[0]} (b ${t}) ${t} {')
+		if t == 'F32x4' {
+			g.vhelper(t, 'native_${op[1]}_${s}(&a.values[0], &b.values[0], &r.values[0], ${n})',
+				'${op[1]}_native', ['a', 'b'])
+			continue
+		}
 		scalar := if is_float {
 			'a.values[i] ${op[0]} b.values[i]'
 		} else {
@@ -342,10 +369,18 @@ fn (mut g Gen) vector(e Elem, n int) {
 	}
 	if is_float {
 		g.l('// / divides corresponding lanes.')
+		if t == 'F32x4' {
+			g.l('@[noinline]')
+		}
 		g.l('@[direct_array_access]')
 		g.l('pub fn (a ${t}) / (b ${t}) ${t} {')
-		g.native(t, 'native_div_${s}(&a.values[0], &b.values[0], &r.values[0], ${n})', n,
-			['r.values[i] = a.values[i] / b.values[i]'])
+		if t == 'F32x4' {
+			g.vhelper(t, 'native_div_${s}(&a.values[0], &b.values[0], &r.values[0], ${n})',
+				'div_native', ['a', 'b'])
+		} else {
+			g.native(t, 'native_div_${s}(&a.values[0], &b.values[0], &r.values[0], ${n})', n,
+				['r.values[i] = a.values[i] / b.values[i]'])
+		}
 	} else {
 		g.l('// / divides corresponding lanes, truncating toward zero.')
 		if e.kind == .signed {
@@ -415,10 +450,18 @@ fn (mut g Gen) vector(e Elem, n int) {
 	}
 	if is_float {
 		g.l('// sqrt returns the square root of each lane.')
+		if t == 'F32x4' {
+			g.l('@[noinline]')
+		}
 		g.l('@[direct_array_access]')
 		g.l('pub fn (a ${t}) sqrt() ${t} {')
 		sq := if s == 'f32' { 'f32(math.sqrt(a.values[i]))' } else { 'math.sqrt(a.values[i])' }
-		g.native(t, 'native_sqrt_${s}(&a.values[0], &r.values[0], ${n})', n, ['r.values[i] = ${sq}'])
+		if t == 'F32x4' {
+			g.vhelper(t, 'native_sqrt_${s}(&a.values[0], &r.values[0], ${n})', 'sqrt_native',
+				['a'])
+		} else {
+			g.native(t, 'native_sqrt_${s}(&a.values[0], &r.values[0], ${n})', n, ['r.values[i] = ${sq}'])
+		}
 		g.l('// mul_add returns v * multiplier + addend for each lane.')
 		g.l('// It does not promise fused rounding.')
 		g.l('pub fn (v ${t}) mul_add(multiplier ${t}, addend ${t}) ${t} {')

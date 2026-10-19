@@ -39,6 +39,7 @@ a.out
 .vrepl_temp.v
 fns.txt
 .noprefix.vrepl_temp.v
+v_stage.c
 
 # Prefix local scratch/repro files with tmp. when they should stay untracked.
 tmp.*

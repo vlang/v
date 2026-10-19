@@ -28,17 +28,37 @@ static inline void vgc_set_cache_idx(int idx) { _vgc_cache_idx = idx; }
 // Atomic operations
 // ============================================================
 #if defined(__TINYC__)
-  // TCC: use __sync builtins
-  #define vgc_atomic_load_u32(ptr) (*(volatile uint32_t*)(ptr))
-  #define vgc_atomic_store_u32(ptr, val) do { *(volatile uint32_t*)(ptr) = (val); __sync_synchronize(); } while(0)
-  #define vgc_atomic_load_u64(ptr) (*(volatile uint64_t*)(ptr))
-  #define vgc_atomic_store_u64(ptr, val) do { *(volatile uint64_t*)(ptr) = (val); __sync_synchronize(); } while(0)
-  #define vgc_atomic_add_u64(ptr, val) __sync_add_and_fetch((volatile uint64_t*)(ptr), (uint64_t)(val))
-  #define vgc_atomic_sub_u64(ptr, val) __sync_sub_and_fetch((volatile uint64_t*)(ptr), (uint64_t)(val))
-  #define vgc_atomic_add_u32(ptr, val) __sync_add_and_fetch((volatile uint32_t*)(ptr), (uint32_t)(val))
-  #define vgc_atomic_cas_u32(ptr, expected, desired) __sync_bool_compare_and_swap((volatile uint32_t*)(ptr), *(expected), (desired))
-  #define vgc_atomic_exchange_u32(ptr, val) __sync_lock_test_and_set((volatile uint32_t*)(ptr), (val))
-  #define vgc_atomic_fence() __sync_synchronize()
+  // TCC does not implement the legacy __sync_* family: those degrade into
+  // plain function calls and then fail at link time with
+  // "unresolved reference to '__sync_add_and_fetch'" etc.
+  // Use the __atomic_* builtins instead, which lower to fixed-width helper
+  // functions provided by libtcc1.a (same approach as vlib/builtin/prealloc_atomics.h).
+  extern uint32_t __atomic_load_4(uint32_t* ptr, int order);
+  extern uint64_t __atomic_load_8(uint64_t* ptr, int order);
+  extern void __atomic_store_4(uint32_t* ptr, uint32_t val, int order);
+  extern void __atomic_store_8(uint64_t* ptr, uint64_t val, int order);
+  extern uint32_t __atomic_exchange_4(uint32_t* ptr, uint32_t val, int order);
+  extern _Bool __atomic_compare_exchange_4(uint32_t* ptr, uint32_t* expected, uint32_t desired, int success_order, int failure_order);
+  #define vgc_atomic_load_u32(ptr) ((uint32_t)__atomic_load_4((uint32_t*)(ptr), 5))
+  #define vgc_atomic_store_u32(ptr, val) __atomic_store_4((uint32_t*)(ptr), (uint32_t)(val), 5)
+  #define vgc_atomic_load_u64(ptr) ((uint64_t)__atomic_load_8((uint64_t*)(ptr), 5))
+  #define vgc_atomic_store_u64(ptr, val) __atomic_store_8((uint64_t*)(ptr), (uint64_t)(val), 5)
+  #define vgc_atomic_add_u64(ptr, val) __atomic_add_fetch((volatile uint64_t*)(ptr), (uint64_t)(val), 5)
+  #define vgc_atomic_sub_u64(ptr, val) __atomic_sub_fetch((volatile uint64_t*)(ptr), (uint64_t)(val), 5)
+  #define vgc_atomic_add_u32(ptr, val) __atomic_add_fetch((volatile uint32_t*)(ptr), (uint32_t)(val), 5)
+  #define vgc_atomic_cas_u32(ptr, expected, desired) __atomic_compare_exchange_4((uint32_t*)(ptr), (uint32_t*)(expected), (uint32_t)(desired), 5, 5)
+  #define vgc_atomic_exchange_u32(ptr, val) ((uint32_t)__atomic_exchange_4((uint32_t*)(ptr), (uint32_t)(val), 5))
+  #if defined(__x86_64__) || defined(__i386__)
+    #define vgc_atomic_fence() __asm__ __volatile__("mfence" ::: "memory")
+  #elif defined(__aarch64__)
+    #define vgc_atomic_fence() __asm__ __volatile__("dmb ish" ::: "memory")
+  #elif defined(__arm__)
+    #define vgc_atomic_fence() __asm__ __volatile__("dmb ish" ::: "memory")
+  #elif defined(__riscv)
+    #define vgc_atomic_fence() __asm__ __volatile__("fence rw,rw" ::: "memory")
+  #else
+    #define vgc_atomic_fence() __asm__ __volatile__("" ::: "memory")
+  #endif
 #elif defined(_MSC_VER)
   #include <intrin.h>
   #pragma intrinsic(_InterlockedCompareExchange, _InterlockedExchange, _InterlockedExchangeAdd64)
@@ -89,8 +109,14 @@ static inline void vgc_set_cache_idx(int idx) { _vgc_cache_idx = idx; }
       VirtualFree(ptr, size, MEM_DECOMMIT);
   }
   static inline int vgc_num_cpus(void) {
+#if defined(ALL_PROCESSOR_GROUPS)
       DWORD count = GetActiveProcessorCount(ALL_PROCESSOR_GROUPS);
       return count > 0 ? (int)count : 1;
+#else
+      SYSTEM_INFO sysinfo;
+      GetSystemInfo(&sysinfo);
+      return sysinfo.dwNumberOfProcessors > 0 ? (int)sysinfo.dwNumberOfProcessors : 1;
+#endif
   }
 #else
   #include <sys/mman.h>

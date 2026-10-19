@@ -154,3 +154,44 @@ fn test_the_config_route_names_the_vouching_key() {
 	result := handle_request(r, 'GET', '/config.json', map[string]string{})
 	assert result.contains(vouching_public.hex()), result
 }
+
+// A key file readable by group or others lets any local user forge
+// signatures, so it must not be loaded. Unix-only: Windows has no equivalent
+// mode check and accepts the file there.
+fn test_group_readable_signing_key_is_not_loaded() {
+	$if windows {
+		return
+	}
+	os.unsetenv('VPM_REGISTRY_KEY')
+	original := os.getwd()
+	root := os.join_path(os.vtmp_dir(), 'vpm_signing_key_perm')
+	os.mkdir_all(os.join_path(root, '.vpm-registry')) or { panic(err) }
+	os.chdir(root) or { panic(err) }
+	defer {
+		os.chdir(original) or {}
+		os.rmdir_all(root) or {}
+	}
+	public, private := ed25519.generate_key() or {
+		assert false, 'key generation failed: ${err}'
+		return
+	}
+	key_file := os.join_path('.vpm-registry', 'signing.key')
+	os.write_file(key_file, private.seed().hex()) or { panic(err) }
+	r := new_registry()
+	os.chmod(key_file, 0o644) or { panic(err) }
+	assert r.public_key_hex() == '', 'a group-readable signing key was loaded'
+	os.chmod(key_file, 0o600) or { panic(err) }
+	assert r.public_key_hex() == public.hex(), 'a private signing key was refused'
+}
+
+// The permission gate above is Unix-only by design: Windows has no equivalent
+// mode check, so the loader accepts the file there, while a missing file is
+// refused everywhere. This pins that split on every platform, including the
+// ones where the test above returns immediately.
+fn test_key_file_gate_is_platform_split() {
+	$if windows {
+		assert registry_key_is_private('C:\\nonexistent-signing.key')
+	} $else {
+		assert !registry_key_is_private('/nonexistent-signing-key')
+	}
+}

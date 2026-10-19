@@ -108,7 +108,7 @@ fn (mut tc TypeChecker) prepare_for_checks(a &flat.FlatAst) {
 	for name, _ in tc.structs {
 		// These two depend on the file and the module that ask.
 		if name !in ['Error', 'MessageError'] {
-			tc.named_type_compatible_with_ierror(name)
+			tc.named_type_compatible_with_ierror(flat.source_type_id(name))
 		}
 	}
 	room := a.nodes.len + int_max(a.nodes.len, 1 << 20)

@@ -918,126 +918,60 @@ fn orm_attr_name_arg(attr string) (string, string, bool) {
 	return attr[..idx].trim_space(), attr[idx + 1..].trim_space(), true
 }
 
+// Shared type classification keeps each model field specialization small.
+fn orm_metadata_field_type(raw_type int, unaliased_type string, raw_name string, is_struct bool, is_enum bool) int {
+	core := unaliased_type.trim_left('?')
+	if typ := type_idx[core] {
+		return typ
+	}
+	if core == 'time.Time' || raw_name.contains('time.Time') {
+		return time_
+	}
+	if is_enum {
+		return enum_
+	}
+	if is_struct {
+		return type_idx['int']
+	}
+	return raw_type
+}
+
+fn orm_append_metadata_field(mut meta []TableField, name string, raw_type int, unaliased_type string, raw_name string, is_struct bool, is_enum bool, nullable bool, is_array bool, field_attrs []string) {
+	attrs, is_skip := orm_field_attrs_from_strings(field_attrs)
+	if is_skip {
+		return
+	}
+	meta << TableField{
+		name:     name
+		typ:      orm_metadata_field_type(raw_type, unaliased_type, raw_name, is_struct, is_enum)
+		nullable: nullable
+		attrs:    attrs
+		is_arr:   is_array || orm_type_name_is_optional_array(raw_name)
+	}
+}
+
 // struct_meta return a struct's fields info
 fn struct_meta[T]() []TableField {
 	mut meta := []TableField{}
 	$for field in T.fields {
 		$if field.is_embed {
 			$for sub in field.typ.fields {
-				attrs, is_skip := orm_field_attrs_from_strings(sub.attrs)
-				mut field_type := sub.typ
-				$if sub.unaliased_typ is bool || sub.unaliased_typ is ?bool {
-					field_type = type_idx['bool']
-				} $else $if sub.unaliased_typ is f32 || sub.unaliased_typ is ?f32 {
-					field_type = type_idx['f32']
-				} $else $if sub.unaliased_typ is f64 || sub.unaliased_typ is ?f64 {
-					field_type = type_idx['f64']
-				} $else $if sub.unaliased_typ is i8 || sub.unaliased_typ is ?i8 {
-					field_type = type_idx['i8']
-				} $else $if sub.unaliased_typ is i16 || sub.unaliased_typ is ?i16 {
-					field_type = type_idx['i16']
-				} $else $if sub.unaliased_typ is int || sub.unaliased_typ is ?int {
-					field_type = type_idx['int']
-				} $else $if sub.unaliased_typ is i64 || sub.unaliased_typ is ?i64 {
-					field_type = type_idx['i64']
-				} $else $if sub.unaliased_typ is u8 || sub.unaliased_typ is ?u8 {
-					field_type = type_idx['u8']
-				} $else $if sub.unaliased_typ is u16 || sub.unaliased_typ is ?u16 {
-					field_type = type_idx['u16']
-				} $else $if sub.unaliased_typ is u32 || sub.unaliased_typ is ?u32 {
-					field_type = type_idx['u32']
-				} $else $if sub.unaliased_typ is u64 || sub.unaliased_typ is ?u64 {
-					field_type = type_idx['u64']
-				} $else $if sub.unaliased_typ is string || sub.unaliased_typ is ?string {
-					field_type = type_string
-				} $else $if sub.unaliased_typ is time.Time || sub.unaliased_typ is ?time.Time {
-					field_type = time_
-				} $else $if sub.unaliased_typ is $enum {
-					field_type = enum_
-				} $else {
-					if typeof(sub).name.contains('time.Time') {
-						field_type = time_
-					} else if sub.is_struct {
-						field_type = type_idx['int']
-					} else if sub.is_enum {
-						field_type = enum_
-					}
+				mut is_arr := false
+				$if sub.unaliased_typ is $array {
+					is_arr = true
 				}
-
-				if !is_skip {
-					mut is_arr := false
-					$if sub.unaliased_typ is $array {
-						is_arr = true
-					}
-					if orm_type_name_is_optional_array(typeof(sub).name) {
-						is_arr = true
-					}
-					meta << TableField{
-						name:     '${field.name}.${sub.name}'
-						typ:      field_type
-						nullable: sub.is_option
-						attrs:    attrs
-						is_arr:   is_arr
-					}
-				}
+				orm_append_metadata_field(mut meta, '${field.name}.${sub.name}', sub.typ,
+					typeof(sub).unaliased_typ, typeof(sub).name, sub.is_struct, sub.is_enum,
+					sub.is_option, is_arr, sub.attrs)
 			}
 		} $else {
-			attrs, is_skip := orm_field_attrs_from_strings(field.attrs)
-			mut field_type := field.typ
-			$if field.unaliased_typ is bool || field.unaliased_typ is ?bool {
-				field_type = type_idx['bool']
-			} $else $if field.unaliased_typ is f32 || field.unaliased_typ is ?f32 {
-				field_type = type_idx['f32']
-			} $else $if field.unaliased_typ is f64 || field.unaliased_typ is ?f64 {
-				field_type = type_idx['f64']
-			} $else $if field.unaliased_typ is i8 || field.unaliased_typ is ?i8 {
-				field_type = type_idx['i8']
-			} $else $if field.unaliased_typ is i16 || field.unaliased_typ is ?i16 {
-				field_type = type_idx['i16']
-			} $else $if field.unaliased_typ is int || field.unaliased_typ is ?int {
-				field_type = type_idx['int']
-			} $else $if field.unaliased_typ is i64 || field.unaliased_typ is ?i64 {
-				field_type = type_idx['i64']
-			} $else $if field.unaliased_typ is u8 || field.unaliased_typ is ?u8 {
-				field_type = type_idx['u8']
-			} $else $if field.unaliased_typ is u16 || field.unaliased_typ is ?u16 {
-				field_type = type_idx['u16']
-			} $else $if field.unaliased_typ is u32 || field.unaliased_typ is ?u32 {
-				field_type = type_idx['u32']
-			} $else $if field.unaliased_typ is u64 || field.unaliased_typ is ?u64 {
-				field_type = type_idx['u64']
-			} $else $if field.unaliased_typ is string || field.unaliased_typ is ?string {
-				field_type = type_string
-			} $else $if field.unaliased_typ is time.Time || field.unaliased_typ is ?time.Time {
-				field_type = time_
-			} $else $if field.unaliased_typ is $enum {
-				field_type = enum_
-			} $else {
-				if typeof(field).name.contains('time.Time') {
-					field_type = time_
-				} else if field.is_struct {
-					field_type = type_idx['int']
-				} else if field.is_enum {
-					field_type = enum_
-				}
+			mut is_arr := false
+			$if field.unaliased_typ is $array {
+				is_arr = true
 			}
-
-			if !is_skip {
-				mut is_arr := false
-				$if field.unaliased_typ is $array {
-					is_arr = true
-				}
-				if orm_type_name_is_optional_array(typeof(field).name) {
-					is_arr = true
-				}
-				meta << TableField{
-					name:     field.name
-					typ:      field_type
-					nullable: field.is_option
-					attrs:    attrs
-					is_arr:   is_arr
-				}
-			}
+			orm_append_metadata_field(mut meta, field.name, field.typ,
+				typeof(field).unaliased_typ, typeof(field).name, field.is_struct, field.is_enum,
+				field.is_option, is_arr, field.attrs)
 		}
 	}
 	return meta

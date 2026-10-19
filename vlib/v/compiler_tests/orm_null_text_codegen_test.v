@@ -33,7 +33,7 @@ fn orm_null_text_gen_c(v3_bin string, name string, src string) string {
 	return os.read_file(c_path) or { panic(err) }
 }
 
-fn orm_null_text_gen_c_project(v3_bin string, name string, files map[string]string) string {
+fn orm_null_text_compile_project(v3_bin string, name string, files map[string]string) (os.Result, string) {
 	root := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	for path, contents in files {
@@ -43,7 +43,11 @@ fn orm_null_text_gen_c_project(v3_bin string, name string, files map[string]stri
 	}
 	c_path := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}.c')
 	os.rm(c_path) or {}
-	result := os.exec([v3_bin, root, '-o', c_path])
+	return os.exec([v3_bin, root, '-o', c_path]), c_path
+}
+
+fn orm_null_text_gen_c_project(v3_bin string, name string, files map[string]string) string {
+	result, c_path := orm_null_text_compile_project(v3_bin, name, files)
 	assert result.exit_code == 0, result.output
 	return os.read_file(c_path) or { panic(err) }
 }
@@ -61,7 +65,7 @@ fn main() {
 	mut db := sqlite.connect(":memory:") or { panic(err) }
 	rows := sql db {
 		select from User
-	}
+	}!
 	_ = rows
 }
 ')
@@ -73,7 +77,7 @@ fn main() {
 	after_marker := c_code[marker_idx + '.name = '.len..]
 	symbol := after_marker.all_before('}').all_before(',').all_before(';').trim_space()
 	assert symbol.starts_with('_str_'), c_code
-	assert c_code.contains('string ${symbol} ='), c_code
+	assert c_code.contains('_SL(${symbol}, "", 0);'), c_code
 }
 
 fn test_orm_module_local_select_uses_qualified_row_type() {
@@ -81,7 +85,7 @@ fn test_orm_module_local_select_uses_qualified_row_type() {
 	c_code := orm_null_text_gen_c_project(v3_bin, 'orm_module_local_select', {
 		'v.mod':         "Module { name: 'orm_module_local_select' }\n"
 		'main.v':        'module main\n\nimport model\n\nfn main() {\n\tmodel.load()\n}\n'
-		'model/model.v': 'module model\n\nimport db.sqlite\n\nstruct User {\n\tid int\n\tname string\n}\n\npub fn load() {\n\tmut db := sqlite.connect(":memory:") or { panic(err) }\n\trows := sql db {\n\t\tselect from User\n\t}\n\t_ = rows\n}\n'
+		'model/model.v': 'module model\n\nimport db.sqlite\n\nstruct User {\n\tid int\n\tname string\n}\n\npub fn load() {\n\tmut db := sqlite.connect(":memory:") or { panic(err) }\n\trows := sql db {\n\t\tselect from User\n\t}!\n\t_ = rows\n}\n'
 	})
 	assert c_code.contains('sizeof(model__User)'), c_code
 	assert c_code.contains('model__User '), c_code
@@ -101,10 +105,10 @@ fn main() {
 	mut db := sqlite.connect(":memory:") or { panic(err) }
 	rows1 := sql db {
 		select from User where id == 1
-	}
+	}!
 	rows2 := sql db {
 		select from User order by id
-	}
+	}!
 	_ = rows1
 	_ = rows2
 }
@@ -126,7 +130,7 @@ fn main() {
 	n := 1
 	rows := sql db {
 		select from User limit n
-	}
+	}!
 	_ = rows
 }
 ')
@@ -146,7 +150,7 @@ fn main() {
 	mut db := pg.DB{}
 	rows := sql db {
 		select from User
-	}
+	}!
 	_ = rows
 }
 ')
@@ -173,7 +177,7 @@ fn main() {
 	]
 	sql db {
 		insert users into User
-	}
+	}!
 }
 ')
 	assert !c_code.contains('INSERT INTO "User"'), c_code
@@ -213,20 +217,21 @@ fn main() {
 
 fn test_orm_insert_requires_qualified_value_type_match() {
 	v3_bin := orm_null_text_build_v3()
-	c_code := orm_null_text_gen_c_project(v3_bin, 'orm_insert_qualified_value_mismatch', {
+	result, _ := orm_null_text_compile_project(v3_bin, 'orm_insert_qualified_value_mismatch', {
 		'v.mod':         "Module { name: 'orm_insert_qualified_value_mismatch' }\n"
 		'main.v':        'module main\n\nimport app\n\nfn main() {\n\tapp.save()\n}\n'
 		'other/other.v': 'module other\n\npub struct User {\npub:\n\tid int\n\tname string\n}\n\npub fn make() User {\n\treturn User{\n\t\tid: 1\n\t\tname: "remote"\n\t}\n}\n'
-		'app/app.v':     'module app\n\nimport db.sqlite\nimport other\n\nstruct User {\n\tid int\n\tlocal_name string\n}\n\npub fn save() {\n\tmut db := sqlite.connect(":memory:") or { panic(err) }\n\tuser := other.make()\n\tsql db {\n\t\tinsert user into User\n\t}\n}\n'
+		'app/app.v':     'module app\n\nimport db.sqlite\nimport other\n\nstruct User {\n\tid int\n\tlocal_name string\n}\n\npub fn save() {\n\tmut db := sqlite.connect(":memory:") or { panic(err) }\n\tuser := other.make()\n\tsql db {\n\t\tinsert user into User\n\t}!\n}\n'
 	})
-	assert !c_code.contains('INSERT INTO "User"'), c_code
-	assert !c_code.contains('(user).local_name'), c_code
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('cannot use `other.User` as `app.User`'), result.output
+	assert !result.output.contains('C compilation failed'), result.output
 }
 
 fn test_orm_unsupported_field_tables_use_fallback() {
 	v3_bin := orm_null_text_build_v3()
 	c_code := orm_null_text_gen_c(v3_bin, 'orm_unsupported_field_table_fallback',
-		'import db.sqlite\nimport time\n\nstruct TestDurationAlias {\n\tid int\n\tduration time.Duration\n}\n\nfn main() {\n\tmut db := sqlite.connect(":memory:") or { panic(err) }\n\tsql db {\n\t\tcreate table TestDurationAlias\n\t}\n}\n')
+		'import db.sqlite\nimport time\n\nstruct TestDurationAlias {\n\tid int\n\tduration time.Duration\n}\n\nfn main() {\n\tmut db := sqlite.connect(":memory:") or { panic(err) }\n\tsql db {\n\t\tcreate table TestDurationAlias\n\t}!\n}\n')
 	assert !c_code.contains('CREATE TABLE IF NOT EXISTS "TestDurationAlias"'), c_code
 }
 
@@ -256,15 +261,20 @@ fn main() {
 	}
 	sql db {
 		insert metric into Metric
-	}
+	}!
 	rows := sql db {
 		select from Metric
-	}
+	}!
 	_ = rows
 }
 ')
 	assert c_code.contains('#include "sqlite3.h"'), c_code
-	assert c_code.contains('sqlite3_bind_int('), c_code
+	// `int` is 64-bit on 64-bit targets, where `Stmt.bind_int` uses the int64 API.
+	$if x64 {
+		assert !c_code.contains('sqlite3_bind_int('), c_code
+	} $else {
+		assert c_code.contains('sqlite3_bind_int('), c_code
+	}
 	assert c_code.contains('sqlite3_bind_int64('), c_code
 	assert c_code.contains('sqlite3_column_int('), c_code
 	assert c_code.contains('sqlite3_column_int64('), c_code

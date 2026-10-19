@@ -173,6 +173,9 @@ fn main() {
 }
 ```
 
+Struct fields are encoded under their names or `@[json: '...']` keys, including fields
+named after builtin types such as `i64` and `string`. Embedded structs contribute their fields.
+
 Enums encode as strings by default. Use `@[json_as_number]` on an enum to emit
 its integer value instead.
 
@@ -257,6 +260,9 @@ decode[T] is smart and can auto-convert the types of struct fields - this means
 examples below will have the same result
 
 Embedded struct fields are decoded from the surrounding object, including reference fields.
+
+Decoding a pointer allocates an initialized value. Nested arrays keep their element types,
+and omitted struct fields retain their declared defaults, as for value fields.
 
 ```v ignore
 json2.decode[Person]('{"name": "Bob", "age": 20, "birthday": "2022-03-11T13:54:25.000Z"}')!

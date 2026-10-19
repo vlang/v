@@ -39,3 +39,35 @@ fn main() {
 	assert p.diagnostics.len == 0, p.diagnostics.str()
 	assert a.nodes.count(it.kind == .match_stmt) == 0
 }
+
+fn test_match_array_subjects_in_expressions_are_match_headers() {
+	path := os.join_path(os.vtmp_dir(), 'match_array_subject_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	os.write_file(path, 'fn f() int {
+	return match []int{} { else { 3 } }
+}
+fn g(a int) int {
+	x := match [a, 2] { [1, 2] { 1 } else { 0 } }
+	return x + match [a].len { 1 { 4 } else { 5 } }
+}
+')!
+	mut p := Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	assert a.nodes.count(it.kind == .match_stmt) == 3
+}
+
+fn test_keyword_match_with_adjacent_bracket_remains_a_name() {
+	path := os.join_path(os.vtmp_dir(), 'match_keyword_bracket_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	os.write_file(path, 'fn match[T](x T) T { return x }
+fn main() {
+	_ = match[int](1)
+	_ = match[string]("a").len
+}
+')!
+	mut p := Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	assert a.nodes.count(it.kind == .match_stmt) == 0
+}

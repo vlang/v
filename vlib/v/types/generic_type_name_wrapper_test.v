@@ -52,11 +52,11 @@ fn test_wrapped_arrays_with_different_element_types_are_not_slot_compatible() {
 	a := flat.FlatAst.new()
 	tc := TypeChecker.new(&a)
 	for wrapped in ['?', 'chan '] {
-		ints := tc.parse_type('${wrapped}[]int')
-		strings := tc.parse_type('${wrapped}[]string')
+		ints := tc.parse_type(flat.source_type_id('${wrapped}[]int'))
+		strings := tc.parse_type(flat.source_type_id('${wrapped}[]string'))
 		assert !tc.slot_value_compatible(ints, strings), wrapped
 		assert !tc.slot_value_compatible(strings, ints), wrapped
-		assert tc.slot_value_compatible(ints, tc.parse_type('${wrapped}[]int')), wrapped
+		assert tc.slot_value_compatible(ints, tc.parse_type(flat.source_type_id('${wrapped}[]int'))), wrapped
 	}
 }
 
@@ -64,23 +64,23 @@ fn test_generic_type_name_matches_keeps_wrapped_value_types() {
 	a := flat.FlatAst.new()
 	tc := TypeChecker.new(&a)
 	for prefix in ['', '&', 'mut &', '&mut ', '?', '!', 'chan ', 'shared ', '[]'] {
-		assert !tc.generic_type_name_matches('${prefix}map[string]int', '${prefix}map[string]string'), prefix
-		assert tc.generic_type_name_matches('${prefix}map[string]int', '${prefix}map[string]int'), prefix
+		assert !tc.generic_type_name_matches(flat.source_type_id('${prefix}map[string]int'), flat.source_type_id('${prefix}map[string]string')), prefix
+		assert tc.generic_type_name_matches(flat.source_type_id('${prefix}map[string]int'), flat.source_type_id('${prefix}map[string]int')), prefix
 		// An open generic value type still matches a concrete one.
-		assert tc.generic_type_name_matches('${prefix}map[string]T', '${prefix}map[string]int'), prefix
+		assert tc.generic_type_name_matches(flat.source_type_id('${prefix}map[string]T'), flat.source_type_id('${prefix}map[string]int')), prefix
 	}
 	for prefix in ['?', '!', '&', 'chan ', 'shared ', '...'] {
-		assert !tc.generic_type_name_matches('${prefix}[]int', '${prefix}[]string'), prefix
-		assert tc.generic_type_name_matches('${prefix}[]Foo[T]', '${prefix}[]Foo[int]'), prefix
+		assert !tc.generic_type_name_matches(flat.source_type_id('${prefix}[]int'), flat.source_type_id('${prefix}[]string')), prefix
+		assert tc.generic_type_name_matches(flat.source_type_id('${prefix}[]Foo[T]'), flat.source_type_id('${prefix}[]Foo[int]')), prefix
 	}
 	// Wrapper layers are part of the type's identity.
-	assert !tc.generic_type_name_matches('?map[string]int', '!map[string]int')
-	assert !tc.generic_type_name_matches('&Foo[T]', 'Foo[int]')
-	assert tc.generic_type_name_matches('?Foo[T]', '?Foo[int]')
+	assert !tc.generic_type_name_matches(flat.source_type_id('?map[string]int'), flat.source_type_id('!map[string]int'))
+	assert !tc.generic_type_name_matches(flat.source_type_id('&Foo[T]'), flat.source_type_id('Foo[int]'))
+	assert tc.generic_type_name_matches(flat.source_type_id('?Foo[T]'), flat.source_type_id('?Foo[int]'))
 	// The same holds inside generic arguments.
-	assert !tc.generic_type_name_matches('Box[chan []int]', 'Box[chan []string]')
-	assert !tc.generic_type_name_matches('Box[?map[string]int]', 'Box[?map[string]string]')
-	assert tc.generic_type_name_matches('Box[chan []T]', 'Box[chan []int]')
+	assert !tc.generic_type_name_matches(flat.source_type_id('Box[chan []int]'), flat.source_type_id('Box[chan []string]'))
+	assert !tc.generic_type_name_matches(flat.source_type_id('Box[?map[string]int]'), flat.source_type_id('Box[?map[string]string]'))
+	assert tc.generic_type_name_matches(flat.source_type_id('Box[chan []T]'), flat.source_type_id('Box[chan []int]'))
 }
 
 fn test_generic_type_application_parts_keeps_map_value_behind_wrappers() {

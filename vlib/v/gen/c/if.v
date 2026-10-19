@@ -187,14 +187,14 @@ fn (mut g FlatGen) smartcast_is_expr(cond &flat.Node) {
 			clean_sum = clean_sum0.base_type
 		}
 		if clean_sum is types.SumType {
-			variant_name := g.resolve_variant(clean_sum.name(), cond.value)
-			variant_type := g.tc.parse_type(variant_name)
+			variant_name := flat.source_type_name(g.resolve_variant(clean_sum.source_type_id(), flat.source_type_id(cond.value)))
+			variant_type := g.tc.parse_type(flat.source_type_id(variant_name))
 			if variant_type is types.Void {
 				return
 			}
 			variant_ct := g.tc.c_type(variant_type)
 			field_name := g.sum_field_name(variant_name)
-			is_ptr_variant := g.variant_references_sum(variant_name, clean_sum.name())
+			is_ptr_variant := g.variant_references_sum(flat.source_type_id(variant_name), clean_sum.source_type_id())
 			var_name := g.local_cname(expr_node.value)
 			tmp := g.tmp_name()
 			if is_ptr_variant {
@@ -714,7 +714,7 @@ fn (mut g FlatGen) seed_scope_from_decl(node flat.Node) {
 	// element sum type) and would poison every later use of the binding.
 	if node.typ_text().len > 0 {
 		typ := g.parse_node_type(&node)
-		if !decl_annotation_is_unusable(typ, node.typ_text()) {
+		if !decl_annotation_is_unusable(typ, node.typ) {
 			g.tc.cur_scope.insert(lhs.value, typ)
 			return
 		}

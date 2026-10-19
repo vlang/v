@@ -75,7 +75,7 @@ fn test_is_ownership_autofree_test_recognises_paths() {
 	assert !is_ownership_autofree_test(os.join_path(root, 'missing_test.v'))
 }
 
-fn test_is_ownership_autofree_test_reads_the_vflags_directive_and_the_source() {
+fn test_is_ownership_autofree_test_reads_the_vflags_directive() {
 	root := ownership_and_autofree_fixture()
 	defer {
 		os.rmdir_all(root) or {}
@@ -83,17 +83,87 @@ fn test_is_ownership_autofree_test_reads_the_vflags_directive_and_the_source() {
 	path := os.join_path(root, 'a_test.v')
 	os.write_file(path, '') or { panic(err) }
 	assert !is_ownership_autofree_test(path)
-	os.write_file(path, '// vtest vflags: -autofree\n') or { panic(err) }
-	assert is_ownership_autofree_test(path)
-	os.write_file(path, '// vtest vflags: -d ownership\n') or { panic(err) }
-	assert is_ownership_autofree_test(path)
-	os.write_file(path, '// vtest vflags: -prod\n') or { panic(err) }
-	assert !is_ownership_autofree_test(path)
-	// A flag anywhere in the source counts, not only in the directive.
-	os.write_file(path, 'fn t() {\n\tx := 1 // -gc boehm\n\ty := 2 /* -ownership */\n}\n') or {
-		panic(err)
+	// The flags are read the way the `v` launcher reads them to pick the ownership compiler.
+	for vflags in ['-autofree', '-no-parallel -autofree', '-autofree -gc none', '-ownership',
+		'--ownership', '-d ownership', '-d ownership -gc none', '-define ownership=on', '-downership'] {
+		os.write_file(path, '// vtest vflags: ${vflags}\nfn test_x() {}\n') or { panic(err) }
+		assert is_ownership_autofree_test(path), vflags
 	}
-	assert is_ownership_autofree_test(path)
+	for vflags in ['-prod', '-d autofree', '-d ownership_extra', '-autofree_extra', '-gc none',
+		'-d', ''] {
+		os.write_file(path, '// vtest vflags: ${vflags}\nfn test_x() {}\n') or { panic(err) }
+		assert !is_ownership_autofree_test(path), vflags
+	}
+	// Like the test runner, only a directive at the start of a line counts.
+	os.write_file(path, 'fn test_x() {\n\t// vtest vflags: -autofree\n}\n') or { panic(err) }
+	assert !is_ownership_autofree_test(path)
+}
+
+fn test_is_ownership_autofree_test_reads_the_ownership_directive() {
+	root := ownership_and_autofree_fixture()
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	path := os.join_path(root, 'a_test.v')
+	for source in ['// vtest ownership\nimport os\n', '// vtest build: !windows\n// vtest ownership\n',
+		'// vtest ownership // builds the ownership compiler\n', '// vtest ownership\r\nimport os\r\n',
+		'import os\n\nfn test_x() {}\n// vtest ownership\n'] {
+		os.write_file(path, source) or { panic(err) }
+		assert is_ownership_autofree_test(path), source
+	}
+	for source in ['// vtest ownership_extra\n', '// vtest ownerships\n', '//vtest ownership\n',
+		'fn test_x() {\n\t// vtest ownership\n}\n', "const x = '// vtest ownership'\n"] {
+		os.write_file(path, source) or { panic(err) }
+		assert !is_ownership_autofree_test(path), source
+	}
+}
+
+// Since #29365, tests pass compiler flags as `os.exec` array elements. A flag in the
+// source, in a string or in an array, is not enough: many tests pass `-ownership` only to
+// check how the launcher parses it or that a compiler without ownership support rejects it.
+fn test_is_ownership_autofree_test_ignores_flags_outside_the_directives() {
+	root := ownership_and_autofree_fixture()
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	path := os.join_path(root, 'a_test.v')
+	for source in [
+		"fn test_x() {\n\tos.exec([v3_bin, '-ownership', '-d', 'ownership', source])\n}\n",
+		"fn test_x() {\n\tos.execute('\${vexe} -autofree -o out main.v')\n}\n",
+		"fn test_x() {\n\tfor mode in ['-ownership', '-autofree'] {}\n}\n",
+		'fn t() {\n\tx := 1 // -gc boehm\n\ty := 2 /* -ownership */\n}\n',
+		'// Builds with `v -ownership` and `-d ownership`.\nfn test_x() {}\n',
+	] {
+		os.write_file(path, source) or { panic(err) }
+		assert !is_ownership_autofree_test(path), source
+	}
+}
+
+// The repository files from the CI report on #29365 that the detector must keep apart.
+fn test_is_ownership_autofree_test_classifies_the_repository_tests() {
+	vroot := os.real_path(os.join_path(os.dir(@FILE), '..', '..', '..', '..'))
+	// They build the ownership compiler, or compile with `-ownership`/`-autofree`, and pass
+	// those flags as `os.exec` array elements.
+	for rel_path in [
+		'vlib/v/compiler_tests/mutable_array_field_index_move_codegen_test.v',
+		'vlib/v/compiler_tests/nested_default_clone_codegen_test.v',
+		'vlib/v/compiler_tests/owned_array_borrow_storage_codegen_test.v',
+		'vlib/v/transform/owned_array_storage_test.v',
+	] {
+		path := os.join_path(vroot, rel_path)
+		assert os.is_file(path), path
+		assert is_ownership_autofree_test(path), rel_path
+	}
+	// They pass the flags as data to argument parsers, check that a compiler without ownership
+	// support rejects them, or (modulecache_test) compile with them in one test function out
+	// of many. Their files are not ownership tests, and neither is this one.
+	for rel_path in ['vlib/v/driver/c_compiler_flags_test.v', 'vlib/v/modulecache/modulecache_test.v',
+		'vlib/v/compiler_tests/driver_cli_test.v', 'cmd/v/launcher_test.v',
+		'vlib/v/util/vtest/vtest_filters_test.v'] {
+		path := os.join_path(vroot, rel_path)
+		assert os.is_file(path), path
+		assert !is_ownership_autofree_test(path), rel_path
+	}
 }
 
 fn test_filter_vtest_only_matches_on_the_configured_path() {

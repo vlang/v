@@ -172,11 +172,15 @@ fn test_struct_init_uses_local_alias_authority_before_short_name_fallback() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '65544'
 	generated := os.read_file(bin + '.c') or { panic(err) }
-	assert generated.contains('const struct sgl_context sgl_like__context = (struct sgl_context){'), generated
+	// Static struct constants use plain brace initializers (025a92ef15), so the C type that
+	// the alias resolved to is the one in the declaration.
+	assert generated.contains('const struct sgl_context sgl_like__context = {'), generated
 	assert generated.contains('.id = (u32)(0x00010001)') || generated.contains('.id = 0x00010001'), generated
 
-	assert generated.contains('const sgl_like__LocalBase sgl_like__local_context = (sgl_like__LocalBase){'), generated
+	assert generated.contains('const sgl_like__LocalBase sgl_like__local_context = {'), generated
 
+	assert !generated.contains('main__Context sgl_like__context'), generated
+	assert !generated.contains('gg__Context sgl_like__context'), generated
 	assert !generated.contains('sgl_like__context = (main__Context){'), generated
 	assert !generated.contains('(gg__Context){'), generated
 	assert !generated.contains('.render_text = 0x00010001'), generated

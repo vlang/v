@@ -1,0 +1,7 @@
+@[attribute: 'fnu']
+struct Route {
+	path string
+}
+
+fn main() {
+}

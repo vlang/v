@@ -301,7 +301,7 @@ fn test_selected_file_calling_invalid_ierror_result_return_reports_dependency_er
 	main_errors := check_diagnostic_project('ierror_return_called_from_main',
 		called_invalid_ierror_return_project, ['main.v'])
 	assert main_errors.len == 1, main_errors.str()
-	assert main_errors[0].msg.contains('cannot return')
+	assert main_errors[0].msg.contains('in return argument')
 	assert main_errors[0].msg.contains('bad.NotError')
 	assert main_errors[0].msg.contains('`!int`')
 }
@@ -310,7 +310,7 @@ fn test_selected_file_calling_transitive_invalid_ierror_result_return_reports_de
 	main_errors := check_diagnostic_project('ierror_return_transitive_called_from_main',
 		called_transitive_invalid_ierror_return_project, ['main.v'])
 	assert main_errors.len == 1, main_errors.str()
-	assert main_errors[0].msg.contains('cannot return')
+	assert main_errors[0].msg.contains('in return argument')
 	assert main_errors[0].msg.contains('bad.NotError')
 	assert main_errors[0].msg.contains('`!int`')
 }
@@ -319,7 +319,7 @@ fn test_selected_file_calling_invalid_ierror_local_method_return_reports_depende
 	main_errors := check_diagnostic_project('ierror_local_method_return_called_from_main',
 		called_invalid_ierror_local_method_return_project, ['main.v'])
 	assert main_errors.len == 1, main_errors.str()
-	assert main_errors[0].msg.contains('cannot return')
+	assert main_errors[0].msg.contains('in return argument')
 	assert main_errors[0].msg.contains('bad.NotError')
 	assert main_errors[0].msg.contains('`!int`')
 }
@@ -328,7 +328,7 @@ fn test_selected_file_multi_return_local_receiver_reports_dependency_error() {
 	main_errors := check_diagnostic_project('ierror_multi_return_method_called_from_main',
 		called_invalid_ierror_multi_return_local_method_project, ['main.v'])
 	assert main_errors.len == 1, main_errors.str()
-	assert main_errors[0].msg.contains('cannot return')
+	assert main_errors[0].msg.contains('in return argument')
 	assert main_errors[0].msg.contains('bad.NotError')
 	assert main_errors[0].msg.contains('`!int`')
 }
@@ -337,7 +337,7 @@ fn test_selected_file_for_in_local_receiver_reports_dependency_error() {
 	main_errors := check_diagnostic_project('ierror_for_in_method_called_from_main',
 		called_invalid_ierror_for_in_local_method_project, ['main.v'])
 	assert main_errors.len == 1, main_errors.str()
-	assert main_errors[0].msg.contains('cannot return')
+	assert main_errors[0].msg.contains('in return argument')
 	assert main_errors[0].msg.contains('bad.NotError')
 	assert main_errors[0].msg.contains('`!int`')
 }
@@ -354,16 +354,12 @@ fn test_selected_file_local_receiver_uses_distinct_import_alias() {
 	assert main_errors.len == 0, main_errors.str()
 }
 
-fn test_local_shadowing_in_child_scope_and_fn_literal_is_allowed() {
-	errors := check_diagnostic_project('ordinary_local_child_shadow', {
+fn test_local_shadowing_in_fn_literal_is_allowed() {
+	errors := check_diagnostic_project('ordinary_local_fn_literal_shadow', {
 		'main.v': 'module main
 
 fn main() {
 	timers := 1
-	if true {
-		timers := 2
-		_ = timers
-	}
 	cb := fn () {
 		timers := 3
 		_ = timers
@@ -376,11 +372,31 @@ fn main() {
 	assert errors.len == 0, errors.str()
 }
 
+// A nested block shares its function's locals, so redefining one there is an
+// error (the V rule), unlike a fn literal, which starts a new function scope.
+fn test_local_redefinition_in_child_scope_is_rejected() {
+	errors := check_diagnostic_project('ordinary_local_child_redefinition', {
+		'main.v': 'module main
+
+fn main() {
+	timers := 1
+	if true {
+		timers := 2
+		_ = timers
+	}
+	_ = timers
+}
+'
+	}, ['main.v'])
+	assert errors.len == 1, errors.str()
+	assert errors[0].msg == 'redefinition of `timers`', errors.str()
+}
+
 fn test_selected_file_calling_invalid_ierror_method_return_reports_dependency_error() {
 	main_errors := check_diagnostic_project('ierror_method_return_called_from_main',
 		called_invalid_ierror_method_return_project, ['main.v'])
 	assert main_errors.len == 1, main_errors.str()
-	assert main_errors[0].msg.contains('cannot return')
+	assert main_errors[0].msg.contains('in return argument')
 	assert main_errors[0].msg.contains('bad.NotError')
 	assert main_errors[0].msg.contains('`!int`')
 }

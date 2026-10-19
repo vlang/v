@@ -2,11 +2,12 @@ module fastc
 
 import os
 import v.cmdexec
+import v.flat
 
 fn test_fastc_tagged_c_array_element_types() {
-	assert fastc_array_element_type('Array_struct_iovec') or { '' } == 'struct iovec'
-	assert fastc_array_element_type('Array_struct_iovec_ptr') or { '' } == 'struct iovec*'
-	assert fastc_fixed_array_element_type(fastc_fixed_array_type('2', 'struct iovec')) or { '' } == 'struct iovec'
+	assert flat.source_type_name(fastc_array_element_type(flat.source_type_id('Array_struct_iovec')) or { u32(0) }) == 'struct iovec'
+	assert flat.source_type_name(fastc_array_element_type(flat.source_type_id('Array_struct_iovec_ptr')) or { u32(0) }) == 'struct iovec*'
+	assert flat.source_type_name(fastc_fixed_array_element_type(flat.source_type_id(fastc_fixed_array_type('2', 'struct iovec'))) or { u32(0) }) == 'struct iovec'
 	$if !macos && !linux {
 		return
 	}

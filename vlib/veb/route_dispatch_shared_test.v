@@ -76,6 +76,9 @@ fn test_shared_dispatch_preserves_variadic_host_and_middleware_rules() {
 	assert shared_dispatch_request(.delete, '/api/items/43', 'example.test').res.body == 'item:43:global-after'
 	assert shared_dispatch_request(.get, '/fixed', 'example.test').res.body == 'fixed:global-after:route-after'
 	assert shared_dispatch_request(.get, '/fixed', 'other.test').res.body == 'fallback:/fixed:global-after'
-	assert shared_dispatch_request(.post, '/fixed', 'example.test').res.status_code == 404
+	// /fixed is registered for `get` on example.test, so a POST is still not
+	// handled. It is now a 405 rather than a 404, because the path does belong to
+	// a route - see method_not_allowed_test.v for that behaviour on its own.
+	assert shared_dispatch_request(.post, '/fixed', 'example.test').res.status_code == 405
 	assert shared_dispatch_request(.get, '/fixed?block=1', 'example.test').res.body == 'blocked-before'
 }
