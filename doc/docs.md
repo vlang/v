@@ -5865,6 +5865,11 @@ fn main() {
 }
 ```
 
+A spawned call with a `mut param &T` parameter receives the caller's mutable pointer
+storage, including when another function forwards that parameter. Keep that storage alive
+until the thread finishes; `wait()` also makes its field changes and pointer replacement
+available to the caller.
+
 If a spawned thread's handle is discarded, including inside a discarded array or struct,
 V detaches the thread. Keep its handle and call `wait()` when the result or completion matters.
 The detached thread releases an owned return value after its function finishes.

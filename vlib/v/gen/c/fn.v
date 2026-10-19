@@ -5033,7 +5033,7 @@ fn (mut g FlatGen) spawn_packed_arg_for_param(arg_id flat.NodeId, expected types
 		if g.spawn_arg_expr_is_pointer_value(arg_id) {
 			return SpawnPackedArg{
 				field_ct:    expected_ct
-				assign_expr: g.expr_to_string(arg_id)
+				assign_expr: g.spawn_pointer_arg_to_string(arg_id, expected)
 				call_expr:   'p->a${field_idx}'
 			}
 		}
@@ -5066,6 +5066,21 @@ fn (mut g FlatGen) spawn_packed_arg_for_param(arg_id flat.NodeId, expected types
 		assign_expr: assign_expr
 		call_expr:   'p->a${field_idx}'
 	}
+}
+
+// spawn_pointer_arg_to_string preserves the caller's slot for mutable pointer arguments.
+fn (mut g FlatGen) spawn_pointer_arg_to_string(arg_id flat.NodeId, expected types.Type) string {
+	orig := g.sb
+	orig_line_start := g.line_start
+	g.sb = strings.new_builder(64)
+	g.line_start = false
+	if !g.gen_mut_pointer_slot_arg(arg_id, g.a.nodes[int(arg_id)], expected) {
+		g.gen_expr(arg_id)
+	}
+	result := g.sb.str()
+	g.sb = orig
+	g.line_start = orig_line_start
+	return result
 }
 
 fn shared_storage_from_payload_value_expr(expr string) ?string {
