@@ -1591,6 +1591,51 @@ fn check_top_level_decl_signatures_thread(arg voidptr) voidptr {
 	return unsafe { nil }
 }
 
+// SignatureCheckArgs is a scoped parallel check's run of the top-level
+// signature checks: on a fork in a disposable arena, merged as a body batch.
+struct SignatureCheckArgs {
+	master voidptr
+mut:
+	scope   voidptr
+	checker voidptr
+	errors  int // the diagnostics the fork started with, from the master
+	notices int
+}
+
+fn check_top_level_decl_signatures_scoped_thread(arg voidptr) voidptr {
+	mut a := unsafe { &SignatureCheckArgs(arg) }
+	master := unsafe { &TypeChecker(a.master) }
+	a.scope = check_worker_scope_begin(true)
+	mut w := master.fork_for_parallel_check()
+	// The checks do not repeat a diagnostic already reported. The master is
+	// idle on them: its own thread runs this task.
+	w.errors = master.errors.clone()
+	w.notices = master.notices.clone()
+	a.errors = w.errors.len
+	a.notices = w.notices.len
+	w.check_top_level_declaration_signatures()
+	check_worker_scope_leave(a.scope)
+	a.checker = voidptr(w)
+	return unsafe { nil }
+}
+
+// merge_scoped_signature_checks merges what the scoped signature checks found,
+// in the place of the master's own sparse cache writes, and releases their
+// arena.
+fn (mut tc TypeChecker) merge_scoped_signature_checks(mut a SignatureCheckArgs) {
+	if a.checker == unsafe { nil } {
+		check_worker_scope_free(a.scope)
+		return
+	}
+	mut w := unsafe { &TypeChecker(a.checker) }
+	w.errors = w.errors[a.errors..]
+	w.notices = w.notices[a.notices..]
+	tc.merge_parallel_check_worker_scoped(w, true)
+	a.checker = unsafe { nil }
+	check_worker_scope_free(a.scope)
+	a.scope = unsafe { nil }
+}
+
 // run_parallel_check checks the bodies of `items` on the worker pool, and the
 // top-level declarations along with them, unless `bodies_only`: then it leaves
 // the diagnostics in the order the bodies reported them, after those already
@@ -1704,10 +1749,25 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem, bodies_only bo
 	// signature checks first: the helpers then take over the bodies the master
 	// would otherwise still be checking when they run out of work.
 	signatures_first := dynamic_dispatch && !bodies_only
+	// A scoped check keeps the signature checks' scratch out of the master's
+	// persistent arena too.
+	mut signature_args := &SignatureCheckArgs{
+		master: voidptr(tc)
+	}
+	signature_run := if tc.scope_parallel_check_workers {
+		check_top_level_decl_signatures_scoped_thread
+	} else {
+		check_top_level_decl_signatures_thread
+	}
+	signature_arg := if tc.scope_parallel_check_workers {
+		voidptr(signature_args)
+	} else {
+		voidptr(tc)
+	}
 	if signatures_first {
 		tasks << workers.Task{
-			run:        check_top_level_decl_signatures_thread
-			arg:        voidptr(tc)
+			run:        signature_run
+			arg:        signature_arg
 			force_sync: true
 		}
 	}
@@ -1721,8 +1781,8 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem, bodies_only bo
 	}
 	if !bodies_only && !signatures_first {
 		tasks << workers.Task{
-			run:        check_top_level_decl_signatures_thread
-			arg:        voidptr(tc)
+			run:        signature_run
+			arg:        signature_arg
 			force_sync: true
 		}
 	}
@@ -1735,6 +1795,9 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem, bodies_only bo
 		}
 	}
 	tc.timing_profile('  [ttime]   ck pool.run      ${f64(rpsw2.elapsed().microseconds()) / 1000.0:7.2f} ms (chunks: ${chunk_count})')
+	if tc.scope_parallel_check_workers {
+		tc.merge_scoped_signature_checks(mut signature_args)
+	}
 	tc.merge_own_sparse_caches()
 	tc.parallel_check_sparse = false
 	merge_start := if tc.scope_parallel_check_workers { 0 } else { 1 }
