@@ -10691,6 +10691,12 @@ fn (mut tc TypeChecker) resolve_generic_call_info(id flat.NodeId, fn_node flat.N
 	if fn_node.kind != .index || fn_node.children_count < 2 || fn_node.value == 'range' {
 		return none
 	}
+	// `name[i]()` indexes a local array or map of functions when `name` is one, even
+	// if a generic function of the same name is in scope: the local shadows it, as
+	// it does for a plain `name()` call.
+	if tc.call_callee_index_is_value(fn_node) {
+		return none
+	}
 	base_id := tc.a.child(&fn_node, 0)
 	type_args_source_ids := tc.generic_call_type_arg_names(fn_node).clone()
 	type_args := flat.TypeTextList{ ids: type_args_source_ids }.names()
