@@ -752,7 +752,16 @@ fn (mut t Transformer) transform_is_expr(id flat.NodeId, node flat.Node) flat.No
 	if check := t.smartcasted_sum_is_expr_check(expr_id, flat.source_type_id(node.value)) {
 		return check
 	}
-	expr_type_source_id := t.node_type(expr_id)
+	mut expr_type_source_id := t.node_type(expr_id)
+	if t.expr_has_smartcast(expr_id) {
+		// Inside an `is` branch, `node_type` can report the smartcast target (an enum or
+		// a fixed array) instead of the interface; test the tag of the stored box.
+		raw_type := t.raw_expr_type_without_smartcast(expr_id)
+		if raw_type != 0 && raw_type != expr_type_source_id
+			&& t.is_interface_type_name(t.trim_pointer_type(raw_type)) {
+			expr_type_source_id = raw_type
+		}
+	}
 	expr_type_source_id_2 := expr_type_source_id
 
 	clean_type0_source_id := t.trim_pointer_type(expr_type_source_id)
@@ -1234,6 +1243,12 @@ fn (t &Transformer) interface_concrete_impl_name(name_id u32) ?u32 {
 			return flat.source_type_id(canonical)
 		}
 	}
+	if name.starts_with('[') {
+		typ := t.tc.parse_type(name_id)
+		if typ is types.ArrayFixed {
+			return flat.source_type_id(typ.name())
+		}
+	}
 	if name_comparison_type_id_6 in [flat.source_type_bool, flat.source_type_int, flat.source_type_i8,
 		flat.source_type_i16, flat.source_type_i32, flat.source_type_i64, flat.source_type_isize,
 		flat.source_type_usize, flat.source_type_u8, flat.source_type_u16, flat.source_type_u32,
@@ -1272,19 +1287,20 @@ fn (t &Transformer) interface_concrete_impl_name(name_id u32) ?u32 {
 			for candidate in t.tc.file_selective_imports[file_import_key(t.cur_file, name)] or {
 				[]string{}
 			} {
-				if candidate in t.tc.structs || t.tc.type_aliases.contains(candidate) {
+				if candidate in t.tc.structs || t.tc.type_aliases.contains(candidate)
+					|| candidate in t.tc.enum_names {
 					return flat.source_type_id(candidate)
 				}
 			}
 		}
 		if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
 			qname := '${t.cur_module}.${name}'
-			if qname in t.tc.structs || t.tc.type_aliases.contains(qname) {
+			if qname in t.tc.structs || t.tc.type_aliases.contains(qname) || qname in t.tc.enum_names {
 				return flat.source_type_id(qname)
 			}
 		}
 	}
-	if name in t.tc.structs || t.tc.type_aliases.contains(name) {
+	if name in t.tc.structs || t.tc.type_aliases.contains(name) || name in t.tc.enum_names {
 		return name_id
 	}
 	for struct_name, _ in t.tc.structs {
@@ -1549,48 +1565,10 @@ fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.No
 				return converted
 			}
 		}
-		if t.is_builtin_ierror_interface_name(clean_type0_source_id) && target_is_pointer {
-			if concrete_source_id := t.resolve_interface_pattern(target_pattern_source_id, clean_type0_source_id) {
-				concrete := flat.source_type_name(concrete_source_id)
-
-				// IError stores the concrete object directly. Read the original interface
-				// box before applying an active smartcast to its payload.
-				child := if t.expr_has_smartcast(expr_id) {
-					t.make_plain_expr_for_smartcast(expr_id)
-				} else {
-					t.transform_expr(expr_id)
-				}
-				field_op := if flat.source_type_shape(expr_type).has(.pointer) {
-					flat.Op.arrow
-				} else {
-					flat.Op.dot
-				}
-				object := t.make_selector_op(child, '_object', flat.source_type_voidptr, field_op)
-				return t.make_cast(flat.source_type_id('&${concrete}'), object, flat.source_type_id('&${concrete}'))
-			}
-		}
 		if !interface_pattern_is_collapsed_container_type(flat.source_type_id(node.value)) {
-			if qv_source_id := t.resolve_interface_pattern(flat.source_type_id(node.value), clean_type0_source_id) {
-				qv := flat.source_type_name(qv_source_id)
-
-				if sc := t.find_smartcast_for_expr(expr_id) {
-					target_source_id := t.trim_pointer_type(t.smartcast_target_type(sc))
-
-					if t.variant_names_match(target_source_id, qv_source_id) {
-						return t.transform_expr(expr_id)
-					}
-				}
-				child := t.transform_expr(expr_id)
-				field_op := if flat.source_type_shape(expr_type).has(.pointer) {
-					flat.Op.arrow
-				} else {
-					flat.Op.dot
-				}
-				object := t.make_selector_op(child, '_object', flat.source_type_voidptr, field_op)
-				cast := t.make_cast(flat.source_type_id('&${qv}'), object, flat.source_type_id('&${qv}'))
-				current := t.make_prefix(.mul, cast)
-				t.set_node_typ(int(current), qv_source_id)
-				return current
+			if qv_source_id := t.resolve_interface_pattern(target_pattern_source_id, clean_type0_source_id) {
+				return t.interface_as_concrete(expr_id, expr_type, clean_type0_source_id, qv_source_id,
+					target_is_pointer)
 			}
 		}
 		if interface_pattern_is_collapsed_container_type(flat.source_type_id(node.value))
@@ -1730,6 +1708,52 @@ fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.No
 		return t.make_prefix(.mul, field_sel)
 	}
 	return field_sel
+}
+
+// interface_as_concrete lowers `iface as Concrete` and `iface as &Concrete`. Unless an
+// active smartcast already proves the dynamic type, the stored `_typ` is compared with
+// the target's ids first, and a mismatch panics like a failed sum type `as` cast.
+fn (mut t Transformer) interface_as_concrete(expr_id flat.NodeId, expr_type u32, iface_id u32, concrete_id u32, target_is_pointer bool) flat.NodeId {
+	mut proven := false
+	if sc := t.find_smartcast_for_expr(expr_id) {
+		if t.variant_names_match(t.trim_pointer_type(t.smartcast_target_type(sc)), concrete_id) {
+			if !target_is_pointer {
+				return t.transform_expr(expr_id)
+			}
+			proven = true
+		}
+	}
+	// Read the stored box: a smartcast to another interface has other `_typ` ids.
+	child := if t.expr_has_smartcast(expr_id) {
+		t.make_plain_expr_for_smartcast(expr_id)
+	} else {
+		t.transform_expr(expr_id)
+	}
+	field_op := if flat.source_type_shape(expr_type).has(.pointer) {
+		flat.Op.arrow
+	} else {
+		flat.Op.dot
+	}
+	type_ids := if proven { []int{} } else { t.interface_impl_type_ids(iface_id, concrete_id) }
+	source := if type_ids.len > 0 {
+		t.stable_transformed_expr_for_reuse(child, expr_type, 'iface_as')
+	} else {
+		child
+	}
+	if type_ids.len > 0 {
+		actual := t.make_selector_op(source, '_typ', flat.source_type_int, field_op)
+		t.pending_stmts << t.make_interface_as_concrete_mismatch_panic(actual, iface_id, concrete_id,
+			type_ids)
+	}
+	concrete_ptr_id := flat.source_type_id('&${flat.source_type_name(concrete_id)}')
+	object := t.make_selector_op(source, '_object', flat.source_type_voidptr, field_op)
+	cast := t.make_cast(concrete_ptr_id, object, concrete_ptr_id)
+	if target_is_pointer {
+		return cast
+	}
+	current := t.make_prefix(.mul, cast)
+	t.set_node_typ(int(current), concrete_id)
+	return current
 }
 
 fn (t &Transformer) sum_as_display_type(name_id u32) string {
