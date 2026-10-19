@@ -124,17 +124,13 @@ fn test_imported_library_resolves_symbols_from_later_native_object() {
 	built := cmdexec.run(vexe, ['-new-compiler', '-nocache', '-gc', 'none', '-cc', compiler, '-showcc',
 		'-o', output, source])
 	assert built.exit_code == 0, built.output
-	link_line := built.output.split_into_lines().filter(it.contains('-lv3_order')).last()
-	// The test's own `#flag @DIR/consumer.o` joins a backslash `@DIR` with a forward
-	// slash, so the link line spells the object with a mixed separator while
-	// `os.join_path` below uses backslashes only. Normalise both sides to the printed
-	// form, otherwise the index is -1 and the ordering below cannot be checked.
-	normalised_link := link_line.replace('\\', '/')
-	normalised_object := consumer_object.replace('\\', '/')
-	assert (normalised_link.index(normalised_object) or { -1 }) >= 0, link_line
-	assert (normalised_link.index(normalised_object) or { -1 }) < (normalised_link.index('-lv3_order') or {
-		-1
-	}), link_line
+	// On Windows `#flag @DIR/consumer.o` joins a `\` separated `@DIR` with `/`, so the link
+	// line and the expected object are compared with `/` only.
+	normalized_output := built.output.replace('\\', '/')
+	link_object := consumer_object.replace('\\', '/')
+	link_line := normalized_output.split_into_lines().filter(it.contains('-lv3_order')).last()
+	assert (link_line.index(link_object) or { -1 }) >= 0, link_line
+	assert (link_line.index(link_object) or { -1 }) < (link_line.index('-lv3_order') or { -1 }), link_line
 	ran := cmdexec.run(output, [])
 	assert ran.exit_code == 0, ran.output
 }
