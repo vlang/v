@@ -8,7 +8,7 @@ const orm_join_sql_attr_v3_src = os.join_path(orm_join_sql_attr_v3_dir, 'v.v')
 
 fn orm_join_sql_attr_build_v3() string {
 	// Not `v3_orm_join_sql_attr_<pid>`: the `orm_join_sql_attr` case uses that as its directory.
-	v3_bin := os.join_path(os.temp_dir(), 'v3_orm_join_sql_attr_compiler_${os.getpid()}')
+	v3_bin := os.join_path(os.temp_dir(), 'v3_orm_join_sql_attr_compiler_${os.getpid()}') + $if windows { '.exe' } $else { '' }
 	os.rm(v3_bin) or {}
 	build :=
 		os.exec([orm_join_sql_attr_vexe, '-gc', 'none', '-path',

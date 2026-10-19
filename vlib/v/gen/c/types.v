@@ -1306,6 +1306,133 @@ fn (mut g FlatGen) collect_selected_declaration_signature_types() {
 	g.selected_decl_types_ready = true
 }
 
+// FnDeclSignatureTypes locates the signature types of one top-level fn
+// declaration in FnDeclSignatureTable.types, resolved in `module`/`file`.
+struct FnDeclSignatureTypes {
+	module string
+	file   string
+	start  int
+	count  int
+}
+
+// FnDeclSignatureTable holds what collect_selected_declaration_signature_types
+// reads from each selected function, computed before the selection is known.
+struct FnDeclSignatureTable {
+mut:
+	by_node   map[int]FnDeclSignatureTypes
+	sig_types []types.Type
+}
+
+// precompute_fn_decl_signature_types resolves the return and parameter types of
+// every top-level fn declaration, in the module and file that its selection item
+// would carry (see collect_fn_gen_candidates_range). The optional-support lane
+// runs it while the master is still selecting the functions.
+fn (mut g FlatGen) precompute_fn_decl_signature_types() FnDeclSignatureTable {
+	mut table := FnDeclSignatureTable{}
+	old_module := g.tc.cur_module
+	old_file := g.tc.cur_file
+	defer {
+		g.tc.cur_module = old_module
+		g.tc.cur_file = old_file
+	}
+	nodes := g.top_level_nodes()
+	mut cur_module := ''
+	mut cur_file := ''
+	for pos in 0 .. nodes.len {
+		i := nodes[pos]
+		node := g.a.nodes[i]
+		kind_id := node_kind_id(node)
+		if kind_id == 77 {
+			cur_file = node.value
+			cur_module = ''
+			continue
+		}
+		if kind_id == 73 {
+			cur_module = node.value
+			continue
+		}
+		if kind_id != 61 {
+			continue
+		}
+		is_specialization := g.a.specialized_fn_nodes[i]
+		item_module := g.a.specialized_fn_modules[i] or { cur_module }
+		item_file := g.a.specialized_fn_files[i] or {
+			if is_specialization {
+				g.tc.fn_type_files[node.value] or { cur_file }
+			} else {
+				cur_file
+			}
+		}
+		start := table.sig_types.len
+		g.tc.cur_module = item_module
+		g.tc.cur_file = item_file
+		g.append_fn_decl_signature_types(mut table.sig_types, node, item_module)
+		table.by_node[int(i)] = FnDeclSignatureTypes{
+			module: item_module
+			file:   item_file
+			start:  start
+			count:  table.sig_types.len - start
+		}
+	}
+	return table
+}
+
+// append_fn_decl_signature_types appends the declaration signature types that
+// collect_selected_declaration_signature_types registers for `node`.
+fn (mut g FlatGen) append_fn_decl_signature_types(mut out []types.Type, node flat.Node, module_name string) {
+	out << g.fn_node_return_type(node, module_name)
+	typed_params := g.fn_node_param_types(node, module_name)
+	mut param_idx := 0
+	for i in 0 .. node.children_count {
+		param := g.a.child_node(&node, i)
+		if param.kind != .param {
+			break
+		}
+		raw_type := if param_idx < typed_params.len {
+			typed_params[param_idx]
+		} else {
+			g.tc.parse_resolution_type(param.typ)
+		}
+		param_idx++
+		out << g.fn_node_effective_param_type(param, raw_type)
+	}
+}
+
+// collect_selected_declaration_signature_types_from is
+// collect_selected_declaration_signature_types over precomputed signatures. An
+// item whose context differs from the precomputed one is resolved again.
+fn (mut g FlatGen) collect_selected_declaration_signature_types_from(table &FnDeclSignatureTable) {
+	if g.selected_decl_types_ready {
+		return
+	}
+	old_module := g.tc.cur_module
+	old_file := g.tc.cur_file
+	defer {
+		g.tc.cur_module = old_module
+		g.tc.cur_file = old_file
+	}
+	mut resolved := []types.Type{}
+	for item in g.ensure_fn_gen_items() {
+		g.tc.cur_module = item.module
+		g.tc.cur_file = item.file
+		if sig := table.by_node[int(item.node_id)] {
+			if sig.module == item.module && sig.file == item.file {
+				for k in sig.start .. sig.start + sig.count {
+					g.collect_known_declaration_signature_type(table.sig_types[k])
+				}
+				continue
+			}
+		}
+		resolved.clear()
+		g.append_fn_decl_signature_types(mut resolved, g.a.nodes[int(item.node_id)],
+			item.module)
+		for typ in resolved {
+			g.collect_known_declaration_signature_type(typ)
+		}
+	}
+	g.selected_decl_types_ready = true
+}
+
 @[inline]
 fn cgen_type_first_seen(typ &types.Type, mut seen PreseedTypeSeen) bool {
 	words := unsafe { &u64(voidptr(typ)) }

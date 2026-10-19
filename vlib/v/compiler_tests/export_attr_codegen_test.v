@@ -7,7 +7,7 @@ const export_attr_vlib_dir = os.dir(export_attr_v3_dir)
 const export_attr_v3_src = os.join_path(export_attr_v3_dir, 'v.v')
 
 fn export_attr_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_export_attr_test_${os.getpid()}')
+	v3_bin := os.join_path(os.temp_dir(), 'v3_export_attr_test_${os.getpid()}') + $if windows { '.exe' } $else { '' }
 	if os.is_executable(v3_bin) {
 		return v3_bin
 	}

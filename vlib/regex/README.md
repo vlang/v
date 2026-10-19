@@ -128,7 +128,8 @@ must be matched.
 
 #### **Long quantifiers**
 
-- `{x}` matches exactly x times, `a{2}` matches `aa`, but not `aaa` or `a`
+- `{x}` matches exactly x times, `a{2}` matches `aa`, but not `aaa` or `a`.
+  `{0}` skips its token or group and matches without consuming input.
 - `{min,}` matches at least min times, `a{2,}` matches `aaa` or `aa`, not `a`
 - `{,max}` matches at least 0 times and at maximum max times,
   for example, `a{,2}` matches `a` and `aa`, but doesn't match `aaa`
@@ -472,6 +473,9 @@ for name in re.group_map.keys() {
 }
 ```
 
+Groups that did not participate report bounds `(-1, -1)`, including after a search.
+An empty capturing group reports equal start and end bounds.
+
 ### Groups query functions
 
 These functions are helpers to query the captured groups
@@ -557,6 +561,11 @@ pub fn (mut re RE) compile_opt(pattern string) !
 
 ### Matching Functions
 
+Matchers consume only bytes inside the subject. A non-word class such as `\W` does not
+match the position after the final byte. Zero-width patterns can still match that position.
+The low-level `match_base` length is the number of subject bytes; the buffer does not
+need a trailing NUL byte.
+
 These are the matching functions
 
 ```v ignore
@@ -585,6 +594,10 @@ pub fn (mut re RE) find_all(in_txt string) []int
 // the result is like ['first match','secon match']
 pub fn (mut re RE) find_all_str(in_txt string) []string
 ```
+
+`split` returns the sections around matches. Zero-width separators at the beginning or
+end do not add empty sections; separators that consume input retain empty sections.
+For example, an empty pattern splits `ab` into `['a', 'b']`.
 
 #### Replace functions
 

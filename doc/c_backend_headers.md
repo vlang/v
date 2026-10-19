@@ -27,6 +27,10 @@ regardless of source collection order.
 The headerless requirement covers hello world and compiler self builds, rather than every
 library binding. Modules such as `compress.brotli` retain their C headers and cached
 implementations.
+Assertion messages and their formatting temporaries are emitted inside the failure branch.
+Passing assertions do not evaluate message operands or call their `str()` methods,
+including for array interpolation and value `if` or `match` expressions.
+
 Coverage and profiling retain file I/O and timer declarations even when the application
 imports no standard library modules.
 On macOS, standalone `statvfs` storage retains the native 32-bit block and inode counters;
@@ -123,6 +127,10 @@ created by another compiler process; filesystem failures remain errors.
 Negated integer literals above `INT_MAX` and within the signed 64-bit range receive an `LL`
 suffix in C output, including parenthesized operands and constant initializers. This preserves
 their sign with MSVC.
+
+Cache-invalidation restarts remove the current temporary C build directory before
+starting the replacement compiler process. Successful cached builds leave no `.v3cc.*`
+directory beside the output.
 
 With `-target-libc-headers`, the target libc owns the accessor behind its `errno` macro.
 The generated C includes `<errno.h>` and leaves the libc accessor declaration to that header,

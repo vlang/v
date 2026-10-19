@@ -93,13 +93,18 @@ mut:
 	// metadata_bits records the count pass's is_type_metadata_node results, one
 	// bit per node, so the fill pass does not classify every node again.
 	metadata_bits_ptr voidptr
-	type_text_cache   &TypeMetadataTextCache = unsafe { nil }
+	// shared_bits marks the metadata nodes collect_local_shared_type_names visits.
+	shared_bits_ptr voidptr
+	type_text_cache &TypeMetadataTextCache = unsafe { nil }
 }
 
 struct FnSignatureRegistrationArgs {
 	g                 voidptr
 	registrations_ptr voidptr
-	group             int
+	node_regs_ptr     voidptr
+	// Below fn_signature_registration_groups: a signature registration group;
+	// the three above it: register_fn_decl_nodes maps.
+	group int
 }
 
 struct FlatCgenSelectArgs {
@@ -120,6 +125,11 @@ mut:
 fn fn_signature_registration_thread(arg voidptr) voidptr {
 	a := unsafe { &FnSignatureRegistrationArgs(arg) }
 	mut g := unsafe { &FlatGen(a.g) }
+	if a.group >= fn_signature_registration_groups {
+		node_regs := unsafe { &[]FnDeclNodeReg(a.node_regs_ptr) }
+		g.register_fn_decl_nodes(*node_regs, a.group - fn_signature_registration_groups)
+		return unsafe { nil }
+	}
 	registrations := unsafe { &[]FnSignatureRegistration(a.registrations_ptr) }
 	for registration in registrations {
 		g.apply_fn_signature_registration_group(registration, a.group)
@@ -180,12 +190,18 @@ fn collect_gen_info_scan_count_thread(arg voidptr) voidptr {
 	g := unsafe { &FlatGen(a.g) }
 	incremental := g.incremental_fn_names.len > 0
 	mut metadata_bits := unsafe { &[]u64(a.metadata_bits_ptr) }
+	mut shared_bits := unsafe { &[]u64(a.shared_bits_ptr) }
 	for node_idx in a.start .. a.end {
 		node := g.a.nodes[node_idx]
 		if is_type_metadata_node(&node, mut a.type_text_cache) {
 			a.type_metadata_pos++
 			unsafe {
 				metadata_bits[node_idx >> 6] |= u64(1) << (node_idx & 63)
+			}
+			if shared_scan_node_relevant(g.a, &node) {
+				unsafe {
+					shared_bits[node_idx >> 6] |= u64(1) << (node_idx & 63)
+				}
 			}
 		}
 		if node.kind == .string_literal {
@@ -506,9 +522,6 @@ fn fixed_storage_scan_thread(arg voidptr) voidptr {
 	w.collect_fixed_storage_consts(true)
 	w.timing_profile('  [ttime]       fs consts     ${f64(fssw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	fssw.restart()
-	w.precompute_param_type_index()
-	w.timing_profile('  [ttime]       fs param idx  ${f64(fssw.elapsed().microseconds()) / 1000.0:7.2f} ms')
-	fssw.restart()
 	w.precompute_concrete_optional_abi_fns()
 	w.timing_profile('  [ttime]       fs opt abi    ${f64(fssw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	w.worker_scope = scope
@@ -576,8 +589,11 @@ fn optional_support_selection_thread(arg voidptr) voidptr {
 		metadata.needed_optional_types = flat.TypeTextBindings{}
 		metadata.optional_pointer_struct_tags = map[string]string{}
 		metadata_thread := spawn checker_signature_support_thread(voidptr(metadata))
+		// Resolve every declaration's signature while the master selects; the
+		// selected subset is only registered once it arrives.
+		signatures := w.precompute_fn_decl_signature_types()
 		w.fn_gen_items = <-a.items
-		w.collect_selected_declaration_signature_types()
+		w.collect_selected_declaration_signature_types_from(&signatures)
 		// The items are the final selection: the declaration task does not have
 		// to walk their signatures again.
 		w.selected_decl_types_ready = true
@@ -608,6 +624,168 @@ fn optional_support_selection_thread(arg voidptr) voidptr {
 	w.timing_profile('  [ttime]       fs opt types   ${f64(osw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	w.worker_scope = scope
 	cgen_worker_scope_leave(scope)
+	return unsafe { nil }
+}
+
+struct FnGenItemKeySortArgs {
+mut:
+	keys []FlatFnGenItemSortKey
+}
+
+fn fn_gen_item_key_sort_thread(arg voidptr) voidptr {
+	mut a := unsafe { &FnGenItemKeySortArgs(arg) }
+	a.keys.sort(a.c_name < b.c_name)
+	return unsafe { nil }
+}
+
+// sorted_fn_gen_item_keys returns the keys stably sorted by C name, like
+// `keys.sort(a.c_name < b.c_name)`. Large inputs are split into consecutive
+// parts that are sorted on the pool and merged, ties taken from the earlier
+// part, so equal names keep their input order.
+fn (g &FlatGen) sorted_fn_gen_item_keys(keys []FlatFnGenItemSortKey) []FlatFnGenItemSortKey {
+	if keys.len < 4096 || isnil(g.a.worker_pool) || g.a.worker_pool.size() < 4 {
+		mut sorted := keys.clone()
+		sorted.sort(a.c_name < b.c_name)
+		return sorted
+	}
+	n_parts := 8
+	mut parts := []FnGenItemKeySortArgs{cap: n_parts}
+	for part in 0 .. n_parts {
+		parts << FnGenItemKeySortArgs{
+			keys: keys[keys.len * part / n_parts..keys.len * (part + 1) / n_parts].clone()
+		}
+	}
+	mut tasks := []workers.Task{cap: n_parts}
+	for part in 0 .. n_parts {
+		tasks << workers.Task{
+			run:        fn_gen_item_key_sort_thread
+			arg:        unsafe { voidptr(&parts[part]) }
+			force_sync: part == 0
+		}
+	}
+	g.a.worker_pool.run(tasks)
+	mut runs := [][]FlatFnGenItemSortKey{cap: n_parts}
+	for part in parts {
+		runs << moved_fn_gen_item_sort_keys(part.keys)
+	}
+	for runs.len > 1 {
+		mut merged := [][]FlatFnGenItemSortKey{cap: (runs.len + 1) / 2}
+		for i := 0; i < runs.len; i += 2 {
+			if i + 1 < runs.len {
+				merged << merge_fn_gen_item_sort_keys(runs[i], runs[i + 1])
+			} else {
+				merged << moved_fn_gen_item_sort_keys(runs[i])
+			}
+		}
+		runs = moved_fn_gen_item_sort_runs(merged)
+	}
+	return runs[0]
+}
+
+// merge_fn_gen_item_sort_keys merges two sorted runs; on equal names the key of
+// `first` comes first.
+fn merge_fn_gen_item_sort_keys(first []FlatFnGenItemSortKey, second []FlatFnGenItemSortKey) []FlatFnGenItemSortKey {
+	mut out := []FlatFnGenItemSortKey{cap: first.len + second.len}
+	mut i := 0
+	mut j := 0
+	for i < first.len && j < second.len {
+		if second[j].c_name < first[i].c_name {
+			out << moved_fn_gen_item_sort_key(second[j])
+			j++
+		} else {
+			out << moved_fn_gen_item_sort_key(first[i])
+			i++
+		}
+	}
+	for i < first.len {
+		out << moved_fn_gen_item_sort_key(first[i])
+		i++
+	}
+	for j < second.len {
+		out << moved_fn_gen_item_sort_key(second[j])
+		j++
+	}
+	return out
+}
+
+@[inline]
+fn moved_fn_gen_item_sort_keys(keys []FlatFnGenItemSortKey) []FlatFnGenItemSortKey {
+	return keys
+}
+
+@[inline]
+fn moved_fn_gen_item_sort_runs(runs [][]FlatFnGenItemSortKey) [][]FlatFnGenItemSortKey {
+	return runs
+}
+
+// moved_fn_gen_item_sort_key returns `key`; pushing a call result does not
+// copy its name.
+@[inline]
+fn moved_fn_gen_item_sort_key(key FlatFnGenItemSortKey) FlatFnGenItemSortKey {
+	return key
+}
+
+// TypeIndexArgs carries the read-only type indexes that a helper thread builds
+// from the checker's (complete) type tables while collect_gen_info runs;
+// `scope` holds their storage until cgen output is done.
+struct TypeIndexArgs {
+	tc &types.TypeChecker
+mut:
+	scope       voidptr
+	field_index &StructFieldIndexBase = unsafe { nil }
+	type_names  &TypeNameShortIndex   = unsafe { nil }
+}
+
+fn type_index_thread(arg voidptr) voidptr {
+	mut a := unsafe { &TypeIndexArgs(arg) }
+	a.scope = cgen_worker_scope_begin(true)
+	a.field_index = new_struct_field_index_base(a.tc.structs)
+	a.type_names = new_type_name_short_index(a.tc)
+	cgen_worker_scope_leave(a.scope)
+	return unsafe { nil }
+}
+
+// start_type_indexes builds the shared struct field and type-name indexes on a
+// helper thread; finish_type_indexes installs them. Only parallel generation
+// uses them.
+fn (mut g FlatGen) start_type_indexes(no_parallel bool) (&TypeIndexArgs, []thread voidptr) {
+	mut args := &TypeIndexArgs{
+		tc: g.tc
+	}
+	mut threads := []thread voidptr{cap: 1}
+	if !no_parallel && g.scope_parallel_workers && g.incremental_fn_names.len == 0 {
+		threads << spawn type_index_thread(voidptr(args))
+	}
+	return args, threads
+}
+
+fn (mut g FlatGen) finish_type_indexes(args &TypeIndexArgs, threads []thread voidptr) {
+	if threads.len == 0 {
+		return
+	}
+	_ = threads.wait()
+	g.struct_field_index_base = args.field_index
+	g.type_name_short_index = args.type_names
+	if args.scope != unsafe { nil } {
+		g.parallel_worker_scopes << args.scope
+	}
+}
+
+// ParamTypeIndexArgs carries the short-name parameter type index
+// (precompute_param_type_index) built beside the pre-dispatch helpers.
+struct ParamTypeIndexArgs {
+	g  &FlatGen
+	tc &types.TypeChecker
+mut:
+	scope                voidptr
+	param_types_by_short map[string][]types.Type
+}
+
+fn param_type_index_thread(arg voidptr) voidptr {
+	mut a := unsafe { &ParamTypeIndexArgs(arg) }
+	a.scope = cgen_worker_scope_begin(true)
+	a.param_types_by_short = cgen_param_types_by_short(a.g.fn_decl_param_types, a.tc.fn_param_types)
+	cgen_worker_scope_leave(a.scope)
 	return unsafe { nil }
 }
 
@@ -817,6 +995,7 @@ fn (mut g FlatGen) scan_collect_gen_info(no_parallel bool) CollectGenInfoScanCou
 	mut args := []CollectGenInfoScanArgs{cap: n_jobs}
 	mut tasks := []workers.Task{cap: n_jobs}
 	mut metadata_bits := []u64{len: (g.a.nodes.len + 63) / 64}
+	g.shared_scan_bits = []u64{len: (g.a.nodes.len + 63) / 64}
 	parsed_end := g.parsed_node_end()
 	for job in 0 .. n_jobs {
 		// Ranges start on a 64-node boundary, so that no two jobs write the same
@@ -833,6 +1012,7 @@ fn (mut g FlatGen) scan_collect_gen_info(no_parallel bool) CollectGenInfoScanCou
 			end:               end
 			parsed_end:        parsed_end
 			metadata_bits_ptr: unsafe { voidptr(&metadata_bits) }
+			shared_bits_ptr:   unsafe { voidptr(&g.shared_scan_bits) }
 			type_text_cache:   &TypeMetadataTextCache{}
 		}
 	}
@@ -895,29 +1075,36 @@ fn (mut g FlatGen) scan_collect_gen_info(no_parallel bool) CollectGenInfoScanCou
 	unsafe { metadata_bits.free() }
 	g.type_metadata_nodes_ready = true
 	g.embed_payload_nodes_ready = true
+	g.shared_scan_bits_ready = true
 	return counts
 }
 
-fn (mut g FlatGen) apply_fn_signature_registrations(registrations []FnSignatureRegistration) {
+fn (mut g FlatGen) apply_fn_signature_registrations(registrations []FnSignatureRegistration, node_regs []FnDeclNodeReg) {
 	if registrations.len < 128 || isnil(g.a.worker_pool) || g.a.worker_pool.size() < 4
 		|| os.getenv('V3_NO_PAR_CGEN_SIG_REG') != '' {
-		for group in 0 .. 4 {
+		for group in 0 .. fn_signature_registration_groups {
 			for registration in registrations {
 				g.apply_fn_signature_registration_group(registration, group)
 			}
 		}
+		for which in 0 .. 3 {
+			g.register_fn_decl_nodes(node_regs, which)
+		}
 		return
 	}
-	mut args := []FnSignatureRegistrationArgs{cap: 4}
-	mut tasks := []workers.Task{cap: 4}
-	for group in 0 .. 4 {
+	// Signature groups and the three fn-decl node maps each fill their own maps.
+	n_tasks := fn_signature_registration_groups + 3
+	mut args := []FnSignatureRegistrationArgs{cap: n_tasks}
+	mut tasks := []workers.Task{cap: n_tasks}
+	for group in 0 .. n_tasks {
 		args << FnSignatureRegistrationArgs{
 			g:                 voidptr(g)
 			registrations_ptr: unsafe { voidptr(&registrations) }
+			node_regs_ptr:     unsafe { voidptr(&node_regs) }
 			group:             group
 		}
 	}
-	for group in 0 .. 4 {
+	for group in 0 .. n_tasks {
 		tasks << workers.Task{
 			run:        fn_signature_registration_thread
 			arg:        unsafe { voidptr(&args[group]) }
@@ -972,6 +1159,13 @@ fn (mut g FlatGen) start_fixed_array_ret_wrappers() ([]&FlatGen, []thread voidpt
 	mut worker := g.new_parallel_worker(3)
 	worker.fixed_array_ret_wrappers = map[string]bool{}
 	mut support_worker := g.new_parallel_worker(5)
+	// Both helpers run beside function selection, which writes the master's C-name
+	// and generic-application caches and may release the arena behind them. Keep
+	// their caches private instead of reading the master's through `base`.
+	worker.c_name_cache = &CNameCache{}
+	worker.generic_app_cache = &GenericAppCache{}
+	support_worker.c_name_cache = &CNameCache{}
+	support_worker.generic_app_cache = &GenericAppCache{}
 	support_worker.recursive_drop_helpers = map[u64]u32{}
 	support_worker.fixed_array_map_key_types = map[string]types.ArrayFixed{}
 	mut threads := []thread voidptr{cap: 2}
@@ -1527,20 +1721,27 @@ fn (mut g FlatGen) absorb_scoped_cgen_batch(batch &FlatGen, output_streamed bool
 		}
 	}
 	unsafe { b.sb.free() }
-	for opt_name, val_type_id in batch.needed_optional_types.ids {
-		val_type := flat.source_type_name(val_type_id)
-		if !g.needed_optional_types.contains(opt_name) {
-			g.needed_optional_types.set_id(opt_name.clone(), flat.source_type_id(val_type.clone()))
+	// A batch starts from a copy of these tables and only adds to them, so a
+	// table of unchanged size holds nothing new.
+	if batch.needed_optional_types.ids.len != g.needed_optional_types.ids.len {
+		for opt_name, val_type_id in batch.needed_optional_types.ids {
+			if !g.needed_optional_types.contains(opt_name) {
+				g.needed_optional_types.set_id(opt_name.clone(), val_type_id)
+			}
 		}
 	}
-	for opt_name, val_type in batch.optional_pointer_struct_tags {
-		if opt_name !in g.optional_pointer_struct_tags {
-			g.optional_pointer_struct_tags[opt_name.clone()] = val_type.clone()
+	if batch.optional_pointer_struct_tags.len != g.optional_pointer_struct_tags.len {
+		for opt_name, val_type in batch.optional_pointer_struct_tags {
+			if opt_name !in g.optional_pointer_struct_tags {
+				g.optional_pointer_struct_tags[opt_name.clone()] = val_type.clone()
+			}
 		}
 	}
-	for encoded, name in batch.fn_ptr_types {
-		if encoded !in g.fn_ptr_types {
-			g.fn_ptr_types[encoded.clone()] = name.clone()
+	if batch.fn_ptr_types.len != g.fn_ptr_types.len {
+		for encoded, name in batch.fn_ptr_types {
+			if encoded !in g.fn_ptr_types {
+				g.fn_ptr_types[encoded.clone()] = name.clone()
+			}
 		}
 	}
 	for encoded, used in batch.used_fn_ptr_types {
@@ -1548,9 +1749,11 @@ fn (mut g FlatGen) absorb_scoped_cgen_batch(batch &FlatGen, output_streamed bool
 			g.used_fn_ptr_types[encoded.clone()] = true
 		}
 	}
-	for name, used in batch.c_extern_refs {
-		if used {
-			g.c_extern_refs[name.clone()] = true
+	if !batch.c_extern_refs_shared {
+		for name, used in batch.c_extern_refs {
+			if used {
+				g.c_extern_refs[name.clone()] = true
+			}
 		}
 	}
 	if batch.needs_thread_runtime {
@@ -1803,14 +2006,12 @@ fn (mut g FlatGen) publish_fixed_storage_scan(mut fs_worker FlatGen) {
 		// release the helper arena before the function workers start, instead of
 		// keeping it resident through emission.
 		g.fixed_storage_consts = clone_cgen_string_bool_map(fs_worker.fixed_storage_consts)
-		g.param_types_by_short = clone_cgen_param_types_map(fs_worker.param_types_by_short)
 		g.concrete_optional_abi_fns = clone_cgen_string_bool_map(fs_worker.concrete_optional_abi_fns)
 		cgen_worker_scope_free(fs_worker.worker_scope)
 		fs_worker.worker_scope = unsafe { nil }
 		return
 	}
 	g.fixed_storage_consts = fs_worker.fixed_storage_consts.move()
-	g.param_types_by_short = fs_worker.param_types_by_short.move()
 	g.concrete_optional_abi_fns = fs_worker.concrete_optional_abi_fns.move()
 }
 
@@ -3271,6 +3472,8 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		qualified_enum_method_cache:        &ContextStringLookupCache{}
 		import_type_cache:                  &ImportTypeCache{}
 		struct_decl_pref_cache:             &StructDeclPrefCache{}
+		struct_field_index_base:            g.struct_field_index_base
+		type_name_short_index:              g.type_name_short_index
 		qualified_struct_c_types_by_suffix: g.qualified_struct_c_types_by_suffix
 		qualified_struct_c_types_ready:     g.qualified_struct_c_types_ready
 		embedded_fields_by_type:            g.embedded_fields_by_type
@@ -3284,8 +3487,14 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		callback_wrapper_defs_seen:         g.callback_wrapper_defs_seen.clone()
 		callback_identity_used:             g.callback_identity_used
 		callback_target_overrides:          map[int]string{}
-		c_extern_refs:                      g.c_extern_refs.clone()
+		// Body generation only reads the collected refs once they are complete.
+		c_extern_refs:                      if g.c_extern_refs_ready {
+			g.c_extern_refs
+		} else {
+			g.c_extern_refs.clone()
+		}
 		c_extern_refs_ready:                g.c_extern_refs_ready
+		c_extern_refs_shared:               g.c_extern_refs_ready
 		scope_parallel_workers:             g.scope_parallel_workers
 		c_name_cache:                       &CNameCache{
 			base: if !isnil(g.c_name_cache.base) { g.c_name_cache.base } else { g.c_name_cache }
@@ -3298,6 +3507,9 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		local_global_shadow_facts:          &ContextNameFactCache{}
 		local_global_suffix_names:          g.local_global_suffix_names
 		local_global_suffix_names_ready:    g.local_global_suffix_names_ready
+		c_typedef_shadow_names:             g.c_typedef_shadow_names
+		c_typedef_shadow_names_ready:       g.c_typedef_shadow_names_ready
+		c_typedef_shadow_names_plain:       g.c_typedef_shadow_names_plain
 		generic_app_cache:                  &GenericAppCache{
 			base: if !isnil(g.generic_app_cache.base) {
 				g.generic_app_cache.base
@@ -3656,9 +3868,11 @@ fn (mut g FlatGen) merge_parallel_worker_into(w &FlatGen, mut ordered []string, 
 			g.used_fn_ptr_types[encoded.clone()] = true
 		}
 	}
-	for name, used in w.c_extern_refs {
-		if used {
-			g.c_extern_refs[name.clone()] = true
+	if !w.c_extern_refs_shared {
+		for name, used in w.c_extern_refs {
+			if used {
+				g.c_extern_refs[name.clone()] = true
+			}
 		}
 	}
 	if w.needs_thread_runtime {
@@ -3840,11 +4054,26 @@ fn (mut g FlatGen) run_pre_dispatch_parallel(no_parallel bool) bool {
 			},
 		])
 		g.refine_fn_item_costs(no_parallel, false)
+		g.precompute_param_type_index()
 	} else {
 		// Item selection only reads the AST and immutable checker tables, so let
 		// its exact-cost pass use the otherwise-idle pool while the independent
 		// fixed-storage scan finishes on a helper thread.
 		mut psw := time.new_stopwatch()
+		// The master swaps in a selection checker meanwhile; keep the checked one.
+		mut field_index_args := &ParamTypeIndexArgs{
+			g:  g
+			tc: g.tc
+		}
+		field_index_thread := spawn param_type_index_thread(voidptr(field_index_args))
+		// The fixed-array return wrapper scans only read the collected declaration
+		// tables; run them beside the other lanes from the start.
+		overlap_wrappers := os.getenv('V3_NO_PAR_FIXED_RET') == ''
+		mut wrapper_workers := []&FlatGen{}
+		mut wrapper_threads := []thread voidptr{}
+		if overlap_wrappers {
+			wrapper_workers, wrapper_threads = g.start_fixed_array_ret_wrappers()
+		}
 		fixed_storage_thread := spawn fixed_storage_scan_thread(voidptr(fs_worker))
 		fixed_array_thread := spawn fixed_array_support_thread(voidptr(fixed_array_worker))
 		call_optional_thread := spawn unresolved_call_optional_thread(voidptr(call_optional_worker))
@@ -3866,12 +4095,9 @@ fn (mut g FlatGen) run_pre_dispatch_parallel(no_parallel bool) bool {
 		// The master would only wait for the helper lanes now. Build the shared
 		// and sum indexes and the fixed-array return wrappers meanwhile: they
 		// only read the collected declaration tables, and dispatch needs them next.
-		overlap_wrappers := os.getenv('V3_NO_PAR_FIXED_RET') == ''
-		mut wrapper_workers := []&FlatGen{}
-		mut wrapper_threads := []thread voidptr{}
 		if overlap_wrappers {
-			wrapper_workers, wrapper_threads = g.start_fixed_array_ret_wrappers()
-			g.collect_shared_sum_indexes()
+			g.collect_shared_type_names()
+			g.precompute_sum_name_lookup()
 			g.timing_profile('  [ttime]     wr shared+sum  ${f64(psw.elapsed().microseconds()) / 1000.0:7.2f} ms (overlapped)')
 			psw.restart()
 		}
@@ -3879,6 +4105,11 @@ fn (mut g FlatGen) run_pre_dispatch_parallel(no_parallel bool) bool {
 		_ = fixed_array_thread.wait()
 		_ = optional_thread.wait()
 		_ = call_optional_thread.wait()
+		_ = field_index_thread.wait()
+		g.param_types_by_short = field_index_args.param_types_by_short.move()
+		if field_index_args.scope != unsafe { nil } {
+			g.parallel_worker_scopes << field_index_args.scope
+		}
 		g.timing_profile('  [ttime]     cg fs wait     ${f64(psw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		if overlap_wrappers {
 			psw.restart()

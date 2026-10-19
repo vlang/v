@@ -29,6 +29,36 @@ mut:
 	ids         [4096]int
 	masks       [4096]u64
 	generations [4096]u32
+	// record_consults makes fixed_array_borrow_summary list every summary it reads
+	// in `consulted` (prescan helpers only; see BorrowBodyResult).
+	record_consults bool
+	consulted       []BorrowParamRef
+}
+
+// BorrowBodyResult is one candidate's body analysis, made before the serial fixed
+// point runs against no proven summaries. `consulted` lists the summaries it read,
+// all of them unproven. While none of those is proven yet, the serial analysis
+// takes the same path and reaches the same outcome.
+struct BorrowBodyResult {
+mut:
+	ready        bool
+	borrows      bool
+	dependencies []BorrowParamRef
+	consulted    []BorrowParamRef
+}
+
+// matches_proven_summaries reports whether no summary the prescan read has been
+// proven since, so its outcome is the serial one.
+fn (r &BorrowBodyResult) matches_proven_summaries(t &Transformer) bool {
+	if !r.ready {
+		return false
+	}
+	for param in r.consulted {
+		if t.proven_fixed_array_borrow_summary(param) {
+			return false
+		}
+	}
+	return true
 }
 
 // Compute summaries before workers rewrite function bodies. A parameter borrows when no
@@ -101,10 +131,25 @@ fn (mut t Transformer) prepare_fixed_array_borrow_params() {
 	mut remaining := []int{len: candidates.len, init: -1}
 	mut queue := []int{}
 	mut qi := 0
+	// Bodies are analysed up front on helper threads against no proven summaries.
+	// The fixed point below keeps its order and analyses a body again itself only
+	// when a summary that analysis read has been proven by now.
+	prescanned := t.prescan_fixed_array_borrow_bodies(candidates)
 	for i, c in candidates {
-		mut dependencies := []BorrowParamRef{}
-		if !t.fixed_array_param_body_borrows(c, mut dependencies) {
+		ready := i < prescanned.results.len && prescanned.results[i].matches_proven_summaries(t)
+		mut scanned_dependencies := []BorrowParamRef{}
+		borrows := if ready {
+			prescanned.results[i].borrows
+		} else {
+			t.fixed_array_param_body_borrows(c, mut scanned_dependencies)
+		}
+		if !borrows {
 			continue
+		}
+		dependencies := if ready {
+			prescanned.results[i].dependencies
+		} else {
+			scanned_dependencies
 		}
 		remaining[i] = 0
 		for dependency in dependencies {
@@ -144,6 +189,37 @@ fn (mut t Transformer) prepare_fixed_array_borrow_params() {
 				}
 			}
 		}
+	}
+	prescanned.release()
+}
+
+// BorrowPrescan holds the up-front body analyses and the arenas that own them.
+struct BorrowPrescan {
+mut:
+	results []BorrowBodyResult
+	scopes  []voidptr
+}
+
+// release frees the helper arenas that hold the prescanned dependency lists.
+fn (p &BorrowPrescan) release() {
+	for scope in p.scopes {
+		transform_worker_scope_free(scope)
+	}
+}
+
+// prescan_fixed_array_borrow_body analyses one candidate on a helper transformer
+// that sees no proven summaries, and records which summaries the analysis read.
+fn (mut t Transformer) prescan_fixed_array_borrow_body(c BorrowCandidate) BorrowBodyResult {
+	mut memo := t.borrow_param_mentions
+	memo.record_consults = true
+	memo.consulted.clear()
+	mut dependencies := []BorrowParamRef{}
+	borrows := t.fixed_array_param_body_borrows(c, mut dependencies)
+	return BorrowBodyResult{
+		ready:        true
+		borrows:      borrows
+		dependencies: dependencies
+		consulted:    memo.consulted.clone()
 	}
 }
 
@@ -229,6 +305,15 @@ fn (t &Transformer) fixed_array_call_param_borrows(name string, call flat.Node, 
 }
 
 fn (t &Transformer) fixed_array_borrow_summary(param BorrowParamRef) bool {
+	if !isnil(t.borrow_param_mentions) && t.borrow_param_mentions.record_consults {
+		mut memo := t.borrow_param_mentions
+		memo.consulted << param
+	}
+	return t.proven_fixed_array_borrow_summary(param)
+}
+
+// proven_fixed_array_borrow_summary reports whether `param` is proven to borrow.
+fn (t &Transformer) proven_fixed_array_borrow_summary(param BorrowParamRef) bool {
 	summary := t.fixed_array_borrow_params[param.decl] or { return false }
 	return param.index >= 0 && param.index < summary.len && summary[param.index]
 }

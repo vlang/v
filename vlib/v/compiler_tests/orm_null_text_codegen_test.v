@@ -7,7 +7,7 @@ const orm_null_text_vlib_dir = os.dir(orm_null_text_v3_dir)
 const orm_null_text_v3_src = os.join_path(orm_null_text_v3_dir, 'v.v')
 
 fn orm_null_text_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_orm_null_text_test_${os.getpid()}')
+	v3_bin := os.join_path(os.temp_dir(), 'v3_orm_null_text_test_${os.getpid()}') + $if windows { '.exe' } $else { '' }
 	if os.is_executable(v3_bin) {
 		return v3_bin
 	}

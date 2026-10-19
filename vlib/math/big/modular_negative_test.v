@@ -116,3 +116,14 @@ fn test_big_mod_pow_even_moduli_with_wide_power_of_two_factors() {
 	assert big.integer_from_int(2).big_mod_pow(big.one_int.left_shift(60), m)! == want
 	assert big.integer_from_int(-2).big_mod_pow(big.one_int.left_shift(60) + big.one_int, m)! == want
 }
+
+fn test_modular_power_large_positive_base_power_of_two() {
+	base := big.integer_from_radix('f'.repeat(4096) + '0003', 16)!
+	exponent := big.integer_from_string('18446744073709551617')!
+	for modulus in [128, 256, 1024] {
+		m := big.integer_from_int(modulus)
+		want := big.integer_from_int(3).big_mod_pow(exponent, m)!
+		assert base.big_mod_pow(exponent, m)! == want
+		assert base.big_mod_pow(exponent, m.neg())! == want
+	}
+}

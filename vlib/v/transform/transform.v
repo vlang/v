@@ -501,6 +501,9 @@ mut:
 	// Discarded call results may be reclaimed only for functions in this frozen pre-pass map.
 	exclusive_closure_return_fns   map[string]bool
 	exclusive_closure_returns_done bool
+	// closure_scan_beside_borrow_prescan lets the master run the closure-return
+	// scan while the borrow-summary prescan helpers work (self-host preparation).
+	closure_scan_beside_borrow_prescan bool
 	// mut_fixed_array_capture_sources records locals captured as `mut` fixed arrays by
 	// closures that are not proven local. Their storage is moved to the heap so the outer
 	// binding and escaped closure context keep sharing the same durable array.
@@ -936,12 +939,20 @@ mut:
 	results     [2048]i8
 }
 
+// BoolLookupFileCache holds the answers of the names looked up from one file.
+struct BoolLookupFileCache {
+mut:
+	entries map[string]i8 // 1 = true, -1 = false
+}
+
+// BoolLookupCache answers name lookups whose result depends on the current
+// file. Names are grouped by file, so a lookup hashes only the name.
 struct BoolLookupCache {
 mut:
-	entries    map[string]i8 // 1 = true, -1 = false
-	last_name  string
-	last_value i8
-	recent     &util.KeyRecentCache = unsafe { nil }
+	file    string // owned spelling of the file `current` belongs to
+	current &BoolLookupFileCache = unsafe { nil }
+	files   map[string]&BoolLookupFileCache
+	recent  &util.KeyRecentCache = unsafe { nil }
 }
 
 // recent_cache returns this cache's front cache, allocating it on first use.
@@ -974,25 +985,31 @@ mut:
 	answers   GenericUnresolvedCache
 }
 
-@[inline]
-fn (mut c BoolLookupCache) get(name string) i8 {
-	if c.last_value != 0 && c.last_name.len == name.len
-		&& (unsafe { c.last_name.str == name.str } || c.last_name == name) {
-		return c.last_value
+// file_cache returns the answers for names looked up from `file`.
+fn (mut c BoolLookupCache) file_cache(file string) &BoolLookupFileCache {
+	if !isnil(c.current) && c.file == file {
+		return c.current
 	}
-	if cached := c.entries[name] {
-		c.last_name = name
-		c.last_value = cached
-		return cached
+	mut entries := c.files[file] or {
+		created := &BoolLookupFileCache{}
+		c.files[file] = created
+		created
 	}
-	return 0
+	c.file = file.clone()
+	c.current = entries
+	return entries
 }
 
 @[inline]
-fn (mut c BoolLookupCache) put(name string, value i8) {
-	c.entries[name] = value
-	c.last_name = name
-	c.last_value = value
+fn (mut c BoolLookupCache) get(file string, name string) i8 {
+	mut entries := c.file_cache(file)
+	return entries.entries[name] or { i8(0) }
+}
+
+@[inline]
+fn (mut c BoolLookupCache) put(file string, name string, value i8) {
+	mut entries := c.file_cache(file)
+	entries.entries[name] = value
 }
 
 @[inline]
@@ -1326,9 +1343,12 @@ pub fn prepare_selfhost_transform(a &flat.FlatAst, tc &types.TypeChecker, enable
 	mut t := new_transformer_view(a, prep_tc, map[string]bool{})
 	configure_transformer(mut t, true, true, true, true, false, unsafe { nil })
 	t.retain_prescan_scopes = true
+	t.closure_scan_beside_borrow_prescan = true
 	t.prepare_with_pre_scans()
+	t.closure_scan_beside_borrow_prescan = false
 	// This whole-AST scan is independent of reachability and otherwise leaves
-	// the persistent worker pool idle at the start of transform.
+	// the persistent worker pool idle at the start of transform. It has usually
+	// run already, beside the borrow-summary prescan.
 	t.collect_exclusive_closure_return_fns()
 	prepared = &PreparedSelfhostTransform{
 		transformer: t
@@ -2317,9 +2337,7 @@ fn new_transformer_view(a &flat.FlatAst, tc &types.TypeChecker, used_fns map[str
 		used_fns:                    used_fns.clone()
 		interface_box_param_cache:   &SourceTypeBoolCache{}
 		alias_receiver_method_cache: &LookupCache{}
-		call_variadic_cache:         &BoolLookupCache{
-			entries: map[string]i8{}
-		}
+		call_variadic_cache:         &BoolLookupCache{}
 		str_alias_cache:             &StrAliasCache{}
 		file_import_cache:           &util.KeyRecentCache{}
 	}
@@ -3081,8 +3099,9 @@ fn (mut t Transformer) clear_struct_field_type_cache() {
 		return
 	}
 	mut cache := t.struct_field_type_cache
-	cache.entries.clear()
-	cache.misses.clear()
+	cache.module_entries = unsafe { nil }
+	cache.module_name = ''
+	cache.modules.clear()
 }
 
 const receiver_method_suffix_ambiguous = '__v_receiver_method_suffix_ambiguous__'
@@ -4953,9 +4972,7 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 		misses:  map[u64]bool{}
 	}
 	w.interface_box_param_cache = &SourceTypeBoolCache{}
-	w.call_variadic_cache = &BoolLookupCache{
-		entries: map[string]i8{}
-	}
+	w.call_variadic_cache = &BoolLookupCache{}
 	w.str_alias_cache = &StrAliasCache{}
 	w.file_import_cache = &util.KeyRecentCache{}
 	w.generic_fn_decls_cache = map[string]GenericFnDecl{}
@@ -5093,9 +5110,7 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 		misses:  map[u64]bool{}
 	}
 	w.interface_box_param_cache = &SourceTypeBoolCache{}
-	w.call_variadic_cache = &BoolLookupCache{
-		entries: map[string]i8{}
-	}
+	w.call_variadic_cache = &BoolLookupCache{}
 	w.str_alias_cache = &StrAliasCache{}
 	w.file_import_cache = &util.KeyRecentCache{}
 	w.generic_fn_decls_cache = map[string]GenericFnDecl{}
@@ -6238,6 +6253,102 @@ fn split_work_items_with_first_share(items []FnWorkItem, n int, first_share_perc
 struct WorkItemRank {
 	rank i64
 	idx  int
+}
+
+// work_items_in_source_order returns a copy of `items` sorted by declaration node.
+fn work_items_in_source_order(items []FnWorkItem) []FnWorkItem {
+	mut ordered := items.clone()
+	ordered.sort(a.fn_idx < b.fn_idx)
+	return ordered
+}
+
+// WorkItemRun is a run of consecutive work items of one source file.
+struct WorkItemRun {
+	start int
+	end   int
+	cost  i64
+}
+
+// split_work_items_by_file_runs balances runs of consecutive same-file items
+// across `n` buckets like split_work_items_with_first_share balances items.
+// The transformer's normalization caches are per source file and start cold
+// at every file change, so a bucket that gets every item of a run reuses them
+// instead of each bucket warming them for its share of every file. A run is
+// capped at 1/(8n) of the total cost, so every bucket still gets many runs and
+// its append region keeps tracking its cost.
+fn split_work_items_by_file_runs(items []FnWorkItem, n int, first_share_percent int) [][]FnWorkItem {
+	if n <= 1 || items.len < 2 * n {
+		return split_work_items_with_first_share(items, n, first_share_percent)
+	}
+	mut strictly_ordered := true
+	for i in 1 .. items.len {
+		if items[i].fn_idx <= items[i - 1].fn_idx {
+			strictly_ordered = false
+			break
+		}
+	}
+	ordered := if strictly_ordered { items } else { work_items_in_source_order(items) }
+	mut total := i64(0)
+	for it in ordered {
+		total += i64(it.cost) + 1
+	}
+	run_cost_cap := total / i64(8 * n)
+	max_run_cost := if run_cost_cap > 0 { run_cost_cap } else { i64(1) }
+	mut runs := []WorkItemRun{cap: ordered.len / 4 + 1}
+	mut run_start := 0
+	mut run_cost := i64(0)
+	for i, it in ordered {
+		item_cost := i64(it.cost) + 1
+		over_cap := run_cost + item_cost > max_run_cost
+		if i > run_start && (over_cap || it.file != ordered[i - 1].file) {
+			runs << WorkItemRun{
+				start: run_start
+				end:   i
+				cost:  run_cost
+			}
+			run_start = i
+			run_cost = 0
+		}
+		run_cost += item_cost
+	}
+	runs << WorkItemRun{
+		start: run_start
+		end:   ordered.len
+		cost:  run_cost
+	}
+	if runs.len < 2 * n {
+		return split_work_items_with_first_share(items, n, first_share_percent)
+	}
+	mut loads := []i64{len: n}
+	if first_share_percent > 0 && first_share_percent < 100 {
+		loads[0] = total * i64(100 - first_share_percent) / i64(first_share_percent +
+			100 * (n - 1))
+	}
+	mut ranked := []WorkItemRank{cap: runs.len}
+	for i, run in runs {
+		ranked << WorkItemRank{
+			rank: run.cost
+			idx:  i
+		}
+	}
+	// Stable: equal runs keep their source order.
+	ranked.sort(a.rank > b.rank)
+	mut bucket_of := []int{len: runs.len}
+	for r in ranked {
+		mut best := 0
+		for b in 1 .. n {
+			if loads[b] < loads[best] {
+				best = b
+			}
+		}
+		bucket_of[r.idx] = best
+		loads[best] += runs[r.idx].cost
+	}
+	mut buckets := [][]FnWorkItem{len: n, init: []FnWorkItem{}}
+	for i, run in runs {
+		buckets[bucket_of[i]] << ordered[run.start..run.end]
+	}
+	return buckets
 }
 
 // Keep each self-host worker's writes in adjacent source pages so snapshots
@@ -11008,9 +11119,19 @@ fn (mut t Transformer) mark_fixed_array_reference_argument_escapes(call_id flat.
 	}
 	call_name := t.call_name_for_node(call_id, call)
 	mut params := t.call_param_types_for_node(call_name, call)
-	mut is_variadic := t.call_is_variadic_for_node(call_name, call)
+	mut concrete := false
 	if concrete_params := t.concrete_generic_call_param_types(call_id, call) {
 		params = concrete_params.clone()
+		concrete = true
+	}
+	// Every mark below needs a parameter that takes a reference (the element of a
+	// trailing array included, for a variadic call). Without one, skip resolving
+	// the variadic form and the receiver offset.
+	if !escape_params_may_take_reference(params) {
+		return
+	}
+	mut is_variadic := t.call_is_variadic_for_node(call_name, call)
+	if concrete {
 		is_variadic = is_variadic || t.concrete_generic_call_is_variadic(call_id, call)
 	}
 	offset := if t.call_is_selector_form(call) && t.concrete_generic_call_is_method(call_id) {
@@ -11038,6 +11159,21 @@ fn (mut t Transformer) mark_fixed_array_reference_argument_escapes(call_id flat.
 		}
 		t.mark_fixed_array_reference_argument_escape(t.a.child(&call, child_idx), param_type, amp_ptrs, amp_sources, ptr_aliases, local_stack_names)
 	}
+}
+
+// escape_params_may_take_reference reports whether a call argument can bind a
+// parameter that mark_fixed_array_reference_argument_escape follows.
+fn escape_params_may_take_reference(params []types.Type) bool {
+	for param in params {
+		if escape_type_is_pointer(fixed_array_reference_param_payload(param)) {
+			return true
+		}
+		if param is types.Array
+			&& escape_type_is_pointer(fixed_array_reference_param_payload(param.elem_type)) {
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut t Transformer) mark_fixed_array_reference_argument_escape(arg_id flat.NodeId, param_type types.Type, amp_ptrs map[string]bool, amp_sources map[string][]string, ptr_aliases map[string]string, local_stack_names map[string]bool) {
@@ -22356,7 +22492,20 @@ fn (mut t Transformer) transform_assert_stmt(id flat.NodeId, node flat.Node) []f
 				new_children << eid
 			}
 		} else {
-			new_children << t.transform_expr(child_id)
+			// Message interpolation may hoist formatting into pending statements.
+			// Keep those statements inside the failure-only message expression.
+			pending_start := t.pending_stmts.len
+			message := t.transform_expr(child_id)
+			if t.pending_stmts.len > pending_start {
+				mut message_stmts := t.pending_stmts[pending_start..].clone()
+				t.pending_stmts.trim(pending_start)
+				message_stmts << t.make_expr_stmt(message)
+				message_block := t.make_block(message_stmts)
+				t.a.nodes[int(message_block)].typ = flat.source_type_id('string')
+				new_children << message_block
+			} else {
+				new_children << message
+			}
 		}
 	}
 	mut value := node.value

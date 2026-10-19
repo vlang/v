@@ -8,7 +8,7 @@ const generic_cross_v3_src = os.join_path(generic_cross_v3_dir, 'v.v')
 
 fn generic_cross_build_v3() string {
 	pid := os.getpid()
-	v3_bin := os.join_path(os.temp_dir(), 'v3_generic_cross_module_arg_test_${pid}')
+	v3_bin := os.join_path(os.temp_dir(), 'v3_generic_cross_module_arg_test_${pid}') + $if windows { '.exe' } $else { '' }
 	if os.is_executable(v3_bin) {
 		return v3_bin
 	}

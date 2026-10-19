@@ -10,15 +10,44 @@ struct CoverageInfo {
 	path  string
 	fhash string
 mut:
-	points          []int
-	counters        []int
-	counter_by_line map[int]int
+	points             []int
+	counters           []int
+	counter_by_line    map[int]int
+	functions          []CoverageFunction
+	function_by_c_name map[string]int
+}
+
+// CoverageFunction is one emitted V function, with the counter that records
+// whether it was ever entered. Line coverage alone cannot name a function that
+// no test calls when that function's body holds no instrumented statement, so
+// every emitted function gets an entry point of its own.
+struct CoverageFunction {
+	name       string // the V name, as written
+	start_line int    // 1-based line of the declaration
+	counter    int    // index into the generated _v3_cov array
 }
 
 // set_coverage enables V-compatible line coverage output.
 pub fn (mut g FlatGen) set_coverage(dir string, build_options string) {
 	g.coverage_dir = dir
 	g.coverage_build_options = build_options
+}
+
+// coverage_info_for returns the record for path, creating it on first use.
+// Both a line point and a function entry can be the first thing seen in a
+// file, so neither may assume the other already made the record.
+fn (mut g FlatGen) coverage_info_for(path string) &CoverageInfo {
+	if existing := g.coverage_files[path] {
+		return existing
+	}
+	fhash := hash.sum64_string('${g.coverage_build_options}:${path}', 32).hex_full()
+	created := &CoverageInfo{
+		path:            path
+		fhash:           fhash
+		counter_by_line: map[int]int{}
+	}
+	g.coverage_files[path] = created
+	return created
 }
 
 fn (mut g FlatGen) write_coverage_point(node flat.Node) {
@@ -30,17 +59,7 @@ fn (mut g FlatGen) write_coverage_point(node flat.Node) {
 	position := g.a.source_position(node.pos) or { return }
 	path := os.real_path(position.filename)
 	line := position.line
-	mut info := g.coverage_files[path] or {
-		fhash := hash.sum64_string('${g.coverage_build_options}:${path}', 32).hex_full()
-		created := &CoverageInfo{
-			path:            path
-			fhash:           fhash
-			points:          []
-			counter_by_line: map[int]int{}
-		}
-		g.coverage_files[path] = created
-		created
-	}
+	mut info := g.coverage_info_for(path)
 	mut counter := info.counter_by_line[line]
 	if line !in info.counter_by_line {
 		counter = g.coverage_counter_count
@@ -48,6 +67,32 @@ fn (mut g FlatGen) write_coverage_point(node flat.Node) {
 		info.points << line
 		info.counters << counter
 		g.coverage_counter_count++
+	}
+	g.writeln('_v3_cov[${counter}]++;')
+}
+
+// write_coverage_function_entry emits the counter increment that records fn
+// being entered. It is called before any statement of the body, so a function
+// no run ever calls is still reported as uncovered. c_name is what makes the
+// function unique: a generic instantiation and a method are emitted more than
+// once, and their counters must stay separate.
+fn (mut g FlatGen) write_coverage_function_entry(node flat.Node, c_name string) {
+	if g.coverage_dir.len == 0 {
+		return
+	}
+	position := g.a.source_position(node.pos) or { return }
+	path := os.real_path(position.filename)
+	mut info := g.coverage_info_for(path)
+	if c_name in info.function_by_c_name {
+		return
+	}
+	counter := g.coverage_counter_count
+	g.coverage_counter_count++
+	info.function_by_c_name[c_name] = info.functions.len
+	info.functions << CoverageFunction{
+		name:       g.cur_fn_name
+		start_line: position.line
+		counter:    counter
 	}
 	g.writeln('_v3_cov[${counter}]++;')
 }
@@ -88,7 +133,17 @@ fn (mut g FlatGen) write_coverage_metadata() {
 				file.write_string(',') or { continue }
 			}
 		}
-		file.writeln('  ]') or { continue }
+		file.writeln('  ],') or { continue }
+		file.write_string('  "functions": [') or { continue }
+		for index, function in info.functions {
+			file.write_string('{"name": "${coverage_json_escape(function.name)}", "start": ${function.start_line}, "counter": ${function.counter}}') or {
+				continue
+			}
+			if index + 1 < info.functions.len {
+				file.write_string(',') or { continue }
+			}
+		}
+		file.writeln(']') or { continue }
 		file.writeln('}') or { continue }
 		file.close()
 	}
@@ -129,6 +184,30 @@ fn (mut g FlatGen) emit_coverage_support() {
 		}
 	}
 	g.writeln('\tfclose(cov_file);')
+	// Function entries are written with an extension of their own rather than as
+	// a second `.csv` file: `v cover` walks a directory for `.csv` files, so a
+	// `vfunctions_*.csv` would be handed to a reader that only knows line
+	// counters and fails on its header.
+	mut has_functions := false
+	for _, info in g.coverage_files {
+		if info.functions.len > 0 {
+			has_functions = true
+			break
+		}
+	}
+	if has_functions {
+		g.writeln('\tsnprintf(cov_filename, sizeof(cov_filename), "%s/vfunctions_v3_${compile_tag}.%lld.%09ld.fcount", "${c_escape(g.coverage_dir)}", cov_secs, cov_nsecs);')
+		g.writeln('\tFILE* fn_file = fopen(cov_filename, "wb+");')
+		g.writeln('\tif (fn_file != NULL) {')
+		g.writeln('\t\tfprintf(fn_file, "meta,position,hits\\n");')
+		for _, info in g.coverage_files {
+			for function_position, function in info.functions {
+				g.writeln('\t\tif (_v3_cov[${function.counter}] != 0) fprintf(fn_file, "${info.fhash},${function_position},%llu\\n", _v3_cov[${function.counter}]);')
+			}
+		}
+		g.writeln('\t\tfclose(fn_file);')
+		g.writeln('\t}')
+	}
 	g.writeln('}')
 	g.writeln('')
 }

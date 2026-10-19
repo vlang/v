@@ -697,6 +697,9 @@ pub mut:
 	// or file_index_incomplete is set (a source file failed to read).
 	file_node_ids         []i32
 	file_index_incomplete bool
+	// debugger_stmts counts the `$dbg` statements the parser created, so that
+	// a scan for them can stop once it knows there is none.
+	debugger_stmts int
 	// has_vsh_source records that at least one parsed source file is a `.vsh`
 	// script. V script mode makes the `os` module global inside such files, and
 	// the checker only pays for that lookup when this flag is set.

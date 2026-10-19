@@ -7,7 +7,7 @@ const header_owned_vlib_dir = os.dir(header_owned_v3_dir)
 const header_owned_v3_src = os.join_path(header_owned_v3_dir, 'v.v')
 
 fn header_owned_v3_bin_path() string {
-	return os.join_path(os.vtmp_dir(), 'v3_header_owned_test_${os.getpid()}')
+	return os.join_path(os.vtmp_dir(), 'v3_header_owned_test_${os.getpid()}') + $if windows { '.exe' } $else { '' }
 }
 
 fn header_owned_build_v3() string {

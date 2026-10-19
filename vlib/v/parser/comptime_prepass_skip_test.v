@@ -89,7 +89,7 @@ fn test_comptime_const_name_scan_keeps_module_after_escaped_keywords() {
 	os.write_file(path, 'module names\nstruct Escaped {\n @module u32\n @const int\n}\nconst actual = 5\n')!
 	defer { os.rm(path) or {} }
 	mut p := Parser.new(pref.new_preferences())
-	names := p.parallel_comptime_const_names([path])
+	names := p.parallel_comptime_const_names([path], 0, 1)
 	assert names.len == 1, names.str()
 	assert names['names\nactual'], names.str()
 }

@@ -1016,6 +1016,14 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 	} else {
 		t.transform_expr(source_id)
 	}
+	// Specialization can resolve an open generic return type while transforming
+	// the call. Use that concrete type for both box storage and dispatch metadata.
+	if source_node.kind == .call && t.generic_arg_is_unresolved(source_type) {
+		transformed_type := t.node_type(source_expr)
+		if transformed_type != 0 && !t.generic_arg_is_unresolved(transformed_type) {
+			source_type = transformed_type
+		}
+	}
 	mut source := t.stable_transformed_expr_for_reuse(source_expr, source_type, 'iface_src')
 	normalized_source_type_source_id := t.normalize_type_alias(source_type)
 	source_is_pointer := flat.source_type_shape(source_type).has(.pointer)

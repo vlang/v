@@ -8,15 +8,15 @@ const vlib_dir = os.dir(v3_dir)
 const v3_src = os.join_path(v3_dir, 'v.v')
 
 fn review_v3_bin_path() string {
-	return os.join_path(os.temp_dir(), 'v3_review_transform_regressions_test')
+	return os.join_path(os.temp_dir(), 'v3_review_transform_regressions_test') + $if windows { '.exe' } $else { '' }
 }
 
 fn review_v3_ownership_bin_path() string {
-	return os.join_path(os.temp_dir(), 'v3_review_transform_ownership_regressions_test')
+	return os.join_path(os.temp_dir(), 'v3_review_transform_ownership_regressions_test') + $if windows { '.exe' } $else { '' }
 }
 
 fn review_v3_eval_bin_path() string {
-	return os.join_path(os.temp_dir(), 'v3_review_transform_eval_regressions_test')
+	return os.join_path(os.temp_dir(), 'v3_review_transform_eval_regressions_test') + $if windows { '.exe' } $else { '' }
 }
 
 fn testsuite_begin() {

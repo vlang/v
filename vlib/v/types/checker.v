@@ -517,8 +517,8 @@ mut:
 	sum_variant_pattern_entries  map[string]&SumVariantPatternFileEntries
 	recv_pattern_entries         map[string]GenericReceiverMethodPatternMatch
 	recv_pattern_misses          map[string]bool
-	lexical_smartcast_entries    map[int]Type
-	lexical_smartcast_misses     map[int]bool
+	lexical_smartcast_pages      [][]u32 // see lexical_smartcast_state
+	lexical_smartcast_types      []Type
 	ierror_compat_entries        map[u32]int
 	ierror_scoped_compat_entries map[u32]&TypeQueryScopeEntries
 	interface_impl_entries       map[u32]flat.TypeTextList
@@ -571,8 +571,8 @@ fn new_type_cache(parse_enabled bool) &TypeCache {
 	cache.sum_variant_pattern_entries = map[string]&SumVariantPatternFileEntries{}
 	cache.recv_pattern_entries = map[string]GenericReceiverMethodPatternMatch{}
 	cache.recv_pattern_misses = map[string]bool{}
-	cache.lexical_smartcast_entries = map[int]Type{}
-	cache.lexical_smartcast_misses = map[int]bool{}
+	cache.lexical_smartcast_pages = [][]u32{}
+	cache.lexical_smartcast_types = []Type{}
 	cache.ierror_compat_entries = map[u32]int{}
 	cache.ierror_scoped_compat_entries = map[u32]&TypeQueryScopeEntries{}
 	cache.interface_impl_entries = map[u32]flat.TypeTextList{}
@@ -590,6 +590,44 @@ fn new_type_cache_with_base(parse_enabled bool, base &TypeCache) &TypeCache {
 	mut cache := new_type_cache(parse_enabled)
 	cache.base = base
 	return cache
+}
+
+// lexical_smartcast_state returns the cached lexical smartcast state of the node
+// `idx`. The states live in pages of 1024 nodes, which a checker allocates as it
+// queries them: 0 = not computed yet, 1 = no narrowing, k + 2 = narrowed to
+// lexical_smartcast_types[k].
+@[direct_array_access; inline]
+fn (cache &TypeCache) lexical_smartcast_state(idx int) u32 {
+	page := idx >> 10
+	if idx < 0 || page >= cache.lexical_smartcast_pages.len {
+		return 0
+	}
+	states := cache.lexical_smartcast_pages[page]
+	if states.len == 0 {
+		return 0
+	}
+	return states[idx & 1023]
+}
+
+// lexical_smartcast_miss reports whether the node `idx` is cached as having no
+// lexical narrowing.
+pub fn (cache &TypeCache) lexical_smartcast_miss(idx int) bool {
+	return cache.lexical_smartcast_state(idx) == 1
+}
+
+@[direct_array_access]
+fn (mut cache TypeCache) set_lexical_smartcast_state(idx int, state u32) {
+	if idx < 0 {
+		return
+	}
+	page := idx >> 10
+	for cache.lexical_smartcast_pages.len <= page {
+		cache.lexical_smartcast_pages << []u32{}
+	}
+	if cache.lexical_smartcast_pages[page].len == 0 {
+		cache.lexical_smartcast_pages[page] = []u32{len: 1024}
+	}
+	cache.lexical_smartcast_pages[page][idx & 1023] = state
 }
 
 fn (mut cache TypeCache) clear_c_type_entries() {
@@ -1121,6 +1159,31 @@ pub mut:
 	suppress_dump_output          bool
 	diagnostic_files              map[string]bool
 	skips_library_bodies          bool // see skip_unreachable_library_bodies
+	// The short names of the globals, the sum types and the type aliases, and how
+	// many entries the tables had when they were taken (see prepare_check_name_filters), so that a
+	// selector or callee can be rejected without hashing its qualified spellings.
+	// const_suffix_key_count is the size of const_types that const_suffixes covers.
+	global_short_names         map[string]bool
+	global_short_names_count   int = -1
+	sum_type_short_names       map[string]bool
+	sum_type_short_names_count int = -1
+	alias_short_names          map[string]bool
+	alias_short_names_count    int = -1
+	const_suffix_key_count     int = -1
+	global_name_bloom          NameBloom // of global_names
+	call_flag_bloom            NameBloom // of the call_info flag tables (call_flag_tables_count)
+	// The last call whose callee generic_compile_error_instantiation found to be
+	// no generic function: its children start, callee name and module.
+	nongeneric_call_start  int = -1
+	nongeneric_call_name   string
+	nongeneric_call_module string
+	// Whether the receiver parameter of fn_decl node receiver_memo_fn, checked in
+	// file and module receiver_memo_file / receiver_memo_module, has the type of
+	// the receiver its name declares (current_receiver_param_method_call_info).
+	receiver_memo_fn     int = -1
+	receiver_memo_file   string
+	receiver_memo_module string
+	receiver_memo_ok     bool
 	// Set by markused only after convergence for its returned reachability set.
 	// Adding roots requires the ordinary late-body convergence check again.
 	library_body_convergence_complete bool
@@ -1192,6 +1255,9 @@ pub mut:
 	// nil until check_fn_items_serial arms it (see BodyResolveMemo).
 	body_resolve_memo &BodyResolveMemo = unsafe { nil }
 	import_info_cache &ImportInfoCache = unsafe { nil }
+	// The smartcast keys of the body being checked (see SmartcastKeyFilter);
+	// nil outside check_fn_items_serial.
+	smartcast_key_filter &SmartcastKeyFilter = unsafe { nil }
 	// Nanoseconds spent in the ownership checker's per-fn boundary passes.
 	// Only `-d ownership` builds ever write it (every writer lives in
 	// checker_ownership_d_ownership.v), so plain builds report exactly 0.
@@ -1564,6 +1630,15 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		const_modules:                         tc.const_modules
 		const_files:                           tc.const_files
 		const_suffixes:                        tc.const_suffixes
+		const_suffix_key_count:                tc.const_suffix_key_count
+		global_short_names:                    tc.global_short_names
+		global_short_names_count:              tc.global_short_names_count
+		sum_type_short_names:                  tc.sum_type_short_names
+		sum_type_short_names_count:            tc.sum_type_short_names_count
+		alias_short_names:                     tc.alias_short_names
+		alias_short_names_count:               tc.alias_short_names_count
+		global_name_bloom:                     tc.global_name_bloom
+		call_flag_bloom:                       tc.call_flag_bloom
 		declaration_visibility:                tc.declaration_visibility
 		imports:                               tc.imports
 		file_imports:                          tc.file_imports
@@ -5453,6 +5528,137 @@ fn (mut tc TypeChecker) build_const_suffixes() {
 			i++
 		}
 	}
+	tc.const_suffix_key_count = tc.const_types.len
+}
+
+// prepare_check_name_filters takes the short names of the globals, the sum
+// types and the type aliases before the semantic check, on the checker whose forks check the bodies.
+// A filter is only consulted while its table still has the counted entries.
+fn (mut tc TypeChecker) prepare_check_name_filters() {
+	mut globals := map[string]bool{}
+	for name, _ in tc.global_names {
+		globals[short_name_view(name)] = true
+	}
+	tc.global_short_names = globals.move()
+	tc.global_short_names_count = tc.global_names.len
+	mut sums := map[string]bool{}
+	for name, _ in tc.sum_types.ids {
+		sums[short_name_view(generic_base_view(name))] = true
+	}
+	tc.sum_type_short_names = sums.move()
+	tc.sum_type_short_names_count = tc.sum_types.ids.len
+	mut aliases := map[string]bool{}
+	for name, _ in tc.type_aliases.ids {
+		aliases[short_name_view(name)] = true
+	}
+	tc.alias_short_names = aliases.move()
+	tc.alias_short_names_count = tc.type_aliases.ids.len
+	tc.global_name_bloom = NameBloom{}
+	for name, _ in tc.global_names {
+		tc.global_name_bloom.add(name)
+	}
+	tc.global_name_bloom.count = u64(tc.global_names.len)
+	tc.call_flag_bloom = NameBloom{}
+	for name, _ in tc.fn_shared_params {
+		tc.call_flag_bloom.add(name)
+	}
+	for name, _ in tc.fn_variadic {
+		tc.call_flag_bloom.add(name)
+	}
+	for name, _ in tc.c_variadic_fns {
+		tc.call_flag_bloom.add(name)
+	}
+	for name, _ in tc.fn_implicit_veb_ctx {
+		tc.call_flag_bloom.add(name)
+	}
+	tc.call_flag_bloom.count = tc.call_flag_tables_count()
+}
+
+// call_flag_tables_count identifies the sizes of the sparse tables that
+// call_info reads besides the signatures (all smaller than 2^16 entries).
+// Keep all four lengths even when the compiler runs on a 32-bit host.
+@[inline]
+fn (tc &TypeChecker) call_flag_tables_count() u64 {
+	counts := [tc.fn_shared_params.len, tc.fn_variadic.len, tc.c_variadic_fns.len,
+		tc.fn_implicit_veb_ctx.len]!
+	mut count := u64(0)
+	for n in counts {
+		if n >= 65535 {
+			return name_bloom_invalid_count
+		}
+		count = (count << 16) | u64(n)
+	}
+	return count
+}
+
+// NameBloom is a 4096-bit bloom filter over the names of a table that had
+// `count` entries when it was filled. A clear bit proves that a name is not in
+// the table, without hashing all of its bytes.
+const name_bloom_invalid_count = u64(0xfffffffffffffffe)
+
+struct NameBloom {
+mut:
+	count u64 = 0xffffffffffffffff
+	bits  [64]u64
+}
+
+@[direct_array_access; inline]
+fn name_bloom_bit(name string) u32 {
+	if name.len == 0 {
+		return 0
+	}
+	mut h := u32(name.len) * 0x9e3779b1 ^ u32(name[0]) * 0x85ebca6b
+	h ^= u32(name[name.len - 1]) * 0xc2b2ae35 ^ u32(name[name.len / 2]) * 0x27d4eb2f
+	return (h ^ (h >> 15)) & 4095
+}
+
+fn (mut bloom NameBloom) add(name string) {
+	bit := name_bloom_bit(name)
+	bloom.bits[bit >> 6] |= u64(1) << (bit & 63)
+}
+
+// excludes reports whether `name` is surely not in a table of `count` entries.
+@[direct_array_access; inline]
+fn (bloom &NameBloom) excludes(name string, count u64) bool {
+	if count == name_bloom_invalid_count || bloom.count != count {
+		return false
+	}
+	bit := name_bloom_bit(name)
+	return bloom.bits[bit >> 6] & (u64(1) << (bit & 63)) == 0
+}
+
+// generic_base_view is strip_generic_args_name without a copy of the base.
+@[inline]
+fn generic_base_view(name string) string {
+	bracket := name.index_u8(`[`)
+	if bracket <= 0 {
+		return name
+	}
+	return unsafe { name.substr_unsafe(0, bracket) }
+}
+
+// selector_names_no_const reports that `node.value` is no const's last name
+// segment and no bare const key, so no selector with this field names a const.
+@[inline]
+fn (tc &TypeChecker) selector_names_no_const(field string) bool {
+	return tc.const_suffix_key_count == tc.const_types.len && field !in tc.const_suffixes
+		&& field !in tc.const_types
+}
+
+// selector_names_no_global reports that no global has the last name segment of
+// `field` as its own, so no selector with this field names a global.
+@[inline]
+fn (tc &TypeChecker) selector_names_no_global(field string) bool {
+	return tc.global_short_names_count == tc.global_names.len
+		&& short_name_view(field) !in tc.global_short_names
+}
+
+// name_names_no_sum_type reports that no sum type has the last segment of the
+// generic base of `name`, so neither `name` nor its qualified spelling is one.
+@[inline]
+fn (tc &TypeChecker) name_names_no_sum_type(name string) bool {
+	return tc.sum_type_short_names_count == tc.sum_types.ids.len
+		&& short_name_view(generic_base_view(name)) !in tc.sum_type_short_names
 }
 
 // const_key_for_suffix returns the const key matching `.${name}` as a suffix,
@@ -5768,6 +5974,11 @@ pub fn (tc &TypeChecker) shadowed_builtin_const_key_in_module(name string, modul
 }
 
 fn (tc &TypeChecker) const_key_for_name(name string) ?string {
+	// Every key below is `name`, or ends in `.` and the last segment of `name`.
+	if tc.const_suffix_key_count == tc.const_types.len
+		&& short_name_view(name) !in tc.const_suffixes && name !in tc.const_types {
+		return none
+	}
 	if key := tc.shadowed_builtin_const_key(name) {
 		return key
 	}
@@ -5797,6 +6008,9 @@ fn (tc &TypeChecker) const_type_for_selector(node flat.Node) ?Type {
 	if base_node.kind != .ident {
 		return none
 	}
+	if tc.selector_names_no_const(node.value) {
+		return none
+	}
 	resolved := tc.resolve_import_alias(base_node.value) or { base_node.value }
 	qname := '${resolved}.${node.value}'
 	if typ := tc.const_types[qname] {
@@ -5820,6 +6034,9 @@ fn (tc &TypeChecker) global_type_for_selector(node flat.Node) ?Type {
 	}
 	base_node := tc.a.child_node(&node, 0)
 	if base_node.kind != .ident {
+		return none
+	}
+	if tc.selector_names_no_global(node.value) {
 		return none
 	}
 	resolved := tc.resolve_import_alias(base_node.value) or {
@@ -6096,6 +6313,13 @@ pub fn (tc &TypeChecker) qualify_name(name string) string {
 	return flat.source_type_name(tc.qualify_type_name_cached(name_id, name))
 }
 
+// same_string is `a == b`, without comparing the bytes of one string object
+// with themselves (the checker's current file and module usually are).
+@[inline]
+fn same_string(a string, b string) bool {
+	return a.len == b.len && (a.str == b.str || a == b)
+}
+
 const qualify_source_type_i128 = flat.source_type_id('i128')
 const qualify_source_type_u128 = flat.source_type_id('u128')
 const qualify_source_type_uint = flat.source_type_id('uint')
@@ -6125,7 +6349,7 @@ pub fn (tc &TypeChecker) qualify_type_name(name_id u32) u32 {
 fn (tc &TypeChecker) qualify_type_name_cached(name_id u32, provided_name string) u32 {
 	mut cache := tc.qualify_name_cache
 	fingerprint := tc.qualify_table_fingerprint()
-	if cache.module != tc.cur_module || cache.file != tc.cur_file
+	if !same_string(cache.module, tc.cur_module) || !same_string(cache.file, tc.cur_file)
 		|| cache.resolution_type_mode != tc.resolution_type_mode
 		|| cache.fingerprint != fingerprint {
 		cache.module = tc.cur_module
@@ -6822,31 +7046,48 @@ fn (tc &TypeChecker) private_declaration(name string) ?DeclarationVisibility {
 		}
 		return none
 	}
-	mut candidates := []string{}
-	for candidate in [declaration_name, visible_mutation_fn_lookup_name(declaration_name)] {
-		if candidate.len > 0 && candidate !in candidates {
-			candidates << candidate
-		}
+	// The first declared candidate decides: the generic-free spelling, then each
+	// shorter owner path with its generic-free spelling. A repeated candidate
+	// misses again, so the candidates need no list.
+	if visibility := tc.declaration_visibility_candidate(visible_mutation_fn_lookup_name(declaration_name)) {
+		return tc.private_visibility_or_none(visibility)
 	}
 	mut shortened := declaration_name
-	for shortened.contains('.') {
-		tail := shortened.all_after('.')
-		if !tail.contains('.') {
+	for {
+		dot := shortened.index_u8(`.`)
+		if dot < 0 {
+			break
+		}
+		tail := unsafe { shortened.substr_unsafe(dot + 1, shortened.len) }
+		if tail.index_u8(`.`) < 0 {
 			break
 		}
 		shortened = tail
-		for candidate in [shortened, visible_mutation_fn_lookup_name(shortened)] {
-			if candidate.len > 0 && candidate !in candidates {
-				candidates << candidate
-			}
+		if visibility := tc.declaration_visibility_candidate(shortened) {
+			return tc.private_visibility_or_none(visibility)
+		}
+		if visibility := tc.declaration_visibility_candidate(visible_mutation_fn_lookup_name(shortened)) {
+			return tc.private_visibility_or_none(visibility)
 		}
 	}
-	for candidate in candidates {
-		visibility := tc.declaration_visibility[candidate] or { continue }
-		if declaration_visibility_is_private(visibility, tc.cur_module) {
-			return visibility
-		}
+	return none
+}
+
+fn (tc &TypeChecker) declaration_visibility_candidate(candidate string) ?DeclarationVisibility {
+	if candidate.len == 0 {
 		return none
+	}
+	if visibility := tc.declaration_visibility[candidate] {
+		return visibility
+	}
+	return none
+}
+
+// private_visibility_or_none is the decision for a declared candidate: its
+// visibility when it is private here, none when it is visible.
+fn (tc &TypeChecker) private_visibility_or_none(visibility DeclarationVisibility) ?DeclarationVisibility {
+	if declaration_visibility_is_private(visibility, tc.cur_module) {
+		return visibility
 	}
 	return none
 }
@@ -8292,9 +8533,40 @@ fn (mut tc TypeChecker) insert_fn_param_binding(id flat.NodeId, p flat.Node) {
 		if unalias_and_unwrap_pointer_type(parsed_type) is Array {
 			tc.mark_shared_array_binding_owner(p.value, owner)
 		}
-	} else if p.typ_text().trim_space().trim_left('&').trim_space().starts_with('[]shared ') {
+	} else if type_text_is_shared_array(p.typ_text()) {
 		tc.mark_shared_array_binding_owner(p.value, owner)
 	}
+}
+
+// type_text_is_shared_array reports whether
+// `text.trim_space().trim_left('&').trim_space().starts_with('[]shared ')`,
+// without the trimmed copies.
+@[direct_array_access]
+fn type_text_is_shared_array(text string) bool {
+	mut start := 0
+	mut end := text.len
+	for end > start && is_trim_space_byte(text[end - 1]) {
+		end--
+	}
+	for start < end && is_trim_space_byte(text[start]) {
+		start++
+	}
+	for start < end && text[start] == `&` {
+		start++
+	}
+	for start < end && is_trim_space_byte(text[start]) {
+		start++
+	}
+	prefix := '[]shared '
+	if end - start < prefix.len {
+		return false
+	}
+	for i in 0 .. prefix.len {
+		if text[start + i] != prefix[i] {
+			return false
+		}
+	}
+	return true
 }
 
 fn mut_param_type_is_allowed(typ Type) bool {
@@ -12739,7 +13011,11 @@ fn (mut tc TypeChecker) collect_selected_file_root_called_fns() {
 	tc.cur_file = ''
 	tc.cur_module = ''
 	tc.cur_scope = tc.file_scope
+	mut smartcast_keys := &SmartcastKeyFilter{}
+	mut prev_top_level := -1
 	for i in tc.top_level_idx {
+		range_lo := prev_top_level + 1
+		prev_top_level = i
 		node := tc.a.node(flat.NodeId(i))
 		match node.kind {
 			.file {
@@ -12755,11 +13031,28 @@ fn (mut tc TypeChecker) collect_selected_file_root_called_fns() {
 				if i < tc.a.user_code_start || !tc.diagnostic_files[tc.cur_file] {
 					continue
 				}
+				// A fn subtree is the node range since the previous top-level node.
+				smartcast_keys.arm(range_lo, i)
+				tc.smartcast_key_filter = smartcast_keys
 				tc.collect_selected_file_fn_body_called_fns(node)
+				tc.smartcast_key_filter = unsafe { nil }
 			}
 			else {}
 		}
 	}
+}
+
+// collect_selected_decl_called_fns walks the body of `decl` for the functions it
+// calls, with the smartcast keys of its node range in `smartcast_keys`.
+fn (mut tc TypeChecker) collect_selected_decl_called_fns(decl SelectedFnDecl, mut smartcast_keys SmartcastKeyFilter) {
+	tc.cur_file = decl.file
+	tc.cur_module = decl.mod
+	// selected_file_fn_decls takes the cost as the span since the previous
+	// top-level node: the fn subtree.
+	smartcast_keys.arm(decl.idx - decl.cost + 1, decl.idx)
+	tc.smartcast_key_filter = smartcast_keys
+	tc.collect_selected_file_fn_body_called_fns(tc.a.node(flat.NodeId(decl.idx)))
+	tc.smartcast_key_filter = unsafe { nil }
 }
 
 // SelectedFnDecl locates the first fn_decl node for a qualified name, with the
@@ -12780,6 +13073,7 @@ fn (mut tc TypeChecker) collect_selected_file_called_fns_transitively() {
 	tc.cur_scope = tc.file_scope
 	mut visited := map[string]bool{}
 	can_parallel := tc.selected_file_reachability_parallel_available()
+	mut smartcast_keys := &SmartcastKeyFilter{}
 	for tc.selected_file_worklist.len > 0 {
 		if !can_parallel || tc.selected_file_worklist.len < min_parallel_selected_fn_bodies {
 			name := tc.selected_file_worklist.pop()
@@ -12788,9 +13082,7 @@ fn (mut tc TypeChecker) collect_selected_file_called_fns_transitively() {
 			}
 			visited[name] = true
 			decl := decls[name] or { continue }
-			tc.cur_file = decl.file
-			tc.cur_module = decl.mod
-			tc.collect_selected_file_fn_body_called_fns(tc.a.node(flat.NodeId(decl.idx)))
+			tc.collect_selected_decl_called_fns(decl, mut smartcast_keys)
 			continue
 		}
 		mut frontier := []SelectedFnDecl{}
@@ -12807,9 +13099,7 @@ fn (mut tc TypeChecker) collect_selected_file_called_fns_transitively() {
 			continue
 		}
 		for decl in frontier {
-			tc.cur_file = decl.file
-			tc.cur_module = decl.mod
-			tc.collect_selected_file_fn_body_called_fns(tc.a.node(flat.NodeId(decl.idx)))
+			tc.collect_selected_decl_called_fns(decl, mut smartcast_keys)
 		}
 	}
 }
@@ -13454,7 +13744,7 @@ fn (tc &TypeChecker) has_export_attribute() bool {
 	for _, attrs in tc.declaration_attributes {
 		for raw in attrs {
 			if raw.trim_left(' \t').starts_with('export')
-				&& raw.all_before(':').trim_space() == 'export' {
+				&& attribute_name_is(raw, 'export') {
 				return true
 			}
 		}
@@ -13464,7 +13754,7 @@ fn (tc &TypeChecker) has_export_attribute() bool {
 
 fn (tc &TypeChecker) declaration_attribute_value(node_id flat.NodeId, name string) ?string {
 	for raw in tc.declaration_attributes[int(node_id)] {
-		if raw.all_before(':').trim_space() != name || !raw.contains(':') {
+		if !attribute_name_is(raw, name) || !raw.contains(':') {
 			continue
 		}
 		value := raw.all_after(':').trim_space()
@@ -13867,7 +14157,7 @@ fn (tc &TypeChecker) source_type_name_in_module(raw_type_id u32, module_name str
 }
 
 fn (tc &TypeChecker) fn_returns_veb_result(node flat.Node) bool {
-	raw_type := node.typ_text().trim_space()
+	raw_type := trimmed_space(node.typ_text())
 	if raw_type == 'veb.Result' {
 		return true
 	}
@@ -16995,7 +17285,7 @@ fn (mut tc TypeChecker) check_attribute_schema_decl(node_id flat.NodeId, node fl
 		}
 	}
 	for raw in tc.declaration_attributes[int(node_id)] {
-		if raw.all_before(':').trim_space() != 'attribute' || !raw.contains(':') {
+		if !attribute_name_is(raw, 'attribute') || !raw.contains(':') {
 			continue
 		}
 		target := attribute_string_unquote(raw.all_after(':').trim_space())
@@ -17259,7 +17549,7 @@ fn (mut tc TypeChecker) collect_attribute_schemas() {
 					}
 				}
 				for raw in tc.declaration_attributes[int(node_id)] {
-					if raw.all_before(':').trim_space() != 'attribute' || !raw.contains(':') {
+					if !attribute_name_is(raw, 'attribute') || !raw.contains(':') {
 						continue
 					}
 					target := attribute_string_unquote(raw.all_after(':').trim_space())
@@ -18625,11 +18915,37 @@ fn (tc &TypeChecker) node_contains_runtime_call(id flat.NodeId) bool {
 // declaration_has_attribute reports whether a declaration has the named attribute.
 pub fn (tc &TypeChecker) declaration_has_attribute(node_id flat.NodeId, name string) bool {
 	for raw in tc.declaration_attributes[int(node_id)] {
-		if raw.all_before(':').trim_space() == name {
+		if attribute_name_is(raw, name) {
 			return true
 		}
 	}
 	return false
+}
+
+// attribute_name_is reports whether `raw.all_before(':').trim_space() == name`,
+// without the substrings.
+@[direct_array_access]
+fn attribute_name_is(raw string, name string) bool {
+	mut end := raw.index_u8(`:`)
+	if end < 0 {
+		end = raw.len
+	}
+	mut start := 0
+	for start < end && is_trim_space_byte(raw[start]) {
+		start++
+	}
+	for end > start && is_trim_space_byte(raw[end - 1]) {
+		end--
+	}
+	if end - start != name.len {
+		return false
+	}
+	for i in 0 .. name.len {
+		if raw[start + i] != name[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // autofree_enabled reports whether compatibility autofree lowering is active.

@@ -212,7 +212,7 @@ fn (mut g FlatGen) struct_init_effective_type_name(id flat.NodeId, node flat.Nod
 	// (`geometry.Box[int]`) for this expression.
 	source_base := node.value.trim_left('&?!').all_before('[').all_after_last('.')
 	if source_base.len > 0 {
-		resolved := g.tc.expr_type(id) or { g.tc.resolve_type(id) }
+		resolved := g.tc.expr_type(id) or { g.body_resolve_type(id) }
 		resolved_value := default_init_unalias_type(types.unwrap_pointer(resolved))
 		if resolved_value is types.Struct
 			&& resolved_value.name().all_before('[').all_after_last('.') == source_base {
@@ -3592,7 +3592,11 @@ fn shared_array_inner_type_text(raw_id u32) ?u32 {
 	if !shape.has(.padded) && !shape.has(.array_type) && !shape.has(.pointer) {
 		return none
 	}
-	mut clean := trimmed_space(flat.source_type_name(raw_id))
+	text := flat.source_type_name(raw_id)
+	if !type_text_may_be_shared_array(text) {
+		return none
+	}
+	mut clean := trimmed_space(text)
 	for clean.starts_with('&') {
 		clean = trimmed_space(clean[1..])
 	}
@@ -3600,6 +3604,32 @@ fn shared_array_inner_type_text(raw_id u32) ?u32 {
 		return none
 	}
 	return shared_inner_type_text_bytes(trimmed_space(clean[2..]))
+}
+
+// type_text_may_be_shared_array scans `&... []shared ` in place. It rejects
+// every text that shared_array_inner_type_text rejects, without its copies.
+@[direct_array_access]
+fn type_text_may_be_shared_array(text string) bool {
+	mut i := 0
+	for {
+		for i < text.len && text[i] in [` `, `\n`, `\t`, `\v`, `\f`, `\r`] {
+			i++
+		}
+		if i < text.len && text[i] == `&` {
+			i++
+			continue
+		}
+		break
+	}
+	if i + 1 >= text.len || text[i] != `[` || text[i + 1] != `]` {
+		return false
+	}
+	i += 2
+	for i < text.len && text[i] in [` `, `\n`, `\t`, `\v`, `\f`, `\r`] {
+		i++
+	}
+	return i + 7 <= text.len && text[i] == `s` && text[i + 1] == `h` && text[i + 2] == `a`
+		&& text[i + 3] == `r` && text[i + 4] == `e` && text[i + 5] == `d` && text[i + 6] == ` `
 }
 
 fn shared_array_raw_is_ptr(raw_id u32) bool {
@@ -4156,55 +4186,137 @@ fn (mut g FlatGen) collect_shared_type_names() {
 	g.tc.cur_module = old_module
 }
 
+@[direct_array_access]
 fn (mut g FlatGen) collect_local_shared_type_names() {
 	mut cur_module := 'main'
-	for i in g.type_metadata_nodes() {
-		node := g.a.nodes[i]
-		if node.kind == .module_decl {
-			cur_module = if node.value.len == 0 { 'main' } else { node.value }
-			continue
-		}
-		if node.kind == .global_decl {
-			g.tc.cur_module = cur_module
-			for j in 0 .. node.children_count {
-				field := g.a.child_node(&node, j)
-				inner := shared_inner_type_text(field.typ) or { continue }
-				g.register_shared_type_name(g.shared_qualify_type_text(inner, cur_module), cur_module)
+	if g.shared_scan_bits_ready {
+		// The info scan marked the few metadata nodes the loop below acts on;
+		// visit those in node order instead of every call, param and init.
+		for word_idx, word in g.shared_scan_bits {
+			mut bits := word
+			for bits != 0 {
+				bit := int(cgen_trailing_zeros_u64(bits))
+				bits &= bits - 1
+				cur_module = g.collect_local_shared_type_names_at(word_idx * 64 + bit,
+					cur_module)
 			}
+		}
+		return
+	}
+	for i in g.type_metadata_nodes() {
+		// Most metadata nodes are calls, struct inits and params; skip them before
+		// copying the node.
+		kind := g.a.nodes[i].kind
+		if kind != .module_decl && kind != .global_decl && kind != .fn_decl
+			&& kind != .decl_assign {
 			continue
 		}
-		if node.kind != .decl_assign || !decl_assign_is_shared_marker(node.value) {
-			if node.kind == .fn_decl {
-				module_name := g.a.specialized_fn_modules[i] or { cur_module }
-				g.collect_fn_shared_param_type_names(node, module_name)
-			} else if node.kind == .decl_assign {
-				// `mut items := []shared T{}` stores `shared T` wrappers, although the
-				// declaration itself is not `shared`.
-				g.tc.cur_module = cur_module
-				for j := 0; j + 1 < node.children_count; j += 2 {
-					rhs := g.a.child_node(&node, j + 1)
-					inner := shared_array_inner_type_text(rhs.typ) or { continue }
-					g.register_shared_type_name_in_file(inner, cur_module, node.pos.id)
+		cur_module = g.collect_local_shared_type_names_at(i, cur_module)
+	}
+}
+
+@[inline]
+fn cgen_trailing_zeros_u64(x u64) int {
+	mut n := 0
+	mut v := x
+	for v & 1 == 0 {
+		v >>= 1
+		n++
+	}
+	return n
+}
+
+// shared_scan_node_relevant reports whether collect_local_shared_type_names_at
+// can do anything for a type metadata node: track a module, or register the
+// wrapper of a `shared` global, parameter or declaration. It only reads type
+// texts, so the parallel info scan can classify nodes with it.
+fn shared_scan_node_relevant(a &flat.FlatAst, node &flat.Node) bool {
+	match node.kind {
+		.module_decl, .global_decl {
+			return true
+		}
+		.fn_decl {
+			for i in 0 .. node.children_count {
+				param := a.child_node(node, i)
+				if param.kind != .param {
+					continue
+				}
+				if _ := shared_inner_type_text(param.typ) {
+					return true
+				}
+				if _ := shared_array_inner_type_text(param.typ) {
+					return true
 				}
 			}
-			continue
+			return false
 		}
-		g.tc.cur_module = cur_module
-		for j := 0; j + 1 < node.children_count; j += 2 {
-			rhs_id := g.a.child(&node, j + 1)
-			rhs := g.a.nodes[int(rhs_id)]
-			if inner := shared_array_inner_type_text(rhs.typ) {
-				g.register_shared_type_name(g.shared_qualify_type_text(inner, cur_module), cur_module)
-				continue
+		.decl_assign {
+			if decl_assign_is_shared_marker(node.value) {
+				return true
 			}
-			inner_type := shared_local_value_type(g.tc.resolve_type(rhs_id))
-			if inner_type is types.Unknown || inner_type is types.Void {
-				continue
+			for j := 0; j + 1 < node.children_count; j += 2 {
+				rhs := a.child_node(node, j + 1)
+				if _ := shared_array_inner_type_text(rhs.typ) {
+					return true
+				}
 			}
-			inner := g.shared_qualify_type_text(inner_type.source_type_id(), cur_module)
-			g.register_shared_type_name(inner, cur_module)
+			return false
+		}
+		else {
+			return false
 		}
 	}
+}
+
+// collect_local_shared_type_names_at handles one type metadata node of
+// collect_local_shared_type_names and returns the module that follows it.
+fn (mut g FlatGen) collect_local_shared_type_names_at(i int, module_before string) string {
+	cur_module := module_before
+	node := g.a.nodes[i]
+	if node.kind == .module_decl {
+		return if node.value.len == 0 { 'main' } else { node.value }
+	}
+	if node.kind == .global_decl {
+		g.tc.cur_module = cur_module
+		for j in 0 .. node.children_count {
+			field := g.a.child_node(&node, j)
+			inner := shared_inner_type_text(field.typ) or { continue }
+			g.register_shared_type_name(g.shared_qualify_type_text(inner, cur_module), cur_module)
+		}
+		return cur_module
+	}
+	if node.kind != .decl_assign || !decl_assign_is_shared_marker(node.value) {
+		if node.kind == .fn_decl {
+			module_name := g.a.specialized_fn_modules[i] or { cur_module }
+			g.collect_fn_shared_param_type_names(node, module_name)
+		} else if node.kind == .decl_assign {
+			// `mut items := []shared T{}` stores `shared T` wrappers, although the
+			// declaration itself is not `shared`.
+			g.tc.cur_module = cur_module
+			for j := 0; j + 1 < node.children_count; j += 2 {
+				rhs := g.a.child_node(&node, j + 1)
+				inner := shared_array_inner_type_text(rhs.typ) or { continue }
+				g.register_shared_type_name_in_file(inner, cur_module, node.pos.id)
+			}
+		}
+		return cur_module
+	}
+	g.tc.cur_module = cur_module
+	for j := 0; j + 1 < node.children_count; j += 2 {
+		rhs_id := g.a.child(&node, j + 1)
+		rhs := g.a.nodes[int(rhs_id)]
+		if inner := shared_array_inner_type_text(rhs.typ) {
+			g.register_shared_type_name(g.shared_qualify_type_text(inner, cur_module), cur_module)
+			continue
+		}
+		inner_type := shared_local_value_type(g.tc.resolve_type(rhs_id))
+		if inner_type is types.Unknown || inner_type is types.Void {
+			continue
+		}
+		inner := g.shared_qualify_type_text(inner_type.source_type_id(), cur_module)
+		g.register_shared_type_name(inner, cur_module)
+	}
+	return cur_module
 }
 
 fn shared_local_value_type(typ types.Type) types.Type {
@@ -5447,6 +5559,127 @@ fn (g &FlatGen) find_struct_decl(type_name_id u32) ?StructDeclInfo {
 	return g.find_struct_decl_fallback(type_name_id)
 }
 
+// StructFieldIndexBase maps each large checked field list, by the identity of
+// its storage, to the position of every field name. The checker's struct
+// tables do not change during codegen, so the index is built once before the
+// body workers start and then shared by all of them read-only.
+@[heap]
+struct StructFieldIndexBase {
+mut:
+	by_fields map[u64]map[string]int
+}
+
+// TypeNameShortIndex holds the last name component of every struct, alias,
+// enum, sum type and interface declaration. A name whose last component is not
+// in it cannot denote such a type, qualified or not. Generic applications
+// (names with `[`) are left out; lookups with `[` must not use the index.
+// `alias_shorts` covers only the type aliases, `enum_shorts` the enums, flag
+// enums and type aliases.
+@[heap]
+struct TypeNameShortIndex {
+mut:
+	shorts       map[string]bool
+	alias_shorts map[string]bool
+	enum_shorts  map[string]bool
+}
+
+fn add_type_name_short(mut shorts map[string]bool, name string) {
+	if name.contains('[') {
+		return
+	}
+	short := c_short_name_view(name)
+	if short !in shorts {
+		shorts[short] = true
+	}
+}
+
+fn new_type_name_short_index(tc &types.TypeChecker) &TypeNameShortIndex {
+	mut index := &TypeNameShortIndex{}
+	for name, _ in tc.structs {
+		add_type_name_short(mut index.shorts, name)
+	}
+	for name, _ in tc.type_aliases.ids {
+		add_type_name_short(mut index.shorts, name)
+		add_type_name_short(mut index.alias_shorts, name)
+		add_type_name_short(mut index.enum_shorts, name)
+	}
+	for name, _ in tc.enum_names {
+		add_type_name_short(mut index.shorts, name)
+		add_type_name_short(mut index.enum_shorts, name)
+	}
+	for name, _ in tc.flag_enums {
+		add_type_name_short(mut index.enum_shorts, name)
+	}
+	for name, _ in tc.sum_types.ids {
+		add_type_name_short(mut index.shorts, name)
+	}
+	for name, _ in tc.interface_names {
+		add_type_name_short(mut index.shorts, name)
+	}
+	return index
+}
+
+// name_may_be_type_alias is false when no type alias can have the last name
+// component of `name`.
+@[inline]
+fn (g &FlatGen) name_may_be_type_alias(name string) bool {
+	if isnil(g.type_name_short_index) || name.contains('[') {
+		return true
+	}
+	return c_short_name_view(name) in g.type_name_short_index.alias_shorts
+}
+
+// name_may_reach_enum is false when neither an enum nor a type alias can have
+// the last name component of `name`.
+@[inline]
+fn (g &FlatGen) name_may_reach_enum(name string) bool {
+	if isnil(g.type_name_short_index) || name.contains('[') {
+		return true
+	}
+	return c_short_name_view(name) in g.type_name_short_index.enum_shorts
+}
+
+// ident_may_name_type is false when `name` (as written, or as the checker
+// qualifies it) cannot be the name of a struct, alias, enum, sum type or
+// interface.
+@[inline]
+fn (g &FlatGen) ident_may_name_type(name string) bool {
+	if isnil(g.type_name_short_index) || name.contains('[') {
+		return true
+	}
+	return c_short_name_view(name) in g.type_name_short_index.shorts
+}
+
+// struct_field_list_key identifies a field list by its storage and length.
+@[inline]
+fn struct_field_list_key(fields []types.StructField) u64 {
+	return u64(voidptr(fields.data)) | (u64(fields.len) << 48)
+}
+
+// new_struct_field_index_base indexes the checked field lists that
+// struct_field_type_cached would otherwise index once per worker batch.
+fn new_struct_field_index_base(structs map[string][]types.StructField) &StructFieldIndexBase {
+	mut base := &StructFieldIndexBase{}
+	for _, fields in structs {
+		if fields.len < 32 || fields.len >= 65536 {
+			continue
+		}
+		key := struct_field_list_key(fields)
+		if key in base.by_fields {
+			continue
+		}
+		mut indexed := map[string]int{}
+		indexed.reserve(u32(fields.len))
+		for i, field in fields {
+			if field.name !in indexed {
+				indexed[field.name] = i
+			}
+		}
+		base.by_fields[key] = indexed
+	}
+	return base
+}
+
 // StructDeclPrefCache memoizes find_struct_decl_preferred per module context.
 // The struct declaration tables are immutable during codegen; each worker owns
 // a private instance (new_parallel_worker_config).
@@ -5679,6 +5912,10 @@ fn (g &FlatGen) struct_type_alias_target(type_name_id u32) ?u32 {
 			return base.source_type_id()
 		}
 	}
+	// Both lookups below name an alias with the same last component.
+	if !g.name_may_be_type_alias(type_name) {
+		return none
+	}
 	qname := g.tc.qualify_name(type_name)
 	if target_source_id := g.tc.type_aliases.type_id(qname) {
 		return target_source_id
@@ -5752,7 +5989,17 @@ fn (g &FlatGen) struct_field_type_cached(type_name_id u32, field_name string) ?t
 	}
 	fields := g.struct_fields_for_type(type_name_id) or { return none }
 	mut field_index := -1
-	if cache_enabled && fields.len >= 32 {
+	mut shared_index_hit := false
+	if cache_enabled && fields.len >= 32 && !isnil(g.struct_field_index_base) {
+		// Checked field lists are frozen during codegen: one shared index serves
+		// every worker and module context.
+		if indexed := g.struct_field_index_base.by_fields[struct_field_list_key(fields)] {
+			field_index = indexed[field_name] or { -1 }
+			shared_index_hit = true
+		}
+	}
+	if shared_index_hit {
+	} else if cache_enabled && fields.len >= 32 {
 		// The fields and module context are already memoized. Index large
 		// contexts once per worker instead of rescanning them on every miss.
 		if type_id !in cache.field_indices {

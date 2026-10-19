@@ -956,6 +956,13 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	// skipping a repeat performs no fewer markings.
 	mut safe_alias_done := map[string]bool{}
 	mut iface_tail_done := map[string]bool{}
+	// Qualified callees whose whole processing above is independent of the
+	// calling module, once it ran for one caller: a declared function marked
+	// directly, whose alias and interface tails are done. Any later call of one
+	// only repeats marks that enqueue() ignores. Generic detection keeps per-module
+	// state for these, so it does not use this.
+	mut settled_callees := map[string]bool{}
+	settle_callees := !collector.detect_generics && !detect_reachable_generics
 	mut processed_module_calls := map[string]&ModuleCalls{}
 	mut call_signature_count := tc.fn_ret_types.len
 	safe_alias_done.reserve(u32(fn_decls.len))
@@ -1212,6 +1219,9 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			}
 			for call_idx in 0 .. unique_call_count {
 				callee := calls[call_idx]
+				if settle_callees && settled_callees[callee] {
+					continue
+				}
 				if module_calls.names[callee] {
 					continue
 				}
@@ -1238,8 +1248,11 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 					continue
 				}
 				mut found_direct := false
+				// Marked as a declared function, independently of the caller.
+				mut found_declared := false
 				if callee_info := fn_decls[callee] {
 					found_direct = true
+					found_declared = true
 					if enqueue(callee, mut used, mut queue) {
 						if trace_markused && qi == 1 {
 							eprintln('main: all_fns hit: "${callee}"')
@@ -1252,6 +1265,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 					}
 				} else if callee in tc.fn_ret_types {
 					found_direct = true
+					found_declared = true
 					if enqueue(callee, mut used, mut queue) {
 						if trace_markused && qi == 1 {
 							eprintln('main: resolved hit: "${callee}"')
@@ -1293,6 +1307,9 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 					callee
 				} else {
 					'${fn_info.module}\x01${callee}'
+				}
+				if settle_callees && found_declared && iface_tail_key == callee {
+					settled_callees[callee] = true
 				}
 				if !iface_tail_done[iface_tail_key] {
 					iface_tail_done[iface_tail_key] = true

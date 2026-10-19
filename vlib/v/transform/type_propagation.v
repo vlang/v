@@ -1017,39 +1017,27 @@ fn (t &Transformer) lookup_struct_field_type_keyed(type_name_id u32, field_name 
 	if type_name_id == 0 || field_name == '' {
 		return none
 	}
-	key := if isnil(t.struct_field_type_cache) {
-		u64(0)
-	} else {
-		t.struct_field_type_cache_key(type_name_id, field_name)
+	if isnil(t.struct_field_type_cache) {
+		return t.lookup_struct_field_type_uncached(type_name_id, field_name)
 	}
-	if !isnil(t.struct_field_type_cache) {
-		mut cache := t.struct_field_type_cache
-		if cached := cache.entries[key] {
-			return cached
-		}
-		if cache.misses[key] {
+	// The answer depends on the current module, the owner type and the field
+	// name. Lookups are grouped by module so the key stays numeric; the field
+	// name is interned through the cache's own recent table.
+	mut cache := t.struct_field_type_cache
+	mut module_cache := cache.module_cache(t.cur_module)
+	key := (u64(type_name_id) << 32) | u64(cache.contexts.intern(field_name))
+	if cached := module_cache.entries[key] {
+		if cached == field_type_cache_miss {
 			return none
 		}
+		return cached
 	}
 	resolved_source_id := t.lookup_struct_field_type_uncached(type_name_id, field_name) or {
-		if !isnil(t.struct_field_type_cache) {
-			mut cache := t.struct_field_type_cache
-			cache.misses[key] = true
-		}
+		module_cache.entries[key] = field_type_cache_miss
 		return none
 	}
-
-	if !isnil(t.struct_field_type_cache) {
-		mut cache := t.struct_field_type_cache
-		cache.entries[key] = resolved_source_id
-	}
+	module_cache.entries[key] = resolved_source_id
 	return resolved_source_id
-}
-
-fn (t &Transformer) struct_field_type_cache_key(type_name_id u32, field_name string) u64 {
-	mut cache := t.struct_field_type_cache
-	context_id := cache.contexts.intern('${t.cur_module}\n${field_name}')
-	return (u64(type_name_id) << 32) | u64(context_id)
 }
 
 fn (t &Transformer) lookup_struct_field_type_uncached(type_name_id u32, field_name string) ?u32 {
