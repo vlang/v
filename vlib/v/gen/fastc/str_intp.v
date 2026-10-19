@@ -795,6 +795,12 @@ fn fastc_c_string(literal string) !string {
 				i += 2
 				continue
 			}
+			if raw[i + 1] == `$` {
+				// V escapes `$` to keep it out of an interpolation; C has no `\$` escape.
+				result.write_u8(`$`)
+				i += 2
+				continue
+			}
 			if raw[i + 1] >= `0` && raw[i + 1] <= `7` && (i + 3 >= raw.len - 1 || raw[i + 2] < `0` || raw[i + 2] > `7` || raw[i + 3] < `0` || raw[i + 3] > `7`) {
 				// V's `\0` is a NUL byte; emit a full three-digit octal so a following
 				// digit cannot extend the escape (`_S`'s `sizeof`-based length keeps it).
