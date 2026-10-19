@@ -1218,7 +1218,7 @@ fn (mut p Parser) parse_veb_template_expr(is_html bool) flat.NodeId {
 	return p.add_node(flat.Node{
 		kind:  .veb_template
 		value: path
-		typ:   flat.source_type_id(if is_html { 'html' } else { 'tmpl' })
+		typ:   (if is_html { flat.source_type_id('html') } else { flat.source_type_id('tmpl') })
 		pos:   p.span_to(call_start)
 	})
 }

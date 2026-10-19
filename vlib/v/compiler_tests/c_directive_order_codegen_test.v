@@ -7,7 +7,7 @@ const directive_order_vlib_dir = os.dir(directive_order_v3_dir)
 const directive_order_v3_src = os.join_path(directive_order_v3_dir, 'v.v')
 
 fn directive_order_v3_bin_path() string {
-	return os.join_path(os.temp_dir(), 'v3_c_directive_order_test_${os.getpid()}')
+	return os.join_path(os.temp_dir(), 'v3_c_directive_order_test_${os.getpid()}') + $if windows { '.exe' } $else { '' }
 }
 
 fn testsuite_begin() {
@@ -1326,6 +1326,10 @@ fn test_request_named_c_function_keeps_extern_prototype() {
 
 fn test_header_backed_request_macro_does_not_get_extern_prototype() {
 	c_code := directive_order_gen_c_request_macro(directive_order_build_v3())
-	assert c_code.contains('#include "request.h"'), c_code
+	// request.h sits beside main.v, and the generated C is compiled elsewhere,
+	// so the include names the header by its resolved path.
+	header := os.real_path(os.join_path(os.temp_dir(),
+		'v3_c_directive_order_request_macro_project', 'request.h')).replace('\\', '/')
+	assert c_code.contains('#include "${header}"'), c_code
 	assert !c_code.contains('int request(int'), c_code
 }

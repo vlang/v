@@ -1,5 +1,7 @@
 module driver
 
+import v.flat
+
 // The object of a cached module is found under the implementer lists that the
 // code of the module can depend on. These tests give module_signature() the
 // signature of a program and the modules that the code of one module can name.
@@ -31,7 +33,8 @@ fn visible_modules(names ...string) map[string]bool {
 
 fn test_module_signature_holds_the_interfaces_of_the_visible_modules() {
 	scopes := parse_v3_interface_scopes(scope_signature)
-	assert scopes.names == ['IError', 'Shape', 'io.Reader', 'io.Writer', 'log.Logger']
+	assert flat.TypeTextList{ ids: scopes.names }.names() == ['IError', 'Shape', 'io.Reader',
+		'io.Writer', 'log.Logger']
 	// `builtin` sees its own interface, and neither those of the modules that it
 	// does not import nor the one of the program.
 	assert scopes.module_signature(visible_modules()) == 'IError=Error,MessageError,io.Eof,MyErr'
@@ -71,7 +74,7 @@ fn test_module_signature_changes_with_an_implementer_of_a_visible_interface() {
 fn test_module_signature_follows_the_fields_of_implementers_from_outside() {
 	signature := scope_signature + '\n#reach Feed=Shape\n#reach io.BufferedReader=io.Reader\n#reach os.File=log.Logger'
 	scopes := parse_v3_interface_scopes(signature)
-	assert scopes.reach['Feed'] == ['Shape']
+	assert flat.TypeTextList{ ids: scopes.reach[flat.source_type_id('Feed')] }.names() == ['Shape']
 	// `os.File` is not visible from `io`, so its `log.Logger` counts too.
 	assert scopes.module_signature(visible_modules('io')) == [
 		'IError=Error,MessageError,io.Eof,MyErr',
@@ -121,14 +124,19 @@ fn test_module_signature_keeps_every_list_when_a_fact_is_missing() {
 }
 
 fn test_interface_scopes_split_generic_names_at_the_right_commas() {
-	assert v3_split_type_names('a,b[c, d],e[f[g,h]],i') == ['a', 'b[c, d]', 'e[f[g,h]]', 'i']
-	assert v3_split_type_names('') == []string{}
-	assert v3_interface_line_name('Box[map[string]int]=Crate') == 'Box[map[string]int]'
-	assert v3_interface_line_name('#module Box=main') == '#module Box'
+	assert flat.TypeTextList{ ids: v3_split_type_names('a,b[c, d],e[f[g,h]],i') }.names() == [
+		'a',
+		'b[c, d]',
+		'e[f[g,h]]',
+		'i',
+	]
+	assert v3_split_type_names('') == []u32{}
+	assert flat.source_type_name(v3_interface_line_name('Box[map[string]int]=Crate')) == 'Box[map[string]int]'
+	assert flat.source_type_name(v3_interface_line_name('#module Box=main')) == '#module Box'
 	scopes := parse_v3_interface_scopes('lists.Seq[K, V]=lists.Pair[K, V],Mine[int, string]\n#module Mine[int, string]=main\n#reach Mine[int, string]=lists.Seq[K, V]')
-	assert scopes.names == ['lists.Seq[K, V]']
+	assert flat.TypeTextList{ ids: scopes.names }.names() == ['lists.Seq[K, V]']
 	assert scopes.modules['Mine[int, string]'] == 'main'
-	assert scopes.declaring_module('lists.Seq[K, V]') == 'lists'
+	assert scopes.declaring_module(flat.source_type_id('lists.Seq[K, V]')) == 'lists'
 	assert scopes.module_signature(visible_modules('lists')) == 'lists.Seq[K, V]=lists.Pair[K, V],Mine[int, string]'
 	assert scopes.module_signature(visible_modules()) == ''
 }

@@ -9,7 +9,7 @@ pub fn validate_port(port int) !u16 {
 	if port >= 0 && port <= 0xFFFF {
 		return u16(port)
 	} else {
-		return err_port_out_of_range
+		return error_with_code(err_port_out_of_range.msg(), err_port_out_of_range.code())
 	}
 }
 

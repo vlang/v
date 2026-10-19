@@ -1,6 +1,7 @@
 module ssa
 
 import os
+import v.flat
 import v.parser
 import v.pref
 import v.types
@@ -20,7 +21,7 @@ fn test_native_void_result_identity_does_not_match_an_ordinary_ok_field() {
 		fields:      [boolean]
 		field_names: ['ok']
 	})
-	b.option_types['?void'] = optional
+	b.option_types[flat.source_type_id('?void')] = optional
 	assert !b.is_option_type(plain)
 	assert b.is_option_type(optional)
 }

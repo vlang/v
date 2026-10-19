@@ -1,0 +1,56 @@
+vlib/v/checker/tests/undefined_name_dependent_checks_err.vv:22:13: error: undefined variable: `parser`
+   20 | fn parse(nested bool) !Expr {
+   21 |     if nested {
+   22 |         result := parser.expr() or { return err }
+      |                   ~~~~~~
+   23 |         println(result)
+   24 |         return result
+vlib/v/checker/tests/undefined_name_dependent_checks_err.vv:31:12: error: undefined variable: `source`
+   29 | fn method_call(nested bool) {
+   30 |     if nested {
+   31 |         value := source.method()
+      |                  ~~~~~~
+   32 |         takes_expr(value)
+   33 |         println(value.x + 1)
+vlib/v/checker/tests/undefined_name_dependent_checks_err.vv:39:12: error: undefined variable: `source`
+   37 | fn field_access(nested bool) int {
+   38 |     if nested {
+   39 |         field := source.field
+      |                  ~~~~~~
+   40 |         mut e := Expr{}
+   41 |         e = field
+vlib/v/checker/tests/undefined_name_dependent_checks_err.vv:57:20: error: undefined ident: `pair`
+   55 | fn propagation(nested bool) ?Expr {
+   56 |     if nested {
+   57 |         first, second := pair.split() or { return none }
+      |                          ~~~~
+   58 |         println(first)
+   59 |         println(second)
+vlib/v/checker/tests/undefined_name_dependent_checks_err.vv:60:10: error: undefined variable: `maybe`
+   58 |         println(first)
+   59 |         println(second)
+   60 |         opt := maybe?
+      |                ~~~~~
+   61 |         return opt
+   62 |     }
+vlib/v/checker/tests/undefined_name_dependent_checks_err.vv:68:3: error: undefined ident: `count`
+   66 | fn counter(nested bool) {
+   67 |     if nested {
+   68 |         count++
+      |         ~~~~~
+   69 |         takes_error(failure)
+   70 |         // a check that does not depend on the unresolved name still runs
+vlib/v/checker/tests/undefined_name_dependent_checks_err.vv:69:15: error: undefined ident: `failure`
+   67 |     if nested {
+   68 |         count++
+   69 |         takes_error(failure)
+      |                     ~~~~~~~
+   70 |         // a check that does not depend on the unresolved name still runs
+   71 |         n := 1 + 'a'
+vlib/v/checker/tests/undefined_name_dependent_checks_err.vv:71:8: error: operator `+` cannot concatenate `int` and `string`
+   69 |         takes_error(failure)
+   70 |         // a check that does not depend on the unresolved name still runs
+   71 |         n := 1 + 'a'
+      |              ~~~~~~~
+   72 |         println(n)
+   73 |     }

@@ -199,6 +199,10 @@ pub:
 	// written: empty for a parameter without one, and no list at all when none
 	// of them names one.
 	generic_constraints TypeTextList
+	// Enum backing storage is source type metadata, separate from generic/attribute names.
+	enum_backing_type u32
+	// Per-expression debugger source types are separate from binding/display metadata.
+	debugger_value_types TypeTextList
 }
 
 // Comment retains source comments for syntax-preserving tools such as vfmt.
@@ -248,13 +252,31 @@ pub fn node_payload_with_constraints(generic_params []string, generic_constraint
 	return node_payload_with_type_constraints(generic_params, TypeTextList.from_names(generic_constraints))
 }
 
+// node_payload_with_type_metadata registers names and independent source type metadata.
+// Names follow node_payload ownership rules; the debugger ID list is copied from the caller.
+pub fn node_payload_with_type_metadata(generic_params []string, enum_backing_type u32, debugger_types []u32) u32 {
+	return node_payload_with_types(generic_params, TypeTextList{}, enum_backing_type, TypeTextList{ ids: debugger_types.clone() })
+}
+
+// node_payload_with_debugger_types registers binding/display names with ordered source type IDs.
+// The source ID list is copied, so later caller mutation cannot change the immutable payload.
+pub fn node_payload_with_debugger_types(generic_params []string, debugger_types []u32) u32 {
+	return node_payload_with_type_metadata(generic_params, 0, debugger_types)
+}
+
 fn node_payload_with_type_constraints(generic_params []string, generic_constraints TypeTextList) u32 {
-	if generic_params.len == 0 && generic_constraints.ids.len == 0 {
+	return node_payload_with_types(generic_params, generic_constraints, 0, TypeTextList{})
+}
+
+fn node_payload_with_types(generic_params []string, generic_constraints TypeTextList, enum_backing_type u32, debugger_value_types TypeTextList) u32 {
+	if generic_params.len == 0 && generic_constraints.ids.len == 0 && enum_backing_type == 0 && debugger_value_types.ids.len == 0 {
 		return 0
 	}
 	payload := &NodePayload{
-		generic_params:      generic_params
-		generic_constraints: generic_constraints
+		generic_params:       generic_params
+		generic_constraints:  generic_constraints
+		enum_backing_type:    enum_backing_type
+		debugger_value_types: debugger_value_types
 	}
 	node_payload_lock()
 	mut table := node_payload_table_load()
@@ -504,6 +526,71 @@ pub fn (n &Node) generic_constraints() []string {
 	return node_payload_at(n.payload).generic_constraints.names()
 }
 
+// generic_constraint_ids returns the ordered source-spelling IDs of this node's
+// generic constraints. The immutable payload values are borrowed for read-only use.
+@[inline]
+pub fn (n &Node) generic_constraint_ids() []u32 {
+	if n.payload == 0 {
+		return []u32{}
+	}
+	return node_payload_at(n.payload).generic_constraints.ids
+}
+
+// enum_backing_type_id returns the enum's explicit source storage type, or zero when absent.
+// The source identity is immutable and remains valid across workers and disposable arenas.
+@[inline]
+pub fn (n &Node) enum_backing_type_id() u32 {
+	if n.payload == 0 || n.kind != .enum_decl { return 0 }
+	return node_payload_at(n.payload).enum_backing_type
+}
+
+// set_enum_backing_type_id replaces the source storage type while preserving other metadata.
+// Generic parameter and attribute names remain separate from this source spelling identity.
+@[inline]
+pub fn (mut n Node) set_enum_backing_type_id(type_id u32) {
+	params := if n.payload == 0 {
+		[]string{}
+	} else {
+		node_payload_at(n.payload).generic_params.clone()
+	}
+	constraints := if n.payload == 0 {
+		TypeTextList{}
+	} else {
+		node_payload_at(n.payload).generic_constraints.clone()
+	}
+	debugger_types := if n.payload == 0 {
+		TypeTextList{}
+	} else {
+		node_payload_at(n.payload).debugger_value_types.clone()
+	}
+	n.payload = node_payload_with_types(params, constraints, type_id, debugger_types)
+}
+
+// debugger_value_type_ids returns the source type IDs ordered with debugger child expressions.
+// The immutable payload list is borrowed for read-only use.
+@[inline]
+pub fn (n &Node) debugger_value_type_ids() []u32 {
+	if n.payload == 0 || n.kind != .debugger_stmt { return []u32{} }
+	return node_payload_at(n.payload).debugger_value_types.ids
+}
+
+// set_debugger_value_type_ids replaces the ordered source types and preserves other metadata.
+// The input list is copied before publication, so caller mutation cannot change the payload.
+@[inline]
+pub fn (mut n Node) set_debugger_value_type_ids(type_ids []u32) {
+	params := if n.payload == 0 {
+		[]string{}
+	} else {
+		node_payload_at(n.payload).generic_params.clone()
+	}
+	constraints := if n.payload == 0 {
+		TypeTextList{}
+	} else {
+		node_payload_at(n.payload).generic_constraints.clone()
+	}
+	n.payload = node_payload_with_types(params, constraints, n.enum_backing_type_id(), TypeTextList{ ids: type_ids.clone() })
+}
+
 // set_generic_params replaces this node's uncommon managed payload. The
 // constraints of the params it replaces stay when there are as many params: the
 // passes that move the params to longer-lived memory rebuild the payload.
@@ -514,18 +601,18 @@ pub fn (mut n Node) set_generic_params(params []string) {
 	} else {
 		node_payload_at(n.payload).generic_constraints
 	}
-	n.payload = node_payload_with_type_constraints(params, if constraints.ids.len == params.len {
+	n.payload = node_payload_with_types(params, if constraints.ids.len == params.len {
 		constraints.clone()
 	} else {
 		TypeTextList{}
-	})
+	}, n.enum_backing_type_id(), TypeTextList{ ids: n.debugger_value_type_ids().clone() })
 }
 
 // set_generic_params_and_constraints replaces this node's generic params and the
 // constraints they name.
 @[inline]
 pub fn (mut n Node) set_generic_params_and_constraints(params []string, constraints []string) {
-	n.payload = node_payload_with_constraints(params, constraints)
+	n.payload = node_payload_with_types(params, TypeTextList.from_names(constraints), n.enum_backing_type_id(), TypeTextList{ ids: n.debugger_value_type_ids().clone() })
 }
 
 // FlatAst represents flat ast data used by flat.
@@ -535,7 +622,11 @@ pub mut:
 	nodes           []Node
 	children        []NodeId
 	user_code_start int
-	disabled_fns    map[string]bool
+	// parsed_node_count is the number of nodes the parser produced, or 0 when
+	// it was not recorded. Later stages append synthesized nodes past it, in an
+	// order that can depend on how their work was split across threads.
+	parsed_node_count int
+	disabled_fns      map[string]bool
 	// The names spelled inside a `$if`/`$match` body this build does not take,
 	// keyed by `<file>:<fn name offset>|<name>`. The body is never parsed, so
 	// nothing in the AST records its identifier occurrences or reads.
@@ -576,6 +667,12 @@ pub mut:
 	// formatter_local_sels records selectors whose direct receiver is a lexical binding.
 	formatter_local_sels    map[int]bool
 	formatter_migrate_json2 bool
+	// monomorph_tail_nodes and monomorph_tail_children are the capacity at the end
+	// of nodes and children that the transform stage reserves for the specializer
+	// of the monomorphization stage; the transform stage's own append regions
+	// leave it alone.
+	monomorph_tail_nodes    int
+	monomorph_tail_children int
 	// Template-generated nodes keep their original template source location while
 	// retaining the comptime call site used for v1-compatible diagnostic stacks.
 	template_call_sites map[int]token.Pos
@@ -600,6 +697,9 @@ pub mut:
 	// or file_index_incomplete is set (a source file failed to read).
 	file_node_ids         []i32
 	file_index_incomplete bool
+	// debugger_stmts counts the `$dbg` statements the parser created, so that
+	// a scan for them can stop once it knows there is none.
+	debugger_stmts int
 	// has_vsh_source records that at least one parsed source file is a `.vsh`
 	// script. V script mode makes the `os` module global inside such files, and
 	// the checker only pays for that lookup when this flag is set.
@@ -941,14 +1041,14 @@ fn (mut a FlatAst) intern_node_texts_range_wide(start int, end int) {
 		}
 		payload := node.payload_ptr()
 		params := payload.generic_params
-		if params.len > 0 {
+		if params.len > 0 || payload.enum_backing_type != 0 || payload.debugger_value_types.ids.len > 0 {
 			// Always rebuild the payload, as intern_node_texts_one does.
 			mut canonical_params := []string{cap: params.len}
 			for item in params {
 				canonical := a.intern_text_ptr_probed(item, mut probe)
 				canonical_params << canonical
 			}
-			node.payload = node_payload_with_type_constraints(canonical_params, payload.generic_constraints.clone())
+			node.payload = node_payload_with_types(canonical_params, payload.generic_constraints.clone(), payload.enum_backing_type, payload.debugger_value_types.clone())
 		}
 	}
 }
@@ -1015,14 +1115,14 @@ fn (mut a FlatAst) intern_node_texts_one(idx int, mut cache_ptrs [4096]voidptr, 
 	}
 	payload := node.payload_ptr()
 	params := payload.generic_params
-	if params.len > 0 {
+	if params.len > 0 || payload.enum_backing_type != 0 || payload.debugger_value_types.ids.len > 0 {
 		// Always rebuild the payload: the params array itself may live in a
 		// stage arena even when every param string is already canonical.
 		mut canonical_params := []string{cap: params.len}
 		for item in params {
 			canonical_params << a.intern_text_ptr_cached(item, mut cache_ptrs, mut cache_vals)
 		}
-		node.payload = node_payload_with_type_constraints(canonical_params, payload.generic_constraints.clone())
+		node.payload = node_payload_with_types(canonical_params, payload.generic_constraints.clone(), payload.enum_backing_type, payload.debugger_value_types.clone())
 	}
 }
 
@@ -1240,7 +1340,7 @@ pub fn (n Node) clone_owned() Node {
 		payload:        if n.payload == canonical_comptime_type_payload {
 			canonical_comptime_type_payload
 		} else {
-			node_payload_with_type_constraints(params, constraints)
+			node_payload_with_types(params, constraints, n.enum_backing_type_id(), TypeTextList{ ids: n.debugger_value_type_ids().clone() })
 		}
 		pos:            n.pos
 		children_start: n.children_start

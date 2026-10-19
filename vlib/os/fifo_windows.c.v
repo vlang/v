@@ -57,7 +57,7 @@ fn fifo_read_windows(h voidptr, mut buf []u8) !int {
 	if h == unsafe { nil } { return error_file_not_opened() }
 	if buf.len == 0 { return Eof{} }
 	mut got := u32(0)
-	if C.ReadFile(h, buf.data, u32(buf.len), &got, unsafe { nil }) == false {
+	if C.ReadFile(h, buf.data, u32(buf.len), voidptr(&got), unsafe { nil }) == false {
 		if C.GetLastError() == 109 { return Eof{} }
 		return error('os: named pipe read failed')
 	}
@@ -69,7 +69,7 @@ fn fifo_read_windows(h voidptr, mut buf []u8) !int {
 fn fifo_write_windows(h voidptr, buf []u8) !int {
 	if h == unsafe { nil } { return error_file_not_opened() }
 	mut wrote := u32(0)
-	if C.WriteFile(h, buf.data, u32(buf.len), &wrote, unsafe { nil }) == false {
+	if C.WriteFile(h, buf.data, u32(buf.len), voidptr(&wrote), unsafe { nil }) == false {
 		return error('os: named pipe write failed')
 	}
 	return int(wrote)

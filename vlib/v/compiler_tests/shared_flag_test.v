@@ -107,7 +107,12 @@ pub fn answer() int {
 		assert handle != unsafe { nil }, dl.dlerror()
 		assert os.read_file(lifecycle_path)! == 'init\n'
 		assert dl.close(handle), dl.dlerror()
-		assert os.read_file(lifecycle_path)! == 'init\ncleanup\n'
+		// dyld does not unload an image with thread-local variables or Objective-C image
+		// info, and a V shared library has both (`MH_HAS_TLV_DESCRIPTORS`), so on macOS
+		// `dlclose` runs no destructor: the cleanup only runs when the process exits.
+		$if !macos {
+			assert os.read_file(lifecycle_path)! == 'init\ncleanup\n'
+		}
 	}
 }
 
@@ -183,13 +188,11 @@ pub fn answer() int {
 	assert compile_shared.exit_code == 0, compile_shared.output
 	assert compile_shared.output.contains('-fPIC'), compile_shared.output
 	cached_after_shared := shared_flag_cached_objects(obj_path)
-	$if macos {
-		// Cached development executables already link through a PIC dylib on macOS,
-		// so the normal and shared builds can reuse the same dependency object.
-		assert cached_after_shared.len == 1, '${compile_shared.output}\n${cached_after_shared}'
-	} $else {
-		assert cached_after_shared.len == 2, '${compile_shared.output}\n${cached_after_shared}'
-	}
+	// A shared build compiles its objects with `-fvisibility=hidden` on Linux and macOS
+	// (9c630fb2e1), which is part of the cached object's key, so even on macOS, where the
+	// development executable already links through a PIC dylib, the shared build gets an
+	// object of its own.
+	assert cached_after_shared.len == 2, '${compile_shared.output}\n${cached_after_shared}'
 	assert os.exists(out_path)
 	assert os.file_size(out_path) > 0
 }

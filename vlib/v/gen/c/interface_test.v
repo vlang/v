@@ -15,13 +15,13 @@ fn test_collect_interface_impls_includes_boxed_maps() {
 	g.a = &a
 	g.tc = &tc
 	g.interfaces['Any'] = []string{}
-	g.interface_boxed_types['Any::map[string]int'] = true
+	g.interface_boxed_types[interface_dispatch_boxed_type_key(flat.source_type_id('Any'), flat.source_type_id('map[string]int'))] = true
 	g.interface_boxed_types_done = true
 
 	g.collect_interface_impls()
 
-	assert 'map[string]int' in g.iface_impls['Any']
-	assert g.iface_type_ids['Any::map[string]int'] > 0
+	assert flat.source_type_id('map[string]int') in g.iface_impls['Any']
+	assert g.iface_type_ids[interface_dispatch_boxed_type_key(flat.source_type_id('Any'), flat.source_type_id('map[string]int'))] > 0
 }
 
 fn test_incremental_cgen_collects_interface_type_ids() {
@@ -71,7 +71,7 @@ fn main() {
 		'selected_speaker': true
 	})
 	c_source := g.gen_with_used_options(a, used_fns, &tc, true)
-	assert g.iface_type_ids['Speaker::Cat'] > 0
+	assert g.iface_type_ids[interface_dispatch_boxed_type_key(flat.source_type_id('Speaker'), flat.source_type_id('Cat'))] > 0
 	assert c_source.contains('selected_speaker'), c_source
 	assert !c_source.contains('._typ = 0'), c_source
 }
@@ -170,7 +170,7 @@ fn make_speaker() Speaker {
 	c_source := g.gen_with_used_options(a, used_fns, &tc, true)
 	// A program that loads this library cannot dispatch `Cat` itself, so the
 	// library exports its dispatcher, keyed by the type tag it boxed `Cat` with.
-	id := g.iface_type_id('Speaker', 'Cat')
+	id := g.iface_type_id(flat.source_type_id('Speaker'), flat.source_type_id('Cat'))
 	assert id > 0
 	assert c_source.contains('_v_interface_exports[] = {'), c_source
 	assert c_source.contains('{"Speaker", "speak", ${id}u, (void*)Speaker__speak},'), c_source

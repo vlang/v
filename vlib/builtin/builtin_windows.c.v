@@ -6,6 +6,7 @@ module builtin
 
 #include <io.h>
 #include <fcntl.h>
+#include "@VEXEROOT/vlib/builtin/core_windows.h"
 
 #flag @VEXEROOT/vlib/builtin/core_windows.o
 

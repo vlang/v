@@ -101,7 +101,7 @@ fn (mut i TypeInterner) source_type_id(id TypeId) u32 {
 		i.lock.unlock()
 	}
 	if int(id) < 0 || int(id) >= i.types.len {
-		return flat.source_type_id('unknown')
+		return flat.source_type_unknown
 	}
 	if i.names[int(id)] == 0 {
 		i.names[int(id)] = i.types[int(id)].source_type_id()

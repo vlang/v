@@ -550,10 +550,29 @@ pub fn handle_request(registry Registry, method string, path string, query map[s
 	return not_found_body
 }
 
+// registry_key_is_private reports whether the key file may be loaded. On Unix
+// a key readable by group or others lets any local user forge signatures, so
+// it is refused. Windows has no equivalent mode check, so the file is
+// accepted there.
+fn registry_key_is_private(path string) bool {
+	$if windows {
+		return true
+	}
+	st := os.stat(path) or { return false }
+	mode := st.get_mode()
+	return !mode.group.read && !mode.others.read
+}
+
 // signing_key loads the registry's private key seed, from `VPM_REGISTRY_KEY`
 // when set and from the key file beside the index otherwise. Both hold hex.
 fn (r &Registry) signing_key() ?ed25519.PrivateKey {
-	raw := os.getenv_opt(registry_key_env) or { os.read_file(registry_key_path()) or { return none } }
+	raw := os.getenv_opt(registry_key_env) or {
+		path := registry_key_path()
+		if !registry_key_is_private(path) {
+			return none
+		}
+		os.read_file(path) or { return none }
+	}
 	hex := raw.trim_space()
 	if hex == '' {
 		return none

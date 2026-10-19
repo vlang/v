@@ -130,10 +130,16 @@ fn main() {
 	assert c_code.contains('i64 __v3_internal_symbol_local_v_stdin'), c_code
 	assert c_code.contains('i64 __v3_internal_symbol_local_v_stderr'), c_code
 	assert c_code.contains('i64 __v3_internal_symbol_local_v_stdout'), c_code
-	assert c_code.contains('i64 v_access(i64 x)'), c_code
-	assert c_code.contains('i64 v_read(void)'), c_code
-	assert c_code.contains('i64 v_close(void)'), c_code
-	assert c_code.contains('i64 v_fabs(i64 x)'), c_code
+	// main functions named like declared C functions keep the module prefix, so
+	// they cannot collide with the libc prototypes.
+	assert c_code.contains('i64 main__access(i64 x)'), c_code
+	assert c_code.contains('i64 main__read(void)'), c_code
+	assert c_code.contains('i64 main__close(void)'), c_code
+	assert c_code.contains('i64 main__fabs(i64 x)'), c_code
+	assert !c_code.contains('i64 access('), c_code
+	assert !c_code.contains('i64 read('), c_code
+	assert !c_code.contains('i64 close('), c_code
+	assert !c_code.contains('i64 fabs('), c_code
 	assert c_code.contains('i64 v_typeof'), c_code
 	assert c_code.contains('Kind___v_asm'), c_code
 	assert c_code.contains('.v_unix'), c_code
