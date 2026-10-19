@@ -302,6 +302,9 @@ fn run_v3_unit_tests(cfg Config) {
 	os.setenv(unit_shared_v3_env, shared_v3, true)
 	os.setenv(unit_v3_src_env, cfg.v3_src, true)
 	test_files := unit_test_files(cfg)
+	// Run every file, so that one failure does not hide the others, and print how long each
+	// one took, so that the shards can be kept within the job time limit.
+	mut failed := []string{}
 	for start := 0; start < test_files.len; start += unit_test_batch_size {
 		end := if start + unit_test_batch_size < test_files.len {
 			start + unit_test_batch_size
@@ -310,8 +313,19 @@ fn run_v3_unit_tests(cfg Config) {
 		}
 		println('  Unit test batch ${start / unit_test_batch_size + 1}: ${start + 1}-${end}/${test_files.len}')
 		for path in test_files[start..end] {
+			relative_path := repo_relative_path(cfg, path)
 			run_only_arg := unit_test_run_only_arg(cfg, path)
-			run('${q(cfg.vexe)} -gc none -path ${q(cfg.vlib_dir)} -enable-globals -silent test ${run_only_arg} ${q(path)}')
+			cmd := '${q(cfg.vexe)} -gc none -path ${q(cfg.vlib_dir)} -enable-globals -silent test ${run_only_arg} ${q(path)}'
+			println('> ${cmd}')
+			sw := time.new_stopwatch()
+			code := os.system_args(os.split_args(cmd) or { panic(err) })
+			seconds := int(sw.elapsed().seconds())
+			if code == 0 {
+				println('  ok     ${seconds:4} s  ${relative_path}')
+			} else {
+				println('  FAILED ${seconds:4} s  ${relative_path} (exit code ${code})')
+				failed << relative_path
+			}
 		}
 		if os.exists(unit_cache) {
 			os.rmdir_all(unit_cache) or {
@@ -339,6 +353,13 @@ fn run_v3_unit_tests(cfg Config) {
 	restore_env(unit_shared_v3_env, old_shared_v3)
 	restore_env(unit_v3_src_env, old_v3_src)
 	cleanup_files([shared_v3, reuse_log])
+	if failed.len > 0 {
+		println('  ${failed.len} of ${test_files.len} unit test files failed:')
+		for path in failed {
+			println('    ${path}')
+		}
+		exit(1)
+	}
 }
 
 // unit_test_files returns the enabled unit tests of the shard that `cfg` selects, in the order
