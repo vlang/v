@@ -627,12 +627,101 @@ struct Pass2PrepArgs {
 fn pass2_fn_prep_thread(arg voidptr) voidptr {
 	a := unsafe { &Pass2PrepArgs(arg) }
 	master := unsafe { &TypeChecker(a.tc) }
+	// The fork, its caches and the parse scratch die with the lane's arena;
+	// only the computed signatures are copied out of it.
+	scope := check_worker_scope_begin(master.scope_parallel_check_workers)
 	mut view := master.fork_for_parallel_transform(master.a)
 	view.cur_file = a.file
 	view.cur_module = a.module_name
 	mut preps := unsafe { &[]Pass2FnPrep(a.preps) }
 	view.collect_pass2_fn_range(a.start, a.end, mut *preps)
+	if scope != unsafe { nil } {
+		check_worker_scope_leave(scope)
+		promote_pass2_fn_preps(scope, mut *preps, a.start, a.end)
+		check_worker_scope_free(scope)
+	}
 	return unsafe { nil }
+}
+
+// Pass2TypePromotion maps the type payloads a pass-2 lane allocated in its
+// arena to their copies outside of it, so that a type many signatures share
+// is copied once. Its keys are only valid while that arena is mapped.
+struct Pass2TypePromotion {
+mut:
+	w0     [512]u64
+	w1     [512]u64
+	values [512]Type
+	set    [512]bool
+}
+
+fn (mut p Pass2TypePromotion) promote(scope voidptr, typ Type) Type {
+	// One word is the variant tag, the other the payload pointer.
+	w0, w1, raw_slot := type_value_words(&typ)
+	if !unsafe { prealloc_scope_owns(scope, voidptr(usize(w0))) }
+		&& !unsafe { prealloc_scope_owns(scope, voidptr(usize(w1))) } {
+		// Allocated before the arena: so is everything it refers to.
+		return typ
+	}
+	slot := raw_slot & (p.set.len - 1)
+	if p.set[slot] && p.w0[slot] == w0 && p.w1[slot] == w1 {
+		return p.values[slot]
+	}
+	owned := clone_owned_type(typ)
+	p.w0[slot] = w0
+	p.w1[slot] = w1
+	p.values[slot] = owned
+	p.set[slot] = true
+	return owned
+}
+
+@[inline]
+fn same_string_data(a string, b string) bool {
+	return a.str == b.str && a.len == b.len
+}
+
+fn pass2_owned_string(scope voidptr, s string) string {
+	if s.len > 0 && unsafe { prealloc_scope_owns(scope, s.str) } {
+		return s.clone()
+	}
+	return s
+}
+
+// promote_pass2_fn_preps copies what a pass-2 lane computed for
+// preps[start..end] out of its arena `scope`, which the lane has left but not
+// yet released.
+fn promote_pass2_fn_preps(scope voidptr, mut preps []Pass2FnPrep, start int, end int) {
+	mut types := &Pass2TypePromotion{}
+	for pi in start .. end {
+		if !preps[pi].prepared {
+			continue
+		}
+		mut prep := preps[pi]
+		prep.ret_type = types.promote(scope, prep.ret_type)
+		mut ptypes := []Type{cap: prep.ptypes.len}
+		for typ in prep.ptypes {
+			ptypes << types.promote(scope, typ)
+		}
+		prep.ptypes = ptypes
+		prep.param_type_ids = prep.param_type_ids.clone()
+		prep.shared_params = prep.shared_params.clone()
+		// The three names are often one string.
+		qname := pass2_owned_string(scope, prep.qname)
+		lowered_qname := if same_string_data(prep.lowered_qname, prep.qname) {
+			qname
+		} else {
+			pass2_owned_string(scope, prep.lowered_qname)
+		}
+		prep.lowered_source_name = if same_string_data(prep.lowered_source_name, prep.lowered_qname) {
+			lowered_qname
+		} else if same_string_data(prep.lowered_source_name, prep.qname) {
+			qname
+		} else {
+			pass2_owned_string(scope, prep.lowered_source_name)
+		}
+		prep.qname = qname
+		prep.lowered_qname = lowered_qname
+		preps[pi] = prep
+	}
 }
 
 // UnusedAliveScanArgs shards the unused-declaration reference scan: each

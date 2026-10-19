@@ -4262,7 +4262,7 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 	// pool; this serial walk then only replays the order-sensitive table
 	// registrations. Empty when the pool is unavailable — then each fn_decl
 	// computes inline exactly as before.
-	pass2_preps := tc.collect_pass2_fn_preps_parallel()
+	mut pass2_preps := tc.collect_pass2_fn_preps_parallel()
 	fast_pass2_registration := os.getenv('V3_NO_FAST_PASS2_REGISTRATION') == ''
 	parallel_pass2_ancillary := fast_pass2_registration && tc.building_v_fast
 		&& os.getenv('V3_NO_PAR_PASS2_REGISTRATION') == ''
@@ -4285,6 +4285,8 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 		tc.defer_fn_ancillary = false
 		tc.finish_pass2_ancillary_registrations()
 	}
+	// The registrations above copied what they keep of the preparations.
+	unsafe { pass2_preps.free() }
 	tc.collect_deprecated_symbols()
 	if p2_profile {
 		tc.timing_profile('  [ttime]       p2 fns ${f64(p2_fn_ns) / 1000000.0:.2f} ms, structs ${f64(p2_struct_ns) / 1000000.0:.2f} ms')
