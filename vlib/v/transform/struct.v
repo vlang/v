@@ -1,6 +1,7 @@
 module transform
 
 import v.flat
+import v.types
 
 // transform_field_init_expr transforms transform field init expr data for transform.
 fn (mut t Transformer) transform_field_init_expr(id flat.NodeId, node flat.Node) flat.NodeId {
@@ -141,6 +142,16 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 				t.set_node_typ(int(val_id), field_type)
 			}
 			value_type_source_id := t.node_type(val_id)
+			mut numeric_field := false
+			if t.validating_generic_spec && !isnil(t.tc) {
+				expected := types.unalias_type(t.tc.parse_type(field_type))
+				numeric_field = expected.is_integer() || expected.is_float()
+			}
+			numeric_payload := if numeric_field {
+				t.or_expr_receiver_unwrapped_type(val_id) or { u32(0) }
+			} else {
+				u32(0)
+			}
 
 			sum_field_type_source_id := t.struct_field_sum_type(field_type, info.module)
 
@@ -166,10 +177,39 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 				t.wrap_sum_value(val_id, inferred_sum_source_id_3)
 			} else if flat.source_type_shape(field_type).has(.pointer) {
 				t.transform_expr_for_type(val_id, field_type)
+			} else if numeric_field {
+				// Resolve generic calls before checking their concrete result, while
+				// retaining its source type before the numeric field conversion.
+				if numeric_payload != 0 && !t.generic_arg_is_unresolved(numeric_payload) {
+					t.transform_expr_for_type(val_id, numeric_payload)
+				} else {
+					t.transform_expr(val_id)
+				}
 			} else if field_type != 0 {
 				t.transform_expr_for_type(val_id, field_type)
 			} else {
 				t.transform_expr(val_id)
+			}
+			if numeric_field {
+				mut actual := if numeric_payload != 0 && !t.generic_arg_is_unresolved(numeric_payload) {
+					numeric_payload
+				} else {
+					t.specialized_expr_type_name(new_val)
+				}
+				// A matching reference value is implicitly dereferenced in a value field.
+				// Apply that existing conversion before validation, without allowing a
+				// pointer to another numeric (or nonnumeric) type to bypass the check.
+				if flat.source_type_shape(actual).has(.pointer)
+					&& t.normalize_type_alias(flat.source_type_id(flat.source_type_name(actual)[1..])) == t.normalize_type_alias(field_type) {
+					new_val = t.coerce_transformed_expr_to_type(new_val, val_id, field_type)
+					actual = t.specialized_expr_type_name(new_val)
+				}
+				if actual != 0 && actual != flat.source_type_unknown && !t.generic_arg_is_unresolved(actual)
+					&& !t.tc.expr_subtree_has_node_error(val_id)
+					&& !t.tc.expr_subtree_has_node_error(new_val)
+					&& !t.tc.expr_compatible(val_id, t.tc.parse_type(actual), t.tc.parse_type(field_type)) {
+					t.tc.record_transform_error(child_id, val_node.pos, 'cannot assign to field `${field_name}`: expected `${flat.source_type_name(field_type)}`, not `${flat.source_type_name(actual)}`')
+				}
 			}
 			if !shared_interface_source && sum_field_type_source_id == 0 && field_type != 0 {
 				new_val = t.coerce_transformed_expr_to_type(new_val, val_id, field_type)

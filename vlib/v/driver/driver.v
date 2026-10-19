@@ -14893,6 +14893,12 @@ pub fn run(args []string) {
 			if pre_tc.errors.len > 0 {
 				restart_v3_for_checker_errors_of_pruned_build(&cache_state.manager, pre_tc.errors,
 					&pruned_declarations, checker_notices_printed)
+				// Instance validation also sees numeric-field specialization errors.
+				// Join it first so the primary errors are printed without duplicates.
+				if program_instance_check.finish() == 1 {
+					clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+					exit(1)
+				}
 			}
 			if pre_tc.errors.len > 0
 				|| (!checker_notices_already_printed && pre_tc.errors.len == 0) {
