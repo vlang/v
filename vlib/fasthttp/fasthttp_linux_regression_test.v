@@ -681,9 +681,16 @@ fn test_consumed_large_read_buffer_preserves_pipelined_request() {
 		read_buf: (consumed + pending).bytes()
 	}
 	assert cs.read_buf.cap > max_pooled_read_cap
+	initial_data := cs.read_buf.data
+	initial_cap := cs.read_buf.cap
 	compact_read_buf(mut cs, consumed.len)
 	assert cs.read_buf.bytestr() == pending
-	assert cs.read_buf.cap == read_buf_cap
+	$if prealloc {
+		assert cs.read_buf.data == initial_data
+		assert cs.read_buf.cap == initial_cap
+	} $else {
+		assert cs.read_buf.cap == read_buf_cap
+	}
 	compact_read_buf(mut cs, pending.len)
 	assert cs.read_buf.len == 0
 }
@@ -709,10 +716,17 @@ fn test_drained_large_write_buffer_shrinks_on_keep_alive() ! {
 	cs.write_buf = []u8{cap: 128 * 1024}
 	response := 'HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok'
 	cs.write_buf << response.bytes()
+	initial_data := cs.write_buf.data
+	initial_cap := cs.write_buf.cap
 	assert flush_batch(mut w, sockets[0], mut cs) == .drained
 	assert recv_available(sockets[1]) == response
 	assert cs.write_buf.len == 0
-	assert cs.write_buf.cap == write_buf_cap
+	$if prealloc {
+		assert cs.write_buf.data == initial_data
+		assert cs.write_buf.cap == initial_cap
+	} $else {
+		assert cs.write_buf.cap == write_buf_cap
+	}
 }
 
 fn test_closed_and_detached_connection_pools_are_bounded() ! {
@@ -731,6 +745,7 @@ fn test_closed_and_detached_connection_pools_are_bounded() ! {
 		for _ in 0 .. max_pooled_conns + 4 {
 			mut sockets := [2]i32{}
 			assert C.socketpair(C.AF_UNIX, C.SOCK_STREAM, 0, &sockets[0]) == 0
+			assert add_fd_to_epoll(epoll_fd, sockets[0], u32(C.EPOLLIN | C.EPOLLET)) == 0
 			servers << int(sockets[0])
 			clients << int(sockets[1])
 			mut cs := state_for(mut w, sockets[0])
@@ -746,14 +761,72 @@ fn test_closed_and_detached_connection_pools_are_bounded() ! {
 			}
 			C.close(clients[i])
 			assert unsafe { w.conns[fd] == nil }
-			assert w.free_conns.len <= max_pooled_conns
+			$if prealloc {
+				assert w.free_conns.len == i + 1
+			} $else {
+				assert w.free_conns.len <= max_pooled_conns
+			}
 		}
-		assert w.free_conns.len == max_pooled_conns
+		$if prealloc {
+			assert w.free_conns.len == max_pooled_conns + 4
+		} $else {
+			assert w.free_conns.len == max_pooled_conns
+		}
 		for cs in w.free_conns {
 			assert cs.read_buf.len == 0
-			assert cs.read_buf.cap == read_buf_cap
 			assert cs.write_buf.len == 0
-			assert cs.write_buf.cap == write_buf_cap
+			$if prealloc {
+				assert cs.read_buf.cap == 128 * 1024
+				assert cs.write_buf.cap == 128 * 1024
+			} $else {
+				assert cs.read_buf.cap == read_buf_cap
+				assert cs.write_buf.cap == write_buf_cap
+			}
+		}
+	}
+}
+
+fn test_prealloc_reuses_states_and_buffers_after_repeated_bursts() {
+	$if prealloc {
+		count := max_pooled_conns + 4
+		mut w := Worker{
+			conns: []&ConnState{len: conn_table_min, init: unsafe { nil }}
+		}
+		mut states := []&ConnState{cap: count}
+		mut read_data := []voidptr{cap: count}
+		mut write_data := []voidptr{cap: count}
+		// Warm one burst above the normal pool limit, then require allocation-free reuse.
+		for fd in 1 .. count + 1 {
+			cs := state_for(mut w, fd)
+			states << cs
+			read_data << cs.read_buf.data
+			write_data << cs.write_buf.data
+		}
+		for fd in 1 .. count + 1 {
+			mut cs := w.conns[fd]
+			w.conns[fd] = unsafe { nil }
+			recycle_conn_state(mut w, mut cs)
+		}
+		assert w.free_conns.len == count
+		before := prealloc_stats_snapshot()
+		for _ in 0 .. 3 {
+			for fd in 1 .. count + 1 {
+				cs := state_for(mut w, fd)
+				i := states.index(cs)
+				assert i >= 0
+				assert cs.read_buf.data == read_data[i]
+				assert cs.write_buf.data == write_data[i]
+			}
+			for fd in 1 .. count + 1 {
+				mut cs := w.conns[fd]
+				w.conns[fd] = unsafe { nil }
+				recycle_conn_state(mut w, mut cs)
+			}
+			assert w.free_conns.len == count
+		}
+		after := prealloc_stats_snapshot()
+		if before.enabled {
+			assert after.allocation_count == before.allocation_count
 		}
 	}
 }

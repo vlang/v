@@ -377,30 +377,35 @@ fn detach_conn(mut w Worker, fd int) {
 	remove_fd_from_epoll(w.epoll_fd, fd)
 }
 
-// recycle_conn_state bounds retained connection state after a burst of clients.
+// recycle_conn_state bounds retained state unless the allocator requires reuse.
 fn recycle_conn_state(mut w Worker, mut cs ConnState) {
-	if w.free_conns.len >= max_pooled_conns {
-		// The worker has removed every reference to this retired state.
-		unsafe {
-			cs.read_buf.free()
-			cs.write_buf.free()
-			free(cs)
+	$if !prealloc {
+		if w.free_conns.len >= max_pooled_conns {
+			// The worker has removed every reference to this retired state.
+			unsafe {
+				cs.read_buf.free()
+				cs.write_buf.free()
+				free(cs)
+			}
+			return
 		}
-		return
 	}
+	// Prealloc cannot reclaim individual states, so keep them reachable for reuse.
 	compact_read_buf(mut cs, cs.read_buf.len)
 	reset_write_buf(mut cs)
 	w.free_conns << cs
 }
 
-// reset_write_buf releases oversized response storage after the entire batch drains.
+// reset_write_buf resets drained output, retaining storage when prealloc requires reuse.
 fn reset_write_buf(mut cs ConnState) {
-	if cs.write_buf.cap > max_pooled_write_cap {
-		unsafe { cs.write_buf.free() }
-		cs.write_buf = []u8{cap: write_buf_cap}
-	} else {
-		unsafe { cs.write_buf.len = 0 }
+	$if !prealloc {
+		if cs.write_buf.cap > max_pooled_write_cap {
+			unsafe { cs.write_buf.free() }
+			cs.write_buf = []u8{cap: write_buf_cap}
+			return
+		}
 	}
+	unsafe { cs.write_buf.len = 0 }
 }
 
 // mark_read_deadline arms/clears the read deadline for a partially-read request.
@@ -542,17 +547,19 @@ fn compact_read_buf(mut cs ConnState, pos int) {
 		return
 	}
 	leftover := cs.read_buf.len - pos
-	if cs.read_buf.cap > max_pooled_read_cap && leftover <= read_buf_cap {
-		mut trimmed := []u8{len: leftover, cap: read_buf_cap}
-		// Request handlers have finished with consumed bytes; preserve pipelined input.
-		unsafe {
-			if leftover > 0 {
-				vmemcpy(trimmed.data, &u8(cs.read_buf.data) + pos, leftover)
+	$if !prealloc {
+		if cs.read_buf.cap > max_pooled_read_cap && leftover <= read_buf_cap {
+			mut trimmed := []u8{len: leftover, cap: read_buf_cap}
+			// Request handlers have finished with consumed bytes; preserve pipelined input.
+			unsafe {
+				if leftover > 0 {
+					vmemcpy(trimmed.data, &u8(cs.read_buf.data) + pos, leftover)
+				}
+				cs.read_buf.free()
 			}
-			cs.read_buf.free()
+			cs.read_buf = trimmed
+			return
 		}
-		cs.read_buf = trimmed
-		return
 	}
 	if pos == 0 {
 		return

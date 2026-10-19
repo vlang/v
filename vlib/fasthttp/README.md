@@ -13,7 +13,9 @@ response bytes with a small, explicit API, and is the parallel backend used by
 - **Zero per-request allocation on the hot path** (Linux): each connection reuses
   its normal-sized read and write buffers. Oversized buffers above 64 KiB shrink
   after their contents are consumed. Each worker retains at most 16 closed
-  connection states for reuse, releasing additional states after traffic bursts.
+  connection states for reuse, releasing additional states after traffic bursts. With
+  `-prealloc`, individual allocations cannot be reclaimed, so workers retain all
+  connection states and buffer capacities for reuse instead of repeatedly replacing them.
 - **HTTP/1.1 pipelining**: several requests arriving in one read are framed
   individually and answered into one batched write. TCP-fragmented requests are
   reassembled deterministically via exact-length framing.
