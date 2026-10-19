@@ -1,7 +1,8 @@
 # x.crypto.jwt
 
 `x.crypto.jwt` provides JSON Web Token (JWT) signing, verification, and decoding
-according to RFC 7519, RFC 7515 (JWS), RFC 7518 (JWA), and RFC 8037 (EdDSA).
+using the compact signed-token format from RFC 7519 and RFC 7515 (JWS), with
+algorithms from RFC 7518 (JWA) and RFC 8037 (EdDSA).
 
 ## Supported Algorithms
 
@@ -20,7 +21,12 @@ HMAC algorithm would allow anyone who knows the public key to forge tokens.
 
 Registered timestamp claims (`exp`, `nbf`, `iat`) use signed 64-bit integer Unix
 seconds. Verification rejects malformed JSON and claims that cannot be decoded as
-`StandardClaims`, even when `validate_exp` or `validate_nbf` is disabled.
+`StandardClaims`, even when `validate_exp` or `validate_nbf` is disabled. Timestamp
+strings, fractional timestamps, null registered claims, and duplicate top-level members
+are rejected. Audience claims support a single string; audience arrays are not supported.
+Headers require an explicit `alg`. Unsupported `crit` and `b64` extensions, padded or
+noncanonical Base64url segments, and negative leeway are rejected. Leeway must be a
+nonnegative number of seconds.
 
 ## Usage
 

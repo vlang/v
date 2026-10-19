@@ -170,10 +170,10 @@ pub fn verify[T](token string, key []u8, options VerifyOptions) !Token[T] {
 	}
 	header, _ := decode_raw(token)!
 	payload_json := verify_raw(token, key, options)!
-	claims := json2.decode[T](payload_json) or {
+	claims := json2.decode[T](payload_json, strict: true) or {
 		return error('failed to decode claims into requested type: ${err.msg()}')
 	}
-	sig := base64.url_decode(parts[2])
+	sig := decode_segment(parts[2])!
 	return Token[T]{
 		header:    header
 		claims:    claims
@@ -205,7 +205,7 @@ pub fn verify_raw(token string, key []u8, options VerifyOptions) !string {
 	}
 
 	signing_input := '${parts[0]}.${parts[1]}'
-	expected_sig := base64.url_decode(parts[2])
+	expected_sig := decode_segment(parts[2])!
 
 	match alg {
 		.hs256 {
@@ -237,15 +237,29 @@ pub fn verify_raw(token string, key []u8, options VerifyOptions) !string {
 		}
 	}
 
-	// Validate standard claims
-	std_claims := json2.decode[StandardClaims](payload_json) or {
+	// Validate standard claims without JSON coercions or ambiguous duplicate fields.
+	claim_values := decode_object(payload_json, 'claims')!
+	for name in ['iss', 'sub', 'aud', 'exp', 'nbf', 'iat', 'jti'] {
+		if value := claim_values[name] {
+			if value is json2.Null {
+				return error('invalid JWT claim: ${name} cannot be null')
+			}
+			if name in ['iss', 'sub', 'aud', 'jti'] && value !is string {
+				return error('invalid JWT claim: ${name} must be a string')
+			}
+		}
+	}
+	std_claims := json2.decode[StandardClaims](payload_json, strict: true) or {
 		return error('invalid JWT claims: ${err.msg()}')
+	}
+	if options.leeway < 0 {
+		return error('JWT leeway must be nonnegative')
 	}
 	now := options.current_time or { time.now().unix() }
 
 	if options.validate_exp {
 		if exp := std_claims.exp {
-			if now - options.leeway >= exp {
+			if now >= exp && u64(now) - u64(exp) >= u64(options.leeway) {
 				return error('token has expired (exp: ${exp}, now: ${now})')
 			}
 		}
@@ -253,7 +267,7 @@ pub fn verify_raw(token string, key []u8, options VerifyOptions) !string {
 
 	if options.validate_nbf {
 		if nbf := std_claims.nbf {
-			if now + options.leeway < nbf {
+			if now < nbf && u64(nbf) - u64(now) > u64(options.leeway) {
 				return error('token not valid yet (nbf: ${nbf}, now: ${now})')
 			}
 		}
@@ -299,11 +313,22 @@ pub fn decode_raw(token string) !(Header, string) {
 	if parts.len != 3 {
 		return error('invalid token format: expected 3 dot-separated parts')
 	}
-	header_bytes := base64.url_decode(parts[0])
-	header := json2.decode[Header](header_bytes.bytestr()) or {
+	header_bytes := decode_segment(parts[0])!
+	header_json := header_bytes.bytestr()
+	header_values := decode_object(header_json, 'header')!
+	algorithm_value := header_values['alg'] or {
+		return error('JWT header is missing required algorithm ("alg")')
+	}
+	if algorithm_value !is string {
+		return error('JWT header algorithm ("alg") must be a string')
+	}
+	if 'crit' in header_values || 'b64' in header_values {
+		return error('unsupported JWT critical or unencoded-payload header extension')
+	}
+	header := json2.decode[Header](header_json, strict: true) or {
 		return error('invalid jwt header: ${err.msg()}')
 	}
-	payload_bytes := base64.url_decode(parts[1])
+	payload_bytes := decode_segment(parts[1])!
 	return header, payload_bytes.bytestr()
 }
 
@@ -314,10 +339,10 @@ pub fn decode[T](token string) !Token[T] {
 		return error('invalid token format: expected 3 dot-separated parts')
 	}
 	header, payload_json := decode_raw(token)!
-	claims := json2.decode[T](payload_json) or {
+	claims := json2.decode[T](payload_json, strict: true) or {
 		return error('failed to decode claims into requested type: ${err.msg()}')
 	}
-	sig := base64.url_decode(parts[2])
+	sig := decode_segment(parts[2])!
 	return Token[T]{
 		header:    header
 		claims:    claims
@@ -330,4 +355,63 @@ pub fn decode[T](token string) !Token[T] {
 pub fn decode_header(token string) !Header {
 	header, _ := decode_raw(token)!
 	return header
+}
+
+// decode_segment rejects padding, non-URL alphabet characters, and noncanonical unused bits.
+fn decode_segment(encoded string) ![]u8 {
+	if encoded.len == 0 || encoded.len % 4 == 1 {
+		return error('invalid JWT base64url segment')
+	}
+	for ch in encoded {
+		if !((ch >= `a` && ch <= `z`) || (ch >= `A` && ch <= `Z`)
+			|| (ch >= `0` && ch <= `9`) || ch == `-` || ch == `_`) {
+			return error('invalid JWT base64url character')
+		}
+	}
+	decoded := base64.url_decode(encoded)
+	if base64.url_encode(decoded) != encoded {
+		return error('noncanonical JWT base64url segment')
+	}
+	return decoded
+}
+
+// decode_object also rejects duplicate top-level members, including escaped spellings of a key.
+fn decode_object(source string, label string) !map[string]json2.Any {
+	value := json2.decode[map[string]json2.Any](source, strict: true) or {
+		return error('invalid JWT ${label}: ${err.msg()}')
+	}
+	mut keys := map[string]bool{}
+	mut depth := 0
+	mut i := 0
+	for i < source.len {
+		if source[i] in [`{`, `[`] {
+			depth++
+		} else if source[i] in [`}`, `]`] {
+			depth--
+		} else if source[i] == `"` {
+			start := i
+			i++
+			for i < source.len && source[i] != `"` {
+				if source[i] == `\\` {
+					i++
+				}
+				i++
+			}
+			i++
+			end := i
+			for i < source.len && source[i] in [` `, `\t`, `\r`, `\n`] {
+				i++
+			}
+			if depth == 1 && i < source.len && source[i] == `:` {
+				key := json2.decode[string](source[start..end], strict: true)!
+				if key in keys {
+					return error('duplicate JWT ${label} member: ${key}')
+				}
+				keys[key] = true
+			}
+			continue
+		}
+		i++
+	}
+	return value
 }
