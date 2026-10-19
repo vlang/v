@@ -179,6 +179,9 @@ fn (g &Parser) render_map_expression(tokens []FastcExpressionToken) ?FastcRender
 			}
 		}
 	}
+	if update := g.render_map_index_compound_assignment(tokens) {
+		return update
+	}
 	mut depth := 0
 	mut assignment_index := -1
 	for i, item in tokens {
@@ -276,29 +279,17 @@ fn (g &Parser) render_map_expression(tokens []FastcExpressionToken) ?FastcRender
 	return none
 }
 
-// render_map_value_field_assignment lowers `m[k].field = value` (a struct field of a map
-// value). A map value is not a C lvalue, so a mutable pointer to the entry is taken (inserting
-// a zero default when absent) and the field assigned through it.
-fn (g &Parser) render_map_value_field_assignment(tokens []FastcExpressionToken) ?FastcRenderedExpression {
-	mut depth := 0
-	mut assign_idx := -1
-	for i, item in tokens {
-		match item.tok {
-			.lpar, .lsbr, .lcbr { depth++ }
-			.rpar, .rsbr, .rcbr { depth-- }
-			.assign {
-				if depth == 0 {
-					assign_idx = i
-					break
-				}
-			}
-			else {}
-		}
-	}
-	if assign_idx <= 0 || assign_idx + 1 >= tokens.len {
-		return none
-	}
-	lhs := tokens[..assign_idx]
+// FastcMapValueField is a struct field of a map value (`m[k].a.b`), reached through a
+// mutable pointer to the map entry.
+struct FastcMapValueField {
+	entry      FastcRenderedExpression // pointer to the entry; inserts a zero default when absent
+	access     string                  // `->a.b`, applied to the entry pointer
+	field_type u32
+}
+
+// map_value_field_target splits `m[k].a.b` into a mutable pointer to the map entry and the
+// field access through it.
+fn (g &Parser) map_value_field_target(lhs []FastcExpressionToken) ?FastcMapValueField {
 	if lhs.len < 5 || lhs.last().tok != .name {
 		return none
 	}
@@ -331,8 +322,7 @@ fn (g &Parser) render_map_value_field_assignment(tokens []FastcExpressionToken) 
 		}
 	}
 	ptr := g.render_mutable_map_value_pointer(map_index_tokens) or { return none }
-	value_type := ptr.typ_text()
-	mut current_type := value_type
+	mut current_type := ptr.typ_text()
 	mut field_access := ''
 	for i := 0; i < field_tokens.len; i += 2 {
 		field := g.struct_field_metadata(flat.source_type_id(current_type), field_tokens[i + 1].lit) or { return none }
@@ -340,11 +330,77 @@ fn (g &Parser) render_map_value_field_assignment(tokens []FastcExpressionToken) 
 		field_access += separator + fastc_c_identifier(field.name)
 		current_type = field.typ_text()
 	}
-	value_source := g.render_call_argument_expression(tokens[assign_idx + 1..], flat.source_type_id(current_type)) or {
+	return FastcMapValueField{
+		entry:      ptr
+		access:     field_access
+		field_type: flat.source_type_id(current_type)
+	}
+}
+
+// render_map_value_field_wrapping lowers the target of `m[k].field = <value>` or
+// `m[k].field op= <value>` (a struct field of a map value) into a wrapper split around the
+// value, like render_map_index_assignment_wrapping. A map value is not a C lvalue, so a
+// mutable pointer to the entry is taken (inserting a zero default when absent) and the field
+// assigned through it.
+fn (g &Parser) render_map_value_field_wrapping(left_tokens []FastcExpressionToken, operator token.Token) ?FastcMapAssignmentWrap {
+	if !operator.is_assignment() || operator == .decl_assign {
+		return none
+	}
+	target := g.map_value_field_target(left_tokens) or { return none }
+	entry := '({ ${target.entry.typ_text()} *__vf_map_field_ptr = (${target.entry.source}); '
+	field := '__vf_map_field_ptr${target.access}'
+	if operator == .assign {
+		return FastcMapAssignmentWrap{
+			prefix:     '${entry}${field} = ('
+			suffix:     '); (void)0; })'
+			value_type: target.field_type
+		}
+	}
+	if fastc_is_pointer_type(g.underlying_alias_type(target.field_type)) {
+		// Pointer arithmetic takes an integer operand, not a value of the field's type.
+		return none
+	}
+	update := g.render_assignment_operator_source(field, '__vf_compound_rhs', target.field_type,
+		operator) or { return none }
+	return FastcMapAssignmentWrap{
+		prefix:     '${entry}${g.collection_storage_type(target.field_type)} __vf_compound_rhs = ('
+		suffix:     '); ${update}; (void)0; })'
+		value_type: target.field_type
+	}
+}
+
+// render_map_value_field_assignment lowers a whole `m[k].field = value` or
+// `m[k].field op= value` expression through render_map_value_field_wrapping.
+fn (g &Parser) render_map_value_field_assignment(tokens []FastcExpressionToken) ?FastcRenderedExpression {
+	mut depth := 0
+	mut assign_idx := -1
+	for i, item in tokens {
+		match item.tok {
+			.lpar, .lsbr, .lcbr {
+				depth++
+			}
+			.rpar, .rsbr, .rcbr {
+				depth--
+			}
+			else {
+				if depth == 0 && item.tok.is_assignment() {
+					assign_idx = i
+					break
+				}
+			}
+		}
+	}
+	if assign_idx <= 0 || assign_idx + 1 >= tokens.len {
+		return none
+	}
+	wrap := g.render_map_value_field_wrapping(tokens[..assign_idx], tokens[assign_idx].tok) or {
+		return none
+	}
+	value_source := g.render_call_argument_expression(tokens[assign_idx + 1..], wrap.value_type) or {
 		return none
 	}
 	return FastcRenderedExpression{
-		source: '({ ${value_type} *__vf_map_field_ptr = (${ptr.source}); __vf_map_field_ptr${field_access} = (${value_source}); (void)0; })'
+		source: '${wrap.prefix}${value_source}${wrap.suffix}'
 		typ:    flat.source_type_void
 	}
 }
@@ -357,49 +413,9 @@ fn (g &Parser) render_map_value_field_inc_dec(tokens []FastcExpressionToken) ?Fa
 		return none
 	}
 	op := if tokens.last().tok == .inc { '++' } else { '--' }
-	lhs := tokens[..tokens.len - 1]
-	if lhs.last().tok != .name {
-		return none
-	}
-	mut close := -1
-	mut bracket_depth := 0
-	for i, item in lhs {
-		match item.tok {
-			.lsbr { bracket_depth++ }
-			.rsbr {
-				bracket_depth--
-				if bracket_depth == 0 {
-					close = i
-				}
-			}
-			else {}
-		}
-	}
-	if close <= 0 || close + 1 >= lhs.len || lhs[close + 1].tok != .dot {
-		return none
-	}
-	map_index_tokens := lhs[..close + 1]
-	field_tokens := lhs[close + 1..]
-	if field_tokens.len < 2 || field_tokens.len % 2 != 0 {
-		return none
-	}
-	for i := 0; i < field_tokens.len; i += 2 {
-		if field_tokens[i].tok != .dot || field_tokens[i + 1].tok != .name {
-			return none
-		}
-	}
-	ptr := g.render_mutable_map_value_pointer(map_index_tokens) or { return none }
-	value_type := ptr.typ_text()
-	mut current_type := value_type
-	mut field_access := ''
-	for i := 0; i < field_tokens.len; i += 2 {
-		field := g.struct_field_metadata(flat.source_type_id(current_type), field_tokens[i + 1].lit) or { return none }
-		separator := if i == 0 { '->' } else { '.' }
-		field_access += separator + fastc_c_identifier(field.name)
-		current_type = field.typ_text()
-	}
+	target := g.map_value_field_target(tokens[..tokens.len - 1]) or { return none }
 	return FastcRenderedExpression{
-		source: '({ ${value_type} *__vf_map_field_ptr = (${ptr.source}); __vf_map_field_ptr${field_access}${op}; (void)0; })'
+		source: '({ ${target.entry.typ_text()} *__vf_map_field_ptr = (${target.entry.source}); __vf_map_field_ptr${target.access}${op}; (void)0; })'
 		typ:    flat.source_type_void
 	}
 }
@@ -509,8 +525,16 @@ fn (g &Parser) render_embedded_map_reads(tokens []FastcExpressionToken) ?FastcRe
 // `builtin__map_set` wrapper split around the value, so an assignment whose RHS cannot be a
 // plain C lvalue operand (notably `m[k] = rhs or { … }`, where the RHS is a statement
 // expression) still stores through the map runtime. The caller splices the rendered value
-// between `.prefix` and `.suffix`.
-fn (g &Parser) render_map_index_assignment_wrapping(left_tokens []FastcExpressionToken) ?FastcMapAssignmentWrap {
+// between `.prefix` and `.suffix`. A compound operator (`m[k] += <value>`) is lowered by
+// render_map_index_compound_wrapping, and a field of a map value (`m[k].f = <value>`) by
+// render_map_value_field_wrapping.
+fn (g &Parser) render_map_index_assignment_wrapping(left_tokens []FastcExpressionToken, operator token.Token) ?FastcMapAssignmentWrap {
+	if left_tokens.len > 0 && left_tokens.last().tok == .name {
+		return g.render_map_value_field_wrapping(left_tokens, operator)
+	}
+	if operator != .assign {
+		return g.render_map_index_compound_wrapping(left_tokens, operator)
+	}
 	if left_tokens.len < 4 || left_tokens.last().tok != .rsbr {
 		return none
 	}
@@ -560,6 +584,121 @@ fn (g &Parser) render_map_index_assignment_wrapping(left_tokens []FastcExpressio
 		prefix:     '({ ${flat.source_type_name(key_type)} __vf_k = (${key_source}); ${flat.source_type_name(value_type)} __vf_mv = ('
 		suffix:     '); builtin__map_set((map *)${map_address}, &__vf_k, &__vf_mv); __vf_mv; })'
 		value_type: value_type
+	}
+}
+
+// render_map_index_compound_wrapping lowers the target of `m[k] op= <value>` on a map entry
+// into a wrapper split around the value, like render_map_index_assignment_wrapping. A map
+// read is not a C lvalue, so, as in cgen, the key is evaluated once, the entry is read (the
+// value type's zero when the key is absent), the value is evaluated, the operator is applied
+// to the copy, and the result is stored back with `builtin__map_set`. When the map is itself
+// an entry of another map (`m[a][b] += v`), the value is evaluated before the entry that
+// holds the inner map is looked up, because the value may insert into the outer map and move
+// that entry.
+fn (g &Parser) render_map_index_compound_wrapping(left_tokens []FastcExpressionToken, operator token.Token) ?FastcMapAssignmentWrap {
+	if !operator.is_assignment() || operator in [.assign, .decl_assign] || left_tokens.len < 4
+		|| left_tokens.last().tok != .rsbr {
+		return none
+	}
+	close := left_tokens.len - 1
+	mut open := -1
+	mut bracket_depth := 0
+	for i := close; i >= 0; i-- {
+		if left_tokens[i].tok == .rsbr {
+			bracket_depth++
+		} else if left_tokens[i].tok == .lsbr {
+			bracket_depth--
+			if bracket_depth == 0 {
+				open = i
+				break
+			}
+		}
+	}
+	if open <= 0 || open + 1 == close {
+		return none
+	}
+	base_tokens := left_tokens[..open]
+	map_type := g.infer_expression_type(base_tokens) or { return none }
+	key_type, value_type := g.map_key_value_types(map_type) or { return none }
+	if fastc_is_pointer_type(g.underlying_alias_type(value_type)) {
+		// Pointer arithmetic takes an integer operand, not a value of the entry's type.
+		return none
+	}
+	key_source := g.render_call_argument_expression(left_tokens[open + 1..close], key_type) or {
+		return none
+	}
+	mut map_address := ''
+	mut nested := false
+	if nested_map := g.render_mutable_map_value_pointer(base_tokens) {
+		if nested_map.typ_text() != flat.source_type_name(map_type).trim_right('*') {
+			return none
+		}
+		map_address = nested_map.source
+		nested = true
+	} else {
+		map_source := g.render_member_receiver(base_tokens) or {
+			g.render_raw_expression_tokens(base_tokens) or { return none }
+		}
+		map_address = if flat.source_type_name(map_type).ends_with('*') {
+			map_source
+		} else {
+			'&(${map_source})'
+		}
+	}
+	update := g.render_assignment_operator_source('__vf_compound_value', '__vf_compound_rhs',
+		value_type, operator) or { return none }
+	value_storage_type := g.collection_storage_type(value_type)
+	missing_value := g.map_lookup_missing_value_expression(value_type)
+	key_declaration := '${g.collection_runtime_type(key_type)} __vf_compound_key = (${key_source}); '
+	entry_read := 'map *__vf_compound_map = (map *)(${map_address}); ${value_storage_type} *__vf_compound_entry = (${value_storage_type} *)builtin__map_get_check(__vf_compound_map, &__vf_compound_key); ${value_storage_type} __vf_compound_value = __vf_compound_entry == NULL ? ${missing_value} : *__vf_compound_entry; '
+	value_open := '${value_storage_type} __vf_compound_rhs = ('
+	store := '${update}; builtin__map_set(__vf_compound_map, &__vf_compound_key, &__vf_compound_value); (void)0; })'
+	if nested {
+		return FastcMapAssignmentWrap{
+			prefix:     '({ ${key_declaration}${value_open}'
+			suffix:     '); ${entry_read}${store}'
+			value_type: value_type
+		}
+	}
+	return FastcMapAssignmentWrap{
+		prefix:     '({ ${key_declaration}${entry_read}${value_open}'
+		suffix:     '); ${store}'
+		value_type: value_type
+	}
+}
+
+// render_map_index_compound_assignment lowers a whole `m[k] op= value` expression through
+// render_map_index_compound_wrapping.
+fn (g &Parser) render_map_index_compound_assignment(tokens []FastcExpressionToken) ?FastcRenderedExpression {
+	mut depth := 0
+	mut assignment_index := -1
+	for i, item in tokens {
+		match item.tok {
+			.lpar, .lsbr, .lcbr {
+				depth++
+			}
+			.rpar, .rsbr, .rcbr {
+				depth--
+			}
+			else {
+				if depth == 0 && item.tok.is_assignment() {
+					assignment_index = i
+					break
+				}
+			}
+		}
+	}
+	if assignment_index <= 0 || assignment_index + 1 >= tokens.len {
+		return none
+	}
+	wrap := g.render_map_index_compound_wrapping(tokens[..assignment_index], tokens[assignment_index].tok) or {
+		return none
+	}
+	value_source := g.render_call_argument_expression(tokens[assignment_index + 1..],
+		wrap.value_type) or { return none }
+	return FastcRenderedExpression{
+		source: '${wrap.prefix}${value_source}${wrap.suffix}'
+		typ:    flat.source_type_void
 	}
 }
 
@@ -1173,7 +1312,20 @@ fn (g &Parser) render_assignment_expression(tokens []FastcExpressionToken) ?Fast
 			typ:    left_type
 		}
 	}
-	source := if operator == .plus_assign && g.underlying_alias_type(left_type) == flat.source_type_string {
+	source := g.render_assignment_operator_source(left, right, left_type, operator) or {
+		return none
+	}
+	return FastcRenderedExpression{
+		source: source
+		typ:    left_type
+	}
+}
+
+// render_assignment_operator_source spells `left op right` for the C lvalue `left` of type
+// `left_type`. String concatenation, operator overloads, checked division and the guarded
+// shifts are calls rather than the C operator.
+fn (g &Parser) render_assignment_operator_source(left string, right string, left_type u32, operator token.Token) ?string {
+	return if operator == .plus_assign && g.underlying_alias_type(left_type) == flat.source_type_string {
 		'${left}=builtin__string_plus(${left},${right})'
 	} else if overloaded := g.render_overloaded_assignment(left, right, left_type, operator) {
 		overloaded
@@ -1185,10 +1337,6 @@ fn (g &Parser) render_assignment_expression(tokens []FastcExpressionToken) ?Fast
 		g.render_guarded_shift_assignment(left, right, left_type, operator) or { return none }
 	} else {
 		'${left}${operator.str()}${right}'
-	}
-	return FastcRenderedExpression{
-		source: source
-		typ:    left_type
 	}
 }
 
