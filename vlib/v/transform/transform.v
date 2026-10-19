@@ -1767,6 +1767,15 @@ fn reserve_parallel_transform_ast_with_cache_mode(mut a flat.FlatAst, skip_gener
 		a.nodes = grown_nodes
 		a.file_node_ids = []i32{}
 		a.children = grown_children
+		// The prealloc arena would keep the copied tree resident until exit
+		// (~150 MB for the compiler itself). Every reader goes through the
+		// FlatAst, and the transform workers fork after this reserve.
+		$if prealloc {
+			unsafe {
+				old_nodes.free()
+				old_children.free()
+			}
+		}
 		return
 	}
 	if grow_nodes {
@@ -1774,11 +1783,17 @@ fn reserve_parallel_transform_ast_with_cache_mode(mut a flat.FlatAst, skip_gener
 		a.nodes = []flat.Node{cap: nodes_cap}
 		a.file_node_ids = []i32{}
 		a.nodes << old_nodes
+		$if prealloc {
+			unsafe { old_nodes.free() }
+		}
 	}
 	if grow_children {
 		old_children := a.children
 		a.children = []flat.NodeId{cap: children_cap}
 		a.children << old_children
+		$if prealloc {
+			unsafe { old_children.free() }
+		}
 	}
 }
 
