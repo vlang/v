@@ -81,8 +81,13 @@ probe_exe="$probe_dir/probe"
 probe_log="$probe_dir/probe.log"
 search_dirs_log="$probe_dir/search-dirs.log"
 
+# Include Boehm's header the way V's own C does with TinyCC on Linux (see
+# vlib/builtin/gc_boehm_helpers.c). The compatibility <gc.h> also defines a weak
+# GC_noop1_ptr, which TinyCC does not keep weak after the plain prototype in
+# <gc/gc.h>: since TinyCC e23dabed, linking it against a libgc.a that defines the
+# function fails with "link symbol 'GC_noop1_ptr' defined twice".
 cat > "$probe_source" <<'EOF'
-#include <gc.h>
+#include <gc/gc.h>
 #include <stdio.h>
 #include <string.h>
 

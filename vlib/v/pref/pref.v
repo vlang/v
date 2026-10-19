@@ -187,7 +187,13 @@ pub fn host_target() Target {
 
 // default_thread_stack_size returns the target-specific spawned-thread stack size.
 pub fn (target Target) default_thread_stack_size() int {
-	return if target.pointer_bits == 32 { 2 * 1024 * 1024 } else { 8 * 1024 * 1024 }
+	return default_thread_stack_size_for_bits(target.pointer_bits)
+}
+
+// default_thread_stack_size_for_bits returns the spawned-thread stack size for a
+// target with `pointer_bits`-bit pointers.
+pub fn default_thread_stack_size_for_bits(pointer_bits int) int {
+	return if pointer_bits == 32 { 2 * 1024 * 1024 } else { 8 * 1024 * 1024 }
 }
 
 // target_from validates and canonicalizes an OS/architecture pair.

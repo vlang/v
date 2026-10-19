@@ -240,10 +240,16 @@ fn test_self_c_has_no_include_directives() {
 			assert code.split_into_lines().any(it.starts_with('DIR* fdopendir(')), 'the CLI needs the pointer-returning POSIX fdopendir binding'
 			assert code.split_into_lines().any(it.starts_with('DIR* opendir(')), 'the CLI needs the pointer-returning POSIX opendir binding'
 		}
+		mut headerless := code
 		if '-cross' in mode || 'cross' in mode {
-			assert code.contains('#define CUSTOM_DEFINE_v3_headerless_bootstrap'), mode.join(' ')
+			// Portable snapshots also carry a header-based variant for 32-bit hosts.
+			headerless = libc_variant_source(code, true)
+			headers := libc_variant_source(code, false)
+			assert headerless.contains('#define CUSTOM_DEFINE_v3_headerless_bootstrap'), mode.join(' ')
+			assert !headers.contains('#define CUSTOM_DEFINE_v3_headerless_bootstrap'), mode.join(' ')
+			assert headers.contains('\n#include <stdint.h>\n'), mode.join(' ')
 		}
-		for line in code.split_into_lines() {
+		for line in headerless.split_into_lines() {
 			// Compiler string literals still contain text used to generate other C files.
 			assert !line.trim_space().starts_with('#include'), line
 		}
@@ -251,7 +257,10 @@ fn test_self_c_has_no_include_directives() {
 }
 
 // vc/v.c is generated on Linux (gen_vc_ci.yml), and every non-Windows `make` compiles
-// it. It includes no headers, so clang can check it for each target without a sysroot.
+// it. On 64-bit targets it includes no headers, so clang can check it for each target
+// without a sysroot. 32-bit targets use its header-based variant, which needs the
+// target's headers; forcing V's own declarations there still checks that every use
+// of `int` agrees with the 32-bit `__v_int`.
 fn test_linux_generated_self_c_compiles_for_bootstrap_targets() {
 	$if !(macos || linux) || freestanding {
 		return
@@ -269,6 +278,13 @@ fn test_linux_generated_self_c_compiles_for_bootstrap_targets() {
 		'x86_64-unknown-openbsd7', 'x86_64-unknown-netbsd10', 'x86_64-unknown-dragonfly6'] {
 		checked := os.exec([clang, '-target', target, '-std=c99', '-fsyntax-only', '-Wno-everything',
 			'-Werror=implicit-function-declaration', '-DCUSTOM_DEFINE_v1_fallback', c_file])
+		assert checked.exit_code == 0, '${target}: ${checked.output}'
+	}
+	for target in ['armv7-unknown-linux-gnueabihf', 'i686-unknown-linux-gnu', 'x86_64-unknown-linux-gnu'] {
+		checked := os.exec([clang, '-target', target, '-std=c99', '-fsyntax-only', '-Wno-everything',
+			'-Werror=implicit-function-declaration', '-Werror=incompatible-pointer-types',
+			'-Wno-error=incompatible-pointer-types-discards-qualifiers', '-Werror=int-conversion',
+			'-D${headerless_libc_macro}=1', '-DCUSTOM_DEFINE_v1_fallback', c_file])
 		assert checked.exit_code == 0, '${target}: ${checked.output}'
 	}
 }

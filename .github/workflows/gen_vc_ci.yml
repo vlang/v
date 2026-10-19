@@ -87,6 +87,11 @@ jobs:
             exit 1
           fi
 
+          # vc/v.c also bootstraps 32-bit hosts: `int` is a typedef that the C compiler's target
+          # sizes, and the system-header libc variant for 32-bit targets is merged in.
+          grep -q '^typedef i32 __v_int;$' vc/v.c
+          grep -q '^#define __V_HEADERLESS_LIBC 0$' vc/v.c
+
           # ensure the generated C files for the compiler, are over 5000 lines long, as a safety measure
           [ "$(wc -l < vc/v.c)" -gt 5000 ]
           [ "$(wc -l < vc/v_win.c)" -gt 5000 ]

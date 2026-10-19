@@ -10350,7 +10350,10 @@ V runs on:
 
 * A `$if` used as an *expression*. Its branches may have different types - for
   example `closure_thunk` in `vlib/builtin/closure` is a differently sized fixed
-  array per architecture - which no guard around an expression can express.
+  array per architecture - which no guard around an expression can express. Where
+  such a value has to follow the target, select it with statement-level `$if`s
+  in a function used under `$if cross ?`, as `vlib/builtin` does for `min_int`,
+  `max_int` and the closure thunks.
 * A `$if` at file scope holding *declarations*. A function, type, constant or
   global cannot be wrapped in `#if` by the backend, so only the host's branch is
   emitted. Directives (`#include`, `#flag`) written at file scope *are* kept
@@ -10359,10 +10362,21 @@ V runs on:
   `x_linux.c.v` and `x_darwin.c.v` contributes only the generating host's
   variant, so generate the portable C on the platform whose variants are the
   portable ones.
-* The pointer width. V's `int`, the type layouts and the literal ranges are
-  baked for the generating target, so the output carries a check that fails the
-  build with a clear `#error` when it is compiled for a different width. The
-  output stays portable across targets of the same width.
+* The literal ranges. They are checked for the generating target, so an `int`
+  literal that only fits 64 bits is accepted, and truncated when the output is
+  compiled for a 32-bit target. Use `i64` for such values.
+
+The pointer width itself is left to the C compiler. V's `int` is spelled
+`__v_int`, a typedef of `i64` or `i32` that the output defines from the
+compiler's target, and the map callbacks for `int` and pointer keys and the
+default thread stack size follow that width as well.
+
+The compiler's own snapshot (`v -cross cmd/v`, which `vc/v.c` is) writes the libc
+declarations it needs itself, with the layouts of 64-bit targets. On 32-bit
+targets the C libraries disagree on those layouts (glibc and musl differ in
+`time_t`, `off_t` and `struct stat`), so the snapshot also carries a variant that
+includes the system headers. The C compiler picks it on 32-bit targets; compile
+with `-D__V_HEADERLESS_LIBC=0` to use it on a 64-bit one too.
 
 ## Compiling for iOS
 

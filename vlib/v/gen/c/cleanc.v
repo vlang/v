@@ -16,6 +16,8 @@ import v.util.cache_refresh
 
 // Reuse the immutable boxed void payload in default and negative query paths.
 const cgen_void_type = types.Type(types.void_)
+// portable_uint_c_type is the unsigned counterpart of `types.portable_int_c_type`.
+const portable_uint_c_type = '__v_uint'
 
 const spread_index_expected_type_marker = '__v3_spread_index_expected_type'
 const bound_method_array_index_marker = '__v3_bound_method_array_index'
@@ -1955,7 +1957,19 @@ pub fn (mut g FlatGen) set_compiler_vexe_env_setup(enabled bool) {
 // set_target sets the canonical code-generation target.
 pub fn (mut g FlatGen) set_target(target pref.Target) {
 	g.target = target
-	g.int_ct = if target.pointer_bits == 32 { 'i32' } else { 'i64' }
+	g.int_ct = if types.platform_int_c_spelling() == types.portable_int_c_type {
+		types.portable_int_c_type
+	} else if target.pointer_bits == 32 {
+		'i32'
+	} else {
+		'i64'
+	}
+}
+
+// portable_int reports whether V's `int` is spelled with the typedef that portable
+// C (`-os cross`) defines from the width of the C compiler's target.
+fn (g &FlatGen) portable_int() bool {
+	return g.int_ct == types.portable_int_c_type
 }
 
 // set_output_cross_c requests portable C that defers every target-dependent `$if`
@@ -16929,7 +16943,8 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 				expected_ct := g.value_c_type(g.expected_expr_type)
 				if byte_value := c_char_literal_byte_value(cv) {
 					if g.expected_expr_type !is types.Pointer && expected_ct in ['u8', 'i8', 'char',
-						'u16', 'i16', 'u32', 'i32', 'int', 'u64', 'i64', 'rune', 'usize', 'isize'] {
+						'u16', 'i16', 'u32', 'i32', 'int', 'u64', 'i64', 'rune', 'usize', 'isize',
+						types.portable_int_c_type] {
 						if byte_value > 0x7f {
 							g.write('((u8)*"${cv}")')
 						} else {
@@ -19967,6 +19982,7 @@ fn (mut g FlatGen) preamble() {
 		g.writeln('typedef unsigned int u32;')
 		g.writeln('typedef unsigned long long u64;')
 	}
+	g.portable_int_typedefs()
 	g.writeln('static inline i64 __v_pow_i64(i64 base, i64 exponent) { if (exponent < 0) { if (base == 0) return -1; if (base != 1 && base != -1) return 0; return (exponent & 1) != 0 ? base : 1; } i64 value = 1; i64 power = base; for (; exponent > 0; exponent >>= 1) { if ((exponent & 1) != 0) value *= power; power *= power; } return value; }')
 	g.writeln('static inline u64 __v_pow_u64(u64 base, i64 exponent) { if (exponent < 0) { if (base == 0) return (u64)-1; return base == 1 ? 1 : 0; } u64 value = 1; u64 power = base; for (; exponent > 0; exponent >>= 1) { if ((exponent & 1) != 0) value *= power; power *= power; } return value; }')
 	g.writeln('static inline u64 _v_f64_to_u64(double x) { if (!(x >= 0.0)) return 0; if (x >= 18446744073709551616.0) return (u64)-1; return (u64)x; }')
@@ -20592,8 +20608,74 @@ fn (mut g FlatGen) thread_signal_stack_runtime() {
 }
 
 fn (mut g FlatGen) thread_stack_size_definition() {
+	if g.portable_int() {
+		g.portable_int_width_definition()
+	}
 	g.writeln('#ifndef V_THREAD_STACK_SIZE')
-	g.writeln('#define V_THREAD_STACK_SIZE ${g.thread_stack_size}')
+	if g.portable_int() && g.thread_stack_size == g.target.default_thread_stack_size() {
+		// The default follows the pointer width, which portable C leaves to the
+		// C compiler's target.
+		g.writeln('#if __V_INT_BITS == 64')
+		g.writeln('#define V_THREAD_STACK_SIZE ${pref.default_thread_stack_size_for_bits(64)}')
+		g.writeln('#else')
+		g.writeln('#define V_THREAD_STACK_SIZE ${pref.default_thread_stack_size_for_bits(32)}')
+		g.writeln('#endif')
+	} else {
+		g.writeln('#define V_THREAD_STACK_SIZE ${g.thread_stack_size}')
+	}
+	g.writeln('#endif')
+}
+
+// portable_int_width_definition defines `__V_INT_BITS`, the width of V's `int` and
+// of a pointer, from the C compiler's own target. Portable C (`-os cross`) defines
+// `__v_int` and the width-dependent runtime values from it. It is written before
+// any header is loaded, so it uses only what compilers predefine: GCC, Clang and
+// TinyCC define `__SIZEOF_POINTER__`, and MSVC defines `_WIN64` for 64-bit targets.
+fn (mut g FlatGen) portable_int_width_definition() {
+	g.writeln('#ifndef __V_INT_BITS')
+	g.writeln('#if defined(__SIZEOF_POINTER__)')
+	g.writeln('#if __SIZEOF_POINTER__ == 8')
+	g.writeln('#define __V_INT_BITS 64')
+	g.writeln('#else')
+	g.writeln('#define __V_INT_BITS 32')
+	g.writeln('#endif')
+	g.writeln('#elif defined(_WIN64) || defined(__LP64__) || defined(_LP64)')
+	g.writeln('#define __V_INT_BITS 64')
+	g.writeln('#else')
+	g.writeln('#define __V_INT_BITS 32')
+	g.writeln('#endif')
+	g.writeln('#endif')
+}
+
+// portable_int_typedefs defines `__v_int`, V's `int` in portable C, and its
+// unsigned counterpart from `__V_INT_BITS`, and points the helpers named with
+// `pointer_width_suffix` at the ones of that width. The typedefs have to follow
+// the fixed-width ones.
+fn (mut g FlatGen) portable_int_typedefs() {
+	if !g.portable_int() {
+		return
+	}
+	g.writeln('#if __V_INT_BITS == 64')
+	g.writeln('typedef i64 ${types.portable_int_c_type};')
+	g.writeln('typedef u64 ${portable_uint_c_type};')
+	g.writeln('#else')
+	g.writeln('typedef i32 ${types.portable_int_c_type};')
+	g.writeln('typedef u32 ${portable_uint_c_type};')
+	g.writeln('#endif')
+	g.writeln('#if __V_INT_BITS == 64')
+	for callback in ['hash', 'eq', 'clone'] {
+		g.writeln('#define map_${callback}_int_${pointer_width_suffix} map_${callback}_int_8')
+	}
+	for op in ['add', 'sub'] {
+		g.writeln('#define atomic_fetch_${op}_${pointer_width_suffix} atomic_fetch_${op}_u64')
+	}
+	g.writeln('#else')
+	for callback in ['hash', 'eq', 'clone'] {
+		g.writeln('#define map_${callback}_int_${pointer_width_suffix} map_${callback}_int_4')
+	}
+	for op in ['add', 'sub'] {
+		g.writeln('#define atomic_fetch_${op}_${pointer_width_suffix} atomic_fetch_${op}_u32')
+	}
 	g.writeln('#endif')
 }
 
@@ -20601,6 +20683,14 @@ fn (mut g FlatGen) thread_stack_size_definition() {
 // the target under ordinary identifier names. TinyCC defines `arm` and `arm_elf`
 // on 32-bit ARM, so a V local named `arm` became `bool 1 = ...` in the C output.
 fn (mut g FlatGen) undef_target_identifier_macros() {
+	if g.output_cross_c {
+		// Portable C is compiled for whichever target the C compiler has.
+		g.writeln('#if defined(__arm__)')
+		g.writeln('#undef arm')
+		g.writeln('#undef arm_elf')
+		g.writeln('#endif')
+		return
+	}
 	if g.target.arch != 'arm32' {
 		return
 	}
@@ -22972,11 +23062,12 @@ fn (mut g FlatGen) write_arch_macros() {
 	g.writeln('#else')
 	g.writeln('#define TARGET_ORDER_IS_LITTLE 1')
 	g.writeln('#endif')
-	if g.output_cross_c {
+	if g.output_cross_c && !g.portable_int() {
 		// Portable output still carries one pointer width. V's `int` spelling, the
 		// type layouts and the literal ranges were all decided while generating, so
 		// a consumer of a different width would silently disagree with the `$if
 		// x64`/`$if x32` branches the preprocessor picks. Refuse that build instead.
+		// With the portable `int` typedef, the C compiler's target decides the width.
 		expected := if g.target.pointer_bits == 32 { 'TARGET_IS_32BIT' } else { 'TARGET_IS_64BIT' }
 		g.writeln('#if !defined(${expected})')
 		g.writeln('#error "this C was generated by `v -os cross` for a ${g.target.pointer_bits}-bit target; regenerate it for this one"')
@@ -27398,6 +27489,7 @@ fn unsigned_shift_parts(ct string) (string, string) {
 		'i64', 'u64' { 'u64', '64' }
 		'i128', 'u128' { 'u128', '128' }
 		'isize', 'usize', 'ptrdiff_t', 'size_t' { 'size_t', '(sizeof(size_t) * 8)' }
+		types.portable_int_c_type { portable_uint_c_type, '__V_INT_BITS' }
 		else { 'u64', '64' }
 	}
 }
@@ -27478,6 +27570,8 @@ fn fixed_integer_c_type_width(c_type string) ?int {
 		'i16', 'u16' { 16 }
 		'int', 'i32', 'u32' { 32 }
 		'i64', 'u64' { 64 }
+		// The portable `int` is at least 32 bits wide on every target.
+		types.portable_int_c_type { 32 }
 		else { none }
 	}
 }
