@@ -13165,7 +13165,14 @@ fn map_str_fixed_len(typ types.Type) int {
 // cast such as `int(c)` must read the value through it.
 fn (mut g FlatGen) gen_cast_value_operand(id flat.NodeId, target_type types.Type) {
 	node := g.a.nodes[int(id)]
-	if node.kind == .ident && cgen_unalias_type(target_type) !is types.Pointer
+	clean_target := cgen_unalias_type(target_type)
+	// An explicit integer cast in `unsafe` keeps the address of the caller's value, as in
+	// V 0.5.2: freestanding code reads pointer bits with `unsafe { u64(value) }`.
+	if g.unsafe_depth > 0 && clean_target.is_integer() {
+		g.gen_expr(id)
+		return
+	}
+	if node.kind == .ident && clean_target !is types.Pointer
 		&& g.current_param_is_mut(node.value) {
 		if param_type := g.current_param_type(node.value) {
 			if param_type is types.Pointer
