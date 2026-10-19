@@ -62,12 +62,14 @@ fn test_v3_gc_is_disabled_for_cross_compilation() {
 	host := pref.host_target()
 	cross_os := if host.os == 'linux' { 'macos' } else { 'linux' }
 	cross_arch := if host.arch == 'amd64' { 'arm64' } else { 'amd64' }
-	assert !v3_gc_is_disabled(false, false, host.os, host.arch)
-	assert v3_gc_is_disabled(true, false, host.os, host.arch)
-	assert v3_gc_is_disabled(false, true, host.os, host.arch)
-	assert v3_gc_is_disabled(false, false, cross_os, host.arch)
-	assert v3_gc_is_disabled(false, false, host.os, cross_arch)
-	assert v3_gc_is_disabled(false, false, 'cross', host.arch)
+	assert !v3_gc_is_disabled(false, false, host.os, host.arch, 'c')
+	assert v3_gc_is_disabled(true, false, host.os, host.arch, 'c')
+	assert v3_gc_is_disabled(false, true, host.os, host.arch, 'c')
+	assert v3_gc_is_disabled(false, false, cross_os, host.arch, 'c')
+	assert v3_gc_is_disabled(false, false, host.os, cross_arch, 'c')
+	assert v3_gc_is_disabled(false, false, 'cross', host.arch, 'c')
+	// The native backend never has a collector, on any host and target.
+	assert v3_gc_is_disabled(false, false, host.os, host.arch, 'arm64')
 }
 
 fn test_v3_gc_mode_keeps_dynamic_boehm_define() {
@@ -89,4 +91,93 @@ fn test_v3_gc_mode_rejects_unknown_mode() {
 		return
 	}
 	assert false
+}
+
+fn test_v3_gc_without_thread_local_allocation_uses_source_collector() {
+	for define in ['no_gc_thread_local_alloc', 'no_gc_thread_local_alloc=true'] {
+		mut defines := []string{}
+		mut values := map[string]string{}
+		record_user_define(mut defines, mut values, define)
+		apply_v3_gc_mode('boehm', false, mut defines, mut values)!
+		assert 'use_bundled_libgc' in defines
+		assert values['use_bundled_libgc'] == 'true'
+	}
+}
+
+fn test_v3_gc_precise_flag_preserves_dynamic_and_disabled_collector_modes() {
+	for mode in ['none', 'boehm'] {
+		mut defines := ['no_gc_thread_local_alloc', 'dynamic_boehm']
+		mut values := map[string]string{}
+		apply_v3_gc_mode(mode, false, mut defines, mut values)!
+		assert 'use_bundled_libgc' !in defines
+	}
+	for disabled in [false, true] {
+		mut defines := ['no_gc_thread_local_alloc']
+		mut values := map[string]string{}
+		apply_v3_gc_mode(if disabled { 'boehm' } else { 'none' }, disabled, mut defines, mut values)!
+		assert 'use_bundled_libgc' !in defines
+	}
+}
+
+fn test_precise_gc_prefers_platform_cc_except_for_dynamic_boehm() {
+	assert v3_gc_prefers_platform_cc(['gcboehm', 'no_gc_thread_local_alloc'])
+	assert v3_gc_prefers_platform_cc(['gcboehm', 'no_gc_thread_local_alloc',
+		'no_gc_thread_local_alloc=true'])
+	assert !v3_gc_prefers_platform_cc([])
+	assert !v3_gc_prefers_platform_cc(['no_gc_thread_local_alloc'])
+	assert !v3_gc_prefers_platform_cc(['gcboehm', 'no_gc_thread_local_alloc', 'dynamic_boehm'])
+}
+
+fn test_precise_gc_respects_empty_define_values() {
+	for empty in ['no_gc_thread_local_alloc', 'dynamic_boehm'] {
+		mut defines := []string{}
+		mut values := map[string]string{}
+		if empty == 'dynamic_boehm' {
+			record_user_define(mut defines, mut values, 'no_gc_thread_local_alloc')
+		}
+		record_user_define(mut defines, mut values, '${empty}=')
+		apply_v3_gc_mode('boehm', false, mut defines, mut values)!
+		assert v3_gc_prefers_platform_cc(defines) == (empty == 'dynamic_boehm')
+		assert ('use_bundled_libgc' in defines) == (empty == 'dynamic_boehm')
+	}
+}
+
+fn test_precise_gc_keeps_explicit_c_compiler_selection() {
+	linux_target := pref.Target{
+		os:   'linux'
+		arch: 'amd64'
+	}
+	base := V3BundledTccProbeOptions{
+		backend:            'c'
+		c_compiler:         'cc'
+		host_os:            'linux'
+		host_target:        linux_target
+		target:             linux_target
+		prefer_platform_cc: true
+	}
+	assert !v3_should_probe_bundled_tcc(base)
+	assert v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
+		...base
+		c_compiler:          'tcc'
+		c_compiler_explicit: true
+	})
+	selection := v3_select_c_compiler(@VEXEROOT, base)
+	assert selection.implicit_tcc == ''
+	assert selection.c_compiler == 'cc'
+	windows_target := pref.Target{
+		os:   'windows'
+		arch: 'amd64'
+	}
+	windows_selection := v3_select_c_compiler(@VEXEROOT, V3BundledTccProbeOptions{
+		...base
+		host_os:     'windows'
+		host_target: windows_target
+		target:      windows_target
+	})
+	assert windows_selection.implicit_tcc == ''
+	// On Windows the platform compiler is resolved to an absolute path, so a child
+	// re-exec can find it (v3_platform_c_compiler_command). Without gcc on PATH the
+	// helper falls back to the bare name, which keeps the basename check valid.
+	assert windows_selection.c_compiler == v3_platform_c_compiler_command('windows')
+	assert os.file_name(windows_selection.c_compiler).starts_with('gcc')
 }

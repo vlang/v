@@ -67,15 +67,12 @@ fn main() {}
 }
 
 fn test_native_field_type_lookup_preserves_containers_through_pointer_receivers() {
-	b := Builder{
-		struct_field_types: {
-			'Checker.ids': 'map[string][]int'
-		}
-	}
+	mut b := Builder{}
+	b.struct_field_types.set('Checker.ids', 'map[string][]int')
 	for receiver in ['Checker', '&Checker', '&&Checker', 'types.Checker', '&types.Checker'] {
-		assert b.field_type_name(receiver, 'ids') == 'map[string][]int'
+		assert flat.source_type_name(b.field_type_name(flat.source_type_id(receiver), 'ids')) == 'map[string][]int'
 	}
-	assert b.field_type_name('&Checker', 'missing') == ''
+	assert b.field_type_name(flat.source_type_id('&Checker'), 'missing') == u32(0)
 }
 
 // test_bench_runtime_stubs_include_macos_rss_helper validates this v3 regression case.
@@ -194,7 +191,7 @@ fn test_runtime_helpers_remain_used_when_module_qualified() {
 
 // test_native_c_tm_uses_the_platform_abi_layout validates this v3 regression case.
 fn test_native_c_tm_uses_the_platform_abi_layout() {
-	assert native_c_struct_field_type('C.tm', 'tm_gmtoff') or { '' } == 'i64'
+	assert native_c_struct_field_type('C.tm', 'tm_gmtoff') or { u32(0) } == flat.source_type_i64
 	assert native_c_struct_field_type('C.tm', 'tm_sec') == none
 }
 
@@ -202,7 +199,7 @@ fn test_native_c_tm_uses_the_platform_abi_layout() {
 fn test_native_task_basic_info_uses_the_platform_abi_layout() {
 	abi := native_c_struct_abi('C.task_basic_info', 8) or { panic('missing task info ABI') }
 	assert abi.field_names[1] == 'resident_size'
-	assert abi.field_types == ['u64', 'u64', 'u64', 'i32', 'i32', 'i32', 'i32', 'i32', 'i32']
+	assert abi.field_types_text() == ['u64', 'u64', 'u64', 'i32', 'i32', 'i32', 'i32', 'i32', 'i32']
 	assert native_c_struct_abi('C.other', 8) == none
 }
 
@@ -210,8 +207,8 @@ fn test_native_task_basic_info_uses_the_platform_abi_layout() {
 fn test_native_rusage_uses_the_platform_abi_layout() {
 	abi := native_c_struct_abi('C.rusage', 8) or { panic('missing rusage ABI') }
 	assert abi.field_names[4] == 'ru_maxrss'
-	assert abi.field_types.len == 18
-	assert abi.field_types.all(it == 'i64')
+	assert abi.field_types_text().len == 18
+	assert abi.field_types_text().all(it == 'i64')
 	assert '_proc_pid_rusage' in arm64_force_external_syms
 }
 
@@ -226,7 +223,7 @@ fn test_native_darwin_pthread_types_use_the_platform_abi_layout() {
 	for name, field_type in expected {
 		abi := native_c_struct_abi(name, 8) or { panic('missing ${name} ABI') }
 		assert abi.field_names == ['opaque']
-		assert abi.field_types == [field_type]
+		assert abi.field_types_text() == [field_type]
 	}
 }
 
@@ -519,7 +516,7 @@ fn test_wasm32_indirect_call_numeric_parameter_types() {
 		callee_id := a.child(&node, 0)
 		if a.nodes[int(callee_id)].value == 'callback' {
 			// Transformed local callees recover their signature from the binding.
-			a.nodes[int(callee_id)].typ = ''
+			a.nodes[int(callee_id)].set_type_text('')
 			tc.expr_type_set[int(callee_id)] = false
 		}
 	}
@@ -766,11 +763,11 @@ fn test_enum_lookup_keeps_exact_keyword_members_before_fallback() {
 		}
 	}
 	for member in ['none', '@none', 'Keyword.none', 'Keyword.@none'] {
-		assert b.enum_value_for_type('Keyword', member) or { 0 } == -10
+		assert b.enum_value_for_type(flat.source_type_id('Keyword'), member) or { 0 } == -10
 	}
-	assert b.enum_value_for_type('Plain', '@struct') or { 0 } == 7
-	assert b.enum_value_for_type('Distinct', 'none') or { 0 } == 2
-	assert b.enum_value_for_type('Distinct', '@none') or { 0 } == 4
+	assert b.enum_value_for_type(flat.source_type_id('Plain'), '@struct') or { 0 } == 7
+	assert b.enum_value_for_type(flat.source_type_id('Distinct'), 'none') or { 0 } == 2
+	assert b.enum_value_for_type(flat.source_type_id('Distinct'), '@none') or { 0 } == 4
 }
 
 fn test_native_enum_registration_evaluates_escaped_initializer_references() {
@@ -792,7 +789,7 @@ fn test_native_enum_registration_evaluates_escaped_initializer_references() {
 		'plain_exact':   20
 		'escaped_exact': 26
 	} {
-		assert b.enum_value_for_type('models.Kind', field) or { -1 } == expected, field
+		assert b.enum_value_for_type(flat.source_type_id('models.Kind'), field) or { -1 } == expected, field
 	}
 }
 

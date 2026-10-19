@@ -155,7 +155,9 @@ fn main() {
 	println(read_value("generic"))
 }
 '
-	c_code := cross_generate_with('-no-retry-compilation -cross -cc ${generation_cc} -gc none',
+	// This fixture links C directly to test preserved generic method values.
+	// Ordinary V builds supply the native signal helper separately.
+	c_code := cross_generate_with('-no-retry-compilation -d no_segfault_handler -cross -cc ${generation_cc} -gc none',
 		'method_values', source)
 	dir := os.join_path(os.vtmp_dir(), 'v3_cross_method_values_${os.getpid()}')
 	os.mkdir_all(dir)!
@@ -272,6 +274,9 @@ fn test_cross_windows_output_orders_windows_header_before_bcrypt() {
 	assert windows_index < bcrypt_index, c_code.all_before('typedef signed char i8;')
 }
 
+// runtime_program prints a value, not a literal, so its C has the full V runtime.
+const runtime_program = "module main\n\nfn main() {\n\tmessage := 'ok'\n\tprintln(message)\n}\n"
+
 fn test_cross_output_leaves_the_atomic_helpers_to_the_windows_tcc_header() {
 	// The generated C may run through TCC even if it was generated for another
 	// compiler. V's WinAPI atomic header is
@@ -280,8 +285,10 @@ fn test_cross_output_leaves_the_atomic_helpers_to_the_windows_tcc_header() {
 	// definitions have to sit behind the negation of that same guard. Without it
 	// the macro expanded over the definition and tcc rejected `vc/v_win.c` with
 	// `redefinition of 'ManualInterlockedExchangeAdd8'`.
+	// A program that prints only literals gets minimal C without the V runtime,
+	// so the helpers are checked in a program that needs it.
 	for flags in ['-cross -os windows -cc msvc', '-os cross', '-os windows -cc gcc'] {
-		c_code := cross_generate_with(flags, 'atomics', "module main\n\nfn main() {\n\tprintln('ok')\n}\n")
+		c_code := cross_generate_with(flags, 'atomics', runtime_program)
 		guard := '#if !(defined(_WIN32) && (defined(__TINYC__) || (defined(_MSC_VER) && !defined(__clang__))))'
 		definition := 'static inline byte atomic_fetch_add_byte('
 		at := c_code.index(definition) or {
@@ -299,7 +306,7 @@ fn test_cross_output_leaves_the_atomic_helpers_to_the_windows_tcc_header() {
 }
 
 fn test_windows_msvc_output_balances_atomic_header_guards() {
-	c_code := cross_generate_with('-os windows -cc msvc', 'windows_msvc_atomics', "module main\n\nfn main() {\n\tprintln('ok')\n}\n")
+	c_code := cross_generate_with('-os windows -cc msvc', 'windows_msvc_atomics', runtime_program)
 	assert c_code.contains('static inline byte atomic_fetch_add_byte(')
 	mut depth := 0
 	for line in c_code.split_into_lines() {
@@ -351,11 +358,20 @@ fn test_cross_output_uses_getentropy_instead_of_the_linux_syscall_where_unavaila
 		assert false, 'the Apple entropy implementation is missing from the snapshot: ${body}'
 		return
 	}
-	syscall_at := body.index('syscall(') or {
+	// The Linux branch calls the libc getrandom through v_crypto_getrandom, which
+	// falls back to the syscall when the libc has no <sys/random.h>.
+	syscall_at := body.index('v_crypto_getrandom(') or {
 		assert false, 'the Linux entropy implementation is missing from the snapshot: ${body}'
 		return
 	}
 	assert getentropy_at < syscall_at, 'the Apple entropy branch should precede the Linux fallback: ${body}'
+	helper_at := c_code.index('static inline long v_crypto_getrandom(') or {
+		assert false, 'the Linux entropy helper is missing from the snapshot'
+		return
+	}
+	helper_guards := enclosing_guards_at(c_code, helper_at)
+	assert helper_guards.any(!it.starts_with('!') && it.contains('defined(__linux__)')), 'the Linux entropy helper is guarded by ${helper_guards}, which also hold outside Linux'
+	assert c_code[helper_at..].all_before('\n}').contains('syscall(SYS_getrandom'), 'the Linux entropy helper lost its syscall fallback'
 	before_getentropy := body[..getentropy_at]
 	guard_at := before_getentropy.last_index('#if ') or {
 		assert false, 'getentropy is not behind an Apple preprocessor guard: ${body}'
@@ -527,6 +543,23 @@ fn test_cross_windows_output_includes_the_same_headers_for_every_c_compiler() {
 		only_here := includes.filter(it !in reference)
 		only_there := reference.filter(it !in includes)
 		assert only_here.len == 0 && only_there.len == 0, '-cc ${ccompiler} emits ${only_here} but the msvc spelling emits ${only_there} instead'
+	}
+}
+
+fn test_cross_windows_literal_initializers_are_c_compiler_independent() {
+	for ccompiler in ['msvc', 'gcc', 'clang', 'tcc'] {
+		code := cross_generate_with('-nocache -cross -os windows -cc ${ccompiler}',
+			'literals_${ccompiler}', 'module main
+fn message() string { return "snapshot literal" }
+fn main() { println(message()) }
+')
+		assert code.contains('#define _SL(id, s, n) static const string id = {s, n, 1}')
+		definitions := code.split_into_lines().filter(it.starts_with('_SL(_str_'))
+		assert definitions.len > 0, '-cc ${ccompiler}: missing literal table'
+		assert definitions.any(it.ends_with(', "snapshot literal", 16);')), '-cc ${ccompiler}: missing snapshot literal'
+		for definition in definitions {
+			assert !definition.contains(' = _S('), '-cc ${ccompiler}: ${definition}'
+		}
 	}
 }
 

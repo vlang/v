@@ -140,3 +140,21 @@ fn test_create_generalizedtime_from_std_time_with_negative_offset() ! {
 	now := time.new(year: 2024, month: 11, day: 13, hour: 17, minute: 45, second: 50)
 	GeneralizedTime.from_time(now)!
 }
+
+// test_generalizedtime_rejects_trailing_garbage checks that a value with
+// bytes after the terminating `Z` is rejected instead of accepted and
+// re-emitted with the garbage intact.
+// See https://github.com/vlang/v/issues/30184
+fn test_generalizedtime_rejects_trailing_garbage() {
+	if _ := GeneralizedTime.new('20240101000000ZZ') {
+		assert false, 'GeneralizedTime accepted trailing garbage after Z'
+	}
+	// the valid form still parses
+	gt := GeneralizedTime.new('20240101000000Z')!
+	assert gt.value == '20240101000000Z'
+	for value in ['20240101000000Z0', '20240101000000Z2024', '20240101000000', '20240101000000z'] {
+		if _ := GeneralizedTime.new(value) {
+			assert false, 'accepted invalid GeneralizedTime ${value}'
+		}
+	}
+}

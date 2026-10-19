@@ -99,6 +99,21 @@ v -cstrict file.v           # stricter C diagnostics
 `-W` is what a CI job should use: without it a warning does not fail the build and
 the warning count only ever grows.
 
+## Coverage
+
+```bash
+v -no-skip-unused -coverage vcov/ test ./
+v cover vcov/
+```
+
+`-coverage` instruments what the build emits: a counter per line point and per
+function entry, written to the named directory when the program exits. It does
+not produce a report — `v cover` reads what was written.
+
+`-no-skip-unused` belongs with it. Without that flag a function nothing calls is
+dropped from the build, so its coverage cannot be reported at all, and the
+report cannot tell "not tested" from "not built".
+
 ## Where flags come from
 
 1. the command line, before the subcommand

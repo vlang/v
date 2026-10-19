@@ -464,3 +464,20 @@ fn test_windows_no_dst_offset_changes_add_year_boundaries() {
 		assert loc.zones[loc.transitions[1].index].offset == -4 * seconds_per_hour
 	}
 }
+
+fn test_nanosecond_carry_selects_the_zone_of_the_normalized_instant() {
+	// A synthetic offset change at the epoch requires no installed time zone database.
+	loc := Location{
+		name:        'carry-transition'
+		zones:       [Zone{ name: 'STD', offset: 0 }, Zone{ name: 'DST', offset: 3600, is_dst: true }]
+		transitions: [ZoneTransition{ when: 0, index: 1 }]
+	}
+	before := loc.unix_nanosecond_to_local(0, -1)!
+	assert before.unix() == -1
+	assert before.nanosecond == 999_999_999
+	assert before.format_ss_nano() == '1969-12-31 23:59:59.999999999'
+	after := loc.unix_nanosecond_to_local(-1, 1_000_000_000)!
+	assert after.unix() == 0
+	assert after.nanosecond == 0
+	assert after.format_ss_nano() == '1970-01-01 01:00:00.000000000'
+}

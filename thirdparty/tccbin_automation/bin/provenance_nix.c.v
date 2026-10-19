@@ -7,7 +7,7 @@ import os
 @[typedef]
 struct C.tccbin_native_stat_snapshot {
 	volume     u64
-	index      u64
+	file_index u64
 	links      u64
 	size       u64
 	mode       u32
@@ -35,9 +35,9 @@ fn native_snapshot_from_posix(snapshot C.tccbin_native_stat_snapshot) NativeFile
 	return NativeFileSnapshot{
 		identity:   NativeFileIdentity{
 			volume:   snapshot.volume
-			index:    snapshot.index
+			index:    snapshot.file_index
 			nlink:    snapshot.links
-			reliable: snapshot.index != 0
+			reliable: snapshot.file_index != 0
 		}
 		mode:       snapshot.mode
 		size:       snapshot.size

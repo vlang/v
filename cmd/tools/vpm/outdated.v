@@ -87,52 +87,51 @@ fn get_outdated_rows() []OutdatedRow {
 	return rows
 }
 
-fn outdated_row(name string, path string, constraints map[string]string) OutdatedRow {
+fn outdated_row(name string, path string, constraints map[string][]string) OutdatedRow {
 	current := installed_version(path) or { 'n/a' }
 	tags := module_tags(path) or {
 		return OutdatedRow{ name: name, current: current, upgradable: 'n/a', resolvable: 'n/a', latest: 'n/a' }
 	}
 	latest := select_version_tag(tags, '*') or { 'none' }
-	range_str := project_request_for_module(constraints, name, path)
-	constraint := outdated_constraint(range_str) or {
-		return OutdatedRow{ name: name, current: current, upgradable: 'n/a', resolvable: 'n/a', latest: latest }
+	mut required := []Constraint{}
+	for request in project_requests_for_module(constraints, name, path) {
+		constraint := outdated_constraint(request) or {
+			return OutdatedRow{ name: name, current: current, upgradable: 'n/a', resolvable: 'n/a', latest: latest }
+		}
+		required << Constraint{ required_by: 'project', range: constraint }
 	}
-	no_match := if semver.is_valid_range(constraint) { 'none' } else { 'invalid' }
-	upgradable := select_version_tag(tags, constraint) or { no_match }
-	resolvable := select_version_tag_with_constraints(tags, constraints_for({
-		name: constraint
-	}, name)) or { no_match }
+	no_match := if required.all(semver.is_valid_range(it.range)) { 'none' } else { 'invalid' }
+	upgradable := select_version_tag_with_constraints(tags, required) or { no_match }
 	return OutdatedRow{
 		name:       name
 		current:    current
 		upgradable: upgradable
-		resolvable: resolvable
+		resolvable: upgradable
 		latest:     latest
 	}
 }
 
-fn project_request_for_module(constraints map[string]string, name string, path string) string {
-	if request := constraints[name] {
-		return request
-	}
+fn project_requests_for_module(constraints map[string][]string, name string, path string) []string {
+	mut requests := constraints[name].clone()
 	origin := os.exec(['git', '-C', path, 'remote', 'get-url', 'origin'])
 	if origin.exit_code == 0 {
 		source := origin.output.trim_space()
-		if request := constraints[source] {
-			return request
-		}
-		if is_local_repository(source) {
-			source_path := source.trim_string_left('file://')
-			for dependency, request in constraints {
+		normalized_source := normalized_clone_source(source)
+		for dependency, requirements in constraints {
+			if dependency == name { continue }
+			if normalized_clone_source(dependency) == normalized_source {
+				requests << requirements
+			} else if is_local_repository(source) {
+				source_path := source.trim_string_left('file://')
 				dependency_path := dependency.trim_string_left('file://')
 				if os.exists(dependency_path)
 					&& os.real_path(dependency_path) == os.real_path(source_path) {
-					return request
+					requests << requirements
 				}
 			}
 		}
 	}
-	return ''
+	return requests
 }
 
 // outdated_constraint preserves exact semantic-version refs while leaving other Git
@@ -146,12 +145,13 @@ fn outdated_constraint(request string) !string {
 }
 
 // project_constraints reads the project's v.mod and returns, for each dependency
-// name, the range the project asks for. A bare name means "any version".
-fn project_constraints() map[string]string {
-	mut constraints := map[string]string{}
+// name, every requirement from dependencies and dev_dependencies. A bare name
+// means "any version" and does not replace another requirement on the same module.
+fn project_constraints() map[string][]string {
+	mut constraints := map[string][]string{}
 	if os.exists('./v.mod') {
 		manifest := vmod.from_file('./v.mod') or { return constraints }
-		for dep in manifest.dependencies {
+		for dep in project_dependencies(manifest) {
 			name := if dep.starts_with('git@') && dep.count('@') == 1 {
 				dep.trim_space()
 			} else {
@@ -159,22 +159,11 @@ fn project_constraints() map[string]string {
 			}
 			range_str := requirement_version(dep).trim_space()
 			if name != '' {
-				constraints[name] = range_str
+				constraints[name] << range_str
 			}
 		}
 	}
 	return constraints
-}
-
-// constraints_for currently returns only the root project constraint on `name`.
-fn constraints_for(constraints map[string]string, name string) []Constraint {
-	if rng := constraints[name] {
-		return [Constraint{
-			required_by: 'project'
-			range:       rng
-		}]
-	}
-	return []Constraint{}
 }
 
 // module_tags lists current upstream tags, including ones absent from the checkout.

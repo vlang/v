@@ -9,10 +9,8 @@ $if !tinyc {
 	#flag darwin @VEXEROOT/thirdparty/tcc/lib/libtcc.a
 }
 
-#include "libtcc.h"
-
 $if !tinyc && !fastc_selfhost ? {
-	#insert "@VMODROOT/vlib/v/gen/fastc/libtcc_system_darwin.h"
+	#flag @VMODROOT/vlib/v/gen/fastc/libtcc_system_darwin.o
 }
 
 struct C.TCCState {}
@@ -93,7 +91,7 @@ fn fastc_libtcc_is_link_input(arg string) bool {
 		return false
 	}
 	lower := arg.to_lower()
-	return lower.ends_with('.o') || lower.ends_with('.obj') || lower.ends_with('.a')
+	return lower.ends_with('.c') || lower.ends_with('.o') || lower.ends_with('.obj') || lower.ends_with('.a')
 		|| lower.ends_with('.lib') || lower.ends_with('.dylib') || lower.ends_with('.so')
 		|| lower.ends_with('.tbd') || lower.contains('.so.')
 }

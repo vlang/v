@@ -44,6 +44,12 @@ jobs:
       VFLAGS: -cc clang
       VTEST_SELF_SHARD_INDEX: '0'
       VTEST_SELF_SHARD_COUNT: '3'
+      # Stop a failing test session at its first failure instead of running the
+      # whole suite to completion; the remaining files add no signal.
+      VTEST_FAIL_FAST: '1'
+      # Three test workers fit the 3-CPU/7 GB Apple-silicon runners: a worker
+      # peaks near 0.25 GB, so this stays CPU-bound with ample headroom.
+      VJOBS: '3'
       VTEST_SHOW_LONGEST_BY_RUNTIME: 3
       VTEST_SHOW_LONGEST_BY_COMPTIME: 3
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
@@ -77,6 +83,8 @@ jobs:
           grep -qx '42' "$RUNNER_TEMP/v3_canary.out" || { echo '::error::the V-compiled canary did not build/run correctly'; exit 1; }
           if grep -qiE 'retrying with .-old-compiler|compatibility fallback|used the stable compiler' "$RUNNER_TEMP/v3_canary.out"; then echo '::error::the default compiler silently fell back to V1'; exit 1; fi
           echo 'OK: V compiled and ran this program in-process on macOS, with the fallback disabled'
+      - name: FastC ARM64 condition regressions
+        run: ./v -d arm64 -silent test vlib/v/gen/fastc/if_condition_arm64_test.v
       - name: Legacy gg import multiwindow isolation
         if: env.V_MACOS_MULTIWINDOW_TESTS == '1'
         run: ./v test vlib/gg/legacy_import_multiwindow_isolation_test.v
@@ -311,7 +319,7 @@ jobs:
         run: v run ci/macos_ci.vsh build_examples_prod
       - name: Build examples with V build with tcc
         run: v run ci/macos_ci.vsh build_examples_v_compiled_with_tcc
-      ##      - name: V self compilation with -usecache
+      ##      - name: V self compilation with default caching
       ##        run: v run ci/macos_ci.vsh v_self_compilation_usecache
       - name: V self compilation with -parallel-cc
         run: v run ci/macos_ci.vsh v_self_compilation_parallel_cc
@@ -332,6 +340,12 @@ jobs:
       VFLAGS: -cc clang
       VTEST_SELF_SHARD_INDEX: ${{ matrix.shard }}
       VTEST_SELF_SHARD_COUNT: '3'
+      # Stop a failing test session at its first failure instead of running the
+      # whole suite to completion; the remaining files add no signal.
+      VTEST_FAIL_FAST: '1'
+      # Three test workers fit the 3-CPU/7 GB Apple-silicon runners: a worker
+      # peaks near 0.25 GB, so this stays CPU-bound with ample headroom.
+      VJOBS: '3'
       VTEST_SHOW_LONGEST_BY_RUNTIME: 3
       VTEST_SHOW_LONGEST_BY_COMPTIME: 3
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3

@@ -125,3 +125,67 @@ fn test_local_read_by_an_assignment_stays_a_compile_time_value() {
 	}
 	assert seen == ['first:get', 'other:post']
 }
+
+fn append_changed(mut values []string) {
+	values << 'changed'
+}
+
+// A function literal has its own scope: a local declared there is another binding, even
+// with the name of an outer one.
+fn test_local_shadowed_in_a_function_literal_stays_a_compile_time_value() {
+	source := 'a b'
+	change_inner := fn () string {
+		mut source := []string{}
+		append_changed(mut source)
+		return source[0]
+	}
+	assert change_inner() == 'changed'
+	reassign_inner := fn () string {
+		mut source := 'inner'
+		source = 'reassigned'
+		source += '!'
+		return source
+	}
+	assert reassign_inner() == 'reassigned!'
+	mut words := []string{}
+	$for word in source.fields() {
+		words << word
+	}
+	assert words == ['a', 'b']
+}
+
+// A binding of an earlier block is out of scope where the same name is declared again.
+fn test_local_named_like_an_earlier_block_local_stays_a_compile_time_value() {
+	mut earlier := ''
+	if earlier == '' {
+		mut source := 'first'
+		source = 'second'
+		earlier = source
+	}
+	source := 'a b'
+	mut words := []string{}
+	$for word in source.fields() {
+		words << word
+	}
+	assert earlier == 'second'
+	assert words == ['a', 'b']
+}
+
+// A captured scalar is a copy that belongs to the closure, so the outer local keeps its value.
+fn name_after_mut_capture[T](sample T) string {
+	_ = sample
+	name := ''
+	set := fn [mut name] () string {
+		name = 'changed'
+		return name
+	}
+	inner := set()
+	if name == '' {
+		return 'outer unchanged, inner ${inner}'
+	}
+	return name
+}
+
+fn test_mut_capture_of_generic_fn_local_leaves_the_outer_value() {
+	assert name_after_mut_capture(1) == 'outer unchanged, inner changed'
+}

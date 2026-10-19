@@ -157,7 +157,7 @@ pub fn append[T](a []T, b []T) []T {
 // group n arrays into a single array of arrays with n elements.
 // This function is analogous to the "zip" function of other languages.
 // To fully interleave two arrays, follow this function with a call to `flatten`.
-// NOTE: An error will be generated if the type annotation is omitted.
+// A single input array produces one-element groups: arrays.group([1, 2]) == [[1], [2]].
 // Example: arrays.group[int]([1, 2, 3], [4, 5, 6]) // => [[1, 4], [2, 5], [3, 6]]
 pub fn group[T](arrs ...[]T) [][]T {
 	mut length := if arrs.len > 0 { arrs[0].len } else { 0 }
@@ -187,7 +187,11 @@ pub fn group[T](arrs ...[]T) [][]T {
 
 // chunk array into a single array of arrays where each element is the next `size` elements of the original.
 // Example: arrays.chunk([1, 2, 3, 4, 5, 6, 7, 8, 9], 2) // => [[1, 2], [3, 4], [5, 6], [7, 8], [9]]
+// It returns an empty array, when `size` is not positive.
 pub fn chunk[T](array []T, size int) [][]T {
+	if size <= 0 {
+		return [][]T{}
+	}
 	// allocate chunk array
 	mut chunks := [][]T{cap: array.len / size + if array.len % size == 0 { 0 } else { 1 }}
 
@@ -471,7 +475,8 @@ pub fn concat[T](a []T, b ...T) []T {
 	return m
 }
 
-// returns the smallest element >= val, requires `array` to be sorted.
+// lower_bound returns the smallest element >= val, requiring `array` to be sorted.
+// An empty array or missing bound returns an error describing the operation and value.
 // Example: arrays.lower_bound([2, 4, 6, 8], 3)! // => 4
 pub fn lower_bound[T](array []T, val T) !T {
 	if array.len == 0 {
@@ -488,13 +493,14 @@ pub fn lower_bound[T](array []T, val T) !T {
 		}
 	}
 	if left >= array.len {
-		return error('')
+		return error('.lower_bound: no element >= ${val}')
 	} else {
 		return array[left]
 	}
 }
 
-// returns the largest element <= val, requires `array` to be sorted.
+// upper_bound returns the largest element <= val, requiring `array` to be sorted.
+// An empty array or missing bound returns an error describing the operation and value.
 // Example: arrays.upper_bound([2, 4, 6, 8], 3)! // => 2
 pub fn upper_bound[T](array []T, val T) !T {
 	if array.len == 0 {
@@ -511,7 +517,7 @@ pub fn upper_bound[T](array []T, val T) !T {
 		}
 	}
 	if right < 0 {
-		return error('')
+		return error('.upper_bound: no element <= ${val}')
 	} else {
 		return array[right]
 	}
@@ -536,7 +542,7 @@ pub fn binary_search[T](array []T, target T) !int {
 			right = idx - 1
 		}
 	}
-	return error('')
+	return error('.binary_search: target ${target} not found')
 }
 
 // rotate_left rotates the array in-place.

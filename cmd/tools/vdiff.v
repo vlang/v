@@ -9,7 +9,6 @@ fn main() {
 	fp.version('0.0.1')
 	fp.description('Compare files line by line. Example: `v diff examples/hello_world.v examples/log.v`')
 	fp.arguments_description('file1 file2')
-	fp.skip_executable()
 	fp.limit_free_args_to_at_least(2)!
 
 	if fp.bool('help', `h`, false, 'Show this help screen.') {

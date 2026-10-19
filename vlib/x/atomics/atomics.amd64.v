@@ -356,6 +356,7 @@ pub fn load_u32(num &u32) u32 {
 		; r (num)
 		; rax
 		  rdx
+		  memory
 	}
 	return out
 }

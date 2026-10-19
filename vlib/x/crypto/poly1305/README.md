@@ -37,3 +37,6 @@ fn main() {
 	assert status == true
 }
 ```
+
+`Poly1305.clone` copies the internal buffer so subsequent updates and finalization of either
+instance do not change the other instance's state.

@@ -16,6 +16,8 @@ builtin.
   anything that needs a temporary file and cleanup.
 - `references/TROUBLESHOOTING.md` - Read when a test does not compile, does not
   run, or does not fail the way it should.
+- `references/COVERAGE.md` - Read when measuring which lines and functions a run
+  reached, or generating the tests that are missing.
 
 ## Quick Reference
 
@@ -31,6 +33,9 @@ builtin.
 | Only some functions | `VTEST_ONLY_FN='test_login' v test dir/` |
 | Hide passing tests | `v -silent test dir/` |
 | Timings | `v -stats test dir/` |
+| Line coverage | `v -no-skip-unused -coverage vcov/ test dir/` then `v cover vcov/` |
+| Untested functions | `v cover vcov/ --uncovered` |
+| Missing test bodies | `v cover vcov/ --write-tests --filter myapp/` |
 
 ## Layout
 
@@ -111,7 +116,35 @@ v run scripts/run-tests.vsh dir/ --file http --fn 'test_login*'
 
 See `references/TROUBLESHOOTING.md` for other causes of tests not running.
 
+## Measuring coverage
+
+```bash
+v -no-skip-unused -coverage vcov/ test ./   # record what the run entered
+v cover vcov/                                # one percentage per file
+```
+
+`-no-skip-unused` is not optional. Without it a function nothing calls is
+dropped from the build, and the report cannot tell "not tested" from "not
+built".
+
+Line coverage cannot name a function no test calls when that function's body
+holds no statement a line point would record. Two flags answer it:
+
+```bash
+v cover vcov/ --uncovered    # one `path:line function` per untested function
+v cover vcov/ --write-tests --filter myapp/   # the test bodies it is missing
+```
+
+The generator writes a starting point, not a test — a call with zero values and
+a `// TODO:` line, because it cannot know what the function should return. It
+appends to an existing `_test.v` and never touches a test function that is
+already there. `--dry-run` shows the plan.
+
+See [references/COVERAGE.md](references/COVERAGE.md) for the whole surface,
+including `--functions`, `--json` and what `--write-tests` refuses to do.
+
 ## Fixtures
+
 
 There is no test object to hang a fixture on, so a test writes to `os.vtmp_dir()`
 and registers the removal with `defer`. A unique name per test keeps parallel runs

@@ -1,6 +1,6 @@
 module workers
 
-#include "@VMODROOT/vlib/v/winthread_helper.h"
+#flag @VMODROOT/vlib/v/winthread_helper_windows.o
 
 fn C.v3_win_thread_create(stack_size usize, start_routine fn (voidptr) voidptr, arg voidptr, thread_id &u32) voidptr
 fn C.v3_win_thread_join(handle voidptr) int

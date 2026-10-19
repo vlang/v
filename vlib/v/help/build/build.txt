@@ -74,15 +74,21 @@ NB: the build flags are shared with the run command too:
                             hosts. V executables built from `cmd/v` (`make`, `makev.bat`,
                             `v self`, `v up`) include it unless they are built with
                             `-d skip_fastc`.
+                            Supports array/map literals, checked array indexing, and `in`/`!in`.
+                            See doc/fastc.md for supported constructs and current limitations.
     * `go`                - V outputs Go source code, which is then passed to a Go compiler.
     * `js`                - V outputs JS source code which can be passed to NodeJS to be ran.
     * `js_browser`        - V outputs JS source code ready for the browser.
     * `js_node`           - V outputs JS source code to run with nodejs.
     * `js_freestanding`   - V outputs JS source code with no hard runtime dependency.
-    * `native`            - V outputs a native executable directly.
-	                        (see -arch x64|arm64 and -os linux|macos) (EXPERIMENTAL).
+    * `arm64`             - V outputs a native ARM64 executable directly on macOS.
+                            Enable it with `v -compile-backend arm64 self`, then use
+                            `v -b arm64 -gc none file.v` (EXPERIMENTAL).
     * `wasm`              - V outputs a WebAssembly module directly
 	                        (see -os wasi|browser) (EXPERIMENTAL).
+
+    `-b native` has been replaced by `-b arm64`. A native AMD64 backend is not available yet;
+    use `v -b c -arch amd64 file.v` for AMD64 compilation through the C backend.
 
   -d <flag>[=<value>], -define <flag>[=<value>]
     Define the provided flag.
@@ -139,6 +145,8 @@ NB: the build flags are shared with the run command too:
     Compile the executable in production mode, where most optimizations are enabled.
     Note that most V warnings turn to errors, if you pass -prod, so you will have
     to fix them first.
+    TinyCC is not a -prod compiler: `-cc tcc`, or any compiler that resolves to TinyCC,
+    stops with `tcc is not allowed with -prod`. `-b fastc` is not supported with `-prod` either.
     Note: gcc versions > 12.0 often have issues with inlining, that manifest with `-prod`.
     To work around them, you can use `-prod -cflags -fno-inline-small-functions` .
 
@@ -232,6 +240,15 @@ NB: the build flags are shared with the run command too:
           127          0.014ms            113ns vmemmove
           127          0.110ms            866ns i64_str
           127          0.016ms            127ns tos
+
+  -e <code>, -e=<code>
+    Compile and run inline V source as a script. Compiler options go before -e; arguments
+    after the source are passed to the program. The program exit status is returned.
+    For example: v -e 'println(1)'
+
+  -http
+    Serve the current directory on localhost:4001. Equivalent to:
+    v -e 'import net.http.file; file.serve()'
 
   -message-limit <limit>
     The maximum amount of warnings / errors / notices, that will be accumulated (defaults to 200).
@@ -361,8 +378,10 @@ NB: the build flags are shared with the run command too:
 
 For C-specific build flags, use `v help build-c`.
 For JS-specific build flags, use `v help build-js`.
-For Native-specific build flags, use `v help build-native`.
 For WebAssembly-specific build flags, use `v help build-wasm`.
 
 See also:
    `v help run` for documentation regarding `v run`.
+
+Production C builds reject TinyCC, including executable aliases. This restriction does not
+apply to help/version commands or non-C backends.

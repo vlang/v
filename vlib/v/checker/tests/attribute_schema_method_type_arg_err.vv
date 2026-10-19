@@ -1,0 +1,15 @@
+@[attribute]
+struct Route {
+	path string
+}
+
+struct Receiver {}
+
+fn (r Receiver) marker[T]() int {
+	return 1
+}
+
+fn main() {
+	r := Receiver{}
+	println(r.marker[Route]())
+}

@@ -1,0 +1,49 @@
+vlib/v/checker/tests/or_block_smartcast_unwrapped_contexts_err.vv:36:2: warning: unnecessary `()` in `if` condition, use `if expr {` instead of `if (expr) {`.
+   34 | 
+   35 | fn guard_in_parens(x ?int) int {
+   36 |     if (x == none) {
+      |     ~~~~~~~~~~~~~~
+   37 |         return 1
+   38 |     }
+vlib/v/checker/tests/or_block_smartcast_unwrapped_contexts_err.vv:6:10: error: cannot use `or {}` block on non-option variable `x` (it was already unwrapped to `int` by an earlier none check; use `x` directly)
+    4 |     mut x := ?int(n)
+    5 |     if x != none {
+    6 |         return x or { 0 }
+      |                ^
+    7 |     }
+    8 |     return 0
+vlib/v/checker/tests/or_block_smartcast_unwrapped_contexts_err.vv:15:10: error: cannot use `or {}` block on non-option variable `x` (it was already unwrapped to `int` by an earlier none check; use `x` directly)
+   13 |         return 1
+   14 |     } else if x != none {
+   15 |         return x or { 0 }
+      |                ^
+   16 |     }
+   17 |     return 0
+vlib/v/checker/tests/or_block_smartcast_unwrapped_contexts_err.vv:22:10: error: cannot use `or {}` block on non-option variable `x` (it was already unwrapped to `int` by an earlier none check; use `x` directly)
+   20 | fn and_chain_then_branch(x ?int, b bool) int {
+   21 |     if b && x != none {
+   22 |         return x or { 0 }
+      |                ^
+   23 |     }
+   24 |     return 0
+vlib/v/checker/tests/or_block_smartcast_unwrapped_contexts_err.vv:31:10: error: cannot use `or {}` block on non-option variable `x` (it was already unwrapped to `int` by an earlier none check; use `x` directly)
+   29 |         return 1
+   30 |     } else {
+   31 |         return x or { 0 }
+      |                ^
+   32 |     }
+   33 | }
+vlib/v/checker/tests/or_block_smartcast_unwrapped_contexts_err.vv:39:9: error: cannot use `or {}` block on non-option variable `x` (it was already unwrapped to `int` by an earlier none check; use `x` directly)
+   37 |         return 1
+   38 |     }
+   39 |     return x or { 0 }
+      |            ^
+   40 | }
+   41 |
+vlib/v/checker/tests/or_block_smartcast_unwrapped_contexts_err.vv:48:11: error: cannot use `or {}` block on non-option variable `x` (it was already unwrapped to `int` by an earlier none check; use `x` directly)
+   46 |     for i in 0 .. 2 {
+   47 |         if i > 0 {
+   48 |             return x or { 0 }
+      |                    ^
+   49 |         }
+   50 |     }

@@ -67,6 +67,33 @@ println(i18n.tr_plural('en', 'goods', 2))
 `tr` and `tr_plural` read from the `translations` directory. Use `load_tr_map_from_dir`
 with `tr_from_map` / `tr_plural_from_map` to read from another directory.
 
+## Inline defaults and missing translations
+
+The Option APIs `tr_opt`, `tr_from_map_opt`, `tr_plural_opt`, and
+`tr_plural_from_map_opt` return `none` for a missing or empty translation. Use `or`
+to supply display text at the call site:
+
+```v ignore
+label := i18n.tr_opt('zh', 'common.success') or { 'Successfully' }
+items := i18n.tr_plural_opt('zh', 'goods', 2) or { 'Items' }
+```
+
+Each Option lookup accepts an optional final `LookupConfig`. Set `default_language`
+to try another language before the inline fallback, or choose a missing-key policy:
+
+```v ignore
+label := i18n.tr_from_map_opt(translations, 'zh', 'common.success',
+    default_language: 'en'
+) or { 'Successfully' }
+key := i18n.tr_opt('zh', 'missing', missing_key_behavior: .key) or { 'Fallback' }
+blank := i18n.tr_opt('zh', 'missing', missing_key_behavior: .empty) or { 'Fallback' }
+```
+
+The default policy is `.or_text`, which returns `none`; `.key` returns the key and
+`.empty` returns a present empty string. A real translation always takes precedence.
+Configuration belongs to each call and does not change other lookups. The existing
+string APIs retain their key fallback and missing-translation diagnostic.
+
 ## Embedding translations in the executable
 
 Reading translations from a directory at run time means shipping that directory next
@@ -100,3 +127,22 @@ Translations that come from somewhere else, such as a database or a download, ca
 loaded with `load_tr_map_from_files`, which takes a map from each file's path inside
 the translations directory (`en.tr`, `zh/dashboard.json`) to its text. The paths may
 use `/` or `\` between their parts.
+
+## Formatting
+
+`new_formatter(tag)` supports `en`/`en-US`, `de`/`de-DE`, and `fr`/`fr-FR`. Unsupported tags
+return an error. The formatter provides `number_int`, `number`, `currency`, `percent`, and
+`date`. Numbers use locale grouping and decimal separators. `number(x, decimals)` accepts
+0 through 9 fractional digits, rounds the shortest decimal representation half away from zero,
+and normalizes negative zero. NaN and infinity retain their ordinary string representations.
+
+Currency formatting recognizes USD, EUR, GBP, JPY, CHF, CNY, CAD, and AUD; unknown codes use
+the code as a symbol and two fractional digits. Negative amounts put the sign before a prefixed
+currency symbol. Percent formatting multiplies a ratio by 100
+and uses one fractional digit. Dates omit time and use month/day/year for English,
+day.month.year for German, and day/month/year for French.
+
+`compare_collated` and `sort_collated` use ASCII case folding, selected Latin accent and
+ligature mappings, and ignore combining marks U+0300 through U+036F. Original UTF-8 byte order
+breaks ties. Other characters retain their code point order. This is a deterministic limited
+Latin ordering, not full Unicode or locale-specific collation.

@@ -402,7 +402,9 @@ fn test_fail() ? {
 }
 ')
 	assert assert_fail.exit_code != 0
-	assert assert_fail.output.contains('Assertion failed'), assert_fail.output
+	// The failure is reported in the V test runner format (e814006e31).
+	assert assert_fail.output.contains('v3_harness_assert_fail_test.v:2: fn test_fail'), assert_fail.output
+	assert assert_fail.output.contains('assert false'), assert_fail.output
 
 	invalid_param := compile_expect_failure(v3_bin, 'harness_invalid_param', '_test.v', 'fn test_bad(i int) {
 }
@@ -611,11 +613,14 @@ fn test_two() {
 
 fn test_v3_test_file_harness_rejects_top_level_stmt() {
 	v3_bin := build_v3()
-	src := "println('top')
-
-fn test_one() {
+	// The statement follows the test function: a statement before a definition is already
+	// rejected by the parser, as in V1 ('all definitions must occur before code in script
+	// mode', 50b5ce9d18), before the test harness sees the file.
+	src := "fn test_one() {
 	println('test')
 }
+
+println('top')
 "
 	invalid := compile_expect_failure(v3_bin, 'harness_top_level_and_test', '_test.v', src)
 	assert invalid.output.contains('executable top-level statements are not supported in test files'), invalid.output

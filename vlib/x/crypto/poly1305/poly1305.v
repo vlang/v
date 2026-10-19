@@ -123,7 +123,7 @@ pub fn (po &Poly1305) clone() &Poly1305 {
 		r:        po.r
 		s:        po.s
 		h:        po.h
-		buffer:   po.buffer
+		buffer:   po.buffer.clone()
 		leftover: po.leftover
 		done:     po.done
 	}

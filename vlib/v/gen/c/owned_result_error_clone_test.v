@@ -5,13 +5,13 @@ import v.types
 
 fn owned_result_error_clone_code(clone_kind string, pointer_receiver bool, needs_drop bool, tail_kind string) string {
 	mut a := flat.FlatAst.new()
-	default_value := a.add_node(flat.Node{ kind: .int_literal, value: '7', typ: 'int' })
+	default_value := a.add_node(flat.Node{ kind: .int_literal, value: '7', typ: flat.source_type_int })
 	field_start := a.children.len
 	a.children << default_value
 	field := a.add_node(flat.Node{
 		kind:           .field_decl
 		value:          'limit'
-		typ:            'int'
+		typ:            flat.source_type_int
 		children_start: field_start
 		children_count: 1
 	})
@@ -33,11 +33,11 @@ fn owned_result_error_clone_code(clone_kind string, pointer_receiver bool, needs
 	tc.structs['OtherFault'] = tc.structs['Fault'].clone()
 	tc.params_structs['CloneParams'] = true
 	tc.interface_names['IError'] = true
-	fault := tc.parse_type('Fault')
+	fault := tc.parse_type(flat.source_type_id('Fault'))
 	fault_pointer := types.Type(types.Pointer{ base_type: fault })
-	tc.type_aliases['FaultRef'] = '&Fault'
-	tc.type_aliases['FaultRefAlias'] = 'FaultRef'
-	tc.type_aliases['FaultValueAlias'] = 'Fault'
+	tc.type_aliases.set_id('FaultRef', flat.source_type_id('&Fault'))
+	tc.type_aliases.set_id('FaultRefAlias', flat.source_type_id('FaultRef'))
+	tc.type_aliases.set_id('FaultValueAlias', flat.source_type_id('Fault'))
 	if needs_drop {
 		tc.fn_param_types['Fault.drop'] = [fault_pointer]
 		tc.fn_ret_types['Fault.drop'] = types.Type(types.void_)
@@ -47,11 +47,13 @@ fn owned_result_error_clone_code(clone_kind string, pointer_receiver bool, needs
 		tc.fn_ret_types['Fault.clone'] = match clone_kind {
 			'value', 'extra_argument' { fault }
 			'pointer' { fault_pointer }
-			'pointer_alias' { tc.parse_type('FaultRef') }
-			'pointer_alias_chain' { tc.parse_type('FaultRefAlias') }
-			'value_alias' { tc.parse_type('FaultValueAlias') }
+			'pointer_alias' { tc.parse_type(flat.source_type_id('FaultRef')) }
+			'pointer_alias_chain' { tc.parse_type(flat.source_type_id('FaultRefAlias')) }
+			'value_alias' { tc.parse_type(flat.source_type_id('FaultValueAlias')) }
 			'wrong_pointer' { types.Type(types.Pointer{ base_type: types.Type(types.int_) }) }
-			'other_pointer' { types.Type(types.Pointer{ base_type: tc.parse_type('OtherFault') }) }
+			'other_pointer' {
+				types.Type(types.Pointer{ base_type: tc.parse_type(flat.source_type_id('OtherFault')) })
+			}
 			else { types.Type(types.int_) }
 		}
 		if clone_kind == 'extra_argument' {
@@ -72,10 +74,10 @@ fn owned_result_error_clone_code(clone_kind string, pointer_receiver bool, needs
 				tc.fn_variadic['Fault.clone'] = true
 			}
 			'params' {
-				tc.fn_param_types['Fault.clone'] << tc.parse_type('CloneParams')
+				tc.fn_param_types['Fault.clone'] << tc.parse_type(flat.source_type_id('CloneParams'))
 			}
 			'params_pointer' {
-				tc.fn_param_types['Fault.clone'] << types.Type(types.Pointer{ base_type: tc.parse_type('CloneParams') })
+				tc.fn_param_types['Fault.clone'] << types.Type(types.Pointer{ base_type: tc.parse_type(flat.source_type_id('CloneParams')) })
 			}
 			else {}
 		}
@@ -85,8 +87,8 @@ fn owned_result_error_clone_code(clone_kind string, pointer_receiver bool, needs
 	g.tc = &tc
 	g.register_struct_decl_info_at(int(params_id), 'CloneParams', 'CloneParams', 'main',
 		'main.v', params_decl)
-	g.iface_impls['IError'] = ['Fault']
-	g.iface_type_ids['IError::Fault'] = 1
+	g.iface_impls['IError'] = [flat.source_type_id('Fault')]
+	g.iface_type_ids[interface_dispatch_boxed_type_key(flat.source_type_id('IError'), flat.source_type_id('Fault'))] = 1
 	assert g.ownership_type_requires_destruction(fault, 0) == needs_drop
 	compatible := clone_kind in ['value', 'value_alias', 'pointer', 'pointer_alias',
 		'pointer_alias_chain']
@@ -95,7 +97,7 @@ fn owned_result_error_clone_code(clone_kind string, pointer_receiver bool, needs
 	source := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'borrowed_error'
-		typ:   'IError'
+		typ:   flat.source_type_id('IError')
 	})
 	g.gen_ownership_clone_ierror(source)
 	return g.sb.str()

@@ -286,6 +286,15 @@ pub fn (mut ws Client) parse_frame_header() !Frame {
 			payload_len |= u64(buffer[7]) << 16
 			payload_len |= u64(buffer[8]) << 8
 			payload_len |= u64(buffer[9])
+			// RFC 6455 requires the most significant bit of a 64-bit length
+			// to be 0; with it set, int(payload_len) goes negative below
+			if payload_len >> 63 != 0 {
+				return error('websocket: noncanonical 64-bit frame length')
+			}
+			// any remainder past the int range cannot be allocated either
+			if payload_len > u64(max_int) {
+				return error('websocket: 64-bit frame length exceeds int range')
+			}
 			frame.payload_len = int(payload_len)
 			if !frame.has_mask {
 				break
