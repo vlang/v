@@ -91,11 +91,17 @@ fn test_vls_check_reports_manifest_and_stale_installations() ! {
 	}
 	manifest_path := os.join_path(vls_home, '.vls', 'vls.config.json')
 	// The updater itself is an executable fixture; --check must not launch it.
-	os.write_file(manifest_path, '{"server_path":' + json2.encode(tool_exe, escape_unicode: true, time_as_unix: true) + '}')!
+	os.write_file(manifest_path, '{"server_path":' + json2.encode(tool_exe,
+		escape_unicode: true
+		time_as_unix:   true
+	) + '}')!
 	result := os.exec([tool_exe, '--check'])
 	assert result.exit_code == 0, result.output
 	assert result.output.contains('installed at: ${tool_exe}'), result.output
-	os.write_file(manifest_path, '{"server_path":' + json2.encode(tool_exe + '.missing', escape_unicode: true, time_as_unix: true) + '}')!
+	os.write_file(manifest_path, '{"server_path":' + json2.encode(tool_exe + '.missing',
+		escape_unicode: true
+		time_as_unix:   true
+	) + '}')!
 	stale := os.exec([tool_exe, '--check'])
 	assert stale.exit_code == 0, stale.output
 	assert stale.output.contains('not installed'), stale.output
