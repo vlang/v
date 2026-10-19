@@ -14926,7 +14926,7 @@ fn (mut g FlatGen) gen_expr_with_possible_enum_type(id flat.NodeId, expected typ
 		child := g.a.child_node(&node, 0)
 		is_signed_numeric_literal = child.kind in [.int_literal, .float_literal]
 	}
-	if expected is types.Enum || node.kind in [.int_literal, .float_literal] || is_signed_numeric_literal {
+	if cgen_unalias_type(expected) is types.Enum || node.kind in [.int_literal, .float_literal] || is_signed_numeric_literal {
 		g.gen_expr_with_expected_type(id, expected)
 		return
 	}
