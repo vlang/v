@@ -44,11 +44,16 @@ type ScalarChoice = bool | int
 struct Empty {}
 type EmptyChoice = Empty | int
 struct Holder { item &Item }
+struct SumHolder { value Choice }
 fn borrowed(item &Item) &Item { return item }
 fn borrowed_sum(item &Item) Choice { return Choice(item) }
 fn fresh(code int) Choice { return Choice(&Item{code: code}) }
 fn mixed(owned bool, item &Item) Choice {
  if owned { return Choice(&Item{code: 4}) }
+ return Choice(item)
+}
+fn mixed_code(owned bool, item &Item, code int) Choice {
+ if owned { return Choice(&Item{code: code}) }
  return Choice(item)
 }
 fn original_reassignment_after_move() {
@@ -88,6 +93,12 @@ fn borrowed_copies(item &Item, holder &Holder) {
  assert voidptr(borrowed_result as &Item) == voidptr(item)
  assert voidptr(result_copy as &Item) == voidptr(item)
  assert voidptr(another_result as &Item) == voidptr(item)
+ wrapped_result := Choice(borrowed_sum(item))
+ wrapped_copy := Choice(wrapped_result)
+ another_wrapped := wrapped_result
+ assert voidptr(wrapped_result as &Item) == voidptr(item)
+ assert voidptr(wrapped_copy as &Item) == voidptr(item)
+ assert voidptr(another_wrapped as &Item) == voidptr(item)
  mut replacement := returned
  replacement = Choice(0)
  assert replacement is int
@@ -98,6 +109,16 @@ fn conditional(owned bool, item &Item) {
  value := if owned { Choice(&Item{code: 5}) } else { Choice(item) }
  assert (value as &Item).code == if owned { 5 } else { 3 }
 }
+fn mixed_storage_scope(item &Item) {
+ source := SumHolder{value: Choice(mixed_code(true, item, 14))}
+ field_alias := Choice(source.value)
+ assert (field_alias as &Item).code == 14
+ assert C.sum_drop_count(14) == 0
+ values := [Choice(mixed_code(true, item, 15))]
+ index_alias := Choice(values[0])
+ assert (index_alias as &Item).code == 15
+ assert C.sum_drop_count(15) == 0
+}
 fn borrowed_scope() {
  local := Item{code: 3}
  holder := Holder{item: &local}
@@ -106,6 +127,9 @@ fn borrowed_scope() {
  assert voidptr(from_call as &Item) == voidptr(&local)
  borrowed_alias := from_call
  assert voidptr(borrowed_alias as &Item) == voidptr(&local)
+ wrapped_borrow := Choice(Choice(mixed(false, &local)))
+ wrapped_alias := Choice(wrapped_borrow)
+ assert voidptr(wrapped_alias as &Item) == voidptr(&local)
  conditional(false, &local)
  assert C.sum_drop_count(3) == 0
  from_owned_call := mixed(true, &local)
@@ -118,6 +142,21 @@ fn borrowed_scope() {
  borrowed_local := if local.code == 0 { Choice(&Item{code: 9}) } else { Choice(&local) }
  local_alias := borrowed_local
  assert voidptr(local_alias as &Item) == voidptr(&local)
+ wrapped_owned := Choice(mixed_code(true, &local, 10))
+ wrapped_owned_alias := Choice(wrapped_owned)
+ assert (wrapped_owned_alias as &Item).code == 10
+ wrapped_conditional := Choice(if local.code == 3 { mixed_code(true, &local, 11) } else { Choice(&local) })
+ conditional_copy := Choice(wrapped_conditional)
+ assert (conditional_copy as &Item).code == 11
+ pure_fresh := Choice(Choice(fresh(12)))
+ fresh_alias := Choice(pure_fresh)
+ assert (fresh_alias as &Item).code == 12
+ wrapped_match := Choice(match local.code { 3 { mixed_code(true, &local, 13) } else { Choice(&local) } })
+ match_copy := wrapped_match
+ assert (match_copy as &Item).code == 13
+ mixed_storage_scope(&local)
+ assert C.sum_drop_count(14) == 1
+ assert C.sum_drop_count(15) == 1
  conditional(true, &local)
  assert C.sum_drop_count(5) == 1
 }
@@ -164,6 +203,12 @@ fn main() {
  assert C.sum_drop_count(7) == 1
  assert C.sum_drop_count(8) == 1
  assert C.sum_drop_count(9) == 0
+ assert C.sum_drop_count(10) == 1
+ assert C.sum_drop_count(11) == 1
+ assert C.sum_drop_count(12) == 1
+ assert C.sum_drop_count(13) == 1
+ assert C.sum_drop_count(14) == 1
+ assert C.sum_drop_count(15) == 1
 }
 ')!
 	// A method named drop is ordinary user code unless the type implements Drop.

@@ -7618,7 +7618,7 @@ fn (mut tc TypeChecker) ownership_assign_to_name(lhs_name string, rhs_id flat.No
 			tc.ownership_mark_owned(lhs_name, lhs_type, assign_id)
 		}
 	}
-	rhs_name := tc.ownership_expr_ident_name(rhs_id)
+	rhs_name := tc.ownership_expr_ident_name(tc.ownership_sum_wrapped_value(rhs_id, lhs_type))
 	if lhs_name != rhs_name || !tc.sum_escape_has_pointer_variant(lhs_type) {
 		tc.ownership_release_borrower(lhs_name)
 	}
@@ -8907,7 +8907,9 @@ fn (mut tc TypeChecker) ownership_mark_storage_from_expr_with_mode(target_name s
 	if tc.ownership_mark_aggregate_literal_storage(target_name, id, pos, clear_unowned) {
 		return true
 	}
-	if tc.ownership_mark_sum_borrow(target_name, id, target_type, pos) { return false }
+	if tc.ownership_mark_sum_borrow(target_name, id, target_type, pos) {
+		return tc.ownership_sum_name_has_owner(target_name)
+	}
 	tc.ownership_clone_escaping_string_view(expr_id)
 	match tc.ownership_borrowed_projection_action(expr_id, pos) {
 		.string_view {
@@ -8938,7 +8940,7 @@ fn (mut tc TypeChecker) ownership_mark_storage_from_expr_with_mode(target_name s
 		tc.ownership_add_borrow(borrow_name, target_name, pos, false)
 		return false
 	}
-	source_name := tc.ownership_expr_ident_name(id)
+	source_name := tc.ownership_expr_ident_name(tc.ownership_sum_wrapped_value(id, target_type))
 	if source_name.len > 0 {
 		if moved := tc.ownership_moved_conflict(source_name) {
 			tc.ownership_report_moved(moved.name, moved.info, id)

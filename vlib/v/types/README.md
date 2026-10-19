@@ -232,3 +232,6 @@ Conditional aggregate expressions cannot retain a sum pointer to a local declare
 Moving a sum field or element transfers its cleanup while the remaining aggregate still cleans up.
 A function returning either a fresh or borrowed pointer preserves its conditional cleanup and source
 loans. Moving that sum transfers both obligations; borrowed-only return values remain copyable.
+Wrapping a result in the same sum type preserves those loans and move obligations, including
+conditional results and named aliases. Aggregate fields and elements retain conditional ownership
+when their initializer may return either fresh storage or a borrowed pointer.

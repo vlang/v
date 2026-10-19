@@ -85,12 +85,15 @@ fn test_sparse_typed_map_clone_keeps_aligned_values() {
 	original['only'] = AlignedCloneCell{ value: 42 }
 	mut copied := original.clone()
 	assert copied['only'].value == 42
-	assert usize(voidptr(&copied['only'])) % 64 == 0
+	// Inspect each map element's address before any subsequent map mutation.
+	first_address := unsafe { voidptr(&copied['only']) }
+	assert usize(first_address) % 64 == 0
 	values := copied.values()
 	assert usize(values.data) % 64 == 0
 	assert values[0].value == 42
 	copied['next'] = AlignedCloneCell{ value: 99 }
-	assert usize(voidptr(&copied['next'])) % 64 == 0
+	next_address := unsafe { voidptr(&copied['next']) }
+	assert usize(next_address) % 64 == 0
 	assert 'next' !in original
 	unsafe {
 		values.free()

@@ -539,17 +539,36 @@ fn (mut tc TypeChecker) ownership_sum_borrow_sources(id flat.NodeId, ancestors [
 	return sources
 }
 
-fn (mut tc TypeChecker) ownership_mark_sum_borrow(target string, expr flat.NodeId, typ Type, pos flat.NodeId) bool {
-	if !tc.sum_escape_has_pointer_variant(typ) || tc.ownership_sum_value_creates_owner(expr, typ) {
-		return false
+// Same-sum constructors preserve the payload's loans and move obligations. This
+// helper runs only while checking a live expression, after its type is known.
+fn (mut tc TypeChecker) ownership_sum_wrapped_value(expr flat.NodeId, typ Type) flat.NodeId {
+	mut current := tc.ownership_unwrap_expr(expr)
+	if !tc.sum_escape_has_pointer_variant(typ) { return current }
+	mut visited := map[int]bool{}
+	for tc.valid_node_id(current) && !visited[int(current)] {
+		visited[int(current)] = true
+		payload := tc.ownership_sum_constructor_payload(current) or { break }
+		if !semantic_types_equal(unalias_type(tc.resolve_type(payload)), unalias_type(typ)) {
+			break
+		}
+		current = payload
 	}
-	if tc.ownership_sum_name_has_owner(tc.ownership_expr_ident_name(expr)) { return false }
+	return current
+}
+
+fn (mut tc TypeChecker) ownership_mark_sum_borrow(target string, expr flat.NodeId, typ Type, pos flat.NodeId) bool {
+	if !tc.sum_escape_has_pointer_variant(typ) { return false }
+	value := tc.ownership_sum_wrapped_value(expr, typ)
+	if tc.ownership_sum_name_has_owner(tc.ownership_expr_ident_name(value)) { return false }
 	sources := tc.ownership_sum_borrow_sources(expr, []flat.NodeId{})
 	if sources.len == 0 { return false }
-	mut owns_result := tc.ownership_expr_is_ownership_call(expr)
-	node := tc.a.node(tc.ownership_unwrap_expr(expr))
+	// A fresh-return summary means the result can own storage. It does not
+	// exclude a borrowed alternative, including through a same-sum wrapper.
+	mut owns_result := tc.ownership_sum_value_creates_owner(expr, typ)
+		|| tc.ownership_expr_is_ownership_call(value)
+	node := tc.a.node(value)
 	if node.kind in [.if_expr, .match_stmt, .or_expr] {
-		owns_result = tc.ownership_mark_from_conditional_expr(target, expr, typ, pos)
+		owns_result = tc.ownership_mark_from_conditional_expr(target, value, typ, pos) || owns_result
 	}
 	mut st := tc.ownership_state()
 	if owns_result {

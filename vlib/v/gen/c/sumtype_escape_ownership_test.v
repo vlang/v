@@ -666,12 +666,30 @@ fn main() {
  local = Item{code: 3}
  assert alias is &Item
 }'
-	os.write_file(invalid, mixed_loan)!
-	for mode in ['-autofree', '-ownership'] {
-		result := os.exec([compiler, '-new-compiler', '-no-closures', '-gc', 'none', mode, '-check',
-			invalid])
-		assert result.exit_code != 0
-		assert result.output.contains('borrowed by `alias`'), result.output
+	mut mixed_sources := []string{}
+	for initializer in [
+		'maybe(false, &local)',
+		'Choice(maybe(false, &local))',
+		'Choice(Choice(maybe(false, &local)))',
+		'Choice(if local.code == 1 { maybe(false, &local) } else { Choice(&local) })',
+		'Choice(match local.code { 1 { maybe(false, &local) } else { Choice(&local) } })',
+	] {
+		mixed_sources << mixed_loan.replace(' value := maybe(false, &local)', ' value := ${initializer}')
+	}
+	mixed_sources << mixed_loan.replace(' alias := value', ' alias := Choice(value)')
+	for source in mixed_sources {
+		os.write_file(invalid, source)!
+		for mode in ['-autofree', '-ownership'] {
+			for prealloc in [false, true] {
+				mut command := [compiler, '-new-compiler', '-no-closures', '-gc', 'none', mode]
+				if prealloc { command << '-prealloc' }
+				command << ['-check', invalid]
+				result := os.exec(command)
+				assert result.exit_code != 0
+				assert result.output.contains('borrowed by `alias`'), result.output
+				assert result.output.contains('ambiguous.v:12:'), result.output
+			}
+		}
 	}
 	for source, expected in unsupported {
 		os.write_file(invalid, source)!
@@ -705,10 +723,52 @@ fn main() {
 	assert moved.exit_code != 0
 	assert moved.output.contains('use of moved value: `source.value`'), moved.output
 	assert moved.output.contains('ambiguous.v:12:'), moved.output
-	os.write_file(invalid, mixed_loan.replace('mut local :=', 'local :=').replace(' local = Item{code: 3}\n', '').replace(' assert alias is &Item', ' assert alias is &Item\n assert (value as &Item).code == 1'))!
-	mixed_moved := os.exec([compiler, '-new-compiler', '-no-closures', '-gc', 'none', '-ownership',
-		'-check', invalid])
-	assert mixed_moved.exit_code != 0
-	assert mixed_moved.output.contains('use of moved value: `value`'), mixed_moved.output
-	assert mixed_moved.output.contains('ambiguous.v:13:'), mixed_moved.output
+	for source in mixed_sources {
+		os.write_file(invalid, source.replace('mut local :=', 'local :=').replace(' local = Item{code: 3}\n', '').replace(' assert alias is &Item', ' assert alias is &Item\n assert (value as &Item).code == 1'))!
+		for prealloc in [false, true] {
+			mut command := [compiler, '-new-compiler', '-no-closures', '-gc', 'none', '-ownership']
+			if prealloc { command << '-prealloc' }
+			command << ['-check', invalid]
+			mixed_moved := os.exec(command)
+			assert mixed_moved.exit_code != 0
+			assert mixed_moved.output.contains('use of moved value: `value`'), mixed_moved.output
+			assert mixed_moved.output.contains('ambiguous.v:13:'), mixed_moved.output
+		}
+	}
+	storage_move := 'struct Item implements Drop { code int }
+fn (mut item Item) drop() {}
+type Choice = int | &Item
+struct Holder { value Choice }
+fn maybe(owned bool, item &Item) Choice {
+ if owned { return Choice(&Item{code: 2}) }
+ return Choice(item)
+}
+fn main() {
+ local := Item{code: 1}
+ source := SOURCE_INIT
+ alias := Choice(SOURCE_SLOT)
+ assert (alias as &Item).code == 2
+ assert (SOURCE_SLOT as &Item).code == 2
+}'
+	for slot, initializer in {
+		'source.value': 'Holder{value: Choice(maybe(true, &local))}'
+		'source[0]':    '[Choice(maybe(true, &local))]'
+	} {
+		source := storage_move.replace('SOURCE_INIT', initializer).replace('SOURCE_SLOT', slot)
+		for prealloc in [false, true] {
+			mut command := [compiler, '-new-compiler', '-no-closures', '-gc', 'none', '-ownership']
+			if prealloc { command << '-prealloc' }
+			os.write_file(invalid, source.replace(' assert (${slot} as &Item).code == 2\n', ''))!
+			mut control_command := command.clone()
+			control_command << ['run', invalid]
+			storage_control := os.exec(control_command)
+			assert storage_control.exit_code == 0, storage_control.output
+			os.write_file(invalid, source)!
+			command << ['-check', invalid]
+			storage_moved := os.exec(command)
+			assert storage_moved.exit_code != 0
+			assert storage_moved.output.contains('use of moved value: `${slot}`'), storage_moved.output
+			assert storage_moved.output.contains('ambiguous.v:14:'), storage_moved.output
+		}
+	}
 }
