@@ -3,14 +3,13 @@ module unix
 import time
 import net
 
-// no_deadline should be given to functions when no deadline is wanted (i.e. all functions
-// return instantly)
+// no_deadline disables the absolute deadline; the configured socket timeout still applies.
 const no_deadline = time.unix(0)
-// no_timeout should be given to functions when no timeout is wanted (i.e. all functions
-// return instantly)
+// no_timeout disables the relative socket timeout. An explicit deadline still applies;
+// with no deadline, socket waits block until ready or an error occurs.
 const no_timeout = time.Duration(0)
-// infinite_timeout should be given to functions when an infinite_timeout is wanted (i.e. functions
-// only ever return with data)
+// infinite_timeout disables the relative socket timeout, like no_timeout.
+// An explicit deadline still applies.
 const infinite_timeout = time.infinite
 
 fn C.strncpy(&char, &char, i32)
