@@ -117,7 +117,6 @@ fn vgc_gc_run(_ voidptr) {
 	// === Phase 4: Sweep ===
 	vgc_heap.sweep_gen++
 	C.vgc_atomic_store_u32(&vgc_heap.sweep_done, 0)
-	vgc_heap.sweep_idx = 0
 	C.vgc_atomic_store_u32(&vgc_heap.gc_phase, vgc_phase_sweep)
 
 	// Sweep synchronously - it's fast and avoids race conditions
@@ -140,9 +139,16 @@ fn vgc_gc_run(_ voidptr) {
 
 // Clear all mark bits before a new GC cycle
 fn vgc_clear_mark_bits() {
-	for i in 0 .. vgc_heap.nspans {
-		span := unsafe { vgc_heap.allspans[i] }
-		if span == unsafe { nil } || !span.in_use {
+	mut arena := 0
+	mut page := usize(0)
+	for {
+		span, next_arena, next_page := vgc_next_span(arena, page)
+		if span == unsafe { nil } {
+			break
+		}
+		arena = next_arena
+		page = next_page
+		if !span.in_use {
 			continue
 		}
 		if span.mark_bits != unsafe { nil } {
@@ -468,13 +474,26 @@ fn vgc_do_sweep() {
 		}
 		C.vgc_mutex_unlock(&central.lock)
 	}
-	for i in 0 .. vgc_heap.nspans {
-		span := unsafe { vgc_heap.allspans[i] }
-		if span != unsafe { nil } {
-			vgc_sweep_and_file_span(span)
-		}
-	}
+	vgc_sweep_spans()
 	C.vgc_atomic_store_u32(&vgc_heap.sweep_done, 1)
+}
+
+// vgc_sweep_spans sweeps and files every span that the current sweep has not handled yet.
+fn vgc_sweep_spans() {
+	// Keep the arenas still while walking them.
+	C.vgc_mutex_lock(&vgc_heap.lock)
+	mut arena := 0
+	mut page := usize(0)
+	for {
+		span, next_arena, next_page := vgc_next_span(arena, page)
+		if span == unsafe { nil } {
+			break
+		}
+		arena = next_arena
+		page = next_page
+		vgc_sweep_and_file_span(span)
+	}
+	C.vgc_mutex_unlock(&vgc_heap.lock)
 }
 
 // vgc_sweep_and_file_span sweeps a span that no thread allocates from, and puts it on the
@@ -549,14 +568,7 @@ fn vgc_sweep_span(span &VGC_Span) {
 fn vgc_sweep_finish() {
 	if C.vgc_atomic_load_u32(&vgc_heap.sweep_done) == 0 && vgc_heap.gc_cycle > 0 {
 		// Sweep any remaining spans
-		for vgc_heap.sweep_idx < vgc_heap.nspans {
-			idx := vgc_heap.sweep_idx
-			vgc_heap.sweep_idx = idx + 1
-			span := unsafe { vgc_heap.allspans[idx] }
-			if span != unsafe { nil } {
-				vgc_sweep_and_file_span(span)
-			}
-		}
+		vgc_sweep_spans()
 		C.vgc_atomic_store_u32(&vgc_heap.sweep_done, 1)
 	}
 }
@@ -568,9 +580,16 @@ fn vgc_sweep_finish() {
 // Count total marked bytes across all spans using byte-level popcount
 fn vgc_count_marked() u64 {
 	mut total := u64(0)
-	for i in 0 .. vgc_heap.nspans {
-		span := unsafe { vgc_heap.allspans[i] }
-		if span == unsafe { nil } || !span.in_use || span.mark_bits == unsafe { nil } {
+	mut arena := 0
+	mut page := usize(0)
+	for {
+		span, next_arena, next_page := vgc_next_span(arena, page)
+		if span == unsafe { nil } {
+			break
+		}
+		arena = next_arena
+		page = next_page
+		if !span.in_use || span.mark_bits == unsafe { nil } {
 			continue
 		}
 		nbytes := (span.nelems + 7) / 8
@@ -611,9 +630,16 @@ fn vgc_heap_usage() (usize, usize, usize, usize, usize) {
 	total_alloc := C.vgc_atomic_load_u64(&vgc_heap.total_alloc)
 	// Count actual in-use span pages as heap size
 	mut in_use_bytes := usize(0)
-	for i in 0 .. vgc_heap.nspans {
-		span := unsafe { vgc_heap.allspans[i] }
-		if span != unsafe { nil } && span.in_use {
+	mut arena := 0
+	mut page := usize(0)
+	for {
+		span, next_arena, next_page := vgc_next_span(arena, page)
+		if span == unsafe { nil } {
+			break
+		}
+		arena = next_arena
+		page = next_page
+		if span.in_use {
 			in_use_bytes += usize(span.npages) * vgc_page_size
 		}
 	}

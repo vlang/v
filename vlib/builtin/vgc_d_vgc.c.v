@@ -173,9 +173,6 @@ mut:
 	central [136]VGC_Central
 	// Large object spans
 	large_alloc &VGC_Span = unsafe { nil }
-	// All spans for iteration during GC
-	allspans [16384]&VGC_Span
-	nspans   int
 	// Free spans (completely empty, reusable by page count)
 	free_spans_lock u32
 	free_spans      [32]&VGC_Span // free spans indexed by npages (1..31, 0=unused)
@@ -209,7 +206,6 @@ mut:
 	gc_stopped_count u32 // atomic: threads stopped
 	gc_target_stops  u32 // number of threads to stop
 	// Sweep state
-	sweep_idx  int
 	sweep_done u32 // atomic
 	// Default GC trigger: collect when heap doubles (GOGC=100 equivalent)
 	gc_percent int // like Go's GOGC, default 100
@@ -557,14 +553,6 @@ fn vgc_span_alloc(npages u32, owner int) &VGC_Span {
 				}
 			}
 		}
-	}
-
-	// Track in allspans
-	if vgc_heap.nspans < 16384 {
-		unsafe {
-			vgc_heap.allspans[vgc_heap.nspans] = span
-		}
-		vgc_heap.nspans++
 	}
 
 	C.vgc_mutex_unlock(&vgc_heap.lock)
@@ -1117,6 +1105,34 @@ fn vgc_memdup_noscan(src voidptr, n isize) voidptr {
 // ============================================================
 // Span lookup (find which span owns an address) - O(1) via address map
 // ============================================================
+
+// vgc_next_span returns the first span at or after page `page` of arena `arena`, and the
+// position after it; nil after the last span. The spans tile the used part of each arena, and
+// a recycled span keeps its page count, so the page map holds every span exactly once. The
+// position is returned rather than kept in an iterator, because the compiler may move a local
+// whose address is taken to the heap, and the collector must not allocate.
+fn vgc_next_span(arena int, page usize) (&VGC_Span, int, usize) {
+	mut ai := arena
+	mut p := page
+	for ai < vgc_heap.narenas {
+		a := unsafe { &vgc_heap.arenas[ai] }
+		mut used_pages := a.used / vgc_page_size
+		if used_pages > vgc_pages_per_arena {
+			used_pages = vgc_pages_per_arena
+		}
+		for p < used_pages {
+			span := a.page_span[p]
+			if span == unsafe { nil } || span.npages == 0 {
+				p++
+				continue
+			}
+			return span, ai, p + usize(span.npages)
+		}
+		ai++
+		p = 0
+	}
+	return unsafe { nil }, ai, p
+}
 
 fn vgc_find_span(ptr voidptr) &VGC_Span {
 	addr := usize(ptr)

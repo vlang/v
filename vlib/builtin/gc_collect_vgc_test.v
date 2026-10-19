@@ -193,3 +193,23 @@ fn test_pointer_free_allocations_trigger_a_collection() {
 		assert vgc_heap.gc_cycle > cycles
 	}
 }
+
+// vgc_test_allocate_pages allocates n garbage objects that take one page (one span) each.
+@[noinline]
+fn vgc_test_allocate_pages(n int) {
+	for _ in 0 .. n {
+		_ = vgc_malloc_noscan(8192)
+	}
+}
+
+fn test_every_span_is_swept() {
+	$if vgc ? {
+		// More spans than the 16384 that the collector used to track.
+		vgc_test_allocate_pages(17000)
+		gc_collect()
+		used := vgc_memory_use()
+		// The spans of the garbage are free again, and new objects reuse them.
+		vgc_test_allocate_pages(17000)
+		assert vgc_memory_use() == used
+	}
+}
