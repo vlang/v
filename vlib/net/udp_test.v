@@ -177,3 +177,20 @@ fn test_udp_multicast_validates_inputs() ! {
 	}
 	assert iface_failed
 }
+
+fn test_udp_read_deadline_wins_over_the_default_timeout() ! {
+	mut listener := net.listen_udp('127.0.0.1:0')!
+	defer {
+		listener.close() or {}
+	}
+	// the default read timeout is 100 ms; a later deadline is what the read waits for
+	listener.set_read_deadline(time.now().add(400 * time.millisecond))
+	mut buf := []u8{len: 8}
+	sw := time.new_stopwatch()
+	if _, _ := listener.read(mut buf) {
+		assert false, 'nothing was sent'
+	} else {
+		assert err.code() == net.err_timed_out_code
+	}
+	assert sw.elapsed() >= 350 * time.millisecond, 'returned after ${sw.elapsed()}'
+}
