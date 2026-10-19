@@ -104,6 +104,10 @@ mut:
 	free_index  u32 // hint: scan from here for free slot
 	// Sweep generation (translated from Go's sweepgen)
 	sweep_gen u32
+	// Cache index + 1 of the thread that allocates from the span, or that is setting it up;
+	// 0 when no thread does. Only that thread changes the span's alloc bits, and the sweep
+	// skips the span.
+	cached_by int
 	// Linked list pointers for central free lists
 	next &VGC_Span = unsafe { nil }
 	prev &VGC_Span = unsafe { nil }
@@ -314,6 +318,14 @@ fn vgc_unregister_thread(idx int) {
 			C.vgc_thread_yield()
 		}
 	}
+	for span_class in 0 .. vgc_num_span_classes {
+		span := unsafe { vgc_heap.caches[idx].alloc[span_class] }
+		if span != unsafe { nil } {
+			unsafe {
+				span.cached_by = 0
+			}
+		}
+	}
 	unsafe {
 		vgc_heap.caches[idx] = VGC_Cache{}
 	}
@@ -325,6 +337,17 @@ fn vgc_ensure_registered() {
 	if C.vgc_get_cache_idx() < 0 {
 		vgc_register_thread()
 	}
+}
+
+// vgc_enter starts an allocator operation: it registers the thread, and stops it while a
+// collection runs, before it touches its cache or a span. Returns the thread's cache index.
+@[inline]
+fn vgc_enter() int {
+	vgc_ensure_registered()
+	if C.vgc_atomic_load_u32(&vgc_heap.gc_stop_flag) != 0 {
+		vgc_safepoint()
+	}
+	return C.vgc_get_cache_idx()
 }
 
 fn vgc_refresh_stack_range() {
@@ -358,7 +381,7 @@ fn vgc_refresh_stack_range_for_sp(cache_idx int, sp usize) {
 // ============================================================
 
 // Try to get a recycled span from the free list
-fn vgc_get_free_span(npages u32) &VGC_Span {
+fn vgc_get_free_span(npages u32, owner int) &VGC_Span {
 	if npages == 0 {
 		return unsafe { nil }
 	}
@@ -378,6 +401,7 @@ fn vgc_get_free_span(npages u32) &VGC_Span {
 					span.next = nil
 					span.prev = nil
 					span.in_use = true
+					span.cached_by = owner
 				}
 				C.vgc_mutex_unlock(&vgc_heap.free_spans_lock)
 				return span
@@ -396,6 +420,7 @@ fn vgc_get_free_span(npages u32) &VGC_Span {
 			span.next = nil
 			span.prev = nil
 			span.in_use = true
+			span.cached_by = owner
 		}
 		C.vgc_mutex_unlock(&vgc_heap.free_spans_lock)
 		return span
@@ -449,10 +474,11 @@ fn vgc_put_free_span(mut span VGC_Span) {
 	C.vgc_mutex_unlock(&vgc_heap.free_spans_lock)
 }
 
-// Allocate a new span with the given number of pages
-fn vgc_span_alloc(npages u32) &VGC_Span {
+// Allocate a new span with the given number of pages. `owner` is the cache index + 1 of the
+// thread that sets it up: the sweep leaves the span alone until that thread is done with it.
+fn vgc_span_alloc(npages u32, owner int) &VGC_Span {
 	// First try to reuse a free span
-	recycled := vgc_get_free_span(npages)
+	recycled := vgc_get_free_span(npages, owner)
 	if recycled != unsafe { nil } {
 		return recycled
 	}
@@ -518,6 +544,7 @@ fn vgc_span_alloc(npages u32) &VGC_Span {
 		span.base = base
 		span.npages = npages
 		span.in_use = true
+		span.cached_by = owner
 	}
 	// Register span in arena's page map
 	if arena_idx >= 0 {
@@ -617,8 +644,8 @@ fn vgc_span_alloc_obj(mut span VGC_Span) voidptr {
 // Central free list operations (translated from Go's mcentral)
 // ============================================================
 
-// Get a span with free objects for the given span class
-fn vgc_central_get_span(span_class int) &VGC_Span {
+// Get a span with free objects for the given span class, for the cache with index owner - 1.
+fn vgc_central_get_span(span_class int, owner int) &VGC_Span {
 	central := unsafe { &vgc_heap.central[span_class] }
 	C.vgc_mutex_lock(&central.lock)
 
@@ -637,6 +664,7 @@ fn vgc_central_get_span(span_class int) &VGC_Span {
 		unsafe {
 			span.next = nil
 			span.prev = nil
+			span.cached_by = owner
 		}
 		C.vgc_mutex_unlock(&central.lock)
 		return span
@@ -648,7 +676,7 @@ fn vgc_central_get_span(span_class int) &VGC_Span {
 	class_idx := u8(span_class / 2)
 	noscan := (span_class % 2) == 1
 	npages := C.vgc_get_class_npages(int(class_idx))
-	new_span := vgc_span_alloc(npages)
+	new_span := vgc_span_alloc(npages, owner)
 	if new_span == unsafe { nil } {
 		return unsafe { nil }
 	}
@@ -663,6 +691,7 @@ fn vgc_central_get_span(span_class int) &VGC_Span {
 fn vgc_central_return_span(span_class int, mut span VGC_Span) {
 	central := unsafe { &vgc_heap.central[span_class] }
 	C.vgc_mutex_lock(&central.lock)
+	span.cached_by = 0
 
 	if span.alloc_count < span.nelems {
 		// Has free objects - add to partial
@@ -714,7 +743,7 @@ fn vgc_cache_get_span(cache_idx int, span_class int) &VGC_Span {
 		}
 	}
 	// Get fresh span from central
-	new_span := vgc_central_get_span(span_class)
+	new_span := vgc_central_get_span(span_class, cache_idx + 1)
 	unsafe {
 		vgc_heap.caches[cache_idx].alloc[span_class] = new_span
 	}
@@ -743,20 +772,19 @@ fn vgc_malloc_typed_opts(n usize, ptrmap u64, ptr_words u8, zero_fill bool) void
 		return unsafe { nil }
 	}
 
-	vgc_ensure_registered()
-	cache_idx := C.vgc_get_cache_idx()
+	cache_idx := vgc_enter()
 
 	// Large allocation (> 32KB) - get dedicated span
 	if n > usize(vgc_max_small_size) {
 		vgc_maybe_gc()
-		return vgc_alloc_large(n, false, zero_fill)
+		return vgc_alloc_large(n, false, zero_fill, cache_idx)
 	}
 
 	// Small allocation - use size class and cache
 	class_idx := C.vgc_size_class(u32(n))
 	if class_idx == 0 {
 		vgc_maybe_gc()
-		return vgc_alloc_large(n, false, zero_fill)
+		return vgc_alloc_large(n, false, zero_fill, cache_idx)
 	}
 
 	span_class := int(class_idx) * 2 // scan variant
@@ -813,17 +841,16 @@ fn vgc_malloc_noscan_opts(n usize, zero_fill bool) voidptr {
 		return unsafe { nil }
 	}
 
-	vgc_ensure_registered()
-	cache_idx := C.vgc_get_cache_idx()
+	cache_idx := vgc_enter()
 
 	if n > usize(vgc_max_small_size) {
 		vgc_maybe_gc()
-		return vgc_alloc_large(n, true, zero_fill)
+		return vgc_alloc_large(n, true, zero_fill, cache_idx)
 	}
 
 	class_idx := C.vgc_size_class(u32(n))
 	if class_idx == 0 {
-		return vgc_alloc_large(n, true, zero_fill)
+		return vgc_alloc_large(n, true, zero_fill, cache_idx)
 	}
 
 	// Tiny allocator for very small objects (translated from Go's mcache tiny allocator)
@@ -892,9 +919,9 @@ fn vgc_malloc_noscan_opts(n usize, zero_fill bool) voidptr {
 }
 
 // Allocate a large object (> 32KB) with its own span
-fn vgc_alloc_large(n usize, noscan bool, zero_fill bool) voidptr {
+fn vgc_alloc_large(n usize, noscan bool, zero_fill bool, cache_idx int) voidptr {
 	npages := u32((n + vgc_page_size - 1) / vgc_page_size)
-	span := vgc_span_alloc(npages)
+	span := vgc_span_alloc(npages, cache_idx + 1)
 	if span == unsafe { nil } {
 		return unsafe { nil }
 	}
@@ -921,6 +948,8 @@ fn vgc_alloc_large(n usize, noscan bool, zero_fill bool) voidptr {
 	unsafe {
 		span.next = vgc_heap.large_alloc
 		vgc_heap.large_alloc = span
+		// Set up: the sweep may free it once it is garbage.
+		span.cached_by = 0
 	}
 	C.vgc_mutex_unlock(&vgc_heap.lock)
 
@@ -976,6 +1005,7 @@ fn vgc_free(ptr voidptr) {
 	// In a GC environment, explicit free is optional.
 	// The object will be collected if unreachable.
 	// However, we can mark it as free immediately for reuse.
+	cache_idx := vgc_enter()
 	span := vgc_find_span(ptr)
 	if span == unsafe { nil } {
 		return
@@ -990,14 +1020,34 @@ fn vgc_free(ptr voidptr) {
 	if span.noscan {
 		return
 	}
+	// Only the thread that allocates from a span changes its alloc bits. A span that no
+	// thread allocates from changes only under its central lock; leave the objects of other
+	// threads' spans to the collector.
+	if span.cached_by == cache_idx + 1 {
+		vgc_free_obj(span, ptr)
+		return
+	}
+	if span.cached_by != 0 {
+		return
+	}
+	span_class := int(span.class_idx) * 2 + if span.noscan { 1 } else { 0 }
+	central := unsafe { &vgc_heap.central[span_class] }
+	C.vgc_mutex_lock(&central.lock)
+	if span.cached_by == 0 {
+		vgc_free_obj(span, ptr)
+	}
+	C.vgc_mutex_unlock(&central.lock)
+}
+
+fn vgc_free_obj(span &VGC_Span, ptr voidptr) {
 	obj_idx := u32((usize(ptr) - span.base) / usize(span.elem_size))
 	if obj_idx < span.nelems && span.alloc_bits != unsafe { nil } {
 		if C.vgc_bitmap_get(span.alloc_bits, obj_idx) != 0 {
 			C.vgc_bitmap_clear(span.alloc_bits, obj_idx)
 			unsafe {
-				span.alloc_count--
+				(&VGC_Span(span)).alloc_count--
 				if obj_idx < span.free_index {
-					span.free_index = obj_idx
+					(&VGC_Span(span)).free_index = obj_idx
 				}
 			}
 			C.vgc_atomic_sub_u64(&vgc_heap.heap_live, u64(span.elem_size))
@@ -1123,8 +1173,14 @@ fn vgc_safepoint_wait(arg voidptr) {
 	C.vgc_atomic_add_u32(&vgc_heap.gc_stopped_count, 1)
 
 	// Wait until GC is done with stop-the-world phase
+	mut spins := 0
 	for C.vgc_atomic_load_u32(&vgc_heap.gc_stop_flag) != 0 {
-		C.vgc_atomic_fence()
+		if spins < 64 {
+			spins++
+			C.vgc_atomic_fence()
+		} else {
+			C.vgc_thread_yield()
+		}
 	}
 
 	C.vgc_atomic_store_u32(&vgc_heap.caches[cache_idx].stopped, 0)

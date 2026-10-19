@@ -71,3 +71,57 @@ fn test_threads_that_exited_are_not_scanned() {
 		assert vgc_heap.ncaches <= 9
 	}
 }
+
+@[noinline]
+fn vgc_test_garbage(n int, size int) {
+	for _ in 0 .. n {
+		_ = vgc_malloc_noscan(usize(size))
+	}
+}
+
+fn test_a_span_is_not_recycled_while_a_thread_allocates_from_it() {
+	$if vgc ? {
+		// Two objects of a size class that nothing else uses: their span is this thread's
+		// current span for that class, and it holds only garbage.
+		vgc_test_garbage(2, 3000)
+		span_class := int(C.vgc_size_class(3000)) * 2 + 1
+		span := unsafe { vgc_heap.caches[C.vgc_get_cache_idx()].alloc[span_class] }
+		assert span != unsafe { nil }
+		vgc_gc_start()
+		assert span.in_use
+		assert span.alloc_bits != unsafe { nil }
+		p := vgc_malloc_noscan(3000)
+		assert vgc_find_span(p) == span
+	}
+}
+
+fn vgc_test_keep_strings(id int, rounds int) int {
+	mut errors := 0
+	mut keep := []string{len: 2000}
+	for r in 0 .. rounds {
+		for i in 0 .. keep.len {
+			keep[i] = '${id}-${r}-${i}-'.repeat(1 + i % 5)
+		}
+		for i in 0 .. keep.len {
+			if keep[i] != '${id}-${r}-${i}-'.repeat(1 + i % 5) {
+				errors++
+			}
+		}
+	}
+	return errors
+}
+
+fn test_threads_allocate_while_another_thread_collects() {
+	$if vgc ? {
+		mut threads := []thread int{}
+		for id in 0 .. 4 {
+			threads << spawn vgc_test_keep_strings(id, 25)
+		}
+		for _ in 0 .. 100 {
+			vgc_gc_start()
+		}
+		for errors in threads.wait() {
+			assert errors == 0
+		}
+	}
+}

@@ -70,10 +70,6 @@ fn vgc_gc_run(_ voidptr) {
 	// Scan roots: stacks + globals (conservative scanning)
 	vgc_mark_roots()
 
-	// Resume threads - they can allocate but write barrier is on
-	C.vgc_atomic_store_u32(&vgc_heap.gc_stop_flag, 0)
-	C.vgc_atomic_fence()
-
 	// Parallel mark: drain the work queue
 	vgc_parallel_mark()
 
@@ -105,6 +101,10 @@ fn vgc_gc_run(_ voidptr) {
 	vgc_update_trigger()
 
 	vgc_heap.gc_cycle++
+	// Resume the threads only now. Nothing marks the objects that they allocate, so they
+	// must not allocate before the sweep is done, and the sweep must not change a span
+	// while a thread allocates from it.
+	C.vgc_atomic_store_u32(&vgc_heap.gc_stop_flag, 0)
 	C.vgc_atomic_store_u32(&vgc_heap.gc_phase, vgc_phase_off)
 }
 
@@ -140,6 +140,10 @@ fn vgc_mark_roots() {
 		}
 		if cache.stack_lo > 0 && cache.stack_hi > 0 && cache.stack_hi > cache.stack_lo {
 			vgc_scan_range(cache.stack_lo, cache.stack_hi)
+		}
+		// The thread keeps packing small objects into its tiny block.
+		if cache.tiny != 0 {
+			vgc_shade(cache.tiny)
 		}
 	}
 }
@@ -428,7 +432,8 @@ fn vgc_write_barrier(new_val voidptr) {
 fn vgc_do_sweep() {
 	for i in 0 .. vgc_heap.nspans {
 		span := unsafe { vgc_heap.allspans[i] }
-		if span == unsafe { nil } || !span.in_use {
+		// A thread allocates from a cached span; it is swept after the thread gives it back.
+		if span == unsafe { nil } || !span.in_use || span.cached_by != 0 {
 			continue
 		}
 		vgc_sweep_span(span)
@@ -491,7 +496,7 @@ fn vgc_sweep_finish() {
 			idx := vgc_heap.sweep_idx
 			vgc_heap.sweep_idx = idx + 1
 			span := unsafe { vgc_heap.allspans[idx] }
-			if span != unsafe { nil } && span.in_use {
+			if span != unsafe { nil } && span.in_use && span.cached_by == 0 {
 				vgc_sweep_span(span)
 			}
 		}
