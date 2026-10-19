@@ -229,3 +229,6 @@ borrowing it into an aggregate in the same scope.
 The same lifetime check applies when replacing the enclosing struct or array literal. Borrowed sum
 fields keep their source loans through named aggregate aliases, including nested storage.
 Conditional aggregate expressions cannot retain a sum pointer to a local declared inside them.
+Moving a sum field or element transfers its cleanup while the remaining aggregate still cleans up.
+A function returning either a fresh or borrowed pointer preserves its conditional cleanup and source
+loans. Moving that sum transfers both obligations; borrowed-only return values remain copyable.

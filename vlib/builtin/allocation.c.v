@@ -580,6 +580,12 @@ fn free_unaliased(ptr voidptr) {
 		return
 	}
 	$if gcboehm ? {
+		$if builtin_arena ? {
+			// Scoped arena allocations are released in bulk, including unique buffers.
+			if _unlikely_(C.atomic_load_u32(&g_arena_hooks_ready) != 0) && g_arena_owns_hook(ptr) {
+				return
+			}
+		}
 		C.GC_FREE(ptr)
 	} $else {
 		free(ptr)

@@ -543,14 +543,31 @@ fn (mut tc TypeChecker) ownership_mark_sum_borrow(target string, expr flat.NodeI
 	if !tc.sum_escape_has_pointer_variant(typ) || tc.ownership_sum_value_creates_owner(expr, typ) {
 		return false
 	}
+	if tc.ownership_sum_name_has_owner(tc.ownership_expr_ident_name(expr)) { return false }
 	sources := tc.ownership_sum_borrow_sources(expr, []flat.NodeId{})
 	if sources.len == 0 { return false }
+	mut owns_result := tc.ownership_expr_is_ownership_call(expr)
+	node := tc.a.node(tc.ownership_unwrap_expr(expr))
+	if node.kind in [.if_expr, .match_stmt, .or_expr] {
+		owns_result = tc.ownership_mark_from_conditional_expr(target, expr, typ, pos)
+	}
 	mut st := tc.ownership_state()
-	st.owned_vars.delete(target)
-	st.owned_var_types.delete(target)
-	st.moved_vars.delete(target)
+	if owns_result {
+		// A mixed return can carry a fresh owner or borrow an argument. Keep
+		// both obligations; the runtime flag chooses its actual destructor.
+		tc.ownership_mark_owned(target, typ, pos)
+	} else {
+		st.owned_vars.delete(target)
+		st.owned_var_types.delete(target)
+		st.moved_vars.delete(target)
+	}
 	for source in sources { tc.ownership_add_borrow(source, target, pos, false) }
 	return true
+}
+
+fn (mut tc TypeChecker) ownership_sum_name_has_owner(name string) bool {
+	return name.len > 0 && name in tc.ownership_state().owned_vars
+		&& tc.sum_escape_has_pointer_variant(tc.ownership_type_for_var(name, Type(Unknown{})))
 }
 
 fn (mut tc TypeChecker) ownership_sum_aggregate_return_sources(id flat.NodeId, ancestors []flat.NodeId) []string {

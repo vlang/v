@@ -236,13 +236,17 @@ pub struct DateTime {
 pub mut:
 	text string
 pub:
-	pos token.Pos
+	pos  token.Pos
+	date Date
+	time Time
 }
 
 // str returns the `string` representation of the `DateTime` type.
 pub fn (dt DateTime) str() string {
 	mut str := typeof(dt).name + '{\n'
 	str += "  text:  '${dt.text}'\n"
+	str += "  date:  '${dt.date}'\n"
+	str += "  time:  '${dt.time}'\n"
 	str += '  pos:  ${dt.pos}\n'
 	str += '}'
 	return str

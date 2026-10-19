@@ -13,7 +13,7 @@ fn test_returned_pointer_sum_acquires_promoted_local_once() {
 		'-path', vlib, '-o', compiler, os.join_path(vlib, 'v', 'v.v')])
 	assert build.exit_code == 0, build.output
 	header := os.join_path(dir, 'drops.h')
-	os.write_file(header, 'static int transfer_drops[29];
+	os.write_file(header, 'static int transfer_drops[33];
 static void transfer_record(int code) { transfer_drops[code]++; }
 static int transfer_count(int code) { return transfer_drops[code]; }
 static int transfer_visits;
@@ -195,6 +195,27 @@ fn forward_loop_cleanup() {
  assert C.transfer_count(23) == 0
 }
 @[noinline]
+fn forward_projection_cleanup() {
+ field := forward_field_factory()
+ assert (field as &Item).code == 29
+ assert C.transfer_count(29) == 0
+ assert C.transfer_count(31) == 1
+ indexed := forward_index_factory()
+ assert (indexed as &Item).code == 30
+ assert C.transfer_count(30) == 0
+ assert C.transfer_count(32) == 1
+}
+@[noinline]
+fn forward_field_factory() Choice {
+ holder := MixedSumHolder{borrowed: Choice(&Item{code: 31}), owned: Choice(&Item{code: 29})}
+ return holder.owned
+}
+@[noinline]
+fn forward_index_factory() Choice {
+ values := [Choice(&Item{code: 30}), Choice(&Item{code: 32})]
+ return values[0]
+}
+@[noinline]
 fn aggregate_borrow_cleanup() {
  local := Item{code: 27}
  mut same_scope := SumHolder{value: Choice(0)}
@@ -337,6 +358,11 @@ fn main() {
  assert C.transfer_count(26) == 1
  assert C.transfer_count(27) == 1
  assert C.transfer_count(28) == 1
+ forward_projection_cleanup()
+ assert C.transfer_count(29) == 1
+ assert C.transfer_count(30) == 1
+ assert C.transfer_count(31) == 1
+ assert C.transfer_count(32) == 1
 }')!
 	previous_jobs := os.getenv('VJOBS')
 	defer {
@@ -626,6 +652,27 @@ fn main() { consume(true) }',
 			assert result.output.contains('shorter lifetime in aggregate storage'), result.output
 		}
 	}
+	mixed_loan := 'struct Item implements Drop { code int }
+fn (mut item Item) drop() {}
+type Choice = int | &Item
+fn maybe(owned bool, item &Item) Choice {
+ if owned { return Choice(&Item{code: 2}) }
+ return Choice(item)
+}
+fn main() {
+ mut local := Item{code: 1}
+ value := maybe(false, &local)
+ alias := value
+ local = Item{code: 3}
+ assert alias is &Item
+}'
+	os.write_file(invalid, mixed_loan)!
+	for mode in ['-autofree', '-ownership'] {
+		result := os.exec([compiler, '-new-compiler', '-no-closures', '-gc', 'none', mode, '-check',
+			invalid])
+		assert result.exit_code != 0
+		assert result.output.contains('borrowed by `alias`'), result.output
+	}
 	for source, expected in unsupported {
 		os.write_file(invalid, source)!
 		for mode in ['-autofree', '-ownership'] {
@@ -658,4 +705,10 @@ fn main() {
 	assert moved.exit_code != 0
 	assert moved.output.contains('use of moved value: `source.value`'), moved.output
 	assert moved.output.contains('ambiguous.v:12:'), moved.output
+	os.write_file(invalid, mixed_loan.replace('mut local :=', 'local :=').replace(' local = Item{code: 3}\n', '').replace(' assert alias is &Item', ' assert alias is &Item\n assert (value as &Item).code == 1'))!
+	mixed_moved := os.exec([compiler, '-new-compiler', '-no-closures', '-gc', 'none', '-ownership',
+		'-check', invalid])
+	assert mixed_moved.exit_code != 0
+	assert mixed_moved.output.contains('use of moved value: `value`'), mixed_moved.output
+	assert mixed_moved.output.contains('ambiguous.v:13:'), mixed_moved.output
 }

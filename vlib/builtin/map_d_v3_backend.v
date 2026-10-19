@@ -1128,6 +1128,8 @@ fn (m &VMapData) clone() &VMapData {
 	if m.even_index >= 128 && u64(m.count) * 8 < u64(m.even_index) {
 		mut compact := new_map_data(m.key_bytes, m.value_bytes, m.hash_fn, m.key_eq_fn,
 			m.clone_fn, m.free_fn)
+		compact.key_values.key_alignment = m.key_values.key_alignment
+		compact.key_values.value_alignment = m.key_values.value_alignment
 		compact.reserve(u32(m.count))
 		for i in 0 .. m.key_values.len {
 			if m.key_values.has_index(i) {

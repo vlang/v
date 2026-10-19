@@ -1988,7 +1988,10 @@ fn (mut t Transformer) sum_storage_value(id flat.NodeId, sum_name u32, variants 
 		value = t.make_prefix(.mul, value)
 		t.set_node_typ(int(value), source_type)
 	}
-	return value
+	if node.kind == .index {
+		value = t.lower_owned_array_index_move(id, value)
+	}
+	return t.mark_sum_moving_read(id, value)
 }
 
 // wrap_sum_value transforms wrap sum value data for transform.

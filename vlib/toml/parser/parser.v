@@ -426,12 +426,33 @@ fn (p &Parser) check_implicitly_declared(key DottedKey) ! {
 	}
 }
 
+// find_table returns a shared reference to the current root table, allocating missing segments.
+// The returned heap header shares table storage without borrowing an inline value's address.
+pub fn (mut p Parser) find_table() !&map[string]ast.Value {
+	table := p.find_table_view()!
+	return &table
+}
+
+// find_sub_table returns a shared reference to a subtable relative to the current root table.
+// Missing dotted-key segments are allocated before the reference is returned.
+pub fn (mut p Parser) find_sub_table(key DottedKey) !&map[string]ast.Value {
+	table := p.find_sub_table_view(key)!
+	return &table
+}
+
+// find_in_table returns a shared reference to the dotted-key table within table.
+// Missing segments are allocated, and the returned heap header shares their storage.
+pub fn (mut p Parser) find_in_table(mut table map[string]ast.Value, key DottedKey) !&map[string]ast.Value {
+	view := p.find_in_table_view(mut table, key)!
+	return &view
+}
+
 // find_table returns a map sharing the table storage if found in the *root* table given a "dotted" key (`a.b.c`).
 // If some segments of the key does not exist in the root table find_table will
 // allocate a new map for each segment. This behavior is needed because you can
 // reference maps by multiple keys "dotted" (separated by "." periods) in TOML documents.
 // See also `find_in_table`.
-pub fn (mut p Parser) find_table() !map[string]ast.Value {
+fn (mut p Parser) find_table_view() !map[string]ast.Value {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN,
 		'locating "${p.root_map_key}" in map ${ptr_str(p.root_map)}')
 	mut t := unsafe { p.root_map }
@@ -439,7 +460,7 @@ pub fn (mut p Parser) find_table() !map[string]ast.Value {
 		return t
 	}
 
-	return p.find_in_table(mut t, p.root_map_key)
+	return p.find_in_table_view(mut t, p.root_map_key)
 }
 
 // allocate_table allocates all tables in "dotted" `key` (`a.b.c`) in the *root* table.
@@ -466,7 +487,7 @@ pub fn (mut p Parser) sub_table_key(key DottedKey) (DottedKey, DottedKey) {
 // allocate a new map for the segment. This behavior is needed because you can
 // reference maps by multiple keys "dotted" (separated by "." periods) in TOML documents.
 // See also `find_in_table`.
-pub fn (mut p Parser) find_sub_table(key DottedKey) !map[string]ast.Value {
+fn (mut p Parser) find_sub_table_view(key DottedKey) !map[string]ast.Value {
 	mut ky := DottedKey([]string{})
 	ky << p.root_map_key
 	ky << key
@@ -480,14 +501,14 @@ pub fn (mut p Parser) find_sub_table(key DottedKey) !map[string]ast.Value {
 		return t
 	}
 
-	return p.find_in_table(mut t, ky)
+	return p.find_in_table_view(mut t, ky)
 }
 
 // find_in_table returns a map sharing the table storage if found in `table` given a "dotted" key (`a.b.c`).
 // If some segments of the key does not exist in the input map find_in_table will
 // allocate a new map for the segment. This behavior is needed because you can
 // reference maps by multiple keys "dotted" (separated by "." periods) in TOML documents.
-pub fn (mut p Parser) find_in_table(mut table map[string]ast.Value, key DottedKey) !map[string]ast.Value {
+fn (mut p Parser) find_in_table_view(mut table map[string]ast.Value, key DottedKey) !map[string]ast.Value {
 	mut current := unsafe { table }
 	for part in key {
 		if part !in current {
@@ -551,7 +572,7 @@ pub fn (mut p Parser) find_array_of_tables() ![]ast.Value {
 
 // allocate_in_table allocates all tables in "dotted" `key` (`a.b.c`) in `table`.
 pub fn (mut p Parser) allocate_in_table(mut table map[string]ast.Value, key DottedKey) ! {
-	p.find_in_table(mut table, key)!
+	p.find_in_table_view(mut table, key)!
 }
 
 // dotted_key returns a string of the next tokens parsed as
@@ -633,7 +654,7 @@ pub fn (mut p Parser) root_table() ! {
 						p.implicit_declared.add(abs_dotted_key)
 					}
 
-					t := p.find_sub_table(sub_table)!
+					t := p.find_sub_table_view(sub_table)!
 					unsafe {
 						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN,
 							'setting "${key}" = ${val} in table ${ptr_str(t)}')
@@ -643,7 +664,7 @@ pub fn (mut p Parser) root_table() ! {
 					p.ignore_while(space_formatting)!
 					key, val := p.key_value()!
 
-					t := p.find_table()!
+					t := p.find_table_view()!
 					unsafe {
 						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN,
 							'setting "${key.str()}" = ${val} in table ${ptr_str(t)}')
@@ -722,7 +743,7 @@ pub fn (mut p Parser) root_table() ! {
 										dotted_key_copy.delete(0)
 										new_key := todo_msvc_astring2dkey(dotted_key_copy)
 										sub_table, key := p.sub_table_key(new_key)
-										t := p.find_in_table(mut mut_val, sub_table)!
+										t := p.find_in_table_view(mut mut_val, sub_table)!
 										util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN,
 											'setting "${key}" = ${val} in table ${ptr_str(t)}')
 										t[new_key.last().str()] = m
@@ -837,7 +858,7 @@ pub fn (mut p Parser) table_contents(mut tbl map[string]ast.Value) ! {
 
 					sub_table, key := p.sub_table_key(dotted_key)
 
-					t := p.find_in_table(mut tbl, sub_table)!
+					t := p.find_in_table_view(mut tbl, sub_table)!
 					unsafe {
 						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN,
 							'setting "${key}" = ${val} in table ${ptr_str(t)}')
@@ -929,7 +950,7 @@ pub fn (mut p Parser) inline_table(mut tbl map[string]ast.Value) ! {
 					dotted_key, val := p.dotted_key_value()!
 
 					sub_table, key := p.sub_table_key(dotted_key)
-					mut t := p.find_in_table(mut tbl, sub_table)!
+					mut t := p.find_in_table_view(mut tbl, sub_table)!
 
 					// Disallow mutation of immutable values (inline tables)
 					if p.explicit_declared.has(dotted_key) {
@@ -1077,7 +1098,7 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ! {
 	}
 
 	parent_key := DottedKey(unsafe { dotted_key[..dotted_key.len - 1] })
-	mut parent := p.find_in_table(mut table, parent_key)!
+	mut parent := p.find_in_table_view(mut table, parent_key)!
 	key := dotted_key.last()
 	mut entries := parent[key] or { ast.Value([]ast.Value{}) }
 	if mut entries !is []ast.Value {
@@ -1096,6 +1117,16 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ! {
 		p.last_aot.clear()
 		p.last_aot_index = 0
 	}
+}
+
+// double_array_of_tables_contents parses one nested table body into a one-element value array.
+// The following array-of-tables header remains available to the caller.
+@[autofree_bug; manualfree]
+pub fn (mut p Parser) double_array_of_tables_contents(target_key DottedKey) ![]ast.Value {
+	table := p.array_table_contents(target_key)!
+	mut values := []ast.Value{}
+	values << ast.Value(table)
+	return values
 }
 
 @[autofree_bug; manualfree]
@@ -1188,7 +1219,7 @@ fn (mut p Parser) array_table_entry(mut table map[string]ast.Value, context Dott
 	}
 	mut target := unsafe { table }
 	if path.len > 0 {
-		target = p.find_in_table(mut table, path)!
+		target = p.find_in_table_view(mut table, path)!
 	}
 	target[name] = value
 }
@@ -1571,6 +1602,8 @@ pub fn (mut p Parser) date_time() !ast.DateTimeType {
 			return ast.DateTime{
 				text: lit
 				pos:  pos
+				date: date
+				time: time
 			}
 		}
 	} else if p.peek_tok.kind == .colon {

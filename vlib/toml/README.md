@@ -13,6 +13,22 @@ doc1 := toml.parse_text(<string content>) or { panic(err) }
 doc2 := toml.parse_file(<file path>) or { panic(err) }
 ```
 
+## Parser AST and table views
+
+`toml.ast.DateTime` keeps its public `date` and `time` components, including their
+text and source positions, alongside the complete date-time `text`.
+
+The public `Parser.find_table`, `find_sub_table` and `find_in_table` methods return
+`!&map[string]ast.Value`. Each reference has a heap header sharing the table's storage.
+Insertions, deletions and reservations through a view are visible through other views.
+Growing the parent table does not invalidate the reference: it holds no pointer into
+the parent's inline values. Keep shared table storage alive until all views are finished;
+use `.clone()` when an independent table is needed.
+
+`Parser.double_array_of_tables_contents(target_key)` returns a one-element
+`[]ast.Value` containing the parsed table body. It leaves the following table header
+available for the caller to continue parsing.
+
 ## Example
 
 Here we parse the official [TOML example](https://github.com/toml-lang/toml/blob/3b11f6921da7b6f5db37af039aa021fee450c091/README.md#Example)

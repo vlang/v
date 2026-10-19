@@ -7726,6 +7726,9 @@ fn (mut tc TypeChecker) ownership_assign_to_name(lhs_name string, rhs_id flat.No
 					source_type
 				}
 				tc.ownership_mark_owned(lhs_name, target_type, assign_id)
+				if rhs_name != lhs_name && tc.sum_escape_has_pointer_variant(target_type) {
+					tc.ownership_release_borrower(rhs_name)
+				}
 				for source_name in descendants {
 					suffix := source_name[rhs_name.len..]
 					tc.ownership_mark_owned_name(lhs_name + suffix, tc.ownership_type_name_for_var(source_name), assign_id)
@@ -8941,7 +8944,8 @@ fn (mut tc TypeChecker) ownership_mark_storage_from_expr_with_mode(target_name s
 			tc.ownership_report_moved(moved.name, moved.info, id)
 			return false
 		}
-		if tc.ownership_borrowed_alias_source(source_name, false) == none {
+		if tc.ownership_borrowed_alias_source(source_name, false) == none
+			|| tc.ownership_sum_name_has_owner(source_name) {
 			_ = tc.ownership_alias_borrower(target_name, source_name, pos)
 		}
 	}
@@ -8956,6 +8960,9 @@ fn (mut tc TypeChecker) ownership_mark_storage_from_expr_with_mode(target_name s
 				source_type
 			}
 			tc.ownership_mark_owned(target_name, storage_type, pos)
+			if source_name != target_name && tc.sum_escape_has_pointer_variant(storage_type) {
+				tc.ownership_release_borrower(source_name)
+			}
 			mut st := tc.ownership_state()
 			for descendant in descendants {
 				suffix := descendant[source_name.len..]
@@ -9024,7 +9031,8 @@ fn (mut tc TypeChecker) ownership_alias_borrower(lhs_name string, rhs_name strin
 	if aliases.len == 0 {
 		return false
 	}
-	if has_direct_alias {
+	conditional_owner := tc.ownership_sum_name_has_owner(rhs_name)
+	if has_direct_alias && !conditional_owner {
 		mut st_mut := tc.ownership_state()
 		st_mut.owned_vars.delete(lhs_name)
 		st_mut.owned_var_types.delete(lhs_name)
@@ -9035,7 +9043,7 @@ fn (mut tc TypeChecker) ownership_alias_borrower(lhs_name string, rhs_name strin
 	}
 	// Descendant loans follow an aggregate copy without replacing the ordinary
 	// ownership transfer of its other fields or its base value.
-	return has_direct_alias
+	return has_direct_alias && !conditional_owner
 }
 
 fn (mut tc TypeChecker) ownership_mark_from_conditional_expr(lhs_name string, rhs_id flat.NodeId, lhs_type Type, pos flat.NodeId) bool {
@@ -10345,7 +10353,8 @@ fn (mut tc TypeChecker) ownership_after_return(id flat.NodeId, node flat.Node) {
 			continue
 		}
 		if tc.autofree_mode && name.contains('.')
-			&& tc.ownership_type_requires_destruction(tc.resolve_type(expr_id)) {
+			&& tc.ownership_type_requires_destruction(tc.resolve_type(expr_id))
+			&& !tc.sum_escape_has_pointer_variant(tc.resolve_type(expr_id)) {
 			base_name := name.all_before_last('.')
 			if base_name in st.owned_vars {
 				st.mark_fn_return_owned(st.cur_fn)
@@ -13227,9 +13236,11 @@ fn (mut tc TypeChecker) ownership_release_borrower(borrower string) {
 }
 
 fn (mut tc TypeChecker) ownership_reject_global_move(name string, pos flat.NodeId, target string, is_call bool) {
-	if source := tc.ownership_borrowed_alias_source(name, false) {
-		action := if is_call { 'move into function' } else { 'move to' }
-		tc.record_error(.assignment_mismatch, 'cannot move `${name}` because it borrows `${source}`; attempted ${action} `${target}`', pos)
+	if !tc.ownership_sum_name_has_owner(name) {
+		if source := tc.ownership_borrowed_alias_source(name, false) {
+			action := if is_call { 'move into function' } else { 'move to' }
+			tc.record_error(.assignment_mismatch, 'cannot move `${name}` because it borrows `${source}`; attempted ${action} `${target}`', pos)
+		}
 	}
 	if tname_source_id := tc.ownership_owned_global_type_name(name) {
 		tname := flat.source_type_name(tname_source_id)

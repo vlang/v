@@ -104,10 +104,20 @@ fn borrowed_scope() {
  borrowed_copies(&local, &holder)
  from_call := mixed(false, &local)
  assert voidptr(from_call as &Item) == voidptr(&local)
+ borrowed_alias := from_call
+ assert voidptr(borrowed_alias as &Item) == voidptr(&local)
  conditional(false, &local)
  assert C.sum_drop_count(3) == 0
  from_owned_call := mixed(true, &local)
  assert (from_owned_call as &Item).code == 4
+ owned_alias := from_owned_call
+ assert (owned_alias as &Item).code == 4
+ conditional_local := if local.code == 3 { Choice(&Item{code: 8}) } else { Choice(&local) }
+ conditional_alias := conditional_local
+ assert (conditional_alias as &Item).code == 8
+ borrowed_local := if local.code == 0 { Choice(&Item{code: 9}) } else { Choice(&local) }
+ local_alias := borrowed_local
+ assert voidptr(local_alias as &Item) == voidptr(&local)
  conditional(true, &local)
  assert C.sum_drop_count(5) == 1
 }
@@ -152,6 +162,8 @@ fn main() {
  assert C.sum_drop_count(6) == 1
  owned_value_scope()
  assert C.sum_drop_count(7) == 1
+ assert C.sum_drop_count(8) == 1
+ assert C.sum_drop_count(9) == 0
 }
 ')!
 	// A method named drop is ordinary user code unless the type implements Drop.
@@ -186,15 +198,26 @@ fn main() {
  assert C.sum_drop_count(10) == 0
 }
 ')!
-	for mode in ['-autofree', '-ownership'] {
-		for prealloc in [false, true] {
-			for program in [source, ordinary_source] {
-				mut command := [compiler, '-new-compiler', '-nocache', '-no-closures', '-gc', 'none',
-					'-cc', cc, mode]
-				if prealloc { command << '-prealloc' }
-				command << ['run', program]
-				result := os.exec(command)
-				assert result.exit_code == 0, '${os.base(program)}, ${mode}, prealloc=${prealloc}: ${result.output}'
+	previous_jobs := os.getenv('VJOBS')
+	defer {
+		if previous_jobs.len > 0 {
+			os.setenv('VJOBS', previous_jobs, true)
+		} else {
+			os.unsetenv('VJOBS')
+		}
+	}
+	for jobs in ['1', '3'] {
+		os.setenv('VJOBS', jobs, true)
+		for mode in ['-autofree', '-ownership'] {
+			for prealloc in [false, true] {
+				for program in [source, ordinary_source] {
+					mut command := [compiler, '-new-compiler', '-nocache', '-no-closures', '-gc',
+						'none', '-cc', cc, mode]
+					if prealloc { command << '-prealloc' }
+					command << ['run', program]
+					result := os.exec(command)
+					assert result.exit_code == 0, '${os.base(program)}, ${mode}, jobs=${jobs}, prealloc=${prealloc}: ${result.output}'
+				}
 			}
 		}
 	}
