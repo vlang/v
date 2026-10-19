@@ -4556,8 +4556,8 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 					// The signature arrays are immutable after registration. Keep one
 					// master-arena copy shared by the semantic, lowered, legacy, and
 					// builtin aliases instead of cloning it independently for each key.
-					owned_ptypes := ptypes.clone()
-					owned_shared_params := if shared_params.len > 0 {
+					owned_ptypes := if prep.owned_lists { ptypes } else { ptypes.clone() }
+					owned_shared_params := if shared_params.len > 0 && !prep.owned_lists {
 						shared_params.clone()
 					} else {
 						shared_params
@@ -14476,11 +14476,13 @@ fn (mut tc TypeChecker) check_decl_type_strings(node_id flat.NodeId, node flat.N
 // could not be told from the inner one, and V does not have such types (see
 // #27171). `?T` with an option `T`, and `?Alias` of an option, are not written
 // nested types: they collapse to the option itself.
-fn (mut tc TypeChecker) check_written_nested_option_types(top_id flat.NodeId) {
+// `stack` is the caller's scratch, reused for every declaration.
+fn (mut tc TypeChecker) check_written_nested_option_types(top_id flat.NodeId, mut stack []WrittenTypeItem) {
 	if !tc.should_diagnose(top_id) {
 		return
 	}
-	mut stack := [WrittenTypeItem{top_id, top_id}]
+	stack.clear()
+	stack << WrittenTypeItem{top_id, top_id}
 	for stack.len > 0 {
 		item := stack.pop()
 		if !tc.valid_node_id(item.id) {
@@ -14488,11 +14490,29 @@ fn (mut tc TypeChecker) check_written_nested_option_types(top_id flat.NodeId) {
 		}
 		node := tc.a.node(item.id)
 		anchor := if node.pos.end > 0 { item.id } else { item.anchor }
-		if nested_option_result_marker(node.typ_text()) >= 0 || nested_option_result_marker(node.value) >= 0 {
+		if writes_reported_type_text(node.kind) && (nested_option_result_marker(node.typ_text()) >= 0
+			|| nested_option_result_marker(node.value) >= 0) {
 			tc.report_written_nested_option_types(*node, anchor)
 		}
 		for i in 0 .. node.children_count {
 			stack << WrittenTypeItem{tc.a.child(node, i), anchor}
+		}
+	}
+}
+
+// writes_reported_type_text reports whether report_written_nested_option_types
+// can find a type text in a node of `kind` (see written_type_texts); the walk
+// above skips the strings of the other nodes, such as string literals.
+@[inline]
+fn writes_reported_type_text(kind flat.NodeKind) bool {
+	return match kind {
+		.param, .fn_decl, .interface_field, .field_decl, .type_decl, .global_decl, .const_field,
+		.fn_literal, .array_init, .decl_assign, .ident, .map_init, .cast_expr, .is_expr, .as_expr,
+		.sizeof_expr, .typeof_expr, .struct_init, .c_fn_decl {
+			true
+		}
+		else {
+			false
 		}
 	}
 }

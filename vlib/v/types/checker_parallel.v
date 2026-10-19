@@ -338,6 +338,9 @@ mut:
 	qname               string
 	lowered_qname       string
 	lowered_source_name string
+	// The lists are a private copy, which pass 2 can keep as they are
+	// (see promote_pass2_fn_preps).
+	owned_lists bool
 }
 
 // compute_pass2_fn_prep performs the context-dependent but table-write-free
@@ -720,6 +723,7 @@ fn promote_pass2_fn_preps(scope voidptr, mut preps []Pass2FnPrep, start int, end
 		}
 		prep.qname = qname
 		prep.lowered_qname = lowered_qname
+		prep.owned_lists = true
 		preps[pi] = prep
 	}
 }
@@ -1427,6 +1431,8 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, al
 	mut skip_file_semantics := false
 	mut do_signatures := all_signatures
 	mut file_values := do_values
+	// The written-type walks visit whole bodies; they share one stack.
+	mut written_types := []WrittenTypeItem{cap: 256}
 	for i in tc.top_level_idx {
 		node := tc.a.nodes[i]
 		if node.kind == .file {
@@ -1442,11 +1448,11 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, al
 		}
 		if do_signatures && node.kind in [.fn_decl, .struct_decl, .interface_decl, .type_decl,
 			.global_decl, .const_decl] {
-			tc.check_written_generic_types(flat.NodeId(i))
+			tc.check_written_generic_types(flat.NodeId(i), mut written_types)
 		}
 		if do_signatures && (node.kind in [.fn_decl, .c_fn_decl, .struct_decl, .interface_decl,
 			.type_decl, .global_decl, .const_decl] || is_top_level_statement_kind(node.kind)) {
-			tc.check_written_nested_option_types(flat.NodeId(i))
+			tc.check_written_nested_option_types(flat.NodeId(i), mut written_types)
 		}
 		match node.kind {
 			.file {
