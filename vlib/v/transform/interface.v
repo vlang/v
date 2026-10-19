@@ -681,7 +681,12 @@ fn (mut t Transformer) make_interface_as_mismatch_panic(source_typ flat.NodeId, 
 		return panic_stmt
 	}
 	mut mismatch := flat.empty_node
+	mut compared := map[int]bool{}
 	for mapping in matching {
+		if compared[mapping.source_id] {
+			continue
+		}
+		compared[mapping.source_id] = true
 		not_mapped := t.make_infix(.ne, source_typ, t.make_int_literal(mapping.source_id))
 		mismatch = if int(mismatch) < 0 {
 			not_mapped
@@ -690,6 +695,30 @@ fn (mut t Transformer) make_interface_as_mismatch_panic(source_typ flat.NodeId, 
 		}
 	}
 	return t.make_if(mismatch, t.make_block([panic_stmt]), t.make_empty())
+}
+
+// make_interface_as_concrete_mismatch_panic makes the statement that panics when the dynamic
+// type `source_typ` of a value of interface `source_iface_id` is none of `type_ids`, the ids
+// of the `as` cast's concrete target type `target_id`.
+fn (mut t Transformer) make_interface_as_concrete_mismatch_panic(source_typ flat.NodeId, source_iface_id u32, target_id u32, type_ids []int) flat.NodeId {
+	mut matching := []InterfaceImplMapping{}
+	source_index := t.interface_impl_index_for_transform(source_iface_id)
+	for impl in source_index.names.ids {
+		id := source_index.ids[impl] or { continue }
+		if id in type_ids {
+			matching << InterfaceImplMapping{
+				impl:      impl
+				source_id: id
+			}
+		}
+	}
+	for id in type_ids {
+		matching << InterfaceImplMapping{
+			impl:      target_id
+			source_id: id
+		}
+	}
+	return t.make_interface_as_mismatch_panic(source_typ, source_iface_id, target_id, matching)
 }
 
 fn (mut t Transformer) make_interface_conversion_init(iface_id u32, fields []flat.NodeId) flat.NodeId {
