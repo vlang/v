@@ -6031,9 +6031,10 @@ pub fn (tc &TypeChecker) shadowed_builtin_const_key(name string) ?string {
 }
 
 // shadowed_builtin_const_key_in_module is shadowed_builtin_const_key for code in
-// `module_name`.
+// `module_name`. Only main code sees the main const under the bare key, so the code
+// of every other module gets the builtin const.
 pub fn (tc &TypeChecker) shadowed_builtin_const_key_in_module(name string, module_name string) ?string {
-	if module_name != 'builtin' || name.len == 0 {
+	if is_main_module_name(module_name) || name.len == 0 {
 		return none
 	}
 	owner := tc.const_modules[name] or { return none }
@@ -6047,6 +6048,29 @@ pub fn (tc &TypeChecker) shadowed_builtin_const_key_in_module(name string, modul
 	return none
 }
 
+fn is_main_module_name(module_name string) bool {
+	return module_name.len == 0 || module_name == 'main'
+}
+
+// bare_const_key_is_visible reports whether code in the current module sees the
+// const with the bare key `key` unqualified (see bare_const_key_is_visible_in_module).
+fn (tc &TypeChecker) bare_const_key_is_visible(key string) bool {
+	return tc.bare_const_key_is_visible_in_module(key, tc.cur_module)
+}
+
+// bare_const_key_is_visible_in_module reports whether code in `module_name` sees
+// the const with the bare key `key` unqualified. The consts of main and builtin
+// share bare keys (see const_decl_key); the main ones are main's own, so other
+// modules do not see them, as V 0.5.2 reports `undefined ident` for them. A
+// qualified key is always visible.
+pub fn (tc &TypeChecker) bare_const_key_is_visible_in_module(key string, module_name string) bool {
+	if is_main_module_name(module_name) || key.contains('.') {
+		return true
+	}
+	owner := tc.const_modules[key] or { return true }
+	return owner == 'builtin'
+}
+
 fn (tc &TypeChecker) const_key_for_name(name string) ?string {
 	// Every key below is `name`, or ends in `.` and the last segment of `name`.
 	if tc.const_suffix_key_count == tc.const_types.len
@@ -6057,10 +6081,10 @@ fn (tc &TypeChecker) const_key_for_name(name string) ?string {
 		return key
 	}
 	qname := tc.qualify_name(name)
-	if qname in tc.const_types {
+	if qname in tc.const_types && tc.bare_const_key_is_visible(qname) {
 		return qname
 	}
-	if name in tc.const_types {
+	if name in tc.const_types && tc.bare_const_key_is_visible(name) {
 		return name
 	}
 	return tc.vsh_os_const_key(name)
@@ -6090,7 +6114,7 @@ fn (tc &TypeChecker) const_type_for_selector(node flat.Node) ?Type {
 	if typ := tc.const_types[qname] {
 		return tc.const_type_from_initializer(qname, typ)
 	}
-	if resolved == 'main' || resolved == tc.cur_module {
+	if (resolved == 'main' || resolved == tc.cur_module) && tc.bare_const_key_is_visible(node.value) {
 		if typ := tc.const_types[node.value] {
 			return tc.const_type_from_initializer(node.value, typ)
 		}
