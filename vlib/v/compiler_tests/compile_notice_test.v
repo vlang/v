@@ -71,3 +71,29 @@ fn test_compile_notice_rejects_nonliteral_messages() ! {
 		assert result.output.contains('`$compile_notice` expects a string literal'), result.output
 	}
 }
+
+fn test_compile_notices_in_imported_modules_without_function_calls() ! {
+	root := os.join_path(os.vtmp_dir(), 'compile_notice_import_${os.getpid()}')
+	os.mkdir_all(os.join_path(root, 'helper'))!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'v.mod'), 'Module { name: "notice_import" }')!
+	os.write_file(os.join_path(root, 'helper', 'helper.v'), 'module helper
+$compile_notice("imported module notice")
+pub const value = 1
+pub fn unused() {
+	$compile_notice("imported function notice")
+}
+')!
+	input := os.join_path(root, 'main.v')
+	os.write_file(input, 'module main\nimport helper\nfn main() { assert helper.value == 1 }\n')!
+	for production in [false, true] {
+		mut args := [@VEXE, '-b', 'c', '-cc', 'clang', '-nocache']
+		if production {
+			args << '-prod'
+		}
+		args << ['run', input]
+		result := os.exec(args)
+		assert result.exit_code == 0, result.output
+		assert result.output.count('notice: imported module notice') == 1, result.output
+	}
+}
