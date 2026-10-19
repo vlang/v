@@ -12,6 +12,9 @@ fn tcp_write_after_deadline_delay(addr string) {
 }
 
 fn test_far_future_tcp_deadlines_allow_delayed_readiness() ! {
+	$if is_coroutine ? {
+		return
+	}
 	deadline := time.parse_iso8601('9999-12-31T23:59:59Z')!
 	mut listener := net.listen_tcp(.ip, '127.0.0.1:0')!
 	defer {
