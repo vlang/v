@@ -1317,6 +1317,19 @@ fn test_selectively_imported_generic_function_value_is_specialized() {
 	assert out == '42'
 }
 
+// A generic function value alone, with no generic call, still needs the
+// specialization pass.
+fn test_qualified_generic_function_value_without_generic_calls_is_specialized() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'qualified_generic_function_value_only', {
+		'v.mod':              "Module { name: 'qualified_generic_function_value_only' }\n"
+		'deep/lib/lib.v':     'module lib\n\npub fn id[T](value T) T {\n\treturn value + 1\n}\n'
+		'deep/other/other.v': 'module other\n\npub fn twice[T](value T) T {\n\treturn value * 2\n}\n'
+		'main.v':             'module main\n\nimport deep.lib\nimport deep.other as o\n\nfn main() {\n\tcallback := lib.id[int]\n\taliased := o.twice[i64]\n\tprintln(callback(41))\n\tprintln(aliased(21))\n}\n'
+	}, 'main.v')
+	assert out == '42\n42'
+}
+
 fn test_generic_struct_default_for_pointer_type_uses_heap_storage() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'generic_pointer_struct_default', 'struct Item {
