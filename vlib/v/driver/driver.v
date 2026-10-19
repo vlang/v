@@ -2222,31 +2222,46 @@ fn run_binary(bin_file string, args []string) int {
 	process.set_environment(environment)
 	// `v3 run` is interactive: leave all three standard streams inherited so
 	// prompts are visible immediately and the program can read the caller's stdin.
-	// Ignore SIGINT and SIGQUIT while waiting so an interrupted child does not
-	// terminate V3 before it can remove the implicit run executable.
-	prev_int_handler := os.signal_opt(.int, ignore_run_signal) or {
-		eprintln('v3: could not set SIGINT handler: ${err}')
-		return 1
-	}
+	mut prev_int_handler := os.SignalHandler(ignore_run_signal)
 	mut prev_quit_handler := os.SignalHandler(ignore_run_signal)
-	$if !windows {
-		prev_quit_handler = os.signal_opt(.quit, ignore_run_signal) or {
-			os.signal_opt(.int, prev_int_handler) or {}
-			eprintln('v3: could not set SIGQUIT handler: ${err}')
+	$if windows || js {
+		// These backends retain the inherited job group while waiting.
+		prev_int_handler = os.signal_opt(.int, ignore_run_signal) or {
+			eprintln('v3: could not set SIGINT handler: ${err}')
 			return 1
 		}
-	}
-	process.wait()
-	os.signal_opt(.int, prev_int_handler) or {
-		eprintln('v3: could not restore SIGINT handler: ${err}')
-	}
-	$if !windows {
-		os.signal_opt(.quit, prev_quit_handler) or {
-			eprintln('v3: could not restore SIGQUIT handler: ${err}')
+		$if !windows {
+			prev_quit_handler = os.signal_opt(.quit, ignore_run_signal) or {
+				os.signal_opt(.int, prev_int_handler) or {}
+				eprintln('v3: could not set SIGQUIT handler: ${err}')
+				return 1
+			}
 		}
 	}
-	exit_code := if process.code >= 0 { process.code } else { 1 }
-	process.close()
+	defer {
+		$if windows || js {
+			os.signal_opt(.int, prev_int_handler) or {
+				eprintln('v3: could not restore SIGINT handler: ${err}')
+			}
+			$if !windows {
+				os.signal_opt(.quit, prev_quit_handler) or {
+					eprintln('v3: could not restore SIGQUIT handler: ${err}')
+				}
+			}
+		}
+		process.close()
+	}
+	termination_signal := wait_run_process(mut process) or {
+		eprintln('v3: ${err}')
+		return 1
+	}
+	exit_code := if termination_signal > 0 {
+		128 + termination_signal
+	} else if process.code >= 0 {
+		process.code
+	} else {
+		1
+	}
 	return exit_code
 }
 
@@ -8967,10 +8982,14 @@ const v3_cache_compiler_runtime_inputs = [
 	'vlib/v/modulecache/file_metadata.c',
 	'vlib/builtin/segfault_handler_nix.c',
 	'vlib/builtin/segfault_handler_nix.h',
+	'vlib/v/driver/run_signals_nix.c',
 	'vlib/builtin/core_windows.c',
+	'vlib/time/ticks_windows.c',
 	'vlib/time/ticks_windows.h',
 	'vlib/v/winthread_helper.h',
+	'vlib/v/winthread_helper_windows.c',
 	'cmd/v/toolcache_windows_helpers.h',
+	'cmd/v/toolcache_windows_helpers.c',
 ]
 
 // v3_cache_compiler_runtime_inputs_identity identifies the files in

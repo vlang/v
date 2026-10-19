@@ -41,6 +41,7 @@ fn (mut g FlatGen) headerless_compiler_runtime_helpers() {
 		'v_sync_thread_create_detached', 'v_sync_thread_create_detached_with_stack',
 		'v_os_execute_capture_start', 'v_os_exec_capture_start', 'v_os_exec_capture_input_start',
 		'v_os_fd_write_all'])
+	g.portable_run_signal_helpers(true)
 	g.headerless_compiler_platform_helpers()
 	g.bootstrap_windows_runtime_helpers()
 }
@@ -166,5 +167,79 @@ static inline short v_cmdexec_poll_revents(int fd, short events) {
 	}
 	return descriptor.revents;
 }
+#endif
+'
+
+// portable_run_signal_helpers keeps compiler snapshots independent of the native object.
+fn (mut g FlatGen) portable_run_signal_helpers(headerless bool) {
+	mut source := $embed_file('@VEXEROOT/vlib/v/driver/run_signals_nix.c').to_string()
+	if headerless {
+		g.writeln('#ifndef _WIN32')
+		g.emit_c_runtime_declarations(['signal', 'kill', 'getpid', '_exit'])
+		g.write(headerless_run_signal_declarations)
+		g.writeln('#endif')
+		mut lines := []string{}
+		for line in source.split_into_lines() {
+			if !line.starts_with('#include ') {
+				lines << line
+			}
+		}
+		source = lines.join('\n').replace('sig_atomic_t', 'i32')
+	}
+	g.write(source.replace('int v3_run_signals_begin(', 'static int v3_run_signals_begin(')
+		.replace('int v3_run_signals_set_pid(', 'static int v3_run_signals_set_pid(')
+		.replace('void v3_run_signals_kill(', 'static void v3_run_signals_kill(')
+		.replace('int v3_run_signals_wait(', 'static int v3_run_signals_wait(')
+		.replace('int v3_run_signals_finish(', 'static int v3_run_signals_finish('))
+	g.writeln('')
+	g.collect_preserved_c_fns(['v3_run_signals_begin', 'v3_run_signals_set_pid', 'v3_run_signals_wait',
+		'v3_run_signals_finish', 'v3_run_signals_kill'])
+}
+
+// Use libc aliases with opaque arguments so V's partial C bindings do not own the ABI.
+const headerless_run_signal_declarations = r'
+#define V3_RUN_SIGNALS_HEADERLESS 1
+#ifndef SIG_SETMASK
+#if defined(__linux__) || defined(__ANDROID__) || defined(__QNX__) || defined(__QNXNTO__)
+#define SIG_SETMASK 2
+#else
+#define SIG_SETMASK 3
+#endif
+#endif
+#ifdef __APPLE__
+#define V3_RUN_LIBC_SYMBOL(name) "_" name
+#else
+#define V3_RUN_LIBC_SYMBOL(name) name
+#endif
+/* Solaris signal() resets caught handlers; bsd_signal keeps them installed. */
+#ifdef __sun
+void (*v3_run_bsd_signal(int, void (*)(int)))(int) __asm__("bsd_signal");
+#define v3_run_set_signal v3_run_bsd_signal
+#endif
+int v3_run_siginterrupt(int, int) __asm__(V3_RUN_LIBC_SYMBOL("siginterrupt"));
+int v3_run_setpgid(int, int) __asm__(V3_RUN_LIBC_SYMBOL("setpgid"));
+int v3_run_getpgid(int) __asm__(V3_RUN_LIBC_SYMBOL("getpgid"));
+int v3_run_getpgrp(void) __asm__(V3_RUN_LIBC_SYMBOL("getpgrp"));
+int v3_run_tcgetpgrp(int) __asm__(V3_RUN_LIBC_SYMBOL("tcgetpgrp"));
+int v3_run_tcsetpgrp(int, int) __asm__(V3_RUN_LIBC_SYMBOL("tcsetpgrp"));
+int v3_run_open(const char*, int, ...) __asm__(V3_RUN_LIBC_SYMBOL("open"));
+int v3_run_close(int) __asm__(V3_RUN_LIBC_SYMBOL("close"));
+int v3_run_fcntl(int, int, ...) __asm__(V3_RUN_LIBC_SYMBOL("fcntl"));
+int v3_run_waitpid(int, int*, int) __asm__(V3_RUN_LIBC_SYMBOL("waitpid"));
+int v3_run_fork(void) __asm__(V3_RUN_LIBC_SYMBOL("fork"));
+int v3_run_pipe(int*) __asm__(V3_RUN_LIBC_SYMBOL("pipe"));
+long v3_run_read(int, void*, size_t) __asm__(V3_RUN_LIBC_SYMBOL("read"));
+long v3_run_write(int, const void*, size_t) __asm__(V3_RUN_LIBC_SYMBOL("write"));
+#ifdef __NetBSD__
+/* The 14 ABI retains the full sigaction/sigset_t layouts on old and current libc. */
+int v3_run_sigaction(int, const void*, void*) __asm__("__sigaction14");
+int v3_run_sigprocmask(int, const void*, void*) __asm__("__sigprocmask14");
+int v3_run_sigemptyset(void*) __asm__("__sigemptyset14");
+int v3_run_sigaddset(void*, int) __asm__("__sigaddset14");
+#else
+int v3_run_sigaction(int, const void*, void*) __asm__(V3_RUN_LIBC_SYMBOL("sigaction"));
+int v3_run_sigprocmask(int, const void*, void*) __asm__(V3_RUN_LIBC_SYMBOL("sigprocmask"));
+int v3_run_sigemptyset(void*) __asm__(V3_RUN_LIBC_SYMBOL("sigemptyset"));
+int v3_run_sigaddset(void*, int) __asm__(V3_RUN_LIBC_SYMBOL("sigaddset"));
 #endif
 '
