@@ -1059,7 +1059,7 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 				return value_type
 			}
 			if base_layout == 'string' {
-				return flat.source_type_u8
+				return g.indexed_string_type(base_type, tokens[start..open_index])
 			}
 			if element_type_source_id := g.fixed_array_pointee_element_type(base_type, tokens[start..open_index]) {
 				element_type := element_type_source_id
@@ -1210,6 +1210,25 @@ fn (g &Parser) infer_c_pointer_cast_member_type(tokens []FastcExpressionToken, s
 		return none
 	}
 	return field_type
+}
+
+// indexed_string_type is the type of `base[i]` for a base laid out as a `string`. A string
+// value, or an auto-deref `mut` local referring to one (C type `string*`), yields a byte.
+// Any other `string` pointer (a `&string` parameter) is indexed by pointer arithmetic, as
+// in `unsafe { input_base[i] }`, and yields the pointee `string`.
+fn (g &Parser) indexed_string_type(base_type u32, base_tokens []FastcExpressionToken) u32 {
+	base_name := flat.source_type_name(base_type)
+	if !base_name.ends_with('*') {
+		return flat.source_type_u8
+	}
+	if base_tokens.len == 1 && base_tokens[0].tok == .name {
+		if local := g.locals[base_tokens[0].lit] {
+			if local.is_reference {
+				return flat.source_type_u8
+			}
+		}
+	}
+	return flat.source_type_id(base_name[..base_name.len - 1])
 }
 
 fn (g &Parser) indexed_array_operand_type(tokens []FastcExpressionToken, start int, end int, inferred_type u32) ?u32 {
@@ -1433,7 +1452,7 @@ fn (g &Parser) infer_member_access_type(tokens []FastcExpressionToken, start int
 					}
 				}
 			} else if current_layout == 'string' {
-				current_type = flat.source_type_u8
+				current_type = g.indexed_string_type(current_type, tokens[start..index])
 			} else if current_layout.starts_with('Map_') {
 				_, value_type_source_id := g.map_key_value_types(current_type) or { return none }
 				value_type := value_type_source_id
