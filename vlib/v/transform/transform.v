@@ -2543,8 +2543,11 @@ fn (mut t Transformer) prepare() {
 	t.ierror_none_type_id = t.interface_impl_type_id(flat.source_type_id('IError'), flat.source_type_id('None__')) or { 0 }
 	if !t.defer_fixed_array_borrow_prep {
 		t.prepare_fixed_array_borrow_params()
+		// Deferred preparation runs this once the parameter worker has published
+		// its declaration index; building that index here as well only to drop it
+		// left a second copy in the preparation arena.
+		t.prepare_array_append_tree_factories()
 	}
-	t.prepare_array_append_tree_factories()
 }
 
 fn (mut t Transformer) rebuild_embedded_fields_index() {
