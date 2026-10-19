@@ -13964,38 +13964,6 @@ fn (mut g FlatGen) sum_cast_actual_type(id flat.NodeId) types.Type {
 	return actual_type
 }
 
-// pointer_variant_arg_needs_heap_copy supports pointer_variant_arg_needs_heap_copy handling in c.
-fn (g &FlatGen) pointer_variant_arg_needs_heap_copy(node flat.Node) bool {
-	if node.kind != .prefix || node.op != .amp || node.children_count == 0 {
-		return false
-	}
-	child_id := g.a.child(&node, 0)
-	child := g.a.nodes[int(child_id)]
-	if child.kind != .ident {
-		return false
-	}
-	if _ := g.current_param_type(child.value) {
-		return true
-	}
-	if _ := g.tc.cur_scope.lookup(child.value) {
-		return true
-	}
-	return false
-}
-
-fn (g &FlatGen) pointer_variant_expr_needs_heap_copy(id flat.NodeId) bool {
-	mut expr_id := id
-	for int(expr_id) >= 0 && int(expr_id) < g.a.nodes.len {
-		node := g.a.nodes[int(expr_id)]
-		if node.kind in [.paren, .expr_stmt, .cast_expr] && node.children_count > 0 {
-			expr_id = g.a.child(&node, 0)
-			continue
-		}
-		return g.pointer_variant_arg_needs_heap_copy(node)
-	}
-	return false
-}
-
 // pointer_variant_expr_creates_owned_value reports pointer expressions whose pointee is
 // independently owned by the sum. Borrowed call/selector results remain unmarked.
 fn (g &FlatGen) pointer_variant_expr_creates_owned_value(id flat.NodeId) bool {
@@ -14014,9 +13982,6 @@ fn (g &FlatGen) pointer_variant_expr_creates_owned_value(id flat.NodeId) bool {
 		if node.kind in [.paren, .expr_stmt, .cast_expr] && node.children_count > 0 {
 			expr_id = g.a.child(&node, 0)
 			continue
-		}
-		if g.pointer_variant_expr_needs_heap_copy(expr_id) {
-			return true
 		}
 		if node.kind != .prefix || node.op != .amp || node.children_count == 0 {
 			return false
@@ -17214,6 +17179,9 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 			g.write(g.op_str(node.op))
 		}
 		.paren {
+			if node.value == '__v3_moved_sum_value' && g.gen_sum_moving_read_expr(node) {
+				return
+			}
 			if node.value == '__v3_transferred_sum_value' && g.gen_sum_local_acquisition_expr(node) {
 				return
 			}

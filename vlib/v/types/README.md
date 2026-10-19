@@ -216,3 +216,13 @@ their generated nodes, and only the matching runtime pointer acquires the cleanu
 An outer sum assigned inside a loop keeps its cleanup at the outer binding's scope. Replacing its
 payload releases the previous owner; values declared inside each iteration still clean up there.
 Iteration-local loans end there too; loans held by outer bindings remain active across the loop.
+Replacing a pointer sum field or element releases its previous owned payload. A wrapper of the same
+pointer retains that cleanup obligation, and the destination expression is evaluated once.
+Loop return ownership is summarized before checking callers, including callers checked in parallel
+or declared before the factory. Statements within a loop share their lexical declaration context.
+Wrapping an existing local's address preserves its identity and borrows its storage. Moving an owned
+sum field transfers its runtime cleanup flag; ownership checking rejects later reads of that field.
+Aggregate fields and elements cannot retain a pointer to a local from a shorter scope. Returning
+a sum field or element that borrows local storage is also rejected, including through a named alias
+or an enclosing aggregate. Keep an escaping allocation in a separately owned outer sum before
+borrowing it into an aggregate in the same scope.

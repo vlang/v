@@ -4,6 +4,61 @@ import v.flat
 import v.types { unalias_type }
 import v.gen.c.naming { sum_field_name }
 
+fn (mut g FlatGen) gen_sum_moving_read_expr(node &flat.Node) bool {
+	if node.children_count != 1 { return false }
+	sum := unalias_type(g.tc.parse_type(node.typ))
+	if sum !is types.SumType { return false }
+	ct := g.value_c_type(sum)
+	address := g.tmp_name()
+	value := g.tmp_name()
+	g.write('({ ${ct}* ${address} = &(')
+	g.gen_expr(g.a.child(node, 0))
+	g.write('); ${ct} ${value} = *${address}; ${address}->_pointer_variant_is_owned = false; ${value}; })')
+	return true
+}
+
+// Replacing a field or element evaluates its address once. A wrapper of the
+// same pointer retains the slot's obligation; a different value releases it.
+fn (mut g FlatGen) gen_sum_pointer_replacement(node &flat.Node) bool {
+	lhs := g.a.child(node, 1)
+	rhs := g.a.child(node, 2)
+	sum := unalias_type(g.usable_expr_type(rhs))
+	if sum !is types.SumType { return false }
+	ct := g.value_c_type(sum)
+	address := g.tmp_name()
+	value := g.tmp_name()
+	same := g.tmp_name()
+	g.writeln('({')
+	g.indent++
+	g.write('${ct}* ${address} = &(')
+	g.gen_expr(lhs)
+	g.writeln(');')
+	g.write('${ct} ${value} = ')
+	g.gen_expr(rhs)
+	g.writeln(';')
+	g.writeln('bool ${same} = false;')
+	for variant in g.tc.sum_types.type_ids(sum.name()) or { []u32{} } {
+		if unalias_type(g.tc.parse_canonical_type(variant)) !is types.Pointer { continue }
+		field := sum_field_name(flat.source_type_name(variant))
+		tag := g.sum_type_index(sum.name_id, variant)
+		g.writeln('if (${address}->typ == ${tag} && ${value}.typ == ${tag} && ${address}->${field} == ${value}.${field}) {')
+		g.indent++
+		g.writeln('${same} = true;')
+		g.writeln('${value}._pointer_variant_is_owned |= ${address}->_pointer_variant_is_owned;')
+		g.indent--
+		g.writeln('}')
+	}
+	g.writeln('if (!${same}) {')
+	g.indent++
+	g.gen_ownership_drop_value(sum, '(*${address})', 0)
+	g.indent--
+	g.writeln('}')
+	g.writeln('*${address} = ${value};')
+	g.indent--
+	g.write('})')
+	return true
+}
+
 fn (mut g FlatGen) gen_sum_local_acquisition_expr(node &flat.Node) bool {
 	if node.children_count != 2 { return false }
 	sum := unalias_type(g.tc.parse_type(node.typ))

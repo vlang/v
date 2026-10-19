@@ -9,6 +9,21 @@ struct FixedArraySumLiteral {
 	expr    flat.NodeId
 }
 
+fn (mut t Transformer) mark_sum_moving_read(source flat.NodeId, value flat.NodeId) flat.NodeId {
+	if isnil(t.tc) || !t.tc.ownership_sum_read_moves_value(source) { return value }
+	typ := t.original_expr_type(source)
+	if !t.is_sum_type_name(typ) { return value }
+	start := t.a.children.len
+	t.a.children << value
+	return t.a.add_node(flat.Node{
+		kind:           .paren
+		children_start: start
+		children_count: 1
+		value:          '__v3_moved_sum_value'
+		typ:            typ
+	})
+}
+
 // trim_pointer_type transforms trim pointer type data for transform.
 fn (t &Transformer) trim_pointer_type(typ_id u32) u32 {
 	if !flat.source_type_shape(typ_id).has(.pointer) { return typ_id }

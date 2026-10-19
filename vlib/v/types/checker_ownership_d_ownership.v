@@ -237,6 +237,7 @@ mut:
 	drop_at_return_nodes             map[string][]OwnershipDropEntry
 	sum_return_local_sources         map[string][]OwnershipDropEntry
 	sum_value_transfer_sources       map[int]string
+	sum_move_reads                   map[int]bool
 	sum_outer_store_local_sources    map[string][]OwnershipDropEntry
 	sum_local_heap_sources           map[string][]OwnershipDropEntry
 	sum_promoted_local_bindings      map[string]bool
@@ -342,6 +343,7 @@ fn new_ownership_state() &OwnershipState {
 		drop_at_return_nodes:             map[string][]OwnershipDropEntry{}
 		sum_return_local_sources:         map[string][]OwnershipDropEntry{}
 		sum_value_transfer_sources:       map[int]string{}
+		sum_move_reads:                   map[int]bool{}
 		sum_outer_store_local_sources:    map[string][]OwnershipDropEntry{}
 		sum_local_heap_sources:           map[string][]OwnershipDropEntry{}
 		sum_promoted_local_bindings:      map[string]bool{}
@@ -465,6 +467,7 @@ fn ownership_clone_state_for_parallel(src &OwnershipState) &OwnershipState {
 		drop_at_return_nodes:             map[string][]OwnershipDropEntry{}
 		sum_return_local_sources:         ownership_clone_drop_lists(src.sum_return_local_sources)
 		sum_value_transfer_sources:       src.sum_value_transfer_sources.clone()
+		sum_move_reads:                   map[int]bool{}
 		sum_outer_store_local_sources:    ownership_clone_drop_lists(src.sum_outer_store_local_sources)
 		sum_local_heap_sources:           ownership_clone_drop_lists(src.sum_local_heap_sources)
 		sum_promoted_local_bindings:      src.sum_promoted_local_bindings.clone()
@@ -588,6 +591,7 @@ fn ownership_clone_state_for_observation(src &OwnershipState) &OwnershipState {
 	result.pending_loop_label = src.pending_loop_label
 	result.deferred_aggregate_consumption = src.deferred_aggregate_consumption.clone()
 	result.index_move_reads = src.index_move_reads.clone()
+	result.sum_move_reads = src.sum_move_reads.clone()
 	result.receiver_alias_clone_reads = src.receiver_alias_clone_reads.clone()
 	result.borrowed_projection_actions = src.borrowed_projection_actions.clone()
 	result.pointer_index_aliases = src.pointer_index_aliases.clone()
@@ -851,6 +855,9 @@ fn (mut tc TypeChecker) ownership_merge_parallel_check_worker(w &TypeChecker) {
 	ownership_merge_bool_map(mut dst.sum_promoted_local_bindings, src.sum_promoted_local_bindings)
 	for expr, source in src.sum_value_transfer_sources {
 		dst.sum_value_transfer_sources[expr] = source
+	}
+	for expr, moved in src.sum_move_reads {
+		if moved { dst.sum_move_reads[expr] = true }
 	}
 	ownership_merge_drop_lists_by_name(mut dst.drop_at_propagations, src.drop_at_propagations)
 	ownership_merge_drop_lists_by_name(mut dst.drop_at_loop_controls, src.drop_at_loop_controls)
@@ -7600,14 +7607,29 @@ fn (mut tc TypeChecker) ownership_assign_to_name(lhs_name string, rhs_id flat.No
 		tc.ownership_consume_expr(rhs_id, source, assign_id)
 		return
 	}
-	tc.ownership_release_borrower(lhs_name)
+	payload := tc.ownership_sum_constructor_payload(rhs_id) or { rhs_id }
+	retains_sum_owner := lhs_name in tc.ownership_state().owned_vars
+		&& tc.sum_escape_has_pointer_variant(lhs_type)
+		&& unalias_type(tc.resolve_type(payload)) is Pointer
+	defer {
+		// A same-pointer replacement keeps the runtime owner bit. Retain its
+		// conditional move obligation unless a new source supplies a loan.
+		if retains_sum_owner && tc.ownership_borrowed_alias_source(lhs_name, false) == none {
+			tc.ownership_mark_owned(lhs_name, lhs_type, assign_id)
+		}
+	}
+	rhs_name := tc.ownership_expr_ident_name(rhs_id)
+	if lhs_name != rhs_name || !tc.sum_escape_has_pointer_variant(lhs_type) {
+		tc.ownership_release_borrower(lhs_name)
+	}
 	mut st := tc.ownership_state()
 	st.moved_vars.delete(lhs_name)
-	rhs_name := tc.ownership_expr_ident_name(rhs_id)
 	if lhs_name != rhs_name {
 		tc.ownership_clear_descendant_state(lhs_name)
 	}
+	if tc.ownership_reject_sum_aggregate_store(lhs_name, rhs_id, lhs_type, assign_id) { return }
 	if tc.ownership_transfer_inner_sum_local(lhs_name, rhs_id, lhs_type, assign_id) { return }
+	if tc.ownership_mark_sum_borrow(lhs_name, rhs_id, lhs_type, assign_id) { return }
 	if tc.ownership_expr_is_borrow(rhs_id) {
 		if tc.ownership_sum_value_creates_owner(rhs_id, lhs_type) {
 			tc.ownership_mark_owned(lhs_name, lhs_type, assign_id)
@@ -8881,6 +8903,7 @@ fn (mut tc TypeChecker) ownership_mark_storage_from_expr_with_mode(target_name s
 	if tc.ownership_mark_aggregate_literal_storage(target_name, id, pos, clear_unowned) {
 		return true
 	}
+	if tc.ownership_mark_sum_borrow(target_name, id, target_type, pos) { return false }
 	tc.ownership_clone_escaping_string_view(expr_id)
 	match tc.ownership_borrowed_projection_action(expr_id, pos) {
 		.string_view {
@@ -10255,6 +10278,7 @@ fn (mut tc TypeChecker) ownership_after_return(id flat.NodeId, node flat.Node) {
 	}
 	for i in 0 .. node.children_count {
 		expr_id := tc.a.child(&node, i)
+		if tc.ownership_reject_sum_aggregate_return(id, expr_id) { return }
 		tc.ownership_prepare_sum_return_transfer(id, expr_id)
 		if returned_value_is_scalar_copy(tc.resolve_type(expr_id)) {
 			continue
@@ -12313,10 +12337,31 @@ fn (mut tc TypeChecker) ownership_move_overlapping_dynamic_storage(source_name s
 }
 
 fn (mut tc TypeChecker) ownership_mark_index_move_read(name string, pos flat.NodeId) {
-	if name == '' || !name.contains('[') || !tc.valid_node_id(pos) {
+	if name == '' || !tc.valid_node_id(pos) {
 		return
 	}
+	tc.ownership_mark_sum_move_read_in(pos, name)
+	if !name.contains('[') { return }
 	tc.ownership_mark_index_move_read_in(pos, name)
+}
+
+fn (mut tc TypeChecker) ownership_mark_sum_move_read_in(id flat.NodeId, name string) {
+	if !tc.valid_node_id(id) { return }
+	node := tc.a.node(id)
+	if node.kind == .selector && tc.ownership_expr_ident_name(id) == name
+		&& tc.sum_escape_has_pointer_variant(tc.resolve_type(id)) {
+		tc.ownership_state().sum_move_reads[int(id)] = true
+		return
+	}
+	for i in 0 .. node.children_count {
+		tc.ownership_mark_sum_move_read_in(tc.a.child(node, i), name)
+	}
+}
+
+// ownership_sum_read_moves_value reports a consumed pointer-Sum field read.
+// Lowering clears its runtime owner flag after materializing the moved value.
+pub fn (tc &TypeChecker) ownership_sum_read_moves_value(id flat.NodeId) bool {
+	return tc.ownership != unsafe { nil } && tc.ownership.sum_move_reads[int(id)]
 }
 
 fn (mut tc TypeChecker) ownership_mark_index_move_read_in(id flat.NodeId, name string) {

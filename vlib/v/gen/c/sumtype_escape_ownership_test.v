@@ -13,20 +13,26 @@ fn test_returned_pointer_sum_acquires_promoted_local_once() {
 		'-path', vlib, '-o', compiler, os.join_path(vlib, 'v', 'v.v')])
 	assert build.exit_code == 0, build.output
 	header := os.join_path(dir, 'drops.h')
-	os.write_file(header, 'static int transfer_drops[16];
+	os.write_file(header, 'static int transfer_drops[26];
 static void transfer_record(int code) { transfer_drops[code]++; }
 static int transfer_count(int code) { return transfer_drops[code]; }
+static int transfer_visits;
+static int transfer_index(void) { transfer_visits++; return 0; }
+static int transfer_visit_count(void) { return transfer_visits; }
 ')!
 	path := os.join_path(dir, 'main.c.v')
 	os.write_file(path, '#include "${header}"
 fn C.transfer_record(code int)
 fn C.transfer_count(code int) int
+fn C.transfer_index() int
+fn C.transfer_visit_count() int
 @[aligned: 64]
 struct Item implements Drop { code int }
 fn (item &Item) free() { C.transfer_record(item.code) }
 fn (mut item Item) drop() { C.transfer_record(item.code) }
 type Choice = int | &Item
 struct Holder { item &Item }
+struct SumHolder { mut: value Choice }
 fn borrow(item &Item) &Item { return item }
 @[noinline]
 fn ordinary_factory() Choice {
@@ -136,6 +142,78 @@ fn loop_scope_cleanup() {
  assert (owner as &Item).code == 15
 }
 @[noinline]
+fn projection_scope_cleanup() {
+ mut holder := SumHolder{value: Choice(&Item{code: 16})}
+ for i in 0 .. 2 {
+  holder.value = Choice(&Item{code: 17})
+  assert C.transfer_count(16) == 1
+  assert C.transfer_count(17) == i
+ }
+ pointer := holder.value as &Item
+ holder.value = Choice(pointer)
+ holder.value = holder.value
+ assert pointer.code == 17
+ assert C.transfer_count(17) == 1
+ local := Item{code: 18}
+ holder.value = Choice(&local)
+ assert voidptr(holder.value as &Item) == voidptr(&local)
+ assert C.transfer_count(17) == 2
+ assert C.transfer_count(18) == 0
+ mut values := [Choice(&Item{code: 19})]
+ values[C.transfer_index()] = Choice(&Item{code: 20})
+ assert C.transfer_visit_count() == 1
+ assert C.transfer_count(19) == 1
+ element := values[0] as &Item
+ values[0] = Choice(element)
+ values[0] = values[0]
+ assert element.code == 20
+ assert C.transfer_count(20) == 0
+ mut holders := [SumHolder{value: Choice(0)}]
+ holders[C.transfer_index()].value = Choice(&Item{code: 21})
+ assert C.transfer_visit_count() == 2
+ assert C.transfer_count(21) == 0
+ mut source := SumHolder{value: Choice(&Item{code: 24})}
+ mut destination := SumHolder{value: Choice(&Item{code: 25})}
+ same := source.value as &Item
+ source.value = Choice(same)
+ source.value = source.value
+ destination.value = source.value
+ assert C.transfer_count(25) == 1
+ assert C.transfer_count(24) == 0
+ assert (destination.value as &Item).code == 24
+}
+@[noinline]
+fn forward_loop_cleanup() {
+ first := forward_range_loop_factory()
+ first_alias := first
+ assert (first_alias as &Item).code == 22
+ assert C.transfer_count(22) == 0
+ second := forward_c_loop_factory()
+ second_alias := second
+ assert (second_alias as &Item).code == 23
+ assert C.transfer_count(23) == 0
+}
+@[noinline]
+fn forward_range_loop_factory() Choice {
+ mut owner := Choice(0)
+ for _ in 0 .. 1 {
+  local := Item{code: 22}
+  wrapped := Choice(&local)
+  owner = wrapped
+ }
+ return owner
+}
+@[noinline]
+fn forward_c_loop_factory() Choice {
+ mut owner := Choice(0)
+ for i := 0; i < 1; i++ {
+  local := Item{code: 23}
+  wrapped := Choice(&local)
+  owner = wrapped
+ }
+ return owner
+}
+@[noinline]
 fn churn_stack() u64 {
  mut words := [512]u64{}
  for i in 0 .. words.len { words[i] = u64(i + 1) * 97 }
@@ -220,15 +298,38 @@ fn main() {
  assert C.transfer_count(4) == 1
  loop_scope_cleanup()
  assert C.transfer_count(15) == 2
+ projection_scope_cleanup()
+ assert C.transfer_count(16) == 1
+ assert C.transfer_count(17) == 2
+ assert C.transfer_count(18) == 1
+ assert C.transfer_count(19) == 1
+ assert C.transfer_count(20) == 1
+ assert C.transfer_count(21) == 1
+ forward_loop_cleanup()
+ assert C.transfer_count(22) == 1
+ assert C.transfer_count(23) == 1
+ assert C.transfer_count(24) == 1
+ assert C.transfer_count(25) == 1
 }')!
-	for mode in ['-autofree', '-ownership'] {
-		for prealloc in [false, true] {
-			mut command := [compiler, '-new-compiler', '-nocache', '-no-closures', '-gc', 'none',
-				'-cc', cc, mode]
-			if prealloc { command << '-prealloc' }
-			command << ['run', path]
-			result := os.exec(command)
-			assert result.exit_code == 0, '${mode}, prealloc=${prealloc}: ${result.output}'
+	previous_jobs := os.getenv('VJOBS')
+	defer {
+		if previous_jobs.len > 0 {
+			os.setenv('VJOBS', previous_jobs, true)
+		} else {
+			os.unsetenv('VJOBS')
+		}
+	}
+	for jobs in ['1', '3'] {
+		os.setenv('VJOBS', jobs, true)
+		for mode in ['-autofree', '-ownership'] {
+			for prealloc in [false, true] {
+				mut command := [compiler, '-new-compiler', '-nocache', '-no-closures', '-gc', 'none',
+					'-cc', cc, mode]
+				if prealloc { command << '-prealloc' }
+				command << ['run', path]
+				result := os.exec(command)
+				assert result.exit_code == 0, '${mode}, jobs=${jobs}, prealloc=${prealloc}: ${result.output}'
+			}
 		}
 	}
 	invalid := os.join_path(dir, 'ambiguous.v')
@@ -326,6 +427,81 @@ fn factory() Choice {
  return owner
 }
 fn main() { value := factory(); assert value is &Item }': 'borrowed by `loan`'
+		'struct Item { code int }
+type Choice = int | &Item
+struct Inner { mut: value Choice }
+struct Holder { mut: inner Inner }
+fn main() {
+ mut holder := Holder{inner: Inner{value: Choice(0)}}
+ if true {
+  local := Item{code: 1}
+  wrapped := Choice(&local)
+  holder.inner.value = wrapped
+ }
+ assert holder.inner.value is &Item
+}':                                                                                                                  'shorter lifetime in aggregate storage'
+		'struct Item { code int }
+type Choice = int | &Item
+fn main() {
+ mut values := [Choice(0)]
+ if true {
+  local := Item{code: 1}
+  values[0] = Choice(&local)
+ }
+ assert values[0] is &Item
+}':                                                                                                                                                                                                                                                          'shorter lifetime in aggregate storage'
+		'struct Item { code int }
+type Choice = int | &Item
+struct Holder { mut: value Choice }
+fn factory() Choice {
+ local := Item{code: 1}
+ mut holder := Holder{value: Choice(0)}
+ holder.value = Choice(&local)
+ holder.value = holder.value
+ alias := holder.value
+ return alias
+}
+fn main() { value := factory(); assert value is &Item }':                                                                                                             'cannot return a sum field or element borrowing local storage'
+		'struct Item { code int }
+type Choice = int | &Item
+fn factory() Choice {
+ local := Item{code: 1}
+ mut values := [Choice(0)]
+ values[0] = Choice(&local)
+ return values[0]
+}
+fn main() { value := factory(); assert value is &Item }':                                                                                                                                                                                                                 'cannot return a sum field or element borrowing local storage'
+		'struct Item { code int }
+type Choice = int | &Item
+struct Holder { mut: value Choice }
+fn consume(flag bool, item &Item) {
+ mut holder := Holder{value: Choice(0)}
+ holder.value = if flag {
+  local := Item{code: 1}
+  Choice(&local)
+ } else { Choice(item) }
+ assert holder.value is &Item
+}
+fn main() { item := Item{code: 8}; consume(true, &item) }':                                                                                           'shorter lifetime in aggregate storage'
+	}
+	aggregate_returns := ['return Holder{value: Choice(&local)}',
+		'holder := Holder{value: Choice(&local)}; return holder']
+	for returned in aggregate_returns {
+		source := 'struct Item { code int }
+type Choice = int | &Item
+struct Holder { value Choice }
+fn factory() Holder {
+ local := Item{code: 1}
+ ${returned}
+}
+fn main() { value := factory(); assert value.value is &Item }'
+		os.write_file(invalid, source)!
+		for mode in ['-autofree', '-ownership'] {
+			result := os.exec([compiler, '-new-compiler', '-no-closures', '-gc', 'none', mode,
+				'-check', invalid])
+			assert result.exit_code != 0
+			assert result.output.contains('cannot return a sum field or element borrowing local storage'), result.output
+		}
 	}
 	for source, expected in unsupported {
 		os.write_file(invalid, source)!
@@ -336,4 +512,27 @@ fn main() { value := factory(); assert value is &Item }': 'borrowed by `loan`'
 			assert result.output.contains(expected), result.output
 		}
 	}
+	moved_source := 'struct Item implements Drop { code int }
+fn (mut item Item) drop() {}
+type Choice = int | &Item
+struct Holder { mut: value Choice }
+fn main() {
+ mut source := Holder{value: Choice(&Item{code: 1})}
+ mut destination := Holder{value: Choice(0)}
+ pointer := source.value as &Item
+ source.value = Choice(pointer)
+ destination.value = source.value
+ assert (destination.value as &Item).code == 1
+ assert (source.value as &Item).code == 1
+}'
+	os.write_file(invalid, moved_source.replace(' assert (source.value as &Item).code == 1\n', ''))!
+	control := os.exec([compiler, '-new-compiler', '-no-closures', '-gc', 'none', '-ownership',
+		'run', invalid])
+	assert control.exit_code == 0, control.output
+	os.write_file(invalid, moved_source)!
+	moved := os.exec([compiler, '-new-compiler', '-no-closures', '-gc', 'none', '-ownership', '-check',
+		invalid])
+	assert moved.exit_code != 0
+	assert moved.output.contains('use of moved value: `source.value`'), moved.output
+	assert moved.output.contains('ambiguous.v:12:'), moved.output
 }

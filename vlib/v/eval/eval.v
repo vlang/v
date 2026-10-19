@@ -6254,34 +6254,34 @@ fn (e &Eval) sizeof_type_layout(raw_name_id u32, module_name string, seen []Type
 }
 
 fn (e &Eval) sizeof_sum_layout(variants []u32, module_name string, seen []TypeLayoutVisit) TypeLayout {
- mut size := i64(1)
- mut align := i64(1)
- mut owns_pointer := false
- for variant in variants {
-  layout := e.sizeof_type_layout(variant, module_name, seen)
-  if layout.size > size { size = layout.size }
-  if layout.align > align { align = layout.align }
-  owns_pointer = owns_pointer || e.sum_variant_has_pointer_payload(variant, module_name, []u32{})
- }
- header := if owns_pointer { i64(8) } else { i64(4) }
- offset := sizeof_aligned_size(header, align)
- if align < 4 { align = 4 }
- return TypeLayout{ size: sizeof_aligned_size(offset + size, align), align: align }
+	mut size := i64(1)
+	mut align := i64(1)
+	mut owns_pointer := false
+	for variant in variants {
+		layout := e.sizeof_type_layout(variant, module_name, seen)
+		if layout.size > size { size = layout.size }
+		if layout.align > align { align = layout.align }
+		owns_pointer = owns_pointer || e.sum_variant_has_pointer_payload(variant, module_name, []u32{})
+	}
+	header := if owns_pointer { i64(8) } else { i64(4) }
+	offset := sizeof_aligned_size(header, align)
+	if align < 4 { align = 4 }
+	return TypeLayout{ size: sizeof_aligned_size(offset + size, align), align: align }
 }
 
 // sum_variant_has_pointer_payload follows nominal aliases without entering value containers.
 fn (e &Eval) sum_variant_has_pointer_payload(raw_name_id u32, module_name string, seen []u32) bool {
- name_id := e.qualify_nested_type_name(module_name, raw_name_id)
- name := flat.source_type_name(name_id)
- if name.starts_with('&') || name in ['voidptr', 'byteptr', 'charptr'] { return true }
- if name_id in seen { return false }
- if alias := e.type_alias_info_in_module(name_id, module_name) {
-  mut visited := seen.clone()
-  visited << name_id
-  context := e.declaration_type_context(alias.module_name, alias.file_name)
-  return context.sum_variant_has_pointer_payload(alias.target, alias.module_name, visited)
- }
- return false
+	name_id := e.qualify_nested_type_name(module_name, raw_name_id)
+	name := flat.source_type_name(name_id)
+	if name.starts_with('&') || name in ['voidptr', 'byteptr', 'charptr'] { return true }
+	if name_id in seen { return false }
+	if alias := e.type_alias_info_in_module(name_id, module_name) {
+		mut visited := seen.clone()
+		visited << name_id
+		context := e.declaration_type_context(alias.module_name, alias.file_name)
+		return context.sum_variant_has_pointer_payload(alias.target, alias.module_name, visited)
+	}
+	return false
 }
 
 fn (e &Eval) sizeof_fixed_array_len(text string, module_name string, seen []flat.NodeId) ?i64 {

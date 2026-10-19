@@ -278,7 +278,33 @@ fn (mut tc TypeChecker) ownership_scan_sum_local_returns(fn_name string, id flat
 		}
 		return
 	}
-	if node.kind in [.if_expr, .match_stmt, .for_stmt, .for_in_stmt] {
+	if node.kind in [.for_stmt, .for_in_stmt] {
+		// Flat loop bodies contain a sequence of statements after the header.
+		// Their declarations must remain visible to later stores in that body.
+		mut loop_aliases := aliases.clone()
+		mut loop_locals := locals.clone()
+		body_start := if node.kind == .for_in_stmt { node.value.int() } else { 3 }
+		if node.kind == .for_stmt && node.children_count > 0 {
+			tc.ownership_scan_sum_local_returns(fn_name, tc.a.child(node, 0), mut loop_aliases, mut loop_locals, depth + 1)
+		}
+		for i in body_start .. node.children_count {
+			tc.ownership_scan_sum_local_returns(fn_name, tc.a.child(node, i), mut loop_aliases, mut loop_locals, depth + 1)
+		}
+		if node.kind == .for_stmt && node.children_count > 2 {
+			tc.ownership_scan_sum_local_returns(fn_name, tc.a.child(node, 2), mut loop_aliases, mut loop_locals, depth + 1)
+		}
+		for name, original in locals {
+			current := loop_locals[name] or { continue }
+			if current.decl != original.decl { continue }
+			mut values := (aliases[name] or { []SumReturnLocal{} }).clone()
+			for source in loop_aliases[name] or { []SumReturnLocal{} } {
+				if source !in values { values << source }
+			}
+			aliases[name] = values
+		}
+		return
+	}
+	if node.kind in [.if_expr, .match_stmt] {
 		// Branches may leave different pointer alternatives. Retain all possible
 		// sources; C generation checks the actual tag and pointer before transfer.
 		for i in 0 .. node.children_count {
@@ -382,6 +408,15 @@ fn (mut tc TypeChecker) ownership_prepare_sum_return_transfer(return_id flat.Nod
 				pointer := Type(Pointer{ base_type: tc.intern_type_reference(actual) })
 				if tc.type_compatible(pointer, tc.fn_context.return_type) {
 					st.sum_promoted_local_bindings[owner.storage_key()] = true
+					name := tc.ownership_expr_ident_name(expr_id)
+					if name.len > 0 && name != source.name {
+						if borrowed := tc.ownership_borrowed_alias_source(name, false) {
+							if borrowed == source.name {
+								tc.ownership_release_borrower(name)
+								tc.ownership_mark_owned(name, tc.fn_context.return_type, expr_id)
+							}
+						}
+					}
 				}
 			}
 		}
@@ -413,6 +448,184 @@ fn (tc &TypeChecker) ownership_sum_local_scope(name string) int {
 		if frame.cur_fn == tc.ownership.cur_fn && name in frame.names { return i }
 	}
 	return -1
+}
+
+fn (mut tc TypeChecker) ownership_sum_borrow_source_name(initial string) string {
+	mut name := initial
+	mut seen := map[string]bool{}
+	for name.len > 0 && name != '<unknown-index-alias>' && !seen[name] {
+		seen[name] = true
+		if next := tc.ownership.pointer_index_aliases[name] {
+			name = next
+		} else if next := tc.ownership_borrowed_alias_source(name, false) {
+			name = next
+		} else {
+			return name
+		}
+	}
+	return ''
+}
+
+fn (mut tc TypeChecker) ownership_sum_borrow_sources(id flat.NodeId, ancestors []flat.NodeId) []string {
+	if !tc.valid_node_id(id) || id in ancestors { return []string{} }
+	mut visited := ancestors.clone()
+	visited << id
+	node := tc.a.node(id)
+	if node.kind in [.paren, .expr_stmt, .cast_expr, .as_expr] && node.children_count > 0 {
+		return tc.ownership_sum_borrow_sources(tc.a.child(node, 0), visited)
+	}
+	mut name := ''
+	if node.kind == .prefix && node.op == .amp && node.children_count == 1 {
+		name = tc.ownership_expr_ident_name(tc.a.child(node, 0))
+	} else if node.kind in [.ident, .selector, .index] {
+		key := tc.ownership_expr_ident_name(id)
+		name = tc.ownership.pointer_index_aliases[key] or {
+			tc.ownership_borrowed_alias_source(key, false) or { '' }
+		}
+		if name.len == 0 && key in tc.ownership.owned_vars
+			&& unalias_type(tc.resolve_type(id)) is Pointer {
+			name = key
+		}
+	}
+	if name.len > 0 {
+		source := tc.ownership_sum_borrow_source_name(name)
+		return if source.len > 0 { [source] } else { []string{} }
+	}
+	if payload := tc.ownership_sum_constructor_payload(id) {
+		return tc.ownership_sum_borrow_sources(payload, visited)
+	}
+	mut sources := []string{}
+	if node.kind == .call {
+		for argument in tc.ownership_call_result_source_args(id) {
+			for source in tc.ownership_sum_borrow_sources(argument, visited) {
+				if source !in sources { sources << source }
+			}
+		}
+	} else if node.kind in [.if_expr, .match_stmt] {
+		for i in 1 .. node.children_count {
+			for source in tc.ownership_sum_borrow_sources(tc.a.child(node, i), visited) {
+				if source !in sources { sources << source }
+			}
+		}
+	} else if node.kind in [.block, .match_branch] && node.children_count > 0 {
+		return tc.ownership_sum_borrow_sources(tc.a.child(node, node.children_count - 1), visited)
+	}
+	return sources
+}
+
+fn (mut tc TypeChecker) ownership_mark_sum_borrow(target string, expr flat.NodeId, typ Type, pos flat.NodeId) bool {
+	if !tc.sum_escape_has_pointer_variant(typ) || tc.ownership_sum_value_creates_owner(expr, typ) {
+		return false
+	}
+	sources := tc.ownership_sum_borrow_sources(expr, []flat.NodeId{})
+	if sources.len == 0 { return false }
+	mut st := tc.ownership_state()
+	st.owned_vars.delete(target)
+	st.owned_var_types.delete(target)
+	st.moved_vars.delete(target)
+	for source in sources { tc.ownership_add_borrow(source, target, pos, false) }
+	return true
+}
+
+fn (mut tc TypeChecker) ownership_sum_aggregate_return_sources(id flat.NodeId, ancestors []flat.NodeId) []string {
+	if !tc.valid_node_id(id) || id in ancestors { return []string{} }
+	mut visited := ancestors.clone()
+	visited << id
+	typ := tc.resolve_type(id)
+	if tc.sum_escape_has_pointer_variant(typ) {
+		return tc.ownership_sum_borrow_sources(id, []flat.NodeId{})
+	}
+	node := tc.a.node(id)
+	mut sources := []string{}
+	if node.kind in [.ident, .selector, .index] {
+		name := tc.ownership_expr_ident_name(id)
+		if name.len == 0 { return sources }
+		for source, borrows in tc.ownership.borrowed_vars {
+			for borrow in borrows {
+				if !ownership_storage_key_is_descendant(borrow.borrower, name) { continue }
+				projected := tc.returned_receiver_projection_type(typ, borrow.borrower[name.len..]) or { continue }
+				if !tc.sum_escape_has_pointer_variant(projected) { continue }
+				resolved := tc.ownership_sum_borrow_source_name(source)
+				if resolved.len > 0 && resolved !in sources { sources << resolved }
+			}
+		}
+		return sources
+	}
+	if node.kind in [.paren, .expr_stmt, .cast_expr, .as_expr, .field_init] && node.children_count > 0 {
+		return tc.ownership_sum_aggregate_return_sources(tc.a.child(node, 0), visited)
+	}
+	if node.kind in [.block, .match_branch] && node.children_count > 0 {
+		return tc.ownership_sum_aggregate_return_sources(tc.a.child(node, node.children_count - 1), visited)
+	}
+	if node.kind in [.struct_init, .assoc, .array_literal, .array_init, .map_init, .if_expr,
+		.match_stmt] {
+		start := if node.kind in [.if_expr, .match_stmt] { 1 } else { 0 }
+		for i in start .. node.children_count {
+			for source in tc.ownership_sum_aggregate_return_sources(tc.a.child(node, i), visited) {
+				if source !in sources { sources << source }
+			}
+		}
+	}
+	return sources
+}
+
+// A reference to an aggregate keeps the aggregate's lifetime, rather than the
+// lifetime of the temporary reference binding used to reach its storage.
+fn (mut tc TypeChecker) ownership_sum_aggregate_scope(storage string) int {
+	mut root := storage.all_before('.').all_before('[')
+	mut seen := map[string]bool{}
+	for root.len > 0 && root != '<unknown-index-alias>' && !seen[root] {
+		seen[root] = true
+		if source := tc.ownership.pointer_index_aliases[root] {
+			root = source.all_before('.').all_before('[')
+		} else if source := tc.ownership_borrowed_alias_source(root, false) {
+			root = source.all_before('.').all_before('[')
+		} else {
+			if typ := tc.cur_scope.lookup(root) {
+				if unalias_type(typ) is Pointer && root !in tc.ownership.owned_vars { return -1 }
+			}
+			return tc.ownership_sum_local_scope(root)
+		}
+	}
+	return -1
+}
+
+fn (mut tc TypeChecker) ownership_reject_sum_aggregate_store(target string, rhs flat.NodeId, typ Type, pos flat.NodeId) bool {
+	if !tc.sum_escape_has_pointer_variant(typ) || (!target.contains('.') && !target.contains('[')) {
+		return false
+	}
+	target_scope := tc.ownership_sum_aggregate_scope(target)
+	mut shorter_lifetime := tc.ownership_sum_return_branch_has_local(rhs, map[string][]SumReturnLocal{}, map[string]SumReturnLocal{})
+	for source in tc.ownership_sum_borrow_sources(rhs, []flat.NodeId{}) {
+		root := source.all_before('.').all_before('[')
+		source_scope := tc.ownership_sum_local_scope(root)
+		if source_scope >= 0 && source_scope > target_scope { shorter_lifetime = true }
+	}
+	if !shorter_lifetime { return false }
+	tc.record_error(.assignment_mismatch, 'cannot retain a sum pointer to a local with a shorter lifetime in aggregate storage; retain it in an outer sum variable first', pos)
+	return true
+}
+
+fn (mut tc TypeChecker) ownership_reject_sum_aggregate_return(return_id flat.NodeId, expr flat.NodeId) bool {
+	transfers := tc.ownership_sum_return_sources(tc.ownership.cur_fn, return_id)
+	for source in tc.ownership_sum_aggregate_return_sources(expr, []flat.NodeId{}) {
+		root := source.all_before('.').all_before('[')
+		mut transferred := false
+		for entry in transfers {
+			if entry.name == root {
+				transferred = true
+				break
+			}
+		}
+		if transferred { continue }
+		owner := tc.cur_scope.lookup_owner(root) or { continue }
+		if tc.binding_owner_is_global(owner) { continue }
+		typ := unalias_type(owner.scope.types[owner.index])
+		if typ is Pointer && root !in tc.ownership.owned_vars { continue }
+		tc.record_error(.return_mismatch, 'cannot return a sum field or element borrowing local storage; return a separately owned sum instead', expr)
+		return true
+	}
+	return false
 }
 
 fn (mut tc TypeChecker) ownership_transfer_inner_sum_local(target string, rhs flat.NodeId, target_type Type, pos flat.NodeId) bool {

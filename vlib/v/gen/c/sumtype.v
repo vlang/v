@@ -164,20 +164,7 @@ fn (mut g FlatGen) gen_sum_variant_value(sum types.SumType, variant u32, value f
 	}
 	g.write('(${ct}){.typ = ${idx}, .${field} = ')
 	clean_type := unalias_type(typ)
-	if clean_type is types.Pointer && g.pointer_variant_expr_needs_heap_copy(value) {
-		base_ct := g.value_c_type(clean_type.base_type)
-		mut seen_aligned := map[u32]bool{}
-		aligned := g.tc.requires_aligned_allocation(clean_type.base_type)
-			|| g.global_fixed_array_type_has_aligned_struct(clean_type.base_type, mut seen_aligned)
-		allocator := if aligned { 'v3_aligned_memdup' } else { 'memdup' }
-		g.write('(${base_ct}*)${allocator}(')
-		g.gen_expr(value)
-		g.write(', sizeof(${base_ct})')
-		if aligned { g.write(', __alignof__(${base_ct})') }
-		g.write(')')
-	} else {
-		g.gen_expr_with_expected_type(value, typ)
-	}
+	g.gen_expr_with_expected_type(value, typ)
 	if clean_type is types.Pointer && g.pointer_variant_expr_creates_owned_value(value) {
 		g.write(', ._pointer_variant_is_owned = true')
 	}

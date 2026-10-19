@@ -7919,6 +7919,10 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 	// Ownership lowering appends calls after checking, while a generic builtin
 	// drop specialized inside another module can retain its original source
 	// position. Recognize both forms by their resolved/synthetic names.
+	if node.children_count == 3 && !node.pos.is_valid()
+		&& fn_name == '__v3_replace_pointer_sum' && g.gen_sum_pointer_replacement(node) {
+		return
+	}
 	mut is_ownership_drop := false
 	if !callee_is_fn_value {
 		is_ownership_drop = (!node.pos.is_valid() && ownership_synthetic_drop_name(fn_name))

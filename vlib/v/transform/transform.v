@@ -13105,7 +13105,8 @@ pub fn (mut t Transformer) transform_expr(id flat.NodeId) flat.NodeId {
 			return t.transform_string_interp(id, node)
 		}
 		.selector {
-			return t.transform_selector_expr(id, node)
+			value := t.transform_selector_expr(id, node)
+			return t.mark_sum_moving_read(id, value)
 		}
 		.or_expr {
 			return t.transform_or_expr(id, node)
@@ -15239,11 +15240,21 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 			lhs_type_name = flat.source_type_name(sum_storage)
 		}
 		lhs_type := t.tc.parse_type(flat.source_type_id(lhs_type_name))
+		mut pointer_sum_replacement := false
+		if sum_storage != 0 && lhs_node.kind in [.selector, .index] {
+			for variant in t.concrete_sum_variants_for_candidate(sum_storage) {
+				if t.sum_variant_is_direct_pointer(variant) {
+					pointer_sum_replacement = true
+					break
+				}
+			}
+		}
 		// V1 autofree leaves aggregate field/index replacement shallow. In particular,
 		// parser token rotations rely on moving `prev = current; current = peek`
-		// without destroying `current` between those two assignments.
+		// without destroying `current` between those two assignments. Pointer sums
+		// carry an explicit runtime owner flag and must release their old allocation.
 		autofree_aggregate_lvalue := t.tc.autofree_enabled()
-			&& node.kind in [.selector_assign, .index_assign]
+			&& node.kind in [.selector_assign, .index_assign] && !pointer_sum_replacement
 		if !t.cur_fn_manualfree && !autofree_aggregate_lvalue
 			&& !(lhs_node.kind == .ident && lhs_node.value == '_')
 			&& t.tc.ownership_type_requires_destruction(lhs_type)
@@ -15284,9 +15295,17 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 			result << t.make_decl_assign_typed(tmp_name, tmp_value, flat.source_type_id(tmp_type))
 			lvalue := t.stabilize_transformed_lvalue_for_reuse(new_children[0])
 			t.drain_pending(mut result)
-			drop_call := t.make_call_typed('drop_owned', [lvalue], flat.source_type_void)
-			result << t.make_expr_stmt(drop_call)
-			result << t.make_assign_after_owned_drop(lvalue, t.make_ident(tmp_name))
+			if pointer_sum_replacement {
+				// A borrowed wrapper can name the payload already owned by this slot.
+				// The backend retains that obligation instead of freeing the new value.
+				replace := t.make_call_typed('__v3_replace_pointer_sum', [lvalue,
+					t.make_ident(tmp_name)], flat.source_type_void)
+				result << t.make_expr_stmt(replace)
+			} else {
+				drop_call := t.make_call_typed('drop_owned', [lvalue], flat.source_type_void)
+				result << t.make_expr_stmt(drop_call)
+				result << t.make_assign_after_owned_drop(lvalue, t.make_ident(tmp_name))
+			}
 			t.invalidate_smartcast_for_lvalue(t.a.child(&node, 0))
 			return result
 		}
