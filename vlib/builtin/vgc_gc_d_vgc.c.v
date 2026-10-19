@@ -6,7 +6,6 @@
 module builtin
 
 fn C.v3_vgc_mark_global_arrays()
-fn C.vgc_call_with_registers_spilled(f fn ())
 fn C.vgc_data_ranges(lo &usize, hi &usize, max int) int
 
 // ============================================================
@@ -22,19 +21,29 @@ fn vgc_gc_start() {
 	if !C.vgc_atomic_cas_u32(&vgc_heap.gc_phase, &expected, vgc_phase_mark) {
 		return
 	}
+	// Threads cannot register or exit while their stacks are scanned.
+	C.vgc_mutex_lock(&vgc_heap.cache_lock)
 	// The collection runs below a frame that holds this thread's callee-saved registers, so
 	// that pointers the callers only kept in registers are seen by the stack scan.
-	C.vgc_call_with_registers_spilled(vgc_gc_run)
+	C.vgc_call_with_registers_spilled(vgc_gc_run, unsafe { nil })
+	C.vgc_mutex_unlock(&vgc_heap.cache_lock)
 }
 
-fn vgc_gc_run() {
+fn vgc_gc_run(_ voidptr) {
 	// === Phase 1: Sweep Termination (STW) ===
 	// Ensure any previous sweep is complete
 	vgc_sweep_finish()
 
 	// Stop the world for root scanning
 	// Set stop flag - threads will stop at next safepoint (allocation)
-	vgc_heap.gc_target_stops = u32(vgc_heap.ncaches - 1) // all threads except GC thread
+	self_idx := C.vgc_get_cache_idx()
+	mut targets := u32(0)
+	for i in 0 .. vgc_heap.ncaches {
+		if i != self_idx && unsafe { vgc_heap.caches[i].registered } {
+			targets++
+		}
+	}
+	vgc_heap.gc_target_stops = targets // all threads except GC thread
 	C.vgc_atomic_store_u32(&vgc_heap.gc_stopped_count, 0)
 	C.vgc_atomic_store_u32(&vgc_heap.gc_stop_flag, 1)
 

@@ -44,3 +44,30 @@ fn test_consts_and_globals_are_roots() {
 		}
 	}
 }
+
+fn vgc_test_thread_work(id int) int {
+	mut total := 0
+	for i in 0 .. 500 {
+		total += '${id}-${i}-'.repeat(5).len
+	}
+	return total
+}
+
+fn test_threads_that_exited_are_not_scanned() {
+	$if vgc ? {
+		// 80 threads in total: more than the 64 cache slots, which exited threads give back.
+		for round in 0 .. 10 {
+			mut threads := []thread int{}
+			for id in 0 .. 8 {
+				threads << spawn vgc_test_thread_work(round * 8 + id)
+			}
+			results := threads.wait()
+			// The stacks of the threads that have exited are unmapped now.
+			vgc_gc_start()
+			for id, total in results {
+				assert total == vgc_test_thread_work(round * 8 + id)
+			}
+		}
+		assert vgc_heap.ncaches <= 9
+	}
+}

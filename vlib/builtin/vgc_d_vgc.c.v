@@ -38,6 +38,11 @@ fn C.vgc_get_class_nobjs(cls int) u32
 fn C.vgc_init_size_tables()
 fn C.vgc_mutex_lock(lk &u32)
 fn C.vgc_mutex_unlock(lk &u32)
+fn C.vgc_mutex_trylock(lk &u32) int
+fn C.vgc_thread_yield()
+fn C.vgc_set_thread_exit_hook(f fn (voidptr))
+fn C.vgc_watch_thread_exit(idx int)
+fn C.vgc_call_with_registers_spilled(f fn (voidptr), arg voidptr)
 fn C.vgc_start_thread(f voidptr)
 fn C.vgc_num_cpus() int
 fn C.vgc_addr_map_register(base usize, size usize, arena_idx int)
@@ -236,6 +241,7 @@ pub fn vgc_init() {
 	vgc_heap.gc_percent = 100
 	vgc_heap.next_gc = 256 * 1024 * 1024 // favor throughput over early collections
 	vgc_heap.gc_phase = vgc_phase_off
+	C.vgc_set_thread_exit_hook(vgc_on_thread_exit)
 	// Register the main thread
 	vgc_register_thread()
 }
@@ -246,15 +252,28 @@ pub fn vgc_init() {
 
 fn vgc_register_thread() {
 	C.vgc_mutex_lock(&vgc_heap.cache_lock)
-	idx := vgc_heap.ncaches
+	// Reuse the slot of a thread that has exited.
+	mut idx := 0
+	for idx < vgc_heap.ncaches && unsafe { vgc_heap.caches[idx].registered } {
+		idx++
+	}
 	if idx >= vgc_max_threads {
 		C.vgc_mutex_unlock(&vgc_heap.cache_lock)
-		return
+		// Without a cache slot the allocator would index caches[-1].
+		C.fputs(c'vgc: more than 64 threads allocate at the same time\n', C.stderr)
+		C.abort()
 	}
-	vgc_heap.ncaches = idx + 1
+	if idx == vgc_heap.ncaches {
+		vgc_heap.ncaches = idx + 1
+	}
+	unsafe {
+		vgc_heap.caches[idx] = VGC_Cache{}
+		vgc_heap.caches[idx].registered = true
+	}
 	C.vgc_mutex_unlock(&vgc_heap.cache_lock)
 
 	C.vgc_set_cache_idx(idx)
+	C.vgc_watch_thread_exit(idx)
 	sp := usize(C.vgc_get_sp())
 	mut stack_lo := usize(0)
 	mut stack_hi := usize(0)
@@ -269,10 +288,37 @@ fn vgc_register_thread() {
 		stack_base = if dist_hi <= dist_lo { stack_hi } else { stack_lo }
 	}
 	unsafe {
-		vgc_heap.caches[idx].registered = true
 		vgc_heap.caches[idx].stack_base = stack_base
 	}
 	vgc_refresh_stack_range_for_sp(idx, sp)
+}
+
+// vgc_on_thread_exit runs when a registered thread exits, with its cache index + 1.
+fn vgc_on_thread_exit(value voidptr) {
+	vgc_unregister_thread(int(isize(value)) - 1)
+}
+
+// vgc_unregister_thread frees the slot of an exiting thread, so that the collector no longer
+// scans its stack, which the system is about to unmap. The spans that the thread had cached
+// stay in use until a sweep finds them empty, like the spans that a thread filled.
+fn vgc_unregister_thread(idx int) {
+	if idx < 0 || idx >= vgc_max_threads {
+		return
+	}
+	// A running collection holds cache_lock while it scans the stacks, and waits for this
+	// thread to stop.
+	for C.vgc_mutex_trylock(&vgc_heap.cache_lock) == 0 {
+		if C.vgc_atomic_load_u32(&vgc_heap.gc_stop_flag) != 0 {
+			vgc_safepoint_at(idx)
+		} else {
+			C.vgc_thread_yield()
+		}
+	}
+	unsafe {
+		vgc_heap.caches[idx] = VGC_Cache{}
+	}
+	C.vgc_mutex_unlock(&vgc_heap.cache_lock)
+	C.vgc_set_cache_idx(-1)
 }
 
 fn vgc_ensure_registered() {
@@ -1055,16 +1101,21 @@ fn vgc_is_heap_ptr(addr usize) bool {
 
 // Safepoint: called when GC needs threads to stop
 fn vgc_safepoint() {
-	if C.vgc_get_cache_idx() < 0 {
+	cache_idx := C.vgc_get_cache_idx()
+	if cache_idx < 0 {
 		return
 	}
-	// Wait below a frame that holds this thread's callee-saved registers, so that the
-	// collector's scan of this stack sees them.
-	C.vgc_call_with_registers_spilled(vgc_safepoint_wait)
+	vgc_safepoint_at(cache_idx)
 }
 
-fn vgc_safepoint_wait() {
-	cache_idx := C.vgc_get_cache_idx()
+fn vgc_safepoint_at(cache_idx int) {
+	// Wait below a frame that holds this thread's callee-saved registers, so that the
+	// collector's scan of this stack sees them.
+	C.vgc_call_with_registers_spilled(vgc_safepoint_wait, voidptr(isize(cache_idx)))
+}
+
+fn vgc_safepoint_wait(arg voidptr) {
+	cache_idx := int(isize(arg))
 	// Update the live stack range for root scanning.
 	vgc_refresh_stack_range_for_sp(cache_idx, usize(C.vgc_get_sp()))
 	// Mark ourselves as stopped
