@@ -9442,8 +9442,20 @@ fn (mut t Transformer) infer_generic_call_args_seeded(decl GenericFnDecl, _id fl
 	} else {
 		[]string{}
 	}
-	if t.expected_expr_node == int(_id) && t.expected_expr_type != 0 {
-		t.infer_generic_return_type_args(decl, t.generic_inference_expected_type(t.expected_expr_type), mut inferred, receiver_params)
+	expected_return := if t.expected_expr_node == int(_id) {
+		t.generic_inference_expected_type(t.expected_expr_type)
+	} else {
+		u32(0)
+	}
+	mut expected_value := flat.source_type_name(expected_return)
+	for expected_value.len > 0 && expected_value[0] in [`?`, `!`, `&`] {
+		expected_value = expected_value[1..]
+	}
+	// An interface target converts the result after the call. Its concrete
+	// arguments decide T before that target may fill any missing parameters.
+	interface_context := t.is_interface_type(flat.source_type_id(expected_value))
+	if expected_return != 0 && !interface_context {
+		t.infer_generic_return_type_args(decl, expected_return, mut inferred, receiver_params)
 	}
 	mut param_idx := 0
 	param_count := t.generic_decl_param_count(decl.node)
@@ -9551,8 +9563,10 @@ fn (mut t Transformer) infer_generic_call_args_seeded(decl GenericFnDecl, _id fl
 		t.infer_generic_short_struct_init_args(child.typ, arg_id, node, mut inferred)
 		param_idx++
 	}
+	if interface_context {
+		t.infer_generic_return_type_args(decl, expected_return, mut inferred, receiver_params)
+	}
 	ret_source_id_2 := t.node_type(_id)
-
 	if ret_source_id_2 != 0 {
 		t.infer_generic_return_type_args(decl, ret_source_id_2, mut inferred, receiver_params)
 		t.infer_missing_generic_receiver_args_from_return(decl, ret_source_id_2, receiver_params, mut inferred)
