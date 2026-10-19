@@ -547,6 +547,13 @@ fn external_tool_runtime_args(command string, prefix_args []string, command_args
 	if command in ['build-examples', 'build-tools', 'self', 'test', 'test-self'] {
 		tool_args << prefix_args
 	}
+	if command == 'watch' {
+		// `v watch` reconstructs the compiler command from its own argv (see
+		// `all_args_before_watch_cmd` in cmd/tools/vwatch.v), so prefix compiler options like
+		// `-d veb_livereload` have to reach the tool again instead of only affecting
+		// the compilation of the watcher binary.
+		tool_args << prefix_args
+	}
 	if command == 'fmt' {
 		backend_args, _ := split_tool_backend_args(prefix_args)
 		tool_args << backend_args

@@ -157,6 +157,13 @@ fn test_tools_that_consume_prefix_compiler_options_receive_them() {
 		'-verify',
 		'file.v',
 	]
+	assert external_tool_runtime_args('watch', ['-d', 'veb_livereload'], ['watch', 'run', '.']) == [
+		'-d',
+		'veb_livereload',
+		'watch',
+		'run',
+		'.',
+	]
 }
 
 fn test_self_launcher_keeps_replacement_backend_options_out_of_helper_build() {
