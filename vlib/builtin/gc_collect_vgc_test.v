@@ -213,3 +213,33 @@ fn test_every_span_is_swept() {
 		assert vgc_memory_use() == used
 	}
 }
+
+fn test_span_metadata_takes_little_memory() {
+	$if vgc ? {
+		// The earlier tests made about 20000 spans. Their metadata used three pages each.
+		assert vgc_memory_use() > 100 * 1024 * 1024
+		assert vgc_heap.meta_bytes < u64(vgc_memory_use() / 16) + u64(vgc_meta_chunk_size)
+	}
+}
+
+fn test_the_heap_stays_bounded_with_a_bounded_live_set() {
+	$if vgc ? {
+		gc_collect()
+		base, _, _, _, _ := vgc_heap_usage()
+		mut ring := []string{len: 4096}
+		mut peak := usize(0)
+		// About 100 MB of strings in total, of which about 1 MB stays live.
+		for i in 0 .. 400_000 {
+			ring[i % ring.len] = 'bounded live set '.repeat(1 + i % 30)
+			if i % 20_000 == 0 {
+				in_use, _, _, _, _ := vgc_heap_usage()
+				if in_use > peak {
+					peak = in_use
+				}
+				gc_collect()
+			}
+		}
+		assert peak < base + 32 * 1024 * 1024
+		assert ring[399_999 % ring.len] == 'bounded live set '.repeat(1 + 399_999 % 30)
+	}
+}

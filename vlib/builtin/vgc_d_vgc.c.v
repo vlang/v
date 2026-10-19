@@ -68,6 +68,9 @@ const vgc_pages_per_arena = 64 * 1024 * 1024 / 8192 // vgc_arena_size / vgc_page
 const vgc_max_arenas = 64
 const vgc_max_threads = 64
 const vgc_tiny_size = 16 // tiny allocator threshold (no-pointer objects < 16 bytes)
+// A span holds at most 1024 objects (8-byte objects in one page): 128 bytes of bits.
+const vgc_bitmap_bytes = 128
+const vgc_meta_chunk_size = 256 * 1024 // span metadata is carved out of chunks of this size
 
 // GC phases (translated from Go's _GCoff, _GCmark, _GCmarktermination)
 const vgc_phase_off = u32(0)
@@ -111,6 +114,8 @@ mut:
 	// Linked list pointers for central free lists
 	next &VGC_Span = unsafe { nil }
 	prev &VGC_Span = unsafe { nil }
+	// Storage for alloc_bits (the first half) and mark_bits (the second half).
+	bits [256]u8
 }
 
 // VGC_Cache is a per-thread allocation cache.
@@ -173,6 +178,10 @@ mut:
 	central [136]VGC_Central
 	// Large object spans
 	large_alloc &VGC_Span = unsafe { nil }
+	// The rest of the current chunk for span metadata, and the bytes of all chunks
+	meta_next  usize
+	meta_left  usize
+	meta_bytes u64
 	// Free spans (completely empty, reusable by page count)
 	free_spans_lock u32
 	free_spans      [32]&VGC_Span // free spans indexed by npages (1..31, 0=unused)
@@ -431,16 +440,8 @@ fn vgc_put_free_span(mut span VGC_Span) {
 	if npages == 0 {
 		return
 	}
-	// Free bitmaps before zeroing nelems
-	bitmap_size := usize((span.nelems + 7) / 8)
-	if span.alloc_bits != unsafe { nil } {
-		C.vgc_os_free(span.alloc_bits, bitmap_size)
-		span.alloc_bits = unsafe { nil }
-	}
-	if span.mark_bits != unsafe { nil } {
-		C.vgc_os_free(span.mark_bits, bitmap_size)
-		span.mark_bits = unsafe { nil }
-	}
+	span.alloc_bits = unsafe { nil }
+	span.mark_bits = unsafe { nil }
 	span.in_use = false
 	span.class_idx = 0
 	span.elem_size = 0
@@ -530,7 +531,7 @@ fn vgc_span_alloc(npages u32, owner int) &VGC_Span {
 	}
 
 	// Create span metadata (allocate from OS for metadata to avoid chicken-and-egg)
-	span := unsafe { &VGC_Span(C.vgc_os_alloc(sizeof(VGC_Span))) }
+	span := unsafe { &VGC_Span(vgc_meta_alloc(sizeof(VGC_Span))) }
 	if span == unsafe { nil } {
 		C.vgc_mutex_unlock(&vgc_heap.lock)
 		return unsafe { nil }
@@ -559,6 +560,27 @@ fn vgc_span_alloc(npages u32, owner int) &VGC_Span {
 	return span
 }
 
+// vgc_meta_alloc returns zeroed memory for the metadata of a span. Spans are recycled, never
+// freed, so the metadata comes from large chunks; a page of its own for each span (and one for
+// each of its two bitmaps) used more memory than the span's objects. The caller holds
+// vgc_heap.lock.
+fn vgc_meta_alloc(size usize) voidptr {
+	n := (size + 15) & ~usize(15)
+	if vgc_heap.meta_left < n {
+		chunk := C.vgc_os_alloc(usize(vgc_meta_chunk_size))
+		if chunk == unsafe { nil } {
+			return unsafe { nil }
+		}
+		vgc_heap.meta_next = usize(chunk)
+		vgc_heap.meta_left = usize(vgc_meta_chunk_size)
+		vgc_heap.meta_bytes += u64(vgc_meta_chunk_size)
+	}
+	p := vgc_heap.meta_next
+	vgc_heap.meta_next += n
+	vgc_heap.meta_left -= n
+	return voidptr(p)
+}
+
 // Initialize a span for a specific size class
 fn vgc_span_init(mut span VGC_Span, class_idx u8, noscan bool) {
 	size := C.vgc_get_class_size(int(class_idx))
@@ -573,16 +595,18 @@ fn vgc_span_init(mut span VGC_Span, class_idx u8, noscan bool) {
 	span.free_index = 0
 	span.alloc_count = 0
 
-	// Allocate bitmaps: ceil(nobjs/8) bytes each
+	// Bitmaps: ceil(nobjs/8) bytes each, in the span itself
 	bitmap_size := (nobjs + 7) / 8
-	span.alloc_bits = unsafe { &u8(C.vgc_os_alloc(usize(bitmap_size))) }
-	span.mark_bits = unsafe { &u8(C.vgc_os_alloc(usize(bitmap_size))) }
-	if span.alloc_bits != unsafe { nil } {
-		unsafe { C.memset(span.alloc_bits, 0, bitmap_size) }
+	vgc_span_set_bitmaps(mut span)
+	unsafe {
+		C.memset(span.alloc_bits, 0, bitmap_size)
+		C.memset(span.mark_bits, 0, bitmap_size)
 	}
-	if span.mark_bits != unsafe { nil } {
-		unsafe { C.memset(span.mark_bits, 0, bitmap_size) }
-	}
+}
+
+fn vgc_span_set_bitmaps(mut span VGC_Span) {
+	span.alloc_bits = unsafe { &u8(&span.bits[0]) }
+	span.mark_bits = unsafe { &u8(&span.bits[vgc_bitmap_bytes]) }
 }
 
 // Find a free slot in a span and allocate it
@@ -937,14 +961,9 @@ fn vgc_alloc_large(n usize, noscan bool, zero_fill bool, cache_idx int) voidptr 
 		span.alloc_count = 1
 
 		// Single-element bitmap
-		span.alloc_bits = &u8(C.vgc_os_alloc(1))
-		span.mark_bits = &u8(C.vgc_os_alloc(1))
-		if span.alloc_bits != nil {
-			span.alloc_bits[0] = 1
-		}
-		if span.mark_bits != nil {
-			span.mark_bits[0] = 0
-		}
+		vgc_span_set_bitmaps(mut span)
+		span.alloc_bits[0] = 1
+		span.mark_bits[0] = 0
 	}
 	// Add to large allocation list
 	C.vgc_mutex_lock(&vgc_heap.lock)
