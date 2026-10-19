@@ -1417,6 +1417,9 @@ fn (mut tc TypeChecker) check_postfix(id flat.NodeId, node flat.Node) {
 			return
 		}
 		child_type := unalias_type(tc.resolve_type(child_id))
+		if is_unresolved_name_type(child_type) {
+			return
+		}
 		if child_type is Pointer {
 			if tc.pointer_diagnostic_binding_type_name(child_id, Type(child_type)) in [
 				'voidptr',

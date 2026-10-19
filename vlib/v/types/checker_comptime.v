@@ -2280,6 +2280,9 @@ fn (mut tc TypeChecker) check_nonliteral_node(id flat.NodeId) {
 	}
 	if kind_id == 12 {
 		tc.check_call(id, node)
+		if tc.errors.len > 0 {
+			tc.mark_unresolved_receiver_call(id, node)
+		}
 		return
 	}
 	if kind_id == 21 {
@@ -5869,6 +5872,10 @@ fn (mut tc TypeChecker) record_interface_implementation_error(kind TypeErrorKind
 }
 
 fn (mut tc TypeChecker) record_interface_implementation_error_with_mut_receiver(kind TypeErrorKind, actual Type, expected Interface, id flat.NodeId, pos token.Pos, allow_mut_receiver bool) bool {
+	if is_unresolved_name_type(unwrap_pointer(actual)) {
+		// The value names something that did not resolve, which is reported already.
+		return true
+	}
 	clean_actual := unalias_type(unwrap_pointer(actual))
 	if clean_actual is Interface
 		&& (tc.interface_metadata_name(clean_actual.source_type_id()) == tc.interface_metadata_name(expected.source_type_id())
@@ -6924,6 +6931,9 @@ fn (mut tc TypeChecker) check_as_expr(id flat.NodeId, node flat.Node) {
 				return
 			}
 		}
+	}
+	if is_unresolved_name_type(child_type) {
+		return
 	}
 	as_child_type := if child_type is OptionType { child_type.base_type } else { child_type }
 	mut clean_child := unalias_type(unwrap_pointer(as_child_type))
@@ -10729,6 +10739,12 @@ fn (mut tc TypeChecker) check_or_expr(id flat.NodeId, node flat.Node) {
 	}
 	inner_id := tc.a.child(&node, 0)
 	tc.check_node(inner_id)
+	if tc.errors.len > 0 && is_unresolved_name_type(tc.resolve_type(inner_id)) {
+		// Whether `missing.get() or {}` or `missing?` can fail, and what it holds, are
+		// unknown: the name it is built on did not resolve.
+		tc.register_synth_type(id, unresolved_name_type())
+		return
+	}
 	if node.children_count >= 2 {
 		inner := tc.a.node(inner_id)
 		if inner.kind == .call && inner.children_count > 0 {
@@ -15652,6 +15668,18 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 				} else {
 					tc.insert_loop_var(key_id, tc.range_loop_var_type(tc.a.child(&container, 0), tc.a.child(&container, 1)))
 				}
+			} else if is_unresolved_name_type(clean) {
+				// The container did not resolve, and neither do the values it holds.
+				if has_val {
+					tc.insert_loop_var(key_id, builtin_int_type)
+					if node.op == .amp {
+						tc.insert_mut_loop_var(val_id, clean)
+					} else {
+						tc.insert_loop_var(val_id, clean)
+					}
+				} else {
+					tc.insert_loop_var(key_id, clean)
+				}
 			} else if (clean is Unknown || clean is Void) && tc.expr_subtree_has_error(container_id) {
 				if has_val {
 					if container.kind == .selector {
@@ -16457,6 +16485,18 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 				}
 				i += 2
 				continue
+			}
+			// The initializer uses a name that does not resolve. The variables are still
+			// declared, so that their uses are not reported as undefined as well. As
+			// before, the initializers after this one are not checked.
+			tc.insert_decl_lhs(lhs_id, unresolved_initializer_type(tc.resolve_type(rhs_id)),
+				lhs_is_mut)
+			for j := i + 2; j + 1 < node.children_count; j += 2 {
+				next_lhs_id := tc.a.child(&node, j)
+				if tc.a.nodes[int(next_lhs_id)].kind == .ident {
+					tc.insert_decl_lhs(next_lhs_id, unresolved_name_type(), tc.decl_lhs_is_mut(node,
+						next_lhs_id))
+				}
 			}
 			return
 		}
@@ -18709,6 +18749,14 @@ fn (mut tc TypeChecker) check_multi_return_decl_assign(id flat.NodeId, node flat
 	if lhs_ids.len > 1 {
 		if call_name := tc.unresolved_multi_assign_method_call_name(rhs_id) {
 			tc.check_node(rhs_id)
+			if tc.errors.len > 0 && is_unresolved_name_type(tc.resolve_type(rhs_id)) {
+				// The receiver did not resolve, so the number of values is unknown.
+				for lhs_id in lhs_ids {
+					tc.insert_decl_lhs(lhs_id, unresolved_name_type(), tc.decl_lhs_is_mut(node,
+						lhs_id))
+				}
+				return true
+			}
 			if tc.should_diagnose(id) {
 				tc.record_error_at(.assignment_mismatch, 'assignment mismatch: ${lhs_ids.len} variables but `${call_name}()` returns 0 values', id, tc.assignment_operator_pos(node, lhs_ids[0], rhs_id))
 			}
@@ -21145,6 +21193,9 @@ fn (tc &TypeChecker) assignment_source_line_pos(node flat.Node, lhs_id flat.Node
 }
 
 fn (mut tc TypeChecker) record_compound_assignment_operand_errors(op flat.Op, lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type Type, rhs_type Type) {
+	if is_unresolved_name_type(lhs_type) || is_unresolved_name_type(rhs_type) {
+		return
+	}
 	mut op_text := tc.compound_assignment_source_operator(lhs_id, rhs_id, op)
 	if op_text.len == 0 {
 		return
