@@ -113,3 +113,38 @@ fn test_record_listed_source_path_matches_os_real_path() {
 		assert a.resolved_source_paths[path] == os.real_path(path)
 	}
 }
+
+fn test_record_listed_source_path_in_matches_os_real_path() {
+	root := os.join_path(os.vtmp_dir(), 'v3_flat_listed_source_paths_in_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(os.join_path(root, 'real')) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	os.write_file(os.join_path(root, 'real', 'main.v'), 'module main\n')!
+	os.write_file(os.join_path(root, 'real', 'target.v'), 'module main\n')!
+	os.mkdir_all(os.join_path(root, 'other')) or { panic(err) }
+	os.write_file(os.join_path(root, 'other', 'elsewhere.v'), 'module main\n')!
+	// The listed directory is reached through a link, and two entries are links:
+	// one to a sibling entry and one out of the directory.
+	linked_dir := os.join_path(root, 'linked')
+	os.symlink(os.join_path(root, 'real'), linked_dir) or { return }
+	os.symlink(os.join_path(root, 'real', 'target.v'), os.join_path(root, 'real', 'alias.v')) or {
+		return
+	}
+	os.symlink(os.join_path(root, 'other', 'elsewhere.v'), os.join_path(root, 'real', 'outside.v')) or {
+		return
+	}
+	real_dir := os.real_path(linked_dir)
+	symlinks := scan_listed_symlinks(linked_dir)
+	$if !windows {
+		assert symlinks.known
+		assert symlinks.names.len == 2
+	}
+	mut a := FlatAst.new()
+	for name in ['main.v', 'target.v', 'alias.v', 'outside.v'] {
+		path := os.join_path(linked_dir, name)
+		assert a.record_listed_source_path_in(path, real_dir, &symlinks) == os.real_path(path)
+		assert a.resolved_source_paths[path] == os.real_path(path)
+	}
+}
