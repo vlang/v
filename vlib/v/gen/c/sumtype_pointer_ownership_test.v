@@ -243,6 +243,105 @@ fn main() {
  assert C.sum_drop_count(10) == 0
 }
 ')!
+	or_source := os.join_path(dir, 'or_owners.c.v')
+	os.write_file(or_source, '#include "${header}"
+fn C.sum_record_drop(code int, address voidptr)
+fn C.sum_drop_count(code int) int
+interface Drop { mut: drop() }
+struct Item implements Drop { code int }
+fn (item &Item) free() { C.sum_record_drop(item.code, voidptr(item)) }
+fn (mut item Item) drop() { C.sum_record_drop(item.code, voidptr(&item)) }
+type Choice = int | &Item
+fn result_value(mode int, item &Item, code int) !Choice {
+ if mode == 0 { return error("fallback") }
+ if mode == 1 { return Choice(&Item{code: code}) }
+ return Choice(item)
+}
+fn option_value(mode int, item &Item, code int) ?Choice {
+ if mode == 0 { return none }
+ if mode == 1 { return Choice(&Item{code: code}) }
+ return Choice(item)
+}
+fn borrowed_result(item &Item) !Choice { return Choice(item) }
+fn borrowed_option(item &Item) ?Choice { return Choice(item) }
+fn result_success(item &Item) ! {
+ value := result_value(1, item, 1)!
+ alias := Choice(value)
+ assert (alias as &Item).code == 1
+ assert C.sum_drop_count(1) == 0
+}
+fn option_success(item &Item) ? {
+ value := option_value(1, item, 2)?
+ alias := Choice(value)
+ assert (alias as &Item).code == 2
+ assert C.sum_drop_count(2) == 0
+}
+fn result_fallback(item &Item) {
+ value := Choice(result_value(0, item, 3) or { Choice(&Item{code: 3}) })
+ alias := value
+ assert (alias as &Item).code == 3
+ assert C.sum_drop_count(3) == 0
+}
+fn option_fallback(item &Item) {
+ fallback := Choice(&Item{code: 4})
+ value := option_value(0, item, 4) or { fallback }
+ alias := Choice(value)
+ assert (alias as &Item).code == 4
+ assert C.sum_drop_count(4) == 0
+}
+fn forward_scope(item &Item) {
+ result := forward_result(item) or { panic(err) }
+ assert (result as &Item).code == 5
+ option := forward_option(item) or { panic("none") }
+ assert (option as &Item).code == 6
+ assert C.sum_drop_count(5) == 0
+ assert C.sum_drop_count(6) == 0
+}
+fn forward_result(item &Item) !Choice {
+ value := result_value(1, item, 5)!
+ return value
+}
+fn forward_option(item &Item) ?Choice {
+ value := option_value(1, item, 6)?
+ return value
+}
+fn borrowed_controls(item &Item) ! {
+ mixed := result_value(2, item, 8)!
+ mixed_alias := Choice(mixed)
+ assert voidptr(mixed_alias as &Item) == voidptr(item)
+ result := borrowed_result(item)!
+ result_copy := result
+ another_result := Choice(result)
+ assert voidptr(result as &Item) == voidptr(item)
+ assert voidptr(result_copy as &Item) == voidptr(item)
+ assert voidptr(another_result as &Item) == voidptr(item)
+ option := borrowed_option(item) or { Choice(item) }
+ option_copy := Choice(option)
+ another_option := option
+ assert voidptr(option as &Item) == voidptr(item)
+ assert voidptr(option_copy as &Item) == voidptr(item)
+ assert voidptr(another_option as &Item) == voidptr(item)
+ assert C.sum_drop_count(7) == 0
+ assert C.sum_drop_count(8) == 0
+}
+fn main() {
+ local := Item{code: 7}
+ result_success(&local) or { panic(err) }
+ assert C.sum_drop_count(1) == 1
+ option_success(&local) or { panic("none") }
+ assert C.sum_drop_count(2) == 1
+ result_fallback(&local)
+ assert C.sum_drop_count(3) == 1
+ option_fallback(&local)
+ assert C.sum_drop_count(4) == 1
+ forward_scope(&local)
+ assert C.sum_drop_count(5) == 1
+ assert C.sum_drop_count(6) == 1
+ borrowed_controls(&local) or { panic(err) }
+ assert C.sum_drop_count(7) == 0
+ assert C.sum_drop_count(8) == 0
+}
+')!
 	previous_jobs := os.getenv('VJOBS')
 	defer {
 		if previous_jobs.len > 0 {
@@ -255,7 +354,7 @@ fn main() {
 		os.setenv('VJOBS', jobs, true)
 		for mode in ['-autofree', '-ownership'] {
 			for prealloc in [false, true] {
-				for program in [source, ordinary_source] {
+				for program in [source, ordinary_source, or_source] {
 					mut command := [compiler, '-new-compiler', '-nocache', '-no-closures', '-gc',
 						'none', '-cc', cc, mode]
 					if prealloc { command << '-prealloc' }

@@ -235,3 +235,6 @@ loans. Moving that sum transfers both obligations; borrowed-only return values r
 Wrapping a result in the same sum type preserves those loans and move obligations, including
 conditional results and named aliases. Aggregate fields and elements retain conditional ownership
 when their initializer may return either fresh storage or a borrowed pointer.
+Unwrapping a Result or Option with `or`, `!`, or `?` preserves the successful sum's ownership and
+source loans. An `or` fallback also retains its source loans, including named local wrappers.
+These return lifetime checks reject a pointer to a local declared inside an `or` fallback.

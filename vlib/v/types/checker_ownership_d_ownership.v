@@ -4624,7 +4624,7 @@ fn (mut tc TypeChecker) ownership_prescan_expr_for_owned_calls(id flat.NodeId, m
 			return false
 		}
 		.call {
-			return tc.ownership_prescan_call_for_owned_calls(id, node, mut owned_locals, mut local_types)
+			return tc.ownership_prescan_call_for_owned_calls(id, node, false, mut owned_locals, mut local_types)
 		}
 		.index {
 			for i in 0 .. node.children_count {
@@ -4794,9 +4794,26 @@ fn (mut tc TypeChecker) ownership_prescan_or_expr_for_owned_calls(node flat.Node
 	if node.children_count == 0 {
 		return false
 	}
-	_ := tc.ownership_prescan_expr_for_owned_calls(tc.a.child(&node, 0), mut owned_locals, mut local_types)
+	success_id := tc.ownership_unwrap_expr(tc.a.child(&node, 0))
+	if !tc.valid_node_id(success_id) { return false }
+	success := tc.a.nodes[int(success_id)]
+	success_type := if success.kind == .call {
+		if info := tc.ownership_prescan_call_info(success, local_types) {
+			info.return_type
+		} else {
+			Type(Unknown{})
+		}
+	} else {
+		local_types[tc.ownership_expr_ident_name(success_id)] or { Type(Unknown{}) }
+	}
+	sum_success := tc.sum_escape_has_pointer_variant(sum_escape_success_type(success_type))
+	success_owned := if success.kind == .call {
+		tc.ownership_prescan_call_for_owned_calls(success_id, success, sum_success, mut owned_locals, mut local_types)
+	} else {
+		tc.ownership_prescan_expr_for_owned_calls(success_id, mut owned_locals, mut local_types)
+	}
 	if node.children_count < 2 || node.value in ['!', '?'] {
-		return false
+		return sum_success && success_owned
 	}
 	base_owned := owned_locals.clone()
 	base_types := local_types.clone()
@@ -4806,7 +4823,7 @@ fn (mut tc TypeChecker) ownership_prescan_or_expr_for_owned_calls(node flat.Node
 	branch_owned := [base_owned, fallback_owned]
 	branch_types := [base_types, fallback_types]
 	tc.ownership_prescan_merge_branch_states(base_owned, base_types, branch_owned, branch_types, mut owned_locals, mut local_types)
-	return result_owned
+	return (sum_success && success_owned) || result_owned
 }
 
 fn (mut tc TypeChecker) ownership_prescan_branch_tail_for_owned_calls(branch_id flat.NodeId, mut branch_owned_locals map[string]bool, mut branch_local_types map[string]Type) bool {
@@ -4885,7 +4902,7 @@ fn (mut tc TypeChecker) ownership_prescan_expr_is_owned_clone_call(id flat.NodeI
 	return tc.ownership_type_requires_destruction(tc.resolve_type(call_id))
 }
 
-fn (mut tc TypeChecker) ownership_prescan_call_for_owned_calls(id flat.NodeId, node flat.Node, mut owned_locals map[string]bool, mut local_types map[string]Type) bool {
+fn (mut tc TypeChecker) ownership_prescan_call_for_owned_calls(id flat.NodeId, node flat.Node, sum_success_only bool, mut owned_locals map[string]bool, mut local_types map[string]Type) bool {
 	if tc.ownership_expr_is_to_owned_call(id) {
 		return true
 	}
@@ -5000,6 +5017,11 @@ fn (mut tc TypeChecker) ownership_prescan_call_for_owned_calls(id flat.NodeId, n
 		if arg_name.len > 0 {
 			tc.ownership_prescan_transfer_owned_descendants_to_param_with_suffix(arg_name, info.name, target_param_idx, target_suffix, mut owned_locals, local_types)
 		}
+	}
+	// Unwrapping a Result container does not transfer its error allocation to
+	// a borrowed-only sum payload. Use the callee's actual return obligations.
+	if sum_success_only && tc.sum_escape_has_pointer_variant(sum_escape_success_type(info.return_type)) {
+		return returns_owned
 	}
 	return returns_owned || tc.ownership_type_is_owned(tc.resolve_type(id))
 }
@@ -9127,10 +9149,15 @@ fn (mut tc TypeChecker) ownership_collect_conditional_result(lhs_name string, if
 			return marked
 		}
 		.or_expr {
-			if node.children_count < 2 || node.value in ['!', '?'] {
+			if node.children_count == 0 {
+				return false
+			}
+			if (node.children_count < 2 || node.value in ['!', '?'])
+				&& !tc.sum_escape_has_pointer_variant(lhs_type) {
 				return false
 			}
 			mut marked := tc.ownership_collect_expr_result(lhs_name, tc.a.child(&node, 0), lhs_type, pos, mut moved_sources)
+			if node.children_count < 2 || node.value in ['!', '?'] { return marked }
 			tail := tc.branch_tail_expr_id(tc.a.child(&node, 1))
 			if tc.ownership_collect_expr_result(lhs_name, tail, lhs_type, pos, mut moved_sources) {
 				marked = true
@@ -9198,9 +9225,14 @@ fn (mut tc TypeChecker) ownership_collect_expr_result(lhs_name string, expr_id f
 	if tc.ownership_mark_from_call(lhs_name, id, pos) {
 		return true
 	}
+	result_type := if tc.sum_escape_has_pointer_variant(lhs_type) {
+		sum_escape_success_type(tc.resolve_type(id))
+	} else {
+		tc.resolve_type(id)
+	}
 	if tc.ownership_expr_creates_owned_value(id) || tc.ownership_expr_is_owned_clone_call(id)
-		|| tc.ownership_type_is_owned(tc.resolve_type(id)) {
-		tc.ownership_mark_owned(lhs_name, tc.resolve_type(id), pos)
+		|| tc.ownership_type_is_owned(result_type) {
+		tc.ownership_mark_owned(lhs_name, result_type, pos)
 		return true
 	}
 	return false

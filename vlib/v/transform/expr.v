@@ -4803,11 +4803,28 @@ fn (mut t Transformer) runtime_addr(expr flat.NodeId, typ_id u32) flat.NodeId {
 		}
 	}
 	if !t.expr_can_take_address(expr) {
+		if aligned := t.aligned_fixed_array_rvalue_address(expr, typ_id) {
+			return aligned
+		}
 		name := t.new_temp('addr')
 		t.pending_stmts << t.make_decl_assign_typed(name, expr, typ_id)
 		return t.make_prefix(.amp, t.make_ident(name))
 	}
 	return t.make_prefix(.amp, expr)
+}
+
+// aligned_fixed_array_rvalue_address gives an over-aligned temporary durable backing.
+// Existing addressable values keep their original storage and pointer identity.
+fn (mut t Transformer) aligned_fixed_array_rvalue_address(value flat.NodeId, typ_id u32) ?flat.NodeId {
+	if isnil(t.tc) {
+		return none
+	}
+	typ := types.unalias_type(t.tc.parse_canonical_type_cached(typ_id))
+	if typ !is types.ArrayFixed || !t.tc.requires_aligned_allocation(typ) {
+		return none
+	}
+	// Reuse escaped-value promotion so the copy has the same allocator and lifetime policy.
+	return t.heap_value(value, typ_id)
 }
 
 fn (t &Transformer) redundant_deref_addr(expr flat.NodeId) ?flat.NodeId {

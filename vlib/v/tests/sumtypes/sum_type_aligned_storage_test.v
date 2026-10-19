@@ -36,6 +36,22 @@ fn test_sum_aliases_and_containing_values_inherit_alignment() {
 fn test_fixed_arrays_of_sums_inherit_alignment() {
 	values := &[2]AlignedSum{init: SumSmallValue{3}}
 	assert usize(voidptr(values)) % 64 == 0
+	for i in 0 .. 2 {
+		assert (*values)[i] is SumSmallValue
+		assert (*values)[i].value == 3
+	}
+}
+
+fn test_existing_fixed_sum_array_references_keep_storage_identity() {
+	mut existing := [AlignedSum(SumSmallValue{4}), AlignedSum(SumSmallValue{5})]!
+	first := &existing
+	second := &existing
+	assert voidptr(first) == voidptr(second)
+	// Both references borrow the same local array; replacing an element changes it.
+	unsafe { (*first)[0] = AlignedSum(SumSmallValue{9}) }
+	assert existing[0] is SumSmallValue
+	assert existing[0].value == 9
+	assert (*second)[0].value == 9
 }
 
 fn aligned_sum_value(value &AlignedSum) int {

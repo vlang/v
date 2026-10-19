@@ -23,6 +23,13 @@ fn (tc &TypeChecker) sum_escape_has_pointer_variant(typ Type) bool {
 	return false
 }
 
+fn sum_escape_success_type(typ Type) Type {
+	clean := unalias_type(typ)
+	if clean is ResultType { return *clean.base_type }
+	if clean is OptionType { return *clean.base_type }
+	return clean
+}
+
 fn (mut tc TypeChecker) ownership_prescan_sum_local_returns(fn_name string, fn_node flat.Node) {
 	mut aliases := map[string][]SumReturnLocal{}
 	mut locals := map[string]SumReturnLocal{}
@@ -72,6 +79,11 @@ fn (mut tc TypeChecker) sum_escape_prescan_expr_type(id flat.NodeId, locals map[
 		.paren, .expr_stmt {
 			if node.children_count > 0 {
 				return tc.sum_escape_prescan_expr_type(tc.a.child(node, 0), locals)
+			}
+		}
+		.or_expr {
+			if node.children_count > 0 {
+				return sum_escape_success_type(tc.sum_escape_prescan_expr_type(tc.a.child(node, 0), locals))
 			}
 		}
 		.prefix {
@@ -160,9 +172,10 @@ fn (mut tc TypeChecker) sum_return_expr_sources_seen(id flat.NodeId, aliases map
 			}
 			return sources
 		}
-		.if_expr, .match_stmt {
+		.if_expr, .match_stmt, .or_expr {
 			mut sources := []SumReturnLocal{}
-			for i in 1 .. node.children_count {
+			start := if node.kind == .or_expr { 0 } else { 1 }
+			for i in start .. node.children_count {
 				for source in tc.sum_return_expr_sources_seen(tc.a.child(node, i), aliases, locals, ancestors) {
 					if source !in sources { sources << source }
 				}
@@ -250,7 +263,7 @@ fn (mut tc TypeChecker) ownership_scan_sum_local_returns(fn_name string, id flat
 		ret := unalias_type(tc.fn_ret_types[fn_name] or { return })
 		if !tc.sum_escape_has_pointer_variant(ret) { return }
 		if tc.ownership_sum_return_branch_has_local(tc.a.child(node, 0), aliases, locals) {
-			tc.record_error(.return_mismatch, 'cannot return a sum pointer to a local declared inside an if or match expression; declare the local before the return expression', id)
+			tc.record_error(.return_mismatch, 'cannot return a sum pointer to a local declared inside an if or match expression or an `or` block; declare the local before the return expression', id)
 			return
 		}
 		mut entries := []OwnershipDropEntry{}
@@ -343,7 +356,7 @@ fn (mut tc TypeChecker) sum_aggregate_expr_local_sources(id flat.NodeId, aliases
 	}
 	mut sources := []SumReturnLocal{}
 	if node.kind in [.struct_init, .assoc, .array_literal, .array_init, .map_init, .field_init,
-		.paren, .expr_stmt] {
+		.paren, .expr_stmt, .or_expr] {
 		for i in 0 .. node.children_count {
 			for source in tc.sum_aggregate_expr_local_sources(tc.a.child(node, i), aliases, locals) {
 				if source !in sources { sources << source }
@@ -362,8 +375,9 @@ fn (mut tc TypeChecker) ownership_sum_return_branch_has_local(id flat.NodeId, al
 	if payload := tc.ownership_sum_constructor_payload(id) {
 		return tc.ownership_sum_return_branch_has_local(payload, aliases, locals)
 	}
-	if node.kind in [.if_expr, .match_stmt] {
-		for i in 1 .. node.children_count {
+	if node.kind in [.if_expr, .match_stmt, .or_expr] {
+		start := if node.kind == .or_expr { 0 } else { 1 }
+		for i in start .. node.children_count {
 			if tc.ownership_sum_return_branch_has_local(tc.a.child(node, i), aliases, locals) {
 				return true
 			}
@@ -493,12 +507,17 @@ fn (mut tc TypeChecker) ownership_sum_borrow_source_name(initial string) string 
 }
 
 fn (mut tc TypeChecker) ownership_sum_borrow_sources(id flat.NodeId, ancestors []flat.NodeId) []string {
+	return tc.ownership_sum_borrow_sources_with_aliases(id, ancestors, map[string][]string{})
+}
+
+fn (mut tc TypeChecker) ownership_sum_borrow_sources_with_aliases(id flat.NodeId, ancestors []flat.NodeId, aliases map[string][]string) []string {
 	if !tc.valid_node_id(id) || id in ancestors { return []string{} }
 	mut visited := ancestors.clone()
 	visited << id
 	node := tc.a.node(id)
+	if node.kind == .ident && node.value in aliases { return aliases[node.value].clone() }
 	if node.kind in [.paren, .expr_stmt, .cast_expr, .as_expr] && node.children_count > 0 {
-		return tc.ownership_sum_borrow_sources(tc.a.child(node, 0), visited)
+		return tc.ownership_sum_borrow_sources_with_aliases(tc.a.child(node, 0), visited, aliases)
 	}
 	mut name := ''
 	if node.kind == .prefix && node.op == .amp && node.children_count == 1 {
@@ -518,23 +537,41 @@ fn (mut tc TypeChecker) ownership_sum_borrow_sources(id flat.NodeId, ancestors [
 		return if source.len > 0 { [source] } else { []string{} }
 	}
 	if payload := tc.ownership_sum_constructor_payload(id) {
-		return tc.ownership_sum_borrow_sources(payload, visited)
+		return tc.ownership_sum_borrow_sources_with_aliases(payload, visited, aliases)
 	}
 	mut sources := []string{}
 	if node.kind == .call {
 		for argument in tc.ownership_call_result_source_args(id) {
-			for source in tc.ownership_sum_borrow_sources(argument, visited) {
+			for source in tc.ownership_sum_borrow_sources_with_aliases(argument, visited, aliases) {
 				if source !in sources { sources << source }
 			}
 		}
-	} else if node.kind in [.if_expr, .match_stmt] {
-		for i in 1 .. node.children_count {
-			for source in tc.ownership_sum_borrow_sources(tc.a.child(node, i), visited) {
+	} else if node.kind in [.if_expr, .match_stmt, .or_expr] {
+		start := if node.kind == .or_expr { 0 } else { 1 }
+		for i in start .. node.children_count {
+			for source in tc.ownership_sum_borrow_sources_with_aliases(tc.a.child(node, i), visited, aliases) {
 				if source !in sources { sources << source }
 			}
 		}
 	} else if node.kind in [.block, .match_branch] && node.children_count > 0 {
-		return tc.ownership_sum_borrow_sources(tc.a.child(node, node.children_count - 1), visited)
+		// Branch-local borrowers have left the live scope by the time the
+		// enclosing result is assigned. Retain their value provenance locally.
+		mut inner_aliases := aliases.clone()
+		start := if node.kind == .match_branch && node.value != 'else' {
+			node.value.int()
+		} else {
+			0
+		}
+		for i in start .. int(node.children_count) - 1 {
+			statement := tc.a.child_node(node, i)
+			if statement.kind !in [.decl_assign, .assign] || statement.children_count != 2 {
+				continue
+			}
+			lhs := tc.a.child_node(statement, 0)
+			if lhs.kind != .ident { continue }
+			inner_aliases[lhs.value] = tc.ownership_sum_borrow_sources_with_aliases(tc.a.child(statement, 1), visited, inner_aliases)
+		}
+		return tc.ownership_sum_borrow_sources_with_aliases(tc.a.child(node, node.children_count - 1), visited, inner_aliases)
 	}
 	return sources
 }
@@ -620,7 +657,7 @@ fn (mut tc TypeChecker) ownership_sum_aggregate_return_sources(id flat.NodeId, a
 		return tc.ownership_sum_aggregate_return_sources(tc.a.child(node, node.children_count - 1), visited)
 	}
 	if node.kind in [.struct_init, .assoc, .array_literal, .array_init, .map_init, .if_expr,
-		.match_stmt] {
+		.match_stmt, .or_expr] {
 		start := if node.kind in [.if_expr, .match_stmt] { 1 } else { 0 }
 		for i in start .. node.children_count {
 			for source in tc.ownership_sum_aggregate_return_sources(tc.a.child(node, i), visited) {

@@ -512,6 +512,59 @@ fn test_promoted_fixed_array_storage_preserves_nested_element_alignment() {
 	}
 }
 
+fn test_fresh_aligned_fixed_array_addresses_promote_storage_but_existing_values_keep_identity() {
+	for entry in ['prefix', 'builtin_addr'] {
+		for type_name in ['[2]Choice', '[2][3]Choice', 'ChoicePair', '[2]int'] {
+			mut a := flat.FlatAst.new()
+			decl := a.add_node(flat.Node{ kind: .struct_decl, value: 'Aligned' })
+			mut tc := types.TypeChecker.new(&a)
+			tc.first_type_declaration_ids['Aligned'] = int(decl)
+			tc.declaration_attributes[int(decl)] = ['aligned: 64']
+			tc.structs['Aligned'] = []types.StructField{}
+			tc.sum_types.set('Choice', ['Aligned', 'int'])
+			tc.type_aliases.set_id('ChoicePair', flat.source_type_id('[2]Choice'))
+			mut t := new_transformer(mut a, &tc, map[string]bool{})
+			type_id := flat.source_type_id(type_name)
+			literal := a.add_node(flat.Node{ kind: .array_literal, typ: type_id })
+			mut result := flat.empty_node
+			if entry == 'prefix' {
+				address := t.make_prefix(.amp, literal)
+				result = t.transform_prefix_expr(address, t.a.nodes[int(address)])
+			} else {
+				call := t.make_call_typed('__addr', [literal], flat.source_type_id('&${type_name}'))
+				result = t.transform_builtin_addr_call(t.a.nodes[int(call)]) or { panic('missing addr intrinsic') }
+			}
+			result_node := t.a.nodes[int(result)]
+			if type_name == '[2]int' {
+				// Ordinary alignment keeps the existing temporary-address lowering.
+				assert result_node.kind == .prefix && result_node.op == .amp
+				assert t.a.child_node(&result_node, 0).kind == .ident
+			} else {
+				assert result_node.kind == .cast_expr, '${entry}: ${type_name}'
+				assert result_node.value == '&${type_name}'
+				allocation := t.a.child_node(&result_node, 0)
+				assert allocation.kind == .call
+				assert t.a.child_node(allocation, 0).value == 'v3_aligned_memdup'
+				alignment := t.a.child_node(allocation, 3)
+				assert alignment.kind == .call
+				assert t.a.child_node(alignment, 0).value == '__alignof__'
+			}
+			// Addressing existing storage must preserve the original reference.
+			t.set_var_type('existing', type_id)
+			existing := t.make_ident('existing')
+			address := t.make_prefix(.amp, existing)
+			borrowed := if entry == 'prefix' {
+				t.transform_prefix_expr(address, t.a.nodes[int(address)])
+			} else {
+				t.runtime_addr(existing, type_id)
+			}
+			borrowed_node := t.a.nodes[int(borrowed)]
+			assert borrowed_node.kind == .prefix && borrowed_node.op == .amp
+			assert t.a.child_node(&borrowed_node, 0).value == 'existing'
+		}
+	}
+}
+
 fn test_fixed_array_argument_ordering_handles_variadic_tail_and_reference_aliases() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)

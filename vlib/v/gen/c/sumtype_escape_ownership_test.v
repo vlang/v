@@ -13,7 +13,7 @@ fn test_returned_pointer_sum_acquires_promoted_local_once() {
 		'-path', vlib, '-o', compiler, os.join_path(vlib, 'v', 'v.v')])
 	assert build.exit_code == 0, build.output
 	header := os.join_path(dir, 'drops.h')
-	os.write_file(header, 'static int transfer_drops[33];
+	os.write_file(header, 'static int transfer_drops[35];
 static void transfer_record(int code) { transfer_drops[code]++; }
 static int transfer_count(int code) { return transfer_drops[code]; }
 static int transfer_visits;
@@ -35,6 +35,28 @@ struct Holder { item &Item }
 struct SumHolder { mut: value Choice }
 struct MixedSumHolder { borrowed Choice; owned Choice }
 fn borrow(item &Item) &Item { return item }
+fn result_borrow(item &Item) !Choice { return Choice(item) }
+fn option_borrow(item &Item) ?Choice { return Choice(item) }
+fn or_local_return_cleanup() {
+ result := result_local_factory()
+ option := option_local_factory()
+ assert (result as &Item).code == 33
+ assert (option as &Item).code == 34
+ assert C.transfer_count(33) == 0
+ assert C.transfer_count(34) == 0
+}
+fn result_local_factory() Choice {
+ local := Item{code: 33}
+ value := result_borrow(&local) or { Choice(0) }
+ assert voidptr(value as &Item) == voidptr(&local)
+ return value
+}
+fn option_local_factory() Choice {
+ local := Item{code: 34}
+ value := option_borrow(&local) or { Choice(0) }
+ assert voidptr(value as &Item) == voidptr(&local)
+ return value
+}
 @[noinline]
 fn ordinary_factory() Choice {
  local := Item{code: 1}
@@ -363,6 +385,9 @@ fn main() {
  assert C.transfer_count(30) == 1
  assert C.transfer_count(31) == 1
  assert C.transfer_count(32) == 1
+ or_local_return_cleanup()
+ assert C.transfer_count(33) == 1
+ assert C.transfer_count(34) == 1
 }')!
 	previous_jobs := os.getenv('VJOBS')
 	defer {
@@ -444,6 +469,13 @@ fn factory(flag bool, item &Item) Choice {
  return Choice(if flag { local := Item{code: 5}; &local } else { item })
 }
 fn main() { item := Item{code: 8}; value := factory(true, &item); assert value is &Item }':                                                                                                                                                                                  'local declared inside an if or match expression'
+		'struct Item { code int }
+type Choice = int | &Item
+fn absent() !Choice { return error("absent") }
+fn factory() Choice {
+ return absent() or { local := Item{code: 1}; Choice(&local) }
+}
+fn main() { value := factory(); assert value is &Item }':                                                                                                                                                                                                    '`or` block'
 		'struct Item implements Drop { code int }
 fn (item &Item) free() {}
 fn (mut item Item) drop() {}
@@ -677,6 +709,17 @@ fn main() {
 		mixed_sources << mixed_loan.replace(' value := maybe(false, &local)', ' value := ${initializer}')
 	}
 	mixed_sources << mixed_loan.replace(' alias := value', ' alias := Choice(value)')
+	for wrapper in ['!', '?'] {
+		base := mixed_loan.replace(') Choice {', ') ${wrapper}Choice {').replace('fn main() {', 'fn consume() ${wrapper} {')
+		for initializer in [
+			'maybe(false, &local) or { Choice(&Item{code: 4}) }',
+			'Choice(maybe(false, &local) or { Choice(&Item{code: 4}) })',
+			'maybe(false, &local)${wrapper}',
+			'Choice(maybe(false, &local)${wrapper})',
+		] {
+			mixed_sources << base.replace(' value := maybe(false, &local)', ' value := ${initializer}') + '\nfn main() { consume() or {} }\n'
+		}
+	}
 	for source in mixed_sources {
 		os.write_file(invalid, source)!
 		for mode in ['-autofree', '-ownership'] {
@@ -688,6 +731,35 @@ fn main() {
 				assert result.exit_code != 0
 				assert result.output.contains('borrowed by `alias`'), result.output
 				assert result.output.contains('ambiguous.v:12:'), result.output
+			}
+		}
+	}
+	distinct_loan := 'struct Item implements Drop { code int }
+fn (mut item Item) drop() {}
+type Choice = int | &Item
+fn maybe(owned bool, item &Item) !Choice { if owned { return Choice(&Item{code: 4}) }; return Choice(item) }
+fn main() {
+ mut left := Item{code: 1}
+ mut right := Item{code: 2}
+ value := maybe(false, &left) or { FALLBACK }
+ alias := Choice(value)
+ MUTATE
+ assert alias is &Item
+}'
+	for fallback in ['Choice(&right)', 'inner := Choice(&right); inner'] {
+		for root in ['left', 'right'] {
+			source := distinct_loan.replace('FALLBACK', fallback).replace('MUTATE', '${root} = Item{code: 3}')
+			os.write_file(invalid, source)!
+			for mode in ['-autofree', '-ownership'] {
+				for prealloc in [false, true] {
+					mut command := [compiler, '-new-compiler', '-no-closures', '-gc', 'none', mode]
+					if prealloc { command << '-prealloc' }
+					command << ['-check', invalid]
+					result := os.exec(command)
+					assert result.exit_code != 0
+					assert result.output.contains('borrowed by `alias`'), result.output
+					assert result.output.contains('ambiguous.v:10:'), result.output
+				}
 			}
 		}
 	}

@@ -26076,6 +26076,9 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 			if value_type.len == 0 {
 				value_type = flat.source_type_name(t.node_type(value))
 			}
+			if aligned := t.aligned_fixed_array_rvalue_address(value, flat.source_type_id(value_type)) {
+				return aligned
+			}
 			stable := t.stable_transformed_expr_for_reuse(value, flat.source_type_id(value_type), 'addr')
 			addr := t.make_prefix(.amp, stable)
 			if value_type.len > 0 {
