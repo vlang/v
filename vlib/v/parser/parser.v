@@ -16159,8 +16159,12 @@ fn sizeof_declaration_tokens(prefs &pref.Preferences, file &token.File, source s
 				match_bodies.delete_last()
 			}
 		} else if kind == .dollar {
-			after_dollar = true
-			dollar_kind = .unknown
+			// A `$` in the subject of a `$match` (`$match $int {`) starts no
+			// construct of its own: the next block is still the match body.
+			if !(after_dollar && dollar_kind == .key_match) {
+				after_dollar = true
+				dollar_kind = .unknown
+			}
 		} else if after_dollar && dollar_kind == .unknown {
 			dollar_kind = kind
 		}

@@ -104,8 +104,17 @@ fn test_collapsed_sizeof_tokens_keep_the_blocks_the_scan_reads() {
 		'module m\n\$if x == Foo{} {\n\tconst k = 7\n}\nconst l = 8\n',
 		'module m\nconst m = \$if linux { 1 } \$else { 2 }\nunion V {}\n',
 		'module m\nfn n() {\n\ta := 1\n\tb := (a)\n} const o = 9\n',
+		'module m\n\$match \$int {\n\tint { const regs = [1, 2]! }\n}\n',
 	]
 	for i, source in sources {
 		assert_same_sizeof_tables('/tmp/sizeof_${i}.v', source)
 	}
+}
+
+// The subject of a `$match` can start with a `$` of its own; the arms are still
+// read, so their declarations are indexed.
+fn test_collapsed_sizeof_tokens_keep_match_arms_after_a_dollar_subject() {
+	source := 'module main\n\$match \$int {\n\tint { const regs = [1, 2]! }\n}\n'
+	tables := sizeof_tables_of('/tmp/sizeof_dollar_match.v', 'main', source, true)
+	assert tables.consts.any(it.ends_with('regs')), tables.consts.str()
 }
