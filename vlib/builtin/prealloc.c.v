@@ -483,6 +483,12 @@ fn vmemory_block_grow(previous &VMemoryBlock, n isize, align isize) &VMemoryBloc
 
 @[inline; unsafe]
 fn vmemory_block_malloc(n isize, align isize) &u8 {
+	return unsafe { vmemory_block_malloc_aligned(n, vmemory_effective_align(align)) }
+}
+
+// Byte buffers can use alignment 1; general allocations retain the default alignment.
+@[inline; unsafe]
+fn vmemory_block_malloc_aligned(n isize, align isize) &u8 {
 	unsafe {
 		// Read the thread-local block pointer ONCE per call: it only stores
 		// which block is current, and the bump updates go through the block
@@ -492,12 +498,11 @@ fn vmemory_block_malloc(n isize, align isize) &u8 {
 		$if prealloc_trace_malloc ? {
 			C.fprintf(C.stderr, c'vmemory_block_malloc g_memory_block.id: %d, n: %lld align: %d\n', mb.id, n, align)
 		}
-		fixed_align := vmemory_effective_align(align)
-		mut current := vmemory_align_up(mb.current, fixed_align)
+		mut current := vmemory_align_up(mb.current, align)
 		remaining := i64(mb.stop) - i64(current)
 		if _unlikely_(remaining < n) {
-			mb = vmemory_block_grow(mb, n, fixed_align)
-			current = vmemory_align_up(mb.current, fixed_align)
+			mb = vmemory_block_grow(mb, n, align)
+			current = vmemory_align_up(mb.current, align)
 		}
 		res := &u8(current)
 		mb.current = current
@@ -515,7 +520,7 @@ fn vmemory_block_malloc(n isize, align isize) &u8 {
 			if mb.is_scope {
 				used := vmemory_block_used(mb)
 				size := vmemory_block_size(mb)
-				C.fprintf(C.stderr, c'[trace_prealloc] alloc block=%p ptr=%p size=%lld align=%lld used=%lld/%lld mallocs=%d\n', mb, res, n, fixed_align, used, size, mb.mallocs)
+				C.fprintf(C.stderr, c'[trace_prealloc] alloc block=%p ptr=%p size=%lld align=%lld used=%lld/%lld mallocs=%d\n', mb, res, n, align, used, size, mb.mallocs)
 			}
 		}
 		return res

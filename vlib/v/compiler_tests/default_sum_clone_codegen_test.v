@@ -1,3 +1,4 @@
+// vtest ownership
 import os
 
 const sum_clone_vexe = @VEXE

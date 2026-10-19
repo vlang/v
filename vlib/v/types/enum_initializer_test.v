@@ -7,7 +7,7 @@ fn test_enum_initializer_references_use_the_declaring_module_and_exact_name() {
 	mut tc := TypeChecker.new(&a)
 	tc.enum_fields['models.Kind'] = ['struct', '@none', 'type', '@type']
 	mut values := {
-		'struct': 4
+		'struct': i64(4)
 		'@none':  11
 		'type':   17
 		'@type':  23
@@ -21,7 +21,7 @@ fn test_enum_initializer_references_use_the_declaring_module_and_exact_name() {
 		'@type':   23
 	} {
 		for enum_name in ['Kind', 'models.Kind'] {
-			actual := tc.comptime_static_enum_field_ref_value(field, 'models', enum_name,
+			actual := tc.comptime_static_enum_field_ref_value(field, 'models', flat.source_type_id(enum_name),
 				mut values, expressions, mut resolving) or { -1 }
 			assert actual == expected, field
 		}

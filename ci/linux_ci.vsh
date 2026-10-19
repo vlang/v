@@ -456,8 +456,10 @@ fn test_inline_assembly() {
 // Keep this list in the same order as the active tasks in
 // .github/workflows/linux_ci.yml. The aggregate runner changes compiler flags at
 // the same boundaries as the three workflow jobs.
+// Order is deliberate on both sides: the cheapest check that can prove a checkout
+// broken runs first, and `build_v_with_prealloc`, which is five compiler builds,
+// runs last so a red run reports the cheap signal before paying for it.
 const ci_tasks = [
-	'build_v_with_prealloc',
 	'all_code_is_formatted_tcc',
 	'install_dependencies_for_examples_and_tools_tcc',
 	'test_v_to_c_tcc',
@@ -480,6 +482,7 @@ const ci_tasks = [
 	'test_readline_tcc',
 	'test_leak_detector_tcc',
 	'test_leak_detector_not_active_tcc',
+	'build_v_with_prealloc',
 	'all_code_is_formatted_gcc',
 	'install_dependencies_for_examples_and_tools_gcc',
 	'recompile_v_with_cstrict_gcc',

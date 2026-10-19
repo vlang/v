@@ -1,3 +1,19 @@
+const negative_u64_magnitude = i128(-9223372036854775809)
+const negative_parenthesized_u64_magnitude = i128((-(18446744073709551615)))
+
+fn test_negative_literal_magnitudes_widen_before_negation() {
+	assert i128(-9223372036854775807).str() == '-9223372036854775807'
+	assert i128(-9223372036854775808).str() == '-9223372036854775808'
+	assert i128(-9223372036854775809).str() == '-9223372036854775809'
+	assert i128(-18446744073709551615).str() == '-18446744073709551615'
+	assert i128(-18446744073709551616).str() == '-18446744073709551616'
+	assert i128(-(9_223_372_036_854_775_809)).str() == '-9223372036854775809'
+	assert i128(-(0xffff_ffff_ffff_ffff)).str() == '-18446744073709551615'
+	assert negative_u64_magnitude.str() == '-9223372036854775809'
+	assert negative_parenthesized_u64_magnitude.str() == '-18446744073709551615'
+	assert u128(-(18446744073709551615)) == u128(0) - u128(18446744073709551615)
+}
+
 // Literals that need more than 64 bits. The C compiler keeps the low 64 bits of
 // an oversized constant and says nothing, so every value here is checked exactly:
 // a truncating implementation would return different text, not an error.

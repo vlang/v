@@ -1,9 +1,16 @@
 import os
+import time
 
 fn main() {
-	vexe := os.getenv('VEXE')
-	vroot_doc := os.dir(vexe) + '/doc'
-	mut files := os.ls(vroot_doc) or { panic(err) }
+	dir := os.join_path(os.vtmp_dir(), 'inout_os_${os.getpid()}_${time.now().unix_nano()}')
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	for file in ['b.md', 'a.md', 'ignored.txt'] {
+		os.write_file(os.join_path(dir, file), '') or { panic(err) }
+	}
+	mut files := os.ls(dir) or { panic(err) }
 	files.sort()
 	for file in files {
 		if file.ends_with('.md') {

@@ -6,10 +6,9 @@ module builtin
 
 #include <io.h>
 #include <fcntl.h>
+#include "@VEXEROOT/vlib/builtin/core_windows.h"
 
-// Cast the V callback to the Windows SDK callback type. Clang 20 treats the
-// otherwise-compatible struct pointer mismatch as a hard error for v_win.c.
-#define v_set_unhandled_exception_filter(handler) SetUnhandledExceptionFilter((LPTOP_LEVEL_EXCEPTION_FILTER)(handler))
+#flag @VEXEROOT/vlib/builtin/core_windows.o
 
 // See https://learn.microsoft.com/en-us/windows/win32/winprog/windows-data-types
 // See https://www.codeproject.com/KB/string/cppstringguide1.aspx
@@ -60,6 +59,8 @@ fn C.ExitProcess(u32)
 fn C.GetProcessHeap() voidptr
 fn C.HeapAlloc(voidptr, u32, usize) voidptr
 fn C.HeapFree(voidptr, u32, voidptr) bool
+fn C.CreateThread(attributes voidptr, stack_size usize, start_routine voidptr, arg voidptr, flags u32, thread_id &u32) voidptr
+fn C.v_builtin_windows_stream(index u32) voidptr
 
 fn C._setmode(int, int) int
 
@@ -404,6 +405,7 @@ fn is_address_in_executable(address voidptr) bool {
 }
 
 fn C.__debugbreak()
+fn C.v_builtin_windows_debugbreak()
 
 fn break_if_debugger_attached() {
 	$if tinyc {
@@ -414,7 +416,7 @@ fn break_if_debugger_attached() {
 		}
 	} $else {
 		if C.IsDebuggerPresent() {
-			C.__debugbreak()
+			C.v_builtin_windows_debugbreak()
 		}
 	}
 }

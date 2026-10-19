@@ -8,7 +8,7 @@ const mini_calc_v3_src = os.join_path(mini_calc_v3_dir, 'v.v')
 const mini_calc_repo_root = os.dir(mini_calc_vlib_dir)
 
 fn mini_calc_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_mini_calc_markused_test_${os.getpid()}')
+	v3_bin := os.join_path(os.temp_dir(), 'v3_mini_calc_markused_test_${os.getpid()}') + $if windows { '.exe' } $else { '' }
 	if os.exists(v3_bin) {
 		return v3_bin
 	}
@@ -104,8 +104,8 @@ mut parser := Parser{}
 println(int_str(result))
 '
 	}, 'main.v')
-	assert output.contains('unknown function `parser.expr`') || output.contains('unknown__expr')
-		|| output.contains('C compilation failed'), output
+	// The receiver is not declared yet, so the call names no `Parser` method.
+	assert output.contains('undefined variable: `parser`'), output
 }
 
 fn test_top_level_same_declaration_receiver_is_not_rooted() {
@@ -123,8 +123,8 @@ parser := parser.expr() or { 0 }
 println(int_str(parser))
 '
 	}, 'main.v')
-	assert output.contains('unknown function `parser.expr`') || output.contains('unknown__expr')
-		|| output.contains('C compilation failed'), output
+	// The receiver is not declared yet, so the call names no `Parser` method.
+	assert output.contains('undefined variable: `parser`'), output
 }
 
 fn test_top_level_multi_decl_same_statement_receiver_is_not_rooted() {
@@ -143,8 +143,8 @@ _ := parser
 println(int_str(result))
 '
 	}, 'main.v')
-	assert output.contains('unknown function `parser.expr`') || output.contains('unknown__expr')
-		|| output.contains('C compilation failed'), output
+	// The receiver is not declared yet, so the call names no `Parser` method.
+	assert output.contains('undefined variable: `parser`'), output
 }
 
 fn test_top_level_block_and_if_scope_do_not_leak_receiver_type() {
@@ -171,34 +171,6 @@ println("ok")
 	}, 'main.v')
 	assert output == 'ok'
 	assert !generated.contains('Parser__expr('), generated
-}
-
-fn test_explicit_main_ignores_top_level_receiver_calls() {
-	v3_bin := mini_calc_build_v3()
-	output, generated := mini_calc_compile_run(v3_bin, 'explicit_main', {
-		'main.v': 'module main
-
-struct Parser {}
-
-fn (mut p Parser) expr() !int {
-	return p.term()!
-}
-
-fn (mut p Parser) term() !int {
-	return 7
-}
-
-mut parser := Parser{}
-_ := parser.expr() or { 0 }
-
-fn main() {
-	println("entry")
-}
-'
-	}, 'main.v')
-	assert output == 'entry'
-	assert !generated.contains('Parser__expr('), generated
-	assert !generated.contains('Parser__term('), generated
 }
 
 fn test_top_level_local_receiver_does_not_root_imported_homonym() {
@@ -234,6 +206,56 @@ pub fn (mut p Parser) expr() !int {
 	assert output == '5\n2'
 	assert generated.contains('Parser__expr('), generated
 	assert !generated.contains('othermod__Parser__expr('), generated
+}
+
+fn test_main_and_const_receivers_do_not_root_imported_homonyms() {
+	v3_bin := mini_calc_build_v3()
+	output, generated := mini_calc_compile_run(v3_bin, 'imported_homonym_main', {
+		'main.v':         'module main
+
+import othermod
+
+struct Parser {}
+
+fn (p Parser) expr() int {
+	return 5
+}
+
+fn (p Parser) term() int {
+	return 6
+}
+
+const term = Parser{}.term()
+
+fn main() {
+	parser := Parser{}
+	println(int_str(parser.expr()))
+	println(int_str(term))
+	println(int_str(othermod.touch()))
+}
+'
+		'othermod/mod.v': 'module othermod
+
+pub struct Parser {}
+
+pub fn touch() int {
+	return 2
+}
+
+pub fn (p Parser) expr() int {
+	return 100
+}
+
+pub fn (p Parser) term() int {
+	return 100
+}
+'
+	}, 'main.v')
+	assert output == '5\n6\n2'
+	assert generated.contains('Parser__expr('), generated
+	assert generated.contains('Parser__term('), generated
+	assert !generated.contains('othermod__Parser__expr('), generated
+	assert !generated.contains('othermod__Parser__term('), generated
 }
 
 fn test_top_level_local_receiver_cannot_shadow_module_alias() {

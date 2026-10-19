@@ -10,35 +10,39 @@ import v.ssa
 @[heap]
 pub struct SSAGen {
 mut:
-	m             &ssa.Module = unsafe { nil }
-	mod           &Module     = unsafe { nil }
-	configured    bool
-	exports       map[string]string
-	init_fns      []string
-	main_fn       string
-	fn_index      map[string]int
-	fn_table      map[string]int
-	global_addr   map[string]int
-	strings       map[int]int
-	data          []u8
-	stack_global  int
-	heap_global   int
-	stack_bottom  int
-	write_index   int
-	exit_index    int
-	alloc_index   int
-	cur           Code
-	locals        []u8
-	value_local   map[int]int
-	slots         map[int]int
-	phi_snapshots map[int]int
-	frame_size    int
-	frame_local   int
-	pc_local      int
-	sret_local    int = -1
-	nparams       int
-	cur_ret       ssa.TypeID
-	warnings      []string
+	m           &ssa.Module = unsafe { nil }
+	mod         &Module     = unsafe { nil }
+	configured  bool
+	exports     map[string]string
+	imports     map[string]WasmImport
+	init_fns    []string
+	main_fn     string
+	fn_index    map[string]int
+	fn_table    map[string]int
+	global_addr map[string]int
+	strings     map[int]int
+	// literal_text_addr holds the address a literal's bytes occupy, keyed by kind
+	// and text, so a repeat of a literal that has already been laid out reuses it.
+	literal_text_addr map[string]int
+	data              []u8
+	stack_global      int
+	heap_global       int
+	stack_bottom      int
+	write_index       int
+	exit_index        int
+	alloc_index       int
+	cur               Code
+	locals            []u8
+	value_local       map[int]int
+	slots             map[int]int
+	phi_snapshots     map[int]int
+	frame_size        int
+	frame_local       int
+	pc_local          int
+	sret_local        int = -1
+	nparams           int
+	cur_ret           ssa.TypeID
+	warnings          []string
 }
 
 // new creates a WebAssembly generator for an SSA module.
@@ -54,10 +58,20 @@ pub fn (mut g SSAGen) configure(exports map[string]string, init_fns []string, ma
 	g.main_fn = main_fn
 }
 
+// declare_imports supplies the host functions the frontend resolved from
+// `@[wasm_import_namespace]` declarations. gen() emits only the ones the
+// reachable functions actually call, so an unused declaration does not force the
+// host to provide it.
+pub fn (mut g SSAGen) declare_imports(imports []WasmImport) {
+	for imp in imports {
+		g.imports[imp.qualified] = imp
+	}
+}
+
 // gen emits only functions reachable from the selected SSA entry points.
 pub fn (mut g SSAGen) gen() ! {
 	functions := g.reachable_functions()!
-	g.collect_data()
+	g.collect_data(functions, g.reachable_values(functions))
 	mut init := Code{}
 	g.stack_bottom = (data_base + g.data.len + 15) & ~15
 	stack_top := g.stack_bottom + 1024 * 1024
@@ -68,14 +82,23 @@ pub fn (mut g SSAGen) gen() ! {
 	g.mod.set_mem_min((stack_top + 65535) / 65536 + 1)
 	mut uses_write := false
 	mut uses_exit := false
+	mut used_imports := []WasmImport{}
 	for fid in functions {
 		for bid in g.m.funcs[fid].blocks {
 			for vid in g.m.blocks[bid].instrs {
 				instr := g.m.instrs[g.m.values[vid].index]
-				if instr.op == .call && instr.operands.len > 0 {
-					if name := g.intrinsic_name(g.m.values[instr.operands[0]]) {
-						uses_write = uses_write || name == 'write'
-						uses_exit = uses_exit || name in ['exit', 'abort']
+				if instr.op != .call || instr.operands.len == 0 {
+					continue
+				}
+				callee := g.m.values[instr.operands[0]]
+				if name := g.intrinsic_name(callee) {
+					uses_write = uses_write || name == 'write'
+					uses_exit = uses_exit || name in ['exit', 'abort']
+					continue
+				}
+				if imp := g.declared_import(callee) {
+					if !used_imports.any(it.qualified == imp.qualified) {
+						used_imports << imp
 					}
 				}
 			}
@@ -90,6 +113,12 @@ pub fn (mut g SSAGen) gen() ! {
 	if uses_exit {
 		exit_type := g.mod.add_type([valtype_i32], [])
 		g.exit_index = g.mod.add_import_func('wasi_snapshot_preview1', 'proc_exit', exit_type)
+	}
+	// Declared imports occupy function indices too, so every import has to be
+	// registered before the first one is reserved below.
+	for imp in used_imports {
+		type_idx := g.mod.add_type(imp.params, imp.results)
+		g.fn_index[imp.qualified] = g.mod.add_import_func(imp.namespace, imp.name, type_idx)
 	}
 	if uses_write {
 		g.write_index = g.mod.reserve_func_index(0)
@@ -197,6 +226,11 @@ fn (mut g SSAGen) reachable_functions() ![]int {
 		}
 		f := g.m.funcs[fid]
 		if f.is_c_extern || f.blocks.len == 0 {
+			// A declared import's body is the host's: it is neither a root to
+			// lower nor an unsupported extern.
+			if f.name in g.imports {
+				continue
+			}
 			return error('wasm: unsupported external function `${name}`')
 		}
 		reached[fid] = true
@@ -231,7 +265,41 @@ fn (mut g SSAGen) reserve_data(size int, alignment int) int {
 	return addr
 }
 
-fn (mut g SSAGen) collect_data() {
+// reachable_values returns the value IDs the emitted functions can reach. It is the
+// same worklist shape as reachable_functions, but over values rather than functions:
+// a block references its instructions, an instruction references the operands it
+// reads, and a constant is a leaf. Anything outside this set is unreachable from
+// every function that will actually be lowered.
+fn (g &SSAGen) reachable_values(functions []int) map[int]bool {
+	mut reached := map[int]bool{}
+	mut pending := []int{}
+	for fid in functions {
+		for bid in g.m.funcs[fid].blocks {
+			for vid in g.m.blocks[bid].instrs {
+				pending << vid
+			}
+		}
+	}
+	for pending.len > 0 {
+		vid := pending.pop()
+		if vid <= 0 || vid >= g.m.values.len || vid in reached {
+			continue
+		}
+		reached[vid] = true
+		if g.m.values[vid].kind != .instruction {
+			continue
+		}
+		instr := g.m.instrs[g.m.values[vid].index]
+		for oi, operand in instr.operands {
+			if instr.is_value_operand(oi) && operand > 0 {
+				pending << operand
+			}
+		}
+	}
+	return reached
+}
+
+fn (mut g SSAGen) collect_data(functions []int, reachable map[int]bool) {
 	for global in g.m.globals {
 		size := g.m.type_size(global.typ)
 		addr := g.reserve_data(if size > 0 { size } else { 8 }, 8)
@@ -250,17 +318,34 @@ fn (mut g SSAGen) collect_data() {
 		if value.kind !in [.string_literal, .c_string_literal] {
 			continue
 		}
+		// Only constants the emitted functions can reach are laid out. The SSA
+		// builder registers literals for every stub it creates on a 32-bit target,
+		// so most of them have no referrer at all, and each one cost bytes for its
+		// text plus a whole string struct.
+		if functions.len > 0 && i !in reachable {
+			continue
+		}
+		// Identical literals share one copy. The SSA module holds several
+		// separately-created values with the same text, and each used to reserve
+		// its own text and its own struct.
+		key := value.kind.str() + ':' + value.name
+		if text := g.literal_text_addr[key] {
+			g.strings[i] = text
+			continue
+		}
 		text := g.reserve_data(value.name.len + 1, 1)
 		for j, byte in value.name.bytes() {
 			g.data[text - data_base + j] = byte
 		}
 		if value.kind == .c_string_literal {
 			g.strings[i] = text
+			g.literal_text_addr[key] = text
 			continue
 		}
 		size := g.m.type_size(value.typ)
 		addr := g.reserve_data(size, 8)
 		g.strings[i] = addr
+		g.literal_text_addr[key] = addr
 		for j in 0 .. g.m.target.ptr_size {
 			g.data[addr - data_base + j] = u8(u64(text) >> (j * 8))
 		}
@@ -435,7 +520,17 @@ fn (mut g SSAGen) value(id int) ! {
 			}
 			g.narrow(value.typ)
 		}
-		.string_literal, .c_string_literal { g.cur.i32_const(g.strings[id]) }
+		.string_literal, .c_string_literal {
+			// A literal that was laid out has an address; one that was dropped as
+			// unreachable must never silently become a null pointer here, so the
+			// lookup fails loudly instead. That is the guard that makes the
+			// reachability filter safe to trust.
+			addr := g.strings[id] or {
+				name := g.m.values[id].name
+				return error('wasm: string literal `${name}` was dropped as unreachable but is referenced')
+			}
+			g.cur.i32_const(addr)
+		}
 		.global {
 			addr := g.global_addr[value.name] or { return error('wasm: unknown global `${value.name}`') }
 			g.cur.i32_const(addr)
@@ -846,10 +941,49 @@ fn (g &SSAGen) intrinsic_name(value ssa.Value) ?string {
 		return none
 	}
 	name := g.function_name(value).trim_string_left('C.')
-	if name in ['write', 'malloc', 'calloc', 'free', 'memcpy', 'memmove', 'memset', 'exit', 'abort'] {
+	if name in ['write', 'malloc', 'calloc', 'realloc', 'memcmp', 'free', 'memcpy', 'memmove',
+		'memset', 'exit', 'abort'] {
 		return name
 	}
 	return none
+}
+
+// declared_import resolves a call target to the host function that a
+// `@[wasm_import_namespace]` declaration named, or none for anything else.
+fn (g &SSAGen) declared_import(value ssa.Value) ?WasmImport {
+	if value.kind != .func_ref || value.index < 0 || value.index >= g.m.funcs.len {
+		return none
+	}
+	return g.imports[g.function_name(value)] or { return none }
+}
+
+// emit_import_call calls a host function. The declared signature is the ABI the
+// host sees, so every argument is coerced to it: an SSA call records no parameter
+// types for an extern, and emitting the argument at the caller's own width would
+// leave a malformed stack whenever the two disagree.
+fn (mut g SSAGen) emit_import_call(id int, instr ssa.Instruction, imp WasmImport) ! {
+	ops := instr.operands
+	for oi in 1 .. ops.len {
+		g.value(ops[oi])!
+		if oi - 1 >= imp.params.len {
+			continue
+		}
+		from := g.wtype(g.m.values[ops[oi]].typ)
+		signed := !g.m.type_store.types[g.m.values[ops[oi]].typ].is_unsigned
+		g.convert(from, valtype_wtype(imp.params[oi - 1]), signed)
+	}
+	index := g.fn_index[imp.qualified] or { return error('wasm: missing import `${imp.name}`') }
+	g.cur.call(index)
+	if imp.results.len == 0 {
+		return
+	}
+	to := g.wtype(instr.typ)
+	if to == .void {
+		g.cur.drop()
+		return
+	}
+	g.convert(valtype_wtype(imp.results[0]), to, !g.m.type_store.types[instr.typ].is_unsigned)
+	g.result(id)
 }
 
 fn (mut g SSAGen) emit_call(id int, instr ssa.Instruction) ! {
@@ -858,6 +992,10 @@ fn (mut g SSAGen) emit_call(id int, instr ssa.Instruction) ! {
 	if instr.op != .call_indirect {
 		if name := g.intrinsic_name(callee) {
 			g.emit_intrinsic(id, instr, name)!
+			return
+		}
+		if imp := g.declared_import(callee) {
+			g.emit_import_call(id, instr, imp)!
 			return
 		}
 	}
@@ -940,6 +1078,112 @@ fn (mut g SSAGen) emit_intrinsic(id int, instr ssa.Instruction, name string) ! {
 				g.value_as(ops[1], instr.typ)!
 				g.result(id)
 			}
+		}
+		'realloc' {
+			// realloc(ptr, size) as malloc + copy. Sound only because the
+			// bump allocator grows (zeroed) memory first and never frees:
+			// every read lands in-bounds, and a null input skips the copy
+			// (C semantics: realloc(NULL, n) == malloc(n)), leaving the
+			// allocator-zeroed buffer intact.
+			ptr_l := g.temp(.i32)
+			size_l := g.temp(.i32)
+			new_l := g.temp(.i32)
+			g.intrinsic_arg(ops[1])!
+			g.cur.local_set(ptr_l)
+			g.intrinsic_arg(ops[2])!
+			g.cur.local_set(size_l)
+			g.cur.local_get(size_l)
+			g.cur.call(g.alloc_index)
+			g.cur.local_set(new_l)
+			g.cur.local_get(ptr_l)
+			g.cur.if_void()
+			g.cur.local_get(new_l)
+			g.cur.local_get(ptr_l)
+			g.cur.local_get(size_l)
+			g.memory_copy()
+			g.cur.end()
+			g.cur.local_get(new_l)
+			g.result(id)
+		}
+		'memcmp' {
+			// memcmp(a, b, n) as a byte loop: the result is 0 when the ranges
+			// are equal, otherwise the sign of the first differing byte. The
+			// loop condition carries both stopping rules at once -- past the
+			// end, and a difference already found -- so there is no early
+			// break and the branch depth stays at zero.
+			a_l := g.temp(.i32)
+			b_l := g.temp(.i32)
+			n_l := g.temp(.i32)
+			i_l := g.temp(.i32)
+			ca_l := g.temp(.i32)
+			cb_l := g.temp(.i32)
+			diff_l := g.temp(.i32)
+			g.intrinsic_arg(ops[1])!
+			g.cur.local_set(a_l)
+			g.intrinsic_arg(ops[2])!
+			g.cur.local_set(b_l)
+			g.intrinsic_arg(ops[3])!
+			g.cur.local_set(n_l)
+			g.cur.i32_const(0)
+			g.cur.local_set(i_l)
+			g.cur.i32_const(0)
+			g.cur.local_set(diff_l)
+			g.cur.loop_void()
+			g.cur.local_get(i_l)
+			g.cur.local_get(n_l)
+			g.cur.raw(0x49) // i32.lt_u
+			g.cur.if_void()
+			g.cur.local_get(a_l)
+			g.cur.local_get(i_l)
+			g.cur.raw(0x6a) // i32.add
+			g.cur.load(0x2d, 0, 0) // i32.load8_u
+			g.cur.local_set(ca_l)
+			g.cur.local_get(b_l)
+			g.cur.local_get(i_l)
+			g.cur.raw(0x6a)
+			g.cur.load(0x2d, 0, 0)
+			g.cur.local_set(cb_l)
+			g.cur.local_get(ca_l)
+			g.cur.local_get(cb_l)
+			g.cur.raw(0x47) // i32.ne
+			g.cur.if_void()
+			g.cur.local_get(ca_l)
+			g.cur.local_get(cb_l)
+			g.cur.raw(0x49)
+			g.cur.if_void()
+			g.cur.i32_const(-1)
+			g.cur.local_set(diff_l)
+			g.cur.else_()
+			g.cur.i32_const(1)
+			g.cur.local_set(diff_l)
+			g.cur.end()
+			g.cur.end()
+			g.cur.i32_const(1)
+			g.cur.local_get(i_l)
+			g.cur.raw(0x6a)
+			g.cur.local_set(i_l)
+			g.cur.end()
+			// Still in range, and no difference seen yet: both predicates are
+			// 0 or 1, so their product is the loop condition.
+			g.cur.local_get(i_l)
+			g.cur.local_get(n_l)
+			g.cur.raw(0x49)
+			g.cur.local_get(diff_l)
+			g.cur.i32_const(0)
+			g.cur.raw(0x46) // i32.eq
+			g.cur.raw(0x6c) // i32.mul
+			g.cur.br_if(0)
+			g.cur.end()
+			g.cur.local_get(diff_l)
+			// memcmp is registered with an i64 return shadowing C's `int`,
+			// whose upper bits are outside the ABI result. A wasm caller
+			// reads only the low 32 bits, but the value still has to carry
+			// the declared width or the local.set that stores it rejects an
+			// i32 against an i64 local.
+			if g.wtype(g.m.values[id].typ) == .i64 {
+				g.cur.raw(0xac) // i64.extend_i32_s, as coerce emits
+			}
+			g.result(id)
 		}
 		'exit', 'abort' {
 			if name == 'exit' {

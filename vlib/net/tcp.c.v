@@ -183,11 +183,12 @@ pub fn (mut c TcpConn) close() ! {
 pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 	mut res := 0
 	mut ecode := 0
-	// A deadline-only read still uses select; ordinary blocking reads let recv enforce the timeout.
+	// A read with a deadline set still uses select, so the deadline bounds it (see wait_for_common);
+	// ordinary blocking reads let recv enforce the timeout.
 	socket_read_timeout := c.is_blocking && c.read_timeout_in_socket
 		&& c.read_timeout == c.socket_read_timeout_value
 		&& c.sock.handle == c.socket_read_timeout_handle
-		&& (c.read_timeout != 0 || c.read_deadline.unix() == 0)
+		&& !deadline_set(c.read_deadline)
 	$if is_coroutine ? {
 		res = C.photon_recv(c.sock.handle, voidptr(buf_ptr), len, 0, c.read_timeout)
 		ecode = error_code()
@@ -217,7 +218,7 @@ pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 		return res
 	}
 	if socket_read_timeout && ecode in [int(error_ewouldblock), int(error_eagain)] {
-		return err_timed_out
+		return error_with_code(err_timed_out.msg(), err_timed_out.code())
 	}
 	if ecode in [int(error_ewouldblock), int(error_eagain), C.EINTR] {
 		c.wait_for_read()!
@@ -257,8 +258,9 @@ pub fn (c TcpConn) read(mut buf []u8) !int {
 	return c.read_ptr(buf.data, buf.len)!
 }
 
+// read_deadline returns the current read deadline, or an error when it is unset.
 pub fn (mut c TcpConn) read_deadline() !time.Time {
-	if c.read_deadline.unix() == 0 {
+	if deadline_set(c.read_deadline) {
 		return c.read_deadline
 	}
 	return error('none')
@@ -325,8 +327,9 @@ pub fn (mut c TcpConn) set_read_deadline(deadline time.Time) {
 	c.read_deadline = deadline
 }
 
+// write_deadline returns the current write deadline, or an error when it is unset.
 pub fn (mut c TcpConn) write_deadline() !time.Time {
-	if c.write_deadline.unix() == 0 {
+	if deadline_set(c.write_deadline) {
 		return c.write_deadline
 	}
 	return error('none')
@@ -627,8 +630,9 @@ pub fn (mut l TcpListener) accept_only() !&TcpConn {
 	}
 }
 
+// accept_deadline returns the current accept deadline, or an error when it is unset.
 pub fn (c &TcpListener) accept_deadline() !time.Time {
-	if c.accept_deadline.unix() != 0 {
+	if deadline_set(c.accept_deadline) {
 		return c.accept_deadline
 	}
 	return error('invalid deadline')
@@ -823,7 +827,7 @@ fn (mut s TcpSocket) connect(a Addr) ! {
 				}
 				return
 			}
-			return err_timed_out
+			return error_with_code(err_timed_out.msg(), err_timed_out.code())
 		}
 		wrap_error(ecode)!
 		return

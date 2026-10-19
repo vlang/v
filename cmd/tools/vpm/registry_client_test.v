@@ -79,7 +79,7 @@ fn test_the_info_body_is_the_one_the_server_encodes() {
 }
 
 fn test_the_info_body_decodes_field_by_field() {
-	info := decode_registry_module(client_registry_url, 'alpha', client_info_body) or {
+	info := decode_registry_module(client_registry_url, 'alpha', '1.0.0', client_info_body) or {
 		assert false, 'the info body did not decode: ${err.msg()}'
 		return
 	}
@@ -92,6 +92,18 @@ fn test_the_info_body_decodes_field_by_field() {
 	assert info.published_at == '2024-01-01T00:00:00Z'
 	assert info.features['default'] == ['net', 'os']
 	assert info.yanked == false
+}
+
+fn test_registry_metadata_for_another_module_is_rejected() {
+	wrong_name_body := client_info_body.replace('"name":"alpha"', '"name":"beta"')
+	decode_registry_module(client_registry_url, 'alpha', '', wrong_name_body) or { return }
+	assert false, 'metadata for another module was accepted for the requested route'
+}
+
+fn test_registry_metadata_for_another_version_is_rejected() {
+	wrong_version_body := client_info_body.replace('"version":"1.0.0"', '"version":"2.0.0"')
+	decode_registry_module(client_registry_url, 'alpha', '1.0.0', wrong_version_body) or { return }
+	assert false, 'metadata for another version was accepted for the requested route'
 }
 
 // The status line is the contract, and a 404 is the only failure status the
@@ -115,7 +127,7 @@ fn test_a_not_found_body_is_noticed_whatever_the_status() {
 // What the fetches do with an absent answer: an error, so a caller can go on to
 // the next candidate registry, rather than a module that installs nothing.
 fn test_the_not_found_body_is_an_error_not_an_empty_module() {
-	decode_registry_module(client_registry_url, 'alpha', not_found_body) or { return }
+	decode_registry_module(client_registry_url, 'alpha', '', not_found_body) or { return }
 	assert false, 'the not-found body was decoded as a module'
 }
 
@@ -127,7 +139,7 @@ fn test_the_not_found_body_is_not_an_empty_version_list() {
 // An answer that is not JSON at all is a proxy's page or a truncated body, and is
 // reported as such rather than as a module.
 fn test_a_body_that_is_not_a_module_is_an_error() {
-	decode_registry_module(client_registry_url, 'alpha', '<html>502 Bad Gateway</html>') or { return }
+	decode_registry_module(client_registry_url, 'alpha', '', '<html>502 Bad Gateway</html>') or { return }
 	assert false, 'an html error page was decoded as a module'
 }
 

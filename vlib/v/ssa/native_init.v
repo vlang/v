@@ -14,7 +14,7 @@ fn (mut b Builder) build_native_initialization() {
 	b.build_native_initializer_functions()
 	init_id := b.register_synthetic_function('__ssa_init', b.void_type, [])
 	b.cur_func = init_id
-	b.cur_func_ret_type = ''
+	b.cur_func_ret_type = u32(0)
 	b.cur_module = 'main'
 	b.reset_function_state()
 	b.cur_block = b.m.add_block(init_id, 'entry')
@@ -165,7 +165,7 @@ fn (mut b Builder) build_native_global_initializer(field flat.Node) {
 	typ := b.deref_type(addr)
 	if b.m.type_store.types[typ].kind == .array_t {
 		mut fixed_expr := *expr
-		fixed_expr.value = b.global_type_names[name]
+		fixed_expr.value = flat.source_type_name(b.global_type_names.value_id(name))
 		value := if expr.kind in [.array_init, .array_literal] {
 			b.build_fixed_array_init(fixed_expr)
 		} else {

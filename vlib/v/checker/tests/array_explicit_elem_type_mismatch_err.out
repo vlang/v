@@ -1,0 +1,182 @@
+vlib/v/checker/tests/array_explicit_elem_type_mismatch_err.vv:30:17: error: cannot initialize field `wide` with `[]u8`; expected `[]u64`
+   28 |     opts   []?int
+   29 |     perms  []Perm
+   30 |     wide   []u64 = []u8{}
+      |                    ~~~~~~
+   31 | }
+   32 |
+vlib/v/checker/tests/array_explicit_elem_type_mismatch_err.vv:50:9: error: cannot use `[]u8` as type `[]u64` in return argument
+   48 | 
+   49 | fn make_ids() []u64 {
+   50 |     return []u8{}
+      |            ~~~~~~
+   51 | }
+   52 |
+vlib/v/checker/tests/array_explicit_elem_type_mismatch_err.vv:55:3: error: cannot assign to field `ids`: expected `[]u64`, not `[]u8`
+   53 | fn main() {
+   54 |     mut cache := Cache{
+   55 |         ids: []u8{}
+      |         ~~~~~~~~~~~
+   56 |     }
+   57 |     small := [u8(1), 2, 3]
+vlib/v/checker/tests/array_explicit_elem_type_mismatch_err.vv:58:14: error: cannot assign to `cache.ids`: expected `[]u64`, not `[]u32`
+   56 |     }
+   57 |     small := [u8(1), 2, 3]
+   58 |     cache.ids = []u32{}
+      |                 ~~~~~~~
+   59 |     cache.ids = []i32{len: 2}
+   60 |     cache.ids = small
+vlib/v/checker/tests/array_explicit_elem_type_mismatch_err.vv:59:14: error: cannot assign to `cache.ids`: expected `[]u64`, not `[]i32`
+   57 |     small := [u8(1), 2, 3]
+   58 |     cache.ids = []u32{}
+   59 |     cache.ids = []i32{len: 2}
+      |                 ~~~~~~~~~~~~~
+   60 |     cache.ids = small
+   61 |     cache.ids = small.clone()
+vlib/v/checker/tests/array_explicit_elem_type_mismatch_err.vv:60:14: error: cannot assign to `cache.ids`: expected `[]u64`, not `[]u8`
+   58 |     cache.ids = []u32{}
+   59 |     cache.ids = []i32{len: 2}
+   60 |     cache.ids = small
+      |                 ~~~~~
+   61 |     cache.ids = small.clone()
+   62 |     cache.ids = []int{}
+vlib/v/checker/tests/array_explicit_elem_type_mismatch_err.vv:61:14: error: cannot assign to `cache.ids`: expected `[]u64`, not `[]u8`
+   59 |     cache.ids = []i32{len: 2}
+   60 |     cache.ids = small
+   61 |     cache.ids = small.clone()
+      |                 ~~~~~~~~~~~~~
+   62 |     cache.ids = []int{}
+   63 |     cache.nested = [][]u8{}
+vlib/v/checker/tests/array_explicit_elem_type_mismatch_err.vv:62:14: error: cannot assign to `cache.ids`: expected `[]u64`, not `[]int`
+   60 |     cache.ids = small
+   61 |     cache.ids = small.clone()
+   62 |     cache.ids = []int{}
+      |                 ~~~~~~~
+   63 |     cache.nested = [][]u8{}
+   64 |     cache.nested << small
+vlib/v/checker/tests/array_explicit_elem_type_mismatch_err.vv:63:17: error: cannot assign to `cache.nested`: expected `[][]u64`, not `[][]u8`
+   61 |     cache.ids = small.clone()
+   62 |     cache.ids = []int{}
+   63 |     cache.nested = [][]u8{}
+      |                    ~~~~~~~~
+   64 |     cache.nested << small
+   65 |     cache.by_key['a'] = small
+vlib/v/checker/tests/array_explicit_elem_type_mismatch_err.vv:64:18: error: cannot append `[]u8` to `[][]u64`
+   62 |     cache.ids = []int{}
+   63 |     cache.nested = [][]u8{}
+   64 |     cache.nested << small
+      |                     ~~~~~
+   65 |     cache.by_key['a'] = small
+   66 |     cache.maybe = small
+vlib/v/checker/tests/array_explicit_elem_type_mismatch_err.vv:65:22: error: cannot assign to `cache.by_key['a']`: expected `[]u64`, not `[]u8`
+   63 |     cache.nested = [][]u8{}
+   64 |     cache.nested << small
+   65 |     cache.by_key['a'] = small
+      |                         ~~~~~
+   66 |     cache.maybe = small
+   67 |     cache.alias = small
+vlib/v/checker/tests/array_explicit_elem_type_mismatch_err.vv:66:16: error: cannot assign to `cache.maybe`: expected `?[]u64`, not `[]u8`
+   64 |     cache.nested << small
+   65 |     cache.by_key['a'] = small
+   66 |     cache.maybe = small
+      |                   ~~~~~
+   67 |     cache.alias = small
+   68 |     cache.fixed = [3]u8[1, 2, 3]
+vlib/v/checker/tests/array_explicit_elem_type_mismatch_err.vv:67:16: error: cannot assign to `cache.alias`: expected `Ids`, not `[]u8`
+   65 |     cache.by_key['a'] = small
+   66 |     cache.maybe = small
+   67 |     cache.alias = small
+      |                   ~~~~~
+   68 |     cache.fixed = [3]u8[1, 2, 3]
+   69 |     fixed_small := [u8(1), 2, 3]!
+vlib/v/checker/tests/array_explicit_elem_type_mismatch_err.vv:68:16: error: cannot assign to `cache.fixed`: expected `[3]u64`, not `[3]u8`
+   66 |     cache.maybe = small
+   67 |     cache.alias = small
+   68 |     cache.fixed = [3]u8[1, 2, 3]
+      |                   ~~~~~~~~~~~~~~
+   69 |     fixed_small := [u8(1), 2, 3]!
+   70 |     cache.fixed = fixed_small
+vlib/v/checker/tests/array_explicit_elem_type_mismatch_err.vv:70:16: error: cannot assign to `cache.fixed`: expected `[3]u64`, not `[3]u8`
+   68 |     cache.fixed = [3]u8[1, 2, 3]
+   69 |     fixed_small := [u8(1), 2, 3]!
+   70 |     cache.fixed = fixed_small
+      |                   ~~~~~~~~~~~
+   71 |     singles := [f32(1.5)]
+   72 |     cache.floats = singles
+vlib/v/checker/tests/array_explicit_elem_type_mismatch_err.vv:72:17: error: cannot assign to `cache.floats`: expected `[]f64`, not `[]f32`
+   70 |     cache.fixed = fixed_small
+   71 |     singles := [f32(1.5)]
+   72 |     cache.floats = singles
+      |                    ~~~~~~~
+   73 |     ints := [1, 2]
+   74 |     cache.floats = ints
+vlib/v/checker/tests/array_explicit_elem_type_mismatch_err.vv:74:17: error: cannot assign to `cache.floats`: expected `[]f64`, not `[]int`
+   72 |     cache.floats = singles
+   73 |     ints := [1, 2]
+   74 |     cache.floats = ints
+      |                    ~~~~
+   75 |     cache.opts = ints
+   76 |     cache.perms = ints
+vlib/v/checker/tests/array_explicit_elem_type_mismatch_err.vv:75:15: error: cannot assign to `cache.opts`: expected `[]?int`, not `[]int`
+   73 |     ints := [1, 2]
+   74 |     cache.floats = ints
+   75 |     cache.opts = ints
+      |                  ~~~~
+   76 |     cache.perms = ints
+   77 |     println(cache.ids == small)
+vlib/v/checker/tests/array_explicit_elem_type_mismatch_err.vv:76:16: error: cannot assign to `cache.perms`: expected `[]Perm`, not `[]int`
+   74 |     cache.floats = ints
+   75 |     cache.opts = ints
+   76 |     cache.perms = ints
+      |                   ~~~~
+   77 |     println(cache.ids == small)
+   78 |     println(take(small))
+vlib/v/checker/tests/array_explicit_elem_type_mismatch_err.vv:77:10: error: infix expr: cannot use `[]u8` (right expression) as `[]u64`
+   75 |     cache.opts = ints
+   76 |     cache.perms = ints
+   77 |     println(cache.ids == small)
+      |             ~~~~~~~~~~~~~~~~~~
+   78 |     println(take(small))
+   79 |     println(take([]u8{}))
+vlib/v/checker/tests/array_explicit_elem_type_mismatch_err.vv:78:15: error: cannot use `[]u8` as `[]u64` in argument 1 to `take`
+   76 |     cache.perms = ints
+   77 |     println(cache.ids == small)
+   78 |     println(take(small))
+      |                  ~~~~~
+   79 |     println(take([]u8{}))
+   80 |     mut buf := small.clone()
+vlib/v/checker/tests/array_explicit_elem_type_mismatch_err.vv:79:15: error: cannot use `[]u8` as `[]u64` in argument 1 to `take`
+   77 |     println(cache.ids == small)
+   78 |     println(take(small))
+   79 |     println(take([]u8{}))
+      |                  ~~~~~~
+   80 |     mut buf := small.clone()
+   81 |     take_mut(mut buf)
+vlib/v/checker/tests/array_explicit_elem_type_mismatch_err.vv:81:15: error: cannot use `&[]u8` as `&[]u64` in argument 1 to `take_mut`
+   79 |     println(take([]u8{}))
+   80 |     mut buf := small.clone()
+   81 |     take_mut(mut buf)
+      |                  ~~~
+   82 |     println(take_fixed(fixed_small))
+   83 |     items := [Item{}, Item{}]!
+vlib/v/checker/tests/array_explicit_elem_type_mismatch_err.vv:82:21: error: cannot use `[3]u8` as `[3]u64` in argument 1 to `take_fixed`
+   80 |     mut buf := small.clone()
+   81 |     take_mut(mut buf)
+   82 |     println(take_fixed(fixed_small))
+      |                        ~~~~~~~~~~~
+   83 |     items := [Item{}, Item{}]!
+   84 |     println(take_named(items))
+vlib/v/checker/tests/array_explicit_elem_type_mismatch_err.vv:84:21: error: cannot use `[2]Item` as `[2]Named` in argument 1 to `take_named`
+   82 |     println(take_fixed(fixed_small))
+   83 |     items := [Item{}, Item{}]!
+   84 |     println(take_named(items))
+      |                        ~~~~~
+   85 |     mut boxed := [Item{}]
+   86 |     mut refs := &[]Named{}
+vlib/v/checker/tests/array_explicit_elem_type_mismatch_err.vv:87:9: error: cannot assign to `refs`: expected `&[]Named`, not `&[]Item`
+   85 |     mut boxed := [Item{}]
+   86 |     mut refs := &[]Named{}
+   87 |     refs = &boxed
+      |            ~~~~~~
+   88 |     println(refs.len)
+   89 |     println(make_ids())

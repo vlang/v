@@ -125,8 +125,9 @@ fn main() {
 	assert c_source.contains('closure__closure_create_with_data'), c_source
 	assert c_source.contains('__anon_fn_0_Ctx'), c_source
 	assert c_source.contains('_args_thread_wrapper'), c_source
-	assert c_source.contains(' = p->f'), c_source
-	assert c_source.contains('closure__closure_try_destroy((void*)p->f);'), c_source
+	// The spawn wrapper names its argument block `__v3_spawn_args`.
+	assert c_source.contains(' = __v3_spawn_args->f'), c_source
+	assert c_source.contains('closure__closure_try_destroy((void*)__v3_spawn_args->f);'), c_source
 	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
@@ -165,7 +166,8 @@ fn main() {
 	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', '${out}'])
 	assert compile.exit_code == 0, compile.output
 	c_source := os.read_file(out + '.c') or { panic(err) }
-	assert !c_source.contains('closure__closure_try_destroy((void*)p->f);'), c_source
+	assert c_source.contains('_args_thread_wrapper'), c_source
+	assert !c_source.contains('closure__closure_try_destroy((void*)__v3_spawn_args->f);'), c_source
 	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'

@@ -89,11 +89,12 @@ pub fn lookup(value u8) u8 {
 fn test_issue_28694_forwarded_c_callbacks() {
 	run_issue_28694_probe('callbacks', '#include "@VMODROOT/callbacks.h"
 
+// C `int` is `i32` in V; V `int` is 64-bit on 64-bit targets.
 @[typedef]
 struct C.GuiCallbacks {
-	on_marked_text fn (&char, int, voidptr)
+	on_marked_text fn (&char, i32, voidptr)
 	on_insert_text fn (&char, voidptr)
-	on_clause      fn (int, int, int, voidptr)
+	on_clause      fn (i32, i32, i32, voidptr)
 }
 
 fn C.gui_invoke_callbacks(callbacks &C.GuiCallbacks, user_data voidptr)
@@ -108,7 +109,7 @@ mut:
 	clause_style  int
 }
 
-fn marked_text(text &char, selection int, data voidptr) {
+fn marked_text(text &char, selection i32, data voidptr) {
 	mut state := unsafe { &CallbackState(data) }
 	state.marked_byte = unsafe { u8(text[0]) }
 	state.selection = selection
@@ -119,16 +120,16 @@ fn insert_text(text &char, data voidptr) {
 	state.inserted_byte = unsafe { u8(text[0]) }
 }
 
-fn clause(start int, end int, style int, data voidptr) {
+fn clause(start i32, end i32, style i32, data voidptr) {
 	mut state := unsafe { &CallbackState(data) }
 	state.clause_start = start
 	state.clause_end = end
 	state.clause_style = style
 }
 
-fn make_callbacks(on_marked_text fn (&char, int, voidptr),
+fn make_callbacks(on_marked_text fn (&char, i32, voidptr),
 	on_insert_text fn (&char, voidptr),
-	on_clause fn (int, int, int, voidptr)) C.GuiCallbacks {
+	on_clause fn (i32, i32, i32, voidptr)) C.GuiCallbacks {
 	return C.GuiCallbacks{
 		on_marked_text: on_marked_text
 		on_insert_text: on_insert_text

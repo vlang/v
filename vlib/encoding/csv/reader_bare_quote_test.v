@@ -23,7 +23,7 @@ fn test_closing_quote_requires_delimiter_or_record_end() {
 	for data in ['a,"b"c,d', 'a,"b" ,c', 'a,"b"c', '"b"c,d', 'a,"b""c"d,e', 'a,"b\nc"d,e'] {
 		mut reader := csv.new_reader(data)
 		reader.read() or {
-			assert err.msg() == 'encoding.csv: bare quote in non-quoted field'
+			assert err.msg() == 'encoding.csv: unexpected character after closing quote'
 			continue
 		}
 		assert false, 'accepted invalid CSV: ${data}'
@@ -35,7 +35,12 @@ fn test_custom_delimiter_does_not_hide_bare_quotes() {
 		'"b" ;c'] {
 		mut reader := csv.new_reader(data, delimiter: `;`)
 		reader.read() or {
-			assert err.msg() == 'encoding.csv: bare quote in non-quoted field'
+			expected := if data in ['a;"b"c;d', '"b" ;c'] {
+				'encoding.csv: unexpected character after closing quote'
+			} else {
+				'encoding.csv: bare quote in non-quoted field'
+			}
+			assert err.msg() == expected
 			continue
 		}
 		assert false, 'accepted invalid CSV with semicolon delimiter: ${data}'

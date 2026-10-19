@@ -1,5 +1,6 @@
 module fastc
 
+import v.flat
 import v.gen.c.naming
 
 const fastc_module_type_prefix = 'v.gen.fastc.'
@@ -50,25 +51,25 @@ fn fastc_c_module_name(module_name string) string {
 // query, allocating each candidate's C spelling on the way; that scan dominated
 // selfhost code generation. The first key registered for a spelling wins,
 // matching the old first-match scan over the insertion-ordered key list.
-fn fastc_declared_type_c_names(declared_types map[string]bool) map[string]string {
-	mut index := map[string]string{}
+fn fastc_declared_type_c_names(declared_types map[string]bool) flat.TypeTextBindings {
+	mut index := flat.TypeTextBindings{}
 	for key in declared_types.keys() {
 		c_name := fastc_c_declared_type_name(key)
-		if c_name !in index {
-			index[c_name] = key
+		if !index.contains(c_name) {
+			index.set(c_name, key)
 		}
 	}
 	return index
 }
 
-fn fastc_declared_type_key_by_name(declared_types map[string]bool) map[string]string {
-	mut index := map[string]string{}
+fn fastc_declared_type_key_by_name(declared_types map[string]bool) flat.TypeTextBindings {
+	mut index := flat.TypeTextBindings{}
 	for key in declared_types.keys() {
 		name := key.all_after_last('.')
-		if name in index {
-			index[name] = ''
+		if index.contains(name) {
+			index.set_id(name, 0)
 		} else {
-			index[name] = key
+			index.set(name, key)
 		}
 	}
 	return index
@@ -90,7 +91,7 @@ fn fastc_constant_key(module_name string, name string) string {
 
 fn fastc_c_constant_name(module_name string, name string) string {
 	module_prefix := if module_name == '' { 'main' } else { module_name }
-	return '${module_prefix.replace('.', '__')}__${name}'
+	return '${fastc_c_module_name(module_prefix)}__${name}'
 }
 
 fn fastc_global_key(module_name string, name string) string {
@@ -121,7 +122,7 @@ fn (g &Parser) unqualified_function_key(name string) string {
 	}
 	local_key := fastc_function_key(g.module_name, name)
 	mut key := local_key
-	if local_key !in g.functions {
+	if local_key !in g.functions && local_key !in g.mono_functions {
 		builtin_key := fastc_function_key('builtin', name)
 		if builtin_key in g.functions {
 			key = builtin_key
@@ -140,11 +141,18 @@ fn (g &Parser) c_function_name_for_key(key string) string {
 	return g.c_function_name_or(key, fastc_c_function_name_for_key(key))
 }
 
+// c_function_name_or resolves the C symbol of function `key` for both its
+// definition and every reference to it. The program's entry (`main` of the main
+// module, outside test builds where it is an ordinary function) is named by the
+// target: `wmain` on Windows, so a call to or function value of `main` reaches
+// the symbol the entry is defined as.
 fn (g &Parser) c_function_name_or(key string, conventional string) string {
 	if cached := g.c_function_name_memo[key] {
 		return cached
 	}
-	c_name := if compact_name := g.function_c_names[key] {
+	c_name := if key == 'main' && !g.prefs.is_test {
+		fastc_c_main_name(g.prefs)
+	} else if compact_name := g.function_c_names[key] {
 		compact_name
 	} else {
 		conventional
