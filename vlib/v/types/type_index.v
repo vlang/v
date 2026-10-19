@@ -1,7 +1,10 @@
 module types
 
-pub fn (tc &TypeChecker) type_index(name string) int {
-	mut base := name.trim_space()
+import v.flat
+
+// type_index returns the runtime identity for an interned spelling, preserving pointer depth.
+pub fn (tc &TypeChecker) type_index(name_id u32) int {
+	mut base := flat.source_type_name(name_id).trim_space()
 	if base.len == 0 {
 		return 0
 	}
@@ -11,16 +14,18 @@ pub fn (tc &TypeChecker) type_index(name string) int {
 		base = base[1..].trim_space()
 	}
 	builtin_idx := builtin_type_index(base)
+	base_id := flat.source_type_id(base)
 	index := if builtin_idx > 0 {
 		builtin_idx
 	} else if isnil(tc) {
-		stable_type_index(base)
+		stable_type_index(base_id)
 	} else {
-		tc.runtime_type_indexes[base] or { stable_type_index(base) }
+		tc.runtime_type_indexes[base_id] or { stable_type_index(base_id) }
 	}
 	return index | int(u32(indirections) << 16)
 }
 
+// builtin_type_index returns V's stable runtime index for a builtin spelling.
 pub fn builtin_type_index(name string) int {
 	return match name {
 		'void' { 1 }

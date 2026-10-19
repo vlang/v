@@ -87,6 +87,9 @@ pub fn run_new[A, X](mut global_app A, params RunParams) ! {
 	if params.port <= 0 || params.port > 65535 {
 		return error('invalid port number `${params.port}`, it should be between 1 and 65535')
 	}
+	if params.max_request_body_size < 0 {
+		return error('invalid max_request_body_size `${params.max_request_body_size}`, it should be 0 (no limit) or a positive number of bytes')
+	}
 	if ssl_enabled(params) {
 		prompt_to_kill_processes_listening_on_port(params.port)
 		maybe_init_server[A](mut global_app, new_server_without_lifecycle())
@@ -98,6 +101,13 @@ pub fn run_new[A, X](mut global_app A, params RunParams) ! {
 	routes := generate_routes[A, X](global_app)!
 	controllers_sorted := check_duplicate_routes_in_controllers[A](global_app, routes)!
 	prompt_to_kill_processes_listening_on_port(params.port)
+	$if veb_livereload ? {
+		$if A is StaticApp {
+			start_livereload(global_app.static_files.clone())
+		} $else {
+			start_livereload(map[string]string{})
+		}
+	}
 
 	// Allocate params on the heap to keep it valid for the server lifetime
 	request_params := &RequestParams{
@@ -114,6 +124,7 @@ pub fn run_new[A, X](mut global_app A, params RunParams) ! {
 		port:                    params.port
 		append_handler:          parallel_append_handler[A, X]
 		max_request_buffer_size: params.max_request_buffer_size
+		max_request_body_size:   params.max_request_body_size
 		timeout_in_seconds:      params.timeout_in_seconds
 		user_data:               voidptr(request_params)
 	}) or {

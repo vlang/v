@@ -1,8 +1,8 @@
 module sync
 
-#insert "@VEXEROOT/vlib/sync/thread_helper.h"
+#flag @VEXEROOT/vlib/sync/thread_helper.o
 
-fn C.v_sync_thread_create_detached(voidptr, voidptr) int
+fn C.v_sync_thread_create_detached_with_stack(voidptr, voidptr, usize) int
 
 fn waitgroup_thread_entry(args_ptr voidptr) voidptr {
 	args := unsafe { &WaitGroupThreadArgs(args_ptr) }
@@ -24,7 +24,7 @@ fn waitgroup_thread_entry(args_ptr voidptr) voidptr {
 
 fn start_waitgroup_thread(mut wg WaitGroup, f fn ()) {
 	args := new_waitgroup_thread_args(&wg, f)
-	result := C.v_sync_thread_create_detached(voidptr(waitgroup_thread_entry), voidptr(args))
+	result := C.v_sync_thread_create_detached_with_stack(voidptr(waitgroup_thread_entry), voidptr(args), usize(C.V_THREAD_STACK_SIZE))
 	if result != 0 {
 		wg.done()
 		free_waitgroup_thread_args(args)

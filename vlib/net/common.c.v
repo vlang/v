@@ -2,16 +2,15 @@ module net
 
 import time
 
-// no_deadline should be given to functions when no deadline is wanted (i.e. all functions
-// return instantly)
+// no_deadline disables the absolute deadline; the configured socket timeout still applies.
 const no_deadline = time.unix(0)
 
-// no_timeout should be given to functions when no timeout is wanted (i.e. all functions
-// return instantly)
+// no_timeout disables the relative socket timeout. An explicit deadline still applies;
+// with no deadline, socket waits block until ready or an error occurs.
 pub const no_timeout = time.Duration(0)
 
-// infinite_timeout should be given to functions when an infinite_timeout is wanted (i.e. functions
-// only ever return with data)
+// infinite_timeout disables the relative socket timeout, like no_timeout.
+// An explicit deadline still applies.
 pub const infinite_timeout = time.infinite
 
 // ShutdownDirection is used by `net.shutdown`, for specifying the direction for which the
@@ -99,7 +98,7 @@ pub fn close(handle int) ! {
 				}
 				return
 			}
-			return err_timed_out
+			return error_with_code(err_timed_out.msg(), err_timed_out.code())
 		}
 		wrap_error(ecode)!
 	}
@@ -150,10 +149,26 @@ fn select(handle int, test Select, timeout time.Duration) !bool {
 
 @[inline]
 fn select_deadline(handle int, test Select, deadline time.Time) !bool {
-	// if we have a 0 deadline here then the timeout that was passed was infinite...
-	infinite := deadline.unix() == 0
-	for infinite || time.now() <= deadline {
-		timeout := time.Duration(if infinite { infinite_timeout } else { deadline - time.now() })
+	return select_deadline_chunked(handle, test, deadline, 24 * time.hour)
+}
+
+fn select_deadline_chunked(handle int, test Select, deadline time.Time, max_wait time.Duration) !bool {
+	// Only the unset deadline sentinels mean an infinite wait.
+	infinite := !deadline_set(deadline)
+	for {
+		now := time.now()
+		if !infinite && now > deadline {
+			break
+		}
+		// Clamp before subtracting: distant dates may not fit in a Duration.
+		chunked := !infinite && deadline > now.add(max_wait)
+		timeout := if infinite {
+			infinite_timeout
+		} else if chunked {
+			max_wait
+		} else {
+			deadline - now
+		}
 		ready := select(handle, test, timeout) or {
 			if err.code() == C.EINTR {
 				// errno is 4, Spurious wakeup from signal, keep waiting
@@ -164,17 +179,30 @@ fn select_deadline(handle int, test Select, deadline time.Time) !bool {
 			return err
 		}
 
+		if !ready && chunked {
+			continue
+		}
 		return ready
 	}
 
 	// Deadline elapsed
-	return err_timed_out
+	return error_with_code(err_timed_out.msg(), err_timed_out.code())
+}
+
+// deadline_set is whether a deadline was set: anything but the zero `time.Time{}` a connection
+// starts with and the `time.unix(0)` that select_deadline reads as infinite. A deadline already in
+// the past, even before 1970, is set: it is due.
+fn deadline_set(deadline time.Time) bool {
+	return !deadline.is_zero() && deadline != time.unix(0)
 }
 
 // wait_for_common wraps the common wait code
 fn wait_for_common(handle int, deadline time.Time, timeout time.Duration, test Select) ! {
-	// Convert timeouts to deadlines
-	real_deadline := if timeout == infinite_timeout {
+	// Convert timeouts to deadlines. A deadline the caller set is the request for this wait,
+	// so it wins over the connection's timeout (a UdpConn's is 100 ms by default).
+	real_deadline := if deadline_set(deadline) {
+		deadline
+	} else if timeout == infinite_timeout {
 		time.unix(0)
 	} else if timeout == 0 {
 		// No timeout set, so assume deadline
@@ -193,7 +221,7 @@ fn wait_for_common(handle int, deadline time.Time, timeout time.Duration, test S
 		return
 	}
 
-	return err_timed_out
+	return error_with_code(err_timed_out.msg(), err_timed_out.code())
 }
 
 // wait_for_write waits for a write io operation to be available

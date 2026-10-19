@@ -12,7 +12,7 @@ fn test_valid_parsing() {
 			children: [
 				xml.XMLNode{
 					name:     'html'
-					children: ['This is &lt;b&gt;bold&lt;/b&gt;']
+					children: ['This is <b>bold</b>']
 				},
 				xml.XMLNode{
 					name:     'html'

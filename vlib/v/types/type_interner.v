@@ -1,6 +1,7 @@
 module types
 
 import sync
+import v.flat
 
 // TypeId is the stable identity of a canonical semantic type in one
 // compilation. Type values remain the public compatibility representation;
@@ -12,7 +13,7 @@ struct TypeInterner {
 mut:
 	lock    &sync.RwMutex = unsafe { nil }
 	types   []&Type
-	names   []string
+	names   []u32
 	buckets map[u64]TypeId
 }
 
@@ -47,8 +48,8 @@ fn (mut i TypeInterner) intern_locked(t &Type, hash u64) (TypeId, &Type) {
 		key = type_hash_tag(key, 0x5bd1e995)
 	}
 	id := TypeId(i.types.len)
-	i.types << &Type(owned)
-	i.names << ''
+	i.types << new_type_reference(Type(owned))
+	i.names << u32(0)
 	i.buckets[key] = id
 	return id, i.types[int(id)]
 }
@@ -99,7 +100,7 @@ fn (mut i TypeInterner) own_value(t &Type) Type {
 		}
 		Alias {
 			_, base := i.intern_locked(t.base_type, semantic_type_hash(t.base_type))
-			Type(Alias{ name: t.name.clone(), base_type: base })
+			Type(Alias{ name_id: t.name_id, base_type: base })
 		}
 		MultiReturn {
 			mut types := []Type{cap: t.types.len}
@@ -161,16 +162,16 @@ fn (i &TypeInterner) probe_frozen(t &Type) ?&Type {
 	return none
 }
 
-fn (mut i TypeInterner) name(id TypeId) string {
+fn (mut i TypeInterner) source_type_id(id TypeId) u32 {
 	i.lock.lock()
 	defer {
 		i.lock.unlock()
 	}
 	if int(id) < 0 || int(id) >= i.types.len {
-		return 'unknown'
+		return flat.source_type_unknown
 	}
-	if i.names[int(id)].len == 0 {
-		i.names[int(id)] = i.types[int(id)].name()
+	if i.names[int(id)] == 0 {
+		i.names[int(id)] = i.types[int(id)].source_type_id()
 	}
 	return i.names[int(id)]
 }
@@ -219,13 +220,9 @@ fn (mut i TypeInterner) promote_from(start int, scope voidptr) {
 	i.types = []&Type{cap: previous.len}
 	for typ in previous {
 		owned := i.own_value(typ)
-		i.types << &Type(owned)
+		i.types << new_type_reference(Type(owned))
 	}
-	mut owned_names := []string{cap: i.names.len}
-	for name in i.names {
-		owned_names << name.clone()
-	}
-	i.names = owned_names
+	i.names = i.names.clone()
 	// A scoped insertion can rehash even after the caller reserves headroom.
 	// Rebuild the index after leaving the scope so its backing storage cannot
 	// remain owned by the disposable transform arena.
@@ -311,24 +308,24 @@ pub fn semantic_type_hash(t &Type) u64 {
 		}
 		Struct {
 			hash = type_hash_tag(hash, 19)
-			return type_hash_string(hash, t.name)
+			return type_hash_tag(hash, int(t.name_id))
 		}
 		Interface {
 			hash = type_hash_tag(hash, 20)
-			return type_hash_string(hash, t.name)
+			return type_hash_tag(hash, int(t.name_id))
 		}
 		Enum {
 			hash = type_hash_tag(hash, 21)
-			hash = type_hash_string(hash, t.name)
+			hash = type_hash_tag(hash, int(t.name_id))
 			return type_hash_tag(hash, int(t.is_flag))
 		}
 		SumType {
 			hash = type_hash_tag(hash, 22)
-			return type_hash_string(hash, t.name)
+			return type_hash_tag(hash, int(t.name_id))
 		}
 		Alias {
 			hash = type_hash_tag(hash, 23)
-			hash = type_hash_string(hash, t.name)
+			hash = type_hash_tag(hash, int(t.name_id))
 			return type_hash_child(hash, t.base_type)
 		}
 		MultiReturn {
@@ -469,31 +466,31 @@ pub fn semantic_types_equal(a &Type, b &Type) bool {
 			if b !is Struct {
 				return false
 			}
-			return a.name == b.name
+			return a.name_id == b.name_id
 		}
 		Interface {
 			if b !is Interface {
 				return false
 			}
-			return a.name == b.name
+			return a.name_id == b.name_id
 		}
 		Enum {
 			if b !is Enum {
 				return false
 			}
-			return a.name == b.name && a.is_flag == b.is_flag
+			return a.name_id == b.name_id && a.is_flag == b.is_flag
 		}
 		SumType {
 			if b !is SumType {
 				return false
 			}
-			return a.name == b.name
+			return a.name_id == b.name_id
 		}
 		Alias {
 			if b !is Alias {
 				return false
 			}
-			return a.name == b.name && semantic_types_equal(a.base_type, b.base_type)
+			return a.name_id == b.name_id && semantic_types_equal(a.base_type, b.base_type)
 		}
 		MultiReturn {
 			if b !is MultiReturn {

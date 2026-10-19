@@ -1,5 +1,7 @@
 module types
 
+import v.flat
+
 // Type aliases type values used by types.
 pub type Type = Void
 	| Unknown
@@ -152,32 +154,32 @@ pub:
 // Struct represents struct data used by types.
 pub struct Struct {
 pub:
-	name string
+	name_id u32
 }
 
 // Interface represents interface data used by types.
 pub struct Interface {
 pub:
-	name string
+	name_id u32
 }
 
 // Enum represents enum data used by types.
 pub struct Enum {
 pub:
-	name    string
+	name_id u32
 	is_flag bool
 }
 
 // SumType represents sum type data used by types.
 pub struct SumType {
 pub:
-	name string
+	name_id u32
 }
 
 // Alias represents alias data used by types.
 pub struct Alias {
 pub:
-	name      string
+	name_id   u32
 	base_type &Type = empty_type
 }
 
@@ -185,6 +187,12 @@ pub:
 pub struct MultiReturn {
 pub:
 	types []Type
+}
+
+// new_type_reference allocates a shallow copy of value with stable reference storage.
+// Nested metadata remains borrowed; clone_owned_type copies it when its arena will end.
+pub fn new_type_reference(value Type) &Type {
+	return &value
 }
 
 // clone_owned_type clones a type and all nested owned metadata.
@@ -227,82 +235,82 @@ pub fn clone_owned_type(value &Type) Type {
 		}
 		Array {
 			Type(Array{
-				elem_type: &Type(clone_owned_type(value.elem_type))
+				elem_type: new_type_reference(Type(clone_owned_type(value.elem_type)))
 			})
 		}
 		ArrayFixed {
 			Type(ArrayFixed{
-				elem_type: &Type(clone_owned_type(value.elem_type))
+				elem_type: new_type_reference(Type(clone_owned_type(value.elem_type)))
 				len:       value.len
 				len_expr:  value.len_expr.clone()
 			})
 		}
 		Channel {
 			Type(Channel{
-				elem_type: &Type(clone_owned_type(value.elem_type))
+				elem_type: new_type_reference(Type(clone_owned_type(value.elem_type)))
 				is_mut:    value.is_mut
 			})
 		}
 		Map {
 			Type(Map{
-				key_type:   &Type(clone_owned_type(value.key_type))
-				value_type: &Type(clone_owned_type(value.value_type))
+				key_type:   new_type_reference(Type(clone_owned_type(value.key_type)))
+				value_type: new_type_reference(Type(clone_owned_type(value.value_type)))
 			})
 		}
 		Pointer {
 			Type(Pointer{
-				base_type: &Type(clone_owned_type(value.base_type))
+				base_type: new_type_reference(Type(clone_owned_type(value.base_type)))
 			})
 		}
 		FnType {
 			mut params := []FnParam{cap: value.params.len}
 			for param in value.params {
 				params << FnParam{
-					typ:    &Type(clone_owned_type(param.typ))
+					typ:    new_type_reference(Type(clone_owned_type(param.typ)))
 					is_mut: param.is_mut
 				}
 			}
 			Type(FnType{
 				params:      params
 				is_variadic: value.is_variadic
-				return_type: &Type(clone_owned_type(value.return_type))
+				return_type: new_type_reference(Type(clone_owned_type(value.return_type)))
 			})
 		}
 		OptionType {
 			Type(OptionType{
-				base_type: &Type(clone_owned_type(value.base_type))
+				base_type: new_type_reference(Type(clone_owned_type(value.base_type)))
 			})
 		}
 		ResultType {
 			Type(ResultType{
-				base_type: &Type(clone_owned_type(value.base_type))
+				base_type: new_type_reference(Type(clone_owned_type(value.base_type)))
 			})
 		}
 		Struct {
 			Type(Struct{
-				name: value.name.clone()
+				name_id: value.name_id
 			})
 		}
 		Interface {
 			Type(Interface{
-				name: value.name.clone()
+				name_id: value.name_id
 			})
 		}
 		Enum {
 			Type(Enum{
-				name:    value.name.clone()
+				name_id: value.name_id
 				is_flag: value.is_flag
 			})
 		}
 		SumType {
 			Type(SumType{
-				name: value.name.clone()
+				name_id: value.name_id
 			})
 		}
 		Alias {
 			Type(Alias{
-				name:      value.name.clone()
-				base_type: &Type(clone_owned_type(value.base_type))
+				name_id:   value.name_id
+				base_type: new_type_reference(Type(clone_owned_type(value.base_type)))
 			})
 		}
 		MultiReturn {
@@ -423,10 +431,10 @@ pub fn (t &Type) name() string {
 		return 'void'
 	}
 	if t is Struct {
-		return t.name
+		return flat.source_type_name(t.name_id)
 	}
 	if t is Alias {
-		return t.name
+		return flat.source_type_name(t.name_id)
 	}
 	if t is Primitive {
 		return prim_name_from(t.props, t.size)
@@ -441,13 +449,13 @@ pub fn (t &Type) name() string {
 		return '[]${nested_type_name(t.elem_type)}'
 	}
 	if t is Interface {
-		return t.name
+		return flat.source_type_name(t.name_id)
 	}
 	if t is Enum {
-		return t.name
+		return flat.source_type_name(t.name_id)
 	}
 	if t is SumType {
-		return t.name
+		return flat.source_type_name(t.name_id)
 	}
 	if t is String {
 		return 'string'
@@ -570,6 +578,39 @@ fn prim_name_from(props Properties, size u8) string {
 	return 'int'
 }
 
+fn primitive_source_type_id(props Properties, size u8) u32 {
+	if props.has(.boolean) {
+		return flat.source_type_bool
+	}
+	if props.has(.integer) {
+		if props.has(.unsigned) {
+			return match size {
+				8 { flat.source_type_u8 }
+				16 { flat.source_type_u16 }
+				32 { flat.source_type_u32 }
+				64 { flat.source_type_u64 }
+				else { flat.source_type_id('u${size}') }
+			}
+		}
+		return match size {
+			0 { flat.source_type_int }
+			8 { flat.source_type_i8 }
+			16 { flat.source_type_i16 }
+			32 { flat.source_type_i32 }
+			64 { flat.source_type_i64 }
+			else { flat.source_type_id('i${size}') }
+		}
+	}
+	if props.has(.float) {
+		return match size {
+			32 { flat.source_type_f32 }
+			64 { flat.source_type_f64 }
+			else { flat.source_type_id('f${size}') }
+		}
+	}
+	return flat.source_type_int
+}
+
 // prim_name supports prim name handling for types.
 fn prim_name(t Primitive) string {
 	if t.props.has(.boolean) {
@@ -604,8 +645,86 @@ fn prim_name(t Primitive) string {
 	return 'int'
 }
 
-pub const empty_type = &Type(Void{})
+pub const empty_type = &builtin_void_type
 
 pub fn (a Type) == (b Type) bool {
 	return semantic_types_equal(a, b)
+}
+
+// name returns the canonical spelling of this nominal type.
+@[inline]
+pub fn (value Alias) name() string {
+	return flat.source_type_name(value.name_id)
+}
+
+// name returns the canonical spelling of this nominal type.
+@[inline]
+pub fn (value Enum) name() string {
+	return flat.source_type_name(value.name_id)
+}
+
+// name returns the canonical spelling of this nominal type.
+@[inline]
+pub fn (value Interface) name() string {
+	return flat.source_type_name(value.name_id)
+}
+
+// name returns the canonical spelling of this nominal type.
+@[inline]
+pub fn (value Struct) name() string {
+	return flat.source_type_name(value.name_id)
+}
+
+// name returns the canonical spelling of this nominal type.
+@[inline]
+pub fn (value SumType) name() string {
+	return flat.source_type_name(value.name_id)
+}
+
+// source_type_id returns an interned spelling, reusing nominal type identities directly.
+pub fn (t Type) source_type_id() u32 {
+	return match t {
+		Struct, Alias, Enum, Interface, SumType { t.name_id }
+		Void { flat.source_type_void }
+		Unknown { flat.source_type_unknown }
+		Nil { flat.source_type_nil }
+		None { flat.source_type_none }
+		String { flat.source_type_string }
+		Char { flat.source_type_char }
+		Rune { flat.source_type_rune }
+		ISize { flat.source_type_isize }
+		USize { flat.source_type_usize }
+		Primitive { primitive_source_type_id(t.props, t.size) }
+		else { flat.source_type_id(t.name()) }
+	}
+}
+
+// source_type_id returns this nominal type's interned spelling.
+@[inline]
+pub fn (value Struct) source_type_id() u32 {
+	return value.name_id
+}
+
+// source_type_id returns this nominal type's interned spelling.
+@[inline]
+pub fn (value Alias) source_type_id() u32 {
+	return value.name_id
+}
+
+// source_type_id returns this nominal type's interned spelling.
+@[inline]
+pub fn (value Enum) source_type_id() u32 {
+	return value.name_id
+}
+
+// source_type_id returns this nominal type's interned spelling.
+@[inline]
+pub fn (value Interface) source_type_id() u32 {
+	return value.name_id
+}
+
+// source_type_id returns this nominal type's interned spelling.
+@[inline]
+pub fn (value SumType) source_type_id() u32 {
+	return value.name_id
 }

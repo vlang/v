@@ -1,0 +1,23 @@
+// `map[K]V(m)` casts like `?map[K]V(m)` and `[]T(a)`: the map keeps its
+// elements as they are, so they must already be stored as `K` and `V`.
+type Counts8 = map[string]u8
+
+fn to_counts[T](m map[string]T) map[string]u8 {
+	return map[string]u8(m)
+}
+
+fn main() {
+	ints := {
+		'a': 258
+	}
+	println(map[string]u8(ints))
+	println(map[string]string(ints))
+	println(?map[string]u8(ints))
+	bytes := {
+		'a': u8(7)
+	}
+	println(map[string]u8(bytes))
+	println(map[string]u8(Counts8(bytes)))
+	println(to_counts(bytes))
+	println(to_counts(ints))
+}

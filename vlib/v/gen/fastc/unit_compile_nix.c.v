@@ -4,6 +4,8 @@ import os
 import strings
 import time
 
+#include <signal.h>
+
 fn C.v_os_exec_capture_start(argv &&char, child_pid &int, read_fd &int) int
 
 fn C.v_os_exec_capture_input_start(argv &&char, child_pid &int, read_fd &int, write_fd &int) int
@@ -209,6 +211,13 @@ pub fn fastc_discard_prestarted_c_units(mut units FastcPrestartedCUnits) {
 	for fd in units.write_fds {
 		if fd >= 0 {
 			C.close(fd)
+		}
+	}
+	// Unused children may still hold each other's input pipes open. Stop all
+	// workers before draining their output so inherited descriptors cannot block EOF.
+	for pid in units.pids {
+		if pid > 0 {
+			C.kill(pid, C.SIGTERM)
 		}
 	}
 	for i, pid in units.pids {

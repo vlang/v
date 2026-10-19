@@ -52,6 +52,8 @@ const reserved_words = {
 	'void':     true
 	'volatile': true
 	'while':    true
+	// The C99 header <complex.h> defines this as the keyword _Complex.
+	'complex':  true
 	// GNU C modes predefine these as macros (`linux` on Linux, `unix` on Unix).
 	'unix':     true
 	'linux':    true
@@ -151,6 +153,9 @@ pub fn c_name(name string) string {
 		return 'v_exit'
 	}
 	n := sanitize(name)
+	if n == 'complex' || name == '@complex' {
+		return '${internal_symbol_c_prefix}macro_complex'
+	}
 	if n in ['mktemp', 'truncate'] {
 		return '${internal_symbol_c_prefix}libc_${n}'
 	}

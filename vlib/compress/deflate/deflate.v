@@ -44,11 +44,14 @@ pub mut:
 // validate_zlib_header validates a RFC 1950 zlib header.
 @[direct_array_access]
 pub fn validate_zlib_header(data []u8) !ZlibHeader {
-	if data.len < 6 {
+	if data.len < 2 {
 		return error('invalid zlib stream: too short')
 	}
 	if data[0] & 0x0f != 8 {
 		return error('invalid zlib stream: unsupported compression method')
+	}
+	if data[0] >> 4 > 7 {
+		return error('invalid zlib stream: invalid compression info')
 	}
 	if (u32(data[0]) * 256 + u32(data[1])) % 31 != 0 {
 		return error('invalid zlib stream: bad header checksum')
@@ -188,6 +191,9 @@ pub fn decompress(data []u8) ![]u8 {
 // It returns the decompressed bytes in a new array.
 pub fn decompress_zlib(data []u8) ![]u8 {
 	header := validate_zlib_header(data)!
+	if data.len < 6 {
+		return error('invalid zlib stream: too short')
+	}
 	payload := data[header.payload_start..data.len - 4]
 	expected := binary.big_endian_u32_at(data, data.len - 4)
 	res := inflate_with_consumed(payload)!
@@ -250,7 +256,7 @@ pub fn decompress_raw_with_consumed(data []u8) !RawInflateResult {
 
 // decompress_with_callback decompresses a zlib/gzip/raw stream (RFC 1950, RFC 1952) using a callback for chunked delivery.
 // The callback receives chunks of decompressed data and should return the chunk length to continue, or 0 to abort.
-// Returns the total decompressed length.
+// Returns the number of bytes delivered. If the callback aborts, unread data and trailers are not validated.
 pub fn decompress_with_callback(data []u8, cb ChunkCallback, userdata voidptr) !int {
 	if data.len >= 2 {
 		// gzip magic: 0x1f 0x8b
@@ -269,6 +275,9 @@ pub fn decompress_with_callback(data []u8, cb ChunkCallback, userdata voidptr) !
 
 fn decompress_zlib_with_callback(data []u8, cb ChunkCallback, userdata voidptr) !int {
 	header := validate_zlib_header(data)!
+	if data.len < 6 {
+		return error('invalid zlib stream: too short')
+	}
 	payload := data[header.payload_start..data.len - 4]
 	expected := binary.big_endian_u32_at(data, data.len - 4)
 	res := inflate_with_callback(payload, cb, userdata)!

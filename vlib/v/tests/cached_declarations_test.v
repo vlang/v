@@ -107,17 +107,17 @@ fn started_again(output string) bool {
 	return output.contains('V3 cached declarations: starting again')
 }
 
-// usecache_builds_with_tcc reports whether `-usecache` makes the bundled TinyCC
+// default_cache_builds_with_tcc reports whether the default cache makes the bundled TinyCC
 // build and link module objects on this host. The first call builds a program to
 // find out.
-fn usecache_builds_with_tcc() bool {
+fn default_cache_builds_with_tcc() bool {
 	answer := os.join_path(suite_dir, 'usecache_with_tcc')
 	if !os.exists(answer) {
 		root := new_project('probe')
 		probe := os.join_path(root, 'probe.v')
 		os.write_file(probe, 'fn main() {}\n') or { panic(err) }
-		saved := pin_module_cache(cache_dir(['-usecache']))
-		cold := build(root, ['-usecache'], probe, 'probe')
+		saved := pin_module_cache(cache_dir([]string{}))
+		cold := build(root, []string{}, probe, 'probe')
 		for env in saved {
 			env.restore()
 		}
@@ -134,8 +134,8 @@ fn cache_modes() [][]string {
 	if _ := os.find_abs_path_of_executable('cc') {
 		modes << ['-cc', 'cc']
 	}
-	if usecache_builds_with_tcc() {
-		modes << ['-usecache']
+	if default_cache_builds_with_tcc() {
+		modes << []string{}
 	}
 	return modes
 }
@@ -200,7 +200,7 @@ fn test_a_build_without_the_functions_it_cannot_name_makes_the_same_program() {
 			os.unsetenv('V3_CACHE_ALL_DECLARATIONS')
 			assert left_out(all) == -1, all
 			assert run_built(root, 'all') == program_output
-			if flags == ['-usecache'] {
+			if flags == []string{} {
 				// TinyCC makes one executable of one program unit.
 				assert os.read_bytes(os.join_path(root, 'warm'))! == os.read_bytes(os.join_path(root,
 					'all'))!
@@ -317,10 +317,10 @@ fn test_tcc_compiles_the_headers_of_a_program_from_their_preprocessed_form() {
 	$if windows {
 		return
 	}
-	if !usecache_builds_with_tcc() {
+	if !default_cache_builds_with_tcc() {
 		return
 	}
-	flags := ['-usecache']
+	flags := []string{}
 	root := new_project('prelude')
 	saved := pin_module_cache(cache_dir(flags))
 	defer {
@@ -328,12 +328,24 @@ fn test_tcc_compiles_the_headers_of_a_program_from_their_preprocessed_form() {
 			env.restore()
 		}
 	}
+	headers := os.join_path(root, 'headers')
+	os.mkdir_all(headers)!
+	header := os.join_path(headers, 'v_cached_headers_contract.h')
+	os.write_file(header, 'static inline int review_cached_headers_value(void) { return 37; }\n')!
+	saved_cpath := cpath_headers([headers])
+	defer {
+		restore_cpath(saved_cpath)
+	}
+	settle_headers()
+	header_program := '#include <v_cached_headers_contract.h>\n' +
+		program.replace('struct Point {', 'fn C.review_cached_headers_value() int\n\nstruct Point {').replace('fn main() {',
+			'fn main() {\n\tassert C.review_cached_headers_value() == 37')
 	main_file := os.join_path(root, 'main.v')
-	os.write_file(main_file, program)!
+	os.write_file(main_file, header_program)!
 	build(root, flags, main_file, 'cold')
 	mut preprocessed := 0
 	for i in 0 .. 3 {
-		os.write_file(main_file, program + '\nfn added_${i}() int {\n\treturn ${i}\n}\n')!
+		os.write_file(main_file, header_program + '\nfn added_${i}() int {\n\treturn ${i}\n}\n')!
 		// The object of the unit is the one that its headers give.
 		os.setenv('V3_TCC_PRELUDE_VERIFY', '1', true)
 		warm := build(root, flags, main_file, 'warm')
@@ -362,12 +374,12 @@ fn test_tcc_compiles_the_headers_of_a_program_from_their_preprocessed_form() {
 		assert text.contains('\nfile=') && text.contains('\nmissing='), text
 		os.write_file(stamp, text.replace_once('\nfile=', '\nfile=/nonexistent/v_cached_declarations_test.h\tabsent\nfile='))!
 	}
-	os.write_file(main_file, program + '\nfn added_again() {}\n')!
+	os.write_file(main_file, header_program + '\nfn added_again() {}\n')!
 	again := build(root, flags, main_file, 'again')
 	assert again.contains('V3 TinyCC prelude: a header changed'), again
 	assert again.contains('V3 TinyCC prelude: preprocessed'), again
 	assert run_built(root, 'again') == program_output
-	os.write_file(main_file, program + '\nfn added_once_more() {}\n')!
+	os.write_file(main_file, header_program + '\nfn added_once_more() {}\n')!
 	once_more := build(root, flags, main_file, 'once_more')
 	assert !once_more.contains('V3 TinyCC prelude'), once_more
 	assert run_built(root, 'once_more') == program_output
@@ -400,10 +412,10 @@ fn test_preprocessed_headers_are_the_c_that_the_preprocessor_made_of_them() {
 	$if windows {
 		return
 	}
-	if !usecache_builds_with_tcc() {
+	if !default_cache_builds_with_tcc() {
 		return
 	}
-	flags := ['-usecache']
+	flags := []string{}
 	root := new_project('prelude_macros')
 	saved := pin_module_cache(cache_dir(flags))
 	defer {
@@ -470,10 +482,10 @@ fn test_preprocessed_headers_keep_what_the_preprocessor_does_not_print() {
 	$if windows {
 		return
 	}
-	if !usecache_builds_with_tcc() {
+	if !default_cache_builds_with_tcc() {
 		return
 	}
-	flags := ['-usecache']
+	flags := []string{}
 	root := new_project('prelude_lossy')
 	saved := pin_module_cache(cache_dir(flags))
 	defer {
@@ -594,10 +606,10 @@ fn test_preprocessed_headers_follow_a_header_that_appears_earlier_in_the_search(
 	$if windows {
 		return
 	}
-	if !usecache_builds_with_tcc() {
+	if !default_cache_builds_with_tcc() {
 		return
 	}
-	flags := ['-usecache']
+	flags := []string{}
 	root := new_project('prelude_search')
 	saved := pin_module_cache(cache_dir(flags))
 	defer {

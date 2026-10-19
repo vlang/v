@@ -1,21 +1,23 @@
 // vtest vflags: -prealloc -gc none
 module types
 
+import v.flat
+
 fn test_interner_owns_edges_from_a_temporary_arena() {
 	$if prealloc {
 		mut interner := new_type_interner()
 		scope := unsafe { prealloc_scope_begin() }
-		child := &Type(Struct{ name: 'temporary.Record'.clone() })
+		child := &Type(Struct{ name_id: flat.source_type_id('temporary.Record') })
 		borrowed := Type(Pointer{ base_type: child })
 		unsafe { prealloc_scope_leave(scope) }
 		_, owned := interner.canonicalize(borrowed)
 		assert owned is Pointer
 		assert !unsafe { prealloc_scope_owns(scope, owned.base_type) }
 		assert owned.base_type is Struct
-		assert !unsafe { prealloc_scope_owns(scope, owned.base_type.name.str) }
+		assert !unsafe { prealloc_scope_owns(scope, owned.base_type.name().str) }
 		unsafe { prealloc_scope_free_after(scope) }
 		assert owned.name() == '&temporary.Record'
-		_, canonical := interner.canonicalize(Type(Struct{ name: 'temporary.Record' }))
+		_, canonical := interner.canonicalize(Type(Struct{ name_id: flat.source_type_id('temporary.Record') }))
 		assert voidptr(owned.base_type) == voidptr(canonical)
 	}
 }
@@ -24,14 +26,14 @@ fn test_type_interner_promotion_preserves_canonical_edges() {
 	$if prealloc {
 		mut interner := new_type_interner()
 		scope := unsafe { prealloc_scope_begin() }
-		child := &Type(Struct{ name: 'scoped.Record'.clone() })
+		child := &Type(Struct{ name_id: flat.source_type_id('scoped.Record') })
 		parent_id, _ := interner.canonicalize(Type(Pointer{ base_type: child }))
 		unsafe { prealloc_scope_leave(scope) }
 		interner.promote_from(0, scope)
 		unsafe { prealloc_scope_free_after(scope) }
 		parent := interner.types[int(parent_id)]
 		assert parent is Pointer
-		_, canonical := interner.canonicalize(Type(Struct{ name: 'scoped.Record' }))
+		_, canonical := interner.canonicalize(Type(Struct{ name_id: flat.source_type_id('scoped.Record') }))
 		assert voidptr(parent.base_type) == voidptr(canonical)
 		assert parent.name() == '&scoped.Record'
 	}
@@ -45,16 +47,16 @@ fn test_type_interner_owns_payloads_from_a_left_worker_scope() {
 			params:      [FnParam{
 				typ:    &Type(ArrayFixed{
 					elem_type: &Type(Struct{
-						name: 'C.WorkerPayload'.clone()
+						name_id: flat.source_type_id('C.WorkerPayload'.clone())
 					})
 					len_expr:  'worker_count'.clone()
 				})
 				is_mut: true
 			}]
 			return_type: &Type(Alias{
-				name:      'WorkerResult'.clone()
+				name_id:   flat.source_type_id('WorkerResult'.clone())
 				base_type: &Type(Struct{
-					name: 'C.WorkerResult'.clone()
+					name_id: flat.source_type_id('C.WorkerResult'.clone())
 				})
 			})
 		})
@@ -69,33 +71,33 @@ fn test_type_interner_owns_payloads_from_a_left_worker_scope() {
 		assert !unsafe { prealloc_scope_owns(scope, param.len_expr.str) }
 		elem := param.elem_type
 		assert elem is Struct
-		assert !unsafe { prealloc_scope_owns(scope, elem.name.str) }
+		assert !unsafe { prealloc_scope_owns(scope, elem.name().str) }
 		result := canonical.return_type
 		assert result is Alias
-		assert !unsafe { prealloc_scope_owns(scope, result.name.str) }
+		assert !unsafe { prealloc_scope_owns(scope, result.name().str) }
 		unsafe { prealloc_scope_free_after(scope) }
 
 		expected := Type(FnType{
 			params:      [FnParam{
 				typ:    &Type(ArrayFixed{
 					elem_type: &Type(Struct{
-						name: 'C.WorkerPayload'
+						name_id: flat.source_type_id('C.WorkerPayload')
 					})
 					len_expr:  'worker_count'
 				})
 				is_mut: true
 			}]
 			return_type: &Type(Alias{
-				name:      'WorkerResult'
+				name_id:   flat.source_type_id('WorkerResult')
 				base_type: &Type(Struct{
-					name: 'C.WorkerResult'
+					name_id: flat.source_type_id('C.WorkerResult')
 				})
 			})
 		})
 		second_id, second := interner.canonicalize(expected)
 		assert second_id == id
 		assert semantic_types_equal(second, expected)
-		assert interner.name(id) == expected.name()
+		assert interner.source_type_id(id) == expected.source_type_id()
 		probed := interner.probe(expected) or { panic('published type is missing') }
 		assert semantic_types_equal(probed, expected)
 	}
@@ -110,7 +112,7 @@ fn test_type_interner_promotes_scoped_slice_growth() {
 			id, _ := interner.canonicalize(Type(Unknown{
 				reason: 'scoped_type_${i}'
 			}))
-			interner.name(id)
+			interner.source_type_id(id)
 		}
 		assert unsafe { prealloc_scope_owns(scope, interner.types.data) }
 		assert unsafe { prealloc_scope_owns(scope, interner.names.data) }

@@ -8,10 +8,12 @@ pub enum AllocationLayout {
 	scanned
 }
 
+// requires_aligned_allocation reports whether a value needs over-aligned storage.
 pub fn (tc &TypeChecker) requires_aligned_allocation(typ &Type) bool {
 	return tc.allocation_layout(typ).has(.aligned)
 }
 
+// allocation_layout describes alignment and scanning requirements of a canonical value.
 pub fn (tc &TypeChecker) allocation_layout(typ &Type) AllocationLayout {
 	match typ {
 		Primitive, Char, Rune, ISize, USize, Enum { return AllocationLayout.zero() }
@@ -49,7 +51,7 @@ fn (tc &TypeChecker) value_allocation_layout(typ &Type,
 			}
 			return layout
 		}
-		Struct, SumType { typ.name }
+		Struct, SumType { typ.name() }
 		else { return .scanned }
 	}
 	if seen[name] {
@@ -60,9 +62,10 @@ fn (tc &TypeChecker) value_allocation_layout(typ &Type,
 	if typ is Struct {
 		return tc.struct_allocation_layout(name, mut seen)
 	}
-	variants := tc.sum_types[tc.sum_base_name(name)] or { return .scanned }
+	base := tc.sum_base_name(flat.source_type_id(name))
+	variants := tc.sum_types.type_ids(flat.source_type_name(base)) or { return .scanned }
 	for raw in variants {
-		variant := tc.concrete_sum_variant_name(name, raw)
+		variant := tc.concrete_sum_variant_name(flat.source_type_id(name), raw)
 		parsed := tc.parse_canonical_type_cached(variant)
 		layout |= tc.value_allocation_layout(parsed, mut seen)
 	}
@@ -85,8 +88,8 @@ fn (tc &TypeChecker) struct_allocation_layout(name string,
 	if key !in tc.structs {
 		return layout | .scanned
 	}
-	for field in tc.struct_fields_for_type(name) {
-		if tc.struct_field_is_shared(name, field.name) {
+	for field in tc.struct_fields_for_type(flat.source_type_id(name)) {
+		if tc.struct_field_is_shared(flat.source_type_id(name), field.name) {
 			layout |= .scanned
 			continue
 		}

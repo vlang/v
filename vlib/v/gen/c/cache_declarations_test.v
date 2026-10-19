@@ -3,6 +3,71 @@ module c
 import v.flat
 import v.types
 
+fn test_final_cached_signatures_declare_tuple_payloads_before_wrappers() {
+	for is_result in [false, true] {
+		mut a := flat.FlatAst.new()
+		fn_id := a.add_node(flat.Node{ kind: .fn_decl, value: 'pair' })
+		mut tc := types.TypeChecker.new(&a)
+		tc.structs['dep.Box'] = [types.StructField{
+			name: 'child'
+			typ:  types.Struct{ name_id: flat.source_type_id('dep.Child') }
+		}]
+		tc.structs['dep.Child'] = [types.StructField{
+			name: 'value'
+			typ:  types.int_
+		}]
+		tc.structs['dep.Unused'] = []types.StructField{}
+		payload := types.Type(types.MultiReturn{
+			types: [
+				types.Type(types.Struct{ name_id: flat.source_type_id('dep.Box') }),
+				types.Type(types.string_),
+			]
+		})
+		tc.fn_ret_types['dep.pair'] = if is_result {
+			types.Type(types.ResultType{ base_type: payload })
+		} else {
+			types.Type(types.OptionType{ base_type: payload })
+		}
+		mut g := FlatGen.new()
+		g.a = &a
+		g.tc = &tc
+		g.cache_decl_demand = true
+		g.decl_types_ready = true
+		g.optional_types_ready = true
+		g.multi_return_types_ready = true
+		g.fn_gen_items = [
+			FlatFnGenItem{ node_id: fn_id, module: 'dep', file: 'dep.v', c_name: 'dep__pair' },
+		]
+		g.gen_type_declaration_block()
+		output := g.sb.str()
+		child_position := output.index('struct dep__Child {') or { -1 }
+		box_position := output.index('struct dep__Box {') or { -1 }
+		tuple_position := output.index('struct multi_return_dep__Box_string {') or { -1 }
+		wrapper := if is_result { '__v_result' } else { '__v_option' }
+		wrapper_position := output.index('typedef struct ${wrapper}_multi_return_dep__Box_string') or {
+			-1
+		}
+		assert child_position >= 0, output
+		assert box_position > child_position, output
+		assert tuple_position > box_position, output
+		assert wrapper_position > tuple_position, output
+		assert !output.contains('dep__Unused'), output
+	}
+}
+
+fn test_cached_header_retains_its_vlib_source_classification() {
+	mut a := flat.FlatAst.new()
+	a.cached_header_sources['/cache/builtin.vh'] = '/repo/vlib/builtin/array.v'
+	a.cached_header_sources['/cache/user.vh'] = '/repo/project/user.v'
+	mut g := FlatGen.new()
+	g.a = &a
+	g.compiler_vroot = '/repo'
+	assert g.c_source_file_is_in_vlib('/cache/builtin.vh')
+	assert g.c_source_file_is_in_vlib('/repo/vlib/builtin/array.v')
+	assert !g.c_source_file_is_in_vlib('/cache/user.vh')
+	assert !g.c_source_file_is_in_vlib('/repo/project/user.v')
+}
+
 fn test_cache_declaration_references_ignore_literals_and_comments() {
 	mut g := FlatGen.new()
 	g.cache_collect_declaration_refs('needed("quoted \\\" ignored", \'x\'); /* hidden */ // hidden_too\nother_2;')
@@ -23,7 +88,7 @@ fn test_cache_declarations_include_nested_payloads_and_recursive_fields() {
 				typ: &types.Type(types.Map{
 					key_type:   &types.Type(types.string_)
 					value_type: &types.Type(types.OptionType{
-						base_type: &types.Type(types.Struct{ name: 'sample.Child' })
+						base_type: &types.Type(types.Struct{ name_id: flat.source_type_id('sample.Child') })
 					})
 				})
 			}]
@@ -33,7 +98,7 @@ fn test_cache_declarations_include_nested_payloads_and_recursive_fields() {
 	tc.structs['sample.Child'] = [types.StructField{
 		name: 'parent'
 		typ:  tc.intern_type_reference(types.Type(types.Pointer{
-			base_type: &types.Type(types.Struct{ name: 'sample.Parent' })
+			base_type: &types.Type(types.Struct{ name_id: flat.source_type_id('sample.Parent') })
 		}))
 	}]
 	tc.structs['sample.Unused'] = []types.StructField{}
@@ -41,12 +106,76 @@ fn test_cache_declarations_include_nested_payloads_and_recursive_fields() {
 	g.a = &a
 	g.tc = &tc
 	g.cache_decl_demand = true
-	mut seen := map[string]bool{}
-	g.cache_require_declaration_type(types.Struct{ name: 'sample.Parent' }, mut seen)
+	mut seen := map[u32]bool{}
+	g.cache_require_declaration_type(types.Struct{ name_id: flat.source_type_id('sample.Parent') }, mut seen)
 	names := g.c_struct_decl_names()
 	assert 'sample.Parent' in names
 	assert 'sample.Child' in names
 	assert 'sample.Unused' !in names
+}
+
+fn test_cache_demand_keeps_fixed_array_alias_element_layouts() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['sample.Box'] = []types.StructField{}
+	tc.structs['sample.Unused'] = []types.StructField{}
+	tc.type_aliases.set_id('sample.Boxes', flat.source_type_id('[2]sample.Box'))
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.cache_decl_demand = true
+	g.finish_cache_declaration_demand('')
+	names := g.c_struct_decl_names()
+	assert 'sample.Box' in names, names.str()
+	assert 'sample.Unused' !in names, names.str()
+}
+
+fn test_cache_demand_keeps_shared_wrapper_payload_layouts() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['sample.Box'] = []types.StructField{}
+	tc.struct_modules['sample.Box'] = 'sample'
+	tc.structs['sample.Unused'] = []types.StructField{}
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.cache_decl_demand = true
+	g.register_shared_type_name(flat.source_type_id('sample.Box'), 'sample')
+	g.finish_cache_declaration_demand('')
+	names := g.c_struct_decl_names()
+	assert 'sample.Box' in names, names.str()
+	assert 'sample.Unused' !in names, names.str()
+}
+
+fn test_cache_map_key_helpers_follow_their_builtin_prototypes() {
+	mut a := flat.FlatAst.new()
+	file_id := a.add_val(.file, 'builtin.vh')
+	module_id := a.add_val(.module_decl, 'builtin')
+	fn_id := a.add_node(flat.Node{
+		kind:   .fn_decl
+		value:  'fast_string_eq'
+		typ:    flat.source_type_bool
+		is_mut: true
+	})
+	mut tc := types.TypeChecker.new(&a)
+	tc.fn_ret_types['fast_string_eq'] = types.bool_
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.top_level_node_ids = [int(file_id), int(module_id), int(fn_id)]
+	g.cache_decl_demand = true
+	g.fixed_array_map_key_types['Array_fixed_string_2'] = types.ArrayFixed{
+		elem_type: types.Type(types.string_)
+		len:       2
+	}
+	g.gen_pre_body_support_declarations()
+	source := g.sb.str()
+	prototype := source.index('bool fast_string_eq(') or { panic(source) }
+	definition := source.index('static u64 Array_fixed_string_2_map_key_hash(void* pkey) {') or {
+		panic(source)
+	}
+	assert prototype < definition, source
+	assert source.contains('fast_string_eq((*left)[i], (*right)[i])'), source
 }
 
 fn test_cache_signature_collection_omits_unused_function_payloads() {
@@ -55,10 +184,10 @@ fn test_cache_signature_collection_omits_unused_function_payloads() {
 	tc.structs['sample.Used'] = []types.StructField{}
 	tc.structs['sample.Unused'] = []types.StructField{}
 	tc.fn_ret_types['sample.used'] = types.OptionType{
-		base_type: &types.Type(types.Struct{ name: 'sample.Used' })
+		base_type: &types.Type(types.Struct{ name_id: flat.source_type_id('sample.Used') })
 	}
 	tc.fn_ret_types['sample.unused'] = types.OptionType{
-		base_type: &types.Type(types.Struct{ name: 'sample.Unused' })
+		base_type: &types.Type(types.Struct{ name_id: flat.source_type_id('sample.Unused') })
 	}
 	tc.fn_type_modules['sample.used'] = 'sample'
 	tc.fn_type_modules['sample.unused'] = 'sample'
@@ -116,20 +245,20 @@ fn test_cache_demand_keeps_unused_constant_wrappers_and_their_field_graph_out() 
 	tc.structs['sample.Used'] = []types.StructField{}
 	tc.structs['sample.Unused'] = [types.StructField{
 		name: 'child'
-		typ:  types.Struct{ name: 'sample.UnusedChild' }
+		typ:  types.Struct{ name_id: flat.source_type_id('sample.UnusedChild') }
 	}]
 	tc.structs['sample.UnusedChild'] = [types.StructField{
 		name: 'parent'
-		typ:  types.Pointer{ base_type: &types.Type(types.Struct{ name: 'sample.Unused' }) }
+		typ:  types.Pointer{ base_type: &types.Type(types.Struct{ name_id: flat.source_type_id('sample.Unused') }) }
 	}]
 	tc.const_types['sample.used'] = types.OptionType{
-		base_type: &types.Type(types.Struct{ name: 'sample.Used' })
+		base_type: &types.Type(types.Struct{ name_id: flat.source_type_id('sample.Used') })
 	}
 	tc.const_types['sample.unused'] = types.OptionType{
-		base_type: &types.Type(types.Struct{ name: 'sample.Unused' })
+		base_type: &types.Type(types.Struct{ name_id: flat.source_type_id('sample.Unused') })
 	}
 	tc.const_types['sample.unused_result'] = types.ResultType{
-		base_type: &types.Type(types.Struct{ name: 'sample.Unused' })
+		base_type: &types.Type(types.Struct{ name_id: flat.source_type_id('sample.Unused') })
 	}
 	// A constant and a function can share a V name but use different C symbols.
 	tc.fn_ret_types['sample.used'] = types.int_

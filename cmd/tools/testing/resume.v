@@ -67,8 +67,8 @@ fn (r TestResume) save() ! {
 		return
 	}
 	os.mkdir_all(os.dir(r.path))!
-	// Each worker owns a different temporary directory. Rename only after the
-	// complete success record is written, keeping interrupted writes harmless.
+	// Each worker owns a different temporary directory. Replace the record only after
+	// the complete success record is written, keeping interrupted writes harmless.
 	tmp_dir := '${r.path}.${os.getpid()}.${rand.ulid()}.tmp'
 	os.mkdir(tmp_dir, mode: 0o700)!
 	defer {
@@ -76,7 +76,9 @@ fn (r TestResume) save() ! {
 	}
 	tmp_path := os.join_path(tmp_dir, 'progress')
 	os.write_file(tmp_path, r.contents)!
-	os.rename(tmp_path, r.path)!
+	// An edited test rewrites its record at the same path. A refused replacement leaves
+	// the previous record in place, so a failed save never removes a record.
+	replace_record(tmp_path, r.path)!
 }
 
 fn (mut ts TestSession) fail_test_resume(err IError, cmd string, mtc MessageThreadContext) {

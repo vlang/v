@@ -21,6 +21,23 @@ fn test_encode_and_decode() {
 	assert decoded2 == input
 }
 
+fn test_decoder_rejects_out_of_alphabet_bytes() {
+	for alphabet in [base32.std_alphabet, base32.hex_alphabet] {
+		for padding in [base32.std_padding, base32.no_padding] {
+			enc := base32.new_encoding_with_padding(alphabet, padding)
+			for invalid in [u8(`?`), `!`, 0, 0x80, 0xff] {
+				mut input := enc.encode_string_to_string('abcde').bytes()
+				input[3] = invalid
+				if result := enc.decode(input) {
+					assert false, 'accepted invalid byte ${invalid}: ${result}'
+				} else {
+					assert err.msg() == 'illegal base32 data at input byte 3'
+				}
+			}
+		}
+	}
+}
+
 fn test_unpadded_invalid_final_quantum_lengths() {
 	for alphabet in [base32.std_alphabet, base32.hex_alphabet] {
 		enc := base32.new_encoding_with_padding(alphabet, base32.no_padding)

@@ -49,7 +49,7 @@ fn test_pointer_cast_mut_argument_materializes_pointer_slot() {
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
-	value := types.Type(types.Struct{ name: 'CallbackContext' })
+	value := types.Type(types.Struct{ name_id: flat.source_type_id('CallbackContext') })
 	pointer := types.Type(types.Pointer{ base_type: value })
 	slot := types.Type(types.Pointer{ base_type: pointer })
 	context := a.add_node(flat.Node{ kind: .ident, value: 'ctx' })

@@ -16,10 +16,17 @@ and the client's callbacks have been registered.
 
 ## Explicit write batching
 
+Opening handshakes reject empty input and malformed header lines with an error.
+Each nonempty header line needs a name followed by a colon; values may contain further colons.
+
 `client.write_messages([]websocket.Message)` sends the supplied complete frames
 in order without waiting to collect more traffic. It uses one socket write and
 returns the wire byte count, including headers. Empty batches are a no-op.
 Control frames must be at most 125 bytes; continuation frames are not accepted.
+The same control payload limit applies to `write`, `write_ptr`, and `close`.
+For `close`, the two-byte status code leaves at most 123 bytes for the reason.
+An oversized reason sends no frame bytes and returns an error; the usual socket shutdown,
+state reset, and close event still run.
 Close frames are not accepted; call `client.close(code, reason)` for the closing handshake.
 The entire batch is validated before any frames are sent.
 Socket writes, including pongs from the reader, are serialized per connection.
@@ -40,3 +47,6 @@ send handles, backpressure, deadlines, and graceful shutdown. The existing `Clie
 and `Server` APIs keep their execution model.
 See [the reactor documentation](REACTOR.md) for ownership, callbacks, and limits.
 See [text validation](FRAME_VALIDATION.md) for the ASCII fast path and Unicode fallback.
+
+Incoming 64-bit frame lengths must have the most significant bit clear and fit in
+V's `int` range. Oversized lengths are rejected before allocating the payload buffer.

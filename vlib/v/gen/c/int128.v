@@ -319,6 +319,9 @@ fn (mut g FlatGen) gen_int128_cast(target_type types.Type, source_id flat.NodeId
 		// The digits of a wide literal are lowered here, so the C compiler never
 		// sees an oversized constant and cannot quietly keep the low 64 bits.
 		literal := g.a.nodes[int(source_id)]
+		if literal.kind == .paren && literal.children_count == 1 {
+			return g.gen_int128_cast(target_type, g.a.child(&literal, 0))
+		}
 		if literal.kind == .int_literal {
 			if parts := int128_literal_parts(literal.value) {
 				g.write('__v_u128_make(${parts.high}ULL, ${parts.low}ULL)')
@@ -326,12 +329,21 @@ fn (mut g FlatGen) gen_int128_cast(target_type types.Type, source_id flat.NodeId
 			}
 		}
 		if literal.kind == .prefix && literal.op == .minus && literal.children_count > 0 {
-			magnitude := g.a.child_node(literal, 0)
+			mut magnitude := g.a.child_node(literal, 0)
+			for magnitude.kind == .paren && magnitude.children_count == 1 {
+				magnitude = g.a.child_node(magnitude, 0)
+			}
 			if magnitude.kind == .int_literal {
 				if parts := int128_literal_parts(magnitude.value) {
 					g.write('__v_i128_neg(__v_u128_make(${parts.high}ULL, ${parts.low}ULL))')
-					return true
+				} else {
+					// Widen before negating: a ULL magnitude above 2^63 would otherwise
+					// wrap in 64 bits and become positive before the cast to i128.
+					text := numeric_literal_c_text(magnitude)
+					unsigned_text := if text.ends_with('ULL') { text } else { text + 'ULL' }
+					g.write('__v_i128_neg(__v_i128_from_u64(${unsigned_text}))')
 				}
+				return true
 			}
 		}
 	}
@@ -411,7 +423,7 @@ fn (mut g FlatGen) gen_int128_cast(target_type types.Type, source_id flat.NodeId
 // are types of their own in V rather than primitives, so they need naming here
 // too, or the cast falls through to a C cast the struct representation rejects.
 fn (mut g FlatGen) int128_narrow_c_type(t types.Type) ?string {
-	clean := unalias_type(t)
+	clean := types.Type(*unalias_type(t))
 	match clean {
 		types.Primitive {
 			if clean.props.has(.integer) && clean.size > 0 && clean.size < 128 {

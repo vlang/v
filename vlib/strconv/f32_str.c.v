@@ -318,6 +318,9 @@ fn f32_to_decimal(mant u32, exp u32) Dec32 {
 //=============================================================================
 
 // f32_to_str returns a `string` in scientific notation with max `n_digit` after the dot.
+// The digits are the ones of the shortest decimal number that converts back to `f`, rounded half
+// up when there are more than `n_digit` of them after the dot. A subnormal `f` is rounded from its
+// exact value instead, because its shortest digits are too few to be rounded again.
 pub fn f32_to_str(f f32, n_digit int) string {
 	mut u1 := Uf32{}
 	u1.f = f
@@ -340,6 +343,12 @@ pub fn f32_to_str(f f32, n_digit int) string {
 		d = f32_to_decimal(mant, exp)
 	}
 
+	if exp == 0 && dec_digits(d.m) > (if n_digit > 0 { n_digit + 1 } else { 1 }) {
+		// A subnormal has fewer significant bits than a normal f32, so rounding its shortest
+		// digits again can give the wrong last digit; round its exact value instead.
+		return exact_float_scientific(f64(f), n_digit)
+	}
+
 	// println("${d.m} ${d.e}")
 	return d.get_string_32(neg, n_digit, 0)
 }
@@ -350,6 +359,8 @@ pub fn f32_to_str(f f32, n_digit int) string {
 // when there are fewer. The result is thus not always the correctly rounded exact value of `f`,
 // that C's `printf("%.*e")` prints: `f32_to_str_pad(0.1, 10)` is `1.0000000000e-01`
 // (and not `1.0000000149e-01`), and `f32_to_str_pad(9.95, 1)` is `1.0e+01` (and not `9.9e+00`).
+// A subnormal `f` is the exception: its shortest digits are too few even for a small `n_digit`
+// (`1e-45` for the smallest one, `1.401298464...e-45`), so its exact value is rounded instead.
 // Example: assert strconv.f32_to_str_pad(1234.5, 2) == '1.23e+03'
 // Example: assert strconv.f32_to_str_pad(1.5, 4) == '1.5000e+00'
 pub fn f32_to_str_pad(f f32, n_digit int) string {
@@ -371,6 +382,10 @@ pub fn f32_to_str_pad(f f32, n_digit int) string {
 		// zero gets its digits after the dot too
 		zero := Dec32{}
 		return zero.get_string_32(neg, n_digit, n_digit)
+	}
+	if exp == 0 {
+		// subnormal: its shortest digits can not be padded, see above
+		return exact_float_scientific(f64(f), n_digit)
 	}
 
 	mut d, ok := f32_to_decimal_exact_int(mant, exp)

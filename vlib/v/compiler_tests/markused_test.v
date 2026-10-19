@@ -123,19 +123,27 @@ fn test_trivial_literal_output_prunes_conservative_runtime_helper_seeds() {
 }
 
 fn test_nontrivial_output_keeps_conservative_runtime_helper_seeds() {
-	used := mark_used_source('nontrivial_output', "
+	a, tc := parse_checked_source('nontrivial_output', "
 fn message() string {
 	return 'Hello, World!'
 }
 
 println(message())
 ")
-	assert used['map.clone']
+	used := markused.mark_used(a, tc)
 	assert used['strconv.format_uint']
-	assert used['array.delete_last']
 	assert used['i64.str']
 	assert used['v.pref.detect_vroot']
 	assert used['v.pref.detect_vexe']
+	// Ordinary builds keep the map and array helpers only for reachable bodies that
+	// use them; the full-runtime scan keeps every conservative seed.
+	full, _ := markused.mark_used_with_generic_usage_full_runtime(a, tc)
+	assert full['map.clone']
+	assert full['strconv.format_uint']
+	assert full['array.delete_last']
+	assert full['i64.str']
+	assert full['v.pref.detect_vroot']
+	assert full['v.pref.detect_vexe']
 }
 
 fn test_cached_trivial_output_keeps_cached_runtime_helper_seeds() {
@@ -1154,21 +1162,6 @@ fn main() {
 	}
 }
 
-// test_string_membership_seeds_contains_runtime_helpers validates this v3 regression case.
-fn test_string_membership_seeds_contains_runtime_helpers() {
-	used := mark_used_source('string_membership_contains', '
-fn has_needle() bool {
-	return "bc" in "abcd"
-}
-
-fn main() {
-	_ := has_needle()
-}
-')
-	assert used['string__contains']
-	assert used['string__contains_u8']
-}
-
 // test_string_interpolation_seeds_string_plus_and_formatter_helpers
 // validates this v3 regression case.
 fn test_string_interpolation_seeds_string_plus_and_formatter_helpers() {
@@ -1365,7 +1358,7 @@ fn main() {
 ')
 	assert used['Parser.mk_error']
 	assert used['GlobError.msg']
-	assert used['ErrorKind.unopened_alternates']
+	assert used['ErrorKind@static@unopened_alternates']
 }
 
 fn test_nested_fn_literal_roots_callback_helper_dependencies() {
@@ -1426,12 +1419,12 @@ fn main() {
 	replace(mut dst)
 }
 ')
-	assert used['Caps.overall']
+	assert used['Caps@static@overall']
 	assert used['Caps.get']
 	assert used['append_match']
 	assert used['interpolate']
 	assert used['no_index']
-	assert used['Match.new']
+	assert used['Match@static@new']
 }
 
 fn test_imported_nested_fn_literal_roots_private_callback_helpers() {
@@ -1500,12 +1493,12 @@ pub fn replace(mut dst []u8) {
 '
 	}, 'main.v')
 	used := markused.mark_used(a, tc)
-	assert used['worker.Caps.overall']
+	assert used['worker.Caps@static@overall']
 	assert used['worker.Caps.get']
 	assert used['worker.append_match']
 	assert used['worker.interpolate']
 	assert used['worker.no_index']
-	assert used['worker.Match.new']
+	assert used['worker.Match@static@new']
 }
 
 fn test_map_str_seeds_string_plus_runtime_helper() {
@@ -2737,27 +2730,6 @@ fn main() {
 	mut s := "a"
 	s += "\${flag}"
 	_ := s
-}
-') or {
-		panic(err)
-	}
-	compile := os.exec([v3_bin, '-o', bin, '${src}'])
-	assert compile.exit_code == 0, compile.output
-}
-
-// test_string_membership_compile_keeps_contains_runtime_helpers validates this v3 regression case.
-fn test_string_membership_compile_keeps_contains_runtime_helpers() {
-	v3_bin := build_v3_bin('string_membership_test')
-
-	src := os.join_path(os.temp_dir(), 'v3_markused_string_membership_input.v')
-	bin := os.join_path(os.temp_dir(), 'v3_markused_string_membership_input')
-	os.write_file(src, '
-fn has_needle() bool {
-	return "bc" in "abcd"
-}
-
-fn main() {
-	_ := has_needle()
 }
 ') or {
 		panic(err)

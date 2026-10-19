@@ -356,8 +356,8 @@ fn validate_generalizedtime(s string) !bool {
 	if hour > 23 || minute > 59 || second > 59 {
 		return false
 	}
-	// assert pos == src.len - 1
-	if src[pos] != 0x5A {
+	// the `Z` must terminate the value: anything after it is trailing garbage
+	if pos != src.len - 1 || src[pos] != 0x5A {
 		return false
 	}
 	return true

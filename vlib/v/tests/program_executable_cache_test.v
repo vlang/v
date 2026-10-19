@@ -189,8 +189,8 @@ fn cache_modes() [][]string {
 		root := new_project('probe')
 		probe := os.join_path(root, 'probe.v')
 		os.write_file(probe, 'fn main() {}\n') or { panic(err) }
-		saved := pin_module_cache(cache_dir(['-usecache']))
-		cold := build(root, ['-usecache'], probe, 'probe')
+		saved := pin_module_cache(cache_dir([]string{}))
+		cold := build(root, []string{}, probe, 'probe')
 		for env in saved {
 			env.restore()
 		}
@@ -199,7 +199,7 @@ fn cache_modes() [][]string {
 		}
 	}
 	if (os.read_file(answer) or { '' }) == 'true' {
-		modes << ['-usecache']
+		modes << []string{}
 	}
 	return modes
 }
@@ -850,7 +850,7 @@ fn test_headers_that_the_c_of_a_program_reads_are_inputs_of_the_executable() {
 		time.sleep(2200 * time.millisecond)
 		timed := build(root, flags, main_file, 'timed')
 		assert run_built(root, 'timed').len == 'Jan  1 2026 00:00:00'.len
-		compiles_each_time := flags == ['-usecache'] || os.user_os() != 'macos'
+		compiles_each_time := flags == []string{} || os.user_os() != 'macos'
 		if compiles_each_time || timed.contains('V3 program executable not cached') {
 			assert timed.contains('V3 program executable not cached: the C of the program asks for the time of its compilation'), timed
 			assert !restored(build(root, flags, main_file, 'timed_again'))

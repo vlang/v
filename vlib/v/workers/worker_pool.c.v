@@ -512,6 +512,16 @@ pub fn (mut p Pool) close() {
 	if p.is_closed {
 		return
 	}
+	p.stop()
+	p.join()
+}
+
+// stop closes the pool and asks every thread to exit, without waiting for them.
+// Call join, possibly from another thread, before the pool's memory is released.
+pub fn (mut p Pool) stop() {
+	if p.is_closed {
+		return
+	}
 	p.is_closed = true
 	unregister_open_pool(p)
 	if p.generation != v3_fork_generation {
@@ -524,6 +534,10 @@ pub fn (mut p Pool) close() {
 			stop: true
 		}
 	}
+}
+
+// join waits for the threads of a stopped pool to exit.
+pub fn (mut p Pool) join() {
 	for idx, worker in p.threads {
 		if worker_thread_join(worker) != 0 {
 			panic('failed to join compiler worker ${idx}')

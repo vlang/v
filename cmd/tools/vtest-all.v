@@ -271,17 +271,15 @@ fn get_all_commands() []Command {
 			rmfile: 'swait'
 		}
 		res << Command{
-			line:          '${vexe} -cc gcc -keepc -freestanding -o bel vlib/os/bare/bare_example_linux.v'
-			okmsg:         'V can compile with -freestanding on Linux with GCC.'
-			rmfile:        'bel'
-			v3_compatible: false
+			line:   '${vexe} -cc gcc -keepc -freestanding -o bel vlib/os/bare/bare_example_linux.v'
+			okmsg:  'V can compile with -freestanding on Linux with GCC.'
+			rmfile: 'bel'
 		}
 
 		res << Command{
-			line:          '${vexe} -cc gcc -keepc -freestanding -o str_array vlib/strconv/bare/str_array_example.v'
-			okmsg:         'V can compile & allocate memory with -freestanding on Linux with GCC.'
-			rmfile:        'str_array'
-			v3_compatible: false
+			line:   '${vexe} -cc gcc -keepc -freestanding -o str_array vlib/strconv/bare/str_array_example.v'
+			okmsg:  'V can compile & allocate memory with -freestanding on Linux with GCC.'
+			rmfile: 'str_array'
 		}
 		res << Command{
 			line:          '${vexe} -cc gcc -keepc -freestanding -o time_now vlib/time/bare/time_now_example.v'
@@ -373,17 +371,17 @@ fn get_all_commands() []Command {
 		v3_compatible: false
 	}
 	res << Command{
-		line:          '${vexe} -usecache -cg examples/hello_world.v'
-		okmsg:         '`v -usecache -cg` works.'
+		line:          '${vexe} -cg examples/hello_world.v'
+		okmsg:         '`v -cg` works.'
 		rmfile:        'examples/hello_world'
 		v3_compatible: false
 	}
 	// Note: test that a program that depends on thirdparty libraries with its
 	// own #flags (tetris depends on gg, which uses sokol) can be compiled
-	// with -usecache:
+	// with default caching:
 	res << Command{
-		line:   '${vexe} -usecache examples/tetris/tetris.v'
-		okmsg:  '`v -usecache` works.'
+		line:   '${vexe} examples/tetris/tetris.v'
+		okmsg:  '`v` with default caching works.'
 		rmfile: 'examples/tetris/tetris'
 	}
 	$if macos || linux {

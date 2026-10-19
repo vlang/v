@@ -1,3 +1,4 @@
+// vtest ownership
 import os
 
 const gcg_vexe = @VEXE

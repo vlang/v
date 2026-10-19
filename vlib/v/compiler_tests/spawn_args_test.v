@@ -30,13 +30,17 @@ fn compact_c(c_code string) string {
 }
 
 fn assert_spawn_pthread_decls(c_code string) {
-	assert c_code.contains('int pthread_attr_init(pthread_attr_t* attr);'), c_code
-	assert c_code.contains('int pthread_attr_destroy(pthread_attr_t* attr);'), c_code
-	assert c_code.contains('int pthread_attr_setstacksize(pthread_attr_t* attr, size_t stacksize);'), c_code
-	assert c_code.contains('int pthread_create(void* thread, void* attr, void* start_routine, void* arg);'), c_code
-	assert c_code.contains('int pthread_join(void* thread, void** retval);'), c_code
-	assert !c_code.contains('i32 pthread_attr_init(void* attr);'), c_code
-	assert !c_code.contains('i32 pthread_attr_destroy(void* attr);'), c_code
+	// Headerless C declares the thread runtime's pthread functions once, from their V
+	// bindings in builtin/cfns.c.v; the hand-written `pthread_attr_t *` prototypes of the
+	// headerless preamble were removed (aae3f51f7d) and must not come back beside them.
+	assert c_code.count('i32 pthread_attr_init(void* attr);') == 1, c_code
+	assert c_code.count('i32 pthread_attr_destroy(void* attr);') == 1, c_code
+	assert c_code.count('i32 pthread_attr_setstacksize(void* attr, size_t stacksize);') == 1, c_code
+	assert c_code.count('i32 pthread_create(void* thread, void* attr, void* start_routine, void* arg);') == 1, c_code
+	assert c_code.count('i32 pthread_join(void* thread, void* retval);') == 1, c_code
+	assert !c_code.contains('pthread_attr_init(pthread_attr_t* attr);'), c_code
+	assert !c_code.contains('pthread_attr_destroy(pthread_attr_t* attr);'), c_code
+	assert !c_code.contains('pthread_attr_setstacksize(pthread_attr_t* attr,'), c_code
 	assert c_code.contains('typedef struct { pthread_t handle; } __v_thread;'), c_code
 	assert c_code.contains('static __v_thread __v_thread_spawn('), c_code
 	assert c_code.contains('#define V_THREAD_STACK_SIZE 8388608'), c_code
@@ -79,8 +83,10 @@ fn main() {
 	assert_spawn_pthread_decls(c_code)
 	assert c_compact.contains('typedefstruct{main__Counter*a0;i64a1;i64a2;}add_thread_args;'), c_code
 	assert c_compact.contains('->a0=c;'), c_code
-	assert c_compact.contains('__v_thread_spawn(add_args_thread_wrapper,(void*)_sa'), c_code
-	assert c_code.contains('add(p->a0, p->a1, p->a2)'), c_code
+	// The handle is discarded, so the thread starts detached (efad5b26ba).
+	assert c_compact.contains('__v_thread_spawn_detached(add_args_thread_wrapper_detached,(void*)_sa'), c_code
+	// The wrapper reads the packet through `__v3_spawn_args` (5aa6d1d034).
+	assert c_code.contains('add(__v3_spawn_args->a0, __v3_spawn_args->a1, __v3_spawn_args->a2)'), c_code
 }
 
 // A `spawn` of a method with arguments must pack the receiver and arguments and
@@ -109,7 +115,7 @@ fn main() {
 	assert c_compact.contains('->a0=c;'), c_code
 	assert c_compact.contains('__v_thread_spawn_detached(Counter__bump_args_thread_wrapper_detached,(void*)_sa'), c_code
 
-	assert c_code.contains('Counter__bump(p->a0, p->a1)'), c_code
+	assert c_code.contains('Counter__bump(__v3_spawn_args->a0, __v3_spawn_args->a1)'), c_code
 }
 
 // A no-arg `spawn` of a by-value receiver method must copy the receiver into the
@@ -139,12 +145,12 @@ fn main() {
 	assert !c_compact.contains('->a0=&g;'), c_code
 	assert c_compact.contains('__v_thread_spawn_detached(Greeter__greet_args_thread_wrapper_detached,(void*)_sa'), c_code
 
-	assert c_code.contains('Greeter__greet(p->a0)'), c_code
+	assert c_code.contains('Greeter__greet(__v3_spawn_args->a0)'), c_code
 	assert !c_code.contains('(Greeter)arg'), c_code
 }
 
 // A pointer receiver/argument whose source is a rvalue must be stored by value in
-// the heap argument packet, then passed to the spawned call as `&p->field`.
+// the heap argument packet, then passed to the spawned call as `&__v3_spawn_args->field`.
 // Capturing the address of a stack temporary would race the caller's frame, and
 // assigning the rvalue directly into a pointer field is invalid C.
 fn test_spawn_pointer_rvalues_store_value_in_heap_packet() {
@@ -179,10 +185,10 @@ fn main() {
 	c_compact := compact_c(c_code)
 	assert c_code.contains('pthread_create'), c_code
 	assert c_compact.contains('typedefstruct{main__Boxa0;}Box__show_thread_args'), c_code
-	assert c_compact.contains('Box__show(&p->a0)'), c_code
+	assert c_compact.contains('Box__show(&__v3_spawn_args->a0)'), c_code
 	assert !c_compact.contains('typedefstruct{main__Box*a0;}Box__show_thread_args'), c_code
 	assert c_compact.contains('typedefstruct{i64a0;}takes_ptr_thread_args'), c_code
-	assert c_compact.contains('takes_ptr(&p->a0)'), c_code
+	assert c_compact.contains('takes_ptr(&__v3_spawn_args->a0)'), c_code
 	assert !c_compact.contains('typedefstruct{i64*a0;}takes_ptr_thread_args'), c_code
 }
 
@@ -205,7 +211,7 @@ fn main() {
 	c_compact := compact_c(c_code)
 	assert c_compact.contains('typedefstruct{i64*a0;}takes_ptr_thread_args'), c_code
 	assert c_compact.contains('->a0=value;'), c_code
-	assert c_compact.contains('takes_ptr(p->a0)'), c_code
+	assert c_compact.contains('takes_ptr(__v3_spawn_args->a0)'), c_code
 	assert !c_compact.contains('typedefstruct{i64a0;}takes_ptr_thread_args'), c_code
 }
 
@@ -222,7 +228,8 @@ fn main() {
 }
 	')
 	assert c_code.contains('(i64*)__v_thread_alloc(sizeof(i64))'), c_code
-	assert c_code.contains('__v_thread_join(t)'), c_code
+	// `wait()` copies the handle and panics on an uninitialized thread (7379623586).
+	assert c_code.contains('__v_thread __twthread0 = t; if (!__twthread0.handle) v_panic(_S("unable to join thread")); void* __twres0 = __v_thread_join(__twthread0);'), c_code
 	assert !c_code.contains('pthread_join((pthread_t)'), c_code
 }
 
@@ -243,8 +250,8 @@ fn main() {
 	c_compact := compact_c(c_code)
 	assert c_code.contains('fn_value_args_thread_wrapper'), c_code
 	assert c_compact.contains('f;}fn_value_thread_args_'), c_code
-	assert c_compact.contains('p->f()'), c_code
-	assert !c_compact.contains('closure__closure_try_destroy((void*)p->f);'), c_code
+	assert c_compact.contains('__v3_spawn_args->f()'), c_code
+	assert !c_compact.contains('closure__closure_try_destroy((void*)__v3_spawn_args->f);'), c_code
 	assert !c_compact.contains('closure__closure_try_destroy((void*)cb);'), c_code
 }
 

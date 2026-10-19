@@ -7,7 +7,7 @@ const mut_param_receiver_vlib_dir = os.dir(mut_param_receiver_v3_dir)
 const mut_param_receiver_v3_src = os.join_path(mut_param_receiver_v3_dir, 'v.v')
 
 fn mut_param_receiver_v3_bin_path() string {
-	return os.join_path(os.temp_dir(), 'v3_generic_mut_param_receiver_test')
+	return os.join_path(os.temp_dir(), 'v3_generic_mut_param_receiver_test') + $if windows { '.exe' } $else { '' }
 }
 
 fn testsuite_begin() {

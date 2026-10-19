@@ -132,7 +132,7 @@ pub fn (mut s Scanner) scan() !token.Token {
 			return s.new_token(.number, num, num.len)
 		}
 
-		is_signed_number := is_sign && u8(s.at()).is_digit() && !u8(s.peek(-1)).is_digit()
+		is_signed_number := is_sign && u8(s.at()).is_digit() && !u8(s.peek(-2)).is_digit()
 		is_digit := byte_c.is_digit()
 		if is_digit || is_signed_number {
 			num := s.extract_number()!
@@ -168,8 +168,8 @@ pub fn (mut s Scanner) scan() !token.Token {
 				}
 				// Date-Time in RFC 3339 is allowed to have a space between the date and time in supplement to the 'T'
 				// so we allow space characters to slip through to the parser if the space is between two digits...
-				// util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, '"'+u8(s.peek(-1)).ascii_str()+'" < "${ascii}" > "'+u8(s.at()).ascii_str()+'"')
-				if c == ` ` && u8(s.peek(-1)).is_digit() && u8(s.at()).is_digit() {
+				// util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, '"'+u8(s.peek(-2)).ascii_str()+'" < "${ascii}" > "'+u8(s.at()).ascii_str()+'"')
+				if c == ` ` && u8(s.peek(-2)).is_digit() && u8(s.at()).is_digit() {
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN,
 						'identified, what could be, a space between a RFC 3339 date and time ("${ascii}") (${ascii.len})')
 					return s.new_token(token.Kind.whitespace, ascii, ascii.len)
@@ -337,18 +337,14 @@ fn (s &Scanner) at_crlf() bool {
 }
 
 // peek returns the character code from the input text at position + `n`.
-// peek returns `end_of_text` if it can't peek `n` characters ahead.
+// Negative offsets look behind the current position; out-of-range offsets return `end_of_text`.
 @[direct_array_access; inline]
 pub fn (s &Scanner) peek(n int) u32 {
-	if s.pos + n < s.text.len {
-		// Allow peeking back - needed for spaces between date and time in RFC 3339 format :/
-		if n - 1 < 0 && s.pos + n - 1 >= 0 {
-			// util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'LOOKING BAAAA-AACK - OOOVER MY SHOOOOULDEEEER "${s.text[s.pos + n-1]}"')
-			return s.text[s.pos + n - 1]
-		}
-		return s.text[s.pos + n]
+	// Check the offset before adding it, including extreme positive/negative offsets.
+	if n < -s.pos || n >= s.text.len - s.pos {
+		return end_of_text
 	}
-	return end_of_text
+	return s.text[s.pos + n]
 }
 
 // reset resets the internal state of the scanner.

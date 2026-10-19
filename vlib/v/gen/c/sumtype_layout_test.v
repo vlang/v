@@ -6,14 +6,15 @@ import v.types
 fn test_sumtype_layout_contains_inline_values() {
 	mut ast := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&ast)
-	tc.sum_types['Value'] = ['int', 'string', 'voidptr']
+	tc.sum_types.set('Value', ['int', 'string', 'voidptr'])
 	mut g := FlatGen.new()
 	g.a = &ast
 	g.tc = &tc
-	g.emit_sum_type('Value')
+	g.emit_sum_type(flat.source_type_id('Value'))
 	expected := [
 		'struct Value {',
 		'\tint typ;',
+		'\tu32 _pointer_variant_is_owned;',
 		'\tunion {',
 		'\t\ti64 _int;',
 		'\t\tstring _string;',
@@ -43,10 +44,10 @@ fn test_type_preseed_reuses_storage_after_hash_collisions() {
 	mut first := types.Type(types.void_)
 	mut second := types.Type(types.void_)
 	for i in 0 .. seen.indexes.len + 1 {
-		candidate := types.Type(types.Struct{ name: 'Type${i}' })
+		candidate := types.Type(types.Struct{ name_id: flat.source_type_id('Type${i}') })
 		slot := types.semantic_type_hash(candidate) & u64(seen.indexes.len - 1)
 		if previous := slots[slot] {
-			first = types.Type(types.Struct{ name: 'Type${previous}' })
+			first = types.Type(types.Struct{ name_id: flat.source_type_id('Type${previous}') })
 			second = candidate
 			break
 		}
@@ -64,12 +65,12 @@ fn test_type_preseed_reuses_storage_after_hash_collisions() {
 }
 
 fn test_expected_sum_storage_resolves_nested_aliases() {
-	value := &types.Type(types.SumType{ name: 'Value' })
-	first := &types.Type(types.Alias{ name: 'First', base_type: value })
-	second := types.Type(types.Alias{ name: 'Second', base_type: first })
+	value := &types.Type(types.SumType{ name_id: flat.source_type_id('Value') })
+	first := &types.Type(types.Alias{ name_id: flat.source_type_id('First'), base_type: value })
+	second := types.Type(types.Alias{ name_id: flat.source_type_id('Second'), base_type: first })
 	g := FlatGen.new()
 	resolved := g.sum_type_for_expected_value(second) or {
 		panic('nested aliases must resolve to the sum storage')
 	}
-	assert resolved.name == 'Value'
+	assert resolved.name() == 'Value'
 }

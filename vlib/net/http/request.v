@@ -23,6 +23,8 @@ pub type RequestFinishFn = fn (request &Request, final_size u64) !
 pub struct Request {
 mut:
 	cookies map[string]string
+	// ReverseProxy preserves the upstream representation and its encoding headers.
+	raw_response_body bool
 pub mut:
 	version    Version = .v1_1
 	method     Method  = .get
@@ -160,12 +162,14 @@ pub fn (mut req Request) reset() {
 
 // add_header adds the key and value of an HTTP request header
 // To add a custom header, use add_custom_header
+// CR, LF and NUL in the value are replaced by a space, see `Header.add`
 pub fn (mut req Request) add_header(key CommonHeader, val string) {
 	req.header.add(key, val)
 }
 
 // add_custom_header adds the key and value of an HTTP request header
 // This method may fail if the key contains characters that are not permitted
+// or the value contains CR, LF or NUL
 pub fn (mut req Request) add_custom_header(key string, val string) ! {
 	return req.header.add_custom(key, val)
 }
@@ -214,7 +218,9 @@ fn (mut req Request) set_remote_addr(addr string) {
 	}
 }
 
-// add_cookie adds a cookie to the request.
+// add_cookie adds a cookie to the request. The name and value are stored as given,
+// and `Request.cookie` returns them unchanged. They are sanitized when the request
+// is sent: see `cookie_header_value` for what is written to the Cookie header.
 pub fn (mut req Request) add_cookie(c Cookie) {
 	req.cookies[c.name] = c.value
 }
@@ -236,20 +242,42 @@ pub fn (req &Request) cookie(name string) ?Cookie {
 
 // cookie_header_value returns the value net.http sends in the Cookie header,
 // combining request cookies and explicit Cookie field values.
+//
+// A request cookie (from `add_cookie`, or from `cookies` of `http.fetch`) is written
+// as one `name=value` pair. Its value goes through `sanitize_cookie_value`, which
+// removes control characters, quotes, semicolons, backslashes and non-ASCII bytes.
+// A cookie whose name is empty, or contains `;`, `=`, a space, a control character
+// or a non-ASCII byte, is left out: rewriting the name would send another cookie.
+// Explicit Cookie field values of the header are appended unchanged.
 pub fn (req &Request) cookie_header_value() string {
 	return req.cookie_header_value_with_header(req.header)
 }
 
+// cookie_header_value_with_header is the only place that turns `req.cookies` into
+// header text. The HTTP/1.1, HTTP/2 and HTTP/3 clients and net.http.signature all
+// take the value from here, so what it sanitizes is sanitized for all of them.
 fn (req &Request) cookie_header_value_with_header(header Header) string {
 	mut parts := []string{cap: req.cookies.len + header.values(.cookie).len}
 	for key, value in req.cookies {
-		parts << '${key}=${value}'
+		if !is_request_cookie_name_writable(key) {
+			continue
+		}
+		parts << '${key}=${sanitize_cookie_value(value)}'
 	}
 	parts << header.values(.cookie)
 	return parts.join('; ')
 }
 
+// is_request_cookie_name_writable reports whether `name` can be the name of a
+// `name=value` pair in a Cookie header. It has to be a valid cookie name, and it
+// must not contain `;` or `=` whatever else `is_cookie_name_valid` lets through:
+// a reader ends the pair at the first `;` and the name at the first `=`.
+fn is_request_cookie_name_writable(name string) bool {
+	return is_cookie_name_valid(name) && !name.contains_any(';=')
+}
+
 // do will send the HTTP request and returns `http.Response` as soon as the response is received
+// It returns a `HeaderValueError` if `user_agent` contains CR, LF or NUL
 pub fn (req &Request) do() !Response {
 	mut rurl := urllib.parse(req.url) or { return error('http.Request.do: invalid url ${req.url}') }
 	mut resp := Response{}
@@ -257,6 +285,9 @@ pub fn (req &Request) do() !Response {
 	mut data := req.data
 	mut header := req.header
 	mut nredirects := 0
+	// user_agent is sent as a field value by every protocol version, and it
+	// is not stored in a Header, which keeps CR, LF and NUL out of its values.
+	check_header_value('User-Agent', req.user_agent)!
 	for {
 		if nredirects == max_redirects {
 			return error('http.request.do: maximum number of redirects reached (${max_redirects})')
@@ -273,6 +304,10 @@ pub fn (req &Request) do() !Response {
 		}
 		// follow any redirects
 		mut redirect_url := resp.header.get(.location) or { '' }
+		if redirect_url.len == 0 {
+			// a 3xx without a Location header is terminal; hand the response back
+			break
+		}
 		mut qrurl := urllib.URL{}
 		if redirect_url.len > 0 && redirect_url[0] == `/` {
 			qrurl = rurl.parse(redirect_url) or {
@@ -676,6 +711,7 @@ fn chunked_hex_value(ch u8) u8 {
 }
 
 struct ReceivedResponseInfo {
+	raw_body            bool
 	headers_end         int = -1
 	is_chunked_transfer bool
 	has_truncated_body  bool
@@ -691,14 +727,18 @@ struct ReceivedResponseInfo {
 
 fn parse_received_response(response_text string, info ReceivedResponseInfo) !Response {
 	mut response := if info.body_is_dechunked {
-		parse_response(response_text[..info.headers_end])!
+		parse_response_with_options(response_text[..info.headers_end], raw_body: info.raw_body)!
 	} else {
-		parse_response(response_text)!
+		parse_response_with_options(response_text, raw_body: info.raw_body)!
 	}
 	if info.body_is_dechunked {
 		// Chunk framing is already removed, but Content-Encoding still applies.
-		response.body = decode_response_body(response_text[info.headers_end..],
-			response.header.get(.content_encoding) or { '' })
+		body := response_text[info.headers_end..]
+		response.body = if info.raw_body {
+			body
+		} else {
+			decode_response_body(body, response.header.get(.content_encoding) or { '' })
+		}
 	}
 	// A complete compressed body can expand beyond the copying limit.
 	if info.stop_copying_limit > 0 && response.body.len > info.stop_copying_limit {
@@ -904,6 +944,7 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 		old_len = new_len
 	}
 	return ReceivedResponseInfo{
+		raw_body:            req.raw_response_body
 		headers_end:         headers_end
 		is_chunked_transfer: is_chunked_transfer
 		body_is_dechunked:   is_chunked_transfer && req.stop_copying_limit > 0
@@ -1122,7 +1163,7 @@ fn parse_request_line(line string) !(Method, urllib.URL, Version) {
 	return method, target, version
 }
 
-// Parse URL encoded key=value&key=value forms
+// parse_form decodes URL-encoded key=value&key=value forms without detecting JSON bodies.
 //
 // FIXME: Some servers can require the
 // parameter in a specific order.
@@ -1131,24 +1172,20 @@ fn parse_request_line(line string) !(Method, urllib.URL, Version) {
 pub fn parse_form(body string) map[string]string {
 	mut form := map[string]string{}
 
-	if body.match_glob('{*}') {
-		form['json'] = body
-	} else {
-		words := body.split('&')
+	words := body.split('&')
 
-		for word in words {
-			kv := word.split_nth('=', 2)
-			if kv.len != 2 {
-				continue
-			}
-			key := urllib.query_unescape(kv[0]) or { continue }
-			val := urllib.query_unescape(kv[1]) or { continue }
-			form[key] = val
+	for word in words {
+		kv := word.split_nth('=', 2)
+		if kv.len != 2 {
+			continue
 		}
+		key := urllib.query_unescape(kv[0]) or { continue }
+		val := urllib.query_unescape(kv[1]) or { continue }
+		form[key] = val
 	}
 	return form
 	// }
-	// todo: parse form-data and application/json
+	// todo: parse form-data by application type; a JSON body is a caller concern
 	// ...
 }
 

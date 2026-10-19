@@ -69,8 +69,7 @@ pub fn classify(x Thing) string {
 	}
 
 	src := os.join_path(root, 'main.v')
-	os.write_file(src, 'import ifacepkg
-import ifacepkg { Foo }
+	os.write_file(src, 'import ifacepkg { Foo }
 
 interface Named {
 	name string

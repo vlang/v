@@ -56,7 +56,7 @@ fn main() { println(pack(3)) }'
 	result := os.execute(command)
 	assert result.exit_code == 0, result.output
 	generated := os.read_file(output)!
-	body := generated.all_after('__attribute__((noinline)) Value pack(').all_before('\n}')
+	body := sumtype_test_function_body(generated, 'pack')
 	assert body.contains('.typ = ')
 	assert body.contains('.Pair = ')
 	assert !body.contains('memdup')
@@ -89,5 +89,102 @@ fn main() {
 	os.write_file(path, program)!
 	command := '${os.quoted_path(@VEXE)} -new-compiler run ${os.quoted_path(path)}'
 	result := os.execute(command)
+	assert result.exit_code == 0, result.output
+}
+
+fn sumtype_test_function_body(generated string, name string) string {
+	for line in generated.split_into_lines() {
+		if line.contains('${name}(') && line.ends_with(' {') {
+			return generated.all_after(line).all_before('\n}')
+		}
+	}
+	assert false, 'missing generated function ${name}'
+	return ''
+}
+
+fn test_sumtype_pointer_variants_keep_references_and_escaping_local_storage() {
+	dir := os.join_path(os.vtmp_dir(), 'sumtype_pointer_storage_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	path := os.join_path(dir, 'main.v')
+	output := os.join_path(dir, 'main.c')
+	source := '@[aligned: 64]
+struct Payload { mut: value int }
+type PointerPayload = int | &Payload
+@[noinline]
+fn from_local() PointerPayload {
+ local := Payload{value: 17}
+ return PointerPayload(&local)
+}
+@[noinline]
+fn from_mut(mut value Payload) PointerPayload { return PointerPayload(&value) }
+fn borrow(value &Payload) &Payload { return value }
+@[noinline]
+fn from_borrowed(value &Payload) PointerPayload { return PointerPayload(borrow(value)) }
+fn main() {
+ local := from_local()
+ if local is &Payload {
+  assert local.value == 17
+  assert usize(local) % 64 == 0
+ } else { assert false }
+ mut original := Payload{value: 23}
+ reference := from_mut(mut original)
+ original.value = 99
+ if reference is &Payload {
+  assert voidptr(reference) == voidptr(&original)
+  assert reference.value == 99
+  assert usize(reference) % 64 == 0
+ } else { assert false }
+ borrowed := from_borrowed(&original)
+ original.value = 101
+ if borrowed is &Payload {
+  assert borrowed.value == 101
+ } else { assert false }
+}'
+	os.write_file(path, source)!
+	generated_result := os.exec([@VEXE, '-new-compiler', '-nocache', '-o', output, path])
+	assert generated_result.exit_code == 0, generated_result.output
+	generated := os.read_file(output)!
+	local := sumtype_test_function_body(generated, 'from_local')
+	assert local.contains('v3_aligned_memdup('), local
+	assert local.contains(', 64)') || local.contains('__alignof__('), local
+	for name in ['from_mut', 'from_borrowed'] {
+		body := sumtype_test_function_body(generated, name)
+		assert !body.contains('memdup'), body
+		assert !body.contains('._pointer_variant_is_owned = true'), body
+	}
+	run := os.exec([@VEXE, '-new-compiler', '-nocache', 'run', path])
+	assert run.exit_code == 0, run.output
+}
+
+fn test_sumtype_zero_reassignment_keeps_scalar_variant() {
+	dir := os.join_path(os.vtmp_dir(), 'sumtype_zero_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	path := os.join_path(dir, 'main.v')
+	os.write_file(path, 'struct Item { value int }
+type Choice = int | &Item
+type WideChoice = i64 | &Item
+fn main() {
+ mut value := Choice(&Item{value: 1})
+ assert value is &Item
+ value = Choice(0)
+ assert value is int
+ assert (value as int) == 0
+ value = &Item{value: 2}
+ assert value is &Item
+ value = 0
+ assert value is int
+ assert (value as int) == 0
+ mut wide := WideChoice(&Item{value: 3})
+ assert wide is &Item
+ wide = WideChoice(i64(0))
+ assert wide is i64
+ assert (wide as i64) == 0
+ null := Choice(unsafe { &Item(nil) })
+ assert null is &Item
+ assert voidptr(null as &Item) == unsafe { nil }
+}')!
+	result := os.exec([@VEXE, '-new-compiler', '-nocache', '-no-closures', 'run', path])
 	assert result.exit_code == 0, result.output
 }

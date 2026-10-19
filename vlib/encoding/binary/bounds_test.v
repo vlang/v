@@ -33,6 +33,9 @@ fn main() {
 		'little_endian_u64_at' { binary.little_endian_u64_at(b, o) }
 		'little_endian_u64_end' { binary.little_endian_u64_end(b) }
 		'little_endian_f32_at' { u64(binary.little_endian_f32_at(b, o)) }
+		'big_endian_f32_at' { u64(binary.big_endian_f32_at(b, o)) }
+		'little_endian_f64_at' { u64(binary.little_endian_f64_at(b, o)) }
+		'big_endian_f64_at' { u64(binary.big_endian_f64_at(b, o)) }
 		'big_endian_put_u16' {
 			binary.big_endian_put_u16(mut b, 0)
 			u64(0)
@@ -105,6 +108,22 @@ fn main() {
 			binary.little_endian_put_u64_end(mut b, 0)
 			u64(0)
 		}
+		'little_endian_put_f32_at' {
+			binary.little_endian_put_f32_at(mut b, 0, o)
+			u64(0)
+		}
+		'little_endian_put_f64_at' {
+			binary.little_endian_put_f64_at(mut b, 0, o)
+			u64(0)
+		}
+		'big_endian_put_f32_at' {
+			binary.big_endian_put_f32_at(mut b, 0, o)
+			u64(0)
+		}
+		'big_endian_put_f64_at' {
+			binary.big_endian_put_f64_at(mut b, 0, o)
+			u64(0)
+		}
 		else { panic('unknown case ' + name) }
 	}
 	println('ok \${value}')
@@ -130,6 +149,13 @@ fn forms() []Form {
 		}
 	}
 	res << Form{'little_endian_f32_at', 4}
+	res << Form{'little_endian_put_f32_at', 4}
+	res << Form{'little_endian_f64_at', 8}
+	res << Form{'little_endian_put_f64_at', 8}
+	res << Form{'big_endian_f32_at', 4}
+	res << Form{'big_endian_put_f32_at', 4}
+	res << Form{'big_endian_f64_at', 8}
+	res << Form{'big_endian_put_f64_at', 8}
 	return res
 }
 

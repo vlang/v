@@ -92,7 +92,7 @@ fn test_serial_gen_info_scan_preserves_metadata_and_incremental_counts() {
 		value: 'embedded bytes'
 		flags: flat.node_flag_embed_payload
 	})
-	fixed_array := a.add_node(flat.Node{ kind: .ident, typ: '[2]int', value: 'values' })
+	fixed_array := a.add_node(flat.Node{ kind: .ident, typ: flat.source_type_id('[2]int'), value: 'values' })
 	optional_sizeof := a.add_val(.sizeof_expr, '?int')
 	shared_decl := a.add_val(.decl_assign, 'shared:Item')
 	a.add_val(.ident, 'ordinary')

@@ -3,6 +3,79 @@ module driver
 import os
 import v.pref
 
+fn test_cached_module_closure_dependencies_outlive_prepare_scope() {
+	mut state := V3ModuleCacheState{
+		module_sources: {
+			'closure': ['/vlib/builtin/closure/closure.v']
+		}
+		headers:        {
+			'closure': 'module closure\nfn closure_data()\n'
+		}
+	}
+	for i in 0 .. 64 {
+		name := 'module_${i}'
+		state.module_sources[name] = ['/vlib/${name}/module.v']
+		state.headers[name] = 'module ${name}\nfn value()\n'
+	}
+	scope := prealloc_scope_begin_for_v3()
+	mut bodies := map[string]string{}
+	for i in 0 .. 64 {
+		bodies['module_${i}'] = 'void value() { closure__closure_data(); }'
+	}
+	cache_record_closure_dependencies(bodies, '', scope, mut state)
+	$if prealloc {
+		for i in 0 .. 64 {
+			name := 'module_${i}'
+			header := state.headers[name]
+			dependencies := state.module_dependencies[name]
+			assert !unsafe { prealloc_scope_owns(scope, header.str) }, name
+			assert !unsafe { prealloc_scope_owns(scope, dependencies.data) }, name
+		}
+	}
+	prealloc_scope_leave_for_v3(scope)
+	prealloc_scope_free_for_v3(scope)
+	// The preparation arena has gone away, including temporary module names and
+	// the storage that growing dependency maps and arrays would allocate there.
+	for i in 0 .. 64 {
+		name := 'module_${i}'
+		assert state.headers[name].contains('import builtin.closure as ${closure_runtime_import_alias}')
+		assert state.module_dependencies[name] == ['closure']
+	}
+}
+
+fn test_cached_module_preserves_generated_closure_dependencies() {
+	mut state := V3ModuleCacheState{
+		module_sources: {
+			'os':      ['/vlib/os/os.v']
+			'closure': ['/vlib/builtin/closure/closure.v']
+			'other':   ['/vlib/other/other.v']
+		}
+		headers:        {
+			'os':      'module os\nfn execvp()\n'
+			'closure': 'module closure\nfn closure_try_destroy()\n'
+			'other':   'module other\nfn unrelated()\n'
+		}
+	}
+	cache_record_closure_dependencies({
+		'os':      'void os__execvp() { closure__closure_try_destroy(value); }'
+		'closure': 'void closure__closure_try_destroy() {}'
+		'other':   'void other__unrelated() { puts("closure__fake"); /* closure__unused */ }'
+	}, '', unsafe { nil }, mut state)
+	assert state.headers['os'].contains('import builtin.closure as ${closure_runtime_import_alias}')
+	assert cache_dependency_modules(&state, ['os']) == ['closure']
+	assert !state.headers['closure'].contains('import builtin.closure')
+	assert !state.headers['other'].contains('import builtin.closure')
+	first_header := state.headers['os']
+	cache_record_closure_dependencies({
+		'os': 'void os__execvp() { closure__closure_try_destroy(value); }'
+	}, '', unsafe { nil }, mut state)
+	assert state.headers['os'] == first_header
+	cache_record_closure_dependencies({
+		'other': 'void other__use() { kept_wrapper(); }'
+	}, '${v3_program_wrappers_begin}\nstatic void kept_wrapper(void) { closure__closure_data(); }\nstatic void unused_wrapper(void) { missing(); }\n${v3_program_wrappers_end}\n', unsafe { nil }, mut state)
+	assert cache_dependency_modules(&state, ['other']) == ['closure']
+}
+
 fn test_module_cache_compiler_identity_changes_when_executable_changes() {
 	root := os.join_path(os.vtmp_dir(), 'v3_cache_vexe_identity_${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -50,13 +123,12 @@ fn test_module_cache_compiler_identity_changes_without_file_metadata() {
 fn test_module_cache_compiler_runtime_inputs_identity_changes_when_a_header_changes() {
 	root := os.join_path(os.vtmp_dir(), 'v3_cache_runtime_inputs_${os.getpid()}')
 	os.rmdir_all(root) or {}
-	dir := os.join_path(root, 'vlib', 'v', 'gen', 'c')
-	os.mkdir_all(dir)!
 	defer {
 		os.rmdir_all(root) or {}
 	}
 	for name in v3_cache_compiler_runtime_inputs {
-		path := os.join_path(dir, name)
+		path := os.join_path(root, name)
+		os.mkdir_all(os.dir(path))!
 		os.write_file(path, 'old header')!
 		// Keep a coarse file system clock from giving the rewrite the same time stamp.
 		os.utime(path, 1_000_000_000, 1_000_000_000)!
@@ -64,7 +136,7 @@ fn test_module_cache_compiler_runtime_inputs_identity_changes_when_a_header_chan
 	for name in v3_cache_compiler_runtime_inputs {
 		old_identity := v3_cache_compiler_runtime_inputs_identity(root)
 		// Same size, different bytes.
-		os.write_file(os.join_path(dir, name), 'new header')!
+		os.write_file(os.join_path(root, name), 'new header')!
 		new_identity := v3_cache_compiler_runtime_inputs_identity(root)
 		assert old_identity != new_identity, name
 	}
@@ -73,8 +145,8 @@ fn test_module_cache_compiler_runtime_inputs_identity_changes_when_a_header_chan
 // Every `$embed_file` of the compiler is read at run time by a development build,
 // so it must be part of the cache identity.
 fn test_module_cache_compiler_runtime_inputs_cover_compiler_embedded_files() {
-	vlib_v := os.join_path(@VMODROOT, 'vlib', 'v')
-	gen_c := os.real_path(os.join_path(vlib_v, 'gen', 'c'))
+	vroot := os.real_path(@VMODROOT)
+	vlib_v := os.join_path(vroot, 'vlib', 'v')
 	mut embedded := map[string]bool{}
 	for file in os.walk_ext(vlib_v, '.v') {
 		normalized := file.replace('\\', '/')
@@ -90,10 +162,14 @@ fn test_module_cache_compiler_runtime_inputs_cover_compiler_embedded_files() {
 			argument := code.all_after('\$embed_file(').trim_space()
 			assert argument.len > 1, '${file}: ${line}'
 			name := argument[1..].all_before(argument[0..1])
-			target := os.real_path(os.join_path(os.dir(file), name))
-			assert os.dir(target) == gen_c, '${file}: ${line}'
-			assert os.file_name(target) in v3_cache_compiler_runtime_inputs, '${file}: ${line}'
-			embedded[os.file_name(target)] = true
+			target := if name.starts_with('@VEXEROOT/') {
+				os.real_path(os.join_path(vroot, name.all_after('@VEXEROOT/')))
+			} else {
+				os.real_path(os.join_path(os.dir(file), name))
+			}
+			relative := os.path_rel(vroot, target)!.replace('\\', '/')
+			assert relative in v3_cache_compiler_runtime_inputs, '${file}: ${line}'
+			embedded[relative] = true
 		}
 	}
 	assert embedded.len == v3_cache_compiler_runtime_inputs.len

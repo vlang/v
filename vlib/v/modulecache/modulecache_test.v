@@ -7,6 +7,111 @@ import v.flat
 import v.parser
 import v.pref
 import v.types as vtypes
+import v.util.cache_refresh
+
+fn test_delegated_compilers_share_the_primary_isolated_cache() {
+	root := os.join_path(os.vtmp_dir(), 'v3_primary_isolated_cache_${os.getpid()}')
+	previous := os.environ()
+	defer {
+		for name in ['V3CACHE', 'VTMP', 'V3_TEST_ISOLATE_CACHE', 'VEXE', 'V3_PRIMARY_VEXE'] {
+			if name in previous { os.setenv(name, previous[name], true) } else { os.unsetenv(name) }
+		}
+	}
+	os.unsetenv('V3CACHE')
+	os.setenv('VTMP', root, true)
+	os.setenv('V3_TEST_ISOLATE_CACHE', '1', true)
+	primary := os.join_path(root, 'checkout', 'v')
+	vroot := os.dir(primary)
+	os.setenv('VEXE', os.join_path(root, 'tools', 'v3_ownership'), true)
+	os.setenv('V3_PRIMARY_VEXE', primary, true)
+	manager := new_manager(vroot, 'ownership', true, '', '')
+	assert os.dir(manager.dir) == cache_refresh.root_dir(vroot, primary)
+	assert os.dir(manager.dir) != cache_refresh.root_dir(vroot, os.executable())
+	os.unsetenv('VEXE')
+	os.unsetenv('V3_PRIMARY_VEXE')
+	fallback := new_manager(vroot, 'ownership', true, '', '')
+	assert os.dir(fallback.dir) == cache_refresh.root_dir(vroot, os.executable())
+}
+
+fn test_ownership_dispatch_refreshes_the_primary_isolated_cache() ! {
+	primary := os.real_path(@VEXE)
+	vroot := os.dir(primary)
+	root := os.join_path(os.vtmp_dir(), 'v3_ownership_dispatch_${os.getpid()}')
+	name := 'vup_ownership_${os.getpid()}'
+	module_root := os.join_path(vroot, 'vlib', name)
+	os.mkdir_all(module_root)!
+	os.mkdir_all(root)!
+	previous := os.environ()
+	variables := ['V3CACHE', 'VTMP', 'V3_TEST_ISOLATE_CACHE', 'VEXE', 'V3_PRIMARY_VEXE', 'VFLAGS',
+		'CFLAGS', 'LDFLAGS', 'V3_CACHE_REFRESH', 'V3_CACHE_REFRESH_ENTRY',
+		'V3_CACHE_REFRESH_PROJECT_FLAGS', 'V_SKIP_VVMRC', 'V_MACOS_V3_NO_FALLBACK']
+	defer {
+		for variable in variables {
+			if variable in previous {
+				os.setenv(variable, previous[variable], true)
+			} else {
+				os.unsetenv(variable)
+			}
+		}
+		os.rmdir_all(module_root) or {}
+		os.rmdir_all(root) or {}
+	}
+	os.unsetenv('V3CACHE')
+	os.setenv('VTMP', os.join_path(root, 'cache'), true)
+	os.setenv('V3_TEST_ISOLATE_CACHE', '1', true)
+	os.setenv('VEXE', primary, true)
+	// A fresh primary invocation must replace an unrelated parent's identity,
+	// and its ownership helper must retain that replacement after exec.
+	os.setenv('V3_PRIMARY_VEXE', os.join_path(root, 'stale-parent'), true)
+	os.setenv('V_SKIP_VVMRC', '1', true)
+	os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
+	for variable in ['VFLAGS', 'CFLAGS', 'LDFLAGS', 'V3_CACHE_REFRESH', 'V3_CACHE_REFRESH_ENTRY',
+		'V3_CACHE_REFRESH_PROJECT_FLAGS'] {
+		os.unsetenv(variable)
+	}
+	source := os.join_path(module_root, 'sample.v')
+	os.write_file(source, 'module ${name}\npub fn value() int { return 1 }\n')!
+	entry := os.join_path(root, 'main.v')
+	os.write_file(entry, 'import ${name}\nfn main() { println(${name}.value())\n' +
+		'println(\$env("VEXE"))\nprintln(\$env("V3_PRIMARY_VEXE")) }\n')!
+	mut builds := [][]string{}
+	for mode in ['-ownership', '-autofree'] {
+		for prod in [false, true] {
+			mut args := ['-cc', 'cc', '-gc', 'none', mode]
+			if prod { args << '-prod' }
+			args << ['-o', os.join_path(root, 'program'), 'run', entry]
+			cold := os.exec([primary, ...args])
+			assert cold.exit_code == 0, cold.output
+			lines := cold.output.trim_space().split_into_lines()
+			assert lines.len >= 3 && lines.last() == primary, cold.output
+			helper := lines[lines.len - 2]
+			assert helper != primary && helper.contains('v3_ownership') && os.is_file(helper), cold.output
+			matching := cache_refresh.collect(vroot, primary)!.filter(it.module == name
+				&& mode in it.args && ('-prod' in it.args) == prod)
+			if mode == '-autofree' {
+				// Autofree keeps full local metadata in a monolithic build.
+				assert matching.len == 0
+			} else {
+				assert matching.len > 0
+			}
+			assert cache_refresh.collect(vroot, helper)!.len == 0
+			builds << args
+		}
+	}
+	requests := cache_refresh.collect(vroot, primary)!.filter(it.module == name)
+	assert requests.len == builds.filter('-ownership' in it).len, requests.str()
+	os.write_file(source, 'module ${name}\npub fn value() int { return 2 }\n')!
+	cache_refresh.refresh(primary, requests)!
+	for args in builds {
+		warm := os.exec([primary, ...args[..args.len - 2], '-show-timings', entry])
+		assert warm.exit_code == 0, warm.output
+		assert !warm.output.contains('Caching module '), warm.output
+		run := os.exec([os.join_path(root, 'program')])
+		assert run.exit_code == 0, run.output
+		lines := run.output.trim_space().split_into_lines()
+		assert lines.len == 3 && lines[0] == '2' && lines.last() == primary, run.output
+	}
+}
 
 fn test_cached_vmod_roots_stop_at_project_boundaries() {
 	root := os.join_path(os.vtmp_dir(), 'v3_modulecache_vmod_boundary_${os.getpid()}')
@@ -41,7 +146,7 @@ fn test_cached_vmod_roots_stop_at_project_boundaries() {
 fn test_cached_relative_flag_paths_preserve_path_selection_expressions() {
 	base_dir := os.join_path(os.vtmp_dir(), 'v3_modulecache_flags')
 	value := r"darwin -I$when_first_existing('/opt/local/include','/opt/homebrew/include') -L$first_existing('/opt/local/lib','/opt/homebrew/lib')"
-	assert cached_resolve_relative_flag_paths(value, os.join_path(base_dir, 'source.v')) == value
+	assert cached_resolve_flag_value(value, '', os.join_path(base_dir, 'source.v')) == value
 }
 
 fn test_cached_dependency_inputs_restore_empty_variable_value() {
@@ -161,6 +266,57 @@ fn test_static_const_body_literals_are_preserved_and_deduplicated() {
 	assert without_duplicate_static_string_definitions(source, first) == second + 'void main__main(void) { println(_v3_lit_1_44bd54d473cd3d44); }\n'
 	assert materialize_cached_body_string_definitions('// V3CACHE_BASELINE ' + first + second) == first + second
 	assert !prune_unreferenced_static_string_definitions(source).contains('_v3_lit_1_44bd55d473cd3ef7')
+}
+
+// split_literal_definition is how cgen writes a literal too long for one C source
+// line: adjacent literals, each on a line of its own.
+fn split_literal_definition(symbol string, parts []string) string {
+	value := parts.join('')
+	return 'static const string ${symbol} = {"' + parts.join('"\n"') + '", ${value.len}, 1};\n'
+}
+
+fn test_split_literal_definitions_are_kept_or_dropped_whole() {
+	unused := split_literal_definition(cached_c_string_symbol('aaaabbbbcccc'), ['aaaa', 'bbbb',
+		'cccc'])
+	used_symbol := cached_c_string_symbol('ddddeeee')
+	used := split_literal_definition(used_symbol, ['dddd', 'eeee'])
+	short := 'static const string _v3_lit_1_44bd55d473cd3ef7 = {".", 1, 1};\n'
+	body := 'void f(void) { println(${used_symbol}); }\n'
+	source := unused + short + used + body
+	assert prune_unreferenced_static_string_definitions(source) == used + body
+	assert static_string_definitions(source) == unused + short + used
+	assert static_string_definition_texts(source) == [unused.trim_right('\n'), short.trim_right('\n'),
+		used.trim_right('\n')]
+	assert without_duplicate_static_string_definitions(source, unused + short) == used + body
+}
+
+fn test_split_literal_definitions_survive_baseline_markers() {
+	symbol := cached_c_string_symbol('aaaabbbbcccc')
+	definition := split_literal_definition(symbol, ['aaaa', 'bbbb', 'cccc'])
+	mut markers := ''
+	for line in definition.split_into_lines() {
+		markers += '// V3CACHE_BASELINE ${line}\n'
+	}
+	body := 'void f(void) { println(${symbol}); }\n'
+	assert materialize_cached_body_string_definitions(markers + body) == definition + body
+	// A real definition takes precedence over the recorded one, whole.
+	assert materialize_cached_body_string_definitions(markers + definition + body) == definition + body
+}
+
+fn test_cached_runtime_literal_rewrite_replaces_split_definitions() {
+	old_value := 'aaaabbbbcccc'
+	new_value := 'aaaabbbbdddd'
+	old_symbol := cached_c_string_symbol(old_value)
+	new_symbol := cached_c_string_symbol(new_value)
+	source := split_literal_definition(old_symbol, ['aaaa', 'bbbb', 'cccc']) +
+		'${c_body_begin}\nvoid main(void) { use(${old_symbol}); }\n'
+	rewritten := rewrite_cached_runtime_strings(source, [old_value], [new_value]) or {
+		panic('expected the split literal to be rewritten')
+	}
+	assert !rewritten.contains(old_symbol)
+	assert !rewritten.contains('"cccc"')
+	assert rewritten.count('static const string ${new_symbol} =') == 1
+	assert rewritten.contains('use(${new_symbol});')
 }
 
 fn test_type_declarations_omit_functions_with_local_typedefs() {
@@ -873,7 +1029,7 @@ fn global_qualifier_test_field(mut a flat.FlatAst, name string, type_text string
 	return a.add_node(flat.Node{
 		kind:           .field_decl
 		value:          name
-		typ:            type_text
+		typ:            flat.source_type_id(type_text)
 		payload:        flat.node_payload(qualifiers)
 		children_start: i32(start)
 		children_count: flat.child_count(1)
@@ -1046,6 +1202,49 @@ fn header_of_source(root string, name string, source string) string {
 	assert p.diagnostics.len == 0, p.diagnostics.str()
 	tc := vtypes.TypeChecker.new(a)
 	return module_header(a, &tc, name, '', map[string]string{})
+}
+
+fn test_cached_struct_field_attributes_round_trip_without_warnings() ! {
+	root := os.join_path(os.vtmp_dir(), 'v3_cached_field_attrs_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'options.v')
+	os.write_file(source, "module options
+
+@[params]
+pub struct Options {
+pub:
+	tool int @[deprecated: 'use compare_files or compare_text'; deprecated_after: '2026-12-31']
+	env_overwrite_var ?string = 'VDIFF_CMD' @[deprecated: 'use compare_files or compare_text'; deprecated_after: '2026-12-31']
+	name string @[required; json: 'display_name']
+	plain bool
+}
+")!
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(source)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	tc := vtypes.TypeChecker.new(a)
+	header := module_header(a, &tc, 'options', '', map[string]string{})
+	header_path := os.join_path(root, 'options.vh')
+	os.write_file(header_path, header)!
+	mut header_parser := parser.Parser.new(pref.new_preferences())
+	reparsed := header_parser.parse_file(header_path)
+	assert header_parser.diagnostics.len == 0, header_parser.diagnostics.str()
+	original_fields := a.nodes.filter(it.kind == .field_decl)
+	cached_fields := reparsed.nodes.filter(it.kind == .field_decl)
+	assert original_fields.len == 4
+	assert cached_fields.len == original_fields.len
+	for i, original in original_fields {
+		cached := cached_fields[i]
+		assert cached.value == original.value
+		assert cached.typ_text() == original.typ_text()
+		assert cached.generic_params() == original.generic_params()
+		assert cached.children_count == original.children_count
+		if original.children_count > 0 {
+			assert expr_text(reparsed, reparsed.child(&cached, 0)) == expr_text(a, a.child(&original,
+				0))
+		}
+	}
 }
 
 fn test_cached_constant_tables_are_typed_declarations() {

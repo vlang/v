@@ -20,6 +20,9 @@ pub const max_headers = 50
 // `add_custom_map`, `new_custom_header_from_map`) fail with a
 // `HeaderLimitError`, the others (`add`, `set`, `add_map`, `new_header`,
 // `new_header_from_map`, `join`) drop it.
+// A field value can not hold CR, LF or NUL (RFC 9110 section 5.5): the writers
+// that return a Result fail with a `HeaderValueError`, the others store a
+// space in place of each such byte.
 pub struct Header {
 pub mut:
 	// data map[string][]string
@@ -323,7 +326,7 @@ const common_header_map = {
 	'sec-fetch-site':                      .sec_fetch_site
 	'sec-fetch-user':                      .sec_fetch_user
 	'sec-websocket-accept':                .sec_websocket_accept
-	'sec_websocket_key':                   .sec_websocket_key
+	'sec-websocket-key':                   .sec_websocket_key
 	'server':                              .server
 	'server-timing':                       .server_timing
 	'set-cookie':                          .set_cookie
@@ -386,6 +389,7 @@ fn header_key_eq(a string, b string) bool {
 
 // new_header creates a new Header object.
 // Only the first `max_headers` entries of `kvs` are stored.
+// CR, LF and NUL in a value are replaced by a space, see `add`.
 pub fn new_header(kvs ...HeaderConfig) Header {
 	mut h := Header{
 		// data: map[string][]string{}
@@ -397,6 +401,7 @@ pub fn new_header(kvs ...HeaderConfig) Header {
 }
 
 // new_header_from_map creates a Header from key value pairs
+// CR, LF and NUL in a value are replaced by a space, see `add`.
 pub fn new_header_from_map(kvs map[CommonHeader]string) Header {
 	mut h := new_header()
 	h.add_map(kvs)
@@ -404,6 +409,7 @@ pub fn new_header_from_map(kvs map[CommonHeader]string) Header {
 }
 
 // new_custom_header_from_map creates a Header from string key value pairs
+// It returns a `HeaderValueError` for a value that contains CR, LF or NUL.
 pub fn new_custom_header_from_map(kvs map[string]string) !Header {
 	mut h := new_header()
 	h.add_custom_map(kvs)!
@@ -423,18 +429,27 @@ fn (mut h Header) append(key string, value string) bool {
 
 // add appends a value to the header key.
 // The value is dropped if the header already holds `max_headers` fields.
+// CR, LF and NUL can not be part of a field value (RFC 9110 section 5.5):
+// each of them is stored as a space.
 pub fn (mut h Header) add(key CommonHeader, value string) {
 	k := key.str()
 	// h.data[k] << value
-	h.append(k, value)
+	h.append(k, header_value_without_crlf_nul(value))
 	// h.add_key(k)
 }
 
 // add_custom appends a value to a custom header key. This function will
 // return an error if the key contains invalid header characters, and a
 // `HeaderLimitError` if the header already holds `max_headers` fields.
+// The key is rejected here because it is not checked again when the header is
+// sent: a name with a CR, LF, colon or space in it would otherwise be written
+// to the connection as it is, and could add or split header fields there.
+// To get the canonical form of a name that may be invalid, use
+// `canonical_header_key`, which never fails.
+// A value that contains CR, LF or NUL is rejected with a `HeaderValueError`.
 pub fn (mut h Header) add_custom(key string, value string) ! {
 	is_valid(key)!
+	check_header_value(key, value)!
 	// h.data[key] << value
 	if !h.append(key, value) {
 		return HeaderLimitError{}
@@ -443,6 +458,7 @@ pub fn (mut h Header) add_custom(key string, value string) ! {
 }
 
 // add_map appends the value for each header key.
+// CR, LF and NUL in a value are replaced by a space, see `add`.
 pub fn (mut h Header) add_map(kvs map[CommonHeader]string) {
 	for k, v in kvs {
 		h.add(k, v)
@@ -450,6 +466,7 @@ pub fn (mut h Header) add_map(kvs map[CommonHeader]string) {
 }
 
 // add_custom_map appends the value for each custom header key.
+// It returns a `HeaderValueError` for a value that contains CR, LF or NUL.
 pub fn (mut h Header) add_custom_map(kvs map[string]string) ! {
 	for k, v in kvs {
 		h.add_custom(k, v)!
@@ -460,18 +477,35 @@ pub fn (mut h Header) add_custom_map(kvs map[string]string) ! {
 // that exist for the CommonHeader.
 // A key that is not present yet is dropped if the header already holds
 // `max_headers` fields.
+// CR, LF and NUL in the value are replaced by a space, see `add`.
 pub fn (mut h Header) set(key CommonHeader, value string) {
 	key_str := key.str()
+	safe_value := header_value_without_crlf_nul(value)
 
 	// for i, kv in h.data {
-	for i := 0; i < h.cur_pos; i++ {
-		if h.data[i].key == key_str {
-			h.data[i] = HeaderKV{key_str, value}
-			return
+	// Match case-insensitively like set_custom does: a value stored under
+	// another casing of the same field (e.g. via add_custom) must be
+	// replaced, not left next to the new one.
+	mut set := false
+	mut i := 0
+	for i < h.cur_pos {
+		if header_key_eq(h.data[i].key, key_str) {
+			if !set {
+				h.data[i] = HeaderKV{key_str, safe_value}
+				set = true
+				i++
+			} else {
+				h.delete_at(i)
+			}
+		} else {
+			i++
 		}
 	}
+	if set {
+		return
+	}
 	// Not updated, add a new one
-	h.append(key_str, value)
+	h.append(key_str, safe_value)
 
 	// h.data[k] = [value]
 	// h.add_key(k)
@@ -482,8 +516,12 @@ pub fn (mut h Header) set(key CommonHeader, value string) {
 // function will return an error if the key contains invalid header
 // characters, and a `HeaderLimitError` if the key is not present yet and
 // the header already holds `max_headers` fields.
+// As in `add_custom`, the key is rejected here because it is not checked
+// again when the header is sent.
+// A value that contains CR, LF or NUL is rejected with a `HeaderValueError`.
 pub fn (mut h Header) set_custom(key string, value string) ! {
 	is_valid(key)!
+	check_header_value(key, value)!
 	mut set := false
 	mut i := 0
 	for i < h.cur_pos {
@@ -710,13 +748,22 @@ pub fn (h Header) unique_keys() []string {
 @[params]
 pub struct HeaderRenderConfig {
 pub:
-	version      Version
-	coerce       bool
+	version Version
+	coerce  bool
+	// canonicalize writes each field name in its canonical spelling instead of
+	// the stored one. A name that has a `CommonHeader` is spelled like its
+	// `CommonHeader.str()`: `etag` -> `ETag`, `www-authenticate` -> `WWW-Authenticate`.
+	// Any other name gets its first letter and each letter after a `-` in upper
+	// case and the rest in lower case: `x-request-id` -> `X-Request-Id`.
+	// It has no effect with `version: .v2_0`, which writes lower case names.
 	canonicalize bool
 }
 
 // render renders the Header into a string for use in sending HTTP
 // requests. All header lines will end in `\r\n`
+// The SP and HTAB bytes at the start and end of a value are not written, as
+// in Go's `Header.Write`: they are not part of a field value (RFC 9110 section
+// 5.5). `get` and `values` still return the value as it was stored.
 @[manualfree]
 pub fn (h Header) render(flags HeaderRenderConfig) string {
 	// estimate ~48 bytes per header
@@ -765,7 +812,7 @@ pub fn (h Header) render_into_sb(mut sb strings.Builder, flags HeaderRenderConfi
 		// for v in vs {
 		sb.write_string(key)
 		sb.write_string(': ')
-		sb.write_string(kv.value)
+		sb.write_string(header_value_without_ows(kv.value))
 		sb.write_string('\r\n')
 		//}
 	}
@@ -774,6 +821,7 @@ pub fn (h Header) render_into_sb(mut sb strings.Builder, flags HeaderRenderConfi
 
 // join combines two Header structs into a new Header struct.
 // The fields of `other` that do not fit in `max_headers` are dropped.
+// CR, LF and NUL in a value of `other` are replaced by a space, see `add`.
 pub fn (h Header) join(other Header) Header {
 	mut combined := Header{
 		data:    h.data // h.data.clone()
@@ -781,7 +829,7 @@ pub fn (h Header) join(other Header) Header {
 	}
 	for k in other.keys() {
 		for v in other.custom_values(k, exact: true) {
-			combined.add_custom(k, v) or {
+			combined.add_custom(k, header_value_without_crlf_nul(v)) or {
 				if err is HeaderLimitError {
 					return combined
 				}
@@ -793,10 +841,21 @@ pub fn (h Header) join(other Header) Header {
 	return combined
 }
 
-// canonicalize canonicalizes an HTTP header key
-// Common headers are determined by the common_header_map
-// Custom headers are capitalized on the first letter and any letter after a '-'
-// NOTE: Assumes sl is lowercase, since the caller usually already has the lowercase key
+// canonicalize returns the canonical spelling of the HTTP field name `name`.
+//
+// A name in `common_header_map` is spelled like its `CommonHeader`, so that the
+// result agrees with `CommonHeader.str()`. For the names in the IANA "HTTP Field
+// Name Registry" that is the registered spelling, e.g. `ETag`, `TE`, `Expect-CT`
+// and `WWW-Authenticate` (`DNT` is the spelling of the W3C document defining it).
+//
+// Any other name gets its first letter and each letter after a `-` in upper case
+// and the rest in lower case: `x-request-id` -> `X-Request-Id`. That is the rule
+// Go's `textproto.CanonicalMIMEHeaderKey` applies to every name, which is why Go
+// has `Etag`, `Te`, `Expect-Ct`, `Www-Authenticate` and `Dnt` for the names above.
+// Field names are case-insensitive (RFC 9110, section 5.1), so both spellings
+// name the same field.
+//
+// NOTE: Assumes name is lowercase, since the caller usually already has the lowercase key
 fn canonicalize(name string) string {
 	// check if we have a common header
 	if name in common_header_map {
@@ -843,6 +902,110 @@ pub fn (err HeaderLimitError) msg() string {
 	return 'too many header fields: http.Header holds at most ${max_headers}'
 }
 
+// HeaderValueError is the error for a field value that contains CR, LF or NUL.
+// RFC 9110 section 5.5 forbids these bytes in a field value: written as they
+// are, they would end the field line. The request and response parsers return
+// it for a received field whose value has a bare CR or a NUL.
+pub struct HeaderValueError {
+	Error
+pub:
+	header       string // the name of the field
+	invalid_char u8     // the first forbidden byte of its value
+}
+
+// msg returns the description of the error. It names the field and the byte,
+// and leaves the value out, which can be a credential.
+pub fn (err HeaderValueError) msg() string {
+	name := match err.invalid_char {
+		`\r` { 'CR' }
+		`\n` { 'LF' }
+		else { 'NUL' }
+	}
+	return "Invalid header value for '${err.header}': it contains ${name}"
+}
+
+// header_value_word returns the 8 bytes of `value` that start at `i` as one
+// integer. An optimizing C compiler turns it into a single load.
+@[direct_array_access; inline]
+fn header_value_word(value string, i int) u64 {
+	lo := u32(value[i]) | u32(value[i + 1]) << 8 | u32(value[i + 2]) << 16 | u32(value[i + 3]) << 24
+	hi := u32(value[i + 4]) | u32(value[i + 5]) << 8 | u32(value[i + 6]) << 16 | u32(value[i + 7]) << 24
+	return u64(hi) << 32 | lo
+}
+
+// word_has_byte_below_0e reports whether one of the 8 bytes of `w` is below
+// 0x0e, the range that holds NUL, LF and CR. The subtraction intentionally wraps.
+@[ignore_overflow; inline]
+fn word_has_byte_below_0e(w u64) bool {
+	return (w - 0x0e0e0e0e0e0e0e0e) & ~w & 0x8080808080808080 != 0
+}
+
+// header_value_crlf_nul_index returns the index of the first CR, LF or NUL in
+// `value`, or -1 when it has none.
+@[direct_array_access]
+fn header_value_crlf_nul_index(value string) int {
+	if value.len >= 8 {
+		// The usual value has no byte below 0x0e: rule it out 8 bytes at a
+		// time. The last word overlaps the one before it.
+		mut i := 0
+		for i + 8 < value.len && !word_has_byte_below_0e(header_value_word(value, i)) {
+			i += 8
+		}
+		if i + 8 >= value.len && !word_has_byte_below_0e(header_value_word(value, value.len - 8)) {
+			return -1
+		}
+	}
+	for i in 0 .. value.len {
+		c := value[i]
+		if c == `\r` || c == `\n` || c == 0 {
+			return i
+		}
+	}
+	return -1
+}
+
+// check_header_value returns a `HeaderValueError` if `value` contains CR, LF or NUL.
+fn check_header_value(key string, value string) ! {
+	i := header_value_crlf_nul_index(value)
+	if i >= 0 {
+		return HeaderValueError{
+			header:       key
+			invalid_char: value[i]
+		}
+	}
+}
+
+// header_value_without_crlf_nul returns `value` with each CR, LF and NUL
+// replaced by a space, which is what RFC 9110 section 5.5 asks of a recipient
+// that does not reject the message. It returns `value` itself, without a copy,
+// when it has none of them.
+fn header_value_without_crlf_nul(value string) string {
+	first := header_value_crlf_nul_index(value)
+	if first < 0 {
+		return value
+	}
+	mut b := value.bytes()
+	for i in first .. b.len {
+		if b[i] == `\r` || b[i] == `\n` || b[i] == 0 {
+			b[i] = ` `
+		}
+	}
+	return b.bytestr()
+}
+
+// header_value_without_ows returns `value` without the SP and HTAB bytes at
+// its start and end. That optional whitespace is not part of a field value
+// (RFC 9110 section 5.5), and a recipient removes it. It returns `value`
+// itself, without a copy, when it has none.
+@[direct_array_access; inline]
+fn header_value_without_ows(value string) string {
+	if value.len == 0 || (value[0] != ` ` && value[0] != `\t` && value[value.len - 1] != ` `
+		&& value[value.len - 1] != `\t`) {
+		return value
+	}
+	return value.trim(' \t')
+}
+
 // is_valid checks if the header token contains all valid bytes
 fn is_valid(header string) ! {
 	for _, c in header {
@@ -869,6 +1032,20 @@ fn is_token(b u8) bool {
 		33, 35...39, 42, 43, 45, 46, 48...57, 65...90, 94...122, 124, 126 { true }
 		else { false }
 	}
+}
+
+// canonical_header_key returns the canonical form of the header name `key`,
+// in the spelling that `Header.render(canonicalize: true)` writes. The name
+// can be in any case. It never fails: like Go's `http.CanonicalHeaderKey`, it
+// returns a `key` that is not a valid header name unchanged. That is an empty
+// name, or one with a byte that is not an RFC 9110 token character, such as a
+// space, `=`, a control character or a non-ASCII byte.
+// Such a name is still rejected by `Header.add_custom` and `Header.set_custom`.
+// Example: assert http.canonical_header_key('accept-ENCODING') == 'Accept-Encoding'
+// Example: assert http.canonical_header_key('x custom') == 'x custom'
+pub fn canonical_header_key(key string) string {
+	is_valid(key) or { return key }
+	return canonicalize(key.to_lower())
 }
 
 // str returns the headers string as seen in HTTP/1.1 requests.

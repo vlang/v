@@ -1,0 +1,70 @@
+vlib/v/checker/tests/mut_arg_array_boxed_elem_mismatch_err.vv:54:13: error: cannot use `&[]Item` as `&[]Named` in argument 1 to `rename`
+   52 | 
+   53 | fn forward(mut items []Item) {
+   54 |     rename(mut items)
+      |                ~~~~~
+   55 | }
+   56 |
+vlib/v/checker/tests/mut_arg_array_boxed_elem_mismatch_err.vv:59:13: error: cannot use `&[]Item` as `&[]Named` in argument 1 to `rename`
+   57 | fn main() {
+   58 |     mut items := [Item{}]
+   59 |     rename(mut items)
+      |                ~~~~~
+   60 |     mut circles := [Circle{}]
+   61 |     grow(mut circles)
+vlib/v/checker/tests/mut_arg_array_boxed_elem_mismatch_err.vv:61:11: error: cannot use `&[]Circle` as `&[]Shape` in argument 1 to `grow`
+   59 |     rename(mut items)
+   60 |     mut circles := [Circle{}]
+   61 |     grow(mut circles)
+      |              ~~~~~~~
+   62 |     mut b := Box{}
+   63 |     rename(mut b.items)
+vlib/v/checker/tests/mut_arg_array_boxed_elem_mismatch_err.vv:63:13: error: cannot use `&[]Item` as `&[]Named` in argument 1 to `rename`
+   61 |     grow(mut circles)
+   62 |     mut b := Box{}
+   63 |     rename(mut b.items)
+      |                ~~~~~~~
+   64 |     rename_rows(mut b.rows)
+   65 |     maybe_rename(mut items)
+vlib/v/checker/tests/mut_arg_array_boxed_elem_mismatch_err.vv:64:18: error: cannot use `&[][]Item` as `&[][]Named` in argument 1 to `rename_rows`
+   62 |     mut b := Box{}
+   63 |     rename(mut b.items)
+   64 |     rename_rows(mut b.rows)
+      |                     ~~~~~~
+   65 |     maybe_rename(mut items)
+   66 |     b.put(mut items)
+vlib/v/checker/tests/mut_arg_array_boxed_elem_mismatch_err.vv:65:19: error: cannot use `&[]Item` as `&?[]Named` in argument 1 to `maybe_rename`
+   63 |     rename(mut b.items)
+   64 |     rename_rows(mut b.rows)
+   65 |     maybe_rename(mut items)
+      |                      ~~~~~
+   66 |     b.put(mut items)
+   67 |     f := rename
+vlib/v/checker/tests/mut_arg_array_boxed_elem_mismatch_err.vv:66:12: error: cannot use `&[]Item` as `&[]Named` in argument 1 to `Box.put`
+   64 |     rename_rows(mut b.rows)
+   65 |     maybe_rename(mut items)
+   66 |     b.put(mut items)
+      |               ~~~~~
+   67 |     f := rename
+   68 |     f(mut items)
+vlib/v/checker/tests/mut_arg_array_boxed_elem_mismatch_err.vv:68:8: error: cannot use `&[]Item` as `&[]Named` in argument 1 to `f`
+   66 |     b.put(mut items)
+   67 |     f := rename
+   68 |     f(mut items)
+      |           ~~~~~
+   69 |     forward(mut items)
+   70 |     mut fixed := [Item{}, Item{}]!
+vlib/v/checker/tests/mut_arg_array_boxed_elem_mismatch_err.vv:71:13: error: cannot use `&[2]Item` as `&[]Named` in argument 1 to `rename`
+   69 |     forward(mut items)
+   70 |     mut fixed := [Item{}, Item{}]!
+   71 |     rename(mut fixed)
+      |                ~~~~~
+   72 |     shared shared_items := [Item{}]
+   73 |     println(read_shared(shared shared_items))
+vlib/v/checker/tests/mut_arg_array_boxed_elem_mismatch_err.vv:73:41: error: cannot use `[]Item` as `[]Named` in argument 1 to `read_shared`
+   71 |     rename(mut fixed)
+   72 |     shared shared_items := [Item{}]
+   73 |     println(read_shared(shared shared_items))
+      |                                            ^
+   74 |     // By value the array is converted, and identical element types are
+   75 |     // shared as `mut`.

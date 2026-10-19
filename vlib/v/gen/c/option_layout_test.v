@@ -34,7 +34,7 @@ fn test_ierror_uses_only_interface_metadata() {
 	mut g := FlatGen.new()
 	g.a = &ast
 	g.tc = &tc
-	g.emit_interface_struct('IError')
+	g.emit_interface_struct(flat.source_type_id('IError'))
 	declaration := g.sb.str()
 	assert declaration.contains('void* _object;')
 	assert declaration.contains('u32 _typ : 31;')

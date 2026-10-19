@@ -97,8 +97,10 @@ pub fn answer() int {
 }
 ")!
 	object_output := os.join_path(root, 'unit.o')
-	object_compile := run_driver_review_process(v3_bin, ['-nocache', '-cc', 'cc', '-o', object_output,
-		object_source], driver_review_environment())
+	// Boehm GC is the default, and its runtime is not linked into a plain `cc`
+	// probe, so the object is built without a collector.
+	object_compile := run_driver_review_process(v3_bin, ['-nocache', '-cc', 'cc', '-gc', 'none',
+		'-o', object_output, object_source], driver_review_environment())
 	assert object_compile.exit_code == 0, object_compile.output
 	assert os.is_file(object_output)
 	probe_source := os.join_path(root, 'object_probe.c')
@@ -245,7 +247,8 @@ fn main() {
 		assert overflow_compile.exit_code == 0, overflow_compile.output
 		overflow_run := cmdexec.run(overflow_output, [])
 		assert overflow_run.exit_code != 0, '${operation}: ${overflow_run.output}'
-		assert overflow_run.output.contains('integer overflow'), '${operation}: ${overflow_run.output}'
+		// The checks call the `builtin.overflow` helpers, which panic like V does.
+		assert overflow_run.output.contains('attempt to ${operation} with overflow'), '${operation}: ${overflow_run.output}'
 	}
 	ignored_overflow_source := os.join_path(root, 'ignored_overflow.v')
 	ignored_overflow_output := os.join_path(root, 'ignored_overflow')

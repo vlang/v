@@ -7,6 +7,25 @@ mut:
 	calls int
 }
 
+type SelectFixedArrayAlias = [2]int
+
+fn test_select_fixed_array_alias_receive() {
+	channel := chan SelectFixedArrayAlias{cap: 1}
+	channel <- SelectFixedArrayAlias([53, 59]!)
+	select {
+		row := <-channel {
+			assert row == SelectFixedArrayAlias([53, 59]!)
+		}
+	}
+	channel <- SelectFixedArrayAlias([61, 67]!)
+	mut row := SelectFixedArrayAlias([0, 0]!)
+	select {
+		row = <-channel {
+		}
+	}
+	assert row == SelectFixedArrayAlias([61, 67]!)
+}
+
 fn select_fixed_array_index(mut trace SelectFixedArrayTrace) int {
 	trace.calls++
 	return 1

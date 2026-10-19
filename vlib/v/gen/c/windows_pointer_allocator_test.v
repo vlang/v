@@ -7,6 +7,67 @@ fn allocator_test_c_function(generated string, signature string) string {
 	return signature + generated.all_after(signature).all_before('\n}') + '\n}\n'
 }
 
+fn allocator_test_c_struct(generated string, suffix string) string {
+	for line in generated.split_into_lines() {
+		if line.starts_with('struct ') && line.ends_with('${suffix} {') {
+			name := line.all_after('struct ').all_before(' {')
+			tail := generated.all_after(line + '\n')
+			body := tail.all_before('\n}')
+			closing := tail.all_after('\n}').all_before('\n')
+			return 'typedef struct ${name} ${name};\n${line}\n${body}\n}${closing}\n'
+		}
+	}
+	assert false, 'missing generated struct ${suffix}'
+	return ''
+}
+
+fn allocator_test_mock_runtime(declarations string) string {
+	return '#include <assert.h>
+#include <stddef.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+#define _WIN32 1
+#define _aligned_malloc mock_aligned_malloc
+#define _aligned_free mock_aligned_free
+typedef unsigned char u8;
+typedef unsigned int u32;
+typedef int64_t i64;
+typedef struct { void* _object; } IError;
+static IError builtin__none__, builtin__error_sentinel;
+${declarations}
+static void* live[16];
+static void* bases[16];
+static int live_count, aligned_allocations, aligned_frees, crt_frees;
+static void* _aligned_malloc(size_t size, size_t alignment) {
+	if (alignment < sizeof(void*)) alignment = sizeof(void*);
+	void* base = malloc(size + alignment - 1);
+	assert(base != NULL && live_count < 16);
+	void* pointer = (void*)(((uintptr_t)base + alignment - 1) & ~(alignment - 1));
+	live[live_count] = pointer; bases[live_count++] = base;
+	aligned_allocations++;
+	return pointer;
+}
+static void _aligned_free(void* pointer) {
+	if (pointer == NULL) return;
+	int index = 0;
+	while (index < live_count && live[index] != pointer) index++;
+	assert(index < live_count);
+	free(bases[index]);
+	live[index] = live[--live_count]; bases[index] = bases[live_count];
+	aligned_frees++;
+}
+static void crt_free(void* pointer) {
+	for (int index = 0; index < live_count; index++) assert(live[index] != pointer);
+	free(pointer); crt_frees++;
+}
+#define free crt_free
+#define _memory_panic(where, size) abort()
+static void* vcalloc(size_t size) { return _aligned_malloc(size, 1); }
+'
+}
+
 fn test_windows_builtin_and_compiler_promoted_pointers_keep_the_v_allocator_family() {
 	cc := os.find_abs_path_of_executable('clang') or { return }
 	dir := os.join_path(os.vtmp_dir(), 'windows_pointer_allocator_${os.getpid()}')
@@ -64,48 +125,10 @@ fn main() {
 	// allocation families, without requiring a Windows SDK on the test host.
 	mock_source := os.join_path(dir, 'allocator_mock.c')
 	mock_binary := os.join_path(dir, 'allocator_mock.exe')
-	os.write_file(mock_source, '#include <assert.h>
-#include <stddef.h>
-#include <stdint.h>
-#include <stdlib.h>
-#include <string.h>
-#define _WIN32 1
-#define _aligned_malloc mock_aligned_malloc
-#define _aligned_free mock_aligned_free
-typedef unsigned char u8;
-typedef struct { void* _object; } IError;
-static IError builtin__none__, builtin__error_sentinel;
-typedef struct __attribute__((aligned(64))) { int values[32]; } main__Holder;
+	os.write_file(mock_source, '${allocator_test_mock_runtime('typedef struct __attribute__((aligned(64))) { int values[32]; } main__Holder;
 typedef struct __attribute__((aligned(8))) { int value; } main__NaturalCell;
 typedef struct { main__NaturalCell values[2]; } main__NaturalHolder;
-static void* live[16];
-static void* bases[16];
-static int live_count, aligned_allocations, aligned_frees, crt_frees;
-static void* _aligned_malloc(size_t size, size_t alignment) {
-	if (alignment < sizeof(void*)) alignment = sizeof(void*);
-	void* base = malloc(size + alignment - 1);
-	assert(base != NULL && live_count < 16);
-	void* pointer = (void*)(((uintptr_t)base + alignment - 1) & ~(alignment - 1));
-	live[live_count] = pointer; bases[live_count++] = base;
-	aligned_allocations++;
-	return pointer;
-}
-static void _aligned_free(void* pointer) {
-	if (pointer == NULL) return;
-	int index = 0;
-	while (index < live_count && live[index] != pointer) index++;
-	assert(index < live_count);
-	free(bases[index]);
-	live[index] = live[--live_count]; bases[index] = bases[live_count];
-	aligned_frees++;
-}
-static void crt_free(void* pointer) {
-	for (int index = 0; index < live_count; index++) assert(live[index] != pointer);
-	free(pointer); crt_frees++;
-}
-#define free crt_free
-#define _memory_panic(where, size) abort()
-static void* vcalloc(size_t size) { return _aligned_malloc(size, 1); }
+')}
 ${allocate}
 ${copy}
 ${deallocate}
@@ -144,4 +167,71 @@ int main(int argc, char** argv) {
 		crossed := os.exec([mock_binary, ...arguments])
 		assert crossed.exit_code != 0, 'the allocator mock accepted crossed allocation families'
 	}
+}
+
+fn test_windows_implicit_pointer_sum_drops_keep_the_v_allocator_family() {
+	cc := os.find_abs_path_of_executable('clang') or { return }
+	dir := os.join_path(os.vtmp_dir(), 'windows_sum_pointer_allocator_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	source := os.join_path(dir, 'main.v')
+	c_source := os.join_path(dir, 'main.c')
+	ownership_compiler := os.join_path(dir, 'v-ownership')
+	vlib := os.join_path(@VEXEROOT, 'vlib')
+	build_compiler := os.exec([@VEXE, '-new-compiler', '-b', 'c', '-cc', cc, '-gc', 'none', '-d',
+		'ownership', '-path', vlib, '-o', ownership_compiler, os.join_path(vlib, 'v', 'v.v')])
+	assert build_compiler.exit_code == 0, build_compiler.output
+	os.write_file(source, '@[aligned: 64]
+struct AlignedCell { value int }
+struct NaturalCell { value int }
+type AlignedValue = int | &AlignedCell
+type NaturalValue = int | &NaturalCell
+fn implicit_aligned() {
+ value := AlignedValue(&AlignedCell{value: 17})
+ _ := value
+}
+fn implicit_natural() {
+ value := NaturalValue(&NaturalCell{value: 23})
+ _ := value
+}
+fn main() { implicit_aligned()
+ implicit_natural() }
+')!
+	result := os.exec([ownership_compiler, '-new-compiler', '-nocache', '-os', 'windows', '-gc',
+		'none', '-autofree', '-no-closures', '-o', c_source, source])
+	assert result.exit_code == 0, result.output
+	generated := os.read_file(c_source)!
+	for name in ['implicit_aligned', 'implicit_natural'] {
+		body := allocator_test_c_function(generated, 'void ${name}(void) {')
+		assert body.contains('._pointer_variant_is_owned = true'), body
+		assert body.count('v3_aligned_free(') == 1, body
+		assert !body.contains('\n\tfree('), body
+	}
+	declarations := allocator_test_c_struct(generated, 'AlignedCell') +
+		allocator_test_c_struct(generated, 'NaturalCell') +
+		allocator_test_c_struct(generated, 'AlignedValue') +
+		allocator_test_c_struct(generated, 'NaturalValue')
+	mock_source := os.join_path(dir, 'implicit_sum_mock.c')
+	mock_binary := os.join_path(dir, 'implicit_sum_mock.exe')
+	os.write_file(mock_source, '${allocator_test_mock_runtime(declarations)}
+${allocator_test_c_function(generated, 'u8* v_malloc(ptrdiff_t n) {')}
+${allocator_test_c_function(generated, 'void* memdup(void* src, ptrdiff_t sz) {')}
+${allocator_test_c_function(generated, 'void v_free(void* ptr) {')}
+${allocator_test_c_function(generated, 'static inline void* v3_aligned_memdup(void* src, ptrdiff_t sz, size_t alignment) {')}
+${allocator_test_c_function(generated, 'static inline void v3_aligned_free(void* p) {')}
+${allocator_test_c_function(generated, 'void implicit_aligned(void) {')}
+${allocator_test_c_function(generated, 'void implicit_natural(void) {')}
+int main(void) {
+ implicit_aligned();
+ assert(live_count == 0 && aligned_allocations == 1 && aligned_frees == 1);
+ implicit_natural();
+ assert(live_count == 0 && aligned_allocations == 2 && aligned_frees == 2);
+ assert(crt_frees == 0);
+ return 0;
+}
+')!
+	build := os.exec([cc, '-std=gnu11', mock_source, '-o', mock_binary])
+	assert build.exit_code == 0, build.output
+	run := os.exec([mock_binary])
+	assert run.exit_code == 0, run.output
 }

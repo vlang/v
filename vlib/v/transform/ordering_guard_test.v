@@ -8,8 +8,8 @@ import v.types
 // call-operand ordering guards look at the preceding operand — here the callee base.
 fn build_namespace_call(mut t Transformer, base_name string, base_type string, method string) (flat.NodeId, flat.Node) {
 	base := t.a.add_val(.ident, base_name)
-	t.set_node_typ(int(base), base_type)
-	callee := t.make_selector_op(base, method, 'string', .dot)
+	t.set_node_typ(int(base), flat.source_type_id(base_type))
+	callee := t.make_selector_op(base, method, flat.source_type_string, .dot)
 
 	cond := t.a.add_val(.bool_literal, 'true')
 	then_val := t.a.add_val(.int_literal, '1')
@@ -22,7 +22,7 @@ fn build_namespace_call(mut t Transformer, base_name string, base_type string, m
 		kind:           .if_expr
 		children_start: branch_start
 		children_count: 3
-		typ:            'int'
+		typ:            flat.source_type_int
 	})
 
 	call_start := t.a.children.len
@@ -87,9 +87,9 @@ fn test_runtime_callee_base_is_still_spilled_into_an_ordering_temp() {
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
-	t.set_var_type('holder', 'Holder')
+	t.set_var_type('holder', flat.source_type_id('Holder'))
 	t.structs['Holder'] = StructInfo{
-		name: 'Holder'
+		name: flat.source_type_id('Holder')
 	}
 
 	call, node := build_namespace_call(mut t, 'holder', 'Holder', 'render')
@@ -104,9 +104,9 @@ fn test_untyped_but_bound_receiver_is_still_spilled_into_an_ordering_temp() {
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
-	t.set_var_type('cloned', 'Holder')
+	t.set_var_type('cloned', flat.source_type_id('Holder'))
 	t.structs['Holder'] = StructInfo{
-		name: 'Holder'
+		name: flat.source_type_id('Holder')
 	}
 
 	call, node := build_namespace_call(mut t, 'cloned', 'unknown', 'render')
@@ -124,28 +124,28 @@ fn test_callee_base_runtime_value_classification() {
 
 	// A module identifier: unresolved and not a binding.
 	module_base := t.a.add_val(.ident, 'os')
-	t.set_node_typ(int(module_base), 'unknown')
+	t.set_node_typ(int(module_base), flat.source_type_unknown)
 	assert t.callee_base_is_not_a_runtime_value(module_base)
 
 	// A type name reads back as `void` whatever its spelling.
 	type_base := t.a.add_val(.ident, 'Box')
-	t.set_node_typ(int(type_base), 'void')
+	t.set_node_typ(int(type_base), flat.source_type_void)
 	assert t.callee_base_is_not_a_runtime_value(type_base)
 
 	// A runtime receiver whose type the checker lost — the case a generic clone produces. Its
 	// binding survives, so it must stay snapshotted.
-	t.set_var_type('cloned', 'Holder')
+	t.set_var_type('cloned', flat.source_type_id('Holder'))
 	cloned_base := t.a.add_val(.ident, 'cloned')
-	t.set_node_typ(int(cloned_base), 'unknown')
+	t.set_node_typ(int(cloned_base), flat.source_type_unknown)
 	assert !t.callee_base_is_not_a_runtime_value(cloned_base)
 
 	// An unresolved operand that is not a bare identifier stays snapshotted too.
 	inner := t.a.add_val(.ident, 'holder')
-	field_base := t.make_selector_op(inner, 'field', 'unknown', .dot)
+	field_base := t.make_selector_op(inner, 'field', flat.source_type_unknown, .dot)
 	assert !t.callee_base_is_not_a_runtime_value(field_base)
 
 	typed_base := t.a.add_val(.ident, 'builder')
-	t.set_node_typ(int(typed_base), 'strings.Builder')
+	t.set_node_typ(int(typed_base), flat.source_type_id('strings.Builder'))
 	assert !t.callee_base_is_not_a_runtime_value(typed_base)
 }
 
@@ -161,4 +161,56 @@ fn test_empty_operand_does_not_need_an_ordering_snapshot() {
 	assert !t.operand_needs_ordering_snapshot(empty)
 	assert t.snapshot_expr_for_reuse(empty) == empty
 	assert ordering_snapshot_decl_count(&t) == 0
+}
+
+// A declaration's address cannot change during a later prelude. Keeping the reference inline
+// also preserves the expected function type needed for a voidptr callback adapter.
+fn test_declared_function_references_are_not_snapshotted_but_shadowing_values_are() {
+	for name in ['callback', 'other.callback'] {
+		mut a := flat.FlatAst.new()
+		mut tc := types.TypeChecker.new(&a)
+		tc.fn_ret_types[name] = types.Type(types.Void{})
+		mut t := new_transformer(mut a, &tc, map[string]bool{})
+		t.cur_module = 'main'
+		callback := t.a.add_val(.ident, name)
+		t.set_node_typ(int(callback), flat.source_type_id('fn ()'))
+		assert t.is_pure_constant_expr(callback)
+		assert !t.operand_needs_ordering_snapshot(callback)
+		assert t.snapshot_expr_for_reuse(callback) == callback
+		assert ordering_snapshot_decl_count(&t) == 0
+
+		// A same-named binding holds a runtime function value and may be replaced.
+		t.set_var_type(name, flat.source_type_id('fn ()'))
+		assert !t.is_pure_constant_expr(callback)
+		assert t.operand_needs_ordering_snapshot(callback)
+		assert t.snapshot_expr_for_reuse(callback) != callback
+		assert ordering_snapshot_decl_count(&t) == 1
+	}
+}
+
+fn test_global_function_values_are_snapshotted_before_later_preludes() {
+	for context in ['main', 'current', 'imported'] {
+		mut a := flat.FlatAst.new()
+		mut tc := types.TypeChecker.new(&a)
+		// A builtin or other module may contribute a same-named declaration.
+		tc.fn_ret_types['callback'] = types.Type(types.Void{})
+		global_name := match context {
+			'main' { 'callback' }
+			'current' { 'consumer.callback' }
+			else { 'producer.callback' }
+		}
+		if context == 'imported' {
+			tc.file_selective_imports[file_import_key('consumer.v', 'callback')] = [global_name]
+		}
+		mut t := new_transformer(mut a, &tc, map[string]bool{})
+		t.cur_module = if context == 'main' { 'main' } else { 'consumer' }
+		t.cur_file = 'consumer.v'
+		t.globals.set(global_name, 'fn ()')
+		callback := t.a.add_val(.ident, 'callback')
+		t.set_node_typ(int(callback), flat.source_type_id('fn ()'))
+		assert !t.is_pure_constant_expr(callback)
+		assert t.operand_needs_ordering_snapshot(callback)
+		assert t.snapshot_expr_for_reuse(callback) != callback
+		assert ordering_snapshot_decl_count(&t) == 1
+	}
 }

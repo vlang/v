@@ -74,8 +74,18 @@ fn (resp Response) write_into_builder(mut sb strings.Builder) {
 	sb.write_string(resp.body)
 }
 
-// Parse a raw HTTP response into a Response object
+// parse_response parses an HTTP response and decodes its transfer and content encodings.
 pub fn parse_response(resp string) !Response {
+	return parse_response_with_options(resp)
+}
+
+@[params]
+struct ResponseParseOptions {
+	raw_body bool
+}
+
+// parse_response_with_options leaves content encodings intact for a reverse proxy.
+fn parse_response_with_options(resp string, opts ResponseParseOptions) !Response {
 	version, status_code, status_msg := parse_status_line(resp.all_before('\r\n'))!
 	// Build resp header map and separate the body
 	start_idx, end_idx := find_headers_range(resp)!
@@ -84,7 +94,9 @@ pub fn parse_response(resp string) !Response {
 	if has_header_token(header.get(.transfer_encoding) or { '' }, 'chunked') {
 		body = chunked.decode(body)!
 	}
-	body = decode_response_body(body, header.get(.content_encoding) or { '' })
+	if !opts.raw_body {
+		body = decode_response_body(body, header.get(.content_encoding) or { '' })
+	}
 	return Response{
 		http_version: version
 		status_code:  status_code
