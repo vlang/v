@@ -2006,6 +2006,36 @@ fn (mut g Parser) read_transparent_expression_block(previous_token token.Token, 
 	return FastcTransparentBlockResult{false, unsafe_expression_depth}
 }
 
+// read_unsafe_block_expression_atom reads an `unsafe { statements; value }` used as a
+// value into one typed statement-expression atom. The block's locals are scoped to it.
+fn (mut g Parser) read_unsafe_block_expression_atom() !FastcExpressionToken {
+	g.expect(.key_unsafe)!
+	g.expect(.lcbr)!
+	local_scope_start := g.local_scope_changes.len
+	g.local_scope_depth++
+	g.unsafe_depth += 1
+	value := g.read_block_expression_value() or {
+		g.unsafe_depth -= 1
+		g.restore_local_scope(local_scope_start)
+		g.local_scope_depth--
+		return err
+	}
+	value_type := g.last_expression_type
+	option_value_type := g.last_option_value_type
+	g.unsafe_depth -= 1
+	g.restore_local_scope(local_scope_start)
+	g.local_scope_depth--
+	g.skip_semicolons()
+	g.expect(.rcbr)!
+	g.last_expression = []FastcExpressionToken{}
+	return FastcExpressionToken{
+		tok:               .name
+		lit:               value
+		typ:               value_type
+		option_value_type: option_value_type
+	}
+}
+
 fn (mut g Parser) read_compound_expression_atom(expression_tokens []FastcExpressionToken, expected_struct_field_type_source_id u32, paren_depth int) !FastcExpressionToken {
 	if g.tok == .key_if {
 		previous_expected_type_source_id := g.expected_expression_type
@@ -2333,7 +2363,9 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 	if prefix == '' && g.tok == .key_match && !g.selfhost {
 		return g.read_match_expression()!
 	}
-	if prefix == '' && g.tok == .dollar {
+	// `$embed_file(...).to_string()` may be continued by a member chain, even on the
+	// following lines (`.replace(...)`), so it is read as the first operand below.
+	if prefix == '' && g.tok == .dollar && !g.dollar_keyword_is('embed_file') {
 		return g.read_comptime_if_expression()!
 	}
 	if prefix == '' && g.tok == .key_spawn {
@@ -2480,6 +2512,23 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			.lsbr,
 		] && fastc_source_range_has_newline(g.s.src, previous_token_end, g.s.pos) {
 			break
+		}
+		if g.selfhost && g.tok == .key_unsafe && previous_token != .dot
+			&& g.unsafe_block_has_statements() {
+			// `unsafe { p := f(); g(p) }` as a value declares locals before its value, so
+			// it cannot be read transparently; lower it as a statement expression.
+			atom := g.read_unsafe_block_expression_atom()!
+			if result.len > 0 && fastc_needs_space(result.last(), atom.lit)
+				&& !previous_module_separator {
+				result.write_u8(` `)
+			}
+			result.write_string(atom.lit)
+			expression_tokens << atom
+			previous_token = .name
+			previous_lit = atom.lit
+			previous_module_separator = false
+			previous_token_end = g.s.pos
+			continue
 		}
 		if g.tok in [.key_unsafe, .key_lock, .key_rlock]
 			|| (unsafe_expression_depth > 0 && g.tok in [.rcbr, .semicolon]) {

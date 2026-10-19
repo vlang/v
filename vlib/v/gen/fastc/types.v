@@ -1050,6 +1050,11 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 						return flat.source_type_id(fastc_array_c_type(flat.source_type_name(fastc_normalize_inferred_type(element))))
 					}
 				}
+				if g.is_string_layout(base_type)
+					&& g.is_reference_local_base(tokens[start..open_index], base_type) {
+					// Slicing a `mut` string local copies bytes of the string it refers to.
+					return flat.source_type_id(flat.source_type_name(base_type).all_before_last('*'))
+				}
 				return base_type
 			}
 			if base_layout.starts_with('Map_') {
@@ -1058,7 +1063,7 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 
 				return value_type
 			}
-			if base_layout == 'string' {
+			if base_layout == 'string' || g.is_string_layout(base_type) {
 				return g.indexed_string_type(base_type, tokens[start..open_index])
 			}
 			if element_type_source_id := g.fixed_array_pointee_element_type(base_type, tokens[start..open_index]) {
@@ -1210,6 +1215,12 @@ fn (g &Parser) infer_c_pointer_cast_member_type(tokens []FastcExpressionToken, s
 		return none
 	}
 	return field_type
+}
+
+// is_string_layout reports whether `typ`, or the type it points to, is laid out as a
+// `string`, through aliases (`type Name = string`).
+fn (g &Parser) is_string_layout(typ u32) bool {
+	return fastc_trim_pointer_suffix(flat.source_type_name(g.underlying_alias_type(typ))) == 'string'
 }
 
 // indexed_string_type is the type of `base[i]` for a base laid out as a `string`. A string
@@ -1451,7 +1462,7 @@ fn (g &Parser) infer_member_access_type(tokens []FastcExpressionToken, start int
 						current_type = flat.source_type_id(fastc_array_c_type(flat.source_type_name(fastc_normalize_inferred_type(element))))
 					}
 				}
-			} else if current_layout == 'string' {
+			} else if current_layout == 'string' || g.is_string_layout(current_type) {
 				current_type = g.indexed_string_type(current_type, tokens[start..index])
 			} else if current_layout.starts_with('Map_') {
 				_, value_type_source_id := g.map_key_value_types(current_type) or { return none }
