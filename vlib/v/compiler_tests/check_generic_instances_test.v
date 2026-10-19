@@ -383,6 +383,12 @@ fn test_a_library_that_imports_a_module_of_the_program_keeps_every_body() {
 // build_program builds `source` with the prelude, with no V1 to fall back on when
 // the C compiler fails.
 fn build_program(name string, source string) os.Result {
+	return build_program_with_env(name, source, [])
+}
+
+// build_program_with_env is build_program with the environment variables `env`
+// (`NAME=value`) set for the build.
+fn build_program_with_env(name string, source string, env []string) os.Result {
 	dir := os.join_path(os.vtmp_dir(), 'v3_build_generic_instances_${name}_${os.getpid()}')
 	os.mkdir_all(dir) or { panic(err) }
 	defer {
@@ -390,19 +396,16 @@ fn build_program(name string, source string) os.Result {
 	}
 	path := os.join_path(dir, 'main.v')
 	os.write_file(path, generic_prelude + source) or { panic(err) }
-	return os.exec(['env', 'V_MACOS_V3_NO_FALLBACK=1', @VEXE, '-new-compiler', '-nocolor', '-o',
-		os.join_path(dir, 'main'), path])
+	mut cmd := ['env', 'V_MACOS_V3_NO_FALLBACK=1']
+	cmd << env
+	cmd << [@VEXE, '-new-compiler', '-nocolor', '-o', os.join_path(dir, 'main'), path]
+	return os.exec(cmd)
 }
 
 // A build reports the errors of an instance where a check does, as V1 did: the
 // body of a generic function without constraints is still not checked on its
 // own, but each of its instances is, instead of failing in the C compiler.
-// A Windows build leaves the instances to the C compiler (see
-// instance_check_windows.c.v), so this only runs off Windows.
 fn test_a_build_reports_the_member_an_instance_lacks() {
-	$if windows {
-		return
-	}
 	source := "fn show[T](x T) string {\n\treturn x.nme\n}\n\nfn main() {\n\tprintln(show(User{ name: 'a' }))\n}\n"
 	res := build_program('build_struct_typo', source)
 	assert res.exit_code != 0, res.output
@@ -413,15 +416,10 @@ fn test_a_build_reports_the_member_an_instance_lacks() {
 }
 
 // An operator that the type of an instance does not have is reported for that
-// instance too, in a check and in a build: `int + string`. A Windows build leaves
-// the instances to the C compiler, so only the check runs there.
+// instance too, in a check and in a build: `int + string`.
 fn test_an_operator_an_instance_lacks_is_reported() {
 	source := "fn add[T](a T) int {\n\treturn a + 'x'\n}\n\nfn main() {\n\tprintln(add(1))\n}\n"
-	mut results := [check_program('operator_check', source)]
-	$if !windows {
-		results << build_program('operator_build', source)
-	}
-	for res in results {
+	for res in [check_program('operator_check', source), build_program('operator_build', source)] {
 		assert res.exit_code != 0, res.output
 		assert !res.output.contains('C compilation error'), res.output
 		assert error_lines(res.output) == ['11:9: operator `+` cannot concatenate `int` and `string`'], res.output
@@ -533,6 +531,8 @@ fn main() {
 	}))
 "
 
+const bad_layout_program = layout_program + "\tprintln(to_bytes([1, 2]))\n\tprintln(to_bytes([i32(1)]))\n\tprintln(widen([u8(1)]))\n\tprintln(assign([u32(1)]))\n\tprintln(wrap([u8(1)]))\n\tprintln(total([i32(1)]))\n\tprintln(narrow_map({\n\t\t'a': 1\n\t}))\n\tprintln(widen_map({\n\t\t'a': u8(1)\n\t}))\n\tprintln(total_map({\n\t\t'a': i32(1)\n\t}))\n}\n"
+
 const layout_errors = ['17:9: cannot cast array `[]int` to `[]u8`',
 	'17:9: cannot cast array `[]i32` to `[]u8`',
 	'21:9: cannot use `[]u8` as type `[]u64` in return argument',
@@ -547,15 +547,10 @@ const layout_errors = ['17:9: cannot cast array `[]int` to `[]u8`',
 // uses them as is reported where the body does so, once for each such instance,
 // with the wording of the same error outside a generic function: such an array
 // or map is not converted, so `[]u8(a)` for an `a []int` would read its elements
-// with the wrong size. A check and a build report the same. A Windows build leaves
-// the instances to the C compiler (see instance_check_windows.c.v).
+// with the wrong size. A check and a build report the same.
 fn test_an_instance_that_uses_an_array_or_map_with_other_elements_is_reported() {
-	source := layout_program + "\tprintln(to_bytes([1, 2]))\n\tprintln(to_bytes([i32(1)]))\n\tprintln(widen([u8(1)]))\n\tprintln(assign([u32(1)]))\n\tprintln(wrap([u8(1)]))\n\tprintln(total([i32(1)]))\n\tprintln(narrow_map({\n\t\t'a': 1\n\t}))\n\tprintln(widen_map({\n\t\t'a': u8(1)\n\t}))\n\tprintln(total_map({\n\t\t'a': i32(1)\n\t}))\n}\n"
-	mut results := [check_program('layout_check', source)]
-	$if !windows {
-		results << build_program('layout_build', source)
-	}
-	for res in results {
+	for res in [check_program('layout_check', bad_layout_program),
+		build_program('layout_build', bad_layout_program)] {
 		assert res.exit_code != 0, res.output
 		assert !res.output.contains('C compilation error'), res.output
 		assert error_lines(res.output) == layout_errors, res.output
@@ -631,11 +626,8 @@ fn main() {
 // append keep the elements as they are too.
 fn test_an_instance_that_wraps_or_nests_an_array_with_other_elements_is_reported() {
 	source := wrapped_layout_program + '\tprintln(opt[u8]([u8(1)]))\n\tprintln(res([u8(1)]) or { [] })\n\tprintln(fixed([u8(1), 2, 3]!))\n\tprintln(nested([[u8(1)]]))\n\tmut narrow := [u8(1)]\n\tgrow(mut narrow)\n\tprintln(append([u8(1)]))\n}\n'
-	mut results := [check_program('wrapped_layout_check', source)]
-	$if !windows {
-		results << build_program('wrapped_layout_build', source)
-	}
-	for res in results {
+	for res in [check_program('wrapped_layout_check', source),
+		build_program('wrapped_layout_build', source)] {
 		assert res.exit_code != 0, res.output
 		assert !res.output.contains('C compilation error'), res.output
 		assert error_lines(res.output) == [
@@ -659,4 +651,27 @@ fn test_wrapped_instances_with_the_expected_elements_stay_valid() {
 		assert res.exit_code == 0, res.output
 		assert error_lines(res.output) == [], res.output
 	}
+}
+
+// A build that cannot fork, as on Windows, checks the instances of its generics
+// in a compiler process of its own (see start_program_instance_check_process).
+// V_CHECK_INSTANCES_IN_BUILD=process makes any build do so, and it reports what
+// a check reports, once, and still builds a valid program.
+fn test_a_build_checks_the_instances_in_a_compiler_process_where_it_cannot_fork() {
+	env := ['V_CHECK_INSTANCES_IN_BUILD=process']
+	res := build_program_with_env('layout_build_process', bad_layout_program, env)
+	assert res.exit_code != 0, res.output
+	assert !res.output.contains('C compilation error'), res.output
+	assert error_lines(res.output) == layout_errors, res.output
+	member := build_program_with_env('member_build_process', "fn show[T](x T) string {\n\treturn x.nme\n}\n\nfn main() {\n\tmut unused := 1\n\tprintln(show(User{ name: 'a' }))\n}\n",
+		env)
+	assert member.exit_code != 0, member.output
+	// The warning of the build is printed once, by the build.
+	assert member.output.count('unused variable: `unused`') == 1, member.output
+	errors := error_lines(member.output)
+	assert errors.len == 1, member.output
+	assert errors[0].starts_with('11:11: type `User` has no field named `nme`'), member.output
+	valid := build_program_with_env('layout_valid_build_process', layout_program + '}\n', env)
+	assert valid.exit_code == 0, valid.output
+	assert error_lines(valid.output) == [], valid.output
 }

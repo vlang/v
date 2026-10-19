@@ -2256,11 +2256,7 @@ fn test_generic_specialization_rejects_incompatible_array_element_return() {
 // generic_array_return_error is the error for an array of `actual` returned as
 // one of `expected` by a specialization, when their elements are stored
 // differently. The check of the program's instances reports it with the wording
-// of any other function. A Windows build has no such check (see
-// instance_check_windows.c.v), so the specialization reports it.
+// of any other function.
 fn generic_array_return_error(actual string, expected string) string {
-	$if windows {
-		return 'cannot return `${actual}` as `${expected}`'
-	}
 	return 'cannot use `${actual}` as type `${expected}` in return argument'
 }
