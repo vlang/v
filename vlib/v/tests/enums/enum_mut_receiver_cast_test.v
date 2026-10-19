@@ -1,5 +1,7 @@
 // A `mut` receiver or parameter is held as a pointer to the caller's value. A cast of it,
-// such as `int(c)` on a `mut c Color`, converts the value, not the pointer.
+// such as `int(c)` on a `mut c Color`, converts the value, not the pointer. Inside `unsafe`,
+// an integer cast keeps the address instead (see vlib/v/gen/fastc/pointer_cast_bits_test.v),
+// so the casts below that need the value are made outside it.
 enum Color {
 	red
 	green
@@ -30,12 +32,14 @@ type Bytes = []u8
 type Dict = map[string]int
 
 fn (mut c Color) next() {
-	c = unsafe { Color(int(c) + 1) }
+	n := int(c) + 1
+	c = unsafe { Color(n) }
 }
 
 fn (mut c Color) casts() string {
 	same := Color(c)
-	back := unsafe { Color(int(c)) }
+	value := int(c)
+	back := unsafe { Color(value) }
 	return '${int(c)} ${u8(c)} ${i64(c)} ${f64(int(c))} ${same} ${back}'
 }
 
