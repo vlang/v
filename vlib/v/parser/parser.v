@@ -249,10 +249,11 @@ pub fn (mut p Parser) reserve_selfhost_ast() {
 	// room also spreads worker writes across more physical pages. Keep both above
 	// reserve_parallel_transform_ast's targets (9/4 of the nodes, 8/3 of the
 	// children) with room for the compiler to grow: once the self-host AST
-	// outgrows them, transform copies the whole ~110 MB node slab serially and
-	// the old one stays resident. Untouched capacity costs no physical memory.
-	selfhost_node_capacity := 3_670_016
-	selfhost_child_capacity := 4_587_520
+	// outgrows them, transform copies the whole ~115 MB node slab. These fit
+	// 2.09M parsed nodes and 2.06M parsed children; the compiler had 1.78M of
+	// each in 2026-10. Untouched capacity costs no physical memory.
+	selfhost_node_capacity := 4_718_592
+	selfhost_child_capacity := 5_505_024
 	if p.a.nodes.cap < selfhost_node_capacity {
 		old_nodes := p.a.nodes
 		p.a.nodes = []flat.Node{cap: selfhost_node_capacity}

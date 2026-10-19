@@ -4326,7 +4326,7 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 	// pool; this serial walk then only replays the order-sensitive table
 	// registrations. Empty when the pool is unavailable — then each fn_decl
 	// computes inline exactly as before.
-	pass2_preps := tc.collect_pass2_fn_preps_parallel()
+	mut pass2_preps, pass2_scopes := tc.collect_pass2_fn_preps_parallel()
 	fast_pass2_registration := os.getenv('V3_NO_FAST_PASS2_REGISTRATION') == ''
 	parallel_pass2_ancillary := fast_pass2_registration && tc.building_v_fast
 		&& os.getenv('V3_NO_PAR_PASS2_REGISTRATION') == ''
@@ -4349,6 +4349,9 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 		tc.defer_fn_ancillary = false
 		tc.finish_pass2_ancillary_registrations()
 	}
+	// The registrations above copied what they keep of the preparations.
+	unsafe { pass2_preps.free() }
+	free_check_worker_scopes(checker_worker_pool(tc.a), pass2_scopes)
 	tc.collect_deprecated_symbols()
 	if p2_profile {
 		tc.timing_profile('  [ttime]       p2 fns ${f64(p2_fn_ns) / 1000000.0:.2f} ms, structs ${f64(p2_struct_ns) / 1000000.0:.2f} ms')
@@ -4548,6 +4551,8 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 	mut p2_fn_ns := u64(0)
 	mut p2_struct_ns := u64(0)
 	mut p2_t0 := u64(0)
+	// Keyed by the payloads of the lanes' arenas, which outlive this loop.
+	mut promoted_types := &Pass2TypePromotion{}
 	for pi, tl_idx in entries {
 		node := a.nodes[tl_idx]
 		node_ref := a.node(flat.NodeId(tl_idx))
@@ -4562,17 +4567,21 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 				tc.enter_module(node.value)
 			}
 			.fn_decl {
-				names_ready := pi < pass2_preps.len && pass2_preps[pi].prepared
-					&& pass2_preps[pi].names_ready
+				lane_prep := if pi < pass2_preps.len && pass2_preps[pi].prepared {
+					promote_pass2_fn_prep(pass2_preps[pi], mut promoted_types)
+				} else {
+					Pass2FnPrep{}
+				}
+				names_ready := lane_prep.prepared && lane_prep.names_ready
 				qname := if names_ready {
-					pass2_preps[pi].qname
+					lane_prep.qname
 				} else {
 					tc.qualify_fn_name(node.value)
 				}
 				lowered_qname := if !fast_pass2_registration {
 					''
 				} else if names_ready {
-					tc.store_c_name(qname, pass2_preps[pi].lowered_qname)
+					tc.store_c_name(qname, lane_prep.lowered_qname)
 				} else {
 					tc.cached_c_name(qname)
 				}
@@ -4581,7 +4590,7 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 				} else if node.value == qname {
 					lowered_qname
 				} else if names_ready {
-					tc.store_c_name(node.value, pass2_preps[pi].lowered_source_name)
+					tc.store_c_name(node.value, lane_prep.lowered_source_name)
 				} else {
 					tc.cached_c_name(node.value)
 				}
@@ -4601,8 +4610,8 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 				} else {
 					tc.register_visible_mutation_fn_decl(tl_idx, tc.cur_module, qname, node.value)
 				}
-				prep := if pi < pass2_preps.len && pass2_preps[pi].prepared {
-					pass2_preps[pi]
+				prep := if lane_prep.prepared {
+					lane_prep
 				} else {
 					tc.compute_pass2_fn_prep(node)
 				}
@@ -4618,8 +4627,8 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 					// The signature arrays are immutable after registration. Keep one
 					// master-arena copy shared by the semantic, lowered, legacy, and
 					// builtin aliases instead of cloning it independently for each key.
-					owned_ptypes := ptypes.clone()
-					owned_shared_params := if shared_params.len > 0 {
+					owned_ptypes := if prep.owned_lists { ptypes } else { ptypes.clone() }
+					owned_shared_params := if shared_params.len > 0 && !prep.owned_lists {
 						shared_params.clone()
 					} else {
 						shared_params
@@ -14540,11 +14549,13 @@ fn (mut tc TypeChecker) check_decl_type_strings(node_id flat.NodeId, node flat.N
 // could not be told from the inner one, and V does not have such types (see
 // #27171). `?T` with an option `T`, and `?Alias` of an option, are not written
 // nested types: they collapse to the option itself.
-fn (mut tc TypeChecker) check_written_nested_option_types(top_id flat.NodeId) {
+// `stack` is the caller's scratch, reused for every declaration.
+fn (mut tc TypeChecker) check_written_nested_option_types(top_id flat.NodeId, mut stack []WrittenTypeItem) {
 	if !tc.should_diagnose(top_id) {
 		return
 	}
-	mut stack := [WrittenTypeItem{top_id, top_id}]
+	stack.clear()
+	stack << WrittenTypeItem{top_id, top_id}
 	for stack.len > 0 {
 		item := stack.pop()
 		if !tc.valid_node_id(item.id) {
@@ -14552,11 +14563,29 @@ fn (mut tc TypeChecker) check_written_nested_option_types(top_id flat.NodeId) {
 		}
 		node := tc.a.node(item.id)
 		anchor := if node.pos.end > 0 { item.id } else { item.anchor }
-		if nested_option_result_marker(node.typ_text()) >= 0 || nested_option_result_marker(node.value) >= 0 {
+		if writes_reported_type_text(node.kind) && (nested_option_result_marker(node.typ_text()) >= 0
+			|| nested_option_result_marker(node.value) >= 0) {
 			tc.report_written_nested_option_types(*node, anchor)
 		}
 		for i in 0 .. node.children_count {
 			stack << WrittenTypeItem{tc.a.child(node, i), anchor}
+		}
+	}
+}
+
+// writes_reported_type_text reports whether report_written_nested_option_types
+// can find a type text in a node of `kind` (see written_type_texts); the walk
+// above skips the strings of the other nodes, such as string literals.
+@[inline]
+fn writes_reported_type_text(kind flat.NodeKind) bool {
+	return match kind {
+		.param, .fn_decl, .interface_field, .field_decl, .type_decl, .global_decl, .const_field,
+		.fn_literal, .array_init, .decl_assign, .ident, .map_init, .cast_expr, .is_expr, .as_expr,
+		.sizeof_expr, .typeof_expr, .struct_init, .c_fn_decl {
+			true
+		}
+		else {
+			false
 		}
 	}
 }

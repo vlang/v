@@ -14320,12 +14320,22 @@ pub fn run(args []string) {
 			}
 			// Keep the large escaping AST/cache slabs in the compilation arena, while
 			// transformer indexes and per-body temporary state use a stage arena.
+			unreserved_nodes := unsafe { a.nodes.data }
+			unreserved_nodes_cap := a.nodes.cap
+			unreserved_children := unsafe { a.children.data }
+			unreserved_children_cap := a.children.cap
 			if cache_state.manager.enabled {
 				transform.reserve_parallel_transform_cache_ast(mut a, skip_transform_generics)
 			} else if uses_generics {
 				transform.reserve_parallel_transform_ast_before_monomorph(mut a, skip_transform_generics)
 			} else {
 				transform.reserve_parallel_transform_ast(mut a, skip_transform_generics)
+			}
+			// A grown reservation copied the parsed tree; the old buffers (the
+			// size of the parsed AST) would otherwise stay resident through Cgen.
+			unsafe {
+				a.discard_replaced_storage(unreserved_nodes, unreserved_nodes_cap,
+					unreserved_children, unreserved_children_cap)
 			}
 			if verbose {
 				eprintln('  [leakcheck] post-reserve: nodes ${a.nodes.len}/${a.nodes.cap} children ${a.children.len}/${a.children.cap}')
@@ -19790,21 +19800,25 @@ fn collect_v3_directory_user_files_rec(mut a flat.FlatAst, module_root string, d
 }
 
 fn append_v3_directory_user_files(mut a flat.FlatAst, dir string, prefs &pref.Preferences, is_test_command bool, mut seen map[string]bool, mut files []string) {
-	// Every listed file resolves through `dir`: resolve the directory once.
+	// Every listed file resolves through `dir`: resolve the directory once, and
+	// learn which of its entries are symbolic links from one more listing.
 	mut real_dir := ''
+	mut symlinks := flat.ListedSymlinks{}
 	for file in prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(dir, prefs.user_defines,
 		prefs.backend, prefs.target)) {
 		if real_dir.len == 0 {
 			real_dir = os.real_path(dir)
+			symlinks = flat.scan_listed_symlinks(dir)
 		}
-		append_unique_listed_file(mut a, mut files, mut seen, file, real_dir)
+		append_unique_listed_file(mut a, mut files, mut seen, file, real_dir, &symlinks)
 	}
 	if is_test_command {
 		for file in prefs.without_excluded(pref.get_test_v_files_from_dir_for_target(dir, prefs.user_defines, prefs.backend, prefs.target)) {
 			if real_dir.len == 0 {
 				real_dir = os.real_path(dir)
+				symlinks = flat.scan_listed_symlinks(dir)
 			}
-			append_unique_listed_file(mut a, mut files, mut seen, file, real_dir)
+			append_unique_listed_file(mut a, mut files, mut seen, file, real_dir, &symlinks)
 		}
 	}
 }
@@ -20037,8 +20051,8 @@ fn append_unique_file(mut a flat.FlatAst, mut files []string, mut seen map[strin
 
 // append_unique_listed_file is append_unique_file for an entry of the directory
 // listing that `real_dir` is the os.real_path of.
-fn append_unique_listed_file(mut a flat.FlatAst, mut files []string, mut seen map[string]bool, file string, real_dir string) {
-	key := a.record_listed_source_path(file, real_dir)
+fn append_unique_listed_file(mut a flat.FlatAst, mut files []string, mut seen map[string]bool, file string, real_dir string, symlinks &flat.ListedSymlinks) {
+	key := a.record_listed_source_path_in(file, real_dir, symlinks)
 	if seen[key] {
 		return
 	}

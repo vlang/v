@@ -39,11 +39,19 @@ fn selected_fn_frontier_scan_batch(arg voidptr) {
 	for i in args.start .. args.end {
 		worker.collect_selected_decl_called_fns(unsafe { frontier[i] }, mut smartcast_keys)
 	}
+	// The master, idle until every scan joins, enqueues only the names it does
+	// not know yet.
+	mut fresh := []string{cap: worker.selected_file_worklist.len}
+	for name in worker.selected_file_worklist {
+		if name !in master.selected_file_called_fns {
+			fresh << name
+		}
+	}
 	check_worker_scope_leave(scratch)
 	// Resolution can create qualified names in the disposable arena. Publish
 	// copies in the worker's persistent arena before releasing its checker.
-	mut names := []string{cap: worker.selected_file_worklist.len}
-	for name in worker.selected_file_worklist {
+	mut names := []string{cap: fresh.len}
+	for name in fresh {
 		names << name.clone()
 	}
 	args.names = names

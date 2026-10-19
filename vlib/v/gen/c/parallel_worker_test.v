@@ -1,9 +1,27 @@
 module c
 
+import strings
 import v.flat
 import v.pref
 import v.types
 import v.workers
+
+fn test_taken_builder_text_owns_a_terminated_string() {
+	mut sb := strings.new_builder(16)
+	sb.write_string('prefix!')
+	sb.go_back(1)
+	text := cgen_take_builder_text(mut sb)
+	// Truncation leaves a nonzero byte after the payload until it is terminated.
+	assert text == 'prefix'
+	assert unsafe { text.str[text.len] } == 0
+	unsafe { text.free() }
+	mut empty := strings.new_builder(16)
+	assert empty.cap >= 16
+	assert cgen_take_builder_text(mut empty) == ''
+	assert empty.cap == 0
+	assert isnil(empty.data)
+	unsafe { empty.free() }
+}
 
 fn test_scoped_cgen_batches_amortize_small_bodies_and_bound_compiler_scratch() {
 	g, mut tc := parallel_worker_test_gen(true)

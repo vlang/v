@@ -36,6 +36,39 @@ pub fn (mut a FlatAst) record_listed_source_path(path string, real_dir string) s
 	return resolved
 }
 
+// ListedSymlinks names the entries of one directory that are symbolic links
+// (see scan_listed_symlinks).
+pub struct ListedSymlinks {
+pub:
+	// known is false when the listing did not report the type of every entry.
+	known bool
+	names map[string]bool
+}
+
+// record_listed_source_path_in is record_listed_source_path for an entry of the
+// directory that `symlinks` was scanned from. An entry that the scan did not
+// report as a symbolic link needs no lstat: one directory listing stands in for
+// an lstat call per listed file.
+pub fn (mut a FlatAst) record_listed_source_path_in(path string, real_dir string, symlinks &ListedSymlinks) string {
+	if !symlinks.known || a.source_paths_frozen {
+		return a.record_listed_source_path(path, real_dir)
+	}
+	if resolved := a.resolved_source_paths[path] {
+		return resolved
+	}
+	base := os.file_name(path)
+	resolved := if base in ['', '.', '..'] || base in symlinks.names || real_dir.len == 0
+		|| !os.is_abs_path(real_dir) {
+		os.real_path(path)
+	} else if real_dir.ends_with(os.path_separator) {
+		real_dir + base
+	} else {
+		real_dir + os.path_separator + base
+	}
+	a.resolved_source_paths[path] = resolved
+	return resolved
+}
+
 // listed_real_path returns os.real_path(path) for an entry of the directory
 // that `real_dir` is the os.real_path of.
 fn listed_real_path(path string, real_dir string) string {
