@@ -177,6 +177,15 @@ fn (t &Transformer) fn_value_call_return_type(node flat.Node) ?u32 {
 		}
 	}
 	if callee.kind == .selector {
+		if !isnil(t.tc) && callee.children_count > 0 {
+			base := t.a.child_node(&callee, 0)
+			if base.kind == .ident && base.value == 'C' {
+				if _ := t.tc.visible_c_fn_module('C.${callee.value}') {
+					// A declared C call uses its module's signature, not a global fn value.
+					return none
+				}
+			}
+		}
 		if raw_type_source_id := t.raw_selector_field_type(callee_id) {
 			if ret := fn_type_return_type_text(raw_type_source_id) {
 				// A generic struct field keeps its declaration spelling (`fn () !T`) in
@@ -19486,6 +19495,13 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.No
 	name := t.tc.resolved_call_name(id) or { return none }
 	if is_builtin_collection_resolved_call(name) {
 		return none
+	}
+	if name.starts_with('C.') {
+		if module_name := t.tc.visible_c_fn_module(name) {
+			if ret := t.tc.c_fn_module_ret_types['${module_name}\x01${name}'] {
+				return t.call_return_type_name_in_module(t.semantic_type_name(ret), node, module_name)
+			}
+		}
 	}
 	decl_module := t.tc.fn_type_modules[name] or { '' }
 	same_decl_module := decl_module == t.cur_module

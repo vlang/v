@@ -10563,6 +10563,11 @@ Note that such redeclarations only need to have enough details about the
 functions/structs that you want to use.
 Note also that they *do not have* to be complete, unlike the ones in the .h files.
 
+Compatible `fn C.` redeclarations in different modules retain each module's own return type.
+For example, declaring a C pointer return as `&u8` in one module and `voidptr` in another
+keeps pointer arithmetic in the first module independent of import order. Calls without a local
+or imported declaration use the builtin declaration when one is available.
+
 A C function receiving the address of a local can change its value. Subsequent expressions
 read that value even when the V binding was declared without `mut`.
 
