@@ -3252,6 +3252,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		global_raw_type_texts:              g.global_raw_type_texts
 		enum_vals:                          g.enum_vals
 		enum_value_exprs:                   g.enum_value_exprs
+		enum_values_from_c:                 g.enum_values_from_c
 		enum_modules:                       g.enum_modules
 		interfaces:                         g.interfaces
 		const_vals:                         g.const_vals

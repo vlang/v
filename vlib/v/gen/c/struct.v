@@ -3169,8 +3169,8 @@ fn (g &FlatGen) enum_default_value_expr_for_type(type_name_id u32) ?string {
 }
 
 // enum_nonzero_default_expr returns the C value of an enum's default, its first member,
-// when that value is not 0. Zeroed storage already holds the default of the other enums,
-// and of flag enums, whose default is 0.
+// when that value is not 0, or comes from C (`a = C.FOO`) and may not be 0. Zeroed storage
+// already holds the default of the other enums, and of flag enums, whose default is 0.
 fn (g &FlatGen) enum_nonzero_default_expr(typ types.Type) ?string {
 	clean := default_init_unalias_type(typ)
 	if clean !is types.Enum {
@@ -3197,7 +3197,15 @@ fn (g &FlatGen) enum_nonzero_default_expr(typ types.Type) ?string {
 		return none
 	}
 	if first_value == 0 {
-		return none
+		// A value from C has a 0 placeholder.
+		if g.enum_values_from_c.len == 0 {
+			return none
+		}
+		expr := g.enum_value_expr_for_type(type_name_id, fields[0]) or { return none }
+		if expr !in g.enum_values_from_c {
+			return none
+		}
+		return expr
 	}
 	return g.enum_value_expr_for_type(type_name_id, fields[0])
 }

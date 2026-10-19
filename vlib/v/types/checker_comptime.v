@@ -1061,23 +1061,44 @@ fn (tc &TypeChecker) comptime_static_enum_decl_value_cases_for_node(enum_name u3
 	mut out := []ComptimeStaticValueCase{}
 	mut field_values := map[string]i64{}
 	mut next_val := i64(0)
+	mut next_from_c := false
 	for field_name in field_order {
 		mut val := next_val
+		mut from_c := next_from_c
 		if expr_id := field_exprs[field_name] {
 			mut resolving := map[string]bool{}
 			if ev := tc.comptime_static_enum_field_value(expr_id, cur_mod, enum_name, mut field_values, field_exprs, mut resolving) {
 				val = ev
+				from_c = false
+			} else {
+				from_c = true
 			}
 		}
 		field_values[field_name] = val
 		out << ComptimeStaticValueCase{
-			name:      field_name
-			value:     if is_flag { i64(u64(1) << val) } else { val }
-			has_value: true
+			name:         field_name
+			value:        if is_flag { i64(u64(1) << val) } else { val }
+			has_value:    true
+			value_from_c: from_c
 		}
 		next_val = val + 1
+		next_from_c = from_c
 	}
 	return out
+}
+
+// comptime_enum_decl_first_value returns the value of an enum's first member, which is
+// its default value, or 0 for an enum that has no members. It is none when V does not
+// know that value, because it comes from C (`a = C.FOO`).
+pub fn (tc &TypeChecker) comptime_enum_decl_first_value(enum_name u32) ?i64 {
+	cases := tc.comptime_static_enum_decl_value_cases(enum_name)
+	if cases.len == 0 {
+		return 0
+	}
+	if cases[0].value_from_c {
+		return none
+	}
+	return cases[0].value
 }
 
 fn (tc &TypeChecker) comptime_static_enum_field_value(id flat.NodeId, enum_module string, enum_name u32, mut field_values map[string]i64, field_exprs map[string]flat.NodeId, mut resolving map[string]bool) ?i64 {

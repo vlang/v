@@ -20381,6 +20381,9 @@ struct ComptimeStaticValueCase {
 	// param_is_mut_ref marks explicit `mut param &T` parameters.
 	param_is_mut_ref []bool
 	runtime_dispatch bool
+	// value_from_c marks an enum member whose value V can not evaluate, because it, or
+	// the explicit value it follows, comes from C (`a = C.FOO`). `value` is a guess then.
+	value_from_c bool
 }
 
 struct ComptimeStaticValueCases {

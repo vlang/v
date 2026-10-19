@@ -659,7 +659,8 @@ fn (mut t Transformer) lower_array_init_to_runtime(id flat.NodeId, node flat.Nod
 // enum_nonzero_default_value is the default value of an enum, its first member, like the
 // default of an enum struct field. `[]Enum{len: n}` fills its elements with it, and a missing
 // map key returns it. It is none when that value is 0 (zeroed storage already holds it), and
-// for flag enums, which default to 0.
+// for flag enums, which default to 0. A value from C (`a = C.FOO`) may not be 0, so it is
+// the first member then.
 fn (mut t Transformer) enum_nonzero_default_value(type_id u32) ?flat.NodeId {
 	enum_name, field_name := t.enum_nonzero_default_member(type_id) or { return none }
 	return t.a.add_node(flat.Node{
@@ -692,8 +693,9 @@ fn (mut t Transformer) enum_nonzero_default_member(type_id u32) ?(string, string
 	if fields.len == 0 {
 		return none
 	}
-	values := t.tc.comptime_enum_decl_field_values(flat.source_type_id(enum_name))
-	first_value := values[fields[0]] or { return none }
+	first_value := t.tc.comptime_enum_decl_first_value(flat.source_type_id(enum_name)) or {
+		return enum_name, fields[0]
+	}
 	if first_value == 0 {
 		return none
 	}

@@ -748,6 +748,7 @@ mut:
 	global_raw_type_texts          flat.TypeTextBindings
 	enum_vals                      map[string]int
 	enum_value_exprs               map[string]string
+	enum_values_from_c             map[string]bool // C names of members valued from C (`a = C.FOO`); 0 in enum_vals
 	enum_modules                   map[string]string
 	defers                         []flat.NodeId
 	defer_cleanup_stack            []flat.NodeId // already emitted by the active cleanup path
@@ -1704,6 +1705,7 @@ pub fn FlatGen.new() FlatGen {
 		global_raw_type_texts:              flat.TypeTextBindings{}
 		enum_vals:                          map[string]int{}
 		enum_value_exprs:                   map[string]string{}
+		enum_values_from_c:                 map[string]bool{}
 		enum_modules:                       map[string]string{}
 		interfaces:                         map[string][]string{}
 		const_vals:                         map[string]flat.NodeId{}
@@ -3692,6 +3694,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.global_raw_type_texts.clear()
 	g.enum_vals.clear()
 	g.enum_value_exprs.clear()
+	g.enum_values_from_c.clear()
 	g.enum_modules.clear()
 	g.interfaces.clear()
 	g.const_vals.clear()
@@ -5373,12 +5376,16 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 				}
 			}
 			mut field_values := map[string]i64{}
+			mut value_from_c := false
 			for i in 0 .. node.children_count {
 				f := g.a.child_node(node_ref, i)
 				if f.children_count > 0 {
 					mut resolving := map[string]bool{}
 					if enum_val := g.enum_field_expr_value_with_enum(g.a.child(f, 0), cur_module, flat.source_type_id(node.value), mut field_values, field_exprs, mut resolving) {
 						val = int(enum_val)
+						value_from_c = false
+					} else {
+						value_from_c = true
 					}
 				}
 				key := '${enum_name}.${f.value}'
@@ -5396,6 +5403,9 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 					g.enum_vals[key] = val
 					field_values[f.value] = val
 					val++
+				}
+				if value_from_c && !is_flag {
+					g.enum_values_from_c[g.enum_value_exprs[key]] = true
 				}
 			}
 			continue
@@ -25155,6 +25165,10 @@ fn (mut g FlatGen) emit_global_inits() {
 					// Static zero initialization does not hold the first enum value.
 					g.queue_runtime_init(g.fixed_array_default_fill_stmt(g.global_c_name(qname),
 						clean_type))
+					continue
+				}
+				if default_expr := g.enum_nonzero_default_expr(clean_type) {
+					g.queue_runtime_init('\t${g.global_c_name(qname)} = ${default_expr};')
 					continue
 				}
 				g.queue_global_struct_default_init(qname, typ)
