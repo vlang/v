@@ -51,7 +51,7 @@ class BootstrapConfigurationTests(unittest.TestCase):
                 for command in commands:
                     self.assertIn("%V_STAGE_NATIVE%", command)
                     if compiler == "tcc":
-                        self.assertIn('"%tcc_dir%\\lib\\openlibm.o"', command)
+                        self.assertIn('!tcc_math_runtime!', command)
                     else:
                         self.assertNotIn("openlibm.o", command)
 
@@ -91,9 +91,19 @@ class BootstrapConfigurationTests(unittest.TestCase):
     def test_tcc_stage_links_the_math_runtime_requested_by_vlib(self):
         body = routine("build_stage_with_tcc")
         link = next(line for line in body.splitlines() if line.startswith('"!tcc_exe!" '))
-        self.assertIn('"%tcc_dir%\\lib\\openlibm.o"', link)
+        self.assertIn('!tcc_math_runtime!', link)
         for compiler in ("clang", "gcc", "msvc"):
             self.assertNotIn("openlibm.o", routine("build_stage_with_" + compiler))
+
+    def test_openlibm_is_selected_only_for_the_amd64_bundle(self):
+        for name in ("build_bootstrap_with_tcc", "build_stage_with_tcc"):
+            body = routine(name)
+            self.assertIn('set "tcc_math_runtime="', body)
+            self.assertIn('if /I "!tcc_branch:"=!" == "thirdparty-windows-amd64" '
+                          'set tcc_math_runtime="%tcc_dir%\\lib\\openlibm.o"', body)
+            link = next(line for line in body.splitlines() if line.startswith('"!tcc_exe!" '))
+            self.assertIn('!tcc_math_runtime!', link)
+            self.assertNotIn('openlibm.o', link)
 
     def test_bootstrap_only_emits_c_and_never_spawns_a_stage_compiler(self):
         commands = [
@@ -206,6 +216,37 @@ class NativeHelperTests(unittest.TestCase):
 
 @unittest.skipUnless(os.name == "nt", "requires the Windows cmd.exe interpreter")
 class BatchExecutionTests(unittest.TestCase):
+    def test_tcc_routes_select_math_inputs_for_each_bundle_architecture(self):
+        with tempfile.TemporaryDirectory(prefix="makev tcc math ") as directory:
+            workdir = Path(directory)
+            compiler = workdir / "tcc.exe"
+            compiler.touch()
+            for branch in ('"thirdparty-windows-amd64"', 'thirdparty-windows-i386'):
+                for name in ("build_bootstrap_with_tcc", "build_stage_with_tcc"):
+                    with self.subTest(branch=branch, route=name):
+                        lines = routine(name).splitlines()
+                        lines = ["call :stub_link" + line[len('"!tcc_exe!"'):]
+                                 if line.startswith('"!tcc_exe!"') else line for line in lines]
+                        script = "\n".join([
+                            "@echo off", "setlocal EnableExtensions EnableDelayedExpansion",
+                            'set "tcc_exe=' + str(compiler) + '"',
+                            'set "tcc_dir=' + str(workdir) + '"',
+                            'set tcc_branch=' + branch,
+                            'call :' + name, "exit /b !ERRORLEVEL!", "\n".join(lines),
+                            ":generate_stage_c", "exit /b 0",
+                            ":stub_link", "echo inputs=%*", "exit /b 0",
+                        ])
+                        harness = workdir / "math harness.bat"
+                        harness.write_bytes(script.replace("\n", "\r\n").encode("utf-8"))
+                        result = subprocess.run(
+                            [os.environ.get("ComSpec", "cmd.exe"), "/d", "/c", str(harness)],
+                            cwd=workdir, capture_output=True, text=True, errors="replace",
+                            timeout=15, check=False,
+                        )
+                        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                        self.assertEqual("openlibm.o" in result.stdout, "amd64" in branch,
+                                         result.stdout + result.stderr)
+
     def run_msvc_bootstrap(self, workdir, bootstrap_statuses=None, generate_statuses=None,
                            link_statuses=None, final_status=0):
         bootstrap_statuses = bootstrap_statuses or {}

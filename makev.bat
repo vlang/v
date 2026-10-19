@@ -466,12 +466,15 @@ if !stage_error! NEQ 0 call :try_delete "%V_STAGE%"
 exit /b !stage_error!
 
 :build_bootstrap_with_tcc
+REM Only the amd64 bundle provides the x64 OpenLibm object.
+set "tcc_math_runtime="
+if /I "!tcc_branch:"=!" == "thirdparty-windows-amd64" set tcc_math_runtime="%tcc_dir%\lib\openlibm.o"
 if not exist "!tcc_exe!" (
 	echo  ^> TCC not found
 	exit /b 1
 )
 echo  ^> Attempting to build "%V_BOOTSTRAP%" (from %V_C_FILE%) with "!tcc_exe!"
-"!tcc_exe!" %VC_BOOTSTRAP_DEFINE% -B"%tcc_dir%" -bt10 -g -w -o "%V_BOOTSTRAP%" "%V_C_FILE%" %V_STAGE_NATIVE% "%tcc_dir%\lib\openlibm.o" -ladvapi32 -lws2_32 -lbcrypt -Wl,-stack=33554432
+"!tcc_exe!" %VC_BOOTSTRAP_DEFINE% -B"%tcc_dir%" -bt10 -g -w -o "%V_BOOTSTRAP%" "%V_C_FILE%" %V_STAGE_NATIVE% !tcc_math_runtime! -ladvapi32 -lws2_32 -lbcrypt -Wl,-stack=33554432
 exit /b !ERRORLEVEL!
 
 :build_bootstrap_with_msvc
@@ -521,11 +524,14 @@ if !stage_error! NEQ 0 call :try_delete "%V_STAGE_C%"
 exit /b !stage_error!
 
 :build_stage_with_tcc
+REM Only the amd64 bundle provides the x64 OpenLibm object.
+set "tcc_math_runtime="
+if /I "!tcc_branch:"=!" == "thirdparty-windows-amd64" set tcc_math_runtime="%tcc_dir%\lib\openlibm.o"
 set stage_vflags=-cc "!tcc_exe!"
 call :generate_stage_c
 if !ERRORLEVEL! NEQ 0 exit /b !ERRORLEVEL!
 echo  ^> Compiling "%V_STAGE%" from "%V_STAGE_C%" with TCC
-"!tcc_exe!" -B"%tcc_dir%" -bt10 -g -w -o "%V_STAGE%" "%V_STAGE_C%" %V_STAGE_NATIVE% "%tcc_dir%\lib\openlibm.o" -ldbghelp -lws2_32 -L"%~dp0vlib\crypto\rand\internal\libraries\bcrypt" -lbcrypt -I "%~dp0thirdparty\stdatomic\win" -ladvapi32 -Wl,-stack=33554432
+"!tcc_exe!" -B"%tcc_dir%" -bt10 -g -w -o "%V_STAGE%" "%V_STAGE_C%" %V_STAGE_NATIVE% !tcc_math_runtime! -ldbghelp -lws2_32 -L"%~dp0vlib\crypto\rand\internal\libraries\bcrypt" -lbcrypt -I "%~dp0thirdparty\stdatomic\win" -ladvapi32 -Wl,-stack=33554432
 set stage_error=!ERRORLEVEL!
 call :try_delete "%V_STAGE_C%"
 exit /b !stage_error!
