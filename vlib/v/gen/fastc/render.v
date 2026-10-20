@@ -2188,6 +2188,19 @@ fn (g &Parser) render_overloaded_binary_expression(tokens []FastcExpressionToken
 		}
 	}
 	if operator_index < 1 {
+		if tokens.len > 2 && tokens[0].tok == .minus
+			&& fastc_expression_tokens_contain(tokens[1..], .not) {
+			// `-i64(f()!)`, `-(f()!)`: render the operand in full, so its `!` propagation
+			// is lowered, then negate it. The cast renderer below would copy it raw.
+			operand_type := g.infer_expression_type(tokens[1..]) or { return none }
+			operand := g.render_call_argument_expression(tokens[1..], operand_type) or {
+				return none
+			}
+			return FastcRenderedExpression{
+				source: '(-(${operand}))'
+				typ:    operand_type
+			}
+		}
 		if tokens.len > 1 && tokens[0].tok == .mul {
 			inner_type := g.infer_expression_type(tokens[1..]) or { return none }
 			if flat.source_type_name(inner_type).ends_with('*') {
