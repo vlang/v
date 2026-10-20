@@ -1431,6 +1431,10 @@ fn (g &Parser) interface_value_expression(interface_type_source_id u32, actual_t
 		return '({ ${flat.source_type_name(value_type)} __vf_iface_ref = (${value}); (${interface_type})v_fastc_interface_box(&__vf_iface_ref, sizeof(${flat.source_type_name(value_type)})); })'
 	}
 	actual_layout := g.underlying_alias_type(actual_type_source_id)
+	if interface_type in g.sum_types && actual_layout == interface_type_source_id {
+		// A sum value already carries its concrete variant tag and payload.
+		return expression
+	}
 	actual_interface := flat.source_type_id(fastc_trim_pointer_suffix(flat.source_type_name(actual_layout)))
 	if g.declared_kinds[flat.source_type_name(g.semantic_type_key(interface_type_source_id))] == .interface_
 		&& g.declared_kinds[flat.source_type_name(g.semantic_type_key(actual_interface))] == .interface_ {
