@@ -44,3 +44,17 @@ fn test_assigned_comparison() {
 	ok := res_f32()! == -1.2
 	assert ok
 }
+
+fn res_f32_sum() !f32 {
+	return f32(1.3)
+}
+
+// Literal arithmetic next to a hoisted operand also stays an untyped constant.
+fn test_constant_arithmetic_operands() {
+	assert res_f32_sum()! == 1.2 + 0.1
+	assert 1.2 + 0.1 == res_f32_sum()!
+	assert res_f32_sum()! == (1.2 + 0.1)
+	assert -res_f32_sum()! == -(0.6 + 0.7)
+	assert opt_f32()? == -(0.6 + 0.6)
+	assert '${res_f32_sum()! + 1.2 * 2}' == '3.7'
+}

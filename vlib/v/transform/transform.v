@@ -30281,6 +30281,14 @@ fn (t &Transformer) is_untyped_float_literal_expr(id flat.NodeId) bool {
 	return is_literal && has_float
 }
 
+// is_untyped_numeric_literal_expr reports whether `id` is an untyped numeric constant, such
+// as `1`, `-1.2` or `1.2 + 0.1`.
+fn (t &Transformer) is_untyped_numeric_literal_expr(id flat.NodeId) bool {
+	mut const_expr_path := []flat.NodeId{}
+	is_literal, _ := t.untyped_numeric_literal_expr_info(id, mut const_expr_path)
+	return is_literal
+}
+
 // untyped_numeric_literal_expr_info reports whether `id` is built only from numeric literals
 // and constants initialized with them, signs, parentheses and arithmetic, and whether one of
 // the literals is a float. `const_expr_path` holds the constants being expanded.
