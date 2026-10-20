@@ -2111,6 +2111,14 @@ fn (g &Parser) render_overloaded_binary_expression(tokens []FastcExpressionToken
 				typ:    flat.source_type_bool
 			}
 		}
+		// A signed and an unsigned operand (`i64(-1) < u64(1)`) must not meet in a plain C
+		// comparison, which converts the signed one to unsigned. An operand that renders
+		// specially (a cast, a call) would otherwise reach the plain composition below.
+		if operator in [.eq, .ne, .lt, .le, .gt, .ge] {
+			if mixed := g.render_mixed_integer_comparison_expression(tokens) {
+				return mixed
+			}
+		}
 		mut left_special := FastcRenderedExpression{}
 		if rendered := g.render_overloaded_binary_expression(left_tokens) {
 			left_special = rendered
