@@ -1,6 +1,64 @@
 // vtest vflags: -prealloc -gc none
 module types
 
+import v.flat
+
+fn test_pass2_promotion_retains_scoped_variant_payloads() {
+	$if prealloc {
+		name_id := flat.source_type_id('ScopedType')
+		mut values := []Type{len: 24, init: builtin_void_type}
+		scope := unsafe { prealloc_scope_begin() }
+		values[0] = Type(Void{})
+		values[1] = Type(Unknown{ reason: 'scoped unknown' })
+		values[2] = Type(Primitive{ props: .integer, size: 32 })
+		values[3] = Type(String{})
+		values[4] = Type(Char{})
+		values[5] = Type(Rune{})
+		values[6] = Type(ISize{})
+		values[7] = Type(USize{})
+		values[8] = Type(Nil{})
+		values[9] = Type(None{})
+		values[10] = Type(Array{ elem_type: &builtin_int_type })
+		values[11] = Type(ArrayFixed{ elem_type: &builtin_int_type, len: 2 })
+		values[12] = Type(Channel{ elem_type: &builtin_int_type })
+		values[13] = Type(Map{ key_type: &builtin_string_type, value_type: &builtin_int_type })
+		values[14] = Type(Pointer{ base_type: &builtin_int_type })
+		values[15] = Type(FnType{ return_type: &builtin_int_type })
+		values[16] = Type(OptionType{ base_type: &builtin_int_type })
+		values[17] = Type(ResultType{ base_type: &builtin_int_type })
+		values[18] = Type(Struct{ name_id: name_id })
+		values[19] = Type(Interface{ name_id: name_id })
+		values[20] = Type(Enum{ name_id: name_id })
+		values[21] = Type(SumType{ name_id: name_id })
+		values[22] = Type(Alias{ name_id: name_id, base_type: &builtin_int_type })
+		values[23] = Type(MultiReturn{ types: [builtin_int_type, builtin_string_type] })
+		unsafe { prealloc_scope_leave(scope) }
+		mut expected := []string{}
+		mut promoted := []Type{}
+		mut promotion := Pass2TypePromotion{}
+		for value in values {
+			expected << value.name()
+			owned := promotion.promote(scope, value)
+			assert !type_refers_to_scope(scope, owned)
+			// Check storage directly too: the old scope query missed boxed payloads.
+			if owned is Primitive {
+				assert !unsafe { prealloc_scope_owns(scope, &owned.props) }
+			}
+			if owned is Struct {
+				assert !unsafe { prealloc_scope_owns(scope, &owned.name_id) }
+			}
+			if owned is Pointer {
+				assert !unsafe { prealloc_scope_owns(scope, &owned.base_type) }
+			}
+			promoted << owned
+		}
+		unsafe { prealloc_scope_free_after(scope) }
+		for i, value in promoted {
+			assert value.name() == expected[i]
+		}
+	}
+}
+
 // A stable descriptor can live outside a lane while its nested metadata lives inside it.
 fn test_pass2_promotion_copies_lane_lists_of_a_descriptor_outside_the_lane() {
 	$if prealloc {
