@@ -11099,10 +11099,52 @@ pub fn (tc &TypeChecker) fn_param_compatible(actual Type, expected Type) bool {
 		&& fn_param_unalias_type(expected) is Primitive {
 		return false
 	}
+	if tc.fn_value_layouts_differ(actual, expected) {
+		return false
+	}
 	if tc.c_type(actual) == tc.c_type(expected) {
 		return true
 	}
 	return fn_param_can_cast_userdata_param(actual, expected)
+}
+
+// fn_value_layouts_differ reports whether a parameter or result type `actual` of a
+// function value stores its value differently from the `expected` one, although they may
+// have one C type: all options and results share one, as do all dynamic arrays, all maps
+// and all channels. A function value is called as it is, so nothing converts its
+// arguments or its result: a `fn () ?[2]int` is not a `fn () ?[]int`, a `fn ([]u64)` is
+// not a `fn ([]u8)`, and a `fn () []Item` is not a `fn () []Named`.
+fn (tc &TypeChecker) fn_value_layouts_differ(actual Type, expected Type) bool {
+	if type_contains_unknown(actual) || type_contains_unknown(expected) {
+		return false
+	}
+	mut clean_actual := unalias_type(actual)
+	mut clean_expected := unalias_type(expected)
+	if clean_actual is Pointer && clean_expected is Pointer {
+		clean_actual = unalias_type(clean_actual.base_type)
+		clean_expected = unalias_type(clean_expected.base_type)
+	}
+	shared_c_type := (clean_actual is OptionType && clean_expected is OptionType)
+		|| (clean_actual is ResultType && clean_expected is ResultType)
+		|| (clean_actual is Channel && clean_expected is Channel)
+		|| (is_container_type(clean_actual) && is_container_type(clean_expected))
+	return shared_c_type && tc.container_elem_layouts_differ(clean_actual, clean_expected)
+}
+
+// fn_value_signature_layouts_differ reports whether a parameter or the result of the
+// function value type `actual` is stored differently from the one of `expected`
+// (fn_value_layouts_differ).
+fn (tc &TypeChecker) fn_value_signature_layouts_differ(actual FnType, expected FnType) bool {
+	if actual.params.len != expected.params.len {
+		return false
+	}
+	for i in 0 .. actual.params.len {
+		if tc.fn_value_layouts_differ(fn_compatible_param_type(actual, i), fn_compatible_param_type(expected,
+			i)) {
+			return true
+		}
+	}
+	return tc.fn_value_layouts_differ(actual.return_type, expected.return_type)
 }
 
 fn fn_param_is_platform_int(typ Type) bool {
@@ -11129,6 +11171,9 @@ fn (tc &TypeChecker) fn_return_compatible(actual Type, expected Type) bool {
 	}
 	if fn_param_is_voidptr_type(expected) && fn_param_is_nonvoid_pointer_type(actual) {
 		return true
+	}
+	if tc.fn_value_layouts_differ(actual, expected) {
+		return false
 	}
 	if tc.c_type(actual) == tc.c_type(expected) && tc.type_compatible(actual, expected) {
 		return true

@@ -3488,6 +3488,10 @@ fn (tc &TypeChecker) container_value_layouts_differ(actual Type, expected Type) 
 		// A channel is shared, never converted, like a referenced container.
 		return tc.container_elem_layouts_differ(clean_actual, clean_expected)
 	}
+	if clean_actual is FnType && clean_expected is FnType {
+		// A function value is called as it is, never converted.
+		return tc.fn_value_signature_layouts_differ(clean_actual, clean_expected)
+	}
 	if !is_container_type(clean_actual) || !is_container_type(clean_expected) {
 		return false
 	}
