@@ -201,6 +201,14 @@ static inline void vgc_set_cache_idx(int idx) { _vgc_cache_idx_plus1 = idx + 1; 
   static inline void* vgc_os_alloc(size_t size) {
       return VirtualAlloc(NULL, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
   }
+  // The memory of an arena, for objects. VirtualAlloc hands out the lowest free addresses
+  // first: next to an executable at a low base, like TinyCC's at 4 MB, the heap started at about
+  // 9 MB, where many constants in the data segment (0x2000537) point, and the conservative scan
+  // kept objects alive through them. The top of the address space has no such neighbours.
+  static inline void* vgc_os_alloc_heap(size_t size) {
+      void* p = VirtualAlloc(NULL, size, MEM_COMMIT | MEM_RESERVE | MEM_TOP_DOWN, PAGE_READWRITE);
+      return p != NULL ? p : vgc_os_alloc(size);
+  }
   static inline void vgc_os_free(void* ptr, size_t size) {
       (void)size;
       VirtualFree(ptr, 0, MEM_RELEASE);
@@ -230,6 +238,8 @@ static inline void vgc_set_cache_idx(int idx) { _vgc_cache_idx_plus1 = idx + 1; 
       void* p = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
       return (p == MAP_FAILED) ? NULL : p;
   }
+  // The memory of an arena, for objects (see the Windows version).
+  static inline void* vgc_os_alloc_heap(size_t size) { return vgc_os_alloc(size); }
   static inline void vgc_os_free(void* ptr, size_t size) {
       munmap(ptr, size);
   }

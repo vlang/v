@@ -75,3 +75,14 @@ fn test_the_tiny_block_of_a_thread_is_a_root() {
 		assert vgc_test_is_marked(voidptr(tiny))
 	}
 }
+
+fn test_the_heap_is_far_from_small_numbers() {
+	$if vgc ? {
+		$if windows && x64 {
+			// Windows hands out the lowest free addresses first: with TinyCC, whose executables
+			// start at 4 MB, the heap started at about 9 MB, where words in the data segment
+			// that hold numbers like 0x2000537 point. The arenas come from the top now.
+			assert vgc_arena_lo > usize(1) << 32
+		}
+	}
+}

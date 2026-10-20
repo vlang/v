@@ -25,6 +25,7 @@ fn C.vgc_counter_load(ptr &u64) u64
 fn C.vgc_counter_add(ptr &u64, val u64)
 fn C.vgc_count_alloc(live &u64, allocated &u64, size u64, n u64)
 fn C.vgc_os_alloc(size usize) voidptr
+fn C.vgc_os_alloc_heap(size usize) voidptr
 fn C.vgc_os_free(ptr voidptr, size usize)
 fn C.vgc_os_decommit(ptr voidptr, size usize)
 fn C.vgc_os_recommit(ptr voidptr, size usize) int
@@ -661,7 +662,7 @@ fn vgc_new_arena(nbytes usize) &VGC_Arena {
 		vgc_heap.arenas_cap = new_cap
 	}
 	asize := if nbytes > vgc_arena_size { nbytes } else { usize(vgc_arena_size) }
-	mem := C.vgc_os_alloc(asize)
+	mem := C.vgc_os_alloc_heap(asize)
 	if mem == unsafe { nil } {
 		return unsafe { nil }
 	}
