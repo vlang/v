@@ -135,6 +135,8 @@ mut:
 	// generates for enums. A declaration with the same name replaces them, like a `Color.from`
 	// that is declared after the enum `Color`.
 	generated_names map[string]bool
+	// Declared static methods replace generated helpers even when they are private.
+	declared_static_names map[string]bool
 }
 
 @[minify]
@@ -226,6 +228,21 @@ fn (mut d Doc) parse_file(path string) ! {
 	}
 	if isnil(file_node) {
 		return
+	}
+	// Record declarations before filtering visibility or adding enums. This also removes a
+	// generated helper when its private replacement is declared in a later file.
+	for id in a.children_of(file_node) {
+		node := a.node(id)
+		if node.kind == .fn_decl {
+			if receiver, method := flat.decode_static_type_method_name(node.value) {
+				name := '${receiver}.${method}'
+				d.declared_static_names[name] = true
+				if name in d.generated_names {
+					d.contents.delete(name)
+					d.generated_names.delete(name)
+				}
+			}
+		}
 	}
 	mut module_name := 'main'
 	mut first_declaration_line := int(1 << 30)
@@ -666,7 +683,7 @@ fn (mut d Doc) add_enum_helpers(enum_node DocNode) {
 	}
 	for helper in static_helpers {
 		full_name := '${name}.${helper.name}'
-		if full_name in d.contents {
+		if full_name in d.contents || full_name in d.declared_static_names {
 			// A declaration that comes before the enum replaces the generated method.
 			continue
 		}
