@@ -2081,7 +2081,8 @@ fn (mut g Parser) read_return_expression_branch() !string {
 		mut values := []string{}
 		for {
 			value := g.read_expression([token.Token.comma, token.Token.semicolon, token.Token.rcbr])!
-			values << g.multi_return_component(value, values.len)
+			values << g.multi_return_component(value, fastc_normalize_inferred_type(g.last_expression_type),
+				values.len)
 			if g.tok != .comma {
 				break
 			}

@@ -1208,7 +1208,7 @@ fn (mut g Parser) parse_return() !bool {
 		} else {
 			mut packed_values := []string{cap: values.len}
 			for i, value in evaluated_values {
-				packed_values << g.multi_return_component(value, i)
+				packed_values << g.multi_return_component(value, value_types[i], i)
 			}
 			'${fastc_multi_return_literal(packed_values)}'
 		}

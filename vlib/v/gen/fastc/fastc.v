@@ -907,12 +907,26 @@ fn fastc_multi_return_literal(packed_values []string) string {
 	return out.str()
 }
 
-fn (g &Parser) multi_return_component(value string, index int) string {
+// multi_return_component stores one returned value in its multi-return slot as the
+// component's declared type, which is how the caller reads it back: a number is converted
+// (`return 1, 2` for `(f64, f32)`), and a concrete value for an interface or sum type
+// component is boxed, as a single return value is.
+fn (g &Parser) multi_return_component(value string, value_type u32, index int) string {
 	mut expression := value
 	if index < g.return_types.ids.len {
 		declared_type := g.return_types.ids[index]
-		if fastc_is_integer_type(g.underlying_alias_type(declared_type)) {
+		declared_layout := g.underlying_alias_type(declared_type)
+		is_number := fastc_is_integer_type(declared_layout)
+			|| declared_layout == flat.source_type_f32 || declared_layout == flat.source_type_f64
+		declared_kind := g.declared_kinds[flat.source_type_name(g.semantic_type_key(declared_type))]
+		value_kind := g.declared_kinds[flat.source_type_name(g.semantic_type_key(value_type))]
+		needs_box := g.selfhost && value_type != 0 && value_type != declared_type
+			&& (g.should_box_variant(declared_type, value_type)
+				|| (declared_kind == .interface_ && value_kind != .interface_))
+		if is_number {
 			expression = '((${fastc_output_c_type(flat.source_type_name(declared_type))})(${value}))'
+		} else if needs_box {
+			expression = g.interface_value_expression(declared_type, value_type, value)
 		}
 	}
 	return 'V_FASTC_MULTI_VALUE((${expression}))'
