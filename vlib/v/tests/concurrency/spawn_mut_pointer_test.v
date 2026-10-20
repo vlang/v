@@ -95,3 +95,68 @@ fn test_spawn_mutable_pointer_lvalue_arguments() {
 	reader := spawn read_spawn_pointer(holder.logger)
 	assert reader.wait() == 7
 }
+
+struct SpawnEmbeddedLoggerHolder {
+	SpawnLoggerHolder
+}
+
+struct SpawnOtherLoggerHolder {
+	value int
+}
+
+type SpawnAnyLoggerHolder = SpawnLoggerHolder | SpawnOtherLoggerHolder
+
+interface SpawnHasLogger {
+mut:
+	logger &SpawnLogger
+}
+
+fn test_mutable_pointer_dereferenced_slot() {
+	mut logger := &SpawnLogger{}
+	mut slot := &logger
+	// Explicit pointer dereferencing requires unsafe; the slot remains alive until join.
+	unsafe {
+		replace_from_thread(mut *slot)
+	}
+	assert logger.level == 7
+	logger = &SpawnLogger{}
+	unsafe {
+		task := spawn replace_from_thread(mut *slot)
+		task.wait()
+	}
+	assert logger.level == 7
+}
+
+fn test_mutable_pointer_embedded_field() {
+	mut holder := SpawnEmbeddedLoggerHolder{ SpawnLoggerHolder: SpawnLoggerHolder{ logger: &SpawnLogger{} } }
+	replace_from_thread(mut holder.logger)
+	assert holder.logger.level == 7
+	holder.logger = &SpawnLogger{}
+	task := spawn replace_from_thread(mut holder.logger)
+	task.wait()
+	assert holder.logger.level == 7
+}
+
+fn test_mutable_pointer_smartcast_field() {
+	mut holder := SpawnAnyLoggerHolder(SpawnLoggerHolder{ logger: &SpawnLogger{} })
+	if mut holder is SpawnLoggerHolder {
+		replace_from_thread(mut holder.logger)
+		assert holder.logger.level == 7
+		holder.logger = &SpawnLogger{}
+		task := spawn replace_from_thread(mut holder.logger)
+		task.wait()
+		assert holder.logger.level == 7
+	} else {
+		assert false
+	}
+}
+
+fn test_mutable_pointer_interface_field() {
+	mut holder := SpawnHasLogger(SpawnLoggerHolder{ logger: &SpawnLogger{} })
+	replace_from_thread(mut holder.logger)
+	assert holder.logger.level == 7
+	holder.logger = &SpawnLogger{}
+	task := spawn replace_from_thread(mut holder.logger)
+	task.wait()
+	assert holder.logger.level == 7
+}

@@ -4235,9 +4235,16 @@ fn (mut t Transformer) transform_call_arg_for_param(arg_id flat.NodeId, param_ty
 	// expression. A later block argument (notably `unsafe { nil }`) transforms its
 	// statements eagerly and would otherwise drain an earlier sum-box temporary
 	// into the block, after the call has already referenced it.
+	source_is_mut := int(arg_id) >= 0 && int(arg_id) < t.a.nodes.len
+		&& t.a.nodes[int(arg_id)].is_mut
 	outer_pending := t.pending_stmts
 	t.pending_stmts = []flat.NodeId{}
 	result := t.transform_call_arg_for_param_isolated(arg_id, param_type_id)
+	if source_is_mut && int(result) >= 0 && int(result) < t.a.nodes.len
+		&& !t.a.nodes[int(result)].is_mut {
+		// Lowered lvalues must keep aliasing caller storage, including pointer slots.
+		t.a.set_node_is_mut(result, true)
+	}
 	arg_pending := t.pending_stmts
 	t.pending_stmts = outer_pending
 	for stmt in arg_pending {
