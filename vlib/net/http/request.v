@@ -727,7 +727,10 @@ struct ReceivedResponseInfo {
 
 fn parse_received_response(response_text string, info ReceivedResponseInfo) !Response {
 	mut response := if info.body_is_dechunked {
-		parse_response_with_options(response_text[..info.headers_end], raw_body: info.raw_body)!
+		parse_response_with_options(response_text[..info.headers_end],
+			raw_body:     info.raw_body
+			headers_only: true
+		)!
 	} else {
 		parse_response_with_options(response_text, raw_body: info.raw_body)!
 	}
