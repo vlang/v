@@ -204,7 +204,13 @@ mut:
 	heap_marked u64 // bytes marked in last cycle
 	next_gc     u64 // trigger next GC at this heap size
 	total_alloc u64 // atomic: total bytes allocated
+	alloc_at_gc u64 // atomic: total_alloc when the last collection ended
 	gc_cycle    u64 // number of completed GC cycles
+	// Heap memory (see vgc_heap_usage), all atomic: the size of all arenas, the part of them
+	// that spans were carved from, and the pages of free spans that went back to the OS.
+	arena_bytes    u64
+	arena_used     u64
+	unmapped_bytes u64
 	// GC work queues
 	work_full  &VGC_WorkBuf = unsafe { nil }
 	work_empty &VGC_WorkBuf = unsafe { nil }
@@ -398,6 +404,7 @@ fn vgc_get_free_span(npages u32, owner int) &VGC_Span {
 		vgc_push_free_span(mut span)
 		return unsafe { nil }
 	}
+	C.vgc_atomic_sub_u64(&vgc_heap.unmapped_bytes, u64(npages) * vgc_page_size)
 	return span
 }
 
@@ -470,6 +477,7 @@ fn vgc_put_free_span(mut span VGC_Span) {
 	// Decommit pages to return physical memory to OS
 	page_bytes := usize(npages) * vgc_page_size
 	C.vgc_os_decommit(voidptr(span.base), page_bytes)
+	C.vgc_atomic_add_u64(&vgc_heap.unmapped_bytes, u64(page_bytes))
 	vgc_push_free_span(mut span)
 }
 
@@ -517,6 +525,7 @@ fn vgc_span_alloc(npages u32, owner int) &VGC_Span {
 			unsafe {
 				vgc_heap.arenas[i].used += nbytes
 			}
+			C.vgc_atomic_add_u64(&vgc_heap.arena_used, u64(nbytes))
 			break
 		}
 	}
@@ -540,6 +549,8 @@ fn vgc_span_alloc(npages u32, owner int) &VGC_Span {
 			vgc_heap.arenas[arena_idx].used = nbytes
 		}
 		vgc_heap.narenas = arena_idx + 1
+		C.vgc_atomic_add_u64(&vgc_heap.arena_bytes, u64(asize))
+		C.vgc_atomic_add_u64(&vgc_heap.arena_used, u64(nbytes))
 		base = usize(mem)
 		// Register in address map for O(1) lookup
 		C.vgc_addr_map_register(usize(mem), asize, arena_idx)
