@@ -3815,7 +3815,10 @@ fn sql_clean_tokens(tokens []string) []string {
 					selector += '()'
 					consumed = 4
 				}
-				if sql_token_can_precede_selector(clean[clean.len - 1]) {
+				table_module := clean.len > 1
+					&& clean[clean.len - 2] in ['table', 'into', 'from', 'update']
+					&& sql_token_is_plain_ident(clean[clean.len - 1])
+				if sql_token_can_precede_selector(clean[clean.len - 1]) || table_module {
 					clean[clean.len - 1] += selector
 				} else {
 					clean << selector

@@ -8,6 +8,51 @@ fn test_sql_clean_tokens_merges_selector_no_arg_call() {
 	assert sql_clean_tokens(['.', 'now', '(', ')']) == ['.now()']
 }
 
+fn test_sql_clean_tokens_keeps_keyword_module_names_in_table_types() {
+	for module_name in ['into', 'from', 'where', 'table', 'update', 'select'] {
+		assert sql_clean_tokens(['create', 'table', module_name, '.', 'Product']) == [
+			'create',
+			'table',
+			'${module_name}.Product',
+		]
+		assert sql_clean_tokens(['insert', 'product', 'into', module_name, '.', 'Product']) == [
+			'insert',
+			'product',
+			'into',
+			'${module_name}.Product',
+		]
+		assert sql_clean_tokens(['select', 'from', module_name, '.', 'Product']) == [
+			'select',
+			'from',
+			'${module_name}.Product',
+		]
+		assert sql_clean_tokens(['update', module_name, '.', 'Product', 'set', 'name', '=', "'b'"]) == [
+			'update',
+			'${module_name}.Product',
+			'set',
+			'name',
+			'=',
+			"'b'",
+		]
+	}
+	assert sql_clean_tokens(['select', 'from', 'Product', 'where', 'kind', '==', '.', 'blue']) == [
+		'select',
+		'from',
+		'Product',
+		'where',
+		'kind',
+		'==',
+		'.blue',
+	]
+	assert sql_clean_tokens(['select', 'from', 'Product', 'where', '.', 'blue']) == [
+		'select',
+		'from',
+		'Product',
+		'where',
+		'.blue',
+	]
+}
+
 fn test_sql_generic_type_suffix_matches_generic_receiver_specialization() {
 	assert sql_generic_type_suffix('Row[int]') == 'Row_int'
 	assert sql_generic_type_suffix('models.Row[[]int]') == 'models__Row_Array_int'

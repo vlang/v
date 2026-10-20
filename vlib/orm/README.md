@@ -32,7 +32,9 @@ sql db {
 }!
 ```
 
-An inline struct literal after `insert` is rejected during compilation.
+An inline struct literal after `insert` is rejected during compilation, including a
+qualified literal imported from another module. A qualified table type also supports
+module names that coincide with SQL keywords, such as `into.Product`.
 
 ## Nullable
 
