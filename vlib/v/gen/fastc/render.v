@@ -1200,9 +1200,16 @@ fn (g &Parser) render_assignment_expression(tokens []FastcExpressionToken) ?Fast
 		return none
 	}
 	left_tokens := tokens[..assignment_index]
+	narrowed_target := if tokens[assignment_index].tok == .assign {
+		g.assigned_narrowed_member(left_tokens)
+	} else {
+		none
+	}
 	// A declaration guard introduces a new binding; an existing local or
 	// function with that name cannot supply the RHS's expected type.
-	left_type := if tokens[assignment_index].tok == .decl_assign {
+	left_type := if target := narrowed_target {
+		target.typ
+	} else if tokens[assignment_index].tok == .decl_assign {
 		g.infer_expression_type(tokens[assignment_index + 1..]) or { return none }
 	} else {
 		g.infer_expression_type(left_tokens) or { return none }
@@ -1210,8 +1217,8 @@ fn (g &Parser) render_assignment_expression(tokens []FastcExpressionToken) ?Fast
 	if left_type == 0 {
 		return none
 	}
-	mut left := ''
-	if left_tokens.len >= 4 && left_tokens.last().tok == .name && left_tokens[left_tokens.len - 2].tok == .dot && left_tokens[left_tokens.len - 3].tok == .rpar {
+	mut left := if target := narrowed_target { target.source } else { '' }
+	if left == '' && left_tokens.len >= 4 && left_tokens.last().tok == .name && left_tokens[left_tokens.len - 2].tok == .dot && left_tokens[left_tokens.len - 3].tok == .rpar {
 		// `recv.method(args).field = value`: the target is a field of a method-call result (a
 		// pointer receiver like `table.sym(id)`), which the member-receiver renderer cannot spell.
 		receiver_tokens := left_tokens[..left_tokens.len - 2]
@@ -1319,6 +1326,68 @@ fn (g &Parser) render_assignment_expression(tokens []FastcExpressionToken) ?Fast
 		source: source
 		typ:    left_type
 	}
+}
+
+// assigned_narrowed_member is the target of `x.f = value` while `x.f` is narrowed by an `is`
+// test: the boxed member itself, typed as its sum or interface type. As in cgen, the value is
+// boxed into a new sum value, rather than written through the narrowed payload pointer, which
+// would update a temporary, or a payload other copies share.
+fn (g &Parser) assigned_narrowed_member(tokens []FastcExpressionToken) ?FastcRenderedExpression {
+	if g.member_smartcasts.len == 0 {
+		return none
+	}
+	path := fastc_indexed_member_chain_path(tokens) or { return none }
+	if !path.contains('.') {
+		return none
+	}
+	smartcast := g.member_smartcasts[path] or { return none }
+	if smartcast.subject_source == '' || smartcast.subject_type == u32(0) {
+		return none
+	}
+	subject_type := flat.source_type_name(smartcast.subject_type)
+	if subject_type.ends_with('*') {
+		return FastcRenderedExpression{
+			source: '(*${smartcast.subject_source})'
+			typ:    flat.source_type_id(subject_type[..subject_type.len - 1])
+		}
+	}
+	return FastcRenderedExpression{
+		source: smartcast.subject_source
+		typ:    smartcast.subject_type
+	}
+}
+
+// end_assigned_member_narrowing ends the narrowing of a member that the statement `tokens`
+// assigned to, and of every member reached through it: as in V, the member has its sum or
+// interface type again after the assignment.
+fn (mut g Parser) end_assigned_member_narrowing(tokens []FastcExpressionToken) {
+	if g.member_smartcasts.len == 0 {
+		return
+	}
+	mut depth := 0
+	mut assignment_index := -1
+	for i, item in tokens {
+		if item.tok in [.lpar, .lsbr, .lcbr] {
+			depth++
+		} else if item.tok in [.rpar, .rsbr, .rcbr] {
+			depth--
+		} else if depth == 0 && item.tok.is_assignment() {
+			assignment_index = i
+			break
+		}
+	}
+	if assignment_index <= 0 || tokens[assignment_index].tok != .assign {
+		return
+	}
+	_ := g.assigned_narrowed_member(tokens[..assignment_index]) or { return }
+	path := fastc_indexed_member_chain_path(tokens[..assignment_index]) or { return }
+	for narrowed_path in g.member_smartcasts.keys() {
+		if narrowed_path == path || narrowed_path.starts_with(path + '.')
+			|| narrowed_path.starts_with(path + '[') {
+			g.member_smartcasts.delete(narrowed_path)
+		}
+	}
+	g.type_memo.clear()
 }
 
 // render_assignment_operator_source spells `left op right` for the C lvalue `left` of type
@@ -2106,6 +2175,16 @@ fn (g &Parser) render_overloaded_binary_expression(tokens []FastcExpressionToken
 			right_type := g.infer_expression_type(right_tokens) or { return none }
 			left := g.render_call_argument_expression(left_tokens, left_type) or { return none }
 			right := g.render_call_argument_expression(right_tokens, right_type) or { return none }
+			// A signed and an unsigned operand compare by value here too (`x & 1 == u64(1)`).
+			left_layout := g.underlying_alias_type(left_type)
+			if fastc_is_mixed_sign_comparison(left_layout, g.underlying_alias_type(right_type)) {
+				if mixed := fastc_mixed_sign_comparison(operator, left, left_layout, right) {
+					return FastcRenderedExpression{
+						source: mixed
+						typ:    flat.source_type_bool
+					}
+				}
+			}
 			return FastcRenderedExpression{
 				source: '((${left})${operator.str()}(${right}))'
 				typ:    flat.source_type_bool
@@ -3900,43 +3979,54 @@ fn (g &Parser) render_mixed_integer_comparison_expression_impl(tokens []FastcExp
 		right_inferred_type := g.infer_expression_type(right_tokens) or { return none }
 		left_type := g.underlying_alias_type(left_inferred_type)
 		right_type := g.underlying_alias_type(right_inferred_type)
-		left_is_unsigned := fastc_is_wide_unsigned_integer_type(left_type)
-		right_is_unsigned := fastc_is_wide_unsigned_integer_type(right_type)
-		left_is_signed := fastc_is_signed_integer_type(left_type)
-		right_is_signed := fastc_is_signed_integer_type(right_type)
-		if !(left_is_unsigned && right_is_signed) && !(right_is_unsigned && left_is_signed) {
+		if !fastc_is_mixed_sign_comparison(left_type, right_type) {
 			return none
 		}
 		left_source := g.render_comparison_operand(left_tokens, left_type) or { return none }
 		right_source := g.render_comparison_operand(right_tokens, right_type) or { return none }
-		mut operation := match item.tok {
-			.eq { 'eq' }
-			.ne { 'ne' }
-			.gt { 'gt' }
-			.lt { 'lt' }
-			.ge { 'ge' }
-			.le { 'le' }
-			else {
+		return FastcRenderedExpression{
+			source: fastc_mixed_sign_comparison(item.tok, left_source, left_type, right_source) or {
 				return none
 			}
-		}
-		unsigned_source := if left_is_unsigned { left_source } else { right_source }
-		signed_source := if left_is_signed { left_source } else { right_source }
-		if right_is_unsigned {
-			operation = match operation {
-				'gt' { 'lt' }
-				'lt' { 'gt' }
-				'ge' { 'le' }
-				'le' { 'ge' }
-				else { operation }
-			}
-		}
-		return FastcRenderedExpression{
-			source: 'v_fastc_us_${operation}((u64)(${unsigned_source}), (i64)(${signed_source}))'
 			typ:    flat.source_type_bool
 		}
 	}
 	return none
+}
+
+// fastc_is_mixed_sign_comparison reports a comparison of a wide unsigned and a signed integer
+// operand (both types with aliases resolved), which plain C would compare as unsigned.
+fn fastc_is_mixed_sign_comparison(left_type u32, right_type u32) bool {
+	return (fastc_is_wide_unsigned_integer_type(left_type) && fastc_is_signed_integer_type(right_type))
+		|| (fastc_is_wide_unsigned_integer_type(right_type) && fastc_is_signed_integer_type(left_type))
+}
+
+// fastc_mixed_sign_comparison compares a wide unsigned and a signed integer operand by value,
+// as cgen does, through the `v_fastc_us_*` helpers; `left_type` (aliases resolved) tells which
+// operand is the unsigned one.
+fn fastc_mixed_sign_comparison(operator token.Token, left string, left_type u32, right string) ?string {
+	left_is_unsigned := fastc_is_wide_unsigned_integer_type(left_type)
+	mut operation := match operator {
+		.eq { 'eq' }
+		.ne { 'ne' }
+		.gt { 'gt' }
+		.lt { 'lt' }
+		.ge { 'ge' }
+		.le { 'le' }
+		else { return none }
+	}
+	unsigned_source := if left_is_unsigned { left } else { right }
+	signed_source := if left_is_unsigned { right } else { left }
+	if !left_is_unsigned {
+		operation = match operation {
+			'gt' { 'lt' }
+			'lt' { 'gt' }
+			'ge' { 'le' }
+			'le' { 'ge' }
+			else { operation }
+		}
+	}
+	return 'v_fastc_us_${operation}((u64)(${unsigned_source}), (i64)(${signed_source}))'
 }
 
 // narrowed_subject_value_type is the value type of an operand that is exactly a subject

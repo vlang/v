@@ -849,6 +849,15 @@ fn (mut g Parser) parse_match_statement() !bool {
 			subject_member_path = path
 		}
 	}
+	// The boxed member itself, which an assignment to the narrowed member writes.
+	mut subject_member_source := ''
+	mut subject_member_type := u32(0)
+	if subject_member_path != '' {
+		subject_member_source = g.render_member_receiver(subject_tokens[member_start..]) or { '' }
+		subject_member_type = fastc_normalize_inferred_type(g.infer_expression_type(subject_tokens[member_start..]) or {
+			u32(0)
+		})
+	}
 	mut branch_index := 0
 	mut all_terminate := true
 	mut has_else := false
@@ -1018,6 +1027,8 @@ fn (mut g Parser) parse_match_statement() !bool {
 			'array'
 		} else if variant_types.len > 1 && common_numeric_type == 0 {
 			flat.source_type_name(variant_types[0])
+		} else if common_numeric_type != 0 {
+			flat.source_type_name(common_numeric_type)
 		} else {
 			''
 		})
@@ -1036,20 +1047,31 @@ fn (mut g Parser) parse_match_statement() !bool {
 				FastcMemberSmartcast{}
 			}
 			had_member_smartcast = projection_path in g.member_smartcasts
+			pointer := if smartcast_is_reference {
+				'((${member_c_type} *)${subject_name}${boxed_access}_object)'
+			} else {
+				member_smartcast_name
+			}
+			mut view_type, mut view_source := g.narrowed_member_view(member_smartcast_type,
+				u32(0), pointer)
+			if common_numeric_type != 0 {
+				// Numeric variants of different widths are read as their common type.
+				view_type = common_numeric_type
+				view_source = fastc_match_multi_variant_value(subject_name, boxed_access,
+					variant_types, common_numeric_type)
+			}
 			g.member_smartcasts[projection_path] = FastcMemberSmartcast{
-				typ:           flat.source_type_id(flat.source_type_name(member_smartcast_type) + '*')
-				source:        if smartcast_is_reference {
-					'((${member_c_type} *)${subject_name}${boxed_access}_object)'
-				} else {
-					member_smartcast_name
-				}
-				variants:      if struct_multi_variant {
+				typ:            view_type
+				source:         view_source
+				variants:       if struct_multi_variant {
 					flat.TypeTextList{ ids: variant_types.clone() }
 				} else {
 					flat.TypeTextList{}
 				}
-				tag_source:    '${subject_name}${boxed_access}_typ'
-				object_source: '${subject_name}${boxed_access}_object'
+				tag_source:     '${subject_name}${boxed_access}_typ'
+				object_source:  '${subject_name}${boxed_access}_object'
+				subject_source: subject_member_source
+				subject_type:   subject_member_type
 			}
 			member_smartcast_active = true
 		}
@@ -1946,6 +1968,7 @@ fn (mut g Parser) parse_simple_statement() ! {
 			return
 		}
 		g.write_line('${expression};')
+		g.end_assigned_member_narrowing(g.last_expression)
 		return
 	}
 	starts_with_spawn := g.tok == .key_spawn
@@ -2641,6 +2664,17 @@ fn (g &Parser) multi_return_types_for_expression(tokens []FastcExpressionToken) 
 		name_index = 2
 		open_index = 3
 	}
+	if expression_tokens[open_index].tok == .lsbr
+		&& expression_tokens[name_index].lit.contains('_mono_') {
+		// An explicit generic call into another module (`util.pair[int](1)`) keeps its type
+		// arguments after the specialized name (`util.pair_mono_int[int](1)`).
+		type_arguments_close := fastc_matching_delimiter(expression_tokens, open_index, .lsbr,
+			.rsbr) or { return []u32{} }
+		open_index = type_arguments_close + 1
+		if open_index >= expression_tokens.len {
+			return []u32{}
+		}
+	}
 	if expression_tokens[name_index].tok !in [.name, .key_select] || expression_tokens[open_index].tok != .lpar {
 		return []u32{}
 	}
@@ -2654,7 +2688,10 @@ fn (g &Parser) multi_return_types_for_expression(tokens []FastcExpressionToken) 
 	} else {
 		g.function_key_for_call(expression_tokens, name_index)
 	}
-	signature := g.functions[function_key] or { return []u32{} }
+	// A generic function specialized for this file is registered with the parser.
+	signature := g.functions[function_key] or {
+		g.mono_functions[function_key] or { return []u32{} }
+	}
 	return signature.return_types.ids.clone()
 }
 

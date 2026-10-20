@@ -1394,6 +1394,10 @@ struct FastcMemberSmartcast {
 	variants      flat.TypeTextList
 	tag_source    string
 	object_source string
+	// The boxed member itself (`b->v`) and its sum or interface type. An assignment to the
+	// narrowed member stores a new boxed value there, and ends the narrowing.
+	subject_source string
+	subject_type   u32
 }
 
 // FastcBoolImplication records that a bool local (assigned a top-level `&&` chain of `is` tests,

@@ -24,6 +24,34 @@ fn (g &Parser) smartcast_payload_binding(value_type u32, object string, wants_re
 	return value_type, value, false
 }
 
+// narrowed_member_view is how a member narrowed to the boxed variant `variant` reads, given
+// `pointer`, the C pointer to its payload. A scalar variant (a number, bool, rune or enum) is
+// the value behind the pointer, an lvalue of the variant type, so arithmetic, declarations and
+// comparisons read the value. Any other variant, and a reference variant stored directly in
+// `_object` (`value_type` is then a pointer), stays a pointer whose fields are reached with `->`.
+fn (g &Parser) narrowed_member_view(variant u32, value_type u32, pointer string) (u32, string) {
+	if (value_type == u32(0) || value_type == variant) && g.is_scalar_type(variant) {
+		return variant, '(*${pointer})'
+	}
+	return flat.source_type_id(flat.source_type_name(variant) + '*'), pointer
+}
+
+// is_scalar_type reports a number, bool, rune or enum type, also behind an alias.
+fn (g &Parser) is_scalar_type(typ u32) bool {
+	if typ == u32(0) || fastc_is_pointer_type(typ) {
+		return false
+	}
+	underlying := g.underlying_alias_type(typ)
+	if fastc_is_pointer_type(underlying) {
+		return false
+	}
+	if fastc_primitive_member_comparison_value_type(underlying)
+		|| underlying in [flat.source_type_rune, flat.source_type_char] {
+		return true
+	}
+	return g.declared_kinds[flat.source_type_name(g.semantic_type_key(underlying))] == .enum_
+}
+
 fn (g &Parser) optional_function_field_for_expression(tokens []FastcExpressionToken) ?FastcStructField {
 	if tokens.len < 3 || tokens[tokens.len - 2].tok != .dot || tokens.last().tok != .name {
 		return none
@@ -232,9 +260,11 @@ fn (mut g Parser) prescan_register_is_conjunct(toks []token.Token, lits []string
 			if variant_key := g.resolve_declared_type_key(variant_name) {
 				variant_c := fastc_c_declared_type_name(variant_key)
 				access := if flat.source_type_name(boxed).ends_with('*') { '->' } else { '.' }
+				view_type, view_source := g.narrowed_member_view(flat.source_type_id(variant_c),
+					u32(0), '((${variant_c} *)${g.local_c_name(subject)}${access}_object)')
 				g.member_smartcasts[subject] = FastcMemberSmartcast{
-					typ:    flat.source_type_id(variant_c + '*')
-					source: '((${variant_c} *)${g.local_c_name(subject)}${access}_object)'
+					typ:    view_type
+					source: view_source
 				}
 				registered << subject
 			}
@@ -297,11 +327,13 @@ fn (g &Parser) bool_conjunct_implication(conjunct []FastcExpressionToken) ?Fastc
 	variant_key := g.resolve_declared_type_key(variant_name) or { return none }
 	variant_c := fastc_c_declared_type_name(variant_key)
 	access := if flat.source_type_name(boxed).ends_with('*') { '->' } else { '.' }
+	view_type, view_source := g.narrowed_member_view(flat.source_type_id(variant_c), u32(0),
+		'((${variant_c} *)${g.local_c_name(subject)}${access}_object)')
 	return FastcBoolImplication{
 		subject:   subject
 		smartcast: FastcMemberSmartcast{
-			typ:    flat.source_type_id(variant_c + '*')
-			source: '((${variant_c} *)${g.local_c_name(subject)}${access}_object)'
+			typ:    view_type
+			source: view_source
 		}
 	}
 }
@@ -818,10 +850,14 @@ fn (mut g Parser) parse_if() !bool {
 		}
 		plan_c_type := fastc_output_c_type(plan.type_c_text())
 		g.write_line('${plan_c_type} *${plan.member_tmp} = (${plan_c_type} *)${plan.boxed_tmp}${plan_access}_object;')
+		view_type, view_source := g.narrowed_member_view(plan.type_c, plan.value_type,
+			plan.member_tmp)
 		g.member_smartcasts[plan.path] = FastcMemberSmartcast{
-			typ:        flat.source_type_id(plan.type_c_text() + '*')
-			value_type: plan.value_type
-			source:     plan.member_tmp
+			typ:            view_type
+			value_type:     plan.value_type
+			source:         view_source
+			subject_source: plan.source
+			subject_type:   plan.boxed_type
 		}
 	}
 	// `if opt != none { opt.field }`: narrow each option local guaranteed non-none in the
@@ -1383,10 +1419,12 @@ fn (mut g Parser) detect_member_smartcasts(cond_tokens []FastcExpressionToken, r
 							previously_present[path] = path in g.member_smartcasts
 							previous[path] = g.member_smartcasts[path] or { FastcMemberSmartcast{} }
 						}
+						view_type, view_source := g.narrowed_member_view(flat.source_type_id(normalized_target),
+							value_type, '((${fastc_output_c_type(normalized_target)} *)${boxed_tmp}${access}_object)')
 						g.member_smartcasts[path] = FastcMemberSmartcast{
-							typ:        flat.source_type_id(normalized_target + '*')
+							typ:        view_type
 							value_type: value_type
-							source:     '((${normalized_target} *)${boxed_tmp}${access}_object)'
+							source:     view_source
 						}
 						continue
 					}
@@ -1817,10 +1855,14 @@ fn (mut g Parser) read_if_expression() !string {
 					FastcMemberSmartcast{}
 				}
 			}
+			view_type, view_source := g.narrowed_member_view(plan.type_c, plan.value_type,
+				plan.member_tmp)
 			g.member_smartcasts[plan.path] = FastcMemberSmartcast{
-				typ:        flat.source_type_id(plan.type_c_text() + '*')
-				value_type: plan.value_type
-				source:     plan.member_tmp
+				typ:            view_type
+				value_type:     plan.value_type
+				source:         view_source
+				subject_source: plan.source
+				subject_type:   plan.boxed_type
 			}
 		}
 	}

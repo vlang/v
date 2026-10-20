@@ -4589,16 +4589,19 @@ fn (g &Parser) type_test_narrowing(tokens []FastcExpressionToken, test token.Tok
 		w.member_smartcasts[path] = saved_self
 	}
 	access := if flat.source_type_name(subject_type).ends_with('*') { '->' } else { '.' }
+	value_type := if variant_value_type != '' {
+		flat.source_type_id(variant_value_type)
+	} else {
+		flat.source_type_id(variant_c)
+	}
+	view_type, view_source := g.narrowed_member_view(flat.source_type_id(variant_c), value_type,
+		'((${fastc_output_c_type(variant_c)} *)(${subject_source})${access}_object)')
 	return FastcConjunctionNarrowing{
 		path:      path
 		smartcast: FastcMemberSmartcast{
-			typ:        flat.source_type_id(variant_c + '*')
-			value_type: (if variant_value_type != '' {
-				flat.source_type_id(variant_value_type)
-			} else {
-				flat.source_type_id(variant_c)
-			})
-			source:     '((${variant_c} *)(${subject_source})${access}_object)'
+			typ:        view_type
+			value_type: value_type
+			source:     view_source
 		}
 	}
 }
