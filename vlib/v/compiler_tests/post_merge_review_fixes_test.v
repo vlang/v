@@ -4567,7 +4567,7 @@ fn test_overloaded_index_compound_assignment_uses_v_operators() {
 
 	struct_source := 'struct Num {\n\tn int\n}\n\nfn (a Num) + (b Num) Num {\n\treturn Num{\n\t\tn: a.n + b.n\n\t}\n}\n\nstruct Slot {\nmut:\n\tvalue Num\n}\n\nfn (s Slot) [] (key string) Num {\n\t_ := key\n\treturn s.value\n}\n\nfn (mut s Slot) []= (key string, value Num) {\n\t_ := key\n\ts.value = value\n}\n\nfn main() {\n\tmut s := Slot{\n\t\tvalue: Num{\n\t\t\tn: 3\n\t\t}\n\t}\n\ts["value"] += Num{\n\t\tn: 4\n\t}\n\tprintln(int_str(s.value.n))\n}\n'
 	struct_c := gen_c(v3_bin, 'overloaded_index_compound_struct_operator_c', struct_source)
-	assert struct_c.contains('Num__plus('), struct_c
+	assert struct_c.contains('__v3_internal_symbol_op_Num__plus('), struct_c
 	struct_out := run_good(v3_bin, 'overloaded_index_compound_struct_operator', struct_source)
 	assert struct_out == '7'
 }

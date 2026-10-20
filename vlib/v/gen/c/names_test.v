@@ -63,31 +63,62 @@ fn test_program_specialization_preserves_generated_functions_without_generic_nam
 
 // test_c_name_sanitize_operator_overloads validates this v3 regression case.
 fn test_c_name_sanitize_operator_overloads() {
-	assert c_name('Point.<') == 'Point__lt'
-	assert c_name('Point.<=') == 'Point__le'
-	assert c_name('Point.>') == 'Point__gt'
-	assert c_name('Point.>=') == 'Point__ge'
-	assert c_name('Point.[]') == 'Point__op_index'
-	assert c_name('Point.[]=') == 'Point__op_index_set'
+	assert c_name('Point.<') == '__v3_internal_symbol_op_Point__lt'
+	assert c_name('Point.<=') == '__v3_internal_symbol_op_Point__le'
+	assert c_name('Point.>') == '__v3_internal_symbol_op_Point__gt'
+	assert c_name('Point.>=') == '__v3_internal_symbol_op_Point__ge'
+	assert c_name('Point.[]') == '__v3_internal_symbol_op_Point__op_index'
+	assert c_name('Point.[]=') == '__v3_internal_symbol_op_Point__op_index_set'
+	assert c_name('Point.**') == '__v3_internal_symbol_op_Point__pow'
 }
 
-fn test_operator_collision_names_preserve_short_and_long_method_names() {
+// An operator's C name never equals the C name of an ordinary method, whether or
+// not the receiver has a method named after the operator's C spelling.
+fn test_operator_c_names_differ_from_method_c_names() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
-	for op in ['+', '==', '[]='] {
+	for op, word in {
+		'+':   'plus'
+		'-':   'minus'
+		'*':   'mul'
+		'**':  'mul_'
+		'/':   'div'
+		'%':   'mod'
+		'==':  'eq'
+		'!=':  'ne'
+		'<':   'lt'
+		'>':   'gt'
+		'<=':  'le'
+		'>=':  'ge'
+		'|':   'or'
+		'^':   'xor'
+		'[]':  'op_index'
+		'[]=': 'op_index_set'
+	} {
 		name := 'Box.${op}'
-		ordinary := 'Box.${g.cname('T.${op}').all_after_last('__')}'
+		ordinary := 'Box.${word}'
+		assert g.direct_call_name(name) == g.cname(name)
+		assert g.direct_call_name(name) != g.cname(ordinary)
 		tc.fn_param_types[ordinary] = []types.Type{}
-		assert g.direct_call_name(name) == '${g.cname(name)}__operator'
+		assert g.direct_call_name(name) == g.cname(name)
 		assert g.direct_call_name(ordinary) == g.cname(ordinary)
+		assert g.cname(name) != g.cname(ordinary)
 	}
+	assert g.cname('Box.**') != g.cname('Box.pow')
 	for method in ['get', 'value', 'operator', 'operator[]=', '[]suffix'] {
 		name := 'Box.${method}'
 		assert g.direct_call_name(name) == g.cname(name)
 	}
+}
+
+// The builtin `string` operators keep the C names the runtime calls them by.
+fn test_builtin_string_operators_keep_runtime_c_names() {
+	assert c_name('string.==') == 'string__eq'
+	assert c_name('string.<') == 'string__lt'
+	assert c_name('string.+') == 'string__plus'
 }
 
 fn test_direct_builtin_map_set_aliases_use_the_runtime_symbol() {

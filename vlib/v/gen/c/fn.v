@@ -1026,7 +1026,7 @@ fn (mut g FlatGen) should_emit_fn_node_in_module_known(node flat.Node, node_inde
 		}
 		return false
 	}
-	if node.generic_params().len == 0 && cgen_is_operator_overload_fn(node.value)
+	if node.generic_params().len == 0 && naming.is_operator_method_name(node.value)
 		&& g.test_files[file_name] {
 		return true
 	}
@@ -1210,17 +1210,6 @@ fn (g &FlatGen) is_program_specialization_fn_node_with_qfn(node flat.Node, node_
 	}
 	return node.value in g.tc.specialized_generic_fns || qfn in g.tc.specialized_generic_fns
 		|| g.cname(node.value) in g.tc.specialized_generic_fns
-}
-
-fn cgen_is_operator_overload_fn(name string) bool {
-	if !name.contains('.') {
-		return false
-	}
-	method := c_short_name_view(name)
-	if method.len > 3 {
-		return false
-	}
-	return method in ['+', '-', '*', '/', '%', '==', '!=', '<', '>', '<=', '>=', '[]', '[]=']
 }
 
 fn is_generated_fn_after_markused(name string) bool {
@@ -1575,9 +1564,6 @@ fn (g &FlatGen) fn_c_name_in_module(module_name string, name string) string {
 // fn_c_name_in_module_known is fn_c_name_in_module for a caller that already
 // computed `qualified_fn_name_in_module_c(module_name, name)` (empty: not yet).
 fn (g &FlatGen) fn_c_name_in_module_known(module_name string, name string, qualified_c_name string) string {
-	if collision_name := g.operator_overload_collision_c_name(module_name, name) {
-		return collision_name
-	}
 	if enum_method_name := g.enum_method_c_name_in_module(module_name, name) {
 		return enum_method_name
 	}
@@ -1752,9 +1738,6 @@ fn (mut g FlatGen) direct_call_name(name string) string {
 			return abi_name
 		}
 	}
-	if collision_name := g.operator_overload_collision_c_name('', name) {
-		return collision_name
-	}
 	if enum_method_name := g.enum_method_c_name_in_module('', name) {
 		return enum_method_name
 	}
@@ -1805,21 +1788,6 @@ fn (mut g FlatGen) direct_call_name(name string) string {
 		}
 	}
 	return g.cname(name)
-}
-
-fn (g &FlatGen) operator_overload_collision_c_name(module_name string, name string) ?string {
-	if !cgen_is_operator_overload_fn(name) {
-		return none
-	}
-	qualified := dotted_fn_name_in_module(module_name, name)
-	receiver := qualified.all_before_last('.')
-	op := qualified.all_after_last('.')
-	mangled_method := g.cname('T.${op}').all_after_last('__')
-	ordinary := '${receiver}.${mangled_method}'
-	if ordinary !in g.tc.fn_param_types && ordinary !in g.tc.fn_ret_types {
-		return none
-	}
-	return '${g.cname(qualified)}__operator'
 }
 
 fn (g &FlatGen) enum_method_c_name_in_module(module_name string, name string) ?string {

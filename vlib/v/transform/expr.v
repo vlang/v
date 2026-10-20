@@ -1029,7 +1029,7 @@ fn (mut t Transformer) transform_infix_struct_ops(_id flat.NodeId, node flat.Nod
 	}
 	if struct_type == 0 {
 		// Generic-struct instance operand (e.g. `Vec4[f32]`): keep the instance type
-		// so the operator lowers to the monomorphized method (`vec__Vec4_f32__plus`).
+		// so the operator lowers to the monomorphized method (`vec.Vec4[f32].+`).
 		struct_type = t.generic_struct_instance_name(lhs_type)
 	}
 	if struct_type == 0 {
@@ -1918,8 +1918,8 @@ fn (t &Transformer) generic_struct_instance_name(type_name_id u32) u32 {
 	}
 	if _ := t.generic_struct_params_for_base(base) {
 		// Qualify a bare imported generic base to its canonical struct name so the
-		// operator lowers to the monomorphized method (`vec__Vec2_int__minus`), not a
-		// bogus bare `Vec2_int__minus`.
+		// operator lowers to the monomorphized method (`vec.Vec2[int].-`), not a
+		// bogus bare `Vec2[int].-`.
 		resolved_base := t.struct_lookup_name(flat.source_type_id(base))
 		if flat.source_type_name(resolved_base).len > 0 && flat.source_type_name(resolved_base) != base {
 			return flat.source_type_id(flat.source_type_name(resolved_base) + normalized[base.len..])

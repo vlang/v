@@ -1438,7 +1438,8 @@ fn is_operator_method_name(name string) bool {
 
 // record_called_fn_name records the callee name of a direct call so operator overloads
 // (lowered to direct calls before this pass) can be specialized only when actually
-// called. Operator method names are mangled (`Vec_int__plus`), matching the name
+// called. Operator method names are also recorded mangled
+// (`__v3_internal_symbol_op_Vec_int__plus`), matching the name
 // `specialize_generic_struct_methods` would emit for that instance and operator.
 fn (t &Transformer) call_is_recorded_struct_operator(node flat.Node) bool {
 	if node.children_count < 1 {
@@ -1651,8 +1652,8 @@ fn (mut t Transformer) record_compound_assign_operator_fn_name(lhs_id flat.NodeI
 }
 
 // specialize_generic_struct_methods specializes every generic method of each
-// instantiated generic struct (e.g. for `Vec4[f32]`, generate `vec__Vec4_f32__plus`,
-// `vec__Vec4_f32__one`, ...). It only handles methods whose generic parameters are
+// instantiated generic struct (e.g. for `Vec4[f32]`, generate `vec.Vec4[f32].+`,
+// `vec.Vec4[f32].one`, ...). It only handles methods whose generic parameters are
 // exactly the struct's parameters (no extra method-level `[U]`); those are left to
 // the call-driven path. Returns whether any new specialization was emitted.
 fn generic_struct_methods_by_receiver(decls map[string]GenericFnDecl) map[string][]GenericFnDecl {
@@ -1829,16 +1830,13 @@ fn (t &Transformer) generic_struct_method_used_for_spec(spec string, decl Generi
 	if t.used_fn_contains_name(direct) {
 		return true
 	}
-	direct_c := c_name(direct)
-	if !generic_method_c_name_can_collide_with_operator(method) && t.used_fn_contains_name(direct_c) {
+	// An operator's C name is in the internal namespace (`Vec_int.+` is
+	// `__v3_internal_symbol_op_Vec_int__plus`), so no alias of an ordinary method
+	// (`Vec_int.plus`, `Vec_int__plus`) can name an operator call.
+	if t.used_fn_contains_name(c_name(direct)) {
 		return true
 	}
-	mut aliases := []string{}
-	for alias in specialized_generic_fn_signature_aliases(decl, args_ids) {
-		if !generic_method_c_name_can_collide_with_operator(method) || alias.ends_with('.${method}') {
-			aliases << alias
-		}
-	}
+	mut aliases := specialized_generic_fn_signature_aliases(decl, args_ids)
 	receiver := generic_fn_decl_base_value(decl.node.value).all_before_last('.')
 	if receiver.len > 0 {
 		short_flat := '${receiver}_${generic_type_suffixes(args_ids)}'
@@ -1847,88 +1845,15 @@ fn (t &Transformer) generic_struct_method_used_for_spec(spec string, decl Generi
 		qualified_full_flat := transform_qualified_fn_name(decl.module, full_flat)
 		for flat_receiver in [short_flat, qualified_short_flat, full_flat, qualified_full_flat] {
 			aliases << '${flat_receiver}.${method}'
-			if !generic_method_c_name_can_collide_with_operator(method) {
-				aliases << c_name('${flat_receiver}.${method}')
-			}
+			aliases << c_name('${flat_receiver}.${method}')
 		}
 	}
 	for alias in aliases {
 		if t.used_fn_contains_name(alias) {
-			if t.generic_struct_method_alias_is_operator_collision(spec, method, alias) {
-				continue
-			}
 			return true
 		}
 	}
 	return false
-}
-
-fn (t &Transformer) generic_struct_method_alias_is_operator_collision(spec string, method string, alias string) bool {
-	op_name := operator_symbol_for_mangled_method_name(method) or { return false }
-	operator_name := '${spec}.${op_name}'
-	if operator_name !in t.used_struct_operator_fns && c_name(operator_name) !in t.used_struct_operator_fns {
-		return false
-	}
-	if t.used_fn_contains_name('${spec}.${method}') {
-		return false
-	}
-	return alias == c_name(operator_name)
-}
-
-fn operator_symbol_for_mangled_method_name(method string) ?string {
-	match method {
-		'plus' {
-			return '+'
-		}
-		'minus' {
-			return '-'
-		}
-		'mul' {
-			return '*'
-		}
-		'mul_' {
-			// `**` mangles to `__mul_`: the second `*` becomes `_`.
-			return '**'
-		}
-		'div' {
-			return '/'
-		}
-		'mod' {
-			return '%'
-		}
-		'eq' {
-			return '=='
-		}
-		'ne' {
-			return '!='
-		}
-		'lt' {
-			return '<'
-		}
-		'gt' {
-			return '>'
-		}
-		'le' {
-			return '<='
-		}
-		'ge' {
-			return '>='
-		}
-		'index' {
-			return '[]'
-		}
-		'index_set' {
-			return '[]='
-		}
-		else {}
-	}
-
-	return none
-}
-
-fn generic_method_c_name_can_collide_with_operator(method string) bool {
-	return method in ['plus', 'minus', 'mul', 'mul_', 'div', 'mod', 'eq', 'ne', 'lt', 'gt', 'le',
-		'ge', 'and', 'or', 'xor', 'left_shift', 'right_shift']
 }
 
 fn (t &Transformer) needs_generic_struct_method_specialization(decls map[string]GenericFnDecl) bool {
@@ -8872,10 +8797,6 @@ fn (t &Transformer) generic_flat_receiver_call_decl_key(name string, module_name
 	if receiver.len == 0 || method.len == 0 {
 		return none
 	}
-	if t.generic_struct_operator_call_seen(name)
-		&& t.generic_flat_receiver_operator_decl_exists(receiver, method, module_name, decls) {
-		return none
-	}
 	method_keys := t.generic_receiver_methods_by_name[method] or { return none }
 	for key in method_keys {
 		decl := decls[key] or { continue }
@@ -8888,39 +8809,6 @@ fn (t &Transformer) generic_flat_receiver_call_decl_key(name string, module_name
 		}
 	}
 	return none
-}
-
-fn (t &Transformer) generic_flat_receiver_operator_decl_exists(receiver string, method string, module_name string, decls map[string]GenericFnDecl) bool {
-	op_method := generic_operator_symbol_for_c_method(method) or { return false }
-	method_keys := t.generic_receiver_methods_by_name[op_method] or { return false }
-	for key in method_keys {
-		decl := decls[key] or { continue }
-		decl_receiver := generic_fn_decl_base_value(decl.node.value).all_before_last('.')
-		if decl_receiver.len == 0 {
-			continue
-		}
-		if generic_flat_receiver_matches(receiver, decl_receiver, module_name, decl.module) {
-			return true
-		}
-	}
-	return false
-}
-
-fn generic_operator_symbol_for_c_method(method string) ?string {
-	return match method {
-		'plus' { '+' }
-		'minus' { '-' }
-		'mul' { '*' }
-		'div' { '/' }
-		'mod' { '%' }
-		'eq' { '==' }
-		'ne' { '!=' }
-		'lt' { '<' }
-		'gt' { '>' }
-		'le' { '<=' }
-		'ge' { '>=' }
-		else { none }
-	}
 }
 
 fn (t &Transformer) specialized_plain_generic_call_decl_key(name string, module_name string, decls map[string]GenericFnDecl) ?string {

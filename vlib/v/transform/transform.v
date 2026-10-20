@@ -428,7 +428,7 @@ mut:
 	generic_decl_name_tails_count int = -1
 	// used_struct_operator_fns holds the callee names of direct calls seen during
 	// monomorphize. Infix operators on generic instances are lowered to direct calls
-	// (`Vec_int__plus(a, b)`) before this pass, so an operator overload is specialized for
+	// (`Vec[int].+(a, b)`) before this pass, so an operator overload is specialized for
 	// an instantiated generic struct only when its mangled name appears here — an instance
 	// whose type argument never has the operator applied is not emitted with a body that
 	// would fail C compilation.
