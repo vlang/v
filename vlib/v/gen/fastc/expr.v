@@ -4948,8 +4948,8 @@ fn (g &Parser) render_membership_expression(tokens []FastcExpressionToken, rende
 						typ:    flat.source_type_bool
 					}
 				}
-				if fastc_trim_pointer_suffix(flat.source_type_name(right_type)).starts_with('Map_') {
-					key_type_source_id, _ := g.map_key_value_types(right_type) or { return none }
+				if map_type := g.map_type_of(right_type) {
+					key_type_source_id, _ := g.map_key_value_types(map_type) or { return none }
 					key_type := key_type_source_id
 
 					key_source := g.render_membership_candidate(tokens[..i], key_type) or {
@@ -5214,6 +5214,13 @@ fn (g &Parser) render_selfhost_special_expression(tokens []FastcExpressionToken,
 			}
 			if struct_literal := g.render_struct_literal_field_names(tokens, rendered_expression) {
 				return struct_literal
+			}
+			if !has_lsbr {
+				// `Counts{}` for `type Counts = map[string]int`: an empty map, which the
+				// `has_lsbr` branch above makes for a spelled-out `map[string]int{}`.
+				if map_expression := g.guarded_map_expression(tokens, flags) {
+					return map_expression
+				}
 			}
 		}
 		if has_assignment && has_lcbr {
