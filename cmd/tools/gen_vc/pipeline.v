@@ -145,10 +145,13 @@ fn (mut r Runner) run(force bool) Report {
 	}
 	if report.outcome == .failed {
 		if report.key != '' {
+			if report.key == r.last_key {
+				r.last_key = ''
+			}
 			r.failed_key = report.key
 			r.failed_at = time.now()
 		}
-	} else if report.outcome != .stale && report.key != '' {
+	} else if report.outcome !in [.stale, .unchanged] && report.key != '' {
 		r.last_key = report.key
 	}
 	finished := Report{

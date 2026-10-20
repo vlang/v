@@ -2,6 +2,7 @@
 module main
 
 import os
+import time
 
 // These tests run whole runs against local repositories. A fake `make` installs a fake `v` that
 // writes snapshots with the markers check_snapshot needs, so no compiler is built.
@@ -250,6 +251,11 @@ fn test_a_failed_build_waits_for_a_new_commit_or_the_retry_delay() {
 	waiting := push.run(false)
 	assert waiting.outcome == .unchanged
 	assert waiting.message.contains('failed at'), waiting.message
+	// Polling during the backoff must not turn a failed key into a completed key.
+	push.failed_at = push.failed_at.add(-61 * time.minute)
+	retried := push.run(false)
+	assert retried.outcome == .failed, run_log(push)
+	assert retried.message.starts_with('building V failed'), retried.message
 	assert push.run(true).outcome == .failed
 	assert f.vc_master() == initial
 	// Restoring the Makefile alone would leave nothing to regenerate since the published source.
@@ -260,4 +266,35 @@ fn test_a_failed_build_waits_for_a_new_commit_or_the_retry_delay() {
 	published := push.run(false)
 	assert published.outcome == .published, run_log(push)
 	assert published.v_commit == fixed
+}
+
+fn test_a_failed_forced_run_retries_a_previously_completed_key() {
+	f := new_fixture('forced_failed')
+	saved_failure := os.getenv('VCGEN_TEST_FAIL_BUILD')
+	os.unsetenv('VCGEN_TEST_FAIL_BUILD')
+	defer {
+		if saved_failure == '' {
+			os.unsetenv('VCGEN_TEST_FAIL_BUILD')
+		} else {
+			os.setenv('VCGEN_TEST_FAIL_BUILD', saved_failure, true)
+		}
+		os.rmdir_all(f.root) or {}
+	}
+	initial := f.vc_master()
+	fx_commit(f.v_upstream, {
+		'Makefile':     fake_makefile.replace('all:\n', 'all:\n\t@test "\$\$VCGEN_TEST_FAIL_BUILD" != 1\n')
+		'compiler.txt': 'compiler 2\n'
+	}, 'allow a transient build failure')
+	mut dry := f.runner(.dry_run, 'dry')
+	assert dry.run(false).outcome == .would_publish, run_log(dry)
+	os.setenv('VCGEN_TEST_FAIL_BUILD', '1', true)
+	assert dry.run(true).outcome == .failed, run_log(dry)
+	os.unsetenv('VCGEN_TEST_FAIL_BUILD')
+	waiting := dry.run(false)
+	assert waiting.outcome == .unchanged
+	assert waiting.message.contains('failed at'), waiting.message
+	dry.failed_at = dry.failed_at.add(-61 * time.minute)
+	assert dry.run(false).outcome == .would_publish, run_log(dry)
+	assert dry.run(false).outcome == .unchanged
+	assert f.vc_master() == initial
 }

@@ -23,6 +23,7 @@ webhook for master. Requests that arrive while a run is pending coalesce into it
      `*.vv`, `*.out`, `*.yml`, `cmd/tools/**` except `cmd/tools/builders/*.v`, `vc.lock`, and the
      vc sha in `workflow_contract_test.v`. So a vc.lock update never causes a new snapshot;
    - the last run for the same commits failed less than `--retry-failed-minutes` (60) ago.
+     Polling during that delay keeps the retry pending until the delay expires.
 3. Refuses to build while MemAvailable plus SwapFree is below `--min-available-mib` (2048).
 4. Checks out vlang/v master at `--v-dir`, cleans it, and runs `make`.
 5. Generates `v.c` (`-cross`) and `v_win.c` (`-cross -os windows -cc msvc`) at the checkout root,
