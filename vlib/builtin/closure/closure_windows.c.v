@@ -2,6 +2,11 @@ module closure
 
 #include <synchapi.h>
 
+$if tinyc {
+	// TinyCC's <synchapi.h> leaves out the SRW lock functions; vlib/sync declares them.
+	#insert "@VEXEROOT/vlib/sync/sync_windows_tcc.h"
+}
+
 // The lock and the flag of the one-time setup are globals of this module, with C
 // initializers, rather than the file-static storage of a C header: every
 // translation unit that includes such a header gets its own copy of them.
