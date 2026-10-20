@@ -1919,13 +1919,18 @@ fn (mut g Parser) parse_simple_statement() ! {
 		g.write_line('${expression};')
 		return
 	}
+	starts_with_spawn := g.tok == .key_spawn
 	expression := g.read_statement_expression([token.Token.semicolon, token.Token.rcbr,
 		token.Token.attribute])!
 	g.skip_statement_attributes()!
 	if expression.len == 0 {
 		return g.unsupported('statement `${g.token_source()}`')
 	}
-	if g.last_expression.len == 0 && g.last_expression_type_text().starts_with(fastc_thread_type_prefix) {
+	// read_spawn_expression leaves the spawn in g.last_expression as one thread-typed
+	// atom (an append re-renders the value from it), so the statement's first token
+	// tells a spawn apart from any other thread-typed value.
+	if starts_with_spawn && g.last_expression.len == 1
+		&& g.last_expression_type_text().starts_with(fastc_thread_type_prefix) {
 		// Fire-and-forget `spawn f()` as a statement: the handle is discarded, so
 		// detach the thread. It then releases its own resources on completion (the
 		// run wrapper frees the packed arguments), rather than leaking a joinable.
