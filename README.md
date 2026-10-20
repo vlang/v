@@ -354,8 +354,12 @@ hello world
 ```
 
 `v self` defaults to `-gc none`. Pass `-gc <mode>` if you need a different GC mode.
-`v -prod self` uses a single production build of one C unit instead of the three-pass
-PGO cycle. Use `v -prod -parallel-cc self` to compile the generated C units in parallel.
+On non-Windows hosts, `v -prod self` uses profile-guided optimization (PGO) when the selected C
+compiler is Clang and `llvm-profdata` is available. It builds an instrumented compiler, trains it on
+uncached self-compilation, then builds the optimized compiler. This takes longer to build the
+production compiler. Other C toolchains and failed PGO attempts use a regular production build.
+Use `v -prod -parallel-cc self` to skip PGO and compile the generated C units in parallel.
+Explicit `-no-prod-options` or profile-related `-cflags` also skip automatic PGO.
 
 On macOS ARM64, first run `v -compile-backend arm64 self` to include the native backend in
 the current compiler. Then use `v -b arm64 self` to rebuild the full compiler with the native
