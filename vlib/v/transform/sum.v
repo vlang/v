@@ -1673,12 +1673,21 @@ fn (t &Transformer) sum_projection_has_temporary_storage(id flat.NodeId) bool {
 	mut projection := false
 	for {
 		node := t.a.node(current)
-		if node.kind !in [.paren, .as_expr, .selector] {
+		if node.kind !in [.paren, .as_expr, .selector, .index] {
 			return projection && !t.expr_can_take_address(current)
 		}
 		source := t.a.child(node, 0)
 		indirect := match node.kind {
 			.as_expr { !t.is_sum_type_name(t.sum_projection_source_type(source)) }
+			.index {
+				// Fixed-array elements live inside their sum payload. Slices of
+				// that array still borrow it; dynamic arrays and maps have separate storage.
+				mut backing := t.unwrap_parens(source)
+				for t.is_range_index_expr(backing) {
+					backing = t.unwrap_parens(t.a.child(t.a.node(backing), 0))
+				}
+				!t.is_fixed_array_type(t.sum_projection_source_type(backing))
+			}
 			.selector {
 				flat.source_type_shape(t.normalize_type_alias(t.node_type(source))).has(.pointer)
 			}

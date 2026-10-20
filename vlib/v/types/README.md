@@ -227,6 +227,12 @@ Returning a mutable array parameter in a value-array sum variant creates an inde
 A selected pointer-array variant keeps borrowing the caller's storage. Option and Result wrappers
 preserve the successful payload's ownership and their existing none or error cleanup.
 
+The following sum lifetime and cleanup checks apply with `-ownership` and `-autofree`, using
+`checker_sum_escape_d_ownership.v`. Autofree shares the escape analysis with ownership mode,
+but retains its compatibility copy policy instead of ownership's move policy. These are current
+analysis restrictions in addition to the ordinary finite-layout and reference-type rules.
+Default GC builds without either flag do not enable these additional checks.
+
 Returning a wrapper of a local promotes that local and transfers its cleanup to the returned sum.
 Storing an inner local's pointer in an outer sum similarly transfers cleanup at the store, including
 through named sum wrappers.

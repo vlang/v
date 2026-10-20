@@ -5095,8 +5095,42 @@ type.
 
 Copying a sum type copies its held value. Reference variants still refer to the same object.
 
-Sum payloads must have finite layout. A function variant stores a function reference, so its
-parameter and return types may refer to the containing sum type.
+For example, after `b := a`, changing a scalar field of a value variant in `a` leaves `b`
+unchanged. Passing a sum by value follows the same rule. This follows the held type's ordinary
+copy behavior; it does not recursively clone objects reached through references or containers.
+
+References to a sum and reference variants refer to different storage:
+
+| Type | Referenced storage |
+| --- | --- |
+| `Value` with a `Point` variant | A point held directly in the sum |
+| `&Value` | The complete sum, including its selected variant |
+| `Value` with an `&Point` variant | A point allocated separately from the sum |
+
+Value and reference variants, including different reference depths, are distinct variants.
+Use the declared variant type in `is`, `as`, and `match`.
+A reference to a selected value borrows that payload's storage. Keep the containing sum alive
+and its variant unchanged while using the reference. When an addressed projection comes from
+a temporary sum, the compiler retains storage for the addressed value, including fields and
+fixed-array elements.
+
+A mutable sum argument requires a variable of the sum type: it can replace the complete sum
+with another variant. Wrap a concrete value in a sum variable before passing it with `mut`.
+Inside a mutable smartcast, modifying a field modifies the selected payload in that sum.
+
+Sum payloads must have finite layout. References, dynamic arrays, and maps break recursive
+storage cycles; ordinary fields, options, and fixed arrays do not. A function variant stores
+a function reference, so its parameter and return types may refer to the containing sum type.
+This validity rule also applies to generic sum declarations used only as constraints.
+
+With [ownership checking](ownership.md), a sum that owns its payload can move rather than copy.
+Ownership and `-autofree` builds also track pointer-variant borrowing and cleanup, and reject
+some escaping local references. Autofree uses the shared lifetime analysis with its compatibility
+copy policy. Default GC builds without either flag do not enable these additional checks.
+
+The experimental [FastC backend](fastc.md) currently retains the older boxed sum representation
+and does not yet provide independent copies of value variants. Use the default C backend for
+the value semantics described here.
 
 Use references for recursive fields, as in this binary tree:
 
