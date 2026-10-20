@@ -227,6 +227,27 @@ fn g_set_and_read[T](mut a ?T, value T) ?T {
 	return a
 }
 
+fn g_guard_type[T](mut a ?T) string {
+	if v := a {
+		return typeof(v).name
+	}
+	return 'none'
+}
+
+fn g_mut_guard_type[T](mut a ?T) string {
+	if mut v := a {
+		return typeof(v).name
+	}
+	return 'none'
+}
+
+fn g_value_guard_type[T](a ?T) string {
+	if v := a {
+		return typeof(v).name
+	}
+	return 'none'
+}
+
 fn test_passing_on_and_returning() {
 	mut p := Point{5, 6}
 	assert pass_on(mut p) == 5
@@ -383,9 +404,13 @@ fn test_generic_parameters() {
 	mut p := Point{5, 6}
 	assert g_pass_on(mut p) or { Point{} } == Point{5, 6}
 	assert g_or(mut p, Point{}) == Point{5, 6}
+	assert g_guard_type(mut p) == 'Point'
+	assert g_mut_guard_type(mut p) == 'Point'
+	assert g_value_guard_type(?Point(p)) == 'Point'
 	mut o := ?Point(none)
 	assert g_pass_on(mut o) == none
 	assert g_or(mut o, Point{-1, -1}) == Point{-1, -1}
+	assert g_guard_type(mut o) == 'none'
 	g_set_local(mut o, Point{3, 4})
 	clobber()
 	assert o or { Point{} } == Point{3, 4}
@@ -396,6 +421,9 @@ fn test_generic_parameters() {
 	assert g_set_and_read(mut o, Point{9, 9}) or { Point{} } == Point{9, 9}
 	assert o or { Point{} } == Point{9, 9}
 	mut arr := [1, 2]
+	assert g_guard_type(mut arr) == '[]int'
+	assert g_mut_guard_type(mut arr) == '[]int'
+	assert g_value_guard_type(?[]int(arr)) == '[]int'
 	assert g_or(mut arr, []int{}) == [1, 2]
 }
 
