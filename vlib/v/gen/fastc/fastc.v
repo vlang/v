@@ -907,12 +907,26 @@ fn fastc_multi_return_literal(packed_values []string) string {
 	return out.str()
 }
 
-fn (g &Parser) multi_return_component(value string, index int) string {
+// multi_return_component stores one returned value in its multi-return slot as the
+// component's declared type, which is how the caller reads it back: a number is converted
+// (`return 1, 2` for `(f64, f32)`), and a concrete value for an interface or sum type
+// component is boxed, as a single return value is.
+fn (g &Parser) multi_return_component(value string, value_type u32, index int) string {
 	mut expression := value
 	if index < g.return_types.ids.len {
 		declared_type := g.return_types.ids[index]
-		if fastc_is_integer_type(g.underlying_alias_type(declared_type)) {
+		declared_layout := g.underlying_alias_type(declared_type)
+		is_number := fastc_is_integer_type(declared_layout)
+			|| declared_layout == flat.source_type_f32 || declared_layout == flat.source_type_f64
+		declared_kind := g.declared_kinds[flat.source_type_name(g.semantic_type_key(declared_type))]
+		value_kind := g.declared_kinds[flat.source_type_name(g.semantic_type_key(value_type))]
+		needs_box := g.selfhost && value_type != 0 && value_type != declared_type
+			&& (g.should_box_variant(declared_type, value_type)
+				|| (declared_kind == .interface_ && value_kind != .interface_))
+		if is_number {
 			expression = '((${fastc_output_c_type(flat.source_type_name(declared_type))})(${value}))'
+		} else if needs_box {
+			expression = g.interface_value_expression(declared_type, value_type, value)
 		}
 	}
 	return 'V_FASTC_MULTI_VALUE((${expression}))'
@@ -3873,7 +3887,7 @@ fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTy
 			mut parameters := ['${interface_type} value']
 			mut arguments := []string{}
 			for i in 1 .. interface_signature.parameter_types.ids.len {
-				parameters << '${interface_signature.parameter_types_text()[i]} arg${i}'
+				parameters << '${fastc_output_c_type(interface_signature.parameter_types_text()[i])} arg${i}'
 				arguments << 'arg${i}'
 			}
 			c_name := if compact_name := function_c_names[interface_method_key] {
@@ -3881,7 +3895,9 @@ fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTy
 			} else {
 				fastc_method_c_name(interface_signature.module_name, interface_type, method_name)
 			}
-			out.writeln('${interface_signature.return_type_text()} ${c_name}(${parameters.join(', ')}) {')
+			// Spelled like the methods it dispatches to: a V `int` is 64 bits wide.
+			return_c_type := fastc_output_c_type(interface_signature.return_type_text())
+			out.writeln('${return_c_type} ${c_name}(${parameters.join(', ')}) {')
 			out.writeln('\tswitch (value._typ) {')
 			candidate_count := if selfhost && method_name !in used_function_names {
 				0
@@ -3967,10 +3983,10 @@ fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTy
 				// the interface. Stop loudly rather than return a zero value.
 				out.writeln('\t\tbuiltin__panic(_S("fastc: no implementation of `${interface_key}.${method_name}` for this value"));')
 			}
-			out.writeln('\t\t${if interface_signature.return_type_text() == 'void' {
+			out.writeln('\t\t${if return_c_type == 'void' {
 				'return;'
 			} else {
-				'return (' + interface_signature.return_type_text() + '){0};'
+				'return (' + return_c_type + '){0};'
 			}}')
 			out.writeln('\t}')
 			out.writeln('}')

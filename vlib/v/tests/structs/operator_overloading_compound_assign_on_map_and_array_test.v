@@ -82,6 +82,30 @@ fn (x Pair[T]) + (y Pair[T]) Pair[T] {
 	return Pair[T]{x.a + y.a, x.b + y.b}
 }
 
+// Power raises to an integer power on `**`. Each test below uses its own
+// instance, so that one path cannot specialize the operator for another.
+struct Power[T] {
+	v T
+}
+
+fn (a Power[T]) ** (b Power[T]) Power[T] {
+	mut r := T(1)
+	for _ in 0 .. int(b.v) {
+		r *= a.v
+	}
+	return Power[T]{r}
+}
+
+struct PowerU64Body {
+mut:
+	p Power[u64]
+}
+
+struct PowerI8Body {
+mut:
+	p Power[i8]
+}
+
 fn maybe_vec(ok bool) ?Vec {
 	if ok {
 		return Vec{1, 1}
@@ -96,6 +120,14 @@ fn add_twice_to_map[T](mut m map[string]T, v T) {
 
 fn add_to_first[T](mut a []T, v T) {
 	a[0] += v
+}
+
+fn power_first[T](mut a []T, v T) {
+	a[0] **= v
+}
+
+fn power_entry[T](mut m map[string]T, v T) {
+	m['g'] **= v
 }
 
 fn next_key(mut calls []int) string {
@@ -270,6 +302,48 @@ fn test_generic_operators_on_map_and_array() {
 	mb['k'].p += Pair[f64]{0.5, 0.25}
 	mb['k'].p += Pair[f64]{0.5, 0.25}
 	assert mb['k'].p == Pair[f64]{1.0, 0.5}
+}
+
+fn test_generic_power_operators_on_locals_map_and_array() {
+	a := Power[int]{2}
+	assert (a ** Power[int]{3}) == Power[int]{8}
+	mut l := Power[i64]{3}
+	l **= Power[i64]{2}
+	assert l == Power[i64]{9}
+	mut arr := [Power[u32]{2}, Power[u32]{5}]
+	arr[1] **= Power[u32]{2}
+	assert arr[1] == Power[u32]{25}
+	mut fixed := [2]Power[u16]{}
+	fixed[0] = Power[u16]{4}
+	fixed[0] **= Power[u16]{3}
+	assert fixed[0] == Power[u16]{64}
+	mut m := map[string]Power[u8]{}
+	m['x'] = Power[u8]{3}
+	m['x'] **= Power[u8]{3}
+	assert m['x'] == Power[u8]{27}
+	mut body := PowerU64Body{
+		p: Power[u64]{2}
+	}
+	body.p **= Power[u64]{5}
+	assert body.p == Power[u64]{32}
+	mut bodies := [PowerU64Body{
+		p: Power[u64]{3}
+	}]
+	bodies[0].p **= Power[u64]{3}
+	assert bodies[0].p == Power[u64]{27}
+	mut mb := map[int]PowerI8Body{}
+	mb[1] = PowerI8Body{
+		p: Power[i8]{2}
+	}
+	mb[1].p **= Power[i8]{4}
+	assert mb[1].p == Power[i8]{16}
+	mut ga := [Power[i16]{3}]
+	power_first(mut ga, Power[i16]{4})
+	assert ga[0] == Power[i16]{81}
+	mut gm := map[string]Power[f64]{}
+	gm['g'] = Power[f64]{1.5}
+	power_entry(mut gm, Power[f64]{2.0})
+	assert gm['g'] == Power[f64]{2.25}
 }
 
 fn test_string_alias_operator_wins_over_concatenation() {
