@@ -12898,8 +12898,9 @@ fn (mut t Transformer) generic_comptime_typeof_target(node flat.Node, args_ids [
 	target := flat.source_type_name(target_source_id)
 	if child.kind == .ident && t.mut_param_values[child.value] && !target.starts_with('&') {
 		// A `mut value T` parameter is stored indirectly. `typeof(value)` observes
-		// that pointer shape even though ordinary value uses infer T itself.
-		return flat.source_type_id('&${target}')
+		// that pointer shape even though ordinary value uses infer T itself
+		// (`?&T` for a `mut value ?T`, see mut_param_typeof_type).
+		return mut_param_typeof_type(target_source_id, target.starts_with('?'))
 	}
 	return target_source_id
 }

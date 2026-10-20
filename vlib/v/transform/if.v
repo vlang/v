@@ -57,13 +57,15 @@ fn (mut t Transformer) make_guard_value_decls(name string, value flat.NodeId, va
 // whose body reads it as `?T` (mut_optional_view_param): the reference to the caller's
 // payload. A `mut` guard binding of it refers to the caller's payload, as in V 0.5.2, where
 // the parameter is `?&T`: `if mut v := a { v << 1 }` changes the caller's array, not a copy.
+// That holds while `a` is smartcast to its payload too (a generic body can guard it inside
+// `if a != none`): the reference is read from the parameter's option, not through `a`.
 fn (mut t Transformer) mut_optional_param_payload_ref(rhs_id flat.NodeId, payload_type_id u32) ?flat.NodeId {
 	mut source_id := rhs_id
 	for t.a.nodes[int(source_id)].kind == .paren && t.a.nodes[int(source_id)].children_count == 1 {
 		source_id = t.a.child(&t.a.nodes[int(source_id)], 0)
 	}
 	source := t.a.nodes[int(source_id)]
-	if source.kind != .ident || t.has_smartcast(source.value) {
+	if source.kind != .ident {
 		return none
 	}
 	if payload_type_id == 0 || payload_type_id == flat.source_type_void
@@ -1551,6 +1553,12 @@ fn (mut t Transformer) build_if_value_guard_chain(if_node flat.Node, target_name
 				field := t.make_selector(payload, 'arg${i}', flat.source_type_id(field_type))
 				value_decls << t.make_guard_value_decls(lhs_item.value, field, flat.source_type_id(field_type))
 			}
+		}
+	}
+	if value_decls.len == 0 && lhs.is_mut && lhs_ids.len == 1 && lhs.value != '_' {
+		// As in the statement form (try_expand_if_guard_with_tail).
+		if payload_ref := t.mut_optional_param_payload_ref(rhs_id, value_type_source_id) {
+			value_decls << t.make_payload_ref_binding(lhs.value, payload_ref, value_type_source_id)
 		}
 	}
 	if value_decls.len == 0 && lhs.value != '_' && value_type_source_id != flat.source_type_void {
