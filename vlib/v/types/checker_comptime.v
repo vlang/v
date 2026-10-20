@@ -8939,8 +8939,10 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 	// of the aliased storage type. This is especially important for aliases of
 	// maps, arrays, pointers, and primitives: validating their unaliased type
 	// first would reject the expression before its operator method can be used.
-	if lhs_type is Alias && tc.type_has_infix_operator_method(lhs_type, node.op)
-		&& tc.infix_operator_return_type(node.op, lhs_type, rhs_type) != none {
+	// `>`, `<=` and `>=` are generated from the alias's own `<`.
+	operator_method_op := if node.op in [.gt, .le, .ge] { flat.Op.lt } else { node.op }
+	if lhs_type is Alias && tc.type_has_infix_operator_method(lhs_type, operator_method_op)
+		&& tc.infix_operator_return_type(operator_method_op, lhs_type, rhs_type) != none {
 		return
 	}
 	if node.op == .plus && is_string_concat_pair(lhs_type, rhs_type) {
