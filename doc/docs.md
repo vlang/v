@@ -6943,8 +6943,10 @@ storage; it does not require moving the containing local or by-value parameter t
 An address into an inline fixed array can require moving its owner instead.
 Casting a local address to an integer preserves the lifetime of the addressed storage.
 Calling through an interface field likewise borrows the interface's object, without retaining
-the address of the interface header. Unwrapping a Result into an ordinary scalar value does
-not by itself make the Result's address arguments escape. Integer results as wide as a pointer
+the address of the interface header. Unwrapping a Result into a narrow scalar can leave its
+arguments on the stack when the callee is proven to only read their values. Unknown callees
+and callees that store or forward an argument retain its address sources conservatively,
+including calls evaluated inside another call's arguments. Integer results as wide as a pointer
 and floating point or multiple results can carry encoded pointers and retain those arguments
 conservatively.
 

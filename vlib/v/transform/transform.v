@@ -361,6 +361,7 @@ mut:
 	call_param_types_index_ready  bool
 	call_param_types_prepared     bool
 	fixed_array_borrow_params     map[int][]bool
+	call_provenance_borrow_params map[int][]bool
 	borrow_param_mentions         &BorrowParamMentions = unsafe { nil }
 	used_fns                      map[string]bool
 	used_fns_parent               &map[string]bool = unsafe { nil }
@@ -1626,6 +1627,7 @@ fn (mut t Transformer) release_finished_scratch() {
 			t.fn_ret_types.free()
 			t.call_param_types_decl_index.free()
 			t.fixed_array_borrow_params.free()
+			t.call_provenance_borrow_params.free()
 		}
 	}
 }
@@ -4548,6 +4550,11 @@ fn (mut t Transformer) hand_over_fixed_array_borrow_params() {
 		summaries[decl] = summary.clone()
 	}
 	t.tc.transform_borrow_params = summaries
+	mut provenance_summaries := map[int][]bool{}
+	for decl, summary in t.call_provenance_borrow_params {
+		provenance_summaries[decl] = summary.clone()
+	}
+	t.tc.transform_call_provenance_borrow_params = provenance_summaries
 	t.tc.transform_borrow_node_count = t.fixed_array_borrow_node_count
 	transform_stage_scope_resume(t.stage_scope, state)
 }
@@ -5295,6 +5302,7 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		call_param_types_index_ready:        t.call_param_types_index_ready
 		call_param_types_prepared:           t.call_param_types_prepared
 		fixed_array_borrow_params:           t.fixed_array_borrow_params
+		call_provenance_borrow_params:       t.call_provenance_borrow_params
 		comptime_reflected_params:           t.comptime_reflected_params
 		// Function-body lowering records operator helpers as used. Each parallel
 		// worker therefore needs private map storage; sharing this map races on
@@ -10795,6 +10803,7 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 		for i in 1 .. node.children_count {
 			t.mark_callback_method_value_receiver_escape(t.a.child(node, i), amp_sources, ptr_aliases, local_stack_names)
 		}
+		t.mark_call_provenance_argument_escapes(id, *node, amp_sources, ptr_aliases)
 		t.mark_implicit_voidptr_argument_escapes(id, *node, local_stack_names)
 		t.mark_fixed_array_reference_argument_escapes(id, *node, amp_ptrs, amp_sources, ptr_aliases, local_stack_names)
 	}
@@ -11462,6 +11471,17 @@ fn (t &Transformer) escape_aggregate_address_sources(id flat.NodeId, amp_sources
 		.ident {
 			return escape_alias_sources(node.value, amp_sources, ptr_aliases)
 		}
+		.fn_literal {
+			mut sources := []string{}
+			for capture in t.escape_fn_literal_capture_names(id) {
+				for source in escape_alias_sources(capture, amp_sources, ptr_aliases) {
+					if source !in sources {
+						sources << source
+					}
+				}
+			}
+			return sources
+		}
 		.infix {
 			if node.op !in [.plus, .minus] || node.children_count != 2 || isnil(t.tc)
 				|| types.unalias_type(t.tc.resolve_type(id)) !is types.Pointer {
@@ -11602,6 +11622,7 @@ fn (t &Transformer) escape_scalar_unwrap_consumes_source(id flat.NodeId) bool {
 		return false
 	}
 	return escape_call_result_is_scalar(success_type)
+		&& t.scalar_result_call_borrows_arguments(source)
 		&& !t.escape_expr_retains_result_error(id)
 }
 

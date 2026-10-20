@@ -191,6 +191,7 @@ fn (mut t Transformer) prepare_fixed_array_borrow_params() {
 		}
 	}
 	prescanned.release()
+	t.prepare_call_provenance_borrow_params(summarised)
 }
 
 // BorrowPrescan holds the up-front body analyses and the arenas that own them.

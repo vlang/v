@@ -1,3 +1,6 @@
+@[has_globals]
+module main
+
 struct Req {
 	buf []u8
 	pos int
@@ -341,4 +344,303 @@ fn test_integer_casts_keep_the_addressed_local_alive() {
 		assert *(&int(usize(float_result))) == 989
 		assert *(&int(usize(halves))) == 990
 	}
+}
+
+__global scalar_retained &EncodedAddressValue = unsafe { nil }
+__global scalar_retained_bits usize
+
+type ScalarSuccess = bool
+
+@[heap]
+struct ScalarResultHolder {
+mut:
+	value &EncodedAddressValue = unsafe { nil }
+}
+
+struct ScalarCarrier {
+	value &EncodedAddressValue
+}
+
+struct ScalarEncodedCarrier {
+	bits usize
+}
+
+@[noinline]
+fn scalar_retain_global(value &EncodedAddressValue) !bool {
+	scalar_retained = value
+	return true
+}
+
+@[noinline]
+fn scalar_retain_heap(mut holder ScalarResultHolder, value &EncodedAddressValue) !i32 {
+	holder.value = value
+	return 7
+}
+
+@[noinline]
+fn scalar_retain_alias(value &EncodedAddressValue) !ScalarSuccess {
+	scalar_retained = value
+	return ScalarSuccess(true)
+}
+
+fn scalar_consume_carrier(_value ScalarCarrier) !bool {
+	return true
+}
+
+@[noinline]
+fn scalar_plain_producer(value &EncodedAddressValue) ScalarCarrier {
+	scalar_retained = value
+	// Deliberately return the borrowed pointer to exercise the caller's provenance tracking.
+	return ScalarCarrier{unsafe { value }}
+}
+
+fn scalar_consume_wide(_value i64) !bool {
+	return true
+}
+
+@[noinline]
+fn scalar_retain_wide(value &EncodedAddressValue) !i64 {
+	scalar_retained = value
+	return 0
+}
+
+@[noinline]
+fn scalar_retain_void(value &EncodedAddressValue) {
+	scalar_retained = value
+}
+
+@[noinline]
+fn scalar_retain_bool(value &EncodedAddressValue) bool {
+	scalar_retained = value
+	return true
+}
+
+fn scalar_pure_reader(value &EncodedAddressValue) !bool {
+	return value.value > 0
+}
+
+fn scalar_consume(value bool) !bool {
+	return !value
+}
+
+@[noinline]
+fn scalar_retain_carrier(value ScalarCarrier) !bool {
+	scalar_retained = value.value
+	return true
+}
+
+fn scalar_forward_carrier(value ScalarCarrier) !bool {
+	return scalar_retain_carrier(value)
+}
+
+@[noinline]
+fn scalar_retain_encoded(value ScalarEncodedCarrier) !bool {
+	scalar_retained_bits = value.bits
+	return true
+}
+
+@[noinline]
+fn scalar_retain_pointee(value &usize) !bool {
+	scalar_retained_bits = unsafe { *value }
+	return true
+}
+
+@[noinline]
+fn scalar_global_wrapper(seed int) bool {
+	local := EncodedAddressValue{seed}
+	return scalar_retain_global(&local) or { false }
+}
+
+@[noinline]
+fn scalar_heap_wrapper(mut holder ScalarResultHolder, seed int) i32 {
+	local := EncodedAddressValue{seed}
+	return scalar_retain_heap(mut holder, &local) or { i32(-1) }
+}
+
+@[noinline]
+fn scalar_alias_wrapper(seed int) ScalarSuccess {
+	local := EncodedAddressValue{seed}
+	return scalar_retain_alias(&local) or { ScalarSuccess(false) }
+}
+
+@[noinline]
+fn scalar_computed_argument_wrapper(seed int) bool {
+	local := EncodedAddressValue{seed}
+	return scalar_consume(scalar_retain_global(&local) or { false }) or { false }
+}
+
+@[noinline]
+fn scalar_wide_computed_argument_wrapper(seed int) bool {
+	local := EncodedAddressValue{seed}
+	return scalar_consume_wide(scalar_retain_wide(&local) or { i64(0) }) or { false }
+}
+
+@[noinline]
+fn scalar_plain_computed_argument_wrapper(seed int) bool {
+	local := EncodedAddressValue{seed}
+	return scalar_consume_carrier(scalar_plain_producer(&local)) or { false }
+}
+
+@[noinline]
+fn scalar_plain_alias_wrapper(seed int) bool {
+	local := EncodedAddressValue{seed}
+	carrier := scalar_plain_producer(&local)
+	return scalar_consume_carrier(carrier) or { false }
+}
+
+@[noinline]
+fn scalar_plain_reassigned_wrapper(seed int) bool {
+	local := EncodedAddressValue{seed}
+	mut carrier := ScalarCarrier{unsafe { nil }}
+	carrier = scalar_plain_producer(&local)
+	return scalar_consume_carrier(carrier) or { false }
+}
+
+@[noinline]
+fn scalar_void_before_reader_wrapper(seed int) bool {
+	local := EncodedAddressValue{seed}
+	scalar_retain_void(&local)
+	return scalar_pure_reader(&local) or { false }
+}
+
+@[noinline]
+fn scalar_bool_before_reader_wrapper(seed int) bool {
+	local := EncodedAddressValue{seed}
+	stored := scalar_retain_bool(&local)
+	return scalar_pure_reader(&local) or { stored }
+}
+
+@[noinline]
+fn scalar_retain_mut(mut value EncodedAddressValue) !bool {
+	scalar_retained = unsafe { &value }
+	return true
+}
+
+@[noinline]
+fn scalar_mut_wrapper(seed int) bool {
+	mut local := EncodedAddressValue{seed}
+	return scalar_retain_mut(mut local) or { false }
+}
+
+@[noinline]
+fn scalar_implicit_reference_wrapper(seed int) bool {
+	local := EncodedAddressValue{seed}
+	return scalar_retain_global(local) or { false }
+}
+
+@[noinline]
+fn scalar_closure_wrapper(seed int) bool {
+	local := EncodedAddressValue{seed}
+	pointer := &local
+	callback := fn [pointer] () {
+		scalar_retained = pointer
+	}
+	callback()
+	return scalar_pure_reader(&local) or { false }
+}
+
+@[noinline]
+fn scalar_closure_alias_wrapper(seed int) bool {
+	local := EncodedAddressValue{seed}
+	pointer := &local
+	mut callback := fn [pointer] () {
+		scalar_retained = pointer
+	}
+	alias := callback
+	alias()
+	callback = fn () {}
+	callback()
+	return scalar_pure_reader(&local) or { false }
+}
+
+@[noinline]
+fn scalar_carrier_wrapper(seed int) bool {
+	local := EncodedAddressValue{seed}
+	carrier := ScalarCarrier{&local}
+	return scalar_forward_carrier(carrier) or { false }
+}
+
+@[noinline]
+fn scalar_encoded_field_wrapper(seed int) bool {
+	local := EncodedAddressValue{seed}
+	carrier := ScalarEncodedCarrier{usize(&local.value)}
+	return scalar_retain_encoded(carrier) or { false }
+}
+
+@[noinline]
+fn scalar_encoded_pointee_wrapper(seed int) bool {
+	local := EncodedAddressValue{seed}
+	bits := usize(&local.value)
+	return scalar_retain_pointee(&bits) or { false }
+}
+
+fn test_scalar_result_callees_keep_addresses_they_store_alive() {
+	assert scalar_global_wrapper(123)
+	assert encoded_address_churn_stack(10) == 137
+	assert scalar_retained.value == 123
+
+	mut holder := &ScalarResultHolder{}
+	assert scalar_heap_wrapper(mut holder, 234) == 7
+	assert encoded_address_churn_stack(10) == 137
+	assert holder.value.value == 234
+
+	assert scalar_alias_wrapper(345)
+	assert encoded_address_churn_stack(10) == 137
+	assert scalar_retained.value == 345
+
+	assert !scalar_computed_argument_wrapper(456)
+	assert encoded_address_churn_stack(10) == 137
+	assert scalar_retained.value == 456
+
+	assert scalar_wide_computed_argument_wrapper(501)
+	assert encoded_address_churn_stack(10) == 137
+	assert scalar_retained.value == 501
+
+	assert scalar_plain_computed_argument_wrapper(512)
+	assert encoded_address_churn_stack(10) == 137
+	assert scalar_retained.value == 512
+
+	assert scalar_plain_alias_wrapper(523)
+	assert encoded_address_churn_stack(10) == 137
+	assert scalar_retained.value == 523
+
+	assert scalar_plain_reassigned_wrapper(534)
+	assert encoded_address_churn_stack(10) == 137
+	assert scalar_retained.value == 534
+
+	assert scalar_void_before_reader_wrapper(545)
+	assert encoded_address_churn_stack(10) == 137
+	assert scalar_retained.value == 545
+
+	assert scalar_bool_before_reader_wrapper(556)
+	assert encoded_address_churn_stack(10) == 137
+	assert scalar_retained.value == 556
+
+	assert scalar_mut_wrapper(557)
+	assert encoded_address_churn_stack(10) == 137
+	assert scalar_retained.value == 557
+
+	assert scalar_implicit_reference_wrapper(558)
+	assert encoded_address_churn_stack(10) == 137
+	assert scalar_retained.value == 558
+
+	assert scalar_closure_wrapper(559)
+	assert encoded_address_churn_stack(10) == 137
+	assert scalar_retained.value == 559
+
+	assert scalar_closure_alias_wrapper(560)
+	assert encoded_address_churn_stack(10) == 137
+	assert scalar_retained.value == 560
+
+	assert scalar_carrier_wrapper(567)
+	assert encoded_address_churn_stack(10) == 137
+	assert scalar_retained.value == 567
+
+	assert scalar_encoded_field_wrapper(678)
+	assert encoded_address_churn_stack(10) == 137
+	unsafe { assert *(&int(scalar_retained_bits)) == 678 }
+
+	assert scalar_encoded_pointee_wrapper(789)
+	assert encoded_address_churn_stack(10) == 137
+	unsafe { assert *(&int(scalar_retained_bits)) == 789 }
 }

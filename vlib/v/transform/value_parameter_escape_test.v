@@ -84,11 +84,22 @@ fn test_direct_dereference_and_pointer_cast_keep_the_inline_address_owner() {
 	}
 }
 
+// This fixture supplies the independently proven callee summary. Unknown
+// declarations are deliberately not accepted by the unwrap optimization.
+fn prove_scalar_reader(mut t Transformer) {
+	decl := t.a.add_node(flat.Node{ kind: .fn_decl, value: 'read' })
+	t.call_param_types_index_ready = true
+	t.call_param_types_decl_index['read'] = FnParamDeclRef{ idx: int(decl) }
+	t.call_param_types_decl_cache[int(decl)] = [types.Type(types.Pointer{ base_type: types.Type(types.int_) })]
+	t.call_provenance_borrow_params[int(decl)] = [true]
+}
+
 fn test_scalar_cast_and_result_unwrap_consume_retained_addresses() {
 	for wrapper in ['cast', 'or'] {
 		mut a := flat.FlatAst.new()
 		mut tc := types.TypeChecker.new(&a)
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
+		prove_scalar_reader(mut t)
 		value := t.make_ident('value')
 		tc.register_synth_type(value, types.Type(types.int_))
 		address := t.make_prefix(.amp, value)
@@ -116,6 +127,7 @@ fn test_scalar_success_keeps_addresses_that_can_escape_in_a_result_error() {
 		mut a := flat.FlatAst.new()
 		mut tc := types.TypeChecker.new(&a)
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
+		prove_scalar_reader(mut t)
 		if mode == 'shadowed_panic' {
 			t.set_var_type('panic', flat.source_type_id('fn (IError)'))
 		}
@@ -302,6 +314,7 @@ fn test_scalar_result_address_capacity_uses_the_compilation_target_width() {
 		mut a := flat.FlatAst.new()
 		mut tc := types.TypeChecker.new(&a)
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
+		prove_scalar_reader(mut t)
 		value := t.make_ident('value')
 		tc.register_synth_type(value, types.Type(types.int_))
 		address := t.make_prefix(.amp, value)

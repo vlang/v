@@ -3464,6 +3464,7 @@ fn (mut t Transformer) prescan_fixed_array_borrow_bodies(candidates []BorrowCand
 		w.set_expected_expr_type(t.expected_expr_type)
 		// Helpers analyse against no proven summaries (see BorrowBodyResult).
 		w.fixed_array_borrow_params = map[int][]bool{}
+		w.call_provenance_borrow_params = map[int][]bool{}
 		args << BorrowPrescanArgs{
 			worker:     voidptr(w)
 			candidates: unsafe { voidptr(&candidates) }
