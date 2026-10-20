@@ -41,7 +41,37 @@ env:
   PLATFORMS: linux/amd64,linux/arm64
 
 jobs:
+  resolve-bootstrap:
+    name: Resolve historical V bootstrap
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      tag: ${{ steps.bootstrap.outputs.tag }}
+      manifest: ${{ steps.bootstrap.outputs.manifest }}
+      v_source_sha: ${{ steps.bootstrap.outputs.v_source_sha }}
+      vc_revision: ${{ steps.bootstrap.outputs.vc_revision }}
+      vc_c_sha256: ${{ steps.bootstrap.outputs.vc_c_sha256 }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts/prepare_docker_release.py
+          sparse-checkout-cone-mode: false
+
+      - name: Freeze bootstrap for the requested source
+        id: bootstrap
+        env:
+          V_RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/prepare_docker_release.py \
+            --resolve-bootstrap "$V_RELEASE_TAG" \
+            --history-dir "$RUNNER_TEMP/bootstrap-history" \
+            --bootstrap-output "$RUNNER_TEMP/bootstrap.json" \
+            --github-output "$GITHUB_OUTPUT"
+
   publish-release-images:
+    needs: resolve-bootstrap
     name: Publish ${{ matrix.os }} ${{ inputs.tag || github.ref_name }}
     strategy:
       matrix:
@@ -52,6 +82,9 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      BOOTSTRAP_MANIFEST: ${{ needs.resolve-bootstrap.outputs.manifest }}
+      RESOLVED_TAG: ${{ needs.resolve-bootstrap.outputs.tag }}
     steps:
       - name: Check out release preparation
         uses: actions/checkout@v7
@@ -68,9 +101,13 @@ jobs:
 
       - name: Prepare all release recipes
         run: |
+          set -euo pipefail
+          printf '%s\n' "$BOOTSTRAP_MANIFEST" > "$RUNNER_TEMP/bootstrap.json"
           python3 .github/scripts/prepare_docker_release.py \
             --source docker-release-source \
-            --output docker-release-source/.release
+            --output docker-release-source/.release \
+            --release-tag "$RESOLVED_TAG" \
+            --bootstrap-manifest "$RUNNER_TEMP/bootstrap.json"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
@@ -92,7 +129,7 @@ jobs:
       - name: Resolve the tag being published
         id: tag
         env:
-          V_RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+          V_RELEASE_TAG: ${{ needs.resolve-bootstrap.outputs.tag }}
         run: |
           set -euo pipefail
           tag="$V_RELEASE_TAG"
@@ -132,6 +169,9 @@ jobs:
           build-args: |
             USER=thevlang
             V_REV=${{ steps.tag.outputs.tag }}
+            V_SOURCE_SHA=${{ needs.resolve-bootstrap.outputs.v_source_sha }}
+            VC_REV=${{ needs.resolve-bootstrap.outputs.vc_revision }}
+            VC_C_SHA256=${{ needs.resolve-bootstrap.outputs.vc_c_sha256 }}
           tags: ${{ steps.gen_tags.outputs.TAGS }}
           file: docker-release-source/.release/Dockerfile.${{ matrix.os }}
           labels: |
@@ -153,6 +193,9 @@ jobs:
           build-args: |
             USER=thevlang
             V_REV=${{ steps.tag.outputs.tag }}
+            V_SOURCE_SHA=${{ needs.resolve-bootstrap.outputs.v_source_sha }}
+            VC_REV=${{ needs.resolve-bootstrap.outputs.vc_revision }}
+            VC_C_SHA256=${{ needs.resolve-bootstrap.outputs.vc_c_sha256 }}
           tags: thevlang/vlang:${{ matrix.os }}-dev
           file: docker-release-source/.release/Dockerfile.${{ matrix.os }}.dev-full
           labels: |
