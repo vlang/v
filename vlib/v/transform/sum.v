@@ -1686,7 +1686,10 @@ fn (t &Transformer) sum_projection_has_temporary_storage(id flat.NodeId) bool {
 				for t.is_range_index_expr(backing) {
 					backing = t.unwrap_parens(t.a.child(t.a.node(backing), 0))
 				}
-				!t.is_fixed_array_type(t.sum_projection_source_type(backing))
+				if !t.is_fixed_array_type(t.sum_projection_source_type(backing)) {
+					return projection && !t.expr_can_take_address(current)
+				}
+				false
 			}
 			.selector {
 				flat.source_type_shape(t.normalize_type_alias(t.node_type(source))).has(.pointer)

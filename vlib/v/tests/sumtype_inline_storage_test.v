@@ -120,6 +120,25 @@ fn test_sumtype_array_literal_projection_address_escapes() {
 	assert second.y == 18
 }
 
+@[noinline]
+fn inline_value_array(x int) []InlineValue {
+	return [inline_value(x)]
+}
+
+@[noinline]
+fn escaped_inline_array_source(x int) &InlinePair {
+	return &(inline_value_array(x)[0] as InlinePair)
+}
+
+fn test_sumtype_projection_from_temporary_array_element_escapes() {
+	first := escaped_inline_array_source(23)
+	second := escaped_inline_array_source(29)
+	assert first.x == 23
+	assert first.y == 24
+	assert second.x == 29
+	assert second.y == 30
+}
+
 fn optional_inline_value(x int) ?InlineValue {
 	return inline_value(x)
 }
