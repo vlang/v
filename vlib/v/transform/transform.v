@@ -11432,11 +11432,12 @@ fn (t &Transformer) escape_aggregate_address_sources(id flat.NodeId, amp_sources
 		return []string{}
 	}
 	node := t.a.node(id)
-	if node.kind in [.cast_expr, .as_expr, .or_expr] && !isnil(t.tc)
-		&& escape_call_result_is_scalar(t.tc.resolve_type(id))
-		&& !t.escape_expr_retains_result_error(id) {
-		// Only the unwrapped success value crosses a scalar cast or `or` expression.
-		// A Result's error can retain an address while it is still a Result.
+	if t.escape_scalar_unwrap_consumes_source(id) {
+		// The success value cannot retain the Result's address arguments. The fallback
+		// is independent: it can encode a local address as an integer.
+		if node.kind == .or_expr && node.children_count > 1 {
+			return t.escape_aggregate_address_sources(t.a.child(node, 1), amp_sources, ptr_aliases)
+		}
 		return []string{}
 	}
 	match node.kind {
@@ -11575,6 +11576,48 @@ fn (t &Transformer) escape_aggregate_address_sources(id flat.NodeId, amp_sources
 	}
 
 	return []string{}
+}
+
+// A scalar call success consumes its address arguments, unless its error escapes.
+// An existing value can instead hold an integer-encoded address through its aliases.
+fn (t &Transformer) escape_scalar_unwrap_consumes_source(id flat.NodeId) bool {
+	if isnil(t.tc) || int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.node(id)
+	if node.kind !in [.cast_expr, .or_expr] || node.children_count == 0 {
+		return false
+	}
+	source := t.unwrap_parens(t.a.child(node, 0))
+	if t.a.node(source).kind != .call {
+		return false
+	}
+	if node.kind == .cast_expr
+		&& types.unalias_type(t.tc.resolve_type(source)) !is types.ResultType {
+		return false
+	}
+	success_type := types.unalias_type(t.tc.resolve_type(id))
+	// Integer and floating point values can carry encoded pointers after unwrapping.
+	if escape_scalar_result_can_encode_address(success_type) {
+		return false
+	}
+	return escape_call_result_is_scalar(success_type)
+		&& !t.escape_expr_retains_result_error(id)
+}
+
+fn escape_scalar_result_can_encode_address(typ types.Type) bool {
+	return match typ {
+		types.Alias { escape_scalar_result_can_encode_address(typ.base_type) }
+		types.OptionType { escape_scalar_result_can_encode_address(typ.base_type) }
+		types.MultiReturn { true }
+		types.Primitive {
+			bits := if typ.size == 0 { types.platform_int_bits() } else { int(typ.size) }
+			typ.props.has(.float) || (typ.props.has(.integer) && bits >= types.platform_int_bits())
+		}
+		types.USize, types.ISize, types.Enum { true }
+		types.Rune { types.platform_int_bits() <= 32 }
+		else { false }
+	}
 }
 
 // A scalar success value consumes its address arguments, but a propagated Result
@@ -12072,9 +12115,10 @@ fn (mut t Transformer) collect_return_escape_idents(id flat.NodeId, mut names ma
 		return
 	}
 	node := t.a.node(id)
-	if node.kind in [.cast_expr, .as_expr, .or_expr] && !isnil(t.tc)
-		&& escape_call_result_is_scalar(t.tc.resolve_type(id))
-		&& !t.escape_expr_retains_result_error(id) {
+	if t.escape_scalar_unwrap_consumes_source(id) {
+		if node.kind == .or_expr && node.children_count > 1 {
+			t.collect_return_escape_idents(t.a.child(node, 1), mut names)
+		}
 		return
 	}
 	match node.kind {

@@ -6941,9 +6941,12 @@ However a reference to `b` is part of `e` which is returned. Also a reference to
 Returning an address into a dynamic array, string, or map uses that container's backing
 storage; it does not require moving the containing local or by-value parameter to the heap.
 An address into an inline fixed array can require moving its owner instead.
+Casting a local address to an integer preserves the lifetime of the addressed storage.
 Calling through an interface field likewise borrows the interface's object, without retaining
-the address of the interface header. Unwrapping a Result into a scalar value does not make
-the Result's address arguments escape through that value.
+the address of the interface header. Unwrapping a Result into an ordinary scalar value does
+not by itself make the Result's address arguments escape. Integer results as wide as a pointer
+and floating point or multiple results can carry encoded pointers and retain those arguments
+conservatively.
 
 Heap allocation preserves value reads in declaration initializers. An initializer reads
 the bindings that are visible before the new declaration is installed.
