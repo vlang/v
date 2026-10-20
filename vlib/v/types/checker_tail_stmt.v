@@ -1911,7 +1911,6 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 			tc.ownership_add_branch_group_base_if_no_else()
 		}
 		tc.ownership_end_branch_group()
-		tc.ownership_record_match_scope_drop_slot()
 	}
 }
 

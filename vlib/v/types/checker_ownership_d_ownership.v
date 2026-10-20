@@ -1318,17 +1318,6 @@ fn (mut tc TypeChecker) ownership_pop_scope() {
 	}
 }
 
-// Match lowering emits an enclosing block in addition to the branch scopes.
-fn (mut tc TypeChecker) ownership_record_match_scope_drop_slot() {
-	if tc.ownership_checks_suppressed() {
-		return
-	}
-	mut st := tc.ownership_state()
-	if st.cur_fn.len > 0 {
-		st.drop_scope_counts[st.cur_fn] = (st.drop_scope_counts[st.cur_fn] or { 0 }) + 1
-	}
-}
-
 fn (mut tc TypeChecker) ownership_record_scope_drops(frame OwnershipScopeFrame) {
 	if int(frame.scope_id) < 0 || frame.cur_fn.len == 0 {
 		return
