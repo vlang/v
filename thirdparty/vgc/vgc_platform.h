@@ -81,6 +81,25 @@
 #endif
 
 // ============================================================
+// Per-thread counters
+// Only the thread that owns a counter adds to it, and any thread reads it. The add needs no
+// atomic read-modify-write then, only a load and a store that do not tear: on a 64-bit target
+// a volatile access to an aligned 8-byte word is one load or one store (like the Linux kernel's
+// READ_ONCE and WRITE_ONCE). They are macros, so that counting an allocation costs no call, even
+// without optimization.
+// ============================================================
+#if UINTPTR_MAX > 0xFFFFFFFFu
+  #define vgc_counter_load(ptr) (*(volatile uint64_t*)(ptr))
+  #define vgc_counter_add(ptr, val) ((void)(*(volatile uint64_t*)(ptr) += (uint64_t)(val)))
+#else
+  #define vgc_counter_load(ptr) vgc_atomic_load_u64(ptr)
+  #define vgc_counter_add(ptr, val) ((void)vgc_atomic_add_u64(ptr, val))
+#endif
+// Counts an object of size bytes, allocated for a request of n bytes, in the counters of a
+// thread's cache slot.
+#define vgc_count_alloc(live_ptr, alloc_ptr, size, n) (vgc_counter_add(live_ptr, size), vgc_counter_add(alloc_ptr, n))
+
+// ============================================================
 // Thread-local storage
 // Every thread allocates from its own cache, found through a per-thread cache index. If the
 // index is not really thread-local, all threads share one cache and allocate from the same

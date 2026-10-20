@@ -113,9 +113,10 @@ fn vgc_gc_run(_ voidptr, regs voidptr) {
 
 	// Compute live bytes from mark bits
 	marked := vgc_count_marked()
+	// The live heap is what we actually found alive, plus what the threads allocate from now on
+	// (see vgc_heap_live).
 	C.vgc_atomic_store_u64(&vgc_heap.heap_marked, marked)
-	// Reset heap_live to match what we actually found alive
-	C.vgc_atomic_store_u64(&vgc_heap.heap_live, marked)
+	C.vgc_atomic_store_u64(&vgc_heap.live_at_gc, vgc_live_sum())
 
 	// === Phase 4: Sweep ===
 	vgc_heap.sweep_gen++
@@ -129,7 +130,7 @@ fn vgc_gc_run(_ voidptr, regs voidptr) {
 	vgc_update_trigger()
 
 	vgc_heap.gc_cycle++
-	C.vgc_atomic_store_u64(&vgc_heap.alloc_at_gc, C.vgc_atomic_load_u64(&vgc_heap.total_alloc))
+	C.vgc_atomic_store_u64(&vgc_heap.alloc_at_gc, vgc_total_alloc())
 	// Resume the threads only now. Nothing marks the objects that they allocate, so they
 	// must not allocate before the sweep is done, and the sweep must not change a span
 	// while a thread allocates from it.
@@ -675,7 +676,7 @@ fn vgc_heap_usage() (usize, usize, usize, usize, usize) {
 	obtained := C.vgc_atomic_load_u64(&vgc_heap.arena_bytes)
 	used := C.vgc_atomic_load_u64(&vgc_heap.arena_used)
 	unmapped := C.vgc_atomic_load_u64(&vgc_heap.unmapped_bytes)
-	total := C.vgc_atomic_load_u64(&vgc_heap.total_alloc)
+	total := vgc_total_alloc()
 	at_gc := C.vgc_atomic_load_u64(&vgc_heap.alloc_at_gc)
 	heap_size := if obtained > unmapped { obtained - unmapped } else { u64(0) }
 	free := if obtained > used { obtained - used } else { u64(0) }
