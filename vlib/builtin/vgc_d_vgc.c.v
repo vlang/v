@@ -121,6 +121,11 @@ mut:
 
 // VGC_Cache is a per-thread allocation cache.
 // Translated from Go's runtime.mcache - eliminates lock contention on hot path.
+// Each cache starts a cache line of its own (128 bytes on Apple's arm64 cores, two lines on
+// x86-64): its owner writes it on every allocation, and with caches packed next to each other
+// threads slowed each other down through the lines they shared, by up to a quarter of their
+// cycles with 8 threads, depending on where VGC_Heap happened to put the array.
+@[aligned: 128]
 struct VGC_Cache {
 mut:
 	alloc [136]&VGC_Span // one span per span class (68 scan + 68 noscan)
