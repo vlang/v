@@ -4936,6 +4936,12 @@ fn (g &Parser) render_function_value_expression(tokens []FastcExpressionToken) ?
 	if function_key !in g.functions && function_key !in g.mono_functions {
 		return none
 	}
+	if tokens.len == 1 && !function_key.contains('.')
+		&& (tokens[0].lit in g.constants || tokens[0].lit in g.globals) {
+		// A main-module constant or global that shares its name with a function is
+		// the value of that name outside a call.
+		return none
+	}
 	return '&${g.c_function_name_for_key(function_key)}'
 }
 

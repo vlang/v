@@ -57,7 +57,7 @@ fn choose(enabled bool) string {
 }
 fn main() { println(choose(true)) }
 ', 'nested_if_guard_comptime_suffix.v', prefs) or { panic(err) }
-		assert c_source.contains('Option find_root('), c_source
+		assert c_source.contains('Option main__find_root('), c_source
 		assert c_source.contains('string current_root ='), c_source
 		assert c_source.contains('".exe"') == selected, c_source
 	}

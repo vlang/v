@@ -202,11 +202,20 @@ fn fastc_signature_c_name(key string, signature FastcFunctionSignature) string {
 	}
 }
 
+// fastc_c_function_name_for_key returns the C name of the function `key`. A
+// main-module function (an unqualified key) is named `main__<name>`, as V 0.5.2
+// named it. FastC's prelude includes many libc headers (on macOS, <sys/ioctl.h>
+// also declares the socket API), so a bare name such as `bind` could redeclare a
+// libc function, and naming.c_name only knows a few of those names. The entry
+// `main` and FastC's own `__vf_` names keep their spelling.
 fn fastc_c_function_name_for_key(key string) string {
 	if key.starts_with('C.') {
 		return naming.c_name(key)
 	}
 	sanitized := naming.sanitize(key)
+	if key != 'main' && !key.contains('.') && !sanitized.starts_with('__vf_') {
+		return 'main__${sanitized}'
+	}
 	c_name := naming.c_name(key)
 	if c_name != sanitized || sanitized.starts_with('v_fastc_') || sanitized == 'byte' {
 		return '__vf_function_${sanitized}'

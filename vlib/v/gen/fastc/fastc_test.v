@@ -6507,12 +6507,12 @@ fn main() {
 }
 ', 'libc_function_collisions.v', prefs) or { panic(err) }
 	for name in ['strlen', 'printf', 'open', 'close'] {
-		assert c_source.contains('int __vf_function_${name}(void)'), c_source
+		assert c_source.contains('i64 main__${name}(void)'), c_source
 	}
-	assert c_source.contains('return __vf_function_strlen();'), c_source
-	assert c_source.contains('return __vf_function_printf();'), c_source
-	assert c_source.contains('return __vf_function_open();'), c_source
-	assert c_source.contains('println(__vf_function_close());'), c_source
+	assert c_source.contains('return main__strlen();'), c_source
+	assert c_source.contains('return main__printf();'), c_source
+	assert c_source.contains('return main__open();'), c_source
+	assert c_source.contains('println(main__close());'), c_source
 
 	root := os.join_path(os.vtmp_dir(), 'v3_fastc_libc_names_${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -6547,8 +6547,8 @@ fn main() {
 }
 ", 'fastc_runtime_function_collision.v', prefs) or { panic(err) }
 	assert c_source.contains('static string v_fastc_bool_str(bool value)'), c_source
-	assert c_source.contains('string __vf_function_v_fastc_bool_str(bool value)'), c_source
-	assert c_source.contains('println(__vf_function_v_fastc_bool_str(((bool)true)))'), c_source
+	assert c_source.contains('string main__v_fastc_bool_str(bool value)'), c_source
+	assert c_source.contains('println(main__v_fastc_bool_str(((bool)true)))'), c_source
 
 	root := os.join_path(os.vtmp_dir(), 'v3_fastc_runtime_names_${os.getpid()}')
 	os.rmdir_all(root) or {}
