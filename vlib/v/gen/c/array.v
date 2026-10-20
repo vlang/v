@@ -1675,7 +1675,7 @@ fn (mut g FlatGen) gen_index_operator_get_call(node &flat.Node) bool {
 	if info.params.len < 2 {
 		return false
 	}
-	g.write(g.cname(g.index_operator_call_name(info, base_type, '[]')))
+	g.write(g.index_operator_call_c_name(info, base_type, '[]'))
 	g.write('(')
 	g.gen_index_operator_receiver_arg(base_id, base_type, info.params[0])
 	g.write(', ')
@@ -1708,7 +1708,7 @@ fn (mut g FlatGen) gen_index_operator_assign(node flat.Node, lhs flat.Node, base
 fn (mut g FlatGen) gen_index_operator_set_call(lhs flat.Node, setter types.CallInfo, base_type types.Type, value_id flat.NodeId) {
 	base_id := g.a.child(&lhs, 0)
 	index_id := g.a.child(&lhs, 1)
-	g.write(g.cname(g.index_operator_call_name(setter, base_type, '[]=')))
+	g.write(g.index_operator_call_c_name(setter, base_type, '[]='))
 	g.write('(')
 	g.gen_index_operator_receiver_arg(base_id, base_type, setter.params[0])
 	g.write(', ')
@@ -1733,7 +1733,7 @@ fn (mut g FlatGen) gen_index_operator_compound_assign(node flat.Node, lhs flat.N
 	g.write('; ${g.value_c_type(index_storage)} ${index_tmp} = ')
 	g.gen_expr_with_expected_type(index_id, index_storage)
 	g.write('; ')
-	g.write(g.cname(g.index_operator_call_name(setter, base_type, '[]=')))
+	g.write(g.index_operator_call_c_name(setter, base_type, '[]='))
 	g.write('(')
 	g.gen_index_operator_receiver_tmp_arg(recv_tmp, recv_storage, setter.params[0])
 	g.write(', ')
@@ -1804,7 +1804,7 @@ fn (g &FlatGen) index_operator_compound_operator_method(getter_type &types.Type,
 }
 
 fn (mut g FlatGen) gen_index_operator_get_call_from_temps(getter types.CallInfo, recv_tmp string, recv_storage types.Type, index_tmp string, index_storage types.Type) {
-	g.write(g.cname(g.index_operator_call_name(getter, recv_storage, '[]')))
+	g.write(g.index_operator_call_c_name(getter, recv_storage, '[]'))
 	g.write('(')
 	g.gen_index_operator_receiver_tmp_arg(recv_tmp, recv_storage, getter.params[0])
 	g.write(', ')
@@ -1830,6 +1830,18 @@ fn (mut g FlatGen) gen_index_operator_tmp_arg(index_tmp string, actual types.Typ
 		g.write('(${g.value_c_type(expected)})')
 	}
 	g.write(index_tmp)
+}
+
+// index_operator_call_c_name returns the C name of the `[]` or `[]=` method that an
+// index expression on base_type calls. A generic specialization can be registered under
+// its C name, so the resolved name can already be lowered; c_name would move a name
+// that is already in the operator namespace out of it again.
+fn (g &FlatGen) index_operator_call_c_name(info types.CallInfo, base_type &types.Type, method string) string {
+	name := g.index_operator_call_name(info, base_type, method)
+	if name.starts_with(naming.operator_method_c_prefix) {
+		return name
+	}
+	return g.cname(name)
 }
 
 fn (g &FlatGen) index_operator_call_name(info types.CallInfo, base_type &types.Type, method string) string {
