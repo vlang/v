@@ -308,11 +308,6 @@ fn C.GC_get_heap_usage_safe(pheap_size &usize, pfree_bytes &usize, punmapped_byt
 	ptotal_bytes &usize)
 fn C.GC_get_memory_use() usize
 
-pub struct C.GC_stack_base {
-	mem_base voidptr
-	// reg_base voidptr
-}
-
 fn C.GC_get_stack_base(voidptr) i32
 fn C.GC_register_my_thread(voidptr) i32
 fn C.GC_unregister_my_thread() i32
