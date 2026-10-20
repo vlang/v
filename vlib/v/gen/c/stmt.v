@@ -1054,6 +1054,10 @@ fn (mut g FlatGen) gen_ownership_drops(entries []types.OwnershipDropEntry) {
 				}
 				free_pointer_storage = true
 			}
+		} else if g.local_storage_needs_implicit_deref(entry.name) {
+			// Indirect value parameters use the caller's slot. Drop the value
+			// through that slot without releasing the caller's backing storage.
+			expr = '*(${expr})'
 		}
 		if entry.optional_wrapper {
 			g.writeln('if ((${expr}).ok) {')

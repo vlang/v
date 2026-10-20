@@ -168,12 +168,22 @@ fn test_owned_aligned_fixed_array_sum_drops_elements_once() {
 	build := os.exec([@VEXE, '-new-compiler', '-b', 'c', '-cc', cc, '-gc', 'none', '-d', 'ownership',
 		'-path', vlib, '-o', compiler, os.join_path(vlib, 'v', 'v.v')])
 	assert build.exit_code == 0, build.output
-	source := os.join_path(@VMODROOT, 'vlib', 'v', 'gen', 'c', 'testdata', 'sumtype_fixed_array_pointer', 'aligned_owner.c.v')
+	source_dir := os.join_path(@VMODROOT, 'vlib', 'v', 'gen', 'c', 'testdata', 'sumtype_fixed_array_pointer')
 	for prealloc in [false, true] {
-		mut args := ['-new-compiler', '-nocache', '-no-closures', '-gc', 'none', '-cc', cc, '-autofree']
-		if prealloc { args << '-prealloc' }
-		args << ['run', source]
-		result := os.exec([compiler, ...args])
-		assert result.exit_code == 0, 'prealloc=${prealloc}: ${result.output}'
+		for source_name in ['aligned_owner.c.v', 'borrowed_slot_rebind.c.v'] {
+			modes := if source_name == 'aligned_owner.c.v' {
+				['autofree']
+			} else {
+				['autofree', 'ownership']
+			}
+			for mode in modes {
+				mut args := ['-new-compiler', '-nocache', '-no-closures', '-gc', 'none', '-cc',
+					cc, '-${mode}']
+				if prealloc { args << '-prealloc' }
+				args << ['run', os.join_path(source_dir, source_name)]
+				result := os.exec([compiler, ...args])
+				assert result.exit_code == 0, '${source_name}, ${mode}, prealloc=${prealloc}: ${result.output}'
+			}
+		}
 	}
 }

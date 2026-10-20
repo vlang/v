@@ -416,12 +416,12 @@ fn (mut t Transformer) transform_infix_array_ops(_id flat.NodeId, node flat.Node
 	eq_call := if t.array_elem_needs_element_eq(elem_type) {
 		t.make_array_elementwise_eq_call(new_lhs, new_rhs, elem_type, lhs_type, rhs_type, node)
 	} else if flat.source_type_shape(elem_type).has(.array_type) {
-		t.make_call_typed('array_eq_array', [new_lhs, new_rhs,
+		t.make_call_typed('__v3_array_eq_array', [new_lhs, new_rhs,
 			t.make_int_literal(array_nested_eq_depth(flat.source_type_name(lhs_type)))], flat.source_type_bool)
 	} else if elem_type == flat.source_type_string {
-		t.make_call_typed('array_eq_string', [new_lhs, new_rhs], flat.source_type_bool)
+		t.make_call_typed('__v3_array_eq_string', [new_lhs, new_rhs], flat.source_type_bool)
 	} else {
-		t.make_call_typed('array_eq_raw', [new_lhs, new_rhs, t.make_sizeof_type(elem_type)], flat.source_type_bool)
+		t.make_call_typed('__v3_array_eq_raw', [new_lhs, new_rhs, t.make_sizeof_type(elem_type)], flat.source_type_bool)
 	}
 	if node.op == .ne {
 		return t.make_prefix(.not, eq_call)
@@ -2511,6 +2511,9 @@ fn (mut t Transformer) transform_optional_wrapper_expr(id flat.NodeId) flat.Node
 		if t.a.nodes[int(source_id)].kind == .selector {
 			return t.transform_optional_wrapper_selector_expr(source_id, flat.source_type_id(raw_type))
 		}
+		if view_param := t.mut_optional_view_param(t.a.nodes[int(source_id)].value) {
+			return t.mut_optional_view_read(view_param)
+		}
 		return t.mark_optional_wrapper_expr(source_id, flat.source_type_id(raw_type))
 	}
 	return t.transform_expr(id)
@@ -2841,7 +2844,7 @@ fn (mut t Transformer) transform_in_expr(id flat.NodeId, node flat.Node) flat.No
 			} else if lowered := t.lower_array_membership_expr(rhs_id, lhs_id, rhs_type_source_id, false, node) {
 				result = lowered
 			} else {
-				// dynamic array membership -> array_contains_int/string(arr, val)
+				// dynamic array membership -> __v3_array_contains_int/string(arr, val)
 				// (value-aware so a `match`/`if` container is materialized as a value)
 				mut elem := if clean_rhs_type.starts_with('[]') { clean_rhs_type[2..] } else { '' }
 				if elem.len == 0 {
@@ -2880,7 +2883,7 @@ fn (mut t Transformer) transform_in_expr(id flat.NodeId, node flat.Node) flat.No
 			if lowered := t.lower_array_membership_expr(rhs_id, lhs_id, rhs_type_source_id, false, node) {
 				result = lowered
 			} else {
-				// fixed array membership -> fixed_array_contains_int/string(arr, len, val)
+				// fixed array membership -> __v3_fixed_array_contains_int/string(arr, len, val)
 				// stabilize a side-effecting needle before a value-branch container hoists
 				new_lhs := if t.is_value_match_or_if_operand(rhs_id) {
 					t.snapshot_expr_for_reuse(lhs_id)
@@ -3024,7 +3027,7 @@ fn (mut t Transformer) lower_const_string_array_membership_expr(base_id flat.Nod
 	base_value := t.transform_expr(base_id)
 	base_data := t.make_cast(flat.source_type_id('&string'), t.make_selector(base_value, 'data', flat.source_type_voidptr), flat.source_type_id('&string'))
 	len_expr := t.make_int_literal(expr.children_count)
-	return t.make_call_typed('fixed_array_contains_string', [base_data, len_expr, needle], flat.source_type_bool)
+	return t.make_call_typed('__v3_fixed_array_contains_string', [base_data, len_expr, needle], flat.source_type_bool)
 }
 
 // lower_type_pattern_membership builds lower type pattern membership data for transform.
@@ -3485,7 +3488,7 @@ fn (mut t Transformer) make_membership_eq_expr_with_seen(lhs flat.NodeId, rhs fl
 	if flat.source_type_shape(clean).has(.array_type) {
 		inner := flat.source_type_name(clean)[2..]
 		if inner == 'string' {
-			return t.make_call_typed('array_eq_string', [lhs, rhs], flat.source_type_bool)
+			return t.make_call_typed('__v3_array_eq_string', [lhs, rhs], flat.source_type_bool)
 		}
 		if t.array_elem_needs_element_eq(flat.source_type_id(inner)) {
 			src := if int(lhs) >= 0 && int(lhs) < t.a.nodes.len {
@@ -3496,10 +3499,10 @@ fn (mut t Transformer) make_membership_eq_expr_with_seen(lhs flat.NodeId, rhs fl
 			return t.make_array_elementwise_eq_call_with_seen(lhs, rhs, flat.source_type_id(inner), clean, clean, src, seen)
 		}
 		if inner.starts_with('[]') {
-			return t.make_call_typed('array_eq_array', [lhs, rhs,
+			return t.make_call_typed('__v3_array_eq_array', [lhs, rhs,
 				t.make_int_literal(array_nested_eq_depth(flat.source_type_name(clean)))], flat.source_type_bool)
 		}
-		return t.make_call_typed('array_eq_raw', [lhs, rhs,
+		return t.make_call_typed('__v3_array_eq_raw', [lhs, rhs,
 			t.make_sizeof_type(flat.source_type_id(inner))], flat.source_type_bool)
 	}
 	if t.is_fixed_array_type(clean) {
@@ -4486,18 +4489,18 @@ fn (t &Transformer) membership_container_is_pointer_array(typ_id u32) bool {
 // array_contains_fn_name reports whether array contains fn name applies in transform.
 fn array_contains_fn_name(elem string) string {
 	return match elem {
-		'string' { 'array_contains_string' }
-		'u8' { 'array_contains_u8' }
-		else { 'array_contains_int' }
+		'string' { '__v3_array_contains_string' }
+		'u8' { '__v3_array_contains_u8' }
+		else { '__v3_array_contains_int' }
 	}
 }
 
 // fixed_array_contains_fn_name reports whether fixed array contains fn name applies in transform.
 fn fixed_array_contains_fn_name(elem string) string {
 	return match elem {
-		'string' { 'fixed_array_contains_string' }
-		'u8' { 'fixed_array_contains_u8' }
-		else { 'fixed_array_contains_int' }
+		'string' { '__v3_fixed_array_contains_string' }
+		'u8' { '__v3_fixed_array_contains_u8' }
+		else { '__v3_fixed_array_contains_int' }
 	}
 }
 

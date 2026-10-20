@@ -628,10 +628,6 @@ fn (mut t Transformer) transform_forwarded_return_slot_inner(value_id flat.NodeI
 		&& t.semantic_type_name(actual_base.elem_type) != t.semantic_type_name(expected_base.elem_type) {
 		return t.convert_forwarded_fixed_array(value_id, actual, actual_base, expected, expected_base, clone_borrowed)
 	}
-	if actual_base is types.Map && expected_base is types.Map && (t.semantic_type_name(actual_base.key_type) != t.semantic_type_name(expected_base.key_type)
-		|| t.semantic_type_name(actual_base.value_type) != t.semantic_type_name(expected_base.value_type)) {
-		return t.convert_forwarded_map(value_id, actual, actual_base, expected, expected_base, clone_borrowed)
-	}
 	mut value := flat.empty_node
 	if expected_base is types.SumType
 		&& t.sum_target_accepts_variant_type(expected_base.source_type_id(), t.semantic_type_name(actual_base)) {
@@ -705,6 +701,10 @@ fn (t &Transformer) forwarded_slot_conversion_supported(actual types.Type, expec
 		return t.forwarded_slot_conversion_supported(actual_base.elem_type, expected_base.elem_type)
 	}
 	if actual_base is types.Map && expected_base is types.Map {
+		// The checker accepts only maps that store their entries the same way (such as
+		// interface values used as another interface), and a map is never converted entry
+		// by entry: transform_forwarded_return_slot_inner copies the map as it is, and
+		// only the multi-return value around it is rebuilt.
 		return t.forwarded_slot_conversion_supported(actual_base.key_type, expected_base.key_type)
 			|| t.forwarded_slot_conversion_supported(actual_base.value_type, expected_base.value_type)
 	}
@@ -859,76 +859,6 @@ fn (mut t Transformer) convert_forwarded_fixed_array(value_id flat.NodeId, actua
 		values << t.transform_forwarded_return_slot_inner(elem, actual.elem_type, expected.elem_type, clone_borrowed)
 	}
 	return t.make_array_literal_typed(values, t.semantic_type_name(expected_type))
-}
-
-fn (mut t Transformer) convert_forwarded_map(value_id flat.NodeId, actual_type types.Type, actual types.Map, expected_type types.Type, expected types.Map, clone_borrowed bool) flat.NodeId {
-	src := t.a.nodes[int(value_id)]
-	pending_start := t.pending_stmts.len
-	base := t.stable_transformed_expr_for_reuse(t.transform_expr(value_id), t.semantic_type_name(actual_type), 'return_map')
-	mut prefix := t.pending_stmts[pending_start..].clone()
-	t.pending_stmts = t.pending_stmts[..pending_start].clone()
-	actual_map_type_source_id := t.semantic_type_name(actual_type)
-
-	expected_map_type_source_id := t.semantic_type_name(expected_type)
-
-	actual_key_type_source_id := t.semantic_type_name(actual.key_type)
-	actual_key_type_comparison_type_id := actual_key_type_source_id
-
-	expected_key_type_source_id := t.semantic_type_name(expected.key_type)
-
-	actual_value_type_source_id := t.semantic_type_name(actual.value_type)
-
-	expected_value_type_source_id := t.semantic_type_name(expected.value_type)
-
-	actual_key_storage_source_id := t.map_key_storage_type(actual_key_type_source_id)
-	actual_key_storage_comparison_type_id := actual_key_storage_source_id
-	actual_key_storage := flat.source_type_name(actual_key_storage_comparison_type_id)
-	expected_key_storage_source_id := t.map_key_storage_type(expected_key_type_source_id)
-
-	out_name := t.new_temp('return_map')
-	keys_name := t.new_temp('return_map_keys')
-	idx_name := t.new_temp('return_map_idx')
-	source_key_name := t.new_temp('return_map_source_key')
-	key_name := t.new_temp('return_map_key')
-	source_value_name := t.new_temp('return_map_source_value')
-	value_name := t.new_temp('return_map_value')
-	keys_type := flat.source_type_id('[]${actual_key_storage}')
-	prefix << t.make_decl_assign_typed(out_name, t.make_new_map_call(expected_map_type_source_id), t.semantic_type_name(expected_type))
-	keys_call := t.make_call_typed('map__keys', [
-		t.runtime_addr(base, actual_map_type_source_id),
-	], keys_type)
-	prefix << t.make_decl_assign_typed(keys_name, keys_call, keys_type)
-	init := t.make_decl_assign_typed(idx_name, t.make_int_literal(0), flat.source_type_int)
-	cond := t.make_infix(.lt, t.make_ident(idx_name), t.make_selector(t.make_ident(keys_name), 'len', flat.source_type_int))
-	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
-	source_key := t.array_get_value(t.make_ident(keys_name), t.make_ident(idx_name), actual_key_storage_source_id)
-	mut body := []flat.NodeId{}
-	body << t.make_decl_assign_typed(source_key_name, source_key, actual_key_storage_source_id)
-	source_value := t.make_map_lookup_value(base, actual_map_type_source_id, source_key_name, actual_value_type_source_id, mut body)
-	body << t.make_decl_assign_typed(source_value_name, source_value, actual_value_type_source_id)
-	body_pending_start := t.pending_stmts.len
-	logical_source_key := if actual_key_storage_comparison_type_id == actual_key_type_comparison_type_id {
-		t.make_ident(source_key_name)
-	} else {
-		t.make_cast(actual_key_type_source_id, t.make_ident(source_key_name), actual_key_type_source_id)
-	}
-	converted_key := t.transform_forwarded_return_slot_inner(logical_source_key, actual.key_type, expected.key_type, false)
-	converted_value := t.transform_forwarded_return_slot_inner(t.make_ident(source_value_name), actual.value_type, expected.value_type, clone_borrowed)
-	body_pending := t.pending_stmts[body_pending_start..].clone()
-	for stmt in body_pending {
-		body << stmt
-	}
-	t.pending_stmts = t.pending_stmts[..body_pending_start].clone()
-	body << t.make_decl_assign_typed(key_name, converted_key, expected_key_storage_source_id)
-	body << t.make_decl_assign_typed(value_name, converted_value, expected_value_type_source_id)
-	body << t.make_map_set_stmt(t.make_ident(out_name), expected_map_type_source_id, key_name, value_name)
-	prefix << t.make_for_stmt(init, cond, post, body, src)
-	for stmt in prefix {
-		t.pending_stmts << stmt
-	}
-	result := t.make_ident(out_name)
-	t.set_node_typ(int(result), t.semantic_type_name(expected_type))
-	return result
 }
 
 // return_block_from_branch builds a block that keeps leading statements

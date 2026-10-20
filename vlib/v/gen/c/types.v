@@ -2884,6 +2884,8 @@ fn (mut g FlatGen) type_alias_decls(emit_fn_ptr_aliases bool) {
 fn (mut g FlatGen) type_alias_decls_at_phase(emit_fn_ptr_aliases bool, after_arrays bool) {
 	mut emitted := false
 	mut main_aliases := map[string]bool{}
+	old_module := g.tc.cur_module
+	defer { g.tc.cur_module = old_module }
 	if g.tc.autofree_mode {
 		mut cur_module := ''
 		for node_idx in g.top_level_nodes() {
@@ -2915,6 +2917,14 @@ fn (mut g FlatGen) type_alias_decls_at_phase(emit_fn_ptr_aliases bool, after_arr
 		if g.tc.autofree_mode && !main_aliases[name] {
 			continue
 		}
+		alias_module := module_from_qualified_name(name)
+		g.tc.cur_module = if alias_module.len > 0 {
+			alias_module
+		} else if main_aliases[name] {
+			'main'
+		} else {
+			old_module
+		}
 		parsed_target := g.tc.parse_type(target_id)
 		mut ct := if parsed_target is types.FnType {
 			g.fn_ptr_type_key(parsed_target)
@@ -2922,8 +2932,11 @@ fn (mut g FlatGen) type_alias_decls_at_phase(emit_fn_ptr_aliases bool, after_arr
 			g.tc.c_type(parsed_target)
 		}
 		is_fn_ptr_alias := ct.starts_with('fn_ptr:')
+		// A pointer still needs its fixed-array typedef, whose elements may be
+		// inline sums that become complete only after the sum declaration.
 		late_slot_alias := is_fn_ptr_alias && ct.contains('__v3_sum_fixed_pointer_')
-		if late_slot_alias != after_arrays { continue }
+		late_alias := late_slot_alias || sum_pointer_needs_erased_storage(parsed_target)
+		if late_alias != after_arrays { continue }
 		if is_fn_ptr_alias {
 			ct = g.resolve_fn_ptr_type(ct)
 		}

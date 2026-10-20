@@ -769,18 +769,12 @@ fn main() {
 }
 
 fn test_interface_equality_includes_forwarded_multi_return_container_slot_boxes() {
+	// Only dynamic arrays are converted element by element; a map or fixed array slot
+	// must keep its element types (see test_forwarded_multi_return_container_slots_are_converted).
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'interface_eq_forwarded_multi_return_container_slot_box', 'interface IValue {}
 
 struct ArrayValue {
-	n int
-}
-
-struct MapValue {
-	n int
-}
-
-struct FixedValue {
 	n int
 }
 
@@ -792,19 +786,13 @@ fn same(value IValue) bool {
 	return value == value
 }
 
-fn make_values() ([]ArrayValue, map[string]MapValue, [1]FixedValue, int) {
+fn make_values() ([]ArrayValue, int) {
 	return [ArrayValue{
 		n: 3
-	}], {
-		"item": MapValue{
-			n: 5
-		}
-	}, [FixedValue{
-		n: 11
-	}]!, 7
+	}], 7
 }
 
-fn forward_values() ([]IValue, map[string]IValue, [1]IValue, int) {
+fn forward_values() ([]IValue, int) {
 	return make_values()
 }
 
@@ -819,22 +807,51 @@ fn forward_fixed_dynamic() ([]IValue, int) {
 }
 
 fn main() {
-	values, indexed, fixed, n := forward_values()
+	values, n := forward_values()
 	fixed_dynamic, fixed_dynamic_n := forward_fixed_dynamic()
 	println(same(values[0]).str())
-	println(same(indexed["item"]).str())
-	println(same(fixed[0]).str())
 	println(int_str(n))
 	println(same(fixed_dynamic[0]).str())
 	println(int_str(fixed_dynamic_n))
 }
 ')
-	assert out == 'true\ntrue\ntrue\n7\ntrue\n17'
+	assert out == 'true\n7\ntrue\n17'
 }
 
 fn test_forwarded_multi_return_container_slots_are_converted() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'forwarded_multi_return_container_slots', 'interface IValue {
+	get() int
+}
+
+struct Value {
+	n int
+}
+
+fn (value Value) get() int {
+	return value.n
+}
+
+fn make_values() ([]Value, int) {
+	return [Value{
+		n: 3
+	}], 7
+}
+
+fn forward_values() ([]IValue, int) {
+	return make_values()
+}
+
+fn main() {
+	values, n := forward_values()
+	println(int_str(values[0].get()))
+	println(int_str(n))
+}
+')
+	assert out == '3\n7'
+	// A map is not converted entry by entry: since #30815 a `map[string]Value` is
+	// not a `map[string]IValue`, also in a forwarded multi-return slot (as in V 0.5.2).
+	run_bad(v3_bin, 'forwarded_multi_return_map_interface_slot', 'interface IValue {
 	get() int
 }
 
@@ -866,8 +883,7 @@ fn main() {
 	println(int_str(indexed["item"].get()))
 	println(int_str(n))
 }
-')
-	assert out == '3\n5\n7'
+', 'cannot use `map[string]Value` as type `map[string]IValue` in return argument')
 	// A fixed array is not converted element by element: since #30863 a `[1]Value`
 	// is not a `[1]IValue`, also in a forwarded multi-return slot (as in V 0.5.2).
 	run_bad(v3_bin, 'forwarded_multi_return_fixed_interface_slot', 'interface IValue {

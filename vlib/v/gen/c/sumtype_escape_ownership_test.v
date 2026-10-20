@@ -729,7 +729,8 @@ fn flow_absent_int() !int { return error("absent") }
 fn flow_absent_bool() !bool { return error("absent") }
 fn flow_absent_values() ![]int { return error("absent") }
 struct ScalarBox { value int }
-fn flow_next(mut flag bool) !bool { if flag { return error("absent") }; flag = true; return true }
+struct FlowState { mut: ready bool }
+fn flow_next(mut state FlowState) !bool { if state.ready { return error("absent") }; state.ready = true; return true }
 '
 	mut flow_sources := []string{}
 	for flow in [
@@ -777,7 +778,7 @@ fn flow_next(mut flag bool) !bool { if flag { return error("absent") }; flag = t
 		'mut inner := Choice(0); for i in 0 .. 2 { temporary := {"key": (flow_absent_int() or { inner = Choice(&local); break })}; assert temporary.len == 1; inner = Choice(0); assert i < 2 }; inner',
 		'mut inner := Choice(0); for i in 0 .. 2 { temporary := "value:\${flow_absent_int() or { inner = Choice(&local); break }}"; assert temporary.len > 0; inner = Choice(0); assert i < 2 }; inner',
 		'mut inner := Choice(0); { outer: for outer_i in 0 .. 2 { for (flow_absent_bool() or { inner = Choice(&local); break outer }) { inner = Choice(0) }; inner = Choice(0); assert outer_i < 2 } }; inner',
-		'mut inner := Choice(0); { outer: for outer_i in 0 .. 2 { mut flag := false; mut next := Choice(0); for (flow_next(mut flag) or { inner = next; break outer }) { next = Choice(&local) }; inner = Choice(0); assert outer_i < 2 } }; inner',
+		'mut inner := Choice(0); { outer: for outer_i in 0 .. 2 { mut state := FlowState{}; mut next := Choice(0); for (flow_next(mut state) or { inner = next; break outer }) { next = Choice(&local) }; inner = Choice(0); assert outer_i < 2 } }; inner',
 	] {
 		source := flow_base.replace(' value := maybe(false, &local)', ' value := maybe(false, &local) or { ${flow} }')
 		flow_sources << source

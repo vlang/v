@@ -4139,6 +4139,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 			g.struct_decls()
 			g.fixed_array_typedefs()
 			g.sum_pointer_slot_typedefs()
+			g.type_alias_decls_at_phase(false, true)
 			g.fn_ptr_typedefs()
 			g.type_alias_decls_at_phase(true, true)
 			g.optional_typedefs()
@@ -4548,6 +4549,7 @@ fn (mut g FlatGen) gen_type_declaration_block() {
 	g.struct_decls()
 	g.fixed_array_typedefs()
 	g.sum_pointer_slot_typedefs()
+	g.type_alias_decls_at_phase(false, true)
 	g.fn_ptr_typedefs()
 	g.type_alias_decls_at_phase(true, true)
 	g.multi_return_typedefs()
@@ -18908,7 +18910,7 @@ fn (g &FlatGen) map_value_bytewise_eq_safe(value_type &types.Type) bool {
 	return g.map_scalar_bytewise_eq_safe(clean)
 }
 
-// map_scalar_bytewise_eq_safe reports whether a bytewise (memcmp/array_eq_raw)
+// map_scalar_bytewise_eq_safe reports whether a bytewise (memcmp/__v3_array_eq_raw)
 // comparison of a single value of this type matches its semantic equality.
 // True only for types with no indirection or representation-level equality
 // differences: integer/boolean primitives, enums, pointers, and nil.
@@ -18971,11 +18973,11 @@ fn (mut g FlatGen) gen_array_infix_eq(node flat.Node, lhs_id flat.NodeId, rhs_id
 	}
 	clean_elem_type := unalias_type(elem_type)
 	if clean_elem_type is types.String {
-		g.write('array_eq_string(')
+		g.write('__v3_array_eq_string(')
 	} else if clean_elem_type is types.Array {
-		g.write('array_eq_array(')
+		g.write('__v3_array_eq_array(')
 	} else {
-		g.write('array_eq_raw(')
+		g.write('__v3_array_eq_raw(')
 	}
 	g.gen_array_value_arg(lhs_id, lhs_type, lhs_arr)
 	g.write(', ')
@@ -19273,7 +19275,7 @@ fn parse_hex_codepoint(hex string) ?int {
 }
 
 fn array_membership_fn_name(elem_type &types.Type, fixed bool) string {
-	prefix := if fixed { 'fixed_array_contains_' } else { 'array_contains_' }
+	prefix := if fixed { '__v3_fixed_array_contains_' } else { '__v3_array_contains_' }
 	elem_name := elem_type.name()
 	suffix := match elem_name {
 		'string' { 'string' }
@@ -23001,25 +23003,25 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('\t}')
 	g.writeln('\treturn string__plus(out, v3_c_lit("}", 1));')
 	g.writeln('}')
-	g.writeln('static inline int array_index_int(Array a, ${g.int_ct} val) { for (int i = 0; i < a.len; i++) if (((${g.int_ct}*)a.data)[i] == val) return i; return -1; }')
-	g.writeln('static inline int array_last_index_int(Array a, ${g.int_ct} val) { for (int i = a.len - 1; i >= 0; i--) if (((${g.int_ct}*)a.data)[i] == val) return i; return -1; }')
-	g.writeln('static inline bool array_contains_int(Array a, ${g.int_ct} val) { return array_index_int(a, val) >= 0; }')
-	g.writeln('static inline int array_index_u8(Array a, u8 val) { for (int i = 0; i < a.len; i++) if (((u8*)a.data)[i] == val) return i; return -1; }')
-	g.writeln('static inline int array_last_index_u8(Array a, u8 val) { for (int i = a.len - 1; i >= 0; i--) if (((u8*)a.data)[i] == val) return i; return -1; }')
-	g.writeln('static inline bool array_contains_u8(Array a, u8 val) { return array_index_u8(a, val) >= 0; }')
-	g.writeln('static inline int array_index_string(Array a, string val) { string* data = (string*)a.data; for (int i = 0; i < a.len; i++) if (data[i].len == val.len && memcmp(data[i].str, val.str, val.len) == 0) return i; return -1; }')
-	g.writeln('static inline int array_last_index_string(Array a, string val) { string* data = (string*)a.data; for (int i = a.len - 1; i >= 0; i--) if (data[i].len == val.len && memcmp(data[i].str, val.str, val.len) == 0) return i; return -1; }')
-	g.writeln('static inline bool array_contains_string(Array a, string val) { return array_index_string(a, val) >= 0; }')
-	g.writeln('static inline int array_last_index_raw(Array a, const void* val) { for (int i = a.len - 1; i >= 0; i--) if (memcmp((u8*)a.data + (size_t)i * (size_t)a.element_size, val, (size_t)a.element_size) == 0) return i; return -1; }')
-	g.writeln('static inline bool array_eq_raw(Array a, Array b, int elem_size) { return a.len == b.len && (a.len == 0 || memcmp(a.data, b.data, (size_t)a.len * elem_size) == 0); }')
-	g.writeln('static inline bool array_eq_string(Array a, Array b) { if (a.len != b.len) return false; string* ad = (string*)a.data; string* bd = (string*)b.data; for (int i = 0; i < a.len; i++) if (ad[i].len != bd[i].len || memcmp(ad[i].str, bd[i].str, ad[i].len) != 0) return false; return true; }')
-	g.writeln('static inline bool array_eq_array(Array a, Array b, int depth) { if (a.len != b.len || a.element_size != b.element_size) return false; if (depth <= 1 || a.element_size != sizeof(Array)) { if (a.element_size == sizeof(string)) return array_eq_string(a, b); return array_eq_raw(a, b, a.element_size); } Array* ad = (Array*)a.data; Array* bd = (Array*)b.data; for (int i = 0; i < a.len; i++) { if (!array_eq_array(ad[i], bd[i], depth - 1)) return false; } return true; }')
+	g.writeln('static inline int __v3_array_index_int(Array a, ${g.int_ct} val) { for (int i = 0; i < a.len; i++) if (((${g.int_ct}*)a.data)[i] == val) return i; return -1; }')
+	g.writeln('static inline int __v3_array_last_index_int(Array a, ${g.int_ct} val) { for (int i = a.len - 1; i >= 0; i--) if (((${g.int_ct}*)a.data)[i] == val) return i; return -1; }')
+	g.writeln('static inline bool __v3_array_contains_int(Array a, ${g.int_ct} val) { return __v3_array_index_int(a, val) >= 0; }')
+	g.writeln('static inline int __v3_array_index_u8(Array a, u8 val) { for (int i = 0; i < a.len; i++) if (((u8*)a.data)[i] == val) return i; return -1; }')
+	g.writeln('static inline int __v3_array_last_index_u8(Array a, u8 val) { for (int i = a.len - 1; i >= 0; i--) if (((u8*)a.data)[i] == val) return i; return -1; }')
+	g.writeln('static inline bool __v3_array_contains_u8(Array a, u8 val) { return __v3_array_index_u8(a, val) >= 0; }')
+	g.writeln('static inline int __v3_array_index_string(Array a, string val) { string* data = (string*)a.data; for (int i = 0; i < a.len; i++) if (data[i].len == val.len && memcmp(data[i].str, val.str, val.len) == 0) return i; return -1; }')
+	g.writeln('static inline int __v3_array_last_index_string(Array a, string val) { string* data = (string*)a.data; for (int i = a.len - 1; i >= 0; i--) if (data[i].len == val.len && memcmp(data[i].str, val.str, val.len) == 0) return i; return -1; }')
+	g.writeln('static inline bool __v3_array_contains_string(Array a, string val) { return __v3_array_index_string(a, val) >= 0; }')
+	g.writeln('static inline int __v3_array_last_index_raw(Array a, const void* val) { for (int i = a.len - 1; i >= 0; i--) if (memcmp((u8*)a.data + (size_t)i * (size_t)a.element_size, val, (size_t)a.element_size) == 0) return i; return -1; }')
+	g.writeln('static inline bool __v3_array_eq_raw(Array a, Array b, int elem_size) { return a.len == b.len && (a.len == 0 || memcmp(a.data, b.data, (size_t)a.len * elem_size) == 0); }')
+	g.writeln('static inline bool __v3_array_eq_string(Array a, Array b) { if (a.len != b.len) return false; string* ad = (string*)a.data; string* bd = (string*)b.data; for (int i = 0; i < a.len; i++) if (ad[i].len != bd[i].len || memcmp(ad[i].str, bd[i].str, ad[i].len) != 0) return false; return true; }')
+	g.writeln('static inline bool __v3_array_eq_array(Array a, Array b, int depth) { if (a.len != b.len || a.element_size != b.element_size) return false; if (depth <= 1 || a.element_size != sizeof(Array)) { if (a.element_size == sizeof(string)) return __v3_array_eq_string(a, b); return __v3_array_eq_raw(a, b, a.element_size); } Array* ad = (Array*)a.data; Array* bd = (Array*)b.data; for (int i = 0; i < a.len; i++) { if (!__v3_array_eq_array(ad[i], bd[i], depth - 1)) return false; } return true; }')
 	g.writeln('void* map__get(map* m, void* key, void* zero);')
 	g.writeln('bool map__exists(map* m, void* key);')
 	g.map_equality_fallback_decls()
-	g.writeln('static inline bool fixed_array_contains_string(const string* a, int len, string val) { for (int i = 0; i < len; i++) if (a[i].len == val.len && memcmp(a[i].str, val.str, val.len) == 0) return true; return false; }')
-	g.writeln('static inline bool fixed_array_contains_u8(const u8* a, int len, u8 val) { for (int i = 0; i < len; i++) if (a[i] == val) return true; return false; }')
-	g.writeln('static inline bool fixed_array_contains_int(const ${g.int_ct}* a, int len, ${g.int_ct} val) { for (int i = 0; i < len; i++) if (a[i] == val) return true; return false; }')
+	g.writeln('static inline bool __v3_fixed_array_contains_string(const string* a, int len, string val) { for (int i = 0; i < len; i++) if (a[i].len == val.len && memcmp(a[i].str, val.str, val.len) == 0) return true; return false; }')
+	g.writeln('static inline bool __v3_fixed_array_contains_u8(const u8* a, int len, u8 val) { for (int i = 0; i < len; i++) if (a[i] == val) return true; return false; }')
+	g.writeln('static inline bool __v3_fixed_array_contains_int(const ${g.int_ct}* a, int len, ${g.int_ct} val) { for (int i = 0; i < len; i++) if (a[i] == val) return true; return false; }')
 	g.writeln('static inline string Array_str(Array a) { if (a.element_size == 1) { u8* buf = (u8*)malloc((size_t)a.len + 1); if (a.len > 0) memcpy(buf, a.data, (size_t)a.len); buf[a.len] = 0; return (string){buf, a.len, 0}; } return (string){(u8*)"[]", 2, 1}; }')
 	g.writeln('#ifndef max_int')
 	g.writeln('#define max_int max_i32')

@@ -11654,6 +11654,15 @@ fn (tc &TypeChecker) ownership_unwrap_expr(id flat.NodeId) flat.NodeId {
 	mut cur := id
 	for tc.valid_node_id(cur) {
 		node := tc.a.nodes[int(cur)]
+		if node.kind == .postfix && node.op == .not && node.children_count == 1 {
+			child_id := tc.a.child(&node, 0)
+			if tc.valid_node_id(child_id) && tc.a.nodes[int(child_id)].kind == .array_literal {
+				// `[a, b]!` is a fixed-array literal, not result propagation. Its
+				// elements participate in the same deferred ownership as `[a, b]`.
+				cur = child_id
+				continue
+			}
+		}
 		if node.kind in [.paren, .expr_stmt] && node.children_count > 0 {
 			next := tc.a.child(&node, 0)
 			if next == cur {

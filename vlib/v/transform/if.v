@@ -53,41 +53,26 @@ fn (mut t Transformer) make_guard_value_decls(name string, value flat.NodeId, va
 	return [t.make_decl_assign_typed(name, value, value_type_id)]
 }
 
-// mut_optional_param_payload_ref returns `&a.value` when `rhs_id` is a `mut a ?T`
-// parameter whose payload is passed by value (`&?T`; a struct payload is already a
-// pointer, `&?&T`). A `mut` guard binding of it refers to the caller's payload, as in
-// V 0.5.2, where the parameter is `?&T`: `if mut v := a { v << 1 }` changes the caller's
-// array, not a copy.
+// mut_optional_param_payload_ref returns `a.value` when `rhs_id` is a `mut a ?T` parameter
+// whose body reads it as `?T` (mut_optional_view_param): the reference to the caller's
+// payload (a struct payload already reads as `?&T`). A `mut` guard binding of it refers to
+// the caller's payload, as in V 0.5.2, where the parameter is `?&T`: `if mut v := a { v << 1 }`
+// changes the caller's array, not a copy.
 fn (mut t Transformer) mut_optional_param_payload_ref(rhs_id flat.NodeId, payload_type_id u32) ?flat.NodeId {
 	mut source_id := rhs_id
 	for t.a.nodes[int(source_id)].kind == .paren && t.a.nodes[int(source_id)].children_count == 1 {
 		source_id = t.a.child(&t.a.nodes[int(source_id)], 0)
 	}
 	source := t.a.nodes[int(source_id)]
-	if source.kind != .ident || !t.mut_param_values[source.value] || t.has_smartcast(source.value) {
+	if source.kind != .ident || t.has_smartcast(source.value) {
 		return none
 	}
 	if payload_type_id == 0 || payload_type_id == flat.source_type_void
 		|| flat.source_type_shape(payload_type_id).has(.pointer) {
 		return none
 	}
-	param_type_id := t.var_type(source.value)
-	param_type := flat.source_type_name(param_type_id)
-	// A named fn's parameter has the option type (cgen reads it through the pointer); a
-	// lifted fn literal's keeps the pointer (`&?T`).
-	is_slot := param_type.starts_with('&?')
-	option_type_id := if is_slot { flat.source_type_id(param_type[1..]) } else { param_type_id }
-	option_shape := flat.source_type_shape(option_type_id)
-	if !option_shape.has(.option_type) || option_shape.has(.pointer) {
-		return none
-	}
-	mut option := t.make_ident(source.value)
-	t.set_node_typ(int(option), param_type_id)
-	if is_slot {
-		option = t.make_prefix(.mul, option)
-		t.set_node_typ(int(option), option_type_id)
-	}
-	return t.make_prefix(.amp, t.make_selector(option, 'value', payload_type_id))
+	view_param := t.mut_optional_view_param(source.value) or { return none }
+	return t.mut_optional_view_payload_ref(view_param)
 }
 
 // make_payload_ref_binding declares `name` as a pointer to an option payload. Like a

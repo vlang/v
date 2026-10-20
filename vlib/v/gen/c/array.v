@@ -264,7 +264,7 @@ fn (mut g FlatGen) gen_array_init_value(node flat.Node, elem_type types.Type) {
 
 fn (mut g FlatGen) gen_array_equality_literal_arg(names []string, arg_idx int, arg_id flat.NodeId, node flat.Node) bool {
 	if arg_idx !in [0, 1] || node.kind != .array_literal
-		|| !names.any(it in ['array_eq_raw', 'array_eq_string', 'array_eq_array']) {
+		|| !names.any(it in ['__v3_array_eq_raw', '__v3_array_eq_string', '__v3_array_eq_array']) {
 		return false
 	}
 	if arr := array_like_type(g.usable_expr_type(arg_id)) {
@@ -942,7 +942,7 @@ fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr
 			}
 		}
 		'contains' {
-			contains_fn := 'array_contains_${array_lookup_suffix(arr.elem_type)}'
+			contains_fn := '__v3_array_contains_${array_lookup_suffix(arr.elem_type)}'
 			g.write('${contains_fn}(')
 			g.gen_expr(base_id)
 			g.write(', ')
@@ -950,7 +950,7 @@ fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr
 			g.write(')')
 		}
 		'index' {
-			index_fn := 'array_index_${array_lookup_suffix(arr.elem_type)}'
+			index_fn := '__v3_array_index_${array_lookup_suffix(arr.elem_type)}'
 			g.write('${index_fn}(')
 			g.gen_expr(base_id)
 			g.write(', ')
@@ -959,14 +959,14 @@ fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr
 		}
 		'last_index' {
 			if suffix := array_last_index_suffix(arr.elem_type) {
-				index_fn := 'array_last_index_${suffix}'
+				index_fn := '__v3_array_last_index_${suffix}'
 				g.write('${index_fn}(')
 				g.gen_expr(base_id)
 				g.write(', ')
 				g.gen_expr(g.a.child(&node, 1))
 				g.write(')')
 			} else {
-				g.write('array_last_index_raw(')
+				g.write('__v3_array_last_index_raw(')
 				g.gen_expr(base_id)
 				g.write(', &(${c_elem}[]){')
 				g.gen_expr_with_expected_type(g.a.child(&node, 1), arr.elem_type)

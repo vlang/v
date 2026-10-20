@@ -2075,8 +2075,7 @@ fn (mut g FlatGen) preseed_libc_compat_fns() {
 	if refs['C.gettid'] || refs['gettid'] || g.used_fn_contains_in_module('v_gettid', 'builtin') {
 		g.libc_compat_fns['gettid'] = true
 	}
-	if refs['C.v_filelock_lock'] || refs['C.v_filelock_unlock'] || refs['v_filelock_lock']
-		|| refs['v_filelock_unlock']
+	if refs['C.v_filelock_lock'] || refs['C.v_filelock_unlock']
 		|| g.used_fn_contains_in_module('FileLock.lock_handle', 'filelock')
 		|| g.used_fn_contains_in_module('FileLock.lock_fd', 'filelock')
 		|| g.used_fn_contains_in_module('FileLock.close_lock', 'filelock') {
@@ -11420,7 +11419,7 @@ fn (mut g FlatGen) fn_node_param_types_or_decl(node flat.Node, module_name strin
 
 // unregistered_fn_param_type returns the type of a parameter of a declaration the checker
 // has no signature for, such as a lifted fn literal. Like a named fn's (see
-// `types.mut_param_semantic_type`), a `mut a ?T` with a struct payload is `&?&T`.
+// `types.mut_param_semantic_type`), a `mut a ?T` is `&?&T`.
 fn (g &FlatGen) unregistered_fn_param_type(param flat.Node) types.Type {
 	typ := g.tc.parse_resolution_type(param.typ)
 	if param.is_mut && param.op != .amp {
@@ -17183,9 +17182,9 @@ fn (mut g FlatGen) collect_c_extern_ref_from_node(node &flat.Node) {
 }
 
 fn (g &FlatGen) collect_c_extern_ref_from_node_into(node &flat.Node, mut refs map[string]bool) {
-	if node.kind == .ident
-		&& (node.value.starts_with('C.') || node.value in ['v_filelock_lock', 'v_filelock_unlock']) {
-		raw_name := if node.value.starts_with('C.') { node.value } else { 'C.${node.value}' }
+	// Only a `C.` name refers to C: a bare name, even `v_filelock_lock`, is a V function.
+	if node.kind == .ident && node.value.starts_with('C.') {
+		raw_name := node.value
 		raw_cfn := g.cname(raw_name)
 		refs[raw_name] = true
 		refs[raw_cfn] = true

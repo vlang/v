@@ -575,11 +575,25 @@ fn (mut t Transformer) expand_comptime_for(id flat.NodeId, node flat.Node) []fla
 	mut out := []flat.NodeId{}
 	for fm in t.comptime_field_metas(base_type) {
 		mut cloned := []flat.NodeId{cap: body_stmts.len}
+		// The clone derives types from the locals of the body, as the type of
+		// `&routes`. It declares them as it goes, so that another declaration of
+		// the name, such as a const, does not stand in for them. The iteration is
+		// then transformed with the bindings that it started with.
+		saved_vars := t.var_types.clone()
+		undo_was_active := t.var_type_undo_active
+		undo_start := t.var_type_undo_log.len
+		was_declaring := t.declaring_comptime_field_locals
+		t.var_type_undo_active = true
+		t.declaring_comptime_field_locals = true
 		for sid in body_stmts {
 			if cid := t.clone_field_subst(sid, var_name, fm) {
 				cloned << cid
 			}
 		}
+		t.declaring_comptime_field_locals = was_declaring
+		t.var_type_undo_active = undo_was_active
+		t.var_type_undo_log.trim(undo_start)
+		t.restore_var_types(saved_vars)
 		if t.comptime_body_has_unsupported(cloned, var_name, true) {
 			return []flat.NodeId{}
 		}
@@ -4645,6 +4659,7 @@ fn (mut t Transformer) clone_field_subst_scoped(id flat.NodeId, var_name string,
 		&& flat.source_type_shape(fm.comptime_typ).has(.option_type)
 		&& t.direct_reflected_field_selector(t.a.child(&node, 2), var_name) {
 		mut children := []flat.NodeId{cap: int(node.children_count)}
+		scope := t.open_comptime_field_scope()
 		for i in 0 .. node.children_count {
 			child := t.clone_field_subst_scoped(t.a.child(&node, i), var_name, fm, inner_vars) or {
 				flat.empty_node
@@ -4655,6 +4670,7 @@ fn (mut t Transformer) clone_field_subst_scoped(id flat.NodeId, var_name string,
 				children << child
 			}
 		}
+		t.close_comptime_field_scope(scope)
 		start := t.a.children.len
 		for child in children {
 			t.a.children << child
@@ -4876,11 +4892,13 @@ fn (t &Transformer) node_has_loop_jump(id flat.NodeId) bool {
 
 fn (mut t Transformer) clone_field_match_branch_body(branch flat.Node, body_start int, var_name string, fm FieldMeta, inner_vars []string) flat.NodeId {
 	mut body := []flat.NodeId{}
+	scope := t.open_comptime_field_scope()
 	for i in body_start .. branch.children_count {
 		if child := t.clone_field_subst_scoped(t.a.child(&branch, i), var_name, fm, inner_vars) {
 			body << child
 		}
 	}
+	t.close_comptime_field_scope(scope)
 	return t.make_block(body)
 }
 
@@ -5053,15 +5071,49 @@ fn (mut t Transformer) clone_field_subst_children(node flat.Node, var_name strin
 	return t.clone_field_subst_children_with_value(node, var_name, fm, inner_vars, node.value)
 }
 
+// open_comptime_field_scope opens the scope of the children of a node that the
+// clone of a `$for` body copies: a local that one child declares is seen by the
+// later children only.
+@[inline]
+fn (t &Transformer) open_comptime_field_scope() VarTypeScopeMark {
+	return t.mark_var_type_scope()
+}
+
+// close_comptime_field_scope drops the locals declared since `mark`.
+fn (mut t Transformer) close_comptime_field_scope(mark VarTypeScopeMark) {
+	if t.declaring_comptime_field_locals
+		&& (t.var_types.len != mark.bindings || t.var_type_undo_log.len != mark.undo) {
+		t.restore_var_type_scope(mark)
+	}
+}
+
+// declare_comptime_field_local declares the local of a `name := value` that the
+// clone of a `$for` body copied, with the type that the clone gave it.
+fn (mut t Transformer) declare_comptime_field_local(lhs_id flat.NodeId, typ u32) {
+	if !t.declaring_comptime_field_locals || typ == 0
+		|| typ in [flat.source_type_unknown, flat.source_type_generic] {
+		return
+	}
+	if t.generic_arg_is_unresolved(typ) {
+		return
+	}
+	lhs := t.a.nodes[int(lhs_id)]
+	if lhs.kind == .ident && lhs.value.len > 0 && lhs.value != '_' {
+		t.set_var_type(lhs.value, typ)
+	}
+}
+
 @[direct_array_access]
 fn (mut t Transformer) clone_field_subst_children_with_value(node flat.Node, var_name string, fm FieldMeta, inner_vars []string, value string) ?flat.NodeId {
 	child_inner_vars := comptime_nested_loop_vars(node, var_name, inner_vars)
 	mut children := []flat.NodeId{cap: int(node.children_count)}
+	scope := t.open_comptime_field_scope()
 	for i in 0 .. node.children_count {
 		if c := t.clone_field_subst_scoped(t.a.child(&node, i), var_name, fm, child_inner_vars) {
 			children << c
 		}
 	}
+	t.close_comptime_field_scope(scope)
 	cloned_value := if node.kind == .comptime_if {
 		value
 	} else {
@@ -5125,6 +5177,9 @@ fn (mut t Transformer) clone_field_subst_children_with_value(node flat.Node, var
 		if rhs_typ != 0 && rhs_typ !in [flat.source_type_unknown, flat.source_type_generic] {
 			typ = rhs_typ
 			t.set_node_typ(int(children[0]), typ)
+			if children.len == 2 {
+				t.declare_comptime_field_local(children[0], typ)
+			}
 		}
 	}
 	start := t.a.children.len

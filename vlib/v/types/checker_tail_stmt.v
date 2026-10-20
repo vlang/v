@@ -10857,7 +10857,7 @@ fn (tc &TypeChecker) mut_arg_container_layouts_differ(actual Type, expected Type
 // map key or map value types store their elements differently. A container is not
 // converted element by element, so unlike plain values the types must match: aliases
 // are transparent, but `u32` is not a `u64`, `int` is not a `?int` or a flag enum, and
-// a concrete type is not the interface or sum type that would box it.
+// a concrete type (or a sum type) is not the interface or sum type that would box it.
 fn (tc &TypeChecker) container_elem_layouts_differ(actual Type, expected Type) bool {
 	clean_actual := unalias_type(actual)
 	clean_expected := unalias_type(expected)
@@ -10910,7 +10910,12 @@ fn (tc &TypeChecker) container_elem_layouts_differ(actual Type, expected Type) b
 			return clean_actual !is Interface
 		}
 		SumType {
-			return clean_actual !is SumType
+			// A sum type that is a variant of another one (`Inner` in `Outer`) is
+			// boxed into it, not stored as it is.
+			if clean_actual is SumType {
+				return !tc.type_compatible(clean_expected, clean_actual)
+			}
+			return true
 		}
 		else {}
 	}
@@ -15429,6 +15434,12 @@ fn (tc &TypeChecker) generic_type_name_matches_bytes(a string, b string) bool {
 	if a == b {
 		return true
 	}
+	// A multi-return type is a tuple of whole types. Split at its first `[` like a generic
+	// application, `(int, map[string]u8)` would be `(int, map` applied to `string`, and nothing
+	// after that bracket would be compared: `(int, []u8)` matched `(int, []string)`.
+	if a.starts_with('(') || b.starts_with('(') {
+		return tc.multi_return_type_names_match_bytes(a, b)
+	}
 	if tc.fixed_array_type_name_matches_bytes(a, b) {
 		return true
 	}
@@ -15458,6 +15469,26 @@ fn (tc &TypeChecker) generic_type_name_matches_bytes(a string, b string) bool {
 		return true
 	}
 	return tc.generic_type_base_matches_bytes(a, b)
+}
+
+// multi_return_type_names_match_bytes reports whether the multi-return type names `a` and `b`,
+// spelled `(A, B, ...)`, have as many slots and every slot matches.
+fn (tc &TypeChecker) multi_return_type_names_match_bytes(a string, b string) bool {
+	if a.len < 2 || b.len < 2 || !a.starts_with('(') || !a.ends_with(')') || !b.starts_with('(')
+		|| !b.ends_with(')') {
+		return false
+	}
+	a_slots := split_params(a[1..a.len - 1])
+	b_slots := split_params(b[1..b.len - 1])
+	if a_slots.len != b_slots.len {
+		return false
+	}
+	for i, a_slot in a_slots {
+		if !tc.generic_type_name_matches_bytes(trimmed_space(a_slot), trimmed_space(b_slots[i])) {
+			return false
+		}
+	}
+	return true
 }
 
 fn (tc &TypeChecker) fixed_array_type_name_matches(a_id u32, b_id u32) bool {
@@ -18386,7 +18417,7 @@ fn (tc &TypeChecker) parse_fn_type(typ string) Type {
 	}
 	mut ret_type := Type(Void{})
 	if ret_str.len > 0 {
-		ret_type = tc.parse_type(flat.source_type_id(ret_str))
+		ret_type = *tc.parse_type(flat.source_type_id(ret_str))
 	}
 	return Type(FnType{ params: params, is_variadic: is_variadic, return_type: tc.intern_type_reference(ret_type) })
 }
