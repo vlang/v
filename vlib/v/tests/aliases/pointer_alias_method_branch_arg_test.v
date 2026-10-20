@@ -124,3 +124,91 @@ fn test_chained_alias_receivers() {
 		.long { 'ab' }
 	}) == 105
 }
+
+// When the aliased type declares the method too, the snapshotted call must run the method the
+// direct call runs: the alias's for a variable or an alias chain, the pointee's for a call
+// returning the pointee. For an index or a call returning the alias, the test pins the hoisted
+// call to whatever the direct one selects.
+struct Bar {
+	n int
+}
+
+type BarHandle = &Bar
+
+type ChainBarHandle = BarHandle
+
+fn (b &Bar) put(s string) string {
+	return 'Bar.put(${s})'
+}
+
+fn (h BarHandle) put(s string) string {
+	return 'BarHandle.put(${s})'
+}
+
+fn (h ChainBarHandle) put(s string) string {
+	return 'ChainBarHandle.put(${s})'
+}
+
+fn (h BarHandle) raw() &Bar {
+	return &Bar(h)
+}
+
+fn (h BarHandle) same() BarHandle {
+	return h
+}
+
+fn test_both_declare_the_method_variable_and_chain() {
+	h := BarHandle(&Bar{})
+	c := ChainBarHandle(BarHandle(&Bar{}))
+	k := Kind.long
+	assert h.put('x') == 'BarHandle.put(x)'
+	assert h.put(if k == .long { 'x' } else { 'y' }) == 'BarHandle.put(x)'
+	assert h.put(match k {
+		.short { 'y' }
+		.long { 'x' }
+	}) == 'BarHandle.put(x)'
+	assert c.put('x') == 'ChainBarHandle.put(x)'
+	assert c.put(if k == .long { 'x' } else { 'y' }) == 'ChainBarHandle.put(x)'
+	assert c.put(match k {
+		.short { 'y' }
+		.long { 'x' }
+	}) == 'ChainBarHandle.put(x)'
+}
+
+fn test_both_declare_the_method_call_receivers() {
+	h := BarHandle(&Bar{})
+	k := Kind.long
+	assert h.raw().put('x') == 'Bar.put(x)'
+	assert h.raw().put(if k == .long { 'x' } else { 'y' }) == 'Bar.put(x)'
+	assert h.raw().put(match k {
+		.short { 'y' }
+		.long { 'x' }
+	}) == 'Bar.put(x)'
+	direct := h.same().put('x')
+	assert h.same().put(if k == .long { 'x' } else { 'y' }) == direct
+	assert h.same().put(match k {
+		.short { 'y' }
+		.long { 'x' }
+	}) == direct
+}
+
+fn test_both_declare_the_method_index_receivers() {
+	hs := [BarHandle(&Bar{})]
+	fixed := [BarHandle(&Bar{})]!
+	m := {
+		'a': BarHandle(&Bar{})
+	}
+	k := Kind.long
+	direct := hs[0].put('x')
+	assert hs[0].put(if k == .long { 'x' } else { 'y' }) == direct
+	assert hs[0].put(match k {
+		.short { 'y' }
+		.long { 'x' }
+	}) == direct
+	assert fixed[0].put(if k == .long { 'x' } else { 'y' }) == fixed[0].put('x')
+	assert fixed[0].put(match k {
+		.short { 'y' }
+		.long { 'x' }
+	}) == fixed[0].put('x')
+	assert unsafe { m['a'] }.put(if k == .long { 'x' } else { 'y' }) == unsafe { m['a'] }.put('x')
+}
