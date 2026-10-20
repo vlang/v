@@ -4605,11 +4605,67 @@ fn (mut t Transformer) snapshot_expr_for_reuse(id flat.NodeId) flat.NodeId {
 	decl := t.make_decl_assign(tmp_name, expr)
 	if tmp_typ != 0 {
 		t.set_node_typ(int(decl), tmp_typ)
-		t.set_var_type(tmp_name, tmp_typ)
+		t.set_var_type_with_raw(tmp_name, tmp_typ, t.snapshot_declared_type(source_id, tmp_typ))
 	}
 	t.ordering_snapshot_names[tmp_name] = true
 	t.pending_stmts << decl
 	return t.make_ident(tmp_name)
+}
+
+// snapshot_declared_type is the type `source_id` was declared with, where that is an alias of the
+// snapshot's storage type `typ`, and `typ` otherwise. A snapshot keeps it as its raw type, which
+// is what receiver method resolution reads: a method declared on a pointer alias (`type Handle =
+// &Foo`, `fn (h Handle) put()`) is not a method of `&Foo`, so a receiver snapshotted before a
+// later `match`/`if` argument (`h.put(match k { ... })`) otherwise lowers to `Foo__put`.
+fn (t &Transformer) snapshot_declared_type(source_id flat.NodeId, typ u32) u32 {
+	source := t.a.nodes[int(source_id)]
+	mut candidates := []u32{cap: 2}
+	if source.kind == .index {
+		if elem := t.declared_index_elem_type(source) {
+			candidates << elem
+		}
+	} else if raw := t.raw_var_type_for_expr(source_id) {
+		candidates << raw
+	}
+	// an rvalue (`get().put(...)`) has no declaration: the checker typed it as written
+	if !isnil(t.tc) {
+		if checked := t.tc.expr_type(source_id) {
+			candidates << t.tc.type_name(checked)
+		}
+	}
+	for declared in candidates {
+		if declared != 0 && declared != typ
+			&& t.normalize_type_alias(declared) == t.normalize_type_alias(typ) {
+			return declared
+		}
+	}
+	return typ
+}
+
+// declared_index_elem_type is the element type an array or map was declared with (`Handle` of
+// `[]Handle`, `[2]Handle` or `map[string]Handle`), before any alias is normalized away.
+fn (t &Transformer) declared_index_elem_type(node flat.Node) ?u32 {
+	if node.children_count == 0 {
+		return none
+	}
+	container := t.raw_var_type_for_expr(t.a.child(&node, 0))?
+	text := flat.source_type_name(container).trim_left('&')
+	if !text.starts_with('[') && !text.starts_with('map[') {
+		return none
+	}
+	// the elem follows the bracket that closes the first one opened (a map key may hold brackets)
+	mut depth := 0
+	for i, c in text {
+		if c == `[` {
+			depth++
+		} else if c == `]` {
+			depth--
+			if depth == 0 {
+				return if i + 1 < text.len { flat.source_type_id(text[i + 1..]) } else { none }
+			}
+		}
+	}
+	return none
 }
 
 // snapshot_transformed_expr_for_reuse is snapshot_expr_for_reuse for an already-transformed
