@@ -1324,6 +1324,13 @@ fn (mut g Parser) parse_return() !bool {
 		'__v_result',
 	] {
 		mut payload_type := fastc_normalize_inferred_type(actual_type)
+		if g.option_return_type != u32(0) && payload_type != g.option_return_type
+			&& fastc_is_numeric_expression_type(payload_type)
+			&& fastc_is_numeric_expression_type(g.option_return_type) {
+			// `return 5` in a `!f64` function: the caller reads the payload as the declared
+			// type, so it is boxed as that type, which converts the value.
+			payload_type = g.option_return_type
+		}
 		if g.option_return_type != u32(0) && (g.should_box_variant(g.option_return_type, payload_type) || ((g.option_return_type_text() == 'IError' || g.declared_kinds[flat.source_type_name(g.semantic_type_key(g.option_return_type))] == .interface_) && g.declared_kinds[flat.source_type_name(g.semantic_type_key(payload_type))] != .interface_)) {
 			expression = g.interface_value_expression(g.option_return_type, payload_type, expression)
 			payload_type = g.option_return_type
