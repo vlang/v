@@ -108,7 +108,7 @@ unrelated compilations and do not meet the required quiet-host protocol. They ar
 rejected observations for audit purposes, not as evidence that the 10% target has been met.
 Both paired modes must be rerun without concurrent builds or tests before accepting a baseline.
 
-A guarded attempt on 2026-10-21 waited 120 seconds for a quiet window and still observed 32
+A guarded attempt on 2026-10-21 waited 120 seconds for a quiet window and still observed 31
 compiler or test processes. It started no warmups or measured runs. The attempt and process
 records are retained in `/Users/alex/code/v3-self-speed-artifacts/quiet-20261021-attempt1.log`
 and `quiet-20261021-attempt1-guard.json`. A quiet host is required to complete this validation.
