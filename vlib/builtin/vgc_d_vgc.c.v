@@ -24,6 +24,7 @@ fn C.vgc_atomic_fence()
 fn C.vgc_os_alloc(size usize) voidptr
 fn C.vgc_os_free(ptr voidptr, size usize)
 fn C.vgc_os_decommit(ptr voidptr, size usize)
+fn C.vgc_os_recommit(ptr voidptr, size usize) int
 fn C.vgc_get_sp() voidptr
 fn C.vgc_get_stack_bounds(lo &usize, hi &usize) int
 fn C.vgc_bitmap_get(bits &u8, idx u32) int
@@ -387,6 +388,20 @@ fn vgc_refresh_stack_range_for_sp(cache_idx int, sp usize) {
 
 // Try to get a recycled span from the free list
 fn vgc_get_free_span(npages u32, owner int) &VGC_Span {
+	mut span := vgc_take_free_span(npages, owner)
+	if span == unsafe { nil } {
+		return span
+	}
+	// The pages of a free span were given back to the OS; Windows faults on them until they
+	// are committed again.
+	if C.vgc_os_recommit(voidptr(span.base), usize(npages) * vgc_page_size) == 0 {
+		vgc_push_free_span(mut span)
+		return unsafe { nil }
+	}
+	return span
+}
+
+fn vgc_take_free_span(npages u32, owner int) &VGC_Span {
 	if npages == 0 {
 		return unsafe { nil }
 	}
@@ -455,6 +470,14 @@ fn vgc_put_free_span(mut span VGC_Span) {
 	// Decommit pages to return physical memory to OS
 	page_bytes := usize(npages) * vgc_page_size
 	C.vgc_os_decommit(voidptr(span.base), page_bytes)
+	vgc_push_free_span(mut span)
+}
+
+// vgc_push_free_span puts an empty span, whose pages are decommitted, on its free list.
+fn vgc_push_free_span(mut span VGC_Span) {
+	npages := span.npages
+	span.in_use = false
+	span.cached_by = 0
 	C.vgc_mutex_lock(&vgc_heap.free_spans_lock)
 	if npages >= 32 {
 		// Large span: keep on the dedicated list, matched by exact page count.

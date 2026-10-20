@@ -187,8 +187,13 @@ static inline void vgc_set_cache_idx(int idx) { _vgc_cache_idx_plus1 = idx + 1; 
       (void)size;
       VirtualFree(ptr, 0, MEM_RELEASE);
   }
+  // Decommitted pages are only reserved: the next access to them faults until
+  // vgc_os_recommit commits them again.
   static inline void vgc_os_decommit(void* ptr, size_t size) {
       VirtualFree(ptr, size, MEM_DECOMMIT);
+  }
+  static inline int vgc_os_recommit(void* ptr, size_t size) {
+      return VirtualAlloc(ptr, size, MEM_COMMIT, PAGE_READWRITE) != NULL;
   }
   static inline int vgc_num_cpus(void) {
 #if defined(ALL_PROCESSOR_GROUPS)
@@ -210,8 +215,14 @@ static inline void vgc_set_cache_idx(int idx) { _vgc_cache_idx_plus1 = idx + 1; 
   static inline void vgc_os_free(void* ptr, size_t size) {
       munmap(ptr, size);
   }
+  // The pages stay mapped: the next access gets them back, zeroed or with their old contents.
   static inline void vgc_os_decommit(void* ptr, size_t size) {
       madvise(ptr, size, MADV_DONTNEED);
+  }
+  static inline int vgc_os_recommit(void* ptr, size_t size) {
+      (void)ptr;
+      (void)size;
+      return 1;
   }
   static inline int vgc_num_cpus(void) {
       long count = sysconf(_SC_NPROCESSORS_ONLN);
