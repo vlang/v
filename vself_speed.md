@@ -6,15 +6,30 @@ Keep correctness tests and generated-output checks alongside performance measure
 
 ## Metric and scope
 
-Use **retired instructions per fixed self-compilation** as the primary metric; lower is better.
-This measures compiler work without depending on CPU frequency or scheduling. Compare only on
-the same machine and architecture, with identical source inputs. Keep compiler build options
-identical unless changing the build recipe is the optimization being evaluated; record that change.
+Use **retired instructions per parsed source line** to express compiler work; lower is better:
 
-Also record instructions per second, calculated for each run as retired instructions divided by
-elapsed seconds. This rate still depends on elapsed time and hardware; higher instruction
-throughput alone does not demonstrate a compiler improvement. Record elapsed time, CPU cycles,
-and peak resident memory too. A reduction in instructions does not guarantee lower latency.
+```text
+instructions per source line = retired instructions / parsed source lines
+```
+
+Also retain total retired instructions per fixed self-compilation. With the same source fixture,
+both metrics give the same percentage improvement. Instructions per second depends on hardware,
+scheduling, and instruction mix, so it is not a compiler-efficiency score.
+
+Count physical lines in the `.v` and `.vh` files actually parsed, including builtins and imported
+modules. Include blank lines and comments: count newline characters and add one for a nonempty
+final line without a newline. Empty files contribute zero. Use the compiler's `parsed .v lines`
+plus `parsed .vh lines` reports from a separate verbose run of the same workload. Do not use the
+entry file alone, generated C, or every source file in the repository as the denominator.
+
+Keep the fixture and counting rule fixed. Different lines can require very different amounts of
+checking, generic instantiation, and code generation; instructions/line is not a fair ranking of
+unrelated programs. Adding blank lines must not count as an optimization. When updating the
+fixture, establish a new baseline instead of comparing normalized scores across fixture versions.
+
+Compare on the same machine and architecture. Keep compiler build options identical unless
+changing the build recipe is the optimization being evaluated; record that change. Record elapsed
+time, CPU cycles, and peak resident memory too. Fewer instructions do not guarantee lower latency.
 
 The workload compiles the full `cmd/v` compiler through C generation, matching the V stages of
 `v self`. It excludes the external C compiler, linker, replacement of `./v`, and execution of
@@ -36,11 +51,26 @@ worker for the instruction comparison; validate default parallelism separately.
    Use identical source, executable, working-directory, and output paths for both roles.
    Record the fixture commit and content hashes, binary hashes, OS, hardware, toolchain,
    build commands, flags, and effective environment. Never measure a stale binary.
-3. From the fixture root, measure this command on macOS arm64:
+3. From the fixture root, collect the source-line denominator outside measured runs:
 
    ```sh
    benchmark_out=$(mktemp -d "${TMPDIR:-/tmp}/vself-speed.XXXXXX")
-   env -u VFLAGS -u VEXE VJOBS=1 SOURCE_DATE_EPOCH=0 V_MACOS_V3_NO_FALLBACK=1 \
+   env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE VJOBS=1 SOURCE_DATE_EPOCH=0 \
+     V_MACOS_V3_NO_FALLBACK=1 \
+     ./v -nocache -gc none -prealloc -compile-backend fastc -building-v -v \
+       -o "$benchmark_out/self.c" cmd/v \
+     > "$benchmark_out/inventory.stdout" 2> "$benchmark_out/inventory.stderr"
+   ```
+
+   Require success, sum the two parsed-line reports, and preserve the log and source-file list.
+   Verify that baseline and candidate parse the same files and line counts. Repeat this inventory
+   when changing the fixture, target, defines, backend, or other input-compilation flags.
+   Verbose reporting performs extra work; exclude this run from instruction statistics.
+4. Measure this command on macOS arm64, without verbose reporting:
+
+   ```sh
+   env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE VJOBS=1 SOURCE_DATE_EPOCH=0 \
+     V_MACOS_V3_NO_FALLBACK=1 \
      /usr/bin/time -l -o "$benchmark_out/time.txt" \
      ./v -nocache -gc none -prealloc -compile-backend fastc -building-v \
        -o "$benchmark_out/self.c" cmd/v \
@@ -54,16 +84,17 @@ worker for the instruction comparison; validate default parallelism separately.
    benchmark, not the input workload. `-nocache` disables V caches, not filesystem caches.
    `V_MACOS_V3_NO_FALLBACK=1` prevents silent fallback to the legacy compiler.
    Reuse one output C path across all paired runs and keep distinct timing/stdout/stderr logs.
-4. Run one warmup per role, then ten measured pairs, alternating AB, BA, AB, BA, and so on.
+5. Run one warmup per role, then ten measured pairs, alternating AB, BA, AB, BA, and so on.
    Run only one benchmark at a time, without concurrent builds or tests. Keep native support
    objects warm for both roles and record that state. Disable tracing and profiling.
-5. Require exit status zero and exactly one positive `instructions retired` counter per sample.
+6. Require exit status zero and exactly one positive `instructions retired` counter per sample.
    Preserve failed samples but do not count them as a completed comparison. If hardware counters
    are missing or zero, report them as unavailable; do not substitute elapsed time.
-6. Verify byte-identical generated C for an internal optimization, allowing only recorded build
+7. Verify byte-identical generated C for an internal optimization, allowing only recorded build
    metadata differences. Run the relevant correctness tests and rebuild the working `./v`.
-7. Report medians, percentage instruction reduction, median paired instruction difference,
-   number of pairs that regressed, elapsed time, instructions per second, cycles, and memory.
+8. Divide each run's retired instructions by the fixed parsed-line count. Report the denominator,
+   median instructions/line, total instructions, percentage reduction, median paired instruction
+   difference, number of pairs that regressed, elapsed time, cycles, and memory.
    Retain all raw samples and reproduction metadata. Investigate inconsistent pairs; never
    select the fastest run or compare medians from separate sessions as proof of a small gain.
 
@@ -89,24 +120,28 @@ not the cost of producing it.
 **Result: 16.87% fewer instructions with one worker; 16.40% fewer with default workers.**
 Every measured pair improved in both modes, exceeding the 10% instruction-reduction target.
 All 44 runs, including warmups, exited successfully and generated byte-identical C.
+The fixed input contains **560,382 parsed physical lines in 555 `.v` files**, with no `.vh` files.
+The baseline and candidate report the same source closure and line count. Normalizing the retained
+instruction samples by this denominator gives the same 16.87% and 16.40% reductions.
 
 | Median metric | Baseline, one worker | PGO, one worker | Baseline, default | PGO, default |
 | --- | ---: | ---: | ---: | ---: |
 | Retired instructions, billions | 64.6278 | 53.7278 | 68.9180 | 57.6124 |
-| Instructions/second, billions | 2.5215 | 2.4988 | 21.2445 | 19.3016 |
+| Parsed physical source lines | 560,382 | 560,382 | 560,382 | 560,382 |
+| Retired instructions/source line | 115,328.08 | 95,877.04 | 122,983.97 | 102,809.22 |
 | Elapsed seconds | 25.6428 | 21.7045 | 3.2356 | 2.9937 |
 | CPU cycles, billions | 28.4689 | 25.4029 | 30.6580 | 27.2978 |
 | Peak resident memory, MiB | 1129.77 | 1131.19 | 998.66 | 1004.67 |
 
 Median paired instruction differences, candidate minus baseline:
 `-10,938,181,556` with one worker and `-11,360,585,289.5` with default workers.
-Instruction regressions: **0/10 pairs** in each mode. Median instructions/second changed by
--0.90% and -9.15%, respectively. No 10% instruction-rate gain is claimed.
+Instruction regressions: **0/10 pairs** in each mode, for both total instructions and
+instructions per source line.
 
 No builds or tests from this task ran during measurement. Process snapshots recorded unrelated
 compilations elsewhere on the shared host, so this was **not a quiet-host latency benchmark**.
-Treat the elapsed-time and instruction-rate results as observations under contention, not proof
-of a stable latency improvement. The instruction reduction held across every pair. Recheck latency
+Treat the elapsed-time results as observations under contention, not proof of a stable latency
+improvement. The instruction reduction held across every pair. Recheck latency
 on an idle host before making a wall-clock speed claim, especially for default parallelism.
 
 ### Production self-build behavior
@@ -138,11 +173,13 @@ command-line options override compiler choices inherited through `VFLAGS`.
   `VJOBS=1` for serial measurements and unset for default workers. `CC`, `CFLAGS`, and `LDFLAGS`
   were unset. Locale: `LANG=LC_ALL=C.UTF-8`; SDK: Command Line Tools `MacOSX.sdk`.
 - Elapsed seconds use Python `time.perf_counter()` around `/usr/bin/time -l`; the original
-  two-decimal `time` output is also retained. Each instruction-rate sample uses its own elapsed
-  value; the table reports the median of those rates, not the ratio of two medians.
+  two-decimal `time` output is also retained. Older JSON logs include instructions/second as
+  historical data; do not use that field to score compiler efficiency.
 - Raw timing, stdout, stderr, exit statuses, process snapshots, scripts, build logs, environment,
   binaries, and JSON samples remain in `/Users/alex/code/v3-self-speed-artifacts/`.
   The current comparison uses the `review-serial` and `review-parallel` logs and JSON files.
+  Source-line inventories and normalized samples are retained as `stage-probe.log`,
+  `loc-inventory.stdout`, and `loc-normalized.json`.
 - The validation build inherited `LLVM_PROFILE_FILE` pointing to an existing caller profile;
   PGO completed successfully and preserved that file. The merged training profile is retained as
   `review-code.profdata`, with SHA-256:
