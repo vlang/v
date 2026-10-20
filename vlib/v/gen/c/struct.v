@@ -7183,9 +7183,9 @@ fn (g &FlatGen) skip_builtin_struct(name string) bool {
 			// Keep externally supplied types opaque when headers own their definitions.
 			// A c_struct_header_guards type is V's to lay out: the generated C includes its
 			// header only where the program does, and the guard defers to the header then --
-			// unless a delayed (Objective-C) source include follows the type block, where the
-			// guard cannot see a header it includes; such a program keeps this rule.
-			if !(name in c_struct_header_guards && !g.has_late_c_source_includes())
+			// unless the program's C can follow the type block, where the guard cannot see a
+			// header it includes; such a program keeps this rule (can_emit_c_after_types).
+			if !(name in c_struct_header_guards && !g.can_emit_c_after_types())
 				&& (info.file.ends_with('.c.v') || c_source_looks_header_backed(info.file))
 				&& (g.c_directives_use_system_libc() || !g.c_source_file_is_in_vlib(info.file)) {
 				return true
