@@ -3529,18 +3529,22 @@ fn (g &Parser) render_enum_comparison_expression(tokens []FastcExpressionToken) 
 				right_type = g.struct_member_type(receiver_type, right_tokens.last().lit)
 			}
 			if g.declared_kinds[flat.source_type_name(g.semantic_type_key(left_type))] == .enum_ && right_tokens.len == 2 && right_tokens[0].tok == .dot && right_tokens[1].tok == .name {
-				left := g.render_call_argument_expression(left_tokens, left_type) or { return none }
 				enum_type := flat.source_type_name(left_type).trim_right('*')
+				// A subject narrowed by `is` (`value is Kind && value == .one`) is typed and
+				// rendered as a pointer to its payload; the comparison needs the enum value.
+				left := g.render_call_argument_expression(left_tokens, flat.source_type_id(enum_type)) or {
+					return none
+				}
 				return FastcRenderedExpression{
 					source: '((${left}) ${item.tok.str()} (${enum_type}__${right_tokens[1].lit}))'
 					typ:    flat.source_type_bool
 				}
 			}
 			if g.declared_kinds[flat.source_type_name(g.semantic_type_key(right_type))] == .enum_ && left_tokens.len == 2 && left_tokens[0].tok == .dot && left_tokens[1].tok == .name {
-				right := g.render_call_argument_expression(right_tokens, right_type) or {
+				enum_type := flat.source_type_name(right_type).trim_right('*')
+				right := g.render_call_argument_expression(right_tokens, flat.source_type_id(enum_type)) or {
 					return none
 				}
-				enum_type := flat.source_type_name(right_type).trim_right('*')
 				return FastcRenderedExpression{
 					source: '((${enum_type}__${left_tokens[1].lit}) ${item.tok.str()} (${right}))'
 					typ:    flat.source_type_bool
