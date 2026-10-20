@@ -1745,6 +1745,7 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 		if is_shared {
 			receiver_type = 'shared ' + receiver_type
 		}
+		receiver_closed := p.tok == .rpar
 		if p.tok == .pipe {
 			p.record_diagnostic_span('unexpected token `|`, expecting `)`', p.tok_pos, p.tok_end)
 		}
@@ -1794,9 +1795,16 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 				name_pos = p.tok_pos
 				op_name := overload_token_name(p.tok)
 				clean_type := method_receiver_type_name(receiver_type)
-				if !p.prefs.is_fmt && '${clean_type}.${op_name}' in p.file_method_names {
-					p.record_diagnostic_span('cannot duplicate operator overload `${op_name}`',
-						p.tok_pos, p.tok_end)
+				if !p.prefs.is_fmt {
+					if message := rejected_operator_method_message(p.tok) {
+						// A `|` in an unclosed receiver (`fn (x int | string)`) is already reported.
+						if receiver_closed {
+							p.record_diagnostic_span(message, p.tok_pos, p.tok_end)
+						}
+					} else if '${clean_type}.${op_name}' in p.file_method_names {
+						p.record_diagnostic_span('cannot duplicate operator overload `${op_name}`',
+							p.tok_pos, p.tok_end)
+					}
 				}
 				p.next()
 				return p.fn_operator_overload(receiver_name, flat.source_type_id(receiver_type), receiver_is_mut, op_name, name_pos)
@@ -18898,6 +18906,17 @@ fn overload_token_name(tok token.Token) string {
 		return tok.str()
 	}
 	return ''
+}
+
+// rejected_operator_method_message returns the error for an operator that is
+// parsed as an operator method name but cannot be overloaded. The declaration
+// is still parsed as an operator method, so the rest of the file parses.
+fn rejected_operator_method_message(tok token.Token) ?string {
+	// No overload of `|` or `^` is lowered; V 0.5.2 rejects them the same way.
+	if tok in [.pipe, .xor] {
+		return 'expecting method name'
+	}
+	return none
 }
 
 fn comptime_cond_has_string_operation(cond string) bool {
