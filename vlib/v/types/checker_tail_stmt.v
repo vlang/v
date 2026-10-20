@@ -10754,8 +10754,11 @@ fn (tc &TypeChecker) type_compatible(actual Type, expected Type) bool {
 	}
 	if expected is Channel {
 		if actual is Channel {
+			// A channel is shared, never converted, so its elements must be stored the
+			// same way: a `chan u8` is not a `chan u64`, and a `chan [2]int` is not a
+			// `chan []int`.
 			return actual.is_mut == expected.is_mut
-				&& tc.type_compatible(actual.elem_type, expected.elem_type)
+				&& tc.container_elem_types_compatible(actual.elem_type, expected.elem_type)
 		}
 	}
 	if expected is Map {
@@ -10806,8 +10809,8 @@ fn (tc &TypeChecker) explicit_array_literal_type_fits(node flat.Node, expected T
 }
 
 // container_elem_types_compatible reports whether a fixed array with element type
-// `actual` (or a map with key or value type `actual`) can be used where one with
-// `expected` is required.
+// `actual` (or a map with key or value type `actual`, or a channel with element type
+// `actual`) can be used where one with `expected` is required.
 fn (tc &TypeChecker) container_elem_types_compatible(actual Type, expected Type) bool {
 	return tc.type_compatible(actual, expected) && !tc.container_elem_layouts_differ(actual, expected)
 }
@@ -10941,6 +10944,11 @@ fn (tc &TypeChecker) container_elem_layouts_differ(actual Type, expected Type) b
 			if clean_actual is Pointer && clean_actual.base_type !is Void
 				&& clean_expected.base_type !is Void {
 				return tc.container_elem_layouts_differ(clean_actual.base_type, clean_expected.base_type)
+			}
+		}
+		Channel {
+			if clean_actual is Channel {
+				return tc.container_elem_layouts_differ(clean_actual.elem_type, clean_expected.elem_type)
 			}
 		}
 		Interface {

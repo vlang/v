@@ -3447,8 +3447,8 @@ fn container_layout_error_parts(msg string) ?(string, string, ContainerLayoutUse
 	return none
 }
 
-// container_value_layouts_differ reports whether the array or map `actual` is
-// used as the one `expected` although their elements are stored differently
+// container_value_layouts_differ reports whether the array, map or channel `actual`
+// is used as the one `expected` although their elements are stored differently
 // (container_elem_layouts_differ). An option or a result holds the container as
 // it is, and a value may be wrapped in one. A dynamic array of concrete values is
 // converted to one of their interface or sum type
@@ -3483,6 +3483,10 @@ fn (tc &TypeChecker) container_value_layouts_differ(actual Type, expected Type) 
 		return is_container_type(clean_actual.base_type)
 			&& is_container_type(clean_expected.base_type)
 			&& tc.in_place_container_layouts_differ(clean_actual.base_type, clean_expected.base_type)
+	}
+	if clean_actual is Channel && clean_expected is Channel {
+		// A channel is shared, never converted, like a referenced container.
+		return tc.container_elem_layouts_differ(clean_actual, clean_expected)
 	}
 	if !is_container_type(clean_actual) || !is_container_type(clean_expected) {
 		return false
