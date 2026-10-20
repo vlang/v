@@ -16,11 +16,12 @@ fn fastc_match_common_numeric_variant(variants []u32) u32 {
 }
 
 fn fastc_match_multi_variant_value(subject string, access string, variants []u32, common_type u32) string {
-	common_name := flat.source_type_name(common_type)
+	common_name := fastc_output_c_type(flat.source_type_name(common_type))
 	mut source := '((${common_name})0)'
 	for i := variants.len - 1; i >= 0; i-- {
 		variant := flat.source_type_name(variants[i])
-		source = '((${subject}${access}_typ == __v_typeid_${variant}) ? ((${common_name})(*(${variant} *)${subject}${access}_object)) : (${source}))'
+		variant_c_type := fastc_output_c_type(variant)
+		source = '((${subject}${access}_typ == __v_typeid_${variant}) ? ((${common_name})(*(${variant_c_type} *)${subject}${access}_object)) : (${source}))'
 	}
 	return source
 }
@@ -198,7 +199,7 @@ fn (mut g Parser) read_match_expression() !string {
 			}
 			g.member_smartcasts[projection_path] = FastcMemberSmartcast{
 				typ:           flat.source_type_id(flat.source_type_name(smartcast_type) + '*')
-				source:        '((${flat.source_type_name(smartcast_type)} *)${temporary}${boxed_access}_object)'
+				source:        '((${fastc_output_c_type(flat.source_type_name(smartcast_type))} *)${temporary}${boxed_access}_object)'
 				variants:      if multi_struct_smartcast {
 					flat.TypeTextList{ ids: branch_variants.clone() }
 				} else {
@@ -219,17 +220,19 @@ fn (mut g Parser) read_match_expression() !string {
 		}
 		if smartcast_active {
 			g.locals[subject_local] = smartcast_saved
+			// The payload is boxed as its C output type (a V `int` is 64 bits wide).
+			smartcast_c_type := fastc_output_c_type(flat.source_type_name(smartcast_type))
 			smartcast_value := if smartcast_is_reference {
-				'(${flat.source_type_name(smartcast_type)} *)${temporary}${boxed_access}_object'
+				'(${smartcast_c_type} *)${temporary}${boxed_access}_object'
 			} else if common_numeric_type != 0 {
 				fastc_match_multi_variant_value(temporary, boxed_access, branch_variants, common_numeric_type)
 			} else {
-				'*(${flat.source_type_name(smartcast_type)} *)${temporary}${boxed_access}_object'
+				'*(${smartcast_c_type} *)${temporary}${boxed_access}_object'
 			}
 			declaration_type := if smartcast_is_reference {
-				flat.source_type_name(smartcast_type) + '*'
+				smartcast_c_type + '*'
 			} else {
-				flat.source_type_name(smartcast_type)
+				smartcast_c_type
 			}
 			value = '({ ${declaration_type} ${fastc_c_identifier(subject_local)} = ${smartcast_value}; (${value}); })'
 		}

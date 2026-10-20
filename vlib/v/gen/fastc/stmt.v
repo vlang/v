@@ -963,12 +963,15 @@ fn (mut g Parser) parse_match_statement() !bool {
 			} else {
 				flat.source_type_name(variant_types[0])
 			}
+			// The payload is boxed as its C output type (a V `int` is 64 bits wide); the
+			// narrowed local keeps the V type.
+			variant_c_type := fastc_output_c_type(variant_cname)
 			smartcast_value := if smartcast_is_reference {
-				'(${variant_cname} *)${subject_name}${boxed_access}_object'
+				'(${variant_c_type} *)${subject_name}${boxed_access}_object'
 			} else if common_numeric_type != 0 {
 				fastc_match_multi_variant_value(subject_name, boxed_access, variant_types, common_numeric_type)
 			} else {
-				'*(${variant_cname} *)${subject_name}${boxed_access}_object'
+				'*(${variant_c_type} *)${subject_name}${boxed_access}_object'
 			}
 			// The narrowed value is stored in a UNIQUELY named C temporary (not a shadow of the
 			// subject's own C name), so a `defer` body — rendered at function scope and emitted
@@ -979,7 +982,12 @@ fn (mut g Parser) parse_match_statement() !bool {
 			} else {
 				variant_cname
 			}
-			g.write_line('${shadow_type} ${shadow_name} = ${smartcast_value};')
+			shadow_c_type := if smartcast_is_reference {
+				variant_c_type + '*'
+			} else {
+				variant_c_type
+			}
+			g.write_line('${shadow_c_type} ${shadow_name} = ${smartcast_value};')
 			smartcast_saved = g.locals[subject_local] or { FastcLocal{} }
 			origin_source := g.local_c_name(subject_local)
 			g.locals[subject_local] = FastcLocal{
@@ -1013,7 +1021,8 @@ fn (mut g Parser) parse_match_statement() !bool {
 		}
 		if is_boxed && !is_else && member_smartcast_type != 0 && projection_path != '' {
 			member_smartcast_name := g.temporary_name('smartcast_member')
-			g.write_line('${flat.source_type_name(member_smartcast_type)} *${member_smartcast_name} = (${flat.source_type_name(member_smartcast_type)} *)${subject_name}${boxed_access}_object;')
+			member_c_type := fastc_output_c_type(flat.source_type_name(member_smartcast_type))
+			g.write_line('${member_c_type} *${member_smartcast_name} = (${member_c_type} *)${subject_name}${boxed_access}_object;')
 			member_smartcast_saved = g.member_smartcasts[projection_path] or {
 				FastcMemberSmartcast{}
 			}
@@ -1021,7 +1030,7 @@ fn (mut g Parser) parse_match_statement() !bool {
 			g.member_smartcasts[projection_path] = FastcMemberSmartcast{
 				typ:           flat.source_type_id(flat.source_type_name(member_smartcast_type) + '*')
 				source:        if smartcast_is_reference {
-					'((${flat.source_type_name(member_smartcast_type)} *)${subject_name}${boxed_access}_object)'
+					'((${member_c_type} *)${subject_name}${boxed_access}_object)'
 				} else {
 					member_smartcast_name
 				}
@@ -1199,7 +1208,7 @@ fn (mut g Parser) parse_return() !bool {
 		} else {
 			mut packed_values := []string{cap: values.len}
 			for i, value in evaluated_values {
-				packed_values << g.multi_return_component(value, i)
+				packed_values << g.multi_return_component(value, value_types[i], i)
 			}
 			'${fastc_multi_return_literal(packed_values)}'
 		}
@@ -1315,6 +1324,13 @@ fn (mut g Parser) parse_return() !bool {
 		'__v_result',
 	] {
 		mut payload_type := fastc_normalize_inferred_type(actual_type)
+		if g.option_return_type != u32(0) && payload_type != g.option_return_type
+			&& fastc_is_numeric_expression_type(payload_type)
+			&& fastc_is_numeric_expression_type(g.option_return_type) {
+			// `return 5` in a `!f64` function: the caller reads the payload as the declared
+			// type, so it is boxed as that type, which converts the value.
+			payload_type = g.option_return_type
+		}
 		if g.option_return_type != u32(0) && (g.should_box_variant(g.option_return_type, payload_type) || ((g.option_return_type_text() == 'IError' || g.declared_kinds[flat.source_type_name(g.semantic_type_key(g.option_return_type))] == .interface_) && g.declared_kinds[flat.source_type_name(g.semantic_type_key(payload_type))] != .interface_)) {
 			expression = g.interface_value_expression(g.option_return_type, payload_type, expression)
 			payload_type = g.option_return_type
@@ -1919,13 +1935,18 @@ fn (mut g Parser) parse_simple_statement() ! {
 		g.write_line('${expression};')
 		return
 	}
+	starts_with_spawn := g.tok == .key_spawn
 	expression := g.read_statement_expression([token.Token.semicolon, token.Token.rcbr,
 		token.Token.attribute])!
 	g.skip_statement_attributes()!
 	if expression.len == 0 {
 		return g.unsupported('statement `${g.token_source()}`')
 	}
-	if g.last_expression.len == 0 && g.last_expression_type_text().starts_with(fastc_thread_type_prefix) {
+	// read_spawn_expression leaves the spawn in g.last_expression as one thread-typed
+	// atom (an append re-renders the value from it), so the statement's first token
+	// tells a spawn apart from any other thread-typed value.
+	if starts_with_spawn && g.last_expression.len == 1
+		&& g.last_expression_type_text().starts_with(fastc_thread_type_prefix) {
 		// Fire-and-forget `spawn f()` as a statement: the handle is discarded, so
 		// detach the thread. It then releases its own resources on completion (the
 		// run wrapper frees the packed arguments), rather than leaking a joinable.
@@ -2178,7 +2199,8 @@ fn (mut g Parser) parse_parallel_assignment(initial_names []string, initial_mut 
 				'usize'
 			}
 			c_name := fastc_c_identifier(name)
-			g.write_line('${component_type} ${c_name} = (${component_type}){0};')
+			c_type := fastc_output_c_type(component_type)
+			g.write_line('${c_type} ${c_name} = (${c_type}){0};')
 			g.write_line('memcpy(&${c_name}, V_FASTC_MULTI_SOURCE(${temporary}.values[${i}], sizeof(${c_name})), sizeof(${c_name}));')
 			g.set_scoped_local(name, FastcLocal{
 				is_mut: mutability[i]
@@ -2395,7 +2417,8 @@ fn (mut g Parser) parse_parallel_option_tuple(names []string, mutability []bool,
 				continue
 			}
 			component_type := fastc_normalize_inferred_type(component_types[i])
-			g.write_line('${flat.source_type_name(component_type)} ${fastc_c_identifier(name)} = (${flat.source_type_name(component_type)}){0};')
+			c_type := fastc_output_c_type(flat.source_type_name(component_type))
+			g.write_line('${c_type} ${fastc_c_identifier(name)} = (${c_type}){0};')
 			g.set_scoped_local(name, FastcLocal{
 				is_mut: mutability[i]
 				typ:    component_type

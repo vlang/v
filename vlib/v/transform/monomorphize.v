@@ -1430,10 +1430,10 @@ fn building_v_type_erased_generic_keep_root(key string) bool {
 }
 
 // is_operator_method_name reports whether a method-name part is an overloaded
-// operator symbol (`+`, `-`, `*`, `/`, `%`, `==`, `!=`, `<`, `>`, `<=`, `>=`,
+// operator symbol (`+`, `-`, `*`, `/`, `%`, `**`, `==`, `!=`, `<`, `>`, `<=`, `>=`,
 // `[]`, `[]=`).
 fn is_operator_method_name(name string) bool {
-	return name in ['+', '-', '*', '/', '%', '==', '!=', '<', '>', '<=', '>=', '[]', '[]=']
+	return name in ['+', '-', '*', '/', '%', '**', '==', '!=', '<', '>', '<=', '>=', '[]', '[]=']
 }
 
 // record_called_fn_name records the callee name of a direct call so operator overloads
@@ -1620,7 +1620,7 @@ fn (mut t Transformer) has_generic_arithmetic_operators() bool {
 
 fn is_generic_arithmetic_operator_name(name string) bool {
 	return name.ends_with('].+') || name.ends_with('].-') || name.ends_with('].*')
-		|| name.ends_with(']./') || name.ends_with('].%')
+		|| name.ends_with(']./') || name.ends_with('].%') || name.ends_with('].**')
 }
 
 // record_compound_assign_operator_fn_name records the operator method of a
@@ -1886,6 +1886,10 @@ fn operator_symbol_for_mangled_method_name(method string) ?string {
 		'mul' {
 			return '*'
 		}
+		'mul_' {
+			// `**` mangles to `__mul_`: the second `*` becomes `_`.
+			return '**'
+		}
 		'div' {
 			return '/'
 		}
@@ -1923,8 +1927,8 @@ fn operator_symbol_for_mangled_method_name(method string) ?string {
 }
 
 fn generic_method_c_name_can_collide_with_operator(method string) bool {
-	return method in ['plus', 'minus', 'mul', 'div', 'mod', 'eq', 'ne', 'lt', 'gt', 'le', 'ge',
-		'and', 'or', 'xor', 'left_shift', 'right_shift']
+	return method in ['plus', 'minus', 'mul', 'mul_', 'div', 'mod', 'eq', 'ne', 'lt', 'gt', 'le',
+		'ge', 'and', 'or', 'xor', 'left_shift', 'right_shift']
 }
 
 fn (t &Transformer) needs_generic_struct_method_specialization(decls map[string]GenericFnDecl) bool {

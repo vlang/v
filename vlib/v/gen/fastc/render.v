@@ -2111,6 +2111,14 @@ fn (g &Parser) render_overloaded_binary_expression(tokens []FastcExpressionToken
 				typ:    flat.source_type_bool
 			}
 		}
+		// A signed and an unsigned operand (`i64(-1) < u64(1)`) must not meet in a plain C
+		// comparison, which converts the signed one to unsigned. An operand that renders
+		// specially (a cast, a call) would otherwise reach the plain composition below.
+		if operator in [.eq, .ne, .lt, .le, .gt, .ge] {
+			if mixed := g.render_mixed_integer_comparison_expression(tokens) {
+				return mixed
+			}
+		}
 		mut left_special := FastcRenderedExpression{}
 		if rendered := g.render_overloaded_binary_expression(left_tokens) {
 			left_special = rendered
@@ -2180,6 +2188,19 @@ fn (g &Parser) render_overloaded_binary_expression(tokens []FastcExpressionToken
 		}
 	}
 	if operator_index < 1 {
+		if tokens.len > 2 && tokens[0].tok == .minus
+			&& fastc_expression_tokens_contain(tokens[1..], .not) {
+			// `-i64(f()!)`, `-(f()!)`: render the operand in full, so its `!` propagation
+			// is lowered, then negate it. The cast renderer below would copy it raw.
+			operand_type := g.infer_expression_type(tokens[1..]) or { return none }
+			operand := g.render_call_argument_expression(tokens[1..], operand_type) or {
+				return none
+			}
+			return FastcRenderedExpression{
+				source: '(-(${operand}))'
+				typ:    operand_type
+			}
+		}
 		if tokens.len > 1 && tokens[0].tok == .mul {
 			inner_type := g.infer_expression_type(tokens[1..]) or { return none }
 			if flat.source_type_name(inner_type).ends_with('*') {
@@ -3521,18 +3542,22 @@ fn (g &Parser) render_enum_comparison_expression(tokens []FastcExpressionToken) 
 				right_type = g.struct_member_type(receiver_type, right_tokens.last().lit)
 			}
 			if g.declared_kinds[flat.source_type_name(g.semantic_type_key(left_type))] == .enum_ && right_tokens.len == 2 && right_tokens[0].tok == .dot && right_tokens[1].tok == .name {
-				left := g.render_call_argument_expression(left_tokens, left_type) or { return none }
 				enum_type := flat.source_type_name(left_type).trim_right('*')
+				// A subject narrowed by `is` (`value is Kind && value == .one`) is typed and
+				// rendered as a pointer to its payload; the comparison needs the enum value.
+				left := g.render_call_argument_expression(left_tokens, flat.source_type_id(enum_type)) or {
+					return none
+				}
 				return FastcRenderedExpression{
 					source: '((${left}) ${item.tok.str()} (${enum_type}__${right_tokens[1].lit}))'
 					typ:    flat.source_type_bool
 				}
 			}
 			if g.declared_kinds[flat.source_type_name(g.semantic_type_key(right_type))] == .enum_ && left_tokens.len == 2 && left_tokens[0].tok == .dot && left_tokens[1].tok == .name {
-				right := g.render_call_argument_expression(right_tokens, right_type) or {
+				enum_type := flat.source_type_name(right_type).trim_right('*')
+				right := g.render_call_argument_expression(right_tokens, flat.source_type_id(enum_type)) or {
 					return none
 				}
-				enum_type := flat.source_type_name(right_type).trim_right('*')
 				return FastcRenderedExpression{
 					source: '((${enum_type}__${left_tokens[1].lit}) ${item.tok.str()} (${right}))'
 					typ:    flat.source_type_bool
@@ -3936,7 +3961,7 @@ fn (g &Parser) narrowed_subject_value_type(tokens []FastcExpressionToken) ?u32 {
 // value; any other variant is boxed behind it.
 fn fastc_narrowed_variant_value(source string, value_type u32) string {
 	if fastc_is_pointer_type(value_type) {
-		return '((${flat.source_type_name(value_type)})(${source}))'
+		return '((${fastc_output_c_type(flat.source_type_name(value_type))})(${source}))'
 	}
 	return '*(${source})'
 }

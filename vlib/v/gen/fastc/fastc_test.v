@@ -6752,8 +6752,8 @@ fn main() {
 }
 ', 'selfhost_parallel_if_expression.v', prefs) or { panic(err) }
 	assert c_source.contains('MultiReturn __v'), c_source
-	assert c_source.contains('int a = (int){0};'), c_source
-	assert c_source.contains('int b = (int){0};'), c_source
+	assert c_source.contains('i64 a = (i64){0};'), c_source
+	assert c_source.contains('i64 b = (i64){0};'), c_source
 }
 
 fn test_selfhost_parallel_option_multireturn_from_nested_receiver() {
@@ -8865,7 +8865,7 @@ fn main() {
 	// A `match` used as an expression over a sum type dispatches on the boxed tag
 	// (not a struct-vs-type comparison) and smart-casts inside each branch value.
 	assert c_source.contains('__v0._typ == __v_typeid_int'), c_source
-	assert c_source.contains('int v = *(int *)__v0._object'), c_source
+	assert c_source.contains('i64 v = *(i64 *)__v0._object'), c_source
 	assert c_source.contains('bool v = *(bool *)__v0._object'), c_source
 	assert !c_source.contains('(__v0) == (int)'), c_source
 }
@@ -10913,8 +10913,8 @@ fn main() {
 	println(shared_first() + shared_second())
 }
 ', 'selfhost_multi_guard_shared_bindings.v', prefs) or { panic(err) }
-	assert c_source.contains('int shared ='), c_source
-	assert c_source.contains('int other ='), c_source
+	assert c_source.contains('i64 shared ='), c_source
+	assert c_source.contains('i64 other ='), c_source
 }
 
 fn test_selfhost_if_single_option_guard_with_shared_binding() {
@@ -10937,7 +10937,7 @@ fn main() {
 	println(read_value())
 }
 ', 'selfhost_single_guard_shared_binding.v', prefs) or { panic(err) }
-	assert c_source.contains('int shared ='), c_source
+	assert c_source.contains('i64 shared ='), c_source
 	assert c_source.contains('return shared;'), c_source
 }
 
@@ -11949,7 +11949,7 @@ fn main() {
 	println(text)
 }
 ', 'selfhost_static_multi_return.v', prefs) or { panic(err) }
-	assert c_source.contains('int number = (int){0}'), c_source
+	assert c_source.contains('i64 number = (i64){0}'), c_source
 	assert c_source.contains('string text = (string){0}'), c_source
 	assert !c_source.contains('usize number'), c_source
 }

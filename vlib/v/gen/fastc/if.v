@@ -9,13 +9,16 @@ fn (g &Parser) smartcast_payload_binding(value_type u32, object string, wants_re
 	underlying := g.underlying_alias_type(value_type)
 	is_reference := wants_reference && !fastc_is_pointer_type(underlying)
 	value_type_name := flat.source_type_name(value_type)
+	// The payload was boxed as its C output type (a V `int` is 64 bits wide), so it is
+	// read back through the same type, while the local keeps the V type.
+	c_type := fastc_output_c_type(value_type_name)
 	if is_reference {
-		return flat.source_type_id(value_type_name + '*'), '(${value_type_name} *)${object}', true
+		return flat.source_type_id(value_type_name + '*'), '(${c_type} *)${object}', true
 	}
 	source := if fastc_is_pointer_type(underlying) {
 		object
 	} else {
-		'(${value_type_name} *)${object}'
+		'(${c_type} *)${object}'
 	}
 	value := fastc_narrowed_variant_value(source, underlying)
 	return value_type, value, false
@@ -754,7 +757,7 @@ fn (mut g Parser) parse_if() !bool {
 		// own C name, so a `defer` body (rendered at function scope) still binds the original.
 		branch_cast := g.temporary_name('if_cast')
 		branch_type, branch_value, smartcast_is_reference := g.smartcast_payload_binding(smartcast_type, '${smartcast_tmp}${tmp_access}_object', wants_reference)
-		g.write_line('${flat.source_type_name(branch_type)} ${branch_cast} = ${branch_value};')
+		g.write_line('${fastc_output_c_type(flat.source_type_name(branch_type))} ${branch_cast} = ${branch_value};')
 		g.locals[smartcast_name] = FastcLocal{
 			is_mut:                  previous_smartcast.is_mut
 			is_reference:            smartcast_is_reference
@@ -793,7 +796,7 @@ fn (mut g Parser) parse_if() !bool {
 				plan.type_c
 			}
 			plan_type, plan_value, plan_is_reference := g.smartcast_payload_binding(value_type, '${plan.boxed_tmp}${plan_access}_object', plan.boxed_type_text().ends_with('*'))
-			g.write_line('${flat.source_type_name(plan_type)} ${plan_shadow} = ${plan_value};')
+			g.write_line('${fastc_output_c_type(flat.source_type_name(plan_type))} ${plan_shadow} = ${plan_value};')
 			previous_plan_local := g.locals[plan.path] or { FastcLocal{} }
 			g.locals[plan.path] = FastcLocal{
 				is_mut:                  previous_plan_local.is_mut
@@ -811,7 +814,8 @@ fn (mut g Parser) parse_if() !bool {
 				FastcMemberSmartcast{}
 			}
 		}
-		g.write_line('${plan.type_c_text()} *${plan.member_tmp} = (${plan.type_c_text()} *)${plan.boxed_tmp}${plan_access}_object;')
+		plan_c_type := fastc_output_c_type(plan.type_c_text())
+		g.write_line('${plan_c_type} *${plan.member_tmp} = (${plan_c_type} *)${plan.boxed_tmp}${plan_access}_object;')
 		g.member_smartcasts[plan.path] = FastcMemberSmartcast{
 			typ:        flat.source_type_id(plan.type_c_text() + '*')
 			value_type: plan.value_type
@@ -888,7 +892,7 @@ fn (mut g Parser) parse_if() !bool {
 			branch_cast := g.temporary_name('if_cast')
 			branch_type, branch_value, is_reference := g.smartcast_payload_binding(smartcast_type,
 				'${smartcast_storage}${access}_object', flat.source_type_name(smartcast_boxed_type).ends_with('*') || previous_smartcast.is_mut)
-			g.write_line('${flat.source_type_name(branch_type)} ${branch_cast} = ${branch_value};')
+			g.write_line('${fastc_output_c_type(flat.source_type_name(branch_type))} ${branch_cast} = ${branch_value};')
 			g.set_scoped_local(smartcast_name, FastcLocal{
 				is_mut:                  previous_smartcast.is_mut
 				is_reference:            is_reference
@@ -971,7 +975,7 @@ fn (mut g Parser) bind_else_type_test(name string, variant u32, boxed u32) {
 	cast := g.temporary_name('else_cast')
 	variant_type, value, is_reference := g.smartcast_payload_binding(variant,
 		'${origin}${access}_object', flat.source_type_name(boxed).ends_with('*') || previous.is_mut)
-	g.write_line('${flat.source_type_name(variant_type)} ${cast} = ${value};')
+	g.write_line('${fastc_output_c_type(flat.source_type_name(variant_type))} ${cast} = ${value};')
 	g.locals[name] = FastcLocal{
 		is_mut:                  previous.is_mut
 		is_reference:            is_reference
@@ -1017,7 +1021,8 @@ fn (mut g Parser) parse_if_multi_return_guard(names []string) !bool {
 		}
 		component_type := fastc_normalize_inferred_type(component_types[i])
 		c_name := fastc_c_identifier(name)
-		g.write_line('${flat.source_type_name(component_type)} ${c_name} = (${flat.source_type_name(component_type)}){0};')
+		c_type := fastc_output_c_type(flat.source_type_name(component_type))
+		g.write_line('${c_type} ${c_name} = (${c_type}){0};')
 		g.write_line('memcpy(&${c_name}, V_FASTC_MULTI_SOURCE(${multi_return}.values[${i}], sizeof(${c_name})), sizeof(${c_name}));')
 		g.locals[name] = FastcLocal{
 			typ: component_type
@@ -1581,7 +1586,8 @@ fn (mut g Parser) read_if_expression_multi_return_guard(names []string, branch_e
 		}
 		component_type := fastc_normalize_inferred_type(component_types[i])
 		c_name := fastc_c_identifier(name)
-		binds += '${flat.source_type_name(component_type)} ${c_name} = (${flat.source_type_name(component_type)}){0}; memcpy(&${c_name}, V_FASTC_MULTI_SOURCE(${multi_return}.values[${i}], sizeof(${c_name})), sizeof(${c_name})); '
+		c_type := fastc_output_c_type(flat.source_type_name(component_type))
+		binds += '${c_type} ${c_name} = (${c_type}){0}; memcpy(&${c_name}, V_FASTC_MULTI_SOURCE(${multi_return}.values[${i}], sizeof(${c_name})), sizeof(${c_name})); '
 		g.locals[name] = FastcLocal{
 			typ: component_type
 		}
@@ -1635,7 +1641,7 @@ fn (mut g Parser) read_if_expression_multi_return_guard(names []string, branch_e
 	g.expected_expression_type = outer_expected_type_source_id
 	g.last_expression = []FastcExpressionToken{}
 	result_var := g.temporary_name('if_result')
-	return '({ ${guard_container_type} ${guard_option} = (${rhs}); ${flat.source_type_name(result_type)} ${result_var}; if (${guard_option}.state == 0) { ${binds}${result_var} = (${then_expr}); } else { ${result_var} = (${else_expr}); } ${result_var}; })'
+	return '({ ${guard_container_type} ${guard_option} = (${rhs}); ${fastc_output_c_type(flat.source_type_name(result_type))} ${result_var}; if (${guard_option}.state == 0) { ${binds}${result_var} = (${then_expr}); } else { ${result_var} = (${else_expr}); } ${result_var}; })'
 }
 
 // fastc_plan_is_bare_local reports whether a member-smart-cast plan narrows a bare local
@@ -1765,9 +1771,10 @@ fn (mut g Parser) read_if_expression() !string {
 					plan.type_c
 				}
 				plan_type, plan_value, _ := g.smartcast_payload_binding(value_type, '${plan.boxed_tmp}${plan_access}_object', false)
-				smartcast_bindings += '${flat.source_type_name(plan_type)} ${plan.member_tmp} = ${plan_value}; '
+				smartcast_bindings += '${fastc_output_c_type(flat.source_type_name(plan_type))} ${plan.member_tmp} = ${plan_value}; '
 			} else {
-				smartcast_bindings += '${plan.type_c_text()} *${plan.member_tmp} = (${plan.type_c_text()} *)${plan.boxed_tmp}${plan_access}_object; '
+				plan_c_type := fastc_output_c_type(plan.type_c_text())
+				smartcast_bindings += '${plan_c_type} *${plan.member_tmp} = (${plan_c_type} *)${plan.boxed_tmp}${plan_access}_object; '
 			}
 		}
 	}
@@ -2074,7 +2081,8 @@ fn (mut g Parser) read_return_expression_branch() !string {
 		mut values := []string{}
 		for {
 			value := g.read_expression([token.Token.comma, token.Token.semicolon, token.Token.rcbr])!
-			values << g.multi_return_component(value, values.len)
+			values << g.multi_return_component(value, fastc_normalize_inferred_type(g.last_expression_type),
+				values.len)
 			if g.tok != .comma {
 				break
 			}
