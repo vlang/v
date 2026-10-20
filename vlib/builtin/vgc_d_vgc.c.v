@@ -24,6 +24,7 @@ fn C.vgc_atomic_fence()
 fn C.vgc_os_alloc(size usize) voidptr
 fn C.vgc_os_free(ptr voidptr, size usize)
 fn C.vgc_os_decommit(ptr voidptr, size usize)
+fn C.vgc_os_recommit(ptr voidptr, size usize) int
 fn C.vgc_get_sp() voidptr
 fn C.vgc_get_stack_bounds(lo &usize, hi &usize) int
 fn C.vgc_bitmap_get(bits &u8, idx u32) int
@@ -45,8 +46,6 @@ fn C.vgc_watch_thread_exit(idx int)
 fn C.vgc_call_with_registers_spilled(f fn (voidptr), arg voidptr)
 fn C.vgc_start_thread(f voidptr)
 fn C.vgc_num_cpus() int
-fn C.vgc_addr_map_register(base usize, size usize, arena_idx int)
-fn C.vgc_addr_to_arena(addr usize) int
 
 // ============================================================
 // Constants (translated from Go's runtime constants)
@@ -60,12 +59,20 @@ const vgc_num_span_classes = 136 // 68 * 2 (scan + noscan variants)
 // These MUST stay compile-time integer constants (no `usize()` cast, no division by
 // another const). Otherwise V emits them as runtime globals initialized inside
 // `_vinit()`, and the allocations that run earlier in `_vinit()` (const strings, etc.)
-// see them as 0: arenas get sized to a single page instead of 64MB, and
-// `vgc_pages_per_arena == 0` makes span registration a no-op, so `vgc_find_span()`
-// returns nil forever for those objects (breaking realloc and GC marking).
-const vgc_arena_size = 64 * 1024 * 1024 // 64MB per arena
-const vgc_pages_per_arena = 64 * 1024 * 1024 / 8192 // vgc_arena_size / vgc_page_size = 8192
-const vgc_max_arenas = 64
+// see them as 0: arenas get sized to a single page instead of 64MB.
+// The number of arenas has no limit: their table grows with the heap.
+const vgc_arena_size = 64 * 1024 * 1024 // 64MB per arena (an object larger than that gets its own)
+// The arena map finds the arena of an address in constant time, however many arenas there are.
+// It cuts the address space into granules of 64 MB, the smallest arena size, so a granule
+// overlaps at most two arenas: one that ends in it and one that starts in it. It covers the low
+// 2^48 bytes (every user address on x86-64, on arm64 with 48-bit virtual addresses, on macOS and
+// on Windows) in two levels: 1024 chunks of 4096 granules. A chunk (64 KB, for 256 GB of
+// address space) is allocated when an arena first falls into it. Entries are only added, under
+// vgc_heap.lock, and never change after that, so a lookup takes no lock.
+const vgc_granule_shift = 26
+const vgc_arena_map_l2_bits = 12
+const vgc_arena_map_l2_size = 4096
+const vgc_arena_map_granules = 4096 * 1024 // 2^22 granules of 2^26 bytes
 const vgc_max_threads = 64
 const vgc_tiny_size = 16 // tiny allocator threshold (no-pointer objects < 16 bytes)
 // A span holds at most 1024 objects (8-byte objects in one page): 128 bytes of bits.
@@ -120,6 +127,11 @@ mut:
 
 // VGC_Cache is a per-thread allocation cache.
 // Translated from Go's runtime.mcache - eliminates lock contention on hot path.
+// Each cache starts a cache line of its own (128 bytes on Apple's arm64 cores, two lines on
+// x86-64): its owner writes it on every allocation, and with caches packed next to each other
+// threads slowed each other down through the lines they shared, by up to a quarter of their
+// cycles with 8 threads, depending on where VGC_Heap happened to put the array.
+@[aligned: 128]
 struct VGC_Cache {
 mut:
 	alloc [136]&VGC_Span // one span per span class (68 scan + 68 noscan)
@@ -153,8 +165,15 @@ mut:
 	base usize
 	size usize
 	used usize
-	// Map from page index to span (for finding which span owns an address)
-	page_span [8192]&VGC_Span // vgc_pages_per_arena entries
+	// Map from page index to span (for finding which span owns an address): one entry for each
+	// of the size / vgc_page_size pages, stored right after the arena.
+	page_span &&VGC_Span = unsafe { nil }
+}
+
+// VGC_Granule holds the (at most two) arenas that overlap a granule of the arena map.
+struct VGC_Granule {
+mut:
+	arena [2]&VGC_Arena
 }
 
 // VGC_WorkBuf is a work buffer for the mark phase.
@@ -171,9 +190,16 @@ mut:
 struct VGC_Heap {
 mut:
 	lock u32 // spinlock
-	// Arenas (memory from OS)
-	arenas  [64]VGC_Arena
-	narenas int
+	// Arenas (memory from OS), in a table of arenas_cap entries that doubles when it is full.
+	// Only code that holds `lock` reads the table: the old one is freed when it grows.
+	arenas     &&VGC_Arena = unsafe { nil }
+	narenas    int
+	arenas_cap int
+	// Arenas before this index have no room left for a span.
+	arena_open int
+	// The arena map (see vgc_arena_map_granules), and whether an arena is missing from it.
+	arena_map         [1024]&VGC_Granule
+	arena_map_partial bool
 	// Central free lists (one per span class)
 	central [136]VGC_Central
 	// Large object spans
@@ -203,7 +229,13 @@ mut:
 	heap_marked u64 // bytes marked in last cycle
 	next_gc     u64 // trigger next GC at this heap size
 	total_alloc u64 // atomic: total bytes allocated
+	alloc_at_gc u64 // atomic: total_alloc when the last collection ended
 	gc_cycle    u64 // number of completed GC cycles
+	// Heap memory (see vgc_heap_usage), all atomic: the size of all arenas, the part of them
+	// that spans were carved from, and the pages of free spans that went back to the OS.
+	arena_bytes    u64
+	arena_used     u64
+	unmapped_bytes u64
 	// GC work queues
 	work_full  &VGC_WorkBuf = unsafe { nil }
 	work_empty &VGC_WorkBuf = unsafe { nil }
@@ -387,6 +419,21 @@ fn vgc_refresh_stack_range_for_sp(cache_idx int, sp usize) {
 
 // Try to get a recycled span from the free list
 fn vgc_get_free_span(npages u32, owner int) &VGC_Span {
+	mut span := vgc_take_free_span(npages, owner)
+	if span == unsafe { nil } {
+		return span
+	}
+	// The pages of a free span were given back to the OS; Windows faults on them until they
+	// are committed again.
+	if C.vgc_os_recommit(voidptr(span.base), usize(npages) * vgc_page_size) == 0 {
+		vgc_push_free_span(mut span)
+		return unsafe { nil }
+	}
+	C.vgc_atomic_sub_u64(&vgc_heap.unmapped_bytes, u64(npages) * vgc_page_size)
+	return span
+}
+
+fn vgc_take_free_span(npages u32, owner int) &VGC_Span {
 	if npages == 0 {
 		return unsafe { nil }
 	}
@@ -455,6 +502,15 @@ fn vgc_put_free_span(mut span VGC_Span) {
 	// Decommit pages to return physical memory to OS
 	page_bytes := usize(npages) * vgc_page_size
 	C.vgc_os_decommit(voidptr(span.base), page_bytes)
+	C.vgc_atomic_add_u64(&vgc_heap.unmapped_bytes, u64(page_bytes))
+	vgc_push_free_span(mut span)
+}
+
+// vgc_push_free_span puts an empty span, whose pages are decommitted, on its free list.
+fn vgc_push_free_span(mut span VGC_Span) {
+	npages := span.npages
+	span.in_use = false
+	span.cached_by = 0
 	C.vgc_mutex_lock(&vgc_heap.free_spans_lock)
 	if npages >= 32 {
 		// Large span: keep on the dedicated list, matched by exact page count.
@@ -485,49 +541,34 @@ fn vgc_span_alloc(npages u32, owner int) &VGC_Span {
 	C.vgc_mutex_lock(&vgc_heap.lock)
 	// Try to find space in existing arenas
 	mut base := usize(0)
-	mut arena_idx := -1
-	for i in 0 .. vgc_heap.narenas {
-		a := unsafe { &vgc_heap.arenas[i] }
+	mut arena := unsafe { &VGC_Arena(nil) }
+	for i in vgc_heap.arena_open .. vgc_heap.narenas {
+		mut a := unsafe { vgc_heap.arenas[i] }
 		if a.used + nbytes <= a.size {
 			base = a.base + a.used
-			arena_idx = i
-			unsafe {
-				vgc_heap.arenas[i].used += nbytes
-			}
+			a.used += nbytes
+			arena = a
+			C.vgc_atomic_add_u64(&vgc_heap.arena_used, u64(nbytes))
 			break
 		}
 	}
+	for vgc_heap.arena_open < vgc_heap.narenas {
+		open := unsafe { vgc_heap.arenas[vgc_heap.arena_open] }
+		if open.used < open.size {
+			break
+		}
+		vgc_heap.arena_open++
+	}
 	// Allocate new arena if needed
 	if base == 0 {
-		asize := if nbytes > vgc_arena_size { nbytes } else { vgc_arena_size }
-		mem := C.vgc_os_alloc(asize)
-		if mem == unsafe { nil } {
+		arena = vgc_new_arena(nbytes)
+		if arena == unsafe { nil } {
 			C.vgc_mutex_unlock(&vgc_heap.lock)
 			return unsafe { nil }
 		}
-		arena_idx = vgc_heap.narenas
-		if arena_idx >= vgc_max_arenas {
-			C.vgc_os_free(mem, asize)
-			C.vgc_mutex_unlock(&vgc_heap.lock)
-			return unsafe { nil }
-		}
-		unsafe {
-			vgc_heap.arenas[arena_idx].base = usize(mem)
-			vgc_heap.arenas[arena_idx].size = asize
-			vgc_heap.arenas[arena_idx].used = nbytes
-		}
-		vgc_heap.narenas = arena_idx + 1
-		base = usize(mem)
-		// Register in address map for O(1) lookup
-		C.vgc_addr_map_register(usize(mem), asize, arena_idx)
-		// Update global arena bounds for fast pointer rejection
-		if vgc_arena_lo == 0 || base < vgc_arena_lo {
-			vgc_arena_lo = base
-		}
-		arena_end := base + asize
-		if arena_end > vgc_arena_hi {
-			vgc_arena_hi = arena_end
-		}
+		arena.used = nbytes
+		C.vgc_atomic_add_u64(&vgc_heap.arena_used, u64(nbytes))
+		base = arena.base
 	}
 
 	// Create span metadata (allocate from OS for metadata to avoid chicken-and-egg)
@@ -544,20 +585,98 @@ fn vgc_span_alloc(npages u32, owner int) &VGC_Span {
 		span.cached_by = owner
 	}
 	// Register span in arena's page map
-	if arena_idx >= 0 {
-		page_start := (base - vgc_heap.arenas[arena_idx].base) / vgc_page_size
-		for p in 0 .. npages {
-			pidx := page_start + p
-			if pidx < vgc_pages_per_arena {
-				unsafe {
-					vgc_heap.arenas[arena_idx].page_span[pidx] = span
-				}
-			}
+	page_start := (base - arena.base) / vgc_page_size
+	for p in 0 .. usize(npages) {
+		unsafe {
+			arena.page_span[page_start + p] = span
 		}
 	}
 
 	C.vgc_mutex_unlock(&vgc_heap.lock)
 	return span
+}
+
+// vgc_new_arena gets an arena for a span of nbytes from the OS: vgc_arena_size bytes, or
+// nbytes for a larger object. The caller holds vgc_heap.lock.
+fn vgc_new_arena(nbytes usize) &VGC_Arena {
+	if vgc_heap.narenas == vgc_heap.arenas_cap {
+		new_cap := if vgc_heap.arenas_cap == 0 { 8 } else { vgc_heap.arenas_cap * 2 }
+		table := unsafe { &&VGC_Arena(C.vgc_os_alloc(usize(new_cap) * sizeof(voidptr))) }
+		if table == unsafe { nil } {
+			return unsafe { nil }
+		}
+		if vgc_heap.arenas != unsafe { nil } {
+			unsafe {
+				C.memcpy(table, vgc_heap.arenas, usize(vgc_heap.narenas) * sizeof(voidptr))
+			}
+			C.vgc_os_free(vgc_heap.arenas, usize(vgc_heap.arenas_cap) * sizeof(voidptr))
+		}
+		vgc_heap.arenas = table
+		vgc_heap.arenas_cap = new_cap
+	}
+	asize := if nbytes > vgc_arena_size { nbytes } else { usize(vgc_arena_size) }
+	mem := C.vgc_os_alloc(asize)
+	if mem == unsafe { nil } {
+		return unsafe { nil }
+	}
+	// The arena and its page map share one allocation, zeroed by the OS.
+	npages := asize / vgc_page_size
+	desc := C.vgc_os_alloc(sizeof(VGC_Arena) + npages * sizeof(voidptr))
+	if desc == unsafe { nil } {
+		C.vgc_os_free(mem, asize)
+		return unsafe { nil }
+	}
+	mut arena := unsafe { &VGC_Arena(desc) }
+	arena.base = usize(mem)
+	arena.size = asize
+	arena.page_span = unsafe { &&VGC_Span(usize(desc) + sizeof(VGC_Arena)) }
+	unsafe {
+		vgc_heap.arenas[vgc_heap.narenas] = arena
+	}
+	vgc_heap.narenas++
+	if !vgc_arena_map_add(arena) {
+		vgc_heap.arena_map_partial = true
+	}
+	C.vgc_atomic_add_u64(&vgc_heap.arena_bytes, u64(asize))
+	// Update global arena bounds for fast pointer rejection
+	if vgc_arena_lo == 0 || arena.base < vgc_arena_lo {
+		vgc_arena_lo = arena.base
+	}
+	if arena.base + asize > vgc_arena_hi {
+		vgc_arena_hi = arena.base + asize
+	}
+	return arena
+}
+
+// vgc_arena_map_add enters an arena in the arena map. It returns false when the arena lies above
+// the map, or a chunk of the map cannot be allocated; vgc_find_arena then searches the table for
+// it. The caller holds vgc_heap.lock.
+fn vgc_arena_map_add(arena &VGC_Arena) bool {
+	first := arena.base >> vgc_granule_shift
+	last := (arena.base + arena.size - 1) >> vgc_granule_shift
+	if last >= vgc_arena_map_granules {
+		return false
+	}
+	for g in first .. last + 1 {
+		mut chunk := vgc_heap.arena_map[g >> vgc_arena_map_l2_bits]
+		if chunk == unsafe { nil } {
+			chunk = unsafe { &VGC_Granule(C.vgc_os_alloc(vgc_arena_map_l2_size * sizeof(VGC_Granule))) }
+			if chunk == unsafe { nil } {
+				return false
+			}
+			C.vgc_atomic_fence()
+			vgc_heap.arena_map[g >> vgc_arena_map_l2_bits] = chunk
+		}
+		mut granule := unsafe { &chunk[g & (vgc_arena_map_l2_size - 1)] }
+		slot := if granule.arena[0] == unsafe { nil } { 0 } else { 1 }
+		if granule.arena[slot] != unsafe { nil } {
+			return false
+		}
+		// A lookup that finds the arena must see its fields.
+		C.vgc_atomic_fence()
+		granule.arena[slot] = arena
+	}
+	return true
 }
 
 // vgc_meta_alloc returns zeroed memory for the metadata of a span. Spans are recycled, never
@@ -1134,13 +1253,10 @@ fn vgc_next_span(arena int, page usize) (&VGC_Span, int, usize) {
 	mut ai := arena
 	mut p := page
 	for ai < vgc_heap.narenas {
-		a := unsafe { &vgc_heap.arenas[ai] }
-		mut used_pages := a.used / vgc_page_size
-		if used_pages > vgc_pages_per_arena {
-			used_pages = vgc_pages_per_arena
-		}
+		a := unsafe { vgc_heap.arenas[ai] }
+		used_pages := a.used / vgc_page_size
 		for p < used_pages {
-			span := a.page_span[p]
+			span := unsafe { a.page_span[p] }
 			if span == unsafe { nil } || span.npages == 0 {
 				p++
 				continue
@@ -1153,26 +1269,70 @@ fn vgc_next_span(arena int, page usize) (&VGC_Span, int, usize) {
 	return unsafe { nil }, ai, p
 }
 
+@[direct_array_access]
 fn vgc_find_span(ptr voidptr) &VGC_Span {
 	addr := usize(ptr)
 	// Fast reject: most probed words are not heap pointers at all.
 	if addr < vgc_arena_lo || addr >= vgc_arena_hi {
 		return unsafe { nil }
 	}
-	// Locate the owning arena by direct scan. narenas is small (<= 64) and this is
-	// always correct, unlike the address map which fails for high mmap addresses
-	// (idx >= VGC_ADDR_MAP_SIZE) and for arenas that share one map slot.
-	for i in 0 .. vgc_heap.narenas {
-		a := unsafe { &vgc_heap.arenas[i] }
-		if addr >= a.base && addr < a.base + a.size {
-			page_idx := (addr - a.base) / vgc_page_size
-			if page_idx < vgc_pages_per_arena {
-				return a.page_span[page_idx]
+	// The arena map lookup of vgc_find_arena, without a call: marking calls this for every word
+	// that it scans.
+	g := addr >> vgc_granule_shift
+	if g < vgc_arena_map_granules {
+		chunk := vgc_heap.arena_map[g >> vgc_arena_map_l2_bits]
+		if chunk != unsafe { nil } {
+			granule := unsafe { &chunk[g & (vgc_arena_map_l2_size - 1)] }
+			mut a := granule.arena[0]
+			if a != unsafe { nil } && addr - a.base < a.size {
+				return unsafe { a.page_span[(addr - a.base) >> vgc_page_shift] }
 			}
-			return unsafe { nil }
+			a = granule.arena[1]
+			if a != unsafe { nil } && addr - a.base < a.size {
+				return unsafe { a.page_span[(addr - a.base) >> vgc_page_shift] }
+			}
 		}
 	}
-	return unsafe { nil }
+	if !vgc_heap.arena_map_partial {
+		return unsafe { nil }
+	}
+	a := vgc_find_arena(addr)
+	if a == unsafe { nil } {
+		return unsafe { nil }
+	}
+	return unsafe { a.page_span[(addr - a.base) >> vgc_page_shift] }
+}
+
+// vgc_find_arena returns the arena that holds addr, or nil.
+@[direct_array_access]
+fn vgc_find_arena(addr usize) &VGC_Arena {
+	g := addr >> vgc_granule_shift
+	if g < vgc_arena_map_granules {
+		chunk := vgc_heap.arena_map[g >> vgc_arena_map_l2_bits]
+		if chunk != unsafe { nil } {
+			granule := unsafe { &chunk[g & (vgc_arena_map_l2_size - 1)] }
+			for a in granule.arena {
+				if a != unsafe { nil } && addr - a.base < a.size {
+					return a
+				}
+			}
+		}
+	}
+	if !vgc_heap.arena_map_partial {
+		return unsafe { nil }
+	}
+	// An arena that the map could not hold is searched for in the table.
+	mut found := unsafe { &VGC_Arena(nil) }
+	C.vgc_mutex_lock(&vgc_heap.lock)
+	for i in 0 .. vgc_heap.narenas {
+		b := unsafe { vgc_heap.arenas[i] }
+		if addr >= b.base && addr < b.base + b.size {
+			found = b
+			break
+		}
+	}
+	C.vgc_mutex_unlock(&vgc_heap.lock)
+	return found
 }
 
 // Get the allocation size of an object
@@ -1190,13 +1350,8 @@ fn vgc_is_heap_ptr(addr usize) bool {
 	if addr < vgc_arena_lo || addr >= vgc_arena_hi {
 		return false
 	}
-	for i in 0 .. vgc_heap.narenas {
-		a := unsafe { &vgc_heap.arenas[i] }
-		if addr >= a.base && addr < a.base + a.used {
-			return true
-		}
-	}
-	return false
+	a := vgc_find_arena(addr)
+	return a != unsafe { nil } && addr < a.base + a.used
 }
 
 // Safepoint: called when GC needs threads to stop

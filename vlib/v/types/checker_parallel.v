@@ -3491,13 +3491,21 @@ fn (tc &TypeChecker) container_value_layouts_differ(actual Type, expected Type) 
 		// A referenced array or map is shared, never converted.
 		return is_container_type(clean_actual.base_type)
 			&& is_container_type(clean_expected.base_type)
-			&& tc.container_elem_layouts_differ(clean_actual, clean_expected)
+			&& tc.in_place_container_layouts_differ(clean_actual.base_type, clean_expected.base_type)
 	}
 	if !is_container_type(clean_actual) || !is_container_type(clean_expected) {
 		return false
 	}
 	mut actual_elem := clean_actual
 	mut expected_elem := clean_expected
+	if actual_elem is ArrayFixed && expected_elem is Array {
+		// A fixed array used as a dynamic one is copied into a new array element by
+		// element, so its elements are compared as those of a dynamic array.
+		actual_elem = unalias_type(actual_elem.elem_type)
+		expected_elem = unalias_type(expected_elem.elem_type)
+	}
+	compared_actual := actual_elem
+	compared_expected := expected_elem
 	for actual_elem is Array && expected_elem is Array {
 		actual_elem = unalias_type(actual_elem.elem_type)
 		expected_elem = unalias_type(expected_elem.elem_type)
@@ -3505,7 +3513,7 @@ fn (tc &TypeChecker) container_value_layouts_differ(actual Type, expected Type) 
 	if clean_expected is Array && (expected_elem is Interface || expected_elem is SumType) {
 		return false
 	}
-	return tc.container_elem_layouts_differ(clean_actual, clean_expected)
+	return tc.container_elem_layouts_differ(compared_actual, compared_expected)
 }
 
 fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file string, module_name string) {

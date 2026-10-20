@@ -126,6 +126,7 @@ fn vgc_gc_run(_ voidptr) {
 	vgc_update_trigger()
 
 	vgc_heap.gc_cycle++
+	C.vgc_atomic_store_u64(&vgc_heap.alloc_at_gc, C.vgc_atomic_load_u64(&vgc_heap.total_alloc))
 	// Resume the threads only now. Nothing marks the objects that they allocate, so they
 	// must not allocate before the sweep is done, and the sweep must not change a span
 	// while a thread allocates from it.
@@ -139,6 +140,8 @@ fn vgc_gc_run(_ voidptr) {
 
 // Clear all mark bits before a new GC cycle
 fn vgc_clear_mark_bits() {
+	// Keep the arena table still while walking it.
+	C.vgc_mutex_lock(&vgc_heap.lock)
 	mut arena := 0
 	mut page := usize(0)
 	for {
@@ -156,6 +159,7 @@ fn vgc_clear_mark_bits() {
 			unsafe { C.memset(span.mark_bits, 0, bitmap_size) }
 		}
 	}
+	C.vgc_mutex_unlock(&vgc_heap.lock)
 }
 
 // Conservative root scanning: scan the globals, registered global arrays and thread stacks.
@@ -480,7 +484,7 @@ fn vgc_do_sweep() {
 
 // vgc_sweep_spans sweeps and files every span that the current sweep has not handled yet.
 fn vgc_sweep_spans() {
-	// Keep the arenas still while walking them.
+	// Keep the arena table still while walking it.
 	C.vgc_mutex_lock(&vgc_heap.lock)
 	mut arena := 0
 	mut page := usize(0)
@@ -580,6 +584,7 @@ fn vgc_sweep_finish() {
 // Count total marked bytes across all spans using byte-level popcount
 fn vgc_count_marked() u64 {
 	mut total := u64(0)
+	C.vgc_mutex_lock(&vgc_heap.lock)
 	mut arena := 0
 	mut page := usize(0)
 	for {
@@ -603,6 +608,7 @@ fn vgc_count_marked() u64 {
 		}
 		total += u64(count) * u64(span.elem_size)
 	}
+	C.vgc_mutex_unlock(&vgc_heap.lock)
 	return total
 }
 
@@ -625,32 +631,31 @@ fn vgc_update_trigger() {
 // Heap usage reporting
 // ============================================================
 
+// vgc_heap_usage returns heap_size, free_bytes, total_bytes, unmapped_bytes and bytes_since_gc,
+// with the meanings of Boehm's GC_get_heap_usage_safe():
+// - heap_size: the heap memory obtained from the OS, without the part returned to it. vgc gets
+//   it in arenas, and gives the pages of every span that a collection empties back to the OS.
+// - free_bytes: the part of heap_size in free blocks: the arenas' parts that no span was carved
+//   from yet. Like Boehm's heap blocks that were never allocated, they are mapped but untouched.
+// - total_bytes: the bytes allocated since the program started.
+// - unmapped_bytes: the pages of the free spans, which went back to the OS.
+// - bytes_since_gc: the bytes allocated since the last collection.
 fn vgc_heap_usage() (usize, usize, usize, usize, usize) {
-	live := C.vgc_atomic_load_u64(&vgc_heap.heap_live)
-	total_alloc := C.vgc_atomic_load_u64(&vgc_heap.total_alloc)
-	// Count actual in-use span pages as heap size
-	mut in_use_bytes := usize(0)
-	mut arena := 0
-	mut page := usize(0)
-	for {
-		span, next_arena, next_page := vgc_next_span(arena, page)
-		if span == unsafe { nil } {
-			break
-		}
-		arena = next_arena
-		page = next_page
-		if span.in_use {
-			in_use_bytes += usize(span.npages) * vgc_page_size
-		}
-	}
-	free_bytes := if in_use_bytes > usize(live) { in_use_bytes - usize(live) } else { usize(0) }
-	return in_use_bytes, free_bytes, usize(live), usize(total_alloc), usize(vgc_heap.gc_cycle)
+	obtained := C.vgc_atomic_load_u64(&vgc_heap.arena_bytes)
+	used := C.vgc_atomic_load_u64(&vgc_heap.arena_used)
+	unmapped := C.vgc_atomic_load_u64(&vgc_heap.unmapped_bytes)
+	total := C.vgc_atomic_load_u64(&vgc_heap.total_alloc)
+	at_gc := C.vgc_atomic_load_u64(&vgc_heap.alloc_at_gc)
+	heap_size := if obtained > unmapped { obtained - unmapped } else { u64(0) }
+	free := if obtained > used { obtained - used } else { u64(0) }
+	since_gc := if total > at_gc { total - at_gc } else { u64(0) }
+	return usize(heap_size), usize(free), usize(total), usize(unmapped), usize(since_gc)
 }
 
+// vgc_memory_use returns the heap memory in use: the pages of the spans that are not free, which
+// is heap_size - free_bytes, as with Boehm's GC_get_memory_use().
 fn vgc_memory_use() usize {
-	mut total := usize(0)
-	for i in 0 .. vgc_heap.narenas {
-		total += vgc_heap.arenas[i].used
-	}
-	return total
+	used := C.vgc_atomic_load_u64(&vgc_heap.arena_used)
+	unmapped := C.vgc_atomic_load_u64(&vgc_heap.unmapped_bytes)
+	return if used > unmapped { usize(used - unmapped) } else { usize(0) }
 }

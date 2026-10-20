@@ -1101,10 +1101,11 @@ fn (t &Transformer) collection_const_expr_for_ident(id flat.NodeId) ?flat.NodeId
 }
 
 fn (t &Transformer) map_const_expr_for_ident(id flat.NodeId) ?flat.NodeId {
+	expr_id := t.collection_const_expr_for_ident(id) or { return none }
 	if !flat.source_type_shape(t.clean_map_type(t.node_type(id))).has(.map_type) {
 		return none
 	}
-	return t.collection_const_expr_for_ident(id)
+	return expr_id
 }
 
 fn (t &Transformer) sum_default_may_expand(typ_id u32) bool {

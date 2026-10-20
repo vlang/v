@@ -138,13 +138,12 @@ fn test_free_slots_of_partly_used_spans_are_reused() {
 		}
 		mut again := []voidptr{cap: 300}
 		vgc_gc_start()
-		in_use, _, _, _, _ := vgc_heap_usage()
+		in_use := vgc_memory_use()
 		// 320 slots are free in the 80 spans that hold the kept objects.
 		for _ in 0 .. 300 {
 			again << vgc_malloc_noscan(1500)
 		}
-		in_use_after, _, _, _, _ := vgc_heap_usage()
-		assert in_use_after == in_use
+		assert vgc_memory_use() == in_use
 		assert kept.len == 80
 	}
 }
@@ -207,32 +206,34 @@ fn test_every_span_is_swept() {
 		// More spans than the 16384 that the collector used to track.
 		vgc_test_allocate_pages(17000)
 		gc_collect()
-		used := vgc_memory_use()
-		// The spans of the garbage are free again, and new objects reuse them.
+		used := C.vgc_atomic_load_u64(&vgc_heap.arena_used)
+		// The spans of the garbage are free again, and new objects reuse them instead of
+		// carving new spans out of the arenas.
 		vgc_test_allocate_pages(17000)
-		assert vgc_memory_use() == used
+		assert C.vgc_atomic_load_u64(&vgc_heap.arena_used) == used
 	}
 }
 
 fn test_span_metadata_takes_little_memory() {
 	$if vgc ? {
 		// The earlier tests made about 20000 spans. Their metadata used three pages each.
-		assert vgc_memory_use() > 100 * 1024 * 1024
-		assert vgc_heap.meta_bytes < u64(vgc_memory_use() / 16) + u64(vgc_meta_chunk_size)
+		spans_bytes := C.vgc_atomic_load_u64(&vgc_heap.arena_used)
+		assert spans_bytes > 100 * 1024 * 1024
+		assert vgc_heap.meta_bytes < spans_bytes / 16 + u64(vgc_meta_chunk_size)
 	}
 }
 
 fn test_the_heap_stays_bounded_with_a_bounded_live_set() {
 	$if vgc ? {
 		gc_collect()
-		base, _, _, _, _ := vgc_heap_usage()
+		base := vgc_memory_use()
 		mut ring := []string{len: 4096}
 		mut peak := usize(0)
 		// About 100 MB of strings in total, of which about 1 MB stays live.
 		for i in 0 .. 400_000 {
 			ring[i % ring.len] = 'bounded live set '.repeat(1 + i % 30)
 			if i % 20_000 == 0 {
-				in_use, _, _, _, _ := vgc_heap_usage()
+				in_use := vgc_memory_use()
 				if in_use > peak {
 					peak = in_use
 				}

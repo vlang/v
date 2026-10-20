@@ -728,14 +728,15 @@ pub fn memdup_align(src voidptr, sz isize, align isize) voidptr {
 	return C.memcpy(res, src, sz)
 }
 
-// GCHeapUsage contains stats about the current heap usage of your program.
+// GCHeapUsage contains stats about the current heap usage of your program. The fields mean
+// the same with `-gc boehm` and `-gc vgc`; they are 0 with `-gc none`.
 pub struct GCHeapUsage {
 pub:
-	heap_size      usize
-	free_bytes     usize
-	total_bytes    usize
-	unmapped_bytes usize
-	bytes_since_gc usize
+	heap_size      usize // the heap memory obtained from the OS, without the part returned to it
+	free_bytes     usize // the part of heap_size in free blocks
+	total_bytes    usize // the bytes allocated since the program started
+	unmapped_bytes usize // free heap memory that was returned to the OS
+	bytes_since_gc usize // the bytes allocated since the last collection
 }
 
 // gc_heap_usage returns the info about heap usage.
@@ -759,7 +760,8 @@ pub fn gc_heap_usage() GCHeapUsage {
 	}
 }
 
-// gc_memory_use returns the total memory use in bytes by all allocated blocks.
+// gc_memory_use returns the total memory use in bytes by all allocated blocks: the heap_size
+// of gc_heap_usage() without its free_bytes.
 pub fn gc_memory_use() usize {
 	$if vgc ? {
 		return vgc_memory_use()

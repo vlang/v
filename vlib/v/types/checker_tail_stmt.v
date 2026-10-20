@@ -10720,7 +10720,7 @@ fn (tc &TypeChecker) type_compatible(actual &Type, expected &Type) bool {
 			// A referenced array or map is shared, never converted: a `&[]Item` is not
 			// a `&[]Named`, and a `&[]u8` is not a `&[]u64`.
 			if is_container_type(actual.base_type) && is_container_type(expected.base_type) {
-				return !tc.container_elem_layouts_differ(actual.base_type, expected.base_type)
+				return !tc.in_place_container_layouts_differ(actual.base_type, expected.base_type)
 			}
 			return true
 		}
@@ -10846,8 +10846,17 @@ fn (tc &TypeChecker) mut_arg_container_layouts_differ(actual Type, expected Type
 	if !is_container_type(clean_actual) || !is_container_type(clean_expected) {
 		return false
 	}
+	return tc.in_place_container_layouts_differ(clean_actual, clean_expected)
+}
+
+// in_place_container_layouts_differ reports whether the array or map `actual`, used in
+// place (behind a reference, or as a `mut` or `shared` argument), stores its elements
+// differently from the one `expected`. A fixed array used as a dynamic array is viewed
+// in place: it keeps its elements as they are, so only they have to match.
+fn (tc &TypeChecker) in_place_container_layouts_differ(actual Type, expected Type) bool {
+	clean_actual := unalias_type(actual)
+	clean_expected := unalias_type(expected)
 	if clean_actual is ArrayFixed && clean_expected is Array {
-		// A fixed array passed as a `mut` dynamic array keeps its elements as they are.
 		return tc.container_elem_layouts_differ(clean_actual.elem_type, clean_expected.elem_type)
 	}
 	return tc.container_elem_layouts_differ(clean_actual, clean_expected)
@@ -10856,8 +10865,9 @@ fn (tc &TypeChecker) mut_arg_container_layouts_differ(actual Type, expected Type
 // container_elem_layouts_differ reports whether otherwise compatible array element,
 // map key or map value types store their elements differently. A container is not
 // converted element by element, so unlike plain values the types must match: aliases
-// are transparent, but `u32` is not a `u64`, `int` is not a `?int` or a flag enum, and
-// a concrete type (or a sum type) is not the interface or sum type that would box it.
+// are transparent, but `u32` is not a `u64`, `int` is not a `?int` or a flag enum, a
+// fixed array is not a dynamic one, and a concrete type (or a sum type) is not the
+// interface or sum type that would box it.
 fn (tc &TypeChecker) container_elem_layouts_differ(actual Type, expected Type) bool {
 	clean_actual := unalias_type(actual)
 	clean_expected := unalias_type(expected)
@@ -10888,11 +10898,14 @@ fn (tc &TypeChecker) container_elem_layouts_differ(actual Type, expected Type) b
 			if clean_actual is Array {
 				return tc.container_elem_layouts_differ(clean_actual.elem_type, clean_expected.elem_type)
 			}
+			// A fixed array stores its elements in place, a dynamic one behind a pointer.
+			return clean_actual is ArrayFixed
 		}
 		ArrayFixed {
 			if clean_actual is ArrayFixed {
 				return tc.container_elem_layouts_differ(clean_actual.elem_type, clean_expected.elem_type)
 			}
+			return clean_actual is Array
 		}
 		Map {
 			if clean_actual is Map {
