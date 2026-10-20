@@ -29,6 +29,11 @@ fn memdup(value voidptr, size isize) voidptr {
     result := C.malloc(usize(size))
     return C.memcpy(result, value, usize(size))
 }
+// SSA sum storage starts with the i32 tag declared in ssa/builder.v.
+struct NativeSumHeader { typ i32 }
+fn native_sum_tag(value &Type) i32 {
+    return unsafe { (&NativeSumHeader(value)).typ }
+}
 fn main() {
     integer := Type(Primitive{props: .integer, size: 32})
     boolean := Type(Primitive{props: .boolean, size: 8})
@@ -53,8 +58,11 @@ fn main() {
     if first !is FnType || second !is FnType || semantic_types_equal(&first, &second)
         || semantic_type_hash(&first) == semantic_type_hash(&second) { C.exit(5) }
     zero := unsafe { &Type(C.calloc(1, usize(sizeof(Type)))) }
-    if zero !is Void || !semantic_types_equal(zero, &builtin_void_type)
-        || semantic_type_hash(zero) != semantic_type_hash(&builtin_void_type) { C.exit(6) }
+    if native_sum_tag(zero) != 0 { C.exit(6) }
+    valid_void := Type(Void{})
+    if native_sum_tag(&valid_void) != 1 || valid_void !is Void
+        || !semantic_types_equal(&valid_void, &builtin_void_type)
+        || semantic_type_hash(&valid_void) != semantic_type_hash(&builtin_void_type) { C.exit(6) }
     equivalent_integer := Type(Primitive{props: .integer, size: 32})
     equivalent_array := Type(Array{elem_type: new_type_reference(equivalent_integer)})
     equivalent_optional := Type(OptionType{base_type: new_type_reference(equivalent_array)})
