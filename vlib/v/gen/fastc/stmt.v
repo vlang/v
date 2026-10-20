@@ -2651,6 +2651,17 @@ fn (g &Parser) multi_return_types_for_expression(tokens []FastcExpressionToken) 
 		name_index = 2
 		open_index = 3
 	}
+	if expression_tokens[open_index].tok == .lsbr
+		&& expression_tokens[name_index].lit.contains('_mono_') {
+		// An explicit generic call into another module (`util.pair[int](1)`) keeps its type
+		// arguments after the specialized name (`util.pair_mono_int[int](1)`).
+		type_arguments_close := fastc_matching_delimiter(expression_tokens, open_index, .lsbr,
+			.rsbr) or { return []u32{} }
+		open_index = type_arguments_close + 1
+		if open_index >= expression_tokens.len {
+			return []u32{}
+		}
+	}
 	if expression_tokens[name_index].tok !in [.name, .key_select] || expression_tokens[open_index].tok != .lpar {
 		return []u32{}
 	}
@@ -2664,7 +2675,10 @@ fn (g &Parser) multi_return_types_for_expression(tokens []FastcExpressionToken) 
 	} else {
 		g.function_key_for_call(expression_tokens, name_index)
 	}
-	signature := g.functions[function_key] or { return []u32{} }
+	// A generic function specialized for this file is registered with the parser.
+	signature := g.functions[function_key] or {
+		g.mono_functions[function_key] or { return []u32{} }
+	}
 	return signature.return_types.ids.clone()
 }
 
