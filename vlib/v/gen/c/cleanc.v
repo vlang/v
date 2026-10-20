@@ -13617,19 +13617,7 @@ fn (mut g FlatGen) gen_expr_with_expected_type_inner(id flat.NodeId, expected_ty
 		return
 	}
 	clean_expected := unalias_type(expected)
-	if node.kind == .prefix && node.op in [.minus, .plus] && node.children_count > 0 && clean_expected is types.Primitive && clean_expected.props.has(.float) && clean_expected.size == 32 {
-		child_id := g.a.child(node, 0)
-		child := g.a.nodes[int(child_id)]
-		if child.kind == .float_literal {
-			g.write(g.op_str(node.op))
-			g.gen_expr_with_expected_type(child_id, expected)
-			return
-		}
-	}
-	if node.kind == .float_literal && clean_expected is types.Primitive && clean_expected.props.has(.float) && clean_expected.size == 32 {
-		g.write('(float)(')
-		g.gen_expr(id)
-		g.write(')')
+	if is_f32_primitive(clean_expected) && g.gen_untyped_float_expr_as_f32(id, node, expected) {
 		return
 	}
 	if wide_target := int128_signedness(semantic_expected) {
@@ -13643,6 +13631,93 @@ fn (mut g FlatGen) gen_expr_with_expected_type_inner(id flat.NodeId, expected_ty
 		}
 	}
 	g.gen_expr(id)
+}
+
+fn is_f32_primitive(typ &types.Type) bool {
+	return typ is types.Primitive && typ.props.has(.float) && typ.size == 32
+}
+
+// gen_untyped_float_expr_as_f32 writes an untyped float constant expression, such as `1.2`,
+// `(-1.2)` or `1.2 + 0.1`, where an f32 is expected. Like V 0.5.2, which folds the constant
+// and then converts it, the value is rounded to f32 once: a literal or an arithmetic
+// expression is cast as a whole, and signs and parentheses stay outside the cast.
+fn (mut g FlatGen) gen_untyped_float_expr_as_f32(id flat.NodeId, node &flat.Node, expected types.Type) bool {
+	match node.kind {
+		.float_literal {}
+		.prefix, .paren {
+			if node.children_count != 1 {
+				return false
+			}
+			if node.kind == .prefix && node.op !in [.minus, .plus] {
+				return false
+			}
+			child_id := g.a.child(node, 0)
+			if !g.is_untyped_float_literal_expr(child_id) {
+				return false
+			}
+			g.write(if node.kind == .prefix { g.op_str(node.op) } else { '(' })
+			g.gen_expr_with_expected_type(child_id, expected)
+			if node.kind == .paren {
+				g.write(')')
+			}
+			return true
+		}
+		.infix {
+			if !g.is_untyped_float_literal_expr(id) {
+				return false
+			}
+		}
+		else {
+			return false
+		}
+	}
+	g.write('(float)(')
+	g.gen_expr(id)
+	g.write(')')
+	return true
+}
+
+// is_untyped_float_literal_expr reports whether `id` is an untyped float constant: numeric
+// literals, at least one of them a float, combined only by signs, parentheses and arithmetic.
+fn (g &FlatGen) is_untyped_float_literal_expr(id flat.NodeId) bool {
+	is_literal, has_float := g.untyped_numeric_literal_expr_info(id)
+	return is_literal && has_float
+}
+
+// untyped_numeric_literal_expr_info reports whether `id` is built only from numeric literals,
+// signs, parentheses and arithmetic, and whether one of the literals is a float.
+fn (g &FlatGen) untyped_numeric_literal_expr_info(id flat.NodeId) (bool, bool) {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return false, false
+	}
+	node := unsafe { &g.a.nodes[int(id)] }
+	match node.kind {
+		.float_literal {
+			return true, true
+		}
+		.int_literal {
+			return true, false
+		}
+		.paren {
+			if node.children_count == 1 {
+				return g.untyped_numeric_literal_expr_info(g.a.child(node, 0))
+			}
+		}
+		.prefix {
+			if node.op in [.plus, .minus] && node.children_count == 1 {
+				return g.untyped_numeric_literal_expr_info(g.a.child(node, 0))
+			}
+		}
+		.infix {
+			if node.op in [.plus, .minus, .mul, .div, .mod] && node.children_count == 2 {
+				lhs_literal, lhs_float := g.untyped_numeric_literal_expr_info(g.a.child(node, 0))
+				rhs_literal, rhs_float := g.untyped_numeric_literal_expr_info(g.a.child(node, 1))
+				return lhs_literal && rhs_literal, lhs_float || rhs_float
+			}
+		}
+		else {}
+	}
+	return false, false
 }
 
 fn (mut g FlatGen) gen_sum_pointer_default_expr(node flat.Node, expected types.Type) bool {
@@ -14385,7 +14460,8 @@ fn (mut g FlatGen) gen_expr_with_possible_enum_type(id flat.NodeId, expected typ
 		child := g.a.child_node(&node, 0)
 		is_signed_numeric_literal = child.kind in [.int_literal, .float_literal]
 	}
-	if expected is types.Enum || node.kind in [.int_literal, .float_literal] || is_signed_numeric_literal {
+	if expected is types.Enum || node.kind in [.int_literal, .float_literal] || is_signed_numeric_literal
+		|| (is_f32_primitive(unalias_type(expected)) && g.is_untyped_float_literal_expr(id)) {
 		g.gen_expr_with_expected_type(id, expected)
 		return
 	}
