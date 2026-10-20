@@ -982,6 +982,8 @@ struct FastcLocal {
 	// original boxed sum-type/interface type. A method defined on the whole sum type (`fn (e
 	// Expr) pos()`) is not on the variant, so it dispatches on the still-live boxed original.
 	smartcast_origin_type u32
+	// Keep the declared slot mode distinct from a narrowed payload reference.
+	smartcast_origin_is_reference bool
 	// C expression that still names the original boxed value while this local is narrowed.
 	// Mutable calls accepting the sum type must receive this storage, not the concrete payload
 	// pointer, because their ABI expects the sum-type tag/object wrapper.
@@ -991,6 +993,13 @@ struct FastcLocal {
 	// `x`/`y` for the rest of that `&&` chain. Scoped with the local, so it never leaks between
 	// functions that reuse the bool's name.
 	bool_implications []FastcBoolImplication
+}
+
+fn (local FastcLocal) original_is_reference() bool {
+	if local.smartcast_origin_type != u32(0) {
+		return local.smartcast_origin_is_reference
+	}
+	return local.is_reference
 }
 
 struct FastcLocalScopeChange {

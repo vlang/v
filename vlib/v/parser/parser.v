@@ -86,6 +86,7 @@ pub struct Parser {
 	prefs &pref.Preferences
 mut:
 	s                            scanner.Scanner
+	pending_children             []flat.NodeId
 	tok                          token.Token
 	lit                          string
 	tok_pos                      int
@@ -1446,11 +1447,17 @@ fn (p &Parser) tok_can_be_decl_name() bool {
 	return p.tok == .name || (p.tok.is_keyword() && p.tok != .key_volatile)
 }
 
+fn (mut p Parser) copy_pending_children(mark int) int {
+	start := p.a.children.len
+	for i in mark .. p.pending_children.len {
+		p.a.children << p.pending_children[i]
+	}
+	return start
+}
+
 fn (mut p Parser) add_children(ids []flat.NodeId) int {
 	start := p.a.children.len
-	for id in ids {
-		p.a.children << id
-	}
+	p.a.children << ids
 	return start
 }
 
@@ -2012,14 +2019,8 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type_id u3
 		p.nested_block_depth = outer_nested_block_depth
 	}
 
-	mut all_ids := []flat.NodeId{cap: param_ids.len + body_ids.len}
-	for id in param_ids {
-		all_ids << id
-	}
-	for id in body_ids {
-		all_ids << id
-	}
-	start := p.add_children(all_ids)
+	start := p.add_children(param_ids)
+	p.add_children(body_ids)
 	id := p.add_node(flat.Node{
 		kind:           .fn_decl
 		op:             if is_pub { .arrow } else { .none }
@@ -2028,7 +2029,7 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type_id u3
 		typ:            flat.source_type_id(ret_type)
 		pos:            token.new_pos(p.cur_file_id, name_pos)
 		children_start: start
-		children_count: flat.child_count(all_ids.len)
+		children_count: flat.child_count(param_ids.len + body_ids.len)
 	})
 	p.record_formatter_param_list_end(id, param_list_end)
 	p.register_pending_export(name)
@@ -2254,14 +2255,8 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type_
 	p.defer_result_allowed = outer_defer_result_allowed
 	p.nested_block_depth = outer_nested_block_depth
 
-	mut all_ids := []flat.NodeId{cap: param_ids.len + body_ids.len}
-	for id in param_ids {
-		all_ids << id
-	}
-	for id in body_ids {
-		all_ids << id
-	}
-	start := p.add_children(all_ids)
+	start := p.add_children(param_ids)
+	p.add_children(body_ids)
 	id := p.add_node(flat.Node{
 		kind:           .fn_decl
 		op:             if is_pub { .arrow } else { .none }
@@ -2270,7 +2265,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type_
 		pos:            token.new_pos(p.cur_file_id, name_pos)
 		payload:        flat.node_payload_with_constraints(generic_params, named_constraints(generic_constraints))
 		children_start: start
-		children_count: flat.child_count(all_ids.len)
+		children_count: flat.child_count(param_ids.len + body_ids.len)
 		flags:          flat.node_flags(false, is_static_type_method)
 	})
 	if p.prefs.is_fmt && formatter_end > 0 {
@@ -10130,7 +10125,8 @@ fn (mut p Parser) control_header_expr(min_bp token.BindingPower) flat.NodeId {
 }
 
 fn (mut p Parser) match_branch_cond() flat.NodeId {
-	if p.tok == .question {
+	is_reference_type := p.tok in [.amp, .and] && p.isreftype_prefix_arg_starts_type()
+	if p.tok == .question || is_reference_type {
 		name := p.parse_type_name()
 		return p.match_type_pattern_node(name)
 	}
@@ -11285,12 +11281,15 @@ fn (mut p Parser) assert_stmt() flat.NodeId {
 	assert_start := p.span_start()
 	p.next() // skip 'assert'
 	cond := p.expr(.lowest)
-	mut ids := []flat.NodeId{}
-	ids << cond
+	mark := p.pending_children.len
+	defer {
+		p.pending_children.trim(mark)
+	}
+	p.pending_children << cond
 	// optional message: assert cond, 'message'
 	if p.tok == .comma {
 		p.next()
-		ids << p.expr(.lowest)
+		p.pending_children << p.expr(.lowest)
 	} else if p.tok !in [.semicolon, .rcbr, .eof, .key_return, .key_break, .key_continue] {
 		literal := if p.tok == .string && p.lit.len >= 2 { p.lit[1..p.lit.len - 1] } else { p.lit }
 		got := if literal == '' { '`${p.tok.str()}`' } else { '${p.tok.str()} `${literal}`' }
@@ -11302,11 +11301,12 @@ fn (mut p Parser) assert_stmt() flat.NodeId {
 	if p.tok == .semicolon {
 		p.next()
 	}
-	astart := p.add_children(ids)
+
+	astart := p.copy_pending_children(mark)
 	return p.add_node(flat.Node{
 		kind:           .assert_stmt
 		children_start: astart
-		children_count: flat.child_count(ids.len)
+		children_count: flat.child_count(p.pending_children.len - mark)
 		pos:            p.span_to(assert_start)
 	})
 }
@@ -13686,7 +13686,10 @@ fn (mut p Parser) map_literal() flat.NodeId {
 }
 
 fn (mut p Parser) map_init_body(map_type_id u32, map_start int) flat.NodeId {
-	mut ids := []flat.NodeId{}
+	mark := p.pending_children.len
+	defer {
+		p.pending_children.trim(mark)
+	}
 	for p.tok != .rcbr && p.tok != .eof {
 		if p.tok == .semicolon || p.tok == .comma {
 			p.next()
@@ -13695,8 +13698,8 @@ fn (mut p Parser) map_init_body(map_type_id u32, map_start int) flat.NodeId {
 		k := p.expr(.lowest)
 		key := p.a.node(k)
 		if key.kind == .prefix && key.value == '...' {
-			ids << k
-			ids << p.a.add_node(flat.Node{ kind: .empty })
+			p.pending_children << k
+			p.pending_children << p.a.add_node(flat.Node{ kind: .empty })
 			if p.tok == .comma || p.tok == .semicolon {
 				p.next()
 			}
@@ -13706,19 +13709,20 @@ fn (mut p Parser) map_init_body(map_type_id u32, map_start int) flat.NodeId {
 		p.in_map_value++
 		v := p.expr(.lowest)
 		p.in_map_value--
-		ids << k
-		ids << v
+		p.pending_children << k
+		p.pending_children << v
 		if p.tok == .comma || p.tok == .semicolon {
 			p.next()
 		}
 	}
 	p.check(.rcbr)
-	start := p.add_children(ids)
+
+	start := p.copy_pending_children(mark)
 	return p.add_node(flat.Node{
 		kind:           .map_init
 		value:          flat.source_type_name(map_type_id)
 		children_start: start
-		children_count: flat.child_count(ids.len)
+		children_count: flat.child_count(p.pending_children.len - mark)
 		pos:            p.span_to(map_start)
 	})
 }
@@ -13930,8 +13934,11 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 	p.check(.lpar)
 	args_start_on_new_line := p.tok != .rpar
 		&& p.line_nr_for_pos(p.tok_pos) > p.line_nr_for_pos(args_start)
-	mut ids := []flat.NodeId{}
-	ids << fn_expr
+	mark := p.pending_children.len
+	defer {
+		p.pending_children.trim(mark)
+	}
+	p.pending_children << fn_expr
 	mut trailing_comma := false
 	mut last_comma_pos := -1
 	mut missing_comma_start := -1
@@ -13949,7 +13956,7 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 			fname := p.expect_name_or_keyword()
 			p.check(.colon)
 			val := p.expr(.lowest)
-			ids << p.a.add_node(flat.Node{
+			p.pending_children << p.a.add_node(flat.Node{
 				kind:           .field_init
 				value:          fname
 				children_start: p.add_child(val)
@@ -13983,7 +13990,7 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 			p.next()
 			inner := p.expr(.lowest)
 			sstart := p.add_child(inner)
-			ids << p.add_node(flat.Node{
+			p.pending_children << p.add_node(flat.Node{
 				kind:           .prefix
 				op:             .none
 				value:          '...'
@@ -13993,10 +14000,10 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 			})
 		} else if p.tok == .logical_or {
 			// lambda no args: || expr
-			ids << p.lambda_expr_no_args()
+			p.pending_children << p.lambda_expr_no_args()
 		} else if p.tok == .pipe {
 			// lambda with args: |a, b| expr
-			ids << p.pipe_lambda_expr()
+			p.pending_children << p.pipe_lambda_expr()
 		} else {
 			mut arg := p.expr(.lowest)
 			if p.tok == .name && p.lit in ['like', 'ilike'] {
@@ -14022,7 +14029,7 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 				val := p.expr(.lowest)
 				arg_node := p.a.nodes[int(arg)]
 				vstart := p.add_child(val)
-				ids << p.add_node(flat.Node{
+				p.pending_children << p.add_node(flat.Node{
 					kind:           .field_init
 					value:          arg_node.value
 					children_start: vstart
@@ -14032,7 +14039,7 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 					p.next()
 				}
 			} else {
-				ids << arg
+				p.pending_children << arg
 			}
 		}
 		if p.tok == .comma {
@@ -14053,7 +14060,7 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 		mut start := int_max(0, p.prev_tok_end - 1)
 		mut end := p.prev_tok_end
 		if expected := p.declared_call_param_count(fn_expr) {
-			if ids.len - 1 < expected {
+			if p.pending_children.len - mark - 1 < expected {
 				message = 'unexpected eof, expecting `,`'
 			}
 		}
@@ -14069,11 +14076,13 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 		}
 	}
 	p.check(.rpar)
+
 	args_end := p.prev_tok_end
 	fn_node := p.a.nodes[int(fn_expr)]
 	if !p.prefs.is_fmt && fn_node.kind == .ident
 		&& fn_node.value in ['print', 'println', 'eprint', 'eprintln'] {
-		for arg_id in ids[1..] {
+		for i in mark + 1 .. p.pending_children.len {
+			arg_id := p.pending_children[i]
 			arg := p.a.nodes[int(arg_id)]
 			if arg.kind == .defer_result && arg.typ_text() == 'invalid' {
 				p.record_diagnostic_span('`${fn_node.value}` can not print void expressions', fn_node.pos.offset, p.prev_tok_end)
@@ -14081,14 +14090,14 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 			}
 		}
 	}
-	p.annotate_short_struct_call_arg(ids)
-	cstart := p.add_children(ids)
+	p.annotate_short_struct_call_arg(mark)
+	cstart := p.copy_pending_children(mark)
 	// Anchor the completed call at its callee (fn_expr) so unknown-function and
 	// argument diagnostics point at the call, not the token after `)`.
 	id := p.add_node_from(flat.Node{
 		kind:           .call
 		children_start: cstart
-		children_count: flat.child_count(ids.len)
+		children_count: flat.child_count(p.pending_children.len - mark)
 	}, fn_expr)
 	if p.prefs.is_fmt && args_start >= 0 && args_end >= args_start && args_end <= p.s.src.len {
 		p.a.formatter_sources[int(id)] = p.s.src[args_start..args_end].clone()
@@ -14126,13 +14135,13 @@ fn (p &Parser) declared_call_param_count(fn_expr flat.NodeId) ?int {
 // fields as separate children for contextual struct parameters; a bare generic
 // parameter still needs the single anonymous aggregate type that V assigns to
 // the short struct literal.
-fn (mut p Parser) annotate_short_struct_call_arg(ids []flat.NodeId) {
+fn (mut p Parser) annotate_short_struct_call_arg(mark int) {
 	mut first_field := -1
 	mut field_names := []string{}
 	mut field_types := []u32{}
 	mut field_positions := []token.Pos{}
-	for i in 1 .. ids.len {
-		field := p.a.node(ids[i])
+	for i in mark + 1 .. p.pending_children.len {
+		field := p.a.node(p.pending_children[i])
 		if field.kind != .field_init {
 			if first_field >= 0 {
 				return
@@ -14157,7 +14166,7 @@ fn (mut p Parser) annotate_short_struct_call_arg(ids []flat.NodeId) {
 	aggregate := p.register_anonymous_struct_type(field_names, field_types, field_positions, false) or {
 		return
 	}
-	p.a.nodes[int(ids[first_field])].typ = aggregate
+	p.a.nodes[int(p.pending_children[first_field])].typ = aggregate
 }
 
 fn (mut p Parser) lambda_expr_no_args() flat.NodeId {
@@ -14618,7 +14627,10 @@ fn (mut p Parser) struct_init(name_id u32) flat.NodeId {
 	name := flat.source_type_name(name_id)
 	init_start := p.struct_init_name_start(name)
 	p.check(.lcbr)
-	mut ids := []flat.NodeId{}
+	mark := p.pending_children.len
+	defer {
+		p.pending_children.trim(mark)
+	}
 	// assoc syntax: Type{...base, field: val}
 	if p.tok == .ellipsis {
 		p.next()
@@ -14626,8 +14638,7 @@ fn (mut p Parser) struct_init(name_id u32) flat.NodeId {
 		if p.tok == .comma || p.tok == .semicolon {
 			p.next()
 		}
-		mut field_ids := []flat.NodeId{}
-		field_ids << base_expr
+		p.pending_children << base_expr
 		for p.tok != .rcbr && p.tok != .eof {
 			if p.tok == .comma {
 				p.next()
@@ -14639,7 +14650,7 @@ fn (mut p Parser) struct_init(name_id u32) flat.NodeId {
 			val := p.expr(.lowest)
 			p.in_struct_init_value--
 			vstart := p.add_child(val)
-			field_ids << p.add_node(flat.Node{
+			p.pending_children << p.add_node(flat.Node{
 				kind:           .field_init
 				value:          fname
 				children_start: vstart
@@ -14652,12 +14663,13 @@ fn (mut p Parser) struct_init(name_id u32) flat.NodeId {
 			}
 		}
 		p.check(.rcbr)
-		start := p.add_children(field_ids)
+
+		start := p.copy_pending_children(mark)
 		return p.add_node(flat.Node{
 			kind:           .assoc
 			value:          name
 			children_start: start
-			children_count: flat.child_count(field_ids.len)
+			children_count: flat.child_count(p.pending_children.len - mark)
 			pos:            p.span_to(init_start)
 		})
 	}
@@ -14679,7 +14691,7 @@ fn (mut p Parser) struct_init(name_id u32) flat.NodeId {
 			val := p.expr(.lowest)
 			p.in_struct_init_value--
 			vstart := p.add_child(val)
-			ids << p.add_node(flat.Node{
+			p.pending_children << p.add_node(flat.Node{
 				kind:           .field_init
 				value:          fname
 				children_start: vstart
@@ -14696,7 +14708,7 @@ fn (mut p Parser) struct_init(name_id u32) flat.NodeId {
 				_ = p.expr(.lowest)
 			}
 			vstart := p.add_child(val)
-			ids << p.add_node(flat.Node{
+			p.pending_children << p.add_node(flat.Node{
 				kind:           .field_init
 				children_start: vstart
 				children_count: 1
@@ -14710,12 +14722,13 @@ fn (mut p Parser) struct_init(name_id u32) flat.NodeId {
 		}
 	}
 	p.check(.rcbr)
-	start := p.add_children(ids)
+
+	start := p.copy_pending_children(mark)
 	return p.add_node(flat.Node{
 		kind:           .struct_init
 		value:          name
 		children_start: start
-		children_count: flat.child_count(ids.len)
+		children_count: flat.child_count(p.pending_children.len - mark)
 		pos:            p.span_to(init_start)
 	})
 }
@@ -14761,9 +14774,12 @@ fn (mut p Parser) string_literal() flat.NodeId {
 
 // string_interp supports string interp handling for Parser.
 fn (mut p Parser) string_interp(first_part string, quote u8, start_pos token.Pos, first_part_flags u8) flat.NodeId {
-	mut ids := []flat.NodeId{}
+	mark := p.pending_children.len
+	defer {
+		p.pending_children.trim(mark)
+	}
 	if first_part.len > 0 {
-		ids << p.add_node(flat.Node{
+		p.pending_children << p.add_node(flat.Node{
 			kind:  .string_literal
 			value: first_part
 			flags: first_part_flags
@@ -14775,7 +14791,7 @@ fn (mut p Parser) string_interp(first_part string, quote u8, start_pos token.Pos
 		expr_id := p.expr(.lowest)
 		if p.tok == .string && p.s.in_str_inter {
 			p.record_diagnostic('expected `}` to close string interpolation', p.tok_pos)
-			ids << expr_id
+			p.pending_children << expr_id
 			relative_line_end := p.s.src[p.tok_pos..].index_u8(`\n`)
 			line_end := if relative_line_end >= 0 {
 				relative_line_end
@@ -14818,14 +14834,14 @@ fn (mut p Parser) string_interp(first_part string, quote u8, start_pos token.Pos
 				})
 			}
 		}
-		ids << part_id
+		p.pending_children << part_id
 		p.check(.rcbr) // skip }
 		if p.tok == .string {
 			part_lit := p.lit
 			part := strip_interp_quotes(part_lit, quote)
 			p.next()
 			if part.len > 0 {
-				ids << p.add_node(flat.Node{
+				p.pending_children << p.add_node(flat.Node{
 					kind:  .string_literal
 					value: part
 					flags: string_literal_flags(part)
@@ -14834,12 +14850,13 @@ fn (mut p Parser) string_interp(first_part string, quote u8, start_pos token.Pos
 			// check for more interpolation after this string part
 		}
 	}
-	start := p.add_children(ids)
+
+	start := p.copy_pending_children(mark)
 	return p.add_node(flat.Node{
 		kind:           .string_interp
 		pos:            token.new_span(start_pos.id, start_pos.offset, p.prev_tok_end)
 		children_start: start
-		children_count: flat.child_count(ids.len)
+		children_count: flat.child_count(p.pending_children.len - mark)
 	})
 }
 
@@ -14928,9 +14945,12 @@ fn (mut p Parser) array_literal() flat.NodeId {
 	}
 	// array literal: [1, 2, 3]
 	// or fixed array type: [3]int
-	mut ids := []flat.NodeId{}
+	mark := p.pending_children.len
+	defer {
+		p.pending_children.trim(mark)
+	}
 	size_start := p.tok_pos
-	ids << p.array_element_expr()
+	p.pending_children << p.array_element_expr()
 	// check if it's [N]Type (fixed array type)
 	if p.tok == .rsbr {
 		size_end := p.tok_pos
@@ -14945,7 +14965,7 @@ fn (mut p Parser) array_literal() flat.NodeId {
 			// size, but recover the full source text for a const expression (e.g.
 			// `[segs + 1]f32`) — an infix node has no `.value`, which would otherwise
 			// collapse the type to a dynamic `[]f32`.
-			size_str := p.fixed_array_size_text(ids[0], size_start, size_end)
+			size_str := p.fixed_array_size_text(p.pending_children[mark], size_start, size_end)
 			if p.tok == .not && !p.prefs.is_fmt {
 				p.record_diagnostic_span('fixed arrays do not support storing Result values',
 					p.tok_pos, p.tok_end)
@@ -14971,7 +14991,7 @@ fn (mut p Parser) array_literal() flat.NodeId {
 			// may have init
 			if p.tok == .lcbr {
 				p.next()
-				mut init_ids := []flat.NodeId{}
+				init_mark := p.pending_children.len
 				mut has_positional_error := false
 				for p.tok != .rcbr && p.tok != .eof {
 					if p.tok == .semicolon {
@@ -14989,7 +15009,7 @@ fn (mut p Parser) array_literal() flat.NodeId {
 						p.check(.colon)
 						val := p.expr(.lowest)
 						vstart := p.add_child(val)
-						init_ids << p.a.add_node(flat.Node{
+						p.pending_children << p.a.add_node(flat.Node{
 							kind:           .field_init
 							value:          fname
 							children_start: vstart
@@ -14998,7 +15018,7 @@ fn (mut p Parser) array_literal() flat.NodeId {
 						})
 					} else {
 						element_start := p.span_start()
-						init_ids << p.expr(.lowest)
+						p.pending_children << p.expr(.lowest)
 						if !has_positional_error {
 							p.record_diagnostic_span('array initializer elements must use square brackets',
 								element_start, p.prev_tok_end)
@@ -15010,13 +15030,14 @@ fn (mut p Parser) array_literal() flat.NodeId {
 					}
 				}
 				p.check(.rcbr)
-				start := p.add_children(init_ids)
+
+				start := p.copy_pending_children(init_mark)
 				return p.add_node(flat.Node{
 					kind:           .array_init
 					value:          fixed_type
 					typ:            flat.source_type_id(fixed_type)
 					children_start: start
-					children_count: flat.child_count(init_ids.len)
+					children_count: flat.child_count(p.pending_children.len - init_mark)
 					pos:            p.span_to(bracket_start)
 				})
 			}
@@ -15037,7 +15058,7 @@ fn (mut p Parser) array_literal() flat.NodeId {
 			// belongs to the postfix parent.
 			lit_pos := p.span_to(bracket_start)
 			p.next()
-			start := p.add_child(ids[0])
+			start := p.add_child(p.pending_children[mark])
 			lit := p.add_node(flat.Node{
 				kind:           .array_literal
 				children_start: start
@@ -15053,11 +15074,12 @@ fn (mut p Parser) array_literal() flat.NodeId {
 				pos:            p.span_to(bracket_start)
 			})
 		}
-		start := p.add_children(ids)
+
+		start := p.copy_pending_children(mark)
 		return p.add_node(flat.Node{
 			kind:           .array_literal
 			children_start: start
-			children_count: flat.child_count(ids.len)
+			children_count: flat.child_count(p.pending_children.len - mark)
 			pos:            p.span_to(bracket_start)
 		})
 	}
@@ -15075,7 +15097,7 @@ fn (mut p Parser) array_literal() flat.NodeId {
 		if p.tok == .rsbr || p.tok == .rcbr || p.tok == .eof || p.tok == .comma {
 			break
 		}
-		ids << p.array_element_expr()
+		p.pending_children << p.array_element_expr()
 	}
 	// Keep recovery local to the literal. Diagnose a doubled comma before
 	// discarding the malformed tail.
@@ -15096,11 +15118,12 @@ fn (mut p Parser) array_literal() flat.NodeId {
 		p.next()
 		is_fixed_literal = true
 	}
-	start := p.add_children(ids)
+
+	start := p.copy_pending_children(mark)
 	lit := p.add_node(flat.Node{
 		kind:           .array_literal
 		children_start: start
-		children_count: flat.child_count(ids.len)
+		children_count: flat.child_count(p.pending_children.len - mark)
 		pos:            lit_pos
 	})
 	if is_fixed_literal {
@@ -15306,7 +15329,10 @@ fn (mut p Parser) fixed_array_value_literal(fixed_type_id u32, start int) flat.N
 fn (mut p Parser) array_init_after_element_type(elem_type_id u32, start int) flat.NodeId {
 	elem_type := flat.source_type_name(elem_type_id)
 	p.check(.lcbr)
-	mut ids := []flat.NodeId{}
+	mark := p.pending_children.len
+	defer {
+		p.pending_children.trim(mark)
+	}
 	mut has_len := false
 	mut init_start := -1
 	mut init_end := -1
@@ -15328,7 +15354,7 @@ fn (mut p Parser) array_init_after_element_type(elem_type_id u32, start int) fla
 			}
 			p.check(.colon)
 			val := p.expr(.lowest)
-			ids << p.a.add_node(flat.Node{
+			p.pending_children << p.a.add_node(flat.Node{
 				kind:           .field_init
 				value:          fname
 				children_start: p.add_child(val)
@@ -15337,7 +15363,7 @@ fn (mut p Parser) array_init_after_element_type(elem_type_id u32, start int) fla
 			})
 		} else {
 			element_start := p.span_start()
-			ids << p.expr(.lowest)
+			p.pending_children << p.expr(.lowest)
 			if !has_positional_error {
 				p.record_diagnostic_span('array initializer elements must use square brackets',
 					element_start, p.prev_tok_end)
@@ -15361,8 +15387,8 @@ fn (mut p Parser) array_init_after_element_type(elem_type_id u32, start int) fla
 		} else {
 			flat.source_type_id('[]${elem_type}')
 		})
-		children_start: p.add_children(ids)
-		children_count: flat.child_count(ids.len)
+		children_start: p.copy_pending_children(mark)
+		children_count: flat.child_count(p.pending_children.len - mark)
 		pos:            p.span_to(start)
 	})
 }
@@ -15961,6 +15987,9 @@ fn (mut p Parser) translated_sizeof_name_is_type(name string) bool {
 fn (mut p Parser) translated_sizeof_name_is_const(name string) bool {
 	// Ordinary V reserves these type names, so they cannot select a const operand.
 	// Avoid indexing every sibling file for common calls such as sizeof(int).
+	if !p.is_translated && name.len > 0 && name[0].is_capital() {
+		return false
+	}
 	if !p.is_translated && name in ['bool', 'char', 'i8', 'i16', 'i32', 'int', 'i64', 'u8', 'u16',
 		'u32', 'u64', 'f32', 'f64', 'string', 'rune', 'usize', 'isize', 'voidptr'] {
 		return false

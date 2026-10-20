@@ -2,6 +2,7 @@ module ssa
 
 import math
 import v.flat
+import v.gen.c.naming { sum_field_name }
 import v.token
 import v.types
 
@@ -428,28 +429,6 @@ fn (mut b Builder) register_types() {
 				field_names: field_names
 				is_union:    'union' in node.typ_text().split(',')
 			}
-		} else if node.kind == .type_decl && node.children_count > 0 {
-			sum_name := qualify_type_name(node.value, cur_module)
-			variants := b.sum_type_variants.type_ids(sum_name) or { []u32{} }
-			mut field_types := []TypeID{}
-			mut field_names := []string{}
-			field_types << b.i32_type
-			field_names << 'typ'
-			for variant in variants {
-				mut variant_type := b.resolve_type_in_module(variant, cur_module)
-				if variant_type > 0 && variant_type < b.m.type_store.types.len
-					&& b.m.type_store.types[variant_type].kind == .struct_t {
-					variant_type = b.m.type_store.get_ptr(variant_type)
-				}
-				field_types << variant_type
-				field_names << sum_variant_field_name(flat.source_type_name(variant))
-			}
-			typ_id := b.struct_type_id_for_decl(node.value, cur_module)
-			b.m.type_store.types[typ_id] = Type{
-				kind:        .struct_t
-				fields:      field_types
-				field_names: field_names
-			}
 		}
 	}
 
@@ -465,26 +444,38 @@ fn (mut b Builder) register_types() {
 		sum_typ_id := b.struct_type_id_for_decl(node.value, cur_module)
 		mut field_types := []TypeID{}
 		mut field_names := []string{}
-		field_types << b.i64_type
-		field_names << 'typ'
-		b.register_sum_field_type(node.value, cur_module, 'typ', flat.source_type_int)
+		mut has_pointer_variant := false
+
 		variants := b.sum_type_variants_for_decl(node, cur_module)
 		for variant in variants {
-			field_name := sum_variant_field_name(flat.source_type_name(variant))
-			mut field_type := b.resolve_type_in_module(variant, cur_module)
-			if field_type > 0 && field_type < b.m.type_store.types.len
-				&& b.m.type_store.types[field_type].kind == .struct_t {
-				field_type = b.m.type_store.get_ptr(field_type)
-			}
+			field_name := sum_field_name(flat.source_type_name(variant))
+			field_type := b.resolve_struct_storage_type(variant, cur_module)
+			has_pointer_variant = has_pointer_variant || b.is_pointer_type(field_type)
 			field_types << field_type
 			field_names << field_name
 			b.register_sum_field_type(node.value, cur_module, field_name, variant)
 		}
-		b.m.type_store.types[sum_typ_id] = Type{
+		payload := b.m.type_store.register(Type{
 			kind:        .struct_t
 			fields:      field_types
 			field_names: field_names
+			is_union:    true
+		})
+		mut sum_fields := [b.i32_type]
+		mut sum_names := ['typ']
+		if has_pointer_variant {
+			sum_fields << b.i32_type
+			sum_names << '_pointer_variant_is_owned'
+			b.register_sum_field_type(node.value, cur_module, '_pointer_variant_is_owned', flat.source_type_u32)
 		}
+		sum_fields << payload
+		sum_names << '_payload'
+		b.m.type_store.types[sum_typ_id] = Type{
+			kind:        .struct_t
+			fields:      sum_fields
+			field_names: sum_names
+		}
+		b.register_sum_field_type(node.value, cur_module, 'typ', flat.source_type_i32)
 	}
 	b.register_multi_return_types()
 }
@@ -7948,7 +7939,7 @@ fn (mut b Builder) build_assign(node flat.Node) {
 					} else {
 						b.build_assign_rhs(lhs, rhs_id)
 					}
-					b.emit2(.store, b.void_type, b.coerce_value_for_param(rhs_val, b.deref_type(addr)),
+					b.emit2(.store, b.void_type, b.coerce_value_for_type(rhs_val, b.deref_type(addr)),
 						addr)
 				} else {
 					flag_pointer := node.op in [.amp_assign, .pipe_assign, .xor_assign]
@@ -7982,7 +7973,7 @@ fn (mut b Builder) build_assign(node flat.Node) {
 				} else {
 					b.build_assign_rhs(lhs, rhs_id)
 				}
-				b.emit2(.store, b.void_type, b.coerce_value_for_param(rhs_val, b.deref_type(addr)),
+				b.emit2(.store, b.void_type, b.coerce_value_for_type(rhs_val, b.deref_type(addr)),
 					addr)
 			} else {
 				field_type := b.deref_type(addr)
@@ -7991,6 +7982,11 @@ fn (mut b Builder) build_assign(node flat.Node) {
 				op := b.compound_to_op(node.op, b.value_type(cur))
 				result := b.emit2(op, field_type, cur, rhs_val)
 				b.emit2(.store, b.void_type, result, addr)
+			}
+			if lhs.kind == .prefix && lhs.op == .mul {
+				if origin := b.sum_guard_binding_addr(lhs_id) {
+					b.sum_guard_variants.delete(origin)
+				}
 			}
 		}
 		i += 2
@@ -8009,7 +8005,7 @@ fn (mut b Builder) build_selector_assign(node flat.Node) {
 			field_ptr := b.build_selector_addr(lhs)
 			if node.op == .assign {
 				rhs_val := b.build_assign_rhs(lhs, rhs_id)
-				b.emit2(.store, b.void_type, b.coerce_value_for_param(rhs_val, b.deref_type(field_ptr)),
+				b.emit2(.store, b.void_type, b.coerce_value_for_type(rhs_val, b.deref_type(field_ptr)),
 					field_ptr)
 			} else {
 				field_type := b.deref_type(field_ptr)
@@ -8033,7 +8029,7 @@ fn (mut b Builder) build_index_assign(node flat.Node) {
 		addr := b.build_lvalue_addr(lhs_id)
 		if node.op == .assign {
 			rhs_val := b.build_expr(rhs_id)
-			b.emit2(.store, b.void_type, b.coerce_value_for_param(rhs_val, b.deref_type(addr)),
+			b.emit2(.store, b.void_type, b.coerce_value_for_type(rhs_val, b.deref_type(addr)),
 				addr)
 		} else {
 			field_type := b.deref_type(addr)
@@ -8190,7 +8186,7 @@ fn (mut b Builder) build_range_for_in(node flat.Node, key_id flat.NodeId, start_
 fn (mut b Builder) build_for_in_container_value(container_id flat.NodeId, container_type TypeID) ValueID {
 	value := b.build_expr(container_id)
 	// Mutable parameters and pointer containers expose the header through an address.
-	return b.coerce_value_for_param(value, container_type)
+	return b.coerce_value_for_type(value, container_type)
 }
 
 // build_array_for_in builds array for in data for ssa.
@@ -9573,7 +9569,7 @@ fn (mut b Builder) build_as_expr(node flat.Node) ValueID {
 
 	sum_name_source_id_2 := b.canonical_sum_type_name(child_type_name_source_id) or { return b.build_expr(child_id) }
 
-	field_name := sum_variant_field_name(node.value)
+	field_name := sum_field_name(node.value)
 	sum_val := b.build_expr(child_id)
 	sum_type := b.resolve_type(sum_name_source_id_2)
 	alloca := b.emit0(.alloca, b.m.type_store.get_ptr(sum_type))
@@ -10575,10 +10571,15 @@ fn (mut b Builder) build_sum_type_cast(target_name_id u32, value_expr flat.NodeI
 fn (mut b Builder) wrap_sum_value(sum_type TypeID, variant_id u32, tag int, value ValueID) ValueID {
 	variant := flat.source_type_name(variant_id)
 	alloca := b.emit0(.alloca, b.m.type_store.get_ptr(sum_type))
+	if '_pointer_variant_is_owned' in b.m.type_store.types[sum_type].field_names {
+		flag := b.get_field_ptr(alloca, '_pointer_variant_is_owned')
+		zero := b.m.get_or_add_const(b.i32_type, '0')
+		b.emit2(.store, b.void_type, zero, flag)
+	}
 	tag_ptr := b.get_field_ptr(alloca, 'typ')
 	tag_val := b.m.get_or_add_const(b.i32_type, tag.str())
 	b.emit2(.store, b.void_type, tag_val, tag_ptr)
-	field_ptr := b.get_field_ptr(alloca, sum_variant_field_name(variant))
+	field_ptr := b.get_field_ptr(alloca, sum_field_name(variant))
 	field_type := b.deref_type(field_ptr)
 	field_val := b.coerce_store_value(value, field_type)
 	b.emit2(.store, b.void_type, field_val, field_ptr)
@@ -10650,83 +10651,29 @@ fn (mut b Builder) sum_variant_for_expr(sum_name_id u32, expr_id flat.NodeId, va
 }
 
 fn (b &Builder) find_sum_variant(sum_name_id u32, type_name_id u32) ?u32 {
-	if type_name_id == 0 {
-		return none
+	variants := b.sum_type_variants.type_ids(flat.source_type_name(sum_name_id)) or { return none }
+	if type_name_id in variants { return type_name_id }
+	type_name := flat.source_type_name(type_name_id)
+	if type_name_id == 0 || type_name.contains('.') { return none }
+	base := type_name.trim_left('&')
+	pointers := type_name.len - base.len
+	mut found := u32(0)
+	for variant_id in variants {
+		variant := flat.source_type_name(variant_id)
+		variant_base := variant.trim_left('&')
+		if variant.len - variant_base.len != pointers { continue }
+		if variant_base.all_after_last('.') != base { continue }
+		if found != 0 { return none }
+		found = variant_id
 	}
-	short_type := flat.source_type_name(type_name_id).all_after('.')
-	variants := b.sum_type_variants.type_ids(flat.source_type_name(sum_name_id)) or { []u32{} }
-	for variant in variants {
-		if variant == type_name_id || flat.source_type_name(variant).all_after('.') == short_type {
-			return variant
-		}
-	}
-	return none
+	if found == 0 { return none }
+	return found
 }
 
 fn (b &Builder) sum_variant_index(sum_name_id u32, variant_id u32) int {
-	short_variant := flat.source_type_name(variant_id).all_after('.')
-	variants := b.sum_type_variants.type_ids(flat.source_type_name(sum_name_id)) or { []u32{} }
-	for i, candidate in variants {
-		if candidate == variant_id || flat.source_type_name(candidate).all_after('.') == short_variant {
-			return i + 1
-		}
-	}
-	return 0
-}
-
-fn (b &Builder) sum_variant_references_sum(variant_id u32, sum_name_id u32) bool {
-	if b.tc == unsafe { nil } {
-		return false
-	}
-	mut visited := map[u32]bool{}
-	return b.sum_variant_references_sum_inner(variant_id, sum_name_id, mut visited)
-}
-
-fn (b &Builder) sum_variant_references_sum_inner(variant_id u32, sum_name_id u32, mut visited map[u32]bool) bool {
-	variant := flat.source_type_name(variant_id)
-
-	if variant_id in visited {
-		return false
-	}
-	visited[variant_id] = true
-	variant_module := if variant.contains('.') { variant.all_before_last('.') } else { '' }
-	fields := b.tc.structs[variant] or {
-		short := variant.all_after('.')
-		b.tc.structs[short] or { []types.StructField{} }
-	}
-	for field in fields {
-		if b.type_name_matches_sum(field.typ.source_type_id(), sum_name_id, variant_module) {
-			return true
-		}
-		field_name := field.typ.name().trim_left('[]&')
-		if nested_source_id := b.find_sum_variant(sum_name_id, flat.source_type_id(field_name)) {
-			if b.sum_variant_references_sum_inner(nested_source_id, sum_name_id, mut visited) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-fn (b &Builder) type_name_matches_sum(type_name_id u32, sum_name_id u32, module_name string) bool {
-	type_name := flat.source_type_name(type_name_id)
-	sum_name := flat.source_type_name(sum_name_id)
-	mut clean := type_name
-	for clean.starts_with('[]') || clean.starts_with('&') || clean.starts_with('?')
-		|| clean.starts_with('!') {
-		if clean.starts_with('[]') {
-			clean = clean[2..]
-		} else {
-			clean = clean[1..]
-		}
-	}
-	if clean == sum_name || clean.all_after('.') == sum_name.all_after('.') {
-		return true
-	}
-	if !clean.contains('.') && module_name.len > 0 {
-		return '${module_name}.${clean}' == sum_name
-	}
-	return false
+	resolved := b.find_sum_variant(sum_name_id, variant_id) or { return 0 }
+	variants := b.sum_type_variants.type_ids(flat.source_type_name(sum_name_id)) or { return 0 }
+	return variants.index(resolved) + 1
 }
 
 fn (b &Builder) is_sum_type_id(typ_id TypeID) bool {
@@ -10760,7 +10707,7 @@ fn (b &Builder) sum_type_has_field(typ_id TypeID, field_name string) bool {
 					continue
 				}
 				for variant in variants_id {
-					if sum_variant_field_name(flat.source_type_name(variant)) == field_name {
+					if sum_field_name(flat.source_type_name(variant)) == field_name {
 						return true
 					}
 				}
@@ -10768,30 +10715,6 @@ fn (b &Builder) sum_type_has_field(typ_id TypeID, field_name string) bool {
 		}
 	}
 	return false
-}
-
-fn sum_variant_field_name(variant string) string {
-	if variant.starts_with('[]') {
-		return '_Array_${ssa_c_name(variant[2..])}'
-	}
-	if variant.starts_with('map[') {
-		return '_Map_${ssa_c_name(variant[4..].replace(']', '_'))}'
-	}
-	return match variant {
-		'int' { '_int' }
-		'i8' { '_i8' }
-		'i16' { '_i16' }
-		'i64' { '_i64' }
-		'u8' { '_u8' }
-		'u16' { '_u16' }
-		'u32' { '_u32' }
-		'u64' { '_u64' }
-		'f32' { '_f32' }
-		'f64' { '_f64' }
-		'bool' { '_bool' }
-		'string' { '_string' }
-		else { ssa_c_name(variant) }
-	}
 }
 
 fn ssa_c_name(name string) string {
@@ -11763,7 +11686,7 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 					args << b.build_expr(base_id)
 				}
 			} else {
-				args << b.coerce_value_for_param(b.build_expr(base_id), param_types[0])
+				args << b.coerce_value_for_type(b.build_expr(base_id), param_types[0])
 			}
 		} else {
 			args << b.build_expr(base_id)
@@ -11773,7 +11696,7 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 		arg_id := b.a.child(&node, i)
 		param_idx := if is_method { i } else { i - 1 }
 		if resolved_name == 'v3_heap_array' && param_idx == 0 {
-			args << b.coerce_value_for_param(b.build_expr(arg_id), b.array_type)
+			args << b.coerce_value_for_type(b.build_expr(arg_id), b.array_type)
 			continue
 		}
 		if resolved_name == '__v3_fixed_array_contains_string' && param_idx == 0 {
@@ -11983,7 +11906,7 @@ fn is_single_qualified_name(name string) bool {
 	return dots == 1
 }
 
-fn (mut b Builder) coerce_value_for_param(value ValueID, param_type TypeID) ValueID {
+fn (mut b Builder) coerce_value_for_type(value ValueID, param_type TypeID) ValueID {
 	value_type := b.value_type(value)
 	if value_type > 0 && value_type < b.m.type_store.types.len {
 		typ := b.m.type_store.types[value_type]
@@ -12024,7 +11947,7 @@ fn (mut b Builder) build_typed_call_arg(id flat.NodeId, param_type TypeID, allow
 		b.emit2(.store, b.void_type, value, slot)
 		return slot
 	}
-	return b.coerce_value_for_param(value, param_type)
+	return b.coerce_value_for_type(value, param_type)
 }
 
 fn (mut b Builder) build_flag_enum_method_call(base_id flat.NodeId, method string, node flat.Node) ?ValueID {
@@ -12406,7 +12329,7 @@ fn (mut b Builder) build_indirect_call(id flat.NodeId, node flat.Node, callee_id
 		}
 		if callee_type is types.FnType {
 			for param_type in callee_type.params {
-				param_types << b.ssa_type_from_checker_type(param_type)
+				param_types << b.ssa_type_from_checker_type(param_type.typ)
 			}
 		}
 	}
@@ -13009,7 +12932,7 @@ fn (b &Builder) selector_type_name(node flat.Node) ?u32 {
 			for variant_source_id in variants_source_ids {
 				variant := flat.source_type_name(variant_source_id)
 
-				if sum_variant_field_name(variant) == node.value {
+				if sum_field_name(variant) == node.value {
 					return variant_source_id
 				}
 			}
@@ -13289,15 +13212,8 @@ fn (mut b Builder) load_smartcast_sum_value(sum_addr ValueID, expr_id flat.NodeI
 	if variant_type <= 0 || variant_type >= b.m.type_store.types.len {
 		return none
 	}
-	payload_ptr := b.get_field_ptr(sum_addr, sum_variant_field_name(variant))
-	payload_type := b.deref_type(payload_ptr)
-	if payload_type > 0 && payload_type < b.m.type_store.types.len {
-		payload_layout := b.m.type_store.types[payload_type]
-		if payload_layout.kind == .ptr_t {
-			variant_addr := b.emit1(.load, payload_type, payload_ptr)
-			return b.emit1(.load, variant_type, variant_addr)
-		}
-	}
+	payload_ptr := b.get_field_ptr(sum_addr, sum_field_name(variant))
+
 	return b.emit1(.load, variant_type, payload_ptr)
 }
 
@@ -13307,10 +13223,7 @@ fn (mut b Builder) load_smartcast_sum_selector(sum_addr ValueID, base_id flat.No
 }
 
 fn (mut b Builder) smartcast_sum_selector_addr(sum_addr ValueID, base_id flat.NodeId, field_name string) ?ValueID {
-	sum_type := b.deref_type(sum_addr)
-	if !b.is_sum_type_id(sum_type) {
-		return none
-	}
+	sum_type := b.sum_storage_type(sum_addr) or { return none }
 	base_type_name_source_id := b.sum_guard_variants[sum_addr] or { b.checked_expr_type_name(base_id) }
 
 	if base_type_name_source_id == 0 {
@@ -13320,10 +13233,12 @@ fn (mut b Builder) smartcast_sum_selector_addr(sum_addr ValueID, base_id flat.No
 		return none
 	}
 	sum_name_source_id_7 := b.sum_name_for_type_id(sum_type) or { return none }
-
 	variant_source_id_5 := b.find_sum_variant(sum_name_source_id_7, base_type_name_source_id) or { return none }
 	variant := flat.source_type_name(variant_source_id_5)
-	variant_type := b.resolve_type(variant_source_id_5)
+	mut variant_type := b.resolve_type(variant_source_id_5)
+	for b.is_pointer_type(variant_type) {
+		variant_type = b.m.type_store.types[variant_type].elem_type
+	}
 	if variant_type <= 0 || variant_type >= b.m.type_store.types.len {
 		return none
 	}
@@ -13331,26 +13246,23 @@ fn (mut b Builder) smartcast_sum_selector_addr(sum_addr ValueID, base_id flat.No
 	if variant_layout.kind != .struct_t {
 		return none
 	}
-	mut has_field := false
-	for fname in variant_layout.field_names {
-		if fname == field_name {
-			has_field = true
-			break
-		}
-	}
-	if !has_field {
+	if field_name !in variant_layout.field_names {
 		return none
 	}
-	payload_ptr := b.get_field_ptr(sum_addr, sum_variant_field_name(variant))
-	payload_type := b.deref_type(payload_ptr)
-	mut variant_addr := payload_ptr
-	if payload_type > 0 && payload_type < b.m.type_store.types.len {
-		payload_layout := b.m.type_store.types[payload_type]
-		if payload_layout.kind == .ptr_t {
-			variant_addr = b.emit1(.load, payload_type, payload_ptr)
-		}
+	payload_ptr := b.get_field_ptr(sum_addr, sum_field_name(variant))
+	return b.get_field_ptr(payload_ptr, field_name)
+}
+
+// sum_storage_type follows reference types without changing the binding used by guard facts.
+fn (b &Builder) sum_storage_type(addr ValueID) ?TypeID {
+	mut typ := b.deref_type(addr)
+	for b.is_pointer_type(typ) {
+		typ = b.m.type_store.types[typ].elem_type
 	}
-	return b.get_field_ptr(variant_addr, field_name)
+	if b.is_sum_type_id(typ) {
+		return typ
+	}
+	return none
 }
 
 fn (b &Builder) sum_name_for_type_id(typ_id TypeID) ?u32 {
@@ -13809,6 +13721,9 @@ fn (mut b Builder) build_struct_init(node flat.Node) ValueID {
 		b.resolve_type(flat.source_type_id(node.value))
 	}
 	typ_id, struct_name_id := b.struct_literal_type(flat.source_type_id(node.value))
+	if b.is_sum_type_id(typ_id) {
+		return b.build_sum_init(node, typ_id, struct_name_id)
+	}
 	if typ_id > 0 {
 		alloca := b.emit0(.alloca, b.m.type_store.get_ptr(typ_id))
 		typ := b.m.type_store.types[typ_id]
@@ -13850,8 +13765,27 @@ fn (mut b Builder) build_struct_init(node flat.Node) ValueID {
 	return b.m.get_or_add_const(b.i64_type, '0')
 }
 
-fn (mut b Builder) coerce_store_value(value ValueID, target_type TypeID) ValueID {
-	mut result := value
+fn (mut b Builder) build_sum_init(node flat.Node, typ TypeID, name u32) ValueID {
+	storage := b.emit0(.alloca, b.m.type_store.get_ptr(typ))
+	if '_pointer_variant_is_owned' in b.m.type_store.types[typ].field_names {
+		flag := b.get_field_ptr(storage, '_pointer_variant_is_owned')
+		zero := b.m.get_or_add_const(b.i32_type, '0')
+		b.emit2(.store, b.void_type, zero, flag)
+	}
+	for i in 0 .. node.children_count {
+		field := b.a.child_node(&node, i)
+		ptr := b.get_field_ptr(storage, field.value)
+		value_type := b.field_type_name(name, field.value)
+		value := b.build_field_value(b.a.child(field, 0), value_type)
+		stored := b.coerce_store_value(value, b.deref_type(ptr))
+		b.emit2(.store, b.void_type, stored, ptr)
+	}
+	return b.emit1(.load, typ, storage)
+}
+
+fn (mut b Builder) coerce_store_value(source ValueID, target_type TypeID) ValueID {
+	value := b.coerce_value_for_type(source, target_type)
+	mut result := b.coerce_int_value(value, target_type)
 	value_type := b.value_type(value)
 	if b.m.target.ptr_size == 4 {
 		result = b.coerce_numeric_value(value, target_type)
@@ -14029,6 +13963,10 @@ fn (b &Builder) struct_literal_type(name_id u32) (TypeID, u32) {
 
 fn (mut b Builder) build_heap_struct_init(node flat.Node) ValueID {
 	typ_id, struct_name_id := b.struct_literal_type(flat.source_type_id(node.value))
+	if b.is_sum_type_id(typ_id) {
+		value := b.build_sum_init(node, typ_id, struct_name_id)
+		return b.heap_copy_value(value, typ_id)
+	}
 	if typ_id > 0 {
 		alloca := b.emit0(.alloca, b.m.type_store.get_ptr(typ_id))
 		typ := b.m.type_store.types[typ_id]
@@ -14116,49 +14054,34 @@ fn (mut b Builder) build_string_interp(node flat.Node) ValueID {
 }
 
 fn (mut b Builder) get_field_ptr(base_addr ValueID, field_name string) ValueID {
-	mut struct_typ_id := TypeID(0)
-	base_val := b.m.values[base_addr]
-	base_type_id := base_val.typ
-	if base_type_id > 0 && base_type_id < b.m.type_store.types.len {
-		base_type := b.m.type_store.types[base_type_id]
-		if base_type.kind == .ptr_t {
-			elem_type := b.m.type_store.types[base_type.elem_type]
-			if elem_type.kind == .ptr_t {
-				struct_typ_id = elem_type.elem_type
-			} else if elem_type.kind == .struct_t {
-				struct_typ_id = base_type.elem_type
-			}
+	mut address := base_addr
+	mut owner := b.deref_type(address)
+	for b.is_pointer_type(owner) {
+		address = b.emit1(.load, owner, address)
+		owner = b.deref_type(address)
+	}
+	if owner > 0 && owner < b.m.type_store.types.len {
+		storage_field := if field_name == '__v_sum_type_tag__' && b.is_sum_type_id(owner) {
+			'typ'
+		} else {
+			field_name
+		}
+		if storage_field !in ['typ', '_pointer_variant_is_owned', '_payload'] && b.is_sum_type_id(owner) {
+			payload := b.get_field_ptr(address, '_payload')
+			return b.get_field_ptr(payload, storage_field)
+		}
+		typ := b.m.type_store.types[owner]
+		index := typ.field_names.index(storage_field)
+		if index >= 0 && index < typ.fields.len {
+			offset := b.m.struct_field_offset(owner, index)
+			constant := b.m.get_or_add_const(b.i64_type, offset.str())
+			pointer := b.m.type_store.get_ptr(typ.fields[index])
+			return b.emit2(.get_element_ptr, pointer, address, constant)
 		}
 	}
-
-	if struct_typ_id > 0 {
-		typ := b.m.type_store.types[struct_typ_id]
-		for fi in 0 .. 512 {
-			if fi >= typ.field_names.len || fi >= typ.fields.len {
-				break
-			}
-			fname := typ.field_names[fi]
-			if fname == field_name {
-				offset := b.m.struct_field_offset(struct_typ_id, fi)
-				off_const := b.m.get_or_add_const(b.i64_type, '${offset}')
-				field_type := typ.fields[fi]
-				ptr_type := b.m.type_store.get_ptr(field_type)
-
-				if b.m.type_store.types[b.m.values[base_addr].typ].kind == .ptr_t {
-					inner := b.m.type_store.types[b.m.values[base_addr].typ]
-					if inner.kind == .ptr_t && b.m.type_store.types[inner.elem_type].kind == .ptr_t {
-						loaded := b.emit1(.load, inner.elem_type, base_addr)
-						return b.emit2(.get_element_ptr, ptr_type, loaded, off_const)
-					}
-				}
-				return b.emit2(.get_element_ptr, ptr_type, base_addr, off_const)
-			}
-		}
-	}
-
-	off_const := b.m.get_or_add_const(b.i64_type, '0')
-	ptr_type := b.m.type_store.get_ptr(b.i64_type)
-	return b.emit2(.get_element_ptr, ptr_type, base_addr, off_const)
+	zero := b.m.get_or_add_const(b.i64_type, '0')
+	pointer := b.m.type_store.get_ptr(b.i64_type)
+	return b.emit2(.get_element_ptr, pointer, address, zero)
 }
 
 fn (mut b Builder) resolve_type(name_id u32) TypeID {
@@ -14210,6 +14133,17 @@ fn (mut b Builder) resolve_type_uncached(name string) TypeID {
 	if b.is_fixed_array_type_name(flat.source_type_id(name)) {
 		elem_type := b.resolve_type_uncached(flat.source_type_name(b.fixed_array_elem_type_name(flat.source_type_id(name))))
 		return b.m.type_store.get_ptr(elem_type)
+	}
+	// Nominal compiler descriptors can use these names without being runtime containers.
+	if name in ['Array', 'Map'] {
+		if b.cur_module.len > 0 && b.cur_module != 'main' && b.cur_module != 'builtin' {
+			if typ := b.struct_types[b.cur_module + '.' + name] {
+				return typ
+			}
+		}
+		if typ := b.struct_types[name] {
+			return typ
+		}
 	}
 	if name.starts_with('[]') || name == 'array' || name == 'Array' {
 		return b.array_type

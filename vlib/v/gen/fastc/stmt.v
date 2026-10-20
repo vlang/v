@@ -998,14 +998,23 @@ fn (mut g Parser) parse_match_statement() !bool {
 			}
 			g.write_line('${shadow_c_type} ${shadow_name} = ${smartcast_value};')
 			smartcast_saved = g.locals[subject_local] or { FastcLocal{} }
-			origin_source := g.local_c_name(subject_local)
+			origin_source := if smartcast_saved.smartcast_origin_source != '' {
+				smartcast_saved.smartcast_origin_source
+			} else {
+				g.local_c_name(subject_local)
+			}
 			g.locals[subject_local] = FastcLocal{
-				is_mut:                  smartcast_saved.is_mut
-				is_reference:            smartcast_is_reference
-				typ:                     flat.source_type_id(shadow_type)
-				c_name:                  shadow_name
-				smartcast_origin_type:   smartcast_saved.typ
-				smartcast_origin_source: origin_source
+				is_mut:                        smartcast_saved.is_mut
+				is_reference:                  smartcast_is_reference
+				typ:                           flat.source_type_id(shadow_type)
+				c_name:                        shadow_name
+				smartcast_origin_type:         if smartcast_saved.smartcast_origin_type != u32(0) {
+					smartcast_saved.smartcast_origin_type
+				} else {
+					smartcast_saved.typ
+				}
+				smartcast_origin_is_reference: smartcast_saved.original_is_reference()
+				smartcast_origin_source:       origin_source
 			}
 		}
 		// A single-variant branch narrows the member to that variant; a branch listing
@@ -1453,6 +1462,10 @@ fn (g &Parser) interface_value_expression(interface_type_source_id u32, actual_t
 		return '({ ${flat.source_type_name(value_type)} __vf_iface_ref = (${value}); (${interface_type})v_fastc_interface_box(&__vf_iface_ref, sizeof(${flat.source_type_name(value_type)})); })'
 	}
 	actual_layout := g.underlying_alias_type(actual_type_source_id)
+	if interface_type in g.sum_types && actual_layout == interface_type_source_id {
+		// A sum value already carries its concrete variant tag and payload.
+		return expression
+	}
 	actual_interface := flat.source_type_id(fastc_trim_pointer_suffix(flat.source_type_name(actual_layout)))
 	if g.declared_kinds[flat.source_type_name(g.semantic_type_key(interface_type_source_id))] == .interface_
 		&& g.declared_kinds[flat.source_type_name(g.semantic_type_key(actual_interface))] == .interface_ {
@@ -1562,7 +1575,7 @@ fn (mut g Parser) parse_simple_statement() ! {
 			g.globals[global_key]
 		} else if local := g.locals[name] {
 			if local.smartcast_origin_type != u32(0) {
-				if local.smartcast_origin_type_text().ends_with('*') {
+				if local.original_is_reference() {
 					'(*${local.smartcast_origin_source})'
 				} else {
 					local.smartcast_origin_source
@@ -1734,7 +1747,7 @@ fn (mut g Parser) parse_simple_statement() ! {
 				} else {
 					local.typ_text()
 				}
-				if local.is_reference { base.trim_right('*') } else { base }
+				if local.original_is_reference() { base.trim_right('*') } else { base }
 			} else {
 				''
 			}
@@ -1891,7 +1904,7 @@ fn (mut g Parser) parse_simple_statement() ! {
 				// Replacing the boxed value invalidates the old concrete-variant view.
 				g.locals[name] = FastcLocal{
 					is_mut:       statement_local.is_mut
-					is_reference: statement_local.smartcast_origin_type_text().ends_with('*')
+					is_reference: statement_local.original_is_reference()
 					typ:          statement_local.smartcast_origin_type
 					c_name:       statement_local.smartcast_origin_source
 				}

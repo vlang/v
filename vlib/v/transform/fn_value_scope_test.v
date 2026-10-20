@@ -8,8 +8,8 @@ fn test_monomorphization_callback_inference_uses_checked_binding() {
 	argument := a.add_node(flat.Node{ kind: .ident, value: 'initial', typ: flat.source_type_id('fn (int) int') })
 	mut tc := types.TypeChecker.new(&a)
 	tc.register_synth_type(argument, types.Type(types.FnType{
-		params:      [types.Type(types.int_)]
-		return_type: types.Type(types.int_)
+		params:      [types.FnParam{ typ: tc.intern_type_reference(types.Type(types.int_)) }]
+		return_type: tc.intern_type_reference(types.Type(types.int_))
 	}))
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.set_var_type('initial', flat.source_type_id('fn (string) string'))

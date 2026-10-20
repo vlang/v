@@ -4,6 +4,7 @@ import os
 import v.parser
 import v.pref
 import v.ssa
+import v.transform
 import v.types
 
 fn test_native_aligned_memdup_copies_bytes_and_honors_alignment() {
@@ -32,7 +33,7 @@ fn main() {
 	invalid := v3_aligned_memdup(&source[0], 4, 24)
 	if usize(invalid) != 0 { C.exit(5) }
 }
-')
+', false)
 	}
 }
 
@@ -52,7 +53,7 @@ fn main() {
 	if values.len != 2 || boxed.len != 1 { C.exit(3) }
 	C.free(boxed)
 }
-')
+', false)
 	}
 }
 
@@ -72,11 +73,11 @@ fn main() {
 	}
 	if usize(values[0]) != 11 || usize(values[1]) != 22 { C.exit(1) }
 }
-')
+', false)
 	}
 }
 
-fn run_native_allocation_fixture(name string, source string) {
+fn run_native_allocation_fixture(name string, source string, lower bool) {
 	path := os.join_path(os.vtmp_dir(), 'arm64_allocation_${name}_${os.getpid()}.v')
 	output := path.all_before_last('.')
 	defer {
@@ -85,16 +86,51 @@ fn run_native_allocation_fixture(name string, source string) {
 	}
 	os.write_file(path, source) or { panic(err) }
 	mut p := parser.Parser.new(pref.new_preferences())
-	a := p.parse_file(path)
+	mut a := p.parse_file(path)
 	assert p.diagnostics.len == 0, p.diagnostics.str()
 	mut tc := types.TypeChecker.new(a)
 	tc.collect(a)
 	tc.annotate_types()
 	assert tc.errors.len == 0, tc.errors.str()
+	if lower {
+		transform.transform(mut a, tc)
+	}
 	m := ssa.build_with_used(a, map[string]bool{}, tc)
 	mut g := Gen.new(m)
 	g.gen()
 	g.write_and_link(output)
 	result := os.exec([output])
 	assert result.exit_code == 0, '${name}: exit ${result.exit_code}: ${result.output}'
+	if lower {
+		c_output := output + '_c'
+		defer { os.rm(c_output) or {} }
+		compiled := os.exec([@VEXE, '-b', 'c', '-nocache', '-gc', 'none', '-o', c_output, path])
+		assert compiled.exit_code == 0, compiled.output
+		c_result := os.exec([c_output])
+		assert c_result.exit_code == 0, '${name}: C exit ${c_result.exit_code}: ${c_result.output}'
+	}
+}
+
+fn test_native_conditional_void_pointer_values_preserve_addresses() {
+	$if macos && arm64 {
+		run_native_allocation_fixture('conditional_pointers', 'module main
+fn C.exit(int)
+fn receive(value voidptr) voidptr { return value }
+fn choose(flag bool, first voidptr, second voidptr) voidptr {
+	value := if flag { first } else { second }
+	return receive(value)
+}
+fn main() {
+	mut values := [2]int{}
+	values[0] = 7
+	values[1] = 11
+	// These references borrow the fixed array storage only for this function.
+	first := unsafe { voidptr(&values[0]) }
+	second := unsafe { voidptr(&values[1]) }
+	if choose(true, first, second) != first { C.exit(1) }
+	if choose(false, first, second) != second { C.exit(2) }
+	if values[0] != 7 || values[1] != 11 { C.exit(3) }
+}
+', true)
+	}
 }

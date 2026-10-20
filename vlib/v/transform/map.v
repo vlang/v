@@ -1,7 +1,7 @@
 module transform
 
 import v.flat
-import v.types
+import v.types { unalias_type }
 
 // Map literals normally add about 12 transform nodes per entry. Keep the
 // estimate conservative because ownership cleanup and nested values can add
@@ -236,7 +236,7 @@ fn (t &Transformer) fixed_array_empty_init_requires_deferral(elem_type_id u32) b
 	}
 	// Struct defaults can recursively synthesize collection literals that are not
 	// represented by children of the external initializer.
-	return types.unalias_type(t.tc.parse_type(clean_type_source_id)) is types.Struct
+	return unalias_type(t.tc.parse_type(clean_type_source_id)) is types.Struct
 }
 
 fn (t &Transformer) fixed_array_empty_init_may_expand(elem_type_id u32) bool {
@@ -259,7 +259,7 @@ fn (t &Transformer) fixed_array_empty_init_may_expand(elem_type_id u32) bool {
 	}
 	// Struct fields can carry runtime defaults. Treat every struct conservatively here;
 	// this estimate only decides whether lowering should leave the bounded worker arena.
-	return types.unalias_type(t.tc.parse_type(clean_type_source_id)) is types.Struct
+	return unalias_type(t.tc.parse_type(clean_type_source_id)) is types.Struct
 }
 
 // external_map_tree_expansion_estimate counts writes caused by lowering an initializer
@@ -1101,10 +1101,11 @@ fn (t &Transformer) collection_const_expr_for_ident(id flat.NodeId) ?flat.NodeId
 }
 
 fn (t &Transformer) map_const_expr_for_ident(id flat.NodeId) ?flat.NodeId {
+	expr_id := t.collection_const_expr_for_ident(id) or { return none }
 	if !flat.source_type_shape(t.clean_map_type(t.node_type(id))).has(.map_type) {
 		return none
 	}
-	return t.collection_const_expr_for_ident(id)
+	return expr_id
 }
 
 fn (t &Transformer) sum_default_may_expand(typ_id u32) bool {
@@ -1426,8 +1427,8 @@ fn (mut t Transformer) forwarded_return_conversion_expansion_estimate(actual_typ
 	if depth >= 32 || !t.forwarded_slot_conversion_supported(actual_type, expected_type) {
 		return 0
 	}
-	actual := forwarded_return_unalias_type(actual_type)
-	expected := forwarded_return_unalias_type(expected_type)
+	actual := unalias_type(actual_type)
+	expected := unalias_type(expected_type)
 	if actual is types.OptionType && expected is types.OptionType {
 		return t.forwarded_return_conversion_expansion_estimate(actual.base_type, expected.base_type, depth + 1)
 	}
@@ -1716,6 +1717,16 @@ fn (mut t Transformer) make_new_map_call(map_type_id u32) flat.NodeId {
 	args << t.make_ident(eq_fn)
 	args << t.make_ident(clone_fn)
 	args << t.make_ident(free_fn)
+	if !isnil(t.tc) {
+		key := t.tc.parse_type(key_storage_type_source_id)
+		value := t.tc.parse_type(value_type_source_id_10)
+		if t.tc.requires_aligned_allocation(key) || t.tc.requires_aligned_allocation(value) {
+			args << t.make_type_alignment(key_storage_type_source_id)
+			args << t.make_type_alignment(value_type_source_id_10)
+			t.mark_fn_used('new_map_aligned')
+			return t.make_call_typed('new_map_aligned', args, map_type_id)
+		}
+	}
 	return t.make_call_typed('new_map', args, map_type_id)
 }
 
@@ -1724,7 +1735,7 @@ fn (t &Transformer) new_map_call_type(node flat.Node) u32 {
 		return u32(0)
 	}
 	callee := t.a.child_node(&node, 0)
-	if callee.kind != .ident || callee.value != 'new_map' {
+	if callee.kind != .ident || callee.value !in ['new_map', 'new_map_aligned'] {
 		return u32(0)
 	}
 	key_size := t.a.child_node(&node, 1)
@@ -2240,7 +2251,7 @@ fn (mut t Transformer) try_lower_map_index_expr(id flat.NodeId, node flat.Node) 
 	t.pending_stmts << t.make_decl_assign_typed(key_name, t.transform_expr_for_type(key_id, key_type_source_id_9), t.map_key_storage_type(key_type_source_id_9))
 	cleanup_key := !isnil(t.tc) && t.map_key_expr_creates_owned_value(key_id, key_type_source_id_9)
 		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(key_type_source_id_9))
-	if !isnil(t.tc) && t.tc.ownership_index_read_moves_value(id)
+	if !isnil(t.tc) && (source_is_owned_temporary || t.tc.ownership_index_read_moves_value(id))
 		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(value_type_source_id_11)) {
 		result := t.lower_owned_map_index_move(map_source_id, map_expr, base_type_source_id, key_name, value_type_source_id_11)
 		if cleanup_key {
@@ -3427,9 +3438,9 @@ fn (t &Transformer) map_value_alias_candidates(info MapIndexInfo) []u32 {
 			mut clean := base_type
 			for _ in 0 .. 32 {
 				if clean is types.Alias {
-					clean = clean.base_type
+					clean = *clean.base_type
 				} else if clean is types.Pointer {
-					clean = clean.base_type
+					clean = *clean.base_type
 				} else {
 					break
 				}

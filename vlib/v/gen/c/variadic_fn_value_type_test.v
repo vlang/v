@@ -11,9 +11,9 @@ fn test_function_value_reconstruction_keeps_selected_declaration_metadata() {
 		g.a = &a
 		g.tc = &tc
 		params := [types.Type(types.int_),
-			types.Type(types.Array{ elem_type: types.Type(types.string_) })]
+			types.Type(types.Array{ elem_type: &types.Type(types.string_) })]
 		g.fn_decl_param_types['callback'] = params
-		g.fn_decl_ret_types['callback'] = types.Type(types.int_)
+		g.fn_decl_ret_types['callback'] = tc.intern_type_reference(types.Type(types.int_))
 		g.fn_decl_variadic['callback'] = variadic
 		// Both registries exist, but identifier reconstruction selects the declaration.
 		tc.fn_param_types['callback'] = params
@@ -39,7 +39,7 @@ fn test_function_value_reconstruction_keeps_checker_variadic_and_fixed_array_typ
 		g.a = &a
 		g.tc = &tc
 		tc.fn_param_types['callback'] = [types.Type(types.int_),
-			types.Type(types.Array{ elem_type: types.Type(types.string_) })]
+			types.Type(types.Array{ elem_type: &types.Type(types.string_) })]
 		tc.fn_ret_types['callback'] = types.Type(types.int_)
 		tc.fn_variadic['callback'] = variadic
 		checked := g.fn_value_type_for_ident('callback') or { panic('missing checker signature') }

@@ -32,21 +32,22 @@ const parallel_callback_seeds = ['c.FlatGen.gen_fn_items_scoped_batches',
 // core_runtime_seeds and lowered_runtime_seeds are the runtime functions that the
 // code generator calls for the constructs of the language. No call in a program
 // leads to them, so every program keeps them.
-const core_runtime_seeds = ['__new_array', 'array.get', 'array.push', 'map_hash_int_4', 'map_hash_int_8',
-	'map_hash_int_16', 'map_eq_int_4', 'map_eq_int_8', 'map_eq_int_16', 'map_clone_int_4',
-	'map_clone_int_8', 'map_clone_int_16', 'map_free_nop']
+const core_runtime_seeds = ['__new_array', '__new_array_noscan', 'array.get', 'array.push',
+	'map_hash_int_4', 'map_hash_int_8', 'map_hash_int_16', 'map_eq_int_4', 'map_eq_int_8',
+	'map_eq_int_16', 'map_clone_int_4', 'map_clone_int_8', 'map_clone_int_16', 'map_free_nop']
 
-const lowered_runtime_seeds = ['new_array_from_c_array', 'new_array_from_c_array_noscan', 'array.set',
-	'array.push_many', 'array.insert', 'array.insert_many', 'array.prepend', 'array.reverse',
-	'array.slice', 'array.slice_ni', 'string.substr_ni', 'array.pop_left', 'array.clone', 'array.delete',
-	'array.ensure_cap', 'string.==', 'string.<', 'string.free', 'string.all_before',
-	'string.all_before_last', 'string.all_after', 'string.all_after_last', 'string.substr',
-	'string__substr', 'u8.vstring', 'u8.vstring_with_len', 'u8.vbytes', 'charptr.vstring',
-	'charptr.vstring_with_len', 'byteptr.vstring', 'byteptr.vstring_with_len', 'byteptr.vbytes',
-	'voidptr.vbytes', '[]rune.string', 'map.set', 'map.exists', 'map.get', 'map.get_check',
-	'map.get_and_set', 'map.delete', 'map.clone', 'map.clear', 'map.keys', 'map.values', 'map.reserve',
-	'map_map_eq', 'memdup', 'memdup_align', 'strings.Builder.write_ptr', 'strings.Builder.write_runes',
-	'strings.Builder.free', 'strconv.format_int', 'strconv.format_uint', 'strconv.Dec32.get_string_32',
+const lowered_runtime_seeds = ['new_array_from_c_array_aligned', 'new_array_from_c_array',
+	'new_array_from_c_array_noscan', 'array.set', 'array.push_many', 'array.insert', 'array.insert_many',
+	'array.prepend', 'array.reverse', 'array.slice', 'array.slice_ni', 'string.substr_ni',
+	'array.pop_left', 'array.clone', 'array.delete', 'array.ensure_cap', 'string.==', 'string.<',
+	'string.free', 'string.all_before', 'string.all_before_last', 'string.all_after',
+	'string.all_after_last', 'string.substr', 'string__substr', 'u8.vstring', 'u8.vstring_with_len',
+	'u8.vbytes', 'charptr.vstring', 'charptr.vstring_with_len', 'byteptr.vstring',
+	'byteptr.vstring_with_len', 'byteptr.vbytes', 'voidptr.vbytes', '[]rune.string', 'map.set',
+	'map.exists', 'map.get', 'map.get_check', 'map.get_and_set', 'map.delete', 'map.clone', 'map.clear',
+	'map.keys', 'map.values', 'map.reserve', 'map_map_eq', 'memdup', 'memdup_align',
+	'strings.Builder.write_ptr', 'strings.Builder.write_runes', 'strings.Builder.free',
+	'strconv.format_int', 'strconv.format_uint', 'strconv.Dec32.get_string_32',
 	'strconv.Dec64.get_string_64', 'bool.str', 'int.str', 'u64.str', 'rune.str', 'string.+', 'ptr_str',
 	'os.join_path_single', 'panic', 'u8.is_letter', 'u8.is_capital', 'string.is_capital',
 	'string.to_lower_ascii', 'rune.to_lower', 'Array_u8__bytestr', 'Array_u8__hex', 'data_to_hex_string',
@@ -3156,9 +3157,9 @@ fn (mut scan RuntimeHelpersScan) enqueue_nodes(a &flat.FlatAst, tc &types.TypeCh
 					'${cur_module}.${field.value}'
 				}
 				global_type := if field.value.starts_with('C.') {
-					tc.c_globals[field.value] or { tc.parse_type(field.typ) }
+					tc.c_globals[field.value] or { *tc.parse_type(field.typ) }
 				} else {
-					tc.file_scope.lookup(global_name) or { tc.parse_type(field.typ) }
+					tc.file_scope.lookup(global_name) or { *tc.parse_type(field.typ) }
 				}
 				if scan.type_needs_map_runtime(global_type, tc) {
 					scan.needs_map_runtime = true
@@ -3418,6 +3419,7 @@ fn (mut scan RuntimeHelpersScan) enqueue_nodes(a &flat.FlatAst, tc &types.TypeCh
 	if scan.needs_new_map && !scan.enqueued_groups.has(.new_map) {
 		scan.enqueued_groups.set(.new_map)
 		enqueue('new_map', mut used, mut queue)
+		enqueue('new_map_aligned', mut used, mut queue)
 	}
 	if scan.select_map_runtime && (scan.needs_new_map || scan.needs_map_runtime)
 		&& !scan.map_runtime_enqueued {
@@ -3708,7 +3710,7 @@ fn (mut scan RuntimeHelpersScan) type_needs_map_runtime(typ types.Type, tc &type
 		types.FnType {
 			needed = scan.type_needs_map_runtime(typ.return_type, tc)
 			for param in typ.params {
-				if scan.type_needs_map_runtime(param, tc) {
+				if scan.type_needs_map_runtime(param.typ, tc) {
 					needed = true
 					break
 				}
@@ -4139,7 +4141,7 @@ fn enqueue_stringified_type_dependencies(typ types.Type, cur_module string, tc &
 				mut used, mut queue, mut seen)
 		}
 		types.Pointer {
-			base := typ.base_type
+			base := *typ.base_type
 			if base is types.Struct || base is types.SumType || base is types.Interface
 				|| base is types.Enum || base is types.Alias || base is types.Map
 				|| base is types.Array || base is types.ArrayFixed {
@@ -4850,7 +4852,8 @@ fn (c &CallCollector) parsed_type_uses_concrete_generics(typ types.Type, depth i
 			return c.parsed_type_uses_concrete_generics(typ.base_type, depth + 1)
 		}
 		types.FnType {
-			for param in typ.params {
+			for parameter in typ.params {
+				param := parameter.typ
 				if c.parsed_type_uses_concrete_generics(param, depth + 1) {
 					return true
 				}
@@ -6525,7 +6528,7 @@ fn markused_checked_local_type(typ types.Type) bool {
 				return false
 			}
 			for param in typ.params {
-				if !markused_checked_local_type(param) {
+				if !markused_checked_local_type(param.typ) {
 					return false
 				}
 			}
@@ -6859,7 +6862,8 @@ fn (c &CallCollector) seed_lambda_param_types(id flat.NodeId, lambda &flat.Node,
 	mut param_types := []u32{}
 	if fn_type := c.tc.expr_type(id) {
 		if fn_type is types.FnType {
-			for param in fn_type.params {
+			for parameter in fn_type.params {
+				param := parameter.typ
 				param_types << if markused_type_has_unknown(param) {
 					u32(0)
 				} else {
@@ -7812,7 +7816,7 @@ fn (c &CallCollector) alias_aware_expr_type(id flat.NodeId, cur_module string, i
 	if type_name_source_id_7 != 0 {
 		typ := c.tc.parse_type(type_name_source_id_7)
 		if typ !is types.Unknown && typ !is types.Void {
-			return typ
+			return *typ
 		}
 	}
 	typ := c.node_type(id)
@@ -7839,7 +7843,7 @@ fn (c &CallCollector) syntax_alias_expr_type(id flat.NodeId, cur_module string, 
 					return none
 				}
 				return types.Type(types.Pointer{
-					base_type: inner
+					base_type: types.new_type_reference(types.Type(inner))
 				})
 			}
 		}
@@ -7848,7 +7852,7 @@ fn (c &CallCollector) syntax_alias_expr_type(id flat.NodeId, cur_module string, 
 				elem_id := c.a.child(node, i)
 				elem_type := c.syntax_alias_expr_type(elem_id, cur_module, imports) or { continue }
 				return types.Type(types.Array{
-					elem_type: elem_type
+					elem_type: types.new_type_reference(types.Type(elem_type))
 				})
 			}
 		}
@@ -8977,7 +8981,8 @@ fn markused_type_has_unknown(typ types.Type) bool {
 		}
 		types.FnType {
 			mut found := markused_type_has_unknown(typ.return_type)
-			for param in typ.params {
+			for parameter in typ.params {
+				param := parameter.typ
 				found = found || markused_type_has_unknown(param)
 			}
 			found
@@ -9078,7 +9083,7 @@ fn (c &CallCollector) fn_param_types_for_name(name string) ?[]types.Type {
 }
 
 fn markused_index_overload_compound_type_is_string(typ types.Type) bool {
-	clean := if typ is types.Alias { typ.base_type } else { typ }
+	clean := if typ is types.Alias { *typ.base_type } else { typ }
 	return clean is types.String
 }
 
@@ -9309,9 +9314,9 @@ fn (c &CallCollector) operator_lhs_type(lhs_id flat.NodeId, local_types flat.Typ
 		if lhs.kind == .index && lhs.children_count > 0 {
 			base_type := types.unwrap_pointer(c.operator_lhs_type(c.a.child(lhs, 0), local_types))
 			return match base_type {
-				types.Array { base_type.elem_type }
-				types.ArrayFixed { base_type.elem_type }
-				types.Map { base_type.value_type }
+				types.Array { *base_type.elem_type }
+				types.ArrayFixed { *base_type.elem_type }
+				types.Map { *base_type.value_type }
 				else { base_type }
 			}
 		}
@@ -10937,7 +10942,7 @@ fn (c &CallCollector) specialized_struct_default_type(type_text_id u32, id flat.
 	qualified_type_source_id := c.generic_factory_qualified_type_text(flat.source_type_id(substituted_type), id, 'main', map[string]string{})
 
 	// All names are semantic now; no declaration-file import may capture them.
-	return types.unalias_type(c.tc.parse_resolution_type_in_file(qualified_type_source_id, ''))
+	return *types.unalias_type(c.tc.parse_resolution_type_in_file(qualified_type_source_id, ''))
 }
 
 struct SourceTypes {
@@ -10983,11 +10988,11 @@ fn (c &CallCollector) value_type_in_source(type_text_id u32, node &flat.Node, im
 					file.types[text_id] = type_id
 				}
 			}
-			return typ
+			return *typ
 		}
 	}
 	clean := type_text.trim_space()
-	return types.unalias_type(if source_file := c.a.source_files[node.pos.id] {
+	return *types.unalias_type(if source_file := c.a.source_files[node.pos.id] {
 		c.tc.parse_resolution_type_in_file(flat.source_type_id(clean), source_file.name)
 	} else {
 		c.tc.parse_canonical_type(markused_resolve_imported_source_type(flat.source_type_id(clean), imports))
@@ -11092,9 +11097,9 @@ fn (c &CallCollector) collect_array_default_calls(node &flat.Node, cur_module st
 			// Empty and capacity-only dynamic arrays do not initialize elements.
 			return
 		}
-		array_type.elem_type
+		*array_type.elem_type
 	} else if array_type is types.ArrayFixed {
-		array_type.elem_type
+		*array_type.elem_type
 	} else {
 		if (typ.starts_with('[]') || !typ.starts_with('[')) && !has_len {
 			return

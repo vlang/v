@@ -1,7 +1,7 @@
 module transform
 
 import v.flat
-import v.gen.c.naming
+import v.gen.c.naming { sum_field_name }
 import v.types
 
 // transform_infix_string_ops transforms transform infix string ops data for transform.
@@ -3216,8 +3216,8 @@ fn (mut t Transformer) lower_array_membership_expr(base_id flat.NodeId, needle_i
 	mut loop_body := t.pending_stmts[pending_start..].clone()
 	t.pending_stmts = t.pending_stmts[..pending_start].clone()
 	assign_true := t.make_assign(t.make_ident(result_name), t.make_bool_literal(true))
-	then_block := t.make_block([assign_true])
-	loop_body << t.make_if(eq_expr, then_block, t.make_empty())
+	then_block := t.make_block_skip_scope_drops([assign_true])
+	loop_body << t.make_if_with_skip_ownership_drops(eq_expr, then_block, t.make_empty())
 	prefix << t.make_for_stmt(init, cond, post, loop_body, src)
 	for stmt in prefix {
 		t.pending_stmts << stmt
@@ -3291,7 +3291,7 @@ fn (mut t Transformer) lower_array_index_expr(base_id flat.NodeId, needle_id fla
 	not_found := t.make_infix(.lt, t.make_ident(result_name), t.make_int_literal(0))
 	found_cond := t.make_infix(.logical_and, not_found, eq_expr)
 	assign_idx := t.make_assign(t.make_ident(result_name), t.make_ident(idx_name))
-	loop_body << t.make_if(found_cond, t.make_block([assign_idx]), t.make_empty())
+	loop_body << t.make_if_with_skip_ownership_drops(found_cond, t.make_block_skip_scope_drops([assign_idx]), t.make_empty())
 	prefix << t.make_for_stmt(init, cond, post, loop_body, src)
 	for stmt in prefix {
 		t.pending_stmts << stmt
@@ -3364,7 +3364,7 @@ fn (mut t Transformer) lower_array_last_index_expr(base_id flat.NodeId, needle_i
 	not_found := t.make_infix(.lt, t.make_ident(result_name), t.make_int_literal(0))
 	found_cond := t.make_infix(.logical_and, not_found, eq_expr)
 	assign_idx := t.make_assign(t.make_ident(result_name), t.make_ident(idx_name))
-	loop_body << t.make_if(found_cond, t.make_block([assign_idx]), t.make_empty())
+	loop_body << t.make_if_with_skip_ownership_drops(found_cond, t.make_block_skip_scope_drops([assign_idx]), t.make_empty())
 	prefix << t.make_for_stmt(init, cond, post, loop_body, src)
 	for stmt in prefix {
 		t.pending_stmts << stmt
@@ -3591,12 +3591,6 @@ fn (mut t Transformer) box_membership_interface_eq_rhs(rhs flat.NodeId, interfac
 	return none
 }
 
-// make_sum_semantic_eq_expr compares two sum-type values by tag, then by the
-// boxed payload of the active variant (deep equality, like V1). Raw memcmp on
-// the sum struct compares payload POINTERS and is always false for distinct
-// allocations. The comparison is delegated to a synthesized helper fn
-// (__v3_sum_eq_<name>) so recursive types (an XML node tree, an AST) compare
-// correctly at any depth — the helper is generated after the transform pass.
 fn (mut t Transformer) make_sum_semantic_eq_expr(lhs flat.NodeId, rhs flat.NodeId, sum_type_id u32, seen []EqualityTypeVisit) flat.NodeId {
 	_ = seen
 	clean_sum_source_id, variants_source_ids_2 := t.sum_eq_type_and_variants(t.trim_pointer_type(sum_type_id)) or {
@@ -3605,6 +3599,10 @@ fn (mut t Transformer) make_sum_semantic_eq_expr(lhs flat.NodeId, rhs flat.NodeI
 	clean_sum_source_id_2 := clean_sum_source_id
 	clean_sum := flat.source_type_name(clean_sum_source_id_2)
 
+	if operator := t.struct_operator_fn_name_any(clean_sum_source_id, '==') {
+		t.mark_fn_used_name(operator)
+		return t.make_call_typed(operator, [lhs, rhs], flat.source_type_bool)
+	}
 	if variants_source_ids_2.len == 0 {
 		return t.make_memcmp_eq_expr(lhs, rhs, sum_type_id, 'eq')
 	}
@@ -3805,7 +3803,7 @@ fn (mut t Transformer) build_struct_eq_helper_fn(struct_type_id u32, helper stri
 }
 
 // build_sum_eq_helper_fn appends `fn __v3_sum_eq_<Sum>(a Sum, b Sum) bool` to the
-// AST: tags must match, then the active variant's payload is unboxed and compared
+// AST: tags must match, then the active variant's inline payload is selected and compared
 // by value (recursing through the usual membership-eq machinery, which routes
 // nested sum types back through their own helpers).
 fn (mut t Transformer) build_sum_eq_helper_fn(clean_sum_id u32, helper string) {
@@ -3842,20 +3840,9 @@ fn (mut t Transformer) build_sum_eq_helper_fn(clean_sum_id u32, helper string) {
 		if qv_source_id == 0 {
 			continue
 		}
-		field := t.sum_field_name(qv_source_id)
-		// Value variants are boxed in the sum payload and must be dereferenced
-		// before comparison. Pointer variants already are the payload value
-		// itself (`voidptr` is emitted as `void *`, not `void **`).
-		use_ptr := t.variant_references_sum(qv_source_id, clean_sum_id) && !t.sum_variant_is_direct_pointer(qv_source_id)
-		field_typ := (if use_ptr { flat.source_type_id('&${qv}') } else { qv_source_id_2 })
-		mut lhs_payload := t.make_selector_op(lhs_value, field, field_typ, .dot)
-		mut rhs_payload := t.make_selector_op(rhs_value, field, field_typ, .dot)
-		if use_ptr {
-			lhs_payload = t.make_prefix(.mul, lhs_payload)
-			t.set_node_typ(int(lhs_payload), qv_source_id)
-			rhs_payload = t.make_prefix(.mul, rhs_payload)
-			t.set_node_typ(int(rhs_payload), qv_source_id)
-		}
+		field := sum_field_name(qv)
+		lhs_payload := t.make_selector_op(lhs_value, field, qv_source_id_2, .dot)
+		rhs_payload := t.make_selector_op(rhs_value, field, qv_source_id_2, .dot)
 		pending_start := t.pending_stmts.len
 		payload_eq := if t.is_sum_type_name(qv_source_id) && t.resolve_sum_name(qv_source_id) == clean_sum_id {
 			// a variant that aliases back to this same sum: recurse via the helper
@@ -3910,7 +3897,7 @@ fn (mut t Transformer) register_sum_eq_helper_signature(helper string, clean_sum
 	if !isnil(t.tc) {
 		t.tc.ensure_private_transform_signatures()
 		ret := t.tc.parse_type(flat.source_type_bool)
-		params := [t.tc.parse_type(clean_sum_id), t.tc.parse_type(clean_sum_id)]
+		params := [*t.tc.parse_type(clean_sum_id), *t.tc.parse_type(clean_sum_id)]
 		t.tc.fn_ret_types[helper] = ret
 		t.tc.register_generated_fn_param_types(helper, params.clone())
 		t.tc.fn_variadic[helper] = false
@@ -4819,10 +4806,28 @@ fn (mut t Transformer) runtime_addr(expr flat.NodeId, typ_id u32) flat.NodeId {
 		}
 	}
 	if !t.expr_can_take_address(expr) {
-		stable := t.stable_transformed_expr_for_reuse(expr, typ_id, 'addr')
-		return t.make_prefix(.amp, stable)
+		if aligned := t.aligned_fixed_array_rvalue_address(expr, typ_id) {
+			return aligned
+		}
+		name := t.new_temp('addr')
+		t.pending_stmts << t.make_decl_assign_typed(name, expr, typ_id)
+		return t.make_prefix(.amp, t.make_ident(name))
 	}
 	return t.make_prefix(.amp, expr)
+}
+
+// aligned_fixed_array_rvalue_address gives an over-aligned temporary durable backing.
+// Existing addressable values keep their original storage and pointer identity.
+fn (mut t Transformer) aligned_fixed_array_rvalue_address(value flat.NodeId, typ_id u32) ?flat.NodeId {
+	if isnil(t.tc) {
+		return none
+	}
+	typ := types.unalias_type(t.tc.parse_canonical_type_cached(typ_id))
+	if typ !is types.ArrayFixed || !t.tc.requires_aligned_allocation(typ) {
+		return none
+	}
+	// Reuse escaped-value promotion so the copy has the same allocator and lifetime policy.
+	return t.heap_value(value, typ_id)
 }
 
 fn (t &Transformer) redundant_deref_addr(expr flat.NodeId) ?flat.NodeId {

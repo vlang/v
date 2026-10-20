@@ -791,12 +791,13 @@ fn (mut g Parser) parse_if() !bool {
 		branch_type, branch_value, smartcast_is_reference := g.smartcast_payload_binding(smartcast_type, '${smartcast_tmp}${tmp_access}_object', wants_reference)
 		g.write_line('${fastc_output_c_type(flat.source_type_name(branch_type))} ${branch_cast} = ${branch_value};')
 		g.locals[smartcast_name] = FastcLocal{
-			is_mut:                  previous_smartcast.is_mut
-			is_reference:            smartcast_is_reference
-			typ:                     branch_type
-			c_name:                  branch_cast
-			smartcast_origin_type:   smartcast_boxed_type
-			smartcast_origin_source: smartcast_storage
+			is_mut:                        previous_smartcast.is_mut
+			is_reference:                  smartcast_is_reference
+			typ:                           branch_type
+			c_name:                        branch_cast
+			smartcast_origin_type:         smartcast_boxed_type
+			smartcast_origin_is_reference: previous_smartcast.original_is_reference()
+			smartcast_origin_source:       smartcast_storage
 		}
 	}
 	mut previous_member_smartcasts := map[string]FastcMemberSmartcast{}
@@ -831,12 +832,13 @@ fn (mut g Parser) parse_if() !bool {
 			g.write_line('${fastc_output_c_type(flat.source_type_name(plan_type))} ${plan_shadow} = ${plan_value};')
 			previous_plan_local := g.locals[plan.path] or { FastcLocal{} }
 			g.locals[plan.path] = FastcLocal{
-				is_mut:                  previous_plan_local.is_mut
-				is_reference:            plan_is_reference
-				typ:                     plan_type
-				c_name:                  plan_shadow
-				smartcast_origin_type:   plan.boxed_type
-				smartcast_origin_source: plan.boxed_tmp
+				is_mut:                        previous_plan_local.is_mut
+				is_reference:                  plan_is_reference
+				typ:                           plan_type
+				c_name:                        plan_shadow
+				smartcast_origin_type:         plan.boxed_type
+				smartcast_origin_is_reference: previous_plan_local.original_is_reference()
+				smartcast_origin_source:       plan.boxed_tmp
 			}
 			continue
 		}
@@ -930,12 +932,13 @@ fn (mut g Parser) parse_if() !bool {
 				'${smartcast_storage}${access}_object', flat.source_type_name(smartcast_boxed_type).ends_with('*') || previous_smartcast.is_mut)
 			g.write_line('${fastc_output_c_type(flat.source_type_name(branch_type))} ${branch_cast} = ${branch_value};')
 			g.set_scoped_local(smartcast_name, FastcLocal{
-				is_mut:                  previous_smartcast.is_mut
-				is_reference:            is_reference
-				typ:                     branch_type
-				c_name:                  branch_cast
-				smartcast_origin_type:   smartcast_boxed_type
-				smartcast_origin_source: smartcast_storage
+				is_mut:                        previous_smartcast.is_mut
+				is_reference:                  is_reference
+				typ:                           branch_type
+				c_name:                        branch_cast
+				smartcast_origin_type:         smartcast_boxed_type
+				smartcast_origin_is_reference: previous_smartcast.original_is_reference()
+				smartcast_origin_source:       smartcast_storage
 			})
 		}
 		return false
@@ -1013,12 +1016,13 @@ fn (mut g Parser) bind_else_type_test(name string, variant u32, boxed u32) {
 		'${origin}${access}_object', flat.source_type_name(boxed).ends_with('*') || previous.is_mut)
 	g.write_line('${fastc_output_c_type(flat.source_type_name(variant_type))} ${cast} = ${value};')
 	g.locals[name] = FastcLocal{
-		is_mut:                  previous.is_mut
-		is_reference:            is_reference
-		typ:                     variant_type
-		c_name:                  cast
-		smartcast_origin_type:   boxed
-		smartcast_origin_source: origin
+		is_mut:                        previous.is_mut
+		is_reference:                  is_reference
+		typ:                           variant_type
+		c_name:                        cast
+		smartcast_origin_type:         boxed
+		smartcast_origin_is_reference: previous.original_is_reference()
+		smartcast_origin_source:       origin
 	}
 }
 

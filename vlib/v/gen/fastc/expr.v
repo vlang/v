@@ -503,12 +503,14 @@ fn (mut g Parser) try_read_simple_call_expression(stops []token.Token, allow_mut
 	if g.lit in g.locals || g.lit in g.generic_method_names {
 		return FastcAtomicExpression{}
 	}
-	// Match unqualified_function_key's current-module/monomorph/builtin priority
-	// without populating parser memos for a rejected scanner checkpoint.
+	// Match current-module/monomorph priority without populating parser memos.
+	// The full reader resolves selective imports before builtin fallback.
 	local_key := fastc_function_key(g.module_name, g.lit)
 	function_key := if local_key in g.functions {
 		local_key
 	} else if local_key in g.mono_functions {
+		return FastcAtomicExpression{}
+	} else if fastc_selective_import_key(g.lit) in g.imports {
 		return FastcAtomicExpression{}
 	} else {
 		fastc_function_key('builtin', g.lit)

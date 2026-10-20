@@ -23,45 +23,19 @@ fn option_payload_tag[P](_ ?P) string {
 	return struct_variant_tag[P]()
 }
 
-fn (mut decoder Decoder) get_decoded_sumtype_workaround[T](initialized_sumtype T) !T {
-	$if initialized_sumtype is $sumtype || (T is $alias && T.unaliased_typ is $sumtype) {
-		resolved_sumtype := initialized_sumtype
-		// `is` does not tell an alias variant from its base type (`MyString | string`
-		// matches both), so prefer the variant with the exact type name.
-		variant_name := initialized_sumtype.type_name()
-		mut has_exact_variant := false
-		$for v in T.variants {
-			if initialized_sumtype is v && variant_name == typeof(v.typ).name {
-				has_exact_variant = true
+fn (mut decoder Decoder) decode_selected_sumtype[T](mut value T) ! {
+	type_idx := value.type_idx()
+	$for variant in T.variants {
+		if mut value is variant && type_idx == variant.typ {
+			$if variant.typ !is $option && variant.typ is time.Time {
+				decoder.decode_sumtype_time(mut value)!
+			} $else {
+				decoder.decode_value(mut value)!
 			}
-		}
-		$for v in T.variants {
-			if initialized_sumtype is v
-				&& (!has_exact_variant || variant_name == typeof(v.typ).name) {
-				$if initialized_sumtype is time.Time {
-					mut val := $zero(v.typ)
-					decoder.decode_sumtype_time(mut val)!
-					return T(val)
-				} $else $if initialized_sumtype !is $option {
-					mut val := $zero(v.typ)
-					decoder.decode_value(mut val)!
-					return T(val)
-				} $else {
-					if decoder.current_value().value_kind == .null {
-						decoder.current_idx++
-						return resolved_sumtype
-					} else {
-						// The payload of an option variant, like in the removed `json` module.
-						mut option_value := $zero(v.typ)
-						option_value = decoder.decode_option_payload(option_value)!
-						return T(option_value)
-					}
-				}
-			}
+			return
 		}
 	}
 	decoder.decode_error('could not decode resolved sumtype (should not happen)')!
-	return initialized_sumtype // suppress compiler error
 }
 
 // check_element_type_valid reports whether the value at `value_idx` in values_info
@@ -164,20 +138,6 @@ fn (mut decoder Decoder) check_array_type_valid[T](arr []T, value_idx int) bool 
 	return decoder.check_element_type_valid(element, value_idx)
 }
 
-fn (mut decoder Decoder) get_array_type_workaround[T](initialized_sumtype T) bool {
-	$if initialized_sumtype is $sumtype || (T is $alias && T.unaliased_typ is $sumtype) {
-		$for v in T.variants {
-			if initialized_sumtype is v {
-				$if initialized_sumtype is $array {
-					return decoder.check_element_type_valid(initialized_sumtype,
-						decoder.current_idx)
-				}
-			}
-		}
-	}
-	return false
-}
-
 fn get_map_element_type[U, V](_m map[U]V) V {
 	return V{}
 }
@@ -185,26 +145,6 @@ fn get_map_element_type[U, V](_m map[U]V) V {
 fn (mut decoder Decoder) check_map_type_valid[T](m T, value_idx int) bool {
 	element := get_map_element_type(m)
 	return decoder.check_element_type_valid(element, value_idx)
-}
-
-fn (mut decoder Decoder) check_map_empty_valid[T](m T) bool {
-	element := get_map_element_type(m)
-	return decoder.check_element_type_valid(element, no_value_idx)
-}
-
-fn (mut decoder Decoder) get_map_type_workaround[T](initialized_sumtype T) bool {
-	$if initialized_sumtype is $sumtype || (T is $alias && T.unaliased_typ is $sumtype) {
-		$for v in T.variants {
-			if initialized_sumtype is v {
-				$if initialized_sumtype is $map {
-					val := $zero(v.typ)
-					// The first value of the object, after its first key.
-					return decoder.check_map_type_valid(val, decoder.current_idx + 2)
-				}
-			}
-		}
-	}
-	return false
 }
 
 // get_sumtype_type_field_idx returns the index in values_info of the value of the
@@ -231,12 +171,7 @@ fn (mut decoder Decoder) get_sumtype_type_field_idx(value_idx int) int {
 			return key_value_idx
 		}
 		// Skip the value, with everything nested in it.
-		value_info := decoder.values_info[key_value_idx]
-		value_end := value_info.position + value_info.length
-		key_idx = key_value_idx + 1
-		for key_idx < values_len && decoder.values_info[key_idx].position < value_end {
-			key_idx++
-		}
+		key_idx = decoder.next_value(key_value_idx)
 	}
 	return no_value_idx
 }
@@ -422,9 +357,9 @@ fn (mut decoder Decoder) init_sumtype_by_value_kind[T](mut val T, value_info Val
 		.array {
 			$for v in T.variants {
 				$if v.typ is $array {
-					val = T(v)
-
-					if decoder.get_array_type_workaround(val) {
+					candidate := $zero(v.typ)
+					if decoder.check_element_type_valid(candidate, decoder.current_idx) {
+						val = T(candidate)
 						return
 					}
 				}
@@ -436,9 +371,9 @@ fn (mut decoder Decoder) init_sumtype_by_value_kind[T](mut val T, value_info Val
 			}
 			$for v in T.variants {
 				$if v.typ is $map {
-					val = T(v)
-
-					if decoder.get_map_type_workaround(val) {
+					candidate := $zero(v.typ)
+					if decoder.check_element_type_valid(candidate, decoder.current_idx) {
+						val = T(candidate)
 						return
 					}
 				} $else $if v.typ is $struct {
@@ -515,5 +450,5 @@ fn (mut decoder Decoder) decode_sumtype[T](mut val T) ! {
 
 	decoder.init_sumtype_by_value_kind(mut val, value_info)!
 
-	val = decoder.get_decoded_sumtype_workaround(val)!
+	decoder.decode_selected_sumtype(mut val)!
 }

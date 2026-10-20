@@ -48,9 +48,14 @@ fn test_scalar_parser_keeps_recursive_alias_and_type_parameter_precedence() {
 	assert recursive.name() == 'u64'
 	assert recursive.base_type is Unknown
 	assert tc.type_cache.parse_entries.len == 0
-	assert tc.type_count() == 0
+	count := tc.type_count()
+	assert count > 0
+	repeated := tc.parse_type(flat.source_type_u64)
+	assert voidptr(repeated) == voidptr(recursive)
+	assert tc.type_count() == count
+	assert tc.type_cache.parse_entries.len == 0
 	tc.type_cache.alias_parse_stack.clear()
-	assert tc.parse_type(flat.source_type_u64) == builtin_type_value('u64')
+	assert *tc.parse_type(flat.source_type_u64) == builtin_type_value('u64')
 	tc.type_param_texts.set_id('u64', flat.source_type_string)
 	assert tc.parse_type(flat.source_type_u64) is String
 	assert tc.type_cache.parse_entries.len == 1
@@ -65,7 +70,7 @@ fn test_scalar_parser_keeps_builtin_nominal_precedence_and_array_map_context() {
 	tc.type_aliases.set_id('shadow.u64', flat.source_type_string)
 	tc.sum_types.set('u64', ['string', 'int'])
 	tc.interface_names['u64'] = true
-	assert tc.parse_type(flat.source_type_u64) == builtin_type_value('u64')
+	assert *tc.parse_type(flat.source_type_u64) == builtin_type_value('u64')
 	assert tc.parse_type(flat.source_type_id('&u64')) is Pointer
 	assert tc.parse_type(flat.source_type_id('?u64')) is OptionType
 	tc.has_builtins = true

@@ -203,7 +203,6 @@ fn decode_json5[T](text string, mut buffer DecodeBuffer, params DecoderOptions) 
 		source_values_info: unsafe { parser.source_values_info }
 		strict:             params.strict
 		values_info:        unsafe { parser.values_info }
-		values_len:         parser.values_info.len
 	}
 	return decoder.decode_root[T]()
 }

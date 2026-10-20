@@ -109,7 +109,7 @@ fn test_interface_box_param_predicate_preserves_container_and_callback_types() {
 			}
 			// Callback signatures do not box their parameter or return types at the
 			// call site; the callback's own body handles them.
-			callback := types.Type(types.FnType{ params: [elem], return_type: elem })
+			callback := types.Type(types.FnType{ params: [types.FnParam{ typ: &elem }], return_type: &elem })
 			assert !t.interface_box_call_param_maybe_uncached(callback)
 			assert !t.interface_box_call_param_maybe(callback)
 		}

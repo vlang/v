@@ -4507,8 +4507,14 @@ fn (g &Parser) render_call_argument_expression(tokens []FastcExpressionToken, ex
 				return fastc_resolve_enum_shorthands_in_source(tokens[0].source, fastc_c_declared_type_name(flat.source_type_name(enum_key)), g.enum_field_names[flat.source_type_name(enum_key)])
 			}
 		}
-		// A single token carrying a pre-rendered `({ ... })` (e.g. an `or`-unwrap synthesized
-		// as an array element or call argument): use it directly.
+		// Pre-rendered option fallbacks still need the ordinary implicit borrow
+		// when a reference parameter expects their exact payload type.
+		actual := fastc_normalize_inferred_type(tokens[0].typ)
+		if g.selfhost && expected_type.ends_with('*') && actual != flat.source_type_voidptr
+			&& expected_type == flat.source_type_name(actual) + '*' {
+			return g.value_address_expression(actual, tokens[0].source, tokens)
+		}
+		// Other pre-rendered values already have the required representation.
 		return tokens[0].source
 	}
 	if g.selfhost && expected_type.starts_with('FixedArray_') && expected_type.ends_with('*')

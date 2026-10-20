@@ -123,9 +123,17 @@ fn (g &Parser) unqualified_function_key(name string) string {
 	local_key := fastc_function_key(g.module_name, name)
 	mut key := local_key
 	if local_key !in g.functions && local_key !in g.mono_functions {
-		builtin_key := fastc_function_key('builtin', name)
-		if builtin_key in g.functions {
-			key = builtin_key
+		if imported_module := g.imports[fastc_selective_import_key(name)] {
+			selected_key := fastc_function_key(g.resolve_module_alias(imported_module), name)
+			if selected_key in g.functions || selected_key in g.mono_functions {
+				key = selected_key
+			}
+		}
+		if key == local_key {
+			builtin_key := fastc_function_key('builtin', name)
+			if builtin_key in g.functions {
+				key = builtin_key
+			}
 		}
 	}
 	mut w := unsafe { &Parser(g) }

@@ -76,11 +76,12 @@ fn test_map_runtime_mixed_signatures_and_recursive_structs_keep_maps() {
 	for typ in [
 		self_type,
 		types.Type(types.FnType{
-			params:      [types.Type(types.int_), types.Type(types.Pointer{ base_type: mapped })]
+			params:      [types.FnParam{ typ: types.Type(types.int_) },
+				types.FnParam{ typ: types.Type(types.Pointer{ base_type: mapped }) }]
 			return_type: types.Type(types.Void{})
 		}),
 		types.Type(types.FnType{
-			params:      [types.Type(types.String{})]
+			params:      [types.FnParam{ typ: types.Type(types.String{}) }]
 			return_type: types.Type(types.ResultType{ base_type: mapped })
 		}),
 		types.Type(types.MultiReturn{

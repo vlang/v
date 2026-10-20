@@ -575,9 +575,9 @@ fn fn_value_type_name_from_type(typ types.Type) ?u32 {
 
 fn fn_call_value_type_name_from_type(typ types.Type) ?u32 {
 	if typ is types.FnType {
-		for i, param in typ.params {
-			if i < typ.params_mut.len && typ.params_mut[i] && param is types.Pointer {
-				return fn_literal_value_type_text(typ.params, typ.return_type.source_type_id())
+		for parameter in typ.params {
+			if parameter.is_mut && parameter.typ is types.Pointer {
+				return fn_literal_value_type_text(typ.params.map(*it.typ), typ.return_type.source_type_id())
 			}
 		}
 	}
@@ -2027,11 +2027,7 @@ fn (t &Transformer) resolve_index_elem_type(node flat.Node) u32 {
 		return t.normalize_type_alias(for_in_fixed_array_elem_type(base_type))
 	}
 	if flat.source_type_shape(base_type).has(.map_type) {
-		bracket_end := flat.source_type_name(base_type).index(']') or { return u32(0) }
-		if bracket_end + 1 < flat.source_type_name(base_type).len {
-			return t.normalize_type_alias(flat.source_type_id(flat.source_type_name(base_type)[bracket_end + 1..]))
-		}
-		return u32(0)
+		return t.normalize_type_alias(t.map_value_type(base_type))
 	}
 	if base_type == flat.source_type_string {
 		return flat.source_type_u8
