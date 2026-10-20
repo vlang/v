@@ -268,6 +268,8 @@ fn maybe_fresh(owned bool, code int) !Choice {
  if owned { return Choice(&Item{code: code}) }
  return error("absent")
 }
+fn flow_pair(first Choice, second Choice) Choice { assert first is int; return second }
+fn flow_absent_bool() !bool { return error("absent") }
 fn cleared_alias_scope() {
  mut local := Item{code: 9}
  value := maybe_fresh(false, 12) or {
@@ -308,11 +310,50 @@ fn cleared_exits_scope() {
   }
   inner
  }
+ wrapped_broken := maybe_fresh(false, 14) or {
+  mut inner := Choice(0)
+  for i in 0 .. 2 {
+   temporary := Choice(maybe_fresh(false, 14) or { inner = Choice(&local); break })
+   assert temporary is int
+   inner = Choice(0)
+   assert i < 2
+  }
+  inner = Choice(0)
+  inner
+ }
+ called_continued := maybe_fresh(false, 14) or {
+  mut inner := Choice(0)
+  for i in 0 .. 2 {
+   temporary := flow_pair(maybe_fresh(false, 14) or { inner = Choice(&local); continue }, maybe_fresh(false, 14) or { inner = Choice(0); Choice(0) })
+   assert temporary is int
+   inner = Choice(0)
+   assert i < 2
+  }
+  inner = Choice(0)
+  inner
+ }
+ condition_cleared := maybe_fresh(false, 14) or {
+  mut inner := Choice(0)
+  for outer_i in 0 .. 2 {
+   for (flow_absent_bool() or { inner = Choice(&local); break }) {
+    inner = Choice(0)
+   }
+   inner = Choice(0)
+   assert outer_i < 2
+  }
+  inner
+ }
  broken_alias := Choice(broken)
  continued_alias := Choice(continued)
+ wrapped_broken_alias := Choice(wrapped_broken)
+ called_continued_alias := Choice(called_continued)
+ condition_cleared_alias := Choice(condition_cleared)
  local = Item{code: 13}
  assert broken_alias is int
  assert continued_alias is int
+ assert wrapped_broken_alias is int
+ assert called_continued_alias is int
+ assert condition_cleared_alias is int
  assert C.sum_drop_count(12) == 1
 }
 fn result_success(item &Item) ! {

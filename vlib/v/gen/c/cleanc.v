@@ -13988,6 +13988,14 @@ fn (g &FlatGen) pointer_variant_expr_creates_owned_value(id flat.NodeId) bool {
 			expr_id = g.a.child(&node, 0)
 			continue
 		}
+		if node.kind == .call && node.value == '__v3_non_aliasing_allocation_call'
+			&& node.children_count > 0 {
+			// Escaped-value promotion replaces the fresh address expression with a
+			// marked allocation. Ordinary calls returning borrowed pointers stay unowned.
+			callee := g.a.child_node(&node, 0)
+			return callee.kind == .ident
+				&& callee.value in ['memdup', 'memdup_noscan', 'v3_aligned_memdup']
+		}
 		if node.kind != .prefix || node.op != .amp || node.children_count == 0 {
 			return false
 		}

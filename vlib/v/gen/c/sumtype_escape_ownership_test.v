@@ -720,7 +720,17 @@ fn main() {
 			mixed_sources << base.replace(' value := maybe(false, &local)', ' value := ${initializer}') + '\nfn main() { consume() or {} }\n'
 		}
 	}
-	flow_base := mixed_loan.replace(') Choice {', ') !Choice {').replace(' return Choice(item)', ' return error("absent")')
+	flow_base := mixed_loan.replace(') Choice {', ') !Choice {').replace(' return Choice(item)', ' return error("absent")') + '
+fn flow_passthrough(value Choice) Choice { return value }
+fn flow_pair(first Choice, second Choice) Choice { assert first is int; return second }
+fn flow_bool(value Choice) bool { return value is int }
+fn flow_result(value Choice) !Choice { return value }
+fn flow_absent_int() !int { return error("absent") }
+fn flow_absent_bool() !bool { return error("absent") }
+fn flow_absent_values() ![]int { return error("absent") }
+struct ScalarBox { value int }
+fn flow_next(mut flag bool) !bool { if flag { return error("absent") }; flag = true; return true }
+'
 	mut flow_sources := []string{}
 	for flow in [
 		'mut inner := Choice(0); if local.code == 1 { inner = Choice(&local) }; inner',
@@ -735,6 +745,39 @@ fn main() {
 		'mut inner := Choice(0); outer: for i in 0 .. 2 { for j in 0 .. 2 { if local.code == 1 { inner = Choice(&local); break outer }; inner = Choice(0); assert j < 2 }; inner = Choice(0); assert i < 2 }; inner',
 		'mut inner := Choice(0); outer: for i in 0 .. 2 { for j in 0 .. 1 { if local.code == 1 { inner = Choice(&local); continue outer }; inner = Choice(0); assert j == 0 }; inner = Choice(0); assert i < 2 }; inner',
 		'mut inner := Choice(0); for i := 0; i < 2; i++ { if local.code == 1 { inner = Choice(&local); continue }; inner = Choice(0) }; inner',
+	] {
+		source := flow_base.replace(' value := maybe(false, &local)', ' value := maybe(false, &local) or { ${flow} }')
+		flow_sources << source
+		mixed_sources << source
+	}
+	for control in ['break', 'continue'] {
+		for evaluation in [
+			'Choice(maybe(false, &local) or { inner = Choice(&local); ${control} })',
+			'flow_passthrough(maybe(false, &local) or { inner = Choice(&local); ${control} })',
+			'flow_pair(maybe(false, &local) or { inner = Choice(&local); ${control} }, maybe(false, &local) or { inner = Choice(0); Choice(0) })',
+		] {
+			flow := 'mut inner := Choice(0); for i in 0 .. 2 { temporary := ${evaluation}; assert temporary is int; inner = Choice(0); assert i < 2 }; inner'
+			source := flow_base.replace(' value := maybe(false, &local)', ' value := maybe(false, &local) or { ${flow} }')
+			flow_sources << source
+			mixed_sources << source
+		}
+	}
+	for flow in [
+		'mut inner := Choice(0); for i in 0 .. 2 { temporary := flow_passthrough(Choice(maybe(false, &local) or { inner = Choice(&local); break })); assert temporary is int; inner = Choice(0); assert i < 2 }; inner',
+		'mut inner := Choice(0); for i in 0 .. 2 { if flow_bool(maybe(false, &local) or { inner = Choice(&local); break }) { inner = Choice(0) } else { inner = Choice(0) }; assert i < 2 }; inner',
+		'mut inner := Choice(0); for i in 0 .. 2 { temporary := flow_result(maybe(false, &local) or { inner = Choice(&local); continue }) or { inner = Choice(0); Choice(0) }; assert temporary is int; inner = Choice(0); assert i < 2 }; inner',
+		'mut inner := Choice(0); for i in 0 .. 2 { temporary := 1 + (flow_absent_int() or { inner = Choice(&local); break }); assert temporary > 0; inner = Choice(0); assert i < 2 }; inner',
+		'mut inner := Choice(0); for i in 0 .. 2 { gate := local.code == 1; if gate && (flow_absent_bool() or { inner = Choice(&local); break }) {}; inner = Choice(0); assert i < 2 }; inner',
+		'mut inner := Choice(&local); gate := local.code != 1; if gate && (if local.code == 1 { inner = Choice(0); true } else { inner = Choice(0); false }) {}; inner',
+		'mut inner := Choice(&local); gate := local.code == 1; if gate || (if local.code == 1 { inner = Choice(0); true } else { inner = Choice(0); false }) {}; inner',
+		'mut inner := Choice(0); for outer_i in 0 .. 2 { for item in (flow_absent_values() or { inner = Choice(&local); break }) { assert item >= 0 }; inner = Choice(0); assert outer_i < 2 }; inner',
+		'mut inner := Choice(0); for outer_i in 0 .. 2 { for item in (flow_absent_values() or { inner = Choice(&local); continue }) { assert item >= 0 }; inner = Choice(0); assert outer_i < 2 }; inner',
+		'mut inner := Choice(0); for i in 0 .. 2 { temporary := [flow_absent_int() or { inner = Choice(&local); break }]; assert temporary.len == 1; inner = Choice(0); assert i < 2 }; inner',
+		'mut inner := Choice(0); for i in 0 .. 2 { temporary := ScalarBox{value: (flow_absent_int() or { inner = Choice(&local); break })}; assert temporary.value == 0; inner = Choice(0); assert i < 2 }; inner',
+		'mut inner := Choice(0); for i in 0 .. 2 { temporary := {"key": (flow_absent_int() or { inner = Choice(&local); break })}; assert temporary.len == 1; inner = Choice(0); assert i < 2 }; inner',
+		'mut inner := Choice(0); for i in 0 .. 2 { temporary := "value:\${flow_absent_int() or { inner = Choice(&local); break }}"; assert temporary.len > 0; inner = Choice(0); assert i < 2 }; inner',
+		'mut inner := Choice(0); { outer: for outer_i in 0 .. 2 { for (flow_absent_bool() or { inner = Choice(&local); break outer }) { inner = Choice(0) }; inner = Choice(0); assert outer_i < 2 } }; inner',
+		'mut inner := Choice(0); { outer: for outer_i in 0 .. 2 { mut flag := false; mut next := Choice(0); for (flow_next(mut flag) or { inner = next; break outer }) { next = Choice(&local) }; inner = Choice(0); assert outer_i < 2 } }; inner',
 	] {
 		source := flow_base.replace(' value := maybe(false, &local)', ' value := maybe(false, &local) or { ${flow} }')
 		flow_sources << source

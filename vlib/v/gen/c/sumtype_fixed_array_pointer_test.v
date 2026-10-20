@@ -84,7 +84,7 @@ fn rebind(mut value Node, other &[2]Node) {
   callback_slot := holder.callback(holder.slot)
   assert voidptr(callback_slot) == voidptr(slot)
   store_slot(callback_slot, other)
-  replace(mut value, other)
+  replace(mut *slot, other)
  } else { assert false }
 }
 fn main() {
@@ -95,13 +95,14 @@ fn main() {
  mut wrapped := Node(first_ptr)
  assert voidptr(pointer(wrapped)) == voidptr(first_ptr)
  if mut wrapped is &[2]Node {
-  change_first(mut wrapped)
+  slot := unsafe { &wrapped }
+  change_first(mut *slot)
   assert pair_first(wrapped) == 11
  } else { assert false }
  assert (first[0] as int) == 11
  copies := [wrapped].clone()
  assert voidptr(pointer(copies[0])) == voidptr(first_ptr)
- assert copies[0].str().contains("11")
+ assert copies[0].str() == "Node(&[<circular>, <circular>])"
  rebind(mut wrapped, second_ptr)
  assert voidptr(pointer(wrapped)) == voidptr(second_ptr)
  assert pair_first(pointer(wrapped)) == 7

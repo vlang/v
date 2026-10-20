@@ -41,9 +41,34 @@ fn owned_array_scope() {
 	assert C.aligned_owner_count(2) == 0
 }
 
+fn borrowed_array(values &[2]AlignChoice) &[2]AlignChoice {
+	return values
+}
+
+fn borrowed_array_scope(values &[2]AlignChoice) {
+	owner := AlignArrayOwner(borrowed_array(values))
+	view := owner as &[2]AlignChoice
+	assert voidptr(view) == voidptr(values)
+	assert ((*view)[0] as &AlignDropItem).code == 3
+}
+
+fn borrowed_array_control() {
+	mut values := [AlignChoice(&AlignDropItem{ code: 3 }), AlignChoice(AlignWide{ value: 9 })]!
+	// The array stays live through every use of this borrowed reference.
+	pointer := unsafe { &values }
+	borrowed_array_scope(pointer)
+	assert C.aligned_owner_count(3) == 0
+	assert (values[0] as &AlignDropItem).code == 3
+	// The returned pointer must keep referring to the caller's existing array.
+	unsafe { (*pointer)[1] = AlignChoice(AlignWide{ value: 11 }) }
+	assert (values[1] as AlignWide).value == 11
+}
+
 fn main() {
 	owned_array_scope()
+	borrowed_array_control()
 	assert C.aligned_owner_count(1) == 1
 	assert C.aligned_owner_count(2) == 1
+	assert C.aligned_owner_count(3) == 1
 	assert C.aligned_owner_visits() == 2
 }
