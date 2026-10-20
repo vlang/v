@@ -477,6 +477,25 @@ fn test_fn_values_fields_and_methods() {
 	assert opt or { []int{} } == [8, 6]
 }
 
+fn test_fn_literal_reads() {
+	lit_len := fn (mut a ?[]int) int {
+		v := a or { return -1 }
+		return v.len
+	}
+	lit_default := fn (mut a ?[]int) []int {
+		return a or { [0] }
+	}
+	mut arr := [1, 2]
+	assert lit_len(mut arr) == 2
+	assert lit_default(mut arr) == [1, 2]
+	mut opt := ?[]int([3])
+	assert lit_len(mut opt) == 1
+	assert lit_default(mut opt) == [3]
+	mut none_opt := ?[]int(none)
+	assert lit_len(mut none_opt) == -1
+	assert lit_default(mut none_opt) == [0]
+}
+
 fn test_multi_assign() {
 	mut x := ?[]int([1])
 	mut y := ?[]int([2])
