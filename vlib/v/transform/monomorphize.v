@@ -6560,7 +6560,12 @@ fn (mut t Transformer) concrete_generic_call_param_types(id flat.NodeId, node fl
 			continue
 		}
 		param_type := explicit_mut_pointer_param_type_text(child, t.specialized_signature_type_text(decl, child.typ, args, params))
-		result << t.tc.parse_canonical_type(param_type)
+		parsed := t.tc.parse_canonical_type(param_type)
+		result << if child.is_mut && child.op != .amp {
+			types.mut_param_semantic_type(parsed)
+		} else {
+			parsed
+		}
 	}
 	if result.len == 0 {
 		return none
@@ -6587,7 +6592,27 @@ fn (mut t Transformer) concrete_generic_call_param_type_names(id flat.NodeId, no
 	if args_source_ids.len == 0 || t.generic_args_have_placeholders(args_source_ids) {
 		return none
 	}
-	return t.specialized_generic_call_param_type_texts(decl, args_source_ids).clone()
+	mut result := t.specialized_generic_call_param_type_texts(decl, args_source_ids).clone()
+	mut param_idx := 0
+	for i in 0 .. decl.node.children_count {
+		child := t.a.child_node(&decl.node, i)
+		if child.kind != .param {
+			if t.prefix_param_scan {
+				break
+			}
+			continue
+		}
+		if param_idx < result.len && child.is_mut && child.op != .amp {
+			parsed := t.tc.parse_canonical_type(result[param_idx])
+			slot := types.mut_param_semantic_type(parsed)
+			// Keep original alias/variadic spellings unless the optional ABI changes.
+			if !types.semantic_types_equal(slot, parsed) {
+				result[param_idx] = t.semantic_type_name(slot)
+			}
+		}
+		param_idx++
+	}
+	return result
 }
 
 fn (mut t Transformer) concrete_generic_call_is_variadic(id flat.NodeId, node flat.Node) bool {

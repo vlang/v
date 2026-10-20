@@ -190,6 +190,70 @@ fn test_sumtype_reference_guards_project_fields_and_expire_on_reassignment() {
 	}
 }
 
+fn test_dereferenced_sum_guards_keep_the_original_binding_and_expire_on_stores() {
+	for depth in [1, 2] {
+		mut b := sumtype_layout_builder('module main\nstruct FlagData { pad i64\n flag i32 }\ntype Choice = i64 | FlagData\n')!
+		function := b.m.add_function('dereferenced_guard', b.i32_type)
+		b.cur_block = b.m.add_block(function, 'entry')
+		choice := b.struct_types['Choice']
+		mut binding_type := choice
+		for _ in 0 .. depth {
+			binding_type = b.m.type_store.get_ptr(binding_type)
+		}
+		slot := b.emit0(.alloca, b.m.type_store.get_ptr(binding_type))
+		other := b.emit0(.alloca, b.m.type_store.get_ptr(choice))
+		replacement := b.emit0(.alloca, b.m.type_store.get_ptr(choice))
+		b.vars['value'] = slot
+		b.vars['other'] = other
+		b.vars['replacement'] = replacement
+		spelling := if depth == 1 { '&Choice' } else { '&&Choice' }
+		base := b.a.add_node(flat.Node{ kind: .ident, value: 'value', typ: flat.source_type_id(spelling) })
+		other_node := b.a.add_node(flat.Node{ kind: .ident, value: 'other', typ: flat.source_type_id('Choice') })
+		rhs := b.a.add_node(flat.Node{ kind: .ident, value: 'replacement', typ: flat.source_type_id('Choice') })
+		mut dereferenced := base
+		for _ in 0 .. depth {
+			paren_children := b.a.children.len
+			b.a.children << dereferenced
+			paren := b.a.add_node(flat.Node{ kind: .paren, children_start: paren_children, children_count: 1 })
+			children := b.a.children.len
+			b.a.children << paren
+			dereferenced = b.a.add_node(flat.Node{ kind: .prefix, op: .mul, children_start: children, children_count: 1 })
+		}
+		selector_children := b.a.children.len
+		b.a.children << dereferenced
+		tag := b.a.add_node(flat.Node{ kind: .selector, value: '__v_sum_type_tag__', children_start: selector_children, children_count: 1 })
+		expected := b.a.add_val(.int_literal, '2')
+		comparison_children := b.a.children.len
+		b.a.children << [tag, expected]
+		comparison := b.a.add_node(flat.Node{ kind: .infix, op: .eq, children_start: comparison_children, children_count: 2 })
+		negated_children := b.a.children.len
+		b.a.children << comparison
+		negated := b.a.add_node(flat.Node{ kind: .prefix, op: .not, children_start: negated_children, children_count: 1 })
+		b.preserve_sum_guard(negated, false)
+		b.preserve_sum_variant(other_node, flat.source_type_id('FlagData'), 0)
+		assert b.sum_guard_variants[slot] == flat.source_type_id('FlagData')
+		assert b.sum_guard_variants.len == 2
+		start := b.m.instrs.len
+		field := b.smartcast_sum_selector_addr(slot, base, 'flag') or {
+			panic('the dereferenced tag check must establish the variant')
+		}
+		assert b.deref_type(field) == b.i32_type
+		address := b.m.instrs[b.m.values[field].index]
+		assert b.m.values[address.operands[1]].name == '8'
+		assert b.m.instrs[start..].filter(it.op == .load).len == depth
+		assert b.value_type(b.build_expr(base)) == binding_type
+		assignment_children := b.a.children.len
+		b.a.children << [dereferenced, rhs]
+		b.build_assign(flat.Node{ kind: .assign, op: .assign, children_start: assignment_children, children_count: 2 })
+		assert slot !in b.sum_guard_variants
+		assert b.sum_guard_variants[other] == flat.source_type_id('FlagData')
+		assert b.smartcast_sum_selector_addr(slot, base, 'flag') == none
+		b.preserve_sum_variant(dereferenced, u32(0), 1)
+		assert b.sum_guard_variants[slot] == flat.source_type_i64
+		assert b.smartcast_sum_selector_addr(slot, base, 'flag') == none
+	}
+}
+
 fn test_sumtype_variant_selection_preserves_qualification() {
 	mut b := Builder{}
 	b.sum_type_variants.set('Choice', ['left.Item', 'right.Item', '&right.Item'])

@@ -4252,7 +4252,23 @@ fn (mut t Transformer) transform_call_arg_for_param(arg_id flat.NodeId, param_ty
 	// into the block, after the call has already referenced it.
 	outer_pending := t.pending_stmts
 	t.pending_stmts = []flat.NodeId{}
-	result := t.transform_call_arg_for_param_isolated(arg_id, param_type_id)
+	mut result := t.transform_call_arg_for_param_isolated(arg_id, param_type_id)
+	if int(arg_id) >= 0 && int(result) >= 0 && !isnil(t.tc)
+		&& t.a.nodes[int(arg_id)].is_mut {
+		source := t.a.node(t.unwrap_parens(arg_id))
+		if source.kind == .prefix && source.op == .mul {
+			expected := t.tc.parse_canonical_type(param_type_id)
+			if expected is types.Pointer && expected.base_type is types.Alias
+				&& types.unalias_type(expected.base_type) is types.Pointer {
+				// Prefix lowering rebuilds this lvalue. Keep its explicit `mut` so
+				// cgen passes the caller's pointer slot rather than the pointer value.
+				lowered := t.a.nodes[int(result)]
+				if !lowered.is_mut {
+					result = t.a.add_node(flat.Node{ ...lowered, is_mut: true })
+				}
+			}
+		}
+	}
 	arg_pending := t.pending_stmts
 	t.pending_stmts = outer_pending
 	for stmt in arg_pending {

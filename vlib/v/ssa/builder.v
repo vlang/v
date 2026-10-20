@@ -7983,6 +7983,11 @@ fn (mut b Builder) build_assign(node flat.Node) {
 				result := b.emit2(op, field_type, cur, rhs_val)
 				b.emit2(.store, b.void_type, result, addr)
 			}
+			if lhs.kind == .prefix && lhs.op == .mul {
+				if origin := b.sum_guard_binding_addr(lhs_id) {
+					b.sum_guard_variants.delete(origin)
+				}
+			}
 		}
 		i += 2
 	}

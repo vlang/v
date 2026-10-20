@@ -17413,6 +17413,12 @@ fn (mut t Transformer) try_lower_pointer_value_assign(node flat.Node) ?[]flat.No
 		// The regular path handles value coercion and dropping the previous owner.
 		return none
 	}
+	if t.mut_param_values[lhs.value] && !t.pointer_value_rvalues[lhs.value]
+		&& t.is_sum_type_name(lhs_value_type_source_id) {
+		// This is an implicit caller reference to a Sum value. Its regular
+		// replacement path releases the old payload and retains same-pointer owners.
+		return none
+	}
 	rhs_node := t.a.nodes[int(rhs_id)]
 	if rhs_node.kind == .prefix && rhs_node.op == .amp {
 		return none

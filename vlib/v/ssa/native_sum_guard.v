@@ -60,16 +60,26 @@ fn (mut b Builder) preserve_sum_tag_comparison(selector_id flat.NodeId, tag_id f
 	b.preserve_sum_variant(b.a.child(&selector, 0), u32(0), tag.value.int())
 }
 
+// sum_guard_binding_addr preserves the binding identity across transparent reference views.
+fn (b &Builder) sum_guard_binding_addr(expr_id flat.NodeId) ?ValueID {
+	mut current := expr_id
+	for b.valid_node_id(current) {
+		expr := b.a.nodes[int(current)]
+		if expr.kind == .ident {
+			return b.vars[expr.value] or { return none }
+		}
+		if (expr.kind == .paren || (expr.kind == .prefix && expr.op == .mul))
+			&& expr.children_count > 0 {
+			current = b.a.child(&expr, 0)
+			continue
+		}
+		return none
+	}
+	return none
+}
+
 fn (mut b Builder) preserve_sum_variant(expr_id flat.NodeId, variant_name_id u32, tag int) {
-	expr := b.a.nodes[int(expr_id)]
-	if expr.kind == .paren && expr.children_count > 0 {
-		b.preserve_sum_variant(b.a.child(&expr, 0), variant_name_id, tag)
-		return
-	}
-	if expr.kind != .ident {
-		return
-	}
-	addr := b.vars[expr.value] or { return }
+	addr := b.sum_guard_binding_addr(expr_id) or { return }
 	// Further checks cannot change a proved variant. A conflicting edge is
 	// unreachable; retaining the fact keeps diagnostic tag scans from erasing it.
 	if addr in b.sum_guard_variants {
