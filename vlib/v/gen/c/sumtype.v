@@ -46,7 +46,7 @@ fn (mut g FlatGen) sum_pointer_slot_type(typ &types.Type) string {
 		depth++
 		target = unalias_type(target.base_type)
 	}
-	return '__v3_sum_fixed_pointer_${type_name_part(g.value_c_type(target))}${'ptr'.repeat(depth)}'
+	return '__v3_sum_fixed_pointer_${naming.type_name_part(g.value_c_type(target))}${'ptr'.repeat(depth)}'
 }
 
 // Typed pointer-slot views preserve an addressable projection for mutable borrows.

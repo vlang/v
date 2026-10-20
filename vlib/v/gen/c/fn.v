@@ -11686,7 +11686,7 @@ fn (mut g FlatGen) gen_fn_field_call(node flat.Node, fn_node &flat.Node, base_ty
 		arg_id := g.a.child(&node, i)
 		arg_idx := i - 1
 		if arg_idx < fn_type.params.len {
-			g.gen_arg_for_expected_type(arg_id, fn_type.params[arg_idx].typ)
+			g.gen_arg_for_expected_type(arg_id, *fn_type.params[arg_idx].typ)
 		} else {
 			g.gen_expr(arg_id)
 		}

@@ -1421,8 +1421,9 @@ fn (mut tc TypeChecker) check_postfix(id flat.NodeId, node flat.Node) {
 		if is_unresolved_name_type(child_type) {
 			return
 		}
+		child_type_ref := child_type
 		if child_type is Pointer {
-			if tc.pointer_diagnostic_binding_type_name(child_id, Type(child_type)) in [
+			if tc.pointer_diagnostic_binding_type_name(child_id, child_type_ref) in [
 				'voidptr',
 				'nil',
 			] {
@@ -19574,7 +19575,7 @@ fn (mut tc TypeChecker) infer_generic_type_value_from_type_bytes(param_text stri
 			if actual_is_generic && tc.generic_type_base_matches(decl_base, flat.source_type_id(actual_base))
 				&& param_args.len == actual_args.len {
 				for i in 0 .. param_args.len {
-					tc.infer_generic_type_value_from_type_bytes(param_args[i], tc.parse_type(flat.source_type_id(actual_args[i])), generic_params, mut inferred)
+					tc.infer_generic_type_value_from_type_bytes(param_args[i], *tc.parse_type(flat.source_type_id(actual_args[i])), generic_params, mut inferred)
 				}
 				return
 			}

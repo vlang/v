@@ -4023,10 +4023,11 @@ fn (mut tc TypeChecker) check_dump_expr(node flat.Node) {
 			else { private_type }
 		}
 	}
+	private_type_ref := private_type
 	if private_type is Struct {
 		if visibility := tc.private_declaration(private_type.name()) {
 			if tc.concrete_method_signature_key(private_type.source_type_id(), 'str') == none {
-				type_name := tc.diagnostic_type_name(Type(private_type))
+				type_name := tc.diagnostic_type_name(private_type_ref)
 				module_name := if type_name.contains('.') {
 					type_name.all_before_last('.')
 				} else {

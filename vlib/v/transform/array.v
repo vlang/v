@@ -2875,7 +2875,7 @@ fn (mut t Transformer) clone_owned_array_storage_value_with_pointer_borrow(value
 	t.set_node_typ(int(is_slice), flat.source_type_bool)
 	mut body := []flat.NodeId{}
 	mut owned_value := flat.empty_node
-	if bad_type := t.tc.ownership_default_clone_missing_method(t.tc.parse_type(flat.source_type_id(flat.source_type_name(array_type)[2..]))) {
+	if bad_type := t.tc.ownership_default_clone_missing_method(*t.tc.parse_type(flat.source_type_id(flat.source_type_name(array_type)[2..]))) {
 		body << t.make_if_with_skip_ownership_drops(t.make_infix(.ne, t.make_selector(array_value,
 			'len', flat.source_type_int), t.make_int_literal(0)), t.make_block_skip_scope_drops([
 			t.make_panic_stmt('cannot retain borrowed `${flat.source_type_name(array_type)}`: `${bad_type}` requires ownership destruction but has no compatible `clone()` method'),

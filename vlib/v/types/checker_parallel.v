@@ -676,9 +676,10 @@ mut:
 }
 
 fn (mut p Pass2TypePromotion) promote(scope voidptr, typ Type) Type {
+	original := typ
 	match typ {
 		Void, Primitive, String, Char, Rune, ISize, USize, Nil, None, Struct, Interface, Enum, SumType {
-			return typ
+			return original
 		}
 		else {}
 	}
@@ -5249,7 +5250,7 @@ fn check_clone_chunk_thread(arg voidptr) voidptr {
 				tc.resolved_call_names[idx] = promote_cached_name_value(tc.resolved_call_names[idx], mut names)
 			}
 			if idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
-				if canonical := tc.cached_check_type_promotion(tc.expr_type_values[idx], mut cache, false, true) {
+				if canonical := tc.cached_check_type_promotion(*tc.expr_type_values[idx], mut cache, false, true) {
 					tc.expr_type_values[idx] = canonical
 				} else {
 					a.miss << idx
@@ -5263,8 +5264,8 @@ fn check_clone_chunk_thread(arg voidptr) voidptr {
 fn (mut tc TypeChecker) intern_expr_type_misses(indexes []int) {
 	mut cache := CheckTypePromotionCache{}
 	for idx in indexes {
-		tc.expr_type_values[idx] = tc.cached_check_type_promotion(tc.expr_type_values[idx], mut cache, true, false) or {
-			tc.promote_check_type(tc.expr_type_values[idx])
+		tc.expr_type_values[idx] = tc.cached_check_type_promotion(*tc.expr_type_values[idx], mut cache, true, false) or {
+			tc.promote_check_type(*tc.expr_type_values[idx])
 		}
 	}
 }
@@ -5297,8 +5298,8 @@ fn (mut tc TypeChecker) clone_parallel_worker_node_caches(items []CheckWorkItem)
 				tc.resolved_call_names[idx] = promote_cached_name_value(tc.resolved_call_names[idx], mut names)
 			}
 			if idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
-				tc.expr_type_values[idx] = tc.cached_check_type_promotion(tc.expr_type_values[idx], mut cache, true, false) or {
-					tc.promote_check_type(tc.expr_type_values[idx])
+				tc.expr_type_values[idx] = tc.cached_check_type_promotion(*tc.expr_type_values[idx], mut cache, true, false) or {
+					tc.promote_check_type(*tc.expr_type_values[idx])
 				}
 			}
 		}

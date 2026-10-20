@@ -11214,7 +11214,7 @@ fn (mut tc TypeChecker) generic_fn_value_matches_expected(key string, expected T
 	}
 	mut inferred := map[string]Type{}
 	for i in 0 .. actual_fn.params.len {
-		tc.infer_generic_type_value_from_type(actual_fn.params[i].typ.source_type_id(), expected_fn.params[i].typ, generic_params, mut inferred)
+		tc.infer_generic_type_value_from_type(actual_fn.params[i].typ.source_type_id(), *expected_fn.params[i].typ, generic_params, mut inferred)
 	}
 	tc.infer_generic_type_value_from_type(actual_fn.return_type.source_type_id(), expected_fn.return_type, generic_params, mut inferred)
 	mut concrete_types := []Type{cap: generic_params.len}
@@ -20615,7 +20615,7 @@ fn (mut tc TypeChecker) check_comptime_for_members(_id flat.NodeId, node flat.No
 		}
 	}
 	tc.push_scope()
-	tc.cur_scope.insert(parts[0], tc.parse_type(flat.source_type_id(comptime_static_metadata_type_name(parts[1]))))
+	tc.cur_scope.insert(parts[0], *tc.parse_type(flat.source_type_id(comptime_static_metadata_type_name(parts[1]))))
 	defer {
 		tc.pop_scope()
 	}

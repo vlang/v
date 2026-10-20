@@ -4881,7 +4881,7 @@ fn (mut t Transformer) lift_lambda_expr_for_fn_param(_id flat.NodeId, node flat.
 	for i in 0 .. lambda_param_count {
 		param_id := t.a.child(&node, i)
 		param_node := t.a.nodes[int(param_id)]
-		param_type_name_source_id := t.semantic_type_name(fn_type.params[i].typ)
+		param_type_name_source_id := t.semantic_type_name(*fn_type.params[i].typ)
 		param_type_name_shape := flat.source_type_shape(param_type_name_source_id)
 		children << t.a.add_node(flat.Node{
 			kind:  .param
@@ -4891,7 +4891,7 @@ fn (mut t Transformer) lift_lambda_expr_for_fn_param(_id flat.NodeId, node flat.
 		})
 	}
 	for i in lambda_param_count .. fn_type.params.len {
-		param_type_name_source_id_2 := t.semantic_type_name(fn_type.params[i].typ)
+		param_type_name_source_id_2 := t.semantic_type_name(*fn_type.params[i].typ)
 		param_type_name_shape_2 := flat.source_type_shape(param_type_name_source_id_2)
 		children << t.a.add_node(flat.Node{
 			kind:  .param
@@ -4967,7 +4967,7 @@ fn (mut t Transformer) lift_fn_literal_for_fn_param(_id flat.NodeId, node flat.N
 	mut children := []flat.NodeId{cap: capture_ids.len + fn_type.params.len + body_ids.len}
 	children << capture_ids
 	for i, param_id in param_ids {
-		param_type_name_source_id := t.semantic_type_name(fn_type.params[i].typ)
+		param_type_name_source_id := t.semantic_type_name(*fn_type.params[i].typ)
 		param_type_name := flat.source_type_name(param_type_name_source_id)
 		param := t.a.nodes[int(param_id)]
 		if param.typ_text() == param_type_name {
@@ -4983,7 +4983,7 @@ fn (mut t Transformer) lift_fn_literal_for_fn_param(_id flat.NodeId, node flat.N
 		}
 	}
 	for i in param_ids.len .. fn_type.params.len {
-		param_type_name_source_id_2 := t.semantic_type_name(fn_type.params[i].typ)
+		param_type_name_source_id_2 := t.semantic_type_name(*fn_type.params[i].typ)
 
 		children << t.a.add_node(flat.Node{
 			kind:  .param
@@ -16495,7 +16495,7 @@ fn (mut t Transformer) validate_specialized_fn_field_call(id flat.NodeId, node f
 		arg_id := t.a.child(&node, i + 1)
 		actual_type_source_id_3 := t.specialized_expr_type_name(arg_id)
 		actual_type := flat.source_type_name(actual_type_source_id_3)
-		expected_type_source_id := t.semantic_type_name(fn_type.params[i].typ)
+		expected_type_source_id := t.semantic_type_name(*fn_type.params[i].typ)
 		expected_type := flat.source_type_name(expected_type_source_id)
 		if t.resolved_receiver_arg_compatible(arg_id, actual_type_source_id_3, expected_type_source_id) {
 			continue

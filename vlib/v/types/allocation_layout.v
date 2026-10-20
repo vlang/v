@@ -16,7 +16,10 @@ pub fn (tc &TypeChecker) requires_aligned_allocation(typ &Type) bool {
 // allocation_layout describes alignment and scanning requirements of a canonical value.
 pub fn (tc &TypeChecker) allocation_layout(typ &Type) AllocationLayout {
 	match typ {
-		Primitive, Char, Rune, ISize, USize, Enum { return AllocationLayout.zero() }
+		Primitive, Char, Rune, ISize, USize, Enum {
+			// Zero is the valid empty layout flag set.
+			return unsafe { AllocationLayout(0) }
+		}
 		Alias, ArrayFixed, OptionType, ResultType, Struct, SumType, MultiReturn {}
 		else { return .scanned }
 	}
@@ -37,7 +40,8 @@ pub fn (tc &TypeChecker) allocation_layout(typ &Type) AllocationLayout {
 
 fn (tc &TypeChecker) value_allocation_layout(typ &Type,
 	mut seen map[string]bool) AllocationLayout {
-	mut layout := AllocationLayout.zero()
+	// Zero is the valid empty layout flag set.
+	mut layout := unsafe { AllocationLayout(0) }
 	name := match typ {
 		Primitive, Char, Rune, ISize, USize, Enum { return layout }
 		Alias, OptionType { return tc.value_allocation_layout(typ.base_type, mut seen) }
@@ -79,7 +83,8 @@ fn (tc &TypeChecker) struct_allocation_layout(name string,
 	}
 	base, _, is_generic := generic_type_application_parts(name)
 	key := if is_generic { base } else { name }
-	mut layout := AllocationLayout.zero()
+	// Zero is the valid empty layout flag set.
+	mut layout := unsafe { AllocationLayout(0) }
 	if index := tc.first_type_declaration_ids[key] {
 		if tc.declaration_has_attribute(flat.NodeId(index), 'aligned') {
 			layout |= .aligned

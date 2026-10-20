@@ -14010,7 +14010,7 @@ fn (mut t Transformer) mark_detached_spawn_drop_type(typ types.Type, mut seen ma
 		}
 		types.Struct {
 			if typ.name().starts_with('thread ') {
-				t.mark_detached_spawn_drop_type(t.tc.parse_type(flat.source_type_id(typ.name()[7..])), mut seen)
+				t.mark_detached_spawn_drop_type(*t.tc.parse_type(flat.source_type_id(typ.name()[7..])), mut seen)
 				return
 			}
 			method := if t.tc.autofree_mode { 'free' } else { 'drop' }

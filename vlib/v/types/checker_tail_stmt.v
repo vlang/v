@@ -2522,11 +2522,12 @@ fn (tc &TypeChecker) type_name_is_direct_sum_variant(actual &Type, expected SumT
 
 fn (tc &TypeChecker) type_is_same_sum_type(actual &Type, expected SumType) bool {
 	clean := unalias_type(actual)
+	clean_ref := clean
 	if clean !is SumType {
 		return false
 	}
-	return tc.type_compatible(Type(clean), Type(expected))
-		&& tc.type_compatible(Type(expected), Type(clean))
+	return tc.type_compatible(clean_ref, Type(expected))
+		&& tc.type_compatible(Type(expected), clean_ref)
 }
 
 fn (mut tc TypeChecker) record_match_branch_return_type_mismatch(id flat.NodeId, expected Type, actual Type) {

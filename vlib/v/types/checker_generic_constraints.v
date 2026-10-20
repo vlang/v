@@ -358,7 +358,7 @@ pub fn (tc &TypeChecker) generic_instance_satisfies_constraints(decl flat.Node, 
 			break
 		}
 		constraint := constraints[name] or { continue }
-		if !tc.generic_constraint_accepts(constraint, tc.parse_type(args_ids[i])) {
+		if !tc.generic_constraint_accepts(constraint, *tc.parse_type(args_ids[i])) {
 			return false
 		}
 	}
@@ -1132,7 +1132,7 @@ fn (mut tc TypeChecker) constraint_walk_lambda_arg_types(id flat.NodeId, node fl
 		if param_idx < first || param_idx >= param_texts.len {
 			continue
 		}
-		expected := unalias_type(tc.substitute_generic_type_values(tc.parse_type(flat.source_type_id(param_texts[param_idx])),
+		expected := unalias_type(tc.substitute_generic_type_values(*tc.parse_type(flat.source_type_id(param_texts[param_idx])),
 			args, binding.names))
 		if expected is FnType {
 			result[i] = expected.params.map(*it.typ)
