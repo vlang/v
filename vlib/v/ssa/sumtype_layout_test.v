@@ -47,6 +47,45 @@ fn test_sumtype_storage_overlaps_variants() {
 	assert m.struct_field_offset(choice, 1) == 8
 }
 
+fn test_nominal_container_descriptors_keep_their_declared_layouts() {
+	mut b := sumtype_layout_builder('module main
+struct Leaf { value i64 }
+struct Array { elem_type &Leaf }
+struct Map { key_type &Leaf
+ value_type &Leaf }
+struct FnParam { typ &Leaf }
+type Choice = Array | Map | i32
+')!
+	// Distinct opaque runtime identities suffice for this type-resolution test.
+	b.array_type = b.m.type_store.register(Type{ kind: .struct_t })
+	b.map_type = b.m.type_store.register(Type{ kind: .struct_t })
+	array := b.struct_types['Array']
+	map_type := b.struct_types['Map']
+	leaf_pointer := b.m.type_store.get_ptr(b.struct_types['Leaf'])
+	assert b.resolve_type(flat.source_type_id('Array')) == array
+	assert b.resolve_type(flat.source_type_id('Map')) == map_type
+	assert b.m.type_store.types[array].fields == [leaf_pointer]
+	assert b.m.type_store.types[map_type].fields == [leaf_pointer, leaf_pointer]
+	choice := b.struct_types['Choice']
+	payload := b.m.type_store.types[choice].fields.last()
+	assert b.m.type_store.types[payload].fields[..2] == [array, map_type]
+	assert b.resolve_type(flat.source_type_id('&Array')) == b.m.type_store.get_ptr(array)
+	assert b.resolve_type(flat.source_type_id('&Map')) == b.m.type_store.get_ptr(map_type)
+	for spelling in ['[]FnParam', 'array'] {
+		assert b.resolve_type(flat.source_type_id(spelling)) == b.array_type
+		assert b.resolve_type(flat.source_type_id('&' + spelling)) == b.m.type_store.get_ptr(b.array_type)
+	}
+	for spelling in ['map[string]bool', 'map'] {
+		assert b.resolve_type(flat.source_type_id(spelling)) == b.map_type
+		assert b.resolve_type(flat.source_type_id('&' + spelling)) == b.m.type_store.get_ptr(b.map_type)
+	}
+	// A module's exact nominal name precedes the unqualified fallback.
+	b.struct_types['descriptors.Array'] = map_type
+	b.cur_module = 'descriptors'
+	assert b.resolve_type(flat.source_type_id('Array')) == map_type
+	assert b.resolve_type(flat.source_type_id('descriptors.Array')) == map_type
+}
+
 fn test_sumtype_pointer_fields_match_lowered_storage() {
 	source := 'module main
 struct Pair { x i64

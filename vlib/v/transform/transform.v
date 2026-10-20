@@ -15490,13 +15490,25 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 			&& lhs_type_name.starts_with('&') {
 			lhs_type_name = lhs_type_name[1..]
 		}
+		mut implicit_mut_sum := false
+		if lhs_node.kind == .ident && t.mut_param_values[lhs_node.value]
+			&& !t.pointer_value_rvalues[lhs_node.value] && lhs_type_name.starts_with('&')
+			&& !lhs_type_name.starts_with('&&') {
+			// A mutable value parameter's pointer is ABI storage; replacement owns
+			// the Sum value through it, unlike an explicit mutable pointer rebind.
+			value_type := flat.source_type_id(lhs_type_name[1..])
+			if t.assignment_sum_target(value_type) != 0 {
+				lhs_type_name = flat.source_type_name(value_type)
+				implicit_mut_sum = true
+			}
+		}
 		sum_storage := t.assignment_sum_target(flat.source_type_id(lhs_type_name))
 		if sum_storage != 0 {
 			lhs_type_name = flat.source_type_name(sum_storage)
 		}
 		lhs_type := t.tc.parse_type(flat.source_type_id(lhs_type_name))
 		mut pointer_sum_replacement := false
-		if sum_storage != 0 && lhs_node.kind in [.selector, .index] {
+		if sum_storage != 0 && (lhs_node.kind in [.selector, .index] || implicit_mut_sum) {
 			for variant in t.concrete_sum_variants_for_candidate(sum_storage) {
 				if t.sum_variant_is_direct_pointer(variant) {
 					pointer_sum_replacement = true
@@ -15548,7 +15560,12 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 				}
 			}
 			result << t.make_decl_assign_typed(tmp_name, tmp_value, flat.source_type_id(tmp_type))
-			lvalue := t.stabilize_transformed_lvalue_for_reuse(new_children[0])
+			mut storage := new_children[0]
+			if implicit_mut_sum {
+				storage = t.make_prefix(.mul, storage)
+				t.set_node_typ(int(storage), sum_storage)
+			}
+			lvalue := t.stabilize_transformed_lvalue_for_reuse(storage)
 			t.drain_pending(mut result)
 			if pointer_sum_replacement {
 				// A borrowed wrapper can name the payload already owned by this slot.

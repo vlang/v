@@ -3577,7 +3577,12 @@ fn (mut t Transformer) call_param_types_from_decl(call_name string) ?[]types.Typ
 				base_type: types.new_type_reference(types.Type(param_type))
 			})
 		}
-		params << param_type
+		// Named calls use the same mutable optional slot as checked fn values.
+		params << if child.is_mut {
+			types.mut_param_semantic_type(param_type)
+		} else {
+			param_type
+		}
 	}
 	t.ensure_private_call_param_types_decl_cache()
 	t.call_param_types_decl_cache[decl.idx] = params.clone()

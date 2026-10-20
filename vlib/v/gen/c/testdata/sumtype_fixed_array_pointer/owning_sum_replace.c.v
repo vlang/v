@@ -40,6 +40,12 @@ fn owned_rebind(other PairPointer) {
 	mut owner := SlotOwner(PairPointer(&[2]SlotChoice{init: next_owned_slot_choice()}))
 	assert C.slot_guard_count(1) == 0
 	assert C.slot_guard_count(2) == 0
+	// Rewrapping the same pointer must retain the old cleanup obligation.
+	same_address := usize(voidptr(owner as PairPointer))
+	rebind(mut owner, owner as PairPointer)
+	assert usize(voidptr(owner as PairPointer)) == same_address
+	assert C.slot_guard_count(1) == 0
+	assert C.slot_guard_count(2) == 0
 	rebind(mut owner, other)
 	assert voidptr(owner as PairPointer) == voidptr(other)
 	// Check release before owner cleanup can touch the borrowed replacement.

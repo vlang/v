@@ -16419,17 +16419,25 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				}
 			}
 		}
+		nominal_pointer_slot := param_is_mut && mut_pointer_alias_slot_type(expected)
+		// The canonical nominal signature includes its ABI caller-slot reference.
+		// Pointer-storage checks compare the source pointer value, not that wrapper.
+		expected_pointer_slot := if nominal_pointer_slot && expected is Pointer {
+			*expected.base_type
+		} else {
+			expected
+		}
 		requires_mut_pointer_slot := tc.call_param_requires_mut_pointer_slot(info, param_idx)
-			|| (param_is_mut && mut_pointer_alias_slot_type(expected))
+			|| nominal_pointer_slot
 		if param_is_mut && !mut_arg_node.is_mut && !implicit_receiver_arg
 			&& !tc.disable_explicit_mutability && requires_mut_pointer_slot
-			&& tc.mut_pointer_slot_arg_needs_ref(arg_id, expected) {
+			&& tc.mut_pointer_slot_arg_needs_ref(arg_id, expected_pointer_slot) {
 			// `mut arg` would be rejected below as well, so explain what the
 			// parameter needs instead.
 			if has_dsl_scope {
 				tc.pop_scope()
 			}
-			tc.record_mut_pointer_slot_arg_error(node, info, param_idx, arg_id, expected)
+			tc.record_mut_pointer_slot_arg_error(node, info, param_idx, arg_id, expected_pointer_slot)
 			continue
 		}
 		if param_is_mut && !mut_arg_node.is_mut && !implicit_receiver_arg
@@ -16486,18 +16494,18 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			continue
 		}
 		if requires_mut_pointer_slot && mut_arg_node.is_mut
-			&& tc.mut_pointer_slot_arg_rejected(arg_id, expected) {
+			&& tc.mut_pointer_slot_arg_rejected(arg_id, expected_pointer_slot) {
 			if has_dsl_scope {
 				tc.pop_scope()
 			}
-			tc.record_mut_pointer_slot_arg_error(node, info, param_idx, arg_id, expected)
+			tc.record_mut_pointer_slot_arg_error(node, info, param_idx, arg_id, expected_pointer_slot)
 			continue
 		}
 		if requires_mut_pointer_slot {
 			actual_slot := unalias_type(tc.resolve_type(arg_id))
 			if actual_slot !is Pointer {
 				if tc.a.node(arg_id).is_mut
-					&& tc.mut_pointer_slot_arg_compatible(actual_slot, expected) {
+					&& tc.mut_pointer_slot_arg_compatible(actual_slot, expected_pointer_slot) {
 					// `mut value` supplies the mutable pointer slot for an explicit
 					// `mut param &T`; the expression itself still has type `T`.
 				} else {
@@ -16505,7 +16513,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 						tc.pop_scope()
 					}
 					argument_number := param_idx + 1 - (if info.has_receiver { 1 } else { 0 })
-					tc.record_error_at(.call_arg_mismatch, 'cannot use `${tc.diagnostic_expr_type_name(arg_id, actual_slot)}` as `${call_argument_type_name(expected)}` in argument ${argument_number} to `${tc.call_argument_target_name(node, info)}`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
+					tc.record_error_at(.call_arg_mismatch, 'cannot use `${tc.diagnostic_expr_type_name(arg_id, actual_slot)}` as `${call_argument_type_name(expected_pointer_slot)}` in argument ${argument_number} to `${tc.call_argument_target_name(node, info)}`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
 					continue
 				}
 			}
@@ -16782,7 +16790,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			&& arg_node.kind == .prefix && arg_node.op == .amp
 			&& actual_pointer_depth > expected_pointer_depth
 			&& !(arg_node.is_mut && requires_mut_pointer_slot
-				&& tc.mut_pointer_slot_arg_compatible(pointer_check_actual, expected))
+				&& tc.mut_pointer_slot_arg_compatible(pointer_check_actual, expected_pointer_slot))
 			&& !(arg_node.is_mut
 				&& tc.mut_optional_pointer_arg_compatible(pointer_check_actual, expected))
 			&& !type_contains_unknown(expected)
@@ -16798,7 +16806,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				|| (actual_pointer_depth != expected_pointer_depth
 					&& expected.name() !in ['voidptr', 'byteptr', 'charptr']
 					&& !fn_param_is_voidptr_type(expected) && !(arg_node.is_mut
-					&& tc.mut_pointer_slot_arg_compatible(pointer_check_actual, expected))
+					&& tc.mut_pointer_slot_arg_compatible(pointer_check_actual, expected_pointer_slot))
 					&& !tc.fn_voidptr_expr_compatible(pointer_check_actual, expected)
 					&& !(info.name.starts_with('C.') && tc.is_zero_literal(arg_id))
 					&& !(info.name.starts_with('C.') && fn_param_is_voidptr_type(pointer_check_actual))
@@ -16896,7 +16904,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				continue
 			}
 			if tc.a.nodes[int(arg_id)].is_mut && requires_mut_pointer_slot
-				&& tc.mut_pointer_slot_arg_compatible(actual, expected) {
+				&& tc.mut_pointer_slot_arg_compatible(actual, expected_pointer_slot) {
 				continue
 			}
 			if base := tc.mut_param_expr_base(arg_id, actual) {

@@ -14129,6 +14129,17 @@ fn (mut b Builder) resolve_type_uncached(name string) TypeID {
 		elem_type := b.resolve_type_uncached(flat.source_type_name(b.fixed_array_elem_type_name(flat.source_type_id(name))))
 		return b.m.type_store.get_ptr(elem_type)
 	}
+	// Nominal compiler descriptors can use these names without being runtime containers.
+	if name in ['Array', 'Map'] {
+		if b.cur_module.len > 0 && b.cur_module != 'main' && b.cur_module != 'builtin' {
+			if typ := b.struct_types[b.cur_module + '.' + name] {
+				return typ
+			}
+		}
+		if typ := b.struct_types[name] {
+			return typ
+		}
+	}
 	if name.starts_with('[]') || name == 'array' || name == 'Array' {
 		return b.array_type
 	}
