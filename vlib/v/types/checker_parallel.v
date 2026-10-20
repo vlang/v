@@ -679,7 +679,9 @@ fn (mut p Pass2TypePromotion) promote(scope voidptr, typ Type) Type {
 	original := typ
 	match typ {
 		Void, Primitive, String, Char, Rune, ISize, USize, Nil, None, Struct, Interface, Enum, SumType {
-			return original
+			if !type_payload_refers_to_scope(scope, &original) {
+				return original
+			}
 		}
 		else {}
 	}
@@ -699,6 +701,42 @@ fn (mut p Pass2TypePromotion) promote(scope voidptr, typ Type) Type {
 	return owned
 }
 
+// Bootstrap compilers can still box Type variants. Taking the address after
+// narrowing finds that box as well as the payload of an inline tagged union.
+fn type_payload_refers_to_scope(scope voidptr, typ &Type) bool {
+	if scope == unsafe { nil } {
+		return false
+	}
+	payload := match typ {
+		Void { voidptr(&typ) }
+		Unknown { voidptr(&typ) }
+		Primitive { voidptr(&typ) }
+		String { voidptr(&typ) }
+		Char { voidptr(&typ) }
+		Rune { voidptr(&typ) }
+		ISize { voidptr(&typ) }
+		USize { voidptr(&typ) }
+		Nil { voidptr(&typ) }
+		None { voidptr(&typ) }
+		Array { voidptr(&typ) }
+		ArrayFixed { voidptr(&typ) }
+		Channel { voidptr(&typ) }
+		Map { voidptr(&typ) }
+		Pointer { voidptr(&typ) }
+		FnType { voidptr(&typ) }
+		OptionType { voidptr(&typ) }
+		ResultType { voidptr(&typ) }
+		Struct { voidptr(&typ) }
+		Interface { voidptr(&typ) }
+		Enum { voidptr(&typ) }
+		SumType { voidptr(&typ) }
+		Alias { voidptr(&typ) }
+		MultiReturn { voidptr(&typ) }
+	}
+	// The allocator only checks whether this storage belongs to the live scope.
+	return unsafe { prealloc_scope_owns(scope, payload) }
+}
+
 // type_refers_to_scope inspects actual descriptor references and their metadata storage.
 // A descriptor outside the lane can still refer to its lists, strings or child types.
 fn type_refers_to_scope(scope voidptr, typ &Type) bool {
@@ -710,7 +748,8 @@ fn type_refers_to_scope(scope voidptr, typ &Type) bool {
 	mut visited := map[u64]bool{}
 	for pending.len > 0 {
 		current := pending.pop()
-		if unsafe { prealloc_scope_owns(scope, current) } {
+		if unsafe { prealloc_scope_owns(scope, current) }
+			|| type_payload_refers_to_scope(scope, current) {
 			return true
 		}
 		address := u64(voidptr(current))
