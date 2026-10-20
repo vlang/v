@@ -1,6 +1,6 @@
-// A `mut` optional parameter is passed as `&?&T`, whatever its payload. Its body reads a
-// struct payload, or an alias of one, as `?&T`, and arrays, maps, fixed arrays, sum types
-// and enums as `?T`; `a = none`, assignments and `or` work for all of them.
+// A `mut` optional parameter is passed as `&?&T`, whatever its payload, and its body reads
+// it as `?T`: structs, aliases of them, arrays, maps, fixed arrays, sum types and enums;
+// `a = none`, assignments and `or` work for all of them.
 struct Named {
 	name string
 }

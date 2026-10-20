@@ -13822,8 +13822,8 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	for param_id in param_ids {
 		param := t.a.nodes[int(param_id)]
 		if param.value.len > 0 && param.typ != 0 {
-			// A `mut a ?T` holds a `?&T`, which the body reads as `?T` unless the payload is a
-			// struct (see mut_optional_view_param).
+			// A `mut a ?T` holds a `?&T`, which the body reads as `?T` (see
+			// mut_optional_view_param).
 			storage_type_source_id := t.lifted_mut_optional_param_type(param)
 			param_type_source_id := t.lifted_mut_optional_param_view_type(param)
 			resolved_param_type_source_id := t.comptime_normalize_type_alias_chain(param_type_source_id)
