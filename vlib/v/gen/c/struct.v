@@ -7231,6 +7231,16 @@ const c_system_header_struct_names = {
 	'sigaction': true
 }
 
+// c_struct_header_guards names C structs that V lays out itself although a header the program
+// may include also defines them. The body is emitted inside `#ifndef <guard>`, so the
+// preprocessor keeps V's layout exactly when nothing earlier in the translation unit included
+// that header -- whichever directive, condition or nested header did it.
+const c_struct_header_guards = {
+	// gc.h: the generated C never includes it, but a program or module may (vlib/fontstash), and
+	// so do the runtime helpers embedded in object-file output.
+	'C.GC_stack_base': 'GC_H'
+}
+
 const c_preamble_defined_structs = {
 	'C.DIR':                        true
 	'C.FILE':                       true
@@ -7898,6 +7908,10 @@ fn (mut g FlatGen) emit_struct(name string) {
 			align = decl_align
 			has_align = true
 		}
+		header_guard := c_struct_header_guards[name] or { '' }
+		if header_guard.len > 0 {
+			g.writeln('#ifndef ${header_guard}')
+		}
 		head := g.struct_decl_head(name)
 		if has_align && g.ccompiler == 'msvc' {
 			// MSVC takes the alignment between the tag and the name, and has no GNU
@@ -7919,6 +7933,9 @@ fn (mut g FlatGen) emit_struct(name string) {
 		}
 		if pack.len > 0 {
 			g.writeln('#pragma pack(pop)')
+		}
+		if header_guard.len > 0 {
+			g.writeln('#endif')
 		}
 		g.writeln('')
 	}

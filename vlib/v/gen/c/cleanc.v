@@ -20182,9 +20182,6 @@ fn (mut g FlatGen) portable_native_runtime_helpers() {
 		g.write(gc_source.replace('void* v_', 'static void* v_')
 			.replace('void v_', 'static void v_').replace('int v_', 'static int v_')
 			.replace('#include "gc_debugger_linux.h"', gc_header))
-		// These helpers include gc.h, which defines `struct GC_stack_base`; builtin's own
-		// layout of it (gc_stack_base_d_gcboehm.v) would be a redefinition here.
-		g.inlined_c_structs['GC_stack_base'] = true
 	}
 	g.writeln('#ifndef _WIN32')
 	g.write($embed_file('@VEXEROOT/vlib/v/pthread_helper.h').to_string())
