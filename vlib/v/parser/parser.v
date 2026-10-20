@@ -13971,7 +13971,7 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 		mut arg_is_shared := false
 		mut arg_is_mut := false
 		shared_address_arg := p.tok == .key_shared && p.peek() == .amp
-			&& !p.is_local_binding('shared')
+			&& !p.is_local_binding('shared') && !p.translated_sizeof_name_is_global('shared')
 		if p.tok == .key_shared
 			&& (shared_address_arg || !p.shared_token_is_identifier(true)) {
 			arg_is_shared = true
