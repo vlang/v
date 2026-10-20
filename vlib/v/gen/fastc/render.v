@@ -894,7 +894,16 @@ fn (g &Parser) render_selfhost_print_expression(tokens []FastcExpressionToken) ?
 	if embedded_path.len > 0 {
 		return none
 	}
-	signature := g.functions[method_key] or { return none }
+	signature := g.functions[method_key] or {
+		// Without a `str()` method (a sum type, struct, array or map), the value
+		// prints the way `'${value}'` formats it.
+		string_value := g.print_value_string_expression(argument, argument_type,
+			call_arguments[0]) or { return none }
+		return FastcRenderedExpression{
+			source: 'builtin__${tokens[0].lit}(${string_value})'
+			typ:    flat.source_type_void
+		}
+	}
 	if signature.parameter_types.ids.len == 0 || signature.return_type != flat.source_type_string {
 		return none
 	}
@@ -912,6 +921,33 @@ fn (g &Parser) render_selfhost_print_expression(tokens []FastcExpressionToken) ?
 		source: 'builtin__${tokens[0].lit}(${string_value})'
 		typ:    flat.source_type_void
 	}
+}
+
+// print_value_string_expression returns the C string of `value`, a value of
+// `value_type` without a `str()` method, formatted as read_interpolated_string
+// formats it. Pointers and options print differently in V, so they are left out.
+fn (g &Parser) print_value_string_expression(value string, value_type u32, value_tokens []FastcExpressionToken) ?string {
+	type_name := flat.source_type_name(g.underlying_alias_type(value_type))
+	if type_name.ends_with('*') || type_name in ['Option', '__v_result'] {
+		return none
+	}
+	mut w := unsafe { &Parser(g) }
+	if element_type := fastc_fixed_array_element_type(flat.source_type_id(type_name)) {
+		helper := w.fastc_fixed_array_str_name(type_name)?
+		// A fixed array field or global is raw C array storage; a local is FastC's
+		// wrapper struct.
+		is_member_array := value_tokens.len >= 3 && value_tokens.last().tok == .name
+			&& value_tokens[value_tokens.len - 2].tok == .dot
+		is_global_array := value_tokens.len == 1 && value_tokens[0].tok == .name
+			&& fastc_global_key(g.module_name, value_tokens[0].lit) in g.globals
+		data_source := if is_member_array || is_global_array {
+			value
+		} else {
+			'(${value}).data'
+		}
+		return '${helper}((${flat.source_type_name(element_type)} *)(${data_source}))'
+	}
+	return w.fastc_struct_field_str_expression(value, type_name)
 }
 
 fn (g &Parser) render_struct_literal_with_defaults(c_type_source_id u32, layout_type_source_id u32, explicit_initializers []string, rendered_fields []string, rendered_fields_by_name map[string]string) FastcRenderedExpression {
@@ -1146,6 +1182,8 @@ fn (g &Parser) render_array_assignment_expression(tokens []FastcExpressionToken)
 	operator := tokens[assignment_index].tok
 	source := if overloaded := g.render_overloaded_assignment(left.source, right, left.typ, operator) {
 		overloaded
+	} else if operator == .power_assign {
+		g.render_power_assignment(left.source, right, left.typ) or { return none }
 	} else if g.checked_target_division_enabled() && operator in [.div_assign, .mod_assign] {
 		g.render_checked_integer_division_assignment(left.source, right, left.typ, operator)
 	} else if operator == .right_shift_unsigned_assign {
@@ -1398,6 +1436,8 @@ fn (g &Parser) render_assignment_operator_source(left string, right string, left
 		'${left}=builtin__string_plus(${left},${right})'
 	} else if overloaded := g.render_overloaded_assignment(left, right, left_type, operator) {
 		overloaded
+	} else if operator == .power_assign {
+		g.render_power_assignment(left, right, left_type) or { return none }
 	} else if g.checked_target_division_enabled() && operator in [.div_assign, .mod_assign] {
 		g.render_checked_integer_division_assignment(left, right, left_type, operator)
 	} else if operator == .right_shift_unsigned_assign {
@@ -4934,6 +4974,12 @@ fn (g &Parser) render_function_value_expression(tokens []FastcExpressionToken) ?
 	}
 	function_key := g.function_key_for_call(tokens, tokens.len - 1)
 	if function_key !in g.functions && function_key !in g.mono_functions {
+		return none
+	}
+	if tokens.len == 1 && !function_key.contains('.')
+		&& (tokens[0].lit in g.constants || tokens[0].lit in g.globals) {
+		// A main-module constant or global that shares its name with a function is
+		// the value of that name outside a call.
 		return none
 	}
 	return '&${g.c_function_name_for_key(function_key)}'

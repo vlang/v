@@ -2120,7 +2120,7 @@ fn (mut g Parser) validate_expression_stream_token(expression_tokens []FastcExpr
 		return g.unsupported('sizeof expressions')
 	}
 	is_member_name := expression_tokens.len > 0 && expression_tokens.last().tok == .dot
-	if g.tok in [.str_dollar, .arrow, .power]
+	if g.tok in [.str_dollar, .arrow] || (g.tok == .power && !g.selfhost)
 		|| (g.tok in [.key_match, .key_or] && !is_member_name) {
 		return g.unsupported('expression token `${g.token_source()}`')
 	}
@@ -3003,6 +3003,17 @@ fn (mut g Parser) finish_read_expression(mut result strings.Builder, mut express
 	}
 	mut flags := fastc_special_token_flags(expression_tokens)
 	mut rendered_expression := fastc_take_trimmed(mut result)
+	if g.selfhost && fastc_expression_tokens_contain_power(expression_tokens) {
+		// C has no `**`: each power becomes a typed atom, as `as` casts do below.
+		lowered := g.lower_power_expressions(expression_tokens) or {
+			return g.unsupported('`**` in `${fastc_expression_tokens_debug(expression_tokens)}`')
+		}
+		expression_tokens = lowered.clone()
+		flags = fastc_special_token_flags(expression_tokens)
+		rendered_expression = g.render_raw_expression_tokens(expression_tokens) or {
+			return g.unsupported('`**` in `${fastc_expression_tokens_debug(expression_tokens)}`')
+		}
+	}
 	if flags.has_lcbr && flags.has_lsbr {
 		if contextual := g.render_contextual_empty_map_initializer(expression_tokens, saved_expected_expression_type_source_id) {
 			// Only the complete expression owns this expected type. Nested map

@@ -2086,12 +2086,28 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 				} else {
 					fastc_c_function_name(signature.module_name, key)
 				}
-				function_c_names[key] = if key != 'main' && signature.module_name in ['', 'main'] {
+				// A main-module function already has its `main__` name; a method of a
+				// main-module type gets it here.
+				function_c_names[key] = if key.contains('.')
+					&& signature.module_name in ['', 'main'] {
 					'main__${name}'
 				} else {
 					name
 				}
 			}
+		}
+	}
+	for key, signature in functions {
+		if key == 'main' || key.contains('.') || signature.module_name !in ['', 'main'] {
+			continue
+		}
+		// A main-module function shares the `main__` namespace with the main module's
+		// constants and the global `byte`. V accepts a constant and a function of the
+		// same name, so such a function is named in FastC's own namespace instead.
+		c_name := function_c_names[key] or { fastc_c_function_name_for_key(key) }
+		if c_name.starts_with('main__')
+			&& ((constants[key] or { '' }) == c_name || (globals[key] or { '' }) == c_name) {
+			function_c_names[key] = '__vf_function_${c_name['main__'.len..]}'
 		}
 	}
 	for key, signature in functions {
@@ -4206,12 +4222,16 @@ fn fastc_function_id_table(functions map[string]FastcFunctionSignature, function
 		}
 		c_name := if compact_name := function_c_names[key] {
 			compact_name
+		} else if !key.contains('.') {
+			// A main-module function stays out of the index, so its definition is
+			// always kept.
+			continue
 		} else {
 			fastc_signature_c_name(key, signature)
 		}
 		// Only names the reference scan recognizes (a `__` separator or the
-		// `v_fastc_` prefix) are indexed; a bare main-module name stays out
-		// and its definition is always kept.
+		// `v_fastc_` prefix) are indexed; a bare main-module method name stays
+		// out and its definition is always kept.
 		if !fastc_c_name_is_indexed(c_name) {
 			continue
 		}
