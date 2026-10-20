@@ -6001,8 +6001,11 @@ fn (p &Parser) comptime_cond_references_unresolved_local(cond string) bool {
 				i++
 			}
 			name := cond[start..i]
-			if (p.is_local_binding(name)
-				|| p.comptime_string_consts[comptime_const_value_key(p.cur_module, name)])
+			// A known flag (`$if windows`) is never a local: a `$if` cannot read a variable,
+			// so a local of the same name must not defer the condition past the parser.
+			if !p.known_bare_comptime_flag(name)
+				&& (p.is_local_binding(name)
+					|| p.comptime_string_consts[comptime_const_value_key(p.cur_module, name)])
 				&& p.comptime_value(name) == none {
 				return true
 			}
