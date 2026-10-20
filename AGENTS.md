@@ -600,6 +600,10 @@ skipped coverage in the summary.
 
 ## Compiler Performance
 
+For the fixed self-compilation benchmark, results, and agent regression policy, read
+[vself_speed.md](vself_speed.md). Every compiler fix must preserve or improve that efficiency;
+investigate instruction-count regressions before merging.
+
 Use **retired CPU instructions as the primary compiler optimization metric**. On macOS arm64,
 `/usr/bin/time -l` reports `instructions retired` from hardware counters. Under matched conditions,
 this is the most reliable local measure of compiler work: it is less sensitive than elapsed time to
