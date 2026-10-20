@@ -417,9 +417,11 @@ fn (mut g Parser) write_condition_loop(condition string, condition_tokens []Fast
 		view_type, view_source := g.narrowed_member_view(plan.type_c, plan.value_type,
 			plan.member_tmp)
 		g.member_smartcasts[plan.path] = FastcMemberSmartcast{
-			typ:        view_type
-			value_type: plan.value_type
-			source:     view_source
+			typ:            view_type
+			value_type:     plan.value_type
+			source:         view_source
+			subject_source: plan.source
+			subject_type:   plan.boxed_type
 		}
 	}
 	_ = g.parse_loop_block_body()!

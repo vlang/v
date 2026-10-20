@@ -849,6 +849,15 @@ fn (mut g Parser) parse_match_statement() !bool {
 			subject_member_path = path
 		}
 	}
+	// The boxed member itself, which an assignment to the narrowed member writes.
+	mut subject_member_source := ''
+	mut subject_member_type := u32(0)
+	if subject_member_path != '' {
+		subject_member_source = g.render_member_receiver(subject_tokens[member_start..]) or { '' }
+		subject_member_type = fastc_normalize_inferred_type(g.infer_expression_type(subject_tokens[member_start..]) or {
+			u32(0)
+		})
+	}
 	mut branch_index := 0
 	mut all_terminate := true
 	mut has_else := false
@@ -1043,15 +1052,17 @@ fn (mut g Parser) parse_match_statement() !bool {
 					variant_types, common_numeric_type)
 			}
 			g.member_smartcasts[projection_path] = FastcMemberSmartcast{
-				typ:           view_type
-				source:        view_source
-				variants:      if struct_multi_variant {
+				typ:            view_type
+				source:         view_source
+				variants:       if struct_multi_variant {
 					flat.TypeTextList{ ids: variant_types.clone() }
 				} else {
 					flat.TypeTextList{}
 				}
-				tag_source:    '${subject_name}${boxed_access}_typ'
-				object_source: '${subject_name}${boxed_access}_object'
+				tag_source:     '${subject_name}${boxed_access}_typ'
+				object_source:  '${subject_name}${boxed_access}_object'
+				subject_source: subject_member_source
+				subject_type:   subject_member_type
 			}
 			member_smartcast_active = true
 		}
@@ -1944,6 +1955,7 @@ fn (mut g Parser) parse_simple_statement() ! {
 			return
 		}
 		g.write_line('${expression};')
+		g.end_assigned_member_narrowing(g.last_expression)
 		return
 	}
 	starts_with_spawn := g.tok == .key_spawn
