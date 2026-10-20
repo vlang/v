@@ -6155,7 +6155,7 @@ fn (t &Transformer) reliable_infix_stringify_type(node flat.Node) u32 {
 		.plus, .minus, .mul, .power, .div, .mod, .amp, .pipe, .xor {
 			if lhs_type_source_id != 0 && rhs_type_source_id_2 != 0 && t.is_numeric_stringify_type(lhs_type_source_id)
 				&& t.is_numeric_stringify_type(rhs_type_source_id_2) {
-				if promoted := promote_numeric_literal_infix_type(t.a.nodes[int(lhs_id)], lhs_type_source_id, t.a.nodes[int(rhs_id)], rhs_type_source_id_2) {
+				if promoted := t.promote_numeric_literal_infix_type(lhs_id, lhs_type_source_id, rhs_id, rhs_type_source_id_2) {
 					return promoted
 				}
 				// Use the promoted result type, not the lhs, so e.g.
@@ -6202,17 +6202,22 @@ fn (t &Transformer) unsigned_shift_type_text(typ_id u32, node flat.Node) u32 {
 	return typ_id
 }
 
-fn promote_numeric_literal_infix_type(lhs flat.Node, lhs_type u32, rhs flat.Node, rhs_type u32) ?u32 {
+// promote_numeric_literal_infix_type returns the type of an arithmetic operation in which an
+// untyped literal takes the type of the other operand: an unsigned type for an int literal
+// that fits it, or f32 for an untyped float constant such as `1.2`, `-1.2` or `1.2 * 2`.
+fn (t &Transformer) promote_numeric_literal_infix_type(lhs_id flat.NodeId, lhs_type u32, rhs_id flat.NodeId, rhs_type u32) ?u32 {
+	lhs := t.a.nodes[int(lhs_id)]
+	rhs := t.a.nodes[int(rhs_id)]
 	if promoted := promote_int_literal_infix_type(lhs, rhs, rhs_type) {
 		return promoted
 	}
 	if promoted := promote_int_literal_infix_type(rhs, lhs, lhs_type) {
 		return promoted
 	}
-	if lhs_type == flat.source_type_f32 && rhs.kind == .float_literal {
+	if lhs_type == flat.source_type_f32 && t.is_untyped_float_literal_expr(rhs_id) {
 		return flat.source_type_f32
 	}
-	if rhs_type == flat.source_type_f32 && lhs.kind == .float_literal {
+	if rhs_type == flat.source_type_f32 && t.is_untyped_float_literal_expr(lhs_id) {
 		return flat.source_type_f32
 	}
 	return none

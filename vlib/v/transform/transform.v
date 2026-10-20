@@ -30099,7 +30099,7 @@ fn (t &Transformer) resolve_expr_type(id flat.NodeId) u32 {
 					}
 					if lhs_type_source_id != 0 && rhs_type_source_id != 0 && t.is_numeric_stringify_type(lhs_type_source_id)
 						&& t.is_numeric_stringify_type(rhs_type_source_id) {
-						if promoted := promote_numeric_literal_infix_type(t.a.nodes[int(t.a.child(&node, 0))], lhs_type_source_id, t.a.nodes[int(t.a.child(&node, 1))], rhs_type_source_id) {
+						if promoted := t.promote_numeric_literal_infix_type(lhs_id, lhs_type_source_id, rhs_id, rhs_type_source_id) {
 							return promoted
 						}
 						return promote_numeric_stringify_type(lhs_type_source_id, rhs_type_source_id)
@@ -30272,42 +30272,75 @@ fn (t &Transformer) pointer_value_expr_type(id flat.NodeId) ?u32 {
 	return flat.source_type_id(typ[1..])
 }
 
+// is_untyped_float_literal_expr reports whether `id` is an untyped float constant: numeric
+// literals or constants, at least one of them a float, joined only by signs, parentheses and
+// arithmetic. Like the checker, an operation between it and an f32 yields an f32.
 fn (t &Transformer) is_untyped_float_literal_expr(id flat.NodeId) bool {
 	mut const_expr_path := []flat.NodeId{}
-	return t.is_untyped_float_literal_expr_with_const_path(id, mut const_expr_path)
+	is_literal, has_float := t.untyped_numeric_literal_expr_info(id, mut const_expr_path)
+	return is_literal && has_float
 }
 
-fn (t &Transformer) is_untyped_float_literal_expr_with_const_path(id flat.NodeId, mut const_expr_path []flat.NodeId) bool {
+// is_untyped_numeric_literal_expr reports whether `id` is an untyped numeric constant, such
+// as `1`, `-1.2` or `1.2 + 0.1`.
+fn (t &Transformer) is_untyped_numeric_literal_expr(id flat.NodeId) bool {
+	mut const_expr_path := []flat.NodeId{}
+	is_literal, _ := t.untyped_numeric_literal_expr_info(id, mut const_expr_path)
+	return is_literal
+}
+
+// untyped_numeric_literal_expr_info reports whether `id` is built only from numeric literals
+// and constants initialized with them, signs, parentheses and arithmetic, and whether one of
+// the literals is a float. `const_expr_path` holds the constants being expanded.
+fn (t &Transformer) untyped_numeric_literal_expr_info(id flat.NodeId, mut const_expr_path []flat.NodeId) (bool, bool) {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
-		return false
+		return false, false
 	}
 	node := t.a.nodes[int(id)]
 	match node.kind {
 		.float_literal {
-			return true
+			return true, true
+		}
+		.int_literal {
+			return true, false
 		}
 		.prefix {
 			if node.op !in [.plus, .minus] || node.children_count == 0 {
-				return false
+				return false, false
 			}
-			return t.is_untyped_float_literal_expr_with_const_path(t.a.child(&node, 0), mut const_expr_path)
+			return t.untyped_numeric_literal_expr_info(t.a.child(&node, 0), mut const_expr_path)
 		}
 		.paren, .expr_stmt {
 			if node.children_count == 0 {
-				return false
+				return false, false
 			}
-			return t.is_untyped_float_literal_expr_with_const_path(t.a.child(&node, 0), mut const_expr_path)
+			return t.untyped_numeric_literal_expr_info(t.a.child(&node, 0), mut const_expr_path)
+		}
+		.infix {
+			if node.op !in [.plus, .minus, .mul, .div, .mod] || node.children_count < 2 {
+				return false, false
+			}
+			lhs_literal, lhs_float := t.untyped_numeric_literal_expr_info(t.a.child(&node, 0), mut
+				const_expr_path)
+			if !lhs_literal {
+				return false, false
+			}
+			rhs_literal, rhs_float := t.untyped_numeric_literal_expr_info(t.a.child(&node, 1), mut
+				const_expr_path)
+			return rhs_literal, lhs_float || rhs_float
 		}
 		.ident, .selector {
-			expr_id := t.const_expr_for_arg(id) or { return false }
+			expr_id := t.const_expr_for_arg(id) or { return false, false }
 			if expr_id in const_expr_path {
-				return false
+				return false, false
 			}
 			const_expr_path << expr_id
-			return t.is_untyped_float_literal_expr_with_const_path(expr_id, mut const_expr_path)
+			is_literal, has_float := t.untyped_numeric_literal_expr_info(expr_id, mut const_expr_path)
+			const_expr_path.delete_last()
+			return is_literal, has_float
 		}
 		else {
-			return false
+			return false, false
 		}
 	}
 }
