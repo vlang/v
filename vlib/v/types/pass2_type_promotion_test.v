@@ -112,7 +112,8 @@ fn test_pass2_promotion_finds_lane_storage_nested_in_outside_descriptors() {
 fn test_pass2_scope_query_terminates_on_cycles_and_still_visits_lane_edges() {
 	$if prealloc {
 		mut cycle := new_type_reference(Type(Void{}))
-		*cycle = Type(Map{ key_type: &builtin_int_type, value_type: cycle })
+		// The fixture owns this descriptor; its test back edge requires a pointer write.
+		unsafe { *cycle = Type(Map{ key_type: &builtin_int_type, value_type: cycle }) }
 		scope := unsafe { prealloc_scope_begin() }
 		lane_child := new_type_reference(Type(Unknown{ reason: 'lane child'.clone() }))
 		unsafe { prealloc_scope_leave(scope) }
@@ -122,9 +123,10 @@ fn test_pass2_scope_query_terminates_on_cycles_and_still_visits_lane_edges() {
 		assert kept is Map
 		assert voidptr(kept.value_type) == voidptr(cycle)
 		// The cyclic edge is visited before the other pending child.
-		*cycle = Type(Map{ key_type: lane_child, value_type: cycle })
+		unsafe { *cycle = Type(Map{ key_type: lane_child, value_type: cycle }) }
 		assert type_refers_to_scope(scope, cycle)
-		*cycle = Type(Void{})
+		// Break the test cycle and remove its lane reference before releasing the arena.
+		unsafe { *cycle = Type(Void{}) }
 		unsafe { prealloc_scope_free_after(scope) }
 	}
 }
@@ -139,13 +141,17 @@ fn test_pass2_promotion_follows_parameter_and_return_references_from_outside_lis
 			return_type: &builtin_int_type
 		}))
 		return_root := new_type_reference(Type(FnType{ return_type: child }))
+		// Retain the whole sum references before the parameter descriptor is smartcast.
+		mut roots := []&Type{cap: 2}
+		roots << parameter_root
+		roots << return_root
 		unsafe { prealloc_scope_resume(scope, state) }
 		unsafe { prealloc_scope_leave(scope) }
 		assert parameter_root is FnType
 		assert !unsafe { prealloc_scope_owns(scope, parameter_root.params.data) }
 		mut promotion := Pass2TypePromotion{}
 		mut promoted := []Type{}
-		for root in [parameter_root, return_root] {
+		for root in roots {
 			assert !unsafe { prealloc_scope_owns(scope, root) }
 			assert type_refers_to_scope(scope, root)
 			owned := promotion.promote(scope, *root)
