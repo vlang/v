@@ -3,6 +3,38 @@ module transform
 import v.flat
 import v.types
 
+// Preserve earlier call effects only in a frame where consuming a narrow Result
+// can remove the ordinary returned-provenance path. Scan the whole frame first:
+// a void/captured call can retain a source before the consuming reader appears.
+fn (t &Transformer) has_consumable_scalar_result(id flat.NodeId) bool {
+	node := t.a.node(id)
+	if node.kind in [.fn_literal, .lambda_expr, .fn_decl] {
+		return false
+	}
+	if node.kind in [.or_expr, .cast_expr] && node.children_count > 0 {
+		source := t.unwrap_parens(t.a.child(node, 0))
+		if t.a.node(source).kind == .call {
+			result := types.unalias_type(t.tc.resolve_type(source))
+			if result is types.Unknown {
+				return true
+			}
+			if result is types.ResultType {
+				success := t.tc.resolve_type(id)
+				if success is types.Unknown || (escape_call_result_is_scalar(success)
+					&& !escape_scalar_result_can_encode_address(success)) {
+					return true
+				}
+			}
+		}
+	}
+	for i in 0 .. node.children_count {
+		if t.has_consumable_scalar_result(t.a.child(node, i)) {
+			return true
+		}
+	}
+	return false
+}
+
 // These summaries rule out retaining a parameter's provenance through effects.
 // An aggregate producer may return aliases: its caller still tracks that result.
 // A narrow scalar Result can discard them only after handling its error locally.
@@ -255,6 +287,9 @@ fn (t &Transformer) call_provenance_known_borrow(id flat.NodeId, call flat.Node)
 // Effects happen even when a later pure scalar call discards the inner call's
 // provenance. Preserve unproven argument sources when the call is evaluated.
 fn (mut t Transformer) mark_call_provenance_argument_escapes(id flat.NodeId, call flat.Node, amp_sources map[string][]string, ptr_aliases map[string]string) {
+	if !t.preserve_call_provenance {
+		return
+	}
 	if t.call_provenance_known_borrow(id, call) {
 		return
 	}

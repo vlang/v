@@ -362,6 +362,7 @@ mut:
 	call_param_types_prepared     bool
 	fixed_array_borrow_params     map[int][]bool
 	call_provenance_borrow_params map[int][]bool
+	preserve_call_provenance      bool
 	borrow_param_mentions         &BorrowParamMentions = unsafe { nil }
 	used_fns                      map[string]bool
 	used_fns_parent               &map[string]bool = unsafe { nil }
@@ -8355,6 +8356,15 @@ fn (mut t Transformer) mark_escaping_amp_ptrs(body_ids []flat.NodeId) bool {
 			return false
 		}
 	}
+	previous_call_provenance := t.preserve_call_provenance
+	t.preserve_call_provenance = false
+	for id in body_ids {
+		if t.has_consumable_scalar_result(id) {
+			t.preserve_call_provenance = true
+			break
+		}
+	}
+	defer { t.preserve_call_provenance = previous_call_provenance }
 	mut amp_ptrs := map[string]bool{}
 	mut amp_sources := map[string][]string{} // pointer `p` -> possible source locals `v`
 	mut ptr_aliases := map[string]string{} // copy `q := p` -> aliased pointer `p`
@@ -11612,8 +11622,7 @@ fn (t &Transformer) escape_scalar_unwrap_consumes_source(id flat.NodeId) bool {
 	if t.a.node(source).kind != .call {
 		return false
 	}
-	if node.kind == .cast_expr
-		&& types.unalias_type(t.tc.resolve_type(source)) !is types.ResultType {
+	if types.unalias_type(t.tc.resolve_type(source)) !is types.ResultType {
 		return false
 	}
 	success_type := types.unalias_type(t.tc.resolve_type(id))
@@ -27474,7 +27483,11 @@ fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.
 			new_children << t.transform_expr_for_type(child_id, target_type_source_id)
 		} else if target_type in ['voidptr', 'byteptr', 'charptr'] {
 			cast_arg := t.a.nodes[int(child_id)]
-			if cast_arg.kind == .ident && t.pointer_value_rvalues[cast_arg.value]
+			if cast_arg.kind == .ident && cast_arg.value in t.heaped_amp_locals
+				&& escape_type_is_pointer(t.tc.parse_type(t.typeof_var_type(cast_arg.value))) {
+				// A promoted pointer alias still casts its stored pointer value.
+				new_children << t.transform_expr(child_id)
+			} else if cast_arg.kind == .ident && t.pointer_value_rvalues[cast_arg.value]
 				&& flat.source_type_shape(t.raw_var_type(cast_arg.value)).has(.pointer_chain) {
 				value := t.transform_expr_preserving_pointer_value(child_id)
 				deref := t.make_prefix(.mul, value)

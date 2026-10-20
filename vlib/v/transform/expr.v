@@ -1064,7 +1064,11 @@ fn (mut t Transformer) transform_infix_struct_ops(_id flat.NodeId, node flat.Nod
 				return t.zero_value_for_type(ret_type_source_id_3)
 			}
 			mut lhs := t.transform_expr(lhs_id)
-			if lhs_is_pointer {
+			loaded_heap_value := lhs_node.kind == .ident && lhs_node.value in t.heaped_amp_locals
+				&& !t.infix_operand_is_pointer(lhs)
+			if lhs_is_pointer && !loaded_heap_value {
+				// Ordinary reads already load heap storage. A source-level pointer
+				// still needs its own pointee load before the value operator call.
 				lhs = t.make_prefix(.mul, lhs)
 				t.set_node_typ(int(lhs), lhs_type)
 			}

@@ -4572,6 +4572,15 @@ fn (mut t Transformer) transform_call_arg_for_param_isolated(arg_id flat.NodeId,
 	if param_type.starts_with('&') && !t.is_sum_type_name(flat.source_type_id(param_type[1..]))
 		&& !t.is_interface_type(param_type_id) {
 		if arg_node.kind == .ident && t.pointer_value_lvalues[arg_node.value] {
+			storage_type := t.var_type(arg_node.value)
+			if arg_node.value in t.heaped_amp_locals
+				&& t.normalize_type_alias(storage_type) == t.normalize_type_alias(param_type_id) {
+				// Promotion owns the source value's slot, including pointer aliases.
+				// A reference parameter receives that slot, not its stored pointer.
+				storage := t.make_ident(arg_node.value)
+				t.set_node_typ(int(storage), storage_type)
+				return storage
+			}
 			arg_type_comparison_type_id_5 := t.node_type(arg_id)
 			arg_type := flat.source_type_name(arg_type_comparison_type_id_5)
 			if arg_type_comparison_type_id_5 == param_type_comparison_type_id_7 {
@@ -17490,6 +17499,12 @@ fn (mut t Transformer) receiver_base_for_resolved_method(base_id flat.NodeId, me
 	} else {
 		u32(0)
 	})
+	base_node := t.a.node(base_id)
+	if base_node.kind == .ident && base_node.value in t.heaped_amp_locals
+		&& t.normalize_type_alias(t.var_type(base_node.value)) == t.normalize_type_alias(receiver_param_type) {
+		// A reference receiver borrows the promoted source slot as an argument.
+		return t.transform_call_arg_for_param(base_id, receiver_param_type)
+	}
 	method := method_name.all_after_last('.')
 	method_iface_source_id := t.resolve_interface_type_name(method_receiver_source_id)
 	method_iface_comparison_type_id := method_iface_source_id
