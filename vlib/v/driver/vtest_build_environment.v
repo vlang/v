@@ -103,7 +103,7 @@ pub fn vtest_build_environment(vroot string, args []string) TestBuildEnvironment
 	host_target := pref.host_target()
 	mut compiler_defines := user_defines.clone()
 	disable_gc := 'freestanding' in user_defines
-		|| v3_gc_is_disabled(false, cross_output, target.os, target.arch, backend)
+		|| v3_gc_is_disabled(false, cross_output, target.os, target.arch, backend, gc_mode)
 	apply_v3_gc_mode(gc_mode, disable_gc, mut compiler_defines, mut compile_values) or {}
 	selection := v3_select_c_compiler(vroot, V3BundledTccProbeOptions{
 		prefer_platform_cc:  v3_gc_prefers_platform_cc(compiler_defines)
