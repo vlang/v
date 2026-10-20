@@ -680,14 +680,12 @@ mut:
 fn (mut p Pass2TypePromotion) promote(scope voidptr, typ Type) Type {
 	// One word is the variant tag, the other the payload pointer.
 	w0, w1, raw_slot := type_value_words(&typ)
-	if !unsafe { prealloc_scope_owns(scope, voidptr(usize(w0))) }
-		&& !unsafe { prealloc_scope_owns(scope, voidptr(usize(w1))) } {
-		// Allocated before the arena: so is everything it refers to.
-		return typ
-	}
 	slot := raw_slot & (p.set.len - 1)
 	if p.set[slot] && p.w0[slot] == w0 && p.w1[slot] == w1 {
 		return p.values[slot]
+	}
+	if !type_refers_to_scope(scope, typ) {
+		return typ
 	}
 	owned := clone_owned_type(typ)
 	p.w0[slot] = w0
@@ -695,6 +693,72 @@ fn (mut p Pass2TypePromotion) promote(scope voidptr, typ Type) Type {
 	p.values[slot] = owned
 	p.set[slot] = true
 	return owned
+}
+
+// type_refers_to_scope reports whether `typ`, or a type, list or string it
+// refers to, was allocated in `scope`. Where its payload lies does not answer
+// that for the rest: a FastC-built compiler boxes sum payloads in a chunk of
+// its own, outside V's arenas, while the lists and strings inside a type made
+// in the lane still come from the lane's arena.
+fn type_refers_to_scope(scope voidptr, typ Type) bool {
+	w0, w1, _ := type_value_words(&typ)
+	if unsafe { prealloc_scope_owns(scope, voidptr(usize(w0))) }
+		|| unsafe { prealloc_scope_owns(scope, voidptr(usize(w1))) } {
+		return true
+	}
+	return match typ {
+		Unknown {
+			typ.reason.len > 0 && unsafe { prealloc_scope_owns(scope, typ.reason.str) }
+		}
+		Array {
+			type_refers_to_scope(scope, typ.elem_type)
+		}
+		ArrayFixed {
+			(typ.len_expr.len > 0 && unsafe { prealloc_scope_owns(scope, typ.len_expr.str) })
+				|| type_refers_to_scope(scope, typ.elem_type)
+		}
+		Channel {
+			type_refers_to_scope(scope, typ.elem_type)
+		}
+		Map {
+			type_refers_to_scope(scope, typ.key_type) || type_refers_to_scope(scope, typ.value_type)
+		}
+		Pointer {
+			type_refers_to_scope(scope, typ.base_type)
+		}
+		OptionType {
+			type_refers_to_scope(scope, typ.base_type)
+		}
+		ResultType {
+			type_refers_to_scope(scope, typ.base_type)
+		}
+		Alias {
+			type_refers_to_scope(scope, typ.base_type)
+		}
+		FnType {
+			types_refer_to_scope(scope, typ.params)
+				|| (typ.params_mut.len > 0 && unsafe { prealloc_scope_owns(scope, typ.params_mut.data) })
+				|| type_refers_to_scope(scope, typ.return_type)
+		}
+		MultiReturn {
+			types_refer_to_scope(scope, typ.types)
+		}
+		else {
+			false
+		}
+	}
+}
+
+fn types_refer_to_scope(scope voidptr, types []Type) bool {
+	if types.len > 0 && unsafe { prealloc_scope_owns(scope, types.data) } {
+		return true
+	}
+	for typ in types {
+		if type_refers_to_scope(scope, typ) {
+			return true
+		}
+	}
+	return false
 }
 
 @[inline]
