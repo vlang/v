@@ -7,46 +7,11 @@
 #include <stdint.h>
 #include <string.h>
 #include <stdio.h>
-
-// ============================================================
-// Thread-local storage
-// ============================================================
 #ifdef _WIN32
-  #define VGC_TLS __declspec(thread)
-#elif defined(__TINYC__)
-  #define VGC_TLS __thread
-#else
-  #define VGC_TLS __thread
-#endif
-
-#if defined(__TINYC__) && defined(__APPLE__)
-  // TinyCC's Mach-O output has no working thread-local storage: writing a `__thread` variable
-  // crashes. Keep the index in a pthread key instead, stored as idx + 1 so that a thread
-  // without a value reads -1.
-  // The key also tells vgc when the thread exits (see vgc_watch_thread_exit).
-  #include <pthread.h>
-  static void vgc_thread_exit_dispatch(void* value);
-  static pthread_key_t _vgc_cache_idx_key;
-  static pthread_once_t _vgc_cache_idx_once = PTHREAD_ONCE_INIT;
-  static void vgc_cache_idx_key_create(void) { pthread_key_create(&_vgc_cache_idx_key, vgc_thread_exit_dispatch); }
-  static inline int vgc_get_cache_idx(void) {
-      pthread_once(&_vgc_cache_idx_once, vgc_cache_idx_key_create);
-      return (int)(intptr_t)pthread_getspecific(_vgc_cache_idx_key) - 1;
-  }
-  static inline void vgc_set_cache_idx(int idx) {
-      pthread_once(&_vgc_cache_idx_once, vgc_cache_idx_key_create);
-      pthread_setspecific(_vgc_cache_idx_key, (void*)(intptr_t)(idx + 1));
-  }
-#else
-// Stored as idx + 1 in a zero-initialized variable, so that a thread without a value reads -1.
-// Keep it free of a non-zero initializer: TinyCC's ELF linker (the bundled tcc 85ba3ae8, fixed
-// upstream by 128e7893) places .tdata after .bss in the same PT_LOAD segment, so the loader
-// reads the TLS init image from zero-filled memory. Every thread then started with index 0
-// (the main thread's cache), and the .tdata bytes overwrote the start of .bss instead.
-static VGC_TLS int _vgc_cache_idx_plus1;
-
-static inline int vgc_get_cache_idx(void) { return _vgc_cache_idx_plus1 - 1; }
-static inline void vgc_set_cache_idx(int idx) { _vgc_cache_idx_plus1 = idx + 1; }
+  #ifndef WIN32_LEAN_AND_MEAN
+    #define WIN32_LEAN_AND_MEAN
+  #endif
+  #include <windows.h>
 #endif
 
 // ============================================================
@@ -116,13 +81,105 @@ static inline void vgc_set_cache_idx(int idx) { _vgc_cache_idx_plus1 = idx + 1; 
 #endif
 
 // ============================================================
+// Thread-local storage
+// Every thread allocates from its own cache, found through a per-thread cache index. If the
+// index is not really thread-local, all threads share one cache and allocate from the same
+// spans without a lock.
+// ============================================================
+#if defined(__TINYC__) && defined(_WIN32)
+  // TinyCC has no thread-local storage on Windows: `__declspec(thread)` becomes an attribute
+  // that it ignores. Keep the index in a fiber-local slot instead, stored as idx + 1 so that a
+  // thread without a value reads -1. The slot's callback also tells vgc when the thread exits
+  // (see vgc_watch_thread_exit). TinyCC's kernel32.def has no Fls* functions, so they are
+  // looked up at run time; TlsAlloc is the fallback, which has no exit callback.
+  static void vgc_thread_exit_dispatch(void* value);
+  static void WINAPI vgc_cache_idx_slot_exit(void* value) { vgc_thread_exit_dispatch(value); }
+  typedef DWORD (WINAPI *vgc_fls_alloc_fn)(void (WINAPI *)(void*));
+  typedef void* (WINAPI *vgc_fls_get_fn)(DWORD);
+  typedef BOOL (WINAPI *vgc_fls_set_fn)(DWORD, void*);
+  static DWORD _vgc_cache_idx_slot;
+  static vgc_fls_get_fn _vgc_fls_get;
+  static vgc_fls_set_fn _vgc_fls_set;
+  static uint32_t _vgc_cache_idx_slot_state; // 0: no slot yet, 1: being created, 2: ready
+  static void vgc_cache_idx_slot_init(void) {
+      uint32_t expected = 0;
+      if (!vgc_atomic_cas_u32(&_vgc_cache_idx_slot_state, &expected, 1)) {
+          // Another thread creates the slot: a second slot would lose the values in the first.
+          while (vgc_atomic_load_u32(&_vgc_cache_idx_slot_state) != 2) Sleep(0);
+          return;
+      }
+      HMODULE kernel32 = GetModuleHandleA("kernel32.dll");
+      vgc_fls_alloc_fn fls_alloc = (vgc_fls_alloc_fn)GetProcAddress(kernel32, "FlsAlloc");
+      vgc_fls_get_fn fls_get = (vgc_fls_get_fn)GetProcAddress(kernel32, "FlsGetValue");
+      vgc_fls_set_fn fls_set = (vgc_fls_set_fn)GetProcAddress(kernel32, "FlsSetValue");
+      DWORD slot = 0xFFFFFFFF; // FLS_OUT_OF_INDEXES
+      if (fls_alloc != NULL && fls_get != NULL && fls_set != NULL) slot = fls_alloc(vgc_cache_idx_slot_exit);
+      if (slot != 0xFFFFFFFF) {
+          _vgc_fls_get = fls_get;
+          _vgc_fls_set = fls_set;
+      } else {
+          slot = TlsAlloc();
+      }
+      _vgc_cache_idx_slot = slot;
+      vgc_atomic_store_u32(&_vgc_cache_idx_slot_state, 2);
+  }
+  static inline int vgc_get_cache_idx(void) {
+      if (vgc_atomic_load_u32(&_vgc_cache_idx_slot_state) != 2) vgc_cache_idx_slot_init();
+      void* value = _vgc_fls_get != NULL ? _vgc_fls_get(_vgc_cache_idx_slot) : TlsGetValue(_vgc_cache_idx_slot);
+      return (int)(intptr_t)value - 1;
+  }
+  static inline void vgc_set_cache_idx(int idx) {
+      if (vgc_atomic_load_u32(&_vgc_cache_idx_slot_state) != 2) vgc_cache_idx_slot_init();
+      void* value = (void*)(intptr_t)(idx + 1);
+      if (_vgc_fls_set != NULL) {
+          _vgc_fls_set(_vgc_cache_idx_slot, value);
+      } else {
+          TlsSetValue(_vgc_cache_idx_slot, value);
+      }
+  }
+#elif defined(__TINYC__) && defined(__APPLE__)
+  // TinyCC's Mach-O output has no working thread-local storage: writing a `__thread` variable
+  // crashes. Keep the index in a pthread key instead, stored as idx + 1 so that a thread
+  // without a value reads -1.
+  // The key also tells vgc when the thread exits (see vgc_watch_thread_exit).
+  #include <pthread.h>
+  static void vgc_thread_exit_dispatch(void* value);
+  static pthread_key_t _vgc_cache_idx_key;
+  static pthread_once_t _vgc_cache_idx_once = PTHREAD_ONCE_INIT;
+  static void vgc_cache_idx_key_create(void) { pthread_key_create(&_vgc_cache_idx_key, vgc_thread_exit_dispatch); }
+  static inline int vgc_get_cache_idx(void) {
+      pthread_once(&_vgc_cache_idx_once, vgc_cache_idx_key_create);
+      return (int)(intptr_t)pthread_getspecific(_vgc_cache_idx_key) - 1;
+  }
+  static inline void vgc_set_cache_idx(int idx) {
+      pthread_once(&_vgc_cache_idx_once, vgc_cache_idx_key_create);
+      pthread_setspecific(_vgc_cache_idx_key, (void*)(intptr_t)(idx + 1));
+  }
+#else
+  #if defined(_MSC_VER)
+    // MSVC, and clang in MSVC mode (clang-cl).
+    #define VGC_TLS __declspec(thread)
+  #else
+    // GCC and clang, also on Windows (MinGW): GCC ignores `__declspec(thread)` there ("'thread'
+    // attribute directive ignored"), so the index was one global that all threads shared.
+    // MinGW GCC implements `__thread` through emutls, clang through the PE .tls section.
+    #define VGC_TLS __thread
+  #endif
+// Stored as idx + 1 in a zero-initialized variable, so that a thread without a value reads -1.
+// Keep it free of a non-zero initializer: TinyCC's ELF linker (the bundled tcc 85ba3ae8, fixed
+// upstream by 128e7893) places .tdata after .bss in the same PT_LOAD segment, so the loader
+// reads the TLS init image from zero-filled memory. Every thread then started with index 0
+// (the main thread's cache), and the .tdata bytes overwrote the start of .bss instead.
+static VGC_TLS int _vgc_cache_idx_plus1;
+
+static inline int vgc_get_cache_idx(void) { return _vgc_cache_idx_plus1 - 1; }
+static inline void vgc_set_cache_idx(int idx) { _vgc_cache_idx_plus1 = idx + 1; }
+#endif
+
+// ============================================================
 // OS memory allocation
 // ============================================================
 #ifdef _WIN32
-  #ifndef WIN32_LEAN_AND_MEAN
-    #define WIN32_LEAN_AND_MEAN
-  #endif
-  #include <windows.h>
   static inline void* vgc_os_alloc(size_t size) {
       return VirtualAlloc(NULL, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
   }
@@ -523,16 +580,16 @@ static void vgc_set_thread_exit_hook(vgc_thread_exit_fn fn) { vgc_thread_exit_ho
 static void vgc_thread_exit_dispatch(void* value) {
     if (value != NULL && vgc_thread_exit_hook != NULL) vgc_thread_exit_hook(value);
 }
-#ifdef _WIN32
+#if defined(__TINYC__) && (defined(_WIN32) || defined(__APPLE__))
+  // The slot that holds the cache index calls vgc_thread_exit_dispatch.
+  static void vgc_watch_thread_exit(int idx) { (void)idx; }
+#elif defined(_WIN32)
   static DWORD vgc_thread_exit_fls = FLS_OUT_OF_INDEXES;
   static void WINAPI vgc_thread_exit_fls_cb(void* value) { vgc_thread_exit_dispatch(value); }
   static void vgc_watch_thread_exit(int idx) {
       if (vgc_thread_exit_fls == FLS_OUT_OF_INDEXES) vgc_thread_exit_fls = FlsAlloc(vgc_thread_exit_fls_cb);
       if (vgc_thread_exit_fls != FLS_OUT_OF_INDEXES) FlsSetValue(vgc_thread_exit_fls, (void*)(intptr_t)(idx + 1));
   }
-#elif defined(__TINYC__) && defined(__APPLE__)
-  // The pthread key that holds the cache index calls vgc_thread_exit_dispatch.
-  static void vgc_watch_thread_exit(int idx) { (void)idx; }
 #else
   #include <pthread.h>
   static pthread_key_t vgc_thread_exit_key;
