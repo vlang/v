@@ -1,7 +1,6 @@
 module main
 
 import os
-import os.cmdline
 import v.pref
 import v.util.recompilation
 import v.util.vflags
@@ -457,7 +456,22 @@ fn pgo_compiler_kind(args []string) string {
 	if has_profile_cflag(args) {
 		return ''
 	}
-	mut ccompiler := cmdline.option(args, '-cc', '')
+	// Environment flags precede CLI flags; the driver uses the last -cc.
+	mut ccompiler := ''
+	mut i := 0
+	for i < args.len {
+		arg := args[i]
+		if arg == '-cc' && i + 1 < args.len {
+			ccompiler = args[i + 1]
+		}
+		if arg in ['-prof', '-profile'] && i + 1 < args.len && args[i + 1].starts_with('-') {
+			i++
+		} else if (arg == '-cf' || pref.option_may_consume_value(arg)) && i + 1 < args.len {
+			i += 2
+		} else {
+			i++
+		}
+	}
 	if ccompiler == '' {
 		ccompiler = os.getenv_opt('CC') or { 'cc' }
 	}
@@ -605,6 +619,8 @@ fn compile_with_pgo(vroot string, vexe string, args []string, out_binary string,
 	mut generate_args := with_output_arg(args, pgo_binary)
 	// -cflags is parsed again by the compiler, so keep paths with spaces together.
 	generate_args << ['-cflags', os.quoted_path('-fprofile-generate=${profile_dir}')]
+	// Training uses worker threads, so counter increments must not lose updates.
+	generate_args << ['-cflags', '-fprofile-update=atomic']
 	generate_cmd := compose_v_cmd(vexe, generate_args, full_v_cli_source)
 	run_cmd(generate_cmd) or {
 		eprintln('PGO step failed while building the instrumented compiler.')
@@ -618,7 +634,7 @@ fn compile_with_pgo(vroot string, vexe string, args []string, out_binary string,
 		training_args << '-no-parallel'
 	}
 	// Exercise real V3 compilation, rather than an inherited cache or V1 fallback.
-	training_cmd := 'env -u VFLAGS -u VEXE V_MACOS_V3_NO_FALLBACK=1 ' +
+	training_cmd := 'env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE V_MACOS_V3_NO_FALLBACK=1 ' +
 		compose_v_cmd(pgo_binary, training_args, full_v_cli_source)
 	run_cmd(training_cmd) or {
 		eprintln('PGO step failed while generating the profiling data.')
