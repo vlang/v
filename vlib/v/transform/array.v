@@ -1526,29 +1526,6 @@ fn (mut t Transformer) transform_array_value_for_dynamic_target(value_id flat.No
 	return none
 }
 
-// transform_optional_array_value_for_option_target converts an option of a concrete
-// array (`?[]Item`) stored as an option of an interface or sum type array (`?[]Named`):
-// a present payload is converted element by element, like a returned one.
-fn (mut t Transformer) transform_optional_array_value_for_option_target(value_id flat.NodeId, source_type_id u32, target_type_id u32) ?flat.NodeId {
-	if int(value_id) < 0 || source_type_id == u32(0) || target_type_id == u32(0) || isnil(t.tc) {
-		return none
-	}
-	actual_type := t.tc.parse_type(t.qualify_optional_type(source_type_id))
-	expected_type := t.tc.parse_type(target_type_id)
-	actual_base := forwarded_return_unalias_type(actual_type)
-	expected_base := forwarded_return_unalias_type(expected_type)
-	if actual_base is types.OptionType && expected_base is types.OptionType {
-		actual_payload := forwarded_return_unalias_type(actual_base.base_type)
-		expected_payload := forwarded_return_unalias_type(expected_base.base_type)
-		if expected_payload is types.Array
-			&& (actual_payload is types.Array || actual_payload is types.ArrayFixed)
-			&& t.forwarded_slot_conversion_supported(actual_payload, expected_payload) {
-			return t.transform_forwarded_return_slot(value_id, actual_type, expected_type)
-		}
-	}
-	return none
-}
-
 // try_lower_array_append_stmt supports try lower array append stmt handling for Transformer.
 fn (mut t Transformer) try_lower_array_append_or_stmt(node flat.Node) ?[]flat.NodeId {
 	if node.kind != .or_expr || node.children_count < 2 {

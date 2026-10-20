@@ -1,0 +1,7 @@
+vlib/v/checker/tests/mut_arg_option_payload_generic_instance_err.vv:8:11: error: cannot use `&?[2]int` as `&?&[]int` in argument 1 to `fill`
+    6 | 
+    7 | fn fill_through[T](mut x ?T) {
+    8 |     fill(mut x)
+      |              ^
+    9 | }
+   10 |

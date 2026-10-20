@@ -10754,8 +10754,11 @@ fn (tc &TypeChecker) type_compatible(actual Type, expected Type) bool {
 	}
 	if expected is Channel {
 		if actual is Channel {
+			// A channel is shared, never converted, so its elements must be stored the
+			// same way: a `chan u8` is not a `chan u64`, and a `chan [2]int` is not a
+			// `chan []int`.
 			return actual.is_mut == expected.is_mut
-				&& tc.type_compatible(actual.elem_type, expected.elem_type)
+				&& tc.container_elem_types_compatible(actual.elem_type, expected.elem_type)
 		}
 	}
 	if expected is Map {
@@ -10806,8 +10809,8 @@ fn (tc &TypeChecker) explicit_array_literal_type_fits(node flat.Node, expected T
 }
 
 // container_elem_types_compatible reports whether a fixed array with element type
-// `actual` (or a map with key or value type `actual`) can be used where one with
-// `expected` is required.
+// `actual` (or a map with key or value type `actual`, or a channel with element type
+// `actual`) can be used where one with `expected` is required.
 fn (tc &TypeChecker) container_elem_types_compatible(actual Type, expected Type) bool {
 	return tc.type_compatible(actual, expected) && !tc.container_elem_layouts_differ(actual, expected)
 }
@@ -10840,7 +10843,9 @@ fn is_container_type(typ Type) bool {
 // as `mut` or `shared`, stores its elements differently from the container behind the
 // parameter type `expected`. The callee works on the caller's container, so it cannot
 // be converted element by element like a value argument: a `[]Item` is not a
-// `mut []Named` (or `mut ?[]Named`, or `shared []Named`).
+// `mut []Named` (or `mut ?[]Named`, or `shared []Named`). The same holds for the
+// payload of an option: a `?[2]int` is not a `mut ?[]int`, and a `?Item` is not a
+// `mut ?Named`.
 fn (tc &TypeChecker) mut_arg_container_layouts_differ(actual Type, expected Type) bool {
 	mut clean_actual := unalias_type(actual)
 	if clean_actual is Pointer {
@@ -10849,6 +10854,15 @@ fn (tc &TypeChecker) mut_arg_container_layouts_differ(actual Type, expected Type
 	mut clean_expected := unalias_type(expected)
 	if clean_expected is Pointer {
 		clean_expected = unalias_type(clean_expected.base_type)
+	}
+	if clean_expected is OptionType && clean_actual is OptionType {
+		actual_payload := unalias_type(clean_actual.base_type)
+		mut expected_payload := unalias_type(clean_expected.base_type)
+		// A `mut ?T` parameter is a `?&T` slot.
+		if expected_payload is Pointer && actual_payload !is Pointer {
+			expected_payload = unalias_type(expected_payload.base_type)
+		}
+		return tc.container_elem_layouts_differ(actual_payload, expected_payload)
 	}
 	if clean_expected is OptionType && clean_actual !is OptionType {
 		clean_expected = unalias_type(clean_expected.base_type)
@@ -10930,6 +10944,11 @@ fn (tc &TypeChecker) container_elem_layouts_differ(actual Type, expected Type) b
 			if clean_actual is Pointer && clean_actual.base_type !is Void
 				&& clean_expected.base_type !is Void {
 				return tc.container_elem_layouts_differ(clean_actual.base_type, clean_expected.base_type)
+			}
+		}
+		Channel {
+			if clean_actual is Channel {
+				return tc.container_elem_layouts_differ(clean_actual.elem_type, clean_expected.elem_type)
 			}
 		}
 		Interface {
@@ -11080,10 +11099,52 @@ pub fn (tc &TypeChecker) fn_param_compatible(actual Type, expected Type) bool {
 		&& fn_param_unalias_type(expected) is Primitive {
 		return false
 	}
+	if tc.fn_value_layouts_differ(actual, expected) {
+		return false
+	}
 	if tc.c_type(actual) == tc.c_type(expected) {
 		return true
 	}
 	return fn_param_can_cast_userdata_param(actual, expected)
+}
+
+// fn_value_layouts_differ reports whether a parameter or result type `actual` of a
+// function value stores its value differently from the `expected` one, although they may
+// have one C type: all options and results share one, as do all dynamic arrays, all maps
+// and all channels. A function value is called as it is, so nothing converts its
+// arguments or its result: a `fn () ?[2]int` is not a `fn () ?[]int`, a `fn ([]u64)` is
+// not a `fn ([]u8)`, and a `fn () []Item` is not a `fn () []Named`.
+fn (tc &TypeChecker) fn_value_layouts_differ(actual Type, expected Type) bool {
+	if type_contains_unknown(actual) || type_contains_unknown(expected) {
+		return false
+	}
+	mut clean_actual := unalias_type(actual)
+	mut clean_expected := unalias_type(expected)
+	if clean_actual is Pointer && clean_expected is Pointer {
+		clean_actual = unalias_type(clean_actual.base_type)
+		clean_expected = unalias_type(clean_expected.base_type)
+	}
+	shared_c_type := (clean_actual is OptionType && clean_expected is OptionType)
+		|| (clean_actual is ResultType && clean_expected is ResultType)
+		|| (clean_actual is Channel && clean_expected is Channel)
+		|| (is_container_type(clean_actual) && is_container_type(clean_expected))
+	return shared_c_type && tc.container_elem_layouts_differ(clean_actual, clean_expected)
+}
+
+// fn_value_signature_layouts_differ reports whether a parameter or the result of the
+// function value type `actual` is stored differently from the one of `expected`
+// (fn_value_layouts_differ).
+fn (tc &TypeChecker) fn_value_signature_layouts_differ(actual FnType, expected FnType) bool {
+	if actual.params.len != expected.params.len {
+		return false
+	}
+	for i in 0 .. actual.params.len {
+		if tc.fn_value_layouts_differ(fn_compatible_param_type(actual, i), fn_compatible_param_type(expected,
+			i)) {
+			return true
+		}
+	}
+	return tc.fn_value_layouts_differ(actual.return_type, expected.return_type)
 }
 
 fn fn_param_is_platform_int(typ Type) bool {
@@ -11110,6 +11171,9 @@ fn (tc &TypeChecker) fn_return_compatible(actual Type, expected Type) bool {
 	}
 	if fn_param_is_voidptr_type(expected) && fn_param_is_nonvoid_pointer_type(actual) {
 		return true
+	}
+	if tc.fn_value_layouts_differ(actual, expected) {
+		return false
 	}
 	if tc.c_type(actual) == tc.c_type(expected) && tc.type_compatible(actual, expected) {
 		return true

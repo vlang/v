@@ -1,0 +1,44 @@
+// A `mut` option argument is the caller's own option, so its payload cannot be converted
+// like the payload of a value argument: it must be stored as the parameter's payload.
+interface Named {
+	name() string
+}
+
+struct Item {
+	n string
+}
+
+fn (i Item) name() string {
+	return i.n
+}
+
+type Ints = []int
+
+fn fill(mut a ?[]int) {
+	a = [7, 8, 9]
+}
+
+fn fill_named(mut a ?Named) {
+	a = Named(Item{'z'})
+}
+
+fn fill_names(mut a ?[]Named) {
+	a = [Named(Item{'z'})]
+}
+
+fn main() {
+	mut pair := ?[2]int([1, 2]!)
+	fill(mut pair)
+	mut item := ?Item(Item{'a'})
+	fill_named(mut item)
+	mut items := ?[]Item([Item{'a'}])
+	fill_names(mut items)
+	// Payloads stored the same way are accepted.
+	mut ints := ?Ints([1])
+	fill(mut ints)
+	mut named := ?Named(none)
+	fill_named(mut named)
+	mut all_named := ?[]Named(none)
+	fill_names(mut all_named)
+	println('${pair} ${item} ${items} ${ints} ${named} ${all_named}')
+}

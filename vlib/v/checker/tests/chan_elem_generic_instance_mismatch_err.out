@@ -1,0 +1,14 @@
+vlib/v/checker/tests/chan_elem_generic_instance_mismatch_err.vv:4:9: error: cannot use `chan u8` as type `chan u64` in return argument
+    2 | // outside generic functions.
+    3 | fn as_wide[T](ch chan T) chan u64 {
+    4 |     return ch
+      |            ~~
+    5 | }
+    6 |
+vlib/v/checker/tests/chan_elem_generic_instance_mismatch_err.vv:12:12: error: cannot use `chan u8` as `chan u64` in argument 1 to `take_wide`
+   10 | 
+   11 | fn pass_on[T](ch chan T) {
+   12 |     take_wide(ch)
+      |               ~~
+   13 | }
+   14 |
