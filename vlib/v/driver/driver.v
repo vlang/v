@@ -9004,6 +9004,10 @@ fn v3_cache_compiler_runtime_inputs_identity(root string) string {
 }
 
 fn restored_fn_c_name(name string) string {
+	// Operator overloads and static type methods are named in the internal namespace.
+	if naming.c_name_needs_internal_namespace(name) {
+		return naming.c_name(name)
+	}
 	if name.starts_with('C.') {
 		return name[2..]
 	}

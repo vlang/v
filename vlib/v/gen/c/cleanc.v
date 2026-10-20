@@ -17317,19 +17317,19 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 			}
 			if lhs_type is types.Struct {
 				op_name := match node.op {
-					.minus { '__minus' }
-					.plus { '__plus' }
-					.eq { '__eq' }
-					.ne { '__ne' }
-					.lt { '__lt' }
-					.gt { '__gt' }
-					.le { '__le' }
-					.ge { '__ge' }
+					.minus { '-' }
+					.plus { '+' }
+					.eq { '==' }
+					.ne { '!=' }
+					.lt { '<' }
+					.gt { '>' }
+					.le { '<=' }
+					.ge { '>=' }
 					else { '' }
 				}
 
 				if op_name.len > 0 {
-					method_name := '${lhs_type.name()}${op_name}'
+					method_name := '${lhs_type.name()}.${op_name}'
 					if method_name in g.tc.fn_param_types {
 						panic('internal error: struct operator overload reached C backend after transform: ${lhs_type.name()} op=${node.op}')
 					}

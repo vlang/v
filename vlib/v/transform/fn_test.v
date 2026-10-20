@@ -1149,13 +1149,16 @@ fn test_lowered_generic_operator_call_records_operator_use() {
 	}
 	mut indexer := Transformer{}
 	lowered_operator_uses := indexer.lowered_generic_struct_operator_uses_for_specs(specs, decls)
-	assert 'Box_int__plus' in lowered_operator_uses
-	assert lowered_operator_uses['Box_int__plus'] == ['Box[int].+']
+	operator_c_name := '__v3_internal_symbol_op_Box_int__plus'
+	assert operator_c_name in lowered_operator_uses
+	assert lowered_operator_uses[operator_c_name] == ['Box[int].+']
+	// `Box_int__plus` is the C name of an ordinary method `plus`, not of the operator.
+	assert 'Box_int__plus' !in lowered_operator_uses
 
 	mut a := flat.FlatAst.new()
 	callee_id := a.add_node(flat.Node{
 		kind:  .ident
-		value: 'Box_int__plus'
+		value: operator_c_name
 	})
 	call_start := a.children.len
 	a.children << callee_id
@@ -1169,7 +1172,8 @@ fn test_lowered_generic_operator_call_records_operator_use() {
 	}
 	assert t.record_lowered_generic_struct_operator_call(a.nodes[int(call_id)], lowered_operator_uses)
 	assert t.used_struct_operator_fns['Box[int].+']
-	assert t.used_struct_operator_fns['Box_int__plus']
+	assert t.used_struct_operator_fns[operator_c_name]
+	assert !t.used_struct_operator_fns['Box_int__plus']
 }
 
 fn test_specialized_zero_arg_method_is_not_lowered_as_generic_cast() {
