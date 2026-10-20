@@ -1,207 +1,335 @@
-name: hub_docker_ci
+name: Docker PR 29883 no-push validation
 
-### Publishes the images for a V release tag.
-##
-### This is the only workflow triggered by a tag, and it is the reason a version
-### tag on Docker Hub can be trusted: V_REV is set from github.ref_name, so
-### thevlang/vlang:0.5.2 contains V 0.5.2 rather than whatever master was.
-### The daily nightly images are published separately, from
-### vlang/docker/.github/workflows/nightly_builds.yml, and only carry floating
-### tags (:latest, :alpine, :debian, :nix) because they track V master.
-##
-### The Dockerfiles come from a reviewed, pinned vlang/docker snapshot.
-### Preparation checks its recipe hashes, resolves the developer templates,
-### and includes the Nix toolchain as an internal stage (no nix-build tag needed).
-###
-### NB: avoid caching things here, since the action is rare (once per release),
-### and the potential benefits are less than the complexity of debugging
-### cache invalidation issues...
-## Trigger on both new release tags, and on weekly tags.
-## Allow for manual override too:
 on:
   workflow_dispatch:
     inputs:
       tag:
-        description: The V tag to build, e.g. 0.5.2
+        description: Existing V release to validate
+        type: choice
+        options: ['0.5.2']
+        default: '0.5.2'
         required: true
-  push:
-    tags:
-      - '[0-9]+.[0-9]+.[0-9]+'
-      - 'weekly.*'
-
-concurrency:
-  group: 'hub_docker_ci-${{ github.ref }}'
-  cancel-in-progress: false
 
 permissions:
   contents: read
 
-env:
-  # Both architectures the official images are published for.
-  PLATFORMS: linux/amd64,linux/arm64
+concurrency:
+  group: docker-pr-29883-validation-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   resolve-bootstrap:
-    name: Resolve historical V bootstrap
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+    if: github.repository == 'vlang/v' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/codex/pr-29883-no-push-5f6bca4'
+    name: Resolve the reviewed historical bootstrap
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
     outputs:
       tag: ${{ steps.bootstrap.outputs.tag }}
       manifest: ${{ steps.bootstrap.outputs.manifest }}
+      manifest_sha256: ${{ steps.bootstrap.outputs.manifest_sha256 }}
       v_source_sha: ${{ steps.bootstrap.outputs.v_source_sha }}
       vc_revision: ${{ steps.bootstrap.outputs.vc_revision }}
       vc_c_sha256: ${{ steps.bootstrap.outputs.vc_c_sha256 }}
     steps:
-      - uses: actions/checkout@v7
+      - name: Check out exact reviewed V source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          repository: vlang/v
+          ref: 5f6bca40ecfc221dd8d58fd9e197353874a3d1e7
           persist-credentials: false
+          path: release-source
           sparse-checkout: .github/scripts/prepare_docker_release.py
           sparse-checkout-cone-mode: false
 
-      - name: Freeze bootstrap for the requested source
-        id: bootstrap
-        env:
-          V_RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+      - name: Verify resolver source and requested release
         run: |
           set -euo pipefail
-          python3 .github/scripts/prepare_docker_release.py \
-            --resolve-bootstrap "$V_RELEASE_TAG" \
+          test "$RELEASE_TAG" = '0.5.2'
+          test "$(git -C release-source rev-parse HEAD)" = '5f6bca40ecfc221dd8d58fd9e197353874a3d1e7'
+          printf '%s  %s\n' 'a7f89c52a84eddbcf3a69b733a40a7d4665b939ddd365ab0e68d6bed251e3299' \
+            release-source/.github/scripts/prepare_docker_release.py | sha256sum -c -
+
+      - name: Resolve actual V and VC histories once
+        run: |
+          set -euo pipefail
+          python3 release-source/.github/scripts/prepare_docker_release.py \
+            --resolve-bootstrap "$RELEASE_TAG" \
             --history-dir "$RUNNER_TEMP/bootstrap-history" \
-            --bootstrap-output "$RUNNER_TEMP/bootstrap.json" \
-            --github-output "$GITHUB_OUTPUT"
+            --bootstrap-output "$RUNNER_TEMP/bootstrap.json"
 
-  publish-release-images:
-    needs: resolve-bootstrap
-    name: Publish ${{ matrix.os }} ${{ inputs.tag || github.ref_name }}
-    strategy:
-      matrix:
-        # ubuntu is deliberately absent: :ubuntu-build and :ubuntu-base exist
-        # only because CI runs in them, and are built in vlang/docker.
-        os: [debian, alpine, nix, static]
-      # One broken variant must not stop the others being published.
-      fail-fast: false
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    env:
-      BOOTSTRAP_MANIFEST: ${{ needs.resolve-bootstrap.outputs.manifest }}
-      RESOLVED_TAG: ${{ needs.resolve-bootstrap.outputs.tag }}
-    steps:
-      - name: Check out release preparation
-        uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
-      - name: Check out pinned image recipes
-        uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-          repository: 'vlang/docker'
-          ref: 4cfc69eb8ea27b1d1e3abf13dccc6b3ae0fd5046
-          path: docker-release-source
-
-      - name: Prepare all release recipes
+      - name: Check and publish the exact bootstrap manifest
+        id: bootstrap
         run: |
           set -euo pipefail
-          printf '%s\n' "$BOOTSTRAP_MANIFEST" > "$RUNNER_TEMP/bootstrap.json"
-          python3 .github/scripts/prepare_docker_release.py \
+          python3 - <<'PY_MANIFEST'
+          import hashlib, importlib.util, json, os
+          from pathlib import Path
+          helper = Path("release-source/.github/scripts/prepare_docker_release.py")
+          if hashlib.sha256(helper.read_bytes()).hexdigest() != "a7f89c52a84eddbcf3a69b733a40a7d4665b939ddd365ab0e68d6bed251e3299":
+              raise SystemExit("reviewed preparation helper checksum mismatch")
+          spec = importlib.util.spec_from_file_location("release", helper)
+          release = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(release)
+          expected = {'schema': 1, 'selector': 'v-source-time-v1', 'tag': '0.5.2', 'v_source_sha': '7647ce1c6fad63b5578bc07883139906de74b2f8', 'v_source_epoch': 1783896439, 'vc_revision': '7eb8c54a3843e5107d5af06d7a8c3e928f322475', 'vc_epoch': 1783888081, 'vc_source_sha': '45ae01d23168b6372f734eeb38a77360bbcf184a', 'vc_c_sha256': 'c68b70a9ba74b9387c1ae08df43cc620f40d8f78dee925fc229791c7f9d96e7d'}
+          manifest = release.read_manifest(Path(os.environ["RUNNER_TEMP"]) / "bootstrap.json", os.environ["RELEASE_TAG"])
+          for key, value in expected.items():
+              if manifest[key] != value:
+                  raise SystemExit("unexpected 0.5.2 bootstrap " + key)
+          canonical = json.dumps(manifest, sort_keys=True, separators=(",", ":"))
+          digest = hashlib.sha256(canonical.encode()).hexdigest()
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(release.github_outputs(manifest))
+              output.write("manifest_sha256=" + digest + "\n")
+          print(canonical)
+          print("manifest_sha256=" + digest)
+          PY_MANIFEST
+
+  validate-image:
+    needs: resolve-bootstrap
+    if: github.repository == 'vlang/v' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/codex/pr-29883-no-push-5f6bca4'
+    name: ${{ matrix.recipe }} / ${{ matrix.arch }}
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        recipe: [alpine, alpine.dev-full, debian, debian.dev-full, nix, nix.dev-full, static]
+        arch: [amd64, arm64]
+    defaults:
+      run:
+        shell: bash
+    env:
+      RELEASE_TAG: ${{ needs.resolve-bootstrap.outputs.tag }}
+      BOOTSTRAP_MANIFEST: ${{ needs.resolve-bootstrap.outputs.manifest }}
+      BOOTSTRAP_SHA256: ${{ needs.resolve-bootstrap.outputs.manifest_sha256 }}
+      V_SOURCE_SHA: ${{ needs.resolve-bootstrap.outputs.v_source_sha }}
+      VC_REV: ${{ needs.resolve-bootstrap.outputs.vc_revision }}
+      VC_C_SHA256: ${{ needs.resolve-bootstrap.outputs.vc_c_sha256 }}
+      PLATFORM: linux/${{ matrix.arch }}
+      IMAGE_ARCH: ${{ matrix.arch }}
+      RECIPE: ${{ matrix.recipe }}
+      LOCAL_IMAGE: v-review-29883:${{ matrix.recipe }}-${{ matrix.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Check out exact reviewed V source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: vlang/v
+          ref: 5f6bca40ecfc221dd8d58fd9e197353874a3d1e7
+          persist-credentials: false
+          path: release-source
+          sparse-checkout: .github/scripts/prepare_docker_release.py
+          sparse-checkout-cone-mode: false
+
+      - name: Check out exact reviewed companion recipes
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: vlang/docker
+          ref: 4cfc69eb8ea27b1d1e3abf13dccc6b3ae0fd5046
+          persist-credentials: false
+          path: docker-release-source
+          sparse-checkout: docker/vlang
+
+      - name: Verify inputs and runner resources
+        run: |
+          set -euo pipefail
+          test "$RELEASE_TAG" = '0.5.2'
+          test "$(git -C release-source rev-parse HEAD)" = '5f6bca40ecfc221dd8d58fd9e197353874a3d1e7'
+          printf '%s  %s\n' 'a7f89c52a84eddbcf3a69b733a40a7d4665b939ddd365ab0e68d6bed251e3299' \
+            release-source/.github/scripts/prepare_docker_release.py | sha256sum -c -
+          test "$(git -C docker-release-source rev-parse HEAD)" = '4cfc69eb8ea27b1d1e3abf13dccc6b3ae0fd5046'
+          case "$IMAGE_ARCH:$(uname -m)" in
+            amd64:x86_64|arm64:aarch64) ;;
+            *) echo 'expected a native runner for the requested image architecture' >&2; exit 1 ;;
+          esac
+          command -v readelf
+          nproc
+          free -h
+          docker version
+          df -h "$GITHUB_WORKSPACE" /var/lib/docker
+          available_kib="$(df -Pk /var/lib/docker | awk 'NR==2 {print $4}')"
+          test "$available_kib" -ge 10485760
+          docker system df
+
+      - name: Verify the shared bootstrap manifest and build arguments
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_MANIFEST'
+          import hashlib, importlib.util, json, os
+          from pathlib import Path
+          helper = Path("release-source/.github/scripts/prepare_docker_release.py")
+          if hashlib.sha256(helper.read_bytes()).hexdigest() != "a7f89c52a84eddbcf3a69b733a40a7d4665b939ddd365ab0e68d6bed251e3299":
+              raise SystemExit("reviewed preparation helper checksum mismatch")
+          spec = importlib.util.spec_from_file_location("release", helper)
+          release = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(release)
+          expected = {'schema': 1, 'selector': 'v-source-time-v1', 'tag': '0.5.2', 'v_source_sha': '7647ce1c6fad63b5578bc07883139906de74b2f8', 'v_source_epoch': 1783896439, 'vc_revision': '7eb8c54a3843e5107d5af06d7a8c3e928f322475', 'vc_epoch': 1783888081, 'vc_source_sha': '45ae01d23168b6372f734eeb38a77360bbcf184a', 'vc_c_sha256': 'c68b70a9ba74b9387c1ae08df43cc620f40d8f78dee925fc229791c7f9d96e7d'}
+          raw = os.environ["BOOTSTRAP_MANIFEST"]
+          path = Path(os.environ["RUNNER_TEMP"]) / "bootstrap.json"
+          path.write_text(raw, encoding="utf-8")
+          manifest = release.read_manifest(path, os.environ["RELEASE_TAG"])
+          for key, value in expected.items():
+              if manifest[key] != value:
+                  raise SystemExit("unexpected 0.5.2 bootstrap " + key)
+          canonical = json.dumps(manifest, sort_keys=True, separators=(",", ":"))
+          if raw != canonical or hashlib.sha256(raw.encode()).hexdigest() != os.environ["BOOTSTRAP_SHA256"]:
+              raise SystemExit("resolver manifest bytes/checksum mismatch")
+          for field, variable in (("v_source_sha", "V_SOURCE_SHA"), ("vc_revision", "VC_REV"), ("vc_c_sha256", "VC_C_SHA256")):
+              if os.environ[variable] != manifest[field]:
+                  raise SystemExit("resolver output disagrees with manifest: " + field)
+          print(canonical)
+          print("manifest_sha256=" + os.environ["BOOTSTRAP_SHA256"])
+          PY_MANIFEST
+
+      - name: Prepare all seven exact release recipes
+        run: |
+          set -euo pipefail
+          python3 release-source/.github/scripts/prepare_docker_release.py \
             --source docker-release-source \
             --output docker-release-source/.release \
-            --release-tag "$RESOLVED_TAG" \
+            --release-tag "$RELEASE_TAG" \
             --bootstrap-manifest "$RUNNER_TEMP/bootstrap.json"
+          sha256sum docker-release-source/.release/Dockerfile.*
+
+      - name: Verify all seven prepared recipe checksums
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_RECIPES'
+          import hashlib, importlib.util, json, os
+          from pathlib import Path
+          helper = Path("release-source/.github/scripts/prepare_docker_release.py")
+          if hashlib.sha256(helper.read_bytes()).hexdigest() != "a7f89c52a84eddbcf3a69b733a40a7d4665b939ddd365ab0e68d6bed251e3299":
+              raise SystemExit("reviewed preparation helper checksum mismatch")
+          spec = importlib.util.spec_from_file_location("release", helper)
+          release = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(release)
+          expected = {'schema': 1, 'selector': 'v-source-time-v1', 'tag': '0.5.2', 'v_source_sha': '7647ce1c6fad63b5578bc07883139906de74b2f8', 'v_source_epoch': 1783896439, 'vc_revision': '7eb8c54a3843e5107d5af06d7a8c3e928f322475', 'vc_epoch': 1783888081, 'vc_source_sha': '45ae01d23168b6372f734eeb38a77360bbcf184a', 'vc_c_sha256': 'c68b70a9ba74b9387c1ae08df43cc620f40d8f78dee925fc229791c7f9d96e7d'}
+          expected_hashes = {'Dockerfile.alpine': '01bb7300d3f253604b12a175a86816ef10d3219faa10181337b6e81a7fa49263', 'Dockerfile.alpine.dev-full': 'b3b6706d3562733f81f13256936901c17f2caf285acf3ac21806e4dd90e1f91c', 'Dockerfile.debian': 'fcb0c2670bab316e29e9ad58c9b1ca70425d2f5ce1dc2d363587245512a0def5', 'Dockerfile.debian.dev-full': 'fdf440bc621c82df2ec03a9c44ec59d63143a8b8a36d980f5bf053ee05e08851', 'Dockerfile.nix': '8984f38b86cfed2bf7800b101f9d3319fcc49a3fc6db1b0884631218e9d05a79', 'Dockerfile.nix.dev-full': '859090102bc3634afbcf2efc6d2a07f560313f14a8ebf79988fc49d56d018e5f', 'Dockerfile.static': 'fcf6ebc92913ebf70be26dc37a2a81a3a8220299c1bca4039dc751784e3f9c1d'}
+          directory = Path("docker-release-source/.release")
+          if {p.name for p in directory.iterdir()} != set(expected_hashes):
+              raise SystemExit("prepared recipe set mismatch")
+          for name, checksum in expected_hashes.items():
+              if hashlib.sha256((directory / name).read_bytes()).hexdigest() != checksum:
+                  raise SystemExit("prepared recipe checksum mismatch: " + name)
+          print(json.dumps(expected_hashes, sort_keys=True))
+          PY_RECIPES
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-
-      - name: Login to hub.docker.com
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
+          platforms: amd64,arm64
+          cache-image: false
 
-      - name: Create & bootstrap persistent builder
-        run: |
-          docker buildx create --name gh-builder --driver docker-container --use
-          docker buildx inspect --bootstrap
+      - name: Set up Buildx
+        id: buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          cache-binary: false
 
-      - name: Resolve the tag being published
-        id: tag
+      - name: Build and load one platform locally
         env:
-          V_RELEASE_TAG: ${{ needs.resolve-bootstrap.outputs.tag }}
+          BUILDER: ${{ steps.buildx.outputs.name }}
         run: |
           set -euo pipefail
-          tag="$V_RELEASE_TAG"
-          if [[ ${#tag} -gt 120 ]] || ! [[ "$tag" =~ ^([0-9]+\.[0-9]+\.[0-9]+|weekly\.[A-Za-z0-9_.-]+)$ ]]; then
-            echo "expected a release or weekly V tag that fits the image tags" >&2
+          timeout --signal=TERM --kill-after=30s 150m docker buildx build \
+            --builder "$BUILDER" \
+            --platform "$PLATFORM" \
+            --pull --no-cache --progress plain \
+            --provenance=false --sbom=false \
+            --build-arg USER=thevlang \
+            --build-arg "V_REV=$RELEASE_TAG" \
+            --build-arg "V_SOURCE_SHA=$V_SOURCE_SHA" \
+            --build-arg "VC_REV=$VC_REV" \
+            --build-arg "VC_C_SHA256=$VC_C_SHA256" \
+            --file "docker-release-source/.release/Dockerfile.$RECIPE" \
+            --tag "$LOCAL_IMAGE" \
+            --metadata-file "$RUNNER_TEMP/build-metadata.json" \
+            --load docker-release-source
+          cat "$RUNNER_TEMP/build-metadata.json"
+          docker image inspect "$LOCAL_IMAGE"
+          actual_platform="$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$LOCAL_IMAGE")"
+          test "$actual_platform" = "$PLATFORM"
+
+      - name: Check requested V version and compiler PATH
+        run: |
+          set -euo pipefail
+          version="$(timeout --signal=TERM --kill-after=10s 120s docker run --rm \
+            --platform "$PLATFORM" --network none --entrypoint v "$LOCAL_IMAGE" version)"
+          printf '%s\n' "$version"
+          test "$version" = 'V 0.5.2 7647ce1'
+          absolute_version="$(timeout --signal=TERM --kill-after=10s 120s docker run --rm \
+            --platform "$PLATFORM" --network none --entrypoint /opt/vlang/v "$LOCAL_IMAGE" version)"
+          test "$absolute_version" = "$version"
+
+      - name: Compile and run native hello
+        if: matrix.recipe != 'static'
+        run: |
+          set -euo pipefail
+          smoke="$RUNNER_TEMP/smoke"
+          mkdir -p "$smoke"
+          printf "fn main() { println('hello from v image') }\n" > "$smoke/hello.v"
+          timeout --signal=TERM --kill-after=10s 300s docker run --rm \
+            --platform "$PLATFORM" --network none \
+            --mount "type=bind,source=$smoke,target=/smoke" --workdir /smoke \
+            --entrypoint v "$LOCAL_IMAGE" -cc gcc -o /smoke/hello /smoke/hello.v
+          test -s "$smoke/hello"
+          readelf -h "$smoke/hello" | tee "$RUNNER_TEMP/hello-header.txt"
+          case "$IMAGE_ARCH" in
+            amd64) grep -Fq 'Advanced Micro Devices X86-64' "$RUNNER_TEMP/hello-header.txt" ;;
+            arm64) grep -Fq 'AArch64' "$RUNNER_TEMP/hello-header.txt" ;;
+          esac
+          output="$(timeout --signal=TERM --kill-after=10s 120s docker run --rm \
+            --platform "$PLATFORM" --network none \
+            --mount "type=bind,source=$smoke,target=/smoke,readonly" \
+            --entrypoint /smoke/hello "$LOCAL_IMAGE")"
+          printf '%s\n' "$output"
+          test "$output" = 'hello from v image'
+
+      - name: Check scratch image static compiler and frontend
+        if: matrix.recipe == 'static'
+        run: |
+          set -euo pipefail
+          default_version="$(timeout --signal=TERM --kill-after=10s 120s docker run --rm \
+            --platform "$PLATFORM" --network none "$LOCAL_IMAGE")"
+          test "$default_version" = 'V 0.5.2 7647ce1'
+          test "$(docker image inspect --format '{{json .Config.Cmd}}' "$LOCAL_IMAGE")" = '["v","version"]'
+          test "$(docker image inspect --format '{{json .Config.Entrypoint}}' "$LOCAL_IMAGE")" = 'null'
+          container="$(docker create --platform "$PLATFORM" "$LOCAL_IMAGE")"
+          trap 'docker rm -f "$container" >/dev/null' EXIT
+          docker cp "$container:/opt/vlang/v" "$RUNNER_TEMP/static-v"
+          readelf -h "$RUNNER_TEMP/static-v" | tee "$RUNNER_TEMP/static-header.txt"
+          case "$IMAGE_ARCH" in
+            amd64) grep -Fq 'Advanced Micro Devices X86-64' "$RUNNER_TEMP/static-header.txt" ;;
+            arm64) grep -Fq 'AArch64' "$RUNNER_TEMP/static-header.txt" ;;
+          esac
+          readelf -lW "$RUNNER_TEMP/static-v" > "$RUNNER_TEMP/static-segments.txt"
+          readelf -dW "$RUNNER_TEMP/static-v" > "$RUNNER_TEMP/static-dynamic.txt"
+          cat "$RUNNER_TEMP/static-segments.txt" "$RUNNER_TEMP/static-dynamic.txt"
+          if grep -Eq '(^|[[:space:]])INTERP([[:space:]]|$)' "$RUNNER_TEMP/static-segments.txt"; then
+            echo 'static compiler unexpectedly needs an ELF interpreter' >&2
             exit 1
           fi
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if grep -Fq '(NEEDED)' "$RUNNER_TEMP/static-dynamic.txt"; then
+            echo 'static compiler unexpectedly needs shared libraries' >&2
+            exit 1
+          fi
+          smoke="$RUNNER_TEMP/static-smoke"
+          mkdir -p "$smoke"
+          printf "fn main() { println('hello from v image') }\n" > "$smoke/hello.v"
+          timeout --signal=TERM --kill-after=10s 300s docker run --rm \
+            --platform "$PLATFORM" --network none --tmpfs /tmp:rw,nosuid,nodev,size=256m \
+            --mount "type=bind,source=$smoke,target=/smoke" --workdir /smoke \
+            --entrypoint /opt/vlang/v "$LOCAL_IMAGE" -o /smoke/hello.c /smoke/hello.v
+          test -s "$smoke/hello.c"
+          grep -Fq 'hello from v image' "$smoke/hello.c"
 
-      - name: generate tags conditionally
-        id: gen_tags
-        env:
-          V_RELEASE_TAG: ${{ steps.tag.outputs.tag }}
-          IMAGE_VARIANT: ${{ matrix.os }}
+      - name: Report final disk use
+        if: always()
         run: |
-          tag="$V_RELEASE_TAG"
-          case "$IMAGE_VARIANT" in
-            debian)
-              # debian is the default variant, so it owns the unqualified tags.
-              echo 'TAGS=thevlang/vlang:latest,thevlang/vlang:debian,thevlang/vlang:'"$tag"',thevlang/vlang:debian-'"$tag" >> "$GITHUB_OUTPUT"
-              ;;
-            static)
-              echo 'TAGS=thevlang/vlang:static-'"$tag" >> "$GITHUB_OUTPUT"
-              ;;
-            *)
-              echo 'TAGS=thevlang/vlang:'"$IMAGE_VARIANT"',thevlang/vlang:'"$IMAGE_VARIANT"'-'"$tag" >> "$GITHUB_OUTPUT"
-              ;;
-          esac
-
-      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        name: Build and deploy v image
-        with:
-          builder: gh-builder
-          context: docker-release-source
-          platforms: ${{ env.PLATFORMS }}
-          # The tag being released, so the image contains exactly that version.
-          build-args: |
-            USER=thevlang
-            V_REV=${{ steps.tag.outputs.tag }}
-            V_SOURCE_SHA=${{ needs.resolve-bootstrap.outputs.v_source_sha }}
-            VC_REV=${{ needs.resolve-bootstrap.outputs.vc_revision }}
-            VC_C_SHA256=${{ needs.resolve-bootstrap.outputs.vc_c_sha256 }}
-          tags: ${{ steps.gen_tags.outputs.TAGS }}
-          file: docker-release-source/.release/Dockerfile.${{ matrix.os }}
-          labels: |
-            org.opencontainers.image.title=thevlang/vlang:${{ matrix.os }}-${{ steps.tag.outputs.tag }}
-            org.opencontainers.image.version=${{ steps.tag.outputs.tag }}
-            org.opencontainers.image.revision=${{ steps.tag.outputs.tag }}
-            org.opencontainers.image.source=https://github.com/vlang/docker
-            org.opencontainers.image.url=https://hub.docker.com/r/thevlang/vlang
-            org.opencontainers.image.licenses=MIT
-          push: true
-
-      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        name: Build and deploy developer build
-        if: matrix.os != 'static'
-        with:
-          builder: gh-builder
-          context: docker-release-source
-          platforms: ${{ env.PLATFORMS }}
-          build-args: |
-            USER=thevlang
-            V_REV=${{ steps.tag.outputs.tag }}
-            V_SOURCE_SHA=${{ needs.resolve-bootstrap.outputs.v_source_sha }}
-            VC_REV=${{ needs.resolve-bootstrap.outputs.vc_revision }}
-            VC_C_SHA256=${{ needs.resolve-bootstrap.outputs.vc_c_sha256 }}
-          tags: thevlang/vlang:${{ matrix.os }}-dev
-          file: docker-release-source/.release/Dockerfile.${{ matrix.os }}.dev-full
-          labels: |
-            org.opencontainers.image.title=thevlang/vlang:${{ matrix.os }}-dev
-            org.opencontainers.image.version=${{ steps.tag.outputs.tag }}
-            org.opencontainers.image.revision=${{ steps.tag.outputs.tag }}
-            org.opencontainers.image.source=https://github.com/vlang/docker
-            org.opencontainers.image.licenses=MIT
-          push: true
+          df -h "$GITHUB_WORKSPACE" /var/lib/docker
+          docker system df
