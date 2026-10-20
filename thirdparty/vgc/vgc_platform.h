@@ -280,6 +280,17 @@ static inline void vgc_set_cache_idx(int idx) { _vgc_cache_idx_plus1 = idx + 1; 
       *hi = *lo + stack_size;
       return 1;
   }
+#elif defined(_WIN32)
+  static inline int vgc_get_stack_bounds(uintptr_t* lo, uintptr_t* hi) {
+      // The stack grows down from its high end. The committed part of it is one region that
+      // runs from about the current page up to that end; the whole reservation starts at the
+      // region's allocation base.
+      MEMORY_BASIC_INFORMATION mbi;
+      if (VirtualQuery((void*)&mbi, &mbi, sizeof(mbi)) == 0) return 0;
+      *lo = (uintptr_t)mbi.AllocationBase;
+      *hi = (uintptr_t)mbi.BaseAddress + (uintptr_t)mbi.RegionSize;
+      return *lo < *hi;
+  }
 #else
   static inline int vgc_get_stack_bounds(uintptr_t* lo, uintptr_t* hi) {
       (void)lo;
