@@ -16638,22 +16638,37 @@ fn (tc &TypeChecker) type_diagnostic_pos(node_id flat.NodeId, name string) token
 	return node.pos
 }
 
+// closest_text_span finds the nearest occurrence without copying source suffixes.
+// A match to the left wins a tie, including overlapping occurrences.
+@[direct_array_access]
 fn closest_text_span(source string, text string, anchor int, file_id int) ?token.Pos {
 	if text == '' || source.len < text.len {
 		return none
 	}
-	mut search_from := 0
-	mut best_start := -1
-	mut best_distance := source.len + text.len
-	for search_from <= source.len - text.len {
-		relative := source[search_from..].index(text) or { break }
-		start := search_from + relative
-		distance := if start > anchor { start - anchor } else { anchor - start }
-		if distance < best_distance {
-			best_start = start
-			best_distance = distance
+	from := int_max(0, int_min(anchor, source.len))
+	right_start := source.index_after_(text, from)
+	if right_start == from {
+		return token.new_span(file_id, from, from + text.len)
+	}
+	// Only the nearest match on either side can win. Bound the left scan by
+	// the right match so repeated declaration types stay local to the anchor.
+	left_limit := if right_start < 0 { 0 } else { int_max(from - (right_start - from), 0) }
+	mut best_start := right_start
+	for start := int_min(from - 1, source.len - text.len); start >= left_limit; start-- {
+		if source[start] != text[0] {
+			continue
 		}
-		search_from = start + 1
+		mut matches := true
+		for j in 1 .. text.len {
+			if source[start + j] != text[j] {
+				matches = false
+				break
+			}
+		}
+		if matches {
+			best_start = start
+			break
+		}
 	}
 	if best_start < 0 {
 		return none
