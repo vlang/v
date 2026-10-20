@@ -2585,7 +2585,7 @@ fn (g &Parser) render_chained_array_access_expression(tokens []FastcExpressionTo
 		}
 		base_tokens := tokens[start..open]
 		base_type := g.infer_expression_type(base_tokens) or { continue }
-		if fastc_trim_pointer_suffix(flat.source_type_name(base_type)).starts_with('Map_') {
+		if g.map_type_of(base_type) != none {
 			lookup_tokens := tokens[start..close + 1]
 			lookup := g.render_map_expression(lookup_tokens) or { continue }
 			raw_lookup := g.render_raw_expression_tokens(lookup_tokens) or { continue }

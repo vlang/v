@@ -618,6 +618,9 @@ mut:
 	// generic_index_operators_known caches has_generic_index_operators: 0 not yet
 	// tested, 1 yes, -1 no.
 	generic_index_operators_known int
+	// generic_arithmetic_operators_known caches has_generic_arithmetic_operators,
+	// with the same values.
+	generic_arithmetic_operators_known int
 	// box_type_text_cache is set while a box scan runs.
 	box_type_text_cache &BoxTypeTextCache = unsafe { nil }
 	// match_holders is the last match_holding_fns result, for the nodes below
@@ -15395,11 +15398,13 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 	if lowered := t.try_lower_nested_map_index_assign(node) {
 		return lowered
 	}
-	// string `s += x` on a plain ident -> `s = string__plus(s, x)` (only when detectable as string)
-	if expanded := t.try_lower_string_compound_assign(id, node) {
+	// An operator declared on the target's type, including an alias of string,
+	// takes precedence over the string concatenation below.
+	if expanded := t.try_lower_struct_compound_assign(node) {
 		return expanded
 	}
-	if expanded := t.try_lower_struct_compound_assign(node) {
+	// string `s += x` on a plain ident -> `s = string__plus(s, x)` (only when detectable as string)
+	if expanded := t.try_lower_string_compound_assign(id, node) {
 		return expanded
 	}
 	mut new_children := []flat.NodeId{cap: int(node.children_count)}

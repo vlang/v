@@ -1252,7 +1252,7 @@ fn monomorph_scan_thread(arg voidptr) voidptr {
 	mut scan := unsafe { &MonomorphScanArgs(arg) }
 	mut nodes := []int{cap: (scan.end - scan.start) / 16}
 	for i in scan.start .. scan.end {
-		if scan.a.nodes[i].kind in [.call, .index, .index_assign] {
+		if scan.a.nodes[i].kind in [.call, .index, .index_assign, .selector_assign] {
 			nodes << i
 		}
 	}
@@ -1348,7 +1348,7 @@ fn monomorph_chunk_thread(arg voidptr) voidptr {
 	}
 	mut scan_nodes := []int{cap: (w.a.nodes.len - generated_start) / 8}
 	for i in generated_start .. w.a.nodes.len {
-		if w.a.nodes[i].kind in [.call, .index, .index_assign] {
+		if w.a.nodes[i].kind in [.call, .index, .index_assign, .selector_assign] {
 			scan_nodes << i
 		}
 	}

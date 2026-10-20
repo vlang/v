@@ -347,7 +347,7 @@ fn (mut t Transformer) monomorphize_pass() []string {
 			if i < t.ignored_comptime_for_nodes.len && t.ignored_comptime_for_nodes[i] {
 				continue
 			}
-			if t.a.nodes[i].kind !in [.index, .call, .index_assign] {
+			if t.a.nodes[i].kind !in [.index, .call, .index_assign, .selector_assign] {
 				continue
 			}
 			// Helpers can rewrite or append nodes, so candidate headers stay owned.
@@ -458,8 +458,15 @@ fn (mut t Transformer) monomorphize_pass() []string {
 							t.record_index_operator_fn_name(lhs, '[]=')
 							if node.op != .assign {
 								t.record_index_operator_fn_name(lhs, '[]')
+								t.record_compound_assign_operator_fn_name(t.a.child(&node, 0),
+									node.op)
 							}
 						}
+					}
+				}
+				.selector_assign {
+					if node.children_count > 0 && node.op != .assign {
+						t.record_compound_assign_operator_fn_name(t.a.child(&node, 0), node.op)
 					}
 				}
 				else {}
@@ -1591,6 +1598,55 @@ fn (mut t Transformer) record_index_operator_fn_name(node flat.Node, method stri
 	if name := t.generic_struct_operator_fn_name(struct_type_source_id_2, method) {
 		t.used_struct_operator_fns[name] = true
 		t.used_struct_operator_fns[c_name('${struct_type}.${method}')] = true
+	}
+}
+
+// has_generic_arithmetic_operators tells whether the checker registered a
+// generic arithmetic operator method such as `Vec2[T].+`.
+fn (mut t Transformer) has_generic_arithmetic_operators() bool {
+	if t.generic_arithmetic_operators_known == 0 {
+		t.generic_arithmetic_operators_known = -1
+		if !isnil(t.tc) {
+			for name, _ in t.tc.fn_ret_types {
+				if is_generic_arithmetic_operator_name(name) {
+					t.generic_arithmetic_operators_known = 1
+					break
+				}
+			}
+		}
+	}
+	return t.generic_arithmetic_operators_known > 0
+}
+
+fn is_generic_arithmetic_operator_name(name string) bool {
+	return name.ends_with('].+') || name.ends_with('].-') || name.ends_with('].*')
+		|| name.ends_with(']./') || name.ends_with('].%')
+}
+
+// record_compound_assign_operator_fn_name records the operator method of a
+// generic struct that a compound assignment on an array element or a field
+// (`a[i] += Vec2[f64]{}`, `m[k].pos += v`) uses. Cgen spells that call itself,
+// so no call node asks for the operator's specialization.
+fn (mut t Transformer) record_compound_assign_operator_fn_name(lhs_id flat.NodeId, op flat.Op) {
+	op_name := compound_assign_struct_operator_symbol(op) or { return }
+	lhs := t.a.nodes[int(lhs_id)]
+	if lhs.kind == .index {
+		if lhs.value == 'range' || lhs.children_count < 2 {
+			return
+		}
+	} else if lhs.kind != .selector {
+		return
+	}
+	if !t.has_generic_arithmetic_operators() {
+		return
+	}
+	struct_type_source_id := t.generic_struct_instance_name(t.trim_pointer_type(t.node_type(lhs_id)))
+	if struct_type_source_id == 0 {
+		return
+	}
+	if name := t.generic_struct_operator_fn_name(struct_type_source_id, op_name) {
+		t.used_struct_operator_fns[name] = true
+		t.used_struct_operator_fns[c_name('${flat.source_type_name(struct_type_source_id)}.${op_name}')] = true
 	}
 }
 

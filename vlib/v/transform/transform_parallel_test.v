@@ -1261,7 +1261,9 @@ fn test_forwarded_container_fixed_array_return_expansion_is_reserved() {
 	})
 	mut map_tc := types.TypeChecker.new(&map_ast)
 	mut map_transformer := new_transformer(mut map_ast, &map_tc, map[string]bool{})
-	assert map_transformer.fn_span_map_expansion_estimate(int(map_value), int(map_fn)) > deferred_map_expansion_threshold
+	// Since #30938 a returned map is copied as it is, never converted entry by entry, so it
+	// reserves no expansion; the checker rejects maps whose entries are stored differently.
+	assert map_transformer.fn_span_map_expansion_estimate(int(map_value), int(map_fn)) == 0
 
 	mut lookup_ast := flat.FlatAst.new()
 	lookup_value := lookup_ast.add_node(flat.Node{
@@ -1288,7 +1290,7 @@ fn test_forwarded_container_fixed_array_return_expansion_is_reserved() {
 	})
 	mut lookup_tc := types.TypeChecker.new(&lookup_ast)
 	mut lookup_transformer := new_transformer(mut lookup_ast, &lookup_tc, map[string]bool{})
-	assert lookup_transformer.fn_span_map_expansion_estimate(int(lookup_value), int(lookup_fn)) > deferred_map_expansion_threshold
+	assert lookup_transformer.fn_span_map_expansion_estimate(int(lookup_value), int(lookup_fn)) == 0
 }
 
 fn test_disabled_call_zero_value_expansion_is_reserved() {

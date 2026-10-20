@@ -9655,7 +9655,9 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 						}
 					}
 				}
-				if node.op == .plus_assign && (lhs_type is types.String || rhs_type is types.String) {
+				// An alias of string that declares `+` calls it below instead.
+				if node.op == .plus_assign && (lhs_type is types.String || rhs_type is types.String)
+					&& g.assign_struct_operator_method(lhs_type, node.op) == none {
 					g.gen_expr(g.a.child(&node, i))
 					g.write(' = string__plus(')
 					g.gen_expr(g.a.child(&node, i))
