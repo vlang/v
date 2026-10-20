@@ -16212,6 +16212,8 @@ pub fn run(args []string) {
 				}
 				prefix_object := compile_v3_program_object('prefix', prepared_cache.program_prefix_source, prefix_source_identity, v3_program_external_input_paths(&cache_state), &cache_state.manager, c_standard, opt_flag, pic_flag, warning_flags, cached_object_c_flags, needs_objective_c, target_args, prefs.target, c_compiler, mut c_object_cache_stats) or {
 					message := err.msg()
+					restart_v3_without_restored_incremental_program(incremental_cache_restored, &cache_state.manager,
+						v3_cgen_cache_input(cache_state, user_files, cache_c_flags).source_files, cc_dir, 'program prefix')
 					if request_macos_v3_c_error_fallback_from_message(macos_v3_fallback_file, macos_v3_c_error_dir, c_compiler, message, [
 						published_c_source,
 						cache_plan_file,
@@ -16287,6 +16289,8 @@ pub fn run(args []string) {
 			program_main_identity := modulecache.file_signature(published_c_source)
 			cached_program_main_object = compile_v3_program_object('main', program_main_source, program_main_identity, v3_program_external_input_paths(&cache_state), &cache_state.manager, c_standard, '', pic_flag, warn_args.join(' '), cached_object_c_flags, needs_objective_c, target_args, prefs.target, c_compiler, mut c_object_cache_stats) or {
 				message := err.msg()
+				restart_v3_without_restored_incremental_program(incremental_cache_restored, &cache_state.manager,
+					v3_cgen_cache_input(cache_state, user_files, cache_c_flags).source_files, cc_dir, 'program main')
 				if request_macos_v3_c_error_fallback_from_message(macos_v3_fallback_file, macos_v3_c_error_dir, c_compiler, message, [
 					published_c_source,
 					cache_plan_file,
@@ -18673,6 +18677,22 @@ fn invalidate_changed_cache_dependents(mut state V3ModuleCacheState, a &flat.Fla
 
 fn restart_v3_after_cache_invalidation(build_dir string) {
 	restart_v3_with_args([], build_dir)
+}
+
+// restart_v3_without_restored_incremental_program rebuilds from the sources when the C
+// compiler rejects a C unit of a program whose body the incremental cache restored. The
+// restored body can repeat a C type that the restored prefix already declares, which a
+// full generation never does. This build already published the C plan it generated from
+// that body, so its program entries are discarded first. The restart disables the
+// incremental cache, so it cannot restore the same entry again.
+fn restart_v3_without_restored_incremental_program(incremental_cache_restored bool, manager &modulecache.Manager, source_files []string, build_dir string, unit string) {
+	if !incremental_cache_restored || os.getenv('V3_CACHE_DISABLE_INCREMENTAL') == '1' {
+		return
+	}
+	trace_v3_cache_fallback('the C compiler rejected the ${unit} restored by the incremental cache')
+	manager.discard_program_entries(source_files)
+	os.setenv('V3_CACHE_DISABLE_INCREMENTAL', '1', true)
+	restart_v3_after_cache_invalidation(build_dir)
 }
 
 fn trace_v3_cache_fallback(reason string) {
