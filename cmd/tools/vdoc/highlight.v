@@ -60,7 +60,54 @@ fn scan_code(code string) []ScannedToken {
 			}
 		}
 	}
+	mark_keywords_used_as_names(mut tokens, code)
 	return tokens
+}
+
+// mark_keywords_used_as_names turns the keywords that are used as names into names, so that
+// they are highlighted like other names. Any keyword can be an enum field, like `none` in
+// `enum Fill { none solid }`, and is then used as a name after a `.`, like `.none` or `Fill.none`.
+fn mark_keywords_used_as_names(mut tokens []ScannedToken, code string) {
+	mut enum_body_depth := 0 // the brace depth of the innermost enum body, or 0 outside of one
+	mut depth := 0
+	mut opens_enum_body := false // whether the next `{` opens the body of an enum
+	for i, tok in tokens {
+		match tok.kind {
+			.key_enum {
+				// An enum declaration names the enum, unlike `$enum` in compile time code.
+				opens_enum_body = i + 1 < tokens.len && tokens[i + 1].kind == .name
+			}
+			.lcbr {
+				depth++
+				if opens_enum_body {
+					enum_body_depth = depth
+					opens_enum_body = false
+				}
+			}
+			.rcbr {
+				if depth == enum_body_depth {
+					enum_body_depth = 0
+				}
+				depth--
+			}
+			else {}
+		}
+		if !tok.kind.is_keyword() || i == 0 {
+			continue
+		}
+		prev := tokens[i - 1]
+		after_dot := prev.kind == .dot && prev.end == tok.start
+		// A field of an enum starts a line in its body, or follows the `{` of the body.
+		is_enum_field := enum_body_depth > 0 && depth == enum_body_depth
+			&& (tok.starts_line || prev.kind == .lcbr)
+		if after_dot || is_enum_field {
+			tokens[i] = ScannedToken{
+				...tok
+				kind: .name
+				lit:  code[tok.start..tok.end]
+			}
+		}
+	}
 }
 
 // HighlightTokenTyp is the kind of code that a token is, as far as highlighting goes.
@@ -129,7 +176,8 @@ fn highlight_tokens(code string) []HighlightedToken {
 		} else if module_names[i] {
 			HighlightTokenTyp.module_
 		} else {
-			highlight_token_kind(scanned, next_kind)
+			highlight_token_kind(scanned, next_kind, scanned.kind == .name
+				&& is_called_name(tokens, i))
 		}
 		if typ == .string {
 			add_string_parts(mut highlighted, code, scanned)
@@ -220,8 +268,8 @@ fn starts_enum_value(tokens []ScannedToken, values []bool, i int) bool {
 	if name.kind != .name || name.start != dot.end {
 		return false
 	}
-	// A called name is a method, like `.map()` or `Foo.new()`.
-	if i + 2 < tokens.len && tokens[i + 2].kind == .lpar {
+	// A called name is a method, like `.map()`, `Foo.new()` or `Foo.from[int]()`.
+	if is_called_name(tokens, i + 1) {
 		return false
 	}
 	if i == 0 {
@@ -241,6 +289,28 @@ fn starts_enum_value(tokens []ScannedToken, values []bool, i int) bool {
 	// `JS.` are the namespaces of foreign names instead, which are mostly types, like `C.FILE`.
 	return prev.kind == .name && is_type_name(prev.lit) && prev.lit !in ['C', 'JS']
 		&& name.lit !in highlight_reflection_fields
+}
+
+// is_called_name reports whether the name at `i` is called, like `f` in `f()` or in the generic
+// call `f[int]()`.
+fn is_called_name(tokens []ScannedToken, i int) bool {
+	mut j := i + 1
+	if j < tokens.len && tokens[j].kind == .lsbr {
+		mut depth := 0
+		for j < tokens.len {
+			if tokens[j].kind == .lsbr {
+				depth++
+			} else if tokens[j].kind == .rsbr {
+				depth--
+				if depth == 0 {
+					break
+				}
+			}
+			j++
+		}
+		j++
+	}
+	return j < tokens.len && tokens[j].kind == .lpar
 }
 
 // closes_enum_branch_body distinguishes a match arm's body from a struct or match expression.
@@ -669,8 +739,8 @@ fn is_type_name(lit string) bool {
 }
 
 // highlight_token_kind returns the kind of a token that does not depend on what surrounds it,
-// apart from the token after it.
-fn highlight_token_kind(scanned ScannedToken, next_kind token.Token) HighlightTokenTyp {
+// apart from the token after it, and whether the token is a called name (`is_called_name`).
+fn highlight_token_kind(scanned ScannedToken, next_kind token.Token, is_called bool) HighlightTokenTyp {
 	return match scanned.kind {
 		// The `$` of compile time code, like `$if`, belongs to the keyword after it.
 		// `!in` and `!is` are keywords, just like `in` and `is`.
@@ -705,7 +775,7 @@ fn highlight_token_kind(scanned ScannedToken, next_kind token.Token) HighlightTo
 			if scanned.lit in highlight_builtin_types || scanned.lit == 'chan'
 				|| (scanned.lit == 'map' && next_kind == .lsbr) {
 				HighlightTokenTyp.builtin
-			} else if next_kind == .lpar {
+			} else if is_called {
 				HighlightTokenTyp.function
 			} else if is_type_name(scanned.lit) {
 				HighlightTokenTyp.type_name
