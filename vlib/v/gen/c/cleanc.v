@@ -11045,6 +11045,12 @@ fn (mut g FlatGen) emit_c_source_directives() {
 	}
 }
 
+// has_late_c_source_includes reports whether emit_c_source_directives writes any directive after
+// the type block: an Objective-C source include not lifted early, with its context.
+fn (g &FlatGen) has_late_c_source_includes() bool {
+	return c_source_directive_emission(g.ordered_c_directives(false), g.early_c_source_directives).emit_late.len > 0
+}
+
 struct CSourceDirectiveEmission {
 	skip_early map[int]bool
 	emit_late  map[int]bool
