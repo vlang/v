@@ -40,6 +40,14 @@ Its nested metadata stays borrowed. Use `clone_owned_type(value)` first when tha
 belongs to an arena that will end. Checker parsing and interning retain canonical recursive
 descriptor edges; use those APIs when a reference should share the checker's type identity.
 
+Pass-2 worker publication checks the descriptor's referenced storage before releasing its arena.
+Lists, strings and recursive descriptor references are copied when they depend on that arena;
+graphs already outside it retain their references.
+
+A `mut value ?T` parameter keeps the `&?&T` calling convention while its body reads `?T`,
+including struct payloads and aliases of structs. Mutable payload guards and smartcasts still
+refer to the caller's payload. An explicit pointer payload keeps its declared pointer view.
+
 `parse_type`, `parse_type_ref`, `parse_canonical_type`, `parse_canonical_type_cached`,
 `parse_resolution_type`, and `parse_resolution_type_in_file` accept these source spelling IDs.
 Intern new source text with `flat.source_type_id(text)` at a parsing boundary. An AST annotation

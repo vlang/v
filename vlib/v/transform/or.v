@@ -2322,6 +2322,11 @@ fn (mut t Transformer) optional_source_value_expr(source_id flat.NodeId, expr fl
 		// transform_ident_expr; do not add a second optional-storage load.
 		return expr
 	}
+	if source.kind == .ident && t.mut_optional_view_param(source.value) != none {
+		// transform_ident_expr already read the `mut a ?T` parameter through its
+		// reference (mut_optional_view_read), also when a fn literal keeps its `&` slot.
+		return expr
+	}
 	raw_type := match source.kind {
 		.ident {
 			t.raw_var_type(source.value)

@@ -666,9 +666,8 @@ fn mark_pass2_fn_prep_scope(mut preps []Pass2FnPrep, start int, end int, scope v
 	}
 }
 
-// Pass2TypePromotion maps the type payloads a pass-2 lane allocated in its
-// arena to their copies outside of it, so that a type many signatures share
-// is copied once. Its keys are only valid while that arena is mapped.
+// Pass2TypePromotion copies lane-dependent type graphs into the enclosing arena.
+// Semantic cache keys remain valid while the lane's arena is mapped.
 struct Pass2TypePromotion {
 mut:
 	hashes [512]u64
@@ -676,14 +675,16 @@ mut:
 	set    [512]bool
 }
 
-fn (mut p Pass2TypePromotion) promote(_scope voidptr, typ Type) Type {
-	// Inline tags carry no payload pointer to test against the worker arena.
-	// Scalars and source IDs are self-contained; all other metadata must survive it.
+fn (mut p Pass2TypePromotion) promote(scope voidptr, typ Type) Type {
 	match typ {
 		Void, Primitive, String, Char, Rune, ISize, USize, Nil, None, Struct, Interface, Enum, SumType {
 			return typ
 		}
 		else {}
+	}
+	// Stable graphs can retain their references, without recursively hashing a cycle.
+	if !type_refers_to_scope(scope, typ) {
+		return typ
 	}
 	hash := semantic_type_hash(typ)
 	slot := int(hash & u64(p.set.len - 1))
@@ -695,6 +696,82 @@ fn (mut p Pass2TypePromotion) promote(_scope voidptr, typ Type) Type {
 	p.values[slot] = owned
 	p.set[slot] = true
 	return owned
+}
+
+// type_refers_to_scope inspects actual descriptor references and their metadata storage.
+// A descriptor outside the lane can still refer to its lists, strings or child types.
+fn type_refers_to_scope(scope voidptr, typ &Type) bool {
+	if scope == unsafe { nil } {
+		return false
+	}
+	mut pending := []&Type{cap: 8}
+	pending << typ
+	mut visited := map[u64]bool{}
+	for pending.len > 0 {
+		current := pending.pop()
+		if unsafe { prealloc_scope_owns(scope, current) } {
+			return true
+		}
+		address := u64(voidptr(current))
+		if address in visited {
+			continue
+		}
+		visited[address] = true
+		match current {
+			Unknown {
+				if current.reason.len > 0 && unsafe { prealloc_scope_owns(scope, current.reason.str) } {
+					return true
+				}
+			}
+			Array {
+				pending << current.elem_type
+			}
+			ArrayFixed {
+				if current.len_expr.len > 0 && unsafe { prealloc_scope_owns(scope, current.len_expr.str) } {
+					return true
+				}
+				pending << current.elem_type
+			}
+			Channel {
+				pending << current.elem_type
+			}
+			Map {
+				pending << current.key_type
+				pending << current.value_type
+			}
+			Pointer {
+				pending << current.base_type
+			}
+			OptionType {
+				pending << current.base_type
+			}
+			ResultType {
+				pending << current.base_type
+			}
+			Alias {
+				pending << current.base_type
+			}
+			FnType {
+				if current.params.len > 0 && unsafe { prealloc_scope_owns(scope, current.params.data) } {
+					return true
+				}
+				for param in current.params {
+					pending << param.typ
+				}
+				pending << current.return_type
+			}
+			MultiReturn {
+				if current.types.len > 0 && unsafe { prealloc_scope_owns(scope, current.types.data) } {
+					return true
+				}
+				for i in 0 .. current.types.len {
+					pending << &current.types[i]
+				}
+			}
+			else {}
+		}
+	}
+	return false
 }
 
 @[inline]

@@ -59,6 +59,10 @@ const transformed_option_unwrap_access_marker = '__v3_transformed_option_unwrap_
 // mut_optional_arg_marker marks the `&?&T` argument built for a `mut a ?T` parameter. The
 // `?T` it stands for follows it in the node's generic params (mut_optional_arg_view_type).
 const mut_optional_arg_marker = '__v3_mut_optional_arg'
+// mut_optional_view_read_marker marks the `?T` read of a `mut a ?T` parameter that its body
+// reads as `?T`. The parameter's name follows it in the node's generic params
+// (mut_optional_view_read_param).
+const mut_optional_view_read_marker = '__v3_mut_optional_view_read'
 const debugger_smartcast_marker = '__v3_debugger_smartcasts'
 const non_aliasing_allocation_call_marker = '__v3_non_aliasing_allocation_call'
 const assert_infix_values_marker = '__v3_assert_infix_values:'
@@ -12246,15 +12250,14 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 					raw_source_typ = flat.source_type_id(flat.source_type_name(raw_source_typ)[1..])
 				}
 				// Like a named fn's, a specialized `mut a ?T` holds a `?&T` (its signature
-				// is `&?&T`). The generic body reads it as `?T`, as the checker types it,
-				// even when `T` is a struct.
+				// is `&?&T`). The generic body reads it as `?T`, as the checker types it.
 				if view_typ := mut_optional_param_storage_view(typ, raw_source_typ) {
 					mut_optional_storage = typ
 					typ = view_typ
 				}
 			} else {
-				// The parameter's value is `?&T`; the body reads it as `?T` unless the
-				// payload is a struct (see mut_optional_view_param).
+				// The parameter's value is `?&T`; the body reads it as `?T` (see
+				// mut_optional_view_param).
 				storage_typ := t.mut_optional_param_value_type(typ)
 				raw_source_typ = t.mut_optional_param_view_type(raw_source_typ)
 				typ = if view_typ := mut_optional_param_storage_view(storage_typ, raw_source_typ) {
@@ -12420,15 +12423,11 @@ fn (t &Transformer) mut_optional_param_value_type(typ_id u32) u32 {
 }
 
 // mut_optional_param_view_type returns the type that the body of a fn reads a `mut`
-// optional parameter as. As in the checker (`mut_optional_param_view_type`), a struct
-// payload reads as `?&T`, so that changes to its fields reach the caller, while any other
+// optional parameter as. As in the checker (`mut_optional_param_view_type`), every
 // payload reads as `?T` (see mut_optional_view_param).
 fn (t &Transformer) mut_optional_param_view_type(typ_id u32) u32 {
 	payload := mut_optional_param_payload_text(typ_id) or { return typ_id }
-	if payload.starts_with('&') || !t.mut_optional_payload_is_struct(payload) {
-		return flat.source_type_id('?${payload}')
-	}
-	return flat.source_type_id('?&${payload}')
+	return flat.source_type_id('?${payload}')
 }
 
 // mut_optional_param_payload_text returns `T` for a `mut` optional parameter type
@@ -12452,7 +12451,7 @@ fn mut_optional_param_payload_text(typ_id u32) ?string {
 }
 
 // MutOptionalViewParam is a `mut a ?T` parameter that is passed as `&?&T`, but whose body
-// reads it as `?T` (every payload but a struct, see `types.mut_param_semantic_type`).
+// reads it as `?T` (see `types.mut_param_semantic_type`).
 struct MutOptionalViewParam {
 	name    string
 	storage u32  // `?&T`, the parameter's value
@@ -12527,19 +12526,56 @@ fn (mut t Transformer) mut_optional_view_payload_ref(param MutOptionalViewParam)
 	return t.make_selector(t.mut_optional_view_storage(param), 'value', flat.source_type_id('&${flat.source_type_name(param.payload)}'))
 }
 
+// mut_optional_view_storage_for_target returns the `?&T` value of the view parameter that
+// `id` names, when a `?&T` is expected (`Foo{field: a}` with a `?&T` field): the parameter
+// refers to the caller's payload, and passes that reference on, as in V 0.5.2.
+fn (mut t Transformer) mut_optional_view_storage_for_target(id flat.NodeId, target_type_id u32) ?flat.NodeId {
+	node := t.a.nodes[int(id)]
+	if node.kind != .ident || !t.is_optional_type_name(target_type_id) {
+		return none
+	}
+	view_param := t.mut_optional_view_param(node.value)?
+	target_payload := t.optional_base_type(t.qualify_optional_type(target_type_id))
+	if !flat.source_type_shape(target_payload).has(.pointer) {
+		return none
+	}
+	return t.mut_optional_view_storage(view_param)
+}
+
 // mut_optional_view_read reads a view parameter as the `?T` its body sees: a copy of the
-// caller's payload, or `none`.
+// caller's payload, or `none`. The read is marked with the parameter's name, so that a
+// smartcast of it to its payload uses the caller's payload (see apply_smartcast_contexts).
 fn (mut t Transformer) mut_optional_view_read(param MutOptionalViewParam) flat.NodeId {
 	pending_start := t.pending_stmts.len
 	payload := t.make_prefix(.mul, t.mut_optional_view_payload_ref(param))
 	t.set_node_typ(int(payload), param.payload)
 	read := t.make_optional_conversion(t.mut_optional_view_storage(param), payload, param.view, pending_start)
-	return t.mark_optional_wrapper_expr(read, param.view)
+	t.mark_optional_wrapper_expr(read, param.view)
+	mut params := t.a.nodes[int(read)].generic_params().clone()
+	params << mut_optional_view_read_marker
+	params << param.name
+	t.set_node_generic_params(int(read), params)
+	return read
+}
+
+// mut_optional_view_read_param returns the view parameter that `id`, a read built by
+// mut_optional_view_read, reads.
+fn (t &Transformer) mut_optional_view_read_param(id flat.NodeId) ?MutOptionalViewParam {
+	if int(id) < 0 || int(id) >= t.a.nodes.len || t.a.nodes[int(id)].payload == 0 {
+		return none
+	}
+	params := t.a.nodes[int(id)].generic_params()
+	idx := params.index(mut_optional_view_read_marker)
+	if idx < 0 || idx + 1 >= params.len {
+		return none
+	}
+	return t.mut_optional_view_param(params[idx + 1])
 }
 
 // try_lower_mut_optional_view_assign lowers `a = value` for a `mut a ?T` parameter that its
-// body reads as `?T` (mut_optional_view_param). As for a struct payload, the parameter's
-// option gets a reference to a copy of the value: the caller's payload is not overwritten.
+// body reads as `?T` (mut_optional_view_param). The parameter's option gets a reference to
+// a heap copy of the value (never to a local of the callee): the caller's payload is not
+// overwritten.
 // An option argument gets the new value back after the call
 // (`transform_mut_optional_value_call_arg`); a plain value argument keeps its value, as in
 // V 0.5.2.
@@ -12611,13 +12647,6 @@ fn (mut t Transformer) mut_optional_view_store(param MutOptionalViewParam, value
 	t.set_node_typ(int(payload_addr), payload_ptr_type)
 	dup := t.make_memdup_call_for_type(payload_addr, param.payload)
 	return t.make_optional_conversion(tmp, t.make_cast(payload_ptr_type, dup, payload_ptr_type), param.storage, pending_start)
-}
-
-fn (t &Transformer) mut_optional_payload_is_struct(payload string) bool {
-	if isnil(t.tc) {
-		return false
-	}
-	return types.unalias_type(t.tc.parse_type(t.qualify_type(flat.source_type_id(payload)))) is types.Struct
 }
 
 // fn_body_param_types supports fn body param types handling for Transformer.
@@ -17532,6 +17561,9 @@ fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type_id u3
 			}
 		}
 		if storage := t.pointer_storage_expr_for_value_target(id, target_type_id) {
+			return storage
+		}
+		if storage := t.mut_optional_view_storage_for_target(id, target_type_id) {
 			return storage
 		}
 		if node.kind == .none_expr && t.is_optional_type_name(target_type_id) {
@@ -28339,6 +28371,14 @@ fn (mut t Transformer) apply_smartcast_contexts(base flat.NodeId, typ_id u32, co
 	mut applied_path := []u32{}
 	for sc in contexts {
 		if sc.sum_type_name_text() == option_unwrap_marker {
+			if view_param := t.mut_optional_view_read_param(current) {
+				// The payload of a `mut a ?T` parameter is the caller's: reads and writes
+				// (`a.x = 1`, `a.mutate()`) go through the reference, not a copy.
+				current = t.make_prefix(.mul, t.mut_optional_view_payload_ref(view_param))
+				t.set_node_typ(int(current), view_param.payload)
+				current_type = view_param.payload
+				continue
+			}
 			// current is the __v_option_T struct value itself. Type annotations on
 			// the rebuilt expr may already report the smartcast base type (which
 			// can be a pointer and would make cgen emit `->`), so pin the node's

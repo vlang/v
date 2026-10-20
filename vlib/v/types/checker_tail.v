@@ -4216,6 +4216,11 @@ fn (tc &TypeChecker) optional_pointer_expr_compatible(expr_id flat.NodeId, actua
 		else { *actual }
 	}
 	if (actual is OptionType || actual is ResultType) && actual_base !is Pointer {
+		// A `mut a ?T` parameter refers to the caller's payload, which it passes on where
+		// a `?&T` is expected, as in V 0.5.2, where the parameter is `?&T`.
+		if actual is OptionType && tc.mut_param_expr_base(expr_id, actual) != none {
+			return tc.type_compatible(actual_base, expected_ptr.base_type)
+		}
 		return false
 	}
 	if mut_base := tc.mut_param_expr_base(expr_id, actual) {

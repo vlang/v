@@ -10,9 +10,11 @@ fn test_mut_optional_binding_uses_the_declared_payload_view() {
 		option := Type(OptionType{ base_type: payload })
 		storage := Type(Pointer{ base_type: new_type_reference(option) })
 		view := mut_param_binding_type(storage, true, false)
-		assert view.name() == '?&Item'
 		if payload is Pointer {
+			assert view.name() == '?&Item'
 			assert view == option
+		} else {
+			assert view.name() == '?Item'
 		}
 		assert mut_param_binding_type(storage, false, false) == storage
 		assert mut_param_binding_type(storage, true, true) == storage
@@ -34,7 +36,7 @@ fn test_mut_optional_adapters_keep_inline_options_and_nominal_alias_views() {
 	// the nonstruct body view while receiving the upstream reference adapter.
 	expected_slots := ['&?&Item', '&?&Item', '&?&[]int', '&?&ItemAlias', '&?&Items', '&?&ItemRef',
 		'&?&Count']
-	expected_views := ['?&Item', '?&Item', '?[]int', '?&ItemAlias', '?Items', '?ItemRef', '?Count']
+	expected_views := ['?Item', '?&Item', '?[]int', '?ItemAlias', '?Items', '?ItemRef', '?Count']
 	for i, payload in payloads {
 		option := Type(OptionType{ base_type: payload })
 		storage := Type(Pointer{ base_type: new_type_reference(option) })

@@ -8659,11 +8659,11 @@ pub fn mut_param_semantic_type(typ Type) Type {
 	})
 }
 
-// mut_optional_param_view_type returns `?T` for a `mut a ?T` parameter (`typ` is `&?T`)
-// whose payload is not a struct. Its body reads it as `?T`, although it is passed as
-// `&?&T` (see mut_param_semantic_type): the transform reads the payload through the
-// reference. A struct payload reads as `?&T`, so that changes to its fields reach the
-// caller.
+// mut_optional_param_view_type returns `?T` for a `mut a ?T` parameter (`typ` is `&?T`).
+// Its body reads it as the `?T` it declares, whatever the payload, although it is passed
+// as `&?&T` (see mut_param_semantic_type): the transform reads the payload through the
+// reference, so that reads copy it out, while changes made through `if mut v := a`, or
+// through `a` smartcast to its payload, reach the caller.
 fn mut_optional_param_view_type(typ Type) ?Type {
 	if typ !is Pointer {
 		return none
@@ -8674,7 +8674,7 @@ fn mut_optional_param_view_type(typ Type) ?Type {
 		return none
 	}
 	option_type := declared_base as OptionType
-	if option_type.base_type is Pointer || unalias_type(option_type.base_type) is Struct {
+	if option_type.base_type is Pointer {
 		return none
 	}
 	return declared_base

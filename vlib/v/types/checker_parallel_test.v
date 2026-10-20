@@ -343,6 +343,36 @@ fn test_pass2_type_promotion_distinguishes_equal_hashes() {
 	assert !third.is_mut
 }
 
+fn test_pass2_type_promotion_distinguishes_equal_hashes_in_worker_storage() {
+	$if prealloc {
+		mut promotion := Pass2TypePromotion{}
+		scope := unsafe { prealloc_scope_begin() }
+		child := new_type_reference(Type(string_))
+		immutable := Type(Channel{ elem_type: child, is_mut: false })
+		mutable := Type(Channel{ elem_type: child, is_mut: true })
+		unsafe { prealloc_scope_leave(scope) }
+		assert semantic_type_hash(immutable) == semantic_type_hash(mutable)
+		assert !semantic_types_equal(immutable, mutable)
+		first := promotion.promote(scope, immutable)
+		second := promotion.promote(scope, mutable)
+		third := promotion.promote(scope, immutable)
+		again := promotion.promote(scope, immutable)
+		assert first is Channel
+		assert !first.is_mut
+		assert second is Channel
+		assert second.is_mut
+		assert third is Channel
+		assert !third.is_mut
+		assert again is Channel
+		assert voidptr(third.elem_type) == voidptr(again.elem_type)
+		assert !type_refers_to_scope(scope, first)
+		assert !type_refers_to_scope(scope, second)
+		unsafe { prealloc_scope_free_after(scope) }
+		assert first.elem_type is String
+		assert second.elem_type is String
+	}
+}
+
 fn test_parent_index_ranges_preserve_cross_range_edges_and_function_costs() {
 	mut a := flat.FlatAst.new()
 	a.add(.ident)

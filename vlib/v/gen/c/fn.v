@@ -16425,7 +16425,15 @@ fn (mut g FlatGen) gen_mut_pointer_slot_arg(arg_id flat.NodeId, arg_node flat.No
 	if arg_node.is_mut && (arg_node.kind in [.index, .selector, .paren]
 		|| (arg_node.kind == .prefix && arg_node.op == .mul)) {
 		arg_type := g.usable_expr_type(arg_id)
-		if g.tc.c_type(arg_type) == g.tc.c_type(expected_base) {
+		expected_pointer := cgen_unalias_type(expected_base)
+		actual_pointer := cgen_unalias_type(arg_type)
+		// Autofree preserves a nominal pointer alias in C, while lowering can
+		// annotate this lvalue with its canonical pointer type. Both name the
+		// same caller-owned slot, so compare their semantic pointer types too.
+		matching_nominal_pointer := expected_base is types.Alias
+			&& expected_pointer is types.Pointer && actual_pointer is types.Pointer
+			&& types.semantic_types_equal(actual_pointer, expected_pointer)
+		if g.tc.c_type(arg_type) == g.tc.c_type(expected_base) || matching_nominal_pointer {
 			if arg_node.kind == .prefix && arg_node.op == .mul && arg_node.children_count > 0 {
 				g.gen_expr(g.a.child(&arg_node, 0))
 			} else if arg_node.kind == .index && arg_node.value == 'range' {

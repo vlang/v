@@ -12259,6 +12259,9 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args_ids []u32, i
 			t.pop_smartcast()
 		}
 		t.generic_clone_children[scratch_start + i] = child
+		if node.kind == .if_expr && i == 0 {
+			t.unwrap_cloned_if_guard_binding(child)
+		}
 		if node.kind == .for_in_stmt && i == 2 {
 			t.seed_cloned_generic_for_in_bindings(node, t.generic_clone_children[scratch_start], t.generic_clone_children[scratch_start + 1], child)
 		}
@@ -13205,6 +13208,39 @@ fn (mut t Transformer) retarget_cloned_fn_value_generic_call(node flat.Node, mut
 	if is_fn_field || t.generic_call_base_is_fn_value(base_id, base) {
 		children[0] = base_id
 	}
+}
+
+// unwrap_cloned_if_guard_binding gives the binding of a cloned `if v := opt` guard the
+// payload type of the option. Cloning the declaration recorded the type of its value, so
+// `typeof(v)` in the guarded branch, which the clone resolves, named the option (`?T`).
+fn (mut t Transformer) unwrap_cloned_if_guard_binding(cond_id flat.NodeId) {
+	if int(cond_id) < 0 || int(cond_id) >= t.a.nodes.len {
+		return
+	}
+	cond := t.a.nodes[int(cond_id)]
+	if cond.kind != .decl_assign || cond.children_count != 2 {
+		return
+	}
+	lhs_id := t.a.child(&cond, 0)
+	lhs := t.a.nodes[int(lhs_id)]
+	if lhs.kind != .ident || lhs.value.len == 0 || lhs.value == '_' {
+		return
+	}
+	typ := t.raw_var_type(lhs.value)
+	if typ == 0 || !t.is_optional_type_name(typ) {
+		return
+	}
+	payload := t.optional_base_type(typ)
+	if payload == 0 || payload == flat.source_type_void || t.generic_arg_is_unresolved(payload) {
+		return
+	}
+	normalized := if flat.source_type_name(payload).contains('main.') {
+		payload
+	} else {
+		t.normalize_type_alias(payload)
+	}
+	t.set_var_type_with_raw(lhs.value, normalized, payload)
+	t.set_node_typ(int(lhs_id), payload)
 }
 
 fn (mut t Transformer) retarget_cloned_map_key_storage_type(node flat.Node, mut children []flat.NodeId, cloned_typ_id u32) u32 {
