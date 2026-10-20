@@ -6259,6 +6259,7 @@ fn (mut tc TypeChecker) check_instantiated_generic_compile_warnings(instantiatio
 	}
 }
 
+@[inline]
 fn (mut tc TypeChecker) generic_compile_error_instantiation(call flat.Node, info CallInfo) ?GenericCompileErrorInstantiation {
 	if call.children_count == 0 {
 		return none
@@ -6272,6 +6273,10 @@ fn (mut tc TypeChecker) generic_compile_error_instantiation(call flat.Node, info
 		&& tc.nongeneric_call_module.len == tc.cur_module.len {
 		return none
 	}
+	return tc.resolve_generic_compile_error_instantiation(call, info)
+}
+
+fn (mut tc TypeChecker) resolve_generic_compile_error_instantiation(call flat.Node, info CallInfo) ?GenericCompileErrorInstantiation {
 	decl_module := tc.fn_type_modules[info.name] or { tc.cur_module }
 	decl := tc.visible_mutation_fn_decl(info.name, decl_module) or {
 		tc.remember_nongeneric_call(call, info)
@@ -16995,10 +17000,15 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 	}
 }
 
+@[inline]
 fn (mut tc TypeChecker) call_info_with_inferred_receiver(node flat.Node, info CallInfo) CallInfo {
 	if info.has_receiver || info.params.len == 0 || node.children_count == 0 {
 		return info
 	}
+	return tc.infer_call_info_receiver(node, info)
+}
+
+fn (mut tc TypeChecker) infer_call_info_receiver(node flat.Node, info CallInfo) CallInfo {
 	mut callee := tc.a.child_node(&node, 0)
 	if callee.kind == .index && callee.children_count > 0 {
 		callee = tc.a.child_node(callee, 0)
@@ -17506,10 +17516,15 @@ fn (mut tc TypeChecker) check_builtin_map_call_args(_id flat.NodeId, node flat.N
 // with the same element type, or a string when `dst` holds bytes. The declared `[]u8`
 // parameters only describe the byte case, so they are replaced by the argument types.
 // `report` records diagnostics for invalid arguments.
+@[inline]
 fn (mut tc TypeChecker) builtin_copy_call_info(id flat.NodeId, node flat.Node, info CallInfo, report bool) CallInfo {
 	if !is_builtin_copy_call(node, info) {
 		return info
 	}
+	return tc.resolve_builtin_copy_call_info(id, node, info, report)
+}
+
+fn (mut tc TypeChecker) resolve_builtin_copy_call_info(id flat.NodeId, node flat.Node, info CallInfo, report bool) CallInfo {
 	diagnose := report && tc.should_diagnose(id)
 	dst_id := tc.call_arg_value(tc.a.child(&node, 1))
 	src_id := tc.call_arg_value(tc.a.child(&node, 2))
@@ -18853,6 +18868,7 @@ fn (tc &TypeChecker) field_init_struct_field_type(struct_name_id u32, param_text
 	return none
 }
 
+@[inline]
 fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info CallInfo) CallInfo {
 	if tc.call_has_explicit_generic_type_args(node) {
 		return info
@@ -18864,6 +18880,11 @@ fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info
 		|| tc.call_has_explicit_generic_args(node) {
 		return info
 	}
+	return tc.specialize_plain_generic_call_info(node, info, generic_params, param_texts)
+}
+
+@[noinline]
+fn (mut tc TypeChecker) specialize_plain_generic_call_info(node flat.Node, info CallInfo, generic_params []string, param_texts []u32) CallInfo {
 	saved_generic_decl_file := tc.generic_decl_file
 	tc.generic_decl_file = tc.fn_type_files[info.name] or { '' }
 	defer {
