@@ -57,13 +57,15 @@ fn (mut t Transformer) make_guard_value_decls(name string, value flat.NodeId, va
 // whose body reads it as `?T` (mut_optional_view_param): the reference to the caller's
 // payload. A `mut` guard binding of it refers to the caller's payload, as in V 0.5.2, where
 // the parameter is `?&T`: `if mut v := a { v << 1 }` changes the caller's array, not a copy.
+// That holds while `a` is smartcast to its payload too (a generic body can guard it inside
+// `if a != none`): the reference is read from the parameter's option, not through `a`.
 fn (mut t Transformer) mut_optional_param_payload_ref(rhs_id flat.NodeId, payload_type_id u32) ?flat.NodeId {
 	mut source_id := rhs_id
 	for t.a.nodes[int(source_id)].kind == .paren && t.a.nodes[int(source_id)].children_count == 1 {
 		source_id = t.a.child(&t.a.nodes[int(source_id)], 0)
 	}
 	source := t.a.nodes[int(source_id)]
-	if source.kind != .ident || t.has_smartcast(source.value) {
+	if source.kind != .ident {
 		return none
 	}
 	if payload_type_id == 0 || payload_type_id == flat.source_type_void
