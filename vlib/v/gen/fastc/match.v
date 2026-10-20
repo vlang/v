@@ -197,9 +197,18 @@ fn (mut g Parser) read_match_expression() !string {
 			member_smartcast_saved = g.member_smartcasts[projection_path] or {
 				FastcMemberSmartcast{}
 			}
+			pointer := '((${fastc_output_c_type(flat.source_type_name(smartcast_type))} *)${temporary}${boxed_access}_object)'
+			mut view_type, mut view_source := g.narrowed_member_view(smartcast_type, u32(0),
+				pointer)
+			if common_numeric_type != 0 {
+				// Numeric variants of different widths are read as their common type.
+				view_type = common_numeric_type
+				view_source = fastc_match_multi_variant_value(temporary, boxed_access,
+					branch_variants, common_numeric_type)
+			}
 			g.member_smartcasts[projection_path] = FastcMemberSmartcast{
-				typ:           flat.source_type_id(flat.source_type_name(smartcast_type) + '*')
-				source:        '((${fastc_output_c_type(flat.source_type_name(smartcast_type))} *)${temporary}${boxed_access}_object)'
+				typ:           view_type
+				source:        view_source
 				variants:      if multi_struct_smartcast {
 					flat.TypeTextList{ ids: branch_variants.clone() }
 				} else {

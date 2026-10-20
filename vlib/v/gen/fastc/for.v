@@ -414,9 +414,12 @@ fn (mut g Parser) write_condition_loop(condition string, condition_tokens []Fast
 				FastcMemberSmartcast{}
 			}
 		}
+		view_type, view_source := g.narrowed_member_view(plan.type_c, plan.value_type,
+			plan.member_tmp)
 		g.member_smartcasts[plan.path] = FastcMemberSmartcast{
-			typ:    flat.source_type_id(plan.type_c_text() + '*')
-			source: plan.member_tmp
+			typ:        view_type
+			value_type: plan.value_type
+			source:     view_source
 		}
 	}
 	_ = g.parse_loop_block_body()!

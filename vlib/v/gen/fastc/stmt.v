@@ -1009,6 +1009,8 @@ fn (mut g Parser) parse_match_statement() !bool {
 			'array'
 		} else if variant_types.len > 1 && common_numeric_type == 0 {
 			flat.source_type_name(variant_types[0])
+		} else if common_numeric_type != 0 {
+			flat.source_type_name(common_numeric_type)
 		} else {
 			''
 		})
@@ -1027,13 +1029,22 @@ fn (mut g Parser) parse_match_statement() !bool {
 				FastcMemberSmartcast{}
 			}
 			had_member_smartcast = projection_path in g.member_smartcasts
+			pointer := if smartcast_is_reference {
+				'((${member_c_type} *)${subject_name}${boxed_access}_object)'
+			} else {
+				member_smartcast_name
+			}
+			mut view_type, mut view_source := g.narrowed_member_view(member_smartcast_type,
+				u32(0), pointer)
+			if common_numeric_type != 0 {
+				// Numeric variants of different widths are read as their common type.
+				view_type = common_numeric_type
+				view_source = fastc_match_multi_variant_value(subject_name, boxed_access,
+					variant_types, common_numeric_type)
+			}
 			g.member_smartcasts[projection_path] = FastcMemberSmartcast{
-				typ:           flat.source_type_id(flat.source_type_name(member_smartcast_type) + '*')
-				source:        if smartcast_is_reference {
-					'((${member_c_type} *)${subject_name}${boxed_access}_object)'
-				} else {
-					member_smartcast_name
-				}
+				typ:           view_type
+				source:        view_source
 				variants:      if struct_multi_variant {
 					flat.TypeTextList{ ids: variant_types.clone() }
 				} else {
