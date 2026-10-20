@@ -3358,10 +3358,13 @@ fn (mut t Transformer) lower_map_index_compound_with_info(info MapIndexInfo, map
 		rhs = t.transform_expr(rhs_id)
 	}
 	lhs := t.make_ident(current_name)
-	new_value := if info.value_type == flat.source_type_string && op == .plus {
-		t.make_call_typed('string__plus', [lhs, rhs], flat.source_type_string)
+	mut new_value := flat.empty_node
+	if method_name := t.map_value_operator_method(info, op) {
+		new_value = t.make_call_typed(method_name, [lhs, rhs], info.value_type)
+	} else if info.value_type == flat.source_type_string && op == .plus {
+		new_value = t.make_call_typed('string__plus', [lhs, rhs], flat.source_type_string)
 	} else {
-		t.make_infix(op, lhs, rhs)
+		new_value = t.make_infix(op, lhs, rhs)
 	}
 	t.copy_translated_map_update_pos(rhs_id, [lhs, new_value])
 	result << t.make_assign(t.make_ident(current_name), new_value)
@@ -3372,6 +3375,77 @@ fn (mut t Transformer) lower_map_index_compound_with_info(info MapIndexInfo, map
 	}
 	t.append_map_value_drop_before_set(map_expr, info.base_type, key_name, info.value_type, mut result)
 	result << t.make_map_set_stmt(map_expr, info.base_type, key_name, current_name)
+}
+
+// map_value_operator_method returns the operator method that `m[k] op= v`
+// calls when the map's value type, or the type it aliases, overloads `op`.
+// The method is resolved the way try_lower_struct_compound_assign resolves it
+// for a plain variable, so an operator declared on an alias wins over its
+// parent's.
+fn (mut t Transformer) map_value_operator_method(info MapIndexInfo, op flat.Op) ?string {
+	op_name := struct_operator_symbol(op) or { return none }
+	for candidate in t.map_value_alias_candidates(info) {
+		if candidate == 0 || flat.source_type_shape(candidate).has(.pointer) {
+			continue
+		}
+		operator_type := t.compound_assign_operator_type_candidate(candidate, op_name) or {
+			continue
+		}
+		method_name := t.struct_operator_fn_name(operator_type, op_name) or { continue }
+		t.mark_struct_operator_used_name(method_name)
+		return method_name
+	}
+	return none
+}
+
+// map_value_alias_candidates lists the spellings of a map's value type, most
+// specific first. info.value_type has its aliases normalized away
+// (`map[string]Money` gives `int`), so the map's raw variable type and the type
+// the checker gave the map expression come first, when they name the same type.
+fn (t &Transformer) map_value_alias_candidates(info MapIndexInfo) []u32 {
+	mut candidates := []u32{cap: 3}
+	normalized_value_type := t.normalize_type_alias(info.value_type)
+	if raw_map_type := t.raw_var_type_for_expr(info.base_id) {
+		mut clean := t.trimmed_type_id(raw_map_type)
+		for _ in 0 .. 8 {
+			if flat.source_type_shape(clean).has(.shared_type) {
+				clean = t.unshared_type_id(clean)
+			} else if flat.source_type_shape(clean).has(.pointer) {
+				clean = t.trimmed_type_id(t.trim_pointer_type(clean))
+			} else {
+				break
+			}
+		}
+		raw_value_type := t.map_value_type(clean)
+		if raw_value_type != 0 && raw_value_type != info.value_type
+			&& t.normalize_type_alias(raw_value_type) == normalized_value_type {
+			candidates << raw_value_type
+		}
+	}
+	if !isnil(t.tc) {
+		if base_type := t.tc.expr_type(info.base_id) {
+			mut clean := base_type
+			for _ in 0 .. 32 {
+				if clean is types.Alias {
+					clean = clean.base_type
+				} else if clean is types.Pointer {
+					clean = clean.base_type
+				} else {
+					break
+				}
+			}
+			if clean is types.Map {
+				checker_value_type := t.tc.type_name(clean.value_type)
+				if checker_value_type != 0 && checker_value_type != info.value_type
+					&& checker_value_type !in candidates
+					&& t.normalize_type_alias(checker_value_type) == normalized_value_type {
+					candidates << checker_value_type
+				}
+			}
+		}
+	}
+	candidates << info.value_type
+	return candidates
 }
 
 fn (mut t Transformer) copy_translated_map_update_pos(source flat.NodeId, targets []flat.NodeId) {

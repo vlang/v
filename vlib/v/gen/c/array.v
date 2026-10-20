@@ -2076,15 +2076,15 @@ fn (mut g FlatGen) gen_direct_array_elem_store(node flat.Node, arr_type types.Ar
 			return true
 		}
 	}
+	if method_name := g.assign_struct_operator_method(elem_type, node.op) {
+		g.write('${value_text} = ${g.cname(method_name)}(${value_text}, ')
+		g.gen_expr_with_expected_type(rhs_id, elem_type)
+		g.writeln('); ${lhs_text} = ${value_text}; }')
+		return true
+	}
 	if assign_op == .power {
 		g.write('${value_text} = ')
-		if method_name := g.assign_struct_operator_method(elem_type, node.op) {
-			g.write('${g.cname(method_name)}(${value_text}, ')
-			g.gen_expr_with_expected_type(rhs_id, elem_type)
-			g.write(')')
-		} else {
-			g.gen_power_expr_from_lhs_text(value_text, rhs_id, elem_type)
-		}
+		g.gen_power_expr_from_lhs_text(value_text, rhs_id, elem_type)
 		g.writeln('; ${lhs_text} = ${value_text}; }')
 		return true
 	}
@@ -2250,16 +2250,16 @@ fn (mut g FlatGen) gen_index_assign(node flat.Node) {
 					return
 				}
 			}
-			if node.op == .power_assign {
+			if method_name := g.assign_struct_operator_method(arr_type.elem_type, node.op) {
+				// An element type that overloads the operator calls its method, the
+				// way a compound assignment on any other lvalue does.
 				lhs_text := '*(${c_elem}*)array_get(*_a${tmp}, _i${tmp})'
-				if method_name := g.assign_struct_operator_method(arr_type.elem_type, node.op) {
-					g.write('${g.cname(method_name)}(${lhs_text}, ')
-					g.gen_expr_with_expected_type(g.a.child(&node, 1), arr_type.elem_type)
-					g.write(')')
-				} else {
-					g.gen_power_expr_from_lhs_text(lhs_text, g.a.child(&node, 1),
-						arr_type.elem_type)
-				}
+				g.write('${g.cname(method_name)}(${lhs_text}, ')
+				g.gen_expr_with_expected_type(g.a.child(&node, 1), arr_type.elem_type)
+				g.write(')')
+			} else if node.op == .power_assign {
+				lhs_text := '*(${c_elem}*)array_get(*_a${tmp}, _i${tmp})'
+				g.gen_power_expr_from_lhs_text(lhs_text, g.a.child(&node, 1), arr_type.elem_type)
 			} else if node.op in [.left_shift_assign, .right_shift_assign,
 				.right_shift_unsigned_assign] {
 				shift_op := match node.op {
