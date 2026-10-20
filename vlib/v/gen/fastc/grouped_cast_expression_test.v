@@ -121,3 +121,135 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'same sum casts preserve payloads', run.output
 }
+
+fn test_fastc_smartcast_pointer_rebinding_preserves_original_storage() {
+	$if !macos && !linux {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'fastc_smartcast_pointer_rebind_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'main.v'), r'module main
+struct Atom { mut: value int }
+struct Wrap { base &Ty }
+struct ResultBox { base &Ty }
+type Ty = Atom | Wrap | ResultBox
+struct Holder { mut: value Ty }
+struct Counter { mut: value int }
+fn negated(start &Ty) &Ty {
+	mut value := start
+	if value !is Wrap { return value }
+	value = value.base
+	return value
+}
+fn other_branch(start &Ty) &Ty {
+	mut value := start
+	if value !is Wrap {} else { value = value.base }
+	return value
+}
+fn matched(start &Ty) &Ty {
+	mut value := start
+	match value {
+		Wrap { value = value.base }
+		ResultBox { value = value.base }
+		else {}
+	}
+	return value
+}
+fn replace(mut value Ty, replacement Ty) {
+	if value is Wrap { value = replacement }
+}
+fn replace_match(mut value Ty, replacement Ty) {
+	match value {
+		ResultBox { value = replacement }
+		else {}
+	}
+}
+fn assert_atom(value Ty, expected int) {
+	if value is Atom { assert value.value == expected } else { assert false }
+}
+fn assert_wrap(value Ty, target &Ty) {
+	if value is Wrap { assert voidptr(value.base) == voidptr(target) } else { assert false }
+}
+fn assert_result(value Ty, target &Ty) {
+	if value is ResultBox { assert voidptr(value.base) == voidptr(target) } else { assert false }
+}
+fn main() {
+	mut base := Ty(Atom{value: 42})
+	mut wrapped := Ty(Wrap{base: &base})
+	mut expected := &wrapped
+	if expected is Wrap { expected = expected.base }
+	assert voidptr(expected) == voidptr(&base)
+	assert_wrap(wrapped, &base)
+	assert_atom(base, 42)
+	if expected is Atom { assert expected.value == 42 } else { assert false }
+	assert_wrap(wrapped, &base)
+	assert voidptr(negated(&wrapped)) == voidptr(&base)
+	assert voidptr(other_branch(&wrapped)) == voidptr(&base)
+	assert voidptr(matched(&wrapped)) == voidptr(&base)
+	assert_wrap(wrapped, &base)
+	mut result := Ty(ResultBox{base: &base})
+	mut result_ref := &result
+	if result_ref is ResultBox { result_ref = result_ref.base }
+	assert voidptr(result_ref) == voidptr(&base)
+	assert_result(result, &base)
+	assert_result(result, &base)
+	mut holder := Holder{value: Wrap{base: &base}}
+	mut field_ref := &holder.value
+	if field_ref is Wrap { field_ref = field_ref.base }
+	assert voidptr(field_ref) == voidptr(&base)
+	assert_wrap(holder.value, &base)
+	assert_wrap(holder.value, &base)
+	mut nested := Ty(ResultBox{base: &wrapped})
+	mut cursor := &nested
+	if cursor is ResultBox {
+		cursor = cursor.base
+		if cursor is Wrap { cursor = cursor.base }
+	}
+	assert voidptr(cursor) == voidptr(&base)
+	assert_result(nested, &wrapped)
+	assert_wrap(wrapped, &base)
+	assert_result(nested, &wrapped)
+	mut matched_nested := &nested
+	match matched_nested {
+		ResultBox {
+			matched_nested = matched_nested.base
+			match matched_nested {
+				Wrap { matched_nested = matched_nested.base }
+				else {}
+			}
+		}
+		else {}
+	}
+	assert voidptr(matched_nested) == voidptr(&base)
+	assert_result(nested, &wrapped)
+	assert_wrap(wrapped, &base)
+	mut replaced := Ty(Wrap{base: &base})
+	replace(mut replaced, Ty(Atom{value: 7}))
+	if replaced is Atom { assert replaced.value == 7 } else { assert false }
+	mut replaced_match := Ty(ResultBox{base: &base})
+	replace_match(mut replaced_match, Ty(Atom{value: 9}))
+	if replaced_match is Atom { assert replaced_match.value == 9 } else { assert false }
+	mut counter := Counter{value: 1}
+	mut counter_ref := &counter
+	counter_ref.value = 2
+	assert counter.value == 2
+	assert voidptr(counter_ref) == voidptr(&counter)
+	println("smartcast pointer rebinding preserves original storage")
+}
+') or { panic(err) }
+	for backend in ['c', 'fastc'] {
+		program := os.join_path(root, 'program_${backend}')
+		mut flags := ['-b', backend, '-nocache', '-gc', 'none']
+		if backend == 'fastc' {
+			// Concrete sum-tag checks use the same full runtime as compiler builds.
+			flags << ['-d', 'fastc_real_builtin']
+		}
+		flags << ['-o', program, os.join_path(root, 'main.v')]
+		build := cmdexec.run(@VEXE, flags)
+		assert build.exit_code == 0, build.output
+		run := cmdexec.run(program, [])
+		assert run.exit_code == 0, run.output
+		assert run.output.trim_space() == 'smartcast pointer rebinding preserves original storage', run.output
+	}
+}

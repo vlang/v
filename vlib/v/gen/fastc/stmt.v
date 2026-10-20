@@ -989,14 +989,23 @@ fn (mut g Parser) parse_match_statement() !bool {
 			}
 			g.write_line('${shadow_c_type} ${shadow_name} = ${smartcast_value};')
 			smartcast_saved = g.locals[subject_local] or { FastcLocal{} }
-			origin_source := g.local_c_name(subject_local)
+			origin_source := if smartcast_saved.smartcast_origin_source != '' {
+				smartcast_saved.smartcast_origin_source
+			} else {
+				g.local_c_name(subject_local)
+			}
 			g.locals[subject_local] = FastcLocal{
-				is_mut:                  smartcast_saved.is_mut
-				is_reference:            smartcast_is_reference
-				typ:                     flat.source_type_id(shadow_type)
-				c_name:                  shadow_name
-				smartcast_origin_type:   smartcast_saved.typ
-				smartcast_origin_source: origin_source
+				is_mut:                        smartcast_saved.is_mut
+				is_reference:                  smartcast_is_reference
+				typ:                           flat.source_type_id(shadow_type)
+				c_name:                        shadow_name
+				smartcast_origin_type:         if smartcast_saved.smartcast_origin_type != u32(0) {
+					smartcast_saved.smartcast_origin_type
+				} else {
+					smartcast_saved.typ
+				}
+				smartcast_origin_is_reference: smartcast_saved.original_is_reference()
+				smartcast_origin_source:       origin_source
 			}
 		}
 		// A single-variant branch narrows the member to that variant; a branch listing
@@ -1544,7 +1553,7 @@ fn (mut g Parser) parse_simple_statement() ! {
 			g.globals[global_key]
 		} else if local := g.locals[name] {
 			if local.smartcast_origin_type != u32(0) {
-				if local.smartcast_origin_type_text().ends_with('*') {
+				if local.original_is_reference() {
 					'(*${local.smartcast_origin_source})'
 				} else {
 					local.smartcast_origin_source
@@ -1716,7 +1725,7 @@ fn (mut g Parser) parse_simple_statement() ! {
 				} else {
 					local.typ_text()
 				}
-				if local.is_reference { base.trim_right('*') } else { base }
+				if local.original_is_reference() { base.trim_right('*') } else { base }
 			} else {
 				''
 			}
@@ -1873,7 +1882,7 @@ fn (mut g Parser) parse_simple_statement() ! {
 				// Replacing the boxed value invalidates the old concrete-variant view.
 				g.locals[name] = FastcLocal{
 					is_mut:       statement_local.is_mut
-					is_reference: statement_local.smartcast_origin_type_text().ends_with('*')
+					is_reference: statement_local.original_is_reference()
 					typ:          statement_local.smartcast_origin_type
 					c_name:       statement_local.smartcast_origin_source
 				}
