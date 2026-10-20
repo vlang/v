@@ -207,7 +207,8 @@ pub fn (t Token) is_assignment() bool {
 }
 
 // is_overloadable reports whether t can follow a method receiver as an operator
-// method name. The parser rejects `|` and `^` there with a diagnostic.
+// method name. The parser rejects `|` and `^` there with a diagnostic, and
+// `!=`, `>`, `<=` and `>=`, which are generated from `==` and `<`.
 @[inline]
 pub fn (t Token) is_overloadable() bool {
 	return t in [.div, .eq, .ge, .gt, .le, .lt, .minus, .mod, .mul, .power, .ne, .pipe, .plus,

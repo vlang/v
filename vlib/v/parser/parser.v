@@ -18916,6 +18916,9 @@ fn rejected_operator_method_message(tok token.Token) ?string {
 	if tok in [.pipe, .xor] {
 		return 'expecting method name'
 	}
+	if tok in [.ne, .gt, .le, .ge] {
+		return 'cannot overload `!=`, `>`, `<=` and `>=` as they are auto generated from `==` and `<`'
+	}
 	return none
 }
 
