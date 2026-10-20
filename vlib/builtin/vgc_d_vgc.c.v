@@ -43,7 +43,7 @@ fn C.vgc_mutex_trylock(lk &u32) int
 fn C.vgc_thread_yield()
 fn C.vgc_set_thread_exit_hook(f fn (voidptr))
 fn C.vgc_watch_thread_exit(idx int)
-fn C.vgc_call_with_registers_spilled(f fn (voidptr), arg voidptr)
+fn C.vgc_call_with_registers_spilled(f fn (voidptr, voidptr), arg voidptr)
 fn C.vgc_start_thread(f voidptr)
 fn C.vgc_num_cpus() int
 
@@ -385,14 +385,6 @@ fn vgc_enter() int {
 		vgc_safepoint()
 	}
 	return C.vgc_get_cache_idx()
-}
-
-fn vgc_refresh_stack_range() {
-	cache_idx := C.vgc_get_cache_idx()
-	if cache_idx < 0 {
-		return
-	}
-	vgc_refresh_stack_range_for_sp(cache_idx, usize(C.vgc_get_sp()))
 }
 
 fn vgc_refresh_stack_range_for_sp(cache_idx int, sp usize) {
@@ -1369,10 +1361,13 @@ fn vgc_safepoint_at(cache_idx int) {
 	C.vgc_call_with_registers_spilled(vgc_safepoint_wait, voidptr(isize(cache_idx)))
 }
 
-fn vgc_safepoint_wait(arg voidptr) {
+// vgc_safepoint_wait stops the thread with cache index arg while a collection runs. The
+// collector scans its stack from regs, where the thread's registers are saved, upwards: the
+// frames below are vgc's own.
+fn vgc_safepoint_wait(arg voidptr, regs voidptr) {
 	cache_idx := int(isize(arg))
 	// Update the live stack range for root scanning.
-	vgc_refresh_stack_range_for_sp(cache_idx, usize(C.vgc_get_sp()))
+	vgc_refresh_stack_range_for_sp(cache_idx, usize(regs))
 	// Mark ourselves as stopped
 	C.vgc_atomic_store_u32(&vgc_heap.caches[cache_idx].stopped, 1)
 	C.vgc_atomic_add_u32(&vgc_heap.gc_stopped_count, 1)

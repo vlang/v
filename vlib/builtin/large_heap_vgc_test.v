@@ -113,9 +113,9 @@ fn test_the_heap_grows_past_64_arenas() {
 		vgc_test_drop(mut objs)
 		assert vgc_test_clear_dead_stack() == 0
 		gc_collect()
-		// The collection freed the objects, in all the arenas. A few of them stay: in a heap of
-		// 4.4 GB, the conservative scan takes some constants and stack bounds in the globals
-		// for pointers into them.
+		// The collection freed the objects, in all the arenas. A few of them can stay: in a heap
+		// of 4.4 GB, the conservative scan takes some constants in the data segment for pointers
+		// into them (0x300000001 keeps the object at 0x300000000 alive).
 		mut freed := 0
 		for span in spans {
 			if !span.in_use {

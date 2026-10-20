@@ -314,17 +314,18 @@ static inline void vgc_set_cache_idx(int idx) { _vgc_cache_idx_plus1 = idx + 1; 
 // Registers as roots
 // ============================================================
 #include <setjmp.h>
-typedef void (*vgc_spill_fn)(void*);
+typedef void (*vgc_spill_fn)(void*, void*);
 static void* volatile vgc_spill_sink;
 
-// Calls fn(arg) after saving the callee-saved registers in a jmp_buf in this frame. A
-// conservative scan of the stack from fn's frame upwards then also sees pointers that the
-// callers only kept in registers.
+// Calls fn(arg, regs) after saving the callee-saved registers in the jmp_buf at regs, in this
+// frame. A conservative scan of the stack from regs upwards then also sees pointers that the
+// callers only kept in registers. The frames of fn and of its callees lie below regs: they
+// belong to vgc, and their copies of stack and arena bounds are no roots.
 static void vgc_call_with_registers_spilled(vgc_spill_fn fn, void* arg) {
     jmp_buf regs;
     if (setjmp(regs) == 0) {
         vgc_spill_sink = (void*)&regs;
-        fn(arg);
+        fn(arg, (void*)&regs);
     }
     // The store after the call keeps fn() from becoming a tail call that would drop this frame.
     vgc_spill_sink = NULL;

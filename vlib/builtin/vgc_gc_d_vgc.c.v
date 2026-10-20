@@ -55,7 +55,10 @@ fn vgc_is_enabled() bool {
 	return C.vgc_atomic_load_u32(&vgc_heap.gc_enabled) != 0
 }
 
-fn vgc_gc_run(_ voidptr) {
+// vgc_gc_run collects. This thread's stack is scanned from regs, where its registers are saved,
+// upwards: the frames below are the collector's, and they hold copies of the stack and arena
+// bounds, which can be the address of an object.
+fn vgc_gc_run(_ voidptr, regs voidptr) {
 	// === Phase 1: Sweep Termination (STW) ===
 	// Ensure any previous sweep is complete
 	vgc_sweep_finish()
@@ -91,7 +94,7 @@ fn vgc_gc_run(_ voidptr) {
 	C.vgc_atomic_store_u32(&vgc_heap.wb_enabled, 1)
 
 	// The thread starting GC does not pass through a safepoint.
-	vgc_refresh_stack_range()
+	vgc_refresh_stack_range_for_sp(self_idx, usize(regs))
 
 	// Scan roots: stacks + globals (conservative scanning)
 	vgc_mark_roots()
@@ -186,13 +189,41 @@ fn vgc_mark_roots() {
 
 // vgc_mark_data_segments scans the writable segments of the executable: every global and
 // const, including the ones that are initialized at run time and point into the GC heap.
+// vgc's own globals are left out. They hold the bounds of the stacks and of the arenas, which
+// can be the address of an object (the first one in an arena that starts where a stack ends),
+// and the spans that the caches allocate from, but no pointer that the program holds. The only
+// objects that they keep alive are the tiny blocks, which vgc_mark_roots marks itself.
 fn vgc_mark_data_segments() {
 	mut lo := [16]usize{}
 	mut hi := [16]usize{}
 	n := C.vgc_data_ranges(&lo[0], &hi[0], 16)
+	skip_lo := [usize(&vgc_heap), usize(&vgc_arena_lo), usize(&vgc_arena_hi)]!
+	skip_hi := [usize(&vgc_heap) + sizeof(VGC_Heap), usize(&vgc_arena_lo) + sizeof(usize),
+		usize(&vgc_arena_hi) + sizeof(usize)]!
 	for i in 0 .. n {
-		vgc_scan_range(lo[i], hi[i])
+		vgc_scan_range_skipping(lo[i], hi[i], &skip_lo[0], &skip_hi[0], skip_lo.len)
 	}
+}
+
+// vgc_scan_range_skipping scans [lo, hi) without the nskip ranges [skip_lo[k], skip_hi[k]).
+fn vgc_scan_range_skipping(lo usize, hi usize, skip_lo &usize, skip_hi &usize, nskip int) {
+	if lo >= hi {
+		return
+	}
+	if nskip == 0 {
+		vgc_scan_range(lo, hi)
+		return
+	}
+	s_lo := unsafe { skip_lo[0] }
+	s_hi := unsafe { skip_hi[0] }
+	rest_lo := unsafe { &skip_lo[1] }
+	rest_hi := unsafe { &skip_hi[1] }
+	if s_hi <= lo || s_lo >= hi {
+		vgc_scan_range_skipping(lo, hi, rest_lo, rest_hi, nskip - 1)
+		return
+	}
+	vgc_scan_range_skipping(lo, s_lo, rest_lo, rest_hi, nskip - 1)
+	vgc_scan_range_skipping(s_hi, hi, rest_lo, rest_hi, nskip - 1)
 }
 
 // Scan a memory range conservatively, looking for pointers into the GC heap.
