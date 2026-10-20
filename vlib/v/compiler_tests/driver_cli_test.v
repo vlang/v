@@ -518,6 +518,17 @@ fn test_v3_garbage_collector_modes() {
 			assert !generated.contains('v3_gc_marker_${marker}_28636'), 'cross ${mode}: marker ${marker} must be disabled'
 		}
 	}
+	// vgc needs no library or header of the target's toolchain: it stays in.
+	for vgc_os in [cross_os, if host.os == 'windows' { 'linux' } else { 'windows' }] {
+		output := os.join_path(root, 'gc_cross_vgc_${vgc_os}.c')
+		result := cmdexec.run(v3_bin, ['-silent', '-os', vgc_os, '-gc', 'vgc', '-o', output, source])
+		assert result.exit_code == 0, 'vgc ${vgc_os}: ${result.output}'
+		generated := os.read_file(output)!
+		for marker in markers {
+			assert generated.contains('v3_gc_marker_${marker}_28636') == (marker == 'vgc'), 'cross vgc ${vgc_os}: marker ${marker}'
+		}
+		assert generated.contains('vgc_platform.h')
+	}
 }
 
 fn test_standard_v3_excludes_ownership_checker() {

@@ -6,7 +6,6 @@
 
 #include <stdint.h>
 #include <string.h>
-#include <stdio.h>
 #ifdef _WIN32
   #ifndef WIN32_LEAN_AND_MEAN
     #define WIN32_LEAN_AND_MEAN
@@ -79,6 +78,25 @@
   #define vgc_atomic_exchange_u32(ptr, val) __atomic_exchange_n((volatile uint32_t*)(ptr), (uint32_t)(val), __ATOMIC_ACQ_REL)
   #define vgc_atomic_fence() __atomic_thread_fence(__ATOMIC_SEQ_CST)
 #endif
+
+// ============================================================
+// Per-thread counters
+// Only the thread that owns a counter adds to it, and any thread reads it. The add needs no
+// atomic read-modify-write then, only a load and a store that do not tear: on a 64-bit target
+// a volatile access to an aligned 8-byte word is one load or one store (like the Linux kernel's
+// READ_ONCE and WRITE_ONCE). They are macros, so that counting an allocation costs no call, even
+// without optimization.
+// ============================================================
+#if UINTPTR_MAX > 0xFFFFFFFFu
+  #define vgc_counter_load(ptr) (*(volatile uint64_t*)(ptr))
+  #define vgc_counter_add(ptr, val) ((void)(*(volatile uint64_t*)(ptr) += (uint64_t)(val)))
+#else
+  #define vgc_counter_load(ptr) vgc_atomic_load_u64(ptr)
+  #define vgc_counter_add(ptr, val) ((void)vgc_atomic_add_u64(ptr, val))
+#endif
+// Counts an object of size bytes, allocated for a request of n bytes, in the counters of a
+// thread's cache slot.
+#define vgc_count_alloc(live_ptr, alloc_ptr, size, n) (vgc_counter_add(live_ptr, size), vgc_counter_add(alloc_ptr, n))
 
 // ============================================================
 // Thread-local storage
@@ -183,6 +201,14 @@ static inline void vgc_set_cache_idx(int idx) { _vgc_cache_idx_plus1 = idx + 1; 
   static inline void* vgc_os_alloc(size_t size) {
       return VirtualAlloc(NULL, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
   }
+  // The memory of an arena, for objects. VirtualAlloc hands out the lowest free addresses
+  // first: next to an executable at a low base, like TinyCC's at 4 MB, the heap started at about
+  // 9 MB, where many constants in the data segment (0x2000537) point, and the conservative scan
+  // kept objects alive through them. The top of the address space has no such neighbours.
+  static inline void* vgc_os_alloc_heap(size_t size) {
+      void* p = VirtualAlloc(NULL, size, MEM_COMMIT | MEM_RESERVE | MEM_TOP_DOWN, PAGE_READWRITE);
+      return p != NULL ? p : vgc_os_alloc(size);
+  }
   static inline void vgc_os_free(void* ptr, size_t size) {
       (void)size;
       VirtualFree(ptr, 0, MEM_RELEASE);
@@ -212,6 +238,8 @@ static inline void vgc_set_cache_idx(int idx) { _vgc_cache_idx_plus1 = idx + 1; 
       void* p = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
       return (p == MAP_FAILED) ? NULL : p;
   }
+  // The memory of an arena, for objects (see the Windows version).
+  static inline void* vgc_os_alloc_heap(size_t size) { return vgc_os_alloc(size); }
   static inline void vgc_os_free(void* ptr, size_t size) {
       munmap(ptr, size);
   }
@@ -314,17 +342,18 @@ static inline void vgc_set_cache_idx(int idx) { _vgc_cache_idx_plus1 = idx + 1; 
 // Registers as roots
 // ============================================================
 #include <setjmp.h>
-typedef void (*vgc_spill_fn)(void*);
+typedef void (*vgc_spill_fn)(void*, void*);
 static void* volatile vgc_spill_sink;
 
-// Calls fn(arg) after saving the callee-saved registers in a jmp_buf in this frame. A
-// conservative scan of the stack from fn's frame upwards then also sees pointers that the
-// callers only kept in registers.
+// Calls fn(arg, regs) after saving the callee-saved registers in the jmp_buf at regs, in this
+// frame. A conservative scan of the stack from regs upwards then also sees pointers that the
+// callers only kept in registers. The frames of fn and of its callees lie below regs: they
+// belong to vgc, and their copies of stack and arena bounds are no roots.
 static void vgc_call_with_registers_spilled(vgc_spill_fn fn, void* arg) {
     jmp_buf regs;
     if (setjmp(regs) == 0) {
         vgc_spill_sink = (void*)&regs;
-        fn(arg);
+        fn(arg, (void*)&regs);
     }
     // The store after the call keeps fn() from becoming a tail call that would drop this frame.
     vgc_spill_sink = NULL;

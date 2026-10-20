@@ -152,13 +152,13 @@ fn test_gc_collect_frees_garbage() {
 	$if vgc ? {
 		gc_collect()
 		cycles := vgc_heap.gc_cycle
-		live := C.vgc_atomic_load_u64(&vgc_heap.heap_live)
+		live := vgc_heap_live()
 		vgc_test_churn(20000)
-		with_garbage := C.vgc_atomic_load_u64(&vgc_heap.heap_live)
+		with_garbage := vgc_heap_live()
 		assert with_garbage > live + 4 * 1024 * 1024
 		gc_collect()
 		assert vgc_heap.gc_cycle == cycles + 1
-		assert C.vgc_atomic_load_u64(&vgc_heap.heap_live) < live + 1024 * 1024
+		assert vgc_heap_live() < live + 1024 * 1024
 	}
 }
 
@@ -181,8 +181,7 @@ fn test_pointer_free_allocations_trigger_a_collection() {
 	$if vgc ? {
 		cycles := vgc_heap.gc_cycle
 		// Lower the trigger for the test: 4 MB above the live heap.
-		C.vgc_atomic_store_u64(&vgc_heap.next_gc, C.vgc_atomic_load_u64(&vgc_heap.heap_live) +
-			4 * 1024 * 1024)
+		C.vgc_atomic_store_u64(&vgc_heap.next_gc, vgc_heap_live() + 4 * 1024 * 1024)
 		// About 13 MB of strings, and no other allocations.
 		mut total := 0
 		for i in 0 .. 100000 {

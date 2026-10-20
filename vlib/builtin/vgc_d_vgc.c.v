@@ -21,7 +21,11 @@ fn C.vgc_atomic_add_u32(ptr &u32, val u32) u32
 fn C.vgc_atomic_cas_u32(ptr &u32, expected &u32, desired u32) bool
 fn C.vgc_atomic_exchange_u32(ptr &u32, val u32) u32
 fn C.vgc_atomic_fence()
+fn C.vgc_counter_load(ptr &u64) u64
+fn C.vgc_counter_add(ptr &u64, val u64)
+fn C.vgc_count_alloc(live &u64, allocated &u64, size u64, n u64)
 fn C.vgc_os_alloc(size usize) voidptr
+fn C.vgc_os_alloc_heap(size usize) voidptr
 fn C.vgc_os_free(ptr voidptr, size usize)
 fn C.vgc_os_decommit(ptr voidptr, size usize)
 fn C.vgc_os_recommit(ptr voidptr, size usize) int
@@ -43,7 +47,7 @@ fn C.vgc_mutex_trylock(lk &u32) int
 fn C.vgc_thread_yield()
 fn C.vgc_set_thread_exit_hook(f fn (voidptr))
 fn C.vgc_watch_thread_exit(idx int)
-fn C.vgc_call_with_registers_spilled(f fn (voidptr), arg voidptr)
+fn C.vgc_call_with_registers_spilled(f fn (voidptr, voidptr), arg voidptr)
 fn C.vgc_start_thread(f voidptr)
 fn C.vgc_num_cpus() int
 
@@ -140,6 +144,13 @@ mut:
 	tiny        usize
 	tiny_offset usize
 	tiny_allocs usize
+	// What the threads that had this slot allocated: the bytes of the objects that they allocated
+	// minus the ones that they freed, and the bytes that they asked for. The slot's thread adds to
+	// them with C.vgc_count_alloc and C.vgc_counter_add, macros without a lock, an atomic
+	// read-modify-write or a call; other threads read them at any time (see vgc_heap_live). They
+	// outlive the thread: the next thread that gets the slot continues them.
+	live_bytes  u64
+	alloc_bytes u64
 	// Thread info
 	registered bool
 	stack_base usize // fixed stack boundary for this thread
@@ -224,12 +235,13 @@ mut:
 	gc_enabled u32 // atomic: 1 = GC enabled
 	sweep_gen  u32 // current sweep generation
 	wb_enabled u32 // atomic: write barrier enabled
-	// GC metrics (translated from Go's gcController)
-	heap_live   u64 // atomic: bytes of live heap objects (actual object bytes)
-	heap_marked u64 // bytes marked in last cycle
+	// GC metrics (translated from Go's gcController). The live heap and the bytes allocated are
+	// counted per cache slot (VGC_Cache.live_bytes and alloc_bytes), see vgc_heap_live and
+	// vgc_total_alloc.
+	heap_marked u64 // atomic: bytes marked in last cycle
+	live_at_gc  u64 // atomic: the sum of the slots' live_bytes when the last collection ended
 	next_gc     u64 // trigger next GC at this heap size
-	total_alloc u64 // atomic: total bytes allocated
-	alloc_at_gc u64 // atomic: total_alloc when the last collection ended
+	alloc_at_gc u64 // atomic: vgc_total_alloc() when the last collection ended
 	gc_cycle    u64 // number of completed GC cycles
 	// Heap memory (see vgc_heap_usage), all atomic: the size of all arenas, the part of them
 	// that spans were carved from, and the pages of free spans that went back to the OS.
@@ -307,8 +319,8 @@ fn vgc_register_thread() {
 	if idx == vgc_heap.ncaches {
 		vgc_heap.ncaches = idx + 1
 	}
+	vgc_reset_cache(idx)
 	unsafe {
-		vgc_heap.caches[idx] = VGC_Cache{}
 		vgc_heap.caches[idx].registered = true
 	}
 	C.vgc_mutex_unlock(&vgc_heap.cache_lock)
@@ -363,11 +375,54 @@ fn vgc_unregister_thread(idx int) {
 			}
 		}
 	}
-	unsafe {
-		vgc_heap.caches[idx] = VGC_Cache{}
-	}
+	vgc_reset_cache(idx)
 	C.vgc_mutex_unlock(&vgc_heap.cache_lock)
 	C.vgc_set_cache_idx(-1)
+}
+
+// vgc_reset_cache empties the cache in slot idx, for a thread that gets the slot or gives it up,
+// but keeps its counters, which other threads read at any time. The caller holds cache_lock.
+fn vgc_reset_cache(idx int) {
+	mut cache := unsafe { &vgc_heap.caches[idx] }
+	unsafe { C.memset(&cache.alloc[0], 0, sizeof(cache.alloc)) }
+	cache.tiny = 0
+	cache.tiny_offset = 0
+	cache.tiny_allocs = 0
+	cache.registered = false
+	cache.stack_base = 0
+	cache.stack_lo = 0
+	cache.stack_hi = 0
+	cache.thread_id = 0
+	cache.stopped = 0
+}
+
+// vgc_live_sum returns the sum of the live_bytes counters of all cache slots.
+fn vgc_live_sum() u64 {
+	mut sum := u64(0)
+	for i in 0 .. vgc_heap.ncaches {
+		sum += C.vgc_counter_load(unsafe { &vgc_heap.caches[i].live_bytes })
+	}
+	return sum
+}
+
+// vgc_heap_live returns the bytes of the heap objects that the last collection found live, plus
+// the ones allocated since then, minus the ones freed since then. It adds up the threads'
+// counters, so a thread that allocates touches no memory that other threads write.
+fn vgc_heap_live() u64 {
+	// The counters only wrap around: the difference is right, and it can be negative when
+	// more was freed than allocated since the collection.
+	since_gc := i64(vgc_live_sum() - C.vgc_atomic_load_u64(&vgc_heap.live_at_gc))
+	live := i64(C.vgc_atomic_load_u64(&vgc_heap.heap_marked)) + since_gc
+	return if live > 0 { u64(live) } else { u64(0) }
+}
+
+// vgc_total_alloc returns the bytes allocated since the program started.
+fn vgc_total_alloc() u64 {
+	mut sum := u64(0)
+	for i in 0 .. vgc_heap.ncaches {
+		sum += C.vgc_counter_load(unsafe { &vgc_heap.caches[i].alloc_bytes })
+	}
+	return sum
 }
 
 fn vgc_ensure_registered() {
@@ -385,14 +440,6 @@ fn vgc_enter() int {
 		vgc_safepoint()
 	}
 	return C.vgc_get_cache_idx()
-}
-
-fn vgc_refresh_stack_range() {
-	cache_idx := C.vgc_get_cache_idx()
-	if cache_idx < 0 {
-		return
-	}
-	vgc_refresh_stack_range_for_sp(cache_idx, usize(C.vgc_get_sp()))
 }
 
 fn vgc_refresh_stack_range_for_sp(cache_idx int, sp usize) {
@@ -615,7 +662,7 @@ fn vgc_new_arena(nbytes usize) &VGC_Arena {
 		vgc_heap.arenas_cap = new_cap
 	}
 	asize := if nbytes > vgc_arena_size { nbytes } else { usize(vgc_arena_size) }
-	mem := C.vgc_os_alloc(asize)
+	mem := C.vgc_os_alloc_heap(asize)
 	if mem == unsafe { nil } {
 		return unsafe { nil }
 	}
@@ -942,8 +989,8 @@ fn vgc_malloc_typed_opts(n usize, ptrmap u64, ptr_words u8, zero_fill bool) void
 	ptr := unsafe { vgc_span_alloc_obj(mut span) }
 	if ptr != unsafe { nil } {
 		// Track actual object bytes, not page bytes
-		C.vgc_atomic_add_u64(&vgc_heap.heap_live, u64(span.elem_size))
-		C.vgc_atomic_add_u64(&vgc_heap.total_alloc, u64(n))
+		cache := unsafe { &vgc_heap.caches[cache_idx] }
+		C.vgc_count_alloc(&cache.live_bytes, &cache.alloc_bytes, u64(span.elem_size), u64(n))
 		if zero_fill {
 			unsafe { C.memset(ptr, 0, n) }
 		}
@@ -958,7 +1005,7 @@ fn vgc_malloc_typed_opts(n usize, ptrmap u64, ptr_words u8, zero_fill bool) void
 // Amortized GC trigger check - avoids atomic loads on every allocation
 fn vgc_maybe_gc() {
 	if C.vgc_atomic_load_u32(&vgc_heap.gc_enabled) != 0 {
-		heap_live := C.vgc_atomic_load_u64(&vgc_heap.heap_live)
+		heap_live := vgc_heap_live()
 		next_gc := C.vgc_atomic_load_u64(&vgc_heap.next_gc)
 		if heap_live >= next_gc {
 			vgc_gc_start()
@@ -1010,7 +1057,8 @@ fn vgc_malloc_noscan_opts(n usize, zero_fill bool) voidptr {
 					vgc_heap.caches[cache_idx].tiny_offset = off + n
 					vgc_heap.caches[cache_idx].tiny_allocs++
 				}
-				C.vgc_atomic_add_u64(&vgc_heap.total_alloc, u64(n))
+				// A slot in the tiny block is no new object.
+				C.vgc_counter_add(&cache.alloc_bytes, u64(n))
 				return ptr
 			}
 		}
@@ -1032,8 +1080,8 @@ fn vgc_malloc_noscan_opts(n usize, zero_fill bool) voidptr {
 					vgc_heap.caches[cache_idx].tiny_offset = n
 					vgc_heap.caches[cache_idx].tiny_allocs++
 				}
-				C.vgc_atomic_add_u64(&vgc_heap.heap_live, u64(span.elem_size))
-				C.vgc_atomic_add_u64(&vgc_heap.total_alloc, u64(n))
+				C.vgc_count_alloc(&cache.live_bytes, &cache.alloc_bytes, u64(span.elem_size),
+					u64(n))
 				if span.alloc_count >= span.nelems {
 					vgc_maybe_gc()
 				}
@@ -1050,8 +1098,8 @@ fn vgc_malloc_noscan_opts(n usize, zero_fill bool) voidptr {
 
 	ptr := unsafe { vgc_span_alloc_obj(mut span) }
 	if ptr != unsafe { nil } {
-		C.vgc_atomic_add_u64(&vgc_heap.heap_live, u64(span.elem_size))
-		C.vgc_atomic_add_u64(&vgc_heap.total_alloc, u64(n))
+		cache := unsafe { &vgc_heap.caches[cache_idx] }
+		C.vgc_count_alloc(&cache.live_bytes, &cache.alloc_bytes, u64(span.elem_size), u64(n))
 		if zero_fill {
 			unsafe { C.memset(ptr, 0, n) }
 		}
@@ -1094,8 +1142,8 @@ fn vgc_alloc_large(n usize, noscan bool, zero_fill bool, cache_idx int) voidptr 
 	}
 	C.vgc_mutex_unlock(&vgc_heap.lock)
 
-	C.vgc_atomic_add_u64(&vgc_heap.heap_live, u64(n))
-	C.vgc_atomic_add_u64(&vgc_heap.total_alloc, u64(n))
+	cache := unsafe { &vgc_heap.caches[cache_idx] }
+	C.vgc_count_alloc(&cache.live_bytes, &cache.alloc_bytes, u64(n), u64(n))
 
 	ptr := unsafe { voidptr(span.base) }
 	if zero_fill {
@@ -1165,7 +1213,7 @@ fn vgc_free(ptr voidptr) {
 	// thread allocates from changes only under its central lock; leave the objects of other
 	// threads' spans to the collector.
 	if span.cached_by == cache_idx + 1 {
-		vgc_free_obj(span, ptr)
+		vgc_free_obj(span, ptr, cache_idx)
 		return
 	}
 	if span.cached_by != 0 {
@@ -1175,12 +1223,13 @@ fn vgc_free(ptr voidptr) {
 	central := unsafe { &vgc_heap.central[span_class] }
 	C.vgc_mutex_lock(&central.lock)
 	if span.cached_by == 0 {
-		vgc_free_obj(span, ptr)
+		vgc_free_obj(span, ptr, cache_idx)
 	}
 	C.vgc_mutex_unlock(&central.lock)
 }
 
-fn vgc_free_obj(span &VGC_Span, ptr voidptr) {
+// vgc_free_obj frees the object at ptr for the thread with cache index cache_idx.
+fn vgc_free_obj(span &VGC_Span, ptr voidptr, cache_idx int) {
 	obj_idx := u32((usize(ptr) - span.base) / usize(span.elem_size))
 	if obj_idx < span.nelems && span.alloc_bits != unsafe { nil } {
 		if C.vgc_bitmap_get(span.alloc_bits, obj_idx) != 0 {
@@ -1191,7 +1240,8 @@ fn vgc_free_obj(span &VGC_Span, ptr voidptr) {
 					(&VGC_Span(span)).free_index = obj_idx
 				}
 			}
-			C.vgc_atomic_sub_u64(&vgc_heap.heap_live, u64(span.elem_size))
+			// The counter wraps around: adding the two's complement subtracts.
+			C.vgc_counter_add(unsafe { &vgc_heap.caches[cache_idx].live_bytes }, u64(0) - u64(span.elem_size))
 		}
 	}
 }
@@ -1369,10 +1419,13 @@ fn vgc_safepoint_at(cache_idx int) {
 	C.vgc_call_with_registers_spilled(vgc_safepoint_wait, voidptr(isize(cache_idx)))
 }
 
-fn vgc_safepoint_wait(arg voidptr) {
+// vgc_safepoint_wait stops the thread with cache index arg while a collection runs. The
+// collector scans its stack from regs, where the thread's registers are saved, upwards: the
+// frames below are vgc's own.
+fn vgc_safepoint_wait(arg voidptr, regs voidptr) {
 	cache_idx := int(isize(arg))
 	// Update the live stack range for root scanning.
-	vgc_refresh_stack_range_for_sp(cache_idx, usize(C.vgc_get_sp()))
+	vgc_refresh_stack_range_for_sp(cache_idx, usize(regs))
 	// Mark ourselves as stopped
 	C.vgc_atomic_store_u32(&vgc_heap.caches[cache_idx].stopped, 1)
 	C.vgc_atomic_add_u32(&vgc_heap.gc_stopped_count, 1)
