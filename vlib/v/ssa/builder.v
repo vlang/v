@@ -13218,10 +13218,7 @@ fn (mut b Builder) load_smartcast_sum_selector(sum_addr ValueID, base_id flat.No
 }
 
 fn (mut b Builder) smartcast_sum_selector_addr(sum_addr ValueID, base_id flat.NodeId, field_name string) ?ValueID {
-	sum_type := b.deref_type(sum_addr)
-	if !b.is_sum_type_id(sum_type) {
-		return none
-	}
+	sum_type := b.sum_storage_type(sum_addr) or { return none }
 	base_type_name_source_id := b.sum_guard_variants[sum_addr] or { b.checked_expr_type_name(base_id) }
 
 	if base_type_name_source_id == 0 {
@@ -13249,6 +13246,18 @@ fn (mut b Builder) smartcast_sum_selector_addr(sum_addr ValueID, base_id flat.No
 	}
 	payload_ptr := b.get_field_ptr(sum_addr, sum_field_name(variant))
 	return b.get_field_ptr(payload_ptr, field_name)
+}
+
+// sum_storage_type follows reference types without changing the binding used by guard facts.
+fn (b &Builder) sum_storage_type(addr ValueID) ?TypeID {
+	mut typ := b.deref_type(addr)
+	for b.is_pointer_type(typ) {
+		typ = b.m.type_store.types[typ].elem_type
+	}
+	if b.is_sum_type_id(typ) {
+		return typ
+	}
+	return none
 }
 
 fn (b &Builder) sum_name_for_type_id(typ_id TypeID) ?u32 {
@@ -14047,12 +14056,17 @@ fn (mut b Builder) get_field_ptr(base_addr ValueID, field_name string) ValueID {
 		owner = b.deref_type(address)
 	}
 	if owner > 0 && owner < b.m.type_store.types.len {
-		if field_name !in ['typ', '_pointer_variant_is_owned', '_payload'] && b.is_sum_type_id(owner) {
+		storage_field := if field_name == '__v_sum_type_tag__' && b.is_sum_type_id(owner) {
+			'typ'
+		} else {
+			field_name
+		}
+		if storage_field !in ['typ', '_pointer_variant_is_owned', '_payload'] && b.is_sum_type_id(owner) {
 			payload := b.get_field_ptr(address, '_payload')
-			return b.get_field_ptr(payload, field_name)
+			return b.get_field_ptr(payload, storage_field)
 		}
 		typ := b.m.type_store.types[owner]
-		index := typ.field_names.index(field_name)
+		index := typ.field_names.index(storage_field)
 		if index >= 0 && index < typ.fields.len {
 			offset := b.m.struct_field_offset(owner, index)
 			constant := b.m.get_or_add_const(b.i64_type, offset.str())

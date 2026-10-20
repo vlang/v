@@ -200,9 +200,16 @@ evaluated first. Specialized mutable method receivers keep their original storag
 callbacks are selected before a later fallible argument can replace them.
 Declared function references remain inline so their expected callback adapter type is preserved.
 
-Pointer sum variants preserve the referenced object's identity. Returning a wrapper of a local
-promotes that local and transfers its cleanup to the returned sum. Storing an inner local's pointer
-in an outer sum similarly transfers cleanup at the store, including through named sum wrappers.
+Pointer sum variants preserve the referenced object's identity. A smartcast can mutate the
+referenced object, but it does not supply a pointer variable for a mutable pointer parameter.
+This applies to nominal pointer aliases as well as explicit reference types. To replace an owned
+pointer variant, assign the enclosing sum so its previous payload is released and the replacement
+retains its own cleanup policy. Explicit unsafe access to the pointer slot remains a low-level
+operation; the caller must preserve the enclosing sum's ownership metadata.
+
+Returning a wrapper of a local promotes that local and transfers its cleanup to the returned sum.
+Storing an inner local's pointer in an outer sum similarly transfers cleanup at the store, including
+through named sum wrappers.
 An outer store with an ambiguous local pointer source is rejected; store each pointer alternative
 separately so the checker can identify which allocation supplies its cleanup obligation.
 This also applies to outer stores whose local source is hidden behind a borrowed-return call.

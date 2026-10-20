@@ -386,7 +386,11 @@ fn (mut tc TypeChecker) compute_pass2_fn_prep(node flat.Node) Pass2FnPrep {
 		} else {
 			tc.parse_resolution_type(param_type_source_id)
 		}
-		ptypes << parsed_param_type
+		ptypes << if child.is_mut {
+			mut_param_semantic_type(parsed_param_type)
+		} else {
+			parsed_param_type
+		}
 		param_type_ids << param_type_source_id
 		shared_params << param_source_type_is_shared(child.typ)
 	}

@@ -58,7 +58,11 @@ pub fn wrap(value PairPointer) Owner { return Owner(value) }
 pub fn pointer(value Owner) PairPointer { return value as PairPointer }
 pub fn replace(mut value PairPointer, other PairPointer) { value = other }
 pub fn rebind(mut value Owner, other PairPointer) {
- if mut value is PairPointer { replace(mut value, other) } else { assert false }
+ if mut value is PairPointer {
+  // This fixture stores only borrowed pointers, so it can expose the slot explicitly.
+  slot := unsafe { &value }
+  replace(mut *slot, other)
+ } else { assert false }
 }
 '
 	os.write_file(os.join_path(dir, 'model', 'model.v'), model)!
@@ -170,7 +174,7 @@ fn test_owned_aligned_fixed_array_sum_drops_elements_once() {
 	assert build.exit_code == 0, build.output
 	source_dir := os.join_path(@VMODROOT, 'vlib', 'v', 'gen', 'c', 'testdata', 'sumtype_fixed_array_pointer')
 	for prealloc in [false, true] {
-		for source_name in ['aligned_owner.c.v', 'borrowed_slot_rebind.c.v'] {
+		for source_name in ['aligned_owner.c.v', 'borrowed_slot_rebind.c.v', 'owning_sum_replace.c.v'] {
 			modes := if source_name == 'aligned_owner.c.v' {
 				['autofree']
 			} else {
@@ -184,6 +188,15 @@ fn test_owned_aligned_fixed_array_sum_drops_elements_once() {
 				result := os.exec([compiler, ...args])
 				assert result.exit_code == 0, '${source_name}, ${mode}, prealloc=${prealloc}: ${result.output}'
 			}
+		}
+		for mode in ['autofree', 'ownership'] {
+			mut args := ['-new-compiler', '-nocache', '-no-closures', '-gc', 'none', '-${mode}']
+			if prealloc { args << '-prealloc' }
+			args << ['-check', os.join_path(source_dir, 'owning_slot_rebind_err.c.v')]
+			rejected := os.exec([compiler, ...args])
+			assert rejected.exit_code != 0, 'implicit owning slot rebind was accepted: ${mode}, prealloc=${prealloc}'
+			assert rejected.output.contains('cannot use `SlotOwner`'), rejected.output
+			assert rejected.output.contains('in argument 1 to `replace`'), rejected.output
 		}
 	}
 }

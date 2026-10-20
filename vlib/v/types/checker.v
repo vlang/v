@@ -4807,7 +4807,11 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 						is_variadic = true
 					}
 					parsed_param_type := tc.parse_type(child.typ)
-					ptypes << parsed_param_type
+					ptypes << if child.is_mut {
+						mut_param_semantic_type(*parsed_param_type)
+					} else {
+						*parsed_param_type
+					}
 				}
 				module_key := c_fn_module_signature_key(tc.cur_module, c_name)
 				tc.c_fn_module_ret_types[module_key] = ret_type
@@ -4878,7 +4882,11 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 							} else {
 								*tc.parse_type(child.typ)
 							}
-							ptypes << parsed_param_type
+							ptypes << if child.is_mut {
+								mut_param_semantic_type(parsed_param_type)
+							} else {
+								parsed_param_type
+							}
 							param_texts << child.typ
 							shared_params << param_source_type_is_shared(child.typ)
 							param_mutability << child.is_mut

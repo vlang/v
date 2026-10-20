@@ -29,7 +29,9 @@ fn replace(mut value PairPointer, other PairPointer) { value = other }
 
 fn rebind(mut value SlotOwner, other PairPointer) {
 	if mut value is PairPointer {
-		replace(mut value, other)
+		// Both pointers are borrowed; this deliberately exercises the unsafe slot ABI.
+		slot := unsafe { &value }
+		replace(mut *slot, other)
 	} else {
 		assert false
 	}

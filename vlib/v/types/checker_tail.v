@@ -13884,6 +13884,16 @@ fn (tc &TypeChecker) call_param_requires_mut_pointer_slot(info CallInfo, param_i
 	return param.is_mut && param.op == .amp && flat.source_type_shape(param.typ).has(.pointer)
 }
 
+// A nominal pointer alias already carries its pointer in the declared type. Its
+// mutable signature adds a caller slot, just like an explicit `mut value &T`.
+// Use canonical metadata here so imported aliases retain their declaration context.
+fn mut_pointer_alias_slot_type(typ &Type) bool {
+	if typ !is Pointer {
+		return false
+	}
+	return typ.base_type is Alias && unalias_type(typ.base_type) is Pointer
+}
+
 fn (tc &TypeChecker) explicit_generic_source_param_is_mut(call flat.Node, info CallInfo, param_idx int) bool {
 	mut name := ''
 	if call.children_count > 0 {
@@ -16410,6 +16420,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			}
 		}
 		requires_mut_pointer_slot := tc.call_param_requires_mut_pointer_slot(info, param_idx)
+			|| (param_is_mut && mut_pointer_alias_slot_type(expected))
 		if param_is_mut && !mut_arg_node.is_mut && !implicit_receiver_arg
 			&& !tc.disable_explicit_mutability && requires_mut_pointer_slot
 			&& tc.mut_pointer_slot_arg_needs_ref(arg_id, expected) {

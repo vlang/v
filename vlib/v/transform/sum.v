@@ -1735,7 +1735,8 @@ fn (mut t Transformer) checked_sum_variant(source flat.NodeId, source_type u32, 
 			t.make_string_literal(t.sum_as_display_type(variants[0])), flat.source_type_string)]
 		for variant in variants {
 			is_variant := t.make_infix(.eq, t.make_sum_tag_selector(source, op), t.make_int_literal(t.sum_type_index(sum_name, variant)))
-			mismatch_stmts << t.make_if(is_variant, t.make_block([
+			// These checks introduce no source scope or ownership cleanup entry.
+			mismatch_stmts << t.make_if(is_variant, t.make_block_skip_scope_drops([
 				t.make_assign(t.make_ident(actual_name), t.make_string_literal(t.sum_as_display_type(variant))),
 			]), t.make_empty())
 		}
@@ -1752,7 +1753,7 @@ fn (mut t Transformer) checked_sum_variant(source flat.NodeId, source_type u32, 
 				t.make_infix(.logical_and, mismatch, not_variant)
 			}
 		}
-		t.pending_stmts << t.make_if(mismatch, t.make_block(mismatch_stmts), t.make_empty())
+		t.pending_stmts << t.make_if(mismatch, t.make_block_skip_scope_drops(mismatch_stmts), t.make_empty())
 	}
 	return t.make_selector_op(source, field, qv, op)
 }
