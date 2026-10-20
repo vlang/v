@@ -157,7 +157,7 @@ built from [`vlang/docker`](https://github.com/vlang/docker):
 docker run --rm -it -v "$PWD":/src -w /src thevlang/vlang:latest
 ```
 
-The published variants are:
+The release workflow targets these variants; each tag is available after successful publication:
 
 | Tag | Base | Notes |
 | --- | --- | --- |
@@ -167,7 +167,7 @@ The published variants are:
 | `:static-<version>` | `scratch` | a static V compiler; base for compiled static programs |
 | `:<dist>-dev` | the `-build` image | a full V checkout; excludes the `scratch` static variant |
 
-Both `linux/amd64` and `linux/arm64` are published. Podman reads the same
+Release builds target both `linux/amd64` and `linux/arm64`. Podman reads the same
 Dockerfiles and needs no daemon, so `podman build -f ... .` works too;
 In rootless mode, Podman maps the container's root user to your user, so files written
 into a mounted source tree stay owned by you.

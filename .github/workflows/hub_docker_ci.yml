@@ -9,9 +9,9 @@ name: hub_docker_ci
 ### vlang/docker/.github/workflows/nightly_builds.yml, and only carry floating
 ### tags (:latest, :alpine, :debian, :nix) because they track V master.
 ##
-### The Dockerfiles come from vlang/docker at its default branch: there is no
-### release tagging in that repository, so a release is built with the
-### Dockerfiles as they stand.
+### The Dockerfiles come from a reviewed, pinned vlang/docker snapshot.
+### Preparation checks its recipe hashes, resolves the developer templates,
+### and includes the Nix toolchain as an internal stage (no nix-build tag needed).
 ###
 ### NB: avoid caching things here, since the action is rare (once per release),
 ### and the potential benefits are less than the complexity of debugging
@@ -53,10 +53,24 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v7
+      - name: Check out release preparation
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Check out pinned image recipes
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
           repository: 'vlang/docker'
+          ref: 4cfc69eb8ea27b1d1e3abf13dccc6b3ae0fd5046
+          path: docker-release-source
+
+      - name: Prepare all release recipes
+        run: |
+          python3 .github/scripts/prepare_docker_release.py \
+            --source docker-release-source \
+            --output docker-release-source/.release
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
@@ -112,14 +126,14 @@ jobs:
         name: Build and deploy v image
         with:
           builder: gh-builder
-          context: .
+          context: docker-release-source
           platforms: ${{ env.PLATFORMS }}
           # The tag being released, so the image contains exactly that version.
           build-args: |
             USER=thevlang
             V_REV=${{ steps.tag.outputs.tag }}
           tags: ${{ steps.gen_tags.outputs.TAGS }}
-          file: ${{ matrix.os == 'static' && 'docker/vlang/Dockerfile.static' || format('docker/vlang/Dockerfile.{0}', matrix.os) }}
+          file: docker-release-source/.release/Dockerfile.${{ matrix.os }}
           labels: |
             org.opencontainers.image.title=thevlang/vlang:${{ matrix.os }}-${{ steps.tag.outputs.tag }}
             org.opencontainers.image.version=${{ steps.tag.outputs.tag }}
@@ -134,13 +148,13 @@ jobs:
         if: matrix.os != 'static'
         with:
           builder: gh-builder
-          context: .
+          context: docker-release-source
           platforms: ${{ env.PLATFORMS }}
           build-args: |
             USER=thevlang
             V_REV=${{ steps.tag.outputs.tag }}
           tags: thevlang/vlang:${{ matrix.os }}-dev
-          file: docker/vlang/Dockerfile.${{ matrix.os }}.dev-full
+          file: docker-release-source/.release/Dockerfile.${{ matrix.os }}.dev-full
           labels: |
             org.opencontainers.image.title=thevlang/vlang:${{ matrix.os }}-dev
             org.opencontainers.image.version=${{ steps.tag.outputs.tag }}
