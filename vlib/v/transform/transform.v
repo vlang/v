@@ -27658,6 +27658,14 @@ fn (mut t Transformer) transform_typeof_expr_mode(id flat.NodeId, node flat.Node
 		} else {
 			t.resolve_variant(sc.sum_type_name, sc.variant_name)
 		})
+		// A `mut a ?T` parameter smartcast to its payload is the caller's payload (writes
+		// through it reach the caller), `&T`, as in V 0.5.2.
+		if expr.kind == .ident && sc.sum_type_name_text() == option_unwrap_marker
+			&& t.mut_param_values[expr.value] && !flat.source_type_shape(typ).has(.pointer) {
+			if _ := t.mut_optional_view_param(expr.value) {
+				typ = flat.source_type_id('&${flat.source_type_name(typ)}')
+			}
+		}
 	}
 	if expr.kind == .ident {
 		if typ == 0 {
@@ -27676,9 +27684,7 @@ fn (mut t Transformer) transform_typeof_expr_mode(id flat.NodeId, node flat.Node
 				}
 			}
 			if t.mut_param_values[expr.value] {
-				if !flat.source_type_shape(typ).has(.pointer) {
-					typ = flat.source_type_id('&${flat.source_type_name(typ)}')
-				}
+				typ = mut_param_typeof_type(typ, t.is_mut_option_param(expr.value, typ))
 			}
 		}
 	}
@@ -27784,6 +27790,33 @@ fn (mut t Transformer) transform_typeof_expr_mode(id flat.NodeId, node flat.Node
 		}
 	}
 	return t.make_string_literal(typeof_display_type_text(typeof_fn_type_display(type_text_without_main_locks_bytes(flat.source_type_name(typ)))))
+}
+
+// mut_param_typeof_type returns what `typeof(a)` names for a `mut a` parameter whose
+// binding has type `typ`: a reference to the caller's value, `&T`. A `mut a ?T` parameter
+// (`is_option`) holds the reference in its payload, `?&T`, as in V 0.5.2 (it is passed as
+// `&?&T`, see `types.mut_param_semantic_type`).
+fn mut_param_typeof_type(typ u32, is_option bool) u32 {
+	type_name := flat.source_type_name(typ)
+	if is_option {
+		// A lifted fn literal keeps the `&?T` slot of its parameter.
+		option := type_name.trim_string_left('&')
+		return flat.source_type_id('?&${option[1..]}')
+	}
+	if !flat.source_type_shape(typ).has(.pointer) {
+		return flat.source_type_id('&${type_name}')
+	}
+	return typ
+}
+
+// is_mut_option_param reports whether the `mut` parameter `name`, whose binding has type
+// `typ`, is declared as an option: `mut a ?T`, which its body reads as `?T`
+// (mut_optional_view_param), or `mut a ?&T`.
+fn (t &Transformer) is_mut_option_param(name string, typ u32) bool {
+	if _ := t.mut_optional_view_param(name) {
+		return true
+	}
+	return flat.source_type_name(typ).trim_string_left('&').starts_with('?&')
 }
 
 fn (t &Transformer) explicit_generic_call_return_type_for_typeof(id flat.NodeId, node flat.Node) ?u32 {
