@@ -1326,7 +1326,17 @@ fn fastc_initializer_type_start(tokens []FastcExpressionToken) int {
 
 fn (g &Parser) map_initializer_type(tokens []FastcExpressionToken) ?u32 {
 	map_type := g.type_from_expression_tokens(tokens) or { return none }
-	return if flat.source_type_name(map_type).starts_with('Map_') { map_type } else { none }
+	if flat.source_type_name(map_type).starts_with('Map_') {
+		return map_type
+	}
+	// `Counts{}` for `type Counts = map[string]int` makes an empty map too. It keeps the
+	// alias as its type, so methods declared on the alias still apply.
+	if aliased := g.map_type_of(map_type) {
+		if !fastc_is_pointer_type(aliased) {
+			return map_type
+		}
+	}
+	return none
 }
 
 fn (g &Parser) type_from_expression_tokens(tokens []FastcExpressionToken) ?u32 {
