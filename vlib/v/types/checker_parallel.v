@@ -3899,6 +3899,11 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 		}
 	}
 	operator := node.value.all_after_last('.')
+	if node.value.contains('.') && operator in ['+', '-', '*', '**', '/', '%', '<', '==']
+		&& !tc.operator_method_receiver_can_overload(node) {
+		tc.record_error_at(.call_arg_mismatch, 'operator methods are only allowed for struct and type alias', id, tc.fn_declaration_diagnostic_pos(node))
+		return
+	}
 	if !node.value.contains('.')
 		|| operator !in ['+', '-', '*', '/', '%', '==', '!=', '<', '<=', '>', '>=', '<<', '>>',
 			'&', '|', '^'] {
@@ -3956,6 +3961,24 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 			tc.record_error_at(.return_mismatch, 'operator `${operator}` methods on primitive aliases should return `${receiver_type.name()}`', id, tc.fn_return_type_diagnostic_pos(node))
 		}
 	}
+}
+
+// operator_method_receiver_can_overload reports whether the operator method
+// `node` has a receiver whose operators can be overloaded. Nothing lowers an
+// operator method of an enum or an interface: `a + b` and `a == b` kept the
+// builtin operator (integer arithmetic for an enum, invalid C or the builtin
+// equality for an interface). An alias of an enum can still overload
+// operators, as in V 0.5.2. Sum types are not rejected: their `==` is lowered.
+fn (tc &TypeChecker) operator_method_receiver_can_overload(node flat.Node) bool {
+	if node.children_count == 0 {
+		return true
+	}
+	receiver := tc.a.child_node(&node, 0)
+	if receiver.kind != .param || receiver.op != .dot {
+		return true
+	}
+	receiver_type := unwrap_all_pointers(tc.parse_type(receiver.typ))
+	return receiver_type !is Enum && receiver_type !is Interface
 }
 
 fn (tc &TypeChecker) receiver_collection_payload_is_local(typ Type) bool {
