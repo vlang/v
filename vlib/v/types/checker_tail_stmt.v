@@ -10840,7 +10840,9 @@ fn is_container_type(typ Type) bool {
 // as `mut` or `shared`, stores its elements differently from the container behind the
 // parameter type `expected`. The callee works on the caller's container, so it cannot
 // be converted element by element like a value argument: a `[]Item` is not a
-// `mut []Named` (or `mut ?[]Named`, or `shared []Named`).
+// `mut []Named` (or `mut ?[]Named`, or `shared []Named`). The same holds for the
+// payload of an option: a `?[2]int` is not a `mut ?[]int`, and a `?Item` is not a
+// `mut ?Named`.
 fn (tc &TypeChecker) mut_arg_container_layouts_differ(actual Type, expected Type) bool {
 	mut clean_actual := unalias_type(actual)
 	if clean_actual is Pointer {
@@ -10849,6 +10851,15 @@ fn (tc &TypeChecker) mut_arg_container_layouts_differ(actual Type, expected Type
 	mut clean_expected := unalias_type(expected)
 	if clean_expected is Pointer {
 		clean_expected = unalias_type(clean_expected.base_type)
+	}
+	if clean_expected is OptionType && clean_actual is OptionType {
+		actual_payload := unalias_type(clean_actual.base_type)
+		mut expected_payload := unalias_type(clean_expected.base_type)
+		// A `mut ?T` parameter is a `?&T` slot.
+		if expected_payload is Pointer && actual_payload !is Pointer {
+			expected_payload = unalias_type(expected_payload.base_type)
+		}
+		return tc.container_elem_layouts_differ(actual_payload, expected_payload)
 	}
 	if clean_expected is OptionType && clean_actual !is OptionType {
 		clean_expected = unalias_type(clean_expected.base_type)

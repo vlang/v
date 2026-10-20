@@ -3475,7 +3475,11 @@ fn (tc &TypeChecker) container_value_layouts_differ(actual Type, expected Type) 
 		break
 	}
 	if clean_actual is Pointer && clean_expected is Pointer {
-		// A referenced array or map is shared, never converted.
+		// A referenced array, map or option (a `mut` argument) is shared, never converted.
+		if unalias_type(clean_actual.base_type) is OptionType
+			&& unalias_type(clean_expected.base_type) is OptionType {
+			return tc.mut_arg_container_layouts_differ(clean_actual, clean_expected)
+		}
 		return is_container_type(clean_actual.base_type)
 			&& is_container_type(clean_expected.base_type)
 			&& tc.in_place_container_layouts_differ(clean_actual.base_type, clean_expected.base_type)
