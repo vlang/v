@@ -644,7 +644,10 @@ fn (mut tc TypeChecker) ownership_sum_borrow_flow_after(id flat.NodeId, ancestor
 		return flow
 	}
 	if node.kind in [.for_stmt, .for_in_stmt] {
-		mut entry := initial.clone()
+		mut entry := map[string]SumBorrowAlias{}
+		for name, alias in initial {
+			entry[name] = SumBorrowAlias{ decl: alias.decl, sources: alias.sources.clone() }
+		}
 		start := if node.kind == .for_in_stmt { node.value.int() } else { 3 }
 		if node.kind == .for_in_stmt {
 			for i in 0 .. int_min(2, int(node.children_count)) {
@@ -656,7 +659,9 @@ fn (mut tc TypeChecker) ownership_sum_borrow_flow_after(id flat.NodeId, ancestor
 		} else if node.children_count > 0 {
 			init_flow := tc.ownership_sum_borrow_flow_after(tc.a.child(node, 0), visited, entry, '')
 			if !init_flow.falls_through { return sum_borrow_scope_flow(initial, init_flow) }
-			entry = init_flow.aliases.clone()
+			for name, alias in init_flow.aliases {
+				entry[name] = SumBorrowAlias{ decl: alias.decl, sources: alias.sources.clone() }
+			}
 		}
 		mut iteration := entry.clone()
 		for {
