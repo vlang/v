@@ -23109,6 +23109,9 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 		// value branch, spill a non-stable (side-effecting) other operand to a temp first
 		// so its evaluation still precedes the branch's prelude; stable operands
 		// (idents/literals) are left untouched for the re-dispatch to transform once.
+		// So are pure constants such as `-1.2`: the prelude cannot change them, and a
+		// temp would fix an untyped literal's type before the re-dispatch converts it
+		// to the other operand's type (`res_f32()! == -1.2` compared as f64).
 		pending_start := t.pending_stmts.len
 		new_lhs := if lhs_is_value_branch {
 			t.materialize_value_branch_operand(infix_lhs_id)
@@ -23131,7 +23134,8 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 		}
 		new_rhs := if rhs_is_value_branch {
 			t.materialize_value_branch_operand(infix_rhs_id)
-		} else if lhs_is_value_branch && !t.is_stable_expr_for_reuse(infix_rhs_id) {
+		} else if lhs_is_value_branch && !t.is_stable_expr_for_reuse(infix_rhs_id)
+			&& !t.is_pure_constant_expr(infix_rhs_id) {
 			if node.op in [.eq, .ne]
 				&& t.translated_fixed_array_pointer_lvalue(infix_rhs_id, infix_lhs_id) {
 				t.stabilize_original_lvalue_receiver(infix_rhs_id) or {

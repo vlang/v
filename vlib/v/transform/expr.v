@@ -4715,7 +4715,7 @@ fn (t &Transformer) is_stable_expr_for_reuse(id flat.NodeId) bool {
 
 // is_pure_constant_expr reports whether `id`'s value cannot be changed by a later mutation of
 // any variable — a literal, declared function reference, enum value, `sizeof`/`typeof`, or a
-// cast/paren/struct made only of such. Unlike is_stable_expr_for_reuse it returns false for
+// cast/paren/struct/unary operator made only of such. Unlike is_stable_expr_for_reuse it returns false for
 // storage reads (idents, selectors, indexes): those are cheap to re-evaluate, but a branch prelude
 // can mutate their storage, so reading them after the prelude yields a different value. Ordering
 // guards use this to decide whether a preceding operand must be snapshotted to preserve its
@@ -4735,6 +4735,11 @@ fn (t &Transformer) is_pure_constant_expr(id flat.NodeId) bool {
 		}
 		.cast_expr, .paren {
 			node.children_count == 0 || t.is_pure_constant_expr(t.a.children[node.children_start])
+		}
+		.prefix {
+			// A signed or negated constant, such as `-1.2` or `~0`.
+			node.op in [.minus, .plus, .bit_not, .not] && node.children_count > 0
+				&& t.is_pure_constant_expr(t.a.children[node.children_start])
 		}
 		.struct_init, .field_init {
 			mut pure := true
