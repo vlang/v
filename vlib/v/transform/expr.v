@@ -4633,9 +4633,11 @@ fn (t &Transformer) snapshot_declared_type(source_id flat.NodeId, typ u32) u32 {
 			candidates << t.tc.type_name(checked)
 		}
 	}
+	// compared at the END of each alias chain: one level of `type Handle = BaseHandle`, `type
+	// BaseHandle = &Foo` is `BaseHandle`, not the `&Foo` the snapshot is stored as
+	storage := t.normalize_type_alias_chain(typ)
 	for declared in candidates {
-		if declared != 0 && declared != typ
-			&& t.normalize_type_alias(declared) == t.normalize_type_alias(typ) {
+		if declared != 0 && declared != typ && t.normalize_type_alias_chain(declared) == storage {
 			return declared
 		}
 	}

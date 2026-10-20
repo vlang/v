@@ -85,3 +85,42 @@ fn test_field_and_call_receivers() {
 	}) == 9
 	assert get_handle(7).put(if k == .long { 'abcd' } else { 'a' }) == 11
 }
+
+// The same through an alias of the pointer alias: the method is declared on the outer alias, and
+// both sides of the comparison must be followed to the end of the chain.
+type BaseHandle = &Foo
+
+type ChainHandle = BaseHandle
+
+fn (h ChainHandle) put(s string) int {
+	return h.n + s.len + 100
+}
+
+fn get_chain_handle(n int) ChainHandle {
+	return ChainHandle(BaseHandle(&Foo{
+		n: n
+	}))
+}
+
+fn test_chained_alias_receivers() {
+	h := ChainHandle(BaseHandle(&Foo{
+		n: 1
+	}))
+	k := Kind.long
+	assert h.put(if k == .long { 'ab' } else { 'a' }) == 103
+	assert h.put(match k {
+		.short { 'a' }
+		.long { 'abc' }
+	}) == 104
+	hs := [h]
+	assert hs[0].put(match k {
+		.short { 'a' }
+		.long { 'abcd' }
+	}) == 105
+	assert hs[0].put(if k == .long { 'a' } else { 'ab' }) == 102
+	assert get_chain_handle(2).put(if k == .long { 'a' } else { 'ab' }) == 103
+	assert get_chain_handle(3).put(match k {
+		.short { 'a' }
+		.long { 'ab' }
+	}) == 105
+}
