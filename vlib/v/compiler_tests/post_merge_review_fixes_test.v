@@ -3773,7 +3773,7 @@ fn make_alias() &Bare {
 	assert param_body.contains('v3_aligned_memdup(&__esc_1,')
 	assert param_body.count('v3_aligned_memdup(') == 1
 	assert param_body.contains('sizeof(main__Bare)')
-	assert param_body.contains('__alignof__(*(main__Bare*)(NULL))')
+	assert param_body.contains('__alignof__(main__Bare)')
 	make_direct_body := c_fn_body(c_source, 'main__Bare* make_direct(void) {')
 	assert make_direct_body.contains('v3_aligned_memdup(&(main__Bare){.x = 5}, sizeof(main__Bare), __alignof__(main__Bare))'), make_direct_body
 	assert !c_source.contains('__alignof__(Bare)')
