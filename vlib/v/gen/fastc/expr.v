@@ -1269,7 +1269,7 @@ fn (mut g Parser) lower_or_expression(mut result strings.Builder, mut expression
 			// The or-block ends in a fallback VALUE: run the leading statements and
 			// use the value on failure, the unwrapped option value on success.
 			or_result := g.temporary_name('or_result')
-			'({ ${option_container_type} ${temporary} = (${option_expression}); ${flat.source_type_name(complex_value_type)} ${or_result}; if (${temporary}.state) { ${error_binding} ${block_lines.join(' ')} ${or_result} = (${fallback_value}); } else { ${or_result} = ${complex_success}; } ${or_result}; })'
+			'({ ${option_container_type} ${temporary} = (${option_expression}); ${fastc_output_c_type(flat.source_type_name(complex_value_type))} ${or_result}; if (${temporary}.state) { ${error_binding} ${block_lines.join(' ')} ${or_result} = (${fallback_value}); } else { ${or_result} = ${complex_success}; } ${or_result}; })'
 		} else {
 			// The or-block only runs statements (it diverges): run them on failure,
 			// then use the unwrapped value.

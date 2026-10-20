@@ -3873,7 +3873,7 @@ fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTy
 			mut parameters := ['${interface_type} value']
 			mut arguments := []string{}
 			for i in 1 .. interface_signature.parameter_types.ids.len {
-				parameters << '${interface_signature.parameter_types_text()[i]} arg${i}'
+				parameters << '${fastc_output_c_type(interface_signature.parameter_types_text()[i])} arg${i}'
 				arguments << 'arg${i}'
 			}
 			c_name := if compact_name := function_c_names[interface_method_key] {
@@ -3881,7 +3881,9 @@ fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTy
 			} else {
 				fastc_method_c_name(interface_signature.module_name, interface_type, method_name)
 			}
-			out.writeln('${interface_signature.return_type_text()} ${c_name}(${parameters.join(', ')}) {')
+			// Spelled like the methods it dispatches to: a V `int` is 64 bits wide.
+			return_c_type := fastc_output_c_type(interface_signature.return_type_text())
+			out.writeln('${return_c_type} ${c_name}(${parameters.join(', ')}) {')
 			out.writeln('\tswitch (value._typ) {')
 			candidate_count := if selfhost && method_name !in used_function_names {
 				0
@@ -3967,10 +3969,10 @@ fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTy
 				// the interface. Stop loudly rather than return a zero value.
 				out.writeln('\t\tbuiltin__panic(_S("fastc: no implementation of `${interface_key}.${method_name}` for this value"));')
 			}
-			out.writeln('\t\t${if interface_signature.return_type_text() == 'void' {
+			out.writeln('\t\t${if return_c_type == 'void' {
 				'return;'
 			} else {
-				'return (' + interface_signature.return_type_text() + '){0};'
+				'return (' + return_c_type + '){0};'
 			}}')
 			out.writeln('\t}')
 			out.writeln('}')

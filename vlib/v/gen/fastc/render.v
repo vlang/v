@@ -3944,7 +3944,7 @@ fn (g &Parser) narrowed_subject_value_type(tokens []FastcExpressionToken) ?u32 {
 // value; any other variant is boxed behind it.
 fn fastc_narrowed_variant_value(source string, value_type u32) string {
 	if fastc_is_pointer_type(value_type) {
-		return '((${flat.source_type_name(value_type)})(${source}))'
+		return '((${fastc_output_c_type(flat.source_type_name(value_type))})(${source}))'
 	}
 	return '*(${source})'
 }
