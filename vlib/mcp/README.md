@@ -216,7 +216,7 @@ mut server := mcp.new_server(
 			// the read loop must keep reading to receive the answer
 			spawn fn (ctx mcp.Context) {
 				roots := ctx.list_roots(5 * time.second) or { return }
-				println(roots.roots.map(it.uri))
+				eprintln(roots.roots.map(it.uri))
 			}(ctx)
 		}
 	}
