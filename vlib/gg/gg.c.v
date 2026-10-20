@@ -398,6 +398,11 @@ fn gg_frame_fn(mut ctx Context) {
 			ctx.stop_recording_if_needed()
 			return
 		}
+	} else {
+		// A refresh is pending. The frame thread alone writes ticks, so
+		// refresh_ui calls that arrive from other threads never race this
+		// counter.
+		ctx.ticks = 0
 	}
 	if ctx.config.update_fn != unsafe { nil } {
 		dt := ctx.update_timer.elapsed().seconds()
@@ -760,10 +765,11 @@ pub fn (mut ctx Context) resize(width int, height int) {
 	gg_resize_window(width, height)
 }
 
-// refresh_ui requests a complete re-draw of the window contents.
+// refresh_ui requests a complete re-draw of the window contents. It only
+// flips the flag the frame thread reads, so it is safe to call from any
+// thread; the frame thread resets the trailing-frame counter itself.
 pub fn (mut ctx Context) refresh_ui() {
 	ctx.needs_refresh = true
-	ctx.ticks = 0
 }
 
 // begin prepares the context for drawing.
