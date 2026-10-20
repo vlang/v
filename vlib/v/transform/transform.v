@@ -19895,13 +19895,19 @@ fn (mut t Transformer) try_expand_multi_return_assign(node flat.Node) ?[]flat.No
 				t.append_owned_lvalue_drop_before_assign(lvalue, flat.source_type_id(field_type_name), mut result)
 			}
 			mut value := field
+			target_type := t.multi_assign_slot_target_type(lhs_id, lhs, field_type_name)
 			// A `[]Item` slot assigned to a `[]Named` (or `[]Shape`) target is converted
 			// element by element, as a single assignment or a forwarded return does.
-			if converted := t.transform_array_value_for_dynamic_target(field, t.multi_assign_slot_target_type(lhs_id,
-				lhs, field_type_name))
-			{
+			if converted := t.transform_array_value_for_dynamic_target(field, target_type) {
 				t.drain_pending(mut result)
 				value = converted
+			} else if forwarded_return_unalias_type(field_type) is types.ArrayFixed {
+				// A `[2]int` slot assigned to an `[]int` target is copied into a new
+				// array, as a single assignment does.
+				if converted := t.transform_array_value_for_type(field, target_type) {
+					t.drain_pending(mut result)
+					value = converted
+				}
 			}
 			result << t.make_assign_after_owned_drop(lvalue, value)
 		}

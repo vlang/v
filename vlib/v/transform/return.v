@@ -694,7 +694,9 @@ fn (t &Transformer) forwarded_slot_conversion_supported(actual types.Type, expec
 			return t.forwarded_slot_conversion_supported(actual_base.elem_type, expected_base.elem_type)
 		}
 		if actual_base is types.ArrayFixed {
-			return t.forwarded_slot_conversion_supported(actual_base.elem_type, expected_base.elem_type)
+			// A fixed array is stored in place, so it is always copied into a new
+			// dynamic array, also when the elements need no conversion.
+			return true
 		}
 	}
 	if actual_base is types.ArrayFixed && expected_base is types.ArrayFixed {
