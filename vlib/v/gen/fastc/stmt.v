@@ -1825,6 +1825,13 @@ fn (mut g Parser) parse_simple_statement() ! {
 				return
 			}
 			g.consume_statement_end()
+			if operator == .power_assign {
+				power := g.render_power_assignment(c_target, value, flat.source_type_id(resolved_expected_type)) or {
+					return g.unsupported('`**=` on type `${resolved_expected_type}`')
+				}
+				g.write_line('${power};')
+				return
+			}
 			if g.checked_target_division_enabled() && operator in [.div_assign, .mod_assign] {
 				g.write_line('${g.render_checked_integer_division_assignment(c_target, value, flat.source_type_id(resolved_expected_type), operator)};')
 				return

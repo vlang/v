@@ -1182,6 +1182,8 @@ fn (g &Parser) render_array_assignment_expression(tokens []FastcExpressionToken)
 	operator := tokens[assignment_index].tok
 	source := if overloaded := g.render_overloaded_assignment(left.source, right, left.typ, operator) {
 		overloaded
+	} else if operator == .power_assign {
+		g.render_power_assignment(left.source, right, left.typ) or { return none }
 	} else if g.checked_target_division_enabled() && operator in [.div_assign, .mod_assign] {
 		g.render_checked_integer_division_assignment(left.source, right, left.typ, operator)
 	} else if operator == .right_shift_unsigned_assign {
@@ -1434,6 +1436,8 @@ fn (g &Parser) render_assignment_operator_source(left string, right string, left
 		'${left}=builtin__string_plus(${left},${right})'
 	} else if overloaded := g.render_overloaded_assignment(left, right, left_type, operator) {
 		overloaded
+	} else if operator == .power_assign {
+		g.render_power_assignment(left, right, left_type) or { return none }
 	} else if g.checked_target_division_enabled() && operator in [.div_assign, .mod_assign] {
 		g.render_checked_integer_division_assignment(left, right, left_type, operator)
 	} else if operator == .right_shift_unsigned_assign {

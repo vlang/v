@@ -5,8 +5,7 @@ import v.cmdexec
 import v.pref
 
 // An operator overload and an ordinary method named the way C spells the operator
-// (`+` and `plus`, `==` and `eq`) must get different C names. FastC does not
-// lower `**` expressions, so `**` is only declared here.
+// (`+` and `plus`, `**` and `pow`, `==` and `eq`) must get different C names.
 fn test_fastc_operator_and_method_named_like_its_c_spelling() {
 	$if !macos && !linux {
 		return
@@ -100,6 +99,8 @@ fn main() {
 	assert (a * b).v == 12
 	assert (a / b).v == 3
 	assert (a % Num{4}).v == 2
+	assert (a ** b).v == 36
+	assert (b ** Num{3} ** b).v == 512
 	assert a == Num{6}
 	assert a != b
 	assert b < a
@@ -116,6 +117,8 @@ fn main() {
 	x += Num{1}
 	x *= Num{3}
 	assert x.v == 30
+	x **= Num{2}
+	assert x.v == 900
 	println("ok")
 }
 ') or {
