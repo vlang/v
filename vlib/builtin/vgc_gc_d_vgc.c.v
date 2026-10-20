@@ -140,6 +140,8 @@ fn vgc_gc_run(_ voidptr) {
 
 // Clear all mark bits before a new GC cycle
 fn vgc_clear_mark_bits() {
+	// Keep the arena table still while walking it.
+	C.vgc_mutex_lock(&vgc_heap.lock)
 	mut arena := 0
 	mut page := usize(0)
 	for {
@@ -157,6 +159,7 @@ fn vgc_clear_mark_bits() {
 			unsafe { C.memset(span.mark_bits, 0, bitmap_size) }
 		}
 	}
+	C.vgc_mutex_unlock(&vgc_heap.lock)
 }
 
 // Conservative root scanning: scan the globals, registered global arrays and thread stacks.
@@ -481,7 +484,7 @@ fn vgc_do_sweep() {
 
 // vgc_sweep_spans sweeps and files every span that the current sweep has not handled yet.
 fn vgc_sweep_spans() {
-	// Keep the arenas still while walking them.
+	// Keep the arena table still while walking it.
 	C.vgc_mutex_lock(&vgc_heap.lock)
 	mut arena := 0
 	mut page := usize(0)
@@ -581,6 +584,7 @@ fn vgc_sweep_finish() {
 // Count total marked bytes across all spans using byte-level popcount
 fn vgc_count_marked() u64 {
 	mut total := u64(0)
+	C.vgc_mutex_lock(&vgc_heap.lock)
 	mut arena := 0
 	mut page := usize(0)
 	for {
@@ -604,6 +608,7 @@ fn vgc_count_marked() u64 {
 		}
 		total += u64(count) * u64(span.elem_size)
 	}
+	C.vgc_mutex_unlock(&vgc_heap.lock)
 	return total
 }
 

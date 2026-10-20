@@ -624,32 +624,6 @@ static void vgc_thread_exit_dispatch(void* value) {
 #endif
 
 // ============================================================
-// Arena address index for O(1) pointer-to-arena lookup
-// Divides address space into 1GB chunks, maps to arena index.
-// ============================================================
-#define VGC_ADDR_SHIFT 30  // 1GB chunks
-#define VGC_ADDR_MAP_SIZE 4096
-
-// Maps (address >> 30) -> arena_index+1 (0 = not mapped)
-static uint16_t vgc_addr_map[VGC_ADDR_MAP_SIZE];
-
-static inline void vgc_addr_map_register(uintptr_t base, size_t size, int arena_idx) {
-    uintptr_t lo = base >> VGC_ADDR_SHIFT;
-    uintptr_t hi = (base + size - 1) >> VGC_ADDR_SHIFT;
-    for (uintptr_t i = lo; i <= hi && i < VGC_ADDR_MAP_SIZE; i++) {
-        vgc_addr_map[i] = (uint16_t)(arena_idx + 1);
-    }
-}
-
-// Returns arena index or -1
-static inline int vgc_addr_to_arena(uintptr_t addr) {
-    uintptr_t idx = addr >> VGC_ADDR_SHIFT;
-    if (idx >= VGC_ADDR_MAP_SIZE) return -1;
-    int v = vgc_addr_map[idx];
-    return v ? v - 1 : -1;
-}
-
-// ============================================================
 // Thread creation (for GC workers - avoids V's spawn which
 // causes import cycles with builtin -> sync.threads -> builtin)
 // ============================================================
