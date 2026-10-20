@@ -1680,15 +1680,24 @@ fn cgen_publish_builder_text(mut sb strings.Builder, scope voidptr) string {
 	return text
 }
 
-// cgen_take_builder_text returns the text accumulated in `sb` without copying
-// it; the builder's storage now belongs to the result, so `sb` must be replaced
-// before it is written again.
+// cgen_take_builder_text returns the text accumulated in `sb` as a string the
+// caller owns; under -prealloc it hands the builder's storage over instead of
+// copying it, so `sb` must be replaced before it is written again.
 fn cgen_take_builder_text(mut sb strings.Builder) string {
 	if sb.len == 0 {
 		unsafe { sb.free() }
 		sb = strings.new_builder(0)
 		return ''
 	}
+	$if !prealloc {
+		// An array's storage starts past a header in its allocation, so
+		// string.free could not release text pointing into it; copy the text.
+		text := sb.str()
+		unsafe { sb.free() }
+		sb = strings.new_builder(0)
+		return text
+	}
+	// The arena releases the storage, and string.free does not free under it.
 	sb << u8(0)
 	output := unsafe { sb.reuse_as_plain_u8_array() }
 	return unsafe { tos(&u8(output.data), output.len - 1) }
