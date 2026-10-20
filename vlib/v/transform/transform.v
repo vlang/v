@@ -24051,7 +24051,9 @@ fn (mut t Transformer) lower_gated_scalar_index(node flat.Node) ?flat.NodeId {
 	if index_typ == 0 {
 		index_typ = flat.source_type_id(node.value)
 	}
-	return t.make_index(base, pos_expr, index_typ)
+	index := t.make_index(base, pos_expr, index_typ)
+	t.a.set_node_is_mut(index, node.is_mut)
+	return index
 }
 
 fn (mut t Transformer) transform_index_expr(id flat.NodeId, node flat.Node) flat.NodeId {
@@ -24176,6 +24178,7 @@ fn (mut t Transformer) transform_index_expr(id flat.NodeId, node flat.Node) flat
 		pos:            node.pos
 		value:          node.value
 		typ:            index_typ
+		is_mut:         node.is_mut
 	})
 	return t.lower_owned_array_index_move(id, new_id)
 }
@@ -26843,6 +26846,7 @@ fn (mut t Transformer) transform_paren_expr(id flat.NodeId, node flat.Node) flat
 		pos:            node.pos
 		value:          node.value
 		typ:            node.typ
+		is_mut:         node.is_mut
 	})
 }
 
