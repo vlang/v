@@ -6164,7 +6164,7 @@ fn (e &Eval) sizeof_type_layout(raw_name_id u32, module_name string, seen []Type
 		context := e.declaration_type_context(alias.module_name, alias.file_name)
 		return context.sizeof_type_layout(alias.target, alias.module_name, visited)
 	}
-	if variants := e.sum_types[name] {
+	if variants := e.sum_types.type_ids(name) {
 		return e.sizeof_sum_layout(variants, module_name, visited)
 	}
 	if name.starts_with('map[') || name.starts_with('fn ') || name.starts_with('chan ')

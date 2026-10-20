@@ -208,12 +208,24 @@ evaluated first. Specialized mutable method receivers keep their original storag
 callbacks are selected before a later fallible argument can replace them.
 Declared function references remain inline so their expected callback adapter type is preserved.
 
+Reference parameters such as `&Value` require storage of that same sum type. A reference to
+one of its variants cannot be reinterpreted as a reference to the sum. Wrap a getter result
+explicitly, for example `read(Value(dict['a']))`, to materialize a sum value for the call.
+Existing sum bindings can be passed directly.
+
 Pointer sum variants preserve the referenced object's identity. A smartcast can mutate the
 referenced object, but it does not supply a pointer variable for a mutable pointer parameter.
 This applies to nominal pointer aliases as well as explicit reference types. To replace an owned
 pointer variant, assign the enclosing sum so its previous payload is released and the replacement
 retains its own cleanup policy. Explicit unsafe access to the pointer slot remains a low-level
 operation; the caller must preserve the enclosing sum's ownership metadata.
+Explicit `drop_owned` on a named owned sum destroys its complete storage even after a smartcast.
+Borrowed projections retain the usual copy policy. Lowering can query the checker's validated
+node decision with `TypeChecker.ownership_sum_drop_consumes_storage(node)`.
+
+Returning a mutable array parameter in a value-array sum variant creates an independent owner.
+A selected pointer-array variant keeps borrowing the caller's storage. Option and Result wrappers
+preserve the successful payload's ownership and their existing none or error cleanup.
 
 Returning a wrapper of a local promotes that local and transfers its cleanup to the returned sum.
 Storing an inner local's pointer in an outer sum similarly transfers cleanup at the store, including

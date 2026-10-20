@@ -44,7 +44,17 @@ fn test_sumtype_identity_matches_reflected_variants() {
 	indexes << assert_identity(&entry)
 	ref := &entry
 	indexes << assert_identity(&ref)
-	indexes << assert_identity(?int(42))
+	// Reflection gives ?int the same index as int, while the sum tag still
+	// distinguishes the option payload from its unwrapped value.
+	assert assert_identity(?int(42)) == assert_identity(42)
+	optional_positive := IdentityValue(?int(42))
+	optional_negative := IdentityValue(?int(42))
+	plain_positive := IdentityValue(42)
+	plain_negative := IdentityValue(42)
+	assert optional_positive is ?int
+	assert optional_negative !is int
+	assert plain_positive is int
+	assert plain_negative !is ?int
 	indexes << assert_identity(42)
 	indexes << assert_identity([entry])
 	indexes << assert_identity({

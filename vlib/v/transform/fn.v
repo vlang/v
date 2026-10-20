@@ -1519,6 +1519,13 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 			t.set_node_typ(int(value), flat.source_type_id(flat.source_type_name(t.var_type(arg.value))[1..]))
 			return t.copy_node_with_children(node, [t.a.child(&node, 0), value])
 		}
+		if t.tc.ownership_sum_drop_consumes_storage(arg_id) {
+			// The checker validated consumption of this exact named sum owner.
+			storage_type := t.raw_expr_type_without_smartcast(arg_id)
+			value := t.make_plain_expr_for_smartcast(arg_id)
+			t.set_node_typ(int(value), storage_type)
+			return t.copy_node_with_children(node, [t.a.child(&node, 0), value])
+		}
 	}
 	mut params := t.call_param_types_for_node(call_name, node)
 	mut param_type_names := t.call_param_type_names(params)
@@ -19067,7 +19074,7 @@ fn (mut t Transformer) try_lower_string_method_call(node flat.Node) ?flat.NodeId
 // scope) reported a double free. An empty string drops as a no-op, like the zero value
 // that arrays and maps are reset to after their explicit `free()`.
 fn (mut t Transformer) try_lower_owned_string_free_call(id flat.NodeId, node flat.Node) ?flat.NodeId {
-	if node.children_count != 1 || isnil(t.tc) || t.tc.autofree_enabled() {
+	if node.children_count != 1 || isnil(t.tc) {
 		return none
 	}
 	callee := t.a.child_node(&node, 0)

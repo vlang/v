@@ -82,7 +82,7 @@ fn main() {
 			names << node.value
 		}
 	}
-	expected := ['int', 'string', 'Item', '&Item', '[]Item', '']
+	expected := ['int', 'string', 'Item', '&Item', '[]Item', 'buffer']
 	assert names == expected
 	assert p.translated_sizeof_scanned_modules.len == 0
 }

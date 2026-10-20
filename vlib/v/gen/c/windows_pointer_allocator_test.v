@@ -186,6 +186,11 @@ struct AlignedCell { value int }
 struct NaturalCell { value int }
 type AlignedValue = int | &AlignedCell
 type NaturalValue = int | &NaturalCell
+struct AlignedWrapper { value AlignedValue }
+type GenericAlignedValue[T] = int | &T
+type GenericAlignedLayer[T] = GenericAlignedValue[T] | bool
+struct GenericAlignedWrapper[T] { value GenericAlignedValue[T] }
+struct GenericAlignedLayerWrapper[T] { value GenericAlignedLayer[T] }
 fn implicit_aligned() {
  value := AlignedValue(&AlignedCell{value: 17})
  _ := value
@@ -194,14 +199,41 @@ fn implicit_natural() {
  value := NaturalValue(&NaturalCell{value: 23})
  _ := value
 }
+fn implicit_wrapped_aligned() {
+ value := AlignedWrapper{value: AlignedValue(&AlignedCell{value: 29})}
+ _ := value
+}
+fn implicit_borrowed_wrapper(seed &AlignedCell) {
+ value := AlignedWrapper{value: AlignedValue(seed)}
+ _ := value
+}
+fn implicit_generic_aligned() {
+ value := GenericAlignedWrapper[AlignedCell]{value: GenericAlignedValue[AlignedCell](&AlignedCell{value: 41})}
+ _ := value
+}
+fn implicit_generic_nested_aligned() {
+ value := GenericAlignedLayerWrapper[AlignedCell]{value: GenericAlignedLayer[AlignedCell](GenericAlignedValue[AlignedCell](&AlignedCell{value: 43}))}
+ _ := value
+}
+fn implicit_generic_borrowed_wrapper(seed &AlignedCell) {
+ value := GenericAlignedWrapper[AlignedCell]{value: GenericAlignedValue[AlignedCell](seed)}
+ _ := value
+}
 fn main() { implicit_aligned()
- implicit_natural() }
+ implicit_natural()
+ implicit_wrapped_aligned()
+ seed := AlignedCell{value: 31}
+ implicit_borrowed_wrapper(&seed)
+ implicit_generic_aligned()
+ implicit_generic_nested_aligned()
+ implicit_generic_borrowed_wrapper(&seed) }
 ')!
 	result := os.exec([ownership_compiler, '-new-compiler', '-nocache', '-os', 'windows', '-gc',
 		'none', '-autofree', '-no-closures', '-o', c_source, source])
 	assert result.exit_code == 0, result.output
 	generated := os.read_file(c_source)!
-	for name in ['implicit_aligned', 'implicit_natural'] {
+	for name in ['main__implicit_aligned', 'main__implicit_natural', 'main__implicit_wrapped_aligned',
+		'main__implicit_generic_aligned', 'main__implicit_generic_nested_aligned'] {
 		body := allocator_test_c_function(generated, 'void ${name}(void) {')
 		assert body.contains('._pointer_variant_is_owned = true'), body
 		assert body.count('v3_aligned_free(') == 1, body
@@ -210,7 +242,12 @@ fn main() { implicit_aligned()
 	declarations := allocator_test_c_struct(generated, 'AlignedCell') +
 		allocator_test_c_struct(generated, 'NaturalCell') +
 		allocator_test_c_struct(generated, 'AlignedValue') +
-		allocator_test_c_struct(generated, 'NaturalValue')
+		allocator_test_c_struct(generated, 'NaturalValue') +
+		allocator_test_c_struct(generated, 'AlignedWrapper') +
+		allocator_test_c_struct(generated, 'GenericAlignedValue_AlignedCell') +
+		allocator_test_c_struct(generated, 'GenericAlignedLayer_AlignedCell') +
+		allocator_test_c_struct(generated, 'GenericAlignedWrapper_AlignedCell') +
+		allocator_test_c_struct(generated, 'GenericAlignedLayerWrapper_AlignedCell')
 	mock_source := os.join_path(dir, 'implicit_sum_mock.c')
 	mock_binary := os.join_path(dir, 'implicit_sum_mock.exe')
 	os.write_file(mock_source, '${allocator_test_mock_runtime(declarations)}
@@ -219,13 +256,33 @@ ${allocator_test_c_function(generated, 'void* memdup(void* src, ptrdiff_t sz) {'
 ${allocator_test_c_function(generated, 'void v_free(void* ptr) {')}
 ${allocator_test_c_function(generated, 'static inline void* v3_aligned_memdup(void* src, ptrdiff_t sz, size_t alignment) {')}
 ${allocator_test_c_function(generated, 'static inline void v3_aligned_free(void* p) {')}
-${allocator_test_c_function(generated, 'void implicit_aligned(void) {')}
-${allocator_test_c_function(generated, 'void implicit_natural(void) {')}
+${allocator_test_c_function(generated, 'static void __v3_ownership_drop_AlignedCell(main__AlignedCell* _value) {')}
+${allocator_test_c_function(generated, 'static void __v3_ownership_drop_NaturalCell(main__NaturalCell* _value) {')}
+${allocator_test_c_function(generated, 'void main__implicit_aligned(void) {')}
+${allocator_test_c_function(generated, 'void main__implicit_natural(void) {')}
+${allocator_test_c_function(generated, 'void main__implicit_wrapped_aligned(void) {')}
+${allocator_test_c_function(generated, 'void main__implicit_borrowed_wrapper(main__AlignedCell* seed) {')}
+${allocator_test_c_function(generated, 'void main__implicit_generic_aligned(void) {')}
+${allocator_test_c_function(generated, 'void main__implicit_generic_nested_aligned(void) {')}
+${allocator_test_c_function(generated, 'void main__implicit_generic_borrowed_wrapper(main__AlignedCell* seed) {')}
 int main(void) {
- implicit_aligned();
+ main__implicit_aligned();
  assert(live_count == 0 && aligned_allocations == 1 && aligned_frees == 1);
- implicit_natural();
+ main__implicit_natural();
  assert(live_count == 0 && aligned_allocations == 2 && aligned_frees == 2);
+ assert(crt_frees == 0);
+ main__implicit_wrapped_aligned();
+ assert(live_count == 0 && aligned_allocations == 3 && aligned_frees == 3);
+ main__AlignedCell seed = {.value = 31};
+ main__implicit_borrowed_wrapper(&seed);
+ assert(seed.value == 31 && live_count == 0 && aligned_allocations == 3 && aligned_frees == 3);
+ assert(crt_frees == 0);
+ main__implicit_generic_aligned();
+ assert(live_count == 0 && aligned_allocations == 4 && aligned_frees == 4);
+ main__implicit_generic_nested_aligned();
+ assert(live_count == 0 && aligned_allocations == 5 && aligned_frees == 5);
+ main__implicit_generic_borrowed_wrapper(&seed);
+ assert(seed.value == 31 && live_count == 0 && aligned_allocations == 5 && aligned_frees == 5);
  assert(crt_frees == 0);
  return 0;
 }

@@ -39,6 +39,7 @@ fn owned_result_error_clone_code(clone_kind string, pointer_receiver bool, needs
 	tc.type_aliases.set_id('FaultRefAlias', flat.source_type_id('FaultRef'))
 	tc.type_aliases.set_id('FaultValueAlias', flat.source_type_id('Fault'))
 	if needs_drop {
+		tc.struct_implements.set('Fault', ['Drop'])
 		tc.fn_param_types['Fault.drop'] = [fault_pointer]
 		tc.fn_ret_types['Fault.drop'] = types.Type(types.void_)
 	}

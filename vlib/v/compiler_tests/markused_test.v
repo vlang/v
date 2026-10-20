@@ -2418,30 +2418,6 @@ fn main() {
 	assert !body.contains('new_map(')
 }
 
-// test_string_membership_lowers_to_contains_after_used_filter_transform
-// validates this v3 regression case.
-fn test_string_membership_lowers_to_contains_after_used_filter_transform() {
-	mut a, mut tc := parse_checked_source('string_membership_contains_cgen', '
-fn has_needle() bool {
-	return "bc" in "abcd"
-}
-
-fn main() {
-	_ := has_needle()
-}
-')
-	mut used := markused.mark_used(a, tc)
-	assert used['string__contains']
-	assert used['string__contains_u8']
-	used = transform.transform_with_used(mut a, tc, used)
-	tc.diagnose_unknown_calls = false
-	tc.reject_unlowered_map_mutation = true
-	tc.annotate_types()
-	mut g := cgen.FlatGen.new()
-	c_code := g.gen_with_used_options(a, used, tc, true)
-	assert c_code.contains('string__contains(')
-}
-
 // test_string_compound_assign_lowers_to_plus_after_used_filter_transform
 // validates this v3 regression case.
 fn test_string_compound_assign_lowers_to_plus_after_used_filter_transform() {

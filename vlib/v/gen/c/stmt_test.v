@@ -867,7 +867,7 @@ fn test_staging_declarations_do_not_evaluate_default_initializers() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	tc.sum_types.set('Value', ['int', 'string'])
-	tc.type_aliases['Mapping'] = 'map[string]int'
+	tc.type_aliases.set('Mapping', 'map[string]int')
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc

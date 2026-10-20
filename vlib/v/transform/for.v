@@ -1562,7 +1562,10 @@ fn (mut t Transformer) make_for_stmt(init flat.NodeId, cond flat.NodeId, post fl
 		children_count: flat.child_count(3 + body.len)
 		pos:            src.pos
 		typ:            src.typ
-		flags:          flat.node_flags(src.skip_ownership_drops() || src.kind == .empty, false)
+		flags:          flat.node_flags(src.skip_ownership_drops() || src.kind !in [
+			.for_stmt,
+			.for_in_stmt,
+		], false)
 	})
 }
 

@@ -1251,7 +1251,7 @@ fn test_unalias_type_traverses_without_a_depth_limit() {
 	mut typ := types.Type(types.int_)
 	for i in 0 .. 2048 {
 		alias := types.Alias{
-			name:      'Alias${i}'
+			name_id:   flat.source_type_id('Alias${i}')
 			base_type: &types.Type(typ)
 		}
 		typ = types.Type(alias)
@@ -1290,7 +1290,7 @@ fn test_import_alias_canonicalization_is_idempotent_for_module_path_prefix() {
 		canonical := flat.source_type_name(canonical_source_id)
 		assert canonical.contains('tsc.execute.tsc.CompileTimes')
 		assert flat.source_type_name(g.canonical_import_alias_type_text_in_file(canonical_source_id, 'other.v')) == canonical
-		assert g.canonical_import_alias_type_text_in_file_uncached(canonical_source_id, 'other.v') == canonical_source_id
+		assert g.canonical_import_alias_type_text_in_file_uncached(canonical, 'other.v') == canonical
 	}
 }
 

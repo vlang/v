@@ -1328,3 +1328,16 @@ fn test_numeric_specialized_type_decoder_preserves_cached_argument_storage() {
 	assert t.decode_single_generic_specialized_type_args(missing) == none
 	assert t.generic_spec_decode_cache.misses[missing]
 }
+
+fn test_void_pointer_staging_keeps_pointer_typed_nil_initializer() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	pointer_type := flat.source_type_voidptr
+	decl_id := t.make_staging_value_decl('pointer_result', pointer_type)
+	decl := t.a.node(decl_id)
+	lhs := t.a.child_node(decl, 0)
+	rhs := t.a.child_node(decl, 1)
+	assert lhs.typ == pointer_type
+	assert rhs.kind == .nil_literal
+}

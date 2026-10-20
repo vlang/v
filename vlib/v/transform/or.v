@@ -1541,7 +1541,7 @@ fn (mut t Transformer) make_staging_value_decl(name string, typ_id u32) flat.Nod
 fn (mut t Transformer) zero_value_for_type(typ_id u32) flat.NodeId {
 	typ := flat.source_type_name(typ_id)
 	mut clean := typ
-	if clean.starts_with('&') {
+	if clean.starts_with('&') || clean == 'voidptr' {
 		return t.a.add(.nil_literal)
 	}
 	if clean.len > 1 && (clean[0] == `?` || clean[0] == `!`) {

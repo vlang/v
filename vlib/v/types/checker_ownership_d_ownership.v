@@ -262,6 +262,7 @@ mut:
 	pending_loop_label               string
 	deferred_aggregate_consumption   map[int]int
 	index_move_reads                 map[int]bool
+	owned_sum_drop_reads             map[int]bool
 	receiver_alias_clone_reads       map[int]bool
 	borrowed_projection_actions      map[int]OwnershipBorrowedProjectionAction
 	pointer_index_aliases            map[string]string
@@ -367,6 +368,7 @@ fn new_ownership_state() &OwnershipState {
 		pending_loop_label:               ''
 		deferred_aggregate_consumption:   map[int]int{}
 		index_move_reads:                 map[int]bool{}
+		owned_sum_drop_reads:             map[int]bool{}
 		receiver_alias_clone_reads:       map[int]bool{}
 		borrowed_projection_actions:      map[int]OwnershipBorrowedProjectionAction{}
 		pointer_index_aliases:            map[string]string{}
@@ -491,6 +493,7 @@ fn ownership_clone_state_for_parallel(src &OwnershipState) &OwnershipState {
 		pending_loop_label:               ''
 		deferred_aggregate_consumption:   map[int]int{}
 		index_move_reads:                 map[int]bool{}
+		owned_sum_drop_reads:             map[int]bool{}
 		receiver_alias_clone_reads:       map[int]bool{}
 		borrowed_projection_actions:      map[int]OwnershipBorrowedProjectionAction{}
 		pointer_index_aliases:            map[string]string{}
@@ -591,6 +594,7 @@ fn ownership_clone_state_for_observation(src &OwnershipState) &OwnershipState {
 	result.pending_loop_label = src.pending_loop_label
 	result.deferred_aggregate_consumption = src.deferred_aggregate_consumption.clone()
 	result.index_move_reads = src.index_move_reads.clone()
+	result.owned_sum_drop_reads = src.owned_sum_drop_reads.clone()
 	result.sum_move_reads = src.sum_move_reads.clone()
 	result.receiver_alias_clone_reads = src.receiver_alias_clone_reads.clone()
 	result.borrowed_projection_actions = src.borrowed_projection_actions.clone()
@@ -866,6 +870,11 @@ fn (mut tc TypeChecker) ownership_merge_parallel_check_worker(w &TypeChecker) {
 	ownership_merge_source_type_set(mut dst.drop_type_names, src.drop_type_names)
 	ownership_merge_bool_map(mut dst.value_receiver_methods, src.value_receiver_methods)
 	ownership_merge_type_text_bindings(mut dst.owned_globals, src.owned_globals)
+	for id, consumed in src.owned_sum_drop_reads {
+		if consumed {
+			dst.owned_sum_drop_reads[id] = true
+		}
+	}
 	for id, moved in src.index_move_reads {
 		if moved {
 			dst.index_move_reads[id] = true
@@ -1388,12 +1397,92 @@ fn (mut tc TypeChecker) ownership_live_drop_entry(name string) ?OwnershipDropEnt
 		return none
 	}
 	type_name := st.owned_var_types.type_id(name) or { return none }
-	target := tc.ownership_drop_target_for_type_name(type_name) or { return none }
+	target := tc.ownership_owned_storage_drop_target_for_type_name(type_name) or { return none }
 	return OwnershipDropEntry{
 		name:             name
 		type_name:        target.type_name
 		optional_wrapper: target.optional_wrapper
 	}
+}
+
+// Already-owned values must release nested sum pointer storage even when the payload
+// has no custom Drop method. This does not change which values are owned.
+fn (tc &TypeChecker) ownership_owned_storage_drop_target_for_type_name(type_name_id u32) ?OwnershipDropTarget {
+	if target := tc.ownership_drop_target_for_type_name(type_name_id) {
+		return target
+	}
+	if tc.ownership == unsafe { nil } || type_name_id == 0 {
+		return none
+	}
+	mut seen := map[u32]bool{}
+	if tc.ownership_owned_storage_contains_pointer_sum(tc.parse_type(type_name_id), 0, mut seen) {
+		return OwnershipDropTarget{
+			type_name: type_name_id
+		}
+	}
+	return none
+}
+
+// ownership_owned_storage_contains_pointer_sum follows value storage only. Ordinary
+// references remain borrowed; a sum payload's runtime owner bit controls its release.
+fn (tc &TypeChecker) ownership_owned_storage_contains_pointer_sum(typ Type, depth int, mut seen map[u32]bool) bool {
+	if depth > 64 { return false }
+	match typ {
+		Alias {
+			return tc.ownership_owned_storage_contains_pointer_sum(typ.base_type, depth + 1, mut seen)
+		}
+		OptionType {
+			return tc.ownership_owned_storage_contains_pointer_sum(typ.base_type, depth + 1, mut seen)
+		}
+		ResultType {
+			return tc.ownership_owned_storage_contains_pointer_sum(typ.base_type, depth + 1, mut seen)
+		}
+		Array {
+			return tc.ownership_owned_storage_contains_pointer_sum(typ.elem_type, depth + 1, mut seen)
+		}
+		ArrayFixed {
+			return tc.ownership_owned_storage_contains_pointer_sum(typ.elem_type, depth + 1, mut seen)
+		}
+		Map {
+			return tc.ownership_owned_storage_contains_pointer_sum(typ.key_type, depth + 1, mut seen)
+				|| tc.ownership_owned_storage_contains_pointer_sum(typ.value_type, depth + 1, mut seen)
+		}
+		MultiReturn {
+			for part in typ.types {
+				if tc.ownership_owned_storage_contains_pointer_sum(part, depth + 1, mut seen) {
+					return true
+				}
+			}
+		}
+		Struct {
+			name_id := typ.source_type_id()
+			if seen[name_id] { return false }
+			seen[name_id] = true
+			for field in tc.struct_fields_for_type(name_id) {
+				if !tc.struct_field_is_shared(name_id, field.name)
+					&& tc.ownership_owned_storage_contains_pointer_sum(field.typ, depth + 1, mut seen) {
+					return true
+				}
+			}
+		}
+		SumType {
+			name_id := typ.source_type_id()
+			if seen[name_id] { return false }
+			seen[name_id] = true
+			if tc.sum_escape_has_pointer_variant(typ) { return true }
+			base_name := flat.source_type_name(tc.sum_base_name(name_id))
+			for variant in tc.sum_types.type_ids(base_name) or { []u32{} } {
+				concrete := tc.concrete_sum_variant_name(name_id, variant)
+				concrete_type := tc.parse_type(concrete)
+				if unalias_type(concrete_type) is Pointer { return true }
+				if tc.ownership_owned_storage_contains_pointer_sum(concrete_type, depth + 1, mut seen) {
+					return true
+				}
+			}
+		}
+		else {}
+	}
+	return false
 }
 
 fn (tc &TypeChecker) ownership_type_name_has_drop(type_name_id u32) bool {
@@ -2966,6 +3055,11 @@ fn (mut tc TypeChecker) ownership_prescan_returns_in(fn_name string, id flat.Nod
 			} else if fn_value := tc.ownership_fn_return_fn_value_from_call(expr_id) {
 				tc.ownership_note_fn_return_fn_value(fn_name, fn_value)
 			}
+			if tc.ownership_prescan_return_copies_mut_array(fn_name, expr_id, param_names, local_types) {
+				tc.ownership_state().mark_fn_return_owned(fn_name)
+				tc.ownership_add_fn_return_slot(fn_name, i)
+				continue
+			}
 			tc.ownership_prescan_return_param_sources(fn_name, expr_id, i, param_names, local_types)
 			tc.ownership_prescan_return_aggregate_literal_descendants(fn_name, i, '', expr_id, param_names, mut owned_locals, mut local_types)
 			tc.ownership_prescan_add_return_owned_descendants_from_expr(fn_name, i, expr_id, mut owned_locals, local_types)
@@ -3710,6 +3804,133 @@ fn (mut tc TypeChecker) ownership_prescan_add_param_descendant_from_expr(fn_name
 		marked = true
 	}
 	return marked
+}
+
+// Returned mutable array parameters are detached when stored in a value-array
+// sum variant. Summarize only this direct parameter path, preserving pointer borrows.
+fn (mut tc TypeChecker) ownership_prescan_return_copies_mut_array(fn_name string, expr_id flat.NodeId, param_names []string, local_types map[string]Type) bool {
+	target_type := tc.fn_ret_types[fn_name] or { return false }
+	success_type := sum_escape_success_type(target_type)
+	if unalias_type(success_type) !is SumType { return false }
+	mut id := tc.ownership_unwrap_expr(expr_id)
+	if !tc.valid_node_id(id) { return false }
+	wrapper_type := unalias_type(target_type)
+	if wrapper_type is OptionType || wrapper_type is ResultType {
+		wrapper := tc.a.node(id)
+		if wrapper.kind == .cast_expr && wrapper.children_count == 1
+			&& semantic_types_equal(unalias_type(tc.parse_type(flat.source_type_id(wrapper.value))), wrapper_type) {
+			id = tc.ownership_unwrap_expr(tc.a.child(wrapper, 0))
+			if !tc.valid_node_id(id) { return false }
+		}
+	}
+	payload := tc.a.node(id)
+	if payload.kind == .cast_expr && payload.children_count == 1
+		&& semantic_types_equal(unalias_type(tc.parse_type(flat.source_type_id(payload.value))), unalias_type(success_type)) {
+		id = tc.ownership_unwrap_expr(tc.a.child(payload, 0))
+		if !tc.valid_node_id(id) { return false }
+	}
+	node := tc.a.node(id)
+	if node.kind != .ident { return false }
+	param_idx := param_names.index(node.value)
+	if param_idx < 0 || !tc.ownership_call_param_is_mut(fn_name, param_idx) { return false }
+	decl := tc.visible_mutation_fn_decl(fn_name, tc.cur_module) or { return false }
+	param := tc.visible_mutation_fn_param(decl, param_idx) or { return false }
+	if param.value != node.value || !param.is_mut || param.op == .amp { return false }
+	param_type := local_types[node.value] or { return false }
+	binding_type := unalias_type(param_type)
+	if binding_type !is Pointer { return false }
+	// The parser adds this ABI pointer for `mut values []T`; an explicit
+	// `mut values &[]T` has op.amp and keeps its borrowed pointer identity.
+	array_type := unalias_type(binding_type.base_type)
+	if semantic_types_equal(array_type, wrapper_type) {
+		// The same mutable wrapped value is acquired on return. Its active sum
+		// variant is unknown here, so retain aliases if any path can borrow.
+		has_array, safe_storage := tc.ownership_wrapped_sum_array_storage(array_type, []u32{}, 0)
+		return has_array && safe_storage && tc.ownership_type_requires_destruction(array_type)
+	}
+	if array_type !is Array { return false }
+	_, _, copies := tc.ownership_sum_return_array_paths(&success_type, array_type, []u32{})
+	return copies
+}
+
+// Recognize only value arrays, wrappers, sums and scalar inactive alternatives.
+// A pointer, unsupported payload or cycle keeps the existing return-alias summary.
+fn (tc &TypeChecker) ownership_wrapped_sum_array_storage(typ &Type, seen []u32, depth int) (bool, bool) {
+	if depth > 64 { return false, false }
+	clean := unalias_type(typ)
+	match clean {
+		Array { return true, true }
+		OptionType, ResultType {
+			return tc.ownership_wrapped_sum_array_storage(clean.base_type, seen, depth + 1)
+		}
+		SumType {
+			name := clean.source_type_id()
+			if name in seen { return false, false }
+			mut next_seen := seen.clone()
+			next_seen << name
+			base := flat.source_type_name(tc.sum_base_name(name))
+			variants := tc.sum_types.type_ids(base) or { return false, false }
+			if variants.len == 0 { return false, false }
+			mut has_array := false
+			for raw_variant in variants {
+				variant := tc.parse_type(tc.concrete_sum_variant_name(name, raw_variant))
+				array_path, safe_storage := tc.ownership_wrapped_sum_array_storage(variant, next_seen, depth + 1)
+				if !safe_storage { return false, false }
+				has_array = has_array || array_path
+			}
+			return has_array, true
+		}
+		Primitive, Char, Rune, ISize, USize, Enum { return false, true }
+		else { return false, false }
+	}
+}
+
+// Preserve both raw path availability and the result of wrapping the selected
+// nested sum. Its direct value variant can win over its own deeper pointer path.
+fn (tc &TypeChecker) ownership_sum_return_array_paths(typ &Type, array_type &Type, seen []u32) (bool, bool, bool) {
+	clean := unalias_type(typ)
+	if clean is Array {
+		matches := semantic_types_equal(clean, array_type)
+		return matches, false, matches
+	}
+	if clean is Pointer {
+		return false, semantic_types_equal(unalias_type(clean.base_type), array_type), false
+	}
+	if clean !is SumType { return false, false, false }
+	name := clean.source_type_id()
+	if name in seen || seen.len >= 64 { return false, false, false }
+	mut next_seen := seen.clone()
+	next_seen << name
+	mut value_path := false
+	mut pointer_path := false
+	mut direct_value := false
+	mut direct_pointer := false
+	mut first_value_copies := false
+	mut first_pointer_copies := false
+	base := flat.source_type_name(tc.sum_base_name(name))
+	for raw_variant in tc.sum_types.type_ids(base) or { return false, false, false } {
+		variant := tc.parse_type(tc.concrete_sum_variant_name(name, raw_variant))
+		value, pointer, copies := tc.ownership_sum_return_array_paths(variant, array_type, next_seen)
+		variant_type := unalias_type(variant)
+		direct_value = direct_value || (value && variant_type is Array)
+		direct_pointer = direct_pointer || (pointer && variant_type is Pointer)
+		if value && !value_path { first_value_copies = copies }
+		if pointer && !pointer_path { first_pointer_copies = copies }
+		value_path = value_path || value
+		pointer_path = pointer_path || pointer
+	}
+	// Lowering tries exact direct pointers, then direct compatible values, then
+	// recursively searches the raw pointer type before the mutable value fallback.
+	copies := if direct_pointer {
+		false
+	} else if direct_value {
+		true
+	} else if pointer_path {
+		first_pointer_copies
+	} else {
+		first_value_copies
+	}
+	return value_path, pointer_path, copies
 }
 
 fn (mut tc TypeChecker) ownership_prescan_return_param_sources(fn_name string, expr_id flat.NodeId, slot_idx int, param_names []string, local_types map[string]Type) {
@@ -6257,7 +6478,7 @@ fn (mut tc TypeChecker) ownership_drop_entries_for_loop_base_scope(base Ownershi
 			continue
 		}
 		type_name := snapshot.owned_var_types.type_id(name) or { continue }
-		if target := tc.ownership_drop_target_for_type_name(type_name) {
+		if target := tc.ownership_owned_storage_drop_target_for_type_name(type_name) {
 			entries << OwnershipDropEntry{
 				name:             name
 				type_name:        target.type_name
@@ -6287,7 +6508,7 @@ fn (mut tc TypeChecker) ownership_drop_entries_since_frame(base OwnershipFrame, 
 	mut entries := []OwnershipDropEntry{}
 	for candidate in candidates {
 		type_name := snapshot.owned_var_types.type_id(candidate.name) or { continue }
-		if target := tc.ownership_drop_target_for_type_name(type_name) {
+		if target := tc.ownership_owned_storage_drop_target_for_type_name(type_name) {
 			entries << OwnershipDropEntry{
 				name:             candidate.name
 				type_name:        target.type_name
@@ -7730,7 +7951,8 @@ fn (mut tc TypeChecker) ownership_assign_to_name(lhs_name string, rhs_id flat.No
 	if tc.ownership_mark_from_call(lhs_name, rhs_id, assign_id) {
 		// A specialized generic call can still resolve here as `Container[T]`.
 		// Preserve the checked concrete assignment type for the eventual Drop call.
-		if tc.ownership_type_is_owned(lhs_type) {
+		if tc.ownership_type_is_owned(lhs_type)
+			|| (unalias_type(lhs_type) is SumType && lhs_name in st.owned_vars) {
 			tc.ownership_mark_owned(lhs_name, lhs_type, assign_id)
 		}
 		return
@@ -9804,6 +10026,47 @@ fn (mut tc TypeChecker) ownership_add_return_descendant_from_expr(fn_name string
 	return true
 }
 
+// Explicit destruction consumes a named sum owner as storage, even when its
+// active variant is smartcast. Borrowed projections keep the normal copy policy.
+fn (mut tc TypeChecker) ownership_consume_named_sum_drop_arg(call flat.Node, call_name string, arg_id flat.NodeId) bool {
+	if call.children_count != 2 || !checker_ownership_drop_intrinsic_name(call_name)
+		|| (tc.fn_type_modules[call_name] or { '' }) != 'builtin' {
+		return false
+	}
+	callee_id := tc.ownership_unwrap_expr(tc.a.child(&call, 0))
+	callee := tc.a.node(callee_id)
+	if callee.kind == .ident {
+		if _ := tc.cur_scope.lookup(callee.value) {
+			return false
+		}
+	}
+	clean_id := tc.ownership_unwrap_expr(arg_id)
+	if !tc.valid_node_id(clean_id) { return false }
+	arg := tc.a.node(clean_id)
+	if arg.kind != .ident { return false }
+	mut st := tc.ownership_state()
+	if arg.value !in st.owned_vars { return false }
+	// Successful branch narrowing changes the lexical view, not the owned storage.
+	owned_type_name := st.owned_var_types.type_id(arg.value) or { return false }
+	declared := tc.parse_type(owned_type_name)
+	if unalias_type(declared) !is SumType { return false }
+	tc.ownership_reject_global_move(arg.value, arg_id, call_name, true)
+	descendants := tc.ownership_owned_descendant_names(arg.value)
+	if tc.ownership_move_var_result(arg.value, call_name, arg_id, true, call_name, true) {
+		st.owned_sum_drop_reads[int(clean_id)] = true
+		for source_name in descendants {
+			type_name := tc.ownership_type_name_for_var(source_name)
+			st.owned_vars.delete(source_name)
+			st.owned_var_types.delete(source_name)
+			st.moved_vars[source_name] = MovedVar{
+				...st.moved_vars[arg.value]
+				type_name: type_name
+			}
+		}
+	}
+	return true
+}
+
 fn (mut tc TypeChecker) ownership_after_call(id flat.NodeId, node flat.Node, info CallInfo) {
 	if tc.ownership != unsafe { nil } && tc.ownership.library_body_depth > 0 {
 		if tc.ownership.suppressed_checks == 0 {
@@ -9876,6 +10139,9 @@ fn (mut tc TypeChecker) ownership_after_call(id flat.NodeId, node flat.Node, inf
 		arg_node := tc.a.child_node(&node, i)
 		arg_value_id := tc.call_arg_value(tc.a.child(&node, i))
 		arg_id := tc.spread_arg_value(arg_value_id) or { arg_value_id }
+		if tc.ownership_consume_named_sum_drop_arg(node, call_name, arg_id) {
+			continue
+		}
 		if arg_node.kind == .field_init {
 			tc.ownership_after_collapsed_field_arg(node, info, arg_node, arg_id, id, call_name, mut call_borrows)
 			continue
@@ -10359,7 +10625,8 @@ fn (mut tc TypeChecker) ownership_after_return(id flat.NodeId, node flat.Node) {
 			continue
 		}
 		if projection_action == .owned_value
-			|| (projection_action == .clone_value && is_string_view) {
+			|| (projection_action == .clone_value && (is_string_view
+				|| tc.ownership_expr_is_smartcast_variant_ident(tc.ownership_unwrap_expr(expr_id)))) {
 			st.mark_fn_return_owned(st.cur_fn)
 			for slot_idx in tc.ownership_return_slot_indices(expr_id, i, '') {
 				tc.ownership_add_fn_return_slot(st.cur_fn, slot_idx)
@@ -12457,6 +12724,13 @@ pub fn (tc &TypeChecker) ownership_index_read_moves_value(id flat.NodeId) bool {
 	return int(id) >= 0 && tc.ownership != unsafe { nil } && tc.ownership.index_move_reads[int(id)]
 }
 
+// ownership_sum_drop_consumes_storage reports whether a verified builtin drop call
+// consumed the complete named sum owner at `id`, rather than a smartcast payload copy.
+pub fn (tc &TypeChecker) ownership_sum_drop_consumes_storage(id flat.NodeId) bool {
+	return int(id) >= 0 && tc.ownership != unsafe { nil }
+		&& tc.ownership.owned_sum_drop_reads[int(id)]
+}
+
 // ownership_receiver_alias_arg_is_cloned reports whether ownership analysis retained a
 // by-value argument because lowering clones it away from the pointer receiver it projects from.
 pub fn (tc &TypeChecker) ownership_receiver_alias_arg_is_cloned(id flat.NodeId) bool {
@@ -12755,6 +13029,20 @@ fn (mut tc TypeChecker) ownership_clone_escaping_string_view(id flat.NodeId) {
 	st.borrowed_projection_actions[int(clean_id)] = .clone_value
 }
 
+// ownership_expr_is_smartcast_variant_ident recognizes an implicit projection
+// from retained sum/interface storage without reinterpreting pointer values.
+fn (tc &TypeChecker) ownership_expr_is_smartcast_variant_ident(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) || tc.a.node(id).kind != .ident {
+		return false
+	}
+	declared := tc.declared_smartcast_receiver_type(id) or { return false }
+	clean_declared := unalias_type(declared)
+	if clean_declared !is SumType && clean_declared !is Interface {
+		return false
+	}
+	return !semantic_types_equal(clean_declared, unalias_type(tc.resolve_type(id)))
+}
+
 // ownership_expr_borrows_storage reports whether `id` reads storage another value keeps
 // owning and therefore cannot be moved. A field read of a directly-held value keeps its
 // Rust-like move semantics; cloneability is deliberately decided separately above.
@@ -12788,13 +13076,14 @@ fn (tc &TypeChecker) ownership_expr_borrows_storage(id flat.NodeId) bool {
 	if is_const_read && tc.ownership_expr_reads_error_sentinel(clean_id) {
 		return false
 	}
-	if !is_field && !is_slice && !is_index && !is_deref && !is_variant_cast && !is_const_read {
+	is_smartcast_variant := tc.ownership_expr_is_smartcast_variant_ident(clean_id)
+	if !is_field && !is_slice && !is_index && !is_deref && !is_variant_cast && !is_smartcast_variant && !is_const_read {
 		return false
 	}
 	if !tc.ownership_type_requires_destruction(tc.resolve_type(clean_id)) {
 		return false
 	}
-	if is_slice || is_deref || is_variant_cast || is_const_read {
+	if is_slice || is_deref || is_variant_cast || is_smartcast_variant || is_const_read {
 		return true
 	}
 	return tc.ownership_projection_reads_through_pointer(clean_id)

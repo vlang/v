@@ -2187,7 +2187,13 @@ fn (mut t Transformer) wrap_sum_value_with_storage(expr_id flat.NodeId, target_s
 		}
 	}
 	if !matches {
-		path := t.sum_variant_path(resolved_sum_source_id_6, flat.source_type_id(clean_variant))
+		mut path := t.sum_variant_path(resolved_sum_source_id_6, flat.source_type_id(clean_variant))
+		if path.len == 0 && t.array_storage_source_is_mut_param(expr_id) {
+			// A mutable array parameter borrows its caller's header. Match the
+			// stored value before wrapping it in nested sum variants.
+			path = t.sum_variant_path(resolved_sum_source_id_6,
+				t.trim_pointer_type(flat.source_type_id(clean_variant)))
+		}
 		if path.len == 1 {
 			matches = true
 			matched_variant = flat.source_type_name(path[0])
@@ -2226,7 +2232,10 @@ fn (mut t Transformer) wrap_sum_value_with_storage(expr_id flat.NodeId, target_s
 	}
 	if detach_array_payload {
 		inner = t.sum_owned_value_payload(inner, flat.source_type_id(matched_variant))
-		inner = t.clone_owned_array_storage_value(inner, flat.source_type_id(matched_variant), t.array_storage_source_is_mut_param(expr_id))
+		// A pointer variant retains the caller's header; only value variants acquire storage.
+		inner = t.clone_owned_array_storage_value(inner, flat.source_type_id(matched_variant),
+			t.array_storage_source_is_mut_param(expr_id)
+				&& !t.sum_variant_is_direct_pointer(flat.source_type_id(matched_variant)))
 	}
 	return t.make_sum_literal(storage_sum_source_id, flat.source_type_id(matched_variant), inner)
 }

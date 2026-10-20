@@ -29155,6 +29155,18 @@ fn (t &Transformer) variant_names_match(a_id u32, b_id u32) bool {
 }
 
 fn (t &Transformer) variant_names_match_uncached(a string, b string) bool {
+	if (a.starts_with('fn(') || a.starts_with('fn ('))
+		&& (b.starts_with('fn(') || b.starts_with('fn (')) && !isnil(t.tc) {
+		actual := t.tc.parse_type(flat.source_type_id(a))
+		expected := t.tc.parse_type(flat.source_type_id(b))
+		actual_ref := actual
+		expected_ref := expected
+		if actual is types.FnType && expected is types.FnType {
+			// Parameter names do not distinguish function variants; parameter
+			// modes, exact types and return types still do.
+			return types.semantic_types_equal(actual_ref, expected_ref)
+		}
+	}
 	a_has_bracket := a.contains('[')
 	b_has_bracket := b.contains('[')
 	if !a_has_bracket && !b_has_bracket {
@@ -29948,6 +29960,13 @@ fn (t &Transformer) resolve_expr_type(id flat.NodeId) u32 {
 				child_type_source_id := t.node_type(child_id)
 				child_type := flat.source_type_name(child_type_source_id)
 				child := t.a.nodes[int(child_id)]
+				if node.op == .amp {
+					// Match address lowering for values backed by a pointer, including
+					// the source slot used by an implicit array-map `it` binding.
+					if storage_type := t.pointer_storage_amp_decl_type(id) {
+						return storage_type
+					}
+				}
 				if node.op == .amp && child.kind == .ident && child.value in t.heaped_amp_locals
 					&& child_type.starts_with('&') {
 					// A local moved to the heap is stored as its address: `&a` is that pointer.

@@ -3767,9 +3767,11 @@ fn make_alias() &Bare {
 	assert c_source.contains('v3_aligned_free(d)')
 	assert c_source.contains('v3_aligned_free(pa)')
 	assert c_source.contains('v3_aligned_free(ha)')
-	param_signature := 'main__Bare* make_param_alias(main__Bare x) {'
+	param_signature := 'main__Bare* make_param_alias(main__Bare __heap_value_param_0) {'
 	param_body := c_fn_body(c_source, param_signature)
-	assert param_body.contains('v3_aligned_memdup(&x,')
+	assert param_body.contains('main__Bare __esc_1 = __heap_value_param_0;')
+	assert param_body.contains('v3_aligned_memdup(&__esc_1,')
+	assert param_body.count('v3_aligned_memdup(') == 1
 	assert param_body.contains('sizeof(main__Bare)')
 	assert param_body.contains('__alignof__(*(main__Bare*)(NULL))')
 	make_direct_body := c_fn_body(c_source, 'main__Bare* make_direct(void) {')
@@ -4637,12 +4639,15 @@ fn main() {
 			}
 		}
 	}
-	println(read(d["a"]))
+	println(read(Value(d["a"])))
 }
 '
 	c_source := gen_c(v3_bin, 'overloaded_index_sum_ref_arg_materializes_getter_result_c', source)
-	assert c_source.contains('sum_ref_arg'), c_source
-	assert !c_source.contains('&Dict__index('), c_source
+	entry_signature := if c_source.contains('int wmain(') { 'int wmain(' } else { 'int main(' }
+	main_body := c_fn_body(c_source, entry_signature)
+	assert main_body.contains('main__read(&((Value[])'), main_body
+	assert main_body.count('Dict__op_index(') == 1, main_body
+	assert !main_body.contains('&Dict__op_index('), main_body
 	out := run_good(v3_bin, 'overloaded_index_sum_ref_arg_materializes_getter_result', source)
 	assert out == 'ok'
 }
@@ -7850,8 +7855,8 @@ fn test_nested_generic_receiver_call_waits_for_receiver_type() {
 
 struct Node[T] {
 	value T
-	left  Tree[T]
-	right Tree[T]
+	left  &Tree[T]
+	right &Tree[T]
 }
 
 type Tree[T] = Empty | Node[T]
@@ -7870,7 +7875,7 @@ fn (tree Tree[T]) delete[T](value T) Tree[T] {
 			Node[T]{
 				...tree
 				value: tree.right.min()
-				right: tree.right.delete(tree.right.min())
+				right: &Tree[T](tree.right.delete(tree.right.min()))
 			}
 		}
 	}

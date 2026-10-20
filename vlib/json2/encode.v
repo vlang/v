@@ -461,11 +461,7 @@ struct EncoderMapKey[K] {
 fn (mut encoder Encoder) encode_map[K, T](val map[K]T) {
 	source_keys := val.keys()
 	defer {
-		$if K.unaliased_typ is string {
-			for i in 0 .. source_keys.len {
-				unsafe { source_keys[i].free() }
-			}
-		}
+		// Typed array cleanup also releases the cloned string keys.
 		unsafe { source_keys.free() }
 	}
 	mut keys := []EncoderMapKey[K]{cap: val.len}
@@ -477,7 +473,9 @@ fn (mut encoder Encoder) encode_map[K, T](val map[K]T) {
 				unsafe { keys[i].name.free() }
 			}
 		}
-		unsafe { keys.free() }
+		// Entries borrow source keys; only the nonstring names are released above.
+		raw_keys := unsafe { &array(&keys) }
+		unsafe { raw_keys.free() }
 	}
 	for i in 0 .. source_keys.len {
 		key := &source_keys[i]

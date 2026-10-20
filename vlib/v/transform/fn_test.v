@@ -2049,3 +2049,47 @@ fn test_generic_cast_prescreen_keeps_selectively_imported_type_spellings() {
 	assert a.nodes[int(lowered)].kind == .cast_expr
 	assert a.nodes[int(lowered)].value == 'library.Box[int]'
 }
+
+fn test_pointer_storage_addresses_keep_literal_and_index_element_types() {
+	mut a := flat.FlatAst.new()
+	slot := a.add_val(.ident, 'slot')
+	external := a.add_val(.ident, 'external')
+	pointer := a.add_val(.ident, 'pointer')
+	mut_pointer := a.add_val(.ident, 'mut_pointer')
+	slot_address := literal_binding_test_node(mut a, .prefix, [slot])
+	a.nodes[int(slot_address)].op = .amp
+	external_address := literal_binding_test_node(mut a, .prefix, [external])
+	a.nodes[int(external_address)].op = .amp
+	pointer_address := literal_binding_test_node(mut a, .prefix, [pointer])
+	a.nodes[int(pointer_address)].op = .amp
+	mut_pointer_address := literal_binding_test_node(mut a, .prefix, [mut_pointer])
+	a.nodes[int(mut_pointer_address)].op = .amp
+	literal := literal_binding_test_node(mut a, .array_literal, [slot_address, external_address])
+	one := a.add_val(.int_literal, '1')
+	index := literal_binding_test_node(mut a, .index, [literal, one])
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['Item'] = []types.StructField{}
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.set_var_type('slot', flat.source_type_id('&Item'))
+	t.set_var_type('external', flat.source_type_id('Item'))
+	t.set_var_type('pointer', flat.source_type_id('&Item'))
+	t.set_var_type('mut_pointer', flat.source_type_id('&&Item'))
+	t.pointer_value_lvalues['slot'] = true
+	t.pointer_value_rvalues['slot'] = true
+	t.mut_param_values['mut_pointer'] = true
+	t.pointer_value_lvalues['mut_pointer'] = true
+	t.pointer_value_rvalues['mut_pointer'] = true
+	assert t.node_type(slot_address) == flat.source_type_id('&Item')
+	assert t.node_type(external_address) == flat.source_type_id('&Item')
+	assert t.node_type(pointer_address) == flat.source_type_id('&&Item')
+	assert t.node_type(mut_pointer_address) == flat.source_type_id('&&Item')
+	assert t.node_type(literal) == flat.source_type_id('[]&Item')
+	assert t.node_type(index) == flat.source_type_id('&Item')
+	lowered := t.transform_array_literal(literal, a.nodes[int(literal)])
+	assert t.node_type(lowered) == flat.source_type_id('[]&Item')
+	assert t.pointer_value_lvalues['slot']
+	assert t.pointer_value_rvalues['slot']
+	for node in a.nodes {
+		assert node.kind != .ident || node.value != 'memdup'
+	}
+}

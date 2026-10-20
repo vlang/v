@@ -102,6 +102,11 @@ pub fn (tc &TypeChecker) ownership_sum_read_moves_value(_ flat.NodeId) bool {
 	return false
 }
 
+// ownership_sum_drop_consumes_storage reports no consumed sum owners without ownership checking.
+pub fn (tc &TypeChecker) ownership_sum_drop_consumes_storage(_ flat.NodeId) bool {
+	return false
+}
+
 // ownership_receiver_alias_arg_is_cloned reports no receiver clone metadata when ownership is disabled.
 pub fn (tc &TypeChecker) ownership_receiver_alias_arg_is_cloned(_ flat.NodeId) bool {
 	return false

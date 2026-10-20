@@ -291,13 +291,14 @@ fn map_map_eq(a map, b map) bool {
 	return true
 }
 
-@[inline]
+@[inline; manualfree]
 fn map_clone_string(dest voidptr, pkey voidptr) {
 	unsafe {
 		s := *&string(pkey)
 		cloned := s.clone()
 		// Use memcpy for native backend compatibility
 		// (*&string(dest)) = cloned doesn't reliably store full struct
+		// The destination owns cloned; autofree must not release the transferred key.
 		vmemcpy(dest, voidptr(&cloned), sizeof(string))
 	}
 }

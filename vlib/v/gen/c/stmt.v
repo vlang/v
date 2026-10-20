@@ -5282,6 +5282,8 @@ fn (mut g FlatGen) gen_debugger_stmt(node flat.Node) {
 			value_type = semantic_type
 			display_type = debugger_type_name(semantic_type)
 			expr = '*(${expr})'
+		} else if g.local_storage_needs_implicit_deref(v.name) {
+			expr = '*(${expr})'
 		} else if g.current_param_is_mut(v.name) {
 			expr = '*(${expr})'
 			if v.typ is types.Pointer && !(g.cur_explicit_mut_pointer_params[v.name] or {

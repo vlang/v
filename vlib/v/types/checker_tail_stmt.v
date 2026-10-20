@@ -10884,6 +10884,12 @@ fn (tc &TypeChecker) in_place_container_layouts_differ(actual Type, expected Typ
 // fixed array is not a dynamic one, and a concrete type (or a sum type) is not the
 // interface or sum type that would box it.
 fn (tc &TypeChecker) container_elem_layouts_differ(actual Type, expected Type) bool {
+	return tc.container_elem_layouts_differ_with_fn_scalar_abi(actual, expected, false)
+}
+
+// Function values may share scalar representations such as rune/u32; ordinary
+// container assignment still requires the original element identity.
+fn (tc &TypeChecker) container_elem_layouts_differ_with_fn_scalar_abi(actual Type, expected Type, allow_fn_scalar_abi bool) bool {
 	clean_actual := unalias_type(actual)
 	clean_expected := unalias_type(expected)
 	if type_contains_unknown(clean_actual) || type_contains_unknown(clean_expected) {
@@ -10891,6 +10897,9 @@ fn (tc &TypeChecker) container_elem_layouts_differ(actual Type, expected Type) b
 	}
 	if (clean_actual.is_integer() || clean_actual.is_float())
 		&& (clean_expected.is_integer() || clean_expected.is_float()) {
+		if allow_fn_scalar_abi && tc.fn_param_compatible(clean_actual, clean_expected) {
+			return false
+		}
 		return clean_actual.name() != clean_expected.name()
 	}
 	if (clean_actual is Enum) != (clean_expected is Enum) {
@@ -10899,44 +10908,44 @@ fn (tc &TypeChecker) container_elem_layouts_differ(actual Type, expected Type) b
 	match clean_expected {
 		OptionType {
 			if clean_actual is OptionType {
-				return tc.container_elem_layouts_differ(clean_actual.base_type, clean_expected.base_type)
+				return tc.container_elem_layouts_differ_with_fn_scalar_abi(clean_actual.base_type, clean_expected.base_type, allow_fn_scalar_abi)
 			}
 			return true
 		}
 		ResultType {
 			if clean_actual is ResultType {
-				return tc.container_elem_layouts_differ(clean_actual.base_type, clean_expected.base_type)
+				return tc.container_elem_layouts_differ_with_fn_scalar_abi(clean_actual.base_type, clean_expected.base_type, allow_fn_scalar_abi)
 			}
 			return true
 		}
 		Array {
 			if clean_actual is Array {
-				return tc.container_elem_layouts_differ(clean_actual.elem_type, clean_expected.elem_type)
+				return tc.container_elem_layouts_differ_with_fn_scalar_abi(clean_actual.elem_type, clean_expected.elem_type, allow_fn_scalar_abi)
 			}
 			// A fixed array stores its elements in place, a dynamic one behind a pointer.
 			return clean_actual is ArrayFixed
 		}
 		ArrayFixed {
 			if clean_actual is ArrayFixed {
-				return tc.container_elem_layouts_differ(clean_actual.elem_type, clean_expected.elem_type)
+				return tc.container_elem_layouts_differ_with_fn_scalar_abi(clean_actual.elem_type, clean_expected.elem_type, allow_fn_scalar_abi)
 			}
 			return clean_actual is Array
 		}
 		Map {
 			if clean_actual is Map {
-				return tc.container_elem_layouts_differ(clean_actual.key_type, clean_expected.key_type)
-					|| tc.container_elem_layouts_differ(clean_actual.value_type, clean_expected.value_type)
+				return tc.container_elem_layouts_differ_with_fn_scalar_abi(clean_actual.key_type, clean_expected.key_type, allow_fn_scalar_abi)
+					|| tc.container_elem_layouts_differ_with_fn_scalar_abi(clean_actual.value_type, clean_expected.value_type, allow_fn_scalar_abi)
 			}
 		}
 		Pointer {
 			if clean_actual is Pointer && clean_actual.base_type !is Void
 				&& clean_expected.base_type !is Void {
-				return tc.container_elem_layouts_differ(clean_actual.base_type, clean_expected.base_type)
+				return tc.container_elem_layouts_differ_with_fn_scalar_abi(clean_actual.base_type, clean_expected.base_type, allow_fn_scalar_abi)
 			}
 		}
 		Channel {
 			if clean_actual is Channel {
-				return tc.container_elem_layouts_differ(clean_actual.elem_type, clean_expected.elem_type)
+				return tc.container_elem_layouts_differ_with_fn_scalar_abi(clean_actual.elem_type, clean_expected.elem_type, allow_fn_scalar_abi)
 			}
 		}
 		Interface {
@@ -11112,7 +11121,7 @@ fn (tc &TypeChecker) fn_value_layouts_differ(actual &Type, expected &Type) bool 
 		|| (clean_actual is ResultType && clean_expected is ResultType)
 		|| (clean_actual is Channel && clean_expected is Channel)
 		|| (is_container_type(clean_actual) && is_container_type(clean_expected))
-	return shared_c_type && tc.container_elem_layouts_differ(clean_actual, clean_expected)
+	return shared_c_type && tc.container_elem_layouts_differ_with_fn_scalar_abi(clean_actual, clean_expected, true)
 }
 
 // fn_value_signature_layouts_differ reports whether a parameter or the result of the
@@ -12814,7 +12823,7 @@ pub fn extend_stable_type_indexes_ref(mut indexes map[u32]int, type_names []u32)
 	for raw_name_id in type_names {
 		name_id := trimmed_source_type_id(raw_name_id)
 		if name_id != 0 && name_id !in indexes {
-			names << name_id
+			names << raw_name_id
 		}
 	}
 	if names.len == 0 {
@@ -12826,7 +12835,8 @@ pub fn extend_stable_type_indexes_ref(mut indexes map[u32]int, type_names []u32)
 	for _, type_idx in indexes {
 		used[type_idx] = true
 	}
-	for name_id in names {
+	for raw_name_id in names {
+		name_id := trimmed_source_type_id(raw_name_id)
 		if name_id in indexes {
 			continue
 		}
@@ -14175,6 +14185,12 @@ fn (tc &TypeChecker) struct_init_field_lookup_name(literal_name_id u32, parsed_n
 fn (tc &TypeChecker) struct_fields_for_init(struct_name_id u32) []StructField {
 	struct_name := flat.source_type_name(struct_name_id)
 	base_name, generic_args, is_generic := generic_type_application_parts(struct_name)
+	// Concrete fields survive template erasure and already contain substituted types.
+	if is_generic {
+		if fields := tc.structs[struct_name] {
+			return fields
+		}
+	}
 	raw_lookup_name := if is_generic { base_name } else { struct_name }
 	scoped_c_name := c_struct_module_key(tc.cur_module, raw_lookup_name)
 	if raw_lookup_name.starts_with('C.') {

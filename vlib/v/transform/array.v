@@ -2882,11 +2882,12 @@ struct OwnedArraySumVariant {
 fn (mut t Transformer) clone_owned_sum_literal_for_storage(value flat.NodeId, typ_id u32) ?flat.NodeId {
 	node := t.a.node(t.unwrap_parens(value))
 	resolved_sum_source_id_2, variants_source_ids := t.concrete_sum_name_and_variants(typ_id)
-	resolved_sum := flat.source_type_name(resolved_sum_source_id_2)
-
-	if node.kind != .struct_init || node.children_count != 2
-		|| flat.source_type_name(t.resolve_sum_name(flat.source_type_id(node.value))) != resolved_sum
-		|| flat.source_type_name(t.resolve_sum_name(node.typ)) != resolved_sum {
+	if node.kind != .struct_init || node.children_count != 2 {
+		return none
+	}
+	literal_sum, _ := t.concrete_sum_name_and_variants(flat.source_type_id(node.value))
+	literal_type, _ := t.concrete_sum_name_and_variants(node.typ)
+	if literal_sum != resolved_sum_source_id_2 || literal_type != resolved_sum_source_id_2 {
 		return none
 	}
 	tag := t.a.child_node(node, 0)
