@@ -6060,6 +6060,7 @@ fn (g &FlatGen) core_native_header_is_redeclared(source_file string, include_arg
 			return include_arg == '<sys/prctl.h>'
 				|| normalized_c_include_arg_path(include_arg) == root + '/vlib/v/pthread_helper.h'
 		}
+		'v/gen/c/output_nix.c.v' { return include_arg == '<sys/uio.h>' }
 		'v/gen/fastc/unit_compile_nix.c.v' { return include_arg == '<signal.h>' }
 		'v/diagserver/diagserver_linux.c.v' {
 			return include_arg in ['<errno.h>', '<signal.h>', '<sys/file.h>', '<sys/wait.h>',
