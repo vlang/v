@@ -23096,7 +23096,7 @@ fn (mut g FlatGen) collect_fixed_array_typedefs_needed() map[string]FixedArrayTy
 		for variant in g.tc.sum_types.type_ids(name) or { []u32{} } {
 			typ := g.tc.parse_canonical_type(variant)
 			if fixed_array_type_first_seen(typ, g.tc.cur_module, mut type_seen) {
-				g.collect_fixed_array_typedef(*typ, g.tc.cur_module, mut needed)
+				g.collect_fixed_array_typedef(typ, g.tc.cur_module, mut needed)
 			}
 		}
 	}

@@ -82,7 +82,7 @@ fn (mut g FlatGen) sum_pointer_slot_typedefs_for_array(arr types.ArrayFixed) {
 			}
 			if !cgen_types_equal_after_alias_erasure(target, types.Type(arr)) { continue }
 			alias := g.sum_pointer_slot_type(typ)
-			pointers[alias] = *typ
+			pointers[alias] = typ
 			depths[alias] = depth
 			modules[alias] = g.tc.cur_module
 			if depth > max_depth { max_depth = depth }
@@ -152,7 +152,7 @@ fn (mut g FlatGen) erased_sum_pointer_field_type(base_type &types.Type, field st
 	for variant in g.tc.sum_types.type_ids(flat.source_type_name(sum)) or { []u32{} } {
 		if sum_field_name(flat.source_type_name(variant)) != field { continue }
 		typ := g.tc.parse_canonical_type(variant)
-		if sum_pointer_needs_erased_storage(typ) { return *typ }
+		if sum_pointer_needs_erased_storage(typ) { return typ }
 		return none
 	}
 	return none

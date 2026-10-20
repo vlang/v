@@ -35,9 +35,9 @@ fn test_sum_fixed_array_pointer_storage_and_addressable_projection() {
 	assert g.fn_ptr_nested_typedef_ready('${slot_type}*')
 	indirect := tc.parse_canonical_type(flat.source_type_id('&&[2]Recursive'))
 	assert g.value_c_type(indirect) == '${slot_type}*'
-	assert g.callback_c_type(*indirect) == '${slot_type}*'
-	assert g.fn_return_type_name(*indirect) == '${slot_type}*'
-	assert g.cast_c_type(*indirect) == '${slot_type}*'
+	assert g.callback_c_type(indirect) == '${slot_type}*'
+	assert g.fn_return_type_name(indirect) == '${slot_type}*'
+	assert g.cast_c_type(indirect) == '${slot_type}*'
 	base := a.add_node(flat.Node{ kind: .ident, value: 'wrapped', typ: flat.source_type_id('Recursive') })
 	field := flat.Node{ kind: .selector, value: '_ptr__2Recursive', op: .dot }
 	g.sb.clear()

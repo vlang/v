@@ -656,7 +656,7 @@ fn (mut tc TypeChecker) ownership_sum_borrow_flow_after(id flat.NodeId, ancestor
 		} else if node.children_count > 0 {
 			init_flow := tc.ownership_sum_borrow_flow_after(tc.a.child(node, 0), visited, entry, '')
 			if !init_flow.falls_through { return sum_borrow_scope_flow(initial, init_flow) }
-			entry = init_flow.aliases
+			entry = init_flow.aliases.clone()
 		}
 		mut iteration := entry.clone()
 		for {
@@ -700,7 +700,7 @@ fn (mut tc TypeChecker) ownership_sum_borrow_flow_after(id flat.NodeId, ancestor
 						}
 					}
 				}
-				backedges = posted
+				backedges = posted.clone()
 			}
 			mut heads := [entry]
 			heads << backedges
@@ -716,7 +716,7 @@ fn (mut tc TypeChecker) ownership_sum_borrow_flow_after(id flat.NodeId, ancestor
 				flow.continues = outer_continues
 				return sum_borrow_scope_flow(initial, flow)
 			}
-			iteration = merged
+			iteration = merged.clone()
 		}
 	}
 	flow.falls_through = !tc.stmt_definitely_returns(current)
