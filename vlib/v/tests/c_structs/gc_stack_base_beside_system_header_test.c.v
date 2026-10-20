@@ -1,3 +1,4 @@
+// vtest vflags: -gc boehm
 #include <stdio.h>
 
 // A system header in the program must not leave builtin's C.GC_stack_base an incomplete type.

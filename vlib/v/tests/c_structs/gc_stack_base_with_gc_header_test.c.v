@@ -1,3 +1,4 @@
+// vtest vflags: -gc boehm
 #include <gc.h>
 
 // A program that includes gc.h itself gets gc.h's definition of C.GC_stack_base, not a second

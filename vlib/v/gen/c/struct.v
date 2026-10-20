@@ -7181,7 +7181,10 @@ fn (g &FlatGen) skip_builtin_struct(name string) bool {
 		if info := g.struct_decl_infos[name] {
 			// Headerless vlib bindings supply their own complete C layouts.
 			// Keep externally supplied types opaque when headers own their definitions.
-			if (info.file.ends_with('.c.v') || c_source_looks_header_backed(info.file))
+			// A c_struct_header_guards type is V's to lay out: the generated C includes its
+			// header only where the program does, and the guard defers to the header then.
+			if name !in c_struct_header_guards
+				&& (info.file.ends_with('.c.v') || c_source_looks_header_backed(info.file))
 				&& (g.c_directives_use_system_libc() || !g.c_source_file_is_in_vlib(info.file)) {
 				return true
 			}
@@ -7232,9 +7235,10 @@ const c_system_header_struct_names = {
 }
 
 // c_struct_header_guards names C structs that V lays out itself although a header the program
-// may include also defines them. The body is emitted inside `#ifndef <guard>`, so the
-// preprocessor keeps V's layout exactly when nothing earlier in the translation unit included
-// that header -- whichever directive, condition or nested header did it.
+// may include also defines them: skip_builtin_struct does not leave them opaque as header-backed
+// `.c.v` bindings, and the body is emitted inside `#ifndef <guard>`, so the preprocessor keeps
+// V's layout exactly when nothing earlier in the translation unit included that header --
+// whichever directive, condition or nested header did it.
 const c_struct_header_guards = {
 	// gc.h: the generated C never includes it, but a program or module may (vlib/fontstash), and
 	// so do the runtime helpers embedded in object-file output.
