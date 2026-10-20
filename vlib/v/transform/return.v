@@ -115,7 +115,8 @@ fn transformed_return_source_id(value string) ?flat.NodeId {
 }
 
 fn (mut t Transformer) transformed_direct_optional_forward_return(value_id flat.NodeId, ret_typ_id u32, source_return_id flat.NodeId) ?flat.NodeId {
-	if !t.is_optional_type_name(ret_typ_id) || !t.return_expr_is_optional_result(value_id) {
+	if !t.is_optional_type_name(ret_typ_id) || !t.return_expr_is_optional_result(value_id)
+		|| t.returned_option_payload_needs_conversion(value_id, ret_typ_id) {
 		return none
 	}
 	expr_type_source_id_2 := t.qualify_optional_type(t.optional_result_expr_type_name(value_id))
@@ -367,7 +368,8 @@ fn (mut t Transformer) try_return_direct_optional_expr(node flat.Node) ?[]flat.N
 
 	expr_type_source_id_3 := t.qualify_optional_type(t.optional_result_expr_type_name(child_id))
 
-	if !t.optional_types_match(ret_type_source_id_2, expr_type_source_id_3) {
+	if !t.optional_types_match(ret_type_source_id_2, expr_type_source_id_3)
+		|| t.returned_option_payload_needs_conversion(child_id, ret_type_source_id) {
 		return none
 	}
 	mut new_expr := t.clone_borrowed_storage_projection(child_id, t.transform_optional_wrapper_expr(child_id), ret_type_source_id)
@@ -432,7 +434,8 @@ fn (mut t Transformer) try_expand_return_optional_expr(source_return_id flat.Nod
 	}
 	expr_type0_source_id := t.optional_result_expr_type_name(child_id)
 
-	if !t.is_optional_type_name(expr_type0_source_id) {
+	if !t.is_optional_type_name(expr_type0_source_id)
+		|| t.returned_option_payload_needs_conversion(child_id, t.cur_fn_ret_type) {
 		return none
 	}
 	ret_type_source_id := t.qualify_optional_type(t.cur_fn_ret_type)
@@ -599,6 +602,57 @@ fn (mut t Transformer) transform_forwarded_return_slot(value_id flat.NodeId, act
 	return t.transform_forwarded_return_slot_inner(value_id, actual, expected, clone_borrowed)
 }
 
+// option_payload_conversion_types returns the option (or result) types of the value
+// `value_id`, whose own type is `source_type_id`, and of `target_type_id`, when the value
+// is stored as the target although their payloads are stored differently: a `?[2]int` or
+// a `?[]Item` used as a `?[]int` or `?[]Named`, a `?Item` as a `?Named`, a `?u8` as a
+// `?u64`. Such an option cannot be copied as it is.
+fn (mut t Transformer) option_payload_conversion_types(value_id flat.NodeId, source_type_id u32, target_type_id u32) ?(types.Type, types.Type) {
+	if int(value_id) < 0 || source_type_id == u32(0) || target_type_id == u32(0) || isnil(t.tc)
+		|| !t.is_optional_type_name(source_type_id) || !t.is_optional_type_name(target_type_id) {
+		return none
+	}
+	qualified_source := t.qualify_optional_type(source_type_id)
+	qualified_target := t.qualify_optional_type(target_type_id)
+	if qualified_source == qualified_target {
+		return none
+	}
+	actual_type := t.tc.parse_type(qualified_source)
+	expected_type := t.tc.parse_type(qualified_target)
+	actual_base := unalias_type(actual_type)
+	expected_base := unalias_type(expected_type)
+	if !(actual_base is types.OptionType && expected_base is types.OptionType)
+		&& !(actual_base is types.ResultType && expected_base is types.ResultType) {
+		return none
+	}
+	if !t.forwarded_slot_conversion_supported(*actual_type, *expected_type) {
+		return none
+	}
+	return *actual_type, *expected_type
+}
+
+// transform_optional_value_for_option_target converts an option or a result stored as one
+// whose payload is stored differently (option_payload_conversion_types): a present payload
+// is converted like a plain value of the target's payload type, and `none` or the error is
+// kept.
+fn (mut t Transformer) transform_optional_value_for_option_target(value_id flat.NodeId, source_type_id u32, target_type_id u32) ?flat.NodeId {
+	actual_type, expected_type := t.option_payload_conversion_types(value_id, source_type_id,
+		target_type_id) or { return none }
+	return t.transform_forwarded_return_slot(value_id, actual_type, expected_type)
+}
+
+// returned_option_payload_needs_conversion reports whether the option or result
+// `value_id`, returned from a function returning `ret_typ_id`, must have its payload
+// converted. It is then not forwarded as it is, and transform_return_child converts it.
+fn (mut t Transformer) returned_option_payload_needs_conversion(value_id flat.NodeId, ret_typ_id u32) bool {
+	if int(value_id) < 0 || t.a.nodes[int(value_id)].kind in [.if_expr, .match_stmt, .or_expr] {
+		return false
+	}
+	t.option_payload_conversion_types(value_id, t.optional_conversion_source_type(value_id),
+		ret_typ_id) or { return false }
+	return true
+}
+
 fn (mut t Transformer) transform_forwarded_return_slot_inner(value_id flat.NodeId, actual types.Type, expected types.Type, clone_borrowed bool) flat.NodeId {
 	if !t.forwarded_slot_conversion_supported(actual, expected) {
 		value := t.transform_expr(value_id)
@@ -683,11 +737,14 @@ fn (t &Transformer) forwarded_slot_conversion_supported(actual types.Type, expec
 		return t.sum_target_accepts_variant_type(expected_base.source_type_id(), t.semantic_type_name(actual_base))
 			|| t.sum_target_accepts_variant_type(expected_base.source_type_id(), t.semantic_type_name(actual))
 	}
+	// C converts a plain number, but not the payload of an option or a result.
 	if actual_base is types.OptionType && expected_base is types.OptionType {
 		return t.forwarded_slot_conversion_supported(actual_base.base_type, expected_base.base_type)
+			|| forwarded_number_storage_differs(actual_base.base_type, expected_base.base_type)
 	}
 	if actual_base is types.ResultType && expected_base is types.ResultType {
 		return t.forwarded_slot_conversion_supported(actual_base.base_type, expected_base.base_type)
+			|| forwarded_number_storage_differs(actual_base.base_type, expected_base.base_type)
 	}
 	if expected_base is types.Array {
 		if actual_base is types.Array {
@@ -780,6 +837,21 @@ fn forwarded_integer_storage_matches(a types.Type, b types.Type) bool {
 		return a.size == b.size && a.props.has(.unsigned) == b.props.has(.unsigned)
 	}
 	return false
+}
+
+// forwarded_number_storage_differs reports whether two number types are stored
+// differently, such as `int` and `f64`, or `f32` and `f64`.
+fn forwarded_number_storage_differs(actual types.Type, expected types.Type) bool {
+	actual_base := unalias_type(actual)
+	expected_base := unalias_type(expected)
+	if (!actual_base.is_integer() && !actual_base.is_float())
+		|| (!expected_base.is_integer() && !expected_base.is_float()) {
+		return false
+	}
+	if actual_base.is_integer() && expected_base.is_integer() {
+		return !forwarded_integer_storage_matches(actual_base, expected_base)
+	}
+	return actual_base.name() != expected_base.name()
 }
 
 // forwarded_array_elems_storage_identical reports whether two array element

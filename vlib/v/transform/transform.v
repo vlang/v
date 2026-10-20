@@ -14569,6 +14569,12 @@ fn (mut t Transformer) transform_return_child(child_id flat.NodeId, child_index 
 		if t.is_error_call(child) {
 			return t.transform_expr(return_child_id)
 		}
+		if t.returned_option_payload_needs_conversion(return_child_id, target_type_source_id_2) {
+			if converted := t.transform_optional_value_for_option_target(return_child_id,
+				t.optional_conversion_source_type(return_child_id), target_type_source_id_2) {
+				return converted
+			}
+		}
 		if child.kind in [.lambda_expr, .fn_literal] {
 			return t.transform_expr_for_type(return_child_id, target_type_source_id_2)
 		}
@@ -17711,18 +17717,10 @@ fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type_id u3
 			}
 			// A `[]Item` stored as a `?[]Named` (or `?[]Shape`) is converted element by
 			// element, as for a plain `[]Named` target; wrapped as is, the option would
-			// hold concrete values where interface or sum values are read. A `?[]Item`
-			// has its payload converted when it is present, as `return` does.
+			// hold concrete values where interface or sum values are read.
 			if payload_conversion && !t.is_optional_type_name(source_type_source_id_3) {
 				if value := t.transform_array_value_for_dynamic_target(id, target_payload_source_id) {
 					return t.make_optional_some(value, optional_target_source_id_5)
-				}
-			}
-			if payload_conversion && t.is_optional_type_name(source_type_source_id_3)
-				&& !same_option_source {
-				if value := t.transform_optional_array_value_for_option_target(id, source_type_source_id_3,
-					optional_target_source_id_5) {
-					return value
 				}
 			}
 			if payload_conversion && t.is_optional_type_name(source_type_source_id_3)
@@ -17741,6 +17739,15 @@ fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type_id u3
 				&& !flat.source_type_shape(t.optional_base_type(source_type_source_id_3)).has(.pointer) {
 				if value := t.transform_optional_value_to_pointer(id, source_type_source_id_3, optional_target_source_id_5,
 					false) {
+					return value
+				}
+			}
+			// A `?[]Item`, `?[2]int`, `?Item` or `?u8` stored as a `?[]Named`, `?[]int`,
+			// `?Named` or `?u64` has its payload converted when it is present, as a plain
+			// value would be; copied as is, the payload would be read with the wrong layout.
+			if payload_conversion && !same_option_source {
+				if value := t.transform_optional_value_for_option_target(id, source_type_source_id_3,
+					optional_target_source_id_5) {
 					return value
 				}
 			}
@@ -19760,6 +19767,13 @@ fn (mut t Transformer) try_expand_multi_return_assign(node flat.Node) ?[]flat.No
 					t.drain_pending(mut result)
 					value = converted
 				}
+			} else if converted := t.transform_optional_value_for_option_target(field, flat.source_type_id(field_type_name),
+				target_type)
+			{
+				// A `?[2]int` slot assigned to a `?[]int` target has its payload converted,
+				// as a single assignment does.
+				t.drain_pending(mut result)
+				value = converted
 			}
 			result << t.make_assign_after_owned_drop(lvalue, value)
 		}
