@@ -9396,7 +9396,7 @@ fn (tc &TypeChecker) infix_operands_compatible(lhs_id flat.NodeId, lhs_type Type
 fn enum_comparison_read_type(typ Type, other flat.Node, other_type Type) Type {
 	clean := unalias_type(typ)
 	if clean is Pointer && unalias_type(clean.base_type) is Enum
-		&& (other.kind == .enum_val || unalias_type(other_type) is Enum) {
+		&& ((other.kind == flat.NodeKind.enum_val) || (unalias_type(other_type) is Enum)) {
 		return *clean.base_type
 	}
 	return typ
