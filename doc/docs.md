@@ -9846,6 +9846,8 @@ the default alignment. Use `@[packed]` if you want to *decrease* it. The alignme
 or union, should be at least a perfect multiple of the lowest common multiple of the alignments of
 all of the members of the struct or union.
 Heap-allocated fixed arrays of aligned structs, including fixed-array aliases, keep that alignment.
+An aligned local struct also keeps its alignment when the compiler moves it to the heap,
+including when using MSVC.
 
 Example:
 ```v

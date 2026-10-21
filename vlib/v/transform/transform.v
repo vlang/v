@@ -7678,12 +7678,8 @@ fn (mut t Transformer) make_memdup_call_for_type(addr flat.NodeId, type_name_id 
 }
 
 fn (mut t Transformer) make_type_alignment(type_name_id u32) flat.NodeId {
-	pointer_type := flat.source_type_id('&${flat.source_type_name(type_name_id)}')
-	nil_value := t.a.add(flat.NodeKind.nil_literal)
-	pointer := t.make_cast(pointer_type, nil_value, pointer_type)
-	instance := t.make_prefix(.mul, pointer)
-	t.set_node_typ(int(instance), type_name_id)
-	return t.make_call_typed('__alignof__', [instance], flat.source_type_usize)
+	// Cgen emits the type operand directly; MSVC rejects expression operands.
+	return t.make_call_typed('__alignof__', [t.make_sizeof_type(type_name_id)], flat.source_type_usize)
 }
 
 fn (mut t Transformer) make_non_aliasing_allocation_call(name string, args []flat.NodeId, typ_id u32) flat.NodeId {
