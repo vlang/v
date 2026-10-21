@@ -182,7 +182,7 @@ byte-identical C within each mode. C passed Clang syntax checking. Elapsed time 
 were collected under uncontrolled host load. **The 90,000 instructions/line target is not met.**
 
 The 151 type tests passed, including borrowed-payload mutation, concurrent growth, and arena
-promotion checks. Full compiler coverage and further optimization are still in progress.
+promotion checks. Validation of the final cache bundle is recorded below.
 Commands, environment, raw counters, and output checks are retained as
 `interner-cache-matched-*` and `interner-cache-syntax-validation.json` in the artifacts directory.
 The baseline executable SHA-256 is
@@ -215,6 +215,16 @@ The 90,000 instructions/line target is still unmet.
 Raw samples, binary hashes, commands, environment, and output checks are retained as
 `reference21-content-matched-*` in the artifacts directory above. This bundle comparison does
 not establish an independent benefit from each additional fingerprint change.
+
+Validation of this exact cache bundle completed with 1,848 compiler-error cases passing and
+5 skipped; all 151 type tests, source-spelling tests, and PGO/self-build tool tests passed.
+Formatting, Markdown checks, and vet completed; vet reported existing documentation warnings.
+The broad compiler suite finished with **4,140 passed, 40 skipped, and 28 failed**. All 28 failing
+files also failed with the unchanged `9ca360c4ff` baseline binary. Assertion locations and primary
+compilation diagnostics matched; the cache-refresh test required the same checkout path to reach
+the same assertions. No tests or expectations were changed to suppress these failures.
+This is not a full-suite pass. Raw logs and comparisons are retained as
+`content-child-compiler-tests.*`, `baseline-failed-subset-*`, and `baseline-cache-same-root.*`.
 
 ## LLVM toolchain lookup comparison on latest master
 
