@@ -106,13 +106,15 @@ done
 		os.quoted_path('InstalledDir: ${compiler_dir}') + '\n')!
 	os.chmod(compiler_launcher, 0o755)!
 	for compiler in [os.join_path(compiler_dir, 'clang'), compiler_link, compiler_launcher] {
-		os.write_file(os.join_path(root, 'calls'), '')!
-		selected := pgo_test_run(root, tool, ['-cc', compiler], false, '2', '')
-		assert selected.exit_code == 0, selected.output
-		assert !selected.output.contains('falling back'), selected.output
-		selected_calls := os.read_file(os.join_path(root, 'calls'))!.split_into_lines()
-		assert selected_calls.filter(it.starts_with('MERGE ')).len == 1, selected_calls.join('\n')
-		assert selected_calls.filter(it.starts_with('BUILD ')).len == 2, selected_calls.join('\n')
+		for options in [['-cc', compiler], ['-cc=${compiler}']] {
+			os.write_file(os.join_path(root, 'calls'), '')!
+			selected := pgo_test_run(root, tool, options, false, '2', '')
+			assert selected.exit_code == 0, selected.output
+			assert !selected.output.contains('falling back'), selected.output
+			selected_calls := os.read_file(os.join_path(root, 'calls'))!.split_into_lines()
+			assert selected_calls.filter(it.starts_with('MERGE ')).len == 1, selected_calls.join('\n')
+			assert selected_calls.filter(it.starts_with('BUILD ')).len == 2, selected_calls.join('\n')
+		}
 	}
 	os.rm(os.join_path(root, 'bin', 'llvm-profdata'))!
 	os.mv(os.join_path(compiler_dir, 'llvm-profdata'), os.join_path(root, 'bin', 'llvm-profdata'))!
@@ -138,6 +140,8 @@ done
 		extra := if compiler == 'clang' { []string{} } else { ['-cc', '${root}/bin/gcc'] }
 		for case_index, options in [extra,
 			['-cc', '${root}/bin/gcc', '-cc', '${root}/bin/${compiler}'],
+			['-cc', '${root}/bin/${other}', '-cc=${root}/bin/${compiler}'],
+			['-cc=${root}/bin/${other}', '-cc', '${root}/bin/${compiler}'],
 			['-profile', '-cc', '${root}/bin/${compiler}']] {
 			os.write_file(os.join_path(root, 'calls'), '')!
 			inherited_flags := if case_index == 0 { flags } else { '' }

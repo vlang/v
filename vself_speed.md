@@ -521,7 +521,8 @@ counter updates so worker threads do not lose increments. `VJOBS=1` or `-no-para
 the serial path. Workspaces are private to each invocation and removed afterward; existing
 workspaces and the caller's profile destination are preserved. Profile paths containing spaces
 remain a single C compiler argument. The final effective `-cc` selects the PGO toolchain;
-command-line options override compiler choices inherited through `VFLAGS`.
+command-line options override compiler choices inherited through `VFLAGS`. Split `-cc clang`
+and equals-form `-cc=clang` options have the same last-option-wins behavior.
 
 ### Reproduction metadata
 

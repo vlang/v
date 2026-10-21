@@ -487,6 +487,8 @@ fn self_build_c_compiler(args []string) string {
 		arg := args[i]
 		if arg == '-cc' && i + 1 < args.len {
 			ccompiler = args[i + 1]
+		} else if arg.starts_with('-cc=') {
+			ccompiler = arg['-cc='.len..]
 		}
 		if arg in ['-prof', '-profile'] && i + 1 < args.len && args[i + 1].starts_with('-') {
 			i++

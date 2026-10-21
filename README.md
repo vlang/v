@@ -358,6 +358,7 @@ On non-Windows hosts, `v -prod self` uses profile-guided optimization (PGO) when
 compiler is Clang and `llvm-profdata` is available. Clang's reported installation directory and
 resolved executable directory are searched before `PATH` and macOS `xcrun` for the profile tool,
 keeping LLVM versions together.
+Both `-cc clang` and `-cc=clang` select that toolchain; the last compiler option takes precedence.
 It builds an instrumented compiler, trains it on
 uncached self-compilation, then builds the optimized compiler. This takes longer to build the
 production compiler. Other C toolchains and failed PGO attempts use a regular production build.
