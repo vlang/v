@@ -14,6 +14,9 @@ Maps with empty struct values support growth, reservation, and deletion with eve
 including compilers where the empty struct occupies zero bytes.
 Deleting a map entry clears its stored value so it no longer keeps that value's allocations
 reachable by the garbage collector. Values referenced elsewhere remain valid.
+
+Mutable map receivers can update nested struct fields through array elements, including
+when the map value and array element structs use `@[heap]`.
 It also includes Unicode-aware string helpers such as `string.graphemes()`
 for splitting text into grapheme clusters.
 The `.string()` method converts dynamic and fixed arrays of runes to UTF-8 strings,
