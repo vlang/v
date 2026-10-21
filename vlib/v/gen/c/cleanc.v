@@ -11051,6 +11051,18 @@ fn (mut g FlatGen) emit_c_source_directives() {
 	}
 }
 
+// can_emit_c_after_types reports whether the program's own C reaches the translation unit after
+// the V type block. The channels: late C directives (`CDirective.late`, emit_c_directives(true)
+// in gen_global_declaration_block), Objective-C source includes not lifted early
+// (emit_c_source_directives), and `#postinclude`s (emit_postinclude_directives). Everything else
+// a program supplies -- includes, quoted `.c` sources, `#preinclude`, core headers -- precedes it.
+fn (g &FlatGen) can_emit_c_after_types() bool {
+	if g.postinclude_directives.len > 0 || g.c_directives.any(it.late) {
+		return true
+	}
+	return c_source_directive_emission(g.ordered_c_directives(false), g.early_c_source_directives).emit_late.len > 0
+}
+
 struct CSourceDirectiveEmission {
 	skip_early map[int]bool
 	emit_late  map[int]bool

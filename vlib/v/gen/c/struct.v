@@ -6950,7 +6950,12 @@ fn (g &FlatGen) skip_builtin_struct(name string) bool {
 		if info := g.struct_decl_infos[name] {
 			// Headerless vlib bindings supply their own complete C layouts.
 			// Keep externally supplied types opaque when headers own their definitions.
-			if (info.file.ends_with('.c.v') || c_source_looks_header_backed(info.file))
+			// A c_struct_header_guards type is V's to lay out: the generated C includes its
+			// header only where the program does, and the guard defers to the header then --
+			// unless the program's C can follow the type block, where the guard cannot see a
+			// header it includes; such a program keeps this rule (can_emit_c_after_types).
+			if !(name in c_struct_header_guards && !g.can_emit_c_after_types())
+				&& (info.file.ends_with('.c.v') || c_source_looks_header_backed(info.file))
 				&& (g.c_directives_use_system_libc() || !g.c_source_file_is_in_vlib(info.file)) {
 				return true
 			}
@@ -6998,6 +7003,17 @@ fn (g &FlatGen) skip_builtin_struct(name string) bool {
 const c_system_header_struct_names = {
 	'__stat64':  true
 	'sigaction': true
+}
+
+// c_struct_header_guards names C structs that V lays out itself although a header the program
+// may include also defines them: skip_builtin_struct does not leave them opaque as header-backed
+// `.c.v` bindings, and the body is emitted inside `#ifndef <guard>`, so the preprocessor keeps
+// V's layout exactly when nothing earlier in the translation unit included that header --
+// whichever directive, condition or nested header did it.
+const c_struct_header_guards = {
+	// gc.h: the generated C never includes it, but a program or module may (vlib/fontstash), and
+	// so do the runtime helpers embedded in object-file output.
+	'C.GC_stack_base': 'GC_H'
 }
 
 const c_preamble_defined_structs = {
@@ -7655,6 +7671,10 @@ fn (mut g FlatGen) emit_struct(name string) {
 			align = decl_align
 			has_align = true
 		}
+		header_guard := c_struct_header_guards[name] or { '' }
+		if header_guard.len > 0 {
+			g.writeln('#ifndef ${header_guard}')
+		}
 		head := g.struct_decl_head(name)
 		if has_align && g.ccompiler == 'msvc' {
 			// MSVC takes the alignment between the tag and the name, and has no GNU
@@ -7676,6 +7696,9 @@ fn (mut g FlatGen) emit_struct(name string) {
 		}
 		if pack.len > 0 {
 			g.writeln('#pragma pack(pop)')
+		}
+		if header_guard.len > 0 {
+			g.writeln('#endif')
 		}
 		g.writeln('')
 	}
