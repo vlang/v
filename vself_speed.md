@@ -197,23 +197,24 @@ A fresh comparison on master `9ca360c4ff` used Apple Clang 21 PGO for both roles
 content fingerprints, shallow semantic child fingerprints, and a reference receiver for
 `Type.source_type_id`. Fingerprints still require complete equality checks before reuse.
 
-| Median metric | Baseline, one worker | Combined cache, one worker |
-| --- | ---: | ---: |
-| Retired instructions | 59,064,336,077.0 | 57,522,052,933.5 |
-| Instructions/parsed line | 105,473.91 | 102,719.79 |
-| CPU cycles, billions | 29.1419 | 28.4944 |
-| Peak resident memory, MiB | 1,117.54 | 1,118.23 |
-| Elapsed seconds | 33.9576 | 34.9625 |
+| Median metric | Before, one worker | Cache, one worker | Before, default | Cache, default |
+| --- | ---: | ---: | ---: | ---: |
+| Retired instructions, billions | 59.0643 | 57.5221 | 63.1715 | 61.5222 |
+| Instructions/parsed line | 105,473.91 | 102,719.79 | 112,808.22 | 109,862.98 |
+| CPU cycles, billions | 29.1419 | 28.4944 | 31.1445 | 30.3943 |
+| Peak resident memory, MiB | 1,117.54 | 1,118.23 | 1,007.91 | 1,010.11 |
+| Elapsed seconds | 33.9576 | 34.9625 | 6.2985 | 6.6990 |
 
-The combined change used **2.61% fewer instructions**, with **0/10 regressing pairs** and a
-median paired difference of `-1,529,766,769` instructions. All 22 runs succeeded and emitted
-byte-identical C. Elapsed time and cycles reflect uncontrolled host load. This is a matched
-source-change comparison; its absolute scores must not be compared with the Clang 23 sessions.
-The 90,000 instructions/line target is still unmet. Default-parallel validation is pending.
+The combined change used **2.61% fewer instructions in both modes**, with **0/10 regressing
+pairs** in each. Median paired differences were `-1,529,766,769` instructions serial and
+`-1,646,091,022.5` default. All 44 runs succeeded and emitted byte-identical C within each mode.
+Elapsed time and cycles reflect uncontrolled host load. This is a matched source-change
+comparison; its absolute scores must not be compared with the Clang 23 sessions.
+The 90,000 instructions/line target is still unmet.
 
 Raw samples, binary hashes, commands, environment, and output checks are retained as
-`reference21-content-matched-serial-*` in the artifacts directory above. This bundle comparison
-does not establish an independent benefit from each additional fingerprint change.
+`reference21-content-matched-*` in the artifacts directory above. This bundle comparison does
+not establish an independent benefit from each additional fingerprint change.
 
 ## LLVM toolchain lookup comparison on latest master
 

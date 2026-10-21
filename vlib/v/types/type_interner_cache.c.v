@@ -40,24 +40,48 @@ fn canonical_intern_cache_key(t &Type) u64 {
 		USize { u64(8) }
 		Nil { u64(9) }
 		None { u64(10) }
-		Array { u64(11) ^ (u64(voidptr(t.elem_type)) >> 3) }
-		ArrayFixed { u64(12) ^ (u64(voidptr(t.elem_type)) >> 3) ^ (u64(t.len) << 8) }
-		Channel { u64(13) ^ (u64(voidptr(t.elem_type)) >> 3) ^ (u64(t.is_mut) << 8) }
-		Map { u64(14) ^ (u64(voidptr(t.key_type)) >> 3) ^ (u64(voidptr(t.value_type)) << 7) }
-		Pointer { u64(15) ^ (u64(voidptr(t.base_type)) >> 3) }
+		Array { u64(11) ^ canonical_intern_child_key(t.elem_type) }
+		ArrayFixed { u64(12) ^ canonical_intern_child_key(t.elem_type) ^ (u64(t.len) << 8) }
+		Channel { u64(13) ^ canonical_intern_child_key(t.elem_type) ^ (u64(t.is_mut) << 8) }
+		Map {
+			u64(14) ^ canonical_intern_child_key(t.key_type) ^ (canonical_intern_child_key(t.value_type) << 7)
+		}
+		Pointer { u64(15) ^ canonical_intern_child_key(t.base_type) }
 		FnType {
 			u64(16) ^ (u64(t.params.data) >> 3) ^ (u64(t.params.len) << 8) ^
 				(u64(voidptr(t.return_type)) << 7) ^ u64(t.is_variadic)
 		}
-		OptionType { u64(17) ^ (u64(voidptr(t.base_type)) >> 3) }
-		ResultType { u64(18) ^ (u64(voidptr(t.base_type)) >> 3) }
+		OptionType { u64(17) ^ canonical_intern_child_key(t.base_type) }
+		ResultType { u64(18) ^ canonical_intern_child_key(t.base_type) }
 		Struct { u64(19) ^ (u64(t.name_id) << 8) }
 		Interface { u64(20) ^ (u64(t.name_id) << 8) }
 		Enum { u64(21) ^ (u64(t.name_id) << 8) ^ u64(t.is_flag) }
 		SumType { u64(22) ^ (u64(t.name_id) << 8) }
-		Alias { u64(23) ^ (u64(t.name_id) << 8) ^ (u64(voidptr(t.base_type)) >> 3) }
+		Alias { u64(23) ^ (u64(t.name_id) << 8) ^ canonical_intern_child_key(t.base_type) }
 		MultiReturn { u64(24) ^ (u64(t.types.data) >> 3) ^ (u64(t.types.len) << 8) }
 	}
 	key = (key ^ (key >> 32)) * u64(0x9e3779b97f4a7c15)
 	return key ^ (key >> 32)
+}
+
+// Scalar and nominal children have cheap content identities even when their
+// temporary Type wrappers occupy different addresses. Other children stay shallow.
+@[inline]
+fn canonical_intern_child_key(t &Type) u64 {
+	return match t {
+		Primitive { u64(3) ^ (u64(t.props) << 16) ^ (u64(t.size) << 8) }
+		Void { u64(1) }
+		String { u64(4) }
+		Char { u64(5) }
+		Rune { u64(6) }
+		ISize { u64(7) }
+		USize { u64(8) }
+		Nil { u64(9) }
+		None { u64(10) }
+		Struct { u64(19) ^ (u64(t.name_id) << 8) }
+		Interface { u64(20) ^ (u64(t.name_id) << 8) }
+		Enum { u64(21) ^ (u64(t.name_id) << 8) ^ u64(t.is_flag) }
+		SumType { u64(22) ^ (u64(t.name_id) << 8) }
+		else { u64(voidptr(t)) >> 3 }
+	}
 }
