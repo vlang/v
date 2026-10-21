@@ -150,6 +150,33 @@ $ make
 
 ### Docker
 
+Official images for V are published as [`thevlang/vlang`](https://hub.docker.com/r/thevlang/vlang),
+built from [`vlang/docker`](https://github.com/vlang/docker):
+
+```bash
+docker run --rm -it -v "$PWD":/src -w /src thevlang/vlang:latest
+```
+
+The release workflow targets these variants; each tag is available after successful publication:
+
+| Tag | Base | Notes |
+| --- | --- | --- |
+| `:latest`, `:debian` | Debian | the default: programs built here run on Debian, Ubuntu, Fedora |
+| `:alpine` | Alpine | musl; use this one for static executables |
+| `:nix` | `nixos/nix` | pinned nixpkgs toolchain; `nix-shell -p <pkg>` works inside |
+| `:static-<version>` | `scratch` | a static V compiler; base for compiled static programs |
+| `:<dist>-dev` | the `-build` image | a full V checkout; excludes the `scratch` static variant |
+
+Release builds target both `linux/amd64` and `linux/arm64`. Podman reads the same
+Dockerfiles and needs no daemon, so `podman build -f ... .` works too;
+In rootless mode, Podman maps the container's root user to your user, so files written
+into a mounted source tree stay owned by you.
+
+Manual release publishing accepts a numeric release tag such as `0.5.2`, or a `weekly.*` tag.
+The input is limited to 120 characters so each generated Docker image tag fits its limit.
+
+To build one locally instead:
+
 ```bash
 git clone --depth=1 https://github.com/vlang/v
 cd v
