@@ -1013,7 +1013,7 @@ fn (tc &TypeChecker) incremental_touches_generics(f IncrementalFunction, generic
 				return true
 			}
 		}
-		if typ := tc.cached_expr_type(id) {
+		if typ := tc.cached_expr_type_ref(id) {
 			if type_mentions_generic_application(typ) {
 				return true
 			}

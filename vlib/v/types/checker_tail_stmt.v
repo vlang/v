@@ -10509,9 +10509,6 @@ fn qualified_type_modifiers(name string) string {
 fn (tc &TypeChecker) type_compatible(actual &Type, expected &Type) bool {
 	actual_raw := actual
 	expected_raw := expected
-	if semantic_types_equal(actual, expected) {
-		return true
-	}
 	// Equal semantic values have equal spellings even when their immutable
 	// payloads were allocated separately. Compare them before interning names.
 	if semantic_types_equal(actual, expected) {
@@ -11079,9 +11076,6 @@ pub fn (tc &TypeChecker) fn_param_compatible(actual &Type, expected &Type) bool 
 	if semantic_types_equal(actual, expected) {
 		return true
 	}
-	if semantic_types_equal(actual, expected) {
-		return true
-	}
 	// V's platform `int` and a fixed-width integer such as `i64`/`i32` may share an
 	// emitted C spelling on a given target, but they remain distinct, target-
 	// independent source types. Function-parameter identity must not depend on the C
@@ -11149,9 +11143,6 @@ fn fn_param_is_platform_int(typ &Type) bool {
 }
 
 fn (tc &TypeChecker) fn_return_compatible(actual &Type, expected &Type) bool {
-	if semantic_types_equal(actual, expected) {
-		return true
-	}
 	if semantic_types_equal(actual, expected) {
 		return true
 	}
@@ -18814,7 +18805,7 @@ fn (mut memo BodyResolveMemo) begin(lo int, hi int) {
 pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 	if tc.trust_checked_expr_types {
 		if !isnil(tc.storage_query_probe) {
-			if typ := tc.cached_expr_type(id) {
+			if typ := tc.cached_expr_type_ref(id) {
 				if !type_contains_unknown(typ) { return tc.widen_mixed_integer_expr_type(id, typ) }
 			}
 		}
@@ -19076,8 +19067,8 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 		// type its check gave it (see check_generic_method_value), which the
 		// resolution of an index cannot tell from an index of the method value.
 		if node.children_count > 0 && tc.a.child_node(node, 0).kind == .selector {
-			if typ := tc.cached_expr_type(id) {
-				typ_raw := typ
+			if typ := tc.cached_expr_type_ref(id) {
+				typ_raw := *typ
 				if typ is FnType {
 					return typ_raw
 				}
@@ -19089,12 +19080,12 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 		return builtin_bool_type
 	}
 	if !(tc.smartcasts.len > 0 && (kind_id == 7 || kind_id == 13)) {
-		if typ := tc.cached_expr_type(id) {
+		if typ := tc.cached_expr_type_ref(id) {
 			// A resolution-only annotation can cache `void` for a method whose
 			// receiver is a local alias that is only known during body checking.
 			// Re-resolve calls in that case instead of hiding the real return type.
 			if node.kind != .call || typ !is Void {
-				return typ
+				return *typ
 			}
 		}
 	}

@@ -1375,8 +1375,7 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 		t.set_node_typ(int(container), flat.source_type_id(actual_iter_type))
 	} else if elem_needs_ref && actual_iter_type.starts_with('[]') && !isnil(t.tc)
 		&& (elem_name in t.escaping_amp_sources || elem_name in t.escaping_fixed_array_view_sources) {
-		mut seen := map[u32]bool{}
-		if t.escape_value_contains_fixed_array(t.tc.parse_type(elem_type), mut seen) {
+		if t.cached_escape_value_contains_fixed_array(t.tc.parse_type(elem_type)) {
 			// The binding hides its index from argument lowering. Retain each current
 			// buffer before exposing a row, including after growth between iterations.
 			t.mark_fn_used('array.retain_fixed_array_buffer')

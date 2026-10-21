@@ -104,7 +104,86 @@ See `instruction-bisect.log`, `confirmation-{metadata,samples,summary}.json`,
 prebuild; the accepted confirmation has distinct raw logs for every sample.
 Large generated C artifacts were losslessly compressed to `.c.gz` with SHA-256 roundtrip checks;
 `generated-c-compression.json` records their original paths and hashes. No compiler source or
-test expectations were changed during this investigation.
+test expectations were changed as part of the bisection.
+
+## Tagged-union regression follow-up
+
+The follow-up patch removes repeated work made more expensive by the tagged representation:
+
+* Cache complete inline-storage walks for sums as well as structs, including concrete generic
+  sums. Reuse positive nested results immediately. Cache negative results across a recursive
+  component only after a complete root walk proves that it contains no inline fixed array.
+* Read existing immutable canonical type references when checking a cached expression, avoiding
+  intermediate copies of the 72-byte type value. Preserve worker ranges and probe overlays;
+  sparse map values use stable copies because map growth can move their backing storage.
+* Remove duplicate semantic-equality calls in three compatibility paths. This cleanup alone did
+  not establish a measurable improvement in exploratory runs.
+
+Both compilers were freshly built from `36232086a5`, with the candidate's exact source diff
+retained in the build artifacts. Each used the same seed, two in-place TCC rebuilds, Apple
+Clang 21, `-mcpu=apple-m1`, and fresh matching PGO training on the unchanged fixture. Compiler
+build paths differed; benchmark executable, input, output, and working-directory paths matched.
+The PGO option-selection fixes were present in the candidate and do not change this explicit
+Apple Clang build recipe. No compiler layout, language semantics, or generated output changed.
+
+One warmup per role preceded ten alternating pairs in each mode. All 44 runs succeeded with
+one positive retired-instruction count per run and byte-identical generated C within each mode.
+No builds or tests from this task ran concurrently with these comparisons.
+Parsed input remained 559,990 lines.
+
+| Median metric | Before, one worker | Fix, one worker | Before, default | Fix, default |
+| --- | ---: | ---: | ---: | ---: |
+| Retired instructions, billions | 56.5777 | 55.8777 | 60.8406 | 60.1385 |
+| Instructions/parsed line | 101,033.39 | 99,783.40 | 108,645.90 | 107,392.18 |
+| CPU cycles, billions | 18.7694 | 18.6136 | 27.4735 | 27.3065 |
+| Peak resident memory, MiB | 1,117.98 | 1,118.08 | 1,011.30 | 1,010.96 |
+| Elapsed seconds | 4.4335 | 4.3891 | 1.0224 | 1.0229 |
+
+The patch used **1.24% fewer instructions with one worker** and **1.15% fewer with default
+workers**, with **0/10 regressing pairs** in each mode. Median paired differences were
+`-668,456,564` and `-704,473,390.5` instructions, respectively. This comparison measures the
+combined patch; it does not assign the improvement to each edit. Elapsed time and cycles remain
+contextual measurements on a shared host, not controlled latency claims.
+The **90,000 instructions/line target remains unmet**, and the full tagged-union regression has
+not been recovered. Do not add percentages from different sessions or compare their medians as
+a single continuous optimization series.
+
+The baseline executable SHA-256 is
+`5f8939b958bb5f8c9727202c12d51fad8449ab1fca00346f2cc605e6fbf68c68`;
+the candidate executable SHA-256 is
+`5e5686330fc08937d3bd8252ba9aacc0dfe75113d1a3a5d388fe2bfa6cf2f9af`.
+Serial generated C has SHA-256
+`88583a0ca0e4f59877f7c2b7a6cb4260c046c4737a61c665b62af265344bba8d`;
+default-worker generated C has SHA-256
+`04603de3a32496290c63a567e46069509fd0f985906a40b9696303f14a337158`.
+
+Reproduction scripts, exact build/environment metadata, source diffs, fixture inventories,
+per-run timing/stdout/stderr/status logs, binary hashes, and generated-output checks are in
+`/Users/alex/code/v3-self-90k-artifacts/fix-tagged-unions-20261021/`.
+Use `build.py`, `measure.py`, `source-a/metadata.json`, `combined/metadata.json`,
+`pr-source-verification.json`, and `combined-confirmation-{serial,default}*`.
+The PR source adds a helper comment and a reference ownership/visibility test to the measured
+implementation. Failed and rejected exploratory variants remain separately labeled in this
+artifact directory and are excluded from the accepted statistics.
+
+Validation rebuilt the compiler in place and passed the type-cache, storage-query, parallel-check,
+fixed-array escape, and loop-lowering tests. Compiler diagnostics passed 1,848 cases with 5 skipped;
+PGO tool-selection tests, both generated-C syntax checks, formatting, and Markdown checks passed.
+Vet reported the same 92 existing diagnostics as the unchanged baseline.
+
+The broad compiler suite finished with **4,138 passed, 40 skipped, and 30 failed**. Twenty-eight
+failing files also failed on the unchanged baseline. The two additional failures were harness
+effects: the relocated benchmark compiler retained its build-directory path in REPL output, and
+`SOURCE_DATE_EPOCH=0` contradicted a test requiring a recent build timestamp. After rebuilding in
+the test checkout, all 47 REPL cases passed. The timestamp test passed with the override unset;
+the unchanged baseline reproduced its failure with the override set.
+
+The cache-refresh failure also varied with compiler placement and macOS `/tmp` versus
+`/private/tmp` aliases. Both baseline and candidate passed this test in the same checkout with
+the same canonical `VTMP`. Other failure assertions and primary diagnostics matched the baseline.
+No tests or expectations were changed to suppress failures; the broad run remains a failed run.
+Logs and comparisons are retained as `final-*`, including `final-full-audit.json`,
+`final-harness-reruns.json`, and `final-cache-canonical-comparison.json` in the artifact directory.
 
 ## Metric and scope
 

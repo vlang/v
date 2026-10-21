@@ -17711,9 +17711,9 @@ fn (mut tc TypeChecker) restore_return_alias_for_in_bindings(node flat.Node) {
 
 fn (mut tc TypeChecker) return_alias_decl_binding_type(node flat.Node, index int) Type {
 	lhs_id := tc.multi_assign_lhs_id(node, index)
-	if typ := tc.cached_expr_type(lhs_id) {
+	if typ := tc.cached_expr_type_ref(lhs_id) {
 		if typ !is Unknown && typ !is Void {
-			return typ
+			return *typ
 		}
 	}
 	lhs_count := tc.multi_assign_lhs_count(node)
@@ -20880,7 +20880,7 @@ fn (mut tc TypeChecker) pointer_binding_state_after_loop_post(loop_node flat.Nod
 	if post.kind == .postfix && post.op in [.inc, .dec] && post.children_count == 1 {
 		target_id := tc.a.child(post, 0)
 		if tc.a.node(target_id).kind == .ident {
-			if target_type := tc.cached_expr_type(target_id) {
+			if target_type := tc.cached_expr_type_ref(target_id) {
 				// Rechecking a scalar counter cannot change pointer identities. The
 				// post has already been checked for diagnostics above the loop body.
 				if unalias_type(target_type) is Primitive && precomputed == base {
