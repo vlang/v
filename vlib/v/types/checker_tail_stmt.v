@@ -6832,6 +6832,12 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 		if base.value == 'C' {
 			qname := 'C.${node.value}'
 			if tc.c_identifier_is_undeclared(node.value) {
+				// C enum members may use lowercase names. Their integer type comes
+				// from the enum initializer, including nested arithmetic expressions.
+				if tc.enum_field_value_depth > 0 {
+					tc.register_synth_type(id, tc.c_integer_constant_context_type(id))
+					return
+				}
 				if expected := tc.expected_context_for_expr(id) {
 					inferred := inferred_c_global_type(node, expected)
 					tc.remember_inferred_c_global(qname, inferred)
@@ -8474,6 +8480,12 @@ fn (mut tc TypeChecker) check_valid_selector(id flat.NodeId, node flat.Node) {
 		if base.value == 'C' {
 			qname := 'C.${node.value}'
 			if tc.c_identifier_is_undeclared(node.value) {
+				// C enum members may use lowercase names. Their integer type comes
+				// from the enum initializer, including nested arithmetic expressions.
+				if tc.enum_field_value_depth > 0 {
+					tc.register_synth_type(id, tc.c_integer_constant_context_type(id))
+					return
+				}
 				if expected := tc.expected_context_for_expr(id) {
 					inferred := inferred_c_global_type(node, expected)
 					tc.remember_inferred_c_global(qname, inferred)
