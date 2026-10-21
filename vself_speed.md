@@ -210,8 +210,9 @@ Logs and samples are `clang23-matched-{serial,default}*` in the artifacts direct
 `clang23-before-build.log` records the version mismatch and fallback, while
 `clang23-after-build.log` records the successful PGO build.
 
-These values must not be presented as a regression from the historical 95,877.04 result below.
-That result used Apple Clang 21, compiler sources at `257b514a`, and a different source fixture.
+The optimized count is higher than the historical 95,877.04 result below, but these sessions
+do not isolate a compiler regression. The historical result used Apple Clang 21, compiler
+sources at `257b514a`, and a different source fixture.
 Both compiler implementation and input changed after the tagged-union merge. The fixture has
 only 392 fewer lines, so the denominator alone does not explain the difference. Isolating the
 causes requires matched comparisons; comparing these two sessions cannot attribute the increase.
@@ -247,7 +248,7 @@ and `quiet-20261021-attempt1-guard.json`; an idle host is no longer an acceptanc
 
 Measured on 2026-10-20. Baseline: merged master
 `257b514a303f4d302ed23bbac1d51a2ca9624a66`. Candidate: that commit with the Clang production
-self-build changes in this PR. The compiler source compiled into both binaries is unchanged;
+self-build changes later merged in [#30962](https://github.com/vlang/v/pull/30962). The compiler source compiled into both binaries is unchanged;
 the intentional build difference is profile-guided optimization (PGO).
 The candidate was rebuilt and remeasured after correcting atomic profile collection and
 isolating the training environment.
