@@ -6155,6 +6155,43 @@ fn main() {
 	assert run_module_cache_binary(strict_output) == '43'
 }
 
+// test_incremental_program_cache_rebuilds_rejected_restored_body builds a program that
+// imports mcp (its C pulls in mbedtls), then edits one string literal. The incremental
+// restore of the first build must not make the second build fail on a redefinition of
+// a C type from the prefix, nor leave a stale executable behind.
+fn test_incremental_program_cache_rebuilds_rejected_restored_body() {
+	$if !macos {
+		return
+	}
+	v3_bin := module_cache_compiler()
+	root := os.join_path(os.temp_dir(), 'v3_incremental_rejected_body_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	cache_dir := os.join_path(root, 'cache')
+	main_file := os.join_path(root, 'main.v')
+	for word in ['first', 'second', 'third'] {
+		write_module_cache_file(root, 'main.v', "module main
+
+import mcp
+
+fn label() string {
+	return '${word}'
+}
+
+fn main() {
+	_ := mcp.Server{}
+	println(label())
+}
+")
+		output := os.join_path(root, word)
+		compile_module_cache_project(v3_bin, cache_dir, main_file, output)
+		assert run_module_cache_binary(output) == word
+	}
+}
+
 fn test_incremental_program_cache_reuses_cached_module_objects() {
 	$if !macos {
 		return
