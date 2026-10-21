@@ -17082,10 +17082,10 @@ pub fn (tc &TypeChecker) type_name(t &Type) u32 {
 	return interner.source_type_id(id)
 }
 
-// type_recent_hash_slot chooses a recent-cache slot from semantic identity.
+// type_recent_hash_slot uses a cheap fingerprint; callers verify structural equality.
 @[inline]
 fn type_recent_hash_slot(typ &Type) (u64, int) {
-	hash := semantic_type_hash(typ)
+	hash := canonical_intern_cache_key(typ)
 	return hash, int(hash & u64(type_cache_recent_slots - 1))
 }
 

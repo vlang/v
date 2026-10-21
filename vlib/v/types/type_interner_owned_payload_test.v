@@ -8,9 +8,14 @@ fn test_interner_owns_nested_function_parameters() {
 		return_type: &Type(string_)
 	})
 	id, canonical := interner.canonicalize(original)
-	canonical_count := interner.len()
 	params[0] = FnParam{ typ: &Type(bool_), is_mut: true }
 	assert canonical.name() == 'fn(int) string', canonical.name()
+	changed_id, changed := interner.canonicalize(original)
+	assert changed_id != id
+	assert changed is FnType
+	assert changed.params[0].is_mut
+	assert semantic_types_equal(changed.params[0].typ, Type(bool_))
+	canonical_count := interner.len()
 	stable := Type(FnType{
 		params:      [FnParam{ typ: &Type(int_) }]
 		return_type: &Type(string_)
