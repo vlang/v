@@ -769,6 +769,10 @@ fn (g &Gen) stack_slot_size(ptr_id int) ?int {
 								if off_val.kind == .constant {
 									field_off := int(parse_arm64_int(off_val.name))
 									for fi in 0 .. base.fields.len {
+										// Union members overlap; the typed projection selects their extent.
+										if base.is_union && base.fields[fi] != g.ptr_elem_type(cur) {
+											continue
+										}
 										if g.m.struct_field_offset(base_type, fi) == field_off {
 											field_size := g.m.struct_field_size(base_type, fi)
 											if field_size > 0 {

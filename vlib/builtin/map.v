@@ -293,6 +293,7 @@ fn map_clone_string(dest voidptr, pkey voidptr) {
 		cloned := s.clone()
 		// Use memcpy for native backend compatibility
 		// (*&string(dest)) = cloned doesn't reliably store full struct
+		// The destination owns cloned; autofree must not release the transferred key.
 		vmemcpy(dest, voidptr(&cloned), sizeof(string))
 	}
 }

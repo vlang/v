@@ -130,6 +130,13 @@ pub mut:
 	// keep_subdir_file, when set, selects which files of the v.mod `subdirs` get documented
 	// (vdoc uses it to apply `.vdocignore`). It receives their path as declared in `subdirs`.
 	keep_subdir_file fn (path string) bool = unsafe { nil }
+mut:
+	// generated_names are the names in `contents` of the static methods that the compiler
+	// generates for enums. A declaration with the same name replaces them, like a `Color.from`
+	// that is declared after the enum `Color`.
+	generated_names map[string]bool
+	// Declared static methods replace generated helpers even when they are private.
+	declared_static_names map[string]bool
 }
 
 @[minify]
@@ -194,7 +201,8 @@ fn (mut d Doc) add_node(mut node DocNode) {
 		d.contents[parent_name].children << node
 		return
 	}
-	if node.name !in d.contents {
+	if node.name !in d.contents || node.name in d.generated_names {
+		d.generated_names.delete(node.name)
 		d.contents[node.name] = node
 		return
 	}
@@ -221,6 +229,21 @@ fn (mut d Doc) parse_file(path string) ! {
 	if isnil(file_node) {
 		return
 	}
+	// Record declarations before filtering visibility or adding enums. This also removes a
+	// generated helper when its private replacement is declared in a later file.
+	for id in a.children_of(file_node) {
+		node := a.node(id)
+		if node.kind == .fn_decl {
+			if receiver, method := flat.decode_static_type_method_name(node.value) {
+				name := '${receiver}.${method}'
+				d.declared_static_names[name] = true
+				if name in d.generated_names {
+					d.contents.delete(name)
+					d.generated_names.delete(name)
+				}
+			}
+		}
+	}
 	mut module_name := 'main'
 	mut first_declaration_line := int(1 << 30)
 	for id in a.children_of(file_node) {
@@ -241,8 +264,8 @@ fn (mut d Doc) parse_file(path string) ! {
 			doc_node.comments = comments_before(a, source, anchor_line, mut assigned_comments)
 		}
 		d.add_node(mut doc_node)
-		if node.kind == .enum_decl && 'flag' in doc_node.attrs {
-			d.add_flag_enum_helpers(doc_node)
+		if node.kind == .enum_decl {
+			d.add_enum_helpers(doc_node)
 		}
 	}
 	if d.orig_mod_name == '' {
@@ -626,25 +649,69 @@ fn (d &Doc) node_from_flat(a &flat.FlatAst, source string, id flat.NodeId, path 
 	}
 }
 
-fn (mut d Doc) add_flag_enum_helpers(enum_node DocNode) {
-	for name in ['all', 'has', 'is_empty'] {
-		d.contents[enum_node.name].children << DocNode{
-			name:        name
-			kind:        .method
-			parent_name: enum_node.name
-			file_path:   enum_node.file_path
-			is_pub:      true
+// EnumHelper is a method that the compiler generates for enums.
+struct EnumHelper {
+	name      string
+	signature string
+	comment   string
+}
+
+// add_enum_helpers documents the methods that the compiler generates for the enum `enum_node`:
+// `from` for all enums, and `zero` plus the flag methods for `@[flag]` enums.
+fn (mut d Doc) add_enum_helpers(enum_node DocNode) {
+	name := enum_node.name
+	mut static_helpers := [
+		EnumHelper{'from', 'fn ${name}.from[W](input W) !${name}', 'from returns the `${name}` value of an integer or of a field name, or an error if there is none.'},
+	]
+	if 'flag' in enum_node.attrs {
+		static_helpers << EnumHelper{'zero', 'fn ${name}.zero() ${name}', 'zero returns a `${name}` value with no flags set.'}
+		flag_helpers := [
+			EnumHelper{'is_empty', 'fn (e &${name}) is_empty() bool', 'is_empty returns true if no flags are set.'},
+			EnumHelper{'has', 'fn (e &${name}) has(flag ${name}) bool', 'has returns true if any of the flags in `flag` are set.'},
+			EnumHelper{'all', 'fn (e &${name}) all(flag ${name}) bool', 'all returns true if all the flags in `flag` are set.'},
+			EnumHelper{'set', 'fn (mut e ${name}) set(flag ${name})', 'set sets the flags in `flag`.'},
+			EnumHelper{'set_all', 'fn (mut e ${name}) set_all()', 'set_all sets all the flags.'},
+			EnumHelper{'clear', 'fn (mut e ${name}) clear(flag ${name})', 'clear clears the flags in `flag`.'},
+			EnumHelper{'clear_all', 'fn (mut e ${name}) clear_all()', 'clear_all clears all the flags.'},
+			EnumHelper{'toggle', 'fn (mut e ${name}) toggle(flag ${name})', 'toggle flips the flags in `flag`.'},
+		]
+		for helper in flag_helpers {
+			mut node := d.enum_helper_node(enum_node, helper, helper.name)
+			node.parent_name = name
+			d.add_node(mut node)
 		}
 	}
-	for name in ['from', 'zero'] {
-		full_name := '${enum_node.name}.${name}'
-		d.contents[full_name] = DocNode{
-			name:      full_name
-			kind:      .method
-			content:   'fn ${full_name}() ${enum_node.name}'
-			file_path: enum_node.file_path
-			is_pub:    true
+	for helper in static_helpers {
+		full_name := '${name}.${helper.name}'
+		if full_name in d.contents || full_name in d.declared_static_names {
+			// A declaration that comes before the enum replaces the generated method.
+			continue
 		}
+		mut node := d.enum_helper_node(enum_node, helper, full_name)
+		d.add_node(mut node)
+		d.generated_names[full_name] = true
+	}
+}
+
+// enum_helper_node returns the node of the generated method `helper`, placed at its enum.
+fn (d &Doc) enum_helper_node(enum_node DocNode, helper EnumHelper, name string) DocNode {
+	pub_prefix := if enum_node.is_pub { 'pub ' } else { '' }
+	return DocNode{
+		name:      name
+		kind:      .method
+		content:   pub_prefix + helper.signature
+		comments:  if d.with_comments {
+			[DocComment{
+				text: '\x01 ' + helper.comment
+				pos:  enum_node.pos
+			}]
+		} else {
+			[]DocComment{}
+		}
+		pos:       enum_node.pos
+		file_path: enum_node.file_path
+		is_pub:    enum_node.is_pub
+		platform:  enum_node.platform
 	}
 }
 

@@ -1940,7 +1940,7 @@ fn test_smartcast_receiver_methods_keep_cast_paths_and_declared_sum_methods() {
 	out := run_good(v3_bin, 'smartcast_receiver_method_paths', 'struct Leaf {}
 
 struct Container {
-	left Expr
+	left &Expr
 }
 
 struct Assignment {
@@ -1968,7 +1968,7 @@ fn (leaf &Leaf) is_mut() bool {
 
 fn main() {
 	container_expr := Expr(Container{
-		left: Expr(Leaf{})
+		left: &Expr(Leaf{})
 	})
 	if container_expr is Container && (container_expr as Container).left is Leaf {
 		println((container_expr as Container).left.is_mut())

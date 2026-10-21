@@ -51,10 +51,9 @@ fn test_comptime_field_type_id_keeps_custom_types_above_builtin_range() {
 	t := Transformer{
 		a: &a
 	}
-	assert comptime_type_id_hash('T207') & ~(0xff << 16) < 65536
-	type_id := t.comptime_field_type_id(flat.source_type_id('T207'), '')
+	type_id := t.type_index(flat.source_type_id('T207'), '')
 	assert type_id > 65535
-	assert type_id != comptime_builtin_type_idx('isize')
+	assert type_id != types.builtin_type_index('isize')
 	assert type_id & (0xff << 16) == 0
 }
 
@@ -65,7 +64,7 @@ fn test_comptime_field_type_id_keeps_specialized_main_type_provenance() {
 	}
 	t.active_specialization_main_types[flat.source_type_id('MyParams')] = true
 	assert flat.source_type_name(t.comptime_field_type_id_key(flat.source_type_id('MyParams'), 'reflection')) == 'main.MyParams'
-	assert t.comptime_field_type_id(flat.source_type_id('MyParams'), 'reflection') == comptime_type_id_hash('main.MyParams') & ~(0xff << 16)
+	assert t.type_index(flat.source_type_id('MyParams'), 'reflection') == types.stable_type_index(flat.source_type_id('main.MyParams'))
 }
 
 fn test_comptime_for_base_type_unwraps_storage_indirections() {
@@ -182,7 +181,7 @@ fn test_comptime_method_selector_preserves_type_namespace_function_values() {
 		assert fn_type is types.FnType
 		if fn_type is types.FnType {
 			assert fn_type.params.len == 2
-			assert fn_type.params[0] == param_type
+			assert *fn_type.params[0].typ == param_type
 		}
 	}
 }

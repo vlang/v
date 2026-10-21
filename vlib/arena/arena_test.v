@@ -124,6 +124,44 @@ fn test_free_is_a_noop_for_arena_memory() {
 	}
 }
 
+fn test_noslices_array_growth_and_free_preserve_arena_owned_buffers() {
+	mut a := arena.new(chunk_size: 4096)
+	defer {
+		a.free()
+	}
+	a.push()
+	marker := unsafe { malloc(32) }
+	unsafe { vmemset(marker, 0x5a, 32) }
+	mut values := []u8{len: 8, cap: 8, init: u8(index)}
+	unsafe { values.flags.set(.noslices) }
+	assert a.owns(values.data)
+	for i in 8 .. 512 {
+		values << u8(i % 251)
+	}
+	assert a.owns(values.data)
+	for i in 0 .. values.len {
+		assert values[i] == u8(i % 251)
+	}
+	unsafe { values.free() }
+	mut offset_values := []u64{len: 4, cap: 4, init: u64(index)}
+	unsafe { offset_values.flags.set(.noslices) }
+	assert offset_values.pop_left() == 0
+	for i in 4 .. 128 {
+		offset_values << u64(i)
+	}
+	assert a.owns(offset_values.data)
+	assert offset_values[0] == 1
+	assert offset_values.last() == 127
+	a.pop()
+	// Unique buffers still belong to their arena after it is popped.
+	unsafe { offset_values.free() }
+	assert a.owns(marker)
+	// Arena storage remains valid until the explicit bulk reset.
+	unsafe { assert marker[0] == 0x5a && marker[31] == 0x5a }
+	a.reset()
+	assert a.used() == 0
+}
+
 fn test_realloc_copies_arena_memory_out_after_pop() {
 	mut a := arena.new()
 	defer {

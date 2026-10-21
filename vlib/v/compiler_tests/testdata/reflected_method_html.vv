@@ -1,0 +1,21 @@
+import net.html
+
+struct Model {}
+
+// run exercises an imported parser through method reflection.
+pub fn (mut model Model) run() {
+	html.parse('')
+}
+
+fn invoke[T](mut model T) {
+	$for method in T.methods {
+		if method.name == 'run' {
+			model.$method()
+		}
+	}
+}
+
+fn main() {
+	mut model := Model{}
+	invoke(mut model)
+}

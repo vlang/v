@@ -33,7 +33,7 @@ vlib/v/checker/tests/mut_arg_array_boxed_elem_mismatch_err.vv:64:18: error: cann
       |                     ~~~~~~
    65 |     maybe_rename(mut items)
    66 |     b.put(mut items)
-vlib/v/checker/tests/mut_arg_array_boxed_elem_mismatch_err.vv:65:19: error: cannot use `&[]Item` as `&?[]Named` in argument 1 to `maybe_rename`
+vlib/v/checker/tests/mut_arg_array_boxed_elem_mismatch_err.vv:65:19: error: cannot use `&[]Item` as `&?&[]Named` in argument 1 to `maybe_rename`
    63 |     rename(mut b.items)
    64 |     rename_rows(mut b.rows)
    65 |     maybe_rename(mut items)

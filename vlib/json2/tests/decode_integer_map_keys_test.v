@@ -40,6 +40,6 @@ fn test_decode_wide_integer_map_keys() {
 fn test_decode_string_and_rune_map_keys() {
 	strings := json2.decode[map[string]int]('{"a":1}')!
 	assert strings['a'] == 1
-	runes := json2.decode[map[rune]int]('{"97":2}')!
+	runes := json2.decode[map[rune]int]('{"a":2}')!
 	assert runes[rune(97)] == 2
 }

@@ -849,6 +849,15 @@ fn (mut g Parser) parse_match_statement() !bool {
 			subject_member_path = path
 		}
 	}
+	// The boxed member itself, which an assignment to the narrowed member writes.
+	mut subject_member_source := ''
+	mut subject_member_type := u32(0)
+	if subject_member_path != '' {
+		subject_member_source = g.render_member_receiver(subject_tokens[member_start..]) or { '' }
+		subject_member_type = fastc_normalize_inferred_type(g.infer_expression_type(subject_tokens[member_start..]) or {
+			u32(0)
+		})
+	}
 	mut branch_index := 0
 	mut all_terminate := true
 	mut has_else := false
@@ -963,12 +972,15 @@ fn (mut g Parser) parse_match_statement() !bool {
 			} else {
 				flat.source_type_name(variant_types[0])
 			}
+			// The payload is boxed as its C output type (a V `int` is 64 bits wide); the
+			// narrowed local keeps the V type.
+			variant_c_type := fastc_output_c_type(variant_cname)
 			smartcast_value := if smartcast_is_reference {
-				'(${variant_cname} *)${subject_name}${boxed_access}_object'
+				'(${variant_c_type} *)${subject_name}${boxed_access}_object'
 			} else if common_numeric_type != 0 {
 				fastc_match_multi_variant_value(subject_name, boxed_access, variant_types, common_numeric_type)
 			} else {
-				'*(${variant_cname} *)${subject_name}${boxed_access}_object'
+				'*(${variant_c_type} *)${subject_name}${boxed_access}_object'
 			}
 			// The narrowed value is stored in a UNIQUELY named C temporary (not a shadow of the
 			// subject's own C name), so a `defer` body — rendered at function scope and emitted
@@ -979,16 +991,30 @@ fn (mut g Parser) parse_match_statement() !bool {
 			} else {
 				variant_cname
 			}
-			g.write_line('${shadow_type} ${shadow_name} = ${smartcast_value};')
+			shadow_c_type := if smartcast_is_reference {
+				variant_c_type + '*'
+			} else {
+				variant_c_type
+			}
+			g.write_line('${shadow_c_type} ${shadow_name} = ${smartcast_value};')
 			smartcast_saved = g.locals[subject_local] or { FastcLocal{} }
-			origin_source := g.local_c_name(subject_local)
+			origin_source := if smartcast_saved.smartcast_origin_source != '' {
+				smartcast_saved.smartcast_origin_source
+			} else {
+				g.local_c_name(subject_local)
+			}
 			g.locals[subject_local] = FastcLocal{
-				is_mut:                  smartcast_saved.is_mut
-				is_reference:            smartcast_is_reference
-				typ:                     flat.source_type_id(shadow_type)
-				c_name:                  shadow_name
-				smartcast_origin_type:   smartcast_saved.typ
-				smartcast_origin_source: origin_source
+				is_mut:                        smartcast_saved.is_mut
+				is_reference:                  smartcast_is_reference
+				typ:                           flat.source_type_id(shadow_type)
+				c_name:                        shadow_name
+				smartcast_origin_type:         if smartcast_saved.smartcast_origin_type != u32(0) {
+					smartcast_saved.smartcast_origin_type
+				} else {
+					smartcast_saved.typ
+				}
+				smartcast_origin_is_reference: smartcast_saved.original_is_reference()
+				smartcast_origin_source:       origin_source
 			}
 		}
 		// A single-variant branch narrows the member to that variant; a branch listing
@@ -1001,6 +1027,8 @@ fn (mut g Parser) parse_match_statement() !bool {
 			'array'
 		} else if variant_types.len > 1 && common_numeric_type == 0 {
 			flat.source_type_name(variant_types[0])
+		} else if common_numeric_type != 0 {
+			flat.source_type_name(common_numeric_type)
 		} else {
 			''
 		})
@@ -1013,25 +1041,37 @@ fn (mut g Parser) parse_match_statement() !bool {
 		}
 		if is_boxed && !is_else && member_smartcast_type != 0 && projection_path != '' {
 			member_smartcast_name := g.temporary_name('smartcast_member')
-			g.write_line('${flat.source_type_name(member_smartcast_type)} *${member_smartcast_name} = (${flat.source_type_name(member_smartcast_type)} *)${subject_name}${boxed_access}_object;')
+			member_c_type := fastc_output_c_type(flat.source_type_name(member_smartcast_type))
+			g.write_line('${member_c_type} *${member_smartcast_name} = (${member_c_type} *)${subject_name}${boxed_access}_object;')
 			member_smartcast_saved = g.member_smartcasts[projection_path] or {
 				FastcMemberSmartcast{}
 			}
 			had_member_smartcast = projection_path in g.member_smartcasts
+			pointer := if smartcast_is_reference {
+				'((${member_c_type} *)${subject_name}${boxed_access}_object)'
+			} else {
+				member_smartcast_name
+			}
+			mut view_type, mut view_source := g.narrowed_member_view(member_smartcast_type,
+				u32(0), pointer)
+			if common_numeric_type != 0 {
+				// Numeric variants of different widths are read as their common type.
+				view_type = common_numeric_type
+				view_source = fastc_match_multi_variant_value(subject_name, boxed_access,
+					variant_types, common_numeric_type)
+			}
 			g.member_smartcasts[projection_path] = FastcMemberSmartcast{
-				typ:           flat.source_type_id(flat.source_type_name(member_smartcast_type) + '*')
-				source:        if smartcast_is_reference {
-					'((${flat.source_type_name(member_smartcast_type)} *)${subject_name}${boxed_access}_object)'
-				} else {
-					member_smartcast_name
-				}
-				variants:      if struct_multi_variant {
+				typ:            view_type
+				source:         view_source
+				variants:       if struct_multi_variant {
 					flat.TypeTextList{ ids: variant_types.clone() }
 				} else {
 					flat.TypeTextList{}
 				}
-				tag_source:    '${subject_name}${boxed_access}_typ'
-				object_source: '${subject_name}${boxed_access}_object'
+				tag_source:     '${subject_name}${boxed_access}_typ'
+				object_source:  '${subject_name}${boxed_access}_object'
+				subject_source: subject_member_source
+				subject_type:   subject_member_type
 			}
 			member_smartcast_active = true
 		}
@@ -1199,7 +1239,7 @@ fn (mut g Parser) parse_return() !bool {
 		} else {
 			mut packed_values := []string{cap: values.len}
 			for i, value in evaluated_values {
-				packed_values << g.multi_return_component(value, i)
+				packed_values << g.multi_return_component(value, value_types[i], i)
 			}
 			'${fastc_multi_return_literal(packed_values)}'
 		}
@@ -1315,6 +1355,13 @@ fn (mut g Parser) parse_return() !bool {
 		'__v_result',
 	] {
 		mut payload_type := fastc_normalize_inferred_type(actual_type)
+		if g.option_return_type != u32(0) && payload_type != g.option_return_type
+			&& fastc_is_numeric_expression_type(payload_type)
+			&& fastc_is_numeric_expression_type(g.option_return_type) {
+			// `return 5` in a `!f64` function: the caller reads the payload as the declared
+			// type, so it is boxed as that type, which converts the value.
+			payload_type = g.option_return_type
+		}
 		if g.option_return_type != u32(0) && (g.should_box_variant(g.option_return_type, payload_type) || ((g.option_return_type_text() == 'IError' || g.declared_kinds[flat.source_type_name(g.semantic_type_key(g.option_return_type))] == .interface_) && g.declared_kinds[flat.source_type_name(g.semantic_type_key(payload_type))] != .interface_)) {
 			expression = g.interface_value_expression(g.option_return_type, payload_type, expression)
 			payload_type = g.option_return_type
@@ -1415,6 +1462,10 @@ fn (g &Parser) interface_value_expression(interface_type_source_id u32, actual_t
 		return '({ ${flat.source_type_name(value_type)} __vf_iface_ref = (${value}); (${interface_type})v_fastc_interface_box(&__vf_iface_ref, sizeof(${flat.source_type_name(value_type)})); })'
 	}
 	actual_layout := g.underlying_alias_type(actual_type_source_id)
+	if interface_type in g.sum_types && actual_layout == interface_type_source_id {
+		// A sum value already carries its concrete variant tag and payload.
+		return expression
+	}
 	actual_interface := flat.source_type_id(fastc_trim_pointer_suffix(flat.source_type_name(actual_layout)))
 	if g.declared_kinds[flat.source_type_name(g.semantic_type_key(interface_type_source_id))] == .interface_
 		&& g.declared_kinds[flat.source_type_name(g.semantic_type_key(actual_interface))] == .interface_ {
@@ -1524,7 +1575,7 @@ fn (mut g Parser) parse_simple_statement() ! {
 			g.globals[global_key]
 		} else if local := g.locals[name] {
 			if local.smartcast_origin_type != u32(0) {
-				if local.smartcast_origin_type_text().ends_with('*') {
+				if local.original_is_reference() {
 					'(*${local.smartcast_origin_source})'
 				} else {
 					local.smartcast_origin_source
@@ -1696,7 +1747,7 @@ fn (mut g Parser) parse_simple_statement() ! {
 				} else {
 					local.typ_text()
 				}
-				if local.is_reference { base.trim_right('*') } else { base }
+				if local.original_is_reference() { base.trim_right('*') } else { base }
 			} else {
 				''
 			}
@@ -1774,6 +1825,13 @@ fn (mut g Parser) parse_simple_statement() ! {
 				return
 			}
 			g.consume_statement_end()
+			if operator == .power_assign {
+				power := g.render_power_assignment(c_target, value, flat.source_type_id(resolved_expected_type)) or {
+					return g.unsupported('`**=` on type `${resolved_expected_type}`')
+				}
+				g.write_line('${power};')
+				return
+			}
 			if g.checked_target_division_enabled() && operator in [.div_assign, .mod_assign] {
 				g.write_line('${g.render_checked_integer_division_assignment(c_target, value, flat.source_type_id(resolved_expected_type), operator)};')
 				return
@@ -1853,7 +1911,7 @@ fn (mut g Parser) parse_simple_statement() ! {
 				// Replacing the boxed value invalidates the old concrete-variant view.
 				g.locals[name] = FastcLocal{
 					is_mut:       statement_local.is_mut
-					is_reference: statement_local.smartcast_origin_type_text().ends_with('*')
+					is_reference: statement_local.original_is_reference()
 					typ:          statement_local.smartcast_origin_type
 					c_name:       statement_local.smartcast_origin_source
 				}
@@ -1917,15 +1975,21 @@ fn (mut g Parser) parse_simple_statement() ! {
 			return
 		}
 		g.write_line('${expression};')
+		g.end_assigned_member_narrowing(g.last_expression)
 		return
 	}
+	starts_with_spawn := g.tok == .key_spawn
 	expression := g.read_statement_expression([token.Token.semicolon, token.Token.rcbr,
 		token.Token.attribute])!
 	g.skip_statement_attributes()!
 	if expression.len == 0 {
 		return g.unsupported('statement `${g.token_source()}`')
 	}
-	if g.last_expression.len == 0 && g.last_expression_type_text().starts_with(fastc_thread_type_prefix) {
+	// read_spawn_expression leaves the spawn in g.last_expression as one thread-typed
+	// atom (an append re-renders the value from it), so the statement's first token
+	// tells a spawn apart from any other thread-typed value.
+	if starts_with_spawn && g.last_expression.len == 1
+		&& g.last_expression_type_text().starts_with(fastc_thread_type_prefix) {
 		// Fire-and-forget `spawn f()` as a statement: the handle is discarded, so
 		// detach the thread. It then releases its own resources on completion (the
 		// run wrapper frees the packed arguments), rather than leaking a joinable.
@@ -2178,7 +2242,8 @@ fn (mut g Parser) parse_parallel_assignment(initial_names []string, initial_mut 
 				'usize'
 			}
 			c_name := fastc_c_identifier(name)
-			g.write_line('${component_type} ${c_name} = (${component_type}){0};')
+			c_type := fastc_output_c_type(component_type)
+			g.write_line('${c_type} ${c_name} = (${c_type}){0};')
 			g.write_line('memcpy(&${c_name}, V_FASTC_MULTI_SOURCE(${temporary}.values[${i}], sizeof(${c_name})), sizeof(${c_name}));')
 			g.set_scoped_local(name, FastcLocal{
 				is_mut: mutability[i]
@@ -2395,7 +2460,8 @@ fn (mut g Parser) parse_parallel_option_tuple(names []string, mutability []bool,
 				continue
 			}
 			component_type := fastc_normalize_inferred_type(component_types[i])
-			g.write_line('${flat.source_type_name(component_type)} ${fastc_c_identifier(name)} = (${flat.source_type_name(component_type)}){0};')
+			c_type := fastc_output_c_type(flat.source_type_name(component_type))
+			g.write_line('${c_type} ${fastc_c_identifier(name)} = (${c_type}){0};')
 			g.set_scoped_local(name, FastcLocal{
 				is_mut: mutability[i]
 				typ:    component_type
@@ -2605,6 +2671,17 @@ fn (g &Parser) multi_return_types_for_expression(tokens []FastcExpressionToken) 
 		name_index = 2
 		open_index = 3
 	}
+	if expression_tokens[open_index].tok == .lsbr
+		&& expression_tokens[name_index].lit.contains('_mono_') {
+		// An explicit generic call into another module (`util.pair[int](1)`) keeps its type
+		// arguments after the specialized name (`util.pair_mono_int[int](1)`).
+		type_arguments_close := fastc_matching_delimiter(expression_tokens, open_index, .lsbr,
+			.rsbr) or { return []u32{} }
+		open_index = type_arguments_close + 1
+		if open_index >= expression_tokens.len {
+			return []u32{}
+		}
+	}
 	if expression_tokens[name_index].tok !in [.name, .key_select] || expression_tokens[open_index].tok != .lpar {
 		return []u32{}
 	}
@@ -2618,7 +2695,10 @@ fn (g &Parser) multi_return_types_for_expression(tokens []FastcExpressionToken) 
 	} else {
 		g.function_key_for_call(expression_tokens, name_index)
 	}
-	signature := g.functions[function_key] or { return []u32{} }
+	// A generic function specialized for this file is registered with the parser.
+	signature := g.functions[function_key] or {
+		g.mono_functions[function_key] or { return []u32{} }
+	}
 	return signature.return_types.ids.clone()
 }
 

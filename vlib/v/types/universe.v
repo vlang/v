@@ -111,16 +111,13 @@ pub const void_ = Void{}
 pub const nil_ = Nil{}
 pub const none_ = None{}
 pub const voidptr_ = Pointer{
-	base_type: Type(Void{})
+	base_type: &builtin_void_type
 }
 pub const charptr_ = Pointer{
-	base_type: Type(Char{})
+	base_type: &builtin_char_type
 }
 pub const byteptr_ = Pointer{
-	base_type: Type(Primitive{
-		props: .integer | .unsigned
-		size:  8
-	})
+	base_type: &builtin_u8_type
 }
 
 // Reuse immutable builtin payloads instead of boxing a new sum value for every lookup.
@@ -230,7 +227,7 @@ pub fn builtin_type_value(name string) Type {
 	}
 	if name == 'array' {
 		return Type(Array{
-			elem_type: Type(Void{})
+			elem_type: new_type_reference(Type(Void{}))
 		})
 	}
 	if name == 'charptr' {

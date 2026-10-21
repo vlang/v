@@ -610,10 +610,10 @@ fn (mut s NoAllocScan) walk(id flat.NodeId, decl NoAllocFunction, chain []string
 			inferred_fixed := node.kind == .array_literal && s.tc.array_literal_is_inferred_fixed(id)
 			mut array_type := s.tc.parse_type(typ)
 			if inferred_fixed {
-				array_type = ArrayFixed{
-					elem_type: s.tc.array_literal_elem_type(*node)
+				array_type = s.tc.intern_type_reference(Type(ArrayFixed{
+					elem_type: s.tc.intern_type_reference(s.tc.array_literal_elem_type(*node))
 					len:       int(node.children_count)
-				}
+				}))
 			}
 			if unalias_type(array_type) !is ArrayFixed {
 				reason = 'dynamic array initialization allocates'

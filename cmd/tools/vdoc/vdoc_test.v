@@ -185,6 +185,14 @@ fn test_highlight_tokens_map_as_a_builtin() {
 	assert kind_of('a.map(it)', 'map') == 'function'
 }
 
+fn test_highlight_tokens_generic_function() {
+	assert kind_of('fn map_of[T](x T) T', 'map_of') == 'function'
+	assert kind_of('decode[Config](text)', 'decode') == 'function'
+	assert kind_of('pairs[map[string]int](x)', 'pairs') == 'function'
+	// An index is not a call.
+	assert kinds_of('items[0] + items[1]', 'items') == ['name', 'name']
+}
+
 fn test_highlight_tokens_negated_keywords() {
 	assert classify('a in b') == ['a:name', 'in:keyword', 'b:name']
 	assert classify('a !in b') == ['a:name', '!in:keyword', 'b:name']
@@ -234,9 +242,25 @@ fn test_highlight_tokens_qualified_enum_value() {
 	assert kind_of('http.Method.post', 'post') == 'enum_value'
 	// A static method, compile time reflection and C or JS names are not enum values.
 	assert kind_of('Foo.new()', 'new') == 'function'
+	assert kind_of('fn Sides.from[W](input W) !Sides', 'from') == 'function'
+	assert kind_of('Sides.from[int](3)', 'from') == 'function'
+	assert kind_of('Sides.top[0]', 'top') == 'enum_value'
 	assert kind_of('\$for f in T.fields {}', 'fields') == 'name'
 	assert classify('C.FILE') == ['C:type_name', '.:punctuation', 'FILE:type_name']
 	assert classify('JS.foo') == ['JS:type_name', '.:punctuation', 'foo:name']
+}
+
+fn test_highlight_tokens_keywords_used_as_enum_fields() {
+	// Any keyword can be an enum field.
+	assert classify('enum Fill {\n\tnone\n\ttype = 2\n}') == ['enum:keyword', 'Fill:type_name',
+		'{:punctuation', 'none:name', 'type:name', '=:operator', '2:number', '}:punctuation']
+	assert classify('f = .none') == ['f:name', '=:operator', '.:enum_value', 'none:enum_value']
+	assert kinds_of('Fill.none', 'none') == ['enum_value']
+	assert kind_of('match f {\n\t.none {}\n}', 'none') == 'enum_value'
+	// Elsewhere, they are still keywords.
+	assert kind_of('x := none', 'none') == 'none'
+	assert kind_of('enum Fill {\n\ta\n}\nfn f() {\n\treturn\n}', 'return') == 'keyword'
+	assert kind_of('\$if T is \$enum {\n\treturn 1\n}', 'return') == 'keyword'
 }
 
 fn test_highlight_tokens_field_access_is_not_an_enum_value() {

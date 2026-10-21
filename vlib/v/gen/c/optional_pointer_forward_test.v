@@ -36,9 +36,7 @@ fn test_pruned_cached_pointer_wrappers_do_not_emit_unused_pointees() {
 	mut tc := types.TypeChecker.new(&ast)
 	for name in ['Used', 'Unused'] {
 		tc.structs['payload.${name}'] = []types.StructField{}
-		tc.const_types['payload.${name.to_lower()}'] = types.ResultType{
-			base_type: types.Pointer{ base_type: types.Type(types.Struct{ name_id: flat.source_type_id('payload.${name}') }) }
-		}
+		tc.const_types['payload.${name.to_lower()}'] = *tc.parse_type(flat.source_type_id('!&payload.${name}'))
 	}
 	mut g := FlatGen.new()
 	g.a = &ast

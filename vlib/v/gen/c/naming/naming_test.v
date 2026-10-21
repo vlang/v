@@ -100,3 +100,30 @@ fn test_complex_header_macro_name_is_escaped() {
 	assert c_name('complex_value') == 'complex_value'
 	assert c_name('C.complex') == 'complex'
 }
+
+fn test_operator_method_c_names_are_disjoint_from_source_names() {
+	for op in overloadable_operators {
+		name := 'Vec.${op}'
+		assert is_operator_method_name(name)
+		c := c_name(name)
+		assert c.starts_with(operator_method_c_prefix), c
+		assert c_name_needs_internal_namespace(name)
+		// No source name can reach the operator's C name, not even its own spelling.
+		assert c_name(c) != c
+		assert c_name(c.all_after(operator_method_c_prefix).replace('__', '.')) != c
+	}
+	assert c_name('Vec.**') == '${operator_method_c_prefix}Vec__pow'
+	assert c_name('Vec.**') != c_name('Vec.mul_')
+	assert c_name('Vec.+') != c_name('Vec.plus')
+	assert c_name('mod.Vec[int].[]=') == '${operator_method_c_prefix}mod__Vec_int__op_index_set'
+}
+
+fn test_is_operator_method_name_only_matches_operator_methods() {
+	for name in ['+', '==', 'Vec', 'Vec.plus', 'Vec.mul_', 'mod.Vec[int]', 'Vec[int]', 'Vec.+=',
+		'a.b.c', 'Vec.[]x', 'Vec.&', 'Vec.<<'] {
+		assert !is_operator_method_name(name), name
+	}
+	for name in ['Vec.+', 'Vec.**', 'Vec.[]', 'Vec.[]=', 'mod.Vec[mod.T].<=', 'Vec_int.%'] {
+		assert is_operator_method_name(name), name
+	}
+}
