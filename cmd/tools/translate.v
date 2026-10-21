@@ -47,7 +47,7 @@ fn main() {
 		os.chdir(c2v_dir)!
 		println('Compiling c2v ...')
 		res2 :=
-			os.exec([vexe, '-o', c2v_bin, '-keepc', '-g', '-experimental', '.'])
+			os.exec([vexe, '-o', c2v_bin, '-keepc', '-g', '.'])
 		if res2.exit_code != 0 {
 			eprintln(res2.output)
 			eprintln('Failed to compile C2V. This should not happen. Please report it via GitHub.')
