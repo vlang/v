@@ -12,6 +12,8 @@ For floating point elements, NaNs follow all other values. Equal signed zeros an
 keep their original order; an explicit comparison controls its own ordering.
 Maps with empty struct values support growth, reservation, and deletion with every C compiler,
 including compilers where the empty struct occupies zero bytes.
+Deleting a map entry clears its stored value so it no longer keeps that value's allocations
+reachable by the garbage collector. Values referenced elsewhere remain valid.
 It also includes Unicode-aware string helpers such as `string.graphemes()`
 for splitting text into grapheme clusters.
 The `.string()` method converts dynamic and fixed arrays of runes to UTF-8 strings,

@@ -53,6 +53,32 @@ fn test_map_delete_reclaims_dense_array_tail() {
 	}
 }
 
+fn test_map_delete_clears_value_storage_without_freeing_shared_values() {
+	value := 'retained by the caller'.clone()
+	mut m := {
+		'first':  value
+		'middle': value
+		'last':   value
+	}
+	// Inspect the backing bytes so the test does not depend on conservative GC timing.
+	raw := unsafe { (&MapLayoutForTest(&m)).data }
+	for index in [1, 2, 0] {
+		key := ['first', 'middle', 'last'][index]
+		m.delete(key)
+		for byte in 0 .. raw.value_bytes {
+			assert unsafe { raw.key_values.values[index * raw.value_bytes + byte] } == 0
+		}
+		assert value == 'retained by the caller'
+		for other_key, other_value in m {
+			assert other_key != key
+			assert other_value == value
+		}
+	}
+	assert m.len == 0
+	m['reused'] = value
+	assert m['reused'] == value
+}
+
 fn test_empty_map_defers_storage_until_first_write() {
 	// Use pointer-containing keys and values so this exercises the regular map
 	// initializer. Under gcboehm_opt, pointer-free storage uses eager no-scan
