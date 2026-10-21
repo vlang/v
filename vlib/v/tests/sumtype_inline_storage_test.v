@@ -104,6 +104,41 @@ fn test_sumtype_rvalue_projection_addresses_escape() {
 	}
 }
 
+type InlinePairArray = [2]InlinePair | bool
+
+@[noinline]
+fn escaped_inline_array_literal(x int) &InlinePair {
+	return &((InlinePairArray([InlinePair{ x: x, y: x + 1 }, InlinePair{ x: x + 2, y: x + 3 }]!) as [2]InlinePair)[0])
+}
+
+fn test_sumtype_array_literal_projection_address_escapes() {
+	first := escaped_inline_array_literal(13)
+	second := escaped_inline_array_literal(17)
+	assert first.x == 13
+	assert first.y == 14
+	assert second.x == 17
+	assert second.y == 18
+}
+
+@[noinline]
+fn inline_value_array(x int) []InlineValue {
+	return [inline_value(x)]
+}
+
+@[noinline]
+fn escaped_inline_array_source(x int) &InlinePair {
+	return &(inline_value_array(x)[0] as InlinePair)
+}
+
+fn test_sumtype_projection_from_temporary_array_element_escapes() {
+	first := escaped_inline_array_source(23)
+	second := escaped_inline_array_source(29)
+	assert first.x == 23
+	assert first.y == 24
+	assert second.x == 29
+	assert second.y == 30
+}
+
 fn optional_inline_value(x int) ?InlineValue {
 	return inline_value(x)
 }
