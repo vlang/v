@@ -15347,7 +15347,7 @@ fn (mut tc TypeChecker) check_valid_call_arg_types(id flat.NodeId, node flat.Nod
 		} else {
 			tc.check_node(check_arg_id)
 		}
-		if multi := tc.cached_expr_type(check_arg_id) {
+		if multi := tc.cached_expr_type_ref(check_arg_id) {
 			if !info.is_variadic && multi is MultiReturn {
 				expanded_arg_offset += multi.types.len - 1
 			}
@@ -21216,8 +21216,8 @@ fn (tc &TypeChecker) selector_fn_base_type(base_id flat.NodeId) ?Type {
 			}
 		}
 	}
-	if typ := tc.cached_expr_type(base_id) {
-		return typ
+	if typ := tc.cached_expr_type_ref(base_id) {
+		return *typ
 	}
 	if int(base_id) < 0 {
 		return none

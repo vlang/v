@@ -10583,8 +10583,8 @@ pub fn (tc &TypeChecker) expr_type(id flat.NodeId) ?Type {
 			return *tc.parse_type(node.typ)
 		}
 	}
-	if t := tc.cached_expr_type(id) {
-		return t
+	if t := tc.cached_expr_type_ref(id) {
+		return *t
 	}
 	return none
 }
@@ -10610,9 +10610,9 @@ fn (tc &TypeChecker) resolved_call_type(id flat.NodeId) ?Type {
 			}
 		}
 	}
-	if t := tc.cached_expr_type(id) {
+	if t := tc.cached_expr_type_ref(id) {
 		if t !is Void {
-			return t
+			return *t
 		}
 	}
 	if name := tc.cached_resolved_call(id) {
@@ -10660,27 +10660,38 @@ pub fn (tc &TypeChecker) invalidate_checked_expr_type(idx int) {
 	}
 }
 
-@[direct_array_access]
+@[inline]
 fn (tc &TypeChecker) cached_expr_type(id flat.NodeId) ?Type {
+	if typ := tc.cached_expr_type_ref(id) {
+		return *typ
+	}
+	return none
+}
+
+// Dense slots point at immutable canonical types. Sparse map values need stable
+// copies because later insertions can move the map backing storage.
+@[direct_array_access]
+fn (tc &TypeChecker) cached_expr_type_ref(id flat.NodeId) ?&Type {
 	idx := int(id)
 	if !isnil(tc.storage_query_probe) {
-		if typ := tc.sparse_expr_type_values[idx] { return typ }
+		if typ := tc.sparse_expr_type_values[idx] { return new_type_reference(typ) }
 		if !isnil(tc.storage_query_probe.read_base) {
-			return tc.storage_query_probe.read_base.cached_expr_type(id)
+			return tc.storage_query_probe.read_base.cached_expr_type_ref(id)
 		}
 		return none
 	}
 	if tc.parallel_check_sparse {
 		if tc.in_check_range(idx) {
 			if idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
-				return *tc.expr_type_values[idx]
+				return tc.expr_type_values[idx]
 			}
 			return none
 		}
-		return tc.sparse_expr_type_values[idx] or { none }
+		if typ := tc.sparse_expr_type_values[idx] { return new_type_reference(typ) }
+		return none
 	}
 	if idx >= 0 && idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
-		return *tc.expr_type_values[idx]
+		return tc.expr_type_values[idx]
 	}
 	return none
 }
