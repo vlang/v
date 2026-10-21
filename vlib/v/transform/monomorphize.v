@@ -9453,7 +9453,11 @@ fn (mut t Transformer) infer_generic_call_args_seeded(decl GenericFnDecl, _id fl
 	// An interface target converts the result after the call. Its concrete
 	// arguments decide T before that target may fill any missing parameters.
 	interface_context := t.is_interface_type(flat.source_type_id(expected_value))
-	if expected_return != 0 && !interface_context {
+	// An optional assignment may wrap the call's result. Infer its payload from
+	// the arguments before allowing the destination to fill missing parameters.
+	defer_return_inference := interface_context
+		|| flat.source_type_shape(expected_return).has(.option_type)
+	if expected_return != 0 && !defer_return_inference {
 		t.infer_generic_return_type_args(decl, expected_return, mut inferred, receiver_params)
 	}
 	mut param_idx := 0
@@ -9562,7 +9566,7 @@ fn (mut t Transformer) infer_generic_call_args_seeded(decl GenericFnDecl, _id fl
 		t.infer_generic_short_struct_init_args(child.typ, arg_id, node, mut inferred)
 		param_idx++
 	}
-	if interface_context {
+	if defer_return_inference {
 		t.infer_generic_return_type_args(decl, expected_return, mut inferred, receiver_params)
 	}
 	ret_source_id_2 := t.node_type(_id)
