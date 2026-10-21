@@ -1280,6 +1280,11 @@ pub fn h_divider() {
 // so that V programs/tests will write their temporary files to new location.
 // The new nested folder, and its contents, will get removed after all tests/programs succeed.
 pub fn setup_new_vtmp_folder(hash string) string {
+	// The V3 module cache defaults to VTMP. Keep it in the shared VTMP, so that each
+	// session does not rebuild every cached module, unless isolation was requested.
+	if os.getenv('V3CACHE') == '' && os.getenv('V3_TEST_ISOLATE_CACHE') != '1' {
+		os.setenv('V3CACHE', os.vtmp_dir(), true)
+	}
 	new_vtmp_dir := os.join_path(os.vtmp_dir(), 'tsession_${hash}')
 	os.mkdir_all(new_vtmp_dir) or { panic(err) }
 	// A test session must not inherit an unrelated `v.mod` from the shared temp

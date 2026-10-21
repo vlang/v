@@ -727,13 +727,14 @@ fn test_orm_stmt_gen_vsql_update_quotes_infix_column() {
 	table := orm.Table{
 		name: 'products'
 	}
+	operand := orm.Primitive(2)
 	data := orm.QueryData{
 		fields: ['stock']
 		data:   [
 			orm.Primitive(orm.InfixType{
 				name:     'stock'
 				operator: .add
-				right:    orm.Primitive(2)
+				right:    &operand
 			}),
 		]
 	}
@@ -741,9 +742,12 @@ fn test_orm_stmt_gen_vsql_update_quotes_infix_column() {
 		fields: ['id']
 		kinds:  [.eq]
 	}
-	query, _ := orm.orm_stmt_gen(.vsql, table, '"', .update, true, ':p', 1, data, where)
+	query, returned := orm.orm_stmt_gen(.vsql, table, '"', .update, true, ':p', 1, data, where)
 	// vsql folds an undelimited `stock` to `STOCK`, which is not the column.
 	assert query == 'UPDATE "products" SET "stock" = "stock" + :p1 WHERE "id" = :p2;'
+	expression := returned.data[0] as orm.InfixType
+	assert expression.right == &operand
+	assert *expression.right == orm.Primitive(2)
 	pg_query, _ := orm.orm_stmt_gen(.pg, table, '"', .update, true, '$', 1, data, where)
 	assert pg_query == 'UPDATE "products" SET "stock" = stock + $1 WHERE "id" = $2;'
 }

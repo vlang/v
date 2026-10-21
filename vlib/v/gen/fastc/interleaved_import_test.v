@@ -74,3 +74,66 @@ fn main() { assert positions.location().value == 42; println("interleaved import
 		assert run.output.trim_space() == 'interleaved imports work', '${backend}: ${run.output}'
 	}
 }
+
+fn test_fastc_selected_functions_keep_each_files_import_context() {
+	$if !macos && !linux {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'fastc_selected_functions_${os.getpid()}')
+	os.mkdir_all(os.join_path(root, 'alpha')) or { panic(err) }
+	os.mkdir_all(os.join_path(root, 'beta')) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'v.mod'), 'Module { name: "selected_functions" }') or { panic(err) }
+	os.write_file(os.join_path(root, 'alpha', 'alpha.v'), r'module alpha
+pub struct Value {
+pub:
+	number int
+}
+pub fn label() string { return "alpha" }
+pub fn make_value(number int) Value { return Value{number: number} }
+pub fn describe(value &Value) string { return "number=${value.number}" }
+fn hidden() int { return 99 }
+') or { panic(err) }
+	os.write_file(os.join_path(root, 'beta', 'beta.v'), r'module beta
+pub fn label() string { return "beta" }
+') or { panic(err) }
+	os.write_file(os.join_path(root, 'a.v'), r'module main
+import alpha { label }
+fn from_alpha() string { return label() }
+') or { panic(err) }
+	os.write_file(os.join_path(root, 'b.v'), r'module main
+import beta { label }
+fn from_beta() string { return label() }
+') or { panic(err) }
+	main_path := os.join_path(root, 'main.v')
+	os.write_file(main_path, r'module main
+import alpha { label, make_value, describe }
+fn main() {
+	assert from_alpha() == "alpha"
+	assert from_beta() == "beta"
+	value := make_value(17)
+	assert describe(value) == "number=17"
+	callback := label
+	assert callback() == "alpha"
+	assert "${label()}" == "alpha"
+}
+') or { panic(err) }
+	for backend in ['c', 'fastc'] {
+		executable := os.join_path(root, 'program_${backend}')
+		build := cmdexec.run(@VEXE, ['-b', backend, '-nocache', '-gc', 'none', '-o', executable,
+			root])
+		assert build.exit_code == 0, '${backend}: ${build.output}'
+		run := cmdexec.run(executable, [])
+		assert run.exit_code == 0, '${backend}: ${run.output}'
+	}
+	os.write_file(main_path, r'module main
+import alpha { hidden }
+fn main() { println(hidden()) }
+') or { panic(err) }
+	for backend in ['c', 'fastc'] {
+		build := cmdexec.run(@VEXE, ['-b', backend, '-nocache', '-gc', 'none', '-o',
+			os.join_path(root, 'private_${backend}'), main_path])
+		assert build.exit_code != 0, backend
+		assert build.output.contains('private'), '${backend}: ${build.output}'
+	}
+}

@@ -52,6 +52,7 @@ fn test_prelude_scan_preserves_nested_scope_boundaries_and_invalid_id_guards() {
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
+	g.tc = &tc
 	nodes_before := a.nodes.clone()
 	children_before := a.children.clone()
 	scan := g.collect_fn_prelude_scan(a.nodes[int(root)])
@@ -95,8 +96,10 @@ fn test_serial_gen_info_scan_preserves_metadata_and_incremental_counts() {
 	optional_sizeof := a.add_val(.sizeof_expr, '?int')
 	shared_decl := a.add_val(.decl_assign, 'shared:Item')
 	a.add_val(.ident, 'ordinary')
+	mut tc := types.TypeChecker.new(&a)
 	mut g := FlatGen.new()
 	g.a = &a
+	g.tc = &tc
 	nodes_before := a.nodes.clone()
 	counts := g.scan_collect_gen_info_serial()
 	assert counts.fn_count == 2
@@ -127,10 +130,12 @@ fn test_usable_expr_type_preserves_builtin_string_and_byte_results() {
 	index_value := a.add_val(.int_literal, '0')
 	index := readonly_scan_test_node(mut a, .index, '', [literal, index_value])
 	slice := readonly_scan_test_node(mut a, .index, 'range', [literal, index_value])
+	mut tc := types.TypeChecker.new(&a)
 	mut g := FlatGen.new()
 	g.a = &a
-	assert g.usable_expr_type(literal) == types.builtin_type_value('string')
-	assert g.usable_expr_type(interpolation) == types.builtin_type_value('string')
-	assert g.usable_expr_type(slice) == types.builtin_type_value('string')
-	assert g.usable_expr_type(index) == types.builtin_type_value('u8')
+	g.tc = &tc
+	assert *g.usable_expr_type(literal) == types.builtin_type_value('string')
+	assert *g.usable_expr_type(interpolation) == types.builtin_type_value('string')
+	assert *g.usable_expr_type(slice) == types.builtin_type_value('string')
+	assert *g.usable_expr_type(index) == types.builtin_type_value('u8')
 }

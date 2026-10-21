@@ -63,31 +63,62 @@ fn test_program_specialization_preserves_generated_functions_without_generic_nam
 
 // test_c_name_sanitize_operator_overloads validates this v3 regression case.
 fn test_c_name_sanitize_operator_overloads() {
-	assert c_name('Point.<') == 'Point__lt'
-	assert c_name('Point.<=') == 'Point__le'
-	assert c_name('Point.>') == 'Point__gt'
-	assert c_name('Point.>=') == 'Point__ge'
-	assert c_name('Point.[]') == 'Point__op_index'
-	assert c_name('Point.[]=') == 'Point__op_index_set'
+	assert c_name('Point.<') == '__v3_internal_symbol_op_Point__lt'
+	assert c_name('Point.<=') == '__v3_internal_symbol_op_Point__le'
+	assert c_name('Point.>') == '__v3_internal_symbol_op_Point__gt'
+	assert c_name('Point.>=') == '__v3_internal_symbol_op_Point__ge'
+	assert c_name('Point.[]') == '__v3_internal_symbol_op_Point__op_index'
+	assert c_name('Point.[]=') == '__v3_internal_symbol_op_Point__op_index_set'
+	assert c_name('Point.**') == '__v3_internal_symbol_op_Point__pow'
 }
 
-fn test_operator_collision_names_preserve_short_and_long_method_names() {
+// An operator's C name never equals the C name of an ordinary method, whether or
+// not the receiver has a method named after the operator's C spelling.
+fn test_operator_c_names_differ_from_method_c_names() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
-	for op in ['+', '==', '[]='] {
+	for op, word in {
+		'+':   'plus'
+		'-':   'minus'
+		'*':   'mul'
+		'**':  'mul_'
+		'/':   'div'
+		'%':   'mod'
+		'==':  'eq'
+		'!=':  'ne'
+		'<':   'lt'
+		'>':   'gt'
+		'<=':  'le'
+		'>=':  'ge'
+		'|':   'or'
+		'^':   'xor'
+		'[]':  'op_index'
+		'[]=': 'op_index_set'
+	} {
 		name := 'Box.${op}'
-		ordinary := 'Box.${g.cname('T.${op}').all_after_last('__')}'
+		ordinary := 'Box.${word}'
+		assert g.direct_call_name(name) == g.cname(name)
+		assert g.direct_call_name(name) != g.cname(ordinary)
 		tc.fn_param_types[ordinary] = []types.Type{}
-		assert g.direct_call_name(name) == '${g.cname(name)}__operator'
+		assert g.direct_call_name(name) == g.cname(name)
 		assert g.direct_call_name(ordinary) == g.cname(ordinary)
+		assert g.cname(name) != g.cname(ordinary)
 	}
+	assert g.cname('Box.**') != g.cname('Box.pow')
 	for method in ['get', 'value', 'operator', 'operator[]=', '[]suffix'] {
 		name := 'Box.${method}'
 		assert g.direct_call_name(name) == g.cname(name)
 	}
+}
+
+// The builtin `string` operators keep the C names the runtime calls them by.
+fn test_builtin_string_operators_keep_runtime_c_names() {
+	assert c_name('string.==') == 'string__eq'
+	assert c_name('string.<') == 'string__lt'
+	assert c_name('string.+') == 'string__plus'
 }
 
 fn test_direct_builtin_map_set_aliases_use_the_runtime_symbol() {
@@ -288,7 +319,7 @@ fn test_main_function_is_prefixed_when_declared_c_function_owns_name() {
 	g.a = &a
 	g.tc = &tc
 	tc.fn_ret_types['C.get_value'] = types.Type(types.int_)
-	g.fn_decl_ret_types[fn_decl_module_key('main', 'get_value')] = types.Type(types.int_)
+	g.fn_decl_ret_types[fn_decl_module_key('main', 'get_value')] = tc.parse_type(flat.source_type_id('int'))
 
 	assert g.fn_c_name_in_module('main', 'get_value') == 'main__get_value'
 	assert g.main_runtime_shadow_fn_c_name('main', 'get_value') or { '' } == 'main__get_value'
@@ -441,8 +472,8 @@ fn test_voidptr_method_value_arg_does_not_panic_for_alias_to_voidptr() {
 	g.tc = &tc
 	alias_to_voidptr := types.Type(types.Alias{
 		name_id:   flat.source_type_id('Data')
-		base_type: types.Type(types.Pointer{
-			base_type: types.Type(types.void_)
+		base_type: &types.Type(types.Pointer{
+			base_type: &types.Type(types.void_)
 		})
 	})
 	assert !g.voidptr_method_value_arg(flat.empty_node, alias_to_voidptr)
@@ -546,9 +577,9 @@ fn test_cgen_typeof_display_canonicalizes_fixed_array_generic_args() {
 	assert typeof_display_type_name('Pair[int[3], Box[string[2]]]') == 'Pair[[3]int, Box[[2]string]]'
 	assert typeof_display_type_name('Box[int][3]') == '[3]Box[int]'
 	fixed_maps := types.Type(types.ArrayFixed{
-		elem_type: types.Type(types.Map{
-			key_type:   types.Type(types.String{})
-			value_type: types.Type(types.int_)
+		elem_type: &types.Type(types.Map{
+			key_type:   &types.Type(types.String{})
+			value_type: &types.Type(types.int_)
 		})
 		len:       3
 	})
@@ -565,7 +596,7 @@ fn test_fixed_array_typedef_allows_opaque_pointer_elements() {
 	})
 	assert g.fixed_array_type_has_unknown_struct(opaque)
 	assert !g.fixed_array_type_has_unknown_struct(types.Type(types.Pointer{
-		base_type: opaque
+		base_type: &types.Type(opaque)
 	}))
 }
 
@@ -577,6 +608,29 @@ fn test_sum_type_index_rejects_ambiguous_qualified_suffix() {
 	mut g := FlatGen.new()
 	g.tc = &tc
 	assert g.sum_type_index(flat.source_type_id('tast.Value'), flat.source_type_id('b.tast.Target')) == 0
+}
+
+fn test_sum_name_lookup_preserves_qualified_type_identity() {
+	mut ast := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&ast)
+	tc.sum_types.set('left.Value', ['left.Item', 'right.Item'])
+	tc.sum_types.set('right.Value', ['int', 'string'])
+	mut g := FlatGen.new()
+	g.tc = &tc
+	g.precompute_sum_name_lookup()
+	assert g.resolve_sum_name(flat.source_type_id('Value')) == flat.source_type_id('Value')
+	assert g.resolve_sum_name(flat.source_type_id('left.Value')) == flat.source_type_id('left.Value')
+	assert g.resolve_sum_name(flat.source_type_id('right.Value')) == flat.source_type_id('right.Value')
+	assert g.resolve_variant(flat.source_type_id('left.Value'), flat.source_type_id('Item')) == flat.source_type_id('Item')
+	assert g.sum_type_index(flat.source_type_id('left.Value'), flat.source_type_id('Item')) == 0
+	assert g.sum_type_index(flat.source_type_id('left.Value'), flat.source_type_id('left.Item')) == 1
+	assert g.sum_type_index(flat.source_type_id('left.Value'), flat.source_type_id('right.Item')) == 2
+	assert g.resolve_variant(flat.source_type_id('left.Value'), flat.source_type_id('left.Item')) == flat.source_type_id('left.Item')
+	assert g.resolve_variant(flat.source_type_id('left.Value'), flat.source_type_id('right.Item')) == flat.source_type_id('right.Item')
+	tc.sum_types.set('extra.left__Value', ['Raw__Name', 'Raw.Name'])
+	g.precompute_sum_name_lookup()
+	assert g.resolve_sum_name(flat.source_type_id('left__Value')) == flat.source_type_id('left.Value')
+	assert g.resolve_variant(flat.source_type_id('extra.left__Value'), flat.source_type_id('Raw__Name')) == flat.source_type_id('Raw__Name')
 }
 
 fn test_sum_type_index_emission_override_is_limited_to_flatgen() {
@@ -599,17 +653,22 @@ fn test_sum_type_index_emission_override_is_limited_to_flatgen() {
 	}, -1, 'transform', 'sum.v', 'transform__Transformer__sum_type_index', false)
 }
 
-fn test_typeof_type_index_fallback_uses_matching_sum_variant() {
+fn test_typeof_type_index_is_independent_of_sum_variant_order() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
+	tc.cur_module = 'main'
 	tc.sum_types.set('main.Value', ['main.Foo', 'main.Bar'])
 	tc.sum_types.set('main.Other', ['main.Baz', 'main.Qux'])
+	names := ['main.Foo', 'main.Bar', 'main.Baz', 'main.Qux']
+	tc.runtime_type_indexes = types.stable_type_indexes(names.map(flat.source_type_id(it)))
 	mut g := FlatGen.new()
 	g.tc = &tc
-	assert g.type_index_for_type_name(flat.source_type_id('Foo')) == 1
-	assert g.type_index_for_type_name(flat.source_type_id('Bar')) == 2
-	assert g.type_index_for_type_name(flat.source_type_id('Qux')) == 2
-	assert g.type_index_for_type_name(flat.source_type_id('NotVariant')) == 0
+	for name in names {
+		short := name.all_after_last('.')
+		assert g.type_index_for_type_name(flat.source_type_id(short)) == tc.runtime_type_indexes[flat.source_type_id(name)]
+	}
+	assert g.type_index_for_type_name(flat.source_type_id('int')) == 8
+	assert g.type_index_for_type_name(flat.source_type_id('&int')) == 8 | (1 << 16)
 }
 
 fn test_fn_decl_variadic_resolves_alias_before_short_fallback() {

@@ -1,0 +1,140 @@
+vlib/v/checker/tests/container_fixed_array_elem_mismatch_err.vv:8:9: error: cannot use `[][2]int` as type `[][]int` in return argument
+    6 | fn return_rows() [][]int {
+    7 |     rows := [[1, 2]!, [3, 4]!]
+    8 |     return rows
+      |            ~~~~
+    9 | }
+   10 |
+vlib/v/checker/tests/container_fixed_array_elem_mismatch_err.vv:13:9: error: cannot use `[][2]int` as type `?[][]int` in return argument
+   11 | fn return_optional_rows() ?[][]int {
+   12 |     rows := [[1, 2]!]
+   13 |     return rows
+      |            ~~~~
+   14 | }
+   15 |
+vlib/v/checker/tests/container_fixed_array_elem_mismatch_err.vv:20:9: error: cannot use `map[string][2]int` as type `map[string][]int` in return argument
+   18 |         'a': [1, 2]!
+   19 |     }
+   20 |     return m
+      |            ^
+   21 | }
+   22 |
+vlib/v/checker/tests/container_fixed_array_elem_mismatch_err.vv:34:9: error: cannot use `[][2]int` as type `[][]int` in return argument
+   32 | 
+   33 | fn forward_rows() (int, [][]int) {
+   34 |     return make_rows()
+      |            ~~~~~~~~~~~
+   35 | }
+   36 |
+vlib/v/checker/tests/container_fixed_array_elem_mismatch_err.vv:38:9: error: cannot use `map[string][2]int` as type `map[string][]int` in return argument
+   36 | 
+   37 | fn forward_map() (int, map[string][]int) {
+   38 |     return make_map()
+      |            ~~~~~~~~~~
+   39 | }
+   40 |
+vlib/v/checker/tests/container_fixed_array_elem_mismatch_err.vv:69:9: error: cannot assign to `rows`: expected `[][]int`, not `[][2]int`
+   67 |     _, _ := forward_map()
+   68 |     mut rows := [][]int{}
+   69 |     rows = fixed_rows
+      |            ~~~~~~~~~~
+   70 |     rows = nested
+   71 |     mut n := 0
+vlib/v/checker/tests/container_fixed_array_elem_mismatch_err.vv:70:9: error: cannot assign to `rows`: expected `[][]int`, not `[2][2]int`
+   68 |     mut rows := [][]int{}
+   69 |     rows = fixed_rows
+   70 |     rows = nested
+      |            ~~~~~~
+   71 |     mut n := 0
+   72 |     n, rows = make_rows()
+vlib/v/checker/tests/container_fixed_array_elem_mismatch_err.vv:72:12: error: cannot assign to `rows`: expected `[][]int`, not `[][2]int`
+   70 |     rows = nested
+   71 |     mut n := 0
+   72 |     n, rows = make_rows()
+      |               ~~~~~~~~~~~
+   73 |     mut fixed_of_rows := [2][]int{}
+   74 |     fixed_of_rows = nested
+vlib/v/checker/tests/container_fixed_array_elem_mismatch_err.vv:74:18: error: cannot assign to `fixed_of_rows`: expected `[2][]int`, not `[2][2]int`
+   72 |     n, rows = make_rows()
+   73 |     mut fixed_of_rows := [2][]int{}
+   74 |     fixed_of_rows = nested
+      |                     ~~~~~~
+   75 |     mut m := map[string][]int{}
+   76 |     m = by_key.clone()
+vlib/v/checker/tests/container_fixed_array_elem_mismatch_err.vv:76:6: error: cannot assign to `m`: expected `map[string][]int`, not `map[string][2]int`
+   74 |     fixed_of_rows = nested
+   75 |     mut m := map[string][]int{}
+   76 |     m = by_key.clone()
+      |         ~~~~~~~~~~~~~~
+   77 |     n = take_rows(fixed_rows)
+   78 |     n += take_rows(nested)
+vlib/v/checker/tests/container_fixed_array_elem_mismatch_err.vv:77:16: error: cannot use `[][2]int` as `[][]int` in argument 1 to `take_rows`
+   75 |     mut m := map[string][]int{}
+   76 |     m = by_key.clone()
+   77 |     n = take_rows(fixed_rows)
+      |                   ~~~~~~~~~~
+   78 |     n += take_rows(nested)
+   79 |     n += take_map(by_key)
+vlib/v/checker/tests/container_fixed_array_elem_mismatch_err.vv:78:17: error: cannot use `[2][2]int` as `[][]int` in argument 1 to `take_rows`
+   76 |     m = by_key.clone()
+   77 |     n = take_rows(fixed_rows)
+   78 |     n += take_rows(nested)
+      |                    ~~~~~~
+   79 |     n += take_map(by_key)
+   80 |     mut fixed_rows2 := fixed_rows.clone()
+vlib/v/checker/tests/container_fixed_array_elem_mismatch_err.vv:79:16: error: cannot use `map[string][2]int` as `map[string][]int` in argument 1 to `take_map`
+   77 |     n = take_rows(fixed_rows)
+   78 |     n += take_rows(nested)
+   79 |     n += take_map(by_key)
+      |                   ~~~~~~
+   80 |     mut fixed_rows2 := fixed_rows.clone()
+   81 |     grow_rows(mut fixed_rows2)
+vlib/v/checker/tests/container_fixed_array_elem_mismatch_err.vv:81:16: error: cannot use `&[][2]int` as `&[][]int` in argument 1 to `grow_rows`
+   79 |     n += take_map(by_key)
+   80 |     mut fixed_rows2 := fixed_rows.clone()
+   81 |     grow_rows(mut fixed_rows2)
+      |                   ~~~~~~~~~~~
+   82 |     mut nested2 := [[1, 2]!, [3, 4]!]!
+   83 |     grow_rows(mut nested2)
+vlib/v/checker/tests/container_fixed_array_elem_mismatch_err.vv:83:16: error: cannot use `&[2][2]int` as `&[][]int` in argument 1 to `grow_rows`
+   81 |     grow_rows(mut fixed_rows2)
+   82 |     mut nested2 := [[1, 2]!, [3, 4]!]!
+   83 |     grow_rows(mut nested2)
+      |                   ~~~~~~~
+   84 |     mut by_key2 := by_key.clone()
+   85 |     grow_map(mut by_key2)
+vlib/v/checker/tests/container_fixed_array_elem_mismatch_err.vv:85:15: error: cannot use `&map[string][2]int` as `&map[string][]int` in argument 1 to `grow_map`
+   83 |     grow_rows(mut nested2)
+   84 |     mut by_key2 := by_key.clone()
+   85 |     grow_map(mut by_key2)
+      |                  ~~~~~~~
+   86 |     h := Holder{
+   87 |         rows:   fixed_rows
+vlib/v/checker/tests/container_fixed_array_elem_mismatch_err.vv:87:3: error: cannot assign to field `rows`: expected `[][]int`, not `[][2]int`
+   85 |     grow_map(mut by_key2)
+   86 |     h := Holder{
+   87 |         rows:   fixed_rows
+      |         ~~~~~~~~~~~~~~~~~~
+   88 |         by_key: by_key
+   89 |     }
+vlib/v/checker/tests/container_fixed_array_elem_mismatch_err.vv:88:3: error: cannot assign to field `by_key`: expected `map[string][]int`, not `map[string][2]int`
+   86 |     h := Holder{
+   87 |         rows:   fixed_rows
+   88 |         by_key: by_key
+      |         ~~~~~~~~~~~~~~
+   89 |     }
+   90 |     _ := [][]int(fixed_rows)
+vlib/v/checker/tests/container_fixed_array_elem_mismatch_err.vv:90:7: error: cannot cast array `[][2]int` to `[][]int`
+   88 |         by_key: by_key
+   89 |     }
+   90 |     _ := [][]int(fixed_rows)
+      |          ~~~~~~~~~~~~~~~~~~~
+   91 |     _ := map[string][]int(by_key)
+   92 |     // A single fixed array is copied into a new dynamic one, also as an element.
+vlib/v/checker/tests/container_fixed_array_elem_mismatch_err.vv:91:7: error: cannot cast map `map[string][2]int` to `map[string][]int`
+   89 |     }
+   90 |     _ := [][]int(fixed_rows)
+   91 |     _ := map[string][]int(by_key)
+      |          ~~~~~~~~~~~~~~~~~~~~~~~~
+   92 |     // A single fixed array is copied into a new dynamic one, also as an element.
+   93 |     mut row := []int{}

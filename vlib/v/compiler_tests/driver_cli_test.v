@@ -518,6 +518,17 @@ fn test_v3_garbage_collector_modes() {
 			assert !generated.contains('v3_gc_marker_${marker}_28636'), 'cross ${mode}: marker ${marker} must be disabled'
 		}
 	}
+	// vgc needs no library or header of the target's toolchain: it stays in.
+	for vgc_os in [cross_os, if host.os == 'windows' { 'linux' } else { 'windows' }] {
+		output := os.join_path(root, 'gc_cross_vgc_${vgc_os}.c')
+		result := cmdexec.run(v3_bin, ['-silent', '-os', vgc_os, '-gc', 'vgc', '-o', output, source])
+		assert result.exit_code == 0, 'vgc ${vgc_os}: ${result.output}'
+		generated := os.read_file(output)!
+		for marker in markers {
+			assert generated.contains('v3_gc_marker_${marker}_28636') == (marker == 'vgc'), 'cross vgc ${vgc_os}: marker ${marker}'
+		}
+		assert generated.contains('vgc_platform.h')
+	}
 }
 
 fn test_standard_v3_excludes_ownership_checker() {
@@ -745,11 +756,10 @@ fn run_driver_with_stdin_file(v3_bin string, args []string, stdin_path string) o
 }
 
 fn collect_driver_process_result(mut process os.Process) os.Result {
-	process.set_redirect_stdio()
+	process.set_redirect_stdio_merged()
 	process.run()
-	process.wait()
 	mut output := process.stdout_slurp()
-	output += process.stderr_slurp()
+	process.wait()
 	if process.err.len > 0 {
 		output += process.err
 	}
@@ -1967,18 +1977,25 @@ fn main() {
 		os.write_file(interrupted_program, "import os
 
 fn main() {
-	os.write_file('${interrupted_marker}', 'started') or { exit(2) }
+	os.write_file('${interrupted_marker}', os.getpid().str()) or { exit(2) }
 	for {}
 }
 ")!
 		mut interrupted_run := os.new_process(v3_bin)
 		interrupted_run.use_pgroup = true
 		interrupted_run.set_args(['-silent', '-no-parallel', 'run', interrupted_program])
+		// A test runner started as a background job of a non-interactive shell
+		// ignores SIGINT, and the driver keeps an inherited ignore for the program
+		// it runs, as nohup expects, so the interrupt below would never reach it.
+		// While SIGINT is caught here, the exec of the driver resets it to the
+		// default.
+		previous_int_handler := os.signal_opt(.int, fn (_ os.Signal) {})!
 		interrupted_run.run()
-		mut interrupted_started := false
+		os.signal_opt(.int, previous_int_handler)!
+		mut program_pid := 0
 		for _ in 0 .. 600 {
-			if os.exists(interrupted_marker) {
-				interrupted_started = true
+			program_pid = (os.read_file(interrupted_marker) or { '' }).int()
+			if program_pid > 0 {
 				break
 			}
 			if !interrupted_run.is_alive() {
@@ -1986,7 +2003,7 @@ fn main() {
 			}
 			time.sleep(100 * time.millisecond)
 		}
-		if !interrupted_started {
+		if program_pid <= 0 {
 			if interrupted_run.is_alive() {
 				interrupted_run.signal_pgkill()
 			}
@@ -1997,10 +2014,28 @@ fn main() {
 		}
 		interrupt := os.exec(['kill', '-INT', '-' + '${interrupted_run.pid}'])
 		if interrupt.exit_code != 0 {
+			os.exec(['kill', '-KILL', '${program_pid}'])
 			interrupted_run.signal_pgkill()
 			interrupted_run.wait()
 			interrupted_run.close()
 			assert false, interrupt.output
+		}
+		// The program runs in its own process group, so killing the group of the
+		// driver does not stop it: kill it by its pid if the interrupt is lost.
+		mut interrupted_stopped := false
+		for _ in 0 .. 600 {
+			if !interrupted_run.is_alive() {
+				interrupted_stopped = true
+				break
+			}
+			time.sleep(100 * time.millisecond)
+		}
+		if !interrupted_stopped {
+			os.exec(['kill', '-KILL', '${program_pid}'])
+			interrupted_run.signal_pgkill()
+			interrupted_run.wait()
+			interrupted_run.close()
+			assert false, 'the interrupted run did not stop within 60 seconds'
 		}
 		interrupted_run.wait()
 		interrupted_exit_code := interrupted_run.code

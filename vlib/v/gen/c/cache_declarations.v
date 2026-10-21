@@ -502,7 +502,7 @@ fn (mut g FlatGen) cache_require_declaration_type(typ types.Type, mut seen map[u
 		types.FnType {
 			g.cache_require_declaration_type(typ.return_type, mut seen)
 			for param in typ.params {
-				g.cache_require_declaration_type(param, mut seen)
+				g.cache_require_declaration_type(param.typ, mut seen)
 			}
 		}
 		types.MultiReturn {

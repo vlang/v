@@ -161,3 +161,112 @@ fn main() {
 	run := cmdexec.run(program, [])
 	assert run.exit_code == 0, run.output
 }
+
+fn test_fastc_pre_rendered_argument_borrows_keep_other_representations() {
+	g := fastc_argument_fallback_parser(true, false, 0)
+	source := '({ side_effect(); record; })'
+	value := [FastcExpressionToken{ tok: .name, source: source, typ: flat.source_type_id('Record') }]
+	for expected in ['Record', 'Record**', 'int*', 'voidptr*'] {
+		assert g.render_call_argument_expression(value, flat.source_type_id(expected)) or { panic(expected) } == source, expected
+	}
+	for actual in [u32(0), flat.source_type_voidptr, flat.source_type_id('Record*')] {
+		tokens := [FastcExpressionToken{ tok: .name, source: source, typ: actual }]
+		assert g.render_call_argument_expression(tokens, flat.source_type_id('Record*')) or { panic('unchanged representation') } == source
+	}
+	ordinary := fastc_argument_fallback_parser(false, false, 0)
+	assert ordinary.render_call_argument_expression(value, flat.source_type_id('Record*')) or { panic('ordinary mode') } == source
+}
+
+fn test_fastc_pre_rendered_fallbacks_borrow_values_with_stable_storage() {
+	$if !macos && !linux {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'fastc_argument_borrow_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'main.v'), r'module main
+struct Record {
+	value int
+}
+type Choice = Record | int
+struct Counter {
+mut:
+	calls int
+	fallbacks int
+}
+fn maybe_record(mut counter Counter, present bool) ?Record {
+	counter.calls++
+	if !present { return none }
+	return Record{value: 17}
+}
+fn maybe_choice(mut counter Counter, present bool) ?Choice {
+	counter.calls++
+	if !present { return none }
+	return Choice(Record{value: 31})
+}
+fn record_fallback(mut counter Counter) Record {
+	counter.fallbacks++
+	return Record{value: 23}
+}
+fn choice_fallback(mut counter Counter) Choice {
+	counter.fallbacks++
+	return Choice(43)
+}
+fn keep_record(value &Record) &Record { return value }
+fn keep_choice(value &Choice) &Choice { return value }
+fn read_record(value &Record) int { return value.value }
+fn read_choice(value &Choice) int {
+	return match value {
+		Record { value.value }
+		int { value }
+	}
+}
+fn read_value(value Record) int { return value.value }
+fn main() {
+	mut counter := Counter{}
+	record := keep_record(maybe_record(mut counter, true) or { record_fallback(mut counter) })
+	fallback_record := keep_record(maybe_record(mut counter, false) or { record_fallback(mut counter) })
+	choice := keep_choice(maybe_choice(mut counter, true) or { choice_fallback(mut counter) })
+	fallback_choice := keep_choice(maybe_choice(mut counter, false) or { choice_fallback(mut counter) })
+	assert counter.calls == 4
+	assert counter.fallbacks == 2
+	for i in 0 .. 64 {
+		assert read_value(Record{value: i}) == i
+		assert read_record(maybe_record(mut counter, true) or { record_fallback(mut counter) }) == 17
+	}
+	assert record.value == 17
+	assert fallback_record.value == 23
+	assert read_choice(choice) == 31
+	assert read_choice(fallback_choice) == 43
+	assert counter.calls == 68
+	assert counter.fallbacks == 2
+	original := &Record{value: 53}
+	pointers := {"present": original}
+	returned := keep_record(pointers["present"] or { original })
+	assert voidptr(returned) == voidptr(original)
+	records := {"present": Record{value: 29}}
+	mut total := 0
+	for key in ["missing", "present"] {
+		total += read_record(records[key] or { continue })
+	}
+	assert total == 29
+	assert read_record(records["missing"] or { record_fallback(mut counter) }) == 23
+	assert counter.fallbacks == 3
+}
+') or { panic(err) }
+	mut prefs := pref.new_preferences()
+	prefs.vroot = @VEXEROOT
+	prefs.building_v = true
+	prefs.backend = 'fastc'
+	prefs.ccompiler = 'clang'
+	prefs.user_defines = ['gc_none', 'no_backtrace', 'v3_backend']
+	c_source := generate_files([root], prefs) or { panic(err) }
+	c_path := os.join_path(root, 'main.c')
+	program := os.join_path(root, 'program')
+	os.write_file(c_path, c_source) or { panic(err) }
+	build := cmdexec.run('cc', ['-std=gnu11', '-Werror=incompatible-pointer-types', '-O2', '-o',
+		program, c_path])
+	assert build.exit_code == 0, build.output
+	run := cmdexec.run(program, [])
+	assert run.exit_code == 0, run.output
+}

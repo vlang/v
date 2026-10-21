@@ -7486,11 +7486,11 @@ fn merge_monomorph_cache_specs(cached []transform.MonomorphCacheSpec, generated 
 	return merged
 }
 
-// clone_string_bool_map promotes a string-keyed set out of a disposable stage arena.
 fn clone_string_bool_map(values map[string]bool) map[string]bool {
 	mut cloned := map[string]bool{}
+	cloned.reserve(u32(values.len))
 	for key, value in values {
-		cloned[key.clone()] = value
+		cloned[key] = value
 	}
 	return cloned
 }
@@ -7498,7 +7498,7 @@ fn clone_string_bool_map(values map[string]bool) map[string]bool {
 fn clone_string_string_map(values map[string]string) map[string]string {
 	mut cloned := map[string]string{}
 	for key, value in values {
-		cloned[key.clone()] = value.clone()
+		cloned[key] = value.clone()
 	}
 	return cloned
 }
@@ -7506,7 +7506,7 @@ fn clone_string_string_map(values map[string]string) map[string]string {
 fn clone_nested_string_bool_map(values map[string]map[string]bool) map[string]map[string]bool {
 	mut cloned := map[string]map[string]bool{}
 	for key, value in values {
-		cloned[key.clone()] = clone_string_bool_map(value)
+		cloned[key] = clone_string_bool_map(value)
 	}
 	return cloned
 }
@@ -7883,7 +7883,7 @@ fn clone_struct_field_map(values map[string][]types.StructField) map[string][]ty
 				is_volatile: field.is_volatile
 			}
 		}
-		cloned[name.clone()] = owned_fields
+		cloned[name] = owned_fields
 	}
 	return cloned
 }
@@ -7891,7 +7891,7 @@ fn clone_struct_field_map(values map[string][]types.StructField) map[string][]ty
 fn clone_string_list_map(values map[string][]string) map[string][]string {
 	mut cloned := map[string][]string{}
 	for name, items in values {
-		cloned[name.clone()] = clone_string_list(items)
+		cloned[name] = clone_string_list(items)
 	}
 	return cloned
 }
@@ -7913,6 +7913,7 @@ fn clone_type_owner_c_abi_fields(values map[u32]map[string]string) map[u32]map[s
 }
 
 fn promote_scoped_type_metadata(mut tc types.TypeChecker) {
+	tc.runtime_type_indexes = tc.runtime_type_indexes.clone()
 	// Transform and specialization can grow these maps inside a disposable arena,
 	// so move both their storage and string payloads before releasing that arena.
 	tc.fn_ret_type_texts = tc.fn_ret_type_texts.clone_owned()
@@ -7962,7 +7963,7 @@ fn promote_scoped_checker_node_caches(mut tc types.TypeChecker, a &flat.FlatAst,
 				tc.resolved_call_names[idx] = types.promote_cached_name(tc.resolved_call_names[idx], scope)
 			}
 			if idx >= generated_start && idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
-				tc.expr_type_values[idx] = types.clone_owned_type(tc.expr_type_values[idx])
+				tc.expr_type_values[idx] = types.new_type_reference(types.Type(types.clone_owned_type(tc.expr_type_values[idx])))
 			}
 		}
 	}
@@ -7972,7 +7973,7 @@ fn promote_scoped_checker_node_caches(mut tc types.TypeChecker, a &flat.FlatAst,
 	for idx in rewritten_base_nodes {
 		if idx >= 0 && idx < tc.expr_type_set.len && tc.expr_type_set[idx]
 			&& idx < tc.expr_type_values.len {
-			tc.expr_type_values[idx] = types.clone_owned_type(tc.expr_type_values[idx])
+			tc.expr_type_values[idx] = types.new_type_reference(types.Type(types.clone_owned_type(tc.expr_type_values[idx])))
 		}
 	}
 	// The dense caches are reserved in the parent arena, but an unexpectedly
@@ -9004,6 +9005,10 @@ fn v3_cache_compiler_runtime_inputs_identity(root string) string {
 }
 
 fn restored_fn_c_name(name string) string {
+	// Operator overloads and static type methods are named in the internal namespace.
+	if naming.c_name_needs_internal_namespace(name) {
+		return naming.c_name(name)
+	}
 	if name.starts_with('C.') {
 		return name[2..]
 	}
@@ -9167,20 +9172,19 @@ fn ast_contains_sql_expr(a &flat.FlatAst) bool {
 }
 
 fn restore_transformed_fn_value_types(mut tc types.TypeChecker, a &flat.FlatAst, used_fns map[string]bool) {
-	void_type := types.builtin_type_value('void')
 	for tc.expr_type_values.len < a.nodes.len {
-		tc.expr_type_values << void_type
+		tc.expr_type_values << types.empty_type
 		tc.expr_type_set << false
 	}
 	// Signature arrays and payloads stay immutable throughout this restoration.
-	mut fn_value_types := map[string]types.Type{}
+	mut fn_value_types := map[string]&types.Type{}
 	for idx, name in tc.sparse_resolved_fn_values {
 		if idx < 0 || idx >= a.nodes.len {
 			continue
 		}
 		params := tc.fn_param_types[name] or { continue }
 		ret := tc.fn_ret_types[name] or { continue }
-		tc.expr_type_values[idx] = restored_fn_value_type(name, params, ret, tc.fn_variadic[name] or { false }, mut fn_value_types)
+		tc.expr_type_values[idx] = restored_fn_value_type(tc, name, params, ret, tc.fn_variadic[name] or { false }, mut fn_value_types)
 		tc.expr_type_set[idx] = true
 	}
 	mut cur_module := ''
@@ -9237,7 +9241,7 @@ fn restore_transformed_fn_value_types(mut tc types.TypeChecker, a &flat.FlatAst,
 						if name.len > 0 {
 							params := tc.fn_param_types[name] or { []types.Type{} }
 							if ret := tc.fn_ret_types[name] {
-								tc.expr_type_values[callee_idx] = restored_fn_value_type(name, params, ret, tc.fn_variadic[name] or { false }, mut fn_value_types)
+								tc.expr_type_values[callee_idx] = restored_fn_value_type(tc, name, params, ret, tc.fn_variadic[name] or { false }, mut fn_value_types)
 								tc.expr_type_set[callee_idx] = true
 							}
 						}
@@ -9256,7 +9260,7 @@ fn restore_transformed_fn_value_types(mut tc types.TypeChecker, a &flat.FlatAst,
 						&& (tc.resolved_fn_value_name(base_id) or { '' }) == cname {
 						params := tc.fn_param_types[cname] or { []types.Type{} }
 						if ret := tc.fn_ret_types[cname] {
-							tc.expr_type_values[base_idx] = restored_fn_value_type(cname, params, ret, tc.fn_variadic[cname] or { false }, mut fn_value_types)
+							tc.expr_type_values[base_idx] = restored_fn_value_type(tc, cname, params, ret, tc.fn_variadic[cname] or { false }, mut fn_value_types)
 							tc.expr_type_set[base_idx] = true
 						}
 					}
@@ -9272,16 +9276,12 @@ fn restore_transformed_fn_value_types(mut tc types.TypeChecker, a &flat.FlatAst,
 	}
 }
 
-// restored_fn_value_type preserves the variadic tail in restored expression metadata.
-fn restored_fn_value_type(name string, params []types.Type, ret types.Type, is_variadic bool, mut fn_value_types map[string]types.Type) types.Type {
+// restored_fn_value_type preserves canonical references and variadic expression metadata.
+fn restored_fn_value_type(tc &types.TypeChecker, name string, params []types.Type, ret types.Type, is_variadic bool, mut fn_value_types map[string]&types.Type) &types.Type {
 	if cached := fn_value_types[name] {
 		return cached
 	}
-	typ := types.Type(types.FnType{
-		params:      params
-		is_variadic: is_variadic
-		return_type: ret
-	})
+	typ := tc.intern_type_reference(types.Type(tc.variadic_fn_type(params, ret, []bool{}, is_variadic)))
 	fn_value_types[name] = typ
 	return typ
 }
@@ -11611,7 +11611,7 @@ pub fn run(args []string) {
 	}
 	// Freestanding programs have no libc collector. Native builds also omit it.
 	disable_gc := 'freestanding' in user_defines
-		|| v3_gc_is_disabled(building_v, cross_output, target_os, target_arch, backend)
+		|| v3_gc_is_disabled(building_v, cross_output, target_os, target_arch, backend, gc_mode)
 	apply_v3_gc_mode(gc_mode, disable_gc, mut user_defines, mut compile_values) or {
 		eprintln(err.msg())
 		exit(1)
@@ -16212,6 +16212,8 @@ pub fn run(args []string) {
 				}
 				prefix_object := compile_v3_program_object('prefix', prepared_cache.program_prefix_source, prefix_source_identity, v3_program_external_input_paths(&cache_state), &cache_state.manager, c_standard, opt_flag, pic_flag, warning_flags, cached_object_c_flags, needs_objective_c, target_args, prefs.target, c_compiler, mut c_object_cache_stats) or {
 					message := err.msg()
+					restart_v3_without_restored_incremental_program(incremental_cache_restored, &cache_state.manager,
+						v3_cgen_cache_input(cache_state, user_files, cache_c_flags).source_files, cc_dir, 'program prefix')
 					if request_macos_v3_c_error_fallback_from_message(macos_v3_fallback_file, macos_v3_c_error_dir, c_compiler, message, [
 						published_c_source,
 						cache_plan_file,
@@ -16287,6 +16289,8 @@ pub fn run(args []string) {
 			program_main_identity := modulecache.file_signature(published_c_source)
 			cached_program_main_object = compile_v3_program_object('main', program_main_source, program_main_identity, v3_program_external_input_paths(&cache_state), &cache_state.manager, c_standard, '', pic_flag, warn_args.join(' '), cached_object_c_flags, needs_objective_c, target_args, prefs.target, c_compiler, mut c_object_cache_stats) or {
 				message := err.msg()
+				restart_v3_without_restored_incremental_program(incremental_cache_restored, &cache_state.manager,
+					v3_cgen_cache_input(cache_state, user_files, cache_c_flags).source_files, cc_dir, 'program main')
 				if request_macos_v3_c_error_fallback_from_message(macos_v3_fallback_file, macos_v3_c_error_dir, c_compiler, message, [
 					published_c_source,
 					cache_plan_file,
@@ -18673,6 +18677,22 @@ fn invalidate_changed_cache_dependents(mut state V3ModuleCacheState, a &flat.Fla
 
 fn restart_v3_after_cache_invalidation(build_dir string) {
 	restart_v3_with_args([], build_dir)
+}
+
+// restart_v3_without_restored_incremental_program rebuilds from the sources when the C
+// compiler rejects a C unit of a program whose body the incremental cache restored. The
+// restored body can repeat a C type that the restored prefix already declares, which a
+// full generation never does. This build already published the C plan it generated from
+// that body, so its program entries are discarded first. The restart disables the
+// incremental cache, so it cannot restore the same entry again.
+fn restart_v3_without_restored_incremental_program(incremental_cache_restored bool, manager &modulecache.Manager, source_files []string, build_dir string, unit string) {
+	if !incremental_cache_restored || os.getenv('V3_CACHE_DISABLE_INCREMENTAL') == '1' {
+		return
+	}
+	trace_v3_cache_fallback('the C compiler rejected the ${unit} restored by the incremental cache')
+	manager.discard_program_entries(source_files)
+	os.setenv('V3_CACHE_DISABLE_INCREMENTAL', '1', true)
+	restart_v3_after_cache_invalidation(build_dir)
 }
 
 fn trace_v3_cache_fallback(reason string) {

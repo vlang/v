@@ -9,6 +9,7 @@ import time
 import sokol.sapp
 import sokol.sgl
 import sokol.gfx
+import sync.stdatomic as _
 
 @[typedef]
 struct C.XRRScreenResources {
@@ -211,7 +212,7 @@ mut:
 	// a cache with all images created by the user. used for sokol image init and to save space
 	// (so that the user can store image ids, not entire Image objects)
 	image_cache                 []Image
-	needs_refresh               bool = true
+	needs_refresh               u32 = 1 // atomic: refresh requested for the next frame
 	ticks                       int // for ui mode only
 	last_bg_overlay_frame       u64
 	translucent_bg_seed_pending bool
@@ -390,7 +391,9 @@ fn gg_frame_fn(mut ctx Context) {
 	}
 	ctx.memory_trace_frame()
 
-	if ctx.ui_mode && !ctx.needs_refresh {
+	// Consume this request before drawing so a refresh during the frame remains pending.
+	refresh_requested := C.atomic_exchange_u32(&ctx.needs_refresh, 0) != 0
+	if ctx.ui_mode && !refresh_requested {
 		// println('ui mode, exiting')
 		// Draw 3 more frames after the "stop refresh" command
 		ctx.ticks++
@@ -398,6 +401,11 @@ fn gg_frame_fn(mut ctx Context) {
 			ctx.stop_recording_if_needed()
 			return
 		}
+	} else {
+		// A refresh is pending. The frame thread alone writes ticks, so
+		// refresh_ui calls that arrive from other threads never race this
+		// counter.
+		ctx.ticks = 0
 	}
 	if ctx.config.update_fn != unsafe { nil } {
 		dt := ctx.update_timer.elapsed().seconds()
@@ -409,7 +417,6 @@ fn gg_frame_fn(mut ctx Context) {
 		// See the note above: capture the freshly drawn frame before Present.
 		ctx.record_frame()
 	}
-	ctx.needs_refresh = false
 }
 
 fn swap_interval_frame_budget(swap_interval int) time.Duration {
@@ -760,10 +767,12 @@ pub fn (mut ctx Context) resize(width int, height int) {
 	gg_resize_window(width, height)
 }
 
-// refresh_ui requests a complete re-draw of the window contents.
+// refresh_ui requests a complete re-draw of the window contents. It only
+// atomically sets the pending flag, so it is safe to call from any thread.
+// Requests made during drawing are kept for the next frame; the frame thread
+// resets the trailing-frame counter itself.
 pub fn (mut ctx Context) refresh_ui() {
-	ctx.needs_refresh = true
-	ctx.ticks = 0
+	C.atomic_store_u32(&ctx.needs_refresh, 1)
 }
 
 // begin prepares the context for drawing.

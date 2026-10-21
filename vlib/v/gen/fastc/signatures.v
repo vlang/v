@@ -2102,7 +2102,39 @@ fn (g &Parser) map_key_value_types(typ u32) ?(u32, u32) {
 	if key_type, value_type := fastc_map_key_value_types(typ) {
 		return key_type, value_type
 	}
-	return fastc_declared_map_key_value_types(typ, g.declared_kinds)
+	if key_type, value_type := fastc_declared_map_key_value_types(typ, g.declared_kinds) {
+		return key_type, value_type
+	}
+	// An alias of a map type (`type Counts = map[string]int`) has the aliased map's key and value.
+	aliased := g.map_type_through_alias(typ)
+	if aliased != typ {
+		return g.map_key_value_types(aliased)
+	}
+	return none
+}
+
+// map_type_of returns the map type of `typ`, seen through an alias, or none when it is
+// not a map.
+fn (g &Parser) map_type_of(typ u32) ?u32 {
+	map_type := g.map_type_through_alias(typ)
+	if fastc_trim_pointer_suffix(flat.source_type_name(map_type)).starts_with('Map_') {
+		return map_type
+	}
+	return none
+}
+
+// map_type_through_alias returns the map type that an alias of a map stands for
+// (`main__Counts` -> `Map_string_int`), keeping a pointer suffix. Any other type is
+// returned unchanged. The alias is a C typedef of the map, so the two are interchangeable.
+fn (g &Parser) map_type_through_alias(typ u32) u32 {
+	if typ == 0 || fastc_trim_pointer_suffix(flat.source_type_name(typ)).starts_with('Map_') {
+		return typ
+	}
+	aliased := g.underlying_alias_type(typ)
+	if aliased != typ && fastc_trim_pointer_suffix(flat.source_type_name(aliased)).starts_with('Map_') {
+		return aliased
+	}
+	return typ
 }
 
 fn (g &Parser) is_map_type(typ u32) bool {
