@@ -6415,7 +6415,9 @@ fn (mut t Transformer) enum_autostr_call(expr flat.NodeId, typ_id u32) flat.Node
 // value returned by `real_a.make()` has type `a.Kind` even in a file that imports another
 // module as `a`. Declaration spellings are resolved by `source_enum_type_name` first.
 fn (t &Transformer) enum_autostr_type_name(typ_id u32) u32 {
-	typ := flat.source_type_name(typ_id)
+	// Alias fields retain their alias spelling after checking, while the helper
+	// belongs to the underlying enum declaration.
+	typ := flat.source_type_name(t.alias_str_resolved_base_type(typ_id))
 	mut qualified := typ
 	if qualified.starts_with('main.') {
 		qualified = qualified[5..]

@@ -4517,6 +4517,8 @@ This is a special case of a [sum type](#sum-types) declaration.
 Methods declared on a fixed-array alias keep that alias receiver, including methods whose names
 match builtin array methods.
 
+Enum aliases stored in struct fields support `.str()` and interpolation using the enum's value name.
+
 Numeric aliases use ordinary conversions for initialization:
 
 ```v
