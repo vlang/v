@@ -421,6 +421,20 @@ fn (mut t Transformer) try_expand_if_guard_with_tail(node flat.Node, tail GuardR
 	then_id := t.a.child(&node, 1)
 	mut then_children := []flat.NodeId{}
 	for value_decl in value_decls {
+		// The lowered binding is annotated again after generic method lowering.
+		// Keep its source mutability so that pass can validate mut arguments.
+		decl := t.a.nodes[int(value_decl)]
+		if decl.kind == .decl_assign && decl.children_count > 0 {
+			decl_lhs_id := t.a.child(&decl, 0)
+			decl_lhs := t.a.nodes[int(decl_lhs_id)]
+			for source_lhs_id in lhs_ids {
+				source_lhs := t.a.nodes[int(source_lhs_id)]
+				if source_lhs.value == decl_lhs.value {
+					t.a.set_node_is_mut(decl_lhs_id, source_lhs.is_mut || cond.is_mut)
+					break
+				}
+			}
+		}
 		then_children << value_decl
 	}
 	then_children << t.guard_branch_stmts(then_id, guard_assignment_tail(tail, binding_names))
