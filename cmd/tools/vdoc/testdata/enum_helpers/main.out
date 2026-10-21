@@ -1,0 +1,29 @@
+module main
+
+fn Fill.from[W](input W) !Fill
+fn Shade.from(name string) Shade
+fn Sides.from[W](input W) !Sides
+fn Sides.zero() Sides
+enum Fill {
+	none
+	solid
+}
+enum Shade {
+	light
+	dark
+}
+@[flag]
+enum Sides {
+	top
+	right
+	bottom
+	left
+}
+fn (e &Sides) is_empty() bool
+fn (e &Sides) has(flag Sides) bool
+fn (e &Sides) all(flag Sides) bool
+fn (mut e Sides) set(flag Sides)
+fn (mut e Sides) set_all()
+fn (mut e Sides) clear(flag Sides)
+fn (mut e Sides) clear_all()
+fn (mut e Sides) toggle(flag Sides)

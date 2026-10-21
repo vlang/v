@@ -1,0 +1,161 @@
+enum Choice {
+	first
+	second
+}
+
+fn choose(i int) string {
+	before := 'before-${i}'.clone()
+	a := match i {
+		0 { 'zero'.clone() }
+		1 { 'one'.clone() }
+		else { 'other'.clone() }
+	}
+	if i >= 0 {
+		after := 'after-${i}'.clone()
+		assert after == 'after-${i}'
+	}
+	assert before == 'before-${i}'
+	result := if i == 0 {
+		match i + 1 {
+			1 { 'nested'.clone() }
+			else { 'unexpected'.clone() }
+		}
+	} else {
+		'nested'.clone()
+	}
+	assert result == 'nested'
+	return a
+}
+
+fn returning(value int) string {
+	return match value + 1 {
+		1 { 'first'.clone() }
+		else { 'next'.clone() }
+	}
+}
+
+fn returning_tuple(value int) (string, string) {
+	a, b := match value + 1 {
+		0 { return 'early'.clone(), 'exit'.clone() }
+		else { 'left'.clone(), 'right'.clone() }
+	}
+	return a, b
+}
+
+fn optional(value int) ?int { return value }
+
+fn from_optional(value int) string {
+	a := match optional(value) {
+		0 { 'zero'.clone() }
+		else { 'other'.clone() }
+	} or { 0 }
+	if value >= 0 {
+		after := 'after-option'.clone()
+		assert after == 'after-option'
+	}
+	input := ?int(value)
+	b := match input {
+		0 { 'zero'.clone() }
+		else { 'other'.clone() }
+	} or { 0 }
+	assert a == b
+	return a
+}
+
+fn main() {
+	for i in 0 .. 3 {
+		before := 'start-${i}'.clone()
+		match i {
+			0 {
+				nested := 'nested'.clone()
+				match nested.len {
+					6 {}
+					else {
+						assert false
+					}
+				}
+				if nested.len > 0 {
+					text := 'inside'.clone()
+					assert text == 'inside'
+				}
+				assert nested == 'nested'
+			}
+			else {}
+		}
+		match i + 1 {
+			1 {}
+			else {}
+		}
+		match 7 {
+			7 {}
+			else {}
+		}
+		if i >= 0 {
+			after := 'after'.clone()
+			assert after == 'after'
+		}
+		assert before == 'start-${i}'
+		assert choose(i) == ['zero', 'one', 'other'][i]
+		assert returning(i) == if i == 0 { 'first' } else { 'next' }
+		assert from_optional(i) == if i == 0 { 'zero' } else { 'other' }
+		first, second := match i + 1 {
+			1 {
+				outer := 'outer'.clone()
+				assert outer == 'outer'
+				{
+					inner := 'inner'.clone()
+					assert inner == 'inner'
+					assert outer == 'outer'
+					'left'.clone(), 'right'.clone()
+				}
+			}
+			else { 'left'.clone(), 'right'.clone() }
+		}
+		if i >= 0 {
+			after_tuple := 'after-tuple'.clone()
+			assert after_tuple == 'after-tuple'
+		}
+		assert first == 'left'
+		assert second == 'right'
+	}
+	for i in 0 .. 3 {
+		choice := Choice.first
+		match choice {
+			.first {
+				assert choice == .first
+			}
+			.second {
+				assert false
+			}
+		}
+		if i == 1 {
+			local := 'continue'.clone()
+			assert local == 'continue'
+			continue
+		}
+		after := 'tail'.clone()
+		assert after == 'tail'
+	}
+	for i in 0 .. 3 {
+		match i + 1 {
+			1 {}
+			else {}
+		}
+		before_break := 'break'.clone()
+		assert before_break == 'break'
+		if i == 1 { break }
+	}
+	for i in -1 .. 3 {
+		a, b := match i + 1 {
+			0 { continue }
+			1 { 'left'.clone(), 'right'.clone() }
+			else { break }
+		}
+		assert a == 'left'
+		assert b == 'right'
+	}
+	x, y := returning_tuple(-1)
+	assert x == 'early'
+	assert y == 'exit'
+	println('ok')
+}

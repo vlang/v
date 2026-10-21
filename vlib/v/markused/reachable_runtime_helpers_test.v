@@ -621,8 +621,8 @@ ${body}
 		tc.cur_module = 'unrelated'
 		tc.cur_file = 'unrelated.v'
 		tc.register_file_import('dep', 'other')
-		assert types.unalias_type(tc.parse_type(flat.source_type_id('dep.Number'))) == types.Type(types.int_)
-		assert types.unalias_type(tc.parse_canonical_type(flat.source_type_id('dep.Number'))) == types.Type(types.f64_)
+		assert *types.unalias_type(tc.parse_type(flat.source_type_id('dep.Number'))) == types.Type(types.int_)
+		assert *types.unalias_type(tc.parse_canonical_type(flat.source_type_id('dep.Number'))) == types.Type(types.f64_)
 		collector := CallCollector{ a: a, tc: &tc }
 		mut calls := []string{}
 		mut local_values := map[string]bool{}

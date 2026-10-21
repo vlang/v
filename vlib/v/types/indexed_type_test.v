@@ -56,6 +56,7 @@ fn test_indexed_type_names_do_not_cache_missing_future_ids() {
 	mut a := flat.FlatAst.new()
 	id := a.add_val(.ident, 'value')
 	mut tc := TypeChecker.new(&a)
+	tc.intern_type(Type(bool_))
 	future := TypeId(tc.type_count())
 	assert tc.type_by_id(future) == none
 	assert tc.c_type_by_id(future) == none

@@ -369,6 +369,7 @@ fn (mut t Transport) h2_dial_and_do(req &Request, key string, raw string, method
 	}
 	mut mux := new_h2_mux_conn(transport, close_transport)
 	t.h2_conns[key] = mux
+	t.start_idle_reaper_locked()
 	t.h2_dial_id[key] = dial_id
 	t.key_proto[key] = 2
 	t.dialing.delete(key)

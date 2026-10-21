@@ -1,4 +1,4 @@
-// A `mut a ?T` parameter with a struct payload is passed as `&?&T`. Function literals,
+// A `mut a ?T` parameter is passed as `&?&T`. Function literals,
 // closures, fn types, fn-type aliases and fn-typed fields with such a parameter use the
 // same signature as a named fn, in their bodies and at their call sites.
 struct Point {

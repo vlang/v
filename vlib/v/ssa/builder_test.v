@@ -1078,10 +1078,10 @@ fn main() {}
 		// Duplicate C declarations can leave the checked return type wider than
 		// the ABI signature, as with sysconf in builtin and os.
 		for tc.expr_type_values.len <= i {
-			tc.expr_type_values << types.Primitive{ props: .integer, size: 64 }
+			tc.expr_type_values << tc.parse_type(flat.source_type_i64)
 			tc.expr_type_set << false
 		}
-		tc.expr_type_values[i] = types.Primitive{ props: .integer, size: 64 }
+		tc.expr_type_values[i] = tc.parse_type(flat.source_type_i64)
 		tc.expr_type_set[i] = true
 		checked_call = flat.NodeId(i)
 	}

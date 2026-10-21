@@ -24,8 +24,8 @@ fn main() {
 	_ := result(0) or { println(err.msg()); 42 }
 }
 ', 'option_layout.v', prefs)!
-	assert source.contains('Option optional('), source
-	assert source.contains('__v_result result('), source
+	assert source.contains('Option main__optional('), source
+	assert source.contains('__v_result main__result('), source
 	assert source.contains('return (__v_result){.err='), source
 	assert source.contains('return (__v_result){.data='), source
 	assert !source.contains('(Option){.err='), source

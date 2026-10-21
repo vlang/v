@@ -21,7 +21,7 @@ pub fn (mut g Gen) bar(mut expr Expr) string {
 }
 
 fn test_fn_mut_arg_of_sumtype_ref() {
-	mut expr := &Expr1{}
+	mut expr := &Expr(Expr1{})
 	mut g := Gen{}
 	ret := g.bar(mut expr)
 	println(ret)

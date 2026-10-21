@@ -147,7 +147,7 @@ fn (tc &TypeChecker) storage_query_probe_checked_type(id flat.NodeId) ?Type {
 	}
 	mi := idx - memo.lo
 	if memo.filled[mi] == 0 { return none }
-	return memo.types[mi]
+	return *memo.types[mi]
 }
 
 fn (tc &TypeChecker) storage_query_probe_history_key(id flat.NodeId, visited []flat.NodeId, local_sources map[string]flat.NodeId) ?string {

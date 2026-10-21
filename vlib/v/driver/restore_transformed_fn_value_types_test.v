@@ -27,7 +27,7 @@ fn test_restored_types_extend_unset_slots_and_preserve_sparse_signature_modes() 
 	params := [types.Type(types.Pointer{ base_type: integer }), types.Type(types.Array{
 		elem_type: boolean
 	})]
-	tc.expr_type_values = [boolean]
+	tc.expr_type_values = [tc.intern_type_reference(boolean)]
 	tc.expr_type_set = [true]
 	tc.fn_param_types['retain'] = params
 	tc.fn_ret_types['retain'] = integer
@@ -42,24 +42,24 @@ fn test_restored_types_extend_unset_slots_and_preserve_sparse_signature_modes() 
 	restore_transformed_fn_value_types(mut tc, &a, map[string]bool{})
 	assert tc.expr_type_values.len == a.nodes.len
 	assert tc.expr_type_set.len == a.nodes.len
-	assert tc.expr_type_values[int(existing)] == boolean && tc.expr_type_set[int(existing)]
+	assert *tc.expr_type_values[int(existing)] == boolean && tc.expr_type_set[int(existing)]
 	assert tc.expr_type_values[int(unset)] is types.Void && !tc.expr_type_set[int(unset)]
 	assert tc.expr_type_values[int(missing)] is types.Void && !tc.expr_type_set[int(missing)]
-	expected := types.Type(types.FnType{ params: params, is_variadic: true, return_type: integer })
-	assert tc.expr_type_values[int(first)] == expected && tc.expr_type_set[int(first)]
-	assert tc.expr_type_values[int(second)] == expected && tc.expr_type_set[int(second)]
+	expected := types.Type(tc.variadic_fn_type(params, &integer, []bool{}, true))
+	assert *tc.expr_type_values[int(first)] == expected && tc.expr_type_set[int(first)]
+	assert *tc.expr_type_values[int(second)] == expected && tc.expr_type_set[int(second)]
 	// Replacing one expression slot cannot alter another restored signature.
-	tc.expr_type_values[int(first)] = boolean
-	assert tc.expr_type_values[int(second)] == expected
+	tc.expr_type_values[int(first)] = tc.intern_type_reference(boolean)
+	assert *tc.expr_type_values[int(second)] == expected
 	assert tc.fn_param_types['retain'] == params
 	assert tc.fn_variadic['retain'] && tc.mut_receiver_methods['retain']
 	assert (tc.expr_type_values[int(second)] as types.FnType).is_variadic
 	// A later restoration must observe a refreshed fixed-array signature.
 	tc.fn_variadic['retain'] = false
 	restore_transformed_fn_value_types(mut tc, &a, map[string]bool{})
-	fixed := types.Type(types.FnType{ params: params, return_type: integer })
-	assert tc.expr_type_values[int(first)] == fixed
-	assert tc.expr_type_values[int(second)] == fixed
+	fixed := types.Type(tc.fn_type(params, &integer, []bool{}))
+	assert *tc.expr_type_values[int(first)] == fixed
+	assert *tc.expr_type_values[int(second)] == fixed
 }
 
 fn test_restored_direct_types_keep_module_names_and_c_receiver_identity() {
@@ -105,19 +105,10 @@ fn test_restored_direct_types_keep_module_names_and_c_receiver_identity() {
 		'first.run':  true
 		'second.run': true
 	})
-	assert tc.expr_type_values[int(first_callee)] == types.Type(types.FnType{
-		params:      [integer]
-		return_type: integer
-	})
-	assert tc.expr_type_values[int(second_callee)] == types.Type(types.FnType{
-		params:      [boolean]
-		return_type: boolean
-	})
-	assert tc.expr_type_values[int(native)] == types.Type(types.FnType{
-		params:      [boolean]
-		return_type: integer
-	})
-	assert tc.expr_type_values[int(local)] == types.Type(types.Struct{ name_id: flat.source_type_id('Receiver') })
+	assert *tc.expr_type_values[int(first_callee)] == types.Type(tc.fn_type([integer], integer, []bool{}))
+	assert *tc.expr_type_values[int(second_callee)] == types.Type(tc.fn_type([boolean], boolean, []bool{}))
+	assert *tc.expr_type_values[int(native)] == types.Type(tc.fn_type([boolean], integer, []bool{}))
+	assert *tc.expr_type_values[int(local)] == types.Type(types.Struct{ name_id: flat.source_type_id('Receiver') })
 	assert !tc.expr_type_set[int(unused_callee)]
 	assert_restoration_preserves_canonical_node_texts(&a, canonical_nodes, canonical_text_count)
 	// A second restoration observes refreshed signatures rather than retaining
@@ -127,10 +118,7 @@ fn test_restored_direct_types_keep_module_names_and_c_receiver_identity() {
 		'main':      true
 		'first.run': true
 	})
-	assert tc.expr_type_values[int(first_callee)] == types.Type(types.FnType{
-		params:      [integer]
-		return_type: boolean
-	})
+	assert *tc.expr_type_values[int(first_callee)] == types.Type(tc.fn_type([integer], boolean, []bool{}))
 	assert_restoration_preserves_canonical_node_texts(&a, canonical_nodes, canonical_text_count)
 }
 

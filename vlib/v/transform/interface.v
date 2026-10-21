@@ -498,7 +498,8 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 			t.transform_expr(id)
 		}
 		if source_type != 0 && int(expr) >= 0 {
-			t.set_node_typ(int(expr), source_type)
+			t.set_node_typ(int(expr), t.interface_type_with_pointer_depth(source_type,
+				iface_name_comparison_type_id_3))
 		}
 		if !target_is_ptr || flat.source_type_shape(source_type).has(.pointer) {
 			return expr

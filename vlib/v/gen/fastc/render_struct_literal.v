@@ -177,6 +177,11 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 	]) {
 		return none
 	}
+	// An alias of a map carries the map header's fields, but `Counts{}` is an empty map,
+	// which render_map_expression builds.
+	if !is_c_struct_literal && !fastc_is_pointer_type(c_type) && g.map_type_of(c_type) != none {
+		return none
+	}
 	if open + 1 < close {
 		items := fastc_expression_list_items(tokens, open + 1, close) or { return none }
 		mut is_positional := false

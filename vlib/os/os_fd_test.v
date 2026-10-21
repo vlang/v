@@ -98,3 +98,29 @@ fn test_fd_helpers_treat_invalid_descriptors_as_no_ops() {
 	assert os.fd_close(-1) == 0
 	assert !os.fd_is_pending(-1)
 }
+
+fn test_open_append_and_open_set_a_real_fd() {
+	root := fd_test_root('open_sets_fd')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	path := os.join_path(root, 'append.log')
+	os.write_file(path, 'first\n')!
+
+	// os.open_append must carry the descriptor, not the zero default.
+	mut a := os.open_append(path)!
+	assert a.fd > 2
+	os.fd_write(a.fd, 'second\n')
+	a.close()
+	assert os.read_file(path)! == 'first\nsecond\n'
+
+	mut r := os.open(path)!
+	assert r.fd > 2
+	assert os.fd_slurp(r.fd).join('') == 'first\nsecond\n'
+	r.close()
+
+	devnull := $if windows { 'NUL' } $else { '/dev/null' }
+	mut n := os.open(devnull)!
+	assert n.fd > 2
+	n.close()
+}

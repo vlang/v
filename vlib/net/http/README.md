@@ -267,6 +267,10 @@ Before reusing an idle plain TCP connection, the client checks for a server-side
 A closed connection is discarded before sending request bytes, so a POST can use a fresh
 connection safely. Healthy idle connections remain reusable.
 
+Pooled connections expire after `Transport.idle_timeout` without requiring another request.
+A background worker checks idle pools at least once per second and stops when the pools are empty.
+Active HTTP/2 and HTTP/3 streams are preserved. `close_idle_connections()` can flush pools sooner.
+
 If a non-idempotent request fails after transmission starts, the client returns an error
 without replaying it: a missing response does not prove that the server ignored the request.
 

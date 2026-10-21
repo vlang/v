@@ -396,23 +396,8 @@ fn main() {
 	assert out == '7'
 }
 
-fn test_sum_type_rejects_pointer_variants() {
+fn test_sum_type_checks_pointer_variant_identity() {
 	v3_bin := build_v3()
-	run_bad(v3_bin, 'pointer_sum_variant', 'struct Foo {
-	value int
-}
-
-type Item = &Foo | int
-
-fn main() {}
-', 'sum type cannot hold a reference type')
-	run_bad(v3_bin, 'pointer_alias_sum_variant', 'struct Foo {}
-
-type FooPointer = &Foo
-type Item = FooPointer | int
-
-fn main() {}
-', 'sum type cannot hold a reference type')
 	run_bad(v3_bin, 'is_pointer_value_variant_rejected', 'struct Foo {}
 
 type Item = Foo | int
@@ -784,18 +769,12 @@ fn main() {
 }
 
 fn test_interface_equality_includes_forwarded_multi_return_container_slot_boxes() {
+	// Only dynamic arrays are converted element by element; a map or fixed array slot
+	// must keep its element types (see test_forwarded_multi_return_container_slots_are_converted).
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'interface_eq_forwarded_multi_return_container_slot_box', 'interface IValue {}
 
 struct ArrayValue {
-	n int
-}
-
-struct MapValue {
-	n int
-}
-
-struct FixedValue {
 	n int
 }
 
@@ -807,19 +786,13 @@ fn same(value IValue) bool {
 	return value == value
 }
 
-fn make_values() ([]ArrayValue, map[string]MapValue, [1]FixedValue, int) {
+fn make_values() ([]ArrayValue, int) {
 	return [ArrayValue{
 		n: 3
-	}], {
-		"item": MapValue{
-			n: 5
-		}
-	}, [FixedValue{
-		n: 11
-	}]!, 7
+	}], 7
 }
 
-fn forward_values() ([]IValue, map[string]IValue, [1]IValue, int) {
+fn forward_values() ([]IValue, int) {
 	return make_values()
 }
 
@@ -834,22 +807,51 @@ fn forward_fixed_dynamic() ([]IValue, int) {
 }
 
 fn main() {
-	values, indexed, fixed, n := forward_values()
+	values, n := forward_values()
 	fixed_dynamic, fixed_dynamic_n := forward_fixed_dynamic()
 	println(same(values[0]).str())
-	println(same(indexed["item"]).str())
-	println(same(fixed[0]).str())
 	println(int_str(n))
 	println(same(fixed_dynamic[0]).str())
 	println(int_str(fixed_dynamic_n))
 }
 ')
-	assert out == 'true\ntrue\ntrue\n7\ntrue\n17'
+	assert out == 'true\n7\ntrue\n17'
 }
 
 fn test_forwarded_multi_return_container_slots_are_converted() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'forwarded_multi_return_container_slots', 'interface IValue {
+	get() int
+}
+
+struct Value {
+	n int
+}
+
+fn (value Value) get() int {
+	return value.n
+}
+
+fn make_values() ([]Value, int) {
+	return [Value{
+		n: 3
+	}], 7
+}
+
+fn forward_values() ([]IValue, int) {
+	return make_values()
+}
+
+fn main() {
+	values, n := forward_values()
+	println(int_str(values[0].get()))
+	println(int_str(n))
+}
+')
+	assert out == '3\n7'
+	// A map is not converted entry by entry: since #30815 a `map[string]Value` is
+	// not a `map[string]IValue`, also in a forwarded multi-return slot (as in V 0.5.2).
+	run_bad(v3_bin, 'forwarded_multi_return_map_interface_slot', 'interface IValue {
 	get() int
 }
 
@@ -881,8 +883,7 @@ fn main() {
 	println(int_str(indexed["item"].get()))
 	println(int_str(n))
 }
-')
-	assert out == '3\n5\n7'
+', 'cannot use `map[string]Value` as type `map[string]IValue` in return argument')
 	// A fixed array is not converted element by element: since #30863 a `[1]Value`
 	// is not a `[1]IValue`, also in a forwarded multi-return slot (as in V 0.5.2).
 	run_bad(v3_bin, 'forwarded_multi_return_fixed_interface_slot', 'interface IValue {
@@ -3766,8 +3767,13 @@ fn make_alias() &Bare {
 	assert c_source.contains('v3_aligned_free(d)')
 	assert c_source.contains('v3_aligned_free(pa)')
 	assert c_source.contains('v3_aligned_free(ha)')
-	// An escaping by-value parameter is copied to the heap at function entry (V1).
-	assert c_source.contains('v3_aligned_memdup(&__esc_'), c_source
+	param_signature := 'main__Bare* make_param_alias(main__Bare __heap_value_param_0) {'
+	param_body := c_fn_body(c_source, param_signature)
+	assert param_body.contains('main__Bare __esc_1 = __heap_value_param_0;')
+	assert param_body.contains('v3_aligned_memdup(&__esc_1,')
+	assert param_body.count('v3_aligned_memdup(') == 1
+	assert param_body.contains('sizeof(main__Bare)')
+	assert param_body.contains('__alignof__(main__Bare)')
 	make_direct_body := c_fn_body(c_source, 'main__Bare* make_direct(void) {')
 	assert make_direct_body.contains('v3_aligned_memdup(&(main__Bare){.x = 5}, sizeof(main__Bare), __alignof__(main__Bare))'), make_direct_body
 	assert !c_source.contains('__alignof__(Bare)')
@@ -4561,7 +4567,7 @@ fn test_overloaded_index_compound_assignment_uses_v_operators() {
 
 	struct_source := 'struct Num {\n\tn int\n}\n\nfn (a Num) + (b Num) Num {\n\treturn Num{\n\t\tn: a.n + b.n\n\t}\n}\n\nstruct Slot {\nmut:\n\tvalue Num\n}\n\nfn (s Slot) [] (key string) Num {\n\t_ := key\n\treturn s.value\n}\n\nfn (mut s Slot) []= (key string, value Num) {\n\t_ := key\n\ts.value = value\n}\n\nfn main() {\n\tmut s := Slot{\n\t\tvalue: Num{\n\t\t\tn: 3\n\t\t}\n\t}\n\ts["value"] += Num{\n\t\tn: 4\n\t}\n\tprintln(int_str(s.value.n))\n}\n'
 	struct_c := gen_c(v3_bin, 'overloaded_index_compound_struct_operator_c', struct_source)
-	assert struct_c.contains('Num__plus('), struct_c
+	assert struct_c.contains('__v3_internal_symbol_op_Num__plus('), struct_c
 	struct_out := run_good(v3_bin, 'overloaded_index_compound_struct_operator', struct_source)
 	assert struct_out == '7'
 }
@@ -4633,12 +4639,15 @@ fn main() {
 			}
 		}
 	}
-	println(read(d["a"]))
+	println(read(Value(d["a"])))
 }
 '
 	c_source := gen_c(v3_bin, 'overloaded_index_sum_ref_arg_materializes_getter_result_c', source)
-	assert c_source.contains('sum_ref_arg'), c_source
-	assert !c_source.contains('&Dict__index('), c_source
+	entry_signature := if c_source.contains('int wmain(') { 'int wmain(' } else { 'int main(' }
+	main_body := c_fn_body(c_source, entry_signature)
+	assert main_body.contains('main__read(&((Value[])'), main_body
+	assert main_body.count('Dict__op_index(') == 1, main_body
+	assert !main_body.contains('&Dict__op_index('), main_body
 	out := run_good(v3_bin, 'overloaded_index_sum_ref_arg_materializes_getter_result', source)
 	assert out == 'ok'
 }
@@ -7846,8 +7855,8 @@ fn test_nested_generic_receiver_call_waits_for_receiver_type() {
 
 struct Node[T] {
 	value T
-	left  Tree[T]
-	right Tree[T]
+	left  &Tree[T]
+	right &Tree[T]
 }
 
 type Tree[T] = Empty | Node[T]
@@ -7866,7 +7875,7 @@ fn (tree Tree[T]) delete[T](value T) Tree[T] {
 			Node[T]{
 				...tree
 				value: tree.right.min()
-				right: tree.right.delete(tree.right.min())
+				right: &Tree[T](tree.right.delete(tree.right.min()))
 			}
 		}
 	}

@@ -169,7 +169,7 @@ fn source_control() int { return new_map() + array_new() + join_path() + name_li
 
 fn test_runtime_replacement_filters_respect_module_ownership() {
 	b := Builder{}
-	for name in ['wyhash64', 'panic', 'new_map', 'prealloc_malloc', 'bytestr', 'array_eq_raw'] {
+	for name in ['wyhash64', 'panic', 'new_map', 'prealloc_malloc', 'bytestr', '__v3_array_eq_raw'] {
 		assert b.skip_source_fn_in_module(name, 'builtin'), name
 		for module_name in ['', 'main', 'other', 'example.builtin'] {
 			assert !b.skip_source_fn_in_module(name, module_name), '${module_name}.${name}'

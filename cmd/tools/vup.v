@@ -449,8 +449,11 @@ fn (app App) recompile_v() bool {
 	// `os.system` does preserve redirected stdout and stderr through `_wsystem`.
 	mut self_exit_code := -1
 	$if windows {
-		self_exit_code = os.system_args([vexe_path, ...(os.split_args(opts) or { panic(err) }),
-			'self'])
+		opts_args := os.split_args(opts) or { panic(err) }
+		mut self_args := [vexe_path]
+		self_args << opts_args
+		self_args << 'self'
+		self_exit_code = os.system_args(self_args)
 	} $else {
 		mut self_process := os.new_process(vexe_path)
 		self_process.set_args(if app.is_prod { ['-prod', 'self'] } else { ['self'] })

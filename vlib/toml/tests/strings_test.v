@@ -115,8 +115,6 @@ fn test_single_line_strings_reject_raw_newlines() {
 }
 
 fn test_long_strings_keep_their_content() {
-	// Long values are the reason the scanner and the decoder accumulate into a
-	// `strings.Builder`; check that nothing is truncated, doubled or reordered.
 	payload := 'aA9+/'.repeat(20_000)
 	mut toml_doc := toml.parse_text('long = "${payload}"\nescaped = "${payload}\\t${payload}"') or {
 		panic(err)

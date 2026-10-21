@@ -445,7 +445,7 @@ fn test_concrete_generic_fn_alias_call_expands_multi_return_signature() {
 	tc.type_alias_generic_params['FnMultiReturn'] = ['I', 'O', 'R']
 	tc.fn_ret_types['make_splitter'] = types.Type(types.Alias{
 		name_id:   flat.source_type_id('FnMultiReturn[string, string, string]')
-		base_type: types.Type(types.void_)
+		base_type: &types.Type(types.void_)
 	})
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
@@ -476,7 +476,7 @@ fn test_concrete_generic_fn_alias_call_expands_result_signature() {
 	tc.type_alias_generic_params['ParseFunction'] = ['T']
 	tc.fn_ret_types['literal'] = types.Type(types.Alias{
 		name_id:   flat.source_type_id('ParseFunction[string]')
-		base_type: types.Type(types.void_)
+		base_type: &types.Type(types.void_)
 	})
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
@@ -1327,4 +1327,17 @@ fn test_numeric_specialized_type_decoder_preserves_cached_argument_storage() {
 	missing := flat.source_type_id('NotMaterialized')
 	assert t.decode_single_generic_specialized_type_args(missing) == none
 	assert t.generic_spec_decode_cache.misses[missing]
+}
+
+fn test_void_pointer_staging_keeps_pointer_typed_nil_initializer() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	pointer_type := flat.source_type_voidptr
+	decl_id := t.make_staging_value_decl('pointer_result', pointer_type)
+	decl := t.a.node(decl_id)
+	lhs := t.a.child_node(decl, 0)
+	rhs := t.a.child_node(decl, 1)
+	assert lhs.typ == pointer_type
+	assert rhs.kind == .nil_literal
 }
