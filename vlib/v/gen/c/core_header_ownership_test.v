@@ -173,3 +173,78 @@ fn test_headerless_cmdexec_poll_uses_bionic_nfds_type() ! {
 		source])
 	assert checked.exit_code == 0, checked.output
 }
+
+fn test_vectored_output_header_is_redeclared_only_for_the_shipped_binding() {
+	mut a := flat.FlatAst{}
+	mut g := FlatGen.new()
+	g.a = &a
+	g.compiler_vroot = '/vroot'
+	g.set_target(pref.target_from('linux', 'amd64')!)
+	source := '/vroot/vlib/v/gen/c/output_nix.c.v'
+	assert g.core_native_header_is_redeclared(source, '<sys/uio.h>')
+	assert !g.core_native_header_is_redeclared(source, '<custom.h>')
+	assert !g.core_native_header_is_redeclared('/project/v/gen/c/output_nix.c.v', '<sys/uio.h>')
+	a.cached_header_sources['/cache/cgen.vh'] = source
+	assert g.core_native_header_is_redeclared('/cache/cgen.vh', '<sys/uio.h>')
+	// General portable output still uses SDK headers; compiler bootstrap output does not.
+	g.output_cross_c = true
+	assert !g.core_native_header_is_redeclared(source, '<sys/uio.h>')
+	g.set_compile_defines(['v3_headerless_bootstrap'])
+	assert g.core_native_header_is_redeclared(source, '<sys/uio.h>')
+	g.output_cross_c = false
+	g.set_compile_defines([])
+	g.target_libc_headers = true
+	assert !g.core_native_header_is_redeclared(source, '<sys/uio.h>')
+	g.target_libc_headers = false
+	g.object_file_mode = true
+	assert !g.core_native_header_is_redeclared(source, '<sys/uio.h>')
+	g.object_file_mode = false
+	g.no_builtin = true
+	assert !g.core_native_header_is_redeclared(source, '<sys/uio.h>')
+}
+
+fn test_vectored_output_header_preserves_native_context_and_sdk_ownership() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.compiler_vroot = '/vroot'
+	g.set_target(pref.target_from('linux', 'amd64')!)
+	source := '/vroot/vlib/v/gen/c/output_nix.c.v'
+	g.register_struct_decl_info('C.iovec', 'C.iovec', 'c', source, flat.Node{})
+	include_node := flat.Node{
+		kind:  .directive
+		value: 'include'
+		typ:   flat.source_type_id('<sys/uio.h>')
+	}
+	assert g.collect_c_directive('c', include_node, source, false)
+	assert !g.c_directives_use_system_libc()
+	assert g.c_directives.len == 0
+	assert g.core_header_directives.len == 1
+	assert !g.skip_builtin_struct('C.iovec')
+	assert g.should_emit_c_extern_decl_from_file('writev', source, 'c')
+	context := g.native_source_contexts['c'] or { panic('missing native C context') }
+	assert context.any(it.text == '#include <sys/uio.h>')
+	// A later application header selects the SDK and restores its iovec/writev ownership.
+	g.add_c_directive('main', '#include <stdio.h>', false)
+	g.restore_core_header_directives_for_system_libc()
+	assert g.c_directives_use_system_libc()
+	assert g.core_header_directives.len == 0
+	assert g.c_directives.len == 2
+	assert g.c_directives[1].text == '#include <sys/uio.h>'
+	assert g.files_with_c_includes[source]
+	assert g.skip_builtin_struct('C.iovec')
+	assert !g.should_emit_c_extern_decl_from_file('writev', source, 'c')
+	// The same filename outside this compiler's vlib always keeps the user's include.
+	mut user := FlatGen.new()
+	user.a = &a
+	user.tc = &tc
+	user.compiler_vroot = '/vroot'
+	user.set_target(pref.target_from('linux', 'amd64')!)
+	assert user.collect_c_directive('main', include_node, '/project/v/gen/c/output_nix.c.v', false)
+	assert user.core_header_directives.len == 0
+	assert user.c_directives.len == 1
+	assert user.c_directives[0].text == '#include <sys/uio.h>'
+	assert user.c_directives_use_system_libc()
+}

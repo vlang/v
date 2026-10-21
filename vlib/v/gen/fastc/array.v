@@ -483,7 +483,12 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 		omitted_end := range_index + 1 == close
 		is_fixed_array := flat.source_type_name(base_layout_type).starts_with('FixedArray_')
 		is_raw_fixed_array := is_fixed_array && g.fixed_array_uses_raw_storage(base_tokens)
-		needs_receiver_temporary := omitted_end && base_tokens.len > 1 && !is_raw_fixed_array
+		// The reader folds a call base (`make_values()[1..]`) into one token carrying its C
+		// text. It is still an expression, so the omitted end reads the length from a
+		// temporary instead of evaluating the call a second time.
+		base_is_expression := base_tokens.len > 1 || (base_tokens[0].source.contains('(')
+			&& !flat.source_type_name(base_type).ends_with('*'))
+		needs_receiver_temporary := omitted_end && base_is_expression && !is_raw_fixed_array
 		receiver_name := '__vf_slice_receiver'
 		receiver_source := if needs_receiver_temporary { receiver_name } else { base_source }
 		receiver_is_pointer := flat.source_type_name(base_type).ends_with('*') && !needs_receiver_temporary
@@ -1326,7 +1331,17 @@ fn fastc_initializer_type_start(tokens []FastcExpressionToken) int {
 
 fn (g &Parser) map_initializer_type(tokens []FastcExpressionToken) ?u32 {
 	map_type := g.type_from_expression_tokens(tokens) or { return none }
-	return if flat.source_type_name(map_type).starts_with('Map_') { map_type } else { none }
+	if flat.source_type_name(map_type).starts_with('Map_') {
+		return map_type
+	}
+	// `Counts{}` for `type Counts = map[string]int` makes an empty map too. It keeps the
+	// alias as its type, so methods declared on the alias still apply.
+	if aliased := g.map_type_of(map_type) {
+		if !fastc_is_pointer_type(aliased) {
+			return map_type
+		}
+	}
+	return none
 }
 
 fn (g &Parser) type_from_expression_tokens(tokens []FastcExpressionToken) ?u32 {

@@ -78,7 +78,7 @@ pub fn decode_quoted_escapes(mut q ast.Quoted) ! {
 	mut eat_whitespace := false
 	// See https://toml.io/en/v1.0.0#string for more info on string types.
 	is_basic := q.quote == `\"`
-	if !is_basic {
+	if !is_basic || q.text.index_u8(`\\`) < 0 {
 		return
 	}
 	mut decoded_s := strings.new_builder(q.text.len)

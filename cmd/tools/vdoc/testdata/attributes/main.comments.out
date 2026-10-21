@@ -4,14 +4,32 @@ module main
 @[deprecated_after: '2999-01-01']
 fn draw(opts Options)
     draw is shown with the attributes above its signature.
-fn Buttons.from() Buttons
+fn Buttons.from[W](input W) !Buttons
+    from returns the `Buttons` value of an integer or of a field name, or an error if there is none.
 fn Buttons.zero() Buttons
+    zero returns a `Buttons` value with no flags set.
 @[flag]
 enum Buttons {
 	left
 	right
 }
     Buttons are flags for the mouse buttons.
+fn (e &Buttons) is_empty() bool
+    is_empty returns true if no flags are set.
+fn (e &Buttons) has(flag Buttons) bool
+    has returns true if any of the flags in `flag` are set.
+fn (e &Buttons) all(flag Buttons) bool
+    all returns true if all the flags in `flag` are set.
+fn (mut e Buttons) set(flag Buttons)
+    set sets the flags in `flag`.
+fn (mut e Buttons) set_all()
+    set_all sets all the flags.
+fn (mut e Buttons) clear(flag Buttons)
+    clear clears the flags in `flag`.
+fn (mut e Buttons) clear_all()
+    clear_all clears all the flags.
+fn (mut e Buttons) toggle(flag Buttons)
+    toggle flips the flags in `flag`.
 @[inline]
 fn (b Buttons) press()
     press is a method with an attribute.

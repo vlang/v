@@ -236,6 +236,31 @@ to discover the validator path, a result file, or a last-line protocol.
 Materializing the two exact checkouts is the caller's responsibility. A workflow must use reviewed,
 immutable checkout actions and must not ask the bootstrap helper to contact a remote repository.
 
+### VC lock dry run
+
+`vc-lock-dry-run` shows the `vc.lock` that the newest `vlang/vc` snapshot would get, without
+writing it:
+
+```sh
+./vnew run thirdparty/tccbin_automation/bin/cmd vc-lock-dry-run
+```
+
+It fetches the `vlang/vc` master tip, and the commits (no trees or blobs) of `vlang/v` master, into
+a fresh scratch directory that it removes again. The snapshot is accepted only when its provenance
+holds by content: the commit message is `[v:master] <sha> - <title>`, `<sha>` is an ancestor of
+`vlang/v` master, and the first line of both `v.c` and `v_win.c` is
+`#define V_COMMIT_HASH "<sha>"`. The command then renders the six records with
+`render_vc_bootstrap_lock`, which parses its own output back, and prints a unified diff against the
+current lock (nothing when they are equal) followed by
+`vc_commit=<sha> v_commit=<sha> changed=<true|false> writes=0`. The diff applies with `git apply`
+at the repository root.
+
+The command never writes `vc.lock`, commits, or pushes. `plan_vc_bootstrap_lock_update` does the
+same checks on Git directories that already hold the objects, so a long-running service can plan
+against its own mirrors. Adopting a snapshot stays a reviewed change: the contract tests require
+the lock, the pinned `vlang/vc` checkout refs in `tccbin_automation_contract.yml` and
+`update_tccbin.yml`, and the VC constant in `workflow_contract_test.v` to name the same commit.
+
 ### Candidate staging preflight
 
 The `candidate-preflight` command accepts an explicit managed target and transition kind, one local

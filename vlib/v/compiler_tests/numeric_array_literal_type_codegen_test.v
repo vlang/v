@@ -155,8 +155,8 @@ fn add_all[T](items []T) T {
 	assert c_code.contains('double e = *(double*)(array_get(es,'), c_code
 	assert c_code.contains('add_all_T_MyAlias'), c_code
 	assert !c_code.contains('add_all_T_i64'), c_code
-	assert c_code.contains('MyAlias__plus'), c_code
-	assert c_code.contains('head = MyAlias__plus(head, item);'), c_code
+	assert c_code.contains('__v3_internal_symbol_op_MyAlias__plus'), c_code
+	assert c_code.contains('head = __v3_internal_symbol_op_MyAlias__plus(head, item);'), c_code
 	assert !c_code.contains('head += item;'), c_code
 	assert !c_code.contains('UnusedAlias__plus'), c_code
 	assert !c_compact.contains('__new_array_noscan(0,4,sizeof(double))'), c_code

@@ -235,6 +235,7 @@ fn (mut t Transport) h3_dial_and_do(req &Request, key string, method Method, hos
 	}
 	mut mux := new_h3_mux_conn(transport, h3, on_retired)
 	t.h3_conns[key] = mux
+	t.start_idle_reaper_locked()
 	t.h3_dial_id[key] = dial_id
 	t.h3_dialing.delete(key)
 	// Evicting for the cap happens in the same locked section as the

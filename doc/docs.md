@@ -4764,6 +4764,10 @@ A negative type guard whose body exits also narrows the value after the guard an
 Casting a pointer to an interface can be used directly as the receiver of a method returning
 multiple values. Interface data fields retain their individual types during the conversion.
 
+An explicit cast such as `pkg.Interface(value)` uses the interface from its declaring module,
+even if another imported module defines a sum type with the same name.
+Import aliases and selective imports retain this type identity.
+
 ```v
 // interface-example.1
 struct Dog {
@@ -5093,7 +5097,46 @@ println(sum)
 The built-in method `type_name` returns the name of the currently held
 type.
 
-With sum types you could build recursive structures and write concise but powerful code on them.
+Copying a sum type copies its held value. Reference variants still refer to the same object.
+
+For example, after `b := a`, changing a scalar field of a value variant in `a` leaves `b`
+unchanged. Passing a sum by value follows the same rule. This follows the held type's ordinary
+copy behavior; it does not recursively clone objects reached through references or containers.
+
+References to a sum and reference variants refer to different storage:
+
+| Type | Referenced storage |
+| --- | --- |
+| `Value` with a `Point` variant | A point held directly in the sum |
+| `&Value` | The complete sum, including its selected variant |
+| `Value` with an `&Point` variant | A point allocated separately from the sum |
+
+Value and reference variants, including different reference depths, are distinct variants.
+Use the declared variant type in `is`, `as`, and `match`.
+A reference to a selected value borrows that payload's storage. Keep the containing sum alive
+and its variant unchanged while using the reference. When an addressed projection comes from
+a temporary sum, the compiler retains storage for the addressed value, including fields and
+fixed-array elements.
+
+A mutable sum argument requires a variable of the sum type: it can replace the complete sum
+with another variant. Wrap a concrete value in a sum variable before passing it with `mut`.
+Inside a mutable smartcast, modifying a field modifies the selected payload in that sum.
+
+Sum payloads must have finite layout. References, dynamic arrays, and maps break recursive
+storage cycles; ordinary fields, options, and fixed arrays do not. A function variant stores
+a function reference, so its parameter and return types may refer to the containing sum type.
+This validity rule also applies to generic sum declarations used only as constraints.
+
+With [ownership checking](ownership.md), a sum that owns its payload can move rather than copy.
+Ownership and `-autofree` builds also track pointer-variant borrowing and cleanup, and reject
+some escaping local references. Autofree uses the shared lifetime analysis with its compatibility
+copy policy. Default GC builds without either flag do not enable these additional checks.
+
+The experimental [FastC backend](fastc.md) currently retains the older boxed sum representation
+and does not yet provide independent copies of value variants. Use the default C backend for
+the value semantics described here.
+
+Use references for recursive fields, as in this binary tree:
 
 ```v
 // V's binary tree
@@ -5101,8 +5144,8 @@ struct Empty {}
 
 struct Node {
 	value f64
-	left  Tree
-	right Tree
+	left  &Tree
+	right &Tree
 }
 
 type Tree = Empty | Node
@@ -5117,9 +5160,11 @@ fn sum(tree Tree) f64 {
 }
 
 fn main() {
-	left := Node{0.2, Empty{}, Empty{}}
-	right := Node{0.3, Empty{}, Node{0.4, Empty{}, Empty{}}}
-	tree := Node{0.5, left, right}
+	empty := Tree(Empty{})
+	left := Tree(Node{0.2, &empty, &empty})
+	leaf := Tree(Node{0.4, &empty, &empty})
+	right := Tree(Node{0.3, &empty, &leaf})
+	tree := Tree(Node{0.5, &left, &right})
 	println(sum(tree)) // 0.2 + 0.3 + 0.4 + 0.5 = 1.4
 }
 ```
@@ -8753,6 +8798,8 @@ fn main() {
 #### <h4 id="comptime-methods">.methods</h4>
 
 You can retrieve information about struct methods.
+Reflected method calls execute the ordinary method body, including calls into imported
+modules and generic helper functions.
 
 ```v
 struct Foo {
@@ -9817,6 +9864,8 @@ the default alignment. Use `@[packed]` if you want to *decrease* it. The alignme
 or union, should be at least a perfect multiple of the lowest common multiple of the alignments of
 all of the members of the struct or union.
 Heap-allocated fixed arrays of aligned structs, including fixed-array aliases, keep that alignment.
+An aligned local struct also keeps its alignment when the compiler moves it to the heap,
+including when using MSVC.
 
 Example:
 ```v
@@ -10574,6 +10623,11 @@ Use the `C.` prefix to refer to the C function.
 Note that such redeclarations only need to have enough details about the
 functions/structs that you want to use.
 Note also that they *do not have* to be complete, unlike the ones in the .h files.
+
+Compatible `fn C.` redeclarations in different modules retain each module's own return type.
+For example, declaring a C pointer return as `&u8` in one module and `voidptr` in another
+keeps pointer arithmetic in the first module independent of import order. Calls without a local
+or imported declaration use the builtin declaration when one is available.
 
 A C function receiving the address of a local can change its value. Subsequent expressions
 read that value even when the V binding was declared without `mut`.

@@ -10,11 +10,9 @@ fn assert_vself_preserves_full_cli(output string) {
 	assert output.contains('cmd/v'), output
 }
 
-fn assert_vself_uses_single_prod_build(output string) {
+fn assert_vself_preserves_prod_options(output string) {
 	assert output.contains('-no-memory-limit'), output
 	assert output.contains('-prealloc'), output
-	assert !output.contains('-fprofile'), output
-	assert output.count('cmd/v') == 1, output
 	assert_vself_preserves_full_cli(output)
 }
 
@@ -129,12 +127,14 @@ fn test_linux_default_self_build_preserves_full_cli() {
 			'-o', '/tmp/vself_linux_prod_test'])
 	assert prod_result.exit_code == 0, prod_result.output
 	assert !prod_result.output.contains('-parallel-cc'), prod_result.output
-	assert_vself_uses_single_prod_build(prod_result.output)
+	assert_vself_preserves_prod_options(prod_result.output)
 	vflags_parallel_result :=
 		os.exec(['env', '-u', 'CC', 'VFLAGS=-parallel-cc', 'VEXE=' + '${noop}', '${tool}', 'self',
 			'-prod', '-o', '/tmp/vself_linux_prod_vflags_test'])
 	assert vflags_parallel_result.exit_code == 0, vflags_parallel_result.output
-	assert_vself_uses_single_prod_build(vflags_parallel_result.output)
+	assert_vself_preserves_prod_options(vflags_parallel_result.output)
+	assert !vflags_parallel_result.output.contains('-fprofile'), vflags_parallel_result.output
+	assert vflags_parallel_result.output.count('cmd/v') == 1, vflags_parallel_result.output
 }
 
 fn test_macos_default_self_build_compiler_selection() {
@@ -176,7 +176,7 @@ fn test_macos_default_self_build_compiler_selection() {
 			'/tmp/vself_macos_prod_test'])
 	assert prod_result.exit_code == 0, prod_result.output
 	assert !prod_result.output.contains('-parallel-cc'), prod_result.output
-	assert_vself_uses_single_prod_build(prod_result.output)
+	assert_vself_preserves_prod_options(prod_result.output)
 	old_result :=
 		os.exec(['env', 'CC=cc', 'VFLAGS=', 'VEXE=' + '${noop}', '${tool}', 'self', '-old-compiler',
 			'-o', '/tmp/vself_macos_old_test'])
@@ -210,7 +210,7 @@ fn test_bsd_self_build_uses_system_cc_and_v3_safeguards() {
 			'-o', '/tmp/vself_bsd_prod_test'])
 	assert prod_result.exit_code == 0, prod_result.output
 	assert !prod_result.output.contains('-parallel-cc'), prod_result.output
-	assert_vself_uses_single_prod_build(prod_result.output)
+	assert_vself_preserves_prod_options(prod_result.output)
 	tinyc_result :=
 		os.exec(['env', 'VFLAGS=', 'VEXE=' + '${noop}', '${tool}', 'self', '-cc', 'tcc', '-o',
 			'/tmp/vself_bsd_tinyc_test'])

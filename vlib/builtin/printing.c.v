@@ -47,7 +47,9 @@ pub fn eprintln(s string) {
 		flush_stdout()
 		flush_stderr()
 		// eprintln is used in panics, so it should not fail at all
-		$if android && !termux {
+		// A `-cross` snapshot such as vc/v.c has no android_print: the file that defines it is
+		// only built for `-os android`, so its Android branches would not link on Termux.
+		$if android && !termux && !cross ? {
 			C.android_print(C.stderr, c'%.*s\n', s.len, s.str)
 		}
 		_writeln_to_fd(2, s)
@@ -72,7 +74,7 @@ pub fn eprint(s string) {
 	} $else {
 		flush_stdout()
 		flush_stderr()
-		$if android && !termux {
+		$if android && !termux && !cross ? {
 			C.android_print(C.stderr, c'%.*s', s.len, s.str)
 		}
 		_write_buf_to_fd(2, s.str, s.len)
@@ -150,7 +152,7 @@ pub fn print(s string) {
 		C.fprintf(C.stdout, c'%.*s', s.len, s.str)
 		return
 	}
-	$if android && !termux {
+	$if android && !termux && !cross ? {
 		C.android_print(C.stdout, c'%.*s\n', s.len, s.str)
 	} $else $if ios {
 		// TODO: Implement a buffer as NSLog doesn't have a "print"
@@ -170,7 +172,7 @@ pub fn println(s string) {
 		C.fprintf(C.stdout, c'%.*s\n', s.len, s.str)
 		return
 	}
-	$if android && !termux {
+	$if android && !termux && !cross ? {
 		C.android_print(C.stdout, c'%.*s\n', s.len, s.str)
 		return
 	} $else $if ios {

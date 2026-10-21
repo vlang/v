@@ -287,6 +287,11 @@ pub fn (mut l StreamListener) accept() !&StreamConn {
 		eprintln('    StreamListener.accept | l.sock.handle: ${l.sock.handle:6}')
 	}
 
+	// A blocking C.accept never returns early, so a set timeout or deadline has to be waited
+	// for first. With both unset, the plain blocking accept is kept.
+	if deadline_set(l.accept_deadline) || (l.accept_timeout > 0 && l.accept_timeout != infinite_timeout) {
+		l.wait_for_accept()!
+	}
 	mut new_handle := $if is_coroutine ? {
 		C.photon_accept(l.sock.handle, 0, 0, unix_default_read_timeout)
 	} $else {

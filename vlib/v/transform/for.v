@@ -399,7 +399,7 @@ fn (mut t Transformer) transform_for_in_body(id flat.NodeId, node flat.Node) []f
 			iter_info, has_index, body_ids)
 	}
 	iter_shape := flat.source_type_shape(iter_type)
-	effective_iter := if iter_shape.has(.variadic) {
+	mut effective_iter := if iter_shape.has(.variadic) {
 		flat.source_type_id('[]' + flat.source_type_name(iter_type)[3..])
 	} else if iter_shape.has(.pointer_array) {
 		t.trim_pointer_type(iter_type)
@@ -413,7 +413,15 @@ fn (mut t Transformer) transform_for_in_body(id flat.NodeId, node flat.Node) []f
 	if flat.source_type_shape(effective_iter).has(.array_type) || effective_iter == flat.source_type_string
 		|| t.is_fixed_array_type(effective_iter) {
 		body_ids := t.a.children_of(&node)[header_count..].clone()
-		return t.lower_indexed_for_in(id, node, key_id, val_id, container_id, effective_iter,
+		mut collection := container_id
+		literal := t.a.nodes[int(container_id)]
+		if node.op != .amp && flat.source_type_shape(effective_iter).has(.array_type)
+			&& t.array_literal_can_emit_direct(literal) {
+			effective_iter = flat.source_type_id('[${literal.children_count}]${flat.source_type_name(effective_iter)[2..]}')
+			values := t.a.children_of(&literal).clone()
+			collection = t.make_array_literal_typed(values, effective_iter)
+		}
+		return t.lower_indexed_for_in(id, node, key_id, val_id, collection, effective_iter,
 			has_index, body_ids)
 	}
 	return t.rebuild_for_in_stmt(id, node)
@@ -1554,7 +1562,10 @@ fn (mut t Transformer) make_for_stmt(init flat.NodeId, cond flat.NodeId, post fl
 		children_count: flat.child_count(3 + body.len)
 		pos:            src.pos
 		typ:            src.typ
-		flags:          flat.node_flags(src.skip_ownership_drops() || src.kind == .empty, false)
+		flags:          flat.node_flags(src.skip_ownership_drops() || src.kind !in [
+			.for_stmt,
+			.for_in_stmt,
+		], false)
 	})
 }
 

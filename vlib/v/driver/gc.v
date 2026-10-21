@@ -25,17 +25,26 @@ fn v3_gc_mode_defines(gc_mode string, disable_gc bool) ![]string {
 	return defines
 }
 
-// v3_gc_is_disabled reports whether a collector must be left out of the build.
+// v3_gc_is_disabled reports whether the collector of `gc_mode` must be left out of
+// the build.
+// A build for another OS or architecture has no Boehm collector: the bundled
+// libgc and its headers are the host's, and the target's toolchain may have
+// none. vgc stays in: it is V code and one header (thirdparty/vgc), which picks
+// the target's system calls itself, so it builds for any target that it supports
+// natively.
 // The native backend is in that group for its own reason: it links against
 // libSystem alone and allocates through libc, so no collector is ever compiled
 // in. Selecting the Boehm builtin set anyway would only add source files whose
 // declarations the backend cannot satisfy.
-fn v3_gc_is_disabled(building_v bool, cross_output bool, target_os string, target_arch string, backend string) bool {
+fn v3_gc_is_disabled(building_v bool, cross_output bool, target_os string, target_arch string, backend string, gc_mode string) bool {
 	if building_v || cross_output {
 		return true
 	}
 	if backend == 'arm64' {
 		return true
+	}
+	if gc_mode == 'vgc' {
+		return false
 	}
 	host := pref.host_target()
 	return pref.normalized_os(target_os.trim_space().to_lower()) != host.os
