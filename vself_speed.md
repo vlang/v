@@ -18,8 +18,93 @@ self-building fell back to an ordinary production build. Fixing that tool lookup
 Those historical scores changed compiler revision, input, and C toolchain. They must not be
 presented as a continuous performance series. A fresh revision check, described below, kept
 input and Apple Clang 21 fixed: **97,584.84 -> 105,074.91**, or **7.68% more instructions**.
-This confirms a revision-associated increase as well as the reporting error; it does not isolate
-which commit or build-training difference caused that increase.
+That comparison confirms a revision-associated increase as well as the reporting error. The
+follow-up bisection below locates the main increase at the tagged-union compiler change.
+
+## Recent-commit bisection
+
+The PGO failure was bisected over the eight first-parent commits from `257b514a30` to
+`2d1367e589`. The first commit activating the failure is **`2d1367e589` (#30962)**,
+which re-enabled automatic Clang PGO for production self-builds. Its parent does not attempt
+automatic production PGO; a passing predicate there means no failing attempt, not successful PGO.
+
+The underlying lookup predates that change: `find_llvm_profdata` was introduced in `a75cd076ed`
+and searched PATH, then `xcrun`, without consulting the selected C compiler's installation.
+With explicit Homebrew Clang 23 and Apple LLVM 21 selected for merging, the producer writes raw
+profile format 11 while the merger expects format 10. The merge fails and self-building falls
+back to an unprofiled compiler. Apple Clang 21 with its matching merger succeeds.
+
+The bisect predicate compiled each historical, unmodified `vself.v` using one stable compiler.
+A small V-driver stand-in built a real Clang 23 instrumented program, and the historical tool
+ran it and attempted the real profile merge. This tests tool selection and fallback control flow;
+it is not a full compiler self-build at each checkpoint. It reproduces the same format mismatch
+as the retained full-build `latest2-before-build.log`. The toolchain lookup fix `8a6e8a32dc`
+completed PGO in the same probe, providing a positive control.
+
+Reproduction scripts, the complete Git bisect log, commands, and six checkpoint/control results
+are in `/Users/alex/code/v3-self-90k-artifacts/bisect-20261021/`, including
+`pgo-bisect.py`, `pgo-predicate.py`, `pgo-bisect.log`, and `pgo-summary.json`.
+
+The instruction-count bisect identifies **`da62dd4bd7` (#29578), "v3: represent sum types as
+tagged unions"**, with immediate parent `7940bb1a8e`. This is a separate change from the PGO
+activation. Both sides completed PGO with Apple Clang 21 and its matching profile merger.
+
+Each checkpoint was rebuilt twice in place with TCC using a seed compatible with its recursive
+type representation. The resulting compiler then built its own instrumented and optimized
+production versions with Apple Clang 21 and `-cflags '-mcpu=apple-m1'`. PGO training used the
+same unchanged 559,990-line fixture, once with default workers and once with `VJOBS=1`.
+This fresh recipe differs from earlier sessions; compare roles within this session rather than
+treating their absolute scores as a continuation of earlier tables.
+
+Three exploratory samples per checkpoint located the boundary. A separate confirmation used
+one warmup per role and ten alternating measured pairs, with `VJOBS=1` and the same executable,
+source, and output paths. The parent was built in a second checkout to overlap C compilation;
+its exact build path is recorded. Fixture training and benchmark runs were serialized.
+
+| Median metric | Parent `7940bb1a8e` | Tagged unions `da62dd4bd7` |
+| --- | ---: | ---: |
+| Retired instructions | 54,270,831,065.5 | 59,248,702,390.5 |
+| Instructions/parsed line | 96,913.93 | 105,803.14 |
+| CPU cycles, billions | 19.4757 | 21.6487 |
+| Peak resident memory, MiB | 1,133.09 | 1,117.53 |
+| Elapsed seconds | 5.0598 | 6.1247 |
+
+The tagged-union commit used **9.17% more instructions**, increasing work in **all ten pairs**.
+The median paired increase was `4,788,159,580` instructions. All 22 runs succeeded; generated
+C was consistent within each role and passed Clang syntax checking. C intentionally differs
+between these revisions, which change code generation. Elapsed time and cycles reflect shared
+host load. These results attribute the main increase to the commit, not to one isolated hunk.
+
+A separate exploratory control disabled PGO for both production compilers while retaining Apple
+Clang 21 and the other build flags. Instructions/line increased from **116,908.51 to 125,334.54**
+(*7.21% more*, all three pairs worse). Generated C matched the PGO output for each revision.
+This supports a compiler-work increase that persists without PGO; the primary attribution remains
+the ten-pair PGO comparison above. Control commands and all eight samples are retained as
+`unprofiled-confirmation-*`. A disk-space failure before control measurement was retained and
+retried after compressing owned artifacts; see `space-recovery.json`.
+
+A separate verbose hardware-counter diagnostic, after one warmup per role, found approximately
+1.97 billion additional instructions in checking, 0.98 billion in transforms, and 1.84 billion
+in C generation/finish. Those instrumented runs are excluded from the primary statistics.
+
+The commit changes semantic type handling as well as sum layout. An executable layout probe
+using identical fixture definitions measured `sizeof(types.Type)` changing from **16 to 72 bytes**;
+`flat.Node` remained 64 bytes. Type interning now canonicalizes child references, and C generation
+replaces some raw-word identity checks with structural hashing/equality. The compatibility paths
+also retain duplicated structural-equality calls when the first comparison returns false;
+disassembly confirms both calls survive optimization in `fn_param_compatible` and
+`fn_return_compatible`. These are concrete follow-up targets, not a measured attribution of the
+entire increase to larger values or duplicated calls. Overall peak memory decreased in this run.
+
+The bisect log, checkpoint builds/profiles, 22 confirmation samples, generated-output checks,
+stage counters, layout probe, and disassembly are retained in the bisection directory above.
+See `instruction-bisect.log`, `confirmation-{metadata,samples,summary}.json`,
+`stage-breakdown.json`, `layout-probe.json`, and `compatibility-assembly.json`.
+`exploratory-log-audit.json` records reused exploratory filenames during the parallel parent
+prebuild; the accepted confirmation has distinct raw logs for every sample.
+Large generated C artifacts were losslessly compressed to `.c.gz` with SHA-256 roundtrip checks;
+`generated-c-compression.json` records their original paths and hashes. No compiler source or
+test expectations were changed during this investigation.
 
 ## Metric and scope
 
