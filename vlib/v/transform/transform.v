@@ -367,6 +367,8 @@ mut:
 	call_param_types_index_ready  bool
 	call_param_types_prepared     bool
 	fixed_array_borrow_params     map[int][]bool
+	call_provenance_borrow_params map[int][]bool
+	preserve_call_provenance      bool
 	borrow_param_mentions         &BorrowParamMentions = unsafe { nil }
 	used_fns                      map[string]bool
 	used_fns_parent               &map[string]bool = unsafe { nil }
@@ -1647,6 +1649,7 @@ fn (mut t Transformer) release_finished_scratch() {
 			t.fn_ret_types.free()
 			t.call_param_types_decl_index.free()
 			t.fixed_array_borrow_params.free()
+			t.call_provenance_borrow_params.free()
 		}
 	}
 }
@@ -4584,6 +4587,11 @@ fn (mut t Transformer) hand_over_fixed_array_borrow_params() {
 		summaries[decl] = summary.clone()
 	}
 	t.tc.transform_borrow_params = summaries
+	mut provenance_summaries := map[int][]bool{}
+	for decl, summary in t.call_provenance_borrow_params {
+		provenance_summaries[decl] = summary.clone()
+	}
+	t.tc.transform_call_provenance_borrow_params = provenance_summaries
 	t.tc.transform_borrow_node_count = t.fixed_array_borrow_node_count
 	transform_stage_scope_resume(t.stage_scope, state)
 }
@@ -5325,6 +5333,7 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		call_param_types_index_ready:        t.call_param_types_index_ready
 		call_param_types_prepared:           t.call_param_types_prepared
 		fixed_array_borrow_params:           t.fixed_array_borrow_params
+		call_provenance_borrow_params:       t.call_provenance_borrow_params
 		comptime_reflected_params:           t.comptime_reflected_params
 		// Function-body lowering records operator helpers as used. Each parallel
 		// worker therefore needs private map storage; sharing this map races on
@@ -8315,6 +8324,15 @@ fn (mut t Transformer) mark_escaping_amp_ptrs(body_ids []flat.NodeId) bool {
 			return false
 		}
 	}
+	previous_call_provenance := t.preserve_call_provenance
+	t.preserve_call_provenance = false
+	for id in body_ids {
+		if t.has_consumable_scalar_result(id) {
+			t.preserve_call_provenance = true
+			break
+		}
+	}
+	defer { t.preserve_call_provenance = previous_call_provenance }
 	mut amp_ptrs := map[string]bool{}
 	mut amp_sources := map[string][]string{} // pointer `p` -> possible source locals `v`
 	mut ptr_aliases := map[string]string{} // copy `q := p` -> aliased pointer `p`
@@ -10244,7 +10262,39 @@ fn (t &Transformer) escape_address_sources(id flat.NodeId, amp_sources map[strin
 	if sources.len > 0 {
 		return sources
 	}
+	if t.escape_address_uses_separate_storage(id) {
+		// A container's backing storage does not belong to its value header.
+		return []string{}
+	}
 	return [root]
+}
+
+fn (t &Transformer) escape_address_uses_separate_storage(id flat.NodeId) bool {
+	if isnil(t.tc) || int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.node(id)
+	if node.children_count == 0
+		|| node.kind !in [.paren, .selector, .index, .prefix, .cast_expr, .or_expr] {
+		return false
+	}
+	base_id := t.a.child(node, 0)
+	if node.kind == .index {
+		mut base_type := types.unalias_type(t.tc.resolve_type(base_id))
+		if base_type is types.Pointer
+			&& t.a.nodes[int(t.unwrap_parens(base_id))].kind == .selector {
+			// A pointer field points outside its containing value. Recorded aliases
+			// above still preserve any stack storage that the field references.
+			return true
+		}
+		for base_type is types.Pointer {
+			base_type = types.unalias_type(base_type.base_type)
+		}
+		if base_type is types.Array || base_type is types.Map || base_type is types.String {
+			return true
+		}
+	}
+	return t.escape_address_uses_separate_storage(base_id)
 }
 
 // escape_explicit_address_sources returns the sources of an explicit `&expr`. A value
@@ -10737,6 +10787,7 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 		for i in 1 .. node.children_count {
 			t.mark_callback_method_value_receiver_escape(t.a.child(node, i), amp_sources, ptr_aliases, local_stack_names)
 		}
+		t.mark_call_provenance_argument_escapes(id, *node, amp_sources, ptr_aliases)
 		t.mark_implicit_voidptr_argument_escapes(id, *node, local_stack_names)
 		t.mark_fixed_array_reference_argument_escapes(id, *node, amp_ptrs, amp_sources, ptr_aliases, local_stack_names)
 	}
@@ -11381,6 +11432,14 @@ fn (t &Transformer) escape_aggregate_address_sources(id flat.NodeId, amp_sources
 		return []string{}
 	}
 	node := t.a.node(id)
+	if t.escape_scalar_unwrap_consumes_source(id) {
+		// The success value cannot retain the Result's address arguments. The fallback
+		// is independent: it can encode a local address as an integer.
+		if node.kind == .or_expr && node.children_count > 1 {
+			return t.escape_aggregate_address_sources(t.a.child(node, 1), amp_sources, ptr_aliases)
+		}
+		return []string{}
+	}
 	match node.kind {
 		.or_expr, .if_expr, .comptime_if, .match_stmt, .block, .lock_expr, .dump_expr {
 			mut sources := []string{}
@@ -11402,6 +11461,17 @@ fn (t &Transformer) escape_aggregate_address_sources(id flat.NodeId, amp_sources
 		}
 		.ident {
 			return escape_alias_sources(node.value, amp_sources, ptr_aliases)
+		}
+		.fn_literal {
+			mut sources := []string{}
+			for capture in t.escape_fn_literal_capture_names(id) {
+				for source in escape_alias_sources(capture, amp_sources, ptr_aliases) {
+					if source !in sources {
+						sources << source
+					}
+				}
+			}
+			return sources
 		}
 		.infix {
 			if node.op !in [.plus, .minus] || node.children_count != 2 || isnil(t.tc)
@@ -11474,7 +11544,15 @@ fn (t &Transformer) escape_aggregate_address_sources(id flat.NodeId, amp_sources
 					receiver_id := t.a.child(callee, 0)
 					if !t.callee_base_is_not_a_runtime_value(receiver_id)
 						&& t.method_receiver_is_reference(id, receiver_id, callee.value) {
-						for source_name in t.escape_address_sources(receiver_id, amp_sources, ptr_aliases) {
+						// Interface dispatch borrows the header to read its object pointer;
+						// the concrete method receives the object, never the header's address.
+						receiver_sources := if !isnil(t.tc)
+							&& types.unalias_type(t.tc.resolve_type(receiver_id)) is types.Interface {
+							t.escape_aggregate_address_sources(receiver_id, amp_sources, ptr_aliases)
+						} else {
+							t.escape_address_sources(receiver_id, amp_sources, ptr_aliases)
+						}
+						for source_name in receiver_sources {
 							if source_name !in sources {
 								sources << source_name
 							}
@@ -11509,6 +11587,96 @@ fn (t &Transformer) escape_aggregate_address_sources(id flat.NodeId, amp_sources
 	}
 
 	return []string{}
+}
+
+// A scalar call success consumes its address arguments, unless its error escapes.
+// An existing value can instead hold an integer-encoded address through its aliases.
+fn (t &Transformer) escape_scalar_unwrap_consumes_source(id flat.NodeId) bool {
+	if isnil(t.tc) || int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.node(id)
+	if node.kind !in [.cast_expr, .or_expr] || node.children_count == 0 {
+		return false
+	}
+	source := t.unwrap_parens(t.a.child(node, 0))
+	if t.a.node(source).kind != .call {
+		return false
+	}
+	if types.unalias_type(t.tc.resolve_type(source)) !is types.ResultType {
+		return false
+	}
+	success_type := types.unalias_type(t.tc.resolve_type(id))
+	// Integer and floating point values can carry encoded pointers after unwrapping.
+	if escape_scalar_result_can_encode_address(success_type) {
+		return false
+	}
+	return escape_call_result_is_scalar(success_type)
+		&& t.scalar_result_call_borrows_arguments(source)
+		&& !t.escape_expr_retains_result_error(id)
+}
+
+fn escape_scalar_result_can_encode_address(typ types.Type) bool {
+	return match typ {
+		types.Alias { escape_scalar_result_can_encode_address(typ.base_type) }
+		types.OptionType { escape_scalar_result_can_encode_address(typ.base_type) }
+		types.MultiReturn { true }
+		types.Primitive {
+			bits := if typ.size == 0 { types.platform_int_bits() } else { int(typ.size) }
+			typ.props.has(.float) || (typ.props.has(.integer) && bits >= types.platform_int_bits())
+		}
+		types.USize, types.ISize, types.Enum { true }
+		types.Rune { types.platform_int_bits() <= 32 }
+		else { false }
+	}
+}
+
+// A scalar success value consumes its address arguments, but a propagated Result
+// error or a retained `or` error can still hold them. Keep those paths conservative.
+fn (t &Transformer) escape_expr_retains_result_error(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.node(id)
+	if node.kind == .postfix && node.op == .not && node.children_count > 0
+		&& types.unalias_type(t.tc.resolve_type(t.a.child(node, 0))) is types.ResultType {
+		return true
+	}
+	if node.kind == .or_expr && node.children_count == 2
+		&& t.escape_or_branch_retains_error(t.a.child(node, 1)) {
+		return true
+	}
+	for i in 0 .. node.children_count {
+		if t.escape_expr_retains_result_error(t.a.child(node, i)) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (t &Transformer) escape_or_branch_retains_error(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.node(id)
+	if node.kind == .ident {
+		return node.value == 'err'
+	}
+	if node.kind == .call && node.children_count == 2 {
+		callee := t.a.child_node(node, 0)
+		arg := t.a.child_node(node, 1)
+		if callee.kind == .ident && callee.value == 'panic' && arg.kind == .ident
+			&& arg.value == 'err' && t.var_type('panic') == 0
+			&& !t.tc.module_declares_fn(t.cur_module, 'panic') {
+			return false
+		}
+	}
+	for i in 0 .. node.children_count {
+		if t.escape_or_branch_retains_error(t.a.child(node, i)) {
+			return true
+		}
+	}
+	return false
 }
 
 // mark_outer_scope_address_store moves to the heap the locals of a nested block whose
@@ -11958,6 +12126,12 @@ fn (mut t Transformer) collect_return_escape_idents(id flat.NodeId, mut names ma
 		return
 	}
 	node := t.a.node(id)
+	if t.escape_scalar_unwrap_consumes_source(id) {
+		if node.kind == .or_expr && node.children_count > 1 {
+			t.collect_return_escape_idents(t.a.child(node, 1), mut names)
+		}
+		return
+	}
 	match node.kind {
 		.ident {
 			if node.value.len > 0 {
@@ -27498,6 +27672,11 @@ fn (mut t Transformer) transform_opaque_pointer_value(id flat.NodeId) flat.NodeI
 		return t.make_plain_expr_for_smartcast(id)
 	}
 	node := t.a.nodes[int(id)]
+	if node.kind == .ident && node.value in t.heaped_amp_locals
+		&& escape_type_is_pointer(t.tc.parse_type(t.typeof_var_type(node.value))) {
+		// A promoted pointer alias still casts its stored pointer value.
+		return t.transform_expr(id)
+	}
 	value := t.transform_expr_preserving_pointer_value(id)
 	if node.kind != .ident || !t.pointer_value_rvalues[node.value] {
 		return value
