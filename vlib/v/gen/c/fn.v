@@ -14965,7 +14965,10 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 			&& (g.mut_receiver_arg_wants_addr(fn_name, arg_id)
 				|| (!callee_is_module_selector && g.mut_receiver_arg_wants_addr(callee_name, arg_id))) {
 			param_type := g.current_param_type(arg_node.value) or { types.empty_type }
-			if g.local_storage_is_pointer(arg_node.value) || param_type is types.Pointer
+			if g.local_storage_is_shared(arg_node.value) {
+				g.write('&')
+				g.gen_expr(arg_id)
+			} else if g.local_storage_is_pointer(arg_node.value) || param_type is types.Pointer
 				|| g.usable_expr_type(arg_id) is types.Pointer {
 				g.write(g.local_cname(arg_node.value))
 			} else {
