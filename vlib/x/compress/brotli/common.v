@@ -1,6 +1,6 @@
-// Brotli: a pure-V implementation of the RFC 7932 trivial stream
-// layout. It produces valid Brotli byte streams and decodes the same layout
-// without any C bindings.
+// Brotli compression and decompression implemented in V. Compression may use
+// the system Brotli encoder for large inputs when available, with a V fallback.
+// Decompression uses the V decoder.
 module brotli
 
 import hash.huffman
@@ -374,4 +374,3 @@ fn write_meta_block_length(mut w BitWriter, mlen int, mnibbles int) {
 		w.write_bits((chunk_minus_one >> (nib * 4)) & 0xf, 4)
 	}
 }
-

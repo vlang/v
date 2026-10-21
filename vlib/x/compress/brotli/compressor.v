@@ -202,6 +202,9 @@ fn specialized_compress_candidate(data []u8, params CompressParams, window_bits 
 	return best
 }
 
+// compress encodes data as a Brotli stream using the requested quality and window.
+// Large inputs without metadata, custom dictionaries, or large windows may use
+// the system encoder when available; other inputs use the V encoder.
 pub fn compress(data []u8, params CompressParams) ![]u8 {
 	if params.quality < 0 || params.quality > 11 {
 		return error('brotli: quality must be between 0 and 11')
