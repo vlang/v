@@ -4266,24 +4266,15 @@ fn (mut t Transformer) transform_call_arg_for_param(arg_id flat.NodeId, param_ty
 	// expression. A later block argument (notably `unsafe { nil }`) transforms its
 	// statements eagerly and would otherwise drain an earlier sum-box temporary
 	// into the block, after the call has already referenced it.
+	source_is_mut := int(arg_id) >= 0 && int(arg_id) < t.a.nodes.len
+		&& t.a.nodes[int(arg_id)].is_mut
 	outer_pending := t.pending_stmts
 	t.pending_stmts = []flat.NodeId{}
-	mut result := t.transform_call_arg_for_param_isolated(arg_id, param_type_id)
-	if int(arg_id) >= 0 && int(result) >= 0 && !isnil(t.tc)
-		&& t.a.nodes[int(arg_id)].is_mut {
-		source := t.a.node(t.unwrap_parens(arg_id))
-		if source.kind == .prefix && source.op == .mul {
-			expected := t.tc.parse_canonical_type(param_type_id)
-			if expected is types.Pointer && expected.base_type is types.Alias
-				&& types.unalias_type(expected.base_type) is types.Pointer {
-				// Prefix lowering rebuilds this lvalue. Keep its explicit `mut` so
-				// cgen passes the caller's pointer slot rather than the pointer value.
-				lowered := t.a.nodes[int(result)]
-				if !lowered.is_mut {
-					result = t.a.add_node(flat.Node{ ...lowered, is_mut: true })
-				}
-			}
-		}
+	result := t.transform_call_arg_for_param_isolated(arg_id, param_type_id)
+	if source_is_mut && int(result) >= 0 && int(result) < t.a.nodes.len
+		&& !t.a.nodes[int(result)].is_mut {
+		// Lowered lvalues must keep aliasing caller storage, including pointer slots.
+		t.a.set_node_is_mut(result, true)
 	}
 	arg_pending := t.pending_stmts
 	t.pending_stmts = outer_pending

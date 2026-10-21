@@ -906,6 +906,43 @@ fn test_staging_declarations_do_not_evaluate_default_initializers() {
 	assert generated.contains('map staging_4[2]')
 }
 
+fn test_qualified_mut_parameter_copy_preserves_value_staging_storage() {
+	for pointer_decl in [false, true] {
+		mut a := flat.FlatAst.new()
+		mut tc := types.TypeChecker.new(&a)
+		tc.structs['snapshot.State'] = []types.StructField{}
+		value_type := types.Type(types.Struct{ name_id: flat.source_type_id('snapshot.State') })
+		pointer_type := types.Type(types.Pointer{ base_type: value_type })
+		mut g := FlatGen.new()
+		g.a = &a
+		g.tc = &tc
+		g.cur_param_types['source'] = types.new_type_reference(pointer_type)
+		g.cur_mut_params['source'] = true
+		g.cur_mut_param_owners['source'] = tc.cur_scope.insert_with_owner('source', pointer_type)
+		decl_type := if pointer_decl { '&snapshot.State' } else { 'snapshot.State' }
+		lhs := a.add_node(flat.Node{
+			kind:  .ident
+			value: 'copied'
+			typ:   flat.source_type_id(decl_type)
+		})
+		rhs := a.add_node(flat.Node{
+			kind:  .ident
+			value: 'source'
+			typ:   flat.source_type_id('&snapshot.State')
+		})
+		tc.register_synth_type(rhs, pointer_type)
+		decl := stmt_test_node(mut a, .decl_assign, '__v3_stack_value_decl', [lhs, rhs])
+		a.nodes[int(decl)].typ = flat.source_type_id(decl_type)
+		g.gen_decl_assign(a.nodes[int(decl)])
+		generated := g.sb.str()
+		assert generated.contains(if pointer_decl {
+			'snapshot__State* copied = source;'
+		} else {
+			'snapshot__State copied = *source;'
+		}), generated
+	}
+}
+
 fn test_staging_declarations_preserve_explicit_stack_alignment() {
 	mut a := flat.FlatAst.new()
 	node := flat.Node{ kind: .struct_decl, value: 'Aligned', typ: flat.source_type_id('aligned=64') }
