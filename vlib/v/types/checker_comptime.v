@@ -8669,6 +8669,8 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 	mut lhs_type := tc.infix_read_type(lhs_id)
 	mut rhs_type := tc.infix_read_type(rhs_id)
 	if node.op in [.eq, .ne] {
+		lhs_type = enum_comparison_read_type(lhs_type, rhs_node, rhs_type)
+		rhs_type = enum_comparison_read_type(rhs_type, lhs_node, lhs_type)
 		lhs_type = tc.option_compare_operand_type(lhs_id, lhs_type, rhs_type)
 		rhs_type = tc.option_compare_operand_type(rhs_id, rhs_type, lhs_type)
 	}
@@ -9388,6 +9390,16 @@ fn (tc &TypeChecker) infix_operands_compatible(lhs_id flat.NodeId, lhs_type Type
 		|| tc.translated_fixed_array_pointer_compatible(rhs_id, rhs_type, lhs_type)
 		|| tc.expr_compatible(lhs_id, lhs_type, rhs_type)
 		|| tc.expr_compatible(rhs_id, rhs_type, lhs_type)
+}
+
+// enum_comparison_read_type reads an enum reference as a value when compared to an enum.
+fn enum_comparison_read_type(typ Type, other flat.Node, other_type Type) Type {
+	clean := unalias_type(typ)
+	if clean is Pointer && unalias_type(clean.base_type) is Enum
+		&& ((other.kind == flat.NodeKind.enum_val) || (unalias_type(other_type) is Enum)) {
+		return *clean.base_type
+	}
+	return typ
 }
 
 // infix_operand_is_auto_deref reports whether the operand `id` is a `mut`

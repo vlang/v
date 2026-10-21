@@ -2775,6 +2775,9 @@ A pointer to a nested array or map remains a reference container when iterated a
 including through parentheses or a closure capture.
 Fixed-array map values also refer to their entry storage, so changes through the reference update
 the map value.
+An enum entry reference can be compared with an enum value using `==` or `!=`, including
+shorthand values such as `.on`. The comparison reads the referenced enum value; comparing two
+enum pointers still compares their addresses.
 Aliases of array and map pointers preserve these reference semantics, including pointer rebinding.
 Parentheses around a mutable map container do not change whether assigning the loop value updates
 its entry.
