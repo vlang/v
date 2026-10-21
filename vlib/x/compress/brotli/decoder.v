@@ -1,8 +1,11 @@
 module brotli
 
 // decompress reverses compress() and decodes the RFC 7932 trivial stream
-// layout.
+// layout. Empty input is invalid; an encoded empty stream decodes to an empty array.
 pub fn decompress(data []u8, params DecompressParams) ![]u8 {
+	if data.len == 0 {
+		return error('brotli: empty input')
+	}
 	mut offset := 0
 	mut out := []u8{}
 	mut metadata := []u8{}
@@ -35,7 +38,7 @@ fn decode_window_bits(mut r BitReader) !int {
 	n2 := r.read_bits(3)!
 	if n2 == 1 {
 		if r.read_bit()! != 0 {
-			return 1
+			return error('brotli: invalid large window marker')
 		}
 		window_size := int(r.read_bits(6)!)
 		if window_size < 10 || window_size > 30 {
