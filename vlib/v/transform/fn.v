@@ -14933,6 +14933,7 @@ fn (mut t Transformer) snapshot_fixed_array_call_callee(id flat.NodeId, call fla
 			if !t.operand_needs_ordering_snapshot(base_id) {
 				return callee_id
 			}
+			selected := t.direct_receiver_method(id, base_id, callee.value)
 			new_base := if t.method_receiver_is_reference(id, base_id, callee.value) {
 				if stabilized := t.stabilize_original_lvalue_receiver(base_id) {
 					stabilized
@@ -14942,6 +14943,7 @@ fn (mut t Transformer) snapshot_fixed_array_call_callee(id flat.NodeId, call fla
 			} else {
 				t.snapshot_expr_for_reuse(base_id)
 			}
+			t.keep_selected_receiver_alias(new_base, selected)
 			if new_base == base_id {
 				return callee_id
 			}

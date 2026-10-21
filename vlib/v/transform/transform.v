@@ -23511,6 +23511,39 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 	return t.finish_mut_optional_value_call(result, typ, writebacks)
 }
 
+// direct_receiver_method is the method a call on `recv_id` dispatches to when nothing is
+// snapshotted: the receiver's own resolution (`resolve_receiver_method_name`, which the receiver
+// lowering prefers), else the checker's selection for `call_id`. Taken from the ORIGINAL receiver.
+fn (mut t Transformer) direct_receiver_method(call_id flat.NodeId, recv_id flat.NodeId, method string) string {
+	own := t.resolve_receiver_method_name(recv_id, method)
+	if own.len > 0 || isnil(t.tc) {
+		return own
+	}
+	return t.tc.resolved_call_name(call_id) or { '' }
+}
+
+// keep_selected_receiver_alias gives a receiver snapshotted before a later `if`/`match` argument
+// the receiver type of `selected` (`direct_receiver_method`), where that type is an alias of the
+// snapshot's storage type to the end of both alias chains. The snapshot is declared with the
+// alias-normalized type and the re-dispatched call resolves its method from the snapshot, so a
+// method on a pointer alias (`type Handle = &Foo`, `fn (h Handle) put()`) was not found on `&Foo`:
+// `Foo__put`, a link error, or `Foo.put` when Foo declares one too. Following the method the
+// direct call selects, and nothing else, keeps the snapshotted call dispatching where it would
+// have without the snapshot.
+fn (mut t Transformer) keep_selected_receiver_alias(snapshot flat.NodeId, selected string) {
+	if !t.is_ordering_snapshot_temp(snapshot) || !selected.contains('.') {
+		return
+	}
+	receiver := flat.source_type_id(selected.all_before_last('.'))
+	name := t.a.nodes[int(snapshot)].value
+	storage := t.raw_var_type(name)
+	if receiver == 0 || storage == 0 || receiver == storage
+		|| t.normalize_type_alias_chain(receiver) != t.normalize_type_alias_chain(storage) {
+		return
+	}
+	t.set_var_type_with_raw(name, storage, receiver)
+}
+
 @[direct_array_access]
 fn (mut t Transformer) transform_call_expr_inner(id flat.NodeId, node flat.Node) flat.NodeId {
 	if node.value.len > 0 && node.value == '__v_compile_warn' {
@@ -23634,6 +23667,7 @@ fn (mut t Transformer) transform_call_expr_inner(id flat.NodeId, node flat.Node)
 					// read in source order — a later branch prelude that mutates its container
 					// (e.g. `items[next()].read(match ... { mutate(mut items)! } ...)`) cannot
 					// then change the observed receiver value.
+					selected := t.direct_receiver_method(id, recv_id, recv_fn.value)
 					r := if t.method_receiver_is_reference(id, recv_id, recv_fn.value) {
 						if stabilized := t.stabilize_original_lvalue_receiver(recv_id) {
 							stabilized
@@ -23643,6 +23677,7 @@ fn (mut t Transformer) transform_call_expr_inner(id flat.NodeId, node flat.Node)
 					} else {
 						t.snapshot_expr_for_reuse(recv_id)
 					}
+					t.keep_selected_receiver_alias(r, selected)
 					if r != recv_id {
 						changed = true
 					}
