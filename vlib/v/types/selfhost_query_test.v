@@ -7,37 +7,41 @@ import v.pref
 import v.token
 
 fn test_void_pointer_queries_preserve_nominal_and_alias_compatibility() {
+	void_type := new_type_reference(Type(void_))
+	integer_type := new_type_reference(Type(int_))
+	void_pointer := new_type_reference(Type(Pointer{ base_type: void_type }))
 	void_name := flat.source_type_void
 	voidptr_name := flat.source_type_voidptr
-	for typ in [Type(Pointer{ base_type: void_ }),
-		Type(Alias{ name_id: flat.source_type_id('PointerAlias'), base_type: Pointer{ base_type: void_ } }),
+	for typ in [Type(Pointer{ base_type: void_type }),
+		Type(Alias{ name_id: flat.source_type_id('PointerAlias'), base_type: void_pointer }),
 		Type(Struct{ name_id: voidptr_name }),
-		Type(Alias{ name_id: flat.source_type_id('&void'), base_type: int_ }),
-		Type(Pointer{ base_type: Struct{ name_id: void_name } }),
-		Type(Pointer{ base_type: Alias{ name_id: void_name, base_type: int_ } }),
-		Type(Pointer{ base_type: Alias{ name_id: flat.source_type_id('VoidAlias'), base_type: void_ } })] {
+		Type(Alias{ name_id: flat.source_type_id('&void'), base_type: integer_type }),
+		Type(Pointer{ base_type: new_type_reference(Type(Struct{ name_id: void_name })) }),
+		Type(Pointer{ base_type: new_type_reference(Type(Alias{ name_id: void_name, base_type: integer_type })) }),
+		Type(Pointer{ base_type: new_type_reference(Type(Alias{ name_id: flat.source_type_id('VoidAlias'), base_type: void_type })) })] {
 		assert fn_param_is_voidptr_type(typ), typ.name()
 	}
-	for typ in [Type(int_), Type(string_), Type(void_), Type(Pointer{ base_type: int_ }),
-		Type(Pointer{ base_type: Pointer{ base_type: void_ } }),
-		Type(Pointer{ base_type: Alias{ name_id: voidptr_name, base_type: int_ } }),
-		Type(Array{ elem_type: Pointer{ base_type: void_ } }),
-		Type(FnType{ params: [Type(Pointer{ base_type: void_ })], return_type: void_ }),
-		Type(OptionType{ base_type: Pointer{ base_type: void_ } })] {
+	for typ in [Type(int_), Type(string_), Type(void_), Type(Pointer{ base_type: integer_type }),
+		Type(Pointer{ base_type: void_pointer }),
+		Type(Pointer{ base_type: new_type_reference(Type(Alias{ name_id: voidptr_name, base_type: integer_type })) }),
+		Type(Array{ elem_type: void_pointer }),
+		Type(FnType{ params: [FnParam{ typ: void_pointer }], return_type: void_type }),
+		Type(OptionType{ base_type: void_pointer })] {
 		assert !fn_param_is_voidptr_type(typ), typ.name()
 	}
 }
 
 fn test_integer_argument_queries_keep_named_leaves_and_reject_containers() {
+	integer_type := new_type_reference(Type(int_))
 	for typ in [Type(int_), Type(i64_), Type(u128_), Type(isize_), Type(rune_), Type(Primitive{}),
 		Type(Primitive{ props: .unsigned, size: 16 }),
-		Type(Alias{ name_id: flat.source_type_id('Count'), base_type: int_ }),
+		Type(Alias{ name_id: flat.source_type_id('Count'), base_type: integer_type }),
 		Type(Struct{ name_id: flat.source_type_int }), Type(Enum{ name_id: flat.source_type_u8 })] {
 		assert call_arg_integer_type(typ), typ.name()
 	}
 	for typ in [Type(bool_), Type(f64_), Type(string_), Type(char_), Type(void_),
-		Type(Pointer{ base_type: int_ }), Type(Array{ elem_type: int_ }),
-		Type(FnType{ params: [Type(int_)], return_type: int_ }),
+		Type(Pointer{ base_type: integer_type }), Type(Array{ elem_type: integer_type }),
+		Type(FnType{ params: [FnParam{ typ: integer_type }], return_type: integer_type }),
 		Type(Struct{ name_id: flat.source_type_id('Count') })] {
 		assert !call_arg_integer_type(typ), typ.name()
 	}

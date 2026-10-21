@@ -201,7 +201,10 @@ pub fn fxx_to_str_l_parse(s string) string {
 
 	res[r_i] = 0
 	tmp_res := unsafe { tos(res.data, r_i).clone() }
-	unsafe { res.free() }
+	unsafe {
+		res.flags |= .noslices
+		res.free()
+	}
 	return tmp_res
 }
 
@@ -338,6 +341,9 @@ pub fn fxx_to_str_l_parse_with_dot(s string) string {
 
 	res[r_i] = 0
 	tmp_res := unsafe { tos(res.data, r_i).clone() }
-	unsafe { res.free() }
+	unsafe {
+		res.flags |= .noslices
+		res.free()
+	}
 	return tmp_res
 }

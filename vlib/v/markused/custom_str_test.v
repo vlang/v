@@ -417,8 +417,8 @@ fn test_imported_operator_infix_lowers_after_used_filter_transform() {
 	tc.annotate_types()
 	mut g := cgen.FlatGen.new()
 	c_code := g.gen_with_used_options(a, used, tc, true)
-	assert c_code.contains('vectors__Vec__plus(')
-	assert c_code.contains('vectors__Vec__lt(')
+	assert c_code.contains('__v3_internal_symbol_op_vectors__Vec__plus(')
+	assert c_code.contains('__v3_internal_symbol_op_vectors__Vec__lt(')
 }
 
 // test_optional_struct_zero_lowers_to_imported_default_after_used_filter_transform

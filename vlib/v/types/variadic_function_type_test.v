@@ -45,7 +45,7 @@ fn test_variadic_function_type_metadata_survives_generic_substitution() {
 fn test_named_function_value_type_keeps_variadic_signature() {
 	a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
-	tc.fn_param_types['callback'] = [Type(int_), Type(Array{ elem_type: Type(string_) })]
+	tc.fn_param_types['callback'] = [Type(int_), Type(Array{ elem_type: &Type(string_) })]
 	tc.fn_ret_types['callback'] = Type(int_)
 	tc.fn_variadic['callback'] = true
 	fn_type := tc.fn_type_from_key('callback') or { panic('missing callback type') }

@@ -13317,7 +13317,7 @@ fn inspect(node &Node, data voidptr) {
 
 fn main() {
 	item := &Item{}
-	inspect(item, unsafe { nil })
+	inspect(Node(*item), unsafe { nil })
 }
 ')
 	assert out == 'true\ntrue'

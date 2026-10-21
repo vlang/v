@@ -1,7 +1,8 @@
 // A `mut` value that is not an option can be passed to a `mut a ?T` parameter. Like
 // V 0.5.2, the callee gets it in a temporary option: assigning `none` or a new value to
-// the parameter only replaces the temporary. A struct payload refers to the caller's
-// value, so the callee's changes to its fields reach the caller; other payloads are copies.
+// the parameter only replaces the temporary. The temporary refers to the caller's value,
+// so the callee's changes through it reach the caller (see
+// option_mut_param_by_reference_test.v).
 struct Point {
 mut:
 	x int
@@ -181,7 +182,7 @@ fn test_struct_alias_and_reference_payloads() {
 	assert pt.x == 3
 }
 
-fn test_value_payloads_are_copies() {
+fn test_value_payloads_are_not_replaced() {
 	mut arr := [1, 2, 3]
 	assert sum_ints(mut arr) == 6
 	assert clear_ints(mut arr)

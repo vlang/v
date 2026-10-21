@@ -17,3 +17,6 @@ Set `Parser.keep_source_texts` to keep parsed text in `FlatAst.source_texts`, ke
 after parser buffers are released. The checker can index import lines from these snapshots.
 The compiler driver preloads module-validation reads only when the module cache is disabled;
 cache-enabled builds retain disk reads so parsing and cache signatures use the existing flow.
+
+Bare builtin compile-time flags, such as `$if windows`, retain their compile-time meaning
+even when a local variable has the same name. This applies to `$if` statements and expressions.

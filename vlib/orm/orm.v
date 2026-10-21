@@ -227,11 +227,12 @@ pub mut:
 	batch_key   string
 }
 
+// InfixType describes an arithmetic SQL expression whose right operand is referenced.
 pub struct InfixType {
 pub:
 	name     string
 	operator MathOperationKind
-	right    Primitive
+	right    &Primitive
 }
 
 pub struct Table {

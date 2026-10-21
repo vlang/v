@@ -2394,10 +2394,8 @@ fn main() {
 	assert c_code.contains('new_map(sizeof(string), sizeof(i64)')
 }
 
-// test_optional_map_or_stages_zeroed_map_after_used_filter_transform
-// validates this v3 regression case.
-fn test_optional_map_or_stages_zeroed_map_after_used_filter_transform() {
-	mut a, mut tc := parse_checked_source('option_map_or_new_map_cgen', '
+fn test_optional_map_unwrap_does_not_construct_fallback_storage() {
+	mut a, mut tc := parse_checked_source('option_map_unwrap_no_default_allocation', '
 fn maybe_map() ?map[string]int {
 	return none
 }
@@ -2408,16 +2406,16 @@ fn main() {
 }
 ')
 	mut used := markused.mark_used(a, tc)
-	assert used['new_map']
 	used = transform.transform_with_used(mut a, tc, used)
 	tc.diagnose_unknown_calls = false
 	tc.reject_unlowered_map_mutation = true
 	tc.annotate_types()
 	mut g := cgen.FlatGen.new()
 	c_code := g.gen_with_used_options(a, used, tc, true)
-	// The staged map value is zeroed instead of allocated.
-	assert c_code.contains('\tmap __or_val_'), c_code
-	assert c_code.all_after('\tmap __or_val_').all_before('\n').ends_with(' = {0};'), c_code
+	body := c_code.all_after('int main(').all_before('\n}')
+	assert body.contains('.ok')
+	assert body.contains('.value')
+	assert !body.contains('new_map(')
 }
 
 // test_string_compound_assign_lowers_to_plus_after_used_filter_transform

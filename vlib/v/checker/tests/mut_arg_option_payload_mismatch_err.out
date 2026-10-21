@@ -1,0 +1,21 @@
+vlib/v/checker/tests/mut_arg_option_payload_mismatch_err.vv:31:11: error: cannot use `&?[2]int` as `&?&[]int` in argument 1 to `fill`
+   29 | fn main() {
+   30 |     mut pair := ?[2]int([1, 2]!)
+   31 |     fill(mut pair)
+      |              ~~~~
+   32 |     mut item := ?Item(Item{'a'})
+   33 |     fill_named(mut item)
+vlib/v/checker/tests/mut_arg_option_payload_mismatch_err.vv:33:17: error: cannot use `&?Item` as `&?&Named` in argument 1 to `fill_named`
+   31 |     fill(mut pair)
+   32 |     mut item := ?Item(Item{'a'})
+   33 |     fill_named(mut item)
+      |                    ~~~~
+   34 |     mut items := ?[]Item([Item{'a'}])
+   35 |     fill_names(mut items)
+vlib/v/checker/tests/mut_arg_option_payload_mismatch_err.vv:35:17: error: cannot use `&?[]Item` as `&?&[]Named` in argument 1 to `fill_names`
+   33 |     fill_named(mut item)
+   34 |     mut items := ?[]Item([Item{'a'}])
+   35 |     fill_names(mut items)
+      |                    ~~~~~
+   36 |     // Payloads stored the same way are accepted.
+   37 |     mut ints := ?Ints([1])

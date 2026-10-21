@@ -77,7 +77,7 @@ pub fn (tc &TypeChecker) type_by_id(id TypeId) ?Type {
 	if u32(id) >= u32(interner.types.len) {
 		return none
 	}
-	return interner.types[int(id)]
+	return *interner.types[int(id)]
 }
 
 // type_name_by_id returns the source spelling ID of an interned semantic type.

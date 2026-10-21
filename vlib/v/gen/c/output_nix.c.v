@@ -2,6 +2,8 @@ module c
 
 import os
 
+#include <sys/uio.h>
+
 fn write_c_output_sequential(mut file os.File, prefix []u8, segments []string, tail string, separator string) ! {
 	if prefix.len > 0 {
 		unsafe { file.write_full_buffer(prefix.data, usize(prefix.len))! }
@@ -107,4 +109,4 @@ mut:
 	iov_len  usize
 }
 
-fn C.writev(fd int, iov &C.iovec, iovcnt int) isize
+fn C.writev(fd int, const_iov &C.iovec, iovcnt int) isize
