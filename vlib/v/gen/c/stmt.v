@@ -6260,6 +6260,11 @@ fn (g &FlatGen) local_fn_call_return_type(call_id flat.NodeId, call_node flat.No
 		}
 	}
 	if name := g.tc.resolved_call_name(call_id) {
+		if name.starts_with('C.') {
+			if ret := g.module_c_fn_return_type(name) {
+				return ret
+			}
+		}
 		if !name.contains('.') {
 			if ret := g.fn_decl_return_type_in_current_module(name) {
 				return ret
@@ -6549,18 +6554,17 @@ fn (g &FlatGen) selector_call_return_type(fn_node flat.Node) ?types.Type {
 }
 
 fn (g &FlatGen) module_c_fn_return_type(name string) ?types.Type {
-	is_c := name.starts_with('C.')
+	if name.starts_with('C.') {
+		module_name := g.tc.visible_c_fn_module(name) or { return none }
+		return module_keyed_type(g.tc.c_fn_module_ret_types, module_name, '', name)
+	}
 	// Most calls do not name a module C function; probe that table first.
-	ret := module_keyed_type(g.tc.c_fn_module_ret_types, g.tc.cur_module, if is_c {
-		''
-	} else {
-		'C.'
-	}, name) or { return none }
-	if !is_c {
-		// A bare `getenv()` inside `os` calls os.getenv, not the same-named C.getenv.
-		if _ := g.fn_decl_return_type_in_current_module(name) {
-			return none
-		}
+	ret := module_keyed_type(g.tc.c_fn_module_ret_types, g.tc.cur_module, 'C.', name) or {
+		return none
+	}
+	// A bare `getenv()` inside `os` calls os.getenv, not the same-named C.getenv.
+	if _ := g.fn_decl_return_type_in_current_module(name) {
+		return none
 	}
 	return ret
 }

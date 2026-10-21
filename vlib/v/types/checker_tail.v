@@ -11425,20 +11425,23 @@ fn c_fn_module_signature_key(module_name string, fn_name string) string {
 	return '${module_name}\x01${fn_name}'
 }
 
-fn (tc &TypeChecker) visible_c_fn_module(name string) ?string {
+// visible_c_fn_module finds the declaration used for a C call in the current file.
+pub fn (tc &TypeChecker) visible_c_fn_module(name string) ?string {
 	if c_fn_module_signature_key(tc.cur_module, name) in tc.c_fn_module_ret_types {
 		return tc.cur_module
 	}
 	info := tc.current_file_import_info()
-	if isnil(info) {
-		return none
-	}
-	for _, module_path in info.imports {
-		for module_name in [module_path, module_path.all_after_last('.')] {
-			if c_fn_module_signature_key(module_name, name) in tc.c_fn_module_ret_types {
-				return module_name
+	if !isnil(info) {
+		for _, module_path in info.imports {
+			for module_name in [module_path, module_path.all_after_last('.')] {
+				if c_fn_module_signature_key(module_name, name) in tc.c_fn_module_ret_types {
+					return module_name
+				}
 			}
 		}
+	}
+	if c_fn_module_signature_key('builtin', name) in tc.c_fn_module_ret_types {
+		return 'builtin'
 	}
 	return none
 }
