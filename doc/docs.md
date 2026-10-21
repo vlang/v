@@ -11116,6 +11116,8 @@ C identifiers are accessed with the `C` prefix similarly to how module-specific
 identifiers are accessed. Functions must be redeclared in V before they can be used.
 Any C types may be used behind the `C` prefix, but types must be redeclared in V in
 order to access type members.
+An unreferenced `struct C.Name` declaration does not emit a C struct definition. Include its owning
+C header when using a header-defined struct.
 
 To redeclare complex types, such as in the following C code:
 

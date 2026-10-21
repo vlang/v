@@ -7616,8 +7616,10 @@ fn (mut g FlatGen) type_forward_decls() {
 	g.writeln('')
 }
 
-fn (g &FlatGen) c_struct_decl_names() []string {
+fn (mut g FlatGen) c_struct_decl_names() []string {
 	mut names := g.tc.structs.keys()
+	referenced := g.referenced_c_structs()
+	names = names.filter(!it.starts_with('C.') || referenced[flat.source_type_id(it)])
 	if g.cache_decl_demand {
 		names = names.filter(g.cache_struct_declaration_needed(it))
 	}
@@ -7626,6 +7628,86 @@ fn (g &FlatGen) c_struct_decl_names() []string {
 	}
 	names.sort()
 	return names
+}
+
+// referenced_c_structs keeps native layouts that occur in emitted declarations or
+// checked expressions. A C binding's own declaration does not make it used.
+fn (mut g FlatGen) referenced_c_structs() map[u32]bool {
+	mut seen := map[u32]bool{}
+	for name, fields in g.tc.structs {
+		if !name.starts_with('C.') {
+			for field in fields {
+				g.collect_c_struct_type_refs(field.typ, mut seen)
+			}
+		}
+	}
+	for _, typ in g.global_types {
+		g.collect_c_struct_type_refs(typ, mut seen)
+	}
+	for _, typ in g.tc.fn_ret_types {
+		g.collect_c_struct_type_refs(typ, mut seen)
+	}
+	for _, params in g.tc.fn_param_types {
+		for typ in params {
+			g.collect_c_struct_type_refs(typ, mut seen)
+		}
+	}
+	for name in g.tc.sum_types.keys() {
+		for variant in g.tc.sum_types.type_ids(name) or { []u32{} } {
+			g.collect_c_struct_type_refs(g.tc.parse_type(variant), mut seen)
+		}
+	}
+	for _, fields in g.tc.interface_fields {
+		for field in fields {
+			g.collect_c_struct_type_refs(field.typ, mut seen)
+		}
+	}
+	for i, present in g.tc.expr_type_set {
+		if present && i < g.tc.expr_type_values.len {
+			g.collect_c_struct_type_refs(*g.tc.expr_type_values[i], mut seen)
+		}
+	}
+	for _, typ in g.tc.sparse_expr_type_values {
+		g.collect_c_struct_type_refs(typ, mut seen)
+	}
+	return seen
+}
+
+fn (g &FlatGen) collect_c_struct_type_refs(typ types.Type, mut seen map[u32]bool) {
+	key := typ.source_type_id()
+	if seen[key] {
+		return
+	}
+	seen[key] = true
+	match typ {
+		types.Struct {
+			for field in g.tc.structs[typ.name()] or { []types.StructField{} } {
+				g.collect_c_struct_type_refs(field.typ, mut seen)
+			}
+		}
+		types.Pointer, types.OptionType, types.ResultType, types.Alias {
+			g.collect_c_struct_type_refs(typ.base_type, mut seen)
+		}
+		types.Array, types.ArrayFixed, types.Channel {
+			g.collect_c_struct_type_refs(typ.elem_type, mut seen)
+		}
+		types.Map {
+			g.collect_c_struct_type_refs(typ.key_type, mut seen)
+			g.collect_c_struct_type_refs(typ.value_type, mut seen)
+		}
+		types.FnType {
+			g.collect_c_struct_type_refs(typ.return_type, mut seen)
+			for param in typ.params {
+				g.collect_c_struct_type_refs(param.typ, mut seen)
+			}
+		}
+		types.MultiReturn {
+			for item in typ.types {
+				g.collect_c_struct_type_refs(item, mut seen)
+			}
+		}
+		else {}
+	}
 }
 
 fn (g &FlatGen) c_sum_decl_names() []string {
