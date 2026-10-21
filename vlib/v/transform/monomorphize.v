@@ -10510,6 +10510,12 @@ fn (t &Transformer) qualify_generic_arg_for_decl_module(arg_id u32, module_name 
 	if t.generic_arg_module_owns_type(clean, module_name) {
 		return flat.source_type_id('${module_name}.${clean}')
 	}
+	// Main declarations keep their bare spelling. A suffix-indexed imported
+	// homonym must not replace a concrete argument of a main generic field.
+	if module_name == t.cur_module && (t.bare_struct_name_is_local_to_current_module(clean_id)
+		|| t.bare_sum_type_name_is_local_to_current_module(clean_id)) {
+		return clean_id
+	}
 	if qualified_source_id := t.qualified_types.type_id(clean) {
 		return qualified_source_id
 	}
