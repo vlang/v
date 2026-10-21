@@ -1,6 +1,4 @@
-// Brotli compression and decompression implemented in V. Compression may use
-// the system Brotli encoder for large inputs when available, with a V fallback.
-// Decompression uses the V decoder.
+// Brotli compression and decompression implemented in V.
 module brotli
 
 import hash.huffman
@@ -10,7 +8,6 @@ const trivial_block_size = 65536
 const brotli_dictionary_data = $embed_file('dictionary.bin').to_bytes()
 
 const code_length_code_order = [1, 2, 3, 4, 0, 5, 17, 6, 16, 7, 8, 9, 10, 11, 12, 13, 14, 15]
-const cl_order = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15]
 
 // CompressParams controls Brotli compression.
 @[params]
