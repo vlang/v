@@ -6375,6 +6375,10 @@ fn main() {
 }
 ```
 
+A `shared` parameter already passes a reference to the synchronized storage.
+Declare it as `shared m map[K]V` and pass `shared m`. Explicit address arguments such
+as `shared &m` are unsupported; remove `&` from both the parameter type and the argument.
+
 Statements that change the map (`m[k] = v`, `m[k] += v`, `m[k]++`, `m[k] << v`,
 `m.delete(k)` and `m.clear()`) take a `lock`. The whole statement runs with the map
 locked, so `m[k] = m[k] * 2` is atomic too. Reads (`m[k]`, `m[k] or { ... }`, `k in m`,
