@@ -31,6 +31,15 @@ Compare on the same machine and architecture. Keep compiler build options identi
 changing the build recipe is the optimization being evaluated; record that change. Record elapsed
 time, CPU cycles, and peak resident memory too. Fewer instructions do not guarantee lower latency.
 
+Retired instructions are counted for the measured process. Other processes do not contribute
+their instructions, so an idle host is not required. These are dynamic execution counts: locks,
+retries, and other runtime paths can still introduce variation. Use `VJOBS=1` and repeated pairs
+to assess consistency. Record competing work as context for elapsed time and cycles; collect
+latency claims separately under controlled load. Apple documents the per-thread and per-task
+accounting in [XNU Recount][recount].
+
+[recount]: https://github.com/apple-oss-distributions/xnu/blob/main/doc/observability/recount.md
+
 The workload compiles the full `cmd/v` compiler through C generation, matching the V stages of
 `v self`. It excludes the external C compiler, linker, replacement of `./v`, and execution of
 the resulting compiler. It includes parsing, checking, transforms, and C generation. Use one
@@ -85,8 +94,10 @@ worker for the instruction comparison; validate default parallelism separately.
    `V_MACOS_V3_NO_FALLBACK=1` prevents silent fallback to the legacy compiler.
    Reuse one output C path across all paired runs and keep distinct timing/stdout/stderr logs.
 5. Run one warmup per role, then ten measured pairs, alternating AB, BA, AB, BA, and so on.
-   Run only one benchmark at a time, without concurrent builds or tests. Keep native support
+   Run only one benchmark at a time. Do not wait for an idle host or pause unrelated work.
+   Other builds and tests do not invalidate process instruction counts. Keep native support
    objects warm for both roles and record that state. Disable tracing and profiling.
+   Label elapsed time and cycles collected under uncontrolled load as contextual measurements.
 6. Require exit status zero and exactly one positive `instructions retired` counter per sample.
    Preserve failed samples but do not count them as a completed comparison. If hardware counters
    are missing or zero, report them as unavailable; do not substitute elapsed time.
@@ -101,19 +112,46 @@ worker for the instruction comparison; validate default parallelism separately.
 On another platform, use an available hardware retired-instruction counter with the same scope
 and protocol; do not compare its absolute counts with this machine's results.
 
-## Benchmark acceptance status
+## Current self-compilation fixture
 
-**No accepted regression baseline is recorded yet.** The earlier measurements below ran alongside
-unrelated compilations and do not meet the required quiet-host protocol. They are retained as
-rejected observations for audit purposes, not as evidence that the 10% target has been met.
-Both paired modes must be rerun without concurrent builds or tests before accepting a baseline.
+New comparisons use a detached checkout of merged master
+`2d1367e589ed30c03325e586a8ddfd3bc96c8c3d`, including its standard library.
+It contains **559,990 parsed physical lines in 562 `.v` files**, with no `.vh` files.
+The 90,000 instructions/line target is **50,399,100,000 instructions** for this fixture.
+Keep this source and denominator fixed across baseline and candidate runs.
 
-A guarded attempt on 2026-10-21 waited 120 seconds for a quiet window and still observed 31
-compiler or test processes. It started no warmups or measured runs. The attempt and process
-records are retained in `/Users/alex/code/v3-self-speed-artifacts/quiet-20261021-attempt1.log`
-and `quiet-20261021-attempt1-guard.json`. A quiet host is required to complete this validation.
+The older 257b fixture below is incompatible with the merged compiler's sum-type representation:
+it emits incomplete recursive C union fields for its old compiler types. A C-file hash match
+alone did not catch this. The new fixture's generated C passes Clang syntax checking. Validate
+generated C when changing the fixture or compiler representation; do not accept counts for an
+invalid output. This establishes a new baseline; do not compare normalized scores across fixtures.
 
-### Rejected observations from the shared host
+An exploratory three-pair run measured 105,611.36 instructions/line for merged master and
+105,762.28 for local-storage lookup guards. Generated C matched in every run. The guards showed
+no convincing gain and are excluded from the optimization. Three pairs do not establish a small
+regression or a completed ten-pair comparison. Logs remain under
+`/Users/alex/code/v3-self-90k-artifacts/guard-probe*`.
+
+The new fixture is `/Users/alex/code/v3-self-90k-fixture`. Its 8,498-file source manifest
+uses the encoding described below and has SHA-256:
+`f53a9b162657ba667fde1d8a00cd6f59c0f7e6c7f847985894d61189122a2966`.
+Its source inventory, syntax-check logs, build logs, binaries, and instruction samples remain in
+`/Users/alex/code/v3-self-90k-artifacts/`.
+
+## Historical measurement status
+
+The PGO comparison below records process instruction counts under shared-host load on the old
+fixture. The earlier quiet-host gate was too strict: unrelated compilations do not invalidate
+these instruction measurements. All ten paired differences favored PGO in each mode, with
+matching source inventories and generated C. Elapsed times and cycles reflect uncontrolled
+host load and do not establish a latency improvement. These results describe the older compiler
+and fixture, not the current self-compilation baseline.
+
+The 2026-10-21 attempt that waited 120 seconds for an idle host started no measurements.
+Its logs remain in `/Users/alex/code/v3-self-speed-artifacts/quiet-20261021-attempt1.log`
+and `quiet-20261021-attempt1-guard.json`; an idle host is no longer an acceptance requirement.
+
+### Historical PGO instruction comparison
 
 Measured on 2026-10-20. Baseline: merged master
 `257b514a303f4d302ed23bbac1d51a2ca9624a66`. Candidate: that commit with the Clang production
@@ -129,8 +167,8 @@ default workers and `VJOBS=1`, merged the profiles, and rebuilt with `-fprofile-
 contains no profiling instrumentation. This comparison evaluates the resulting compiler's execution,
 not the cost of producing it.
 
-The rejected session observed 16.87% fewer instructions with one worker and 16.40% fewer with
-default workers. These percentages are not accepted performance claims under the protocol.
+The session measured 16.87% fewer instructions with one worker and 16.40% fewer with default
+workers. These are instruction-count reductions, not elapsed-time improvement claims.
 All 44 runs, including warmups, exited successfully and generated byte-identical C.
 The fixed input contains **560,382 parsed physical lines in 555 `.v` files**, with no `.vh` files.
 The baseline and candidate report the same source closure and line count. Normalizing the retained
@@ -150,15 +188,17 @@ Median paired instruction differences, candidate minus baseline:
 Instruction regressions: **0/10 pairs** in each mode, for both total instructions and
 instructions per source line.
 
-Process snapshots recorded unrelated compilations elsewhere on the shared host. The absence of
-builds or tests from this task did not satisfy the requirement to measure without any concurrent
-builds or tests. Neither the instruction reductions nor the elapsed times from this session
-establish an accepted baseline. Preserve the raw data and replace this record with quiet-host
-measurements before making performance or regression claims.
+Process snapshots recorded unrelated compilations elsewhere on the shared host. Retain them
+as context for the elapsed-time and cycle measurements. Compare subsequent compiler changes
+against a freshly built baseline in the same measurement session, preserving the fixed fixture
+and all raw data.
 
 ### Production self-build behavior
 
 On non-Windows hosts, `./v -prod -cc clang self` uses PGO when `llvm-profdata` is available.
+The profile merger is searched in Clang's reported installation directory, then beside its
+resolved executable, then in `PATH` and through `xcrun` on macOS. This avoids a fallback when
+a different LLVM release cannot read the selected compiler's raw profile format.
 This spends more time building the production compiler: two C compilations plus training, rather
 than one C compilation. Ordinary `./v self` keeps its existing build path. Explicit `-parallel-cc`,
 `-no-prod-options`, explicit `-cflags` profile options, unavailable profiling tools, and other C

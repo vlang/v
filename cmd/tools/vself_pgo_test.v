@@ -90,6 +90,39 @@ done
 	assert os.ls(root)!.filter(it.starts_with('.vself_pgo_')).len == 0
 	assert os.read_file(caller_profile)! == 'caller profile'
 
+	// An LLVM utility in PATH can belong to an older, incompatible compiler.
+	// Both an explicit compiler path and its symlink must select the sibling tool.
+	compiler_dir := os.join_path(root, 'compiler')
+	os.mkdir(compiler_dir)!
+	os.cp(os.join_path(root, 'bin', 'clang'), os.join_path(compiler_dir, 'clang'))!
+	os.chmod(os.join_path(compiler_dir, 'clang'), 0o755)!
+	os.mv(os.join_path(root, 'bin', 'llvm-profdata'), os.join_path(compiler_dir, 'llvm-profdata'))!
+	os.write_file(os.join_path(root, 'bin', 'llvm-profdata'), '#!/bin/sh\nexit 55\n')!
+	os.chmod(os.join_path(root, 'bin', 'llvm-profdata'), 0o755)!
+	compiler_link := os.join_path(root, 'bin', 'clang-linked')
+	os.symlink(os.join_path(compiler_dir, 'clang'), compiler_link)!
+	compiler_launcher := os.join_path(root, 'bin', 'clang-launcher')
+	os.write_file(compiler_launcher, '#!/bin/sh\nprintf "%s\\n" "clang version mock" ' +
+		os.quoted_path('InstalledDir: ${compiler_dir}') + '\n')!
+	os.chmod(compiler_launcher, 0o755)!
+	for compiler in [os.join_path(compiler_dir, 'clang'), compiler_link, compiler_launcher] {
+		os.write_file(os.join_path(root, 'calls'), '')!
+		selected := pgo_test_run(root, tool, ['-cc', compiler], false, '2', '')
+		assert selected.exit_code == 0, selected.output
+		assert !selected.output.contains('falling back'), selected.output
+		selected_calls := os.read_file(os.join_path(root, 'calls'))!.split_into_lines()
+		assert selected_calls.filter(it.starts_with('MERGE ')).len == 1, selected_calls.join('\n')
+		assert selected_calls.filter(it.starts_with('BUILD ')).len == 2, selected_calls.join('\n')
+	}
+	os.rm(os.join_path(root, 'bin', 'llvm-profdata'))!
+	os.mv(os.join_path(compiler_dir, 'llvm-profdata'), os.join_path(root, 'bin', 'llvm-profdata'))!
+	// A compiler without a sibling utility retains the PATH fallback.
+	os.write_file(os.join_path(root, 'calls'), '')!
+	path_fallback := pgo_test_run(root, tool, ['-cc', os.join_path(compiler_dir, 'clang')],
+		false, '2', '')
+	assert path_fallback.exit_code == 0, path_fallback.output
+	assert !path_fallback.output.contains('falling back'), path_fallback.output
+
 	for extra in [['-parallel-cc'], ['-no-prod-options'], ['-cflags', '-fprofile-use=external']] {
 		os.write_file(os.join_path(root, 'calls'), '')!
 		plain := pgo_test_run(root, tool, extra, false, '2', '')

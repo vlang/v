@@ -456,6 +456,30 @@ fn pgo_compiler_kind(args []string) string {
 	if has_profile_cflag(args) {
 		return ''
 	}
+	ccompiler := self_build_c_compiler(args)
+	cc_file_name := os.file_name(ccompiler)
+	if cc_file_name.contains('clang') || cc_file_name.contains('gcc')
+		|| cc_file_name.contains('g++') || ccompiler == 'cc' {
+		cc_ver := os.exec([ccompiler, '--version']).output
+		if cc_ver.contains('clang') {
+			_ := find_llvm_profdata(ccompiler) or { return '' }
+			return 'clang'
+		}
+		if cc_ver.contains('Free Software Foundation') || cc_ver.contains('GCC') {
+			return 'gcc'
+		}
+	}
+	if cc_file_name.contains('clang') {
+		_ := find_llvm_profdata(ccompiler) or { return '' }
+		return 'clang'
+	}
+	if cc_file_name.contains('gcc') || cc_file_name.contains('g++') {
+		return 'gcc'
+	}
+	return ''
+}
+
+fn self_build_c_compiler(args []string) string {
 	// Environment flags precede CLI flags; the driver uses the last -cc.
 	mut ccompiler := ''
 	mut i := 0
@@ -472,32 +496,28 @@ fn pgo_compiler_kind(args []string) string {
 			i++
 		}
 	}
-	if ccompiler == '' {
-		ccompiler = os.getenv_opt('CC') or { 'cc' }
-	}
-	cc_file_name := os.file_name(ccompiler)
-	if cc_file_name.contains('clang') || cc_file_name.contains('gcc')
-		|| cc_file_name.contains('g++') || ccompiler == 'cc' {
-		cc_ver := os.exec([ccompiler, '--version']).output
-		if cc_ver.contains('clang') {
-			_ := find_llvm_profdata() or { return '' }
-			return 'clang'
-		}
-		if cc_ver.contains('Free Software Foundation') || cc_ver.contains('GCC') {
-			return 'gcc'
-		}
-	}
-	if cc_file_name.contains('clang') {
-		_ := find_llvm_profdata() or { return '' }
-		return 'clang'
-	}
-	if cc_file_name.contains('gcc') || cc_file_name.contains('g++') {
-		return 'gcc'
-	}
-	return ''
+	return if ccompiler != '' { ccompiler } else { os.getenv_opt('CC') or { 'cc' } }
 }
 
-fn find_llvm_profdata() !string {
+fn find_llvm_profdata(ccompiler string) !string {
+	// Clang launchers such as /usr/bin/clang can report a different installation
+	// directory. Use that toolchain before looking beside the launcher itself.
+	for line in os.exec([ccompiler, '--version']).output.split_into_lines() {
+		if line.starts_with('InstalledDir:') {
+			profdata := os.join_path(line.all_after(':').trim_space(), 'llvm-profdata')
+			if os.is_file(profdata) && os.is_executable(profdata) {
+				return profdata
+			}
+		}
+	}
+	if compiler := os.find_abs_path_of_executable(ccompiler) {
+		// Different LLVM releases can use incompatible raw profile formats.
+		// Resolve symlinks so a compiler in PATH still finds its own toolchain.
+		profdata := os.join_path(os.dir(os.real_path(compiler)), 'llvm-profdata')
+		if os.is_file(profdata) && os.is_executable(profdata) {
+			return profdata
+		}
+	}
 	if profdata := os.find_abs_path_of_executable('llvm-profdata') {
 		return profdata
 	}
@@ -609,7 +629,7 @@ fn compile_with_pgo(vroot string, vexe string, args []string, out_binary string,
 	mut llvm_profdata := ''
 	mut profile_data := ''
 	if cc_kind == 'clang' {
-		llvm_profdata = find_llvm_profdata() or {
+		llvm_profdata = find_llvm_profdata(self_build_c_compiler(effective_self_build_args(args))) or {
 			eprintln('PGO disabled: can not find `llvm-profdata`.')
 			return false
 		}
