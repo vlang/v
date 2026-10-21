@@ -1015,6 +1015,8 @@ mut:
 	selective_import_key_cache     &util.KeyRecentCache = unsafe { nil }
 	needed_optional_types          flat.TypeTextBindings
 	optional_pointer_struct_tags   map[string]string
+	optional_payload_types         map[string]types.Type // C name -> struct or sum type, for option typedefs
+	optional_payload_types_from    int                   // the checker's struct and sum count it was built from
 	// cabi_int_out_args maps a C-call argument node to the C spelling to emit in its
 	// place (the address of a temporary C `int`), while a `&int` out-parameter is
 	// bridged by a temporary + copy-back around the wrapped call. Keyed by node id so
@@ -4993,6 +4995,8 @@ fn (g &FlatGen) new_collect_gen_info_view() FlatGen {
 	view.mut_recv_facts = &FnNameFactCache{}
 	view.local_global_shadow_facts = &ContextNameFactCache{}
 	view.generic_app_cache = &GenericAppCache{}
+	view.optional_payload_types = map[string]types.Type{}
+	view.optional_payload_types_from = 0
 	return view
 }
 
@@ -18516,9 +18520,13 @@ fn (mut g FlatGen) gen_typeof_name(node flat.Node) {
 				}
 				g.write('})[')
 				if is_pointer {
-					g.write('v3_sum_ptr_type_idx(')
+					// Read the tag through the sum's own type: it is an `int` or, for a
+					// union holding pointers, an `intptr_t` (see emit_sum_type).
+					sum_ct := g.value_c_type(types.Type(expr_type))
+					tmp := g.tmp_name()
+					g.write('({ ${sum_ct}* ${tmp} = (')
 					g.gen_expr(expr_id)
-					g.write(')]')
+					g.write('); ${tmp} == NULL ? 0 : (int)${tmp}->typ; })]')
 				} else {
 					g.write('(')
 					g.gen_expr(expr_id)
@@ -22850,7 +22858,6 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('#endif')
 	g.atomic_thread_fence_compat_decls()
 	g.heap_tracking_fallback_decls()
-	g.writeln('static inline int v3_sum_ptr_type_idx(const void* p) { return p == NULL ? 0 : *(const int*)p; }')
 	g.tinyc_atomic_libcall_decls()
 	g.prealloc_atomic_compat_decls()
 	g.atomic_builtin_compat_decls()
