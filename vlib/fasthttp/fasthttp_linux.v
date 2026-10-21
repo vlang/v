@@ -989,7 +989,7 @@ fn sweep_timeouts(mut w Worker) {
 	if w.server.timeout_in_seconds <= 0 || w.parked == 0 {
 		return
 	}
-	now := time.sys_mono_now()
+	now := i64(time.sys_mono_now())
 	if now - w.last_timeout_sweep_ns < i64(epoll_wait_timeout_ms) * time.millisecond {
 		return
 	}
