@@ -1906,7 +1906,11 @@ fn (mut t Transformer) make_map_get_expr(map_expr flat.NodeId, base_type_id u32,
 	// Shared values keep their identity so cgen takes the payload's address.
 	mut typed_map_addr := map_addr
 	if flat.source_type_shape(base_type_id).has(.pointer) && !t.expr_is_shared_value(map_addr) {
-		typed_map_addr = t.make_cast(base_type_id, map_addr, base_type_id)
+		// Generic bodies can retain the source value type on the operand. The
+		// pointer cast must read the same runtime address as its typed child.
+		addr_node := t.a.node(map_addr)
+		typed_addr := t.a.add_node(flat.Node{ ...addr_node, typ: base_type_id })
+		typed_map_addr = t.make_cast(base_type_id, typed_addr, base_type_id)
 	}
 	call := t.make_call_typed('map__get', [
 		typed_map_addr,
