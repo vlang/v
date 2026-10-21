@@ -39,3 +39,24 @@ vlib/v/checker/tests/sumtype_recursive_value_fields_err.vv:30:2: error: sum type
       |     ~~~~~
    31 | }
    32 |
+vlib/v/checker/tests/sumtype_recursive_value_fields_err.vv:41:2: error: sum type `CycleEntryNode` cannot be defined recursively: field `CycleEntryWrap.value` leads to the cycle; inline cycle: `CycleEntryNode -> CycleEntryWrap -> NestedCycleLeft -> NestedCycleRight -> NestedCycleLeft`; use `&NestedCycleLeft` or `[]NestedCycleLeft` to break the cycle
+   39 |
+   40 | struct CycleEntryWrap {
+   41 |     value NestedCycleLeft
+      |     ~~~~~
+   42 | }
+   43 |
+vlib/v/checker/tests/sumtype_recursive_value_fields_err.vv:46:24: error: sum type `NestedCycleLeft` cannot be defined recursively; inline cycle: `NestedCycleLeft -> NestedCycleRight -> NestedCycleLeft`; use `&NestedCycleLeft` or `[]NestedCycleLeft` to break the cycle
+   44 | type CycleEntryNode = CycleEntryWrap | bool
+   45 |
+   46 | type NestedCycleLeft = NestedCycleRight | int
+      |                        ~~~~~~~~~~~~~~~~
+   47 |
+   48 | type NestedCycleRight = NestedCycleLeft | string
+vlib/v/checker/tests/sumtype_recursive_value_fields_err.vv:48:25: error: sum type `NestedCycleRight` cannot be defined recursively; inline cycle: `NestedCycleRight -> NestedCycleLeft -> NestedCycleRight`; use `&NestedCycleRight` or `[]NestedCycleRight` to break the cycle
+   46 | type NestedCycleLeft = NestedCycleRight | int
+   47 |
+   48 | type NestedCycleRight = NestedCycleLeft | string
+      |                         ~~~~~~~~~~~~~~~
+   49 |
+   50 | fn main() {}

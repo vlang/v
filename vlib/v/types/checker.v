@@ -16155,9 +16155,14 @@ fn (mut tc TypeChecker) check_sum_type_decl(node_id flat.NodeId, node flat.Node)
 				mut message := 'sum type `${node.value}` cannot be defined recursively'
 				if path.fields.len > 0 {
 					first := path.fields[0]
-					fields := path.fields.map(it.name).join('.')
-					message += ': field `${flat.source_type_name(first.owner)}.${fields}` closes the cycle'
 					last := path.fields.last()
+					fields := path.fields.map(it.name).join('.')
+					relation := if path.types.len > 1 && path.types[path.types.len - 2] == last.owner {
+						'closes'
+					} else {
+						'leads to'
+					}
+					message += ': field `${flat.source_type_name(first.owner)}.${fields}` ${relation} the cycle'
 					if field_id := tc.value_layout_field_decl(last) {
 						pos = tc.node_value_diagnostic_pos(field_id)
 					}

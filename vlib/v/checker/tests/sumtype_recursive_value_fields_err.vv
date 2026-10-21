@@ -37,4 +37,14 @@ struct RightWrap {
 type LeftNode = LeftWrap | int
 type RightNode = RightWrap | string
 
+struct CycleEntryWrap {
+	value NestedCycleLeft
+}
+
+type CycleEntryNode = CycleEntryWrap | bool
+
+type NestedCycleLeft = NestedCycleRight | int
+
+type NestedCycleRight = NestedCycleLeft | string
+
 fn main() {}
