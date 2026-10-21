@@ -16147,6 +16147,7 @@ fn (mut tc TypeChecker) check_sum_type_decl(node_id flat.NodeId, node flat.Node)
 			}
 			mut path := ValueLayoutPath{ types: [flat.source_type_id(layout_name)] }
 			if target := tc.value_type_cycle(variant_type, mut states, mut path) {
+				mut diagnostic_id := variant_id
 				mut pos := if variant_name.starts_with('fn(') || variant_name.starts_with('fn (') {
 					tc.sum_type_variant_source_pos(node, variant_name)
 				} else {
@@ -16164,13 +16165,23 @@ fn (mut tc TypeChecker) check_sum_type_decl(node_id flat.NodeId, node flat.Node)
 					}
 					message += ': field `${flat.source_type_name(first.owner)}.${fields}` ${relation} the cycle'
 					if field_id := tc.value_layout_field_decl(last) {
+						diagnostic_id = field_id
 						pos = tc.node_value_diagnostic_pos(field_id)
 					}
 				}
 				cycle := path.types.map(flat.source_type_name(it)).join(' -> ')
 				name := flat.source_type_name(target)
 				message += '; inline cycle: `${cycle}`; use `&${name}` or `[]${name}` to break the cycle'
-				tc.record_error_at(.assignment_mismatch, message, variant_id, pos)
+				// Filter by the declaration while locating the diagnostic at the field.
+				if tc.should_diagnose(variant_id) {
+					base := tc.make_type_error_at(.assignment_mismatch, message, diagnostic_id, pos)
+					file := if source := tc.a.source_files[pos.id] {
+						source.name
+					} else {
+						base.file
+					}
+					tc.errors << TypeError{ ...base, file: file }
+				}
 			}
 		}
 	}

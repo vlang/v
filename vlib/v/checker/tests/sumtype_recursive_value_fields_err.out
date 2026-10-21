@@ -25,13 +25,6 @@ vlib/v/checker/tests/sumtype_recursive_value_fields_err.vv:24:2: error: sum type
       |     ~~~~
    25 | }
    26 |
-vlib/v/checker/tests/sumtype_recursive_value_fields_err.vv:34:2: error: sum type `LeftNode` cannot be defined recursively: field `LeftWrap.right.left` closes the cycle; inline cycle: `LeftNode -> LeftWrap -> RightNode -> RightWrap -> LeftNode`; use `&LeftNode` or `[]LeftNode` to break the cycle
-   32 |
-   33 | struct RightWrap {
-   34 |     left LeftNode
-      |     ~~~~
-   35 | }
-   36 |
 vlib/v/checker/tests/sumtype_recursive_value_fields_err.vv:30:2: error: sum type `RightNode` cannot be defined recursively: field `RightWrap.left.right` closes the cycle; inline cycle: `RightNode -> RightWrap -> LeftNode -> LeftWrap -> RightNode`; use `&RightNode` or `[]RightNode` to break the cycle
    28 |
    29 | struct LeftWrap {
@@ -39,6 +32,13 @@ vlib/v/checker/tests/sumtype_recursive_value_fields_err.vv:30:2: error: sum type
       |     ~~~~~
    31 | }
    32 |
+vlib/v/checker/tests/sumtype_recursive_value_fields_err.vv:34:2: error: sum type `LeftNode` cannot be defined recursively: field `LeftWrap.right.left` closes the cycle; inline cycle: `LeftNode -> LeftWrap -> RightNode -> RightWrap -> LeftNode`; use `&LeftNode` or `[]LeftNode` to break the cycle
+   32 |
+   33 | struct RightWrap {
+   34 |     left LeftNode
+      |     ~~~~
+   35 | }
+   36 |
 vlib/v/checker/tests/sumtype_recursive_value_fields_err.vv:41:2: error: sum type `CycleEntryNode` cannot be defined recursively: field `CycleEntryWrap.value` leads to the cycle; inline cycle: `CycleEntryNode -> CycleEntryWrap -> NestedCycleLeft -> NestedCycleRight -> NestedCycleLeft`; use `&NestedCycleLeft` or `[]NestedCycleLeft` to break the cycle
    39 |
    40 | struct CycleEntryWrap {
