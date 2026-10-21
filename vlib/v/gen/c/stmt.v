@@ -1128,6 +1128,9 @@ fn (g &FlatGen) ownership_free_call(ptr string) string {
 	if g.detached_spawn_drop {
 		return '__v_thread_free(${ptr});'
 	}
+	if 'vgc' in g.compile_defines {
+		return 'v_free(${ptr});'
+	}
 	if 'gcboehm' in g.compile_defines {
 		return 'v_gc_free(${ptr});'
 	}

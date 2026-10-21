@@ -285,6 +285,7 @@ fn map_map_eq(a map, b map) bool {
 	return true
 }
 
+// The map takes ownership of the cloned buffer through the copied string header.
 @[inline; manualfree]
 fn map_clone_string(dest voidptr, pkey voidptr) {
 	unsafe {

@@ -13325,6 +13325,11 @@ fn (mut t Transformer) append_owned_map_entries_drop_before_reset(map_expr flat.
 	t.set_var_type(key_name, t.map_key_storage_type(key_type_name_id))
 	t.set_var_type(value_name, value_type_name_id)
 	mut body := []flat.NodeId{}
+	value_ptr_name := t.new_temp('map_reset_value_ptr')
+	if value_requires_drop {
+		// Keep the slot address before dropping a key that the lookup still needs.
+		body << t.make_decl_assign_typed(value_ptr_name, t.make_map_get_check_expr(map_expr, map_type_id, key_name), flat.source_type_voidptr)
+	}
 	if key_requires_drop {
 		t.mark_fn_used('map__get_key_check')
 		key_ptr_name := t.new_temp('map_reset_key_ptr')
@@ -13333,25 +13338,22 @@ fn (mut t Transformer) append_owned_map_entries_drop_before_reset(map_expr flat.
 		stored_key := t.make_prefix(.mul, stored_key_ptr)
 		t.set_node_typ(int(stored_key), key_type_name_id)
 		body << t.make_expr_stmt(t.make_call_typed('drop_owned', [stored_key], flat.source_type_void))
-		if clean_key_type == 'string' {
-			body << t.make_expr_stmt(t.make_call_typed('drop_owned', [
-				t.make_ident(key_name),
-			], flat.source_type_void))
-		}
 	}
-	if value_requires_drop {
+	if clean_key_type == 'string' {
 		body << t.make_expr_stmt(t.make_call_typed('drop_owned', [
-			t.make_ident(value_name),
+			t.make_ident(key_name),
 		], flat.source_type_void))
 	}
-	start := t.a.children.len
-	if key_requires_drop {
-		t.a.children << t.make_ident(key_name)
-		t.a.children << t.make_ident(value_name)
-	} else {
-		t.a.children << t.make_ident(value_name)
-		t.a.children << flat.empty_node
+	if value_requires_drop {
+		value_type_name := flat.source_type_name(value_type_name_id)
+		stored_value_ptr := t.make_cast(flat.source_type_id('&${value_type_name}'), t.make_ident(value_ptr_name), flat.source_type_id('&${value_type_name}'))
+		stored_value := t.make_prefix(.mul, stored_value_ptr)
+		t.set_node_typ(int(stored_value), value_type_name_id)
+		body << t.make_expr_stmt(t.make_call_typed('drop_owned', [stored_value], flat.source_type_void))
 	}
+	start := t.a.children.len
+	t.a.children << t.make_ident(key_name)
+	t.a.children << t.make_ident(value_name)
 	t.a.children << map_expr
 	for stmt in body {
 		t.a.children << stmt
