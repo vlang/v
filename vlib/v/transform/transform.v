@@ -20319,6 +20319,12 @@ fn (mut t Transformer) rewrite_multi_return_match_assign(node flat.Node, lhs_ids
 		if parts := t.match_branch_tuple_parts(branch, body_start, lhs_ids.len) {
 			prefix = parts.prefix.clone()
 			assignment = t.make_multi_value_assign(lhs_ids, parts.values)
+			tail_id := t.a.child(branch, branch.children_count - 1)
+			if t.a.nodes[int(tail_id)].kind == .block {
+				// Tuple extraction flattens blocks; keep their lexical ownership scopes.
+				prefix = t.a.children_of(branch)[body_start..int(branch.children_count) - 1].clone()
+				assignment = t.rewrite_match_tuple_tail_assign_block(tail_id, lhs_ids.len, assignment)
+			}
 		} else if t.match_branch_tail_exits(branch, body_start) {
 			// An exiting branch (return/break/continue/noreturn call) supplies
 			// no tuple values; keep its body unchanged.
@@ -20371,6 +20377,29 @@ fn (mut t Transformer) rewrite_multi_return_match_assign(node flat.Node, lhs_ids
 		is_mut:         node.is_mut
 		flags:          flat.node_flags(node.skip_ownership_drops(), false)
 	}
+}
+
+// Keep the source blocks that tuple extraction unwraps, so their checker-recorded
+// cleanup slots are consumed before the enclosing match branch's cleanup slot.
+fn (mut t Transformer) rewrite_match_tuple_tail_assign_block(block_id flat.NodeId, count int, assignment flat.NodeId) flat.NodeId {
+	block := t.a.nodes[int(block_id)]
+	children := t.a.children_of(&block).clone()
+	mut rewritten := []flat.NodeId{}
+	if children.len > 0 && t.a.nodes[int(children.last())].kind == .block
+		&& t.tuple_block_parts(children.last(), count) != none {
+		rewritten << children[..children.len - 1]
+		rewritten << t.rewrite_match_tuple_tail_assign_block(children.last(), count, assignment)
+	} else {
+		parts := t.tuple_block_parts(block_id, count) or { return assignment }
+		rewritten << parts.prefix
+		rewritten << assignment
+	}
+	start := t.a.children.len
+	t.a.children << rewritten
+	mut result := block
+	result.children_start = start
+	result.children_count = flat.child_count(rewritten.len)
+	return t.a.add_node(result)
 }
 
 // match_branch_tail_exits reports whether a match branch body always leaves
@@ -31067,8 +31096,10 @@ fn (mut t Transformer) lower_one_match(node flat.Node) flat.NodeId {
 		}
 		t.a.children << prefix_id
 		t.a.children << if_id
+		// The staged subject is synthetic; only source branch scopes have checker drops.
 		block_id := t.a.add_node(flat.Node{
 			kind:           .block
+			value:          skip_scope_drops_block_value
 			children_start: block_start
 			children_count: flat.child_count(match_prelude.len + 2)
 			typ:            result_type_source_id
