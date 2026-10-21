@@ -1,8 +1,8 @@
 # Ownership
 
 V has an optional ownership system inspired by Rust that tracks owned values and prevents
-use-after-move bugs at compile time. It is currently focused on strings and is enabled
-with the `-ownership` flag.
+use-after-move bugs at compile time. It tracks strings and other owning values, including
+aggregates, and is enabled with the `-ownership` flag.
 
 ## Quick start
 
@@ -83,8 +83,9 @@ selected allocator during ownership cleanup, including VGC.
 ## Creating owned values
 
 Call `.to_owned()` on a string to create an owned copy. Copies made with `.clone()` also
-participate in ownership tracking. Regular string literals and primitive types
-(int, f64, bool, ...) are unaffected.
+participate in ownership tracking. A standalone string literal does not become an owned value
+just by binding it to a variable. Primitive scalar types (int, f64, bool, ...) remain copyable.
+These value-level rules do not disable ownership inference for aggregate types.
 Returning a scalar field or scalar array element copies its value, including when accessed through
 a pointer to local storage. Scalar copies do not keep a reference to that storage.
 Interpolation with multiple parts copies their storage. A sole string part can pass through
@@ -213,11 +214,65 @@ and existing storage can supply those bytes, but a temporary string such as
 `&'abc'.repeat(n)[1..]` has no retained owner and is rejected. Assign the string to a variable
 before taking the range's address, and keep that variable alive while the reference is used.
 
+### Inferred ownership of aggregates
+
+`.to_owned()` explicitly creates an owned string value; it is not a prerequisite for an
+aggregate to be owning. Ownership mode also infers ownership recursively from a type's fields.
+Strings, dynamic arrays, maps, interfaces, results (`!T`), and sum types require destruction.
+An option (`?T`) or fixed array requires destruction when its payload or element does.
+A struct containing one of these types, directly or through another struct, is therefore
+inferred as owning even without `.to_owned()` or `implements Owned`.
+
+In particular, a string field makes its containing struct owning even if initialized with a
+string literal. The literal's static storage and the aggregate's move tracking are separate
+properties. An integer-only struct remains copyable unless explicitly marked owning:
+
+```v okfmt
+struct Plain {
+	value int
+}
+
+struct Request {
+	name string
+}
+
+struct Resource implements Owned {
+	id int
+}
+
+fn read_plain(value Plain) {}
+
+fn read_request(request Request) {}
+
+fn read_resource(resource Resource) {}
+
+fn main() {
+	plain := Plain{ value: 1 }
+	read_plain(plain)
+	read_plain(plain) // ok: copyable scalar fields
+
+	request := Request{ name: 'example' }
+	read_request(request)
+	// read_request(request) // error: request was moved; ownership is inferred
+
+	resource := Resource{ id: 1 }
+	read_resource(resource)
+	// read_resource(resource) // error: resource was moved; explicitly Owned
+}
+```
+
+Passing an owning struct by value consumes it. A by-value method receiver follows the same
+rule unless the method borrows it. Use an `&Request` parameter or an `&Request` receiver to
+borrow a request when it must remain available for another call, or clone it when an
+independent owned copy is needed.
+
 ### Struct ownership markers
 
 The `Owned`, `Copy`, and `Drop` markers can appear in a struct's `implements` list in
-ownership mode without declaring interfaces for them. `Owned` enables move tracking,
-`Copy` enables copying, and `Drop` enables destruction with a custom `drop()` method.
+ownership mode without declaring interfaces for them. These markers supplement field-based
+inference: `Owned` forces move tracking even for an otherwise copyable struct, while `Copy`
+opts the struct out of inferred move tracking and enables copying. `Drop` enables destruction
+with a custom `drop()` method.
 Declared types with these names still follow the usual interface checks.
 
 ### Explicit lifetimes
