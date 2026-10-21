@@ -577,6 +577,23 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 				}
 			}
 		}
+		// A cached object can dispatch through an interface declared in its header
+		// (e.g. `http.Handler.handle` from the server workers) with no caller left
+		// in the warm AST. Cgen emits those dispatchers unconditionally, so mark the
+		// dispatch keys used as well; otherwise implementers in the program's own
+		// modules are pruned and every call through the cached body panics.
+		for iface_name in tc.interface_names.keys() {
+			iface_name_id := flat.source_type_id(iface_name)
+			for method in tc.interface_abstract_method_names(iface_name_id) {
+				decl_key := tc.interface_method_signature_key(iface_name_id, method) or {
+					continue
+				}
+				source_file := tc.fn_type_files[decl_key] or { continue }
+				if source_file.ends_with('.vh') {
+					enqueue('${iface_name}.${method}', mut used, mut queue)
+				}
+			}
+		}
 	}
 	$if ownership ? {
 		// Ownership cleanup and clone lowering emits direct C references to these
