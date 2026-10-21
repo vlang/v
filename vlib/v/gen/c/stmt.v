@@ -8270,6 +8270,7 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 				current_value := unalias_type(types.unwrap_pointer(v_type))
 				rhs_value := unalias_type(types.unwrap_pointer(rhs_type))
 				if current_value is types.Struct && rhs_value is types.Struct
+					&& cgen_type_pointer_depth(v_type) == cgen_type_pointer_depth(rhs_type)
 					&& rhs_value.name().contains('.')
 					&& current_value.name().all_after_last('.') == rhs_value.name().all_after_last('.') {
 					v_type = rhs_type

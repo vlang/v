@@ -4266,24 +4266,15 @@ fn (mut t Transformer) transform_call_arg_for_param(arg_id flat.NodeId, param_ty
 	// expression. A later block argument (notably `unsafe { nil }`) transforms its
 	// statements eagerly and would otherwise drain an earlier sum-box temporary
 	// into the block, after the call has already referenced it.
+	source_is_mut := int(arg_id) >= 0 && int(arg_id) < t.a.nodes.len
+		&& t.a.nodes[int(arg_id)].is_mut
 	outer_pending := t.pending_stmts
 	t.pending_stmts = []flat.NodeId{}
-	mut result := t.transform_call_arg_for_param_isolated(arg_id, param_type_id)
-	if int(arg_id) >= 0 && int(result) >= 0 && !isnil(t.tc)
-		&& t.a.nodes[int(arg_id)].is_mut {
-		source := t.a.node(t.unwrap_parens(arg_id))
-		if source.kind == .prefix && source.op == .mul {
-			expected := t.tc.parse_canonical_type(param_type_id)
-			if expected is types.Pointer && expected.base_type is types.Alias
-				&& types.unalias_type(expected.base_type) is types.Pointer {
-				// Prefix lowering rebuilds this lvalue. Keep its explicit `mut` so
-				// cgen passes the caller's pointer slot rather than the pointer value.
-				lowered := t.a.nodes[int(result)]
-				if !lowered.is_mut {
-					result = t.a.add_node(flat.Node{ ...lowered, is_mut: true })
-				}
-			}
-		}
+	result := t.transform_call_arg_for_param_isolated(arg_id, param_type_id)
+	if source_is_mut && int(result) >= 0 && int(result) < t.a.nodes.len
+		&& !t.a.nodes[int(result)].is_mut {
+		// Lowered lvalues must keep aliasing caller storage, including pointer slots.
+		t.a.set_node_is_mut(result, true)
 	}
 	arg_pending := t.pending_stmts
 	t.pending_stmts = outer_pending
@@ -6596,8 +6587,9 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ_id u32) flat
 	if clean_typ == flat.source_type_string && !is_ref {
 		return expr
 	}
+	mut local_struct_shadows_alias := false
 	if !isnil(t.tc) {
-		local_struct_shadows_alias := t.bare_struct_name_is_local_to_current_module(clean_typ)
+		local_struct_shadows_alias = t.bare_struct_name_is_local_to_current_module(clean_typ)
 		if !local_struct_shadows_alias {
 			if alias_name_source_id, alias_source_id_2 := t.lookup_str_alias(clean_type_id) {
 				return t.alias_str_wrap(expr, alias_name_source_id, alias_source_id_2, is_ref)
@@ -6780,7 +6772,9 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ_id u32) flat
 			return t.make_call_typed('f64.str', [expr], flat.source_type_string)
 		}
 		else {
-			if flat.source_type_name(clean_typ) in t.enum_types {
+			if flat.source_type_name(clean_typ) in t.enum_types
+				&& !local_struct_shadows_alias
+				&& (!isnil(t.tc) || !t.bare_struct_name_is_local_to_current_module(clean_typ)) {
 				if method := t.enum_str_method_name(clean_type_id) {
 					return t.make_call_typed(method, [expr], flat.source_type_string)
 				}

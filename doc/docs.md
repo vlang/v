@@ -967,6 +967,9 @@ For more advanced `string` processing and conversions, refer to the
 
 #### String interpolation
 
+Array interpolation resolves each element in its declaring module, including when another
+imported module declares an enum with the same type name.
+
 Basic interpolation syntax is pretty simple - use `${` before a variable name and `}` after. The
 variable will be converted to a string and embedded into the literal:
 
@@ -5910,6 +5913,11 @@ fn main() {
 }
 ```
 
+A spawned call with a `mut param &T` parameter receives the caller's mutable pointer
+storage, including when another function forwards that parameter. Keep that storage alive
+until the thread finishes; `wait()` also makes its field changes and pointer replacement
+available to the caller.
+
 If a spawned thread's handle is discarded, including inside a discarded array or struct,
 V detaches the thread. Keep its handle and call `wait()` when the result or completion matters.
 The detached thread releases an owned return value after its function finishes.
@@ -6369,6 +6377,10 @@ Statements that change the map (`m[k] = v`, `m[k] += v`, `m[k]++`, `m[k] << v`,
 locked, so `m[k] = m[k] * 2` is atomic too. Reads (`m[k]`, `m[k] or { ... }`, `k in m`,
 `m.len`, `m.keys()`, `m.values()` and `m.clone()`) take an `rlock`. This works for
 `shared` variables, parameters, globals and struct fields.
+
+Custom map methods can operate on a `shared` map inside an explicit lock block.
+A method with a `mut map` receiver updates the map's contents, including when the method
+is defined in an imported module.
 
 Operations that must happen together still need an explicit block, and so do iterating
 over the map, `if v := m[k] {` and statements that use two `shared` maps:

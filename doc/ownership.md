@@ -72,6 +72,9 @@ back to the original storage-source analysis.
 If the compiler memory limit is exceeded,
 it reports the limit and exits with status 1, without running cleanup against active workers.
 
+Local owned values declared after a `match` keep their lexical cleanup scope, including
+inside loops with `continue` statements.
+
 Map `clear()` and `free()` release owned entries through their stored values, including
 when the map is accessed through a pointer or a generic pointer parameter.
 String map keys retain their cloned storage until the map releases it. Boxed values use the
