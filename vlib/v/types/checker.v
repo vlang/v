@@ -16145,13 +16145,27 @@ fn (mut tc TypeChecker) check_sum_type_decl(node_id flat.NodeId, node flat.Node)
 			mut states := {
 				flat.source_type_id(layout_name): ValueLayoutState.active
 			}
-			if tc.value_type_has_cycle(variant_type, mut states) {
-				pos := if variant_name.starts_with('fn(') || variant_name.starts_with('fn (') {
+			mut path := ValueLayoutPath{ types: [flat.source_type_id(layout_name)] }
+			if target := tc.value_type_cycle(variant_type, mut states, mut path) {
+				mut pos := if variant_name.starts_with('fn(') || variant_name.starts_with('fn (') {
 					tc.sum_type_variant_source_pos(node, variant_name)
 				} else {
 					tc.type_diagnostic_pos(variant_id, variant_name)
 				}
-				tc.record_error_at(.assignment_mismatch, 'sum type `${node.value}` cannot be defined recursively', variant_id, pos)
+				mut message := 'sum type `${node.value}` cannot be defined recursively'
+				if path.fields.len > 0 {
+					first := path.fields[0]
+					fields := path.fields.map(it.name).join('.')
+					message += ': field `${flat.source_type_name(first.owner)}.${fields}` closes the cycle'
+					last := path.fields.last()
+					if field_id := tc.value_layout_field_decl(last) {
+						pos = tc.node_value_diagnostic_pos(field_id)
+					}
+				}
+				cycle := path.types.map(flat.source_type_name(it)).join(' -> ')
+				name := flat.source_type_name(target)
+				message += '; inline cycle: `${cycle}`; use `&${name}` or `[]${name}` to break the cycle'
+				tc.record_error_at(.assignment_mismatch, message, variant_id, pos)
 			}
 		}
 	}
@@ -16205,31 +16219,74 @@ enum ValueLayoutState {
 	finite
 }
 
+struct ValueLayoutField {
+	owner u32
+	name  string
+}
+
+struct ValueLayoutPath {
+mut:
+	types  []u32
+	fields []ValueLayoutField
+}
+
 fn (tc &TypeChecker) value_type_has_cycle(typ &Type, mut states map[u32]ValueLayoutState) bool {
+	mut path := ValueLayoutPath{}
+	if _ := tc.value_type_cycle(typ, mut states, mut path) { return true }
+	return false
+}
+
+fn (tc &TypeChecker) value_type_cycle(typ &Type, mut states map[u32]ValueLayoutState, mut path ValueLayoutPath) ?u32 {
 	name := match typ {
-		Alias, OptionType, ResultType { return tc.value_type_has_cycle(typ.base_type, mut states) }
-		ArrayFixed { return tc.value_type_has_cycle(typ.elem_type, mut states) }
+		Alias, OptionType, ResultType {
+			return tc.value_type_cycle(typ.base_type, mut states, mut path)
+		}
+		ArrayFixed { return tc.value_type_cycle(typ.elem_type, mut states, mut path) }
 		Struct, SumType { tc.recursive_struct_lookup_name(typ.source_type_id()) }
-		else { return false }
+		else { return none }
 	}
-	if state := states[name] { return state == .active }
+	if state := states[name] {
+		if state == .active {
+			path.types << name
+			return name
+		}
+		return none
+	}
 	base := tc.sum_base_name(name)
 	for ancestor, state in states {
 		if state != .active || tc.sum_base_name(ancestor) != base { continue }
-		if !tc.type_has_nested_instance(ancestor, name) { return true }
+		if !tc.type_has_nested_instance(ancestor, name) {
+			path.types << name
+			return name
+		}
 	}
 	states[name] = .active
+	path.types << name
 	for raw in tc.sum_types.type_ids(flat.source_type_name(base)) or { []u32{} } {
 		variant := tc.concrete_sum_variant_name(name, raw)
-		if tc.value_type_has_cycle(tc.parse_canonical_type_cached(variant), mut states) {
-			return true
+		if target := tc.value_type_cycle(tc.parse_canonical_type_cached(variant), mut states, mut path) {
+			return target
 		}
 	}
 	for field in tc.struct_fields_for_type(name) {
-		if tc.value_type_has_cycle(field.typ, mut states) { return true }
+		path.fields << ValueLayoutField{ owner: name, name: field.name }
+		if target := tc.value_type_cycle(field.typ, mut states, mut path) { return target }
+		path.fields.pop()
 	}
+	path.types.pop()
 	states[name] = .finite
-	return false
+	return none
+}
+
+fn (tc &TypeChecker) value_layout_field_decl(field ValueLayoutField) ?flat.NodeId {
+	decl_id := tc.source_struct_decl_id_for_name(field.owner)?
+	decl := tc.a.node(decl_id)
+	for i in 0 .. decl.children_count {
+		child_id := tc.a.child(decl, i)
+		child := tc.a.node(child_id)
+		if child.kind == .field_decl && child.value == field.name { return child_id }
+	}
+	return none
 }
 
 fn (mut tc TypeChecker) record_invalid_any_decl_type(node_id flat.NodeId) {

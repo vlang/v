@@ -1,0 +1,40 @@
+struct DirectWrap {
+	inner DirectNode
+}
+
+type DirectNode = DirectWrap | int
+
+struct OptionalWrap {
+	inner ?OptionalNode
+}
+
+type OptionalNode = OptionalWrap | int
+
+struct IndirectWrap {
+	i Inner
+}
+
+struct Inner {
+	n IndirectNode
+}
+
+type IndirectNode = IndirectWrap | int
+
+struct FixedWrap {
+	kids [2]FixedNode
+}
+
+type FixedNode = FixedWrap | int
+
+struct LeftWrap {
+	right RightNode
+}
+
+struct RightWrap {
+	left LeftNode
+}
+
+type LeftNode = LeftWrap | int
+type RightNode = RightWrap | string
+
+fn main() {}

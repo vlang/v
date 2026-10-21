@@ -32,6 +32,30 @@ fn test_recursive_type_metadata_retains_value_equality() {
 	assert first != Type(Array{ elem_type: &Type(string_) })
 }
 
+fn test_sumtype_layout_retains_the_closing_field_and_type_path() {
+	mut ast := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&ast)
+	tc.sum_types.set('Tree', ['Branch', 'int'])
+	tree := Type(SumType{ name_id: flat.source_type_id('Tree') })
+	inner := Type(Struct{ name_id: flat.source_type_id('Inner') })
+	leaf := Type(Struct{ name_id: flat.source_type_id('Leaf') })
+	tc.structs['Leaf'] = [StructField{ name: 'value', typ: int_ }]
+	tc.structs['Branch'] = [StructField{ name: 'leaf', typ: leaf },
+		StructField{ name: 'inner', typ: inner }]
+	tc.structs['Inner'] = [StructField{ name: 'child', typ: Type(OptionType{ base_type: &tree }) }]
+	mut states := {
+		flat.source_type_id('Tree'): ValueLayoutState.active
+	}
+	mut path := ValueLayoutPath{ types: [flat.source_type_id('Tree')] }
+	target := tc.value_type_cycle(Type(Struct{ name_id: flat.source_type_id('Branch') }), mut states, mut path) or {
+		panic('expected an inline layout cycle')
+	}
+	assert flat.source_type_name(target) == 'Tree'
+	assert path.types.map(flat.source_type_name(it)) == ['Tree', 'Branch', 'Inner', 'Tree']
+	assert path.fields.map(it.name) == ['inner', 'child']
+	assert flat.source_type_name(path.fields.last().owner) == 'Inner'
+}
+
 fn test_sum_references_require_the_same_storage_type() {
 	mut ast := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&ast)
