@@ -1903,8 +1903,9 @@ fn (mut t Transformer) make_map_get_expr(map_expr flat.NodeId, base_type_id u32,
 	map_addr := t.runtime_addr(map_expr, base_type_id)
 	// Lowered mutable receivers already use pointer storage. Keep that type on a
 	// fresh expression so later generic annotation does not resolve the source value.
+	// Shared values keep their identity so cgen takes the payload's address.
 	mut typed_map_addr := map_addr
-	if flat.source_type_shape(base_type_id).has(.pointer) {
+	if flat.source_type_shape(base_type_id).has(.pointer) && !t.expr_is_shared_value(map_addr) {
 		typed_map_addr = t.make_cast(base_type_id, map_addr, base_type_id)
 	}
 	call := t.make_call_typed('map__get', [
