@@ -5133,6 +5133,14 @@ storage cycles; ordinary fields, options, and fixed arrays do not. A function va
 a function reference, so its parameter and return types may refer to the containing sum type.
 This validity rule also applies to generic sum declarations used only as constraints.
 
+Migration from boxed sums: a recursive field previously written as `child Tree` must now use
+indirection, such as `child &Tree` or `children []Tree`. This also applies to indirect and mutual
+cycles through other structs or sum types. An option `?Tree` still stores its `Tree` payload by
+value; it is not a nullable pointer and does not break a layout cycle. Use `?&Tree` for an
+optional reference. A `?Tree` field outside the recursive variant graph remains valid.
+Recursive-layout errors identify the field path and inline type cycle, and suggest a reference
+or dynamic array to break it.
+
 With [ownership checking](ownership.md), a sum that owns its payload can move rather than copy.
 Ownership and `-autofree` builds also track pointer-variant borrowing and cleanup, and reject
 some escaping local references. Autofree uses the shared lifetime analysis with its compatibility
