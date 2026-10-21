@@ -1135,7 +1135,7 @@ fn dictionary_transform_output_len(word_len int, transform_idx int) !int {
 		body_len -= int(transform_type) - 11
 	}
 	if body_len < 0 {
-		return error('brotli: invalid dictionary transform length')
+		body_len = 0
 	}
 	return int(prefix_len) + body_len + int(suffix_len)
 }

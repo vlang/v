@@ -1055,20 +1055,33 @@ fn push_recent_distance(mut recent_distances []int, distance int) {
 	recent_distances[3] = distance
 }
 
-fn brotli_uppercase_first(mut out []u8) {
+// RFC 7932 dictionary transforms use byte operations, rather than Unicode casing.
+fn brotli_uppercase_first(mut out []u8) int {
 	if out.len == 0 {
-		return
+		return 0
 	}
-	if out[0] >= `a` && out[0] <= `z` {
-		out[0] ^= 32
+	if out[0] < 0xc0 {
+		if out[0] >= `a` && out[0] <= `z` {
+			out[0] ^= 32
+		}
+		return 1
 	}
+	if out[0] < 0xe0 {
+		if out.len >= 2 {
+			out[1] ^= 32
+		}
+		return 2
+	}
+	if out.len >= 3 {
+		out[2] ^= 5
+	}
+	return 3
 }
 
 fn brotli_uppercase_all(mut out []u8) {
-	for i in 0 .. out.len {
-		if out[i] >= `a` && out[i] <= `z` {
-			out[i] ^= 32
-		}
+	mut i := 0
+	for i < out.len {
+		i += brotli_uppercase_first(mut out[i..])
 	}
 }
 
@@ -1089,16 +1102,12 @@ fn transform_dictionary_word(word []u8, transform_idx int) ![]u8 {
 	}
 	mut body := word.clone()
 	if transform_type <= 9 {
-		if int(transform_type) > body.len {
-			return error('brotli: invalid dictionary transform length')
-		}
-		body = body[..body.len - int(transform_type)]
+		kept_len := if int(transform_type) > body.len { 0 } else { body.len - int(transform_type) }
+		body = body[..kept_len]
 	} else if transform_type >= 12 && transform_type <= 20 {
 		skip := int(transform_type) - 11
-		if skip > body.len {
-			return error('brotli: invalid dictionary transform length')
-		}
-		body = body[skip..]
+		omitted_len := if skip > body.len { body.len } else { skip }
+		body = body[omitted_len..]
 	}
 	transformed << body
 	if transform_type == 10 {
@@ -1112,7 +1121,8 @@ fn transform_dictionary_word(word []u8, transform_idx int) ![]u8 {
 	return transformed
 }
 
-fn decode_static_dictionary_word(distance int, max_distance int, copy_len int, mut out []u8) !int {
+fn decode_static_dictionary_word(distance int, max_distance int, copy_len int, max_output_len int,
+	mut out []u8) !int {
 	if copy_len < 4 || copy_len > 24 {
 		return error('brotli: invalid dictionary word length ${copy_len} at distance ${distance}')
 	}
@@ -1123,6 +1133,9 @@ fn decode_static_dictionary_word(distance int, max_distance int, copy_len int, m
 	offset := brotli_dictionary_offsets[copy_len - 4] + word_idx * copy_len
 	word := brotli_dictionary_data[offset..offset + copy_len]
 	transformed := transform_dictionary_word(word, transform_idx)!
+	if transformed.len > max_output_len {
+		return error('brotli: transformed dictionary word exceeds metablock')
+	}
 	out << transformed
 	return transformed.len
 }
@@ -1484,4 +1497,3 @@ fn read_prefix_tree(mut r BitReader, alphabet_size int) !PrefixDecoder {
 fn read_trees_count(mut r BitReader) !int {
 	return r.read_varlen_uint8()! + 1
 }
-

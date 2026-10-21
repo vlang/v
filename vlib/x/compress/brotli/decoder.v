@@ -2,6 +2,7 @@ module brotli
 
 // decompress reverses compress() and decodes the RFC 7932 trivial stream
 // layout. Empty input is invalid; an encoded empty stream decodes to an empty array.
+// Malformed headers and non-zero alignment padding are rejected.
 pub fn decompress(data []u8, params DecompressParams) ![]u8 {
 	if data.len == 0 {
 		return error('brotli: empty input')
@@ -57,7 +58,14 @@ fn decode_empty_meta_block(mut r BitReader) ![]u8 {
 		return error('brotli: invalid reserved bit in empty meta-block')
 	}
 	mskip_bytes := int(r.read_bits(2)!)
-	mskip_len := if mskip_bytes == 0 { 0 } else { int(r.read_bits(mskip_bytes * 8)!) + 1 }
+	raw_len := r.read_bits(mskip_bytes * 8)!
+	if mskip_bytes > 1 && raw_len >> ((mskip_bytes - 1) * 8) == 0 {
+		return error('brotli: non-canonical metadata length')
+	}
+	mskip_len := if mskip_bytes == 0 { 0 } else { int(raw_len) + 1 }
+	if !r.padding_bits_are_zero() {
+		return error('brotli: non-zero padding before metadata block')
+	}
 	r.align_byte()
 	if r.remaining_bytes() < mskip_len {
 		return error('brotli: truncated metadata block')
@@ -68,6 +76,9 @@ fn decode_empty_meta_block(mut r BitReader) ![]u8 {
 }
 
 fn decode_uncompressed_meta_block(mut r BitReader, mut out []u8, mlen int) ![]u8 {
+	if !r.padding_bits_are_zero() {
+		return error('brotli: non-zero padding before uncompressed block')
+	}
 	r.align_byte()
 	if r.remaining_bytes() < mlen {
 		return error('brotli: truncated uncompressed meta-block')
@@ -253,9 +264,6 @@ fn decode_compressed_meta_block(mut r BitReader, mut out []u8, mlen int, window_
 		if produced == mlen {
 			continue
 		}
-		if produced + copy_len > mlen {
-			return error('brotli: compressed copy length exceeds metablock at ${produced}, command ${command_count}, insert ${insert_len}, copy ${copy_len}, sym ${sym}, mlen ${mlen}, distance index ${distance_index[0]}, recent ${recent_distances}')
-		}
 		if copy_len == 0 {
 			continue
 		}
@@ -315,6 +323,11 @@ fn decode_compressed_meta_block(mut r BitReader, mut out []u8, mlen int, window_
 		}
 		max_history := out.len + dictionary.len
 		max_distance := if max_history < window_size - 16 { max_history } else { window_size - 16 }
+		custom_dictionary_copy := dictionary.len > 0 && distance > out.len && distance <= max_history
+		// Static dictionary transforms can change the declared base-word length.
+		if copy_len > mlen - produced && (distance <= max_distance || custom_dictionary_copy) {
+			return error('brotli: compressed copy length exceeds metablock at ${produced}, command ${command_count}, insert ${insert_len}, copy ${copy_len}, sym ${sym}, mlen ${mlen}, distance index ${distance_index[0]}, recent ${recent_distances}')
+		}
 		if dictionary.len > 0 && distance > out.len {
 			source := dictionary.len + out.len - distance
 			if source >= 0 && source < dictionary.len {
@@ -337,13 +350,14 @@ fn decode_compressed_meta_block(mut r BitReader, mut out []u8, mlen int, window_
 		}
 		if distance > max_distance {
 			if distance - max_distance - 1 < 1 << 20 {
-				transformed_len := decode_static_dictionary_word(distance, max_distance, copy_len, mut out)!
+				transformed_len := decode_static_dictionary_word(distance, max_distance, copy_len,
+					mlen - produced, mut out)!
 				produced += transformed_len
 				if distance_index_adjusted {
 					distance_index[0]++
 				}
 				p2 = if out.len >= 2 { out[out.len - 2] } else { 0 }
-				p1 = out[out.len - 1]
+				p1 = if out.len > 0 { out[out.len - 1] } else { 0 }
 				continue
 			}
 			return error('brotli: invalid copy distance ${distance} at ${out.len}, command ${command_count}, distance index ${distance_index[0]}, recent ${recent_distances}')
