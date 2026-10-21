@@ -112,37 +112,70 @@ fn write_location(cn doc.DocNode, mut pw strings.Builder) {
 	pw.write_string(dn_to_location(cn))
 }
 
+// write_plaintext_declaration writes the declaration of `cn`, after the platforms that it is
+// available on, as a comment, since they apply to all the declarations of a group of constants.
+fn (vd &VDoc) write_plaintext_declaration(cn doc.DocNode, mut pw strings.Builder) {
+	cfg := vd.cfg
+	platforms := doc.platforms_note(cn.platforms, fn (name string) string {
+		return name
+	})
+	if platforms != '' {
+		pw.writeln(if cfg.is_color { color_highlight('// ${platforms}') } else { '// ${platforms}' })
+	}
+	if cfg.show_loc {
+		write_location(cn, mut pw)
+	}
+	if cfg.is_color {
+		pw.writeln(color_highlight(cn.content))
+	} else {
+		pw.writeln(cn.content)
+	}
+}
+
+// write_plaintext_comments writes the doc comment of `cn`, with its examples.
+fn (vd &VDoc) write_plaintext_comments(cn doc.DocNode, mut pw strings.Builder) {
+	cfg := vd.cfg
+	if cn.comments.len == 0 || !cfg.include_comments {
+		return
+	}
+	comments := cn.merge_comments_without_examples()
+	pw.writeln(indent(comments.trim_space()))
+	if cfg.include_examples {
+		examples := cn.examples()
+		for ex in examples {
+			pw.write_string('    Example: ')
+			mut fex := ex
+			if ex.index_u8(`\n`) >= 0 {
+				// multi-line example
+				pw.write_u8(`\n`)
+				fex = indent(ex)
+			}
+			if cfg.is_color {
+				fex = color_highlight(fex)
+			}
+			pw.writeln(fex)
+		}
+	}
+}
+
 fn (mut vd VDoc) write_plaintext_content(contents []doc.DocNode, mut pw strings.Builder) {
 	cfg := vd.cfg
 	for cn in contents {
 		if cn.content.len > 0 {
-			if cfg.show_loc {
-				write_location(cn, mut pw)
+			vd.write_plaintext_declaration(cn, mut pw)
+			// The comment is shown once, after all the declarations, unless they have their own.
+			comments_apart := has_variant_comments(cn)
+			if comments_apart {
+				vd.write_plaintext_comments(cn, mut pw)
 			}
-			if cfg.is_color {
-				pw.writeln(color_highlight(cn.content))
-			} else {
-				pw.writeln(cn.content)
-			}
-			if cn.comments.len > 0 && cfg.include_comments {
-				comments := cn.merge_comments_without_examples()
-				pw.writeln(indent(comments.trim_space()))
-				if cfg.include_examples {
-					examples := cn.examples()
-					for ex in examples {
-						pw.write_string('    Example: ')
-						mut fex := ex
-						if ex.index_u8(`\n`) >= 0 {
-							// multi-line example
-							pw.write_u8(`\n`)
-							fex = indent(ex)
-						}
-						if cfg.is_color {
-							fex = color_highlight(fex)
-						}
-						pw.writeln(fex)
-					}
+			for variant in cn.variants {
+				vd.write_plaintext_declaration(variant, mut pw)
+				if cfg.include_comments && has_own_comments(variant, cn) {
+					pw.writeln(indent(variant.merge_comments_without_examples().trim_space()))
 				}
+			}
+			if !comments_apart {
+				vd.write_plaintext_comments(cn, mut pw)
 			}
 		}
 		vd.write_plaintext_content(cn.children, mut pw)
@@ -409,8 +442,18 @@ fn (mut vd VDoc) generate_docs_from_file() {
 		if cfg.pub_only {
 			for name, dc in dcs.contents {
 				dcs.contents[name].content = without_pub_keyword(dc.content)
+				for j, variant in dc.variants {
+					dcs.contents[name].variants[j].content = without_pub_keyword(variant.content)
+				}
 				for i, cc in dc.children {
-					dcs.contents[name].children[i].content = without_pub_keyword(cc.content)
+					dcs.contents[name].children[i].content = if cc.kind == .const_group {
+						without_pub_keywords(cc.content)
+					} else {
+						without_pub_keyword(cc.content)
+					}
+					for j, variant in cc.variants {
+						dcs.contents[name].children[i].variants[j].content = without_pub_keyword(variant.content)
+					}
 				}
 			}
 		}

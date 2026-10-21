@@ -93,6 +93,92 @@ pub fn platform_from_filename(filename string) Platform {
 	return platform
 }
 
+// cross_platforms are the platforms that `v doc -os cross` documents together.
+pub const cross_platforms = [Platform.linux, .macos, .windows, .freebsd, .openbsd, .netbsd, .dragonfly,
+	.android, .termux, .ios, .solaris, .haiku, .serenity, .vinix]
+
+// display_name returns the name of a platform as it is written in prose, like `macOS`.
+pub fn (p Platform) display_name() string {
+	return match p {
+		.ios { 'iOS' }
+		.macos { 'macOS' }
+		.linux { 'Linux' }
+		.windows { 'Windows' }
+		.freebsd { 'FreeBSD' }
+		.openbsd { 'OpenBSD' }
+		.netbsd { 'NetBSD' }
+		.dragonfly { 'DragonFly BSD' }
+		.js { 'JavaScript' }
+		.android { 'Android' }
+		.termux { 'Termux' }
+		.solaris { 'Solaris' }
+		.serenity { 'SerenityOS' }
+		.plan9 { 'Plan 9' }
+		.vinix { 'Vinix' }
+		.haiku { 'Haiku' }
+		.raw { 'raw' }
+		.auto, .cross { 'all platforms' }
+	}
+}
+
+// platforms_note returns a sentence that tells which platforms a symbol is available on, like
+// `Available on Windows only.` or `Available on all platforms except iOS and Haiku.`. Each
+// platform name is passed through `emphasize`, like `<strong>Windows</strong>` for HTML.
+// It is empty for a symbol that is available on all platforms.
+pub fn platforms_note(platforms []Platform, emphasize fn (string) string) string {
+	if platforms.len == 0 {
+		return ''
+	}
+	missing := cross_platforms.filter(it !in platforms)
+	// The `_nix` files are compiled for all platforms but Windows.
+	if missing == [Platform.windows] {
+		return 'Available on ${emphasize('Unix')} only.'
+	}
+	if missing.len < platforms.len {
+		return 'Available on all platforms except ${join_names(missing, emphasize)}.'
+	}
+	return 'Available on ${join_names(platforms, emphasize)} only.'
+}
+
+// join_names joins the names of `platforms` like `Linux, macOS and Windows`.
+fn join_names(platforms []Platform, emphasize fn (string) string) string {
+	names := platforms.map(emphasize(it.display_name()))
+	if names.len == 1 {
+		return names[0]
+	}
+	return names[..names.len - 1].join(', ') + ' and ' + names.last()
+}
+
+// child_key returns what tells a child of a symbol apart from its other children: its name, or
+// for a constant, which has no name of its own in the docs, the name that it declares.
+fn child_key(node DocNode) string {
+	if node.kind != .const_group {
+		return node.name
+	}
+	lines := node.content.split('\n')
+	mut i := 0
+	for i < lines.len && lines[i].starts_with('@[') {
+		i++
+	}
+	if i == lines.len {
+		return node.content
+	}
+	return lines[i].trim_string_left('pub ').trim_string_left('const ').all_before('=').trim_space()
+}
+
+// merge_platforms returns the platforms of a symbol that is declared for both `a` and `b`.
+// No platforms means all of them.
+fn merge_platforms(a []Platform, b []Platform) []Platform {
+	if a.len == 0 || b.len == 0 {
+		return []
+	}
+	merged := cross_platforms.filter(it in a || it in b)
+	if merged.len == cross_platforms.len {
+		return []
+	}
+	return merged
+}
+
 // str returns the display label of a symbol kind.
 pub fn (sk SymbolKind) str() string {
 	return match sk {
@@ -137,6 +223,9 @@ mut:
 	generated_names map[string]bool
 	// Declared static methods replace generated helpers even when they are private.
 	declared_static_names map[string]bool
+	// file_platforms are the platforms that each file is compiled for, with `-os cross`.
+	// Files that are compiled for all of them are not listed.
+	file_platforms map[string][]Platform
 }
 
 @[minify]
@@ -156,6 +245,12 @@ pub mut:
 	from_scope  bool
 	is_pub      bool @[json: public]
 	platform    Platform
+	// platforms are the platforms that the symbol is available on, with `-os cross`.
+	// It is empty for a symbol that is available on all of them.
+	platforms []Platform @[omitempty]
+	// variants are the other declarations of the symbol, with `-os cross`, when it is declared
+	// differently for some platforms, like a struct with other fields on Windows.
+	variants    []DocNode @[omitempty]
 	is_readme   bool
 	frontmatter map[string]string
 }
@@ -198,6 +293,19 @@ fn (mut d Doc) add_node(mut node DocNode) {
 		if parent_name == 'Constants' {
 			node.parent_name = ''
 		}
+		// A child that is declared for several platforms, like a method in `_nix.c.v` and
+		// `_windows.c.v`, is documented once, for all of them. A constant whose value differs,
+		// like `rtld_now = C.RTLD_NOW` on Unix and `rtld_now = 0` on Windows, is documented
+		// once for each value instead.
+		key := child_key(node)
+		children := d.contents[parent_name].children
+		for i, child in children {
+			if child.kind == node.kind && child_key(child) == key && (node.kind != .const_group
+				|| declaration_shape(child.content) == declaration_shape(node.content)) {
+				d.contents[parent_name].children[i] = merge_declaration(child, node)
+				return
+			}
+		}
 		d.contents[parent_name].children << node
 		return
 	}
@@ -206,11 +314,187 @@ fn (mut d Doc) add_node(mut node DocNode) {
 		d.contents[node.name] = node
 		return
 	}
-	if d.contents[node.name].kind == .typedef && node.kind !in [.typedef, .none] {
-		children := d.contents[node.name].children.clone()
+	existing := d.contents[node.name]
+	// The methods of a type can come before it, in an empty node that the type replaces.
+	if existing.kind == .typedef && existing.content == '' && node.kind != .none {
+		children := existing.children.clone()
 		d.contents[node.name] = node
 		d.contents[node.name].children = children
+		return
 	}
+	d.contents[node.name] = merge_declaration(existing, node)
+}
+
+// merge_declaration returns `main`, a documented symbol, with another declaration of it,
+// `node`, added. With `-os cross`, a symbol can be declared for several platforms, and is
+// documented once for each different declaration, as `variants` of the first one.
+fn merge_declaration(main DocNode, node DocNode) DocNode {
+	mut merged := main
+	// Without platforms, like for a single platform, the first declaration is documented.
+	if main.platforms.len == 0 || node.platforms.len == 0 {
+		merged.platforms = []
+		return merged
+	}
+	shape := declaration_shape(node.content)
+	if declaration_shape(main.content) == shape {
+		merged.platforms = merge_platforms(main.platforms, node.platforms)
+		// The doc comment can be written on only one of the platforms.
+		if merged.comments.len == 0 {
+			merged.comments = node.comments
+		}
+		return merged
+	}
+	for i, variant in main.variants {
+		if declaration_shape(variant.content) == shape {
+			merged.variants[i].platforms = merge_platforms(variant.platforms, node.platforms)
+			if variant.comments.len == 0 {
+				merged.variants[i].comments = node.comments
+			}
+			return merged
+		}
+	}
+	merged.variants << DocNode{
+		...node
+		children: []
+	}
+	return merged
+}
+
+// host_platform returns the platform that vdoc runs on, or `.cross` for another one.
+pub fn host_platform() Platform {
+	return $if windows { Platform.windows } $else $if macos { Platform.macos } $else $if linux { Platform.linux } $else $if freebsd { Platform.freebsd } $else $if openbsd { Platform.openbsd } $else $if netbsd { Platform.netbsd } $else { Platform.cross }
+}
+
+// available_on_host reports whether the symbol `node` can be used on the platform that vdoc runs
+// on, like to run its examples.
+pub fn available_on_host(node DocNode) bool {
+	platforms := all_platforms(node)
+	return platforms.len == 0 || host_platform() in platforms
+}
+
+// all_platforms returns the platforms that a symbol is available on, with all its variants.
+fn all_platforms(node DocNode) []Platform {
+	mut platforms := node.platforms.clone()
+	for variant in node.variants {
+		platforms = merge_platforms(platforms, variant.platforms)
+	}
+	return platforms
+}
+
+// declaration_shape returns what a declaration declares, without what does not change it:
+// its attributes, comments and layout, and the names of the parameters of a function.
+// Two declarations of a symbol with the same shape are documented as one.
+fn declaration_shape(content string) string {
+	mut code := []string{}
+	for line in content.split('\n') {
+		trimmed := line.trim_space()
+		if trimmed.starts_with('@[') {
+			continue
+		}
+		without_comment := without_line_comment(trimmed).trim_space()
+		if without_comment != '' {
+			code << without_comment
+		}
+	}
+	// A name that is a keyword can be written with an `@`, like `@type`.
+	shape := code.join(' ').replace('\t', ' ').split(' ').filter(it != '').map(it.trim_string_left('@')).join(' ').trim_string_left('pub ')
+	if shape.starts_with('fn ') {
+		return without_parameter_names(shape)
+	}
+	return shape
+}
+
+// without_line_comment returns `line` without its `//` comment, if it has one outside of a string.
+fn without_line_comment(line string) string {
+	mut quote := u8(0)
+	for i := 0; i < line.len; i++ {
+		c := line[i]
+		if quote != 0 {
+			if c == `\\` {
+				i++
+			} else if c == quote {
+				quote = 0
+			}
+		} else if c in [`'`, `"`, `\``] {
+			quote = c
+		} else if c == `/` && i + 1 < line.len && line[i + 1] == `/` {
+			return line[..i]
+		}
+	}
+	return line
+}
+
+// without_parameter_names removes the names of the receiver and the parameters of the function
+// signature `sig`, like `fn (mut s Server) run(a int)` -> `fn (mut Server) run(int)`.
+fn without_parameter_names(sig string) string {
+	mut result := 'fn '
+	mut rest := sig['fn '.len..]
+	if rest.starts_with('(') {
+		end := closing_index(rest, 0)
+		result += '(' + without_names(rest[1..end]) + ') '
+		rest = rest[end + 1..].trim_space()
+	}
+	mut start := 0
+	for start < rest.len && rest[start] != `(` {
+		if rest[start] == `[` {
+			start = closing_index(rest, start)
+		}
+		start++
+	}
+	if start >= rest.len {
+		return result + rest
+	}
+	end := closing_index(rest, start)
+	return result + rest[..start] + '(' + without_names(rest[start + 1..end]) + ')' + rest[end + 1..]
+}
+
+// without_names removes the names from the comma separated parameters in `params`, like
+// `mut a int, b fn (int) int` -> `mut int, fn (int) int`.
+fn without_names(params string) string {
+	mut param_types := []string{}
+	mut depth := 0
+	mut start := 0
+	for i := 0; i <= params.len; i++ {
+		if i < params.len {
+			c := params[i]
+			if c in [`(`, `[`, `{`] {
+				depth++
+			} else if c in [`)`, `]`, `}`] {
+				depth--
+			}
+			if c != `,` || depth > 0 {
+				continue
+			}
+		}
+		words := params[start..i].trim_space().split(' ')
+		param_types << if words.len >= 3 && words[0] in ['mut', 'shared'] {
+			words[0] + ' ' + words[2..].join(' ')
+		} else if words.len >= 2 && words[0] != 'fn'
+			&& (words[0][0].is_letter() || words[0][0] == `_`) {
+			words[1..].join(' ')
+		} else {
+			words.join(' ')
+		}
+		start = i + 1
+	}
+	return param_types.filter(it != '').join(', ')
+}
+
+// closing_index returns the index of the bracket that closes the one at `start` in `s`, or the
+// end of `s` if it is not closed.
+fn closing_index(s string, start int) int {
+	mut depth := 0
+	for i := start; i < s.len; i++ {
+		if s[i] in [`(`, `[`, `{`] {
+			depth++
+		} else if s[i] in [`)`, `]`, `}`] {
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return s.len - 1
 }
 
 fn (mut d Doc) parse_file(path string) ! {
@@ -646,6 +930,7 @@ fn (d &Doc) node_from_flat(a &flat.FlatAst, source string, id flat.NodeId, path 
 		attrs:       attrs
 		is_pub:      is_pub
 		platform:    platform_from_filename(path)
+		platforms:   d.file_platforms[path] or { []Platform{} }
 	}
 }
 
@@ -712,6 +997,7 @@ fn (d &Doc) enum_helper_node(enum_node DocNode, helper EnumHelper, name string) 
 		file_path: enum_node.file_path
 		is_pub:    enum_node.is_pub
 		platform:  enum_node.platform
+		platforms: enum_node.platforms
 	}
 }
 
@@ -894,7 +1180,9 @@ fn comments_before(a &flat.FlatAst, source string, anchor_line int, mut assigned
 			break
 		}
 		text := source_span(source, comment.pos)
-		if !text.starts_with('//') {
+		// A comment after code on its line, like `const a = 1 // one`, is about that code, not
+		// about the declaration on the next line.
+		if !text.starts_with('//') || follows_code(source, int(comment.pos.offset)) {
 			break
 		}
 		result << DocComment{
@@ -906,6 +1194,16 @@ fn comments_before(a &flat.FlatAst, source string, anchor_line int, mut assigned
 		expected_line = position.line_nr
 	}
 	return result.reverse()
+}
+
+// follows_code reports whether there is code before `offset` on its line in `source`.
+fn follows_code(source string, offset int) bool {
+	for i := offset - 1; i >= 0 && source[i] != `\n`; i-- {
+		if !source[i].is_space() {
+			return true
+		}
+	}
+	return false
 }
 
 fn module_comments(a &flat.FlatAst, source string, first_decl_line int, mut assigned map[int]bool) []DocComment {
@@ -920,7 +1218,7 @@ fn module_comments(a &flat.FlatAst, source string, first_decl_line int, mut assi
 			continue
 		}
 		text := source_span(source, comment.pos)
-		if !text.starts_with('//') {
+		if !text.starts_with('//') || follows_code(source, int(comment.pos.offset)) {
 			continue
 		}
 		result << DocComment{
@@ -947,12 +1245,11 @@ fn file_matches_platform(name string, platform Platform) bool {
 	if platform != .auto {
 		return file_platform == platform
 	}
-	host := $if windows { Platform.windows } $else $if macos { Platform.macos } $else $if linux { Platform.linux } $else $if freebsd { Platform.freebsd } $else $if openbsd { Platform.openbsd } $else $if netbsd { Platform.netbsd } $else { Platform.cross }
-	return file_platform == host
+	return file_platform == host_platform()
 }
 
 fn source_files_for_platform(dir string, entries []string, platform Platform) []string {
-	if platform == .cross || platform in [.plan9, .raw] {
+	if platform in [.plan9, .raw] {
 		mut files := entries.filter((it.ends_with('.v') || it.ends_with('.vsh'))
 			&& !it.ends_with('_test.v') && file_matches_platform(it, platform))
 		files.sort()
@@ -962,6 +1259,53 @@ fn source_files_for_platform(dir string, entries []string, platform Platform) []
 	target := pref.target_from(target_os, pref.host_arch()) or { pref.host_target() }
 	return pref.get_v_files_from_dir_for_target(dir, [], target).map(os.file_name(it)).filter(!it.ends_with('.native.v')
 		&& !it.ends_with('.wasm.v'))
+}
+
+// group_platform_constants joins the constants that follow each other and are available on
+// the same platforms, like the ones of a `_windows.c.v` file, so that they are documented
+// together, with one note about their platforms. A constant with a doc comment starts a new
+// group, since its comment is often the heading of the constants after it, like
+// `// Windows Registry Constants`.
+fn (mut d Doc) group_platform_constants() {
+	consts := d.contents['Constants'] or { return }
+	mut grouped := []DocNode{cap: consts.children.len}
+	for child in consts.children {
+		if grouped.len > 0 && child.platforms.len > 0 && child.comments.len == 0 {
+			last := grouped.last()
+			if last.platforms == child.platforms {
+				grouped[grouped.len - 1].content += '\n' + child.content
+				continue
+			}
+		}
+		grouped << child
+	}
+	d.contents['Constants'].children = grouped
+}
+
+// source_files returns the files in `dir` that are documented for the platform of the Doc.
+// With `-os cross`, those are the files of all `cross_platforms`, and each file's
+// platforms are kept in `file_platforms`.
+fn (mut d Doc) source_files(dir string, entries []string) []string {
+	if d.platform != .cross {
+		return source_files_for_platform(dir, entries, d.platform)
+	}
+	mut platforms_of := map[string][]Platform{}
+	for platform in cross_platforms {
+		for file in source_files_for_platform(dir, entries, platform) {
+			mut platforms := platforms_of[file] or { []Platform{} }
+			platforms << platform
+			platforms_of[file] = platforms
+		}
+	}
+	mut files := platforms_of.keys()
+	files.sort()
+	for file in files {
+		platforms := platforms_of[file] or { []Platform{} }
+		if platforms.len < cross_platforms.len {
+			d.file_platforms[os.join_path(dir, file)] = platforms
+		}
+	}
+	return files
 }
 
 // module_source_dirs returns the directories whose files make up the module in `dir`:
@@ -1026,7 +1370,7 @@ pub fn (mut d Doc) generate() ! {
 	mut seen_files := map[string]bool{}
 	for i, dir in module_source_dirs(d.base_path) {
 		entries := if i == 0 { os.ls(dir)! } else { os.ls(dir) or { continue } }
-		for filename in source_files_for_platform(dir, entries, d.platform) {
+		for filename in d.source_files(dir, entries) {
 			path := os.join_path(dir, filename)
 			real_path := os.real_path(path)
 			if i > 0 && d.keep_subdir_file != unsafe { nil } && !d.keep_subdir_file(path) {
@@ -1045,6 +1389,14 @@ pub fn (mut d Doc) generate() ! {
 	for path in paths {
 		d.parse_file(path)!
 	}
+	// A generated static method is available wherever its enum is, which can be declared
+	// for several platforms.
+	for name, _ in d.generated_names {
+		if enum_node := d.contents[name.all_before_last('.')] {
+			d.contents[name].platforms = all_platforms(enum_node)
+		}
+	}
+	d.group_platform_constants()
 	d.populate_scoped_contents(paths)
 	if d.filter_symbol_names.len > 0 && d.contents.len > 0 {
 		for filter_name in d.filter_symbol_names {

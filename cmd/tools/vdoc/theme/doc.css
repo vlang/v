@@ -35,6 +35,8 @@
 	--code-operator-text-color: #864f29;
 	--attribute-deprecated-background-color: #f59f0b48;
 	--attribute-deprecated-text-color: #92400e;
+	--platforms-background-color: #3b82f614;
+	--platforms-border-color: #3b82f6;
 	--attribute-text-color: #000000cf;
 	--table-header-line-color: #2c3e64;
 	--table-background-color: #edf2f7;
@@ -75,6 +77,8 @@ html.dark {
 	--attribute-background-color: #ffffff20;
 	--attribute-text-color: #ffffffaf;
 	--attribute-deprecated-text-color: #fef3c7;
+	--platforms-background-color: #3b82f61f;
+	--platforms-border-color: #63b3ed;
 	--table-header-line-color: #cbd5e0;
 	--table-background-color: #2d3748;
 }
@@ -471,6 +475,20 @@ hr {
 .doc-content > .doc-node > .attributes > .attribute-deprecated {
 	background-color: var(--attribute-deprecated-background-color);
 	color: var(--attribute-deprecated-text-color);
+}
+.doc-content > .doc-node > .platforms {
+	margin: 0.6rem 0 0;
+	padding: 0.4rem 0.8rem;
+	border-left: 3px solid var(--platforms-border-color);
+	background-color: var(--platforms-background-color);
+	border-radius: 0 4px 0 0;
+	max-width: none;
+}
+/* The note about the platforms sits on top of the declarations that it is about. */
+.doc-content > .doc-node > .platforms + .signature {
+	margin-top: 0;
+	border-top-left-radius: 0;
+	border-top-right-radius: 0;
 }
 .doc-content > .doc-node > .title > .link {
 	display: flex;
