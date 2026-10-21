@@ -6596,8 +6596,9 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ_id u32) flat
 	if clean_typ == flat.source_type_string && !is_ref {
 		return expr
 	}
+	mut local_struct_shadows_alias := false
 	if !isnil(t.tc) {
-		local_struct_shadows_alias := t.bare_struct_name_is_local_to_current_module(clean_typ)
+		local_struct_shadows_alias = t.bare_struct_name_is_local_to_current_module(clean_typ)
 		if !local_struct_shadows_alias {
 			if alias_name_source_id, alias_source_id_2 := t.lookup_str_alias(clean_type_id) {
 				return t.alias_str_wrap(expr, alias_name_source_id, alias_source_id_2, is_ref)
@@ -6780,7 +6781,9 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ_id u32) flat
 			return t.make_call_typed('f64.str', [expr], flat.source_type_string)
 		}
 		else {
-			if flat.source_type_name(clean_typ) in t.enum_types {
+			if flat.source_type_name(clean_typ) in t.enum_types
+				&& !local_struct_shadows_alias
+				&& (!isnil(t.tc) || !t.bare_struct_name_is_local_to_current_module(clean_typ)) {
 				if method := t.enum_str_method_name(clean_type_id) {
 					return t.make_call_typed(method, [expr], flat.source_type_string)
 				}
