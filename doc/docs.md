@@ -4764,6 +4764,10 @@ A negative type guard whose body exits also narrows the value after the guard an
 Casting a pointer to an interface can be used directly as the receiver of a method returning
 multiple values. Interface data fields retain their individual types during the conversion.
 
+An explicit cast such as `pkg.Interface(value)` uses the interface from its declaring module,
+even if another imported module defines a sum type with the same name.
+Import aliases and selective imports retain this type identity.
+
 ```v
 // interface-example.1
 struct Dog {
