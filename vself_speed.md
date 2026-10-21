@@ -4,6 +4,23 @@ Every compiler fix must preserve or improve self-compilation efficiency. Agents 
 retired instructions before and after compiler changes and resolve regressions before merging.
 Keep correctness tests and generated-output checks alongside performance measurements.
 
+## Why the reported scores differed
+
+The earlier **115,328 -> 95,877 instructions/line** comparison used compiler sources and input
+at `257b514a`, Apple Clang 21, and a **560,382-line** fixture. Its two roles were ordinary
+production and PGO production builds.
+
+The later **124,706.52** score was an **unprofiled baseline**, not its optimized result.
+Homebrew Clang 23 wrote a profile that the selected Apple LLVM 21 merger could not read, so
+self-building fell back to an ordinary production build. Fixing that tool lookup gave
+**101,502.13** in the same comparison, on the newer **559,990-line** fixture.
+
+Those historical scores changed compiler revision, input, and C toolchain. They must not be
+presented as a continuous performance series. A fresh revision check, described below, kept
+input and Apple Clang 21 fixed: **97,584.84 -> 105,074.91**, or **7.68% more instructions**.
+This confirms a revision-associated increase as well as the reporting error; it does not isolate
+which commit or build-training difference caused that increase.
+
 ## Metric and scope
 
 Use **retired instructions per parsed source line** to express compiler work; lower is better:
@@ -138,7 +155,67 @@ uses the encoding described below and has SHA-256:
 Its source inventory, syntax-check logs, build logs, binaries, and instruction samples remain in
 `/Users/alex/code/v3-self-90k-artifacts/`.
 
-## Latest completed matched comparison
+## Semantic interning cache comparison
+
+The first source optimization on master `9ca360c4ff` adds an atomic cache of immutable canonical
+semantic types. Hits verify complete structural equality before bypassing recursive hashing,
+locking, and map lookup. Promotion clears the cache before worker arenas are released. The
+checker also uses the cheap fingerprint for its existing type-name cache, retaining its full
+structural-equality check.
+
+Both roles use successful Clang 23 PGO builds with `-mcpu=apple-m1`, the same build recipe,
+and the unchanged 559,990-line fixture. The candidate is the first cache variant, before the
+subsequent source-spelling and child-fingerprint experiments.
+
+| Median metric | Before, one worker | Cache, one worker | Before, default | Cache, default |
+| --- | ---: | ---: | ---: | ---: |
+| Retired instructions | 57,045,612,737.0 | 55,295,951,631.0 | 61,027,236,671.0 | 59,242,819,343.0 |
+| Instructions/parsed line | 101,868.98 | 98,744.53 | 108,979.15 | 105,792.64 |
+| CPU cycles, billions | 27.0600 | 26.8994 | 28.7436 | 28.6683 |
+| Peak resident memory, MiB | 1,118.17 | 1,118.55 | 1,011.12 | 1,014.97 |
+| Elapsed seconds | 10.6821 | 9.4104 | 2.7068 | 2.6945 |
+
+Retired instructions decreased **3.07% with one worker** and **2.92% with default parallelism**.
+All ten pairs in each mode improved. Median paired instruction differences were
+`-1,799,425,264` and `-1,775,404,206.5`, respectively. All 44 samples succeeded and generated
+byte-identical C within each mode. C passed Clang syntax checking. Elapsed time and cycles
+were collected under uncontrolled host load. **The 90,000 instructions/line target is not met.**
+
+The 151 type tests passed, including borrowed-payload mutation, concurrent growth, and arena
+promotion checks. Full compiler coverage and further optimization are still in progress.
+Commands, environment, raw counters, and output checks are retained as
+`interner-cache-matched-*` and `interner-cache-syntax-validation.json` in the artifacts directory.
+The baseline executable SHA-256 is
+`575ec55f8f553cfea6bff81ad937192687a840d84cc0f7e8832327804be5b8b7`;
+the candidate executable SHA-256 is
+`22e35698c36f05c7009b2516cda9270985366404230fabdf2399c16f178a3572`.
+
+## Follow-up cache comparison with Apple Clang 21
+
+A fresh comparison on master `9ca360c4ff` used Apple Clang 21 PGO for both roles and the same
+559,990-line fixture. The candidate combines the semantic interning cache with source-spelling
+content fingerprints, shallow semantic child fingerprints, and a reference receiver for
+`Type.source_type_id`. Fingerprints still require complete equality checks before reuse.
+
+| Median metric | Baseline, one worker | Combined cache, one worker |
+| --- | ---: | ---: |
+| Retired instructions | 59,064,336,077.0 | 57,522,052,933.5 |
+| Instructions/parsed line | 105,473.91 | 102,719.79 |
+| CPU cycles, billions | 29.1419 | 28.4944 |
+| Peak resident memory, MiB | 1,117.54 | 1,118.23 |
+| Elapsed seconds | 33.9576 | 34.9625 |
+
+The combined change used **2.61% fewer instructions**, with **0/10 regressing pairs** and a
+median paired difference of `-1,529,766,769` instructions. All 22 runs succeeded and emitted
+byte-identical C. Elapsed time and cycles reflect uncontrolled host load. This is a matched
+source-change comparison; its absolute scores must not be compared with the Clang 23 sessions.
+The 90,000 instructions/line target is still unmet. Default-parallel validation is pending.
+
+Raw samples, binary hashes, commands, environment, and output checks are retained as
+`reference21-content-matched-serial-*` in the artifacts directory above. This bundle comparison
+does not establish an independent benefit from each additional fingerprint change.
+
+## LLVM toolchain lookup comparison on latest master
 
 Measured on 2026-10-21 with compiler sources from master `9ca360c4ff`, the toolchain lookup
 fix at `8a6e8a32dc`, and the same 559,990-line fixture. Both compilers were rebuilt in place
@@ -173,6 +250,50 @@ candidate executable, latest2-after-v
 575ec55f8f553cfea6bff81ad937192687a840d84cc0f7e8832327804be5b8b7
 merged training profile
 93e991a1f4f6952c4645d0dab67a4da1a897fca48c647dea5dcc5c53f9f1db1b
+```
+
+## Compiler revision check on identical input
+
+A separate 2026-10-21 comparison held the 559,990-line fixture, source-file list, Apple Clang 21,
+production settings, and PGO recipe fixed. The older binary uses compiler sources at `257b514a`;
+the newer binary uses merged sources at `2d1367e589`. Each build trained on its own revision's
+compiler source, following the same self-build recipe. The older binary successfully compiles
+the newer fixture to C, which makes this direction of comparison possible.
+
+| Median metric | Older compiler | Merged compiler |
+| --- | ---: | ---: |
+| Retired instructions | 54,646,536,102.5 | 58,840,900,876.5 |
+| Instructions/parsed line | 97,584.84 | 105,074.91 |
+| CPU cycles, billions | 23.5851 | 25.1845 |
+| Peak resident memory, MiB | 1133.02 | 1117.52 |
+| Elapsed seconds | 7.9881 | 8.9251 |
+
+The merged compiler executed **7.68% more instructions** between medians, with more work in
+**10/10 pairs**. The median paired increase was `4,174,866,314` instructions. All 22 runs
+succeeded and each role produced repeatable C. Both C outputs passed Clang syntax checking.
+They intentionally differ across roles because compiler revisions changed sum-type representation;
+this is a revision diagnostic, not an output-preserving internal optimization comparison.
+It establishes increased work for these compiler builds without isolating a particular commit.
+Elapsed time and cycles were collected under uncontrolled host load.
+
+Thus the earlier reporting mixed an unprofiled baseline with a PGO result, but a compiler-version
+increase also exists on matched input. The historical 95,877.04 result still uses the older
+560,382-line fixture; attributing the remaining fixture effect requires a separate matched check.
+Do not explain the entire discrepancy as denominator changes or assume that no regression exists.
+
+Logs, inventories, counters, commands, environments, and syntax checks are retained as
+`revision-diagnostic-*` in the artifacts directory above. The 562-file inventory matches exactly
+between roles. SHA-256 values:
+
+```text
+older compiler executable
+e554d76a9ad101c03c74864b5d428cef6f7b1df29fd11dad8ab43e74e60cbde4
+merged compiler executable
+7aab1e75525e5966566d7fe30debb543aaaeea68159dcd94047b46b7ada3788f
+older compiler generated C on the current fixture
+abb6372f6afc7892a15db0843ad4cca9fa2ca638ef331704866d59fb6d72d50d
+merged compiler generated C on the current fixture
+88583a0ca0e4f59877f7c2b7a6cb4260c046c4737a61c665b62af265344bba8d
 ```
 
 ## Matched Clang 23 comparison before the latest master rebuild
@@ -248,7 +369,8 @@ and `quiet-20261021-attempt1-guard.json`; an idle host is no longer an acceptanc
 
 Measured on 2026-10-20. Baseline: merged master
 `257b514a303f4d302ed23bbac1d51a2ca9624a66`. Candidate: that commit with the Clang production
-self-build changes later merged in [#30962](https://github.com/vlang/v/pull/30962). The compiler source compiled into both binaries is unchanged;
+self-build changes later merged in [#30962](https://github.com/vlang/v/pull/30962).
+The compiler source compiled into both binaries is unchanged;
 the intentional build difference is profile-guided optimization (PGO).
 The candidate was rebuilt and remeasured after correcting atomic profile collection and
 isolating the training environment.
