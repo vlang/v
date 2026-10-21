@@ -17744,6 +17744,10 @@ fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type_id u3
 	}
 	if int(id) >= 0 && target_type_id != u32(0) {
 		node := t.a.nodes[int(id)]
+		if node.kind == .paren && node.children_count == 1 {
+			// Apply contextual conversions once, to the value inside the parentheses.
+			return t.transform_expr_for_type(t.a.child(&node, 0), target_type_id)
+		}
 		if target_type.starts_with('!')
 			&& t.return_expr_is_propagated_err(id, t.optional_base_type(t.qualify_optional_type(target_type_id))) {
 			error_value := t.transform_expr_for_type(id, flat.source_type_id('IError'))
