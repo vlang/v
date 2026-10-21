@@ -35,6 +35,19 @@ spelling at an integration boundary. Equality, hashing, and owned copies retain 
 identity. This spelling identity is shared across workers; semantic `TypeId` values still belong
 to a particular checker's interner.
 
+`new_type_reference(value)` retains a shallow descriptor copy in stable reference storage.
+Its nested metadata stays borrowed. Use `clone_owned_type(value)` first when that metadata
+belongs to an arena that will end. Checker parsing and interning retain canonical recursive
+descriptor edges; use those APIs when a reference should share the checker's type identity.
+
+Pass-2 worker publication checks the descriptor's referenced storage before releasing its arena.
+Lists, strings and recursive descriptor references are copied when they depend on that arena;
+graphs already outside it retain their references.
+
+A `mut value ?T` parameter keeps the `&?&T` calling convention while its body reads `?T`,
+including struct payloads and aliases of structs. Mutable payload guards and smartcasts still
+refer to the caller's payload. An explicit pointer payload keeps its declared pointer view.
+
 `parse_type`, `parse_type_ref`, `parse_canonical_type`, `parse_canonical_type_cached`,
 `parse_resolution_type`, and `parse_resolution_type_in_file` accept these source spelling IDs.
 Intern new source text with `flat.source_type_id(text)` at a parsing boundary. An AST annotation
@@ -194,3 +207,73 @@ When a later struct field or call argument contains an `or` expression, earlier 
 evaluated first. Specialized mutable method receivers keep their original storage, and indexed
 callbacks are selected before a later fallible argument can replace them.
 Declared function references remain inline so their expected callback adapter type is preserved.
+
+Reference parameters such as `&Value` require storage of that same sum type. A reference to
+one of its variants cannot be reinterpreted as a reference to the sum. Wrap a getter result
+explicitly, for example `read(Value(dict['a']))`, to materialize a sum value for the call.
+Existing sum bindings can be passed directly.
+
+Pointer sum variants preserve the referenced object's identity. A smartcast can mutate the
+referenced object, but it does not supply a pointer variable for a mutable pointer parameter.
+This applies to nominal pointer aliases as well as explicit reference types. To replace an owned
+pointer variant, assign the enclosing sum so its previous payload is released and the replacement
+retains its own cleanup policy. Explicit unsafe access to the pointer slot remains a low-level
+operation; the caller must preserve the enclosing sum's ownership metadata.
+Explicit `drop_owned` on a named owned sum destroys its complete storage even after a smartcast.
+Borrowed projections retain the usual copy policy. Lowering can query the checker's validated
+node decision with `TypeChecker.ownership_sum_drop_consumes_storage(node)`.
+
+Returning a mutable array parameter in a value-array sum variant creates an independent owner.
+A selected pointer-array variant keeps borrowing the caller's storage. Option and Result wrappers
+preserve the successful payload's ownership and their existing none or error cleanup.
+
+The following sum lifetime and cleanup checks apply with `-ownership` and `-autofree`, using
+`checker_sum_escape_d_ownership.v`. Autofree shares the escape analysis with ownership mode,
+but retains its compatibility copy policy instead of ownership's move policy. These are current
+analysis restrictions in addition to the ordinary finite-layout and reference-type rules.
+Default GC builds without either flag do not enable these additional checks.
+
+Returning a wrapper of a local promotes that local and transfers its cleanup to the returned sum.
+Storing an inner local's pointer in an outer sum similarly transfers cleanup at the store, including
+through named sum wrappers.
+An outer store with an ambiguous local pointer source is rejected; store each pointer alternative
+separately so the checker can identify which allocation supplies its cleanup obligation.
+This also applies to outer stores whose local source is hidden behind a borrowed-return call.
+Returning an existing local through a known borrowed-return call retains its allocation, while
+calls borrowing caller-owned storage remain non-owning. A local declared inside a returned
+`if` or `match` expression cannot supply a sum pointer; declare it before that expression.
+These lifetime checks also apply inside functions returning `void` and when a sum constructor
+wraps the conditional expression. The checker records heap promotion before validating a local
+pointer return. Return and assignment lowering preserve the original transfer decision through
+their generated nodes, and only the matching runtime pointer acquires the cleanup obligation.
+An outer sum assigned inside a loop keeps its cleanup at the outer binding's scope. Replacing its
+payload releases the previous owner; values declared inside each iteration still clean up there.
+Iteration-local loans end there too; loans held by outer bindings remain active across the loop.
+Replacing a pointer sum field or element releases its previous owned payload. A wrapper of the same
+pointer retains that cleanup obligation, and the destination expression is evaluated once.
+Loop return ownership is summarized before checking callers, including callers checked in parallel
+or declared before the factory. Statements within a loop share their lexical declaration context.
+Wrapping an existing local's address preserves its identity and borrows its storage. Moving an owned
+sum field transfers its runtime cleanup flag; ownership checking rejects later reads of that field.
+Aggregate fields and elements cannot retain a pointer to a local from a shorter scope. Returning
+a sum field or element that borrows local storage is also rejected, including through a named alias
+or an enclosing aggregate. Keep an escaping allocation in a separately owned outer sum before
+borrowing it into an aggregate in the same scope.
+The same lifetime check applies when replacing the enclosing struct or array literal. Borrowed sum
+fields keep their source loans through named aggregate aliases, including nested storage.
+Conditional aggregate expressions cannot retain a sum pointer to a local declared inside them.
+Moving a sum field or element transfers its cleanup while the remaining aggregate still cleans up.
+A function returning either a fresh or borrowed pointer preserves its conditional cleanup and source
+loans. Moving that sum transfers both obligations; borrowed-only return values remain copyable.
+Wrapping a result in the same sum type preserves those loans and move obligations, including
+conditional results and named aliases. Aggregate fields and elements retain conditional ownership
+when their initializer may return either fresh storage or a borrowed pointer.
+Unwrapping a Result or Option with `or`, `!`, or `?` preserves the successful sum's ownership and
+source loans. An `or` fallback also retains its source loans, including named local wrappers.
+These return lifetime checks reject a pointer to a local declared inside an `or` fallback.
+Fallback aliases keep possible source loans across branches and loop iterations. A later
+unconditional replacement clears the prior loan, and inner declarations keep their own scope.
+Same-sum wrappers preserve conditional cleanup even when their sources are borrowed parameters.
+Loop exits preserve the source loans held at `break` or `continue`, including labeled exits.
+Only paths that continue within the body reach a later replacement; replacements after the loop
+apply to its exited paths too.

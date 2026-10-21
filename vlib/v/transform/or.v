@@ -1541,7 +1541,7 @@ fn (mut t Transformer) make_staging_value_decl(name string, typ_id u32) flat.Nod
 fn (mut t Transformer) zero_value_for_type(typ_id u32) flat.NodeId {
 	typ := flat.source_type_name(typ_id)
 	mut clean := typ
-	if clean.starts_with('&') {
+	if clean.starts_with('&') || clean == 'voidptr' {
 		return t.a.add(.nil_literal)
 	}
 	if clean.len > 1 && (clean[0] == `?` || clean[0] == `!`) {
@@ -2322,6 +2322,11 @@ fn (mut t Transformer) optional_source_value_expr(source_id flat.NodeId, expr fl
 		// transform_ident_expr; do not add a second optional-storage load.
 		return expr
 	}
+	if source.kind == .ident && t.mut_optional_view_param(source.value) != none {
+		// transform_ident_expr already read the `mut a ?T` parameter through its
+		// reference (mut_optional_view_read), also when a fn literal keeps its `&` slot.
+		return expr
+	}
 	raw_type := match source.kind {
 		.ident {
 			t.raw_var_type(source.value)
@@ -2649,9 +2654,30 @@ fn (mut t Transformer) lower_or_body_to_stmts_with_err_expr(body_id flat.NodeId,
 	// Mirrors transform_if_guard_else_block.
 	err_scope := t.enter_implicit_err_scope(int(err_expr) >= 0)
 	t.append_implicit_err_decl(mut result, err_expr)
-	for i in 0 .. body.children_count {
+	mut i := 0
+	for i < int(body.children_count) {
 		child_id := t.a.child(&body, i)
 		child := t.a.nodes[int(child_id)]
+		// Keep the label paired with its loop, as in transform_stmts, so the
+		// lowering emits the matching labelled break and continue targets.
+		if child.kind == .label_stmt && i + 1 < int(body.children_count) {
+			loop_id := t.a.child(&body, i + 1)
+			loop_node := t.a.nodes[int(loop_id)]
+			if loop_node.kind in [.for_stmt, .for_in_stmt] {
+				expanded := t.transform_labeled_loop(child.value, loop_id, loop_node)
+				t.drain_pending(mut result)
+				result << expanded
+				i += 2
+				continue
+			}
+			if t.is_multi_init_for_block(loop_node) {
+				expanded := t.transform_labeled_multi_init_loop(child.value, loop_id, loop_node)
+				t.drain_pending(mut result)
+				result << expanded
+				i += 2
+				continue
+			}
+		}
 		// Or blocks lower their statements directly instead of through
 		// `transform_stmts`. Capture narrowing facts before an assert/guard is
 		// rewritten to a runtime check, then expose them to later statements.
@@ -2721,6 +2747,7 @@ fn (mut t Transformer) lower_or_body_to_stmts_with_err_expr(body_id flat.NodeId,
 		for info in post_assert_smartcasts {
 			t.push_smartcast(info.expr_name, info.variant_name, info.sum_type_name)
 		}
+		i++
 	}
 	_ = target_type
 	t.leave_implicit_err_scope(err_scope)

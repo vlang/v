@@ -2,7 +2,7 @@ struct Empty {}
 
 struct Node[T] {
 	value T
-	next  Chain[T]
+	next  &Chain[T]
 }
 
 type Chain[T] = Empty | Node[T]
@@ -15,6 +15,7 @@ fn get[T](chain Chain[T]) T {
 }
 
 fn test_main() {
-	chain := Node{0.2, Empty{}}
+	end := Chain[f64](Empty{})
+	chain := Node{0.2, &end}
 	assert get(chain) == 0.2
 }

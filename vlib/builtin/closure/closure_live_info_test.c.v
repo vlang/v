@@ -1,4 +1,3 @@
-// vtest vflags: -enable-globals
 module closure
 
 fn test_closure_live_info_has_no_gc_scanned_padding() {

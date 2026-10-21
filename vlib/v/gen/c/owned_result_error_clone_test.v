@@ -33,12 +33,13 @@ fn owned_result_error_clone_code(clone_kind string, pointer_receiver bool, needs
 	tc.structs['OtherFault'] = tc.structs['Fault'].clone()
 	tc.params_structs['CloneParams'] = true
 	tc.interface_names['IError'] = true
-	fault := tc.parse_type(flat.source_type_id('Fault'))
-	fault_pointer := types.Type(types.Pointer{ base_type: fault })
+	fault := *tc.parse_type(flat.source_type_id('Fault'))
+	fault_pointer := types.Type(types.Pointer{ base_type: &fault })
 	tc.type_aliases.set_id('FaultRef', flat.source_type_id('&Fault'))
 	tc.type_aliases.set_id('FaultRefAlias', flat.source_type_id('FaultRef'))
 	tc.type_aliases.set_id('FaultValueAlias', flat.source_type_id('Fault'))
 	if needs_drop {
+		tc.struct_implements.set('Fault', ['Drop'])
 		tc.fn_param_types['Fault.drop'] = [fault_pointer]
 		tc.fn_ret_types['Fault.drop'] = types.Type(types.void_)
 	}
@@ -47,9 +48,9 @@ fn owned_result_error_clone_code(clone_kind string, pointer_receiver bool, needs
 		tc.fn_ret_types['Fault.clone'] = match clone_kind {
 			'value', 'extra_argument' { fault }
 			'pointer' { fault_pointer }
-			'pointer_alias' { tc.parse_type(flat.source_type_id('FaultRef')) }
-			'pointer_alias_chain' { tc.parse_type(flat.source_type_id('FaultRefAlias')) }
-			'value_alias' { tc.parse_type(flat.source_type_id('FaultValueAlias')) }
+			'pointer_alias' { *tc.parse_type(flat.source_type_id('FaultRef')) }
+			'pointer_alias_chain' { *tc.parse_type(flat.source_type_id('FaultRefAlias')) }
+			'value_alias' { *tc.parse_type(flat.source_type_id('FaultValueAlias')) }
 			'wrong_pointer' { types.Type(types.Pointer{ base_type: types.Type(types.int_) }) }
 			'other_pointer' {
 				types.Type(types.Pointer{ base_type: tc.parse_type(flat.source_type_id('OtherFault')) })

@@ -907,12 +907,26 @@ fn fastc_multi_return_literal(packed_values []string) string {
 	return out.str()
 }
 
-fn (g &Parser) multi_return_component(value string, index int) string {
+// multi_return_component stores one returned value in its multi-return slot as the
+// component's declared type, which is how the caller reads it back: a number is converted
+// (`return 1, 2` for `(f64, f32)`), and a concrete value for an interface or sum type
+// component is boxed, as a single return value is.
+fn (g &Parser) multi_return_component(value string, value_type u32, index int) string {
 	mut expression := value
 	if index < g.return_types.ids.len {
 		declared_type := g.return_types.ids[index]
-		if fastc_is_integer_type(g.underlying_alias_type(declared_type)) {
+		declared_layout := g.underlying_alias_type(declared_type)
+		is_number := fastc_is_integer_type(declared_layout)
+			|| declared_layout == flat.source_type_f32 || declared_layout == flat.source_type_f64
+		declared_kind := g.declared_kinds[flat.source_type_name(g.semantic_type_key(declared_type))]
+		value_kind := g.declared_kinds[flat.source_type_name(g.semantic_type_key(value_type))]
+		needs_box := g.selfhost && value_type != 0 && value_type != declared_type
+			&& (g.should_box_variant(declared_type, value_type)
+				|| (declared_kind == .interface_ && value_kind != .interface_))
+		if is_number {
 			expression = '((${fastc_output_c_type(flat.source_type_name(declared_type))})(${value}))'
+		} else if needs_box {
+			expression = g.interface_value_expression(declared_type, value_type, value)
 		}
 	}
 	return 'V_FASTC_MULTI_VALUE((${expression}))'
@@ -968,6 +982,8 @@ struct FastcLocal {
 	// original boxed sum-type/interface type. A method defined on the whole sum type (`fn (e
 	// Expr) pos()`) is not on the variant, so it dispatches on the still-live boxed original.
 	smartcast_origin_type u32
+	// Keep the declared slot mode distinct from a narrowed payload reference.
+	smartcast_origin_is_reference bool
 	// C expression that still names the original boxed value while this local is narrowed.
 	// Mutable calls accepting the sum type must receive this storage, not the concrete payload
 	// pointer, because their ABI expects the sum-type tag/object wrapper.
@@ -977,6 +993,13 @@ struct FastcLocal {
 	// `x`/`y` for the rest of that `&&` chain. Scoped with the local, so it never leaks between
 	// functions that reuse the bool's name.
 	bool_implications []FastcBoolImplication
+}
+
+fn (local FastcLocal) original_is_reference() bool {
+	if local.smartcast_origin_type != u32(0) {
+		return local.smartcast_origin_is_reference
+	}
+	return local.is_reference
 }
 
 struct FastcLocalScopeChange {
@@ -1371,6 +1394,10 @@ struct FastcMemberSmartcast {
 	variants      flat.TypeTextList
 	tag_source    string
 	object_source string
+	// The boxed member itself (`b->v`) and its sum or interface type. An assignment to the
+	// narrowed member stores a new boxed value there, and ends the narrowing.
+	subject_source string
+	subject_type   u32
 }
 
 // FastcBoolImplication records that a bool local (assigned a top-level `&&` chain of `is` tests,
@@ -2059,12 +2086,28 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 				} else {
 					fastc_c_function_name(signature.module_name, key)
 				}
-				function_c_names[key] = if key != 'main' && signature.module_name in ['', 'main'] {
+				// A main-module function already has its `main__` name; a method of a
+				// main-module type gets it here.
+				function_c_names[key] = if key.contains('.')
+					&& signature.module_name in ['', 'main'] {
 					'main__${name}'
 				} else {
 					name
 				}
 			}
+		}
+	}
+	for key, signature in functions {
+		if key == 'main' || key.contains('.') || signature.module_name !in ['', 'main'] {
+			continue
+		}
+		// A main-module function shares the `main__` namespace with the main module's
+		// constants and the global `byte`. V accepts a constant and a function of the
+		// same name, so such a function is named in FastC's own namespace instead.
+		c_name := function_c_names[key] or { fastc_c_function_name_for_key(key) }
+		if c_name.starts_with('main__')
+			&& ((constants[key] or { '' }) == c_name || (globals[key] or { '' }) == c_name) {
+			function_c_names[key] = '__vf_function_${c_name['main__'.len..]}'
 		}
 	}
 	for key, signature in functions {
@@ -3873,7 +3916,7 @@ fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTy
 			mut parameters := ['${interface_type} value']
 			mut arguments := []string{}
 			for i in 1 .. interface_signature.parameter_types.ids.len {
-				parameters << '${interface_signature.parameter_types_text()[i]} arg${i}'
+				parameters << '${fastc_output_c_type(interface_signature.parameter_types_text()[i])} arg${i}'
 				arguments << 'arg${i}'
 			}
 			c_name := if compact_name := function_c_names[interface_method_key] {
@@ -3881,7 +3924,9 @@ fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTy
 			} else {
 				fastc_method_c_name(interface_signature.module_name, interface_type, method_name)
 			}
-			out.writeln('${interface_signature.return_type_text()} ${c_name}(${parameters.join(', ')}) {')
+			// Spelled like the methods it dispatches to: a V `int` is 64 bits wide.
+			return_c_type := fastc_output_c_type(interface_signature.return_type_text())
+			out.writeln('${return_c_type} ${c_name}(${parameters.join(', ')}) {')
 			out.writeln('\tswitch (value._typ) {')
 			candidate_count := if selfhost && method_name !in used_function_names {
 				0
@@ -3967,10 +4012,10 @@ fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTy
 				// the interface. Stop loudly rather than return a zero value.
 				out.writeln('\t\tbuiltin__panic(_S("fastc: no implementation of `${interface_key}.${method_name}` for this value"));')
 			}
-			out.writeln('\t\t${if interface_signature.return_type_text() == 'void' {
+			out.writeln('\t\t${if return_c_type == 'void' {
 				'return;'
 			} else {
-				'return (' + interface_signature.return_type_text() + '){0};'
+				'return (' + return_c_type + '){0};'
 			}}')
 			out.writeln('\t}')
 			out.writeln('}')
@@ -4177,12 +4222,16 @@ fn fastc_function_id_table(functions map[string]FastcFunctionSignature, function
 		}
 		c_name := if compact_name := function_c_names[key] {
 			compact_name
+		} else if !key.contains('.') {
+			// A main-module function stays out of the index, so its definition is
+			// always kept.
+			continue
 		} else {
 			fastc_signature_c_name(key, signature)
 		}
 		// Only names the reference scan recognizes (a `__` separator or the
-		// `v_fastc_` prefix) are indexed; a bare main-module name stays out
-		// and its definition is always kept.
+		// `v_fastc_` prefix) are indexed; a bare main-module method name stays
+		// out and its definition is always kept.
 		if !fastc_c_name_is_indexed(c_name) {
 			continue
 		}

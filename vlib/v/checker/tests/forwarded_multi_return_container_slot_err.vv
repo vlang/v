@@ -1,0 +1,100 @@
+interface Named {
+	name() string
+}
+
+struct Item {
+	n int
+}
+
+fn (item Item) name() string {
+	return 'item${item.n}'
+}
+
+fn make_map() (int, map[string]Item) {
+	return 1, {
+		'a': Item{1}
+	}
+}
+
+fn forward_map() (int, map[string]Named) {
+	return make_map()
+}
+
+fn make_map_result() !(int, map[string]Item) {
+	return 1, {
+		'a': Item{1}
+	}
+}
+
+fn forward_map_result() !(int, map[string]Named) {
+	return make_map_result()
+}
+
+fn make_map_option() ?(int, map[string]Item) {
+	return 1, {
+		'a': Item{1}
+	}
+}
+
+fn forward_map_option() ?(int, map[string]Named) {
+	return make_map_option()
+}
+
+fn make_bytes_map() (int, map[string]u8) {
+	return 1, {
+		'a': u8(1)
+	}
+}
+
+fn forward_wide_map() (int, map[string]u64) {
+	return make_bytes_map()
+}
+
+fn forward_string_map() (int, map[string]string) {
+	return make_bytes_map()
+}
+
+fn make_bytes() (int, []u8) {
+	return 1, [u8(1), 2]
+}
+
+fn forward_wide() (int, []u64) {
+	return make_bytes()
+}
+
+fn forward_strings() (int, []string) {
+	return make_bytes()
+}
+
+fn make_bytes_result() !(int, []u8) {
+	return 1, [u8(1), 2]
+}
+
+fn forward_wide_result() !(int, []u64) {
+	return make_bytes_result()
+}
+
+fn make_byte_rows() (int, [][]u8) {
+	return 1, [[u8(1), 2]]
+}
+
+fn forward_wide_rows() (int, [][]u64) {
+	return make_byte_rows()
+}
+
+fn main() {
+	_, _ := forward_map()
+	_, _ := forward_map_result() or { 0, map[string]Named{} }
+	_, _ := forward_map_option() or { 0, map[string]Named{} }
+	_, _ := forward_wide_map()
+	_, _ := forward_string_map()
+	_, _ := forward_wide()
+	_, _ := forward_strings()
+	_, _ := forward_wide_result() or { 0, []u64{} }
+	_, _ := forward_wide_rows()
+	mut wide := fn () (int, []u64) {
+		return 0, []u64{}
+	}
+	wide = make_bytes
+	_, _ := wide()
+}

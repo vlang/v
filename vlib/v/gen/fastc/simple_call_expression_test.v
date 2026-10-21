@@ -235,3 +235,70 @@ fn test_fastc_simple_call_signature_and_parser_guards() {
 	mut stop_name := fastc_simple_call_test_parser('value();', true, false)
 	assert !stop_name.try_read_simple_call_expression([token.Token.name], false, true).found
 }
+
+fn test_fastc_selected_function_lookup_keeps_priority_and_file_context() {
+	mut g := fastc_simple_call_test_parser('value();', true, false)
+	g.functions['selected.value'] = FastcFunctionSignature{ return_type: flat.source_type_string }
+	g.functions['other.value'] = FastcFunctionSignature{ return_type: flat.source_type_bool }
+	g.imports[fastc_selective_import_key('value')] = 'selected'
+	assert g.unqualified_function_key('value') == 'fixture.value'
+	g.functions.delete('fixture.value')
+	g.reset_lookup_memos()
+	assert g.unqualified_function_key('value') == 'selected.value'
+	selected := g.functions[g.unqualified_function_key('value')] or { panic('selected signature') }
+	assert selected.return_type == flat.source_type_string
+	g.mono_functions['fixture.value'] = FastcFunctionSignature{}
+	g.reset_lookup_memos()
+	assert g.unqualified_function_key('value') == 'fixture.value'
+	g.mono_functions.delete('fixture.value')
+	g.functions.delete('selected.value')
+	g.mono_functions['selected.value'] = FastcFunctionSignature{}
+	g.reset_lookup_memos()
+	assert g.unqualified_function_key('value') == 'selected.value'
+	g.mono_functions.delete('selected.value')
+	g.reset_lookup_memos()
+	assert g.unqualified_function_key('value') == 'builtin.value'
+	g.functions.delete('builtin.value')
+	g.reset_lookup_memos()
+	assert g.unqualified_function_key('value') == 'fixture.value'
+	g = Parser{
+		...g
+		module_aliases: {
+			'reexported': 'other'
+		}
+	}
+	g.imports[fastc_selective_import_key('value')] = 'reexported'
+	g.reset_lookup_memos()
+	assert g.unqualified_function_key('value') == 'other.value'
+	aliased := g.functions[g.unqualified_function_key('value')] or { panic('aliased signature') }
+	assert aliased.return_type == flat.source_type_bool
+	g.imports[fastc_selective_import_key('value')] = 'absent'
+	g.reset_lookup_memos()
+	assert g.unqualified_function_key('value') == 'fixture.value'
+	g.locals['value'] = FastcLocal{ typ: flat.source_type_id('fn () int') }
+	assert g.function_key_for_call([FastcExpressionToken{ tok: .name, lit: 'value' }], 0) == ''
+}
+
+fn test_fastc_selected_scalar_calls_decline_without_changing_checkpoint() {
+	stops := [token.Token.semicolon]
+	for name in ['builtin_only', 'selected_only'] {
+		source := '${name}(count);'
+		mut g := fastc_simple_call_test_parser(source, true, false)
+		mut before := fastc_simple_call_test_parser(source, true, false)
+		g.imports[fastc_selective_import_key(name)] = 'selected'
+		before.imports[fastc_selective_import_key(name)] = 'selected'
+		signature := FastcFunctionSignature{
+			parameter_types: flat.TypeTextList.from_names(['int'])
+			return_type:     flat.source_type_int
+		}
+		g.functions['selected.${name}'] = signature
+		before.functions['selected.${name}'] = signature
+		assert !g.try_read_simple_call_expression(stops, false, true).found
+		fastc_simple_call_assert_state_equal(&g, &before, source)
+		assert g.unqualified_key_memo.len == 0 && g.declared_type_key_memo.len == 0
+		assert g.function_key_for_call([FastcExpressionToken{ tok: .name, lit: name }], 0) == 'selected.${name}'
+	}
+	mut local := fastc_simple_call_test_parser('value();', true, false)
+	local.imports[fastc_selective_import_key('value')] = 'selected'
+	assert local.try_read_simple_call_expression(stops, false, true).found
+}

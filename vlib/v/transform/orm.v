@@ -1428,11 +1428,13 @@ fn (mut t Transformer) sql_infix_primitive_from_token_for_field(field string, co
 	op_text, right_text := sql_split_leading_field_math_token(token, field) or { return none }
 	right_expr := t.sql_expr_from_token_for_type(right_text, typ_id)
 	right_primitive := t.sql_primitive_from_expr(right_expr)
+	right_value := t.transform_expr(right_primitive)
+	right_ref := t.heap_value(right_value, flat.source_type_id('orm.Primitive'))
 	fields := [
 		t.make_named_field_init('name', t.make_string_literal(column), flat.source_type_string),
 		t.make_named_field_init('operator', t.sql_math_operation_kind_expr(op_text),
 			flat.source_type_id('orm.MathOperationKind')),
-		t.make_named_field_init('right', right_primitive, flat.source_type_id('orm.Primitive')),
+		t.make_named_field_init('right', right_ref, flat.source_type_id('&orm.Primitive')),
 	]
 	start := t.a.children.len
 	for item in fields {

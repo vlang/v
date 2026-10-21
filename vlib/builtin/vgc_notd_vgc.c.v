@@ -46,3 +46,13 @@ fn vgc_heap_usage() (usize, usize, usize, usize, usize) {
 fn vgc_memory_use() usize {
 	return 0
 }
+
+fn vgc_collect() {
+}
+
+fn vgc_enable(on bool) {
+}
+
+fn vgc_is_enabled() bool {
+	return false
+}

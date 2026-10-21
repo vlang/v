@@ -33,7 +33,7 @@ pub fn input_character() int {
 // to output many characters one by one. If you instead want to print entire
 // strings at once, use `print(your_string)`.
 pub fn print_character(ch u8) int {
-	$if android && !termux {
+	$if android && !termux && !cross ? {
 		C.android_print(C.stdout, c'%.*s', 1, voidptr(&ch))
 	} $else $if freestanding {
 		bare_print(voidptr(&ch), u64(1))

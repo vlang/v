@@ -5,6 +5,11 @@ without the regular parser, checker, or AST pipeline, then compiles with bundled
 FastC is experimental and supports a subset of V. An unsupported construct produces an error
 with its source byte offset; FastC does not silently switch to the C backend.
 
+Sum types currently use boxed payloads in FastC. Copying a sum containing a value variant can
+therefore share that variant's storage, unlike the independent value copies in the default
+C backend. Programs relying on sum value snapshots should use the default C backend until
+FastC implements the same copy semantics. Reference-variant support is also incomplete.
+
 As in the default C backend, an `if` condition cannot start with another `if` expression,
 even behind opening parentheses. Assign the inner expression to a variable first.
 Both the C emitter and the native ARM64 parser enforce this rule.

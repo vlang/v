@@ -1259,8 +1259,11 @@ pub fn open_append(path string) !File {
 	if isnil(file.cfile) {
 		return error_posix(msg: 'failed to create(append) file "${path}"')
 	}
-	file.is_opened = true
-	return file
+	return File{
+		cfile:     file.cfile
+		fd:        fileno(file.cfile)
+		is_opened: true
+	}
 }
 
 // execvp - loads and executes a new child process, *in place* of the current process.

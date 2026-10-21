@@ -58,7 +58,7 @@ fn test_empty_array_generic_diagnostic_prescreen() {
 			assert !tc.record_empty_array_generic_call_errors(call, CallInfo{
 				name:   'consume'
 				params: [Type(Array{
-					elem_type: Type(int_)
+					elem_type: &Type(int_)
 				})]
 			})
 		}
