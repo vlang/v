@@ -8786,6 +8786,8 @@ fn main() {
 #### <h4 id="comptime-methods">.methods</h4>
 
 You can retrieve information about struct methods.
+Reflected method calls execute the ordinary method body, including calls into imported
+modules and generic helper functions.
 
 ```v
 struct Foo {
