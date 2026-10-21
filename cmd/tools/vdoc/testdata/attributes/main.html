@@ -19,8 +19,8 @@
 		<section id="Buttons.from" class="doc-node">
 			<div class="title"><h2>fn Buttons.from <a href="#Buttons.from">#</a></h2></div>
 <pre class="signature">
-<code><span class="token keyword">fn</span> <span class="token type_name">Buttons</span><span class="token punctuation">.</span><span class="token function">from</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token type_name">Buttons</span></code></pre>
-
+<code><span class="token keyword">fn</span> <span class="token type_name">Buttons</span><span class="token punctuation">.</span><span class="token function">from</span><span class="token punctuation">[</span><span class="token type_name">W</span><span class="token punctuation">]</span><span class="token punctuation">(</span>input <span class="token type_name">W</span><span class="token punctuation">)</span> <span class="token operator">!</span><span class="token type_name">Buttons</span></code></pre>
+<p>from returns the <code>Buttons</code> value of an integer or of a field name, or an error if there is none.</p>
 
 </section>
 
@@ -28,7 +28,7 @@
 			<div class="title"><h2>fn Buttons.zero <a href="#Buttons.zero">#</a></h2></div>
 <pre class="signature">
 <code><span class="token keyword">fn</span> <span class="token type_name">Buttons</span><span class="token punctuation">.</span><span class="token function">zero</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token type_name">Buttons</span></code></pre>
-
+<p>zero returns a <code>Buttons</code> value with no flags set.</p>
 
 </section>
 
@@ -44,21 +44,67 @@
 
 </section>
 
-		<section id="Buttons.all" class="doc-node">
-			<div class="title"><h2>fn (Buttons) all <a href="#Buttons.all">#</a></h2></div>
-
+		<section id="Buttons.is_empty" class="doc-node">
+			<div class="title"><h2>fn (Buttons) is_empty <a href="#Buttons.is_empty">#</a></h2></div>
+<pre class="signature">
+<code><span class="token keyword">fn</span> <span class="token punctuation">(</span>e <span class="token operator">&amp;</span><span class="token type_name">Buttons</span><span class="token punctuation">)</span> <span class="token function">is_empty</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token builtin">bool</span></code></pre>
+<p>is_empty returns true if no flags are set.</p>
 
 </section>
 
 		<section id="Buttons.has" class="doc-node">
 			<div class="title"><h2>fn (Buttons) has <a href="#Buttons.has">#</a></h2></div>
-
+<pre class="signature">
+<code><span class="token keyword">fn</span> <span class="token punctuation">(</span>e <span class="token operator">&amp;</span><span class="token type_name">Buttons</span><span class="token punctuation">)</span> <span class="token function">has</span><span class="token punctuation">(</span>flag <span class="token type_name">Buttons</span><span class="token punctuation">)</span> <span class="token builtin">bool</span></code></pre>
+<p>has returns true if any of the flags in <code>flag</code> are set.</p>
 
 </section>
 
-		<section id="Buttons.is_empty" class="doc-node">
-			<div class="title"><h2>fn (Buttons) is_empty <a href="#Buttons.is_empty">#</a></h2></div>
+		<section id="Buttons.all" class="doc-node">
+			<div class="title"><h2>fn (Buttons) all <a href="#Buttons.all">#</a></h2></div>
+<pre class="signature">
+<code><span class="token keyword">fn</span> <span class="token punctuation">(</span>e <span class="token operator">&amp;</span><span class="token type_name">Buttons</span><span class="token punctuation">)</span> <span class="token function">all</span><span class="token punctuation">(</span>flag <span class="token type_name">Buttons</span><span class="token punctuation">)</span> <span class="token builtin">bool</span></code></pre>
+<p>all returns true if all the flags in <code>flag</code> are set.</p>
 
+</section>
+
+		<section id="Buttons.set" class="doc-node">
+			<div class="title"><h2>fn (Buttons) set <a href="#Buttons.set">#</a></h2></div>
+<pre class="signature">
+<code><span class="token keyword">fn</span> <span class="token punctuation">(</span><span class="token keyword">mut</span> e <span class="token type_name">Buttons</span><span class="token punctuation">)</span> <span class="token function">set</span><span class="token punctuation">(</span>flag <span class="token type_name">Buttons</span><span class="token punctuation">)</span></code></pre>
+<p>set sets the flags in <code>flag</code>.</p>
+
+</section>
+
+		<section id="Buttons.set_all" class="doc-node">
+			<div class="title"><h2>fn (Buttons) set_all <a href="#Buttons.set_all">#</a></h2></div>
+<pre class="signature">
+<code><span class="token keyword">fn</span> <span class="token punctuation">(</span><span class="token keyword">mut</span> e <span class="token type_name">Buttons</span><span class="token punctuation">)</span> <span class="token function">set_all</span><span class="token punctuation">(</span><span class="token punctuation">)</span></code></pre>
+<p>set_all sets all the flags.</p>
+
+</section>
+
+		<section id="Buttons.clear" class="doc-node">
+			<div class="title"><h2>fn (Buttons) clear <a href="#Buttons.clear">#</a></h2></div>
+<pre class="signature">
+<code><span class="token keyword">fn</span> <span class="token punctuation">(</span><span class="token keyword">mut</span> e <span class="token type_name">Buttons</span><span class="token punctuation">)</span> <span class="token function">clear</span><span class="token punctuation">(</span>flag <span class="token type_name">Buttons</span><span class="token punctuation">)</span></code></pre>
+<p>clear clears the flags in <code>flag</code>.</p>
+
+</section>
+
+		<section id="Buttons.clear_all" class="doc-node">
+			<div class="title"><h2>fn (Buttons) clear_all <a href="#Buttons.clear_all">#</a></h2></div>
+<pre class="signature">
+<code><span class="token keyword">fn</span> <span class="token punctuation">(</span><span class="token keyword">mut</span> e <span class="token type_name">Buttons</span><span class="token punctuation">)</span> <span class="token function">clear_all</span><span class="token punctuation">(</span><span class="token punctuation">)</span></code></pre>
+<p>clear_all clears all the flags.</p>
+
+</section>
+
+		<section id="Buttons.toggle" class="doc-node">
+			<div class="title"><h2>fn (Buttons) toggle <a href="#Buttons.toggle">#</a></h2></div>
+<pre class="signature">
+<code><span class="token keyword">fn</span> <span class="token punctuation">(</span><span class="token keyword">mut</span> e <span class="token type_name">Buttons</span><span class="token punctuation">)</span> <span class="token function">toggle</span><span class="token punctuation">(</span>flag <span class="token type_name">Buttons</span><span class="token punctuation">)</span></code></pre>
+<p>toggle flips the flags in <code>flag</code>.</p>
 
 </section>
 

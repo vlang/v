@@ -86,7 +86,8 @@ fn test_fastc_interface_dispatch_without_a_match_panics() {
 		'program.c')
 	defer { os.rmdir_all(root) or {} }
 	source := os.read_file(program) or { panic(err) }
-	dispatch := source.all_after('int Sizer_size(Sizer value) {').all_before('\n}')
+	// The dispatcher returns the C spelling of `int` for the target (`i64` or `i32`).
+	dispatch := source.all_after(' Sizer_size(Sizer value) {').all_before('\n}')
 	assert dispatch.contains('case __v_typeid_Digest:'), dispatch
 	assert dispatch.contains('builtin__panic('), dispatch
 }

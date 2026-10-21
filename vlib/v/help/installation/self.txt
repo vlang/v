@@ -14,8 +14,12 @@ Options:
   Plain self-builds keep the FastC backend, so the new compiler accepts `-b fastc`; pass
   `-d skip_fastc` to leave it out.
   On Apple Silicon, regular self-builds use bundled TCC by default; `CC` or `-cc` overrides it.
-  -prod uses a single build of one C unit with LTO instead of a PGO cycle. That build runs
-  the C compiler on one thread; add -parallel-cc for a faster build of a slower compiler.
+  On non-Windows hosts, -prod uses PGO with Clang when llvm-profdata is available.
+  It builds an instrumented compiler, trains it on uncached self-compilation, then builds
+  the optimized compiler. This takes longer to build the production compiler.
+  Other C toolchains and failed PGO attempts use a regular production build.
+  Add -parallel-cc to skip PGO and compile the generated C units in parallel.
+  Explicit -no-prod-options or profile-related -cflags also skip automatic PGO.
   On macOS and Linux, `-b fastc` builds the standalone experimental V3 FastC compiler.
   `-prod` cannot be combined with `-b fastc`.
   FastC replacement builds (`xN` without `-o`) reject options that the standalone compiler

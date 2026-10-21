@@ -138,7 +138,7 @@ fn test_explicit_generic_factory_return_type_retains_receiver_methods() {
 	mut tc := types.TypeChecker.new(&a)
 	tc.fn_generic_params['gates.make_gate'] = ['U']
 	tc.fn_ret_types['gates.make_gate'] = types.Type(types.Pointer{
-		base_type: types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
+		base_type: &types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 	})
 	arg := a.add_val(.ident, 'T')
 	for imported in [false, true] {
@@ -210,7 +210,7 @@ fn test_generic_factory_inference_uses_call_site_shadowing() {
 			mut tc := types.TypeChecker.new(&a)
 			tc.fn_generic_params['gates.make_gate'] = ['U']
 			tc.fn_ret_types['gates.make_gate'] = types.Type(types.Pointer{
-				base_type: types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
+				base_type: &types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 			})
 			// A local cannot take the name of an import alias: the checker reports a
 			// `duplicate of an import symbol`. The alias call keeps its meaning beside a
@@ -286,7 +286,7 @@ fn test_checker_selected_generic_selector_factory_return_type() {
 		resolved := if imported_static { 'gates.Gate.make' } else { 'gates.Builder.make' }
 		tc.fn_generic_params[resolved] = ['U']
 		tc.fn_ret_types[resolved] = types.Type(types.Pointer{
-			base_type: types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
+			base_type: &types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 		})
 		tc.sparse_resolved_call_names[int(call)] = resolved
 		collector := CallCollector{ a: &a, tc: &tc }
@@ -787,8 +787,8 @@ fn test_generic_factory_return_uses_placeholder_signature_text() {
 	for form in ['U', '?U', '!U'] {
 		tc.fn_ret_type_texts.set('gates.identity', form)
 		tc.fn_ret_types['gates.identity'] = match form[0] {
-			`?` { types.Type(types.OptionType{ base_type: unknown }) }
-			`!` { types.Type(types.ResultType{ base_type: unknown }) }
+			`?` { types.Type(types.OptionType{ base_type: &types.Type(unknown) }) }
+			`!` { types.Type(types.ResultType{ base_type: &types.Type(unknown) }) }
 			else { unknown }
 		}
 		collector := CallCollector{ a: &a, tc: &tc }
@@ -814,12 +814,12 @@ fn test_generic_factory_return_uses_nested_placeholder_signature_text() {
 	arg := a.add_val(.ident, 'ReceiverRequest')
 	indexed := call_helper_node(mut a, flat.Node{ kind: .index }, [base, arg])
 	unknown := types.Type(types.Unknown{ reason: 'generic U' })
-	array_unknown := types.Type(types.Array{ elem_type: unknown })
+	array_unknown := types.Type(types.Array{ elem_type: &types.Type(unknown) })
 	for form in ['[]U', '?[]U', '![]U'] {
 		tc.fn_ret_type_texts.set('gates.make', form)
 		tc.fn_ret_types['gates.make'] = match form[0] {
-			`?` { types.Type(types.OptionType{ base_type: array_unknown }) }
-			`!` { types.Type(types.ResultType{ base_type: array_unknown }) }
+			`?` { types.Type(types.OptionType{ base_type: &types.Type(array_unknown) }) }
+			`!` { types.Type(types.ResultType{ base_type: &types.Type(array_unknown) }) }
 			else { array_unknown }
 		}
 		collector := CallCollector{ a: &a, tc: &tc }
@@ -870,14 +870,14 @@ fn test_generic_factory_signature_text_uses_declaration_scope() {
 	unknown := types.Type(types.Unknown{ reason: 'generic U' })
 	tc.fn_ret_types['gates.make'] = types.Type(types.Alias{
 		name_id:   flat.source_type_id('gates.Handler[U]')
-		base_type: unknown
+		base_type: &types.Type(unknown)
 	})
 	tc.fn_ret_type_texts.set('gates.make', 'Handler[U]')
 	assert flat.source_type_name(collector.generic_factory_return_type_name(a.node(indexed), 'gates.make', 'consumer',
 		map[string]string{}, false, u32(0))) == 'gates.Handler[int]'
 	tc.fn_ret_types['gates.make'] = types.Type(types.Map{
-		key_type:   types.Type(types.Struct{ name_id: flat.source_type_id('gates.Key') })
-		value_type: unknown
+		key_type:   &types.Type(types.Struct{ name_id: flat.source_type_id('gates.Key') })
+		value_type: &types.Type(unknown)
 	})
 	tc.fn_ret_type_texts.set('gates.make', 'map[Key]U')
 	assert flat.source_type_name(collector.generic_factory_return_type_name(a.node(indexed), 'gates.make', 'consumer',
@@ -891,7 +891,7 @@ fn test_generic_factory_signature_text_uses_declaration_imports() {
 	tc.fn_generic_params[method] = ['U']
 	tc.fn_ret_types[method] = types.Type(types.Alias{
 		name_id:   flat.source_type_id('external.Handler[U]')
-		base_type: types.Type(types.Unknown{ reason: 'generic U' })
+		base_type: &types.Type(types.Unknown{ reason: 'generic U' })
 	})
 	tc.fn_ret_type_texts.set(method, 'handler.Handler[U]')
 	base := a.add_val(.ident, 'make')
@@ -986,16 +986,16 @@ fn test_generic_factory_infers_semantic_channel_element_types() {
 		markused_infer_alias_generic_type(flat.source_type_id(pattern), actual, ['U'], mut inferred)
 		assert inferred.value('U') == 'Payload', pattern
 	}
-	channel := types.Type(types.Channel{ elem_type: types.Type(types.Struct{ name_id: flat.source_type_id('Payload') }) })
-	for actual in [channel, types.Type(types.Pointer{ base_type: channel }),
-		types.Type(types.Alias{ name_id: flat.source_type_id('Mailbox'), base_type: channel })] {
+	channel := types.Type(types.Channel{ elem_type: &types.Type(types.Struct{ name_id: flat.source_type_id('Payload') }) })
+	for actual in [channel, types.Type(types.Pointer{ base_type: &types.Type(channel) }),
+		types.Type(types.Alias{ name_id: flat.source_type_id('Mailbox'), base_type: &types.Type(channel) })] {
 		mut inferred := flat.TypeTextBindings{}
 		markused_infer_alias_generic_type(flat.source_type_id('chan U'), actual, ['U'], mut inferred)
 		assert inferred.value('U') == 'Payload', actual.name()
 	}
 	for actual in [
-		types.Type(types.Channel{ elem_type: types.Type(types.Unknown{}) }),
-		types.Type(types.Array{ elem_type: types.Type(types.Struct{ name_id: flat.source_type_id('Payload') }) }),
+		types.Type(types.Channel{ elem_type: &types.Type(types.Unknown{}) }),
+		types.Type(types.Array{ elem_type: &types.Type(types.Struct{ name_id: flat.source_type_id('Payload') }) }),
 	] {
 		mut inferred := flat.TypeTextBindings{}
 		markused_infer_alias_generic_type(flat.source_type_id('chan U'), actual, ['U'], mut inferred)
@@ -1037,7 +1037,7 @@ fn test_unindexed_factory_infers_aliased_channel_element_type() {
 fn test_channel_generic_reachability_inference() {
 	mut a := flat.FlatAst.new()
 	tc := types.TypeChecker.new(&a)
-	actual := types.Type(types.Channel{ elem_type: types.Type(types.int_) })
+	actual := types.Type(types.Channel{ elem_type: &types.Type(types.int_) })
 	inferred := tc.infer_generic_reachability_type_args('gates.make_gate', flat.source_type_id('chan U'), actual,
 		['U'])
 	assert inferred['U'] == flat.source_type_int
@@ -1077,7 +1077,7 @@ fn test_repeated_generic_parameter_keeps_first_alias_inference() {
 	for name in ['A', 'B'] {
 		markused_infer_alias_generic_type(flat.source_type_id('U'), types.Type(types.Alias{
 			name_id:   flat.source_type_id(name)
-			base_type: types.Type(types.int_)
+			base_type: &types.Type(types.int_)
 		}), ['U'], mut inferred)
 	}
 	assert inferred.value('U') == 'A'
@@ -1172,7 +1172,7 @@ fn test_generic_factory_uses_custom_iterator_element_type() {
 	tc.fn_ret_types['gates.Gate[T].backward'] = types.Type(types.int_)
 	tc.struct_generic_params['Iter'] = ['T']
 	tc.fn_ret_types['Iter[T].next'] = types.Type(types.OptionType{
-		base_type: types.Type(types.Struct{ name_id: flat.source_type_id('T') })
+		base_type: &types.Type(types.Struct{ name_id: flat.source_type_id('T') })
 	})
 	param := a.add_node(flat.Node{ kind: .param, value: 'iter', typ: flat.source_type_id('Iter[T]') })
 	loop_value := a.add_val(.ident, 'value')
@@ -1989,7 +1989,7 @@ fn test_factory_loop_bindings_use_iterator_next_and_checked_variable_types() {
 		tc.parallel_check_sparse = true
 		tc.structs['Iter'] = []types.StructField{}
 		tc.struct_generic_params['Iter'] = ['U']
-		tc.fn_ret_types['Iter[U].next'] = types.Type(types.OptionType{ base_type: types.Type(types.Struct{ name_id: flat.source_type_id('U') }) })
+		tc.fn_ret_types['Iter[U].next'] = types.Type(types.OptionType{ base_type: &types.Type(types.Struct{ name_id: flat.source_type_id('U') }) })
 		tc.fn_ret_type_texts.set('Iter[U].next', '?U')
 		tc.fn_param_type_texts.set('Iter[U].next', ['&Iter[U]'])
 		tc.type_aliases.set('IteratorAlias', 'Iter[int]')

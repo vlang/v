@@ -82,6 +82,9 @@ pub fn parse_response(resp string) !Response {
 @[params]
 struct ResponseParseOptions {
 	raw_body bool
+	// headers_only parses only the status line and headers. The caller already
+	// holds the decoded body, so chunk framing and content encoding are skipped.
+	headers_only bool
 }
 
 // parse_response_with_options leaves content encodings intact for a reverse proxy.
@@ -91,10 +94,10 @@ fn parse_response_with_options(resp string, opts ResponseParseOptions) !Response
 	start_idx, end_idx := find_headers_range(resp)!
 	header := parse_headers(resp.substr(start_idx, end_idx))!
 	mut body := resp.substr(end_idx, resp.len)
-	if has_header_token(header.get(.transfer_encoding) or { '' }, 'chunked') {
+	if !opts.headers_only && has_header_token(header.get(.transfer_encoding) or { '' }, 'chunked') {
 		body = chunked.decode(body)!
 	}
-	if !opts.raw_body {
+	if !opts.raw_body && !opts.headers_only {
 		body = decode_response_body(body, header.get(.content_encoding) or { '' })
 	}
 	return Response{

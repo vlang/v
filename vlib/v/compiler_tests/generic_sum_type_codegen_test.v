@@ -45,6 +45,8 @@ fn generic_sum_type_assert_no_bst_branch_wrap_leaks(c_code string) {
 	assert c_code.contains('struct main__Node_f64 {'), c_code
 	assert c_code.contains('struct Tree_int {'), c_code
 	assert c_code.contains('struct Tree_f64 {'), c_code
+	assert c_code.contains('main__Node_int* _ptr_Node_int;'), c_code
+	assert c_code.contains('main__Node_f64* _ptr_Node_f64;'), c_code
 	assert !c_code.contains('Tree_unknown'), c_code
 	assert !c_code.contains('Node_unknown'), c_code
 	assert !c_code.contains('\nNode '), c_code
@@ -70,28 +72,28 @@ struct Node[T] {
 	right Tree[T]
 }
 
-type Tree[T] = Empty | Node[T]
+type Tree[T] = Empty | &Node[T]
 
 fn leaf[T](value T, empty Tree[T]) Tree[T] {
-	return Node[T]{value, empty, empty}
+	return &Node[T]{value, empty, empty}
 }
 
 fn (tree Tree[T]) size[T]() int {
 	return match tree {
 		Empty { 0 }
-		Node[T] { 1 + tree.left.size() + tree.right.size() }
+		&Node[T] { 1 + tree.left.size() + tree.right.size() }
 	}
 }
 
 fn (tree Tree[T]) add_left[T](value T) Tree[T] {
 	return match tree {
 		Empty {
-			Node[T]{value, tree, tree}
+			&Node[T]{value, tree, tree}
 		}
-		Node[T] {
-			Node[T]{
+		&Node[T] {
+			&Node[T]{
 				...tree
-				left: Node[T]{value, Empty{}, Empty{}}
+				left: &Node[T]{value, Empty{}, Empty{}}
 			}
 		}
 	}
@@ -131,6 +133,8 @@ fn main() {
 	assert c_code.contains('struct main__Node_f64 {'), c_code
 	assert c_code.contains('struct Tree_int {'), c_code
 	assert c_code.contains('struct Tree_f64 {'), c_code
+	assert c_code.contains('main__Node_int* _ptr_Node_int;'), c_code
+	assert c_code.contains('main__Node_f64* _ptr_Node_f64;'), c_code
 	assert !c_code.contains('Array_fixed_Node_T'), c_code
 	assert !c_code.contains('Node_T'), c_code
 	assert !c_code.contains('tree.Node_T'), c_code
@@ -148,7 +152,7 @@ struct Node[T] {
 	right Tree[T]
 }
 
-type Tree[T] = Empty | Node[T]
+type Tree[T] = Empty | &Node[T]
 
 enum Direction {
 	left
@@ -156,7 +160,7 @@ enum Direction {
 	same
 }
 
-fn direction[T](tree Node[T], value T) Direction {
+fn direction[T](tree &Node[T], value T) Direction {
 	if value < tree.value {
 		return .left
 	}
@@ -169,23 +173,23 @@ fn direction[T](tree Node[T], value T) Direction {
 fn (tree Tree[T]) size[T]() int {
 	return match tree {
 		Empty { 0 }
-		Node[T] { 1 + tree.left.size() + tree.right.size() }
+		&Node[T] { 1 + tree.left.size() + tree.right.size() }
 	}
 }
 
 fn (tree Tree[T]) insert[T](value T) Tree[T] {
 	return match tree {
 		Empty {
-			Node[T]{value, tree, tree}
+			&Node[T]{value, tree, tree}
 		}
-		Node[T] {
+		&Node[T] {
 			if value < tree.value {
-				Node[T]{
+				&Node[T]{
 					...tree
 					left: tree.left.insert(value)
 				}
 			} else if tree.value < value {
-				Node[T]{
+				&Node[T]{
 					...tree
 					right: tree.right.insert(value)
 				}
@@ -199,18 +203,18 @@ fn (tree Tree[T]) insert[T](value T) Tree[T] {
 fn insert_match[T](tree Tree[T], value T) Tree[T] {
 	return match tree {
 		Empty {
-			Node[T]{value, tree, tree}
+			&Node[T]{value, tree, tree}
 		}
-		Node[T] {
+		&Node[T] {
 			match direction(tree, value) {
 				.left {
-					Node[T]{
+					&Node[T]{
 						...tree
 						left: insert_match(tree.left, value)
 					}
 				}
 				.right {
-					Node[T]{
+					&Node[T]{
 						...tree
 						right: insert_match(tree.right, value)
 					}

@@ -925,7 +925,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			} else {
 				for argument_index, argument in call_args {
 					if argument_index == 0 && tokens[i].lit == 'delete'
-						&& flat.source_type_name(receiver_type).trim_right('*').starts_with('Map_') {
+						&& g.map_type_of(receiver_type) != none {
 						key_type_source_id, _ := g.map_key_value_types(flat.source_type_id(flat.source_type_name(receiver_type).trim_right('*'))) or {
 							continue
 						}

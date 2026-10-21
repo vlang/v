@@ -1,7 +1,7 @@
 module transform
 
 import v.flat
-import v.gen.c.naming
+import v.gen.c.naming { sum_field_name }
 import v.types
 
 // transform_infix_string_ops transforms transform infix string ops data for transform.
@@ -416,12 +416,12 @@ fn (mut t Transformer) transform_infix_array_ops(_id flat.NodeId, node flat.Node
 	eq_call := if t.array_elem_needs_element_eq(elem_type) {
 		t.make_array_elementwise_eq_call(new_lhs, new_rhs, elem_type, lhs_type, rhs_type, node)
 	} else if flat.source_type_shape(elem_type).has(.array_type) {
-		t.make_call_typed('array_eq_array', [new_lhs, new_rhs,
+		t.make_call_typed('__v3_array_eq_array', [new_lhs, new_rhs,
 			t.make_int_literal(array_nested_eq_depth(flat.source_type_name(lhs_type)))], flat.source_type_bool)
 	} else if elem_type == flat.source_type_string {
-		t.make_call_typed('array_eq_string', [new_lhs, new_rhs], flat.source_type_bool)
+		t.make_call_typed('__v3_array_eq_string', [new_lhs, new_rhs], flat.source_type_bool)
 	} else {
-		t.make_call_typed('array_eq_raw', [new_lhs, new_rhs, t.make_sizeof_type(elem_type)], flat.source_type_bool)
+		t.make_call_typed('__v3_array_eq_raw', [new_lhs, new_rhs, t.make_sizeof_type(elem_type)], flat.source_type_bool)
 	}
 	if node.op == .ne {
 		return t.make_prefix(.not, eq_call)
@@ -1029,7 +1029,7 @@ fn (mut t Transformer) transform_infix_struct_ops(_id flat.NodeId, node flat.Nod
 	}
 	if struct_type == 0 {
 		// Generic-struct instance operand (e.g. `Vec4[f32]`): keep the instance type
-		// so the operator lowers to the monomorphized method (`vec__Vec4_f32__plus`).
+		// so the operator lowers to the monomorphized method (`vec.Vec4[f32].+`).
 		struct_type = t.generic_struct_instance_name(lhs_type)
 	}
 	if struct_type == 0 {
@@ -1918,8 +1918,8 @@ fn (t &Transformer) generic_struct_instance_name(type_name_id u32) u32 {
 	}
 	if _ := t.generic_struct_params_for_base(base) {
 		// Qualify a bare imported generic base to its canonical struct name so the
-		// operator lowers to the monomorphized method (`vec__Vec2_int__minus`), not a
-		// bogus bare `Vec2_int__minus`.
+		// operator lowers to the monomorphized method (`vec.Vec2[int].-`), not a
+		// bogus bare `Vec2[int].-`.
 		resolved_base := t.struct_lookup_name(flat.source_type_id(base))
 		if flat.source_type_name(resolved_base).len > 0 && flat.source_type_name(resolved_base) != base {
 			return flat.source_type_id(flat.source_type_name(resolved_base) + normalized[base.len..])
@@ -2511,6 +2511,9 @@ fn (mut t Transformer) transform_optional_wrapper_expr(id flat.NodeId) flat.Node
 		if t.a.nodes[int(source_id)].kind == .selector {
 			return t.transform_optional_wrapper_selector_expr(source_id, flat.source_type_id(raw_type))
 		}
+		if view_param := t.mut_optional_view_param(t.a.nodes[int(source_id)].value) {
+			return t.mut_optional_view_read(view_param)
+		}
 		return t.mark_optional_wrapper_expr(source_id, flat.source_type_id(raw_type))
 	}
 	return t.transform_expr(id)
@@ -2841,7 +2844,7 @@ fn (mut t Transformer) transform_in_expr(id flat.NodeId, node flat.Node) flat.No
 			} else if lowered := t.lower_array_membership_expr(rhs_id, lhs_id, rhs_type_source_id, false, node) {
 				result = lowered
 			} else {
-				// dynamic array membership -> array_contains_int/string(arr, val)
+				// dynamic array membership -> __v3_array_contains_int/string(arr, val)
 				// (value-aware so a `match`/`if` container is materialized as a value)
 				mut elem := if clean_rhs_type.starts_with('[]') { clean_rhs_type[2..] } else { '' }
 				if elem.len == 0 {
@@ -2880,7 +2883,7 @@ fn (mut t Transformer) transform_in_expr(id flat.NodeId, node flat.Node) flat.No
 			if lowered := t.lower_array_membership_expr(rhs_id, lhs_id, rhs_type_source_id, false, node) {
 				result = lowered
 			} else {
-				// fixed array membership -> fixed_array_contains_int/string(arr, len, val)
+				// fixed array membership -> __v3_fixed_array_contains_int/string(arr, len, val)
 				// stabilize a side-effecting needle before a value-branch container hoists
 				new_lhs := if t.is_value_match_or_if_operand(rhs_id) {
 					t.snapshot_expr_for_reuse(lhs_id)
@@ -3024,7 +3027,7 @@ fn (mut t Transformer) lower_const_string_array_membership_expr(base_id flat.Nod
 	base_value := t.transform_expr(base_id)
 	base_data := t.make_cast(flat.source_type_id('&string'), t.make_selector(base_value, 'data', flat.source_type_voidptr), flat.source_type_id('&string'))
 	len_expr := t.make_int_literal(expr.children_count)
-	return t.make_call_typed('fixed_array_contains_string', [base_data, len_expr, needle], flat.source_type_bool)
+	return t.make_call_typed('__v3_fixed_array_contains_string', [base_data, len_expr, needle], flat.source_type_bool)
 }
 
 // lower_type_pattern_membership builds lower type pattern membership data for transform.
@@ -3213,8 +3216,8 @@ fn (mut t Transformer) lower_array_membership_expr(base_id flat.NodeId, needle_i
 	mut loop_body := t.pending_stmts[pending_start..].clone()
 	t.pending_stmts = t.pending_stmts[..pending_start].clone()
 	assign_true := t.make_assign(t.make_ident(result_name), t.make_bool_literal(true))
-	then_block := t.make_block([assign_true])
-	loop_body << t.make_if(eq_expr, then_block, t.make_empty())
+	then_block := t.make_block_skip_scope_drops([assign_true])
+	loop_body << t.make_if_with_skip_ownership_drops(eq_expr, then_block, t.make_empty())
 	prefix << t.make_for_stmt(init, cond, post, loop_body, src)
 	for stmt in prefix {
 		t.pending_stmts << stmt
@@ -3288,7 +3291,7 @@ fn (mut t Transformer) lower_array_index_expr(base_id flat.NodeId, needle_id fla
 	not_found := t.make_infix(.lt, t.make_ident(result_name), t.make_int_literal(0))
 	found_cond := t.make_infix(.logical_and, not_found, eq_expr)
 	assign_idx := t.make_assign(t.make_ident(result_name), t.make_ident(idx_name))
-	loop_body << t.make_if(found_cond, t.make_block([assign_idx]), t.make_empty())
+	loop_body << t.make_if_with_skip_ownership_drops(found_cond, t.make_block_skip_scope_drops([assign_idx]), t.make_empty())
 	prefix << t.make_for_stmt(init, cond, post, loop_body, src)
 	for stmt in prefix {
 		t.pending_stmts << stmt
@@ -3361,7 +3364,7 @@ fn (mut t Transformer) lower_array_last_index_expr(base_id flat.NodeId, needle_i
 	not_found := t.make_infix(.lt, t.make_ident(result_name), t.make_int_literal(0))
 	found_cond := t.make_infix(.logical_and, not_found, eq_expr)
 	assign_idx := t.make_assign(t.make_ident(result_name), t.make_ident(idx_name))
-	loop_body << t.make_if(found_cond, t.make_block([assign_idx]), t.make_empty())
+	loop_body << t.make_if_with_skip_ownership_drops(found_cond, t.make_block_skip_scope_drops([assign_idx]), t.make_empty())
 	prefix << t.make_for_stmt(init, cond, post, loop_body, src)
 	for stmt in prefix {
 		t.pending_stmts << stmt
@@ -3485,7 +3488,7 @@ fn (mut t Transformer) make_membership_eq_expr_with_seen(lhs flat.NodeId, rhs fl
 	if flat.source_type_shape(clean).has(.array_type) {
 		inner := flat.source_type_name(clean)[2..]
 		if inner == 'string' {
-			return t.make_call_typed('array_eq_string', [lhs, rhs], flat.source_type_bool)
+			return t.make_call_typed('__v3_array_eq_string', [lhs, rhs], flat.source_type_bool)
 		}
 		if t.array_elem_needs_element_eq(flat.source_type_id(inner)) {
 			src := if int(lhs) >= 0 && int(lhs) < t.a.nodes.len {
@@ -3496,10 +3499,10 @@ fn (mut t Transformer) make_membership_eq_expr_with_seen(lhs flat.NodeId, rhs fl
 			return t.make_array_elementwise_eq_call_with_seen(lhs, rhs, flat.source_type_id(inner), clean, clean, src, seen)
 		}
 		if inner.starts_with('[]') {
-			return t.make_call_typed('array_eq_array', [lhs, rhs,
+			return t.make_call_typed('__v3_array_eq_array', [lhs, rhs,
 				t.make_int_literal(array_nested_eq_depth(flat.source_type_name(clean)))], flat.source_type_bool)
 		}
-		return t.make_call_typed('array_eq_raw', [lhs, rhs,
+		return t.make_call_typed('__v3_array_eq_raw', [lhs, rhs,
 			t.make_sizeof_type(flat.source_type_id(inner))], flat.source_type_bool)
 	}
 	if t.is_fixed_array_type(clean) {
@@ -3588,12 +3591,6 @@ fn (mut t Transformer) box_membership_interface_eq_rhs(rhs flat.NodeId, interfac
 	return none
 }
 
-// make_sum_semantic_eq_expr compares two sum-type values by tag, then by the
-// boxed payload of the active variant (deep equality, like V1). Raw memcmp on
-// the sum struct compares payload POINTERS and is always false for distinct
-// allocations. The comparison is delegated to a synthesized helper fn
-// (__v3_sum_eq_<name>) so recursive types (an XML node tree, an AST) compare
-// correctly at any depth — the helper is generated after the transform pass.
 fn (mut t Transformer) make_sum_semantic_eq_expr(lhs flat.NodeId, rhs flat.NodeId, sum_type_id u32, seen []EqualityTypeVisit) flat.NodeId {
 	_ = seen
 	clean_sum_source_id, variants_source_ids_2 := t.sum_eq_type_and_variants(t.trim_pointer_type(sum_type_id)) or {
@@ -3602,6 +3599,10 @@ fn (mut t Transformer) make_sum_semantic_eq_expr(lhs flat.NodeId, rhs flat.NodeI
 	clean_sum_source_id_2 := clean_sum_source_id
 	clean_sum := flat.source_type_name(clean_sum_source_id_2)
 
+	if operator := t.struct_operator_fn_name_any(clean_sum_source_id, '==') {
+		t.mark_fn_used_name(operator)
+		return t.make_call_typed(operator, [lhs, rhs], flat.source_type_bool)
+	}
 	if variants_source_ids_2.len == 0 {
 		return t.make_memcmp_eq_expr(lhs, rhs, sum_type_id, 'eq')
 	}
@@ -3802,7 +3803,7 @@ fn (mut t Transformer) build_struct_eq_helper_fn(struct_type_id u32, helper stri
 }
 
 // build_sum_eq_helper_fn appends `fn __v3_sum_eq_<Sum>(a Sum, b Sum) bool` to the
-// AST: tags must match, then the active variant's payload is unboxed and compared
+// AST: tags must match, then the active variant's inline payload is selected and compared
 // by value (recursing through the usual membership-eq machinery, which routes
 // nested sum types back through their own helpers).
 fn (mut t Transformer) build_sum_eq_helper_fn(clean_sum_id u32, helper string) {
@@ -3839,20 +3840,9 @@ fn (mut t Transformer) build_sum_eq_helper_fn(clean_sum_id u32, helper string) {
 		if qv_source_id == 0 {
 			continue
 		}
-		field := t.sum_field_name(qv_source_id)
-		// Value variants are boxed in the sum payload and must be dereferenced
-		// before comparison. Pointer variants already are the payload value
-		// itself (`voidptr` is emitted as `void *`, not `void **`).
-		use_ptr := t.variant_references_sum(qv_source_id, clean_sum_id) && !t.sum_variant_is_direct_pointer(qv_source_id)
-		field_typ := (if use_ptr { flat.source_type_id('&${qv}') } else { qv_source_id_2 })
-		mut lhs_payload := t.make_selector_op(lhs_value, field, field_typ, .dot)
-		mut rhs_payload := t.make_selector_op(rhs_value, field, field_typ, .dot)
-		if use_ptr {
-			lhs_payload = t.make_prefix(.mul, lhs_payload)
-			t.set_node_typ(int(lhs_payload), qv_source_id)
-			rhs_payload = t.make_prefix(.mul, rhs_payload)
-			t.set_node_typ(int(rhs_payload), qv_source_id)
-		}
+		field := sum_field_name(qv)
+		lhs_payload := t.make_selector_op(lhs_value, field, qv_source_id_2, .dot)
+		rhs_payload := t.make_selector_op(rhs_value, field, qv_source_id_2, .dot)
 		pending_start := t.pending_stmts.len
 		payload_eq := if t.is_sum_type_name(qv_source_id) && t.resolve_sum_name(qv_source_id) == clean_sum_id {
 			// a variant that aliases back to this same sum: recurse via the helper
@@ -3907,7 +3897,7 @@ fn (mut t Transformer) register_sum_eq_helper_signature(helper string, clean_sum
 	if !isnil(t.tc) {
 		t.tc.ensure_private_transform_signatures()
 		ret := t.tc.parse_type(flat.source_type_bool)
-		params := [t.tc.parse_type(clean_sum_id), t.tc.parse_type(clean_sum_id)]
+		params := [*t.tc.parse_type(clean_sum_id), *t.tc.parse_type(clean_sum_id)]
 		t.tc.fn_ret_types[helper] = ret
 		t.tc.register_generated_fn_param_types(helper, params.clone())
 		t.tc.fn_variadic[helper] = false
@@ -4499,18 +4489,18 @@ fn (t &Transformer) membership_container_is_pointer_array(typ_id u32) bool {
 // array_contains_fn_name reports whether array contains fn name applies in transform.
 fn array_contains_fn_name(elem string) string {
 	return match elem {
-		'string' { 'array_contains_string' }
-		'u8' { 'array_contains_u8' }
-		else { 'array_contains_int' }
+		'string' { '__v3_array_contains_string' }
+		'u8' { '__v3_array_contains_u8' }
+		else { '__v3_array_contains_int' }
 	}
 }
 
 // fixed_array_contains_fn_name reports whether fixed array contains fn name applies in transform.
 fn fixed_array_contains_fn_name(elem string) string {
 	return match elem {
-		'string' { 'fixed_array_contains_string' }
-		'u8' { 'fixed_array_contains_u8' }
-		else { 'fixed_array_contains_int' }
+		'string' { '__v3_fixed_array_contains_string' }
+		'u8' { '__v3_fixed_array_contains_u8' }
+		else { '__v3_fixed_array_contains_int' }
 	}
 }
 
@@ -4725,11 +4715,11 @@ fn (t &Transformer) is_stable_expr_for_reuse(id flat.NodeId) bool {
 
 // is_pure_constant_expr reports whether `id`'s value cannot be changed by a later mutation of
 // any variable — a literal, declared function reference, enum value, `sizeof`/`typeof`, or a
-// cast/paren/struct made only of such. Unlike is_stable_expr_for_reuse it returns false for
-// storage reads (idents, selectors, indexes): those are cheap to re-evaluate, but a branch prelude
-// can mutate their storage, so reading them after the prelude yields a different value. Ordering
-// guards use this to decide whether a preceding operand must be snapshotted to preserve its
-// source-order value.
+// cast/paren/struct/unary operator made only of such, or arithmetic on numeric literals.
+// Unlike is_stable_expr_for_reuse it returns false for storage reads (idents, selectors,
+// indexes): those are cheap to re-evaluate, but a branch prelude can mutate their storage, so
+// reading them after the prelude yields a different value. Ordering guards use this to decide
+// whether a preceding operand must be snapshotted to preserve its source-order value.
 fn (t &Transformer) is_pure_constant_expr(id flat.NodeId) bool {
 	if int(id) < 0 {
 		return true
@@ -4745,6 +4735,18 @@ fn (t &Transformer) is_pure_constant_expr(id flat.NodeId) bool {
 		}
 		.cast_expr, .paren {
 			node.children_count == 0 || t.is_pure_constant_expr(t.a.children[node.children_start])
+		}
+		.prefix {
+			// A signed or negated constant, such as `-1.2` or `~0`.
+			node.op in [.minus, .plus, .bit_not, .not] && node.children_count > 0
+				&& t.is_pure_constant_expr(t.a.children[node.children_start])
+		}
+		.infix {
+			// Arithmetic on numeric literals, such as `1.2 + 0.1`. Struct operands are
+			// excluded: their operators are user methods.
+			node.children_count == 2 && t.is_pure_constant_expr(t.a.child(&node, 0))
+				&& t.is_pure_constant_expr(t.a.child(&node, 1))
+				&& t.is_untyped_numeric_literal_expr(id)
 		}
 		.struct_init, .field_init {
 			mut pure := true
@@ -4816,10 +4818,28 @@ fn (mut t Transformer) runtime_addr(expr flat.NodeId, typ_id u32) flat.NodeId {
 		}
 	}
 	if !t.expr_can_take_address(expr) {
-		stable := t.stable_transformed_expr_for_reuse(expr, typ_id, 'addr')
-		return t.make_prefix(.amp, stable)
+		if aligned := t.aligned_fixed_array_rvalue_address(expr, typ_id) {
+			return aligned
+		}
+		name := t.new_temp('addr')
+		t.pending_stmts << t.make_decl_assign_typed(name, expr, typ_id)
+		return t.make_prefix(.amp, t.make_ident(name))
 	}
 	return t.make_prefix(.amp, expr)
+}
+
+// aligned_fixed_array_rvalue_address gives an over-aligned temporary durable backing.
+// Existing addressable values keep their original storage and pointer identity.
+fn (mut t Transformer) aligned_fixed_array_rvalue_address(value flat.NodeId, typ_id u32) ?flat.NodeId {
+	if isnil(t.tc) {
+		return none
+	}
+	typ := types.unalias_type(t.tc.parse_canonical_type_cached(typ_id))
+	if typ !is types.ArrayFixed || !t.tc.requires_aligned_allocation(typ) {
+		return none
+	}
+	// Reuse escaped-value promotion so the copy has the same allocator and lifetime policy.
+	return t.heap_value(value, typ_id)
 }
 
 fn (t &Transformer) redundant_deref_addr(expr flat.NodeId) ?flat.NodeId {

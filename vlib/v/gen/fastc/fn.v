@@ -1348,6 +1348,7 @@ fn fastc_method_c_name(module_name string, receiver_type string, name string) st
 		'+' { 'plus' }
 		'-' { 'minus' }
 		'*' { 'mul' }
+		'**' { 'pow' }
 		'/' { 'div' }
 		'%' { 'mod' }
 		'&' { 'and' }
@@ -1365,7 +1366,16 @@ fn fastc_method_c_name(module_name string, receiver_type string, name string) st
 		'>=' { 'ge' }
 		else { naming.sanitize(name) }
 	}
-	return '${module_prefix}${receiver}_${method}'
+	c_name := '${module_prefix}${receiver}_${method}'
+	// An operator is spelled as a word that an ordinary method can also be named
+	// (`Vec.+` and `Vec.plus`), so operators get their names in the internal C
+	// namespace, as cgen names them. The builtin `string` operators keep the names
+	// that FastC's runtime helpers call (`builtin__string_eq`).
+	if naming.is_operator_method_name('${receiver}.${name}')
+		&& !(module_name == 'builtin' && receiver == 'string') {
+		return naming.operator_method_c_prefix + c_name
+	}
+	return c_name
 }
 
 fn (mut g Parser) skip_balanced(open token.Token, close token.Token) ! {

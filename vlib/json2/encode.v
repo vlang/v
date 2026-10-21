@@ -1,6 +1,7 @@
 module json2
 
 import time
+import strings
 import sync.stdatomic
 
 // EncoderOptions provides a list of options for encoding
@@ -35,7 +36,7 @@ mut:
 	level  int
 	prefix string
 
-	output []u8 = []u8{cap: 2048}
+	output strings.Builder = strings.new_builder(2048)
 }
 
 // encode encodes a value as JSON, or JSON5 with `json5: true`.
@@ -43,10 +44,11 @@ pub fn encode[T](val T, config EncoderOptions) string {
 	mut encoder := Encoder{
 		EncoderOptions: config
 	}
+	defer { unsafe { encoder.output.free() } }
 
 	encoder.encode_value[T](val)
 
-	return encoder.output.bytestr()
+	return encoder.output.str()
 }
 
 // encode_append appends the JSON representation of val to destination, preserving
@@ -170,14 +172,14 @@ fn (mut encoder Encoder) encode_value[T](val T) {
 			encoder.encode_number(time.Time(val).unix())
 		} else {
 			time_val := val.to_json()
-			unsafe { encoder.output.push_many(time_val.str, time_val.len) }
+			encoder.output.write_string(time_val)
 		}
 	} $else $if T is JsonEncoder { // uses T, because alias could be implementing JsonEncoder, while the base type does not
 		integer_val := val.to_json()
-		unsafe { encoder.output.push_many(integer_val.str, integer_val.len) }
+		encoder.output.write_string(integer_val)
 	} $else $if T is Encodable { // uses T, because alias could be implementing JsonEncoder, while the base type does not
 		integer_val := val.json_str()
-		unsafe { encoder.output.push_many(integer_val.str, integer_val.len) }
+		encoder.output.write_string(integer_val)
 	} $else $if T.unaliased_typ is $struct {
 		unsafe {
 			$for field in T.fields {
@@ -227,96 +229,57 @@ fn (mut encoder Encoder) encode_string(val string) {
 		return
 	}
 	encoder.output << `"`
-	mut buffer_start := 0
-	mut buffer_end := 0
-	for buffer_end < val.len {
-		character := val[buffer_end]
-		match character {
-			`"`, `\\` {
-				unsafe { encoder.output.push_many(val.str + buffer_start, buffer_end - buffer_start) }
-				buffer_end++
-				buffer_start = buffer_end
-
-				encoder.output << `\\`
-				encoder.output << character
-			}
-			`\b` {
-				unsafe { encoder.output.push_many(val.str + buffer_start, buffer_end - buffer_start) }
-				buffer_end++
-				buffer_start = buffer_end
-
-				encoder.output << `\\`
-				encoder.output << `b`
-			}
-			`\n` {
-				unsafe { encoder.output.push_many(val.str + buffer_start, buffer_end - buffer_start) }
-				buffer_end++
-				buffer_start = buffer_end
-
-				encoder.output << `\\`
-				encoder.output << `n`
-			}
-			`\f` {
-				unsafe { encoder.output.push_many(val.str + buffer_start, buffer_end - buffer_start) }
-				buffer_end++
-				buffer_start = buffer_end
-
-				encoder.output << `\\`
-				encoder.output << `f`
-			}
-			`\t` {
-				unsafe { encoder.output.push_many(val.str + buffer_start, buffer_end - buffer_start) }
-				buffer_end++
-				buffer_start = buffer_end
-
-				encoder.output << `\\`
-				encoder.output << `t`
-			}
-			`\r` {
-				unsafe { encoder.output.push_many(val.str + buffer_start, buffer_end - buffer_start) }
-				buffer_end++
-				buffer_start = buffer_end
-
-				encoder.output << `\\`
-				encoder.output << `r`
-			}
-			else {
-				if character < 0x20 { // control characters
-					unsafe {
-						encoder.output.push_many(val.str + buffer_start, buffer_end - buffer_start)
-					}
-					buffer_end++
-					buffer_start = buffer_end
-
-					encoder.encode_unicode_escape(u32(character), false)
-
-					continue
-				}
-				if encoder.escape_unicode && character >= 0x80 {
-					unsafe {
-						encoder.output.push_many(val.str + buffer_start, buffer_end - buffer_start)
-					}
-					code_point, width := utf8_rune_at(val, buffer_end)
-					if code_point > 0xffff {
-						unicode_point_low := u32(code_point) - 0x10000
-						encoder.encode_unicode_escape(0xD800 + ((unicode_point_low >> 10) & 0x3FF), true)
-						encoder.encode_unicode_escape(0xDC00 + (unicode_point_low & 0x3FF), false)
-					} else {
-						encoder.encode_unicode_escape(u32(code_point), false)
-					}
-					buffer_end += width
-					buffer_start = buffer_end
-
-					continue
-				}
-
-				buffer_end = next_string_escape(val, buffer_end + 1, encoder.escape_unicode)
-			}
+	mut start := 0
+	mut end := 0
+	for end < val.len {
+		character := val[end]
+		escape := character < 0x20 || character in [`"`, `\\`]
+		unicode := encoder.escape_unicode && character >= 0x80
+		if !escape && !unicode {
+			end = next_string_escape(val, end + 1, encoder.escape_unicode)
+			continue
 		}
+		unsafe { encoder.output.push_many(val.str + start, end - start) }
+		end += encoder.encode_escape(val, end)
+		start = end
 	}
-	unsafe { encoder.output.push_many(val.str + buffer_start, buffer_end - buffer_start) }
-
+	unsafe { encoder.output.push_many(val.str + start, end - start) }
 	encoder.output << `"`
+}
+
+fn (mut encoder Encoder) encode_escape(val string, index int) int {
+	character := val[index]
+	if encoder.escape_unicode && character >= 0x80 {
+		code_point, width := utf8_rune_at(val, index)
+		encoder.encode_unicode(code_point)
+		return width
+	}
+	escaped := match character {
+		`"`, `\\` { character }
+		`\b` { u8(`b`) }
+		`\n` { u8(`n`) }
+		`\f` { u8(`f`) }
+		`\t` { u8(`t`) }
+		`\r` { u8(`r`) }
+		else { u8(0) }
+	}
+	if escaped != 0 {
+		encoder.output << `\\`
+		encoder.output << escaped
+		return 1
+	}
+	encoder.encode_unicode(rune(character))
+	return 1
+}
+
+fn (mut encoder Encoder) encode_unicode(code_point rune) {
+	if code_point <= 0xffff {
+		encoder.encode_unicode_escape(u32(code_point), false)
+		return
+	}
+	value := u32(code_point) - 0x10000
+	encoder.encode_unicode_escape(0xD800 + ((value >> 10) & 0x3FF), true)
+	encoder.encode_unicode_escape(0xDC00 + (value & 0x3FF), false)
 }
 
 // encode_unicode_escape writes a UTF-16 code unit without allocating formatted text.
@@ -391,38 +354,24 @@ fn (mut encoder Encoder) encode_enum_number[T](val T) {
 
 fn (mut encoder Encoder) encode_boolean(val bool) {
 	if val {
-		unsafe { encoder.output.push_many(true_string.str, true_string.len) }
+		encoder.output.write_string(true_string)
 	} else {
-		unsafe { encoder.output.push_many(false_string.str, false_string.len) }
+		encoder.output.write_string(false_string)
 	}
 }
 
 @[manualfree]
 fn (mut encoder Encoder) encode_number[T](val T) {
+	$if T is $int {
+		$if T is u8 || T is u16 || T is u32 || T is u64 || T is usize {
+			encoder.output.write_u_decimal(u64(val))
+		} $else {
+			encoder.output.write_decimal(i64(val))
+		}
+		return
+	}
 	mut integer_val := ''
-	$if T is u8 {
-		integer_val = u8(val).str()
-	} $else $if T is u16 {
-		integer_val = u16(val).str()
-	} $else $if T is u32 {
-		integer_val = u32(val).str()
-	} $else $if T is u64 {
-		integer_val = u64(val).str()
-	} $else $if T is i8 {
-		integer_val = i8(val).str()
-	} $else $if T is i16 {
-		integer_val = i16(val).str()
-	} $else $if T is int {
-		integer_val = int(val).str()
-	} $else $if T is i32 {
-		integer_val = i32(val).str()
-	} $else $if T is i64 {
-		integer_val = i64(val).str()
-	} $else $if T is usize {
-		integer_val = usize(val).str()
-	} $else $if T is isize {
-		integer_val = isize(val).str()
-	} $else $if T is f32 {
+	$if T is f32 {
 		$if js {
 			integer_val = f32(val).str()
 		} $else {
@@ -477,12 +426,12 @@ fn (mut encoder Encoder) encode_number[T](val T) {
 			}
 		}
 	}
-	unsafe { encoder.output.push_many(integer_val.str, integer_val.len) }
+	encoder.output.write_string(integer_val)
 }
 
 @[markused]
 fn (mut encoder Encoder) encode_null() {
-	unsafe { encoder.output.push_many(null_string.str, null_string.len) }
+	encoder.output.write_string(null_string)
 }
 
 fn (mut encoder Encoder) encode_array[T](val T) {
@@ -492,15 +441,7 @@ fn (mut encoder Encoder) encode_array[T](val T) {
 		if i > 0 {
 			encoder.separate_items(true)
 		}
-		$if T is $pointer {
-			if voidptr(item) == unsafe { nil } {
-				encoder.encode_null()
-			} else {
-				unsafe { encoder.encode_pointer_array_item(item) }
-			}
-		} $else {
-			encoder.encode_value(item)
-		}
+		encoder.encode_value(item)
 	}
 	encoder.close_items(val.len, true)
 	encoder.output << `]`
@@ -520,11 +461,7 @@ struct EncoderMapKey[K] {
 fn (mut encoder Encoder) encode_map[K, T](val map[K]T) {
 	source_keys := val.keys()
 	defer {
-		$if K.unaliased_typ is string {
-			for i in 0 .. source_keys.len {
-				unsafe { source_keys[i].free() }
-			}
-		}
+		// Typed array cleanup also releases the cloned string keys.
 		unsafe { source_keys.free() }
 	}
 	mut keys := []EncoderMapKey[K]{cap: val.len}
@@ -536,7 +473,9 @@ fn (mut encoder Encoder) encode_map[K, T](val map[K]T) {
 				unsafe { keys[i].name.free() }
 			}
 		}
-		unsafe { keys.free() }
+		// Entries borrow source keys; only the nonstring names are released above.
+		raw_keys := unsafe { &array(&keys) }
+		unsafe { raw_keys.free() }
 	}
 	for i in 0 .. source_keys.len {
 		key := &source_keys[i]
@@ -586,7 +525,7 @@ fn (mut encoder Encoder) encode_enum[T](val T) {
 	}
 }
 
-fn (mut encoder Encoder) encode_sumtype[T](val T) {
+fn (mut encoder Encoder) encode_sumtype[T](val &T) {
 	$if T is $pointer {
 		// Pointer types are handled by encode_value's $pointer branch;
 		// this instantiation is generated but never called.
@@ -951,7 +890,7 @@ fn (mut encoder Encoder) encode_struct_field_value[T](val T) {
 		encoder.encode_null()
 	} $else $if T is $option {
 		if val == none {
-			unsafe { encoder.output.push_many(null_string.str, null_string.len) }
+			encoder.output.write_string(null_string)
 		} else {
 			encoder.encode_value(get_value_from_optional(val))
 		}
@@ -1152,16 +1091,6 @@ fn (mut encoder Encoder) encode_embedded_struct_fields[T](val T, was_first bool,
 	return is_first
 }
 
-fn (mut encoder Encoder) encode_custom[T](val T) {
-	integer_val := val.to_json()
-	unsafe { encoder.output.push_many(integer_val.str, integer_val.len) }
-}
-
-fn (mut encoder Encoder) encode_custom2[T](val T) {
-	integer_val := val.json_str()
-	unsafe { encoder.output.push_many(integer_val.str, integer_val.len) }
-}
-
 fn (mut encoder Encoder) increment_level() {
 	encoder.level++
 	encoder.prefix = encoder.line_prefix()
@@ -1222,7 +1151,7 @@ fn (mut encoder Encoder) close_items(count int, is_array bool) {
 	} else if !is_array && encoder.legacy_layout {
 		// The removed module wrote an empty object as `{`, a line break and `}`.
 		prefix := encoder.line_prefix()
-		unsafe { encoder.output.push_many(prefix.str, prefix.len) }
+		encoder.output.write_string(prefix)
 	}
 }
 
@@ -1240,5 +1169,5 @@ fn (mut encoder Encoder) write_key_separator() {
 }
 
 fn (mut encoder Encoder) add_indent() {
-	unsafe { encoder.output.push_many(encoder.prefix.str, encoder.prefix.len) }
+	encoder.output.write_string(encoder.prefix)
 }

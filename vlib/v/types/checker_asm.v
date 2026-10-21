@@ -254,7 +254,7 @@ fn (tc &TypeChecker) inline_asm_enum_backing_type(name_id u32) Type {
 			continue
 		}
 		if decl.enum_backing_type_id() != 0 {
-			return tc.parse_type(decl.enum_backing_type_id())
+			return *tc.parse_type(decl.enum_backing_type_id())
 		}
 		break
 	}

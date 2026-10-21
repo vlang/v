@@ -329,10 +329,21 @@ fn (mut g Parser) read_spawn_expression() !string {
 	thread_type := g.fastc_unclaimed_generated_name(fastc_thread_type_name(flat.source_type_name(value_type)))
 	start_name := g.fastc_unclaimed_generated_name('__vf_spawn_start_${g.fastc_spawn_target_stem(function_key)}')
 	g.register_spawn_helpers(function_key, thread_type, value_type, signature.parameter_types.ids, start_name, method_target)
-	g.last_expression = []FastcExpressionToken{}
+	call := '${start_name}(${arguments.join(', ')})'
+	// The spawn is one typed atom that renders as the call. A caller that re-renders the
+	// value from g.last_expression (an append whose value contains a `({ for ... })`
+	// statement expression) must get the call back, not an empty expression.
+	g.last_expression = [
+		FastcExpressionToken{
+			tok:    .name
+			lit:    call
+			source: call
+			typ:    flat.source_type_id(thread_type)
+		},
+	]
 	g.last_expression_type = flat.source_type_id(thread_type)
 	g.last_multi_return_types = flat.TypeTextList{ ids: ([]u32{}).clone() }
-	return '${start_name}(${arguments.join(', ')})'
+	return call
 }
 
 fn fastc_spawn_start_name(function_key string) string {

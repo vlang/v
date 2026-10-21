@@ -193,3 +193,24 @@ fn test_empty_map_reserve_after_deletion_and_clear() {
 	m['next'] = 4
 	assert m.keys() == ['cleared', 'next']
 }
+
+fn test_small_map_reservations_survive_growth_and_deleted_slots() {
+	for capacity in [1, 2, 3, 5, 7, 8, 9] {
+		mut values := map[int]int{}
+		values.reserve(u32(capacity))
+		for key in 0 .. 32 {
+			values[key] = key * 3
+		}
+		for key in 0 .. 16 {
+			values.delete(key)
+		}
+		values.reserve(64)
+		for key in 32 .. 80 {
+			values[key] = key * 3
+		}
+		assert values.len == 64
+		for key in 16 .. 80 {
+			assert values[key] == key * 3
+		}
+	}
+}

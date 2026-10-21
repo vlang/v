@@ -1,5 +1,7 @@
 module c
 
+import v.gen.c.naming
+
 struct ProfileCounterMeta {
 	fn_name      string
 	counter_name string
@@ -24,6 +26,13 @@ fn (g &FlatGen) profile_timer_c_name() string {
 }
 
 fn profile_v1_fn_name(cfn_name string, module_name string, fn_name string) string {
+	// An operator overload is labelled without the internal C namespace of its name:
+	// `Vec.+` is `main__Vec__plus`, as in V 0.5.2. gen_profile_fn_begin adds
+	// `__operator` when an ordinary method has that label too.
+	if cfn_name.starts_with(naming.operator_method_c_prefix) {
+		return profile_v1_fn_name(cfn_name[naming.operator_method_c_prefix.len..], module_name,
+			fn_name)
+	}
 	if cfn_name == 'main' && fn_name == 'main' && module_name in ['', 'main'] {
 		return 'main__main'
 	}
@@ -34,6 +43,22 @@ fn profile_v1_fn_name(cfn_name string, module_name string, fn_name string) strin
 		return 'builtin__${cfn_name}'
 	}
 	return cfn_name
+}
+
+// profile_operator_label_suffix returns `__operator` for an operator overload whose
+// receiver also has an ordinary method named like the operator's C word (`Vec.+` and
+// `Vec.plus`), so the operator keeps its own label, `main__Vec__plus__operator`, and
+// `-profile-fns` can select either function. Other operators get no suffix.
+fn (g &FlatGen) profile_operator_label_suffix(cfn_name string, module_name string, fn_name string) string {
+	if !cfn_name.starts_with(naming.operator_method_c_prefix) {
+		return ''
+	}
+	receiver := dotted_fn_name_in_module(module_name, fn_name).all_before_last('.')
+	ordinary := '${receiver}.${cfn_name.all_after_last('__')}'
+	if ordinary in g.tc.fn_param_types || ordinary in g.tc.fn_ret_types {
+		return '__operator'
+	}
+	return ''
 }
 
 fn (mut g FlatGen) gen_profile_fn_begin(cfn_name string, module_name string, fn_name string, is_inline bool, skip_instrumentation bool) {
@@ -60,7 +85,8 @@ fn (mut g FlatGen) gen_profile_fn_begin(cfn_name string, module_name string, fn_
 	// `_only_current` suffix. The index makes every base name unambiguous.
 	counter_name := 'vpc_${g.profile_counters.len}_${cfn_name}'
 	calls_name := '${counter_name}_calls'
-	profile_fn_name := profile_v1_fn_name(cfn_name, module_name, fn_name)
+	profile_fn_name := profile_v1_fn_name(cfn_name, module_name, fn_name) +
+		g.profile_operator_label_suffix(cfn_name, module_name, fn_name)
 	g.profile_fn_active = true
 	g.profile_fn_restore_enabled = g.profile_fns.len > 0 && profile_fn_name in g.profile_fns
 	profile_enabled := g.profile_enabled_c_name()

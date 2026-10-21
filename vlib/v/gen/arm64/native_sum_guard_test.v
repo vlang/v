@@ -15,6 +15,8 @@ fn test_native_negative_sum_guards_preserve_enum_payload_fields() {
 		// Use the compiler's recursive Type layout and its actual Enum tag.
 		source := type_source.all_before('// clone_owned_type').replace('module types', 'module main').replace('import v.flat', '') +
 			r'
+const builtin_void_type = Type(Void{})
+const empty_type = &builtin_void_type
 fn C.exit(int)
 fn C.malloc(usize) voidptr
 fn C.memcpy(voidptr, voidptr, usize) voidptr
@@ -26,9 +28,10 @@ fn __as_cast(obj voidptr, obj_type int, expected_type int, obj_name string, expe
     if obj_type != expected_type { C.exit(80) }
     return obj
 }
-fn unalias_type(value Type) Type {
-    if value is Alias { return unalias_type(value.base_type) }
-    return value
+fn unalias_type(value &Type) &Type {
+    mut current := value
+    for current is Alias { current = current.base_type }
+    return current
 }
 fn fixture_type_name(id u32) string {
     return match id {
@@ -41,7 +44,7 @@ fn fixture_type_name(id u32) string {
         else { "other" }
     }
 }
-fn (value Type) name() string {
+fn (value &Type) name() string {
     if value is Enum { return fixture_type_name(value.name_id) }
     if value is Struct { return fixture_type_name(value.name_id) }
     return "other"
@@ -69,17 +72,17 @@ fn whole_sum_receiver(subject Type) string {
 fn same_function_shape(expected FnType, actual Type) bool {
     if actual !is FnType || expected.params.len != actual.params.len { return false }
     for i in 0 .. expected.params.len {
-        if expected.params[i].name() != actual.params[i].name() { return false }
+        if expected.params[i].typ.name() != actual.params[i].typ.name() { return false }
     }
     return actual.return_type.name() == expected.return_type.name()
 }
 struct TypeChecker {}
 fn fn_param_modes_compatible(actual FnType, expected FnType, idx int) bool {
-    actual_mut := idx < actual.params_mut.len && actual.params_mut[idx]
-    expected_mut := idx < expected.params_mut.len && expected.params_mut[idx]
+    actual_mut := idx < actual.params.len && actual.params[idx].is_mut
+    expected_mut := idx < expected.params.len && expected.params[idx].is_mut
     return actual_mut == expected_mut
 }
-fn fn_compatible_param_type(value FnType, idx int) Type { return value.params[idx] }
+fn fn_compatible_param_type(value FnType, idx int) Type { return *value.params[idx].typ }
 fn (tc &TypeChecker) types_match_ignoring_module_qualification(expected Type, actual Type) bool {
     return expected.name() == actual.name()
 }
@@ -122,7 +125,7 @@ fn main() {
     flag := Type(Enum{name_id: 2, is_flag: true})
     listed := Type(Enum{name_id: 3, is_flag: false})
     other := Type(Struct{name_id: 4})
-    alias := Type(Alias{name_id: 5, base_type: plain})
+    alias := Type(Alias{name_id: 5, base_type: new_type_reference(plain)})
     if needs_else(plain, flags, true) { C.exit(1) }
     if !needs_else(flag, flags, true) { C.exit(2) }
     if !needs_else(listed, flags, true) { C.exit(3) }
@@ -135,19 +138,21 @@ fn main() {
         || !compound_guard(other, true) || !compound_guard(plain, false) { C.exit(9) }
     if whole_sum_receiver(plain) != "Plain" || whole_sum_receiver(flag) != "guarded"
         || whole_sum_receiver(other) != "guarded" { C.exit(10) }
-    signature := FnType{params: [other], return_type: plain}
+    signature := FnType{params: [FnParam{typ: new_type_reference(other)}], return_type: new_type_reference(plain)}
     if !same_function_shape(signature, Type(signature)) { C.exit(11) }
-    if same_function_shape(signature, Type(FnType{return_type: plain})) { C.exit(12) }
+    if same_function_shape(signature, Type(FnType{return_type: new_type_reference(plain)})) { C.exit(12) }
     if same_function_shape(signature, other) { C.exit(13) }
-    if same_function_shape(signature, Type(FnType{params: [plain], return_type: plain})) { C.exit(14) }
+    if same_function_shape(signature, Type(FnType{params: [FnParam{typ: new_type_reference(plain)}], return_type: new_type_reference(plain)})) { C.exit(14) }
     if reassign_after_guard(plain) != "changed" || reassign_after_guard(other) != "other" { C.exit(15) }
     if branch_join(plain, true) != "Plain" || branch_join(flag, true) != "flag"
         || branch_join(other, false) != "Other" || branch_join(other, true) != "other" { C.exit(16) }
     checker := TypeChecker{}
     if !checker.fn_types_match_ignoring_module_qualification(signature, Type(signature)) { C.exit(17) }
-    if checker.fn_types_match_ignoring_module_qualification(signature, Type(FnType{return_type: plain})) { C.exit(18) }
+    if checker.fn_types_match_ignoring_module_qualification(signature, Type(FnType{return_type: new_type_reference(plain)})) { C.exit(18) }
     if checker.fn_types_match_ignoring_module_qualification(signature, other) { C.exit(19) }
-    if checker.fn_types_match_ignoring_module_qualification(signature, Type(FnType{params: [other], return_type: other})) { C.exit(20) }
+    if checker.fn_types_match_ignoring_module_qualification(signature, Type(FnType{params: [FnParam{typ: new_type_reference(other)}], return_type: new_type_reference(other)})) { C.exit(20) }
+    mutable := FnType{params: [FnParam{typ: new_type_reference(other), is_mut: true}], return_type: new_type_reference(plain)}
+    if checker.fn_types_match_ignoring_module_qualification(signature, Type(mutable)) { C.exit(21) }
 }
 '
 		for building_v in [false, true] {

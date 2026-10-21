@@ -1,7 +1,6 @@
-// A `mut` optional parameter is a pointer to the caller's option (`&?T`). Only a struct
-// payload, or an alias of one, is passed by reference as well (`&?&T`); arrays, maps,
-// fixed arrays, sum types and enums keep their value payload, in the function body as in
-// its signature and at the call site.
+// A `mut` optional parameter is passed as `&?&T`, whatever its payload, and its body reads
+// it as `?T`: structs, aliases of them, arrays, maps, fixed arrays, sum types and enums;
+// `a = none`, assignments and `or` work for all of them.
 struct Named {
 	name string
 }
