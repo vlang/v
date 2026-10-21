@@ -1908,8 +1908,19 @@ fn (mut t Transformer) make_map_get_expr(map_expr flat.NodeId, base_type_id u32,
 	if flat.source_type_shape(base_type_id).has(.pointer) && !t.expr_is_shared_value(map_addr) {
 		// Generic bodies can retain the source value type on the operand. The
 		// pointer cast must read the same runtime address as its typed child.
+		// A lowered value temporary instead needs its own map storage addressed.
 		addr_node := t.a.node(map_addr)
-		typed_addr := t.a.add_node(flat.Node{ ...addr_node, typ: base_type_id })
+		mut addr_type := base_type_id
+		if addr_node.kind == .ident && !t.mut_param_values[addr_node.value]
+			&& !t.pointer_value_rvalues[addr_node.value] {
+			stored_type := t.normalize_type_alias(t.var_type(addr_node.value))
+			stored_shape := flat.source_type_shape(stored_type)
+			if stored_shape.has(.map_type) && !stored_shape.has(.pointer)
+				&& !t.generic_arg_is_unresolved(stored_type) {
+				addr_type = stored_type
+			}
+		}
+		typed_addr := t.a.add_node(flat.Node{ ...addr_node, typ: addr_type })
 		typed_map_addr = t.make_cast(base_type_id, typed_addr, base_type_id)
 	}
 	call := t.make_call_typed('map__get', [
