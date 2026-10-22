@@ -341,6 +341,7 @@ fn (a string) option_clone_static() ?string {
 }
 
 // clone returns a copy of the V string `a`.
+@[inline]
 pub fn (a string) clone() string {
 	if a.len <= 0 {
 		return ''
@@ -927,12 +928,12 @@ fn (s string) < (a string) bool {
 	return s.len < a.len
 }
 
-@[direct_array_access]
+@[direct_array_access; inline]
 fn (s string) + (a string) string {
 	return string_concat_pair(s, a)
 }
 
-@[direct_array_access]
+@[direct_array_access; inline]
 fn string_concat_pair(s string, a string) string {
 	slen := if s.len > 0 { s.len } else { 0 }
 	alen := if a.len > 0 { a.len } else { 0 }
@@ -994,7 +995,7 @@ fn string_plus_many_general(data_len int, input_base &string) string {
 }
 
 // for `s + s2 + s3`, an optimization (faster than string_plus(string_plus(s1, s2), s3))
-@[direct_array_access]
+@[direct_array_access; inline]
 fn (s string) plus_two(a string, b string) string {
 	slen := if s.len > 0 { s.len } else { 0 }
 	alen := if a.len > 0 { a.len } else { 0 }
@@ -1364,14 +1365,13 @@ pub fn (s string) split_by_space() []string {
 
 // substr returns the string between index positions `start` and `end`.
 // Example: assert 'ABCD'.substr(1,3) == 'BC'
-@[direct_array_access]
+@[direct_array_access; inline]
 pub fn (s string) substr(start int, _end int) string {
 	// WARNNING: The is a temp solution for bootstrap!
 	end := if _end == max_i64 || _end == max_i32 { s.len } else { _end } // max_int
 	$if !no_bounds_checking {
 		if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
-			panic('substr(' + impl_i64_to_string(start) + ', ' + impl_i64_to_string(end) +
-				') out of bounds (len=' + impl_i64_to_string(s.len) + ') s=' + s)
+			s.substr_panic(start, end)
 		}
 	}
 	len := end - start
@@ -1389,13 +1389,19 @@ pub fn (s string) substr(start int, _end int) string {
 	return res
 }
 
+@[noinline; noreturn]
+fn (s string) substr_panic(start int, end int) {
+	panic('substr(' + impl_i64_to_string(start) + ', ' + impl_i64_to_string(end) +
+		') out of bounds (len=' + impl_i64_to_string(s.len) + ') s=' + s)
+}
+
 // substr_borrowed supplies the checked, non-owning view used by addressed ranges.
+@[inline]
 fn (s string) substr_borrowed(start int, _end int) string {
 	end := if _end == max_i64 || _end == max_i32 { s.len } else { _end }
 	$if !no_bounds_checking {
 		if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
-			panic('substr(' + impl_i64_to_string(start) + ', ' + impl_i64_to_string(end) +
-				') out of bounds (len=' + impl_i64_to_string(s.len) + ') s=' + s)
+			s.substr_panic(start, end)
 		}
 	}
 	return string{
@@ -1501,7 +1507,7 @@ pub fn (s string) substr_ni(_start int, _end int) string {
 
 // index_ returns the position of the first character of the input string.
 // It will return `-1` if the input string can't be found, or `0` for an empty input string.
-@[direct_array_access]
+@[direct_array_access; inline]
 pub fn (s string) index_(p string) int {
 	if p.len == 0 {
 		return 0
@@ -1512,8 +1518,16 @@ pub fn (s string) index_(p string) int {
 	if p.len == 1 {
 		return string_index_byte(s.str, s.len, unsafe { p.str[0] })
 	}
+	return s.index_multibyte(p)
+}
+
+@[direct_array_access]
+fn (s string) index_multibyte(p string) int {
 	if p.len > max_direct_index_needle_len {
 		return s.index_kmp(p)
+	}
+	if p.len == 2 {
+		return s.index_pair(p)
 	}
 	// Short needles: scanning for the first byte and comparing the rest in place
 	// needs no prefix table, and costs at most p.len compares per position.
@@ -1527,13 +1541,26 @@ pub fn (s string) index_(p string) int {
 			}
 			i += next + 1
 		}
-		mut j := 1
-		for j < p.len && unsafe { s.str[i + j] == p.str[j] } {
-			j++
-		}
-		if j == p.len {
+		// The first byte already matched; compare only the remaining bytes.
+		if string_bytes_equal(unsafe { s.str + i + 1 }, unsafe { p.str + 1 }, p.len - 1) {
 			return i
 		}
+	}
+	return -1
+}
+
+@[direct_array_access]
+fn (s string) index_pair(p string) int {
+	first := unsafe { p.str[0] }
+	second := unsafe { p.str[1] }
+	last_start := s.len - 2
+	for i := 0; i <= last_start; i++ {
+		if unsafe { s.str[i] } != first {
+			next := string_index_byte(unsafe { s.str + i + 1 }, last_start - i, first)
+			if next < 0 { return -1 }
+			i += next + 1
+		}
+		if unsafe { s.str[i + 1] } == second { return i }
 	}
 	return -1
 }
@@ -1635,16 +1662,16 @@ fn (s string) index_last_(p string) int {
 	if p.len == 1 {
 		return s.last_index_u8(unsafe { p.str[0] })
 	}
-	mut i := s.len - p.len
-	for i >= 0 {
-		mut j := 0
-		for j < p.len && unsafe { s.str[i + j] == p.str[j] } {
-			j++
+	mut end := s.len - p.len + 1
+	for end > 0 {
+		i := string_last_index_byte(s.str, end, unsafe { p.str[0] })
+		if i < 0 {
+			return -1
 		}
-		if j == p.len {
+		if string_bytes_equal(unsafe { s.str + i }, p.str, p.len) {
 			return i
 		}
-		i--
+		end = i
 	}
 	return -1
 }
@@ -1652,64 +1679,35 @@ fn (s string) index_last_(p string) int {
 // index_after returns the position of the input string, starting search from `start` position.
 @[direct_array_access]
 pub fn (s string) index_after(p string, start int) ?int {
-	if p.len > s.len {
+	i := s.index_after_(p, start)
+	if i < 0 {
 		return none
 	}
-	mut strt := start
-	if start < 0 {
-		strt = 0
-	}
-	if start >= s.len {
-		return none
-	}
-	mut i := strt
-	for i < s.len {
-		mut j := 0
-		mut ii := i
-		for j < p.len && unsafe { s.str[ii] == p.str[j] } {
-			j++
-			ii++
-		}
-		if j == p.len {
-			return i
-		}
-		i++
-	}
-	return none
+	return i
 }
 
 // index_after_ returns the position of the input string, starting search from `start` position.
 @[direct_array_access]
 pub fn (s string) index_after_(p string, start int) int {
-	if p.len > s.len {
-		return -1
-	}
 	mut strt := start
 	if start < 0 {
 		strt = 0
 	}
-	if start >= s.len {
+	if strt >= s.len {
 		return -1
 	}
-	mut i := strt
-	for i < s.len {
-		mut j := 0
-		mut ii := i
-		for j < p.len && unsafe { s.str[ii] == p.str[j] } {
-			j++
-			ii++
-		}
-		if j == p.len {
-			return i
-		}
-		i++
+	if p.len > s.len - strt {
+		return -1
 	}
-	return -1
+	// Borrow only the remaining bytes; the search never examines the backing tail.
+	remaining := unsafe { tos(s.str + strt, s.len - strt) }
+	i := remaining.index_(p)
+	return if i < 0 { -1 } else { strt + i }
 }
 
 // index_u8 returns the index of byte `c` if found in the string.
 // index_u8 returns -1 if the byte can not be found.
-@[direct_array_access]
+@[direct_array_access; inline]
 pub fn (s string) index_u8(c u8) int {
 	return string_index_byte(s.str, s.len, c)
 }
@@ -1717,12 +1715,7 @@ pub fn (s string) index_u8(c u8) int {
 // last_index_u8 returns the index of the last occurrence of byte `c` if it was found in the string.
 @[direct_array_access; inline]
 pub fn (s string) last_index_u8(c u8) int {
-	for i := s.len - 1; i >= 0; i-- {
-		if s[i] == c {
-			return i
-		}
-	}
-	return -1
+	return string_last_index_byte(s.str, s.len, c)
 }
 
 // count returns the number of occurrences of `substr` in the string.
@@ -1764,12 +1757,14 @@ pub fn (s string) count(substr string) int {
 
 // contains_u8 returns `true` if the string contains the byte value `x`.
 // See also: [`string.index_u8`](#string.index_u8) , to get the index of the byte as well.
+@[inline]
 pub fn (s string) contains_u8(x u8) bool {
 	return string_index_byte(s.str, s.len, x) >= 0
 }
 
 // contains returns `true` if the string contains `substr`.
 // See also: [`string.index`](#string.index)
+@[inline]
 pub fn (s string) contains(substr string) bool {
 	if substr.len == 0 {
 		return true
@@ -1821,25 +1816,21 @@ pub fn (s string) contains_any_substr(substrs []string) bool {
 }
 
 // starts_with returns `true` if the string starts with `p`.
-@[direct_array_access]
+@[direct_array_access; inline]
 pub fn (s string) starts_with(p string) bool {
 	if p.len > s.len || usize(s.str) <= 0xFFFF || usize(p.str) <= 0xFFFF {
 		return false
-	} else if unsafe { vmemcmp(s.str, p.str, p.len) == 0 } {
-		return true
 	}
-	return false
+	return string_content_equal(s.str, p.str, p.len)
 }
 
 // ends_with returns `true` if the string ends with `p`.
-@[direct_array_access]
+@[direct_array_access; inline]
 pub fn (s string) ends_with(p string) bool {
 	if p.len > s.len || usize(s.str) <= 0xFFFF || usize(p.str) <= 0xFFFF {
 		return false
-	} else if unsafe { vmemcmp(s.str + s.len - p.len, p.str, p.len) == 0 } {
-		return true
 	}
-	return false
+	return string_content_equal(unsafe { s.str + s.len - p.len }, p.str, p.len)
 }
 
 // to_lower_ascii returns the string in all lowercase characters.

@@ -1537,17 +1537,17 @@ fn (g &FlatGen) type_contains_generic_placeholder(t &types.Type) bool {
 			// Inferred anonymous literals are materialized during transform. Their
 			// earlier checker entry has no nominal storage type; prefer the concrete
 			// lowered annotation instead of emitting `v_struct` for its container.
-			if c_short_name_view(t.name()) == 'struct' {
+			shape := flat.source_type_shape(t.name_id)
+			if shape.has(.anonymous_struct) {
 				return true
 			}
 			// A stale generic-call annotation can carry the concrete C function name
 			// as a nominal type. It is not a payload type and must not create an
 			// `__v_option_<function>` typedef in the program prefix.
-			if t.name().index_u8(`_`) >= 0 && t.name().contains('_T_')
-				&& !g.type_name_known(t.name()) {
+			if shape.has(.generic_c_name) && !g.type_name_known(t.name()) {
 				return true
 			}
-			if !g.skip_generics && flat.source_type_shape(t.name_id).has(.bracketed)
+			if !g.skip_generics && shape.has(.bracketed)
 				&& g.type_name_is_unbound_generic_decl(t.source_type_id(), g.struct_generic_params_for_name(t.source_type_id()), t.name() in g.tc.structs || g.tc.qualify_name(t.name()) in g.tc.structs) {
 				return true
 			}
@@ -1630,13 +1630,13 @@ fn (g &FlatGen) type_name_contains_generic_placeholder(name_id u32) bool {
 	if g.skip_generics && !g.placeholder_check_forced {
 		return false
 	}
-	name := flat.source_type_name(name_id)
-	if !flat.source_type_shape(name_id).has(.bracketed) {
-		// Without brackets only a bare placeholder (`T`) qualifies.
-		clean := trimmed_space(name)
-		return clean.len > 0 && g.is_bare_generic_placeholder_name(clean)
+	shape := flat.source_type_shape(name_id)
+	if !shape.has(.bracketed) {
+		// Only the spelling is cached; declarations still decide whether `T` is bound.
+		return shape.has(.bare_generic)
+			&& g.is_bare_generic_placeholder_name(trimmed_space(flat.source_type_name(name_id)))
 	}
-	return g.type_name_contains_generic_placeholder_bytes(name)
+	return g.type_name_contains_generic_placeholder_bytes(flat.source_type_name(name_id))
 }
 
 fn (g &FlatGen) type_name_contains_generic_placeholder_bytes(name string) bool {

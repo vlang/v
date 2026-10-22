@@ -222,6 +222,7 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 			}
 		}
 	}
+	mut promoted_pointer_fields := map[string]string{}
 	mut rendered_fields := []string{}
 	mut rendered_fields_by_name := map[string]string{}
 	mut field_values := map[string]string{}
@@ -326,6 +327,7 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 			has_array_init = true
 			continue
 		}
+		mut promoted_pointer_path := ''
 		mut field_is_shared_pointer := false
 		mut expected_type := if flat.source_type_name(layout_type) == 'array' && field_name == 'init' {
 			g.array_element_type(c_type) or { u32(0) }
@@ -348,6 +350,14 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 					c_storage_path << fastc_c_identifier(storage_name)
 				}
 				c_field_name = c_storage_path.join('.')
+				mut owner := c_type
+				for storage_name in field.storage_path {
+					owner = g.struct_direct_member_type(owner, storage_name)
+					if fastc_is_pointer_type(g.underlying_alias_type(owner)) {
+						promoted_pointer_path = c_field_name
+						break
+					}
+				}
 			} else {
 				// Initializing an embedded field by its type name:
 				// `Derived{ Base: Base{...} }` sets the `__embedded_N` field.
@@ -371,7 +381,9 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 			], expected_type, c_field_name, explicit_initializers.len, field_is_shared_pointer) or { return none }
 		}
 		explicit_initializers << field_value.explicit_initializers
-		if field_value.rendered_field != '' {
+		if promoted_pointer_path != '' {
+			promoted_pointer_fields[promoted_pointer_path] = field_value.field_value
+		} else if field_value.rendered_field != '' {
 			rendered_fields << field_value.rendered_field
 			rendered_fields_by_name[field_name] = field_value.rendered_field
 		}
@@ -381,6 +393,25 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 		}
 		if field_value.is_fixed_array {
 			continue
+		}
+	}
+	if promoted_pointer_fields.len > 0 {
+		for field in g.struct_field_info[flat.source_type_name(layout_type)] {
+			prefix := field.name + '.'
+			mut nested := map[string]string{}
+			for path, value in promoted_pointer_fields {
+				if path.starts_with(prefix) {
+					nested[path[prefix.len..]] = value
+				}
+			}
+			if nested.len == 0 { continue }
+			value := g.render_promoted_pointer_literal(field.typ, nested, g.struct_field_initializer_default(field), 0) or { return none }
+			temporary := '__vf_sf_${explicit_initializers.len}'
+			explicit_initializers << '${field.typ_text()} ${temporary}; ${temporary} = (${value});'
+			rendered_field := '.${fastc_c_identifier(field.name)}=(${temporary})'
+			rendered_fields << rendered_field
+			rendered_fields_by_name[field.name] = rendered_field
+			field_values[field.name] = temporary
 		}
 	}
 	if update_source == '' {
@@ -533,4 +564,45 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 		source: literal_source
 		typ:    c_type
 	}
+}
+
+// Copy pointer embeds before overriding promoted fields so shared defaults stay immutable.
+fn (g &Parser) render_promoted_pointer_literal(typ u32, values map[string]string, default_value string, depth int) ?string {
+	underlying := g.underlying_alias_type(typ)
+	is_pointer := fastc_is_pointer_type(underlying)
+	layout := fastc_trim_pointer_suffix(flat.source_type_name(underlying))
+	fields := g.struct_field_info[layout] or { return none }
+	variable := '__vf_promoted_${depth}'
+	mut defaults := []string{}
+	mut assignments := []string{}
+	for field in fields {
+		name := fastc_c_identifier(field.name)
+		field_default := g.struct_field_initializer_default(field)
+		if field_default != '' { defaults << '.${name}=(${field_default})' }
+		if value := values[name] {
+			assignments << '${variable}.${name} = (${value});'
+			continue
+		}
+		prefix := name + '.'
+		mut nested := map[string]string{}
+		for path, value in values {
+			if path.starts_with(prefix) { nested[path[prefix.len..]] = value }
+		}
+		if nested.len > 0 {
+			nested_default := '${variable}.${name}'
+			value := g.render_promoted_pointer_literal(field.typ, nested, nested_default, depth + 1) or { return none }
+			assignments << '${variable}.${name} = (${value});'
+		}
+	}
+	initial := if default_value != '' {
+		if is_pointer { '*(${default_value})' } else { default_value }
+	} else {
+		'(${layout}){${defaults.join(',')}}'
+	}
+	result := if is_pointer {
+		'(${flat.source_type_name(typ)})v_fastc_interface_box(&${variable}, sizeof(${layout}))'
+	} else {
+		variable
+	}
+	return '({ ${layout} ${variable} = (${initial}); ${assignments.join(' ')} ${result}; })'
 }

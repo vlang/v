@@ -248,12 +248,12 @@ fn test_import_alias_negative_filter_keeps_collisions_rebindings_and_file_contex
 	tc.cur_file = 'first.v'
 	tc.register_file_import('os', 'os')
 	assert (tc.resolve_import_alias('os') or { '' }) == 'os'
-	// Equal first bytes and lengths collide in the conservative name mask.
-	assert scope_name_bit('os') == scope_name_bit('ox')
-	assert tc.resolve_import_alias('ox') == none
+	// Last bytes differing by 64 still collide in the conservative name mask.
+	assert scope_name_bit('os') == scope_name_bit('o3')
+	assert tc.resolve_import_alias('o3') == none
 	assert tc.resolve_import_alias('absent') == none
-	tc.register_file_import('ox', 'other.module')
-	assert (tc.resolve_import_alias('ox') or { '' }) == 'other.module'
+	tc.register_file_import('o3', 'other.module')
+	assert (tc.resolve_import_alias('o3') or { '' }) == 'other.module'
 	tc.register_file_import('os', 'replacement')
 	assert (tc.resolve_import_alias('os') or { '' }) == 'replacement'
 	tc.cur_file = 'second.v'
@@ -279,4 +279,213 @@ fn test_import_alias_filter_accepts_unindexed_hand_built_views() {
 	assert (tc.resolve_import_alias('alias') or { '' }) == 'original.module'
 	tc.register_file_import('new_alias', 'new.module')
 	assert (tc.resolve_import_alias('new_alias') or { '' }) == 'new.module'
+}
+
+fn test_branch_snapshots_keep_map_and_array_storage_independent() {
+	mut source := map[string][]string{}
+	for i in 0 .. 200 {
+		source['key${i}'] = ['value${i}']
+	}
+	for i in 0 .. 180 {
+		source.delete('key${i}')
+	}
+	mut snapshot := clone_pointer_binding_value_keys(source)
+	assert snapshot == source
+	assert snapshot.keys() == source.keys()
+	snapshot['key180'][0] = 'changed'
+	snapshot['key181'] << 'appended'
+	snapshot.delete('key182')
+	snapshot['new'] = ['new']
+	assert source['key180'] == ['value180']
+	assert source['key181'] == ['value181']
+	assert 'key182' in source
+	assert 'new' !in source
+	source.clear()
+	mut empty_snapshot := clone_pointer_binding_value_keys(source)
+	empty_snapshot['new'] = ['new']
+	assert source.len == 0
+
+	owner := ScopeBindingOwner{ index: 1, name: 'original' }
+	mut owners := {
+		'key': [owner]
+	}
+	mut owner_snapshot := clone_scope_binding_owner_map(owners)
+	owner_snapshot['key'][0] = ScopeBindingOwner{ index: 2, name: 'changed' }
+	owner_snapshot['key'] << owner
+	assert owners['key'] == [owner]
+}
+
+fn test_pointer_binding_merge_preserves_order_fallbacks_and_independent_values() {
+	mut base := {
+		'a': ['one']
+		'b': ['two']
+	}
+	mut left := {
+		'a': ['left', 'left']
+		'c': ['three']
+	}
+	mut right := {
+		'a': ['right', 'left']
+		'd': ['four']
+	}
+	mut merged := merge_pointer_binding_value_states([left, right], base)
+	assert merged.keys() == ['a', 'b', 'c', 'd']
+	assert merged['a'] == ['left', 'right']
+	assert merged['b'] == ['two']
+	assert merged['c'] == ['three', 'c']
+	assert merged['d'] == ['d', 'four']
+	merged['a'][0] = 'changed'
+	merged['b'] << 'new'
+	assert base['b'] == ['two']
+	assert left['a'] == ['left', 'left']
+	assert right['a'] == ['right', 'left']
+}
+
+fn test_pointer_binding_branch_snapshots_isolate_replacement_and_invalidation() {
+	mut source := {
+		'left':  ['first', 'second']
+		'right': ['third']
+	}
+	mut snapshot := snapshot_pointer_binding_value_keys(source)
+	source['left'] = ['changed']
+	source.delete('right')
+	source['new'] = ['new']
+	assert snapshot['left'] == ['first', 'second']
+	assert snapshot['right'] == ['third']
+	assert 'new' !in snapshot
+	snapshot['left'] = ['other']
+	assert source['left'] == ['changed']
+	mut tc := TypeChecker{}
+	tc.fn_context.pointer_binding_value_keys = snapshot
+	tc.invalidate_all_pointer_binding_aliases()
+	assert source['left'] == ['changed']
+}
+
+fn selfhost_smartcast_index(mut a flat.FlatAst) flat.NodeId {
+	base := a.add_val(.ident, 'object')
+	field_start := a.begin_children()
+	a.add_child(base)
+	field := a.add_node(flat.Node{
+		kind:           .selector
+		value:          'member'
+		children_start: field_start
+		children_count: 1
+	})
+	index := a.add_val(.int_literal, '7')
+	index_start := a.begin_children()
+	a.add_child(field)
+	a.add_child(index)
+	return a.add_node(flat.Node{
+		kind:           .index
+		children_start: index_start
+		children_count: 2
+	})
+}
+
+fn test_empty_lexical_smartcast_filter_preserves_dynamic_types_and_range() {
+	mut a := flat.FlatAst.new()
+	id := selfhost_smartcast_index(mut a)
+	mut tc := TypeChecker.new(&a)
+	tc.build_direct_parent_index(&a)
+	tc.smartcast_key_filter = &SmartcastKeyFilter{}
+	tc.smartcast_key_filter.arm(0, a.nodes.len - 1)
+	assert tc.smartcast_type(id) == none
+	assert tc.smartcast_key_filter.ready
+	assert tc.type_cache.lexical_smartcast_miss(int(id))
+	tc.smartcasts['object.member[7]'] = Type(int_)
+	assert tc.smartcast_type(id)? == Type(int_)
+	tc.smartcasts.delete('object.member[7]')
+	assert tc.smartcast_type(id) == none
+	assert !tc.lexical_smartcasts_unused(-1)
+	assert !tc.lexical_smartcasts_unused(a.nodes.len)
+	// Reusing the filter for another body must discard its earlier empty state.
+	type_id := a.add_val(.ident, 'int')
+	condition_start := a.begin_children()
+	a.add_child(id)
+	a.add_child(type_id)
+	a.add_node(flat.Node{
+		kind:           .is_expr
+		children_start: condition_start
+		children_count: 2
+	})
+	tc.smartcast_key_filter.arm(0, a.nodes.len - 1)
+	assert !tc.lexical_smartcasts_unused(int(id))
+	assert !tc.lexical_smartcast_key_unused(int(id), 'object.member[7]')
+	tc.smartcast_key_filter = unsafe { nil }
+	assert !tc.lexical_smartcasts_unused(int(id))
+}
+
+fn test_empty_lexical_smartcast_filter_avoids_composite_key_allocations() {
+	$if prealloc && prealloc_stats ? {
+		mut a := flat.FlatAst.new()
+		id := selfhost_smartcast_index(mut a)
+		mut tc := TypeChecker.new(&a)
+		tc.build_direct_parent_index(&a)
+		tc.lexical_smartcast_misses = []bool{len: a.nodes.len}
+		tc.smartcast_key_filter = &SmartcastKeyFilter{}
+		tc.smartcast_key_filter.arm(0, a.nodes.len - 1)
+		assert tc.smartcast_type(id) == none
+		before := prealloc_stats_snapshot()
+		assert before.enabled
+		for _ in 0 .. 4096 {
+			// Force a cold per-node lookup without reallocating its cache page.
+			tc.type_cache.set_lexical_smartcast_state(int(id), 0)
+			tc.lexical_smartcast_misses[int(id)] = false
+			assert tc.smartcast_type(id) == none
+		}
+		after := prealloc_stats_snapshot()
+		assert after.allocation_count == before.allocation_count
+		assert after.allocated_bytes == before.allocated_bytes
+	}
+}
+
+fn test_small_lexical_smartcast_filter_matches_indexed_and_selector_keys() {
+	mut a := flat.FlatAst.new()
+	id := selfhost_smartcast_index(mut a)
+	mut tc := TypeChecker.new(&a)
+	tc.smartcast_key_filter = &SmartcastKeyFilter{
+		lo:    0
+		hi:    a.nodes.len - 1
+		ready: true
+		keys:  ['other.member[7]', 'object.member[70]', 'object.member']
+	}
+	assert tc.lexical_smartcasts_unused(int(id))
+	assert !tc.expr_key_matches(id, 'object.member[7x]')
+	assert !tc.expr_key_matches(id, 'object.member[7')
+	assert !tc.expr_key_matches(id, '[7]')
+	assert !tc.expr_key_matches(id, '')
+	tc.smartcast_key_filter.add('object.member[7]')
+	assert !tc.lexical_smartcasts_unused(int(id))
+	for i in 0 .. smartcast_key_filter_linear + 1 {
+		tc.smartcast_key_filter.add('another${i}')
+	}
+	assert tc.smartcast_key_filter.index.len > 0
+	assert !tc.lexical_smartcasts_unused(int(id))
+}
+
+fn test_small_lexical_smartcast_filter_avoids_unrelated_index_key_allocations() {
+	$if prealloc && prealloc_stats ? {
+		mut a := flat.FlatAst.new()
+		id := selfhost_smartcast_index(mut a)
+		mut tc := TypeChecker.new(&a)
+		tc.build_direct_parent_index(&a)
+		tc.lexical_smartcast_misses = []bool{len: a.nodes.len}
+		tc.smartcast_key_filter = &SmartcastKeyFilter{
+			lo:    0
+			hi:    a.nodes.len - 1
+			ready: true
+			keys:  ['different', 'object.other[7]', 'object.member[70]']
+		}
+		assert tc.smartcast_type(id) == none
+		before := prealloc_stats_snapshot()
+		assert before.enabled
+		for _ in 0 .. 4096 {
+			tc.type_cache.set_lexical_smartcast_state(int(id), 0)
+			tc.lexical_smartcast_misses[int(id)] = false
+			assert tc.smartcast_type(id) == none
+		}
+		after := prealloc_stats_snapshot()
+		assert after.allocation_count == before.allocation_count
+		assert after.allocated_bytes == before.allocated_bytes
+	}
 }
