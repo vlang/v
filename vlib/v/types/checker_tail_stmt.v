@@ -19485,7 +19485,7 @@ fn (tc &TypeChecker) resolve_type_nonliteral(id flat.NodeId) Type {
 					if fn_node.value in ['clone', 'move', 'reverse'] {
 						return clean_type
 					}
-					if fn_node.value == 'filter' || fn_node.value == 'sorted' {
+					if fn_node.value in ['filter', 'sorted', 'sorted_with_compare'] {
 						if receiver_is_fixed_array(clean_type) {
 							// filtering a fixed array yields a dynamic array
 							return Type(Array{
