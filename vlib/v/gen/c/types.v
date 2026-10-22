@@ -1828,14 +1828,24 @@ fn (mut g FlatGen) enum_decls() {
 					storage_ct := g.enum_emit_storage_c_type(flat.source_type_id(name), backing)
 					g.writeln('typedef ${storage_ct} ${type_cn};')
 					if is_flag {
+						mut field_exprs := map[string]flat.NodeId{}
+						for i in 0 .. node.children_count {
+							f := g.a.child_node(node_ref, i)
+							if f.children_count > 0 {
+								field_exprs[f.value] = g.a.child(f, 0)
+							}
+						}
+						mut field_values := map[string]i64{}
 						mut val := 0
 						for i in 0 .. node.children_count {
 							f := g.a.child_node(node_ref, i)
 							if f.children_count > 0 {
-								if enum_val := g.enum_field_expr_value(g.a.child(f, 0)) {
-									val = enum_val
+								mut resolving := map[string]bool{}
+								if enum_val := g.enum_field_expr_value_with_enum(g.a.child(f, 0), cur_module, flat.source_type_id(node.value), mut field_values, field_exprs, mut resolving) {
+									val = int(enum_val)
 								}
 							}
+							field_values[f.value] = i64(val)
 							cfield := g.cname(f.value)
 							g.writeln('static const ${type_cn} ${cn}__${cfield} = (${type_cn})((${storage_ct})1 << ${val});')
 							val++

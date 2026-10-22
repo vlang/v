@@ -992,6 +992,11 @@ fn (tc &TypeChecker) comptime_static_for_var_source_type(name string) ?u32 {
 }
 
 fn (tc &TypeChecker) comptime_static_enum_decl_value_cases(enum_name u32) []ComptimeStaticValueCase {
+	mut resolving := map[string]bool{}
+	return tc.comptime_static_enum_decl_value_cases_resolving(enum_name, '', mut resolving)
+}
+
+fn (tc &TypeChecker) comptime_static_enum_decl_value_cases_resolving(enum_name u32, stop_at string, mut resolving map[string]bool) []ComptimeStaticValueCase {
 	mut cur_mod := ''
 	if tc.top_level_idx.len > 0 {
 		for idx in tc.top_level_idx {
@@ -1003,7 +1008,7 @@ fn (tc &TypeChecker) comptime_static_enum_decl_value_cases(enum_name u32) []Comp
 			if kind != .enum_decl {
 				continue
 			}
-			if cases := tc.comptime_static_enum_decl_value_cases_for_node(enum_name, cur_mod, tc.a.nodes[idx]) {
+			if cases := tc.comptime_static_enum_decl_value_cases_for_node(enum_name, cur_mod, tc.a.nodes[idx], stop_at, mut resolving) {
 				return cases
 			}
 		}
@@ -1018,7 +1023,7 @@ fn (tc &TypeChecker) comptime_static_enum_decl_value_cases(enum_name u32) []Comp
 		if kind != .enum_decl {
 			continue
 		}
-		if cases := tc.comptime_static_enum_decl_value_cases_for_node(enum_name, cur_mod, tc.a.nodes[idx]) {
+		if cases := tc.comptime_static_enum_decl_value_cases_for_node(enum_name, cur_mod, tc.a.nodes[idx], stop_at, mut resolving) {
 			return cases
 		}
 	}
@@ -1036,7 +1041,7 @@ pub fn (tc &TypeChecker) comptime_enum_decl_field_values(enum_name u32) map[stri
 	return values
 }
 
-fn (tc &TypeChecker) comptime_static_enum_decl_value_cases_for_node(enum_name u32, cur_mod string, node flat.Node) ?[]ComptimeStaticValueCase {
+fn (tc &TypeChecker) comptime_static_enum_decl_value_cases_for_node(enum_name u32, cur_mod string, node flat.Node, stop_at string, mut resolving map[string]bool) ?[]ComptimeStaticValueCase {
 	qualified := if cur_mod != '' && cur_mod != 'main' && cur_mod != 'builtin' {
 		'${cur_mod}.${node.value}'
 	} else {
@@ -1066,12 +1071,18 @@ fn (tc &TypeChecker) comptime_static_enum_decl_value_cases_for_node(enum_name u3
 		mut val := next_val
 		mut from_c := next_from_c
 		if expr_id := field_exprs[field_name] {
-			mut resolving := map[string]bool{}
-			if ev := tc.comptime_static_enum_field_value(expr_id, cur_mod, enum_name, mut field_values, field_exprs, mut resolving) {
-				val = ev
-				from_c = false
-			} else {
+			key := '${qualified}.${field_name}'
+			if resolving[key] {
 				from_c = true
+			} else {
+				resolving[key] = true
+				if ev := tc.comptime_static_enum_field_value(expr_id, cur_mod, enum_name, mut field_values, field_exprs, mut resolving) {
+					val = ev
+					from_c = false
+				} else {
+					from_c = true
+				}
+				resolving.delete(key)
 			}
 		}
 		field_values[field_name] = val
@@ -1080,6 +1091,9 @@ fn (tc &TypeChecker) comptime_static_enum_decl_value_cases_for_node(enum_name u3
 			value:        if is_flag { i64(u64(1) << val) } else { val }
 			has_value:    true
 			value_from_c: from_c
+		}
+		if field_name == stop_at {
+			break
 		}
 		next_val = val + 1
 		next_from_c = from_c
@@ -1204,6 +1218,21 @@ fn (tc &TypeChecker) comptime_static_enum_field_value(id flat.NodeId, enum_modul
 		.selector {
 			if field := tc.comptime_static_enum_selector_ref_field(id, enum_module, enum_name) {
 				return tc.comptime_static_enum_field_ref_value(field, enum_module, enum_name, mut field_values, field_exprs, mut resolving)
+			}
+			prefix := tc.comptime_static_enum_selector_base_text(tc.a.child(&node, 0))
+			qualified := if !prefix.contains('.') && enum_module !in ['', 'main', 'builtin'] {
+				'${enum_module}.${prefix}'
+			} else {
+				prefix
+			}
+			enum_type := unalias_type(tc.parse_type(flat.source_type_id(qualified)))
+			if enum_type is Enum {
+				field_name := tc.enum_field_name(enum_type.source_type_id(), node.value) or { node.value }
+				for item in tc.comptime_static_enum_decl_value_cases_resolving(enum_type.source_type_id(), field_name, mut resolving) {
+					if item.name == field_name && !item.value_from_c {
+						return item.value
+					}
+				}
 			}
 			return none
 		}
@@ -1534,15 +1563,16 @@ fn (tc &TypeChecker) comptime_static_enum_field_ref_value(field_ref string, enum
 		return field_values[field_name]
 	}
 	expr_id := field_exprs[field_name] or { return none }
-	if resolving[field_name] {
+	key := '${flat.source_type_name(qualified_name)}.${field_name}'
+	if resolving[key] {
 		return none
 	}
-	resolving[field_name] = true
+	resolving[key] = true
 	val := tc.comptime_static_enum_field_value(expr_id, enum_module, enum_name, mut field_values, field_exprs, mut resolving) or {
-		resolving.delete(field_name)
+		resolving.delete(key)
 		return none
 	}
-	resolving.delete(field_name)
+	resolving.delete(key)
 	field_values[field_name] = val
 	return val
 }

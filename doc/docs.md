@@ -11118,7 +11118,7 @@ Any C types may be used behind the `C` prefix, but types must be redeclared in V
 order to access type members.
 C enum constants can initialize V enum members through `C.name`, including lowercase C names.
 Flag enum initializers specify bit positions and must be known to the V compiler at compile time;
-C enum constants cannot supply these positions.
+Integer casts of known V enum values can supply these positions; C enum constants cannot.
 
 To redeclare complex types, such as in the following C code:
 
