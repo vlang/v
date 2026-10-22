@@ -6310,6 +6310,8 @@ res2 := ch2.try_pop(mut b) // try to perform `b = <-ch2`
 The `try_push/pop()` methods will return immediately with one of the results
 `.success`, `.not_ready` or `.closed` - dependent on whether the object has been transferred or
 the reason why not.
+These methods also work in generic functions with a `chan T`. Their arguments must match the
+channel's element storage type, and `try_pop(mut value)` requires mutable destination storage.
 On an unbuffered channel, `try_push()` will return `.not_ready` unless a receiver is ready at
 the same time.
 Usage of these methods and fields in production is not recommended -

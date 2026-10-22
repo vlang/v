@@ -15987,19 +15987,63 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 			arg_id := t.a.child(&node, 1)
 			expected := t.normalize_type_alias(flat.source_type_id(builtin_base_type[5..]))
 			actual := t.normalize_type_alias(t.specialized_expr_type_name(arg_id))
+			actual_name := flat.source_type_name(actual)
 			arg := t.a.nodes[int(arg_id)]
 			if method == 'try_pop' && !arg.is_mut && !isnil(t.tc)
 				&& !t.tc.disable_explicit_mutability {
 				t.record_monomorph_error('method `try_pop` parameter 1 is `mut`, so use a `mut` argument instead')
 				return t.make_empty()
 			}
+			if method == 'try_pop' {
+				mut destination_id := t.unwrap_parens(arg_id)
+				mut destination := t.a.nodes[int(destination_id)]
+				mut needs_lvalue := !actual_name.starts_with('&')
+				if destination.kind == .prefix && destination.op == .amp
+					&& destination.children_count > 0 {
+					destination_id = t.unwrap_parens(t.a.child(&destination, 0))
+					destination = t.a.nodes[int(destination_id)]
+					needs_lvalue = true
+				}
+				if needs_lvalue && !t.expr_can_take_address(destination_id) {
+					t.record_monomorph_error('cannot pass expression as `mut` to `try_pop`')
+					return t.make_empty()
+				}
+				// A field or indexed element inherits its root storage's mutability.
+				if needs_lvalue {
+					for destination.kind in [.selector, .index, .paren]
+						&& destination.children_count > 0 {
+						destination_id = t.a.child(&destination, 0)
+						destination = t.a.nodes[int(destination_id)]
+					}
+				}
+				if destination.kind == .ident && !isnil(t.tc)
+					&& !t.tc.disable_explicit_mutability {
+					if binding := t.local_binding_flags_before(destination.value, destination_id) {
+						if !binding.is_mut {
+							t.record_monomorph_error('`${destination.value}` is immutable, declare it with `mut` to make it mutable')
+							return t.make_empty()
+						}
+					}
+				}
+			}
+			// Pointer arguments already address channel storage. Match that storage
+			// exactly instead of applying ordinary call referencing/dereferencing.
+			storage := if actual_name.starts_with('&') && (method == 'try_pop' || actual != expected) {
+				t.normalize_type_alias(flat.source_type_id(actual_name[1..]))
+			} else {
+				actual
+			}
+			storage_name := flat.source_type_name(storage)
+			expected_name := flat.source_type_name(expected)
+			same_pointer_depth := storage_name.len - storage_name.trim_left('&').len == expected_name.len - expected_name.trim_left('&').len
 			// Channel storage cannot use the numeric coercions of ordinary calls.
-			actual_base := flat.source_type_id(flat.source_type_name(actual).trim_left('&'))
+			actual_base := flat.source_type_id(storage_name.trim_left('&'))
 			expected_base := flat.source_type_id(flat.source_type_name(expected).trim_left('&'))
 			same_numeric_type := !is_numeric_type_name(actual_base)
 				|| !is_numeric_type_name(expected_base) || actual_base == expected_base
-			if !same_numeric_type || (method == 'try_push' && arg.kind == .float_literal)
-				|| !t.resolved_receiver_arg_compatible(arg_id, actual, expected) {
+			if !same_pointer_depth || !same_numeric_type
+				|| (method == 'try_push' && arg.kind == .float_literal)
+				|| !t.resolved_receiver_arg_compatible(arg_id, storage, expected) {
 				t.record_monomorph_error('cannot use `${flat.source_type_name(actual)}` as argument to `${method}`; expected `${flat.source_type_name(expected)}`')
 				return t.make_empty()
 			}
