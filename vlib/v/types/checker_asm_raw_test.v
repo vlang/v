@@ -1,0 +1,315 @@
+module types
+
+import v.util
+
+// raw_template_of decodes the template section of a complete raw asm block, so the
+// tests exercise the same block offsets a checker diagnostic would use.
+fn raw_template_of(source string) InlineAsmRawTemplate {
+	block := inline_asm_mask_comments(source)
+	open := inline_asm_index_of(block, 0, block.len, `{`) or { panic('no `{`') }
+	close := inline_asm_last_index_of(block, open, block.len, `}`) or { panic('no `}`') }
+	sections := inline_asm_section_ranges(block, open + 1, close)
+	return inline_asm_raw_template(block, sections[0])
+}
+
+// raw_instructions_of tokenizes a block the way the checker will: bare register names
+// only exist outside GNU x86 syntax, where every register carries `%%`.
+fn raw_instructions_of(source string, arch string) []InlineAsmRawInstruction {
+	template := raw_template_of(source)
+	registers := if arch == 'amd64' { []string{} } else { util.asm_register_names(arch) }
+	return inline_asm_raw_parse_instructions(&template, registers)
+}
+
+const raw_loop_block = 'asm amd64 raw {
+	"testq %[len], %[len]\\n\\t"
+	"jz .Ldone%=\\n\\t" // skip empty input
+	".Lloop%=: \\n\\t"
+	"movzbl ( %[ptr] ), %%eax\\n\\t"
+	"addq %%rax, %[sum]; incq %[ptr]\\n\\t"
+	"decq %[len]\\n\\t"
+	"jnz .Lloop%=\\n\\t"
+	".Ldone%=:"
+	; [sum] "+r" (sum)
+	  [ptr] "+r" (ptr)
+	  [len] "+r" (len)
+	;
+	; rax
+	  memory
+	  cc
+}'
+
+fn test_raw_template_decodes_literals_into_assembler_text() {
+	template := raw_template_of(raw_loop_block)
+	assert template.text == 'testq %[len], %[len]\n\tjz .Ldone%=\n\t.Lloop%=: \n\tmovzbl ( %[ptr] ), %%eax\n\taddq %%rax, %[sum]; incq %[ptr]\n\tdecq %[len]\n\tjnz .Lloop%=\n\t.Ldone%=:'
+	assert template.starts.len == template.text.len
+	assert template.ends.len == template.text.len
+}
+
+fn test_raw_template_maps_decoded_bytes_back_to_source() {
+	template := raw_template_of(raw_loop_block)
+	// A plain byte maps onto itself.
+	jz := template.text.index('jz .Ldone') or { -1 }
+	start, end := template.span(jz, jz + 2)
+	assert raw_loop_block[start..end] == 'jz'
+	// An escape maps one decoded byte onto its two source bytes.
+	newline := template.text.index_u8(`\n`)
+	nl_start, nl_end := template.span(newline, newline + 1)
+	assert raw_loop_block[nl_start..nl_end] == '\\n'
+	// A range that crosses literals covers everything between them in the source.
+	first_label := template.text.index('.Lloop%=') or { -1 }
+	label_start, label_end := template.span(first_label, first_label + '.Lloop%='.len)
+	assert raw_loop_block[label_start..label_end] == '.Lloop%='
+	tail := template.text.index('decq') or { -1 }
+	cross_start, cross_end := template.span(first_label, tail + 'decq'.len)
+	assert raw_loop_block[cross_start..cross_end].starts_with('.Lloop%=')
+	assert raw_loop_block[cross_start..cross_end].ends_with('decq')
+	assert raw_loop_block[cross_start..cross_end].contains('"\n\t"')
+}
+
+fn test_raw_template_span_handles_empty_and_out_of_range() {
+	template := raw_template_of(raw_loop_block)
+	start, end := template.span(3, 3)
+	assert start == end
+	too_far_start, too_far_end := template.span(0, template.text.len + 10)
+	_, last_end := template.span(template.text.len - 1, template.text.len)
+	assert too_far_end == last_end
+	assert too_far_start == template.starts[0]
+	empty := inline_asm_raw_template('nothing quoted here', InlineAsmRange{ start: 0, end: 19 })
+	assert empty.text == ''
+	empty_start, empty_end := empty.span(0, 1)
+	assert empty_start == 0 && empty_end == 0
+}
+
+fn test_raw_template_decodes_c_escapes() {
+	block := '"a\\\\b\\"c\\x41\\101\\q"'
+	template := inline_asm_raw_template(block, InlineAsmRange{ start: 0, end: block.len })
+	assert template.text == 'a\\b"cAAq'
+	// `\x41` spans four source bytes.
+	x := template.text.index('A') or { -1 }
+	start, end := template.span(x, x + 1)
+	assert block[start..end] == '\\x41'
+	// Like C, `\x` consumes every following hex digit, and `\x` alone is the letter.
+	hex := '"\\x001\\x7g\\xz\\0017"'
+	decoded := inline_asm_raw_template(hex, InlineAsmRange{ start: 0, end: hex.len })
+	assert decoded.text.bytes() == [u8(1), 7, `g`, `x`, `z`, 1, `7`]
+	// Octal escapes stop after three digits; `\0017` is `\001` then `7`.
+	seven := decoded.text.len - 1
+	seven_start, seven_end := decoded.span(seven, seven + 1)
+	assert hex[seven_start..seven_end] == '7'
+	one_start, one_end := decoded.span(seven - 1, seven)
+	assert hex[one_start..one_end] == '\\001'
+}
+
+fn test_raw_template_span_at_end_of_text_is_past_the_last_byte() {
+	block := '"nop\\n"'
+	template := inline_asm_raw_template(block, InlineAsmRange{ start: 0, end: block.len })
+	assert template.text == 'nop\n'
+	// Position 4 is one past the decoded text, which is the closing quote in the source.
+	start, end := template.span(template.text.len, template.text.len)
+	assert start == end
+	assert block[start] == `"`
+	also_start, also_end := template.span(template.text.len, template.text.len + 1)
+	assert also_start == start && also_end == end
+	// A lone trailing backslash is kept as a literal byte.
+	lone := '"a\\'
+	lone_template := inline_asm_raw_template(lone, InlineAsmRange{ start: 0, end: lone.len })
+	assert lone_template.text == 'a\\'
+}
+
+fn test_raw_lines_split_on_newline_and_semicolon() {
+	template := raw_template_of(raw_loop_block)
+	lines := inline_asm_raw_lines(&template)
+	texts := lines.map(template.text[it.start..it.end].trim_space())
+	assert texts == ['testq %[len], %[len]', 'jz .Ldone%=', '.Lloop%=:', 'movzbl ( %[ptr] ), %%eax',
+		'addq %%rax, %[sum]', 'incq %[ptr]', 'decq %[len]', 'jnz .Lloop%=', '.Ldone%=:']
+}
+
+fn test_raw_lines_keep_semicolons_inside_quoted_text() {
+	block := '".ascii \\"a;b\\"\\n\\t"'
+	template := inline_asm_raw_template(block, InlineAsmRange{ start: 0, end: block.len })
+	lines := inline_asm_raw_lines(&template)
+	assert lines.map(template.text[it.start..it.end]) == ['.ascii "a;b"', '\t']
+}
+
+fn test_raw_lines_honour_escaped_quotes_and_character_constants() {
+	// The assembler sees `.ascii "a\";b"` then `nop`: the `\"` does not close the string.
+	block := 'asm amd64 raw { ".ascii \\"a\\\\\\";b\\"\\n" "nop; ret" ; }'
+	instructions := raw_instructions_of(block, 'amd64')
+	assert instructions.map(it.mnemonic) == ['.ascii', 'nop', 'ret']
+	assert instructions[0].operands.map(it.text) == ['"a\\";b"']
+	// A `"` inside a GNU character constant, with or without a closing `\'`, is not a
+	// string delimiter, and a `,` inside a string does not split operands.
+	chars := 'asm amd64 raw { "movb $\'\\"\', %%al\\n" "movb $\'\\", %%al\\n" ".ascii \\"a,b\\", \\"c\\"" ; }'
+	chars_instructions := raw_instructions_of(chars, 'amd64')
+	assert chars_instructions.map(it.mnemonic) == ['movb', 'movb', '.ascii']
+	assert chars_instructions[0].operands.map(it.text) == ['$\'"\'', '%%al']
+	assert chars_instructions[1].operands.map(it.text) == ['$\'"', '%%al']
+	assert chars_instructions[2].operands.map(it.text) == ['"a,b"', '"c"']
+}
+
+fn test_raw_instructions_labels_mnemonics_and_operands() {
+	instructions := raw_instructions_of(raw_loop_block, 'amd64')
+	assert instructions.map(it.mnemonic) == ['testq', 'jz', '', 'movzbl', 'addq', 'incq', 'decq',
+		'jnz', '']
+	assert instructions.map(it.label) == ['', '', '.Lloop%=', '', '', '', '', '', '.Ldone%=']
+	assert instructions.map(it.is_directive) == [false, false, false, false, false, false, false,
+		false, false]
+
+	testq := instructions[0]
+	assert testq.operands.len == 2
+	assert testq.operands[0].kind == .operand_ref
+	assert testq.operands[0].name == 'len'
+	assert testq.operands[0].modifier == 0
+
+	jz := instructions[1]
+	assert jz.operands.len == 1
+	assert jz.operands[0].kind == .symbol
+	assert jz.operands[0].text == '.Ldone%='
+
+	movzbl := instructions[3]
+	assert movzbl.operands.len == 2
+	assert movzbl.operands[0].kind == .memory
+	assert movzbl.operands[0].text == '( %[ptr] )'
+	assert movzbl.operands[1].kind == .register
+	assert movzbl.operands[1].name == 'eax'
+
+	// The label span points into the string literal in the source.
+	template := raw_template_of(raw_loop_block)
+	loop := instructions[2]
+	start, end := template.span(loop.label_start, loop.label_end)
+	assert raw_loop_block[start..end] == '.Lloop%='
+}
+
+fn test_raw_operand_modifiers_immediates_and_prefixes() {
+	block := 'asm amd64 raw {
+	"movl $0x1f, %k[value]\\n\\t"
+	"lock addq %q0, 8(%%rax,%%rcx,4)\\n\\t"
+	"rep movsb\\n\\t"
+	"movq %%fs:0x28, %%rdx\\n\\t"
+	"jmp *%%rax\\n\\t"
+	"1:\\n\\t"
+	"jnz 1b\\n\\t"
+	"call memcpy@PLT\\n\\t"
+	".byte 0x0f, 0x1f\\n\\t"
+	"vpxord %%zmm0, %%zmm0, %%zmm0%{%%k1%}%{z%}\\n\\t"
+	"{vex} vpxor %%xmm0, %%xmm1, %%xmm2\\n\\t"
+	"rex.w addl %%eax, %%ecx\\n\\t"
+	"vextracti128 $1, %%ymm0, %%xmm1\\n\\t"
+	"fxch %%st(1), %%st\\n\\t"
+	"jmp rax\\n\\t"
+	"movq fs:0x28, %%rdx"
+	; [value] "+r" (value)
+}'
+	instructions := raw_instructions_of(block, 'amd64')
+	assert instructions.map(it.mnemonic) == ['movl', 'lock addq', 'rep movsb', 'movq', 'jmp', '',
+		'jnz', 'call', '.byte', 'vpxord', '{vex} vpxor', 'rex.w addl', 'vextracti128', 'fxch',
+		'jmp', 'movq']
+	assert instructions[10].operands.map(it.name) == ['xmm0', 'xmm1', 'xmm2']
+	assert instructions[11].operands.map(it.name) == ['eax', 'ecx']
+	// `vex...` is a mnemonic start, not a prefix word.
+	assert instructions[12].operands.map(it.text) == ['$1', '%%ymm0', '%%xmm1']
+	// x87 stack registers keep their `(n)` and are registers, not addresses.
+	assert instructions[13].operands.map(it.kind) == [.register, .register]
+	assert instructions[13].operands.map(it.name) == ['st(1)', 'st']
+	// In GNU x86 syntax a bare `rax` is a symbol; only `%%rax` is the register.
+	assert instructions[14].operands[0].kind == .symbol
+	assert instructions[15].operands[0].kind == .memory
+
+	movl := instructions[0]
+	assert movl.operands[0].kind == .immediate
+	assert movl.operands[0].name == '0x1f'
+	assert movl.operands[1].kind == .operand_ref
+	assert movl.operands[1].modifier == `k`
+	assert movl.operands[1].name == 'value'
+
+	addq := instructions[1]
+	assert addq.operands[0].kind == .operand_ref
+	assert addq.operands[0].modifier == `q`
+	assert addq.operands[0].name == '0'
+	assert addq.operands[1].kind == .memory
+	assert addq.operands[1].text == '8(%%rax,%%rcx,4)'
+
+	assert instructions[2].operands.len == 0
+
+	movq := instructions[3]
+	assert movq.operands[0].kind == .memory
+	assert movq.operands[1].kind == .register
+	assert movq.operands[1].name == 'rdx'
+
+	jmp := instructions[4]
+	assert jmp.operands[0].kind == .register
+	assert jmp.operands[0].name == 'rax'
+	assert jmp.operands[0].text == '*%%rax'
+
+	assert instructions[5].label == '1'
+	assert instructions[6].operands[0].kind == .symbol
+	assert instructions[6].operands[0].text == '1b'
+	assert instructions[7].operands[0].kind == .symbol
+	assert instructions[7].operands[0].text == 'memcpy@PLT'
+
+	byte_directive := instructions[8]
+	assert byte_directive.is_directive
+	assert byte_directive.operands.map(it.text) == ['0x0f', '0x1f']
+
+	vpxord := instructions[9]
+	assert vpxord.operands.len == 3
+	assert vpxord.operands[2].kind == .register
+	assert vpxord.operands[2].text == '%%zmm0%{%%k1%}%{z%}'
+	assert vpxord.operands[2].name == 'zmm0%{%%k1%}%{z%}'
+}
+
+fn test_raw_operands_on_arm64_use_bare_registers() {
+	block := 'asm arm64 raw {
+	"ldr q1, [%[state], #16]\\n\\t"
+	"mov v8.16b, v0.16b\\n\\t"
+	"shl v3.4s, v3.4s, #16\\n\\t"
+	".rept 10\\n\\t"
+	"add x0, x1, x2\\n\\t"
+	"add x0, x0, :lo12:table\\n\\t"
+	"ins v6.d[1], v4.d[0]\\n\\t"
+	"ldp x0, x1, [sp], #16"
+	; [state] "r" (state)
+}'
+	instructions := raw_instructions_of(block, 'arm64')
+	assert instructions.map(it.mnemonic) == ['ldr', 'mov', 'shl', '.rept', 'add', 'add', 'ins',
+		'ldp']
+	assert instructions[5].operands[2].kind == .symbol
+	assert instructions[5].operands[2].text == ':lo12:table'
+	// A vector lane index is part of the register, not an address.
+	assert instructions[6].operands.map(it.kind) == [.register, .register]
+	assert instructions[6].operands.map(it.name) == ['v6', 'v4']
+	assert instructions[7].operands.map(it.kind) == [.register, .register, .memory, .immediate]
+
+	ldr := instructions[0]
+	assert ldr.operands[0].kind == .register
+	assert ldr.operands[0].name == 'q1'
+	assert ldr.operands[1].kind == .memory
+	assert ldr.operands[1].text == '[%[state], #16]'
+
+	mov := instructions[1]
+	assert mov.operands[0].kind == .register
+	assert mov.operands[0].name == 'v8'
+	assert mov.operands[0].text == 'v8.16b'
+
+	shl := instructions[2]
+	assert shl.operands[2].kind == .immediate
+	assert shl.operands[2].name == '16'
+
+	assert instructions[3].is_directive
+	assert instructions[4].operands.map(it.name) == ['x0', 'x1', 'x2']
+}
+
+fn test_raw_intel_templates_use_bare_registers() {
+	template := raw_template_of('asm amd64 raw intel { "mov rax, qword ptr [rbx+8]\\n\\t" "add rax, rcx" ; }')
+	instructions := inline_asm_raw_parse_instructions(&template, util.asm_register_names('amd64'))
+	assert instructions.map(it.mnemonic) == ['mov', 'add']
+	assert instructions[0].operands.map(it.kind) == [.register, .memory]
+	assert instructions[1].operands.map(it.name) == ['rax', 'rcx']
+}
+
+fn test_raw_label_detection_rejects_operand_colons() {
+	template := raw_template_of('asm amd64 raw { "%%fs:0x28\\n\\t" "a::\\n\\t" "x: nop" ; }')
+	instructions := inline_asm_raw_parse_instructions(&template, util.asm_register_names('amd64'))
+	assert instructions.map(it.label) == ['', '', 'x']
+	assert instructions.map(it.mnemonic) == ['%%fs:0x28', 'a::', 'nop']
+}
