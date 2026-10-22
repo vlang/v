@@ -1,3 +1,5 @@
+import v.tests.c_enums.importedflags
+
 #include "@VMODROOT/vlib/v/tests/c_enums/lowercase_c_enum.h"
 
 enum LowercaseCEnum {
@@ -34,4 +36,32 @@ fn test_v_enum_selector_as_flag_position() {
 	assert int(VEnumPositionFlag.next) == 16
 	assert u64(VEnumPositionFlag64.item) == 8
 	assert u64(VEnumPositionFlag64.next) == 16
+}
+
+enum BackedFlagPosition as u8 {
+	third = 3
+}
+
+@[flag]
+enum BackedPositionFlag {
+	item = int(BackedFlagPosition.third)
+	next
+}
+
+@[flag]
+enum BackedPositionFlag64 as u64 {
+	item = int(BackedFlagPosition.third)
+	next
+}
+
+fn test_backed_enum_selector_as_flag_position() {
+	assert int(BackedPositionFlag.item) == 8
+	assert int(BackedPositionFlag.next) == 16
+	assert u64(BackedPositionFlag64.item) == 8
+	assert u64(BackedPositionFlag64.next) == 16
+}
+
+fn test_selectively_imported_enum_as_flag_position() {
+	assert int(importedflags.Flags.item) == 8
+	assert int(importedflags.Flags.next) == 16
 }

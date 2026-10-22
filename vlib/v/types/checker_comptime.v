@@ -1030,6 +1030,17 @@ fn (tc &TypeChecker) comptime_static_enum_decl_value_cases_resolving(enum_name u
 	return []ComptimeStaticValueCase{}
 }
 
+// comptime_enum_decl_field_value returns a field's value when its initializer is known in V.
+pub fn (tc &TypeChecker) comptime_enum_decl_field_value(enum_name u32, field_name string) ?i64 {
+	mut resolving := map[string]bool{}
+	for item in tc.comptime_static_enum_decl_value_cases_resolving(enum_name, field_name, mut resolving) {
+		if item.name == field_name && item.has_value && !item.value_from_c {
+			return item.value
+		}
+	}
+	return none
+}
+
 // comptime_enum_decl_field_values returns the statically evaluated values of an enum's fields.
 pub fn (tc &TypeChecker) comptime_enum_decl_field_values(enum_name u32) map[string]i64 {
 	mut values := map[string]i64{}
@@ -1220,10 +1231,20 @@ fn (tc &TypeChecker) comptime_static_enum_field_value(id flat.NodeId, enum_modul
 				return tc.comptime_static_enum_field_ref_value(field, enum_module, enum_name, mut field_values, field_exprs, mut resolving)
 			}
 			prefix := tc.comptime_static_enum_selector_base_text(tc.a.child(&node, 0))
-			qualified := if !prefix.contains('.') && enum_module !in ['', 'main', 'builtin'] {
-				'${enum_module}.${prefix}'
+			file := if source := tc.a.source_files[node.pos.id] { source.name } else { tc.cur_file }
+			qualified := if !prefix.contains('.') {
+				local_name := if enum_module !in ['', 'main', 'builtin'] {
+					'${enum_module}.${prefix}'
+				} else {
+					prefix
+				}
+				if tc.type_symbol_known(local_name) {
+					local_name
+				} else {
+					tc.resolve_selective_import_type_symbol_in_file(prefix, file) or { local_name }
+				}
 			} else {
-				prefix
+				flat.source_type_name(tc.resolve_imported_type_text_in_file(flat.source_type_id(prefix), file))
 			}
 			enum_type := unalias_type(tc.parse_type(flat.source_type_id(qualified)))
 			if enum_type is Enum {

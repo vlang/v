@@ -4527,6 +4527,10 @@ amount := Decimal(0.0)
 
 ### Enums
 
+C enum constants can initialize V enum members through `C.name`, including lowercase C names.
+Flag enum initializers specify bit positions and must be known to the V compiler at compile time;
+Integer casts of known V enum values can supply these positions; C enum constants cannot.
+
 Methods on an ordinary enum keep their definitions even when another module declares a
 flag enum with the same type name.
 
@@ -11116,10 +11120,6 @@ C identifiers are accessed with the `C` prefix similarly to how module-specific
 identifiers are accessed. Functions must be redeclared in V before they can be used.
 Any C types may be used behind the `C` prefix, but types must be redeclared in V in
 order to access type members.
-C enum constants can initialize V enum members through `C.name`, including lowercase C names.
-Flag enum initializers specify bit positions and must be known to the V compiler at compile time;
-Integer casts of known V enum values can supply these positions; C enum constants cannot.
-
 To redeclare complex types, such as in the following C code:
 
 ```c
