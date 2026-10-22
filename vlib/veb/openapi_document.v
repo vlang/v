@@ -96,15 +96,20 @@ pub fn (mut doc OpenApiDocument) add_app[A, X](app &A) ! {
 		path := openapi_path_of(route.path)
 		for method in route.methods {
 			verb := method.str().to_lower()
+			if verb !in ['get', 'put', 'post', 'delete', 'options', 'head', 'patch', 'trace'] {
+				return error('unsupported OpenAPI method: ${method}')
+			}
 			mut item := doc.paths[path]
 			if verb in item {
 				return error('duplicate OpenAPI operation: ${verb.to_upper()} ${path}')
 			}
 			mut params := []json2.Any{}
+			mut path_index := 0
 			for word in route.path.split('/') {
 				if word.starts_with(':') {
 					name := word.trim_left(':').trim_right('.')
-					index := route.parameter_names.index(name)
+					index := path_index
+					path_index++
 					kind := if index >= 0 && index < route.parameter_types.len {
 						route.parameter_types[index]
 					} else {
@@ -122,6 +127,23 @@ pub fn (mut doc OpenApiDocument) add_app[A, X](app &A) ! {
 						param['x-veb-variadic'] = true
 					}
 					params << param
+				}
+			}
+			if path_index == 0 && method == .get {
+				for i, name in route.parameter_names {
+					kind := if i < route.parameter_types.len {
+						route.parameter_types[i]
+					} else {
+						'string'
+					}
+					params << map[string]json2.Any{
+						'name':     json2.Any(name)
+						'in':       json2.Any('query')
+						'required': json2.Any(kind != 'string')
+						'schema':   json2.Any({
+							'type': json2.Any(kind)
+						})
+					}
 				}
 			}
 			mut responses := map[string]json2.Any{}

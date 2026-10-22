@@ -25,6 +25,10 @@ nested controllers before registering their parent. Paths are normalized and `:i
 restrictions appear as `x-veb-host`. OpenAPI cannot represent two operations with the same
 path and method on different hosts; duplicate operations return an error.
 Index handlers include the dispatcher's implicit `/` alias, including controller mount roots.
+Path parameter types follow dispatcher argument order, even when placeholder names differ.
+Conventional static GET handler arguments become query parameters; integer and boolean arguments
+are required. Methods outside OpenAPI's GET, PUT, POST, DELETE, OPTIONS, HEAD, PATCH and TRACE
+operation keys return an error.
 
 Use `operation(path, method, ...)` for summaries, multiline descriptions, tags, explicit
 operation IDs, path schemas and additional parameter objects. Generated IDs include the
@@ -44,13 +48,17 @@ names, ignoring JSON renames, and only `required` attributes make parameters req
 
 `schema[T]()` registers referenced component schemas recursively. Reflection handles
 primitives, integer widths, floats, timestamps, options, arrays, maps, enums, sum types
-and named structs. `json2.Any` permits any JSON value. Recursive structs use references.
+and named structs. `json2.Any` permits any JSON value. Recursive structs and sums use references.
 JSON field renames, `json: '-'` and `skip` are honored. Embedded fields are flattened with
 the same collision prefixes as `json2`. Enum schemas honor member JSON names and
 `json_as_number`. Struct sum variants include their required `_type` discriminator.
-Nonoptional fields are required, including fields marked `omitempty`. Optional fields are
-omitted from `required` unless marked `required`, which requires the key to be present. Set
-`nullable_options` to allow null for options, including referenced structs and sums.
+Time variants use a tagged object with Unix seconds in `value`. Absent option variants use an
+empty object, matching `json2`. Untagged sum variants and duplicate short type tags use `anyOf`
+because their JSON representations can overlap.
+Nonoptional fields are required unless marked `omitempty` or holding a pointer, which `json2`
+can omit. Optional fields are omitted from `required` unless marked `required`; `omitempty`
+can still omit them. Set `nullable_options` to allow null for options, including referenced structs
+and sums.
 
 Field attributes `description: '...'` and `example: '...'` supply schema metadata. Examples
 are decoded as JSON, including objects and arrays; invalid JSON becomes a string example.

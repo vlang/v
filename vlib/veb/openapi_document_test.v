@@ -4,6 +4,8 @@ import json2
 import net.http
 import os
 import time
+import veb.tests.openapi_left
+import veb.tests.openapi_right
 
 struct TypedApiContext {
 	Context
@@ -272,8 +274,8 @@ fn test_typed_openapi_scalar_schemas_and_json_examples() {
 	assert api_at(examples, 'properties', 'string_number', 'example').str() == '42'
 	assert api_at(examples, 'properties', 'string_null', 'example').str() == 'null'
 	required := api_at(examples, 'required').as_array().map(it.str())
-	assert 'omitted' in required
-	assert 'required_omitted' in required
+	assert 'omitted' !in required
+	assert 'required_omitted' !in required
 	assert 'optional_omitted' !in required
 }
 
@@ -531,4 +533,131 @@ fn test_typed_openapi_sum_variants_and_nullable_contract() {
 		doc.response[WireOptional]('/', .get)!
 		doc.write(output + '.sum', true)!
 	}
+}
+
+struct ConventionalApi {}
+
+@['/search'; get]
+fn (app &ConventionalApi) search(mut ctx TypedApiContext, query string, page int, active bool) Result {
+	return ctx.text('${query}:${page}:${active}')
+}
+
+@['/people/:user_id/:is_active'; get]
+fn (app &ConventionalApi) person(mut ctx TypedApiContext, id int, active bool) Result {
+	return ctx.text('${id}:${active}')
+}
+
+fn test_typed_openapi_conventional_query_and_positional_path_parameters() {
+	mut app := &ConventionalApi{}
+	mut doc := new_openapi(title: 'Conventional parameters')!
+	doc.add_app[ConventionalApi, TypedApiContext](app)!
+	raw := json2.decode[json2.Any](doc.json(false)!)!
+	query := api_at(raw, 'paths', '/search', 'get', 'parameters').as_array()
+	assert query.map(api_at(it, 'name').str()) == ['query', 'page', 'active']
+	assert query.map(api_at(it, 'in').str()) == ['query', 'query', 'query']
+	assert query.map(api_at(it, 'required').bool()) == [false, true, true]
+	assert query.map(api_at(it, 'schema', 'type').str()) == ['string', 'integer', 'boolean']
+	path := api_at(raw, 'paths', '/people/{user_id}/{is_active}', 'get', 'parameters').as_array()
+	assert path.map(api_at(it, 'schema', 'type').str()) == ['integer', 'boolean']
+	response := render_request[ConventionalApi, TypedApiContext](mut app, http.Request{
+		url:    '/search?query=V&page=2&active=true'
+		method: .get
+	})!
+	assert response.res.body == 'V:2:true'
+}
+
+struct UnsupportedApi {}
+
+@['/tunnel'; connect]
+fn (app &UnsupportedApi) tunnel(mut ctx TypedApiContext) Result {
+	return ctx.text('tunnel')
+}
+
+fn test_typed_openapi_rejects_unsupported_methods() {
+	mut doc := new_openapi(title: 'Unsupported method')!
+	app := &UnsupportedApi{}
+	doc.add_app[UnsupportedApi, TypedApiContext](app) or {
+		assert err.msg().contains('unsupported OpenAPI method: CONNECT')
+		return
+	}
+	assert false
+}
+
+type WireTimeChoice = int | time.Time
+type WireOptionalChoice = ?int | string
+type WireNumericChoice = int | i64 | f64
+type WireRecursiveChoice = int | []WireRecursiveChoice | map[string]WireRecursiveChoice
+type WireArrayChoice = int | []WireLeft
+
+fn test_typed_openapi_sum_context_and_recursive_schemas() {
+	mut doc := new_openapi(title: 'Sum contexts')!
+	times := api_at(json2.Any(doc.schema[WireTimeChoice]()), 'anyOf').as_array()
+	time_choice := times.filter(api_at(it, 'type').str() == 'object')[0]
+	assert api_at(time_choice, 'properties', '_type', 'enum').as_array()[0].str() == 'Time'
+	assert api_at(time_choice, 'properties', 'value', 'type').str() == 'integer'
+	assert api_at(time_choice, 'properties', 'value', 'format').str() == 'int64'
+	timestamp := time.now()
+	encoded_time := json2.Any(json2.decode[map[string]json2.Any](json2.encode(WireTimeChoice(timestamp)))!)
+	assert api_at(encoded_time, '_type').str() == 'Time', encoded_time.str()
+	assert api_at(encoded_time, 'value').i64() == timestamp.unix()
+	options := api_at(json2.Any(doc.schema[WireOptionalChoice]()), 'anyOf').as_array()
+	optional_choice := options.filter('anyOf' in it.as_map())[0]
+	assert api_at(optional_choice, 'anyOf').as_array().len == 2
+	assert api_at(api_at(optional_choice, 'anyOf').as_array()[0], 'maxProperties').int() == 0
+	missing := ?int(none)
+	assert json2.encode(WireOptionalChoice(missing)) == '{}'
+	assert api_at(json2.Any(doc.schema[WireNumericChoice]()), 'anyOf').as_array().len == 3
+	recursive := json2.Any(doc.schema[WireRecursiveChoice]())
+	choices := api_at(recursive, 'anyOf').as_array()
+	array := choices.filter(api_at(it, 'type').str() == 'array')[0]
+	map_schema := choices.filter(api_at(it, 'type').str() == 'object')[0]
+	assert api_at(array, 'items', '$ref').str().ends_with('.WireRecursiveChoice')
+	assert api_at(map_schema, 'additionalProperties', '$ref').str().ends_with('.WireRecursiveChoice')
+	arrays := api_at(json2.Any(doc.schema[WireArrayChoice]()), 'anyOf').as_array()
+	array_choice := arrays.filter(api_at(it, 'type').str() == 'array')[0]
+	assert '_type' in api_at(array_choice, 'items', 'required').as_array().map(it.str())
+}
+
+type WireDuplicateTagChoice = openapi_left.Item | openapi_right.Item
+
+fn test_typed_openapi_duplicate_sum_tags_allow_overlapping_variants() {
+	mut doc := new_openapi(title: 'Duplicate sum tags')!
+	schema := doc.schema[WireDuplicateTagChoice]()
+	assert 'discriminator' !in schema
+	assert schema['anyOf'] or { json2.Any([]json2.Any{}) }.as_array().len == 2
+	for choice in schema['anyOf']!.as_array() {
+		assert api_at(choice, 'properties', '_type', 'enum').as_array()[0].str() == 'Item'
+	}
+}
+
+struct WireOmittedFields {
+	empty    int  @[omitempty]
+	forced   int  @[required; omitempty]
+	optional ?int @[required; omitempty]
+	pointer  &WireLeft = unsafe { nil }
+	retained int
+}
+
+fn test_typed_openapi_required_fields_match_json2_omissions() {
+	mut doc := new_openapi(title: 'Omitted fields')!
+	schema := doc.resolve_schema(doc.schema[WireOmittedFields]())
+	required := api_at(json2.Any(schema), 'required').as_array().map(it.str())
+	assert required == ['retained']
+	encoded := json2.decode[map[string]json2.Any](json2.encode(WireOmittedFields{ forced: 0, optional: none }))!
+	assert encoded.keys() == ['retained']
+}
+
+struct WireRecursiveNode {
+	children []WireNodeChoice
+}
+
+type WireNodeChoice = WireRecursiveNode | int
+
+fn test_typed_openapi_recursive_struct_sum_preserves_component_reference() {
+	mut doc := new_openapi(title: 'Recursive struct sum')!
+	_ := doc.schema[WireRecursiveNode]()
+	schema := doc.schemas[typeof(WireNodeChoice{}).name] or { panic('missing recursive sum schema') }
+	choices := api_at(json2.Any(schema), 'anyOf').as_array()
+	node := choices.filter('allOf' in it.as_map())[0]
+	assert api_at(node, 'allOf').as_array()[0].as_map()['$ref']!.str().ends_with('.WireRecursiveNode')
 }
