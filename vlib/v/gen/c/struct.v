@@ -7658,13 +7658,11 @@ fn (mut g FlatGen) referenced_c_structs() map[u32]bool {
 			g.collect_c_struct_type_refs(g.tc.parse_type(flat.source_type_id(node.value)), mut seen)
 		}
 	}
-	// Fixed-array typedefs are collected from aliases even when the alias is unused.
-	// Their element layouts must remain available to those emitted typedefs.
+	// Alias preseeding can emit wrappers, array typedefs, and callback signatures
+	// even when the alias is unused. Keep their payload layouts available.
 	for name, target_id in g.tc.type_aliases.ids {
-		if flat.source_type_shape(target_id).has(.bracketed) {
-			g.tc.cur_module = module_from_qualified_name(name)
-			g.collect_c_struct_type_refs(g.tc.parse_type(target_id), mut seen)
-		}
+		g.tc.cur_module = module_from_qualified_name(name)
+		g.collect_c_struct_auxiliary_type_refs(g.tc.parse_type(target_id), mut seen)
 	}
 	for name, fields in g.tc.structs {
 		if !name.starts_with('C.') {
@@ -7674,6 +7672,9 @@ fn (mut g FlatGen) referenced_c_structs() map[u32]bool {
 		}
 	}
 	for _, typ in g.global_types {
+		g.collect_c_struct_type_refs(typ, mut seen)
+	}
+	for _, typ in g.tc.c_globals {
 		g.collect_c_struct_type_refs(typ, mut seen)
 	}
 	for _, typ in g.tc.fn_ret_types {
@@ -7703,6 +7704,30 @@ fn (mut g FlatGen) referenced_c_structs() map[u32]bool {
 		g.collect_c_struct_type_refs(typ, mut seen)
 	}
 	return seen
+}
+
+fn (g &FlatGen) collect_c_struct_auxiliary_type_refs(typ types.Type, mut seen map[u32]bool) {
+	match typ {
+		types.OptionType, types.ResultType, types.ArrayFixed, types.FnType {
+			g.collect_c_struct_type_refs(typ, mut seen)
+		}
+		types.Alias, types.Pointer {
+			g.collect_c_struct_auxiliary_type_refs(typ.base_type, mut seen)
+		}
+		types.Array, types.Channel {
+			g.collect_c_struct_auxiliary_type_refs(typ.elem_type, mut seen)
+		}
+		types.Map {
+			g.collect_c_struct_auxiliary_type_refs(typ.key_type, mut seen)
+			g.collect_c_struct_auxiliary_type_refs(typ.value_type, mut seen)
+		}
+		types.MultiReturn {
+			for item in typ.types {
+				g.collect_c_struct_auxiliary_type_refs(item, mut seen)
+			}
+		}
+		else {}
+	}
 }
 
 fn (g &FlatGen) collect_c_struct_type_refs(typ types.Type, mut seen map[u32]bool) {
@@ -8277,7 +8302,11 @@ fn (mut g FlatGen) write_struct_field(_struct_name string, f types.StructField) 
 
 // preseed_struct_fn_ptr_types supports preseed struct fn ptr types handling for FlatGen.
 fn (mut g FlatGen) preseed_struct_fn_ptr_types() {
+	g.ensure_referenced_c_struct_ids()
 	for struct_name, fields in g.tc.structs {
+		if struct_name.starts_with('C.') && !g.referenced_c_struct_ids[flat.source_type_id(struct_name)] {
+			continue
+		}
 		for f in fields {
 			if c_abi_fn := g.struct_field_c_abi_fn_ptr_type(flat.source_type_id(struct_name), f.name) {
 				g.resolve_fn_ptr_type(c_abi_fn)

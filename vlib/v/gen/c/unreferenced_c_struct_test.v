@@ -53,3 +53,48 @@ fn main() {
 	run_result := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', 'run', source])
 	assert run_result.exit_code == 0, run_result.output
 }
+
+fn check_auxiliary_c_struct_declarations(name string, declarations string, retained []string, omitted []string) ! {
+	root := os.join_path(os.vtmp_dir(), 'auxiliary_c_struct_${name}_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	output := os.join_path(root, 'main.c')
+	os.write_file(source, declarations + '\nfn main() {}\n')!
+	generated_result := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', '-enable-globals', '-o',
+		output, source])
+	assert generated_result.exit_code == 0, generated_result.output
+	run_result := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', '-enable-globals', '-cc', 'clang',
+		'run', source])
+	assert run_result.exit_code == 0, run_result.output
+	generated := os.read_file(output)!
+	for name_to_keep in retained {
+		assert generated.contains('struct ${name_to_keep} {')
+	}
+	for name_to_omit in omitted {
+		assert !generated.contains(name_to_omit)
+	}
+}
+
+fn test_unused_optional_aliases_keep_c_payloads() ! {
+	check_auxiliary_c_struct_declarations('aliases', '
+struct C.OptionalItem { value int }
+struct C.UnusedAliasItem { value int }
+type MaybeItem = ?C.OptionalItem
+type UnusedAlias = C.UnusedAliasItem
+', ['OptionalItem'], ['UnusedAliasItem'])!
+}
+
+fn test_unused_c_struct_callbacks_do_not_emit_signatures() ! {
+	check_auxiliary_c_struct_declarations('callbacks', '
+struct C.CallbackItem { value int }
+struct C.UnusedCallbacks { cb fn (&C.CallbackItem) }
+', [], ['CallbackItem', 'UnusedCallbacks'])!
+}
+
+fn test_unused_c_global_fixed_array_keeps_element_layout() ! {
+	check_auxiliary_c_struct_declarations('globals', '
+struct C.GlobalItem { value int }
+__global C.items [1]C.GlobalItem
+', ['GlobalItem'], [])!
+}

@@ -11120,6 +11120,8 @@ An unreferenced `struct C.Name` declaration does not emit a C struct definition.
 C header when using a header-defined struct.
 Using a C struct in `sizeof` or `__offsetof` references its layout,
 even without a value of that type.
+Generated optional wrappers, callback aliases, and fixed-array declarations also keep
+the C struct layouts they require.
 
 To redeclare complex types, such as in the following C code:
 
