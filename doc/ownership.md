@@ -271,9 +271,11 @@ define a custom `clone()` method. The plain `Request` above has no `.clone()` me
 
 The `Owned`, `Copy`, and `Drop` markers can appear in a struct's `implements` list in
 ownership mode without declaring interfaces for them. These markers supplement field-based
-inference: `Owned` forces move tracking even for an otherwise copyable struct, while `Copy`
-opts the struct out of inferred move tracking and enables copying. `Drop` enables destruction
-with a custom `drop()` method.
+inference: `Owned` forces move tracking even for an otherwise copyable struct. `Copy` permits
+copying structs whose fields are otherwise copyable; it does not remove destruction requirements
+from owning fields. For example, `struct Message implements Copy { text string }` initialized
+from a struct literal is still tracked as an owner and moves when passed by value.
+`Drop` enables destruction with a custom `drop()` method.
 Declared types with these names still follow the usual interface checks.
 
 ### Explicit lifetimes
