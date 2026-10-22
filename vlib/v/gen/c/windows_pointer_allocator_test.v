@@ -248,8 +248,8 @@ fn main() { implicit_aligned()
 		'none', '-autofree', '-no-closures', '-o', c_source, source])
 	assert result.exit_code == 0, result.output
 	generated := os.read_file(c_source)!
-	root_helpers := ['AlignedValue', 'NaturalValue', 'AlignedWrapper',
-		'GenericAlignedWrapper_AlignedCell', 'GenericAlignedLayerWrapper_AlignedCell']
+	root_helpers := ['AlignedValue', 'NaturalValue', 'AlignedValue', 'GenericAlignedValue_AlignedCell',
+		'GenericAlignedLayer_AlignedCell']
 	for i, name in ['main__implicit_aligned', 'main__implicit_natural', 'main__implicit_wrapped_aligned',
 		'main__implicit_generic_aligned', 'main__implicit_generic_nested_aligned'] {
 		body := allocator_test_c_function(generated, 'void ${name}(void) {')
