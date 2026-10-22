@@ -92,7 +92,8 @@ fn wasm_body(bytes []u8, id u8) []u8 {
 	for r.pos + 2 <= bytes.len {
 		sid := bytes[r.pos]
 		r.pos++
-		end := r.pos + r.leb()
+		size := r.leb()
+		end := r.pos + size
 		if sid == id {
 			return bytes[r.pos..end]
 		}
@@ -159,7 +160,8 @@ fn e2e_wasm_type_at(bytes []u8, index int) ([]u8, []u8) {
 	for r.pos + 2 <= bytes.len {
 		id := bytes[r.pos]
 		r.pos++
-		end := r.pos + r.leb()
+		size := r.leb()
+		end := r.pos + size
 		if id == 1 {
 			mut cnt := r.leb()
 			for idx in 0 .. cnt {
