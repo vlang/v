@@ -1327,7 +1327,7 @@ fn (mut decoder Decoder) decode_string_value(string_info ValueInfo) !string {
 	string_start := string_info.position + 1
 	string_end := string_info.position + string_info.length - 1
 	if !string_info.has_escape {
-		return decoder.retained_text(string_start, string_end).clone()
+		return decoder.retained_text(string_start, string_end)
 	}
 
 	mut string_buffer := []u8{cap: string_info.length} // might be too long but most json strings don't contain many escape characters anyways
