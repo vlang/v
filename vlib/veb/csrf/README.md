@@ -158,12 +158,13 @@ fn (app &App) index(mut ctx) veb.Result {
 
 ### Clearing the anti-CSRF token
 
-If you want to remove the anti-CSRF token and the cookie header you can call `clear_csrf_token`
+To clear the anti-CSRF cookie, call `clear_csrf_token` with the user context.
+The cookie name comes from `ctx.config.cookie_name`.
 
 **Example:**
 
 ```v ignore
-ctx.clear_csrf_token()
+ctx.clear_csrf_token(mut ctx)
 ```
 
 ## How it works
