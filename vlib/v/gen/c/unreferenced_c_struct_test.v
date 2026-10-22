@@ -16,6 +16,10 @@ mut:
  events i16
  revents i16
 }
+struct C.UnusedInner { value int }
+struct C.UnusedOuter { items [1]C.UnusedInner }
+struct C.UsedInner { value int }
+struct C.UsedOuter { items [1]C.UsedInner }
 struct C.KeptLayout { value int }
 struct C.DirectLayout { value int }
 struct C.SizeOnlyLayout { value i64 }
@@ -26,6 +30,8 @@ fn main() {
  assert __offsetof(C.OffsetOnlyLayout, value) >= 1
  direct := C.DirectLayout{7}
  assert direct.value == 7
+ used := C.UsedOuter{}
+ assert used.items[0].value == 0
  holder := Holder{}
  assert holder.items[0].value == 0
 }')!
@@ -33,6 +39,10 @@ fn main() {
 	assert generated_result.exit_code == 0, generated_result.output
 	generated := os.read_file(output)!
 	assert !generated.contains('struct pollfd {')
+	assert !generated.contains('UnusedInner')
+	assert !generated.contains('UnusedOuter')
+	assert generated.contains('struct UsedInner {')
+	assert generated.contains('struct UsedOuter {')
 	assert generated.contains('struct KeptLayout {')
 	assert generated.contains('struct DirectLayout {')
 	assert generated.contains('struct SizeOnlyLayout {')

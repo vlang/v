@@ -7619,10 +7619,7 @@ fn (mut g FlatGen) type_forward_decls() {
 fn (mut g FlatGen) c_struct_decl_names() []string {
 	mut names := g.tc.structs.keys()
 	if names.any(it.starts_with('C.')) {
-		if !g.referenced_c_struct_ids_ready {
-			g.referenced_c_struct_ids = g.referenced_c_structs()
-			g.referenced_c_struct_ids_ready = true
-		}
+		g.ensure_referenced_c_struct_ids()
 		names = names.filter(!it.starts_with('C.') || g.referenced_c_struct_ids[flat.source_type_id(it)])
 	}
 	if g.cache_decl_demand {
@@ -7633,6 +7630,13 @@ fn (mut g FlatGen) c_struct_decl_names() []string {
 	}
 	names.sort()
 	return names
+}
+
+fn (mut g FlatGen) ensure_referenced_c_struct_ids() {
+	if !g.referenced_c_struct_ids_ready {
+		g.referenced_c_struct_ids = g.referenced_c_structs()
+		g.referenced_c_struct_ids_ready = true
+	}
 }
 
 // referenced_c_structs keeps native layouts that occur in emitted declarations or
