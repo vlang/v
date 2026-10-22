@@ -16,7 +16,7 @@ fn bare_resolves_local() {
 }
 
 struct Fields {
-	ok      string @[mod.Tag('y')]
+	ok      string @[mod.Tag: 'y']
 	missing string @[mod.Tag]
 }
 

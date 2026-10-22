@@ -313,10 +313,10 @@ pub:
 pub struct Tool {
 pub:
 	name          string
-	title         string                     @[omitempty]
-	description   string                     @[omitempty]
+	title         string @[omitempty]
+	description   string @[omitempty]
 	input_schema  string = default_tool_input_schema @[json: inputSchema; raw]
-	output_schema string                     @[json: outputSchema; omitempty; raw]
+	output_schema string @[json: outputSchema; omitempty; raw]
 	annotations   ToolAnnotations
 	icons         []Icon @[omitempty]
 	execution     ToolExecution
@@ -573,9 +573,9 @@ pub:
 // ElicitSchema is the requested object schema sent to the client for elicitation.
 pub struct ElicitSchema {
 pub:
-	type_      string = 'object'  @[json: type]
-	properties string   @[raw]
-	required   []string @[omitempty]
+	type_      string = 'object' @[json: type]
+	properties string            @[raw]
+	required   []string          @[omitempty]
 }
 
 // ElicitParams are the typed parameters for elicitation/create. Set `mode`
