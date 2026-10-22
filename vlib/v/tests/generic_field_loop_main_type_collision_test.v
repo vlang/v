@@ -27,3 +27,27 @@ fn test_generic_field_loop_preserves_main_type_identity() {
 		assert value.typ == 42
 	}
 }
+
+type Mmap = int
+
+fn (value Mmap) doubled() int {
+	return int(value) * 2
+}
+
+enum FileInfo {
+	first
+	second
+}
+
+fn test_generic_field_loop_preserves_main_alias_and_enum() {
+	mut aliases := List[Mmap]{}
+	aliases.items << Mmap(7)
+	for value in aliases.items {
+		assert value.doubled() == 14
+	}
+	mut enums := List[FileInfo]{}
+	enums.items << FileInfo.second
+	for value in enums.items {
+		assert value == FileInfo.second
+	}
+}

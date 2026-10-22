@@ -10513,7 +10513,10 @@ fn (t &Transformer) qualify_generic_arg_for_decl_module(arg_id u32, module_name 
 	// Main declarations keep their bare spelling. A suffix-indexed imported
 	// homonym must not replace a concrete argument of a main generic field.
 	if module_name == t.cur_module && (t.bare_struct_name_is_local_to_current_module(clean_id)
-		|| t.bare_sum_type_name_is_local_to_current_module(clean_id)) {
+		|| t.bare_sum_type_name_is_local_to_current_module(clean_id)
+		|| (!isnil(t.tc) && module_name in ['', 'main', 'builtin']
+			&& (t.tc.type_aliases.contains(clean) || clean in t.tc.enum_names
+				|| clean in t.tc.interface_names))) {
 		return clean_id
 	}
 	if qualified_source_id := t.qualified_types.type_id(clean) {
