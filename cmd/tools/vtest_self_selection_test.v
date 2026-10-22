@@ -55,3 +55,45 @@ fn test_test_self_discovers_host_architecture_files() {
 		assert os.read_file(os.join_path(root, 'executed_${spelling}'))! == 'executed'
 	}
 }
+
+fn test_test_self_keeps_environment_flags_out_of_nested_compilers() {
+	root := os.join_path(@VEXEROOT, 'vtest_self_environment_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	tool := os.join_path(root, 'vtest-self.exe')
+	build := cmdexec.run_with_timeout(@VEXE, ['-nocache', '-o', tool,
+		os.join_path(@VMODROOT, 'cmd', 'tools', 'vtest-self.v')], 180_000)
+	assert build.exit_code == 0, build.output
+	fixture := os.join_path(root, 'environment_test.v')
+	os.write_file(fixture, 'import os
+fn test_environment() {
+	assert os.getenv("VFLAGS") == ""
+	\$if vtest_self_environment_define ? {
+		assert true
+	} \$else {
+		assert false, "environment compiler flags were lost"
+	}
+}
+')!
+	keys := ['VEXE', 'VFLAGS', 'VTEST_ONLY', 'VTEST_ONLY_FN', 'VTEST_SELF_SHARD_COUNT',
+		'VTEST_SELF_SHARD_INDEX']
+	mut old_values := map[string]string{}
+	for key in keys {
+		if value := os.getenv_opt(key) { old_values[key] = value }
+		os.unsetenv(key)
+	}
+	defer {
+		for key in keys {
+			if value := old_values[key] {
+				os.setenv(key, value, true)
+			} else {
+				os.unsetenv(key)
+			}
+		}
+	}
+	os.setenv('VEXE', @VEXE, true)
+	os.setenv('VFLAGS', '-new-compiler -cc clang -d vtest_self_environment_define', true)
+	result := cmdexec.run_with_timeout(tool, ['test-self', os.base(root)], 120_000)
+	assert result.exit_code == 0, result.output
+	assert result.output.contains('1 passed, 1 total'), result.output
+}

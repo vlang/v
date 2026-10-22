@@ -104,7 +104,7 @@ pub type NullabilityAssertionNode = ErrorBoundaryNode
 pub struct ListNullabilityOperatorNode {
 pub:
 	kind                  Kind = Kind.list_nullability_operator
-	nullability_assertion ?NullabilityAssertionNode
+	nullability_assertion ?&NullabilityAssertionNode
 pub mut:
 	loc ?Location
 }
@@ -335,7 +335,7 @@ pub mut:
 pub struct ListTypeNode {
 pub:
 	kind      Kind = Kind.list_type
-	node_type TypeNode
+	node_type &TypeNode
 pub mut:
 	loc ?Location
 }

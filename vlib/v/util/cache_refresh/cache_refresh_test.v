@@ -562,7 +562,7 @@ fn test_refresh_uses_recorded_directory_for_relative_compile_inputs() ! {
 	$if windows {
 		return
 	}
-	root := os.join_path(os.vtmp_dir(), 'vup_relative_inputs_${os.getpid()}')
+	root := os.join_path(os.real_path(os.vtmp_dir()), 'vup_relative_inputs_${os.getpid()}')
 	project := os.join_path(root, 'project with spaces')
 	os.mkdir_all(os.join_path(project, 'include path'))!
 	os.write_file(os.join_path(project, 'config.h'), '#include <refresh_input.h>\n')!
@@ -608,7 +608,7 @@ fn test_refresh_rebuilds_changed_vlib_dependencies_for_each_compiler_and_mode() 
 		return
 	}
 	vroot := os.dir(@VEXE)
-	root := os.join_path(os.vtmp_dir(), 'vup_cache_integration_${os.getpid()}')
+	root := os.join_path(os.real_path(os.vtmp_dir()), 'vup_cache_integration_${os.getpid()}')
 	os.mkdir_all(root)!
 	project := os.join_path(root, 'project with spaces')
 	os.mkdir_all(os.join_path(project, 'modules'))!

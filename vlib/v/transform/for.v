@@ -1822,7 +1822,7 @@ fn (t &Transformer) infer_for_in_elem_type(iter_type_id u32, node flat.Node) u32
 		return flat.source_type_u8
 	}
 	if t.is_fixed_array_type(iter_type_id) {
-		return for_in_fixed_array_elem_type(iter_type_id)
+		return t.for_in_fixed_array_elem_type(iter_type_id)
 	}
 	// Check if the iterable is a range expression
 	if node.children_count > 0 {
@@ -1908,7 +1908,7 @@ fn (t &Transformer) for_in_declared_ref_type(binding_id flat.NodeId, elem_type_i
 }
 
 fn (mut t Transformer) make_for_in_fixed_array_len_expr(s string) flat.NodeId {
-	len_text := for_in_fixed_array_len_text(s)
+	len_text := t.for_in_fixed_array_len_text(s)
 	if is_decimal_text(len_text) {
 		return t.make_int_literal(len_text.int())
 	}
@@ -1925,13 +1925,13 @@ fn (mut t Transformer) make_for_in_fixed_array_len_expr(s string) flat.NodeId {
 	return t.make_ident(len_text)
 }
 
-fn for_in_fixed_array_elem_type(source_id u32) u32 {
+fn (t &Transformer) for_in_fixed_array_elem_type(source_id u32) u32 {
 	source := flat.source_type_name(source_id)
-	result := for_in_fixed_array_elem_type_bytes(source)
+	result := t.for_in_fixed_array_elem_type_bytes(source)
 	return if result == source { source_id } else { flat.source_type_id(result) }
 }
 
-fn for_in_fixed_array_elem_type_bytes(s string) string {
+fn (t &Transformer) for_in_fixed_array_elem_type_bytes(s string) string {
 	clean := trimmed_transform_text(s)
 	if clean.starts_with('[') {
 		mut pos := 0
@@ -1942,7 +1942,8 @@ fn for_in_fixed_array_elem_type_bytes(s string) string {
 			}
 			pos += close_rel + 2
 		}
-		if clean.ends_with(']') {
+		// Generic element arguments can also end in `]`; only strip array dimensions.
+		if t.is_postfix_fixed_array_type(clean[pos..]) {
 			open := transform_trailing_matching_bracket_start(clean, clean.len)
 			if open >= pos {
 				return clean[..open]
@@ -1957,7 +1958,7 @@ fn for_in_fixed_array_elem_type_bytes(s string) string {
 	return clean[..open]
 }
 
-fn for_in_fixed_array_len_text(s string) string {
+fn (t &Transformer) for_in_fixed_array_len_text(s string) string {
 	clean := trimmed_transform_text(s)
 	if clean.starts_with('[') {
 		mut pos := 0
@@ -1968,7 +1969,7 @@ fn for_in_fixed_array_len_text(s string) string {
 			}
 			pos += close_rel + 2
 		}
-		if clean.ends_with(']') {
+		if t.is_postfix_fixed_array_type(clean[pos..]) {
 			open := transform_trailing_matching_bracket_start(clean, clean.len)
 			if open >= pos {
 				return trimmed_transform_text(clean[open + 1..clean.len - 1])

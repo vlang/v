@@ -1,5 +1,9 @@
 Update the V compiler to the latest version from https://github.com/vlang/v.
 
+On Linux, a compatible older TinyCC bundle is kept in place while its upstream
+revision is unchanged and it still passes the host compatibility check. This
+preserves cache inputs instead of checking out incompatible commits again.
+
 After updating the checkout, it skips rebuilding the compiler if its implementation
 sources and dependencies have not changed since the executable's recorded revision.
 Documentation and test-only changes do not trigger a rebuild. An unknown revision,

@@ -9662,6 +9662,11 @@ fn (tc &TypeChecker) expected_context_for_expr(id flat.NodeId) ?Type {
 			if tc.valid_node_id(other_id) {
 				mut other_type := tc.resolve_type(other_id)
 				if other_type is Pointer {
+					// Translated arrays decay to pointers to their elements. The
+					// pointee is not the type of the whole array literal.
+					if tc.node_is_in_translated_file(id) {
+						return tc.expr_type(id)
+					}
 					other_type = other_type.base_type
 				}
 				clean_other := unalias_type(other_type)

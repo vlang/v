@@ -56,4 +56,3 @@ fn test_lwweset_merge() {
 	s2.merge(&s1)
 	assert s1 == s2
 }
-
