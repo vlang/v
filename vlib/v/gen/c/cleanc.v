@@ -668,7 +668,9 @@ mut:
 	top_level_node_ids             []i32
 	ast_string_literals            []string
 	ast_string_literals_ready      bool
-	ast_string_literals_parsed     int   // how many leading ast_string_literals come from parsed nodes
+	ast_string_literals_parsed     int // how many leading ast_string_literals come from parsed nodes
+	referenced_c_struct_ids        map[u32]bool
+	referenced_c_struct_ids_ready  bool
 	embed_payload_node_ids         []i32 // `$embed_file` payload nodes, in AST order
 	embed_payload_nodes_ready      bool
 	fn_segs                        []string
@@ -3649,6 +3651,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.ast_string_literals = []string{}
 	g.ast_string_literals_ready = false
 	g.ast_string_literals_parsed = 0
+	g.referenced_c_struct_ids = map[u32]bool{}
+	g.referenced_c_struct_ids_ready = false
 	g.embed_payload_node_ids = []i32{}
 	g.embed_payload_nodes_ready = false
 	g.direct_array_access = false

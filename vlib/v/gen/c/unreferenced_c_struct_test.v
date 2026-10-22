@@ -18,8 +18,12 @@ mut:
 }
 struct C.KeptLayout { value int }
 struct C.DirectLayout { value int }
+struct C.SizeOnlyLayout { value i64 }
+struct C.OffsetOnlyLayout { prefix u8 value i64 }
 struct Holder { items [1]C.KeptLayout }
 fn main() {
+ assert sizeof(C.SizeOnlyLayout) == sizeof(i64)
+ assert __offsetof(C.OffsetOnlyLayout, value) >= 1
  direct := C.DirectLayout{7}
  assert direct.value == 7
  holder := Holder{}
@@ -31,6 +35,8 @@ fn main() {
 	assert !generated.contains('struct pollfd {')
 	assert generated.contains('struct KeptLayout {')
 	assert generated.contains('struct DirectLayout {')
+	assert generated.contains('struct SizeOnlyLayout {')
+	assert generated.contains('struct OffsetOnlyLayout {')
 	run_result := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', 'run', source])
 	assert run_result.exit_code == 0, run_result.output
 }

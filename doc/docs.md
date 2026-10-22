@@ -11118,6 +11118,8 @@ Any C types may be used behind the `C` prefix, but types must be redeclared in V
 order to access type members.
 An unreferenced `struct C.Name` declaration does not emit a C struct definition. Include its owning
 C header when using a header-defined struct.
+Using a C struct in `sizeof` or `__offsetof` references its layout,
+even without a value of that type.
 
 To redeclare complex types, such as in the following C code:
 

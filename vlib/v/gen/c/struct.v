@@ -7618,8 +7618,13 @@ fn (mut g FlatGen) type_forward_decls() {
 
 fn (mut g FlatGen) c_struct_decl_names() []string {
 	mut names := g.tc.structs.keys()
-	referenced := g.referenced_c_structs()
-	names = names.filter(!it.starts_with('C.') || referenced[flat.source_type_id(it)])
+	if names.any(it.starts_with('C.')) {
+		if !g.referenced_c_struct_ids_ready {
+			g.referenced_c_struct_ids = g.referenced_c_structs()
+			g.referenced_c_struct_ids_ready = true
+		}
+		names = names.filter(!it.starts_with('C.') || g.referenced_c_struct_ids[flat.source_type_id(it)])
+	}
 	if g.cache_decl_demand {
 		names = names.filter(g.cache_struct_declaration_needed(it))
 	}
@@ -7634,6 +7639,21 @@ fn (mut g FlatGen) c_struct_decl_names() []string {
 // checked expressions. A C binding's own declaration does not make it used.
 fn (mut g FlatGen) referenced_c_structs() map[u32]bool {
 	mut seen := map[u32]bool{}
+	old_file := g.tc.cur_file
+	old_module := g.tc.cur_module
+	defer {
+		g.tc.cur_file = old_file
+		g.tc.cur_module = old_module
+	}
+	// These operators have integer result types, so their type operands do not
+	// appear in the checked expression-type tables below.
+	for node in g.a.nodes {
+		if node.kind == .offsetof_expr || (node.kind == .sizeof_expr && node.children_count == 0) {
+			g.tc.cur_file = g.node_source_file(&node)
+			g.tc.cur_module = g.tc.file_modules[g.tc.cur_file] or { old_module }
+			g.collect_c_struct_type_refs(g.tc.parse_type(flat.source_type_id(node.value)), mut seen)
+		}
+	}
 	for name, fields in g.tc.structs {
 		if !name.starts_with('C.') {
 			for field in fields {
