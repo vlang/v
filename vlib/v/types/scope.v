@@ -39,8 +39,11 @@ pub struct ScopeBindingOwner {
 
 @[inline]
 fn scope_name_bit(name string) u64 {
-	first := if name.len > 0 { u32(name[0]) } else { 0 }
-	return u64(1) << ((first * 33 + u32(name.len)) & 63)
+	if name.len == 0 {
+		return u64(1)
+	}
+	// Distinguish equal-length identifiers sharing a prefix before probing a scope.
+	return u64(1) << ((u32(name[0]) * 33 + u32(name[name.len - 1]) * 7 + u32(name.len)) & 63)
 }
 
 @[inline]
@@ -59,7 +62,7 @@ fn scope_fast_slot(name string) int {
 const scope_linear_names = 8
 
 @[direct_array_access; inline]
-fn (s &Scope) own_binding_index(name string) ?int {
+fn (s &Scope) own_binding_index(name string) int {
 	if s.fast_lookup {
 		slot := scope_fast_slot(name)
 		if s.fast_generations[slot] == s.fast_generation
@@ -77,20 +80,20 @@ fn (s &Scope) own_binding_index(name string) ?int {
 	if i := s.name_indexes[name] {
 		return i
 	}
-	return none
+	return -1
 }
 
 // scan_own_binding_index finds `name` among the names of a scope that has not
 // indexed them (see scope_linear_names).
 @[direct_array_access]
-fn (s &Scope) scan_own_binding_index(name string) ?int {
+fn (s &Scope) scan_own_binding_index(name string) int {
 	for i := s.names.len - 1; i >= 0; i-- {
 		bound := s.names[i]
 		if bound.len == name.len && (bound.str == name.str || bound == name) {
 			return i
 		}
 	}
-	return none
+	return -1
 }
 
 @[direct_array_access; inline]
@@ -164,7 +167,7 @@ pub fn (s &Scope) contains(name string) bool {
 		mut scope := unsafe { &Scope(s) }
 		for scope != unsafe { nil } {
 			if scope.name_mask & bit != 0 {
-				if _ := scope.own_binding_index(name) {
+				if scope.own_binding_index(name) >= 0 {
 					return true
 				}
 			}
@@ -191,7 +194,8 @@ pub fn (s &Scope) lookup(name string) ?Type {
 		mut scope := unsafe { &Scope(s) }
 		for scope != unsafe { nil } {
 			if scope.name_mask & bit != 0 {
-				if i := scope.own_binding_index(name) {
+				i := scope.own_binding_index(name)
+				if i >= 0 {
 					return scope.types[i]
 				}
 			}
@@ -222,7 +226,8 @@ pub fn (s &Scope) lookup_before(name string, stop &Scope) ?Type {
 		bit := scope_name_bit(name)
 		for scope != unsafe { nil } && voidptr(scope) != voidptr(stop) {
 			if scope.name_mask & bit != 0 {
-				if i := scope.own_binding_index(name) {
+				i := scope.own_binding_index(name)
+				if i >= 0 {
 					return scope.types[i]
 				}
 			}
@@ -248,10 +253,7 @@ pub fn (s &Scope) binds_own(name string) bool {
 		if s.name_mask & scope_name_bit(name) == 0 {
 			return false
 		}
-		if _ := s.own_binding_index(name) {
-			return true
-		}
-		return false
+		return s.own_binding_index(name) >= 0
 	}
 	return name in s.names
 }
@@ -270,7 +272,8 @@ pub fn (s &Scope) lookup_owner(name string) ?ScopeBindingOwner {
 				scope = scope.parent
 				continue
 			}
-			if i := scope.own_binding_index(name) {
+			i := scope.own_binding_index(name)
+			if i >= 0 {
 				return ScopeBindingOwner{
 					scope:       scope
 					index:       i
@@ -413,7 +416,8 @@ pub fn (s &Scope) nearest_binding_owned_by(name string, owner ScopeBindingOwner)
 		mut scope := unsafe { &Scope(s) }
 		for scope != unsafe { nil } {
 			if scope.name_mask & bit != 0 {
-				if i := scope.own_binding_index(name) {
+				i := scope.own_binding_index(name)
+				if i >= 0 {
 					return voidptr(scope) == voidptr(owner.scope)
 						&& scope.lifetime == owner.lifetime && i == owner.index
 				}
@@ -452,9 +456,7 @@ pub fn (mut s Scope) insert_with_owner(name string, typ Type) ScopeBindingOwner 
 	$if !ownership ? {
 		mut existing := -1
 		if s.names.len <= scope_linear_names {
-			if i := s.scan_own_binding_index(name) {
-				existing = i
-			}
+			existing = s.scan_own_binding_index(name)
 		} else if i := s.name_indexes[name] {
 			existing = i
 		}

@@ -719,7 +719,21 @@ fn (g &Parser) render_nested_array_access_expression(tokens []FastcExpressionTok
 			needle += '[${next_index}]'
 			access_end = next_close
 		}
-		replacement := g.render_array_access_expression(tokens[i..access_end + 1]) or { continue }
+		mut member_end := access_end + 1
+		for member_end + 1 < tokens.len && tokens[member_end].tok == .dot
+			&& tokens[member_end + 1].tok == .name {
+			if member_end + 2 < tokens.len && tokens[member_end + 2].tok == .lpar { break }
+			member_end += 2
+		}
+		mut replacement := g.render_array_access_expression(tokens[i..access_end + 1]) or { continue }
+		if member_end > access_end + 1 {
+			if member := g.render_indexed_member_receiver(tokens[i..member_end]) {
+				for part in tokens[access_end + 1..member_end] {
+					needle += if part.tok == .name { part.lit } else { part.tok.str() }
+				}
+				replacement = member
+			}
+		}
 		if fastc_contains(rendered, needle) {
 			// A method receiver may already contain the lowered direct access
 			// `((s).str[i])`; the raw `s[i]` suffix there is a struct member, not
@@ -804,14 +818,22 @@ fn (g &Parser) render_indexed_member_receiver(tokens []FastcExpressionToken) ?Fa
 		}
 		field := g.struct_field_metadata(current_type, tokens[i + 1].lit) or { return none }
 		for storage_name in field.storage_path {
-			separator := if flat.source_type_name(current_type).ends_with('*') { '->' } else { '.' }
+			separator := if fastc_is_pointer_type(g.underlying_alias_type(current_type)) {
+				'->'
+			} else {
+				'.'
+			}
 			source += separator + fastc_c_identifier(storage_name)
 			current_type = g.struct_direct_member_type(current_type, storage_name)
 			if flat.source_type_name(current_type) == '' {
 				return none
 			}
 		}
-		separator := if flat.source_type_name(current_type).ends_with('*') { '->' } else { '.' }
+		separator := if fastc_is_pointer_type(g.underlying_alias_type(current_type)) {
+			'->'
+		} else {
+			'.'
+		}
 		field_source := source + separator + fastc_c_identifier(field.name)
 		source = if field.is_shared_pointer { '*(${field_source})' } else { field_source }
 		current_type = field.typ

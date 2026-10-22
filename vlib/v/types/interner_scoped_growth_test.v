@@ -12,6 +12,7 @@ fn test_repeated_scalar_interning_after_scope_promotion() {
 		assert unsafe { prealloc_scope_owns(scope, scoped) }
 		unsafe { prealloc_scope_leave(scope) }
 		interner.promote_from(0, scope)
+		assert isnil(interner.canonical_identity(scoped))
 		promoted_id, promoted := interner.canonicalize(input)
 		assert promoted_id == id
 		assert voidptr(promoted) == voidptr(interner.types[int(id)])

@@ -2723,8 +2723,12 @@ fn (t &Transformer) call_name_for_node(id flat.NodeId, node flat.Node) string {
 			if node.children_count > 0 && t.cur_module.len > 0
 				&& t.cur_module !in ['main', 'builtin'] {
 				fn_node := t.a.child_node(&node, 0)
-				short_name := short_name_view(name)
-				if fn_node.kind == .ident && fn_node.value == short_name {
+				if fn_node.kind == .ident && fn_node.value == short_name_view(name) {
+					short_name := fn_node.value
+					if name.len == t.cur_module.len + 1 + short_name.len
+						&& name.starts_with(t.cur_module) && name[t.cur_module.len] == `.` {
+						return name
+					}
 					qname := '${t.cur_module}.${short_name}'
 					if t.fn_ret_types.contains(qname) || qname in t.tc.fn_ret_types {
 						return qname
@@ -16933,7 +16937,6 @@ fn callback_type_without_variadic_modes(typ types.Type) types.Type {
 				params << types.FnParam{ typ: types.new_type_reference(types.Type(callback_type_without_variadic_modes(param.typ))), is_mut: param.is_mut }
 			}
 			types.Type(types.FnType{
-				...typ
 				params:      params
 				return_type: types.new_type_reference(types.Type(callback_type_without_variadic_modes(typ.return_type)))
 				is_variadic: false
@@ -16943,13 +16946,13 @@ fn callback_type_without_variadic_modes(typ types.Type) types.Type {
 			types.Type(types.Array{ ...typ, elem_type: types.new_type_reference(types.Type(callback_type_without_variadic_modes(typ.elem_type))) })
 		}
 		types.ArrayFixed {
-			types.Type(types.ArrayFixed{ ...typ, elem_type: types.new_type_reference(types.Type(callback_type_without_variadic_modes(typ.elem_type))) })
+			types.Type(types.ArrayFixed{ len: typ.len, len_expr: typ.len_expr, elem_type: types.new_type_reference(types.Type(callback_type_without_variadic_modes(typ.elem_type))) })
 		}
 		types.Channel {
-			types.Type(types.Channel{ ...typ, elem_type: types.new_type_reference(types.Type(callback_type_without_variadic_modes(typ.elem_type))) })
+			types.Type(types.Channel{ is_mut: typ.is_mut, elem_type: types.new_type_reference(types.Type(callback_type_without_variadic_modes(typ.elem_type))) })
 		}
 		types.Map {
-			types.Type(types.Map{ ...typ, key_type: types.new_type_reference(types.Type(callback_type_without_variadic_modes(typ.key_type))), value_type: types.new_type_reference(types.Type(callback_type_without_variadic_modes(typ.value_type))) })
+			types.Type(types.Map{ key_type: types.new_type_reference(types.Type(callback_type_without_variadic_modes(typ.key_type))), value_type: types.new_type_reference(types.Type(callback_type_without_variadic_modes(typ.value_type))) })
 		}
 		types.Pointer {
 			types.Type(types.Pointer{ ...typ, base_type: types.new_type_reference(types.Type(callback_type_without_variadic_modes(typ.base_type))) })
@@ -16963,7 +16966,7 @@ fn callback_type_without_variadic_modes(typ types.Type) types.Type {
 		types.MultiReturn {
 			mut members := []types.Type{cap: typ.types.len}
 			for member in typ.types { members << callback_type_without_variadic_modes(member) }
-			types.Type(types.MultiReturn{ ...typ, types: members })
+			types.Type(types.MultiReturn{ types: members })
 		}
 		else { typ }
 	}

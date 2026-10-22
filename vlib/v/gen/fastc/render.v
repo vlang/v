@@ -973,7 +973,13 @@ fn (g &Parser) render_struct_literal_with_defaults(c_type_source_id u32, layout_
 			continue
 		}
 		if rendered_field := rendered_fields_by_name[field.name] {
-			initializers << rendered_field
+			value := rendered_field.all_after('=')
+			if value.starts_with('{') {
+				initializers << rendered_field
+			} else {
+				name := fastc_c_identifier(field.name)
+				assignments << 'memcpy(__vf_sd.${name}, (${value}).data, sizeof(__vf_sd.${name}));'
+			}
 			initialized_fields[rendered_field] = true
 		}
 	}
@@ -1039,7 +1045,7 @@ fn (g &Parser) struct_field_initializer_default(field FastcStructField) string {
 		// An option field a literal leaves out is `none`; a zeroed Option would be a
 		// present value with no payload.
 		value = '(Option){.state=2}'
-	} else if !field.typ_text().ends_with('*') && g.struct_type_has_initializer_defaults(field.typ) {
+	} else if !fastc_is_pointer_type(g.underlying_alias_type(field.typ)) && g.struct_type_has_initializer_defaults(field.typ) {
 		value = g.render_empty_struct_initializer(field.typ)
 	}
 	if value == '' {
@@ -1052,7 +1058,7 @@ fn (g &Parser) struct_field_initializer_default(field FastcStructField) string {
 }
 
 fn (g &Parser) struct_type_has_initializer_defaults(c_type u32) bool {
-	if flat.source_type_name(c_type).ends_with('*') {
+	if fastc_is_pointer_type(g.underlying_alias_type(c_type)) {
 		return false
 	}
 	layout_type := fastc_trim_pointer_suffix(flat.source_type_name(g.underlying_alias_type(c_type)))
@@ -2832,6 +2838,28 @@ fn (g &Parser) render_chained_array_access_expression(tokens []FastcExpressionTo
 				}
 			}
 		}
+		// Lower a trailing promoted field together with the indexed receiver. Replacing
+		// only `items[i]` would leave the source field name on the physical embed wrapper.
+		mut member_end := close + 1
+		for member_end + 1 < tokens.len && tokens[member_end].tok == .dot
+			&& tokens[member_end + 1].tok == .name {
+			if member_end + 2 < tokens.len && tokens[member_end + 2].tok == .lpar { break }
+			member_end += 2
+		}
+		if member_end > close + 1 {
+			if member := g.render_indexed_member_receiver(tokens[start..member_end]) {
+				mut member_needle := needle
+				for field_index := close + 1; field_index < member_end; field_index += 2 {
+					member_needle += '.' + fastc_c_identifier(tokens[field_index + 1].lit)
+				}
+				replaced := fastc_replace_c_root_identifier(rendered, member_needle, member.source)
+				if replaced != rendered {
+					rendered = replaced
+					changed = true
+					continue
+				}
+			}
+		}
 		// An element that is itself a pointer (`[]&TypeSymbol`) auto-dereferences on the
 		// following member access, so `arr[i].field` lowers to `(elem)->field`, not `.field`.
 		if flat.source_type_name(element_type).ends_with('*') && fastc_contains(rendered, '${needle}.') {
@@ -2974,7 +3002,7 @@ fn (g &Parser) render_logical_expression(tokens []FastcExpressionToken) ?FastcRe
 }
 
 fn (g &Parser) struct_equality_is_supported(typ u32, seen []u32) bool {
-	if fastc_is_pointer_type(typ) {
+	if fastc_is_pointer_type(g.underlying_alias_type(typ)) {
 		return true
 	}
 	layout_type := flat.source_type_id(fastc_trim_pointer_suffix(flat.source_type_name(g.underlying_alias_type(typ))))
@@ -3043,7 +3071,7 @@ fn (g &Parser) stored_equality_source(left string, right string, typ u32, seen [
 // compared in a loop whose temporaries are named by `depth`, so the loop comparing its
 // elements, nested in it, does not shadow them.
 fn (g &Parser) struct_equality_source(left string, right string, typ u32, seen []u32, depth int) string {
-	if fastc_is_pointer_type(typ) {
+	if fastc_is_pointer_type(g.underlying_alias_type(typ)) {
 		return '((${left}) == (${right}))'
 	}
 	layout_type := flat.source_type_id(fastc_trim_pointer_suffix(flat.source_type_name(g.underlying_alias_type(typ))))
@@ -3396,14 +3424,22 @@ fn (g &Parser) render_as_cast_member_access(tokens []FastcExpressionToken) ?Fast
 		}
 		field := g.struct_field_metadata(current_type, tokens[i + 1].lit) or { return none }
 		for storage_name in field.storage_path {
-			separator := if flat.source_type_name(current_type).ends_with('*') { '->' } else { '.' }
+			separator := if fastc_is_pointer_type(g.underlying_alias_type(current_type)) {
+				'->'
+			} else {
+				'.'
+			}
 			source += separator + fastc_c_identifier(storage_name)
 			current_type = g.struct_direct_member_type(current_type, storage_name)
 			if current_type == 0 {
 				return none
 			}
 		}
-		separator := if flat.source_type_name(current_type).ends_with('*') { '->' } else { '.' }
+		separator := if fastc_is_pointer_type(g.underlying_alias_type(current_type)) {
+			'->'
+		} else {
+			'.'
+		}
 		field_source := source + separator + fastc_c_identifier(field.name)
 		source = if field.is_shared_pointer { '*(${field_source})' } else { field_source }
 		current_type = field.typ
@@ -6771,16 +6807,32 @@ fn (g &Parser) render_multi_variant_field_projection(variants []u32, tag_source 
 	for i := variants.len - 1; i >= 0; i-- {
 		variant := variants[i]
 		field := g.struct_field_metadata(variant, field_name) or { return none }
-		if field.storage_path.len > 0 {
-			return none
-		}
 		if field_type == 0 {
 			field_type = field.typ
-			pointer_source = '((${flat.source_type_name(field_type)} *)0)'
+			pointer_source = '((${fastc_output_c_type(flat.source_type_name(field_type))} *)0)'
 		} else if field.typ != field_type {
 			return none
 		}
-		field_pointer := '&((${flat.source_type_name(variant)} *)(${object_source}))->${fastc_c_identifier(field.name)}'
+		mut receiver_type := flat.source_type_id(flat.source_type_name(variant) + '*')
+		mut member := '((${flat.source_type_name(variant)} *)(${object_source}))'
+		for storage_name in field.storage_path {
+			separator := if fastc_is_pointer_type(g.underlying_alias_type(receiver_type)) {
+				'->'
+			} else {
+				'.'
+			}
+			member += separator + fastc_c_identifier(storage_name)
+			receiver_type = g.struct_direct_member_type(receiver_type, storage_name)
+			if receiver_type == 0 {
+				return none
+			}
+		}
+		separator := if fastc_is_pointer_type(g.underlying_alias_type(receiver_type)) {
+			'->'
+		} else {
+			'.'
+		}
+		field_pointer := '&(${member}${separator}${fastc_c_identifier(field.name)})'
 		pointer_source = '((${tag_source}) == __v_typeid_${flat.source_type_name(variant)} ? ${field_pointer} : ${pointer_source})'
 	}
 	return FastcRenderedExpression{

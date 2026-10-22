@@ -744,12 +744,20 @@ fn (g &FlatGen) collect_top_level_prelude_scan(stmts []TopLevelStmt) FnPreludeSc
 	return scan
 }
 
+@[inline]
 fn (g &FlatGen) collect_prelude_scan_from(id flat.NodeId, mut scan FnPreludeScan, collect_defers bool) {
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
 		return
 	}
 	// This traversal only records prelude facts and never grows the AST.
 	node := unsafe { &g.a.nodes[int(id)] }
+	if node.children_count == 0 && node.kind !in [.defer_stmt, .lock_expr, .label_stmt] {
+		return
+	}
+	g.collect_prelude_scan_node(id, node, mut scan, collect_defers)
+}
+
+fn (g &FlatGen) collect_prelude_scan_node(id flat.NodeId, node &flat.Node, mut scan FnPreludeScan, collect_defers bool) {
 	mut child_collect_defers := collect_defers
 	if collect_defers
 		&& (node.kind == .fn_decl || node.kind == .c_fn_decl || node.kind == .fn_literal) {
@@ -6994,7 +7002,7 @@ fn (mut g FlatGen) gen_generated_variant_access_selector(node flat.Node, base_id
 	return true
 }
 
-@[direct_array_access]
+@[direct_array_access; inline]
 fn (g &FlatGen) usable_expr_type(id flat.NodeId) &types.Type {
 	idx := int(id)
 	if idx >= 0 && !isnil(g.usable_expr_type_memo) {
@@ -7004,6 +7012,18 @@ fn (g &FlatGen) usable_expr_type(id flat.NodeId) &types.Type {
 			if memo.gens[slot] == memo.generation && memo.ids[slot] == idx {
 				return memo.values[slot]
 			}
+		}
+	}
+	return g.usable_expr_type_memo_miss(id)
+}
+
+@[direct_array_access]
+fn (g &FlatGen) usable_expr_type_memo_miss(id flat.NodeId) &types.Type {
+	idx := int(id)
+	if idx >= 0 && !isnil(g.usable_expr_type_memo) {
+		mut memo := g.usable_expr_type_memo
+		if memo.active {
+			slot := idx & usable_expr_type_memo_mask
 			result := g.tc.intern_type_reference(g.usable_expr_type_uncached(id))
 			memo.ids[slot] = idx
 			memo.gens[slot] = memo.generation
@@ -10397,6 +10417,9 @@ fn local_name_shadows_c_runtime(name string) bool {
 }
 
 fn (g &FlatGen) local_shadows_global(name string) bool {
+	if g.shadowed_global_locals.len == 0 {
+		return false
+	}
 	owner := g.local_storage_owner(name) or { return false }
 	key := owner.storage_key()
 	return key.len > 0 && key in g.shadowed_global_locals

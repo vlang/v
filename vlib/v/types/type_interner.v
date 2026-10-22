@@ -16,12 +16,14 @@ struct CanonicalTypeEntry {
 @[heap]
 struct TypeInterner {
 mut:
-	lock    &sync.RwMutex = unsafe { nil }
-	types   []&Type
-	names   []u32
-	buckets map[u64]TypeId
-	entries []&CanonicalTypeEntry
-	recent  [4096]voidptr
+	lock       &sync.RwMutex = unsafe { nil }
+	types      []&Type
+	names      []u32
+	buckets    map[u64]TypeId
+	entries    []&CanonicalTypeEntry
+	recent     [4096]voidptr
+	identities [4096]voidptr
+	primitives [8192]voidptr
 }
 
 fn new_type_interner() &TypeInterner {
@@ -57,20 +59,41 @@ fn (mut i TypeInterner) intern_locked(t &Type, hash u64) (TypeId, &Type) {
 	id := TypeId(i.types.len)
 	canonical := new_type_reference(Type(owned))
 	i.types << canonical
-	i.entries << &CanonicalTypeEntry{ id: id, typ: canonical }
+	entry := &CanonicalTypeEntry{ id: id, typ: canonical }
+	i.entries << entry
+	i.remember_canonical_identity(entry)
 	i.names << u32(0)
 	i.buckets[key] = id
 	return id, i.types[int(id)]
 }
 
+@[inline]
+fn (mut i TypeInterner) own_child_locked(t &Type) &Type {
+	entry := i.canonical_identity(t)
+	if !isnil(entry) {
+		return entry.typ
+	}
+	recent := i.recent_canonical_type(t)
+	if !isnil(recent) {
+		return recent.typ
+	}
+	return i.own_child_locked_miss(t)
+}
+
+fn (mut i TypeInterner) own_child_locked_miss(t &Type) &Type {
+	id, canonical := i.intern_locked(t, semantic_type_hash(t))
+	i.remember_canonical_type(t, i.entries[int(id)])
+	return canonical
+}
+
 fn (mut i TypeInterner) own_value(t &Type) Type {
 	return match t {
 		Array {
-			_, element := i.intern_locked(t.elem_type, semantic_type_hash(t.elem_type))
+			element := i.own_child_locked(t.elem_type)
 			Type(Array{ elem_type: element })
 		}
 		ArrayFixed {
-			_, element := i.intern_locked(t.elem_type, semantic_type_hash(t.elem_type))
+			element := i.own_child_locked(t.elem_type)
 			Type(ArrayFixed{
 				elem_type: element
 				len:       t.len
@@ -78,43 +101,43 @@ fn (mut i TypeInterner) own_value(t &Type) Type {
 			})
 		}
 		Channel {
-			_, element := i.intern_locked(t.elem_type, semantic_type_hash(t.elem_type))
+			element := i.own_child_locked(t.elem_type)
 			Type(Channel{ elem_type: element, is_mut: t.is_mut })
 		}
 		Map {
-			_, key := i.intern_locked(t.key_type, semantic_type_hash(t.key_type))
-			_, value := i.intern_locked(t.value_type, semantic_type_hash(t.value_type))
+			key := i.own_child_locked(t.key_type)
+			value := i.own_child_locked(t.value_type)
 			Type(Map{ key_type: key, value_type: value })
 		}
 		Pointer {
-			_, base := i.intern_locked(t.base_type, semantic_type_hash(t.base_type))
+			base := i.own_child_locked(t.base_type)
 			Type(Pointer{ base_type: base })
 		}
 		FnType {
 			mut params := []FnParam{cap: t.params.len}
 			for param in t.params {
-				_, typ := i.intern_locked(param.typ, semantic_type_hash(param.typ))
+				typ := i.own_child_locked(param.typ)
 				params << FnParam{ typ: typ, is_mut: param.is_mut }
 			}
-			_, result := i.intern_locked(t.return_type, semantic_type_hash(t.return_type))
+			result := i.own_child_locked(t.return_type)
 			Type(FnType{ params: params, return_type: result, is_variadic: t.is_variadic })
 		}
 		OptionType {
-			_, base := i.intern_locked(t.base_type, semantic_type_hash(t.base_type))
+			base := i.own_child_locked(t.base_type)
 			Type(OptionType{ base_type: base })
 		}
 		ResultType {
-			_, base := i.intern_locked(t.base_type, semantic_type_hash(t.base_type))
+			base := i.own_child_locked(t.base_type)
 			Type(ResultType{ base_type: base })
 		}
 		Alias {
-			_, base := i.intern_locked(t.base_type, semantic_type_hash(t.base_type))
+			base := i.own_child_locked(t.base_type)
 			Type(Alias{ name_id: t.name_id, base_type: base })
 		}
 		MultiReturn {
 			mut types := []Type{cap: t.types.len}
 			for typ in t.types {
-				_, value := i.intern_locked(typ, semantic_type_hash(typ))
+				value := i.own_child_locked(typ)
 				types << *value
 			}
 			Type(MultiReturn{ types: types })
@@ -127,7 +150,20 @@ fn (mut i TypeInterner) own_value(t &Type) Type {
 
 // probe returns the canonical copy when t is already interned. Readers must
 // synchronize with table growth even when they do not insert a missing type.
+@[inline]
 fn (i &TypeInterner) probe(t &Type) ?&Type {
+	entry := i.canonical_identity(t)
+	if !isnil(entry) {
+		return entry.typ
+	}
+	recent := i.recent_canonical_type(t)
+	if !isnil(recent) {
+		return recent.typ
+	}
+	return i.probe_miss(t)
+}
+
+fn (i &TypeInterner) probe_miss(t &Type) ?&Type {
 	// The semantic lookup is read-only; only its synchronization state is mutable.
 	// Probes share a read lock, and interned types never change, so the hash
 	// and the comparisons run outside it: parallel probes do not queue.
@@ -143,9 +179,11 @@ fn (i &TypeInterner) probe(t &Type) ?&Type {
 			guard.runlock()
 			return none
 		}
-		candidate := i.types[int(id)]
+		entry := i.entries[int(id)]
+		candidate := entry.typ
 		guard.runlock()
 		if semantic_types_equal(candidate, t) {
+			i.remember_canonical_type(t, entry)
 			return candidate
 		}
 		key = type_hash_tag(key, 0x5bd1e995)
@@ -155,15 +193,30 @@ fn (i &TypeInterner) probe(t &Type) ?&Type {
 
 // probe_frozen requires an immutable table and immutable semantic payloads
 // until every reader joins. Normal callers must use the synchronized probe.
+@[inline]
 fn (i &TypeInterner) probe_frozen(t &Type) ?&Type {
+	entry := i.canonical_identity(t)
+	if !isnil(entry) {
+		return entry.typ
+	}
+	recent := i.recent_canonical_type(t)
+	if !isnil(recent) {
+		return recent.typ
+	}
+	return i.probe_frozen_miss(t)
+}
+
+fn (i &TypeInterner) probe_frozen_miss(t &Type) ?&Type {
 	mut key := semantic_type_hash(t)
 	for {
 		id := i.buckets[key] or { return none }
 		if int(id) < 0 || int(id) >= i.types.len {
 			return none
 		}
-		candidate := i.types[int(id)]
+		entry := i.entries[int(id)]
+		candidate := entry.typ
 		if semantic_types_equal(candidate, t) {
+			i.remember_canonical_type(t, entry)
 			return candidate
 		}
 		key = type_hash_tag(key, 0x5bd1e995)
@@ -185,10 +238,20 @@ fn (mut i TypeInterner) source_type_id(id TypeId) u32 {
 	return i.names[int(id)]
 }
 
+@[inline]
 fn (mut i TypeInterner) canonicalize(t &Type) (TypeId, &Type) {
-	if entry := i.recent_canonical_type(t) {
+	entry := i.canonical_identity(t)
+	if !isnil(entry) {
 		return entry.id, entry.typ
 	}
+	recent := i.recent_canonical_type(t)
+	if !isnil(recent) {
+		return recent.id, recent.typ
+	}
+	return i.canonicalize_miss(t)
+}
+
+fn (mut i TypeInterner) canonicalize_miss(t &Type) (TypeId, &Type) {
 	hash := semantic_type_hash(t)
 	i.lock.lock()
 	defer {
@@ -240,7 +303,9 @@ fn (mut i TypeInterner) promote_from(start int, scope voidptr) {
 		owned := i.own_value(typ)
 		canonical := new_type_reference(Type(owned))
 		i.types << canonical
-		i.entries << &CanonicalTypeEntry{ id: TypeId(idx), typ: canonical }
+		entry := &CanonicalTypeEntry{ id: TypeId(idx), typ: canonical }
+		i.entries << entry
+		i.remember_canonical_identity(entry)
 	}
 	i.names = i.names.clone()
 	// A scoped insertion can rehash even after the caller reserves headroom.
@@ -249,6 +314,8 @@ fn (mut i TypeInterner) promote_from(start int, scope voidptr) {
 	i.buckets = i.buckets.clone()
 }
 
+// semantic_type_hash hashes the semantic fields of a type, including borrowed descriptors.
+@[direct_array_access]
 pub fn semantic_type_hash(t &Type) u64 {
 	mut hash := u64(14_695_981_039_346_656_037)
 	match t {
@@ -366,6 +433,7 @@ fn type_hash_tag(initial u64, value int) u64 {
 	return hash
 }
 
+@[direct_array_access]
 fn type_hash_string(initial u64, value string) u64 {
 	mut hash := type_hash_tag(initial, value.len)
 	for idx in 0 .. value.len {
@@ -382,10 +450,23 @@ fn type_hash_child(initial u64, child &Type) u64 {
 	return hash
 }
 
+// semantic_types_equal compares semantic type values, including borrowed descriptors.
+@[inline]
 pub fn semantic_types_equal(a &Type, b &Type) bool {
 	if voidptr(a) == voidptr(b) {
 		return true
 	}
+	if a is Primitive {
+		return b is Primitive && a.props == b.props && a.size == b.size
+	}
+	if a is Struct {
+		return b is Struct && a.name_id == b.name_id
+	}
+	return semantic_types_equal_nested(a, b)
+}
+
+@[direct_array_access]
+fn semantic_types_equal_nested(a &Type, b &Type) bool {
 	match a {
 		Void {
 			return b is Void
@@ -393,6 +474,9 @@ pub fn semantic_types_equal(a &Type, b &Type) bool {
 		Unknown {
 			if b !is Unknown {
 				return false
+			}
+			if voidptr(a.UnknownDataRef) == voidptr(b.UnknownDataRef) {
+				return true
 			}
 			return a.reason == b.reason
 		}
@@ -433,6 +517,9 @@ pub fn semantic_types_equal(a &Type, b &Type) bool {
 			if b !is ArrayFixed {
 				return false
 			}
+			if voidptr(a.ArrayFixedDataRef) == voidptr(b.ArrayFixedDataRef) {
+				return true
+			}
 			return a.len == b.len && a.len_expr == b.len_expr
 				&& semantic_types_equal(a.elem_type, b.elem_type)
 		}
@@ -440,11 +527,17 @@ pub fn semantic_types_equal(a &Type, b &Type) bool {
 			if b !is Channel {
 				return false
 			}
+			if voidptr(a.ChannelDataRef) == voidptr(b.ChannelDataRef) {
+				return true
+			}
 			return a.is_mut == b.is_mut && semantic_types_equal(a.elem_type, b.elem_type)
 		}
 		Map {
 			if b !is Map {
 				return false
+			}
+			if voidptr(a.MapDataRef) == voidptr(b.MapDataRef) {
+				return true
 			}
 			return semantic_types_equal(a.key_type, b.key_type)
 				&& semantic_types_equal(a.value_type, b.value_type)
@@ -458,6 +551,9 @@ pub fn semantic_types_equal(a &Type, b &Type) bool {
 		FnType {
 			if b !is FnType {
 				return false
+			}
+			if voidptr(a.FnTypeDataRef) == voidptr(b.FnTypeDataRef) {
+				return true
 			}
 			if a.params.len != b.params.len || a.is_variadic != b.is_variadic || !semantic_types_equal(a.return_type, b.return_type) {
 				return false
@@ -510,11 +606,17 @@ pub fn semantic_types_equal(a &Type, b &Type) bool {
 			if b !is Alias {
 				return false
 			}
+			if voidptr(a.AliasDataRef) == voidptr(b.AliasDataRef) {
+				return true
+			}
 			return a.name_id == b.name_id && semantic_types_equal(a.base_type, b.base_type)
 		}
 		MultiReturn {
 			if b !is MultiReturn {
 				return false
+			}
+			if voidptr(a.MultiReturnDataRef) == voidptr(b.MultiReturnDataRef) {
+				return true
 			}
 			if a.types.len != b.types.len {
 				return false
@@ -529,7 +631,13 @@ pub fn semantic_types_equal(a &Type, b &Type) bool {
 	}
 }
 
+// fn_type creates a canonical signature with fixed arity.
 pub fn (tc &TypeChecker) fn_type(params []Type, result &Type, mutability []bool) FnType {
+	return tc.variadic_fn_type(params, result, mutability, false)
+}
+
+// variadic_fn_type creates a canonical signature while preserving its variadic tail.
+pub fn (tc &TypeChecker) variadic_fn_type(params []Type, result &Type, mutability []bool, is_variadic bool) FnType {
 	mut signature := []FnParam{cap: params.len}
 	for i in 0 .. params.len {
 		_, typ := tc.intern_type(params[i])
@@ -542,13 +650,6 @@ pub fn (tc &TypeChecker) fn_type(params []Type, result &Type, mutability []bool)
 	return FnType{
 		params:      signature
 		return_type: return_type
-	}
-}
-
-// variadic_fn_type creates a canonical signature while preserving its variadic tail.
-pub fn (tc &TypeChecker) variadic_fn_type(params []Type, result &Type, mutability []bool, is_variadic bool) FnType {
-	return FnType{
-		...tc.fn_type(params, result, mutability)
 		is_variadic: is_variadic
 	}
 }

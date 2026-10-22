@@ -1132,7 +1132,7 @@ pub fn prealloc_scope_free_after(scope_ptr voidptr) {
 	}
 }
 
-@[unsafe]
+@[inline; unsafe]
 fn prealloc_malloc(n isize) &u8 {
 	return unsafe { vmemory_block_malloc(n, 0) }
 }
@@ -1173,7 +1173,7 @@ fn prealloc_realloc(old_data &u8, old_size isize, new_size isize) &u8 {
 	return new_ptr
 }
 
-@[unsafe]
+@[inline; unsafe]
 fn prealloc_calloc(n isize) &u8 {
 	new_ptr := unsafe { vmemory_block_malloc(n, 0) }
 	unsafe { C.memset(new_ptr, 0, n) }

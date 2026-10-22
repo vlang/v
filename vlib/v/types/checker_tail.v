@@ -1137,10 +1137,10 @@ fn (tc &TypeChecker) expr_is_mut_arg_for_key(id flat.NodeId, key string) bool {
 	}
 	node := tc.a.nodes[int(id)]
 	if node.kind in [.paren, .expr_stmt] && node.children_count > 0 {
-		return (node.is_mut && tc.expr_key(id) == key)
+		return (node.is_mut && tc.expr_key_matches(id, key))
 			|| tc.expr_is_mut_arg_for_key(tc.a.child(&node, 0), key)
 	}
-	return node.is_mut && tc.expr_key(id) == key
+	return node.is_mut && tc.expr_key_matches(id, key)
 }
 
 // expr_mut_arg_key returns the resolved expression key of a `mut` argument
@@ -3805,7 +3805,7 @@ fn (tc &TypeChecker) interface_smartcast_uses_value_pattern_for_key(id flat.Node
 				}
 			}
 		} else if parent.kind == .match_stmt && parent.children_count > 0
-			&& tc.expr_key(tc.a.child(parent, 0)) == key {
+			&& tc.expr_key_matches(tc.a.child(parent, 0), key) {
 			branch := tc.a.node(current)
 			if branch.kind == .match_branch && branch.value == '1' && branch.children_count > 0 {
 				if pattern_source_id := tc.match_type_pattern(tc.a.child_node(branch, 0)) {
@@ -3834,7 +3834,7 @@ fn (tc &TypeChecker) condition_uses_value_smartcast_pattern(id flat.NodeId, key 
 		return none
 	}
 	node := tc.a.node(id)
-	if node.kind == .is_expr && node.children_count > 0 && tc.expr_key(tc.a.child(node, 0)) == key {
+	if node.kind == .is_expr && node.children_count > 0 && tc.expr_key_matches(tc.a.child(node, 0), key) {
 		return unalias_type(tc.parse_type(flat.source_type_id(node.value))) !is Pointer
 	}
 	if node.kind == .ident {
@@ -4492,7 +4492,7 @@ fn (mut tc TypeChecker) invalid_ierror_return_expr_type_name(id flat.NodeId, exp
 					continue
 				}
 				tail := tc.branch_tail_expr_id(branch_id)
-				if subject_key.len > 0 && tc.expr_key(tail) == subject_key && branch.value != 'else'
+				if subject_key.len > 0 && tc.expr_key_matches(tail, subject_key) && branch.value != 'else'
 					&& branch.value.int() == 1 && subject_type is SumType {
 					cond := tc.a.node(tc.a.child(&branch, 0))
 					if pattern_source_id := tc.match_type_pattern(cond) {
@@ -9000,13 +9000,16 @@ fn module_import_lines(source string) []int {
 		if at < 0 {
 			break
 		}
-		for counted < at {
-			if source[counted] == `\n` {
-				line_number++
-				line_start = counted + 1
+		for {
+			newline := source.index_after_('\n', counted)
+			if newline < 0 || newline >= at {
+				break
 			}
-			counted++
+			line_number++
+			line_start = newline + 1
+			counted = newline + 1
 		}
+		counted = at
 		mut indented := true
 		for i in line_start .. at {
 			if source[i] != ` ` && source[i] != `\t` {
@@ -12293,7 +12296,7 @@ fn (tc &TypeChecker) visible_mutation_fn_decl(name string, fallback_mod string) 
 	}
 	mut cur_mod := ''
 	for i in tc.top_level_idx {
-		node := tc.a.nodes[i]
+		node := tc.a.node(flat.NodeId(i))
 		match node.kind {
 			.file {
 				cur_mod = tc.file_modules[node.value] or { '' }
@@ -12342,10 +12345,10 @@ fn (tc &TypeChecker) visible_mutation_fn_param(decl VisibleMutationFnDecl, param
 	if decl.idx < 0 || decl.idx >= tc.a.nodes.len || param_idx < 0 {
 		return none
 	}
-	fn_node := tc.a.nodes[decl.idx]
+	fn_node := tc.a.node(flat.NodeId(decl.idx))
 	mut idx := 0
 	for i in 0 .. fn_node.children_count {
-		child := tc.a.child_node(&fn_node, i)
+		child := tc.a.child_node(fn_node, i)
 		if child.kind != .param {
 			break
 		}
@@ -15347,9 +15350,10 @@ fn (mut tc TypeChecker) check_valid_call_arg_types(id flat.NodeId, node flat.Nod
 		} else {
 			tc.check_node(check_arg_id)
 		}
-		if multi := tc.cached_expr_type_ref(check_arg_id) {
-			if !info.is_variadic && multi is MultiReturn {
-				expanded_arg_offset += multi.types.len - 1
+		cached_type_ref0 := tc.cached_expr_type_ref(check_arg_id)
+		if !isnil(cached_type_ref0) {
+			if !info.is_variadic && cached_type_ref0 is MultiReturn {
+				expanded_arg_offset += cached_type_ref0.types.len - 1
 			}
 		}
 		if has_dsl_scope {
@@ -15525,7 +15529,7 @@ fn (tc &TypeChecker) subtree_can_rebind_mut_parameter(id flat.NodeId, name strin
 	if node.kind == .assign {
 		mut i := 0
 		for i + 1 < node.children_count {
-			if tc.expr_key(tc.a.child(node, i)) == name {
+			if tc.expr_key_matches(tc.a.child(node, i), name) {
 				return true
 			}
 			i += 2
@@ -15536,13 +15540,13 @@ fn (tc &TypeChecker) subtree_can_rebind_mut_parameter(id flat.NodeId, name strin
 	if node.kind == .call && node.children_count > 0 {
 		callee := tc.a.child_node(node, 0)
 		if callee.kind == .selector && callee.children_count > 0
-			&& tc.expr_key(tc.a.child(callee, 0)) == name
+			&& tc.expr_key_matches(tc.a.child(callee, 0), name)
 			&& tc.sum_type_has_mut_receiver_method(typ, callee.value) {
 			return true
 		}
 		for i in 1 .. node.children_count {
 			arg_id := tc.call_arg_value(tc.a.child(node, i))
-			if tc.a.node(arg_id).is_mut && tc.expr_key(arg_id) == name {
+			if tc.a.node(arg_id).is_mut && tc.expr_key_matches(arg_id, name) {
 				return true
 			}
 		}
@@ -15681,14 +15685,15 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 	mut logical_arg_count := recv_extra
 	for i in 1 + info.arg_offset .. node.children_count {
 		arg_id := tc.call_arg_value(tc.a.child(&node, i))
-		arg_type := tc.cached_expr_type(arg_id) or { tc.resolve_type(arg_id) }
 		logical_arg_count++
 		arg := tc.a.node(arg_id)
-		if !info.is_variadic && arg.kind == .call && arg_type is MultiReturn
-			&& !is_print_style_fn_name(info.name) {
-			actual_count += arg_type.types.len - 1
-			logical_arg_count += arg_type.types.len - 1
-			expanded_multi_return_arg = true
+		if !info.is_variadic && arg.kind == .call && !is_print_style_fn_name(info.name) {
+			arg_type := tc.cached_expr_type(arg_id) or { tc.resolve_type(arg_id) }
+			if arg_type is MultiReturn {
+				actual_count += arg_type.types.len - 1
+				logical_arg_count += arg_type.types.len - 1
+				expanded_multi_return_arg = true
+			}
 		}
 		if int(expanded_overflow_arg) < 0 && logical_arg_count > info.params.len {
 			expanded_overflow_arg = arg_id
@@ -18192,7 +18197,7 @@ fn (mut tc TypeChecker) check_array_sort_call(id flat.NodeId, node flat.Node, ca
 	lhs_id := tc.a.child(&arg, 0)
 	rhs_id := tc.a.child(&arg, 1)
 	lhs_key := tc.expr_key(lhs_id)
-	if lhs_key.len > 0 && lhs_key == tc.expr_key(rhs_id) {
+	if lhs_key.len > 0 && tc.expr_key_matches(rhs_id, lhs_key) {
 		tc.record_error_at(.call_arg_mismatch, '`.sort()` cannot use same argument', id, method_pos)
 	}
 	if invalid_id := tc.sort_first_invalid_ident(arg_id) {
@@ -21216,8 +21221,9 @@ fn (tc &TypeChecker) selector_fn_base_type(base_id flat.NodeId) ?Type {
 			}
 		}
 	}
-	if typ := tc.cached_expr_type_ref(base_id) {
-		return *typ
+	cached_type_ref1 := tc.cached_expr_type_ref(base_id)
+	if !isnil(cached_type_ref1) {
+		return *cached_type_ref1
 	}
 	if int(base_id) < 0 {
 		return none
@@ -22235,7 +22241,7 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 	tc.record_constant_condition_diagnostics(cond_id)
 	unsafe_alias_base := clone_unsafe_alias_owners(tc.fn_context.unsafe_reference_alias_owners)
 	mut unsafe_alias_paths := []map[string]bool{}
-	pointer_alias_base := clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
+	pointer_alias_base := snapshot_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 	mut pointer_alias_paths := []map[string][]string{}
 	mut condition_is_true := false
 	mut condition_is_false := false
@@ -22288,12 +22294,12 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 	}
 	if !condition_is_false && !tc.stmt_definitely_returns(then_id) {
 		unsafe_alias_paths << clone_unsafe_alias_owners(tc.fn_context.unsafe_reference_alias_owners)
-		pointer_alias_paths << clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
+		pointer_alias_paths << snapshot_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 	}
 	tc.fn_context.unsafe_reference_alias_owners = clone_unsafe_alias_owners(unsafe_alias_base)
 	// A then branch that changed no pointer binding already left the base state.
 	if !pointer_binding_states_same(pointer_alias_base, tc.fn_context.pointer_binding_value_keys) {
-		tc.fn_context.pointer_binding_value_keys = clone_pointer_binding_value_keys(pointer_alias_base)
+		tc.fn_context.pointer_binding_value_keys = snapshot_pointer_binding_value_keys(pointer_alias_base)
 	}
 	if had_saved_smartcasts {
 		tc.smartcasts = clone_smartcasts(saved_smartcasts)
@@ -22320,7 +22326,7 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 		}
 		if !condition_is_true && !tc.stmt_definitely_returns(else_id) {
 			unsafe_alias_paths << clone_unsafe_alias_owners(tc.fn_context.unsafe_reference_alias_owners)
-			pointer_alias_paths << clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
+			pointer_alias_paths << snapshot_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 		}
 		if else_smartcasts.len > 0 {
 			if had_saved_smartcasts {
@@ -22332,14 +22338,14 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 	} else {
 		if !condition_is_true {
 			unsafe_alias_paths << clone_unsafe_alias_owners(unsafe_alias_base)
-			pointer_alias_paths << clone_pointer_binding_value_keys(pointer_alias_base)
+			pointer_alias_paths << snapshot_pointer_binding_value_keys(pointer_alias_base)
 		}
 		$if ownership ? {
 			tc.ownership_add_branch_group_base()
 		}
 	}
 	tc.fn_context.unsafe_reference_alias_owners = intersect_unsafe_reference_alias_states(unsafe_alias_paths, unsafe_alias_base)
-	tc.fn_context.pointer_binding_value_keys = merge_pointer_binding_value_states(pointer_alias_paths, pointer_alias_base)
+	tc.fn_context.pointer_binding_value_keys = merge_pointer_binding_snapshots(pointer_alias_paths, pointer_alias_base)
 	$if ownership ? {
 		tc.ownership_end_branch_group()
 	}
