@@ -36,7 +36,7 @@ pub fn get_location(source Source, position int) !SourceLocation {
 	}
 
 	return SourceLocation{
-		line: line
+		line:   line
 		column: position + 1 - last_line_start
 	}
 }

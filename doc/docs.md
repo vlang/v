@@ -1808,6 +1808,9 @@ V also supports arrays with fixed size. Unlike ordinary arrays, their
 length is constant. You cannot append elements to them, nor shrink them.
 You can only modify their elements in place.
 
+Iteration preserves the complete element type, including pointers to generic structs.
+For example, iterating over `[2]&Box[string]` yields `&Box[string]` values.
+
 However, access to the elements of fixed size arrays is more efficient,
 they need less memory than ordinary arrays, and unlike ordinary arrays,
 their data is on the stack, so you may want to use them as buffers if you
@@ -3146,7 +3149,7 @@ p = Point{10, 20}
 assert p.x == 10
 ```
 
-Struct fields can re-use reserved keywords:
+Struct fields can re-use reserved keywords, including C keywords such as `bool`:
 
 ```v
 struct Employee {
@@ -3801,6 +3804,9 @@ it clear that the function being called will modify the value.
 
 A comptime `app.$method(...)` call also requires `mut` when passing a pointer variable
 to an explicit `mut param &T` parameter.
+
+A mutable struct parameter refers to the caller's struct. Casting it to an integer
+produces that struct's address.
 
 It is preferable to return values instead of modifying arguments,
 e.g. `user = register(user)` (or `user.register()`) instead of `register(mut user)`.
@@ -11218,6 +11224,9 @@ Pointer-returning calls can also receive field assignments.
 Pointers to `char`, `i8`, and `u8` of the same pointer depth are interchangeable in translated
 assignments, returns, function arguments, and other typed values. Ordinary V files retain their
 pointer type checks; calls to C functions also accept these character pointers.
+
+In translated files, fixed arrays decay to pointers to their elements, including when compared
+with pointers. Nested array literals retain their full array type in these comparisons.
 
 Files marked `@[translated]` retain C scalar conversions between numbers, enums, and booleans.
 These scalars can be mixed in arithmetic expressions and compound assignments. Integral scalars

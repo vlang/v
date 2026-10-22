@@ -23781,7 +23781,13 @@ fn (mut t Transformer) transform_call_expr_inner(id flat.NodeId, node flat.Node)
 	// selector/call over the materialized operands and re-dispatch; a no-op for the common
 	// non-branch receivers/arguments.
 	if node.children_count > 0 {
-		recv_fn_id := t.a.children[node.children_start]
+		original_fn_id := t.a.children[node.children_start]
+		original_fn := t.a.nodes[int(original_fn_id)]
+		generic_callee := original_fn.kind == .index
+			&& t.generic_call_type_args_name(original_fn).len > 0
+		// Type arguments wrap a method selector but do not turn it into a runtime
+		// function value. Order its receiver before arguments, then retain the wrapper.
+		recv_fn_id := if generic_callee { t.a.child(&original_fn, 0) } else { original_fn_id }
 		recv_fn := t.a.nodes[int(recv_fn_id)]
 		is_selector_call := recv_fn.kind == .selector && recv_fn.children_count > 0
 		recv_sel_base_id := if is_selector_call {
@@ -23868,7 +23874,7 @@ fn (mut t Transformer) transform_call_expr_inner(id flat.NodeId, node flat.Node)
 			// is spilled by value. Applies to method calls and plain function calls alike. Stable
 			// operands are left for the re-dispatch to transform once.
 			mut changed := false
-			mut new_fn_id := recv_fn_id
+			mut new_fn_id := original_fn_id
 			if is_method {
 				new_recv := if t.is_value_match_or_if_operand(recv_id) {
 					r := t.materialize_value_branch_operand(recv_id)
@@ -23916,6 +23922,17 @@ fn (mut t Transformer) transform_call_expr_inner(id flat.NodeId, node flat.Node)
 					children_count: recv_fn.children_count
 					pos:            recv_fn.pos
 				})
+				if generic_callee {
+					generic_start := t.a.children.len
+					t.a.children << new_fn_id
+					for i in 1 .. original_fn.children_count {
+						t.a.children << t.a.child(&original_fn, i)
+					}
+					new_fn_id = t.a.add_node(flat.Node{
+						...original_fn
+						children_start: generic_start
+					})
+				}
 			} else if callee_is_value_branch {
 				r := t.materialize_value_branch_operand(recv_fn_id)
 				if r != recv_fn_id {

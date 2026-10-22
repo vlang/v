@@ -16,11 +16,11 @@ pub:
 
 fn Location.new(start_token &Token, end_token &Token, source Source) Location {
 	return Location{
-		start: start_token.start
-		end: end_token.end
+		start:       start_token.start
+		end:         end_token.end
 		start_token: start_token
-		end_token: end_token
-		source: source
+		end_token:   end_token
+		source:      source
 	}
 }
 
@@ -59,10 +59,10 @@ mut:
 
 fn Token.new(kind TokenKind, start int, end int, line int, column int) Token {
 	return Token{
-		kind: kind
-		start: start
-		end: end
-		line: line
+		kind:   kind
+		start:  start
+		end:    end
+		line:   line
 		column: column
 	}
 }
