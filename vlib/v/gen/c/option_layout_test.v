@@ -2,6 +2,10 @@ module c
 
 import os
 import v.flat
+import v.markused
+import v.parser
+import v.pref
+import v.transform
 import v.types
 
 fn test_option_and_result_have_distinct_layouts() {
@@ -73,6 +77,41 @@ fn test_option_with_pointer_payload_has_pointer_sized_ok() {
 	]
 }
 
+fn generate_option_layout_reuse_source(mut g FlatGen, source string) string {
+	path := os.join_path(os.vtmp_dir(), 'option_layout_reuse_${os.getpid()}.v')
+	os.write_file(path, source) or { panic(err) }
+	defer {
+		os.rm(path) or {}
+	}
+	mut p := parser.Parser.new(pref.new_preferences())
+	mut ast := p.parse_file(path)
+	mut tc := types.TypeChecker.new(ast)
+	tc.collect(ast)
+	tc.check_semantics()
+	assert tc.errors.len == 0, tc.errors.str()
+	transform.transform(mut ast, &tc)
+	tc.annotate_types()
+	used_fns := markused.mark_used(ast, tc)
+	return g.gen_with_used_options(ast, used_fns, &tc, true)
+}
+
+fn test_option_payload_type_cache_does_not_survive_into_the_next_generation() {
+	mut g := FlatGen.new()
+	first := generate_option_layout_reuse_source(mut g, 'struct First { n int }
+fn value() ?First { return First{} }
+fn main() { _ := value() or { First{} } }
+')
+	assert first.contains('typedef struct __v_option_main__First { bool ok; main__First value; }')
+	first_type_count := g.tc.structs.len + g.tc.sum_types.ids.len
+	second := generate_option_layout_reuse_source(mut g, 'struct Second { s string }
+fn value() ?Second { return Second{} }
+fn main() { _ := value() or { Second{} } }
+')
+	// Equal type counts must still rebuild the payload index for the new checker.
+	assert g.tc.structs.len + g.tc.sum_types.ids.len == first_type_count
+	assert second.contains('typedef struct __v_option_main__Second { intptr_t ok; main__Second value; }')
+}
+
 // The typedefs of a compiled program, whose payload names are spelled the way the C
 // backend spells them (`main__Node`, `main__Box_string`, `chan`, ...). A sum type's tag
 // gets the same treatment as `ok`, unless its ownership flag already fills the padding.
@@ -86,6 +125,8 @@ fn test_compiled_option_and_sum_headers_fill_padding_before_pointers() {
 	source := "struct Node { items []int }
 struct Plain { a int b u8 }
 struct Box[T] { v T }
+struct SharedCounter { count shared int }
+type SharedSum = int | SharedCounter
 @[packed]
 struct Packed { b u8 s string }
 struct WrapPacked { p Packed }
@@ -101,6 +142,8 @@ fn node() ?Node { return Node{} }
 fn plain() ?Plain { return Plain{} }
 fn box_s() ?Box[string] { return Box[string]{} }
 fn box_i() ?Box[int] { return Box[int]{} }
+fn shared_counter() ?SharedCounter { return SharedCounter{} }
+fn shared_sum() SharedSum { return SharedSum(SharedCounter{}) }
 fn ch() ?chan int { return chan int{} }
 fn packed() ?Packed { return Packed{} }
 fn wrap_packed() ?WrapPacked { return WrapPacked{} }
@@ -117,6 +160,8 @@ fn main() {
  _ := plain() or { Plain{} }
  _ := box_s() or { Box[string]{} }
  _ := box_i() or { Box[int]{} }
+ _ := shared_counter() or { SharedCounter{} }
+ _ := shared_sum()
  _ := ch() or { chan int{} }
  _ := packed() or { Packed{} }
  _ := wrap_packed() or { WrapPacked{} }
@@ -134,8 +179,8 @@ fn main() {
 	result := os.execute(command)
 	assert result.exit_code == 0, result.output
 	generated := os.read_file(output)!
-	for payload in ['main__Node', 'main__Box_string', 'chan', 'Words', 'Array_fixed_string_2',
-		'multi_return_string_bool'] {
+	for payload in ['main__Node', 'main__Box_string', 'main__SharedCounter', 'chan', 'Words',
+		'Array_fixed_string_2', 'multi_return_string_bool'] {
 		assert generated.contains('typedef struct __v_option_${payload} { intptr_t ok; ${payload} value; }'), payload
 	}
 	for payload in ['main__Plain', 'main__Box_int', 'main__Packed', 'main__WrapPacked', 'Num',
@@ -143,6 +188,7 @@ fn main() {
 		assert generated.contains('typedef struct __v_option_${payload} { bool ok; ${payload} value; }'), payload
 	}
 	assert generated.contains('struct Words {\n\tintptr_t typ;\n\tunion {')
+	assert generated.contains('struct SharedSum {\n\tintptr_t typ;\n\tunion {')
 	assert generated.contains('struct Num {\n\tint typ;\n\tunion {')
 	assert generated.contains('struct Ref {\n\tint typ;\n\tu32 _pointer_variant_is_owned;')
 	// A packed variant's pointers are not aligned, so neither the sum holding it nor a

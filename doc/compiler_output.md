@@ -7,3 +7,9 @@ An output name ending in `.c` generates only C and does not invoke the C compile
 
 In constant fixed arrays, shorthand enum values resolve against the array element type,
 including aliases of enum types. Other enums with the same member name do not affect the value.
+
+The C backend uses pointer-sized option/result status fields and sum-type tags when needed to
+fill padding before pointer-bearing payloads. This keeps pointers aligned for conservative GC
+scanning when optimized C code copies these values. Pointer-free options and sums keep their
+smaller headers; sum types with an ownership flag already fill that padding. Packed payloads
+keep their existing layout. This does not remove padding from ordinary user-defined structs.

@@ -3845,6 +3845,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.pending_loop_label = ''
 	g.needed_optional_types.clear()
 	g.optional_pointer_struct_tags.clear()
+	g.optional_payload_types.clear()
+	g.optional_payload_types_from = 0
 	g.emitted_optional_types.clear()
 	g.array_method_cache.clear()
 	g.array_method_receiver_cache.clear()

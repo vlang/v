@@ -1839,6 +1839,9 @@ fn (mut g FlatGen) type_holds_aligned_pointer(t types.Type, depth int) bool {
 	if depth > 32 {
 		return false
 	}
+	if _ := g.shared_alias_pointer_type(t) {
+		return true
+	}
 	match t {
 		types.String, types.Array, types.Map, types.Channel, types.Pointer, types.FnType,
 		types.Interface, types.ResultType {
@@ -1864,6 +1867,9 @@ fn (mut g FlatGen) type_holds_aligned_pointer(t types.Type, depth int) bool {
 				return false
 			}
 			for field in g.tc.struct_fields_for_type(t.name_id) {
+				if _ := g.shared_field_info(t.name_id, field.name) {
+					return true
+				}
 				if g.type_holds_aligned_pointer(field.typ, depth + 1) {
 					return true
 				}
