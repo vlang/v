@@ -1813,6 +1813,7 @@ fn (mut g FlatGen) enum_decls() {
 			}
 			.enum_decl {
 				name := g.enum_decl_type_name(node, cur_module)
+				enum_name := enum_decl_source_type_id(node, cur_module)
 				if name == 'os.AssetMode' && g.is_android_asset_binding(g.tc.cur_file)
 					&& g.omits_unused_android_asset_sdk() {
 					continue
@@ -1841,7 +1842,7 @@ fn (mut g FlatGen) enum_decls() {
 							f := g.a.child_node(node_ref, i)
 							if f.children_count > 0 {
 								mut resolving := map[string]bool{}
-								if enum_val := g.enum_field_expr_value_with_enum(g.a.child(f, 0), cur_module, flat.source_type_id(node.value), mut field_values, field_exprs, mut resolving) {
+								if enum_val := g.enum_field_expr_value_with_enum(g.a.child(f, 0), cur_module, enum_name, mut field_values, field_exprs, mut resolving) {
 									val = int(enum_val)
 								}
 							}
@@ -1876,7 +1877,7 @@ fn (mut g FlatGen) enum_decls() {
 							if f.children_count > 0 {
 								expr_id := g.a.child(f, 0)
 								mut resolving := map[string]bool{}
-								if enum_val := g.enum_field_expr_value_with_enum(expr_id, cur_module, flat.source_type_id(node.value), mut field_values, field_exprs, mut resolving) {
+								if enum_val := g.enum_field_expr_value_with_enum(expr_id, cur_module, enum_name, mut field_values, field_exprs, mut resolving) {
 									value = enum_val
 									value_known = true
 									value_expr = enum_val.str()
@@ -1884,7 +1885,7 @@ fn (mut g FlatGen) enum_decls() {
 									// Preserve expressions outside V's 32-bit `int` range so the C
 									// storage type can represent wide backed enum values without truncation.
 									value_known = false
-									value_expr = g.enum_field_expr_to_string_with_enum(expr_id, cur_module, flat.source_type_id(node.value), cn, field_names) or {
+									value_expr = g.enum_field_expr_to_string_with_enum(expr_id, cur_module, enum_name, cn, field_names) or {
 										g.expr_to_string(expr_id)
 									}
 								}
@@ -1924,7 +1925,7 @@ fn (mut g FlatGen) enum_decls() {
 						f := g.a.child_node(node_ref, i)
 						if f.children_count > 0 {
 							mut resolving := map[string]bool{}
-							if enum_val := g.enum_field_expr_value_with_enum(g.a.child(f, 0), cur_module, flat.source_type_id(node.value), mut field_values, field_exprs, mut resolving) {
+							if enum_val := g.enum_field_expr_value_with_enum(g.a.child(f, 0), cur_module, enum_name, mut field_values, field_exprs, mut resolving) {
 								val = int(enum_val)
 							}
 						}
@@ -1949,13 +1950,13 @@ fn (mut g FlatGen) enum_decls() {
 						if f.children_count > 0 {
 							expr_id := g.a.child(f, 0)
 							mut resolving := map[string]bool{}
-							if enum_val := g.enum_field_expr_value_with_enum(expr_id, cur_module, flat.source_type_id(node.value), mut field_values, field_exprs, mut resolving) {
+							if enum_val := g.enum_field_expr_value_with_enum(expr_id, cur_module, enum_name, mut field_values, field_exprs, mut resolving) {
 								value = enum_val
 								value_known = true
 								value_expr = enum_val.str()
 							} else {
 								value_known = false
-								value_expr = g.enum_field_expr_to_string_with_enum(expr_id, cur_module, flat.source_type_id(node.value), cn, field_names) or {
+								value_expr = g.enum_field_expr_to_string_with_enum(expr_id, cur_module, enum_name, cn, field_names) or {
 									g.expr_to_string(expr_id)
 								}
 							}
@@ -2047,7 +2048,7 @@ fn (mut g FlatGen) enum_str_defs() {
 					// `[flag]` enum: a value can combine several bits, so build the V
 					// `Enum{.a | .b}` form by testing each field bit instead of matching a
 					// single case (which would send any combination to the integer path).
-					g.emit_flag_enum_autostr(node, name, enum_cn, fn_cn)
+					g.emit_flag_enum_autostr(node, cur_module, name, enum_cn, fn_cn)
 				} else if backing := enum_decl_backing_type(node) {
 					storage_ct := g.enum_emit_storage_c_type(flat.source_type_id(name), backing)
 					g.writeln('string ${fn_cn}__autostr(${type_cn} it) {')
@@ -2091,6 +2092,16 @@ fn (g &FlatGen) enum_autostr_is_used(cname string) bool {
 	// not call `.str()`, so their synthesized helpers are outside markused's call graph.
 	return g.test_files.len > 0 || !g.has_used_fn_filter()
 		|| g.used_fn_contains('${cname}__autostr')
+}
+
+// Metadata uses declaration names independently of autofree's C naming for main enums.
+fn enum_decl_source_type_id(node flat.Node, module_name string) u32 {
+	name := if module_name !in ['', 'main', 'builtin'] {
+		'${module_name}.${node.value}'
+	} else {
+		node.value
+	}
+	return flat.source_type_id(name)
 }
 
 fn (g &FlatGen) enum_decl_type_name(node flat.Node, module_name string) string {
@@ -2193,8 +2204,9 @@ fn (g &FlatGen) enum_autostr_c_name(type_name_id u32) string {
 // emit_flag_enum_autostr emits the `<Enum>__autostr` helper for a `[flag]` enum.
 // Matching V, a combined value is rendered as `Enum{.a | .b}` by testing each
 // field's bit; `Enum(0)` renders as `Enum{}`.
-fn (mut g FlatGen) emit_flag_enum_autostr(node flat.Node, name string, enum_cn string, fn_cn string) {
+fn (mut g FlatGen) emit_flag_enum_autostr(node flat.Node, enum_module string, name string, enum_cn string, fn_cn string) {
 	short := node.value.all_after_last('.')
+	enum_name := enum_decl_source_type_id(node, enum_module)
 	mut storage_ct := 'int'
 	if backing := enum_decl_backing_type(node) {
 		storage_ct = g.enum_emit_storage_c_type(flat.source_type_id(name), backing)
@@ -2213,12 +2225,11 @@ fn (mut g FlatGen) emit_flag_enum_autostr(node flat.Node, name string, enum_cn s
 		}
 	}
 	mut field_values := map[string]i64{}
-	enum_module := if name.contains('.') { name.all_before_last('.') } else { '' }
 	for i in 0 .. node.children_count {
 		f := g.a.child_node(&node, i)
 		if f.children_count > 0 {
 			mut resolving := map[string]bool{}
-			if enum_val := g.enum_field_expr_value_with_enum(g.a.child(f, 0), enum_module, flat.source_type_id(node.value), mut field_values, field_exprs, mut resolving) {
+			if enum_val := g.enum_field_expr_value_with_enum(g.a.child(f, 0), enum_module, enum_name, mut field_values, field_exprs, mut resolving) {
 				val = int(enum_val)
 			}
 		}
@@ -2447,7 +2458,7 @@ fn (g &FlatGen) enum_field_expr_value_with_enum(id flat.NodeId, enum_module stri
 				return g.enum_decl_field_ref_value(field, enum_module, enum_name, mut field_values, field_exprs, mut resolving)
 			}
 			prefix := g.enum_decl_selector_base_text(g.a.child(&node, 0))
-			if enum_type := g.enum_selector_base_name(flat.source_type_id(prefix)) {
+			if enum_type := g.enum_decl_selector_type(prefix, enum_module) {
 				if !isnil(g.tc) {
 					return g.tc.comptime_enum_decl_field_value(enum_type, node.value)
 				}
@@ -2821,7 +2832,7 @@ fn (mut g FlatGen) enum_field_expr_to_string_resolving(id flat.NodeId, enum_modu
 			}
 			if node.children_count > 0 {
 				prefix := g.enum_decl_selector_base_text(g.a.child(&node, 0))
-				if target := g.enum_selector_base_name(flat.source_type_id(prefix)) {
+				if target := g.enum_decl_selector_type(prefix, enum_module) {
 					return g.enum_symbolic_member_expr(flat.source_type_name(target), node.value, mut resolving)
 				}
 			}
@@ -2996,6 +3007,17 @@ fn (g &FlatGen) enum_decl_selector_ref_field(id flat.NodeId, enum_module string,
 		return none
 	}
 	return node.value
+}
+
+fn (g &FlatGen) enum_decl_selector_type(prefix string, enum_module string) ?u32 {
+	// A member in this declaration's module precedes a same-named main enum.
+	if !prefix.contains('.') && enum_module !in ['', 'main', 'builtin'] {
+		qualified := flat.source_type_id('${enum_module}.${prefix}')
+		if resolved := g.enum_selector_base_name(qualified) {
+			return resolved
+		}
+	}
+	return g.enum_selector_base_name(flat.source_type_id(prefix))
 }
 
 fn (g &FlatGen) enum_decl_selector_base_text(id flat.NodeId) string {

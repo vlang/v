@@ -41,6 +41,22 @@ enum Values {
 	local = own.offset(argument)
 }
 
+enum MainMemberCall {
+	base  = 5
+	value = C.enum_first_opt + imported.offset(int(MainMemberCall.base))
+}
+
+enum BackedValues as u16 {
+	base     = 1000
+	symbolic = u16(C.enum_first_opt + imported.offset(int(BackedValues.base)))
+}
+
+@[flag]
+enum MainMemberFlag {
+	base     = 0
+	selected = imported.offset(int(MainMemberCall.base))
+}
+
 fn test_imported_enum_helpers_keep_their_declaration_context() {
 	assert delta == 100
 	assert base == 1000
@@ -60,6 +76,21 @@ fn test_imported_enum_helpers_keep_their_declaration_context() {
 	assert int(SymbolicImportedCall.local) == 1007
 	assert int(enumhelperconsumer.Values.known) == 12
 	assert int(enumhelperconsumer.Values.symbolic) == 15
+	assert int(enumhelperconsumer.Values.symbolic_member) == 14
+	assert int(enumhelperconsumer.CopiedValues.value) == 14
+	assert int(enumhelperconsumer.TransitiveValues.value) == 14
+	assert int(enumhelperconsumer.BackedValues.symbolic) == 14
+	assert int(enumhelperconsumer.BackedValues.next) == 15
+	assert int(enumhelperconsumer.BackedValues.copied) == 14
+	assert int(enumhelperconsumer.FlagValues.selected) == 1 << 11
+	assert enumhelperconsumer.FlagValues.selected.str() == 'FlagValues{.selected}'
+	assert int(enumhelperconsumer.BackedFlagValues.selected) == 1 << 11
+	assert enumhelperconsumer.BackedFlagValues.selected.str() == 'BackedFlagValues{.selected}'
+	assert int(MainMemberCall.value) == 15
+	assert u16(BackedValues.base) == 1000
+	assert u16(BackedValues.symbolic) == 1010
+	assert int(MainMemberFlag.selected) == 1 << 12
+	assert MainMemberFlag.selected.str() == 'MainMemberFlag{.selected}'
 	mut same_named := []int{}
 	$for member in Values.values {
 		same_named << int(member.value)
