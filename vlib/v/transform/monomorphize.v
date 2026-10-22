@@ -1056,7 +1056,8 @@ fn (mut t Transformer) drain_pending_generic_fn_specs(struct_decls map[string]Ge
 			pending << spec
 		}
 		if !t.parallel_monomorphize
-			&& t.run_serial_scoped_monomorphize_specs(pending, mut emitted, mut generated) {
+			&& t.run_serial_scoped_monomorphize_specs(pending, struct_decls, sum_decls, mut emitted,
+				mut generated) {
 			changed = true
 			continue
 		}
@@ -6202,7 +6203,12 @@ fn (mut t Transformer) refresh_decl_assign_types_after_generic_rewrite() bool {
 	// the name, those that do not.
 	mut plain_callee_ptrs := []voidptr{len: 4096}
 	mut plain_callee_lens := []int{len: 4096}
-	for i in 0 .. t.a.nodes.len {
+	scan_from := if t.generic_rewrite_refresh_from < t.a.nodes.len {
+		t.generic_rewrite_refresh_from
+	} else {
+		t.a.nodes.len
+	}
+	for i in scan_from .. t.a.nodes.len {
 		if t.a.nodes[i].kind !in [.call, .or_expr, .decl_assign] {
 			continue
 		}
@@ -6306,6 +6312,7 @@ fn (mut t Transformer) refresh_decl_assign_types_after_generic_rewrite() bool {
 			t.set_var_type_with_raw(lhs.value, concrete_rhs_type, decl_type_source_id_2)
 		}
 	}
+	t.generic_rewrite_refresh_from = t.a.nodes.len
 	return changed
 }
 
