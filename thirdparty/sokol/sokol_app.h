@@ -2399,6 +2399,12 @@ SOKOL_APP_API_DECL void sapp_request_quit(void);
 /* cancel a pending quit (when SAPP_EVENTTYPE_QUIT_REQUESTED has been received)
  */
 SOKOL_APP_API_DECL void sapp_cancel_quit(void);
+/* X11 (EGL or GLX) only: when enabled, a frame whose callback did not call
+   sapp_request_present() is not presented. Returns false where the backend
+   cannot honor it, which leaves the mode off. */
+SOKOL_APP_API_DECL bool sapp_set_present_on_demand(bool enabled);
+/* X11 only: present the frame drawn by the current frame callback */
+SOKOL_APP_API_DECL void sapp_request_present(void);
 /* initiate a "hard quit" (quit application without sending
  * SAPP_EVENTTYPE_QUIT_REQUESTED) */
 SOKOL_APP_API_DECL void sapp_quit(void);
@@ -3740,6 +3746,8 @@ typedef struct {
   bool cleanup_called;
   bool quit_requested;
   bool quit_ordered;
+  bool present_on_demand;
+  bool present_requested;
   bool event_consumed;
   bool html5_ask_leave_site;
   bool onscreen_keyboard_shown;
@@ -15175,11 +15183,14 @@ _SOKOL_PRIVATE void _sapp_linux_frame(void) {
   _sapp_vk_frame();
 #else
   _sapp_frame();
+  if (!_sapp.present_on_demand || _sapp.present_requested) {
 #if defined(_SAPP_GLX)
-  _sapp_glx_swap_buffers();
+    _sapp_glx_swap_buffers();
 #elif defined(_SAPP_EGL)
-  eglSwapBuffers(_sapp.egl.display, _sapp.egl.surface);
+    eglSwapBuffers(_sapp.egl.display, _sapp.egl.surface);
 #endif
+  }
+  _sapp.present_requested = false;
 #endif
 }
 
@@ -17155,6 +17166,18 @@ sapp_unbind_mouse_cursor_image(sapp_mouse_cursor cursor) {
 SOKOL_API_IMPL void sapp_request_quit(void) { _sapp.quit_requested = true; }
 
 SOKOL_API_IMPL void sapp_cancel_quit(void) { _sapp.quit_requested = false; }
+
+SOKOL_API_IMPL bool sapp_set_present_on_demand(bool enabled) {
+#if defined(_SAPP_LINUX) && defined(_SAPP_X11) && !defined(SOKOL_WGPU) && !defined(SOKOL_VULKAN)
+  _sapp.present_on_demand = enabled;
+  return true;
+#else
+  _sapp.present_on_demand = false;
+  return false;
+#endif
+}
+
+SOKOL_API_IMPL void sapp_request_present(void) { _sapp.present_requested = true; }
 
 SOKOL_API_IMPL void sapp_quit(void) { _sapp.quit_ordered = true; }
 
