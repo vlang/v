@@ -3805,6 +3805,9 @@ it clear that the function being called will modify the value.
 A comptime `app.$method(...)` call also requires `mut` when passing a pointer variable
 to an explicit `mut param &T` parameter.
 
+A mutable struct parameter refers to the caller's struct. Casting it to an integer
+produces that struct's address.
+
 It is preferable to return values instead of modifying arguments,
 e.g. `user = register(user)` (or `user.register()`) instead of `register(mut user)`.
 Modifying arguments should only be done in performance-critical parts of your application
