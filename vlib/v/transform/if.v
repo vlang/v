@@ -143,6 +143,8 @@ struct GuardReturnTail {
 	extra_return_vals []flat.NodeId
 	source_return_id  flat.NodeId
 	assign_lhs_ids    []flat.NodeId
+	value_target_name string
+	value_target_type u32
 	// Staged assignments retain branch-specific moves of the original destinations.
 	assign_original_lhs_ids []flat.NodeId
 	assign_move_flags       []string
@@ -310,6 +312,10 @@ fn (mut t Transformer) finish_guard_assignments(scope flat.NodeId, tail GuardRet
 
 // guard_branch_stmts lowers the body of a guard branch.
 fn (mut t Transformer) guard_branch_stmts(branch_id flat.NodeId, tail GuardReturnTail) []flat.NodeId {
+	if tail.value_target_name.len > 0 {
+		block_id := t.if_value_branch_block(branch_id, tail.value_target_name, tail.value_target_type)
+		return t.a.children_of(&t.a.nodes[int(block_id)]).clone()
+	}
 	if tail.assign_lhs_ids.len > 0 {
 		block_id := t.multi_if_assign_block(branch_id, tail)
 		return t.a.children_of(&t.a.nodes[int(block_id)]).clone()
@@ -330,6 +336,9 @@ fn (mut t Transformer) guard_branch_stmts(branch_id flat.NodeId, tail GuardRetur
 fn (mut t Transformer) guard_else_stmts(else_id flat.NodeId, tail GuardReturnTail) []flat.NodeId {
 	else_node := t.a.nodes[int(else_id)]
 	if else_node.kind == .if_expr {
+		if tail.value_target_name.len > 0 {
+			return t.build_if_value_chain(else_id, tail.value_target_name, tail.value_target_type)
+		}
 		if tail.assign_lhs_ids.len > 0 {
 			return t.lower_multi_if_assign(else_node, tail)
 		}
@@ -1543,7 +1552,8 @@ fn (mut t Transformer) build_if_value_guard_chain(if_node flat.Node, target_name
 	}
 	if info := t.channel_receive_info(rhs_id) {
 		return t.expand_channel_receive_if_guard(if_node, lhs.value, info, GuardReturnTail{
-			assign_lhs_ids: [t.make_ident(target_name)]
+			value_target_name: target_name
+			value_target_type: target_type_id
 		})
 	}
 	mut rhs_type := t.if_guard_optional_type_name(rhs_id)

@@ -126,3 +126,38 @@ fn test_mut_channel_if_guard_argument_in_generic_method_receiver() {
 	assert closed_count == -1
 	assert channel_guard_return(values) == -1
 }
+
+fn channel_match_value[T](ch chan T) int {
+	result := if value := <-ch {
+		match value {
+			1 { 42 }
+			else { 7 }
+		}
+	} else {
+		-1
+	}
+	return result
+}
+
+fn test_channel_guard_if_value_preserves_match_tails() {
+	ch := chan int{cap: 2}
+	ch <- 1
+	ch <- 2
+	ch.close()
+	assert channel_match_value(ch) == 42
+	assert channel_match_value(ch) == 7
+	assert channel_match_value(ch) == -1
+	closed := chan int{}
+	closed.close()
+	value := if _ := <-closed {
+		0
+	} else if closed.len > 0 {
+		2
+	} else {
+		match closed.len + 3 {
+			3 { 31 }
+			else { 4 }
+		}
+	}
+	assert value == 31
+}

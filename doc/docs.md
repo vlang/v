@@ -2344,6 +2344,7 @@ Use `if mut value := expression { ... }` when the unwrapped variable must be mut
 for example to pass it to a `mut` parameter. The binding stays mutable throughout the
 successful branch, including in `if` expressions and chained calls to generic functions
 or methods. This applies to option/result, map lookup, array lookup, and channel receive guards.
+Channel receive guards used as values also preserve a trailing `match` expression in either branch.
 
 #### Type checks and casts
 
