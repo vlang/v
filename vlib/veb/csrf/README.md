@@ -159,7 +159,8 @@ fn (app &App) index(mut ctx) veb.Result {
 ### Clearing the anti-CSRF token
 
 To clear the anti-CSRF cookie, call `clear_csrf_token` with the user context.
-The cookie name comes from `ctx.config.cookie_name`.
+The cookie expires immediately with `Max-Age=0`, using `ctx.config.cookie_name`
+and `ctx.config.cookie_path` to match the original cookie.
 
 **Example:**
 
