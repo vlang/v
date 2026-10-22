@@ -122,10 +122,13 @@ fn test_shared_map_parameter_iteration_inside_lock() {
 	os.write_file(source, 'enum Status { off on }
 fn worker(shared values map[string]Status) {
 	lock values {
+		mut count := 0
 		for key, value in values {
 			assert key == "a"
 			assert value == .on
+			count++
 		}
+		assert count == 1
 	}
 	rlock values {
 		mut count := 0
