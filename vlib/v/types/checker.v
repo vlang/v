@@ -19079,6 +19079,10 @@ fn (mut tc TypeChecker) check_enum_field_values(node_id flat.NodeId, node flat.N
 					value
 				}
 			}
+			if node.typ_text() == 'flag' && !value_known && value_type.is_integer()
+				&& !tc.node_contains_runtime_call(value_id) {
+				tc.record_error_at(.assignment_mismatch, 'flag enum values must be known at compile time', value_id, value_pos)
+			}
 		}
 		if value_known && !value_overflows_backing && seen_values[value] && !allow_multiple {
 			detail := if field.children_count > 0
