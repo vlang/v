@@ -1268,6 +1268,10 @@ accessed using an *index* expression. Indexing starts from `0`.
 A string literal keeps its string type even when its text names a type alias.
 For example, `['Speed']` contains strings, while `[Speed(7)]` contains `Speed` values.
 
+In `==` and `!=` comparisons, array and map literals use the element or value type of the
+other operand. This also applies when that operand propagates an option or result with `?`
+or `!`. Operands are evaluated from left to right.
+
 After an array literal, separate `&&` from either adjacent token with whitespace or a comment
 to use logical AND, as in `a == [] && flag`. An attached `[]&&Type{}` declares an array of
 references to references. Separate `&` on both sides to use the binary AND operator;
@@ -3452,6 +3456,8 @@ Instance methods can also be used as unbound function values, such as `f := User
 The receiver becomes the first parameter, so a mutable receiver is passed as `f(mut user)`.
 Inside a method reflection loop, `T.$method` likewise creates an unbound function value.
 Unbound and reflected method values follow the same method privacy and `mut` argument rules.
+A reflected method bound to an instance, such as `f := app.$method`, can be stored in an array
+like other function values.
 
 > [!NOTE]
 > Note, that these are not constructors, but simple functions. V doesn't have constructors or

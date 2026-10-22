@@ -625,6 +625,14 @@ fn (mut t Transformer) option_payload_conversion_types(value_id flat.NodeId, sou
 		&& !(actual_base is types.ResultType && expected_base is types.ResultType) {
 		return none
 	}
+	actual_payload := t.tc.parse_type(t.optional_base_type(qualified_source))
+	expected_payload := t.tc.parse_type(t.optional_base_type(qualified_target))
+	// Option wrappers use the C payload spelling: ?int and ?i64 share a
+	// representation on 64-bit targets, while fixed-array wrappers remain distinct.
+	if actual_payload.is_integer() && expected_payload.is_integer()
+		&& t.tc.c_type(actual_payload) == t.tc.c_type(expected_payload) {
+		return none
+	}
 	if !t.forwarded_slot_conversion_supported(*actual_type, *expected_type) {
 		return none
 	}
