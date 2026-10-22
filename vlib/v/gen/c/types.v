@@ -2816,11 +2816,20 @@ fn (mut g FlatGen) enum_field_expr_to_string_resolving(id flat.NodeId, enum_modu
 				return none
 			}
 			inner := g.enum_field_expr_to_string_resolving(g.a.child(&node, 0), enum_module, enum_name, enum_c_name, field_names, inline_refs, mut resolving)?
-			return '${op}${inner}'
+			ct := g.value_c_type(unalias_type(g.usable_expr_type(id)))
+			return '((${ct})(${op}(${inner})))'
 		}
 		.infix {
 			if node.children_count < 2 {
 				return none
+			}
+			if node.op == .power {
+				// The checker rejects powers whose value depends on C. Fold an
+				// independent power even when its enclosing expression is symbolic.
+				mut values := g.tc.comptime_enum_decl_field_values(enum_name)
+				mut numeric_resolving := map[string]bool{}
+				value := g.enum_field_expr_value_with_enum(id, enum_module, enum_name, mut values, map[string]flat.NodeId{}, mut numeric_resolving)?
+				return value.str()
 			}
 			op := g.op_str(node.op)
 			if op.len == 0 {
@@ -2828,7 +2837,24 @@ fn (mut g FlatGen) enum_field_expr_to_string_resolving(id flat.NodeId, enum_modu
 			}
 			left := g.enum_field_expr_to_string_resolving(g.a.child(&node, 0), enum_module, enum_name, enum_c_name, field_names, inline_refs, mut resolving)?
 			right := g.enum_field_expr_to_string_resolving(g.a.child(&node, 1), enum_module, enum_name, enum_c_name, field_names, inline_refs, mut resolving)?
-			return '${left} ${op} ${right}'
+			if node.op in [.left_shift, .right_shift, .right_shift_unsigned] {
+				mut shift_type := *g.usable_expr_type(g.a.child(&node, 0))
+				if g.expr_is_in_translated_file(id) && unalias_type(shift_type).name() == 'int' {
+					shift_type = types.Type(types.i32_)
+				}
+				ut, bits := g.unsigned_shift_type_parts(shift_type)
+				ct := if node.op == .right_shift_unsigned {
+					ut
+				} else {
+					g.value_c_type(unalias_type(shift_type))
+				}
+				// Enum initializers must remain C integer constant expressions. Unlike
+				// runtime shifts, this guard can repeat its side-effect-free operands.
+				operand_ct := if node.op == .left_shift { ut } else { ct }
+				return '((u64)(${right}) >= ${bits} ? (${ct})0 : (${ct})((${operand_ct})(${left}) ${op} (${right})))'
+			}
+			ct := g.value_c_type(unalias_type(g.usable_expr_type(id)))
+			return '((${ct})((${left}) ${op} (${right})))'
 		}
 		else {
 			return g.expr_to_string(id)

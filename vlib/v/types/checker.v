@@ -19080,6 +19080,9 @@ fn (mut tc TypeChecker) check_enum_field_values(node_id flat.NodeId, node flat.N
 					value_known = false
 					value
 				}
+				if !value_known {
+					tc.check_symbolic_enum_powers(value_id, flat.source_type_id(node.value), mut field_values, field_exprs)
+				}
 			}
 			if node.typ_text() == 'flag' && !value_known && value_type.is_integer()
 				&& !tc.node_contains_runtime_call(value_id) {
@@ -19103,6 +19106,23 @@ fn (mut tc TypeChecker) check_enum_field_values(node_id flat.NodeId, node flat.N
 			next_value = value + 1
 		}
 		next_value_known = value_known
+	}
+}
+
+// Powers have no C integer-constant-expression equivalent. Other symbolic enum
+// arithmetic can still contain independent powers that V can evaluate.
+fn (mut tc TypeChecker) check_symbolic_enum_powers(id flat.NodeId, enum_name u32, mut field_values map[string]i64, field_exprs map[string]flat.NodeId) {
+	node := tc.a.node(id)
+	if node.kind == .infix && node.op == .power {
+		mut resolving := map[string]bool{}
+		if _ := tc.comptime_static_enum_field_value(id, tc.cur_module, enum_name, mut field_values, field_exprs, mut resolving) {
+			return
+		}
+		tc.record_error_at(.assignment_mismatch, 'enum powers must be known at compile time', id, node.pos)
+		return
+	}
+	for i in 0 .. node.children_count {
+		tc.check_symbolic_enum_powers(tc.a.child(node, i), enum_name, mut field_values, field_exprs)
 	}
 }
 
