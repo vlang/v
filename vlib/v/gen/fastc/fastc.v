@@ -1417,8 +1417,12 @@ struct FastcTypeDescriptorMemoEntry {
 
 struct FastcTypeDescriptorMemo {
 mut:
-	semantic_keys [64]FastcTypeDescriptorMemoEntry
-	aliases       [64]FastcTypeDescriptorMemoEntry
+	semantic_keys          [64]FastcTypeDescriptorMemoEntry
+	aliases                [64]FastcTypeDescriptorMemoEntry
+	direct_member_receiver u32
+	direct_member_field    string
+	direct_member_type     u32
+	direct_member_known    bool
 }
 
 struct Parser {
@@ -1438,8 +1442,8 @@ struct Parser {
 	// (see fastc_declared_type_c_names); semantic_type_key resolves through it.
 	declared_type_c_names     flat.TypeTextBindings
 	declared_type_key_by_name flat.TypeTextBindings
-	// Only final self-host file generation opts in: both descriptor maps stay
-	// immutable for this Parser's lifetime, including module/mono switches.
+	// Only final self-host file generation opts in: type names, aliases, kinds,
+	// struct fields and interface fields stay immutable through module/mono switches.
 	type_descriptor_memo &FastcTypeDescriptorMemo = unsafe { nil }
 	// `__vf_`-prefixed generated C names, the only possible collisions for
 	// temporary_namespace candidates (see fastc_reserved_temporary_c_names).

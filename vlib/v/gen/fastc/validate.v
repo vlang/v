@@ -1156,7 +1156,26 @@ fn (g &Parser) validate_expression_mutation_lvalue(tokens []FastcExpressionToken
 	}
 }
 
+// struct_direct_member_type caches only finalized file-generation descriptors.
+// Source and synthetic field names outlive this file worker's heap memo.
 fn (g &Parser) struct_direct_member_type(receiver_type_id u32, field_name string) u32 {
+	if isnil(g.type_descriptor_memo) || receiver_type_id == 0 {
+		return g.struct_direct_member_type_uncached(receiver_type_id, field_name)
+	}
+	mut memo := g.type_descriptor_memo
+	if memo.direct_member_known && memo.direct_member_receiver == receiver_type_id
+		&& memo.direct_member_field == field_name {
+		return memo.direct_member_type
+	}
+	resolved := g.struct_direct_member_type_uncached(receiver_type_id, field_name)
+	memo.direct_member_receiver = receiver_type_id
+	memo.direct_member_field = field_name
+	memo.direct_member_type = resolved
+	memo.direct_member_known = true
+	return resolved
+}
+
+fn (g &Parser) struct_direct_member_type_uncached(receiver_type_id u32, field_name string) u32 {
 	if field_name == 'len' && g.is_map_type(receiver_type_id) {
 		return flat.source_type_int
 	}

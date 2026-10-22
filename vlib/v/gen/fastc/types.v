@@ -530,7 +530,11 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 					// A bare local narrowed by `x is T` reads as the concrete variant.
 					smartcast.typ
 				} else if local := g.locals[item.lit] {
-					g.narrowed_numeric_operand_type(tokens[start..end], local.typ)
+					if local.is_reference && local.smartcast_origin_type != 0 {
+						g.narrowed_numeric_operand_type(tokens[start..end], local.typ)
+					} else {
+						local.typ
+					}
 				} else {
 					g.nonlocal_name_type(item.lit)
 				}

@@ -258,3 +258,54 @@ fn test_direct_member32_preserves_explicit_old_precedence() {
 		direct_member32_assert_legacy(&g, ignored_annotation)
 	}
 }
+
+fn test_singleton_local_inference_preserves_reference_and_origin_types() {
+	for pair in [['int', 'int'], ['int*', 'int'], ['int**', 'int'], ['i64*', 'i64'],
+		['AliasInt*', 'AliasInt'], ['Record*', 'Record*'], ['Record**', 'Record**']] {
+		for is_reference in [false, true] {
+			for has_origin in [false, true] {
+				mut g := direct_member32_parser()
+				g.alias_base_types.set('AliasInt', 'int')
+				g.locals['candidate'] = FastcLocal{
+					typ:                   flat.source_type_id(pair[0])
+					is_reference:          is_reference
+					smartcast_origin_type: if has_origin {
+						flat.source_type_id('Sum')
+					} else {
+						u32(0)
+					}
+				}
+				// Only numeric references with an origin lose their pointer suffix.
+				expected := flat.source_type_id(if is_reference && has_origin {
+					pair[1]
+				} else {
+					pair[0]
+				})
+				tokens := [FastcExpressionToken{ tok: .name, lit: 'candidate' }]
+				assert g.infer_expression_type_range_impl(tokens, 0, 1) or { panic(err) } == expected
+				wrapped := [FastcExpressionToken{ tok: .lpar }, tokens[0],
+					FastcExpressionToken{ tok: .rpar }]
+				assert g.infer_expression_type_range_impl(wrapped, 0, 3) or { panic(err) } == expected
+				subrange := [FastcExpressionToken{ tok: .number, lit: '99' }, tokens[0],
+					FastcExpressionToken{ tok: .key_true }]
+				assert g.infer_expression_type_range_impl(subrange, 1, 2) or { panic(err) } == expected
+			}
+		}
+	}
+}
+
+fn test_singleton_local_inference_preserves_annotation_and_smartcast_precedence() {
+	mut g := direct_member32_parser()
+	g.locals['candidate'] = FastcLocal{
+		typ:                   flat.source_type_id('int*')
+		is_reference:          true
+		smartcast_origin_type: flat.source_type_id('Sum')
+	}
+	g.member_smartcasts['candidate'] = FastcMemberSmartcast{ typ: flat.source_type_string }
+	tokens := [FastcExpressionToken{ tok: .name, lit: 'candidate' }]
+	assert g.infer_expression_type_range_impl(tokens, 0, 1) or { panic(err) } == flat.source_type_string
+	annotated := [FastcExpressionToken{ ...tokens[0], typ: flat.source_type_bool }]
+	assert g.infer_expression_type_range_impl(annotated, 0, 1) or { panic(err) } == flat.source_type_bool
+	g.member_smartcasts.clear()
+	assert g.infer_expression_type_range_impl(tokens, 0, 1) or { panic(err) } == flat.source_type_int
+}
