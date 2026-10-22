@@ -1490,13 +1490,23 @@ fn (mut g FlatGen) gen_ownership_drop_value(typ types.Type, expr string, depth i
 }
 
 fn (mut g FlatGen) ownership_drop_value_to_string(typ types.Type, expr string) string {
+	return g.ownership_drop_value_string(typ, expr, false)
+}
+
+fn (mut g FlatGen) ownership_drop_value_string(typ types.Type, expr string, inline_root bool) string {
 	orig := g.sb
 	orig_line_start := g.line_start
 	orig_indent := g.indent
 	g.sb = strings.new_builder(128)
 	g.line_start = true
 	g.indent = 1
-	g.gen_ownership_drop_value(typ, expr, 0)
+	if inline_root {
+		// A helper body must expand its root instead of calling itself.
+		mut expanding := map[u64]bool{}
+		g.gen_ownership_drop_value_inner(typ, expr, 0, mut expanding)
+	} else {
+		g.gen_ownership_drop_value(typ, expr, 0)
+	}
 	result := g.sb.str()
 	g.sb = orig
 	g.line_start = orig_line_start

@@ -360,4 +360,5 @@ before the jump. Only locals whose declarations have been reached are cleaned up
 When storing a sum literal, ownership acquisition considers its active payload. Array views in that
 payload acquire independent storage; unrelated variants do not need storage checks. Runtime sum
 cleanup is shared across storage acquisition sites, keeping generated C compact for sums with many
-array variants, such as `orm.Primitive`.
+array variants, such as `orm.Primitive`. Discarded spawn results use separate cleanup helpers
+that also destroy the active payload of a sum.

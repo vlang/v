@@ -32,6 +32,7 @@ fn acquired() Choice { return unknown(Choice([4, 5])) }
 fn unknown_nested(value Nested) Nested { return value }
 fn acquired_nested() Nested { return unknown_nested(nested_slice()) }
 fn main() {
+	spawn boxed()
 	assert (boxed() as int) == 17
 	assert (scalar() as int) == 17
 	assert (slice_value() as []int) == [2, 3]
@@ -65,6 +66,8 @@ fn main() {
 			assert sum_header.len == 1, sum_header.str()
 			sum_c_type := sum_header[0].all_after('struct ').all_before(' {')
 			assert helpers.filter(it.contains('(${sum_c_type}* _value)')).len == 2, 'VJOBS=${jobs} ${mode}: ${helpers}'
+			detached := csrc.split_into_lines().filter(it.starts_with('static void __v3_detached_ownership_drop_'))
+			assert detached.filter(it.contains('(${sum_c_type}* _value)')).len == 2, 'VJOBS=${jobs} ${mode}: ${detached}'
 			run := cmdexec.run_in_merged_with_env(compiler, ['-nocache', '-gc', 'none', '-cc',
 				cc, mode, 'run', source], dir, {
 				'VJOBS': jobs
