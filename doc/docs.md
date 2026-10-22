@@ -5732,6 +5732,8 @@ Inference also follows receivers obtained by unwrapping an option or propagating
 Assigning a generic call to an optional variable or field does not make its inferred type
 arguments optional. For `fn identity[T](value T) T`, assigning `identity(3)` to `?int`
 infers `T` as `int` from the argument, then wraps the result in the destination option.
+For a declared optional return such as `fn optional[T](value T) ?T`, a `?f64` destination
+provides `f64` context to untyped numeric literals; typed arguments still determine their own type.
 
 Nested generic calls preserve reference return types when passed directly to another generic
 call, including references stored as map values.

@@ -9460,6 +9460,14 @@ fn (mut t Transformer) infer_generic_call_args_seeded(decl GenericFnDecl, _id fl
 	if expected_return != 0 && !defer_return_inference {
 		t.infer_generic_return_type_args(decl, expected_return, mut inferred, receiver_params)
 	}
+	// A declared optional return still provides context to untyped literals.
+	// Keep it separate so typed arguments retain priority over assignment wrapping.
+	mut optional_literal_context := map[string]u32{}
+	if flat.source_type_shape(expected_return).has(.option_type)
+		&& flat.source_type_shape(decl.node.typ).has(.option_type) && !interface_context {
+		t.infer_generic_return_type_args(decl, expected_return, mut optional_literal_context,
+			receiver_params)
+	}
 	mut param_idx := 0
 	param_count := t.generic_decl_param_count(decl.node)
 	for i in 0 .. decl.node.children_count {
@@ -9535,6 +9543,14 @@ fn (mut t Transformer) infer_generic_call_args_seeded(decl GenericFnDecl, _id fl
 					}
 				}
 				later_param_idx++
+			}
+		}
+		if !defer_numeric_literal && arg_kind in [.int_literal, .float_literal] {
+			param_name := flat.source_type_name(inference_param_type)
+			if contextual_type := optional_literal_context[param_name] {
+				if is_numeric_type_name(contextual_type) {
+					inferred_arg_type = contextual_type
+				}
 			}
 		}
 		if (child.is_mut || child.op == .amp || flat.source_type_shape(child.typ).has(.mutable_type))
