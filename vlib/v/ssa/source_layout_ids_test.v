@@ -34,11 +34,11 @@ fn test_registered_options_keep_source_ids_and_existing_layout_queries() {
 
 fn test_registered_tuple_source_ids_preserve_c_names_and_option_payloads() {
 	mut a := flat.FlatAst.new()
-	tc := types.TypeChecker.new(&a)
+	mut tc := types.TypeChecker.new(&a)
 	mut m := Module.new()
 	mut b := Builder{
 		a:        &a
-		tc:       tc
+		tc:       &tc
 		m:        m
 		i1_type:  m.type_store.get_int(1)
 		i8_type:  m.type_store.get_int(8)
@@ -104,7 +104,7 @@ fn test_source_layout_queries_preserve_nominal_module_sum_and_alias_precedence()
 	assert b.resolve_type(flat.source_type_id('Alias')) == fallback
 	mut tc := types.TypeChecker.new(&a)
 	tc.type_aliases.set_id('Alias', flat.source_type_i32)
-	b.tc = tc
+	b.tc = &tc
 	assert b.resolve_type(flat.source_type_id('Alias')) == b.i32_type
 }
 
@@ -128,11 +128,11 @@ fn test_source_field_queries_keep_nominal_exact_short_and_empty_bindings() {
 
 fn test_tuple_field_selectors_keep_container_source_types() {
 	mut a := flat.FlatAst.new()
-	tc := types.TypeChecker.new(&a)
+	mut tc := types.TypeChecker.new(&a)
 	mut m := Module.new()
 	mut b := Builder{
 		a:          &a
-		tc:         tc
+		tc:         &tc
 		m:          m
 		array_type: m.type_store.register(Type{ kind: .struct_t })
 		map_type:   m.type_store.register(Type{ kind: .struct_t })
