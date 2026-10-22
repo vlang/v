@@ -1207,7 +1207,7 @@ fn (mut g FlatGen) precompute_ownership_recursive_drop_helpers() {
 	mut drop_struct_names := map[u32]bool{}
 	for type_name in g.ownership_live_drop_value_type_names() {
 		mut seen := map[u32]bool{}
-		g.ownership_collect_drop_struct_names(g.tc.parse_type(type_name), 0, mut drop_struct_names, mut seen)
+		g.ownership_collect_drop_struct_names(g.tc.parse_canonical_type_cached(type_name), 0, mut drop_struct_names, mut seen)
 	}
 	// Storage acquisition also introduces synthetic drops after checking, including
 	// in ownership-only mode where the checker records no automatic cleanup sites.
@@ -1219,7 +1219,7 @@ fn (mut g FlatGen) precompute_ownership_recursive_drop_helpers() {
 	struct_names.sort_with_compare(compare_ownership_source_type_ids)
 	for name_id in struct_names {
 		name := flat.source_type_name(name_id)
-		parsed := g.tc.parse_type(name_id)
+		parsed := g.tc.parse_canonical_type_cached(name_id)
 		// An unmonomorphized generic template (e.g. `Printer[W]`) must not get a
 		// drop helper: only its concrete instantiations (`Printer[cli.Buffer]`)
 		// have emitted C types. `is_generic_struct` only matches the base decl
@@ -1249,7 +1249,7 @@ fn (g &FlatGen) ownership_collect_synthetic_drop_types(id flat.NodeId, mut names
 			arg := g.a.child_node(node, 1)
 			if arg.typ != 0 {
 				mut seen := map[u32]bool{}
-				g.ownership_collect_drop_struct_names(g.tc.parse_type(arg.typ), 0, mut names, mut seen)
+				g.ownership_collect_drop_struct_names(g.tc.parse_canonical_type_cached(arg.typ), 0, mut names, mut seen)
 			}
 		}
 	}
@@ -1324,7 +1324,7 @@ fn (g &FlatGen) ownership_collect_drop_struct_names(typ types.Type, depth int, m
 			names[sum_name_id] = true
 			for variant_source_id in g.tc.sum_types.type_ids(flat.source_type_name(sum_name_id)) or { []u32{} } {
 				resolved_variant := g.resolve_variant(sum_name_id, variant_source_id)
-				variant_type := unalias_type(g.tc.parse_type(resolved_variant))
+				variant_type := unalias_type(g.tc.parse_canonical_type_cached(resolved_variant))
 				if variant_type is types.Pointer {
 					g.ownership_collect_drop_struct_names(variant_type.base_type, depth + 1, mut names, mut seen)
 				} else {
@@ -1450,12 +1450,16 @@ fn (mut g FlatGen) gen_ownership_recursive_drop_helpers() {
 	for helper_name in helper_names {
 		type_name_id := representatives[helper_name]
 		type_name := flat.source_type_name(type_name_id)
-		g.tc.cur_module = g.tc.struct_modules[type_name] or { old_module }
+		// Sums have no struct module entry. Derive their declaration context rather
+		// than inheriting the module left by parallel declaration generation.
+		g.tc.cur_module = g.tc.struct_modules[type_name] or {
+			module_from_qualified_name(type_name.all_before('['))
+		}
 		g.tc.cur_file = g.tc.struct_files[type_name] or { old_file }
 		g.writeln('static void ${helper_name}(${g.struct_cname(type_name)}* _value) {')
 		g.indent++
 		mut expanding := map[u64]bool{}
-		g.gen_ownership_drop_value_inner(g.tc.parse_type(type_name_id), '*_value', 0, mut expanding)
+		g.gen_ownership_drop_value_inner(g.tc.parse_canonical_type_cached(type_name_id), '*_value', 0, mut expanding)
 		g.indent--
 		g.writeln('}')
 		g.writeln('')
@@ -1697,7 +1701,7 @@ fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, d
 			g.writeln('switch ((${expr}).typ) {')
 			for variant in variants {
 				resolved_variant := g.resolve_variant(sum_name_id, variant)
-				variant_type := g.tc.parse_type(resolved_variant)
+				variant_type := g.tc.parse_canonical_type_cached(resolved_variant)
 				idx := g.sum_type_index(sum_name_id, resolved_variant)
 				g.writeln('case ${idx}:')
 				g.indent++

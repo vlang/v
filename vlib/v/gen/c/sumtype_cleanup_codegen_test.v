@@ -1,6 +1,7 @@
 module c
 
 import os
+import v.cmdexec
 
 fn test_sum_storage_acquires_only_active_literal_and_shares_cleanup() {
 	cc := os.find_abs_path_of_executable('clang') or { return }
@@ -38,24 +39,30 @@ fn main() {
 	assert (dynamic as []string) == ["second"]
 	assert (unknown(Choice("text")) as string) == "text"
 }')!
-	for mode in ['-ownership', '-autofree'] {
-		generated := os.join_path(dir, 'program.c')
-		result := os.exec([compiler, '-no-parallel', '-nocache', '-gc', 'none', mode, '-o', generated,
-			source])
-		assert result.exit_code == 0, result.output
-		csrc := os.read_file(generated)!
-		// The known scalar payload must bypass unrelated array variants entirely.
-		assert csrc.contains('scalar(void) {')
-		scalar := csrc.all_after('scalar(void) {').all_before('\n}')
-		assert scalar.len > 0
-		assert !scalar.contains('owned_sum_array_escape'), scalar
-		assert !scalar.contains('is_slice_view'), scalar
-		// Each sum has one reusable cleanup body instead of a switch per acquisition arm.
-		helpers := csrc.split_into_lines().filter(it.starts_with('static void __v3_ownership_drop_'))
-		assert helpers.filter(it.contains('Choice(')).len == 2, helpers.str()
-		assert helpers.filter(it.contains('Nested(')).len == 2, helpers.str()
-		run := os.exec([compiler, '-no-parallel', '-nocache', '-gc', 'none', '-cc', cc, mode, 'run',
-			source])
-		assert run.exit_code == 0, run.output
+	for jobs in ['1', '2'] {
+		for mode in ['-ownership', '-autofree'] {
+			generated := os.join_path(dir, 'program.c')
+			result := cmdexec.run_in_merged_with_env(compiler, ['-nocache', '-gc', 'none', mode,
+				'-o', generated, source], dir, {
+				'VJOBS': jobs
+			})
+			assert result.exit_code == 0, 'VJOBS=${jobs} ${mode}: ${result.output}'
+			csrc := os.read_file(generated)!
+			// The known scalar payload must bypass unrelated array variants entirely.
+			assert csrc.contains('scalar(void) {')
+			scalar := csrc.all_after('scalar(void) {').all_before('\n}')
+			assert scalar.len > 0
+			assert !scalar.contains('owned_sum_array_escape'), scalar
+			assert !scalar.contains('is_slice_view'), scalar
+			// Serial and parallel support lanes must both enroll transformed cleanup sites.
+			helpers := csrc.split_into_lines().filter(it.starts_with('static void __v3_ownership_drop_'))
+			assert helpers.filter(it.contains('Choice(')).len == 2, 'VJOBS=${jobs} ${mode}: ${helpers}'
+			assert helpers.filter(it.contains('Nested(')).len == 2, 'VJOBS=${jobs} ${mode}: ${helpers}'
+			run := cmdexec.run_in_merged_with_env(compiler, ['-nocache', '-gc', 'none', '-cc',
+				cc, mode, 'run', source], dir, {
+				'VJOBS': jobs
+			})
+			assert run.exit_code == 0, 'VJOBS=${jobs} ${mode}: ${run.output}'
+		}
 	}
 }

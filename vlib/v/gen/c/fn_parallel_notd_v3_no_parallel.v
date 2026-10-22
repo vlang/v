@@ -1160,6 +1160,8 @@ fn (mut g FlatGen) start_fixed_array_ret_wrappers() ([]&FlatGen, []thread voidpt
 	mut worker := g.new_parallel_worker(3)
 	worker.fixed_array_ret_wrappers = map[string]bool{}
 	mut support_worker := g.new_parallel_worker(5)
+	// Cleanup precomputation also reads synthetic drops in transformed declarations.
+	support_worker.fn_decl_nodes_by_name = g.fn_decl_nodes_by_name
 	// Both helpers run beside function selection, which writes the master's C-name
 	// and generic-application caches and may release the arena behind them. Keep
 	// their caches private instead of reading the master's through `base`.
