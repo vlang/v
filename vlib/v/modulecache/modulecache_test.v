@@ -187,6 +187,16 @@ int external_helper(void) {
 	assert !header.contains('return local_helper();')
 }
 
+fn test_declaration_header_keeps_macro_static_string_definitions() {
+	source := '#define _SL(name, text, length) static const char *name = text;\n_SL(first, " __attribute__((", 16);\n_SL(second, ") && (*(", 8);\n_SL(third, "#define VALUE {", 15);\nint global = 42;\n'
+	header := declaration_header(source)
+	assert header.contains('_SL(first, " __attribute__((", 16);')
+	assert header.contains('_SL(second, ") && (*(", 8);')
+	assert header.contains('_SL(third, "#define VALUE {", 15);')
+	assert !header.contains('extern _SL(')
+	assert header.contains('extern int global;')
+}
+
 fn test_replicated_function_static_storage_detection() {
 	assert c_source_replicated_function_has_static_storage('static inline int next_value(void) {
 	static int state = 0;
