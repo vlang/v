@@ -1,6 +1,9 @@
 module types
 
+import os
 import v.flat
+import v.parser
+import v.pref
 
 fn test_sumtype_layout_detects_value_cycles() {
 	mut ast := flat.FlatAst.new()
@@ -30,6 +33,61 @@ fn test_recursive_type_metadata_retains_value_equality() {
 	assert first == second
 	assert semantic_type_hash(first) == semantic_type_hash(second)
 	assert first != Type(Array{ elem_type: &Type(string_) })
+}
+
+fn test_sumtype_layout_retains_the_closing_field_and_type_path() {
+	mut ast := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&ast)
+	tc.sum_types.set('Tree', ['Branch', 'int'])
+	tree := Type(SumType{ name_id: flat.source_type_id('Tree') })
+	inner := Type(Struct{ name_id: flat.source_type_id('Inner') })
+	leaf := Type(Struct{ name_id: flat.source_type_id('Leaf') })
+	tc.structs['Leaf'] = [StructField{ name: 'value', typ: int_ }]
+	tc.structs['Branch'] = [StructField{ name: 'leaf', typ: leaf },
+		StructField{ name: 'inner', typ: inner }]
+	tc.structs['Inner'] = [StructField{ name: 'child', typ: Type(OptionType{ base_type: &tree }) }]
+	mut states := {
+		flat.source_type_id('Tree'): ValueLayoutState.active
+	}
+	mut path := ValueLayoutPath{ types: [flat.source_type_id('Tree')] }
+	target := tc.value_type_cycle(Type(Struct{ name_id: flat.source_type_id('Branch') }), mut states, mut path) or {
+		panic('expected an inline layout cycle')
+	}
+	assert flat.source_type_name(target) == 'Tree'
+	assert path.types.map(flat.source_type_name(it)) == ['Tree', 'Branch', 'Inner', 'Tree']
+	assert path.fields.map(it.name) == ['inner', 'child']
+	assert flat.source_type_name(path.fields.last().owner) == 'Inner'
+}
+
+fn test_recursive_sum_layout_diagnostic_metadata_matches_imported_field() {
+	root := os.join_path(os.vtmp_dir(), 'sumtype_layout_metadata_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	limits := os.join_path(root, 'limits.v')
+	main := os.join_path(root, 'main.v')
+	os.write_file(limits, 'module limits\npub struct Box[T] {\npub:\n\tvalue T\n}\n')!
+	os.write_file(main, 'module main\nimport limits\ntype Node = limits.Box[Node] | int\nfn main() {}\n')!
+	for parallel in [false, true] {
+		mut p := parser.Parser.new(pref.new_preferences())
+		a := p.parse_files([limits, main])
+		assert p.diagnostics.len == 0, p.diagnostics.str()
+		mut tc := TypeChecker.new(a)
+		tc.diagnostic_files[main] = true
+		tc.collect(a)
+		tc.check_semantics_opt(parallel)
+		errors := tc.errors.filter(it.msg.starts_with('sum type `Node` cannot be defined recursively'))
+		assert errors.len == 1, tc.errors.str()
+		diagnostic := errors[0]
+		assert diagnostic.file == limits, diagnostic.str()
+		field := a.node(diagnostic.node)
+		assert field.kind == .field_decl
+		assert field.value == 'value'
+		assert diagnostic.node_kind == 'field_decl'
+		assert diagnostic.node_value == 'value'
+		assert diagnostic.pos == tc.node_value_diagnostic_pos(diagnostic.node)
+		source := a.source_files[diagnostic.pos.id] or { panic('missing diagnostic source file') }
+		assert source.name == diagnostic.file
+	}
 }
 
 fn test_sum_references_require_the_same_storage_type() {

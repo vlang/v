@@ -482,9 +482,9 @@ mut:
 	// parameter that can retain an inline fixed array as a dynamic view. Promote the root
 	// before any aliases form, including when a containing struct is forwarded by reference.
 	escaping_fixed_array_view_sources map[string]bool
-	// escape_fixed_array_struct_cache memoizes, per struct type, whether its inline
-	// storage holds a fixed array. The escape precheck asks for every reference argument.
-	escape_fixed_array_struct_cache map[u32]bool
+	// Cache complete walks of nominal inline storage. Sum variants can contain fixed
+	// arrays too; repeated reference arguments must not walk the same variants again.
+	escape_fixed_array_nominal_cache map[u32]bool
 	// skip_owned_base_nodes_without_regions: see PreparedSelfhostTransform.keeps_scope_without_regions.
 	skip_owned_base_nodes_without_regions bool
 	// heaped_amp_locals records which of those sources were actually moved to the heap, so
@@ -8592,13 +8592,24 @@ fn (mut t Transformer) escape_arg_value_contains_fixed_array(arg_id flat.NodeId)
 	for value_type is types.Pointer {
 		value_type = types.unalias_type(value_type.base_type)
 	}
-	if value_type is types.Struct {
-		if cached := t.escape_fixed_array_struct_cache[value_type.source_type_id()] {
+	return t.cached_escape_value_contains_fixed_array(value_type)
+}
+
+fn (mut t Transformer) cached_escape_value_contains_fixed_array(value_type &types.Type) bool {
+	if value_type is types.Struct || value_type is types.SumType {
+		if cached := t.escape_fixed_array_nominal_cache[value_type.source_type_id()] {
 			return cached
 		}
 		mut seen := map[u32]bool{}
 		contains := t.escape_value_contains_fixed_array(value_type, mut seen)
-		t.escape_fixed_array_struct_cache[value_type.source_type_id()] = contains
+		if !contains {
+			// A complete unsuccessful root walk proves every visited nominal type
+			// lacks inline fixed arrays, including nodes in recursive components.
+			for name_id, _ in seen {
+				t.escape_fixed_array_nominal_cache[name_id] = false
+			}
+		}
+		t.escape_fixed_array_nominal_cache[value_type.source_type_id()] = contains
 		return contains
 	}
 	mut seen := map[u32]bool{}
@@ -11051,7 +11062,7 @@ fn escape_type_is_struct_value(typ types.Type) bool {
 // escape_value_contains_fixed_array follows inline storage only. A dynamic container or
 // pointer field already has separate backing storage, so moving its containing value does
 // not extend the lifetime of that backing.
-fn (t &Transformer) escape_value_contains_fixed_array(typ types.Type, mut seen map[u32]bool) bool {
+fn (mut t Transformer) escape_value_contains_fixed_array(typ types.Type, mut seen map[u32]bool) bool {
 	match typ {
 		types.ArrayFixed {
 			return true
@@ -11060,6 +11071,7 @@ fn (t &Transformer) escape_value_contains_fixed_array(typ types.Type, mut seen m
 			return t.escape_value_contains_fixed_array(typ.base_type, mut seen)
 		}
 		types.SumType {
+			if cached := t.escape_fixed_array_nominal_cache[typ.name_id] { return cached }
 			if isnil(t.tc) || typ.name_id in seen {
 				return false
 			}
@@ -11067,11 +11079,13 @@ fn (t &Transformer) escape_value_contains_fixed_array(typ types.Type, mut seen m
 			for variant in t.concrete_sum_variants_for_candidate(typ.name_id) {
 				value := t.tc.parse_type(variant)
 				if t.escape_value_contains_fixed_array(*value, mut seen) {
+					t.escape_fixed_array_nominal_cache[typ.name_id] = true
 					return true
 				}
 			}
 		}
 		types.Struct {
+			if cached := t.escape_fixed_array_nominal_cache[typ.name_id] { return cached }
 			if isnil(t.tc) || typ.source_type_id() in seen {
 				return false
 			}
@@ -11091,6 +11105,7 @@ fn (t &Transformer) escape_value_contains_fixed_array(typ types.Type, mut seen m
 					field.typ
 				}
 				if t.escape_value_contains_fixed_array(field_type, mut seen) {
+					t.escape_fixed_array_nominal_cache[typ.name_id] = true
 					return true
 				}
 			}
@@ -11269,8 +11284,7 @@ fn (mut t Transformer) mark_fixed_array_reference_argument_escape(arg_id flat.No
 	for value_type is types.Pointer {
 		value_type = types.unalias_type(value_type.base_type)
 	}
-	mut seen := map[u32]bool{}
-	if !t.escape_value_contains_fixed_array(value_type, mut seen)
+	if !t.cached_escape_value_contains_fixed_array(value_type)
 		|| !t.escape_address_expr_is_stack_local(value_id, local_stack_names, amp_ptrs, ptr_aliases) {
 		return
 	}
@@ -23767,7 +23781,13 @@ fn (mut t Transformer) transform_call_expr_inner(id flat.NodeId, node flat.Node)
 	// selector/call over the materialized operands and re-dispatch; a no-op for the common
 	// non-branch receivers/arguments.
 	if node.children_count > 0 {
-		recv_fn_id := t.a.children[node.children_start]
+		original_fn_id := t.a.children[node.children_start]
+		original_fn := t.a.nodes[int(original_fn_id)]
+		generic_callee := original_fn.kind == .index
+			&& t.generic_call_type_args_name(original_fn).len > 0
+		// Type arguments wrap a method selector but do not turn it into a runtime
+		// function value. Order its receiver before arguments, then retain the wrapper.
+		recv_fn_id := if generic_callee { t.a.child(&original_fn, 0) } else { original_fn_id }
 		recv_fn := t.a.nodes[int(recv_fn_id)]
 		is_selector_call := recv_fn.kind == .selector && recv_fn.children_count > 0
 		recv_sel_base_id := if is_selector_call {
@@ -23854,7 +23874,7 @@ fn (mut t Transformer) transform_call_expr_inner(id flat.NodeId, node flat.Node)
 			// is spilled by value. Applies to method calls and plain function calls alike. Stable
 			// operands are left for the re-dispatch to transform once.
 			mut changed := false
-			mut new_fn_id := recv_fn_id
+			mut new_fn_id := original_fn_id
 			if is_method {
 				new_recv := if t.is_value_match_or_if_operand(recv_id) {
 					r := t.materialize_value_branch_operand(recv_id)
@@ -23902,6 +23922,17 @@ fn (mut t Transformer) transform_call_expr_inner(id flat.NodeId, node flat.Node)
 					children_count: recv_fn.children_count
 					pos:            recv_fn.pos
 				})
+				if generic_callee {
+					generic_start := t.a.children.len
+					t.a.children << new_fn_id
+					for i in 1 .. original_fn.children_count {
+						t.a.children << t.a.child(&original_fn, i)
+					}
+					new_fn_id = t.a.add_node(flat.Node{
+						...original_fn
+						children_start: generic_start
+					})
+				}
 			} else if callee_is_value_branch {
 				r := t.materialize_value_branch_operand(recv_fn_id)
 				if r != recv_fn_id {

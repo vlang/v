@@ -1864,7 +1864,8 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name_id u32, cn st
 				if !g.interface_dispatch_signature_compatible(decl, ret_type, sig_params) {
 					continue
 				}
-				recv_is_ptr := concrete_params.len > 0 && concrete_params[0] is types.Pointer
+				recv_is_ptr := concrete_params.len > 0
+					&& (concrete_params[0] is types.Pointer || indirect_value_parameter(concrete_params[0]))
 				recv := if recv_is_ptr {
 					'(${g.cname(concrete)}*)i->_object'
 				} else {
@@ -1928,7 +1929,8 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name_id u32, cn st
 			if !g.interface_dispatch_signature_compatible(method_key, ret_type, sig_params) {
 				continue
 			}
-			recv_is_ptr := concrete_params.len > 0 && concrete_params[0] is types.Pointer
+			recv_is_ptr := concrete_params.len > 0
+				&& (concrete_params[0] is types.Pointer || indirect_value_parameter(concrete_params[0]))
 			recv := g.interface_dispatch_receiver_expr(concrete_id, concrete_params, recv_is_ptr)
 			g.write('\t\tcase ${id}: ')
 			dispatched_ids << id

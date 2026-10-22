@@ -13214,6 +13214,12 @@ fn (mut g FlatGen) gen_cast_value_operand(id flat.NodeId, target_type types.Type
 	if node.kind == .ident && clean_target !is types.Pointer
 		&& g.current_param_is_mut(node.value) {
 		if param_type := g.current_param_type(node.value) {
+			// Struct-to-integer casts retain the address of a mutable parameter.
+			if param_type is types.Pointer && clean_target.is_integer()
+				&& cgen_unalias_type(param_type.base_type) is types.Struct {
+				g.gen_expr(id)
+				return
+			}
 			if param_type is types.Pointer
 				&& g.gen_current_mut_param_value_read(id, param_type.base_type) {
 				return

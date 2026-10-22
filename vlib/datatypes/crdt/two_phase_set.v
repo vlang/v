@@ -58,4 +58,3 @@ pub fn (mut t TwoPhaseSet[T]) merge(other &TwoPhaseSet[T]) {
 	t.add_set.merge(&other.add_set)
 	t.rm_set.merge(&other.rm_set)
 }
-

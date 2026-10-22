@@ -682,7 +682,7 @@ pub fn (value SumType) name() string {
 }
 
 // source_type_id returns an interned spelling, reusing nominal type identities directly.
-pub fn (t Type) source_type_id() u32 {
+pub fn (t &Type) source_type_id() u32 {
 	return match t {
 		Struct, Alias, Enum, Interface, SumType { t.name_id }
 		Void { flat.source_type_void }

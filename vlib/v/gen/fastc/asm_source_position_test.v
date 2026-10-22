@@ -2,6 +2,8 @@ module fastc
 
 import v.pref
 
+// Use `<-` for invalid expressions: selfhost mode supports the power operator.
+
 fn test_fastc_asm_operand_source_positions() {
 	for arch in ['amd64', 'arm64'] {
 		for selfhost in [false, true] {
@@ -14,7 +16,7 @@ fn test_fastc_asm_operand_source_positions() {
 					for expression in [
 						'if ((if flag { true } else { false })) { 1 } else { 0 }',
 						'if ((/* inside condition */ if flag { true } else { false })) { 1 } else { 0 }',
-						'1 /* before unsupported token */ ** 2',
+						'1 /* before unsupported token */ <- 2',
 						'if flag { 1 } else { 0 }',
 					] {
 						marker := if translated { '@[translated]\n' } else { '' }
@@ -48,7 +50,7 @@ fn test_fastc_asm_operand_positions_through_source_rewrites() {
 			for translated in [false, true] {
 				for expression in [
 					'if ((if flag { true } else { false })) { 1 } else { 0 }',
-					'1 /* removed */ ** 2',
+					'1 /* removed */ <- 2',
 				] {
 					marker := if translated { '@[translated]\n' } else { '' }
 					assembly := 'flag := true; asm ${arch} { /* removed */\n; ; r ( ${expression} )\n}'
@@ -103,12 +105,12 @@ fn fastc_test_asm_source_position(source string, expression string, translated b
 		assert message == '', '${source}: ${message}'
 		return
 	}
-	needle := if is_condition { 'if flag { true }' } else { '**' }
+	needle := if is_condition { 'if flag { true }' } else { '<-' }
 	offset := source.index(needle) or { panic('missing unsupported expression') }
 	if is_condition {
 		assert message.contains('assign it to a variable first'), '${source}: ${message}'
 	} else {
-		assert message.contains('expression token `**`'), '${source}: ${message}'
+		assert message.contains('expression token `<-`'), '${source}: ${message}'
 	}
 	assert message.contains('at byte ${offset} in asm_position.v'), '${source}: ${message}'
 }

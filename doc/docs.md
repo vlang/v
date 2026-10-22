@@ -1808,6 +1808,9 @@ V also supports arrays with fixed size. Unlike ordinary arrays, their
 length is constant. You cannot append elements to them, nor shrink them.
 You can only modify their elements in place.
 
+Iteration preserves the complete element type, including pointers to generic structs.
+For example, iterating over `[2]&Box[string]` yields `&Box[string]` values.
+
 However, access to the elements of fixed size arrays is more efficient,
 they need less memory than ordinary arrays, and unlike ordinary arrays,
 their data is on the stack, so you may want to use them as buffers if you
@@ -3146,7 +3149,7 @@ p = Point{10, 20}
 assert p.x == 10
 ```
 
-Struct fields can re-use reserved keywords:
+Struct fields can re-use reserved keywords, including C keywords such as `bool`:
 
 ```v
 struct Employee {
@@ -3801,6 +3804,9 @@ it clear that the function being called will modify the value.
 
 A comptime `app.$method(...)` call also requires `mut` when passing a pointer variable
 to an explicit `mut param &T` parameter.
+
+A mutable struct parameter refers to the caller's struct. Casting it to an integer
+produces that struct's address.
 
 It is preferable to return values instead of modifying arguments,
 e.g. `user = register(user)` (or `user.register()`) instead of `register(mut user)`.
@@ -5132,6 +5138,14 @@ Sum payloads must have finite layout. References, dynamic arrays, and maps break
 storage cycles; ordinary fields, options, and fixed arrays do not. A function variant stores
 a function reference, so its parameter and return types may refer to the containing sum type.
 This validity rule also applies to generic sum declarations used only as constraints.
+
+Migration from boxed sums: a recursive field previously written as `child Tree` must now use
+indirection, such as `child &Tree` or `children []Tree`. This also applies to indirect and mutual
+cycles through other structs or sum types. An option `?Tree` still stores its `Tree` payload by
+value; it is not a nullable pointer and does not break a layout cycle. Use `?&Tree` for an
+optional reference. A `?Tree` field outside the recursive variant graph remains valid.
+Recursive-layout errors identify the field path and inline type cycle, and suggest a reference
+or dynamic array to break it.
 
 With [ownership checking](ownership.md), a sum that owns its payload can move rather than copy.
 Ownership and `-autofree` builds also track pointer-variant borrowing and cleanup, and reject
@@ -11211,6 +11225,9 @@ Pointers to `char`, `i8`, and `u8` of the same pointer depth are interchangeable
 assignments, returns, function arguments, and other typed values. Ordinary V files retain their
 pointer type checks; calls to C functions also accept these character pointers.
 
+In translated files, fixed arrays decay to pointers to their elements, including when compared
+with pointers. Nested array literals retain their full array type in these comparisons.
+
 Files marked `@[translated]` retain C scalar conversions between numbers, enums, and booleans.
 These scalars can be mixed in arithmetic expressions and compound assignments. Integral scalars
 can be used in bitwise expressions. Scalar values and pointers, including function pointers,
@@ -11277,6 +11294,7 @@ on top of C libraries.
 
 C2V currently uses Clang's AST to generate V, so to translate a C file to V
 you need to have Clang installed on your machine.
+On first use, `v translate` downloads and compiles C2V automatically.
 
 Let's create a simple program `test.c` first:
 

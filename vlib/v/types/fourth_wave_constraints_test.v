@@ -199,3 +199,20 @@ pub fn accept[T Expanding[int]](value T) T { return value }
 	assert growing.exit_code != 0, growing.output
 	assert growing.output.contains('constraint `Expanding[int]` cannot expand a recursive sum type'), growing.output
 }
+
+fn test_recursive_sum_diagnostic_locates_imported_generic_field() {
+	result := fourth_constraint_program_with_module('recursive_field', 'module main
+import limits
+type Node = limits.Box[Node] | int
+fn main() {}
+', '', 'module limits
+pub struct Box[T] {
+pub:
+	value T
+}
+')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('limits.v:4:2: error:'), result.output
+	assert result.output.contains('field `limits.Box[Node].value` closes the cycle'), result.output
+	assert result.output.contains('use `&Node` or `[]Node`'), result.output
+}

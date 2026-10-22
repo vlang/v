@@ -330,9 +330,13 @@ fn (mut s Json5Scanner) scan_string(start Json5Pos, quote_code int) !Json5Token 
 	s.advance() // opening quote
 	mut out := []u8{cap: 32}
 	unsafe { out.flags |= .noslices }
-	mut utf8_buffer := [5]u8{}
+	// The returned UTF-8 view borrows this explicitly owned scratch buffer.
+	mut utf8_buffer := unsafe { malloc_noscan(5) }
 	defer {
-		unsafe { out.free() }
+		unsafe {
+			out.free()
+			free(utf8_buffer)
+		}
 	}
 	for {
 		if s.pos >= s.text.len {
@@ -385,8 +389,8 @@ fn (mut s Json5Scanner) scan_string(start Json5Pos, quote_code int) !Json5Token 
 			}
 			character = s.advance()
 		}
-		// This view borrows only the local UTF-8 buffer and is copied immediately.
-		encoded := unsafe { utf32_to_str_no_malloc(u32(character), mut &utf8_buffer[0]) }
+		// This view borrows only the scratch UTF-8 buffer and is copied immediately.
+		encoded := unsafe { utf32_to_str_no_malloc(u32(character), mut utf8_buffer) }
 		for byte in encoded {
 			out << byte
 		}
@@ -474,10 +478,14 @@ fn (mut s Json5Scanner) scan_unicode_escape(start Json5Pos) !rune {
 fn (mut s Json5Scanner) scan_ident(start Json5Pos) !Json5Token {
 	mut out := []u8{}
 	unsafe { out.flags |= .noslices }
-	mut utf8_buffer := [5]u8{}
+	// The returned UTF-8 view borrows this explicitly owned scratch buffer.
+	mut utf8_buffer := unsafe { malloc_noscan(5) }
 	mut has_escape := false
 	defer {
-		unsafe { out.free() }
+		unsafe {
+			out.free()
+			free(utf8_buffer)
+		}
 	}
 	for s.pos < s.text.len {
 		code := int(s.text[s.pos])
@@ -506,8 +514,8 @@ fn (mut s Json5Scanner) scan_ident(start Json5Pos) !Json5Token {
 				return json5_syntax_error('invalid character in identifier escape', escape.line,
 					escape.col)
 			}
-			// This view borrows only the local UTF-8 buffer and is copied immediately.
-			encoded := unsafe { utf32_to_str_no_malloc(u32(character), mut &utf8_buffer[0]) }
+			// This view borrows only the scratch UTF-8 buffer and is copied immediately.
+			encoded := unsafe { utf32_to_str_no_malloc(u32(character), mut utf8_buffer) }
 			for byte in encoded {
 				out << byte
 			}

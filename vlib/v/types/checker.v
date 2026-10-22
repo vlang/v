@@ -9661,6 +9661,11 @@ fn (tc &TypeChecker) expected_context_for_expr(id flat.NodeId) ?Type {
 			if tc.valid_node_id(other_id) {
 				mut other_type := tc.resolve_type(other_id)
 				if other_type is Pointer {
+					// Translated arrays decay to pointers to their elements. The
+					// pointee is not the type of the whole array literal.
+					if tc.node_is_in_translated_file(id) {
+						return tc.expr_type(id)
+					}
 					other_type = other_type.base_type
 				}
 				clean_other := unalias_type(other_type)
@@ -10583,8 +10588,8 @@ pub fn (tc &TypeChecker) expr_type(id flat.NodeId) ?Type {
 			return *tc.parse_type(node.typ)
 		}
 	}
-	if t := tc.cached_expr_type(id) {
-		return t
+	if t := tc.cached_expr_type_ref(id) {
+		return *t
 	}
 	return none
 }
@@ -10610,9 +10615,9 @@ fn (tc &TypeChecker) resolved_call_type(id flat.NodeId) ?Type {
 			}
 		}
 	}
-	if t := tc.cached_expr_type(id) {
+	if t := tc.cached_expr_type_ref(id) {
 		if t !is Void {
-			return t
+			return *t
 		}
 	}
 	if name := tc.cached_resolved_call(id) {
@@ -10660,27 +10665,38 @@ pub fn (tc &TypeChecker) invalidate_checked_expr_type(idx int) {
 	}
 }
 
-@[direct_array_access]
+@[inline]
 fn (tc &TypeChecker) cached_expr_type(id flat.NodeId) ?Type {
+	if typ := tc.cached_expr_type_ref(id) {
+		return *typ
+	}
+	return none
+}
+
+// Dense slots point at immutable canonical types. Sparse map values need stable
+// copies because later insertions can move the map backing storage.
+@[direct_array_access]
+fn (tc &TypeChecker) cached_expr_type_ref(id flat.NodeId) ?&Type {
 	idx := int(id)
 	if !isnil(tc.storage_query_probe) {
-		if typ := tc.sparse_expr_type_values[idx] { return typ }
+		if typ := tc.sparse_expr_type_values[idx] { return new_type_reference(typ) }
 		if !isnil(tc.storage_query_probe.read_base) {
-			return tc.storage_query_probe.read_base.cached_expr_type(id)
+			return tc.storage_query_probe.read_base.cached_expr_type_ref(id)
 		}
 		return none
 	}
 	if tc.parallel_check_sparse {
 		if tc.in_check_range(idx) {
 			if idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
-				return *tc.expr_type_values[idx]
+				return tc.expr_type_values[idx]
 			}
 			return none
 		}
-		return tc.sparse_expr_type_values[idx] or { none }
+		if typ := tc.sparse_expr_type_values[idx] { return new_type_reference(typ) }
+		return none
 	}
 	if idx >= 0 && idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
-		return *tc.expr_type_values[idx]
+		return tc.expr_type_values[idx]
 	}
 	return none
 }
@@ -16146,13 +16162,43 @@ fn (mut tc TypeChecker) check_sum_type_decl(node_id flat.NodeId, node flat.Node)
 			mut states := {
 				flat.source_type_id(layout_name): ValueLayoutState.active
 			}
-			if tc.value_type_has_cycle(variant_type, mut states) {
-				pos := if variant_name.starts_with('fn(') || variant_name.starts_with('fn (') {
+			mut path := ValueLayoutPath{ types: [flat.source_type_id(layout_name)] }
+			if target := tc.value_type_cycle(variant_type, mut states, mut path) {
+				mut diagnostic_id := variant_id
+				mut pos := if variant_name.starts_with('fn(') || variant_name.starts_with('fn (') {
 					tc.sum_type_variant_source_pos(node, variant_name)
 				} else {
 					tc.type_diagnostic_pos(variant_id, variant_name)
 				}
-				tc.record_error_at(.assignment_mismatch, 'sum type `${node.value}` cannot be defined recursively', variant_id, pos)
+				mut message := 'sum type `${node.value}` cannot be defined recursively'
+				if path.fields.len > 0 {
+					first := path.fields[0]
+					last := path.fields.last()
+					fields := path.fields.map(it.name).join('.')
+					relation := if path.types.len > 1 && path.types[path.types.len - 2] == last.owner {
+						'closes'
+					} else {
+						'leads to'
+					}
+					message += ': field `${flat.source_type_name(first.owner)}.${fields}` ${relation} the cycle'
+					if field_id := tc.value_layout_field_decl(last) {
+						diagnostic_id = field_id
+						pos = tc.node_value_diagnostic_pos(field_id)
+					}
+				}
+				cycle := path.types.map(flat.source_type_name(it)).join(' -> ')
+				name := flat.source_type_name(target)
+				message += '; inline cycle: `${cycle}`; use `&${name}` or `[]${name}` to break the cycle'
+				// Filter by the declaration while locating the diagnostic at the field.
+				if tc.should_diagnose(variant_id) {
+					base := tc.make_type_error_at(.assignment_mismatch, message, diagnostic_id, pos)
+					file := if source := tc.a.source_files[pos.id] {
+						source.name
+					} else {
+						base.file
+					}
+					tc.errors << TypeError{ ...base, file: file }
+				}
 			}
 		}
 	}
@@ -16206,31 +16252,74 @@ enum ValueLayoutState {
 	finite
 }
 
+struct ValueLayoutField {
+	owner u32
+	name  string
+}
+
+struct ValueLayoutPath {
+mut:
+	types  []u32
+	fields []ValueLayoutField
+}
+
 fn (tc &TypeChecker) value_type_has_cycle(typ &Type, mut states map[u32]ValueLayoutState) bool {
+	mut path := ValueLayoutPath{}
+	if _ := tc.value_type_cycle(typ, mut states, mut path) { return true }
+	return false
+}
+
+fn (tc &TypeChecker) value_type_cycle(typ &Type, mut states map[u32]ValueLayoutState, mut path ValueLayoutPath) ?u32 {
 	name := match typ {
-		Alias, OptionType, ResultType { return tc.value_type_has_cycle(typ.base_type, mut states) }
-		ArrayFixed { return tc.value_type_has_cycle(typ.elem_type, mut states) }
+		Alias, OptionType, ResultType {
+			return tc.value_type_cycle(typ.base_type, mut states, mut path)
+		}
+		ArrayFixed { return tc.value_type_cycle(typ.elem_type, mut states, mut path) }
 		Struct, SumType { tc.recursive_struct_lookup_name(typ.source_type_id()) }
-		else { return false }
+		else { return none }
 	}
-	if state := states[name] { return state == .active }
+	if state := states[name] {
+		if state == .active {
+			path.types << name
+			return name
+		}
+		return none
+	}
 	base := tc.sum_base_name(name)
 	for ancestor, state in states {
 		if state != .active || tc.sum_base_name(ancestor) != base { continue }
-		if !tc.type_has_nested_instance(ancestor, name) { return true }
+		if !tc.type_has_nested_instance(ancestor, name) {
+			path.types << name
+			return name
+		}
 	}
 	states[name] = .active
+	path.types << name
 	for raw in tc.sum_types.type_ids(flat.source_type_name(base)) or { []u32{} } {
 		variant := tc.concrete_sum_variant_name(name, raw)
-		if tc.value_type_has_cycle(tc.parse_canonical_type_cached(variant), mut states) {
-			return true
+		if target := tc.value_type_cycle(tc.parse_canonical_type_cached(variant), mut states, mut path) {
+			return target
 		}
 	}
 	for field in tc.struct_fields_for_type(name) {
-		if tc.value_type_has_cycle(field.typ, mut states) { return true }
+		path.fields << ValueLayoutField{ owner: name, name: field.name }
+		if target := tc.value_type_cycle(field.typ, mut states, mut path) { return target }
+		path.fields.pop()
 	}
+	path.types.pop()
 	states[name] = .finite
-	return false
+	return none
+}
+
+fn (tc &TypeChecker) value_layout_field_decl(field ValueLayoutField) ?flat.NodeId {
+	decl_id := tc.source_struct_decl_id_for_name(field.owner)?
+	decl := tc.a.node(decl_id)
+	for i in 0 .. decl.children_count {
+		child_id := tc.a.child(decl, i)
+		child := tc.a.node(child_id)
+		if child.kind == .field_decl && child.value == field.name { return child_id }
+	}
+	return none
 }
 
 fn (mut tc TypeChecker) record_invalid_any_decl_type(node_id flat.NodeId) {

@@ -67,4 +67,3 @@ pub fn (mut g GCounter) merge(other &GCounter) {
 		}
 	}
 }
-
