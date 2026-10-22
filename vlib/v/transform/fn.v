@@ -8321,8 +8321,10 @@ fn (mut t Transformer) struct_field_str_value(expr flat.NodeId, raw_field_type_i
 		// declaring-module-resolved type.
 		return t.wrap_string_conversion(expr, field_type_id)
 	}
-	if custom := t.alias_custom_str_call(expr, alias_name_source_id_6) {
-		return custom
+	if declaring_alias_id, _ := t.alias_custom_str_method_in_chain(alias_name_source_id_6) {
+		if custom := t.alias_custom_str_call(expr, declaring_alias_id) {
+			return custom
+		}
 	}
 	resolved_base_source_id := t.alias_str_resolved_base_type(base_type_source_id_4)
 

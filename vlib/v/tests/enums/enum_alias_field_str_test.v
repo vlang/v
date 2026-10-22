@@ -57,8 +57,18 @@ fn test_unwrapped_enum_alias_uses_intermediate_custom_str() {
 
 type CustomMethodAliasDeep = CustomMethodAliasChain
 
+struct CustomMethodAliasHolder {
+	value CustomMethodAliasDeep
+}
+
 fn test_deep_enum_alias_interpolation_uses_intermediate_custom_str() {
 	value := CustomMethodAliasDeep(CustomAliasFieldKind.one)
 	assert value.str() == 'custom alias'
 	assert '${value}' == 'custom alias'
+}
+
+fn test_deep_enum_alias_struct_str_uses_intermediate_custom_str() {
+	holder := CustomMethodAliasHolder{CustomMethodAliasDeep(CustomAliasFieldKind.one)}
+	assert holder.str() == 'CustomMethodAliasHolder{\n    value: custom alias\n}'
+	assert '${holder}' == 'CustomMethodAliasHolder{\n    value: custom alias\n}'
 }
