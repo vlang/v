@@ -2104,6 +2104,8 @@ which module is being called. This is especially useful in large code bases.
 A function declared in the current module, or stored in a local variable, keeps its own
 behavior even when it has the same name as a standard library function. For example,
 `join_path('a', 'b')` calls that binding; `os.join_path('a', 'b')` calls the `os` function.
+A local function binding also takes precedence inside the library module that defines
+the same function name.
 
 Cyclic module imports are not allowed, like in Go.
 

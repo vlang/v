@@ -2569,6 +2569,12 @@ fn (mut t Transformer) const_fn_call_target(callee_id flat.NodeId) ?flat.NodeId 
 
 // try_lower_join_path_call supports try lower join path call handling for Transformer.
 fn (mut t Transformer) try_lower_join_path_call(id flat.NodeId, node flat.Node) ?flat.NodeId {
+	if node.children_count > 0 {
+		callee := t.a.child_node(&node, 0)
+		if callee.kind == .ident && t.raw_var_type(callee.value) != 0 {
+			return none
+		}
+	}
 	call_name := t.call_name_for_node(id, node)
 	if call_name != 'os.join_path' && !(call_name == 'join_path' && t.cur_module == 'os') {
 		return none
