@@ -60,12 +60,24 @@ fn (mut doc OpenApiDocument) schema_value[T](value T) OpenApiSchema {
 	} $else $if T is $pointer {
 		return doc.schema_pointer(value)
 	} $else $if T is $enum {
+		mut numeric := false
+		$for attr in T.attributes {
+			if attr.name == 'json_as_number' { numeric = true }
+		}
 		mut values := []json2.Any{}
 		$for item in T.values {
-			values << item.name
+			if numeric {
+				values << i64(item.value)
+			} else {
+				mut name := item.name
+				for attr in item.attrs {
+					if attr.starts_with('json:') { name = openapi_attr_value(attr) }
+				}
+				values << name
+			}
 		}
 		return {
-			'type': json2.Any('string')
+			'type': json2.Any(if numeric { 'integer' } else { 'string' })
 			'enum': json2.Any(values)
 		}
 	} $else $if T is $struct {
@@ -76,31 +88,7 @@ fn (mut doc OpenApiDocument) schema_value[T](value T) OpenApiSchema {
 			doc.schemas[name] = OpenApiSchema{}
 			mut properties := map[string]json2.Any{}
 			mut required := []json2.Any{}
-			$for field in T.fields {
-				key := openapi_field_name(field.name, field.attrs)
-				if key != '' {
-					mut schema := doc.schema_value(value.$(field.name))
-					if '$ref' in schema && field.attrs.any(it.starts_with('description:') || it.starts_with('example:')) {
-						schema = {
-							'allOf': json2.Any([json2.Any(schema)])
-						}
-					}
-					for attr in field.attrs {
-						if attr.starts_with('description:') {
-							schema['description'] = openapi_attr_value(attr)
-						} else if attr.starts_with('example:') {
-							example := openapi_example_value(attr)
-							schema['example'] = json2.decode[json2.Any](example) or { json2.Any(example) }
-						}
-					}
-					properties[key] = schema
-					$if field.typ is $option {
-						// Missing optional fields are accepted by typed binding.
-					} $else {
-						required << key
-					}
-				}
-			}
+			doc.schema_struct_fields(value, mut properties, mut required, []string{}, []string{}, '')
 			mut schema := map[string]json2.Any{
 				'type':       json2.Any('object')
 				'properties': json2.Any(properties)
@@ -115,12 +103,40 @@ fn (mut doc OpenApiDocument) schema_value[T](value T) OpenApiSchema {
 		}
 	} $else $if T is $sumtype {
 		mut choices := []json2.Any{}
+		mut tagged := true
+		mut mapping := map[string]json2.Any{}
 		$for variant in T.variants {
-			choices << doc.schema[variant.typ]()
+			variant_value := $zero(variant.typ)
+			mut choice := doc.schema_value(variant_value)
+			$if variant.typ is $struct {
+				ref := (choice['$ref'] or { json2.Any('') }).str()
+				choice = doc.resolve_schema(choice).clone()
+				mut properties := (choice['properties'] or { json2.Any(map[string]json2.Any{}) }).as_map().clone()
+				tag := typeof($zero(variant.typ.unaliased_typ)).name.all_after_last('.')
+				if ref != '' { mapping[tag] = ref }
+				properties['_type'] = {
+					'type': json2.Any('string')
+					'enum': json2.Any([json2.Any(tag)])
+				}
+				mut required := (choice['required'] or { json2.Any([]json2.Any{}) }).as_array().clone()
+				if !required.any(it.str() == '_type') { required << '_type' }
+				choice['properties'] = properties
+				choice['required'] = required
+			} $else {
+				tagged = false
+			}
+			choices << choice
 		}
-		return {
+		mut schema := OpenApiSchema({
 			'oneOf': json2.Any(choices)
+		})
+		if tagged {
+			schema['discriminator'] = {
+				'propertyName': json2.Any('_type')
+				'mapping':      json2.Any(mapping)
+			}
 		}
+		return schema
 	} $else {
 		return {
 			'type': json2.Any('object')
@@ -128,16 +144,63 @@ fn (mut doc OpenApiDocument) schema_value[T](value T) OpenApiSchema {
 	}
 }
 
+// Match json2's embedded-field traversal, reserving direct fields before flattening embeds.
+fn (mut doc OpenApiDocument) schema_struct_fields[T](value T, mut properties map[string]json2.Any, mut required []json2.Any, old_used_keys []string, reserved_keys []string, prefix string) {
+	mut used_keys := old_used_keys.clone()
+	$for field in T.fields {
+		$if field.is_embed {
+			mut child_reserved := reserved_keys.clone()
+			$for direct in T.fields {
+				$if !direct.is_embed {
+					key := openapi_field_name(direct.name, direct.attrs)
+					if key != '' { child_reserved << key }
+				}
+			}
+			doc.schema_struct_fields(value.$(field.name), mut properties, mut required, used_keys, child_reserved, prefix + field.name + '.')
+		} $else {
+			name := openapi_field_name(field.name, field.attrs)
+			if name != '' {
+				key := if name in used_keys || name in reserved_keys { prefix + name } else { name }
+				if key == name { used_keys << name }
+				properties[key] = doc.schema_field(value.$(field.name), field.attrs)
+				$if field.typ is $option {
+					if 'required' in field.attrs { required << key }
+				} $else {
+					required << key
+				}
+			}
+		}
+	}
+}
+
+fn (mut doc OpenApiDocument) schema_field[T](value T, attrs []string) OpenApiSchema {
+	mut schema := doc.schema_value(value)
+	if '$ref' in schema && attrs.any(it.starts_with('description:') || it.starts_with('example:')) {
+		schema = {
+			'allOf': json2.Any([json2.Any(schema)])
+		}
+	}
+	for attr in attrs {
+		if attr.starts_with('description:') {
+			schema['description'] = openapi_attr_value(attr)
+		} else if attr.starts_with('example:') {
+			example := openapi_example_value(attr)
+			schema['example'] = json2.decode[json2.Any](example) or { json2.Any(example) }
+		}
+	}
+	return schema
+}
+
 fn (mut doc OpenApiDocument) schema_optional[T](_value ?T) OpenApiSchema {
 	mut schema := doc.schema[T]()
 	if doc.config.nullable_options {
-		if '$ref' in schema {
+		if '$ref' in schema || 'type' !in schema {
 			schema = {
-				'anyOf': json2.Any([json2.Any(schema), json2.Any({
+				'anyOf': json2.Any([json2.Any({
 					'type':     json2.Any('object')
 					'nullable': json2.Any(true)
 					'enum':     json2.Any([json2.Any(json2.null)])
-				})])
+				}), json2.Any(schema)])
 			}
 		}
 		schema['nullable'] = true
@@ -164,6 +227,7 @@ fn (mut doc OpenApiDocument) schema_pointer[T](_value &T) OpenApiSchema {
 }
 
 fn openapi_field_name(name string, attrs []string) string {
+	if 'skip' in attrs { return '' }
 	for attr in attrs {
 		if attr.starts_with('json:') {
 			value := openapi_attr_value(attr)

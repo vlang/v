@@ -203,7 +203,7 @@ fn test_typed_openapi_schema_requests_responses_and_security() {
 	assert 'nullable' !in api_at(properties, 'optional').as_map()
 	assert 'optional' !in api_at(json2.Any(dto), 'required').as_array().map(it.str())
 	query := api_at(raw, 'paths', '/v1/nested/items/{id}', 'get', 'parameters').as_array()
-	assert query.any(api_at(it, 'name').str() == 'display_name' && api_at(it, 'in').str() == 'query')
+	assert query.any(api_at(it, 'name').str() == 'name' && api_at(it, 'in').str() == 'query')
 	assert api_at(raw, 'components', 'schemas', typeof(TypedApiNode{}).name, 'properties', 'children', 'items', '$ref').str().ends_with('TypedApiNode')
 	assert doc.json(false)! == doc.json(false)!
 	assert json2.decode[json2.Any](doc.json(true)!)! == raw
@@ -380,5 +380,155 @@ fn test_typed_openapi_duplicate_ids_and_invalid_components() {
 	}
 	if _ := new_openapi(openapi_version: '3.0.invalid') {
 		assert false
+	}
+}
+
+struct ImplicitIndexApi {
+	Controller
+}
+
+fn (app &ImplicitIndexApi) index(mut ctx TypedApiContext) Result {
+	return ctx.text('implicit index')
+}
+
+fn test_typed_openapi_implicit_index_aliases_match_dispatch() {
+	mut app := &ImplicitIndexApi{}
+	mut child := &ImplicitIndexApi{}
+	app.register_controller[ImplicitIndexApi, TypedApiContext]('/users', mut child)!
+	mut doc := new_openapi(title: 'Index aliases')!
+	doc.add_app[ImplicitIndexApi, TypedApiContext](app)!
+	paths := api_at(json2.decode[json2.Any](doc.json(false)!)!, 'paths').as_map()
+	for path in ['/', '/index', '/users', '/users/index'] {
+		response := render_request[ImplicitIndexApi, TypedApiContext](mut app, http.Request{ url: path })!
+		assert response.res.body == 'implicit index'
+		assert path in paths
+	}
+}
+
+struct WireEmbedded {
+	id    int
+	label string
+}
+
+struct WireDto {
+	WireEmbedded
+	id     string
+	token  ?string @[required]
+	hidden string  @[skip]
+}
+
+enum WireState {
+	ready  @[json: 'READY!']
+	done
+}
+
+@[json_as_number]
+enum WireCode {
+	ok     = 4
+	failed = 9
+}
+
+struct WireLeft {
+	name string
+}
+
+struct WireRight {
+	name string
+}
+
+type WireChoice = WireLeft | WireRight
+
+struct WireOptional {
+	choice ?WireChoice
+}
+
+struct WireQuery {
+	name    string @[json: 'display_name'; required]
+	limit   int
+	enabled bool
+}
+
+fn test_typed_openapi_embeds_required_and_skipped_match_json2() {
+	mut doc := new_openapi(title: 'Wire fields', nullable_options: true)!
+	schema := json2.Any(doc.resolve_schema(doc.schema[WireDto]()))
+	wire := json2.decode[json2.Any](json2.encode(WireDto{ token: 'present' }))!.as_map()
+	mut keys := api_at(schema, 'properties').as_map().keys()
+	keys.sort()
+	mut wire_keys := wire.keys()
+	wire_keys.sort()
+	assert keys == wire_keys
+	assert 'WireEmbedded.id' in wire
+	assert 'hidden' !in keys
+	required := api_at(schema, 'required').as_array().map(it.str())
+	assert 'token' in required
+	assert 'hidden' !in required
+	assert api_at(schema, 'properties', 'token', 'nullable').bool()
+	if _ := json2.decode[WireDto]('{"id":"x","label":"l"}') {
+		assert false, 'required optional field must be present'
+	}
+	assert json2.decode[WireDto]('{"id":"x","label":"l","token":null}')!.token == none
+}
+
+fn test_typed_openapi_enum_values_match_json2() {
+	mut doc := new_openapi(title: 'Enums')!
+	assert doc.schema[WireState]()['enum']!.as_array() == [
+		json2.decode[json2.Any](json2.encode(WireState.ready))!,
+		json2.decode[json2.Any](json2.encode(WireState.done))!,
+	]
+	assert doc.schema[WireCode]()['type']!.str() == 'integer'
+	values := doc.schema[WireCode]()['enum']!.as_array()
+	assert values.map(it.int()) == [4, 9]
+	assert json2.encode(WireCode.ok) == values[0].str()
+	assert json2.encode(WireCode.failed) == values[1].str()
+}
+
+fn test_typed_openapi_query_names_and_required_match_bind() {
+	app := typed_api()!
+	mut doc := new_openapi(title: 'Query')!
+	doc.add_app[TypedApiRoot, TypedApiContext](app)!
+	doc.request[WireQuery]('/v1/nested/items/:id', .get)!
+	raw := json2.decode[json2.Any](doc.json(false)!)!
+	parameters := api_at(raw, 'paths', '/v1/nested/items/{id}', 'get', 'parameters').as_array()
+	mut ctx := Context{}
+	ctx.query = {
+		'name':    'V'
+		'limit':   '7'
+		'enabled': 'true'
+	}
+	bound := ctx.bind[WireQuery]()!
+	assert bound.name == 'V' && bound.limit == 7 && bound.enabled
+	for parameter in parameters {
+		if api_at(parameter, 'in').str() == 'query' {
+			name := api_at(parameter, 'name').str()
+			assert name in ctx.query
+			assert api_at(parameter, 'required').bool() == (name == 'name')
+		}
+	}
+	assert parameters.any(api_at(it, 'name').str() == 'name')
+}
+
+fn test_typed_openapi_sum_variants_and_nullable_contract() {
+	mut doc := new_openapi(title: 'Sums', nullable_options: true)!
+	schema := json2.Any(doc.schema[WireChoice]())
+	assert api_at(schema, 'discriminator', 'propertyName').str() == '_type'
+	choices := api_at(schema, 'oneOf').as_array()
+	assert choices.len == 2
+	mut tags := []string{}
+	for choice in choices {
+		assert '_type' in api_at(choice, 'required').as_array().map(it.str())
+		tags << api_at(choice, 'properties', '_type', 'enum').as_array()[0].str()
+	}
+	assert tags == [
+		json2.decode[map[string]json2.Any](json2.encode(WireChoice(WireLeft{})))!['_type']!.str(),
+		json2.decode[map[string]json2.Any](json2.encode(WireChoice(WireRight{})))!['_type']!.str(),
+	]
+	optional := api_at(json2.Any(doc.resolve_schema(doc.schema[WireOptional]())), 'properties', 'choice')
+	assert api_at(optional, 'anyOf').as_array().len == 2
+	assert api_at(optional, 'anyOf').as_array()[0].as_map()['enum']!.as_array()[0] is json2.Null
+	if output := os.getenv_opt('V_OPENAPI_TEST_OUTPUT') {
+		app := typed_api()!
+		doc.add_app[TypedApiRoot, TypedApiContext](app)!
+		doc.response[WireOptional]('/', .get)!
+		doc.write(output + '.sum', true)!
 	}
 }

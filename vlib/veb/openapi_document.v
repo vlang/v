@@ -195,23 +195,22 @@ pub fn (mut doc OpenApiDocument) request[T](path string, method http.Method, opt
 	schema := doc.schema[T]()
 	query := options.query or { method in [.get, .delete, .head] }
 	if query {
-		object := doc.resolve_schema(schema)
-		if (object['type'] or { json2.Any(json2.null) }).str() != 'object' {
-			return error('OpenAPI query DTO must have an object schema')
-		}
 		mut parameters := (operation['parameters'] or { json2.Any([]json2.Any{}) }).as_array().clone()
-		required := (object['required'] or { json2.Any(json2.null) }).as_array().map(it.str())
-		properties := (object['properties'] or { json2.Any(json2.null) }).as_map()
-		mut names := properties.keys()
-		names.sort()
-		for name in names {
-			parameters << map[string]json2.Any{
-				'name':     json2.Any(name)
-				'in':       json2.Any('query')
-				'required': json2.Any(name in required)
-				'schema':   properties[name] or { json2.Any(json2.null) }
+		$if T is $struct {
+			$for field in T.fields {
+				$if field.typ is string || field.typ is int || field.typ is bool {
+					parameters << map[string]json2.Any{
+						'name':     json2.Any(field.name)
+						'in':       json2.Any('query')
+						'required': json2.Any('required' in field.attrs)
+						'schema':   json2.Any(doc.schema_field($zero(field.typ), field.attrs))
+					}
+				}
 			}
+		} $else {
+			return error('OpenAPI query DTO must be a struct')
 		}
+
 		operation['parameters'] = parameters
 	} else {
 		mut body := map[string]json2.Any{

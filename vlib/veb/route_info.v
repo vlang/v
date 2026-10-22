@@ -30,7 +30,7 @@ fn flatten_route_info[A](app &A, routes map[string]Route) []RouteInfo {
 				else { 'string' }
 			}
 		}
-		result << RouteInfo{
+		info := RouteInfo{
 			name:            name
 			controller:      typeof(app).name.trim_left('&')
 			path:            openapi_join_path('', route.path)
@@ -38,6 +38,10 @@ fn flatten_route_info[A](app &A, routes map[string]Route) []RouteInfo {
 			host:            route.host
 			parameter_names: route.parameter_names
 			parameter_types: kinds
+		}
+		result << info
+		if name == 'index' && route.path == '/index' {
+			result << RouteInfo{ ...info, path: '/' }
 		}
 	}
 	$if A is ControllerInterface {
