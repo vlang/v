@@ -26,9 +26,13 @@ restrictions appear as `x-veb-host`. OpenAPI cannot represent two operations wit
 path and method on different hosts; duplicate operations return an error.
 Index handlers include the dispatcher's implicit `/` alias, including controller mount roots.
 Path parameter types follow dispatcher argument order, even when placeholder names differ.
-Conventional static GET handler arguments become query parameters; integer and boolean arguments
-are required. Methods outside OpenAPI's GET, PUT, POST, DELETE, OPTIONS, HEAD, PATCH and TRACE
-operation keys return an error.
+Conventional static GET handler arguments become query parameters. Static POST arguments become
+object properties in JSON, URL-encoded and multipart request bodies. An explicit `request[T]` call
+can replace the generated body. Parameter schemas retain integer widths for every V integer type.
+`RouteInfo.parameter_schemas` contains these schemas; `parameter_required` follows the dispatcher's
+missing-value checks for `int` and `bool`, independently of the declared schema type.
+Methods outside OpenAPI's GET, PUT, POST, DELETE, OPTIONS, HEAD, PATCH and TRACE operation keys
+return an error.
 
 Use `operation(path, method, ...)` for summaries, multiline descriptions, tags, explicit
 operation IDs, path schemas and additional parameter objects. Generated IDs include the
@@ -49,6 +53,9 @@ names, ignoring JSON renames, and only `required` attributes make parameters req
 `schema[T]()` registers referenced component schemas recursively. Reflection handles
 primitives, integer widths, floats, timestamps, options, arrays, maps, enums, sum types
 and named structs. `json2.Any` permits any JSON value. Recursive structs and sums use references.
+Named structs and sums return a component reference on their first use too, so subsequent
+`custom_schema` overrides also apply to existing fields and responses. Unsigned 64-bit integers
+use a nonnegative integer schema without the signed `int64` format.
 JSON field renames, `json: '-'` and `skip` are honored. Embedded fields are flattened with
 the same collision prefixes as `json2`. Enum schemas honor member JSON names and
 `json_as_number`. Struct sum variants include their required `_type` discriminator.
@@ -56,9 +63,16 @@ Time variants use a tagged object with Unix seconds in `value`. Absent option va
 empty object, matching `json2`. Untagged sum variants and duplicate short type tags use `anyOf`
 because their JSON representations can overlap.
 Nonoptional fields are required unless marked `omitempty` or holding a pointer, which `json2`
-can omit. Optional fields are omitted from `required` unless marked `required`; `omitempty`
-can still omit them. Set `nullable_options` to allow null for options, including referenced structs
-and sums.
+can omit. Optional fields are omitted from `required` unless marked `required` or `json_null`;
+`omitempty` can still omit them. Set `nullable_options` to allow null for options, including
+referenced structs and sums. `json_null` fields allow null independently of that setting.
+Pointer schemas always allow null, including response values and array or map elements.
+
+Types with a custom `json2.JsonEncoder` or `json2.Encodable` implementation use an unconstrained
+named component, since their methods can emit any JSON shape. Supply `custom_schema` for a precise
+contract; reflection does not inspect encoder implementation details. Struct variants inside sums
+use json2's separate sum context: reflected fields plus `_type`, bypassing custom hooks. Their
+inline schemas avoid discriminator mappings to the custom top-level component.
 
 Field attributes `description: '...'` and `example: '...'` supply schema metadata. Examples
 are decoded as JSON, including objects and arrays; invalid JSON becomes a string example.
