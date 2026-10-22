@@ -1061,6 +1061,14 @@ fn (tc &TypeChecker) comptime_static_enum_decl_value_cases_for_node(enum_name u3
 	if flat.source_type_name(enum_name) != node.value && flat.source_type_name(enum_name) != qualified {
 		return none
 	}
+	// Initializers resolve aliases and imports in the enum's declaration context,
+	// even when another module requests this enum's statically known values.
+	file := if source := tc.a.source_files[node.pos.id] { source.name } else { tc.cur_file }
+	view := if tc.cur_file == file && tc.cur_module == cur_mod {
+		tc
+	} else {
+		tc.fork_type_parse_view(file, cur_mod)
+	}
 	is_flag := node.typ_text() == 'flag'
 	mut field_order := []string{}
 	mut field_exprs := map[string]flat.NodeId{}
@@ -1087,7 +1095,7 @@ fn (tc &TypeChecker) comptime_static_enum_decl_value_cases_for_node(enum_name u3
 				from_c = true
 			} else {
 				resolving[key] = true
-				if ev := tc.comptime_static_enum_field_value(expr_id, cur_mod, enum_name, mut field_values, field_exprs, mut resolving) {
+				if ev := view.comptime_static_enum_field_value(expr_id, cur_mod, enum_name, mut field_values, field_exprs, mut resolving) {
 					val = ev
 					from_c = false
 				} else {
