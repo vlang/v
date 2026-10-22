@@ -23,9 +23,10 @@ A fresh comparison against master `5f7d4d09805ebbef64650d7bf275a007c7120e12` use
 same seed, two in-place TCC rebuilds, Apple Clang 21 production builds with `-mcpu=apple-m1`,
 and fresh matching PGO profiles trained on this fixture with default and single-worker modes.
 The compiler build directories differed; measured executable, input, output, and working-directory
-paths matched. The candidate is the complete patch, not an isolated descriptor-layout change.
-These measurements cover the retained `compact-v76` source snapshot. Subsequent FastC
-pointer-embed correctness fixes have regression coverage but are not included in this measurement.
+paths matched. The measured candidate combines compact types and hot-path changes in the retained
+`compact-v76` source snapshot. Subsequent FastC correctness fixes and master integration, including
+atomic cache portability changes, are outside this measurement. The final reviewed revision has
+not been benchmarked.
 
 One warmup per role preceded ten alternating measured pairs with `VJOBS=1`. All 22 runs
 succeeded, each with one positive retired-instruction counter and byte-identical generated C.
