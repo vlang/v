@@ -14,6 +14,20 @@ fn test_generic_channel_try_methods_validate_specialized_arguments() {
 	source := os.join_path(directory, 'main.v')
 	for case in [
 		ChannelTryCase{
+			decl:    'type Value = int | string'
+			typ:     'Value'
+			body:    'mut value := 0\nch.try_pop(mut value)'
+			message: 'cannot use `int`'
+		},
+		ChannelTryCase{
+			body:    'shared value := T{}\nch.try_pop(mut value)'
+			message: '`value` is immutable'
+		},
+		ChannelTryCase{
+			body:    'shared value := T{}\nrlock value { ch.try_pop(mut value) }'
+			message: '`value` is immutable'
+		},
+		ChannelTryCase{
 			body:    'mut value := i64(0)\nch.try_pop(mut value)'
 			message: 'cannot use `i64`'
 		},

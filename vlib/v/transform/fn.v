@@ -15979,6 +15979,9 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 	// Channel try methods have a typed builtin signature and are emitted by
 	// cgen. They have no ordinary function declaration to resolve below.
 	if builtin_base_type.starts_with('chan ') && method in ['try_push', 'try_pop'] {
+		if exact_call := t.lower_checker_selected_receiver_method(id, node, base_id, 'chan.${method}') {
+			return exact_call
+		}
 		if t.validating_generic_spec {
 			if node.children_count != 2 {
 				t.record_monomorph_error('argument count mismatch for `${method}`: expected 1, got ${int(node.children_count) - 1}')
@@ -16019,7 +16022,8 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 				if destination.kind == .ident && !isnil(t.tc)
 					&& !t.tc.disable_explicit_mutability {
 					if binding := t.local_binding_flags_before(destination.value, destination_id) {
-						if !binding.is_mut {
+						if !binding.is_mut && !(binding.is_shared
+							&& t.channel_destination_has_write_lock(destination.value, destination_id)) {
 							t.record_monomorph_error('`${destination.value}` is immutable, declare it with `mut` to make it mutable')
 							return t.make_empty()
 						}
@@ -16028,7 +16032,10 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 			}
 			// Pointer arguments already address channel storage. Match that storage
 			// exactly instead of applying ordinary call referencing/dereferencing.
-			storage := if actual_name.starts_with('&') && (method == 'try_pop' || actual != expected) {
+			pushing_voidptr := method == 'try_push' && expected == flat.source_type_voidptr
+				&& actual_name.starts_with('&')
+			storage := if actual_name.starts_with('&') && !pushing_voidptr
+				&& (method == 'try_pop' || actual != expected) {
 				t.normalize_type_alias(flat.source_type_id(actual_name[1..]))
 			} else {
 				actual
@@ -16041,7 +16048,8 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 			expected_base := flat.source_type_id(flat.source_type_name(expected).trim_left('&'))
 			same_numeric_type := !is_numeric_type_name(actual_base)
 				|| !is_numeric_type_name(expected_base) || actual_base == expected_base
-			if !same_pointer_depth || !same_numeric_type
+			if (!same_pointer_depth && !pushing_voidptr) || !same_numeric_type
+				|| (method == 'try_pop' && storage != expected)
 				|| (method == 'try_push' && arg.kind == .float_literal)
 				|| !t.resolved_receiver_arg_compatible(arg_id, storage, expected) {
 				t.record_monomorph_error('cannot use `${flat.source_type_name(actual)}` as argument to `${method}`; expected `${flat.source_type_name(expected)}`')
@@ -17953,6 +17961,29 @@ fn (t &Transformer) call_resolved_to_method(call_id flat.NodeId, method_name str
 	}
 	if resolved := t.tc.resolved_call_name(call_id) {
 		return resolved == method_name
+	}
+	return false
+}
+
+// Shared destinations are writable only inside a lock on that same binding.
+fn (t &Transformer) channel_destination_has_write_lock(name string, before flat.NodeId) bool {
+	mut cursor := int(before)
+	for _ in 0 .. t.a.nodes.len {
+		parent_id := t.source_parent_id(cursor)
+		if parent_id < 0 { break }
+		parent := t.a.nodes[parent_id]
+		if parent.kind in [.fn_decl, .fn_literal, .lambda_expr] { break }
+		if parent.kind == .lock_expr && parent.children_count > 1
+			&& int(t.a.child(&parent, parent.children_count - 1)) == cursor {
+			for i in 0 .. parent.children_count - 1 {
+				target := t.a.child_node(&parent, i)
+				modes := parent.value.all_after('lock_modes:')
+				write_lock := parent.value == 'lock'
+					|| (parent.value.starts_with('lock_modes:') && i < modes.len && modes[i] == `w`)
+				if target.kind == .ident && target.value == name && write_lock { return true }
+			}
+		}
+		cursor = parent_id
 	}
 	return false
 }

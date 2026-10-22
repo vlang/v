@@ -6312,6 +6312,9 @@ The `try_push/pop()` methods will return immediately with one of the results
 the reason why not.
 These methods also work in generic functions with a `chan T`. Their arguments must match the
 channel's element storage type, and `try_pop(mut value)` requires mutable destination storage.
+A sum-type channel requires storage of the full sum type when popping. A shared destination
+is writable inside its `lock` block. Pointer values can be pushed into a `chan voidptr`.
+Methods declared on a channel alias take precedence over these builtins.
 On an unbuffered channel, `try_push()` will return `.not_ready` unless a receiver is ready at
 the same time.
 Usage of these methods and fields in production is not recommended -

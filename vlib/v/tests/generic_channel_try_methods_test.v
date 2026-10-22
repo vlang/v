@@ -77,3 +77,55 @@ fn test_generic_channel_try_alias_and_pointer_storage() {
 	assert pop_into(pointers, mut storage)
 	assert destination == &pointed
 }
+
+type CustomTryChannel = chan int
+
+fn (ch CustomTryChannel) try_push(value int) bool { return value == 7 }
+
+fn (ch CustomTryChannel) try_pop(mut values []int) bool {
+	values << 42
+	return true
+}
+
+fn test_channel_alias_uses_declared_try_methods() {
+	ch := CustomTryChannel(chan int{})
+	assert ch.try_push(7)
+	mut values := []int{}
+	assert ch.try_pop(mut values)
+	assert values == [42]
+}
+
+fn push_void_pointer[T](ch chan T, value &int) {
+	assert ch.try_push(value) == .success
+}
+
+fn pop_shared[T](ch chan T, shared value T) {
+	lock value {
+		assert ch.try_pop(mut value) == .success
+	}
+}
+
+fn test_generic_channel_try_void_pointer_and_shared_storage() {
+	pointers := chan voidptr{cap: 1}
+	pointed := 42
+	push_void_pointer(pointers, &pointed)
+	pointer := <-pointers
+	assert pointer == voidptr(&pointed)
+	ch := chan int{cap: 1}
+	ch <- 23
+	shared value := 0
+	pop_shared(ch, shared value)
+	rlock value {
+		assert value == 23
+	}
+}
+
+type ChannelValue = int | string
+
+fn test_generic_channel_try_full_sum_type_storage() {
+	ch := chan ChannelValue{cap: 1}
+	assert put(ch, ChannelValue('hello'))
+	assert take(ch)? == ChannelValue('hello')
+	assert put(ch, ChannelValue(42))
+	assert take(ch)? == ChannelValue(42)
+}
