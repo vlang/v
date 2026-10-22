@@ -90,9 +90,11 @@ mut:
 }
 
 pub fn shape_score() int {
+	mut w := C.Widget{}
 	mut n := Nested{}
+	w.images[0] = 3
 	n.cells[1][2] = 5
-	return n.cells[1][2]
+	return w.images[0] + n.cells[1][2]
 }
 ', 'module main
 
@@ -109,6 +111,7 @@ fn main() {
 	assert !shape_c.contains('[max_items]'), shape_c
 	assert !shape_c.contains('[rows]'), shape_c
 	assert !shape_c.contains('[cols]'), shape_c
+	assert shape_c.contains('images[8]'), shape_c
 	assert shape_c.contains('typedef i64 Array_fixed_i64_8[8];'), shape_c
 	assert shape_c.contains('typedef i64 Array_fixed_i64_16[16];'), shape_c
 	assert shape_c.contains('typedef Array_fixed_i64_16 Array_fixed_Array_fixed_i64_16_6[6];'), shape_c
