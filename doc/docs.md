@@ -5712,6 +5712,8 @@ A later declaration using a module type with the same name resolves to that modu
 
 Generic calls keep the identity of caller types even when an imported module declares a type
 with the same short name.
+This also applies to iteration over a generic struct's `[]T` field: each loop variable
+keeps the concrete element type, including its module and pointer modifiers.
 When an imported generic constructs a caller's struct, omitted fields use that struct's defaults,
 including shared fields and fixed arrays. This applies to value and heap literals and
 Result returns.
