@@ -54,3 +54,11 @@ fn optional_custom_method_alias() ?CustomMethodAliasChain {
 fn test_unwrapped_enum_alias_uses_intermediate_custom_str() {
 	assert (optional_custom_method_alias() or { panic('missing kind') }).str() == 'custom alias'
 }
+
+type CustomMethodAliasDeep = CustomMethodAliasChain
+
+fn test_deep_enum_alias_interpolation_uses_intermediate_custom_str() {
+	value := CustomMethodAliasDeep(CustomAliasFieldKind.one)
+	assert value.str() == 'custom alias'
+	assert '${value}' == 'custom alias'
+}

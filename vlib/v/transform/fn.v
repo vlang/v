@@ -7685,12 +7685,9 @@ fn (mut t Transformer) alias_str_wrap(expr flat.NodeId, alias_name_id u32, base_
 		return custom
 	}
 	if !is_ref {
-		if parent_alias_source_id, _ := t.lookup_str_alias(base_type_id) {
-			parent_alias_comparison_type_id := parent_alias_source_id
-			if parent_alias_comparison_type_id != alias_name_comparison_type_id_3 {
-				if custom := t.alias_custom_str_call(expr, parent_alias_comparison_type_id) {
-					return custom
-				}
+		if declaring_alias_id, _ := t.alias_custom_str_method_in_chain(alias_name_id) {
+			if custom := t.alias_custom_str_call(expr, declaring_alias_id) {
+				return custom
 			}
 		}
 		if base_type.starts_with('&') {
@@ -7826,6 +7823,10 @@ fn (mut t Transformer) alias_custom_str_method_name(alias_name_id u32) ?string {
 		if known {
 			t.mark_fn_used_name(v_str_fn)
 			t.mark_fn_used_name(str_fn)
+			// Preserve the declared method key so codegen applies its method name mapping.
+			if t.fn_ret_types.contains(v_str_fn) || v_str_fn in t.tc.fn_ret_types {
+				return v_str_fn
+			}
 			return str_fn
 		}
 	}
