@@ -18,6 +18,8 @@ mut:
 }
 struct C.UnusedInner { value int }
 struct C.UnusedOuter { items [1]C.UnusedInner }
+struct C.AliasOnly { value int }
+type AliasOnlyArray = [1]C.AliasOnly
 struct C.UsedInner { value int }
 struct C.UsedOuter { items [1]C.UsedInner }
 struct C.KeptLayout { value int }
@@ -41,6 +43,7 @@ fn main() {
 	assert !generated.contains('struct pollfd {')
 	assert !generated.contains('UnusedInner')
 	assert !generated.contains('UnusedOuter')
+	assert generated.contains('struct AliasOnly {')
 	assert generated.contains('struct UsedInner {')
 	assert generated.contains('struct UsedOuter {')
 	assert generated.contains('struct KeptLayout {')

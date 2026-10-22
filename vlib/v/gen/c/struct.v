@@ -7658,6 +7658,14 @@ fn (mut g FlatGen) referenced_c_structs() map[u32]bool {
 			g.collect_c_struct_type_refs(g.tc.parse_type(flat.source_type_id(node.value)), mut seen)
 		}
 	}
+	// Fixed-array typedefs are collected from aliases even when the alias is unused.
+	// Their element layouts must remain available to those emitted typedefs.
+	for name, target_id in g.tc.type_aliases.ids {
+		if flat.source_type_shape(target_id).has(.bracketed) {
+			g.tc.cur_module = module_from_qualified_name(name)
+			g.collect_c_struct_type_refs(g.tc.parse_type(target_id), mut seen)
+		}
+	}
 	for name, fields in g.tc.structs {
 		if !name.starts_with('C.') {
 			for field in fields {
