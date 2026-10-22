@@ -2749,6 +2749,11 @@ fn enum_foldable_int_power(base i64, exponent i64) i64 {
 }
 
 fn (mut g FlatGen) enum_field_expr_to_string_with_enum(id flat.NodeId, enum_module string, enum_name u32, enum_c_name string, field_names map[string]bool) ?string {
+	mut resolving := map[string]bool{}
+	return g.enum_field_expr_to_string_resolving(id, enum_module, enum_name, enum_c_name, field_names, false, mut resolving)
+}
+
+fn (mut g FlatGen) enum_field_expr_to_string_resolving(id flat.NodeId, enum_module string, enum_name u32, enum_c_name string, field_names map[string]bool, inline_refs bool, mut resolving map[string]bool) ?string {
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
 		return none
 	}
@@ -2756,6 +2761,9 @@ fn (mut g FlatGen) enum_field_expr_to_string_with_enum(id flat.NodeId, enum_modu
 	match node.kind {
 		.ident, .enum_val {
 			if node.value in field_names {
+				if inline_refs {
+					return g.enum_symbolic_member_expr(flat.source_type_name(enum_name), node.value, mut resolving)
+				}
 				return '${enum_c_name}__${g.cname(node.value)}'
 			}
 			return g.expr_to_string(id)
@@ -2763,7 +2771,16 @@ fn (mut g FlatGen) enum_field_expr_to_string_with_enum(id flat.NodeId, enum_modu
 		.selector {
 			if field := g.enum_decl_selector_ref_field(id, enum_module, enum_name) {
 				if field in field_names {
+					if inline_refs {
+						return g.enum_symbolic_member_expr(flat.source_type_name(enum_name), field, mut resolving)
+					}
 					return '${enum_c_name}__${g.cname(field)}'
+				}
+			}
+			if node.children_count > 0 {
+				prefix := g.enum_decl_selector_base_text(g.a.child(&node, 0))
+				if target := g.enum_selector_base_name(flat.source_type_id(prefix)) {
+					return g.enum_symbolic_member_expr(flat.source_type_name(target), node.value, mut resolving)
 				}
 			}
 			return g.expr_to_string(id)
@@ -2775,7 +2792,7 @@ fn (mut g FlatGen) enum_field_expr_to_string_with_enum(id flat.NodeId, enum_modu
 			if node.children_count == 0 {
 				return none
 			}
-			inner := g.enum_field_expr_to_string_with_enum(g.a.child(&node, 0), enum_module, enum_name, enum_c_name, field_names)?
+			inner := g.enum_field_expr_to_string_resolving(g.a.child(&node, 0), enum_module, enum_name, enum_c_name, field_names, inline_refs, mut resolving)?
 			return '(${inner})'
 		}
 		.cast_expr {
@@ -2787,7 +2804,7 @@ fn (mut g FlatGen) enum_field_expr_to_string_with_enum(id flat.NodeId, enum_modu
 			if ct.starts_with('fn_ptr:') {
 				ct = g.resolve_fn_ptr_type(ct)
 			}
-			inner := g.enum_field_expr_to_string_with_enum(g.a.child(&node, 0), enum_module, enum_name, enum_c_name, field_names)?
+			inner := g.enum_field_expr_to_string_resolving(g.a.child(&node, 0), enum_module, enum_name, enum_c_name, field_names, inline_refs, mut resolving)?
 			return '(${ct})(${inner})'
 		}
 		.prefix {
@@ -2798,7 +2815,7 @@ fn (mut g FlatGen) enum_field_expr_to_string_with_enum(id flat.NodeId, enum_modu
 			if op.len == 0 {
 				return none
 			}
-			inner := g.enum_field_expr_to_string_with_enum(g.a.child(&node, 0), enum_module, enum_name, enum_c_name, field_names)?
+			inner := g.enum_field_expr_to_string_resolving(g.a.child(&node, 0), enum_module, enum_name, enum_c_name, field_names, inline_refs, mut resolving)?
 			return '${op}${inner}'
 		}
 		.infix {
@@ -2809,14 +2826,70 @@ fn (mut g FlatGen) enum_field_expr_to_string_with_enum(id flat.NodeId, enum_modu
 			if op.len == 0 {
 				return none
 			}
-			left := g.enum_field_expr_to_string_with_enum(g.a.child(&node, 0), enum_module, enum_name, enum_c_name, field_names)?
-			right := g.enum_field_expr_to_string_with_enum(g.a.child(&node, 1), enum_module, enum_name, enum_c_name, field_names)?
+			left := g.enum_field_expr_to_string_resolving(g.a.child(&node, 0), enum_module, enum_name, enum_c_name, field_names, inline_refs, mut resolving)?
+			right := g.enum_field_expr_to_string_resolving(g.a.child(&node, 1), enum_module, enum_name, enum_c_name, field_names, inline_refs, mut resolving)?
 			return '${left} ${op} ${right}'
 		}
 		else {
 			return g.expr_to_string(id)
 		}
 	}
+}
+
+// Inline symbolic dependencies so a copied C-derived member does not depend on
+// the source enum already having been declared in the generated C.
+fn (mut g FlatGen) enum_symbolic_member_expr(enum_name string, field_name string, mut resolving map[string]bool) ?string {
+	key := '${enum_name}.${field_name}'
+	if resolving[key] {
+		return none
+	}
+	resolving[key] = true
+	defer { resolving.delete(key) }
+	old_file := g.tc.cur_file
+	old_module := g.tc.cur_module
+	defer {
+		g.tc.cur_file = old_file
+		g.tc.cur_module = old_module
+	}
+	mut cur_module := ''
+	for node_idx in g.top_level_nodes() {
+		node := g.a.nodes[node_idx]
+		if node.kind == .file {
+			cur_module = g.tc.file_modules[node.value] or { '' }
+			g.tc.cur_file = node.value
+			g.tc.cur_module = cur_module
+		} else if node.kind == .module_decl {
+			cur_module = node.value
+			g.tc.cur_module = cur_module
+		} else if node.kind == .enum_decl && g.enum_decl_type_name(node, cur_module) == g.enum_type_codegen_name(enum_name) {
+			mut field_names := map[string]bool{}
+			for i in 0 .. node.children_count {
+				field_names[g.a.child_node(&node, i).value] = true
+			}
+			mut anchor := flat.NodeId(-1)
+			mut offset := 0
+			for i in 0 .. node.children_count {
+				field := g.a.child_node(&node, i)
+				if field.children_count > 0 {
+					anchor = g.a.child(field, 0)
+					offset = 0
+				}
+				if field.value == field_name {
+					if int(anchor) < 0 { return offset.str() }
+					value := g.enum_field_expr_to_string_resolving(anchor, cur_module, flat.source_type_id(enum_name), g.cname(enum_name), field_names, true, mut resolving)?
+					result := if offset == 0 { '(${value})' } else { '((${value}) + ${offset})' }
+					if backing := enum_decl_backing_type(node) {
+						storage_ct := g.enum_emit_storage_c_type(flat.source_type_id(enum_name), backing)
+						return '((${storage_ct})(${result}))'
+					}
+					return result
+				}
+				offset++
+			}
+			return none
+		}
+	}
+	return none
 }
 
 fn (g &FlatGen) enum_decl_field_ref_value(field_name string, enum_module string, enum_name u32, mut field_values map[string]i64, field_exprs map[string]flat.NodeId, mut resolving map[string]bool) ?i64 {

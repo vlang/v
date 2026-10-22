@@ -8782,8 +8782,9 @@ fn main() {
 The `e.value` member contains the enum's actual value, including values initialized from C
 constants. These C-derived values remain symbolic until C compilation, so they can be used
 in runtime expressions but cannot be evaluated in a `$if` condition by the V compiler.
-This also applies to copied members and implicit successors. An explicit initializer with
-a value known to V restores compile-time evaluation for that member and its successors.
+This also applies to copied members and implicit successors. The source enum may be declared
+after an enum that copies its members. An explicit initializer with a value known to V restores
+compile-time evaluation for that member and its successors.
 
 #### <h4 id="comptime-attrs">.attributes</h4>
 
