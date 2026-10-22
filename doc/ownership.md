@@ -263,8 +263,9 @@ fn main() {
 
 Passing an owning struct by value consumes it. A by-value method receiver follows the same
 rule unless the method borrows it. Use an `&Request` parameter or an `&Request` receiver to
-borrow a request when it must remain available for another call, or clone it when an
-independent owned copy is needed.
+borrow a request when it must remain available for another call. An independent owned copy
+requires clone support: declare `Request implements IClone` for compiler-default cloning, or
+define a custom `clone()` method. The plain `Request` above has no `.clone()` method.
 
 ### Struct ownership markers
 
