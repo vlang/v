@@ -133,6 +133,8 @@ payload acquire independent storage; unrelated variants do not need storage chec
 cleanup is shared across storage acquisition sites, keeping generated C compact for sums with many
 array variants, such as `orm.Primitive`. Discarded spawn results use separate cleanup helpers
 that also destroy the active payload of a sum.
+Sum cleanup also supports direct packed fields: it uses aligned temporary storage and copies
+cleanup updates back to the original field, evaluating its storage address once.
 
 ## Move semantics
 

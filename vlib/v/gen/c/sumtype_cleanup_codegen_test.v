@@ -17,6 +17,23 @@ fn test_sum_storage_acquires_only_active_literal_and_shares_cleanup() {
 	os.write_file(source, 'type Choice = int | string | []int | []string | Box[[2]string]
 type Nested = Choice | bool
 type Box[T] = T | int
+type ChoiceAlias = Choice
+@[packed]
+struct PackedChoice {
+ prefix u8
+mut:
+ choice Choice
+}
+@[packed]
+struct PackedAlias {
+ prefix u8
+mut:
+ choice ChoiceAlias
+}
+fn replacement_index(mut calls []int) int {
+ calls[0]++
+ return 0
+}
 fn boxed() Box[[2]string] { return 17 }
 fn scalar() Choice { return Choice(17) }
 fn slice_value() Choice {
@@ -32,6 +49,21 @@ fn acquired() Choice { return unknown(Choice([4, 5])) }
 fn unknown_nested(value Nested) Nested { return value }
 fn acquired_nested() Nested { return unknown_nested(nested_slice()) }
 fn main() {
+	mut packed := PackedChoice{prefix: 3, choice: Choice("old".clone())}
+	packed.choice = Choice(19)
+	assert (packed.choice as int) == 19
+	packed.choice = Choice("replacement".clone())
+	assert (packed.choice as string) == "replacement"
+	assert packed.prefix == 3
+	mut alias_value := PackedAlias{prefix: 5, choice: ChoiceAlias(Choice("alias".clone()))}
+	alias_value.choice = ChoiceAlias(Choice(23))
+	assert (Choice(alias_value.choice) as int) == 23
+	assert alias_value.prefix == 5
+	mut items := [PackedChoice{prefix: 7, choice: Choice("indexed".clone())}]
+	mut calls := [0]
+	items[replacement_index(mut calls)].choice = Choice(29)
+	assert calls[0] == 1
+	assert items[0].prefix == 7 && (items[0].choice as int) == 29
 	spawn boxed()
 	assert (boxed() as int) == 17
 	assert (scalar() as int) == 17
@@ -69,7 +101,7 @@ fn main() {
 			detached := csrc.split_into_lines().filter(it.starts_with('static void __v3_detached_ownership_drop_'))
 			assert detached.filter(it.contains('(${sum_c_type}* _value)')).len == 2, 'VJOBS=${jobs} ${mode}: ${detached}'
 			run := cmdexec.run_in_merged_with_env(compiler, ['-nocache', '-gc', 'none', '-cc',
-				cc, mode, 'run', source], dir, {
+				cc, '-cflags', '-fsanitize=alignment -fsanitize-trap=alignment', mode, 'run', source], dir, {
 				'VJOBS': jobs
 			})
 			assert run.exit_code == 0, 'VJOBS=${jobs} ${mode}: ${run.output}'

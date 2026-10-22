@@ -1477,11 +1477,30 @@ fn (mut g FlatGen) gen_ownership_recursive_drop_helpers() {
 	g.tc.cur_file = old_file
 }
 
+fn (mut g FlatGen) gen_ownership_drop_helper_call(type_name_id u32, expr string) {
+	helper_name := g.ownership_recursive_drop_helper_name(type_name_id)
+	if unalias_type(g.tc.parse_canonical_type_cached(type_name_id)) is types.SumType {
+		// A synthetic drop may name a packed member directly. Preserve its storage
+		// address once without imposing alignment, and propagate helper mutations.
+		idx := g.tmp_count
+		g.tmp_count++
+		tmp := '_drop_sum${idx}'
+		storage := '_drop_sum_storage${idx}'
+		g.writeln('void* ${storage} = (void*)&(${expr});')
+		g.writeln('${g.ownership_recursive_drop_helper_c_type(type_name_id)} ${tmp};')
+		g.writeln('memcpy(&${tmp}, ${storage}, sizeof(${tmp}));')
+		g.writeln('${helper_name}(&${tmp});')
+		g.writeln('memcpy(${storage}, &${tmp}, sizeof(${tmp}));')
+		return
+	}
+	g.writeln('${helper_name}(&(${expr}));')
+}
+
 fn (mut g FlatGen) gen_ownership_drop_value(typ types.Type, expr string, depth int) {
 	// Sum cleanup switches are shared across storage-acquisition branches.
 	if typ is types.SumType {
 		if type_name := g.recursive_drop_helpers[ownership_drop_expansion_key(typ)] {
-			g.writeln('${g.ownership_recursive_drop_helper_name(type_name)}(&(${expr}));')
+			g.gen_ownership_drop_helper_call(type_name, expr)
 			return
 		}
 	}
@@ -1521,8 +1540,7 @@ fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, d
 	expansion_key := ownership_drop_expansion_key(typ)
 	if depth > 0 && (typ is types.Struct || typ is types.SumType) {
 		if type_name_source_id := g.recursive_drop_helpers[expansion_key] {
-			helper_name := g.ownership_recursive_drop_helper_name(type_name_source_id)
-			g.writeln('${helper_name}(&(${expr}));')
+			g.gen_ownership_drop_helper_call(type_name_source_id, expr)
 			return
 		}
 	}
@@ -1530,8 +1548,7 @@ fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, d
 		if expanding[expansion_key] {
 			if typ is types.Struct || typ is types.SumType {
 				if type_name_source_id := g.recursive_drop_helpers[expansion_key] {
-					helper_name := g.ownership_recursive_drop_helper_name(type_name_source_id)
-					g.writeln('${helper_name}(&(${expr}));')
+					g.gen_ownership_drop_helper_call(type_name_source_id, expr)
 				}
 			}
 			return

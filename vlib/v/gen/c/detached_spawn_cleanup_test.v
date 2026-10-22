@@ -39,7 +39,9 @@ fn test_detached_spawn_cleanup_uses_sum_type_and_variant_drops() {
 		assert generated.contains('string__free('), generated
 		// The helper expands its own sum once; the call site uses that helper.
 		assert !generated.contains('${helper_name}(&(*_value))'), generated
-		assert cleanup.contains('${helper_name}(&(result))'), cleanup
+		assert cleanup.contains('(void*)&(result)'), cleanup
+		assert cleanup.contains('${helper_name}(&_drop_sum'), cleanup
+		assert cleanup.contains('memcpy(_drop_sum_storage'), cleanup
 		assert tc.cur_module == 'builtin'
 		assert tc.cur_file == 'builtin.v'
 	}
