@@ -24815,6 +24815,12 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 				}
 			}
 			if already_parsed {
+				if cache_state.manager.enabled && module_resolved && cache_module != 'main'
+					&& cache_module !in cache_state.module_sources {
+					// A cached dependency can import the module under test. Its bodies
+					// are absent from the AST, so retain the functions it can call here.
+					cache_state.source_body_modules[cache_module] = true
+				}
 				node_idx++
 				continue
 			}
