@@ -1808,6 +1808,9 @@ V also supports arrays with fixed size. Unlike ordinary arrays, their
 length is constant. You cannot append elements to them, nor shrink them.
 You can only modify their elements in place.
 
+Iteration preserves the complete element type, including pointers to generic structs.
+For example, iterating over `[2]&Box[string]` yields `&Box[string]` values.
+
 However, access to the elements of fixed size arrays is more efficient,
 they need less memory than ordinary arrays, and unlike ordinary arrays,
 their data is on the stack, so you may want to use them as buffers if you
