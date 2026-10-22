@@ -26620,7 +26620,8 @@ fn (mut g FlatGen) is_const_expr_inner(id flat.NodeId, mut visiting map[int]bool
 		.struct_init {
 			// Sum constructors lower to struct initializers with nested payload
 			// compound literals, which need runtime storage on GCC.
-			if cgen_unalias_type(g.tc.parse_type(flat.source_type_id(node.value))) is types.SumType {
+			if g.struct_init_is_lowered_sum_literal(node)
+				|| cgen_unalias_type(g.tc.parse_type(flat.source_type_id(node.value))) is types.SumType {
 				return false
 			}
 			if g.struct_needs_default_init(flat.source_type_id(node.value)) {

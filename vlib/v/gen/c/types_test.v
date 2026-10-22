@@ -990,7 +990,11 @@ fn test_sum_name_resolution_keeps_a_qualified_concrete_type_out_of_a_namesake_su
 
 fn test_sum_name_resolution_prefers_a_live_import_alias_over_an_exact_namesake_sum() {
 	mut ast := &flat.FlatAst{}
+	ast.add_node(flat.Node{ kind: .file, value: 'main.v' })
+	ast.add_node(flat.Node{ kind: .module_decl, value: 'main' })
+	ast.add_node(flat.Node{ kind: .import_decl, value: 'pkg.iface_mod', typ: flat.source_type_id('iface_mod') })
 	mut tc := types.TypeChecker.new(ast)
+	tc.collect(ast)
 	tc.sum_types.set('iface_mod.Any', ['int', 'string'])
 	tc.interface_names['pkg.iface_mod.Any'] = true
 	tc.cur_file = 'main.v'
@@ -1018,6 +1022,45 @@ fn test_sum_name_resolution_prefers_a_live_import_alias_over_an_exact_namesake_s
 		typ:            flat.source_type_id('iface_mod.Any')
 	}
 	assert flat.source_type_name(g.lowered_struct_init_sum_name(generated)) == 'iface_mod.Any'
+	// The literal's canonical sum metadata also controls whether it needs
+	// runtime storage; the source-file alias must not make it static.
+	assert !g.is_const_expr(ast.add_node(generated))
+}
+
+fn test_sum_const_storage_ignores_a_namesake_struct_import() {
+	mut ast := &flat.FlatAst{}
+	ast.add_node(flat.Node{ kind: .file, value: 'main.v' })
+	ast.add_node(flat.Node{ kind: .module_decl, value: 'main' })
+	ast.add_node(flat.Node{ kind: .import_decl, value: 'pkg.value_mod', typ: flat.source_type_id('value_mod') })
+	mut tc := types.TypeChecker.new(ast)
+	tc.collect(ast)
+	tc.sum_types.set('value_mod.Any', ['int', 'string'])
+	tc.structs['pkg.value_mod.Any'] = []types.StructField{}
+	tc.cur_file = 'main.v'
+	tc.file_imports['main.v\nvalue_mod'] = 'pkg.value_mod'
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+	g.precompute_sum_name_lookup()
+	assert cgen_unalias_type(tc.parse_type(flat.source_type_id('value_mod.Any'))).name() == 'pkg.value_mod.Any'
+	tag_value := ast.add_val(.int_literal, '1')
+	payload_value := ast.add_val(.string_literal, 'payload')
+	typ_field := ast.add_node(flat.Node{ kind: .field_init, value: 'typ', children_start: i32(ast.children.len), children_count: 1 })
+	ast.children << tag_value
+	payload_field := ast.add_node(flat.Node{ kind: .field_init, value: '_string', children_start: i32(ast.children.len), children_count: 1 })
+	ast.children << payload_value
+	children_start := ast.children.len
+	ast.children << typ_field
+	ast.children << payload_field
+	generated := flat.Node{
+		kind:           .struct_init
+		children_start: i32(children_start)
+		children_count: 2
+		value:          'value_mod.Any'
+		typ:            flat.source_type_id('value_mod.Any')
+	}
+	assert flat.source_type_name(g.lowered_struct_init_sum_name(generated)) == 'value_mod.Any'
+	assert !g.is_const_expr(ast.add_node(generated))
 }
 
 fn test_declaration_signature_scan_ignores_unscoped_regular_fn_nodes() {

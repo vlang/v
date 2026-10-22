@@ -4115,6 +4115,7 @@ A constant can be qualified with its module name inside that module, including i
 A fixed array constant can be initialized by a function call; the call runs during initialization.
 Sum type constants with aggregate variants are initialized at startup, including when compiling
 with GCC.
+Their resolved sum type remains the same when an import alias shares its module prefix.
 
 ```v
 const pi = 3.14
