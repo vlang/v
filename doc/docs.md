@@ -5729,6 +5729,10 @@ does not change the inferred type arguments. `typeof(call()).name` reports the c
 return type of an inferred generic method call.
 Inference also follows receivers obtained by unwrapping an option or propagating a result.
 
+Assigning a generic call to an optional variable or field does not make its inferred type
+arguments optional. For `fn identity[T](value T) T`, assigning `identity(3)` to `?int`
+infers `T` as `int` from the argument, then wraps the result in the destination option.
+
 Nested generic calls preserve reference return types when passed directly to another generic
 call, including references stored as map values.
 
