@@ -4518,6 +4518,7 @@ Methods declared on a fixed-array alias keep that alias receiver, including meth
 match builtin array methods.
 
 Enum aliases stored in struct fields support `.str()` and interpolation using the enum's value name.
+Aliases also inherit custom `.str()` methods, including after unwrapping an optional alias value.
 
 Numeric aliases use ordinary conversions for initialization:
 

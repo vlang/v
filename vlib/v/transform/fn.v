@@ -6396,6 +6396,11 @@ fn (t &Transformer) enum_str_method_name(typ_id u32) ?string {
 			return method
 		}
 	}
+	if !isnil(t.tc) {
+		// Aliases inherit methods from intermediate aliases and their base enum.
+		// Check those before selecting the generated enum string helper.
+		return t.tc.concrete_method_signature_key(typ_id, 'str')
+	}
 	return none
 }
 
