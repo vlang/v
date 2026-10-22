@@ -634,7 +634,7 @@ fn (mut parser Parser) parse_type_reference() !TypeNode {
 	start := parser.lexer.token
 
 	mut named_type_node := ?NamedTypeNode{}
-	mut type_node := ListTypeNode{}
+	mut type_node := ?ListTypeNode(none)
 
 	if parser.expect_optional_token(TokenKind.bracket_l) {
 		inner_type := parser.parse_type_reference()!
@@ -643,7 +643,7 @@ fn (mut parser Parser) parse_type_reference() !TypeNode {
 
 		type_node = parser.node[ListTypeNode](start, mut ListTypeNode{
 			kind:      Kind.list_type
-			node_type: inner_type
+			node_type: &inner_type
 		})!
 	} else {
 		named_type_node = parser.parse_named_type()!
@@ -659,14 +659,15 @@ fn (mut parser Parser) parse_type_reference() !TypeNode {
 
 		return final_type
 	} else {
+		final_type := type_node or { return error('could not return type reference') }
 		if parser.expect_optional_token(TokenKind.bang) {
 			return TypeNode(parser.node(start, mut NonNullTypeNode{
 				kind:      Kind.non_null_type
-				node_type: type_node
+				node_type: final_type
 			})!)
 		}
 
-		return type_node
+		return final_type
 	}
 
 	return error('could not return type reference')
