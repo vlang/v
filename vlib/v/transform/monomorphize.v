@@ -17105,8 +17105,8 @@ fn generic_type_arg_prefix_from_suffix(suffix string) ?GenericTypeSuffixPart {
 		return none
 	}
 	for encoded in ['string', 'bool', 'int', 'u8', 'u16', 'u32', 'u64', 'i8', 'i16', 'i32', 'i64',
-		'f32', 'f64', 'v_int', 'v_u8', 'v_u16', 'v_u32', 'v_u64', 'v_i8', 'v_i16', 'v_i32', 'v_i64',
-		'v_f32', 'v_f64'] {
+		'f32', 'f64', 'v_bool', 'v_int', 'v_u8', 'v_u16', 'v_u32', 'v_u64', 'v_i8', 'v_i16', 'v_i32',
+		'v_i64', 'v_f32', 'v_f64'] {
 		if clean == encoded || clean.starts_with('${encoded}_') {
 			return GenericTypeSuffixPart{
 				typ: flat.source_type_id(generic_type_arg_from_suffix(encoded))
@@ -17227,6 +17227,7 @@ fn generic_type_arg_from_suffix(suffix string) string {
 		}
 	}
 	return match clean {
+		'v_bool' { 'bool' }
 		'v_int' { 'int' }
 		'v_u8' { 'u8' }
 		'v_u16' { 'u16' }
