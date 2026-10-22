@@ -53,6 +53,27 @@ fn (mut t Transformer) make_guard_value_decls(name string, value flat.NodeId, va
 	return [t.make_decl_assign_typed(name, value, value_type_id)]
 }
 
+fn (mut t Transformer) preserve_guard_binding_mutability(guard flat.Node, decls []flat.NodeId) {
+	cond := t.a.nodes[int(t.a.child(&guard, 0))]
+	lhs_ids := t.multi_assign_lhs_ids(cond)
+	for decl_id in decls {
+		decl := t.a.nodes[int(decl_id)]
+		if decl.kind != .decl_assign || decl.children_count == 0 {
+			continue
+		}
+		decl_lhs_id := t.a.child(&decl, 0)
+		decl_lhs := t.a.nodes[int(decl_lhs_id)]
+		for source_lhs_id in lhs_ids {
+			source_lhs := t.a.nodes[int(source_lhs_id)]
+			if source_lhs.value == decl_lhs.value {
+				// Generic method lowering annotates the generated binding again.
+				t.a.set_node_is_mut(decl_lhs_id, source_lhs.is_mut || cond.is_mut)
+				break
+			}
+		}
+	}
+}
+
 // mut_optional_param_payload_ref returns `a.value` when `rhs_id` is a `mut a ?T` parameter
 // whose body reads it as `?T` (mut_optional_view_param): the reference to the caller's
 // payload. A `mut` guard binding of it refers to the caller's payload, as in V 0.5.2, where
@@ -420,23 +441,8 @@ fn (mut t Transformer) try_expand_if_guard_with_tail(node flat.Node, tail GuardR
 
 	then_id := t.a.child(&node, 1)
 	mut then_children := []flat.NodeId{}
-	for value_decl in value_decls {
-		// The lowered binding is annotated again after generic method lowering.
-		// Keep its source mutability so that pass can validate mut arguments.
-		decl := t.a.nodes[int(value_decl)]
-		if decl.kind == .decl_assign && decl.children_count > 0 {
-			decl_lhs_id := t.a.child(&decl, 0)
-			decl_lhs := t.a.nodes[int(decl_lhs_id)]
-			for source_lhs_id in lhs_ids {
-				source_lhs := t.a.nodes[int(source_lhs_id)]
-				if source_lhs.value == decl_lhs.value {
-					t.a.set_node_is_mut(decl_lhs_id, source_lhs.is_mut || cond.is_mut)
-					break
-				}
-			}
-		}
-		then_children << value_decl
-	}
+	t.preserve_guard_binding_mutability(node, value_decls)
+	then_children << value_decls
 	then_children << t.guard_branch_stmts(then_id, guard_assignment_tail(tail, binding_names))
 	then_block := t.make_block_prefix_scope_drops(then_children)
 	then_invalidated := t.reset_guard_smartcasts(smartcasts)
@@ -490,6 +496,7 @@ fn (mut t Transformer) expand_channel_receive_if_guard(node flat.Node, lhs_name 
 	if lhs_name != '_' {
 		then_children << t.make_guard_value_decls(lhs_name, t.make_ident(val_name), info.value_type)
 	}
+	t.preserve_guard_binding_mutability(node, then_children)
 	then_children << t.guard_branch_stmts(then_id, guard_assignment_tail(tail, [lhs_name]))
 	then_invalidated := t.reset_guard_smartcasts(smartcasts)
 	t.restore_var_types(saved_var_types)
@@ -676,6 +683,7 @@ fn (mut t Transformer) expand_map_index_if_guard(node flat.Node, lhs_name string
 	if lhs_name != '_' {
 		then_children << t.make_guard_value_decls(lhs_name, value_expr, flat.source_type_id(guard_value_type))
 	}
+	t.preserve_guard_binding_mutability(node, then_children)
 	then_children << t.guard_branch_stmts(then_id, guard_assignment_tail(tail, [lhs_name]))
 	then_block := t.make_block_prefix_scope_drops(then_children)
 	then_invalidated := t.reset_guard_smartcasts(smartcasts)
@@ -766,6 +774,7 @@ fn (mut t Transformer) expand_array_index_if_guard(node flat.Node, lhs_name stri
 		then_children << t.make_decl_assign_typed(opt_name, t.make_index(array_expr, t.make_ident(index_name), info.value_type), info.value_type)
 	}
 	then_children << t.make_guard_value_decls(lhs_name, value_expr, flat.source_type_id(guard_value_type))
+	t.preserve_guard_binding_mutability(node, then_children)
 	then_children << t.guard_branch_stmts(then_id, guard_assignment_tail(tail, [lhs_name]))
 	then_invalidated := t.reset_guard_smartcasts(smartcasts)
 	t.restore_var_types(saved_var_types)
@@ -1532,6 +1541,11 @@ fn (mut t Transformer) build_if_value_guard_chain(if_node flat.Node, target_name
 	if info := t.array_index_info(rhs_id) {
 		return t.build_array_index_if_value_guard_chain(if_node, lhs.value, info, target_name, target_type_id)
 	}
+	if info := t.channel_receive_info(rhs_id) {
+		return t.expand_channel_receive_if_guard(if_node, lhs.value, info, GuardReturnTail{
+			assign_lhs_ids: [t.make_ident(target_name)]
+		})
+	}
 	mut rhs_type := t.if_guard_optional_type_name(rhs_id)
 	if !t.is_optional_type_name(rhs_type) {
 		return none
@@ -1578,6 +1592,7 @@ fn (mut t Transformer) build_if_value_guard_chain(if_node flat.Node, target_name
 	if value_decls.len == 0 && lhs.value != '_' && value_type_source_id != flat.source_type_void {
 		value_decls << t.make_guard_value_decls(lhs.value, t.make_selector(t.make_ident(tmp_name), 'value', value_type_source_id), value_type_source_id)
 	}
+	t.preserve_guard_binding_mutability(if_node, value_decls)
 	then_id := t.a.child(&if_node, 1)
 	then_block0 := t.if_value_branch_block(then_id, target_name, target_type_id)
 	mut then_children := []flat.NodeId{cap: int(t.a.nodes[int(then_block0)].children_count) + value_decls.len}
@@ -1628,6 +1643,7 @@ fn (mut t Transformer) build_map_index_if_value_guard_chain(if_node flat.Node, l
 		ptr_value := t.make_prefix(.mul, t.make_cast(flat.source_type_id('&${info.value_type_text()}'), t.make_ident(ptr_name), flat.source_type_id('&${info.value_type_text()}')))
 		then_children << t.make_guard_value_decls(lhs_name, ptr_value, info.value_type)
 	}
+	t.preserve_guard_binding_mutability(if_node, then_children)
 	then_id := t.a.child(&if_node, 1)
 	then_block0 := t.if_value_branch_block(then_id, target_name, target_type_id)
 	then_children << t.a.children_of(&t.a.nodes[int(then_block0)])
@@ -1681,6 +1697,7 @@ fn (mut t Transformer) build_array_index_if_value_guard_chain(if_node flat.Node,
 		opt_name = t.new_temp('arr_opt')
 		opt_decl = t.make_decl_assign_typed(opt_name, t.make_index(array_expr, t.make_ident(index_name), info.value_type), info.value_type)
 	}
+	t.preserve_guard_binding_mutability(if_node, then_children)
 	then_id := t.a.child(&if_node, 1)
 	then_block0 := t.if_value_branch_block(then_id, target_name, target_type_id)
 	then_children << t.a.children_of(&t.a.nodes[int(then_block0)])

@@ -2340,6 +2340,11 @@ u_name := if v := arr[0] {
 println(u_name) // John
 ```
 
+Use `if mut value := expression { ... }` when the unwrapped variable must be mutable,
+for example to pass it to a `mut` parameter. The binding stays mutable throughout the
+successful branch, including in `if` expressions and chained calls to generic functions
+or methods. This applies to option/result, map lookup, array lookup, and channel receive guards.
+
 #### Type checks and casts
 
 You can check the current type of a sum type using `is` and its negated form `!is`.

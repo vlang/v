@@ -1515,14 +1515,16 @@ fn (tc &TypeChecker) if_guard_query_bindings(cond flat.Node) []LocalBinding {
 		if payload is MultiReturn {
 			if i < payload.types.len {
 				result << LocalBinding{
-					name: lhs.value
-					typ:  payload.types[i]
+					name:   lhs.value
+					typ:    payload.types[i]
+					is_mut: lhs.is_mut || cond.is_mut
 				}
 			}
 		} else if i == 0 {
 			result << LocalBinding{
-				name: lhs.value
-				typ:  payload
+				name:   lhs.value
+				typ:    payload
+				is_mut: lhs.is_mut || cond.is_mut
 			}
 		}
 	}
@@ -3860,11 +3862,19 @@ fn (mut tc TypeChecker) branches_compatible_with(id flat.NodeId, expected Type) 
 // second result is true.
 fn (mut tc TypeChecker) resolve_branch_tail_expr(branch_id flat.NodeId, tail flat.NodeId, expected Type, guard_bindings []LocalBinding) (Type, bool) {
 	saved_scope := tc.cur_scope
+	saved_mut_local_owners := clone_mut_local_owners(tc.fn_context.mut_local_owners)
+	defer {
+		tc.cur_scope = saved_scope
+		tc.fn_context.mut_local_owners = saved_mut_local_owners
+	}
 	mut untyped := []string{}
 	if guard_bindings.len > 0 {
 		tc.cur_scope = new_scope(saved_scope)
 		for binding in guard_bindings {
-			tc.cur_scope.insert(binding.name, binding.typ)
+			owner := tc.cur_scope.insert_with_owner(binding.name, binding.typ)
+			if binding.is_mut {
+				tc.fn_context.mut_local_owners[binding.name] = owner
+			}
 			if type_contains_unknown(binding.typ) {
 				untyped << binding.name
 			}
@@ -3873,12 +3883,10 @@ fn (mut tc TypeChecker) resolve_branch_tail_expr(branch_id flat.NodeId, tail fla
 	tc.insert_branch_tail_locals(branch_id, saved_scope, mut untyped)
 	for name in untyped {
 		if tc.expr_uses_ident(tail, name) {
-			tc.cur_scope = saved_scope
 			return unknown_type('branch value uses an untyped branch variable'), true
 		}
 	}
 	actual := tc.resolve_expr(tail, expected)
-	tc.cur_scope = saved_scope
 	return actual, false
 }
 
@@ -3901,8 +3909,9 @@ fn (tc &TypeChecker) if_guard_branch_bindings(cond_id flat.NodeId) []LocalBindin
 			continue
 		}
 		bindings << LocalBinding{
-			name: lhs.value
-			typ:  unknown_type('if guard variable before the guard is checked')
+			name:   lhs.value
+			typ:    unknown_type('if guard variable before the guard is checked')
+			is_mut: lhs.is_mut || cond.is_mut
 		}
 	}
 	return bindings
