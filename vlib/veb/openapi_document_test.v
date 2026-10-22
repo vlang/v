@@ -256,7 +256,7 @@ fn test_typed_openapi_scalar_schemas_and_json_examples() {
 	assert doc.schema[f64]()['format']!.str() == 'double'
 	assert doc.schema[bool]()['type']!.str() == 'boolean'
 	assert doc.schema[[2]int]()['type']!.str() == 'array'
-	assert doc.schema[&TypedApiNode]() == doc.schema[TypedApiNode]()
+	assert doc.schema[&TypedApiNode]()['nullable']!.bool()
 	assert doc.schema[TypedApiState]()['enum']!.as_array().map(it.str()) == ['ready', 'done']
 	assert doc.schema[json2.Any]().len == 0
 	examples := json2.Any(doc.resolve_schema(doc.schema[TypedApiExamples]()))
@@ -511,7 +511,7 @@ fn test_typed_openapi_query_names_and_required_match_bind() {
 
 fn test_typed_openapi_sum_variants_and_nullable_contract() {
 	mut doc := new_openapi(title: 'Sums', nullable_options: true)!
-	schema := json2.Any(doc.schema[WireChoice]())
+	schema := json2.Any(doc.resolve_schema(doc.schema[WireChoice]()))
 	assert api_at(schema, 'discriminator', 'propertyName').str() == '_type'
 	choices := api_at(schema, 'oneOf').as_array()
 	assert choices.len == 2
@@ -591,7 +591,7 @@ type WireArrayChoice = int | []WireLeft
 
 fn test_typed_openapi_sum_context_and_recursive_schemas() {
 	mut doc := new_openapi(title: 'Sum contexts')!
-	times := api_at(json2.Any(doc.schema[WireTimeChoice]()), 'anyOf').as_array()
+	times := api_at(json2.Any(doc.resolve_schema(doc.schema[WireTimeChoice]())), 'anyOf').as_array()
 	time_choice := times.filter(api_at(it, 'type').str() == 'object')[0]
 	assert api_at(time_choice, 'properties', '_type', 'enum').as_array()[0].str() == 'Time'
 	assert api_at(time_choice, 'properties', 'value', 'type').str() == 'integer'
@@ -600,20 +600,20 @@ fn test_typed_openapi_sum_context_and_recursive_schemas() {
 	encoded_time := json2.Any(json2.decode[map[string]json2.Any](json2.encode(WireTimeChoice(timestamp)))!)
 	assert api_at(encoded_time, '_type').str() == 'Time', encoded_time.str()
 	assert api_at(encoded_time, 'value').i64() == timestamp.unix()
-	options := api_at(json2.Any(doc.schema[WireOptionalChoice]()), 'anyOf').as_array()
+	options := api_at(json2.Any(doc.resolve_schema(doc.schema[WireOptionalChoice]())), 'anyOf').as_array()
 	optional_choice := options.filter('anyOf' in it.as_map())[0]
 	assert api_at(optional_choice, 'anyOf').as_array().len == 2
 	assert api_at(api_at(optional_choice, 'anyOf').as_array()[0], 'maxProperties').int() == 0
 	missing := ?int(none)
 	assert json2.encode(WireOptionalChoice(missing)) == '{}'
-	assert api_at(json2.Any(doc.schema[WireNumericChoice]()), 'anyOf').as_array().len == 3
-	recursive := json2.Any(doc.schema[WireRecursiveChoice]())
+	assert api_at(json2.Any(doc.resolve_schema(doc.schema[WireNumericChoice]())), 'anyOf').as_array().len == 3
+	recursive := json2.Any(doc.resolve_schema(doc.schema[WireRecursiveChoice]()))
 	choices := api_at(recursive, 'anyOf').as_array()
 	array := choices.filter(api_at(it, 'type').str() == 'array')[0]
 	map_schema := choices.filter(api_at(it, 'type').str() == 'object')[0]
 	assert api_at(array, 'items', '$ref').str().ends_with('.WireRecursiveChoice')
 	assert api_at(map_schema, 'additionalProperties', '$ref').str().ends_with('.WireRecursiveChoice')
-	arrays := api_at(json2.Any(doc.schema[WireArrayChoice]()), 'anyOf').as_array()
+	arrays := api_at(json2.Any(doc.resolve_schema(doc.schema[WireArrayChoice]())), 'anyOf').as_array()
 	array_choice := arrays.filter(api_at(it, 'type').str() == 'array')[0]
 	assert '_type' in api_at(array_choice, 'items', 'required').as_array().map(it.str())
 }
@@ -622,7 +622,7 @@ type WireDuplicateTagChoice = openapi_left.Item | openapi_right.Item
 
 fn test_typed_openapi_duplicate_sum_tags_allow_overlapping_variants() {
 	mut doc := new_openapi(title: 'Duplicate sum tags')!
-	schema := doc.schema[WireDuplicateTagChoice]()
+	schema := doc.resolve_schema(doc.schema[WireDuplicateTagChoice]())
 	assert 'discriminator' !in schema
 	assert schema['anyOf'] or { json2.Any([]json2.Any{}) }.as_array().len == 2
 	for choice in schema['anyOf']!.as_array() {
@@ -660,4 +660,186 @@ fn test_typed_openapi_recursive_struct_sum_preserves_component_reference() {
 	choices := api_at(json2.Any(schema), 'anyOf').as_array()
 	node := choices.filter('allOf' in it.as_map())[0]
 	assert api_at(node, 'allOf').as_array()[0].as_map()['$ref']!.str().ends_with('.WireRecursiveNode')
+}
+
+@['/forms'; post]
+fn (app &ConventionalApi) forms(mut ctx TypedApiContext, value string, count int) Result {
+	return ctx.text('${value}:${count}')
+}
+
+fn test_typed_openapi_conventional_post_documents_dispatched_body() {
+	mut app := &ConventionalApi{}
+	mut doc := new_openapi(title: 'POST inputs')!
+	doc.add_app[ConventionalApi, TypedApiContext](app)!
+	raw := json2.decode[json2.Any](doc.json(false)!)!
+	body := api_at(raw, 'paths', '/forms', 'post', 'requestBody')
+	for media in ['application/x-www-form-urlencoded', 'multipart/form-data', 'application/json'] {
+		schema := api_at(body, 'content', media, 'schema')
+		assert api_at(schema, 'type').str() == 'object'
+		assert api_at(schema, 'properties', 'value', 'type').str() == 'string'
+		assert api_at(schema, 'properties', 'count', 'type').str() == 'integer'
+		assert api_at(schema, 'required').as_array().map(it.str()) == ['count']
+	}
+	for media, data in {
+		'application/x-www-form-urlencoded': 'value=V&count=3'
+		'application/json':                  '{"value":"V","count":3}'
+	} {
+		response := render_request[ConventionalApi, TypedApiContext](mut app, http.Request{
+			url:    '/forms'
+			method: .post
+			header: http.new_header(key: .content_type, value: media)
+			data:   data
+		})!
+		assert response.res.body == 'V:3'
+	}
+	missing := render_request[ConventionalApi, TypedApiContext](mut app, http.Request{
+		url:    '/forms'
+		method: .post
+		data:   'value=V'
+	})!
+	assert missing.res.status_code == 400
+}
+
+struct WideIntegerApi {}
+
+@['/wide/:id/:small'; get]
+fn (app &WideIntegerApi) wide(mut ctx TypedApiContext, id i64, small u32) Result {
+	return ctx.text('${id}:${small}')
+}
+
+@['/wide-query'; get; post]
+fn (app &WideIntegerApi) query(mut ctx TypedApiContext, id i64, small u32, full u64) Result {
+	return ctx.text('${id}:${small}:${full}')
+}
+
+fn test_typed_openapi_integer_handler_schemas_keep_width() {
+	app := &WideIntegerApi{}
+	mut doc := new_openapi(title: 'Integer inputs')!
+	doc.add_app[WideIntegerApi, TypedApiContext](app)!
+	for route in route_info[WideIntegerApi, TypedApiContext](app)! {
+		assert route.parameter_types.all(it == 'integer')
+		assert route.parameter_required.all(!it)
+	}
+	raw := json2.decode[json2.Any](doc.json(false)!)!
+	for path in ['/wide/{id}/{small}', '/wide-query'] {
+		params := api_at(raw, 'paths', path, 'get', 'parameters').as_array()
+		assert params.all(api_at(it, 'schema', 'type').str() == 'integer')
+		assert api_at(params[0], 'schema', 'format').str() == 'int64'
+		assert api_at(params[1], 'schema', 'format').str() == 'int64'
+	}
+	body := api_at(raw, 'paths', '/wide-query', 'post', 'requestBody')
+	assert !api_at(body, 'required').bool()
+	properties := api_at(body, 'content', 'application/json', 'schema', 'properties')
+	assert api_at(properties, 'id', 'format').str() == 'int64'
+	assert api_at(properties, 'small', 'format').str() == 'int64'
+	assert api_at(properties, 'full', 'type').str() == 'integer'
+	assert 'format' !in api_at(properties, 'full').as_map()
+}
+
+struct WireCustomNumber {
+	internal []u32
+}
+
+fn (_ WireCustomNumber) to_json() string {
+	return '9007199254740993'
+}
+
+struct WireLegacyString {
+	internal bool
+}
+
+fn (_ WireLegacyString) json_str() string {
+	return '"custom"'
+}
+
+type WireCustomChoice = WireCustomNumber | WireLeft
+
+fn test_typed_openapi_custom_encoder_precedes_reflection_and_accepts_overrides() {
+	mut doc := new_openapi(title: 'Custom encoders')!
+	assert doc.resolve_schema(doc.schema[WireCustomNumber]()).len == 0
+	assert doc.resolve_schema(doc.schema[WireLegacyString]()).len == 0
+	assert json2.encode(WireCustomNumber{}) == '9007199254740993'
+	assert json2.encode(WireLegacyString{}) == '"custom"'
+	assert json2.encode(WireCustomChoice(WireCustomNumber{})) == '{"internal":[],"_type":"WireCustomNumber"}'
+	choice := doc.resolve_schema(doc.schema[WireCustomChoice]())
+	assert 'discriminator' !in choice
+	variants := choice['anyOf'] or { json2.Any([]json2.Any{}) }.as_array()
+	assert variants.len == 2
+	custom_variant := variants[0]
+	assert api_at(custom_variant, 'properties', 'internal', 'type').str() == 'array'
+	assert api_at(custom_variant, 'properties', '_type', 'enum').as_array()[0].str() == 'WireCustomNumber'
+	name := typeof(WireCustomNumber{}).name
+	doc.custom_schema(name, {
+		'type': json2.Any('integer')
+	})
+	assert doc.resolve_schema(doc.schema[WireCustomNumber]())['type']!.str() == 'integer'
+	assert doc.resolve_schema(doc.schema[WireCustomNumber]())['properties'] or { json2.Any(json2.null) } is json2.Null
+}
+
+struct WireJsonNull {
+	value ?string        @[json_null]
+	node  ?TypedApiNode  @[json_null]
+	state ?TypedApiState @[json_null]
+}
+
+fn test_typed_openapi_json_null_attribute_allows_null_without_global_option() {
+	mut doc := new_openapi(title: 'Forced null')!
+	schema := json2.Any(doc.resolve_schema(doc.schema[WireJsonNull]()))
+	assert api_at(schema, 'required').as_array().map(it.str()) == ['value', 'node', 'state']
+	for field in ['value', 'node', 'state'] {
+		property := api_at(schema, 'properties', field)
+		assert api_at(property, 'nullable').bool()
+	}
+	encoded := json2.decode[map[string]json2.Any](json2.encode(WireJsonNull{}))!
+	assert encoded['value']! is json2.Null
+	assert encoded['node']! is json2.Null
+	assert encoded['state']! is json2.Null
+}
+
+fn test_typed_openapi_pointer_nullability_covers_containers_and_responses() {
+	mut doc := new_openapi(title: 'Nil pointers')!
+	pointer := &int(unsafe { nil })
+	assert json2.encode(pointer) == 'null'
+	assert json2.encode([pointer]) == '[null]'
+	assert json2.encode({
+		'key': pointer
+	}) == '{"key":null}'
+	assert api_at(json2.Any(doc.schema[&int]()), 'nullable').bool()
+	assert api_at(json2.Any(doc.schema[[]&int]()), 'items', 'nullable').bool()
+	assert api_at(json2.Any(doc.schema[map[string]&int]()), 'additionalProperties', 'nullable').bool()
+	assert api_at(json2.Any(doc.schema[&TypedApiNode]()), 'nullable').bool()
+	app := &ConventionalApi{}
+	doc.add_app[ConventionalApi, TypedApiContext](app)!
+	doc.response[&int]('/search', .get)!
+	raw := json2.decode[json2.Any](doc.json(false)!)!
+	assert api_at(raw, 'paths', '/search', 'get', 'responses', '200', 'content', 'application/json', 'schema', 'nullable').bool()
+}
+
+fn test_typed_openapi_sum_first_reference_observes_later_override() {
+	app := &ConventionalApi{}
+	mut doc := new_openapi(title: 'Sum references')!
+	doc.add_app[ConventionalApi, TypedApiContext](app)!
+	doc.response[WireNumericChoice]('/search', .get)!
+	first := doc.schema[WireNumericChoice]()
+	assert '$ref' in first
+	assert doc.schema[WireNumericChoice]() == first
+	doc.custom_schema(typeof(WireNumericChoice{}).name, {
+		'type': json2.Any('string')
+	})
+	assert doc.resolve_schema(first)['type']!.str() == 'string'
+	raw := json2.decode[json2.Any](doc.json(false)!)!
+	response := api_at(raw, 'paths', '/search', 'get', 'responses', '200', 'content', 'application/json', 'schema')
+	assert response.as_map() == first
+}
+
+fn test_typed_openapi_unsigned_64_bit_schema_accepts_full_range() {
+	mut doc := new_openapi(title: 'Unsigned values')!
+	assert json2.encode(u64(18446744073709551615)) == '18446744073709551615'
+	for schema in [doc.schema[u64](), doc.schema[usize]()] {
+		assert schema['type']!.str() == 'integer'
+		assert api_at(json2.Any(schema), 'minimum').str() == '0'
+		if sizeof(usize) == 8 {
+			assert 'format' !in schema
+		}
+	}
 }

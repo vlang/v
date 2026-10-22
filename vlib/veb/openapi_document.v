@@ -110,18 +110,11 @@ pub fn (mut doc OpenApiDocument) add_app[A, X](app &A) ! {
 					name := word.trim_left(':').trim_right('.')
 					index := path_index
 					path_index++
-					kind := if index >= 0 && index < route.parameter_types.len {
-						route.parameter_types[index]
-					} else {
-						'string'
-					}
 					mut param := map[string]json2.Any{
 						'name':     json2.Any(name)
 						'in':       json2.Any('path')
 						'required': json2.Any(true)
-						'schema':   json2.Any({
-							'type': json2.Any(kind)
-						})
+						'schema':   json2.Any(route.parameter_schema(index))
 					}
 					if word.ends_with('...') {
 						param['x-veb-variadic'] = true
@@ -131,18 +124,11 @@ pub fn (mut doc OpenApiDocument) add_app[A, X](app &A) ! {
 			}
 			if path_index == 0 && method == .get {
 				for i, name in route.parameter_names {
-					kind := if i < route.parameter_types.len {
-						route.parameter_types[i]
-					} else {
-						'string'
-					}
 					params << map[string]json2.Any{
 						'name':     json2.Any(name)
 						'in':       json2.Any('query')
-						'required': json2.Any(kind != 'string')
-						'schema':   json2.Any({
-							'type': json2.Any(kind)
-						})
+						'required': json2.Any(route.requires_parameter(i))
+						'schema':   json2.Any(route.parameter_schema(i))
 					}
 				}
 			}
@@ -165,6 +151,30 @@ pub fn (mut doc OpenApiDocument) add_app[A, X](app &A) ! {
 				'tags':        json2.Any([json2.Any(route.controller)])
 				'parameters':  json2.Any(params)
 				'responses':   json2.Any(responses)
+			}
+			if path_index == 0 && method == .post && route.parameter_names.len > 0 {
+				mut properties := map[string]json2.Any{}
+				mut required := []json2.Any{}
+				for i, name in route.parameter_names {
+					properties[name] = json2.Any(route.parameter_schema(i))
+					if route.requires_parameter(i) { required << name }
+				}
+				mut schema := OpenApiSchema({
+					'type':       json2.Any('object')
+					'properties': json2.Any(properties)
+				})
+				if required.len > 0 { schema['required'] = required }
+				mut content := map[string]json2.Any{}
+				for media in ['application/x-www-form-urlencoded', 'multipart/form-data',
+					'application/json'] {
+					content[media] = {
+						'schema': json2.Any(schema)
+					}
+				}
+				operation['requestBody'] = {
+					'required': json2.Any(required.len > 0)
+					'content':  json2.Any(content)
+				}
 			}
 			if route.host != '' {
 				operation['x-veb-host'] = route.host

@@ -30,14 +30,7 @@ fn (mut doc OpenApiDocument) schema_value[T](value T) OpenApiSchema {
 			'type': json2.Any('boolean')
 		}
 	} $else $if T is $int {
-		mut format := if sizeof(T) > 4 { 'int64' } else { 'int32' }
-		$if T.unaliased_typ is u32 {
-			format = 'int64'
-		}
-		return {
-			'type':   json2.Any('integer')
-			'format': json2.Any(format)
-		}
+		return openapi_integer_schema(value)
 	} $else $if T is $float {
 		return {
 			'type':   json2.Any('number')
@@ -80,23 +73,21 @@ fn (mut doc OpenApiDocument) schema_value[T](value T) OpenApiSchema {
 			'type': json2.Any(if numeric { 'integer' } else { 'string' })
 			'enum': json2.Any(values)
 		}
+	} $else $if (T is json2.JsonEncoder || T is json2.Encodable) && T !is $sumtype {
+		// A custom encoder can emit any JSON shape; retain a reference for overrides.
+		type_name := typeof(value).name
+		name := doc.config.schema_names[type_name] or { type_name }
+		if name !in doc.schemas { doc.schemas[name] = OpenApiSchema{} }
+		return {
+			'$ref': json2.Any('#/components/schemas/' + name.replace('~', '~0').replace('/', '~1'))
+		}
 	} $else $if T is $struct {
 		type_name := typeof(value).name
 		name := doc.config.schema_names[type_name] or { type_name }
 		if name !in doc.schemas {
 			// Register before descending so recursive structs terminate with a reference.
 			doc.schemas[name] = OpenApiSchema{}
-			mut properties := map[string]json2.Any{}
-			mut required := []json2.Any{}
-			doc.schema_struct_fields(value, mut properties, mut required, []string{}, []string{}, '')
-			mut schema := map[string]json2.Any{
-				'type':       json2.Any('object')
-				'properties': json2.Any(properties)
-			}
-			if required.len > 0 {
-				schema['required'] = required
-			}
-			doc.schemas[name] = schema
+			doc.schemas[name] = doc.schema_struct(value)
 		}
 		return {
 			'$ref': json2.Any('#/components/schemas/' + name.replace('~', '~0').replace('/', '~1'))
@@ -123,6 +114,8 @@ fn (mut doc OpenApiDocument) schema_value[T](value T) OpenApiSchema {
 			} $else $if variant.typ.unaliased_typ is time.Time {
 				// Time's inline wrapper has no named component for discriminator mapping.
 				tagged = false
+			} $else $if variant.typ is json2.JsonEncoder || variant.typ is json2.Encodable {
+				tagged = false
 			} $else $if variant.typ is $struct {
 				base := doc.schema_value(variant_value)
 				ref := (base['$ref'] or { json2.Any('') }).str()
@@ -146,7 +139,9 @@ fn (mut doc OpenApiDocument) schema_value[T](value T) OpenApiSchema {
 			}
 		}
 		doc.schemas[name] = schema
-		return schema
+		return {
+			'$ref': json2.Any('#/components/schemas/' + name.replace('~', '~0').replace('/', '~1'))
+		}
 	} $else {
 		return {
 			'type': json2.Any('object')
@@ -176,6 +171,10 @@ fn (mut doc OpenApiDocument) schema_sum_variant[T](value T) OpenApiSchema {
 	} $else $if T is $struct {
 		base := doc.schema_value(value)
 		mut choice := doc.resolve_schema(base).clone()
+		$if T is json2.JsonEncoder || T is json2.Encodable {
+			// Sum structs bypass custom hooks and encode their fields with a type tag.
+			choice = doc.schema_struct(value)
+		}
 		if choice.len == 0 {
 			choice['allOf'] = json2.Any([json2.Any(base)])
 		}
@@ -221,6 +220,18 @@ fn (mut doc OpenApiDocument) schema_sum_array[T](_value []T) OpenApiSchema {
 	}
 }
 
+fn (mut doc OpenApiDocument) schema_struct[T](value T) OpenApiSchema {
+	mut properties := map[string]json2.Any{}
+	mut required := []json2.Any{}
+	doc.schema_struct_fields(value, mut properties, mut required, []string{}, []string{}, '')
+	mut schema := OpenApiSchema({
+		'type':       json2.Any('object')
+		'properties': json2.Any(properties)
+	})
+	if required.len > 0 { schema['required'] = required }
+	return schema
+}
+
 // Match json2's embedded-field traversal, reserving direct fields before flattening embeds.
 fn (mut doc OpenApiDocument) schema_struct_fields[T](value T, mut properties map[string]json2.Any, mut required []json2.Any, old_used_keys []string, reserved_keys []string, prefix string) {
 	mut used_keys := old_used_keys.clone()
@@ -241,7 +252,10 @@ fn (mut doc OpenApiDocument) schema_struct_fields[T](value T, mut properties map
 				if key == name { used_keys << name }
 				properties[key] = doc.schema_field(value.$(field.name), field.attrs)
 				$if field.typ is $option {
-					if 'required' in field.attrs && 'omitempty' !in field.attrs { required << key }
+					if ('required' in field.attrs || 'json_null' in field.attrs)
+						&& 'omitempty' !in field.attrs {
+						required << key
+					}
 				} $else $if field.typ is $pointer {
 					// json2 omits nil pointer fields.
 				} $else {
@@ -254,6 +268,9 @@ fn (mut doc OpenApiDocument) schema_struct_fields[T](value T, mut properties map
 
 fn (mut doc OpenApiDocument) schema_field[T](value T, attrs []string) OpenApiSchema {
 	mut schema := doc.schema_value(value)
+	$if T is $option {
+		if 'json_null' in attrs { schema = openapi_nullable_schema(schema) }
+	}
 	if '$ref' in schema && attrs.any(it.starts_with('description:') || it.starts_with('example:')) {
 		schema = {
 			'allOf': json2.Any([json2.Any(schema)])
@@ -271,19 +288,41 @@ fn (mut doc OpenApiDocument) schema_field[T](value T, attrs []string) OpenApiSch
 }
 
 fn (mut doc OpenApiDocument) schema_optional[T](_value ?T) OpenApiSchema {
-	mut schema := doc.schema[T]()
-	if doc.config.nullable_options {
-		if '$ref' in schema || 'type' !in schema {
-			schema = {
-				'anyOf': json2.Any([json2.Any({
-					'type':     json2.Any('object')
-					'nullable': json2.Any(true)
-					'enum':     json2.Any([json2.Any(json2.null)])
-				}), json2.Any(schema)])
-			}
+	schema := doc.schema[T]()
+	return if doc.config.nullable_options { openapi_nullable_schema(schema) } else { schema }
+}
+
+fn openapi_nullable_schema(base OpenApiSchema) OpenApiSchema {
+	if '$ref' in base || 'type' !in base || 'enum' in base {
+		// OpenAPI 3.0 needs an explicit type for nullable; preserve referenced constraints.
+		return {
+			'anyOf':    json2.Any([json2.Any({
+				'type':     json2.Any('object')
+				'nullable': json2.Any(true)
+				'enum':     json2.Any([json2.Any(json2.null)])
+			}), json2.Any(base)])
+			'nullable': json2.Any(true)
 		}
-		schema['nullable'] = true
 	}
+	mut schema := base.clone()
+	schema['nullable'] = true
+	return schema
+}
+
+fn openapi_integer_schema[T](_value T) OpenApiSchema {
+	mut schema := OpenApiSchema({
+		'type': json2.Any('integer')
+	})
+	$if T.unaliased_typ is u64 || T.unaliased_typ is usize {
+		schema['minimum'] = 0
+		// OpenAPI's int64 is signed and cannot describe the full unsigned range.
+		if sizeof(T) > 4 { return schema }
+	}
+	mut format := if sizeof(T) > 4 { 'int64' } else { 'int32' }
+	$if T.unaliased_typ is u32 || T.unaliased_typ is usize {
+		format = 'int64'
+	}
+	schema['format'] = format
 	return schema
 }
 
@@ -302,7 +341,7 @@ fn (mut doc OpenApiDocument) schema_map[K, T](_value map[K]T) OpenApiSchema {
 }
 
 fn (mut doc OpenApiDocument) schema_pointer[T](_value &T) OpenApiSchema {
-	return doc.schema[T]()
+	return openapi_nullable_schema(doc.schema[T]())
 }
 
 fn openapi_field_name(name string, attrs []string) string {
