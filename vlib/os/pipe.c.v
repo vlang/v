@@ -8,7 +8,7 @@ fn C.dup(fd i32) i32
 const fd_stdout = $if windows { 1 } $else { C.STDOUT_FILENO }
 const fd_stderr = $if windows { 2 } $else { C.STDERR_FILENO }
 
-// fd_dup duplicates a file descriptor
+// fd_dup duplicates a file descriptor.
 pub fn fd_dup(fd int) int {
 	return $if windows { C._dup(fd) } $else { C.dup(fd) }
 }
@@ -28,7 +28,7 @@ pub mut:
 	write_fd int = -1
 }
 
-// pipe creates a new pipe for inter-process communication
+// pipe creates a new pipe for inter-process communication.
 pub fn pipe() !Pipe {
 	// The kernel writes two C `int` file descriptors; back them with `i32` so the
 	// storage matches the C ABI (a V `[2]int` is two 64-bit slots and would be
@@ -50,7 +50,7 @@ pub fn pipe() !Pipe {
 	}
 }
 
-// close closes the pipe and releases associated resources
+// close closes the pipe and releases associated resources.
 pub fn (mut p Pipe) close() {
 	if p.read_fd != -1 {
 		fd_close(p.read_fd)
@@ -62,7 +62,7 @@ pub fn (mut p Pipe) close() {
 	}
 }
 
-// read reads data from the pipe into the provided buffer
+// read reads data from the pipe into the provided buffer.
 pub fn (p &Pipe) read(mut buffer []u8) !int {
 	result := C.read(p.read_fd, buffer.data, buffer.len)
 	if result == -1 {
@@ -71,7 +71,7 @@ pub fn (p &Pipe) read(mut buffer []u8) !int {
 	return int(result)
 }
 
-// write writes data from the buffer to the pipe
+// write writes data from the buffer to the pipe.
 pub fn (p &Pipe) write(buffer []u8) !int {
 	result := C.write(p.write_fd, buffer.data, buffer.len)
 	if result == -1 {
@@ -80,7 +80,7 @@ pub fn (p &Pipe) write(buffer []u8) !int {
 	return int(result)
 }
 
-// write_string writes data from the string to the pipe
+// write_string writes data from the string to the pipe.
 pub fn (p &Pipe) write_string(s string) !int {
 	result := C.write(p.write_fd, voidptr(s.str), s.len)
 	if result == -1 {
@@ -89,7 +89,7 @@ pub fn (p &Pipe) write_string(s string) !int {
 	return int(result)
 }
 
-// slurp reads all data from the pipe until EOF
+// slurp reads all data from the pipe until EOF.
 pub fn (mut p Pipe) slurp() []string {
 	// Close write end to send EOF signal to the pipe
 	fd_close(p.write_fd)
@@ -111,7 +111,7 @@ mut:
 	original_stderr_fd int = -1
 }
 
-// stdio_capture starts capturing stdout and stderr by redirecting them to pipes
+// stdio_capture starts capturing stdout and stderr by redirecting them to pipes.
 // Example:
 // ```v
 //    	import os
@@ -179,7 +179,7 @@ pub fn stdio_capture() !IOCapture {
 	return c
 }
 
-// stop restores the original stdout and stderr streams
+// stop restores the original stdout and stderr streams.
 // This should be called to resume normal console output
 pub fn (mut c IOCapture) stop() {
 	flush_stdout()
@@ -200,13 +200,13 @@ pub fn (mut c IOCapture) stop() {
 	}
 }
 
-// close releases all resources associated with the capture
+// close releases all resources associated with the capture.
 pub fn (mut c IOCapture) close() {
 	c.stdout.close()
 	c.stderr.close()
 }
 
-// finish stops capturing, reads all captured data, and releases resources
+// finish stops capturing, reads all captured data, and releases resources.
 pub fn (mut c IOCapture) finish() ([]string, []string) {
 	c.stop()
 	stdout_str := c.stdout.slurp()
