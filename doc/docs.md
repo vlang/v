@@ -8789,6 +8789,10 @@ Symbolic arithmetic preserves integer storage widths and V operator grouping, in
 right shifts and zero results for negative or out-of-range shift counts. Powers and `@[comptime]`
 function calls in enum initializers must be evaluable by V at compile time; they cannot depend on
 C constants. Known calls are evaluated even when used beside a C constant in symbolic arithmetic.
+These enum helpers support straight-line integer declarations, plain assignments, and one final
+single-value return. Bodies containing control flow, other statements, or unevaluable locals are
+rejected instead of partially evaluated. Integer-to-enum cast warnings require every member's
+numeric value to be known to V; they are omitted for enums containing C-derived members.
 
 #### <h4 id="comptime-attrs">.attributes</h4>
 

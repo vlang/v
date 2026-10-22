@@ -1287,6 +1287,37 @@ fn (tc &TypeChecker) comptime_static_enum_call_value(id flat.NodeId, enum_module
 		return none
 	}
 	fn_node := tc.a.node(fn_id)
+	// This is a straight-line integer evaluator, not an interpreter. Validate the
+	// complete body before folding so no skipped statement can change its result.
+	mut has_return := false
+	for i in 0 .. fn_node.children_count {
+		stmt := tc.a.child_node(fn_node, i)
+		if has_return {
+			return none
+		}
+		match stmt.kind {
+			.param {}
+			.decl_assign, .assign {
+				if stmt.children_count != 2 || (stmt.kind == .assign && stmt.op != .assign) {
+					return none
+				}
+				lhs := tc.a.child_node(stmt, 0)
+				if lhs.kind != .ident || lhs.value.len == 0 || lhs.value == '_' {
+					return none
+				}
+			}
+			.return_stmt {
+				if stmt.children_count != 1 {
+					return none
+				}
+				has_return = true
+			}
+			else { return none }
+		}
+	}
+	if !has_return {
+		return none
+	}
 	mut locals := map[string]i64{}
 	mut local_types := map[string]Type{}
 	mut arg_idx := 1
@@ -1304,10 +1335,15 @@ fn (tc &TypeChecker) comptime_static_enum_call_value(id flat.NodeId, enum_module
 		locals[param.value] = comptime_enum_integer_cast(arg, unalias_type(local_types[param.value]).source_type_id())
 		arg_idx++
 	}
+	if arg_idx != call.children_count {
+		return none
+	}
 	for i in 0 .. fn_node.children_count {
 		stmt := tc.a.child_node(fn_node, i)
 		if stmt.kind in [.decl_assign, .assign] {
-			tc.comptime_static_enum_update_locals(stmt, mut locals, mut local_types, enum_module)
+			if !tc.comptime_static_enum_update_locals(stmt, mut locals, mut local_types, enum_module) {
+				return none
+			}
 			continue
 		}
 		if stmt.kind == .return_stmt && stmt.children_count > 0 {
@@ -1410,35 +1446,24 @@ fn (tc &TypeChecker) comptime_static_enum_helper_fn_id(callee_name string, enum_
 	return none
 }
 
-fn (tc &TypeChecker) comptime_static_enum_update_locals(stmt flat.Node, mut locals map[string]i64, mut local_types map[string]Type, enum_module string) {
-	if stmt.children_count < 2 || stmt.children_count % 2 != 0 {
-		return
+fn (tc &TypeChecker) comptime_static_enum_update_locals(stmt flat.Node, mut locals map[string]i64, mut local_types map[string]Type, enum_module string) bool {
+	if stmt.children_count != 2 || (stmt.kind == .assign && stmt.op != .assign) {
+		return false
 	}
-	mut i := 0
-	for i < stmt.children_count {
-		lhs := tc.a.child_node(stmt, i)
-		if lhs.kind == .ident && lhs.value.len > 0 && lhs.value != '_' {
-			if stmt.kind == .decl_assign || stmt.op == .assign {
-				rhs_id := tc.a.child(stmt, i + 1)
-				if value := tc.comptime_static_enum_local_expr_value(rhs_id, locals, local_types, enum_module) {
-					typ := if stmt.kind == .decl_assign {
-						tc.comptime_enum_local_expr_type(rhs_id, local_types)
-					} else {
-						local_types[lhs.value] or { tc.comptime_enum_local_expr_type(rhs_id, local_types) }
-					}
-					locals[lhs.value] = comptime_enum_integer_cast(value, unalias_type(typ).source_type_id())
-					local_types[lhs.value] = typ
-				} else {
-					locals.delete(lhs.value)
-					local_types.delete(lhs.value)
-				}
-			} else {
-				locals.delete(lhs.value)
-				local_types.delete(lhs.value)
-			}
-		}
-		i += 2
+	lhs := tc.a.child_node(stmt, 0)
+	if lhs.kind != .ident || lhs.value.len == 0 || lhs.value == '_' {
+		return false
 	}
+	rhs_id := tc.a.child(stmt, 1)
+	value := tc.comptime_static_enum_local_expr_value(rhs_id, locals, local_types, enum_module) or { return false }
+	typ := if stmt.kind == .decl_assign {
+		tc.comptime_enum_local_expr_type(rhs_id, local_types)
+	} else {
+		local_types[lhs.value] or { return false }
+	}
+	locals[lhs.value] = comptime_enum_integer_cast(value, unalias_type(typ).source_type_id())
+	local_types[lhs.value] = typ
+	return true
 }
 
 fn (tc &TypeChecker) comptime_static_enum_local_expr_value(id flat.NodeId, locals map[string]i64, local_types map[string]Type, enum_module string) ?i64 {
@@ -6255,7 +6280,8 @@ fn (mut tc TypeChecker) check_function_cast(id flat.NodeId, node flat.Node, chil
 fn (mut tc TypeChecker) warn_invalid_enum_cast(id flat.NodeId, node flat.Node, child_id flat.NodeId, target Enum) {
 	value := tc.const_int_expr(child_id, tc.cur_module, []string{}) or { return }
 	cases := tc.comptime_static_enum_decl_value_cases(target.source_type_id())
-	if cases.len == 0 {
+	// C-derived members and successors have no numeric value until C compilation.
+	if cases.len == 0 || cases.any(!it.has_value || it.value_from_c) {
 		return
 	}
 	mut valid := false

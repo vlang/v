@@ -2531,6 +2531,37 @@ fn (g &FlatGen) enum_comptime_call_value(id flat.NodeId, enum_module string, enu
 	} else {
 		return none
 	}
+	// This is a straight-line integer evaluator, not an interpreter. Validate the
+	// complete body before folding so no skipped statement can change its result.
+	mut has_return := false
+	for i in 0 .. fn_node.children_count {
+		stmt := g.a.child_node(&fn_node, i)
+		if has_return {
+			return none
+		}
+		match stmt.kind {
+			.param {}
+			.decl_assign, .assign {
+				if stmt.children_count != 2 || (stmt.kind == .assign && stmt.op != .assign) {
+					return none
+				}
+				lhs := g.a.child_node(stmt, 0)
+				if lhs.kind != .ident || lhs.value.len == 0 || lhs.value == '_' {
+					return none
+				}
+			}
+			.return_stmt {
+				if stmt.children_count != 1 {
+					return none
+				}
+				has_return = true
+			}
+			else { return none }
+		}
+	}
+	if !has_return {
+		return none
+	}
 	mut locals := map[string]i64{}
 	mut arg_idx := 1
 	for i in 0 .. fn_node.children_count {
@@ -2546,10 +2577,15 @@ fn (g &FlatGen) enum_comptime_call_value(id flat.NodeId, enum_module string, enu
 		locals[param.value] = g.enum_comptime_integer_cast(value, param.typ)
 		arg_idx++
 	}
+	if arg_idx != call.children_count {
+		return none
+	}
 	for i in 0 .. fn_node.children_count {
 		stmt := g.a.child_node(&fn_node, i)
 		if stmt.kind in [.decl_assign, .assign] {
-			g.enum_comptime_update_locals(stmt, mut locals, enum_module)
+			if !g.enum_comptime_update_locals(stmt, mut locals, enum_module) {
+				return none
+			}
 			continue
 		}
 		if stmt.kind == .return_stmt && stmt.children_count > 0 {
@@ -2570,31 +2606,25 @@ fn (g &FlatGen) enum_comptime_integer_cast(value i64, typ_id u32) i64 {
 	return types.comptime_enum_integer_cast(value, flat.source_type_id(resolved))
 }
 
-fn (g &FlatGen) enum_comptime_update_locals(stmt flat.Node, mut locals map[string]i64, enum_module string) {
-	if stmt.children_count < 2 || stmt.children_count % 2 != 0 {
-		return
+fn (g &FlatGen) enum_comptime_update_locals(stmt flat.Node, mut locals map[string]i64, enum_module string) bool {
+	if stmt.children_count != 2 || (stmt.kind == .assign && stmt.op != .assign) {
+		return false
 	}
-	mut i := 0
-	for i < stmt.children_count {
-		lhs := g.a.child_node(&stmt, i)
-		if lhs.kind == .ident && lhs.value.len > 0 && lhs.value != '_' {
-			if stmt.kind == .decl_assign || stmt.op == .assign {
-				rhs_id := g.a.child(&stmt, i + 1)
-				if value := g.enum_comptime_expr_value(rhs_id, locals, enum_module) {
-					locals[lhs.value] = if isnil(g.tc) {
-						value
-					} else {
-						g.enum_comptime_integer_cast(value, g.usable_expr_type(g.a.child(&stmt, i)).source_type_id())
-					}
-				} else {
-					locals.delete(lhs.value)
-				}
-			} else {
-				locals.delete(lhs.value)
-			}
-		}
-		i += 2
+	lhs := g.a.child_node(&stmt, 0)
+	if lhs.kind != .ident || lhs.value.len == 0 || lhs.value == '_' {
+		return false
 	}
+	if stmt.kind == .assign && lhs.value !in locals {
+		return false
+	}
+	rhs_id := g.a.child(&stmt, 1)
+	value := g.enum_comptime_expr_value(rhs_id, locals, enum_module) or { return false }
+	locals[lhs.value] = if isnil(g.tc) {
+		value
+	} else {
+		g.enum_comptime_integer_cast(value, g.usable_expr_type(g.a.child(&stmt, 0)).source_type_id())
+	}
+	return true
 }
 
 fn (g &FlatGen) enum_comptime_expr_value(id flat.NodeId, locals map[string]i64, enum_module string) ?i64 {
