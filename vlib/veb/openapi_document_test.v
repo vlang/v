@@ -64,12 +64,18 @@ enum TypedApiState {
 }
 
 struct TypedApiExamples {
-	object  string       @[example: '{"ok":true}']
-	array   string       @[example: '[1,2]']
-	number  int          @[example: '42']
-	boolean bool         @[example: 'true']
-	text    string       @[example: 'plain text']
-	nested  TypedApiNode @[description: 'A recursive node']
+	object           string       @[example: '{"ok":true}']
+	array            string       @[example: '[1,2]']
+	number           int          @[example: '42']
+	boolean          bool         @[example: 'true']
+	text             string       @[example: 'plain text']
+	nested           TypedApiNode @[description: 'A recursive node']
+	string_boolean   string       @[example: '"true"']
+	string_number    string       @[example: '"42"']
+	string_null      string       @[example: '"null"']
+	omitted          string       @[omitempty]
+	required_omitted string       @[required; omitempty]
+	optional_omitted ?string      @[omitempty]
 }
 
 fn typed_api() !&TypedApiRoot {
@@ -259,6 +265,43 @@ fn test_typed_openapi_scalar_schemas_and_json_examples() {
 	assert api_at(examples, 'properties', 'text', 'example').str() == 'plain text'
 	assert api_at(examples, 'properties', 'nested', 'allOf').as_array().len == 1
 	assert api_at(examples, 'properties', 'nested', 'description').str() == 'A recursive node'
+	for field in ['string_boolean', 'string_number', 'string_null'] {
+		assert api_at(examples, 'properties', field, 'example') is string
+	}
+	assert api_at(examples, 'properties', 'string_boolean', 'example').str() == 'true'
+	assert api_at(examples, 'properties', 'string_number', 'example').str() == '42'
+	assert api_at(examples, 'properties', 'string_null', 'example').str() == 'null'
+	required := api_at(examples, 'required').as_array().map(it.str())
+	assert 'omitted' in required
+	assert 'required_omitted' in required
+	assert 'optional_omitted' !in required
+}
+
+fn test_typed_openapi_generated_ids_distinguish_mount_paths() {
+	mounts := ['/a-b', '/a_b', '/a_2db', '/a/b', '/Москва', '/東京']
+	mut app := &TypedApiRoot{}
+	mut leaf := &TypedApiLeaf{}
+	for mount in mounts {
+		app.register_controller[TypedApiLeaf, TypedApiContext](mount, mut leaf)!
+	}
+	mut doc := new_openapi(title: 'Distinct mount paths')!
+	doc.add_app[TypedApiRoot, TypedApiContext](app)!
+	raw := json2.decode[json2.Any](doc.json(false)!)!
+	mut ids := []string{}
+	for _, path in api_at(raw, 'paths').as_map() {
+		for _, operation in path.as_map() {
+			id := api_at(operation, 'operationId').str()
+			assert id !in ids
+			ids << id
+		}
+	}
+	mut reversed := &TypedApiRoot{}
+	for mount in mounts.reverse() {
+		reversed.register_controller[TypedApiLeaf, TypedApiContext](mount, mut leaf)!
+	}
+	mut reordered := new_openapi(title: 'Distinct mount paths')!
+	reordered.add_app[TypedApiRoot, TypedApiContext](reversed)!
+	assert reordered.json(false)! == doc.json(false)!
 }
 
 fn test_typed_openapi_version_security_and_response_overrides() {

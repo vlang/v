@@ -27,7 +27,8 @@ path and method on different hosts; duplicate operations return an error.
 
 Use `operation(path, method, ...)` for summaries, multiline descriptions, tags, explicit
 operation IDs, path schemas and additional parameter objects. Generated IDs include the
-controller, handler, method and path. Output rejects duplicate IDs. Structured metadata
+controller, handler, method and path, escaping punctuation as hexadecimal bytes so distinct
+mount paths retain distinct IDs. Output rejects duplicate IDs. Structured metadata
 replaces application-specific source-comment parsing: migrate each `@summary`,
 `@description`, `@tag` and `@security` into `OpenApiOperation`, and each `@response` into
 `response[T]` or `raw_response`. Source comments and decorative dividers are never parsed.
@@ -41,12 +42,13 @@ to override this. Call it for both locations when a handler binds a query and a 
 `schema[T]()` registers referenced component schemas recursively. Reflection handles
 primitives, integer widths, floats, timestamps, options, arrays, maps, enums, sum types
 and named structs. `json2.Any` permits any JSON value. Recursive structs use references.
-JSON field renames and `json: '-'` are honored. Nonoptional fields are required unless
-marked `omitempty`. Optional fields are omitted from `required`; set `nullable_options`
+JSON field renames and `json: '-'` are honored. Nonoptional fields are required, including
+fields marked `omitempty`. Optional fields are omitted from `required`; set `nullable_options`
 to also mark their schemas nullable.
 
 Field attributes `description: '...'` and `example: '...'` supply schema metadata. Examples
 are decoded as JSON, including objects and arrays; invalid JSON becomes a string example.
+Use `@[example: '"true"']` for the string `true`, or `@[example: 'true']` for the boolean.
 Default component names use the reflected module-qualified type name. Map these names
 with `schema_names` (names allow letters, digits, `.`, `_` and `-`), or call
 `custom_schema(name, schema)` to replace a component with a

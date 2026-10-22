@@ -89,7 +89,7 @@ fn (mut doc OpenApiDocument) schema_value[T](value T) OpenApiSchema {
 						if attr.starts_with('description:') {
 							schema['description'] = openapi_attr_value(attr)
 						} else if attr.starts_with('example:') {
-							example := openapi_attr_value(attr)
+							example := openapi_example_value(attr)
 							schema['example'] = json2.decode[json2.Any](example) or { json2.Any(example) }
 						}
 					}
@@ -97,9 +97,7 @@ fn (mut doc OpenApiDocument) schema_value[T](value T) OpenApiSchema {
 					$if field.typ is $option {
 						// Missing optional fields are accepted by typed binding.
 					} $else {
-						if 'omitempty' !in field.attrs {
-							required << key
-						}
+						required << key
 					}
 				}
 			}
@@ -177,4 +175,14 @@ fn openapi_field_name(name string, attrs []string) string {
 
 fn openapi_attr_value(attr string) string {
 	return attr.all_after(':').trim_space().trim('\'"')
+}
+
+fn openapi_example_value(attr string) string {
+	value := attr.all_after(':').trim_space()
+	if value.len > 1 && ((value[0] == `'` && value[value.len - 1] == `'`)
+		|| (value[0] == `"` && value[value.len - 1] == `"`)) {
+		// Remove the attribute quotes while preserving quotes in a JSON string example.
+		return value[1..value.len - 1]
+	}
+	return value
 }

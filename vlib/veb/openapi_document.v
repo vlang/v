@@ -402,7 +402,8 @@ fn openapi_security(security []map[string][]string) []json2.Any {
 fn openapi_id(value string) string {
 	mut result := ''
 	for c in value.bytes() {
-		result += if c.is_alnum() || c == `_` { c.ascii_str() } else { '_' }
+		// Escape underscores as well so a literal escape sequence cannot collide.
+		result += if c.is_alnum() { c.ascii_str() } else { '_' + c.hex() }
 	}
 	return result
 }
