@@ -715,7 +715,7 @@ fn (mut t Transformer) transform_struct_children(id flat.NodeId, node flat.Node)
 	}
 	if t.inplace_struct_fields && t.rewrite_children_in_place(id, field_ids) {
 		output_typ := (if node.typ != 0 { node.typ } else { flat.source_type_id(node.value) })
-		if flat.source_type_name(output_typ) != node.typ_text() {
+		if output_typ != node.typ {
 			t.set_node_typ(int(id), output_typ)
 		}
 		return id

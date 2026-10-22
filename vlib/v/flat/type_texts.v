@@ -6,7 +6,8 @@ module flat
 @[heap]
 pub struct TypeTextTable {
 mut:
-	recent [128]u32
+	recent       [128]u32
+	recent_texts [128]string
 }
 
 // intern returns the numeric identity of text, retaining one owned spelling.
@@ -14,14 +15,20 @@ pub fn (mut table TypeTextTable) intern(text string) u32 {
 	if text.len == 0 {
 		return 0
 	}
-	// Pointer reuse is safe: every hit also compares the current bytes with
-	// the immutable spelling owned by the table, never a borrowed input header.
+	// Pointer reuse is safe: every hit compares the current bytes with the
+	// immutable process-owned spelling, never with a borrowed input header.
 	slot := int((usize(text.str) >> 4 ^ usize(text.len)) & 127)
 	recent := table.recent[slot]
-	if recent != 0 && source_type_name(recent) == text {
+	if recent != 0 && table.recent_texts[slot] == text {
 		return recent
 	}
 	id := source_type_id(text)
+	canonical := source_type_name(id)
+	// The global interner owns these immutable bytes for the process lifetime.
+	// Cache only a nonfreeing header, including when the table is copied or dropped.
+	table.recent_texts[slot] = unsafe {
+		canonical.str.vstring_literal_with_len(canonical.len)
+	}
 	table.recent[slot] = id
 	return id
 }
@@ -216,6 +223,7 @@ pub fn (bindings &TypeTextBindings) fork() TypeTextBindings {
 // fork copies the private lookup cache. All spellings use process-wide identities.
 pub fn (table &TypeTextTable) fork() &TypeTextTable {
 	return &TypeTextTable{
-		recent: table.recent
+		recent:       table.recent
+		recent_texts: table.recent_texts
 	}
 }

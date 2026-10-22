@@ -555,33 +555,35 @@ mut:
 	// Per-checker symbol probes front the compilation-wide interner. Resolved
 	// names are usually repeated as the same canonical string pointer inside a
 	// worker, so these slots avoid taking the interner mutex on every call.
-	symbol_recent_ptrs           [type_cache_recent_slots]usize
-	symbol_recent_lens           [type_cache_recent_slots]int
-	symbol_recent_ids            [type_cache_recent_slots]SymbolId
-	symbol_recent_vals           [type_cache_recent_slots]string
-	symbol_recent_set            [type_cache_recent_slots]bool
-	struct_field_entries         map[u32]&StructFieldTypeEntries
-	struct_field_misses          map[u32]&StructFieldMissEntries
-	struct_field_shared          map[u32]&StructFieldTypeEntries // immutable declaration types, without local TypeIds
-	struct_field_complete        map[u32]bool                    // direct fields cover every lookup for these owners
-	struct_field_recent_structs  [256]u32
-	struct_field_recent_fields   [256]string
-	struct_field_recent_values   [256]&Type
-	struct_field_recent_states   [256]i8
-	struct_field_fn_diagnostics  map[string]string
-	sum_variant_pattern_entries  map[string]&SumVariantPatternFileEntries
-	recv_pattern_entries         map[string]GenericReceiverMethodPatternMatch
-	recv_pattern_misses          map[string]bool
-	lexical_smartcast_pages      [][]u32 // see lexical_smartcast_state
-	lexical_smartcast_types      []&Type
-	ierror_compat_entries        map[u32]int
-	ierror_scoped_compat_entries map[u32]&TypeQueryScopeEntries
-	interface_impl_entries       map[u32]flat.TypeTextList
-	source_error_embed_entries   map[u32]&TypeQueryScopeEntries
-	source_error_embed_indexed   bool
-	source_error_embed_shared    bool
-	ierror_impl_names            flat.TypeTextList
-	ierror_impl_names_set        bool
+	symbol_recent_ptrs          [type_cache_recent_slots]usize
+	symbol_recent_lens          [type_cache_recent_slots]int
+	symbol_recent_ids           [type_cache_recent_slots]SymbolId
+	symbol_recent_vals          [type_cache_recent_slots]string
+	symbol_recent_set           [type_cache_recent_slots]bool
+	struct_field_entries        map[u32]&StructFieldTypeEntries
+	struct_field_misses         map[u32]&StructFieldMissEntries
+	struct_field_shared         map[u32]&StructFieldTypeEntries // immutable declaration types, without local TypeIds
+	struct_field_complete       map[u32]bool                    // direct fields cover every lookup for these owners
+	struct_field_recent_structs [256]u32
+	struct_field_recent_fields  [256]string
+	struct_field_recent_values  [256]&Type
+	struct_field_recent_states  [256]i8
+	// Only these slots can bypass the C-module and escaped-keyword guards.
+	struct_field_recent_unguarded [256]bool
+	struct_field_fn_diagnostics   map[string]string
+	sum_variant_pattern_entries   map[string]&SumVariantPatternFileEntries
+	recv_pattern_entries          map[string]GenericReceiverMethodPatternMatch
+	recv_pattern_misses           map[string]bool
+	lexical_smartcast_pages       [][]u32 // see lexical_smartcast_state
+	lexical_smartcast_types       []&Type
+	ierror_compat_entries         map[u32]int
+	ierror_scoped_compat_entries  map[u32]&TypeQueryScopeEntries
+	interface_impl_entries        map[u32]flat.TypeTextList
+	source_error_embed_entries    map[u32]&TypeQueryScopeEntries
+	source_error_embed_indexed    bool
+	source_error_embed_shared     bool
+	ierror_impl_names             flat.TypeTextList
+	ierror_impl_names_set         bool
 	// short type name -> unique qualified name ('' = ambiguous); built lazily
 	// by unique_qualified_type_name from the five type-name maps.
 	short_type_name_index       flat.TypeTextBindings
@@ -22145,9 +22147,8 @@ fn (tc &TypeChecker) comptime_static_reflected_field_expr_type(id flat.NodeId, v
 		return none
 	}
 	first_source_id := field_cases.cases[0].typ
-	first := flat.source_type_name(first_source_id)
 	for field in field_cases.cases[1..] {
-		if field.typ_text() != first {
+		if field.typ != first_source_id {
 			return none
 		}
 	}

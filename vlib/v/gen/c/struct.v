@@ -184,15 +184,18 @@ fn struct_init_has_main_type_lock(type_name string) bool {
 }
 
 fn (mut g FlatGen) struct_init_effective_type_name(id flat.NodeId, node flat.Node) u32 {
-	if node.typ_text() == node.value && (flat.source_type_shape(node.typ).has(.option_type) || flat.source_type_shape(node.typ).has(.result_type)) {
-		// Lowered option/result literals carry their authoritative wrapper type on
-		// the synthetic node; they have no checker-side expression entry to refine it.
-		return node.typ
-	}
-	if node.typ_text() == node.value && flat.source_type_shape(node.typ).has(.bracketed) && flat.source_type_shape(node.typ).has(.dotted) {
-		// A specialized clone's explicit type annotation is newer than the
-		// checker's expression cache and can retain nested main-module locks.
-		return node.typ
+	if node.typ_text() == node.value {
+		shape := flat.source_type_shape(node.typ)
+		if shape.has(.option_type) || shape.has(.result_type) {
+			// Lowered option/result literals carry their authoritative wrapper type on
+			// the synthetic node; they have no checker-side expression entry to refine it.
+			return node.typ
+		}
+		if shape.has(.bracketed) && shape.has(.dotted) {
+			// A specialized clone's explicit type annotation is newer than the
+			// checker's expression cache and can retain nested main-module locks.
+			return node.typ
+		}
 	}
 	if struct_init_has_main_type_lock(node.value) {
 		// Monomorphization pins a caller-owned program type with `main.` when the

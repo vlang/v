@@ -4988,9 +4988,8 @@ fn (mut t Transformer) lift_fn_literal_for_fn_param(_id flat.NodeId, node flat.N
 	children << capture_ids
 	for i, param_id in param_ids {
 		param_type_name_source_id := t.semantic_type_name(*fn_type.params[i].typ)
-		param_type_name := flat.source_type_name(param_type_name_source_id)
 		param := t.a.nodes[int(param_id)]
-		if param.typ_text() == param_type_name {
+		if param.typ == param_type_name_source_id {
 			children << param_id
 		} else {
 			children << t.a.add_node(flat.Node{
@@ -6541,6 +6540,7 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ_id u32) flat
 			clean_typ = wide
 		}
 	}
+	clean_shape := flat.source_type_shape(clean_typ)
 	if map_typ := generic_map_type_arg_from_suffix(flat.source_type_name(clean_typ)) {
 		return t.wrap_string_conversion(expr, (if is_ref {
 			flat.source_type_id('&${map_typ}')
@@ -6555,15 +6555,12 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ_id u32) flat
 		return t.wrap_string_conversion(expr, source_typ_source_id)
 	}
 	if source_typ_source_id := t.generic_specialized_source_type_name(clean_type_id) {
-		source_typ := flat.source_type_name(source_typ_source_id)
-
-		if source_typ != flat.source_type_name(clean_typ) {
+		if source_typ_source_id != clean_typ {
 			return t.wrap_string_conversion(expr, source_typ_source_id)
 		}
 	}
 	normalized_stringify_type_source_id := t.normalize_runtime_array_stringify_type(clean_type_id)
-	normalized_stringify_type := flat.source_type_name(normalized_stringify_type_source_id)
-	if normalized_stringify_type != flat.source_type_name(clean_typ) {
+	if normalized_stringify_type_source_id != clean_typ {
 		return t.wrap_string_conversion(expr, normalized_stringify_type_source_id)
 	}
 	if t.is_fixed_array_type(clean_type_id) {
@@ -6589,8 +6586,7 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ_id u32) flat
 	}
 	if clean_typ == 0 || clean_typ == flat.source_type_unknown {
 		inferred_source_id := t.resolve_expr_type(expr)
-		inferred := flat.source_type_name(inferred_source_id)
-		if inferred_source_id != 0 && inferred != flat.source_type_name(clean_typ) {
+		if inferred_source_id != 0 && inferred_source_id != clean_typ {
 			return t.wrap_string_conversion(expr, inferred_source_id)
 		}
 	}
@@ -6624,7 +6620,7 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ_id u32) flat
 				return t.alias_str_wrap(expr, flat.source_type_id(short_typ), alias_source_id, is_ref)
 			}
 		}
-		if !flat.source_type_shape(clean_typ).has(.dotted) && !local_struct_shadows_alias {
+		if !clean_shape.has(.dotted) && !local_struct_shadows_alias {
 			aliases := t.type_aliases_with_short_name(flat.source_type_name(clean_typ))
 			if aliases.len > 0 {
 				return t.alias_str_wrap(expr, clean_type_id, aliases[0].target, is_ref)
@@ -6661,20 +6657,20 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ_id u32) flat
 	if clean_typ == flat.source_type_string {
 		return expr
 	}
-	if flat.source_type_name(clean_typ) == 'thread' || flat.source_type_shape(clean_typ).has(.thread_type) {
-		payload := if flat.source_type_shape(clean_typ).has(.thread_type) {
+	if flat.source_type_name(clean_typ) == 'thread' || clean_shape.has(.thread_type) {
+		payload := if clean_shape.has(.thread_type) {
 			trimmed_transform_text(flat.source_type_name(clean_typ)[7..])
 		} else {
 			'void'
 		}
 		return t.make_string_literal('thread(${payload})')
 	}
-	if flat.source_type_shape(clean_typ).has(.channel_type) {
+	if clean_shape.has(.channel_type) {
 		channel_value := if is_ref { t.make_prefix(.mul, expr) } else { expr }
 		return t.make_call_typed('v3_chan_str', [channel_value,
 			t.make_string_literal(trimmed_transform_text(flat.source_type_name(clean_typ)[5..]))], flat.source_type_string)
 	}
-	if flat.source_type_shape(clean_typ).has(.function_compact) || flat.source_type_shape(clean_typ).has(.function_spaced) {
+	if clean_shape.has(.function_compact) || clean_shape.has(.function_spaced) {
 		return t.make_string_literal(stringify_fn_type_display(flat.source_type_name(clean_typ)))
 	}
 	if is_ref {
@@ -6682,11 +6678,11 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ_id u32) flat
 		if expr_node.kind == .ident && t.string_interp_needs_value_read(expr_node.value, typ_id) {
 			return t.wrap_string_conversion(t.make_prefix(.mul, expr), clean_type_id)
 		}
-		if flat.source_type_shape(clean_typ).has(.pointer) && t.multi_pointer_str_expands_value(clean_type_id) {
+		if clean_shape.has(.pointer) && t.multi_pointer_str_expands_value(clean_type_id) {
 			return t.lower_ref_value_str(expr, typ_id,
 				'&'.repeat(dump_pointer_depth(typ)) + 'nil')
 		}
-		if flat.source_type_shape(clean_typ).has(.array_type) || flat.source_type_shape(clean_typ).has(.map_type)
+		if clean_shape.has(.array_type) || clean_shape.has(.map_type)
 			|| t.is_fixed_array_type(clean_type_id) {
 			return t.lower_ref_value_str(expr, typ_id, '&nil')
 		}
@@ -6729,7 +6725,7 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ_id u32) flat
 		}
 		return t.lower_interface_auto_str(expr, iface_name_source_id)
 	}
-	if flat.source_type_shape(clean_typ).has(.array_type) || flat.source_type_shape(clean_typ).has(.map_type) {
+	if clean_shape.has(.array_type) || clean_shape.has(.map_type) {
 		if method_name := t.resolve_receiver_method_for_type(clean_type_id, 'str') {
 			t.mark_fn_used_name(method_name)
 			return t.make_call_typed(method_name, [expr], flat.source_type_string)
@@ -6794,7 +6790,7 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ_id u32) flat
 				return t.enum_autostr_call(expr, clean_type_id)
 			}
 			mut qenum := flat.source_type_name(clean_typ)
-			if !flat.source_type_shape(clean_typ).has(.dotted) && t.cur_module.len > 0 && t.cur_module != 'main'
+			if !clean_shape.has(.dotted) && t.cur_module.len > 0 && t.cur_module != 'main'
 				&& t.cur_module != 'builtin' {
 				qenum = '${t.cur_module}.${flat.source_type_name(clean_typ)}'
 			}
@@ -6827,9 +6823,9 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ_id u32) flat
 					return struct_str
 				}
 				return t.make_string_literal('${qualified}{}')
-			} else if clean_typ != 0 && flat.source_type_shape(clean_typ).has(.array_type) {
+			} else if clean_typ != 0 && clean_shape.has(.array_type) {
 				return t.lower_array_str(expr, clean_type_id)
-			} else if clean_typ != 0 && flat.source_type_shape(clean_typ).has(.map_type) {
+			} else if clean_typ != 0 && clean_shape.has(.map_type) {
 				return t.lower_map_str(expr, clean_type_id)
 			} else if clean_typ == flat.source_type_rune {
 				return t.make_call_typed('rune.str', [expr], flat.source_type_string)
@@ -15932,7 +15928,7 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 		}
 	}
 	base_is_pointer := flat.source_type_shape(base_type).has(.pointer)
-	if flat.source_type_shape(base_type).has(.pointer) {
+	if base_is_pointer {
 		base_type = flat.source_type_id(flat.source_type_name(base_type)[1..])
 	}
 	if base_type == 0 {
@@ -18025,7 +18021,8 @@ fn (t &Transformer) receiver_method_matches_base_type(method_name string, base_i
 		&& t.normalize_type_alias(flat.source_type_id(receiver_name)) == base_type {
 		return true
 	}
-	if flat.source_type_shape(base_type).has(.array_type) || flat.source_type_shape(base_type).has(.map_type) {
+	shape := flat.source_type_shape(base_type)
+	if shape.has(.array_type) || shape.has(.map_type) {
 		method := method_name.all_after_last('.')
 		if method_name in t.receiver_method_candidates(base_type, method) {
 			return true
@@ -18046,7 +18043,7 @@ fn (t &Transformer) receiver_method_matches_base_type(method_name string, base_i
 			return true
 		}
 	}
-	if !flat.source_type_shape(base_type).has(.dotted) && t.cur_module.len > 0 && t.cur_module != 'main'
+	if !shape.has(.dotted) && t.cur_module.len > 0 && t.cur_module != 'main'
 		&& t.cur_module != 'builtin' && receiver_name == '${t.cur_module}.${flat.source_type_name(base_type)}' {
 		return true
 	}
@@ -18057,7 +18054,7 @@ fn (t &Transformer) receiver_method_matches_base_type(method_name string, base_i
 	// short names match (a selective import renders the receiver as bare `Command`,
 	// but its method is registered under `cli.Command`). A genuine bare/main receiver
 	// hits the exact-match branch above, so it never reaches here.
-	if !flat.source_type_shape(base_type).has(.dotted) && receiver_name.contains('.')
+	if !shape.has(.dotted) && receiver_name.contains('.')
 		&& receiver_name.all_after_last('.') == flat.source_type_name(base_type) {
 		return true
 	}

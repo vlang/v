@@ -4924,12 +4924,12 @@ fn node_kind_id(node flat.Node) int {
 }
 
 // collect_gen_info updates collect gen info state for c.
-// UnusedParamSeen tracks param type texts already preseeded for unused fn
+// UnusedParamSeen tracks source type IDs already preseeded for unused fn
 // declarations within the current module (see preseed_unused_fn_ptr_param_types).
 struct UnusedParamSeen {
 mut:
-	module string
-	texts  map[string]bool
+	module   string
+	type_ids map[u32]bool
 }
 
 // CollectGenFnPrep carries the context-dependent, table-write-free portion of
@@ -5734,14 +5734,14 @@ fn (mut g FlatGen) cached_shared_alias_pointer_type_from_text(raw_id u32) ?types
 }
 
 fn (mut g FlatGen) preseed_unused_fn_ptr_param_types(node flat.Node, module_name string, file string) {
-	// Unused declarations repeat the same few param type texts; when every
-	// param text of this fn was already preseeded within this module, the
+	// Unused declarations repeat the same few param types; when every
+	// param type of this fn was already preseeded within this module, the
 	// whole typed-param resolution below is a no-op.
 	if !isnil(g.unused_param_seen) {
 		mut seen := g.unused_param_seen
 		if seen.module != module_name {
 			seen.module = module_name
-			seen.texts.clear()
+			seen.type_ids.clear()
 		}
 		mut all_seen := true
 		for i in 0 .. node.children_count {
@@ -5752,7 +5752,7 @@ fn (mut g FlatGen) preseed_unused_fn_ptr_param_types(node flat.Node, module_name
 				}
 				continue
 			}
-			if child.typ_text() !in seen.texts {
+			if child.typ !in seen.type_ids {
 				all_seen = false
 				break
 			}
@@ -5774,7 +5774,7 @@ fn (mut g FlatGen) preseed_unused_fn_ptr_param_types(node flat.Node, module_name
 			continue
 		}
 		if !isnil(g.unused_param_seen) {
-			g.unused_param_seen.texts[child.typ_text()] = true
+			g.unused_param_seen.type_ids[child.typ] = true
 		}
 		raw_type := if param_idx < typed_params.len {
 			typed_params[param_idx]

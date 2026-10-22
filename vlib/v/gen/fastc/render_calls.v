@@ -395,7 +395,7 @@ fn (g &Parser) render_cast_expression(tokens []FastcExpressionToken) ?FastcRende
 			typ:    c_type
 		}
 	}
-	if !flat.source_type_name(c_type).ends_with('*') && flat.source_type_name(aliased) != flat.source_type_name(c_type) && flat.source_type_name(aliased).starts_with('FixedArray_') {
+	if !flat.source_type_name(c_type).ends_with('*') && aliased != c_type && flat.source_type_name(aliased).starts_with('FixedArray_') {
 		if inner_tokens.len >= 5 && inner_tokens[0].tok == .lsbr && inner_tokens[2].tok == .rsbr
 			&& inner_tokens[inner_tokens.len - 2].tok == .lcbr && inner_tokens.last().tok == .rcbr {
 			return FastcRenderedExpression{
@@ -948,7 +948,7 @@ fn (g &Parser) render_interface_cast_expression(tokens []FastcExpressionToken, r
 			// `Expr(node)` where `node` is a `mut T` parameter (a C `T*`): the streamed operand
 			// is auto-dereferenced to the pointee value (`*(node)`), so box that value rather than
 			// letting interface_value_expression's pointer branch cast a struct value to `void*`.
-			if local.is_reference && local.typ_text() == flat.source_type_name(actual_type) {
+			if local.is_reference && local.typ == actual_type {
 				box_type = flat.source_type_id(fastc_trim_pointer_suffix(flat.source_type_name(actual_type)))
 			}
 		}

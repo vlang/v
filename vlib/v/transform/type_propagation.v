@@ -2174,12 +2174,13 @@ fn (t &Transformer) node_type_uncached(id flat.NodeId) u32 {
 		// The checker override only applies to named struct types. Most expressions
 		// are builtin scalars or containers; avoid parsing both types and deriving
 		// their C names for those overwhelmingly common cases.
-		if !t.building_v && type_text_may_name_struct(resolved_source_id) {
+		resolved_shape := flat.source_type_shape(resolved_source_id)
+		if !t.building_v && type_text_may_name_struct(resolved_source_id, resolved_shape) {
 			if checked_source_id := t.checker_type_over_struct_guess(id, resolved_source_id) {
 				return checked_source_id
 			}
 		}
-		if flat.source_type_shape(resolved_source_id).has(.typeof_expr) && !isnil(t.tc) {
+		if resolved_shape.has(.typeof_expr) && !isnil(t.tc) {
 			if typ := t.tc.expr_type(id) {
 				name_source_id := t.normalize_type_alias(t.tc.type_name(typ))
 				name_source_id_2 := name_source_id
@@ -2300,8 +2301,7 @@ fn (t &Transformer) node_type_uncached(id flat.NodeId) u32 {
 
 // type_text_may_name_struct screens an interned spelling before checker struct overrides.
 @[inline]
-fn type_text_may_name_struct(typ_id u32) bool {
-	shape := flat.source_type_shape(typ_id)
+fn type_text_may_name_struct(typ_id u32, shape flat.SourceTypeShape) bool {
 	if typ_id == 0 || shape.has(.builtin_alias) || shape.has(.array_type)
 		|| shape.has(.map_type) || shape.has(.leading_bracket) || shape.has(.function_compact)
 		|| shape.has(.function_spaced) || shape.has(.channel_type) || shape.has(.optional) {

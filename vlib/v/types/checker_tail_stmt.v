@@ -11186,13 +11186,15 @@ fn fn_param_pointer_slot_compatible(slot Type, other Type) bool {
 	return fn_param_pointer_slot_compatible(slot_base, other_base)
 }
 
+const fn_param_void_pointer_spelling = flat.source_type_id('&void')
+
 fn fn_param_is_voidptr_type(typ &Type) bool {
 	// Only nominal types and pointers can have either spelling. Formatting a
 	// callback or container here creates names that cannot match.
 	match typ {
 		Struct, Alias, Enum, Interface, SumType {
-			if typ.source_type_id() == flat.source_type_voidptr
-				|| flat.source_type_name(typ.source_type_id()) == '&void' {
+			name_id := typ.source_type_id()
+			if name_id == flat.source_type_voidptr || name_id == fn_param_void_pointer_spelling {
 				return true
 			}
 		}
@@ -14202,11 +14204,12 @@ fn (tc &TypeChecker) struct_fields_for_init(struct_name_id u32) []StructField {
 	if params.len != generic_args.len {
 		return fields
 	}
+	generic_arg_ids := flat.TypeTextList.from_names(generic_args).ids
 	mut concrete_fields := []StructField{cap: fields.len}
 	for field in fields {
 		concrete_fields << StructField{
 			name:        field.name
-			typ:         tc.substitute_generic_type(field.typ, flat.TypeTextList.from_names(generic_args).ids, params)
+			typ:         tc.substitute_generic_type(field.typ, generic_arg_ids, params)
 			has_default: field.has_default
 			is_embed:    field.is_embed
 			is_mut:      field.is_mut
@@ -14223,13 +14226,33 @@ pub fn (tc &TypeChecker) struct_fields_for_type(struct_name_id u32) []StructFiel
 
 @[direct_array_access; inline]
 fn (tc &TypeChecker) struct_field_type(struct_name_id u32, field_name string) ?Type {
+	if !isnil(tc.type_cache) {
+		cache := tc.type_cache
+		slot := struct_field_cache_slot(struct_name_id, field_name)
+		if cache.struct_field_recent_unguarded[slot]
+			&& cache.struct_field_recent_states[slot] != 0
+			&& cache.struct_field_recent_structs[slot] == struct_name_id
+			&& cache.struct_field_recent_fields[slot] == field_name {
+			if cache.struct_field_recent_states[slot] > 0 {
+				return *cache.struct_field_recent_values[slot]
+			}
+			return none
+		}
+	}
+	return tc.struct_field_type_uncached(struct_name_id, field_name)
+}
+
+@[direct_array_access]
+fn (tc &TypeChecker) struct_field_type_uncached(struct_name_id u32, field_name string) ?Type {
 	struct_name := flat.source_type_name(struct_name_id)
-	if struct_name.starts_with('C.') {
+	is_c_struct := struct_name.starts_with('C.')
+	has_escape_prefix := field_name.starts_with('@')
+	if is_c_struct {
 		if typ := tc.c_struct_module_field_type(struct_name_id, field_name) {
 			return typ
 		}
 	}
-	if field_name.starts_with('@') && field_name.len > 1
+	if has_escape_prefix && field_name.len > 1
 		&& token.Token.from_string_tinyv(field_name[1..]).is_keyword() {
 		mut exact_seen := map[u32]bool{}
 		if exact := tc.struct_field_type_inner(struct_name_id, field_name, mut exact_seen) {
@@ -14253,42 +14276,39 @@ fn (tc &TypeChecker) struct_field_type(struct_name_id u32, field_name string) ?T
 			return none
 		}
 	}
-	return tc.struct_field_type_uncached(struct_name_id, field_name)
-}
-
-fn (tc &TypeChecker) struct_field_type_uncached(struct_name_id u32, field_name string) ?Type {
+	unguarded := !is_c_struct && !has_escape_prefix
 	if !isnil(tc.type_cache) {
 		mut fallback := tc.type_cache.base
 		for !isnil(fallback) {
 			if typ := cached_struct_field_type(fallback.struct_field_shared, struct_name_id, field_name) {
-				tc.remember_struct_field_type(struct_name_id, field_name, typ, true)
+				tc.remember_struct_field_type(struct_name_id, field_name, typ, true, unguarded)
 				return *typ
 			}
 			if typ := cached_struct_field_type(fallback.struct_field_entries, struct_name_id, field_name) {
-				tc.remember_struct_field_type(struct_name_id, field_name, typ, true)
+				tc.remember_struct_field_type(struct_name_id, field_name, typ, true, unguarded)
 				return *typ
 			}
 			if cached_struct_field_miss(fallback.struct_field_misses, struct_name_id, field_name) {
-				tc.remember_struct_field_type(struct_name_id, field_name, empty_type, false)
+				tc.remember_struct_field_type(struct_name_id, field_name, empty_type, false, unguarded)
 				return none
 			}
 			if fallback.struct_field_complete[struct_name_id] {
-				tc.remember_struct_field_type(struct_name_id, field_name, empty_type, false)
+				tc.remember_struct_field_type(struct_name_id, field_name, empty_type, false, unguarded)
 				return none
 			}
 			fallback = fallback.base
 		}
 		if typ := cached_struct_field_type(tc.type_cache.struct_field_entries, struct_name_id, field_name) {
-			tc.remember_struct_field_type(struct_name_id, field_name, typ, true)
+			tc.remember_struct_field_type(struct_name_id, field_name, typ, true, unguarded)
 			return *typ
 		}
 		if typ := cached_struct_field_type(tc.type_cache.struct_field_shared, struct_name_id, field_name) {
-			tc.remember_struct_field_type(struct_name_id, field_name, typ, true)
+			tc.remember_struct_field_type(struct_name_id, field_name, typ, true, unguarded)
 			return *typ
 		}
 		if cached_struct_field_miss(tc.type_cache.struct_field_misses, struct_name_id, field_name)
 			|| tc.type_cache.struct_field_complete[struct_name_id] {
-			tc.remember_struct_field_type(struct_name_id, field_name, empty_type, false)
+			tc.remember_struct_field_type(struct_name_id, field_name, empty_type, false, unguarded)
 			return none
 		}
 	}
@@ -14298,7 +14318,7 @@ fn (tc &TypeChecker) struct_field_type_uncached(struct_name_id u32, field_name s
 			mut cache := tc.type_cache
 			canonical := tc.intern_type_reference(typ)
 			cache.remember_struct_field_entry(struct_name_id, field_name, canonical)
-			tc.remember_struct_field_type(struct_name_id, field_name, canonical, true)
+			tc.remember_struct_field_type(struct_name_id, field_name, canonical, true, unguarded)
 		}
 		return typ
 	}
@@ -14306,7 +14326,7 @@ fn (tc &TypeChecker) struct_field_type_uncached(struct_name_id u32, field_name s
 		mut cache := tc.type_cache
 		cache.remember_struct_field_miss(struct_name_id, field_name)
 	}
-	tc.remember_struct_field_type(struct_name_id, field_name, empty_type, false)
+	tc.remember_struct_field_type(struct_name_id, field_name, empty_type, false, unguarded)
 	return none
 }
 
@@ -14366,7 +14386,7 @@ fn struct_field_cache_slot(struct_name_id u32, field_name string) int {
 }
 
 @[direct_array_access]
-fn (tc &TypeChecker) remember_struct_field_type(struct_name_id u32, field_name string, typ &Type, found bool) {
+fn (tc &TypeChecker) remember_struct_field_type(struct_name_id u32, field_name string, typ &Type, found bool, unguarded bool) {
 	if isnil(tc.type_cache) {
 		return
 	}
@@ -14375,6 +14395,7 @@ fn (tc &TypeChecker) remember_struct_field_type(struct_name_id u32, field_name s
 	cache.struct_field_recent_structs[slot] = struct_name_id
 	cache.struct_field_recent_fields[slot] = field_name
 	cache.struct_field_recent_values[slot] = typ
+	cache.struct_field_recent_unguarded[slot] = unguarded
 	cache.struct_field_recent_states[slot] = if found { i8(1) } else { i8(-1) }
 }
 
@@ -21434,8 +21455,7 @@ fn (tc &TypeChecker) generic_struct_method_base_candidates(base_id u32) []u32 {
 			push_generic_method_base_candidate(mut candidates, flat.source_type_id(resolved))
 			push_generic_method_base_candidate(mut candidates, flat.source_type_id(short_name_view(resolved)))
 		}
-		qualified := tc.qualify_name(base)
-		push_generic_method_base_candidate(mut candidates, flat.source_type_id(qualified))
+		push_generic_method_base_candidate(mut candidates, tc.qualify_type_name(base_id))
 	}
 	return candidates
 }
@@ -22221,7 +22241,7 @@ fn (tc &TypeChecker) int_literal_promoted_infix_type(lit_id flat.NodeId, other_i
 	// An untyped integer literal adopts the other integer operand's concrete storage
 	// type. In particular, `24 * time.hour` is `i64`, not `int`; map literal
 	// inference relies on that distinction when it chooses its value type.
-	if clean_type.is_integer() && clean_type.name() != builtin_int_type.name() {
+	if clean_type.is_integer() && tc.type_name(clean_type) != flat.source_type_int {
 		return *clean_type
 	}
 	return none
@@ -22256,7 +22276,7 @@ fn (tc &TypeChecker) implicit_integer_constant_value(id flat.NodeId, typ &Type) 
 			}
 		}
 	}
-	if typ.name() != builtin_int_type.name() {
+	if tc.type_name(typ) != flat.source_type_int {
 		return none
 	}
 	return tc.const_int_expr(id, tc.cur_module, []string{})

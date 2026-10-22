@@ -4708,7 +4708,7 @@ fn (tc &TypeChecker) fn_body_reflects_param_type(node flat.Node, param_type_id u
 	for stack.len > 0 {
 		id := stack.pop()
 		child := tc.a.node(id)
-		if child.kind == .comptime_for && child.typ_text() == param_type {
+		if child.kind == .comptime_for && child.typ == param_type_id {
 			return true
 		}
 		for i in 0 .. child.children_count {

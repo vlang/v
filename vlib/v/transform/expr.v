@@ -1046,10 +1046,10 @@ fn (mut t Transformer) transform_infix_struct_ops(_id flat.NodeId, node flat.Nod
 	if !t.validating_generic_spec && checker_lhs_type_source_id_2 != 0 && !has_smartcast && !lhs_is_pointer
 		&& !flat.source_type_shape(struct_type).has(.bracketed) && !is_alias_operator {
 		checker_struct_type := t.struct_lookup_name(checker_lhs_type_source_id_2)
-		if flat.source_type_name(checker_struct_type).len > 0 && flat.source_type_name(checker_struct_type) != flat.source_type_name(struct_type) {
+		if checker_struct_type != 0 && checker_struct_type != struct_type {
 			return none
 		}
-		if flat.source_type_name(checker_struct_type).len == 0 && checker_lhs_type != flat.source_type_name(lhs_type) {
+		if checker_struct_type == 0 && checker_lhs_type_source_id_2 != lhs_type {
 			return none
 		}
 	}
@@ -1161,10 +1161,10 @@ fn (mut t Transformer) transform_pointer_value_struct_eq(node flat.Node, lhs_id 
 	rhs_clean_source_id := t.trim_pointer_type(rhs_type)
 	lhs_struct := t.struct_lookup_name(lhs_clean_source_id)
 	rhs_struct := t.struct_lookup_name(rhs_clean_source_id)
-	if flat.source_type_name(lhs_struct).len == 0 || flat.source_type_name(rhs_struct).len == 0 {
+	if lhs_struct == 0 || rhs_struct == 0 {
 		return none
 	}
-	if flat.source_type_name(lhs_struct) != flat.source_type_name(rhs_struct) && flat.source_type_name(lhs_struct).all_after_last('.') != flat.source_type_name(rhs_struct).all_after_last('.') {
+	if lhs_struct != rhs_struct && flat.source_type_name(lhs_struct).all_after_last('.') != flat.source_type_name(rhs_struct).all_after_last('.') {
 		return none
 	}
 	if lhs_is_ptr && rhs_is_ptr {
@@ -1346,10 +1346,10 @@ fn (mut t Transformer) transform_transformed_struct_eq(node flat.Node, lhs flat.
 	}
 	lhs_struct_type := t.struct_lookup_name(lhs_type)
 	rhs_struct_type := t.struct_lookup_name(rhs_type)
-	if flat.source_type_name(lhs_struct_type).len == 0 || flat.source_type_name(rhs_struct_type).len == 0 {
+	if lhs_struct_type == 0 || rhs_struct_type == 0 {
 		return none
 	}
-	if flat.source_type_name(lhs_struct_type) != flat.source_type_name(rhs_struct_type)
+	if lhs_struct_type != rhs_struct_type
 		&& flat.source_type_name(lhs_struct_type).all_after_last('.') != flat.source_type_name(rhs_struct_type).all_after_last('.') {
 		return none
 	}
@@ -1924,8 +1924,9 @@ fn (t &Transformer) generic_struct_instance_name(type_name_id u32) u32 {
 		// Qualify a bare imported generic base to its canonical struct name so the
 		// operator lowers to the monomorphized method (`vec.Vec2[int].-`), not a
 		// bogus bare `Vec2[int].-`.
-		resolved_base := t.struct_lookup_name(flat.source_type_id(base))
-		if flat.source_type_name(resolved_base).len > 0 && flat.source_type_name(resolved_base) != base {
+		base_source_id := flat.source_type_id(base)
+		resolved_base := t.struct_lookup_name(base_source_id)
+		if resolved_base != 0 && resolved_base != base_source_id {
 			return flat.source_type_id(flat.source_type_name(resolved_base) + normalized[base.len..])
 		}
 		return normalized_source_id
@@ -2625,12 +2626,13 @@ fn (t &Transformer) struct_lookup_name(type_name_id u32) u32 {
 	}
 	base, _, has_generic_args := generic_app_parts(type_name)
 	if has_generic_args {
-		resolved_base := t.struct_lookup_name(flat.source_type_id(base))
-		if flat.source_type_name(resolved_base).len > 0 {
+		base_source_id := flat.source_type_id(base)
+		resolved_base := t.struct_lookup_name(base_source_id)
+		if resolved_base != 0 {
 			// Qualify a bare imported generic base so the instance name matches the
 			// materialized struct (`Vec2[int]` -> `vec.Vec2[int]`); a matching or bare
 			// base keeps the original spelling.
-			if flat.source_type_name(resolved_base) != base {
+			if resolved_base != base_source_id {
 				return flat.source_type_id(flat.source_type_name(resolved_base) + type_name[base.len..])
 			}
 			return type_name_comparison_type_id
