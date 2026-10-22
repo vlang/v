@@ -973,7 +973,13 @@ fn (g &Parser) render_struct_literal_with_defaults(c_type_source_id u32, layout_
 			continue
 		}
 		if rendered_field := rendered_fields_by_name[field.name] {
-			initializers << rendered_field
+			value := rendered_field.all_after('=')
+			if value.starts_with('{') {
+				initializers << rendered_field
+			} else {
+				name := fastc_c_identifier(field.name)
+				assignments << 'memcpy(__vf_sd.${name}, (${value}).data, sizeof(__vf_sd.${name}));'
+			}
 			initialized_fields[rendered_field] = true
 		}
 	}
@@ -1039,7 +1045,7 @@ fn (g &Parser) struct_field_initializer_default(field FastcStructField) string {
 		// An option field a literal leaves out is `none`; a zeroed Option would be a
 		// present value with no payload.
 		value = '(Option){.state=2}'
-	} else if !field.typ_text().ends_with('*') && g.struct_type_has_initializer_defaults(field.typ) {
+	} else if !fastc_is_pointer_type(g.underlying_alias_type(field.typ)) && g.struct_type_has_initializer_defaults(field.typ) {
 		value = g.render_empty_struct_initializer(field.typ)
 	}
 	if value == '' {
@@ -1052,7 +1058,7 @@ fn (g &Parser) struct_field_initializer_default(field FastcStructField) string {
 }
 
 fn (g &Parser) struct_type_has_initializer_defaults(c_type u32) bool {
-	if flat.source_type_name(c_type).ends_with('*') {
+	if fastc_is_pointer_type(g.underlying_alias_type(c_type)) {
 		return false
 	}
 	layout_type := fastc_trim_pointer_suffix(flat.source_type_name(g.underlying_alias_type(c_type)))

@@ -42,6 +42,15 @@ const shared_payload = &Payload{count: 11}
 const default_number = &Number{value: 41}
 struct Wrapped { PayloadRef = shared_payload }
 struct Nested { Wrapped }
+struct Defaultless { PayloadRef }
+struct FixedPayload {
+    values [2]int = [2, 3]!
+    count int = 19
+}
+type FixedRef = &FixedPayload
+const shared_fixed = &FixedPayload{values: [3, 5]!}
+struct FixedWrapped { FixedRef = shared_fixed }
+struct FixedDefaultless { FixedRef }
 struct Collection { items []main.Payload }
 struct Direct { count int }
 type Variant = Wrapped | Direct
@@ -87,6 +96,28 @@ fn main() {
     changed := Wrapped{count: 23, label: "changed"}
     assert changed.count == 23
     assert changed.label == "changed"
+    updated := Wrapped{...changed, count: 29}
+    assert updated.count == 29
+    assert updated.label == "changed"
+    assert changed.count == 23
+    defaultless := Defaultless{count: 43}
+    assert defaultless.count == 43
+    assert defaultless.label == "default"
+    fixed := FixedWrapped{values: [7, 11]!}
+    assert fixed.values[0] == 7
+    assert fixed.values[1] == 11
+    assert shared_fixed.values[0] == 3
+    replacement := [13, 17]!
+    copied := FixedWrapped{values: replacement}
+    assert copied.values[0] == 13
+    assert copied.values[1] == 17
+    copied_member := FixedWrapped{values: fixed.values}
+    assert copied_member.values[0] == 7
+    assert copied_member.values[1] == 11
+    fixed_defaultless := FixedDefaultless{count: 23}
+    assert fixed_defaultless.count == 23
+    assert fixed_defaultless.values[0] == 2
+    assert fixed_defaultless.values[1] == 3
     assert empty.count == 11
     assert empty.label == "default"
     assert shared_payload.count == 11

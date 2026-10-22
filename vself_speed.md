@@ -24,6 +24,8 @@ same seed, two in-place TCC rebuilds, Apple Clang 21 production builds with `-mc
 and fresh matching PGO profiles trained on this fixture with default and single-worker modes.
 The compiler build directories differed; measured executable, input, output, and working-directory
 paths matched. The candidate is the complete patch, not an isolated descriptor-layout change.
+These measurements cover the retained `compact-v76` source snapshot. Subsequent FastC
+pointer-embed correctness fixes have regression coverage but are not included in this measurement.
 
 One warmup per role preceded ten alternating measured pairs with `VJOBS=1`. All 22 runs
 succeeded, each with one positive retired-instruction counter and byte-identical generated C.

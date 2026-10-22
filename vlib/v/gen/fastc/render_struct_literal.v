@@ -222,7 +222,7 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 			}
 		}
 	}
-	mut promoted_pointer_fields := map[string]string{}
+	mut promoted_pointer_fields := map[string]FastcStructLiteralFieldValue{}
 	mut rendered_fields := []string{}
 	mut rendered_fields_by_name := map[string]string{}
 	mut field_values := map[string]string{}
@@ -382,13 +382,16 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 		}
 		explicit_initializers << field_value.explicit_initializers
 		if promoted_pointer_path != '' {
-			promoted_pointer_fields[promoted_pointer_path] = field_value.field_value
+			promoted_pointer_fields[promoted_pointer_path] = FastcStructLiteralFieldValue{
+				...field_value
+				fixed_array_copy: field_value.fixed_array_copy.replace('__vf_struct_fixed.${c_field_name}', '__vf_promoted_field')
+			}
 		} else if field_value.rendered_field != '' {
 			rendered_fields << field_value.rendered_field
 			rendered_fields_by_name[field_name] = field_value.rendered_field
 		}
 		field_values[field_name] = field_value.field_value
-		if field_value.fixed_array_copy != '' {
+		if promoted_pointer_path == '' && field_value.fixed_array_copy != '' {
 			fixed_array_copies << field_value.fixed_array_copy
 		}
 		if field_value.is_fixed_array {
@@ -398,14 +401,19 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 	if promoted_pointer_fields.len > 0 {
 		for field in g.struct_field_info[flat.source_type_name(layout_type)] {
 			prefix := field.name + '.'
-			mut nested := map[string]string{}
+			mut nested := map[string]FastcStructLiteralFieldValue{}
 			for path, value in promoted_pointer_fields {
 				if path.starts_with(prefix) {
 					nested[path[prefix.len..]] = value
 				}
 			}
 			if nested.len == 0 { continue }
-			value := g.render_promoted_pointer_literal(field.typ, nested, g.struct_field_initializer_default(field), 0) or { return none }
+			base := if update_source != '' {
+				'__vf_struct_update.${fastc_c_identifier(field.name)}'
+			} else {
+				g.struct_field_initializer_default(field)
+			}
+			value := g.render_promoted_pointer_literal(field.typ, nested, base, 0) or { return none }
 			temporary := '__vf_sf_${explicit_initializers.len}'
 			explicit_initializers << '${field.typ_text()} ${temporary}; ${temporary} = (${value});'
 			rendered_field := '.${fastc_c_identifier(field.name)}=(${temporary})'
@@ -567,24 +575,29 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 }
 
 // Copy pointer embeds before overriding promoted fields so shared defaults stay immutable.
-fn (g &Parser) render_promoted_pointer_literal(typ u32, values map[string]string, default_value string, depth int) ?string {
+fn (g &Parser) render_promoted_pointer_literal(typ u32, values map[string]FastcStructLiteralFieldValue, default_value string, depth int) ?string {
 	underlying := g.underlying_alias_type(typ)
 	is_pointer := fastc_is_pointer_type(underlying)
 	layout := fastc_trim_pointer_suffix(flat.source_type_name(underlying))
 	fields := g.struct_field_info[layout] or { return none }
 	variable := '__vf_promoted_${depth}'
-	mut defaults := []string{}
 	mut assignments := []string{}
 	for field in fields {
 		name := fastc_c_identifier(field.name)
-		field_default := g.struct_field_initializer_default(field)
-		if field_default != '' { defaults << '.${name}=(${field_default})' }
 		if value := values[name] {
-			assignments << '${variable}.${name} = (${value});'
+			if value.is_fixed_array {
+				if value.fixed_array_copy != '' {
+					assignments << value.fixed_array_copy.replace('__vf_promoted_field', '${variable}.${name}')
+				} else {
+					assignments << 'memcpy(${variable}.${name}, ((${field.typ_text()}){.data=${value.field_value}}).data, sizeof(${variable}.${name}));'
+				}
+			} else {
+				assignments << '${variable}.${name} = (${value.field_value});'
+			}
 			continue
 		}
 		prefix := name + '.'
-		mut nested := map[string]string{}
+		mut nested := map[string]FastcStructLiteralFieldValue{}
 		for path, value in values {
 			if path.starts_with(prefix) { nested[path[prefix.len..]] = value }
 		}
@@ -594,15 +607,21 @@ fn (g &Parser) render_promoted_pointer_literal(typ u32, values map[string]string
 			assignments << '${variable}.${name} = (${value});'
 		}
 	}
-	initial := if default_value != '' {
-		if is_pointer { '*(${default_value})' } else { default_value }
+	mut setup := ''
+	fallback := g.render_empty_struct_initializer(flat.source_type_id(layout))
+	initial := if default_value != '' && is_pointer {
+		pointer := '__vf_promoted_default_${depth}'
+		setup = '${flat.source_type_name(typ)} ${pointer} = (${default_value});'
+		'${pointer} ? *${pointer} : (${fallback})'
+	} else if default_value != '' {
+		default_value
 	} else {
-		'(${layout}){${defaults.join(',')}}'
+		fallback
 	}
 	result := if is_pointer {
 		'(${flat.source_type_name(typ)})v_fastc_interface_box(&${variable}, sizeof(${layout}))'
 	} else {
 		variable
 	}
-	return '({ ${layout} ${variable} = (${initial}); ${assignments.join(' ')} ${result}; })'
+	return '({ ${setup} ${layout} ${variable} = (${initial}); ${assignments.join(' ')} ${result}; })'
 }
