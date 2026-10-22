@@ -63,3 +63,16 @@ fn test_logf() {
 	assert math.abs(math.logf(f32(math.e)) - f32(1.0)) < f32(1e-7)
 	assert math.abs(math.logf(f32(10.0)) - f32(2.302585)) < f32(1e-6)
 }
+
+fn test_logf_special_values() {
+	assert math.logf(f32(0.0)) == f32(math.inf(-1))
+	assert math.logf(f32(-0.0)) == f32(math.inf(-1))
+	assert math.logf(f32(math.inf(1))) == f32(math.inf(1))
+	assert math.is_nan(math.logf(f32(-1.0)))
+	assert math.is_nan(math.logf(f32(math.inf(-1))))
+	assert math.is_nan(math.logf(f32(math.nan())))
+	for bits in [u32(1), 0x00800000, 0x7f7fffff] {
+		x := math.f32_from_bits(bits)
+		assert math.abs(math.logf(x) - f32(math.log(f64(x)))) < f32(1e-5)
+	}
+}

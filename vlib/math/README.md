@@ -22,6 +22,8 @@ infinity as input returns positive infinity.
 including subnormal inputs.
 `log1p(x)` returns positive infinity for positive infinity, negative infinity for `-1`,
 and NaN for values below `-1`.
+`logf(x)` provides the natural logarithm for `f32` inputs, including in pure V builds.
+Its special cases are the same as for `log`.
 
 The trigonometric functions `sin`, `cos`, `sincos`, `tan` and `cot` reduce large finite angles
 with multiword arithmetic before evaluation, including inputs near a multiple of pi/2 and
