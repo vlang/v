@@ -1,7 +1,5 @@
 module main
 
-import os
-
 fn caching_demo_info(name string, version string) ModuleInfo {
 	return ModuleInfo{
 		name:         name

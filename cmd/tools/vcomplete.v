@@ -666,7 +666,7 @@ fn auto_complete_request(args []string) []string {
 			if list.len == 1 && part == list[0] {
 				list.clear()
 			}
-		} else {
+		} else if parts.len == 2 {
 			match part {
 				'help' { // 'v help <tab>' -> top level commands except "help".
 					list = auto_complete_commands.filter(it != part && it != 'complete')
