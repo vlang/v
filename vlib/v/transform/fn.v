@@ -1314,14 +1314,14 @@ fn (t &Transformer) generic_call_type_arg_name(id flat.NodeId) u32 {
 			if node.children_count == 0 {
 				return u32(0)
 			}
-			child := flat.source_type_name(t.generic_call_type_arg_name(t.a.child(node, 0)))
-			if child.len == 0 {
+			child_id := t.generic_call_type_arg_name(t.a.child(node, 0))
+			if child_id == 0 {
 				return u32(0)
 			}
 			if node.op == .amp {
-				return flat.source_type_id('&${child}')
+				return flat.source_type_id('&${flat.source_type_name(child_id)}')
 			}
-			return flat.source_type_id(child)
+			return child_id
 		}
 		else {
 			return u32(0)
@@ -1932,7 +1932,8 @@ fn (mut t Transformer) transform_mut_optional_value_call_arg(arg_id flat.NodeId,
 
 	param_option_source_id := t.qualify_optional_type(flat.source_type_id(param_type[1..]))
 	param_option := flat.source_type_name(param_option_source_id)
-	target_payload := flat.source_type_name(t.optional_base_type(param_option_source_id))
+	target_payload_id := t.optional_base_type(param_option_source_id)
+	target_payload := flat.source_type_name(target_payload_id)
 	if !target_payload.starts_with('&') {
 		return none
 	}
@@ -1958,13 +1959,13 @@ fn (mut t Transformer) transform_mut_optional_value_call_arg(arg_id flat.NodeId,
 	t.pending_stmts << t.make_decl_assign_typed(tmp_name, initial, flat.source_type_id(target_option))
 	payload := t.make_selector(lvalue, 'value', payload_type_source_id)
 	payload_addr := t.make_prefix(.amp, payload)
-	t.set_node_typ(int(payload_addr), flat.source_type_id(target_payload))
+	t.set_node_typ(int(payload_addr), target_payload_id)
 	set_some := t.make_assign(t.make_ident(tmp_name), t.make_optional_some(payload_addr, flat.source_type_id(target_option)))
 	t.pending_stmts << t.make_if(t.make_selector(lvalue, 'ok', flat.source_type_bool), t.make_block([set_some]), t.make_empty())
 
 	tmp := t.make_ident(tmp_name)
 	t.set_node_typ(int(tmp), flat.source_type_id(target_option))
-	result_payload_ptr := t.make_selector(tmp, 'value', flat.source_type_id(target_payload))
+	result_payload_ptr := t.make_selector(tmp, 'value', target_payload_id)
 	result_payload := t.make_prefix(.mul, result_payload_ptr)
 	t.set_node_typ(int(result_payload), payload_type_source_id)
 	write_some := t.make_assign(lvalue, t.make_optional_some(result_payload, arg_type_source_id))
@@ -3302,7 +3303,7 @@ fn (t &Transformer) static_assoc_type_candidates(type_id u32) []u32 {
 		t.add_static_assoc_type_candidate(mut candidates, flat.source_type_id('${t.cur_module}.${type_ident}'))
 	}
 	if !isnil(t.tc) {
-		qname := flat.source_type_id(t.tc.qualify_name(type_ident))
+		qname := t.tc.qualify_type_name(type_id)
 		t.add_static_assoc_type_candidate(mut candidates, qname)
 	}
 	mut result := []u32{}
@@ -7022,7 +7023,7 @@ fn (t &Transformer) interface_auto_str_impl_is_open_generic(name_id u32) bool {
 		return false
 	}
 	return name in t.tc.type_alias_generic_params
-		|| t.tc.qualify_name(name) in t.tc.type_alias_generic_params
+		|| flat.source_type_name(t.tc.qualify_type_name(name_id)) in t.tc.type_alias_generic_params
 }
 
 fn (mut t Transformer) lower_ref_interface_str(expr flat.NodeId, iface_name_id u32) flat.NodeId {
@@ -16903,10 +16904,10 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 		return true
 	}
 	if !isnil(t.tc) {
-		expected_interface := flat.source_type_name(t.trim_all_pointer_type(expected_source_id_3))
-		actual_interface := flat.source_type_name(t.trim_all_pointer_type(actual))
-		if expected_interface in t.tc.interface_names
-			&& t.tc.type_text_implements_interface(flat.source_type_id(actual_interface), flat.source_type_id(expected_interface)) {
+		expected_interface_id := t.trim_all_pointer_type(expected_source_id_3)
+		actual_interface_id := t.trim_all_pointer_type(actual)
+		if flat.source_type_name(expected_interface_id) in t.tc.interface_names
+			&& t.tc.type_text_implements_interface(actual_interface_id, expected_interface_id) {
 			return true
 		}
 	}

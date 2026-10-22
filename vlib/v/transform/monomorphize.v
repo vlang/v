@@ -9890,7 +9890,7 @@ fn (t &Transformer) generic_arg_for_call_and_decl_module(arg_id u32, call_module
 	if call_module in ['', 'main'] && !arg.contains('.') {
 		if info := t.structs[trimmed_transform_text(arg)] {
 			if info.module in ['', 'main'] {
-				return t.lock_colliding_main_generic_type_text(flat.source_type_id(arg), decl_module)
+				return t.lock_colliding_main_generic_type_text(arg_source_id_8, decl_module)
 			}
 		}
 	}
@@ -10645,9 +10645,9 @@ fn (t &Transformer) generic_array_literal_alias_expr_name(id flat.NodeId) ?u32 {
 		return flat.source_type_id(node.value)
 	}
 	if node.kind == .call && node.children_count > 0 {
-		name := flat.source_type_name(t.generic_call_type_arg_name(t.a.child(&node, 0)))
-		if name.len > 0 {
-			return flat.source_type_id(name)
+		name_id := t.generic_call_type_arg_name(t.a.child(&node, 0))
+		if name_id != 0 {
+			return name_id
 		}
 	}
 	for candidate in alias_name_candidates(node) {
@@ -12083,10 +12083,8 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args_ids []u32, i
 			'pointee_type', 'indirections']
 			&& t.selector_base_is_comptime_type_value(base_id) {
 			if concrete_source_id := t.generic_comptime_type_expr_for_member(base_id, node.value, args_ids) {
-				concrete := flat.source_type_name(concrete_source_id)
-
 				if node.value == 'indirections' {
-					return t.make_int_literal(generic_type_indirections(flat.source_type_id(concrete)))
+					return t.make_int_literal(generic_type_indirections(concrete_source_id))
 				}
 				target := if node.value in ['idx', 'typ'] {
 					concrete_source_id
@@ -12382,8 +12380,9 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args_ids []u32, i
 		}
 	}
 	if node.kind == .prefix && children.len > 0 {
-		raw_child_type := flat.source_type_name(t.generic_clone_decl_alias_type(children[0]))
-		child_type := if t.generic_type_text_contains_alias(flat.source_type_id(raw_child_type), t.cur_module) {
+		raw_child_type_id := t.generic_clone_decl_alias_type(children[0])
+		raw_child_type := flat.source_type_name(raw_child_type_id)
+		child_type := if t.generic_type_text_contains_alias(raw_child_type_id, t.cur_module) {
 			raw_child_type
 		} else {
 			flat.source_type_name(t.node_type(children[0]))
@@ -12725,8 +12724,9 @@ fn (mut t Transformer) seed_cloned_generic_for_in_bindings(node flat.Node, key_i
 	if int(container_id) < 0 || int(container_id) >= t.a.nodes.len {
 		return
 	}
-	raw_iter_type := flat.source_type_name(t.generic_clone_decl_alias_type(container_id))
-	iter_type := (if t.generic_type_text_contains_alias(flat.source_type_id(raw_iter_type), t.cur_module) {
+	raw_iter_type_id := t.generic_clone_decl_alias_type(container_id)
+	raw_iter_type := flat.source_type_name(raw_iter_type_id)
+	iter_type := (if t.generic_type_text_contains_alias(raw_iter_type_id, t.cur_module) {
 		flat.source_type_id(raw_iter_type.trim_left('&'))
 	} else {
 		t.normalized_node_type(container_id)
@@ -12793,11 +12793,10 @@ fn (t &Transformer) generic_comptime_base_type(id flat.NodeId, args_ids []u32) ?
 				return args_ids[idx]
 			}
 		}
-		substituted := flat.source_type_name(t.subst_type(flat.source_type_id(node.value), args_ids))
-		if substituted != node.value && !t.generic_args_have_placeholders(flat.TypeTextList.from_names([
-			substituted,
-		]).ids) {
-			return t.resolve_substituted_type_text(flat.source_type_id(substituted))
+		node_value_id := flat.source_type_id(node.value)
+		substituted_id := t.subst_type(node_value_id, args_ids)
+		if substituted_id != node_value_id && !t.generic_args_have_placeholders([substituted_id]) {
+			return t.resolve_substituted_type_text(substituted_id)
 		}
 		typ_source_id := t.raw_var_type(node.value)
 
@@ -15831,15 +15830,15 @@ fn (t &Transformer) subst_comptime_runtime_type_metadata(cond string, args_ids [
 			offset = close + 1
 			continue
 		}
-		concrete := flat.source_type_name(t.resolve_substituted_type_text(t.subst_type(raw_type_source_id, args_ids)))
+		concrete_id := t.resolve_substituted_type_text(t.subst_type(raw_type_source_id, args_ids))
 		mut suffix := ''
 		mut replacement := ''
 		if result[close + 1..].starts_with('.indirections') {
 			suffix = '.indirections'
-			replacement = generic_type_indirections(flat.source_type_id(concrete)).str()
+			replacement = generic_type_indirections(concrete_id).str()
 		} else if result[close + 1..].starts_with('.idx') {
 			suffix = '.idx'
-			replacement = t.type_index(flat.source_type_id(concrete), t.cur_module).str()
+			replacement = t.type_index(concrete_id, t.cur_module).str()
 		} else {
 			offset = close + 1
 			continue
@@ -15926,20 +15925,20 @@ fn (t &Transformer) subst_comptime_type_operand(raw string, args_ids []u32) stri
 	}
 	if clean.starts_with('sizeof(') && clean.ends_with(')') {
 		inner := clean['sizeof('.len..clean.len - 1].trim_space()
-		concrete := flat.source_type_name(t.resolve_substituted_type_text(t.subst_type(flat.source_type_id(inner), args_ids)))
-		if layout := t.comptime_type_layout(flat.source_type_id(concrete), []u32{}) {
+		concrete_id := t.resolve_substituted_type_text(t.subst_type(flat.source_type_id(inner), args_ids))
+		if layout := t.comptime_type_layout(concrete_id, []u32{}) {
 			return layout.size.str()
 		}
 	}
 	if reflected_type, reflected_member := generic_comptime_typeof_operand(clean) {
-		substituted := flat.source_type_name(t.resolve_substituted_type_text(t.subst_type(flat.source_type_id(reflected_type), args_ids)))
+		substituted_id := t.resolve_substituted_type_text(t.subst_type(flat.source_type_id(reflected_type), args_ids))
 		return match reflected_member {
-			'idx' { t.type_index(flat.source_type_id(substituted), t.cur_module).str() }
+			'idx' { t.type_index(substituted_id, t.cur_module).str() }
 			'unaliased_typ' {
-				flat.source_type_name(t.comptime_typeof_unaliased_type(flat.source_type_id(substituted)))
+				flat.source_type_name(t.comptime_typeof_unaliased_type(substituted_id))
 			}
-			'typ' { substituted + '.typ' }
-			else { substituted }
+			'typ' { flat.source_type_name(substituted_id) + '.typ' }
+			else { flat.source_type_name(substituted_id) }
 		}
 	}
 	if t.cloning_comptime_for_depth > 0 {
@@ -15986,8 +15985,8 @@ fn (t &Transformer) subst_comptime_type_operand(raw string, args_ids []u32) stri
 	}
 	if clean.ends_with('.unaliased_typ') {
 		base := clean[..clean.len - '.unaliased_typ'.len]
-		substituted := flat.source_type_name(t.resolve_substituted_type_text(t.subst_type(flat.source_type_id(base), args_ids)))
-		return flat.source_type_name(t.comptime_typeof_unaliased_type(flat.source_type_id(substituted)))
+		substituted_id := t.resolve_substituted_type_text(t.subst_type(flat.source_type_id(base), args_ids))
+		return flat.source_type_name(t.comptime_typeof_unaliased_type(substituted_id))
 	}
 	if clean.ends_with('.typ') {
 		base := clean[..clean.len - '.typ'.len]

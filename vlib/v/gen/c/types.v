@@ -455,7 +455,7 @@ fn cgen_types_equal_after_alias_erasure(left &types.Type, right &types.Type) boo
 		}
 		return true
 	}
-	return l.name() == r.name()
+	return l.source_type_id() == r.source_type_id()
 }
 
 fn (mut g FlatGen) multi_return_c_type_name(t types.MultiReturn) string {
@@ -2503,9 +2503,9 @@ fn (g &FlatGen) enum_field_expr_value_with_enum(id flat.NodeId, enum_module stri
 			mut left := g.enum_field_expr_value_with_enum(g.a.child(&node, 0), enum_module, enum_name, mut field_values, field_exprs, mut resolving)?
 			mut right := g.enum_field_expr_value_with_enum(g.a.child(&node, 1), enum_module, enum_name, mut field_values, field_exprs, mut resolving)?
 			if node.op in [.div, .mod] && !isnil(g.tc) {
-				typ := types.unalias_type(g.usable_expr_type(id)).name()
-				left = g.enum_comptime_integer_cast(left, flat.source_type_id(typ))
-				right = g.enum_comptime_integer_cast(right, flat.source_type_id(typ))
+				typ := types.unalias_type(g.usable_expr_type(id)).source_type_id()
+				left = g.enum_comptime_integer_cast(left, typ)
+				right = g.enum_comptime_integer_cast(right, typ)
 			}
 			if (node.op == .div || node.op == .mod) && right == 0 {
 				return none
@@ -2671,13 +2671,12 @@ fn (g &FlatGen) enum_comptime_call_value(id flat.NodeId, enum_module string, enu
 }
 
 fn (g &FlatGen) enum_comptime_integer_cast(value i64, typ_id u32) i64 {
-	typ := flat.source_type_name(typ_id)
-	resolved := if isnil(g.tc) || typ.len == 0 {
-		typ
+	resolved := if isnil(g.tc) || typ_id == 0 {
+		typ_id
 	} else {
-		types.unalias_type(g.tc.parse_type(typ_id)).name()
+		types.unalias_type(g.tc.parse_type(typ_id)).source_type_id()
 	}
-	return types.comptime_enum_integer_cast(value, flat.source_type_id(resolved))
+	return types.comptime_enum_integer_cast(value, resolved)
 }
 
 fn (g &FlatGen) enum_comptime_update_locals(stmt flat.Node, mut locals map[string]i64, enum_module string) {
@@ -2749,18 +2748,18 @@ fn (g &FlatGen) enum_comptime_expr_value(id flat.NodeId, locals map[string]i64, 
 				return result
 			}
 			// C promotes narrow integer operands for unary arithmetic.
-			typ := types.unalias_type(g.usable_expr_type(id)).name()
-			return types.comptime_enum_integer_cast(result, flat.source_type_id(if typ in [
-				'i8',
-				'u8',
-				'byte',
-				'i16',
-				'u16',
+			typ := types.unalias_type(g.usable_expr_type(id)).source_type_id()
+			return types.comptime_enum_integer_cast(result, if typ in [
+				flat.source_type_i8,
+				flat.source_type_u8,
+				flat.source_type_id('byte'),
+				flat.source_type_i16,
+				flat.source_type_u16,
 			] {
-				'int'
+				flat.source_type_int
 			} else {
 				typ
-			}))
+			})
 		}
 		.infix {
 			if node.children_count < 2 {
@@ -2770,9 +2769,9 @@ fn (g &FlatGen) enum_comptime_expr_value(id flat.NodeId, locals map[string]i64, 
 			mut right := g.enum_comptime_expr_value(g.a.child(&node, 1), locals, enum_module)?
 			if node.op in [.div, .mod] && !isnil(g.tc) {
 				// The runtime division helpers convert operands to the expression type first.
-				typ := types.unalias_type(g.usable_expr_type(id)).name()
-				left = g.enum_comptime_integer_cast(left, flat.source_type_id(typ))
-				right = g.enum_comptime_integer_cast(right, flat.source_type_id(typ))
+				typ := types.unalias_type(g.usable_expr_type(id)).source_type_id()
+				left = g.enum_comptime_integer_cast(left, typ)
+				right = g.enum_comptime_integer_cast(right, typ)
 			}
 			if (node.op in [.div, .mod] && right == 0)
 				|| (node.op in [.left_shift, .right_shift, .right_shift_unsigned] && (right < 0

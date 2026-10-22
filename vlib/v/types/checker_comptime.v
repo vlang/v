@@ -767,7 +767,7 @@ fn (tc &TypeChecker) comptime_static_enum_name(raw_id u32) ?u32 {
 	for cur != 0 && cur !in seen {
 		seen[cur] = true
 		text := flat.source_type_name(cur)
-		mut candidates := [cur, flat.source_type_id(tc.qualify_name(text))]
+		mut candidates := [cur, tc.qualify_type_name(cur)]
 		if resolved := tc.resolve_selective_import_type_symbol(text) {
 			candidates << flat.source_type_id(resolved)
 		}
@@ -1633,7 +1633,7 @@ fn (tc &TypeChecker) comptime_static_struct_name(raw_id u32) ?u32 {
 	for cur != 0 && cur !in seen {
 		seen[cur] = true
 		text := flat.source_type_name(cur)
-		mut candidates := [cur, flat.source_type_id(tc.qualify_name(text))]
+		mut candidates := [cur, tc.qualify_type_name(cur)]
 		if resolved := tc.resolve_selective_import_type_symbol(text) {
 			candidates << flat.source_type_id(resolved)
 		}
@@ -5740,11 +5740,10 @@ pub fn (mut tc TypeChecker) check_interface_embedding_limits() bool {
 	if tc.valid_diagnostic_fast {
 		return false
 	}
-	mut embedded := map[string]bool{}
+	mut embedded := map[u32]bool{}
 	for _, embeds_id in tc.interface_embeds.ids {
-		embeds := embeds_id.map(flat.source_type_name(it))
-		for embed in embeds {
-			embedded[flat.source_type_name(tc.interface_metadata_name(flat.source_type_id(embed)))] = true
+		for embed_id in embeds_id {
+			embedded[tc.interface_metadata_name(embed_id)] = true
 		}
 	}
 	for idx in tc.top_level_idx {
@@ -5752,14 +5751,15 @@ pub fn (mut tc TypeChecker) check_interface_embedding_limits() bool {
 		if node.kind != .interface_decl {
 			continue
 		}
-		iface_name := flat.source_type_name(tc.interface_metadata_name(flat.source_type_id(node.value)))
-		if embedded[iface_name] {
+		iface_name_id := tc.interface_metadata_name(flat.source_type_id(node.value))
+		if embedded[iface_name_id] {
 			continue
 		}
 		mut embedding_path := map[u32]bool{}
-		if !tc.interface_embedding_exceeds(flat.source_type_id(iface_name), 0, mut embedding_path) {
+		if !tc.interface_embedding_exceeds(iface_name_id, 0, mut embedding_path) {
 			continue
 		}
+		iface_name := flat.source_type_name(iface_name_id)
 		decl_id, decl_pos := tc.interface_declaration_diagnostic(iface_name)
 		tc.errors << tc.make_type_error_at(.unknown_type, 'too many interface embedding levels: 101, for interface `${iface_name.all_after_last('.')}`', decl_id, decl_pos)
 		return true
@@ -5987,11 +5987,11 @@ fn (tc &TypeChecker) interface_actual_field_inner(concrete_name_id u32, field_na
 	}
 	for field in fields {
 		embedded_type := embedded_field_type(field) or { continue }
-		embedded_name := flat.source_type_name(method_type_name(unwrap_pointer(embedded_type)))
-		if embedded_name.len == 0 {
+		embedded_name_id := method_type_name(unwrap_pointer(embedded_type))
+		if embedded_name_id == 0 {
 			continue
 		}
-		if promoted := tc.interface_actual_field_inner(flat.source_type_id(embedded_name), field_name, mut seen) {
+		if promoted := tc.interface_actual_field_inner(embedded_name_id, field_name, mut seen) {
 			return promoted
 		}
 	}
@@ -6014,17 +6014,19 @@ fn (mut tc TypeChecker) record_interface_implementation_error_with_mut_receiver(
 			|| tc.interface_implements_interface(clean_actual.source_type_id(), expected.source_type_id())) {
 		return false
 	}
-	actual_name := flat.source_type_name(method_type_name(unwrap_pointer(actual)))
+	actual_name_id := method_type_name(unwrap_pointer(actual))
+	actual_name := flat.source_type_name(actual_name_id)
 	actual_display := if unalias_type(actual) is Pointer {
 		'&${actual_name.all_after_last('.')}'
 	} else {
 		actual_name.all_after_last('.')
 	}
-	expected_name := flat.source_type_name(tc.interface_metadata_name(expected.source_type_id()))
+	expected_name_id := tc.interface_metadata_name(expected.source_type_id())
+	expected_name := flat.source_type_name(expected_name_id)
 	expected_display := expected_name.all_after_last('.')
 	mut missing_methods := false
-	for method in tc.interface_abstract_method_names(flat.source_type_id(expected_name)) {
-		expected_key := tc.interface_method_signature_key(flat.source_type_id(expected_name), method) or {
+	for method in tc.interface_abstract_method_names(expected_name_id) {
+		expected_key := tc.interface_method_signature_key(expected_name_id, method) or {
 			'${expected_name}.${method}'
 		}
 		if actual_name == 'char' && method == 'str'
@@ -6033,22 +6035,22 @@ fn (mut tc TypeChecker) record_interface_implementation_error_with_mut_receiver(
 			missing_methods = true
 			continue
 		}
-		mut actual_key := tc.concrete_method_signature_key(flat.source_type_id(actual_name), method) or { '' }
+		mut actual_key := tc.concrete_method_signature_key(actual_name_id, method) or { '' }
 		mut actual_params := []Type{}
 		mut actual_ret := builtin_void_type
 		if actual_key.len > 0 {
 			actual_params = tc.fn_param_types[actual_key] or { []Type{} }
 			actual_ret = tc.fn_ret_types[actual_key] or { builtin_void_type }
-		} else if info := tc.resolve_generic_struct_method(flat.source_type_id(actual_name), method) {
+		} else if info := tc.resolve_generic_struct_method(actual_name_id, method) {
 			actual_key = info.name
 			actual_params = info.params
 			actual_ret = info.return_type
-		} else if info := tc.resolve_generic_sum_method(flat.source_type_id(actual_name), method) {
+		} else if info := tc.resolve_generic_sum_method(actual_name_id, method) {
 			actual_key = info.name
 			actual_params = info.params
 			actual_ret = info.return_type
 		} else if method == 'str' && tc.interface_method_is_str_requirement(expected_key)
-			&& tc.type_has_implicit_str_method(flat.source_type_id(actual_name)) {
+			&& tc.type_has_implicit_str_method(actual_name_id) {
 			continue
 		} else {
 			tc.record_error_at(kind, "`${actual_display}` doesn't implement method `${method}` of interface `${expected_display}`", id, pos)
@@ -6102,8 +6104,8 @@ fn (mut tc TypeChecker) record_interface_implementation_error_with_mut_receiver(
 	if missing_methods {
 		return true
 	}
-	for field in tc.interface_field_list(flat.source_type_id(expected_name)) {
-		actual_field := tc.interface_actual_field(flat.source_type_id(actual_name), field.name) or {
+	for field in tc.interface_field_list(expected_name_id) {
+		actual_field := tc.interface_actual_field(actual_name_id, field.name) or {
 			tc.record_error_at(kind, "`${actual_display}` doesn't implement field `${field.name}` of interface `${expected_display}`", id, pos)
 			return true
 		}
@@ -21193,7 +21195,7 @@ fn (tc &TypeChecker) assignment_rhs_is_void_selector(rhs_id flat.NodeId) bool {
 		return false
 	}
 	base_type := unalias_and_unwrap_pointer_type(tc.resolve_type(tc.a.child(&rhs, 0)))
-	if base_type is Struct && flat.TypeTextList{ ids: tc.embedded_field_candidates(base_type.source_type_id(), rhs.value) }.names().len > 1 {
+	if base_type is Struct && tc.embedded_field_candidates(base_type.source_type_id(), rhs.value).len > 1 {
 		return true
 	}
 	return base_type is Void || resolved is Void

@@ -608,8 +608,8 @@ fn (t &Transformer) contextual_array_comparison_type(id flat.NodeId, own_type_id
 		if !t.array_append_interface_has_requirements(other_iface_source_id) {
 			return other_type_id
 		}
-		own_concrete := flat.source_type_name(t.trim_pointer_type(t.normalize_type_alias(flat.source_type_id(own_elem))))
-		if !isnil(t.tc) && t.tc.named_type_implements_interface(flat.source_type_id(own_concrete), other_iface_source_id) {
+		own_concrete_id := t.trim_pointer_type(t.normalize_type_alias(flat.source_type_id(own_elem)))
+		if !isnil(t.tc) && t.tc.named_type_implements_interface(own_concrete_id, other_iface_source_id) {
 			return other_type_id
 		}
 	}
@@ -3041,16 +3041,16 @@ fn (mut t Transformer) lower_type_pattern_membership(lhs_id flat.NodeId, rhs fla
 	if rhs.children_count == 0 {
 		return none
 	}
-	mut patterns := []string{cap: int(rhs.children_count)}
-	mut sum_name := ''
+	mut patterns := []u32{cap: int(rhs.children_count)}
+	mut sum_name_id := u32(0)
 	if sc := t.find_smartcast_for_expr(lhs_id) {
-		sum_name = flat.source_type_name(t.trim_pointer_type(t.smartcast_target_type(sc)))
+		sum_name_id = t.trim_pointer_type(t.smartcast_target_type(sc))
 	}
-	if sum_name.len == 0 {
-		sum_name = flat.source_type_name(t.trim_pointer_type(t.original_expr_type(lhs_id)))
+	if sum_name_id == 0 {
+		sum_name_id = t.trim_pointer_type(t.original_expr_type(lhs_id))
 	}
-	if !t.is_sum_type_name(flat.source_type_id(sum_name)) {
-		sum_name = flat.source_type_name(t.trim_pointer_type(t.node_type(lhs_id)))
+	if !t.is_sum_type_name(sum_name_id) {
+		sum_name_id = t.trim_pointer_type(t.node_type(lhs_id))
 	}
 	for i in 0 .. rhs.children_count {
 		elem_id := t.a.child(&rhs, i)
@@ -3060,23 +3060,22 @@ fn (mut t Transformer) lower_type_pattern_membership(lhs_id flat.NodeId, rhs fla
 				return none
 			}
 		}
-		pattern := flat.source_type_name(t.type_pattern_name(elem_id))
-		if pattern.len == 0 {
+		pattern_id := t.type_pattern_name(elem_id)
+		if pattern_id == 0 {
 			return none
 		}
-		if !t.is_sum_type_name(flat.source_type_id(sum_name)) {
-			pattern_sum_source_id := t.find_sum_type_for_variant(flat.source_type_id(pattern))
-			pattern_sum := flat.source_type_name(pattern_sum_source_id)
+		if !t.is_sum_type_name(sum_name_id) {
+			pattern_sum_source_id := t.find_sum_type_for_variant(pattern_id)
 			if pattern_sum_source_id == 0 {
 				return none
 			}
-			sum_name = pattern_sum
-		} else if t.sum_variant_path(flat.source_type_id(sum_name), flat.source_type_id(pattern)).len == 0 {
+			sum_name_id = pattern_sum_source_id
+		} else if t.sum_variant_path(sum_name_id, pattern_id).len == 0 {
 			return none
 		}
-		patterns << pattern
+		patterns << pattern_id
 	}
-	if !t.is_sum_type_name(flat.source_type_id(sum_name)) {
+	if !t.is_sum_type_name(sum_name_id) {
 		return none
 	}
 	// A value-branch subject (`(match node { First { make_foo(node)! } ... }) in [Foo1, Foo3]`)
@@ -3084,7 +3083,7 @@ fn (mut t Transformer) lower_type_pattern_membership(lhs_id flat.NodeId, rhs fla
 	// plain `stable_expr_for_reuse` would lower it with `transform_expr` in a value-less
 	// statement context and emit an empty expression.
 	base := if t.is_value_match_or_if_operand(lhs_id) {
-		t.stable_transformed_expr_for_reuse(t.transform_expr_for_type(lhs_id, flat.source_type_id(sum_name)), flat.source_type_id(sum_name), 'in_lhs')
+		t.stable_transformed_expr_for_reuse(t.transform_expr_for_type(lhs_id, sum_name_id), sum_name_id, 'in_lhs')
 	} else {
 		t.stable_expr_for_reuse(lhs_id)
 	}
@@ -3096,8 +3095,8 @@ fn (mut t Transformer) lower_type_pattern_membership(lhs_id flat.NodeId, rhs fla
 		lhs_type = t.original_expr_type(lhs_id)
 	}
 	mut chain := flat.empty_node
-	for pattern in patterns {
-		cmp := t.make_sum_type_pattern_check(base, lhs_type, flat.source_type_id(sum_name), flat.source_type_id(pattern)) or { return none }
+	for pattern_id in patterns {
+		cmp := t.make_sum_type_pattern_check(base, lhs_type, sum_name_id, pattern_id) or { return none }
 		if int(chain) < 0 {
 			chain = cmp
 		} else {

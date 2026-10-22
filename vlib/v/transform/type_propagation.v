@@ -534,9 +534,9 @@ fn (t &Transformer) fn_literal_type_text(node flat.Node) u32 {
 			}
 			continue
 		}
-		raw := if child.typ != 0 { child.typ_text() } else { child.value }
-		slot_type := flat.source_type_name(explicit_mut_pointer_param_type_text(child, fn_literal_param_type_text(flat.source_type_id(raw))))
-		params << flat.source_type_name(mutable_fn_value_param_type_text(child, flat.source_type_id(slot_type)))
+		raw_id := if child.typ != 0 { child.typ } else { flat.source_type_id(child.value) }
+		slot_type_id := explicit_mut_pointer_param_type_text(child, fn_literal_param_type_text(raw_id))
+		params << flat.source_type_name(mutable_fn_value_param_type_text(child, slot_type_id))
 	}
 	ret := trimmed_transform_text(node.typ_text())
 	if ret.len == 0 || ret == 'void' {
@@ -1813,7 +1813,7 @@ fn is_generic_placeholder_type_name(typ string) bool {
 fn (t &Transformer) normalize_type_in_module(type_id u32, mod string) u32 {
 	if flat.source_type_shape(type_id).has(.builtin_alias) { return type_id }
 	if isnil(t.module_type_cache) {
-		return flat.source_type_id(t.normalize_type_in_module_uncached(flat.source_type_name(type_id), mod))
+		return t.normalize_type_in_module_uncached(type_id, mod)
 	}
 	mut cache := t.module_type_cache
 	if !same_transform_text(cache.file, t.cur_file)
@@ -1837,7 +1837,7 @@ fn (t &Transformer) normalize_type_in_module(type_id u32, mod string) u32 {
 	if cached := cache.entries[type_id] {
 		result = cached
 	} else {
-		result = flat.source_type_id(t.normalize_type_in_module_uncached(flat.source_type_name(type_id), mod))
+		result = t.normalize_type_in_module_uncached(type_id, mod)
 		// Expanding an alias may recursively normalize in another owner module.
 		if !same_transform_text(cache.module, mod) {
 			cache.module = mod
@@ -1852,54 +1852,56 @@ fn (t &Transformer) normalize_type_in_module(type_id u32, mod string) u32 {
 	return result
 }
 
-fn (t &Transformer) normalize_type_in_module_uncached(typ string, mod string) string {
+fn (t &Transformer) normalize_type_in_module_uncached(type_id u32, mod string) u32 {
+	typ := flat.source_type_name(type_id)
 	clean := trimmed_transform_text(typ)
+	clean_id := if clean.len == typ.len { type_id } else { flat.source_type_id(clean) }
 	if clean.len == 0 {
-		return clean
+		return clean_id
 	}
 	if clean.starts_with('&') {
-		return '&' + flat.source_type_name(t.normalize_type_in_module(flat.source_type_id(clean[1..]), mod))
+		return flat.source_type_id('&' + flat.source_type_name(t.normalize_type_in_module(flat.source_type_id(clean[1..]), mod)))
 	}
 	if clean.starts_with('mut ') {
-		return '&' + flat.source_type_name(t.normalize_type_in_module(flat.source_type_id(clean[4..]), mod))
+		return flat.source_type_id('&' + flat.source_type_name(t.normalize_type_in_module(flat.source_type_id(clean[4..]), mod)))
 	}
 	if clean.starts_with('shared ') {
-		return 'shared ' + flat.source_type_name(t.normalize_type_in_module(flat.source_type_id(clean[7..]), mod))
+		return flat.source_type_id('shared ' + flat.source_type_name(t.normalize_type_in_module(flat.source_type_id(clean[7..]), mod)))
 	}
 	if clean.starts_with('atomic ') {
-		return 'atomic ' + flat.source_type_name(t.normalize_type_in_module(flat.source_type_id(clean[7..]), mod))
+		return flat.source_type_id('atomic ' + flat.source_type_name(t.normalize_type_in_module(flat.source_type_id(clean[7..]), mod)))
 	}
 	if clean.starts_with('?') {
-		return '?' + flat.source_type_name(t.normalize_type_in_module(flat.source_type_id(clean[1..]), mod))
+		return flat.source_type_id('?' + flat.source_type_name(t.normalize_type_in_module(flat.source_type_id(clean[1..]), mod)))
 	}
 	if clean.starts_with('!') {
-		return '!' + flat.source_type_name(t.normalize_type_in_module(flat.source_type_id(clean[1..]), mod))
+		return flat.source_type_id('!' + flat.source_type_name(t.normalize_type_in_module(flat.source_type_id(clean[1..]), mod)))
 	}
 	if clean.starts_with('...') {
-		return '...' + flat.source_type_name(t.normalize_type_in_module(flat.source_type_id(clean[3..]), mod))
+		return flat.source_type_id('...' + flat.source_type_name(t.normalize_type_in_module(flat.source_type_id(clean[3..]), mod)))
 	}
 	if clean.starts_with('[]') {
-		return '[]' + flat.source_type_name(t.normalize_type_in_module(flat.source_type_id(clean[2..]), mod))
+		return flat.source_type_id('[]' + flat.source_type_name(t.normalize_type_in_module(flat.source_type_id(clean[2..]), mod)))
 	}
 	if clean.starts_with('chan ') {
-		return 'chan ' + flat.source_type_name(t.normalize_type_in_module(flat.source_type_id(clean[5..]), mod))
+		return flat.source_type_id('chan ' + flat.source_type_name(t.normalize_type_in_module(flat.source_type_id(clean[5..]), mod)))
 	}
 	if clean.starts_with('map[') {
 		bracket_end := generic_matching_bracket(clean, 3)
 		if bracket_end > 3 && bracket_end < clean.len {
 			key_type := flat.source_type_name(t.normalize_type_in_module(flat.source_type_id(clean[4..bracket_end]), mod))
 			value_type := flat.source_type_name(t.normalize_type_in_module(flat.source_type_id(clean[bracket_end + 1..]), mod))
-			return 'map[${key_type}]${value_type}'
+			return flat.source_type_id('map[${key_type}]${value_type}')
 		}
 	}
 	if clean.starts_with('[') {
 		bracket_end := generic_matching_bracket(clean, 0)
 		if bracket_end > 0 && bracket_end < clean.len - 1 {
-			return clean[..bracket_end + 1] + flat.source_type_name(t.normalize_type_in_module(flat.source_type_id(clean[bracket_end + 1..]), mod))
+			return flat.source_type_id(clean[..bracket_end + 1] + flat.source_type_name(t.normalize_type_in_module(flat.source_type_id(clean[bracket_end + 1..]), mod)))
 		}
 	}
 	if clean.starts_with('fn(') || clean.starts_with('fn (') {
-		params, ret := fn_type_text_parts(clean) or { return clean }
+		params, ret := fn_type_text_parts(clean) or { return clean_id }
 		mut normalized_params := []string{cap: params.len}
 		for param in params {
 			raw_param := trimmed_transform_text(param)
@@ -1910,34 +1912,34 @@ fn (t &Transformer) normalize_type_in_module_uncached(typ string, mod string) st
 		normalized_ret_source_id := t.normalize_type_in_module(flat.source_type_id(ret), mod)
 		normalized_ret := flat.source_type_name(normalized_ret_source_id)
 		return if normalized_ret_source_id != 0 {
-			'fn (${normalized_params.join(', ')}) ${normalized_ret}'
+			flat.source_type_id('fn (${normalized_params.join(', ')}) ${normalized_ret}')
 		} else {
-			'fn (${normalized_params.join(', ')})'
+			flat.source_type_id('fn (${normalized_params.join(', ')})')
 		}
 	}
 	base, args, is_generic_app := generic_app_parts(clean)
 	if is_generic_app {
 		// Expand the applied alias before its base: expanding only `Values` in
 		// `Values[Item]` would leave the arguments attached to its `[]T` target.
-		alias_type := if !base.contains('.') && mod.len > 0
+		alias_type_id := if !base.contains('.') && mod.len > 0
 			&& t.type_authority_has('${mod}.${base}') {
-			'${mod}.${clean}'
+			flat.source_type_id('${mod}.${clean}')
 		} else {
-			clean
+			clean_id
 		}
 		if !isnil(t.tc) {
-			if expanded_source_id := t.expand_generic_type_alias(flat.source_type_id(alias_type)) {
-				return flat.source_type_name(t.normalize_type_alias(expanded_source_id))
+			if expanded_source_id := t.expand_generic_type_alias(alias_type_id) {
+				return t.normalize_type_alias(expanded_source_id)
 			}
 		}
 		mut normalized_args := []string{cap: args.len}
 		for arg in args {
 			normalized_args << flat.source_type_name(t.normalize_type_in_module(flat.source_type_id(arg), mod))
 		}
-		return '${flat.source_type_name(t.normalize_type_in_module(flat.source_type_id(base), mod))}[${normalized_args.join(', ')}]'
+		return flat.source_type_id('${flat.source_type_name(t.normalize_type_in_module(flat.source_type_id(base), mod))}[${normalized_args.join(', ')}]')
 	}
 	if clean.contains('.') || mod == '' || mod == 'main' || mod == 'builtin' {
-		return flat.source_type_name(t.normalize_type_alias(flat.source_type_id(clean)))
+		return t.normalize_type_alias(clean_id)
 	}
 	if !isnil(t.tc) && mod == t.cur_module && t.cur_file.len > 0 {
 		mut imported := ''
@@ -1954,19 +1956,19 @@ fn (t &Transformer) normalize_type_in_module_uncached(typ string, mod string) st
 			imported = candidate
 		}
 		if imported.len > 0 {
-			return flat.source_type_name(t.normalize_type_alias(flat.source_type_id(imported)))
+			return t.normalize_type_alias(flat.source_type_id(imported))
 		}
 	}
 	qtyp := '${mod}.${clean}'
 	if t.type_authority_has(qtyp) {
-		return flat.source_type_name(t.normalize_type_alias(flat.source_type_id(qtyp)))
+		return t.normalize_type_alias(flat.source_type_id(qtyp))
 	}
 	if !isnil(t.tc) {
 		if t.tc.type_aliases.contains(qtyp) {
-			return flat.source_type_name(t.normalize_type_alias(flat.source_type_id(qtyp)))
+			return t.normalize_type_alias(flat.source_type_id(qtyp))
 		}
 	}
-	return flat.source_type_name(t.normalize_type_alias(flat.source_type_id(clean)))
+	return t.normalize_type_alias(clean_id)
 }
 
 // resolve_index_elem_type determines the element type of an .index expression.

@@ -13840,11 +13840,11 @@ fn (tc &TypeChecker) ownership_match_covers_all_sum_variants(node flat.Node) boo
 	} else {
 		return false
 	}
-	variants := flat.TypeTextList{ ids: tc.sum_types.type_ids(sum_name) or { return false } }.names()
+	variants := tc.sum_types.type_ids(sum_name) or { return false }
 	if variants.len == 0 {
 		return false
 	}
-	mut covered := map[string]bool{}
+	mut covered := map[u32]bool{}
 	for i in 1 .. node.children_count {
 		branch := tc.a.child_node(&node, i)
 		if branch.kind != .match_branch {
@@ -13856,19 +13856,20 @@ fn (tc &TypeChecker) ownership_match_covers_all_sum_variants(node flat.Node) boo
 		n_conds := branch.value.int()
 		for j in 0 .. n_conds {
 			cond := tc.a.child_node(branch, j)
-			pattern := flat.source_type_name(tc.match_type_pattern(cond) or { continue })
+			pattern_id := tc.match_type_pattern(cond) or { continue }
+			pattern := flat.source_type_name(pattern_id)
 			pattern_short := short_type_name(pattern)
-			qpattern := tc.qualify_name(pattern)
-			for variant in variants {
-				if variant == pattern || variant == qpattern
-					|| short_type_name(variant) == pattern_short {
-					covered[variant] = true
+			qpattern_id := flat.source_type_id(tc.qualify_name(pattern))
+			for variant_id in variants {
+				if variant_id == pattern_id || variant_id == qpattern_id
+					|| short_type_name(flat.source_type_name(variant_id)) == pattern_short {
+					covered[variant_id] = true
 				}
 			}
 		}
 	}
-	for variant in variants {
-		if variant !in covered {
+	for variant_id in variants {
+		if variant_id !in covered {
 			return false
 		}
 	}

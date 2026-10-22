@@ -13406,7 +13406,7 @@ fn mut_optional_param_value_types_match(param_type &types.Type, expected &types.
 		return false
 	}
 	if expected_payload is types.Pointer {
-		return unalias_type(param_payload).name() == unalias_type(expected_payload.base_type).name()
+		return unalias_type(param_payload).source_type_id() == unalias_type(expected_payload.base_type).source_type_id()
 	}
 	return false
 }
@@ -14327,11 +14327,10 @@ fn (mut g FlatGen) gen_pointer_pointer_struct_selector(base_id flat.NodeId, base
 	if struct_type !is types.Struct {
 		return false
 	}
-	struct_name := (struct_type as types.Struct).name()
 	base := g.a.nodes[int(base_id)]
 	base_is_mut_pointer_param := base.kind == .ident && g.current_param_is_mut_pointer(base.value)
 
-	if _ := g.struct_field_type(flat.source_type_id(struct_name), field) {
+	if _ := g.struct_field_type(struct_type.source_type_id(), field) {
 		g.write('(*(')
 		if base_is_mut_pointer_param {
 			g.gen_mut_pointer_slot_expr(base_id)
@@ -15982,27 +15981,27 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 							}
 						}
 					} else if is_sum_literal && field.value != 'typ' {
-						mut variant := ''
+						mut variant := u32(0)
 						if flat.source_type_shape(field.typ).has(.pointer) {
-							variant = field.typ_text()[1..]
+							variant = flat.source_type_id(field.typ_text()[1..])
 						} else if field.typ != 0 {
-							variant = field.typ_text()
+							variant = field.typ
 						} else {
 							for v_source_id in g.tc.sum_types.type_ids(flat.source_type_name(sum_name)) or { []u32{} } {
 								v := flat.source_type_name(v_source_id)
 
 								if sum_field_name(v) == field.value {
-									variant = v
+									variant = v_source_id
 									break
 								}
 							}
 						}
-						variant = flat.source_type_name(g.resolve_variant(sum_name, flat.source_type_id(variant)))
+						variant = g.resolve_variant(sum_name, variant)
 						const_val := g.const_expr_to_string(val_id, seen)
 						payload := if trimmed_space(const_val).len > 0 {
 							const_val
 						} else {
-							g.expr_to_string_with_expected_type(val_id, g.tc.parse_type(flat.source_type_id(variant)))
+							g.expr_to_string_with_expected_type(val_id, g.tc.parse_type(variant))
 						}
 						payload
 					} else if is_wrapped_c_type(ct) && ct.ends_with('ptr') && field.value == 'value' {
@@ -19044,7 +19043,7 @@ fn (mut g FlatGen) gen_array_infix_eq(node flat.Node, lhs_id flat.NodeId, rhs_id
 	if !rhs_is_arr {
 		rhs_arr = lhs_arr
 	}
-	mut elem_type := if lhs_arr.elem_type.name() != 'unknown' {
+	mut elem_type := if lhs_arr.elem_type.source_type_id() != flat.source_type_unknown {
 		*lhs_arr.elem_type
 	} else {
 		*rhs_arr.elem_type

@@ -761,20 +761,20 @@ fn (mut t Transformer) infer_bare_generic_struct_init_type(node flat.Node) ?u32 
 		} else {
 			continue
 		}
-		mut field_type := ''
+		mut field_type_id := u32(0)
 		for struct_field in info.fields {
 			if struct_field.name == field_name {
-				field_type = struct_field.typ_text()
+				field_type_id = struct_field.typ
 				break
 			}
 		}
-		if field_type.len == 0 {
+		if field_type_id == 0 {
 			continue
 		}
 		value_type_source_id_2 := t.generic_struct_init_value_type(t.a.child(field, 0))
-		value_type := flat.source_type_name(value_type_source_id_2)
+
 		if value_type_source_id_2 != 0 {
-			infer_generic_type_args(flat.source_type_id(field_type), flat.source_type_id(value_type), mut inferred)
+			infer_generic_type_args(field_type_id, value_type_source_id_2, mut inferred)
 		}
 	}
 	mut args := []string{cap: params.len}

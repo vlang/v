@@ -10947,10 +10947,10 @@ fn (c &CallCollector) specialized_struct_default_type(type_text_id u32, id flat.
 		return c.value_type_in_source(type_text_id, c.a.node(id), imports)
 	}
 	// Qualify declaration-owned types before inserting semantic arguments from the caller.
-	declared_type := flat.source_type_name(c.qualified_type_text_preserving_params(type_text_id, id, cur_module, imports, generic_params))
-	substituted_type := flat.source_type_name(types.subst_generic_text(flat.source_type_id(declared_type), generic_args_ids.clone(), generic_params))
+	declared_type_id := c.qualified_type_text_preserving_params(type_text_id, id, cur_module, imports, generic_params)
+	substituted_type_id := types.subst_generic_text(declared_type_id, generic_args_ids.clone(), generic_params)
 	// Canonical bare argument names belong to main; protect them from an imported declaration's scope.
-	qualified_type_source_id := c.generic_factory_qualified_type_text(flat.source_type_id(substituted_type), id, 'main', map[string]string{})
+	qualified_type_source_id := c.generic_factory_qualified_type_text(substituted_type_id, id, 'main', map[string]string{})
 
 	// All names are semantic now; no declaration-file import may capture them.
 	return *types.unalias_type(c.tc.parse_resolution_type_in_file(qualified_type_source_id, ''))
