@@ -54,6 +54,9 @@ If V is already installed on a machine, it can be upgraded to its latest version
 by using the V's built-in self-updater.
 To do so, run the command `v up`.
 This also refreshes the bundled TCC binaries used for fast C compilation.
+On Linux, an older compatible TCC bundle stays in place while its upstream revision
+is unchanged and it still passes the host compatibility check. Repeated updates
+preserve its file metadata so cached modules can reuse their objects.
 On macOS, TCC builds use its runtime thread fence directly, including when
 preprocessed C identifies ARM64 with `__arm64__` alone.
 
@@ -61,6 +64,9 @@ After updating, `v up` refreshes previously cached vlib modules with the compile
 and flags used to cache them, including normal and `-prod` builds. Unchanged
 modules are reused. Each module being cached is printed to standard output as
 `Caching module <name>...`. A failed cache refresh makes `v up` fail.
+The final configuration count includes checks that reused every cached object.
+Different build flags, program or test modes, and import sequences can require
+separate checks. Pass `v up -v` to see each checked configuration.
 Cached module headers preserve struct field attribute groups, so valid deprecation
 attributes do not introduce warnings during refresh.
 Ordinary builds report cache progress on standard error. Refreshes retain absolute
