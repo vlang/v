@@ -257,10 +257,13 @@ pub fn source_type_id(text string) u32 {
 	return id
 }
 
-@[inline]
+@[direct_array_access; inline]
 fn source_type_recent_slot(text string) int {
-	address := usize(text.str)
-	return int(((address >> 3) ^ (address >> 13) ^ (address >> 21)) & 4095)
+	// Equal spellings share a slot even when callers borrow different buffers.
+	// The complete canonical spelling is still checked before accepting a hit.
+	key := u32(text.len) ^ (u32(text[0]) << 1) ^ (u32(text[text.len >> 1]) << 5) ^
+		(u32(text[text.len - 1]) << 9)
+	return int((key ^ (key >> 12)) & 4095)
 }
 
 fn source_type_id_uncached(text string) u32 {

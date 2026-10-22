@@ -13,7 +13,7 @@ fn interner_parallel_writer(mut interner TypeInterner, input []Type, ready chan 
 	}
 }
 
-fn interner_parallel_reader(interner &TypeInterner, ready chan bool, start chan bool, stop chan bool) {
+fn interner_parallel_reader(mut interner TypeInterner, ready chan bool, start chan bool, stop chan bool) {
 	ready <- true
 	_ := <-start
 	// Keep probing until every writer has finished growing the table.
@@ -23,6 +23,8 @@ fn interner_parallel_reader(interner &TypeInterner, ready chan bool, start chan 
 			return
 		}
 		assert canonical is String
+		_, repeated := interner.canonicalize(Type(string_))
+		assert voidptr(repeated) == voidptr(canonical)
 		select {
 			_ := <-stop {
 				return
@@ -60,7 +62,7 @@ fn test_interner_probe_during_parallel_growth() {
 	for lane in 0 .. lanes {
 		writers << spawn interner_parallel_writer(mut interner, input[lane * 3000..(lane + 1) * 3000],
 			ready, start)
-		readers << spawn interner_parallel_reader(interner, ready, start, stop)
+		readers << spawn interner_parallel_reader(mut interner, ready, start, stop)
 	}
 	// Release readers and writers together once all of them are running.
 	for _ in 0 .. 2 * lanes {

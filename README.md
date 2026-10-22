@@ -382,7 +382,11 @@ hello world
 
 `v self` defaults to `-gc none`. Pass `-gc <mode>` if you need a different GC mode.
 On non-Windows hosts, `v -prod self` uses profile-guided optimization (PGO) when the selected C
-compiler is Clang and `llvm-profdata` is available. It builds an instrumented compiler, trains it on
+compiler is Clang and `llvm-profdata` is available. Clang's reported installation directory and
+resolved executable directory are searched before `PATH` and macOS `xcrun` for the profile tool,
+keeping LLVM versions together.
+Both `-cc clang` and `-cc=clang` select that toolchain; the last compiler option takes precedence.
+It builds an instrumented compiler, trains it on
 uncached self-compilation, then builds the optimized compiler. This takes longer to build the
 production compiler. Other C toolchains and failed PGO attempts use a regular production build.
 Use `v -prod -parallel-cc self` to skip PGO and compile the generated C units in parallel.

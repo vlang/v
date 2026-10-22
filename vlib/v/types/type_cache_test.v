@@ -928,3 +928,37 @@ fn test_new_type_reference_owns_its_descriptor_copy() {
 	assert reference is Primitive
 	assert reference.size == 16
 }
+
+fn test_cached_expr_type_references_preserve_storage_and_visibility() {
+	ast := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&ast)
+	tc.reset_node_caches(8)
+	tc.remember_expr_type(flat.NodeId(1), Type(int_))
+	tc.remember_expr_type(flat.NodeId(5), Type(string_))
+	dense := tc.cached_expr_type_ref(flat.NodeId(1)) or { panic('missing dense type') }
+	assert voidptr(dense) == voidptr(tc.expr_type_values[1])
+	tc.parallel_check_sparse = true
+	tc.check_range_lo = 0
+	tc.check_range_hi = 4
+	assert tc.cached_expr_type_ref(flat.NodeId(5)) == none
+	tc.sparse_expr_type_values[5] = Type(bool_)
+	sparse := tc.cached_expr_type_ref(flat.NodeId(5)) or { panic('missing sparse type') }
+	assert *sparse == Type(bool_)
+	for i in 8 .. 4096 {
+		tc.sparse_expr_type_values[i] = Type(int_)
+	}
+	tc.sparse_expr_type_values[5] = Type(string_)
+	assert *sparse == Type(bool_)
+	assert *dense == Type(int_)
+	assert tc.cached_expr_type(flat.NodeId(5))? == Type(string_)
+
+	mut probe := tc.fork_storage_observation_view()
+	assert *probe.cached_expr_type_ref(flat.NodeId(1))? == Type(int_)
+	assert *probe.cached_expr_type_ref(flat.NodeId(5))? == Type(string_)
+	probe.sparse_expr_type_values[5] = Type(u64_)
+	assert *probe.cached_expr_type_ref(flat.NodeId(5))? == Type(u64_)
+	assert *tc.cached_expr_type_ref(flat.NodeId(5))? == Type(string_)
+	tc.invalidate_checked_expr_type(1)
+	assert tc.cached_expr_type_ref(flat.NodeId(1)) == none
+	assert *dense == Type(int_)
+}

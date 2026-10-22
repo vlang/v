@@ -2,6 +2,19 @@ module flat
 
 import hash
 
+fn test_source_type_recent_cache_checks_borrowed_spelling_after_mutation() {
+	mut bytes := 'source_types.MutableBorrowedInput'.bytes()
+	text := unsafe { tos(bytes.data, bytes.len) }
+	id := source_type_id(text)
+	assert source_type_name(id) == 'source_types.MutableBorrowedInput'
+	bytes[1] = `X`
+	changed_id := source_type_id(text)
+	assert changed_id != id
+	assert source_type_name(changed_id) == 'sXurce_types.MutableBorrowedInput'
+	assert source_type_name(id) == 'source_types.MutableBorrowedInput'
+	assert source_type_id('source_types.MutableBorrowedInput'.clone()) == id
+}
+
 fn test_existing_source_type_does_not_take_the_insertion_lock() {
 	text := 'source_types.Existing'
 	id := source_type_id(text)

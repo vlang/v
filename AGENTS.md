@@ -611,6 +611,12 @@ this is the most reliable local measure of compiler work: it is less sensitive t
 CPU frequency and scheduling. Also retain elapsed time, cycles, and peak memory; fewer instructions
 do not guarantee lower latency or memory use. Compare counts on the same machine and architecture.
 
+The instruction counter is scoped to the measured process; unrelated processes do not add their
+instructions to it. An idle host is not required for instruction comparisons. Counts are dynamic,
+not a static property of the binary: synchronization, retries, and runtime paths can vary. Use
+serial paired measurements to check that variation. Record host load as context for elapsed time
+and cycles; use controlled load when making latency claims.
+
 For instructions per line, divide by physical lines in the `.v` and `.vh` files actually parsed,
 including builtins, imports, blank lines, and comments. Collect `parsed .v lines` plus
 `parsed .vh lines` in a separate unmeasured `-v` run with the same input flags. Preserve that
@@ -648,13 +654,16 @@ For a baseline/candidate comparison:
 
 1. Build both compilers with the same production build recipe and C toolchain. Verify correctness,
    diagnostics, and generated C before measuring. For a change intended to preserve output, require
-   identical C, allowing only explicitly recorded build metadata differences.
+   identical C, allowing only explicitly recorded build metadata differences. Validate generated
+   C when changing the fixture or compiler representation; matching invalid C is not sufficient.
 2. Use the same host, OS, fixture, standard library, flags, environment, and filesystem placement.
    Keep executable, source, and output paths identical between roles where possible; record any
    remaining differences. Set `VJOBS=1` and `SOURCE_DATE_EPOCH=0`, and disable tracing/profiling.
    Clear unintended compiler environment overrides, including `VFLAGS` and `VEXE`; record the
    effective environment. Measure only successfully rebuilt compilers, never a stale binary.
-   Run only one benchmark process at a time, with no concurrent builds or tests.
+   Run only one benchmark process at a time. Other builds or tests on the host do not invalidate
+   process instruction counts; do not pause unrelated work or wait for an idle host. Record that
+   elapsed time and cycles collected under uncontrolled load are contextual measurements.
 3. Run one warmup per role, then **ten measured pairs**, alternating baseline/candidate order:
    AB, BA, AB, BA, and so on. Record all 22 runs, excluding both warmups from statistics.
    Use a distinct timing/stdout/stderr log for every run and the same generated C output path.

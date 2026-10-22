@@ -8,6 +8,11 @@ import v.flat
 // caches and equality-heavy internals can use this compact identity.
 pub type TypeId = u32
 
+struct CanonicalTypeEntry {
+	id  TypeId
+	typ &Type
+}
+
 @[heap]
 struct TypeInterner {
 mut:
@@ -15,6 +20,8 @@ mut:
 	types   []&Type
 	names   []u32
 	buckets map[u64]TypeId
+	entries []&CanonicalTypeEntry
+	recent  [4096]voidptr
 }
 
 fn new_type_interner() &TypeInterner {
@@ -48,7 +55,9 @@ fn (mut i TypeInterner) intern_locked(t &Type, hash u64) (TypeId, &Type) {
 		key = type_hash_tag(key, 0x5bd1e995)
 	}
 	id := TypeId(i.types.len)
-	i.types << new_type_reference(Type(owned))
+	canonical := new_type_reference(Type(owned))
+	i.types << canonical
+	i.entries << &CanonicalTypeEntry{ id: id, typ: canonical }
 	i.names << u32(0)
 	i.buckets[key] = id
 	return id, i.types[int(id)]
@@ -177,12 +186,17 @@ fn (mut i TypeInterner) source_type_id(id TypeId) u32 {
 }
 
 fn (mut i TypeInterner) canonicalize(t &Type) (TypeId, &Type) {
+	if entry := i.recent_canonical_type(t) {
+		return entry.id, entry.typ
+	}
 	hash := semantic_type_hash(t)
 	i.lock.lock()
 	defer {
 		i.lock.unlock()
 	}
-	return i.intern_locked(t, hash)
+	id, canonical := i.intern_locked(t, hash)
+	i.remember_canonical_type(t, i.entries[int(id)])
+	return id, canonical
 }
 
 fn (mut i TypeInterner) len() int {
@@ -202,6 +216,7 @@ fn (mut i TypeInterner) reserve(headroom int) {
 	unsafe {
 		i.types.grow_cap(headroom)
 		i.names.grow_cap(headroom)
+		i.entries.grow_cap(headroom)
 	}
 	i.buckets.reserve(u32(i.buckets.len + headroom))
 }
@@ -217,10 +232,15 @@ fn (mut i TypeInterner) promote_from(start int, scope voidptr) {
 	// not only additions owned by the outer transform scope. Deep-copy the full
 	// stable-id table before any of those arenas are released.
 	previous := i.types
+	// All readers have joined before promotion replaces their canonical pointers.
+	i.clear_recent_canonical_types()
 	i.types = []&Type{cap: previous.len}
-	for typ in previous {
+	i.entries = []&CanonicalTypeEntry{cap: previous.len}
+	for idx, typ in previous {
 		owned := i.own_value(typ)
-		i.types << new_type_reference(Type(owned))
+		canonical := new_type_reference(Type(owned))
+		i.types << canonical
+		i.entries << &CanonicalTypeEntry{ id: TypeId(idx), typ: canonical }
 	}
 	i.names = i.names.clone()
 	// A scoped insertion can rehash even after the caller reserves headroom.

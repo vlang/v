@@ -11285,6 +11285,7 @@ on top of C libraries.
 
 C2V currently uses Clang's AST to generate V, so to translate a C file to V
 you need to have Clang installed on your machine.
+On first use, `v translate` downloads and compiles C2V automatically.
 
 Let's create a simple program `test.c` first:
 
