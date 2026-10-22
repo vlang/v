@@ -61,3 +61,24 @@ enum IndirectC { item = int(CSource.item) }
 		}
 	}
 }
+
+fn test_unknown_enum_successor_allows_explicit_zero_reset() {
+	path := os.join_path(os.vtmp_dir(), 'enum_unknown_reset_${os.getpid()}.v')
+	os.write_file(path, 'enum UnknownReset { first = C.unknown_value next zero = 0 after_zero }\nfn main() {}') or { panic(err) }
+	defer { os.rm(path) or {} }
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := TypeChecker.new(a)
+	tc.collect(a)
+	_ = tc.check_semantics_opt(false)
+	assert tc.errors.len == 0, tc.errors.str()
+	cases := tc.comptime_static_enum_decl_value_cases(flat.source_type_id('UnknownReset'))
+	assert cases.len == 4
+	assert cases[0].value_from_c
+	assert cases[1].value_from_c
+	assert !cases[2].value_from_c
+	assert cases[2].value == 0
+	assert !cases[3].value_from_c
+	assert cases[3].value == 1
+}

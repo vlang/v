@@ -27,6 +27,43 @@ enum TransitiveCEnum {
 	next
 }
 
+@[_allow_multiple_values]
+enum SameEnumCopy {
+	first  = C.enum_first_opt
+	copied = int(SameEnumCopy.first)
+	next
+}
+
+fn test_same_enum_c_copy_remains_symbolic() {
+	assert int(SameEnumCopy.copied) == 3
+	assert int(SameEnumCopy.next) == 4
+	mut values := []int{}
+	$for member in SameEnumCopy.values {
+		values << int(member.value)
+	}
+	assert values == [3, 3, 4]
+	copied := SameEnumCopy.from_string('copied') or { panic('missing enum member') }
+	assert int(copied) == 3
+}
+
+enum UnknownReset {
+	first = C.enum_first_opt
+	next
+	zero  = 0
+	after_zero
+}
+
+fn test_c_derived_implicit_successor_can_reset_to_zero() {
+	assert int(UnknownReset.next) == 4
+	assert int(UnknownReset.zero) == 0
+	assert int(UnknownReset.after_zero) == 1
+	mut values := []int{}
+	$for member in UnknownReset.values {
+		values << int(member.value)
+	}
+	assert values == [3, 4, 0, 1]
+}
+
 fn test_c_derived_enum_selector_remains_symbolic() {
 	assert int(CopiedCEnum.first) == 3
 	assert int(CopiedCEnum.next) == 4

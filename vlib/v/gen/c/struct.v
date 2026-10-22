@@ -2953,14 +2953,19 @@ fn (g &FlatGen) enum_nonzero_default_expr(typ types.Type) ?string {
 	if fields.len == 0 {
 		return none
 	}
+	if !isnil(g.tc) {
+		enum_name := flat.source_type_name(type_name_id).trim_string_left('main.')
+		if value := g.tc.comptime_enum_decl_first_value(flat.source_type_id(enum_name)) {
+			if value == 0 {
+				return none
+			}
+		}
+		// Unknown C-derived defaults still require initialization with their member symbol.
+		return g.enum_value_expr_for_type(type_name_id, fields[0])
+	}
 	mut first_value := i64(0)
 	if value := g.enum_value_for_type(type_name_id, fields[0]) {
 		first_value = i64(value)
-	} else if _ := g.enum_backing_info(type_name_id) {
-		// Backed enums (`enum E as u8`) keep only symbolic values.
-		enum_name := flat.source_type_name(type_name_id).trim_string_left('main.')
-		values := g.tc.comptime_enum_decl_field_values(flat.source_type_id(enum_name))
-		first_value = values[fields[0]] or { return none }
 	} else {
 		return none
 	}

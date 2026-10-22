@@ -1104,7 +1104,9 @@ fn (tc &TypeChecker) comptime_static_enum_decl_value_cases_for_node(enum_name u3
 				resolving.delete(key)
 			}
 		}
-		field_values[field_name] = val
+		if !from_c {
+			field_values[field_name] = val
+		}
 		out << ComptimeStaticValueCase{
 			name:         field_name
 			value:        if is_flag { i64(u64(1) << val) } else { val }

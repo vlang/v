@@ -18991,6 +18991,7 @@ fn (mut tc TypeChecker) check_enum_field_values(node_id flat.NodeId, node flat.N
 	mut seen_values := map[int]bool{}
 	mut field_values := map[string]i64{}
 	mut next_value := 0
+	mut next_value_known := true
 	for i in 0 .. node.children_count {
 		field_id := tc.a.child(&node, i)
 		field := tc.a.child_node(&node, i)
@@ -19012,10 +19013,11 @@ fn (mut tc TypeChecker) check_enum_field_values(node_id flat.NodeId, node flat.N
 		}
 		seen_names[field.value] = true
 		mut value := next_value
-		mut value_known := true
+		mut value_known := next_value_known
 		mut value_overflows_backing := false
 		mut value_pos := field.pos
 		if field.children_count > 0 {
+			value_known = true
 			value_id := tc.a.child(field, 0)
 			value_pos = tc.a.node(value_id).pos
 			if field_ref := tc.find_enum_value_in_node(value_id, node.value) {
@@ -19100,6 +19102,7 @@ fn (mut tc TypeChecker) check_enum_field_values(node_id flat.NodeId, node flat.N
 			field_values[field.value] = value
 			next_value = value + 1
 		}
+		next_value_known = value_known
 	}
 }
 
