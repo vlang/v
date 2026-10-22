@@ -2758,6 +2758,14 @@ fn (mut g FlatGen) enum_field_expr_to_string_resolving(id flat.NodeId, enum_modu
 		return none
 	}
 	node := g.a.nodes[int(id)]
+	if node.kind == .call || (node.kind == .infix && node.op == .power) {
+		// The checker rejects calls and powers whose values V cannot evaluate.
+		// Fold independent ones even when their enclosing expression is symbolic.
+		mut values := g.tc.comptime_enum_decl_field_values(enum_name)
+		mut numeric_resolving := map[string]bool{}
+		value := g.enum_field_expr_value_with_enum(id, enum_module, enum_name, mut values, map[string]flat.NodeId{}, mut numeric_resolving)?
+		return value.str()
+	}
 	match node.kind {
 		.ident, .enum_val {
 			if node.value in field_names {
@@ -2795,6 +2803,21 @@ fn (mut g FlatGen) enum_field_expr_to_string_resolving(id flat.NodeId, enum_modu
 			inner := g.enum_field_expr_to_string_resolving(g.a.child(&node, 0), enum_module, enum_name, enum_c_name, field_names, inline_refs, mut resolving)?
 			return '(${inner})'
 		}
+		.if_expr {
+			if node.children_count != 3 {
+				return none
+			}
+			condition := g.enum_field_expr_to_string_resolving(g.a.child(&node, 0), enum_module, enum_name, enum_c_name, field_names, inline_refs, mut resolving)?
+			then_value := g.enum_field_expr_to_string_resolving(g.a.child(&node, 1), enum_module, enum_name, enum_c_name, field_names, inline_refs, mut resolving)?
+			else_value := g.enum_field_expr_to_string_resolving(g.a.child(&node, 2), enum_module, enum_name, enum_c_name, field_names, inline_refs, mut resolving)?
+			return '((${condition}) ? (${then_value}) : (${else_value}))'
+		}
+		.block, .expr_stmt {
+			if node.children_count != 1 {
+				return none
+			}
+			return g.enum_field_expr_to_string_resolving(g.a.child(&node, 0), enum_module, enum_name, enum_c_name, field_names, inline_refs, mut resolving)
+		}
 		.cast_expr {
 			if node.children_count == 0 {
 				return none
@@ -2822,14 +2845,6 @@ fn (mut g FlatGen) enum_field_expr_to_string_resolving(id flat.NodeId, enum_modu
 		.infix {
 			if node.children_count < 2 {
 				return none
-			}
-			if node.op == .power {
-				// The checker rejects powers whose value depends on C. Fold an
-				// independent power even when its enclosing expression is symbolic.
-				mut values := g.tc.comptime_enum_decl_field_values(enum_name)
-				mut numeric_resolving := map[string]bool{}
-				value := g.enum_field_expr_value_with_enum(id, enum_module, enum_name, mut values, map[string]flat.NodeId{}, mut numeric_resolving)?
-				return value.str()
 			}
 			op := g.op_str(node.op)
 			if op.len == 0 {

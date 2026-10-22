@@ -8786,8 +8786,9 @@ This also applies to copied members and implicit successors. The source enum may
 after an enum that copies its members. An explicit initializer with a value known to V restores
 compile-time evaluation for that member and its successors.
 Symbolic arithmetic preserves integer storage widths and V operator grouping, including logical
-right shifts and zero results for negative or out-of-range shift counts. Powers in enum initializers
-must be evaluable by V at compile time; they cannot depend on C constants.
+right shifts and zero results for negative or out-of-range shift counts. Powers and `@[comptime]`
+function calls in enum initializers must be evaluable by V at compile time; they cannot depend on
+C constants. Known calls are evaluated even when used beside a C constant in symbolic arithmetic.
 
 #### <h4 id="comptime-attrs">.attributes</h4>
 
