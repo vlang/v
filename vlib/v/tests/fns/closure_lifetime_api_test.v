@@ -888,7 +888,14 @@ fn test_closure_runtime_setup_state_is_kept_in_v() {
 			continue
 		}
 		source := os.read_file(os.join_path(closure_dir, file)) or { panic(err) }
-		assert !source.contains('#insert'), file
+		// TinyCC needs the Windows API declarations; this header contains no state.
+		declarations := '#insert "@VEXEROOT/vlib/sync/sync_windows_tcc.h"'
+		checked_source := if file == 'closure_windows.c.v' {
+			source.replace(declarations, '')
+		} else {
+			source
+		}
+		assert !checked_source.contains('#insert'), file
 	}
 }
 
