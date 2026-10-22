@@ -17744,8 +17744,9 @@ fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type_id u3
 	}
 	if int(id) >= 0 && target_type_id != u32(0) {
 		node := t.a.nodes[int(id)]
-		if node.kind == .paren && node.children_count == 1 {
-			// Apply contextual conversions once, to the value inside the parentheses.
+		if node.kind == .paren && node.children_count == 1
+			&& (t.is_optional_type_name(target_type_id) || t.is_interface_type(target_type_id)) {
+			// Apply option/interface conversion once, to the value inside the parentheses.
 			return t.transform_expr_for_type(t.a.child(&node, 0), target_type_id)
 		}
 		if target_type.starts_with('!')
