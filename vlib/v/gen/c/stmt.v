@@ -1209,6 +1209,12 @@ fn (mut g FlatGen) precompute_ownership_recursive_drop_helpers() {
 		mut seen := map[u32]bool{}
 		g.ownership_collect_drop_struct_names(g.tc.parse_type(type_name), 0, mut drop_struct_names, mut seen)
 	}
+	// Storage acquisition also introduces synthetic drops after checking, including
+	// in ownership-only mode where the checker records no automatic cleanup sites.
+	mut visited := map[int]bool{}
+	for id in g.fn_decl_nodes_by_name.values() {
+		g.ownership_collect_synthetic_drop_types(id, mut drop_struct_names, mut visited)
+	}
 	mut struct_names := drop_struct_names.keys()
 	struct_names.sort_with_compare(compare_ownership_source_type_ids)
 	for name_id in struct_names {
@@ -1224,14 +1230,31 @@ fn (mut g FlatGen) precompute_ownership_recursive_drop_helpers() {
 			|| g.ownership_struct_destructor_method(name_id).len > 0 {
 			continue
 		}
-		target_key := ownership_drop_expansion_key(types.Type(types.Struct{
-			name_id: name_id
-		}))
+		target_key := ownership_drop_expansion_key(parsed)
 		// Use helpers for every reachable aggregate, not only directly recursive
 		// ones. Interface-heavy type graphs (notably v.ast under `-autofree`) can
 		// otherwise expand the same nested aggregate along exponentially many
 		// paths before the recursion-depth guard is reached.
 		g.recursive_drop_helpers[target_key] = name_id
+	}
+}
+
+fn (g &FlatGen) ownership_collect_synthetic_drop_types(id flat.NodeId, mut names map[u32]bool, mut visited map[int]bool) {
+	if !g.valid_node_id(id) || visited[int(id)] { return }
+	visited[int(id)] = true
+	node := g.a.node(id)
+	if node.kind == .call && node.children_count == 2 && !node.pos.is_valid() {
+		callee := g.a.child_node(node, 0)
+		if callee.kind == .ident && ownership_synthetic_drop_name(callee.value) {
+			arg := g.a.child_node(node, 1)
+			if arg.typ != 0 {
+				mut seen := map[u32]bool{}
+				g.ownership_collect_drop_struct_names(g.tc.parse_type(arg.typ), 0, mut names, mut seen)
+			}
+		}
+	}
+	for i in 0 .. node.children_count {
+		g.ownership_collect_synthetic_drop_types(g.a.child(node, i), mut names, mut visited)
 	}
 }
 
@@ -1298,6 +1321,7 @@ fn (g &FlatGen) ownership_collect_drop_struct_names(typ types.Type, depth int, m
 		}
 		types.SumType {
 			sum_name_id := g.resolve_sum_name(typ.source_type_id())
+			names[sum_name_id] = true
 			for variant_source_id in g.tc.sum_types.type_ids(flat.source_type_name(sum_name_id)) or { []u32{} } {
 				resolved_variant := g.resolve_variant(sum_name_id, variant_source_id)
 				variant_type := unalias_type(g.tc.parse_type(resolved_variant))
@@ -1431,9 +1455,7 @@ fn (mut g FlatGen) gen_ownership_recursive_drop_helpers() {
 		g.writeln('static void ${helper_name}(${g.struct_cname(type_name)}* _value) {')
 		g.indent++
 		mut expanding := map[u64]bool{}
-		g.gen_ownership_drop_value_inner(types.Type(types.Struct{
-			name_id: type_name_id
-		}), '*_value', 0, mut expanding)
+		g.gen_ownership_drop_value_inner(g.tc.parse_type(type_name_id), '*_value', 0, mut expanding)
 		g.indent--
 		g.writeln('}')
 		g.writeln('')
@@ -1443,6 +1465,13 @@ fn (mut g FlatGen) gen_ownership_recursive_drop_helpers() {
 }
 
 fn (mut g FlatGen) gen_ownership_drop_value(typ types.Type, expr string, depth int) {
+	// Sum cleanup switches are shared across storage-acquisition branches.
+	if typ is types.SumType {
+		if type_name := g.recursive_drop_helpers[ownership_drop_expansion_key(typ)] {
+			g.writeln('${g.ownership_recursive_drop_helper_name(type_name)}(&(${expr}));')
+			return
+		}
+	}
 	mut expanding := map[u64]bool{}
 	g.gen_ownership_drop_value_inner(typ, expr, depth, mut expanding)
 }
@@ -1467,7 +1496,7 @@ fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, d
 		return
 	}
 	expansion_key := ownership_drop_expansion_key(typ)
-	if depth > 0 && typ is types.Struct {
+	if depth > 0 && (typ is types.Struct || typ is types.SumType) {
 		if type_name_source_id := g.recursive_drop_helpers[expansion_key] {
 			helper_name := g.ownership_recursive_drop_helper_name(type_name_source_id)
 			g.writeln('${helper_name}(&(${expr}));')
@@ -1476,7 +1505,7 @@ fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, d
 	}
 	if expansion_key != 0 {
 		if expanding[expansion_key] {
-			if typ is types.Struct {
+			if typ is types.Struct || typ is types.SumType {
 				if type_name_source_id := g.recursive_drop_helpers[expansion_key] {
 					helper_name := g.ownership_recursive_drop_helper_name(type_name_source_id)
 					g.writeln('${helper_name}(&(${expr}));')

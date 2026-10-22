@@ -356,3 +356,8 @@ The regular compiler handles the initial `-d ownership cmd/v` support build dire
 With `-prealloc`, automatic cleanup runs destructors and leaves boxed storage to its arena.
 A `break` or `continue` at the end of an `or`, `if`, or `match` value branch runs cleanup
 before the jump. Only locals whose declarations have been reached are cleaned up.
+
+When storing a sum literal, ownership acquisition considers its active payload. Array views in that
+payload acquire independent storage; unrelated variants do not need storage checks. Runtime sum
+cleanup is shared across storage acquisition sites, keeping generated C compact for sums with many
+array variants, such as `orm.Primitive`.
