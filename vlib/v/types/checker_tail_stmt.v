@@ -11516,13 +11516,15 @@ pub fn (tc &TypeChecker) const_int_value_in_module(name string, module_name stri
 			candidates << alias_key
 		}
 	}
-	if key := tc.shadowed_builtin_const_key_in_module(name, module_name) {
-		candidates << key
-	}
-	candidates << name
 	if module_name != '' && module_name != 'main' && module_name != 'builtin'
 		&& !name.contains('.') {
 		candidates << '${module_name}.${name}'
+	}
+	if key := tc.shadowed_builtin_const_key_in_module(name, module_name) {
+		candidates << key
+	}
+	if tc.bare_const_key_is_visible_in_module(name, module_name) {
+		candidates << name
 	}
 	qname := tc.qualify_name(name)
 	if qname != name {
@@ -11532,7 +11534,7 @@ pub fn (tc &TypeChecker) const_int_value_in_module(name string, module_name stri
 		candidates << key
 	}
 	for key in candidates {
-		if key in seen {
+		if key in seen || !tc.bare_const_key_is_visible_in_module(key, module_name) {
 			continue
 		}
 		if expr_id := tc.const_exprs[key] {

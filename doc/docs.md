@@ -8791,7 +8791,9 @@ function calls in enum initializers must be evaluable by V at compile time; they
 C constants. Known calls are evaluated even when used beside a C constant in symbolic arithmetic.
 These enum helpers support straight-line integer declarations, plain assignments, and one final
 single-value return. Bodies containing control flow, other statements, or unevaluable locals are
-rejected instead of partially evaluated. Integer-to-enum cast warnings require every member's
+rejected instead of partially evaluated. Imported helpers resolve their constants and types in their
+declaration file and module; their arguments are evaluated in the calling enum's context.
+Integer-to-enum cast warnings require every member's
 numeric value to be known to V; they are omitted for enums containing C-derived members.
 
 #### <h4 id="comptime-attrs">.attributes</h4>

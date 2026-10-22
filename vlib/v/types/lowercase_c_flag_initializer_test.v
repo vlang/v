@@ -111,3 +111,28 @@ fn test_enum_helper_folding_requires_exact_argument_count() {
 	assert cases.len == 2
 	assert cases.all(it.value_from_c), cases.str()
 }
+
+fn test_enum_metadata_requires_exact_module_identity() {
+	path := os.join_path(os.vtmp_dir(), 'enum_metadata_identity_${os.getpid()}.v')
+	os.write_file(path, 'module consumer\nenum Values { first = 12 }') or { panic(err) }
+	defer { os.rm(path) or {} }
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := TypeChecker.new(a)
+	tc.collect(a)
+	for node in a.nodes {
+		if node.kind != .enum_decl {
+			continue
+		}
+		mut resolving := map[string]bool{}
+		assert tc.comptime_static_enum_decl_value_cases_for_node(flat.source_type_id('Values'),
+			'consumer', node, '', mut resolving) == none
+		cases := tc.comptime_static_enum_decl_value_cases_for_node(flat.source_type_id('consumer.Values'),
+			'consumer', node, '', mut resolving) or { panic('missing enum') }
+		assert cases.len == 1
+		assert cases[0].value == 12
+		return
+	}
+	assert false, 'missing enum declaration'
+}

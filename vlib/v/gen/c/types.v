@@ -2464,6 +2464,10 @@ fn (g &FlatGen) enum_field_expr_value_with_enum(id flat.NodeId, enum_module stri
 }
 
 fn (g &FlatGen) enum_comptime_call_value(id flat.NodeId, enum_module string, enum_name u32, mut field_values map[string]i64, field_exprs map[string]flat.NodeId, mut resolving map[string]bool) ?i64 {
+	if !isnil(g.tc) {
+		return g.tc.comptime_enum_call_value(id, enum_module, enum_name, mut field_values, field_exprs, mut resolving)
+	}
+	// Hand-built cgen tests without a checker have no declaration-context metadata.
 	call := g.a.nodes[int(id)]
 	if call.children_count == 0 {
 		return none

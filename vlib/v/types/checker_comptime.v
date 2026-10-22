@@ -1001,6 +1001,10 @@ fn (tc &TypeChecker) comptime_static_enum_decl_value_cases_resolving(enum_name u
 	if tc.top_level_idx.len > 0 {
 		for idx in tc.top_level_idx {
 			kind := tc.a.nodes[idx].kind
+			if kind == .file {
+				cur_mod = ''
+				continue
+			}
 			if kind == .module_decl {
 				cur_mod = tc.a.nodes[idx].value
 				continue
@@ -1016,6 +1020,10 @@ fn (tc &TypeChecker) comptime_static_enum_decl_value_cases_resolving(enum_name u
 	}
 	for idx in 0 .. tc.a.nodes.len {
 		kind := tc.a.nodes[idx].kind
+		if kind == .file {
+			cur_mod = ''
+			continue
+		}
 		if kind == .module_decl {
 			cur_mod = tc.a.nodes[idx].value
 			continue
@@ -1058,7 +1066,7 @@ fn (tc &TypeChecker) comptime_static_enum_decl_value_cases_for_node(enum_name u3
 	} else {
 		node.value
 	}
-	if flat.source_type_name(enum_name) != node.value && flat.source_type_name(enum_name) != qualified {
+	if flat.source_type_name(enum_name) != qualified {
 		return none
 	}
 	// Initializers resolve aliases and imports in the enum's declaration context,
@@ -1273,20 +1281,39 @@ fn (tc &TypeChecker) comptime_static_enum_field_value(id flat.NodeId, enum_modul
 	return none
 }
 
+// comptime_enum_call_value folds an enum helper using its checked declaration context.
+// Arguments retain the enum initializer's source context.
+pub fn (tc &TypeChecker) comptime_enum_call_value(id flat.NodeId, enum_module string, enum_name u32, mut field_values map[string]i64, field_exprs map[string]flat.NodeId, mut resolving map[string]bool) ?i64 {
+	file := if source := tc.a.source_files[tc.a.node(id).pos.id] {
+		source.name
+	} else {
+		tc.cur_file
+	}
+	view := if tc.cur_file == file && tc.cur_module == enum_module {
+		tc
+	} else {
+		tc.fork_type_parse_view(file, enum_module)
+	}
+	return view.comptime_static_enum_call_value(id, enum_module, enum_name, mut field_values, field_exprs, mut resolving)
+}
+
 fn (tc &TypeChecker) comptime_static_enum_call_value(id flat.NodeId, enum_module string, enum_name u32, mut field_values map[string]i64, field_exprs map[string]flat.NodeId, mut resolving map[string]bool) ?i64 {
 	call := tc.a.node(id)
 	if call.children_count == 0 {
 		return none
 	}
-	callee := tc.a.child_node(call, 0)
-	if callee.kind != .ident {
-		return none
-	}
-	fn_id := tc.comptime_static_enum_helper_fn_id(callee.value, enum_module) or { return none }
+	decl := tc.comptime_static_enum_helper_decl(id, enum_module) or { return none }
+	fn_id := flat.NodeId(decl.idx)
 	if !tc.declaration_has_attribute(fn_id, 'comptime') {
 		return none
 	}
 	fn_node := tc.a.node(fn_id)
+	file := if source := tc.a.source_files[fn_node.pos.id] { source.name } else { tc.cur_file }
+	helper := if tc.cur_file == file && tc.cur_module == decl.mod {
+		tc
+	} else {
+		tc.fork_type_parse_view(file, decl.mod)
+	}
 	// This is a straight-line integer evaluator, not an interpreter. Validate the
 	// complete body before folding so no skipped statement can change its result.
 	mut has_return := false
@@ -1331,7 +1358,7 @@ fn (tc &TypeChecker) comptime_static_enum_call_value(id flat.NodeId, enum_module
 		}
 		arg_id := tc.a.child(call, arg_idx)
 		arg := tc.comptime_static_enum_field_value(arg_id, enum_module, enum_name, mut field_values, field_exprs, mut resolving) or { return none }
-		local_types[param.value] = tc.parse_type(param.typ)
+		local_types[param.value] = helper.parse_type(param.typ)
 		locals[param.value] = comptime_enum_integer_cast(arg, unalias_type(local_types[param.value]).source_type_id())
 		arg_idx++
 	}
@@ -1341,14 +1368,14 @@ fn (tc &TypeChecker) comptime_static_enum_call_value(id flat.NodeId, enum_module
 	for i in 0 .. fn_node.children_count {
 		stmt := tc.a.child_node(fn_node, i)
 		if stmt.kind in [.decl_assign, .assign] {
-			if !tc.comptime_static_enum_update_locals(stmt, mut locals, mut local_types, enum_module) {
+			if !helper.comptime_static_enum_update_locals(stmt, mut locals, mut local_types, decl.mod) {
 				return none
 			}
 			continue
 		}
 		if stmt.kind == .return_stmt && stmt.children_count > 0 {
-			value := tc.comptime_static_enum_local_expr_value(tc.a.child(stmt, 0), locals, local_types, enum_module) or { return none }
-			return comptime_enum_integer_cast(value, unalias_type(tc.parse_type(fn_node.typ)).source_type_id())
+			value := helper.comptime_static_enum_local_expr_value(tc.a.child(stmt, 0), locals, local_types, decl.mod) or { return none }
+			return comptime_enum_integer_cast(value, unalias_type(helper.parse_type(fn_node.typ)).source_type_id())
 		}
 	}
 	return none
@@ -1409,41 +1436,32 @@ pub fn comptime_enum_unsigned_right_shift(value i64, shift i64, typ_id u32) i64 
 	return i64(u64(value) >> shift)
 }
 
-fn (tc &TypeChecker) comptime_static_enum_helper_fn_id(callee_name string, enum_module string) ?flat.NodeId {
-	short := callee_name.all_after_last('.')
-	mut indexes := tc.top_level_idx.clone()
-	if indexes.len == 0 {
-		indexes = []i32{len: tc.a.nodes.len, init: i32(index)}
+fn (tc &TypeChecker) comptime_static_enum_helper_decl(id flat.NodeId, enum_module string) ?VisibleMutationFnDecl {
+	call := tc.a.node(id)
+	if call.children_count == 0 {
+		return none
 	}
-	for priority in 0 .. 4 {
-		mut cur_mod := ''
-		for idx in indexes {
-			candidate := tc.a.nodes[idx]
-			if candidate.kind == .file {
-				cur_mod = ''
-				continue
-			}
-			if candidate.kind == .module_decl {
-				cur_mod = candidate.value
-				continue
-			}
-			if candidate.kind != .fn_decl {
-				continue
-			}
-			exact := candidate.value == callee_name
-			suffix := candidate.value.all_after_last('.') == short
-			matches := match priority {
-				0 { cur_mod == enum_module && exact }
-				1 { cur_mod == enum_module && suffix }
-				2 { exact }
-				else { suffix }
-			}
-			if matches {
-				return flat.NodeId(idx)
-			}
+	// Before call checking has cached an identity, use the same lexical/import
+	// lookup order. Never select an unrelated declaration by its short suffix.
+	name := tc.resolved_call_name(id) or {
+		mut view := tc.fork_type_parse_view(tc.cur_file, enum_module)
+		info := view.resolve_call_info_uncached(id, call) or { return none }
+		if info.has_receiver {
+			return none
 		}
+		info.name
 	}
-	return none
+	if name.len == 0 {
+		return none
+	}
+	module_name := tc.fn_type_modules[name] or {
+		if name.contains('.') { name.all_before_last('.') } else { enum_module }
+	}
+	decl := tc.visible_mutation_fn_decl(name, module_name) or { return none }
+	if checker_qualified_fn_name(decl.mod, tc.a.nodes[decl.idx].value) != name {
+		return none
+	}
+	return decl
 }
 
 fn (tc &TypeChecker) comptime_static_enum_update_locals(stmt flat.Node, mut locals map[string]i64, mut local_types map[string]Type, enum_module string) bool {
