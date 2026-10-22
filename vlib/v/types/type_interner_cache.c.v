@@ -5,7 +5,7 @@ module types
 @[direct_array_access; inline]
 fn (i &TypeInterner) recent_canonical_type(t &Type) ?&CanonicalTypeEntry {
 	slot := int(canonical_intern_cache_key(t) & 4095)
-	entry := unsafe { &CanonicalTypeEntry(C.atomic_load_ptr(voidptr(&i.recent[slot]))) }
+	entry := unsafe { &CanonicalTypeEntry(C.atomic_load_ptr(&i.recent[slot])) }
 	if !isnil(entry) && semantic_types_equal(entry.typ, t) {
 		return entry
 	}
@@ -15,12 +15,16 @@ fn (i &TypeInterner) recent_canonical_type(t &Type) ?&CanonicalTypeEntry {
 @[direct_array_access; inline]
 fn (i &TypeInterner) remember_canonical_type(t &Type, entry &CanonicalTypeEntry) {
 	slot := int(canonical_intern_cache_key(t) & 4095)
-	C.atomic_store_ptr(voidptr(&i.recent[slot]), entry)
+	unsafe {
+		C.atomic_store_ptr(&i.recent[slot], entry)
+	}
 }
 
 fn (i &TypeInterner) clear_recent_canonical_types() {
 	for slot in 0 .. i.recent.len {
-		C.atomic_store_ptr(voidptr(&i.recent[slot]), unsafe { nil })
+		unsafe {
+			C.atomic_store_ptr(&i.recent[slot], nil)
+		}
 	}
 }
 
