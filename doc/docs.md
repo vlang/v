@@ -2101,6 +2101,10 @@ This may seem verbose at first, but it makes code much more readable
 and easier to understand - it's always clear which function from
 which module is being called. This is especially useful in large code bases.
 
+A function declared in the current module, or stored in a local variable, keeps its own
+behavior even when it has the same name as a standard library function. For example,
+`join_path('a', 'b')` calls that binding; `os.join_path('a', 'b')` calls the `os` function.
+
 Cyclic module imports are not allowed, like in Go.
 
 ### Selective imports
