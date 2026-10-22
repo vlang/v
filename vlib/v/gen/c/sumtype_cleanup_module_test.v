@@ -118,3 +118,20 @@ fn test_synthetic_sum_cleanup_preserves_canonical_type_despite_file_aliases() {
 	assert !names[flat.source_type_id('x.foo.Choice')]
 	assert names[flat.source_type_id('foo.Item')]
 }
+
+fn test_sum_cleanup_helper_uses_sum_c_type_for_fixed_array_generic_argument() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	sum_id := flat.source_type_id('Box[[2]string]')
+	tc.sum_types.set('Box[[2]string]', ['[2]string', 'int'])
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.recursive_drop_helpers[ownership_drop_expansion_key(tc.parse_canonical_type(sum_id))] = sum_id
+	g.gen_ownership_recursive_drop_helper_forward_decls()
+	g.gen_ownership_recursive_drop_helpers()
+	generated := g.sb.str()
+	sum_c_type := g.cname('Box[[2]string]')
+	assert sum_c_type != g.struct_cname('Box[[2]string]')
+	assert generated.count('(${sum_c_type}* _value)') == 2, generated
+}

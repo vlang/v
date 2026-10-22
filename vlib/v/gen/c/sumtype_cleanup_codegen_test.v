@@ -14,8 +14,10 @@ fn test_sum_storage_acquires_only_active_literal_and_shares_cleanup() {
 		vlib, '-o', compiler, os.join_path(vlib, 'v', 'v.v')])
 	assert build.exit_code == 0, build.output
 	source := os.join_path(dir, 'main.v')
-	os.write_file(source, 'type Choice = int | string | []int | []string
+	os.write_file(source, 'type Choice = int | string | []int | []string | Box[[2]string]
 type Nested = Choice | bool
+type Box[T] = T | int
+fn boxed() Box[[2]string] { return 17 }
 fn scalar() Choice { return Choice(17) }
 fn slice_value() Choice {
 	values := [1, 2, 3]
@@ -30,6 +32,7 @@ fn acquired() Choice { return unknown(Choice([4, 5])) }
 fn unknown_nested(value Nested) Nested { return value }
 fn acquired_nested() Nested { return unknown_nested(nested_slice()) }
 fn main() {
+	assert (boxed() as int) == 17
 	assert (scalar() as int) == 17
 	assert (slice_value() as []int) == [2, 3]
 	nested := nested_slice() as Choice
@@ -58,6 +61,10 @@ fn main() {
 			helpers := csrc.split_into_lines().filter(it.starts_with('static void __v3_ownership_drop_'))
 			assert helpers.filter(it.contains('Choice(')).len == 2, 'VJOBS=${jobs} ${mode}: ${helpers}'
 			assert helpers.filter(it.contains('Nested(')).len == 2, 'VJOBS=${jobs} ${mode}: ${helpers}'
+			sum_header := csrc.split_into_lines().filter(it.starts_with('struct Box'))
+			assert sum_header.len == 1, sum_header.str()
+			sum_c_type := sum_header[0].all_after('struct ').all_before(' {')
+			assert helpers.filter(it.contains('(${sum_c_type}* _value)')).len == 2, 'VJOBS=${jobs} ${mode}: ${helpers}'
 			run := cmdexec.run_in_merged_with_env(compiler, ['-nocache', '-gc', 'none', '-cc',
 				cc, mode, 'run', source], dir, {
 				'VJOBS': jobs

@@ -1419,6 +1419,15 @@ fn (g &FlatGen) ownership_drop_type_reaches_recursive_struct(typ &types.Type, ta
 	return false
 }
 
+fn (g &FlatGen) ownership_recursive_drop_helper_c_type(type_name_id u32) string {
+	type_name := flat.source_type_name(type_name_id)
+	typ := unalias_type(g.tc.parse_canonical_type_cached(type_name_id))
+	if typ is types.SumType {
+		return g.cname(type_name)
+	}
+	return g.struct_cname(type_name)
+}
+
 fn (mut g FlatGen) gen_ownership_recursive_drop_helper_forward_decls() {
 	if g.recursive_drop_helpers.len == 0 {
 		return
@@ -1433,7 +1442,7 @@ fn (mut g FlatGen) gen_ownership_recursive_drop_helper_forward_decls() {
 	helper_names.sort()
 	for helper_name in helper_names {
 		type_name := representatives[helper_name]
-		g.writeln('static void ${helper_name}(${g.struct_cname(flat.source_type_name(type_name))}* _value);')
+		g.writeln('static void ${helper_name}(${g.ownership_recursive_drop_helper_c_type(type_name)}* _value);')
 	}
 	g.writeln('')
 }
@@ -1456,7 +1465,7 @@ fn (mut g FlatGen) gen_ownership_recursive_drop_helpers() {
 			module_from_qualified_name(type_name.all_before('['))
 		}
 		g.tc.cur_file = g.tc.struct_files[type_name] or { old_file }
-		g.writeln('static void ${helper_name}(${g.struct_cname(type_name)}* _value) {')
+		g.writeln('static void ${helper_name}(${g.ownership_recursive_drop_helper_c_type(type_name_id)}* _value) {')
 		g.indent++
 		mut expanding := map[u64]bool{}
 		g.gen_ownership_drop_value_inner(g.tc.parse_canonical_type_cached(type_name_id), '*_value', 0, mut expanding)
