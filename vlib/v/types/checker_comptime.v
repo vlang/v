@@ -12273,7 +12273,7 @@ fn (mut tc TypeChecker) check_sql_alias_method_privacy(id flat.NodeId, node flat
 			continue
 		}
 		receiver := tc.sql_orm_call_receiver_type(tokens, i) or { continue }
-		method := tc.concrete_method_signature_key(flat.source_type_id(unwrap_all_pointers(receiver).name()), tokens[i]) or {
+		method := tc.concrete_method_signature_key(unwrap_all_pointers(receiver).source_type_id(), tokens[i]) or {
 			continue
 		}
 		if method.all_before_last('.') !in tc.type_aliases.ids {
@@ -13769,7 +13769,7 @@ fn (tc &TypeChecker) dynamic_sql_field_pos(query_id flat.NodeId, field_name stri
 }
 
 fn (tc &TypeChecker) sql_struct_field_type(owner Type, field_name string) ?Type {
-	return tc.sql_table_field_type(flat.source_type_id(unalias_type(unwrap_pointer(owner)).name()), field_name)
+	return tc.sql_table_field_type(unalias_type(unwrap_pointer(owner)).source_type_id(), field_name)
 }
 
 fn (tc &TypeChecker) sql_table_field_type(struct_name_id u32, field_name string) ?Type {

@@ -15529,10 +15529,12 @@ fn (tc &TypeChecker) concrete_sum_variant_name(sum_name_id u32, variant_id u32) 
 // generic_type_name_matches compares source spelling IDs inside the current resolution context.
 pub fn (tc &TypeChecker) generic_type_name_matches(a_id u32, b_id u32) bool {
 	if a_id == b_id { return true }
-	return tc.generic_type_name_matches_bytes(flat.source_type_name(a_id), flat.source_type_name(b_id))
+	return tc.generic_type_name_matches_bytes(flat.source_type_name(a_id), flat.source_type_name(b_id), a_id, b_id)
 }
 
-fn (tc &TypeChecker) generic_type_name_matches_bytes(a string, b string) bool {
+// Existing whole-spelling IDs are carried through this text-grammar boundary.
+// Substring callers use zero and intern only if fixed-array parsing is required.
+fn (tc &TypeChecker) generic_type_name_matches_bytes(a string, b string, a_id u32, b_id u32) bool {
 	if a == b {
 		return true
 	}
@@ -15542,7 +15544,7 @@ fn (tc &TypeChecker) generic_type_name_matches_bytes(a string, b string) bool {
 	if a.starts_with('(') || b.starts_with('(') {
 		return tc.multi_return_type_names_match_bytes(a, b)
 	}
-	if tc.fixed_array_type_name_matches_bytes(a, b) {
+	if tc.fixed_array_type_name_matches_bytes(a, b, a_id, b_id) {
 		return true
 	}
 	// Compare wrapper layers (`?`, `&`, `chan `, `[]`, ...) one at a time and keep their identity.
@@ -15552,7 +15554,7 @@ fn (tc &TypeChecker) generic_type_name_matches_bytes(a string, b string) bool {
 	b_wrap := type_wrapper_prefix_len(b)
 	if a_wrap > 0 || b_wrap > 0 {
 		return a_wrap == b_wrap && a[..a_wrap] == b[..b_wrap]
-			&& tc.generic_type_name_matches_bytes(trimmed_space(a[a_wrap..]), trimmed_space(b[b_wrap..]))
+			&& tc.generic_type_name_matches_bytes(trimmed_space(a[a_wrap..]), trimmed_space(b[b_wrap..]), 0, 0)
 	}
 	a_base, a_args, a_ok := generic_type_application_parts(a)
 	b_base, b_args, b_ok := generic_type_application_parts(b)
@@ -15586,7 +15588,7 @@ fn (tc &TypeChecker) multi_return_type_names_match_bytes(a string, b string) boo
 		return false
 	}
 	for i, a_slot in a_slots {
-		if !tc.generic_type_name_matches_bytes(trimmed_space(a_slot), trimmed_space(b_slots[i])) {
+		if !tc.generic_type_name_matches_bytes(trimmed_space(a_slot), trimmed_space(b_slots[i]), 0, 0) {
 			return false
 		}
 	}
@@ -15594,18 +15596,18 @@ fn (tc &TypeChecker) multi_return_type_names_match_bytes(a string, b string) boo
 }
 
 fn (tc &TypeChecker) fixed_array_type_name_matches(a_id u32, b_id u32) bool {
-	return tc.fixed_array_type_name_matches_bytes(flat.source_type_name(a_id), flat.source_type_name(b_id))
+	return tc.fixed_array_type_name_matches_bytes(flat.source_type_name(a_id), flat.source_type_name(b_id), a_id, b_id)
 }
 
-fn (tc &TypeChecker) fixed_array_type_name_matches_bytes(a string, b string) bool {
+fn (tc &TypeChecker) fixed_array_type_name_matches_bytes(a string, b string, a_id u32, b_id u32) bool {
 	if !fixed_array_type_name_may_be(a) || !fixed_array_type_name_may_be(b) {
 		return false
 	}
-	a_type := tc.parse_type(flat.source_type_id(a))
-	b_type := tc.parse_type(flat.source_type_id(b))
+	a_type := tc.parse_type(if a_id != 0 { a_id } else { flat.source_type_id(a) })
+	b_type := tc.parse_type(if b_id != 0 { b_id } else { flat.source_type_id(b) })
 	if a_type is ArrayFixed && b_type is ArrayFixed {
 		return tc.fixed_array_lengths_compatible(a_type, b_type)
-			&& tc.generic_type_name_matches_bytes(a_type.elem_type.name(), b_type.elem_type.name())
+			&& tc.generic_type_name_matches(a_type.elem_type.source_type_id(), b_type.elem_type.source_type_id())
 	}
 	return false
 }

@@ -8914,7 +8914,7 @@ fn (mut tc TypeChecker) ownership_mark_struct_literal_fields_with_mode(lhs_name 
 		field_key := '${lhs_name}.${field_name}'
 		value_id := tc.a.child(&field, 0)
 		field_type := if field_name.len > 0 {
-			tc.struct_field_type(flat.source_type_id((init_type as Struct).name()), field_name) or {
+			tc.struct_field_type((init_type as Struct).source_type_id(), field_name) or {
 				tc.resolve_type(value_id)
 			}
 		} else {
@@ -8943,7 +8943,7 @@ fn (mut tc TypeChecker) ownership_mark_struct_literal_fields_with_mode(lhs_name 
 			}
 			field_key := '${lhs_name}.${field.value}'
 			default_id := tc.a.child(field, 0)
-			field_type := tc.struct_field_type(flat.source_type_id((init_type as Struct).name()), field.value) or {
+			field_type := tc.struct_field_type((init_type as Struct).source_type_id(), field.value) or {
 				*tc.parse_type(field.typ)
 			}
 			if tc.ownership_mark_storage_from_expr_with_mode(field_key, default_id, field_type, pos, clear_unowned) {
@@ -9033,7 +9033,7 @@ fn (mut tc TypeChecker) ownership_mark_assoc_literal_fields_with_mode(lhs_name s
 			tc.ownership_clear_temp_storage(field_key)
 		}
 		value_id := tc.a.child(&field, 0)
-		field_type := tc.struct_field_type(flat.source_type_id((init_type as Struct).name()), field_name) or {
+		field_type := tc.struct_field_type((init_type as Struct).source_type_id(), field_name) or {
 			tc.resolve_type(value_id)
 		}
 		if tc.ownership_mark_storage_from_expr_with_mode(field_key, value_id, field_type, pos, clear_unowned) {

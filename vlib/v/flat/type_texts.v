@@ -2,7 +2,7 @@ module flat
 
 // Source spellings are distinct from checked TypeId values: an unresolved
 // generic or nominal alias must retain exactly the spelling inference uses.
-// TypeTextTable stores source type spellings by numeric identity within one table.
+// TypeTextTable caches process-wide source spelling identities for one compiler worker.
 @[heap]
 pub struct TypeTextTable {
 mut:
@@ -10,7 +10,7 @@ mut:
 	recent_texts [128]string
 }
 
-// intern returns the numeric identity of text, retaining one owned spelling.
+// intern returns the numeric identity of text, caching its process-owned spelling.
 pub fn (mut table TypeTextTable) intern(text string) u32 {
 	if text.len == 0 {
 		return 0

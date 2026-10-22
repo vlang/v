@@ -2423,7 +2423,7 @@ fn (t &Transformer) array_append_factory_body_is_fresh(id flat.NodeId, mut local
 	}
 	if node.kind == .struct_init {
 		typ := t.tc.expr_type(id) or { return false }
-		if t.array_append_type_has_observable_clone(flat.source_type_id(typ.name()), []u32{}) {
+		if t.array_append_type_has_observable_clone(typ.source_type_id(), []u32{}) {
 			return false
 		}
 	}

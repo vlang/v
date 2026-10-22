@@ -1337,3 +1337,34 @@ fn test_field_type_cache_distinguishes_many_owners_with_the_same_field() {
 		}
 	}
 }
+
+fn test_shared_generic_substitution_keeps_exact_source_ids() {
+	type_param := flat.source_type_id('T')
+	concrete := flat.source_type_id('lib.Box[map[string][]lib.Item]')
+	assert substitute_shared_generic_type_text(type_param, ['T'], [concrete]) == concrete
+	assert substitute_shared_generic_type_text(flat.source_type_id(' \tT '), ['T'], [concrete]) == concrete
+	assert substitute_shared_generic_type_text(type_param, ['T'], [u32(0)]) == 0
+	assert substitute_shared_generic_type_text(type_param, ['T', 'T'], [concrete, flat.source_type_int]) == concrete
+	unchanged := flat.source_type_id('Unrelated')
+	assert substitute_shared_generic_type_text(unchanged, ['T'], [concrete]) == unchanged
+	padded := flat.source_type_id(' T ')
+	assert substitute_shared_generic_type_text(padded, ['T'], []u32{}) == padded
+	blank := flat.source_type_id(' \t ')
+	assert substitute_shared_generic_type_text(blank, ['T'], [concrete]) == blank
+	assert substitute_shared_generic_type_text(flat.source_type_id(' U '), ['T', 'U'], [concrete]) == flat.source_type_id('U')
+}
+
+fn test_shared_generic_substitution_preserves_composite_spelling_rules() {
+	params := ['T', 'U']
+	args := [flat.source_type_id('lib.Item'), flat.source_type_int]
+	inputs := ['&T', 'mut T', '?T', '!T', '...T', 'shared T', 'atomic T', 'chan T', 'thread T',
+		'[]T', 'map[T][]U', '[T]U', '(T, []U)', 'Box[T, map[string]U]',
+		'fn (mut item T, next fn (U) T) ?T']
+	expected := ['&lib.Item', 'mut lib.Item', '?lib.Item', '!lib.Item', '...lib.Item', 'shared lib.Item',
+		'atomic lib.Item', 'chan lib.Item', 'thread lib.Item', '[]lib.Item', 'map[lib.Item][]int',
+		'[T]int', '(lib.Item, []int)', 'Box[lib.Item, map[string]int]',
+		'fn (mut item lib.Item, next fn (int) lib.Item) ?lib.Item']
+	for i, input in inputs {
+		assert substitute_shared_generic_type_text(flat.source_type_id(input), params, args) == flat.source_type_id(expected[i])
+	}
+}

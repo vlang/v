@@ -1271,7 +1271,7 @@ fn (t &Transformer) interface_concrete_impl_name(name_id u32) ?u32 {
 	if name.starts_with('[') {
 		typ := t.tc.parse_type(name_id)
 		if typ is types.ArrayFixed {
-			return flat.source_type_id(typ.name())
+			return typ.source_type_id()
 		}
 	}
 	if name_comparison_type_id_6 in [flat.source_type_bool, flat.source_type_int, flat.source_type_i8,

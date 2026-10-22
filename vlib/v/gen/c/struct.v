@@ -3602,10 +3602,25 @@ fn shared_split_generic_args(s string) []string {
 	return parts
 }
 
-// substitute_shared_generic_type_text specializes a source spelling within its numeric boundary.
+// substitute_shared_generic_type_text retains the source ID of exact generic arguments.
 fn substitute_shared_generic_type_text(typ_id u32, params []string, args []u32) u32 {
+	if args.len == 0 {
+		return typ_id
+	}
 	source := flat.source_type_name(typ_id)
-	result := substitute_shared_generic_type_text_uncached(source, params, args)
+	clean := trimmed_space(source)
+	if clean.len == 0 {
+		return typ_id
+	}
+	for i, param in params {
+		if clean == param {
+			if i < args.len {
+				return args[i]
+			}
+			return if clean == source { typ_id } else { flat.source_type_id(clean) }
+		}
+	}
+	result := substitute_shared_generic_composite_type_text_uncached(clean, params, args)
 	return if result == source { typ_id } else { flat.source_type_id(result) }
 }
 
@@ -3622,6 +3637,11 @@ fn substitute_shared_generic_type_text_uncached(typ string, params []string, arg
 			return clean
 		}
 	}
+	return substitute_shared_generic_composite_type_text_uncached(clean, params, args)
+}
+
+// Composite spellings remain a byte grammar; recursive slices need no new source IDs.
+fn substitute_shared_generic_composite_type_text_uncached(clean string, params []string, args []u32) string {
 	if clean.starts_with('&') {
 		return '&' + substitute_shared_generic_type_text_uncached(clean[1..], params, args)
 	}
@@ -4241,7 +4261,7 @@ fn (mut g FlatGen) shared_inner_type(inner u32) types.Type {
 	if typ is types.Struct && typ.name() !in g.tc.structs {
 		old_file := g.tc.cur_file
 		g.tc.cur_file = ''
-		resolved := g.tc.parse_type(flat.source_type_id(typ.name()))
+		resolved := g.tc.parse_type(typ.source_type_id())
 		g.tc.cur_file = old_file
 		if resolved !is types.Unknown && resolved !is types.Void {
 			return *resolved

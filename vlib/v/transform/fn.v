@@ -18001,9 +18001,10 @@ fn (t &Transformer) receiver_method_matches_base_type(method_name string, base_i
 	if receiver_name.len == 0 {
 		return true
 	}
+	receiver_type_id := flat.source_type_id(receiver_name)
 	mut checker_base_type := t.raw_checker_node_type(base_id)
 	checker_base_type = t.trim_all_pointer_type(checker_base_type)
-	if receiver_name == flat.source_type_name(checker_base_type) {
+	if receiver_type_id == checker_base_type {
 		return true
 	}
 	mut base_type := t.node_type(base_id)
@@ -18018,7 +18019,7 @@ fn (t &Transformer) receiver_method_matches_base_type(method_name string, base_i
 	// Heap promotion can replace a fixed-array alias with its storage type.
 	// Keep the checker-selected alias method when its value layout still matches.
 	if t.is_fixed_array_type(base_type)
-		&& t.normalize_type_alias(flat.source_type_id(receiver_name)) == base_type {
+		&& t.normalize_type_alias(receiver_type_id) == base_type {
 		return true
 	}
 	shape := flat.source_type_shape(base_type)
@@ -18028,23 +18029,23 @@ fn (t &Transformer) receiver_method_matches_base_type(method_name string, base_i
 			return true
 		}
 	}
-	if receiver_name == flat.source_type_name(base_type) {
+	if receiver_type_id == base_type {
 		return true
 	}
-	for clean_target in t.alias_chain_target_names(base_type) {
-		if receiver_name == clean_target
-			|| receiver_name.all_after_last('.') == clean_target.all_after_last('.') {
+	for target_id in t.alias_chain_target_names(base_type) {
+		if receiver_type_id == target_id
+			|| receiver_name.all_after_last('.') == flat.source_type_name(target_id).all_after_last('.') {
 			return true
 		}
 	}
 	if !isnil(t.tc) {
-		resolved_base_type := flat.source_type_name(t.tc.resolve_imported_type_text_in_file(base_type, t.cur_file))
-		if receiver_name == resolved_base_type {
+		resolved_base_type := t.tc.resolve_imported_type_text_in_file(base_type, t.cur_file)
+		if receiver_type_id == resolved_base_type {
 			return true
 		}
 	}
 	if !shape.has(.dotted) && t.cur_module.len > 0 && t.cur_module != 'main'
-		&& t.cur_module != 'builtin' && receiver_name == '${t.cur_module}.${flat.source_type_name(base_type)}' {
+		&& t.cur_module != 'builtin' && receiver_type_id == flat.source_type_id('${t.cur_module}.${flat.source_type_name(base_type)}') {
 		return true
 	}
 	if receiver_name.all_after_last('.') != flat.source_type_name(base_type).all_after_last('.') {
@@ -18071,50 +18072,49 @@ fn (t &Transformer) receiver_method_matches_type_name(method_name string, typ_id
 	for clean.starts_with('&') {
 		clean = clean[1..]
 	}
+	clean_id := flat.source_type_id(clean)
 	if clean.starts_with('[]') || clean.starts_with('map[') {
 		method := method_name.all_after_last('.')
-		if method_name in t.receiver_method_candidates(flat.source_type_id(clean), method) {
+		if method_name in t.receiver_method_candidates(clean_id, method) {
 			return true
 		}
 	}
-	mut candidates := [clean]
+	mut candidates := [clean_id]
 	if clean.contains('.') {
-		candidates << clean.all_after_last('.')
+		candidates << flat.source_type_id(clean.all_after_last('.'))
 	}
 	if !clean.contains('.') && t.cur_module.len > 0 && t.cur_module !in ['main', 'builtin'] {
-		candidates << '${t.cur_module}.${clean}'
+		candidates << flat.source_type_id('${t.cur_module}.${clean}')
 	}
-	normalized_source_id_4 := t.normalize_type_alias(flat.source_type_id(clean))
-	normalized := flat.source_type_name(normalized_source_id_4)
-	if normalized_source_id_4 != 0 && normalized !in candidates {
-		candidates << normalized
+	normalized_id := t.normalize_type_alias(clean_id)
+	if normalized_id != 0 && normalized_id !in candidates {
+		candidates << normalized_id
 	}
-	for clean_target in t.alias_chain_target_names(flat.source_type_id(clean)) {
-		if clean_target !in candidates {
-			candidates << clean_target
+	for target_id in t.alias_chain_target_names(clean_id) {
+		if target_id !in candidates {
+			candidates << target_id
 		}
-		short_target := clean_target.all_after_last('.')
-		if short_target !in candidates {
-			candidates << short_target
+		short_target_id := flat.source_type_id(flat.source_type_name(target_id).all_after_last('.'))
+		if short_target_id !in candidates {
+			candidates << short_target_id
 		}
 	}
-	return receiver_name in candidates
+	return flat.source_type_id(receiver_name) in candidates
 }
 
-// alias_chain_target_names lists the types an alias chain names, nearest first:
+// alias_chain_target_names lists source spelling IDs named by an alias chain, nearest first:
 // `B` and `A` for a `C` with `type C = B` and `type B = A`. A method declared on
 // any of them is a method of `C`, as in V1.
-fn (t &Transformer) alias_chain_target_names(typ_id u32) []string {
-	mut names := []string{}
+fn (t &Transformer) alias_chain_target_names(typ_id u32) []u32 {
+	mut names := []u32{}
 	mut current := t.trim_pointer_type(typ_id)
 	for _ in 0 .. 64 {
 		target_source_id := t.alias_target_type_preserving_main_lock(current) or { break }
 		target_id := t.trim_pointer_type(target_source_id)
-		target := flat.source_type_name(target_id)
-		if target_id == 0 || target_id == current || target in names {
+		if target_id == 0 || target_id == current || target_id in names {
 			break
 		}
-		names << target
+		names << target_id
 		current = target_id
 	}
 	return names

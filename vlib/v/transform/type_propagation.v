@@ -1400,7 +1400,7 @@ fn (t &Transformer) type_authority_has(name string) bool {
 @[direct_array_access; inline]
 fn (t &Transformer) normalize_type_alias(type_id u32) u32 {
 	if type_id == 0 || isnil(t.tc) { return type_id }
-	if !isnil(t.alias_cache) && t.alias_cache.texts == t.var_type_texts
+	if !isnil(t.alias_cache) && voidptr(t.alias_cache.texts) == voidptr(t.var_type_texts)
 		&& t.alias_cache.canonical_types[int(type_id & 1023)] == type_id {
 		return type_id
 	}
@@ -1408,16 +1408,13 @@ fn (t &Transformer) normalize_type_alias(type_id u32) u32 {
 }
 
 fn (t &Transformer) normalize_type_alias_cached(type_id u32) u32 {
-	mut texts := t.var_type_texts
 	if isnil(t.alias_cache) {
-		typ := texts.text(type_id)
-		result := t.normalize_type_alias_uncached(typ)
-		return if result == typ { type_id } else { texts.intern(result) }
+		return t.normalize_type_alias_uncached(type_id)
 	}
 	mut c := t.alias_cache
-	if c.texts != t.var_type_texts {
-		// Hand-built integrations may supply a cache with another namespace.
-		// Cache entries are disposable; binding identities always belong to t.
+	if voidptr(c.texts) != voidptr(t.var_type_texts) {
+		// Hand-built integrations may supply a cache from another table owner.
+		// Cache entries are disposable; spelling identities remain process-wide.
 		c.texts = t.var_type_texts
 		c.entries.clear()
 		c.canonical_types = [1024]u32{}
@@ -1442,8 +1439,7 @@ fn (t &Transformer) normalize_type_alias_cached(type_id u32) u32 {
 		return result_id
 	}
 	// Only a miss crosses back to the source/alias spelling resolver.
-	typ := texts.text(type_id)
-	if t.normalize_dotted_canonical_fast(typ) {
+	if t.normalize_dotted_canonical_fast(flat.source_type_name(type_id)) {
 		result_id := type_id
 		c.entries[type_id] = result_id
 		c.recent_types[recent_slot] = type_id
@@ -1452,8 +1448,7 @@ fn (t &Transformer) normalize_type_alias_cached(type_id u32) u32 {
 		c.canonical_types[recent_slot] = type_id
 		return result_id
 	}
-	result := t.normalize_type_alias_uncached(typ)
-	result_id := if result == typ { type_id } else { texts.intern(result) }
+	result_id := t.normalize_type_alias_uncached(type_id)
 	c.entries[type_id] = result_id
 	c.recent_types[recent_slot] = type_id
 	c.recent_results[recent_slot] = result_id
@@ -1499,46 +1494,47 @@ fn (t &Transformer) normalize_dotted_canonical_fast(typ string) bool {
 	return false
 }
 
-// normalize_type_alias_uncached converts normalize type alias uncached data for transform.
-fn (t &Transformer) normalize_type_alias_uncached(typ string) string {
-	if is_generic_placeholder_type_name(typ) && !t.is_known_type_name(flat.source_type_id(typ)) {
-		return typ
+// normalize_type_alias_uncached resolves aliases while preserving source spelling identities.
+fn (t &Transformer) normalize_type_alias_uncached(type_id u32) u32 {
+	typ := flat.source_type_name(type_id)
+	if is_generic_placeholder_type_name(typ) && !t.is_known_type_name(type_id) {
+		return type_id
 	}
 	if typ.starts_with('mut ') {
-		return '&' + flat.source_type_name(t.normalize_type_alias(flat.source_type_id(typ[4..])))
+		return flat.source_type_id('&' + flat.source_type_name(t.normalize_type_alias(flat.source_type_id(typ[4..]))))
 	}
 	if typ.starts_with('&void[') && typ.ends_with(']') {
-		return 'voidptr' + typ['&void'.len..]
+		return flat.source_type_id('voidptr' + typ['&void'.len..])
 	}
 	if typ.starts_with('&') {
-		return '&' + flat.source_type_name(t.normalize_type_alias(flat.source_type_id(typ[1..])))
+		return flat.source_type_id('&' + flat.source_type_name(t.normalize_type_alias(flat.source_type_id(typ[1..]))))
 	}
 	if typ.starts_with('[]') {
-		return '[]' + flat.source_type_name(t.normalize_type_alias(flat.source_type_id(typ[2..])))
+		return flat.source_type_id('[]' + flat.source_type_name(t.normalize_type_alias(flat.source_type_id(typ[2..]))))
 	}
 	if typ.starts_with('chan ') {
-		return 'chan ' + flat.source_type_name(t.normalize_type_alias(flat.source_type_id(typ[5..])))
+		return flat.source_type_id('chan ' + flat.source_type_name(t.normalize_type_alias(flat.source_type_id(typ[5..]))))
 	}
 	if typ.starts_with('[') {
-		bracket_end := typ.index(']') or { return typ }
-		return typ[..bracket_end + 1] + flat.source_type_name(t.normalize_type_alias(flat.source_type_id(typ[bracket_end + 1..])))
+		bracket_end := typ.index(']') or { return type_id }
+		return flat.source_type_id(typ[..bracket_end + 1] + flat.source_type_name(t.normalize_type_alias(flat.source_type_id(typ[bracket_end + 1..]))))
 	}
 	if typ.starts_with('map[') {
 		bracket_end := generic_matching_bracket(typ, 3)
 		if bracket_end < typ.len {
 			key := flat.source_type_name(t.normalize_type_alias(flat.source_type_id(typ[4..bracket_end])))
 			value := flat.source_type_name(t.normalize_type_alias(flat.source_type_id(typ[bracket_end + 1..])))
-			return 'map[${key}]${value}'
+			return flat.source_type_id('map[${key}]${value}')
 		}
 	}
 	if typ.starts_with('?') {
-		return '?' + flat.source_type_name(t.normalize_type_alias(flat.source_type_id(typ[1..])))
+		return flat.source_type_id('?' + flat.source_type_name(t.normalize_type_alias(flat.source_type_id(typ[1..]))))
 	}
 	if typ.starts_with('!') {
-		return '!' + flat.source_type_name(t.normalize_type_alias(flat.source_type_id(typ[1..])))
+		return flat.source_type_id('!' + flat.source_type_name(t.normalize_type_alias(flat.source_type_id(typ[1..]))))
 	}
-	if expanded_source_id := t.expand_generic_type_alias(flat.source_type_id(typ)) {
-		return flat.source_type_name(t.normalize_type_alias(expanded_source_id))
+	if expanded_source_id := t.expand_generic_type_alias(type_id) {
+		return t.normalize_type_alias(expanded_source_id)
 	}
 	// A fully qualified type is already canonical. Resolve its exact alias before
 	// consulting imports from the current file; otherwise an unrelated import with
@@ -1546,67 +1542,60 @@ fn (t &Transformer) normalize_type_alias_uncached(typ string) string {
 	// `v.ssa.TypeID` being resolved as `v.types.Type`).
 	if typ.contains('.') {
 		if target_source_id := t.tc.type_aliases.type_id(typ) {
-			return flat.source_type_name(t.normalize_type_alias(target_source_id))
+			return t.normalize_type_alias(target_source_id)
 		}
 		if t.type_authority_has(typ) {
-			return typ
+			return type_id
 		}
 	}
 	// Resolve the importing file's alias before any short-name or suffix fallback.
 	// Two packages can both expose `tast.Value`; `other_tast.Value` and
 	// `tast.Value` must retain their exact canonical module identities.
-	if imported_source_id := t.resolve_imported_type_name(flat.source_type_id(typ)) {
+	if imported_source_id := t.resolve_imported_type_name(type_id) {
 		imported := flat.source_type_name(imported_source_id)
-
 		if target_source_id := t.tc.type_aliases.type_id(imported) {
-			return flat.source_type_name(t.normalize_type_alias(target_source_id))
+			return t.normalize_type_alias(target_source_id)
 		}
 		if t.type_authority_has(imported) {
-			return imported
+			return imported_source_id
 		}
 	}
 	if !typ.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
 		&& t.cur_module != 'builtin' {
 		qtyp := '${t.cur_module}.${typ}'
 		if target_source_id := t.tc.type_aliases.type_id(qtyp) {
-			target := flat.source_type_name(target_source_id)
-
-			return target
+			return target_source_id
 		}
 		if t.type_authority_has(qtyp) {
-			return qtyp
+			return flat.source_type_id(qtyp)
 		}
 	}
 	// Imported aliases are indexed by their short spelling. A main-module struct
 	// with the same name remains authoritative for an unqualified reference.
-	if t.bare_struct_name_is_local_to_current_module(flat.source_type_id(typ)) {
-		return typ
+	if t.bare_struct_name_is_local_to_current_module(type_id) {
+		return type_id
 	}
 	if target_source_id := t.tc.type_aliases.type_id(typ) {
-		target := flat.source_type_name(target_source_id)
-
-		return target
+		return target_source_id
 	}
 	if typ in t.structs || t.sum_types.contains(typ) || typ in t.enum_types {
-		return typ
+		return type_id
 	}
 	if !typ.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
 		&& t.cur_module != 'builtin' {
 		qtyp := '${t.cur_module}.${typ}'
 		if target_source_id := t.tc.type_aliases.type_id(qtyp) {
-			target := flat.source_type_name(target_source_id)
-
-			return target
+			return target_source_id
 		}
 	}
 	if !typ.contains('.') {
 		if unique_target := t.type_alias_suffixes[typ] {
 			if unique_target != 0 {
-				return flat.source_type_name(unique_target)
+				return unique_target
 			}
 		}
 	}
-	return typ
+	return type_id
 }
 
 fn (mut t Transformer) build_type_alias_suffix_index() {
