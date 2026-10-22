@@ -128,6 +128,12 @@ unchanged: an owned value passed to a library function that does not borrow it i
 the library does not free it. When library code passes a value to a `builtin` or program function
 whose parameter has taken ownership, that function receives an independent copy.
 
+When storing a sum literal, ownership acquisition considers its active payload. Array views in that
+payload acquire independent storage; unrelated variants do not need storage checks. Runtime sum
+cleanup is shared across storage acquisition sites, keeping generated C compact for sums with many
+array variants, such as `orm.Primitive`. Discarded spawn results use separate cleanup helpers
+that also destroy the active payload of a sum.
+
 ## Move semantics
 
 Assigning an owned value to another variable **moves** it. The original variable
@@ -356,9 +362,3 @@ The regular compiler handles the initial `-d ownership cmd/v` support build dire
 With `-prealloc`, automatic cleanup runs destructors and leaves boxed storage to its arena.
 A `break` or `continue` at the end of an `or`, `if`, or `match` value branch runs cleanup
 before the jump. Only locals whose declarations have been reached are cleaned up.
-
-When storing a sum literal, ownership acquisition considers its active payload. Array views in that
-payload acquire independent storage; unrelated variants do not need storage checks. Runtime sum
-cleanup is shared across storage acquisition sites, keeping generated C compact for sums with many
-array variants, such as `orm.Primitive`. Discarded spawn results use separate cleanup helpers
-that also destroy the active payload of a sum.

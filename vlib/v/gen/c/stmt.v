@@ -1668,12 +1668,25 @@ fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, d
 				g.writeln('${drop_cname}(${drop_arg});')
 				return
 			}
+			packed := g.struct_decl_pack_for_name(typ.name()).len > 0
 			for field in g.tc.struct_fields_for_type(typ.source_type_id()) {
 				if g.tc.struct_field_is_shared(typ.source_type_id(), field.name) {
 					continue
 				}
 				if g.ownership_type_requires_destruction(field.typ, depth + 1) {
-					g.gen_ownership_drop_value_inner(field.typ, '(${expr}).${g.cname(field.name)}', depth + 1, mut expanding)
+					field_expr := '(${expr}).${g.cname(field.name)}'
+					if packed {
+						// Typed cleanup helpers require the field's natural alignment.
+						idx := g.tmp_count
+						g.tmp_count++
+						tmp := '_drop_packed${idx}'
+						g.writeln('${g.value_c_type(field.typ)} ${tmp};')
+						g.writeln('memcpy(&${tmp}, &(${field_expr}), sizeof(${tmp}));')
+						g.gen_ownership_drop_value_inner(field.typ, tmp, depth + 1, mut expanding)
+						g.writeln('memcpy(&(${field_expr}), &${tmp}, sizeof(${tmp}));')
+					} else {
+						g.gen_ownership_drop_value_inner(field.typ, field_expr, depth + 1, mut expanding)
+					}
 				}
 			}
 		}

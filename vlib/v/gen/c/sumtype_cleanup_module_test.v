@@ -2,6 +2,75 @@ module c
 
 import v.flat
 import v.types
+import os
+import v.cmdexec
+
+fn test_packed_sum_cleanup_preserves_alignment_and_updates_storage() ! {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.sum_types.set('Choice', ['int', 'string'])
+	tc.structs['Packed'] = [types.StructField{
+		name: 'prefix'
+		typ:  tc.parse_type(flat.source_type_id('u8'))
+	}, types.StructField{
+		name: 'choice'
+		typ:  tc.parse_type(flat.source_type_id('Choice'))
+	}]
+	node := a.add_node(flat.Node{ kind: .struct_decl, value: 'Packed' })
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.register_struct_decl_info_at(int(node), 'Packed', 'Packed', 'main', 'main.v', a.nodes[int(node)])
+	g.decl_attrs[int(node)] = ['packed']
+	sum_id := flat.source_type_id('Choice')
+	g.recursive_drop_helpers[ownership_drop_expansion_key(tc.parse_type(sum_id))] = sum_id
+	g.gen_ownership_recursive_drop_helper_forward_decls()
+	g.gen_ownership_recursive_drop_helpers()
+	helpers := g.sb.str()
+	cleanup := g.ownership_drop_value_to_string(tc.parse_type(flat.source_type_id('[2]Packed')), 'items')
+	assert !cleanup.contains('__v3_ownership_drop_Choice(&(((items)'), cleanup
+	cc := os.find_abs_path_of_executable('clang') or { return }
+	packed_ct := g.value_c_type(tc.parse_type(flat.source_type_id('Packed')))
+	sum_ct := g.value_c_type(tc.parse_type(sum_id))
+	dir := os.join_path(os.vtmp_dir(), 'packed_sum_cleanup_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	source := os.join_path(dir, 'main.c')
+	binary := os.join_path(dir, 'main')
+	os.write_file(source, '#include <assert.h>
+#include <stdbool.h>
+#include <string.h>
+typedef int IError;
+typedef struct { char* str; int len; bool is_lit; } string;
+typedef struct { int typ; union { long long _int; string _string; }; } ${sum_ct};
+#pragma pack(push, 1)
+typedef struct { unsigned char prefix; ${sum_ct} choice; } ${packed_ct};
+#pragma pack(pop)
+static void string__free(string* value) { value->str = NULL; value->len = 0; }
+${helpers}
+int main(void) {
+ ${packed_ct} items[2];
+ memset(items, 0, sizeof(items));
+ items[0].prefix = 1;
+ items[0].choice.typ = 1;
+ items[0].choice._int = 17;
+ items[1].prefix = 2;
+ items[1].choice.typ = 2;
+ items[1].choice._string.str = "text";
+ items[1].choice._string.len = 4;
+ items[1].choice._string.is_lit = true;
+ ${cleanup}
+ assert(items[0].prefix == 1 && items[0].choice._int == 17);
+ assert(items[1].prefix == 2 && items[1].choice._string.len == 0);
+ return 0;
+}
+')!
+	build := cmdexec.run(cc, ['-std=c11', '-fsanitize=alignment', '-fsanitize-trap=alignment',
+		'-o', binary, source])
+	assert build.exit_code == 0, build.output
+	run := cmdexec.run(binary, []string{})
+	assert run.exit_code == 0, '${run.output}\n${cleanup}'
+}
 
 fn test_sum_cleanup_helpers_use_declaration_module_for_autofree_methods() {
 	for module_name in ['', 'model'] {
