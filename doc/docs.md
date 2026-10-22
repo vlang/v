@@ -8779,6 +8779,10 @@ fn main() {
 // ['BLUE']
 ```
 
+The `e.value` member contains the enum's actual value, including values initialized from C
+constants. These C-derived values remain symbolic until C compilation, so they can be used
+in runtime expressions but cannot be evaluated in a `$if` condition by the V compiler.
+
 #### <h4 id="comptime-attrs">.attributes</h4>
 
 You can read [Struct](#structs) attributes.

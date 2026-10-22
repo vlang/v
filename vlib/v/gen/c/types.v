@@ -2449,9 +2449,7 @@ fn (g &FlatGen) enum_field_expr_value_with_enum(id flat.NodeId, enum_module stri
 			prefix := g.enum_decl_selector_base_text(g.a.child(&node, 0))
 			if enum_type := g.enum_selector_base_name(flat.source_type_id(prefix)) {
 				if !isnil(g.tc) {
-					if value := g.tc.comptime_enum_decl_field_value(enum_type, node.value) {
-						return value
-					}
+					return g.tc.comptime_enum_decl_field_value(enum_type, node.value)
 				}
 				if value := g.enum_value_for_type(enum_type, node.value) {
 					return i64(value)

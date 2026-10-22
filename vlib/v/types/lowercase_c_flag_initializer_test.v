@@ -55,6 +55,9 @@ enum IndirectC { item = int(CSource.item) }
 			cases := tc.comptime_static_enum_decl_value_cases(flat.source_type_id('${prefix}${name}'))
 			assert cases.len == 1, name
 			assert cases[0].value_from_c, name
+			assert tc.comptime_enum_decl_field_values(flat.source_type_id('${prefix}${name}')).len == 0, name
+			assert tc.const_int_enum_selector_value('${prefix}${name}.item') == none, name
+			assert comptime_static_subst_value_cond('member.value == 0', 'member', cases[0]).contains('.value'), name
 		}
 	}
 }

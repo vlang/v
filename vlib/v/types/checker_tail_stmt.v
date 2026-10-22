@@ -11725,6 +11725,9 @@ fn (tc &TypeChecker) const_int_enum_selector_value(text string) ?int {
 	field := tc.enum_field_name(enum_name_id, trimmed_space(expr[dot + 1..])) or { return none }
 	for item in tc.comptime_static_enum_decl_value_cases(enum_name_id) {
 		if item.name == field && item.has_value {
+			if item.value_from_c {
+				return none
+			}
 			return item.value
 		}
 	}

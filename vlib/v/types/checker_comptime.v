@@ -783,7 +783,7 @@ fn (tc &TypeChecker) comptime_static_enum_name(raw_id u32) ?u32 {
 
 fn comptime_static_subst_value_cond(cond string, var_name string, item ComptimeStaticValueCase) string {
 	mut c := cond
-	if item.has_value {
+	if item.has_value && !item.value_from_c {
 		c = c.replace('${var_name}.value', item.value.str())
 	}
 	c = c.replace('${var_name}.name', "'${item.name}'")
@@ -1041,11 +1041,11 @@ pub fn (tc &TypeChecker) comptime_enum_decl_field_value(enum_name u32, field_nam
 	return none
 }
 
-// comptime_enum_decl_field_values returns the statically evaluated values of an enum's fields.
+// comptime_enum_decl_field_values returns enum field values known in V, excluding C expressions.
 pub fn (tc &TypeChecker) comptime_enum_decl_field_values(enum_name u32) map[string]i64 {
 	mut values := map[string]i64{}
 	for item in tc.comptime_static_enum_decl_value_cases(enum_name) {
-		if item.has_value {
+		if item.has_value && !item.value_from_c {
 			values[item.name] = item.value
 		}
 	}

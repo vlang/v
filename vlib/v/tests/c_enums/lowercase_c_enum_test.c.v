@@ -15,6 +15,50 @@ fn test_lowercase_c_enum_values() {
 	assert LowercaseCEnum.second.str() == 'second'
 }
 
+enum CopiedCEnum {
+	first = int(LowercaseCEnum.first)
+	next
+	reset = 10
+	after_reset
+}
+
+enum TransitiveCEnum {
+	first = int(CopiedCEnum.next)
+	next
+}
+
+fn test_c_derived_enum_selector_remains_symbolic() {
+	assert int(CopiedCEnum.first) == 3
+	assert int(CopiedCEnum.next) == 4
+	assert int(CopiedCEnum.reset) == 10
+	assert int(CopiedCEnum.after_reset) == 11
+	assert int(TransitiveCEnum.first) == 4
+	assert int(TransitiveCEnum.next) == 5
+}
+
+fn test_c_derived_enum_reflection_preserves_values() {
+	mut values := []int{}
+	mut metadata := []EnumData{}
+	$for member in LowercaseCEnum.values {
+		values << int(member.value)
+		metadata << member
+	}
+	assert values == [3, 4, 6]
+	assert metadata.map(it.value) == [i64(3), 4, 6]
+	mut copied_values := []int{}
+	$for member in CopiedCEnum.values {
+		copied_values << int(member.value)
+	}
+	assert copied_values == [3, 4, 10, 11]
+}
+
+fn test_c_derived_enum_from_string_preserves_values() {
+	value := LowercaseCEnum.from_string('second') or { panic('missing enum member') }
+	assert int(value) == 4
+	copied := CopiedCEnum.from_string('next') or { panic('missing enum member') }
+	assert int(copied) == 4
+}
+
 enum KnownFlagPosition {
 	third = 3
 }
