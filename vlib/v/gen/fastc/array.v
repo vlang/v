@@ -349,7 +349,7 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 	// A pre-rendered synthetic base atom (e.g. a string interpolation `'${x}'[0]`, folded into
 	// one token carrying its C text in `.source`) is `.string`, not `.name`; accept it too so
 	// the index applies to the rendered string rather than reaching the raw renderer.
-	if tokens.len < 4 || (tokens[0].tok !in [.name, .string, .lpar, .lsbr] && tokens[0].source == '') || tokens.last().tok != .rsbr {
+	if tokens.len < 4 || (tokens[0].tok !in [.name, .string, .lpar, .lsbr] && !tokens[0].has_source()) || tokens.last().tok != .rsbr {
 		return none
 	}
 	mut open := -1
@@ -423,11 +423,11 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 	base_layout_type := g.underlying_alias_type(base_type)
 	base_source := if is_reference_base {
 		'(*(${g.resolved_root_expression_name(base_tokens[0].lit)}))'
-	} else if base_tokens.len == 1 && base_tokens[0].source != '' {
+	} else if base_tokens.len == 1 && base_tokens[0].has_source() {
 		// A pre-rendered synthetic base token (e.g. an `(x as T).field` group the reader
 		// already lowered and folded into one token) carries its C text in `.source`, not
 		// `.lit`; reading `.lit` here would yield an empty collection (`array_get(, i)`).
-		base_tokens[0].source
+		base_tokens[0].source_text()
 	} else if base_tokens.len == 1 && base_tokens[0].tok == .string {
 		// A string-literal base (`"0123456789abcdef"[i]`): render the C string so the string
 		// index below lowers to `string_at`, not a raw C index on the `string` struct.
@@ -486,7 +486,7 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 		// The reader folds a call base (`make_values()[1..]`) into one token carrying its C
 		// text. It is still an expression, so the omitted end reads the length from a
 		// temporary instead of evaluating the call a second time.
-		base_is_expression := base_tokens.len > 1 || (base_tokens[0].source.contains('(')
+		base_is_expression := base_tokens.len > 1 || (base_tokens[0].source_text().contains('(')
 			&& !flat.source_type_name(base_type).ends_with('*'))
 		needs_receiver_temporary := omitted_end && base_is_expression && !is_raw_fixed_array
 		receiver_name := '__vf_slice_receiver'
@@ -625,7 +625,7 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 // is_reference_local_base reports whether `base_tokens` name a `mut` reference local, whose C
 // variable points at the V value it stands for and is dereferenced on use.
 fn (g &Parser) is_reference_local_base(base_tokens []FastcExpressionToken, base_type u32) bool {
-	if base_tokens.len != 1 || base_tokens[0].tok != .name || base_tokens[0].source != ''
+	if base_tokens.len != 1 || base_tokens[0].tok != .name || base_tokens[0].has_source()
 		|| !flat.source_type_name(base_type).ends_with('*') {
 		return false
 	}
@@ -904,10 +904,10 @@ fn (g &Parser) render_membership_candidate_with_raw(tokens []FastcExpressionToke
 
 fn (g &Parser) render_membership_candidate_source(tokens []FastcExpressionToken, expected_type_source_id u32, rendered_expression string, special_already_missed bool) ?string {
 	expected_type := flat.source_type_name(expected_type_source_id)
-	if tokens.len == 1 && tokens[0].source != '' {
+	if tokens.len == 1 && tokens[0].has_source() {
 		// A synthetic atom (an `or`-unwrap, interpolation, etc.) carries its complete C
 		// spelling in `source`; use it verbatim rather than re-rendering its bare `lit`.
-		return tokens[0].source
+		return tokens[0].source_text()
 	}
 	if tokens.len == 2 && tokens[0].tok == .dot && tokens[1].tok == .name && g.declared_kinds[flat.source_type_name(g.semantic_type_key(expected_type_source_id))] == .enum_ {
 		return '${expected_type.trim_right('*')}__${tokens[1].lit}'
@@ -993,8 +993,8 @@ fn (g &Parser) render_raw_expression_tokens(tokens []FastcExpressionToken) ?stri
 	if direct := g.render_raw_local_direct_member(tokens) { return direct }
 	if tokens.len == 1 {
 		item := tokens[0]
-		if item.source != '' {
-			return item.source
+		if item.has_source() {
+			return item.source_text()
 		}
 		return match item.tok {
 			.name { g.resolved_expression_name(item.lit, .unknown) }
@@ -1073,11 +1073,11 @@ fn (g &Parser) render_raw_expression_tokens(tokens []FastcExpressionToken) ?stri
 					skip_until = close
 				}
 			}
-		} else if item.source != '' {
+		} else if item.has_source() {
 			// Synthetic expression atoms (an `or` unwrap, interpolation, anonymous
 			// function, etc.) carry their complete C spelling in `source`. Preserve it
 			// when the atom is nested inside a larger binary or call expression.
-			piece = item.source
+			piece = item.source_text()
 		} else if is_direct_pointer_cast || is_c_pointer_cast {
 			piece = ''
 		} else if item.tok == .name && i + 1 < tokens.len && tokens[i + 1].tok == .lpar {
@@ -1145,8 +1145,8 @@ fn (g &Parser) render_raw_expression_tokens(tokens []FastcExpressionToken) ?stri
 				fastc_c_number(item.lit) or { return none }
 			}
 		} else if item.tok == .string {
-			if item.source != '' {
-				piece = item.source
+			if item.has_source() {
+				piece = item.source_text()
 			} else {
 				literal := fastc_c_string(item.lit) or { return none }
 				piece = if g.selfhost { '_S(${literal})' } else { literal }

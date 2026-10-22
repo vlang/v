@@ -482,8 +482,7 @@ fn (g &Parser) iterator_next_method(collection_type_source_id u32) ?FastcIterato
 	}
 	receiver := signature.parameter_types.at(0)
 	return FastcIteratorNext{
-		c_name:       g.c_function_name_or(key, fastc_method_c_name(signature.module_name, receiver,
-			'next'))
+		c_name:       g.c_method_name(key, signature.module_name, receiver, 'next')
 		element_type: signature.option_type
 		by_pointer:   receiver.ends_with('*')
 	}

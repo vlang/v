@@ -67,7 +67,7 @@ fn test_fastc_plain_numeric_binary_guard_keeps_non_arithmetic_and_represented_va
 		assert !g.plain_numeric_arithmetic_expression(fastc_plain_numeric_binary_test_tokens(source)), source
 	}
 	for item in [
-		FastcExpressionToken{ tok: .name, lit: 'a', source: 'lowered_a', typ: flat.source_type_int },
+		FastcExpressionToken{ tok: .name, lit: 'a', source: fastc_token_source('lowered_a'), typ: flat.source_type_int },
 		FastcExpressionToken{ tok: .name, lit: 'a', typ: flat.source_type_u64 },
 		FastcExpressionToken{ tok: .name, lit: 'a', is_mut_argument: true },
 		FastcExpressionToken{ tok: .number, lit: '1', typ: flat.source_type_id('Alias') },

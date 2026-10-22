@@ -898,7 +898,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			effective_receiver_source
 		}
 		has_arguments := call_end > i + 2
-		method_c_name := g.c_function_name_or(method_key, fastc_method_c_name(signature.module_name, expected_receiver, tokens[i].lit))
+		method_c_name := g.c_method_name(method_key, signature.module_name, expected_receiver, tokens[i].lit)
 		mut direct_arguments := []string{}
 		if has_arguments {
 			call_args := fastc_call_arguments(tokens, i + 1, call_end) or { continue }

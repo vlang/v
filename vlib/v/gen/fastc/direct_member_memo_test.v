@@ -66,7 +66,7 @@ fn test_direct_member40_matches_original_for_struct_pointer_alias_interface_and_
 			'value': flat.source_type_string
 		}
 		'AliasRecord':    {
-			'value': u32(0)
+			'value': flat.source_type_int
 		}
 		'Array_int':      {
 			'len':  flat.source_type_int
@@ -157,11 +157,13 @@ fn test_direct_member40_checkpoint_context_switch_and_separate_memos_keep_origin
 	assert !other.type_descriptor_memo.direct_member_known
 	assert other.struct_direct_member_type(flat.source_type_id('MemoOther'), 'value') == flat.source_type_string
 	assert g.type_descriptor_memo.direct_member_receiver == typ
-	g.parse_mono_instance('', FastcGenericMethodSource{
-		module_name: 'different'
-		path:        'direct_member_context.v'
-		imports:     {
-			'another': 'another.module'
+	g.parse_mono_instance(FastcSourceFile{
+		path:   'direct_member_context.v'
+		header: FastcSourceHeader{
+			module_name: 'different'
+			imports:     {
+				'another': 'another.module'
+			}
 		}
 	}) or { panic(err) }
 	assert g.struct_direct_member_type(typ, 'value') == flat.source_type_int

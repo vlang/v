@@ -175,13 +175,15 @@ fn test_direct_member32_rejects_synthetic_metadata_and_contexts() {
 	mut g := direct_member32_parser()
 	base := direct_member32_tokens('value', 'count')
 	for index in 0 .. 3 {
-		for changed in [FastcExpressionToken{ ...base[index], source: '__rendered' },
+		for changed in [
+			FastcExpressionToken{ ...base[index], source: fastc_token_source('__rendered') },
 			FastcExpressionToken{ ...base[index], is_mut_argument: true },
 			FastcExpressionToken{ ...base[index], is_statement: true },
 			FastcExpressionToken{ ...base[index], is_capturing_closure: true },
 			FastcExpressionToken{ ...base[index], is_storage: true },
 			FastcExpressionToken{ ...base[index], chan_element_type: flat.source_type_int },
-			FastcExpressionToken{ ...base[index], option_value_type: flat.source_type_int }] {
+			FastcExpressionToken{ ...base[index], option_value_type: flat.source_type_int },
+		] {
 			mut tokens := base.clone()
 			tokens[index] = changed
 			assert g.infer_local_direct_member_type(tokens, 0, 3) == 0

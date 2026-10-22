@@ -169,7 +169,7 @@ fn (mut g Parser) read_spawn_expression() !string {
 			} else {
 				receiver.source
 			}
-			method_target = g.c_function_name_or(method_key, fastc_method_c_name(method_signature.module_name, flat.source_type_name(expected_receiver), method_name))
+			method_target = g.c_method_name(method_key, method_signature.module_name, flat.source_type_name(expected_receiver), method_name)
 			function_key = method_key
 			callee = method_name
 		} else {
@@ -337,7 +337,7 @@ fn (mut g Parser) read_spawn_expression() !string {
 		FastcExpressionToken{
 			tok:    .name
 			lit:    call
-			source: call
+			source: fastc_token_source(call)
 			typ:    flat.source_type_id(thread_type)
 		},
 	]

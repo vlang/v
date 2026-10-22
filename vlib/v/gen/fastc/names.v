@@ -146,7 +146,18 @@ fn (g &Parser) unqualified_function_key(name string) string {
 // site. The mapping does not depend on the parser's context, so the memo
 // is never reset.
 fn (g &Parser) c_function_name_for_key(key string) string {
+	if cached := g.c_function_name_memo[key] {
+		return cached
+	}
 	return g.c_function_name_or(key, fastc_c_function_name_for_key(key))
+}
+
+// c_method_name formats the conventional spelling only on a memo miss.
+fn (g &Parser) c_method_name(key string, module_name string, receiver_type string, name string) string {
+	if cached := g.c_function_name_memo[key] {
+		return cached
+	}
+	return g.c_function_name_or(key, fastc_method_c_name(module_name, receiver_type, name))
 }
 
 // c_function_name_or resolves the C symbol of function `key` for both its

@@ -1014,7 +1014,7 @@ struct FastcFunctionDeferBlock {
 }
 
 struct FastcExpressionToken {
-	source               string
+	source               &FastcTokenSource = unsafe { nil }
 	unsafe_depth         int
 	tok                  token.Token
 	chan_element_type    u32
@@ -3195,16 +3195,26 @@ pub fn fastc_tcc_job_count(prefs &pref.Preferences) int {
 // for the C text prepended to each translation unit. The first unit also owns
 // the runtime/startup/main definitions, so balancing only the bodies makes it
 // the slowest TinyCC job. Dynamic programming finds the partition whose
-// largest emitted source is smallest; there are at most 16 groups and a few
-// hundred source files, so this costs much less than writing one unit.
+// largest emitted source is smallest. Monotone costs permit binary search
+// for each split; other inputs retain the original linear search.
 fn fastc_unit_group_starts(unit_sizes []int, groups int, first_overhead int, shared_overhead int) []int {
 	unit_count := unit_sizes.len
 	if groups < 1 || unit_count < groups {
 		return []int{}
 	}
+	// Deleting a final item preserves exact-group monotonicity only when
+	// moving an item right cannot increase its overhead. Other inputs keep
+	// the original linear search, including its max_int sentinel behavior.
+	mut use_binary_search := first_overhead >= shared_overhead && shared_overhead >= 0
 	mut prefix := []int{len: unit_count + 1}
 	for i, size in unit_sizes {
+		if use_binary_search && (size < 0 || size > max_int - prefix[i]) {
+			use_binary_search = false
+		}
 		prefix[i + 1] = prefix[i] + size
+	}
+	if use_binary_search && prefix[unit_count] >= max_int - first_overhead {
+		use_binary_search = false
 	}
 	mut previous := []int{len: unit_count + 1, init: max_int}
 	previous[0] = 0
@@ -3214,17 +3224,63 @@ fn fastc_unit_group_starts(unit_sizes []int, groups int, first_overhead int, sha
 		splits[count] = []int{len: unit_count + 1, init: -1}
 		overhead := if count == 1 { first_overhead } else { shared_overhead }
 		for end in count .. unit_count + 1 {
-			for start in count - 1 .. end {
-				if previous[start] == max_int {
-					continue
+			if !use_binary_search {
+				for start in count - 1 .. end {
+					if previous[start] == max_int {
+						continue
+					}
+					group_size := overhead + prefix[end] - prefix[start]
+					largest := if previous[start] > group_size {
+						previous[start]
+					} else {
+						group_size
+					}
+					if largest < current[end] {
+						current[end] = largest
+						splits[count][end] = start
+					}
 				}
-				group_size := overhead + prefix[end] - prefix[start]
-				largest := if previous[start] > group_size { previous[start] } else { group_size }
-				if largest < current[end] {
-					current[end] = largest
-					splits[count][end] = start
+				continue
+			}
+			// Prefix sizes and the previous row are nondecreasing. The minimum
+			// lies where the previous cost crosses the decreasing final group.
+			mut low := count - 1
+			mut high := end
+			for low < high {
+				middle := low + (high - low) / 2
+				if previous[middle] < overhead + prefix[end] - prefix[middle] {
+					low = middle + 1
+				} else {
+					high = middle
 				}
 			}
+			mut best := max_int
+			if low < end {
+				group_size := overhead + prefix[end] - prefix[low]
+				best = if previous[low] > group_size { previous[low] } else { group_size }
+			}
+			if low > count - 1 {
+				group_size := overhead + prefix[end] - prefix[low - 1]
+				candidate := if previous[low - 1] > group_size {
+					previous[low - 1]
+				} else {
+					group_size
+				}
+				if candidate < best { best = candidate }
+			}
+			// Match the original first-minimum tie rule, including zero-size units.
+			low = count - 1
+			high = end
+			for low < high {
+				middle := low + (high - low) / 2
+				if overhead + prefix[end] - prefix[middle] > best {
+					low = middle + 1
+				} else {
+					high = middle
+				}
+			}
+			current[end] = best
+			splits[count][end] = low
 		}
 		previous = current.clone()
 	}
@@ -3392,7 +3448,7 @@ pub struct FastcFeedingCUnits {
 pub:
 	paths []string
 mut:
-	writers []thread
+	writers []thread bool
 }
 
 // fastc_prestarted_c_units_match reports whether `units` can consume a build

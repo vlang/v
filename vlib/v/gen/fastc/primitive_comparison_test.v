@@ -112,7 +112,7 @@ fn test_fastc_plain_primitive_comparisons_preserve_mixed_sign_helpers_and_reject
 		assert !fast.plain_primitive_comparison_expression(fastc_primitive_comparison_tokens(source)), source
 	}
 	for operator in [
-		FastcExpressionToken{ tok: .eq, source: '__synthetic_operator' },
+		FastcExpressionToken{ tok: .eq, source: fastc_token_source('__synthetic_operator') },
 		FastcExpressionToken{ tok: .eq, is_mut_argument: true },
 		FastcExpressionToken{ tok: .eq, typ: flat.source_type_bool },
 	] {
@@ -123,7 +123,7 @@ fn test_fastc_plain_primitive_comparisons_preserve_mixed_sign_helpers_and_reject
 		])
 	}
 	for value in [
-		FastcExpressionToken{ tok: .name, lit: 'a', source: '__lowered', typ: flat.source_type_int },
+		FastcExpressionToken{ tok: .name, lit: 'a', source: fastc_token_source('__lowered'), typ: flat.source_type_int },
 		FastcExpressionToken{ tok: .name, lit: 'a', typ: flat.source_type_u64 },
 		FastcExpressionToken{ tok: .name, lit: 'a', is_mut_argument: true },
 		FastcExpressionToken{ tok: .number, lit: '1', typ: flat.source_type_int },

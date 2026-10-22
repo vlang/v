@@ -60,7 +60,7 @@ fn (g &Parser) render_call_result_member_expression(tokens []FastcExpressionToke
 			return none
 		}
 	}
-	if tokens.len > 1 && tokens[0].source != '' && tokens[0].typ != 0 {
+	if tokens.len > 1 && tokens[0].has_source() && tokens[0].typ != 0 {
 		if source := g.render_member_receiver(tokens) {
 			return FastcRenderedExpression{
 				source: source
@@ -88,7 +88,7 @@ fn (g &Parser) render_call_result_member_expression(tokens []FastcExpressionToke
 	mut members := [FastcExpressionToken{
 		tok:        .name
 		lit:        call.source
-		source:     '(' + call.source + ')'
+		source:     fastc_token_source('(' + call.source + ')')
 		typ:        call.typ
 		is_storage: g.member_expression_refers_to_storage(base_tokens)
 	}]
