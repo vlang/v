@@ -92,6 +92,16 @@ struct C.UnusedCallbacks { cb fn (&C.CallbackItem) }
 ', [], ['CallbackItem', 'UnusedCallbacks'])!
 }
 
+fn test_unused_c_struct_optional_fields_do_not_emit_payloads() ! {
+	check_auxiliary_c_struct_declarations('optional_fields', '
+struct C.UnusedOptionalFieldItem { value int }
+struct C.UnusedOptionalFields { item ?C.UnusedOptionalFieldItem }
+struct C.UsedOptionalFieldItem { value int }
+struct C.UsedOptionalFields { item ?C.UsedOptionalFieldItem }
+struct OptionalFieldHolder { item C.UsedOptionalFields }
+', ['UsedOptionalFieldItem', 'UsedOptionalFields'], ['UnusedOptionalFieldItem', 'UnusedOptionalFields'])!
+}
+
 fn test_unused_c_global_fixed_array_keeps_element_layout() ! {
 	check_auxiliary_c_struct_declarations('globals', '
 struct C.GlobalItem { value int }
