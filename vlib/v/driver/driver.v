@@ -16908,7 +16908,7 @@ Please install the corresponding development package/libraries and make sure the
 			// in a longPathAware process that loops forever on a TMP past MAX_PATH,
 			// before any V code can shorten it, so they stay as the linker made them.
 			if prefs.normalized_target_os() == 'windows' && !is_o && !is_shared
-				&& !c_compiler_is_msvc(c_compiler) {
+				&& !c_compiler_is_msvc(c_compiler) && !os.is_file('${bin_file}.manifest') {
 				add_windows_long_path_manifest(staged_binary) or {
 					// Long build paths need the manifest, so say so when it is missing for them.
 					if verbose || show_cc || cc_dir_moved {

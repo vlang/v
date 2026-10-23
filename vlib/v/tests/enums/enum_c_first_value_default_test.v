@@ -16,6 +16,10 @@ enum Signal as u8 {
 	terminate = C.SIGTERM
 }
 
+enum CopiedSignal as u8 {
+	interrupt = int(Signal.interrupt)
+}
+
 // SEEK_SET is 0: the member is still the default.
 enum Whence {
 	set = C.SEEK_SET
@@ -25,6 +29,7 @@ enum Whence {
 struct Holder {
 	e Errno
 	s Signal
+	c CopiedSignal
 	w Whence
 }
 
@@ -35,6 +40,7 @@ struct FixedHolder {
 
 __global global_errno Errno
 __global global_signal Signal
+__global global_copied_signal CopiedSignal
 __global global_errnos [2]Errno
 __global global_holder Holder
 
@@ -49,6 +55,7 @@ fn test_struct_fields() {
 	h := Holder{}
 	assert h.e == .inval
 	assert h.s == .interrupt
+	assert h.c == .interrupt
 	assert h.w == .set
 	f := FixedHolder{}
 	assert f.errs == [Errno.inval, .inval]!
@@ -87,6 +94,7 @@ fn test_missing_map_keys() {
 fn test_globals() {
 	assert global_errno == .inval
 	assert global_signal == .interrupt
+	assert global_copied_signal == .interrupt
 	assert global_errnos == [Errno.inval, .inval]!
 	assert global_holder.e == .inval
 	assert global_holder.s == .interrupt

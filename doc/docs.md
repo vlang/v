@@ -2110,6 +2110,12 @@ This may seem verbose at first, but it makes code much more readable
 and easier to understand - it's always clear which function from
 which module is being called. This is especially useful in large code bases.
 
+A function declared in the current module, or stored in a local variable, keeps its own
+behavior even when it has the same name as a standard library function. For example,
+`join_path('a', 'b')` calls that binding; `os.join_path('a', 'b')` calls the `os` function.
+A local function binding also takes precedence inside the library module that defines
+the same function name.
+
 Cyclic module imports are not allowed, like in Go.
 
 ### Selective imports
@@ -2348,6 +2354,12 @@ u_name := if v := arr[0] {
 }
 println(u_name) // John
 ```
+
+Use `if mut value := expression { ... }` when the unwrapped variable must be mutable,
+for example to pass it to a `mut` parameter. The binding stays mutable throughout the
+successful branch, including in `if` expressions and chained calls to generic functions
+or methods. This applies to option/result, map lookup, array lookup, and channel receive guards.
+Channel receive guards used as values also preserve a trailing `match` expression in either branch.
 
 #### Type checks and casts
 
@@ -4036,6 +4048,8 @@ Pointers to concrete values can be passed to optional interface parameters when 
 implement the interface. The option contains an interface value referring to the original object.
 Additional pointer layers, such as `&&Record`, must be dereferenced before passing the object.
 Pointers to interface values, such as `&Named`, must also be dereferenced first.
+Parentheses around a concrete value or pointer also work when assigning or returning an optional
+or result interface; the conversion is applied once.
 
 Returning a stored pointer field returns that pointer value. It does not borrow the storage of
 the containing struct, unlike taking the address of one of its fields.
@@ -4125,6 +4139,9 @@ To dereference a reference, use the `*` operator, just like in C.
 A constant can be qualified with its module name inside that module, including in module tests.
 
 A fixed array constant can be initialized by a function call; the call runs during initialization.
+Sum type constants with aggregate variants are initialized at startup, including when compiling
+with GCC.
+Their resolved sum type remains the same when an import alias shares its module prefix.
 
 ```v
 const pi = 3.14
@@ -4529,6 +4546,9 @@ This is a special case of a [sum type](#sum-types) declaration.
 Methods declared on a fixed-array alias keep that alias receiver, including methods whose names
 match builtin array methods.
 
+Enum aliases stored in struct fields support `.str()` and interpolation using the enum's value name.
+Aliases also inherit custom `.str()` methods, including after unwrapping an optional alias value.
+
 Numeric aliases use ordinary conversions for initialization:
 
 ```v
@@ -4538,6 +4558,10 @@ amount := Decimal(0.0)
 ```
 
 ### Enums
+
+C enum constants can initialize V enum members through `C.name`, including lowercase C names.
+Flag enum initializers specify bit positions and must be known to the V compiler at compile time;
+Integer casts of known V enum values can supply these positions; C enum constants cannot.
 
 Methods on an ordinary enum keep their definitions even when another module declares a
 flag enum with the same type name.
@@ -5724,6 +5748,9 @@ A later declaration using a module type with the same name resolves to that modu
 
 Generic calls keep the identity of caller types even when an imported module declares a type
 with the same short name.
+This also applies to iteration over a generic struct's `[]T` field: each loop variable
+keeps the concrete element type, including aliases, enums, interfaces, module names,
+and pointer modifiers.
 When an imported generic constructs a caller's struct, omitted fields use that struct's defaults,
 including shared fields and fixed arrays. This applies to value and heap literals and
 Result returns.
@@ -5740,6 +5767,12 @@ are resolved in the module that defines the method, so a caller type with the sa
 does not change the inferred type arguments. `typeof(call()).name` reports the concrete
 return type of an inferred generic method call.
 Inference also follows receivers obtained by unwrapping an option or propagating a result.
+
+Assigning a generic call to an optional variable or field does not make its inferred type
+arguments optional. For `fn identity[T](value T) T`, assigning `identity(3)` to `?int`
+infers `T` as `int` from the argument, then wraps the result in the destination option.
+For a declared optional return such as `fn optional[T](value T) ?T`, a `?f64` destination
+provides `f64` context to untyped numeric literals; typed arguments still determine their own type.
 
 Nested generic calls preserve reference return types when passed directly to another generic
 call, including references stored as map values.
@@ -6322,6 +6355,11 @@ res2 := ch2.try_pop(mut b) // try to perform `b = <-ch2`
 The `try_push/pop()` methods will return immediately with one of the results
 `.success`, `.not_ready` or `.closed` - dependent on whether the object has been transferred or
 the reason why not.
+These methods also work in generic functions with a `chan T`. Their arguments must match the
+channel's element storage type, and `try_pop(mut value)` requires mutable destination storage.
+A sum-type channel requires storage of the full sum type when popping. A shared destination
+is writable inside its `lock` block. Pointer values can be pushed into a `chan voidptr`.
+Methods declared on a channel alias take precedence over these builtins.
 On an unbuffered channel, `try_push()` will return `.not_ready` unless a receiver is ready at
 the same time.
 Usage of these methods and fields in production is not recommended -
@@ -8787,6 +8825,23 @@ fn main() {
 // ['BLUE']
 ```
 
+The `e.value` member contains the enum's actual value, including values initialized from C
+constants. These C-derived values remain symbolic until C compilation, so they can be used
+in runtime expressions but cannot be evaluated in a `$if` condition by the V compiler.
+This also applies to copied members and implicit successors. The source enum may be declared
+after an enum that copies its members. An explicit initializer with a value known to V restores
+compile-time evaluation for that member and its successors.
+Symbolic arithmetic preserves integer storage widths and V operator grouping, including logical
+right shifts and zero results for negative or out-of-range shift counts. Powers and `@[comptime]`
+function calls in enum initializers must be evaluable by V at compile time; they cannot depend on
+C constants. Known calls are evaluated even when used beside a C constant in symbolic arithmetic.
+These enum helpers support straight-line integer declarations, plain assignments, and one final
+single-value return. Bodies containing control flow, other statements, or unevaluable locals are
+rejected instead of partially evaluated. Imported helpers resolve their constants and types in their
+declaration file and module; their arguments are evaluated in the calling enum's context.
+Integer-to-enum cast warnings require every member's
+numeric value to be known to V; they are omitted for enums containing C-derived members.
+
 #### <h4 id="comptime-attrs">.attributes</h4>
 
 You can read [Struct](#structs) attributes.
@@ -11128,6 +11183,12 @@ C identifiers are accessed with the `C` prefix similarly to how module-specific
 identifiers are accessed. Functions must be redeclared in V before they can be used.
 Any C types may be used behind the `C` prefix, but types must be redeclared in V in
 order to access type members.
+An unreferenced `struct C.Name` declaration does not emit a C struct definition. Include its owning
+C header when using a header-defined struct.
+Using a C struct in `sizeof` or `__offsetof` references its layout,
+even without a value of that type.
+Generated optional wrappers, callback aliases, and fixed-array declarations also keep
+the C struct layouts they require.
 
 To redeclare complex types, such as in the following C code:
 
