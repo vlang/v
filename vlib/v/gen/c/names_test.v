@@ -409,15 +409,23 @@ fn test_main_function_names_avoid_windows_header_macros() {
 	g.a = &a
 	g.tc = &tc
 	for name in ['near', 'far', 'pascal', 'cdecl'] {
-		assert g.fn_c_name_in_module('main', name) == 'main__${name}'
-		assert g.fn_c_name_in_module('', name) == 'main__${name}'
-		assert g.direct_call_name(name) == 'main__${name}'
-		assert g.direct_call_name('main.${name}') == 'main__${name}'
-		assert g.callback_c_fn_name(name) == 'main__${name}'
-		assert g.callback_c_fn_name('main.${name}') == 'main__${name}'
+		internal := '__v3_internal_symbol_macro_${name}'
+		assert g.fn_c_name_in_module('main', name) == internal
+		assert g.fn_c_name_in_module('', name) == internal
+		assert g.direct_call_name(name) == internal
+		assert g.direct_call_name('main.${name}') == internal
+		assert g.callback_c_fn_name(name) == internal
+		assert g.callback_c_fn_name('main.${name}') == internal
+		assert g.fn_c_name_in_module('main', 'main__${name}') == 'main__${name}'
+		assert g.fn_c_name_in_module('main', internal) == '__v3_internal_symbol_source_${internal}'
 		assert g.fn_c_name_in_module('worker', name) == 'worker__${name}'
 		assert g.direct_call_name('C.${name}') == name
 		assert g.callback_c_fn_name('C.${name}') == name
+	}
+	tc.cur_module = 'worker'
+	for name in ['near', 'far', 'pascal', 'cdecl'] {
+		assert g.direct_call_name('main.${name}') == '__v3_internal_symbol_macro_${name}'
+		assert g.callback_c_fn_name('main.${name}') == '__v3_internal_symbol_macro_${name}'
 	}
 }
 
