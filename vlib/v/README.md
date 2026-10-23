@@ -686,12 +686,12 @@ full: `-g`, `-cg`, `-keepc`, `-showcc`, `-show-c-output`, shared libraries, obje
 coverage, tests, and an implicit `run` on macOS, which has its own executable cache below.
 `V3_CACHE_TRACE=1` says why an executable was not restored, and
 `V3_CACHE_DISABLE_PROGRAM_EXECUTABLE=1` turns the restoring off. Windows targets always link.
-For explicit binary outputs, an unchanged-build receipt is checked before parsing. It records
-every parsed source file, native inputs, source directories and the vlib source tree, then
-restores the previous executable when none changed. This keeps repeated no-change builds fast
-even for graphs that are too large to populate the full module cache. `-nocache` still disables
-the module cache; a build restarted internally with it can use the receipt. Set
-`V3_DISABLE_UNCHANGED_BUILD_CACHE=1` to disable this early check.
+The experimental unchanged-build receipt is disabled by default. Set
+`V3_ENABLE_UNCHANGED_BUILD_CACHE=1` to enable its early executable restore for explicit binary
+outputs. Its key does not yet cover all compile-time environment, module-search, and linker
+inputs, so it can reuse stale output when those inputs change. `-nocache` and
+`V3_DISABLE_UNCHANGED_BUILD_CACHE=1` both disable this shortcut. Missing file metadata also
+prevents publishing or restoring a receipt.
 The cache resolves the path of each module source once for a build; the table of resolved paths
 is closed when the imports are resolved, before later stages read it from several threads.
 A build that reads every module from its interface gets all the functions of those modules as
@@ -1024,11 +1024,10 @@ comparing generated C through the full dispatch path; ordinary compilation keeps
 
 ### Monomorphization parallelism
 
-GCC- or Clang-built compilers specialize generics concurrently for non-self-hosted programs
-with at least 200,000 AST nodes. Small tools and compiler self-builds stay serial to keep
-startup cheap and avoid multiplying compiler-internal scratch memory. Set
-`V3_PARALLEL_MONOMORPHIZE=0` to force serial specialization or `=1` to opt in for other
-programs.
+Generic specialization stays serial by default. Set `V3_PARALLEL_MONOMORPHIZE=1` to opt in
+when using a GCC- or Clang-built compiler. Parallel specialization remains experimental because
+nested generic-interface instantiations can lose specialization results. TinyCC-built compilers
+always specialize serially; `V3_PARALLEL_MONOMORPHIZE=0` also keeps specialization serial.
 
 ### Transform batch arenas
 
