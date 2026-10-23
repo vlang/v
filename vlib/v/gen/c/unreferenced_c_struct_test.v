@@ -98,3 +98,32 @@ struct C.GlobalItem { value int }
 __global C.items [1]C.GlobalItem
 ', ['GlobalItem'], [])!
 }
+
+fn test_empty_interface_stringification_omits_unused_c_layouts() ! {
+	root := os.join_path(os.vtmp_dir(), 'interface_c_struct_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	output := os.join_path(root, 'main.c')
+	os.write_file(source, 'struct C.UnusedInterfaceLayout { value int }
+struct C.BoxedInterfaceLayout { value int }
+interface Empty {}
+struct Plain { value int }
+fn main() {
+	plain := Empty(Plain{7})
+	assert "\${plain}".contains("Plain")
+	assert plain is Plain
+	boxed := Empty(C.BoxedInterfaceLayout{11})
+	assert "\${boxed}".contains("BoxedInterfaceLayout")
+	assert boxed is C.BoxedInterfaceLayout
+}')!
+	generated_result := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', '-o', output, source])
+	assert generated_result.exit_code == 0, generated_result.output
+	generated := os.read_file(output)!
+	assert !generated.contains('UnusedInterfaceLayout')
+	assert generated.contains('struct BoxedInterfaceLayout {')
+	run_result := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', '-cc', 'clang', 'run', source])
+	assert run_result.exit_code == 0, run_result.output
+}

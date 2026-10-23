@@ -3937,6 +3937,10 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.precompute_const_short_index()
 	g.precompute_local_global_suffix_names()
 	g.precompute_c_typedef_shadow_names()
+	// Interface workers must share the same referenced C layouts as declaration emission.
+	if g.tc.structs.keys().any(it.starts_with('C.')) {
+		g.ensure_referenced_c_struct_ids()
+	}
 	g.timing_profile('  [ttime] cg collect_info    ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	cgsw.restart()
 	mut parallel_support_precomputed := false

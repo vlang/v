@@ -3290,6 +3290,8 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		global_linker_sections:             g.global_linker_sections
 		global_cinit_names:                 g.global_cinit_names
 		enum_backing_infos:                 g.enum_backing_infos
+		referenced_c_struct_ids:            g.referenced_c_struct_ids
+		referenced_c_struct_ids_ready:      g.referenced_c_struct_ids_ready
 		iface_impls:                        g.iface_impls
 		interface_dispatch_required:        g.interface_dispatch_required
 		iface_type_ids:                     g.iface_type_ids
