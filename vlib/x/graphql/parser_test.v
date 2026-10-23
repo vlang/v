@@ -2,6 +2,33 @@ module graphql
 
 import os
 
+fn test_nested_nullability_assertion_nodes() {
+	inner := &NullabilityAssertionNode(NonNullAssertionNode{})
+	list := ListNullabilityOperatorNode{
+		nullability_assertion: inner
+	}
+	outer := ErrorBoundaryNode{
+		nullability_assertion: list
+	}
+	nested := outer.nullability_assertion or { panic('expected list assertion') }
+	assertion := nested.nullability_assertion or { panic('expected non-null assertion') }
+	assert *assertion is NonNullAssertionNode
+	assert outer.kind == .error_boundary
+}
+
+fn test_nested_list_type_reference() ! {
+	doc := parse('type Query { matrix: [[Int!]!]! }', none)!
+	definition := doc.definitions[0] as ObjectTypeDefinitionNode
+	field := definition.fields?[0]
+	outer := field.@type as NonNullTypeNode
+	list := outer.node_type as ListTypeNode
+	inner := (*list.node_type) as NonNullTypeNode
+	inner_list := inner.node_type as ListTypeNode
+	element := (*inner_list.node_type) as NonNullTypeNode
+	named := element.node_type as NamedTypeNode
+	assert named.node_type.value == 'Int'
+}
+
 fn test_query_parse() ! {
 	body := '{
         node(id: 4) {

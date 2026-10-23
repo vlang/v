@@ -1,6 +1,7 @@
 name: vlib modules CI
 
 on:
+  workflow_dispatch:
   pull_request:
     paths:
       - 'vlib/**.v'
@@ -62,8 +63,26 @@ jobs:
         run: v retry -- v install markdown
       - name: Test v doc
         run: VJOBS=1 ./v test cmd/tools/vdoc/
-      - name: Build module documentation and check the examples in the comments
-        run: VJOBS=1 ./v doc -m -f html -unsafe-run-examples -time vlib/
+      - name: Build module documentation for all platforms and check the examples in the comments
+        run: VJOBS=1 ./v doc -m -f html -os cross -unsafe-run-examples -time vlib/
+      - name: Record the documented source revision
+        run: printf '%s\n' "$GITHUB_SHA" > vlib/_docs/revision.txt
       - name: Deploy docs to vercel
-        if: github.event_name == 'push' && github.repository == 'vlang/v' && github.ref == 'refs/heads/master'
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.repository == 'vlang/v' && github.ref == 'refs/heads/master'
         run: npx vercel --confirm --prod --name vmodules --token ${{ secrets.VERCEL_TOKEN }} vlib/_docs/
+      - name: Verify the published source revision
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.repository == 'vlang/v' && github.ref == 'refs/heads/master'
+        timeout-minutes: 3
+        run: |
+          for attempt in {1..12}; do
+            published_revision=$(curl --fail --silent --show-error --max-time 10 \
+              -H 'Cache-Control: no-cache' \
+              "https://modules.vlang.io/revision.txt?sha=$GITHUB_SHA") || published_revision=
+            if [ "$published_revision" = "$GITHUB_SHA" ]; then
+              echo "Published module documentation for $GITHUB_SHA"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::modules.vlang.io does not serve documentation for $GITHUB_SHA"
+          exit 1

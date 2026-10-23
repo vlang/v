@@ -119,6 +119,7 @@ fn test_translated_array_decay_resolves_nested_aliases() {
 	assert pointer == rows
 	assert rows == pointer
 	assert pointer != [[20, 22]!, [3, 5]!]!
+	assert [[20, 22]!, [3, 5]!]! != pointer
 	copy := rows
 	assert pointer != copy
 	assert copy != pointer

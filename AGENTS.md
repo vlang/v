@@ -600,11 +600,31 @@ skipped coverage in the summary.
 
 ## Compiler Performance
 
-Use **retired CPU instructions as the primary compiler optimization metric**. On macOS arm64,
+For the fixed self-compilation benchmark, results, and agent regression policy, read
+[vself_speed.md](vself_speed.md). Every compiler fix must preserve or improve that efficiency;
+investigate instruction-count regressions before merging.
+
+Use **retired CPU instructions per fixed workload and per parsed source line** as the primary
+compiler optimization metrics; lower is better. On macOS arm64,
 `/usr/bin/time -l` reports `instructions retired` from hardware counters. Under matched conditions,
 this is the most reliable local measure of compiler work: it is less sensitive than elapsed time to
 CPU frequency and scheduling. Also retain elapsed time, cycles, and peak memory; fewer instructions
 do not guarantee lower latency or memory use. Compare counts on the same machine and architecture.
+
+The instruction counter is scoped to the measured process; unrelated processes do not add their
+instructions to it. An idle host is not required for instruction comparisons. Counts are dynamic,
+not a static property of the binary: synchronization, retries, and runtime paths can vary. Use
+serial paired measurements to check that variation. Record host load as context for elapsed time
+and cycles; use controlled load when making latency claims.
+
+For instructions per line, divide by physical lines in the `.v` and `.vh` files actually parsed,
+including builtins, imports, blank lines, and comments. Collect `parsed .v lines` plus
+`parsed .vh lines` in a separate unmeasured `-v` run with the same input flags. Preserve that
+inventory and verify that both compilers process the same files and line count. Keep the fixture
+fixed: padding files or changing source complexity must not count as an optimization. Retain total
+instructions alongside instructions/line; establish a new baseline when the fixture changes.
+Instructions per second depends on hardware, scheduling, and instruction mix; do not use it as a
+compiler-efficiency score. See [vself_speed.md](vself_speed.md) for the self-compilation fixture.
 
 Build a production compiler outside the measured run, then measure compilation to C:
 
@@ -634,22 +654,26 @@ For a baseline/candidate comparison:
 
 1. Build both compilers with the same production build recipe and C toolchain. Verify correctness,
    diagnostics, and generated C before measuring. For a change intended to preserve output, require
-   identical C, allowing only explicitly recorded build metadata differences.
+   identical C, allowing only explicitly recorded build metadata differences. Validate generated
+   C when changing the fixture or compiler representation; matching invalid C is not sufficient.
 2. Use the same host, OS, fixture, standard library, flags, environment, and filesystem placement.
    Keep executable, source, and output paths identical between roles where possible; record any
    remaining differences. Set `VJOBS=1` and `SOURCE_DATE_EPOCH=0`, and disable tracing/profiling.
    Clear unintended compiler environment overrides, including `VFLAGS` and `VEXE`; record the
    effective environment. Measure only successfully rebuilt compilers, never a stale binary.
-   Run only one benchmark process at a time, with no concurrent builds or tests.
+   Run only one benchmark process at a time. Other builds or tests on the host do not invalidate
+   process instruction counts; do not pause unrelated work or wait for an idle host. Record that
+   elapsed time and cycles collected under uncontrolled load are contextual measurements.
 3. Run one warmup per role, then **ten measured pairs**, alternating baseline/candidate order:
    AB, BA, AB, BA, and so on. Record all 22 runs, excluding both warmups from statistics.
    Use a distinct timing/stdout/stderr log for every run and the same generated C output path.
 4. Require exit status zero and exactly one positive `instructions retired` counter in every sample.
    Preserve failed or incomplete runs, but do not report them as a completed comparison. If the
    counter is missing or zero, report it as unavailable; elapsed time is not an instruction count.
-5. Report each role's median, the percentage change between medians, the median paired instruction
-   difference, and how many pairs made the candidate worse. Report memory and elapsed time alongside
-   instructions. Retain all raw logs, exact commands/environment, compiler commits, binary hashes,
+5. Report each role's median instructions/line and total instructions, the fixed parsed-line count,
+   percentage change between medians, median paired instruction difference, and how many pairs
+   made the candidate worse. Report memory and elapsed time alongside instructions. Retain all
+   raw logs, exact commands/environment, compiler commits, binary hashes,
    fixture hashes, and output verification so the result can be reproduced.
 
 Do not select the fastest sample or compare medians from different measurement sessions as proof of

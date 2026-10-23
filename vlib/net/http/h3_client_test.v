@@ -1,6 +1,7 @@
 // vtest vflags: -d http3
 module http
 
+import compress.gzip
 import net.quic
 
 // Tests for the HTTP/3 <-> net.http conversion glue (h3_client.v). The
@@ -151,4 +152,15 @@ fn test_h3_response_to_http() {
 	assert resp.body == 'hi'
 	assert (resp.header.get_custom('content-type') or { '' }) == 'text/plain'
 	assert (resp.header.get_custom('x-foo') or { '' }) == 'bar'
+}
+
+fn test_h3_proxy_preserves_content_encoded_body() {
+	compressed := gzip.compress('encoded upstream body'.bytes())!
+	upstream := H3ClientResponse{
+		status:  200
+		headers: [quic.QpackFieldLine{ name: 'content-encoding', value: 'gzip' }]
+		body:    compressed
+	}
+	assert h3_response_to_http(upstream)!.body == 'encoded upstream body'
+	assert h3_response_to_http(upstream, raw_body: true)!.body.bytes() == compressed
 }

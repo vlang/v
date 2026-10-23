@@ -6,9 +6,14 @@
 - [Buttons.from](#Buttons.from)
 - [Buttons.zero](#Buttons.zero)
 - [Buttons](#Buttons)
-  - [all](#all)
-  - [has](#has)
   - [is_empty](#is_empty)
+  - [has](#has)
+  - [all](#all)
+  - [set](#set)
+  - [set_all](#set_all)
+  - [clear](#clear)
+  - [clear_all](#clear_all)
+  - [toggle](#toggle)
   - [press](#press)
 - [Options](#Options)
 
@@ -25,8 +30,10 @@ draw is shown with the attributes above its signature.
 
 ## Buttons.from
 ```v
-fn Buttons.from() Buttons
+fn Buttons.from[W](input W) !Buttons
 ```
+
+from returns the `Buttons` value of an integer or of a field name, or an error if there is none.
 
 [[Return to contents]](#Contents)
 
@@ -34,6 +41,8 @@ fn Buttons.from() Buttons
 ```v
 fn Buttons.zero() Buttons
 ```
+
+zero returns a `Buttons` value with no flags set.
 
 [[Return to contents]](#Contents)
 
@@ -50,9 +59,78 @@ Buttons are flags for the mouse buttons.
 
 [[Return to contents]](#Contents)
 
-## all
-## has
 ## is_empty
+```v
+fn (e &Buttons) is_empty() bool
+```
+
+is_empty returns true if no flags are set.
+
+[[Return to contents]](#Contents)
+
+## has
+```v
+fn (e &Buttons) has(flag Buttons) bool
+```
+
+has returns true if any of the flags in `flag` are set.
+
+[[Return to contents]](#Contents)
+
+## all
+```v
+fn (e &Buttons) all(flag Buttons) bool
+```
+
+all returns true if all the flags in `flag` are set.
+
+[[Return to contents]](#Contents)
+
+## set
+```v
+fn (mut e Buttons) set(flag Buttons)
+```
+
+set sets the flags in `flag`.
+
+[[Return to contents]](#Contents)
+
+## set_all
+```v
+fn (mut e Buttons) set_all()
+```
+
+set_all sets all the flags.
+
+[[Return to contents]](#Contents)
+
+## clear
+```v
+fn (mut e Buttons) clear(flag Buttons)
+```
+
+clear clears the flags in `flag`.
+
+[[Return to contents]](#Contents)
+
+## clear_all
+```v
+fn (mut e Buttons) clear_all()
+```
+
+clear_all clears all the flags.
+
+[[Return to contents]](#Contents)
+
+## toggle
+```v
+fn (mut e Buttons) toggle(flag Buttons)
+```
+
+toggle flips the flags in `flag`.
+
+[[Return to contents]](#Contents)
+
 ## press
 ```v
 @[inline]

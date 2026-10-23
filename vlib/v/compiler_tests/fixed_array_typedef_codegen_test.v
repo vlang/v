@@ -90,9 +90,11 @@ mut:
 }
 
 pub fn shape_score() int {
+	mut w := C.Widget{}
 	mut n := Nested{}
+	w.images[0] = 3
 	n.cells[1][2] = 5
-	return n.cells[1][2]
+	return w.images[0] + n.cells[1][2]
 }
 ', 'module main
 

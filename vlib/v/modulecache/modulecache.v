@@ -2116,6 +2116,22 @@ pub fn (e &ProgramExecutable) restore(destination string) bool {
 	return true
 }
 
+// discard_program_entries removes the stamps of every whole-program entry of
+// `source_files` (C plan, prepared plan, generic and incremental snapshots, linked
+// executable). The entry files stay, but no build reads them again until it writes
+// them afresh, so the next build generates the program from its sources.
+pub fn (m &Manager) discard_program_entries(source_files []string) {
+	if !m.enabled || source_files.len == 0 {
+		return
+	}
+	cgen := m.cgen_entry(source_files)
+	for stamp in [cgen.stamp, cgen.prepared_stamp, m.generic_program_entry(source_files).stamp,
+		m.incremental_program_entry(source_files).stamp,
+		'${m.program_executable_slot(source_files)}.exe.stamp'] {
+		os.rm(stamp) or {}
+	}
+}
+
 // write_program_executable keeps a copy of `executable`, which a build has just
 // linked, for the next build of the same inputs. `link_files` are the files that
 // the C compiler and the linker read besides the C of the build: headers, objects,
@@ -4720,7 +4736,9 @@ fn c_declaration_item(item string, has_brace bool, types_only bool, definition_p
 	}
 	brace := if has_brace { clean.index_u8(`{`) } else { -1 }
 	head := if brace > 0 { clean[..brace].trim_space() } else { clean }
-	if c_has_static_storage_class(head) || clean.starts_with('typedef ')
+	if c_has_static_storage_class(head)
+		|| c_declaration_head_uses_macro(head, definition_preserving_macros)
+		|| clean.starts_with('typedef ')
 		|| c_tag_declaration_is_type_only(clean, has_brace) {
 		return item
 	}

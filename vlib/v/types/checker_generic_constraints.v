@@ -36,7 +36,7 @@ struct SumConstraintStep {
 // generic_constraint_type resolves the constraint `text` of a type parameter
 // as a type, as written where `decl` declares it: in that file and that module.
 fn (tc &TypeChecker) generic_constraint_type(decl flat.Node, text_id u32) Type {
-	file := tc.a.source_files[int(decl.pos.id)] or { return tc.parse_type(text_id) }
+	file := tc.a.source_files[int(decl.pos.id)] or { return *tc.parse_type(text_id) }
 	decl_module := tc.file_modules[file.name] or { tc.cur_module }
 	mut scoped := tc.fork_type_parse_view(file.name, decl_module)
 	return scoped.parse_resolution_type(text_id)
@@ -153,7 +153,7 @@ fn (tc &TypeChecker) collect_sum_constraint_types(sum SumType, mut types []Type,
 	previous := active[base] or { u32(0) }
 	// A repeated base may peel a finite nested argument, such as Part[Part[int]].
 	// Report this bound to declaration checking rather than silently accepting a partial set.
-	if previous != 0 && !tc.sum_constraint_has_nested_instance(previous, sum.source_type_id())
+	if previous != 0 && !tc.type_has_nested_instance(previous, sum.source_type_id())
 		&& tc.sum_constraint_cycle_expands(base, path) {
 		return true
 	}
@@ -268,27 +268,36 @@ fn sum_constraint_arguments_expand(args []string, symbols []string) bool {
 	return false
 }
 
-// sum_constraint_has_nested_instance permits descending into a finite type argument,
+// type_has_nested_instance permits descending into a finite type argument,
 // including an alias of a nested instance of the same generic sum.
-fn (tc &TypeChecker) sum_constraint_has_nested_instance(parent_id u32, nested_id u32) bool {
+fn (tc &TypeChecker) type_has_nested_instance(parent_id u32, nested_id u32) bool {
 	_, args, _ := generic_type_application_parts(flat.source_type_name(parent_id))
 	mut seen := map[u32]bool{}
 	for arg in args {
-		if tc.sum_constraint_argument_contains(flat.source_type_id(arg), nested_id, mut seen) {
+		if tc.type_argument_contains(flat.source_type_id(arg), nested_id, mut seen) {
 			return true
 		}
 	}
 	return false
 }
 
-fn (tc &TypeChecker) sum_constraint_argument_contains(text_id u32, nested_id u32, mut seen map[u32]bool) bool {
+fn (tc &TypeChecker) type_argument_contains(text_id u32, nested_id u32, mut seen map[u32]bool) bool {
 	if seen[text_id] { return false }
 	seen[text_id] = true
 	typ := unalias_type(tc.parse_type(text_id))
 	if typ.source_type_id() == nested_id { return true }
+	match typ {
+		OptionType, ResultType {
+			return tc.type_argument_contains(typ.base_type.source_type_id(), nested_id, mut seen)
+		}
+		ArrayFixed {
+			return tc.type_argument_contains(typ.elem_type.source_type_id(), nested_id, mut seen)
+		}
+		else {}
+	}
 	_, args, _ := generic_type_application_parts(typ.name())
 	for arg in args {
-		if tc.sum_constraint_argument_contains(flat.source_type_id(arg), nested_id, mut seen) {
+		if tc.type_argument_contains(flat.source_type_id(arg), nested_id, mut seen) {
 			return true
 		}
 	}
@@ -349,7 +358,7 @@ pub fn (tc &TypeChecker) generic_instance_satisfies_constraints(decl flat.Node, 
 			break
 		}
 		constraint := constraints[name] or { continue }
-		if !tc.generic_constraint_accepts(constraint, tc.parse_type(args_ids[i])) {
+		if !tc.generic_constraint_accepts(constraint, *tc.parse_type(args_ids[i])) {
 			return false
 		}
 	}
@@ -661,7 +670,7 @@ fn (mut tc TypeChecker) check_generic_type_constraints(id flat.NodeId, pos token
 // `Box[int](x)`, `fn (b Box[int]) {}`, as it is checked where the declared
 // types and the struct literals are. An error one of those checks reported
 // already, at the same place, is not repeated.
-fn (mut tc TypeChecker) check_written_generic_types(top_id flat.NodeId) {
+fn (mut tc TypeChecker) check_written_generic_types(top_id flat.NodeId, mut stack []WrittenTypeItem) {
 	if !tc.should_diagnose(top_id) || !tc.program_declares_constraints() {
 		return
 	}
@@ -672,7 +681,8 @@ fn (mut tc TypeChecker) check_written_generic_types(top_id flat.NodeId) {
 	generic_body := top.kind == .fn_decl && scope.names.len > 0
 	// A node the compiler wrote, as the argument of `isreftype(Box[int])`, has
 	// no place of its own: its type is found in the nearest node that has one.
-	mut stack := [WrittenTypeItem{top_id, top_id}]
+	stack.clear()
+	stack << WrittenTypeItem{top_id, top_id}
 	for stack.len > 0 {
 		item := stack.pop()
 		if !tc.valid_node_id(item.id) {
@@ -1036,9 +1046,9 @@ fn (mut tc TypeChecker) check_generic_fn_constraint_members(fn_node flat.Node) {
 							arg_dsl_names = if is_sort { ['a', 'b'] } else { ['it'] }
 							arg_dsl_elem = receiver.elem_type
 							elems := if is_sort {
-								[receiver.elem_type, receiver.elem_type]
+								[*receiver.elem_type, *receiver.elem_type]
 							} else {
-								[receiver.elem_type]
+								[*receiver.elem_type]
 							}
 							for i in 1 .. node.children_count {
 								arg_lambda_types[i] = elems
@@ -1122,10 +1132,10 @@ fn (mut tc TypeChecker) constraint_walk_lambda_arg_types(id flat.NodeId, node fl
 		if param_idx < first || param_idx >= param_texts.len {
 			continue
 		}
-		expected := unalias_type(tc.substitute_generic_type_values(tc.parse_type(flat.source_type_id(param_texts[param_idx])),
+		expected := unalias_type(tc.substitute_generic_type_values(*tc.parse_type(flat.source_type_id(param_texts[param_idx])),
 			args, binding.names))
 		if expected is FnType {
-			result[i] = expected.params
+			result[i] = expected.params.map(*it.typ)
 		}
 	}
 	return result
@@ -1235,9 +1245,9 @@ fn (mut tc TypeChecker) constraint_walk_value_type(id flat.NodeId) Type {
 			if node.children_count > 0 {
 				held := unalias_type(tc.constraint_walk_value_type(tc.a.child(node, 0)))
 				return match held {
-					OptionType { held.base_type }
-					ResultType { held.base_type }
-					else { held }
+					OptionType { *held.base_type }
+					ResultType { *held.base_type }
+					else { *held }
 				}
 			}
 		}
@@ -1801,7 +1811,7 @@ fn (tc &TypeChecker) constraint_walk_named_type(name_id u32) Type {
 		&& (name in tc.fn_context.generic_params || tc.active_generic_param(name)) {
 		return unknown_type('generic placeholder `${name}`')
 	}
-	return tc.parse_type(name_id)
+	return *tc.parse_type(name_id)
 }
 
 // constraint_walk_iterable_type is what a `for ... in` loop of the walk goes

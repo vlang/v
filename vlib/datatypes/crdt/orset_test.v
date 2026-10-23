@@ -63,4 +63,3 @@ fn test_orset_merge_idempotent() {
 	assert s1.lookup(1)
 	assert s1.lookup(2)
 }
-

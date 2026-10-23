@@ -12,6 +12,18 @@ import time
 
 pub type RequestRedirectFn = fn (request &Request, nredirects int, new_url string) !
 
+// A callback abort is application control flow, not a failed transport that
+// can be replayed. Keep its original error until Request.do returns it.
+const progress_callback_error_code = -20015
+
+struct ProgressCallbackError {
+	cause IError @[required]
+}
+
+fn (err ProgressCallbackError) msg() string { return err.cause.msg() }
+
+fn (_ ProgressCallbackError) code() int { return progress_callback_error_code }
+
 pub type RequestProgressFn = fn (request &Request, chunk []u8, read_so_far u64) !
 
 pub type RequestProgressBodyFn = fn (request &Request, chunk []u8, body_read_so_far u64, body_expected_size u64, status_code int) !
@@ -23,6 +35,8 @@ pub type RequestFinishFn = fn (request &Request, final_size u64) !
 pub struct Request {
 mut:
 	cookies map[string]string
+	// ReverseProxy preserves the upstream representation and its encoding headers.
+	raw_response_body bool
 pub mut:
 	version    Version = .v1_1
 	method     Method  = .get
@@ -290,7 +304,10 @@ pub fn (req &Request) do() !Response {
 		if nredirects == max_redirects {
 			return error('http.request.do: maximum number of redirects reached (${max_redirects})')
 		}
-		qresp := req.method_and_url_to_response(method, rurl, data, header)!
+		qresp := req.method_and_url_to_response(method, rurl, data, header) or {
+			if err is ProgressCallbackError { return err.cause }
+			return err
+		}
 		resp = qresp
 		if !req.allow_redirect {
 			break
@@ -527,6 +544,7 @@ fn (req &Request) http_do(host string, method Method, path string, data string, 
 	host_name, port := net.split_address(host)!
 	s := req.build_request_headers_with(method, host_name, port, 80, path, data, header)!
 	mut client := net.dial_tcp(host)!
+	defer { client.close() or {} }
 	client.set_read_timeout(req.read_timeout)
 	client.set_write_timeout(req.write_timeout)
 	// TODO: this really needs to be exposed somehow
@@ -537,7 +555,6 @@ fn (req &Request) http_do(host string, method Method, path string, data string, 
 		eprintln('')
 	}
 	response_data := req.read_all_from_client_connection(client)!
-	client.close()!
 	response_text := response_data.data.bytestr()
 	$if trace_http_response ? {
 		eprint('< ')
@@ -709,6 +726,7 @@ fn chunked_hex_value(ch u8) u8 {
 }
 
 struct ReceivedResponseInfo {
+	raw_body            bool
 	headers_end         int = -1
 	is_chunked_transfer bool
 	has_truncated_body  bool
@@ -724,14 +742,21 @@ struct ReceivedResponseInfo {
 
 fn parse_received_response(response_text string, info ReceivedResponseInfo) !Response {
 	mut response := if info.body_is_dechunked {
-		parse_response(response_text[..info.headers_end])!
+		parse_response_with_options(response_text[..info.headers_end],
+			raw_body:     info.raw_body
+			headers_only: true
+		)!
 	} else {
-		parse_response(response_text)!
+		parse_response_with_options(response_text, raw_body: info.raw_body)!
 	}
 	if info.body_is_dechunked {
 		// Chunk framing is already removed, but Content-Encoding still applies.
-		response.body = decode_response_body(response_text[info.headers_end..],
-			response.header.get(.content_encoding) or { '' })
+		body := response_text[info.headers_end..]
+		response.body = if info.raw_body {
+			body
+		} else {
+			decode_response_body(body, response.header.get(.content_encoding) or { '' })
+		}
 	}
 	// A complete compressed body can expand beyond the copying limit.
 	if info.stop_copying_limit > 0 && response.body.len > info.stop_copying_limit {
@@ -821,7 +846,7 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 			status_code = http_line.all_after(' ').all_before(' ').int()
 		}
 		if req.on_progress != unsafe { nil } {
-			req.on_progress(req, bchunk, u64(new_len))!
+			req.on_progress(req, bchunk, u64(new_len)) or { return ProgressCallbackError{ cause: err } }
 		}
 		if headers_end < 0 {
 			unsafe { header_buf.write_ptr(bp, len) }
@@ -882,10 +907,10 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 			progress_body_so_far = chunked_body_tracker.decoded_len
 			if req.on_progress_body != unsafe { nil } && dechunked.len > 0 {
 				req.on_progress_body(req, dechunked, progress_body_so_far, expected_size,
-					status_code)!
+					status_code) or { return ProgressCallbackError{ cause: err } }
 			}
 		} else if req.on_progress_body != unsafe { nil } {
-			req.on_progress_body(req, bchunk, progress_body_so_far, expected_size, status_code)!
+			req.on_progress_body(req, bchunk, progress_body_so_far, expected_size, status_code) or { return ProgressCallbackError{ cause: err } }
 		}
 		if headers_end < 0 || req.stop_copying_limit <= 0 {
 			unsafe { content.write_ptr(bp, len) }
@@ -937,6 +962,7 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 		old_len = new_len
 	}
 	return ReceivedResponseInfo{
+		raw_body:            req.raw_response_body
 		headers_end:         headers_end
 		is_chunked_transfer: is_chunked_transfer
 		body_is_dechunked:   is_chunked_transfer && req.stop_copying_limit > 0
@@ -1376,5 +1402,6 @@ fn is_no_need_retry_error(err_code int) bool {
 		net.err_connect_timed_out.code(),
 		net.err_timed_out_code,
 		transport_err_unsafe_retry,
+		progress_callback_error_code,
 	]
 }

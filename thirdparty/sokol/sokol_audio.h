@@ -732,6 +732,34 @@ inline void saudio_setup(const saudio_desc& desc) { return saudio_setup(&desc); 
     /* TCC's audioclient.h may miss these transitive audio format/channel mask definitions. */
     #include <mmreg.h>
     #include <audioclient.h>
+    #if defined(__TINYC__)
+    #undef COINIT_MULTITHREADED
+    #define COINIT_MULTITHREADED 0
+    #pragma pack(push, 1)
+    typedef struct {
+        WORD wFormatTag;
+        WORD nChannels;
+        DWORD nSamplesPerSec;
+        DWORD nAvgBytesPerSec;
+        WORD nBlockAlign;
+        WORD wBitsPerSample;
+        WORD cbSize;
+    } _saudio_tcc_waveformat_ex;
+    typedef struct {
+        _saudio_tcc_waveformat_ex Format;
+        union {
+            WORD wValidBitsPerSample;
+            WORD wSamplesPerBlock;
+            WORD wReserved;
+        } Samples;
+        DWORD dwChannelMask;
+        GUID SubFormat;
+    } _saudio_tcc_waveformat_extensible;
+    #pragma pack(pop)
+    #define _SAUDIO_WAVEFORMATEXTENSIBLE _saudio_tcc_waveformat_extensible
+    #else
+    #define _SAUDIO_WAVEFORMATEXTENSIBLE WAVEFORMATEXTENSIBLE
+    #endif
     static const IID _saudio_IID_IAudioClient                               = { 0x1cb9ad4c, 0xdbfa, 0x4c32, {0xb1, 0x78, 0xc2, 0xf5, 0x68, 0xa7, 0x03, 0xb2} };
     static const IID _saudio_IID_IMMDeviceEnumerator                        = { 0xa95664d2, 0x9614, 0x4f35, {0xa7, 0x46, 0xde, 0x8d, 0xb6, 0x36, 0x17, 0xe6} };
     static const CLSID _saudio_CLSID_IMMDeviceEnumerator                    = { 0xbcde0395, 0xe52f, 0x467c, {0x8e, 0x3d, 0xc4, 0x57, 0x92, 0x91, 0x69, 0x2e} };
@@ -1690,7 +1718,7 @@ _SOKOL_PRIVATE bool _saudio_wasapi_backend_init(void) {
         goto error;
     }
 
-    WAVEFORMATEXTENSIBLE fmtex;
+    _SAUDIO_WAVEFORMATEXTENSIBLE fmtex;
     _saudio_clear(&fmtex, sizeof(fmtex));
     fmtex.Format.nChannels = (WORD)_saudio.num_channels;
     fmtex.Format.nSamplesPerSec = (DWORD)_saudio.sample_rate;

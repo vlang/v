@@ -37,12 +37,26 @@ fn (tc &TypeChecker) invalidate_lexical_parent_memo() {
 // preceding-write checks still use the same node as the ordinary parent walk.
 // Keep the full distance: match narrowing has a 64-parent limit, while if/for
 // narrowing remains available beyond that limit.
-@[direct_array_access]
+@[direct_array_access; inline]
 fn (tc &TypeChecker) lexical_parent_link(id flat.NodeId) (flat.NodeId, flat.NodeId, int) {
 	initial_idx := int(id)
 	if initial_idx < 0 || initial_idx >= tc.direct_parent_ids.len {
 		return flat.empty_node, id, 1
 	}
+	memo := tc.lexical_parent_memo
+	if !isnil(memo) && memo.nodes_len == tc.a.nodes.len
+		&& memo.parents_len == tc.direct_parent_ids.len {
+		slot := initial_idx & 2047
+		if memo.generations[slot] == memo.generation && memo.ids[slot] == initial_idx {
+			return memo.parents[slot], memo.children[slot], memo.depths[slot]
+		}
+	}
+	return tc.lexical_parent_link_miss(id)
+}
+
+@[direct_array_access]
+fn (tc &TypeChecker) lexical_parent_link_miss(id flat.NodeId) (flat.NodeId, flat.NodeId, int) {
+	initial_idx := int(id)
 	mut wtc := unsafe { tc }
 	if isnil(wtc.lexical_parent_memo) {
 		wtc.lexical_parent_memo = &LexicalParentMemo{
@@ -213,6 +227,7 @@ fn (tc &TypeChecker) node_outside_unsafe_blocks(idx int) bool {
 
 // lexical_smartcast_key_unused reports that no lexical smartcast of the
 // function being checked can narrow `key` at the node `idx`.
+@[inline]
 fn (tc &TypeChecker) lexical_smartcast_key_unused(idx int, key string) bool {
 	if isnil(tc.smartcast_key_filter) {
 		return false
@@ -225,4 +240,29 @@ fn (tc &TypeChecker) lexical_smartcast_key_unused(idx int, key string) bool {
 		tc.collect_smartcast_keys(mut filter)
 	}
 	return !filter.has(key)
+}
+
+// lexical_smartcasts_unused rules out lexical narrowing of this expression
+// without allocating its composite key when the function has few smartcasts.
+@[inline]
+fn (tc &TypeChecker) lexical_smartcasts_unused(idx int) bool {
+	if isnil(tc.smartcast_key_filter) {
+		return false
+	}
+	mut filter := tc.smartcast_key_filter
+	if idx < filter.lo || idx > filter.hi || filter.lo < 0 {
+		return false
+	}
+	if !filter.ready {
+		tc.collect_smartcast_keys(mut filter)
+	}
+	if filter.index.len > 0 {
+		return false
+	}
+	for key in filter.keys {
+		if tc.expr_key_matches(flat.NodeId(idx), key) {
+			return false
+		}
+	}
+	return true
 }

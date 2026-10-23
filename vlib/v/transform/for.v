@@ -399,7 +399,7 @@ fn (mut t Transformer) transform_for_in_body(id flat.NodeId, node flat.Node) []f
 			iter_info, has_index, body_ids)
 	}
 	iter_shape := flat.source_type_shape(iter_type)
-	effective_iter := if iter_shape.has(.variadic) {
+	mut effective_iter := if iter_shape.has(.variadic) {
 		flat.source_type_id('[]' + flat.source_type_name(iter_type)[3..])
 	} else if iter_shape.has(.pointer_array) {
 		t.trim_pointer_type(iter_type)
@@ -413,7 +413,15 @@ fn (mut t Transformer) transform_for_in_body(id flat.NodeId, node flat.Node) []f
 	if flat.source_type_shape(effective_iter).has(.array_type) || effective_iter == flat.source_type_string
 		|| t.is_fixed_array_type(effective_iter) {
 		body_ids := t.a.children_of(&node)[header_count..].clone()
-		return t.lower_indexed_for_in(id, node, key_id, val_id, container_id, effective_iter,
+		mut collection := container_id
+		literal := t.a.nodes[int(container_id)]
+		if node.op != .amp && flat.source_type_shape(effective_iter).has(.array_type)
+			&& t.array_literal_can_emit_direct(literal) {
+			effective_iter = flat.source_type_id('[${literal.children_count}]${flat.source_type_name(effective_iter)[2..]}')
+			values := t.a.children_of(&literal).clone()
+			collection = t.make_array_literal_typed(values, effective_iter)
+		}
+		return t.lower_indexed_for_in(id, node, key_id, val_id, collection, effective_iter,
 			has_index, body_ids)
 	}
 	return t.rebuild_for_in_stmt(id, node)
@@ -1367,8 +1375,7 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 		t.set_node_typ(int(container), flat.source_type_id(actual_iter_type))
 	} else if elem_needs_ref && actual_iter_type.starts_with('[]') && !isnil(t.tc)
 		&& (elem_name in t.escaping_amp_sources || elem_name in t.escaping_fixed_array_view_sources) {
-		mut seen := map[u32]bool{}
-		if t.escape_value_contains_fixed_array(t.tc.parse_type(elem_type), mut seen) {
+		if t.cached_escape_value_contains_fixed_array(t.tc.parse_type(elem_type)) {
 			// The binding hides its index from argument lowering. Retain each current
 			// buffer before exposing a row, including after growth between iterations.
 			t.mark_fn_used('array.retain_fixed_array_buffer')
@@ -1554,7 +1561,10 @@ fn (mut t Transformer) make_for_stmt(init flat.NodeId, cond flat.NodeId, post fl
 		children_count: flat.child_count(3 + body.len)
 		pos:            src.pos
 		typ:            src.typ
-		flags:          flat.node_flags(src.skip_ownership_drops() || src.kind == .empty, false)
+		flags:          flat.node_flags(src.skip_ownership_drops() || src.kind !in [
+			.for_stmt,
+			.for_in_stmt,
+		], false)
 	})
 }
 
@@ -1812,7 +1822,7 @@ fn (t &Transformer) infer_for_in_elem_type(iter_type_id u32, node flat.Node) u32
 		return flat.source_type_u8
 	}
 	if t.is_fixed_array_type(iter_type_id) {
-		return for_in_fixed_array_elem_type(iter_type_id)
+		return t.for_in_fixed_array_elem_type(iter_type_id)
 	}
 	// Check if the iterable is a range expression
 	if node.children_count > 0 {
@@ -1898,7 +1908,7 @@ fn (t &Transformer) for_in_declared_ref_type(binding_id flat.NodeId, elem_type_i
 }
 
 fn (mut t Transformer) make_for_in_fixed_array_len_expr(s string) flat.NodeId {
-	len_text := for_in_fixed_array_len_text(s)
+	len_text := t.for_in_fixed_array_len_text(s)
 	if is_decimal_text(len_text) {
 		return t.make_int_literal(len_text.int())
 	}
@@ -1915,13 +1925,13 @@ fn (mut t Transformer) make_for_in_fixed_array_len_expr(s string) flat.NodeId {
 	return t.make_ident(len_text)
 }
 
-fn for_in_fixed_array_elem_type(source_id u32) u32 {
+fn (t &Transformer) for_in_fixed_array_elem_type(source_id u32) u32 {
 	source := flat.source_type_name(source_id)
-	result := for_in_fixed_array_elem_type_bytes(source)
+	result := t.for_in_fixed_array_elem_type_bytes(source)
 	return if result == source { source_id } else { flat.source_type_id(result) }
 }
 
-fn for_in_fixed_array_elem_type_bytes(s string) string {
+fn (t &Transformer) for_in_fixed_array_elem_type_bytes(s string) string {
 	clean := trimmed_transform_text(s)
 	if clean.starts_with('[') {
 		mut pos := 0
@@ -1932,7 +1942,8 @@ fn for_in_fixed_array_elem_type_bytes(s string) string {
 			}
 			pos += close_rel + 2
 		}
-		if clean.ends_with(']') {
+		// Generic element arguments can also end in `]`; only strip array dimensions.
+		if t.is_postfix_fixed_array_type(clean[pos..]) {
 			open := transform_trailing_matching_bracket_start(clean, clean.len)
 			if open >= pos {
 				return clean[..open]
@@ -1947,7 +1958,7 @@ fn for_in_fixed_array_elem_type_bytes(s string) string {
 	return clean[..open]
 }
 
-fn for_in_fixed_array_len_text(s string) string {
+fn (t &Transformer) for_in_fixed_array_len_text(s string) string {
 	clean := trimmed_transform_text(s)
 	if clean.starts_with('[') {
 		mut pos := 0
@@ -1958,7 +1969,7 @@ fn for_in_fixed_array_len_text(s string) string {
 			}
 			pos += close_rel + 2
 		}
-		if clean.ends_with(']') {
+		if t.is_postfix_fixed_array_type(clean[pos..]) {
 			open := transform_trailing_matching_bracket_start(clean, clean.len)
 			if open >= pos {
 				return trimmed_transform_text(clean[open + 1..clean.len - 1])

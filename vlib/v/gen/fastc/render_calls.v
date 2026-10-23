@@ -781,7 +781,7 @@ fn (g &Parser) method_function_key_impl(receiver_type u32, name string) string {
 	if g.selfhost && name in ['keys', 'values'] && 'map.${name}' in g.functions {
 		return 'map.${name}'
 	}
-	mut layout_type := fastc_trim_pointer_suffix(flat.source_type_name(method_receiver_type))
+	mut layout_type := fastc_trim_pointer_suffix(flat.source_type_name(g.map_type_through_alias(method_receiver_type)))
 	if layout_type.starts_with('Array_') {
 		layout_type = 'array'
 	} else if layout_type.starts_with('Map_') {

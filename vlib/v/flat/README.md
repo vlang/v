@@ -58,3 +58,9 @@ type already identifies its declaring module. Generic specialization uses it to 
 identity through later import resolution. It requires no allocation, `Node.clone_owned` keeps it,
 and `node_payload_at` returns a static empty payload for this marker. It carries no generic
 parameters or constraints.
+
+`scan_listed_symlinks` records which entries of one directory are symbolic links.
+Pass its `ListedSymlinks` result to `record_listed_source_path_in` with that directory's
+resolved path to avoid a separate metadata query for each regular entry. An unknown listing
+falls back to `record_listed_source_path`; a frozen source-path table remains read-only.
+`discard_replaced_storage` may discard old AST buffers only after every reader uses the replacement.

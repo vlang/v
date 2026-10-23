@@ -158,10 +158,7 @@ fn (mut c H1PooledConn) exchange(req &Request, raw string) !(Response, bool) {
 // is safe for concurrent use; fetch()/Request.do() share one process-global
 // instance (see default_transport).
 //
-// Note: idle_timeout is enforced lazily on checkout of the same pool key; there
-// is no background reaper, so a connection to an origin that is never revisited
-// is reclaimed by the global max_idle_conns cap (or close_idle_connections())
-// rather than on a timer. A time-based reaper is a planned follow-up.
+// Idle connections expire in the background even when their origin is never revisited.
 @[heap]
 pub struct Transport {
 pub mut:
@@ -174,11 +171,12 @@ pub mut:
 	// 0 disables the global cap.
 	max_idle_conns int = 100
 	// idle_timeout is how long an idle connection may sit in the pool before it
-	// is discarded instead of reused.
+	// is closed. Background cleanup runs at intervals of at most one second.
 	idle_timeout time.Duration = 90 * time.second
 mut:
-	mu      &sync.Mutex = sync.new_mutex()
-	h1_idle map[string][]&H1PooledConn
+	mu                  &sync.Mutex = sync.new_mutex()
+	h1_idle             map[string][]&H1PooledConn
+	idle_reaper_running bool
 	// h2_conns holds the one pooled, multiplexed H2MuxConn per pool key (an h2
 	// connection multiplexes all concurrent requests to an origin, unlike the
 	// h1 pool's per-connection list). h2_dial_id tags which dial "owns" the
@@ -403,6 +401,7 @@ fn (mut t Transport) checkin(mut conn H1PooledConn) {
 	}
 	list << conn
 	t.h1_idle[conn.key] = list
+	t.start_idle_reaper_locked()
 	mut evicted := t.evict_oldest_idle_locked('', '')
 	t.mu.unlock()
 	if evicted.h1 != unsafe { nil } {
@@ -415,6 +414,94 @@ fn (mut t Transport) checkin(mut conn H1PooledConn) {
 	if evicted.h2 != unsafe { nil } {
 		evicted.h2.shutdown_when_idle()
 		evicted.h2.release()
+	}
+}
+
+// start_idle_reaper_locked starts one worker while this transport owns connections.
+// The caller must hold t.mu; construction itself never spawns a thread.
+fn (mut t Transport) start_idle_reaper_locked() {
+	if t.idle_reaper_running {
+		return
+	}
+	t.idle_reaper_running = true
+	spawn t.reap_idle_connections()
+}
+
+fn (mut t Transport) reap_idle_connections() {
+	for {
+		t.mu.lock()
+		mut interval := t.idle_timeout / 2
+		if interval < 10 * time.millisecond {
+			interval = 10 * time.millisecond
+		}
+		if interval > time.second {
+			interval = time.second
+		}
+		t.mu.unlock()
+		time.sleep(interval)
+		mut expired := []&H1PooledConn{}
+		mut h2_expired := []&H2MuxConn{}
+		mut h3_expired := []&H3MuxConn{}
+		t.mu.lock()
+		for key in t.h1_idle.keys() {
+			list := t.h1_idle[key] or { continue }
+			mut remaining := []&H1PooledConn{}
+			for conn in list {
+				if time.now() - conn.idle_since > t.idle_timeout || conn.idle_tcp_closed() {
+					expired << conn
+				} else {
+					remaining << conn
+				}
+			}
+			if remaining.len == 0 {
+				t.h1_idle.delete(key)
+			} else {
+				t.h1_idle[key] = remaining
+			}
+		}
+		for key in t.h2_conns.keys() {
+			mut conn := t.h2_conns[key] or { continue }
+			if conn.is_idle_expired(t.idle_timeout) {
+				t.h2_conns.delete(key)
+				t.h2_dial_id.delete(key)
+				h2_expired << conn
+			}
+		}
+		for key in t.h3_conns.keys() {
+			mut conn := t.h3_conns[key] or { continue }
+			conn.qmu.lock()
+			is_expired := conn.active_streams == 0 && time.now() - conn.idle_since > t.idle_timeout
+			conn.qmu.unlock()
+			if is_expired {
+				t.h3_conns.delete(key)
+				t.h3_dial_id.delete(key)
+				h3_expired << conn
+			}
+		}
+		finished := t.h1_idle.len == 0 && t.h2_conns.len == 0 && t.h3_conns.len == 0
+		t.mu.unlock()
+		// Teardown may call back into the transport, so it must run outside t.mu.
+		for mut conn in expired {
+			conn.close_conn()
+		}
+		for mut conn in h2_expired {
+			conn.shutdown_when_idle()
+			conn.release()
+		}
+		for mut conn in h3_expired {
+			conn.shutdown_when_idle()
+			conn.release()
+		}
+		if finished {
+			t.mu.lock()
+			// Check again after teardown: another request may have checked in meanwhile.
+			if t.h1_idle.len == 0 && t.h2_conns.len == 0 && t.h3_conns.len == 0 {
+				t.idle_reaper_running = false
+				t.mu.unlock()
+				return
+			}
+			t.mu.unlock()
+		}
 	}
 }
 
@@ -677,6 +764,7 @@ fn (mut t Transport) round_trip(req &Request, method Method, scheme string, host
 		}
 		resp, reusable := conn.exchange(req, raw) or {
 			conn.close_conn()
+			if err is ProgressCallbackError { return err }
 			// The write helpers do partial writes and cannot report how many
 			// bytes reached the server, so a failed exchange may have delivered
 			// part of the request. Only idempotent methods are safe to replay;
@@ -745,6 +833,7 @@ fn (mut t Transport) tls_fresh_round_trip_ssl(req &Request, key string, raw stri
 	}
 	resp, reusable := conn.exchange(req, raw) or {
 		conn.close_conn()
+		if err is ProgressCallbackError { return err }
 		// Past the TLS handshake the request bytes may have been (partially)
 		// written; a non-idempotent method must not be replayed by the outer
 		// retry loop. (A dial/handshake failure above propagates before this and

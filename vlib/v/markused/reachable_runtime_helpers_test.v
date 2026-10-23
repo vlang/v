@@ -621,8 +621,8 @@ ${body}
 		tc.cur_module = 'unrelated'
 		tc.cur_file = 'unrelated.v'
 		tc.register_file_import('dep', 'other')
-		assert types.unalias_type(tc.parse_type(flat.source_type_id('dep.Number'))) == types.Type(types.int_)
-		assert types.unalias_type(tc.parse_canonical_type(flat.source_type_id('dep.Number'))) == types.Type(types.f64_)
+		assert *types.unalias_type(tc.parse_type(flat.source_type_id('dep.Number'))) == types.Type(types.int_)
+		assert *types.unalias_type(tc.parse_canonical_type(flat.source_type_id('dep.Number'))) == types.Type(types.f64_)
 		collector := CallCollector{ a: a, tc: &tc }
 		mut calls := []string{}
 		mut local_values := map[string]bool{}
@@ -942,4 +942,18 @@ ${call}
 			assert tested[helper]
 		}
 	}
+}
+
+fn test_user_join_path_does_not_keep_os_join_helper() {
+	a, tc := checked_runtime_helper_source("module main
+import os
+fn join_path(a string, b string) string { return a + b }
+fn main() { println(join_path('a', 'b')) }
+")
+	used := mark_used(a, tc)
+	// The qualified helper is a conservative runtime seed; source-call detection
+	// must not add the unqualified helper for this unrelated function.
+	assert !used['join_path_single']
+	full, _ := mark_used_with_generic_usage_full_runtime(a, tc)
+	assert !full['join_path_single']
 }

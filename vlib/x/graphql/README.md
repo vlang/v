@@ -3,6 +3,10 @@
 The `x.graphql` module provides parser and AST definitions for GraphQL queries,
 mutations, subscriptions, and Schema Definition Language (SDL) documents.
 
+Nested nullability assertions use `ListNullabilityOperatorNode.nullability_assertion`,
+an optional pointer to `NullabilityAssertionNode`, to keep recursive AST nodes finite in size.
+`ListTypeNode.node_type` likewise points to its nested `TypeNode`.
+
 ## Usage
 
 ### Parsing a query

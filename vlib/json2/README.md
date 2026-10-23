@@ -37,6 +37,18 @@
 
 `json2` is an experimental JSON parser written from scratch on V.
 
+## Typed map keys
+
+Integer map keys are parsed as the declared integer type with range checks. Invalid
+numeric text and values outside that type's range return errors, including with the
+default decoding options. For example, decoding `{"256":1}` as `map[u8]int` fails.
+
+A `rune` map key is a string containing exactly one Unicode character. Encoding and
+decoding preserve that character, including non-ASCII keys. Code that used numeric
+text such as `"65"` for the code point of `A` should use `"A"` instead. A digit key
+such as `"1"` means the character `1`; empty and multi-character keys are rejected.
+`json2.decode[map[rune]int](json2.encode(values))` round-trips the rune keys.
+
 ## JSON5
 
 Set `json5: true` on the existing encoding or decoding options to use JSON5:
@@ -109,6 +121,8 @@ numbers have the usual floating-point precision limits.
 `strict: true` controls type conversion independently of `json5`: it still rejects
 quoted numbers, non-optional `null` values and fixed arrays of the wrong length.
 `encode_append` and `decode_reuse` accept the same JSON5 options as `encode` and `decode`.
+JSON5 encoding releases temporary map keys. Decoded strings own their text, and decoding releases
+its UTF-8 scratch buffers.
 
 ### Migrating from x.json5
 

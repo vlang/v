@@ -5,6 +5,11 @@ without the regular parser, checker, or AST pipeline, then compiles with bundled
 FastC is experimental and supports a subset of V. An unsupported construct produces an error
 with its source byte offset; FastC does not silently switch to the C backend.
 
+Sum types currently use boxed payloads in FastC. Copying a sum containing a value variant can
+therefore share that variant's storage, unlike the independent value copies in the default
+C backend. Programs relying on sum value snapshots should use the default C backend until
+FastC implements the same copy semantics. Reference-variant support is also incomplete.
+
 As in the default C backend, an `if` condition cannot start with another `if` expression,
 even behind opening parentheses. Assign the inner expression to a variable first.
 Both the C emitter and the native ARM64 parser enforce this rule.
@@ -107,6 +112,9 @@ array literals uses their element storage; integer arrays and pointers retain Fa
 Arrays of anonymous functions retain their parameter and return types when indexed and called.
 Membership tests compare fixed-array elements by value. Single-file bootstrap programs apply
 struct field defaults to empty initializers.
+Promoted fields in pointer embeds support scalar and fixed-array overrides. Overrides copy the
+embedded value, preserving shared defaults and unchanged fields from struct updates. A nil embed
+uses the embedded type's field defaults before applying overrides.
 Sum-type and interface tests narrow later operands of a conjunction, preserving pointer values.
 Generic pointer instances retain pointer depth and mutable storage, including forwarded references.
 `sizeof(int)` uses FastC's target integer width. Returned, global, and struct-field callbacks retain

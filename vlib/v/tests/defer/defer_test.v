@@ -198,3 +198,36 @@ fn test_defer_unsafe_block_is_not_nested_in_enclosing_unsafe() {
 		}
 	}
 }
+
+fn fill_in_defer_inside_unsafe(mut buf []u8) {
+	unsafe {
+		p := &buf[0]
+		defer {
+			p[1] = 20
+			q := p + 2
+			*q = 30
+		}
+		p[0] = 10
+	}
+}
+
+fn fill_in_fn_defer_inside_unsafe(mut buf []u8, n int) {
+	if n > 0 {
+		unsafe {
+			p := &buf[0]
+			defer(fn) {
+				p[1] = 21
+			}
+		}
+	}
+	buf[1] = 99
+}
+
+fn test_defer_inside_unsafe_block_is_inside_it() {
+	mut a := [u8(1), 2, 3]
+	fill_in_defer_inside_unsafe(mut a)
+	assert a == [u8(10), 20, 30]
+	mut b := [u8(1), 2, 3]
+	fill_in_fn_defer_inside_unsafe(mut b, 1)
+	assert b == [u8(1), 21, 3]
+}

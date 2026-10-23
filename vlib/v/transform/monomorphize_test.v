@@ -445,7 +445,7 @@ fn test_concrete_generic_fn_alias_call_expands_multi_return_signature() {
 	tc.type_alias_generic_params['FnMultiReturn'] = ['I', 'O', 'R']
 	tc.fn_ret_types['make_splitter'] = types.Type(types.Alias{
 		name_id:   flat.source_type_id('FnMultiReturn[string, string, string]')
-		base_type: types.Type(types.void_)
+		base_type: &types.Type(types.void_)
 	})
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
@@ -476,7 +476,7 @@ fn test_concrete_generic_fn_alias_call_expands_result_signature() {
 	tc.type_alias_generic_params['ParseFunction'] = ['T']
 	tc.fn_ret_types['literal'] = types.Type(types.Alias{
 		name_id:   flat.source_type_id('ParseFunction[string]')
-		base_type: types.Type(types.void_)
+		base_type: &types.Type(types.void_)
 	})
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
@@ -1327,4 +1327,42 @@ fn test_numeric_specialized_type_decoder_preserves_cached_argument_storage() {
 	missing := flat.source_type_id('NotMaterialized')
 	assert t.decode_single_generic_specialized_type_args(missing) == none
 	assert t.generic_spec_decode_cache.misses[missing]
+}
+
+fn test_void_pointer_staging_keeps_pointer_typed_nil_initializer() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	pointer_type := flat.source_type_voidptr
+	decl_id := t.make_staging_value_decl('pointer_result', pointer_type)
+	decl := t.a.node(decl_id)
+	lhs := t.a.child_node(decl, 0)
+	rhs := t.a.child_node(decl, 1)
+	assert lhs.typ == pointer_type
+	assert rhs.kind == .nil_literal
+}
+
+fn test_generic_argument_qualification_preserves_all_main_named_types() {
+	path := os.join_path(os.vtmp_dir(), 'generic_main_named_types_${os.getpid()}.v')
+	os.write_file(path, 'module main
+type File = int
+enum Kind { one two }
+interface Reader { read() int }
+struct Data {}
+type Choice = int | string
+')!
+	defer { os.rm(path) or {} }
+	mut p := parser.Parser.new(pref.new_preferences())
+	mut a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	for module_name in ['', 'main'] {
+		t.cur_module = module_name
+		for name in ['File', 'Kind', 'Reader', 'Data', 'Choice'] {
+			t.qualified_types.set(name, 'foreign.' + name)
+			assert flat.source_type_name(t.qualify_generic_arg_for_decl_module(flat.source_type_id(name), module_name)) == name
+		}
+	}
 }

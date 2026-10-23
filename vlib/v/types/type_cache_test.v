@@ -260,14 +260,14 @@ fn test_alias_target_parsing_preserves_declaration_module() {
 	for text in ['int', 'string', ' &[]u8 ', '?int', '![]string', 'shared int', 'Item', '&Item'] {
 		fresh := tc.fork_type_parse_view('caller.v', 'dep')
 		expected := if text == 'shared int' {
-			Type(Pointer{ base_type: Type(int_) })
+			Type(Pointer{ base_type: &Type(int_) })
 		} else {
 			fresh.parse_type(flat.source_type_id(text))
 		}
 		parsed := tc.parse_alias_type('dep.Alias', flat.source_type_id(text))
 		assert parsed is Alias
 		assert parsed.name() == 'dep.Alias'
-		assert parsed.base_type == expected
+		assert *parsed.base_type == expected
 	}
 	assert tc.parse_alias_target_type('dep.Alias', flat.source_type_id('Item')).name() == 'dep.Item'
 	assert tc.cur_module == 'caller'
@@ -291,7 +291,7 @@ fn test_context_independent_container_types_match_declaration_views() {
 		assert tc.fn_signature_type('dep.read', flat.source_type_id(text)) == expected
 		alias_typ := tc.parse_alias_type('dep.Alias', flat.source_type_id(text))
 		assert alias_typ is Alias
-		assert alias_typ.base_type == fresh.parse_type(flat.source_type_id(text))
+		assert *alias_typ.base_type == fresh.parse_type(flat.source_type_id(text))
 	}
 	for text in ['map', 'array', 'map[string]Item', 'map[Key]int', 'map[string]int ', '[size]int',
 		'[2 + 3]int', '[0x10]int', 'map[string', '[2', '[2]'] {
@@ -310,17 +310,17 @@ fn test_parse_resolution_fn_type_preserves_nested_main_type_lock() {
 	locked := tc.parse_resolution_type(flat.source_type_id('fn (mut main.Context) bool'))
 	assert locked is FnType
 	assert locked.params.len == 1
-	locked_param := locked.params[0]
+	locked_param := locked.params[0].typ
 	if locked_param is Pointer {
 		assert locked_param.base_type.name() == 'Context'
 	} else {
 		assert false, locked_param.name()
 	}
-	assert locked.params_mut == [true]
+	assert locked.params.map(it.is_mut) == [true]
 
 	local := tc.parse_resolution_type(flat.source_type_id('fn (mut Context) bool'))
 	assert local is FnType
-	local_param := local.params[0]
+	local_param := local.params[0].typ
 	if local_param is Pointer {
 		assert local_param.base_type.name() == 'veb.Context'
 	} else {
@@ -377,12 +377,12 @@ fn test_receiver_embeds_through_alias() {
 	]
 	actual := Type(Alias{
 		name_id:   flat.source_type_id('AliasContext')
-		base_type: Type(Struct{
+		base_type: &Type(Struct{
 			name_id: flat.source_type_id('Context')
 		})
 	})
 	expected := Type(Pointer{
-		base_type: Type(Struct{
+		base_type: &Type(Struct{
 			name_id: flat.source_type_id('veb.Context')
 		})
 	})
@@ -500,15 +500,15 @@ fn test_semantic_type_interner_uses_structural_identity() {
 	a := flat.FlatAst.new()
 	tc := TypeChecker.new(&a)
 	first_id, first := tc.intern_type(Type(Map{
-		key_type:   Type(string_)
-		value_type: Type(Array{
-			elem_type: Type(int_)
+		key_type:   &Type(string_)
+		value_type: &Type(Array{
+			elem_type: &Type(int_)
 		})
 	}))
 	second_id, second := tc.intern_type(Type(Map{
-		key_type:   Type(string_)
-		value_type: Type(Array{
-			elem_type: Type(int_)
+		key_type:   &Type(string_)
+		value_type: &Type(Array{
+			elem_type: &Type(int_)
 		})
 	}))
 	assert first_id == second_id
@@ -516,11 +516,11 @@ fn test_semantic_type_interner_uses_structural_identity() {
 
 	int_alias, _ := tc.intern_type(Type(Alias{
 		name_id:   flat.source_type_id('sample.Number')
-		base_type: Type(int_)
+		base_type: &Type(int_)
 	}))
 	string_alias, _ := tc.intern_type(Type(Alias{
 		name_id:   flat.source_type_id('sample.Number')
-		base_type: Type(string_)
+		base_type: &Type(string_)
 	}))
 	assert int_alias != string_alias
 }
@@ -528,25 +528,14 @@ fn test_semantic_type_interner_uses_structural_identity() {
 fn test_fn_param_mutability_participates_in_type_identity() {
 	a := flat.FlatAst.new()
 	tc := TypeChecker.new(&a)
-	immutable := Type(FnType{
-		params:      [Type(int_)]
-		params_mut:  [false]
-		return_type: Type(void_)
-	})
-	mutable := Type(FnType{
-		params:      [Type(int_)]
-		params_mut:  [true]
-		return_type: Type(void_)
-	})
-	legacy_immutable := Type(FnType{
-		params:      [Type(int_)]
-		return_type: Type(void_)
-	})
+	immutable := Type(tc.fn_type([Type(int_)], &Type(void_), [false]))
+	mutable := Type(tc.fn_type([Type(int_)], &Type(void_), [true]))
+	default_immutable := Type(tc.fn_type([Type(int_)], &Type(void_), []bool{}))
 
 	assert immutable.name() == 'fn(int)'
 	assert mutable.name() == 'fn(mut int)'
-	assert semantic_types_equal(immutable, legacy_immutable)
-	assert semantic_type_hash(immutable) == semantic_type_hash(legacy_immutable)
+	assert semantic_types_equal(immutable, default_immutable)
+	assert semantic_type_hash(immutable) == semantic_type_hash(default_immutable)
 	assert !semantic_types_equal(immutable, mutable)
 	assert semantic_type_hash(immutable) != semantic_type_hash(mutable)
 	immutable_id, _ := tc.intern_type(immutable)
@@ -558,7 +547,7 @@ fn test_fn_param_mutability_participates_in_type_identity() {
 	cloned := clone_owned_type(mutable)
 	assert cloned is FnType
 	cloned_fn := cloned as FnType
-	assert cloned_fn.params_mut == [true]
+	assert cloned_fn.params.map(it.is_mut) == [true]
 	assert cloned.name() == 'fn(mut int)'
 }
 
@@ -566,7 +555,7 @@ fn test_c_type_cache_keys_composite_types_by_type_id() {
 	a := flat.FlatAst.new()
 	tc := TypeChecker.new(&a)
 	typ := Type(Pointer{
-		base_type: Type(Struct{
+		base_type: &Type(Struct{
 			name_id: flat.source_type_id('sample.Item')
 		})
 	})
@@ -581,9 +570,9 @@ fn test_type_name_is_lazily_cached_by_type_id() {
 	a := flat.FlatAst.new()
 	tc := TypeChecker.new(&a)
 	typ := Type(Map{
-		key_type:   Type(string_)
-		value_type: Type(Array{
-			elem_type: Type(int_)
+		key_type:   &Type(string_)
+		value_type: &Type(Array{
+			elem_type: &Type(int_)
 		})
 	})
 	first := tc.type_name(typ)
@@ -604,7 +593,7 @@ fn test_recursive_callback_alias_parses_once_and_keeps_its_abi() {
 	assert base is Map
 	callback := (base as Map).value_type
 	assert callback is FnType
-	param := (callback as FnType).params[0]
+	param := (callback as FnType).params[0].typ
 	assert param is Alias
 	assert (param as Alias).name() == 'Handlers'
 	assert tc.c_type(param) == 'map'
@@ -697,7 +686,7 @@ fn test_generic_text_substitution_preserves_mut_fn_pointer_params() {
 	callback_type := tc.parse_type(flat.source_type_id(substituted))
 	assert callback_type is FnType
 	fn_type := callback_type as FnType
-	assert fn_type.params_mut == [true]
+	assert fn_type.params.map(it.is_mut) == [true]
 	assert fn_compatible_param_type(fn_type, 0).name() == '&&Dog'
 	assert tc.c_type(callback_type) == 'fn_ptr:string|Dog**'
 	assert subst_generic_signature_param_text('f fn (mut it T) string', flat.TypeTextList.from_names(['&Dog']).ids, ['T']) == 'fn(mut &Dog) string'
@@ -766,4 +755,212 @@ fn test_caller_type_name_qualification_preserves_enclosing_generic_parameters() 
 	assert flat.source_type_name(tc.qualify_type_name_at(flat.source_type_id('int'), id, 'consumer')) == 'int'
 	assert flat.source_type_name(tc.qualify_type_name_at(flat.source_type_id('UnknownName'), id, 'consumer')) == 'UnknownName'
 	assert tc.cur_module == 'unrelated'
+}
+
+fn test_node_types_share_stable_canonical_storage() {
+	ast := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&ast)
+	tc.reset_node_caches(4096)
+	first := Type(Array{ elem_type: &Type(int_) })
+	second := Type(Array{ elem_type: &Type(int_) })
+	tc.remember_expr_type(flat.NodeId(0), first)
+	tc.remember_expr_type(flat.NodeId(1), second)
+	stored := tc.expr_type_values[0]
+	assert voidptr(stored) == voidptr(tc.expr_type_values[1])
+	for i in 2 .. 4096 {
+		typ := Type(Struct{ name_id: flat.source_type_id('Item${i}') })
+		tc.remember_expr_type(flat.NodeId(i), typ)
+	}
+	assert voidptr(stored) == voidptr(tc.expr_type_values[0])
+	assert stored.name() == '[]int'
+	assert tc.cached_expr_type(flat.NodeId(4095))? == Type(Struct{ name_id: flat.source_type_id('Item4095') })
+}
+
+fn test_integer_widening_uses_semantic_types_and_operand_positions() {
+	mut a := flat.FlatAst.new()
+	left := a.add_node(flat.Node{ kind: .ident, value: 'left' })
+	right := a.add_node(flat.Node{ kind: .ident, value: 'right' })
+	a.children << [left, right]
+	expr := a.add_node(flat.Node{
+		kind:           .infix
+		op:             .plus
+		children_count: 2
+	})
+	mut tc := TypeChecker.new(&a)
+	tc.reset_node_caches(a.nodes.len)
+	tc.trust_checked_expr_types = true
+	tc.remember_expr_type(left, Type(u64_))
+	tc.remember_expr_type(right, Type(u128_))
+	narrow := [Type(int_), Type(u64_), Type(usize_), Type(rune_)]
+	for typ in narrow {
+		assert tc.widen_mixed_integer_expr_type(expr, typ) == Type(u128_)
+	}
+	alias := Type(Alias{ name_id: flat.source_type_id('user.int'), base_type: &Type(int_) })
+	unchanged := [Type(bool_), Type(f64_), Type(string_), alias]
+	for typ in unchanged {
+		assert tc.widen_mixed_integer_expr_type(expr, typ) == typ
+	}
+	for op in [flat.Op.eq, .logical_and, .left_shift, .right_shift] {
+		a.nodes[int(expr)].op = op
+		assert tc.widen_mixed_integer_expr_type(expr, Type(u64_)) == Type(u64_)
+	}
+	tc.remember_expr_type(left, Type(i128_))
+	assert tc.widen_mixed_integer_expr_type(expr, Type(int_)) == Type(i128_)
+}
+
+fn test_parsed_descriptors_borrow_canonical_storage() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.fast_type_text_refs = true
+	parsed := tc.parse_type(flat.source_type_id('[]int'))
+	annotated := tc.parse_type_ref(flat.source_type_id('[]int'))
+	canonical := tc.parse_canonical_type_cached(flat.source_type_id('[]int'))
+	assert voidptr(parsed) == voidptr(annotated)
+	assert voidptr(parsed) == voidptr(canonical)
+	for i in 1 .. 1024 {
+		tc.parse_type(flat.source_type_id('[${i}]int'))
+	}
+	assert voidptr(parsed) == voidptr(tc.parse_type(flat.source_type_id('[]int')))
+	mut value := *parsed
+	value = Type(string_)
+	assert value.name() == 'string'
+	assert parsed.name() == '[]int'
+}
+
+fn test_field_caches_share_canonical_descriptors() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	integer := tc.parse_type(flat.source_type_id('int'))
+	fields := [
+		StructField{ name: 'left', typ: *integer },
+		StructField{ name: 'right', typ: *integer },
+	]
+	owner := flat.source_type_id('Pair')
+	tc.structs['Pair'] = fields
+	tc.cache_direct_struct_field_types()
+	shared := tc.type_cache.struct_field_shared[owner] or { panic('missing Pair') }
+	left := shared.values['left'] or { panic('missing left') }
+	right := shared.values['right'] or { panic('missing right') }
+	assert voidptr(left) == voidptr(integer)
+	assert voidptr(right) == voidptr(integer)
+	assert tc.struct_field_type(owner, 'left')? == Type(int_)
+	slot := struct_field_cache_slot(owner, 'left')
+	assert voidptr(tc.type_cache.struct_field_recent_values[slot]) == voidptr(integer)
+	tc.clear_field_lookup_cache()
+	// A computed lookup must repopulate the private table with the same descriptor.
+	tc.type_cache.struct_field_shared.clear()
+	tc.type_cache.struct_field_complete.clear()
+	assert tc.struct_field_type(owner, 'right')? == Type(int_)
+	private := tc.type_cache.struct_field_entries[owner] or { panic('missing Pair') }
+	cached := private.values['right'] or { panic('missing right') }
+	assert voidptr(cached) == voidptr(integer)
+}
+
+fn test_function_signature_owns_canonical_parameter_edges() {
+	a := flat.FlatAst.new()
+	tc := TypeChecker.new(&a)
+	integer := tc.parse_type(flat.source_type_id('int'))
+	mut parameters := [Type(int_), Type(int_)]
+	result := Type(string_)
+	signature := tc.fn_type(parameters, result, [false, true])
+	parameters[0] = Type(bool_)
+	assert signature.params.len == 2
+	assert signature.params[0].typ.name() == 'int'
+	assert !signature.params[0].is_mut
+	assert signature.params[1].is_mut
+	assert voidptr(signature.params[0].typ) == voidptr(integer)
+	assert voidptr(signature.params[1].typ) == voidptr(integer)
+	assert voidptr(signature.return_type) == voidptr(tc.parse_type(flat.source_type_id('string')))
+}
+
+fn test_type_traversal_borrows_each_recursive_edge() {
+	integer := &Type(int_)
+	mut aliases := integer
+	mut pointers := integer
+	mut mixed := integer
+	for i in 0 .. 128 {
+		aliases = &Type(Alias{ name_id: flat.source_type_id('Alias${i}'), base_type: aliases })
+		pointers = &Type(Pointer{ base_type: pointers })
+		parent := &Type(Pointer{ base_type: mixed })
+		mixed = &Type(Alias{ name_id: flat.source_type_id('Mixed${i}'), base_type: parent })
+	}
+	assert *unalias_type(aliases) == *integer
+	assert unwrap_all_pointers(pointers) == *integer
+	assert unwrap_pointer(pointers) is Pointer
+	assert unalias_and_unwrap_pointer_type(mixed) == *integer
+	assert aliases is Alias
+	assert pointers is Pointer
+	assert mixed is Alias
+}
+
+fn test_unalias_borrows_the_original_descriptor() {
+	base := Type(Array{ elem_type: &Type(int_) })
+	inner := Type(Alias{ name_id: flat.source_type_id('Inner'), base_type: &base })
+	outer := Type(Alias{ name_id: flat.source_type_id('Outer'), base_type: &inner })
+	assert voidptr(unalias_type(&base)) == voidptr(&base)
+	assert voidptr(unalias_type(&inner)) == voidptr(&base)
+	assert voidptr(unalias_type(&outer)) == voidptr(&base)
+	mut replacement := *unalias_type(&outer)
+	replacement = Type(string_)
+	assert replacement is String
+	assert base is Array
+	assert outer.name() == 'Outer'
+}
+
+fn retained_type_reference() &Type {
+	local := Type(Primitive{ props: .integer, size: 16 })
+	return new_type_reference(local)
+}
+
+fn test_new_type_reference_owns_its_descriptor_copy() {
+	reference := retained_type_reference()
+	mut original := Type(int_)
+	copy := new_type_reference(original)
+	original = Type(string_)
+	for i in 0 .. 128 {
+		other := new_type_reference(Type(Primitive{ props: .integer, size: u8(i) }))
+		assert other is Primitive
+		assert other.size == u8(i)
+	}
+	assert original is String
+	assert copy is Primitive
+	assert copy.size == 0
+	assert reference is Primitive
+	assert reference.size == 16
+}
+
+fn test_cached_expr_type_references_preserve_storage_and_visibility() {
+	ast := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&ast)
+	tc.reset_node_caches(8)
+	tc.remember_expr_type(flat.NodeId(1), Type(int_))
+	tc.remember_expr_type(flat.NodeId(5), Type(string_))
+	dense := tc.cached_expr_type_ref(flat.NodeId(1))
+	assert !isnil(dense)
+	assert voidptr(dense) == voidptr(tc.expr_type_values[1])
+	tc.parallel_check_sparse = true
+	tc.check_range_lo = 0
+	tc.check_range_hi = 4
+	assert isnil(tc.cached_expr_type_ref(flat.NodeId(5)))
+	tc.sparse_expr_type_values[5] = Type(bool_)
+	sparse := tc.cached_expr_type_ref(flat.NodeId(5))
+	assert !isnil(sparse)
+	assert *sparse == Type(bool_)
+	for i in 8 .. 4096 {
+		tc.sparse_expr_type_values[i] = Type(int_)
+	}
+	tc.sparse_expr_type_values[5] = Type(string_)
+	assert *sparse == Type(bool_)
+	assert *dense == Type(int_)
+	assert tc.cached_expr_type(flat.NodeId(5))? == Type(string_)
+
+	mut probe := tc.fork_storage_observation_view()
+	assert *probe.cached_expr_type_ref(flat.NodeId(1)) == Type(int_)
+	assert *probe.cached_expr_type_ref(flat.NodeId(5)) == Type(string_)
+	probe.sparse_expr_type_values[5] = Type(u64_)
+	assert *probe.cached_expr_type_ref(flat.NodeId(5)) == Type(u64_)
+	assert *tc.cached_expr_type_ref(flat.NodeId(5)) == Type(string_)
+	tc.invalidate_checked_expr_type(1)
+	assert isnil(tc.cached_expr_type_ref(flat.NodeId(1)))
+	assert *dense == Type(int_)
 }

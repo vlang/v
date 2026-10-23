@@ -107,20 +107,38 @@ fn (mut g Parser) fastc_sumtype_str_helper(c_type string) ?string {
 	mut body := 'string ${fn_name}(${base} it) {\n\tswitch (it._typ) {\n'
 	mut variant_keys := g.sum_type_variants.keys()
 	variant_keys.sort()
+	// V prints a sum value as `Sum(payload)`, with the sum type's short name, as the
+	// C backend's transform does: a string payload is quoted, a rune one is in
+	// backticks, and any other alias variant keeps its own wrapper (`Res(Ints([1]))`).
+	sum_display := base.all_after_last('__')
 	for key in variant_keys {
 		if !key.starts_with('${base}|') {
 			continue
 		}
 		variant := key.all_after('|')
-		formatted := g.fastc_struct_field_str_expression('(*(${variant} *)it._object)', variant) or {
+		payload := '(*(${variant} *)it._object)'
+		variant_base := flat.source_type_name(g.underlying_alias_type(flat.source_type_id(variant)))
+		mut formatted := g.fastc_struct_field_str_expression(payload, variant_base) or {
 			g.spawn_helpers.delete(fn_name)
 			return none
 		}
+		if variant_base == 'rune' {
+			formatted = fastc_wrapped_str_expression('`', formatted, '`')
+		} else if variant_base != variant && variant_base != 'string' {
+			alias_display := variant.all_after_last('__')
+			formatted = fastc_wrapped_str_expression('${alias_display}(', formatted, ')')
+		}
+		formatted = fastc_wrapped_str_expression('${sum_display}(', formatted, ')')
 		body += '\t\tcase __v_typeid_${variant}: return ${formatted};\n'
 	}
 	body += '\t}\n\treturn _S("unknown");\n}'
 	g.spawn_helpers[fn_name] = body
 	return fn_name
+}
+
+// fastc_wrapped_str_expression returns the C string expression `prefix + value + suffix`.
+fn fastc_wrapped_str_expression(prefix string, value string, suffix string) string {
+	return 'builtin__string_plus(builtin__string_plus(_S("${prefix}"), ${value}), _S("${suffix}"))'
 }
 
 // fastc_sumtype_type_name_helper generates a `type_name()` helper for a boxed
@@ -792,6 +810,12 @@ fn fastc_c_string(literal string) !string {
 			}
 			if raw[i + 1] == `e` {
 				result.write_string('\\033')
+				i += 2
+				continue
+			}
+			if raw[i + 1] == `$` {
+				// V escapes `$` to keep it out of an interpolation; C has no `\$` escape.
+				result.write_u8(`$`)
 				i += 2
 				continue
 			}

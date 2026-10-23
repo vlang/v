@@ -255,3 +255,29 @@ fn test_vschannel_parse_response_normalizes_connect_failure_output() {
 	}
 	assert false
 }
+
+fn test_proxy_response_parsing_preserves_encoded_representations() {
+	for encoding in ['gzip', 'deflate', 'br'] {
+		compressed := match encoding {
+			'gzip' { gzip.compress('encoded upstream body'.bytes())! }
+			'deflate' { zlib.compress('encoded upstream body'.bytes())! }
+			else { brotli.compress('encoded upstream body'.bytes())! }
+		}
+		for chunked in [false, true] {
+			framing := if chunked {
+				'Transfer-Encoding: chunked'
+			} else {
+				'Content-Length: ${compressed.len}'
+			}
+			body := if chunked {
+				'${compressed.len:x}\r\n${compressed.bytestr()}\r\n0\r\n\r\n'
+			} else {
+				compressed.bytestr()
+			}
+			wire := 'HTTP/1.1 200 OK\r\nContent-Encoding: ${encoding}\r\n${framing}\r\n\r\n${body}'
+			assert parse_response(wire)!.body == 'encoded upstream body'
+			assert parse_received_response(wire, ReceivedResponseInfo{ raw_body: true })!.body.bytes() == compressed
+			assert vschannel_parse_response(wire, 0, raw_body: true)!.body.bytes() == compressed
+		}
+	}
+}

@@ -54,4 +54,3 @@ pub fn (mut g GSet[T]) merge(other &GSet[T]) {
 		g.main_set[key] = 1
 	}
 }
-

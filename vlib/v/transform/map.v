@@ -1,7 +1,7 @@
 module transform
 
 import v.flat
-import v.types
+import v.types { unalias_type }
 
 // Map literals normally add about 12 transform nodes per entry. Keep the
 // estimate conservative because ownership cleanup and nested values can add
@@ -236,7 +236,7 @@ fn (t &Transformer) fixed_array_empty_init_requires_deferral(elem_type_id u32) b
 	}
 	// Struct defaults can recursively synthesize collection literals that are not
 	// represented by children of the external initializer.
-	return types.unalias_type(t.tc.parse_type(clean_type_source_id)) is types.Struct
+	return unalias_type(t.tc.parse_type(clean_type_source_id)) is types.Struct
 }
 
 fn (t &Transformer) fixed_array_empty_init_may_expand(elem_type_id u32) bool {
@@ -259,7 +259,7 @@ fn (t &Transformer) fixed_array_empty_init_may_expand(elem_type_id u32) bool {
 	}
 	// Struct fields can carry runtime defaults. Treat every struct conservatively here;
 	// this estimate only decides whether lowering should leave the bounded worker arena.
-	return types.unalias_type(t.tc.parse_type(clean_type_source_id)) is types.Struct
+	return unalias_type(t.tc.parse_type(clean_type_source_id)) is types.Struct
 }
 
 // external_map_tree_expansion_estimate counts writes caused by lowering an initializer
@@ -1101,10 +1101,11 @@ fn (t &Transformer) collection_const_expr_for_ident(id flat.NodeId) ?flat.NodeId
 }
 
 fn (t &Transformer) map_const_expr_for_ident(id flat.NodeId) ?flat.NodeId {
+	expr_id := t.collection_const_expr_for_ident(id) or { return none }
 	if !flat.source_type_shape(t.clean_map_type(t.node_type(id))).has(.map_type) {
 		return none
 	}
-	return t.collection_const_expr_for_ident(id)
+	return expr_id
 }
 
 fn (t &Transformer) sum_default_may_expand(typ_id u32) bool {
@@ -1426,8 +1427,8 @@ fn (mut t Transformer) forwarded_return_conversion_expansion_estimate(actual_typ
 	if depth >= 32 || !t.forwarded_slot_conversion_supported(actual_type, expected_type) {
 		return 0
 	}
-	actual := forwarded_return_unalias_type(actual_type)
-	expected := forwarded_return_unalias_type(expected_type)
+	actual := unalias_type(actual_type)
+	expected := unalias_type(expected_type)
 	if actual is types.OptionType && expected is types.OptionType {
 		return t.forwarded_return_conversion_expansion_estimate(actual.base_type, expected.base_type, depth + 1)
 	}
@@ -1441,22 +1442,6 @@ fn (mut t Transformer) forwarded_return_conversion_expansion_estimate(actual_typ
 		if actual is types.ArrayFixed {
 			return t.forwarded_return_conversion_expansion_estimate(actual.elem_type, expected.elem_type, depth + 1)
 		}
-	}
-	if actual is types.Map && expected is types.Map {
-		key_estimate := t.forwarded_return_conversion_expansion_estimate(actual.key_type, expected.key_type, depth + 1)
-		if key_estimate > deferred_map_expansion_threshold {
-			return key_estimate
-		}
-		value_estimate := t.forwarded_return_conversion_expansion_estimate(actual.value_type, expected.value_type, depth + 1)
-		if value_estimate > deferred_map_expansion_threshold - key_estimate {
-			return deferred_map_expansion_threshold + 1
-		}
-		conversion_estimate := key_estimate + value_estimate
-		lookup_zero_estimate := t.zero_value_expansion_estimate(flat.NodeId(-1), t.semantic_type_name(actual.value_type))
-		if lookup_zero_estimate > deferred_map_expansion_threshold - conversion_estimate {
-			return deferred_map_expansion_threshold + 1
-		}
-		return conversion_estimate + lookup_zero_estimate
 	}
 	if actual !is types.ArrayFixed || expected !is types.ArrayFixed {
 		return 0
@@ -1732,6 +1717,16 @@ fn (mut t Transformer) make_new_map_call(map_type_id u32) flat.NodeId {
 	args << t.make_ident(eq_fn)
 	args << t.make_ident(clone_fn)
 	args << t.make_ident(free_fn)
+	if !isnil(t.tc) {
+		key := t.tc.parse_type(key_storage_type_source_id)
+		value := t.tc.parse_type(value_type_source_id_10)
+		if t.tc.requires_aligned_allocation(key) || t.tc.requires_aligned_allocation(value) {
+			args << t.make_type_alignment(key_storage_type_source_id)
+			args << t.make_type_alignment(value_type_source_id_10)
+			t.mark_fn_used('new_map_aligned')
+			return t.make_call_typed('new_map_aligned', args, map_type_id)
+		}
+	}
 	return t.make_call_typed('new_map', args, map_type_id)
 }
 
@@ -1740,7 +1735,7 @@ fn (t &Transformer) new_map_call_type(node flat.Node) u32 {
 		return u32(0)
 	}
 	callee := t.a.child_node(&node, 0)
-	if callee.kind != .ident || callee.value != 'new_map' {
+	if callee.kind != .ident || callee.value !in ['new_map', 'new_map_aligned'] {
 		return u32(0)
 	}
 	key_size := t.a.child_node(&node, 1)
@@ -1765,7 +1760,15 @@ fn map_callback_names(key_type string) (string, string, string, string) {
 	} else if key_type in ['int', 'isize', 'usize', 'uint', 'voidptr', 'charptr', 'byteptr']
 		|| key_type.starts_with('&') {
 		// Match the target's key storage, not the host or a fixed 32-bit int.
-		size_suffix = if types.platform_int_bits() == 32 { '4' } else { '8' }
+		// Portable C (`-os cross`) defines the `_w` callbacks as the ones for the
+		// pointer width of the C compiler's target.
+		size_suffix = if types.platform_int_c_spelling() == types.portable_int_c_type {
+			'w'
+		} else if types.platform_int_bits() == 32 {
+			'4'
+		} else {
+			'8'
+		}
 	} else if key_type in ['i64', 'u64', 'f64']
 		|| key_type.contains('Arc[') || key_type.contains('Arc_') {
 		size_suffix = '8'
@@ -1892,8 +1895,31 @@ fn (mut t Transformer) make_map_get_expr(map_expr flat.NodeId, base_type_id u32,
 	} else {
 		effective_value_type
 	})
+	map_addr := t.runtime_addr(map_expr, base_type_id)
+	// Lowered mutable receivers already use pointer storage. Keep that type on a
+	// fresh expression so later generic annotation does not resolve the source value.
+	// Shared values keep their identity so cgen takes the payload's address.
+	mut typed_map_addr := map_addr
+	if flat.source_type_shape(base_type_id).has(.pointer) && !t.expr_is_shared_value(map_addr) {
+		// Generic bodies can retain the source value type on the operand. The
+		// pointer cast must read the same runtime address as its typed child.
+		// A lowered value temporary instead needs its own map storage addressed.
+		addr_node := t.a.node(map_addr)
+		mut addr_type := base_type_id
+		if addr_node.kind == .ident && !t.mut_param_values[addr_node.value]
+			&& !t.pointer_value_rvalues[addr_node.value] {
+			stored_type := t.normalize_type_alias(t.var_type(addr_node.value))
+			stored_shape := flat.source_type_shape(stored_type)
+			if stored_shape.has(.map_type) && !stored_shape.has(.pointer)
+				&& !t.generic_arg_is_unresolved(stored_type) {
+				addr_type = stored_type
+			}
+		}
+		typed_addr := t.a.add_node(flat.Node{ ...addr_node, typ: addr_type })
+		typed_map_addr = t.make_cast(base_type_id, typed_addr, base_type_id)
+	}
 	call := t.make_call_typed('map__get', [
-		t.runtime_addr(map_expr, base_type_id),
+		typed_map_addr,
 		t.make_prefix(.amp, t.make_ident(key_name)),
 		t.make_prefix(.amp, t.make_ident(zero_name)),
 	], flat.source_type_voidptr)
@@ -2137,7 +2163,9 @@ fn (t &Transformer) const_expr_for_ident(id flat.NodeId) ?flat.NodeId {
 		return t.tc.const_exprs[key] or { return none }
 	}
 	if expr_id := t.tc.const_exprs[node.value] {
-		return expr_id
+		if t.tc.bare_const_key_is_visible_in_module(node.value, t.cur_module) {
+			return expr_id
+		}
 	}
 	return none
 }
@@ -2246,7 +2274,7 @@ fn (mut t Transformer) try_lower_map_index_expr(id flat.NodeId, node flat.Node) 
 	t.pending_stmts << t.make_decl_assign_typed(key_name, t.transform_expr_for_type(key_id, key_type_source_id_9), t.map_key_storage_type(key_type_source_id_9))
 	cleanup_key := !isnil(t.tc) && t.map_key_expr_creates_owned_value(key_id, key_type_source_id_9)
 		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(key_type_source_id_9))
-	if !isnil(t.tc) && t.tc.ownership_index_read_moves_value(id)
+	if !isnil(t.tc) && (source_is_owned_temporary || t.tc.ownership_index_read_moves_value(id))
 		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(value_type_source_id_11)) {
 		result := t.lower_owned_map_index_move(map_source_id, map_expr, base_type_source_id, key_name, value_type_source_id_11)
 		if cleanup_key {
@@ -3364,10 +3392,13 @@ fn (mut t Transformer) lower_map_index_compound_with_info(info MapIndexInfo, map
 		rhs = t.transform_expr(rhs_id)
 	}
 	lhs := t.make_ident(current_name)
-	new_value := if info.value_type == flat.source_type_string && op == .plus {
-		t.make_call_typed('string__plus', [lhs, rhs], flat.source_type_string)
+	mut new_value := flat.empty_node
+	if method_name := t.map_value_operator_method(info, op) {
+		new_value = t.make_call_typed(method_name, [lhs, rhs], info.value_type)
+	} else if info.value_type == flat.source_type_string && op == .plus {
+		new_value = t.make_call_typed('string__plus', [lhs, rhs], flat.source_type_string)
 	} else {
-		t.make_infix(op, lhs, rhs)
+		new_value = t.make_infix(op, lhs, rhs)
 	}
 	t.copy_translated_map_update_pos(rhs_id, [lhs, new_value])
 	result << t.make_assign(t.make_ident(current_name), new_value)
@@ -3378,6 +3409,77 @@ fn (mut t Transformer) lower_map_index_compound_with_info(info MapIndexInfo, map
 	}
 	t.append_map_value_drop_before_set(map_expr, info.base_type, key_name, info.value_type, mut result)
 	result << t.make_map_set_stmt(map_expr, info.base_type, key_name, current_name)
+}
+
+// map_value_operator_method returns the operator method that `m[k] op= v`
+// calls when the map's value type, or the type it aliases, overloads `op`.
+// The method is resolved the way try_lower_struct_compound_assign resolves it
+// for a plain variable, so an operator declared on an alias wins over its
+// parent's.
+fn (mut t Transformer) map_value_operator_method(info MapIndexInfo, op flat.Op) ?string {
+	op_name := struct_operator_symbol(op) or { return none }
+	for candidate in t.map_value_alias_candidates(info) {
+		if candidate == 0 || flat.source_type_shape(candidate).has(.pointer) {
+			continue
+		}
+		operator_type := t.compound_assign_operator_type_candidate(candidate, op_name) or {
+			continue
+		}
+		method_name := t.struct_operator_fn_name(operator_type, op_name) or { continue }
+		t.mark_struct_operator_used_name(method_name)
+		return method_name
+	}
+	return none
+}
+
+// map_value_alias_candidates lists the spellings of a map's value type, most
+// specific first. info.value_type has its aliases normalized away
+// (`map[string]Money` gives `int`), so the map's raw variable type and the type
+// the checker gave the map expression come first, when they name the same type.
+fn (t &Transformer) map_value_alias_candidates(info MapIndexInfo) []u32 {
+	mut candidates := []u32{cap: 3}
+	normalized_value_type := t.normalize_type_alias(info.value_type)
+	if raw_map_type := t.raw_var_type_for_expr(info.base_id) {
+		mut clean := t.trimmed_type_id(raw_map_type)
+		for _ in 0 .. 8 {
+			if flat.source_type_shape(clean).has(.shared_type) {
+				clean = t.unshared_type_id(clean)
+			} else if flat.source_type_shape(clean).has(.pointer) {
+				clean = t.trimmed_type_id(t.trim_pointer_type(clean))
+			} else {
+				break
+			}
+		}
+		raw_value_type := t.map_value_type(clean)
+		if raw_value_type != 0 && raw_value_type != info.value_type
+			&& t.normalize_type_alias(raw_value_type) == normalized_value_type {
+			candidates << raw_value_type
+		}
+	}
+	if !isnil(t.tc) {
+		if base_type := t.tc.expr_type(info.base_id) {
+			mut clean := base_type
+			for _ in 0 .. 32 {
+				if clean is types.Alias {
+					clean = *clean.base_type
+				} else if clean is types.Pointer {
+					clean = *clean.base_type
+				} else {
+					break
+				}
+			}
+			if clean is types.Map {
+				checker_value_type := t.tc.type_name(clean.value_type)
+				if checker_value_type != 0 && checker_value_type != info.value_type
+					&& checker_value_type !in candidates
+					&& t.normalize_type_alias(checker_value_type) == normalized_value_type {
+					candidates << checker_value_type
+				}
+			}
+		}
+	}
+	candidates << info.value_type
+	return candidates
 }
 
 fn (mut t Transformer) copy_translated_map_update_pos(source flat.NodeId, targets []flat.NodeId) {

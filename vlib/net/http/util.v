@@ -69,12 +69,12 @@ fn vschannel_request_error(err_code int) IError {
 		err_code)
 }
 
-fn vschannel_parse_response(response_text string, err_code int) !Response {
+fn vschannel_parse_response(response_text string, err_code int, opts ResponseParseOptions) !Response {
 	if response_text.len < 5 || response_text[..5].to_lower() != 'http/' {
 		if vschannel_should_report_connect_failure(err_code)
 			|| vschannel_looks_like_connect_failure_response(response_text) {
 			return vschannel_connect_error(err_code)
 		}
 	}
-	return parse_response(response_text)
+	return parse_response_with_options(response_text, opts)
 }

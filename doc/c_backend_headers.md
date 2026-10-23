@@ -18,6 +18,8 @@ program declares itself, such as `fn C.getpgrp() int` or a Win32 function in Win
 which nothing else would declare. Runtime bindings are marked used so cached modules
 retain their prototypes. Native backends retain C declarations without rooting same-named
 V functions.
+Mark C functions supplied by linked objects with `@[c_extern]` so their prototypes remain
+available even when the same V file includes an unrelated system header.
 With `-target-libc-headers`, `<errno.h>` owns the errno accessor declarations.
 This avoids conflicting `i32*` prototypes on targets whose `int32_t` is `long`,
 such as ARM newlib.
@@ -111,6 +113,9 @@ FreeBSD resident memory lookup also uses V-owned sysctl identifiers without `lib
 Portable `-os cross` snapshots and `-is_o` objects embed their V-owned native runtime helpers,
 so standalone C consumers do not need helper paths from the compiler checkout. These modes
 and `-no-builtin` use compatibility headers when complete V bindings are unavailable.
+On Linux, these system headers supply the `syscall` declaration for the thread ID helper.
+Headerless output retains its own declaration, so object builds avoid redeclaring it with
+different linkage attributes.
 
 Portable compiler snapshots generated with `-cross cmd/v` or `-os cross cmd/v` supply
 their runtime declarations and helper definitions from V without include directives on

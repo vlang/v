@@ -1,0 +1,18 @@
+// The `mut` option arguments of a generic instance must hold the parameter's payload, as
+// outside generic functions.
+fn fill(mut a ?[]int) {
+	a = [7, 8, 9]
+}
+
+fn fill_through[T](mut x ?T) {
+	fill(mut x)
+}
+
+fn main() {
+	mut pair := ?[2]int([1, 2]!)
+	fill_through(mut pair)
+	// An instance whose payload is stored as expected is accepted.
+	mut ints := ?[]int([1])
+	fill_through(mut ints)
+	println('${pair} ${ints}')
+}

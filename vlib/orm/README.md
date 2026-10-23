@@ -21,6 +21,41 @@ and returns an error for `UNIQUE`, `DEFAULT` and `REFERENCES`, which it cannot d
 > the removal date; until then the compiler emits a migration notice.
 > See https://github.com/vlang/v/issues/27001 for details.
 
+## Constructing infix expressions
+
+`orm.InfixType.right` has type `&orm.Primitive`. When constructing an expression directly,
+store the operand as an `orm.Primitive` and pass its address:
+
+```v ignore
+import orm
+
+operand := orm.Primitive(2)
+expression := orm.InfixType{
+    name: 'stock'
+    operator: .add
+    right: &operand
+}
+```
+
+Code that previously assigned a `Primitive` value to `right` should use `&operand`.
+Read the operand with `*expression.right`. The reference gives recursive expressions
+a finite layout; SQL arithmetic and parameter binding keep their existing behavior.
+
+## Inserting records
+
+Bind a struct literal to a variable before inserting it:
+
+```v ignore
+product := Product{name: 'b'}
+sql db {
+    insert product into Product
+}!
+```
+
+An inline struct literal after `insert` is rejected during compilation, including a
+qualified literal imported from another module. A qualified table type also supports
+module names that coincide with SQL keywords, such as `into.Product`.
+
 ## Nullable
 
 For a nullable column, use an option field. If the field is non-option, the column will be defined

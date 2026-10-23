@@ -483,7 +483,12 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 		omitted_end := range_index + 1 == close
 		is_fixed_array := flat.source_type_name(base_layout_type).starts_with('FixedArray_')
 		is_raw_fixed_array := is_fixed_array && g.fixed_array_uses_raw_storage(base_tokens)
-		needs_receiver_temporary := omitted_end && base_tokens.len > 1 && !is_raw_fixed_array
+		// The reader folds a call base (`make_values()[1..]`) into one token carrying its C
+		// text. It is still an expression, so the omitted end reads the length from a
+		// temporary instead of evaluating the call a second time.
+		base_is_expression := base_tokens.len > 1 || (base_tokens[0].source.contains('(')
+			&& !flat.source_type_name(base_type).ends_with('*'))
+		needs_receiver_temporary := omitted_end && base_is_expression && !is_raw_fixed_array
 		receiver_name := '__vf_slice_receiver'
 		receiver_source := if needs_receiver_temporary { receiver_name } else { base_source }
 		receiver_is_pointer := flat.source_type_name(base_type).ends_with('*') && !needs_receiver_temporary
@@ -714,7 +719,21 @@ fn (g &Parser) render_nested_array_access_expression(tokens []FastcExpressionTok
 			needle += '[${next_index}]'
 			access_end = next_close
 		}
-		replacement := g.render_array_access_expression(tokens[i..access_end + 1]) or { continue }
+		mut member_end := access_end + 1
+		for member_end + 1 < tokens.len && tokens[member_end].tok == .dot
+			&& tokens[member_end + 1].tok == .name {
+			if member_end + 2 < tokens.len && tokens[member_end + 2].tok == .lpar { break }
+			member_end += 2
+		}
+		mut replacement := g.render_array_access_expression(tokens[i..access_end + 1]) or { continue }
+		if member_end > access_end + 1 {
+			if member := g.render_indexed_member_receiver(tokens[i..member_end]) {
+				for part in tokens[access_end + 1..member_end] {
+					needle += if part.tok == .name { part.lit } else { part.tok.str() }
+				}
+				replacement = member
+			}
+		}
 		if fastc_contains(rendered, needle) {
 			// A method receiver may already contain the lowered direct access
 			// `((s).str[i])`; the raw `s[i]` suffix there is a struct member, not
@@ -799,14 +818,22 @@ fn (g &Parser) render_indexed_member_receiver(tokens []FastcExpressionToken) ?Fa
 		}
 		field := g.struct_field_metadata(current_type, tokens[i + 1].lit) or { return none }
 		for storage_name in field.storage_path {
-			separator := if flat.source_type_name(current_type).ends_with('*') { '->' } else { '.' }
+			separator := if fastc_is_pointer_type(g.underlying_alias_type(current_type)) {
+				'->'
+			} else {
+				'.'
+			}
 			source += separator + fastc_c_identifier(storage_name)
 			current_type = g.struct_direct_member_type(current_type, storage_name)
 			if flat.source_type_name(current_type) == '' {
 				return none
 			}
 		}
-		separator := if flat.source_type_name(current_type).ends_with('*') { '->' } else { '.' }
+		separator := if fastc_is_pointer_type(g.underlying_alias_type(current_type)) {
+			'->'
+		} else {
+			'.'
+		}
 		field_source := source + separator + fastc_c_identifier(field.name)
 		source = if field.is_shared_pointer { '*(${field_source})' } else { field_source }
 		current_type = field.typ
@@ -1326,7 +1353,17 @@ fn fastc_initializer_type_start(tokens []FastcExpressionToken) int {
 
 fn (g &Parser) map_initializer_type(tokens []FastcExpressionToken) ?u32 {
 	map_type := g.type_from_expression_tokens(tokens) or { return none }
-	return if flat.source_type_name(map_type).starts_with('Map_') { map_type } else { none }
+	if flat.source_type_name(map_type).starts_with('Map_') {
+		return map_type
+	}
+	// `Counts{}` for `type Counts = map[string]int` makes an empty map too. It keeps the
+	// alias as its type, so methods declared on the alias still apply.
+	if aliased := g.map_type_of(map_type) {
+		if !fastc_is_pointer_type(aliased) {
+			return map_type
+		}
+	}
+	return none
 }
 
 fn (g &Parser) type_from_expression_tokens(tokens []FastcExpressionToken) ?u32 {

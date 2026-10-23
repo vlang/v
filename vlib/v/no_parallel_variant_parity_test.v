@@ -59,7 +59,7 @@ fn sibling_module_sources(parallel_path string, serial_path string) []string {
 	for entry in os.ls(dir) or { panic(err) } {
 		path := os.join_path(dir, entry)
 		if !entry.ends_with('.v') || entry.ends_with('_test.v') || path == parallel_path
-			|| path == serial_path {
+			|| path == serial_path || entry.ends_with('_notd_v3_no_parallel.v') {
 			continue
 		}
 		sources << strip_parallel_only_blocks(os.read_file(path) or { panic(err) })

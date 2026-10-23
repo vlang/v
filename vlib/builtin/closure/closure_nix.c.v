@@ -1,3 +1,4 @@
+@[has_globals]
 module closure
 
 $if !freestanding && !vinix {

@@ -1837,6 +1837,20 @@ fn fastc_generate_constant_declarations(candidates []FastcSourceFile, prefs &pre
 	if os.getenv('FASTC_BENCH_PHASES') != '' {
 		eprintln('fastc-phase constants.detail candidates=${candidates.len} parallel_us=${parallel_us} serial=${serial_count} merge_us=${sw.elapsed().microseconds() - parallel_us}')
 	}
+	// Lowering a struct literal inserts field defaults that are absent from the
+	// constant's source. Include their references before ordering initializers.
+	mut constant_keys := map[string]string{}
+	for value in values {
+		constant_keys[value.c_name] = value.key
+	}
+	for index, value in values {
+		mut dependencies := value.dependencies.clone()
+		fastc_rendered_constant_dependencies(value.value, constant_keys, mut dependencies)
+		values[index] = FastcConstantValue{
+			...value
+			dependencies: dependencies
+		}
+	}
 	mut runtime_constants := map[string]bool{}
 	for value in values {
 		if value.is_runtime {
@@ -1972,6 +1986,36 @@ fn (mut g Parser) parse_selected_comptime_constant_declarations(mut values []Fas
 		g.skip_open_block()!
 	} else {
 		g.parse_selected_constant_declarations(mut values, true)!
+	}
+}
+
+// fastc_rendered_constant_dependencies collects references introduced by defaults,
+// ignoring literals and member names in the generated C expression.
+fn fastc_rendered_constant_dependencies(source string, keys map[string]string, mut dependencies []string) {
+	mut offset := 0
+	for offset < source.len {
+		if source[offset] in [`'`, `"`] {
+			offset = fastc_c_literal_end(source, offset)
+			continue
+		}
+		if !fastc_c_identifier_start_byte(source[offset]) {
+			offset++
+			continue
+		}
+		start := offset
+		offset++
+		for offset < source.len && fastc_identifier_byte(source[offset]) {
+			offset++
+		}
+		if start > 0 && (source[start - 1] == `.`
+			|| (source[start - 1] == `>` && start > 1 && source[start - 2] == `-`)) {
+			continue
+		}
+		if key := keys[source[start..offset]] {
+			if key !in dependencies {
+				dependencies << key
+			}
+		}
 	}
 }
 
@@ -2624,7 +2668,7 @@ fn fastc_emit_source_type_declarations(source_file FastcSourceFile, prefs &pref.
 			continue
 		}
 		if depth == 0 && tok == .key_type {
-			tok = fastc_emit_alias_declaration(mut scan, source_file, declared_types, declared_kinds, prefs.building_v, mut struct_fields, mut struct_field_info, mut alias_base_types, mut fn_alias_return_types, mut sum_types, mut sum_type_variants, mut out)!
+			tok = fastc_emit_alias_declaration(mut scan, source_file, declared_types, declared_kinds, prefs.building_v, mut struct_fields, mut struct_field_info, mut composite_types, mut alias_base_types, mut fn_alias_return_types, mut sum_types, mut sum_type_variants, mut out)!
 			next_type_is_enabled = true
 			continue
 		}
@@ -2926,7 +2970,7 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, attrib
 			field_names << scan.lit
 			tok = scan.scan()
 		}
-		if tok == .semicolon || tok == .rcbr {
+		if tok in [.semicolon, .rcbr, .assign] {
 			embedded_key := if qualified_embed_key != '' {
 				qualified_embed_key
 			} else {
@@ -2934,17 +2978,33 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, attrib
 					return error('fastc parser does not support embedded field `${field_names[0]}` in ${source_file.path}')
 				}
 			}
+			mut default_source := ''
+			mut default_source_offset := 0
+			if tok == .assign {
+				first_default_token := scan.scan()
+				default_start := scan.pos
+				default_source_offset = source_file.source_offset + default_start
+				tok = fastc_skip_field_default_from_token(mut scan, first_default_token)!
+				default_source = source_file.source[default_start..scan.pos].trim_space().trim_right(';').trim_space()
+				if default_source == '' {
+					return error('fastc parser does not support empty default for struct `${name}` embedded field `${field_names[0]}` in ${source_file.path}')
+				}
+			}
 			if !is_c_struct {
 				out.writeln('\t${fastc_c_declared_type_name(embedded_key)} __embedded_${embedded_id};')
 			}
 			fields_by_name.set('__embedded_${embedded_id}', fastc_c_declared_type_name(embedded_key))
 			field_info << FastcStructField{
-				name:        '__embedded_${embedded_id}'
-				typ:         flat.source_type_id(fastc_c_declared_type_name(embedded_key))
-				is_public:   true
-				module_name: source_file.header.module_name
-				path:        source_file.path
-				imports:     source_file.header.imports.clone()
+				name:                   '__embedded_${embedded_id}'
+				typ:                    flat.source_type_id(fastc_c_declared_type_name(embedded_key))
+				is_public:              true
+				module_name:            source_file.header.module_name
+				path:                   source_file.path
+				imports:                source_file.header.imports.clone()
+				default_source:         default_source
+				default_source_offset:  default_source_offset
+				default_source_origins: source_file.source_origins
+				translated:             source_file.header.translated
 			}
 			embedded_id++
 			fields++
@@ -3565,7 +3625,7 @@ fn fastc_emit_interface_declaration(mut scan scanner.Scanner, source_file FastcS
 	return tok
 }
 
-fn fastc_emit_alias_declaration(mut scan scanner.Scanner, source_file FastcSourceFile, declared_types map[string]bool, declared_kinds map[string]FastcDeclaredTypeKind, allow_short_placeholders bool, mut struct_fields map[string]flat.TypeTextBindings, mut struct_field_info map[string][]FastcStructField, mut alias_base_types flat.TypeTextBindings, mut fn_alias_return_types flat.TypeTextBindings, mut sum_types map[string]bool, mut sum_type_variants map[string]bool, mut out strings.Builder) !token.Token {
+fn fastc_emit_alias_declaration(mut scan scanner.Scanner, source_file FastcSourceFile, declared_types map[string]bool, declared_kinds map[string]FastcDeclaredTypeKind, allow_short_placeholders bool, mut struct_fields map[string]flat.TypeTextBindings, mut struct_field_info map[string][]FastcStructField, mut composite_types map[string]bool, mut alias_base_types flat.TypeTextBindings, mut fn_alias_return_types flat.TypeTextBindings, mut sum_types map[string]bool, mut sum_type_variants map[string]bool, mut out strings.Builder) !token.Token {
 	mut tok := scan.scan()
 	if tok != .name {
 		return error('fastc parser does not support type alias in ${source_file.path}')
@@ -3641,6 +3701,9 @@ fn fastc_emit_alias_declaration(mut scan scanner.Scanner, source_file FastcSourc
 		} else {
 			fastc_output_c_type(flat.source_type_name(base))
 		}} ${c_name};')
+		// The typedef above names the aliased `Array_x`/`Map_k_v` type, so that type
+		// needs its own typedef even when nothing else uses it.
+		fastc_register_composite_type(flat.source_type_name(base), mut composite_types)
 		// C.int retains its native width instead of V's platform-width int.
 		alias_base_types.set_id(c_name, if is_c_type && flat.source_type_name(base).trim_right('*') == 'int' {
 			flat.source_type_id('i32' + flat.source_type_name(base)['int'.len..])

@@ -12,28 +12,32 @@ import v.cmdexec
 const inplace_transform_program = 'module main
 
 struct PtrT {
-	base_type Ty
+	base_type &Ty
 }
 
 struct OptT {
 	pad       i64
-	base_type Ty
+	base_type &Ty
 }
 
 struct ResT {
 	pad1      i64
 	pad2      i64
-	base_type Ty
+	base_type &Ty
 }
 
 type Ty = PtrT | OptT | ResT | int
+
+fn ty_reference(value Ty) &Ty {
+	return &value
+}
 
 fn unwrap_stmt(t Ty) int {
 	mut typ := t
 	for {
 		match typ {
 			PtrT, OptT, ResT {
-				typ = typ.base_type
+				typ = *typ.base_type
 			}
 			else {
 				break
@@ -47,7 +51,7 @@ fn unwrap_value(t Ty) int {
 	mut typ := t
 	layers := match typ {
 		PtrT, OptT, ResT {
-			typ = typ.base_type
+			typ = *typ.base_type
 			1
 		}
 		else {
@@ -61,7 +65,7 @@ fn unwrap_return(t Ty) int {
 	mut typ := t
 	return match typ {
 		PtrT, OptT, ResT {
-			typ = typ.base_type
+			typ = *typ.base_type
 			if typ is int { typ } else { -1 }
 		}
 		else {
@@ -87,14 +91,14 @@ fn collect(m map[string]Local, names []string) []Local {
 
 fn main() {
 	values := [Ty(PtrT{
-		base_type: Ty(1)
+		base_type: ty_reference(Ty(1))
 	}), Ty(OptT{
 		pad:       100
-		base_type: Ty(2)
+		base_type: ty_reference(Ty(2))
 	}), Ty(ResT{
 		pad1:      100
 		pad2:      200
-		base_type: Ty(3)
+		base_type: ty_reference(Ty(3))
 	})]
 	for value in values {
 		println("\${unwrap_stmt(value)} \${unwrap_value(value)} \${unwrap_return(value)}")

@@ -3,6 +3,14 @@ import os
 const qvexe = os.quoted_path(@VEXE)
 
 fn test_translate_legacy_wrapper_flag_uses_wrapper_mode() {
+	check_translate_wrapper(false)!
+}
+
+fn test_translate_builds_missing_c2v_binary() {
+	check_translate_wrapper(true)!
+}
+
+fn check_translate_wrapper(build_missing_binary bool) ! {
 	test_dir := os.join_path(os.vtmp_dir(), 'translate_test_${os.getpid()}')
 	os.rmdir_all(test_dir) or {}
 	os.mkdir_all(test_dir)!
@@ -11,6 +19,9 @@ fn test_translate_legacy_wrapper_flag_uses_wrapper_mode() {
 	}
 	vmodules_dir := os.join_path(test_dir, 'vmodules')
 	compile_fake_c2v(vmodules_dir)!
+	if build_missing_binary {
+		os.rm(os.join_path(vmodules_dir, 'c2v', 'c2v' + exe_suffix()))!
+	}
 	sample_path := os.join_path(test_dir, 'usersapi.c')
 	args_out := os.join_path(test_dir, 'c2v_args.txt')
 	os.write_file(sample_path, 'int usersapi_get_number_of_users(void) { return 1; }\n')!

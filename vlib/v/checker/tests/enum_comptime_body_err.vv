@@ -1,0 +1,76 @@
+#include <stdio.h>
+
+@[comptime]
+fn enum_conditional(value int) int {
+	if value > 0 {
+		return 1
+	}
+	return 2
+}
+
+@[comptime]
+fn enum_loop(value int) int {
+	mut result := value
+	for result < 3 {
+		result++
+	}
+	return result
+}
+
+@[comptime]
+fn enum_compound(value int) int {
+	mut result := value
+	result += 1
+	return result
+}
+
+@[comptime]
+fn enum_expression(value int) int {
+	println(value)
+	return value
+}
+
+@[comptime]
+fn enum_failed_local(value int) int {
+	mut result := if value > 0 { 1 } else { 2 }
+	return 3
+}
+
+@[comptime]
+fn enum_multiple_assignment(value int) int {
+	mut first := value
+	mut second := 2
+	first, second = second, first
+	return first
+}
+
+@[comptime]
+fn enum_indexed_assignment(value int) int {
+	mut items := [value, 2]
+	items[0] = 3
+	return value
+}
+
+@[comptime]
+fn enum_after_return(value int) int {
+	return value
+	if value > 0 {
+		println(value)
+	}
+}
+
+@[_allow_multiple_values]
+enum UnsupportedComptimeBody {
+	conditional         = C.SEEK_CUR + enum_conditional(1)
+	loop                = enum_loop(1)
+	compound            = enum_compound(1)
+	expression          = enum_expression(1)
+	failed_local        = enum_failed_local(1)
+	multiple_assignment = enum_multiple_assignment(1)
+	indexed_assignment  = enum_indexed_assignment(1)
+	after_return        = enum_after_return(1)
+}
+
+fn main() {
+	println(UnsupportedComptimeBody.conditional)
+}

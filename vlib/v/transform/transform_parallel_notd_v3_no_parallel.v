@@ -544,20 +544,54 @@ struct WorkerScopeFreeArgs {
 	end    int
 }
 
-// node_has_scoped_text reports whether any text payload of `node` lives in
-// `scope`'s arena, i.e. whether canonicalization/promotion would rewrite it.
-
 // node_has_any_scoped_text reports whether any node text is owned by one of
 // `scopes`. `lo`/`hi` bound the union of the arenas' address ranges: nearly
 // every text lives outside them, so the per-arena search is rarely needed.
 @[inline]
 fn node_has_any_scoped_text(node &flat.Node, scopes []voidptr, lo usize, hi usize) bool {
-	value_addr := usize(voidptr(node.value.str))
-	if (node.value.len == 0 || value_addr < lo || value_addr >= hi) && node.payload == 0 {
+	if node.value.len > 0 && text_pointer_in_scopes(node.value.str, scopes, lo, hi) {
+		return true
+	}
+	if node.payload == 0 {
+		return false
+	}
+	payload := node.payload_ptr()
+	if text_pointer_in_scopes(payload, scopes, lo, hi) {
+		return true
+	}
+	debugger_types := payload.debugger_value_types.ids
+	if node.kind == .debugger_stmt && debugger_types.len > 0
+		&& text_pointer_in_scopes(debugger_types.data, scopes, lo, hi) {
+		return true
+	}
+	constraints := payload.generic_constraints.ids
+	if constraints.len > 0 && text_pointer_in_scopes(constraints.data, scopes, lo, hi) {
+		return true
+	}
+	params := payload.generic_params
+	if params.len == 0 {
+		return false
+	}
+	if text_pointer_in_scopes(params.data, scopes, lo, hi) {
+		return true
+	}
+	for param in params {
+		if param.len > 0 && text_pointer_in_scopes(param.str, scopes, lo, hi) {
+			return true
+		}
+	}
+	return false
+}
+
+// Reject pointers outside the union once, before consulting individual arenas.
+@[inline]
+fn text_pointer_in_scopes(ptr voidptr, scopes []voidptr, lo usize, hi usize) bool {
+	addr := usize(ptr)
+	if addr < lo || addr >= hi {
 		return false
 	}
 	for scope in scopes {
-		if node_has_scoped_text(node, scope) {
+		if transform_scope_owns(scope, ptr) {
 			return true
 		}
 	}
@@ -583,37 +617,6 @@ fn scopes_address_range(scopes []voidptr) (usize, usize) {
 		}
 	}
 	return lo, hi
-}
-
-fn node_has_scoped_text(node &flat.Node, scope voidptr) bool {
-	if node.value.len > 0 && transform_scope_owns(scope, node.value.str) {
-		return true
-	}
-	if node.payload == 0 {
-		return false
-	}
-	if transform_scope_owns(scope, node.payload_ptr()) {
-		return true
-	}
-	debugger_types := node.debugger_value_type_ids()
-	if debugger_types.len > 0 && transform_scope_owns(scope, debugger_types.data) { return true }
-	constraints := node.payload_ptr().generic_constraints.ids
-	if constraints.len > 0 && transform_scope_owns(scope, constraints.data) {
-		return true
-	}
-	params := node.generic_params()
-	if params.len == 0 {
-		return false
-	}
-	if transform_scope_owns(scope, params.data) {
-		return true
-	}
-	for param in params {
-		if param.len > 0 && transform_scope_owns(scope, param.str) {
-			return true
-		}
-	}
-	return false
 }
 
 // scoped_text_scan_thread flags this worker's node range. Pure reads plus
@@ -1075,7 +1078,7 @@ fn checker_cache_promote_thread(arg voidptr) voidptr {
 		}
 		if idx >= a.generated_start && idx < tc.expr_type_set.len && tc.expr_type_set[idx]
 			&& idx < tc.expr_type_values.len {
-			tc.expr_type_values[idx] = types.clone_owned_type(tc.expr_type_values[idx])
+			tc.expr_type_values[idx] = types.new_type_reference(types.Type(types.clone_owned_type(tc.expr_type_values[idx])))
 		}
 	}
 	return unsafe { nil }
@@ -1252,7 +1255,7 @@ fn monomorph_scan_thread(arg voidptr) voidptr {
 	mut scan := unsafe { &MonomorphScanArgs(arg) }
 	mut nodes := []int{cap: (scan.end - scan.start) / 16}
 	for i in scan.start .. scan.end {
-		if scan.a.nodes[i].kind in [.call, .index, .index_assign] {
+		if scan.a.nodes[i].kind in [.call, .index, .index_assign, .selector_assign] {
 			nodes << i
 		}
 	}
@@ -1348,7 +1351,7 @@ fn monomorph_chunk_thread(arg voidptr) voidptr {
 	}
 	mut scan_nodes := []int{cap: (w.a.nodes.len - generated_start) / 8}
 	for i in generated_start .. w.a.nodes.len {
-		if w.a.nodes[i].kind in [.call, .index, .index_assign] {
+		if w.a.nodes[i].kind in [.call, .index, .index_assign, .selector_assign] {
 			scan_nodes << i
 		}
 	}
@@ -3464,6 +3467,7 @@ fn (mut t Transformer) prescan_fixed_array_borrow_bodies(candidates []BorrowCand
 		w.set_expected_expr_type(t.expected_expr_type)
 		// Helpers analyse against no proven summaries (see BorrowBodyResult).
 		w.fixed_array_borrow_params = map[int][]bool{}
+		w.call_provenance_borrow_params = map[int][]bool{}
 		args << BorrowPrescanArgs{
 			worker:     voidptr(w)
 			candidates: unsafe { voidptr(&candidates) }
@@ -3723,13 +3727,12 @@ fn (mut t Transformer) prepare_with_pre_scans() {
 	if os.getenv('V3_NO_PAR_TRANSFORM_PARAM_PREP') == '' {
 		param_tc := t.tc.fork_for_parallel_transform(t.a)
 		mut param_w := &Transformer{
-			a:                            t.a
-			tc:                           param_tc
-			prefix_param_scan:            t.prefix_param_scan
-			retain_prescan_scopes:        t.retain_prescan_scopes
-			call_param_types_decl_cache:  map[int][]types.Type{}
-			call_param_types_decl_misses: map[string]bool{}
-			call_param_types_decl_index:  map[string]FnParamDeclRef{}
+			a:                           t.a
+			tc:                          param_tc
+			prefix_param_scan:           t.prefix_param_scan
+			retain_prescan_scopes:       t.retain_prescan_scopes
+			call_param_types_decl_cache: map[int][]types.Type{}
+			call_param_types_decl_index: map[string]FnParamDeclRef{}
 		}
 		param_thread := spawn transform_param_prep_thread(voidptr(param_w))
 		t.defer_pre_scan_indexes = true
@@ -3739,12 +3742,12 @@ fn (mut t Transformer) prepare_with_pre_scans() {
 		t.add_prescan_scope(param_thread.wait())
 		t.add_prescan_scope(index_thread.wait())
 		t.call_param_types_decl_cache = param_w.call_param_types_decl_cache.move()
-		t.call_param_types_decl_misses = param_w.call_param_types_decl_misses.move()
 		t.call_param_types_decl_shared = true
 		t.call_param_types_decl_index = param_w.call_param_types_decl_index.move()
 		t.call_param_types_index_ready = param_w.call_param_types_index_ready
 		t.call_param_types_prepared = param_w.call_param_types_prepared
 		t.defer_fixed_array_borrow_prep = false
+		t.prepare_array_append_tree_factories()
 		t.prepare_fixed_array_borrow_params()
 	} else {
 		t.defer_pre_scan_indexes = true

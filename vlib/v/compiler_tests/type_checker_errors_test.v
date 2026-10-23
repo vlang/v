@@ -547,7 +547,7 @@ fn main() {
 fn main() {
 	invoke(1)
 }
-', 'unknown function `value.no_such`')
+', 'unknown method or field: `int.no_such`')
 	run_bad(v3_bin, 'bad_generic_missing_array_receiver_method', 'fn invoke[T](value T) {
 	value.no_such()
 }
@@ -652,7 +652,7 @@ fn read[T](value T) int {
 fn main() {
 	_ := read(NoValue{})
 }
-', 'unknown function `value.value`')
+', 'unknown method or field: `NoValue.value`')
 	run_bad(v3_bin, 'bad_generic_receiver_method_argument_count', 'struct HasValue {}
 
 fn (v HasValue) value() int {
@@ -1673,7 +1673,7 @@ fn test_pr_review_codegen_batch_seven() {
 	assert clone == '9'
 	// An operator overload on a generic struct is specialized only for instances whose
 	// operator is actually used: `Box[NoPlus]` is merely stored (its `+` is never applied),
-	// so the unused `Box_NoPlus__plus` body — which would do `NoPlus + NoPlus` — is not
+	// so the unused `Box[NoPlus].+` body — which would do `NoPlus + NoPlus` — is not
 	// emitted, while `Box[int] + Box[int]` is.
 	op_gate := run_good(v3_bin, 'good_operator_specialization_gated', "struct Box[T] {\n\tv T\n}\nfn (a Box[T]) + (b Box[T]) Box[T] {\n\treturn Box[T]{\n\t\tv: a.v + b.v\n\t}\n}\nstruct NoPlus {\n\tname string\n}\nfn main() {\n\tx := Box[int]{\n\t\tv: 1\n\t}\n\ty := Box[int]{\n\t\tv: 2\n\t}\n\tz := x + y\n\tprintln(int_str(z.v))\n\tw := Box[NoPlus]{\n\t\tv: NoPlus{\n\t\t\tname: 'hi'\n\t\t}\n\t}\n\tprintln(w.v.name)\n}\n")
 	assert op_gate == '3\nhi'

@@ -16,11 +16,12 @@ fn fastc_match_common_numeric_variant(variants []u32) u32 {
 }
 
 fn fastc_match_multi_variant_value(subject string, access string, variants []u32, common_type u32) string {
-	common_name := flat.source_type_name(common_type)
+	common_name := fastc_output_c_type(flat.source_type_name(common_type))
 	mut source := '((${common_name})0)'
 	for i := variants.len - 1; i >= 0; i-- {
 		variant := flat.source_type_name(variants[i])
-		source = '((${subject}${access}_typ == __v_typeid_${variant}) ? ((${common_name})(*(${variant} *)${subject}${access}_object)) : (${source}))'
+		variant_c_type := fastc_output_c_type(variant)
+		source = '((${subject}${access}_typ == __v_typeid_${variant}) ? ((${common_name})(*(${variant_c_type} *)${subject}${access}_object)) : (${source}))'
 	}
 	return source
 }
@@ -69,6 +70,15 @@ fn (mut g Parser) read_match_expression() !string {
 		if path := fastc_member_chain_path(subject_tokens, member_start, subject_tokens.len) {
 			subject_member_path = path
 		}
+	}
+	// The boxed member itself, which an assignment to the narrowed member writes.
+	mut subject_member_source := ''
+	mut subject_member_type := u32(0)
+	if subject_member_path.contains('.') {
+		subject_member_source = g.render_member_receiver(subject_tokens[member_start..]) or { '' }
+		subject_member_type = fastc_normalize_inferred_type(g.infer_expression_type(subject_tokens[member_start..]) or {
+			u32(0)
+		})
 	}
 	g.expect(.lcbr)!
 	temporary := g.temporary_name('match')
@@ -196,16 +206,27 @@ fn (mut g Parser) read_match_expression() !string {
 			member_smartcast_saved = g.member_smartcasts[projection_path] or {
 				FastcMemberSmartcast{}
 			}
+			pointer := '((${fastc_output_c_type(flat.source_type_name(smartcast_type))} *)${temporary}${boxed_access}_object)'
+			mut view_type, mut view_source := g.narrowed_member_view(smartcast_type, u32(0),
+				pointer)
+			if common_numeric_type != 0 {
+				// Numeric variants of different widths are read as their common type.
+				view_type = common_numeric_type
+				view_source = fastc_match_multi_variant_value(temporary, boxed_access,
+					branch_variants, common_numeric_type)
+			}
 			g.member_smartcasts[projection_path] = FastcMemberSmartcast{
-				typ:           flat.source_type_id(flat.source_type_name(smartcast_type) + '*')
-				source:        '((${flat.source_type_name(smartcast_type)} *)${temporary}${boxed_access}_object)'
-				variants:      if multi_struct_smartcast {
+				typ:            view_type
+				source:         view_source
+				variants:       if multi_struct_smartcast {
 					flat.TypeTextList{ ids: branch_variants.clone() }
 				} else {
 					flat.TypeTextList{}
 				}
-				tag_source:    '${temporary}${boxed_access}_typ'
-				object_source: '${temporary}${boxed_access}_object'
+				tag_source:     '${temporary}${boxed_access}_typ'
+				object_source:  '${temporary}${boxed_access}_object'
+				subject_source: subject_member_source
+				subject_type:   subject_member_type
 			}
 		}
 		mut value := g.read_match_block_expression_value()!
@@ -219,17 +240,19 @@ fn (mut g Parser) read_match_expression() !string {
 		}
 		if smartcast_active {
 			g.locals[subject_local] = smartcast_saved
+			// The payload is boxed as its C output type (a V `int` is 64 bits wide).
+			smartcast_c_type := fastc_output_c_type(flat.source_type_name(smartcast_type))
 			smartcast_value := if smartcast_is_reference {
-				'(${flat.source_type_name(smartcast_type)} *)${temporary}${boxed_access}_object'
+				'(${smartcast_c_type} *)${temporary}${boxed_access}_object'
 			} else if common_numeric_type != 0 {
 				fastc_match_multi_variant_value(temporary, boxed_access, branch_variants, common_numeric_type)
 			} else {
-				'*(${flat.source_type_name(smartcast_type)} *)${temporary}${boxed_access}_object'
+				'*(${smartcast_c_type} *)${temporary}${boxed_access}_object'
 			}
 			declaration_type := if smartcast_is_reference {
-				flat.source_type_name(smartcast_type) + '*'
+				smartcast_c_type + '*'
 			} else {
-				flat.source_type_name(smartcast_type)
+				smartcast_c_type
 			}
 			value = '({ ${declaration_type} ${fastc_c_identifier(subject_local)} = ${smartcast_value}; (${value}); })'
 		}

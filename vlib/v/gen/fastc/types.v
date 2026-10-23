@@ -321,6 +321,7 @@ fn (g &Parser) infer_boolean_binary_expression_type(tokens []FastcExpressionToke
 		return flat.source_type_bool
 	}
 	if operator in [.key_in, .not_in] {
+		right_type = g.map_type_through_alias(right_type)
 		array_end := if operator_index + 1 < end && tokens[end - 1].tok == .not {
 			end - 1
 		} else {
@@ -1040,7 +1041,7 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 		}
 		if open_index > start {
 			base_type := g.infer_expression_type_range(tokens, start, open_index)!
-			base_layout := fastc_trim_pointer_suffix(flat.source_type_name(base_type))
+			base_layout := fastc_trim_pointer_suffix(flat.source_type_name(g.map_type_through_alias(base_type)))
 			if fastc_top_level_token_index(tokens, open_index + 1, end - 1, .dotdot) != none {
 				// Slicing a fixed array yields a dynamic array of its element type.
 				if base_layout.starts_with('FixedArray_') {
@@ -1449,7 +1450,7 @@ fn (g &Parser) infer_member_access_type(tokens []FastcExpressionToken, start int
 			close := fastc_matching_delimiter_before(tokens, index, end, .lsbr, .rsbr) or {
 				return none
 			}
-			current_layout := fastc_trim_pointer_suffix(flat.source_type_name(current_type))
+			current_layout := fastc_trim_pointer_suffix(flat.source_type_name(g.map_type_through_alias(current_type)))
 			if fastc_top_level_token_index(tokens, index + 1, close, .dotdot) != none {
 				if current_layout != 'string' && g.array_element_type(current_type) == none {
 					return none

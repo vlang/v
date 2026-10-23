@@ -1013,8 +1013,9 @@ fn (tc &TypeChecker) incremental_touches_generics(f IncrementalFunction, generic
 				return true
 			}
 		}
-		if typ := tc.cached_expr_type(id) {
-			if type_mentions_generic_application(typ) {
+		cached_type_ref0 := tc.cached_expr_type_ref(id)
+		if !isnil(cached_type_ref0) {
+			if type_mentions_generic_application(cached_type_ref0) {
 				return true
 			}
 		}
@@ -1038,7 +1039,7 @@ fn incremental_names_generic_fn(name string, generic_fns map[string]bool) bool {
 
 // type_mentions_generic_application reports whether `typ` is, or holds, an
 // instance of a generic type, as `Box[int]` and `[]Box[int]` do.
-fn type_mentions_generic_application(typ Type) bool {
+fn type_mentions_generic_application(typ &Type) bool {
 	return match typ {
 		Struct { typ.name().contains('[') }
 		Interface { typ.name().contains('[') }
@@ -1055,7 +1056,7 @@ fn type_mentions_generic_application(typ Type) bool {
 		OptionType { type_mentions_generic_application(typ.base_type) }
 		ResultType { type_mentions_generic_application(typ.base_type) }
 		FnType {
-			typ.params.any(type_mentions_generic_application(it))
+			typ.params.any(type_mentions_generic_application(it.typ))
 				|| type_mentions_generic_application(typ.return_type)
 		}
 		MultiReturn { typ.types.any(type_mentions_generic_application(it)) }

@@ -62,14 +62,29 @@ fn test_v3_gc_is_disabled_for_cross_compilation() {
 	host := pref.host_target()
 	cross_os := if host.os == 'linux' { 'macos' } else { 'linux' }
 	cross_arch := if host.arch == 'amd64' { 'arm64' } else { 'amd64' }
-	assert !v3_gc_is_disabled(false, false, host.os, host.arch, 'c')
-	assert v3_gc_is_disabled(true, false, host.os, host.arch, 'c')
-	assert v3_gc_is_disabled(false, true, host.os, host.arch, 'c')
-	assert v3_gc_is_disabled(false, false, cross_os, host.arch, 'c')
-	assert v3_gc_is_disabled(false, false, host.os, cross_arch, 'c')
-	assert v3_gc_is_disabled(false, false, 'cross', host.arch, 'c')
-	// The native backend never has a collector, on any host and target.
-	assert v3_gc_is_disabled(false, false, host.os, host.arch, 'arm64')
+	for mode in ['', 'boehm', 'boehm_incr'] {
+		assert !v3_gc_is_disabled(false, false, host.os, host.arch, 'c', mode)
+		assert v3_gc_is_disabled(true, false, host.os, host.arch, 'c', mode)
+		assert v3_gc_is_disabled(false, true, host.os, host.arch, 'c', mode)
+		assert v3_gc_is_disabled(false, false, cross_os, host.arch, 'c', mode)
+		assert v3_gc_is_disabled(false, false, host.os, cross_arch, 'c', mode)
+		assert v3_gc_is_disabled(false, false, 'cross', host.arch, 'c', mode)
+		// The native backend never has a collector, on any host and target.
+		assert v3_gc_is_disabled(false, false, host.os, host.arch, 'arm64', mode)
+	}
+}
+
+fn test_vgc_is_kept_for_cross_compilation() {
+	host := pref.host_target()
+	cross_os := if host.os == 'windows' { 'linux' } else { 'windows' }
+	cross_arch := if host.arch == 'amd64' { 'arm64' } else { 'amd64' }
+	assert !v3_gc_is_disabled(false, false, host.os, host.arch, 'c', 'vgc')
+	assert !v3_gc_is_disabled(false, false, cross_os, host.arch, 'c', 'vgc')
+	assert !v3_gc_is_disabled(false, false, host.os, cross_arch, 'c', 'vgc')
+	// The compiler itself, portable C output and the native backend have no collector.
+	assert v3_gc_is_disabled(true, false, host.os, host.arch, 'c', 'vgc')
+	assert v3_gc_is_disabled(false, true, host.os, host.arch, 'c', 'vgc')
+	assert v3_gc_is_disabled(false, false, host.os, host.arch, 'arm64', 'vgc')
 }
 
 fn test_v3_gc_mode_keeps_dynamic_boehm_define() {

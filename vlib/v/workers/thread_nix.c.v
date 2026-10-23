@@ -15,8 +15,15 @@ struct C.pthread_t {}
 
 fn C.pthread_join(worker C.pthread_t, retval voidptr) int
 fn C.v3_linux_name_worker() int
+
+// Keep linked-object prototypes explicit alongside unrelated system headers.
+@[c_extern]
 fn C.v3_pthread_zero() C.pthread_t
+
+@[c_extern]
 fn C.v3_pthread_create(worker &C.pthread_t, stack_size usize, start_routine fn (voidptr) voidptr, arg voidptr) int
+
+@[c_extern]
 fn C.v3_pthread_is_current(worker C.pthread_t) int
 
 // WorkerThread is one joinable persistent pool worker.

@@ -61,3 +61,52 @@ vlib/v/checker/tests/array_literal_first_elem_expected_type_err.vv:32:33: error:
       |                                    ~~~
    33 |     println(small)
    34 |     fits := []u8([0, 255])
+vlib/v/checker/tests/array_literal_first_elem_expected_type_err.vv:37:17: error: invalid array element: expected `u8`, not `int`
+   35 |     println(fits)
+   36 |     // fixed array literals take the element type of their context too
+   37 |     pair := [2]u8([300, 1]!)
+      |                    ~~~
+   38 |     println(pair)
+   39 |     println(takes_pair([1, 300]!))
+vlib/v/checker/tests/array_literal_first_elem_expected_type_err.vv:39:25: error: invalid array element: expected `u8`, not `int`
+   37 |     pair := [2]u8([300, 1]!)
+   38 |     println(pair)
+   39 |     println(takes_pair([1, 300]!))
+      |                            ~~~
+   40 |     mut fixed := [2]u8{}
+   41 |     fixed = [1, 256]!
+vlib/v/checker/tests/array_literal_first_elem_expected_type_err.vv:41:14: error: invalid array element: expected `u8`, not `int`
+   39 |     println(takes_pair([1, 300]!))
+   40 |     mut fixed := [2]u8{}
+   41 |     fixed = [1, 256]!
+      |                 ~~~
+   42 |     println(fixed)
+   43 |     println(Holder{
+vlib/v/checker/tests/array_literal_first_elem_expected_type_err.vv:44:14: error: invalid array element: expected `u8`, not `int`
+   42 |     println(fixed)
+   43 |     println(Holder{
+   44 |         pair: [-1, 300]!
+      |                    ~~~
+   45 |     })
+   46 |     println(fixed_return())
+vlib/v/checker/tests/array_literal_first_elem_expected_type_err.vv:51:22: error: cannot use `[1]f64` as `[]u8` in argument 1 to `takes_bytes`
+   49 |     println(opt_pair() or { [2]u8{} })
+   50 |     // a fixed array literal where a dynamic array is expected keeps its own type
+   51 |     println(takes_bytes([5.0]!))
+      |                         ~~~~~~
+   52 | }
+   53 |
+vlib/v/checker/tests/array_literal_first_elem_expected_type_err.vv:63:13: error: invalid array element: expected `i8`, not `int`
+   61 | 
+   62 | fn fixed_return() [2]i8 {
+   63 |     return [1, -129]!
+      |                ~~~~
+   64 | }
+   65 |
+vlib/v/checker/tests/array_literal_first_elem_expected_type_err.vv:67:13: error: invalid array element: expected `u8`, not `int`
+   65 | 
+   66 | fn opt_pair() ?[2]u8 {
+   67 |     return [2, 512]!
+      |                ~~~
+   68 | }
+   69 |

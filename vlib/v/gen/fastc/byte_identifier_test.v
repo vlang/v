@@ -159,5 +159,5 @@ fn test_fastc_byte_global_mapping_keeps_other_symbol_names() {
 	assert fastc_c_global_name('main.byte') == 'main__byte'
 	assert fastc_c_global_name('worker.byte') == 'worker__byte'
 	assert fastc_c_constant_name('main', 'byte') == 'main__byte'
-	assert fastc_c_function_name('main', 'byte') == '__vf_function_byte'
+	assert fastc_c_function_name('main', 'byte') == 'main__byte'
 }

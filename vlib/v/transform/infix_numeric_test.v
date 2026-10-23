@@ -108,7 +108,7 @@ fn main() {}
 	assert hits >= 8
 	assert no_hits == 0
 	assert actual == expected
-	assert actual.contains('Count__plus(')
+	assert actual.contains('__v3_internal_symbol_op_Count__plus(')
 	assert actual.contains('string__plus(')
 }
 
@@ -188,9 +188,9 @@ fn main() {}
 	actual, _ := numeric_infix_fixture_c(source, true)
 	expected, _ := numeric_infix_fixture_c(source, false)
 	assert actual == expected
-	assert actual.contains('Count__plus(')
-	assert actual.contains('Count__eq(')
-	assert actual.contains('Count__lt(')
+	assert actual.contains('__v3_internal_symbol_op_Count__plus(')
+	assert actual.contains('__v3_internal_symbol_op_Count__eq(')
+	assert actual.contains('__v3_internal_symbol_op_Count__lt(')
 }
 
 fn test_checked_numeric_infix_preserves_value_branches_and_wide_operations() {
@@ -367,7 +367,7 @@ fn main() {}
 	actual, _ := numeric_infix_fixture_c(source, true)
 	expected, _ := numeric_infix_fixture_c(source, false)
 	assert actual == expected
-	assert actual.contains('Count__minus(')
+	assert actual.contains('__v3_internal_symbol_op_Count__minus(')
 	assert actual.contains('string__plus(')
 	assert actual.contains('string__lt(')
 	assert actual.contains('__v_u128_')

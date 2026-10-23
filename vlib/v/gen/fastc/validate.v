@@ -443,6 +443,13 @@ fn (g &Parser) resolved_nonlocal_expression_name(name string) string {
 	}
 	function_key := g.unqualified_function_key(name)
 	if function_key in g.functions || function_key in g.mono_functions {
+		if !function_key.contains('.') && (name in g.constants || name in g.globals) {
+			// V accepts a main-module function that shares its name with a constant
+			// or global, and they have different C names. Keep the V name, so that
+			// render_constant_references names the function in a call and the
+			// constant in any other use; a main global keeps the V name in C.
+			return fastc_c_identifier(name)
+		}
 		return g.c_function_name_for_key(function_key)
 	}
 	if type_key := g.resolve_declared_type_key(name) {
@@ -1159,7 +1166,7 @@ fn (g &Parser) struct_direct_member_type(receiver_type_id u32, field_name string
 			return field.typ
 		}
 	}
-	mut layout_type := fastc_trim_pointer_suffix(flat.source_type_name(receiver_type_id))
+	mut layout_type := fastc_trim_pointer_suffix(flat.source_type_name(g.underlying_alias_type(receiver_type_id)))
 	if layout_type.starts_with('Array_') {
 		layout_type = 'array'
 	} else if layout_type.starts_with('Map_') {
@@ -1236,7 +1243,7 @@ fn (g &Parser) struct_field_metadata(receiver_type u32, field_name string) ?&Fas
 }
 
 fn (g &Parser) direct_struct_field_metadata(receiver_type u32, field_name string) ?&FastcStructField {
-	mut layout_type := fastc_trim_pointer_suffix(flat.source_type_name(receiver_type))
+	mut layout_type := fastc_trim_pointer_suffix(flat.source_type_name(g.underlying_alias_type(receiver_type)))
 	if layout_type.starts_with('Array_') {
 		layout_type = 'array'
 	} else if layout_type.starts_with('Map_') {
@@ -1251,7 +1258,7 @@ fn (g &Parser) direct_struct_field_metadata(receiver_type u32, field_name string
 }
 
 fn (g &Parser) struct_field_metadata_impl(receiver_type u32, field_name string) ?FastcStructField {
-	mut layout_type := fastc_trim_pointer_suffix(flat.source_type_name(receiver_type))
+	mut layout_type := fastc_trim_pointer_suffix(flat.source_type_name(g.underlying_alias_type(receiver_type)))
 	if layout_type.starts_with('Array_') {
 		layout_type = 'array'
 	} else if layout_type.starts_with('Map_') {
@@ -1337,12 +1344,16 @@ fn (g &Parser) embedded_field_dot_piece_for_type(receiver_type u32, field_name s
 	mut current_type := receiver_type
 	mut piece := ''
 	for storage_name in field.storage_path {
-		separator := if flat.source_type_name(current_type).ends_with('*') { '->' } else { '.' }
+		separator := if fastc_is_pointer_type(g.underlying_alias_type(current_type)) {
+			'->'
+		} else {
+			'.'
+		}
 		piece += separator + fastc_c_identifier(storage_name)
 		current_type = g.struct_direct_member_type(current_type, storage_name)
 		if current_type == 0 { return '' }
 	}
-	piece += if flat.source_type_name(current_type).ends_with('*') { '->' } else { '.' }
+	piece += if fastc_is_pointer_type(g.underlying_alias_type(current_type)) { '->' } else { '.' }
 	return piece
 }
 

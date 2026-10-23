@@ -13,9 +13,14 @@ fn test_native_returned_registration_fixed_array_fields_preserve_string_elements
 		cgen := os.read_file(os.join_path(@VMODROOT, 'vlib', 'v', 'gen', 'c', 'cleanc.v'))!
 		registration := 'struct FnSignatureRegistration {' +
 			cgen.all_after('struct FnSignatureRegistration {').all_before('\n}') + '\n}\n'
-		source := definitions.all_before('// clone_owned_type').replace('module types', 'module main') +
+		source := definitions.all_before('// new_type_reference').replace('module types', 'module main') +
 			registration.replace('types.Type', 'Type') + r'
 fn C.exit(int)
+fn C.malloc(usize) voidptr
+fn C.memcpy(voidptr, voidptr, usize) voidptr
+fn memdup(value voidptr, size isize) voidptr {
+    return C.memcpy(C.malloc(usize(size)), value, usize(size))
+}
 fn make_registration() FnSignatureRegistration {
     mut aliases := [6]string{}
     aliases[0] = "sum"

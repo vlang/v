@@ -30,13 +30,14 @@ struct PrepassLineFile {
 // BatchSources holds the sources of the files of one parallel parse batch, by
 // the index of each file in the batch paths. The first pass of the batch reads
 // them once for all of its passes, into memory of the C allocator, so the
-// buffers outlive the disposable arenas of the pool tasks (see
-// read_batch_source).
+// buffers outlive the disposable arenas of the pool tasks (see read_batch_source).
+// Preloaded texts are borrowed from the caller instead and are not freed here.
 @[heap]
 struct BatchSources {
 mut:
-	sources []string
-	index   map[string]int
+	sources  []string
+	borrowed []bool
+	index    map[string]int
 	// The const names of the batch and before it, once the first pass found them.
 	const_names     map[string]bool
 	has_const_names bool
@@ -44,7 +45,8 @@ mut:
 
 fn new_batch_sources(paths []string) &BatchSources {
 	mut batch := &BatchSources{
-		sources: []string{len: paths.len}
+		sources:  []string{len: paths.len}
+		borrowed: []bool{len: paths.len}
 	}
 	for i, path in paths {
 		if path !in batch.index {
@@ -58,6 +60,12 @@ fn new_batch_sources(paths []string) &BatchSources {
 // distinct files, so each writes only its own slots.
 fn (mut b BatchSources) read(idx int, path string) {
 	b.sources[idx] = read_batch_source(path)
+}
+
+// preload borrows source text whose owner outlives every pass of this batch.
+fn (mut b BatchSources) preload(idx int, source string) {
+	b.sources[idx] = borrowed_source(source)
+	b.borrowed[idx] = true
 }
 
 // source_at returns the source read for the file at `idx`, or none when the
@@ -80,7 +88,9 @@ fn (b &BatchSources) source_of(path string) ?string {
 fn (mut b BatchSources) release(start int, end int) {
 	for i in start .. end {
 		if b.sources[i].len > 0 {
-			unsafe { C.free(b.sources[i].str) }
+			if !b.borrowed[i] {
+				unsafe { C.free(b.sources[i].str) }
+			}
 			b.sources[i] = ''
 		}
 	}

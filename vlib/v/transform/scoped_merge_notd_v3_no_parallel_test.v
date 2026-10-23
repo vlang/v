@@ -3,6 +3,25 @@ module transform
 import v.flat
 import v.types
 
+fn test_scoped_text_scan_finds_borrowed_text_in_unscoped_payloads() {
+	$if prealloc {
+		mut node := flat.Node{ kind: .fn_decl, value: 'unscoped' }
+		scope := transform_worker_scope_begin(true)
+		params := ['scoped parameter'.clone()]
+		transform_worker_scope_leave(scope)
+		node.set_generic_params(params)
+		lo, hi := scopes_address_range([scope])
+		assert hi > lo
+		assert !transform_scope_owns(scope, node.value.str)
+		assert !transform_scope_owns(scope, node.payload_ptr())
+		assert node_has_any_scoped_text(&node, [scope], lo, hi)
+		plain := flat.Node{ kind: .ident, value: 'unscoped' }
+		assert !node_has_any_scoped_text(&plain, [scope], lo, hi)
+		assert !text_pointer_in_scopes(unsafe { nil }, [scope], lo, hi)
+		transform_worker_scope_free(scope)
+	}
+}
+
 fn test_generic_batch_publishes_indirect_base_writes_and_new_nodes() {
 	mut a := flat.FlatAst.new()
 	a.add_node(flat.Node{ kind: .ident, value: 'outside_current_body' })
@@ -282,7 +301,7 @@ fn test_serial_scoped_monomorphization_preserves_lifted_callback_signatures() {
 		return_type := tc.fn_ret_types[name] or { panic('missing signature ${name}') }
 		assert return_type is types.FnType
 		assert (return_type as types.FnType).return_type.name() == arg
-		assert (return_type as types.FnType).params[0].name() == arg
+		assert (return_type as types.FnType).params[0].typ.name() == arg
 	}
 	mut lifted := 0
 	for idx in 0 .. a.nodes.len {

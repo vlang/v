@@ -1428,11 +1428,13 @@ fn (mut t Transformer) sql_infix_primitive_from_token_for_field(field string, co
 	op_text, right_text := sql_split_leading_field_math_token(token, field) or { return none }
 	right_expr := t.sql_expr_from_token_for_type(right_text, typ_id)
 	right_primitive := t.sql_primitive_from_expr(right_expr)
+	right_value := t.transform_expr(right_primitive)
+	right_ref := t.heap_value(right_value, flat.source_type_id('orm.Primitive'))
 	fields := [
 		t.make_named_field_init('name', t.make_string_literal(column), flat.source_type_string),
 		t.make_named_field_init('operator', t.sql_math_operation_kind_expr(op_text),
 			flat.source_type_id('orm.MathOperationKind')),
-		t.make_named_field_init('right', right_primitive, flat.source_type_id('orm.Primitive')),
+		t.make_named_field_init('right', right_ref, flat.source_type_id('&orm.Primitive')),
 	]
 	start := t.a.children.len
 	for item in fields {
@@ -1994,7 +1996,7 @@ fn (t &Transformer) sql_index_elem_type(base flat.NodeId) u32 {
 		return t.normalize_type_alias(flat.source_type_id(flat.source_type_name(base_type)[2..]))
 	}
 	if t.is_fixed_array_type(base_type) {
-		return t.normalize_type_alias(for_in_fixed_array_elem_type(base_type))
+		return t.normalize_type_alias(t.for_in_fixed_array_elem_type(base_type))
 	}
 	if flat.source_type_shape(base_type).has(.map_type) {
 		bracket_end := flat.source_type_name(base_type).index(']') or { return u32(0) }
@@ -3815,7 +3817,10 @@ fn sql_clean_tokens(tokens []string) []string {
 					selector += '()'
 					consumed = 4
 				}
-				if sql_token_can_precede_selector(clean[clean.len - 1]) {
+				table_module := clean.len > 1
+					&& clean[clean.len - 2] in ['table', 'into', 'from', 'update']
+					&& sql_token_is_plain_ident(clean[clean.len - 1])
+				if sql_token_can_precede_selector(clean[clean.len - 1]) || table_module {
 					clean[clean.len - 1] += selector
 				} else {
 					clean << selector

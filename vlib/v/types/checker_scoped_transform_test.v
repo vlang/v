@@ -36,6 +36,10 @@ fn test_stable_type_indexes_extend_without_renumbering_existing_types() {
 	extend_stable_type_indexes(mut indexes, flat.TypeTextList.from_names(['Box[Kdd]', 'Box[Dxw]']).ids)
 	assert indexes[flat.source_type_id('Existing')] == existing_idx
 	assert indexes[flat.source_type_id('Box[Dxw]')] != indexes[flat.source_type_id('Box[Kdd]')]
+	expected := indexes.clone()
+	extend_stable_type_indexes(mut indexes, flat.TypeTextList.from_names(['Box[Dxw]', ' Box[Kdd] ',
+		'Box[Dxw]']).ids)
+	assert indexes == expected
 	for _, type_idx in indexes {
 		assert type_idx > 65535
 		assert type_idx & (0xff << 16) == 0
@@ -252,4 +256,42 @@ fn test_type_qualification_preserves_channel_and_thread_wrappers() {
 	} else {
 		assert false, 'expected channel type, got `${channel_type.name()}`'
 	}
+}
+
+fn test_type_identity_is_shared_by_semantic_worker_views() {
+	mut a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	names := ['main.Uc', 'main.ACRB']
+	tc.runtime_type_indexes = stable_type_indexes(flat.TypeTextList.from_names(names).ids)
+	mut transform_view := tc.fork_for_parallel_transform(&a)
+	codegen_view := tc.fork_for_parallel_codegen()
+	for name in names {
+		expected := tc.type_index(flat.source_type_id(name))
+		assert transform_view.type_index(flat.source_type_id(name)) == expected
+		assert codegen_view.type_index(flat.source_type_id(name)) == expected
+		assert codegen_view.type_index(flat.source_type_id('&' + name)) == expected | (1 << 16)
+	}
+	extend_stable_type_indexes(mut transform_view.runtime_type_indexes, [flat.source_type_id('main.Late')])
+	assert flat.source_type_id('main.Late') in transform_view.runtime_type_indexes
+	assert flat.source_type_id('main.Late') !in tc.runtime_type_indexes
+	assert flat.source_type_id('main.Late') !in codegen_view.runtime_type_indexes
+}
+
+fn test_struct_fields_for_type_keeps_materialized_generic_fields_after_template_erasure() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.structs['Box'] = [StructField{ name: 'template_only', typ: *tc.parse_type(flat.source_type_id('bool')) }]
+	tc.structs['Box[int]'] = [StructField{ name: 'value', typ: *tc.parse_type(flat.source_type_id('int')), is_mut: true }]
+	before := tc.struct_fields_for_type(flat.source_type_id('Box[int]'))
+	assert before.len == 1
+	assert before[0].name == 'value'
+	assert before[0].typ.name() == 'int'
+	assert before[0].is_mut
+	tc.structs.delete('Box')
+	after := tc.struct_fields_for_type(flat.source_type_id('Box[int]'))
+	assert after.len == 1
+	assert after[0].name == 'value'
+	assert after[0].typ.name() == 'int'
+	assert after[0].is_mut
+	assert tc.struct_fields_for_type(flat.source_type_id('Missing[int]')).len == 0
 }

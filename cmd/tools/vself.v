@@ -1,7 +1,6 @@
 module main
 
 import os
-import os.cmdline
 import v.pref
 import v.util.recompilation
 import v.util.vflags
@@ -61,9 +60,12 @@ fn main() {
 				'cc'
 			}
 			args << ['-cc', os.getenv_opt('CC') or { default_cc }]
-		} else if host_os == 'linux' && unam.machine in ['arm64', 'aarch64'] {
+		} else if host_os == 'linux'
+			&& (unam.machine in ['arm64', 'aarch64'] || pref.host_arch() == 'arm32') {
 			// Bundled TCC can hang while bootstrapping V on Linux ARM64, so
-			// prefer the system compiler for self-builds there.
+			// prefer the system compiler for self-builds there. On 32-bit ARM, the
+			// compiler that TCC links crashes at startup: the Thumb-2 C startup code
+			// cannot reach libc across V's text, and TCC adds no veneer.
 			args << ['-cc', os.getenv_opt('CC') or { 'cc' }]
 		} else if host_os in ['freebsd', 'openbsd', 'netbsd', 'dragonfly'] {
 			// Keep the ordinary BSD self-build on the platform's system toolchain.
@@ -124,12 +126,14 @@ fn main() {
 		compile_args << '-selfhost'
 	}
 	final_binary := if obinary != '' { obinary } else { 'v2' }
-	// A production self-build compiles the compiler once, as a single C unit that the
-	// C compiler optimizes as a whole: parallel units leave every call between two of
-	// them out of line. The three-pass profile-guided cycle would build the large V3
-	// compiler three times.
-	single_prod_build := '-prod' in effective_args
-	pgo_cc_kind := if !c_self_build || single_prod_build { '' } else { pgo_compiler_kind(args) }
+	// Train Clang production compilers on self-compilation. Ordinary rebuilds and
+	// explicitly parallel C builds keep the single-build path; other C toolchains
+	// retain it until their profile generation and reuse are validated too.
+	pgo_cc_kind := if c_self_build && pgo_compiler_kind(effective_args) == 'clang' {
+		'clang'
+	} else {
+		''
+	}
 	// Only explicit FastC builds are standalone. Regular replacements must retain
 	// cmd/v so commands such as self, up, fmt, and version remain available.
 	compilation_source := if fastc_self_build { standalone_v3_source } else { full_v_cli_source }
@@ -441,8 +445,8 @@ fn pgo_compiler_kind(args []string) string {
 	if '-prod' !in args || '-no-prod-options' in args {
 		return ''
 	}
-	// A parallel self-build trades optimization for build time. PGO would compile
-	// that compiler three times and erase the gain from splitting C compilation.
+	// A parallel self-build trades optimization for build time. PGO adds another
+	// compiler build and training passes, erasing the gain from splitting C compilation.
 	if '-parallel-cc' in args {
 		return ''
 	}
@@ -452,16 +456,13 @@ fn pgo_compiler_kind(args []string) string {
 	if has_profile_cflag(args) {
 		return ''
 	}
-	mut ccompiler := cmdline.option(args, '-cc', '')
-	if ccompiler == '' {
-		ccompiler = os.getenv_opt('CC') or { 'cc' }
-	}
+	ccompiler := self_build_c_compiler(args)
 	cc_file_name := os.file_name(ccompiler)
 	if cc_file_name.contains('clang') || cc_file_name.contains('gcc')
 		|| cc_file_name.contains('g++') || ccompiler == 'cc' {
 		cc_ver := os.exec([ccompiler, '--version']).output
 		if cc_ver.contains('clang') {
-			_ := find_llvm_profdata() or { return '' }
+			_ := find_llvm_profdata(ccompiler) or { return '' }
 			return 'clang'
 		}
 		if cc_ver.contains('Free Software Foundation') || cc_ver.contains('GCC') {
@@ -469,7 +470,7 @@ fn pgo_compiler_kind(args []string) string {
 		}
 	}
 	if cc_file_name.contains('clang') {
-		_ := find_llvm_profdata() or { return '' }
+		_ := find_llvm_profdata(ccompiler) or { return '' }
 		return 'clang'
 	}
 	if cc_file_name.contains('gcc') || cc_file_name.contains('g++') {
@@ -478,7 +479,47 @@ fn pgo_compiler_kind(args []string) string {
 	return ''
 }
 
-fn find_llvm_profdata() !string {
+fn self_build_c_compiler(args []string) string {
+	// Environment flags precede CLI flags; the driver uses the last -cc.
+	mut ccompiler := ''
+	mut i := 0
+	for i < args.len {
+		arg := args[i]
+		if arg == '-cc' && i + 1 < args.len {
+			ccompiler = args[i + 1]
+		} else if arg.starts_with('-cc=') {
+			ccompiler = arg['-cc='.len..]
+		}
+		if arg in ['-prof', '-profile'] && i + 1 < args.len && args[i + 1].starts_with('-') {
+			i++
+		} else if (arg == '-cf' || pref.option_may_consume_value(arg)) && i + 1 < args.len {
+			i += 2
+		} else {
+			i++
+		}
+	}
+	return if ccompiler != '' { ccompiler } else { os.getenv_opt('CC') or { 'cc' } }
+}
+
+fn find_llvm_profdata(ccompiler string) !string {
+	// Clang launchers such as /usr/bin/clang can report a different installation
+	// directory. Use that toolchain before looking beside the launcher itself.
+	for line in os.exec([ccompiler, '--version']).output.split_into_lines() {
+		if line.starts_with('InstalledDir:') {
+			profdata := os.join_path(line.all_after(':').trim_space(), 'llvm-profdata')
+			if os.is_file(profdata) && os.is_executable(profdata) {
+				return profdata
+			}
+		}
+	}
+	if compiler := os.find_abs_path_of_executable(ccompiler) {
+		// Different LLVM releases can use incompatible raw profile formats.
+		// Resolve symlinks so a compiler in PATH still finds its own toolchain.
+		profdata := os.join_path(os.dir(os.real_path(compiler)), 'llvm-profdata')
+		if os.is_file(profdata) && os.is_executable(profdata) {
+			return profdata
+		}
+	}
 	if profdata := os.find_abs_path_of_executable('llvm-profdata') {
 		return profdata
 	}
@@ -570,9 +611,9 @@ fn try_compile(cmd string) bool {
 }
 
 fn compile_with_pgo(vroot string, vexe string, args []string, out_binary string, cc_kind string) bool {
-	pgo_workspace := os.join_path(vroot, '.vself_pgo')
-	os.rmdir_all(pgo_workspace) or {}
-	os.mkdir_all(pgo_workspace) or {
+	// Separate concurrent self-builds, and only remove a directory this invocation created.
+	pgo_workspace := os.join_path(vroot, '.vself_pgo_${os.getpid()}')
+	os.mkdir(pgo_workspace) or {
 		eprintln('PGO disabled: can not create ${pgo_workspace}: ${err.msg()}')
 		return false
 	}
@@ -590,7 +631,7 @@ fn compile_with_pgo(vroot string, vexe string, args []string, out_binary string,
 	mut llvm_profdata := ''
 	mut profile_data := ''
 	if cc_kind == 'clang' {
-		llvm_profdata = find_llvm_profdata() or {
+		llvm_profdata = find_llvm_profdata(self_build_c_compiler(effective_self_build_args(args))) or {
 			eprintln('PGO disabled: can not find `llvm-profdata`.')
 			return false
 		}
@@ -598,18 +639,38 @@ fn compile_with_pgo(vroot string, vexe string, args []string, out_binary string,
 		use_profile_flag = '-fprofile-use=${profile_data}'
 	}
 	mut generate_args := with_output_arg(args, pgo_binary)
-	generate_args << ['-cflags', '-fprofile-generate=${profile_dir}']
+	// -cflags is parsed again by the compiler, so keep paths with spaces together.
+	generate_args << ['-cflags', os.quoted_path('-fprofile-generate=${profile_dir}')]
+	// Training uses worker threads, so counter increments must not lose updates.
+	generate_args << ['-cflags', '-fprofile-update=atomic']
 	generate_cmd := compose_v_cmd(vexe, generate_args, full_v_cli_source)
 	run_cmd(generate_cmd) or {
 		eprintln('PGO step failed while building the instrumented compiler.')
 		eprintln(err.msg())
 		return false
 	}
-	training_cmd := '${os.quoted_path(pgo_binary)} -o ${os.quoted_path(training_output)} ${os.quoted_path(full_v_cli_source)}'
+	mut training_args := ['-nocache', '-gc', 'none', '-prealloc', '-compile-backend', 'fastc',
+		'-building-v', '-o', training_output]
+	no_parallel := '-no-parallel' in effective_self_build_args(args)
+	if no_parallel {
+		training_args << '-no-parallel'
+	}
+	// Exercise real V3 compilation, rather than an inherited cache or V1 fallback.
+	training_cmd := 'env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE V_MACOS_V3_NO_FALLBACK=1 ' +
+		compose_v_cmd(pgo_binary, training_args, full_v_cli_source)
 	run_cmd(training_cmd) or {
 		eprintln('PGO step failed while generating the profiling data.')
 		eprintln(err.msg())
 		return false
+	}
+	if !no_parallel && os.getenv('VJOBS') != '1' {
+		// Cover both worker dispatch and the serial checker/codegen paths. The
+		// second run changes only its child's environment, not the final build's.
+		run_cmd('env VJOBS=1 ${training_cmd}') or {
+			eprintln('PGO step failed while generating the serial profiling data.')
+			eprintln(err.msg())
+			return false
+		}
 	}
 	if cc_kind == 'clang' {
 		merge_cmd := '${os.quoted_path(llvm_profdata)} merge -output=${os.quoted_path(profile_data)} ${os.quoted_path(profile_dir)}'
@@ -620,7 +681,7 @@ fn compile_with_pgo(vroot string, vexe string, args []string, out_binary string,
 		}
 	}
 	mut final_args := with_output_arg(args, out_binary)
-	final_args << ['-cflags', use_profile_flag]
+	final_args << ['-cflags', os.quoted_path(use_profile_flag)]
 	if cc_kind == 'gcc' {
 		final_args << ['-cflags', '-fprofile-correction']
 	}

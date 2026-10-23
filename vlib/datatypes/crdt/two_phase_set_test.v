@@ -43,4 +43,3 @@ fn test_two_phase_set_merge() {
 	s2.merge(&s1)
 	assert s1 == s2
 }
-

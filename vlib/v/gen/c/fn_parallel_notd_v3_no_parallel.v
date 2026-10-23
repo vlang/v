@@ -400,8 +400,9 @@ fn forward_decl_lane_thread(arg voidptr) voidptr {
 	w.sb = strings.new_builder((a.end - a.start) * 96)
 	w.line_start = true
 	w.forward_decl_batches(*items, a.start, a.end)
-	a.output = w.sb.str()
-	unsafe { w.sb.free() }
+	// Hand the builder storage over instead of copying every prototype once more
+	// into this pool thread's arena.
+	a.output = cgen_take_builder_text(mut w.sb)
 	w.sb = strings.new_builder(0)
 	w.timing_profile('  [ttime]     cg fwd decls   ${f64(fdsw.elapsed().microseconds()) / 1000.0:7.2f} ms (task, items: ${a.end - a.start})')
 	return unsafe { nil }
@@ -447,8 +448,8 @@ fn parallel_type_decls_thread(arg voidptr) voidptr {
 	w.gen_translation_unit_prefix()
 	w.gen_type_declaration_block()
 	w.timing_profile('  [ttime]       td prefix+type ${f64(tdpsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
-	w.parallel_type_decls = w.sb.str()
-	unsafe { w.sb.free() }
+	// The reserved builder holds only this text; keep it instead of copying it.
+	w.parallel_type_decls = cgen_take_builder_text(mut w.sb)
 	w.sb = strings.new_builder(4096)
 	tdpsw.restart()
 	w.gen_global_declaration_block()
@@ -1159,6 +1160,8 @@ fn (mut g FlatGen) start_fixed_array_ret_wrappers() ([]&FlatGen, []thread voidpt
 	mut worker := g.new_parallel_worker(3)
 	worker.fixed_array_ret_wrappers = map[string]bool{}
 	mut support_worker := g.new_parallel_worker(5)
+	// Cleanup precomputation also reads synthetic drops in transformed declarations.
+	support_worker.fn_decl_nodes_by_name = g.fn_decl_nodes_by_name
 	// Both helpers run beside function selection, which writes the master's C-name
 	// and generic-application caches and may release the arena behind them. Keep
 	// their caches private instead of reading the master's through `base`.
@@ -1398,12 +1401,7 @@ fn (mut g FlatGen) replay_prep_candidates(args []FlatCgenCostArgs) {
 				g.tc.cur_module = item.module
 			}
 			if cand.is_expr {
-				w0, w1, slot := preseed_type_words(cand.typ)
-				if !replay_seen.seen[slot] || replay_seen.w0[slot] != w0
-					|| replay_seen.w1[slot] != w1 {
-					replay_seen.w0[slot] = w0
-					replay_seen.w1[slot] = w1
-					replay_seen.seen[slot] = true
+				if replay_seen.insert(cand.typ) {
 					g.preseed_parallel_fn_ptr_type(cand.typ)
 				}
 			} else {
@@ -1679,6 +1677,29 @@ fn cgen_publish_builder_text(mut sb strings.Builder, scope voidptr) string {
 	return text
 }
 
+// cgen_take_builder_text returns the text accumulated in `sb` as a string the
+// caller owns; under -prealloc it hands the builder's storage over instead of
+// copying it, so `sb` must be replaced before it is written again.
+fn cgen_take_builder_text(mut sb strings.Builder) string {
+	if sb.len == 0 {
+		unsafe { sb.free() }
+		sb = strings.new_builder(0)
+		return ''
+	}
+	$if !prealloc {
+		// An array's storage starts past a header in its allocation, so
+		// string.free could not release text pointing into it; copy the text.
+		text := sb.str()
+		unsafe { sb.free() }
+		sb = strings.new_builder(0)
+		return text
+	}
+	// The arena releases the storage, and string.free does not free under it.
+	sb << u8(0)
+	output := unsafe { sb.reuse_as_plain_u8_array() }
+	return unsafe { tos(&u8(output.data), output.len - 1) }
+}
+
 // moved_segment returns its argument unchanged. Appending an addressable
 // string (a local or field) to an array clones its bytes; passing the value
 // through a call appends the existing storage instead. Output segments are
@@ -1717,7 +1738,7 @@ fn (mut g FlatGen) absorb_scoped_cgen_batch(batch &FlatGen, output_streamed bool
 				user_c_symbols)
 			unsafe { batch_output.free() }
 		} else {
-			g.fn_segs << batch_output
+			g.fn_segs << moved_segment(batch_output)
 		}
 	}
 	unsafe { b.sb.free() }
@@ -1744,14 +1765,16 @@ fn (mut g FlatGen) absorb_scoped_cgen_batch(batch &FlatGen, output_streamed bool
 			}
 		}
 	}
+	// Batches of one dispatcher keep reporting the same names; copy a key only
+	// when it is new, so repeats do not pile up in the result arena.
 	for encoded, used in batch.used_fn_ptr_types {
-		if used {
+		if used && !g.used_fn_ptr_types[encoded] {
 			g.used_fn_ptr_types[encoded.clone()] = true
 		}
 	}
 	if !batch.c_extern_refs_shared {
 		for name, used in batch.c_extern_refs {
-			if used {
+			if used && !g.c_extern_refs[name] {
 				g.c_extern_refs[name.clone()] = true
 			}
 		}
@@ -1766,7 +1789,7 @@ fn (mut g FlatGen) absorb_scoped_cgen_batch(batch &FlatGen, output_streamed bool
 		g.needs_thread_type = true
 	}
 	for name, enabled in batch.libc_compat_fns {
-		if enabled {
+		if enabled && !g.libc_compat_fns[name] {
 			g.libc_compat_fns[name.clone()] = true
 		}
 	}
@@ -2036,7 +2059,7 @@ fn clone_cgen_fixed_array_typedef_map(values map[string]FixedArrayTypedefInfo) m
 	for key, info in values {
 		cloned[key.clone()] = FixedArrayTypedefInfo{
 			arr:    types.ArrayFixed{
-				elem_type: types.clone_owned_type(info.arr.elem_type)
+				elem_type: types.new_type_reference(types.Type(types.clone_owned_type(info.arr.elem_type)))
 				len:       info.arr.len
 				len_expr:  info.arr.len_expr.clone()
 			}
@@ -2148,7 +2171,7 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 					prefix := g.sb.str()
 					unsafe { g.sb.free() }
 					g.sb = strings.new_builder(4096)
-					g.fn_segs << prefix
+					g.fn_segs << moved_segment(prefix)
 				}
 				g.split_body_fn_ptr_types_from_decls(items.len)
 				g.gen_fn_items_scoped_master_batches(items)
@@ -2308,7 +2331,8 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 			g.parallel_used = g.a.worker_pool.run(tasks)
 			g.timing_profile('  [ttime]   cg pool.run      ${f64(dsw.elapsed().microseconds()) / 1000.0:7.2f} ms (chunks: ${chunk_count}, workers: ${worker_count})')
 			for fwd_arg in fwd_args {
-				g.parallel_forward_decl_parts << fwd_arg.output
+				// The lane text lives in its pool thread's arena for the rest of the run.
+				g.parallel_forward_decl_parts << moved_segment(fwd_arg.output)
 			}
 			cgen_worker_scope_free(fwd_scope)
 		}
@@ -2757,7 +2781,7 @@ fn (g &FlatGen) parallel_cached_expr_type(id flat.NodeId, node &flat.Node) ?type
 		return none
 	}
 	if idx < g.tc.expr_type_set.len && idx < g.tc.expr_type_values.len && g.tc.expr_type_set[idx] {
-		return g.tc.expr_type_values[idx]
+		return *g.tc.expr_type_values[idx]
 	}
 	if node.kind == .call && idx < g.tc.resolved_call_set.len && idx < g.tc.resolved_call_names.len
 		&& g.tc.resolved_call_set[idx] {
@@ -2781,11 +2805,12 @@ struct FlatCgenPrepCandidate {
 
 struct ResolvedCallTypeCache {
 mut:
-	ptrs   [4096]voidptr
-	lens   [4096]int
-	values [4096]types.Type
-	seen   [4096]bool
-	found  [4096]bool
+	ptrs    [4096]voidptr
+	lens    [4096]int
+	indexes [4096]u32
+	values  []types.Type
+	seen    [4096]bool
+	found   [4096]bool
 }
 
 // exact_flat_fn_gen_item_cost_and_prep is exact_flat_fn_gen_item_cost plus the
@@ -2837,11 +2862,7 @@ fn exact_flat_fn_gen_item_cost_and_prep(g &FlatGen, node_id flat.NodeId, item_id
 			}
 		}
 		if expr_type := g.parallel_cached_expr_type_with_cache(id, node, mut resolved_call_cache) {
-			w0, w1, slot := preseed_type_words(expr_type)
-			if !type_seen.seen[slot] || type_seen.w0[slot] != w0 || type_seen.w1[slot] != w1 {
-				type_seen.w0[slot] = w0
-				type_seen.w1[slot] = w1
-				type_seen.seen[slot] = true
+			if type_seen.insert(expr_type) {
 				cands << FlatCgenPrepCandidate{
 					is_expr:  true
 					typ:      expr_type
@@ -2869,7 +2890,7 @@ fn (g &FlatGen) parallel_cached_expr_type_with_cache(id flat.NodeId, node &flat.
 		return g.parallel_cached_expr_type(id, node)
 	}
 	if idx < g.tc.expr_type_set.len && idx < g.tc.expr_type_values.len && g.tc.expr_type_set[idx] {
-		return g.tc.expr_type_values[idx]
+		return *g.tc.expr_type_values[idx]
 	}
 	if node.kind != .call || idx >= g.tc.resolved_call_set.len
 		|| idx >= g.tc.resolved_call_names.len || !g.tc.resolved_call_set[idx] {
@@ -2879,7 +2900,7 @@ fn (g &FlatGen) parallel_cached_expr_type_with_cache(id flat.NodeId, node &flat.
 	slot := int((u64(voidptr(name.str)) >> 4 ^ u64(name.len)) & 4095)
 	if cache.seen[slot] && cache.ptrs[slot] == voidptr(name.str) && cache.lens[slot] == name.len {
 		if cache.found[slot] {
-			return cache.values[slot]
+			return cache.values[int(cache.indexes[slot] - 1)]
 		}
 		return none
 	}
@@ -2887,7 +2908,13 @@ fn (g &FlatGen) parallel_cached_expr_type_with_cache(id flat.NodeId, node &flat.
 	cache.lens[slot] = name.len
 	cache.seen[slot] = true
 	if typ := g.tc.fn_ret_types[name] {
-		cache.values[slot] = typ
+		index := cache.indexes[slot]
+		if index == 0 {
+			cache.values << typ
+			cache.indexes[slot] = u32(cache.values.len)
+		} else {
+			cache.values[int(index - 1)] = typ
+		}
 		cache.found[slot] = true
 		return typ
 	}
@@ -2954,14 +2981,6 @@ fn parallel_type_text_may_preseed(g &FlatGen, typ_id u32) bool {
 	}
 	short := unsafe { tos(typ.str + name_start, end - name_start) }
 	return short in g.prep_alias_short_names
-}
-
-@[inline]
-fn preseed_type_words(typ &types.Type) (u64, u64, int) {
-	words := unsafe { &u64(voidptr(typ)) }
-	w0 := unsafe { words[0] }
-	w1 := unsafe { words[1] }
-	return w0, w1, int((w0 >> 4 ^ w1) & 4095)
 }
 
 // par_cgen_prep_enabled gates the parallel fused item prep, so a single binary
@@ -3038,7 +3057,8 @@ fn (g &FlatGen) parallel_base_type_text(typ_id u32) u32 {
 fn (mut g FlatGen) preseed_parallel_fn_ptr_type(typ types.Type) {
 	if typ is types.FnType {
 		g.register_fn_ptr_type(g.fn_ptr_type_key(typ))
-		for param in typ.params {
+		for parameter in typ.params {
+			param := parameter.typ
 			g.preseed_parallel_fn_ptr_type(param)
 		}
 		g.preseed_parallel_fn_ptr_type(typ.return_type)
@@ -3272,6 +3292,8 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		global_linker_sections:             g.global_linker_sections
 		global_cinit_names:                 g.global_cinit_names
 		enum_backing_infos:                 g.enum_backing_infos
+		referenced_c_struct_ids:            g.referenced_c_struct_ids
+		referenced_c_struct_ids_ready:      g.referenced_c_struct_ids_ready
 		iface_impls:                        g.iface_impls
 		interface_dispatch_required:        g.interface_dispatch_required
 		iface_type_ids:                     g.iface_type_ids
@@ -3440,11 +3462,9 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		needed_optional_types:              g.needed_optional_types.clone()
 		optional_pointer_struct_tags:       g.optional_pointer_struct_tags.clone()
 		optional_types_ready:               g.optional_types_ready
-		emitted_optional_types:             if result_only {
-			g.emitted_optional_types
-		} else {
-			g.emitted_optional_types.clone()
-		}
+		// Declaration emission grows the master's set while scoped dispatchers
+		// fork chunk workers. Keep their snapshot private before tasks start.
+		emitted_optional_types:             g.emitted_optional_types.clone()
 		array_method_cache:                 if result_only {
 			g.array_method_cache
 		} else {
@@ -3510,7 +3530,6 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		local_global_suffix_names_ready:    g.local_global_suffix_names_ready
 		c_typedef_shadow_names:             g.c_typedef_shadow_names
 		c_typedef_shadow_names_ready:       g.c_typedef_shadow_names_ready
-		c_typedef_shadow_names_plain:       g.c_typedef_shadow_names_plain
 		generic_app_cache:                  &GenericAppCache{
 			base: if !isnil(g.generic_app_cache.base) {
 				g.generic_app_cache.base

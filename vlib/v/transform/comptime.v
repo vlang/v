@@ -57,10 +57,11 @@ struct FieldMeta {
 }
 
 struct EnumValueMeta {
-	name      string
-	value     i64
-	attrs     []string
-	enum_name u32
+	name         string
+	value        i64
+	value_from_c bool
+	attrs        []string
+	enum_name    u32
 }
 
 struct VariantMeta {
@@ -575,11 +576,25 @@ fn (mut t Transformer) expand_comptime_for(id flat.NodeId, node flat.Node) []fla
 	mut out := []flat.NodeId{}
 	for fm in t.comptime_field_metas(base_type) {
 		mut cloned := []flat.NodeId{cap: body_stmts.len}
+		// The clone derives types from the locals of the body, as the type of
+		// `&routes`. It declares them as it goes, so that another declaration of
+		// the name, such as a const, does not stand in for them. The iteration is
+		// then transformed with the bindings that it started with.
+		saved_vars := t.var_types.clone()
+		undo_was_active := t.var_type_undo_active
+		undo_start := t.var_type_undo_log.len
+		was_declaring := t.declaring_comptime_field_locals
+		t.var_type_undo_active = true
+		t.declaring_comptime_field_locals = true
 		for sid in body_stmts {
 			if cid := t.clone_field_subst(sid, var_name, fm) {
 				cloned << cid
 			}
 		}
+		t.declaring_comptime_field_locals = was_declaring
+		t.var_type_undo_active = undo_was_active
+		t.var_type_undo_log.trim(undo_start)
+		t.restore_var_types(saved_vars)
 		if t.comptime_body_has_unsupported(cloned, var_name, true) {
 			return []flat.NodeId{}
 		}
@@ -1163,7 +1178,7 @@ fn (mut t Transformer) clone_param_subst_scoped(id flat.NodeId, var_name string,
 					t.make_string_literal(param.name)
 				}
 				'typ' {
-					t.make_int_literal(t.comptime_field_type_id(param.typ, param.module_name))
+					t.make_int_literal(t.type_index(param.typ, param.module_name))
 				}
 				else {
 					t.clone_param_subst_children(node, var_name, param, inner_vars)
@@ -1176,7 +1191,7 @@ fn (mut t Transformer) clone_param_subst_scoped(id flat.NodeId, var_name string,
 					t.make_string_literal(param.typ_text())
 				}
 				'idx' {
-					t.make_int_literal(t.comptime_field_type_id(param.typ, param.module_name))
+					t.make_int_literal(t.type_index(param.typ, param.module_name))
 				}
 				else {
 					t.clone_param_subst_children(node, var_name, param, inner_vars)
@@ -1193,7 +1208,7 @@ fn (mut t Transformer) clone_param_subst_scoped(id flat.NodeId, var_name string,
 		} else {
 			flat.source_type_name(t.comptime_field_type_id_key(param.typ, param.module_name))
 		}
-		mut cond := comptime_cond_replace_int_compared(node.value, '${var_name}.typ', t.comptime_field_type_id(param.typ, param.module_name).str())
+		mut cond := comptime_cond_replace_int_compared(node.value, '${var_name}.typ', t.type_index(param.typ, param.module_name).str())
 		cond = comptime_cond_replace_unquoted(cond, '${var_name}.typ', param_typ)
 		cond = comptime_cond_replace_unquoted(cond, '${var_name}.name', "'${param.name}'")
 		cond = comptime_cond_replace_unquoted(cond, ' is &void', ' is voidptr')
@@ -1284,7 +1299,7 @@ fn (mut t Transformer) make_param_data_literal(param ParamMeta) flat.NodeId {
 
 fn (mut t Transformer) make_param_data_literal_in_module(param ParamMeta, module_name string) flat.NodeId {
 	name_field := t.make_named_field_init('name', t.make_string_literal(param.name), flat.source_type_string)
-	typ_field := t.make_named_field_init('typ', t.make_int_literal(t.comptime_field_type_id(param.typ, module_name)), flat.source_type_int)
+	typ_field := t.make_named_field_init('typ', t.make_int_literal(t.type_index(param.typ, module_name)), flat.source_type_int)
 	start := t.a.children.len
 	t.a.children << name_field
 	t.a.children << typ_field
@@ -1305,7 +1320,7 @@ fn (mut t Transformer) make_method_data_literal(method MethodMeta) flat.NodeId {
 		t.make_named_field_init('attrs', t.make_string_array_literal(method.attrs), flat.source_type_id('[]string')),
 		t.make_named_field_init('attributes', t.make_attribute_array_literal(method.attributes), flat.source_type_id('[]VAttribute')),
 		t.make_named_field_init('args', t.make_param_array_literal(method.params, method.module_name), flat.source_type_id('[]FunctionParam')),
-		t.make_named_field_init('return_type', t.make_int_literal(t.comptime_field_type_id(method.return_type, method.module_name)), flat.source_type_int),
+		t.make_named_field_init('return_type', t.make_int_literal(t.type_index(method.return_type, method.module_name)), flat.source_type_int),
 		t.make_named_field_init('typ', t.make_int_literal(t.comptime_method_type_id(method)), flat.source_type_int),
 	]
 	start := t.a.children.len
@@ -1879,7 +1894,7 @@ fn (mut t Transformer) clone_method_subst_scoped(id flat.NodeId, var_name string
 					t.make_bool_literal(method.is_pub)
 				}
 				'return_type' {
-					t.make_int_literal(t.comptime_field_type_id(method.return_type, method.module_name))
+					t.make_int_literal(t.type_index(method.return_type, method.module_name))
 				}
 				'typ' {
 					t.make_int_literal(t.comptime_method_type_id(method))
@@ -2113,14 +2128,8 @@ fn (mut t Transformer) make_comptime_method_selector(receiver flat.NodeId, metho
 			&& !t.cur_file.ends_with('_test.v') && !t.cur_file.ends_with('_test.vv') {
 			t.record_monomorph_error('method `${method_key}` is private')
 		}
-		if params := t.tc.fn_param_types[method_key] {
-			ret := t.tc.fn_ret_types[method_key] or { types.Type(types.void_) }
-			fn_type := types.Type(types.FnType{
-				params:      params.clone()
-				params_mut:  t.tc.declaration_param_mutability_for(method_key).clone()
-				is_variadic: t.tc.fn_variadic[method_key] or { false }
-				return_type: ret
-			})
+		if signature := t.tc.fn_type_for_name(method_key) {
+			fn_type := types.Type(signature)
 			value := t.a.add_node(flat.Node{
 				kind:  .ident
 				value: method_key
@@ -2322,7 +2331,7 @@ fn (t &Transformer) subst_method_cond(cond string, var_name string, method Metho
 	}
 	method_type := flat.source_type_name(t.comptime_method_type_text(method))
 	result = comptime_cond_replace_unquoted(result, '${var_name}.location', comptime_cond_string_literal(method.location))
-	result = comptime_cond_replace_int_compared(result, '${var_name}.return_type', t.comptime_field_type_id(method.return_type, method.module_name).str())
+	result = comptime_cond_replace_int_compared(result, '${var_name}.return_type', t.type_index(method.return_type, method.module_name).str())
 	result = comptime_cond_replace_unquoted(result, '${var_name}.return_type', flat.source_type_name(t.comptime_field_type_id_key(method.return_type, method.module_name)))
 	result = comptime_cond_replace_int_compared(result, '${var_name}.typ', t.comptime_method_type_id(method).str())
 	result = comptime_cond_replace_unquoted(result, '${var_name}.typ', method_type)
@@ -2361,7 +2370,7 @@ fn (t &Transformer) comptime_method_type_text(method MethodMeta) u32 {
 }
 
 fn (t &Transformer) comptime_method_type_id(method MethodMeta) int {
-	return t.comptime_field_type_id(t.comptime_method_type_text(method), '')
+	return t.type_index(t.comptime_method_type_text(method), '')
 }
 
 // subst_method_attrs_access_cond materializes `method.attrs[i]` (the attribute, or '' past the
@@ -2506,7 +2515,7 @@ fn (t &Transformer) subst_method_param_cond(cond string, var_name string, method
 				if member == 'name' {
 					"'${method.params[index].name}'"
 				} else if comptime_cond_int_compared(result, start, member_end) {
-					t.comptime_field_type_id(method.params[index].typ, method.module_name).str()
+					t.type_index(method.params[index].typ, method.module_name).str()
 				} else if method.params[index].typ_text() == '&void' {
 					'voidptr'
 				} else {
@@ -2579,7 +2588,7 @@ fn (t &Transformer) comptime_sum_variants(base_type_id u32) []VariantMeta {
 	for variant in variants {
 		metas << VariantMeta{
 			typ:    variant
-			typ_id: t.comptime_field_type_id(variant, t.cur_module)
+			typ_id: t.type_index(variant, t.cur_module)
 		}
 	}
 	return metas
@@ -2754,37 +2763,49 @@ fn (t &Transformer) enum_decl_value_metas(enum_name_id u32) []EnumValueMeta {
 		mut field_values := map[string]i64{}
 		mut resolving := map[string]bool{}
 		mut next_val := i64(0)
+		mut next_from_c := false
 		for f in fields {
 			mut val := next_val
+			mut from_c := next_from_c
 			mut materialized_value := i64(0)
 			mut has_materialized_value := false
 			if checked_value := checked_values[f.name] {
 				materialized_value = i64(checked_value)
 				has_materialized_value = true
+				from_c = false
 				if is_flag {
 					val = enum_flag_value_index(u64(checked_value)) or { next_val }
 				} else {
 					val = materialized_value
 				}
+			} else if !isnil(t.tc) {
+				from_c = true
 			} else if int(f.expr_id) >= 0 {
 				if ev := t.enum_field_int_value_with_enum(f.expr_id, cur_mod, qualified_id, mut field_values, field_exprs, mut resolving) {
 					val = ev
+					from_c = false
+				} else {
+					from_c = true
 				}
 			}
-			field_values[f.name] = val
+			if !from_c {
+				field_values[f.name] = val
+			}
 			values << EnumValueMeta{
-				name:      f.name
-				value:     if has_materialized_value {
+				name:         f.name
+				value_from_c: from_c
+				value:        if has_materialized_value {
 					materialized_value
 				} else if is_flag {
 					i64(u64(1) << u64(val))
 				} else {
 					val
 				}
-				attrs:     f.attrs.clone()
-				enum_name: qualified_id
+				attrs:        f.attrs.clone()
+				enum_name:    qualified_id
 			}
 			next_val = val + 1
+			next_from_c = from_c
 		}
 		return values
 	}
@@ -3067,7 +3088,7 @@ fn (mut t Transformer) clone_value_subst_scoped(id flat.NodeId, var_name string,
 	// unsupported `comptime_if` for the C backend.
 	mut value := node.value
 	if node.kind == .comptime_if && comptime_cond_references_ident(node.value, var_name) {
-		cond := t.subst_value_cond(node.value, var_name, item.name, item.value)
+		cond := t.subst_value_cond(node.value, var_name, item)
 		if !comptime_cond_has_any_loop_member_ref(cond, inner_vars) {
 			if !comptime_cond_has_loop_member_ref(cond, var_name) {
 				if taken := t.eval_reflected_string_condition(cond, node) {
@@ -3476,6 +3497,13 @@ fn (t &Transformer) subtree_has_comptime_field_selector(id flat.NodeId) bool {
 }
 
 fn (mut t Transformer) make_comptime_enum_value(item EnumValueMeta) flat.NodeId {
+	if item.value_from_c {
+		return t.a.add_node(flat.Node{
+			kind:  .enum_val
+			value: '${item.enum_name_text()}.${item.name}'
+			typ:   item.enum_name
+		})
+	}
 	literal := t.make_int_literal_typed(item.value.str(), flat.source_type_i64)
 	return t.make_cast(item.enum_name, literal, item.enum_name)
 }
@@ -3765,7 +3793,12 @@ fn (t &Transformer) subst_variant_cond(cond string, var_name string, item Varian
 // make_enum_data_literal builds `EnumData{name: '<name>', value: <value>, attrs: [...]}`.
 fn (mut t Transformer) make_enum_data_literal(item EnumValueMeta) flat.NodeId {
 	name_field := t.make_named_field_init('name', t.make_string_literal(item.name), flat.source_type_string)
-	value_field := t.make_named_field_init('value', t.make_int_literal_typed(item.value.str(), flat.source_type_i64), flat.source_type_i64)
+	value := if item.value_from_c {
+		t.make_cast(flat.source_type_i64, t.make_comptime_enum_value(item), flat.source_type_i64)
+	} else {
+		t.make_int_literal_typed(item.value.str(), flat.source_type_i64)
+	}
+	value_field := t.make_named_field_init('value', value, flat.source_type_i64)
 	attrs_field := t.make_named_field_init('attrs', t.make_string_array_literal(item.attrs), flat.source_type_id('[]string'))
 	start := t.a.children.len
 	t.a.children << name_field
@@ -4244,8 +4277,8 @@ fn (t &Transformer) field_meta_for(name string, ftyp_id u32, resolved_typ_id u32
 		unaliased_typ:      unaliased_source_id
 		comptime_typ:       t.comptime_field_type_id_key(ftyp_id, decl_module)
 		comptime_unaliased: t.comptime_field_type_id_key(unaliased_source_id, decl_module)
-		typ_id:             t.comptime_field_type_id(ftyp_id, decl_module)
-		unaliased_id:       t.comptime_field_type_id(unaliased_source_id, decl_module)
+		typ_id:             t.type_index(ftyp_id, decl_module)
+		unaliased_id:       t.type_index(unaliased_source_id, decl_module)
 		is_option:          is_option
 		is_embed:           is_embed
 		is_array:           unaliased_shape.has(.array_type) || t.is_fixed_array_type(unaliased_core_id)
@@ -4306,67 +4339,15 @@ fn parse_comptime_generic_type_base(typ string) string {
 	return trimmed_transform_text(clean[..bracket])
 }
 
-fn (t &Transformer) comptime_field_type_id(typ_id u32, decl_module string) int {
+fn (t &Transformer) type_index(typ_id u32, decl_module string) int {
 	key_id := t.comptime_field_type_id_key(typ_id, decl_module)
-	if key_id == 0 {
-		return 0
+	mut key := flat.source_type_name(key_id)
+	// Comptime metadata exposes the wrapped type's index; runtime reflection
+	// carries option/result flags separately from that index.
+	for key.starts_with('?') || key.starts_with('!') {
+		key = trimmed_transform_text(key[1..])
 	}
-	mut base_key := flat.source_type_name(key_id)
-	mut indirections := 0
-	for base_key.starts_with('?') || base_key.starts_with('!') {
-		base_key = trimmed_transform_text(base_key[1..])
-	}
-	for base_key.starts_with('&') {
-		indirections++
-		base_key = trimmed_transform_text(base_key[1..])
-	}
-	builtin_idx := comptime_builtin_type_idx(base_key)
-	indirection_bits := int(u32(indirections) << 16)
-	if builtin_idx > 0 {
-		return builtin_idx | indirection_bits
-	}
-	mut custom_idx := comptime_type_id_hash(base_key) & ~(0xff << 16)
-	if custom_idx < 65536 {
-		// Bit 24 is the first available bit above the reserved indirection byte.
-		custom_idx |= 1 << 24
-	}
-	return custom_idx | indirection_bits
-}
-
-// comptime_builtin_type_idx maps a builtin type name to V's stable ast type index
-// (vlib/v/ast/types.v `*_type_idx` consts), so user code comparing `field.typ_text()` /
-// `typeof[T]().idx` against `v.ast` constants (e.g. `int(ast.bool_type)` == 19) sees the
-// same values the reference compiler produces.
-fn comptime_builtin_type_idx(name string) int {
-	return match name {
-		'void' { 1 }
-		'voidptr' { 2 }
-		'byteptr' { 3 }
-		'charptr' { 4 }
-		'i8' { 5 }
-		'i16' { 6 }
-		'i32' { 7 }
-		'int' { 8 }
-		'i64' { 9 }
-		'isize' { 10 }
-		'u8' { 11 }
-		'u16' { 12 }
-		'u32' { 13 }
-		'u64' { 14 }
-		'usize' { 15 }
-		'f32' { 16 }
-		'f64' { 17 }
-		'char' { 18 }
-		'bool' { 19 }
-		'none' { 20 }
-		'string' { 21 }
-		'rune' { 22 }
-		'float literal' { 27 }
-		'int literal' { 28 }
-		'thread' { 29 }
-		'nil' { 31 }
-		else { 0 }
-	}
+	return t.tc.type_index(flat.source_type_id(key))
 }
 
 fn (t &Transformer) comptime_field_type_id_key(typ_id u32, decl_module string) u32 {
@@ -4483,17 +4464,6 @@ fn (t &Transformer) comptime_field_type_id_key_uncached(typ string, decl_module 
 	return '${decl_module}.${core}'
 }
 
-// V3 does not have a runtime TypeInfo table yet; keep FieldData TypeIDs stable and nonzero.
-// Hashed ids start above 65536 so they can never collide with the reserved builtin
-// `*_type_idx` range returned by comptime_builtin_type_idx.
-fn comptime_type_id_hash(key string) int {
-	mut h := u64(1469598103934665603)
-	for i in 0 .. key.len {
-		h = ((h ^ u64(key[i])) * 1099511628211) % 2147418111
-	}
-	return int(h) + 65536
-}
-
 fn comptime_is_primitive_type(typ string) bool {
 	return typ in ['string', 'bool', 'rune', 'char', 'i8', 'i16', 'i32', 'i64', 'int', 'isize',
 		'u8', 'u16', 'u32', 'u64', 'usize', 'f32', 'f64', 'int literal', 'float literal', 'voidptr',
@@ -4571,6 +4541,9 @@ fn (mut t Transformer) comptime_zero_value(typ_id u32) flat.NodeId {
 		}
 	}
 	zero_id := t.zero_value_for_type(zero_type)
+	if t.generic_type_text_contains_alias(typ_id, t.cur_module) {
+		return t.make_cast(typ_id, zero_id, typ_id)
+	}
 	// `nil` is a `voidptr` on its own, so a pointer zero is cast too: a generic call
 	// then infers `&&int` from `$zero(E.pointee_type)`, not `voidptr`.
 	if typ_comparison_type_id_5 !in [u32(0), flat.source_type_void, flat.source_type_int,
@@ -4621,10 +4594,7 @@ fn (mut t Transformer) clone_field_subst_scoped(id flat.NodeId, var_name string,
 		t.tc.record_cgen_error_at('cannot use `?` on non-option expression', id, source_id, '?')
 		return t.clone_field_subst_children(node, var_name, fm, inner_vars)
 	}
-	// `sizeof(field)` stores the parser's ambiguous identifier in the node value rather
-	// than as a child expression. Inside a reflected field loop it denotes the concrete
-	// field type, just like `typeof(field)`.
-	if node.kind == .sizeof_expr && node.value == var_name {
+	if node.kind == .sizeof_expr && t.sizeof_operand_name(node) == var_name {
 		return t.make_sizeof_type(fm.comptime_typ)
 	}
 	// `isreftype(field)` does carry `field` as an expression. Preserve its reflected type
@@ -4714,6 +4684,7 @@ fn (mut t Transformer) clone_field_subst_scoped(id flat.NodeId, var_name string,
 		&& flat.source_type_shape(fm.comptime_typ).has(.option_type)
 		&& t.direct_reflected_field_selector(t.a.child(&node, 2), var_name) {
 		mut children := []flat.NodeId{cap: int(node.children_count)}
+		scope := t.open_comptime_field_scope()
 		for i in 0 .. node.children_count {
 			child := t.clone_field_subst_scoped(t.a.child(&node, i), var_name, fm, inner_vars) or {
 				flat.empty_node
@@ -4724,6 +4695,7 @@ fn (mut t Transformer) clone_field_subst_scoped(id flat.NodeId, var_name string,
 				children << child
 			}
 		}
+		t.close_comptime_field_scope(scope)
 		start := t.a.children.len
 		for child in children {
 			t.a.children << child
@@ -4945,11 +4917,13 @@ fn (t &Transformer) node_has_loop_jump(id flat.NodeId) bool {
 
 fn (mut t Transformer) clone_field_match_branch_body(branch flat.Node, body_start int, var_name string, fm FieldMeta, inner_vars []string) flat.NodeId {
 	mut body := []flat.NodeId{}
+	scope := t.open_comptime_field_scope()
 	for i in body_start .. branch.children_count {
 		if child := t.clone_field_subst_scoped(t.a.child(&branch, i), var_name, fm, inner_vars) {
 			body << child
 		}
 	}
+	t.close_comptime_field_scope(scope)
 	return t.make_block(body)
 }
 
@@ -5122,15 +5096,49 @@ fn (mut t Transformer) clone_field_subst_children(node flat.Node, var_name strin
 	return t.clone_field_subst_children_with_value(node, var_name, fm, inner_vars, node.value)
 }
 
+// open_comptime_field_scope opens the scope of the children of a node that the
+// clone of a `$for` body copies: a local that one child declares is seen by the
+// later children only.
+@[inline]
+fn (t &Transformer) open_comptime_field_scope() VarTypeScopeMark {
+	return t.mark_var_type_scope()
+}
+
+// close_comptime_field_scope drops the locals declared since `mark`.
+fn (mut t Transformer) close_comptime_field_scope(mark VarTypeScopeMark) {
+	if t.declaring_comptime_field_locals
+		&& (t.var_types.len != mark.bindings || t.var_type_undo_log.len != mark.undo) {
+		t.restore_var_type_scope(mark)
+	}
+}
+
+// declare_comptime_field_local declares the local of a `name := value` that the
+// clone of a `$for` body copied, with the type that the clone gave it.
+fn (mut t Transformer) declare_comptime_field_local(lhs_id flat.NodeId, typ u32) {
+	if !t.declaring_comptime_field_locals || typ == 0
+		|| typ in [flat.source_type_unknown, flat.source_type_generic] {
+		return
+	}
+	if t.generic_arg_is_unresolved(typ) {
+		return
+	}
+	lhs := t.a.nodes[int(lhs_id)]
+	if lhs.kind == .ident && lhs.value.len > 0 && lhs.value != '_' {
+		t.set_var_type(lhs.value, typ)
+	}
+}
+
 @[direct_array_access]
 fn (mut t Transformer) clone_field_subst_children_with_value(node flat.Node, var_name string, fm FieldMeta, inner_vars []string, value string) ?flat.NodeId {
 	child_inner_vars := comptime_nested_loop_vars(node, var_name, inner_vars)
 	mut children := []flat.NodeId{cap: int(node.children_count)}
+	scope := t.open_comptime_field_scope()
 	for i in 0 .. node.children_count {
 		if c := t.clone_field_subst_scoped(t.a.child(&node, i), var_name, fm, child_inner_vars) {
 			children << c
 		}
 	}
+	t.close_comptime_field_scope(scope)
 	cloned_value := if node.kind == .comptime_if {
 		value
 	} else {
@@ -5194,6 +5202,9 @@ fn (mut t Transformer) clone_field_subst_children_with_value(node flat.Node, var
 		if rhs_typ != 0 && rhs_typ !in [flat.source_type_unknown, flat.source_type_generic] {
 			typ = rhs_typ
 			t.set_node_typ(int(children[0]), typ)
+			if children.len == 2 {
+				t.declare_comptime_field_local(children[0], typ)
+			}
 		}
 	}
 	start := t.a.children.len
@@ -5321,10 +5332,12 @@ fn (mut t Transformer) make_string_array_literal(values []string) flat.NodeId {
 
 // subst_value_cond textually substitutes `<var>.name`/`<var>.value` inside a comptime condition
 // string for a `$for value in Enum.values` iteration, so `eval_field_cond` can fold it.
-fn (t &Transformer) subst_value_cond(cond string, var_name string, name string, value i64) string {
+fn (t &Transformer) subst_value_cond(cond string, var_name string, item EnumValueMeta) string {
 	mut c := cond
-	c = comptime_cond_replace_unquoted(c, '${var_name}.value', value.str())
-	c = comptime_cond_replace_unquoted(c, '${var_name}.name', "'${name}'")
+	if !item.value_from_c {
+		c = comptime_cond_replace_unquoted(c, '${var_name}.value', item.value.str())
+	}
+	c = comptime_cond_replace_unquoted(c, '${var_name}.name', "'${item.name}'")
 	return c
 }
 

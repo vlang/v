@@ -575,9 +575,9 @@ fn fn_value_type_name_from_type(typ types.Type) ?u32 {
 
 fn fn_call_value_type_name_from_type(typ types.Type) ?u32 {
 	if typ is types.FnType {
-		for i, param in typ.params {
-			if i < typ.params_mut.len && typ.params_mut[i] && param is types.Pointer {
-				return fn_literal_value_type_text(typ.params, typ.return_type.source_type_id())
+		for parameter in typ.params {
+			if parameter.is_mut && parameter.typ is types.Pointer {
+				return fn_literal_value_type_text(typ.params.map(*it.typ), typ.return_type.source_type_id())
 			}
 		}
 	}
@@ -796,22 +796,21 @@ fn (t &Transformer) resolve_selector_type_uncached(node flat.Node) u32 {
 	if builtin_type_source_id := t.builtin_selector_type(base_type_source_id, field_name) {
 		return builtin_type_source_id
 	}
-	base_key := t.expr_key(base_id)
-	if base_key.len > 0 {
-		full_key := '${base_key}.${field_name}'
-		if sc := t.find_smartcast(full_key) {
-			return t.smartcast_target_type(sc)
-		}
-	}
-	if base_key.len > 0 {
-		if sc := t.find_smartcast(base_key) {
-			variant_type_source_id := t.qualify_variant(sc.variant_name, sc.sum_type_name)
-
-			if ftyp_source_id := t.lookup_struct_field_type(variant_type_source_id, field_name) {
-				return ftyp_source_id
+	if t.smartcast_stack.len > 0 {
+		base_key := t.expr_key(base_id)
+		if base_key.len > 0 {
+			full_key := '${base_key}.${field_name}'
+			if sc := t.find_smartcast(full_key) {
+				return t.smartcast_target_type(sc)
 			}
-			if ftyp_source_id := t.lookup_struct_field_type(sc.variant_name, field_name) {
-				return ftyp_source_id
+			if sc := t.find_smartcast(base_key) {
+				variant_type_source_id := t.qualify_variant(sc.variant_name, sc.sum_type_name)
+				if ftyp_source_id := t.lookup_struct_field_type(variant_type_source_id, field_name) {
+					return ftyp_source_id
+				}
+				if ftyp_source_id := t.lookup_struct_field_type(sc.variant_name, field_name) {
+					return ftyp_source_id
+				}
 			}
 		}
 	}
@@ -1398,8 +1397,17 @@ fn (t &Transformer) type_authority_has(name string) bool {
 }
 
 // normalize_type_alias resolves an interned spelling while retaining its numeric identity.
+@[direct_array_access; inline]
 fn (t &Transformer) normalize_type_alias(type_id u32) u32 {
 	if type_id == 0 || isnil(t.tc) { return type_id }
+	if !isnil(t.alias_cache) && t.alias_cache.texts == t.var_type_texts
+		&& t.alias_cache.canonical_types[int(type_id & 1023)] == type_id {
+		return type_id
+	}
+	return t.normalize_type_alias_cached(type_id)
+}
+
+fn (t &Transformer) normalize_type_alias_cached(type_id u32) u32 {
 	mut texts := t.var_type_texts
 	if isnil(t.alias_cache) {
 		typ := texts.text(type_id)
@@ -2017,21 +2025,17 @@ fn (t &Transformer) resolve_index_elem_type(node flat.Node) u32 {
 		// A range/slice of a fixed array (`arr[..]`, `arr[a..b]`) yields a dynamic
 		// `[]T`, not the fixed array or a bogus `range` type.
 		if t.is_fixed_array_type(base_type) {
-			return flat.source_type_id('[]${flat.source_type_name(t.normalize_type_alias(for_in_fixed_array_elem_type(base_type)))}')
+			return flat.source_type_id('[]${flat.source_type_name(t.normalize_type_alias(t.for_in_fixed_array_elem_type(base_type)))}')
 		}
 	}
 	if flat.source_type_shape(base_type).has(.array_type) {
 		return t.normalize_type_alias(flat.source_type_id(flat.source_type_name(base_type)[2..]))
 	}
 	if t.is_fixed_array_type(base_type) {
-		return t.normalize_type_alias(for_in_fixed_array_elem_type(base_type))
+		return t.normalize_type_alias(t.for_in_fixed_array_elem_type(base_type))
 	}
 	if flat.source_type_shape(base_type).has(.map_type) {
-		bracket_end := flat.source_type_name(base_type).index(']') or { return u32(0) }
-		if bracket_end + 1 < flat.source_type_name(base_type).len {
-			return t.normalize_type_alias(flat.source_type_id(flat.source_type_name(base_type)[bracket_end + 1..]))
-		}
-		return u32(0)
+		return t.normalize_type_alias(t.map_value_type(base_type))
 	}
 	if base_type == flat.source_type_string {
 		return flat.source_type_u8
@@ -2073,7 +2077,7 @@ fn (t &Transformer) normalized_node_type(id flat.NodeId) u32 {
 // transform) and falling back to the transformer's local heuristics. This is the
 // bridge that makes the transformer type-aware, so type-dependent lowering lives
 // here rather than in the backend.
-@[direct_array_access]
+@[direct_array_access; inline]
 fn (t &Transformer) node_type(id flat.NodeId) u32 {
 	idx := int(id)
 	if !isnil(t.node_type_memo) {
@@ -2102,21 +2106,27 @@ fn (t &Transformer) node_type(id flat.NodeId) u32 {
 			if memo.filled[slot] == memo.generation {
 				return memo.values[slot]
 			}
-			generation := memo.generation
-			result_id := t.node_type_uncached(id)
-
-			// Resolution can request a nested specialization and change the type
-			// environment. Publish only results from an unchanged context, and let
-			// provisional answers resolve again after declarations are registered.
-			if memo.generation == generation && result_id != 0 && result_id != flat.source_type_unknown
-				&& !t.generic_arg_is_unresolved(result_id) {
-				memo.values[slot] = result_id
-				memo.filled[slot] = generation
-			}
-			return result_id
+			return t.node_type_memo_miss(id, slot)
 		}
 	}
 	return t.node_type_uncached(id)
+}
+
+@[direct_array_access]
+fn (t &Transformer) node_type_memo_miss(id flat.NodeId, slot int) u32 {
+	mut memo := t.node_type_memo
+	generation := memo.generation
+	result_id := t.node_type_uncached(id)
+
+	// Resolution can request a nested specialization and change the type
+	// environment. Publish only results from an unchanged context, and let
+	// provisional answers resolve again after declarations are registered.
+	if memo.generation == generation && result_id != 0 && result_id != flat.source_type_unknown
+		&& !t.generic_arg_is_unresolved(result_id) {
+		memo.values[slot] = result_id
+		memo.filled[slot] = generation
+	}
+	return result_id
 }
 
 @[direct_array_access]

@@ -3,21 +3,81 @@ module types
 
 import v.flat
 
+fn test_repeated_scalar_interning_after_scope_promotion() {
+	$if prealloc {
+		mut interner := new_type_interner()
+		input := Type(int_)
+		scope := unsafe { prealloc_scope_begin() }
+		id, scoped := interner.canonicalize(input)
+		assert unsafe { prealloc_scope_owns(scope, scoped) }
+		unsafe { prealloc_scope_leave(scope) }
+		interner.promote_from(0, scope)
+		assert isnil(interner.canonical_identity(scoped))
+		promoted_id, promoted := interner.canonicalize(input)
+		assert promoted_id == id
+		assert voidptr(promoted) == voidptr(interner.types[int(id)])
+		assert !unsafe { prealloc_scope_owns(scope, promoted) }
+		unsafe { prealloc_scope_free_after(scope) }
+		again_id, again := interner.canonicalize(input)
+		assert again_id == id
+		assert voidptr(again) == voidptr(promoted)
+		assert semantic_types_equal(again, input)
+	}
+}
+
+fn test_interner_owns_edges_from_a_temporary_arena() {
+	$if prealloc {
+		mut interner := new_type_interner()
+		scope := unsafe { prealloc_scope_begin() }
+		child := &Type(Struct{ name_id: flat.source_type_id('temporary.Record') })
+		borrowed := Type(Pointer{ base_type: child })
+		unsafe { prealloc_scope_leave(scope) }
+		_, owned := interner.canonicalize(borrowed)
+		assert owned is Pointer
+		assert !unsafe { prealloc_scope_owns(scope, owned.base_type) }
+		assert owned.base_type is Struct
+		assert !unsafe { prealloc_scope_owns(scope, owned.base_type.name().str) }
+		unsafe { prealloc_scope_free_after(scope) }
+		assert owned.name() == '&temporary.Record'
+		_, canonical := interner.canonicalize(Type(Struct{ name_id: flat.source_type_id('temporary.Record') }))
+		assert voidptr(owned.base_type) == voidptr(canonical)
+	}
+}
+
+fn test_type_interner_promotion_preserves_canonical_edges() {
+	$if prealloc {
+		mut interner := new_type_interner()
+		scope := unsafe { prealloc_scope_begin() }
+		child := &Type(Struct{ name_id: flat.source_type_id('scoped.Record') })
+		parent_id, _ := interner.canonicalize(Type(Pointer{ base_type: child }))
+		unsafe { prealloc_scope_leave(scope) }
+		interner.promote_from(0, scope)
+		unsafe { prealloc_scope_free_after(scope) }
+		parent := interner.types[int(parent_id)]
+		assert parent is Pointer
+		_, canonical := interner.canonicalize(Type(Struct{ name_id: flat.source_type_id('scoped.Record') }))
+		assert voidptr(parent.base_type) == voidptr(canonical)
+		assert parent.name() == '&scoped.Record'
+	}
+}
+
 fn test_type_interner_owns_payloads_from_a_left_worker_scope() {
 	$if prealloc {
 		mut interner := new_type_interner()
 		scope := unsafe { prealloc_scope_begin() }
 		borrowed := Type(FnType{
-			params:      [Type(ArrayFixed{
-				elem_type: Type(Struct{
-					name_id: flat.source_type_id('C.WorkerPayload'.clone())
+			params:      [FnParam{
+				typ:    &Type(ArrayFixed{
+					elem_type: &Type(Struct{
+						name_id: flat.source_type_id('C.WorkerPayload'.clone())
+					})
+					len_expr:  'worker_count'.clone()
 				})
-				len_expr:  'worker_count'.clone()
-			})]
-			params_mut:  [true]
-			return_type: Type(Alias{
+				is_mut: true
+			}]
+			return_type: &Type(Alias{
 				name_id:   flat.source_type_id('WorkerResult'.clone())
-				base_type: Type(Struct{
+				base_type: &Type(Struct{
 					name_id: flat.source_type_id('C.WorkerResult'.clone())
 				})
 			})
@@ -28,8 +88,7 @@ fn test_type_interner_owns_payloads_from_a_left_worker_scope() {
 		id, canonical := interner.canonicalize(borrowed)
 		assert canonical is FnType
 		assert !unsafe { prealloc_scope_owns(scope, canonical.params.data) }
-		assert !unsafe { prealloc_scope_owns(scope, canonical.params_mut.data) }
-		param := canonical.params[0]
+		param := canonical.params[0].typ
 		assert param is ArrayFixed
 		assert !unsafe { prealloc_scope_owns(scope, param.len_expr.str) }
 		elem := param.elem_type
@@ -41,16 +100,18 @@ fn test_type_interner_owns_payloads_from_a_left_worker_scope() {
 		unsafe { prealloc_scope_free_after(scope) }
 
 		expected := Type(FnType{
-			params:      [Type(ArrayFixed{
-				elem_type: Type(Struct{
-					name_id: flat.source_type_id('C.WorkerPayload')
+			params:      [FnParam{
+				typ:    &Type(ArrayFixed{
+					elem_type: &Type(Struct{
+						name_id: flat.source_type_id('C.WorkerPayload')
+					})
+					len_expr:  'worker_count'
 				})
-				len_expr:  'worker_count'
-			})]
-			params_mut:  [true]
-			return_type: Type(Alias{
+				is_mut: true
+			}]
+			return_type: &Type(Alias{
 				name_id:   flat.source_type_id('WorkerResult')
-				base_type: Type(Struct{
+				base_type: &Type(Struct{
 					name_id: flat.source_type_id('C.WorkerResult')
 				})
 			})

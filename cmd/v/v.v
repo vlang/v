@@ -307,13 +307,35 @@ fn ownership_compiler_is_required(args []string) bool {
 	return false
 }
 
+fn compiler_bootstrap_requested(args []string, vroot string) bool {
+	entries := ['cmd/v', 'vlib/v'].map(os.real_path(os.join_path(vroot, it)))
+	mut option_value_follows := false
+	for arg in args {
+		if option_value_follows {
+			option_value_follows = false
+			continue
+		}
+		if arg == '-cf' || pref.option_may_consume_value(arg) {
+			option_value_follows = true
+			continue
+		}
+		if arg.starts_with('-') || arg in ['run', 'crun'] {
+			continue
+		}
+		if !os.exists(arg) {
+			return false
+		}
+		input := os.real_path(arg)
+		if os.is_dir(input) {
+			return input in entries
+		}
+		return os.file_name(input) == 'v.v' && os.dir(input) in entries
+	}
+	return false
+}
+
 fn ownership_compiler_bootstrap_input(args []string, vroot string) bool {
-	compiler_sources := [
-		os.real_path(os.join_path(vroot, 'cmd', 'v')),
-		os.real_path(os.join_path(vroot, 'cmd', 'v', 'v.v')),
-		os.real_path(os.join_path(vroot, 'vlib', 'v', 'v.v')),
-	]
-	return args.any(os.exists(it) && os.real_path(it) in compiler_sources)
+	return compiler_bootstrap_requested(args, vroot)
 }
 
 // ownership_bootstrap_can_use_current_compiler distinguishes compiling in support from
@@ -545,6 +567,13 @@ fn external_tool_runtime_args(command string, prefix_args []string, command_args
 	// `v test` needs them for each test compilation and its failure reproduction command.
 	// Keep those options visible after the launcher has built the cached executable.
 	if command in ['build-examples', 'build-tools', 'self', 'test', 'test-self'] {
+		tool_args << prefix_args
+	}
+	if command == 'watch' {
+		// `v watch` reconstructs the compiler command from its own argv (see
+		// `all_args_before_watch_cmd` in cmd/tools/vwatch.v), so prefix compiler options like
+		// `-d veb_livereload` have to reach the tool again instead of only affecting
+		// the compilation of the watcher binary.
 		tool_args << prefix_args
 	}
 	if command == 'fmt' {
@@ -894,6 +923,8 @@ fn launch_v1(args []string, reason string, report_state RetryState) {
 	}
 	os.unsetenv(v3_fallback_file_env)
 	os.unsetenv(v3_c_error_dir_env)
+	// A source retry's private marker must not reach the compatibility compiler.
+	os.unsetenv('V3_INTERNAL_CACHE_FORCE_SOURCE')
 	mut launch_args := v1_fallback_args(args)
 	_, launched_command := find_command(args)
 	if launched_command == 'build-module' {

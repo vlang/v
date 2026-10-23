@@ -314,6 +314,10 @@ fn (p &Pool) has_current_worker() bool {
 // the threads they list belong to the parent and do not exist here.
 pub fn note_fork() {
 	v3_fork_generation++
+	for i in 0 .. v3_open_pools_len {
+		mut pool := unsafe { &Pool(v3_open_pools[i]) }
+		pool.revive()
+	}
 }
 
 // revive gives a pool from an earlier fork generation a new job queue and as
@@ -380,7 +384,6 @@ pub fn (mut p Pool) run(tasks []Task) bool {
 	if tasks.len == 0 {
 		return false
 	}
-	p.revive()
 	mut batch := BatchStats{
 		tasks: u64(tasks.len)
 	}

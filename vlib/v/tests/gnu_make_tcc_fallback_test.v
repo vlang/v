@@ -1,5 +1,6 @@
 import os
 import rand
+import v.modulecache
 
 const makefile_path = os.join_path(@VEXEROOT, 'GNUmakefile')
 const selector_path = os.join_path(@VEXEROOT, 'cmd', 'tools', 'select_linux_tcc.sh')
@@ -22,7 +23,7 @@ struct TccHistoryFixture {
 }
 
 fn run_checked(command string) string {
-	result := os.exec(os.split_args(command) or { panic(err) })
+	result := os.exec(['sh', '-c', command])
 	assert result.exit_code == 0, 'command failed (${result.exit_code}):\n${command}\n${result.output}'
 	return result.output
 }
@@ -519,8 +520,8 @@ fn new_tcc_history_fixture(with_compatible_ancestor bool) TccHistoryFixture {
 	// Keep fixture intent independent from the compiler flags of the outer test lane.
 	// Individual scenarios can still override VFLAGS after these default arguments.
 	make_args := 'VROOT=${os.quoted_path(vroot)} TCCREPO=${os.quoted_path('file://${remote}')} TMPDIR=${os.quoted_path(tmp_dir)} TCCOS=linux TCCARCH=amd64 VFLAGS='
-	fresh_cmd := 'cd ${os.quoted_path(vroot)} && make --no-print-directory fresh_tcc ${make_args}'
-	latest_cmd := 'cd ${os.quoted_path(vroot)} && make --no-print-directory latest_tcc ${make_args}'
+	fresh_cmd := 'make --no-print-directory -C ${os.quoted_path(vroot)} fresh_tcc ${make_args}'
+	latest_cmd := 'make --no-print-directory -C ${os.quoted_path(vroot)} latest_tcc ${make_args}'
 	return TccHistoryFixture{
 		root:             root
 		remote:           remote
@@ -614,9 +615,32 @@ fn test_linux_tcc_uses_newest_compatible_commit_and_returns_to_a_fixed_head() {
 	assert_historical_fallback(fixture)
 	assert_fixture_bundle_is_vroot_cwd_sensitive(fixture)
 
-	still_broken_result := os.exec(os.split_args(fixture.latest_cmd) or { panic(err) })
+	// A repeated update must not rewrite the pinned compiler or its native inputs:
+	// identical bytes with new metadata still invalidate cached module objects.
+	inputs := ['tcc.exe', 'lib/libgc.a', 'lib/tcc/include/stddef.h'].map(os.join_path(fixture.tcc_dir,
+		it))
+	identities := inputs.map(modulecache.file_metadata_signature(it))
+	real_git := os.find_abs_path_of_executable('git') or { panic(err) }
+	git_wrapper := os.join_path(fixture.root, 'repeat-git')
+	git_trace := os.join_path(fixture.root, 'repeat-git.trace')
+	write_executable(git_wrapper, '#!/bin/sh\n' +
+		'printf "%s\\n" "\$*" >> ${os.quoted_path(git_trace)}\n' +
+		'exec ${os.quoted_path(real_git)} "\$@"\n')
+	still_broken_result := os.exec([
+		...(os.split_args(fixture.latest_cmd) or { panic(err) }),
+		'GIT=${git_wrapper}',
+	])
 	assert still_broken_result.exit_code == 0, still_broken_result.output
-	assert still_broken_result.output.contains('is not host-compatible'), still_broken_result.output
+	for index, input in inputs {
+		if identities[index] != '' {
+			assert modulecache.file_metadata_signature(input) == identities[index], input
+		}
+	}
+	assert !still_broken_result.output.contains('is not host-compatible'), still_broken_result.output
+	trace := os.read_file(git_trace) or { panic(err) }
+	assert trace.contains('fetch --quiet origin'), trace
+	assert !trace.contains('checkout'), trace
+	assert !trace.contains('rev-list'), trace
 	assert_historical_fallback(fixture)
 
 	compatible_head_sha := push_compatible_head(mut fixture)
@@ -645,6 +669,29 @@ fn test_linux_tcc_uses_newest_compatible_commit_and_returns_to_a_fixed_head() {
 	assert run_checked('git -C ${os.quoted_path(fixture.tcc_dir)} rev-parse HEAD').trim_space() == local_sha
 	assert os.read_file(local_file)! == 'preserve this branch commit\n'
 	assert_clean_checkout(fixture.tcc_dir)
+}
+
+fn test_linux_tcc_rechecks_pinned_bundle_before_reusing_unchanged_history() {
+	if os.user_os() != 'linux' {
+		return
+	}
+	fixture := new_tcc_history_fixture(true)
+	defer {
+		os.rmdir_all(fixture.root) or {}
+	}
+	run_checked('${fixture.fresh_cmd} 2>&1')
+	assert_historical_fallback(fixture)
+
+	// The host's inputs can change independently of the recorded TCC revision.
+	// Missing V libgc headers make the pinned bundle and all older candidates fail.
+	vroot := os.dir(os.dir(fixture.tcc_dir))
+	os.rm(os.join_path(vroot, 'thirdparty', 'libgc', 'include', 'gc.h'))!
+	result := os.exec([...(os.split_args(fixture.latest_cmd) or { panic(err) }), 'VFLAGS=-cc tcc'])
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('the TCC bundle libgc.a or V libgc headers are missing'), result.output
+	assert result.output.contains('No host-compatible TCC commit was found'), result.output
+	assert result.output.contains("explicit '-cc tcc' cannot continue"), result.output
+	assert os.ls(fixture.tmp_dir)! == []
 }
 
 fn test_linux_tcc_accepts_compatible_bundle_without_usr_local_include() {
@@ -1028,7 +1075,10 @@ fn test_linux_tcc_missing_git_preserves_latest_and_fails_fresh() {
 	assert os.ls(fixture.tmp_dir)! == []
 
 	source_cmd := fixture.latest_cmd.replace_once(' latest_tcc ', ' latest_tcc_source ')
-	missing_source_result := os.exec([source_cmd, 'GIT=' + '${missing_git}'])
+	missing_source_result := os.exec([
+		...(os.split_args(source_cmd) or { panic(err) }),
+		'GIT=' + '${missing_git}',
+	])
 	assert missing_source_result.exit_code != 0, missing_source_result.output
 	assert missing_source_result.output.contains('the Git executable was not found: ${missing_git}'), missing_source_result.output
 	assert os.is_link(os.join_path(fixture.tcc_dir, 'tcc.exe'))
@@ -1037,14 +1087,14 @@ fn test_linux_tcc_missing_git_preserves_latest_and_fails_fresh() {
 	source_sentinel := os.join_path(fixture.root, 'source-sentinel')
 	hostile_source_git := 'git; touch ${source_sentinel} #'
 	hostile_source_result :=
-		os.exec([source_cmd, 'GIT=' + '${hostile_source_git}'])
+		os.exec([...(os.split_args(source_cmd) or { panic(err) }), 'GIT=' + '${hostile_source_git}'])
 	assert hostile_source_result.exit_code != 0, hostile_source_result.output
 	assert hostile_source_result.output.contains('the Git command contains unsupported characters'), hostile_source_result.output
 	assert !os.exists(source_sentinel)
 	assert os.is_link(os.join_path(fixture.tcc_dir, 'tcc.exe'))
 	assert os.read_file(os.join_path(fixture.tcc_dir, 'lib', 'libgc.a'))! == 'broken-libgc\n'
 
-	source_result := os.exec([source_cmd])
+	source_result := os.exec(os.split_args(source_cmd) or { panic(err) })
 	assert source_result.exit_code != 0, source_result.output
 	assert source_result.output.contains('No upstream TinyCC build script is available'), source_result.output
 	assert_historical_fallback(fixture)

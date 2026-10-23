@@ -191,6 +191,28 @@ fn test_type_promotion_cache_preserves_misses_and_distinct_live_payloads() {
 	assert tc.type_count() == initial_count + 600
 }
 
+fn test_type_promotion_cache_verifies_borrowed_metadata_after_reuse() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	mut cache := CheckTypePromotionCache{}
+	mut params := [FnParam{ typ: &builtin_int_type }]
+	typ := Type(FnType{ params: params, return_type: &builtin_int_type })
+	first := tc.cached_check_type_promotion(typ, mut cache, true, false)?
+	assert first.name() == 'fn(int) int'
+
+	// The wrapper, list address and length stay the same. The interner must own
+	// the first payload, and a frozen probe must not mistake the new one for it.
+	params[0] = FnParam{ typ: &builtin_string_type, is_mut: true }
+	assert tc.cached_check_type_promotion(typ, mut cache, false, true) == none
+	second := tc.cached_check_type_promotion(typ, mut cache, true, false)?
+	assert !semantic_types_equal(first, second)
+	assert first.name() == 'fn(int) int'
+	assert second is FnType
+	assert second.params[0].is_mut
+	assert second.params[0].typ is String
+	assert voidptr(tc.cached_check_type_promotion(typ, mut cache, false, true)?) == voidptr(second)
+}
+
 fn test_check_heap_partitions_match_linear_load_selection() {
 	for count in [0, 1, 2, 33, 256, 1500] {
 		mut items := []CheckWorkItem{}
@@ -260,16 +282,14 @@ fn test_checker_type_promotion_survives_batch_arena_release() {
 			if compatibility { tc.type_interner = unsafe { nil } }
 			scope := unsafe { prealloc_scope_begin() }
 			borrowed := Type(FnType{
-				params:      [Type(Struct{ name_id: flat.source_type_id('ScopedItem'.clone()) })]
-				params_mut:  [true]
-				return_type: Type(Array{ elem_type: Type(string_) })
+				params:      [FnParam{ typ: &Type(Struct{ name_id: flat.source_type_id('ScopedItem'.clone()) }), is_mut: true }]
+				return_type: &Type(Array{ elem_type: &Type(string_) })
 			})
 			unsafe { prealloc_scope_leave(scope) }
 			first := tc.promote_check_type(borrowed)
 			second := tc.promote_check_type(borrowed)
 			if first is FnType && second is FnType {
 				assert !unsafe { prealloc_scope_owns(scope, first.params.data) }
-				assert !unsafe { prealloc_scope_owns(scope, first.params_mut.data) }
 				if !compatibility {
 					assert first.params.data == second.params.data
 				}
@@ -280,6 +300,98 @@ fn test_checker_type_promotion_survives_batch_arena_release() {
 			assert first.name() == 'fn(mut ScopedItem) []string'
 			assert second.name() == first.name()
 		}
+	}
+}
+
+fn test_pass2_type_promotion_copies_nested_metadata_out_of_worker_arena() {
+	$if prealloc {
+		mut promotion := Pass2TypePromotion{}
+		scope := unsafe { prealloc_scope_begin() }
+		borrowed := Type(FnType{
+			params:      [FnParam{
+				typ:    &Type(ArrayFixed{
+					elem_type: &Type(Unknown{ reason: 'worker type'.clone() })
+					len:       5
+					len_expr:  '5'.clone()
+				})
+				is_mut: true
+			}]
+			return_type: &Type(OptionType{ base_type: &Type(string_) })
+		})
+		unsafe { prealloc_scope_leave(scope) }
+		owned := promotion.promote(scope, borrowed)
+		again := promotion.promote(scope, borrowed)
+		if owned is FnType && again is FnType {
+			assert owned.params.data == again.params.data
+			assert !unsafe { prealloc_scope_owns(scope, owned.params.data) }
+			assert !unsafe { prealloc_scope_owns(scope, owned.return_type) }
+			param := owned.params[0].typ
+			if param is ArrayFixed {
+				assert !unsafe { prealloc_scope_owns(scope, param.len_expr.str) }
+				assert !unsafe { prealloc_scope_owns(scope, param.elem_type) }
+			} else {
+				assert false
+			}
+		} else {
+			assert false
+		}
+		unsafe { prealloc_scope_free_after(scope) }
+		assert semantic_types_equal(owned, again)
+		if owned is FnType {
+			assert owned.return_type.name() == '?string'
+			param := owned.params[0].typ
+			assert param is ArrayFixed
+			assert param.len_expr == '5'
+			assert param.elem_type is Unknown
+			assert param.elem_type.reason == 'worker type'
+		}
+	}
+}
+
+fn test_pass2_type_promotion_distinguishes_equal_hashes() {
+	mut promotion := Pass2TypePromotion{}
+	immutable := Type(Channel{ elem_type: &Type(string_), is_mut: false })
+	mutable := Type(Channel{ elem_type: &Type(string_), is_mut: true })
+	assert semantic_type_hash(immutable) == semantic_type_hash(mutable)
+	assert !semantic_types_equal(immutable, mutable)
+	first := promotion.promote(unsafe { nil }, immutable)
+	second := promotion.promote(unsafe { nil }, mutable)
+	third := promotion.promote(unsafe { nil }, immutable)
+	assert first is Channel
+	assert !first.is_mut
+	assert second is Channel
+	assert second.is_mut
+	assert third is Channel
+	assert !third.is_mut
+}
+
+fn test_pass2_type_promotion_distinguishes_equal_hashes_in_worker_storage() {
+	$if prealloc {
+		mut promotion := Pass2TypePromotion{}
+		scope := unsafe { prealloc_scope_begin() }
+		child := new_type_reference(Type(string_))
+		immutable := Type(Channel{ elem_type: child, is_mut: false })
+		mutable := Type(Channel{ elem_type: child, is_mut: true })
+		unsafe { prealloc_scope_leave(scope) }
+		assert semantic_type_hash(immutable) == semantic_type_hash(mutable)
+		assert !semantic_types_equal(immutable, mutable)
+		first := promotion.promote(scope, immutable)
+		second := promotion.promote(scope, mutable)
+		third := promotion.promote(scope, immutable)
+		again := promotion.promote(scope, immutable)
+		assert first is Channel
+		assert !first.is_mut
+		assert second is Channel
+		assert second.is_mut
+		assert third is Channel
+		assert !third.is_mut
+		assert again is Channel
+		assert voidptr(third.elem_type) == voidptr(again.elem_type)
+		assert !type_refers_to_scope(scope, first)
+		assert !type_refers_to_scope(scope, second)
+		unsafe { prealloc_scope_free_after(scope) }
+		assert first.elem_type is String
+		assert second.elem_type is String
 	}
 }
 

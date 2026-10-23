@@ -503,12 +503,14 @@ fn (mut g Parser) try_read_simple_call_expression(stops []token.Token, allow_mut
 	if g.lit in g.locals || g.lit in g.generic_method_names {
 		return FastcAtomicExpression{}
 	}
-	// Match unqualified_function_key's current-module/monomorph/builtin priority
-	// without populating parser memos for a rejected scanner checkpoint.
+	// Match current-module/monomorph priority without populating parser memos.
+	// The full reader resolves selective imports before builtin fallback.
 	local_key := fastc_function_key(g.module_name, g.lit)
 	function_key := if local_key in g.functions {
 		local_key
 	} else if local_key in g.mono_functions {
+		return FastcAtomicExpression{}
+	} else if fastc_selective_import_key(g.lit) in g.imports {
 		return FastcAtomicExpression{}
 	} else {
 		fastc_function_key('builtin', g.lit)
@@ -992,17 +994,15 @@ fn (mut g Parser) lower_or_expression(mut result strings.Builder, mut expression
 				// A parenthesized RHS operand is handled by operand scoping below.
 				continue
 			}
-			if assignment_token.tok == .assign {
-				if map_wrap := g.render_map_index_assignment_wrapping(left_tokens) {
-					assignment_prefix_tokens = expression_tokens[..i + 1].clone()
-					assignment_prefix = map_wrap.prefix
-					assignment_suffix = map_wrap.suffix
-					value_type = map_wrap.value_type
-					option_tokens = expression_tokens[i + 1..].clone()
-					option_expression = g.render_call_argument_expression(option_tokens, value_type) or { '' }
-					wrapper_parens = 0
-					break
-				}
+			if map_wrap := g.render_map_index_assignment_wrapping(left_tokens, assignment_token.tok) {
+				assignment_prefix_tokens = expression_tokens[..i + 1].clone()
+				assignment_prefix = map_wrap.prefix
+				assignment_suffix = map_wrap.suffix
+				value_type = map_wrap.value_type
+				option_tokens = expression_tokens[i + 1..].clone()
+				option_expression = g.render_call_argument_expression(option_tokens, value_type) or { '' }
+				wrapper_parens = 0
+				break
 			}
 			left_type := (g.infer_expression_type(left_tokens) or { u32(0) })
 			if left_type != u32(0) {
@@ -1271,7 +1271,7 @@ fn (mut g Parser) lower_or_expression(mut result strings.Builder, mut expression
 			// The or-block ends in a fallback VALUE: run the leading statements and
 			// use the value on failure, the unwrapped option value on success.
 			or_result := g.temporary_name('or_result')
-			'({ ${option_container_type} ${temporary} = (${option_expression}); ${flat.source_type_name(complex_value_type)} ${or_result}; if (${temporary}.state) { ${error_binding} ${block_lines.join(' ')} ${or_result} = (${fallback_value}); } else { ${or_result} = ${complex_success}; } ${or_result}; })'
+			'({ ${option_container_type} ${temporary} = (${option_expression}); ${fastc_output_c_type(flat.source_type_name(complex_value_type))} ${or_result}; if (${temporary}.state) { ${error_binding} ${block_lines.join(' ')} ${or_result} = (${fallback_value}); } else { ${or_result} = ${complex_success}; } ${or_result}; })'
 		} else {
 			// The or-block only runs statements (it diverges): run them on failure,
 			// then use the unwrapped value.
@@ -2120,7 +2120,7 @@ fn (mut g Parser) validate_expression_stream_token(expression_tokens []FastcExpr
 		return g.unsupported('sizeof expressions')
 	}
 	is_member_name := expression_tokens.len > 0 && expression_tokens.last().tok == .dot
-	if g.tok in [.str_dollar, .arrow, .power]
+	if g.tok in [.str_dollar, .arrow] || (g.tok == .power && !g.selfhost)
 		|| (g.tok in [.key_match, .key_or] && !is_member_name) {
 		return g.unsupported('expression token `${g.token_source()}`')
 	}
@@ -3003,6 +3003,17 @@ fn (mut g Parser) finish_read_expression(mut result strings.Builder, mut express
 	}
 	mut flags := fastc_special_token_flags(expression_tokens)
 	mut rendered_expression := fastc_take_trimmed(mut result)
+	if g.selfhost && fastc_expression_tokens_contain_power(expression_tokens) {
+		// C has no `**`: each power becomes a typed atom, as `as` casts do below.
+		lowered := g.lower_power_expressions(expression_tokens) or {
+			return g.unsupported('`**` in `${fastc_expression_tokens_debug(expression_tokens)}`')
+		}
+		expression_tokens = lowered.clone()
+		flags = fastc_special_token_flags(expression_tokens)
+		rendered_expression = g.render_raw_expression_tokens(expression_tokens) or {
+			return g.unsupported('`**` in `${fastc_expression_tokens_debug(expression_tokens)}`')
+		}
+	}
 	if flags.has_lcbr && flags.has_lsbr {
 		if contextual := g.render_contextual_empty_map_initializer(expression_tokens, saved_expected_expression_type_source_id) {
 			// Only the complete expression owns this expected type. Nested map
@@ -3569,7 +3580,8 @@ fn fastc_replace_c_name(source string, identifier string, replacement string, me
 		end := index + identifier.len
 		scanned = end
 		before_is_name := index > 0 && (source[index - 1].is_alnum() || source[index - 1] == `_`)
-		before_is_member := member_blocks && index > 0 && source[index - 1] in [`.`, `>`]
+		before_is_member := member_blocks && index > 0 && (source[index - 1] == `.`
+			|| (source[index - 1] == `>` && index > 1 && source[index - 2] == `-`))
 		after_is_name := end < source.len && (source[end].is_alnum() || source[end] == `_`)
 		if before_is_name || before_is_member || after_is_name {
 			continue
@@ -4589,16 +4601,19 @@ fn (g &Parser) type_test_narrowing(tokens []FastcExpressionToken, test token.Tok
 		w.member_smartcasts[path] = saved_self
 	}
 	access := if flat.source_type_name(subject_type).ends_with('*') { '->' } else { '.' }
+	value_type := if variant_value_type != '' {
+		flat.source_type_id(variant_value_type)
+	} else {
+		flat.source_type_id(variant_c)
+	}
+	view_type, view_source := g.narrowed_member_view(flat.source_type_id(variant_c), value_type,
+		'((${fastc_output_c_type(variant_c)} *)(${subject_source})${access}_object)')
 	return FastcConjunctionNarrowing{
 		path:      path
 		smartcast: FastcMemberSmartcast{
-			typ:        flat.source_type_id(variant_c + '*')
-			value_type: (if variant_value_type != '' {
-				flat.source_type_id(variant_value_type)
-			} else {
-				flat.source_type_id(variant_c)
-			})
-			source:     '((${variant_c} *)(${subject_source})${access}_object)'
+			typ:        view_type
+			value_type: value_type
+			source:     view_source
 		}
 	}
 }
@@ -4950,8 +4965,8 @@ fn (g &Parser) render_membership_expression(tokens []FastcExpressionToken, rende
 						typ:    flat.source_type_bool
 					}
 				}
-				if fastc_trim_pointer_suffix(flat.source_type_name(right_type)).starts_with('Map_') {
-					key_type_source_id, _ := g.map_key_value_types(right_type) or { return none }
+				if map_type := g.map_type_of(right_type) {
+					key_type_source_id, _ := g.map_key_value_types(map_type) or { return none }
 					key_type := key_type_source_id
 
 					key_source := g.render_membership_candidate(tokens[..i], key_type) or {
@@ -5216,6 +5231,13 @@ fn (g &Parser) render_selfhost_special_expression(tokens []FastcExpressionToken,
 			}
 			if struct_literal := g.render_struct_literal_field_names(tokens, rendered_expression) {
 				return struct_literal
+			}
+			if !has_lsbr {
+				// `Counts{}` for `type Counts = map[string]int`: an empty map, which the
+				// `has_lsbr` branch above makes for a spelled-out `map[string]int{}`.
+				if map_expression := g.guarded_map_expression(tokens, flags) {
+					return map_expression
+				}
 			}
 		}
 		if has_assignment && has_lcbr {

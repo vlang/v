@@ -1,7 +1,9 @@
 module mcp
 
+import io
 import json2 as json
 import net.http
+import sync
 import time
 
 fn test_server_routes_initialize_and_registered_features() {
@@ -1169,8 +1171,9 @@ fn spawn_stateless_server() !(&Server, string) {
 		enable_logging: true
 	)
 	mut server := &server_value
-	server.add_tool(Tool{ name: 'shout' }, fn (mut ctx Context, arguments string) !ToolResult {
-		ctx.server.notify_log(.debug, 'shout', '{"volume":11}')
+	server.add_tool(Tool{ name: 'shout' }, fn (ctx Context, arguments string) !ToolResult {
+		mut handler_server := ctx.server
+		handler_server.notify_log(.debug, 'shout', '{"volume":11}')
 		return tool_text_result('shouting from ${ctx.protocol_version} for ${ctx.client_info.name}')
 	})!
 	server.add_resource(Resource{
@@ -1399,8 +1402,9 @@ fn test_stdio_stateless_logs_need_a_requested_log_level() {
 		version:        '2.0.0'
 		enable_logging: true
 	)
-	server.add_tool(Tool{ name: 'shout' }, fn (mut ctx Context, _ string) !ToolResult {
-		ctx.server.notify_log(.debug, 'shout', '{"volume":11}')
+	server.add_tool(Tool{ name: 'shout' }, fn (ctx Context, _ string) !ToolResult {
+		mut handler_server := ctx.server
+		handler_server.notify_log(.debug, 'shout', '{"volume":11}')
 		return tool_text_result('ok')
 	})!
 
@@ -2016,4 +2020,123 @@ fn test_http_handler_mounts_on_existing_server() {
 
 	host.close()
 	host_thread.wait()
+}
+
+// StdioLines feeds a stdio transport one line per read, and ends its input when
+// the channel is closed.
+struct StdioLines {
+	lines chan string
+}
+
+fn (mut r StdioLines) read(mut buf []u8) !int {
+	line := <-r.lines or { return io.Eof{} }
+	return copy(mut buf, line.bytes())
+}
+
+// StdioCapture collects what a stdio transport writes.
+@[heap]
+struct StdioCapture {
+mut:
+	mutex  &sync.Mutex = sync.new_mutex()
+	output string
+}
+
+fn (mut w StdioCapture) write(buf []u8) !int {
+	w.mutex.lock()
+	w.output += buf.bytestr()
+	w.mutex.unlock()
+	return buf.len
+}
+
+// wait_for returns the first line written that contains `text`, waiting for it
+// up to two seconds.
+fn (mut w StdioCapture) wait_for(text string) ?string {
+	deadline := time.now().add(2 * time.second)
+	for time.now() < deadline {
+		w.mutex.lock()
+		output := w.output
+		w.mutex.unlock()
+		for line in output.split_into_lines() {
+			if line.contains(text) {
+				return line
+			}
+		}
+		time.sleep(5 * time.millisecond)
+	}
+	return none
+}
+
+fn serve_stdio_lines(mut server Server, lines chan string, mut capture StdioCapture) {
+	mut reader := StdioLines{
+		lines: lines
+	}
+	server.serve_stdio_transport(mut reader, mut capture, stdio_session_id, .stdio) or {
+		panic(err)
+	}
+}
+
+fn test_stdio_notification_handler_asks_for_roots_without_waiting_for_the_client() {
+	roots := chan string{cap: 1}
+	mut server_value := new_server(
+		name:                 'roots-server'
+		version:              '1'
+		notification_handler: fn [roots] (ctx Context, method string, _ string) {
+			if method != 'notifications/initialized' {
+				return
+			}
+			// the read loop must go on reading to receive the answer
+			spawn fn [roots] (ctx Context) {
+				result := ctx.list_roots(2 * time.second) or {
+					roots <- 'error: ${err}'
+					return
+				}
+				roots <- result.roots.map(it.uri).join(',')
+			}(ctx)
+		}
+	)
+	mut server := &server_value
+	lines := chan string{cap: 8}
+	mut capture := &StdioCapture{}
+	transport := spawn serve_stdio_lines(mut server, lines, mut capture)
+	lines <- '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"${protocol_version}","capabilities":{"roots":{}},"clientInfo":{"name":"c","version":"0"}}}\n'
+	capture.wait_for('"id":1') or { assert false, 'no answer to initialize' }
+	lines <- '{"jsonrpc":"2.0","method":"notifications/initialized"}\n'
+	// the request is written although the client sends nothing more
+	request_line := capture.wait_for('"method":"roots/list"') or {
+		assert false, 'roots/list was not written: ${capture.output}'
+		return
+	}
+	request := decode_envelope(request_line)!
+	lines <- '{"jsonrpc":"2.0","id":${request.id},"result":{"roots":[{"uri":"file:///work"}]}}\n'
+	mut got := ''
+	select {
+		got = <-roots {
+		}
+		3 * time.second {
+			assert false, 'list_roots did not return'
+		}
+	}
+	assert got == 'file:///work'
+	lines.close()
+	transport.wait()
+}
+
+fn test_notification_handler_sees_every_client_notification() {
+	seen := chan string{cap: 4}
+	mut server := new_server(
+		name:                 'notified-server'
+		version:              '1'
+		notification_handler: fn [seen] (ctx Context, method string, params string) {
+			seen <- '${ctx.session_id} ${method} ${params}'
+		}
+	)
+	server.dispatch_message(new_notification('notifications/roots/list_changed', empty).encode(),
+		stdio_session_id, .stdio)!
+	mut got := ''
+	assert seen.try_pop(mut got) == .success
+	assert got == '${stdio_session_id} notifications/roots/list_changed '
+	server.dispatch_message('{"jsonrpc":"2.0","method":"notifications/x","params":{"a":1}}',
+		stdio_session_id, .stdio)!
+	assert seen.try_pop(mut got) == .success
+	assert got == '${stdio_session_id} notifications/x {"a":1}'
 }

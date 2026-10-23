@@ -58,7 +58,7 @@ fn _ht_free(p voidptr) {
 // malloc dynamically allocates a `n` bytes block of memory on the heap.
 // malloc returns a `byteptr` pointing to the memory address of the allocated space.
 // unlike the `calloc` family of functions - malloc will not zero the memory block.
-@[unsafe]
+@[inline; unsafe]
 pub fn malloc(n isize) &u8 {
 	$if trace_malloc ? {
 		total_m += n
@@ -118,7 +118,8 @@ pub fn malloc(n isize) &u8 {
 	return res
 }
 
-@[unsafe]
+// malloc_noscan allocates n bytes that do not contain garbage-collected pointers.
+@[inline; unsafe]
 pub fn malloc_noscan(n isize) &u8 {
 	$if trace_malloc ? {
 		total_m += n
@@ -191,7 +192,7 @@ fn malloc_string_buffer(n isize) &u8 {
 	return unsafe { malloc_noscan(n) }
 }
 
-@[unsafe]
+@[inline; unsafe]
 fn malloc_uninit(n isize) &u8 {
 	if n < 0 {
 		_memory_panic(@FN, n)
@@ -204,7 +205,7 @@ fn malloc_uninit(n isize) &u8 {
 	return malloc(n)
 }
 
-@[unsafe]
+@[inline; unsafe]
 fn malloc_noscan_uninit(n isize) &u8 {
 	if n < 0 {
 		_memory_panic(@FN, n)
@@ -411,6 +412,7 @@ pub fn realloc_data(old_data &u8, old_size int, new_size int) &u8 {
 // vcalloc dynamically allocates a zeroed `n` bytes block of memory on the heap.
 // vcalloc returns a `byteptr` pointing to the memory address of the allocated space.
 // vcalloc checks for negative values given in `n`.
+@[inline]
 pub fn vcalloc(n isize) &u8 {
 	$if trace_vcalloc ? {
 		total_m += n
@@ -460,6 +462,7 @@ pub fn vcalloc(n isize) &u8 {
 
 // special versions of the above that allocate memory which is not scanned
 // for pointers (but is collected) when the Boehm garbage collection is used
+@[inline]
 pub fn vcalloc_noscan(n isize) &u8 {
 	$if trace_vcalloc ? {
 		total_m += n
@@ -574,10 +577,28 @@ pub fn free(ptr voidptr) {
 	}
 }
 
+@[unsafe]
+fn free_unaliased(ptr voidptr) {
+	$if prealloc || builtin_free_nop ? {
+		return
+	}
+	$if gcboehm ? {
+		$if builtin_arena ? {
+			// Scoped arena allocations are released in bulk, including unique buffers.
+			if _unlikely_(C.atomic_load_u32(&g_arena_hooks_ready) != 0) && g_arena_owns_hook(ptr) {
+				return
+			}
+		}
+		C.GC_FREE(ptr)
+	} $else {
+		free(ptr)
+	}
+}
+
 // memdup dynamically allocates a `sz` bytes block of memory on the heap
 // memdup then copies the contents of `src` into the allocated space and
 // returns a pointer to the newly allocated space.
-@[unsafe]
+@[inline; unsafe]
 pub fn memdup(src voidptr, sz isize) voidptr {
 	$if trace_memdup ? {
 		C.fprintf(C.stderr, c'memdup size: %10d\n', sz)
@@ -594,7 +615,8 @@ pub fn memdup(src voidptr, sz isize) voidptr {
 	}
 }
 
-@[unsafe]
+// memdup_noscan copies `sz` bytes into newly allocated pointer-free storage.
+@[inline; unsafe]
 pub fn memdup_noscan(src voidptr, sz isize) voidptr {
 	$if trace_memdup ? {
 		C.fprintf(C.stderr, c'memdup_noscan size: %10d\n', sz)
@@ -710,14 +732,15 @@ pub fn memdup_align(src voidptr, sz isize, align isize) voidptr {
 	return C.memcpy(res, src, sz)
 }
 
-// GCHeapUsage contains stats about the current heap usage of your program.
+// GCHeapUsage contains stats about the current heap usage of your program. The fields mean
+// the same with `-gc boehm` and `-gc vgc`; they are 0 with `-gc none`.
 pub struct GCHeapUsage {
 pub:
-	heap_size      usize
-	free_bytes     usize
-	total_bytes    usize
-	unmapped_bytes usize
-	bytes_since_gc usize
+	heap_size      usize // the heap memory obtained from the OS, without the part returned to it
+	free_bytes     usize // the part of heap_size in free blocks
+	total_bytes    usize // the bytes allocated since the program started
+	unmapped_bytes usize // free heap memory that was returned to the OS
+	bytes_since_gc usize // the bytes allocated since the last collection
 }
 
 // gc_heap_usage returns the info about heap usage.
@@ -741,7 +764,8 @@ pub fn gc_heap_usage() GCHeapUsage {
 	}
 }
 
-// gc_memory_use returns the total memory use in bytes by all allocated blocks.
+// gc_memory_use returns the total memory use in bytes by all allocated blocks: the heap_size
+// of gc_heap_usage() without its free_bytes.
 pub fn gc_memory_use() usize {
 	$if vgc ? {
 		return vgc_memory_use()
