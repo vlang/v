@@ -1942,8 +1942,12 @@ fn c_object_dependencies_from_output(output string, source_file string) CObjectD
 		// entire compiler output and tokenize it as bogus dependencies.
 		return fallback
 	}
+	// A compiler on Windows writes the list in text mode, with CRLF line ends. Its
+	// line continuations are then a backslash before `\r\n`, and the backslash
+	// would escape the `\r` into a dependency of its own, which is not a file, so
+	// no object would ever be cached.
 	continuation := '\\' + '\n'
-	dep_text := output.replace(continuation, ' ').all_after(marker)
+	dep_text := output.replace('\r\n', '\n').replace(continuation, ' ').all_after(marker)
 	dependencies := cmdexec.split_args(dep_text) or { return fallback }
 	if dependencies.len == 0 {
 		return fallback
