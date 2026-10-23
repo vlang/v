@@ -13627,6 +13627,7 @@ fn (t &Transformer) fn_literal_lvalue_is_rooted_at_capture(id flat.NodeId, name 
 // lift_fn_literal supports lift fn literal handling for Transformer.
 fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.NodeId {
 	name := t.new_fn_literal_name()
+	is_program_specialization := t.active_specialization_args.ids.len > 0
 	source_file := if file := t.a.source_files[node.pos.id] {
 		file.name
 	} else {
@@ -13952,6 +13953,13 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	})
 	t.ensure_node_context_map_capacity()
 	t.mark_node_context(fn_decl, generated_module, t.cur_file)
+	// A literal lifted from a generic body belongs to this program's concrete
+	// specialization, even when its source module already has a cached object.
+	if is_program_specialization {
+		t.a.specialized_fn_nodes[int(fn_decl)] = true
+		t.a.specialized_fn_modules[int(fn_decl)] = generated_module
+		t.a.specialized_fn_files[int(fn_decl)] = t.cur_file
+	}
 	t.set_fn_ret_type(name, ret_type_source_id)
 	if !isnil(t.tc) {
 		t.tc.ensure_private_transform_signatures()

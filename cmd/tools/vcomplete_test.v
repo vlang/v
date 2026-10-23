@@ -70,7 +70,15 @@ const test_cases = [
 		// Tests the completion of "v ru<tab>"
 		structure: [] // no test folders
 		completes: {
-			'v ru': ['run']
+			'v ru':            ['run']
+			'v -prod ru':      ['run']
+			'v -prod -g ru':   ['run']
+			'v help ru':       ['run']
+			'v -prod help ru': ['run']
+			'v -cc clang ru':  ['run']
+			'v -o run ru':     ['run']
+			'v -cc ru':        []
+			'v -o ru':         []
 		}
 	},
 	CompleteTestCase{
@@ -87,6 +95,8 @@ const test_cases = [
 		// vfmt on
 		completes: {
 			'v run e':                  ['examples/']
+			'v -prod run e':            ['examples/']
+			'v -cc clang run e':        ['examples/']
 			'v run':                    ['examples/']
 			'v run ':                   ['examples/']
 			'v run examples/':          ['ex1', 'ex2', 'ex3']

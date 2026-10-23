@@ -8854,11 +8854,9 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 		lhs_type = tc.resolve_expr(lhs_id, rhs_type)
 	}
 	if node.op in [.eq, .ne] {
-		if rhs_node.kind == .map_init && rhs_node.children_count == 0
-			&& unalias_type(lhs_type) is Map {
+		if rhs_node.kind == .map_init && unalias_type(lhs_type) is Map {
 			rhs_type = tc.resolve_expr(rhs_id, lhs_type)
-		} else if lhs_node.kind == .map_init && lhs_node.children_count == 0
-			&& unalias_type(rhs_type) is Map {
+		} else if lhs_node.kind == .map_init && unalias_type(rhs_type) is Map {
 			lhs_type = tc.resolve_expr(lhs_id, rhs_type)
 		}
 	}

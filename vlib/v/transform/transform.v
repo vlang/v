@@ -23359,7 +23359,9 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 		new_lhs := if lhs_is_value_branch {
 			t.materialize_value_branch_operand(infix_lhs_id)
 		} else if rhs_is_value_branch && t.operand_needs_ordering_snapshot(infix_lhs_id) {
-			if node.op in [.eq, .ne]
+			if literal := t.materialize_comparison_literal(node.op, infix_lhs_id, infix_rhs_id) {
+				literal
+			} else if node.op in [.eq, .ne]
 				&& t.translated_fixed_array_pointer_lvalue(infix_lhs_id, infix_rhs_id) {
 				t.stabilize_original_lvalue_receiver(infix_lhs_id) or {
 					t.snapshot_expr_for_reuse(infix_lhs_id)
@@ -23379,7 +23381,9 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 			t.materialize_value_branch_operand(infix_rhs_id)
 		} else if lhs_is_value_branch && !t.is_stable_expr_for_reuse(infix_rhs_id)
 			&& !t.is_pure_constant_expr(infix_rhs_id) {
-			if node.op in [.eq, .ne]
+			if literal := t.materialize_comparison_literal(node.op, infix_rhs_id, infix_lhs_id) {
+				literal
+			} else if node.op in [.eq, .ne]
 				&& t.translated_fixed_array_pointer_lvalue(infix_rhs_id, infix_lhs_id) {
 				t.stabilize_original_lvalue_receiver(infix_rhs_id) or {
 					t.stable_expr_for_reuse(infix_rhs_id)
@@ -29733,6 +29737,21 @@ fn (t &Transformer) infer_decl_type(node &flat.Node) u32 {
 				// The declaration type can intentionally differ from the visible
 				// smartcast of the rhs after an exiting guard or assertion.
 				return lhs_type_source_id
+			}
+		}
+	}
+	if t.validating_generic_spec && node.children_count == 2 {
+		rhs := t.a.child_node(node, 1)
+		if rhs.kind == .array_literal && rhs.typ == 0 && rhs.children_count > 0
+			&& node.typ_text() == '[]int' {
+			// An untyped local alias of an unrolled reflected method can leave the
+			// default []int annotation behind. Keep checked and explicit array types.
+			elem := t.a.child_node(rhs, 0)
+			if elem.kind == .ident && elem.typ == 0 {
+				elem_type := t.node_type(t.a.child(rhs, 0))
+				if t.is_fn_pointer_type_name(elem_type) {
+					return flat.source_type_id('[]${flat.source_type_name(elem_type)}')
+				}
 			}
 		}
 	}

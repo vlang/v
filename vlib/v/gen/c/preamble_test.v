@@ -593,6 +593,35 @@ fn test_headerless_pthread_fallback_respects_darwin_type_guards() {
 	assert c_code.contains('pthread_equal(a.handle, b.handle) != 0'), c_code
 }
 
+fn test_headerless_darwin_pthread_storage_matches_the_sdk() ! {
+	$if !macos {
+		return
+	}
+	mut g := FlatGen.new()
+	g.headerless_darwin_pthread_storage()
+	mut source := '#include <pthread.h>\n'
+	pthread_types := ['pthread_attr_t', 'pthread_mutex_t', 'pthread_cond_t', 'pthread_rwlock_t',
+		'pthread_rwlockattr_t', 'pthread_condattr_t', 'pthread_once_t']
+	for typ in pthread_types {
+		source += '#define ${typ} v_test_${typ}\n'
+	}
+	source += g.sb.str()
+	for typ in pthread_types {
+		source += '#undef ${typ}\n'
+		source += '_Static_assert(sizeof(v_test_${typ}) == sizeof(${typ}), "${typ} size");\n'
+		source += '_Static_assert(_Alignof(v_test_${typ}) == _Alignof(${typ}), "${typ} alignment");\n'
+	}
+	root := os.join_path(os.vtmp_dir(), 'darwin_pthread_storage_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	path := os.join_path(root, 'storage.c')
+	os.write_file(path, source)!
+	for arch in ['arm64', 'x86_64'] {
+		result := os.exec(['cc', '-arch', arch, '-std=c11', '-fsyntax-only', path])
+		assert result.exit_code == 0, '${arch}: ${result.output}'
+	}
+}
+
 fn test_headerless_libc_preamble_leaves_library_prototypes_to_v_bindings() {
 	mut g := FlatGen.new()
 	g.headerless_libc_preamble()

@@ -12,6 +12,13 @@ v -o cover cmd/tools/vcover
 `v doctor` refreshes its comparison with `V_REPO/master` using a bounded Git fetch.
 Use `v doctor -skip-github` to skip that fetch.
 
+Shell completion suggests commands after `v`, global flags, or `help`, for example
+`v -prod ru<Tab>` and `v help ru<Tab>`. It suggests paths after a command such as `v run`.
+For example, `v run e<Tab>` completes an `examples/` directory when it exists.
+
+The doc-comment punctuation checker accepts sentences wrapped across comment lines.
+The summary must contain a period before any example or code block.
+
 `gret` runs on Linux. Both `v gret --version` and a compiled `gret --version` report
 the version. Running either form without arguments prints its usage and exits with status 1.
 

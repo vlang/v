@@ -4,6 +4,40 @@ import v.flat
 import v.token
 import v.types
 
+fn test_optional_platform_integer_conversion_uses_target_width() {
+	original_bits := types.platform_int_bits()
+	original_portable := types.platform_int_c_spelling() == types.portable_int_c_type
+	defer {
+		types.set_platform_int_bits(original_bits)
+		if original_portable {
+			types.set_portable_platform_int()
+		}
+	}
+	for bits in [32, 64] {
+		types.set_platform_int_bits(bits)
+		assert optional_integer_conversion_needed('?int', '?i32') == (bits != 32)
+		assert optional_integer_conversion_needed('?i32', '?int') == (bits != 32)
+		assert optional_integer_conversion_needed('?int', '?i64') == (bits != 64)
+		assert optional_integer_conversion_needed('?i64', '?int') == (bits != 64)
+		assert optional_integer_conversion_needed('?int', '?u32')
+		assert optional_integer_conversion_needed('!int', '!u64')
+		types.set_portable_platform_int()
+		assert optional_integer_conversion_needed('?int', '?i32')
+		assert optional_integer_conversion_needed('!int', '!i64')
+	}
+}
+
+fn optional_integer_conversion_needed(source string, target string) bool {
+	mut a := flat.FlatAst.new()
+	value := a.add_node(flat.Node{ kind: .ident, value: 'value', typ: flat.source_type_id(source) })
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	if _, _ := t.option_payload_conversion_types(value, flat.source_type_id(source), flat.source_type_id(target)) {
+		return true
+	}
+	return false
+}
+
 fn test_scoped_transform_batches_use_source_cost_for_ordinary_programs() {
 	$if !v3_no_parallel ? {
 		assert scoped_transform_batch_count(0, 0, 16, false) == 0
