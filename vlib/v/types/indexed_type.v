@@ -147,7 +147,7 @@ fn parsed_scalar_slot(source_id u32) int {
 }
 
 @[direct_array_access; inline]
-fn (tc &TypeChecker) parsed_scalar_type(text u32) ?Type {
+fn (tc &TypeChecker) parsed_scalar_type(text u32) ?&Type {
 	cache := tc.type_cache.parsed_scalars
 	if isnil(cache) || cache.owner != tc.type_interner || text == 0 {
 		return none
@@ -161,7 +161,9 @@ fn (tc &TypeChecker) parsed_scalar_type(text u32) ?Type {
 
 // Only exact builtin spellings enter this cache. Their meanings do not depend
 // on imports, the current module, resolution mode or function-local scopes.
-fn (tc &TypeChecker) remember_parsed_scalar_type(text u32, id TypeId, value Type) {
+// Values are canonical pointers; reset and promotion clear the cache before
+// replacing their interner storage.
+fn (tc &TypeChecker) remember_parsed_scalar_type(text u32, id TypeId, value &Type) {
 	if isnil(tc.type_interner) {
 		return
 	}
@@ -170,7 +172,7 @@ fn (tc &TypeChecker) remember_parsed_scalar_type(text u32, id TypeId, value Type
 		type_cache.parsed_scalars = &ParsedScalarTypeCache{
 			owner:  tc.type_interner
 			// Unfilled slots are guarded by their nonempty text key.
-			values: unsafe { []Type{len: 128} }
+			values: unsafe { []&Type{len: 128} }
 		}
 	}
 	mut cache := type_cache.parsed_scalars

@@ -2799,10 +2799,8 @@ fn (mut t Transformer) clone_owned_array_storage_value_with_pointer_borrow(value
 		return value
 	}
 	if storage_is_sum && !t.is_optional_type_name(resolved_type_source_id) {
-		if clone_owned_value {
-			if owned := t.clone_owned_sum_literal_for_storage(value, typ_id) {
-				return owned
-			}
+		if owned := t.clone_owned_sum_literal_for_storage(value, typ_id, clone_owned_value) {
+			return owned
 		}
 		return t.clone_owned_sum_array_views_for_storage(value, typ_id, !clone_owned_value, clone_owned_value)
 	}
@@ -2879,7 +2877,7 @@ struct OwnedArraySumVariant {
 	wrappers flat.TypeTextList
 }
 
-fn (mut t Transformer) clone_owned_sum_literal_for_storage(value flat.NodeId, typ_id u32) ?flat.NodeId {
+fn (mut t Transformer) clone_owned_sum_literal_for_storage(value flat.NodeId, typ_id u32, clone_owned_value bool) ?flat.NodeId {
 	node := t.a.node(t.unwrap_parens(value))
 	resolved_sum_source_id_2, variants_source_ids := t.concrete_sum_name_and_variants(typ_id)
 	if node.kind != .struct_init || node.children_count != 2 {
@@ -2911,9 +2909,11 @@ fn (mut t Transformer) clone_owned_sum_literal_for_storage(value flat.NodeId, ty
 		}
 		payload := t.a.child(field, 0)
 		owned := if flat.source_type_shape(variant_type).has(.array_type) || t.is_sum_type_name(variant_type) {
-			t.clone_owned_array_storage_value(t.sum_owned_value_payload(payload, qvariant_source_id), qvariant_source_id, !flat.source_type_shape(variant_type).has(.pointer))
-		} else {
+			t.clone_owned_array_storage_value(t.sum_owned_value_payload(payload, qvariant_source_id), qvariant_source_id, clone_owned_value && !flat.source_type_shape(variant_type).has(.pointer))
+		} else if clone_owned_value {
 			t.clone_owned_nonarray_sum_payload_for_storage(payload, qvariant_source_id)
+		} else {
+			return value
 		}
 		return t.make_sum_literal(typ_id, qvariant_source_id, owned)
 	}

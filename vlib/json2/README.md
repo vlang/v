@@ -121,6 +121,8 @@ numbers have the usual floating-point precision limits.
 `strict: true` controls type conversion independently of `json5`: it still rejects
 quoted numbers, non-optional `null` values and fixed arrays of the wrong length.
 `encode_append` and `decode_reuse` accept the same JSON5 options as `encode` and `decode`.
+JSON5 encoding releases temporary map keys. Decoded strings own their text, and decoding releases
+its UTF-8 scratch buffers.
 
 ### Migrating from x.json5
 

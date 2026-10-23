@@ -46,4 +46,3 @@ fn test_gset_equality_and_merge() {
 	s2.add('apple')
 	assert s1 == s2
 }
-

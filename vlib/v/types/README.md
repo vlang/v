@@ -35,13 +35,19 @@ spelling at an integration boundary. Equality, hashing, and owned copies retain 
 identity. This spelling identity is shared across workers; semantic `TypeId` values still belong
 to a particular checker's interner.
 
+`Type` keeps a 16-byte descriptor on 64-bit targets. Small variants stay inline; `Unknown`,
+`ArrayFixed`, `Channel`, `Map`, `FnType`, `Alias`, and `MultiReturn` embed references to immutable
+payloads. Promoted fields and their constructor syntax remain available. Descriptor copies share
+these payloads; value equality and semantic hashing inspect their fields. Do not mutate a shared
+payload. Use `clone_owned_type` when it must outlive the arena that owns any part of its graph.
+
 `new_type_reference(value)` retains a shallow descriptor copy in stable reference storage.
 Its nested metadata stays borrowed. Use `clone_owned_type(value)` first when that metadata
 belongs to an arena that will end. Checker parsing and interning retain canonical recursive
 descriptor edges; use those APIs when a reference should share the checker's type identity.
 
 Pass-2 worker publication checks the descriptor's referenced storage before releasing its arena.
-Lists, strings and recursive descriptor references are copied when they depend on that arena;
+Indirect payloads, lists, strings and recursive descriptors are copied when they depend on it;
 graphs already outside it retain their references.
 
 A `mut value ?T` parameter keeps the `&?&T` calling convention while its body reads `?T`,

@@ -82,6 +82,23 @@ fn test_node_type_memo_epoch_wrap_does_not_restore_old_results() {
 	assert t.node_type(value) == flat.source_type_bool
 }
 
+fn test_binding_setter_indexes_hand_built_bindings_and_keeps_undo() {
+	mut t := Transformer{
+		var_types: [VarTypeBinding{ name: 'value', typ: flat.source_type_int }]
+	}
+	t.set_var_type('value', flat.source_type_string)
+	assert t.var_type_indices['value'] == 0
+	t.var_type_undo_active = true
+	mark := t.mark_var_type_scope()
+	t.set_var_type('value', flat.source_type_bool)
+	t.set_var_type('inner', flat.source_type_u8)
+	assert t.var_types[t.var_type_index('value')].typ == flat.source_type_bool
+	t.restore_var_type_scope(mark)
+	assert t.var_type_indices.len == 1
+	assert t.var_types[t.var_type_index('value')].typ == flat.source_type_string
+	assert t.var_type_index('inner') == -1
+}
+
 fn test_struct_guess_comparison_follows_checked_ids_and_call_annotation_precedence() {
 	mut a := flat.FlatAst.new()
 	value := a.add_val(.ident, 'value')

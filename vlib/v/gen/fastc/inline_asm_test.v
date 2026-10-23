@@ -156,10 +156,10 @@ fn main() { println(asm_value()) }
 '
 		}
 		generated := generate(source, 'inline_asm_${arch}.v', prefs) or { panic(err) }
-		body := fastc_test_asm_function(generated, 'asm_value')
+		body := fastc_test_asm_function(generated, 'main__asm_value')
 		assert body.contains('__asm__ volatile'), body
 		c_path := os.join_path(root, '${arch}.c')
-		os.write_file(c_path, 'typedef unsigned long long u64;\ntypedef unsigned int u32;\ntypedef _Bool bool;\n#define false 0\n#define true 1\nstatic u64 *asm_target(u64 *value, u32 *calls) { (*calls)++; return value; }\n${body}\nint main(void) { return asm_value() != 42; }\n') or { panic(err) }
+		os.write_file(c_path, 'typedef unsigned long long u64;\ntypedef unsigned int u32;\ntypedef _Bool bool;\n#define false 0\n#define true 1\nstatic u64 *asm_target(u64 *value, u32 *calls) { (*calls)++; return value; }\n${body}\nint main(void) { return main__asm_value() != 42; }\n') or { panic(err) }
 		mut flags := ['-O2', '-x', 'c', '-ffreestanding', '-nostdinc']
 		$if macos {
 			flags << ['-target',

@@ -3,6 +3,27 @@ module transform
 import v.flat
 import v.types
 
+fn test_for_in_fixed_array_keeps_generic_element_brackets() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	for source, expected in {
+		'[3]&Box[string]':         '&Box[string]'
+		'[2]&Box[map[string]int]': '&Box[map[string]int]'
+		'[2][3]int':               '[3]int'
+		'[2]int[3]':               '[2]int'
+	} {
+		assert t.for_in_fixed_array_elem_type_bytes(source) == expected
+		assert t.for_in_fixed_array_len_text(source) == if source == '[2]int[3]' {
+			'3'
+		} else if source.starts_with('[3]') {
+			'3'
+		} else {
+			'2'
+		}
+	}
+}
+
 fn test_for_in_pointer_storage_looks_through_parentheses() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)

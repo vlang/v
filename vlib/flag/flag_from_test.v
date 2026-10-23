@@ -4,10 +4,10 @@ const some_args_1 = ['--mix', '-m', 'ok', '-d', 'one', '--test=abc', '-d', 'two'
 	'path/to/b']
 
 struct Config {
-	am       string   @[only: m]
-	def_test string = 'def'     @[long: test; short: t]
-	device   []string @[short: d]
-	paths    []string @[tail]
+	am       string         @[only: m]
+	def_test string = 'def' @[long: test; short: t]
+	device   []string       @[short: d]
+	paths    []string       @[tail]
 mut:
 	amount   int = 1
 	mix      bool

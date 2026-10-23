@@ -92,3 +92,39 @@ fn test_expression_smartcast_lookup_preserves_shadowing_and_unnamed_keys() {
 	t.smartcast_stack << SmartcastContext{ expr_name: '', variant_name: flat.source_type_bool }
 	assert (t.find_smartcast_for_expr(literal) or { panic('missing unnamed context') }).variant_name == flat.source_type_bool
 }
+
+fn test_selector_type_keeps_field_and_receiver_smartcasts() {
+	mut a := flat.FlatAst.new()
+	object := a.add_val(.ident, 'object')
+	start := a.begin_children()
+	a.add_child(object)
+	member := a.add_node(flat.Node{
+		kind:           .selector
+		value:          'member'
+		children_start: i32(start)
+		children_count: 1
+	})
+	mut t := Transformer{
+		a:       &a
+		structs: {
+			'Box':   StructInfo{
+				name:   flat.source_type_id('Box')
+				fields: [FieldInfo{ name: 'member', typ: flat.source_type_int }]
+			}
+			'Other': StructInfo{
+				name:   flat.source_type_id('Other')
+				fields: [FieldInfo{ name: 'member', typ: flat.source_type_string }]
+			}
+		}
+	}
+	t.set_var_type('object', flat.source_type_id('Box'))
+	assert t.resolve_selector_type(a.nodes[int(member)]) == flat.source_type_int
+	t.push_smartcast('object', flat.source_type_id('Other'), flat.source_type_id(option_unwrap_marker))
+	assert t.resolve_selector_type(a.nodes[int(member)]) == flat.source_type_string
+	t.push_smartcast('object.member', flat.source_type_bool, flat.source_type_id(option_unwrap_marker))
+	assert t.resolve_selector_type(a.nodes[int(member)]) == flat.source_type_bool
+	t.pop_smartcast()
+	assert t.resolve_selector_type(a.nodes[int(member)]) == flat.source_type_string
+	t.pop_smartcast()
+	assert t.resolve_selector_type(a.nodes[int(member)]) == flat.source_type_int
+}

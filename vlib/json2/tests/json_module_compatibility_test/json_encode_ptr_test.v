@@ -8,7 +8,7 @@ struct Number {
 
 pub struct Resp {
 pub:
-	options []string  @[omitempty]
+	options []string                 @[omitempty]
 	number  &Number = unsafe { nil } @[omitempty]
 }
 

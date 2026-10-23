@@ -703,6 +703,7 @@ fn (mut p Pass2TypePromotion) promote(scope voidptr, typ Type) Type {
 
 // Bootstrap compilers can still box Type variants. Taking the address after
 // narrowing finds that box as well as the payload of an inline tagged union.
+// Large immutable variants keep their payload behind an embedded reference.
 fn type_payload_refers_to_scope(scope voidptr, typ &Type) bool {
 	if scope == unsafe { nil } {
 		return false
@@ -734,7 +735,20 @@ fn type_payload_refers_to_scope(scope voidptr, typ &Type) bool {
 		MultiReturn { voidptr(&typ) }
 	}
 	// The allocator only checks whether this storage belongs to the live scope.
-	return unsafe { prealloc_scope_owns(scope, payload) }
+	if unsafe { prealloc_scope_owns(scope, payload) } {
+		return true
+	}
+	indirect := match typ {
+		Unknown { voidptr(typ.UnknownDataRef) }
+		ArrayFixed { voidptr(typ.ArrayFixedDataRef) }
+		Channel { voidptr(typ.ChannelDataRef) }
+		Map { voidptr(typ.MapDataRef) }
+		FnType { voidptr(typ.FnTypeDataRef) }
+		Alias { voidptr(typ.AliasDataRef) }
+		MultiReturn { voidptr(typ.MultiReturnDataRef) }
+		else { return false }
+	}
+	return unsafe { prealloc_scope_owns(scope, indirect) }
 }
 
 // type_refers_to_scope inspects actual descriptor references and their metadata storage.
@@ -5259,8 +5273,11 @@ fn promote_cached_name_value(name &CachedName, mut cache CheckNamePromotionCache
 	return promoted
 }
 
-fn (tc &TypeChecker) cached_check_type_promotion(typ Type, mut cache CheckTypePromotionCache, promote_missing bool, frozen_interner bool) ?&Type {
-	slot := int(semantic_type_hash(typ) & u64(cache.set.len - 1))
+@[direct_array_access; inline]
+fn (tc &TypeChecker) cached_check_type_promotion(typ &Type, mut cache CheckTypePromotionCache, promote_missing bool, frozen_interner bool) ?&Type {
+	// Slot selection stays shallow; structural verification below guards collisions
+	// and borrowed metadata that changed since a previous lookup.
+	slot := int(canonical_intern_cache_key(typ) & u64(cache.set.len - 1))
 	if cache.set[slot] && semantic_types_equal(cache.values[slot], typ) {
 		return cache.values[slot]
 	}
@@ -5268,7 +5285,7 @@ fn (tc &TypeChecker) cached_check_type_promotion(typ Type, mut cache CheckTypePr
 		if !promote_missing {
 			return none
 		}
-		tc.promote_check_type(typ)
+		tc.promote_check_type(*typ)
 	}
 	cache.values[slot] = canonical
 	cache.set[slot] = true
@@ -5303,7 +5320,7 @@ fn check_clone_chunk_thread(arg voidptr) voidptr {
 				tc.resolved_call_names[idx] = promote_cached_name_value(tc.resolved_call_names[idx], mut names)
 			}
 			if idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
-				if canonical := tc.cached_check_type_promotion(*tc.expr_type_values[idx], mut cache, false, true) {
+				if canonical := tc.cached_check_type_promotion(tc.expr_type_values[idx], mut cache, false, true) {
 					tc.expr_type_values[idx] = canonical
 				} else {
 					a.miss << idx
@@ -5317,7 +5334,7 @@ fn check_clone_chunk_thread(arg voidptr) voidptr {
 fn (mut tc TypeChecker) intern_expr_type_misses(indexes []int) {
 	mut cache := CheckTypePromotionCache{}
 	for idx in indexes {
-		tc.expr_type_values[idx] = tc.cached_check_type_promotion(*tc.expr_type_values[idx], mut cache, true, false) or {
+		tc.expr_type_values[idx] = tc.cached_check_type_promotion(tc.expr_type_values[idx], mut cache, true, false) or {
 			tc.promote_check_type(*tc.expr_type_values[idx])
 		}
 	}
@@ -5351,7 +5368,7 @@ fn (mut tc TypeChecker) clone_parallel_worker_node_caches(items []CheckWorkItem)
 				tc.resolved_call_names[idx] = promote_cached_name_value(tc.resolved_call_names[idx], mut names)
 			}
 			if idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
-				tc.expr_type_values[idx] = tc.cached_check_type_promotion(*tc.expr_type_values[idx], mut cache, true, false) or {
+				tc.expr_type_values[idx] = tc.cached_check_type_promotion(tc.expr_type_values[idx], mut cache, true, false) or {
 					tc.promote_check_type(*tc.expr_type_values[idx])
 				}
 			}

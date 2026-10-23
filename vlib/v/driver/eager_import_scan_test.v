@@ -101,3 +101,19 @@ after\'
 
 	assert source_imports_fast(path) == ['real_module']
 }
+
+fn test_source_imports_fast_skips_ordinary_runs_between_context_delimiters() {
+	path := os.join_path(os.temp_dir(), 'v3_eager_import_runs_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	dollar := '$'
+	source := 'module fixture\nimport first\n' +
+		'fn ordinary(value int) { abcdefghijklmnopqrstuvwxyz_0123456789 := value }\n' +
+		'// ordinary bytes before a fake import\n' +
+		"const quoted = 'plain text\nimport fake_quoted\n'\n" +
+		"const raw = r'raw text\nimport fake_raw\n'\n" +
+		'/* ordinary block /* nested */\nimport fake_comment\n*/\n' +
+		"const interpolated = 'ordinary ${dollar}{call('nested')}\nimport fake_tail\n'\n" +
+		'\timport second.module\nimport third'
+	os.write_file(path, source)!
+	assert source_imports_fast(path) == ['first', 'second.module', 'third']
+}

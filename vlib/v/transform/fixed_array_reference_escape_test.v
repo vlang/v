@@ -690,3 +690,41 @@ fn test_fixed_array_reference_sums_own_inline_variant_storage() {
 	seen.clear()
 	assert t.escape_value_contains_fixed_array(types.Type(types.Struct{ name_id: flat.source_type_id('FixedPayload') }), mut seen)
 }
+
+fn test_fixed_array_reference_nominal_cache_keeps_complete_walk_results() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	fixed := types.Type(types.ArrayFixed{ elem_type: types.Type(types.int_), len: 2 })
+	tc.structs['FixedPayload'] = [types.StructField{ name: 'values', typ: fixed }]
+	tc.sum_types.set('Empty', ['int', 'string'])
+	tc.sum_types.set('Payload', ['Other', 'FixedPayload'])
+	tc.sum_types.set('Other', ['Payload', 'int'])
+	tc.sum_types.set('Generic', ['int', 'T'])
+	tc.sum_generic_params['Generic'] = ['T']
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	for _ in 0 .. 2 {
+		for name in ['Payload', 'Other', 'Generic[FixedPayload]', 'Generic[int]', 'Empty'] {
+			typ := types.Type(types.SumType{ name_id: flat.source_type_id(name) })
+			expected := name in ['Payload', 'Other', 'Generic[FixedPayload]']
+			assert t.cached_escape_value_contains_fixed_array(typ) == expected, name
+			assert t.escape_fixed_array_nominal_cache[typ.source_type_id()] == expected, name
+		}
+	}
+	// Other's first nested walk meets Payload in the active set. Only its later,
+	// complete root walk can be cached: it reaches FixedPayload through Payload.
+	assert t.escape_fixed_array_nominal_cache[flat.source_type_id('Other')]
+}
+
+fn test_fixed_array_reference_nominal_cache_caches_complete_negative_component() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.sum_types.set('Left', ['Right', 'int'])
+	tc.sum_types.set('Right', ['Left', 'string'])
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	left := types.Type(types.SumType{ name_id: flat.source_type_id('Left') })
+	right := types.Type(types.SumType{ name_id: flat.source_type_id('Right') })
+	assert !t.cached_escape_value_contains_fixed_array(left)
+	cached := t.escape_fixed_array_nominal_cache[right.source_type_id()] or { panic('missing complete result') }
+	assert !cached
+	assert !t.cached_escape_value_contains_fixed_array(right)
+}

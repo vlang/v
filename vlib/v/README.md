@@ -717,6 +717,10 @@ macOS (`-cc cc` without `-prod`), tests, `-autofree` builds and Windows targets 
 declaration, and so do a program that imports `v.reflection`, which can list its functions when
 it runs, and any build with `V3_CACHE_ALL_DECLARATIONS=1`. `V3_CACHE_TRACE=1` prints
 how many were left out, and `V3_CACHE_KEEP_PROGRAM_C=<file>` keeps the unit that TinyCC compiled.
+Cached interface declarations retain local implementing methods and the functions they call,
+even when the dispatch occurs only inside a cached body. Sum-type receivers use the same indirect
+parameter convention as ordinary calls. When a cached dependency imports the module under test,
+its concrete functions remain available to that dependency's object file.
 With module caching, TinyCC used to read the headers of the C library for every program unit: 3.7 MB
 for a unit of 113 KB. The part of the unit that includes them, up to the last `#include`, is now
 kept in the module cache in preprocessed form (`tcc -E -dD`), and the unit includes that file
