@@ -9460,8 +9460,20 @@ fn (mut t Transformer) infer_generic_call_args_seeded(decl GenericFnDecl, _id fl
 	// An interface target converts the result after the call. Its concrete
 	// arguments decide T before that target may fill any missing parameters.
 	interface_context := t.is_interface_type(flat.source_type_id(expected_value))
-	if expected_return != 0 && !interface_context {
+	// An optional assignment may wrap the call's result. Infer its payload from
+	// the arguments before allowing the destination to fill missing parameters.
+	defer_return_inference := interface_context
+		|| flat.source_type_shape(expected_return).has(.option_type)
+	if expected_return != 0 && !defer_return_inference {
 		t.infer_generic_return_type_args(decl, expected_return, mut inferred, receiver_params)
+	}
+	// A declared optional return still provides context to untyped literals.
+	// Keep it separate so typed arguments retain priority over assignment wrapping.
+	mut optional_literal_context := map[string]u32{}
+	if flat.source_type_shape(expected_return).has(.option_type)
+		&& flat.source_type_shape(decl.node.typ).has(.option_type) && !interface_context {
+		t.infer_generic_return_type_args(decl, expected_return, mut optional_literal_context,
+			receiver_params)
 	}
 	mut param_idx := 0
 	param_count := t.generic_decl_param_count(decl.node)
@@ -9540,6 +9552,14 @@ fn (mut t Transformer) infer_generic_call_args_seeded(decl GenericFnDecl, _id fl
 				later_param_idx++
 			}
 		}
+		if !defer_numeric_literal && arg_kind in [.int_literal, .float_literal] {
+			param_name := flat.source_type_name(inference_param_type)
+			if contextual_type := optional_literal_context[param_name] {
+				if is_numeric_type_name(contextual_type) {
+					inferred_arg_type = contextual_type
+				}
+			}
+		}
 		if (child.is_mut || child.op == .amp || flat.source_type_shape(child.typ).has(.mutable_type))
 			&& flat.source_type_shape(inferred_arg_type).has(.pointer) {
 			// A mutable parameter's leading pointer is its storage ABI, whether the
@@ -9569,7 +9589,7 @@ fn (mut t Transformer) infer_generic_call_args_seeded(decl GenericFnDecl, _id fl
 		t.infer_generic_short_struct_init_args(child.typ, arg_id, node, mut inferred)
 		param_idx++
 	}
-	if interface_context {
+	if defer_return_inference {
 		t.infer_generic_return_type_args(decl, expected_return, mut inferred, receiver_params)
 	}
 	ret_source_id_2 := t.node_type(_id)
@@ -10516,6 +10536,15 @@ fn (t &Transformer) qualify_generic_arg_for_decl_module(arg_id u32, module_name 
 	}
 	if t.generic_arg_module_owns_type(clean, module_name) {
 		return flat.source_type_id('${module_name}.${clean}')
+	}
+	// Main declarations keep their bare spelling. A suffix-indexed imported
+	// homonym must not replace a concrete argument of a main generic field.
+	if module_name == t.cur_module && (t.bare_struct_name_is_local_to_current_module(clean_id)
+		|| t.bare_sum_type_name_is_local_to_current_module(clean_id)
+		|| (!isnil(t.tc) && module_name in ['', 'main', 'builtin']
+			&& (t.tc.type_aliases.contains(clean) || clean in t.tc.enum_names
+				|| clean in t.tc.interface_names))) {
+		return clean_id
 	}
 	if qualified_source_id := t.qualified_types.type_id(clean) {
 		return qualified_source_id

@@ -17751,6 +17751,11 @@ fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type_id u3
 	}
 	if int(id) >= 0 && target_type_id != u32(0) {
 		node := t.a.nodes[int(id)]
+		if node.kind == .paren && node.children_count == 1
+			&& (t.is_optional_type_name(target_type_id) || t.is_interface_type(target_type_id)) {
+			// Apply option/interface conversion once, to the value inside the parentheses.
+			return t.transform_expr_for_type(t.a.child(&node, 0), target_type_id)
+		}
 		if target_type.starts_with('!')
 			&& t.return_expr_is_propagated_err(id, t.optional_base_type(t.qualify_optional_type(target_type_id))) {
 			error_value := t.transform_expr_for_type(id, flat.source_type_id('IError'))
@@ -21314,6 +21319,15 @@ fn (t &Transformer) local_decl_is_shared_before(name string, before flat.NodeId)
 // `before`; the returned bool records whether that binding is shared. It follows the use's
 // ancestor path so declarations in sibling blocks do not leak into the lookup.
 fn (t &Transformer) local_binding_before(name string, before flat.NodeId) ?bool {
+	return (t.local_binding_flags_before(name, before) or { return none }).is_shared
+}
+
+struct LocalBindingFlags {
+	is_shared bool
+	is_mut    bool
+}
+
+fn (t &Transformer) local_binding_flags_before(name string, before flat.NodeId) ?LocalBindingFlags {
 	if name == '' || int(before) < 0 || int(before) >= t.a.nodes.len {
 		return none
 	}
@@ -21340,6 +21354,7 @@ fn (t &Transformer) local_binding_before(name string, before flat.NodeId) ?bool 
 	}
 	mut found := false
 	mut is_shared := false
+	mut is_mut := false
 	for path_idx := path.len - 1; path_idx > 0; path_idx-- {
 		parent := t.a.nodes[path[path_idx]]
 		next_id := path[path_idx - 1]
@@ -21373,14 +21388,24 @@ fn (t &Transformer) local_binding_before(name string, before flat.NodeId) ?bool 
 			if child.kind == .param && child.value == name {
 				found = true
 				is_shared = trimmed_transform_text(child.typ_text()).starts_with('shared ')
+				is_mut = child.is_mut
 			} else if parent.kind == .for_in_stmt && inside_for_in_body && i < 2
 				&& child.kind == .ident && child.value == name {
 				found = true
 				is_shared = false
+				is_mut = child.is_mut
 			} else if child.kind == .decl_assign {
 				if binding_shared := t.local_decl_shared_binding(child, name) {
 					found = true
 					is_shared = binding_shared
+					is_mut = child.is_mut
+					for lhs_idx := 0; lhs_idx < child.children_count; lhs_idx += 2 {
+						lhs := t.a.child_node(&child, lhs_idx)
+						if lhs.kind == .ident && lhs.value == name {
+							is_mut = is_mut || lhs.is_mut
+							break
+						}
+					}
 				}
 			}
 		}
@@ -21388,7 +21413,10 @@ fn (t &Transformer) local_binding_before(name string, before flat.NodeId) ?bool 
 	if !found {
 		return none
 	}
-	return is_shared
+	return LocalBindingFlags{
+		is_shared: is_shared
+		is_mut:    is_mut
+	}
 }
 
 fn (mut t Transformer) build_source_parent_index() {

@@ -21,6 +21,27 @@ fn numeric_const_type_name(tc &TypeChecker, name string) string {
 	return typ.name()
 }
 
+fn test_numeric_const_lookup_keeps_lexical_values_and_hides_main_suffixes() {
+	_, mut tc := numeric_const_fixture('module_visibility', 'module main
+const base = 100
+const hidden = 42
+const helper_value = 7
+const helper_delta = base
+fn main() {}
+')
+	tc.const_exprs['helper.base'] = tc.const_exprs['helper_value'] or { panic('missing value') }
+	tc.const_exprs['helper.delta'] = tc.const_exprs['helper_delta'] or { panic('missing delta') }
+	tc.const_modules['helper.base'] = 'helper'
+	tc.const_modules['helper.delta'] = 'helper'
+	// A suffix index must not expose a bare main constant to an imported helper.
+	tc.const_suffixes['hidden'] = 'hidden'
+	view := tc.fork_type_parse_view(tc.cur_file, 'helper')
+	assert (view.const_int_value_in_module('delta', 'helper', []string{}) or { panic('missing value') }) == 7
+	if value := view.const_int_value_in_module('hidden', 'helper', []string{}) {
+		assert false, 'invisible main constant folded as ${value}'
+	}
+}
+
 fn test_independent_numeric_const_initializer_uses_actual_literal_shapes() {
 	a, tc := numeric_const_fixture('shapes', 'module main
 type Count = u64

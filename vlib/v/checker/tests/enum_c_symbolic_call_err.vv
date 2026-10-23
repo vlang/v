@@ -1,0 +1,31 @@
+#include <stdio.h>
+
+@[comptime]
+fn enum_offset(value int) int {
+	return value + 1
+}
+
+enum SymbolicCall {
+	direct = enum_offset(C.SEEK_CUR)
+	nested = int(enum_offset(enum_offset(C.SEEK_CUR))) + 2
+	prefix = -enum_offset(C.SEEK_CUR)
+	conditional = if C.SEEK_CUR > 0 { enum_offset(C.SEEK_CUR) } else { 6 }
+	condition = if enum_offset(C.SEEK_CUR) > 0 { 7 } else { 8 }
+}
+
+enum SymbolicCallCopy {
+	value = enum_offset(int(SymbolicCallMiddle.value))
+}
+
+enum SymbolicCallMiddle {
+	value = int(SymbolicCallSource.next)
+}
+
+enum SymbolicCallSource {
+	first = C.SEEK_CUR
+	next
+}
+
+fn main() {
+	println(SymbolicCall.direct)
+}
