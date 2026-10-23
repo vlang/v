@@ -1219,6 +1219,12 @@ fn (mut g FlatGen) collect_checker_declaration_signature_types() {
 		if g.cache_decl_demand && !g.cache_struct_declaration_needed(name) {
 			continue
 		}
+		if name.starts_with('C.') {
+			g.ensure_referenced_c_struct_ids()
+			if !g.referenced_c_struct_ids[flat.source_type_id(name)] {
+				continue
+			}
+		}
 		for field in fields {
 			if !seen.insert(field.typ) {
 				continue
