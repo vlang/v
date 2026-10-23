@@ -19021,6 +19021,7 @@ fn (mut tc TypeChecker) check_enum_field_values(node_id flat.NodeId, node flat.N
 	mut seen_values := map[int]bool{}
 	mut field_values := map[string]i64{}
 	mut next_value := 0
+	mut next_value_known := true
 	for i in 0 .. node.children_count {
 		field_id := tc.a.child(&node, i)
 		field := tc.a.child_node(&node, i)
@@ -19042,10 +19043,11 @@ fn (mut tc TypeChecker) check_enum_field_values(node_id flat.NodeId, node flat.N
 		}
 		seen_names[field.value] = true
 		mut value := next_value
-		mut value_known := true
+		mut value_known := next_value_known
 		mut value_overflows_backing := false
 		mut value_pos := field.pos
 		if field.children_count > 0 {
+			value_known = true
 			value_id := tc.a.child(field, 0)
 			value_pos = tc.a.node(value_id).pos
 			if field_ref := tc.find_enum_value_in_node(value_id, node.value) {
@@ -19108,6 +19110,13 @@ fn (mut tc TypeChecker) check_enum_field_values(node_id flat.NodeId, node flat.N
 					value_known = false
 					value
 				}
+				if !value_known {
+					tc.check_symbolic_enum_exprs(value_id, flat.source_type_id(node.value), mut field_values, field_exprs)
+				}
+			}
+			if node.typ_text() == 'flag' && !value_known && value_type.is_integer()
+				&& !tc.node_contains_runtime_call(value_id) {
+				tc.record_error_at(.assignment_mismatch, 'flag enum values must be known at compile time', value_id, value_pos)
 			}
 		}
 		if value_known && !value_overflows_backing && seen_values[value] && !allow_multiple {
@@ -19126,6 +19135,29 @@ fn (mut tc TypeChecker) check_enum_field_values(node_id flat.NodeId, node flat.N
 			field_values[field.value] = value
 			next_value = value + 1
 		}
+		next_value_known = value_known
+	}
+}
+
+// Calls and powers have no C integer-constant-expression equivalent. Symbolic
+// arithmetic can still contain independent calls and powers that V can evaluate.
+fn (mut tc TypeChecker) check_symbolic_enum_exprs(id flat.NodeId, enum_name u32, mut field_values map[string]i64, field_exprs map[string]flat.NodeId) {
+	node := tc.a.node(id)
+	if node.kind == .call || (node.kind == .infix && node.op == .power) {
+		mut resolving := map[string]bool{}
+		if _ := tc.comptime_static_enum_field_value(id, tc.cur_module, enum_name, mut field_values, field_exprs, mut resolving) {
+			return
+		}
+		message := if node.kind == .call {
+			'enum function calls must be known at compile time'
+		} else {
+			'enum powers must be known at compile time'
+		}
+		tc.record_error_at(.assignment_mismatch, message, id, node.pos)
+		return
+	}
+	for i in 0 .. node.children_count {
+		tc.check_symbolic_enum_exprs(tc.a.child(node, i), enum_name, mut field_values, field_exprs)
 	}
 }
 
@@ -19157,19 +19189,14 @@ fn (tc &TypeChecker) node_contains_runtime_call(id flat.NodeId) bool {
 	}
 	node := tc.a.nodes[int(id)]
 	if node.kind == .call {
-		if node.children_count > 0 {
-			callee := tc.a.child_node(&node, 0)
-			if callee.kind == .ident {
-				if fn_id := tc.comptime_static_enum_helper_fn_id(callee.value, tc.cur_module) {
-					if tc.declaration_has_attribute(fn_id, 'comptime') {
-						for i in 1 .. node.children_count {
-							if tc.node_contains_runtime_call(tc.a.child(&node, i)) {
-								return true
-							}
-						}
-						return false
+		if decl := tc.comptime_static_enum_helper_decl(id, tc.cur_module) {
+			if tc.declaration_has_attribute(flat.NodeId(decl.idx), 'comptime') {
+				for i in 1 .. node.children_count {
+					if tc.node_contains_runtime_call(tc.a.child(&node, i)) {
+						return true
 					}
 				}
+				return false
 			}
 		}
 		return true
