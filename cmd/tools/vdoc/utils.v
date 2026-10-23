@@ -53,6 +53,26 @@ fn without_pub_keyword(content string) string {
 	return lines.join('\n')
 }
 
+// without_pub_keywords removes `pub ` from each declaration in a group of constants, like
+// `pub const a = 1\npub const b = 2`.
+fn without_pub_keywords(content string) string {
+	return content.split('\n').map(if it.starts_with('pub const ') { it['pub '.len..] } else { it }).join('\n')
+}
+
+// has_own_comments reports whether the variant `variant` of the symbol `symbol` has a doc comment
+// that is not the one of `symbol`, so that it is shown with the variant.
+fn has_own_comments(variant doc.DocNode, symbol doc.DocNode) bool {
+	return variant.comments.len > 0
+		&& variant.merge_comments_without_examples() != symbol.merge_comments_without_examples()
+}
+
+// has_variant_comments reports whether a variant of the symbol `symbol` has its own doc comment.
+// Then each declaration of the symbol is shown with its comment, instead of one comment after
+// all of them.
+fn has_variant_comments(symbol doc.DocNode) bool {
+	return symbol.variants.any(has_own_comments(it, symbol))
+}
+
 // without_attribute_lines removes the attribute lines from the start of `content`.
 fn without_attribute_lines(content string) string {
 	if !content.starts_with('@[') {
