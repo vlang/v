@@ -4458,7 +4458,7 @@ fn (mut g FlatGen) detached_spawn_aggregate_cleanup(typ types.Type, expr string)
 	sorted_names.sort_with_compare(compare_ownership_source_type_ids)
 	for name_id in sorted_names {
 		name := flat.source_type_name(name_id)
-		parsed := g.tc.parse_type(name_id)
+		parsed := g.tc.parse_canonical_type_cached(name_id)
 		if name.starts_with('C.') || name in g.tc.unions || name == 'thread'
 			|| name.ends_with('.thread') || name.starts_with('thread ')
 			|| g.is_generic_struct(name) || g.type_contains_generic_placeholder(parsed)
@@ -4466,9 +4466,7 @@ fn (mut g FlatGen) detached_spawn_aggregate_cleanup(typ types.Type, expr string)
 			|| g.ownership_struct_destructor_method(name_id).len > 0 {
 			continue
 		}
-		key := ownership_drop_expansion_key(types.Type(types.Struct{
-			name_id: name_id
-		}))
+		key := ownership_drop_expansion_key(parsed)
 		helpers[key] = name_id
 	}
 	mut old_helpers := g.recursive_drop_helpers.move()
@@ -4492,26 +4490,25 @@ fn (mut g FlatGen) detached_spawn_aggregate_cleanup(typ types.Type, expr string)
 		g.add_spawn_wrapper_def('extern IError builtin__error_sentinel;')
 	}
 	for name_id in new_names {
-		name := flat.source_type_name(name_id)
 		helper_name := g.ownership_recursive_drop_helper_name(name_id)
-		g.add_spawn_wrapper_def('static void ${helper_name}(${g.struct_cname(name)}* _value);')
+		g.add_spawn_wrapper_def('static void ${helper_name}(${g.ownership_recursive_drop_helper_c_type(name_id)}* _value);')
 	}
 	for name_id in new_names {
 		name := flat.source_type_name(name_id)
 		old_module := g.tc.cur_module
 		old_file := g.tc.cur_file
 		old_tmp_count := g.tmp_count
-		g.tc.cur_module = g.tc.struct_modules[name] or { old_module }
+		g.tc.cur_module = g.tc.struct_modules[name] or {
+			module_from_qualified_name(name.all_before('['))
+		}
 		g.tc.cur_file = g.tc.struct_files[name] or { old_file }
 		g.tmp_count = 0
-		body := g.ownership_drop_value_to_string(types.Type(types.Struct{
-			name_id: name_id
-		}), '*_value')
+		body := g.ownership_drop_value_string(g.tc.parse_canonical_type_cached(name_id), '*_value', true)
 		g.tmp_count = old_tmp_count
 		g.tc.cur_module = old_module
 		g.tc.cur_file = old_file
 		helper_name := g.ownership_recursive_drop_helper_name(name_id)
-		g.add_spawn_wrapper_def('static void ${helper_name}(${g.struct_cname(name)}* _value) { ${body} }')
+		g.add_spawn_wrapper_def('static void ${helper_name}(${g.ownership_recursive_drop_helper_c_type(name_id)}* _value) { ${body} }')
 	}
 	return g.ownership_drop_value_to_string(typ, expr)
 }

@@ -57,10 +57,11 @@ struct FieldMeta {
 }
 
 struct EnumValueMeta {
-	name      string
-	value     i64
-	attrs     []string
-	enum_name u32
+	name         string
+	value        i64
+	value_from_c bool
+	attrs        []string
+	enum_name    u32
 }
 
 struct VariantMeta {
@@ -2762,37 +2763,49 @@ fn (t &Transformer) enum_decl_value_metas(enum_name_id u32) []EnumValueMeta {
 		mut field_values := map[string]i64{}
 		mut resolving := map[string]bool{}
 		mut next_val := i64(0)
+		mut next_from_c := false
 		for f in fields {
 			mut val := next_val
+			mut from_c := next_from_c
 			mut materialized_value := i64(0)
 			mut has_materialized_value := false
 			if checked_value := checked_values[f.name] {
 				materialized_value = i64(checked_value)
 				has_materialized_value = true
+				from_c = false
 				if is_flag {
 					val = enum_flag_value_index(u64(checked_value)) or { next_val }
 				} else {
 					val = materialized_value
 				}
+			} else if !isnil(t.tc) {
+				from_c = true
 			} else if int(f.expr_id) >= 0 {
 				if ev := t.enum_field_int_value_with_enum(f.expr_id, cur_mod, qualified_id, mut field_values, field_exprs, mut resolving) {
 					val = ev
+					from_c = false
+				} else {
+					from_c = true
 				}
 			}
-			field_values[f.name] = val
+			if !from_c {
+				field_values[f.name] = val
+			}
 			values << EnumValueMeta{
-				name:      f.name
-				value:     if has_materialized_value {
+				name:         f.name
+				value_from_c: from_c
+				value:        if has_materialized_value {
 					materialized_value
 				} else if is_flag {
 					i64(u64(1) << u64(val))
 				} else {
 					val
 				}
-				attrs:     f.attrs.clone()
-				enum_name: qualified_id
+				attrs:        f.attrs.clone()
+				enum_name:    qualified_id
 			}
 			next_val = val + 1
+			next_from_c = from_c
 		}
 		return values
 	}
@@ -3075,7 +3088,7 @@ fn (mut t Transformer) clone_value_subst_scoped(id flat.NodeId, var_name string,
 	// unsupported `comptime_if` for the C backend.
 	mut value := node.value
 	if node.kind == .comptime_if && comptime_cond_references_ident(node.value, var_name) {
-		cond := t.subst_value_cond(node.value, var_name, item.name, item.value)
+		cond := t.subst_value_cond(node.value, var_name, item)
 		if !comptime_cond_has_any_loop_member_ref(cond, inner_vars) {
 			if !comptime_cond_has_loop_member_ref(cond, var_name) {
 				if taken := t.eval_reflected_string_condition(cond, node) {
@@ -3484,6 +3497,13 @@ fn (t &Transformer) subtree_has_comptime_field_selector(id flat.NodeId) bool {
 }
 
 fn (mut t Transformer) make_comptime_enum_value(item EnumValueMeta) flat.NodeId {
+	if item.value_from_c {
+		return t.a.add_node(flat.Node{
+			kind:  .enum_val
+			value: '${item.enum_name_text()}.${item.name}'
+			typ:   item.enum_name
+		})
+	}
 	literal := t.make_int_literal_typed(item.value.str(), flat.source_type_i64)
 	return t.make_cast(item.enum_name, literal, item.enum_name)
 }
@@ -3773,7 +3793,12 @@ fn (t &Transformer) subst_variant_cond(cond string, var_name string, item Varian
 // make_enum_data_literal builds `EnumData{name: '<name>', value: <value>, attrs: [...]}`.
 fn (mut t Transformer) make_enum_data_literal(item EnumValueMeta) flat.NodeId {
 	name_field := t.make_named_field_init('name', t.make_string_literal(item.name), flat.source_type_string)
-	value_field := t.make_named_field_init('value', t.make_int_literal_typed(item.value.str(), flat.source_type_i64), flat.source_type_i64)
+	value := if item.value_from_c {
+		t.make_cast(flat.source_type_i64, t.make_comptime_enum_value(item), flat.source_type_i64)
+	} else {
+		t.make_int_literal_typed(item.value.str(), flat.source_type_i64)
+	}
+	value_field := t.make_named_field_init('value', value, flat.source_type_i64)
 	attrs_field := t.make_named_field_init('attrs', t.make_string_array_literal(item.attrs), flat.source_type_id('[]string'))
 	start := t.a.children.len
 	t.a.children << name_field
@@ -5307,10 +5332,12 @@ fn (mut t Transformer) make_string_array_literal(values []string) flat.NodeId {
 
 // subst_value_cond textually substitutes `<var>.name`/`<var>.value` inside a comptime condition
 // string for a `$for value in Enum.values` iteration, so `eval_field_cond` can fold it.
-fn (t &Transformer) subst_value_cond(cond string, var_name string, name string, value i64) string {
+fn (t &Transformer) subst_value_cond(cond string, var_name string, item EnumValueMeta) string {
 	mut c := cond
-	c = comptime_cond_replace_unquoted(c, '${var_name}.value', value.str())
-	c = comptime_cond_replace_unquoted(c, '${var_name}.name', "'${name}'")
+	if !item.value_from_c {
+		c = comptime_cond_replace_unquoted(c, '${var_name}.value', item.value.str())
+	}
+	c = comptime_cond_replace_unquoted(c, '${var_name}.name', "'${item.name}'")
 	return c
 }
 

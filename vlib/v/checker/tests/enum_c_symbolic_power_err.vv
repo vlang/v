@@ -1,0 +1,18 @@
+#include <stdio.h>
+
+enum SymbolicPower {
+	value = int(C.SEEK_CUR) ** 2
+	exponent = 2 ** int(C.SEEK_CUR)
+}
+
+enum SymbolicPowerSource {
+	value = C.SEEK_CUR
+}
+
+enum CopiedSymbolicPower {
+	value = int(SymbolicPowerSource.value) ** 2
+}
+
+fn main() {
+	println(SymbolicPower.value)
+}
