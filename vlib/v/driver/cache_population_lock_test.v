@@ -1,0 +1,209 @@
+module driver
+
+import os
+import time
+import v.modulecache
+
+const population_helper_mode_env = 'V3_TEST_POPULATION_LOCK_HELPER'
+const population_helper_dir_env = 'V3_TEST_POPULATION_LOCK_DIR'
+
+fn testsuite_begin() {
+	if os.getenv(population_helper_mode_env) != '' {
+		run_population_lock_helper()
+	}
+}
+
+// run_population_lock_helper is the other build: `hold` takes the lock and keeps
+// it until its release file appears, then exits without releasing it; `try`
+// reports in its exit code whether it got the lock.
+fn run_population_lock_helper() {
+	dir := os.getenv(population_helper_dir_env)
+	match os.getenv(population_helper_mode_env) {
+		'hold' {
+			if acquire_v3_cache_population_lock(dir) != .acquired {
+				exit(2)
+			}
+			println('locked')
+			os.flush()
+			for _ in 0 .. 3000 {
+				if os.exists(os.join_path(dir, 'release')) {
+					break
+				}
+				time.sleep(10 * time.millisecond)
+			}
+			exit(0)
+		}
+		'try' {
+			exit(match acquire_v3_cache_population_lock(dir) {
+				.acquired { 0 }
+				.held_elsewhere { 1 }
+				.unusable { 4 }
+			})
+		}
+		else {
+			exit(3)
+		}
+	}
+}
+
+fn new_population_lock_helper(dir string, mode string) &os.Process {
+	mut p := os.new_process(os.executable())
+	mut env := os.environ()
+	env[population_helper_mode_env] = mode
+	env[population_helper_dir_env] = dir
+	p.set_environment(env)
+	p.set_redirect_stdio()
+	return p
+}
+
+fn other_build_gets_population_lock(dir string) bool {
+	mut p := new_population_lock_helper(dir, 'try')
+	p.run()
+	p.wait()
+	code := p.code
+	p.close()
+	assert code in [0, 1], 'the helper could not use the lock: exit ${code}'
+	return code == 0
+}
+
+fn population_test_state(root string, cold_modules []string, module_sources map[string][]string) V3ModuleCacheState {
+	old_v3cache := os.getenv_opt('V3CACHE')
+	os.setenv('V3CACHE', root, true)
+	manager := modulecache.new_manager(@VEXEROOT, 'population lock test', true, '', '')
+	if value := old_v3cache {
+		os.setenv('V3CACHE', value, true)
+	} else {
+		os.unsetenv('V3CACHE')
+	}
+	mut state := V3ModuleCacheState{
+		manager:        manager
+		module_sources: module_sources
+	}
+	for name in cold_modules {
+		state.parsed_from_source[name] = true
+	}
+	return state
+}
+
+fn test_large_cache_population_of_compiler_modules() ! {
+	root := os.join_path(os.vtmp_dir(), 'v3_population_gate_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		release_v3_cache_population_lock()
+		os.rmdir_all(root) or {}
+	}
+	small := os.join_path(root, 'small.v')
+	os.write_file(small, 'module small\n')!
+	sources := {
+		'small': [small]
+		'again': [small]
+	}
+	limit := compiler_tree_large_cold_cache_node_limit
+	large := scoped_large_cold_cache_node_limit
+	// Other programs keep the bypass, and so does a graph above the limit.
+	warm := population_test_state(root, [], sources)
+	assert v3_large_cache_population(false, warm, large) == .bypass
+	assert v3_large_cache_population(true, warm, limit) == .bypass
+	// Nothing to publish: no lock is needed.
+	assert v3_large_cache_population(true, warm, limit - 1) == .populate
+	assert !os.exists(os.join_path(warm.manager.dir, v3_cache_population_lock_name))
+
+	cold := population_test_state(root, ['small'], sources)
+	assert v3_large_cache_population(false, cold, large) == .bypass
+	assert v3_large_cache_population(true, cold, limit - 1) == .populate
+	assert os.exists(os.join_path(cold.manager.dir, v3_cache_population_lock_name))
+	// Asking again keeps the lock this build already holds. (On POSIX a process can
+	// take its own record lock again anyway; Windows refuses a second handle.)
+	assert v3_large_cache_population(true, cold, limit - 1) == .populate
+
+	// The sources of every imported module count, cached or not, each file once.
+	huge := os.join_path(root, 'huge.v')
+	os.write_file(huge, 'x'.repeat(int(compiler_tree_large_cold_cache_source_limit) + 1))!
+	mut huge_sources := sources.clone()
+	huge_sources['huge'] = [huge]
+	too_large := population_test_state(root, ['small'], huge_sources)
+	assert v3_cache_module_source_bytes(too_large) == compiler_tree_large_cold_cache_source_limit +
+		1 + os.file_size(small)
+	assert v3_large_cache_population(true, too_large, limit - 1) == .bypass
+	// The limit itself is admitted.
+	os.write_file(huge, 'x'.repeat(int(compiler_tree_large_cold_cache_source_limit - os.file_size(small))))!
+	assert v3_cache_module_source_bytes(too_large) == compiler_tree_large_cold_cache_source_limit
+	assert v3_large_cache_population(true, too_large, limit - 1) == .populate
+	// The builtin bundle counts too.
+	bundled := V3ModuleCacheState{
+		manager:        too_large.manager
+		module_sources: sources
+		bundle_sources: [small, huge]
+	}
+	assert v3_cache_module_source_bytes(bundled) == os.file_size(small) + os.file_size(huge)
+}
+
+fn test_large_cache_population_keeps_the_bypass_without_a_usable_lock() ! {
+	$if windows {
+		// Windows has no portable way here to make a file unwritable to its owner.
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'v3_population_readonly_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	defer {
+		release_v3_cache_population_lock()
+		os.chmod(root, 0o755) or {}
+		os.rmdir_all(root) or {}
+	}
+	state := population_test_state(root, ['types'], map[string][]string{})
+	os.mkdir_all(state.manager.dir)!
+	os.chmod(state.manager.dir, 0o555)!
+	defer {
+		os.chmod(state.manager.dir, 0o755) or {}
+	}
+	if os.is_writable(state.manager.dir) {
+		// Running as root: permissions do not stop it.
+		return
+	}
+	assert acquire_v3_cache_population_lock(state.manager.dir) == .unusable
+	assert v3_large_cache_population(true, state, scoped_large_cold_cache_node_limit) == .bypass
+}
+
+fn test_one_build_at_a_time_holds_the_population_lock() {
+	root := os.join_path(os.vtmp_dir(), 'v3_population_lock_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	defer {
+		release_v3_cache_population_lock()
+		os.rmdir_all(root) or {}
+	}
+	state := population_test_state(root, ['types'], map[string][]string{})
+	dir := state.manager.dir
+	assert acquire_v3_cache_population_lock(dir) == .acquired
+	assert !other_build_gets_population_lock(dir)
+	// Releasing it lets the build that this one waits for take it.
+	release_v3_cache_population_lock()
+	assert other_build_gets_population_lock(dir)
+
+	mut holder := new_population_lock_helper(dir, 'hold')
+	holder.run()
+	mut output := ''
+	for _ in 0 .. 500 {
+		if holder.is_pending(.stdout) {
+			output += holder.stdout_read()
+		}
+		if output.contains('locked') || !holder.is_alive() {
+			break
+		}
+		time.sleep(10 * time.millisecond)
+	}
+	assert output.contains('locked')
+	assert acquire_v3_cache_population_lock(dir) == .held_elsewhere
+	assert v3_large_cache_population(true, state, scoped_large_cold_cache_node_limit) == .contended
+	// The process that checks the instances of a build's generics follows its
+	// build, which holds the lock.
+	os.setenv(instance_check_child_env, '1', true)
+	child_decision := v3_large_cache_population(true, state, scoped_large_cold_cache_node_limit)
+	os.unsetenv(instance_check_child_env)
+	assert child_decision == .populate
+	// The holder exits without releasing the lock: the system releases it.
+	os.write_file(os.join_path(dir, 'release'), '')!
+	holder.wait()
+	holder.close()
+	assert acquire_v3_cache_population_lock(dir) == .acquired
+}

@@ -1,6 +1,7 @@
 module driver
 
 import os
+import os.filelock
 import runtime
 import strconv
 import strings
@@ -121,6 +122,16 @@ const scoped_serial_user_check_node_threshold = 1_000_000
 const scoped_serial_user_transform_node_threshold = 1_000_000
 const scoped_serial_user_cgen_node_threshold = 2_000_000
 const scoped_large_cold_cache_node_limit = 500_000
+// A build of the compiler's own modules populates the cache for a graph up to
+// these sizes, see v3_large_cache_population. A build that has to rebuild the
+// `builtin` object parses all of its modules from source again, so its peak
+// follows the sources of all of its modules, cached or not: with 7.8 MB of them,
+// a `vlib/v/gen/arm64` test peaks at ~3.9 GB and a `vlib/v/gen/c` one (7.2 MB) at
+// ~5.3 GB; a `vlib/v/driver` test (15.3 MB) reaches ~10 GB, the guard of
+// use_compiler_tree_memory_limit, and keeps the bypass.
+const compiler_tree_large_cold_cache_node_limit = 2_000_000
+const compiler_tree_large_cold_cache_source_limit = i64(10_000_000)
+const v3_cache_population_lock_name = 'large_cold_population.lock'
 const v3_large_cold_cache_marker_version = 'v3-large-cold-cache-bypass-v1'
 const scoped_linux_user_job_limit = 4
 const diagnostics_server_job_limit = 8
@@ -2213,6 +2224,9 @@ fn ignore_run_signal(_ os.Signal) {
 }
 
 fn run_binary(bin_file string, args []string) int {
+	// The build is published: the builds that wait to populate the cache need
+	// not wait for the program as well.
+	release_v3_cache_population_lock()
 	run_path := executable_path_for_run(bin_file)
 	mut process := os.new_process(run_path)
 	process.set_args(args)
@@ -13495,9 +13509,16 @@ pub fn run(args []string) {
 	// bounded whole-program pipeline; existing whole/generic/incremental hits still
 	// keep their fast path.
 	if should_restart_v3_large_cold_cache(cache_state.manager.enabled, scope_prealloc_stages, a.nodes.len, cgen_cache_hit, generic_cache_hit, incremental_cache_hit) {
-		_ = write_v3_large_cold_cache_marker(large_cold_cache_marker, fallback_report_sources.keys())
-		trace_v3_cache_fallback('cold source graph is too large for scoped cache population')
-		restart_v3_without_cache('')
+		population := v3_large_cache_population(compiler_tree_input, cache_state, a.nodes.len)
+		if population != .populate {
+			// A build that waits for another one to populate the cache finds it
+			// populated later: only a graph that is too large keeps the bypass.
+			if population == .bypass {
+				_ = write_v3_large_cold_cache_marker(large_cold_cache_marker, fallback_report_sources.keys())
+			}
+			trace_v3_cache_fallback('cold source graph is too large for scoped cache population')
+			restart_v3_without_cache('')
+		}
 	}
 	// Exact whole-program cache hits do not consume the generic or incremental
 	// snapshots. Build those AST-wide signatures only on a miss, while retaining
@@ -16805,6 +16826,7 @@ pub fn run(args []string) {
 					}
 				}
 				$if windows {
+					release_v3_cache_population_lock()
 					exit(os.system_args([os.executable(), ...regeneration_args]))
 				}
 				os.execvp(os.executable(), regeneration_args) or {
@@ -16841,6 +16863,8 @@ pub fn run(args []string) {
 					}
 					retry_args := v3_retry_compilation_args(args, c_compiler_arg_index, fallback)
 					cleanup_c_build_dir(cc_dir)
+					// The retry is another process on every platform.
+					release_v3_cache_population_lock()
 					retry_result := cmdexec.run(os.executable(), retry_args)
 					if retry_result.output.len > 0 {
 						print(retry_result.output)
@@ -17568,6 +17592,7 @@ fn v3_recover_from_cache_failure(output string, cc_dir string) bool {
 	$if windows {
 		// `_execvp` would exit this process with status 0 before the retried
 		// build finishes, so forward the retried build's status instead.
+		release_v3_cache_population_lock()
 		exit(os.system_args([executable, ...restart_args]))
 	}
 	os.execvp(executable, restart_args) or {
@@ -17649,6 +17674,7 @@ fn v3_regenerate_after_implicit_tcc(args []string, c_compiler_arg_index int, cc_
 	flush_stdout()
 	flush_stderr()
 	$if windows {
+		release_v3_cache_population_lock()
 		retry_result := cmdexec.run(os.executable(), retry_args)
 		if retry_result.output.len > 0 {
 			print(retry_result.output)
@@ -18754,6 +18780,136 @@ fn should_restart_v3_large_cold_cache(cache_enabled bool, scoped_prealloc bool, 
 		&& !cgen_hit && !generic_hit && !incremental_hit
 }
 
+// V3CachePopulationLock is the lock of the one build at a time that populates the
+// module cache for a large graph of compiler modules.
+struct V3CachePopulationLock {
+mut:
+	file_lock filelock.FileLock
+	acquired  bool
+}
+
+const v3_cache_population_lock = &V3CachePopulationLock{}
+
+// V3CachePopulationLockResult is what acquire_v3_cache_population_lock found.
+enum V3CachePopulationLockResult {
+	acquired
+	held_elsewhere
+	unusable // the lock file cannot be created or written, e.g. a read-only cache
+}
+
+// V3LargeCachePopulation is what a build does with the module cache for a source
+// graph that should_restart_v3_large_cold_cache finds too large.
+enum V3LargeCachePopulation {
+	bypass    // too large: restart without the cache, and keep doing so (the marker)
+	contended // another build populates the cache: restart without it this time
+	populate  // keep the cache
+}
+
+// v3_large_cache_population decides it. Other programs always bypass the cache.
+// The tests of the compiler's own modules (input_is_compiler_tree) import much of
+// the compiler, which a persisted bypass would keep from ever being cached, so
+// each of them would compile all of it again. One whose imported modules all come
+// from their headers publishes none, and retains less than without the cache. One
+// that has modules to publish does so while it holds the population lock of the
+// cache: the builds that start beside it, as the tests of `v test` do, skip the
+// cache this time only, and find those modules cached later.
+fn v3_large_cache_population(compiler_tree_input bool, state &V3ModuleCacheState, node_count int) V3LargeCachePopulation {
+	if !compiler_tree_input || node_count >= compiler_tree_large_cold_cache_node_limit {
+		return .bypass
+	}
+	if state.parsed_from_source.len == 0 {
+		return .populate
+	}
+	source_bytes := v3_cache_module_source_bytes(state)
+	if os.getenv('V3_CACHE_TRACE') != '' {
+		eprintln('  V3 module cache population candidate: nodes=${node_count} cold_modules=${state.parsed_from_source.len} module_source_bytes=${source_bytes}')
+	}
+	if source_bytes > compiler_tree_large_cold_cache_source_limit {
+		return .bypass
+	}
+	// The process that checks the instances of the generics of a build that keeps
+	// the cache publishes nothing, and its build holds the lock.
+	if is_instance_check_child() {
+		return .populate
+	}
+	return match acquire_v3_cache_population_lock(state.manager.dir) {
+		.acquired {
+			V3LargeCachePopulation.populate
+		}
+		.held_elsewhere {
+			trace_v3_cache_fallback('another build populates the cache for a large compiler-module graph')
+			V3LargeCachePopulation.contended
+		}
+		.unusable {
+			// Without a lock no build could ever populate it: keep the bypass.
+			V3LargeCachePopulation.bypass
+		}
+	}
+}
+
+// v3_cache_module_source_bytes is the size of the sources of all the modules that
+// the build imports, whether it reads them from the cache or not.
+fn v3_cache_module_source_bytes(state &V3ModuleCacheState) i64 {
+	mut seen := map[string]bool{}
+	mut total := i64(0)
+	for _, files in state.module_sources {
+		for file in files {
+			if !seen[file] {
+				seen[file] = true
+				total += os.file_size(file)
+			}
+		}
+	}
+	for file in state.bundle_sources {
+		if !seen[file] {
+			seen[file] = true
+			total += os.file_size(file)
+		}
+	}
+	return total
+}
+
+// acquire_v3_cache_population_lock takes the population lock of the cache in
+// `cache_dir` without waiting. The operating system releases it when the process
+// exits, however it exits, and a forked child does not inherit it. On POSIX it is
+// a record lock, which an exec keeps: a build that restarts itself in place takes
+// it again as the same process.
+fn acquire_v3_cache_population_lock(cache_dir string) V3CachePopulationLockResult {
+	mut held := unsafe { v3_cache_population_lock }
+	if held.acquired {
+		return .acquired
+	}
+	path := os.join_path(cache_dir, v3_cache_population_lock_name)
+	if !os.exists(path) {
+		os.mkdir_all(cache_dir) or {}
+		// Locking an existing file never deletes it, so two builds cannot hold
+		// locks on two files of the same name. A build that creates it at the same
+		// time can make this write fail: the file is there all the same.
+		os.write_file(path, '') or {}
+	}
+	if !os.exists(path) || !os.is_writable(path) {
+		return .unusable
+	}
+	mut file_lock := filelock.new_file(path, mode: .exclusive)
+	if !file_lock.try_acquire() {
+		return .held_elsewhere
+	}
+	held.file_lock = file_lock
+	held.acquired = true
+	return .acquired
+}
+
+// release_v3_cache_population_lock gives up the population lock before this build
+// waits for another process: a build that it restarts or retries as a child (on
+// Windows every restart), or the program it runs.
+fn release_v3_cache_population_lock() {
+	mut held := unsafe { v3_cache_population_lock }
+	if held.acquired {
+		held.file_lock.release()
+		held.acquired = false
+	}
+}
+
 fn v3_large_cold_cache_marker_path(cache_dir string, input_file string, file_list []string) string {
 	mut identity := strings.new_builder(128)
 	identity.write_string(os.real_path(input_file))
@@ -18883,6 +19039,7 @@ fn restart_v3_with_args(extra_args []string, build_dir string) {
 		// Windows has no exec either: `_execvp` would start the child and then
 		// exit this process with status 0, dropping the restarted build's
 		// result on the floor.
+		release_v3_cache_population_lock()
 		exit(os.system_args([executable, ...args]))
 	} $else {
 		os.execvp(executable, args) or {
@@ -19419,7 +19576,7 @@ fn v3_cached_object_program_compile_signature(program_base string, generated_sou
 // that needs the signature of the plan and the one of the objects takes it once.
 fn v3_cached_object_program_signature_suffix(generated_source string) string {
 	mut suffix := ''
-	if generated_source.contains('typedef struct v_unwind_frame {') {
+	if v3_generated_c_declares_panic_frames(generated_source) {
 		suffix += '\npanic_frames=true'
 	}
 	opaque := v3_opaque_program_wrappers(generated_source)
@@ -19427,6 +19584,16 @@ fn v3_cached_object_program_signature_suffix(generated_source string) string {
 		suffix += '\nprogram_wrappers=${sha256.hexhash(opaque)}'
 	}
 	return suffix
+}
+
+// v3_generated_c_declares_panic_frames reports whether generated C declares the
+// panic frame type, which the C generator writes at the start of a line. A V
+// string literal holding the same text, such as those of the C generator itself,
+// is a quoted C literal and does not count.
+fn v3_generated_c_declares_panic_frames(generated_source string) bool {
+	declaration := 'typedef struct v_unwind_frame {'
+	return generated_source.starts_with(declaration)
+		|| generated_source.contains('\n' + declaration)
 }
 
 // V3ProgramWrapperItem is one top-level piece of a wrapper section of generated C.
