@@ -127,4 +127,3 @@ pub fn (mut s LWWESet[T]) merge(other &LWWESet[T]) {
 		}
 	}
 }
-

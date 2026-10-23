@@ -317,13 +317,14 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			continue
 		}
 		// A method defined on the whole sum type (`fn (e Expr) is_blank_ident()`) stays
-		// callable after the value is narrowed to a variant. When the narrowed type lacks the
-		// method but the receiver is a bare local whose declared (un-narrowed) type has it,
-		// dispatch on the un-narrowed value instead of the smart-cast variant pointer.
+		// callable after narrowing. A grouped arm must retain whole-sum dispatch even when
+		// its first variant defines the same method. Bare locals also retain whole-sum
+		// methods absent from a single narrowed variant.
 		mut unnarrowed_receiver := ''
 		if receiver_tokens.len == 1 && receiver_tokens[0].tok == .name && receiver_tokens[0].lit in g.member_smartcasts {
 			narrowed_key, _ := g.resolve_method(receiver_type, tokens[i].lit)
-			if narrowed_key !in g.functions && narrowed_key !in g.mono_functions {
+			grouped := g.member_smartcasts[receiver_tokens[0].lit].variants.ids.len > 1
+			if grouped || (narrowed_key !in g.functions && narrowed_key !in g.mono_functions) {
 				if local := g.locals[receiver_tokens[0].lit] {
 					original_key, _ := g.resolve_method(local.typ, tokens[i].lit)
 					if original_key in g.functions || original_key in g.mono_functions {

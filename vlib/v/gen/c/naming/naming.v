@@ -23,6 +23,7 @@ const max_c_collision_name_len = 8
 const reserved_words = {
 	'auto':     true
 	'break':    true
+	'bool':     true
 	'case':     true
 	'char':     true
 	'asm':      true

@@ -392,7 +392,7 @@ fn test_option_time_and_struct_variants() {
 
 struct OmitemptyConfig {
 	retries int    = 3   @[omitempty]
-	name    string = 'x'   @[omitempty]
+	name    string = 'x' @[omitempty]
 	ratio   f64    = 1.5 @[omitempty]
 }
 

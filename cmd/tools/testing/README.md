@@ -18,6 +18,10 @@ An existing nonempty `V3CACHE` takes precedence, even with `V3_TEST_ISOLATE_CACH
 To isolate a session's cache, leave `V3CACHE` unset and set `V3_TEST_ISOLATE_CACHE=1`.
 The compiler then uses an isolated cache inside the session's temporary folder.
 
+In strict V3 mode, `v test` and `v test-self` apply `VFLAGS` to test compilation and clear
+it from the test program's environment. Nested compiler calls can select their own backend
+and C compiler without inheriting the outer test runner's options.
+
 Resume records replace the previous record only after the new contents are complete.
 On Windows, saving retries temporary sharing errors for about half a second. A refused
 replacement preserves the previous record and reports a failed test.

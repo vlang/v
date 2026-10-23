@@ -352,6 +352,14 @@ latest_bundle() {
 		echo "Refusing to overwrite local TCC commits on ${expected_branch}; run 'make fresh_tcc' after preserving them." >&2
 		return 1
 	fi
+	# Keep a validated historical bundle in place while upstream is unchanged.
+	# Checking out the incompatible head and back rewrites native cache inputs.
+	if [ -z "$current_branch" ] \
+		&& grep -Fqx "remote_head_sha=$remote_head_sha" "$tcc_dir/.git/$marker_name/metadata" \
+		&& probe_bundle; then
+		echo "Using newest host-compatible TCC commit ${current_sha} from ${expected_branch}."
+		return
+	fi
 	run_git -C "$tcc_dir" checkout --detach --quiet "$remote_head_sha"
 	if probe_bundle; then
 		run_git -C "$tcc_dir" checkout --quiet -B "$expected_branch" "refs/remotes/origin/${expected_branch}"

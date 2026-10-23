@@ -191,6 +191,28 @@ fn test_type_promotion_cache_preserves_misses_and_distinct_live_payloads() {
 	assert tc.type_count() == initial_count + 600
 }
 
+fn test_type_promotion_cache_verifies_borrowed_metadata_after_reuse() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	mut cache := CheckTypePromotionCache{}
+	mut params := [FnParam{ typ: &builtin_int_type }]
+	typ := Type(FnType{ params: params, return_type: &builtin_int_type })
+	first := tc.cached_check_type_promotion(typ, mut cache, true, false)?
+	assert first.name() == 'fn(int) int'
+
+	// The wrapper, list address and length stay the same. The interner must own
+	// the first payload, and a frozen probe must not mistake the new one for it.
+	params[0] = FnParam{ typ: &builtin_string_type, is_mut: true }
+	assert tc.cached_check_type_promotion(typ, mut cache, false, true) == none
+	second := tc.cached_check_type_promotion(typ, mut cache, true, false)?
+	assert !semantic_types_equal(first, second)
+	assert first.name() == 'fn(int) int'
+	assert second is FnType
+	assert second.params[0].is_mut
+	assert second.params[0].typ is String
+	assert voidptr(tc.cached_check_type_promotion(typ, mut cache, false, true)?) == voidptr(second)
+}
+
 fn test_check_heap_partitions_match_linear_load_selection() {
 	for count in [0, 1, 2, 33, 256, 1500] {
 		mut items := []CheckWorkItem{}

@@ -3,6 +3,19 @@ module types
 
 import v.flat
 
+fn promotion_test_indirect_payload(typ &Type) voidptr {
+	return match typ {
+		Unknown { voidptr(typ.UnknownDataRef) }
+		ArrayFixed { voidptr(typ.ArrayFixedDataRef) }
+		Channel { voidptr(typ.ChannelDataRef) }
+		Map { voidptr(typ.MapDataRef) }
+		FnType { voidptr(typ.FnTypeDataRef) }
+		Alias { voidptr(typ.AliasDataRef) }
+		MultiReturn { voidptr(typ.MultiReturnDataRef) }
+		else { unsafe { nil } }
+	}
+}
+
 fn test_pass2_promotion_retains_scoped_variant_payloads() {
 	$if prealloc {
 		name_id := flat.source_type_id('ScopedType')
@@ -38,8 +51,14 @@ fn test_pass2_promotion_retains_scoped_variant_payloads() {
 		mut promotion := Pass2TypePromotion{}
 		for value in values {
 			expected << value.name()
+			payload := promotion_test_indirect_payload(value)
+			if payload != unsafe { nil } {
+				assert unsafe { prealloc_scope_owns(scope, payload) }
+				assert type_refers_to_scope(scope, value)
+			}
 			owned := promotion.promote(scope, value)
 			assert !type_refers_to_scope(scope, owned)
+			assert !unsafe { prealloc_scope_owns(scope, promotion_test_indirect_payload(owned)) }
 			// Check storage directly too: the old scope query missed boxed payloads.
 			if owned is Primitive {
 				assert !unsafe { prealloc_scope_owns(scope, &owned.props) }

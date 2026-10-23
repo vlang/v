@@ -49,6 +49,26 @@ fn test_native_module_initialization_orders_dependencies_once() {
 	assert order == ['child', 'parent', 'main']
 }
 
+fn test_native_inferred_global_pointer_keeps_its_pointee_type() {
+	path := os.join_path(os.vtmp_dir(), 'native_pointer_init_${os.getpid()}.v')
+	defer {
+		os.rm(path) or {}
+	}
+	os.write_file(path, 'struct Payload { value i64 }
+__global payload = &Payload{value: 42}
+fn main() {}
+')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	m := build(a)
+	payload := m.globals.filter(it.name == 'payload')[0]
+	typ := m.type_store.types[payload.typ]
+	assert typ.kind == .ptr_t
+	assert m.type_store.types[typ.elem_type].kind == .struct_t
+	assert m.type_store.types[typ.elem_type].field_names == ['value']
+}
+
 fn test_native_static_mutex_initialization_calls_pthread_init() {
 	path := os.join_path(os.vtmp_dir(), 'native_mutex_init_${os.getpid()}.v')
 	defer {

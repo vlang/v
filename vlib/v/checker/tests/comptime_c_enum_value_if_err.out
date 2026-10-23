@@ -1,0 +1,7 @@
+vlib/v/checker/tests/comptime_c_enum_value_if_err.vv:9:7: error: cannot evaluate `$if` condition `member.value == 0` at compile time; use a runtime `if` instead
+    7 | fn main() {
+    8 |     $for member in FromC.values {
+    9 |         $if member.value == 0 {
+      |             ~~~~~~~~~~~~~~~~~
+   10 |             println('zero')
+   11 |         }

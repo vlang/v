@@ -25,6 +25,8 @@ fn interner_parallel_reader(mut interner TypeInterner, ready chan bool, start ch
 		assert canonical is String
 		_, repeated := interner.canonicalize(Type(string_))
 		assert voidptr(repeated) == voidptr(canonical)
+		_, by_identity := interner.canonicalize(canonical)
+		assert voidptr(by_identity) == voidptr(canonical)
 		select {
 			_ := <-stop {
 				return

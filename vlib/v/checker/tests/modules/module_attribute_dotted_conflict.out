@@ -1,6 +1,6 @@
 vlib/v/checker/tests/modules/module_attribute_dotted_conflict/main.v:20:19: error: attribute `mod.Tag` is missing field `a`
    18 | struct Fields {
-   19 |     ok      string @[mod.Tag('y')]
+   19 |     ok      string @[mod.Tag: 'y']
    20 |     missing string @[mod.Tag]
       |                      ~~~~~~~
    21 | }

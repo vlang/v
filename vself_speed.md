@@ -4,6 +4,64 @@ Every compiler fix must preserve or improve self-compilation efficiency. Agents 
 retired instructions before and after compiler changes and resolve regressions before merging.
 Keep correctness tests and generated-output checks alongside performance measurements.
 
+## Compact semantic type descriptors
+
+`types.Type` is again **16 bytes on 64-bit targets**, down from the tagged-union revision's
+72 bytes. Its seven large variants hold references to immutable payloads; the remaining
+variants stay inline. Promoted fields, constructors, value equality, semantic hashing, and
+owned copies retain their semantics. Shared defaults avoid allocations for empty payloads.
+The layout and ownership regression tests are in `vlib/v/types/type_layout_test.v` and the
+interner tests. See `vlib/v/types/README.md` for the payload ownership rules.
+
+The combined patch also reduces repeated type, smartcast, source-name, and C-name lookups,
+retains bounded transform-helper storage through C generation, and shortens builtin map,
+string-search, and small-copy paths. FastC, C, and SSA regression tests cover indirect payload
+defaults, promoted initializers, and callback aliases needed by the compact representation.
+
+A fresh comparison against master `5f7d4d09805ebbef64650d7bf275a007c7120e12` used the same
+**559,990-line** fixture at `2d1367e589ed30c03325e586a8ddfd3bc96c8c3d`. Both roles used the
+same seed, two in-place TCC rebuilds, Apple Clang 21 production builds with `-mcpu=apple-m1`,
+and fresh matching PGO profiles trained on this fixture with default and single-worker modes.
+The compiler build directories differed; measured executable, input, output, and working-directory
+paths matched. The measured candidate combines compact types and hot-path changes in the retained
+`compact-v76` source snapshot. Subsequent FastC correctness fixes and master integration, including
+atomic cache portability changes, are outside this measurement. The final reviewed revision has
+not been benchmarked.
+
+One warmup per role preceded ten alternating measured pairs with `VJOBS=1`. All 22 runs
+succeeded, each with one positive retired-instruction counter and byte-identical generated C.
+The common output passed Apple Clang's Objective-C syntax check with the fixture's include paths.
+
+| Median metric | Master | Compact types and hot-path changes |
+| --- | ---: | ---: |
+| Retired instructions | 56,454,904,776.5 | 51,480,959,993.5 |
+| Instructions/parsed line | 100,814.13 | 91,931.93 |
+| CPU cycles, billions | 22.1275 | 21.1105 |
+| Peak resident memory, MiB | 1,125.72 | 1,172.06 |
+| Elapsed seconds | 7.3736 | 6.9148 |
+
+The candidate used **8.81% fewer instructions**, with **0/10 regressing pairs** and a median
+paired difference of `-4,934,100,840.5` instructions. Peak memory increased by about 46 MiB.
+Elapsed time and cycles are contextual shared-host measurements, not controlled latency claims.
+The **90,000 instructions/line target remains unmet**: it requires `50,399,100,000` instructions
+on this unchanged fixture. Keep the fixture and denominator fixed when checking future changes.
+
+The baseline executable SHA-256 is
+`56b5b8210947b185aa7e73585ba33f4df072dabd2d0e5403ed8cbcc7db0e82bd`;
+the candidate executable SHA-256 is
+`15fc29aa638170d24cd98973f62d7bb5d48dcf638063695462b82a264680dcbe`.
+Generated C has SHA-256
+`ade8fd366a802bee022b06cdb2d3e5167988f2a918f031f10eb6586f6e50660f`.
+
+Exact build commands, source snapshots, fixture inventories, binary hashes, all raw samples,
+and generated-output checks are retained in
+`/Users/alex/code/v3-self-90k-artifacts/compact-type-20261021/`.
+Use `build.py`, `measure.py`, `baseline-master/metadata.json`,
+`compact-v76-standard/metadata.json`, `compact-v76-source/sha256.json`, and
+`compact-v76-pr-confirmation{,-metadata,-summary}.json` with their per-run logs.
+The current fixture manifest and counting procedure are recorded below. Exploratory variants
+are excluded from this comparison and from the patch.
+
 ## Why the reported scores differed
 
 The earlier **115,328 -> 95,877 instructions/line** comparison used compiler sources and input
