@@ -80,28 +80,48 @@ const inline_asm_raw_prefixes = ['lock', 'rep', 'repe', 'repz', 'repne', 'repnz'
 // section into the text the assembler receives. Unknown escapes keep their character;
 // `%%` and `%=` are assembler syntax, not escapes, and stay as written.
 fn inline_asm_raw_template(block string, section InlineAsmRange) InlineAsmRawTemplate {
-	mut text := []u8{cap: section.end - section.start}
-	mut starts := []int{cap: section.end - section.start}
-	mut ends := []int{cap: section.end - section.start}
-	mut i := section.start
-	for i < section.end {
-		if block[i] != `"` {
+	// C removes line splices before interpreting string literals and their escapes.
+	mut source := []u8{cap: section.end - section.start}
+	mut offsets := []int{cap: section.end - section.start}
+	mut pos := section.start
+	for pos < section.end {
+		if block[pos] == `\\` && pos + 1 < section.end {
+			if block[pos + 1] == `\n` {
+				pos += 2
+				continue
+			}
+			if block[pos + 1] == `\r` && pos + 2 < section.end && block[pos + 2] == `\n` {
+				pos += 3
+				continue
+			}
+		}
+		source << block[pos]
+		offsets << pos
+		pos++
+	}
+	literal := source.bytestr()
+	mut text := []u8{cap: literal.len}
+	mut starts := []int{cap: literal.len}
+	mut ends := []int{cap: literal.len}
+	mut i := 0
+	for i < literal.len {
+		if literal[i] != `"` {
 			i++
 			continue
 		}
 		i++
-		for i < section.end && block[i] != `"` {
-			if block[i] != `\\` || i + 1 >= section.end {
-				text << block[i]
-				starts << i
-				ends << i + 1
+		for i < literal.len && literal[i] != `"` {
+			if literal[i] != `\\` || i + 1 >= literal.len {
+				text << literal[i]
+				starts << offsets[i]
+				ends << offsets[i] + 1
 				i++
 				continue
 			}
-			decoded, consumed := inline_asm_raw_decode_escape(block, i, section.end)
+			decoded, consumed := inline_asm_raw_decode_escape(literal, i, literal.len)
 			text << decoded
-			starts << i
-			ends << i + consumed
+			starts << offsets[i]
+			ends << offsets[i + consumed - 1] + 1
 			i += consumed
 		}
 		// Skip the closing quote; an unterminated literal simply ends the section.
@@ -289,12 +309,14 @@ fn inline_asm_raw_parse_instructions(t &InlineAsmRawTemplate, registers []string
 		}
 		mut mnemonic := t.text[i..mnemonic_end]
 		mut args_start := inline_asm_raw_skip_blanks(t.text, mnemonic_end, end)
-		if inline_asm_raw_is_prefix(mnemonic) && args_start < end {
+		mut prefix := mnemonic
+		for inline_asm_raw_is_prefix(prefix) && args_start < end {
 			mut second_end := args_start
 			for second_end < end && !t.text[second_end].is_space() {
 				second_end++
 			}
-			mnemonic += ' ' + t.text[args_start..second_end]
+			prefix = t.text[args_start..second_end]
+			mnemonic += ' ' + prefix
 			mnemonic_end = second_end
 			args_start = inline_asm_raw_skip_blanks(t.text, second_end, end)
 		}

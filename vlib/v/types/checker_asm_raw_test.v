@@ -313,3 +313,27 @@ fn test_raw_label_detection_rejects_operand_colons() {
 	assert instructions.map(it.label) == ['', '', 'x']
 	assert instructions.map(it.mnemonic) == ['%%fs:0x28', 'a::', 'nop']
 }
+
+fn test_raw_template_removes_c_line_splices() {
+	for line_end in ['\n', '\r\n'] {
+		block := '"mov' + '\\' + line_end + 'q %%rax, %%rbx"'
+		template := inline_asm_raw_template(block, InlineAsmRange{ start: 0, end: block.len })
+		assert template.text == 'movq %%rax, %%rbx'
+		start, end := template.span(3, 4)
+		assert block[start..end] == 'q'
+		// A splice can also join the source bytes within an escape sequence.
+		escape := '"' + '\\\\' + line_end + 'n' + '\\x4' + '\\' + line_end + '1"'
+		decoded := inline_asm_raw_template(escape, InlineAsmRange{ start: 0, end: escape.len })
+		assert decoded.text == '\nA'
+		escape_start, escape_end := decoded.span(1, 2)
+		assert escape[escape_start..escape_end] == '\\x4' + '\\' + line_end + '1'
+	}
+}
+
+fn test_raw_instructions_fold_multiple_prefixes() {
+	instructions := raw_instructions_of('asm amd64 raw { "lock rex.w addl %%eax, (%%rcx)" ; }',
+		'amd64')
+	assert instructions.len == 1
+	assert instructions[0].mnemonic == 'lock rex.w addl'
+	assert instructions[0].operands.map(it.text) == ['%%eax', '(%%rcx)']
+}
