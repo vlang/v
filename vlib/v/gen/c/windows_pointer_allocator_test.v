@@ -7,6 +7,22 @@ fn allocator_test_c_function(generated string, signature string) string {
 	return signature + generated.all_after(signature).all_before('\n}') + '\n}\n'
 }
 
+fn allocator_test_c_drop_helpers(generated string, names []string) string {
+	mut prototypes := []string{}
+	mut bodies := []string{}
+	for name in names {
+		prefix := 'static void __v3_ownership_drop_${name}('
+		definitions := generated.split_into_lines().filter(it.starts_with(prefix)
+			&& it.ends_with(' {'))
+		assert definitions.len == 1, '${name}: ${definitions}'
+		signature := definitions[0]
+		prototypes << signature.all_before(' {') + ';\n'
+		bodies << allocator_test_c_function(generated, signature)
+	}
+	// Nested generic helpers can precede their dependencies in generated C.
+	return prototypes.join('') + bodies.join('')
+}
+
 fn allocator_test_c_struct(generated string, suffix string) string {
 	for line in generated.split_into_lines() {
 		if line.starts_with('struct ') && line.ends_with('${suffix} {') {
@@ -232,13 +248,29 @@ fn main() { implicit_aligned()
 		'none', '-autofree', '-no-closures', '-o', c_source, source])
 	assert result.exit_code == 0, result.output
 	generated := os.read_file(c_source)!
-	for name in ['main__implicit_aligned', 'main__implicit_natural', 'main__implicit_wrapped_aligned',
+	root_helpers := ['AlignedValue', 'NaturalValue', 'AlignedValue', 'GenericAlignedValue_AlignedCell',
+		'GenericAlignedLayer_AlignedCell']
+	for i, name in ['main__implicit_aligned', 'main__implicit_natural', 'main__implicit_wrapped_aligned',
 		'main__implicit_generic_aligned', 'main__implicit_generic_nested_aligned'] {
 		body := allocator_test_c_function(generated, 'void ${name}(void) {')
 		assert body.contains('._pointer_variant_is_owned = true'), body
-		assert body.count('v3_aligned_free(') == 1, body
+		assert body.count('__v3_ownership_drop_${root_helpers[i]}(') == 1, body
+		assert body.count('__v3_ownership_drop_') == 1, body
 		assert !body.contains('\n\tfree('), body
 	}
+	for name in ['AlignedValue', 'NaturalValue', 'GenericAlignedValue_AlignedCell'] {
+		signature := 'static void __v3_ownership_drop_${name}(${name}* _value) {'
+		body := allocator_test_c_function(generated, signature)
+		assert body.contains('_pointer_variant_is_owned &&'), body
+		assert body.contains('!= NULL)'), body
+		assert body.count('v3_aligned_free(') == 1, body
+		assert body.count('free(') == 1, body
+	}
+	// Run the real shared cleanup closure, including wrappers and nested sums.
+	drop_helpers := allocator_test_c_drop_helpers(generated, ['AlignedCell', 'NaturalCell',
+		'AlignedValue', 'NaturalValue', 'AlignedWrapper', 'GenericAlignedValue_AlignedCell',
+		'GenericAlignedLayer_AlignedCell', 'GenericAlignedWrapper_AlignedCell',
+		'GenericAlignedLayerWrapper_AlignedCell'])
 	declarations := allocator_test_c_struct(generated, 'AlignedCell') +
 		allocator_test_c_struct(generated, 'NaturalCell') +
 		allocator_test_c_struct(generated, 'AlignedValue') +
@@ -256,8 +288,7 @@ ${allocator_test_c_function(generated, 'void* memdup(void* src, ptrdiff_t sz) {'
 ${allocator_test_c_function(generated, 'void v_free(void* ptr) {')}
 ${allocator_test_c_function(generated, 'static inline void* v3_aligned_memdup(void* src, ptrdiff_t sz, size_t alignment) {')}
 ${allocator_test_c_function(generated, 'static inline void v3_aligned_free(void* p) {')}
-${allocator_test_c_function(generated, 'static void __v3_ownership_drop_AlignedCell(main__AlignedCell* _value) {')}
-${allocator_test_c_function(generated, 'static void __v3_ownership_drop_NaturalCell(main__NaturalCell* _value) {')}
+${drop_helpers}
 ${allocator_test_c_function(generated, 'void main__implicit_aligned(void) {')}
 ${allocator_test_c_function(generated, 'void main__implicit_natural(void) {')}
 ${allocator_test_c_function(generated, 'void main__implicit_wrapped_aligned(void) {')}

@@ -662,7 +662,9 @@ mut:
 	top_level_node_ids             []i32
 	ast_string_literals            []string
 	ast_string_literals_ready      bool
-	ast_string_literals_parsed     int   // how many leading ast_string_literals come from parsed nodes
+	ast_string_literals_parsed     int // how many leading ast_string_literals come from parsed nodes
+	referenced_c_struct_ids        map[u32]bool
+	referenced_c_struct_ids_ready  bool
 	embed_payload_node_ids         []i32 // `$embed_file` payload nodes, in AST order
 	embed_payload_nodes_ready      bool
 	fn_segs                        []string
@@ -3649,6 +3651,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.ast_string_literals = []string{}
 	g.ast_string_literals_ready = false
 	g.ast_string_literals_parsed = 0
+	g.referenced_c_struct_ids = map[u32]bool{}
+	g.referenced_c_struct_ids_ready = false
 	g.embed_payload_node_ids = []i32{}
 	g.embed_payload_nodes_ready = false
 	g.direct_array_access = false
@@ -3935,6 +3939,10 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.precompute_const_short_index()
 	g.precompute_local_global_suffix_names()
 	g.precompute_c_typedef_shadow_names()
+	// Interface workers must share the same referenced C layouts as declaration emission.
+	if g.tc.structs.keys().any(it.starts_with('C.')) {
+		g.ensure_referenced_c_struct_ids()
+	}
 	g.timing_profile('  [ttime] cg collect_info    ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	cgsw.restart()
 	mut parallel_support_precomputed := false
@@ -5407,7 +5415,7 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 				f := g.a.child_node(node_ref, i)
 				if f.children_count > 0 {
 					mut resolving := map[string]bool{}
-					if enum_val := g.enum_field_expr_value_with_enum(g.a.child(f, 0), cur_module, flat.source_type_id(node.value), mut field_values, field_exprs, mut resolving) {
+					if enum_val := g.enum_field_expr_value_with_enum(g.a.child(f, 0), cur_module, enum_decl_source_type_id(node, cur_module), mut field_values, field_exprs, mut resolving) {
 						val = int(enum_val)
 						value_from_c = false
 					} else {
@@ -23174,6 +23182,12 @@ fn (mut g FlatGen) collect_fixed_array_typedefs_needed() map[string]FixedArrayTy
 		}
 	}
 	for name, fields in g.tc.structs {
+		if name.starts_with('C.') {
+			g.ensure_referenced_c_struct_ids()
+			if !g.referenced_c_struct_ids[flat.source_type_id(name)] {
+				continue
+			}
+		}
 		g.tc.cur_module = g.fixed_array_typedef_type_module(name, old_module)
 		for field in fields {
 			if fixed_array_type_first_seen(field.typ, g.tc.cur_module, mut type_seen) {
@@ -23238,9 +23252,9 @@ fn (mut g FlatGen) collect_fixed_array_typedefs_needed() map[string]FixedArrayTy
 		}
 		g.tc.cur_file = cur_file
 		g.tc.cur_module = cur_module
-		// Struct-init node types use scratch text while fields are transformed; the
-		// declared struct metadata above is the authoritative fixed-array source.
-		if node.kind != .struct_init && node.typ_text().len > 1 && fixed_array_text_first_seen(node.typ, cur_file, cur_module, mut text_seen) && fixed_array_type_text_may_need_typedef(node.typ_text()) {
+		// Field declarations use the retained struct/interface metadata above.
+		// Struct-init types use scratch text while fields are transformed.
+		if node.kind !in [.struct_init, .field_decl] && node.typ_text().len > 1 && fixed_array_text_first_seen(node.typ, cur_file, cur_module, mut text_seen) && fixed_array_type_text_may_need_typedef(node.typ_text()) {
 			g.collect_fixed_array_typedef_text(node.typ, cur_module, mut needed)
 		}
 		match node.kind {
@@ -26585,7 +26599,10 @@ fn (mut g FlatGen) is_const_expr_inner(id flat.NodeId, mut visiting map[int]bool
 		.cast_expr {
 			// An interface value points at a boxed copy of its source, so the cast
 			// has to run in _vinit even when the source is constant.
+			// Sum values can contain nested aggregate compound literals, which
+			// GCC does not accept as file-scope constant initializers.
 			!g.cast_target_is_interface(g.generic_default_type_id(flat.source_type_id(node.value)))
+				&& cgen_unalias_type(g.tc.parse_type(g.generic_default_type_id(flat.source_type_id(node.value)))) !is types.SumType
 				&& g.is_const_expr_inner(g.a.child(&node, 0), mut visiting)
 		}
 		.ident {
@@ -26616,6 +26633,12 @@ fn (mut g FlatGen) is_const_expr_inner(id flat.NodeId, mut visiting map[int]bool
 			all_const
 		}
 		.struct_init {
+			// Sum constructors lower to struct initializers with nested payload
+			// compound literals, which need runtime storage on GCC.
+			if g.struct_init_is_lowered_sum_literal(node)
+				|| cgen_unalias_type(g.tc.parse_type(flat.source_type_id(node.value))) is types.SumType {
+				return false
+			}
 			if g.struct_needs_default_init(flat.source_type_id(node.value)) {
 				return false
 			}

@@ -4346,23 +4346,14 @@ fn transform_helper_scopes_fit_retention_budget(scopes []voidptr) bool {
 	return false
 }
 
-fn should_parallel_monomorphize(node_count int, building_v bool) bool {
-	if os.getenv('V3_PARALLEL_MONOMORPHIZE') == '0' {
-		return false
-	}
-	if building_v && os.getenv('V3_PARALLEL_MONOMORPHIZE') != '1' {
-		return false
-	}
-	// Compiler executables built by TinyCC can corrupt their heap while several
-	// specialization workers merge their results. Keep that build serial until
-	// the parallel merge is safe under TinyCC as well as clang and GCC.
+fn should_parallel_monomorphize() bool {
+	// TinyCC-built compilers can corrupt the heap during parallel merges.
 	$if tinyc {
 		return false
 	}
-	// Startup and small-tool builds gain nothing from worker forks and exercise
-	// much more of the compiler's own code through parallel monomorphization.
-	// Large user graphs are the workload where the parallel path pays off.
-	return os.getenv('V3_PARALLEL_MONOMORPHIZE') == '1' || node_count >= 200_000
+	// Nested generic-interface dispatch still needs serial specialization by
+	// default. Keep parallel merges opt-in until that regression is resolved.
+	return os.getenv('V3_PARALLEL_MONOMORPHIZE') == '1'
 }
 
 fn ownership_checker_compiled() bool {
@@ -4660,6 +4651,13 @@ fn persistent_program_cache_enabled(cache_enabled bool, test_input bool, vtmp_di
 
 const v3_unchanged_build_cache_version = 'v3-unchanged-build-1'
 
+fn v3_unchanged_build_cache_opted_in(no_cache bool) bool {
+	// This receipt does not yet track every compile-time and linker input.
+	// Keep ordinary builds on the established dependency-validated caches.
+	return !no_cache && os.getenv('V3_ENABLE_UNCHANGED_BUILD_CACHE') == '1'
+		&& os.getenv('V3_DISABLE_UNCHANGED_BUILD_CACHE') == ''
+}
+
 // v3_unchanged_build_cache_root is independent of the module cache state, so a
 // large graph can populate it after a no-cache retry and find it before parsing.
 fn v3_unchanged_build_cache_root(vroot string) string {
@@ -4741,7 +4739,7 @@ fn v3_restore_unchanged_build(cache_dir string, key string, destination string) 
 		return false
 	}
 	executable := os.join_path(cache_dir, '${key}.exe')
-	if modulecache.file_metadata_signature(executable) != lines[1] {
+	if lines[1] == '' || modulecache.file_metadata_signature(executable) != lines[1] {
 		if os.getenv('V3_CACHE_TRACE') != '' {
 			eprintln('  V3 unchanged build cache miss: executable changed')
 		}
@@ -4754,7 +4752,7 @@ fn v3_restore_unchanged_build(cache_dir string, key string, destination string) 
 		}
 		match parts[0] {
 			'file' {
-				if modulecache.file_metadata_signature(parts[1]) != parts[2] {
+				if parts[2] == '' || modulecache.file_metadata_signature(parts[1]) != parts[2] {
 					if os.getenv('V3_CACHE_TRACE') != '' {
 						eprintln('  V3 unchanged build cache miss: input changed: ${parts[1]}')
 					}
@@ -4792,6 +4790,14 @@ fn v3_restore_unchanged_build(cache_dir string, key string, destination string) 
 }
 
 fn v3_publish_unchanged_build(cache_dir string, key string, executable string, files []string, dirs []string) bool {
+	mut signatures := []string{cap: files.len}
+	for path in files {
+		signature := modulecache.file_metadata_signature(path)
+		if signature == '' {
+			return false
+		}
+		signatures << signature
+	}
 	os.mkdir_all(cache_dir, mode: 0o700) or { return false }
 	cache_executable := os.join_path(cache_dir, '${key}.exe')
 	temporary_executable := '${cache_executable}.${os.getpid()}.${tempname.unique_token()}.tmp'
@@ -4810,9 +4816,13 @@ fn v3_publish_unchanged_build(cache_dir string, key string, executable string, f
 	}
 	mut stamp := strings.new_builder((files.len + dirs.len) * 96)
 	stamp.writeln(v3_unchanged_build_cache_version)
-	stamp.writeln(modulecache.file_metadata_signature(cache_executable))
-	for path in files {
-		stamp.writeln('file\t${path}\t${modulecache.file_metadata_signature(path)}')
+	executable_signature := modulecache.file_metadata_signature(cache_executable)
+	if executable_signature == '' {
+		return false
+	}
+	stamp.writeln(executable_signature)
+	for i, path in files {
+		stamp.writeln('file\t${path}\t${signatures[i]}')
 	}
 	for path in dirs {
 		stamp.writeln('dir\t${path}\t${v3_large_cold_cache_directory_signature(path)}')
@@ -12816,7 +12826,7 @@ pub fn run(args []string) {
 	unchanged_build_cache_enabled := backend == 'c' && explicit_output && !should_run
 		&& !c_only && !is_o && !is_shared && !is_test_command && !is_debug && !race
 		&& !show_cc && !show_c_output && !keep_c && dump_files == ''
-		&& os.getenv('V3_DISABLE_UNCHANGED_BUILD_CACHE') == ''
+		&& v3_unchanged_build_cache_opted_in(no_cache)
 		&& (cache_enabled || large_cold_cache_bypass
 			|| os.getenv(v3_internal_restart_env) == '1'
 			|| os.getenv('V3CACHE') != '')
@@ -15166,7 +15176,7 @@ pub fn run(args []string) {
 			base_specialized_fns := a.specialized_fn_nodes.len
 			monomorph_scope := prealloc_scope_begin_for_v3()
 			monomorph_used_fns, monomorph_errors, generated_monomorph_specs = transform.monomorphize_with_used_checked_config_scoped_cached(mut a, &pre_tc, monomorph_input_used, !current_no_parallel
-				&& should_parallel_monomorphize(a.nodes.len, building_v), monomorph_scope,
+				&& should_parallel_monomorphize(), monomorph_scope,
 				cached_monomorph_specs, true)
 			prealloc_scope_leave_for_v3(monomorph_scope)
 			// The monomorphizer publishes rewritten and appended node text after
@@ -15205,7 +15215,7 @@ pub fn run(args []string) {
 			prealloc_scope_free_for_v3(monomorph_scope)
 		} else {
 			monomorph_used_fns, monomorph_errors, generated_monomorph_specs = transform.monomorphize_with_used_checked_config_scoped_cached(mut a, &pre_tc, monomorph_input_used, !current_no_parallel
-				&& should_parallel_monomorphize(a.nodes.len, building_v) && !incremental_cache_hit,
+				&& should_parallel_monomorphize() && !incremental_cache_hit,
 				unsafe { nil }, cached_monomorph_specs, true)
 		}
 		texts_canonical_after_annotation = true
@@ -17200,7 +17210,7 @@ Please install the corresponding development package/libraries and make sure the
 			// in a longPathAware process that loops forever on a TMP past MAX_PATH,
 			// before any V code can shorten it, so they stay as the linker made them.
 			if prefs.normalized_target_os() == 'windows' && !is_o && !is_shared
-				&& !c_compiler_is_msvc(c_compiler) {
+				&& !c_compiler_is_msvc(c_compiler) && !os.is_file('${bin_file}.manifest') {
 				add_windows_long_path_manifest(staged_binary) or {
 					// Long build paths need the manifest, so say so when it is missing for them.
 					if verbose || show_cc || cc_dir_moved {
