@@ -19369,8 +19369,10 @@ fn (tc &TypeChecker) resolve_type_nonliteral(id flat.NodeId) Type {
 					if typ is FnType {
 						return *typ.return_type
 					}
-					if fn_typ := fn_type_from_type(typ) {
-						return *fn_typ.return_type
+					if typ is Alias || typ is Pointer {
+						if fn_typ := fn_type_from_type(typ) {
+							return *fn_typ.return_type
+						}
 					}
 				}
 			}
