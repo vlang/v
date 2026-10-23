@@ -253,6 +253,16 @@ pub mut:
 	variants    []DocNode @[omitempty]
 	is_readme   bool
 	frontmatter map[string]string
+mut:
+	// Identical declarations share their displayed comment, but examples must use the host's
+	// original comment and location, including when that declaration has no examples.
+	host_example_source ?HostExampleSource @[json: '-']
+}
+
+struct HostExampleSource {
+	comments  []DocComment
+	file_path string
+	pos       Position
 }
 
 struct FlatScopeMatch {
@@ -333,11 +343,13 @@ fn merge_declaration(main DocNode, node DocNode) DocNode {
 	// Without platforms, like for a single platform, the first declaration is documented.
 	if main.platforms.len == 0 || node.platforms.len == 0 {
 		merged.platforms = []
+		merged.host_example_source = merged_host_example_source(main, node)
 		return merged
 	}
 	shape := declaration_shape(node.content)
 	if declaration_shape(main.content) == shape {
 		merged.platforms = merge_platforms(main.platforms, node.platforms)
+		merged.host_example_source = merged_host_example_source(main, node)
 		// The doc comment can be written on only one of the platforms.
 		if merged.comments.len == 0 {
 			merged.comments = node.comments
@@ -347,6 +359,7 @@ fn merge_declaration(main DocNode, node DocNode) DocNode {
 	for i, variant in main.variants {
 		if declaration_shape(variant.content) == shape {
 			merged.variants[i].platforms = merge_platforms(variant.platforms, node.platforms)
+			merged.variants[i].host_example_source = merged_host_example_source(variant, node)
 			if variant.comments.len == 0 {
 				merged.variants[i].comments = node.comments
 			}
@@ -358,6 +371,27 @@ fn merge_declaration(main DocNode, node DocNode) DocNode {
 		children: []
 	}
 	return merged
+}
+
+fn host_example_source(node DocNode) ?HostExampleSource {
+	if source := node.host_example_source {
+		return source
+	}
+	if node.platforms.len > 0 && host_platform() !in node.platforms {
+		return none
+	}
+	return HostExampleSource{
+		comments:  node.comments
+		file_path: node.file_path
+		pos:       node.pos
+	}
+}
+
+fn merged_host_example_source(main DocNode, node DocNode) ?HostExampleSource {
+	if source := host_example_source(main) {
+		return source
+	}
+	return host_example_source(node)
 }
 
 // host_platform returns the platform that vdoc runs on, or `.cross` for another one.
@@ -377,7 +411,16 @@ pub fn available_on_host(node DocNode) bool {
 pub fn declarations_on_host(node DocNode) []DocNode {
 	mut declarations := []DocNode{}
 	if node.platforms.len == 0 || host_platform() in node.platforms {
-		declarations << node
+		if source := node.host_example_source {
+			declarations << DocNode{
+				...node
+				comments:  source.comments
+				file_path: source.file_path
+				pos:       source.pos
+			}
+		} else {
+			declarations << node
+		}
 	}
 	for variant in node.variants {
 		declarations << declarations_on_host(variant)

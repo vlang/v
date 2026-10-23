@@ -2,6 +2,7 @@ module document
 
 import os
 import v.pref
+import x.json2
 
 const cross_test_files = {
 	'plat.v':            '// File is an open file.\npub struct File {}\n\npub fn everywhere() {}\n\npub const version = 1\n'
@@ -258,4 +259,58 @@ fn test_cross_selects_the_host_variants_examples() {
 	assert declarations_on_host(DocNode{
 		platforms: [other]
 	}) == []
+}
+
+fn test_cross_selects_host_examples_when_identical_declarations_are_merged() {
+	host := host_platform()
+	if host == .cross {
+		return
+	}
+	other := if host == .windows { Platform.linux } else { Platform.windows }
+	host_suffix := if host == .macos { 'darwin' } else { host.str() }
+	dir := os.join_path(os.vtmp_dir(), 'vdoc_cross_merged_host_examples_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	other_file := os.join_path(dir, 'a_${other}.c.v')
+	host_file := os.join_path(dir, 'b_${host_suffix}.c.v')
+	os.write_file(other_file, 'module demo\n\n// shared is the other form.\n// Example: assert false\npub fn shared() {}\n\n// undocumented has no host comment.\n// Example: assert false\npub fn undocumented() {}\n')!
+	os.write_file(host_file, 'module demo\n\n// shared is the host form.\n// Example: assert true\npub fn shared() {}\n\npub fn undocumented() {}\n')!
+	d := generate(dir, true, true, .cross)!
+	node := d.contents['shared']!
+	assert node.variants.len == 0
+	assert !json2.encode(node).contains('host_example_source')
+	declarations := declarations_on_host(node)
+	assert declarations.len == 1
+	assert declarations[0].examples().map(it.trim_space()) == ['assert true']
+	assert declarations[0].file_path == os.real_path(host_file)
+	assert declarations_on_host(d.contents['undocumented']!)[0].examples().len == 0
+}
+
+fn test_cross_keeps_the_hosts_empty_examples_after_all_platforms_are_merged() {
+	host := host_platform()
+	if host == .cross {
+		return
+	}
+	mut node := DocNode{
+		name:      'shared'
+		content:   'pub fn shared()'
+		platforms: [host]
+		file_path: 'host.v'
+	}
+	for platform in cross_platforms.filter(it != host) {
+		node = merge_declaration(node, DocNode{
+			name:      'shared'
+			content:   node.content
+			platforms: [platform]
+			comments:  [DocComment{
+				text: '\x01 Example: assert false'
+			}]
+		})
+	}
+	assert node.platforms.len == 0
+	assert node.examples().len == 1
+	declarations := declarations_on_host(node)
+	assert declarations.len == 1
+	assert declarations[0].examples().len == 0
+	assert declarations[0].file_path == 'host.v'
 }
