@@ -4166,6 +4166,8 @@ const e = 2.71828
 
 A constant initializer may call a function with the same name, such as `const answer = answer()`.
 Reading the constant itself in its initializer is still a cycle.
+Dependencies in initializer expressions and helper calls are resolved in the initializer's module
+and source file. This context is preserved when initialization waits for another constant.
 
 V constants are more flexible than in most languages. You can assign more complex values:
 

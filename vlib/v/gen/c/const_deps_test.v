@@ -268,3 +268,41 @@ fn test_const_helper_dependency_cache_keeps_initializer_module_context() {
 	g.const_init_order = ['first.value', 'first.dep', 'second.value', 'second.dep']
 	assert g.const_emission_order() == ['first.dep', 'second.dep', 'first.value', 'second.value']
 }
+
+fn test_deferred_const_dependencies_keep_initializer_module_context() {
+	mut a := flat.FlatAst.new()
+	read := const_deps_test_read(mut a, 'dep')
+	helper := const_deps_test_fn(mut a, 'make', [read])
+	call := const_deps_test_call(mut a, 'make')
+	seed := add_const_deps_test_node(mut a, .ident, 'seed', [])
+	value := add_const_deps_test_node(mut a, .int_literal, '41', [])
+	mut tc := types.TypeChecker.new(&a)
+	tc.cur_module = 'main'
+	tc.cur_file = 'main.v'
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.fn_decl_nodes_by_name['make'] = helper
+	g.const_vals = {
+		'first.value': call
+		'first.dep':   seed
+		'first.seed':  value
+		'second.dep':  value
+	}
+	g.const_modules = {
+		'first.value': 'first'
+		'first.dep':   'first'
+		'first.seed':  'first'
+		'second.dep':  'second'
+	}
+	g.const_files = {
+		'first.value': 'first.v'
+		'first.dep':   'first.v'
+		'first.seed':  'first.v'
+		'second.dep':  'second.v'
+	}
+	g.const_init_order = ['first.value', 'first.dep', 'first.seed', 'second.dep']
+	assert g.const_emission_order() == ['first.seed', 'second.dep', 'first.dep', 'first.value']
+	assert tc.cur_module == 'main'
+	assert tc.cur_file == 'main.v'
+}
