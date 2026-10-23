@@ -5510,6 +5510,12 @@ fn v3_native_file_has_default_mbedtls_context(path string, include_dirs []string
 // not the normalized compiler family. The latter can be the symbolic name
 // `tinyc`, while the actual bundled TinyCC executable is what the build uses.
 fn v3_preprocess_bundled_mbedtls_headers(native_inputs &cgen.CacheNativeInputs, a &flat.FlatAst, prefs &pref.Preferences, flags []string, compiler_path string, compiler_explicit bool, cross_sysroot string) V3NativeInputExpansion {
+	mut headers := map[string]bool{}
+	for path in native_inputs.native_paths.keys() {
+		if v3_is_bundled_mbedtls_header(path, prefs.vroot) { headers[path] = true }
+	}
+	// Other native inputs do not need this expansion or its fallback diagnostics.
+	if headers.len == 0 { return V3NativeInputExpansion{} }
 	if prefs.is_prod || prefs.is_shared {
 		trace_v3_cache_fallback('mbedtls header expansion: production or shared build')
 		return V3NativeInputExpansion{}
@@ -5526,14 +5532,6 @@ fn v3_preprocess_bundled_mbedtls_headers(native_inputs &cgen.CacheNativeInputs, 
 		flags, prefs.c99, prefs.ccompiler, prefs.target), flags)
 	if language !in ['c', 'objective-c'] {
 		trace_v3_cache_fallback('mbedtls header expansion: preprocessing language is ${language}')
-		return V3NativeInputExpansion{}
-	}
-	mut headers := map[string]bool{}
-	for path in native_inputs.native_paths.keys() {
-		if v3_is_bundled_mbedtls_header(path, prefs.vroot) { headers[path] = true }
-	}
-	if headers.len == 0 {
-		trace_v3_cache_fallback('mbedtls header expansion: no bundled headers')
 		return V3NativeInputExpansion{}
 	}
 	for path in native_inputs.native_paths.keys() {
