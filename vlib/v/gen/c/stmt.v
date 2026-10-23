@@ -1215,13 +1215,19 @@ fn (mut g FlatGen) precompute_ownership_recursive_drop_helpers() {
 	mut drop_struct_names := map[u32]bool{}
 	for type_name in g.ownership_live_drop_value_type_names() {
 		mut seen := map[u32]bool{}
-		g.ownership_collect_drop_struct_names(g.tc.parse_type(type_name), 0, mut drop_struct_names, mut seen)
+		g.ownership_collect_drop_struct_names(g.tc.parse_canonical_type_cached(type_name), 0, mut drop_struct_names, mut seen)
+	}
+	// Storage acquisition also introduces synthetic drops after checking, including
+	// in ownership-only mode where the checker records no automatic cleanup sites.
+	mut visited := map[int]bool{}
+	for id in g.fn_decl_nodes_by_name.values() {
+		g.ownership_collect_synthetic_drop_types(id, mut drop_struct_names, mut visited)
 	}
 	mut struct_names := drop_struct_names.keys()
 	struct_names.sort_with_compare(compare_ownership_source_type_ids)
 	for name_id in struct_names {
 		name := flat.source_type_name(name_id)
-		parsed := g.tc.parse_type(name_id)
+		parsed := g.tc.parse_canonical_type_cached(name_id)
 		// An unmonomorphized generic template (e.g. `Printer[W]`) must not get a
 		// drop helper: only its concrete instantiations (`Printer[cli.Buffer]`)
 		// have emitted C types. `is_generic_struct` only matches the base decl
@@ -1232,14 +1238,31 @@ fn (mut g FlatGen) precompute_ownership_recursive_drop_helpers() {
 			|| g.ownership_struct_destructor_method(name_id).len > 0 {
 			continue
 		}
-		target_key := ownership_drop_expansion_key(types.Type(types.Struct{
-			name_id: name_id
-		}))
+		target_key := ownership_drop_expansion_key(parsed)
 		// Use helpers for every reachable aggregate, not only directly recursive
 		// ones. Interface-heavy type graphs (notably v.ast under `-autofree`) can
 		// otherwise expand the same nested aggregate along exponentially many
 		// paths before the recursion-depth guard is reached.
 		g.recursive_drop_helpers[target_key] = name_id
+	}
+}
+
+fn (g &FlatGen) ownership_collect_synthetic_drop_types(id flat.NodeId, mut names map[u32]bool, mut visited map[int]bool) {
+	if !g.valid_node_id(id) || visited[int(id)] { return }
+	visited[int(id)] = true
+	node := g.a.node(id)
+	if node.kind == .call && node.children_count == 2 && !node.pos.is_valid() {
+		callee := g.a.child_node(node, 0)
+		if callee.kind == .ident && ownership_synthetic_drop_name(callee.value) {
+			arg := g.a.child_node(node, 1)
+			if arg.typ != 0 {
+				mut seen := map[u32]bool{}
+				g.ownership_collect_drop_struct_names(g.tc.parse_canonical_type_cached(arg.typ), 0, mut names, mut seen)
+			}
+		}
+	}
+	for i in 0 .. node.children_count {
+		g.ownership_collect_synthetic_drop_types(g.a.child(node, i), mut names, mut visited)
 	}
 }
 
@@ -1306,9 +1329,10 @@ fn (g &FlatGen) ownership_collect_drop_struct_names(typ types.Type, depth int, m
 		}
 		types.SumType {
 			sum_name_id := g.resolve_sum_name(typ.source_type_id())
+			names[sum_name_id] = true
 			for variant_source_id in g.tc.sum_types.type_ids(flat.source_type_name(sum_name_id)) or { []u32{} } {
 				resolved_variant := g.resolve_variant(sum_name_id, variant_source_id)
-				variant_type := unalias_type(g.tc.parse_type(resolved_variant))
+				variant_type := unalias_type(g.tc.parse_canonical_type_cached(resolved_variant))
 				if variant_type is types.Pointer {
 					g.ownership_collect_drop_struct_names(variant_type.base_type, depth + 1, mut names, mut seen)
 				} else {
@@ -1403,6 +1427,15 @@ fn (g &FlatGen) ownership_drop_type_reaches_recursive_struct(typ &types.Type, ta
 	return false
 }
 
+fn (g &FlatGen) ownership_recursive_drop_helper_c_type(type_name_id u32) string {
+	type_name := flat.source_type_name(type_name_id)
+	typ := unalias_type(g.tc.parse_canonical_type_cached(type_name_id))
+	if typ is types.SumType {
+		return g.cname(type_name)
+	}
+	return g.struct_cname(type_name)
+}
+
 fn (mut g FlatGen) gen_ownership_recursive_drop_helper_forward_decls() {
 	if g.recursive_drop_helpers.len == 0 {
 		return
@@ -1417,7 +1450,7 @@ fn (mut g FlatGen) gen_ownership_recursive_drop_helper_forward_decls() {
 	helper_names.sort()
 	for helper_name in helper_names {
 		type_name := representatives[helper_name]
-		g.writeln('static void ${helper_name}(${g.struct_cname(flat.source_type_name(type_name))}* _value);')
+		g.writeln('static void ${helper_name}(${g.ownership_recursive_drop_helper_c_type(type_name)}* _value);')
 	}
 	g.writeln('')
 }
@@ -1434,14 +1467,16 @@ fn (mut g FlatGen) gen_ownership_recursive_drop_helpers() {
 	for helper_name in helper_names {
 		type_name_id := representatives[helper_name]
 		type_name := flat.source_type_name(type_name_id)
-		g.tc.cur_module = g.tc.struct_modules[type_name] or { old_module }
+		// Sums have no struct module entry. Derive their declaration context rather
+		// than inheriting the module left by parallel declaration generation.
+		g.tc.cur_module = g.tc.struct_modules[type_name] or {
+			module_from_qualified_name(type_name.all_before('['))
+		}
 		g.tc.cur_file = g.tc.struct_files[type_name] or { old_file }
-		g.writeln('static void ${helper_name}(${g.struct_cname(type_name)}* _value) {')
+		g.writeln('static void ${helper_name}(${g.ownership_recursive_drop_helper_c_type(type_name_id)}* _value) {')
 		g.indent++
 		mut expanding := map[u64]bool{}
-		g.gen_ownership_drop_value_inner(types.Type(types.Struct{
-			name_id: type_name_id
-		}), '*_value', 0, mut expanding)
+		g.gen_ownership_drop_value_inner(g.tc.parse_canonical_type_cached(type_name_id), '*_value', 0, mut expanding)
 		g.indent--
 		g.writeln('}')
 		g.writeln('')
@@ -1450,19 +1485,55 @@ fn (mut g FlatGen) gen_ownership_recursive_drop_helpers() {
 	g.tc.cur_file = old_file
 }
 
+fn (mut g FlatGen) gen_ownership_drop_helper_call(type_name_id u32, expr string) {
+	helper_name := g.ownership_recursive_drop_helper_name(type_name_id)
+	if unalias_type(g.tc.parse_canonical_type_cached(type_name_id)) is types.SumType {
+		// A synthetic drop may name a packed member directly. Preserve its storage
+		// address once without imposing alignment, and propagate helper mutations.
+		idx := g.tmp_count
+		g.tmp_count++
+		tmp := '_drop_sum${idx}'
+		storage := '_drop_sum_storage${idx}'
+		g.writeln('void* ${storage} = (void*)&(${expr});')
+		g.writeln('${g.ownership_recursive_drop_helper_c_type(type_name_id)} ${tmp};')
+		g.writeln('memcpy(&${tmp}, ${storage}, sizeof(${tmp}));')
+		g.writeln('${helper_name}(&${tmp});')
+		g.writeln('memcpy(${storage}, &${tmp}, sizeof(${tmp}));')
+		return
+	}
+	g.writeln('${helper_name}(&(${expr}));')
+}
+
 fn (mut g FlatGen) gen_ownership_drop_value(typ types.Type, expr string, depth int) {
+	// Sum cleanup switches are shared across storage-acquisition branches.
+	if typ is types.SumType {
+		if type_name := g.recursive_drop_helpers[ownership_drop_expansion_key(typ)] {
+			g.gen_ownership_drop_helper_call(type_name, expr)
+			return
+		}
+	}
 	mut expanding := map[u64]bool{}
 	g.gen_ownership_drop_value_inner(typ, expr, depth, mut expanding)
 }
 
 fn (mut g FlatGen) ownership_drop_value_to_string(typ types.Type, expr string) string {
+	return g.ownership_drop_value_string(typ, expr, false)
+}
+
+fn (mut g FlatGen) ownership_drop_value_string(typ types.Type, expr string, inline_root bool) string {
 	orig := g.sb
 	orig_line_start := g.line_start
 	orig_indent := g.indent
 	g.sb = strings.new_builder(128)
 	g.line_start = true
 	g.indent = 1
-	g.gen_ownership_drop_value(typ, expr, 0)
+	if inline_root {
+		// A helper body must expand its root instead of calling itself.
+		mut expanding := map[u64]bool{}
+		g.gen_ownership_drop_value_inner(typ, expr, 0, mut expanding)
+	} else {
+		g.gen_ownership_drop_value(typ, expr, 0)
+	}
 	result := g.sb.str()
 	g.sb = orig
 	g.line_start = orig_line_start
@@ -1475,19 +1546,17 @@ fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, d
 		return
 	}
 	expansion_key := ownership_drop_expansion_key(typ)
-	if depth > 0 && typ is types.Struct {
+	if depth > 0 && (typ is types.Struct || typ is types.SumType) {
 		if type_name_source_id := g.recursive_drop_helpers[expansion_key] {
-			helper_name := g.ownership_recursive_drop_helper_name(type_name_source_id)
-			g.writeln('${helper_name}(&(${expr}));')
+			g.gen_ownership_drop_helper_call(type_name_source_id, expr)
 			return
 		}
 	}
 	if expansion_key != 0 {
 		if expanding[expansion_key] {
-			if typ is types.Struct {
+			if typ is types.Struct || typ is types.SumType {
 				if type_name_source_id := g.recursive_drop_helpers[expansion_key] {
-					helper_name := g.ownership_recursive_drop_helper_name(type_name_source_id)
-					g.writeln('${helper_name}(&(${expr}));')
+					g.gen_ownership_drop_helper_call(type_name_source_id, expr)
 				}
 			}
 			return
@@ -1624,12 +1693,25 @@ fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, d
 				g.writeln('${drop_cname}(${drop_arg});')
 				return
 			}
+			packed := g.struct_decl_pack_for_name(typ.name()).len > 0
 			for field in g.tc.struct_fields_for_type(typ.source_type_id()) {
 				if g.tc.struct_field_is_shared(typ.source_type_id(), field.name) {
 					continue
 				}
 				if g.ownership_type_requires_destruction(field.typ, depth + 1) {
-					g.gen_ownership_drop_value_inner(field.typ, '(${expr}).${g.cname(field.name)}', depth + 1, mut expanding)
+					field_expr := '(${expr}).${g.cname(field.name)}'
+					if packed {
+						// Typed cleanup helpers require the field's natural alignment.
+						idx := g.tmp_count
+						g.tmp_count++
+						tmp := '_drop_packed${idx}'
+						g.writeln('${g.value_c_type(field.typ)} ${tmp};')
+						g.writeln('memcpy(&${tmp}, &(${field_expr}), sizeof(${tmp}));')
+						g.gen_ownership_drop_value_inner(field.typ, tmp, depth + 1, mut expanding)
+						g.writeln('memcpy(&(${field_expr}), &${tmp}, sizeof(${tmp}));')
+					} else {
+						g.gen_ownership_drop_value_inner(field.typ, field_expr, depth + 1, mut expanding)
+					}
 				}
 			}
 		}
@@ -1676,7 +1758,7 @@ fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, d
 			g.writeln('switch ((${expr}).typ) {')
 			for variant in variants {
 				resolved_variant := g.resolve_variant(sum_name_id, variant)
-				variant_type := g.tc.parse_type(resolved_variant)
+				variant_type := g.tc.parse_canonical_type_cached(resolved_variant)
 				idx := g.sum_type_index(sum_name_id, resolved_variant)
 				g.writeln('case ${idx}:')
 				g.indent++

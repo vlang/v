@@ -63,7 +63,7 @@ fn (t &Transformer) enum_from_string_members(info EnumFromStringInfo) []EnumValu
 }
 
 fn (mut t Transformer) enum_from_string_member_value(info EnumFromStringInfo, member EnumValueMeta) flat.NodeId {
-	if t.is_flag_enum_type(info.enum_type) && t.flag_enum_has_backing_type(info.enum_type) {
+	if member.value_from_c || (t.is_flag_enum_type(info.enum_type) && t.flag_enum_has_backing_type(info.enum_type)) {
 		return t.a.add_node(flat.Node{
 			kind:  .enum_val
 			value: '${info.enum_type_text()}.${member.name}'

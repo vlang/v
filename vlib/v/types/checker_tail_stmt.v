@@ -1515,14 +1515,16 @@ fn (tc &TypeChecker) if_guard_query_bindings(cond flat.Node) []LocalBinding {
 		if payload is MultiReturn {
 			if i < payload.types.len {
 				result << LocalBinding{
-					name: lhs.value
-					typ:  payload.types[i]
+					name:   lhs.value
+					typ:    payload.types[i]
+					is_mut: lhs.is_mut || cond.is_mut
 				}
 			}
 		} else if i == 0 {
 			result << LocalBinding{
-				name: lhs.value
-				typ:  payload
+				name:   lhs.value
+				typ:    payload
+				is_mut: lhs.is_mut || cond.is_mut
 			}
 		}
 	}
@@ -3860,11 +3862,19 @@ fn (mut tc TypeChecker) branches_compatible_with(id flat.NodeId, expected Type) 
 // second result is true.
 fn (mut tc TypeChecker) resolve_branch_tail_expr(branch_id flat.NodeId, tail flat.NodeId, expected Type, guard_bindings []LocalBinding) (Type, bool) {
 	saved_scope := tc.cur_scope
+	saved_mut_local_owners := clone_mut_local_owners(tc.fn_context.mut_local_owners)
+	defer {
+		tc.cur_scope = saved_scope
+		tc.fn_context.mut_local_owners = saved_mut_local_owners
+	}
 	mut untyped := []string{}
 	if guard_bindings.len > 0 {
 		tc.cur_scope = new_scope(saved_scope)
 		for binding in guard_bindings {
-			tc.cur_scope.insert(binding.name, binding.typ)
+			owner := tc.cur_scope.insert_with_owner(binding.name, binding.typ)
+			if binding.is_mut {
+				tc.fn_context.mut_local_owners[binding.name] = owner
+			}
 			if type_contains_unknown(binding.typ) {
 				untyped << binding.name
 			}
@@ -3873,12 +3883,10 @@ fn (mut tc TypeChecker) resolve_branch_tail_expr(branch_id flat.NodeId, tail fla
 	tc.insert_branch_tail_locals(branch_id, saved_scope, mut untyped)
 	for name in untyped {
 		if tc.expr_uses_ident(tail, name) {
-			tc.cur_scope = saved_scope
 			return unknown_type('branch value uses an untyped branch variable'), true
 		}
 	}
 	actual := tc.resolve_expr(tail, expected)
-	tc.cur_scope = saved_scope
 	return actual, false
 }
 
@@ -3901,8 +3909,9 @@ fn (tc &TypeChecker) if_guard_branch_bindings(cond_id flat.NodeId) []LocalBindin
 			continue
 		}
 		bindings << LocalBinding{
-			name: lhs.value
-			typ:  unknown_type('if guard variable before the guard is checked')
+			name:   lhs.value
+			typ:    unknown_type('if guard variable before the guard is checked')
+			is_mut: lhs.is_mut || cond.is_mut
 		}
 	}
 	return bindings
@@ -6835,6 +6844,12 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 		if base.value == 'C' {
 			qname := 'C.${node.value}'
 			if tc.c_identifier_is_undeclared(node.value) {
+				// C enum members may use lowercase names. Their integer type comes
+				// from the enum initializer, including nested arithmetic expressions.
+				if tc.enum_field_value_depth > 0 {
+					tc.register_synth_type(id, tc.c_integer_constant_context_type(id))
+					return
+				}
 				if expected := tc.expected_context_for_expr(id) {
 					inferred := inferred_c_global_type(node, expected)
 					tc.remember_inferred_c_global(qname, inferred)
@@ -8477,6 +8492,12 @@ fn (mut tc TypeChecker) check_valid_selector(id flat.NodeId, node flat.Node) {
 		if base.value == 'C' {
 			qname := 'C.${node.value}'
 			if tc.c_identifier_is_undeclared(node.value) {
+				// C enum members may use lowercase names. Their integer type comes
+				// from the enum initializer, including nested arithmetic expressions.
+				if tc.enum_field_value_depth > 0 {
+					tc.register_synth_type(id, tc.c_integer_constant_context_type(id))
+					return
+				}
 				if expected := tc.expected_context_for_expr(id) {
 					inferred := inferred_c_global_type(node, expected)
 					tc.remember_inferred_c_global(qname, inferred)
@@ -11496,13 +11517,15 @@ pub fn (tc &TypeChecker) const_int_value_in_module(name string, module_name stri
 			candidates << alias_key
 		}
 	}
-	if key := tc.shadowed_builtin_const_key_in_module(name, module_name) {
-		candidates << key
-	}
-	candidates << name
 	if module_name != '' && module_name != 'main' && module_name != 'builtin'
 		&& !name.contains('.') {
 		candidates << '${module_name}.${name}'
+	}
+	if key := tc.shadowed_builtin_const_key_in_module(name, module_name) {
+		candidates << key
+	}
+	if tc.bare_const_key_is_visible_in_module(name, module_name) {
+		candidates << name
 	}
 	qname := tc.qualify_name(name)
 	if qname != name {
@@ -11512,7 +11535,7 @@ pub fn (tc &TypeChecker) const_int_value_in_module(name string, module_name stri
 		candidates << key
 	}
 	for key in candidates {
-		if key in seen {
+		if key in seen || !tc.bare_const_key_is_visible_in_module(key, module_name) {
 			continue
 		}
 		if expr_id := tc.const_exprs[key] {
@@ -11705,6 +11728,9 @@ fn (tc &TypeChecker) const_int_enum_selector_value(text string) ?int {
 	field := tc.enum_field_name(enum_name_id, trimmed_space(expr[dot + 1..])) or { return none }
 	for item in tc.comptime_static_enum_decl_value_cases(enum_name_id) {
 		if item.name == field && item.has_value {
+			if item.value_from_c {
+				return none
+			}
 			return item.value
 		}
 	}
