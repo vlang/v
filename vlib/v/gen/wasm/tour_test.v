@@ -354,14 +354,20 @@ const fold_print_program = '
 fn main() {
 	r := "ab".repeat(3)
 	println("fold repeat=\${r}")
+	r0 := "ab".repeat(0)
+	println("fold repeat0=\${r0}")
 	a := [1, 2, 3]
 	println("fold array=\${a}")
+	b := [true, false]
+	println("fold bools=\${b}")
 }
 '
 
 const fold_print_expected = [
 	'fold repeat=ababab',
+	'fold repeat0=',
 	'fold array=[1, 2, 3]',
+	'fold bools=[true, false]',
 ]
 
 fn test_fold_print_wasm_matches_native_text() {
