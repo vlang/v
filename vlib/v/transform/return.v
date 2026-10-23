@@ -1145,6 +1145,7 @@ fn (mut t Transformer) build_return_map_index_if_guard_chain(if_node flat.Node, 
 		ptr_value := t.make_prefix(.mul, t.make_cast(flat.source_type_id('&${info.value_type_text()}'), t.make_ident(ptr_name), flat.source_type_id('&${info.value_type_text()}')))
 		then_children << t.make_guard_value_decls(lhs.value, ptr_value, info.value_type)
 	}
+	t.preserve_guard_binding_mutability(if_node, then_children)
 	then_id := t.a.child(&if_node, 1)
 	then_block0 := t.return_block_from_branch(then_id, ret_typ_id, extra_return_vals, source_return_id)
 	then_children << t.a.children_of(&t.a.nodes[int(then_block0)])

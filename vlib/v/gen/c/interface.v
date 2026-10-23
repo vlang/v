@@ -487,7 +487,6 @@ fn (mut g FlatGen) collect_interface_impls() {
 			}
 		}
 		impls = impls.filter(!g.interface_impl_is_open_generic(it))
-		g.iface_impls[iface] = impls
 		type_ids := if g.is_ierror_type_name(flat.source_type_id(iface)) {
 			types.stable_interface_type_ids(impls)
 		} else if impls.len > base_impls.len {
@@ -495,6 +494,10 @@ fn (mut g FlatGen) collect_interface_impls() {
 		} else {
 			g.tc.interface_type_ids(flat.source_type_id(iface))
 		}
+		// Keep checker-assigned IDs stable while omitting unused C dispatch layouts.
+		impls = impls.filter(!flat.source_type_name(it).starts_with('C.')
+			|| g.referenced_c_struct_ids[it])
+		g.iface_impls[iface] = impls
 		for concrete_id in impls {
 			g.iface_type_ids[interface_dispatch_boxed_type_key(flat.source_type_id(iface), concrete_id)] = type_ids[concrete_id]
 		}
@@ -1864,7 +1867,8 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name_id u32, cn st
 				if !g.interface_dispatch_signature_compatible(decl, ret_type, sig_params) {
 					continue
 				}
-				recv_is_ptr := concrete_params.len > 0 && concrete_params[0] is types.Pointer
+				recv_is_ptr := concrete_params.len > 0
+					&& (concrete_params[0] is types.Pointer || indirect_value_parameter(concrete_params[0]))
 				recv := if recv_is_ptr {
 					'(${g.cname(concrete)}*)i->_object'
 				} else {
@@ -1928,7 +1932,8 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name_id u32, cn st
 			if !g.interface_dispatch_signature_compatible(method_key, ret_type, sig_params) {
 				continue
 			}
-			recv_is_ptr := concrete_params.len > 0 && concrete_params[0] is types.Pointer
+			recv_is_ptr := concrete_params.len > 0
+				&& (concrete_params[0] is types.Pointer || indirect_value_parameter(concrete_params[0]))
 			recv := g.interface_dispatch_receiver_expr(concrete_id, concrete_params, recv_is_ptr)
 			g.write('\t\tcase ${id}: ')
 			dispatched_ids << id

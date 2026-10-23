@@ -499,12 +499,26 @@ fn (m &VMapData) panic_nil_map_hash_fn() {
 	}
 }
 
+// keys_equal exposes the standard string comparator to inlining while preserving
+// the callback for all other key representations and custom comparators.
+@[inline]
+fn (m &VMapData) keys_equal(a voidptr, b voidptr) bool {
+	if voidptr(m.key_eq_fn) == voidptr(map_eq_string) {
+		return map_eq_string(a, b)
+	}
+	return m.key_eq_fn(a, b)
+}
+
 @[inline]
 fn (m &VMapData) key_to_index(pkey voidptr) (u32, u32) {
 	if voidptr(m.hash_fn) == unsafe { nil } {
 		m.panic_nil_map_hash_fn()
 	}
-	hash := m.hash_fn(pkey)
+	hash := if voidptr(m.hash_fn) == voidptr(map_hash_string) {
+		map_hash_string(pkey)
+	} else {
+		m.hash_fn(pkey)
+	}
 	index := hash & m.even_index
 	meta := ((hash >> m.shift) & hash_mask) | probe_inc
 	return u32(index), u32(meta)
@@ -586,16 +600,26 @@ fn (mut m VMapData) ensure_extra_metas(probe_count u32) {
 // Insert new element to the map. The element is inserted if its key is
 // not equivalent to the key of any other element already in the container.
 // If the key already exists, its value is changed to the value of the new element.
+@[inline]
 fn (mut m map) set(key voidptr, value voidptr) {
 	m.data.set(key, value)
 }
 
+@[inline]
 fn (mut m VMapData) set(key voidptr, value voidptr) {
 	$if race ? {
 		// Like Go, every insertion is a write of the map, even when it only replaces the
 		// value of an existing key: it races with an unsynchronized `m.len`.
 		racewrite(&m.count)
 	}
+	if m.count == 1 && m.key_values.len == 1 && m.keys_equal(key, m.key_values.key(0)) {
+		unsafe { vmemcpy(m.key_values.value(0), value, m.value_bytes) }
+		return
+	}
+	m.set_general(key, value)
+}
+
+fn (mut m VMapData) set_general(key voidptr, value voidptr) {
 	if m.metas == unsafe { nil } {
 		// Most compiler bookkeeping maps remain empty. Allocate backing storage
 		// only on the first insertion or an explicit reservation.
@@ -613,7 +637,7 @@ fn (mut m VMapData) set(key voidptr, value voidptr) {
 	for meta == unsafe { m.metas[index] } {
 		kv_index := int(unsafe { m.metas[index + 1] })
 		pkey := unsafe { m.key_values.key(kv_index) }
-		if m.key_eq_fn(key, pkey) {
+		if m.keys_equal(key, pkey) {
 			unsafe {
 				pval := m.key_values.value(kv_index)
 				vmemcpy(pval, value, m.value_bytes)
@@ -762,7 +786,7 @@ fn (mut m VMapData) get_and_set(key voidptr, zero voidptr) voidptr {
 			if meta == unsafe { m.metas[index] } {
 				kv_index := int(unsafe { m.metas[index + 1] })
 				pkey := unsafe { m.key_values.key(kv_index) }
-				if m.key_eq_fn(key, pkey) {
+				if m.keys_equal(key, pkey) {
 					pval := unsafe { m.key_values.value(kv_index) }
 					return unsafe { &u8(pval) }
 				}
@@ -779,6 +803,18 @@ fn (mut m VMapData) get_and_set(key voidptr, zero voidptr) voidptr {
 	return unsafe { nil }
 }
 
+// At most two dense slots cost less to compare than to hash and probe.
+// Tombstones are checked even when only one live mapping remains.
+@[inline]
+fn (m &VMapData) small_key_index(key voidptr) int {
+	for i in 0 .. m.key_values.len {
+		if m.key_values.has_index(i) && m.keys_equal(key, m.key_values.key(i)) {
+			return i
+		}
+	}
+	return -1
+}
+
 // If `key` matches the key of an element in the container,
 // the method returns a reference to its mapped value.
 // If not, a zero/default value is returned.
@@ -786,25 +822,44 @@ fn (m &map) get(key voidptr, zero voidptr) voidptr {
 	return m.data.get(key, zero)
 }
 
+@[inline]
 fn (m &VMapData) get(key voidptr, zero voidptr) voidptr {
 	if m.count == 0 {
 		return zero
 	}
+	if m.key_values.len == 1 {
+		if m.keys_equal(key, m.key_values.key(0)) {
+			return m.key_values.value(0)
+		}
+		return zero
+	}
+	return m.get_nonempty(key, zero)
+}
+
+@[inline]
+fn (m &VMapData) get_nonempty(key voidptr, zero voidptr) voidptr {
+	if m.key_values.len <= 2 {
+		i := m.small_key_index(key)
+		if i >= 0 {
+			return m.key_values.value(i)
+		}
+		return zero
+	}
 	mut index, mut meta := m.key_to_index(key)
 	for {
-		if meta == unsafe { m.metas[index] } {
+		stored_meta := unsafe { m.metas[index] }
+		if meta == stored_meta {
 			kv_index := int(unsafe { m.metas[index + 1] })
 			pkey := unsafe { m.key_values.key(kv_index) }
-			if m.key_eq_fn(key, pkey) {
+			if m.keys_equal(key, pkey) {
 				pval := unsafe { m.key_values.value(kv_index) }
 				return unsafe { &u8(pval) }
 			}
+		} else if meta > stored_meta {
+			break
 		}
 		index += 2
 		meta += probe_inc
-		if meta > unsafe { m.metas[index] } {
-			break
-		}
 	}
 	return zero
 }
@@ -817,25 +872,44 @@ fn (m &map) get_check(key voidptr) voidptr {
 	return m.data.get_check(key)
 }
 
+@[inline]
 fn (m &VMapData) get_check(key voidptr) voidptr {
 	if m.count == 0 {
 		return 0
 	}
+	if m.key_values.len == 1 {
+		if m.keys_equal(key, m.key_values.key(0)) {
+			return m.key_values.value(0)
+		}
+		return 0
+	}
+	return m.get_check_nonempty(key)
+}
+
+@[inline]
+fn (m &VMapData) get_check_nonempty(key voidptr) voidptr {
+	if m.key_values.len <= 2 {
+		i := m.small_key_index(key)
+		if i >= 0 {
+			return m.key_values.value(i)
+		}
+		return 0
+	}
 	mut index, mut meta := m.key_to_index(key)
 	for {
-		if meta == unsafe { m.metas[index] } {
+		stored_meta := unsafe { m.metas[index] }
+		if meta == stored_meta {
 			kv_index := int(unsafe { m.metas[index + 1] })
 			pkey := unsafe { m.key_values.key(kv_index) }
-			if m.key_eq_fn(key, pkey) {
+			if m.keys_equal(key, pkey) {
 				pval := unsafe { m.key_values.value(kv_index) }
 				return unsafe { &u8(pval) }
 			}
+		} else if meta > stored_meta {
+			break
 		}
 		index += 2
 		meta += probe_inc
-		if meta > unsafe { m.metas[index] } {
-			break
-		}
 	}
 	return 0
 }
@@ -847,24 +921,43 @@ fn (m &map) get_key_check(key voidptr) voidptr {
 	return m.data.get_key_check(key)
 }
 
+@[inline]
 fn (m &VMapData) get_key_check(key voidptr) voidptr {
 	if m.count == 0 {
 		return 0
 	}
+	if m.key_values.len == 1 {
+		if m.keys_equal(key, m.key_values.key(0)) {
+			return m.key_values.key(0)
+		}
+		return 0
+	}
+	return m.get_key_check_nonempty(key)
+}
+
+@[inline]
+fn (m &VMapData) get_key_check_nonempty(key voidptr) voidptr {
+	if m.key_values.len <= 2 {
+		i := m.small_key_index(key)
+		if i >= 0 {
+			return m.key_values.key(i)
+		}
+		return 0
+	}
 	mut index, mut meta := m.key_to_index(key)
 	for {
-		if meta == unsafe { m.metas[index] } {
+		stored_meta := unsafe { m.metas[index] }
+		if meta == stored_meta {
 			kv_index := int(unsafe { m.metas[index + 1] })
 			pkey := unsafe { m.key_values.key(kv_index) }
-			if m.key_eq_fn(key, pkey) {
+			if m.keys_equal(key, pkey) {
 				return unsafe { &u8(pkey) }
 			}
+		} else if meta > stored_meta {
+			break
 		}
 		index += 2
 		meta += probe_inc
-		if meta > unsafe { m.metas[index] } {
-			break
-		}
 	}
 	return 0
 }
@@ -874,24 +967,43 @@ fn (m &map) exists(key voidptr) bool {
 	return m.data.exists(key)
 }
 
+@[inline]
 fn (m &VMapData) exists(key voidptr) bool {
 	if m.count == 0 {
 		return false
 	}
+	if m.key_values.len == 1 {
+		if m.keys_equal(key, m.key_values.key(0)) {
+			return true
+		}
+		return false
+	}
+	return m.exists_nonempty(key)
+}
+
+@[inline]
+fn (m &VMapData) exists_nonempty(key voidptr) bool {
+	if m.key_values.len <= 2 {
+		i := m.small_key_index(key)
+		if i >= 0 {
+			return true
+		}
+		return false
+	}
 	mut index, mut meta := m.key_to_index(key)
 	for {
-		if meta == unsafe { m.metas[index] } {
+		stored_meta := unsafe { m.metas[index] }
+		if meta == stored_meta {
 			kv_index := int(unsafe { m.metas[index + 1] })
 			pkey := unsafe { m.key_values.key(kv_index) }
-			if m.key_eq_fn(key, pkey) {
+			if m.keys_equal(key, pkey) {
 				return true
 			}
+		} else if meta > stored_meta {
+			break
 		}
 		index += 2
 		meta += probe_inc
-		if meta > unsafe { m.metas[index] } {
-			break
-		}
 	}
 	return false
 }
@@ -933,7 +1045,7 @@ fn (mut m VMapData) delete(key voidptr) {
 	for meta == unsafe { m.metas[index] } {
 		kv_index := int(unsafe { m.metas[index + 1] })
 		pkey := unsafe { m.key_values.key(kv_index) }
-		if m.key_eq_fn(key, pkey) {
+		if m.keys_equal(key, pkey) {
 			for (unsafe { m.metas[index + 2] } >> hashbits) > 1 {
 				unsafe {
 					m.metas[index] = m.metas[index + 2] - probe_inc

@@ -3,6 +3,28 @@ module types
 
 import v.flat
 
+fn test_repeated_scalar_interning_after_scope_promotion() {
+	$if prealloc {
+		mut interner := new_type_interner()
+		input := Type(int_)
+		scope := unsafe { prealloc_scope_begin() }
+		id, scoped := interner.canonicalize(input)
+		assert unsafe { prealloc_scope_owns(scope, scoped) }
+		unsafe { prealloc_scope_leave(scope) }
+		interner.promote_from(0, scope)
+		assert isnil(interner.canonical_identity(scoped))
+		promoted_id, promoted := interner.canonicalize(input)
+		assert promoted_id == id
+		assert voidptr(promoted) == voidptr(interner.types[int(id)])
+		assert !unsafe { prealloc_scope_owns(scope, promoted) }
+		unsafe { prealloc_scope_free_after(scope) }
+		again_id, again := interner.canonicalize(input)
+		assert again_id == id
+		assert voidptr(again) == voidptr(promoted)
+		assert semantic_types_equal(again, input)
+	}
+}
+
 fn test_interner_owns_edges_from_a_temporary_arena() {
 	$if prealloc {
 		mut interner := new_type_interner()

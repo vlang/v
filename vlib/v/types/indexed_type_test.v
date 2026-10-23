@@ -118,6 +118,8 @@ fn test_parsed_ids_follow_generic_recursive_alias_and_worker_precedence() {
 	mut tc := TypeChecker.new(&a)
 	tc.set_fresh_type_cache(true)
 	integer := tc.parse_type_id(flat.source_type_u64) or { panic('missing integer identity') }
+	integer_reference := tc.parse_type(flat.source_type_u64)
+	assert voidptr(tc.parse_type(flat.source_type_u64)) == voidptr(integer_reference)
 	tc.cur_module = 'other'
 	tc.cur_file = 'other.v'
 	assert tc.parse_type_id(flat.source_type_u64) or { panic('missing contextual identity') } == integer
@@ -144,4 +146,6 @@ fn test_parsed_ids_follow_generic_recursive_alias_and_worker_precedence() {
 	replacement := tc.parse_type_id(flat.source_type_bool) or { panic('missing replacement identity') }
 	assert replacement == integer
 	assert tc.type_name_by_id(replacement) == flat.source_type_bool
+	assert tc.parse_type(flat.source_type_u64) is Primitive
+	assert voidptr(tc.parse_type(flat.source_type_u64)) != voidptr(integer_reference)
 }

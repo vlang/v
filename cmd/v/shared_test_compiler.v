@@ -16,23 +16,23 @@ const shared_test_compiler_source_env = 'V3_TEST_UNIT_V3_SRC'
 // gives the output its own file identity, as a fresh build would: the module cache keys on it,
 // and a test that rebuilds its compiler expects a different one.
 fn reuse_shared_test_compiler(args []string) bool {
-	shared := os.getenv(shared_test_compiler_env)
+	shared_compiler := os.getenv(shared_test_compiler_env)
 	source := os.getenv(shared_test_compiler_source_env)
-	if shared == '' || source == '' || !os.is_executable(shared) {
+	if shared_compiler == '' || source == '' || !os.is_executable(shared_compiler) {
 		return false
 	}
 	output := shared_test_compiler_output(args, source) or { return false }
-	if os.real_path(output) == os.real_path(shared) {
+	if os.real_path(output) == os.real_path(shared_compiler) {
 		return false
 	}
 	// Remove the old output first: copying onto it would write through any hard link to it.
 	if os.exists(output) {
 		os.rm(output) or { return false }
 	}
-	os.cp(shared, output) or { return false }
+	os.cp(shared_compiler, output) or { return false }
 	os.chmod(output, 0o755) or { return false }
 	// The runner counts these lines to report how many builds the shared compiler saved.
-	mut log := os.open_append(shared + '.reused') or { return true }
+	mut log := os.open_append(shared_compiler + '.reused') or { return true }
 	log.writeln(output) or {}
 	log.close()
 	return true

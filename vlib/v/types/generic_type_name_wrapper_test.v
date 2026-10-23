@@ -4,8 +4,8 @@ import v.flat
 
 fn map_of(value Type) Type {
 	return Type(Map{
-		key_type:   Type(string_)
-		value_type: value
+		key_type:   new_type_reference(Type(string_))
+		value_type: new_type_reference(value)
 	})
 }
 

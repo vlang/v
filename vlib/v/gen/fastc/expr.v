@@ -3580,7 +3580,8 @@ fn fastc_replace_c_name(source string, identifier string, replacement string, me
 		end := index + identifier.len
 		scanned = end
 		before_is_name := index > 0 && (source[index - 1].is_alnum() || source[index - 1] == `_`)
-		before_is_member := member_blocks && index > 0 && source[index - 1] in [`.`, `>`]
+		before_is_member := member_blocks && index > 0 && (source[index - 1] == `.`
+			|| (source[index - 1] == `>` && index > 1 && source[index - 2] == `-`))
 		after_is_name := end < source.len && (source[end].is_alnum() || source[end] == `_`)
 		if before_is_name || before_is_member || after_is_name {
 			continue

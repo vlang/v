@@ -185,12 +185,24 @@ fn (mut g FlatGen) gen_erased_sum_pointer_selector(node flat.Node, base_id flat.
 // emit_sum_type emits emit sum type output for c.
 fn (mut g FlatGen) emit_sum_type(name_id u32) {
 	g.writeln('struct ${g.cname(flat.source_type_name(name_id))} {')
-	g.writeln('\tint typ;')
-	if g.sum_has_pointer_variant(name_id) {
+	has_owned_flag := g.sum_has_pointer_variant(name_id)
+	variants := g.tc.sum_types.type_ids(flat.source_type_name(name_id)) or { []u32{} }
+	// An `int` tag alone leaves padding before a union that holds pointers, and the C
+	// compiler may copy that padding together with the union, which puts the pointers
+	// at offsets that are not a multiple of the pointer size, where the conservative GC
+	// does not look for them (see write_optional_typedef). A pointer sized tag fills
+	// the padding without changing the layout. The ownership flag already fills it.
+	tag_type := if !has_owned_flag && g.sum_variants_hold_aligned_pointer(variants, 0) {
+		'intptr_t'
+	} else {
+		'int'
+	}
+	g.writeln('\t${tag_type} typ;')
+	if has_owned_flag {
 		g.writeln('\tu32 _pointer_variant_is_owned;')
 	}
 	g.writeln('\tunion {')
-	for variant in g.tc.sum_types.type_ids(flat.source_type_name(name_id)) or { []u32{} } {
+	for variant in variants {
 		typ := g.tc.parse_canonical_type(variant)
 		ct := if sum_pointer_needs_erased_storage(typ) { 'void*' } else { g.value_c_type(typ) }
 		field := sum_field_name(flat.source_type_name(variant))
@@ -199,6 +211,18 @@ fn (mut g FlatGen) emit_sum_type(name_id u32) {
 	g.writeln('\t};')
 	g.writeln('};')
 	g.writeln('')
+}
+
+// sum_variants_hold_aligned_pointer reports whether a sum's union, made of the
+// `variants`, holds a pointer at a pointer aligned offset.
+fn (mut g FlatGen) sum_variants_hold_aligned_pointer(variants []u32, depth int) bool {
+	for variant in variants {
+		typ := g.tc.parse_canonical_type(variant)
+		if sum_pointer_needs_erased_storage(typ) || g.type_holds_aligned_pointer(typ, depth) {
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut g FlatGen) gen_sum_variant_pointer_cast(id flat.NodeId, target types.Pointer, ct string) bool {

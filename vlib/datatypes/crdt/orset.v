@@ -129,4 +129,3 @@ pub fn (mut o ORSet[T]) merge(other &ORSet[T]) {
 		}
 	}
 }
-

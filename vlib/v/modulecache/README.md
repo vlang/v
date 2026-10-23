@@ -12,6 +12,9 @@ Cached builds preserve the same module initialization order as uncached builds.
 Dependencies initialize before their importers, and direct imports are visited
 in source order even when the importer has no `init()` function of its own.
 
+Declaration headers preserve macros that define static storage, including generated string literals.
+Parallel C compilation can include these definitions in each translation unit.
+
 Cleanup hooks follow the reverse dependency order, including through modules without
 initialization or cleanup hooks. Cleanup-only modules remain included when no startup or
 import metadata references them.

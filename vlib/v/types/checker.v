@@ -15,21 +15,15 @@ import v.util
 // short_name_view returns the suffix after the final dot without allocating.
 @[direct_array_access; inline]
 fn short_name_view(name string) string {
-	for i := name.len - 1; i >= 0; i-- {
-		if name[i] == `.` {
-			return unsafe { name.substr_unsafe(i + 1, name.len) }
-		}
-	}
+	i := name.last_index_u8(`.`)
+	if i >= 0 { return unsafe { name.substr_unsafe(i + 1, name.len) } }
 	return name
 }
 
 @[direct_array_access; inline]
 fn owner_name_view(name string) string {
-	for i := name.len - 1; i >= 0; i-- {
-		if name[i] == `.` {
-			return unsafe { name.substr_unsafe(0, i) }
-		}
-	}
+	i := name.last_index_u8(`.`)
+	if i >= 0 { return unsafe { name.substr_unsafe(0, i) } }
 	return name
 }
 
@@ -382,7 +376,7 @@ mut:
 	owner  &TypeInterner = unsafe { nil }
 	texts  [128]u32
 	ids    [128]TypeId
-	values []Type
+	values []&Type
 }
 
 struct IndexedTypeCache {
@@ -6404,6 +6398,7 @@ pub fn (tc &TypeChecker) ownership_time_spent_us() i64 {
 }
 
 // qualify_name resolves a name to its module-qualified form in the current checker context.
+@[inline]
 pub fn (tc &TypeChecker) qualify_name(name string) string {
 	// Builtin spellings cannot depend on imports, declarations or the current
 	// module. Avoid the contextual cache and wrapper walk for these leaves.
@@ -6451,6 +6446,7 @@ pub fn (tc &TypeChecker) qualify_type_name(name_id u32) u32 {
 	return tc.qualify_type_name_cached(name_id, '')
 }
 
+@[inline]
 fn (tc &TypeChecker) qualify_type_name_cached(name_id u32, provided_name string) u32 {
 	mut cache := tc.qualify_name_cache
 	fingerprint := tc.qualify_table_fingerprint()
@@ -6473,6 +6469,11 @@ fn (tc &TypeChecker) qualify_type_name_cached(name_id u32, provided_name string)
 		cache.last_valid = true
 		return cached
 	}
+	return tc.qualify_type_name_miss(name_id, provided_name)
+}
+
+fn (tc &TypeChecker) qualify_type_name_miss(name_id u32, provided_name string) u32 {
+	mut cache := tc.qualify_name_cache
 	// Only a miss needs spelling bytes. String callers already have those bytes.
 	name := if provided_name.len > 0 { provided_name } else { flat.source_type_name(name_id) }
 	result := tc.qualify_name_uncached(name)
@@ -9661,6 +9662,11 @@ fn (tc &TypeChecker) expected_context_for_expr(id flat.NodeId) ?Type {
 			if tc.valid_node_id(other_id) {
 				mut other_type := tc.resolve_type(other_id)
 				if other_type is Pointer {
+					// Translated arrays decay to pointers to their elements. The
+					// pointee is not the type of the whole array literal.
+					if tc.node_is_in_translated_file(id) {
+						return tc.expr_type(id)
+					}
 					other_type = other_type.base_type
 				}
 				clean_other := unalias_type(other_type)
@@ -10572,8 +10578,17 @@ fn for_in_ref_binding_type(typ Type, yields_ref bool) Type {
 }
 
 // expr_type returns the resolved type recorded for a node during annotate_types.
-@[direct_array_access]
+@[direct_array_access; inline]
 pub fn (tc &TypeChecker) expr_type(id flat.NodeId) ?Type {
+	idx := int(id)
+	if idx < 0 || tc.a.nodes[idx].kind != .call {
+		return tc.cached_expr_type(id)
+	}
+	return tc.call_expr_type(id)
+}
+
+@[direct_array_access]
+fn (tc &TypeChecker) call_expr_type(id flat.NodeId) ?Type {
 	if t := tc.resolved_call_type(id) {
 		return t
 	}
@@ -10583,8 +10598,9 @@ pub fn (tc &TypeChecker) expr_type(id flat.NodeId) ?Type {
 			return *tc.parse_type(node.typ)
 		}
 	}
-	if t := tc.cached_expr_type(id) {
-		return t
+	cached_type_ref0 := tc.cached_expr_type_ref(id)
+	if !isnil(cached_type_ref0) {
+		return *cached_type_ref0
 	}
 	return none
 }
@@ -10610,9 +10626,10 @@ fn (tc &TypeChecker) resolved_call_type(id flat.NodeId) ?Type {
 			}
 		}
 	}
-	if t := tc.cached_expr_type(id) {
-		if t !is Void {
-			return t
+	cached_type_ref1 := tc.cached_expr_type_ref(id)
+	if !isnil(cached_type_ref1) {
+		if cached_type_ref1 !is Void {
+			return *cached_type_ref1
 		}
 	}
 	if name := tc.cached_resolved_call(id) {
@@ -10660,29 +10677,54 @@ pub fn (tc &TypeChecker) invalidate_checked_expr_type(idx int) {
 	}
 }
 
-@[direct_array_access]
+@[inline]
 fn (tc &TypeChecker) cached_expr_type(id flat.NodeId) ?Type {
+	cached_type_ref2 := tc.cached_expr_type_ref(id)
+	if !isnil(cached_type_ref2) {
+		return *cached_type_ref2
+	}
+	return none
+}
+
+// Dense slots point at immutable canonical types. Sparse map values need stable
+// copies because later insertions can move the map backing storage. A nil pointer
+// represents a cache miss without an optional-result wrapper on this hot path.
+@[direct_array_access; inline]
+fn (tc &TypeChecker) cached_expr_type_ref(id flat.NodeId) &Type {
+	idx := int(id)
+	if isnil(tc.storage_query_probe) && (!tc.parallel_check_sparse || tc.in_check_range(idx)) {
+		if idx >= 0 && idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
+			return tc.expr_type_values[idx]
+		}
+		return unsafe { nil }
+	}
+	return tc.cached_expr_type_ref_sparse(id)
+}
+
+@[direct_array_access]
+fn (tc &TypeChecker) cached_expr_type_ref_sparse(id flat.NodeId) &Type {
 	idx := int(id)
 	if !isnil(tc.storage_query_probe) {
-		if typ := tc.sparse_expr_type_values[idx] { return typ }
+		if typ := tc.sparse_expr_type_values[idx] { return new_type_reference(typ) }
 		if !isnil(tc.storage_query_probe.read_base) {
-			return tc.storage_query_probe.read_base.cached_expr_type(id)
+			return tc.storage_query_probe.read_base.cached_expr_type_ref(id)
 		}
-		return none
+		return unsafe { nil }
 	}
 	if tc.parallel_check_sparse {
 		if tc.in_check_range(idx) {
 			if idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
-				return *tc.expr_type_values[idx]
+				return tc.expr_type_values[idx]
 			}
-			return none
+			return unsafe { nil }
 		}
-		return tc.sparse_expr_type_values[idx] or { none }
+		if typ := tc.sparse_expr_type_values[idx] { return new_type_reference(typ) }
+		return unsafe { nil }
 	}
 	if idx >= 0 && idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
-		return *tc.expr_type_values[idx]
+		return tc.expr_type_values[idx]
 	}
-	return none
+	return unsafe { nil }
 }
 
 // cached_resolved_call supports cached resolved call handling for TypeChecker.
@@ -14025,8 +14067,7 @@ fn is_c_backend_test_file(path string) bool {
 }
 
 fn is_regular_v_test_file(path string) bool {
-	file := path_leaf_view(path)
-	return file.ends_with('_test.v') || file.ends_with('_test.vv')
+	return path.ends_with('_test.v') || path.ends_with('_test.vv')
 }
 
 fn export_qualified_fn_name(module_name string, name string) string {
@@ -18980,6 +19021,7 @@ fn (mut tc TypeChecker) check_enum_field_values(node_id flat.NodeId, node flat.N
 	mut seen_values := map[int]bool{}
 	mut field_values := map[string]i64{}
 	mut next_value := 0
+	mut next_value_known := true
 	for i in 0 .. node.children_count {
 		field_id := tc.a.child(&node, i)
 		field := tc.a.child_node(&node, i)
@@ -19001,10 +19043,11 @@ fn (mut tc TypeChecker) check_enum_field_values(node_id flat.NodeId, node flat.N
 		}
 		seen_names[field.value] = true
 		mut value := next_value
-		mut value_known := true
+		mut value_known := next_value_known
 		mut value_overflows_backing := false
 		mut value_pos := field.pos
 		if field.children_count > 0 {
+			value_known = true
 			value_id := tc.a.child(field, 0)
 			value_pos = tc.a.node(value_id).pos
 			if field_ref := tc.find_enum_value_in_node(value_id, node.value) {
@@ -19067,6 +19110,13 @@ fn (mut tc TypeChecker) check_enum_field_values(node_id flat.NodeId, node flat.N
 					value_known = false
 					value
 				}
+				if !value_known {
+					tc.check_symbolic_enum_exprs(value_id, flat.source_type_id(node.value), mut field_values, field_exprs)
+				}
+			}
+			if node.typ_text() == 'flag' && !value_known && value_type.is_integer()
+				&& !tc.node_contains_runtime_call(value_id) {
+				tc.record_error_at(.assignment_mismatch, 'flag enum values must be known at compile time', value_id, value_pos)
 			}
 		}
 		if value_known && !value_overflows_backing && seen_values[value] && !allow_multiple {
@@ -19085,6 +19135,29 @@ fn (mut tc TypeChecker) check_enum_field_values(node_id flat.NodeId, node flat.N
 			field_values[field.value] = value
 			next_value = value + 1
 		}
+		next_value_known = value_known
+	}
+}
+
+// Calls and powers have no C integer-constant-expression equivalent. Symbolic
+// arithmetic can still contain independent calls and powers that V can evaluate.
+fn (mut tc TypeChecker) check_symbolic_enum_exprs(id flat.NodeId, enum_name u32, mut field_values map[string]i64, field_exprs map[string]flat.NodeId) {
+	node := tc.a.node(id)
+	if node.kind == .call || (node.kind == .infix && node.op == .power) {
+		mut resolving := map[string]bool{}
+		if _ := tc.comptime_static_enum_field_value(id, tc.cur_module, enum_name, mut field_values, field_exprs, mut resolving) {
+			return
+		}
+		message := if node.kind == .call {
+			'enum function calls must be known at compile time'
+		} else {
+			'enum powers must be known at compile time'
+		}
+		tc.record_error_at(.assignment_mismatch, message, id, node.pos)
+		return
+	}
+	for i in 0 .. node.children_count {
+		tc.check_symbolic_enum_exprs(tc.a.child(node, i), enum_name, mut field_values, field_exprs)
 	}
 }
 
@@ -19116,19 +19189,14 @@ fn (tc &TypeChecker) node_contains_runtime_call(id flat.NodeId) bool {
 	}
 	node := tc.a.nodes[int(id)]
 	if node.kind == .call {
-		if node.children_count > 0 {
-			callee := tc.a.child_node(&node, 0)
-			if callee.kind == .ident {
-				if fn_id := tc.comptime_static_enum_helper_fn_id(callee.value, tc.cur_module) {
-					if tc.declaration_has_attribute(fn_id, 'comptime') {
-						for i in 1 .. node.children_count {
-							if tc.node_contains_runtime_call(tc.a.child(&node, i)) {
-								return true
-							}
-						}
-						return false
+		if decl := tc.comptime_static_enum_helper_decl(id, tc.cur_module) {
+			if tc.declaration_has_attribute(flat.NodeId(decl.idx), 'comptime') {
+				for i in 1 .. node.children_count {
+					if tc.node_contains_runtime_call(tc.a.child(&node, i)) {
+						return true
 					}
 				}
+				return false
 			}
 		}
 		return true
@@ -20514,6 +20582,7 @@ fn (tc &TypeChecker) match_without_else_exhaustive_sumtype_returns(node flat.Nod
 
 // unalias_type follows an alias chain to its underlying type, unwrapping each
 // Alias to its base type until a non-alias type is reached and returned.
+@[inline]
 pub fn unalias_type(t &Type) &Type {
 	mut current := t
 	for current is Alias {
@@ -20522,6 +20591,7 @@ pub fn unalias_type(t &Type) &Type {
 	return current
 }
 
+@[inline]
 fn unalias_and_unwrap_pointer_type(t &Type) Type {
 	mut cur := t
 	for {

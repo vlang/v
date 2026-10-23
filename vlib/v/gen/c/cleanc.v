@@ -46,22 +46,16 @@ const body_method_query_slots = 256
 // c_short_name_view returns the suffix after the final dot without allocating.
 @[direct_array_access; inline]
 fn c_short_name_view(name string) string {
-	for i := name.len - 1; i >= 0; i-- {
-		if name[i] == `.` {
-			return unsafe { name.substr_unsafe(i + 1, name.len) }
-		}
-	}
+	i := name.last_index_u8(`.`)
+	if i >= 0 { return unsafe { name.substr_unsafe(i + 1, name.len) } }
 	return name
 }
 
 // c_owner_name_view borrows the prefix before the final dot for local name comparisons.
 @[direct_array_access; inline]
 fn c_owner_name_view(name string) string {
-	for i := name.len - 1; i >= 0; i-- {
-		if name[i] == `.` {
-			return unsafe { name.substr_unsafe(0, i) }
-		}
-	}
+	i := name.last_index_u8(`.`)
+	if i >= 0 { return unsafe { name.substr_unsafe(0, i) } }
 	return name
 }
 
@@ -668,7 +662,9 @@ mut:
 	top_level_node_ids             []i32
 	ast_string_literals            []string
 	ast_string_literals_ready      bool
-	ast_string_literals_parsed     int   // how many leading ast_string_literals come from parsed nodes
+	ast_string_literals_parsed     int // how many leading ast_string_literals come from parsed nodes
+	referenced_c_struct_ids        map[u32]bool
+	referenced_c_struct_ids_ready  bool
 	embed_payload_node_ids         []i32 // `$embed_file` payload nodes, in AST order
 	embed_payload_nodes_ready      bool
 	fn_segs                        []string
@@ -1015,6 +1011,8 @@ mut:
 	selective_import_key_cache     &util.KeyRecentCache = unsafe { nil }
 	needed_optional_types          flat.TypeTextBindings
 	optional_pointer_struct_tags   map[string]string
+	optional_payload_types         map[string]types.Type // C name -> struct or sum type, for option typedefs
+	optional_payload_types_from    int                   // the checker's struct and sum count it was built from
 	// cabi_int_out_args maps a C-call argument node to the C spelling to emit in its
 	// place (the address of a temporary C `int`), while a `&int` out-parameter is
 	// bridged by a temporary + copy-back around the wrapped call. Keyed by node id so
@@ -1602,6 +1600,10 @@ fn (g &FlatGen) local_storage_is_shared(name string) bool {
 		return false
 	}
 	owner := g.local_storage_owner(name) or { return false }
+	return g.binding_storage_is_shared(name, owner)
+}
+
+fn (g &FlatGen) binding_storage_is_shared(name string, owner types.ScopeBindingOwner) bool {
 	// Most functions declare no shared locals; skip hashing the owner key then.
 	if g.local_shared_storage_by_owner.len > 0
 		&& g.local_shared_storage_by_owner[owner.storage_key()] {
@@ -3649,6 +3651,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.ast_string_literals = []string{}
 	g.ast_string_literals_ready = false
 	g.ast_string_literals_parsed = 0
+	g.referenced_c_struct_ids = map[u32]bool{}
+	g.referenced_c_struct_ids_ready = false
 	g.embed_payload_node_ids = []i32{}
 	g.embed_payload_nodes_ready = false
 	g.direct_array_access = false
@@ -3843,6 +3847,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.pending_loop_label = ''
 	g.needed_optional_types.clear()
 	g.optional_pointer_struct_tags.clear()
+	g.optional_payload_types.clear()
+	g.optional_payload_types_from = 0
 	g.emitted_optional_types.clear()
 	g.array_method_cache.clear()
 	g.array_method_receiver_cache.clear()
@@ -3933,6 +3939,10 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.precompute_const_short_index()
 	g.precompute_local_global_suffix_names()
 	g.precompute_c_typedef_shadow_names()
+	// Interface workers must share the same referenced C layouts as declaration emission.
+	if g.tc.structs.keys().any(it.starts_with('C.')) {
+		g.ensure_referenced_c_struct_ids()
+	}
 	g.timing_profile('  [ttime] cg collect_info    ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	cgsw.restart()
 	mut parallel_support_precomputed := false
@@ -4993,6 +5003,8 @@ fn (g &FlatGen) new_collect_gen_info_view() FlatGen {
 	view.mut_recv_facts = &FnNameFactCache{}
 	view.local_global_shadow_facts = &ContextNameFactCache{}
 	view.generic_app_cache = &GenericAppCache{}
+	view.optional_payload_types = map[string]types.Type{}
+	view.optional_payload_types_from = 0
 	return view
 }
 
@@ -5403,7 +5415,7 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 				f := g.a.child_node(node_ref, i)
 				if f.children_count > 0 {
 					mut resolving := map[string]bool{}
-					if enum_val := g.enum_field_expr_value_with_enum(g.a.child(f, 0), cur_module, flat.source_type_id(node.value), mut field_values, field_exprs, mut resolving) {
+					if enum_val := g.enum_field_expr_value_with_enum(g.a.child(f, 0), cur_module, enum_decl_source_type_id(node, cur_module), mut field_values, field_exprs, mut resolving) {
 						val = int(enum_val)
 						value_from_c = false
 					} else {
@@ -13210,6 +13222,12 @@ fn (mut g FlatGen) gen_cast_value_operand(id flat.NodeId, target_type types.Type
 	if node.kind == .ident && clean_target !is types.Pointer
 		&& g.current_param_is_mut(node.value) {
 		if param_type := g.current_param_type(node.value) {
+			// Struct-to-integer casts retain the address of a mutable parameter.
+			if param_type is types.Pointer && clean_target.is_integer()
+				&& cgen_unalias_type(param_type.base_type) is types.Struct {
+				g.gen_expr(id)
+				return
+			}
 			if param_type is types.Pointer
 				&& g.gen_current_mut_param_value_read(id, param_type.base_type) {
 				return
@@ -14824,7 +14842,7 @@ fn (mut g FlatGen) register_const_value(module_name string, file string, name st
 
 // const_primary_name supports const primary name handling for FlatGen.
 fn (g &FlatGen) const_primary_name(name string) string {
-	mod := if name in g.const_modules { g.const_modules[name] } else { '' }
+	mod := g.const_modules[name] or { '' }
 	qname := g.const_storage_name(mod, name)
 	if qname != name && qname in g.const_vals {
 		return qname
@@ -15013,8 +15031,8 @@ fn (g &FlatGen) build_unique_const_ref_names() map[string]string {
 		}
 		short_name := name.all_after_last('.')
 		resolved := g.const_primary_name(name)
-		if short_name in unique_index {
-			if unique_index[short_name] != resolved {
+		if existing := unique_index[short_name] {
+			if existing != resolved {
 				unique_index[short_name] = ''
 			}
 		} else {
@@ -15042,8 +15060,8 @@ fn (g &FlatGen) const_ref_name_fast_for_collect(name string, unique_index map[st
 			return g.const_primary_name(name)
 		}
 	}
-	if name in unique_index {
-		return unique_index[name]
+	if unique := unique_index[name] {
+		return unique
 	}
 	return ''
 }
@@ -15073,8 +15091,8 @@ fn (g &FlatGen) const_ref_name_from_node_cached_for_collect(node flat.Node, uniq
 			return ''
 		}
 		cache_key := '${g.tc.cur_module}|ident|${node.value}'
-		if cache_key in cache {
-			return cache[cache_key]
+		if cached := cache[cache_key] {
+			return cached
 		}
 		const_name := g.const_ref_name_fast_for_collect(node.value, unique_index)
 		cache[cache_key] = const_name
@@ -15096,8 +15114,8 @@ fn (g &FlatGen) const_ref_name_from_node_cached_for_collect(node flat.Node, uniq
 			return ''
 		}
 		cache_key := '${g.tc.cur_file}|${g.tc.cur_module}|selector|${base.value}|${node.value}'
-		if cache_key in cache {
-			return cache[cache_key]
+		if cached := cache[cache_key] {
+			return cached
 		}
 		resolved_base := g.selector_base_module_for_member(base.value, node.value) or {
 			base.value
@@ -15109,22 +15127,12 @@ fn (g &FlatGen) const_ref_name_from_node_cached_for_collect(node flat.Node, uniq
 	return ''
 }
 
-@[direct_array_access]
 fn (g &FlatGen) fixed_storage_candidate_short_name(name string) string {
-	mut sep := -1
-	mut i := name.len - 1
-	for i >= 0 {
-		if name[i] == `.` {
-			return unsafe { name.substr_unsafe(i + 1, name.len) }
-		}
-		if sep < 0 && i > 0 && name[i] == `_` && name[i - 1] == `_` {
-			sep = i - 1
-			i--
-		}
-		i--
+	if dot := name.last_index('.') {
+		return unsafe { name.substr_unsafe(dot + 1, name.len) }
 	}
-	if sep >= 0 {
-		return unsafe { name.substr_unsafe(sep + 2, name.len) }
+	if separator := name.last_index('__') {
+		return unsafe { name.substr_unsafe(separator + 2, name.len) }
 	}
 	return name
 }
@@ -15230,8 +15238,8 @@ fn (g &FlatGen) const_ref_node_may_match_fixed_candidate(node &flat.Node, ident_
 }
 
 fn (g &FlatGen) const_primary_name_cached(name string, mut cache map[string]string) string {
-	if name in cache {
-		return cache[name]
+	if cached := cache[name] {
+		return cached
 	}
 	primary := g.const_primary_name(name)
 	cache[name] = primary
@@ -15239,8 +15247,8 @@ fn (g &FlatGen) const_primary_name_cached(name string, mut cache map[string]stri
 }
 
 fn (mut g FlatGen) const_ref_has_fixed_array_literal_storage(const_name string, mut cache map[string]bool) bool {
-	if const_name in cache {
-		return cache[const_name]
+	if cached := cache[const_name] {
+		return cached
 	}
 	mut has_fixed := false
 	if val_id := g.const_vals[const_name] {
@@ -16571,14 +16579,12 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 					return
 				}
 			}
-			is_current_param := g.current_param_type(node.value) != none
-			is_local := if is_current_param {
-				true
-			} else if owner := g.tc.cur_scope.lookup_owner(node.value) {
-				!owner.belongs_to_scope(g.tc.file_scope)
-			} else {
-				false
-			}
+			owner := g.local_storage_owner(node.value) or { types.ScopeBindingOwner{} }
+			owner_key := owner.storage_key()
+			scoped_local := owner_key.len > 0 && !owner.belongs_to_scope(g.tc.file_scope)
+			// A scoped local already has value precedence, including parameters.
+			is_current_param := !scoped_local && g.current_param_type(node.value) != none
+			is_local := scoped_local || is_current_param
 			current_const_name := if !is_local && !is_current_param
 				&& !g.local_shadows_global(node.value) {
 				g.current_module_const_ref_name(node.value) or { '' }
@@ -16609,10 +16615,10 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 						g.write('->val')
 					}
 				}
-			} else if g.local_storage_is_shared(node.value) {
+			} else if owner_key.len > 0 && g.binding_storage_is_shared(node.value, owner) {
 				g.write(g.local_cname(node.value))
 				g.write('->val')
-			} else if g.local_storage_needs_implicit_deref(node.value) {
+			} else if owner_key.len > 0 && g.local_implicit_deref_by_owner[owner_key] {
 				g.write('(*${g.local_decl_cname(node.value)})')
 			} else if is_current_param && g.local_name_needs_global_suffix(node.value) {
 				g.write(g.local_decl_cname(node.value))
@@ -18516,9 +18522,13 @@ fn (mut g FlatGen) gen_typeof_name(node flat.Node) {
 				}
 				g.write('})[')
 				if is_pointer {
-					g.write('v3_sum_ptr_type_idx(')
+					// Read the tag through the sum's own type: it is an `int` or, for a
+					// union holding pointers, an `intptr_t` (see emit_sum_type).
+					sum_ct := g.value_c_type(types.Type(expr_type))
+					tmp := g.tmp_name()
+					g.write('({ ${sum_ct}* ${tmp} = (')
 					g.gen_expr(expr_id)
-					g.write(')]')
+					g.write('); ${tmp} == NULL ? 0 : (int)${tmp}->typ; })]')
 				} else {
 					g.write('(')
 					g.gen_expr(expr_id)
@@ -22850,7 +22860,6 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('#endif')
 	g.atomic_thread_fence_compat_decls()
 	g.heap_tracking_fallback_decls()
-	g.writeln('static inline int v3_sum_ptr_type_idx(const void* p) { return p == NULL ? 0 : *(const int*)p; }')
 	g.tinyc_atomic_libcall_decls()
 	g.prealloc_atomic_compat_decls()
 	g.atomic_builtin_compat_decls()
@@ -23173,6 +23182,12 @@ fn (mut g FlatGen) collect_fixed_array_typedefs_needed() map[string]FixedArrayTy
 		}
 	}
 	for name, fields in g.tc.structs {
+		if name.starts_with('C.') {
+			g.ensure_referenced_c_struct_ids()
+			if !g.referenced_c_struct_ids[flat.source_type_id(name)] {
+				continue
+			}
+		}
 		g.tc.cur_module = g.fixed_array_typedef_type_module(name, old_module)
 		for field in fields {
 			if fixed_array_type_first_seen(field.typ, g.tc.cur_module, mut type_seen) {
@@ -23237,9 +23252,9 @@ fn (mut g FlatGen) collect_fixed_array_typedefs_needed() map[string]FixedArrayTy
 		}
 		g.tc.cur_file = cur_file
 		g.tc.cur_module = cur_module
-		// Struct-init node types use scratch text while fields are transformed; the
-		// declared struct metadata above is the authoritative fixed-array source.
-		if node.kind != .struct_init && node.typ_text().len > 1 && fixed_array_text_first_seen(node.typ, cur_file, cur_module, mut text_seen) && fixed_array_type_text_may_need_typedef(node.typ_text()) {
+		// Field declarations use the retained struct/interface metadata above.
+		// Struct-init types use scratch text while fields are transformed.
+		if node.kind !in [.struct_init, .field_decl] && node.typ_text().len > 1 && fixed_array_text_first_seen(node.typ, cur_file, cur_module, mut text_seen) && fixed_array_type_text_may_need_typedef(node.typ_text()) {
 			g.collect_fixed_array_typedef_text(node.typ, cur_module, mut needed)
 		}
 		match node.kind {
@@ -26584,7 +26599,10 @@ fn (mut g FlatGen) is_const_expr_inner(id flat.NodeId, mut visiting map[int]bool
 		.cast_expr {
 			// An interface value points at a boxed copy of its source, so the cast
 			// has to run in _vinit even when the source is constant.
+			// Sum values can contain nested aggregate compound literals, which
+			// GCC does not accept as file-scope constant initializers.
 			!g.cast_target_is_interface(g.generic_default_type_id(flat.source_type_id(node.value)))
+				&& cgen_unalias_type(g.tc.parse_type(g.generic_default_type_id(flat.source_type_id(node.value)))) !is types.SumType
 				&& g.is_const_expr_inner(g.a.child(&node, 0), mut visiting)
 		}
 		.ident {
@@ -26615,6 +26633,12 @@ fn (mut g FlatGen) is_const_expr_inner(id flat.NodeId, mut visiting map[int]bool
 			all_const
 		}
 		.struct_init {
+			// Sum constructors lower to struct initializers with nested payload
+			// compound literals, which need runtime storage on GCC.
+			if g.struct_init_is_lowered_sum_literal(node)
+				|| cgen_unalias_type(g.tc.parse_type(flat.source_type_id(node.value))) is types.SumType {
+				return false
+			}
 			if g.struct_needs_default_init(flat.source_type_id(node.value)) {
 				return false
 			}

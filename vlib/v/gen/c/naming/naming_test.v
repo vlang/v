@@ -10,6 +10,8 @@ fn test_collision_sets_fit_lookup_length_bound() {
 }
 
 fn test_collision_lookup_length_boundary() {
+	assert c_name('bool') == 'v_bool'
+	assert c_name('C.bool') == 'bool'
 	assert c_name('volatile') == 'v_volatile'
 	assert c_name('volatilex') == 'volatilex'
 	assert c_name('snprintf') == 'v_snprintf'

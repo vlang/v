@@ -45,7 +45,7 @@ pub fn log_b(x f64) f64 {
 	return C.logb(x)
 }
 
-// log returns the natural logarithm of x (float32)
+// logf returns the natural logarithm of x (float32).
 @[inline]
 pub fn logf(x f32) f32 {
 	return C.logf(x)

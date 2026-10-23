@@ -1102,3 +1102,69 @@ fn test_map_clear() {
 	s.add2(item1)
 	assert s.state.len == 2
 }
+
+fn test_small_map_reads_after_tombstones_and_growth() {
+	mut m := {
+		'first':  11
+		'second': 22
+	}
+	assert m['first'] == 11
+	assert m['second'] or { -1 } == 22
+	assert 'first' in m
+	assert 'missing' !in m
+	assert m['missing'] == 0
+	assert m['missing'] or { -1 } == -1
+	m.delete('first')
+	assert 'first' !in m
+	assert m['first'] or { -1 } == -1
+	assert m['second'] == 22
+	m['third'] = 33
+	assert m['second'] == 22
+	assert m['third'] or { -1 } == 33
+	m.delete('third')
+	assert m['second'] == 22
+	mut copy := m.clone()
+	copy['second'] = 44
+	assert m['second'] == 22
+	assert copy['second'] == 44
+	m.clear()
+	assert 'second' !in m
+	m['new'] = 55
+	assert m['new'] == 55
+	assert m.keys() == ['new']
+
+	mut ints := {
+		7: 'seven'
+		9: 'nine'
+	}
+	assert ints[7] == 'seven'
+	assert ints[9] or { 'absent' } == 'nine'
+	ints.delete(7)
+	assert 7 !in ints
+	assert ints[9] == 'nine'
+	assert ints[7] == ''
+}
+
+fn test_small_map_lookup_thresholds_and_deleted_slots() {
+	for size in 1 .. 10 {
+		mut values := map[string]int{}
+		keys := ['a', 'bb', 'ccc', 'dddd', 'eeeee', 'ffffff', 'ggggggg', 'hhhhhhhh', 'iiiiiiiii']
+		for i in 0 .. size {
+			values[keys[i]] = i + 1
+		}
+		for i in 0 .. size {
+			assert values[keys[i]] == i + 1
+			assert values[keys[i]] or { -1 } == i + 1
+			assert keys[i] in values
+		}
+		for i in 0 .. size {
+			values.delete(keys[i])
+			assert keys[i] !in values
+			assert values[keys[i]] == 0
+			assert values[keys[i]] or { -1 } == -1
+			for j in i + 1 .. size {
+				assert values[keys[j]] == j + 1
+			}
+		}
+	}
+}

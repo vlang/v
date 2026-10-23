@@ -105,7 +105,11 @@ pub fn (stop ColorStop) absolutized(context Context) ColorStop {
 // lookup returns the value stored for `key` as an optional pointer to the
 // `ifoptdom.StyleValue` struct (not the `StyleValue` sum of this module).
 pub fn lookup(values map[int]&ifoptdom.StyleValue, key int) int {
-	value := if found := values[key] { ?&ifoptdom.StyleValue(found) } else { ?&ifoptdom.StyleValue(none) }
+	value := if found := values[key] {
+		?&ifoptdom.StyleValue(found)
+	} else {
+		?&ifoptdom.StyleValue(none)
+	}
 	v := value or { return -1 }
 	return v.n
 }

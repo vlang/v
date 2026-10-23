@@ -37,4 +37,3 @@ fn test_pncounter_merge() {
 	pn2.merge(&pn1)
 	assert pn2.value() == 12
 }
-

@@ -9,23 +9,39 @@ fn test_inline_sum_member_copy_uses_the_selected_union_member_size() {
 		i32_type := m.type_store.get_int(32)
 		i64_type := m.type_store.get_int(64)
 		small := m.type_store.register(ssa.Type{ kind: .struct_t, fields: [i8_type], field_names: ['dummy'] })
-		pair := m.type_store.register(ssa.Type{ kind: .struct_t, fields: [i64_type, i64_type], field_names: [
-			'name',
-			'reference',
-		] })
-		triple := m.type_store.register(ssa.Type{ kind: .struct_t, fields: [i64_type, i64_type,
-			i64_type], field_names: ['x', 'y', 'z'] })
+		pair := m.type_store.register(ssa.Type{
+			kind:        .struct_t
+			fields:      [i64_type, i64_type]
+			field_names: [
+				'name',
+				'reference',
+			]
+		})
+		triple := m.type_store.register(ssa.Type{
+			kind:        .struct_t
+			fields:      [i64_type, i64_type, i64_type]
+			field_names: ['x', 'y', 'z']
+		})
 		members := [small, pair, triple]
 		member := members[words - 1]
-		payload := m.type_store.register(ssa.Type{ kind: .struct_t, is_union: true, fields: members, field_names: [
-			'Small',
-			'Pair',
-			'Triple',
-		] })
-		choice := m.type_store.register(ssa.Type{ kind: .struct_t, fields: [i32_type, payload], field_names: [
-			'typ',
-			'_payload',
-		] })
+		payload := m.type_store.register(ssa.Type{
+			kind:        .struct_t
+			is_union:    true
+			fields:      members
+			field_names: [
+				'Small',
+				'Pair',
+				'Triple',
+			]
+		})
+		choice := m.type_store.register(ssa.Type{
+			kind:        .struct_t
+			fields:      [i32_type, payload]
+			field_names: [
+				'typ',
+				'_payload',
+			]
+		})
 		function := m.new_function('copy_payload', ssa.TypeID(0))
 		block := m.add_block(function, 'entry')
 		storage := m.add_instr(.alloca, block, m.type_store.get_ptr(choice), [])
@@ -65,10 +81,14 @@ fn test_ordinary_struct_member_copy_keeps_its_storage_bound() {
 	mut m := ssa.Module.new()
 	i64_type := m.type_store.get_int(64)
 	large := m.type_store.register(ssa.Type{ kind: .struct_t, fields: [i64_type, i64_type, i64_type] })
-	pair := m.type_store.register(ssa.Type{ kind: .struct_t, fields: [i64_type, i64_type], field_names: [
-		'left',
-		'right',
-	] })
+	pair := m.type_store.register(ssa.Type{
+		kind:        .struct_t
+		fields:      [i64_type, i64_type]
+		field_names: [
+			'left',
+			'right',
+		]
+	})
 	function := m.new_function('bounded_copy', ssa.TypeID(0))
 	block := m.add_block(function, 'entry')
 	storage := m.add_instr(.alloca, block, m.type_store.get_ptr(pair), [])

@@ -5,6 +5,13 @@ const ivln10 = f64(4.34294481903251816668e-01)
 const log10_2hi = f64(3.01029995663611771306e-01)
 const log10_2lo = f64(3.69423907715893078616e-13)
 
+// logf returns the natural logarithm of x as an f32.
+// The special cases are the same as for log.
+@[inline]
+pub fn logf(x f32) f32 {
+	return f32(log(f64(x)))
+}
+
 // log_n returns log base b of x
 pub fn log_n(x f64, b f64) f64 {
 	y := log(x)

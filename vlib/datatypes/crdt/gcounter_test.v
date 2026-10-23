@@ -31,4 +31,3 @@ fn test_gcounter_merge() {
 	c2.merge(&c1)
 	assert c2.value() == 7
 }
-
