@@ -11135,6 +11135,12 @@ You can see a complete minimal example for using C code in a V wrapper module he
 Another example, demonstrating passing structs from C to V and back again:
 [interoperate between C to V to C](https://github.com/vlang/v/tree/master/vlib/v/tests/project_with_c_code_2).
 
+V functions in the `main` module named `near`, `far`, `pascal`, or `cdecl` use reserved C names
+to avoid macros defined by Windows headers. Direct calls and function values use the same names.
+These remain distinct from V functions named `main__near`, `main__far`, `main__pascal`,
+or `main__cdecl`.
+Declarations in the `C` namespace retain their C names.
+
 ### C types
 
 V methods declared on a C struct can be called through imported fields and local copies of that
