@@ -87,7 +87,9 @@ fn (req &Request) vschannel_finish_response(buff &u8, length int, err_code int) 
 	}
 	response_text := unsafe { buff.vstring_with_len(length) }
 	if req.on_progress != unsafe { nil } {
-		req.on_progress(req, unsafe { buff.vbytes(length) }, u64(length))!
+		req.on_progress(req, unsafe { buff.vbytes(length) }, u64(length)) or {
+			return ProgressCallbackError{ cause: err }
+		}
 	}
 	$if trace_http_response ? {
 		eprintln('< ${response_text}')

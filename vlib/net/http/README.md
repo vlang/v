@@ -69,7 +69,8 @@ so streaming downloads can keep a bounded preview without losing data in the cal
 With HTTP/2 negotiation disabled, returning an error from `on_progress` or `on_progress_body`
 stops an HTTP/1.1 request without retrying or replaying it, including on a reused connection.
 The caller receives the original callback error with its type and code preserved. This also
-applies when connection reuse is disabled.
+applies when connection reuse is disabled. The Windows Schannel backend with connection reuse
+disabled supports `on_progress`; it does not invoke `on_progress_body`.
 
 An HTTP/2 or HTTP/3 response with a field that can not be delivered is an error, not a
 response without that field: a field name that is not a token, or a field value with CR, LF
