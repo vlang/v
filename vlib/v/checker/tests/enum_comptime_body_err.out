@@ -1,0 +1,70 @@
+vlib/v/checker/tests/enum_comptime_body_err.vv:35:6: warning: unused variable: `result`
+   33 | @[comptime]
+   34 | fn enum_failed_local(value int) int {
+   35 |     mut result := if value > 0 { 1 } else { 2 }
+      |         ~~~~~~
+   36 |     return 3
+   37 | }
+vlib/v/checker/tests/enum_comptime_body_err.vv:57:2: error: unreachable code
+   55 | fn enum_after_return(value int) int {
+   56 |     return value
+   57 |     if value > 0 {
+      |     ~~~~~~~~~~~~~~
+   58 |         println(value)
+   59 |     }
+vlib/v/checker/tests/enum_comptime_body_err.vv:64:37: error: enum function calls must be known at compile time
+   62 | @[_allow_multiple_values]
+   63 | enum UnsupportedComptimeBody {
+   64 |     conditional         = C.SEEK_CUR + enum_conditional(1)
+      |                                        ~~~~~~~~~~~~~~~~~~~
+   65 |     loop                = enum_loop(1)
+   66 |     compound            = enum_compound(1)
+vlib/v/checker/tests/enum_comptime_body_err.vv:65:24: error: enum function calls must be known at compile time
+   63 | enum UnsupportedComptimeBody {
+   64 |     conditional         = C.SEEK_CUR + enum_conditional(1)
+   65 |     loop                = enum_loop(1)
+      |                           ~~~~~~~~~~~~
+   66 |     compound            = enum_compound(1)
+   67 |     expression          = enum_expression(1)
+vlib/v/checker/tests/enum_comptime_body_err.vv:66:24: error: enum function calls must be known at compile time
+   64 |     conditional         = C.SEEK_CUR + enum_conditional(1)
+   65 |     loop                = enum_loop(1)
+   66 |     compound            = enum_compound(1)
+      |                           ~~~~~~~~~~~~~~~~
+   67 |     expression          = enum_expression(1)
+   68 |     failed_local        = enum_failed_local(1)
+vlib/v/checker/tests/enum_comptime_body_err.vv:67:24: error: enum function calls must be known at compile time
+   65 |     loop                = enum_loop(1)
+   66 |     compound            = enum_compound(1)
+   67 |     expression          = enum_expression(1)
+      |                           ~~~~~~~~~~~~~~~~~~
+   68 |     failed_local        = enum_failed_local(1)
+   69 |     multiple_assignment = enum_multiple_assignment(1)
+vlib/v/checker/tests/enum_comptime_body_err.vv:68:24: error: enum function calls must be known at compile time
+   66 |     compound            = enum_compound(1)
+   67 |     expression          = enum_expression(1)
+   68 |     failed_local        = enum_failed_local(1)
+      |                           ~~~~~~~~~~~~~~~~~~~~
+   69 |     multiple_assignment = enum_multiple_assignment(1)
+   70 |     indexed_assignment  = enum_indexed_assignment(1)
+vlib/v/checker/tests/enum_comptime_body_err.vv:69:24: error: enum function calls must be known at compile time
+   67 |     expression          = enum_expression(1)
+   68 |     failed_local        = enum_failed_local(1)
+   69 |     multiple_assignment = enum_multiple_assignment(1)
+      |                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   70 |     indexed_assignment  = enum_indexed_assignment(1)
+   71 |     after_return        = enum_after_return(1)
+vlib/v/checker/tests/enum_comptime_body_err.vv:70:24: error: enum function calls must be known at compile time
+   68 |     failed_local        = enum_failed_local(1)
+   69 |     multiple_assignment = enum_multiple_assignment(1)
+   70 |     indexed_assignment  = enum_indexed_assignment(1)
+      |                           ~~~~~~~~~~~~~~~~~~~~~~~~~~
+   71 |     after_return        = enum_after_return(1)
+   72 | }
+vlib/v/checker/tests/enum_comptime_body_err.vv:71:24: error: enum function calls must be known at compile time
+   69 |     multiple_assignment = enum_multiple_assignment(1)
+   70 |     indexed_assignment  = enum_indexed_assignment(1)
+   71 |     after_return        = enum_after_return(1)
+      |                           ~~~~~~~~~~~~~~~~~~~~
+   72 | }
+   73 |
