@@ -122,7 +122,7 @@ const scoped_serial_user_transform_node_threshold = 1_000_000
 const scoped_serial_user_cgen_node_threshold = 10_000_000
 const scoped_large_cold_cache_node_limit = 400_000
 const v3_large_cold_cache_marker_version = 'v3-large-cold-cache-bypass-v1'
-const scoped_linux_user_job_limit = 8
+const scoped_linux_user_job_limit = 4
 const diagnostics_server_job_limit = 8
 
 // scoped_linux_job_limit is how many jobs a compilation with scoped arenas

@@ -2,6 +2,23 @@ module driver
 
 import os
 import crypto.sha256
+import time
+import v.modulecache
+
+fn age_unchanged_build_source(path string) ! {
+	// Recent whole-second mtimes cannot safely identify an unchanged source.
+	timestamp := time.utc().unix() - 10
+	os.utime(path, timestamp, timestamp)!
+}
+
+fn assert_unchanged_build_rejects_coarse_executable(cache_dir string, executable string, source string, source_dir string, destination string) ! {
+	assert !v3_publish_unchanged_build(cache_dir, 'test', executable, [source], [source_dir])
+	cached_executable := os.join_path(cache_dir, 'test.exe')
+	assert os.read_file(cached_executable)! == os.read_file(executable)!
+	assert modulecache.file_metadata_signature(cached_executable) == ''
+	assert !os.exists(os.join_path(cache_dir, 'test.stamp'))
+	assert !v3_restore_unchanged_build(cache_dir, 'test', destination)
+}
 
 fn test_file_sha256_streams_large_inputs() {
 	root := os.join_path(os.vtmp_dir(), 'v3_file_sha256_${os.getpid()}')
@@ -24,12 +41,20 @@ fn test_unchanged_build_cache_restores_and_invalidates_source_change() {
 	destination := os.join_path(root, 'restored')
 	os.mkdir_all(source_dir)!
 	os.write_file(source, 'fn main() {}\n')!
+	age_unchanged_build_source(source)!
 	os.write_file(executable, 'executable bytes')!
-	assert v3_publish_unchanged_build(cache_dir, 'test', executable, [source], [source_dir])
-	assert v3_restore_unchanged_build(cache_dir, 'test', destination)
-	assert os.read_file(destination)! == 'executable bytes'
-	os.write_file(source, 'fn main() { println("changed") }\n')!
-	assert !v3_restore_unchanged_build(cache_dir, 'test', destination)
+	assert modulecache.file_metadata_signature(source) != ''
+	has_executable_metadata := modulecache.file_metadata_signature(executable) != ''
+	if has_executable_metadata {
+		assert v3_publish_unchanged_build(cache_dir, 'test', executable, [source], [source_dir])
+		assert v3_restore_unchanged_build(cache_dir, 'test', destination)
+		assert os.read_file(destination)! == 'executable bytes'
+		os.write_file(source, 'fn main() { println("changed") }\n')!
+		assert !v3_restore_unchanged_build(cache_dir, 'test', destination)
+	} else {
+		assert_unchanged_build_rejects_coarse_executable(cache_dir, executable, source, source_dir,
+			destination)!
+	}
 }
 
 fn test_unchanged_build_cache_invalidates_new_source_file() {
@@ -42,10 +67,18 @@ fn test_unchanged_build_cache_invalidates_new_source_file() {
 	destination := os.join_path(root, 'restored')
 	os.mkdir_all(source_dir)!
 	os.write_file(source, 'fn main() {}\n')!
+	age_unchanged_build_source(source)!
 	os.write_file(executable, 'executable bytes')!
-	assert v3_publish_unchanged_build(cache_dir, 'test', executable, [source], [source_dir])
-	os.write_file(os.join_path(source_dir, 'added.v'), 'fn added() {}\n')!
-	assert !v3_restore_unchanged_build(cache_dir, 'test', destination)
+	assert modulecache.file_metadata_signature(source) != ''
+	has_executable_metadata := modulecache.file_metadata_signature(executable) != ''
+	if has_executable_metadata {
+		assert v3_publish_unchanged_build(cache_dir, 'test', executable, [source], [source_dir])
+		os.write_file(os.join_path(source_dir, 'added.v'), 'fn added() {}\n')!
+		assert !v3_restore_unchanged_build(cache_dir, 'test', destination)
+	} else {
+		assert_unchanged_build_rejects_coarse_executable(cache_dir, executable, source, source_dir,
+			destination)!
+	}
 }
 
 fn test_unchanged_build_cache_requires_explicit_opt_in() {
@@ -78,18 +111,26 @@ fn test_unchanged_build_cache_rejects_unavailable_metadata() {
 	cache_dir := os.join_path(root, 'cache')
 	destination := os.join_path(root, 'restored')
 	os.write_file(source, 'fn main() {}\n')!
+	age_unchanged_build_source(source)!
 	os.write_file(executable, 'executable bytes')!
+	assert modulecache.file_metadata_signature(source) != ''
+	has_executable_metadata := modulecache.file_metadata_signature(executable) != ''
 	os.setenv('V3_TEST_NO_FILE_METADATA', source, true)
 	assert !v3_publish_unchanged_build(cache_dir, 'test', executable, [source], [root])
 	os.unsetenv('V3_TEST_NO_FILE_METADATA')
-	assert v3_publish_unchanged_build(cache_dir, 'test', executable, [source], [root])
-	os.setenv('V3_TEST_NO_FILE_METADATA', source, true)
-	assert !v3_restore_unchanged_build(cache_dir, 'test', destination)
-	// Reject old receipts which recorded an empty signature as though it were valid.
-	stamp := os.join_path(cache_dir, 'test.stamp')
-	lines := os.read_file(stamp)!.split_into_lines()
-	os.write_file(stamp, lines[..2].join('\n') + '\nfile\t${source}\t\n')!
-	assert !v3_restore_unchanged_build(cache_dir, 'test', destination)
+	if has_executable_metadata {
+		assert v3_publish_unchanged_build(cache_dir, 'test', executable, [source], [root])
+		os.setenv('V3_TEST_NO_FILE_METADATA', source, true)
+		assert !v3_restore_unchanged_build(cache_dir, 'test', destination)
+		// Reject old receipts which recorded an empty signature as though it were valid.
+		stamp := os.join_path(cache_dir, 'test.stamp')
+		lines := os.read_file(stamp)!.split_into_lines()
+		os.write_file(stamp, lines[..2].join('\n') + '\nfile\t${source}\t\n')!
+		assert !v3_restore_unchanged_build(cache_dir, 'test', destination)
+	} else {
+		assert_unchanged_build_rejects_coarse_executable(cache_dir, executable, source, root,
+			destination)!
+	}
 }
 
 fn test_parallel_monomorphize_requires_explicit_opt_in() {
