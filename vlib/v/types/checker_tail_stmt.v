@@ -22237,6 +22237,12 @@ fn (tc &TypeChecker) int_literal_promoted_infix_type(lit_id flat.NodeId, other_i
 	}
 	value := tc.implicit_integer_constant_value(lit_id, lit_type)?
 	clean_type := unalias_type(other_type)
+	// An untyped integer literal adopts a float operand's type too, including an
+	// alias of a float: 1 + f where  is 	ype Fraction = f64 is Fraction,
+	// not int.
+	if clean_type.is_float() {
+		return other_type
+	}
 	if clean_type is Primitive && clean_type.props.has(.integer)
 		&& clean_type.size in [u8(8), 16] {
 		if small_integer_type_accepts_int_literal(clean_type, value) {
