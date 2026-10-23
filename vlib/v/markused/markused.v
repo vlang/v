@@ -3262,7 +3262,7 @@ fn (mut scan RuntimeHelpersScan) enqueue_nodes(a &flat.FlatAst, tc &types.TypeCh
 					if fn_node.kind == .selector && fn_node.value in string_method_runtime_helpers {
 						enqueue('string.${fn_node.value}', mut used, mut queue)
 					}
-					if markused_call_lowers_to_join_path_single(a, fn_node, imports) {
+					if markused_call_lowers_to_join_path_single(a, fn_node, imports, tc.resolved_call_name(flat.NodeId(node_idx)) or { '' }) {
 						enqueue('join_path_single', mut used, mut queue)
 						enqueue('os.join_path_single', mut used, mut queue)
 					}
@@ -3986,9 +3986,12 @@ fn markused_type_text_is_channel(raw string) bool {
 	return clean.starts_with('chan ') || clean == 'chan'
 }
 
-fn markused_call_lowers_to_join_path_single(a &flat.FlatAst, fn_node flat.Node, imports map[string]string) bool {
+fn markused_call_lowers_to_join_path_single(a &flat.FlatAst, fn_node flat.Node, imports map[string]string, resolved_call string) bool {
+	if resolved_call.len > 0 {
+		return resolved_call == 'os.join_path'
+	}
 	if fn_node.kind == .ident {
-		return fn_node.value == 'join_path'
+		return fn_node.value == 'os.join_path'
 	}
 	if fn_node.kind != .selector || fn_node.value != 'join_path' || fn_node.children_count == 0 {
 		return false
@@ -5811,7 +5814,7 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 					uses_generics = true
 				}
 				c.collect_interface_boxed_methods(child, resolved_call, cur_module, imports, local_values, mut calls)
-				c.collect_lowered_join_path_single(child, resolved_call, mut calls)
+				c.collect_lowered_join_path_single(child, resolved_call, imports, local_values, mut calls)
 				if !source_edges_authoritative && child.children_count > 0 {
 					callee_id := c.a.child(child, 0)
 					if int(callee_id) >= 0 {
@@ -7496,7 +7499,7 @@ fn (c &CallCollector) collect_top_level_call(call_id flat.NodeId, call &flat.Nod
 	if resolved := c.tc.resolved_call_name(call_id) {
 		resolved_call = resolved
 	}
-	c.collect_lowered_join_path_single(call, resolved_call, mut calls)
+	c.collect_lowered_join_path_single(call, resolved_call, imports, local_values, mut calls)
 	if call.children_count == 0 {
 		if resolved_call.len > 0 {
 			calls << resolved_call
@@ -8356,35 +8359,21 @@ fn (c &CallCollector) collect_top_level_selector_fallback(base &flat.Node, metho
 	}
 }
 
-fn (c &CallCollector) collect_lowered_join_path_single(call &flat.Node, resolved_call string, mut calls []string) {
-	if call.children_count <= 2 {
+fn (c &CallCollector) collect_lowered_join_path_single(call &flat.Node, resolved_call string, imports map[string]string, local_values map[string]bool, mut calls []string) {
+	if call.children_count <= 2 { return }
+	callee_id := c.a.child(call, 0)
+	if int(callee_id) < 0 { return }
+	callee := c.a.node(callee_id)
+	if (callee.kind == .ident && local_values[callee.value])
+		|| (callee.kind == .selector && c.selector_base_is_local(callee, local_values)) {
 		return
 	}
-	mut is_join_path := resolved_call in ['join_path', 'os.join_path']
-	if !is_join_path {
-		callee_id := c.a.child(call, 0)
-		if int(callee_id) >= 0 {
-			callee := c.a.node(callee_id)
-			if callee.kind == .ident {
-				is_join_path = callee.value in ['join_path', 'os.join_path']
-			} else if callee.kind == .selector && callee.value == 'join_path'
-				&& callee.children_count > 0 {
-				base_id := c.a.child(callee, 0)
-				if int(base_id) >= 0 {
-					base := c.a.node(base_id)
-					is_join_path = base.kind == .ident && base.value == 'os'
-				}
-			}
-		}
-	}
-	if !is_join_path {
+	if !markused_call_lowers_to_join_path_single(c.a, *callee, imports, resolved_call) {
 		return
 	}
 	for i in 1 .. call.children_count {
 		arg := c.a.child_node(call, i)
-		if arg.kind == .prefix && arg.value == '...' {
-			return
-		}
+		if arg.kind == .prefix && arg.value == '...' { return }
 	}
 	calls << 'join_path_single'
 	calls << 'os.join_path_single'
