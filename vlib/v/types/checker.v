@@ -1003,6 +1003,7 @@ fn clone_owned_struct_field_map(source map[string][]StructField) map[string][]St
 
 fn clone_owned_type_owner_field_flags(source map[u32]map[string]bool) map[u32]map[string]bool {
 	mut result := map[u32]map[string]bool{}
+	result.reserve(u32(source.len))
 	for owner_id, fields in source {
 		result[owner_id] = clone_owned_string_bool_map(fields)
 	}
@@ -1011,6 +1012,7 @@ fn clone_owned_type_owner_field_flags(source map[u32]map[string]bool) map[u32]ma
 
 fn clone_owned_type_owner_c_abi_fields(source map[u32]map[string]string) map[u32]map[string]string {
 	mut result := map[u32]map[string]string{}
+	result.reserve(u32(source.len))
 	for owner_id, fields in source {
 		result[owner_id] = clone_owned_string_string_map(fields)
 	}

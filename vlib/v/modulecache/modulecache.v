@@ -2432,8 +2432,25 @@ pub fn header_signature(header string) string {
 
 // file_signature returns a stable content signature for a cache input file.
 pub fn file_signature(path string) string {
-	content := os.read_bytes(path) or { return '' }
-	return hash_bytes(u64(1469598103934665603), content).hex()
+	mut file := os.open(path) or { return '' }
+	defer { file.close() }
+	mut hash := u64(1469598103934665603)
+	mut buffer := []u8{len: 64 * 1024}
+	for {
+		read := file.read(mut buffer) or {
+			if err is os.Eof {
+				break
+			}
+			return ''
+		}
+		if read == 0 {
+			break
+		}
+		for value in buffer[..read] {
+			hash = (hash ^ u64(value)) * u64(1099511628211)
+		}
+	}
+	return hash.hex()
 }
 
 fn sanitize_name(name string) string {

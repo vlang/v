@@ -1,6 +1,18 @@
 module driver
 
 import os
+import crypto.sha256
+
+fn test_file_sha256_streams_large_inputs() {
+	root := os.join_path(os.vtmp_dir(), 'v3_file_sha256_${os.getpid()}')
+	defer { os.rmdir_all(root) or {} }
+	os.mkdir_all(root)!
+	path := os.join_path(root, 'large.bin')
+	content := []u8{len: 256 * 1024, init: u8(`v`)}
+	os.write_file_array(path, content)!
+	digest := v3_file_sha256_hex(path)?
+	assert digest == sha256.sum(content).hex()
+}
 
 fn test_unchanged_build_cache_restores_and_invalidates_source_change() {
 	root := os.join_path(os.vtmp_dir(), 'v3_unchanged_build_${os.getpid()}')

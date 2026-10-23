@@ -4456,6 +4456,26 @@ fn clone_type_errors(values []types.TypeError) []types.TypeError {
 	return cloned
 }
 
+fn v3_file_sha256_hex(path string) ?string {
+	mut file := os.open(path) or { return none }
+	defer { file.close() }
+	mut digest := sha256.new()
+	mut buffer := []u8{len: 64 * 1024}
+	for {
+		read := file.read(mut buffer) or {
+			if err is os.Eof {
+				break
+			}
+			return none
+		}
+		if read == 0 {
+			break
+		}
+		digest.write(buffer[..read]) or { return none }
+	}
+	return digest.sum([]).hex()
+}
+
 fn v3_cgen_cache_input(a &flat.FlatAst, state &V3ModuleCacheState, user_files []string, user_c_flags []string, vroot string) V3CgenCacheInput {
 	mut source_set := map[string]bool{}
 	mut user_source_dirs := map[string]bool{}
@@ -4526,8 +4546,8 @@ fn v3_cgen_cache_input(a &flat.FlatAst, state &V3ModuleCacheState, user_files []
 		real_path := os.real_path(path)
 		dependencies['embedded-resource:${real_path}'] =
 			modulecache.file_metadata_signature(real_path)
-		if content := os.read_bytes(real_path) {
-			dependencies['embedded-sha256:${real_path}'] = sha256.sum(content).hex()
+		if digest := v3_file_sha256_hex(real_path) {
+			dependencies['embedded-sha256:${real_path}'] = digest
 		}
 	}
 	if state.external_inputs_ready {
@@ -4595,8 +4615,7 @@ fn v3_restore_cached_embedded_inputs(state &V3ModuleCacheState, source_files []s
 		if metadata.len == 0 || (restored[metadata_key] or { '' }) != metadata {
 			return
 		}
-		content := os.read_bytes(path) or { return }
-		digest := sha256.sum(content).hex()
+		digest := v3_file_sha256_hex(path) or { return }
 		if (restored[digest_key] or { '' }) != digest
 			|| modulecache.file_signature(path) != signature
 			|| modulecache.file_metadata_signature(path) != metadata {
@@ -5461,7 +5480,10 @@ fn v3_native_file_has_default_mbedtls_context(path string, include_dirs []string
 	return true
 }
 
-fn v3_preprocess_bundled_mbedtls_headers(native_inputs &cgen.CacheNativeInputs, a &flat.FlatAst, prefs &pref.Preferences, flags []string, compiler string, compiler_explicit bool, cross_sysroot string) V3NativeInputExpansion {
+// v3_preprocess_bundled_mbedtls_headers probes with the resolved compiler path,
+// not the normalized compiler family. The latter can be the symbolic name
+// `tinyc`, while the actual bundled TinyCC executable is what the build uses.
+fn v3_preprocess_bundled_mbedtls_headers(native_inputs &cgen.CacheNativeInputs, a &flat.FlatAst, prefs &pref.Preferences, flags []string, compiler_path string, compiler_explicit bool, cross_sysroot string) V3NativeInputExpansion {
 	if prefs.is_prod || prefs.is_shared {
 		trace_v3_cache_fallback('mbedtls header expansion: production or shared build')
 		return V3NativeInputExpansion{}
@@ -5531,15 +5553,15 @@ fn v3_preprocess_bundled_mbedtls_headers(native_inputs &cgen.CacheNativeInputs, 
 	os.write_file(source, text) or { return V3NativeInputExpansion{} }
 	defer { os.rm(source) or {} }
 	mut args := [c_standard_flag(prefs.c99, false)]
-	if pref.ccompiler_is_tinycc(compiler) {
+	if pref.ccompiler_is_tinycc(compiler_path) {
 		bundled_tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
-		resources := v3_tcc_resource_flags_for_compiler(prefs.vroot, compiler, bundled_tcc,
+		resources := v3_tcc_resource_flags_for_compiler(prefs.vroot, compiler_path, bundled_tcc,
 			os.is_executable(bundled_tcc))
 		if resources.base_arg.len > 0 {
 			args << [resources.base_arg, resources.include_arg, resources.library_arg]
 		}
 	}
-	args << c_compiler_target_args(prefs.target, compiler, compiler_explicit, cross_sysroot) or {
+	args << c_compiler_target_args(prefs.target, compiler_path, compiler_explicit, cross_sysroot) or {
 		trace_v3_cache_fallback('mbedtls header expansion: target arguments are unavailable')
 		return V3NativeInputExpansion{}
 	}
@@ -5548,7 +5570,7 @@ fn v3_preprocess_bundled_mbedtls_headers(native_inputs &cgen.CacheNativeInputs, 
 	args << ['-x', language]
 	mut preprocess_args := args.clone()
 	preprocess_args << ['-E', '-P', source]
-	preprocessed := cmdexec.run(compiler, preprocess_args)
+	preprocessed := cmdexec.run(compiler_path, preprocess_args)
 	if preprocessed.exit_code != 0 {
 		output := preprocessed.output.trim_space()
 		output_tail := if output.len > 1000 { output[output.len - 1000..] } else { output }
@@ -5559,7 +5581,7 @@ fn v3_preprocess_bundled_mbedtls_headers(native_inputs &cgen.CacheNativeInputs, 
 		trace_v3_cache_fallback('mbedtls header expansion: preprocessed declarations are not replicable')
 		return V3NativeInputExpansion{}
 	}
-	dependencies := c_object_dependencies(compiler, args, source)
+	dependencies := c_object_dependencies(compiler_path, args, source)
 	if dependencies.used_fallback {
 		trace_v3_cache_fallback('mbedtls header expansion: dependency probe used a fallback')
 		return V3NativeInputExpansion{}
@@ -5611,8 +5633,9 @@ fn prepare_v3_cache_external_inputs(mut state V3ModuleCacheState, native_inputs 
 				if path in digests {
 					continue
 				}
-				content := os.read_bytes(path) or { continue }
-				digests[path] = sha256.sum(content).hex()
+				if digest := v3_file_sha256_hex(path) {
+					digests[path] = digest
+				}
 			}
 		}
 		state.external_input_digests = digests.move()
@@ -13446,6 +13469,8 @@ pub fn run(args []string) {
 		preprocessing_flags << user_c_flags
 		preprocessing_flags << cgen.cache_directive_flags(a, prefs.vroot, prefs.target, prefs.compile_values)
 		mbedtls_expansion := if cache_state.manager.enabled {
+			// Probe with the actual executable path. `effective_c_compiler` can be
+			// the symbolic family name `tinyc`, which is not executable.
 			v3_preprocess_bundled_mbedtls_headers(&native_inputs, a, prefs, preprocessing_flags,
 				c_compiler, c_compiler_explicit, '')
 		} else {

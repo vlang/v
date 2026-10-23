@@ -427,22 +427,35 @@ fn forward_decl_lane_bounds(a &flat.FlatAst, items []FlatFnGenItem) []int {
 		total_cost += i64(item.c_name.len * 4 + int(node.children_count) * 32 + 64)
 	}
 	target := total_cost / n_lanes
+	if target <= 0 {
+		mut count_bounds := []int{cap: n_lanes + 1}
+		for lane in 0 .. n_lanes {
+			count_bounds << n_items * lane / n_lanes
+		}
+		count_bounds << n_items
+		return count_bounds
+	}
 	mut running_cost := i64(0)
-	mut bounds := []int{cap: n_lanes + 1}
-	bounds << 0
+	mut bounds := [0]
 	mut lane := 1
 	for i, item in items {
 		node := a.nodes[int(item.node_id)]
 		running_cost += i64(item.c_name.len * 4 + int(node.children_count) * 32 + 64)
-		for lane < n_lanes && running_cost >= target * lane {
-			bounds << i + 1
-			lane++
+		if lane < n_lanes && running_cost >= target * lane {
+			boundary := i + 1
+			if boundary < n_items && bounds.last() != boundary {
+				bounds << boundary
+			}
+			for lane < n_lanes && running_cost >= target * lane {
+				lane++
+			}
 		}
 	}
-	for bounds.len < n_lanes {
+	if bounds.last() != n_items {
 		bounds << n_items
 	}
-	bounds << n_items
+	// A single expensive item can cross several cost targets. Skipping those
+	// boundaries leaves fewer, non-empty lanes instead of duplicating bounds.
 	return bounds
 }
 
