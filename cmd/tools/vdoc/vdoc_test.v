@@ -848,8 +848,8 @@ fn test_repo_file_path_for_links_keeps_subdirs() {
 		}
 	}
 	real_root := os.real_path(root)
-	assert vd.get_repo_file_path_for_links(os.join_path(real_root, 'root.v')) == 'root.v'
-	assert vd.get_repo_file_path_for_links(os.join_path(real_root, 'internal', 'sub.v')) == 'internal/sub.v'
+	assert repo_file_path_for_links(vd.links_root(), os.join_path(real_root, 'root.v')) == 'root.v'
+	assert repo_file_path_for_links(vd.links_root(), os.join_path(real_root, 'internal', 'sub.v')) == 'internal/sub.v'
 }
 
 fn test_repo_file_path_for_links_keeps_external_subdirs() {
@@ -867,9 +867,9 @@ fn test_repo_file_path_for_links_keeps_external_subdirs() {
 		}
 	}
 	real_repo := os.real_path(repo)
-	assert vd.get_repo_file_path_for_links(os.join_path(real_repo, 'mypkg', 'root.v')) == 'mypkg/root.v'
-	assert vd.get_repo_file_path_for_links(os.join_path(real_repo, 'shared', 'sub.v')) == 'shared/sub.v'
-	assert vd.get_repo_file_path_for_links(os.join_path(real_repo, 'other', 'sub.v')) == 'other/sub.v'
+	assert repo_file_path_for_links(vd.links_root(), os.join_path(real_repo, 'mypkg', 'root.v')) == 'mypkg/root.v'
+	assert repo_file_path_for_links(vd.links_root(), os.join_path(real_repo, 'shared', 'sub.v')) == 'shared/sub.v'
+	assert repo_file_path_for_links(vd.links_root(), os.join_path(real_repo, 'other', 'sub.v')) == 'other/sub.v'
 	res := os.exec_opt([vexe_path, 'doc', '-no-timestamp', '-f', 'html', '-o', '-',
 		'-html-only-contents', '-comments', root])!
 	assert res.output.contains('https://github.com/example/project/blob/main/shared/sub.v#L')
@@ -890,9 +890,9 @@ fn test_repo_file_path_for_links_uses_base_url_manifest_root() {
 		}
 	}
 	real_root := os.real_path(root)
-	assert vd.get_repo_file_path_for_links(os.join_path(real_root, 'src', 'root.v')) == 'src/root.v'
-	assert vd.get_repo_file_path_for_links(os.join_path(real_root, 'src', 'internal', 'sub.v')) == 'src/internal/sub.v'
-	assert vd.get_repo_file_path_for_links(os.join_path(real_root, 'shared', 'sub.v')) == 'shared/sub.v'
+	assert repo_file_path_for_links(vd.links_root(), os.join_path(real_root, 'src', 'root.v')) == 'src/root.v'
+	assert repo_file_path_for_links(vd.links_root(), os.join_path(real_root, 'src', 'internal', 'sub.v')) == 'src/internal/sub.v'
+	assert repo_file_path_for_links(vd.links_root(), os.join_path(real_root, 'shared', 'sub.v')) == 'shared/sub.v'
 }
 
 fn test_repo_file_path_for_links_handles_worktrees_and_file_inputs() {
@@ -912,9 +912,9 @@ fn test_repo_file_path_for_links_handles_worktrees_and_file_inputs() {
 				is_multi:   is_multi
 			}
 		}
-		assert vd.get_repo_file_path_for_links('') == ''
-		assert vd.get_repo_file_path_for_links(os.join_path(real_repo, 'mypkg', 'root.v')) == 'mypkg/root.v'
-		assert vd.get_repo_file_path_for_links(os.join_path(real_repo, 'shared', 'sub.v')) == 'shared/sub.v'
+		assert repo_file_path_for_links(vd.links_root(), '') == ''
+		assert repo_file_path_for_links(vd.links_root(), os.join_path(real_repo, 'mypkg', 'root.v')) == 'mypkg/root.v'
+		assert repo_file_path_for_links(vd.links_root(), os.join_path(real_repo, 'shared', 'sub.v')) == 'shared/sub.v'
 	}
 }
 
@@ -937,7 +937,7 @@ fn test_repo_file_path_for_links_preserves_manifestless_input_roots() {
 				}
 			}
 			expected := if is_multi && input_path == root { 'nested/file.v' } else { 'file.v' }
-			assert vd.get_repo_file_path_for_links(os.real_path(file)) == expected
+			assert repo_file_path_for_links(vd.links_root(), os.real_path(file)) == expected
 		}
 	}
 }
@@ -963,7 +963,7 @@ fn test_repo_file_path_for_links_ignores_unrelated_enclosing_checkout() {
 						is_multi:   is_multi
 					}
 				}
-				assert vd.get_repo_file_path_for_links(file) == expected
+				assert repo_file_path_for_links(vd.links_root(), file) == expected
 			}
 		}
 	}
@@ -991,7 +991,7 @@ fn test_repo_file_path_for_links_keeps_manifestless_git_root() {
 					is_multi:   is_multi
 				}
 			}
-			assert vd.get_repo_file_path_for_links(os.real_path(file)) == 'nested/file.v'
+			assert repo_file_path_for_links(vd.links_root(), os.real_path(file)) == 'nested/file.v'
 		}
 	}
 }

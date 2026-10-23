@@ -134,7 +134,8 @@ fn test_declaration_shape_leaves_out_what_does_not_change_a_declaration() {
 	assert without_parameter_names('fn (mut s Server) map[T](f fn (int) int, shared m Map) (int, string)') == 'fn (mut Server) map[T](fn (int) int, shared Map) (int, string)'
 	assert without_parameter_names('fn f(int, string)') == 'fn f(int, string)'
 	assert declaration_shape('union U {\n\ttype int\n}') == declaration_shape('union U {\n\t@type int\n}')
-	assert without_line_comment("url string = 'https://vlang.io' // the site") == "url string = 'https://vlang.io' "
+	// A `//` inside of a string does not start a comment.
+	assert declaration_shape("struct A {\n\turl string = 'https://vlang.io' // the site\n}") == declaration_shape("struct A {\n\turl string = 'https://vlang.io'\n}")
 	assert declaration_shape("struct A {\n\turl string = 'https://a'\n}") != declaration_shape("struct A {\n\turl string = 'https://b'\n}")
 	// An unused parameter is named `_`.
 	assert declaration_shape('fn f(pid int, mut m Map)') == declaration_shape('fn f(_ int, mut _ Map)')
@@ -185,25 +186,6 @@ fn test_a_doc_comment_on_one_platform_documents_the_symbol() {
 	assert d.contents['run']!.merge_comments().trim_space() == 'run runs.'
 }
 
-fn test_available_on_host() {
-	host := host_platform()
-	assert available_on_host(DocNode{})
-	assert available_on_host(DocNode{
-		platforms: [host]
-	})
-	other := if host == .windows { Platform.linux } else { Platform.windows }
-	assert !available_on_host(DocNode{
-		platforms: [other]
-	})
-	// A variant for the host makes the symbol available.
-	assert available_on_host(DocNode{
-		platforms: [other]
-		variants:  [DocNode{
-			platforms: [host]
-		}]
-	})
-}
-
 fn test_merge_platforms() {
 	assert merge_platforms([.linux], [.windows]) == [.linux, .windows]
 	assert merge_platforms([.windows], [.linux, .windows]) == [.linux, .windows]
@@ -248,7 +230,6 @@ fn test_cross_selects_the_host_variants_examples() {
 	d := generate(dir, true, true, .cross)!
 	node := d.contents['shared']!
 	assert node.platforms == [other]
-	assert available_on_host(node)
 	declarations := declarations_on_host(node)
 	assert declarations.len == 1
 	assert declarations[0].platforms == [host]
