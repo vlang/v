@@ -364,3 +364,6 @@ The regular compiler handles the initial `-d ownership cmd/v` support build dire
 With `-prealloc`, automatic cleanup runs destructors and leaves boxed storage to its arena.
 A `break` or `continue` at the end of an `or`, `if`, or `match` value branch runs cleanup
 before the jump. Only locals whose declarations have been reached are cleaned up.
+
+A statement `if` branch that ends in `return`, `break`, or `continue` emits its deferred
+actions and ownership cleanup before the transfer, without an unreachable cleanup epilogue.
