@@ -1996,7 +1996,7 @@ fn (t &Transformer) sql_index_elem_type(base flat.NodeId) u32 {
 		return t.normalize_type_alias(flat.source_type_id(flat.source_type_name(base_type)[2..]))
 	}
 	if t.is_fixed_array_type(base_type) {
-		return t.normalize_type_alias(for_in_fixed_array_elem_type(base_type))
+		return t.normalize_type_alias(t.for_in_fixed_array_elem_type(base_type))
 	}
 	if flat.source_type_shape(base_type).has(.map_type) {
 		bracket_end := flat.source_type_name(base_type).index(']') or { return u32(0) }

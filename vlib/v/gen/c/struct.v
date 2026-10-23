@@ -5741,7 +5741,6 @@ fn (g &FlatGen) struct_field_type(type_name_id u32, field_name string) ?types.Ty
 
 @[direct_array_access]
 fn (g &FlatGen) struct_field_type_cached(type_name_id u32, field_name string) ?types.Type {
-	type_name := flat.source_type_name(type_name_id)
 	mut cache := g.struct_decl_pref_cache
 	cache_enabled := g.cache_struct_fields && !isnil(cache)
 	mut slot := 0
@@ -5750,10 +5749,8 @@ fn (g &FlatGen) struct_field_type_cached(type_name_id u32, field_name string) ?t
 		cache.select_module(g.tc.cur_module)
 		type_id = type_name_id
 		// The complete owner/field comparison keeps sampled-key collisions harmless.
-		mut hash := u32(type_name.len * 31 + field_name.len)
-		if type_name.len > 0 {
-			hash = hash * 16777619 ^ u32(type_name[type_name.len - 1])
-		}
+		mut hash := (type_name_id * u32(0x9e3779b9)) ^ u32(field_name.len)
+		hash ^= hash >> 16
 		if field_name.len > 0 {
 			hash = hash * 16777619 ^ u32(field_name[0])
 			hash = hash * 16777619 ^ u32(field_name[field_name.len - 1])

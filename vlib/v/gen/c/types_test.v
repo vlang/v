@@ -1309,3 +1309,31 @@ fn test_import_type_ids_preserve_padded_wrapper_normalization() {
 	assert flat.source_type_name(g.canonical_import_alias_type_text_in_file(flat.source_type_id(' & ? Foo '), 'clean.v')) == '&?Foo'
 	assert flat.source_type_name(g.canonical_import_alias_type_text_in_file(flat.source_type_id(' & ! Foo '), 'clean.v')) == '&!Foo'
 }
+
+fn test_field_type_cache_distinguishes_many_owners_with_the_same_field() {
+	mut ast := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&ast)
+	tc.cur_module = 'main'
+	mut ids := []u32{}
+	for i in 0 .. 320 {
+		name := 'main.CacheOwner_${i}'
+		ids << flat.source_type_id(name)
+		tc.structs[name] = [types.StructField{
+			name: 'value'
+			typ:  if i % 2 == 0 { types.Type(types.int_) } else { types.Type(types.string_) }
+		}]
+	}
+	mut g := FlatGen.new()
+	g.a = &ast
+	g.tc = &tc
+	g.cache_struct_fields = true
+	g.struct_decl_pref_cache = &StructDeclPrefCache{}
+	for _ in 0 .. 2 {
+		for i, id in ids {
+			expected := if i % 2 == 0 { types.Type(types.int_) } else { types.Type(types.string_) }
+			assert g.struct_field_type(id, 'value')? == expected
+			assert g.struct_field_type(id, 'missing') == none
+			assert g.struct_field_type(id, 'value')? == expected
+		}
+	}
+}

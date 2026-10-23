@@ -22,11 +22,11 @@ const ignore_args_error = ['--show-version', '--some-test=ouch', '--amount=5', '
 
 struct Config {
 	mix           bool
-	linker_option string   @[only: m]
-	mix_hard      bool     @[json: muh] // Test that no other attributes get picked up
-	def_test      string = 'def'     @[long: test; short: t]
-	device        []string @[short: d]
-	paths         []string @[tail]
+	linker_option string         @[only: m]
+	mix_hard      bool           @[json: muh] // Test that no other attributes get picked up
+	def_test      string = 'def' @[long: test; short: t]
+	device        []string       @[short: d]
+	paths         []string       @[tail]
 	amount        int = 1
 	verbosity     int  @[repeats; short: v]
 	show_version  bool @[long: version]
@@ -36,15 +36,15 @@ struct Config {
 struct LongConfig {
 	f            f32
 	mix          bool
-	some_test    string = 'abc'   @[long: test]
-	path         string @[tail]
+	some_test    string = 'abc' @[long: test]
+	path         string         @[tail]
 	amount       int = 1
 	show_version bool @[long: version]
 }
 
 struct IgnoreConfig {
-	some_test    string = 'abc'   @[ignore]
-	path         string @[tail]
+	some_test    string = 'abc' @[ignore]
+	path         string         @[tail]
 	amount       int = 1
 	show_version bool
 }

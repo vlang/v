@@ -5,6 +5,8 @@ import v.flat
 import v.modulecache
 import v.parser
 import v.pref
+import v.scanner
+import v.token
 
 // A build takes the functions of cached interfaces that nothing can name out of
 // its AST. These tests parse an interface and a program that uses a part of it.
@@ -209,6 +211,48 @@ fn stage_literal_words() map[string]bool {
 	return words
 }
 
+// Keep offsets and literals intact while excluding quotes in comments and runes.
+fn stage_source_for_literals(source string) string {
+	mut files := token.FileSet.new()
+	file := files.add_file('stage.v', source.len)
+	mut lex := scanner.new_scanner(pref.new_preferences(), .scan_comments | .skip_interpolation)
+	lex.init(file, source)
+	mut clean := source.bytes()
+	for {
+		kind := lex.scan()
+		if kind == .eof {
+			break
+		}
+		if kind in [.comment, .char] {
+			for i in lex.pos .. lex.offset {
+				if clean[i] != `\n` {
+					clean[i] = ` `
+				}
+			}
+		}
+	}
+	return clean.bytestr()
+}
+
+fn test_stage_source_for_literals_excludes_comments_and_runes() {
+	source := [
+		"// It's 'arrays.sum'\n",
+		"/* 'outer' /* 'nested' */ 'comment' */\n",
+		"const apostrophe = `'`\n",
+		'const quote = `"`\n',
+		"const kept = 'https://example.com/*literal*/'\n",
+		'const after = "kept.name"\n',
+	].join('')
+	clean := stage_source_for_literals(source)
+	assert clean.len == source.len
+	assert clean.count('\n') == source.count('\n')
+	assert !clean.contains('arrays.sum')
+	assert !clean.contains('outer') && !clean.contains('nested') && !clean.contains('comment')
+	assert !clean.contains("`'`") && !clean.contains('`"`')
+	assert clean.contains("'https://example.com/*literal*/'")
+	assert clean.contains('"kept.name"')
+}
+
 // stage_literal_words_and_names returns the words that the stages of the compiler
 // spell in their string literals, and the names with dots among them, as
 // `dl.interface_export_find`.
@@ -221,7 +265,8 @@ fn stage_literal_words_and_names() (map[string]bool, map[string]bool) {
 			if !file.ends_with('.v') || file.ends_with('_test.v') {
 				continue
 			}
-			source := os.read_file(os.join_path_single(stage_dir, file)) or { continue }
+			source := stage_source_for_literals(os.read_file(os.join_path_single(stage_dir,
+				file)) or { continue })
 			mut i := 0
 			for i < source.len {
 				quote := source[i]
@@ -479,7 +524,8 @@ fn stage_built_name_patterns() []string {
 			if !file.ends_with('.v') || file.ends_with('_test.v') {
 				continue
 			}
-			source := os.read_file(os.join_path_single(stage_dir, file)) or { continue }
+			source := stage_source_for_literals(os.read_file(os.join_path_single(stage_dir,
+				file)) or { continue })
 			mut i := 0
 			for i < source.len {
 				quote := source[i]

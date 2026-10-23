@@ -54,6 +54,9 @@ If V is already installed on a machine, it can be upgraded to its latest version
 by using the V's built-in self-updater.
 To do so, run the command `v up`.
 This also refreshes the bundled TCC binaries used for fast C compilation.
+On Linux, an older compatible TCC bundle stays in place while its upstream revision
+is unchanged and it still passes the host compatibility check. Repeated updates
+preserve its file metadata so cached modules can reuse their objects.
 On macOS, TCC builds use its runtime thread fence directly, including when
 preprocessed C identifies ARM64 with `__arm64__` alone.
 
@@ -61,6 +64,9 @@ After updating, `v up` refreshes previously cached vlib modules with the compile
 and flags used to cache them, including normal and `-prod` builds. Unchanged
 modules are reused. Each module being cached is printed to standard output as
 `Caching module <name>...`. A failed cache refresh makes `v up` fail.
+The final configuration count includes checks that reused every cached object.
+Different build flags, program or test modes, and import sequences can require
+separate checks. Pass `v up -v` to see each checked configuration.
 Cached module headers preserve struct field attribute groups, so valid deprecation
 attributes do not introduce warnings during refresh.
 Ordinary builds report cache progress on standard error. Refreshes retain absolute
@@ -1808,6 +1814,9 @@ V also supports arrays with fixed size. Unlike ordinary arrays, their
 length is constant. You cannot append elements to them, nor shrink them.
 You can only modify their elements in place.
 
+Iteration preserves the complete element type, including pointers to generic structs.
+For example, iterating over `[2]&Box[string]` yields `&Box[string]` values.
+
 However, access to the elements of fixed size arrays is more efficient,
 they need less memory than ordinary arrays, and unlike ordinary arrays,
 their data is on the stack, so you may want to use them as buffers if you
@@ -3146,7 +3155,7 @@ p = Point{10, 20}
 assert p.x == 10
 ```
 
-Struct fields can re-use reserved keywords:
+Struct fields can re-use reserved keywords, including C keywords such as `bool`:
 
 ```v
 struct Employee {
@@ -3801,6 +3810,9 @@ it clear that the function being called will modify the value.
 
 A comptime `app.$method(...)` call also requires `mut` when passing a pointer variable
 to an explicit `mut param &T` parameter.
+
+A mutable struct parameter refers to the caller's struct. Casting it to an integer
+produces that struct's address.
 
 It is preferable to return values instead of modifying arguments,
 e.g. `user = register(user)` (or `user.register()`) instead of `register(mut user)`.
@@ -11219,6 +11231,9 @@ Pointers to `char`, `i8`, and `u8` of the same pointer depth are interchangeable
 assignments, returns, function arguments, and other typed values. Ordinary V files retain their
 pointer type checks; calls to C functions also accept these character pointers.
 
+In translated files, fixed arrays decay to pointers to their elements, including when compared
+with pointers. Nested array literals retain their full array type in these comparisons.
+
 Files marked `@[translated]` retain C scalar conversions between numbers, enums, and booleans.
 These scalars can be mixed in arithmetic expressions and compound assignments. Integral scalars
 can be used in bitwise expressions. Scalar values and pointers, including function pointers,
@@ -11285,6 +11300,7 @@ on top of C libraries.
 
 C2V currently uses Clang's AST to generate V, so to translate a C file to V
 you need to have Clang installed on your machine.
+On first use, `v translate` downloads and compiles C2V automatically.
 
 Let's create a simple program `test.c` first:
 

@@ -567,6 +567,17 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	queue << 'main'
 	used['main'] = true
 	if cache_mode {
+		// Cached bodies can call an interface without exposing that call in their
+		// declaration header. Keep the program's implementations and their callees.
+		for iface_name in tc.interface_names.keys() {
+			iface_id := flat.source_type_id(iface_name)
+			for method in tc.interface_abstract_method_names(iface_id) {
+				key := tc.interface_method_signature_key(iface_id, method) or { continue }
+				if (tc.fn_type_files[key] or { '' }).ends_with('.vh') {
+					enqueue('${iface_name}.${method}', mut used, mut queue)
+				}
+			}
+		}
 		// Cached IError dispatchers name every implementer's methods, even when
 		// their callers have no body in the warm AST. Cgen emits these methods,
 		// so retain their transformations and the helpers their bodies call.

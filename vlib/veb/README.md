@@ -3,6 +3,8 @@
 A simple yet powerful web server with built-in routing, parameter handling, templating, and other
 features.
 
+Generate client-ready API specifications with [typed OpenAPI documents](OPENAPI.md).
+
 ## Features
 
 - **Very fast** performance of C on the web.

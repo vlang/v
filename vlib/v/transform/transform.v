@@ -26,21 +26,15 @@ fn same_transform_text(a string, b string) bool {
 // short_name_view returns the suffix after the final dot without allocating.
 @[direct_array_access; inline]
 fn short_name_view(name string) string {
-	for i := name.len - 1; i >= 0; i-- {
-		if name[i] == `.` {
-			return unsafe { name.substr_unsafe(i + 1, name.len) }
-		}
-	}
+	i := name.last_index_u8(`.`)
+	if i >= 0 { return unsafe { name.substr_unsafe(i + 1, name.len) } }
 	return name
 }
 
 @[direct_array_access; inline]
 fn owner_name_view(name string) string {
-	for i := name.len - 1; i >= 0; i-- {
-		if name[i] == `.` {
-			return unsafe { name.substr_unsafe(0, i) }
-		}
-	}
+	i := name.last_index_u8(`.`)
+	if i >= 0 { return unsafe { name.substr_unsafe(0, i) } }
 	return name
 }
 
@@ -3401,8 +3395,11 @@ fn (mut t Transformer) set_var_type_binding(name string, typ u32, raw_typ u32, i
 				binding: t.var_types[i]
 			}
 		}
-		t.var_type_indices[name] = i
-		t.clear_node_type_memo()
+		// Production setters keep the index complete. Only a hand-built view can
+		// find an existing binding through the linear fallback without indexing it.
+		if t.var_type_indices.len != t.var_types.len {
+			t.var_type_indices[name] = i
+		}
 		t.var_types[i] = VarTypeBinding{
 			name:            name
 			typ:             typ
@@ -10524,7 +10521,7 @@ fn (t &Transformer) escape_fn_literal_capture_names(id flat.NodeId) []string {
 // `method_value_receivers`, (d) captured names in `cb := fn [p]` into
 // `closure_capture_aliases`, and (e) every ident name appearing inside a return
 // statement, map value assignment, or nonlocal field store into `returned`.
-@[direct_array_access]
+@[direct_array_access; inline]
 fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]bool, mut amp_sources map[string][]string, mut ptr_aliases map[string]string, mut method_value_receivers map[string]string, mut closure_capture_aliases map[string][]string, mut interface_boxes map[string]bool, mut returned map[string]bool, mut local_stack_names map[string]bool, mut local_stack_added []string, mut reference_backing_sources map[string][]string, can_clear_interface_boxes bool) {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return
@@ -10533,6 +10530,11 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 	if t.a.nodes[int(id)].children_count == 0 && t.a.nodes[int(id)].kind != .comptime_for {
 		return
 	}
+	t.scan_escape_pass_nonempty(id, mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut method_value_receivers, mut closure_capture_aliases, mut interface_boxes, mut returned, mut local_stack_names, mut local_stack_added, mut reference_backing_sources, can_clear_interface_boxes)
+}
+
+@[direct_array_access]
+fn (mut t Transformer) scan_escape_pass_nonempty(id flat.NodeId, mut amp_ptrs map[string]bool, mut amp_sources map[string][]string, mut ptr_aliases map[string]string, mut method_value_receivers map[string]string, mut closure_capture_aliases map[string][]string, mut interface_boxes map[string]bool, mut returned map[string]bool, mut local_stack_names map[string]bool, mut local_stack_added []string, mut reference_backing_sources map[string][]string, can_clear_interface_boxes bool) {
 	// Resolve reflected method bodies before borrowing a node header: cloning
 	// their analysis view can grow the AST. The source loop is lowered normally later.
 	if t.a.nodes[int(id)].kind == .comptime_for {
@@ -23786,7 +23788,13 @@ fn (mut t Transformer) transform_call_expr_inner(id flat.NodeId, node flat.Node)
 	// selector/call over the materialized operands and re-dispatch; a no-op for the common
 	// non-branch receivers/arguments.
 	if node.children_count > 0 {
-		recv_fn_id := t.a.children[node.children_start]
+		original_fn_id := t.a.children[node.children_start]
+		original_fn := t.a.nodes[int(original_fn_id)]
+		generic_callee := original_fn.kind == .index
+			&& t.generic_call_type_args_name(original_fn).len > 0
+		// Type arguments wrap a method selector but do not turn it into a runtime
+		// function value. Order its receiver before arguments, then retain the wrapper.
+		recv_fn_id := if generic_callee { t.a.child(&original_fn, 0) } else { original_fn_id }
 		recv_fn := t.a.nodes[int(recv_fn_id)]
 		is_selector_call := recv_fn.kind == .selector && recv_fn.children_count > 0
 		recv_sel_base_id := if is_selector_call {
@@ -23873,7 +23881,7 @@ fn (mut t Transformer) transform_call_expr_inner(id flat.NodeId, node flat.Node)
 			// is spilled by value. Applies to method calls and plain function calls alike. Stable
 			// operands are left for the re-dispatch to transform once.
 			mut changed := false
-			mut new_fn_id := recv_fn_id
+			mut new_fn_id := original_fn_id
 			if is_method {
 				new_recv := if t.is_value_match_or_if_operand(recv_id) {
 					r := t.materialize_value_branch_operand(recv_id)
@@ -23921,6 +23929,17 @@ fn (mut t Transformer) transform_call_expr_inner(id flat.NodeId, node flat.Node)
 					children_count: recv_fn.children_count
 					pos:            recv_fn.pos
 				})
+				if generic_callee {
+					generic_start := t.a.children.len
+					t.a.children << new_fn_id
+					for i in 1 .. original_fn.children_count {
+						t.a.children << t.a.child(&original_fn, i)
+					}
+					new_fn_id = t.a.add_node(flat.Node{
+						...original_fn
+						children_start: generic_start
+					})
+				}
 			} else if callee_is_value_branch {
 				r := t.materialize_value_branch_operand(recv_fn_id)
 				if r != recv_fn_id {

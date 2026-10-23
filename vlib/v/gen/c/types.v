@@ -1537,17 +1537,17 @@ fn (g &FlatGen) type_contains_generic_placeholder(t &types.Type) bool {
 			// Inferred anonymous literals are materialized during transform. Their
 			// earlier checker entry has no nominal storage type; prefer the concrete
 			// lowered annotation instead of emitting `v_struct` for its container.
-			if c_short_name_view(t.name()) == 'struct' {
+			shape := flat.source_type_shape(t.name_id)
+			if shape.has(.anonymous_struct) {
 				return true
 			}
 			// A stale generic-call annotation can carry the concrete C function name
 			// as a nominal type. It is not a payload type and must not create an
 			// `__v_option_<function>` typedef in the program prefix.
-			if t.name().index_u8(`_`) >= 0 && t.name().contains('_T_')
-				&& !g.type_name_known(t.name()) {
+			if shape.has(.generic_c_name) && !g.type_name_known(t.name()) {
 				return true
 			}
-			if !g.skip_generics && flat.source_type_shape(t.name_id).has(.bracketed)
+			if !g.skip_generics && shape.has(.bracketed)
 				&& g.type_name_is_unbound_generic_decl(t.source_type_id(), g.struct_generic_params_for_name(t.source_type_id()), t.name() in g.tc.structs || g.tc.qualify_name(t.name()) in g.tc.structs) {
 				return true
 			}
@@ -1630,13 +1630,13 @@ fn (g &FlatGen) type_name_contains_generic_placeholder(name_id u32) bool {
 	if g.skip_generics && !g.placeholder_check_forced {
 		return false
 	}
-	name := flat.source_type_name(name_id)
-	if !flat.source_type_shape(name_id).has(.bracketed) {
-		// Without brackets only a bare placeholder (`T`) qualifies.
-		clean := trimmed_space(name)
-		return clean.len > 0 && g.is_bare_generic_placeholder_name(clean)
+	shape := flat.source_type_shape(name_id)
+	if !shape.has(.bracketed) {
+		// Only the spelling is cached; declarations still decide whether `T` is bound.
+		return shape.has(.bare_generic)
+			&& g.is_bare_generic_placeholder_name(trimmed_space(flat.source_type_name(name_id)))
 	}
-	return g.type_name_contains_generic_placeholder_bytes(name)
+	return g.type_name_contains_generic_placeholder_bytes(flat.source_type_name(name_id))
 }
 
 fn (g &FlatGen) type_name_contains_generic_placeholder_bytes(name string) bool {
@@ -1764,7 +1764,130 @@ fn (mut g FlatGen) write_optional_typedef(name string, value_type string) {
 	} else {
 		'${value_type} value;'
 	}
-	g.writeln('typedef struct ${name} { bool ok; ${payload} } ${name};')
+	// A one byte `ok` leaves padding before a payload that holds pointers, and the C
+	// compiler may store the payload together with that padding, at an offset that is
+	// not a multiple of the pointer size. The conservative GC only looks for pointers at
+	// aligned offsets, so it would miss them and free what they point to. A pointer
+	// sized `ok` fills the padding without changing the layout.
+	ok_type := if (is_result && g.has_ierror_interface())
+		|| g.optional_payload_holds_pointers(value_type) {
+		'intptr_t'
+	} else {
+		'bool'
+	}
+	g.writeln('typedef struct ${name} { ${ok_type} ok; ${payload} } ${name};')
+}
+
+// optional_payload_holds_pointers reports whether an option payload of C type
+// `value_type` holds a pointer at a pointer aligned offset, and so is aligned at
+// least like a pointer.
+fn (mut g FlatGen) optional_payload_holds_pointers(value_type string) bool {
+	if value_type.ends_with('*') || value_type.starts_with('_fn_ptr_')
+		|| value_type.starts_with('__v_result') {
+		return true
+	}
+	if value_type in ['string', 'Array', 'array', 'map', 'chan', 'IError', 'voidptr', 'charptr',
+		'byteptr'] {
+		return true
+	}
+	if value_type.starts_with('__v_option_') {
+		inner := g.needed_optional_types.type_id(value_type) or { return false }
+		return g.optional_payload_holds_pointers(flat.source_type_name(inner))
+	}
+	if value_type.starts_with('multi_return_') {
+		for typ in g.multi_return_types {
+			if typ is types.MultiReturn && g.multi_return_c_type_name(typ) == value_type {
+				return g.type_holds_aligned_pointer(typ, 0)
+			}
+		}
+		return false
+	}
+	if info := g.fixed_array_typedefs_needed[value_type] {
+		return g.type_holds_aligned_pointer(types.Type(info.arr), 0)
+	}
+	// Built again whenever the checker has registered more types since (a generic
+	// instance registered after a first typedef), so that none of them is missed.
+	registered := g.tc.structs.len + g.tc.sum_types.ids.len
+	if registered != g.optional_payload_types_from {
+		g.optional_payload_types_from = registered
+		g.optional_payload_types.clear()
+		// Keyed by the C spelling the checker gives the type, the one a payload is
+		// written with (`main__Node`, `main__Box_string`, `mod__Node`).
+		for name, _ in g.tc.structs {
+			typ := types.Type(types.Struct{
+				name_id: flat.source_type_id(name)
+			})
+			g.optional_payload_types[g.tc.c_type(&typ)] = typ
+		}
+		for name, _ in g.tc.sum_types.ids {
+			typ := types.Type(types.SumType{
+				name_id: flat.source_type_id(name)
+			})
+			g.optional_payload_types[g.tc.c_type(&typ)] = typ
+		}
+	}
+	if typ := g.optional_payload_types[value_type] {
+		return g.type_holds_aligned_pointer(typ, 0)
+	}
+	return g.qualified_interface_c_types(value_type.all_after_last('__')).contains(value_type)
+}
+
+// type_holds_aligned_pointer reports whether a value of type `t` holds a pointer at a
+// pointer aligned offset. A packed or C struct does not count: its alignment can be
+// smaller than a pointer's, and a wider `ok` before it would move it.
+fn (mut g FlatGen) type_holds_aligned_pointer(t types.Type, depth int) bool {
+	if depth > 32 {
+		return false
+	}
+	if _ := g.shared_alias_pointer_type(t) {
+		return true
+	}
+	match t {
+		types.String, types.Array, types.Map, types.Channel, types.Pointer, types.FnType,
+		types.Interface, types.ResultType {
+			return true
+		}
+		types.ArrayFixed {
+			return g.type_holds_aligned_pointer(*t.elem_type, depth + 1)
+		}
+		types.Alias, types.OptionType {
+			return g.type_holds_aligned_pointer(*t.base_type, depth + 1)
+		}
+		types.MultiReturn {
+			for part in t.types {
+				if g.type_holds_aligned_pointer(part, depth + 1) {
+					return true
+				}
+			}
+			return false
+		}
+		types.Struct {
+			name := flat.source_type_name(t.name_id)
+			if name.starts_with('C.') || g.struct_decl_pack_for_name(name) != '' {
+				return false
+			}
+			for field in g.tc.struct_fields_for_type(t.name_id) {
+				if _ := g.shared_field_info(t.name_id, field.name) {
+					return true
+				}
+				if g.type_holds_aligned_pointer(field.typ, depth + 1) {
+					return true
+				}
+			}
+			return false
+		}
+		types.SumType {
+			// A sum stores its variants in a union, which is aligned like its most aligned
+			// variant, so it counts when one of them does (not a packed one).
+			variants := g.tc.sum_types.type_ids(flat.source_type_name(t.name_id)) or {
+				return false
+			}
+			return g.sum_variants_hold_aligned_pointer(variants, depth + 1)
+		}
+		else {
+			return false
+		}
+	}
 }
 
 fn (g &FlatGen) is_known_sum_c_type(c_type string) bool {

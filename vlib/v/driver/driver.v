@@ -4330,6 +4330,22 @@ fn transform_scope_fits_retention_budget(scope voidptr) bool {
 	return false
 }
 
+// Keep helper text alive through cgen only when all its arenas fit one budget.
+// A settled arena's size cannot grow after the transform workers have joined.
+fn transform_helper_scopes_fit_retention_budget(scopes []voidptr) bool {
+	$if prealloc {
+		if scopes.len == 0 { return false }
+		mut remaining := usize(256 * 1024 * 1024)
+		for scope in scopes {
+			size := unsafe { prealloc_scope_allocated_size(scope) }
+			if size == 0 || size > remaining { return false }
+			remaining -= size
+		}
+		return true
+	}
+	return false
+}
+
 fn should_parallel_monomorphize(node_count int, building_v bool) bool {
 	if os.getenv('V3_PARALLEL_MONOMORPHIZE') == '0' {
 		return false
@@ -13876,9 +13892,9 @@ pub fn run(args []string) {
 	mut retained_transform_scope := unsafe { nil }
 	mut retained_transform_prepare_scope := unsafe { nil }
 	mut retained_transform_prescan_scopes := []voidptr{}
-	// Helper arenas of the transform stage whose texts are published, kept until
-	// the type cache that can name their memory is dropped.
+	// Helper arenas can back both checker caches and lowered AST text.
 	mut transform_helper_scopes := []voidptr{}
+	mut retain_transform_helper_texts := false
 	mut trivial_literal_output := false
 	if !cgen_cache_hit {
 		pre_tc.verbose = prefs.verbose
@@ -14716,14 +14732,22 @@ pub fn run(args []string) {
 			if retained_transform_prepare_scope != unsafe { nil }
 				|| retained_transform_prescan_scopes.len > 0 {
 				// The preparation and pre-scan arenas back only a few thousand lowered
-				// node texts. Publish those into the compilation arena and release the
-				// arenas now instead of keeping their index scratch alive through codegen.
+				// node texts. Publish those before releasing large helpers; bounded
+				// helpers can share the retained transform arena's lifetime through codegen.
 				mut helper_scopes := []voidptr{cap: retained_transform_prescan_scopes.len + 1}
 				if retained_transform_prepare_scope != unsafe { nil } {
 					helper_scopes << retained_transform_prepare_scope
 				}
 				helper_scopes << retained_transform_prescan_scopes
-				publish_transform_helper_scope_texts(mut a, helper_scopes)
+				// Retained self-host transform state already outlives cgen. A bounded
+				// set of helper arenas can share that lifetime, avoiding an AST scan
+				// and text copies. Larger helpers keep the publication path below.
+				retain_transform_helper_texts = retain_scope_without_regions
+					&& retained_transform_regions.len == 0
+					&& transform_helper_scopes_fit_retention_budget(helper_scopes)
+				if !retain_transform_helper_texts {
+					publish_transform_helper_scope_texts(mut a, helper_scopes)
+				}
 				// The type cache of this stage holds lookups keyed by the texts of
 				// these arenas. It is dropped before the transform arena is released,
 				// or kept with that arena through Cgen: release them with it.
@@ -15594,14 +15618,15 @@ pub fn run(args []string) {
 			// Rebuild fork-shared lookup indexes in Cgen's parent arena. Scoped serial
 			// batches otherwise can inherit map storage populated by an earlier arena.
 			pre_tc.set_fresh_type_cache(cgen_parse_cache_enabled)
-			// The transform helper arenas were kept only for the transform-stage type
-			// cache, whose keys can name their texts; that cache is gone now. Their node
-			// texts were published, so release them before Cgen's peak. Unmapping them
-			// takes a few milliseconds; a helper thread does it while cgen starts.
-			if transform_helper_scopes.len > 0 {
-				track_release_thread(spawn free_prealloc_scopes(transform_helper_scopes))
+			// The transform cache is gone. Helpers whose node texts were published
+			// can now be released; retained helpers still back node texts through Cgen.
+			// A helper thread unmaps the published arenas while Cgen starts.
+			if !retain_transform_helper_texts {
+				if transform_helper_scopes.len > 0 {
+					track_release_thread(spawn free_prealloc_scopes(transform_helper_scopes))
+				}
+				transform_helper_scopes = []voidptr{}
 			}
-			transform_helper_scopes = []voidptr{}
 			pre_tc.freeze_type_cache_for_forks()
 			pre_tc.discard_type_cache_overlay_after_forks()
 			mut scoped_generated_c_flags := []string{}
@@ -16149,6 +16174,8 @@ pub fn run(args []string) {
 			}
 			b.print_report()
 			wait_release_threads()
+			free_prealloc_scopes(transform_helper_scopes)
+			transform_helper_scopes = []voidptr{}
 			if retained_transform_scope != unsafe { nil }
 				|| retained_transform_prepare_scope != unsafe { nil } {
 				free_retained_scopes(retained_transform_scope, retained_transform_prepare_scope)
@@ -16161,6 +16188,10 @@ pub fn run(args []string) {
 		// Nothing below reads the transformed AST or its checker payloads: the C
 		// compiler consumes the generated file. Release those arenas alongside it
 		// so their unmapping is not serial work after the compile.
+		if transform_helper_scopes.len > 0 {
+			track_release_thread(spawn free_prealloc_scopes(transform_helper_scopes))
+			transform_helper_scopes = []voidptr{}
+		}
 		if retained_transform_scope != unsafe { nil }
 			|| retained_transform_prepare_scope != unsafe { nil } {
 			track_release_thread(spawn free_retained_scopes(retained_transform_scope,
@@ -24328,6 +24359,17 @@ fn resolve_eager_selfhost_wave(a &flat.FlatAst, prefs &pref.Preferences, request
 	return results
 }
 
+// Ordinary code bytes cannot change the import scan's lexical context.
+const import_scan_delimiters = make_import_scan_delimiters()
+
+fn make_import_scan_delimiters() [256]bool {
+	mut delimiters := [256]bool{}
+	for c in [`\n`, `/`, `r`, `'`, `"`, `\``, `{`, `}`] {
+		delimiters[c] = true
+	}
+	return delimiters
+}
+
 // source_imports_fast extracts the compiler tree's one-line import declarations
 // without constructing tokens. It is used only to assemble the trusted
 // -building-v parse batch; the real parser remains authoritative immediately
@@ -24405,6 +24447,14 @@ fn source_imports_fast(path string) []string {
 			continue
 		}
 		for i < source.len {
+			if !at_line_head {
+				for i < source.len && !import_scan_delimiters[source[i]] {
+					i++
+				}
+				if i == source.len {
+					break
+				}
+			}
 			c := source[i]
 			if c == `\n` {
 				at_line_head = true
@@ -25132,6 +25182,12 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 				}
 			}
 			if already_parsed {
+				if cache_state.manager.enabled && module_resolved && cache_module != 'main'
+					&& cache_module !in cache_state.module_sources {
+					// A cached dependency can import the module under test. Its bodies
+					// are absent from the AST, so retain the functions it can call here.
+					cache_state.source_body_modules[cache_module] = true
+				}
 				node_idx++
 				continue
 			}

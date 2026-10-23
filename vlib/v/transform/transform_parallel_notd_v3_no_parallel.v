@@ -547,20 +547,54 @@ struct WorkerScopeFreeArgs {
 	end    int
 }
 
-// node_has_scoped_text reports whether any text payload of `node` lives in
-// `scope`'s arena, i.e. whether canonicalization/promotion would rewrite it.
-
 // node_has_any_scoped_text reports whether any node text is owned by one of
 // `scopes`. `lo`/`hi` bound the union of the arenas' address ranges: nearly
 // every text lives outside them, so the per-arena search is rarely needed.
 @[inline]
 fn node_has_any_scoped_text(node &flat.Node, scopes []voidptr, lo usize, hi usize) bool {
-	value_addr := usize(voidptr(node.value.str))
-	if (node.value.len == 0 || value_addr < lo || value_addr >= hi) && node.payload == 0 {
+	if node.value.len > 0 && text_pointer_in_scopes(node.value.str, scopes, lo, hi) {
+		return true
+	}
+	if node.payload == 0 {
+		return false
+	}
+	payload := node.payload_ptr()
+	if text_pointer_in_scopes(payload, scopes, lo, hi) {
+		return true
+	}
+	debugger_types := payload.debugger_value_types.ids
+	if node.kind == .debugger_stmt && debugger_types.len > 0
+		&& text_pointer_in_scopes(debugger_types.data, scopes, lo, hi) {
+		return true
+	}
+	constraints := payload.generic_constraints.ids
+	if constraints.len > 0 && text_pointer_in_scopes(constraints.data, scopes, lo, hi) {
+		return true
+	}
+	params := payload.generic_params
+	if params.len == 0 {
+		return false
+	}
+	if text_pointer_in_scopes(params.data, scopes, lo, hi) {
+		return true
+	}
+	for param in params {
+		if param.len > 0 && text_pointer_in_scopes(param.str, scopes, lo, hi) {
+			return true
+		}
+	}
+	return false
+}
+
+// Reject pointers outside the union once, before consulting individual arenas.
+@[inline]
+fn text_pointer_in_scopes(ptr voidptr, scopes []voidptr, lo usize, hi usize) bool {
+	addr := usize(ptr)
+	if addr < lo || addr >= hi {
 		return false
 	}
 	for scope in scopes {
-		if node_has_scoped_text(node, scope) {
+		if transform_scope_owns(scope, ptr) {
 			return true
 		}
 	}
@@ -586,37 +620,6 @@ fn scopes_address_range(scopes []voidptr) (usize, usize) {
 		}
 	}
 	return lo, hi
-}
-
-fn node_has_scoped_text(node &flat.Node, scope voidptr) bool {
-	if node.value.len > 0 && transform_scope_owns(scope, node.value.str) {
-		return true
-	}
-	if node.payload == 0 {
-		return false
-	}
-	if transform_scope_owns(scope, node.payload_ptr()) {
-		return true
-	}
-	debugger_types := node.debugger_value_type_ids()
-	if debugger_types.len > 0 && transform_scope_owns(scope, debugger_types.data) { return true }
-	constraints := node.payload_ptr().generic_constraints.ids
-	if constraints.len > 0 && transform_scope_owns(scope, constraints.data) {
-		return true
-	}
-	params := node.generic_params()
-	if params.len == 0 {
-		return false
-	}
-	if transform_scope_owns(scope, params.data) {
-		return true
-	}
-	for param in params {
-		if param.len > 0 && transform_scope_owns(scope, param.str) {
-			return true
-		}
-	}
-	return false
 }
 
 // scoped_text_scan_thread flags this worker's node range. Pure reads plus

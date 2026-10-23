@@ -98,6 +98,7 @@ mut:
 	struct_types             map[string]TypeID
 	struct_field_types       flat.TypeTextBindings
 	struct_field_defaults    map[string]NativeFieldDefault
+	struct_embeds            map[TypeID][]int
 	default_struct_types     map[TypeID]bool
 	option_types             map[u32]TypeID
 	sum_type_variants        flat.TypeTextListBindings
@@ -390,10 +391,17 @@ fn (mut b Builder) register_types() {
 		if node.kind == .struct_decl {
 			mut field_types := []TypeID{}
 			mut field_names := []string{}
+			mut embeds := []int{}
 			for i in 0 .. node.children_count {
 				f := b.a.child_node(&node, i)
+				metadata := f.generic_params()
+				if f.typ == 0 || (metadata.len > 0 && metadata[0].contains('e')) {
+					embeds << i
+				}
+				// Embedded fields with defaults carry their type in the field name.
+				declared_type := if f.typ == 0 { flat.source_type_id(f.value) } else { f.typ }
 				field_type_name_id := native_c_struct_field_type(node.value, f.value) or {
-					qualify_type_ref_name(f.typ, cur_module)
+					qualify_type_ref_name(declared_type, cur_module)
 				}
 				field_type := b.resolve_struct_storage_type(field_type_name_id, cur_module)
 				field_types << field_type
@@ -423,6 +431,7 @@ fn (mut b Builder) register_types() {
 				b.struct_field_types.set('tm.tm_zone', '&char')
 			}
 			typ_id := b.struct_type_id_for_decl(node.value, cur_module)
+			b.struct_embeds[typ_id] = embeds
 			b.m.type_store.types[typ_id] = Type{
 				kind:        .struct_t
 				fields:      field_types
@@ -13247,7 +13256,7 @@ fn (mut b Builder) smartcast_sum_selector_addr(sum_addr ValueID, base_id flat.No
 		return none
 	}
 	if field_name !in variant_layout.field_names {
-		return none
+		_ := b.embedded_field_path(variant_type, field_name, []TypeID{}) or { return none }
 	}
 	payload_ptr := b.get_field_ptr(sum_addr, sum_field_name(variant))
 	return b.get_field_ptr(payload_ptr, field_name)
@@ -14078,10 +14087,42 @@ fn (mut b Builder) get_field_ptr(base_addr ValueID, field_name string) ValueID {
 			pointer := b.m.type_store.get_ptr(typ.fields[index])
 			return b.emit2(.get_element_ptr, pointer, address, constant)
 		}
+		if path := b.embedded_field_path(owner, storage_field, []TypeID{}) {
+			mut field := address
+			for name in path {
+				field = b.get_field_ptr(field, name)
+			}
+			return field
+		}
 	}
 	zero := b.m.get_or_add_const(b.i64_type, '0')
 	pointer := b.m.type_store.get_ptr(b.i64_type)
 	return b.emit2(.get_element_ptr, pointer, address, zero)
+}
+
+// embedded_field_path retains each embed so pointer fields are loaded before their members.
+fn (b &Builder) embedded_field_path(owner TypeID, name string, seen []TypeID) ?[]string {
+	if owner <= 0 || owner >= b.m.type_store.types.len || owner in seen {
+		return none
+	}
+	typ := b.m.type_store.types[owner]
+	if name in typ.field_names {
+		return [name]
+	}
+	mut visited := seen.clone()
+	visited << owner
+	for index in b.struct_embeds[owner] {
+		mut child := typ.fields[index]
+		for b.is_pointer_type(child) {
+			child = b.m.type_store.types[child].elem_type
+		}
+		if nested := b.embedded_field_path(child, name, visited) {
+			mut path := [typ.field_names[index]]
+			path << nested
+			return path
+		}
+	}
+	return none
 }
 
 fn (mut b Builder) resolve_type(name_id u32) TypeID {
@@ -14531,6 +14572,16 @@ fn (b &Builder) infer_v_type(id flat.NodeId) u32 {
 	}
 	node := b.a.nodes[int(id)]
 	match node.kind {
+		.struct_init {
+			return flat.source_type_id(node.value)
+		}
+		.prefix {
+			if node.op == .amp && node.children_count > 0 {
+				inner := b.infer_v_type(b.a.child(&node, 0))
+				return flat.source_type_id('&' + flat.source_type_name(inner))
+			}
+			return flat.source_type_int
+		}
 		.string_literal, .string_interp {
 			return flat.source_type_string
 		}

@@ -2,6 +2,8 @@ module fastc
 
 import v.pref
 
+// Use `<-` for invalid expressions: selfhost mode supports the power operator.
+
 fn test_fastc_synthetic_source_positions() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
@@ -24,7 +26,7 @@ fn test_fastc_synthetic_source_positions() {
 	] {
 		for translated in [false, true] {
 			for body in ['if ((if true { true } else { false })) { _ := 1 }',
-				'_ := if ((if true { true } else { false })) { 1 } else { 0 }', '_ := 2 ** 3',
+				'_ := if ((if true { true } else { false })) { 1 } else { 0 }', '_ := 2 <- 3',
 				'if true { _ := 1 }'] {
 				marker := if translated { '@[translated]\n' } else { '' }
 				source := '${marker}module main\n// Padding stays in the original file.\nstruct Record {\n very_long_field_name int\n x int\n}\nenum Shade {\n a\n longer_name\n}\n' +
@@ -39,12 +41,12 @@ fn test_fastc_synthetic_source_positions() {
 					assert message == '', '${source}: ${message}'
 					continue
 				}
-				needle := if is_condition { 'if true { true }' } else { '**' }
+				needle := if is_condition { 'if true { true }' } else { '<-' }
 				offset := source.index(needle) or { panic('missing unsupported expression') }
 				if is_condition {
 					assert message.contains('assign it to a variable first'), '${source}: ${message}'
 				} else {
-					assert message.contains('expression token `**`'), '${source}: ${message}'
+					assert message.contains('expression token `<-`'), '${source}: ${message}'
 				}
 				assert message.contains('at byte ${offset} in synthetic_position.v'), '${source}: ${message}'
 			}

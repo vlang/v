@@ -3567,7 +3567,6 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		local_global_suffix_names_ready:    g.local_global_suffix_names_ready
 		c_typedef_shadow_names:             g.c_typedef_shadow_names
 		c_typedef_shadow_names_ready:       g.c_typedef_shadow_names_ready
-		c_typedef_shadow_names_plain:       g.c_typedef_shadow_names_plain
 		generic_app_cache:                  &GenericAppCache{
 			base: if !isnil(g.generic_app_cache.base) {
 				g.generic_app_cache.base

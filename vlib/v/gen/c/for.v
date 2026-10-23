@@ -293,13 +293,14 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 			mut map_copyback_dirty_var := ''
 			mut map_copyback_guard := MapLoopCopybackGuard{}
 			if clean_container_type is types.Map {
-				c_key := g.map_key_temp_c_type(clean_container_type.key_type)
-				c_val := g.value_c_type(clean_container_type.value_type)
+				map_type := clean_container_type as types.Map
+				c_key := g.map_key_temp_c_type(map_type.key_type)
+				c_val := g.value_c_type(map_type.value_type)
 				container_str := g.expr_to_string(g.a.child(&node, 2))
 				storage_container_type := g.usable_expr_type(g.a.child(&node, 2))
 				container_storage_is_pointer := unalias_type(storage_container_type) is types.Pointer
 				container_is_mutable_value_storage := g.for_in_mutable_value_storage(container_id)
-				mut clean_value_type := *clean_container_type.value_type
+				mut clean_value_type := *map_type.value_type
 				for clean_value_type is types.Alias {
 					clean_value_type = clean_value_type.base_type
 				}
@@ -342,7 +343,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				g.gen_labelled_continue_skip_drops_var(label_state.label)
 				g.writeln('if (${key_values}.all_deleted && ${key_values}.all_deleted[${iter_var}]) continue;')
 				key_slot := '${key_values}.keys + ${iter_var} * ${key_values}.key_bytes'
-				if key_fixed := array_fixed_type(clean_container_type.key_type) {
+				if key_fixed := array_fixed_type(map_type.key_type) {
 					c_elem, dims := g.fixed_array_decl_parts(key_fixed)
 					g.writeln('${c_elem} ${key_var}${dims};')
 					g.writeln('memmove(${key_var}, ${key_slot}, sizeof(${key_var}));')
@@ -350,7 +351,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				} else {
 					g.writeln('${c_key} ${key_var} = *(${c_key}*)(${key_slot});')
 					if has_index && idx_binding_name != '_'
-						&& clean_container_type.key_type is types.String && !node.borrows_map_key() {
+						&& map_type.key_type is types.String && !node.borrows_map_key() {
 						// Authored keys may escape or survive map mutation. Equality
 						// keys only serve read-only lookups while both maps are alive.
 						g.writeln('${key_var} = string__clone(${key_var});')
@@ -366,7 +367,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 					g.writeln('if (${val_slot_var} == 0) ${val_slot_var} = (void*)(${snapshot_val_slot});')
 					val_slot = val_slot_var
 				}
-				if val_fixed := array_fixed_type(clean_container_type.value_type) {
+				if val_fixed := array_fixed_type(map_type.value_type) {
 					c_elem, dims := g.fixed_array_decl_parts(val_fixed)
 					if map_value_by_ref {
 						g.writeln('${c_elem} (*${val_var_})${dims} = (${c_elem} (*)${dims})(${val_slot});')
@@ -381,17 +382,17 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 					g.writeln('${c_val} ${val_var_} = *(${c_val}*)(${val_slot});')
 				}
 				if has_index {
-					key_owner := g.tc.cur_scope.insert_with_owner(idx_binding_name, clean_container_type.key_type)
+					key_owner := g.tc.cur_scope.insert_with_owner(idx_binding_name, map_type.key_type)
 					g.track_shadowed_global_local(idx_binding_name, key_owner)
-					g.declare_local_pointer_storage(key_owner, clean_container_type.key_type is types.Pointer
+					g.declare_local_pointer_storage(key_owner, map_type.key_type is types.Pointer
 						|| c_type_is_pointer_storage(c_key))
 				}
 				val_scope_type := if map_value_by_ref && !val_is_fixed_copy {
 					types.Type(types.Pointer{
-						base_type: clean_container_type.value_type
+						base_type: map_type.value_type
 					})
 				} else {
-					*clean_container_type.value_type
+					*map_type.value_type
 				}
 				val_owner := g.tc.cur_scope.insert_with_owner(elem_binding_name, val_scope_type)
 				g.track_shadowed_global_local(elem_binding_name, val_owner)
@@ -399,10 +400,10 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 					&& !(container_storage_is_pointer && !container_is_mutable_value_storage
 						&& !ref_container_keeps_value))
 				if map_value_by_ref && !val_is_fixed_copy {
-					g.declare_local_indirect_value_type(val_owner, clean_container_type.value_type)
+					g.declare_local_indirect_value_type(val_owner, map_type.value_type)
 				}
 				g.declare_local_pointer_storage(val_owner, val_scope_type is types.Pointer
-					|| (!val_is_fixed_copy && clean_container_type.value_type is types.Pointer)
+					|| (!val_is_fixed_copy && map_type.value_type is types.Pointer)
 					|| c_type_is_pointer_storage(c_val))
 				if node.op == .amp && val_is_fixed_copy {
 					map_writeback_target = if container_storage_is_pointer {
