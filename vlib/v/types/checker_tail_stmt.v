@@ -19511,7 +19511,7 @@ fn (tc &TypeChecker) resolve_type_nonliteral(id flat.NodeId) Type {
 					if fn_node.value in ['clone', 'move', 'reverse'] {
 						return clean_type
 					}
-					if fn_node.value in ['filter', 'sorted', 'sorted_with_compare'] {
+					if fn_node.value == 'filter' || fn_node.value == 'sorted' {
 						if receiver_is_fixed_array(clean_type) {
 							// filtering a fixed array yields a dynamic array
 							return Type(Array{
@@ -19569,6 +19569,15 @@ fn (tc &TypeChecker) resolve_type_nonliteral(id flat.NodeId) Type {
 						return unknown_type('`.wait()` requires an array of threads')
 					}
 					if fn_node.value == 'clone' {
+						return clean_type
+					}
+					// Keep this less common method after the other builtin fast paths.
+					if fn_node.value == 'sorted_with_compare' {
+						if receiver_is_fixed_array(clean_type) {
+							return Type(Array{
+								elem_type: clean_array.elem_type
+							})
+						}
 						return clean_type
 					}
 					elem_type := array_elem_type(clean_array)
