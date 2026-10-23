@@ -1166,7 +1166,7 @@ fn (g &Parser) struct_direct_member_type(receiver_type_id u32, field_name string
 			return field.typ
 		}
 	}
-	mut layout_type := fastc_trim_pointer_suffix(flat.source_type_name(receiver_type_id))
+	mut layout_type := fastc_trim_pointer_suffix(flat.source_type_name(g.underlying_alias_type(receiver_type_id)))
 	if layout_type.starts_with('Array_') {
 		layout_type = 'array'
 	} else if layout_type.starts_with('Map_') {
@@ -1243,7 +1243,7 @@ fn (g &Parser) struct_field_metadata(receiver_type u32, field_name string) ?&Fas
 }
 
 fn (g &Parser) direct_struct_field_metadata(receiver_type u32, field_name string) ?&FastcStructField {
-	mut layout_type := fastc_trim_pointer_suffix(flat.source_type_name(receiver_type))
+	mut layout_type := fastc_trim_pointer_suffix(flat.source_type_name(g.underlying_alias_type(receiver_type)))
 	if layout_type.starts_with('Array_') {
 		layout_type = 'array'
 	} else if layout_type.starts_with('Map_') {
@@ -1258,7 +1258,7 @@ fn (g &Parser) direct_struct_field_metadata(receiver_type u32, field_name string
 }
 
 fn (g &Parser) struct_field_metadata_impl(receiver_type u32, field_name string) ?FastcStructField {
-	mut layout_type := fastc_trim_pointer_suffix(flat.source_type_name(receiver_type))
+	mut layout_type := fastc_trim_pointer_suffix(flat.source_type_name(g.underlying_alias_type(receiver_type)))
 	if layout_type.starts_with('Array_') {
 		layout_type = 'array'
 	} else if layout_type.starts_with('Map_') {
@@ -1344,12 +1344,16 @@ fn (g &Parser) embedded_field_dot_piece_for_type(receiver_type u32, field_name s
 	mut current_type := receiver_type
 	mut piece := ''
 	for storage_name in field.storage_path {
-		separator := if flat.source_type_name(current_type).ends_with('*') { '->' } else { '.' }
+		separator := if fastc_is_pointer_type(g.underlying_alias_type(current_type)) {
+			'->'
+		} else {
+			'.'
+		}
 		piece += separator + fastc_c_identifier(storage_name)
 		current_type = g.struct_direct_member_type(current_type, storage_name)
 		if current_type == 0 { return '' }
 	}
-	piece += if flat.source_type_name(current_type).ends_with('*') { '->' } else { '.' }
+	piece += if fastc_is_pointer_type(g.underlying_alias_type(current_type)) { '->' } else { '.' }
 	return piece
 }
 

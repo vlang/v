@@ -1,5 +1,9 @@
 module builtin
 
+fn C.__builtin_ctzll(x u64) i32
+
+fn C.__builtin_clzll(x u64) i32
+
 // string_index_byte searches exactly size readable bytes, including embedded NULs.
 @[inline]
 fn string_index_byte(data &u8, size int, needle u8) int {
@@ -14,6 +18,27 @@ fn string_index_byte(data &u8, size int, needle u8) int {
 		}
 		return -1
 	} $else {
+		$if prod && !tinyc && !msvc && !native && little_endian {
+			if size >= 8 && size <= 32 {
+				repeated := u64(needle) * u64(0x0101010101010101)
+				mut offset := 0
+				for {
+					mut word := u64(0)
+					// Each unaligned load remains entirely inside the readable span.
+					unsafe { C.memcpy(&word, data + offset, 8) }
+					diff := word ^ repeated
+					mask := (diff - u64(0x0101010101010101)) & ~diff & u64(0x8080808080808080)
+					if mask != 0 {
+						// Borrow can mark later bytes, but the first marked byte is exact.
+						return offset + int(C.__builtin_ctzll(mask) >> 3)
+					}
+					if offset + 8 == size {
+						return -1
+					}
+					offset = if offset + 16 > size { size - 8 } else { offset + 8 }
+				}
+			}
+		}
 		found := unsafe { C.memchr(data, i32(needle), usize(size)) }
 		if isnil(found) {
 			return -1
@@ -22,9 +47,46 @@ fn string_index_byte(data &u8, size int, needle u8) int {
 	}
 }
 
+// string_last_index_byte searches complete words without reading outside the span.
+@[inline]
+fn string_last_index_byte(data &u8, size int, needle u8) int {
+	mut end := size
+	$if prod && !tinyc && !msvc && !native {
+		repeated := u64(needle) * u64(0x0101010101010101)
+		for end >= 8 {
+			start := end - 8
+			mut word := u64(0)
+			// A fixed-size copy permits unaligned views and never crosses their bounds.
+			unsafe { C.memcpy(&word, data + start, 8) }
+			diff := word ^ repeated
+			$if little_endian {
+				// Unlike subtraction, this mask marks only zero bytes: a borrow from
+				// an earlier match cannot create a false match at the high end.
+				low_bits := u64(0x7f7f7f7f7f7f7f7f)
+				mask := ~(((diff & low_bits) + low_bits) | diff | low_bits)
+				if mask != 0 {
+					return start + 7 - int(C.__builtin_clzll(mask) >> 3)
+				}
+			} $else {
+				if (diff - u64(0x0101010101010101)) & ~diff & u64(0x8080808080808080) != 0 {
+					for i := end - 1; i >= start; i-- {
+						if unsafe { data[i] } == needle { return i }
+					}
+				}
+			}
+			end = start
+		}
+	}
+	for i := end - 1; i >= 0; i-- {
+		if unsafe { data[i] } == needle { return i }
+	}
+	return -1
+}
+
 // string_bytes_equal compares readable byte spans without allocating or reading past size.
 @[inline]
 fn string_bytes_equal(a &u8, b &u8, size int) bool {
+	if a == b { return true }
 	$if prod && !tinyc && !msvc && !native {
 		if size >= 0 && size <= 16 {
 			if size >= 8 {
@@ -107,6 +169,34 @@ pub fn vmemcpy(dest voidptr, const_src voidptr, n isize) voidptr {
 	if n == 0 || usize(dest) <= 0xFFFF || usize(const_src) <= 0xFFFF {
 		return dest
 	}
+	$if prod && !tinyc && !msvc && !native {
+		if n > 0 && n <= 64 {
+			// Fixed-size copies become unaligned loads/stores. The source and
+			// destination do not overlap, so overlapping head/tail copies are safe.
+			unsafe {
+				dst := &u8(dest)
+				src := &u8(const_src)
+				if n >= 32 {
+					C.memcpy(dst, src, 32)
+					C.memcpy(dst + n - 32, src + n - 32, 32)
+				} else if n >= 16 {
+					C.memcpy(dst, src, 16)
+					C.memcpy(dst + n - 16, src + n - 16, 16)
+				} else if n >= 8 {
+					C.memcpy(dst, src, 8)
+					C.memcpy(dst + n - 8, src + n - 8, 8)
+				} else if n >= 4 {
+					C.memcpy(dst, src, 4)
+					C.memcpy(dst + n - 4, src + n - 4, 4)
+				} else {
+					dst[0] = src[0]
+					dst[n >> 1] = src[n >> 1]
+					dst[n - 1] = src[n - 1]
+				}
+			}
+			return dest
+		}
+	}
 	unsafe {
 		return C.memcpy(dest, const_src, n)
 	}
@@ -124,6 +214,52 @@ pub fn vmemmove(dest voidptr, const_src voidptr, n isize) voidptr {
 	}
 	if n == 0 || usize(dest) <= 0xFFFF || usize(const_src) <= 0xFFFF {
 		return dest
+	}
+	$if prod && !tinyc && !msvc && !native {
+		if n > 0 && n <= 64 {
+			// Load both ends before storing either: the source and destination may overlap.
+			unsafe {
+				dst := &u8(dest)
+				src := &u8(const_src)
+				if n >= 32 {
+					mut head := [32]u8{}
+					mut tail := [32]u8{}
+					C.memcpy(&head[0], src, 32)
+					C.memcpy(&tail[0], src + n - 32, 32)
+					C.memcpy(dst, &head[0], 32)
+					C.memcpy(dst + n - 32, &tail[0], 32)
+				} else if n >= 16 {
+					mut head := [16]u8{}
+					mut tail := [16]u8{}
+					C.memcpy(&head[0], src, 16)
+					C.memcpy(&tail[0], src + n - 16, 16)
+					C.memcpy(dst, &head[0], 16)
+					C.memcpy(dst + n - 16, &tail[0], 16)
+				} else if n >= 8 {
+					mut head := u64(0)
+					mut tail := u64(0)
+					C.memcpy(&head, src, 8)
+					C.memcpy(&tail, src + n - 8, 8)
+					C.memcpy(dst, &head, 8)
+					C.memcpy(dst + n - 8, &tail, 8)
+				} else if n >= 4 {
+					mut head := u32(0)
+					mut tail := u32(0)
+					C.memcpy(&head, src, 4)
+					C.memcpy(&tail, src + n - 4, 4)
+					C.memcpy(dst, &head, 4)
+					C.memcpy(dst + n - 4, &tail, 4)
+				} else {
+					head := src[0]
+					middle := src[n >> 1]
+					tail := src[n - 1]
+					dst[0] = head
+					dst[n >> 1] = middle
+					dst[n - 1] = tail
+				}
+			}
+			return dest
+		}
 	}
 	unsafe {
 		return C.memmove(dest, const_src, n)

@@ -41,6 +41,7 @@ struct SourceTypeEntry {
 	text  string
 	hash  u64
 	shape SourceTypeShape
+	id    u32
 }
 
 // SourceTypeShape records spelling syntax once when a type is interned.
@@ -72,6 +73,9 @@ pub enum SourceTypeShape {
 	pointer_map
 	pointer_option
 	pointer_chain
+	bare_generic
+	anonymous_struct
+	generic_c_name
 }
 
 fn source_type_spelling_shape(text string) SourceTypeShape {
@@ -109,6 +113,15 @@ fn source_type_spelling_shape(text string) SourceTypeShape {
 		'u64', 'f32', 'f64', 'rune', 'isize', 'usize', 'voidptr', 'byteptr', 'charptr'] {
 		shape.set(.builtin_alias)
 	}
+	if text == 'struct' || text.ends_with('.struct') { shape.set(.anonymous_struct) }
+	if text.contains('_T_') { shape.set(.generic_c_name) }
+	mut start := 0
+	mut end := text.len
+	for start < end && source_type_space(text[start]) { start++ }
+	for end > start && source_type_space(text[end - 1]) { end-- }
+	if end - start == 1 && text[start] >= `A` && text[start] <= `Z` && text[start] != `C` {
+		shape.set(.bare_generic)
+	}
 	return shape
 }
 
@@ -130,13 +143,17 @@ struct SourceTypeIndex {
 
 __global g_source_types &SourceTypeTable
 __global g_source_types_lock u32
-__global g_source_type_recent_ids [4096]u32
+__global g_source_type_recent_entries [16384]voidptr
 
 fn source_type_lock() {
 	for {
 		mut expected := u32(0)
 		if C.atomic_compare_exchange_strong_u32(&g_source_types_lock, &expected, 1) {
 			return
+		}
+		// Readers need no lock; contending writers only retry once it is free.
+		for C.atomic_load_u32(&g_source_types_lock) != 0 {
+			C.cpu_relax()
 		}
 	}
 }
@@ -236,34 +253,56 @@ fn source_type_find(table &SourceTypeTable, index &SourceTypeIndex, text string,
 // Zero denotes an empty spelling. IDs are spelling identities, not checked types:
 // resolving an unqualified name still requires its module and import context.
 // Existing spellings are read without taking the insertion lock.
-@[direct_array_access]
+@[direct_array_access; inline]
 pub fn source_type_id(text string) u32 {
 	if text.len == 0 {
 		return 0
 	}
-	// Only immutable process-owned IDs are cached. Inputs can be borrowed from
+	// Only immutable process-owned entries are cached. Inputs can be borrowed from
 	// a disposable arena, so every hit still checks the canonical spelling.
 	slot := source_type_recent_slot(text)
-	cached_id := C.atomic_load_u32(&g_source_type_recent_ids[slot])
-	if cached_id != 0 {
-		cached := source_type_name(cached_id)
-		if cached.len == text.len && (cached.str == text.str
-			|| unsafe { C.memcmp(cached.str, text.str, usize(text.len)) == 0 }) {
-			return cached_id
-		}
+	cached := source_type_recent_entry(slot)
+	if !isnil(cached) && cached.text == text {
+		return cached.id
 	}
 	id := source_type_id_uncached(text)
-	C.atomic_store_u32(&g_source_type_recent_ids[slot], id)
+	entry := source_type_entry(source_type_table_load(), id)
+	$if x32 {
+		C.atomic_store_u32(voidptr(&g_source_type_recent_entries[slot]), u32(voidptr(entry)))
+	} $else {
+		C.atomic_store_u64(voidptr(&g_source_type_recent_entries[slot]), u64(voidptr(entry)))
+	}
 	return id
+}
+
+@[direct_array_access; inline]
+fn source_type_recent_entry(slot int) &SourceTypeEntry {
+	$if x32 {
+		return unsafe { &SourceTypeEntry(voidptr(C.atomic_load_u32(voidptr(&g_source_type_recent_entries[slot])))) }
+	} $else {
+		return unsafe { &SourceTypeEntry(voidptr(C.atomic_load_u64(voidptr(&g_source_type_recent_entries[slot])))) }
+	}
 }
 
 @[direct_array_access; inline]
 fn source_type_recent_slot(text string) int {
 	// Equal spellings share a slot even when callers borrow different buffers.
 	// The complete canonical spelling is still checked before accepting a hit.
-	key := u32(text.len) ^ (u32(text[0]) << 1) ^ (u32(text[text.len >> 1]) << 5) ^
-		(u32(text[text.len - 1]) << 9)
-	return int((key ^ (key >> 12)) & 4095)
+	mut key := u64(text.len)
+	if text.len >= 8 {
+		mut first := u64(0)
+		mut last := u64(0)
+		// Word copies stay within the borrowed slice, including unaligned views.
+		unsafe {
+			vmemcpy(&first, text.str, 8)
+			vmemcpy(&last, text.str + text.len - 8, 8)
+		}
+		key ^= first ^ (last * u64(0x9e3779b97f4a7c15))
+	} else {
+		key ^= (u64(text[0]) << 8) ^ (u64(text[text.len >> 1]) << 16) ^ (u64(text[text.len - 1]) << 24)
+	}
+	key = (key ^ (key >> 32)) * u64(0x9e3779b97f4a7c15)
+	return int((key >> 32) & 16383)
 }
 
 fn source_type_id_uncached(text string) u32 {
@@ -278,6 +317,9 @@ fn source_type_id_uncached(text string) u32 {
 			return id
 		}
 	}
+	// Spelling classification is independent of the shared table. Keep it out
+	// of the insertion critical section so other writers can publish meanwhile.
+	shape := source_type_spelling_shape(text)
 	source_type_lock()
 	defer { C.atomic_store_u32(&g_source_types_lock, 0) }
 	table = source_type_table_load()
@@ -334,7 +376,8 @@ fn source_type_id_uncached(text string) u32 {
 		*entry = SourceTypeEntry{
 			text:  tos(bytes, text.len)
 			hash:  hashed
-			shape: source_type_spelling_shape(text)
+			shape: shape
+			id:    id
 		}
 	}
 	C.atomic_store_u32(&table.count, id)

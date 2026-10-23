@@ -1,5 +1,6 @@
 module types
 
+import strings
 import v.flat
 
 // Type aliases type values used by types.
@@ -35,6 +36,23 @@ pub struct Void {
 
 // Unknown represents unknown data used by types.
 pub struct Unknown {
+	UnknownDataRef = empty_unknown_data
+}
+
+// == compares Unknown payloads by value.
+// Cast payload references to compare addresses before inspecting their fields.
+@[inline]
+pub fn (a Unknown) == (b Unknown) bool {
+	return voidptr(a.UnknownDataRef) == voidptr(b.UnknownDataRef) || *a.UnknownDataRef == *b.UnknownDataRef
+}
+
+const empty_unknown_data = &UnknownData{}
+
+// UnknownDataRef references the immutable payload of Unknown.
+pub type UnknownDataRef = &UnknownData
+
+// UnknownData stores the immutable fields of Unknown.
+pub struct UnknownData {
 pub:
 	reason string
 }
@@ -99,6 +117,22 @@ pub:
 
 // ArrayFixed represents array fixed data used by types.
 pub struct ArrayFixed {
+	ArrayFixedDataRef = empty_array_fixed_data
+}
+
+// == compares ArrayFixed payloads by value.
+@[inline]
+pub fn (a ArrayFixed) == (b ArrayFixed) bool {
+	return voidptr(a.ArrayFixedDataRef) == voidptr(b.ArrayFixedDataRef) || *a.ArrayFixedDataRef == *b.ArrayFixedDataRef
+}
+
+const empty_array_fixed_data = &ArrayFixedData{}
+
+// ArrayFixedDataRef references the immutable payload of ArrayFixed.
+pub type ArrayFixedDataRef = &ArrayFixedData
+
+// ArrayFixedData stores the immutable fields of ArrayFixed.
+pub struct ArrayFixedData {
 pub:
 	elem_type &Type = empty_type
 	len       int
@@ -107,6 +141,22 @@ pub:
 
 // Channel represents channel data used by types.
 pub struct Channel {
+	ChannelDataRef = empty_channel_data
+}
+
+// == compares Channel payloads by value.
+@[inline]
+pub fn (a Channel) == (b Channel) bool {
+	return voidptr(a.ChannelDataRef) == voidptr(b.ChannelDataRef) || *a.ChannelDataRef == *b.ChannelDataRef
+}
+
+const empty_channel_data = &ChannelData{}
+
+// ChannelDataRef references the immutable payload of Channel.
+pub type ChannelDataRef = &ChannelData
+
+// ChannelData stores the immutable fields of Channel.
+pub struct ChannelData {
 pub:
 	elem_type &Type = empty_type
 	is_mut    bool
@@ -114,6 +164,22 @@ pub:
 
 // Map represents map data used by types.
 pub struct Map {
+	MapDataRef = empty_map_data
+}
+
+// == compares Map payloads by value.
+@[inline]
+pub fn (a Map) == (b Map) bool {
+	return voidptr(a.MapDataRef) == voidptr(b.MapDataRef) || *a.MapDataRef == *b.MapDataRef
+}
+
+const empty_map_data = &MapData{}
+
+// MapDataRef references the immutable payload of Map.
+pub type MapDataRef = &MapData
+
+// MapData stores the immutable fields of Map.
+pub struct MapData {
 pub:
 	key_type   &Type = empty_type
 	value_type &Type = empty_type
@@ -127,6 +193,22 @@ pub:
 
 // FnType represents fn type data used by types.
 pub struct FnType {
+	FnTypeDataRef = empty_fn_type_data
+}
+
+// == compares FnType payloads by value.
+@[inline]
+pub fn (a FnType) == (b FnType) bool {
+	return voidptr(a.FnTypeDataRef) == voidptr(b.FnTypeDataRef) || *a.FnTypeDataRef == *b.FnTypeDataRef
+}
+
+const empty_fn_type_data = &FnTypeData{}
+
+// FnTypeDataRef references the immutable payload of FnType.
+pub type FnTypeDataRef = &FnTypeData
+
+// FnTypeData stores the immutable fields of FnType.
+pub struct FnTypeData {
 pub:
 	params      []FnParam
 	return_type &Type = empty_type
@@ -178,6 +260,22 @@ pub:
 
 // Alias represents alias data used by types.
 pub struct Alias {
+	AliasDataRef = empty_alias_data
+}
+
+// == compares Alias payloads by value.
+@[inline]
+pub fn (a Alias) == (b Alias) bool {
+	return voidptr(a.AliasDataRef) == voidptr(b.AliasDataRef) || *a.AliasDataRef == *b.AliasDataRef
+}
+
+const empty_alias_data = &AliasData{}
+
+// AliasDataRef references the immutable payload of Alias.
+pub type AliasDataRef = &AliasData
+
+// AliasData stores the immutable fields of Alias.
+pub struct AliasData {
 pub:
 	name_id   u32
 	base_type &Type = empty_type
@@ -185,8 +283,24 @@ pub:
 
 // MultiReturn represents multi return data used by types.
 pub struct MultiReturn {
+	MultiReturnDataRef = empty_multi_return_data
+}
+
+// == compares MultiReturn payloads by value.
+@[inline]
+pub fn (a MultiReturn) == (b MultiReturn) bool {
+	return voidptr(a.MultiReturnDataRef) == voidptr(b.MultiReturnDataRef) || *a.MultiReturnDataRef == *b.MultiReturnDataRef
+}
+
+const empty_multi_return_data = &MultiReturnData{}
+
+// MultiReturnDataRef references the immutable payload of MultiReturn.
+pub type MultiReturnDataRef = &MultiReturnData
+
+// MultiReturnData stores the immutable fields of MultiReturn.
+pub struct MultiReturnData {
 pub:
-	types []Type
+	types []types.Type
 }
 
 // new_type_reference allocates a shallow copy of value with stable reference storage.
@@ -371,16 +485,19 @@ pub fn generic_base_name(name string) string {
 }
 
 // is_pointer reports whether is pointer applies in types.
+@[inline]
 pub fn (t &Type) is_pointer() bool {
 	return t is Pointer
 }
 
 // is_string reports whether is string applies in types.
+@[inline]
 pub fn (t &Type) is_string() bool {
 	return t is String
 }
 
 // is_integer reports whether is integer applies in types.
+@[inline]
 pub fn (t &Type) is_integer() bool {
 	if t is Primitive {
 		return t.props.has(.integer)
@@ -418,6 +535,7 @@ pub fn unsigned_shift_result_type(t Type) Type {
 }
 
 // is_float reports whether is float applies in types.
+@[inline]
 pub fn (t &Type) is_float() bool {
 	if t is Primitive {
 		return t.props.has(.float)
@@ -426,19 +544,26 @@ pub fn (t &Type) is_float() bool {
 }
 
 // name returns name data for Type.
+@[inline]
 pub fn (t &Type) name() string {
-	if t is Void {
-		return 'void'
+	return match t {
+		Void { 'void' }
+		Struct, Alias, Interface, Enum, SumType { flat.source_type_name(t.name_id) }
+		Primitive { prim_name_from(t.props, t.size) }
+		String { 'string' }
+		Unknown { 'unknown' }
+		Nil { 'nil' }
+		None { 'none' }
+		Char { 'char' }
+		Rune { 'rune' }
+		ISize { 'isize' }
+		USize { 'usize' }
+		else { t.composite_name() }
 	}
-	if t is Struct {
-		return flat.source_type_name(t.name_id)
-	}
-	if t is Alias {
-		return flat.source_type_name(t.name_id)
-	}
-	if t is Primitive {
-		return prim_name_from(t.props, t.size)
-	}
+}
+
+@[direct_array_access]
+fn (t &Type) composite_name() string {
 	if t is Pointer {
 		if t.base_type is Void {
 			return 'voidptr'
@@ -448,18 +573,6 @@ pub fn (t &Type) name() string {
 	if t is Array {
 		return '[]${nested_type_name(t.elem_type)}'
 	}
-	if t is Interface {
-		return flat.source_type_name(t.name_id)
-	}
-	if t is Enum {
-		return flat.source_type_name(t.name_id)
-	}
-	if t is SumType {
-		return flat.source_type_name(t.name_id)
-	}
-	if t is String {
-		return 'string'
-	}
 	if t is OptionType {
 		return '?${nested_type_name(t.base_type)}'
 	}
@@ -467,30 +580,33 @@ pub fn (t &Type) name() string {
 		return '!${nested_type_name(t.base_type)}'
 	}
 	if t is FnType {
-		mut s := 'fn('
+		mut s := strings.new_builder(32 + t.params.len * 8)
+		s.write_string('fn(')
 		for i in 0 .. t.params.len {
 			if i > 0 {
-				s += ', '
+				s.write_string(', ')
 			}
 			param := t.params[i].typ
 			if t.params[i].is_mut {
-				s += 'mut '
+				s.write_string('mut ')
 				if param is Pointer {
-					s += nested_type_name(param.base_type)
+					s.write_string(nested_type_name(param.base_type))
 					continue
 				}
 			}
 			if t.is_variadic && i == t.params.len - 1 && param is Array {
-				s += '...${nested_type_name(param.elem_type)}'
+				s.write_string('...')
+				s.write_string(nested_type_name(param.elem_type))
 			} else {
-				s += nested_type_name(param)
+				s.write_string(nested_type_name(param))
 			}
 		}
-		s += ')'
+		s.write_u8(`)`)
 		if t.return_type !is Void {
-			s += ' ${nested_type_name(t.return_type)}'
+			s.write_u8(` `)
+			s.write_string(nested_type_name(t.return_type))
 		}
-		return s
+		return s.str()
 	}
 	if t is Map {
 		return 'map[${nested_type_name(t.key_type)}]${nested_type_name(t.value_type)}'
@@ -507,27 +623,6 @@ pub fn (t &Type) name() string {
 			return 'chan mut ${nested_type_name(t.elem_type.base_type)}'
 		}
 		return 'chan ${nested_type_name(t.elem_type)}'
-	}
-	if t is Unknown {
-		return 'unknown'
-	}
-	if t is Nil {
-		return 'nil'
-	}
-	if t is None {
-		return 'none'
-	}
-	if t is Char {
-		return 'char'
-	}
-	if t is Rune {
-		return 'rune'
-	}
-	if t is ISize {
-		return 'isize'
-	}
-	if t is USize {
-		return 'usize'
 	}
 	if t is MultiReturn {
 		mut parts := []string{cap: t.types.len}
@@ -682,6 +777,7 @@ pub fn (value SumType) name() string {
 }
 
 // source_type_id returns an interned spelling, reusing nominal type identities directly.
+@[inline]
 pub fn (t &Type) source_type_id() u32 {
 	return match t {
 		Struct, Alias, Enum, Interface, SumType { t.name_id }

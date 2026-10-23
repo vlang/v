@@ -4458,7 +4458,7 @@ fn (mut g FlatGen) detached_spawn_aggregate_cleanup(typ types.Type, expr string)
 	sorted_names.sort_with_compare(compare_ownership_source_type_ids)
 	for name_id in sorted_names {
 		name := flat.source_type_name(name_id)
-		parsed := g.tc.parse_type(name_id)
+		parsed := g.tc.parse_canonical_type_cached(name_id)
 		if name.starts_with('C.') || name in g.tc.unions || name == 'thread'
 			|| name.ends_with('.thread') || name.starts_with('thread ')
 			|| g.is_generic_struct(name) || g.type_contains_generic_placeholder(parsed)
@@ -4466,9 +4466,7 @@ fn (mut g FlatGen) detached_spawn_aggregate_cleanup(typ types.Type, expr string)
 			|| g.ownership_struct_destructor_method(name_id).len > 0 {
 			continue
 		}
-		key := ownership_drop_expansion_key(types.Type(types.Struct{
-			name_id: name_id
-		}))
+		key := ownership_drop_expansion_key(parsed)
 		helpers[key] = name_id
 	}
 	mut old_helpers := g.recursive_drop_helpers.move()
@@ -4492,26 +4490,25 @@ fn (mut g FlatGen) detached_spawn_aggregate_cleanup(typ types.Type, expr string)
 		g.add_spawn_wrapper_def('extern IError builtin__error_sentinel;')
 	}
 	for name_id in new_names {
-		name := flat.source_type_name(name_id)
 		helper_name := g.ownership_recursive_drop_helper_name(name_id)
-		g.add_spawn_wrapper_def('static void ${helper_name}(${g.struct_cname(name)}* _value);')
+		g.add_spawn_wrapper_def('static void ${helper_name}(${g.ownership_recursive_drop_helper_c_type(name_id)}* _value);')
 	}
 	for name_id in new_names {
 		name := flat.source_type_name(name_id)
 		old_module := g.tc.cur_module
 		old_file := g.tc.cur_file
 		old_tmp_count := g.tmp_count
-		g.tc.cur_module = g.tc.struct_modules[name] or { old_module }
+		g.tc.cur_module = g.tc.struct_modules[name] or {
+			module_from_qualified_name(name.all_before('['))
+		}
 		g.tc.cur_file = g.tc.struct_files[name] or { old_file }
 		g.tmp_count = 0
-		body := g.ownership_drop_value_to_string(types.Type(types.Struct{
-			name_id: name_id
-		}), '*_value')
+		body := g.ownership_drop_value_string(g.tc.parse_canonical_type_cached(name_id), '*_value', true)
 		g.tmp_count = old_tmp_count
 		g.tc.cur_module = old_module
 		g.tc.cur_file = old_file
 		helper_name := g.ownership_recursive_drop_helper_name(name_id)
-		g.add_spawn_wrapper_def('static void ${helper_name}(${g.struct_cname(name)}* _value) { ${body} }')
+		g.add_spawn_wrapper_def('static void ${helper_name}(${g.ownership_recursive_drop_helper_c_type(name_id)}* _value) { ${body} }')
 	}
 	return g.ownership_drop_value_to_string(typ, expr)
 }
@@ -11190,6 +11187,7 @@ fn (g &FlatGen) embedded_receiver_type_names_match(actual_id u32, expected_id u3
 }
 
 // current_param_type returns current param type data for FlatGen.
+@[inline]
 fn (g &FlatGen) current_param_type(name string) ?&types.Type {
 	if g.cur_param_types.len == 0 {
 		return none
@@ -11197,6 +11195,10 @@ fn (g &FlatGen) current_param_type(name string) ?&types.Type {
 	if g.cur_param_name_bits != 0 && g.cur_param_name_bits & current_param_name_bit(name) == 0 {
 		return none
 	}
+	return g.current_param_type_present(name)
+}
+
+fn (g &FlatGen) current_param_type_present(name string) ?&types.Type {
 	typ := g.current_param_type_value(name)?
 	if g.cur_mut_params.len > 0 && g.current_mut_param_binding_is_shadowed(name) {
 		return none
@@ -17160,12 +17162,23 @@ fn (mut g FlatGen) c_extern_referenced_symbols() map[string]bool {
 	return g.c_extern_refs
 }
 
+@[inline]
 fn (g &FlatGen) collect_c_extern_referenced_symbols_from_node(id flat.NodeId, mut refs map[string]bool) {
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
 		return
 	}
-	node := g.a.node(id)
-	g.collect_c_extern_ref_from_node_into(node, mut refs)
+	// Symbol collection does not grow the AST, so recursive calls can borrow nodes.
+	node := unsafe { &g.a.nodes[int(id)] }
+	if (node.kind == .ident && node.value.starts_with('C.'))
+		|| (node.kind == .selector && node.children_count > 0 && node.value.len > 0) {
+		g.collect_c_extern_ref_from_node_into(node, mut refs)
+	}
+	if node.children_count > 0 {
+		g.collect_c_extern_referenced_symbols_from_children(node, mut refs)
+	}
+}
+
+fn (g &FlatGen) collect_c_extern_referenced_symbols_from_children(node &flat.Node, mut refs map[string]bool) {
 	for i in 0 .. node.children_count {
 		g.collect_c_extern_referenced_symbols_from_node(g.a.child(node, i), mut refs)
 	}
@@ -19802,8 +19815,8 @@ fn (mut g FlatGen) resolve_fn_ptr_type(typ string) string {
 }
 
 fn (mut g FlatGen) register_fn_ptr_type(typ string) string {
-	if typ in g.fn_ptr_types {
-		return g.fn_ptr_types[typ]
+	if cached := g.fn_ptr_types[typ] {
+		return cached
 	}
 	name := naming.fn_ptr_type_name(typ)
 	g.fn_ptr_types[typ] = name

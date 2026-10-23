@@ -218,3 +218,42 @@ fn test_infix_primitive_keeps_generic_alias_redirect_metadata() {
 		}
 	}
 }
+
+fn unknown_query_wrappers(typ &Type) []Type {
+	return [
+		Type(Alias{ base_type: typ }),
+		Type(Array{ elem_type: typ }),
+		Type(ArrayFixed{ elem_type: typ, len: 2 }),
+		Type(Map{ key_type: typ, value_type: builtin_int_type }),
+		Type(Map{ key_type: builtin_int_type, value_type: typ }),
+		Type(Channel{ elem_type: typ }),
+		Type(Pointer{ base_type: typ }),
+		Type(OptionType{ base_type: typ }),
+		Type(ResultType{ base_type: typ }),
+		Type(FnType{ params: [FnParam{ typ: typ }], return_type: builtin_int_type }),
+		Type(FnType{ return_type: typ }),
+		Type(MultiReturn{ types: [Type(int_), *typ] }),
+	]
+}
+
+fn test_unknown_query_recurses_through_all_composite_types() {
+	known := Type(int_)
+	unknown := Type(Unknown{ reason: 'provisional' })
+	assert !type_contains_unknown(known)
+	assert type_contains_unknown(unknown)
+	for wrapped in unknown_query_wrappers(known) {
+		assert !type_contains_unknown(wrapped)
+	}
+	for wrapped in unknown_query_wrappers(unknown) {
+		assert type_contains_unknown(wrapped)
+		for nested in unknown_query_wrappers(wrapped) {
+			assert type_contains_unknown(nested)
+		}
+	}
+	assert !type_contains_unknown(Type(FnType{}))
+	assert !type_contains_unknown(Type(MultiReturn{}))
+	for leaf in [Type(void_), Type(string_), Type(char_), Type(rune_), Type(isize_), Type(usize_),
+		Type(Nil{}), Type(None{}), Type(Struct{}), Type(Interface{}), Type(Enum{}), Type(SumType{})] {
+		assert !type_contains_unknown(leaf)
+	}
+}
