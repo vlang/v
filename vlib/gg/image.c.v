@@ -5,7 +5,7 @@ module gg
 import os
 import stbi
 import sokol.gfx
-import sokol.sgl
+import gg.render
 
 // Image holds the fields and data needed to
 // represent a bitmap/pixel based image in memory.
@@ -461,34 +461,40 @@ pub fn (ctx &Context) draw_image_with_config(config DrawImageConfig) {
 
 	// FIXME: is this okay?
 	match config.effect {
-		.alpha { sgl.load_pipeline(ctx.pipeline.alpha) }
-		.add { sgl.load_pipeline(ctx.pipeline.add) }
+		.alpha { ctx.r.load_pipeline(ctx.pipeline.alpha) }
+		.add { ctx.r.load_pipeline(ctx.pipeline.add) }
 	}
 
-	sgl.enable_texture()
-	sgl.texture(img.simg, img.ssmp)
+	ctx.r.enable_texture()
+	ctx.r.texture(img.simg, img.ssmp)
+	// keep the CPU rasterizer's texture registry in sync (no-op on GPU path)
+	if ctx.r != unsafe { nil } && img.data != unsafe { nil } {
+		filter_flag := if img.texture_filter == .linear { 1 } else { 0 }
+		ctx.r.register_image(int(img.simg.id), img.data, img.width, img.height,
+			4, filter_flag)
+	}
 
 	if config.rotation != 0 {
 		width := img_rect.width * ctx.scale
 		height := (if img_rect.height > 0 { img_rect.height } else { img.height }) * ctx.scale
 
-		sgl.push_matrix()
-		sgl.translate(x0 + (width / 2), y0 + (height / 2), 0)
-		sgl.rotate(sgl.rad(-config.rotation), 0, 0, 1)
-		sgl.translate(-x0 - (width / 2), -y0 - (height / 2), 0)
+		ctx.r.push_matrix()
+		ctx.r.translate(x0 + (width / 2), y0 + (height / 2), 0)
+		ctx.r.rotate(ctx.r.rad(-config.rotation), 0, 0, 1)
+		ctx.r.translate(-x0 - (width / 2), -y0 - (height / 2), 0)
 	}
 
-	sgl.begin_quads()
-	sgl.c4b(config.color.r, config.color.g, config.color.b, config.color.a)
-	sgl.v3f_t2f(x0, y0, config.z, u0f, v0f)
-	sgl.v3f_t2f(x1, y0, config.z, u1f, v0f)
-	sgl.v3f_t2f(x1, y1, config.z, u1f, v1f)
-	sgl.v3f_t2f(x0, y1, config.z, u0f, v1f)
-	sgl.end()
+	ctx.r.begin_quads()
+	ctx.r.c4b(config.color.r, config.color.g, config.color.b, config.color.a)
+	ctx.r.v3f_t2f(x0, y0, config.z, u0f, v0f)
+	ctx.r.v3f_t2f(x1, y0, config.z, u1f, v0f)
+	ctx.r.v3f_t2f(x1, y1, config.z, u1f, v1f)
+	ctx.r.v3f_t2f(x0, y1, config.z, u0f, v1f)
+	ctx.r.end()
 
 	if config.rotation != 0 {
-		sgl.pop_matrix()
+		ctx.r.pop_matrix()
 	}
 
-	sgl.disable_texture()
+	ctx.r.disable_texture()
 }
