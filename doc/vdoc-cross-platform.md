@@ -17,4 +17,5 @@ documented as one. Constants that follow each other and are available on the sam
 are documented together. Differences inside string literals remain distinct constant values.
 
 Examples, with `-check-examples` or `-unsafe-run-examples`, are only checked for the symbols
-that are available on the platform that `v doc` runs on.
+that are available on the platform that `v doc` runs on. When declarations have different
+examples, the examples of the declaration for that platform are selected.

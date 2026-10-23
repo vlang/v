@@ -372,6 +372,19 @@ pub fn available_on_host(node DocNode) bool {
 	return platforms.len == 0 || host_platform() in platforms
 }
 
+// declarations_on_host returns the declarations of node whose examples can run on this host.
+// Each declaration is checked separately because its variants can have different examples.
+pub fn declarations_on_host(node DocNode) []DocNode {
+	mut declarations := []DocNode{}
+	if node.platforms.len == 0 || host_platform() in node.platforms {
+		declarations << node
+	}
+	for variant in node.variants {
+		declarations << declarations_on_host(variant)
+	}
+	return declarations
+}
+
 // all_platforms returns the platforms that a symbol is available on, with all its variants.
 fn all_platforms(node DocNode) []Platform {
 	mut platforms := node.platforms.clone()

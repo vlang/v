@@ -231,3 +231,31 @@ fn test_declaration_shape_preserves_string_literal_contents() {
 	assert declaration_shape("pub const text = 'one\n  two'") != declaration_shape("pub const text = 'one\n two'")
 	assert declaration_shape("pub const text = r'one\\' // ignored") == declaration_shape("pub const text = r'one\\'")
 }
+
+fn test_cross_selects_the_host_variants_examples() {
+	host := host_platform()
+	if host == .cross {
+		return
+	}
+	other := if host == .windows { Platform.linux } else { Platform.windows }
+	host_suffix := if host == .macos { 'darwin' } else { host.str() }
+	dir := os.join_path(os.vtmp_dir(), 'vdoc_cross_host_examples_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	os.write_file(os.join_path(dir, 'a_${other}.c.v'), 'module demo\n\n// shared is the other form.\n// Example: assert false\npub fn shared() int { return 1 }\n')!
+	os.write_file(os.join_path(dir, 'b_${host_suffix}.c.v'), "module demo\n\n// shared is the host form.\n// Example: assert true\npub fn shared() string { return '' }\n")!
+	d := generate(dir, true, true, .cross)!
+	node := d.contents['shared']!
+	assert node.platforms == [other]
+	assert available_on_host(node)
+	declarations := declarations_on_host(node)
+	assert declarations.len == 1
+	assert declarations[0].platforms == [host]
+	assert declarations[0].examples().map(it.trim_space()) == ['assert true']
+	assert declarations_on_host(DocNode{
+		content: 'pub fn everywhere()'
+	}).len == 1
+	assert declarations_on_host(DocNode{
+		platforms: [other]
+	}) == []
+}

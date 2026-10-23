@@ -9,8 +9,10 @@ import term
 fn (mut vd VDoc) process_all_examples(contents []doc.DocNode) {
 	for cn in contents {
 		// With `-os cross`, the symbols of other platforms can not be compiled here.
-		if cn.content.len > 0 && doc.available_on_host(cn) {
-			vd.run_examples(cn)
+		for declaration in doc.declarations_on_host(cn) {
+			if declaration.content.len > 0 {
+				vd.run_examples(declaration)
+			}
 		}
 		vd.process_all_examples(cn.children)
 	}
