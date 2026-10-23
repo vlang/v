@@ -136,6 +136,8 @@ pub fn (mut c SSLCerts) cleanup() {
 
 // SSLConn is the current connection
 pub struct SSLConn {
+mut:
+	initialized bool
 pub:
 	config SSLConnectConfig
 pub mut:
@@ -596,7 +598,10 @@ pub fn new_ssl_conn(config SSLConnectConfig) !&SSLConn {
 		duration:     config.read_timeout
 		read_timeout: config.read_timeout
 	}
-	conn.init()!
+	conn.init() or {
+		conn.shutdown() or {}
+		return err
+	}
 	return conn
 }
 
@@ -612,22 +617,23 @@ pub fn (mut s SSLConn) close() ! {
 	s.shutdown()!
 }
 
-// shutdown terminates the ssl connection and does cleanup
+// shutdown releases the TLS context and any owned socket, including before a connection opens.
 pub fn (mut s SSLConn) shutdown() ! {
 	$if trace_ssl ? {
 		eprintln(@METHOD)
 	}
-	if !s.opened {
+	if !s.opened && !s.initialized {
 		return error('net.mbedtls SSLConn.shutdown, connection was not open')
 	}
-	// Mark closed before freeing so a second shutdown (e.g. a worker defer racing
-	// close_idle) is a harmless no-op rather than a double-free of the mbedtls
-	// contexts below.
+	// Contexts also exist before a successful handshake. Mark them released before
+	// freeing so sequential repeated shutdown calls cannot free them twice.
 	s.opened = false
+	s.initialized = false
 	if unsafe { s.certs != nil } {
 		C.mbedtls_x509_crt_free(&s.certs.cacert)
 		C.mbedtls_x509_crt_free(&s.certs.client_cert)
 		C.mbedtls_pk_free(&s.certs.client_key)
+		s.certs = unsafe { nil }
 	}
 	C.mbedtls_ssl_free(&s.ssl)
 	C.mbedtls_ssl_config_free(&s.conf)
@@ -639,6 +645,7 @@ pub fn (mut s SSLConn) shutdown() ! {
 		}
 	}
 	if s.owns_socket {
+		s.owns_socket = false
 		net.shutdown(s.handle)
 		net.close(s.handle)!
 	}
@@ -666,6 +673,7 @@ fn (mut s SSLConn) init() ! {
 	C.mbedtls_ssl_init(&s.ssl)
 	C.mbedtls_ssl_config_init(&s.conf)
 	init_rng(mut s.ctr_drbg, mut s.entropy)!
+	s.initialized = true
 	mut ret := 0
 	ret = C.mbedtls_ssl_config_defaults(&s.conf, C.MBEDTLS_SSL_IS_CLIENT,
 		C.MBEDTLS_SSL_TRANSPORT_STREAM, C.MBEDTLS_SSL_PRESET_DEFAULT)
@@ -778,21 +786,7 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ! {
 	mut connected := false
 	defer {
 		if !connected {
-			if unsafe { s.certs != nil } {
-				C.mbedtls_x509_crt_free(&s.certs.cacert)
-				C.mbedtls_x509_crt_free(&s.certs.client_cert)
-				C.mbedtls_pk_free(&s.certs.client_key)
-				s.certs = unsafe { nil }
-			}
-			C.mbedtls_ssl_free(&s.ssl)
-			C.mbedtls_ssl_config_free(&s.conf)
-			free_rng(mut s.ctr_drbg, mut s.entropy)
-			if s.alpn_list != unsafe { nil } {
-				unsafe {
-					C.free(s.alpn_list)
-					s.alpn_list = nil
-				}
-			}
+			s.shutdown() or {}
 			s.handle = 0
 		}
 	}
@@ -834,18 +828,10 @@ pub fn (mut s SSLConn) dial(hostname string, port int) ! {
 	mut connected := false
 	defer {
 		if !connected {
-			if unsafe { s.certs != nil } {
-				C.mbedtls_x509_crt_free(&s.certs.cacert)
-				C.mbedtls_x509_crt_free(&s.certs.client_cert)
-				C.mbedtls_pk_free(&s.certs.client_key)
-				s.certs = unsafe { nil }
-			}
 			C.mbedtls_net_free(&s.server_fd)
-			C.mbedtls_ssl_free(&s.ssl)
-			C.mbedtls_ssl_config_free(&s.conf)
-			free_rng(mut s.ctr_drbg, mut s.entropy)
-			s.handle = 0
 			s.owns_socket = false
+			s.shutdown() or {}
+			s.handle = 0
 		}
 	}
 	s.owns_socket = true
