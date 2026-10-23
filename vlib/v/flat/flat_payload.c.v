@@ -19,6 +19,8 @@ fn C.atomic_store_u64(voidptr, u64)
 
 fn C.atomic_load_u64(voidptr) u64
 
+fn C.cpu_relax()
+
 @[inline]
 fn payload_ptr_get(base voidptr, index usize) voidptr {
 	// The payload chunks are arrays of pointers with validated indices.
@@ -73,6 +75,10 @@ fn node_payload_lock() {
 		mut expected := u32(0)
 		if C.atomic_compare_exchange_strong_u32(&g_node_payload_lock, &expected, 1) {
 			break
+		}
+		// Poll without taking exclusive cache-line ownership while a writer runs.
+		for C.atomic_load_u32(&g_node_payload_lock) != 0 {
+			C.cpu_relax()
 		}
 	}
 }

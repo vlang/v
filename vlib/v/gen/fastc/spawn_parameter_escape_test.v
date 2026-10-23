@@ -5,7 +5,9 @@ import v.cmdexec
 import v.pref
 
 fn test_fastc_spawned_parameter_addresses_keep_one_live_storage_cell() {
-	$if !macos && !linux { return }
+	$if !macos && !linux {
+		return
+	}
 	root := os.join_path(os.vtmp_dir(), 'fastc_spawn_parameter_escape_${os.getpid()}')
 	os.mkdir_all(root) or { panic(err) }
 	defer { os.rmdir_all(root) or {} }

@@ -429,7 +429,7 @@ fn ascii_eq_ignore_case(a string, b string) bool {
 	return true
 }
 
-fn should_close_connection(req http.Request, resp http.Response, client_wants_to_close bool) bool {
+fn should_close_connection(req &http.Request, resp &http.Response, client_wants_to_close bool) bool {
 	if client_wants_to_close {
 		return true
 	}

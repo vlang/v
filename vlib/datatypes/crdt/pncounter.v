@@ -62,4 +62,3 @@ pub fn (mut pn PNCounter) merge(other &PNCounter) {
 	pn.p_counter.merge(&other.p_counter)
 	pn.n_counter.merge(&other.n_counter)
 }
-

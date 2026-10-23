@@ -1727,6 +1727,8 @@ fn fastc_scan_type_bytes(mut scan scanner.Scanner, first token.Token, path strin
 		}
 		if raw_type == 'C' {
 			type_module = 'C'
+		} else if raw_type == module_name.all_after_last('.') {
+			type_module = module_name
 		} else {
 			type_module = imports[raw_type] or {
 				return error('fastc parser does not support unknown module qualifier `${raw_type}` in ${path}')

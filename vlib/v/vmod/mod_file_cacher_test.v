@@ -30,7 +30,7 @@ fn test_new_mod_file_cacher_starts_with_no_recorded_folders() {
 	os.write_file(os.join_path(root, 'project', 'v.mod'), '') or { panic(err) }
 	mut cacher := new_mod_file_cacher()
 	answer := cacher.get_by_folder(os.join_path(root, 'project'))
-	assert answer.vmod_file == os.join_path(root, 'project', 'v.mod')
+	assert answer.vmod_file == os.real_path(os.join_path(root, 'project', 'v.mod'))
 	// A folder inside the project resolves to the same v.mod.
 	nested := os.join_path(root, 'project', 'sub')
 	os.mkdir_all(nested) or { panic(err) }
@@ -52,7 +52,8 @@ fn test_mod_file_cacher_stops_at_the_stop_marker_and_vcs_directories() {
 	os.write_file(os.join_path_single(root, 'v.mod'), '') or { panic(err) }
 	// Without a stop marker the walk reaches the outer v.mod.
 	mut swallowing := new_mod_file_cacher()
-	assert swallowing.get_by_folder(inner).vmod_file == os.join_path_single(root, 'v.mod')
+	assert swallowing.get_by_folder(inner).vmod_file == os.real_path(os.join_path_single(root,
+		'v.mod'))
 	// A `.git` directory ends the walk, so nothing above it is seen.
 	os.mkdir_all(os.join_path_single(outer, '.git')) or { panic(err) }
 	mut stopping := new_mod_file_cacher()

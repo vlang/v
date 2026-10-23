@@ -987,3 +987,29 @@ fn test_ownership_drop_expansion_keys_keep_kind_and_spelling_order() {
 	assert keys[1] == struct_key
 	assert keys[3] == sum_key
 }
+
+fn test_exiting_if_branch_has_no_cleanup_after_transfer() {
+	for kind in [flat.NodeKind.continue_stmt, .break_stmt] {
+		mut a := flat.FlatAst.new()
+		condition := stmt_test_node(mut a, .bool_literal, 'true', [])
+		marker := stmt_test_node(mut a, .int_literal, '12345', [])
+		statement := stmt_test_node(mut a, .expr_stmt, '', [marker])
+		cleanup := stmt_test_node(mut a, .block, '', [statement])
+		deferred := stmt_test_node(mut a, .defer_stmt, '', [cleanup])
+		exit := stmt_test_node(mut a, kind, '', [])
+		body := stmt_test_node(mut a, .block, '', [deferred, exit])
+		branch := stmt_test_node(mut a, .if_expr, '', [condition, body, body])
+		mut tc := types.TypeChecker.new(&a)
+		mut g := FlatGen.new()
+		g.a = &a
+		g.tc = &tc
+		g.loop_defer_starts << 0
+		g.gen_if(a.node(branch))
+		output := g.sb.str()
+		assert output.count('12345;') == 2, output
+		assert g.ownership_scope_index == 2
+		for part in output.split(if kind == .continue_stmt { 'continue;' } else { 'break;' })[1..] {
+			assert part.trim_space().starts_with('}'), output
+		}
+	}
+}

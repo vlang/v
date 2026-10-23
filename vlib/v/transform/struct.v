@@ -125,7 +125,7 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 								}
 							}
 						}
-						field_type = t.lookup_struct_field_raw_type(embedded_owner_source_id, target_field_name) or {
+						field_type = t.lookup_struct_field_type(embedded_owner_source_id, target_field_name) or {
 							t.checker_struct_field_type_name(struct_type, field_name) or { u32(0) }
 						}
 					}

@@ -21,56 +21,60 @@ mut:
 	base             &CNameCache = unsafe { nil }
 	last_name        string
 	last_value       string
-	recent_ptrs      [1024]voidptr
-	recent_lens      [1024]u16
+	recent_names     [1024]string
 	recent_values    [1024]string
 	recent_populated [1024]bool
 }
 
-@[inline]
+@[direct_array_access; inline]
 fn c_name_recent_slot(name string) int {
-	return int(((u64(voidptr(name.str)) >> 4) ^ u64(name.len)) & 1023)
-}
-
-// c_name_is_pre_sanitized reports names that are already unambiguously in V's
-// module-qualified C spelling. C keywords, libc collisions and special builtin
-// rewrites never contain `__`, so these names can bypass the map-backed slow
-// path after their direct-cache miss.
-@[direct_array_access; inline]
-fn c_name_is_pre_sanitized(name string) bool {
-	mut previous_underscore := false
-	mut has_double_underscore := false
-	for i in 0 .. name.len {
-		c := name[i]
-		if (c < `a` || c > `z`) && (c < `A` || c > `Z`) && (c < `0` || c > `9`) && c != `_` {
-			return false
-		}
-		if c == `_` {
-			if previous_underscore {
-				has_double_underscore = true
-			}
-			previous_underscore = true
-		} else {
-			previous_underscore = false
-		}
+	if name.len == 0 {
+		return 0
 	}
-	return has_double_underscore
+	mut key := u64(name.len)
+	if name.len >= 8 {
+		mut first := u64(0)
+		mut last := u64(0)
+		// Copying bounded words also permits unaligned source slices.
+		unsafe {
+			vmemcpy(&first, name.str, 8)
+			vmemcpy(&last, name.str + name.len - 8, 8)
+		}
+		key ^= first ^ (last * u64(0x9e3779b97f4a7c15))
+	} else {
+		key ^= (u64(name[0]) << 8) ^ (u64(name[name.len >> 1]) << 16) ^ (u64(name[name.len - 1]) << 24)
+	}
+	key = (key ^ (key >> 32)) * u64(0x9e3779b97f4a7c15)
+	return int((key >> 32) & 1023)
 }
 
+// c_name_shape classifies the identifier and dotted fast paths in one scan.
+// Bit 0 is a plain spelling, bit 1 a double underscore, and bit 2 a dot.
 @[direct_array_access; inline]
-fn c_name_is_plain_dotted(name string) bool {
-	mut has_dot := false
+fn c_name_shape(name string) u8 {
+	mut shape := u8(1)
+	mut previous_underscore := false
 	for i in 0 .. name.len {
 		c := name[i]
 		if c == `.` {
-			has_dot = true
+			shape |= 4
+			previous_underscore = false
 			continue
 		}
 		if (c < `a` || c > `z`) && (c < `A` || c > `Z`) && (c < `0` || c > `9`) && c != `_` {
-			return false
+			return 0
 		}
+		if c == `_` && previous_underscore {
+			shape |= 2
+		}
+		previous_underscore = c == `_`
 	}
-	return has_dot
+	return shape
+}
+
+@[inline]
+fn c_name_is_pre_sanitized(name string) bool {
+	return c_name_shape(name) == 3
 }
 
 @[direct_array_access; inline]
@@ -88,12 +92,8 @@ fn c_name_is_string_literal_symbol(name string) bool {
 
 @[direct_array_access; inline]
 fn (c &CNameCache) recent(name string) ?string {
-	if name.len > 65535 {
-		return none
-	}
 	slot := c_name_recent_slot(name)
-	if c.recent_populated[slot] && c.recent_ptrs[slot] == voidptr(name.str)
-		&& c.recent_lens[slot] == u16(name.len) {
+	if c.recent_populated[slot] && c.recent_names[slot] == name {
 		return c.recent_values[slot]
 	}
 	return none
@@ -101,12 +101,8 @@ fn (c &CNameCache) recent(name string) ?string {
 
 @[direct_array_access; inline]
 fn (mut c CNameCache) remember(name string, value string) {
-	if name.len > 65535 {
-		return
-	}
 	slot := c_name_recent_slot(name)
-	c.recent_ptrs[slot] = voidptr(name.str)
-	c.recent_lens[slot] = u16(name.len)
+	c.recent_names[slot] = name
 	c.recent_values[slot] = value
 	c.recent_populated[slot] = true
 }
@@ -556,22 +552,11 @@ fn (g &FlatGen) cname(name string) string {
 		cache.last_value = cached
 		return cached
 	}
-	needs_internal_namespace := naming.c_name_needs_internal_namespace(name)
-	if !needs_internal_namespace && c_name_is_pre_sanitized(name) {
-		cache.last_name = name
-		cache.last_value = name
-		cache.remember(name, name)
-		return name
-	}
-	if !needs_internal_namespace && naming.is_plain_identifier(name) && name != 'malloc'
-		&& name != 'int_str' && name != 'exit'
-		&& !c_name_is_string_literal_symbol(name) && !naming.is_reserved_word(name)
-		&& !naming.is_libc_collision(name) {
-		cache.last_name = name
-		cache.last_value = name
-		cache.remember(name, name)
-		return name
-	}
+	return g.cname_uncached(name)
+}
+
+fn (g &FlatGen) cname_uncached(name string) string {
+	mut cache := g.c_name_cache
 	if cached := cache.entries[name] {
 		cache.last_name = name
 		cache.last_value = cached
@@ -592,7 +577,29 @@ fn (g &FlatGen) cname(name string) string {
 			return cached
 		}
 	}
-	if !needs_internal_namespace && !name.starts_with('C.') && c_name_is_plain_dotted(name) {
+	shape := c_name_shape(name)
+	// A plain spelling without `__` cannot contain the internal prefix, a static
+	// marker, or an operator method. Preserve those rewrites for other names.
+	needs_internal_namespace := (shape == 0 || shape & 2 != 0)
+		&& naming.c_name_needs_internal_namespace(name)
+	if !needs_internal_namespace && shape == 3 {
+		cache.entries[name] = name
+		cache.last_name = name
+		cache.last_value = name
+		cache.remember(name, name)
+		return name
+	}
+	if !needs_internal_namespace && shape == 1 && name != 'malloc'
+		&& name != 'int_str' && name != 'exit'
+		&& !c_name_is_string_literal_symbol(name) && !naming.is_reserved_word(name)
+		&& !naming.is_libc_collision(name) {
+		cache.entries[name] = name
+		cache.last_name = name
+		cache.last_value = name
+		cache.remember(name, name)
+		return name
+	}
+	if !needs_internal_namespace && !name.starts_with('C.') && shape & 4 != 0 {
 		result := naming.sanitize(name)
 		cache.entries[name] = result
 		cache.last_name = name

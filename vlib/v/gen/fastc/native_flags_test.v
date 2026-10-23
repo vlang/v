@@ -293,7 +293,7 @@ fn test_fastc_prepared_link_recognizes_native_c_sources() {
 }
 
 fn test_fastc_existing_path_macros_preserve_quoted_commas() {
-	root := os.join_path(os.vtmp_dir(), 'fastc_quoted_paths_${os.getpid()}')
+	root := os.join_path(os.real_path(os.vtmp_dir()), 'fastc_quoted_paths_${os.getpid()}')
 	os.mkdir_all(root) or { panic(err) }
 	defer { os.rmdir_all(root) or {} }
 	path := os.join_path(root, 'native, helper.a')
