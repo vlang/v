@@ -32,7 +32,7 @@ fn main() {
 	assert decoded.field == "some"
 }
 ')!
-	for mode in ['-no-parallel', ''] {
+	for mode in ['-no-parallel', '', '-autofree -no-parallel', '-autofree'] {
 		out := os.exec([v3_bin, '-nocache', '-ownership', '-d', 'ownership',
 			...(os.split_args(mode) or { panic(err) }), 'run', source])
 		assert out.exit_code == 0, out.output
