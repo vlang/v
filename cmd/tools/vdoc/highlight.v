@@ -23,12 +23,15 @@ struct ScannedToken {
 	resumes_string bool
 }
 
+// highlight_prefs are shared by all the highlighted snippets, which are many in a big module.
+const highlight_prefs = pref.new_preferences()
+
 fn scan_code(code string) []ScannedToken {
 	mut fs := token.FileSet.new()
 	mut file := fs.add_file('vdoc-snippet.v', code.len)
-	file.index_lines(code)
-	prefs := pref.new_preferences()
-	mut scanner_ := scanner.new_scanner(prefs, .scan_comments)
+	// The digest of the source, which `index_lines` adds, is only needed by the compiler's cache.
+	file.index_line_starts(code)
+	mut scanner_ := scanner.new_scanner(highlight_prefs, .scan_comments)
 	scanner_.init(file, code)
 	mut tokens := []ScannedToken{}
 	for {
