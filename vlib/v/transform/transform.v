@@ -29686,14 +29686,6 @@ fn (t &Transformer) infer_decl_type(node &flat.Node) u32 {
 				}
 			}
 		}
-		if rhs.kind == .array_literal && rhs.children_count > 0 {
-			// Unrolling a reflected method resolves its local alias to a function.
-			// The checked declaration can still carry the earlier placeholder type.
-			elem_type := t.node_type(t.a.child(rhs, 0))
-			if t.is_fn_pointer_type_name(elem_type) {
-				return flat.source_type_id('[]${flat.source_type_name(elem_type)}')
-			}
-		}
 		if rhs.kind == .cast_expr && rhs.value.len > 0 {
 			target_source_id := t.normalize_type_alias(t.checker_type_for_spelling(rhs_id, flat.source_type_id(rhs.value)))
 			target_source_id_5 := target_source_id
@@ -29715,6 +29707,21 @@ fn (t &Transformer) infer_decl_type(node &flat.Node) u32 {
 				// The declaration type can intentionally differ from the visible
 				// smartcast of the rhs after an exiting guard or assertion.
 				return lhs_type_source_id
+			}
+		}
+	}
+	if t.validating_generic_spec && node.children_count == 2 {
+		rhs := t.a.child_node(node, 1)
+		if rhs.kind == .array_literal && rhs.typ == 0 && rhs.children_count > 0
+			&& node.typ_text() == '[]int' {
+			// An untyped local alias of an unrolled reflected method can leave the
+			// default []int annotation behind. Keep checked and explicit array types.
+			elem := t.a.child_node(rhs, 0)
+			if elem.kind == .ident && elem.typ == 0 {
+				elem_type := t.node_type(t.a.child(rhs, 0))
+				if t.is_fn_pointer_type_name(elem_type) {
+					return flat.source_type_id('[]${flat.source_type_name(elem_type)}')
+				}
 			}
 		}
 	}
