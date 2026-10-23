@@ -3,7 +3,7 @@ module driver
 import os
 import time
 
-fn test_cached_module_objects_keep_native_pthread_layout_contexts_apart() {
+fn test_cached_module_objects_keep_native_header_layout_contexts_apart() {
 	$if !macos {
 		return
 	}
@@ -11,8 +11,9 @@ fn test_cached_module_objects_keep_native_pthread_layout_contexts_apart() {
 	} else {
 		return
 	}
-	variables := ['VFLAGS', 'VOSARGS', 'VEXE', 'VJOBS', 'V3CACHE', 'V3_CACHE_FORCE_SOURCE',
-		'V3_CACHE_DISABLE_INCREMENTAL', 'V3_CACHE_DISABLE_PROGRAM_EXECUTABLE', 'V_MACOS_V3_NO_FALLBACK']
+	variables := ['VFLAGS', 'VOSARGS', 'VEXE', 'VJOBS', 'VMODULES', 'V3CACHE', 'V3_CACHE_FORCE_SOURCE',
+		'V3_INTERNAL_CACHE_FORCE_SOURCE', 'V3_CACHE_DISABLE_INCREMENTAL',
+		'V3_CACHE_DISABLE_PROGRAM_EXECUTABLE', 'V_MACOS_V3_NO_FALLBACK']
 	mut previous := map[string]string{}
 	for name in variables {
 		if value := os.getenv_opt(name) {
@@ -41,33 +42,46 @@ fn test_cached_module_objects_keep_native_pthread_layout_contexts_apart() {
 	root := os.join_path(os.vtmp_dir(), 'native_header_context_${os.getpid()}_${time.now().unix_nano()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
+	modules := os.join_path(root, 'modules')
+	probe_module := os.join_path(modules, 'layoutprobe')
+	os.mkdir_all(probe_module)!
+	os.setenv('VMODULES', modules, true)
+	// Padding keeps either layout's trailing-field write within the caller's
+	// allocation, including when a cached object has the wrong sigset_t size.
+	os.write_file(os.join_path(probe_module, 'layoutprobe.c.v'), 'module layoutprobe
+
+@[typedef]
+pub struct C.sigset_t {}
+
+pub struct State {
+ mask C.sigset_t
+pub mut:
+ count u64
+ padding [256]u8
+}
+
+pub fn bump(mut state State) {
+ state.count++
+}
+')!
 	source := "module main
-import sync
-struct Counter {
-mut:
- n int
-}
-fn touch(mut counter Counter) {
- counter.n++
-}
+import layoutprobe
 fn identity[T](value T) T {
  return value
 }
 fn main() {
  println(identity('first'))
- mut once := sync.new_once()
- mut counter := Counter{}
- once.do_with_param(touch, &counter)
- assert counter.n == 1
- assert once.count == 1
+ mut state := layoutprobe.State{}
+ layoutprobe.bump(mut state)
+ assert state.count == 1
 }
 "
 	plain := os.join_path(root, 'plain.c.v')
 	native := os.join_path(root, 'native.c.v')
 	os.write_file(plain, source)!
-	os.write_file(native, source.replace('import sync', 'import sync\n#include <pthread.h>'))!
-	// The sync body is identical, but the program prefix selects either fallback
-	// pthread declarations or Darwin headers. Exercise both cache warming orders.
+	os.write_file(native, source.replace('import layoutprobe', 'import layoutprobe\n#include <signal.h>'))!
+	// The module body is identical, but the program prefix selects either fallback
+	// sigset_t declarations or Darwin headers. Exercise both cache warming orders.
 	for order, sources in [[plain, native, plain, native], [native, plain, native, plain]] {
 		cache := os.join_path(root, 'cache_${order}')
 		os.setenv('V3CACHE', cache, true)
@@ -77,7 +91,7 @@ fn main() {
 			assert build.exit_code == 0, 'order ${order}, build ${index}: ${build.output}'
 			run := os.exec([output])
 			assert run.exit_code == 0, 'order ${order}, build ${index}: ${run.output}'
-			assert os.walk_ext(cache, '.o').any(os.file_name(it).starts_with('sync_'))
+			assert os.walk_ext(cache, '.o').any(os.file_name(it).starts_with('layoutprobe_'))
 		}
 	}
 	// Editing only a literal restores the generic body against its cached native
