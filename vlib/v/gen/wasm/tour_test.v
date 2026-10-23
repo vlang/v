@@ -349,3 +349,39 @@ fn test_tour_fixed_float_is_refused_not_misanswered() {
 	}
 	assert false, 'fixed float formatting must be rejected until it is implemented'
 }
+
+const fold_print_program = '
+fn main() {
+	r := "ab".repeat(3)
+	println("fold repeat=\${r}")
+	a := [1, 2, 3]
+	println("fold array=\${a}")
+}
+'
+
+const fold_print_expected = [
+	'fold repeat=ababab',
+	'fold array=[1, 2, 3]',
+]
+
+fn test_fold_print_wasm_matches_native_text() {
+	module := tour_compile('fold_print', fold_print_program) or {
+		assert false, 'the wasm build refused a folded print program: ${err.msg()}'
+		return
+	}
+	assert module.len > 8, 'the output is too short to be a wasm module'
+	assert module[0] == 0x00 && module[1] == 0x61 && module[2] == 0x73
+		&& module[3] == 0x6d, 'the output does not start with the wasm magic'
+
+	node := tour_node_bin() or {
+		eprintln('> node unavailable; the module was validated but not executed')
+		return
+	}
+	out, code := tour_run('fold_print', module)
+	guest := out.split_into_lines().filter(it.len > 0 && !it.starts_with('PROC_EXIT='))
+	assert guest.len == fold_print_expected.len, 'expected ${fold_print_expected.len} lines, got ${guest.len}: ${out}'
+	for i, want in fold_print_expected {
+		assert guest[i] == want, 'line ${i}: got `${guest[i]}`, want `${want}`'
+	}
+	assert code == 0, 'the host reported a non-zero exit: ${out}'
+}
