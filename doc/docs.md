@@ -4559,6 +4559,10 @@ amount := Decimal(0.0)
 
 ### Enums
 
+C enum constants can initialize V enum members through `C.name`, including lowercase C names.
+Flag enum initializers specify bit positions and must be known to the V compiler at compile time;
+Integer casts of known V enum values can supply these positions; C enum constants cannot.
+
 Methods on an ordinary enum keep their definitions even when another module declares a
 flag enum with the same type name.
 
@@ -8820,6 +8824,23 @@ fn main() {
 // blue
 // ['BLUE']
 ```
+
+The `e.value` member contains the enum's actual value, including values initialized from C
+constants. These C-derived values remain symbolic until C compilation, so they can be used
+in runtime expressions but cannot be evaluated in a `$if` condition by the V compiler.
+This also applies to copied members and implicit successors. The source enum may be declared
+after an enum that copies its members. An explicit initializer with a value known to V restores
+compile-time evaluation for that member and its successors.
+Symbolic arithmetic preserves integer storage widths and V operator grouping, including logical
+right shifts and zero results for negative or out-of-range shift counts. Powers and `@[comptime]`
+function calls in enum initializers must be evaluable by V at compile time; they cannot depend on
+C constants. Known calls are evaluated even when used beside a C constant in symbolic arithmetic.
+These enum helpers support straight-line integer declarations, plain assignments, and one final
+single-value return. Bodies containing control flow, other statements, or unevaluable locals are
+rejected instead of partially evaluated. Imported helpers resolve their constants and types in their
+declaration file and module; their arguments are evaluated in the calling enum's context.
+Integer-to-enum cast warnings require every member's
+numeric value to be known to V; they are omitted for enums containing C-derived members.
 
 #### <h4 id="comptime-attrs">.attributes</h4>
 
