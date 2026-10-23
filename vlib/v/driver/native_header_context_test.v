@@ -12,7 +12,7 @@ fn test_cached_module_objects_keep_native_pthread_layout_contexts_apart() {
 		return
 	}
 	variables := ['VFLAGS', 'VOSARGS', 'VEXE', 'VJOBS', 'V3CACHE', 'V3_CACHE_FORCE_SOURCE',
-		'V_MACOS_V3_NO_FALLBACK']
+		'V3_CACHE_DISABLE_INCREMENTAL', 'V3_CACHE_DISABLE_PROGRAM_EXECUTABLE', 'V_MACOS_V3_NO_FALLBACK']
 	mut previous := map[string]string{}
 	for name in variables {
 		if value := os.getenv_opt(name) {
@@ -31,6 +31,8 @@ fn test_cached_module_objects_keep_native_pthread_layout_contexts_apart() {
 	}
 	os.setenv('VJOBS', '1', true)
 	os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
+	os.setenv('V3_CACHE_DISABLE_INCREMENTAL', '1', true)
+	os.setenv('V3_CACHE_DISABLE_PROGRAM_EXECUTABLE', '1', true)
 	vexe := if os.base(@VEXE) in ['v1_fallback', 'v1_fallback.exe'] {
 		os.join_path(@VEXEROOT, 'v')
 	} else {
@@ -39,7 +41,7 @@ fn test_cached_module_objects_keep_native_pthread_layout_contexts_apart() {
 	root := os.join_path(os.vtmp_dir(), 'native_header_context_${os.getpid()}_${time.now().unix_nano()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
-	source := 'module main
+	source := "module main
 import sync
 struct Counter {
 mut:
@@ -48,14 +50,18 @@ mut:
 fn touch(mut counter Counter) {
  counter.n++
 }
+fn identity[T](value T) T {
+ return value
+}
 fn main() {
+ println(identity('first'))
  mut once := sync.new_once()
  mut counter := Counter{}
  once.do_with_param(touch, &counter)
  assert counter.n == 1
  assert once.count == 1
 }
-'
+"
 	plain := os.join_path(root, 'plain.c.v')
 	native := os.join_path(root, 'native.c.v')
 	os.write_file(plain, source)!
@@ -74,4 +80,16 @@ fn main() {
 			assert os.walk_ext(cache, '.o').any(os.file_name(it).starts_with('sync_'))
 		}
 	}
+	// Editing only a literal restores the generic body against its cached native
+	// prefix. Both layout variants above must remain available in the same cache.
+	os.setenv('V3CACHE', os.join_path(root, 'cache_0'), true)
+	os.write_file(native, os.read_file(native)!.replace("'first'", "'other'"))!
+	output := os.join_path(root, 'generic_probe')
+	build := os.exec([vexe, '-v', '-cc', 'clang', '-no-memory-limit', '-o', output, native])
+	assert build.exit_code == 0, build.output
+	assert build.output.contains('monomorphize (cached)'), build.output
+	assert build.output.contains('cgen (cached)'), build.output
+	run := os.exec([output])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'other', run.output
 }
