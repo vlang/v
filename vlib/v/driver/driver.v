@@ -19401,7 +19401,10 @@ fn v3_cached_object_program_compile_signature(program_base string, generated_sou
 // adds to a signature of its module objects. It reads all of that C, so a build
 // that needs the signature of the plan and the one of the objects takes it once.
 fn v3_cached_object_program_signature_suffix(generated_source string) string {
-	mut suffix := ''
+	// An unrelated import can select native libc headers for the whole program.
+	// Their types can have different layouts from the headerless declarations.
+	// Record both modes so neither reuses an object with the old ambiguous key.
+	mut suffix := '\nsystem_libc_headers=${generated_source.contains('\n#define V_MANUAL_STDLIB_HEADERS 1\n')}'
 	if generated_source.contains('typedef struct v_unwind_frame {') {
 		suffix += '\npanic_frames=true'
 	}
