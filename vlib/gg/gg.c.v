@@ -7,7 +7,7 @@ import os
 import os.font
 import time
 import sokol.sapp
-import sokol.sgl
+import gg.render
 import sokol.gfx
 import sync.stdatomic as _
 
@@ -171,11 +171,11 @@ pub:
 @[heap]
 pub struct PipelineContainer {
 pub mut:
-	alpha sgl.Pipeline
-	add   sgl.Pipeline
+	alpha render.Pipeline
+	add   render.Pipeline
 }
 
-fn (mut container PipelineContainer) init_pipeline() {
+fn (mut container PipelineContainer) init_pipeline(r &render.Context) {
 	// FIXME(FireRedz): this looks kinda funny, find a better way to initialize pipeline.
 
 	// Alpha
@@ -189,7 +189,7 @@ fn (mut container PipelineContainer) init_pipeline() {
 			dst_factor_rgb: .one_minus_src_alpha
 		}
 	}
-	container.alpha = sgl.make_pipeline(&alpha_pipdesc)
+	container.alpha = r.make_pipeline(alpha_pipdesc)
 
 	// Add
 	mut add_pipdesc := gfx.PipelineDesc{}
@@ -202,7 +202,7 @@ fn (mut container PipelineContainer) init_pipeline() {
 			dst_factor_rgb: .one
 		}
 	}
-	container.add = sgl.make_pipeline(&add_pipdesc)
+	container.add = r.make_pipeline(add_pipdesc)
 }
 
 @[heap]
@@ -227,6 +227,7 @@ pub mut:
 	bg_color    Color
 	window      sapp.Desc
 	pipeline    &PipelineContainer = unsafe { nil }
+	r           &render.Context    = unsafe { nil }
 	config      Config
 	user_data   voidptr
 	ft          &FT = unsafe { nil }
@@ -272,8 +273,12 @@ fn gg_init_sokol_window(user_data voidptr) {
 	}
 	*/
 	gfx.setup(&desc)
-	sgl_desc := sgl.Desc{}
-	sgl.setup(&sgl_desc)
+	ctx.r = render.new_context(render.Desc{
+		max_vertices: 1 << 17
+		max_commands: 1 << 15
+		face_winding: .ccw
+	})
+	ctx.r.defaults()
 	ctx.set_scale()
 	if !ctx.config.resizable {
 		gg_apply_window_resizable()
@@ -287,7 +292,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 	exists := $if !android { os.is_file(ctx.config.font_path) } $else { true }
 	if ctx.config.font_path != '' && exists {
 		// t := time.ticks()
-		ctx.ft = new_ft(
+		ctx.ft = new_ft(ctx,
 			font_path:             ctx.config.font_path
 			custom_bold_font_path: ctx.config.custom_bold_font_path
 			scale:                 ctx.scale
@@ -296,7 +301,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 		ctx.font_inited = true
 	} else {
 		if ctx.config.font_bytes_normal.len > 0 {
-			ctx.ft = new_ft(
+			ctx.ft = new_ft(ctx,
 				bytes_normal: ctx.config.font_bytes_normal
 				bytes_bold:   ctx.config.font_bytes_bold
 				bytes_mono:   ctx.config.font_bytes_mono
@@ -310,7 +315,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 				eprintln('font file "${ctx.config.font_path}" does not exist, the system font (${sfont}) was used instead.')
 			}
 
-			ctx.ft = new_ft(
+			ctx.ft = new_ft(ctx,
 				font_path:             sfont
 				custom_bold_font_path: ctx.config.custom_bold_font_path
 				scale:                 sapp.dpi_scale()
@@ -321,7 +326,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 
 	// Pipeline
 	ctx.pipeline = &PipelineContainer{}
-	ctx.pipeline.init_pipeline()
+	ctx.pipeline.init_pipeline(ctx.r)
 
 	ctx.timer = time.new_stopwatch()
 	ctx.update_timer = time.new_stopwatch()
@@ -780,9 +785,9 @@ pub fn (ctx &Context) begin() {
 	if ctx.render_text && ctx.font_inited {
 		ctx.ft.flush()
 	}
-	sgl.defaults()
-	sgl.matrix_mode_projection()
-	sgl.ortho(0.0, f32(sapp.width()), f32(sapp.height()), 0.0, -1.0, 1.0)
+	ctx.r.defaults()
+	ctx.r.matrix_mode_projection()
+	ctx.r.ortho(0.0, f32(sapp.width()), f32(sapp.height()), 0.0, -1.0, 1.0)
 	if ctx.bg_color.a < 255 && ctx.last_bg_overlay_frame != ctx.frame {
 		mut ctx_mut := unsafe { &Context(ctx) }
 		ctx_mut.last_bg_overlay_frame = ctx.frame
@@ -882,7 +887,7 @@ pub fn (ctx &Context) end(options EndOptions) {
 	// sg_begin_pass copies its descriptor synchronously. The next pass can
 	// reuse this Context-owned storage without retaining a frame-local value.
 	gfx.begin_pass(&frame_ctx.frame_pass)
-	sgl.draw()
+	ctx.r.draw()
 	gfx.end_pass()
 	gfx.commit()
 	/*
@@ -940,9 +945,9 @@ pub fn (ctx &Context) show_fps() {
 		return
 	}
 	frame_duration := sapp.frame_duration()
-	sgl.defaults()
-	sgl.matrix_mode_projection()
-	sgl.ortho(0.0, f32(sapp.width()), f32(sapp.height()), 0.0, -1.0, 1.0)
+	ctx.r.defaults()
+	ctx.r.matrix_mode_projection()
+	ctx.r.ortho(0.0, f32(sapp.width()), f32(sapp.height()), 0.0, -1.0, 1.0)
 	ctx.set_text_cfg(ctx.fps.text_config)
 	fps_text := int(0.5 + 1.0 / frame_duration).str()
 	if ctx.fps.width == 0 {

@@ -415,3 +415,16 @@ pub fn frame_stats_enabled() bool {
 pub fn query_frame_stats() FrameStats {
 	return C.sg_query_frame_stats()
 }
+
+// add_commit_listener registers a callback that fires at sg_commit time.
+// Used by the gg V renderer to rewind per-frame buffers.
+@[inline]
+pub fn add_commit_listener(listener CommitListener) bool {
+	return C.sg_add_commit_listener(listener)
+}
+
+// remove_commit_listener removes a previously registered commit listener.
+@[inline]
+pub fn remove_commit_listener(listener CommitListener) bool {
+	return C.sg_remove_commit_listener(listener)
+}

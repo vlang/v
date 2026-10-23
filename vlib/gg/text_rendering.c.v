@@ -3,8 +3,8 @@
 module gg
 
 import fontstash
-import sokol.sfons
-import sokol.sgl
+import gg.render
+import sokol.gfx
 import os
 import os.font
 
@@ -16,8 +16,12 @@ pub:
 	font_mono   int
 	font_italic int
 pub mut:
-	fonts_map map[string]int // for storing custom fonts, provided via cfg.family in draw_text()
+	fonts_map map[string]int
 	scale     f32 = 1.0
+	atlas_img gfx.Image
+	atlas_smp gfx.Sampler
+	atlas_w   int
+	atlas_h   int
 }
 
 pub enum HorizontalAlign {
@@ -34,6 +38,104 @@ pub enum VerticalAlign {
 }
 
 const initial_text_atlas_size = int($d('gg_text_buff_size', 2048))
+
+fn fons_render_create(uptr voidptr, width i32, height i32) i32 {
+	mut ctx := unsafe { &Context(uptr) }
+	mut img_desc := gfx.ImageDesc{
+		type:         ._2d
+		width:        int(width)
+		height:       int(height)
+		num_mipmaps:  1
+		pixel_format: .r8
+		usage:        .dynamic
+	}
+	ctx.ft.atlas_img = gfx.make_image(&img_desc)
+	mut smp_desc := gfx.SamplerDesc{
+		min_filter: .linear
+		mag_filter: .linear
+		wrap_u:     .clamp_to_edge
+		wrap_v:     .clamp_to_edge
+	}
+	ctx.ft.atlas_smp = gfx.make_sampler(&smp_desc)
+	ctx.ft.atlas_w = int(width)
+	ctx.ft.atlas_h = int(height)
+	if ctx.r != unsafe { nil } {
+		ctx.r.register_image(int(ctx.ft.atlas_img.id), unsafe { nil }, int(width), int(height), 1, 0)
+	}
+	return 1
+}
+
+fn fons_render_resize(uptr voidptr, width i32, height i32) i32 {
+	mut ctx := unsafe { &Context(uptr) }
+	if ctx.ft.atlas_img.id > 0 {
+		gfx.destroy_image(ctx.ft.atlas_img)
+	}
+	mut img_desc := gfx.ImageDesc{
+		type:         ._2d
+		width:        int(width)
+		height:       int(height)
+		num_mipmaps:  1
+		pixel_format: .r8
+		usage:        .dynamic
+	}
+	ctx.ft.atlas_img = gfx.make_image(&img_desc)
+	ctx.ft.atlas_w = int(width)
+	ctx.ft.atlas_h = int(height)
+	if ctx.r != unsafe { nil } {
+		ctx.r.register_image(int(ctx.ft.atlas_img.id), unsafe { nil }, int(width), int(height), 1, 0)
+	}
+	return 1
+}
+
+fn fons_render_update(uptr voidptr, rect &i32, data &u8) {
+	mut ctx := unsafe { &Context(uptr) }
+	if ctx.ft.atlas_img.id == 0 {
+		return
+	}
+	mut img_data := gfx.ImageData{}
+	img_data.subimage[0][0] = gfx.Range{
+		ptr:  voidptr(data)
+		size: usize(ctx.ft.atlas_w * ctx.ft.atlas_h)
+	}
+	gfx.update_image(ctx.ft.atlas_img, &img_data)
+	if ctx.r != unsafe { nil } {
+		ctx.r.register_image(int(ctx.ft.atlas_img.id), voidptr(data), ctx.ft.atlas_w, ctx.ft.atlas_h, 1, 0)
+	}
+}
+
+fn fons_render_draw(uptr voidptr, verts &f32, tcoords &f32, colors &u32, nverts i32) {
+	mut ctx := unsafe { &Context(uptr) }
+	if ctx.r == unsafe { nil } {
+		return
+	}
+	ctx.r.enable_texture()
+	ctx.r.texture(ctx.ft.atlas_img, ctx.ft.atlas_smp)
+	ctx.r.load_pipeline(ctx.pipeline.alpha)
+	ctx.r.begin_quads()
+	for i in 0 .. int(nverts) {
+		x := unsafe { verts[i * 2] }
+		y := unsafe { verts[i * 2 + 1] }
+		u := unsafe { tcoords[i * 2] }
+		vv := unsafe { tcoords[i * 2 + 1] }
+		c := unsafe { colors[i] }
+		ctx.r.c1i(c)
+		ctx.r.t2f(u, vv)
+		ctx.r.v2f(x, y)
+	}
+	ctx.r.end()
+	ctx.r.disable_texture()
+}
+
+fn fons_render_delete(uptr voidptr) {
+	mut ctx := unsafe { &Context(uptr) }
+	if ctx.ft.atlas_img.id > 0 {
+		gfx.destroy_image(ctx.ft.atlas_img)
+	}
+	if ctx.ft.atlas_smp.id > 0 {
+		gfx.destroy_sampler(ctx.ft.atlas_smp)
+	}
+}
+
 const max_text_atlas_size = 8192
 
 fn expand_atlas_callback(uptr voidptr, error i32, _val i32) {
@@ -64,10 +166,20 @@ fn expand_atlas_callback(uptr voidptr, error i32, _val i32) {
 	fons.expand_atlas(next_width, next_height)
 }
 
-fn new_ft(c FTConfig) ?&FT {
+fn new_ft(ctx &Context, c FTConfig) ?&FT {
 	if c.font_path == '' {
 		if c.bytes_normal.len > 0 {
-			fons := sfons.create(initial_text_atlas_size, initial_text_atlas_size, 1)
+			mut params := C.FONSparams{}
+			params.width = initial_text_atlas_size
+			params.height = initial_text_atlas_size
+			params.flags = 1
+			params.renderCreate = fons_render_create
+			params.renderResize = fons_render_resize
+			params.renderUpdate = fons_render_update
+			params.renderDraw = fons_render_draw
+			params.renderDelete = fons_render_delete
+			params.userPtr = voidptr(ctx)
+			fons := fontstash.create_internal(&params)
 			bytes_normal := c.bytes_normal
 			bytes_bold := if c.bytes_bold.len > 0 {
 				c.bytes_bold
@@ -148,7 +260,17 @@ fn new_ft(c FTConfig) ?&FT {
 		italic_path = c.font_path
 		bytes
 	}
-	fons := sfons.create(initial_text_atlas_size, initial_text_atlas_size, 1)
+	mut params := C.FONSparams{}
+	params.width = initial_text_atlas_size
+	params.height = initial_text_atlas_size
+	params.flags = 1
+	params.renderCreate = fons_render_create
+	params.renderResize = fons_render_resize
+	params.renderUpdate = fons_render_update
+	params.renderDraw = fons_render_draw
+	params.renderDelete = fons_render_delete
+	params.userPtr = voidptr(ctx)
+	fons := fontstash.create_internal(&params)
 	debug_font_println('Font used for font_normal : ${normal_path}')
 	debug_font_println('Font used for font_bold   : ${bold_path}')
 	debug_font_println('Font used for font_mono   : ${mono_path}')
@@ -197,9 +319,9 @@ pub fn (ctx &Context) set_text_cfg(cfg TextCfg) {
 	size := if cfg.mono { cfg.size - 2 } else { cfg.size }
 	ctx.ft.fons.set_size(scale * f32(size))
 	ctx.ft.fons.set_align(int(cfg.align) | int(cfg.vertical_align))
-	color := sfons.rgba(cfg.color.r, cfg.color.g, cfg.color.b, cfg.color.a)
+	color := u32(cfg.color.r) | (u32(cfg.color.g) << 8) | (u32(cfg.color.b) << 16) | (u32(cfg.color.a) << 24)
 	if cfg.color.a != 255 {
-		sgl.load_pipeline(ctx.pipeline.alpha)
+		ctx.r.load_pipeline(ctx.pipeline.alpha)
 	}
 	ctx.ft.fons.set_color(color)
 	ascender := f32(0.0)
@@ -277,7 +399,8 @@ pub fn (ctx &Context) draw_text_def(x int, y int, text string) {
 
 // flush prepares the font for use.
 pub fn (ft &FT) flush() {
-	sfons.flush(ft.fons)
+	mut dirty := 0
+	_ = ft.fons.validate_texture(&dirty)
 }
 
 @[inline]
