@@ -2405,6 +2405,17 @@ SOKOL_APP_API_DECL void sapp_cancel_quit(void);
 SOKOL_APP_API_DECL bool sapp_set_present_on_demand(bool enabled);
 /* X11 only: present the frame drawn by the current frame callback */
 SOKOL_APP_API_DECL void sapp_request_present(void);
+/* X11 only: deadline-based idle polling. Registering a callback switches the
+   event loop from pacing itself at the swap interval to sleeping until the
+   earliest of: the callback's returned deadline (seconds from now, negative
+   when nothing is scheduled), an X event, or a call to sapp_wake(). The
+   callback runs on the frame thread just before the loop sleeps, so it may
+   read shared state without taking the app's own locks. */
+SOKOL_APP_API_DECL void sapp_set_frame_deadline_cb(double (*cb)(void));
+/* X11 only: interrupt the event loop's current sleep from any thread. Safe to
+   call before the loop starts and after it ends; a request arriving while the
+   loop is awake is folded into the next frame. */
+SOKOL_APP_API_DECL void sapp_wake(void);
 /* initiate a "hard quit" (quit application without sending
  * SAPP_EVENTTYPE_QUIT_REQUESTED) */
 SOKOL_APP_API_DECL void sapp_quit(void);
@@ -2856,6 +2867,7 @@ extern const struct wl_interface zxdg_decoration_manager_v1_interface;
 #include "xdg-shell-client-protocol.h"
 #endif
 #include <dlfcn.h>  /* dlopen, dlsym, dlclose */
+#include <fcntl.h>  /* fcntl, F_GETFL, F_SETFL, O_NONBLOCK for the wakeup pipe */
 #include <limits.h> /* LONG_MAX */
 #include <poll.h>
 #include <pthread.h> /* only used a linker-guard, search for _sapp_linux_run() and see first comment */
@@ -3557,6 +3569,12 @@ typedef struct {
   Atom NET_WM_STATE_FULLSCREEN;
   _sapp_xi_t xi;
   _sapp_xdnd_t xdnd;
+  // Wakeup pipe for cross-thread frame requests. Any thread that needs a frame
+  // before the loop's current sleep horizon expires writes to this pipe so the
+  // loop's poll interrupts immediately instead of waiting out the timeout.
+  int wakeup_fd[2];
+  // Deadline callback for deadline-based idle polling (sapp_set_frame_deadline_cb).
+  double (*frame_deadline_cb)(void);
   // XLib manual says keycodes are in the range [8, 255] inclusive.
   // https://tronche.com/gui/x/xlib/input/keyboard-encoding.html
   bool key_repeat[_SAPP_X11_MAX_X11_KEYCODES];
@@ -15205,12 +15223,33 @@ _SOKOL_PRIVATE void _sapp_linux_run(const sapp_desc *desc) {
 
   _sapp_init_state(desc);
   _sapp.x11.window_state = NormalState;
+  // The wakeup pipe starts closed: any thread calling sapp_wake() before or
+  // after the loop runs must never write to stdin/stdout by accident.
+  _sapp.x11.wakeup_fd[0] = -1;
+  _sapp.x11.wakeup_fd[1] = -1;
+  _sapp.x11.frame_deadline_cb = 0;
 
   XInitThreads();
   XrmInitialize();
   _sapp.x11.display = XOpenDisplay(NULL);
   if (!_sapp.x11.display) {
     _SAPP_PANIC(LINUX_X11_OPEN_DISPLAY_FAILED);
+  }
+  if (pipe(_sapp.x11.wakeup_fd) == 0) {
+    // Both ends nonblocking: the loop's poll reports readability without
+    // blocking on a partial drain, and sapp_wake() from any thread never
+    // stalls on a full pipe.
+    for (int i = 0; i < 2; i++) {
+      int flags = fcntl(_sapp.x11.wakeup_fd[i], F_GETFL, 0);
+      if (flags >= 0) {
+        fcntl(_sapp.x11.wakeup_fd[i], F_SETFL, flags | O_NONBLOCK);
+      }
+    }
+  } else {
+    // No wakeup pipe: the loop falls back to its stock frame pacing instead
+    // of deadline sleeps, so losing the pipe degrades rather than breaks.
+    _sapp.x11.wakeup_fd[0] = -1;
+    _sapp.x11.wakeup_fd[1] = -1;
   }
   _sapp.x11.screen = DefaultScreen(_sapp.x11.display);
   _sapp.x11.root = DefaultRootWindow(_sapp.x11.display);
@@ -15272,11 +15311,53 @@ _SOKOL_PRIVATE void _sapp_linux_run(const sapp_desc *desc) {
       clock_gettime(_SAPP_CLOCK_MONOTONIC, &frame_end_ts);
       const long elapsed_ms = (frame_end_ts.tv_sec - frame_start_ts.tv_sec) * 1000L
                               + (frame_end_ts.tv_nsec - frame_start_ts.tv_nsec) / 1000000L;
-      const long frame_ms = (long)((1000.0 / 60.0) * _sapp.swap_interval);
-      const long remaining_ms = frame_ms - elapsed_ms;
-      if (remaining_ms > 0) {
-        struct pollfd x11_fd = { ConnectionNumber(_sapp.x11.display), POLLIN, 0 };
-        poll(&x11_fd, 1, (int)remaining_ms);
+      /* Decide how long to sleep. With a deadline callback the loop sleeps
+         until the earliest of the returned deadline, an X event, or a
+         sapp_wake(); a negative return means nothing is scheduled and the
+         loop waits on the poll set alone, which is what drops idle wakeups
+         from once per swap interval to once per actual ask. Without a
+         callback the stock frame pacing is kept so existing callers are
+         unchanged. */
+      long timeout_ms;
+      if (_sapp.x11.frame_deadline_cb) {
+        const double s = _sapp.x11.frame_deadline_cb();
+        if (s < 0.0) {
+          timeout_ms = -1;
+        } else {
+          timeout_ms = (long)(s * 1000.0);
+          if (timeout_ms < 0) {
+            timeout_ms = 0;
+          }
+        }
+      } else {
+        const long frame_ms = (long)((1000.0 / 60.0) * _sapp.swap_interval);
+        timeout_ms = frame_ms - elapsed_ms;
+        if (timeout_ms < 0) {
+          timeout_ms = 0;
+        }
+      }
+      struct pollfd fds[2];
+      int nfds = 0;
+      fds[nfds].fd = ConnectionNumber(_sapp.x11.display);
+      fds[nfds].events = POLLIN;
+      fds[nfds].revents = 0;
+      nfds++;
+      if (_sapp.x11.wakeup_fd[0] >= 0) {
+        fds[nfds].fd = _sapp.x11.wakeup_fd[0];
+        fds[nfds].events = POLLIN;
+        fds[nfds].revents = 0;
+        nfds++;
+      }
+      poll(fds, nfds, (int)timeout_ms);
+      // Drain the wakeup pipe unconditionally: a byte left inside would make
+      // the next poll return immediately and turn the sleep into a spin,
+      // even when an X event woke this pass first. The read is nonblocking
+      // and returns immediately when the pipe is empty.
+      if (_sapp.x11.wakeup_fd[0] >= 0) {
+        char drain_buf[256];
+        while (read(_sapp.x11.wakeup_fd[0], drain_buf, sizeof(drain_buf)) > 0) {
+          // discard
+        }
       }
     }
     // handle quit-requested, either from window or from sapp_request_quit()
@@ -15302,6 +15383,14 @@ _SOKOL_PRIVATE void _sapp_linux_run(const sapp_desc *desc) {
   _sapp_x11_destroy_window();
   _sapp_x11_destroy_standard_cursors();
   XCloseDisplay(_sapp.x11.display);
+  if (_sapp.x11.wakeup_fd[0] >= 0) {
+    close(_sapp.x11.wakeup_fd[0]);
+    _sapp.x11.wakeup_fd[0] = -1;
+  }
+  if (_sapp.x11.wakeup_fd[1] >= 0) {
+    close(_sapp.x11.wakeup_fd[1]);
+    _sapp.x11.wakeup_fd[1] = -1;
+  }
   _sapp_discard_state();
 }
 
@@ -17178,6 +17267,33 @@ SOKOL_API_IMPL bool sapp_set_present_on_demand(bool enabled) {
 }
 
 SOKOL_API_IMPL void sapp_request_present(void) { _sapp.present_requested = true; }
+
+/* X11 only: deadline-based idle polling support. The callback runs on the
+   frame thread right before the loop sleeps, so it may read state without
+   taking application locks; its negative return means "sleep until an X event
+   or a sapp_wake()". */
+SOKOL_API_IMPL void sapp_set_frame_deadline_cb(double (*cb)(void)) {
+#if defined(_SAPP_LINUX) && defined(_SAPP_X11)
+  _sapp.x11.frame_deadline_cb = cb;
+#else
+  (void)cb;
+#endif
+}
+
+SOKOL_API_IMPL void sapp_wake(void) {
+#if defined(_SAPP_LINUX) && defined(_SAPP_X11)
+  const int wr = _sapp.x11.wakeup_fd[1];
+  if (wr >= 0) {
+    const char b = 1;
+    // Nonblocking write: a full pipe means the loop has as many pending wake
+    // requests queued as it can hold, which is still one wake more than it
+    // needs to interrupt its sleep.
+    (void)write(wr, &b, 1);
+  }
+#else
+  (void)0;
+#endif
+}
 
 SOKOL_API_IMPL void sapp_quit(void) { _sapp.quit_ordered = true; }
 
