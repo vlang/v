@@ -464,8 +464,8 @@ fn test_join_path_helper_preserves_resolved_and_source_names() {
 				id := call_helper_node(mut a, flat.Node{ kind: .call }, [callee, arg, last_arg])
 				c := CallCollector{ a: &a }
 				mut calls := []string{}
-				c.collect_lowered_join_path_single(a.node(id), resolved, mut calls)
-				if last_arg == arg && (base_name != 'other' || resolved != '') {
+				c.collect_lowered_join_path_single(a.node(id), resolved, map[string]string{}, map[string]bool{}, mut calls)
+				if last_arg == arg && (base_name == 'os' || resolved == 'os.join_path') {
 					assert calls == ['join_path_single', 'os.join_path_single']
 				} else {
 					assert calls.len == 0
@@ -2447,4 +2447,32 @@ fn test_receiver_cache_keeps_source_and_semantic_ids_separate() {
 	module_methods.semantic_methods[semantic_key] = 'semantic.read'
 	assert collector.typed_receiver_method_name(source, 'read', 'main')? == 'source.read'
 	assert collector.typed_receiver_method_id(semantic, 'read', 'main')? == 'semantic.read'
+}
+
+fn test_join_path_helper_respects_import_aliases_and_local_bindings() {
+	mut a := flat.FlatAst.new()
+	arg := a.add_val(.string_literal, 'part')
+	mut c := CallCollector{ a: &a }
+	for base_name in ['join_path', 'os', 'sys'] {
+		base := a.add_val(.ident, base_name)
+		callee := if base_name == 'join_path' {
+			base
+		} else {
+			call_helper_node(mut a, flat.Node{ kind: .selector, value: 'join_path' }, [base])
+		}
+		call := call_helper_node(mut a, flat.Node{ kind: .call }, [callee, arg, arg])
+		imports := {
+			'sys': 'os'
+		}
+		mut calls := []string{}
+		c.collect_lowered_join_path_single(a.node(call), '', imports, map[string]bool{}, mut calls)
+		assert (calls.len > 0) == (base_name != 'join_path')
+		calls.clear()
+		c.collect_lowered_join_path_single(a.node(call), 'main.join_path', imports, map[string]bool{}, mut calls)
+		assert calls.len == 0
+		c.collect_lowered_join_path_single(a.node(call), 'os.join_path', imports, {
+			base_name: true
+		}, mut calls)
+		assert calls.len == 0
+	}
 }
