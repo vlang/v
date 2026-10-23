@@ -6406,6 +6406,11 @@ fn (t &Transformer) enum_str_method_name(typ_id u32) ?string {
 			return method
 		}
 	}
+	if !isnil(t.tc) {
+		// Aliases inherit methods from intermediate aliases and their base enum.
+		// Check those before selecting the generated enum string helper.
+		return t.tc.concrete_method_signature_key(typ_id, 'str')
+	}
 	return none
 }
 
@@ -6425,7 +6430,9 @@ fn (mut t Transformer) enum_autostr_call(expr flat.NodeId, typ_id u32) flat.Node
 // value returned by `real_a.make()` has type `a.Kind` even in a file that imports another
 // module as `a`. Declaration spellings are resolved by `source_enum_type_name` first.
 fn (t &Transformer) enum_autostr_type_name(typ_id u32) u32 {
-	typ := flat.source_type_name(typ_id)
+	// Alias fields retain their alias spelling after checking, while the helper
+	// belongs to the underlying enum declaration.
+	typ := flat.source_type_name(t.alias_str_resolved_base_type(typ_id))
 	mut qualified := typ
 	if qualified.starts_with('main.') {
 		qualified = qualified[5..]
@@ -7688,12 +7695,9 @@ fn (mut t Transformer) alias_str_wrap(expr flat.NodeId, alias_name_id u32, base_
 		return custom
 	}
 	if !is_ref {
-		if parent_alias_source_id, _ := t.lookup_str_alias(base_type_id) {
-			parent_alias_comparison_type_id := parent_alias_source_id
-			if parent_alias_comparison_type_id != alias_name_comparison_type_id_3 {
-				if custom := t.alias_custom_str_call(expr, parent_alias_comparison_type_id) {
-					return custom
-				}
+		if declaring_alias_id, _ := t.alias_custom_str_method_in_chain(alias_name_id) {
+			if custom := t.alias_custom_str_call(expr, declaring_alias_id) {
+				return custom
 			}
 		}
 		if base_type.starts_with('&') {
@@ -7829,6 +7833,10 @@ fn (mut t Transformer) alias_custom_str_method_name(alias_name_id u32) ?string {
 		if known {
 			t.mark_fn_used_name(v_str_fn)
 			t.mark_fn_used_name(str_fn)
+			// Preserve the declared method key so codegen applies its method name mapping.
+			if t.fn_ret_types.contains(v_str_fn) || v_str_fn in t.tc.fn_ret_types {
+				return v_str_fn
+			}
 			return str_fn
 		}
 	}
@@ -8323,8 +8331,10 @@ fn (mut t Transformer) struct_field_str_value(expr flat.NodeId, raw_field_type_i
 		// declaring-module-resolved type.
 		return t.wrap_string_conversion(expr, field_type_id)
 	}
-	if custom := t.alias_custom_str_call(expr, alias_name_source_id_6) {
-		return custom
+	if declaring_alias_id, _ := t.alias_custom_str_method_in_chain(alias_name_source_id_6) {
+		if custom := t.alias_custom_str_call(expr, declaring_alias_id) {
+			return custom
+		}
 	}
 	resolved_base_source_id := t.alias_str_resolved_base_type(base_type_source_id_4)
 
