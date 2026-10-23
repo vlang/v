@@ -1397,7 +1397,7 @@ fn test_full_contract_report_is_green() {
 	report := bin.run_contract_checks(automation_root()) or { panic(err) }
 	assert report.schema_count == 22
 	assert report.manifest_count == 2
-	assert report.hygiene_files == 106
+	assert report.hygiene_files == 108
 }
 
 fn test_schema_reference_is_reread_for_each_validation() {
@@ -2018,11 +2018,11 @@ fn test_legacy_onboarding_registry_is_dormant_until_one_canonical_policy_is_revi
 	windows_policy_issues := validate_schema_source('onboarding-policy.schema.json',
 		windows_policy_source, 'legacy-onboarding-windows-policy')
 	assert windows_policy_issues.len == 0
-	assert (windows_policy.object_value('patches') or { panic('patches missing') }).array_value.len == 13
+	assert (windows_policy.object_value('patches') or { panic('patches missing') }).array_value.len == 16
 	assert (windows_policy.object_value('transforms') or { panic('transforms missing') }).array_value.len == 2
 	assert (windows_policy.object_value('header_effects') or { panic('header effects missing') }).array_value.len == 3
 	assert (windows_policy.object_value('integrations') or { panic('integrations missing') }).array_value.len == 1
-	assert (windows_policy.object_value('probes') or { panic('probes missing') }).array_value.len == 27
+	assert (windows_policy.object_value('probes') or { panic('probes missing') }).array_value.len == 30
 	windows_payload := windows_policy.object_value('payload_policy') or {
 		panic('payload policy missing')
 	}
@@ -2380,7 +2380,7 @@ fn test_manifest_source_matrix_transforms_symlinks_and_control_boundaries_are_cl
 		windows.replace_once('"id": "vlang-header-compat"', '"id": "other-header-compat"'),
 		windows.replace_once('"path": "vlang-header-compat.patch"', '"path": "other.patch"'),
 		windows.replace_once('"owner": "bundle-overlay"', '"owner": "v-libgc"'),
-		windows.replace_once('"order": 14', '"order": 16'),
+		windows.replace_once('"order": 17', '"order": 19'),
 		windows.replace_once('"apply_stage": "bundle-payload-post-copy"',
 			'"apply_stage": "v-libgc-source-prebuild"'),
 		windows.replace_once('"header-gmtime-s", "header-condition-variable", "header-faststorefence"',
@@ -2510,6 +2510,83 @@ fn test_manifests_validate_semantically() {
 		bin.authenticate_manifest_file(automation_root(), manifest_path) or { rejected = err.msg() }
 		assert rejected == 'incomplete provenance cannot produce an authenticated manifest', '${name}: ${rejected}'
 	}
+}
+
+fn windows_patch_ids(count int) []string {
+	return []string{len: count, init: bin.windows_patch_id(index + 1)}
+}
+
+fn contiguous_orders(count int) []i64 {
+	return []i64{len: count, init: i64(index + 1)}
+}
+
+fn test_windows_patch_sequence_is_derived_from_the_manifest() {
+	assert bin.windows_patch_id(1) == 'patch-0001'
+	assert bin.windows_patch_id(17) == 'patch-0017'
+	assert bin.windows_minimum_patch_count == 9
+	// Sixteen, seventeen and the nine-patch baseline all pass: the count is not pinned.
+	for count in [9, 16, 17] {
+		issues := bin.validate_windows_patch_sequence(windows_patch_ids(count), contiguous_orders(count + 2),
+			2)
+		assert issues.len == 0, '${count}: ${issues}'
+	}
+	// Fewer than the baseline, an empty list, a gap, and a misnamed patch are all rejected.
+	mut gapped := windows_patch_ids(9)
+	gapped << 'patch-0011'
+	mut misnamed := windows_patch_ids(16)
+	misnamed[15] = 'patch-16'
+	for ids in [windows_patch_ids(8), []string{}, gapped, misnamed] {
+		issues := bin.validate_windows_patch_sequence(ids, contiguous_orders(ids.len + 2),
+			2)
+		assert issues.len == 1, '${ids}: ${issues}'
+		assert issues[0].path == '$/patches'
+		assert issues[0].message.contains('contiguous ordered TinyCC patches')
+	}
+	// Orders must be exactly 1 through patches + transforms.
+	mut skipped_order := contiguous_orders(18)
+	skipped_order[17] = 19
+	for orders in [contiguous_orders(17), contiguous_orders(19), skipped_order] {
+		issues := bin.validate_windows_patch_sequence(windows_patch_ids(16), orders, 2)
+		assert issues.len == 1, '${orders}: ${issues}'
+		assert issues[0].path == '$/transforms'
+		assert issues[0].message.contains('exactly 1 through the declared patch and transform count')
+	}
+
+	// Manifest level: the sixteen-patch fixture, a seventeen-patch extension of it, a gap,
+	// and transforms that do not immediately follow the last patch.
+	sixteen := schema_fixture('manifest-windows-opaque.valid.json')
+	assert validate_manifest_source(sixteen, 'windows-sixteen-patches').len == 0
+	seventeen := sixteen.replace_once('"order": 18,', '"order": 19,').replace_once('"order": 17,',
+		'"order": 18,').replace_once('"required_probe_ids": ["patch-0016"]}]
+    }
+  ],', '"required_probe_ids": ["patch-0016"]}]
+    },
+    {
+      "id": "patch-0017",
+      "path": "patches/0017-win32-export-more-kernel32-functions.patch",
+      "sha256": "4717171717171717171717171717171717171717171717171717171717171717",
+      "order": 17,
+      "category": "upstream-candidate",
+      "auto_deprecatable": false,
+      "state": "active-required",
+      "effects": [{"id": "patch-0017-effect", "owner": "tinycc", "files": ["win32/lib/kernel32.def"], "functions": ["GetSystemTimePreciseAsFileTime"], "required_probe_ids": ["patch-0017"]}]
+    }
+  ],').replace_once('"oracle": "os, sync and runtime kernel32 imports resolve without the hand-edited kernel32.def"},',
+		'"oracle": "os, sync and runtime kernel32 imports resolve without the hand-edited kernel32.def"},
+    {"id": "patch-0017", "required": true, "expected_lanes": ["x64", "i386"], "oracle": "GetSystemTimePreciseAsFileTime import resolves"},')
+	assert seventeen != sixteen
+	assert seventeen.contains('"id": "patch-0017"')
+	seventeen_issues := validate_manifest_source(seventeen, 'windows-seventeen-patches')
+	assert seventeen_issues.len == 0, '${seventeen_issues}'
+	gap := sixteen.replace('patch-0016', 'patch-0017')
+	gap_issues := validate_manifest_source(gap, 'windows-patch-gap')
+	assert gap_issues.any(it.path == '$/patches'
+		&& it.message.contains('contiguous ordered TinyCC patches')), '${gap_issues}'
+	transform_gap := sixteen.replace_once('"order": 18,', '"order": 19,').replace_once('"order": 17,',
+		'"order": 18,')
+	transform_gap_issues := validate_manifest_source(transform_gap, 'windows-transform-order-gap')
+	assert transform_gap_issues.any(it.path == '$/transforms'
+		&& it.message.contains('exactly 1 through the declared patch and transform count')), '${transform_gap_issues}'
 }
 
 fn test_durable_schema_fixtures_validate_with_local_refs_and_conditionals() {
