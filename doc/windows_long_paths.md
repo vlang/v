@@ -12,6 +12,8 @@ such an executable can create, check and open files past `MAX_PATH`.
 
 * An executable that its linker already gave a manifest keeps that manifest unchanged.
   MinGW GCC links one that declares `longPathAware` already.
+* If `<output>.manifest` exists beside the final executable, V leaves that external manifest
+  in control. Include `longPathAware` there if the program also needs long paths.
 * Executables linked by MSVC get no manifest: they load `dbghelp.dll` at startup, and its
   initialization would hang on a long `TMP` (see below) before any V code runs.
 * Executables built with the FastC backend (`-b fastc`), shared libraries, and Windows

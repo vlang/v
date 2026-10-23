@@ -487,7 +487,6 @@ fn (mut g FlatGen) collect_interface_impls() {
 			}
 		}
 		impls = impls.filter(!g.interface_impl_is_open_generic(it))
-		g.iface_impls[iface] = impls
 		type_ids := if g.is_ierror_type_name(iface_id) {
 			types.stable_interface_type_ids(impls)
 		} else if impls.len > base_impls.len {
@@ -495,6 +494,10 @@ fn (mut g FlatGen) collect_interface_impls() {
 		} else {
 			g.tc.interface_type_ids(iface_id)
 		}
+		// Keep checker-assigned IDs stable while omitting unused C dispatch layouts.
+		impls = impls.filter(!flat.source_type_name(it).starts_with('C.')
+			|| g.referenced_c_struct_ids[it])
+		g.iface_impls[iface] = impls
 		for concrete_id in impls {
 			g.iface_type_ids[interface_dispatch_boxed_type_key(iface_id, concrete_id)] = type_ids[concrete_id]
 		}
