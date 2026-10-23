@@ -4048,6 +4048,8 @@ Pointers to concrete values can be passed to optional interface parameters when 
 implement the interface. The option contains an interface value referring to the original object.
 Additional pointer layers, such as `&&Record`, must be dereferenced before passing the object.
 Pointers to interface values, such as `&Named`, must also be dereferenced first.
+Parentheses around a concrete value or pointer also work when assigning or returning an optional
+or result interface; the conversion is applied once.
 
 Returning a stored pointer field returns that pointer value. It does not borrow the storage of
 the containing struct, unlike taking the address of one of its fields.
