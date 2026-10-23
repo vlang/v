@@ -210,3 +210,24 @@ fn test_merge_platforms() {
 	assert merge_platforms([], [.linux]) == []
 	assert merge_platforms(cross_platforms.filter(it != .windows), [.windows]) == []
 }
+
+fn test_cross_preserves_distinct_string_values_of_platform_constants() {
+	dir := os.join_path(os.vtmp_dir(), 'vdoc_cross_string_constants_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	os.write_file(os.join_path(dir, 'value_nix.c.v'), "module value\n\npub const text = 'two  spaces'\n")!
+	os.write_file(os.join_path(dir, 'value_windows.c.v'), "module value\n\npub const text = 'two spaces'\n")!
+	d := generate(dir, true, true, .cross)!
+	values := d.contents['Constants']!.children
+	assert values.len == 2
+	assert values[0].platforms.len == cross_platforms.len - 1
+	assert values[1].platforms == [.windows]
+}
+
+fn test_declaration_shape_preserves_string_literal_contents() {
+	assert declaration_shape("pub const text = 'two  spaces'") != declaration_shape("pub const text = 'two spaces'")
+	assert declaration_shape("pub const text = 'word @type'") != declaration_shape("pub const text = 'word type'")
+	assert declaration_shape("pub const text = 'two\tspaces'") != declaration_shape("pub const text = 'two spaces'")
+	assert declaration_shape("pub const text = 'one\n  two'") != declaration_shape("pub const text = 'one\n two'")
+	assert declaration_shape("pub const text = r'one\\' // ignored") == declaration_shape("pub const text = r'one\\'")
+}

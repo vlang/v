@@ -385,19 +385,66 @@ fn all_platforms(node DocNode) []Platform {
 // its attributes, comments and layout, and the names of the parameters of a function.
 // Two declarations of a symbol with the same shape are documented as one.
 fn declaration_shape(content string) string {
-	mut code := []string{}
-	for line in content.split('\n') {
-		trimmed := line.trim_space()
-		if trimmed.starts_with('@[') {
+	mut code := []u8{}
+	mut quote := u8(0)
+	mut raw_string := false
+	mut attribute_depth := 0
+	mut pending_space := false
+	for i := 0; i < content.len; i++ {
+		c := content[i]
+		if quote != 0 {
+			if attribute_depth == 0 {
+				code << c
+			}
+			if c == `\\` && !raw_string && i + 1 < content.len {
+				i++
+				if attribute_depth == 0 {
+					code << content[i]
+				}
+			} else if c == quote {
+				quote = 0
+			}
 			continue
 		}
-		without_comment := without_line_comment(trimmed).trim_space()
-		if without_comment != '' {
-			code << without_comment
+		if c == `/` && i + 1 < content.len && content[i + 1] == `/` {
+			for i < content.len && content[i] != `\n` {
+				i++
+			}
+			pending_space = true
+			continue
 		}
+		if c == `@` && i + 1 < content.len && content[i + 1] == `[` {
+			attribute_depth++
+			i++
+			continue
+		}
+		if c in [`'`, `"`, `\``] {
+			quote = c
+			raw_string = i > 0 && content[i - 1] == `r`
+		}
+		if attribute_depth > 0 {
+			if c == `[` {
+				attribute_depth++
+			} else if c == `]` {
+				attribute_depth--
+			}
+			continue
+		}
+		if c.is_space() {
+			pending_space = true
+			continue
+		}
+		// A keyword used as a name can have an `@` prefix, like `@type`.
+		if c == `@` {
+			continue
+		}
+		if pending_space && code.len > 0 {
+			code << ` `
+		}
+		pending_space = false
+		code << c
 	}
-	// A name that is a keyword can be written with an `@`, like `@type`.
-	shape := code.join(' ').replace('\t', ' ').split(' ').filter(it != '').map(it.trim_string_left('@')).join(' ').trim_string_left('pub ')
+	shape := code.bytestr().trim_string_left('pub ')
 	if shape.starts_with('fn ') {
 		return without_parameter_names(shape)
 	}

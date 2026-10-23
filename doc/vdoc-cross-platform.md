@@ -14,7 +14,7 @@ A symbol that is declared differently on some platforms, like a struct with othe
 Windows, is documented once for each declaration, each with its own note. Declarations that
 only differ in their attributes, comments, layout, or the names of their parameters are
 documented as one. Constants that follow each other and are available on the same platforms
-are documented together.
+are documented together. Differences inside string literals remain distinct constant values.
 
 Examples, with `-check-examples` or `-unsafe-run-examples`, are only checked for the symbols
 that are available on the platform that `v doc` runs on.
