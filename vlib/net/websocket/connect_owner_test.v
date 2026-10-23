@@ -92,3 +92,10 @@ fn test_custom_dialer_upgrade_and_dispose_closes_owned_socket() ! {
 	assert client.get_state() == .closed
 	peer.wait()
 }
+
+fn test_dispose_zero_value_client() {
+	mut client := Client{}
+	client.dispose()
+	client.dispose()
+	assert client.get_state() == .closed
+}

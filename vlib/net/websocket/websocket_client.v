@@ -159,7 +159,9 @@ pub fn (mut ws Client) dispose() {
 	if ws.get_state() != .closed && !isnil(ws.conn) {
 		ws.close(1000, 'connection owner ended') or {}
 	}
-	ws.ssl_conn.shutdown() or {}
+	if !isnil(ws.ssl_conn) {
+		ws.ssl_conn.shutdown() or {}
+	}
 	ws.set_state(.closed)
 }
 
