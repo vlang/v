@@ -1056,8 +1056,7 @@ fn (mut t Transformer) drain_pending_generic_fn_specs(struct_decls map[string]Ge
 			pending << spec
 		}
 		if !t.parallel_monomorphize
-			&& t.run_scoped_monomorphize_spec_batches(pending, struct_decls, sum_decls, mut emitted,
-				mut generated) {
+			&& t.run_serial_scoped_monomorphize_specs(pending, mut emitted, mut generated) {
 			changed = true
 			continue
 		}

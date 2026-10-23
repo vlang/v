@@ -1443,11 +1443,9 @@ fn (mut t Transformer) prepare_parallel_monomorph_scan(start int, end int) bool 
 	return true
 }
 
-// The serial whole-tree monomorphizer still uses bounded specialization batches
-// on the shared worker pool when parallel workers are enabled. Each batch releases
-// its scratch before the next one starts; `-no-parallel` disables the pool and
-// leaves this path to the synchronous master drain.
-fn (mut t Transformer) run_scoped_monomorphize_spec_batches(specs []PendingGenericFnSpec, struct_decls map[string]GenericStructDecl, sum_decls map[string]GenericSumDecl, mut emitted map[string]bool, mut generated []string) bool {
+// Serial user builds also need to release specialization scratch between batches.
+// This path runs synchronously and never creates or dispatches a worker pool.
+fn (mut t Transformer) run_serial_scoped_monomorphize_specs(specs []PendingGenericFnSpec, mut emitted map[string]bool, mut generated []string) bool {
 	$if linux && arm64 {
 		return false
 	}
@@ -1455,8 +1453,7 @@ fn (mut t Transformer) run_scoped_monomorphize_spec_batches(specs []PendingGener
 		|| t.tc.checker_fixture_mode || specs.len == 0 || t.emits_directly(specs) {
 		return false
 	}
-	return t.run_parallel_monomorphize_specs(specs, struct_decls, sum_decls, mut emitted,
-		mut generated)
+	return t.run_scoped_monomorphize_specs(specs, mut emitted, mut generated)
 }
 
 fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnSpec, struct_decls map[string]GenericStructDecl, sum_decls map[string]GenericSumDecl, mut emitted map[string]bool, mut generated []string) bool {
