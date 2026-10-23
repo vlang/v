@@ -26585,7 +26585,10 @@ fn (mut g FlatGen) is_const_expr_inner(id flat.NodeId, mut visiting map[int]bool
 		.cast_expr {
 			// An interface value points at a boxed copy of its source, so the cast
 			// has to run in _vinit even when the source is constant.
+			// Sum values can contain nested aggregate compound literals, which
+			// GCC does not accept as file-scope constant initializers.
 			!g.cast_target_is_interface(g.generic_default_type_id(flat.source_type_id(node.value)))
+				&& cgen_unalias_type(g.tc.parse_type(g.generic_default_type_id(flat.source_type_id(node.value)))) !is types.SumType
 				&& g.is_const_expr_inner(g.a.child(&node, 0), mut visiting)
 		}
 		.ident {
@@ -26616,6 +26619,12 @@ fn (mut g FlatGen) is_const_expr_inner(id flat.NodeId, mut visiting map[int]bool
 			all_const
 		}
 		.struct_init {
+			// Sum constructors lower to struct initializers with nested payload
+			// compound literals, which need runtime storage on GCC.
+			if g.struct_init_is_lowered_sum_literal(node)
+				|| cgen_unalias_type(g.tc.parse_type(flat.source_type_id(node.value))) is types.SumType {
+				return false
+			}
 			if g.struct_needs_default_init(flat.source_type_id(node.value)) {
 				return false
 			}
