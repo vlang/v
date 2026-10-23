@@ -133,6 +133,36 @@ pub fn (mut ws Client) connect() ! {
 	ws.send_open_event()
 }
 
+// connect_with_dialer uses an owned TCP connection supplied by the caller.
+// The dialer must return a connected socket and owns failed candidates. Once
+// returned, this client owns cleanup. TLS and HTTP upgrade use the usual path.
+// Custom dialers provide their own proxy tunneling; ClientOpt.proxy_url is not
+// accepted here to avoid silently bypassing configured proxy behavior.
+pub fn (mut ws Client) connect_with_dialer(dialer fn (string) !&net.TcpConn) ! {
+	ws.assert_not_connected()!
+	if ws.proxy_url != '' { return error('custom websocket dialer cannot use proxy_url') }
+	ws.read_start = 0
+	ws.read_end = 0
+	ws.set_state(.connecting)
+	mut tcp := dialer('${ws.uri.hostname}:${ws.uri.port}')!
+	ws.conn = ws.configure_socket(mut tcp)!
+	ws.handshake()!
+	ws.set_state(.open)
+	ws.send_open_event()
+}
+
+// dispose ends a client generation after its reader and writers have joined.
+// Unlike close (which supports reconnect), it also releases the freshly reset
+// TLS context, or the initial context when dialing never produced Client.conn.
+// It is idempotent; this client must not be reconnected after disposal.
+pub fn (mut ws Client) dispose() {
+	if ws.get_state() != .closed && !isnil(ws.conn) {
+		ws.close(1000, 'connection owner ended') or {}
+	}
+	ws.ssl_conn.shutdown() or {}
+	ws.set_state(.closed)
+}
+
 // listen listens and processes incoming messages
 pub fn (mut ws Client) listen() ! {
 	mut log_msg := 'Starting client listener, server(${ws.is_server})...'
