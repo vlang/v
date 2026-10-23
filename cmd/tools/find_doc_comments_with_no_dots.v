@@ -62,13 +62,26 @@ fn (mut ctx Context) process_fpath(filepath string) ! {
 					continue
 				}
 				ctx.pub_comment_lines += comments.len
-				if !cline.comment.ends_with('.') {
+				if !summary_has_period(comments) {
 					println('${filepath}:${cline.line}: ${cline.comment}')
 					ctx.errors++
 				}
 			}
 		}
 	}
+}
+
+fn summary_has_period(comments []CommentLine) bool {
+	for i := comments.len - 1; i >= 0; i-- {
+		text := comments[i].comment.all_after('// ').trim_space()
+		if text == '' || text.starts_with('Example:') || text.starts_with('```') {
+			break
+		}
+		if text.ends_with('.') || text.ends_with('.)') || text.contains('. ') {
+			return true
+		}
+	}
+	return false
 }
 
 struct CommentLine {

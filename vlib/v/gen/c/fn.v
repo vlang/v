@@ -19768,7 +19768,7 @@ fn (mut g FlatGen) emit_multi_return_typedef(ret types.Type, mut emitted map[str
 	}
 	if ret is types.MultiReturn {
 		name := g.multi_return_c_type_name(ret)
-		if name in emitted {
+		if name in emitted || g.cached_support_identifiers[name] {
 			return
 		}
 		emitted[name] = true

@@ -15703,6 +15703,23 @@ pub fn run(args []string) {
 		}
 		resolved_c_flags = v3_shared_object_compile_flags(resolved_c_flags, prefs.normalized_target_os(),
 			is_shared, is_liveshared)
+		// TinyCC splits -Wl arguments at commas, including commas inside paths.
+		// Keep the documented persistent libgc store for such installations.
+		if effective_tcc && prefs.normalized_target_os() == 'macos' && !c_only && !is_o {
+			gc_plan := plan_tcc_macos_libgc_store(prefs.vroot, resolved_c_flags, []) or {
+				eprintln(err.msg())
+				cleanup_c_build_dir(cc_dir)
+				exit(1)
+			}
+			if gc_plan.required {
+				rewritten, _ := materialize_and_rewrite_tcc_macos_libgc_flags(gc_plan, resolved_c_flags, []) or {
+					eprintln(err.msg())
+					cleanup_c_build_dir(cc_dir)
+					exit(1)
+				}
+				resolved_c_flags = rewritten.clone()
+			}
+		}
 		cached_object_c_flags := c_object_compile_flags(resolved_c_flags)
 		if !c_only && !is_o {
 			if missing_gc := v3_missing_bundled_gc_library(resolved_c_flags, prefs.vroot) {
