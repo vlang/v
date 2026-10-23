@@ -4804,7 +4804,7 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 	w.variant_match_cache = &VariantMatchCache{}
 	w.interface_type_cache = &ContextLookupCache{
 		entries: map[u32]u32{}
-		misses:  map[string]bool{}
+		misses:  map[u32]bool{}
 	}
 	w.alias_equivalent_names_cache = &EquivalentNamesCache{}
 	w.enum_expected_cache = &EnumExpectedCache{}
@@ -4815,7 +4815,7 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 	w.append_elem_interface_cache = &ElemInterfaceCache{}
 	w.alias_receiver_method_cache = &LookupCache{
 		entries: map[u64]string{}
-		misses:  map[string]bool{}
+		misses:  map[u64]bool{}
 	}
 	w.interface_box_param_cache = &SourceTypeBoolCache{}
 	w.call_variadic_cache = &BoolLookupCache{
@@ -4942,7 +4942,7 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	w.variant_match_cache = &VariantMatchCache{}
 	w.interface_type_cache = &ContextLookupCache{
 		entries: map[u32]u32{}
-		misses:  map[string]bool{}
+		misses:  map[u32]bool{}
 	}
 	w.alias_equivalent_names_cache = &EquivalentNamesCache{}
 	w.enum_expected_cache = &EnumExpectedCache{}
@@ -4953,7 +4953,7 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	w.append_elem_interface_cache = &ElemInterfaceCache{}
 	w.alias_receiver_method_cache = &LookupCache{
 		entries: map[u64]string{}
-		misses:  map[string]bool{}
+		misses:  map[u64]bool{}
 	}
 	w.interface_box_param_cache = &SourceTypeBoolCache{}
 	w.call_variadic_cache = &BoolLookupCache{

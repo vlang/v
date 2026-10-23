@@ -1169,6 +1169,7 @@ pub mut:
 	// the tests of other compiler modules can register declarations directly.
 	declaration_attributes map[int][]string
 	type_declaration_ids   map[string][]int
+	declaration_param_mutability      map[string][]bool
 mut:
 	checked_library_body_count int
 	// Successful reachability frontiers only append notices. Keep their last
@@ -1211,7 +1212,6 @@ mut:
 	static_associated_fn_keys         map[string]bool
 	static_associated_method_names    map[string]bool
 	static_associated_signature_count int = -1
-	declaration_param_mutability      map[string][]bool
 	strict_map_index_files            map[string]bool
 	// transform_static_method_names is static_associated_method_names taken again from
 	// the signatures a batch of function bodies starts with: transform registers
@@ -2382,6 +2382,10 @@ fn (mut tc TypeChecker) build_fn_declaration_indexes(a &flat.FlatAst) {
 // build_declaration_param_mutability_index records the parameter mutability of
 // every interface method, C function and V function declaration. It and the two
 // builders below each own their maps, so collection runs them on separate lanes.
+pub fn (tc &TypeChecker) declaration_param_mutability_for(key string) []bool {
+	return tc.declaration_param_mutability[key] or { []bool{} }
+}
+
 fn (mut tc TypeChecker) build_declaration_param_mutability_index(a &flat.FlatAst) {
 	tc.declaration_param_mutability = map[string][]bool{}
 	tc.index_declaration_param_mutability(a, tc.top_level_idx, '')
@@ -17163,7 +17167,7 @@ fn enum_backing_value_bounds(typ Type) ?EnumBackingValueBounds {
 
 fn (mut tc TypeChecker) check_backed_enum_field_value_ranges(node flat.Node, backing string, bounds EnumBackingValueBounds) {
 	is_flag := node.typ_text() == 'flag'
-	mut field_values := map[string]int{}
+	mut field_values := map[string]i64{}
 	mut field_exprs := map[string]flat.NodeId{}
 	mut field_ids := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {
@@ -17395,7 +17399,7 @@ fn (mut tc TypeChecker) check_enum_field_values(node_id flat.NodeId, node flat.N
 	}
 	mut seen_names := map[string]bool{}
 	mut seen_values := map[int]bool{}
-	mut field_values := map[string]int{}
+	mut field_values := map[string]i64{}
 	mut next_value := 0
 	for i in 0 .. node.children_count {
 		field_id := tc.a.child(&node, i)
