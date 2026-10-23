@@ -190,6 +190,45 @@ fn test_cached_cname_fast_paths_match_canonical_naming() {
 	}
 }
 
+fn test_cached_cname_classifier_preserves_special_names_and_bytes() {
+	mut g := FlatGen.new()
+	for name in ['', '.', '9name', 'a..b', 'a__b.c', '__v3_internal_symbol_x',
+		'__v3_internal_symbol_x.y', 'x@static@y', 'x.[]=', 'x.+', '_str_123', 'C.name', 'C.SSL_CTX.str',
+		'complex', 'int_str', 'malloc'] {
+		for _ in 0 .. 2 {
+			assert g.cname(name) == c_name(name), name
+		}
+	}
+	for byte in 0 .. 256 {
+		name := 'prefix' + u8(byte).ascii_str() + 'suffix'
+		assert g.cname(name) == c_name(name), byte.str()
+		assert g.cname(name.clone()) == c_name(name), byte.str()
+	}
+}
+
+fn test_cname_recent_cache_checks_content_and_reuses_equal_allocations() {
+	mut cache := CNameCache{}
+	name := 'pkg.first'
+	cache.remember(name, 'pkg__first')
+	assert cache.recent(name.clone())? == 'pkg__first'
+	// Search for a real slot collision; a collision must never supply another name's value.
+	mut collision := ''
+	for i in 0 .. 100000 {
+		candidate := 'pkg.name_${i}'
+		if candidate != name && c_name_recent_slot(candidate) == c_name_recent_slot(name) {
+			collision = candidate
+			break
+		}
+	}
+	assert collision != ''
+	assert cache.recent(collision) == none
+	cache.remember(collision, 'pkg__farst')
+	assert cache.recent(name) == none
+	assert cache.recent(collision.clone())? == 'pkg__farst'
+	cache.remember('', '')
+	assert cache.recent('')? == ''
+}
+
 fn test_c_name_sanitizes_compound_generic_type_arguments() {
 	name :=
 		c_name('json2.StructKeyDecodeResult[fn(&mbedtls.SSLListener, string) !&mbedtls.SSLCerts]')
@@ -1196,4 +1235,41 @@ fn test_linker_object_inputs_keep_headerless_prototypes() {
 		'-D -Wl,/project/helper.o'] {
 		assert !c_flag_links_c_source(flag), flag
 	}
+}
+
+fn test_fixed_storage_candidate_short_name_uses_last_dot_before_c_separator() {
+	g := FlatGen{}
+	cases := {
+		'':                  ''
+		'plain':             'plain'
+		'mod.name':          'name'
+		'mod__name':         'name'
+		'mod__deep__name':   'name'
+		'mod__x.name__tail': 'name__tail'
+		'mod.name__tail':    'name__tail'
+		'a___b':             'b'
+		'a.':                ''
+		'a__':               ''
+		'a_b':               'a_b'
+	}
+	for name, expected in cases {
+		assert g.fixed_storage_candidate_short_name(name) == expected
+	}
+}
+
+fn test_cname_caches_unchanged_names_in_private_overlay() {
+	mut base := &CNameCache{}
+	mut g := FlatGen{ c_name_cache: base }
+	for name in ['ordinary_identifier', 'pkg__already_sanitized'] {
+		assert g.cname(name) == name
+		assert base.entries[name]! == name
+	}
+	g.c_name_cache = &CNameCache{ base: base }
+	for name in ['ordinary_identifier', 'pkg__already_sanitized'] {
+		assert g.cname(name.clone()) == name
+		assert name !in g.c_name_cache.entries
+	}
+	assert g.cname('other_identifier') == 'other_identifier'
+	assert 'other_identifier' !in base.entries
+	assert g.c_name_cache.entries['other_identifier']! == 'other_identifier'
 }

@@ -112,6 +112,9 @@ array literals uses their element storage; integer arrays and pointers retain Fa
 Arrays of anonymous functions retain their parameter and return types when indexed and called.
 Membership tests compare fixed-array elements by value. Single-file bootstrap programs apply
 struct field defaults to empty initializers.
+Promoted fields in pointer embeds support scalar and fixed-array overrides. Overrides copy the
+embedded value, preserving shared defaults and unchanged fields from struct updates. A nil embed
+uses the embedded type's field defaults before applying overrides.
 Sum-type and interface tests narrow later operands of a conjunction, preserving pointer values.
 Generic pointer instances retain pointer depth and mutable storage, including forwarded references.
 `sizeof(int)` uses FastC's target integer width. Returned, global, and struct-field callbacks retain

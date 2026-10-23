@@ -1160,6 +1160,8 @@ fn (mut g FlatGen) start_fixed_array_ret_wrappers() ([]&FlatGen, []thread voidpt
 	mut worker := g.new_parallel_worker(3)
 	worker.fixed_array_ret_wrappers = map[string]bool{}
 	mut support_worker := g.new_parallel_worker(5)
+	// Cleanup precomputation also reads synthetic drops in transformed declarations.
+	support_worker.fn_decl_nodes_by_name = g.fn_decl_nodes_by_name
 	// Both helpers run beside function selection, which writes the master's C-name
 	// and generic-application caches and may release the arena behind them. Keep
 	// their caches private instead of reading the master's through `base`.
@@ -3290,6 +3292,8 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		global_linker_sections:             g.global_linker_sections
 		global_cinit_names:                 g.global_cinit_names
 		enum_backing_infos:                 g.enum_backing_infos
+		referenced_c_struct_ids:            g.referenced_c_struct_ids
+		referenced_c_struct_ids_ready:      g.referenced_c_struct_ids_ready
 		iface_impls:                        g.iface_impls
 		interface_dispatch_required:        g.interface_dispatch_required
 		iface_type_ids:                     g.iface_type_ids
@@ -3526,7 +3530,6 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		local_global_suffix_names_ready:    g.local_global_suffix_names_ready
 		c_typedef_shadow_names:             g.c_typedef_shadow_names
 		c_typedef_shadow_names_ready:       g.c_typedef_shadow_names_ready
-		c_typedef_shadow_names_plain:       g.c_typedef_shadow_names_plain
 		generic_app_cache:                  &GenericAppCache{
 			base: if !isnil(g.generic_app_cache.base) {
 				g.generic_app_cache.base

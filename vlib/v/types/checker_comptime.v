@@ -783,7 +783,7 @@ fn (tc &TypeChecker) comptime_static_enum_name(raw_id u32) ?u32 {
 
 fn comptime_static_subst_value_cond(cond string, var_name string, item ComptimeStaticValueCase) string {
 	mut c := cond
-	if item.has_value {
+	if item.has_value && !item.value_from_c {
 		c = c.replace('${var_name}.value', item.value.str())
 	}
 	c = c.replace('${var_name}.name', "'${item.name}'")
@@ -992,10 +992,19 @@ fn (tc &TypeChecker) comptime_static_for_var_source_type(name string) ?u32 {
 }
 
 fn (tc &TypeChecker) comptime_static_enum_decl_value_cases(enum_name u32) []ComptimeStaticValueCase {
+	mut resolving := map[string]bool{}
+	return tc.comptime_static_enum_decl_value_cases_resolving(enum_name, '', mut resolving)
+}
+
+fn (tc &TypeChecker) comptime_static_enum_decl_value_cases_resolving(enum_name u32, stop_at string, mut resolving map[string]bool) []ComptimeStaticValueCase {
 	mut cur_mod := ''
 	if tc.top_level_idx.len > 0 {
 		for idx in tc.top_level_idx {
 			kind := tc.a.nodes[idx].kind
+			if kind == .file {
+				cur_mod = ''
+				continue
+			}
 			if kind == .module_decl {
 				cur_mod = tc.a.nodes[idx].value
 				continue
@@ -1003,7 +1012,7 @@ fn (tc &TypeChecker) comptime_static_enum_decl_value_cases(enum_name u32) []Comp
 			if kind != .enum_decl {
 				continue
 			}
-			if cases := tc.comptime_static_enum_decl_value_cases_for_node(enum_name, cur_mod, tc.a.nodes[idx]) {
+			if cases := tc.comptime_static_enum_decl_value_cases_for_node(enum_name, cur_mod, tc.a.nodes[idx], stop_at, mut resolving) {
 				return cases
 			}
 		}
@@ -1011,6 +1020,10 @@ fn (tc &TypeChecker) comptime_static_enum_decl_value_cases(enum_name u32) []Comp
 	}
 	for idx in 0 .. tc.a.nodes.len {
 		kind := tc.a.nodes[idx].kind
+		if kind == .file {
+			cur_mod = ''
+			continue
+		}
 		if kind == .module_decl {
 			cur_mod = tc.a.nodes[idx].value
 			continue
@@ -1018,32 +1031,51 @@ fn (tc &TypeChecker) comptime_static_enum_decl_value_cases(enum_name u32) []Comp
 		if kind != .enum_decl {
 			continue
 		}
-		if cases := tc.comptime_static_enum_decl_value_cases_for_node(enum_name, cur_mod, tc.a.nodes[idx]) {
+		if cases := tc.comptime_static_enum_decl_value_cases_for_node(enum_name, cur_mod, tc.a.nodes[idx], stop_at, mut resolving) {
 			return cases
 		}
 	}
 	return []ComptimeStaticValueCase{}
 }
 
-// comptime_enum_decl_field_values returns the statically evaluated values of an enum's fields.
+// comptime_enum_decl_field_value returns a field's value when its initializer is known in V.
+pub fn (tc &TypeChecker) comptime_enum_decl_field_value(enum_name u32, field_name string) ?i64 {
+	mut resolving := map[string]bool{}
+	for item in tc.comptime_static_enum_decl_value_cases_resolving(enum_name, field_name, mut resolving) {
+		if item.name == field_name && item.has_value && !item.value_from_c {
+			return item.value
+		}
+	}
+	return none
+}
+
+// comptime_enum_decl_field_values returns enum field values known in V, excluding C expressions.
 pub fn (tc &TypeChecker) comptime_enum_decl_field_values(enum_name u32) map[string]i64 {
 	mut values := map[string]i64{}
 	for item in tc.comptime_static_enum_decl_value_cases(enum_name) {
-		if item.has_value {
+		if item.has_value && !item.value_from_c {
 			values[item.name] = item.value
 		}
 	}
 	return values
 }
 
-fn (tc &TypeChecker) comptime_static_enum_decl_value_cases_for_node(enum_name u32, cur_mod string, node flat.Node) ?[]ComptimeStaticValueCase {
+fn (tc &TypeChecker) comptime_static_enum_decl_value_cases_for_node(enum_name u32, cur_mod string, node flat.Node, stop_at string, mut resolving map[string]bool) ?[]ComptimeStaticValueCase {
 	qualified := if cur_mod != '' && cur_mod != 'main' && cur_mod != 'builtin' {
 		'${cur_mod}.${node.value}'
 	} else {
 		node.value
 	}
-	if flat.source_type_name(enum_name) != node.value && flat.source_type_name(enum_name) != qualified {
+	if flat.source_type_name(enum_name) != qualified {
 		return none
+	}
+	// Initializers resolve aliases and imports in the enum's declaration context,
+	// even when another module requests this enum's statically known values.
+	file := if source := tc.a.source_files[node.pos.id] { source.name } else { tc.cur_file }
+	view := if tc.cur_file == file && tc.cur_module == cur_mod {
+		tc
+	} else {
+		tc.fork_type_parse_view(file, cur_mod)
 	}
 	is_flag := node.typ_text() == 'flag'
 	mut field_order := []string{}
@@ -1066,20 +1098,31 @@ fn (tc &TypeChecker) comptime_static_enum_decl_value_cases_for_node(enum_name u3
 		mut val := next_val
 		mut from_c := next_from_c
 		if expr_id := field_exprs[field_name] {
-			mut resolving := map[string]bool{}
-			if ev := tc.comptime_static_enum_field_value(expr_id, cur_mod, enum_name, mut field_values, field_exprs, mut resolving) {
-				val = ev
-				from_c = false
-			} else {
+			key := '${qualified}.${field_name}'
+			if resolving[key] {
 				from_c = true
+			} else {
+				resolving[key] = true
+				if ev := view.comptime_static_enum_field_value(expr_id, cur_mod, enum_name, mut field_values, field_exprs, mut resolving) {
+					val = ev
+					from_c = false
+				} else {
+					from_c = true
+				}
+				resolving.delete(key)
 			}
 		}
-		field_values[field_name] = val
+		if !from_c {
+			field_values[field_name] = val
+		}
 		out << ComptimeStaticValueCase{
 			name:         field_name
 			value:        if is_flag { i64(u64(1) << val) } else { val }
 			has_value:    true
 			value_from_c: from_c
+		}
+		if field_name == stop_at {
+			break
 		}
 		next_val = val + 1
 		next_from_c = from_c
@@ -1205,6 +1248,31 @@ fn (tc &TypeChecker) comptime_static_enum_field_value(id flat.NodeId, enum_modul
 			if field := tc.comptime_static_enum_selector_ref_field(id, enum_module, enum_name) {
 				return tc.comptime_static_enum_field_ref_value(field, enum_module, enum_name, mut field_values, field_exprs, mut resolving)
 			}
+			prefix := tc.comptime_static_enum_selector_base_text(tc.a.child(&node, 0))
+			file := if source := tc.a.source_files[node.pos.id] { source.name } else { tc.cur_file }
+			qualified := if !prefix.contains('.') {
+				local_name := if enum_module !in ['', 'main', 'builtin'] {
+					'${enum_module}.${prefix}'
+				} else {
+					prefix
+				}
+				if tc.type_symbol_known(local_name) {
+					local_name
+				} else {
+					tc.resolve_selective_import_type_symbol_in_file(prefix, file) or { local_name }
+				}
+			} else {
+				flat.source_type_name(tc.resolve_imported_type_text_in_file(flat.source_type_id(prefix), file))
+			}
+			enum_type := unalias_type(tc.parse_type(flat.source_type_id(qualified)))
+			if enum_type is Enum {
+				field_name := tc.enum_field_name(enum_type.source_type_id(), node.value) or { node.value }
+				for item in tc.comptime_static_enum_decl_value_cases_resolving(enum_type.source_type_id(), field_name, mut resolving) {
+					if item.name == field_name && !item.value_from_c {
+						return item.value
+					}
+				}
+			}
 			return none
 		}
 		else {}
@@ -1213,20 +1281,70 @@ fn (tc &TypeChecker) comptime_static_enum_field_value(id flat.NodeId, enum_modul
 	return none
 }
 
+// comptime_enum_call_value folds an enum helper using its checked declaration context.
+// Arguments retain the enum initializer's source context.
+pub fn (tc &TypeChecker) comptime_enum_call_value(id flat.NodeId, enum_module string, enum_name u32, mut field_values map[string]i64, field_exprs map[string]flat.NodeId, mut resolving map[string]bool) ?i64 {
+	file := if source := tc.a.source_files[tc.a.node(id).pos.id] {
+		source.name
+	} else {
+		tc.cur_file
+	}
+	view := if tc.cur_file == file && tc.cur_module == enum_module {
+		tc
+	} else {
+		tc.fork_type_parse_view(file, enum_module)
+	}
+	return view.comptime_static_enum_call_value(id, enum_module, enum_name, mut field_values, field_exprs, mut resolving)
+}
+
 fn (tc &TypeChecker) comptime_static_enum_call_value(id flat.NodeId, enum_module string, enum_name u32, mut field_values map[string]i64, field_exprs map[string]flat.NodeId, mut resolving map[string]bool) ?i64 {
 	call := tc.a.node(id)
 	if call.children_count == 0 {
 		return none
 	}
-	callee := tc.a.child_node(call, 0)
-	if callee.kind != .ident {
-		return none
-	}
-	fn_id := tc.comptime_static_enum_helper_fn_id(callee.value, enum_module) or { return none }
+	decl := tc.comptime_static_enum_helper_decl(id, enum_module) or { return none }
+	fn_id := flat.NodeId(decl.idx)
 	if !tc.declaration_has_attribute(fn_id, 'comptime') {
 		return none
 	}
 	fn_node := tc.a.node(fn_id)
+	file := if source := tc.a.source_files[fn_node.pos.id] { source.name } else { tc.cur_file }
+	helper := if tc.cur_file == file && tc.cur_module == decl.mod {
+		tc
+	} else {
+		tc.fork_type_parse_view(file, decl.mod)
+	}
+	// This is a straight-line integer evaluator, not an interpreter. Validate the
+	// complete body before folding so no skipped statement can change its result.
+	mut has_return := false
+	for i in 0 .. fn_node.children_count {
+		stmt := tc.a.child_node(fn_node, i)
+		if has_return {
+			return none
+		}
+		match stmt.kind {
+			.param {}
+			.decl_assign, .assign {
+				if stmt.children_count != 2 || (stmt.kind == .assign && stmt.op != .assign) {
+					return none
+				}
+				lhs := tc.a.child_node(stmt, 0)
+				if lhs.kind != .ident || lhs.value.len == 0 || lhs.value == '_' {
+					return none
+				}
+			}
+			.return_stmt {
+				if stmt.children_count != 1 {
+					return none
+				}
+				has_return = true
+			}
+			else { return none }
+		}
+	}
+	if !has_return {
+		return none
+	}
 	mut locals := map[string]i64{}
 	mut local_types := map[string]Type{}
 	mut arg_idx := 1
@@ -1240,19 +1358,24 @@ fn (tc &TypeChecker) comptime_static_enum_call_value(id flat.NodeId, enum_module
 		}
 		arg_id := tc.a.child(call, arg_idx)
 		arg := tc.comptime_static_enum_field_value(arg_id, enum_module, enum_name, mut field_values, field_exprs, mut resolving) or { return none }
-		local_types[param.value] = tc.parse_type(param.typ)
+		local_types[param.value] = helper.parse_type(param.typ)
 		locals[param.value] = comptime_enum_integer_cast(arg, unalias_type(local_types[param.value]).source_type_id())
 		arg_idx++
+	}
+	if arg_idx != call.children_count {
+		return none
 	}
 	for i in 0 .. fn_node.children_count {
 		stmt := tc.a.child_node(fn_node, i)
 		if stmt.kind in [.decl_assign, .assign] {
-			tc.comptime_static_enum_update_locals(stmt, mut locals, mut local_types, enum_module)
+			if !helper.comptime_static_enum_update_locals(stmt, mut locals, mut local_types, decl.mod) {
+				return none
+			}
 			continue
 		}
 		if stmt.kind == .return_stmt && stmt.children_count > 0 {
-			value := tc.comptime_static_enum_local_expr_value(tc.a.child(stmt, 0), locals, local_types, enum_module) or { return none }
-			return comptime_enum_integer_cast(value, unalias_type(tc.parse_type(fn_node.typ)).source_type_id())
+			value := helper.comptime_static_enum_local_expr_value(tc.a.child(stmt, 0), locals, local_types, decl.mod) or { return none }
+			return comptime_enum_integer_cast(value, unalias_type(helper.parse_type(fn_node.typ)).source_type_id())
 		}
 	}
 	return none
@@ -1313,72 +1436,52 @@ pub fn comptime_enum_unsigned_right_shift(value i64, shift i64, typ_id u32) i64 
 	return i64(u64(value) >> shift)
 }
 
-fn (tc &TypeChecker) comptime_static_enum_helper_fn_id(callee_name string, enum_module string) ?flat.NodeId {
-	short := callee_name.all_after_last('.')
-	mut indexes := tc.top_level_idx.clone()
-	if indexes.len == 0 {
-		indexes = []i32{len: tc.a.nodes.len, init: i32(index)}
+fn (tc &TypeChecker) comptime_static_enum_helper_decl(id flat.NodeId, enum_module string) ?VisibleMutationFnDecl {
+	call := tc.a.node(id)
+	if call.children_count == 0 {
+		return none
 	}
-	for priority in 0 .. 4 {
-		mut cur_mod := ''
-		for idx in indexes {
-			candidate := tc.a.nodes[idx]
-			if candidate.kind == .file {
-				cur_mod = ''
-				continue
-			}
-			if candidate.kind == .module_decl {
-				cur_mod = candidate.value
-				continue
-			}
-			if candidate.kind != .fn_decl {
-				continue
-			}
-			exact := candidate.value == callee_name
-			suffix := candidate.value.all_after_last('.') == short
-			matches := match priority {
-				0 { cur_mod == enum_module && exact }
-				1 { cur_mod == enum_module && suffix }
-				2 { exact }
-				else { suffix }
-			}
-			if matches {
-				return flat.NodeId(idx)
-			}
+	// Before call checking has cached an identity, use the same lexical/import
+	// lookup order. Never select an unrelated declaration by its short suffix.
+	name := tc.resolved_call_name(id) or {
+		mut view := tc.fork_type_parse_view(tc.cur_file, enum_module)
+		info := view.resolve_call_info_uncached(id, call) or { return none }
+		if info.has_receiver {
+			return none
 		}
+		info.name
 	}
-	return none
+	if name.len == 0 {
+		return none
+	}
+	module_name := tc.fn_type_modules[name] or {
+		if name.contains('.') { name.all_before_last('.') } else { enum_module }
+	}
+	decl := tc.visible_mutation_fn_decl(name, module_name) or { return none }
+	if checker_qualified_fn_name(decl.mod, tc.a.nodes[decl.idx].value) != name {
+		return none
+	}
+	return decl
 }
 
-fn (tc &TypeChecker) comptime_static_enum_update_locals(stmt flat.Node, mut locals map[string]i64, mut local_types map[string]Type, enum_module string) {
-	if stmt.children_count < 2 || stmt.children_count % 2 != 0 {
-		return
+fn (tc &TypeChecker) comptime_static_enum_update_locals(stmt flat.Node, mut locals map[string]i64, mut local_types map[string]Type, enum_module string) bool {
+	if stmt.children_count != 2 || (stmt.kind == .assign && stmt.op != .assign) {
+		return false
 	}
-	mut i := 0
-	for i < stmt.children_count {
-		lhs := tc.a.child_node(stmt, i)
-		if lhs.kind == .ident && lhs.value.len > 0 && lhs.value != '_' {
-			if stmt.kind == .decl_assign || stmt.op == .assign {
-				rhs_id := tc.a.child(stmt, i + 1)
-				if value := tc.comptime_static_enum_local_expr_value(rhs_id, locals, local_types, enum_module) {
-					typ := if stmt.kind == .decl_assign {
-						tc.comptime_enum_local_expr_type(rhs_id, local_types)
-					} else {
-						local_types[lhs.value] or { tc.comptime_enum_local_expr_type(rhs_id, local_types) }
-					}
-					locals[lhs.value] = comptime_enum_integer_cast(value, unalias_type(typ).source_type_id())
-					local_types[lhs.value] = typ
-				} else {
-					locals.delete(lhs.value)
-					local_types.delete(lhs.value)
-				}
-			} else {
-				locals.delete(lhs.value)
-				local_types.delete(lhs.value)
-			}
-		}
-		i += 2
+	lhs := tc.a.child_node(stmt, 0)
+	if lhs.kind != .ident || lhs.value.len == 0 || lhs.value == '_' {
+		return false
 	}
+	rhs_id := tc.a.child(stmt, 1)
+	value := tc.comptime_static_enum_local_expr_value(rhs_id, locals, local_types, enum_module) or { return false }
+	typ := if stmt.kind == .decl_assign {
+		tc.comptime_enum_local_expr_type(rhs_id, local_types)
+	} else {
+		local_types[lhs.value] or { return false }
+	}
+	locals[lhs.value] = comptime_enum_integer_cast(value, unalias_type(typ).source_type_id())
+	local_types[lhs.value] = typ
+	return true
 }
 
 fn (tc &TypeChecker) comptime_static_enum_local_expr_value(id flat.NodeId, locals map[string]i64, local_types map[string]Type, enum_module string) ?i64 {
@@ -1534,15 +1637,16 @@ fn (tc &TypeChecker) comptime_static_enum_field_ref_value(field_ref string, enum
 		return field_values[field_name]
 	}
 	expr_id := field_exprs[field_name] or { return none }
-	if resolving[field_name] {
+	key := '${flat.source_type_name(qualified_name)}.${field_name}'
+	if resolving[key] {
 		return none
 	}
-	resolving[field_name] = true
+	resolving[key] = true
 	val := tc.comptime_static_enum_field_value(expr_id, enum_module, enum_name, mut field_values, field_exprs, mut resolving) or {
-		resolving.delete(field_name)
+		resolving.delete(key)
 		return none
 	}
-	resolving.delete(field_name)
+	resolving.delete(key)
 	field_values[field_name] = val
 	return val
 }
@@ -2117,7 +2221,7 @@ fn (tc &TypeChecker) const_decl_is_in_top_level_comptime(id flat.NodeId) bool {
 }
 
 // check_node validates check node state for types.
-@[direct_array_access]
+@[direct_array_access; inline]
 fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 	idx := int(id)
 	if idx < 0 {
@@ -2131,10 +2235,7 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 	// and its re-entry bookkeeping; their diagnostics still run on every visit.
 	node := tc.a.nodes[idx]
 	if node.kind == .string_literal {
-		literal_pos := tc.string_literal_diagnostic_pos(node)
-		if !tc.string_literal_source_is_valid_utf8(literal_pos) {
-			tc.record_notice_at(.unknown_ident, 'invalid utf8 byte sequence in string literal', id, literal_pos)
-		}
+		tc.check_string_literal_node(id, node)
 		return
 	}
 	kind_id := node_kind_id(node)
@@ -2147,6 +2248,13 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 		return
 	}
 	tc.check_nonliteral_node(id)
+}
+
+fn (mut tc TypeChecker) check_string_literal_node(id flat.NodeId, node flat.Node) {
+	literal_pos := tc.string_literal_diagnostic_pos(node)
+	if !tc.string_literal_source_is_valid_utf8(literal_pos) {
+		tc.record_notice_at(.unknown_ident, 'invalid utf8 byte sequence in string literal', id, literal_pos)
+	}
 }
 
 fn (mut tc TypeChecker) check_nonliteral_node(id flat.NodeId) {
@@ -2419,7 +2527,7 @@ fn (mut tc TypeChecker) check_nonliteral_node(id flat.NodeId) {
 		}
 		unsafe_alias_state := tc.fn_context.unsafe_reference_alias_owners.clone()
 		pointer_alias_state :=
-			clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
+			snapshot_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 		$if ownership ? {
 			tc.ownership_check_defer_stmt(id, node)
 		} $else {
@@ -2427,7 +2535,7 @@ fn (mut tc TypeChecker) check_nonliteral_node(id flat.NodeId) {
 		}
 		tc.fn_context.unsafe_reference_alias_owners = unsafe_alias_state.clone()
 		tc.fn_context.pointer_binding_value_keys =
-			clone_pointer_binding_value_keys(pointer_alias_state)
+			snapshot_pointer_binding_value_keys(pointer_alias_state)
 		return
 	}
 	if node.kind == .spawn_expr {
@@ -2577,7 +2685,7 @@ fn (mut tc TypeChecker) check_nonliteral_node(id flat.NodeId) {
 			tc.check_node(lhs_id)
 			unsafe_alias_skipped_rhs := tc.fn_context.unsafe_reference_alias_owners.clone()
 			pointer_alias_skipped_rhs :=
-				clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
+				snapshot_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 			saved_smartcasts := clone_smartcasts(tc.smartcasts)
 			for sc in smartcasts {
 				if valid_string_data(sc.name) {
@@ -2638,7 +2746,7 @@ fn (mut tc TypeChecker) check_nonliteral_node(id flat.NodeId) {
 		if node.kind == .infix && node.op in [.logical_and, .logical_or] && i == 1 {
 			unsafe_alias_skipped_rhs = tc.fn_context.unsafe_reference_alias_owners.clone()
 			pointer_alias_skipped_rhs =
-				clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
+				snapshot_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 		}
 		previous_channel_send_or_expr_id := tc.channel_send_or_expr_id
 		if node.kind == .infix && node.op == .arrow && i == 1 {
@@ -6194,7 +6302,8 @@ fn (mut tc TypeChecker) check_function_cast(id flat.NodeId, node flat.Node, chil
 fn (mut tc TypeChecker) warn_invalid_enum_cast(id flat.NodeId, node flat.Node, child_id flat.NodeId, target Enum) {
 	value := tc.const_int_expr(child_id, tc.cur_module, []string{}) or { return }
 	cases := tc.comptime_static_enum_decl_value_cases(target.source_type_id())
-	if cases.len == 0 {
+	// C-derived members and successors have no numeric value until C compilation.
+	if cases.len == 0 || cases.any(!it.has_value || it.value_from_c) {
 		return
 	}
 	mut valid := false
@@ -10226,12 +10335,12 @@ fn (mut tc TypeChecker) check_select_stmt(node flat.Node) {
 	mut invalidated_smartcasts := map[string]bool{}
 	unsafe_alias_base := tc.fn_context.unsafe_reference_alias_owners.clone()
 	mut unsafe_alias_paths := []map[string]bool{}
-	pointer_alias_base := clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
+	pointer_alias_base := snapshot_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 	mut pointer_alias_paths := []map[string][]string{}
 	for i in 0 .. node.children_count {
 		tc.fn_context.unsafe_reference_alias_owners = unsafe_alias_base.clone()
 		tc.fn_context.pointer_binding_value_keys =
-			clone_pointer_binding_value_keys(pointer_alias_base)
+			snapshot_pointer_binding_value_keys(pointer_alias_base)
 		if base_smartcasts.len > 0 {
 			tc.smartcasts = clone_smartcasts(base_smartcasts)
 		}
@@ -10341,7 +10450,7 @@ fn (mut tc TypeChecker) check_select_stmt(node flat.Node) {
 		}
 		if !tc.stmt_sequence_definitely_returns(&branch, body_start) {
 			unsafe_alias_paths << tc.fn_context.unsafe_reference_alias_owners.clone()
-			pointer_alias_paths << clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
+			pointer_alias_paths << snapshot_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 		}
 		for key, _ in base_smartcasts {
 			if key !in tc.smartcasts {
@@ -10354,7 +10463,7 @@ fn (mut tc TypeChecker) check_select_stmt(node flat.Node) {
 		tc.smartcasts.delete(key)
 	}
 	tc.fn_context.unsafe_reference_alias_owners = intersect_unsafe_reference_alias_states(unsafe_alias_paths, unsafe_alias_base)
-	tc.fn_context.pointer_binding_value_keys = merge_pointer_binding_value_states(pointer_alias_paths, pointer_alias_base)
+	tc.fn_context.pointer_binding_value_keys = merge_pointer_binding_snapshots(pointer_alias_paths, pointer_alias_base)
 	$if ownership ? {
 		tc.ownership_end_branch_group()
 	}
@@ -10944,7 +11053,7 @@ fn (mut tc TypeChecker) check_or_expr(id flat.NodeId, node flat.Node) {
 	}
 	unsafe_alias_success := tc.fn_context.unsafe_reference_alias_owners.clone()
 	pointer_alias_success :=
-		clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
+		snapshot_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 	$if ownership ? {
 		tc.ownership_begin_value_branch_group()
 		tc.ownership_begin_branch()
@@ -10973,14 +11082,14 @@ fn (mut tc TypeChecker) check_or_expr(id flat.NodeId, node flat.Node) {
 	tc.pop_scope()
 	mut unsafe_alias_paths := [unsafe_alias_success]
 	mut pointer_alias_paths := [
-		clone_pointer_binding_value_keys(pointer_alias_success),
+		snapshot_pointer_binding_value_keys(pointer_alias_success),
 	]
 	if !tc.stmt_definitely_returns(fallback_id) {
 		unsafe_alias_paths << tc.fn_context.unsafe_reference_alias_owners.clone()
-		pointer_alias_paths << clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
+		pointer_alias_paths << snapshot_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 	}
 	tc.fn_context.unsafe_reference_alias_owners = intersect_unsafe_reference_alias_states(unsafe_alias_paths, unsafe_alias_success)
-	tc.fn_context.pointer_binding_value_keys = merge_pointer_binding_value_states(pointer_alias_paths, pointer_alias_success)
+	tc.fn_context.pointer_binding_value_keys = merge_pointer_binding_snapshots(pointer_alias_paths, pointer_alias_success)
 	if require_fallback_value {
 		tail_id := tc.branch_tail_expr_id(fallback_id)
 		if tc.valid_node_id(tail_id) {
@@ -14233,7 +14342,7 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 	tc.fn_context.method_value_stack_mut_owners =
 		saved_fn_context.method_value_stack_mut_owners.clone()
 	tc.fn_context.pointer_binding_value_keys =
-		clone_pointer_binding_value_keys(captured_pointer_values)
+		snapshot_pointer_binding_value_keys(captured_pointer_values)
 	$if ownership ? {
 		tc.ownership_begin_fn_literal(id, node)
 	}
@@ -14865,7 +14974,7 @@ fn (mut tc TypeChecker) check_for_stmt(node flat.Node) {
 		}
 	}
 	unsafe_alias_base := tc.fn_context.unsafe_reference_alias_owners.clone()
-	pointer_alias_base := clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
+	pointer_alias_base := snapshot_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 	loop_may_skip_body := node.children_count > 1 && tc.a.child_node(&node, 1).kind != .empty
 	$if ownership ? {
 		if node.children_count > 2 {
@@ -14902,9 +15011,9 @@ fn (mut tc TypeChecker) check_for_stmt(node flat.Node) {
 		}
 	}
 	unsafe_alias_post := tc.fn_context.unsafe_reference_alias_owners.clone()
-	pointer_alias_post := clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
+	pointer_alias_post := snapshot_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 	tc.fn_context.unsafe_reference_alias_owners = unsafe_alias_base.clone()
-	tc.fn_context.pointer_binding_value_keys = clone_pointer_binding_value_keys(pointer_alias_base)
+	tc.fn_context.pointer_binding_value_keys = snapshot_pointer_binding_value_keys(pointer_alias_base)
 	tc.fn_context.unsafe_alias_break_states << []map[string]bool{}
 	tc.fn_context.pointer_alias_break_states << []map[string][]string{}
 	tc.fn_context.pointer_alias_continue_states << []map[string][]string{}
@@ -14930,7 +15039,7 @@ fn (mut tc TypeChecker) check_for_stmt(node flat.Node) {
 	pointer_alias_break_states := tc.take_pointer_binding_loop_break_states()
 	pointer_alias_continue_states := tc.take_pointer_binding_loop_continue_states()
 	unsafe_alias_body := tc.fn_context.unsafe_reference_alias_owners.clone()
-	pointer_alias_body := clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
+	pointer_alias_body := snapshot_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 	if tc.valid_node_id(unreachable_id) && tc.should_diagnose(unreachable_id) {
 		tc.record_error_at(.return_mismatch, 'unreachable code', unreachable_id, tc.unreachable_statement_diagnostic_pos(unreachable_id))
 	}
@@ -14964,7 +15073,7 @@ fn (mut tc TypeChecker) check_for_stmt(node flat.Node) {
 	mut pointer_alias_paths := []map[string][]string{}
 	if loop_may_skip_body {
 		unsafe_alias_paths << unsafe_alias_base
-		pointer_alias_paths << clone_pointer_binding_value_keys(pointer_alias_base)
+		pointer_alias_paths << snapshot_pointer_binding_value_keys(pointer_alias_base)
 	}
 	if unsafe_alias_break_states.len > 0 {
 		for state in unsafe_alias_break_states {
@@ -14975,10 +15084,10 @@ fn (mut tc TypeChecker) check_for_stmt(node flat.Node) {
 	}
 	if pointer_alias_break_states.len > 0 {
 		for state in pointer_alias_break_states {
-			pointer_alias_paths << clone_pointer_binding_value_keys(state)
+			pointer_alias_paths << snapshot_pointer_binding_value_keys(state)
 		}
 	} else if body_may_break {
-		pointer_alias_paths << clone_pointer_binding_value_keys(pointer_alias_body)
+		pointer_alias_paths << snapshot_pointer_binding_value_keys(pointer_alias_body)
 	}
 	if loop_may_skip_body || body_may_break {
 		for state in pointer_alias_continue_states {
@@ -14993,10 +15102,10 @@ fn (mut tc TypeChecker) check_for_stmt(node flat.Node) {
 		unsafe_alias_paths << unsafe_alias_base
 	}
 	if pointer_alias_paths.len == 0 {
-		pointer_alias_paths << clone_pointer_binding_value_keys(pointer_alias_base)
+		pointer_alias_paths << snapshot_pointer_binding_value_keys(pointer_alias_base)
 	}
 	tc.fn_context.unsafe_reference_alias_owners = intersect_unsafe_reference_alias_states(unsafe_alias_paths, unsafe_alias_base)
-	tc.fn_context.pointer_binding_value_keys = merge_pointer_binding_value_states(pointer_alias_paths, pointer_alias_base)
+	tc.fn_context.pointer_binding_value_keys = merge_pointer_binding_snapshots(pointer_alias_paths, pointer_alias_base)
 	if has_cond_smartcasts {
 		tc.smartcasts = clone_smartcasts(saved_smartcasts)
 	}
@@ -15037,7 +15146,7 @@ fn (mut tc TypeChecker) record_pointer_binding_loop_break_state_at_depth(depth i
 	if index < 0 {
 		return
 	}
-	tc.fn_context.pointer_alias_break_states[index] << clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
+	tc.fn_context.pointer_alias_break_states[index] << snapshot_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 }
 
 fn (mut tc TypeChecker) take_pointer_binding_loop_break_states() []map[string][]string {
@@ -15047,7 +15156,7 @@ fn (mut tc TypeChecker) take_pointer_binding_loop_break_states() []map[string][]
 	index := tc.fn_context.pointer_alias_break_states.len - 1
 	mut result := []map[string][]string{cap: tc.fn_context.pointer_alias_break_states[index].len}
 	for state in tc.fn_context.pointer_alias_break_states[index] {
-		result << clone_pointer_binding_value_keys(state)
+		result << snapshot_pointer_binding_value_keys(state)
 	}
 	tc.fn_context.pointer_alias_break_states.delete_last()
 	return result
@@ -15062,7 +15171,7 @@ fn (mut tc TypeChecker) record_pointer_binding_loop_continue_state_at_depth(dept
 	if index < 0 {
 		return
 	}
-	tc.fn_context.pointer_alias_continue_states[index] << clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
+	tc.fn_context.pointer_alias_continue_states[index] << snapshot_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 }
 
 fn (mut tc TypeChecker) take_pointer_binding_loop_continue_states() []map[string][]string {
@@ -15072,7 +15181,7 @@ fn (mut tc TypeChecker) take_pointer_binding_loop_continue_states() []map[string
 	index := tc.fn_context.pointer_alias_continue_states.len - 1
 	mut result := []map[string][]string{cap: tc.fn_context.pointer_alias_continue_states[index].len}
 	for state in tc.fn_context.pointer_alias_continue_states[index] {
-		result << clone_pointer_binding_value_keys(state)
+		result << snapshot_pointer_binding_value_keys(state)
 	}
 	tc.fn_context.pointer_alias_continue_states.delete_last()
 	return result
@@ -15883,7 +15992,7 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 		}
 	}
 	unsafe_alias_base := tc.fn_context.unsafe_reference_alias_owners.clone()
-	pointer_alias_base := clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
+	pointer_alias_base := snapshot_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 	tc.fn_context.unsafe_alias_break_states << []map[string]bool{}
 	tc.fn_context.pointer_alias_break_states << []map[string][]string{}
 	tc.fn_context.pointer_alias_continue_states << []map[string][]string{}
@@ -15927,22 +16036,22 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 		tc.ownership_end_branch_group()
 	}
 	mut unsafe_alias_paths := [unsafe_alias_base]
-	mut pointer_alias_paths := [clone_pointer_binding_value_keys(pointer_alias_base)]
+	mut pointer_alias_paths := [snapshot_pointer_binding_value_keys(pointer_alias_base)]
 	for state in unsafe_alias_break_states {
 		unsafe_alias_paths << state.clone()
 	}
 	for state in pointer_alias_break_states {
-		pointer_alias_paths << clone_pointer_binding_value_keys(state)
+		pointer_alias_paths << snapshot_pointer_binding_value_keys(state)
 	}
 	for state in pointer_alias_continue_states {
-		pointer_alias_paths << clone_pointer_binding_value_keys(state)
+		pointer_alias_paths << snapshot_pointer_binding_value_keys(state)
 	}
 	if !tc.stmt_sequence_definitely_returns(&node, header) {
 		unsafe_alias_paths << tc.fn_context.unsafe_reference_alias_owners.clone()
-		pointer_alias_paths << clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
+		pointer_alias_paths << snapshot_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 	}
 	tc.fn_context.unsafe_reference_alias_owners = intersect_unsafe_reference_alias_states(unsafe_alias_paths, unsafe_alias_base)
-	tc.fn_context.pointer_binding_value_keys = merge_pointer_binding_value_states(pointer_alias_paths, pointer_alias_base)
+	tc.fn_context.pointer_binding_value_keys = merge_pointer_binding_snapshots(pointer_alias_paths, pointer_alias_base)
 	tc.pop_scope()
 	if mut_binding_name.len > 0 {
 		if had_mut_base {
@@ -17737,9 +17846,10 @@ fn (mut tc TypeChecker) restore_return_alias_for_in_bindings(node flat.Node) {
 
 fn (mut tc TypeChecker) return_alias_decl_binding_type(node flat.Node, index int) Type {
 	lhs_id := tc.multi_assign_lhs_id(node, index)
-	if typ := tc.cached_expr_type_ref(lhs_id) {
-		if typ !is Unknown && typ !is Void {
-			return *typ
+	cached_type_ref0 := tc.cached_expr_type_ref(lhs_id)
+	if !isnil(cached_type_ref0) {
+		if cached_type_ref0 !is Unknown && cached_type_ref0 !is Void {
+			return *cached_type_ref0
 		}
 	}
 	lhs_count := tc.multi_assign_lhs_count(node)
@@ -18202,9 +18312,9 @@ fn (tc &TypeChecker) cur_scope_depth() int {
 }
 
 fn clone_scope_binding_owner_map(src map[string][]ScopeBindingOwner) map[string][]ScopeBindingOwner {
-	mut out := map[string][]ScopeBindingOwner{}
-	for name, owners in src {
-		out[name] = owners.clone()
+	mut out := src.clone()
+	for _, mut owners in out {
+		owners = owners.clone()
 	}
 	return out
 }
@@ -20128,7 +20238,7 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 	assignment_is_translated := tc.node_is_from_translated_file(node)
 	is_cross_assignment := node.op == .assign && node.children_count > 2
 	pointer_alias_assignment_rhs := if is_cross_assignment {
-		clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
+		snapshot_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 	} else {
 		map[string][]string{}
 	}
@@ -20817,10 +20927,17 @@ fn (tc &TypeChecker) pointer_binding_ident_values(owner ScopeBindingOwner, state
 	return (state[key] or { [tc.pointer_binding_storage_value(owner)] }).clone()
 }
 
+// snapshot_pointer_binding_value_keys copies a branch's map while sharing its immutable value lists.
+// Checker updates replace a whole list; they must not append to or modify a stored list in place.
+@[inline]
+fn snapshot_pointer_binding_value_keys(src map[string][]string) map[string][]string {
+	return src.clone()
+}
+
 fn clone_pointer_binding_value_keys(src map[string][]string) map[string][]string {
-	mut result := map[string][]string{}
-	for key, values in src {
-		result[key] = values.clone()
+	mut result := src.clone()
+	for _, mut values in result {
+		values = values.clone()
 	}
 	return result
 }
@@ -20851,19 +20968,24 @@ fn pointer_binding_states_same(a map[string][]string, b map[string][]string) boo
 	return true
 }
 
+// merge_pointer_binding_value_states returns an owning copy for callers that may edit value lists.
 fn merge_pointer_binding_value_states(states []map[string][]string, fallback map[string][]string) map[string][]string {
+	return clone_pointer_binding_value_keys(merge_pointer_binding_snapshots(states, fallback))
+}
+
+fn merge_pointer_binding_snapshots(states []map[string][]string, fallback map[string][]string) map[string][]string {
 	if states.len == 0 {
-		return clone_pointer_binding_value_keys(fallback)
+		return snapshot_pointer_binding_value_keys(fallback)
 	}
 	// Branches that left every binding as it was merge into the fallback itself.
 	if states.all(pointer_binding_states_same(fallback, it)) {
-		return clone_pointer_binding_value_keys(fallback)
+		return snapshot_pointer_binding_value_keys(fallback)
 	}
 	// Merge each key once, in first-seen order: the fallback's keys, then the new
 	// keys of each state in turn.
-	mut result := map[string][]string{}
-	for key, _ in fallback {
-		result[key] = merge_pointer_binding_key_values(states, fallback, key)
+	mut result := fallback.clone()
+	for key, mut values in result {
+		values = merge_pointer_binding_key_values(states, fallback, key)
 	}
 	for state in states {
 		for key, _ in state {
@@ -20906,10 +21028,11 @@ fn (mut tc TypeChecker) pointer_binding_state_after_loop_post(loop_node flat.Nod
 	if post.kind == .postfix && post.op in [.inc, .dec] && post.children_count == 1 {
 		target_id := tc.a.child(post, 0)
 		if tc.a.node(target_id).kind == .ident {
-			if target_type := tc.cached_expr_type_ref(target_id) {
+			cached_type_ref1 := tc.cached_expr_type_ref(target_id)
+			if !isnil(cached_type_ref1) {
 				// Rechecking a scalar counter cannot change pointer identities. The
 				// post has already been checked for diagnostics above the loop body.
-				if unalias_type(target_type) is Primitive && precomputed == base {
+				if unalias_type(cached_type_ref1) is Primitive && precomputed == base {
 					return clone_pointer_binding_value_keys(incoming)
 				}
 			}
@@ -20920,7 +21043,7 @@ fn (mut tc TypeChecker) pointer_binding_state_after_loop_post(loop_node flat.Nod
 	error_count := tc.errors.len
 	notice_count := tc.notices.len
 	pending_ierror_count := tc.pending_ierror_errors.len
-	tc.fn_context.pointer_binding_value_keys = clone_pointer_binding_value_keys(incoming)
+	tc.fn_context.pointer_binding_value_keys = snapshot_pointer_binding_value_keys(incoming)
 	if has_cond_smartcasts {
 		tc.smartcasts = clone_smartcasts(precondition_smartcasts)
 	}
@@ -21013,17 +21136,17 @@ fn (mut tc TypeChecker) merge_pointer_binding_short_circuit_state(op flat.Op, lh
 	if pointer_binding_states_same(skipped_rhs, tc.fn_context.pointer_binding_value_keys) {
 		return
 	}
-	executed_rhs := clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
+	executed_rhs := snapshot_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 	if lhs := tc.constant_bool_value(lhs_id) {
 		rhs_executes := (op == .logical_and && lhs) || (op == .logical_or && !lhs)
 		tc.fn_context.pointer_binding_value_keys = if rhs_executes {
 			executed_rhs
 		} else {
-			clone_pointer_binding_value_keys(skipped_rhs)
+			snapshot_pointer_binding_value_keys(skipped_rhs)
 		}
 		return
 	}
-	tc.fn_context.pointer_binding_value_keys = merge_pointer_binding_value_states([
+	tc.fn_context.pointer_binding_value_keys = merge_pointer_binding_snapshots([
 		skipped_rhs,
 		executed_rhs,
 	], skipped_rhs)

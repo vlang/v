@@ -1,5 +1,54 @@
 module flat
 
+fn publish_source_types_in_parallel(names []string, ready chan bool, start chan bool) []u32 {
+	ready <- true
+	_ := <-start
+	mut ids := []u32{cap: names.len}
+	for name in names {
+		id := source_type_id(name)
+		assert source_type_name(id) == name
+		assert source_type_shape(id).has(.map_type)
+		payload := node_payload_with_type_metadata([name], id, [id])
+		entry := node_payload_at(payload)
+		assert entry.generic_params == [name]
+		assert entry.enum_backing_type == id
+		assert entry.debugger_value_types.ids == [id]
+		ids << id
+	}
+	return ids
+}
+
+fn test_source_type_and_payload_publication_under_writer_contention() {
+	mut names := []string{cap: 2048}
+	for n in 0 .. 2048 {
+		names << 'map[string][]parallel_publication.Item${n}'
+	}
+	ready := chan bool{cap: 4}
+	start := chan bool{cap: 4}
+	mut workers := []thread []u32{}
+	for _ in 0 .. 4 {
+		workers << spawn publish_source_types_in_parallel(names, ready, start)
+	}
+	for _ in 0 .. 4 {
+		_ := <-ready
+	}
+	for _ in 0 .. 4 {
+		start <- true
+	}
+	mut expected := []u32{}
+	for worker in workers {
+		ids := worker.wait()
+		if expected.len == 0 {
+			expected = ids.clone()
+		} else {
+			assert ids == expected
+		}
+	}
+	for n, name in names {
+		assert source_type_id(name) == expected[n]
+	}
+}
+
 fn test_type_text_forks_share_immutable_spelling_ids() {
 	mut parent := TypeTextBindings{}
 	parent.set('value', 'pkg.Sum')
@@ -62,6 +111,24 @@ fn test_type_text_pointer_probe_validates_reused_input_bytes() {
 	assert first != second
 	assert texts.text(first) == '[]First'
 	assert texts.text(second) == '[]Other'
+}
+
+fn test_source_type_recent_entry_checks_bytes_and_survives_table_growth() {
+	mut bytes := 'cache.Abc'.bytes()
+	borrowed := unsafe { tos(bytes.data, bytes.len) }
+	first := source_type_id(borrowed)
+	// Changing an unsampled middle byte deliberately preserves the cache slot.
+	bytes[6] = `x`
+	second := source_type_id(borrowed)
+	assert first != second
+	assert source_type_name(first) == 'cache.Abc'
+	assert source_type_name(second) == 'cache.xbc'
+	for i in 0 .. 12000 {
+		source_type_id('cache.Growing${i}')
+	}
+	assert source_type_id('cache.Abc'.clone()) == first
+	assert source_type_id('cache.xbc'.clone()) == second
+	assert source_type_shape(first).has(.dotted)
 }
 
 fn test_ast_type_ids_use_the_shared_spelling_namespace() {
@@ -191,4 +258,21 @@ fn test_source_type_prefix_flags_describe_raw_spelling() {
 	assert !source_type_shape(source_type_id('shared')).has(.shared_type)
 	assert !source_type_shape(source_type_id('threaded')).has(.thread_type)
 	assert !source_type_shape(source_type_id('typeof(')).has(.typeof_expr)
+}
+
+fn test_source_type_shape_caches_spelling_only_generic_probes() {
+	for name in ['T', ' A ', '\nZ\t', 'Q'] {
+		assert source_type_shape(source_type_id(name)).has(.bare_generic)
+	}
+	for name in ['', 'C', ' C ', 'JS', 't', 'TT', 'pkg.T', '[T]', 'T\x00'] {
+		assert !source_type_shape(source_type_id(name)).has(.bare_generic)
+	}
+	for name in ['struct', 'pkg.struct', 'one.two.struct'] {
+		assert source_type_shape(source_type_id(name)).has(.anonymous_struct)
+	}
+	for name in ['Struct', 'astruct', 'struct ', 'pkg.struct.field', 'x__struct'] {
+		assert !source_type_shape(source_type_id(name)).has(.anonymous_struct)
+	}
+	assert source_type_shape(source_type_id('mod__fn_T_int')).has(.generic_c_name)
+	assert !source_type_shape(source_type_id('mod__fn_Tint')).has(.generic_c_name)
 }
