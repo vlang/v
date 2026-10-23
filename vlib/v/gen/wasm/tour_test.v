@@ -360,6 +360,13 @@ fn main() {
 	println("fold array=\${a}")
 	b := [true, false]
 	println("fold bools=\${b}")
+	s := "a,b,c".split(",")
+	println("fold split=\${s}")
+	if idx := "hello".index("ll") {
+		println("fold index=\${idx}")
+	}
+	iopt := "hello".index("zz")
+	println("fold indexopt=\${iopt}")
 }
 '
 
@@ -368,6 +375,9 @@ const fold_print_expected = [
 	'fold repeat0=',
 	'fold array=[1, 2, 3]',
 	'fold bools=[true, false]',
+	"fold split=['a', 'b', 'c']",
+	'fold index=2',
+	'fold indexopt=Option(none)',
 ]
 
 fn test_fold_print_wasm_matches_native_text() {
