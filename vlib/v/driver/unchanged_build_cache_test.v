@@ -91,3 +91,46 @@ fn test_unchanged_build_cache_rejects_unavailable_metadata() {
 	os.write_file(stamp, lines[..2].join('\n') + '\nfile\t${source}\t\n')!
 	assert !v3_restore_unchanged_build(cache_dir, 'test', destination)
 }
+
+fn test_parallel_monomorphize_requires_explicit_opt_in() {
+	old := os.getenv('V3_PARALLEL_MONOMORPHIZE')
+	defer { os.setenv('V3_PARALLEL_MONOMORPHIZE', old, true) }
+	os.unsetenv('V3_PARALLEL_MONOMORPHIZE')
+	assert !should_parallel_monomorphize()
+	os.setenv('V3_PARALLEL_MONOMORPHIZE', '0', true)
+	assert !should_parallel_monomorphize()
+}
+
+fn test_default_build_rechecks_compile_time_environment() {
+	root := os.join_path(os.vtmp_dir(), 'v3_receipt_env_${os.getpid()}')
+	defer { os.rmdir_all(root) or {} }
+	os.mkdir_all(root)!
+	source := os.join_path(root, 'main.v')
+	executable := os.join_path(root, 'app')
+	os.write_file(source, "fn main() { println(\$env('V3_RECEIPT_ENV_REGRESSION')) }\n")!
+	for expected in ['first', 'second'] {
+		mut environment := os.environ()
+		environment.delete('VFLAGS')
+		environment.delete('V3_ENABLE_UNCHANGED_BUILD_CACHE')
+		environment['V3CACHE'] = os.join_path(root, 'cache')
+		environment['V3_RECEIPT_ENV_REGRESSION'] = expected
+		environment['V_MACOS_V3_NO_FALLBACK'] = '1'
+		mut compiler := os.new_process(@VEXE)
+		compiler.set_environment(environment)
+		compiler.set_args(['-cc', 'clang', '-o', executable, source])
+		compiler.set_redirect_stdio()
+		compiler.wait()
+		output := compiler.stdout_slurp() + compiler.stderr_slurp()
+		code := compiler.code
+		compiler.close()
+		assert code == 0, output
+		mut program := os.new_process(executable)
+		program.set_redirect_stdio()
+		program.wait()
+		result := program.stdout_slurp()
+		program_code := program.code
+		program.close()
+		assert program_code == 0
+		assert result.trim_space() == expected
+	}
+}
