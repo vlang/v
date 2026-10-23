@@ -66,6 +66,11 @@ If the bounded compressed prefix cannot be decompressed, it retains the encoded 
 ordinary response parsing. The client still reads the full response and invokes progress callbacks,
 so streaming downloads can keep a bounded preview without losing data in the callbacks.
 
+With HTTP/2 negotiation disabled, returning an error from `on_progress` or `on_progress_body`
+stops an HTTP/1.1 request without retrying or replaying it, including on a reused connection.
+The caller receives the original callback error with its type and code preserved. This also
+applies when connection reuse is disabled.
+
 An HTTP/2 or HTTP/3 response with a field that can not be delivered is an error, not a
 response without that field: a field name that is not a token, or a field value with CR, LF
 or NUL, makes the response malformed, and more than `http.max_headers` fields, trailers
