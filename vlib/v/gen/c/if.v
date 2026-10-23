@@ -55,10 +55,15 @@ fn (mut g FlatGen) gen_if(node flat.Node) {
 				then_scope_drops_consumed = true
 			}
 		}
-		g.gen_defers_from(defer_start)
-		if !cur.skip_ownership_drops() && !then_scope_drops_consumed {
-			g.gen_scope_ownership_drop_count(then_scope_drop_prefix_count)
-			g.gen_scope_ownership_drops()
+		if !g.stmt_tail_exits(then_id) {
+			g.gen_defers_from(defer_start)
+			if !cur.skip_ownership_drops() && !then_scope_drops_consumed {
+				g.gen_scope_ownership_drop_count(then_scope_drop_prefix_count)
+				g.gen_scope_ownership_drops()
+			}
+		} else if !cur.skip_ownership_drops() && !then_scope_drops_consumed {
+			// Keep checker cleanup-site indices aligned without emitting unreachable code.
+			g.take_scope_ownership_drop_count(1 + then_scope_drop_prefix_count)
 		}
 		g.trim_defers(defer_start)
 		g.leave_conditional_branch()
@@ -108,10 +113,14 @@ fn (mut g FlatGen) gen_if(node flat.Node) {
 			if !g.block_consumes_scope_ownership_drops(else_node) {
 				else_scope_drops_consumed = true
 			}
-			g.gen_defers_from(else_defer_start)
-			if !cur.skip_ownership_drops() && !else_scope_drops_consumed {
-				g.gen_scope_ownership_drop_count(else_scope_drop_prefix_count)
-				g.gen_scope_ownership_drops()
+			if !g.stmt_tail_exits(else_id) {
+				g.gen_defers_from(else_defer_start)
+				if !cur.skip_ownership_drops() && !else_scope_drops_consumed {
+					g.gen_scope_ownership_drop_count(else_scope_drop_prefix_count)
+					g.gen_scope_ownership_drops()
+				}
+			} else if !cur.skip_ownership_drops() && !else_scope_drops_consumed {
+				g.take_scope_ownership_drop_count(1 + else_scope_drop_prefix_count)
 			}
 			g.trim_defers(else_defer_start)
 			g.leave_conditional_branch()
