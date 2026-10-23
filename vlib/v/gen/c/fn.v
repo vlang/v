@@ -1594,6 +1594,11 @@ const c_main_runtime_shadow_fn_names = {
 	'id':      true
 	// The C preamble keeps `typedef uint8_t byte;`.
 	'byte':    true
+	// Windows headers define these names as macros.
+	'near':    true
+	'far':     true
+	'pascal':  true
+	'cdecl':   true
 }
 
 fn (g &FlatGen) main_runtime_shadow_fn_c_name(module_name string, name string) ?string {
