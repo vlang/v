@@ -238,8 +238,34 @@ static inline void vgc_set_cache_idx(int idx) { _vgc_cache_idx_plus1 = idx + 1; 
       void* p = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
       return (p == MAP_FAILED) ? NULL : p;
   }
+#if (defined(__APPLE__) || defined(__linux__)) && UINTPTR_MAX > 0xffffffffu
+  // The memory of an arena, for objects. Like MEM_TOP_DOWN on Windows, this keeps the heap away
+  // from small numbers: macOS hands out low addresses first, and in a large heap the arenas
+  // reached 0x300000000, where data constants like 0x300000001 point, and the conservative scan
+  // kept objects alive through them. The arenas start at the hint Go uses for the same reason,
+  // 0xc000000000, which is not a likely integer or text pattern. The hint is only advisory: when
+  // the range is taken, macOS searches upward from it, and Linux picks its default, which is
+  // already high (top down from the stack). Hints at or above 2^48 are not used, because macOS
+  // then silently returns low addresses. The caller holds vgc_heap.lock.
+  #define VGC_HEAP_HINT_BASE ((uintptr_t)0xc0 << 32)
+  #define VGC_HEAP_HINT_LIMIT ((uintptr_t)1 << 47)
+  #define VGC_HEAP_HINT_ALIGN ((uintptr_t)64 << 20)
+  static uintptr_t vgc_heap_hint = VGC_HEAP_HINT_BASE;
+  static inline void* vgc_os_alloc_heap(size_t size) {
+      uintptr_t hint = vgc_heap_hint;
+      void* p = mmap((void*)hint, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+      if (p == MAP_FAILED) {
+          return vgc_os_alloc(size);
+      }
+      uintptr_t next = (uintptr_t)p > hint ? (uintptr_t)p : hint;
+      next = (next + size + VGC_HEAP_HINT_ALIGN - 1) & ~(VGC_HEAP_HINT_ALIGN - 1);
+      vgc_heap_hint = next < VGC_HEAP_HINT_LIMIT ? next : VGC_HEAP_HINT_BASE;
+      return p;
+  }
+#else
   // The memory of an arena, for objects (see the Windows version).
   static inline void* vgc_os_alloc_heap(size_t size) { return vgc_os_alloc(size); }
+#endif
   static inline void vgc_os_free(void* ptr, size_t size) {
       munmap(ptr, size);
   }
