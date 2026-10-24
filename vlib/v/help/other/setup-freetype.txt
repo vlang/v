@@ -1,0 +1,1 @@
+﻿v setup-freetype\n\nSet up third-party freetype on Windows.\n\nUsage:\n  v setup-freetype

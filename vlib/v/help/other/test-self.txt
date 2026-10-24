@@ -1,0 +1,1 @@
+﻿v test-self\n\nRun all V tests, including compiler tests.\n\nUsage:\n  v test-self

@@ -1,0 +1,1 @@
+﻿v compress\n\nCompress files using supported algorithms (e.g. zlib).\n\nUsage:\n  v compress <type> <in> <out>

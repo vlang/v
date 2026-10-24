@@ -633,10 +633,33 @@ fn (mut d Doc) parse_file(path string) ! {
 	}
 	mut module_name := 'main'
 	mut first_declaration_line := int(1 << 30)
+	// Collect the top-level nodes to document. Top-level `$if` blocks that are
+	// taken (their condition evaluated to true) are stored by the parser as a
+	// single `.block` node whose children are the declarations of that branch;
+	// unwrap them so their declarations are documented too (issue: vdoc
+	// previously skipped every symbol guarded by `$if`).
+	mut top_level_ids := []flat.NodeId{}
 	for id in a.children_of(file_node) {
 		node := a.node(id)
 		if node.kind == .module_decl {
 			module_name = node.value
+			continue
+		}
+		if node.kind == .block {
+			block_node := a.node(id)
+			for bid in a.children_of(block_node) {
+				top_level_ids << bid
+			}
+			continue
+		}
+		top_level_ids << id
+	}
+	for id in top_level_ids {
+		node := a.node(id)
+		if node.kind == .module_decl {
+			if module_name == 'main' {
+				module_name = node.value
+			}
 			continue
 		}
 		if !is_documentable(node.kind) {

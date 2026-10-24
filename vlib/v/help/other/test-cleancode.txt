@@ -1,0 +1,1 @@
+﻿v test-cleancode\n\nCheck V source files for clean-code style issues.\n\nUsage:\n  v test-cleancode [dir]

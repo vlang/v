@@ -1,0 +1,1 @@
+﻿v vlib-docs\n\nGenerate and open the documentation of all vlib modules.\n\nUsage:\n  v vlib-docs

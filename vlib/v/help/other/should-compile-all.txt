@@ -1,0 +1,1 @@
+﻿v should-compile-all\n\nCheck that all .v files in a directory compile.\n\nUsage:\n  v should-compile-all [dir]

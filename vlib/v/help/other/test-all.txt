@@ -1,0 +1,1 @@
+﻿v test-all\n\nRun most of the checks that CI performs locally.\n\nUsage:\n  v test-all
