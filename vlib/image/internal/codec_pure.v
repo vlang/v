@@ -1,7 +1,11 @@
-// Pure V PNG encoder (replaces stb_image_write C backend for PNG path)
+// Pure V PNG encoder (used by `encode` below for the non-JPEG path,
+// replacing the stb_image_write C backend for PNG).
+module internal
+
+import compress.zlib
 import hash.crc32
-import compress.deflate
 import image
+import image.color
 
 fn png_chunk(type_str string, data []u8) []u8 {
 	mut chunk := []u8{len: 4 + 4 + data.len + 4}
@@ -24,6 +28,7 @@ fn png_chunk(type_str string, data []u8) []u8 {
 	return chunk
 }
 
+// encode_png converts an image to PNG.
 pub fn encode_png(img image.Image) ![]u8 {
 	bounds := img.bounds()
 	w := bounds.dx()
@@ -44,7 +49,14 @@ pub fn encode_png(img image.Image) ![]u8 {
 	}
 	mut out := []u8{}
 	// PNG signature
-	out << u8(0x89) << u8(0x50) << u8(0x4e) << u8(0x47) << u8(0x0d) << u8(0x0a) << u8(0x1a) << u8(0x0a)
+	out << u8(0x89)
+	out << u8(0x50)
+	out << u8(0x4e)
+	out << u8(0x47)
+	out << u8(0x0d)
+	out << u8(0x0a)
+	out << u8(0x1a)
+	out << u8(0x0a)
 	// IHDR chunk
 	mut ihdr := []u8{len: 13}
 	ihdr[0] = u8((w >> 24) & 0xff)
@@ -75,7 +87,7 @@ pub fn encode_png(img image.Image) ![]u8 {
 			raw[dst + 3] = pixels[src + 3]
 		}
 	}
-	compressed := deflate.deflate_compress_fixed(raw) or { return err }
+	compressed := zlib.compress(raw) or { return err }
 	out << png_chunk('IDAT', compressed)
 	out << png_chunk('IEND', []u8{})
 	return out
