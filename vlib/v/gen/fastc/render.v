@@ -903,6 +903,19 @@ fn (g &Parser) render_selfhost_print_expression(tokens []FastcExpressionToken) ?
 	argument := g.render_call_argument_expression(call_arguments[0], argument_type) or {
 		return none
 	}
+	argument_type_name := flat.source_type_name(g.underlying_alias_type(argument_type))
+	if argument_type_name == 'Option' || (argument_type_name.ends_with('*')
+		&& !g.is_reference_local_base(call_arguments[0], argument_type)
+		&& !g.expression_uses_member_smartcast(call_arguments[0])) {
+		// `&T` and `?T` values print as `&...` and `Option(...)`, even when `T`
+		// has a `str()` method.
+		string_value := g.print_value_string_expression(argument, argument_type,
+			call_arguments[0]) or { return none }
+		return FastcRenderedExpression{
+			source: 'builtin__${tokens[0].lit}(${string_value})'
+			typ:    flat.source_type_void
+		}
+	}
 	method_key, embedded_path := g.resolve_method(argument_type, 'str')
 	if embedded_path.len > 0 {
 		return none
@@ -937,14 +950,27 @@ fn (g &Parser) render_selfhost_print_expression(tokens []FastcExpressionToken) ?
 }
 
 // print_value_string_expression returns the C string of `value`, a value of
-// `value_type` without a `str()` method, formatted as read_interpolated_string
-// formats it. Pointers and options print differently in V, so they are left out.
+// `value_type`, formatted as read_interpolated_string formats it: `&...` for a
+// pointer, `Option(...)` for an option. A `mut` local or a smartcast, which C
+// holds through a pointer, prints as its value.
 fn (g &Parser) print_value_string_expression(value string, value_type u32, value_tokens []FastcExpressionToken) ?string {
 	type_name := flat.source_type_name(g.underlying_alias_type(value_type))
-	if type_name.ends_with('*') || type_name in ['Option', '__v_result'] {
+	if type_name == '__v_result' || type_name.ends_with('**') {
 		return none
 	}
 	mut w := unsafe { &Parser(g) }
+	if type_name == 'Option' {
+		option_helper := w.fastc_option_str_name(g.option_value_type_for_expression(value_tokens))?
+		return '${option_helper}(${value})'
+	}
+	if type_name.ends_with('*') {
+		if g.is_reference_local_base(value_tokens, value_type)
+			|| g.expression_uses_member_smartcast(value_tokens) {
+			return g.print_value_string_expression('(*(${value}))',
+				flat.source_type_id(type_name[..type_name.len - 1]), value_tokens)
+		}
+		return w.fastc_reference_str_expression(value, type_name, value_tokens)
+	}
 	if element_type := fastc_fixed_array_element_type(flat.source_type_id(type_name)) {
 		helper := w.fastc_fixed_array_str_name(type_name)?
 		// A fixed array field or global is raw C array storage; a local is FastC's

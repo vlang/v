@@ -334,3 +334,137 @@ pub:
 	].join('\n')
 	assert output == expected, output
 }
+
+fn test_fastc_prints_pointers_and_options_like_cgen() {
+	$if !macos && !linux {
+		return
+	}
+	output := fastc_program_output('pointers_and_options', "struct Point {
+	x int
+	y int
+}
+
+enum Color {
+	red
+	green
+}
+
+struct Named {
+	n int
+}
+
+fn (n Named) str() string {
+	return 'N\${n.n}'
+}
+
+struct Holder {
+	p  &Point
+	np &Point
+	nm &Named
+	pc &Color
+	pi &int
+	op ?Point
+	on ?int
+	os ?string
+}
+
+fn show(mut p Point) {
+	println(p)
+	println('\${p}')
+}
+
+fn main() {
+	p := &Point{1, 2}
+	println(p)
+	println('a \${p} b')
+	nm := &Named{7}
+	println(nm)
+	println('\${nm}')
+	a0 := [1, 2]
+	arr := &a0
+	println(arr)
+	m := {
+		'a': 1
+	}
+	mp := &m
+	println('\${mp}')
+	c := Color.green
+	pc := &c
+	println(pc)
+	println('\${pc}')
+	np := &Point(unsafe { nil })
+	println(np)
+	o := ?int(5)
+	println(o)
+	on := ?int(none)
+	println('\${on}')
+	op := ?Point(Point{3, 4})
+	println(op)
+	s := ?string('hi')
+	println('\${s}')
+	n := 7
+	h := Holder{
+		p:  p
+		np: unsafe { nil }
+		nm: nm
+		pc: pc
+		pi: &n
+		op: Point{3, 4}
+		os: 'x'
+	}
+	println(h)
+	mut q := Point{5, 6}
+	show(mut q)
+}
+")
+	expected := [
+		'&Point{',
+		'    x: 1',
+		'    y: 2',
+		'}',
+		'a &Point{',
+		'    x: 1',
+		'    y: 2',
+		'} b',
+		'&N7',
+		'&N7',
+		'&[1, 2]',
+		"&{'a': 1}",
+		'green',
+		'green',
+		'&nil',
+		'Option(5)',
+		'Option(none)',
+		'Option(Point{',
+		'    x: 3',
+		'    y: 4',
+		'})',
+		"Option('hi')",
+		'Holder{',
+		'    p: &Point{',
+		'        x: 1',
+		'        y: 2',
+		'    }',
+		'    np: &nil',
+		'    nm: &N7',
+		'    pc: &green',
+		'    pi: &7',
+		'    op: Option(Point{',
+		'        x: 3',
+		'        y: 4',
+		'    })',
+		'    on: Option(none)',
+		"    os: Option('x')",
+		'}',
+		'Point{',
+		'    x: 5',
+		'    y: 6',
+		'}',
+		'Point{',
+		'    x: 5',
+		'    y: 6',
+		'}',
+		'',
+	].join('\n')
+	assert output == expected, output
+}
