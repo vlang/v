@@ -191,6 +191,7 @@ mut:
 	inside_array_init_type_expr       bool
 	in_map_value                      int
 	in_struct_init_value              int
+	in_enum_field_value               int
 	unsupported_inline_asm_guards     map[int]bool
 	parsing_inferred_fixed_array_type bool
 	parsing_struct_field_type         bool
@@ -3447,7 +3448,9 @@ fn (mut p Parser) enum_decl_fields() []flat.NodeId {
 		mut children_count := flat.child_count(0)
 		if p.tok == .assign {
 			p.next()
+			p.in_enum_field_value++
 			val_id := p.expr(.lowest)
+			p.in_enum_field_value--
 			children_start = p.add_child(val_id)
 			children_count = 1
 		}
@@ -11604,6 +11607,11 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 		}
 		if p.in_struct_init_value > 0 && (p.tok == .name || p.tok.is_keyword())
 			&& p.peek() == .colon {
+			break
+		}
+		// In an enum, a keyword after the newline names the next field (`a = 1`, then `in = 2`),
+		// so it must not continue the value as `in`/`is`/`as`/`or`.
+		if p.in_enum_field_value > 0 && p.tok == .semicolon && p.peek().is_keyword() {
 			break
 		}
 		// A newline (scanned as `;`) directly followed by `.` continues the
