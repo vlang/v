@@ -13855,8 +13855,7 @@ pub fn run(args []string) {
 			eprintln('  [ttime]   ck mkused wait   ${f64(ck_stage_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		}
 		ckpre_sw.restart()
-		pre_tc.check_main_module_requirement(is_shared || test_files.len > 0
-			|| a.export_fn_names.len > 0)
+		pre_tc.check_main_module_requirement(is_shared || test_files.len > 0)
 		// A call whose Result nothing handles loses its error: a warning, in a
 		// check, a build and a run alike. Those of the bodies an incremental check
 		// left out are put back.
