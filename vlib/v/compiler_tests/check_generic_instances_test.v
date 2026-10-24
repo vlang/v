@@ -443,6 +443,60 @@ fn test_operators_that_each_instance_has_stay_valid() {
 	}
 }
 
+// A returned name or field of an instance with another type than the function
+// returns is reported for that instance, in a check and in a build: `is_set(1)`
+// returns an `int` as a `bool`. So is one in a generic closure and in a method of
+// a generic struct.
+const return_program = "fn is_set[T](x T) bool {\n\treturn x\n}\n\nfn name_flag[T](x T) bool {\n\treturn x.name\n}\n\nfn checked[T](mut x T) !int {\n\treturn x.name\n}\n\nfn later[T](mut x T) {\n\tread := fn [mut x] [T] () !int {\n\t\treturn x.name\n\t}\n\t_ = read\n}\n\nstruct Box[T] {\n\tv T\n}\n\nfn (b Box[T]) flag() bool {\n\treturn b.v\n}\n\nfn main() {\n\tprintln(is_set(1))\n\tprintln(name_flag(User{ name: 'a' }))\n\tmut u := User{\n\t\tname: 'b'\n\t}\n\tprintln(checked(mut u) or { 0 })\n\tlater(mut u)\n\tprintln(Box[int]{ v: 1 }.flag())\n}\n"
+
+const return_errors = ['11:9: cannot use `int` as type `bool` in return argument',
+	'15:9: cannot use `string` as type `bool` in return argument',
+	'19:9: cannot use `string` as type `!int` in return argument',
+	'24:10: cannot use `string` as type `!int` in return argument',
+	'34:9: cannot use `int` as type `bool` in return argument']
+
+fn test_an_instance_that_returns_a_value_of_another_type_is_reported() {
+	for res in [check_program('return_check', return_program),
+		build_program('return_build', return_program)] {
+		assert res.exit_code != 0, res.output
+		assert !res.output.contains('C compilation error'), res.output
+		assert error_lines(res.output) == return_errors, res.output
+	}
+}
+
+// Returned values of the types their instances return stay valid, and so do the
+// returns that a clone cannot judge from its concrete types: a call result, a
+// literal of a type parameter, and a value narrowed by `is`.
+fn test_instances_that_return_values_of_their_types_stay_valid() {
+	source := "type Value = int | string\n\nfn same[T](x T) T {\n\treturn x\n}\n\nfn widen[T](x T) i64 {\n\treturn x\n}\n\nfn greeting[T](x T) string {\n\tf := fn [x] [T] () string {\n\t\treturn x.greet()\n\t}\n\treturn f()\n}\n\nfn zero[T]() T {\n\treturn T{}\n}\n\nfn pick[T](v Value, fallback T) int {\n\tif v is int {\n\t\treturn v\n\t}\n\treturn 0\n}\n\nfn main() {\n\tprintln(same(1))\n\tprintln(same('a'))\n\tprintln(widen(i32(2)))\n\tprintln(widen(u8(3)))\n\tprintln(greeting(User{ name: 'c' }))\n\tprintln(zero[map[string]int]())\n\tprintln(pick(Value(4), 0))\n}\n"
+	for res in [check_program('return_valid_check', source),
+		build_program('return_valid_build', source)] {
+		assert res.exit_code == 0, res.output
+		assert error_lines(res.output) == [], res.output
+	}
+}
+
+// An instance reports its error where the source's `#line` directive maps the
+// returned value, as the code generated from another language does.
+fn test_an_instance_error_is_reported_at_its_line_directive() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_check_generic_instances_line_${os.getpid()}')
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	os.write_file(os.join_path(dir, 'view.txt'), 'first\nsecond\nvalid = count\n') or {
+		panic(err)
+	}
+	path := os.join_path(dir, 'main.v')
+	os.write_file(path, generic_prelude +
+		'fn valid[T](x T) bool {\n#line 3 "view.txt"\n\treturn x.name\n}\n\nfn main() {\n\tprintln(valid(User{}))\n}\n') or {
+		panic(err)
+	}
+	res := os.exec([@VEXE, '-new-compiler', '-check', '-nocolor', path])
+	assert res.exit_code == 1, res.output
+	assert res.output.contains('view.txt:3:9: error: cannot use `string` as type `bool` in return argument'), res.output
+}
+
 // A type argument that is an alias with methods of its own, `Octet` for `T`: the
 // clone of `pack` spells its base type, `string`, where the alias's method is
 // the one `el.val.pack()` calls, and the instance is valid in a check and in a
