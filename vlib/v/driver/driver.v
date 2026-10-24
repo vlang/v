@@ -132,6 +132,7 @@ const scoped_large_cold_cache_node_limit = 500_000
 const compiler_tree_large_cold_cache_node_limit = 2_000_000
 const compiler_tree_large_cold_cache_source_limit = i64(10_000_000)
 const v3_cache_population_lock_name = 'large_cold_population.lock'
+const v3_large_cold_cache_reason = 'cold source graph is too large for scoped cache population'
 const v3_large_cold_cache_marker_version = 'v3-large-cold-cache-bypass-v1'
 const scoped_linux_user_job_limit = 4
 const diagnostics_server_job_limit = 8
@@ -13516,7 +13517,6 @@ pub fn run(args []string) {
 			if population == .bypass {
 				_ = write_v3_large_cold_cache_marker(large_cold_cache_marker, fallback_report_sources.keys())
 			}
-			trace_v3_cache_fallback('cold source graph is too large for scoped cache population')
 			restart_v3_without_cache('')
 		}
 	}
@@ -18815,6 +18815,7 @@ enum V3LargeCachePopulation {
 // cache this time only, and find those modules cached later.
 fn v3_large_cache_population(compiler_tree_input bool, state &V3ModuleCacheState, node_count int) V3LargeCachePopulation {
 	if !compiler_tree_input || node_count >= compiler_tree_large_cold_cache_node_limit {
+		trace_v3_cache_fallback(v3_large_cold_cache_reason)
 		return .bypass
 	}
 	if state.parsed_from_source.len == 0 {
@@ -18825,6 +18826,7 @@ fn v3_large_cache_population(compiler_tree_input bool, state &V3ModuleCacheState
 		eprintln('  V3 module cache population candidate: nodes=${node_count} cold_modules=${state.parsed_from_source.len} module_source_bytes=${source_bytes}')
 	}
 	if source_bytes > compiler_tree_large_cold_cache_source_limit {
+		trace_v3_cache_fallback(v3_large_cold_cache_reason)
 		return .bypass
 	}
 	// The process that checks the instances of the generics of a build that keeps
@@ -18842,6 +18844,7 @@ fn v3_large_cache_population(compiler_tree_input bool, state &V3ModuleCacheState
 		}
 		.unusable {
 			// Without a lock no build could ever populate it: keep the bypass.
+			trace_v3_cache_fallback('the population lock of the cache cannot be used')
 			V3LargeCachePopulation.bypass
 		}
 	}
