@@ -188,6 +188,16 @@ fn (mut z Zip) parse() ! {
 		pos += 46 + name_len + extra_len + comment_len
 	}
 	_ = cd_size
+	// cache entry payloads so that append mode can re-emit entries
+	// that were parsed from an existing archive
+	for i in 0 .. z.entries.len {
+		if z.entries[i].is_dir {
+			continue
+		}
+		z.current = i
+		z.entries[i].data = z.read_current_data() or { []u8{} }
+	}
+	z.current = -1
 }
 
 // ---------------------------------------------------------------------------
