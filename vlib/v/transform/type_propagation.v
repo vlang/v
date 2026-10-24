@@ -1400,6 +1400,11 @@ fn (t &Transformer) type_authority_has(name string) bool {
 @[direct_array_access; inline]
 fn (t &Transformer) normalize_type_alias(type_id u32) u32 {
 	if type_id == 0 || isnil(t.tc) { return type_id }
+	if inferred_type_id(type_id) {
+		resolved := t.resolve_inferred_type_id(type_id)
+		if resolved != type_id { return t.normalize_type_alias(resolved) }
+		return type_id
+	}
 	if !isnil(t.alias_cache) && t.alias_cache.texts == t.var_type_texts
 		&& t.alias_cache.canonical_types[int(type_id & 1023)] == type_id {
 		return type_id

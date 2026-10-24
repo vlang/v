@@ -1223,6 +1223,9 @@ fn (t &Transformer) generic_call_type_arg_name(id flat.NodeId) u32 {
 	node := t.a.node(id)
 	match node.kind {
 		.ident {
+			if node.value.contains(inferred_type_marker) {
+				return flat.source_type_id(t.resolve_inferred_type_text(node.value))
+			}
 			// Map type arguments are represented by a synthetic `Map_key_value`
 			// identifier, while `typ` retains the source-level `map[key]value`.
 			// Keep the latter so comptime type groups and generic substitution can
@@ -3749,6 +3752,11 @@ fn (t &Transformer) decl_param_type_in_module(typ_id u32, module_name string) u3
 }
 
 fn (t &Transformer) decl_param_type_in_scope(typ_id u32, module_name string, file_name string) u32 {
+	if inferred_type_id(typ_id) {
+		resolved := t.resolve_inferred_type_id(typ_id)
+		if resolved != typ_id { return t.decl_param_type_in_scope(resolved, module_name, file_name) }
+		return typ_id
+	}
 	typ := flat.source_type_name(typ_id)
 	clean := trimmed_transform_text(typ)
 	clean_id := if flat.source_type_shape(typ_id).has(.padded) {
