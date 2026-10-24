@@ -497,6 +497,245 @@ fn test_an_instance_error_is_reported_at_its_line_directive() {
 	assert res.output.contains('view.txt:3:9: error: cannot use `string` as type `bool` in return argument'), res.output
 }
 
+// call_arg_program passes names and fields of the wrong type from generic
+// bodies: a `bool` to a `string` parameter of a function, an `int` to a method
+// and to a fn-typed field, a callback of another signature, and the same from a
+// generic closure and a method of a generic struct.
+const call_arg_program = "fn take(s string) int {
+	return s.len
+}
+
+fn on_change(cb fn (string)) {
+	cb('a')
+}
+
+struct Sink {
+	put fn (string) = fn (s string) {}
+}
+
+fn (k Sink) show(s string) {
+	println(s)
+}
+
+struct App {
+	flag   bool
+	action fn (int) = fn (n int) {}
+}
+
+fn label[A](mut app A) int {
+	return take(app.flag)
+}
+
+fn submit[A](mut app A) {
+	on_change(app.action)
+}
+
+fn send[T](x T, k Sink) {
+	k.show(x)
+	k.put(x)
+}
+
+fn later[T](x T) {
+	f := fn [x] [T] () int {
+		return take(x)
+	}
+	_ = f
+}
+
+struct Box[T] {
+	v T
+}
+
+fn (b Box[T]) send() int {
+	return take(b.v)
+}
+
+fn main() {
+	mut app := App{}
+	println(label(mut app))
+	submit(mut app)
+	send(1, Sink{})
+	later(2)
+	println(Box[bool]{ v: true }.send())
+}
+"
+
+const call_arg_errors = ['32:14: cannot use `bool` as `string` in argument 1 to `take`',
+	'36:12: cannot use `fn (int)` as `fn (string)` in argument 1 to `on_change`',
+	'40:9: cannot use `int` as `string` in argument 1 to `Sink.show`',
+	'41:8: cannot use `int` as `string` in argument 1 to `Sink.put`',
+	'46:15: cannot use `int` as `string` in argument 1 to `take`',
+	'56:14: cannot use `bool` as `string` in argument 1 to `take`']
+
+// A plain argument of an instance with another type than its parameter is
+// reported for that instance, in a check and in a build, at the argument.
+fn test_an_instance_that_passes_an_argument_of_another_type_is_reported() {
+	for res in [check_program('call_arg_check', call_arg_program),
+		build_program('call_arg_build', call_arg_program)] {
+		assert res.exit_code != 0, res.output
+		assert !res.output.contains('C compilation error'), res.output
+		assert error_lines(res.output) == call_arg_errors, res.output
+	}
+}
+
+// Arguments of the types their parameters take stay valid, converted or not,
+// and so do the arguments that a clone cannot judge from its concrete types: a
+// call result, a value narrowed by `is` or `match`, one passed in the body of a
+// `$for`, a spread `...args`, and a local initialized by a `match` or a fn
+// literal, which a clone can type as an `int` and as the literal's return type.
+fn test_instances_that_pass_arguments_of_their_types_stay_valid() {
+	source := "type Value = int | string
+
+interface Greeter {
+	greet() string
+}
+
+struct Named {
+	label string
+}
+
+fn take(s string) int {
+	return s.len
+}
+
+fn take_i64(n i64) i64 {
+	return n
+}
+
+fn speak(g Greeter) string {
+	return g.greet()
+}
+
+fn store(v Value) int {
+	return if v is int { v } else { 0 }
+}
+
+fn show_any[U](u U) string {
+	return '\${u}'
+}
+
+fn grow(mut a []int) {
+	a << 1
+}
+
+fn names[T](x T) int {
+	return take(x.name)
+}
+
+fn widen[T](x T) i64 {
+	return take_i64(x)
+}
+
+fn greet_all[T](x T) string {
+	return speak(x)
+}
+
+fn wrap[T](x T) int {
+	return store(x)
+}
+
+fn pass[T](x T) string {
+	return show_any(x)
+}
+
+fn update[T](mut x T) {
+	grow(mut x)
+}
+
+fn later[T](x T) int {
+	f := fn [x] [T] () int {
+		return take(x.name)
+	}
+	return f()
+}
+
+fn via_call[T](x T) int {
+	return take(x.greet())
+}
+
+fn narrowed[T](v Value, fallback T) int {
+	if v is string {
+		return take(v)
+	}
+	return match v {
+		string { take(v) }
+		int { v }
+	}
+}
+
+fn take_u8(n u8) u8 {
+	return n
+}
+
+fn pair(a int, b int) int {
+	return a + b
+}
+
+fn run(f fn () !int) int {
+	return f() or { 0 }
+}
+
+fn sized[T](x T) u8 {
+	len := match typeof(x).name {
+		'u8' { u8(2) }
+		else { 4 }
+	}
+	return take_u8(len)
+}
+
+fn spread[T](args ...T) int {
+	return pair(...args)
+}
+
+fn callback[T](x T) int {
+	make := fn () !int {
+		return 1
+	}
+	return run(make)
+}
+
+fn fields[T](x T, v Value) int {
+	mut n := 0
+	\$for f in T.fields {
+		\$if f.typ is string {
+			if v is string {
+				n += take(v)
+			}
+		}
+	}
+	return n
+}
+
+fn main() {
+	u := User{
+		name: 'a'
+	}
+	println(names(u))
+	println(widen(i32(2)))
+	println(widen(u8(3)))
+	println(greet_all(u))
+	println(wrap(4))
+	println(wrap('c'))
+	println(pass(5))
+	println(pass(u))
+	mut nums := [1]
+	update(mut nums)
+	println(later(u))
+	println(via_call(u))
+	println(narrowed(Value('d'), 0))
+	println(fields(Named{ label: 'e' }, Value('f')))
+	println(sized(1))
+	println(spread(1, 2))
+	println(callback(u))
+}
+"
+	for res in [check_program('call_arg_valid_check', source),
+		build_program('call_arg_valid_build', source)] {
+		assert res.exit_code == 0, res.output
+		assert error_lines(res.output) == [], res.output
+	}
+}
+
 // A type argument that is an alias with methods of its own, `Octet` for `T`: the
 // clone of `pack` spells its base type, `string`, where the alias's method is
 // the one `el.val.pack()` calls, and the instance is valid in a check and in a
