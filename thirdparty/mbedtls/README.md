@@ -6,7 +6,7 @@ Mbed TLS is a C library that implements cryptographic primitives (including the 
 Configuration
 -------------
 
-Mbed TLS should build out of the box on most systems. Some platform specific options are available in the fully documented configuration file `include/mbedtls/mbedtls_config.h`, which is also the place where features can be selected. This file can be edited manually, or in a more programmatic way using the Python 3 script `scripts/config.py` (use `--help` for usage instructions).
+Mbed TLS should build out of the box on most systems. Some platform specific options are available in the fully documented configuration file `include/mbedtls/mbedtls_config.h`, which is also the place where features can be selected. This file can be edited manually.
 
 Compiler options can be set using conventional environment variables such as `CC` and `CFLAGS` when using the Make and CMake build system (see below).
 
@@ -251,7 +251,7 @@ For machines with a Unix shell and OpenSSL (and optionally GnuTLS) installed, ad
 -   `tests/ssl-opt.sh` runs integration tests for various TLS options (renegotiation, resumption, etc.) and tests interoperability of these options with other implementations.
 -   `tests/compat.sh` tests interoperability of every ciphersuite with other implementations.
 -   `tests/scripts/test-ref-configs.pl` test builds in various reduced configurations.
--   `tests/scripts/depends.py` test builds in configurations with a single curve, key exchange, hash, cipher, or pkalg on.
+-   `tests/scripts/depends` test builds in configurations with a single curve, key exchange, hash, cipher, or pkalg on.
 -   `tests/scripts/all.sh` runs a combination of the above tests, plus some more, with various build options (such as ASan, full `mbedtls_config.h`, etc).
 
 Instead of manually installing the required versions of all tools required for testing, it is possible to use the Docker images from our CI systems, as explained in [our testing infrastructure repository](https://github.com/Mbed-TLS/mbedtls-test/blob/main/README.md#quick-start).
