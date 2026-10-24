@@ -142,7 +142,7 @@ fn test_iarna_toml_spec_tests() {
 				valid_test_file_name := os.file_name(valid_test_file).all_before_last('.')
 				uses_json_format := os.exists(valid_test_file.all_before_last('.') + '.json')
 
-				// Use python to convert the YAML files to json - it yields some inconsistencies
+				// YAML files are not converted (Python helper removed)
 				// so we skip some of them
 				mut converted_from_yaml := false
 				mut converted_json_path := ''
