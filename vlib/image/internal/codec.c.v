@@ -133,7 +133,6 @@ pub fn encode(img image.Image, jpeg bool, quality int) ![]u8 {
 		mut encoded := EncodedImage{}
 		ok := C.stbi_write_jpg_to_func(collect_encoded, &encoded, i32(w), i32(h), 4, pixels.data,
 			i32(quality))
-			i32(quality))
 		if ok == 0 {
 			return error('image: encoding failed')
 		}
