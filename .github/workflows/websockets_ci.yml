@@ -74,9 +74,29 @@ jobs:
       - name: Copy reports wss
         run: docker cp autobahn_server_wss:/reports ${{github.workspace}}/reports_wss
       - name: Test success
-        run: docker exec autobahn_server "python" "/check_results.py"
+        run: docker exec autobahn_server python -c 'import json; ce=ct=se=st=0
+d=json.load(open("/reports/clients/index.json"))
+for i in d["v-client"]:
+    if d["v-client"][i]["behavior"]=="FAILED" or d["v-client"][i]["behaviorClose"]=="FAILED": ce+=1
+    ct+=1
+d=json.load(open("/reports/servers/index.json"))
+for i in d["AutobahnServer"]:
+    if d["AutobahnServer"][i]["behavior"]=="FAILED" or d["AutobahnServer"][i]["behaviorClose"]=="FAILED": se+=1
+    st+=1
+print("CLIENT ERRORS {0} of {1}, SERVER ERRORS {2} of {3}".format(ce,ct,se,st))
+if ce or se: raise SystemExit(1)'
       - name: Test success WSS
-        run: docker exec autobahn_server_wss "python" "/check_results.py"
+        run: docker exec autobahn_server_wss python -c 'import json; ce=ct=se=st=0
+d=json.load(open("/reports/clients/index.json"))
+for i in d["v-client"]:
+    if d["v-client"][i]["behavior"]=="FAILED" or d["v-client"][i]["behaviorClose"]=="FAILED": ce+=1
+    ct+=1
+d=json.load(open("/reports/servers/index.json"))
+for i in d["AutobahnServer"]:
+    if d["AutobahnServer"][i]["behavior"]=="FAILED" or d["AutobahnServer"][i]["behaviorClose"]=="FAILED": se+=1
+    st+=1
+print("CLIENT ERRORS {0} of {1}, SERVER ERRORS {2} of {3}".format(ce,ct,se,st))
+if ce or se: raise SystemExit(1)'
 
       - name: Publish all reports
         uses: actions/upload-artifact@v7

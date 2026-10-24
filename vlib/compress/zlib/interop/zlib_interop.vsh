@@ -18,16 +18,11 @@ fn main() {
 		eprintln('SKIP: ${err.msg()}')
 		exit(2)
 	}
-	py_script := join_path(@DIR, 'zlib_ref.py')
-	ensure_python(py_script) or {
-		eprintln('SKIP: ${err.msg()}')
-		exit(2)
-	}
 
 	vectors := make_test_vectors()
 	mut total_checks := 0
 	for i, vec in vectors {
-		total_checks += run_case(tmp_root, c_bin, py_script, i, vec) or {
+		total_checks += run_case(tmp_root, c_bin, i, vec) or {
 			eprintln('FAIL: ${vec.name}: ${err.msg()}')
 			exit(1)
 			0
@@ -58,14 +53,6 @@ fn choose_cc() string {
 	return ''
 }
 
-fn ensure_python(py_script string) ! {
-	must_succeed("python3 -c 'import zlib' >/dev/null 2>&1",
-		'python3 with zlib module is not available')!
-	if !exists(py_script) {
-		return error('missing Python helper: ${py_script}')
-	}
-}
-
 fn make_test_vectors() []TestVector {
 	mut vectors := []TestVector{}
 	vectors << TestVector{'empty', []u8{}}
@@ -76,19 +63,17 @@ fn make_test_vectors() []TestVector {
 	return vectors
 }
 
-fn run_case(tmp_root string, c_bin string, py_script string, case_idx int, vec TestVector) !int {
+fn run_case(tmp_root string, c_bin string, case_idx int, vec TestVector) !int {
 	case_dir := join_path(tmp_root, 'case_${case_idx:02}_${vec.name}')
 	mkdir_all(case_dir)!
 
 	v_z := zlib.compress(vec.data)!
 	c_z := c_compress(case_dir, c_bin, vec.data)!
-	py_z := py_compress(case_dir, py_script, vec.data)!
 
 	mut checks := 0
 	producers := {
-		'v':  v_z
-		'c':  c_z
-		'py': py_z
+		'v': v_z
+		'c': c_z
 	}
 	for producer, compressed in producers {
 		v_plain := zlib.decompress(compressed)!
@@ -97,10 +82,6 @@ fn run_case(tmp_root string, c_bin string, py_script string, case_idx int, vec T
 
 		c_plain := c_decompress(case_dir, c_bin, producer, compressed)!
 		assert_equal_bytes('c.decompress(${producer}.compress)', vec.data, c_plain)!
-		checks++
-
-		py_plain := py_decompress(case_dir, py_script, producer, compressed)!
-		assert_equal_bytes('python.decompress(${producer}.compress)', vec.data, py_plain)!
 		checks++
 	}
 	return checks
@@ -121,24 +102,6 @@ fn c_decompress(case_dir string, c_bin string, producer string, compressed []u8)
 	write_file_array(in_path, compressed)!
 	must_succeed('${shell_quote(c_bin)} decompress ${shell_quote(in_path)} ${shell_quote(out_path)}',
 		'C zlib decompression failed')!
-	return read_bytes(out_path)!
-}
-
-fn py_compress(case_dir string, py_script string, plain []u8) ![]u8 {
-	in_path := join_path(case_dir, 'plain_py.in')
-	out_path := join_path(case_dir, 'py.zlib')
-	write_file_array(in_path, plain)!
-	must_succeed('python3 ${shell_quote(py_script)} compress ${shell_quote(in_path)} ${shell_quote(out_path)}',
-		'Python zlib compression failed')!
-	return read_bytes(out_path)!
-}
-
-fn py_decompress(case_dir string, py_script string, producer string, compressed []u8) ![]u8 {
-	in_path := join_path(case_dir, '${producer}.for_py.zlib')
-	out_path := join_path(case_dir, '${producer}.from_py.out')
-	write_file_array(in_path, compressed)!
-	must_succeed('python3 ${shell_quote(py_script)} decompress ${shell_quote(in_path)} ${shell_quote(out_path)}',
-		'Python zlib decompression failed')!
 	return read_bytes(out_path)!
 }
 

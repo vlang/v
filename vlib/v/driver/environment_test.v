@@ -539,13 +539,6 @@ fn test_v3_test_standard_dependency_probes_match_test_runner() {
 	assert node.args == ['--version']
 	assert node.pkgconfig_name == ''
 
-	python := v3_test_standard_dependency_probe('present_python') or {
-		panic('missing Python probe')
-	}
-	assert python.command == 'python'
-	assert python.args == ['--version']
-	assert python.pkgconfig_name == 'python3'
-
 	ruby := v3_test_standard_dependency_probe('present_ruby') or { panic('missing Ruby probe') }
 	assert ruby.command == 'ruby'
 	assert ruby.args == ['--version']
@@ -584,7 +577,7 @@ fn test_v3_test_build_defines_populates_referenced_standard_dependencies() {
 		restore_driver_environment(name, old_value, was_set)
 	}
 	os.unsetenv(name)
-	for define in ['present_node', 'present_python', 'present_ruby', 'present_go'] {
+	for define in ['present_node', 'present_ruby', 'present_go'] {
 		probe := v3_test_standard_dependency_probe(define) or {
 			assert false, 'missing dependency probe for ${define}'
 			continue

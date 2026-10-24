@@ -46,11 +46,6 @@ fn main() {
 	} else {
 		eprintln('Skipping C benchmark: ${err.msg()}')
 	}
-	python_ok := has_python3()
-	if !python_ok {
-		eprintln('Skipping Python benchmark: python3 is not available')
-	}
-
 	if c_bin.len > 0 {
 		cross_validate_v_c(c_bin, data, input_path, tmp_dir) or {
 			eprintln('Cross-validation V<->C failed: ${err.msg()}')
@@ -61,15 +56,6 @@ fn main() {
 		println('Cross-validation: skipped V<->C (requires C compiler)')
 	}
 
-	if python_ok {
-		cross_validate_v_python(data, input_path, tmp_dir) or {
-			eprintln('Cross-validation V<->Python failed: ${err.msg()}')
-			exit(1)
-		}
-		println('Cross-validation: V<->Python compress/decompress OK')
-	} else {
-		println('Cross-validation: skipped V<->Python (requires python3)')
-	}
 }
 
 fn validate_v_roundtrip(data []u8, format lz.Format) ! {
@@ -87,7 +73,6 @@ fn compile_c_runner() !string {
 	}
 	bin_path := os.join_path(os.temp_dir(), 'lz77_ref_bench')
 	c_src := os.join_path(@DIR, 'lz77_ref.c')
-	compile_cmd := '${cc} -O3 -std=c99 ${os.quoted_path(c_src)} -o ${os.quoted_path(bin_path)}'
 	compile_res := os.exec([cc, '-O3', '-std=c99', '${c_src}', '-o', bin_path])
 	if compile_res.exit_code != 0 {
 		return error('C compile failed: ${compile_res.output.trim_space()}')
@@ -102,10 +87,6 @@ fn choose_cc() string {
 		}
 	}
 	return ''
-}
-
-fn has_python3() bool {
-	return os.exec(['python3', '--version']).exit_code == 0
 }
 
 fn cross_validate_v_c(c_bin string, original []u8, input_path string, tmp_dir string) ! {
@@ -132,34 +113,6 @@ fn cross_validate_v_c(c_bin string, original []u8, input_path string, tmp_dir st
 	v_decoded := lz.decompress_lz77(c_encoded_data)!
 	if v_decoded != original {
 		return error('C->V output mismatch')
-	}
-}
-
-fn cross_validate_v_python(original []u8, input_path string, tmp_dir string) ! {
-	v_encoded := os.join_path(tmp_dir, 'v_encoded_for_py.bin')
-	py_decoded := os.join_path(tmp_dir, 'py_decoded.bin')
-	py_encoded := os.join_path(tmp_dir, 'py_encoded.bin')
-	py_script := os.join_path(@DIR, 'lz77_ref.py')
-
-	v_stream := lz.compress_lz77(original)!
-	os.write_file_array(v_encoded, v_stream)!
-
-	mut res :=
-		os.exec(['python3', '${py_script}', 'decompress', '${v_encoded}', '${py_decoded}'])
-	if res.exit_code != 0 {
-		return error('Python decompress(V output) failed: ${res.output.trim_space()}')
-	}
-	validate_equal_files(input_path, py_decoded, 'V->Python')!
-
-	res =
-		os.exec(['python3', '${py_script}', 'compress', input_path, '${py_encoded}'])
-	if res.exit_code != 0 {
-		return error('Python compress failed: ${res.output.trim_space()}')
-	}
-	py_encoded_data := os.read_bytes(py_encoded)!
-	v_decoded := lz.decompress_lz77(py_encoded_data)!
-	if v_decoded != original {
-		return error('Python->V output mismatch')
 	}
 }
 

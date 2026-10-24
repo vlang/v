@@ -66,8 +66,7 @@ pub const is_go_present = os.exec(['go', 'version']).exit_code == 0
 pub const is_ruby_present = os.exec(['ruby', '--version']).exit_code == 0
 	&& os.exec(['${pkgcmd}', 'ruby', '--libs']).exit_code == 0
 
-pub const is_python_present = os.exec(['python', '--version']).exit_code == 0
-	&& os.exec(['${pkgcmd}', 'python3', '--libs']).exit_code == 0
+
 
 pub const is_sqlite3_present = get_present_sqlite()
 
@@ -1452,9 +1451,6 @@ pub fn (mut ts TestSession) setup_build_environment() {
 	}
 	if is_node_present {
 		defines << 'present_node'
-	}
-	if is_python_present {
-		defines << 'present_python'
 	}
 	if is_ruby_present {
 		defines << 'present_ruby'
