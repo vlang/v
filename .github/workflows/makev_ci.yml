@@ -69,5 +69,5 @@ jobs:
           ref: thirdparty-windows-amd64
           path: thirdparty/tcc
           persist-credentials: false
-      - name: Bootstrap contract tests removed (were Python-based)
-        run: echo "skipped"
+      - name: Test bootstrap configuration (V port)
+        run: v run cmd/tools/makev_contract_test/main.v
