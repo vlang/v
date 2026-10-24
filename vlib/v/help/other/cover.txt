@@ -1,0 +1,1 @@
+﻿v cover\n\nGenerate code coverage information for V tests.\n\nUsage:\n  v cover [options] <file_or_dir>

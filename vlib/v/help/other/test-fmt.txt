@@ -1,0 +1,1 @@
+﻿v test-fmt\n\nCheck that all files in the current directory are formatted.\n\nUsage:\n  v test-fmt

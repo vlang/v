@@ -1,0 +1,1 @@
+﻿v diff\n\nShow differences between V source files.\n\nUsage:\n  v diff <file1> <file2>

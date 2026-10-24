@@ -1,0 +1,1 @@
+﻿v translate\n\nTranslate C code to V.\n\nUsage:\n  v translate <file.c>
