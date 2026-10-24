@@ -2524,6 +2524,11 @@ fn (mut g FlatGen) interface_implicit_str_expr(typ types.Type, expr string, quot
 		types.Primitive {
 			name := types.Type(clean).name()
 			if clean.props.has(.float) {
+				// An f32 widened to f64 would print the binary error of its
+				// rounding (`1.2000000476837158` instead of `1.2`).
+				if name == 'f32' {
+					return 'f32__str(${expr})'
+				}
 				return 'f64__str((double)(${expr}))'
 			}
 			if name == 'bool' {
