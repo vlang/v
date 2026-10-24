@@ -15164,9 +15164,16 @@ pub fn (tc &TypeChecker) specialized_interface_method_signature(iface_name_id u3
 	for arg in args {
 		concrete_types << tc.parse_type(flat.source_type_id(trimmed_space(arg)))
 	}
+	param_texts := tc.fn_param_type_texts.type_ids(expected_key) or { []u32{} }
 	mut specialized_params := []Type{cap: params.len}
-	for param in params {
-		specialized_params << tc.substitute_generic_type_values(param, concrete_types, param_names)
+	for i, param in params {
+		param_text := if param_texts.len == params.len {
+			flat.source_type_name(param_texts[i])
+		} else {
+			''
+		}
+		specialized_params << tc.substitute_generic_param_type(param, param_text, concrete_types,
+			param_names)
 	}
 	return specialized_params, tc.substitute_generic_type_values(ret, concrete_types, param_names)
 }
@@ -21162,7 +21169,8 @@ pub fn (tc &TypeChecker) resolve_generic_struct_method(type_name_id u32, method 
 				continue
 			}
 			if i < param_types.len && generic_semantic_type_has_placeholder(param_types[i]) {
-				sub_params << tc.substitute_generic_type_values(param_types[i], concrete_types, params)
+				sub_params << tc.substitute_generic_param_type(param_types[i], pt, concrete_types,
+					params)
 				continue
 			}
 			sub_params << tc.parse_fn_signature_type(generic_key, flat.source_type_id(subst_generic_signature_param_text(pt, concrete_args, params)))
