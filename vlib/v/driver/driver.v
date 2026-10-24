@@ -2331,6 +2331,8 @@ fn maybe_delegate_v3_to_vvmrc(input_file string, verbose bool) {
 	if verbose {
 		eprintln('v3: `.vvmrc` selected V `${requested_version}` from `${vvmrc_path}` => ${requested_exe}')
 	}
+	// The selected compiler builds the program and reports its own failures.
+	release_v3_fallback_marker()
 	mut process := os.new_process(requested_exe)
 	process.set_args(os.args[1..])
 	mut envs := os.environ()
@@ -16805,7 +16807,7 @@ pub fn run(args []string) {
 					}
 				}
 				$if windows {
-					exit(os.system_args([os.executable(), ...regeneration_args]))
+					exit_with_child_build(os.executable(), regeneration_args)
 				}
 				os.execvp(os.executable(), regeneration_args) or {
 					eprintln('failed to restart monolithic C compilation: ${err.msg()}')
@@ -16841,6 +16843,7 @@ pub fn run(args []string) {
 					}
 					retry_args := v3_retry_compilation_args(args, c_compiler_arg_index, fallback)
 					cleanup_c_build_dir(cc_dir)
+					release_v3_fallback_marker()
 					retry_result := cmdexec.run(os.executable(), retry_args)
 					if retry_result.output.len > 0 {
 						print(retry_result.output)
@@ -17568,7 +17571,7 @@ fn v3_recover_from_cache_failure(output string, cc_dir string) bool {
 	$if windows {
 		// `_execvp` would exit this process with status 0 before the retried
 		// build finishes, so forward the retried build's status instead.
-		exit(os.system_args([executable, ...restart_args]))
+		exit_with_child_build(executable, restart_args)
 	}
 	os.execvp(executable, restart_args) or {
 		eprintln('failed to restart the build after discarding stale cache entries: ${err.msg()}')
@@ -17649,6 +17652,7 @@ fn v3_regenerate_after_implicit_tcc(args []string, c_compiler_arg_index int, cc_
 	flush_stdout()
 	flush_stderr()
 	$if windows {
+		release_v3_fallback_marker()
 		retry_result := cmdexec.run(os.executable(), retry_args)
 		if retry_result.output.len > 0 {
 			print(retry_result.output)
@@ -18883,13 +18887,31 @@ fn restart_v3_with_args(extra_args []string, build_dir string) {
 		// Windows has no exec either: `_execvp` would start the child and then
 		// exit this process with status 0, dropping the restarted build's
 		// result on the floor.
-		exit(os.system_args([executable, ...args]))
+		exit_with_child_build(executable, args)
 	} $else {
 		os.execvp(executable, args) or {
 			eprintln('failed to restart ${executable}: ${err.msg()}')
 			exit(1)
 		}
 	}
+}
+
+// exit_with_child_build runs the build again as a child V process and exits with its
+// status, where there is no exec to replace this process with it, as on Windows.
+// The child is a process of its own: its launcher stages a fallback marker under the
+// child's pid and reports the child's failures itself.
+fn exit_with_child_build(executable string, args []string) {
+	release_v3_fallback_marker()
+	exit(os.system_args([executable, ...args]))
+}
+
+// release_v3_fallback_marker removes the fallback marker that this process staged,
+// before a child build that reports its own failures takes over. Left in place, it
+// tells this process's launcher at exit that the build failed in V3, and the
+// launcher compiles the whole build again to replay diagnostics, even when the
+// child succeeded.
+fn release_v3_fallback_marker() {
+	clear_macos_v3_compiler_error_fallback(os.getenv(macos_v3_fallback_file_env))
 }
 
 fn c_source_references_identifiers(source string, identifiers map[string]bool) bool {
@@ -23710,7 +23732,7 @@ fn rerun_as_one_shot_check_with(reason string, question string, extra_args []str
 		for name in ['V_DIAGNOSTICS_SERVER', 'V_DIAGNOSTICS_PREPARE'] {
 			os.unsetenv(name)
 		}
-		exit(os.system_args([os.executable(), ...args]))
+		exit_with_child_build(os.executable(), args)
 	} $else {
 		mut envs := []string{}
 		for name, value in os.environ() {
