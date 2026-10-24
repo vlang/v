@@ -41,6 +41,46 @@ fn test_fma_and_floor_mod() {
 	assert floor_mod(1.0, 0.0) != floor_mod(1.0, 0.0)
 }
 
+fn test_floor_div() {
+	// Floored quotient, the counterpart of floor_mod (issue #31082).
+	assert floor_div(-10.0, 7.0) == -2.0
+	assert floor_div(10.0, -7.0) == -2.0
+	assert floor_div(-10.0, -7.0) == 1.0
+	assert floor_div(10.0, 7.0) == 1.0
+	assert floor_div(6.0, 3.0) == 2.0
+	assert floor_div(-6.0, 3.0) == -2.0
+	assert floor_div(5.5, 2.0) == 2.0
+	assert floor_div(-5.5, 2.0) == -3.0
+	// Quotient/remainder invariant: q * y + r == x.
+	for x in [-10.0, -5.5, -1.0, 0.0, 1.0, 5.5, 10.0] {
+		for y in [-7.0, -3.0, -1.5, 1.5, 3.0, 7.0] {
+			q := floor_div(x, y)
+			r := floor_mod(x, y)
+			assert q * y + r == x
+			if y > 0 {
+				assert q * y <= x
+			} else {
+				assert q * y >= x
+			}
+		}
+	}
+	// Zero divisor and NaN propagate as NaN, like floor_mod.
+	assert floor_div(1.0, 0.0) != floor_div(1.0, 0.0)
+	assert is_nan(floor_div(1.0, 0.0))
+	assert is_nan(floor_div(nan(), 1.0))
+	assert is_nan(floor_div(1.0, nan()))
+	// Integer dividends promote to f64, including magnitudes above max i64,
+	// and fractional float divisors work (astronomy/signal-processing case).
+	a := -10
+	assert floor_div(a, 7.0) == -2.0
+	assert floor_mod(a, 7.0) == 4.0
+	assert floor_div(10.0, 2.5) == 4.0
+	assert floor_mod(10.0, 2.5) == 0.0
+	assert floor_div(-10.0, 2.5) == -4.0
+	big := 1e19
+	assert floor_div(big, 7.0) * 7.0 + floor_mod(big, 7.0) == big
+}
+
 fn test_angle_conversion() {
 	assert approx(to_degrees(pi), 180.0)
 	assert approx(to_radians(180.0), pi)
