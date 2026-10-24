@@ -16851,7 +16851,14 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		mut_container_mismatch := ((arg_node.is_mut && param_is_mut)
 			|| call_param_is_shared(info, param_idx))
 			&& tc.mut_arg_container_layouts_differ(actual, expected)
-		if pointer_depth_mismatch || pointer_array_mismatch || mut_container_mismatch {
+		// A number behind a pointer is read in place, never converted, also when the
+		// argument is referenced implicitly or passed as `mut`: neither a `&u8` nor a
+		// `u8` can stand for a `&u64` (pointee_number_storage_differs).
+		pointee_number_mismatch := expected_pointer_depth > 0 && !info.name.starts_with('C.')
+			&& tc.pointee_number_storage_checked()
+			&& pointee_number_storage_differs(actual_pointer_base, expected_pointer_base)
+		if pointer_depth_mismatch || pointer_array_mismatch || mut_container_mismatch
+			|| pointee_number_mismatch {
 			actual_name := tc.diagnostic_expr_type_name(arg_id, actual)
 			actual_display := if mut_arg_node.is_mut && param_is_mut && actual !is Pointer {
 				'&${actual_name}'
@@ -18510,6 +18517,12 @@ fn (tc &TypeChecker) c_call_arg_compatible(name string, arg_id flat.NodeId, expe
 		if c_char_pointer_types_compatible(actual, expected) {
 			return true
 		}
+		// C headers spell the numbers behind a pointer in their own ways, so C calls keep
+		// accepting the number pointees that converted before their storage was checked
+		// (pointee_number_storage_checked).
+		if c_number_pointer_types_compatible(actual, expected) {
+			return true
+		}
 		base := unalias_type(clean.base_type)
 		if base is Char || (base is Primitive && base.name() == 'u8') {
 			return tc.c_literal_arg(arg_id)
@@ -18531,6 +18544,24 @@ fn c_char_pointer_types_compatible(actual Type, expected Type) bool {
 	expected_depth, expected_base := type_pointer_depth_and_base(expected)
 	return actual_depth > 0 && actual_depth == expected_depth && is_c_char_type(actual_base)
 		&& is_c_char_type(expected_base)
+}
+
+// c_number_pointer_types_compatible reports whether `actual` and `expected` are
+// pointers of the same depth to numbers that `type_compatible` converts, whatever
+// their storage: an integer to an integer or a float, a float to a float.
+// `char` is not one of them; c_char_pointer_types_compatible handles it.
+fn c_number_pointer_types_compatible(actual Type, expected Type) bool {
+	actual_depth, actual_base := type_pointer_depth_and_base(actual)
+	expected_depth, expected_base := type_pointer_depth_and_base(expected)
+	if actual_depth == 0 || actual_depth != expected_depth {
+		return false
+	}
+	actual_number := unalias_type(actual_base)
+	expected_number := unalias_type(expected_base)
+	if actual_number.is_integer() {
+		return expected_number.is_integer() || expected_number.is_float()
+	}
+	return actual_number.is_float() && expected_number.is_float()
 }
 
 fn is_c_char_type(typ Type) bool {
