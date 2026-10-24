@@ -11269,7 +11269,10 @@ fn call_arg_numeric_type(typ &Type) bool {
 	return call_arg_integer_type(clean) || clean.is_float()
 }
 
-fn implicit_integer_to_float_compatible(actual &Type, expected &Type) bool {
+// implicit_integer_to_float_compatible reports whether an `actual` integer
+// converts to an `expected` float without a cast: every integer but `i64` and
+// `u64` does.
+pub fn implicit_integer_to_float_compatible(actual &Type, expected &Type) bool {
 	clean_actual := unalias_type(actual)
 	clean_expected := unalias_type(expected)
 	return clean_actual.is_integer() && clean_actual.name() !in ['i64', 'u64']
