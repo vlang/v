@@ -19041,7 +19041,10 @@ fn (mut tc TypeChecker) specialize_plain_generic_call_info(node flat.Node, info 
 	// receiver concrete. Retain both substitutions when rebuilding signature
 	// text so the receiver's `T` does not become open again.
 	mut signature_params := generic_params.clone()
-	mut signature_args := concrete_args.clone()
+	mut signature_args := []u32{cap: concrete_args.len}
+	for i, arg_id in concrete_args {
+		signature_args << tc.generic_signature_arg_text(info.name, arg_id, concrete_types[i])
+	}
 	if info.has_receiver && info.params.len > 0 && param_texts.len > 0 {
 		receiver_pattern := info.name.all_before_last('.')
 		_, receiver_params, receiver_is_generic := generic_type_application_parts(receiver_pattern)
@@ -19057,8 +19060,13 @@ fn (mut tc TypeChecker) specialize_plain_generic_call_info(node flat.Node, info 
 					continue
 				}
 				if receiver_arg_id := receiver_inferred[receiver_param] {
+					receiver_arg := flat.source_type_name(receiver_arg_id)
+					receiver_type := tc.type_from_known_symbol(receiver_arg) or {
+						*tc.parse_type(receiver_arg_id)
+					}
 					signature_params << receiver_param
-					signature_args << receiver_arg_id
+					signature_args << tc.generic_signature_arg_text(info.name, receiver_arg_id,
+						receiver_type)
 				}
 			}
 		}
@@ -19066,9 +19074,12 @@ fn (mut tc TypeChecker) specialize_plain_generic_call_info(node flat.Node, info 
 	mut sub_params := []Type{}
 	for i, param_type_id in param_texts {
 		param_text := flat.source_type_name(param_type_id)
-		if generic_type_application(param_text) {
+		if generic_type_application(param_text) && !(is_fn_type_text(param_text) && i < info.params.len) {
 			// Named applications such as `Box[T]` lose their arguments in the
 			// open parsed type, so retain the textual reconstruction for them.
+			// A callback type keeps them (`fn (&Box[T])`), and its text would be
+			// parsed again in the declaration's module, where a caller's `Row`
+			// can name the declaration's own `Row`: substitute its values.
 			sub_params << tc.parse_fn_signature_type(info.name, flat.source_type_id(subst_generic_signature_param_text(param_text, signature_args, signature_params)))
 		} else if i < info.params.len {
 			sub_params << tc.substitute_generic_type_values(info.params[i], concrete_types, generic_params)
@@ -19079,7 +19090,8 @@ fn (mut tc TypeChecker) specialize_plain_generic_call_info(node flat.Node, info 
 	ret_text_source_id_3 := tc.fn_ret_type_texts.type_id(info.name) or { u32(0) }
 	ret_text := flat.source_type_name(ret_text_source_id_3)
 	sub_ret := if ret_text_source_id_3 != 0 {
-		if generic_type_application(ret_text) || ret_text.starts_with('(') {
+		if (generic_type_application(ret_text) && !is_fn_type_text(ret_text))
+			|| ret_text.starts_with('(') {
 			tc.parse_fn_signature_type(info.name, subst_generic_text(flat.source_type_id(ret_text), signature_args, signature_params))
 		} else {
 			tc.substitute_generic_type_values(info.return_type, concrete_types, generic_params)
@@ -19099,6 +19111,27 @@ fn (mut tc TypeChecker) specialize_plain_generic_call_info(node flat.Node, info 
 		has_implicit_veb_ctx: info.has_implicit_veb_ctx
 		arg_offset:           info.arg_offset
 	}
+}
+
+// generic_signature_arg_text spells the inferred argument `arg_id`, of type
+// `arg_type`, of a call of the generic function `fn_name` for the textual
+// reconstruction of its signature, which is parsed again in the declaration's
+// module. A caller's `Row` can name a `Row` of that module there, so such an
+// argument is spelled as an explicit `f[Row]` is (`main.Row`).
+fn (tc &TypeChecker) generic_signature_arg_text(fn_name string, arg_id u32, arg_type Type) u32 {
+	if context_independent_type_text(flat.source_type_name(arg_id)) {
+		return arg_id
+	}
+	locked_id := tc.explicit_generic_concrete_arg_text(arg_id)
+	if locked_id == arg_id {
+		return arg_id
+	}
+	expected := arg_type.name()
+	if tc.parse_fn_signature_type(fn_name, arg_id).name() != expected
+		&& tc.parse_fn_signature_type(fn_name, locked_id).name() == expected {
+		return locked_id
+	}
+	return arg_id
 }
 
 fn (mut tc TypeChecker) resolve_generic_call_arg_type(id flat.NodeId) Type {
@@ -19561,6 +19594,10 @@ fn (mut tc TypeChecker) infer_generic_type_value_from_type_bytes(param_text stri
 		tc.infer_generic_type_value_from_type_bytes(clean[4..], actual, generic_params, mut inferred)
 		return
 	}
+	if clean.starts_with('shared ') {
+		tc.infer_generic_type_value_from_type_bytes(clean[7..], actual, generic_params, mut inferred)
+		return
+	}
 	if clean.starts_with('...') {
 		if actual_array := array_type_from_receiver(actual) {
 			tc.infer_generic_type_value_from_type_bytes(clean[3..], actual_array.elem_type, generic_params, mut inferred)
@@ -19573,10 +19610,24 @@ fn (mut tc TypeChecker) infer_generic_type_value_from_type_bytes(param_text stri
 		}
 		return
 	}
+	if clean.starts_with('chan ') {
+		if actual is Channel {
+			tc.infer_generic_type_value_from_type_bytes(clean[5..], actual.elem_type, generic_params,
+				mut inferred)
+		}
+		return
+	}
 	if clean.starts_with('thread ') {
 		if payload := thread_payload_type(actual) {
 			tc.infer_generic_type_value_from_type_bytes(clean[7..], tc.parse_type(payload),
 				generic_params, mut inferred)
+		}
+		return
+	}
+	if clean.starts_with('[') {
+		close := find_matching_bracket(clean, 0)
+		if close > 0 && close + 1 < clean.len && actual is ArrayFixed {
+			tc.infer_generic_type_value_from_type_bytes(clean[close + 1..], actual.elem_type, generic_params, mut inferred)
 		}
 		return
 	}
@@ -19591,6 +19642,15 @@ fn (mut tc TypeChecker) infer_generic_type_value_from_type_bytes(param_text stri
 	if clean.starts_with('!') {
 		if actual is ResultType {
 			tc.infer_generic_type_value_from_type_bytes(clean[1..], actual.base_type, generic_params, mut inferred)
+		}
+		return
+	}
+	if clean.starts_with('fn(') || clean.starts_with('fn (') {
+		// A placeholder bound only by a callback parameter keeps the callback's
+		// caller-side type: re-parsing its text in the callee's module would turn
+		// a caller's `Row` into a same-named `Row` of the callee.
+		if actual is FnType {
+			tc.infer_generic_fn_type_value_from_type(clean, actual, generic_params, mut inferred)
 		}
 		return
 	}
@@ -19805,6 +19865,44 @@ fn (tc &TypeChecker) infer_generic_type_text_from_text_bytes(param_text string, 
 }
 
 fn (mut tc TypeChecker) infer_generic_fn_type_text_from_type_bytes(param_text string, actual FnType, generic_params []string, mut inferred map[string]u32) {
+	parts, ret := fn_type_text_parts(param_text) or { return }
+	for i, part in parts {
+		if i >= actual.params.len {
+			break
+		}
+		tc.infer_generic_type_text_from_type_bytes(normalize_fn_type_param_text(part), fn_compatible_param_type(actual, i), generic_params, mut inferred)
+	}
+	if ret.len > 0 {
+		tc.infer_generic_type_text_from_type_bytes(ret, actual.return_type, generic_params, mut inferred)
+	}
+}
+
+// infer_generic_fn_type_value_from_type binds the placeholders of a callback
+// parameter type, `fn (T) U`, to the caller-side types of the callback passed.
+fn (mut tc TypeChecker) infer_generic_fn_type_value_from_type(param_text string, actual FnType, generic_params []string, mut inferred map[string]Type) {
+	parts, ret := fn_type_text_parts(param_text) or { return }
+	for i, part in parts {
+		if i >= actual.params.len {
+			break
+		}
+		tc.infer_generic_type_value_from_type_bytes(normalize_fn_type_param_text(part), fn_compatible_param_type(actual, i), generic_params, mut inferred)
+	}
+	if ret.len > 0 {
+		tc.infer_generic_type_value_from_type_bytes(ret, actual.return_type, generic_params, mut inferred)
+	}
+}
+
+// is_fn_type_text reports whether a type text is a function type, `fn (A) R`,
+// whose brackets belong to its parameter and return types rather than to an
+// application of a named generic type.
+fn is_fn_type_text(text string) bool {
+	clean := trimmed_space(text)
+	return clean.starts_with('fn(') || clean.starts_with('fn (')
+}
+
+// fn_type_text_parts splits the text of a function type, `fn (a A, b B) R`,
+// into its parameter texts and its return type text.
+fn fn_type_text_parts(param_text string) ?([]string, string) {
 	params_start := param_text.index_u8(`(`) + 1
 	mut depth := 1
 	mut params_end := params_start
@@ -19820,19 +19918,9 @@ fn (mut tc TypeChecker) infer_generic_fn_type_text_from_type_bytes(param_text st
 		params_end++
 	}
 	if params_end >= param_text.len {
-		return
+		return none
 	}
-	parts := split_params(param_text[params_start..params_end])
-	for i, part in parts {
-		if i >= actual.params.len {
-			break
-		}
-		tc.infer_generic_type_text_from_type_bytes(normalize_fn_type_param_text(part), fn_compatible_param_type(actual, i), generic_params, mut inferred)
-	}
-	ret := trimmed_space(param_text[params_end + 1..])
-	if ret.len > 0 {
-		tc.infer_generic_type_text_from_type_bytes(ret, actual.return_type, generic_params, mut inferred)
-	}
+	return split_params(param_text[params_start..params_end]), trimmed_space(param_text[params_end + 1..])
 }
 
 // array_map_return_elem_type supports array map return elem type handling for TypeChecker.
