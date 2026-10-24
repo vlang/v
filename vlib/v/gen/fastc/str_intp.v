@@ -35,13 +35,16 @@ fn (mut g Parser) fastc_default_struct_str_name(c_type string) ?string {
 	// Reserve the name first so a self-referential field does not recurse forever.
 	g.spawn_helpers[fn_name] = ''
 	g.protos.writeln('string ${fn_name}(${c_name} it);')
-	display := c_name.all_after_last('__')
+	display := fastc_default_struct_str_display_name(flat.source_type_name(key), c_name)
 	mut body := 'string ${fn_name}(${c_name} it) {\n'
 	body += '\tstring res = _S("${display}{\\n");\n'
 	for field in g.struct_field_info[c_name] {
 		c_field := fastc_c_identifier(field.name)
-		formatted := g.fastc_struct_field_str_expression('it.${c_field}', field.typ_text()) or {
+		mut formatted := g.fastc_struct_field_str_expression('it.${c_field}', field.typ_text()) or {
 			'_S("<${field.typ_text()}>")'
+		}
+		if g.fastc_struct_field_str_needs_indent(field.typ_text()) {
+			formatted = '${g.fastc_string_indent_helper()}(${formatted})'
 		}
 		body += '\tres = builtin__string_plus(res, _S("    ${field.name}: "));\n'
 		body += '\tres = builtin__string_plus(res, ${formatted});\n'
@@ -51,6 +54,78 @@ fn (mut g Parser) fastc_default_struct_str_name(c_type string) ?string {
 	body += '\treturn res;\n}'
 	g.spawn_helpers[fn_name] = body
 	return fn_name
+}
+
+// fastc_default_struct_str_display_name spells a struct the way V's default `str()` does:
+// with its module prefix (`mymod.Pt`), except for `main` and `builtin` types.
+fn fastc_default_struct_str_display_name(source_name string, c_name string) string {
+	if !source_name.contains('.') {
+		return c_name.all_after_last('__')
+	}
+	for prefix in ['main.', 'builtin.'] {
+		if source_name.starts_with(prefix) {
+			return source_name[prefix.len..]
+		}
+	}
+	return source_name
+}
+
+// fastc_string_indent_helper emits, once per program, a helper that indents every line after
+// the first by four spaces, as V's default `str()` does to a nested value's text. It is plain C,
+// because FastC drops `string.replace` from programs that never call it.
+fn (mut g Parser) fastc_string_indent_helper() string {
+	name := 'v_fastc_string_indent'
+	if name !in g.spawn_helpers {
+		g.protos.writeln('string ${name}(string s);')
+		g.spawn_helpers[name] = fastc_string_indent_c
+	}
+	return name
+}
+
+// The C for fastc_string_indent_helper. Character code 10 is `\n`, 32 is a space.
+const fastc_string_indent_c = r'string v_fastc_string_indent(string s) {
+	size_t lines = 0;
+	for (size_t i = 0; i < (size_t)s.len; i++) {
+		if (s.str[i] == 10) lines++;
+	}
+	if (lines == 0) return s;
+	size_t len = (size_t)s.len + 4 * lines;
+	byteptr result = malloc(len + 1);
+	if (result == NULL) return s;
+	size_t j = 0;
+	for (size_t i = 0; i < (size_t)s.len; i++) {
+		result[j++] = s.str[i];
+		if (s.str[i] == 10) {
+			memset(result + j, 32, 4);
+			j += 4;
+		}
+	}
+	result[len] = 0;
+	return (string){.str = result, .len = len, .is_lit = 0};
+}'
+
+// fastc_struct_field_str_needs_indent reports whether a default `str()` field value can span
+// several lines (a nested struct, array, map or sum type without its own `str()`), so its
+// text is indented one level deeper, as V does. Strings, primitives, enums, fixed arrays and
+// custom `str()` results keep their text.
+fn (mut g Parser) fastc_struct_field_str_needs_indent(field_c_type string) bool {
+	ft := fastc_normalize_inferred_type(flat.source_type_id(field_c_type))
+	if ft == flat.source_type_string {
+		return false
+	}
+	base := flat.source_type_name(ft).trim_right('*')
+	if _ := fastc_fixed_array_element_type(flat.source_type_id(base)) {
+		return false
+	}
+	if base.starts_with('Array_') || base.starts_with('Map_') || base in g.sum_types {
+		return true
+	}
+	key := g.semantic_type_key(ft)
+	if '${flat.source_type_name(key)}.str' in g.functions {
+		return false
+	}
+	return flat.source_type_name(key) in g.declared_kinds
+		&& g.declared_kinds[flat.source_type_name(key)] in [.struct_, .union_]
 }
 
 // fastc_fixed_array_str_name returns a helper that renders a fixed array in V's

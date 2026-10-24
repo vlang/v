@@ -8,10 +8,23 @@ import v.pref
 // selfhost FastC path, compiles the C with `cc` and returns what the program
 // printed to stdout and stderr, merged.
 fn fastc_program_output(name string, source string) string {
+	return fastc_program_output_files(name, {
+		'main.v': source
+	})
+}
+
+// fastc_program_output_files is `fastc_program_output` for a program made of
+// several files; `files` maps paths relative to the program root (such as
+// `mymod/mymod.v` for an imported module) to their source.
+fn fastc_program_output_files(name string, files map[string]string) string {
 	root := os.join_path(os.vtmp_dir(), 'fastc_${name}_${os.getpid()}')
 	os.mkdir_all(root) or { panic(err) }
 	defer { os.rmdir_all(root) or {} }
-	os.write_file(os.join_path(root, 'main.v'), source) or { panic(err) }
+	for rel_path, source in files {
+		path := os.join_path(root, rel_path)
+		os.mkdir_all(os.dir(path)) or { panic(err) }
+		os.write_file(path, source) or { panic(err) }
+	}
 	mut prefs := pref.new_preferences()
 	prefs.vroot = @VEXEROOT
 	prefs.building_v = true
@@ -203,5 +216,121 @@ fn main() {
 }
 ')
 	expected := ['8', '9', '16', '17', '64', 'd', ''].join('\n')
+	assert output == expected, output
+}
+
+// The default `str()` keeps the module of a non-main struct (`mymod.Pt{`) and
+// indents nested structs, arrays of structs and sum types like cgen does.
+fn test_fastc_default_struct_str_keeps_module_and_indents_nested_values() {
+	$if !macos && !linux {
+		return
+	}
+	output := fastc_program_output_files('default_struct_str', {
+		'main.v':        "module main
+
+import mymod
+
+struct Point {
+	x int
+	y int
+}
+
+struct Outer {
+	p    Point
+	name string
+	arr  []Point
+	mp   mymod.Pt
+}
+
+struct Deep {
+	o Outer
+}
+
+type Val = int | Point
+
+struct Holder {
+	v Val
+}
+
+fn main() {
+	println(mymod.Pt{1})
+	println(mymod.Wrap{mymod.Pt{2}, [mymod.Pt{3}], 'w'})
+	o := Outer{Point{1, 2}, 'n', [Point{3, 4}], mymod.Pt{7}}
+	println(o)
+	println(Deep{o})
+	println(Holder{Val(Point{8, 9})})
+	println('\${o.p}')
+}
+"
+		'mymod/mymod.v': 'module mymod
+
+pub struct Pt {
+pub:
+	x int
+}
+
+pub struct Wrap {
+pub:
+	p    Pt
+	pts  []Pt
+	name string
+}
+'
+	})
+	expected := [
+		'mymod.Pt{',
+		'    x: 1',
+		'}',
+		'mymod.Wrap{',
+		'    p: mymod.Pt{',
+		'        x: 2',
+		'    }',
+		'    pts: [mymod.Pt{',
+		'        x: 3',
+		'    }]',
+		"    name: 'w'",
+		'}',
+		'Outer{',
+		'    p: Point{',
+		'        x: 1',
+		'        y: 2',
+		'    }',
+		"    name: 'n'",
+		'    arr: [Point{',
+		'        x: 3',
+		'        y: 4',
+		'    }]',
+		'    mp: mymod.Pt{',
+		'        x: 7',
+		'    }',
+		'}',
+		'Deep{',
+		'    o: Outer{',
+		'        p: Point{',
+		'            x: 1',
+		'            y: 2',
+		'        }',
+		"        name: 'n'",
+		'        arr: [Point{',
+		'            x: 3',
+		'            y: 4',
+		'        }]',
+		'        mp: mymod.Pt{',
+		'            x: 7',
+		'        }',
+		'    }',
+		'}',
+		'Holder{',
+		'    v: Val(Point{',
+		'        x: 8',
+		'        y: 9',
+		'    })',
+		'}',
+		'Point{',
+		'    x: 1',
+		'    y: 2',
+		'}',
+		'',
+	].join('\n')
 	assert output == expected, output
 }
