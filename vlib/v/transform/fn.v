@@ -6222,15 +6222,14 @@ fn (t &Transformer) unsigned_shift_type_text(typ_id u32, node flat.Node) u32 {
 }
 
 // promote_numeric_literal_infix_type returns the type of an arithmetic operation in which an
-// untyped literal takes the type of the other operand: an unsigned type for an int literal
-// that fits it, or f32 for an untyped float constant such as `1.2`, `-1.2` or `1.2 * 2`.
+// untyped constant takes the type of the other operand, as in the checker: an integer type
+// for an int constant that fits it (a literal in any base, or a named constant such as
+// `const c = 3`), or f32 for an untyped float constant such as `1.2`, `-1.2` or `1.2 * 2`.
 fn (t &Transformer) promote_numeric_literal_infix_type(lhs_id flat.NodeId, lhs_type u32, rhs_id flat.NodeId, rhs_type u32) ?u32 {
-	lhs := t.a.nodes[int(lhs_id)]
-	rhs := t.a.nodes[int(rhs_id)]
-	if promoted := promote_int_literal_infix_type(lhs, rhs, rhs_type) {
+	if promoted := t.promote_int_constant_infix_type(lhs_id, lhs_type, rhs_type) {
 		return promoted
 	}
-	if promoted := promote_int_literal_infix_type(rhs, lhs, lhs_type) {
+	if promoted := t.promote_int_constant_infix_type(rhs_id, rhs_type, lhs_type) {
 		return promoted
 	}
 	if lhs_type == flat.source_type_f32 && t.is_untyped_float_literal_expr(rhs_id) {
@@ -6242,49 +6241,98 @@ fn (t &Transformer) promote_numeric_literal_infix_type(lhs_id flat.NodeId, lhs_t
 	return none
 }
 
-fn promote_int_literal_infix_type(lit flat.Node, other flat.Node, other_type u32) ?u32 {
-	if lit.kind != .int_literal || other.kind == .int_literal {
+// promote_int_constant_infix_type returns `other_type` when `const_id` is an untyped int
+// constant that the integer type `other_type` can hold: `u8(255) + c` stays a u8 for
+// `const c = 3`, while a value out of range leaves the operation an `int`.
+fn (t &Transformer) promote_int_constant_infix_type(const_id flat.NodeId, const_type u32, other_type u32) ?u32 {
+	if const_type != flat.source_type_int || other_type !in [flat.source_type_u8, flat.source_type_u16,
+		flat.source_type_i8, flat.source_type_i16, flat.source_type_u32, flat.source_type_u64,
+		flat.source_type_usize] {
 		return none
 	}
-	value := decimal_int_literal_value(lit.value) or { return none }
-	if unsigned_type_text_accepts_int_literal(other_type, value) {
-		return other_type
+	mut const_expr_path := []flat.NodeId{}
+	value := t.untyped_int_constant_value(const_id, mut const_expr_path) or { return none }
+	min, max := match other_type {
+		flat.source_type_u8 { i64(0), i64(255) }
+		flat.source_type_u16 { i64(0), i64(65535) }
+		flat.source_type_i8 { i64(-128), i64(127) }
+		flat.source_type_i16 { i64(-32768), i64(32767) }
+		else { i64(0), untyped_int_constant_limit }
 	}
-	return none
+	if value < min || value > max {
+		return none
+	}
+	return other_type
 }
 
-fn decimal_int_literal_value(text string) ?int {
-	if text == '' {
+// untyped_int_constant_limit bounds the magnitude of the values that
+// untyped_int_constant_value computes, so that its arithmetic cannot overflow.
+const untyped_int_constant_limit = i64(0x7fff_ffff)
+
+// untyped_int_constant_value returns the value of an untyped int constant built from int
+// literals in any base, constants initialized with them, signs, parentheses and
+// `+ - * / %`. `const_expr_path` holds the constants being expanded.
+fn (t &Transformer) untyped_int_constant_value(id flat.NodeId, mut const_expr_path []flat.NodeId) ?i64 {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return none
 	}
-	clean := text.replace('_', '')
-	if clean.len == 0 {
-		return none
-	}
-	for ch in clean {
-		if ch < `0` || ch > `9` {
+	node := t.a.nodes[int(id)]
+	match node.kind {
+		.int_literal {
+			value := specialized_uint_literal_value(node.value) or { return none }
+			if value > u64(untyped_int_constant_limit) {
+				return none
+			}
+			return i64(value)
+		}
+		.prefix {
+			if node.op !in [.plus, .minus] || node.children_count == 0 {
+				return none
+			}
+			value := t.untyped_int_constant_value(t.a.child(&node, 0), mut const_expr_path)?
+			return if node.op == .minus { -value } else { value }
+		}
+		.paren, .expr_stmt {
+			if node.children_count == 0 {
+				return none
+			}
+			return t.untyped_int_constant_value(t.a.child(&node, 0), mut const_expr_path)
+		}
+		.infix {
+			if node.op !in [.plus, .minus, .mul, .div, .mod] || node.children_count < 2 {
+				return none
+			}
+			lhs := t.untyped_int_constant_value(t.a.child(&node, 0), mut const_expr_path)?
+			rhs := t.untyped_int_constant_value(t.a.child(&node, 1), mut const_expr_path)?
+			if node.op in [.div, .mod] && rhs == 0 {
+				return none
+			}
+			value := match node.op {
+				.plus { lhs + rhs }
+				.minus { lhs - rhs }
+				.mul { lhs * rhs }
+				.div { lhs / rhs }
+				else { lhs % rhs }
+			}
+			if value < -untyped_int_constant_limit || value > untyped_int_constant_limit {
+				return none
+			}
+			return value
+		}
+		.ident, .selector {
+			expr_id := t.const_expr_for_arg(id) or { return none }
+			if expr_id in const_expr_path {
+				return none
+			}
+			const_expr_path << expr_id
+			value := t.untyped_int_constant_value(expr_id, mut const_expr_path)
+			const_expr_path.delete_last()
+			return value
+		}
+		else {
 			return none
 		}
 	}
-	return clean.int()
-}
-
-fn unsigned_type_text_accepts_int_literal(typ u32, value int) bool {
-	if value < 0 {
-		return false
-	}
-	max := match typ {
-		flat.source_type_u8 { 255 }
-		flat.source_type_u16 { 65535 }
-		flat.source_type_u32, flat.source_type_u64, flat.source_type_usize {
-			return true
-		}
-		else {
-			return false
-		}
-	}
-
-	return value <= max
 }
 
 // promote_numeric_stringify_type returns the result type of a binary numeric
