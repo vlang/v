@@ -613,8 +613,48 @@ static inline uint8_t vgc_size_class(uint32_t size) {
   #define vgc_thread_yield() SwitchToThread()
 #else
   #include <sched.h>
+  #include <time.h>
   #define vgc_thread_yield() sched_yield()
 #endif
+
+// vgc_now_ns returns a monotonic time in nanoseconds.
+static inline uint64_t vgc_now_ns(void) {
+#ifdef _WIN32
+    LARGE_INTEGER count, freq;
+    QueryPerformanceCounter(&count);
+    QueryPerformanceFrequency(&freq);
+    uint64_t c = (uint64_t)count.QuadPart;
+    uint64_t f = (uint64_t)freq.QuadPart;
+    return (c / f) * 1000000000ull + (c % f) * 1000000000ull / f;
+#else
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000000ull + (uint64_t)ts.tv_nsec;
+#endif
+}
+
+// vgc_backoff waits a little before the next attempt of a wait loop; `round` counts the
+// attempts, from 1. It spins at first, then gives the CPU to other threads, and from round 64
+// on, sleeps for about 50 microseconds per round on POSIX, so that a thread waiting for a
+// long stop-the-world collection or a held lock stops burning a core. Windows has no
+// sub-millisecond sleep (Sleep(1) takes a scheduler tick, about 15.6 ms), so it keeps
+// yielding there.
+static inline void vgc_backoff(int round) {
+    if (round < 16) {
+        vgc_cpu_pause();
+    } else if (round < 64) {
+        vgc_thread_yield();
+    } else {
+#ifdef _WIN32
+        SwitchToThread();
+#else
+        struct timespec ts;
+        ts.tv_sec = 0;
+        ts.tv_nsec = 50000;
+        nanosleep(&ts, NULL);
+#endif
+    }
+}
 
 // ============================================================
 // Simple mutex (adaptive spinlock with backoff)
@@ -630,7 +670,9 @@ static inline void vgc_mutex_lock(volatile uint32_t* lock) {
         } else if (spin < 32) {
             for (int i = 0; i < spin; i++) vgc_cpu_pause();
         } else {
-            vgc_thread_yield();
+            // spin - 16 starts vgc_backoff in its yielding range, so the 50 us sleeps begin
+            // after 48 yields.
+            vgc_backoff(spin - 16);
         }
     }
 }
