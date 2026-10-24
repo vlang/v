@@ -198,3 +198,9 @@ pub fn log(a f64) f64 {
 	hfsq := 0.5 * f * f
 	return k * ln2_hi - ((hfsq - (s * (hfsq + r) + k * ln2_lo)) - f)
 }
+
+// logf returns the natural logarithm of x (float32)
+@[inline]
+pub fn logf(a f32) f32 {
+	return f32(log(a))
+}
