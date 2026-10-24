@@ -15608,10 +15608,13 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 				new_children << t.make_prefix(.mul, t.make_ident(lhs.value))
 				continue
 			}
-			preserves_smartcast := node.op == .assign && i + 1 < node.children_count
-				&& t.assignment_preserves_smartcast(child_id, t.a.child(&node, i + 1))
-			whole_variable := t.a.nodes[int(child_id)].kind == .ident
-			new_children << if node.op == .assign && (whole_variable || !preserves_smartcast) {
+			// `=` replaces the whole value of the declared type, even when the value keeps
+			// its narrowing; only a field or element kept unwrapped by an option
+			// smartcast is written in place.
+			writes_unwrapped_payload := node.op == .assign && i + 1 < node.children_count
+				&& t.a.nodes[int(child_id)].kind != .ident
+				&& t.assignment_keeps_option_unwrap(child_id, t.a.child(&node, i + 1))
+			new_children << if node.op == .assign && !writes_unwrapped_payload {
 				t.transform_lvalue_without_smartcast(child_id)
 			} else {
 				t.transform_lvalue(child_id)
@@ -15804,17 +15807,17 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 				result << t.make_expr_stmt(drop_call)
 				result << t.make_assign_after_owned_drop(lvalue, t.make_ident(tmp_name))
 			}
-			t.invalidate_smartcast_for_lvalue(t.a.child(&node, 0))
+			t.update_smartcast_after_assignment(node.op, lhs_id, rhs_id)
 			return result
 		}
 	}
 	for i := 0; i < int(node.children_count); i += 2 {
-		lhs_id := t.a.child(&node, i)
-		preserves_smartcast := node.op == .assign && i + 1 < int(node.children_count)
-			&& t.assignment_preserves_smartcast(lhs_id, t.a.child(&node, i + 1))
-		if !preserves_smartcast {
-			t.invalidate_smartcast_for_lvalue(lhs_id)
+		rhs_id := if i + 1 < int(node.children_count) {
+			t.a.child(&node, i + 1)
+		} else {
+			flat.empty_node
 		}
+		t.update_smartcast_after_assignment(node.op, t.a.child(&node, i), rhs_id)
 	}
 	if int(id) in t.local_closure_field_cleanups {
 		mut result := []flat.NodeId{}
@@ -16441,40 +16444,51 @@ fn (mut t Transformer) transform_lvalue_without_smartcast(id flat.NodeId) flat.N
 	return transformed
 }
 
-fn (t &Transformer) assignment_preserves_smartcast(lhs_id flat.NodeId, rhs_id flat.NodeId) bool {
+// assignment_preserves_smartcast reports whether assigning `rhs_id` to `lhs_id` with
+// operator `op` leaves the narrowing of `lhs_id` in force. The checker decides
+// (see types.TypeChecker.assignment_keeps_narrowing): the assignment of a value of
+// the narrowed type (`x = 5` in `if mut x is int`) keeps it, so later reads use the
+// variant the checker typed them with.
+fn (t &Transformer) assignment_preserves_smartcast(op flat.Op, lhs_id flat.NodeId, rhs_id flat.NodeId) bool {
 	key := t.expr_key(lhs_id)
 	if key.len == 0 {
 		return false
 	}
 	sc := t.find_smartcast(key) or { return false }
-	if int(rhs_id) < 0 {
+	if op != .assign || int(rhs_id) < 0 {
 		return false
 	}
-	rhs := t.a.nodes[int(rhs_id)]
 	if sc.sum_type_name_text() == option_unwrap_marker {
-		mut rhs_type := t.node_type(rhs_id)
-		if rhs_type == 0 {
-			rhs_type = t.resolve_expr_type(rhs_id)
-		}
-		return !t.is_optional_type_name(rhs_type)
-			&& t.normalize_type_alias(rhs_type) == t.normalize_type_alias(sc.variant_name)
+		return t.option_payload_assignment_keeps_unwrap(sc, rhs_id)
 	}
-	if rhs.kind != .cast_expr || rhs.children_count == 0 {
+	if isnil(t.tc) || t.is_interface_type_name(sc.sum_type_name) {
 		return false
 	}
-	target_sum_source_id := t.resolve_sum_name(sc.sum_type_name)
-	target_sum_comparison_type_id := target_sum_source_id
-
-	cast_sum_comparison_type_id := t.resolve_sum_name(t.qualify_type(flat.source_type_id(rhs.value)))
-
-	if target_sum_source_id == 0 || cast_sum_comparison_type_id != target_sum_comparison_type_id {
-		return false
-	}
-	payload_type_source_id := t.node_type(t.a.child(&rhs, 0))
-
 	target_variant_source_id := t.smartcast_target_type(sc)
+	if target_variant_source_id == 0 {
+		return false
+	}
+	return t.tc.assignment_keeps_narrowing(op, lhs_id, rhs_id, *t.tc.parse_type(target_variant_source_id))
+}
 
-	return t.variant_names_match(payload_type_source_id, target_variant_source_id)
+// assignment_keeps_option_unwrap reports whether `lhs_id` is unwrapped by an option
+// smartcast that assigning `rhs_id` (a payload value) keeps in force.
+fn (t &Transformer) assignment_keeps_option_unwrap(lhs_id flat.NodeId, rhs_id flat.NodeId) bool {
+	if t.smartcast_stack.len == 0 || int(rhs_id) < 0 {
+		return false
+	}
+	sc := t.find_smartcast_for_expr(lhs_id) or { return false }
+	return sc.sum_type_name_text() == option_unwrap_marker
+		&& t.option_payload_assignment_keeps_unwrap(sc, rhs_id)
+}
+
+fn (t &Transformer) option_payload_assignment_keeps_unwrap(sc SmartcastContext, rhs_id flat.NodeId) bool {
+	mut rhs_type := t.node_type(rhs_id)
+	if rhs_type == 0 {
+		rhs_type = t.resolve_expr_type(rhs_id)
+	}
+	return !t.is_optional_type_name(rhs_type)
+		&& t.normalize_type_alias(rhs_type) == t.normalize_type_alias(sc.variant_name)
 }
 
 // stabilize_transformed_lvalue_for_reuse rebuilds an lvalue so evaluating it repeatedly
@@ -16698,11 +16712,47 @@ fn (mut t Transformer) spill_original_lvalue_component(id flat.NodeId, prefix st
 	return t.make_ident(tmp_name)
 }
 
+// update_smartcast_after_assignment ends the narrowing of `lhs_id` after it is
+// assigned `rhs_id` with operator `op`, unless the assignment keeps it (see
+// assignment_preserves_smartcast).
+fn (mut t Transformer) update_smartcast_after_assignment(op flat.Op, lhs_id flat.NodeId, rhs_id flat.NodeId) {
+	if t.assignment_preserves_smartcast(op, lhs_id, rhs_id) {
+		t.invalidate_smartcast_descendants(lhs_id)
+	} else {
+		t.invalidate_smartcast_for_lvalue(lhs_id)
+	}
+}
+
 fn (mut t Transformer) invalidate_smartcast_for_lvalue(id flat.NodeId) {
 	key := t.expr_key(id)
 	if key.len == 0 || t.smartcast_stack.len == 0 {
 		return
 	}
+	t.invalidate_smartcast_key(key)
+}
+
+// invalidate_smartcast_descendants ends the narrowings of the fields of `id`
+// (`b.v` for `b`) after an assignment that keeps `id` itself narrowed: the new
+// value has the same variant, but its fields can hold any of theirs.
+fn (mut t Transformer) invalidate_smartcast_descendants(id flat.NodeId) {
+	key := t.expr_key(id)
+	if key.len == 0 || t.smartcast_stack.len == 0 {
+		return
+	}
+	prefix := '${key}.'
+	mut descendants := []string{}
+	for sc in t.smartcast_stack {
+		if sc.expr_name.starts_with(prefix) && sc.expr_name !in descendants {
+			descendants << sc.expr_name
+		}
+	}
+	for descendant in descendants {
+		t.invalidate_smartcast_key(descendant)
+	}
+}
+
+// invalidate_smartcast_key ends the narrowing of the expression `key` and of its fields.
+fn (mut t Transformer) invalidate_smartcast_key(key string) {
 	t.smartcast_event_id++
 	t.smartcast_invalidation_event_ids[key] = t.smartcast_event_id
 	t.clear_node_type_memo()

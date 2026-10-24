@@ -1042,7 +1042,9 @@ fn (tc &TypeChecker) translated_array_element_types_match(actual &Type, expected
 		|| (element.name() in ['char', 'i8', 'u8'] && pointee.name() in ['char', 'i8', 'u8'])
 }
 
-fn (tc &TypeChecker) assignment_preserves_smartcast(lhs_id flat.NodeId, rhs_id flat.NodeId, rhs_type &Type) bool {
+// assignment_preserves_smartcast reports whether assigning `rhs_id` to `lhs_id`
+// with operator `op` leaves the active narrowing of `lhs_id` in force.
+fn (tc &TypeChecker) assignment_preserves_smartcast(op flat.Op, lhs_id flat.NodeId, rhs_id flat.NodeId, rhs_type &Type) bool {
 	if tc.smartcasts.len == 0 {
 		return false
 	}
@@ -1051,11 +1053,61 @@ fn (tc &TypeChecker) assignment_preserves_smartcast(lhs_id flat.NodeId, rhs_id f
 		return false
 	}
 	smartcast := tc.smartcasts[key] or { return false }
-	if tc.expr_compatible(rhs_id, rhs_type, smartcast)
-		|| tc.pointer_value_compatible(rhs_type, smartcast) {
+	if tc.assigned_value_keeps_narrowing(rhs_id, rhs_type, smartcast) {
 		return true
 	}
 	return tc.assignment_rhs_mutates_same_smartcast_lhs(lhs_id, rhs_id, rhs_type, smartcast)
+}
+
+// assigned_value_keeps_narrowing reports whether storing `rhs_id` of type `rhs_type`
+// in a value narrowed to `narrowed` leaves it narrowed: the value has the narrowed
+// type (`x = 5` in `if mut x is int`), as in V 0.5.2. Any other value may select
+// another variant, so the narrowing ends.
+fn (tc &TypeChecker) assigned_value_keeps_narrowing(rhs_id flat.NodeId, rhs_type &Type, narrowed &Type) bool {
+	return tc.expr_compatible(rhs_id, rhs_type, narrowed)
+		|| tc.pointer_value_compatible(rhs_type, narrowed)
+}
+
+// narrowed_sum_assignment_expected_type is the type the value of `lhs_id = rhs_id`
+// is checked as. A sum type value narrowed to a variant that is assigned a value of
+// that variant stays narrowed (see assignment_preserves_smartcast), so the value is
+// checked, and stored, as the variant: `x = 2` in `if mut x is f64` stores an `f64`.
+// The type recorded for the value then tells the later phases that the narrowing
+// survived the assignment (see assignment_keeps_narrowing).
+fn (tc &TypeChecker) narrowed_sum_assignment_expected_type(op flat.Op, lhs_id flat.NodeId, rhs_id flat.NodeId, rhs_type &Type, expected Type) Type {
+	if op != .assign || tc.smartcasts.len == 0
+		|| unalias_and_unwrap_pointer_type(expected) !is SumType {
+		return expected
+	}
+	key := tc.expr_key(lhs_id)
+	if key.len == 0 {
+		return expected
+	}
+	narrowed := tc.smartcasts[key] or { return expected }
+	if tc.assigned_value_keeps_narrowing(rhs_id, rhs_type, narrowed) {
+		return narrowed
+	}
+	return expected
+}
+
+// assignment_keeps_narrowing reports whether the checked assignment `lhs_id = rhs_id`
+// (operator `op`) leaves `lhs_id`, narrowed to `narrowed`, narrowed, as checking
+// decided without its dynamic smartcast state. A sum type value keeps the narrowing
+// when it is assigned a value of the narrowed variant: that value is recorded with
+// the variant's type (see narrowed_sum_assignment_expected_type). The lexical
+// smartcast queries and the transform use this to end a narrowing exactly where
+// checking ended it.
+pub fn (tc &TypeChecker) assignment_keeps_narrowing(op flat.Op, lhs_id flat.NodeId, rhs_id flat.NodeId, narrowed Type) bool {
+	if op != .assign {
+		return false
+	}
+	lhs_type := tc.expr_type(lhs_id) or { return false }
+	if unalias_and_unwrap_pointer_type(lhs_type) !is SumType {
+		return false
+	}
+	// A literal of a primitive type has no recorded type; its own type is static.
+	rhs_type := tc.expr_type(rhs_id) or { tc.resolve_type(rhs_id) }
+	return tc.assigned_value_keeps_narrowing(rhs_id, rhs_type, &narrowed)
 }
 
 fn (tc &TypeChecker) option_assignment_smartcast_type(lhs_id flat.NodeId, lhs_type Type, rhs_type Type, op flat.Op) ?Type {
