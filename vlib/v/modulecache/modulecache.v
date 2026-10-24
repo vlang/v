@@ -7150,7 +7150,7 @@ fn import_text(a &flat.FlatAst, node flat.Node, import_paths map[string]string) 
 	for i in 0 .. node.children_count {
 		names << a.child_node(&node, i).value
 	}
-	return import_text_with_names(node, import_paths, names)
+	return import_text_with_names(node, import_paths[node.value] or { node.value }, names)
 }
 
 // header_import_text is import_text for a module header, which joins the imports of
@@ -7168,11 +7168,10 @@ fn header_import_text(a &flat.FlatAst, node flat.Node, import_paths map[string]s
 		selected[key] = true
 		names << name
 	}
-	return import_text_with_names(node, import_paths, names)
+	return import_text_with_names(node, import_path, names)
 }
 
-fn import_text_with_names(node flat.Node, import_paths map[string]string, names []string) string {
-	import_path := import_paths[node.value] or { node.value }
+fn import_text_with_names(node flat.Node, import_path string, names []string) string {
 	mut text := 'import ${import_path}'
 	default_alias := import_path.all_after_last('.')
 	if node.typ != 0 && node.typ_text() != default_alias {
