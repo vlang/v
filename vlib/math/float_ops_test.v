@@ -69,6 +69,16 @@ fn test_floor_div() {
 	assert is_nan(floor_div(1.0, 0.0))
 	assert is_nan(floor_div(nan(), 1.0))
 	assert is_nan(floor_div(1.0, nan()))
+	// Integer dividends promote to f64, including magnitudes above max i64,
+	// and fractional float divisors work (astronomy/signal-processing case).
+	a := -10
+	assert floor_div(a, 7.0) == -2.0
+	assert floor_mod(a, 7.0) == 4.0
+	assert floor_div(10.0, 2.5) == 4.0
+	assert floor_mod(10.0, 2.5) == 0.0
+	assert floor_div(-10.0, 2.5) == -4.0
+	big := 1e19
+	assert floor_div(big, 7.0) * 7.0 + floor_mod(big, 7.0) == big
 }
 
 fn test_angle_conversion() {
