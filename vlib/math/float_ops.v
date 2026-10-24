@@ -43,6 +43,16 @@ pub fn floor_mod(x f64, y f64) f64 {
 	return r
 }
 
+// floor_div returns x div y floored toward negative infinity, the quotient
+// counterpart of floor_mod, so that floor_div(x, y) * y + floor_mod(x, y) == x
+// (up to floating-point rounding), matching Python's floating-point //.
+pub fn floor_div(x f64, y f64) f64 {
+	if y == 0 || x != x || y != y {
+		return nan()
+	}
+	return floor(x / y)
+}
+
 // to_degrees converts radians to degrees: x * 180 / pi.
 pub fn to_degrees(radians f64) f64 {
 	return radians * 180.0 / pi
