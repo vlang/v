@@ -3531,7 +3531,7 @@ fn (mut t Transformer) lower_map_index_append_with_info_and_prelude(info MapInde
 		rhs_elem_type := (if rhs_array_type.starts_with('[]') {
 			flat.source_type_id(rhs_array_type[2..])
 		} else if t.is_fixed_array_type(rhs_array_type_source_id) {
-			fixed_array_elem_type(flat.source_type_id(rhs_array_type))
+			fixed_array_elem_type(rhs_array_type_source_id)
 		} else {
 			u32(0)
 		})

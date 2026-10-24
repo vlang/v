@@ -63,7 +63,7 @@ fn (t &Transformer) comptime_scalar_expr_in_context(id flat.NodeId, depth int, m
 			if node.children_count != 2 { return none }
 			left := t.comptime_scalar_expr_in_context(t.a.child(node, 0), depth + 1, module_name, file, allow_locals)?
 			right := t.comptime_scalar_expr_in_context(t.a.child(node, 1), depth + 1, module_name, file, allow_locals)?
-			if left.typ_text() != right.typ_text() { return none }
+			if left.typ != right.typ { return none }
 			if left.typ == flat.source_type_string && node.op == .plus {
 				return ComptimeStringScalar{flat.source_type_string, left.value + right.value}
 			}

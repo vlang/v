@@ -310,10 +310,9 @@ fn (tc &TypeChecker) type_argument_contains(text_id u32, nested_id u32, mut seen
 // bound one cannot be resolved.
 fn (tc &TypeChecker) generic_constraint_with_args(decl flat.Node, text_id u32, names []string, args_ids []u32) ?GenericConstraint {
 	if flat.source_type_shape(text_id).has(.bracketed) && names.len == args_ids.len {
-		text := flat.source_type_name(text_id)
-		bound := flat.source_type_name(subst_generic_text(flat.source_type_id(text), args_ids.map(trimmed_source_type_id(it)), names.map(it.trim_space())))
-		if bound != text {
-			if constraint := tc.generic_constraint(decl, flat.source_type_id(bound)) {
+		bound_id := subst_generic_text(text_id, args_ids.map(trimmed_source_type_id(it)), names.map(it.trim_space()))
+		if bound_id != text_id {
+			if constraint := tc.generic_constraint(decl, bound_id) {
 				return constraint
 			}
 		}
@@ -1121,18 +1120,18 @@ fn (mut tc TypeChecker) constraint_walk_lambda_arg_types(id flat.NodeId, node fl
 		return result
 	}
 	binding := tc.constraint_walk_call_bindings(id, node) or { return result }
-	param_texts := flat.TypeTextList{ ids: tc.fn_param_type_texts.type_ids(binding.info.name) or { return result } }.names()
-	first := if binding.info.has_receiver && param_texts.len > 0 { 1 } else { 0 }
+	param_type_ids := tc.fn_param_type_texts.type_ids(binding.info.name) or { return result }
+	first := if binding.info.has_receiver && param_type_ids.len > 0 { 1 } else { 0 }
 	mut args := []Type{cap: binding.names.len}
 	for name in binding.names {
 		args << binding.types[name] or { unknown_type('unbound type parameter') }
 	}
 	for i in lambdas {
 		param_idx := i - 1 - binding.info.arg_offset + first
-		if param_idx < first || param_idx >= param_texts.len {
+		if param_idx < first || param_idx >= param_type_ids.len {
 			continue
 		}
-		expected := unalias_type(tc.substitute_generic_type_values(*tc.parse_type(flat.source_type_id(param_texts[param_idx])),
+		expected := unalias_type(tc.substitute_generic_type_values(*tc.parse_type(param_type_ids[param_idx]),
 			args, binding.names))
 		if expected is FnType {
 			result[i] = expected.params.map(*it.typ)
@@ -2369,13 +2368,13 @@ fn (mut tc TypeChecker) check_constraint_member(node_id flat.NodeId, node flat.N
 		}
 		return
 	}
-	iface_name := flat.source_type_name(tc.interface_metadata_name(constraint.iface.source_type_id()))
+	iface_name_id := tc.interface_metadata_name(constraint.iface.source_type_id())
 	// The constraint as written, `Value` for `type Value = Named`.
 	display := constraint.name_text()
-	if member in tc.interface_abstract_method_names(flat.source_type_id(iface_name)) {
+	if member in tc.interface_abstract_method_names(iface_name_id) {
 		return
 	}
-	if !is_call && tc.interface_field_list(flat.source_type_id(iface_name)).any(it.name == member) {
+	if !is_call && tc.interface_field_list(iface_name_id).any(it.name == member) {
 		return
 	}
 	if is_call {
@@ -2407,19 +2406,19 @@ fn (tc &TypeChecker) constraint_member_pos(sel_id flat.NodeId, sel flat.Node) to
 fn (tc &TypeChecker) type_has_member(typ Type, member string, is_call bool) bool {
 	clean := unalias_and_unwrap_pointer_type(typ)
 	if clean is Interface {
-		iface_name := flat.source_type_name(tc.interface_metadata_name(clean.source_type_id()))
-		if member in tc.interface_abstract_method_names(flat.source_type_id(iface_name)) {
+		iface_name_id := tc.interface_metadata_name(clean.source_type_id())
+		if member in tc.interface_abstract_method_names(iface_name_id) {
 			return true
 		}
-		return !is_call && tc.interface_field_list(flat.source_type_id(iface_name)).any(it.name == member)
+		return !is_call && tc.interface_field_list(iface_name_id).any(it.name == member)
 	}
-	name := flat.source_type_name(method_type_name(unwrap_pointer(typ)))
-	if name.len > 0 && tc.concrete_method_signature_key(flat.source_type_id(name), member) != none {
+	name_id := method_type_name(unwrap_pointer(typ))
+	if name_id != 0 && tc.concrete_method_signature_key(name_id, member) != none {
 		return true
 	}
 	if member == 'str' {
 		mut seen := map[u32]bool{}
-		if tc.type_has_implicit_str_method(flat.source_type_id(name)) || tc.type_supports_implicit_str(typ, mut seen) {
+		if tc.type_has_implicit_str_method(name_id) || tc.type_supports_implicit_str(typ, mut seen) {
 			return true
 		}
 	}
@@ -2444,7 +2443,7 @@ fn (tc &TypeChecker) type_has_member(typ Type, member string, is_call bool) bool
 	if builtin.len > 0 && (tc.structs[builtin] or { []StructField{} }).any(it.name == member) {
 		return true
 	}
-	return name.len > 0 && tc.struct_field_type(flat.source_type_id(name), member) != none
+	return name_id != 0 && tc.struct_field_type(name_id, member) != none
 }
 
 // ConstraintOperand is the other operand of an operator on a value of a

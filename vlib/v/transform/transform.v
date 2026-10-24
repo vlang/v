@@ -22415,7 +22415,7 @@ fn (mut t Transformer) transform_lock_node(id flat.NodeId, node flat.Node) flat.
 		}
 	})
 	if t.rewrite_children_in_place(id, children) {
-		if flat.source_type_name(lock_typ) != node.typ_text() {
+		if lock_typ != node.typ {
 			t.set_node_typ(int(id), lock_typ)
 		}
 		return id
@@ -24875,34 +24875,34 @@ fn (t &Transformer) string_interp_child_has_unresolved_generic_part(id flat.Node
 			return false
 		}
 	}
-	// Every spelling is resolved before any is tested, and the spellings of one
+	// Every type is resolved before any is tested, and the identities of one
 	// part mostly coincide: test each distinct one once.
-	mut candidates := [5]string{}
+	mut candidates := [5]u32{}
 	mut n := 0
-	candidates[n] = flat.source_type_name(t.node_type(id))
+	candidates[n] = t.node_type(id)
 	n++
 	if node.typ != 0 {
-		candidates[n] = flat.source_type_name(t.normalize_type_alias(node.typ))
+		candidates[n] = t.normalize_type_alias(node.typ)
 		n++
 	}
 	if node.kind == .ident {
-		candidates[n] = flat.source_type_name(t.var_type(node.value))
+		candidates[n] = t.var_type(node.value)
 		n++
 	}
-	candidates[n] = flat.source_type_name(t.lvalue_type(id))
+	candidates[n] = t.lvalue_type(id)
 	n++
-	candidates[n] = flat.source_type_name(t.reliable_stringify_type(id))
+	candidates[n] = t.reliable_stringify_type(id)
 	n++
 	for i in 0 .. n {
 		typ := candidates[i]
 		mut tested := false
 		for j in 0 .. i {
-			if same_transform_text(candidates[j], typ) {
+			if candidates[j] == typ {
 				tested = true
 				break
 			}
 		}
-		if !tested && t.stringify_type_has_generic_placeholder(flat.source_type_id(typ)) {
+		if !tested && t.stringify_type_has_generic_placeholder(typ) {
 			return !t.string_interp_part_is_checked_call(id)
 		}
 	}
@@ -27691,7 +27691,7 @@ fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.
 		if target_type != node.value {
 			t.set_node_value(int(id), target_type)
 		}
-		if flat.source_type_name(output_typ) != node.typ_text() {
+		if output_typ != node.typ {
 			t.set_node_typ(int(id), output_typ)
 		}
 		return id
