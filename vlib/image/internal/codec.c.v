@@ -129,18 +129,17 @@ pub fn encode(img image.Image, jpeg bool, quality int) ![]u8 {
 			pixels[i + 3] = c.a
 		}
 	}
-	mut encoded := EncodedImage{}
-	ok := if jpeg {
-		C.stbi_write_jpg_to_func(collect_encoded, &encoded, i32(w), i32(h), 4, pixels.data,
+	if jpeg {
+		mut encoded := EncodedImage{}
+		ok := C.stbi_write_jpg_to_func(collect_encoded, &encoded, i32(w), i32(h), 4, pixels.data,
 			i32(quality))
-	} else {
-		C.stbi_write_png_to_func(collect_encoded, &encoded, i32(w), i32(h), 4, pixels.data,
-			i32(w * 4))
+			i32(quality))
+		if ok == 0 {
+			return error('image: encoding failed')
+		}
+		return encoded.bytes
 	}
-	if ok == 0 {
-		return error('image: encoding failed')
-	}
-	return encoded.bytes
+	return encode_png(img)
 }
 
 // write_encoded writes every encoded byte, including when the writer accepts partial writes.
