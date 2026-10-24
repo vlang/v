@@ -11562,8 +11562,11 @@ fn (t &Transformer) escape_aggregate_address_sources(id flat.NodeId, amp_sources
 						&& t.method_receiver_is_reference(id, receiver_id, callee.value) {
 						// Interface dispatch borrows the header to read its object pointer;
 						// the concrete method receives the object, never the header's address.
+						// A receiver that already is a pointer (`node.parent.method()` with
+						// `parent &T`) is passed by value: only what it points to can flow
+						// through the call, never the address of the expression holding it.
 						receiver_sources := if !isnil(t.tc)
-							&& types.unalias_type(t.tc.resolve_type(receiver_id)) is types.Interface {
+							&& types.unalias_type(t.tc.resolve_type(receiver_id)) in [types.Interface, types.Pointer] {
 							t.escape_aggregate_address_sources(receiver_id, amp_sources, ptr_aliases)
 						} else {
 							t.escape_address_sources(receiver_id, amp_sources, ptr_aliases)
