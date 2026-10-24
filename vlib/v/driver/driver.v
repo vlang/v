@@ -21017,7 +21017,7 @@ fn wasm_supported_array_elem_bytes(type_name string) bool {
 	}
 	elem := type_name[2..]
 	return elem in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'usize',
-		'f32', 'f64', 'bool', 'char', 'rune']
+		'f32', 'f64', 'bool', 'char', 'rune', 'string']
 }
 
 // wasm_supported_struct reports whether every field of the named struct has a
@@ -21026,6 +21026,29 @@ fn wasm_supported_array_elem_bytes(type_name string) bool {
 // with a depth bound, because a self-referential type through a pointer field
 // would otherwise loop the walk for ever.
 fn wasm_supported_struct(tc &types.TypeChecker, type_id u32) bool {
+	name := flat.source_type_name(type_id).trim_string_left('main.@')
+	// Option types (`?T`) lower in the wasm backend when their payload does:
+	// gen.v handles types.OptionType and the SSA backend lowers the leading
+	// `ok` plus payload. Walk the payload instead of looking the option up in
+	// tc.structs, where it is not registered as a regular struct.
+	if name.starts_with('?') {
+		inner := name[1..]
+		if inner.len == 0 {
+			return false
+		}
+		inner_id := flat.source_type_id(inner)
+		if inner.starts_with('[]') {
+			return wasm_supported_array_elem(inner_id)
+		}
+		if inner in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'usize',
+			'f32', 'f64', 'bool', 'char', 'rune', 'string'] {
+			return true
+		}
+		if tc.structs[inner] or { [] }.len >= 0 && inner in tc.structs {
+			return wasm_supported_struct(tc, inner_id)
+		}
+		return false
+	}
 	return wasm_struct_fields_supported(tc, type_id, 0)
 }
 
@@ -21054,6 +21077,9 @@ fn wasm_struct_field_supported(tc &types.TypeChecker, typ types.Type, depth int)
 		types.Primitive, types.Char, types.Rune, types.ISize, types.USize, types.Enum,
 		types.String {
 			return true
+		}
+		types.OptionType {
+			return wasm_struct_field_supported(tc, typ.base_type, depth)
 		}
 		types.Struct {
 			return wasm_struct_fields_supported(tc, typ.source_type_id(), depth + 1)
