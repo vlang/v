@@ -4239,14 +4239,17 @@ fn (mut t Transformer) make_struct_field_eq_expr(lhs flat.NodeId, rhs flat.NodeI
 }
 
 fn (mut t Transformer) make_struct_field_eq_expr_with_seen(lhs flat.NodeId, rhs flat.NodeId, struct_type_id u32, seen []EqualityTypeVisit) ?flat.NodeId {
-	info := t.lookup_struct_info(struct_type_id) or { return none }
-	lhs_value := t.struct_equality_operand(lhs, struct_type_id, 'struct_eq_lhs')
-	rhs_value := t.struct_equality_operand(rhs, struct_type_id, 'struct_eq_rhs')
+	// A main-module struct is spelled bare, which an imported module with a
+	// same-named struct reads as its own: compare the fields of the `main.` lock.
+	struct_type := t.lock_colliding_main_generic_type_text(struct_type_id, t.cur_module)
+	info := t.lookup_struct_info(struct_type) or { return none }
+	lhs_value := t.struct_equality_operand(lhs, struct_type, 'struct_eq_lhs')
+	rhs_value := t.struct_equality_operand(rhs, struct_type, 'struct_eq_rhs')
 	mut next_seen := seen.clone()
 	next_seen << EqualityTypeVisit{ typ: struct_type_id, kind: .struct_type }
 	mut eq := flat.empty_node
 	for field in info.fields {
-		field_type_source_id := t.lookup_struct_field_type(struct_type_id, field.name) or {
+		field_type_source_id := t.lookup_struct_field_type(struct_type, field.name) or {
 			(if field.typ != 0 {
 				field.typ
 			} else {
