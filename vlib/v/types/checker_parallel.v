@@ -3210,7 +3210,9 @@ pub fn (mut tc TypeChecker) check_concrete_fn_semantics(fn_idx int, file string,
 // `x.name` or `add(1)` adds a string to `a`, and an array or map whose elements
 // are stored differently from the one it is used or cast as, as when
 // `to_bytes([1, 2])` returns `[]u8(a)` for an `a []int` (see
-// is_container_layout_error). Every other error and warning of the
+// is_container_layout_error), and an `if x := a` guard whose `a` is declared
+// neither as an option nor as a result, as when `h(User{})` guards its `a T` (see
+// is_concrete_if_guard_error). Every other error and warning of the
 // clone is dropped: checked before the clone is lowered, only these are reliable
 // outside checker fixtures, where many valid generic programs would fail. `args`
 // are source-spelling IDs of the types of the instance: the clone spells an
@@ -3227,11 +3229,16 @@ pub fn (mut tc TypeChecker) check_concrete_instance_members(fn_idx int, file str
 		tc.index_rewritten_parents_after(tc.concrete_parents_indexed)
 	}
 	tc.concrete_parents_indexed = tc.a.nodes.len
+	tc.concrete_guard_options = map[flat.NodeId]bool{}
+	tc.checking_concrete_members = true
 	tc.check_concrete_fn_semantics(fn_idx, file, module_name)
+	tc.checking_concrete_members = false
 	mut kept := []TypeError{}
 	for err in tc.errors[errors_start..] {
 		if (is_concrete_member_error(err.msg) && !tc.member_of_an_alias_argument(err.msg, args))
 			|| (is_concrete_operator_error(err.msg) && tc.operator_operands_are_plain(err.node))
+			|| (is_concrete_if_guard_error(err.msg) && tc.operand_is_plain(err.node)
+				&& !tc.concrete_guard_options[err.node])
 			|| tc.is_container_layout_error(err.msg)
 			|| tc.is_container_type_error(err.msg) {
 			kept << err
@@ -3240,6 +3247,7 @@ pub fn (mut tc TypeChecker) check_concrete_instance_members(fn_idx int, file str
 	tc.errors.trim(errors_start)
 	tc.errors << kept
 	tc.notices.trim(notices_start)
+	tc.concrete_guard_options = map[flat.NodeId]bool{}
 }
 
 // member_of_an_alias_argument reports whether the member error `msg` names the
@@ -3321,6 +3329,18 @@ fn (tc &TypeChecker) operator_operands_are_plain(id flat.NodeId) bool {
 	return true
 }
 
+// is_concrete_if_guard_error reports whether `msg` says that an `if x := a`
+// guard unwraps an `a` that is neither an option nor a result. A clone reports it
+// for `a` that is a name, a literal or a field of them (see operand_is_plain),
+// typed with the concrete types of the instance, unless `a` is declared as an
+// option or a result and only smartcast to its payload, as in
+// `if a != none { if v := a {} }` (see concrete_guard_options).
+fn is_concrete_if_guard_error(msg string) bool {
+	return msg == 'expression should either return an Option or a Result'
+}
+
+// operand_is_plain reports whether `id` is a name, a literal, or a field, a
+// prefix or a parenthesized form of one of them.
 fn (tc &TypeChecker) operand_is_plain(id flat.NodeId) bool {
 	if !tc.valid_node_id(id) {
 		return false

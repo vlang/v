@@ -1300,6 +1300,24 @@ fn postfix_operator_closes_group(source string, end int) bool {
 	return false
 }
 
+// if_guard_operand_declared_optional reports whether the `if x := a` operand `a`, a name
+// or a field, is declared as an option or a result (a `mut` parameter through its
+// pointer), so that only a smartcast made its type a payload.
+fn (tc &TypeChecker) if_guard_operand_declared_optional(rhs_node flat.Node) bool {
+	if rhs_node.kind == .ident {
+		if declared := tc.cur_scope.lookup(rhs_node.value) {
+			clean := unalias_type(unwrap_pointer(declared))
+			return clean is OptionType || clean is ResultType
+		}
+	} else if rhs_node.kind == .selector {
+		if declared := tc.selector_declared_value_type(rhs_node) {
+			clean := unalias_type(declared)
+			return clean is OptionType || clean is ResultType
+		}
+	}
+	return false
+}
+
 // check_if_guard validates check if guard state for types.
 fn (mut tc TypeChecker) check_if_guard(id flat.NodeId, node flat.Node) []LocalBinding {
 	if node.children_count < 2 {
@@ -1363,6 +1381,9 @@ fn (mut tc TypeChecker) check_if_guard(id flat.NodeId, node flat.Node) []LocalBi
 	if payload is Void && !is_optional_result {
 		if tc.should_diagnose(id) {
 			tc.record_error_at(.condition_mismatch, 'expression should either return an Option or a Result', rhs_id, rhs_node.pos)
+		}
+		if tc.checking_concrete_members && tc.if_guard_operand_declared_optional(*rhs_node) {
+			tc.concrete_guard_options[rhs_id] = true
 		}
 		payload = rhs_type
 	}
