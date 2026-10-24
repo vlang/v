@@ -85,6 +85,8 @@ fn C.macos_objc_msg_void_id_id_range(obj Id, selector Sel, a0 Id, a1 Id, range R
 fn C.macos_objc_msg_void_range(obj Id, selector Sel, range Range)
 fn C.macos_objc_msg_void_rect_id(obj Id, selector Sel, rect Rect, a1 Id)
 fn C.macos_objc_msg_void_point(obj Id, selector Sel, point Point)
+fn C.macos_objc_msg_void_point_id(obj Id, selector Sel, point Point, a1 voidptr)
+fn C.macos_objc_msg_point_id(obj Id, selector Sel, a0 voidptr) Point
 fn C.macos_objc_msg_void_id_sel_id_id(obj Id, selector Sel, a0 Id, a1 Sel, a2 Id, a3 Id)
 fn C.macos_objc_msg_void_sel_id_bool(obj Id, selector Sel, a0 Sel, a1 Id, a2 bool)
 fn C.macos_objc_msg_bool0(obj Id, selector Sel) bool
@@ -399,6 +401,16 @@ pub fn msg_void_rect_id(obj Id, selector string, rect Rect, a1 Id) {
 @[inline]
 pub fn msg_void_point(obj Id, selector string, value Point) {
 	C.macos_objc_msg_void_point(obj, sel(selector), value)
+}
+
+@[inline]
+pub fn msg_void_point_id(obj Id, selector string, point Point, a1 Id) {
+	C.macos_objc_msg_void_point_id(obj, sel(selector), point, a1)
+}
+
+@[inline]
+pub fn msg_point_id(obj Id, selector string, a0 Id) Point {
+	return C.macos_objc_msg_point_id(obj, sel(selector), a0)
 }
 
 // msg_void_id_sel_id_id sends a void message with an object, a selector, and two objects.

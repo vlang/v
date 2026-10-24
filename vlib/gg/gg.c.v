@@ -53,8 +53,7 @@ $if windows {
 #flag wasm32_emscripten --embed-file @VEXEROOT/examples/assets/fonts/RobotoMono-Regular.ttf@/assets/fonts/RobotoMono-Regular.ttf
 
 $if macos {
-	fn C.gg_macos_resize_window(window voidptr, width int, height int)
-	fn C.gg_macos_set_window_resizable(window voidptr, resizable bool)
+	// gg_macos_* are defined in gg_darwin.c.v
 }
 
 $if windows {
@@ -671,7 +670,7 @@ fn gg_apply_window_resizable() {
 	$if macos {
 		window := sapp.macos_get_window()
 		if window != unsafe { nil } {
-			C.gg_macos_set_window_resizable(window, false)
+			gg_macos_set_window_resizable(window, false)
 		}
 	} $else $if windows {
 		hwnd := sapp.win32_get_hwnd()
@@ -695,7 +694,7 @@ fn gg_resize_window(width int, height int) {
 	$if macos {
 		window := sapp.macos_get_window()
 		if window != unsafe { nil } {
-			C.gg_macos_resize_window(window, width, height)
+			gg_macos_resize_window(window, width, height)
 		}
 	} $else $if windows {
 		hwnd := sapp.win32_get_hwnd()
@@ -1021,7 +1020,7 @@ pub fn high_dpi() bool {
 // screen_size returns the size of the active screen.
 pub fn screen_size() Size {
 	$if macos {
-		return C.gg_get_screen_size()
+		return gg_get_screen_size()
 	}
 	$if windows {
 		return Size{

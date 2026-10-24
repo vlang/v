@@ -105,11 +105,37 @@ fn report_nothing(inputs []Input) {
 	}
 }
 
+// compiler_paths are the executables this tool must never remove, no matter
+// what the user named: the V compiler itself (and any alias recorded in VEXE).
+fn compiler_paths() []string {
+	mut result := []string{}
+	result << os.real_path(@VEXE)
+	if vexe := os.getenv_opt('VEXE') {
+		result << os.real_path(vexe)
+	}
+	return result
+}
+
+fn is_compiler_binary(path string) bool {
+	target := os.real_path(path).to_lower()
+	for candidate in compiler_paths() {
+		if candidate.to_lower() == target {
+			return true
+		}
+	}
+	return false
+}
+
 // remove_one deletes the executable of `input`. Only a regular file is removed,
-// and only the name the compiler itself would have written.
+// and only the name the compiler itself would have written. The compiler's own
+// binary is never removed, even when a project folder happens to be named `v`.
 fn remove_one(input Input, dry_run bool, verbose bool) bool {
 	if input.kind == .unsupported || !os.is_file(input.bin_file) {
 		return true
+	}
+	if is_compiler_binary(input.bin_file) {
+		eprintln('v clean: refusing to remove the V compiler itself (`${input.bin_file}`)')
+		return false
 	}
 	if dry_run || verbose {
 		println('rm ${input.bin_file}')
