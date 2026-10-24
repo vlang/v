@@ -715,6 +715,28 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 		}
 		return flat.source_type_id(fastc_array_c_type(flat.source_type_name(element_type)))
 	}
+	if tokens[start].tok == .lcbr && tokens[end - 1].tok == .rcbr {
+		// An inline map literal `{key: value, ...}` takes its type from its first entry,
+		// as read_inferred_map_literal does.
+		map_close := fastc_matching_delimiter_before(tokens, start, end, .lcbr, .rcbr) or { -1 }
+		if map_close != end - 1 {
+			return u32(0)
+		}
+		entries := fastc_map_literal_entries(tokens, start + 1, end - 1) or { return u32(0) }
+		if entries.len == 0 {
+			return u32(0)
+		}
+		colon := fastc_map_literal_entry_colon(entries[0])
+		if colon <= 0 || colon + 1 >= entries[0].len || entries[0][0].tok == .dot {
+			return u32(0)
+		}
+		key_type := fastc_normalize_inferred_type(g.infer_expression_type(entries[0][..colon])!)
+		value_type := fastc_normalize_inferred_type(g.infer_expression_type(entries[0][colon + 1..])!)
+		if key_type == u32(0) || value_type == u32(0) {
+			return u32(0)
+		}
+		return flat.source_type_id(fastc_map_c_type(flat.source_type_name(key_type), flat.source_type_name(value_type)))
+	}
 	if start + 1 < end && tokens[start].tok == .name && tokens[start + 1].tok == .lcbr {
 		if close := fastc_matching_delimiter_before(tokens, start + 1, end, .lcbr, .rcbr) {
 			if close == end - 1 {

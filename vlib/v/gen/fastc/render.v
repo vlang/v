@@ -5082,44 +5082,16 @@ fn (g &Parser) render_map_literal_argument(tokens []FastcExpressionToken, expect
 		return none
 	}
 	entries := fastc_map_literal_entries(tokens, 1, close) or { return none }
+	// The literal's type can be inferred (`println({'k': 1})`), so no declaration
+	// registers its typedef.
+	mut w := unsafe { &Parser(g) }
+	fastc_register_composite_type(map_type, mut w.composite_types)
 	hash_fn, eq_fn, clone_fn, free_fn := g.map_runtime_functions(key_type)
 	mut statements := [
 		'map __vf_argument_map = builtin__new_map(sizeof(${g.collection_runtime_type(key_type)}), sizeof(${g.collection_runtime_type(value_type)}), &${hash_fn}, &${eq_fn}, &${clone_fn}, &${free_fn});',
 	]
 	for entry_index, entry in entries {
-		mut colon := -1
-		mut parens := 0
-		mut brackets := 0
-		mut braces := 0
-		for i, item in entry {
-			match item.tok {
-				.lpar {
-					parens++
-				}
-				.rpar {
-					parens--
-				}
-				.lsbr {
-					brackets++
-				}
-				.rsbr {
-					brackets--
-				}
-				.lcbr {
-					braces++
-				}
-				.rcbr {
-					braces--
-				}
-				.colon {
-					if parens == 0 && brackets == 0 && braces == 0 {
-						colon = i
-						break
-					}
-				}
-				else {}
-			}
-		}
+		colon := fastc_map_literal_entry_colon(entry)
 		if colon <= 0 || colon + 1 >= entry.len {
 			return none
 		}
@@ -5137,6 +5109,43 @@ fn (g &Parser) render_map_literal_argument(tokens []FastcExpressionToken, expect
 		source: '({ ${statements.join(' ')} __vf_argument_map; })'
 		typ:    flat.source_type_id(map_type)
 	}
+}
+
+// fastc_map_literal_entry_colon returns the index of the `:` separating a map literal
+// entry's key from its value, or -1.
+fn fastc_map_literal_entry_colon(entry []FastcExpressionToken) int {
+	mut parens := 0
+	mut brackets := 0
+	mut braces := 0
+	for i, item in entry {
+		match item.tok {
+			.lpar {
+				parens++
+			}
+			.rpar {
+				parens--
+			}
+			.lsbr {
+				brackets++
+			}
+			.rsbr {
+				brackets--
+			}
+			.lcbr {
+				braces++
+			}
+			.rcbr {
+				braces--
+			}
+			.colon {
+				if parens == 0 && brackets == 0 && braces == 0 {
+					return i
+				}
+			}
+			else {}
+		}
+	}
+	return -1
 }
 
 fn fastc_map_literal_entries(tokens []FastcExpressionToken, start int, end int) ?[][]FastcExpressionToken {

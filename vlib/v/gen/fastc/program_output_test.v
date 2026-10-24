@@ -143,3 +143,36 @@ fn main() {
 	].join('\n')
 	assert output == expected, output
 }
+
+// An inline map literal has the type of its first entry, so `println` prints it
+// and an array literal of maps is typed as V types it.
+fn test_fastc_println_prints_inline_map_literals() {
+	$if !macos && !linux {
+		return
+	}
+	output := fastc_program_output('inline_map', 'module main
+
+fn count(m map[string]int) int {
+	return m.len
+}
+
+fn main() {
+	println({"k": 1})
+	println({"a": "x", "b": "y"})
+	print({1: 2.5})
+	println("")
+	println(count({"a": 1, "b": 2}))
+	maps := [{"a": 1}, {"b": 2}]
+	println(maps)
+}
+')
+	expected := [
+		"{'k': 1}",
+		"{'a': 'x', 'b': 'y'}",
+		'{1: 2.5}',
+		'2',
+		"[{'a': 1}, {'b': 2}]",
+		'',
+	].join('\n')
+	assert output == expected, output
+}
