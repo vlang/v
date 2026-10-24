@@ -281,8 +281,9 @@ fn (g &Parser) render_power_expression(left []FastcExpressionToken, right []Fast
 	right_type := g.infer_expression_type(right) or { return none }
 	left_value_type := g.narrowed_numeric_operand_type(left, left_type)
 	right_value_type := g.narrowed_numeric_operand_type(right, right_type)
-	result_type := fastc_power_result_type(g.underlying_alias_type(left_value_type),
-		g.underlying_alias_type(right_value_type))
+	result_type := fastc_normalize_inferred_type(fastc_numeric_infix_result_type(g.underlying_alias_type(left_value_type),
+		g.underlying_alias_type(right_value_type), fastc_integer_literal_operand(left),
+		fastc_integer_literal_operand(right)))
 	if result_type == 0 {
 		return none
 	}
@@ -317,76 +318,6 @@ fn (g &Parser) render_power_call(left string, right string, result_type u32) str
 		return '((${c_type})${g.power_helper('u64')}((u64)(${left}), (i64)(${right})))'
 	}
 	return '((${c_type})${g.power_helper('i64')}((i64)(${left}), (i64)(${right})))'
-}
-
-// fastc_power_result_type returns the type of `left ** right`, which V types like
-// the other arithmetic operators (the checker's resolve_type for an infix): a
-// float operand makes a float, an integer literal takes the other operand's type,
-// and two integer types meet as in infix_integer_promotion_type.
-fn fastc_power_result_type(left u32, right u32) u32 {
-	if !fastc_is_numeric_expression_type(left) || !fastc_is_numeric_expression_type(right) {
-		return 0
-	}
-	left_float := left in [flat.source_type_f32, flat.source_type_f64, fastc_type_float_literal]
-	right_float := right in [flat.source_type_f32, flat.source_type_f64, fastc_type_float_literal]
-	if left_float || right_float {
-		if (left == flat.source_type_f32 && right != flat.source_type_f64)
-			|| (right == flat.source_type_f32 && left != flat.source_type_f64) {
-			return flat.source_type_f32
-		}
-		return flat.source_type_f64
-	}
-	if fastc_is_integer_literal_expression_type(left) {
-		return fastc_normalize_inferred_type(right)
-	}
-	if fastc_is_integer_literal_expression_type(right) || left == right {
-		return left
-	}
-	if fastc_integer_widens_to(left, right) {
-		return right
-	}
-	return left
-}
-
-// fastc_integer_widens_to mirrors the checker's call_arg_implicit_numeric_widening
-// for two integer types.
-fn fastc_integer_widens_to(actual u32, expected u32) bool {
-	actual_index := fastc_integer_promotion_index(actual)
-	expected_index := fastc_integer_promotion_index(expected)
-	if actual_index < 0 || expected_index < 0 {
-		return false
-	}
-	high := if actual_index > expected_index { actual_index } else { expected_index }
-	low := if actual_index > expected_index { expected_index } else { actual_index }
-	promoted := if low >= 11 {
-		high
-	} else if low >= 5 && (high <= 10 || high == 22) {
-		if low == 9 { low } else { high }
-	} else if (high == 11 && low > 5) || (high == 12 && low > 6) || (high == 13 && low > 8)
-		|| (high == 14 && low >= 9) || (high == 15 && low >= 10) {
-		low
-	} else {
-		-1
-	}
-	return promoted == expected_index
-}
-
-fn fastc_integer_promotion_index(typ u32) int {
-	return match flat.source_type_name(typ) {
-		'i8' { 5 }
-		'i16' { 6 }
-		'i32' { 7 }
-		'int' { 8 }
-		'i64' { 9 }
-		'isize' { 10 }
-		'u8' { 11 }
-		'u16' { 12 }
-		'u32' { 13 }
-		'u64' { 14 }
-		'usize' { 15 }
-		'rune' { 22 }
-		else { -1 }
-	}
 }
 
 // power_helper registers the C helper of a power with a `kind` result (`i64`,

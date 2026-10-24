@@ -973,7 +973,10 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 		return operand_type
 	}
 	if tokens[start].tok in [.amp, .and] {
-		operand_type := g.infer_expression_type_range(tokens, start + 1, end)!
+		// `&` binds tighter than `+`/`-`: `&u8(raw) + n` is pointer arithmetic on
+		// `&u8(raw)`, so only the operand before the operator is addressed.
+		operand_end := fastc_prefix_operand_end(tokens, start + 1, end)
+		operand_type := g.infer_expression_type_range(tokens, start + 1, operand_end)!
 		// A mutable/reference local has pointer storage but value type `T` in V.
 		// Taking `&local` therefore yields its existing `T*` storage type, not
 		// `T**`. The rendered `&(*local)` expression follows the same rule.
@@ -1158,8 +1161,10 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 			if g.selfhost && tokens[i].tok in [.amp, .pipe, .xor] && g.declared_kinds[flat.source_type_name(g.semantic_type_key(right_type))] == .enum_ && left_type == u32(0) {
 				return right_type
 			}
-			if g.selfhost && fastc_is_integer_expression_type(left_type) && fastc_is_integer_expression_type(right_type) {
-				return if left_type == fastc_type_integer_literal { right_type } else { left_type }
+			if g.selfhost && fastc_is_numeric_expression_type(left_type)
+				&& fastc_is_numeric_expression_type(right_type) {
+				return fastc_numeric_infix_result_type(left_type, right_type, fastc_integer_literal_operand(tokens[start..i]),
+					fastc_integer_literal_operand(tokens[i + 1..end]))
 			}
 			if g.selfhost && left_type == u32(0) && fastc_is_numeric_expression_type(right_type) {
 				return right_type
@@ -1257,6 +1262,23 @@ fn fastc_expression_tokens_contain_range(tokens []FastcExpressionToken, start in
 		}
 	}
 	return false
+}
+
+// fastc_prefix_operand_end returns where the operand of a prefix operator that
+// starts at `start` ends: before the first top-level binary `+` or `-`.
+fn fastc_prefix_operand_end(tokens []FastcExpressionToken, start int, end int) int {
+	mut depth := 0
+	for i in start .. end {
+		if tokens[i].tok in [.lpar, .lsbr, .lcbr] {
+			depth++
+		} else if tokens[i].tok in [.rpar, .rsbr, .rcbr] {
+			depth--
+		} else if depth == 0 && i > start && tokens[i].tok in [.plus, .minus]
+			&& !tokens[i - 1].tok.is_infix() && !tokens[i - 1].tok.is_prefix() {
+			return i
+		}
+	}
+	return end
 }
 
 fn fastc_top_level_token_index(tokens []FastcExpressionToken, start int, end int, wanted token.Token) ?int {
@@ -1683,6 +1705,122 @@ fn fastc_common_arithmetic_type(left_id u32, right_id u32) u32 {
 		return left_id
 	}
 	return u32(0)
+}
+
+// fastc_numeric_infix_result_type returns the type of an arithmetic infix on two
+// numeric operands, as the checker's resolve_type gives it: a float operand makes
+// a float (f32 only with f32, integer or untyped float operands), an untyped integer
+// literal takes the other operand's type (`int` when its value does not fit an 8
+// or 16-bit type), and two integer types meet as in infix_integer_promotion_type.
+// `left_value` and `right_value` are the values of integer literal operands.
+fn fastc_numeric_infix_result_type(left u32, right u32, left_value ?i64, right_value ?i64) u32 {
+	if !fastc_is_numeric_expression_type(left) || !fastc_is_numeric_expression_type(right) {
+		return 0
+	}
+	left_float := left in [flat.source_type_f32, flat.source_type_f64, fastc_type_float_literal]
+	right_float := right in [flat.source_type_f32, flat.source_type_f64, fastc_type_float_literal]
+	if left_float || right_float {
+		if (left == flat.source_type_f32 && right != flat.source_type_f64)
+			|| (right == flat.source_type_f32 && left != flat.source_type_f64) {
+			return flat.source_type_f32
+		}
+		if left == fastc_type_float_literal && right == fastc_type_float_literal {
+			return fastc_type_float_literal
+		}
+		return flat.source_type_f64
+	}
+	left_literal := fastc_is_integer_literal_expression_type(left)
+	right_literal := fastc_is_integer_literal_expression_type(right)
+	if left_literal && right_literal {
+		return if left == fastc_type_integer_literal { right } else { left }
+	}
+	if left_literal {
+		return fastc_integer_literal_adopted_type(right, left_value)
+	}
+	if right_literal {
+		return fastc_integer_literal_adopted_type(left, right_value)
+	}
+	if left == right {
+		return left
+	}
+	if fastc_integer_widens_to(left, right) {
+		return right
+	}
+	return left
+}
+
+// fastc_integer_literal_adopted_type is the type an untyped integer literal takes
+// next to an operand of type `other` (the checker's int_literal_promoted_infix_type).
+fn fastc_integer_literal_adopted_type(other u32, value ?i64) u32 {
+	name := flat.source_type_name(other)
+	if name in ['i8', 'u8', 'i16', 'u16'] {
+		if v := value {
+			fits := match name {
+				'i8' { v >= -128 && v <= 127 }
+				'u8' { v >= 0 && v <= 255 }
+				'i16' { v >= -32768 && v <= 32767 }
+				else { v >= 0 && v <= 65535 }
+			}
+			if !fits {
+				return flat.source_type_int
+			}
+		}
+	}
+	return other
+}
+
+// fastc_integer_literal_operand returns the value of an operand that is an integer
+// literal, possibly negated.
+fn fastc_integer_literal_operand(tokens []FastcExpressionToken) ?i64 {
+	if tokens.len == 1 && fastc_is_integer_literal_token(tokens[0]) {
+		return tokens[0].lit.i64()
+	}
+	if tokens.len == 2 && tokens[0].tok == .minus && fastc_is_integer_literal_token(tokens[1]) {
+		value := tokens[1].lit.i64()
+		return -value
+	}
+	return none
+}
+
+// fastc_integer_widens_to mirrors the checker's call_arg_implicit_numeric_widening
+// for two integer types.
+fn fastc_integer_widens_to(actual u32, expected u32) bool {
+	actual_index := fastc_integer_promotion_index(actual)
+	expected_index := fastc_integer_promotion_index(expected)
+	if actual_index < 0 || expected_index < 0 {
+		return false
+	}
+	high := if actual_index > expected_index { actual_index } else { expected_index }
+	low := if actual_index > expected_index { expected_index } else { actual_index }
+	promoted := if low >= 11 {
+		high
+	} else if low >= 5 && (high <= 10 || high == 22) {
+		if low == 9 { low } else { high }
+	} else if (high == 11 && low > 5) || (high == 12 && low > 6) || (high == 13 && low > 8)
+		|| (high == 14 && low >= 9) || (high == 15 && low >= 10) {
+		low
+	} else {
+		-1
+	}
+	return promoted == expected_index
+}
+
+fn fastc_integer_promotion_index(typ u32) int {
+	return match flat.source_type_name(typ) {
+		'i8' { 5 }
+		'i16' { 6 }
+		'i32' { 7 }
+		'int' { 8 }
+		'i64' { 9 }
+		'isize' { 10 }
+		'u8' { 11 }
+		'u16' { 12 }
+		'u32' { 13 }
+		'u64' { 14 }
+		'usize' { 15 }
+		'rune' { 22 }
+		else { -1 }
+	}
 }
 
 fn fastc_is_numeric_expression_type(typ u32) bool {
