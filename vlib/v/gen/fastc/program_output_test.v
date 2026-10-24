@@ -176,3 +176,32 @@ fn main() {
 	].join('\n')
 	assert output == expected, output
 }
+
+// Enum discriminants that use `**` on integer literals are folded to constants,
+// grouping to the right as the C backend does.
+fn test_fastc_enum_discriminants_fold_integer_powers() {
+	$if !macos && !linux {
+		return
+	}
+	output := fastc_program_output('enum_power', 'module main
+
+enum Flag {
+	a = 2 ** 3
+	b
+	c = 2 ** 2 ** 2
+	d = 1 + 2 ** 4
+	f = (2 ** 2) ** 3
+}
+
+fn main() {
+	println(int(Flag.a))
+	println(int(Flag.b))
+	println(int(Flag.c))
+	println(int(Flag.d))
+	println(int(Flag.f))
+	println(Flag.d)
+}
+')
+	expected := ['8', '9', '16', '17', '64', 'd', ''].join('\n')
+	assert output == expected, output
+}
