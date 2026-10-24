@@ -1,7 +1,7 @@
 import os
 
 fn test_syscallwrappers() {
-	if true {
+	$if true {
 		return
 	}
 	$if linux {

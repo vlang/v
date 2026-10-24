@@ -1025,7 +1025,7 @@ pub fn walk_dir(root string, cb WalkDirFn) ! {
 		// Filled through locals and handed over in a single struct literal, so
 		// that the public fields can stay read-only for callers.
 		mut typ := FileType.unknown
-		mut is_dir := false
+		mut is_directory := false
 		mut entry_err := ?IError(none)
 		if attr := lstat(cpath) {
 			typ = attr.get_filetype()
@@ -1036,7 +1036,7 @@ pub fn walk_dir(root string, cb WalkDirFn) ! {
 					typ = .symbolic_link
 				}
 			}
-			is_dir = typ == .directory
+			is_directory = typ == .directory
 		} else {
 			// The entry could not be read, so is_dir stays false and a directory
 			// is not descended into.
@@ -1045,7 +1045,7 @@ pub fn walk_dir(root string, cb WalkDirFn) ! {
 		entry := WalkDirEntry{
 			name:   file_name(cpath)
 			typ:    typ
-			is_dir: is_dir
+			is_dir: is_directory
 			err:    entry_err
 		}
 		// Whether to descend into cpath, which a .skip_dir reply can veto.
