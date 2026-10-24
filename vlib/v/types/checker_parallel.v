@@ -3207,12 +3207,16 @@ pub fn (mut tc TypeChecker) check_concrete_fn_semantics(fn_idx int, file string,
 // check_concrete_instance_members checks a concrete clone of one of the
 // program's generic functions for what only its concrete types decide: a field,
 // a method or an operator that such a type lacks, as when `show(1)` reads
-// `x.name` or `add(1)` adds a string to `a`, and an array or map whose elements
-// are stored differently from the one it is used or cast as, as when
-// `to_bytes([1, 2])` returns `[]u8(a)` for an `a []int` (see
-// is_container_layout_error). Every other error and warning of the
-// clone is dropped: checked before the clone is lowered, only these are reliable
-// outside checker fixtures, where many valid generic programs would fail. `args`
+// `x.name` or `add(1)` adds a string to `a`, a returned name or field of
+// another type than the function returns, as when `is_set(1)` returns `x` from
+// a `fn is_set[T](x T) bool`, a passed name or field of another type than its
+// parameter, as when `label(mut app)` passes a `bool` `app.flag` to a `string`
+// (see call_arg_is_judged_in_clone), and an array or map whose elements are stored
+// differently from the one it is used or cast as, as when `to_bytes([1, 2])`
+// returns `[]u8(a)` for an `a []int` (see is_container_layout_error). Every
+// other error and warning of the clone is dropped: checked before the clone is
+// lowered, only these are reliable outside checker fixtures, where many valid
+// generic programs would fail. `args`
 // are source-spelling IDs of the types of the instance: the clone spells an
 // alias among them by its base type, and a member of the alias is none of its base (see
 // member_of_an_alias_argument).
@@ -3232,6 +3236,9 @@ pub fn (mut tc TypeChecker) check_concrete_instance_members(fn_idx int, file str
 	for err in tc.errors[errors_start..] {
 		if (is_concrete_member_error(err.msg) && !tc.member_of_an_alias_argument(err.msg, args))
 			|| (is_concrete_operator_error(err.msg) && tc.operator_operands_are_plain(err.node))
+			|| (is_concrete_return_error(err) && tc.operand_is_plain(err.node)
+				&& !tc.value_is_type_tested(err.node, fn_idx))
+			|| (is_concrete_call_arg_error(err) && tc.call_arg_is_judged_in_clone(err, fn_idx))
 			|| tc.is_container_layout_error(err.msg)
 			|| tc.is_container_type_error(err.msg) {
 			kept << err
@@ -3299,6 +3306,172 @@ fn is_concrete_operator_error(msg string) bool {
 	}
 	return msg.starts_with('operator `') || msg.starts_with('undefined operation `')
 		|| msg.starts_with('infix expr: cannot use `')
+}
+
+// is_concrete_return_error reports whether `err` says that a returned value has
+// another type than its function returns. Only a plain value (see
+// operand_is_plain) is reported for an instance: a clone types those with its
+// concrete types, where the result of a call or a literal of a type parameter
+// can still have the type of the open body (`return f()` in a closure, or
+// `return T{}` for a map alias). A `voidptr` in it is a type the clone did not
+// resolve.
+fn is_concrete_return_error(err TypeError) bool {
+	return err.kind == .return_mismatch && err.msg.starts_with('cannot use `')
+		&& err.msg.ends_with('` in return argument') && !err.msg.contains('`voidptr`')
+}
+
+// is_concrete_call_arg_error reports whether `err` says that an argument of a
+// call has another type than its parameter. As for returns, only a plain
+// argument (see operand_is_plain) is reported for an instance, and a `voidptr`
+// in it is a type the clone did not resolve.
+fn is_concrete_call_arg_error(err TypeError) bool {
+	return err.kind == .call_arg_mismatch && err.msg.starts_with('cannot use `')
+		&& err.msg.contains(' in argument ') && !err.msg.contains('`voidptr`')
+}
+
+// call_arg_is_judged_in_clone reports whether the clone `fn_idx` types the
+// argument of the call argument error `err` as its instance does: a plain
+// argument (see operand_is_plain) that is not narrowed (see
+// value_is_type_tested), outside the body of a `$for`, whose locals have plain
+// initializers (see locals_have_plain_initializers). A spread `...args` is
+// checked against the parameters it fills after the clone is lowered, and an
+// argument whose struct embeds the struct of the parameter is passed as that
+// embedded field, as a veb middleware passes its context.
+fn (tc &TypeChecker) call_arg_is_judged_in_clone(err TypeError, fn_idx int) bool {
+	return tc.operand_is_plain(err.node) && !tc.arg_is_spread(err.node)
+		&& !tc.value_is_type_tested(err.node, fn_idx)
+		&& !tc.node_is_in_comptime_for(err.node, fn_idx)
+		&& tc.locals_have_plain_initializers(err.node, fn_idx, 0)
+		&& !tc.call_arg_error_embeds_param(err.msg)
+}
+
+// locals_have_plain_initializers reports whether every declaration in the clone
+// `fn_idx` of the local that the plain value at `id` names initializes it with
+// a plain value whose locals do too. A clone can type a local by another
+// initializer than its instance: `len := match name { 'a' { u8(2) } else { 4 } }`
+// is a `u8`, and an `int` in a clone, and a local holding a fn literal has the
+// type the literal returns there.
+fn (tc &TypeChecker) locals_have_plain_initializers(id flat.NodeId, fn_idx int, depth int) bool {
+	name := tc.plain_value_root_name(id)
+	if name.len == 0 {
+		return true
+	}
+	if depth > 8 || !tc.valid_node_id(flat.NodeId(fn_idx)) {
+		return false
+	}
+	mut stack := [flat.NodeId(fn_idx)]
+	for stack.len > 0 {
+		node := tc.a.node(stack.pop())
+		if node.kind == .decl_assign && node.children_count > 0 {
+			if node.children_count == 2 {
+				if tc.plain_value_root_name(tc.a.child(node, 0)) == name {
+					value := tc.a.child(node, 1)
+					if !tc.operand_is_plain(value)
+						|| !tc.locals_have_plain_initializers(value, fn_idx, depth + 1) {
+						return false
+					}
+				}
+			} else {
+				// `lhs0, rhs, lhs1, lhs2, ...`: a local of a multi-value declaration.
+				for i in 0 .. node.children_count {
+					if i != 1 && tc.plain_value_root_name(tc.a.child(node, i)) == name {
+						return false
+					}
+				}
+			}
+		}
+		for i in 0 .. node.children_count {
+			child := tc.a.child(node, i)
+			if tc.valid_node_id(child) {
+				stack << child
+			}
+		}
+	}
+	return true
+}
+
+// plain_value_root_name returns the name that the plain value at `id` (see
+// operand_is_plain) reads or is a field of, and '' for a literal.
+fn (tc &TypeChecker) plain_value_root_name(id flat.NodeId) string {
+	if !tc.valid_node_id(id) {
+		return ''
+	}
+	node := tc.a.node(id)
+	if node.kind == .ident {
+		return if valid_string_data(node.value) { node.value } else { '' }
+	}
+	if node.kind in [.selector, .paren, .prefix] && node.children_count > 0 {
+		return tc.plain_value_root_name(tc.a.child(node, 0))
+	}
+	return ''
+}
+
+// call_arg_error_embeds_param reports whether the call argument error `msg`
+// passes a struct, or a reference to one, that embeds the struct of the
+// parameter.
+fn (tc &TypeChecker) call_arg_error_embeds_param(msg string) bool {
+	parts := msg.split('`')
+	if parts.len < 5 || parts[0] != 'cannot use ' || parts[2] != ' as ' {
+		return false
+	}
+	_, actual := type_pointer_depth_and_base(tc.parse_type(flat.source_type_id(parts[1])))
+	_, expected := type_pointer_depth_and_base(tc.parse_type(flat.source_type_id(parts[3])))
+	return tc.receiver_embeds(actual, expected)
+}
+
+// node_is_in_comptime_for reports whether the node `id` is inside the body of
+// a `$for` of the clone `fn_idx`: the clone types a value there by the field
+// or variant of the loop it is narrowed to, as `val` passed for a `f.typ`.
+fn (tc &TypeChecker) node_is_in_comptime_for(id flat.NodeId, fn_idx int) bool {
+	if !tc.valid_node_id(id) || !tc.valid_node_id(flat.NodeId(fn_idx)) {
+		return false
+	}
+	mut stack := [flat.NodeId(fn_idx)]
+	mut in_for := [false]
+	for stack.len > 0 {
+		current := stack.pop()
+		inside := in_for.pop()
+		if current == id {
+			return inside
+		}
+		node := tc.a.node(current)
+		for i in 0 .. node.children_count {
+			child := tc.a.child(node, i)
+			if tc.valid_node_id(child) {
+				stack << child
+				in_for << (inside || node.kind == .comptime_for)
+			}
+		}
+	}
+	return false
+}
+
+// value_is_type_tested reports whether the value at `id`, or a value it is a
+// field of, is tested with `is` or matched anywhere in the clone `fn_idx`: a
+// clone can type it by its declared type where it is narrowed, as `c.any` in
+// `if c.any is T { return c.any }`.
+fn (tc &TypeChecker) value_is_type_tested(id flat.NodeId, fn_idx int) bool {
+	key := tc.expr_key(id)
+	if key.len == 0 || !tc.valid_node_id(flat.NodeId(fn_idx)) {
+		return false
+	}
+	mut stack := [flat.NodeId(fn_idx)]
+	for stack.len > 0 {
+		node := tc.a.node(stack.pop())
+		if node.kind in [.is_expr, .match_stmt] && node.children_count > 0 {
+			tested := tc.expr_key(tc.a.child(node, 0))
+			if tested.len > 0 && (key == tested || key.starts_with(tested + '.')) {
+				return true
+			}
+		}
+		for i in 0 .. node.children_count {
+			child := tc.a.child(node, i)
+			if tc.valid_node_id(child) {
+				stack << child
+			}
+		}
+	}
+	return false
 }
 
 // operator_operands_are_plain reports whether the operator at `id` applies to
