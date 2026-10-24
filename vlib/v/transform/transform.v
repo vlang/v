@@ -542,7 +542,6 @@ mut:
 	generic_struct_specs_cache         map[u32]u32
 	generic_sum_specs_cache            map[u32]GenericSpecContext
 	generic_materialization_scan_from  int
-	generic_rewrite_refresh_from       int
 	generic_materialization_ready      bool
 	parallel_monomorph_scan_nodes      []int
 	parallel_monomorph_scan_start      int
