@@ -1,6 +1,9 @@
 module smtp
 
 import encoding.base64
+import os
+import rand
+import time
 
 fn test_mail_message_data_with_attachment_has_valid_multipart_boundaries() {
 	mail := Mail{
@@ -391,10 +394,91 @@ fn test_send_auth_rejects_plaintext_credentials() {
 }
 
 fn test_tls_validation_rejects_untrusted_and_mismatched_certificates_before_auth() ! {
-	// SMTP TLS integration test server is not available without a TLS-capable
-	// test helper; the previous Python helper has been removed. Skip.
-	eprintln('Skipping SMTP TLS integration test: TLS test server helper not available')
-	return
+	helper := os.join_path(@VMODROOT, 'vlib', 'net', 'smtp', 'smtp_tls_test_server.v')
+	assert os.exists(helper)
+	cert_dir := os.join_path(@VMODROOT, 'examples', 'ssl_server', 'cert')
+	server_cert := os.join_path(cert_dir, 'server.crt')
+	server_key := os.join_path(cert_dir, 'server.key')
+	ca_bundle := os.join_path(cert_dir, 'ca.crt')
+	untrusted_bundle := os.join_path(cert_dir, 'client.crt')
+	assert os.exists(server_cert) && os.exists(server_key) && os.exists(ca_bundle)
+
+	for starttls in [false, true] {
+		assert smtp_tls_test_case(helper, starttls, 'localhost', ca_bundle, server_cert,
+			server_key)! == 'CONNECTED:AUTH'
+		assert smtp_tls_test_case(helper, starttls, '127.0.0.1', ca_bundle, server_cert,
+			server_key)! == 'REJECTED:NO_AUTH'
+		assert smtp_tls_test_case(helper, starttls, 'localhost', untrusted_bundle, server_cert,
+			server_key)! == 'REJECTED:NO_AUTH'
+	}
+}
+
+fn smtp_tls_test_case(helper string, starttls bool, hostname string, verify string, cert string,
+	key string) !string {
+	prefix := os.join_path(os.temp_dir(), 'v_smtp_tls_${rand.uuid_v4()}')
+	ready_path := '${prefix}.ready'
+	result_path := '${prefix}.result'
+	mut server := os.new_process('v')
+	server.set_work_folder(@VMODROOT)
+	server.set_args([
+		'run',
+		helper,
+		if starttls { 'starttls' } else { 'implicit' },
+		hostname,
+		cert,
+		key,
+		ready_path,
+		result_path,
+	])
+	server.run()
+	defer {
+		if server.is_alive() {
+			server.signal_kill()
+		}
+		server.wait()
+		server.close()
+		os.rm(ready_path) or {}
+		os.rm(result_path) or {}
+	}
+
+	mut ready := false
+	for _ in 0 .. 250 {
+		if os.exists(ready_path) {
+			ready = true
+			break
+		}
+		if !server.is_alive() {
+			return error('SMTP TLS test server exited before listening')
+		}
+		time.sleep(20 * time.millisecond)
+	}
+	if !ready {
+		return error('SMTP TLS test server did not become ready')
+	}
+	port := os.read_file(ready_path)!.trim_space().int()
+	mut client_state := 'CONNECTED'
+	mut client := new_client(Config{
+		server:   hostname
+		port:     port
+		username: 'smtp-test-user'
+		password: 'smtp-test-password'
+		ssl:      !starttls
+		starttls: starttls
+		verify:   verify
+		timeout:  5 * time.second
+	}) or {
+		client_state = 'REJECTED'
+		&Client{}
+	}
+	if client_state == 'CONNECTED' {
+		client.quit()!
+	}
+	server.wait()
+	if server.code != 0 {
+		return error('SMTP TLS test server failed with exit code ${server.code}')
+	}
+	server_result := os.read_file(result_path)!.trim_space()
+	return '${client_state}:${server_result}'
 }
 
 fn test_attachment_filename_crlf_cannot_inject_headers() {
