@@ -202,9 +202,56 @@ fn (g &Parser) render_typeof_name_expression(tokens []FastcExpressionToken) ?Fas
 		return none
 	}
 	return FastcRenderedExpression{
-		source: '_S("${flat.source_type_name(type_name)}")'
+		source: '_S("${g.typeof_display_name(flat.source_type_name(type_name))}")'
 		typ:    flat.source_type_string
 	}
+}
+
+// typeof_display_name spells a FastC C type (`Point*`, `Array_int`,
+// `strings__Builder`) the way `typeof(x).name` does in V (`&Point`, `[]int`,
+// `strings.Builder`). Literal expressions are `int literal` and `f64`, as in cgen.
+fn (g &Parser) typeof_display_name(typ string) string {
+	if typ.ends_with('*') {
+		return '&' + g.typeof_display_name(typ[..typ.len - 1])
+	}
+	typ_id := flat.source_type_id(typ)
+	if typ_id == fastc_type_integer_literal || typ_id == fastc_type_negative_integer_literal {
+		return 'int literal'
+	}
+	if typ_id == fastc_type_float_literal {
+		return 'f64'
+	}
+	if fastc_primitive_c_type(typ) != none {
+		return typ
+	}
+	if typ.starts_with('Array_') {
+		if element := g.array_element_type(typ_id) {
+			return '[]' + g.typeof_display_name(flat.source_type_name(element))
+		}
+	}
+	if typ.starts_with('Map_') {
+		if key, value := g.map_key_value_types(typ_id) {
+			return 'map[' + g.typeof_display_name(flat.source_type_name(key)) + ']' +
+				g.typeof_display_name(flat.source_type_name(value))
+		}
+	}
+	if length := fastc_fixed_array_length(typ) {
+		if element := fastc_fixed_array_element_type(typ_id) {
+			count := g.fixed_array_length_value(length) or { return typ }
+			return '[${count}]' + g.typeof_display_name(flat.source_type_name(element))
+		}
+	}
+	key := flat.source_type_name(g.semantic_type_key(typ_id))
+	if key in g.declared_types {
+		dot := key.last_index('.') or { return key }
+		module_name := key[..dot]
+		name := key[dot + 1..]
+		if module_name in ['main', 'builtin'] {
+			return name
+		}
+		return module_name.all_after_last('.') + '.' + name
+	}
+	return typ
 }
 
 fn (g &Parser) render_typeof_generic_comparison_expression(tokens []FastcExpressionToken) ?FastcRenderedExpression {
