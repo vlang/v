@@ -65,6 +65,11 @@ const reserved_words = {
 	'while':    true
 	// The C99 header <complex.h> defines this as the keyword _Complex.
 	'complex':  true
+	// Windows headers define these as memory-model and calling-convention macros.
+	'near':     true
+	'far':      true
+	'pascal':   true
+	'cdecl':    true
 	// GNU C modes predefine these as macros (`linux` on Linux, `unix` on Unix).
 	'unix':     true
 	'linux':    true
@@ -177,6 +182,9 @@ pub fn c_name(name string) string {
 	// The collision sets contain only short names; longer identifiers cannot match.
 	if (n.len <= max_c_collision_name_len && (n in reserved_words || n in libc_collisions))
 		|| is_string_literal_symbol(n) {
+		if n in ['near', 'far', 'pascal', 'cdecl'] {
+			return '${internal_symbol_c_prefix}macro_${n}'
+		}
 		if name.contains('@') {
 			result = '_v_${n}'
 		} else {

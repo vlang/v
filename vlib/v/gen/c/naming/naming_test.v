@@ -103,6 +103,16 @@ fn test_complex_header_macro_name_is_escaped() {
 	assert c_name('C.complex') == 'complex'
 }
 
+fn test_windows_header_macro_names_are_escaped() {
+	for name in ['near', 'far', 'pascal', 'cdecl'] {
+		assert c_name(name) == '${internal_symbol_c_prefix}macro_${name}'
+		assert c_name(name) != c_name('v_${name}')
+		assert c_name(name) != c_name(c_name(name))
+		assert c_name('${name}_value') == '${name}_value'
+		assert c_name('C.${name}') == name
+	}
+}
+
 fn test_operator_method_c_names_are_disjoint_from_source_names() {
 	for op in overloadable_operators {
 		name := 'Vec.${op}'

@@ -194,7 +194,7 @@ fn test_cached_cname_classifier_preserves_special_names_and_bytes() {
 	mut g := FlatGen.new()
 	for name in ['', '.', '9name', 'a..b', 'a__b.c', '__v3_internal_symbol_x',
 		'__v3_internal_symbol_x.y', 'x@static@y', 'x.[]=', 'x.+', '_str_123', 'C.name', 'C.SSL_CTX.str',
-		'complex', 'int_str', 'malloc'] {
+		'complex', 'near', 'far', 'pascal', 'cdecl', 'int_str', 'malloc'] {
 		for _ in 0 .. 2 {
 			assert g.cname(name) == c_name(name), name
 		}

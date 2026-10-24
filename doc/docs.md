@@ -10808,6 +10808,12 @@ pass `&values[0]`; V's platform-width `int` storage is incompatible on 64-bit ta
 Pointer constants such as `C.NULL` and `C.INVALID_HANDLE_VALUE` retain their pointer type
 in assignments and comparisons.
 
+Ordinary V identifiers such as `near`, `far`, `pascal`, and `cdecl` can also be used when
+compiling for Windows. The C backend escapes these names to avoid Windows header macros,
+including in functions, local variables, and struct fields. Explicit `C.` references retain
+their original C names.
+TinyCC also supports explicitly aligned local structs on Windows through its `alloca` intrinsic.
+
 C globals can be exposed on the V side too. Use `@[c_extern] __global name C.Type`
 when you want to redeclare an external symbol explicitly, or
 `@[c_extern] __global const name C.Type` for an external `extern const` symbol.
