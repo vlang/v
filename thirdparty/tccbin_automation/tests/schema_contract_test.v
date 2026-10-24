@@ -2520,6 +2520,139 @@ fn contiguous_orders(count int) []i64 {
 	return []i64{len: count, init: i64(index + 1)}
 }
 
+fn json_member(value bin.JsonValue, key string) bin.JsonValue {
+	return value.object_value(key) or { panic('missing manifest member ${key}') }
+}
+
+fn json_with_member(value bin.JsonValue, key string, replacement bin.JsonValue) bin.JsonValue {
+	index := value.object_keys.index(key)
+	if value.kind != .object || index < 0 {
+		panic('missing manifest member ${key}')
+	}
+	mut values := value.object_values.clone()
+	values[index] = replacement
+	return bin.JsonValue{
+		kind:          .object
+		object_keys:   value.object_keys.clone()
+		object_values: values
+	}
+}
+
+fn json_array(values []bin.JsonValue) bin.JsonValue {
+	return bin.JsonValue{
+		kind:        .array
+		array_value: values
+	}
+}
+
+fn json_string(value string) bin.JsonValue {
+	return bin.JsonValue{
+		kind:         .string_value
+		string_value: value
+	}
+}
+
+fn json_integer(value i64) bin.JsonValue {
+	return bin.JsonValue{
+		kind:      .integer
+		int_value: value
+	}
+}
+
+// WindowsManifestParts holds the three manifest arrays the Windows patch sequence checks read.
+struct WindowsManifestParts {
+mut:
+	patches    []bin.JsonValue
+	transforms []bin.JsonValue
+	probes     []bin.JsonValue
+}
+
+// windows_manifest_rewrite parses a Windows manifest, lets `edit` mutate its patches, transforms
+// and probes structurally, and re-encodes the result, so tests never depend on fixture formatting.
+fn windows_manifest_rewrite(source string, edit fn (mut parts WindowsManifestParts)) string {
+	manifest := bin.parse_strict_json(source) or { panic(err) }
+	mut parts := WindowsManifestParts{
+		patches:    json_member(manifest, 'patches').array_value.clone()
+		transforms: json_member(manifest, 'transforms').array_value.clone()
+		probes:     json_member(manifest, 'probes').array_value.clone()
+	}
+	edit(mut parts)
+	mut result := json_with_member(manifest, 'patches', json_array(parts.patches))
+	result = json_with_member(result, 'transforms', json_array(parts.transforms))
+	result = json_with_member(result, 'probes', json_array(parts.probes))
+	return bin.canonical_json(result)
+}
+
+// windows_manifest_with_transform_orders_shifted moves both transforms `delta` orders later.
+fn windows_manifest_with_transform_orders_shifted(source string, delta i64) string {
+	return windows_manifest_rewrite(source, fn [delta] (mut parts WindowsManifestParts) {
+		for index, transform in parts.transforms {
+			order := json_member(transform, 'order').int_value
+			parts.transforms[index] = json_with_member(transform, 'order', json_integer(order + delta))
+		}
+	})
+}
+
+// windows_manifest_with_last_patch_renamed renames the last patch (and its effect and probe
+// bindings) to `new_id`, leaving every order as it was.
+fn windows_manifest_with_last_patch_renamed(source string, new_id string) string {
+	return windows_manifest_rewrite(source, fn [new_id] (mut parts WindowsManifestParts) {
+		last := parts.patches.len - 1
+		old_id := json_member(parts.patches[last], 'id').string_value
+		parts.patches[last] = windows_patch_with_id(parts.patches[last], new_id)
+		for index, probe in parts.probes {
+			if json_member(probe, 'id').string_value == old_id {
+				parts.probes[index] = json_with_member(probe, 'id', json_string(new_id))
+			}
+		}
+	})
+}
+
+// windows_manifest_with_extra_patch appends one more TinyCC patch modelled on the last one, with
+// its own id, path, digest, functions and probe, and moves the transforms after it.
+fn windows_manifest_with_extra_patch(source string) string {
+	return windows_manifest_rewrite(source, fn (mut parts WindowsManifestParts) {
+		last := parts.patches[parts.patches.len - 1]
+		number := parts.patches.len + 1
+		id := bin.windows_patch_id(number)
+		digits := id.all_after('patch-')
+		mut patch := windows_patch_with_id(last, id)
+		patch = json_with_member(patch, 'path', json_string('patches/${digits}-synthetic-export.patch'))
+		patch = json_with_member(patch, 'sha256', json_string('47'.repeat(32)))
+		patch = json_with_member(patch, 'order', json_integer(i64(number)))
+		mut effects := json_member(patch, 'effects').array_value.clone()
+		effects[0] = json_with_member(effects[0], 'functions', json_array([
+			json_string('SyntheticExport${digits}'),
+		]))
+		patch = json_with_member(patch, 'effects', json_array(effects))
+		parts.patches << patch
+		for index, transform in parts.transforms {
+			parts.transforms[index] = json_with_member(transform, 'order', json_integer(i64(number + 1 + index)))
+		}
+		last_id := json_member(last, 'id').string_value
+		for index, probe in parts.probes {
+			if json_member(probe, 'id').string_value == last_id {
+				mut new_probe := json_with_member(probe, 'id', json_string(id))
+				new_probe = json_with_member(new_probe, 'oracle', json_string('SyntheticExport${digits} import resolves'))
+				parts.probes.insert(index + 1, new_probe)
+				break
+			}
+		}
+	})
+}
+
+// windows_patch_with_id renames a patch together with its effect id and probe binding.
+fn windows_patch_with_id(patch bin.JsonValue, id string) bin.JsonValue {
+	mut effects := json_member(patch, 'effects').array_value.clone()
+	for index, effect in effects {
+		mut renamed := json_with_member(effect, 'id', json_string('${id}-effect'))
+		renamed = json_with_member(renamed, 'required_probe_ids', json_array([json_string(id)]))
+		effects[index] = renamed
+	}
+	return json_with_member(json_with_member(patch, 'id', json_string(id)), 'effects',
+		json_array(effects))
+}
+
 fn test_windows_patch_sequence_is_derived_from_the_manifest() {
 	assert bin.windows_patch_id(1) == 'patch-0001'
 	assert bin.windows_patch_id(17) == 'patch-0017'
@@ -2556,34 +2689,21 @@ fn test_windows_patch_sequence_is_derived_from_the_manifest() {
 	// and transforms that do not immediately follow the last patch.
 	sixteen := schema_fixture('manifest-windows-opaque.valid.json')
 	assert validate_manifest_source(sixteen, 'windows-sixteen-patches').len == 0
-	seventeen := sixteen.replace_once('"order": 18,', '"order": 19,').replace_once('"order": 17,',
-		'"order": 18,').replace_once('"required_probe_ids": ["patch-0016"]}]
-    }
-  ],', '"required_probe_ids": ["patch-0016"]}]
-    },
-    {
-      "id": "patch-0017",
-      "path": "patches/0017-win32-export-more-kernel32-functions.patch",
-      "sha256": "4717171717171717171717171717171717171717171717171717171717171717",
-      "order": 17,
-      "category": "upstream-candidate",
-      "auto_deprecatable": false,
-      "state": "active-required",
-      "effects": [{"id": "patch-0017-effect", "owner": "tinycc", "files": ["win32/lib/kernel32.def"], "functions": ["GetSystemTimePreciseAsFileTime"], "required_probe_ids": ["patch-0017"]}]
-    }
-  ],').replace_once('"oracle": "os, sync and runtime kernel32 imports resolve without the hand-edited kernel32.def"},',
-		'"oracle": "os, sync and runtime kernel32 imports resolve without the hand-edited kernel32.def"},
-    {"id": "patch-0017", "required": true, "expected_lanes": ["x64", "i386"], "oracle": "GetSystemTimePreciseAsFileTime import resolves"},')
-	assert seventeen != sixteen
-	assert seventeen.contains('"id": "patch-0017"')
+	seventeen := windows_manifest_with_extra_patch(sixteen)
+	seventeen_manifest := bin.parse_strict_json(seventeen) or { panic(err) }
+	assert json_member(seventeen_manifest, 'patches').array_value.len == 17
+	assert json_member(json_member(seventeen_manifest, 'patches').array_value[16], 'id').string_value == 'patch-0017'
+	assert json_member(json_member(seventeen_manifest, 'transforms').array_value[1], 'order').int_value == 19
 	seventeen_issues := validate_manifest_source(seventeen, 'windows-seventeen-patches')
 	assert seventeen_issues.len == 0, '${seventeen_issues}'
-	gap := sixteen.replace('patch-0016', 'patch-0017')
+	eighteen_issues := validate_manifest_source(windows_manifest_with_extra_patch(seventeen),
+		'windows-eighteen-patches')
+	assert eighteen_issues.len == 0, '${eighteen_issues}'
+	gap := windows_manifest_with_last_patch_renamed(sixteen, 'patch-0017')
 	gap_issues := validate_manifest_source(gap, 'windows-patch-gap')
 	assert gap_issues.any(it.path == '$/patches'
 		&& it.message.contains('contiguous ordered TinyCC patches')), '${gap_issues}'
-	transform_gap := sixteen.replace_once('"order": 18,', '"order": 19,').replace_once('"order": 17,',
-		'"order": 18,')
+	transform_gap := windows_manifest_with_transform_orders_shifted(sixteen, 1)
 	transform_gap_issues := validate_manifest_source(transform_gap, 'windows-transform-order-gap')
 	assert transform_gap_issues.any(it.path == '$/transforms'
 		&& it.message.contains('exactly 1 through the declared patch and transform count')), '${transform_gap_issues}'
