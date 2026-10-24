@@ -49,14 +49,14 @@ pub:
 
 pub struct ZipEntry {
 pub mut:
-	name       string
-	method     u16 // 0 = stored, 8 = deflate
-	crc32      u32
-	size       u64 // uncompressed
-	csize      u64 // compressed
-	offset     u64 // local header offset
-	is_dir     bool
-	data       []u8 // uncompressed data (for write) / cached (for read)
+	name   string
+	method u16 // 0 = stored, 8 = deflate
+	crc32  u32
+	size   u64 // uncompressed
+	csize  u64 // compressed
+	offset u64 // local header offset
+	is_dir bool
+	data   []u8 // uncompressed data (for write) / cached (for read)
 }
 
 // ---------------------------------------------------------------------------
@@ -65,12 +65,12 @@ pub mut:
 
 pub struct Zip {
 pub mut:
-	path     string
-	mode     OpenMode
-	level    CompressionLevel
-	entries  []ZipEntry
+	path    string
+	mode    OpenMode
+	level   CompressionLevel
+	entries []ZipEntry
 	// write state
-	current  int = -1
+	current int = -1
 	// cached file bytes for read
 	filedata []u8
 }
@@ -142,7 +142,7 @@ fn (mut z Zip) parse() ! {
 	// find EOCD
 	mut eocd_pos := -1
 	for i := data.len - 22; i >= 0; i-- {
-		if data[i] == 0x50 && data[i+1] == 0x4b && data[i+2] == 0x05 && data[i+3] == 0x06 {
+		if data[i] == 0x50 && data[i + 1] == 0x4b && data[i + 2] == 0x05 && data[i + 3] == 0x06 {
 			eocd_pos = i
 			break
 		}
@@ -151,9 +151,9 @@ fn (mut z Zip) parse() ! {
 		return error('no eocd')
 	}
 	// read number of entries
-	n_entries := int(u16(data[eocd_pos+10]) | (u16(data[eocd_pos+11]) << 8))
-	cd_size := u32(data[eocd_pos+12]) | (u32(data[eocd_pos+13]) << 8) | (u32(data[eocd_pos+14]) << 16) | (u32(data[eocd_pos+15]) << 24)
-	cd_offset := u32(data[eocd_pos+16]) | (u32(data[eocd_pos+17]) << 8) | (u32(data[eocd_pos+18]) << 16) | (u32(data[eocd_pos+19]) << 24)
+	n_entries := int(u16(data[eocd_pos + 10]) | (u16(data[eocd_pos + 11]) << 8))
+	cd_size := u32(data[eocd_pos + 12]) | (u32(data[eocd_pos + 13]) << 8) | (u32(data[eocd_pos + 14]) << 16) | (u32(data[eocd_pos + 15]) << 24)
+	cd_offset := u32(data[eocd_pos + 16]) | (u32(data[eocd_pos + 17]) << 8) | (u32(data[eocd_pos + 18]) << 16) | (u32(data[eocd_pos + 19]) << 24)
 
 	// parse central directory
 	mut pos := int(cd_offset)
@@ -161,19 +161,19 @@ fn (mut z Zip) parse() ! {
 		if pos + 46 > data.len {
 			break
 		}
-		if !(data[pos] == 0x50 && data[pos+1] == 0x4b && data[pos+2] == 0x01 && data[pos+3] == 0x02) {
+		if !(data[pos] == 0x50 && data[pos + 1] == 0x4b && data[pos + 2] == 0x01 && data[pos + 3] == 0x02) {
 			break
 		}
-		method := u16(data[pos+10]) | (u16(data[pos+11]) << 8)
-		crc := u32(data[pos+16]) | (u32(data[pos+17]) << 8) | (u32(data[pos+18]) << 16) | (u32(data[pos+19]) << 24)
-		csize := u32(data[pos+20]) | (u32(data[pos+21]) << 8) | (u32(data[pos+22]) << 16) | (u32(data[pos+23]) << 24)
-		size := u32(data[pos+24]) | (u32(data[pos+25]) << 8) | (u32(data[pos+26]) << 16) | (u32(data[pos+27]) << 24)
-		name_len := int(u16(data[pos+28]) | (u16(data[pos+29]) << 8))
-		extra_len := int(u16(data[pos+30]) | (u16(data[pos+31]) << 8))
-		comment_len := int(u16(data[pos+32]) | (u16(data[pos+33]) << 8))
-		local_offset := u32(data[pos+42]) | (u32(data[pos+43]) << 8) | (u32(data[pos+44]) << 16) | (u32(data[pos+45]) << 24)
+		method := u16(data[pos + 10]) | (u16(data[pos + 11]) << 8)
+		crc := u32(data[pos + 16]) | (u32(data[pos + 17]) << 8) | (u32(data[pos + 18]) << 16) | (u32(data[pos + 19]) << 24)
+		csize := u32(data[pos + 20]) | (u32(data[pos + 21]) << 8) | (u32(data[pos + 22]) << 16) | (u32(data[pos + 23]) << 24)
+		size := u32(data[pos + 24]) | (u32(data[pos + 25]) << 8) | (u32(data[pos + 26]) << 16) | (u32(data[pos + 27]) << 24)
+		name_len := int(u16(data[pos + 28]) | (u16(data[pos + 29]) << 8))
+		extra_len := int(u16(data[pos + 30]) | (u16(data[pos + 31]) << 8))
+		comment_len := int(u16(data[pos + 32]) | (u16(data[pos + 33]) << 8))
+		local_offset := u32(data[pos + 42]) | (u32(data[pos + 43]) << 8) | (u32(data[pos + 44]) << 16) | (u32(data[pos + 45]) << 24)
 
-		name := data[pos+46..pos+46+name_len].bytestr()
+		name := data[pos + 46..pos + 46 + name_len].bytestr()
 		is_dir := name.ends_with('/')
 
 		z.entries << ZipEntry{
@@ -274,8 +274,8 @@ fn (mut z Zip) read_current_data() ![]u8 {
 	if pos + 30 > z.filedata.len {
 		return error('szip: bad offset')
 	}
-	name_len := int(u16(z.filedata[pos+26]) | (u16(z.filedata[pos+27]) << 8))
-	extra_len := int(u16(z.filedata[pos+28]) | (u16(z.filedata[pos+29]) << 8))
+	name_len := int(u16(z.filedata[pos + 26]) | (u16(z.filedata[pos + 27]) << 8))
+	extra_len := int(u16(z.filedata[pos + 28]) | (u16(z.filedata[pos + 29]) << 8))
 	data_start := pos + 30 + name_len + extra_len
 	data_end := data_start + int(e.csize)
 	if data_end > z.filedata.len {
@@ -300,7 +300,10 @@ pub fn (mut z Zip) read_entry_buf(buf voidptr, in_bsize int) !int {
 	n := if data.len < in_bsize { data.len } else { in_bsize }
 	if n > 0 {
 		unsafe {
-			C.memcpy(buf, data.data, n)
+			mut dst := &u8(buf)
+			for i in 0 .. n {
+				dst[i] = data[i]
+			}
 		}
 	}
 	return n
@@ -523,7 +526,10 @@ pub fn extract_zip_to_dir(file string, dir string) !bool {
 		if !os.exists(parent) {
 			os.mkdir_all(parent) or {}
 		}
-		data := z.read_current_data() or { z.close_entry(); continue }
+		data := z.read_current_data() or {
+			z.close_entry()
+			continue
+		}
 		os.write_file_array(target, data) or {}
 		z.close_entry()
 	}
