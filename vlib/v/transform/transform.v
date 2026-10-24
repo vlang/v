@@ -542,6 +542,7 @@ mut:
 	generic_struct_specs_cache         map[u32]u32
 	generic_sum_specs_cache            map[u32]GenericSpecContext
 	generic_materialization_scan_from  int
+	generic_rewrite_refresh_from       int
 	generic_materialization_ready      bool
 	parallel_monomorph_scan_nodes      []int
 	parallel_monomorph_scan_start      int
@@ -2294,6 +2295,10 @@ pub fn monomorphize_with_used_checked_config_scoped_cached(mut a flat.FlatAst, t
 		// publish all worker-owned node strings while their arenas are still live.
 		t.a.promote_transform_texts_from(0, stage_scope)
 		t.monomorph_profile('mono wrapper text table: ${time.ticks() - debug_started} ms')
+		if !isnil(t.tc) {
+			mut mtc := unsafe { &types.TypeChecker(voidptr(t.tc)) }
+			mtc.clone_transform_metadata_owned()
+		}
 		t.release_monomorph_worker_scopes()
 		transform_stage_scope_resume(stage_scope, parent_state)
 	} else {

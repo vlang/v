@@ -1,5 +1,6 @@
 module transform
 
+import os
 import v.flat
 import v.types
 
@@ -220,6 +221,9 @@ fn test_transform_fork_reads_and_merges_source_fn_values() {
 }
 
 fn test_serial_scoped_monomorphization_preserves_lifted_callback_signatures() {
+	old_jobs := os.getenv('VJOBS')
+	defer { os.setenv('VJOBS', old_jobs, true) }
+	os.setenv('VJOBS', '2', true)
 	mut a := flat.FlatAst.new()
 	param_id := a.add_node(flat.Node{
 		kind:  .param
@@ -284,6 +288,8 @@ fn test_serial_scoped_monomorphization_preserves_lifted_callback_signatures() {
 	t.parallel_monomorphize = false
 	t.scope_parallel_workers = true
 	t.scoped_monomorphize = true
+	// Exhaust direct emission so the drain exercises its scoped batch path.
+	t.direct_monomorph_specs = direct_monomorph_spec_budget
 	t.defer_nested_generic_emissions = true
 	for arg in ['int', 'string'] {
 		t.request_generic_fn_specialization(decl, flat.TypeTextList.from_names([arg]).ids)

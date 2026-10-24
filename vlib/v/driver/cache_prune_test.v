@@ -180,7 +180,7 @@ fn test_large_cold_cache_restarts_without_cache() {
 	assert should_restart_v3_large_cold_cache(true, true, limit, false, false, false)
 	assert !should_restart_v3_large_cold_cache(true, true, limit - 1, false, false, false)
 	assert !should_restart_v3_large_cold_cache(false, true, limit, false, false, false)
-	assert !should_restart_v3_large_cold_cache(true, false, limit, false, false, false)
+	assert should_restart_v3_large_cold_cache(true, false, limit, false, false, false)
 	assert !should_restart_v3_large_cold_cache(true, true, limit, true, false, false)
 	assert !should_restart_v3_large_cold_cache(true, true, limit, false, true, false)
 	assert !should_restart_v3_large_cold_cache(true, true, limit, false, false, true)

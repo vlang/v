@@ -119,16 +119,15 @@ fn self_build_current_hash(vroot string) string {
 const embedded_parallel_transform_node_limit = 10_000_000
 const scoped_serial_user_check_node_threshold = 1_000_000
 const scoped_serial_user_transform_node_threshold = 1_000_000
-const scoped_serial_user_cgen_node_threshold = 2_000_000
-const scoped_large_cold_cache_node_limit = 500_000
+const scoped_serial_user_cgen_node_threshold = 10_000_000
+const scoped_large_cold_cache_node_limit = 400_000
 const v3_large_cold_cache_marker_version = 'v3-large-cold-cache-bypass-v1'
 const scoped_linux_user_job_limit = 4
 const diagnostics_server_job_limit = 8
 
 // scoped_linux_job_limit is how many jobs a compilation with scoped arenas
 // runs at once. A diagnostics server's check keeps no arena past its semantic
-// check, and the editor waits on it: it takes more of the pool (p200: 197 ->
-// 169 ms, peak memory 111 -> 135 MB).
+// check, and the editor waits on it: it takes more of the pool.
 fn scoped_linux_job_limit(check_only bool, diagnostics_server bool) int {
 	return if check_only && diagnostics_server {
 		diagnostics_server_job_limit
@@ -4348,17 +4347,12 @@ fn transform_helper_scopes_fit_retention_budget(scopes []voidptr) bool {
 }
 
 fn should_parallel_monomorphize() bool {
-	// Compiler executables built by TinyCC can corrupt their heap while several
-	// specialization workers merge their results. Keep that build serial until
-	// the parallel merge is safe under TinyCC as well as clang and GCC.
+	// TinyCC-built compilers can corrupt the heap during parallel merges.
 	$if tinyc {
 		return false
 	}
-	// The parallel specializer still loses results with gcc/clang-built
-	// compilers too: e.g. interface dispatch for nested generic interfaces
-	// (generic_interface_nested_generic_type_infer_test.v panics at runtime).
-	// The default tcc-built compiler never used it, so the serial path is the one
-	// the test suite covers. Keep it opt-in until the parallel merge is correct.
+	// Nested generic-interface dispatch still needs serial specialization by
+	// default. Keep parallel merges opt-in until that regression is resolved.
 	return os.getenv('V3_PARALLEL_MONOMORPHIZE') == '1'
 }
 
@@ -4469,7 +4463,27 @@ fn clone_type_errors(values []types.TypeError) []types.TypeError {
 	return cloned
 }
 
-fn v3_cgen_cache_input(state &V3ModuleCacheState, user_files []string, user_c_flags []string) V3CgenCacheInput {
+fn v3_file_sha256_hex(path string) ?string {
+	mut file := os.open(path) or { return none }
+	defer { file.close() }
+	mut digest := sha256.new()
+	mut buffer := []u8{len: 64 * 1024}
+	for {
+		read := file.read(mut buffer) or {
+			if err is os.Eof {
+				break
+			}
+			return none
+		}
+		if read == 0 {
+			break
+		}
+		digest.write(buffer[..read]) or { return none }
+	}
+	return digest.sum([]).hex()
+}
+
+fn v3_cgen_cache_input(a &flat.FlatAst, state &V3ModuleCacheState, user_files []string, user_c_flags []string, vroot string) V3CgenCacheInput {
 	mut source_set := map[string]bool{}
 	mut user_source_dirs := map[string]bool{}
 	for file in user_files {
@@ -4478,6 +4492,22 @@ fn v3_cgen_cache_input(state &V3ModuleCacheState, user_files []string, user_c_fl
 		user_source_dirs[os.dir(real_file)] = true
 	}
 	mut dependencies := map[string]string{}
+	mut embedded_resources := embedded_resource_paths(a)
+	mut embedded_resource_set := map[string]bool{}
+	for path in embedded_resources {
+		embedded_resource_set[os.real_path(path)] = true
+	}
+	for module_files in state.module_sources.values() {
+		for source_file in module_files {
+			for path in modulecache.embedded_source_paths(source_file, vroot) {
+				real_path := os.real_path(path)
+				if !embedded_resource_set[real_path] {
+					embedded_resource_set[real_path] = true
+					embedded_resources << real_path
+				}
+			}
+		}
+	}
 	mut module_names := state.module_sources.keys()
 	module_names.sort()
 	for module_name in module_names {
@@ -4502,6 +4532,12 @@ fn v3_cgen_cache_input(state &V3ModuleCacheState, user_files []string, user_c_fl
 		mut paths := state.module_external_inputs[module_name].clone()
 		paths.sort()
 		for path in paths {
+			// `$embed_file` resources can disappear from cached declaration bodies.
+			// They are keyed below by absolute path so cold and warm builds produce
+			// the same identity regardless of which module parsed first.
+			if os.real_path(path) in embedded_resource_set {
+				continue
+			}
 			key := v3_external_input_key(module_name, path)
 			dependencies['external:${module_name}:${path}'] = state.external_input_signatures[key] or {
 				modulecache.file_signature(path)
@@ -4511,6 +4547,14 @@ fn v3_cgen_cache_input(state &V3ModuleCacheState, user_files []string, user_c_fl
 			}
 			dependencies['external-meta:${module_name}:${path}'] =
 				modulecache.file_metadata_signature(path)
+		}
+	}
+	for path in embedded_resources {
+		real_path := os.real_path(path)
+		dependencies['embedded-resource:${real_path}'] =
+			modulecache.file_metadata_signature(real_path)
+		if digest := v3_file_sha256_hex(real_path) {
+			dependencies['embedded-sha256:${real_path}'] = digest
 		}
 	}
 	if state.external_inputs_ready {
@@ -4556,11 +4600,9 @@ fn v3_cgen_cache_input(state &V3ModuleCacheState, user_files []string, user_c_fl
 }
 
 // Cached declarations omit ordinary function bodies, including their embedded resources.
-// Recover those inputs only for valid cached module objects and verify their current bytes.
+// Recover those inputs from the last C plan and verify their current identities, also in
+// builds that mix cached modules with source-parsed program modules.
 fn v3_restore_cached_embedded_inputs(state &V3ModuleCacheState, source_files []string, generation_signature string, mut dependencies map[string]string) {
-	if state.parsed_from_source.len > 0 || state.objects.len == 0 {
-		return
-	}
 	restored := state.manager.cached_cgen_dependency_inputs(source_files, generation_signature,
 		dependencies, ['external:', 'external-meta:', 'external-sha256:']) or { return }
 	mut verified := map[string]string{}
@@ -4580,8 +4622,7 @@ fn v3_restore_cached_embedded_inputs(state &V3ModuleCacheState, source_files []s
 		if metadata.len == 0 || (restored[metadata_key] or { '' }) != metadata {
 			return
 		}
-		content := os.read_bytes(path) or { return }
-		digest := sha256.sum(content).hex()
+		digest := v3_file_sha256_hex(path) or { return }
 		if (restored[digest_key] or { '' }) != digest
 			|| modulecache.file_signature(path) != signature
 			|| modulecache.file_metadata_signature(path) != metadata {
@@ -4606,6 +4647,227 @@ fn persistent_program_cache_enabled(cache_enabled bool, test_input bool, vtmp_di
 	// is caller-owned and is used by cache regression tests with bounded roots.
 	return cache_enabled && !test_input
 		&& (!os.base(vtmp_dir).starts_with('tsession_') || os.getenv('V3CACHE') != '')
+}
+
+const v3_unchanged_build_cache_version = 'v3-unchanged-build-1'
+
+fn v3_unchanged_build_cache_opted_in(no_cache bool) bool {
+	// This receipt does not yet track every compile-time and linker input.
+	// Keep ordinary builds on the established dependency-validated caches.
+	return !no_cache && os.getenv('V3_ENABLE_UNCHANGED_BUILD_CACHE') == '1'
+		&& os.getenv('V3_DISABLE_UNCHANGED_BUILD_CACHE') == ''
+}
+
+// v3_unchanged_build_cache_root is independent of the module cache state, so a
+// large graph can populate it after a no-cache retry and find it before parsing.
+fn v3_unchanged_build_cache_root(vroot string) string {
+	if explicit := os.getenv_opt('V3CACHE') {
+		if explicit.len > 0 {
+			return os.join_path(explicit, 'unchanged_build')
+		}
+	}
+	root_hash := sha256.hexhash(os.real_path(vroot))[..16]
+	return os.join_path(os.vtmp_dir(), 'v3_unchanged_build_${root_hash}')
+}
+
+fn v3_fast_build_tree_signature(root string) string {
+	mut entries := strings.new_builder(4096)
+	v3_fast_build_tree_signature_into(root, mut entries)
+	return sha256.hexhash(entries.str())
+}
+
+fn v3_fast_build_tree_signature_into(root string, mut entries strings.Builder) {
+	names := os.ls(root) or { return }
+	mut sorted_names := names.clone()
+	sorted_names.sort()
+	for name in sorted_names {
+		if name == '.git' || name == 'thirdparty' {
+			continue
+		}
+		path := os.join_path_single(root, name)
+		if os.is_dir(path) {
+			v3_fast_build_tree_signature_into(path, mut entries)
+			continue
+		}
+		if os.file_ext(name) !in ['.v', '.vh', '.vsh', '.c', '.h'] && name != 'v.mod' {
+			continue
+		}
+		entries.writeln('${path}\t${modulecache.file_metadata_signature(path)}')
+	}
+}
+
+fn v3_unchanged_build_key(prefs &pref.Preferences, c_compiler string, bin_file string) string {
+	mut output_args := []string{}
+	for arg in os.args[1..] {
+		if arg in ['-nocache', '--no-cache', '-v', '-show-timings', '-silent', '-showcc',
+			'-show-c-output', '-no-memory-limit'] || arg.starts_with('-v3-internal-') {
+			continue
+		}
+		output_args << arg
+	}
+	parts := [
+		v3_unchanged_build_cache_version,
+		os.real_path(prefs.vexe),
+		v3_cache_compiler_executable_identity(prefs.vexe),
+		c_compiler,
+		os.real_path(bin_file),
+		os.getenv('VFLAGS'),
+		os.getenv('CFLAGS'),
+		os.getenv('LDFLAGS'),
+		os.getenv('PKG_CONFIG_PATH'),
+		v3_link_environment_signature(),
+		v3_fast_build_tree_signature(os.join_path(prefs.vroot, 'vlib')),
+		output_args.join('\x00'),
+	]
+	return sha256.hexhash(parts.join('\x01'))
+}
+
+// v3_restore_unchanged_build restores a previously successful executable when
+// every source and native input recorded for the same build is still unchanged.
+fn v3_restore_unchanged_build(cache_dir string, key string, destination string) bool {
+	stamp_path := os.join_path(cache_dir, '${key}.stamp')
+	lines := os.read_file(stamp_path) or {
+		if os.getenv('V3_CACHE_TRACE') != '' {
+			eprintln('  V3 unchanged build cache miss: stamp is missing')
+		}
+		return false
+	}.split_into_lines()
+	if lines.len < 2 || lines[0] != v3_unchanged_build_cache_version {
+		if os.getenv('V3_CACHE_TRACE') != '' {
+			eprintln('  V3 unchanged build cache miss: stamp header changed')
+		}
+		return false
+	}
+	executable := os.join_path(cache_dir, '${key}.exe')
+	if lines[1] == '' || modulecache.file_metadata_signature(executable) != lines[1] {
+		if os.getenv('V3_CACHE_TRACE') != '' {
+			eprintln('  V3 unchanged build cache miss: executable changed')
+		}
+		return false
+	}
+	for line in lines[2..] {
+		parts := line.split('\t')
+		if parts.len != 3 {
+			return false
+		}
+		match parts[0] {
+			'file' {
+				if parts[2] == '' || modulecache.file_metadata_signature(parts[1]) != parts[2] {
+					if os.getenv('V3_CACHE_TRACE') != '' {
+						eprintln('  V3 unchanged build cache miss: input changed: ${parts[1]}')
+					}
+					return false
+				}
+			}
+			'dir' {
+				if v3_large_cold_cache_directory_signature(parts[1]) != parts[2] {
+					if os.getenv('V3_CACHE_TRACE') != '' {
+						eprintln('  V3 unchanged build cache miss: directory changed: ${parts[1]}')
+					}
+					return false
+				}
+			}
+			else {
+				return false
+			}
+		}
+	}
+	temporary := '${destination}.${os.getpid()}.${tempname.unique_token()}.tmp'
+	os.cp(executable, temporary) or {
+		return false
+	}
+	if os.user_os() != 'windows' {
+		os.chmod(temporary, 0o755) or {
+			os.rm(temporary) or {}
+			return false
+		}
+	}
+	os.mv(temporary, destination) or {
+		os.rm(temporary) or {}
+		return false
+	}
+	return true
+}
+
+fn v3_publish_unchanged_build(cache_dir string, key string, executable string, files []string, dirs []string) bool {
+	mut signatures := []string{cap: files.len}
+	for path in files {
+		signature := modulecache.file_metadata_signature(path)
+		if signature == '' {
+			return false
+		}
+		signatures << signature
+	}
+	os.mkdir_all(cache_dir, mode: 0o700) or { return false }
+	cache_executable := os.join_path(cache_dir, '${key}.exe')
+	temporary_executable := '${cache_executable}.${os.getpid()}.${tempname.unique_token()}.tmp'
+	os.cp(executable, temporary_executable) or {
+		return false
+	}
+	if os.user_os() != 'windows' {
+		os.chmod(temporary_executable, 0o755) or {
+			os.rm(temporary_executable) or {}
+			return false
+		}
+	}
+	os.mv(temporary_executable, cache_executable) or {
+		os.rm(temporary_executable) or {}
+		return false
+	}
+	mut stamp := strings.new_builder((files.len + dirs.len) * 96)
+	stamp.writeln(v3_unchanged_build_cache_version)
+	executable_signature := modulecache.file_metadata_signature(cache_executable)
+	if executable_signature == '' {
+		return false
+	}
+	stamp.writeln(executable_signature)
+	for i, path in files {
+		stamp.writeln('file\t${path}\t${signatures[i]}')
+	}
+	for path in dirs {
+		stamp.writeln('dir\t${path}\t${v3_large_cold_cache_directory_signature(path)}')
+	}
+	stamp_path := os.join_path(cache_dir, '${key}.stamp')
+	temporary_stamp := '${stamp_path}.${os.getpid()}.${tempname.unique_token()}.tmp'
+	os.write_file(temporary_stamp, stamp.str()) or { return false }
+	os.mv(temporary_stamp, stamp_path) or {
+		os.rm(temporary_stamp) or {}
+		return false
+	}
+	return true
+}
+
+fn v3_publish_unchanged_build_from_ast(cache_dir string, key string, executable string, a &flat.FlatAst, source_files []string, native_inputs &cgen.CacheNativeInputs) bool {
+	mut file_set := map[string]bool{}
+	// The caller captures these before transforms mutate or release AST state.
+	for path in source_files {
+		file_set[path] = true
+	}
+	for paths in native_inputs.module_inputs.values() {
+		for path in paths {
+			file_set[os.real_path(path)] = true
+		}
+	}
+	for path in embedded_resource_paths(a) {
+		file_set[os.real_path(path)] = true
+	}
+	mut files := file_set.keys()
+	files.sort()
+	mut dir_set := map[string]bool{}
+	for path in files {
+		if path.contains_any('\t\r\n') {
+			return false
+		}
+		dir_set[os.dir(path)] = true
+	}
+	mut dirs := dir_set.keys()
+	dirs.sort()
+	for path in dirs {
+		if path.contains_any('\t\r\n') {
+			return false
+		}
+	}
+	return v3_publish_unchanged_build(cache_dir, key, executable, files, dirs)
 }
 
 // v3_program_executable_link_signature covers what decides the executable of a
@@ -5244,23 +5506,39 @@ fn v3_native_file_has_default_mbedtls_context(path string, include_dirs []string
 	return true
 }
 
-fn v3_preprocess_bundled_mbedtls_headers(native_inputs &cgen.CacheNativeInputs, a &flat.FlatAst, prefs &pref.Preferences, flags []string, compiler string, compiler_explicit bool, cross_sysroot string) V3NativeInputExpansion {
-	if prefs.is_prod || prefs.is_shared || !v3_mbedtls_default_header_context(a, flags)
-		|| c_link_flags_use_cpp_language(flags) {
-		return V3NativeInputExpansion{}
-	}
-	language := cache_probe_language(cgen.cache_native_inputs_language(a, prefs.vroot,
-		flags, prefs.c99, prefs.ccompiler, prefs.target), flags)
-	if language !in ['c', 'objective-c'] { return V3NativeInputExpansion{} }
+// v3_preprocess_bundled_mbedtls_headers probes with the resolved compiler path,
+// not the normalized compiler family. The latter can be the symbolic name
+// `tinyc`, while the actual bundled TinyCC executable is what the build uses.
+fn v3_preprocess_bundled_mbedtls_headers(native_inputs &cgen.CacheNativeInputs, a &flat.FlatAst, prefs &pref.Preferences, flags []string, compiler_path string, compiler_explicit bool, cross_sysroot string) V3NativeInputExpansion {
 	mut headers := map[string]bool{}
 	for path in native_inputs.native_paths.keys() {
 		if v3_is_bundled_mbedtls_header(path, prefs.vroot) { headers[path] = true }
 	}
+	// Other native inputs do not need this expansion or its fallback diagnostics.
 	if headers.len == 0 { return V3NativeInputExpansion{} }
+	if prefs.is_prod || prefs.is_shared {
+		trace_v3_cache_fallback('mbedtls header expansion: production or shared build')
+		return V3NativeInputExpansion{}
+	}
+	if !v3_mbedtls_default_header_context(a, flags) {
+		trace_v3_cache_fallback('mbedtls header expansion: non-default header context')
+		return V3NativeInputExpansion{}
+	}
+	if c_link_flags_use_cpp_language(flags) {
+		trace_v3_cache_fallback('mbedtls header expansion: C++ preprocessing language')
+		return V3NativeInputExpansion{}
+	}
+	language := cache_probe_language(cgen.cache_native_inputs_language(a, prefs.vroot,
+		flags, prefs.c99, prefs.ccompiler, prefs.target), flags)
+	if language !in ['c', 'objective-c'] {
+		trace_v3_cache_fallback('mbedtls header expansion: preprocessing language is ${language}')
+		return V3NativeInputExpansion{}
+	}
 	for path in native_inputs.native_paths.keys() {
 		if v3_is_bundled_mbedtls_header(path, prefs.vroot) { continue }
 		mut visited := map[string]bool{}
 		if !v3_native_file_has_default_mbedtls_context(path, native_inputs.include_dirs, prefs.vroot, mut visited) {
+			trace_v3_cache_fallback('mbedtls header expansion: ${path} changes the default context')
 			return V3NativeInputExpansion{}
 		}
 		// The ordinary closure must also record every dependency seen by the
@@ -5275,11 +5553,15 @@ fn v3_preprocess_bundled_mbedtls_headers(native_inputs &cgen.CacheNativeInputs, 
 				headers[dependency] = true
 				reaches_mbedtls = true
 			} else if !expanded_paths[dependency] {
+				trace_v3_cache_fallback('mbedtls header expansion: ${path} dependency ${dependency} is not an expanded input')
 				return V3NativeInputExpansion{}
 			}
 		}
 		if reaches_mbedtls {
-			if cgen.cache_native_input_is_source(path) { return V3NativeInputExpansion{} }
+			if cgen.cache_native_input_is_source(path) {
+				trace_v3_cache_fallback('mbedtls header expansion: ${path} is a native source')
+				return V3NativeInputExpansion{}
+			}
 			headers[path] = true
 		}
 	}
@@ -5295,7 +5577,16 @@ fn v3_preprocess_bundled_mbedtls_headers(native_inputs &cgen.CacheNativeInputs, 
 	os.write_file(source, text) or { return V3NativeInputExpansion{} }
 	defer { os.rm(source) or {} }
 	mut args := [c_standard_flag(prefs.c99, false)]
-	args << c_compiler_target_args(prefs.target, compiler, compiler_explicit, cross_sysroot) or {
+	if pref.ccompiler_is_tinycc(compiler_path) {
+		bundled_tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+		resources := v3_tcc_resource_flags_for_compiler(prefs.vroot, compiler_path, bundled_tcc,
+			os.is_executable(bundled_tcc))
+		if resources.base_arg.len > 0 {
+			args << [resources.base_arg, resources.include_arg, resources.library_arg]
+		}
+	}
+	args << c_compiler_target_args(prefs.target, compiler_path, compiler_explicit, cross_sysroot) or {
+		trace_v3_cache_fallback('mbedtls header expansion: target arguments are unavailable')
 		return V3NativeInputExpansion{}
 	}
 	args << c_object_compile_flags(flags)
@@ -5303,12 +5594,22 @@ fn v3_preprocess_bundled_mbedtls_headers(native_inputs &cgen.CacheNativeInputs, 
 	args << ['-x', language]
 	mut preprocess_args := args.clone()
 	preprocess_args << ['-E', '-P', source]
-	preprocessed := cmdexec.run(compiler, preprocess_args)
-	if preprocessed.exit_code != 0 || !modulecache.c_source_is_replicable(v3_native_preprocessed_declarations_for_replication(preprocessed.output)) {
+	preprocessed := cmdexec.run(compiler_path, preprocess_args)
+	if preprocessed.exit_code != 0 {
+		output := preprocessed.output.trim_space()
+		output_tail := if output.len > 1000 { output[output.len - 1000..] } else { output }
+		trace_v3_cache_fallback('mbedtls header expansion: preprocessor exited ${preprocessed.exit_code} (${preprocessed.output.len} bytes): ${output_tail}\nargs: ${preprocess_args.join(' ')}')
 		return V3NativeInputExpansion{}
 	}
-	dependencies := c_object_dependencies(compiler, args, source)
-	if dependencies.used_fallback { return V3NativeInputExpansion{} }
+	if !modulecache.c_source_is_replicable(v3_native_preprocessed_declarations_for_replication(preprocessed.output)) {
+		trace_v3_cache_fallback('mbedtls header expansion: preprocessed declarations are not replicable')
+		return V3NativeInputExpansion{}
+	}
+	dependencies := c_object_dependencies(compiler_path, args, source)
+	if dependencies.used_fallback {
+		trace_v3_cache_fallback('mbedtls header expansion: dependency probe used a fallback')
+		return V3NativeInputExpansion{}
+	}
 	// Probe on each build: literal expansion records do not include preprocessing
 	// flags. Every active header, including system headers, remains a cache input.
 	return V3NativeInputExpansion{
@@ -5356,8 +5657,9 @@ fn prepare_v3_cache_external_inputs(mut state V3ModuleCacheState, native_inputs 
 				if path in digests {
 					continue
 				}
-				content := os.read_bytes(path) or { continue }
-				digests[path] = sha256.sum(content).hex()
+				if digest := v3_file_sha256_hex(path) {
+					digests[path] = digest
+				}
 			}
 		}
 		state.external_input_digests = digests.move()
@@ -7929,45 +8231,7 @@ fn clone_type_owner_c_abi_fields(values map[u32]map[string]string) map[u32]map[s
 }
 
 fn promote_scoped_type_metadata(mut tc types.TypeChecker) {
-	tc.runtime_type_indexes = tc.runtime_type_indexes.clone()
-	// Transform and specialization can grow these maps inside a disposable arena,
-	// so move both their storage and string payloads before releasing that arena.
-	tc.fn_ret_type_texts = tc.fn_ret_type_texts.clone_owned()
-	tc.fn_param_type_texts = tc.fn_param_type_texts.clone_owned()
-	tc.fn_generic_params = clone_string_list_map(tc.fn_generic_params)
-	tc.mut_receiver_methods = clone_string_bool_map(tc.mut_receiver_methods)
-	tc.c_variadic_fns = clone_string_bool_map(tc.c_variadic_fns)
-	tc.fn_implicit_veb_ctx = clone_string_bool_map(tc.fn_implicit_veb_ctx)
-	tc.promote_scoped_declaration_visibility()
-	tc.fn_type_files = clone_string_string_map(tc.fn_type_files)
-	tc.fn_type_modules = clone_string_string_map(tc.fn_type_modules)
-	tc.structs = clone_struct_field_map(tc.structs)
-	tc.struct_modules = clone_string_string_map(tc.struct_modules)
-	tc.struct_files = clone_string_string_map(tc.struct_files)
-	tc.soa_structs = clone_string_bool_map(tc.soa_structs)
-	tc.declared_type_scope_keys = clone_string_bool_map(tc.declared_type_scope_keys)
-	tc.struct_error_embeds_shadow_builtin =
-		clone_string_bool_map(tc.struct_error_embeds_shadow_builtin)
-	tc.struct_generic_params = clone_string_list_map(tc.struct_generic_params)
-	tc.struct_implements = tc.struct_implements.clone_owned()
-	tc.struct_shared_fields = clone_type_owner_field_flags(tc.struct_shared_fields)
-	tc.struct_shared_element_fields = clone_type_owner_field_flags(tc.struct_shared_element_fields)
-	tc.struct_field_c_abi_fns = clone_type_owner_c_abi_fields(tc.struct_field_c_abi_fns)
-	tc.unions = clone_string_bool_map(tc.unions)
-	tc.params_structs = clone_string_bool_map(tc.params_structs)
-	tc.c_typedef_structs = clone_string_bool_map(tc.c_typedef_structs)
-	tc.type_alias_generic_params = clone_string_list_map(tc.type_alias_generic_params)
-	tc.type_alias_c_abi_fns = clone_string_string_map(tc.type_alias_c_abi_fns)
-	tc.sum_types = tc.sum_types.clone_owned()
-	tc.sum_generic_params = clone_string_list_map(tc.sum_generic_params)
-	tc.enum_names = clone_string_bool_map(tc.enum_names)
-	tc.enum_fields = clone_string_list_map(tc.enum_fields)
-	tc.flag_enums = clone_string_bool_map(tc.flag_enums)
-	tc.interface_names = clone_string_bool_map(tc.interface_names)
-	tc.interface_generic_params = clone_string_list_map(tc.interface_generic_params)
-	tc.interface_fields = clone_struct_field_map(tc.interface_fields)
-	tc.interface_embeds = tc.interface_embeds.clone_owned()
-	tc.interface_abstract_methods = clone_string_list_map(tc.interface_abstract_methods)
+	tc.clone_transform_metadata_owned()
 }
 
 fn promote_scoped_checker_node_caches(mut tc types.TypeChecker, a &flat.FlatAst, scope voidptr, generated_start int, rewritten_base_nodes []int) {
@@ -12554,6 +12818,34 @@ pub fn run(args []string) {
 	if large_cold_cache_bypass {
 		trace_v3_cache_fallback('persisted large source graph bypasses cache setup')
 	}
+	mut unchanged_build_cache_dir := ''
+	mut unchanged_build_cache_key := ''
+	mut unchanged_build_source_files := []string{}
+	unchanged_build_cache_enabled := backend == 'c' && explicit_output && !should_run
+		&& !c_only && !is_o && !is_shared && !is_test_command && !is_debug && !race
+		&& !show_cc && !show_c_output && !keep_c && dump_files == ''
+		&& v3_unchanged_build_cache_opted_in(no_cache)
+		&& (cache_enabled || large_cold_cache_bypass
+			|| os.getenv(v3_internal_restart_env) == '1'
+			|| os.getenv('V3CACHE') != '')
+	if unchanged_build_cache_enabled {
+		unchanged_build_cache_dir = v3_unchanged_build_cache_root(prefs.vroot)
+		unchanged_build_cache_key = v3_unchanged_build_key(prefs, c_compiler, bin_file)
+		if v3_restore_unchanged_build(unchanged_build_cache_dir, unchanged_build_cache_key,
+			bin_file) {
+			if os.getenv('V3_CACHE_TRACE') != '' {
+				eprintln('  V3 unchanged build cache hit')
+			}
+			b.step('cache lookup')
+			for stage in ['parse', 'check', 'markused', 'transform', 'annotate types', 'monomorphize',
+				'cgen', 'cc'] {
+				b.step('${stage} (cached)')
+			}
+			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+			b.print_report()
+			return
+		}
+	}
 	persistent_program_cache := persistent_program_cache_enabled(cache_enabled, is_test_command
 		|| is_v3_test_file(input_file, backend, target), os.vtmp_dir())
 	// TinyCC compiles the program unit faster than a cached plan of it can be
@@ -13166,6 +13458,14 @@ pub fn run(args []string) {
 	b.metric('AST children after parse', a.children.len, 'edges')
 	b.metric('canonical AST texts', a.text_count(), 'texts')
 	b.metric('persistent worker threads', a.worker_count(), 'threads')
+	if unchanged_build_cache_enabled {
+		mut source_set := map[string]bool{}
+		for _, file in a.source_files {
+			source_set[a.real_source_path(file.name)] = true
+		}
+		unchanged_build_source_files = source_set.keys()
+		unchanged_build_source_files.sort()
+	}
 
 	crun_may_reuse := (is_crun || is_direct_vsh) && should_run && !explicit_output
 	refresh_project_flags := v3_cache_refresh_project_flags() or {
@@ -13193,8 +13493,10 @@ pub fn run(args []string) {
 		preprocessing_flags << user_c_flags
 		preprocessing_flags << cgen.cache_directive_flags(a, prefs.vroot, prefs.target, prefs.compile_values)
 		mbedtls_expansion := if cache_state.manager.enabled {
+			// Probe with the actual executable path. `effective_c_compiler` can be
+			// the symbolic family name `tinyc`, which is not executable.
 			v3_preprocess_bundled_mbedtls_headers(&native_inputs, a, prefs, preprocessing_flags,
-				effective_c_compiler, c_compiler_explicit, '')
+				c_compiler, c_compiler_explicit, '')
 		} else {
 			V3NativeInputExpansion{}
 		}
@@ -13321,7 +13623,8 @@ pub fn run(args []string) {
 		&& cache_state.parsed_from_source.len == 0
 		&& v3_files_keep_identities(user_files, user_file_identities)
 		&& prepare_v3_cache_external_inputs(mut cache_state, &native_inputs, &native_closure) {
-		program_executable_input = v3_cgen_cache_input(cache_state, user_files, cache_c_flags)
+		program_executable_input = v3_cgen_cache_input(a, cache_state, user_files, cache_c_flags,
+			prefs.vroot)
 		program_executable_input_ready = true
 		if cached_executable := cache_state.manager.valid_program_executable(program_executable_input.source_files,
 			program_executable_input.generation_signature, program_executable_input.dependency_inputs,
@@ -13370,7 +13673,7 @@ pub fn run(args []string) {
 		input := if program_executable_input_ready {
 			program_executable_input
 		} else {
-			v3_cgen_cache_input(cache_state, user_files, cache_c_flags)
+			v3_cgen_cache_input(a, cache_state, user_files, cache_c_flags, prefs.vroot)
 		}
 		cgen_cache_commit_exists = cache_state.manager.has_cgen_commit(input.source_files)
 		if entry := cache_state.manager.valid_cgen(input.source_files, input.generation_signature, input.dependency_inputs) {
@@ -14871,7 +15174,8 @@ pub fn run(args []string) {
 			base_specialized_fns := a.specialized_fn_nodes.len
 			monomorph_scope := prealloc_scope_begin_for_v3()
 			monomorph_used_fns, monomorph_errors, generated_monomorph_specs = transform.monomorphize_with_used_checked_config_scoped_cached(mut a, &pre_tc, monomorph_input_used, !current_no_parallel
-				&& should_parallel_monomorphize(), monomorph_scope, cached_monomorph_specs, true)
+				&& should_parallel_monomorphize(), monomorph_scope,
+				cached_monomorph_specs, true)
 			prealloc_scope_leave_for_v3(monomorph_scope)
 			// The monomorphizer publishes rewritten and appended node text after
 			// its final worker merge while all worker arenas are still live.
@@ -14909,7 +15213,8 @@ pub fn run(args []string) {
 			prealloc_scope_free_for_v3(monomorph_scope)
 		} else {
 			monomorph_used_fns, monomorph_errors, generated_monomorph_specs = transform.monomorphize_with_used_checked_config_scoped_cached(mut a, &pre_tc, monomorph_input_used, !current_no_parallel
-				&& should_parallel_monomorphize() && !incremental_cache_hit, unsafe { nil }, cached_monomorph_specs, true)
+				&& should_parallel_monomorphize() && !incremental_cache_hit,
+				unsafe { nil }, cached_monomorph_specs, true)
 		}
 		texts_canonical_after_annotation = true
 		// Monomorphization publishes every synthesized or rewritten AST string
@@ -15275,7 +15580,7 @@ pub fn run(args []string) {
 			''
 		}
 		incremental_known_declarations := incremental_c_declarations + '\n' + incremental_cached_support
-		cached_program_cleanup := if generic_cache_hit {
+		cached_program_cleanup := if generic_cache_hit && generic_cache_entry.prefix.len > 0 {
 			prefix := os.read_file(generic_cache_entry.prefix) or {
 				eprintln('error reading cached program prefix ${generic_cache_entry.prefix}: ${err.msg()}')
 				cleanup_c_build_dir(cc_dir)
@@ -15510,15 +15815,24 @@ pub fn run(args []string) {
 			}
 		}
 		if incremental_cache_hit {
-			changed_source := os.read_file(cache_plan_file) or {
-				eprintln('error reading incremental C source ${cache_plan_file}: ${err.msg()}')
+			incremental_source_path := if cache_plan_file.len > 0 {
+				cache_plan_file
+			} else {
+				cc_src
+			}
+			changed_source := os.read_file(incremental_source_path) or {
+				eprintln('error reading incremental C source ${incremental_source_path}: ${err.msg()}')
 				cleanup_c_build_dir(cc_dir)
 				exit(1)
 			}
-			cached_prefix := os.read_file(generic_cache_entry.prefix) or {
-				eprintln('error reading incremental cached prefix ${generic_cache_entry.prefix}: ${err.msg()}')
-				cleanup_c_build_dir(cc_dir)
-				exit(1)
+			cached_prefix := if generic_cache_entry.prefix.len > 0 {
+				os.read_file(generic_cache_entry.prefix) or {
+					eprintln('error reading incremental cached prefix ${generic_cache_entry.prefix}: ${err.msg()}')
+					cleanup_c_build_dir(cc_dir)
+					exit(1)
+				}
+			} else {
+				''
 			}
 			merged_cached_source := merge_incremental_program_body(incremental_cached_body, cached_prefix, changed_source, incremental_changed_keys) or {
 				os.setenv('V3_CACHE_DISABLE_INCREMENTAL', '1', true)
@@ -15527,8 +15841,8 @@ pub fn run(args []string) {
 			}
 			merged_source :=
 				modulecache.materialize_cached_body_string_definitions(merged_cached_source)
-			os.write_file(cache_plan_file, merged_source) or {
-				eprintln('error writing merged incremental C source ${cache_plan_file}: ${err.msg()}')
+			os.write_file(incremental_source_path, merged_source) or {
+				eprintln('error writing merged incremental C source ${incremental_source_path}: ${err.msg()}')
 				cleanup_c_build_dir(cc_dir)
 				exit(1)
 			}
@@ -16128,7 +16442,7 @@ pub fn run(args []string) {
 				// The three plans below are published for the same inputs: hash the
 				// interfaces and the native inputs of the modules once.
 				published_cache_input := if program_cache_enabled {
-					v3_cgen_cache_input(cache_state, user_files, cache_c_flags)
+					v3_cgen_cache_input(a, cache_state, user_files, cache_c_flags, prefs.vroot)
 				} else {
 					V3CgenCacheInput{}
 				}
@@ -16261,7 +16575,8 @@ pub fn run(args []string) {
 				prefix_object := compile_v3_program_object('prefix', prepared_cache.program_prefix_source, prefix_source_identity, v3_program_external_input_paths(&cache_state), &cache_state.manager, c_standard, opt_flag, pic_flag, warning_flags, cached_object_c_flags, needs_objective_c, target_args, prefs.target, c_compiler, mut c_object_cache_stats) or {
 					message := err.msg()
 					restart_v3_without_restored_incremental_program(incremental_cache_restored, &cache_state.manager,
-						v3_cgen_cache_input(cache_state, user_files, cache_c_flags).source_files, cc_dir, 'program prefix')
+						v3_cgen_cache_input(a, cache_state, user_files, cache_c_flags,
+							prefs.vroot).source_files, cc_dir, 'program prefix')
 					if request_macos_v3_c_error_fallback_from_message(macos_v3_fallback_file, macos_v3_c_error_dir, c_compiler, message, [
 						published_c_source,
 						cache_plan_file,
@@ -16338,7 +16653,8 @@ pub fn run(args []string) {
 			cached_program_main_object = compile_v3_program_object('main', program_main_source, program_main_identity, v3_program_external_input_paths(&cache_state), &cache_state.manager, c_standard, '', pic_flag, warn_args.join(' '), cached_object_c_flags, needs_objective_c, target_args, prefs.target, c_compiler, mut c_object_cache_stats) or {
 				message := err.msg()
 				restart_v3_without_restored_incremental_program(incremental_cache_restored, &cache_state.manager,
-					v3_cgen_cache_input(cache_state, user_files, cache_c_flags).source_files, cc_dir, 'program main')
+					v3_cgen_cache_input(a, cache_state, user_files, cache_c_flags,
+						prefs.vroot).source_files, cc_dir, 'program main')
 				if request_macos_v3_c_error_fallback_from_message(macos_v3_fallback_file, macos_v3_c_error_dir, c_compiler, message, [
 					published_c_source,
 					cache_plan_file,
@@ -16931,7 +17247,8 @@ Please install the corresponding development package/libraries and make sure the
 				program_link_inputs.unknown = 'an input is named relative to the directory of the output'
 			}
 			if !program_executable_input_ready {
-				program_executable_input = v3_cgen_cache_input(cache_state, user_files, cache_c_flags)
+				program_executable_input = v3_cgen_cache_input(a, cache_state, user_files, cache_c_flags,
+					prefs.vroot)
 			}
 			// A build that took its C from the plan of an earlier one did not check
 			// the program: what that build said about it is in the plan.
@@ -16966,6 +17283,14 @@ Please install the corresponding development package/libraries and make sure the
 			os.rm(cache_full_tcc_source) or {}
 			os.rm(retained_full_c_source) or {}
 			cleanup_c_build_dir(cc_dir)
+		}
+		if unchanged_build_cache_enabled {
+			if !v3_publish_unchanged_build_from_ast(unchanged_build_cache_dir,
+				unchanged_build_cache_key, bin_file, a, unchanged_build_source_files,
+				&native_inputs)
+				&& os.getenv('V3_CACHE_TRACE') != '' {
+				eprintln('  V3 unchanged build cache publish failed')
+			}
 		}
 		wait_release_threads()
 		b.step(if tcc_cache_hit {
@@ -18749,8 +19074,8 @@ fn trace_v3_cache_fallback(reason string) {
 	}
 }
 
-fn should_restart_v3_large_cold_cache(cache_enabled bool, scoped_prealloc bool, node_count int, cgen_hit bool, generic_hit bool, incremental_hit bool) bool {
-	return cache_enabled && scoped_prealloc && node_count >= scoped_large_cold_cache_node_limit
+fn should_restart_v3_large_cold_cache(cache_enabled bool, _scoped_prealloc bool, node_count int, cgen_hit bool, generic_hit bool, incremental_hit bool) bool {
+	return cache_enabled && node_count >= scoped_large_cold_cache_node_limit
 		&& !cgen_hit && !generic_hit && !incremental_hit
 }
 
