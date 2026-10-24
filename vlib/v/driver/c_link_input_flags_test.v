@@ -482,3 +482,46 @@ fn test_joined_languages_match_separated_driver_decisions() {
 	assert !c_flags_need_objective_c(['-Xlinker', '-xobjective-c', 'source.c'])
 	assert !c_link_flags_use_cpp_language(['-xc++', '-xnone', 'source.c'])
 }
+
+fn test_mingw_links_its_own_runtime_statically_after_the_program_libraries() {
+	for c_compiler in ['gcc', 'clang', 'mingw'] {
+		for is_shared in [false, true] {
+			plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+				target_os:     'windows'
+				c_compiler:    c_compiler
+				is_shared:     is_shared
+				dependencies:  ['-lws2_32', 'support.o']
+				link_ld_flags: ['-lmylib']
+			})
+			args := plan.compiler_args('out.exe', ['main.c'], [])
+			// The driver adds winpthread and the other runtime libraries after the last
+			// argument, where they come from static archives.
+			assert args.last() == '-Wl,-Bstatic', c_compiler
+			assert args.index('-lws2_32') < args.index('-Wl,-Bstatic')
+			assert args.index('-lmylib') < args.index('-Wl,-Bstatic')
+		}
+	}
+	for options in [
+		V3CCompilerFlagOptions{
+			target_os:  'windows'
+			c_compiler: 'msvc'
+		},
+		V3CCompilerFlagOptions{
+			target_os:  'windows'
+			c_compiler: 'tinyc'
+			is_tcc:     true
+		},
+		V3CCompilerFlagOptions{
+			target_os:  'windows'
+			c_compiler: 'gcc'
+			is_o:       true
+		},
+		V3CCompilerFlagOptions{
+			target_os:  'linux'
+			c_compiler: 'gcc'
+		},
+	] {
+		plan := v3_c_compiler_flag_plan(options)
+		assert '-Wl,-Bstatic' !in plan.compiler_args('out', ['main.c'], [])
+	}
+}
