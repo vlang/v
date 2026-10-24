@@ -262,6 +262,14 @@ static inline void macos_objc_msg_void_point(void* obj, void* sel, macos_point p
 	((void (*)(void*, void*, macos_point))objc_msgSend)(obj, sel, point);
 }
 
+static inline void macos_objc_msg_void_point_id(void* obj, void* sel, macos_point point, void* a1) {
+	((void (*)(void*, void*, macos_point, void*))objc_msgSend)(obj, sel, point, a1);
+}
+
+static inline macos_point macos_objc_msg_point_id(void* obj, void* sel, void* a0) {
+	return ((macos_point (*)(void*, void*, void*))objc_msgSend)(obj, sel, a0);
+}
+
 static inline void macos_objc_msg_void_id_sel_id_id(void* obj, void* sel, void* a0, void* a1, void* a2, void* a3) {
 	((void (*)(void*, void*, void*, void*, void*, void*))objc_msgSend)(obj, sel, a0, a1, a2, a3);
 }
