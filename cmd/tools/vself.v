@@ -672,6 +672,28 @@ fn compile_with_pgo(vroot string, vexe string, args []string, out_binary string,
 			return false
 		}
 	}
+	if self_build_trains_fastc(effective_self_build_args(args))
+		&& os.is_executable(os.join_path(vroot, 'thirdparty', 'tcc', 'tcc.exe')) {
+		// Including FastC in the generated compiler does not execute its backend.
+		// Train it too, while retaining the normal C backend's profile above.
+		mut fastc_training_args := with_output_arg(training_args, os.join_path(pgo_workspace,
+			'cmd_v_fastc_training.c'))
+		fastc_training_args << ['-b', 'fastc', '-no-memory-limit']
+		fastc_training_cmd := 'env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE V_MACOS_V3_NO_FALLBACK=1 ' +
+			compose_v_cmd(pgo_binary, fastc_training_args, full_v_cli_source)
+		run_cmd(fastc_training_cmd) or {
+			eprintln('PGO step failed while generating the FastC profiling data.')
+			eprintln(err.msg())
+			return false
+		}
+		if !no_parallel && os.getenv('VJOBS') != '1' {
+			run_cmd('env VJOBS=1 ${fastc_training_cmd}') or {
+				eprintln('PGO step failed while generating the serial FastC profiling data.')
+				eprintln(err.msg())
+				return false
+			}
+		}
+	}
 	if cc_kind == 'clang' {
 		merge_cmd := '${os.quoted_path(llvm_profdata)} merge -output=${os.quoted_path(profile_data)} ${os.quoted_path(profile_dir)}'
 		run_cmd(merge_cmd) or {
@@ -690,6 +712,22 @@ fn compile_with_pgo(vroot string, vexe string, args []string, out_binary string,
 		eprintln('PGO step failed while building the final compiler binary.')
 		eprintln(err.msg())
 		return false
+	}
+	return true
+}
+
+fn self_build_trains_fastc(args []string) bool {
+	for i, arg in args {
+		if arg == '-old-compiler' {
+			return false
+		}
+		if arg in ['-d', '-define'] && i + 1 < args.len
+			&& args[i + 1].all_before('=').trim_space() == 'skip_fastc' {
+			return false
+		}
+		if arg.starts_with('-d') && arg.len > 2 && arg[2..].all_before('=') == 'skip_fastc' {
+			return false
+		}
 	}
 	return true
 }

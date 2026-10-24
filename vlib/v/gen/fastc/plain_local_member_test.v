@@ -121,7 +121,7 @@ fn test_fastc_plain_local_direct_members_reject_special_storage_and_receivers() 
 		assert !g.is_plain_local_direct_member(fastc_plain_member_tokens(name, 'count'))
 	}
 	mut values := fastc_plain_member_tokens('value', 'count')
-	values[0] = FastcExpressionToken{ ...values[0], source: '__rendered' }
+	values[0] = FastcExpressionToken{ ...values[0], source: fastc_token_source('__rendered') }
 	assert !g.is_plain_local_direct_member(values)
 	values = fastc_plain_member_tokens('value', 'count')
 	values[0] = FastcExpressionToken{ ...values[0], typ: flat.source_type_id('Leaf') }

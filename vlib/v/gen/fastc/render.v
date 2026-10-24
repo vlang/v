@@ -484,7 +484,7 @@ fn (g &Parser) render_embedded_map_reads(tokens []FastcExpressionToken) ?FastcRe
 							rewritten << FastcExpressionToken{
 								tok:    .name
 								lit:    read.source
-								source: read.source
+								source: fastc_token_source(read.source)
 								typ:    read.typ
 							}
 							i = close + 1
@@ -499,7 +499,7 @@ fn (g &Parser) render_embedded_map_reads(tokens []FastcExpressionToken) ?FastcRe
 						rewritten << FastcExpressionToken{
 							tok:    .name
 							lit:    array_read.source
-							source: array_read.source
+							source: fastc_token_source(array_read.source)
 							typ:    array_read.typ
 						}
 						i = close + 1
@@ -915,7 +915,7 @@ fn (g &Parser) render_selfhost_print_expression(tokens []FastcExpressionToken) ?
 	} else {
 		argument
 	}
-	method_c_name := g.c_function_name_or(method_key, fastc_method_c_name(signature.module_name, expected_receiver, 'str'))
+	method_c_name := g.c_method_name(method_key, signature.module_name, expected_receiver, 'str')
 	string_value := '${method_c_name}(${receiver_argument})'
 	return FastcRenderedExpression{
 		source: 'builtin__${tokens[0].lit}(${string_value})'
@@ -1475,7 +1475,7 @@ fn (g &Parser) render_overloaded_assignment(target string, value string, target_
 	if signature.parameter_types.ids.len < 2 || signature.is_disabled {
 		return none
 	}
-	method_name := g.c_function_name_or(method_key, fastc_method_c_name(signature.module_name, signature.parameter_types.at(0), operator))
+	method_name := g.c_method_name(method_key, signature.module_name, signature.parameter_types.at(0), operator)
 	return '({ ${target_type} *__vf_overloaded_assignment_target = &(${target}); *__vf_overloaded_assignment_target = ${method_name}(*__vf_overloaded_assignment_target,${value}); })'
 }
 
@@ -1707,7 +1707,7 @@ fn (g &Parser) render_overloaded_comparison_expression(left_tokens []FastcExpres
 	argument := g.render_call_argument_expression(argument_tokens, signature.parameter_types.ids[1]) or {
 		return none
 	}
-	method_c_name := g.c_function_name_or(method_key, fastc_method_c_name(signature.module_name, signature.parameter_types.at(0), method_operator))
+	method_c_name := g.c_method_name(method_key, signature.module_name, signature.parameter_types.at(0), method_operator)
 	call := '${method_c_name}(${receiver},${argument})'
 	return FastcRenderedExpression{
 		source: if negate { '!(${call})' } else { call }
@@ -1906,7 +1906,7 @@ fn (g &Parser) plain_numeric_arithmetic_expression(tokens []FastcExpressionToken
 	mut depth := 0
 	mut has_binary := false
 	for i, item in tokens {
-		if item.source != '' || item.is_mut_argument {
+		if item.has_source() || item.is_mut_argument {
 			return false
 		}
 		match item.tok {
@@ -1990,7 +1990,7 @@ fn fastc_primitive_comparisons_have_no_overloads(functions map[string]FastcFunct
 // comparison needs no overloaded, boxed, string, enum or mixed-sign lowering.
 fn (g &Parser) plain_primitive_comparison_expression(tokens []FastcExpressionToken) bool {
 	if tokens.len != 3 || tokens[1].tok !in [.eq, .ne, .lt, .le, .gt, .ge]
-		|| tokens[1].source != '' || tokens[1].is_mut_argument || tokens[1].typ != 0
+		|| tokens[1].has_source() || tokens[1].is_mut_argument || tokens[1].typ != 0
 		|| !g.primitive_cmps_builtin || !g.selfhost || g.translated
 		|| g.member_smartcasts.len > 0 || g.in_mono_drain || g.in_generic_placeholder {
 		return false
@@ -1999,7 +1999,7 @@ fn (g &Parser) plain_primitive_comparison_expression(tokens []FastcExpressionTok
 	mut right_type := u32(0)
 	for index := 0; index < 3; index += 2 {
 		item := tokens[index]
-		if item.source != '' || item.is_mut_argument { return false }
+		if item.has_source() || item.is_mut_argument { return false }
 		mut typ := u32(0)
 		match item.tok {
 			.name {
@@ -2056,7 +2056,7 @@ fn (g &Parser) plain_primitive_member_comparison_expression(tokens []FastcExpres
 		return false
 	}
 	for item in tokens {
-		if item.source != '' || item.is_mut_argument || item.is_statement
+		if item.has_source() || item.is_mut_argument || item.is_statement
 			|| item.is_capturing_closure || item.is_storage || item.chan_element_type != 0
 			|| item.option_value_type != 0 {
 			return false
@@ -2463,7 +2463,7 @@ fn (g &Parser) render_overloaded_binary_expression(tokens []FastcExpressionToken
 	right := g.render_call_argument_expression(right_tokens, signature.parameter_types.ids[1]) or {
 		return none
 	}
-	method_c_name := g.c_function_name_or(method_key, fastc_method_c_name(signature.module_name, signature.parameter_types.at(0), operator))
+	method_c_name := g.c_method_name(method_key, signature.module_name, signature.parameter_types.at(0), operator)
 	return FastcRenderedExpression{
 		source: '${method_c_name}(${left},${right})'
 		typ:    signature.return_type
@@ -3001,11 +3001,46 @@ fn (g &Parser) render_logical_expression(tokens []FastcExpressionToken) ?FastcRe
 	}
 }
 
+fn (g &Parser) equality_operator_key(typ u32) ?string {
+	method_key := g.method_function_key(typ, '==')
+	if signature := g.functions[method_key] {
+		if !signature.is_disabled && signature.parameter_types.ids.len >= 2 {
+			return method_key
+		}
+	}
+	return none
+}
+
+// Array elements and nested struct fields honor the same equality overload as direct values.
+fn (g &Parser) overloaded_stored_equality_source(left string, right string, typ u32, depth int) ?string {
+	method_key := g.equality_operator_key(typ) or { return none }
+	signature := g.functions[method_key]
+	method_name := g.c_function_name_or(method_key, fastc_method_c_name(signature.module_name,
+		signature.parameter_types.at(0), '=='))
+	left_value := '__vf_overloaded_eq_left_${depth}'
+	right_value := '__vf_overloaded_eq_right_${depth}'
+	left_argument := if fastc_is_pointer_type(signature.parameter_types.ids[0]) {
+		'&${left_value}'
+	} else {
+		left_value
+	}
+	right_argument := if fastc_is_pointer_type(signature.parameter_types.ids[1]) {
+		'&${right_value}'
+	} else {
+		right_value
+	}
+	value_type := flat.source_type_name(typ)
+	return '({ ${value_type} ${left_value} = (${left}); ${value_type} ${right_value} = (${right}); ${method_name}(${left_argument}, ${right_argument}); })'
+}
+
 fn (g &Parser) struct_equality_is_supported(typ u32, seen []u32) bool {
 	if fastc_is_pointer_type(g.underlying_alias_type(typ)) {
 		return true
 	}
 	layout_type := flat.source_type_id(fastc_trim_pointer_suffix(flat.source_type_name(g.underlying_alias_type(typ))))
+	if _ := g.equality_operator_key(layout_type) {
+		return true
+	}
 	if layout_type == flat.source_type_string || layout_type == flat.source_type_bool || fastc_is_numeric_expression_type(layout_type) {
 		return true
 	}
@@ -3080,6 +3115,9 @@ fn (g &Parser) struct_equality_source(left string, right string, typ u32, seen [
 	}
 	if layout_type == flat.source_type_bool || fastc_is_numeric_expression_type(layout_type) {
 		return '((${left}) == (${right}))'
+	}
+	if overloaded := g.overloaded_stored_equality_source(left, right, layout_type, depth) {
+		return overloaded
 	}
 	if element_type_source_id := fastc_fixed_array_element_type(layout_type) {
 		element_type := element_type_source_id
@@ -3529,7 +3567,7 @@ fn (g &Parser) rewrite_embedded_as_casts(tokens []FastcExpressionToken) ?[]Fastc
 			mut next := result[..i].clone()
 			next << FastcExpressionToken{
 				tok:    .name
-				source: rendered.source
+				source: fastc_token_source(rendered.source)
 				typ:    rendered.typ
 			}
 			next << result[end..]
@@ -3802,7 +3840,7 @@ fn (g &Parser) render_nil_comparison(tokens []FastcExpressionToken) ?FastcRender
 						literal := g.render_struct_literal_expression(value_tokens[..literal_end + 1]) or { return none }
 						mut member_tokens := [FastcExpressionToken{
 							tok:    .name
-							source: '(${literal.source})'
+							source: fastc_token_source('(${literal.source})')
 							typ:    literal.typ
 						}]
 						member_tokens << value_tokens[literal_end + 1..]
@@ -4448,7 +4486,7 @@ fn (g &Parser) is_plain_aggregate_value_type(typ u32) bool {
 // render_selfhost_scalar_call_argument skips collection and coercion dispatch
 // for primitive literals and exact-type local values with ordinary by-value storage.
 fn (g &Parser) render_selfhost_scalar_call_argument(tokens []FastcExpressionToken, expected_type u32) ?string {
-	if !g.selfhost || expected_type == 0 || tokens.len != 1 || tokens[0].source != '' {
+	if !g.selfhost || expected_type == 0 || tokens.len != 1 || tokens[0].has_source() {
 		return none
 	}
 	is_scalar := fastc_simple_call_scalar_type(expected_type)
@@ -4562,7 +4600,7 @@ fn (g &Parser) render_call_argument_expression(tokens []FastcExpressionToken, ex
 			}
 		}
 	}
-	if tokens.len == 1 && tokens[0].source != '' {
+	if tokens.len == 1 && tokens[0].has_source() {
 		// A pre-rendered value (e.g. an interpolation) passed where a `voidptr` is expected (a
 		// map `.delete(key)` / generic argument) must still be boxed to a pointer, exactly as the
 		// non-synthetic path below does; otherwise a struct value is passed where `void*` is wanted.
@@ -4571,16 +4609,16 @@ fn (g &Parser) render_call_argument_expression(tokens []FastcExpressionToken, ex
 			'nil'] && !fastc_is_pointer_type(g.underlying_alias_type(tokens[0].typ))
 			&& !g.is_function_value_type(tokens[0].typ) {
 			actual := fastc_normalize_inferred_type(g.underlying_alias_type(tokens[0].typ))
-			return '({ ${flat.source_type_name(actual)} __vf_generic_argument = (${tokens[0].source}); v_fastc_interface_box(&__vf_generic_argument, sizeof(${flat.source_type_name(actual)})); })'
+			return '({ ${flat.source_type_name(actual)} __vf_generic_argument = (${tokens[0].source_text()}); v_fastc_interface_box(&__vf_generic_argument, sizeof(${flat.source_type_name(actual)})); })'
 		}
 		// An if/match-expression argument was pre-rendered to a ternary during streaming with the
 		// call-argument expected type cleared, so its branches may still hold raw `.member` enum
 		// shorthands (`f(if c { .arrow } else { .dot })`). The parameter enum type is only known
 		// here, so resolve them now.
-		if g.selfhost && tokens[0].source.contains('.') {
+		if g.selfhost && tokens[0].source_text().contains('.') {
 			enum_key := g.semantic_type_key(expected_type_source_id)
 			if g.declared_kinds[flat.source_type_name(enum_key)] == .enum_ {
-				return fastc_resolve_enum_shorthands_in_source(tokens[0].source, fastc_c_declared_type_name(flat.source_type_name(enum_key)), g.enum_field_names[flat.source_type_name(enum_key)])
+				return fastc_resolve_enum_shorthands_in_source(tokens[0].source_text(), fastc_c_declared_type_name(flat.source_type_name(enum_key)), g.enum_field_names[flat.source_type_name(enum_key)])
 			}
 		}
 		// Pre-rendered option fallbacks still need the ordinary implicit borrow
@@ -4588,10 +4626,10 @@ fn (g &Parser) render_call_argument_expression(tokens []FastcExpressionToken, ex
 		actual := fastc_normalize_inferred_type(tokens[0].typ)
 		if g.selfhost && expected_type.ends_with('*') && actual != flat.source_type_voidptr
 			&& expected_type == flat.source_type_name(actual) + '*' {
-			return g.value_address_expression(actual, tokens[0].source, tokens)
+			return g.value_address_expression(actual, tokens[0].source_text(), tokens)
 		}
 		// Other pre-rendered values already have the required representation.
-		return tokens[0].source
+		return tokens[0].source_text()
 	}
 	if g.selfhost && expected_type.starts_with('FixedArray_') && expected_type.ends_with('*')
 		&& tokens.len > 1 && tokens[0].tok == .amp {
@@ -4952,7 +4990,7 @@ fn (g &Parser) render_selfhost_simple_array_literal_item(tokens []FastcExpressio
 	if !g.selfhost || expected_type in ['Option', '__v_result', 'voidptr'] {
 		return none
 	}
-	if tokens.len == 4 && tokens[0].tok == .name && tokens[1].tok == .lpar && tokens[3].tok == .rpar && tokens[2].source == '' {
+	if tokens.len == 4 && tokens[0].tok == .name && tokens[1].tok == .lpar && tokens[3].tok == .rpar && !tokens[2].has_source() {
 		cast_type := fastc_primitive_c_type(tokens[0].lit) or { return none }
 		if cast_type != expected_type.trim_right('*') || expected_type.ends_with('*') {
 			return none
@@ -4962,7 +5000,7 @@ fn (g &Parser) render_selfhost_simple_array_literal_item(tokens []FastcExpressio
 		}
 		return '((${fastc_output_c_type(cast_type)})(${inner}))'
 	}
-	if tokens.len != 1 || tokens[0].source != '' {
+	if tokens.len != 1 || tokens[0].has_source() {
 		return none
 	}
 	item := tokens[0]
@@ -5047,7 +5085,7 @@ fn (g &Parser) render_method_value_expression(tokens []FastcExpressionToken) ?st
 	if signature.parameter_types.ids.len == 0 {
 		return none
 	}
-	method_c_name := g.c_function_name_or(method_key, fastc_method_c_name(signature.module_name, signature.parameter_types.at(0), tokens.last().lit))
+	method_c_name := g.c_method_name(method_key, signature.module_name, signature.parameter_types.at(0), tokens.last().lit)
 	return '&${method_c_name}'
 }
 
@@ -5656,7 +5694,7 @@ fn (g &Parser) append_value_borrows_storage(expression []FastcExpressionToken, i
 		return false
 	}
 	if tokens.len == 1 {
-		return tokens[0].tok == .name && (tokens[0].source == '' || tokens[0].is_storage)
+		return tokens[0].tok == .name && (!tokens[0].has_source() || tokens[0].is_storage)
 	}
 	if tokens[0].tok == .mul {
 		return fastc_is_pointer_type(g.underlying_alias_type(g.infer_expression_type(tokens[1..]) or { u32(0) }))
@@ -6140,7 +6178,7 @@ fn (g &Parser) render_propagation_before_member(tokens []FastcExpressionToken) ?
 				value := g.render_option_propagation(inner[..inner.len - 1]) or { return none }
 				mut chained := [FastcExpressionToken{
 					tok:    .name
-					source: '(${value.source})'
+					source: fastc_token_source('(${value.source})')
 					typ:    value.typ
 				}]
 				chained << tokens[close + 1..]
@@ -6168,7 +6206,7 @@ fn (g &Parser) render_propagation_before_member(tokens []FastcExpressionToken) ?
 					}
 					synth := FastcExpressionToken{
 						tok:    .name
-						source: '(${unwrapped.source})'
+						source: fastc_token_source('(${unwrapped.source})')
 						typ:    unwrapped.typ
 					}
 					mut chained := [synth]
@@ -6250,12 +6288,12 @@ fn (g &Parser) render_method_receiver_expression(tokens []FastcExpressionToken) 
 		}
 	}
 	receiver_type := g.infer_expression_type(tokens) or { return none }
-	if tokens.len == 1 && tokens[0].source != '' {
+	if tokens.len == 1 && tokens[0].has_source() {
 		// A pre-rendered synthetic receiver (e.g. an `or {}`-unwrap `({ ... })` used as
 		// `expr or { ... }.method()`) carries its full rendered form as its `source`;
 		// use it directly so the method call binds to it.
 		return FastcRenderedExpression{
-			source: tokens[0].source
+			source: tokens[0].source_text()
 			typ:    receiver_type
 		}
 	}
@@ -6620,11 +6658,11 @@ fn (g &Parser) render_member_receiver(tokens []FastcExpressionToken) ?string {
 		i = call_close + 1
 	} else if tokens[0].tok != .name {
 		return none
-	} else if tokens[0].source != '' {
+	} else if tokens[0].has_source() {
 		// A synthetic base token (an `x()?`-unwrap folded upstream: `get()!.field`) carries its C
 		// spelling and type in `.source`/`.typ_text()`, not `.lit`; use them so the member chain reads from
 		// the real unwrapped value instead of an empty base.
-		source = tokens[0].source
+		source = tokens[0].source_text()
 		current_type = tokens[0].typ
 	} else {
 		source = g.resolved_expression_name(tokens[0].lit, .unknown)

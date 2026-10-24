@@ -480,7 +480,7 @@ fn (g &Parser) infer_local_direct_member_type(tokens []FastcExpressionToken, sta
 	}
 	for i in start .. end {
 		item := tokens[i]
-		if item.source != '' || item.is_mut_argument || item.is_statement
+		if item.has_source() || item.is_mut_argument || item.is_statement
 			|| item.is_capturing_closure || item.is_storage || item.chan_element_type != 0
 			|| item.option_value_type != 0 {
 			return u32(0)
@@ -530,7 +530,11 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 					// A bare local narrowed by `x is T` reads as the concrete variant.
 					smartcast.typ
 				} else if local := g.locals[item.lit] {
-					g.narrowed_numeric_operand_type(tokens[start..end], local.typ)
+					if local.is_reference && local.smartcast_origin_type != 0 {
+						g.narrowed_numeric_operand_type(tokens[start..end], local.typ)
+					} else {
+						local.typ
+					}
 				} else {
 					g.nonlocal_name_type(item.lit)
 				}

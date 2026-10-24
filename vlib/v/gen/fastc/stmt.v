@@ -66,7 +66,7 @@ fn (mut g Parser) parse_block_body() !bool {
 }
 
 fn (g &Parser) statement_starts_label() bool {
-	if g.tok != .name {
+	if g.tok != .name || !g.next_source_byte_may_be(`:`) {
 		return false
 	}
 	mut look := g.s

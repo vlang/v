@@ -9,7 +9,7 @@ fn (g &Parser) render_raw_local_direct_member(tokens []FastcExpressionToken) ?st
 		return none
 	}
 	for item in tokens {
-		if item.source != '' || item.is_mut_argument { return none }
+		if item.has_source() || item.is_mut_argument { return none }
 	}
 	root := tokens[0].lit
 	if root == 'C' || root.starts_with('@') { return none }

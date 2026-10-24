@@ -76,10 +76,10 @@ fn (g &Parser) render_struct_literal_field_value(value_tokens []FastcExpressionT
 			is_fixed_array:   true
 		}
 	}
-	value := if value_tokens.len == 1 && value_tokens[0].source != '' {
+	value := if value_tokens.len == 1 && value_tokens[0].has_source() {
 		// A field value carried as a pre-rendered `({ ... })` (e.g. an `or`-unwrap) is used
 		// directly so its internal temporaries stay self-contained.
-		value_tokens[0].source
+		value_tokens[0].source_text()
 	} else {
 		g.render_call_argument_expression(value_tokens, expected_type_source_id) or { return none }
 	}
