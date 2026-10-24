@@ -6,7 +6,7 @@ import v.pref
 
 // fastc_program_output translates `source` (a `module main` program) with the
 // selfhost FastC path, compiles the C with `cc` and returns what the program
-// printed to stdout and stderr.
+// printed to stdout and stderr, merged.
 fn fastc_program_output(name string, source string) string {
 	root := os.join_path(os.vtmp_dir(), 'fastc_${name}_${os.getpid()}')
 	os.mkdir_all(root) or { panic(err) }
@@ -25,7 +25,7 @@ fn fastc_program_output(name string, source string) string {
 	os.write_file(c_file, c_source) or { panic(err) }
 	build := cmdexec.run('cc', ['-std=gnu11', '-w', '-o', program, c_file, '-lm'])
 	assert build.exit_code == 0, build.output
-	run := cmdexec.run(program, [])
+	run := cmdexec.run_in_merged(program, [], root)
 	assert run.exit_code == 0, run.output
 	return run.output
 }
@@ -94,6 +94,51 @@ fn main() {
 		'[]&Point',
 		'map[string][]Point',
 		'[2][3]u8',
+		'',
+	].join('\n')
+	assert output == expected, output
+}
+
+// `eprint`/`eprintln` print any value, as `print`/`println` do, to stderr.
+fn test_fastc_eprint_prints_non_strings_to_stderr() {
+	$if !macos && !linux {
+		return
+	}
+	output := fastc_program_output('eprint', 'module main
+
+enum Color {
+	red
+	green
+}
+
+struct Point {
+	x int
+}
+
+fn main() {
+	eprintln(5)
+	eprintln(1.5)
+	eprint(true)
+	eprintln("")
+	eprintln([1, 2])
+	eprintln(Point{3})
+	eprintln(Color.green)
+	eprint(Color.red)
+	eprintln("")
+	println("stdout")
+}
+')
+	expected := [
+		'5',
+		'1.5',
+		'true',
+		'[1, 2]',
+		'Point{',
+		'    x: 3',
+		'}',
+		'green',
+		'red',
+		'stdout',
 		'',
 	].join('\n')
 	assert output == expected, output

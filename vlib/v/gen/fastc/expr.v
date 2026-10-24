@@ -490,7 +490,7 @@ fn (mut g Parser) try_read_simple_call_expression(stops []token.Token, allow_mut
 	if !g.selfhost || g.translated || g.tok != .name || g.tok in stops
 		|| g.s.line_directives || g.s.in_str_incomplete || g.s.in_str_inter
 		|| g.s.str_parent_quotes.len != 0 || g.lit.starts_with('@')
-		|| g.lit in ['C', 'print', 'println', 'typeof', 'dump', 'sql'] {
+		|| g.lit in ['C', 'print', 'println', 'eprint', 'eprintln', 'typeof', 'dump', 'sql'] {
 		return FastcAtomicExpression{}
 	}
 	mut offset := g.s.offset
@@ -5884,7 +5884,8 @@ fn (g &Parser) render_special_expression_impl(tokens []FastcExpressionToken, ren
 			return disabled_call
 		}
 	}
-	is_print := tokens.len >= 4 && tokens[0].tok == .name && tokens[0].lit in ['print', 'println']
+	is_print := tokens.len >= 4 && tokens[0].tok == .name
+		&& tokens[0].lit in ['print', 'println', 'eprint', 'eprintln']
 	if is_print {
 		if !g.selfhost && (has_lsbr || has_membership) {
 			if collection_print := g.render_ordinary_collection_print_expression(tokens) {

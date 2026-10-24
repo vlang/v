@@ -788,7 +788,12 @@ fn (g &Parser) render_ordinary_string_print_expression(tokens []FastcExpressionT
 }
 
 fn (g &Parser) render_enum_print_expression(tokens []FastcExpressionToken) ?FastcRenderedExpression {
-	if tokens.len < 4 || tokens[0].tok != .name || tokens[0].lit !in ['print', 'println'] || tokens[1].tok != .lpar || tokens.last().tok != .rpar {
+	if tokens.len < 4 || tokens[0].tok != .name || tokens[1].tok != .lpar || tokens.last().tok != .rpar {
+		return none
+	}
+	// `eprint`/`eprintln` exist only in the real builtin of the selfhost path.
+	to_stderr := tokens[0].lit in ['eprint', 'eprintln']
+	if tokens[0].lit !in ['print', 'println'] && !(to_stderr && g.selfhost) {
 		return none
 	}
 	call_end := fastc_matching_rpar(tokens, 1) or { return none }
@@ -804,6 +809,12 @@ fn (g &Parser) render_enum_print_expression(tokens []FastcExpressionToken) ?Fast
 	enum_key := g.underlying_enum_type_key(flat.source_type_name(type_key)) or { return none }
 	c_type := fastc_c_declared_type_name(enum_key)
 	argument := g.render_call_argument_expression(call_arguments[0], flat.source_type_id(c_type)) or { return none }
+	if to_stderr {
+		return FastcRenderedExpression{
+			source: 'builtin__${tokens[0].lit}(v_fastc_enum_str_${c_type}(${argument}))'
+			typ:    flat.source_type_void
+		}
+	}
 	return FastcRenderedExpression{
 		source: 'v_fastc_print_enum_${c_type}(${argument}, ${if tokens[0].lit == 'println' {
 			'true'
@@ -870,6 +881,8 @@ fn (g &Parser) render_selfhost_print_expression(tokens []FastcExpressionToken) ?
 	if !g.selfhost || tokens.len < 4 || tokens[0].tok != .name || tokens[0].lit !in [
 		'print',
 		'println',
+		'eprint',
+		'eprintln',
 	] || tokens[1].tok != .lpar || tokens.last().tok != .rpar {
 		return none
 	}
