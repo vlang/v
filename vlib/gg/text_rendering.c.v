@@ -246,11 +246,11 @@ pub fn (ctx &Context) draw_text(x int, y int, text_ string, cfg TextCfg) {
 	$if macos {
 		if ctx.native_rendering {
 			if cfg.align == align_right {
-				width := C.darwin_text_width_with_cfg(text_, cfg)
+				width := darwin_text_width_with_cfg(text_, cfg)
 				// println('draw text ctx.height = ${ctx.height}')
-				C.darwin_draw_string(x - width, ctx.height - y, text_, cfg)
+				darwin_draw_string(x - width, ctx.height - y, text_, cfg)
 			} else {
-				C.darwin_draw_string(x, ctx.height - y, text_, cfg)
+				darwin_draw_string(x, ctx.height - y, text_, cfg)
 			}
 			return
 		}
@@ -291,7 +291,7 @@ fn (ctx &Context) text_metrics(s string) (f32, [4]f32) {
 pub fn (ctx &Context) text_width(s string) int {
 	$if macos {
 		if ctx.native_rendering {
-			return C.darwin_text_width(s)
+			return darwin_text_width(s)
 		}
 	}
 	// ctx.set_text_cfg(cfg) TODO
@@ -326,7 +326,7 @@ pub fn (ctx &Context) text_size(s string) (int, int) {
 pub fn (ctx &Context) text_width_f(s string) f32 {
 	$if macos {
 		if ctx.native_rendering {
-			return C.darwin_text_width(s)
+			return darwin_text_width(s)
 		}
 	}
 	// ctx.set_text_cfg(cfg) TODO
