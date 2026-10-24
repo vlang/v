@@ -2349,7 +2349,9 @@ fn (t &Transformer) interface_box_fn_literal_return_type(id flat.NodeId, node fl
 			return return_type
 		}
 	}
-	if node.kind == .fn_literal && node.typ != 0 {
+	// The interface prescan has no lexical locals. Generated typeof witnesses
+	// are resolved when lowering their enclosing function, before specialization.
+	if node.kind == .fn_literal && node.typ != 0 && !inferred_type_id(node.typ) {
 		return *t.tc.parse_type(node.typ)
 	}
 	return none
@@ -16423,6 +16425,11 @@ fn (t &Transformer) canonical_generic_specialization_args(args_ids []u32) []u32 
 }
 
 fn (t &Transformer) canonical_generic_specialization_arg(arg_id u32) u32 {
+	if inferred_type_id(arg_id) {
+		resolved := t.resolve_inferred_type_id(arg_id)
+		if resolved != arg_id { return t.canonical_generic_specialization_arg(resolved) }
+		return arg_id
+	}
 	clean_id := t.trimmed_type_id(arg_id)
 	clean_comparison_type_id_4 := clean_id
 	clean := flat.source_type_name(clean_comparison_type_id_4)
@@ -16907,7 +16914,7 @@ fn is_generic_fn_placeholder_name(typ string) bool {
 fn (t &Transformer) generic_args_have_placeholders(args_ids []u32) bool {
 	if t.skip_generics { return false }
 	for arg_id in args_ids {
-		if t.generic_arg_is_unresolved(arg_id) { return true }
+		if inferred_type_id(arg_id) || t.generic_arg_is_unresolved(arg_id) { return true }
 	}
 	return false
 }
