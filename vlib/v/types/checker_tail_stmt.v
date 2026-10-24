@@ -2693,11 +2693,16 @@ fn (mut tc TypeChecker) record_constant_match_condition(subject_id flat.NodeId, 
 		tc.constant_comparison_value(subject_id, cond_id, .eq) or { return }
 	}
 	cond := tc.a.node(cond_id)
-	tc.record_notice_at(.condition_mismatch, if value {
-		'match is always true'
-	} else {
-		'match is always false'
-	}, cond_id, cond.pos)
+	// Same test-file rationale as in record_constant_condition_diagnostics:
+	// constant match branches in tests are usually deliberate. The
+	// self-comparison warning below is kept.
+	if !is_regular_v_test_file(tc.cur_file) {
+		tc.record_notice_at(.condition_mismatch, if value {
+			'match is always true'
+		} else {
+			'match is always false'
+		}, cond_id, cond.pos)
+	}
 	if value && has_following_branch && tc.same_simple_comparison_expr(subject_id, cond_id) {
 		tc.record_warning_at(.condition_mismatch, 'self-comparison match branch is always true; following branches may be unreachable', cond_id, cond.pos)
 	}
