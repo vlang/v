@@ -9263,6 +9263,7 @@ pub fn (mut tc TypeChecker) check_main_module_requirement(is_shared bool) {
 	mut first_module_id := flat.NodeId(-1)
 	mut first_module_file := ''
 	mut has_main := false
+	mut has_export := false
 	mut has_postinclude := false
 	for node in tc.a.nodes {
 		if node.kind == .directive && node.value == 'postinclude' {
@@ -9276,7 +9277,19 @@ pub fn (mut tc TypeChecker) check_main_module_requirement(is_shared bool) {
 			tc.enter_file(node.value)
 			continue
 		}
-		if node.kind != .module_decl || tc.cur_file !in tc.diagnostic_files {
+		if tc.cur_file !in tc.diagnostic_files {
+			continue
+		}
+		if node.kind == .fn_decl {
+			// A program that exports functions is a library for C code, so it needs
+			// no `main`. Only its own exports count: builtin exports C functions that
+			// musl lacks (`backtrace`, `data_start`), and so does stbi.
+			if !has_export && tc.is_exported_fn(tc.cur_module, node.value) {
+				has_export = true
+			}
+			continue
+		}
+		if node.kind != .module_decl {
 			continue
 		}
 		if int(first_module_id) < 0 {
@@ -9287,7 +9300,7 @@ pub fn (mut tc TypeChecker) check_main_module_requirement(is_shared bool) {
 			has_main = true
 		}
 	}
-	if has_main || has_postinclude || int(first_module_id) < 0
+	if has_main || has_export || has_postinclude || int(first_module_id) < 0
 		|| tc.translated_files[first_module_file] {
 		return
 	}
@@ -14078,6 +14091,13 @@ fn is_c_backend_test_file(path string) bool {
 
 fn is_regular_v_test_file(path string) bool {
 	return path.ends_with('_test.v') || path.ends_with('_test.vv')
+}
+
+// is_exported_fn reports whether the function `name` declared in `module_name` has
+// an `@[export]` attribute, looked up the way the export checks look it up.
+fn (tc &TypeChecker) is_exported_fn(module_name string, name string) bool {
+	return export_qualified_fn_name(module_name, name) in tc.a.export_fn_names
+		|| '${module_name}.${name}' in tc.a.export_fn_names
 }
 
 fn export_qualified_fn_name(module_name string, name string) string {
