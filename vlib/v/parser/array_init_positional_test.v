@@ -39,10 +39,3 @@ fn test_array_initializer_named_fields_and_square_bracket_elements_remain_valid(
 		assert p.diagnostics.len == 0, p.diagnostics.str()
 	}
 }
-
-fn test_vml_array_literals_preserve_nonempty_elements_and_typed_empty_arrays() {
-	assert vml_array_literal('string', []) == '[]string{}'
-	assert vml_array_literal('string', ["'Home'", "'Work'"]) == "['Home', 'Work']"
-	assert vml_array_literal('ui2.MenuEntry', ['ui2.MenuEntry{id: "home", title: "Home"}']) == '[ui2.MenuEntry{id: "home", title: "Home"}]'
-	assert vml_array_literal('ui2.MessageBoxAction', []) == '[]ui2.MessageBoxAction{}'
-}

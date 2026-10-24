@@ -16741,6 +16741,9 @@ pub fn type_text_contains_typeof(s string) bool {
 @[inline]
 pub fn (tc &TypeChecker) parse_type(source_id u32) &Type {
 	if tc.type_param_texts.ids.len > 0 {
+		if resolved := tc.resolved_inferred_type(source_id) {
+			return tc.parse_type(resolved)
+		}
 		return tc.intern_type_reference(tc.parse_type_as_instance(source_id))
 	}
 	// Recursive aliases must observe the active expansion chain before memoization.
@@ -16764,6 +16767,9 @@ pub fn (tc &TypeChecker) parse_type(source_id u32) &Type {
 }
 
 fn (tc &TypeChecker) parse_type_miss(source_id u32) &Type {
+	if resolved := tc.resolved_inferred_type(source_id) {
+		return tc.parse_type(resolved)
+	}
 	if tc.type_cache != unsafe { nil } && tc.type_cache.parse_enabled {
 		mut cache := unsafe { tc.type_cache }
 		// Only a miss needs source spelling bytes. typeof depends on expression scope.
@@ -16821,6 +16827,12 @@ pub fn (tc &TypeChecker) parse_type_ref(text_id u32) &Type {
 }
 
 fn (tc &TypeChecker) parse_type_ref_miss(text_id u32) &Type {
+	// `typeof(expr)` types depend on lexical bindings, unlike ordinary
+	// canonical type texts. Collection may see them before those locals exist,
+	// so they never enter the text-ID cache.
+	if inferred_type_source(text_id) {
+		return tc.parse_type(text_id)
+	}
 	mut cache := unsafe { tc.type_cache }
 	if cache.parse_text_ids.len == 0 {
 		cache.parse_text_id_context = []u64{len: 4096}
@@ -18065,12 +18077,80 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 	})
 }
 
+// inferred_type_source reports whether an interned spelling holds a
+// `typeof(expr)` type annotation. The shape check keeps other spellings byte-free.
+@[inline]
+fn inferred_type_source(source_id u32) bool {
+	return flat.source_type_shape(source_id).has(.typeof_expr)
+		&& flat.source_type_name(source_id).contains('typeof(__expr_')
+}
+
+// resolved_inferred_type returns a `typeof(expr)` annotation with its
+// expressions resolved, or none when the spelling has none or none resolve.
+fn (tc &TypeChecker) resolved_inferred_type(source_id u32) ?u32 {
+	if !inferred_type_source(source_id) {
+		return none
+	}
+	typ := flat.source_type_name(source_id)
+	resolved := tc.resolve_inferred_type_text(typ)
+	if resolved == typ {
+		return none
+	}
+	return flat.source_type_id(resolved)
+}
+
+// `typeof(expr)` annotations can infer array items and nested generic payloads.
+// Resolve the expression before generic specialization records concrete names.
+pub fn (tc &TypeChecker) resolve_inferred_type_text(typ string) string {
+	mut result := typ
+	mut offset := 0
+	for offset < result.len {
+		start := result[offset..].index('typeof(__expr_') or { break } + offset
+		end := result[start..].index(')') or { break } + start + 1
+		annotation := result[start..end]
+		value := tc.type_from_typeof_type_text(annotation) or { break }
+		if value is Unknown { break }
+		name := value.name()
+		if name == annotation { break }
+		result = result[..start] + name + result[end..]
+		offset = start + name.len
+	}
+	return result
+}
+
 fn (tc &TypeChecker) type_from_typeof_type_text(typ string) ?Type {
 	clean := trimmed_space(typ)
 	if !clean.starts_with('typeof(') || !clean.ends_with(')') {
 		return none
 	}
 	inner := trimmed_space(clean[7..clean.len - 1])
+	if inner.starts_with('__expr_') {
+		expression_id := flat.NodeId(inner.all_after('__expr_').int())
+		if int(expression_id) >= 0 && int(expression_id) < tc.a.nodes.len {
+			// `typeof(expr)` closure annotations have ordinary inferred V expression
+			// types. Resolve in the lexical closure scope without evaluating it.
+			// Transformer records the concrete source witness as owned AST text.
+			// Parse in the current phase; never publish a scratch-arena Type into
+			// the original source-node cache from transform.
+			witness_id := tc.a.nodes[int(expression_id)].typ
+			witness := flat.source_type_name(witness_id)
+			if witness.len > 0 && !witness.contains('typeof(__expr_') && witness !in [
+				'array',
+				'unknown',
+				'void',
+			] {
+				return tc.parse_resolution_type(witness_id)
+			}
+			// Type witnesses are detached from the generated executable body.
+			// Resolve them in the current lexical scope before a checked cache exists.
+			value := tc.expr_type(expression_id) or { tc.resolve_type(expression_id) }
+			if value is Void || value is Unknown || type_contains_unknown(value) || value.name().contains('typeof(__expr_') {
+				return none
+			}
+			return value
+		}
+		return none
+	}
 	if inner.len == 0 {
 		return none
 	}
