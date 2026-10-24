@@ -2,7 +2,7 @@
 // Use of this source code is governed by an MIT license found in the LICENSE file.
 // Generated from Unicode 15.0.0, matching encoding.utf8's letter tables.
 // Source: https://www.unicode.org/Public/15.0.0/ucd/UnicodeData.txt
-// Regenerate with testdata/gen_json5_unicode.py; see its usage instructions.
+// Unicode table generated; regeneration tooling removed (was Python).
 module json2
 
 // Nl completes ECMAScript UnicodeLetter alongside utf8.is_letter's L categories.

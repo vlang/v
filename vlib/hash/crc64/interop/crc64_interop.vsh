@@ -38,35 +38,18 @@ fn run_c_checksum(ref_bin string, data []u8) !u64 {
 	return u64(result_str.parse_uint(16, 64)!)
 }
 
-fn run_python_checksum(dir string, data []u8) !u64 {
-	ref_py := os.join_path(dir, 'crc64_ref.py')
-	hex_str := data.hex()
-	cmd := 'python3 "${ref_py}" checksum ${hex_str}'
-	result := os.exec(['python3', '${ref_py}', 'checksum', '${hex_str}'])
-	if result.exit_code != 0 {
-		return error('Python helper failed: ${result.output}')
-	}
-
-	result_str := result.output.trim_space()
-	return u64(result_str.parse_uint(16, 64)!)
-}
-
-fn test_vector(name string, data []u8, ref_bin string, dir string) ! {
+fn test_vector(name string, data []u8, ref_bin string) ! {
 	// V checksum
 	v_sum := crc64.sum(data)
 
 	// C checksum
 	c_sum := run_c_checksum(ref_bin, data)!
 
-	// Python checksum
-	py_sum := run_python_checksum(dir, data)!
-
 	// All must match
-	if v_sum != c_sum || v_sum != py_sum {
+	if v_sum != c_sum {
 		eprintln('FAIL: ${name}')
 		eprintln('  V:      0x${v_sum:016x}')
 		eprintln('  C:      0x${c_sum:016x}')
-		eprintln('  Python: 0x${py_sum:016x}')
 		return error('checksum mismatch')
 	}
 
@@ -109,7 +92,7 @@ fn main() {
 	vectors << TestVector{'large_payload', ('test data '.repeat(1000)).bytes()}
 
 	for vec in vectors {
-		test_vector(vec.name, vec.data, ref_bin, dir) or {
+		test_vector(vec.name, vec.data, ref_bin) or {
 			eprintln('  Error: ${err}')
 			failed++
 			continue
