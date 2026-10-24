@@ -20392,7 +20392,13 @@ fn (mut tc TypeChecker) check_generic_method_value(id flat.NodeId, node flat.Nod
 	tc.check_generic_method_value_constraints(id, node, info.name)
 	// The generic method it names, for markused and the monomorphization.
 	tc.remember_resolved_call(id, info.name)
-	return Type(tc.variadic_fn_type(info.params[1..], tc.intern_type_reference(info.return_type), []bool{}, info.is_variadic))
+	// The receiver is bound, so its mutability is dropped with it.
+	mutability := tc.declaration_param_mutability_for(info.name)
+	return Type(tc.variadic_fn_type(info.params[1..], tc.intern_type_reference(info.return_type), if mutability.len > 0 {
+		mutability[1..]
+	} else {
+		mutability
+	}, info.is_variadic))
 }
 
 // check_generic_method_value_constraints checks the type arguments of the
@@ -20452,7 +20458,7 @@ fn (tc &TypeChecker) explicit_generic_fn_value_type(node flat.Node) ?Type {
 		return none
 	}
 	info := tc.explicit_generic_call_info(name, false, type_args_source_ids) or { return none }
-	return Type(tc.variadic_fn_type(info.params, tc.intern_type_reference(info.return_type), []bool{}, info.is_variadic))
+	return Type(tc.variadic_fn_type(info.params, tc.intern_type_reference(info.return_type), tc.declaration_param_mutability_for(info.name), info.is_variadic))
 }
 
 fn range_slice_alias_type(base_type Type) ?Type {
