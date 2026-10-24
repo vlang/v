@@ -20335,9 +20335,10 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 		lhs_type := if unknown_assign_ident {
 			builtin_void_type
 		} else if node.kind == .index_assign {
-			tc.resolve_index_lvalue_type(lhs_id, node.op)
+			tc.compound_assignment_lvalue_type(lhs_id, node.op, tc.resolve_index_lvalue_type(lhs_id,
+				node.op))
 		} else {
-			tc.resolve_lvalue_type(lhs_id)
+			tc.compound_assignment_lvalue_type(lhs_id, node.op, tc.resolve_lvalue_type(lhs_id))
 		}
 		if lhs_node.kind == .selector && lhs_type is Void && lhs_node.children_count > 0 {
 			base_id := tc.a.child(&lhs_node, 0)
@@ -20724,9 +20725,10 @@ fn (mut tc TypeChecker) check_valid_assign(id flat.NodeId, node flat.Node) {
 		lhs_id := tc.a.child(&node, i)
 		rhs_id := tc.a.child(&node, i + 1)
 		lhs_type := if node.kind == .index_assign {
-			tc.resolve_index_lvalue_type(lhs_id, node.op)
+			tc.compound_assignment_lvalue_type(lhs_id, node.op, tc.resolve_index_lvalue_type(lhs_id,
+				node.op))
 		} else {
-			tc.resolve_lvalue_type(lhs_id)
+			tc.compound_assignment_lvalue_type(lhs_id, node.op, tc.resolve_lvalue_type(lhs_id))
 		}
 		tc.remember_expr_type(lhs_id, lhs_type)
 		source_rhs_type := tc.resolve_type(rhs_id)

@@ -1043,7 +1043,9 @@ fn (tc &TypeChecker) translated_array_element_types_match(actual &Type, expected
 }
 
 // assignment_preserves_smartcast reports whether assigning `rhs_id` to `lhs_id`
-// with operator `op` leaves the active narrowing of `lhs_id` in force.
+// with operator `op` leaves the active narrowing of `lhs_id` in force. A compound
+// assignment (`x += 1`) stores a value of the variant it operated on (see
+// compound_assignment_lvalue_type).
 fn (tc &TypeChecker) assignment_preserves_smartcast(op flat.Op, lhs_id flat.NodeId, rhs_id flat.NodeId, rhs_type &Type) bool {
 	if tc.smartcasts.len == 0 {
 		return false
@@ -1053,7 +1055,8 @@ fn (tc &TypeChecker) assignment_preserves_smartcast(op flat.Op, lhs_id flat.Node
 		return false
 	}
 	smartcast := tc.smartcasts[key] or { return false }
-	if tc.assigned_value_keeps_narrowing(rhs_id, rhs_type, smartcast) {
+	if compound_assignment_infix_op(op) != none
+		|| tc.assigned_value_keeps_narrowing(rhs_id, rhs_type, smartcast) {
 		return true
 	}
 	return tc.assignment_rhs_mutates_same_smartcast_lhs(lhs_id, rhs_id, rhs_type, smartcast)
@@ -1098,6 +1101,9 @@ fn (tc &TypeChecker) narrowed_sum_assignment_expected_type(op flat.Op, lhs_id fl
 // smartcast queries and the transform use this to end a narrowing exactly where
 // checking ended it.
 pub fn (tc &TypeChecker) assignment_keeps_narrowing(op flat.Op, lhs_id flat.NodeId, rhs_id flat.NodeId, narrowed Type) bool {
+	if compound_assignment_infix_op(op) != none {
+		return true
+	}
 	if op != .assign {
 		return false
 	}
@@ -1908,6 +1914,17 @@ fn (tc &TypeChecker) lvalue_root_ident(id flat.NodeId) ?flat.NodeId {
 		return tc.lvalue_root_ident(tc.a.child(&node, 0))
 	}
 	return none
+}
+
+// compound_assignment_lvalue_type is the type a compound assignment (`x += 1`)
+// operates on. A sum type value narrowed by `is` or `match` reads and writes its
+// variant there, as `x++` and `x = x + 1` do, so the operator is checked on the
+// variant. A plain `=` keeps the declared type: it may store another variant.
+fn (tc &TypeChecker) compound_assignment_lvalue_type(lhs_id flat.NodeId, op flat.Op, lhs_type Type) Type {
+	if op == .assign || unalias_and_unwrap_pointer_type(lhs_type) !is SumType {
+		return lhs_type
+	}
+	return tc.smartcast_type(lhs_id) or { lhs_type }
 }
 
 fn (tc &TypeChecker) assignment_expected_type(lhs_id flat.NodeId, lhs_type Type) Type {

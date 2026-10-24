@@ -16446,15 +16446,21 @@ fn (mut t Transformer) transform_lvalue_without_smartcast(id flat.NodeId) flat.N
 
 // assignment_preserves_smartcast reports whether assigning `rhs_id` to `lhs_id` with
 // operator `op` leaves the narrowing of `lhs_id` in force. The checker decides
-// (see types.TypeChecker.assignment_keeps_narrowing): the assignment of a value of
-// the narrowed type (`x = 5` in `if mut x is int`) keeps it, so later reads use the
-// variant the checker typed them with.
+// (see types.TypeChecker.assignment_keeps_narrowing): a compound assignment
+// (`x += 1`) and the assignment of a value of the narrowed type (`x = 5` in
+// `if mut x is int`) keep it, so later reads use the variant the checker typed them
+// with.
 fn (t &Transformer) assignment_preserves_smartcast(op flat.Op, lhs_id flat.NodeId, rhs_id flat.NodeId) bool {
 	key := t.expr_key(lhs_id)
 	if key.len == 0 {
 		return false
 	}
 	sc := t.find_smartcast(key) or { return false }
+	if op in [.plus_assign, .minus_assign, .mul_assign, .div_assign, .mod_assign, .amp_assign,
+		.pipe_assign, .xor_assign, .left_shift_assign, .right_shift_assign,
+		.right_shift_unsigned_assign, .power_assign] {
+		return true
+	}
 	if op != .assign || int(rhs_id) < 0 {
 		return false
 	}
