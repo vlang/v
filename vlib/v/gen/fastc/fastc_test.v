@@ -6454,14 +6454,14 @@ fn main() {
 	println(auto + v_auto)
 }
 ', 'reserved_identifiers.v', prefs) or { panic(err) }
-	assert c_source.contains('int __vf_keyword_auto;'), c_source
-	assert c_source.contains('int v_auto;'), c_source
-	assert c_source.contains('int calculate(Holder holder, int __vf_keyword_register, int v_register)'), c_source
-	assert c_source.contains('__typeof__((__vf_keyword_register)) __vf_keyword_restrict = (__vf_keyword_register);'), c_source
-	assert c_source.contains('__typeof__((v_register)) v_restrict = (v_register);'), c_source
+	assert c_source.contains('${fastc_platform_int_c_type} __vf_keyword_auto;'), c_source
+	assert c_source.contains('${fastc_platform_int_c_type} v_auto;'), c_source
+	assert c_source.contains('${fastc_platform_int_c_type} main__calculate(Holder holder, ${fastc_platform_int_c_type} __vf_keyword_register, ${fastc_platform_int_c_type} v_register)'), c_source
+	assert c_source.contains('${fastc_platform_int_c_type} __vf_keyword_restrict = (__vf_keyword_register);'), c_source
+	assert c_source.contains('${fastc_platform_int_c_type} v_restrict = (v_register);'), c_source
 	assert c_source.contains('return holder.__vf_keyword_auto+holder.v_auto+__vf_keyword_restrict+v_restrict;'), c_source
-	assert c_source.contains('int __vf_function_auto(void)'), c_source
-	assert c_source.contains('int v_auto(void)'), c_source
+	assert c_source.contains('${fastc_platform_int_c_type} main__auto(void)'), c_source
+	assert c_source.contains('${fastc_platform_int_c_type} main__v_auto(void)'), c_source
 	assert c_source.contains(' __vf_keyword_auto = (result);'), c_source
 	assert c_source.contains(' v_auto = (v_result);'), c_source
 
