@@ -450,7 +450,7 @@ fn (mut g FlatGen) string_literals_from(start int) {
 		// and give back a `_SL` macro that an included C header defined.
 		g.writeln('#pragma push_macro("_SL")')
 		g.writeln('#undef _SL')
-		g.writeln('#define _SL(id, s, n) static const string id = {s, n, 1}')
+		g.writeln('#define _SL(id, s, n) static const string id = {(u8*)s, n, 1}')
 	}
 	if g.cache_split {
 		mut literals := g.str_lits[start..].clone()
