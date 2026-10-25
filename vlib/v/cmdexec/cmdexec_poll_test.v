@@ -29,7 +29,7 @@ fn test_cmdexec_owned_poll_can_coexist_with_application_poll_bindings() {
 	defer { os.rmdir_all(root) or {} }
 	// Unsuffixed source lets V supply the complete headerless C record layout.
 	source := os.join_path(root, 'main.v')
-	os.write_file(source, '#flag -lc\nimport v.cmdexec\nstruct C.pollfd { fd i32 events i16 revents i16 }\n$if macos || ios || freebsd || openbsd || dragonfly || android || termux { fn C.poll(fds &C.pollfd, nfds u32, timeout i32) i32 } $else { fn C.poll(fds &C.pollfd, nfds usize, timeout i32) i32 }\nfn main() {\n mut descriptor := C.pollfd{fd: -1, events: 1}\n assert C.poll(&descriptor, 1, 0) == 0\n assert cmdexec.run_with_timeout("sh", ["-c", "sleep 0.01; echo OK"], 5000).exit_code == 0\n println("OK")\n}\n')!
+	os.write_file(source, '#flag -lc\nimport v.cmdexec\nstruct C.pollfd { fd i32 events i16 revents i16 }\n$if macos || ios || freebsd || openbsd || dragonfly || android || termux { fn C.poll(fds &C.pollfd, nfds u32, timeout i32) i32 } $else { fn C.poll(fds &C.pollfd, nfds uint, timeout i32) i32 }\nfn main() {\n mut descriptor := C.pollfd{fd: -1, events: 1}\n assert C.poll(&descriptor, 1, 0) == 0\n assert cmdexec.run_with_timeout("sh", ["-c", "sleep 0.01; echo OK"], 5000).exit_code == 0\n println("OK")\n}\n')!
 	mut compilers := ['cc']
 	$if macos || linux {
 		compilers << 'tcc'

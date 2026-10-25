@@ -104,7 +104,7 @@ fn test_basic_tls() {
 	}
 	tls_u64.set(5900) or { assert err.msg().contains('already destroyed') }
 
-	mut tls_isize := sync.new_tls[isize](-57000)!
+	mut tls_isize := sync.new_tls[int](-57000)!
 	assert tls_isize.get()! == -57000
 	tls_isize.set(-58000)!
 	assert tls_isize.get()! == -58000
@@ -116,7 +116,7 @@ fn test_basic_tls() {
 	}
 	tls_isize.set(-59000) or { assert err.msg().contains('already destroyed') }
 
-	mut tls_usize := sync.new_tls[usize](57000)!
+	mut tls_usize := sync.new_tls[uint](57000)!
 	assert tls_usize.get()! == 57000
 	tls_usize.set(58000)!
 	assert tls_usize.get()! == 58000
@@ -281,4 +281,13 @@ fn test_cross_thread_type() {
 	// Verify original values in main thread
 	assert int_tls.get()! == 42
 	assert f64_tls.get()! == 1.5
+}
+
+fn test_legacy_signed_tls() ! {
+	value := isize(-42)
+	mut tls := sync.new_tls(value)!
+	assert tls.get()! == value
+	tls.set(-123)!
+	assert tls.get()! == -123
+	tls.destroy()!
 }

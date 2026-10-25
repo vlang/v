@@ -1,11 +1,11 @@
 fn describe(target voidptr, format &u8, args ...voidptr) string {
-	return '${usize(target)}:${unsafe { cstring_to_vstring(format) }}:${args.len}'
+	return '${uint(target)}:${unsafe { cstring_to_vstring(format) }}:${args.len}'
 }
 
 // An argument before an `unsafe { if ... }` argument is evaluated into a temporary
 // first (source order); that temporary must stay declared before the call.
 fn test_argument_before_an_unsafe_if_value() {
-	target := voidptr(usize(7))
+	target := voidptr(uint(7))
 	mut results := []string{}
 	for cond in [true, false] {
 		if !cond {

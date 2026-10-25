@@ -1,6 +1,6 @@
 module os
 
-fn C.setvbuf(stream &C.FILE, buffer &char, mode i32, size usize) i32
+fn C.setvbuf(stream &C.FILE, buffer &char, mode i32, size uint) i32
 
 // FileBufferMode describes the available buffering modes for an os.File: unbuffered, line buffered and block/fully buffered.
 // Normally all files are block buffered. If a stream refers to a terminal (as stdout normally does), it is line buffered.
@@ -18,7 +18,7 @@ pub enum FileBufferMode {
 // Note: make sure, that the space, that buffer points to (when != 0), still exists by the time the file stream is closed, which also happens at program termination.
 // Note: f.setvbuf() may be used only after opening a file stream, and before any other operations have been performed on it.
 @[unsafe]
-pub fn (mut f File) setvbuf(buffer &char, mode FileBufferMode, size usize) int {
+pub fn (mut f File) setvbuf(buffer &char, mode FileBufferMode, size uint) int {
 	return C.setvbuf(f.cfile, buffer, int(mode), size)
 }
 
@@ -26,17 +26,17 @@ pub fn (mut f File) setvbuf(buffer &char, mode FileBufferMode, size usize) int {
 // Unlike File.setvbuf, it allows you to pass an existing V []u8 array directly.
 // Note: f.set_buffer() may be used only after opening a file stream, and before any other operations have been performed on it.
 pub fn (mut f File) set_buffer(mut buffer []u8, mode FileBufferMode) int {
-	return unsafe { f.setvbuf(buffer.data, mode, usize(buffer.len)) }
+	return unsafe { f.setvbuf(buffer.data, mode, uint(buffer.len)) }
 }
 
 // set_line_buffered sets the file buffering mode to FileBufferMode.line_buffered.
 // Note: f.set_line_buffered() may be used only after opening a file stream, and before any other operations have been performed on it.
 pub fn (mut f File) set_line_buffered() {
-	unsafe { f.setvbuf(&char(nil), .line_buffered, usize(0)) }
+	unsafe { f.setvbuf(&char(nil), .line_buffered, uint(0)) }
 }
 
 // set_unbuffered sets the file buffering mode to FileBufferMode.not_buffered.
 // Note: f.set_unbuffered() may be used only after opening a file stream, and before any other operations have been performed on it.
 pub fn (mut f File) set_unbuffered() {
-	unsafe { f.setvbuf(&char(nil), .not_buffered, usize(0)) }
+	unsafe { f.setvbuf(&char(nil), .not_buffered, uint(0)) }
 }

@@ -22,7 +22,7 @@ mut:
 const words = ['alpha'.repeat(3), 'beta'.repeat(3), 'gamma'.repeat(3), 'delta'.repeat(3)]
 
 // GC_noop1 receives stack addresses, so the buffers behind them stay in memory.
-fn C.GC_noop1(usize)
+fn C.GC_noop1(uint)
 
 @[noinline]
 fn flags(a bool, b bool) int {
@@ -73,7 +73,7 @@ fn churn() {
 fn scrub() {
 	mut buf := [4096]u8{}
 	unsafe { C.memset(&buf[0], 0, 4096) }
-	C.GC_noop1(usize(&buf[0]))
+	C.GC_noop1(uint(&buf[0]))
 }
 
 // copy_through_padding moves `h.f` into a local, clears the source and collects while
@@ -106,7 +106,7 @@ fn misaligned_slot() bool {
 	mut slot := [24]u8{}
 	mut p := new_block()
 	unsafe { C.memcpy(&slot[3], &p, sizeof(voidptr)) }
-	C.GC_noop1(usize(&slot[0]))
+	C.GC_noop1(uint(&slot[0]))
 	p = unsafe { nil }
 	gc_collect()
 	churn()

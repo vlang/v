@@ -21,8 +21,8 @@ module builtin
 // never call into this file.
 
 const arena_magic = u32(0x41524e41)
-const arena_default_chunk_size = isize(64 * 1024)
-const arena_max_chunk_size = isize(4 * 1024 * 1024)
+const arena_default_chunk_size = int(64 * 1024)
+const arena_max_chunk_size = int(4 * 1024 * 1024)
 
 // VArenaChunk is the header at the start of each arena chunk.
 struct VArenaChunk {
@@ -44,14 +44,14 @@ mut:
 	chunk          &VArenaChunk = unsafe { nil } // serves new allocations
 	last           &u8          = unsafe { nil } // the most recent allocation
 	below          &VArena      = unsafe { nil } // next arena down the thread's stack
-	chunk_size     isize // size of the next regular chunk
-	max_chunk_size isize
+	chunk_size     int // size of the next regular chunk
+	max_chunk_size int
 }
 
 struct VArenaRange {
 mut:
-	start usize
-	stop  usize
+	start uint
+	stop  uint
 	owner &VArena = unsafe { nil }
 }
 
@@ -73,8 +73,8 @@ fn C.atomic_store_ptr(voidptr, voidptr)
 // and nothing clears. Publishing g_arena_hooks_ready after installation makes
 // all three immutable hooks visible together to allocation entry points.
 __global g_arena_hooks_ready u32
-__global g_arena_alloc_hook fn (n isize, align isize) &u8
-__global g_arena_realloc_hook fn (old_data &u8, old_size isize, new_size isize) &u8
+__global g_arena_alloc_hook fn (n int, align int) &u8
+__global g_arena_realloc_hook fn (old_data &u8, old_size int, new_size int) &u8
 __global g_arena_owns_hook fn (ptr voidptr) bool
 // g_arena_top is the innermost arena pushed on the current thread. It is
 // thread-local (see `is_builtin_arena_top` in the C backend), so spawned
@@ -92,14 +92,14 @@ __global g_arena_ranges_len u32
 // arena_align is the alignment of arena allocations without an explicit one:
 // that of malloc, which is 16 bytes on 32-bit targets too.
 @[inline]
-fn arena_align() isize {
+fn arena_align() int {
 	return 16
 }
 
 @[inline]
-fn arena_chunk_header_size() isize {
+fn arena_chunk_header_size() int {
 	align := arena_align()
-	return (isize(sizeof(VArenaChunk)) + align - 1) / align * align
+	return (int(sizeof(VArenaChunk)) + align - 1) / align * align
 }
 
 @[inline]
@@ -131,13 +131,13 @@ fn arena_registry_end_write() {
 }
 
 @[inline; unsafe]
-fn arena_range_start(r &VArenaRange) usize {
-	return usize(C.atomic_load_ptr(&r.start))
+fn arena_range_start(r &VArenaRange) uint {
+	return uint(C.atomic_load_ptr(&r.start))
 }
 
 @[inline; unsafe]
-fn arena_range_stop(r &VArenaRange) usize {
-	return usize(C.atomic_load_ptr(&r.stop))
+fn arena_range_stop(r &VArenaRange) uint {
+	return uint(C.atomic_load_ptr(&r.stop))
 }
 
 @[inline; unsafe]
@@ -150,7 +150,7 @@ fn arena_range_set(mut r VArenaRange, value VArenaRange) {
 // arena_registry_upper returns the index of the first of the `len` ranges of
 // `reg` that starts after `addr`.
 @[direct_array_access; unsafe]
-fn arena_registry_upper(reg &VArenaRegistry, len int, addr usize) int {
+fn arena_registry_upper(reg &VArenaRegistry, len int, addr uint) int {
 	mut lo := 0
 	mut hi := len
 	for lo < hi {
@@ -172,26 +172,26 @@ fn arena_registry_add(owner &VArena, chunk &VArenaChunk) {
 		mut reg := g_arena_registry
 		if reg == nil || len == reg.cap {
 			new_cap := if reg == nil { 16 } else { reg.cap * 2 }
-			bytes := sizeof(VArenaRegistry) + usize(new_cap) * sizeof(VArenaRange)
+			bytes := sizeof(VArenaRegistry) + uint(new_cap) * sizeof(VArenaRange)
 			mut grown := &VArenaRegistry(C.malloc(bytes))
-			vmemory_abort_on_nil(grown, isize(bytes))
+			vmemory_abort_on_nil(grown, int(bytes))
 			grown.cap = new_cap
 			grown.ranges = &VArenaRange(&u8(grown) + sizeof(VArenaRegistry))
 			if len > 0 {
-				C.memcpy(grown.ranges, reg.ranges, usize(len) * sizeof(VArenaRange))
+				C.memcpy(grown.ranges, reg.ranges, uint(len) * sizeof(VArenaRange))
 			}
 			// The old registry is left allocated (see VArenaRegistry).
 			C.atomic_store_ptr(&g_arena_registry, grown)
 			reg = grown
 		}
-		start := usize(chunk.start)
+		start := uint(chunk.start)
 		i := arena_registry_upper(reg, len, start)
 		for j := len; j > i; j-- {
 			arena_range_set(mut reg.ranges[j], reg.ranges[j - 1])
 		}
 		arena_range_set(mut reg.ranges[i], VArenaRange{
 			start: start
-			stop:  usize(chunk.stop)
+			stop:  uint(chunk.stop)
 			owner: owner
 		})
 		C.atomic_store_u32(&g_arena_ranges_len, u32(len + 1))
@@ -205,7 +205,7 @@ fn arena_registry_remove(chunk &VArenaChunk) {
 	unsafe {
 		reg := g_arena_registry
 		len := int(g_arena_ranges_len)
-		start := usize(chunk.start)
+		start := uint(chunk.start)
 		i := arena_registry_upper(reg, len, start) - 1
 		if i >= 0 && reg.ranges[i].start == start {
 			for j in i .. len - 1 {
@@ -223,7 +223,7 @@ fn arena_registry_remove(chunk &VArenaChunk) {
 // of the registry is repeated. Its loads stay inside the registry it searches,
 // whatever a writer does meanwhile.
 @[direct_array_access; unsafe]
-fn arena_registry_find(addr usize) (&VArena, usize) {
+fn arena_registry_find(addr uint) (&VArena, uint) {
 	for {
 		seq := C.atomic_load_u32(&g_arena_seq)
 		if seq & 1 != 0 {
@@ -231,7 +231,7 @@ fn arena_registry_find(addr usize) (&VArena, usize) {
 		}
 		reg := &VArenaRegistry(C.atomic_load_ptr(&g_arena_registry))
 		mut owner := &VArena(nil)
-		mut stop := usize(0)
+		mut stop := uint(0)
 		if reg != nil {
 			mut len := int(C.atomic_load_u32(&g_arena_ranges_len))
 			if len > reg.cap {
@@ -257,8 +257,8 @@ fn arena_registry_find(addr usize) (&VArena, usize) {
 // arena_owner returns the arena that owns `ptr` (nil for any other memory) and
 // the end of the chunk that contains it.
 @[unsafe]
-fn arena_owner(ptr voidptr) (&VArena, usize) {
-	addr := usize(ptr)
+fn arena_owner(ptr voidptr) (&VArena, uint) {
+	addr := uint(ptr)
 	unsafe {
 		// Only this thread changes the arenas on its own stack, so they can be
 		// searched without the registry. They own most memory freed in a scope.
@@ -266,8 +266,8 @@ fn arena_owner(ptr voidptr) (&VArena, usize) {
 		for a != nil {
 			mut c := a.chunk
 			for c != nil {
-				if addr >= usize(c.start) && addr < usize(c.stop) {
-					return a, usize(c.stop)
+				if addr >= uint(c.start) && addr < uint(c.stop) {
+					return a, uint(c.stop)
 				}
 				c = c.prev
 			}
@@ -301,7 +301,7 @@ fn arena_chunk_release(chunk &VArenaChunk) {
 
 // arena_grow adds a chunk with room for at least `need` bytes.
 @[noinline; unsafe]
-fn arena_grow(mut a VArena, need isize) &VArenaChunk {
+fn arena_grow(mut a VArena, need int) &VArenaChunk {
 	mut size := a.chunk_size
 	if need > size {
 		size = need
@@ -317,9 +317,9 @@ fn arena_grow(mut a VArena, need isize) &VArenaChunk {
 	$if gcboehm ? {
 		// Uncollectable chunks are still scanned, so GC objects that are only
 		// referenced from arena memory stay alive.
-		mem = C.GC_MALLOC_UNCOLLECTABLE(usize(total))
+		mem = C.GC_MALLOC_UNCOLLECTABLE(uint(total))
 	} $else {
-		mem = C.malloc(usize(total))
+		mem = C.malloc(uint(total))
 	}
 	vmemory_abort_on_nil(mem, total)
 	unsafe {
@@ -335,12 +335,12 @@ fn arena_grow(mut a VArena, need isize) &VArenaChunk {
 }
 
 @[unsafe]
-fn arena_alloc(mut a VArena, n isize, align isize) &u8 {
+fn arena_alloc(mut a VArena, n int, align int) &u8 {
 	default_align := arena_align()
 	fixed_align := if align > default_align { align } else { default_align }
 	// Like malloc, fail for a size that no chunk can hold, before computing the
 	// size of that chunk overflows.
-	if usize(n) > (~usize(0) >> 1) - usize(fixed_align + arena_chunk_header_size()) {
+	if uint(n) > (~uint(0) >> 1) - uint(fixed_align + arena_chunk_header_size()) {
 		_memory_panic(@FN, n)
 	}
 	unsafe {
@@ -361,7 +361,7 @@ fn arena_alloc(mut a VArena, n isize, align isize) &u8 {
 
 // arena_alloc_current returns `n` bytes from the current thread's arena, or
 // nil when no arena is active.
-fn arena_alloc_current(n isize, align isize) &u8 {
+fn arena_alloc_current(n int, align int) &u8 {
 	mut a := g_arena_top
 	if a == unsafe { nil } {
 		return unsafe { nil }
@@ -374,7 +374,7 @@ fn arena_alloc_current(n isize, align isize) &u8 {
 // of the current arena grows in place; other arena memory is copied to the
 // current allocator and left in its arena. realloc(nil, n) allocates from the
 // current arena.
-fn arena_realloc(old_data &u8, old_size isize, new_size isize) &u8 {
+fn arena_realloc(old_data &u8, old_size int, new_size int) &u8 {
 	unsafe {
 		if old_data == nil {
 			if new_size <= 0 {
@@ -403,16 +403,16 @@ fn arena_realloc(old_data &u8, old_size isize, new_size isize) &u8 {
 			n = old_size
 		}
 		// Without the old size, copy what the chunk holds: it is mapped memory.
-		available := isize(chunk_stop - usize(old_data))
+		available := int(chunk_stop - uint(old_data))
 		if available < n {
 			n = available
 		}
 		// A new block in the same chunk starts at or after the end of the old
 		// one, so the bytes before it hold all of the old block.
-		if usize(new_ptr) > usize(old_data) && usize(new_ptr) - usize(old_data) < usize(n) {
-			n = isize(usize(new_ptr) - usize(old_data))
+		if uint(new_ptr) > uint(old_data) && uint(new_ptr) - uint(old_data) < uint(n) {
+			n = int(uint(new_ptr) - uint(old_data))
 		}
-		C.memcpy(new_ptr, old_data, usize(n))
+		C.memcpy(new_ptr, old_data, uint(n))
 		return new_ptr
 	}
 }
@@ -446,7 +446,7 @@ fn arena_release_chunks(mut a VArena, keep_one bool) {
 		if keep != nil {
 			$if gcboehm ? {
 				// Stale pointers in reused memory would keep GC objects alive.
-				C.memset(keep.start, 0, usize(i64(keep.cursor) - i64(keep.start)))
+				C.memset(keep.start, 0, uint(i64(keep.cursor) - i64(keep.start)))
 			}
 			keep.prev = nil
 			keep.cursor = keep.start
@@ -470,12 +470,12 @@ fn arena_checked(handle voidptr) &VArena {
 // v_arena_new creates an arena whose first chunk holds `chunk_size` bytes (0
 // selects 64KB). It is the low-level hook behind `arena.new()`; use that.
 @[unsafe]
-pub fn v_arena_new(chunk_size isize) voidptr {
+pub fn v_arena_new(chunk_size int) voidptr {
 	$if prealloc || vgc ?|| freestanding || vinix {
 		panic('arena: scoped arenas are not supported with -prealloc, -gc vgc, -freestanding or on Vinix')
 	}
 	mut a := unsafe { &VArena(C.calloc(1, sizeof(VArena))) }
-	vmemory_abort_on_nil(a, isize(sizeof(VArena)))
+	vmemory_abort_on_nil(a, int(sizeof(VArena)))
 	a.magic = arena_magic
 	a.chunk_size = if chunk_size > 0 { chunk_size } else { arena_default_chunk_size }
 	a.max_chunk_size = if a.chunk_size > arena_max_chunk_size {
@@ -562,7 +562,7 @@ pub fn v_arena_current() voidptr {
 
 // v_arena_stats returns the bytes handed out by an arena since its last
 // reset, and the bytes of its chunks.
-pub fn v_arena_stats(handle voidptr) (isize, isize) {
+pub fn v_arena_stats(handle voidptr) (int, int) {
 	a := arena_checked(handle)
 	mut used := i64(0)
 	mut capacity := i64(0)
@@ -572,16 +572,16 @@ pub fn v_arena_stats(handle voidptr) (isize, isize) {
 		capacity += i64(c.stop) - i64(c.start)
 		c = c.prev
 	}
-	return isize(used), isize(capacity)
+	return int(used), int(capacity)
 }
 
 // v_arena_owns reports whether `ptr` points into the memory of an arena.
 pub fn v_arena_owns(handle voidptr, ptr voidptr) bool {
 	a := arena_checked(handle)
-	addr := usize(ptr)
+	addr := uint(ptr)
 	mut c := a.chunk
 	for c != unsafe { nil } {
-		if addr >= usize(c.start) && addr < usize(c.stop) {
+		if addr >= uint(c.start) && addr < uint(c.stop) {
 			return true
 		}
 		c = c.prev

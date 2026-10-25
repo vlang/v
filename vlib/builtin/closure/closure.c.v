@@ -347,7 +347,7 @@ fn closure_slot_meta(exec_ptr voidptr) &voidptr {
 
 fn closure_register_page(exec_page_start voidptr) {
 	unsafe {
-		node := &ClosurePage(malloc(sizeof(ClosurePage)))
+		node := &ClosurePage(malloc(int(sizeof(ClosurePage))))
 		*node = ClosurePage{
 			next:            g_closure.pages
 			exec_page_start: exec_page_start
@@ -360,13 +360,13 @@ fn closure_is_managed(exec_ptr voidptr) bool {
 	if isnil(exec_ptr) {
 		return false
 	}
-	exec_addr := unsafe { usize(exec_ptr) }
+	exec_addr := unsafe { uint(exec_ptr) }
 	mut page := g_closure.pages
 	for page != unsafe { nil } {
-		page_addr := unsafe { usize(page.exec_page_start) }
-		if exec_addr >= page_addr && exec_addr < page_addr + usize(g_closure.v_page_size) {
+		page_addr := unsafe { uint(page.exec_page_start) }
+		if exec_addr >= page_addr && exec_addr < page_addr + uint(g_closure.v_page_size) {
 			slot_offset := exec_addr - page_addr
-			return slot_offset >= usize(closure_size) && slot_offset % usize(closure_size) == 0
+			return slot_offset >= uint(closure_size) && slot_offset % uint(closure_size) == 0
 		}
 		page = page.next
 	}
@@ -398,7 +398,7 @@ fn new_closure_lifetime_state_no_lock() &ClosureLifetimeState {
 		g_closure.free_lifetime_states = state.next_free
 	} else {
 		unsafe {
-			state = &ClosureLifetimeState(malloc(sizeof(ClosureLifetimeState)))
+			state = &ClosureLifetimeState(malloc(int(sizeof(ClosureLifetimeState))))
 		}
 		g_closure.lifetime_state_allocs++
 	}

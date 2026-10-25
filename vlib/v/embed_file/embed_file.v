@@ -32,7 +32,7 @@ fn join_chunks_buffer(size int) &u8 {
 			return buffer
 		}
 	} $else {
-		return unsafe { &u8(malloc(isize(size))) }
+		return unsafe { &u8(malloc(int(size))) }
 	}
 }
 
@@ -62,7 +62,7 @@ pub fn join_chunks(chunks &EmbedFileChunk, len int) &u8 {
 			if offset + n > len {
 				n = len - offset
 			}
-			vmemcpy(buffer + offset, chunk.data, isize(n))
+			vmemcpy(buffer + offset, chunk.data, int(n))
 			offset += n
 			chunk++
 		}

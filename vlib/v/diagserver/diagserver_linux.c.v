@@ -31,8 +31,8 @@ fn C.v3_linux_parent_death_signal(signal_number int) int
 fn C.v3_linux_memory_file(name &char) int
 fn C.lseek(fd int, offset i64, whence int) i64
 fn C.flock(i32, i32) i32
-fn C.pread(fd int, buf voidptr, count usize, offset i64) isize
-fn C.pwrite(fd int, buf voidptr, count usize, offset i64) isize
+fn C.pread(fd int, buf voidptr, count uint, offset i64) C.ptrdiff_t
+fn C.pwrite(fd int, buf voidptr, count uint, offset i64) C.ptrdiff_t
 
 // Request is what a child of the diagnostics server was made for: answering
 // `question`, the questions of a `query` line, or checking the program when it
@@ -448,7 +448,7 @@ pub fn (r &Request) incremental_record() string {
 	mut out := []u8{}
 	mut chunk := []u8{len: 65536}
 	for {
-		got := C.pread(r.record_fd, unsafe { &u8(chunk.data) }, usize(chunk.len), i64(out.len))
+		got := C.pread(r.record_fd, unsafe { &u8(chunk.data) }, uint(chunk.len), i64(out.len))
 		if got < 0 && C.errno == C.EINTR {
 			continue
 		}
@@ -472,7 +472,7 @@ pub fn (r &Request) keep_incremental_record(text string) {
 	C.ftruncate(r.record_fd, u64(0))
 	mut written := 0
 	for written < text.len {
-		wrote := C.pwrite(r.record_fd, unsafe { text.str + written }, usize(text.len - written),
+		wrote := C.pwrite(r.record_fd, unsafe { text.str + written }, uint(text.len - written),
 			i64(written))
 		if wrote < 0 && C.errno == C.EINTR {
 			continue
@@ -519,7 +519,7 @@ fn read_from_start(fd int) string {
 	mut out := []u8{}
 	mut chunk := []u8{len: 65536}
 	for {
-		got := C.read(fd, unsafe { &u8(chunk.data) }, usize(chunk.len))
+		got := C.read(fd, unsafe { &u8(chunk.data) }, uint(chunk.len))
 		if got < 0 && C.errno == C.EINTR {
 			continue
 		}
@@ -966,7 +966,7 @@ fn read_into(path string, mut buffer []u8) ?int {
 	}
 	mut size := 0
 	for size < buffer.len {
-		got := C.read(fd, unsafe { &u8(buffer.data) + size }, usize(buffer.len - size))
+		got := C.read(fd, unsafe { &u8(buffer.data) + size }, uint(buffer.len - size))
 		if got < 0 {
 			if C.errno == C.EINTR {
 				continue
@@ -1039,7 +1039,7 @@ fn (mut r LineReader) read_line() ?string {
 			}
 			line << c
 		}
-		got := C.read(r.fd, unsafe { &u8(r.chunk.data) }, usize(r.chunk.len))
+		got := C.read(r.fd, unsafe { &u8(r.chunk.data) }, uint(r.chunk.len))
 		if got < 0 && C.errno == C.EINTR {
 			continue
 		}

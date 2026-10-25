@@ -3,7 +3,7 @@ module main
 
 #include <string.h>
 
-fn C.memset(dest voidptr, value int, count usize) voidptr
+fn C.memset(dest voidptr, value int, count uint) voidptr
 
 fn write_array_value(values &int, value int) {
 	unsafe { *values = value }
@@ -32,7 +32,7 @@ fn test_array_pointer_arguments_keep_the_original_storage() {
 	assert values[0] == 44
 
 	mut bytes := [4]u8{}
-	C.memset(bytes, 23, if flag { usize(4) } else { usize(1) })
+	C.memset(bytes, 23, if flag { uint(4) } else { uint(1) })
 	assert bytes == [u8(23), 23, 23, 23]!
 }
 

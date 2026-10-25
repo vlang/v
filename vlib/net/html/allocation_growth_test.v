@@ -19,7 +19,7 @@ fn test_tree_growth_keeps_parent_and_child_indices() {
 	assert tree.get_parent() == 0
 }
 
-fn allocation_growth_bytes(fragment string, count int) usize {
+fn allocation_growth_bytes(fragment string, count int) uint {
 	page := fragment.repeat(count)
 	before := gc_heap_usage().total_bytes
 	doc := parse(page)
