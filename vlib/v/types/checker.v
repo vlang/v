@@ -2963,8 +2963,11 @@ fn (mut tc TypeChecker) widen_mixed_integer_expr_types() {
 			continue
 		}
 		typ := tc.expr_type_values[idx]
-		widened := tc.widen_mixed_integer_expr_type(flat.NodeId(idx), typ)
-		if widened.name() != typ.name() {
+		if !mixed_integer_expr_type_can_widen(typ) {
+			continue
+		}
+		widened := tc.widen_mixed_integer_infix_type(flat.NodeId(idx), typ)
+		if widened.source_type_id() != typ.source_type_id() {
 			tc.invalidate_checked_type_id(idx)
 			tc.expr_type_values[idx] = tc.intern_type_reference(widened)
 		}

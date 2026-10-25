@@ -77,6 +77,7 @@ pub enum SourceTypeShape {
 	anonymous_struct
 	generic_c_name
 	context_independent
+	unusable_decl
 }
 
 fn source_type_spelling_shape(text string) SourceTypeShape {
@@ -117,6 +118,7 @@ fn source_type_spelling_shape(text string) SourceTypeShape {
 	if text == 'struct' || text.ends_with('.struct') { shape.set(.anonymous_struct) }
 	if text.contains('_T_') { shape.set(.generic_c_name) }
 	if source_type_spelling_context_independent(text) { shape.set(.context_independent) }
+	if source_type_spelling_unusable_decl(text, shape) { shape.set(.unusable_decl) }
 	mut start := 0
 	mut end := text.len
 	for start < end && source_type_space(text[start]) { start++ }
@@ -125,6 +127,18 @@ fn source_type_spelling_shape(text string) SourceTypeShape {
 		shape.set(.bare_generic)
 	}
 	return shape
+}
+
+// Declaration fallback rejects these provisional spellings before alias resolution.
+// Only ASCII spaces are removed from wrapper names; raw-name checks stay exact.
+fn source_type_spelling_unusable_decl(text string, shape SourceTypeShape) bool {
+	if text in ['unknown', 'array', 'map', 'struct'] || text.contains('unknown')
+		|| shape.has(.typeof_expr) {
+		return true
+	}
+	clean := if text.contains_u8(` `) { text.replace(' ', '') } else { text }
+	return clean in ['Option', '__v_option', 'Result'] || clean.starts_with('Option_')
+		|| clean.starts_with('__v_option_') || clean.starts_with('Result_')
 }
 
 fn source_type_space(c u8) bool {

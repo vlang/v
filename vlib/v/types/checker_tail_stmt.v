@@ -18992,6 +18992,15 @@ fn wide_integer_type_for_widening(typ Type) bool {
 	return short_name_view(typ.name()) in ['u128', 'i128']
 }
 
+@[inline]
+fn mixed_integer_expr_type_can_widen(typ &Type) bool {
+	return match typ {
+		Primitive { typ.props.has(.integer) && typ.size < 128 }
+		ISize, USize, Rune, Char { true }
+		else { false }
+	}
+}
+
 // widen_mixed_integer_expr_type gives an arithmetic node the 128-bit type of its
 // widest operand. The type recorded for an infix in argument position is the
 // narrower operand's, while the same expression assigned to a variable gets the
@@ -18999,12 +19008,7 @@ fn wide_integer_type_for_widening(typ Type) bool {
 // read the recorded type, so they cut a mixed expression to 64 bits without this.
 @[direct_array_access; inline]
 fn (tc &TypeChecker) widen_mixed_integer_expr_type(id flat.NodeId, typ &Type) Type {
-	narrow := match typ {
-		Primitive { typ.props.has(.integer) && typ.size < 128 }
-		ISize, USize, Rune, Char { true }
-		else { false }
-	}
-	if !narrow {
+	if !mixed_integer_expr_type_can_widen(typ) {
 		return *typ
 	}
 	tidx := int(id)
