@@ -795,8 +795,9 @@ pub fn (context &WindowContext) draw_rect_filled(x f32, y f32, w f32, h f32, col
 	if context.app == unsafe { nil } {
 		panic(err_multiwindow_render_stale_lease)
 	}
-	mut managed := context.app.render_runtime.active_render_context(context.app, context.info.window,
+	mut managed := context.app.render_runtime.active_sgl_context(context.app, context.info.window,
 		context.lease_epoch) or { panic(err.msg()) }
+	managed.activate_sgl_managed_or_panic()
 	managed.r.c4b(color.r, color.g, color.b, color.a)
 	managed.r.begin_quads()
 	managed.r.v2f(x, y)
@@ -812,8 +813,9 @@ pub fn (context &WindowContext) draw_rect_empty(x f32, y f32, w f32, h f32, colo
 	if context.app == unsafe { nil } {
 		panic(err_multiwindow_render_stale_lease)
 	}
-	mut managed := context.app.render_runtime.active_render_context(context.app, context.info.window,
+	mut managed := context.app.render_runtime.active_sgl_context(context.app, context.info.window,
 		context.lease_epoch) or { panic(err.msg()) }
+	managed.activate_sgl_managed_or_panic()
 	managed.r.c4b(color.r, color.g, color.b, color.a)
 	managed.r.begin_lines()
 	managed.r.v2f(x, y)

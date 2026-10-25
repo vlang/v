@@ -1,9 +1,5 @@
 module gg
 
-$if gg_multiwindow ? {
-	import gg.render
-}
-
 fn multiwindow_sgl_api_guard() {
 	$if !gg_multiwindow ? {
 		panic(multiwindow_render_unavailable_message())
@@ -78,7 +74,7 @@ pub fn (mut context WindowSglContext) default_pipeline() {
 	multiwindow_sgl_api_guard()
 	$if gg_multiwindow ? {
 		context.activate_sgl_managed_or_panic()
-		context.r.default_pipeline()
+		context.r.load_default_pipeline()
 	}
 }
 

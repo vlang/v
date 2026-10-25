@@ -1,7 +1,6 @@
 module gg
 
 import sokol.gfx
-import sokol.sgl
 import time
 import x.multiwindow
 
@@ -558,24 +557,17 @@ fn (mut app App) draw_window_managed(id WindowId, draw WindowDrawFn) ! {
 			Color{}
 		}
 		if errors.len == 0 {
-			previous := sgl.get_context()
-			sgl.set_context(sgl_context)
-			sgl.defaults()
-			sgl.matrix_mode_projection()
-			sgl.ortho(0.0, f32(context.info.metrics.framebuffer_size.width),
+			sgl_context.defaults()
+			sgl_context.matrix_mode_projection()
+			sgl_context.ortho(0.0, f32(context.info.metrics.framebuffer_size.width),
 				f32(context.info.metrics.framebuffer_size.height), 0.0, -1.0, 1.0)
 			app.render_runtime.begin_user_callback()
 			draw(mut context) or { callback_error = err }
 			app.render_runtime.end_user_callback()
-			sgl.set_context(previous)
 			if callback_error is none {
 				app.core.with_render_target_pass(acquisition.lease, clear_pass_action(clear_color), fn [sgl_context] () ! {
-					previous_context := sgl.get_context()
-					sgl.set_context(sgl_context)
-					sgl.context_draw(sgl_context)
-					sgl_error := sgl.context_error(sgl_context)
-					sgl.set_context(previous_context)
-					if sgl_error != .no_error {
+					sgl_context.draw()
+					if sgl_context.error() != .no_error {
 						return error(err_multiwindow_render_resource_failed)
 					}
 				}) or { callback_error = err }

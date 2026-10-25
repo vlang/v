@@ -1,7 +1,7 @@
 module gg
 
+import gg.render
 import sokol.gfx
-import sokol.sgl
 
 struct ManagedBufferDescCopy {
 mut:
@@ -649,12 +649,13 @@ fn (app &App) managed_attachments(id WindowAttachmentsId, window WindowId) !(gfx
 	return slot.attachments, compatibility, key
 }
 
-fn (app &App) managed_sgl_pipeline(id WindowSglPipelineId, window WindowId, context sgl.Context, target_key string) !sgl.Pipeline {
+fn (app &App) managed_sgl_pipeline(id WindowSglPipelineId, window WindowId, context &render.Context,
+	target_key string) !render.Pipeline {
 	if !app.gfx_started || !app.core.renderer_device_available_for_gg() {
 		return error(err_multiwindow_render_backend_unavailable)
 	}
-	if target_key !in app.sgl_contexts || app.sgl_contexts[target_key] != context
-		|| target_key !in app.sgl_context_targets {
+	if target_key !in app.render_contexts || target_key !in app.render_context_targets
+		|| app.render_contexts[target_key]! != context {
 		return error(err_multiwindow_render_stale_lease)
 	}
 	mut runtime := app.render_runtime
@@ -686,10 +687,7 @@ fn (app &App) managed_sgl_pipeline(id WindowSglPipelineId, window WindowId, cont
 		return error(message)
 	}
 	app.note_managed_gpu_work(app.active_batch_epoch)!
-	previous := sgl.get_context()
-	sgl.set_context(context)
-	pipeline := sgl.context_make_pipeline(context, &recipe)
-	sgl.set_context(previous)
+	pipeline := context.make_pipeline(recipe)
 	if !app.core.renderer_device_available_for_gg() {
 		return error(err_multiwindow_render_backend_unavailable)
 	}
@@ -701,7 +699,7 @@ fn (app &App) managed_sgl_pipeline(id WindowSglPipelineId, window WindowId, cont
 		.window) or {
 		runtime.mutex.unlock()
 		if pipeline.id != 0 && app.core.renderer_device_available_for_gg() {
-			sgl.destroy_pipeline(pipeline)
+			destroy_render_pipeline_pips(pipeline)
 		}
 		return err
 	}

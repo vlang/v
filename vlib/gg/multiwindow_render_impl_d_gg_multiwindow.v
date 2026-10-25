@@ -1,11 +1,7 @@
 module gg
 
-$if gg_multiwindow ? {
-	import gg.render
-}
-
+import gg.render
 import sokol.gfx
-import sokol.sgl
 import x.multiwindow
 
 $if linux {
@@ -933,6 +929,7 @@ fn (mut context WindowSglContext) activate_sgl_managed() !&render.Context {
 	context.app.assert_owner_thread() or { return error(err_multiwindow_render_owner_thread) }
 	context.app.render_runtime.validate_render_context(context)!
 	render_context := context.app.managed_render_context(context.target_key)!
+	context.r = render_context
 	return render_context
 }
 

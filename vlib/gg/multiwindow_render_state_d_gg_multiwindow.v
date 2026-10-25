@@ -1200,7 +1200,7 @@ fn (mut runtime MultiWindowRenderRuntime) abandon_sgl_materializations_for_targe
 	runtime.mutex.unlock()
 }
 
-fn (runtime &MultiWindowRenderRuntime) attachments_support_sgl(id WindowAttachmentsId, window WindowId) !bool {
+fn (runtime &MultiWindowRenderRuntime) attachments_support_render(id WindowAttachmentsId, window WindowId) !bool {
 	runtime.mutex.lock()
 	defer {
 		runtime.mutex.unlock()
