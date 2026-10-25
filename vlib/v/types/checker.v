@@ -14570,7 +14570,7 @@ fn (mut tc TypeChecker) check_decl_type_strings(node_id flat.NodeId, node flat.N
 			tc.record_error_at(.unknown_type, 'unknown type `${receiver_name}`', node_id, tc.type_diagnostic_pos(node_id, receiver_name))
 		}
 	}
-	if node.kind == .type_decl && flat.source_type_shape(trimmed_source_type_id(node.typ)).has(.result_type) {
+	if node.kind == .type_decl && trimmed_source_type_shape(node.typ).has(.result_type) {
 		tc.record_error_with_details_at(.unknown_type, 'cannot make an alias of Result type', node_id, tc.type_diagnostic_pos(node_id, node.typ_text().trim_space()), [
 			'Result types cannot be stored and have to be unwrapped immediately',
 		])
@@ -14621,7 +14621,7 @@ fn (mut tc TypeChecker) check_decl_type_strings(node_id flat.NodeId, node flat.N
 				tc.record_error_at(.assignment_mismatch, 'recursive interface fields are not allowed because they cannot be initialised', child_id, tc.type_diagnostic_pos(child_id, child.typ_text()))
 			}
 		}
-		if child.kind == .param && flat.source_type_shape(trimmed_source_type_id(child.typ)).has(.result_type) {
+		if child.kind == .param && trimmed_source_type_shape(child.typ).has(.result_type) {
 			param_type := unalias_type(tc.parse_type(child.typ))
 			mut supported_result_callback := false
 			if param_type is ResultType {

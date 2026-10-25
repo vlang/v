@@ -806,6 +806,13 @@ pub fn (t &Type) source_type_id() u32 {
 		ISize { flat.source_type_isize }
 		USize { flat.source_type_uint }
 		Primitive { primitive_source_type_id(t.props, t.size) }
+		Pointer {
+			if t.base_type is Void {
+				flat.source_type_voidptr
+			} else {
+				flat.source_type_id(t.name())
+			}
+		}
 		else { flat.source_type_id(t.name()) }
 	}
 }

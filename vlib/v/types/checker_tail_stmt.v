@@ -15227,6 +15227,14 @@ fn trimmed_source_type_id(id u32) u32 {
 	return flat.source_type_id(trimmed_space(flat.source_type_name(id)))
 }
 
+fn trimmed_source_type_shape(id u32) flat.SourceTypeShape {
+	shape := flat.source_type_shape(id)
+	if !shape.has(.padded) {
+		return shape
+	}
+	return flat.source_type_shape(flat.source_type_id(trimmed_space(flat.source_type_name(id))))
+}
+
 fn embedded_field_type(field StructField) ?Type {
 	if field.is_embed {
 		return field.typ
@@ -18379,13 +18387,16 @@ fn (tc &TypeChecker) array_literal_elem_type(node flat.Node) Type {
 		if !(child_type.is_integer() || child_type.is_float()) {
 			all_numeric = false
 		}
-		if child_type.source_type_id() == flat.source_type_f32 {
-			has_f32 = true
-		}
-		if child_type.source_type_id() == flat.source_type_f64 {
-			has_f64 = true
-			if !tc.is_untyped_float_literal_expr(child_id) {
-				has_explicit_f64 = true
+		if child_type.is_float() {
+			child_type_id := child_type.source_type_id()
+			if child_type_id == flat.source_type_f32 {
+				has_f32 = true
+			}
+			if child_type_id == flat.source_type_f64 {
+				has_f64 = true
+				if !tc.is_untyped_float_literal_expr(child_id) {
+					has_explicit_f64 = true
+				}
 			}
 		}
 	}

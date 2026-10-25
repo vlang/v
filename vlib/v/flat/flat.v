@@ -240,6 +240,8 @@ mut:
 __global g_node_payload_table &NodePayloadTable
 __global g_node_payload_lock u32
 __global g_canonical_comptime_payload NodePayload
+// Empty borrowed type lists share a typed descriptor without rebuilding it per lookup.
+__global g_empty_source_type_ids []u32 = []u32{}
 
 // node_payload registers an uncommon node payload and returns its id, or 0
 // for an empty list.
@@ -605,7 +607,7 @@ pub fn (n &Node) generic_constraints() []string {
 @[inline]
 pub fn (n &Node) generic_constraint_ids() []u32 {
 	if n.payload == 0 {
-		return []u32{}
+		return g_empty_source_type_ids
 	}
 	return node_payload_at(n.payload).generic_constraints.ids
 }
@@ -647,7 +649,7 @@ pub fn (mut n Node) set_debugger_value_type_ids(type_ids []u32) {
 @[inline]
 pub fn (n Node) call_type_args() []u32 {
 	if n.payload == 0 {
-		return []u32{}
+		return g_empty_source_type_ids
 	}
 	return node_payload_at(n.payload).call_type_args.ids
 }
