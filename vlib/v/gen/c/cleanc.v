@@ -20859,7 +20859,8 @@ fn (mut g FlatGen) headerless_windows_sdk_types() {
 	g.writeln('#ifdef _MSC_VER')
 	g.writeln('unsigned char _BitScanForward(unsigned long*, unsigned long);')
 	g.writeln('unsigned char _BitScanForward64(unsigned long*, u64);')
-	g.writeln('u64 __lzcnt64(u64);')
+	g.writeln('unsigned char _BitScanReverse(unsigned long*, unsigned long);')
+	g.writeln('unsigned char _BitScanReverse64(unsigned long*, u64);')
 	g.writeln('#endif')
 	g.writeln('#if !defined(_SECURITY_ATTRIBUTES_DEFINED) && !defined(_SECURITY_ATTRIBUTES)')
 	g.writeln('#define _SECURITY_ATTRIBUTES_DEFINED')
@@ -20872,8 +20873,8 @@ fn (mut g FlatGen) headerless_windows_sdk_types() {
 	g.writeln('#endif')
 	g.headerless_windows_core_declarations()
 	if g.target.os == 'windows' {
-		g.collect_preserved_c_fns(['_BitScanForward', '_BitScanForward64', '__lzcnt64', 'close',
-			'_close', '_exit'])
+		g.collect_preserved_c_fns(['_BitScanForward', '_BitScanForward64', '_BitScanReverse',
+			'_BitScanReverse64', 'close', '_close', '_exit'])
 	}
 }
 
