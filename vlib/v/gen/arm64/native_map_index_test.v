@@ -11,7 +11,7 @@ fn test_native_map_index_handles_many_keys_updates_and_numeric_bits() {
 	$if macos && arm64 {
 		run_native_map_index_fixture('many_keys', r'module main
 fn C.exit(int)
-fn C.memcpy(voidptr, voidptr, usize) voidptr
+fn C.memcpy(voidptr, voidptr, uint) voidptr
 fn println(s string) {}
 fn int_str(n i64) string { return "" }
 fn map__clone(m &map[int]int) map[int]int { return map[int]int{} }
@@ -47,7 +47,7 @@ fn main() {
         C.exit(4)
     }
     mut state_pointer := voidptr(0)
-    C.memcpy(&state_pointer, &numbers, usize(8))
+    C.memcpy(&state_pointer, &numbers, uint(8))
     state := &NativeMapState(state_pointer)
     if state.hash_cap < 40000 || state.indexed_len != 20000 { C.exit(5) }
     slots := &i64(state.hash_slots)

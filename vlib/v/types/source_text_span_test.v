@@ -35,7 +35,7 @@ fn test_source_text_span_clamps_offsets_and_preserves_empty_span_fallbacks() {
 		assert tc.source_text_for_node(ids[i]) == item.expected
 	}
 	span := tc.source_text_for_node(ids[0])
-	assert usize(span.str) == usize(source.str) + 7
+	assert uint(span.str) == uint(source.str) + 7
 	assert tc.source_text_for_node(flat.empty_node) == ''
 	tc.source_texts_by_file.delete('span.v')
 	assert tc.source_text_for_node(ids[0]) == 'fallback'
@@ -56,6 +56,6 @@ fn test_source_text_span_preserves_bytes_outside_trim_space_cutset() {
 		tc.source_texts_by_file['bytes.v'] = source
 		span := tc.source_text_for_node(id)
 		assert span == source.trim_space()
-		assert usize(span.str) == usize(source.str) + 1
+		assert uint(span.str) == uint(source.str) + 1
 	}
 }

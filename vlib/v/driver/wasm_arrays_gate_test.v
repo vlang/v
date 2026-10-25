@@ -76,8 +76,8 @@ fn test_wasm_gate_rejects_maps_structs_fixed_nested() {
 }
 
 fn test_wasm_supported_array_elem() {
-	for t in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'usize', 'f32',
-		'f64', 'bool', 'char', 'rune'] {
+	for t in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'uint', 'f32', 'f64',
+		'bool', 'char', 'rune'] {
 		assert wasm_supported_array_elem(flat.source_type_id('[]' + t)), t
 	}
 	for t in ['', '[]', 'int', 'map[string]int', 'Point', '[2]int', '[][]int', '[]Point', '[]string'] {

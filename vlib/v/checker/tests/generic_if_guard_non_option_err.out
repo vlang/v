@@ -1,0 +1,7 @@
+vlib/v/checker/tests/generic_if_guard_non_option_err.vv:6:10: error: expression should either return an Option or a Result
+    4 | 
+    5 | fn show[T](a T) {
+    6 |     if v := a {
+      |             ^
+    7 |         println(v)
+    8 |     }

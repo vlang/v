@@ -37,7 +37,7 @@ fn test_c_flag_target_filter_keeps_host_linux_and_drops_wasm() {
 	bin := os.join_path(os.temp_dir(), 'v3_c_flag_target_filter_input_${pid}')
 	os.rm(bin) or {}
 	os.rmdir_all(bin) or {}
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	compile := os.exec([v3_bin, '-showcc', '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert compile.output.contains('-ldl'), compile.output
 	assert !compile.output.contains('termux'), compile.output
@@ -74,7 +74,7 @@ fn test_c_flag_target_filter_drops_termux_off_termux() {
 	bin := os.join_path(os.temp_dir(), 'v3_c_flag_termux_filter_input_${pid}')
 	os.rm(bin) or {}
 	os.rmdir_all(bin) or {}
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	compile := os.exec([v3_bin, '-showcc', '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('termux_should_not_leak_to_linker'), compile.output
 

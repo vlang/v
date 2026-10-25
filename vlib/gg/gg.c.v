@@ -723,7 +723,7 @@ fn gg_resize_window(width int, height int) {
 			u32(C.SWP_NOZORDER | C.SWP_NOACTIVATE))
 	} $else $if linux && !sokol_wayland ? {
 		display := sapp.x11_get_display()
-		window := u64(usize(sapp.x11_get_window()))
+		window := u64(uint(sapp.x11_get_window()))
 		if display == unsafe { nil } || window == 0 {
 			return
 		}

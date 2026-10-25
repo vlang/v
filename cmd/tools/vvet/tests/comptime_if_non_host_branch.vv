@@ -1,0 +1,16 @@
+// Branches of `$if` for other platforms must be vetted as written, so the
+// space-indented lines in the multi-line string below must not be reported.
+fn main() {
+	$if solaris && ppc64le {
+		code := '
+    mov x0, #1
+    ret
+'
+		println(code)
+	} $else {
+		code := '
+    nop
+'
+		println(code)
+	}
+}

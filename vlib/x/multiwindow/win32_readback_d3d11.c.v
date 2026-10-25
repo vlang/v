@@ -13,8 +13,8 @@ struct Win32D3D11ReadbackNativeResult {
 	status              int
 	width               u32
 	height              u32
-	stride              usize
-	byte_length         usize
+	stride              uint
+	byte_length         uint
 }
 
 struct Win32D3D11ReadbackBridgeResult {
@@ -27,8 +27,8 @@ struct Win32D3D11ReadbackBridgeResult {
 	status              int
 	width               u32
 	height              u32
-	stride              usize
-	byte_length         usize
+	stride              uint
+	byte_length         uint
 }
 
 struct Win32D3D11ReadbackBridge {
@@ -57,8 +57,8 @@ $if windows && sokol_d3d11 ? {
 		status              int
 		width               u32
 		height              u32
-		stride              usize
-		byte_length         usize
+		stride              uint
+		byte_length         uint
 	}
 
 	fn C.v_multiwindow_win32_d3d11_readback_native_create(device_identity u64, context_identity u64, state_identity u64, renderer_generation u64) voidptr
@@ -69,7 +69,7 @@ $if windows && sokol_d3d11 ? {
 	fn C.v_multiwindow_win32_d3d11_readback_native_notify_failure(state voidptr, state_identity u64, renderer_generation u64, failure_origin int) int
 	fn C.v_multiwindow_win32_d3d11_readback_native_poll(state voidptr) int
 	fn C.v_multiwindow_win32_d3d11_readback_native_take(state voidptr, result &C.VMultiwindowWin32ReadbackResult) int
-	fn C.v_multiwindow_win32_d3d11_readback_native_copy(state voidptr, request u64, pixels &u8, capacity usize) int
+	fn C.v_multiwindow_win32_d3d11_readback_native_copy(state voidptr, request u64, pixels &u8, capacity uint) int
 	fn C.v_multiwindow_win32_d3d11_readback_native_release(state voidptr, request u64) int
 	fn C.v_multiwindow_win32_d3d11_readback_native_cancel(state voidptr, request u64) int
 	fn C.v_multiwindow_win32_d3d11_readback_native_quiesce_window(state voidptr, window_slot u64, window_generation u32) int
@@ -121,7 +121,7 @@ fn win32_d3d11_readback_bridge_result(raw Win32D3D11ReadbackNativeResult) (bool,
 		&& raw.window_slot != 0 && raw.window_generation != 0
 	if raw.status == win32_d3d11_readback_status_ready {
 		ready_valid := base_valid && raw.submitted_frame != 0 && raw.width != 0 && raw.height != 0
-			&& raw.stride == usize(raw.width) * 4
+			&& raw.stride == uint(raw.width) * 4
 			&& u64(raw.stride) * u64(raw.height) == u64(raw.byte_length)
 		return ready_valid, Win32D3D11ReadbackBridgeResult{
 			request:             raw.request
@@ -285,7 +285,7 @@ fn (bridge &Win32D3D11ReadbackBridge) copy(request u64, mut pixels []u8) bool {
 	}
 	$if windows && sokol_d3d11 ? {
 		return C.v_multiwindow_win32_d3d11_readback_native_copy(bridge.native, request,
-			pixels.data, usize(pixels.len)) == 1
+			pixels.data, uint(pixels.len)) == 1
 	} $else {
 		return false
 	}

@@ -2996,8 +2996,8 @@ fn test_immediately_invoked_closure_keeps_integer_encoded_capture_address_alive(
 	v3_bin := build_v3_review_transform()
 	source := 'fn main() {
 	mut value := 41
-	address := (fn [mut value] () usize {
-		return usize(voidptr(&value))
+	address := (fn [mut value] () uint {
+		return uint(voidptr(&value))
 	})()
 	p := unsafe { &int(voidptr(address)) }
 	println(int_str(unsafe { *p + 1 }))
@@ -3017,8 +3017,8 @@ fn test_immediately_invoked_closure_keeps_aliased_integer_capture_address_alive(
 	v3_bin := build_v3_review_transform()
 	source := 'fn main() {
 	mut value := 41
-	address := (fn [mut value] () usize {
-		encoded := usize(voidptr(&value))
+	address := (fn [mut value] () uint {
+		encoded := uint(voidptr(&value))
 		return encoded
 	})()
 	p := unsafe { &int(voidptr(address)) }
@@ -12711,7 +12711,7 @@ fn make_aligned_memdup() &int {
 
 fn make_builtin_memdup() &int {
 	local := 44
-	return unsafe { &int(memdup(&local, sizeof(int))) }
+	return unsafe { &int(memdup(&local, int(sizeof(int)))) }
 }
 
 fn main() {

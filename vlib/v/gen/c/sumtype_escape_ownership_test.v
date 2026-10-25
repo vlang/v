@@ -298,13 +298,13 @@ fn exercise_factories() {
  assert (ordinary as &Item).code == 1
  assert (manual as &Item).code == 2
  assert (direct as &Item).code == 3
- assert usize(voidptr(ordinary as &Item)) % 64 == 0
+ assert uint(voidptr(ordinary as &Item)) % 64 == 0
  nested := nested_factory(true)
  absent := nested_factory(false)
  assert absent is int
  assert churn_stack() != 0
  assert (nested as &Item).code == 5
- assert usize(voidptr(nested as &Item)) % 64 == 0
+ assert uint(voidptr(nested as &Item)) % 64 == 0
  assert C.transfer_count(5) == 0
  nested_alias := nested_alias_factory()
  assert (nested_alias as &Item).code == 6

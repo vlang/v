@@ -4,7 +4,7 @@ struct Pair {
 	b u64
 }
 
-fn param_width(byte u16) usize {
+fn param_width(byte u16) uint {
 	return sizeof(byte)
 }
 
