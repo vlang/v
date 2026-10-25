@@ -10758,6 +10758,12 @@ fn (tc &TypeChecker) type_compatible_unequal(actual &Type, expected &Type) bool 
 			if is_container_type(actual.base_type) && is_container_type(expected.base_type) {
 				return !tc.in_place_container_layouts_differ(actual.base_type, expected.base_type)
 			}
+			// A referenced number is read in place, never converted either: a `&u8` is
+			// not a `&u64`, and a `&u64` is not a `&f64`.
+			if tc.pointee_number_storage_checked()
+				&& pointee_number_storage_differs(actual.base_type, expected.base_type) {
+				return false
+			}
 			return true
 		}
 	}
@@ -10855,6 +10861,52 @@ fn (tc &TypeChecker) dynamic_array_elem_types_compatible(actual Type, expected T
 		return true
 	}
 	return !tc.container_elem_layouts_differ(actual, expected)
+}
+
+// pointee_number_storage_checked reports whether numbers behind pointers must be stored
+// the same way (pointee_number_storage_differs). C calls (c_call_arg_compatible), `unsafe`
+// blocks and translated C code skip this check and keep accepting the number pointees
+// they accepted before.
+fn (tc &TypeChecker) pointee_number_storage_checked() bool {
+	return tc.unsafe_depth == 0 && !tc.translated_files[tc.cur_file]
+}
+
+// pointee_number_storage_differs reports whether the numbers `actual` and `expected`,
+// read through a pointer, are stored differently: with another size, or as an integer
+// and a float. `int`, `isize` and `usize` have the size of a machine word, which is
+// not that of any sized integer on every target. The sign does not count, so `&char`,
+// `&u8` and `&i8` stay interchangeable.
+fn pointee_number_storage_differs(actual Type, expected Type) bool {
+	actual_storage := number_storage_class(actual)
+	expected_storage := number_storage_class(expected)
+	return actual_storage != 0 && expected_storage != 0 && actual_storage != expected_storage
+}
+
+// number_storage_class returns how a number type is stored: its size in bits, plus one
+// for a float, or 1 for a word sized integer. Other types return 0.
+fn number_storage_class(typ Type) int {
+	clean := unalias_type(typ)
+	match clean {
+		Primitive {
+			if clean.props.has(.float) {
+				return int(clean.size) + 1
+			}
+			if clean.props.has(.integer) {
+				return if clean.size == 0 { 1 } else { int(clean.size) }
+			}
+		}
+		Rune {
+			return 32
+		}
+		Char {
+			return 8
+		}
+		ISize, USize {
+			return 1
+		}
+		else {}
+	}
+	return 0
 }
 
 fn is_container_type(typ Type) bool {

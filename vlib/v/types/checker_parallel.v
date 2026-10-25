@@ -3547,6 +3547,10 @@ fn (tc &TypeChecker) container_value_layouts_differ(actual Type, expected Type) 
 			&& unalias_type(clean_expected.base_type) is OptionType {
 			return tc.mut_arg_container_layouts_differ(clean_actual, clean_expected)
 		}
+		// So is a referenced number.
+		if pointee_number_storage_differs(clean_actual.base_type, clean_expected.base_type) {
+			return true
+		}
 		return is_container_type(clean_actual.base_type)
 			&& is_container_type(clean_expected.base_type)
 			&& tc.in_place_container_layouts_differ(clean_actual.base_type, clean_expected.base_type)
