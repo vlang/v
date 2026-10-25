@@ -937,7 +937,7 @@ fn (runtime &MultiWindowRenderRuntime) validate_pass_context(context &WindowPass
 	}
 }
 
-fn (runtime &MultiWindowRenderRuntime) validate_sgl_context(context &WindowSglContext) ! {
+fn (runtime &MultiWindowRenderRuntime) validate_render_context(context &WindowSglContext) ! {
 	runtime.mutex.lock()
 	defer {
 		runtime.mutex.unlock()

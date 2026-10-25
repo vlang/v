@@ -1,5 +1,9 @@
 module gg
 
+$if gg_multiwindow ? {
+	import gg.render
+}
+
 import sokol.gfx
 
 // WindowRedrawMode controls when a window is eligible for a render frame.
@@ -306,6 +310,7 @@ pub struct WindowSglContext {
 	lease_epoch  u64
 	pass_epoch   u64
 	target_key   string
+	r            &render.Context = unsafe { nil }
 }
 
 // AppResourceContext uses the same managed resource operations with app scope.

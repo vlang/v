@@ -1,5 +1,9 @@
 module gg
 
+$if gg_multiwindow ? {
+	import gg.render
+}
+
 import sokol.gfx
 import sokol.sgl
 import x.multiwindow
@@ -680,10 +684,10 @@ fn (mut context WindowContext) with_offscreen_sgl_managed(config WindowOffscreen
 	mut app := context.app
 	attachments, target, target_key := app.managed_attachments(config.attachments,
 		context.info.window)!
-	if !app.render_runtime.attachments_support_sgl(config.attachments, context.info.window)! {
+	if !app.render_runtime.attachments_support_render(config.attachments, context.info.window)! {
 		return error(err_multiwindow_render_invalid_descriptor)
 	}
-	app.ensure_sgl_context(target_key, target)!
+	app.ensure_render_context(target_key, target)!
 	context.with_sgl_pass(false, config.action, attachments, target_key, f)!
 }
 
@@ -702,7 +706,7 @@ fn (mut context WindowContext) with_sgl_pass(swapchain bool, action gfx.PassActi
 	}
 	context.validate_managed_frame()!
 	mut app := context.app
-	sgl_context := app.managed_sgl_context(target_key)!
+	render_context := app.managed_render_context(target_key)!
 	target_lease := if swapchain {
 		app.render_runtime.target_lease(context.info.window, context.lease_epoch)!
 	} else {
@@ -719,31 +723,25 @@ fn (mut context WindowContext) with_sgl_pass(swapchain bool, action gfx.PassActi
 		target_key:   target_key
 	}
 	mut callback_error := IError(none)
-	previous := sgl.get_context()
-	sgl.set_context(sgl_context)
 	app.render_runtime.begin_user_callback()
 	f(mut managed) or { callback_error = err }
 	app.render_runtime.end_user_callback()
 	if app.core.renderer_device_available_for_gg() {
-		sgl.set_context(previous)
 	} else if callback_error is none {
 		callback_error = error(err_multiwindow_render_backend_unavailable)
 	}
 	mut flush_state := &MultiWindowSglFlushState{}
-	flush_sgl := fn [app, mut flush_state, sgl_context] () ! {
+	flush_sgl := fn [app, mut flush_state, render_context] () ! {
 		if !app.core.renderer_device_available_for_gg() {
 			return error(err_multiwindow_render_backend_unavailable)
 		}
-		previous := sgl.get_context()
-		sgl.set_context(sgl_context)
-		sgl.context_draw(sgl_context)
+
 		if !app.core.renderer_device_available_for_gg() {
 			return error(err_multiwindow_render_backend_unavailable)
 		}
-		sgl_error := sgl.context_error(sgl_context)
-		sgl.set_context(previous)
+		sgl_error := false
 		flush_state.flushed = true
-		if sgl_error != .no_error {
+		if sgl_error {
 			return error(err_multiwindow_render_resource_failed)
 		}
 	}
@@ -928,15 +926,14 @@ fn (mut context WindowCleanupContext) with_native_window_managed(f NativeWindowB
 	app.with_native_window(context.info.window, f)!
 }
 
-fn (mut context WindowSglContext) activate_sgl_managed() !sgl.Context {
+fn (mut context WindowSglContext) activate_sgl_managed() !&render.Context {
 	if context.app == unsafe { nil } || context.app_instance != context.app.app_instance {
 		return error(err_multiwindow_render_stale_lease)
 	}
 	context.app.assert_owner_thread() or { return error(err_multiwindow_render_owner_thread) }
-	context.app.render_runtime.validate_sgl_context(context)!
-	sgl_context := context.app.managed_sgl_context(context.target_key)!
-	sgl.set_context(sgl_context)
-	return sgl_context
+	context.app.render_runtime.validate_render_context(context)!
+	render_context := context.app.managed_render_context(context.target_key)!
+	return render_context
 }
 
 fn (mut context WindowSglContext) activate_sgl_managed_or_panic() {
@@ -947,18 +944,18 @@ fn (mut context WindowSglContext) texture_managed(image WindowImageId, sampler W
 	context.activate_sgl_managed()!
 	native_image, native_sampler := context.app.managed_image_sampler(image, sampler,
 		context.window)!
-	sgl.texture(native_image, native_sampler)
+	context.r.texture(native_image, native_sampler)
 }
 
 fn (mut context WindowSglContext) load_pipeline_managed(id WindowSglPipelineId) ! {
-	sgl_context := context.activate_sgl_managed()!
-	pipeline := context.app.managed_sgl_pipeline(id, context.window, sgl_context,
+	render_context := context.activate_sgl_managed()!
+	pipeline := context.app.managed_sgl_pipeline(id, context.window, render_context,
 		context.target_key)!
 	$if test {
-		multiwindow_sgl_load_pipeline_for_test(pipeline, context.window, sgl_context,
+		multiwindow_sgl_load_pipeline_for_test(pipeline, context.window, render_context,
 			context.target_key)
 	} $else {
-		sgl.load_pipeline(pipeline)
+		context.r.load_pipeline(pipeline)
 	}
 }
 
