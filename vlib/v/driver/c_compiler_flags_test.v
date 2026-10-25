@@ -418,6 +418,81 @@ fn test_linux_cross_link_flags_unwrap_clang_driver_flags() {
 	]
 }
 
+fn test_linux_cross_compiles_native_sources_in_flag_plan() {
+	$if windows {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'v3_linux_cross_sources_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	build_dir := os.join_path(root, 'build space')
+	os.mkdir_all(build_dir)!
+	for source in ['before.c', 'objc.m', 'main.c', 'upper.C', 'side car.mm', 'side.cpp', 'signal.c',
+		'forced.c', 'retained.o'] {
+		os.write_file(os.join_path(build_dir, source), '')!
+	}
+	compiler := write_windows_prod_test_tool(os.join_path(root, 'fake-cc'), r'
+set -eu
+source=""
+output=""
+language=""
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+		-o) output="$2"; shift 2 ;;
+		-x) language="$2"; shift 2 ;;
+		-I|-D|-include|-target) shift 2 ;;
+		-*) shift ;;
+		*) [ -z "$source" ] || exit 91; source="$1"; shift ;;
+	esac
+done
+[ -f "$source" ] && [ -n "$output" ] || exit 92
+printf "%s|%s\n" "$source" "$language" >> compiled-sources.log
+printf "%s|%s\n" "$source" "$language" > "$output"
+')
+	write_windows_prod_test_tool(os.join_path(root, 'sysroot', 'ld.lld'), r'
+set -eu
+output=""
+objects=0
+retained=0
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+		-o) output="$2"; shift 2 ;;
+		-L|-l|-m|-dynamic-linker) shift 2 ;;
+		linux_cross_*.o)
+			[ -f "$1" ] || exit 93
+			IFS= read -r identity < "$1"
+			printf "%s\n" "$identity" >> linked-sources.log
+			objects=$((objects + 1))
+			shift ;;
+		retained.o) [ -f "$1" ] || exit 94; retained=1; shift ;;
+		*.c|*.C|*.cpp|*.m|*.mm|*.S) exit 95 ;;
+		*) shift ;;
+	esac
+done
+[ "$objects" -eq 7 ] && [ "$retained" -eq 1 ] && [ -n "$output" ] || exit 96
+: > "$output"
+')
+	// Language selectors span argument sections; option operands are never inputs.
+	plan := V3CCompilerFlagPlan{
+		before_inputs: ['-I', 'includes.c', '-D', '-x', '-include', 'forced.c', '-x', 'c', 'before.c',
+			'-xobjective-c']
+		after_inputs:  ['-D', 'NOT_A_SOURCE.cpp', '-x', 'objective-c++', 'side car.mm', '-x', 'none',
+			'side.cpp', '-x', 'c', 'signal.c', '-x', 'none', '-L', 'lib.c', '-l', 'dep', 'retained.o']
+	}
+	result := compile_v3_macos_linux_cross(compiler, &plan, ['objc.m', '-x', 'none', 'main.c',
+		'upper.C'], os.join_path(root, 'sysroot'), root,
+		build_dir, 'program', false, false)
+	assert result.exit_code == 0, result.output
+	expected := ['before.c|c', 'objc.m|objective-c', 'main.c|', 'upper.C|', 'side car.mm|objective-c++',
+		'side.cpp|', 'signal.c|c']
+	assert os.read_file(os.join_path(build_dir, 'compiled-sources.log'))!.split_into_lines() == expected
+	assert os.read_file(os.join_path(build_dir, 'linked-sources.log'))!.split_into_lines() == expected
+	assert os.is_file(os.join_path(build_dir, 'program'))
+}
+
 fn test_v3_implicit_tcc_uses_platform_compiler_for_non_c_objects() {
 	implicit_tcc := os.join_path(os.temp_dir(), 'bin', 'tcc')
 	assert c_source_object_compiler('', implicit_tcc, true, 'linux') == implicit_tcc
