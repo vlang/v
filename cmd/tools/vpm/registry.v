@@ -206,17 +206,6 @@ pub fn (r &Registry) search(query string) []RegistryEntry {
 	return results
 }
 
-// compute_checksum computes the SHA256 checksum of a file's contents.
-fn compute_checksum(path string) string {
-	content := os.read_file(path) or { return '' }
-	sum := sha256.sum(content.bytes())
-	mut hex := ''
-	for b in sum {
-		hex += b.hex()
-	}
-	return hex
-}
-
 // export_json exports the registry as JSON.
 pub fn (r &Registry) export_json() string {
 	return json2.encode(r, prettify: true)

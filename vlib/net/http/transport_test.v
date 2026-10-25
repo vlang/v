@@ -577,3 +577,53 @@ fn test_h1_tls_no_reuse_across_alpn_preference() {
 	listener.shutdown() or {}
 	th.wait()
 }
+
+struct CallbackAbort {
+	Error
+}
+
+fn (_ CallbackAbort) msg() string { return 'application cancelled response' }
+
+fn (_ CallbackAbort) code() int { return 12345 }
+
+fn abort_progress(_ &Request, _ []u8, _ u64) ! { return CallbackAbort{} }
+
+fn abort_progress_body(_ &Request, _ []u8, _ u64, _ u64, _ int) ! { return CallbackAbort{} }
+
+fn test_h1_callback_abort_is_not_retried_and_preserves_original_error() ! {
+	for disable_reuse in [false, true] {
+		for body_callback in [false, true] {
+			for method in [Method.get, Method.post] {
+				mut srv := &KaSrv{}
+				port, mut listener, th := start_ka_srv(mut srv)!
+				// Prime a pooled connection, so cancellation also covers reused sockets.
+				if !disable_reuse {
+					fetch(url: 'http://127.0.0.1:${port}/prime')!
+				}
+				before := srv.accept_count()
+				mut req := Request{
+					url:                      'http://127.0.0.1:${port}/cancel'
+					method:                   method
+					max_retries:              3
+					disable_connection_reuse: disable_reuse
+				}
+				if body_callback {
+					req.on_progress_body = abort_progress_body
+				} else {
+					req.on_progress = abort_progress
+				}
+				mut aborted := false
+				req.do() or {
+					aborted = true
+					assert err is CallbackAbort
+					assert err.code() == 12345
+					assert err.msg() == 'application cancelled response'
+				}
+				assert aborted
+				assert srv.accept_count() == before + if disable_reuse { 1 } else { 0 }
+				assert srv.post_count() == if method == .post { 1 } else { 0 }
+				stop_ka_srv(mut listener, th)
+			}
+		}
+	}
+}

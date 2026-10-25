@@ -4543,6 +4543,23 @@ fn (mut t Transformer) stable_transformed_expr_for_reuse(expr flat.NodeId, typ_i
 	return t.make_ident(tmp_name)
 }
 
+// materialize_comparison_literal preserves contextual element types when an operand's
+// propagation or value branch requires the other operand to be evaluated into a temp.
+fn (mut t Transformer) materialize_comparison_literal(op flat.Op, id flat.NodeId, peer flat.NodeId) ?flat.NodeId {
+	if op !in [.eq, .ne] {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	target := t.membership_container_type(t.node_type(peer))
+	shape := flat.source_type_shape(target)
+	if (node.kind == .array_literal && shape.has(.array_type))
+		|| (node.kind == .map_init && shape.has(.map_type)) {
+		expr := t.transform_expr_for_type(id, target)
+		return t.stable_transformed_expr_for_reuse(expr, target, 'comparison_literal')
+	}
+	return none
+}
+
 // snapshot_expr_for_reuse materializes `id` into a temp holding its current value, unless it is
 // a pure constant (which cannot change, so needs no snapshot). Ordering guards use it to capture
 // the source-order value of an operand that precedes a value branch whose hoisted prelude might

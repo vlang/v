@@ -104,6 +104,11 @@ fn test_without_pub_keyword_keeps_the_attributes() {
 	assert without_pub_keyword('fn T.zero() T') == 'fn T.zero() T'
 }
 
+fn test_without_pub_keywords_handles_every_constant_of_a_group() {
+	assert without_pub_keywords('pub const a = 1\npub const b = 2') == 'const a = 1\nconst b = 2'
+	assert without_pub_keywords('@[markused]\npub const a = 1') == '@[markused]\nconst a = 1'
+}
+
 fn test_without_attribute_lines_removes_only_the_leading_attributes() {
 	assert without_attribute_lines('fn f()') == 'fn f()'
 	assert without_attribute_lines("@[deprecated: 'x']\n@[inline]\nfn f()") == 'fn f()'

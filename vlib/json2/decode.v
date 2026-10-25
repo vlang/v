@@ -3,6 +3,7 @@ module json2
 import strconv
 import time
 import math
+import sync.stdatomic
 
 const null_in_string = 'null'
 
@@ -593,10 +594,20 @@ mut:
 @[manualfree; unsafe]
 fn (mut decoder Decoder) cached_struct_field_infos[T]() &StructFieldInfoCache {
 	static cache := &StructFieldInfoCache(nil)
-	if cache == nil {
-		cache = &StructFieldInfoCache{}
-		$for field in T.fields {
-			cache.field_infos << struct_field_info(field.name, field.attrs)
+	static initializing := u64(0)
+	static initialized := u64(0)
+	// Publish immutable field metadata only after its initialization completes.
+	if stdatomic.load_u64(&initialized) == 0 {
+		if stdatomic.fetch_add_u64(&initializing, 1) == 0 {
+			cache = &StructFieldInfoCache{}
+			$for field in T.fields {
+				cache.field_infos << struct_field_info(field.name, field.attrs)
+			}
+			stdatomic.store_u64(&initialized, 1)
+		} else {
+			for stdatomic.load_u64(&initialized) == 0 {
+				time.sleep(time.microsecond)
+			}
 		}
 	}
 	return cache

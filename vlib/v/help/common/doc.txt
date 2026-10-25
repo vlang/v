@@ -9,6 +9,7 @@ Examples:
   v doc -no-color os
   v doc -o math.html math
   v doc -m -f html vlib/
+  v doc -os cross os
 
   Generates the documentation of a given MODULE, DIRECTORY, or FILE
   and prints or saves them to its desired format: HTML, JSON,
@@ -27,6 +28,10 @@ Options:
   -m              Generate docs for modules listed in that folder.
   -o              The output file/folder path where to store the docs. Use `-o stdout`
                   or `-o -', to print the output instead of saving it to a file.
+  -os             Documents the module for the given platform, instead of the current one,
+                  like `-os windows`. With `-os cross` (or `-os all`), it documents the
+                  symbols of all platforms, and notes the platforms of the symbols that
+                  are only available on some of them.
   -readme         Include README.md to docs if present.
   -v              Enables verbose logging. For debugging purposes.
   -no-timestamp   Omits the timestamp in the output file.

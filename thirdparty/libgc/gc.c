@@ -21865,10 +21865,66 @@ GC_push_all_eager(void *bottom, void *top)
 #undef GC_least_plausible_heap_addr
 }
 
+/*
+ * __v_ patch: an optimizing C compiler can keep a pointer in a stack slot that
+ * is not pointer aligned.  LLVM's SROA splits a struct at the end of its
+ * last small field that is accessed, so a copy of the rest, padding first,
+ * goes to a temporary with the alignment of that offset; a pointer field
+ * after the padding then sits at an address that is not a multiple of
+ * `ALIGNMENT`.  Scan the stacks at the remaining byte offsets too, eagerly,
+ * so such a pointer still keeps its object alive.  This covers the regions
+ * pushed through `GC_push_all_stack()`, i.e. thread stacks; a stack that is
+ * registered as a static root (`GC_add_roots`, as V's coroutines do for
+ * suspended coroutine stacks) is still scanned aligned only.  CHERI
+ * capabilities are always aligned, and E2K stack words are loaded with tag
+ * checks, so both keep the aligned scan only.
+ * `-DGC_NO_MISALIGNED_STACK_SCAN` turns it off.
+ */
+#if ALIGNMENT > 1 && !defined(CHERI_PURECAP) && !defined(E2K) \
+    && !defined(GC_NO_MISALIGNED_STACK_SCAN)
+#  define GC_PUSH_MISALIGNED_STACK(b, t) GC_push_misaligned_stack(b, t)
+GC_ATTR_NO_SANITIZE_ADDR_MEM_THREAD
+STATIC void
+GC_push_misaligned_stack(ptr_t bottom, ptr_t top)
+{
+  REGISTER ptr_t greatest_ha = (ptr_t)GC_greatest_plausible_heap_addr;
+  REGISTER ptr_t least_ha = (ptr_t)GC_least_plausible_heap_addr;
+  word lim_addr;
+  size_t ofs;
+#  define GC_greatest_plausible_heap_addr greatest_ha
+#  define GC_least_plausible_heap_addr least_ha
+
+  if (NULL == top || ADDR(top) < ADDR(bottom) + sizeof(ptr_t))
+    return;
+  lim_addr = ADDR(top) - sizeof(ptr_t);
+  for (ofs = 1; ofs < ALIGNMENT; ofs++) {
+    ptr_t current_p = PTR_ALIGN_UP(bottom, ALIGNMENT) + ofs;
+
+    if (ADDR(current_p) - ALIGNMENT >= ADDR(bottom))
+      current_p -= ALIGNMENT;
+    for (; ADDR(current_p) <= lim_addr; current_p += ALIGNMENT) {
+      ptr_t q;
+
+      BCOPY(current_p, &q, sizeof(q));
+      /*
+       * The source is recorded as a back pointer, which must stay aligned
+       * (its hidden form keeps the low bit that marks debug objects).
+       */
+      GC_PUSH_ONE_STACK(q, PTR_ALIGN_DOWN(current_p, ALIGNMENT));
+    }
+  }
+#  undef GC_greatest_plausible_heap_addr
+#  undef GC_least_plausible_heap_addr
+}
+#else
+#  define GC_PUSH_MISALIGNED_STACK(b, t) (void)0
+#endif
+
 GC_INNER void
 GC_push_all_stack(ptr_t bottom, ptr_t top)
 {
   GC_ASSERT(I_HOLD_LOCK());
+  GC_PUSH_MISALIGNED_STACK(bottom, top);
 #ifndef NEED_FIXUP_POINTER
   if (GC_all_interior_pointers
 #  if defined(THREADS) && defined(MPROTECT_VDB)
@@ -23069,6 +23125,7 @@ GC_push_all_stack_partially_eager(ptr_t bottom, ptr_t top, ptr_t cold_gc_frame)
   /* else */ {
     GC_push_all_eager(bottom, top);
   }
+  GC_PUSH_MISALIGNED_STACK(bottom, top);
 #  ifdef TRACE_BUF
   GC_add_trace_entry("GC_push_all_stack", bottom, top);
 #  endif

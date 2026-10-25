@@ -22,7 +22,7 @@ fn sys_read(fd i64, buf &u8, count u64) (i64, Errno) {
 	return split_int_errno(sys_call3(3, usize(fd), usize(buf), usize(count)))
 }
 
-// 4 sys_write
+// 4 sys_write.
 pub fn sys_write(fd i64, buf &u8, count u64) (i64, Errno) {
 	return split_int_errno(sys_call3(4, usize(fd), usize(buf), usize(count)))
 }

@@ -74,6 +74,7 @@ __global g_panic_state = PanicState{}
 // 	}
 // 	return a / b
 // }
+// assert safe_div(6, 2) == 3
 // ```
 pub fn recover() ?string {
 	return none

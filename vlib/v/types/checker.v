@@ -10698,7 +10698,13 @@ fn (tc &TypeChecker) cached_expr_type_ref(id flat.NodeId) &Type {
 		}
 		return unsafe { nil }
 	}
-	return tc.cached_expr_type_ref_sparse(id)
+	// The vc bootstrap compiler heap-copies a non-literal `&Type` return, which crashes on
+	// nil, so a miss is returned as the literal nil instead of the propagated pointer.
+	sparse := tc.cached_expr_type_ref_sparse(id)
+	if isnil(sparse) {
+		return unsafe { nil }
+	}
+	return sparse
 }
 
 @[direct_array_access]
@@ -10707,7 +10713,11 @@ fn (tc &TypeChecker) cached_expr_type_ref_sparse(id flat.NodeId) &Type {
 	if !isnil(tc.storage_query_probe) {
 		if typ := tc.sparse_expr_type_values[idx] { return new_type_reference(typ) }
 		if !isnil(tc.storage_query_probe.read_base) {
-			return tc.storage_query_probe.read_base.cached_expr_type_ref(id)
+			base := tc.storage_query_probe.read_base.cached_expr_type_ref(id)
+			if isnil(base) {
+				return unsafe { nil }
+			}
+			return base
 		}
 		return unsafe { nil }
 	}
@@ -14508,7 +14518,9 @@ fn (mut tc TypeChecker) check_decl_type_strings(node_id flat.NodeId, node flat.N
 		alias_name := node.typ_text().trim_space()
 		alias_type := tc.parse_type(flat.source_type_id(alias_name))
 		if alias_type is Alias && alias_type.base_type is FnType {
-			original_type := Type(alias_type.base_type).name().replace_once('fn(', 'fn (')
+			// The base is a function type, not another alias, so unalias_type yields it directly;
+			// the vc bootstrap compiler mis-generates a `Type(ptr)` cast of the payload field.
+			original_type := unalias_type(alias_type).name().replace_once('fn(', 'fn (')
 			tc.record_error_at(.unknown_type, 'type `${alias_name}` is an alias, use the original alias type `${original_type}` instead', node_id, tc.type_diagnostic_pos(node_id, alias_name))
 		}
 	}

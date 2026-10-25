@@ -284,6 +284,7 @@ fn (mut t Transport) vschannel_fresh_round_trip(req &Request, key string, raw st
 	}
 	resp, reusable := conn.exchange(req, raw) or {
 		conn.close_conn()
+		if err is ProgressCallbackError { return err }
 		// Past the TLS handshake the request bytes may have been (partially)
 		// written; a non-idempotent method must not be replayed by the outer
 		// retry loop. (A dial/handshake failure above propagates before this

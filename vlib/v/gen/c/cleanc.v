@@ -4144,6 +4144,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		g.gen_top_level_asm()
 		if g.incremental_fn_names.len > 0 {
 			g.writeln('/* V3CACHE_SUPPORT_BEGIN */')
+			g.multi_return_forward_decls()
 			g.fixed_array_early_typedefs()
 			g.fn_ptr_typedefs()
 			g.struct_decls()
@@ -4152,6 +4153,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 			g.type_alias_decls_at_phase(false, true)
 			g.fn_ptr_typedefs()
 			g.type_alias_decls_at_phase(true, true)
+			g.multi_return_typedefs()
 			g.optional_typedefs()
 			g.forward_decls()
 			g.cached_header_forward_decls()
@@ -20165,6 +20167,22 @@ fn (mut g FlatGen) c99_feature_test_macros() {
 	g.writeln('#endif')
 }
 
+// headerless_darwin_pthread_storage matches Darwin's opaque pthread sizes and
+// long alignment on both data models, without importing system headers.
+fn (mut g FlatGen) headerless_darwin_pthread_storage() {
+	for typ, sizes in {
+		'pthread_attr_t':       '64 : 40'
+		'pthread_mutex_t':      '64 : 44'
+		'pthread_cond_t':       '48 : 28'
+		'pthread_rwlock_t':     '200 : 128'
+		'pthread_rwlockattr_t': '24 : 16'
+		'pthread_condattr_t':   '16 : 8'
+		'pthread_once_t':       '16 : 8'
+	} {
+		g.writeln('typedef union { unsigned char _opaque[sizeof(long) == 8 ? ${sizes}]; long _align; } ${typ};')
+	}
+}
+
 fn (mut g FlatGen) headerless_darwin_pthread_alias(alias string, typ string, guard string) {
 	g.writeln('#ifndef ${guard}')
 	g.writeln('typedef ${typ} ${alias};')
@@ -20525,12 +20543,18 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('#endif')
 	// Fallback pthread declarations for the headerless build. They are only
 	// emitted when the platform's real <pthread.h> guards are absent, so when the
-	// system header is included its exact types win. The opaque unions are
+	// system header is included its exact types win. Darwin storage must match
+	// the SDK exactly: cached interfaces can introduce headers on a warm build,
+	// and cached sync objects must keep the same layout in their callers.
+	// On other platforms the opaque unions are
 	// deliberately oversized (and over-aligned) to safely back the real objects
 	// on mainstream targets; a platform whose pthread objects exceed these sizes
 	// must be built with its real <pthread.h> in scope.
 	g.writeln('#if !defined(_BITS_PTHREADTYPES_COMMON_H) && !defined(_PTHREAD_H) && !defined(_PTHREADTYPES_H_) && !defined(_PTHREADTYPES_H) && !defined(__pthread_t_defined) && !defined(_SYS__PTHREAD_TYPES_H_) && !defined(_PTHREAD_T)')
 	g.writeln('typedef void* pthread_t;')
+	g.writeln('#ifdef __APPLE__')
+	g.headerless_darwin_pthread_storage()
+	g.writeln('#else')
 	g.writeln('typedef union { unsigned char _opaque[64]; long long _align; } pthread_attr_t;')
 	g.writeln('typedef union { unsigned char _opaque[128]; long long _align; } pthread_mutex_t;')
 	g.writeln('typedef union { unsigned char _opaque[128]; long long _align; } pthread_cond_t;')
@@ -20538,6 +20562,7 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('typedef union { unsigned char _opaque[64]; long long _align; } pthread_rwlockattr_t;')
 	g.writeln('typedef union { unsigned char _opaque[64]; long long _align; } pthread_condattr_t;')
 	g.writeln('typedef union { unsigned char _opaque[16]; long long _align; } pthread_once_t;')
+	g.writeln('#endif')
 	g.writeln('typedef unsigned long pthread_key_t;')
 	g.writeln('#endif')
 	// Mach headers expose Darwin's internal pthread storage types without the

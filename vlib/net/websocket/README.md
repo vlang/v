@@ -50,3 +50,15 @@ See [text validation](FRAME_VALIDATION.md) for the ASCII fast path and Unicode f
 
 Incoming 64-bit frame lengths must have the most significant bit clear and fit in
 V's `int` range. Oversized lengths are rejected before allocating the payload buffer.
+
+## Owning a client connection
+
+`client.connect_with_dialer(dialer)` accepts a callback with the signature
+`fn (address string) !&net.TcpConn`. The callback returns a connected TCP socket and releases
+any failed candidates itself. After it returns successfully, the WebSocket client owns the
+socket, applies the configured timeouts and TLS, and performs the opening handshake.
+A custom dialer must provide any proxy tunnel itself; `proxy_url` is rejected on this path.
+
+After joining all readers and writers, call `client.dispose()` to release the connection and
+TLS resources. It is safe before connecting, after a failed connection, or more than once.
+Disposal is terminal: create a new client for a later connection.

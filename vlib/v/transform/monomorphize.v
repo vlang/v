@@ -4168,7 +4168,10 @@ fn (mut t Transformer) generic_struct_args_in_scope(args_ids []u32, module_name 
 				t.normalize_sum_variant_type(arg_source_id_4, module_name, [])
 			}
 		} else if parsed is types.Alias && parsed.base_type is types.ArrayFixed {
-			types.Type(parsed.base_type).source_type_id()
+			// The base is not itself an alias here, so unalias_type yields the alias payload's
+			// base type. Spelled this way because the vc bootstrap compiler takes the address of
+			// the embedded `&Type` payload field for a `Type(ptr)` cast receiver.
+			types.unalias_type(parsed).source_type_id()
 		} else {
 			// A bare spelling that resolves inside the declaring module still has to
 			// honor the writing file's selective imports: `import model { Context }`
