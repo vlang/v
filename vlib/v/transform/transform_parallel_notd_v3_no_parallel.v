@@ -153,22 +153,22 @@ mut:
 	wave          int
 	nodes_base    voidptr
 	children_base voidptr
-	node_size     usize
-	child_size    usize
+	node_size     uint
+	child_size    uint
 }
 
 fn region_compact_thread(arg voidptr) voidptr {
 	c := unsafe { &RegionCompaction(arg) }
 	if c.node_len > 0 && c.node_dst != c.node_src {
 		unsafe {
-			vmemmove(&u8(c.nodes_base) + usize(c.node_dst) * c.node_size, &u8(c.nodes_base) +
-				usize(c.node_src) * c.node_size, isize(usize(c.node_len) * c.node_size))
+			vmemmove(&u8(c.nodes_base) + uint(c.node_dst) * c.node_size, &u8(c.nodes_base) +
+				uint(c.node_src) * c.node_size, int(uint(c.node_len) * c.node_size))
 		}
 	}
 	if c.child_len > 0 && c.child_dst != c.child_src {
 		unsafe {
-			vmemmove(&u8(c.children_base) + usize(c.child_dst) * c.child_size, &u8(c.children_base) +
-				usize(c.child_src) * c.child_size, isize(usize(c.child_len) * c.child_size))
+			vmemmove(&u8(c.children_base) + uint(c.child_dst) * c.child_size, &u8(c.children_base) +
+				uint(c.child_src) * c.child_size, int(uint(c.child_len) * c.child_size))
 		}
 	}
 	return unsafe { nil }
@@ -237,8 +237,8 @@ fn (mut t Transformer) compact_worker_regions_parallel(worker_ptrs []voidptr, no
 	for mut move in moves {
 		move.nodes_base = t.a.nodes.data
 		move.children_base = t.a.children.data
-		move.node_size = usize(t.a.nodes.element_size)
-		move.child_size = usize(t.a.children.element_size)
+		move.node_size = uint(t.a.nodes.element_size)
+		move.child_size = uint(t.a.children.element_size)
 	}
 	for wave in 0 .. wave_count {
 		mut tasks := []workers.Task{cap: moves.len}
@@ -333,11 +333,11 @@ fn (mut t Transformer) absorb_worker_regions(worker_ptrs []voidptr, base_nodes i
 	// nothing lands exactly on the end of the array.
 	nodes_base := unsafe { &u8(t.a.nodes.data) }
 	children_base := unsafe { &u8(t.a.children.data) }
-	node_size := usize(t.a.nodes.element_size)
-	child_size := usize(t.a.children.element_size)
+	node_size := uint(t.a.nodes.element_size)
+	child_size := uint(t.a.children.element_size)
 	for i in 0 .. absorb_args.len {
-		node_off := usize(absorb_args[i].node_start + int(absorb_args[i].node_shift))
-		child_off := usize(absorb_args[i].child_start + int(absorb_args[i].child_shift))
+		node_off := uint(absorb_args[i].node_start + int(absorb_args[i].node_shift))
+		child_off := uint(absorb_args[i].child_start + int(absorb_args[i].child_shift))
 		absorb_args[i].dst_nodes = unsafe { voidptr(nodes_base + node_off * node_size) }
 		absorb_args[i].dst_children = unsafe {
 			voidptr(children_base + child_off * child_size)
@@ -548,7 +548,7 @@ struct WorkerScopeFreeArgs {
 // `scopes`. `lo`/`hi` bound the union of the arenas' address ranges: nearly
 // every text lives outside them, so the per-arena search is rarely needed.
 @[inline]
-fn node_has_any_scoped_text(node &flat.Node, scopes []voidptr, lo usize, hi usize) bool {
+fn node_has_any_scoped_text(node &flat.Node, scopes []voidptr, lo uint, hi uint) bool {
 	if node.value.len > 0 && text_pointer_in_scopes(node.value.str, scopes, lo, hi) {
 		return true
 	}
@@ -585,8 +585,8 @@ fn node_has_any_scoped_text(node &flat.Node, scopes []voidptr, lo usize, hi usiz
 
 // Reject pointers outside the union once, before consulting individual arenas.
 @[inline]
-fn text_pointer_in_scopes(ptr voidptr, scopes []voidptr, lo usize, hi usize) bool {
-	addr := usize(ptr)
+fn text_pointer_in_scopes(ptr voidptr, scopes []voidptr, lo uint, hi uint) bool {
+	addr := uint(ptr)
 	if addr < lo || addr >= hi {
 		return false
 	}
@@ -599,9 +599,9 @@ fn text_pointer_in_scopes(ptr voidptr, scopes []voidptr, lo usize, hi usize) boo
 }
 
 // scopes_address_range returns the union address range of `scopes`.
-fn scopes_address_range(scopes []voidptr) (usize, usize) {
-	mut lo := usize(0)
-	mut hi := usize(0)
+fn scopes_address_range(scopes []voidptr) (uint, uint) {
+	mut lo := uint(0)
+	mut hi := uint(0)
 	$if prealloc {
 		for scope in scopes {
 			scope_lo, scope_hi := transform_scope_address_range(scope)
@@ -1971,7 +1971,7 @@ fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpe
 			scope_lo, scope_hi := transform_scope_address_range(scope)
 			for idx in 0 .. t.a.nodes.len {
 				node := unsafe { &t.a.nodes[idx] }
-				value_address := usize(node.value.str)
+				value_address := uint(node.value.str)
 				if node.payload == 0 && (value_address < scope_lo || value_address >= scope_hi) {
 					continue
 				}

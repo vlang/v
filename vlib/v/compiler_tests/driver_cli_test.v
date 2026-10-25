@@ -2336,6 +2336,36 @@ fn main() {
 	assert file_list_run.exit_code == 0, file_list_run.output
 	assert file_list_run.output.trim_space() == '42'
 
+	// vab passes `-dump-modules <file>`; the value must not become a second input path.
+	dump_modules_file := os.join_path(root, 'dump.modules')
+	dump_defines_file := os.join_path(root, 'dump.defines')
+	dump_compile := cmdexec.run(v3_bin, ['-nocache', '-dump-modules', dump_modules_file, '-dump-defines',
+		dump_defines_file, '-d', 'dump_probe', '-o', c_output, bits_source])
+	assert dump_compile.exit_code == 0, dump_compile.output
+	dumped_modules := os.read_lines(dump_modules_file)!
+	assert 'main' in dumped_modules, dumped_modules.str()
+	assert 'builtin' in dumped_modules, dumped_modules.str()
+	// vab looks up the full module names, like `sokol.sapp`.
+	assert 'math.bits' in dumped_modules, dumped_modules.str()
+	dumped_defines := os.read_lines(dump_defines_file)!
+	assert 'system,${os.user_os()},true' in dumped_defines, dumped_defines.str()
+	assert 'user,dump_probe,true' in dumped_defines, dumped_defines.str()
+	// vab reads `-dump-c-flags` after a C object fails to build for a target the host lacks.
+	broken_object_source := os.join_path(root, 'dump_broken.c')
+	os.write_file(broken_object_source, '#include "dump_missing_header.h"\n')!
+	dump_include_dir := os.join_path(root, 'dump inc')
+	os.mkdir_all(dump_include_dir)!
+	broken_main := os.join_path(root, 'dump_broken_main.v')
+	os.write_file(broken_main, '#flag -DDUMP_PROBE_DEFINE\n#flag -I "${dump_include_dir}"\n#flag ${os.join_path(root, 'dump_broken.o')}\n\nfn main() {}\n')!
+	dump_c_flags_file := os.join_path(root, 'dump.cflags')
+	broken_compile := cmdexec.run(v3_bin, ['-nocache', '-dump-c-flags', dump_c_flags_file, '-o',
+		c_output, broken_main])
+	assert broken_compile.exit_code != 0, broken_compile.output
+	dumped_c_flags := os.read_lines(dump_c_flags_file)!
+	assert '-DDUMP_PROBE_DEFINE' in dumped_c_flags, dumped_c_flags.str()
+	// vab parses the dump line by line, so a value-taking flag keeps its value on its line.
+	assert '-I "${dump_include_dir}"' in dumped_c_flags, dumped_c_flags.str()
+
 	assert_driver_cli_failure(v3_bin, ['--bogus'], 'unknown option `--bogus`')
 	assert_driver_cli_failure(v3_bin, ['-o'], 'option `-o` requires a value')
 	assert_driver_cli_failure(v3_bin, ['-b', 'bogus', source], 'unknown backend `bogus`')

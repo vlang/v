@@ -48,7 +48,7 @@ fn C.wkhtmltopdf_convert(converter &C.wkhtmltopdf_converter) i32
 
 fn C.wkhtmltopdf_http_error_code(converter &C.wkhtmltopdf_converter) i32
 
-fn C.wkhtmltopdf_get_output(converter &C.wkhtmltopdf_converter, const_data &&u8) isize
+fn C.wkhtmltopdf_get_output(converter &C.wkhtmltopdf_converter, const_data &&u8) C.ptrdiff_t
 
 fn main() {
 	// init

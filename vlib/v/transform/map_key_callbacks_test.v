@@ -20,8 +20,7 @@ fn test_map_callbacks_follow_target_width_not_host_width() {
 	for bits in [32, 64] {
 		types.set_platform_int_bits(bits)
 		expected := map_callback_test_integer_names((bits / 8).str())
-		for key in ['int', 'isize', 'usize', 'uint', 'voidptr', 'charptr', 'byteptr', '&int', '&Item',
-			'&&Item'] {
+		for key in ['int', 'uint', 'voidptr', 'charptr', 'byteptr', '&int', '&Item', '&&Item'] {
 			assert map_callback_test_names(key) == expected, '${bits}: ${key}'
 		}
 	}
@@ -64,7 +63,7 @@ fn test_map_callbacks_resolve_aliases_and_keep_fixed_array_helpers() {
 			'WideKey':   'u64'
 			'TinyKey':   'u8'
 			'TextKey':   'string'
-			'IndexKey':  'usize'
+			'IndexKey':  'uint'
 			'PtrKey':    'voidptr'
 			'NestedKey': 'TextKey'
 			'BlockKey':  '[2]u64'

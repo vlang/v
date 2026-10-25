@@ -89,3 +89,23 @@ fn test_int_literal_cast_overflow_warnings_follow_the_target_width() {
 		}
 	}
 }
+
+fn test_platform_integer_shifts_use_target_width_and_preserve_c_int_width() {
+	saved_bits := platform_int_bits()
+	defer { set_platform_int_bits(saved_bits) }
+	for bits in [32, 64] {
+		set_platform_int_bits(bits)
+		for typ in ['int', 'uint', 'Count'] {
+			valid := check_integer_cast_platform_source('type Count = int
+fn main() { _ = ${typ}(1) << ${bits - 1} }')
+			assert valid.errors.len == 0, valid.errors.str()
+			invalid := check_integer_cast_platform_source('type Count = int
+fn main() { _ = ${typ}(1) << ${bits} }')
+			assert invalid.errors.any(it.msg.contains('maximum: ${bits - 1} bits')), invalid.errors.str()
+		}
+		translated := check_integer_cast_platform_source('@[translated]
+module main
+fn main() { _ = int(1) << 32 }')
+		assert translated.errors.any(it.msg.contains('maximum: 31 bits')), translated.errors.str()
+	}
+}

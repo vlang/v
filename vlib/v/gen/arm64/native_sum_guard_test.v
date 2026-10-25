@@ -18,11 +18,11 @@ fn test_native_negative_sum_guards_preserve_enum_payload_fields() {
 const builtin_void_type = Type(Void{})
 const empty_type = &builtin_void_type
 fn C.exit(int)
-fn C.malloc(usize) voidptr
-fn C.memcpy(voidptr, voidptr, usize) voidptr
-fn memdup(value voidptr, size isize) voidptr {
-    copy := C.malloc(usize(size))
-    return C.memcpy(copy, value, usize(size))
+fn C.malloc(uint) voidptr
+fn C.memcpy(voidptr, voidptr, uint) voidptr
+fn memdup(value voidptr, size int) voidptr {
+    copy := C.malloc(uint(size))
+    return C.memcpy(copy, value, uint(size))
 }
 fn __as_cast(obj voidptr, obj_type int, expected_type int, obj_name string, expected_name string) voidptr {
     if obj_type != expected_type { C.exit(80) }

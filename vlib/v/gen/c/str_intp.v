@@ -196,7 +196,7 @@ fn is_string_interp_signed_int_type(name string) bool {
 }
 
 fn is_string_interp_unsigned_int_type(name string) bool {
-	return name in ['u8', 'u16', 'u32', 'u64', 'usize']
+	return name in ['u8', 'u16', 'u32', 'u64', 'uint']
 }
 
 fn is_string_interp_char_code_type(name string) bool {
@@ -450,7 +450,7 @@ fn (mut g FlatGen) string_literals_from(start int) {
 		// and give back a `_SL` macro that an included C header defined.
 		g.writeln('#pragma push_macro("_SL")')
 		g.writeln('#undef _SL')
-		g.writeln('#define _SL(id, s, n) static const string id = {s, n, 1}')
+		g.writeln('#define _SL(id, s, n) static const string id = {(u8*)s, n, 1}')
 	}
 	if g.cache_split {
 		mut literals := g.str_lits[start..].clone()

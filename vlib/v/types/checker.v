@@ -555,33 +555,35 @@ mut:
 	// Per-checker symbol probes front the compilation-wide interner. Resolved
 	// names are usually repeated as the same canonical string pointer inside a
 	// worker, so these slots avoid taking the interner mutex on every call.
-	symbol_recent_ptrs           [type_cache_recent_slots]usize
-	symbol_recent_lens           [type_cache_recent_slots]int
-	symbol_recent_ids            [type_cache_recent_slots]SymbolId
-	symbol_recent_vals           [type_cache_recent_slots]string
-	symbol_recent_set            [type_cache_recent_slots]bool
-	struct_field_entries         map[u32]&StructFieldTypeEntries
-	struct_field_misses          map[u32]&StructFieldMissEntries
-	struct_field_shared          map[u32]&StructFieldTypeEntries // immutable declaration types, without local TypeIds
-	struct_field_complete        map[u32]bool                    // direct fields cover every lookup for these owners
-	struct_field_recent_structs  [256]u32
-	struct_field_recent_fields   [256]string
-	struct_field_recent_values   [256]&Type
-	struct_field_recent_states   [256]i8
-	struct_field_fn_diagnostics  map[string]string
-	sum_variant_pattern_entries  map[string]&SumVariantPatternFileEntries
-	recv_pattern_entries         map[string]GenericReceiverMethodPatternMatch
-	recv_pattern_misses          map[string]bool
-	lexical_smartcast_pages      [][]u32 // see lexical_smartcast_state
-	lexical_smartcast_types      []&Type
-	ierror_compat_entries        map[u32]int
-	ierror_scoped_compat_entries map[u32]&TypeQueryScopeEntries
-	interface_impl_entries       map[u32]flat.TypeTextList
-	source_error_embed_entries   map[u32]&TypeQueryScopeEntries
-	source_error_embed_indexed   bool
-	source_error_embed_shared    bool
-	ierror_impl_names            flat.TypeTextList
-	ierror_impl_names_set        bool
+	symbol_recent_ptrs          [type_cache_recent_slots]uint
+	symbol_recent_lens          [type_cache_recent_slots]int
+	symbol_recent_ids           [type_cache_recent_slots]SymbolId
+	symbol_recent_vals          [type_cache_recent_slots]string
+	symbol_recent_set           [type_cache_recent_slots]bool
+	struct_field_entries        map[u32]&StructFieldTypeEntries
+	struct_field_misses         map[u32]&StructFieldMissEntries
+	struct_field_shared         map[u32]&StructFieldTypeEntries // immutable declaration types, without local TypeIds
+	struct_field_complete       map[u32]bool                    // direct fields cover every lookup for these owners
+	struct_field_recent_structs [256]u32
+	struct_field_recent_fields  [256]string
+	struct_field_recent_values  [256]&Type
+	struct_field_recent_states  [256]i8
+	// Only these slots can bypass the C-module and escaped-keyword guards.
+	struct_field_recent_unguarded [256]bool
+	struct_field_fn_diagnostics   map[string]string
+	sum_variant_pattern_entries   map[string]&SumVariantPatternFileEntries
+	recv_pattern_entries          map[string]GenericReceiverMethodPatternMatch
+	recv_pattern_misses           map[string]bool
+	lexical_smartcast_pages       [][]u32 // see lexical_smartcast_state
+	lexical_smartcast_types       []&Type
+	ierror_compat_entries         map[u32]int
+	ierror_scoped_compat_entries  map[u32]&TypeQueryScopeEntries
+	interface_impl_entries        map[u32]flat.TypeTextList
+	source_error_embed_entries    map[u32]&TypeQueryScopeEntries
+	source_error_embed_indexed    bool
+	source_error_embed_shared     bool
+	ierror_impl_names             flat.TypeTextList
+	ierror_impl_names_set         bool
 	// short type name -> unique qualified name ('' = ambiguous); built lazily
 	// by unique_qualified_type_name from the five type-name maps.
 	short_type_name_index       flat.TypeTextBindings
@@ -603,8 +605,8 @@ mut:
 fn new_type_cache(parse_enabled bool) &TypeCache {
 	// Allocate the fixed caches in place instead of copying a large temporary.
 	// Their owned map/array payloads need a scanned allocation under a GC.
-	mut cache := unsafe { &TypeCache(malloc(sizeof(TypeCache))) }
-	unsafe { vmemset(cache, 0, sizeof(TypeCache)) }
+	mut cache := unsafe { &TypeCache(malloc(int(sizeof(TypeCache)))) }
+	unsafe { vmemset(cache, 0, int(sizeof(TypeCache))) }
 	cache.parse_enabled = parse_enabled
 	cache.generated_parent_entries = map[int]flat.NodeId{}
 	cache.parse_entries = map[u64]ParseTypeCacheEntry{}
@@ -1208,6 +1210,8 @@ pub mut:
 	type_param_texts              flat.TypeTextBindings // in a fork that checks a generic body with its type parameters as types their constraints admit, the text of each (check_generic_fn_body_as)
 	type_params_expanding         map[string]bool       // the type parameters of type_param_texts whose own text is being parsed: `T` of `[T Comparable[T]]` stays open inside it
 	concrete_parents_indexed      int                   // nodes the parent index covered when the last concrete clone was checked
+	concrete_guard_options        map[flat.NodeId]bool  // in check_concrete_instance_members, the `if x := a` operands declared as an option or result, smartcast to their payload
+	checking_concrete_members     bool                  // check_concrete_instance_members is checking a clone
 	module_diagnostic_root        string
 	autofree_mode                 bool
 	no_main                       bool
@@ -2266,7 +2270,7 @@ fn new_zeroed_name_cache(n int) []&CachedName {
 		// used during transform growth without synthesizing per-element stores.
 		unsafe {
 			values.grow_len(n)
-			vmemset(values.data, 0, isize(n) * isize(sizeof(&CachedName)))
+			vmemset(values.data, 0, int(n) * int(sizeof(&CachedName)))
 		}
 	}
 	return values
@@ -2961,8 +2965,11 @@ fn (mut tc TypeChecker) widen_mixed_integer_expr_types() {
 			continue
 		}
 		typ := tc.expr_type_values[idx]
-		widened := tc.widen_mixed_integer_expr_type(flat.NodeId(idx), typ)
-		if widened.name() != typ.name() {
+		if !mixed_integer_expr_type_can_widen(typ) {
+			continue
+		}
+		widened := tc.widen_mixed_integer_infix_type(flat.NodeId(idx), typ)
+		if widened.source_type_id() != typ.source_type_id() {
 			tc.invalidate_checked_type_id(idx)
 			tc.expr_type_values[idx] = tc.intern_type_reference(widened)
 		}
@@ -3093,7 +3100,7 @@ fn extend_name_cache(mut values []&CachedName, n int) {
 		start := values.len
 		unsafe {
 			values.grow_len(n - start)
-			vmemset(&values[start], 0, isize(n - start) * isize(sizeof(&CachedName)))
+			vmemset(&values[start], 0, int(n - start) * int(sizeof(&CachedName)))
 		}
 	}
 }
@@ -6622,10 +6629,10 @@ pub fn (tc &TypeChecker) parse_resolution_type(source_id u32) Type {
 	} else {
 		source_id
 	}
-	clean := flat.source_type_name(clean_source_id)
-	if context_independent_type_text(clean) {
+	if context_independent_type(clean_source_id) {
 		return *tc.parse_type(clean_source_id)
 	}
+	clean := flat.source_type_name(clean_source_id)
 	// Generic specialization uses `main.Type` as an internal lock for a
 	// caller-owned program type. Resolve that lock before qualification strips
 	// `main.` and lets a same-named import in the declaration file capture the
@@ -6671,8 +6678,7 @@ pub fn (tc &TypeChecker) parse_resolution_type(source_id u32) Type {
 // parse_resolution_type_in_file resolves type text using the imports and module
 // of `file` without mutating the checker's current traversal cursor.
 pub fn (tc &TypeChecker) parse_resolution_type_in_file(source_id u32, file string) Type {
-	typ := flat.source_type_name(source_id)
-	if context_independent_type_text(typ) {
+	if context_independent_type(source_id) {
 		return *tc.parse_type(source_id)
 	}
 	module_name := tc.file_modules[file] or { '' }
@@ -6689,48 +6695,10 @@ pub fn (tc &TypeChecker) parse_resolution_type_in_file(source_id u32, file strin
 	return scoped.parse_resolution_type(source_id)
 }
 
-// Primitive payloads and their pointer/container/optional wrappers cannot refer
-// to a declaration's imports. Keep them out of the checker-view constructor.
-@[manualfree]
-fn context_independent_type_text(typ string) bool {
-	if typ in ['', '!', '?'] {
-		return true
-	}
-	mut start := 0
-	for start < typ.len {
-		if typ[start] in [`&`, `?`, `!`] {
-			start++
-		} else if typ[start] == `[` && start + 1 < typ.len && typ[start + 1] == `]` {
-			start += 2
-		} else if typ[start] == `[` {
-			mut end := start + 1
-			for end < typ.len && typ[end] >= `0` && typ[end] <= `9` {
-				end++
-			}
-			if end == start + 1 || end >= typ.len || typ[end] != `]` {
-				return false
-			}
-			start = end + 1
-		} else if start + 4 < typ.len && typ[start] == `m` && typ[start + 1] == `a`
-			&& typ[start + 2] == `p` && typ[start + 3] == `[` {
-			end := find_matching_bracket(typ, start + 3)
-			if end >= typ.len {
-				return false
-			}
-			key := unsafe { typ.substr_unsafe(start + 4, end) }
-			if !context_independent_type_text(key) {
-				return false
-			}
-			start = end + 1
-		} else {
-			break
-		}
-	}
-	if typ.len - start > 7 {
-		return false
-	}
-	leaf := unsafe { typ.substr_unsafe(start, typ.len) }
-	return leaf != 'array' && leaf != 'map' && is_builtin_type_name(leaf)
+// Primitive payloads and their exact wrappers cannot refer to declaration imports.
+@[inline]
+fn context_independent_type(source_id u32) bool {
+	return source_id == 0 || flat.source_type_shape(source_id).has(.context_independent)
 }
 
 // reset_resolution_type_view_cache discards lookup views that may have been
@@ -9843,8 +9811,8 @@ fn (mut tc TypeChecker) annotate_lock_expr(node flat.Node) {
 fn (mut tc TypeChecker) annotate_struct_init_expected_exprs(node flat.Node) {
 	init_type := tc.parse_type(flat.source_type_id(node.value))
 	init_struct := struct_type_from_type(init_type) or { return }
-	init_name := flat.source_type_name(tc.struct_init_field_lookup_name(flat.source_type_id(node.value), init_struct.source_type_id()))
-	fields := tc.struct_fields_for_init(flat.source_type_id(init_name))
+	init_name_id := tc.struct_init_field_lookup_name(flat.source_type_id(node.value), init_struct.source_type_id())
+	fields := tc.struct_fields_for_init(init_name_id)
 	for i in 0 .. node.children_count {
 		field := tc.a.child_node(&node, i)
 		if field.kind != .field_init || field.children_count == 0 {
@@ -9853,7 +9821,7 @@ fn (mut tc TypeChecker) annotate_struct_init_expected_exprs(node flat.Node) {
 		value_id := tc.a.child(field, 0)
 		mut expected := builtin_void_type
 		if field.value.len > 0 {
-			expected = tc.struct_field_type(flat.source_type_id(init_name), field.value) or { builtin_void_type }
+			expected = tc.struct_field_type(init_name_id, field.value) or { builtin_void_type }
 		} else if i < fields.len {
 			expected = fields[i].typ
 		}
@@ -11131,7 +11099,7 @@ fn (tc &TypeChecker) intern_symbol(name string) (SymbolId, string) {
 	}
 	mut cache := unsafe { tc.type_cache }
 	if !isnil(cache) {
-		ptr := usize(name.str)
+		ptr := uint(name.str)
 		slot := int((u64(ptr) >> 4 ^ u64(name.len)) & u64(type_cache_recent_slots - 1))
 		if cache.symbol_recent_set[slot] && cache.symbol_recent_ptrs[slot] == ptr
 			&& cache.symbol_recent_lens[slot] == name.len {
@@ -17562,7 +17530,12 @@ fn (mut tc TypeChecker) check_attribute_schema_decl(node_id flat.NodeId, node fl
 		if field.children_count > 0 {
 			tc.record_error_at(.assignment_mismatch, 'attribute schema field `${display}.${field.value}` cannot have a default value', field_id, tc.struct_field_declaration_pos(*field))
 		}
-		if tc.attribute_field_kind(field_type_text) == .unsupported {
+		field_type_id := if field.typ != 0 {
+			trimmed_source_type_id(field.typ)
+		} else {
+			flat.source_type_id(field_type_text.trim_space())
+		}
+		if tc.attribute_field_kind(field_type_id) == .unsupported {
 			tc.record_error_at(.assignment_mismatch, 'attribute schema field `${display}.${field.value}` must be a string, integer, bool, or enum, not `${field_type_text.trim_space()}`', field_id, tc.struct_field_declaration_pos(*field))
 		}
 	}
@@ -17580,8 +17553,9 @@ fn (mut tc TypeChecker) check_attribute_schema_decl(node_id flat.NodeId, node fl
 
 // AttributeSchemaField is one field of a custom attribute schema.
 struct AttributeSchemaField {
-	name      string
-	type_text string
+	name string
+	// type_id is a source spelling ID, distinct from semantic TypeId.
+	type_id u32
 }
 
 // AttributeSchema is a struct registered with `@[attribute]` whose uses are
@@ -17734,11 +17708,11 @@ fn attribute_arg_kind(value string) AttributeFieldKind {
 	return .unsupported
 }
 
-// attribute_field_kind maps a schema field type to the argument kind it
-// accepts. Only plain strings, integers, bools, and enums are supported;
+// attribute_field_kind maps a trimmed schema field source spelling ID to the
+// argument kind it accepts. Only plain strings, integers, bools, and enums are supported;
 // options, references, arrays, maps, and nested structs are unsupported.
-fn (tc &TypeChecker) attribute_field_kind(type_text string) AttributeFieldKind {
-	clean := unalias_type(tc.parse_type(flat.source_type_id(type_text.trim_space())))
+fn (tc &TypeChecker) attribute_field_kind(type_id u32) AttributeFieldKind {
+	clean := unalias_type(tc.parse_type(type_id))
 	if clean is String {
 		return .string_
 	}
@@ -17754,11 +17728,11 @@ fn (tc &TypeChecker) attribute_field_kind(type_text string) AttributeFieldKind {
 	return .unsupported
 }
 
-// attribute_enum_decl finds the enum declaration for `type_text`, trying the
+// attribute_enum_decl finds the enum declaration for `type_id`, trying the
 // spelling as written, then the current-module qualification, then the short
 // name.
-fn (tc &TypeChecker) attribute_enum_decl(type_text string, module string) ?flat.NodeId {
-	trimmed := type_text.trim_space()
+fn (tc &TypeChecker) attribute_enum_decl(type_id u32, module string) ?flat.NodeId {
+	trimmed := flat.source_type_name(type_id).trim_space()
 	short := trimmed.all_after_last('.')
 	mod := if module in ['', 'main'] { 'main' } else { module }
 	candidates := [trimmed, '${mod}.${short}', short]
@@ -17826,8 +17800,12 @@ fn (mut tc TypeChecker) collect_attribute_schemas() {
 						continue
 					}
 					schema.fields << AttributeSchemaField{
-						name:      field.value
-						type_text: type_text.trim_space()
+						name:    field.value
+						type_id: if field.typ != 0 {
+							trimmed_source_type_id(field.typ)
+						} else {
+							flat.source_type_id(type_text.trim_space())
+						}
 					}
 				}
 				for raw in tc.declaration_attributes[int(node_id)] {
@@ -18245,7 +18223,7 @@ fn schema_field_index(schema AttributeSchema, name string) int {
 // whose type is unsupported are skipped here; the schema declaration itself
 // already errors for those.
 fn (mut tc TypeChecker) check_attribute_arg_value(node_id flat.NodeId, schema AttributeSchema, base string, field AttributeSchemaField, value string, pos token.Pos, module string) {
-	kind := tc.attribute_field_kind(field.type_text)
+	kind := tc.attribute_field_kind(field.type_id)
 	if kind == .unsupported {
 		return
 	}
@@ -18261,10 +18239,10 @@ fn (mut tc TypeChecker) check_attribute_arg_value(node_id flat.NodeId, schema At
 		return
 	}
 	if kind == .enum_ {
-		if decl_id := tc.attribute_enum_decl(field.type_text, module) {
+		if decl_id := tc.attribute_enum_decl(field.type_id, module) {
 			name := value[1..]
 			if !tc.attribute_enum_has_value(decl_id, name) {
-				enum_name := field.type_text.trim_space().all_after_last('.')
+				enum_name := flat.source_type_name(field.type_id).trim_space().all_after_last('.')
 				tc.record_error_at(.assignment_mismatch, '`${value}` is not a value of enum `${enum_name}`', node_id, pos)
 			}
 		}
@@ -19757,7 +19735,7 @@ fn reserved_const_type_name(name string) bool {
 		'string',
 		'rune',
 		'thread',
-		'usize',
+		'uint',
 		'isize',
 		'voidptr',
 	]
@@ -20527,18 +20505,18 @@ fn (tc &TypeChecker) match_has_else_or_exhaustive_coverage(node flat.Node) bool 
 // sum-type subject lists every variant (so it is exhaustive without an `else`).
 fn (tc &TypeChecker) match_without_else_exhaustive_sumtype_returns(node flat.Node) bool {
 	subject_type := unalias_type(unwrap_pointer(tc.resolve_type(tc.a.child(&node, 0))))
-	mut sum_name := ''
+	mut sum_name_id := u32(0)
 	if subject_type is SumType {
-		sum_name = subject_type.name()
+		sum_name_id = subject_type.source_type_id()
 	} else {
 		return false
 	}
-	base := flat.source_type_name(tc.sum_base_name(flat.source_type_id(sum_name)))
-	variants := flat.TypeTextList{ ids: tc.sum_types.type_ids(base) or { return false } }.names()
+	base := flat.source_type_name(tc.sum_base_name(sum_name_id))
+	variants := tc.sum_types.type_ids(base) or { return false }
 	if variants.len == 0 {
 		return false
 	}
-	mut covered := map[string]bool{}
+	mut covered := map[u32]bool{}
 	for i in 1 .. node.children_count {
 		branch := tc.a.child_node(&node, i)
 		if branch.kind != .match_branch {
@@ -20557,10 +20535,10 @@ fn (tc &TypeChecker) match_without_else_exhaustive_sumtype_returns(node flat.Nod
 			pattern := flat.source_type_name(pattern_source_id)
 			qpattern := tc.qualify_name(pattern)
 			mut matched := false
-			for variant in variants {
-				if tc.generic_type_name_matches(flat.source_type_id(variant), pattern_source_id)
-					|| tc.generic_type_name_matches(flat.source_type_id(variant), flat.source_type_id(qpattern)) {
-					covered[variant] = true
+			for variant_id in variants {
+				if tc.generic_type_name_matches(variant_id, pattern_source_id)
+					|| tc.generic_type_name_matches(variant_id, flat.source_type_id(qpattern)) {
+					covered[variant_id] = true
 					matched = true
 				}
 			}
@@ -20571,12 +20549,12 @@ fn (tc &TypeChecker) match_without_else_exhaustive_sumtype_returns(node flat.Nod
 			// this short name — for `type S = a.Foo | b.Foo`, a branch matching
 			// one `Foo` must not mark the other as covered.
 			pattern_short := short_type_name(pattern)
-			mut short_match := ''
+			mut short_match := u32(0)
 			mut short_count := 0
-			for variant in variants {
-				if short_type_name(variant) == pattern_short {
+			for variant_id in variants {
+				if short_type_name(flat.source_type_name(variant_id)) == pattern_short {
 					short_count++
-					short_match = variant
+					short_match = variant_id
 				}
 			}
 			if short_count == 1 {
@@ -20584,8 +20562,8 @@ fn (tc &TypeChecker) match_without_else_exhaustive_sumtype_returns(node flat.Nod
 			}
 		}
 	}
-	for variant in variants {
-		if variant !in covered {
+	for variant_id in variants {
+		if variant_id !in covered {
 			return false
 		}
 	}
@@ -22184,9 +22162,8 @@ fn (tc &TypeChecker) comptime_static_reflected_field_expr_type(id flat.NodeId, v
 		return none
 	}
 	first_source_id := field_cases.cases[0].typ
-	first := flat.source_type_name(first_source_id)
 	for field in field_cases.cases[1..] {
-		if field.typ_text() != first {
+		if field.typ != first_source_id {
 			return none
 		}
 	}

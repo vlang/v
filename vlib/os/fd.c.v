@@ -30,7 +30,7 @@ pub fn fd_write(fd int, s string) {
 			return
 		}
 		remaining = remaining - written
-		sp = unsafe { voidptr(usize(sp) + usize(written)) }
+		sp = unsafe { voidptr(uint(sp) + uint(written)) }
 	}
 }
 

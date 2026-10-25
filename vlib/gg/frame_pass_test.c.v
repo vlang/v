@@ -7,8 +7,8 @@ import os
 import v.cmdexec
 
 $if gcboehm ? {
-	fn C.GC_get_total_bytes() usize
-	fn C.GC_get_gc_no() usize
+	fn C.GC_get_total_bytes() uint
+	fn C.GC_get_gc_no() uint
 }
 
 fn test_context_end_does_not_heap_copy_a_frame_local_pass() {

@@ -7,9 +7,9 @@ $if gg_multiwindow ? {
 #insert "@VMODROOT/vlib/gg/testdata/multiwindow_sokol_trace/shader_fixture_helpers.h"
 
 fn C.v_multiwindow_fixture_hlsl4_vs() voidptr
-fn C.v_multiwindow_fixture_hlsl4_vs_size() usize
+fn C.v_multiwindow_fixture_hlsl4_vs_size() uint
 fn C.v_multiwindow_fixture_hlsl4_fs() voidptr
-fn C.v_multiwindow_fixture_hlsl4_fs_size() usize
+fn C.v_multiwindow_fixture_hlsl4_fs_size() uint
 
 const fixture_gl_vs = '#version 330\nuniform vec4 vs_params[8];\nlayout(location=0) in vec4 position;\nlayout(location=1) in vec2 texcoord0;\nlayout(location=2) in vec4 color0;\nlayout(location=3) in float psize;\nout vec4 uv;\nout vec4 color;\nvoid main() { mat4 mvp = mat4(vs_params[0], vs_params[1], vs_params[2], vs_params[3]); mat4 tm = mat4(vs_params[4], vs_params[5], vs_params[6], vs_params[7]); gl_Position = mvp * position; gl_PointSize = psize; uv = tm * vec4(texcoord0, 0.0, 1.0); color = color0; }\n'
 const fixture_gl_fs = '#version 330\nuniform sampler2D tex_smp;\nin vec4 uv;\nin vec4 color;\nout vec4 frag_color;\nvoid main() { frag_color = texture(tex_smp, uv.xy) * color; }\n'

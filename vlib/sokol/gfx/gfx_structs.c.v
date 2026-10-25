@@ -142,7 +142,7 @@ pub fn (mut b Bindings) set_frag_image(index int, img Image) {
 pub fn (b &Bindings) update_vert_buffer(index int, data voidptr, element_size int, element_count int) {
 	range := Range{
 		ptr:  data
-		size: usize(element_size * element_count)
+		size: uint(element_size * element_count)
 	}
 	C.sg_update_buffer(b.vertex_buffers[index], &range)
 }
@@ -150,7 +150,7 @@ pub fn (b &Bindings) update_vert_buffer(index int, data voidptr, element_size in
 pub fn (b &Bindings) append_vert_buffer(index int, data voidptr, element_size int, element_count int) int {
 	range := Range{
 		ptr:  data
-		size: usize(element_size * element_count)
+		size: uint(element_size * element_count)
 	}
 	return C.sg_append_buffer(b.vertex_buffers[index], &range)
 }
@@ -158,7 +158,7 @@ pub fn (b &Bindings) append_vert_buffer(index int, data voidptr, element_size in
 pub fn (b &Bindings) update_index_buffer(data voidptr, element_size int, element_count int) {
 	range := Range{
 		ptr:  data
-		size: usize(element_size * element_count)
+		size: uint(element_size * element_count)
 	}
 	C.sg_update_buffer(b.index_buffer, &range)
 }
@@ -166,7 +166,7 @@ pub fn (b &Bindings) update_index_buffer(data voidptr, element_size int, element
 pub fn (b &Bindings) append_index_buffer(data voidptr, element_size int, element_count int) int {
 	range := Range{
 		ptr:  data
-		size: usize(element_size * element_count)
+		size: uint(element_size * element_count)
 	}
 	return C.sg_append_buffer(b.index_buffer, &range)
 }
@@ -215,12 +215,14 @@ pub fn (mut desc C.sg_shader_desc) set_frag_image(index int, name string) &Shade
 	return desc
 }
 
-pub fn (mut desc C.sg_shader_desc) set_vert_uniform_block_size(block_index int, size usize) &ShaderDesc {
+// set_vert_uniform_block_size sets the byte size of a vertex uniform block.
+pub fn (mut desc C.sg_shader_desc) set_vert_uniform_block_size(block_index int, size uint) &ShaderDesc {
 	desc.vs.uniform_blocks[block_index].size = size
 	return desc
 }
 
-pub fn (mut desc C.sg_shader_desc) set_frag_uniform_block_size(block_index int, size usize) &ShaderDesc {
+// set_frag_uniform_block_size sets the byte size of a fragment uniform block.
+pub fn (mut desc C.sg_shader_desc) set_frag_uniform_block_size(block_index int, size uint) &ShaderDesc {
 	desc.fs.uniform_blocks[block_index].size = size
 	return desc
 }
@@ -277,7 +279,7 @@ pub fn (mut desc ShaderStageDesc) set_image(index int, name string) ShaderStageD
 
 pub struct C.sg_shader_uniform_block_desc {
 pub mut:
-	size     usize
+	size     uint
 	layout   UniformLayout
 	uniforms [16]ShaderUniformDesc
 }
@@ -340,7 +342,7 @@ pub type ShaderInfo = C.sg_shader_info
 pub struct C.sg_range {
 pub mut:
 	ptr  voidptr
-	size usize
+	size uint
 }
 
 pub type Range = C.sg_range
@@ -643,7 +645,7 @@ pub type Pass = C.sg_pass
 pub struct C.sg_buffer_desc {
 pub mut:
 	_start_canary u32
-	size          usize
+	size          uint
 	type          BufferType
 	usage         Usage
 	data          Range

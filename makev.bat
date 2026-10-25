@@ -171,6 +171,11 @@ if !flag_local! NEQ 1 (
 	echo.
 )
 
+REM Teach pre-uint snapshots the new spelling without changing the download.
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0cmd\tools\vc_compat_uint.ps1" -Source "%V_C_FILE%" -Destination "%vc_dir%\v_win_compat.c"
+if !ERRORLEVEL! NEQ 0 goto :error
+set "V_C_FILE=%vc_dir%\v_win_compat.c"
+
 echo Building V...
 if not [!compiler!] == [] goto :!compiler!_strap
 
@@ -385,12 +390,14 @@ echo Backend compiler error
 goto :error
 
 :error
+call :try_delete "%vc_dir%\v_win_compat.c"
 echo.
 echo Exiting from error
 echo ERROR: please follow the instructions in https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows
 exit /b 1
 
 :success
+call :try_delete "%vc_dir%\v_win_compat.c"
 "%V_EXE%" run cmd/tools/detect_tcc.v
 if !ERRORLEVEL! NEQ 0 exit /b !ERRORLEVEL!
 echo  ^> V built successfully!

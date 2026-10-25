@@ -1291,7 +1291,7 @@ fn test_v3_bundled_tcc_native_object_build_is_cwd_independent() {
 	v_source := os.join_path(root, 'main.v')
 	output := os.join_path(root, 'main' + $if windows { '.exe' } $else { '' })
 	os.write_file(c_source, '#include <stddef.h>\nsize_t v3_tcc_native_object_probe(void) { return sizeof(size_t); }\n')!
-	os.write_file(v_source, '#flag ${c_object}\n\nfn C.v3_tcc_native_object_probe() usize\n\nfn main() {\n\tassert C.v3_tcc_native_object_probe() > 0\n}\n')!
+	os.write_file(v_source, '#flag ${c_object}\n\nfn C.v3_tcc_native_object_probe() uint\n\nfn main() {\n\tassert C.v3_tcc_native_object_probe() > 0\n}\n')!
 	build := cmdexec.run_in(v3_driver_test_executable(), ['-new-compiler', '-nocache',
 		'-no-retry-compilation', '-cc', 'tcc', '-o', output, v_source], root)
 	assert build.exit_code == 0, build.output
@@ -1317,7 +1317,7 @@ fn test_v3_implicit_tcc_cpp_native_object_uses_platform_headers() {
 	v_source := os.join_path(root, 'main.v')
 	output := os.join_path(root, 'main')
 	os.write_file(cpp_source, '#include <cstddef>\nextern "C" size_t v3_cpp_object_probe(void) { return sizeof(std::max_align_t); }\n')!
-	os.write_file(v_source, '#flag ${cpp_object}\n\nfn C.v3_cpp_object_probe() usize\n\nfn main() {\n\tassert C.v3_cpp_object_probe() > 0\n}\n')!
+	os.write_file(v_source, '#flag ${cpp_object}\n\nfn C.v3_cpp_object_probe() uint\n\nfn main() {\n\tassert C.v3_cpp_object_probe() > 0\n}\n')!
 	old_vflags := os.getenv_opt('VFLAGS')
 	os.unsetenv('VFLAGS')
 	defer {
@@ -2189,7 +2189,18 @@ fn test_v3_tcc_flags_dump_matches_monolithic_command() {
 			dump_args << ['-dump-c-flags', '-', '-o', output, source]
 			flags_dump := cmdexec.run(v3_driver_test_executable(), dump_args)
 			assert flags_dump.exit_code == 0, flags_dump.output
-			expected := flags_dump.output.split_into_lines().filter(it.len > 0)
+			dump_lines := flags_dump.output.split_into_lines().filter(it.len > 0)
+			// value-taking flags share a line with their quoted value (`-I "/path"`)
+			mut expected := []string{}
+			for line in dump_lines {
+				for token in cgen.tokenize_c_flag(line) {
+					expected << if token.len > 1 && token.starts_with('"') && token.ends_with('"') {
+						token[1..token.len - 1]
+					} else {
+						token
+					}
+				}
+			}
 			for with_dump in [false, true] {
 				mut build_args := args.clone()
 				build_args << ['-showcc', '-o', output, source]
@@ -2212,7 +2223,7 @@ fn test_v3_tcc_flags_dump_matches_monolithic_command() {
 					assert !actual.any(it.starts_with('-F'))
 				}
 				if with_dump {
-					assert os.read_lines(dump_file)! == expected
+					assert os.read_lines(dump_file)! == dump_lines
 				}
 			}
 		}

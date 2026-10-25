@@ -71,6 +71,11 @@ fn test_template_call_stack_includes_every_parent() {
 		0
 	}))
 	assert output.count('called from ') == 2, output
+	mut run := DiagnosticRun{}
+	for _ in 0 .. 2 {
+		assert run.formatted_parser_diagnostic('error:', 'undefined ident: `missing`', a,
+			token.new_pos(3, inner_source.index('missing') or { 0 })) == output
+	}
 	assert output.contains('called from ${relative_error_path(outer_path)}:1:'), output
 	assert output.contains('called from ${relative_error_path(main_path)}:2:'), output
 }
@@ -120,6 +125,11 @@ fn test_diagnostic_run_finds_lines_in_any_order() {
 		for request in requests {
 			assert run.source_lines_through(source, request[0], request[1]) == source_lines_through(source,
 				request[0], request[1]), '${source.bytes()} ${request}'
+			if request[0] >= 1 && request[1] >= request[0] {
+				expected := source_lines_through(source, request[0], request[1])
+				assert run.source_lines_for_excerpt(source, request[0], request[1], true) == expected[int_min(expected.len,
+					request[0] - 1)..], '${source.bytes()} ${request}'
+			}
 		}
 		// another text of the same length is not the source the run has read
 		other := source.clone()
@@ -160,10 +170,13 @@ fn test_diagnostic_run_formats_like_separate_diagnostics() {
 		token.new_pos(9, 0),
 	]
 	mut run := DiagnosticRun{}
+	mut parser_run := DiagnosticRun{}
 	for i, pos in reports {
 		message := 'diagnostic ${i}'
 		expected := formatted_error('notice:', message, a, flat.NodeId(-1), pos)
 		assert run.formatted_error('notice:', message, a, flat.NodeId(-1), pos) == expected
+		assert parser_run.formatted_parser_diagnostic('warning:', message, a, pos) == formatted_parser_diagnostic('warning:',
+			message, a, pos)
 		if pos.id != 9 {
 			assert expected.contains(' | '), expected
 		}

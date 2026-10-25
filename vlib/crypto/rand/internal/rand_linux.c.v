@@ -14,9 +14,9 @@ $if macos || ios || openbsd {
 
 pub const C.SYS_getrandom int
 
-fn C.getentropy(buf voidptr, buflen usize) i32
+fn C.getentropy(buf voidptr, buflen uint) i32
 
-fn C.v_crypto_getrandom(buf voidptr, n usize) i64
+fn C.v_crypto_getrandom(buf voidptr, n uint) i64
 
 const read_batch_size = 256
 
@@ -45,11 +45,11 @@ fn getrandom(bytes_needed int, buffer voidptr) int {
 		panic('getrandom() dont request more than ${read_batch_size} bytes at once.')
 	}
 	$if macos || ios || openbsd {
-		if C.getentropy(buffer, usize(bytes_needed)) != 0 {
+		if C.getentropy(buffer, uint(bytes_needed)) != 0 {
 			return -1
 		}
 		return bytes_needed
 	} $else {
-		return int(C.v_crypto_getrandom(buffer, usize(bytes_needed)))
+		return int(C.v_crypto_getrandom(buffer, uint(bytes_needed)))
 	}
 }

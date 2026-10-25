@@ -214,17 +214,17 @@ $if gcboehm_leak ? {
 // Do not use them manually. They are automatically chosen when
 // compiled with `-gc boehm` or `-gc boehm_leak`.
 @[c: 'v_gc_malloc']
-fn C.GC_MALLOC(n usize) voidptr
+fn C.GC_MALLOC(n uint) voidptr
 
 @[c: 'v_gc_malloc_atomic']
-fn C.GC_MALLOC_ATOMIC(n usize) voidptr
+fn C.GC_MALLOC_ATOMIC(n uint) voidptr
 
 @[c: 'v_gc_malloc_uncollectable']
 @[markused]
-fn C.GC_MALLOC_UNCOLLECTABLE(n usize) voidptr
+fn C.GC_MALLOC_UNCOLLECTABLE(n uint) voidptr
 
 @[c: 'v_gc_realloc']
-fn C.GC_REALLOC(ptr voidptr, n usize) voidptr
+fn C.GC_REALLOC(ptr voidptr, n uint) voidptr
 
 @[c: 'v_gc_free']
 @[markused]
@@ -247,7 +247,7 @@ $if !windows {
 	fn C.v_gc_dlopen(const_path &char, mode i32) voidptr
 }
 
-fn C.GC_memalign(align usize, size usize) voidptr
+fn C.GC_memalign(align uint, size uint) voidptr
 
 // explicitly perform garbage collection now! Garbage collections
 // are done automatically when needed, so this function is hardly needed
@@ -261,6 +261,7 @@ fn C.GC_enable()
 // returns non-zero if GC is disabled
 fn C.GC_is_disabled() i32
 
+@[c_extern]
 fn C.GC_set_no_dls(i32)
 
 // protect memory block from being freed before this call
@@ -304,9 +305,9 @@ pub fn gc_check_leaks() {
 	}
 }
 
-fn C.GC_get_heap_usage_safe(pheap_size &usize, pfree_bytes &usize, punmapped_bytes &usize, pbytes_since_gc &usize,
-	ptotal_bytes &usize)
-fn C.GC_get_memory_use() usize
+fn C.GC_get_heap_usage_safe(pheap_size &uint, pfree_bytes &uint, punmapped_bytes &uint, pbytes_since_gc &uint,
+	ptotal_bytes &uint)
+fn C.GC_get_memory_use() uint
 
 pub struct C.GC_stack_base {
 	mem_base voidptr
@@ -325,8 +326,14 @@ fn C.GC_set_stackbottom(voidptr, voidptr)
 fn C.GC_add_roots(voidptr, voidptr)
 fn C.GC_remove_roots(voidptr, voidptr)
 
+// Defined in gc_boehm_helpers.o; keep their prototypes explicit for backends without its header.
+@[c_extern]
 fn C.v__gc_can_register_main_data_roots_linux() i32
+
+@[c_extern]
 fn C.v__gc_debugger_present_linux() i32
+
+@[c_extern]
 fn C.v__gc_register_main_data_roots_linux()
 
 // fn C.GC_get_push_other_roots() fn()
@@ -337,7 +344,7 @@ fn C.GC_set_sp_corrector(fn (voidptr, voidptr))
 
 // FnGC_WarnCB is the type of the callback, that you have to define, if you want to redirect GC warnings and handle them.
 // Note: GC warnings are silenced by default. Use gc_set_warn_proc/1 to set your own handler for them.
-pub type FnGC_WarnCB = fn (const_msg &char, arg usize)
+pub type FnGC_WarnCB = fn (const_msg &char, arg uint)
 
 fn C.v_gc_get_warn_proc() voidptr
 fn C.v_gc_set_warn_proc(cb FnGC_WarnCB)
@@ -345,7 +352,7 @@ fn C.v_gc_set_warn_proc(cb FnGC_WarnCB)
 // GC_REGISTER_DISPLACEMENT is `GC_debug_register_displacement` when `GC_DEBUG` is set
 // (`-gc boehm_leak`), and `GC_register_displacement` otherwise.
 @[c: 'v_gc_register_displacement']
-fn C.GC_REGISTER_DISPLACEMENT(offset usize)
+fn C.GC_REGISTER_DISPLACEMENT(offset uint)
 
 // FnGC_AbortCB is the type of Boehm's fatal error handler (`GC_abort_func`).
 // `const_msg` is nil when Boehm calls it right before `exit(1)`.
@@ -371,7 +378,7 @@ pub fn gc_set_warn_proc(cb FnGC_WarnCB) {
 }
 
 // used by builtin_init:
-fn internal_gc_warn_proc_none(const_msg &char, arg usize) {}
+fn internal_gc_warn_proc_none(const_msg &char, arg uint) {}
 
 // gc_report_fatal_errors_on_stderr replaces Boehm's abort handler. On Windows the
 // default one shows a modal message box and waits for someone to dismiss it, so a

@@ -40,7 +40,7 @@ pub fn new_concurrent_map[K, V]() &ConcurrentMap[K, V] {
 // other scalar key types hash through their string form.
 fn (m &ConcurrentMap[K, V]) shard_for(key K) &ConcurrentShard[K, V] {
 	$if K is $pointer {
-		address := u64(usize(key))
+		address := u64(uint(key))
 		h := address ^ (address >> 5) ^ (address >> 17)
 		return m.shards[h % u64(concurrent_map_shards)]
 	} $else $if K is string {

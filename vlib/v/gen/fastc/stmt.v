@@ -1425,7 +1425,7 @@ fn (g &Parser) result_payload_interface_accepts(payload_type u32, value_type u32
 		}
 		actual := g.interface_implementation_field(value_type, flat.source_type_name(g.semantic_type_key(value_type)),
 			required.name) or { return false }
-		if actual.typ_text() != required.typ_text() || (required.is_mutable && !actual.is_mutable) {
+		if actual.typ != required.typ || (required.is_mutable && !actual.is_mutable) {
 			return false
 		}
 	}
@@ -2239,7 +2239,7 @@ fn (mut g Parser) parse_parallel_assignment(initial_names []string, initial_mut 
 			component_type := if i < component_types.len {
 				flat.source_type_name(component_types[i])
 			} else {
-				'usize'
+				'uint', 'usize'
 			}
 			c_name := fastc_c_identifier(name)
 			c_type := fastc_output_c_type(component_type)

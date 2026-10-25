@@ -149,7 +149,7 @@ fn canonical_intern_child_key(t &Type) u64 {
 // structural verification, even when their address has appeared before.
 @[direct_array_access; inline]
 fn (i &TypeInterner) canonical_identity(t &Type) &CanonicalTypeEntry {
-	slot := int((usize(t) >> 4) & 4095)
+	slot := int((uint(t) >> 4) & 4095)
 	entry := unsafe { &CanonicalTypeEntry(C.atomic_load_ptr(&i.identities[slot])) }
 	if !isnil(entry) && voidptr(entry.typ) == voidptr(t) {
 		return entry
@@ -159,7 +159,7 @@ fn (i &TypeInterner) canonical_identity(t &Type) &CanonicalTypeEntry {
 
 @[direct_array_access; inline]
 fn (i &TypeInterner) remember_canonical_identity(entry &CanonicalTypeEntry) {
-	slot := int((usize(entry.typ) >> 4) & 4095)
+	slot := int((uint(entry.typ) >> 4) & 4095)
 	unsafe {
 		C.atomic_store_ptr(&i.identities[slot], entry)
 	}
