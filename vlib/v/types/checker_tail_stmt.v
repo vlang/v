@@ -6412,34 +6412,35 @@ pub fn (tc &TypeChecker) expr_is_method_value(id flat.NodeId) bool {
 			return true
 		}
 	} else if clean is Struct {
-		sname := clean.name()
-		if tc.struct_field_type(flat.source_type_id(sname), node.value) != none {
+		sname_id := clean.source_type_id()
+		if tc.struct_field_type(sname_id, node.value) != none {
 			return false
 		}
 		if _ := tc.c_struct_receiver_method_name(base_type, node.value) {
 			return true
 		}
+		sname := flat.source_type_name(sname_id)
 		if '${sname}.${node.value}' in tc.fn_param_types {
 			return true
 		}
 		if receiver is Alias && '${receiver.name()}.${node.value}' in tc.fn_param_types {
 			return true
 		}
-		if _ := tc.resolve_generic_struct_method(flat.source_type_id(sname), node.value) {
+		if _ := tc.resolve_generic_struct_method(sname_id, node.value) {
 			return true
 		}
-		if _ := tc.embedded_method_value_owner(flat.source_type_id(sname), node.value) {
+		if _ := tc.embedded_method_value_owner(sname_id, node.value) {
 			return true
 		}
 	} else if clean is Interface {
-		iname := clean.name()
-		if tc.interface_field_type(flat.source_type_id(iname), node.value) != none {
+		iname_id := clean.source_type_id()
+		if tc.interface_field_type(iname_id, node.value) != none {
 			return false
 		}
 		if receiver is Alias && '${receiver.name()}.${node.value}' in tc.fn_param_types {
 			return true
 		}
-		if _ := tc.interface_receiver_method_call_info(flat.source_type_id(iname), node.value) {
+		if _ := tc.interface_receiver_method_call_info(iname_id, node.value) {
 			return true
 		}
 	}
@@ -16959,11 +16960,11 @@ fn (tc &TypeChecker) parse_alias_type(name string, target_id u32) Type {
 }
 
 fn (tc &TypeChecker) parse_alias_target_type(name string, target_id u32) Type {
-	target := flat.source_type_name(target_id)
-	clean := trimmed_space(target)
-	if context_independent_type_text(target) {
+	if context_independent_type(target_id) {
 		return *tc.parse_type(target_id)
 	}
+	target := flat.source_type_name(target_id)
+	clean := trimmed_space(target)
 	// Alias targets are canonicalized when declarations are collected. Prefer an
 	// exact qualified symbol before the referencing file's imports can retarget
 	// it to a same-named type from another module.
@@ -18992,6 +18993,15 @@ fn wide_integer_type_for_widening(typ Type) bool {
 	return short_name_view(typ.name()) in ['u128', 'i128']
 }
 
+@[inline]
+fn mixed_integer_expr_type_can_widen(typ &Type) bool {
+	return match typ {
+		Primitive { typ.props.has(.integer) && typ.size < 128 }
+		ISize, USize, Rune, Char { true }
+		else { false }
+	}
+}
+
 // widen_mixed_integer_expr_type gives an arithmetic node the 128-bit type of its
 // widest operand. The type recorded for an infix in argument position is the
 // narrower operand's, while the same expression assigned to a variable gets the
@@ -18999,12 +19009,7 @@ fn wide_integer_type_for_widening(typ Type) bool {
 // read the recorded type, so they cut a mixed expression to 64 bits without this.
 @[direct_array_access; inline]
 fn (tc &TypeChecker) widen_mixed_integer_expr_type(id flat.NodeId, typ &Type) Type {
-	narrow := match typ {
-		Primitive { typ.props.has(.integer) && typ.size < 128 }
-		ISize, USize, Rune, Char { true }
-		else { false }
-	}
-	if !narrow {
+	if !mixed_integer_expr_type_can_widen(typ) {
 		return *typ
 	}
 	tidx := int(id)

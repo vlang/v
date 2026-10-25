@@ -553,12 +553,9 @@ fn test_array_receiver_method_is_not_reselected_as_generic() {
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
-	g.generic_method_candidates[generic_method_candidate_key('jsonrpc', 'encode_batch')] = [
-		GenericMethodCandidate{
-			name: 'jsonrpc.[]Request.encode_batch'
-			ret:  types.Type(types.string_)
-		},
-	]
+	g.add_generic_method_candidate(flat.source_type_id('jsonrpc'), 'encode_batch',
+		generic_method_candidate_for_decl('jsonrpc.[]Request.encode_batch', types.Type(types.string_),
+			[]types.Type{}))
 
 	assert g.specialized_generic_method_name_for_call_with_arg_count(flat.empty_node, 'jsonrpc.[]Response.encode_batch', -1) == none
 }

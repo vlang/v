@@ -167,6 +167,33 @@ fn test_source_type_shapes_and_builtin_ids_share_the_spelling_table() {
 	assert !source_type_shape(source_type_id('pkg.Item')).has(.padded)
 }
 
+fn test_source_type_resolution_shape_preserves_wrappers_and_exact_spelling() {
+	for text in ['int', '?', '!', '&[]u8', '?map[string][]u8', '[]map[int]&string', '[32]u8',
+		'&[2][3]int', 'map[[4]u8][]map[string]bool', 'i128', 'u128', 'uint', 'char', 'nil'] {
+		assert source_type_shape(source_type_id(text)).has(.context_independent)
+	}
+	for text in ['map', 'array', 'map[string]Item', 'map[Key]int', 'map[string]int ', ' int',
+		'[size]int', '[2 + 3]int', '[0x10]int', 'map[string', '[2', '[2]', 'shared int', '...int',
+		'fn () int', 'typeof(value)', 'pkg.int', '&&'] {
+		assert !source_type_shape(source_type_id(text)).has(.context_independent)
+	}
+}
+
+fn test_source_type_declaration_shape_preserves_exact_space_and_typeof_rules() {
+	assert sizeof(SourceTypeShape) == sizeof(u32)
+	assert !source_type_shape(0).has(.unusable_decl)
+	for text in ['unknown', 'array', 'map', 'struct', '?unknown', 'XunknownY', 'Option', 'Option_int',
+		'__v_option', '__v_option_int', 'Result', 'Result_int', ' O ption ', '__v_ option _int',
+		' R esult _int', 'typeof(value)', 'typeof( '] {
+		assert source_type_shape(source_type_id(text)).has(.unusable_decl), text
+	}
+	for text in ['void', 'array ', ' map', 'struct\t', 'ma p', 'unk nown', '\tOption', 'O\tption',
+		'\nResult', 'Option[T]', 'OptionThing', '__v_optionThing', 'Resultant', '?Option', 'typeof(',
+		'typeof (value)', 'TYPEOF(value)'] {
+		assert !source_type_shape(source_type_id(text)).has(.unusable_decl), text
+	}
+}
+
 fn test_binding_value_ids_preserve_present_empty_bindings() {
 	mut bindings := TypeTextBindings{}
 	bindings.set('empty', '')

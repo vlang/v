@@ -1036,7 +1036,7 @@ mut:
 	import_type_cache               &ImportTypeCache              = unsafe { nil }
 	embedded_fields_by_type         map[u32][]types.StructField // source type ID -> its embedded fields (usually empty)
 	param_types_by_short            map[string][]types.Type     // method short-name suffix -> param types (fallback index)
-	generic_method_candidates       map[string][]GenericMethodCandidate
+	generic_method_candidates       map[u32]map[string][]GenericMethodCandidate
 	spawn_wrapper_names             map[string]string
 	spawn_wrapper_defs              []string
 	spawn_wrapper_defs_seen         map[string]bool
@@ -1838,7 +1838,7 @@ pub fn FlatGen.new() FlatGen {
 		import_type_cache:                  &ImportTypeCache{}
 		embedded_fields_by_type:            map[u32][]types.StructField{}
 		param_types_by_short:               map[string][]types.Type{}
-		generic_method_candidates:          map[string][]GenericMethodCandidate{}
+		generic_method_candidates:          map[u32]map[string][]GenericMethodCandidate{}
 		spawn_wrapper_names:                map[string]string{}
 		spawn_wrapper_defs:                 []string{}
 		spawn_wrapper_defs_seen:            map[string]bool{}

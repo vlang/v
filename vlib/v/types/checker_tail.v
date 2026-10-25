@@ -3992,18 +3992,28 @@ fn (tc &TypeChecker) pointer_value_compatible(actual &Type, expected &Type) bool
 		if !pointer_value_base_can_match(actual.base_type) {
 			return false
 		}
+		// Every surviving pointer spells '&' followed by its base spelling.
 		return tc.pointer_base_value_compatible(actual.base_type, expected)
-			|| pointer_value_type_names_match(Type(actual).name(), expected.name())
-			|| bare_type_names_match(actual.base_type.name(), expected.name())
+			|| actual.base_type.source_type_id() == expected.source_type_id()
 	}
-	return pointer_value_type_names_match(actual.name(), expected.name())
+	// Only nominal names can begin with '&' outside the structured Pointer case.
+	match actual {
+		Struct, Alias, Enum, Interface, SumType {
+			if !flat.source_type_shape(actual.name_id).has(.pointer) {
+				return false
+			}
+			name := flat.source_type_name(actual.name_id)
+			return flat.source_type_id(name[1..]) == expected.source_type_id()
+		}
+		else { return false }
+	}
 }
 
 fn (tc &TypeChecker) pointer_base_value_compatible(actual_base &Type, expected &Type) bool {
 	clean_actual := unalias_type(actual_base)
 	clean_expected := unalias_type(expected)
 	if clean_actual is Primitive && clean_expected is Primitive
-		&& clean_actual.name() != clean_expected.name() {
+		&& clean_actual.source_type_id() != clean_expected.source_type_id() {
 		return false
 	}
 	return tc.type_compatible(actual_base, expected)
@@ -4024,18 +4034,6 @@ fn c_pointer_to_voidptr_arg_compatible(actual &Type, expected &Type) bool {
 fn pointer_value_base_can_match(typ &Type) bool {
 	clean := if typ is Alias { *typ.base_type } else { *typ }
 	return clean !is Void && clean !is Unknown && clean !is None
-}
-
-fn pointer_value_type_names_match(actual string, expected string) bool {
-	if !actual.starts_with('&') {
-		return false
-	}
-	clean_actual := actual[1..]
-	return clean_actual == expected
-}
-
-fn bare_type_names_match(actual string, expected string) bool {
-	return actual == expected
 }
 
 fn return_numeric_alias_compatible(actual &Type, expected &Type) bool {
@@ -19305,8 +19303,7 @@ fn generic_variadic_elem_param_text(param_id u32) u32 {
 }
 
 fn (tc &TypeChecker) parse_fn_signature_type(name string, typ_id u32) Type {
-	typ := flat.source_type_name(typ_id)
-	if context_independent_type_text(typ) {
+	if context_independent_type(typ_id) {
 		return *tc.parse_type(typ_id)
 	}
 	decl_file := tc.fn_type_files[name] or { return *tc.parse_type(typ_id) }
