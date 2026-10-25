@@ -1209,7 +1209,11 @@ fn (g &Parser) global_initializer_is_constant(source string, allow_temporaries b
 		name := source[start..i]
 		mut next := i
 		for next < source.len && source[next].is_space() { next++ }
-		if next < source.len && source[next] == `(` && name !in ['sizeof', '_S'] {
+		// The dynamic form of a struct literal copies fixed-array fields with memcpy;
+		// the static re-render does not, and is checked again without temporaries.
+		is_temporary_copy := allow_temporaries && name == 'memcpy'
+		if next < source.len && source[next] == `(` && name !in ['sizeof', '_S']
+			&& !is_temporary_copy {
 			return false
 		}
 		if previous == `.` || name in ['NULL', 'true', 'false', 'sizeof', '_S', 'struct', 'union',
@@ -1220,7 +1224,8 @@ fn (g &Parser) global_initializer_is_constant(source string, allow_temporaries b
 			previous = `a`
 			continue
 		}
-		if allow_temporaries && (name.starts_with('__vf_') || (name.starts_with('__v') && name.len > 3 && name[3].is_digit())) {
+		if is_temporary_copy || (allow_temporaries && (name.starts_with('__vf_')
+			|| (name.starts_with('__v') && name.len > 3 && name[3].is_digit()))) {
 			previous = `a`
 			continue
 		}
