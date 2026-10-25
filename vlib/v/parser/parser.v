@@ -12024,11 +12024,12 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 			continue
 		}
 		// skip auto-semicolons before infix operators (multi-line expressions).
-		// Struct field defaults end at the semicolon: a keyword field (`in`,
-		// `is`, `as`) on the next line starts a new field, not an `in`/`is`/`as`
-		// continuation of the default value.
+		// Struct field defaults end at the newline when a keyword field
+		// (`in`, `is`, `as`) follows: it starts a new field, not an
+		// `in`/`is`/`as` continuation of the default value. Other operators
+		// still continue multiline defaults (`&&`, trailing `+`, ...).
 		if p.tok == .semicolon {
-			if p.in_struct_field_default {
+			if p.in_struct_field_default && p.peek().is_keyword() {
 				break
 			}
 			peek_tok := p.peek()
