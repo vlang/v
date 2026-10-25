@@ -13318,7 +13318,7 @@ fn (mut g FlatGen) gen_pointer_cast_from_map_value_address(id flat.NodeId, targe
 }
 
 fn (mut g FlatGen) gen_map_pointer_cast_from_value_address(id flat.NodeId, target types.Pointer) bool {
-	actual0 := if int(id) >= 0 && int(id) < g.a.nodes.len && g.a.nodes[int(id)].typ_text().len > 0 {
+	actual0 := if int(id) >= 0 && int(id) < g.a.nodes.len && g.a.nodes[int(id)].typ != 0 {
 		g.tc.parse_type(g.a.nodes[int(id)].typ)
 	} else {
 		g.usable_expr_type(id)
@@ -13348,7 +13348,7 @@ fn (mut g FlatGen) gen_map_pointer_cast_from_value_address(id flat.NodeId, targe
 }
 
 fn (mut g FlatGen) map_pointer_cast_from_value_address_string(id flat.NodeId, seen []string, ct string) ?string {
-	actual0 := if int(id) >= 0 && int(id) < g.a.nodes.len && g.a.nodes[int(id)].typ_text().len > 0 {
+	actual0 := if int(id) >= 0 && int(id) < g.a.nodes.len && g.a.nodes[int(id)].typ != 0 {
 		g.tc.parse_type(g.a.nodes[int(id)].typ)
 	} else {
 		g.usable_expr_type(id)
@@ -14743,12 +14743,12 @@ fn (mut g FlatGen) sizeof_selector_field_type(owner ?types.Type, field string) ?
 	// Erase aliases on both sides of the pointer: the owner may be an alias *of* a
 	// pointer, and the pointee may itself be an alias of the struct.
 	clean := unalias_type(types.unwrap_all_pointers(unalias_type(typ)))
-	name := if clean is types.Struct {
-		clean.name()
+	name_id := if clean is types.Struct {
+		clean.source_type_id()
 	} else {
 		return none
 	}
-	fields := g.struct_fields_for_type(flat.source_type_id(name)) or { return none }
+	fields := g.struct_fields_for_type(name_id) or { return none }
 	for f in fields {
 		if f.name == field {
 			return f.typ
@@ -24539,17 +24539,17 @@ fn (mut g FlatGen) queue_global_struct_default_init(name string, typ types.Type)
 		}
 	}
 	clean := unalias_type(typ)
-	struct_name := if clean is types.Struct {
-		clean.name()
+	struct_name_id := if clean is types.Struct {
+		clean.source_type_id()
 	} else {
 		return
 	}
-	if !g.struct_needs_default_init(flat.source_type_id(struct_name)) {
+	if !g.struct_needs_default_init(struct_name_id) {
 		return
 	}
 	mut visited := map[u32]bool{}
 	init_module := g.global_modules[name] or { g.tc.cur_module }
-	g.queue_global_struct_field_defaults(g.global_c_name(name), flat.source_type_id(struct_name), init_module, mut visited)
+	g.queue_global_struct_field_defaults(g.global_c_name(name), struct_name_id, init_module, mut visited)
 }
 
 fn (mut g FlatGen) queue_global_struct_field_defaults(target string, struct_name_id u32, init_module string, mut visited map[u32]bool) {

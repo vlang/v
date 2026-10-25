@@ -1569,18 +1569,22 @@ pub fn (n Node) clone_owned() Node {
 
 // add_node updates add node state for FlatAst.
 pub fn (mut a FlatAst) add_node(node Node) NodeId {
+	if node.value.len > 0 && (node.source_value != 0 || node.has_source_value_kind()) {
+		mut canonical := node
+		canonical.canonicalize_source_value()
+		// Canonicalization clears value, so this enters the immutable append path once.
+		return a.add_node(canonical)
+	}
 	id := NodeId(a.nodes.len)
-	mut stored := node
-	stored.canonicalize_source_value()
 	if a.nodes.len < a.nodes.cap {
 		unsafe {
 			mut slot := &Node(&u8(a.nodes.data) + uint(a.nodes.len) * sizeof(Node))
-			*slot = stored
+			*slot = node
 			a.nodes.len++
 		}
 		return id
 	}
-	a.nodes << stored
+	a.nodes << node
 	return id
 }
 

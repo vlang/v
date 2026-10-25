@@ -2464,23 +2464,29 @@ fn (t &Transformer) array_map_call_type_name(id flat.NodeId, node flat.Node) ?u3
 	if !base_type.starts_with('[]') {
 		return none
 	}
-	mut elem_type := if callback_ret_source_id := t.array_map_callback_return_type_name(map_expr_id) {
-		callback_ret := flat.source_type_name(callback_ret_source_id)
-
-		callback_ret
+	mut elem_type_source_id := if callback_ret_source_id := t.array_map_callback_return_type_name(map_expr_id) {
+		callback_ret_source_id
 	} else if checker_type_source_id := t.checker_expr_type_name(map_expr_id) {
-		checker_type := flat.source_type_name(checker_type_source_id)
-
-		checker_type
+		checker_type_source_id
 	} else {
-		flat.source_type_name(t.node_type(map_expr_id))
+		t.node_type(map_expr_id)
 	}
-	if elem_type.len == 0 || elem_type in ['array', 'map', 'unknown'] {
-		elem_type = flat.source_type_name(t.reliable_stringify_type(map_expr_id))
+	if elem_type_source_id == 0 || elem_type_source_id in [
+		transform_source_type_array,
+		transform_source_type_map,
+		flat.source_type_unknown,
+	] {
+		elem_type_source_id = t.reliable_stringify_type(map_expr_id)
 	}
-	if elem_type.len == 0 || elem_type in ['array', 'map', 'unknown', 'void'] {
+	if elem_type_source_id == 0 || elem_type_source_id in [
+		transform_source_type_array,
+		transform_source_type_map,
+		flat.source_type_unknown,
+		flat.source_type_void,
+	] {
 		return none
 	}
+	elem_type := flat.source_type_name(elem_type_source_id)
 	return flat.source_type_id('[]${elem_type}')
 }
 

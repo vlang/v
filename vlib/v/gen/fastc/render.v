@@ -231,7 +231,7 @@ fn (g &Parser) render_map_expression(tokens []FastcExpressionToken) ?FastcRender
 		value_source := g.render_call_argument_expression(tokens[assignment_index + 1..], value_type) or { return none }
 		mut map_address := ''
 		if nested := g.render_mutable_map_value_pointer(base_tokens) {
-			if nested.typ_text() != flat.source_type_name(map_type).trim_right('*') {
+			if nested.typ != fastc_trim_pointer_type(map_type) {
 				return none
 			}
 			map_address = nested.source
@@ -566,7 +566,7 @@ fn (g &Parser) render_map_index_assignment_wrapping(left_tokens []FastcExpressio
 	}
 	mut map_address := ''
 	if nested := g.render_mutable_map_value_pointer(base_tokens) {
-		if nested.typ_text() != flat.source_type_name(map_type).trim_right('*') {
+		if nested.typ != fastc_trim_pointer_type(map_type) {
 			return none
 		}
 		map_address = nested.source
@@ -630,7 +630,7 @@ fn (g &Parser) render_map_index_compound_wrapping(left_tokens []FastcExpressionT
 	mut map_address := ''
 	mut nested := false
 	if nested_map := g.render_mutable_map_value_pointer(base_tokens) {
-		if nested_map.typ_text() != flat.source_type_name(map_type).trim_right('*') {
+		if nested_map.typ != fastc_trim_pointer_type(map_type) {
 			return none
 		}
 		map_address = nested_map.source
@@ -1575,14 +1575,18 @@ fn (g &Parser) render_checked_integer_division_assignment(target string, value s
 }
 
 fn (g &Parser) shift_type_parts(operand_type u32) ?(string, string) {
-	resolved_type := fastc_trim_pointer_suffix(flat.source_type_name(g.underlying_alias_type(operand_type)))
+	resolved_type := fastc_trim_pointer_type(g.underlying_alias_type(operand_type))
 	return match resolved_type {
-		'char', 'i8', 'u8' { 'u8', '8' }
-		'i16', 'u16' { 'u16', '16' }
-		'i32', 'rune', 'u32', 'unsigned int' { 'u32', '32' }
-		'i64', 'u64' { 'u64', '64' }
-		'int' { 'u${g.prefs.target.pointer_bits}', '${g.prefs.target.pointer_bits}' }
-		'isize', 'uint', 'usize' { 'usize', '${g.prefs.target.pointer_bits}' }
+		flat.source_type_char, flat.source_type_i8, flat.source_type_u8 { 'u8', '8' }
+		flat.source_type_i16, flat.source_type_u16 { 'u16', '16' }
+		flat.source_type_i32, flat.source_type_rune, flat.source_type_u32, fastc_type_unsigned_int {
+			'u32', '32'
+		}
+		flat.source_type_i64, flat.source_type_u64 { 'u64', '64' }
+		flat.source_type_int { 'u${g.prefs.target.pointer_bits}', '${g.prefs.target.pointer_bits}' }
+		flat.source_type_isize, fastc_type_uint, flat.source_type_usize {
+			'usize', '${g.prefs.target.pointer_bits}'
+		}
 		else {
 			return none
 		}
@@ -1590,14 +1594,14 @@ fn (g &Parser) shift_type_parts(operand_type u32) ?(string, string) {
 }
 
 fn (g &Parser) render_guarded_shift_expression(left string, right string, left_type_source_id u32, operator token.Token) ?string {
-	left_type := flat.source_type_name(left_type_source_id)
-	operand_type := if left_type in ['integer literal', 'negative integer literal'] {
-		if operator == .right_shift_unsigned { 'i32' } else { 'int' }
+	operand_type := if left_type_source_id in [fastc_type_integer_literal,
+		fastc_type_negative_integer_literal] {
+		if operator == .right_shift_unsigned { flat.source_type_i32 } else { flat.source_type_int }
 	} else {
-		left_type
+		left_type_source_id
 	}
-	unsigned_type, bits := g.shift_type_parts(flat.source_type_id(operand_type)) or { return none }
-	value_type := fastc_output_c_type(operand_type)
+	unsigned_type, bits := g.shift_type_parts(operand_type) or { return none }
+	value_type := fastc_output_c_type(flat.source_type_name(operand_type))
 	result_type := if operator == .right_shift_unsigned { unsigned_type } else { value_type }
 	shift_type := if operator in [.left_shift, .right_shift_unsigned] {
 		unsigned_type
@@ -1858,8 +1862,9 @@ fn (g &Parser) render_array_equality_comparison(left_tokens []FastcExpressionTok
 
 fn (g &Parser) render_fixed_array_equality_data(tokens []FastcExpressionToken, c_type_source_id u32) ?string {
 	c_type := flat.source_type_name(c_type_source_id)
-	layout_type := fastc_trim_pointer_suffix(c_type)
-	if literal := g.render_array_literal_argument(tokens, flat.source_type_id(layout_type)) {
+	layout_type_id := fastc_trim_pointer_type(c_type_source_id)
+	layout_type := flat.source_type_name(layout_type_id)
+	if literal := g.render_array_literal_argument(tokens, layout_type_id) {
 		return '(${literal.source}).data'
 	}
 	mut initializer_open := -1
@@ -1871,7 +1876,7 @@ fn (g &Parser) render_fixed_array_equality_data(tokens []FastcExpressionToken, c
 	}
 	if initializer_open > 0 && tokens.last().tok == .rcbr && initializer_open + 1 == tokens.len - 1 {
 		initializer_type := (g.array_initializer_type(tokens[..initializer_open]) or { u32(0) })
-		if flat.source_type_name(initializer_type) == layout_type {
+		if initializer_type == layout_type_id {
 			return '((${layout_type}){0}).data'
 		}
 	}
@@ -2291,28 +2296,28 @@ fn (g &Parser) render_overloaded_binary_expression(tokens []FastcExpressionToken
 		}
 		if left_special.source != '' || right_special.source != '' {
 			left_expected := if operator in [.and, .logical_or] {
-				'bool'
+				flat.source_type_bool
 			} else if left_special.typ != u32(0) {
-				left_special.typ_text()
+				left_special.typ
 			} else {
-				flat.source_type_name(g.infer_expression_type(left_tokens) or { u32(0) })
+				g.infer_expression_type(left_tokens) or { u32(0) }
 			}
 			right_expected := if operator in [.and, .logical_or] {
-				'bool'
+				flat.source_type_bool
 			} else if right_special.typ != u32(0) {
-				right_special.typ_text()
+				right_special.typ
 			} else {
-				flat.source_type_name(g.infer_expression_type(right_tokens) or { u32(0) })
+				g.infer_expression_type(right_tokens) or { u32(0) }
 			}
 			left := if left_special.source != '' {
 				left_special.source
 			} else {
-				g.render_call_argument_expression(left_tokens, flat.source_type_id(left_expected)) or { return none }
+				g.render_call_argument_expression(left_tokens, left_expected) or { return none }
 			}
 			right := if right_special.source != '' {
 				right_special.source
 			} else {
-				g.render_call_argument_expression(right_tokens, flat.source_type_id(right_expected)) or { return none }
+				g.render_call_argument_expression(right_tokens, right_expected) or { return none }
 			}
 			return FastcRenderedExpression{
 				source: '((${left})${operator.str()}(${right}))'
@@ -3643,7 +3648,7 @@ fn (g &Parser) render_as_cast_expression_with_reference(tokens []FastcExpression
 	target_c := g.type_from_expression_tokens(tokens[as_index + 1..]) or { return none }
 	inferred_left := g.infer_expression_type(left_tokens) or { return none }
 	left_type := fastc_normalize_inferred_type(inferred_left)
-	if flat.source_type_name(left_type).trim_right('*') == flat.source_type_name(target_c) {
+	if fastc_trim_pointer_type(left_type) == target_c {
 		if reference && left_tokens.len == 1 && left_tokens[0].tok == .name {
 			if local := g.locals[left_tokens[0].lit] {
 				if local.smartcast_origin_source != '' {

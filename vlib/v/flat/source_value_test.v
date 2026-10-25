@@ -117,3 +117,84 @@ fn test_source_value_intern_scans_canonicalize_raw_slots_without_ordinary_text_e
 	assert ast.nodes[1].value_text() == '__v3_generic_type_name:T'
 	assert ast.text_count() == 0
 }
+
+struct SourceValueAppendCase {
+	node           Node
+	expected_value string
+	expected_id    u32
+}
+
+fn test_add_node_preserves_immutable_and_legacy_operands_with_and_without_capacity() {
+	original_id := source_type_id('pkg.Original[T]')
+	rewritten_id := source_type_id('pkg.Rewritten[int]')
+	marker := '__v3_generic_type_name:T'
+	cases := [
+		SourceValueAppendCase{
+			node:           Node{ kind: .ident, value: 'ordinary_name' }
+			expected_value: 'ordinary_name'
+		},
+		SourceValueAppendCase{
+			node:        Node{ kind: .ident, source_value: original_id }
+			expected_id: original_id
+		},
+		SourceValueAppendCase{
+			node:        Node{ kind: .cast_expr, value: 'pkg.Original[T]' }
+			expected_id: original_id
+		},
+		SourceValueAppendCase{
+			node:        Node{ kind: .ident, value: 'pkg.Rewritten[int]', source_value: original_id }
+			expected_id: rewritten_id
+		},
+		SourceValueAppendCase{
+			node:        Node{ kind: .typeof_expr, value: marker, source_value: original_id }
+			expected_id: source_type_id(marker)
+		},
+		SourceValueAppendCase{
+			node:        Node{ kind: .struct_init, source_value: original_id }
+			expected_id: original_id
+		},
+		SourceValueAppendCase{
+			node: Node{ kind: .cast_expr }
+		},
+		SourceValueAppendCase{
+			node:           Node{ kind: .call, value: method_value_borrow_receiver_marker }
+			expected_value: method_value_borrow_receiver_marker
+		},
+	]
+	for force_growth in [false, true] {
+		for fixture in cases {
+			mut ast := FlatAst.new()
+			if force_growth {
+				ast.nodes = []Node{}
+			}
+			mut node := fixture.node
+			node.typ = source_type_id('pkg.Refined')
+			node.children_start = 7
+			node.children_count = 2
+			node.pos = token.new_pos(3, 40)
+			node.is_mut = true
+			node.flags = node_flags(true, true)
+			node.set_generic_params(['T'])
+			node.set_call_type_args([source_type_int, source_type_string])
+			id := ast.add_node(node)
+			stored := ast.node(id)
+			assert id == NodeId(0)
+			assert ast.nodes.len == 1
+			assert stored.value == fixture.expected_value
+			assert stored.source_value == fixture.expected_id
+			assert stored.typ == node.typ
+			assert stored.kind == node.kind
+			assert stored.op == node.op
+			assert stored.children_start == node.children_start
+			assert stored.children_count == node.children_count
+			assert stored.pos == node.pos
+			assert stored.is_mut == node.is_mut
+			assert stored.flags == node.flags
+			assert stored.payload == node.payload
+			assert stored.generic_params() == ['T']
+			assert stored.call_type_args() == [source_type_int, source_type_string]
+			assert node.value == fixture.node.value
+			assert node.source_value == fixture.node.source_value
+		}
+	}
+}

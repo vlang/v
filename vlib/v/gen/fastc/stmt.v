@@ -1302,7 +1302,7 @@ fn (mut g Parser) parse_return() !bool {
 		expression = '({ ${g.return_type_text()} __vf_fixed_ret; memcpy(__vf_fixed_ret.data, ${expression}, sizeof(__vf_fixed_ret.data)); __vf_fixed_ret; })'
 		actual_type = g.return_type
 	}
-	if g.selfhost && flat.source_type_name(actual_type).ends_with('*') && !g.return_type_text().ends_with('*') && g.return_type_text() == flat.source_type_name(actual_type).trim_right('*') {
+	if g.selfhost && flat.source_type_name(actual_type).ends_with('*') && !g.return_type_text().ends_with('*') && g.return_type == fastc_trim_pointer_type(actual_type) {
 		// A member smart-cast (`match x { Variant { return x } }`) yields a pointer to the
 		// concrete variant; a by-value return must dereference it.
 		expression = '*(${expression})'
@@ -1336,7 +1336,7 @@ fn (mut g Parser) parse_return() !bool {
 		actual_type = g.return_type
 	}
 	if g.return_type == fastc_type_option && fastc_trim_pointer_type(actual_type) == fastc_type_ierror
-		&& g.option_return_type_text().trim_right('*') != 'IError'
+		&& fastc_trim_pointer_type(g.option_return_type) != fastc_type_ierror
 		&& g.declared_kinds[flat.source_type_name(g.semantic_type_key(g.option_return_type))] != .interface_
 		&& !g.should_box_variant(g.option_return_type, actual_type) {
 		return g.unsupported('an Option cannot carry an error as its failure state')
@@ -2200,14 +2200,14 @@ fn (mut g Parser) parse_parallel_assignment(initial_names []string, initial_mut 
 					continue
 				}
 				value_type := if value_types[i] == u32(0) {
-					'int'
+					flat.source_type_int
 				} else {
-					flat.source_type_name(fastc_normalize_inferred_type(value_types[i]))
+					fastc_normalize_inferred_type(value_types[i])
 				}
-				g.write_line('${value_type} ${fastc_c_identifier(name)} = ${temporaries[i]};')
+				g.write_line('${flat.source_type_name(value_type)} ${fastc_c_identifier(name)} = ${temporaries[i]};')
 				g.set_scoped_local(name, FastcLocal{
 					is_mut: mutability[i]
-					typ:    flat.source_type_id(value_type)
+					typ:    value_type
 				})
 			}
 		} else {
@@ -2247,7 +2247,11 @@ fn (mut g Parser) parse_parallel_assignment(initial_names []string, initial_mut 
 			g.write_line('memcpy(&${c_name}, V_FASTC_MULTI_SOURCE(${temporary}.values[${i}], sizeof(${c_name})), sizeof(${c_name}));')
 			g.set_scoped_local(name, FastcLocal{
 				is_mut: mutability[i]
-				typ:    flat.source_type_id(component_type)
+				typ:    if i < component_types.len {
+					component_types[i]
+				} else {
+					flat.source_type_id(component_type)
+				}
 			})
 		} else {
 			c_name := assignment_targets[i].source
@@ -3158,12 +3162,12 @@ fn (mut g Parser) parse_declaration_after_name(name string, is_mut bool, is_stat
 	}
 	option_value_type := if g.selfhost {
 		if g.last_expression.len == 0 {
-			g.last_option_value_type_text()
+			g.last_option_value_type
 		} else {
-			flat.source_type_name(g.option_value_type_for_expression(g.last_expression))
+			g.option_value_type_for_expression(g.last_expression)
 		}
 	} else {
-		''
+		u32(0)
 	}
 	g.consume_statement_end()
 	if name == '_' {
@@ -3184,11 +3188,12 @@ fn (mut g Parser) parse_declaration_after_name(name string, is_mut bool, is_stat
 	// avoids duplicating large statement expressions in the generated source.
 	c_name := fastc_c_identifier(name)
 	normalized_type := fastc_normalize_inferred_type(g.last_expression_type)
-	local_type := if g.selfhost && g.last_expression_type == u32(0) {
-		'int'
+	local_type_id := if g.selfhost && g.last_expression_type == u32(0) {
+		flat.source_type_int
 	} else {
-		flat.source_type_name(normalized_type)
+		normalized_type
 	}
+	local_type := flat.source_type_name(local_type_id)
 	if g.selfhost && local_type.starts_with('FixedArray_') && !local_type.ends_with('*')
 		&& g.fixed_array_uses_raw_storage(fastc_strip_paren_tokens(g.last_expression)) {
 		// Struct fields and globals store fixed arrays as raw C arrays; a local
@@ -3255,8 +3260,8 @@ fn (mut g Parser) parse_declaration_after_name(name string, is_mut bool, is_stat
 	}
 	g.set_scoped_local(name, FastcLocal{
 		is_mut:               is_mut
-		typ:                  flat.source_type_id(local_type)
-		option_value_type:    flat.source_type_id(option_value_type)
+		typ:                  local_type_id
+		option_value_type:    option_value_type
 		fn_return_type:       if function_alias.callable_index_depth == 0 {
 			function_alias.return_type
 		} else {

@@ -11522,12 +11522,11 @@ fn (tc &TypeChecker) generic_call_type_arg_name(id flat.NodeId) u32 {
 				return u32(0)
 			}
 			child_source_id := tc.generic_call_type_arg_name(tc.a.child(&node, 0))
-			child := flat.source_type_name(child_source_id)
 			if child_source_id == 0 {
 				return u32(0)
 			}
 			if node.op == .amp {
-				return flat.source_type_id('&${child}')
+				return flat.source_type_id('&${flat.source_type_name(child_source_id)}')
 			}
 			return child_source_id
 		}
@@ -19455,8 +19454,12 @@ fn (tc &TypeChecker) call_callee_index_is_value(index flat.Node) bool {
 
 fn generic_variadic_elem_param_text(param_id u32) u32 {
 	clean_id := trimmed_source_type_id(param_id)
+	shape := flat.source_type_shape(clean_id)
+	if !shape.has(.variadic) && !shape.has(.array_type) {
+		return clean_id
+	}
 	clean := flat.source_type_name(clean_id)
-	if clean.starts_with('...') {
+	if shape.has(.variadic) {
 		return flat.source_type_id(trimmed_space(clean[3..]))
 	}
 	if clean.starts_with('[]') {
@@ -19494,10 +19497,10 @@ pub fn (tc &TypeChecker) fn_signature_type(name string, typ_id u32) Type {
 fn (tc &TypeChecker) generic_param_type_text(text_id u32) u32 {
 	file := if tc.generic_decl_file.len > 0 { tc.generic_decl_file } else { tc.cur_file }
 	resolved := tc.resolve_imported_type_text_in_file(text_id, file)
-	resolved_text := flat.source_type_name(resolved)
-	if resolved_text.contains('.') {
+	if flat.source_type_shape(resolved).has(.dotted) {
 		return resolved
 	}
+	resolved_text := flat.source_type_name(resolved)
 	if selected := tc.resolve_selective_import_type_symbol_in_file(resolved_text, file) {
 		return flat.source_type_id(selected)
 	}

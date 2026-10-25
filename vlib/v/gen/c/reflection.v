@@ -5,6 +5,9 @@ import v.types
 
 const reflection_c_prefix = 'reflection__'
 
+const cgen_reflection_float_literal_type = flat.source_type_id('float literal')
+const cgen_reflection_int_literal_type = flat.source_type_id('int literal')
+
 // reflection_source_type_key retains normalized reflection source spellings as identities.
 fn reflection_source_type_key(raw_type_id u32, module_name string) u32 {
 	raw_type := flat.source_type_name(raw_type_id)
@@ -126,33 +129,33 @@ fn (g &FlatGen) reflection_type_id_bytes(type_name string, module_name string) i
 	return g.tc.type_index(flat.source_type_id(key))
 }
 
-fn reflection_builtin_type_kind(name string) int {
-	return match name {
-		'void' { 1 }
-		'voidptr' { 2 }
-		'byteptr' { 3 }
-		'charptr' { 4 }
-		'i8' { 5 }
-		'i16' { 6 }
-		'i32' { 7 }
-		'i64' { 8 }
-		'int' { 9 }
-		'isize' { 10 }
-		'u8' { 11 }
-		'u16' { 12 }
-		'u32' { 13 }
-		'u64' { 14 }
-		'uint' { 15 }
-		'f32' { 16 }
-		'f64' { 17 }
-		'char' { 18 }
-		'rune' { 19 }
-		'bool' { 20 }
-		'none' { 21 }
-		'string' { 22 }
-		'float literal' { 36 }
-		'int literal' { 37 }
-		'thread' { 39 }
+fn reflection_builtin_type_kind(name_id u32) int {
+	return match name_id {
+		flat.source_type_void { 1 }
+		flat.source_type_voidptr { 2 }
+		flat.source_type_byteptr { 3 }
+		flat.source_type_charptr { 4 }
+		flat.source_type_i8 { 5 }
+		flat.source_type_i16 { 6 }
+		flat.source_type_i32 { 7 }
+		flat.source_type_i64 { 8 }
+		flat.source_type_int { 9 }
+		flat.source_type_isize { 10 }
+		flat.source_type_u8 { 11 }
+		flat.source_type_u16 { 12 }
+		flat.source_type_u32 { 13 }
+		flat.source_type_u64 { 14 }
+		flat.source_type_uint { 15 }
+		flat.source_type_f32 { 16 }
+		flat.source_type_f64 { 17 }
+		flat.source_type_char { 18 }
+		flat.source_type_rune { 19 }
+		flat.source_type_bool { 20 }
+		flat.source_type_none { 21 }
+		flat.source_type_string { 22 }
+		cgen_reflection_float_literal_type { 36 }
+		cgen_reflection_int_literal_type { 37 }
+		cgen_thread_source_type { 39 }
 		else { 0 }
 	}
 }
@@ -598,12 +601,15 @@ fn (mut g FlatGen) gen_reflection_data() {
 	}
 
 	mut seen_ids := map[int]bool{}
-	builtin_names := ['void', 'voidptr', 'byteptr', 'charptr', 'i8', 'i16', 'i32', 'int', 'i64',
-		'isize', 'u8', 'u16', 'u32', 'u64', 'uint', 'f32', 'f64', 'char', 'bool', 'none', 'string',
-		'rune', 'float literal', 'int literal', 'thread']
-	for name in builtin_names {
-		name_id := flat.source_type_id(name)
-		g.gen_reflection_type(name_id, 'builtin', reflection_builtin_type_kind(name), reflection_none_info(),
+	builtin_types := [flat.source_type_void, flat.source_type_voidptr, flat.source_type_byteptr,
+		flat.source_type_charptr, flat.source_type_i8, flat.source_type_i16, flat.source_type_i32,
+		flat.source_type_int, flat.source_type_i64, flat.source_type_isize, flat.source_type_u8,
+		flat.source_type_u16, flat.source_type_u32, flat.source_type_u64, flat.source_type_uint,
+		flat.source_type_f32, flat.source_type_f64, flat.source_type_char, flat.source_type_bool,
+		flat.source_type_none, flat.source_type_string, flat.source_type_rune,
+		cgen_reflection_float_literal_type, cgen_reflection_int_literal_type, cgen_thread_source_type]
+	for name_id in builtin_types {
+		g.gen_reflection_type(name_id, 'builtin', reflection_builtin_type_kind(name_id), reflection_none_info(),
 			g.reflection_methods(name_id), mut seen_ids)
 	}
 

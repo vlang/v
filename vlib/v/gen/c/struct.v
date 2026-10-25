@@ -1078,11 +1078,7 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 				g.gen_expr(value_id)
 			}
 		} else {
-			field_owner := if promoted.owner != 0 {
-				promoted.owner_text()
-			} else {
-				flat.source_type_name(lookup_name)
-			}
+			field_owner := if promoted.owner != 0 { promoted.owner } else { lookup_name }
 			field_type := if promoted.owner != 0 {
 				promoted.typ
 			} else {
@@ -1116,7 +1112,7 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 					if g.struct_field_value_is_plainly_incompatible(value_id, field_type) {
 						g.gen_default_value_for_type(field_type)
 					} else {
-						g.gen_struct_field_expr_for_field(value_id, flat.source_type_id(field_owner), field.value, field_type)
+						g.gen_struct_field_expr_for_field(value_id, field_owner, field.value, field_type)
 					}
 				} else if is_optional_init && field.typ != 0 {
 					g.gen_struct_field_expr_for_field(value_id, lookup_name, field.value, g.tc.parse_type(field.typ))
@@ -2119,11 +2115,7 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 			has_field = true
 			continue
 		}
-		field_owner := if promoted.owner != 0 {
-			promoted.owner_text()
-		} else {
-			flat.source_type_name(lookup_name)
-		}
+		field_owner := if promoted.owner != 0 { promoted.owner } else { lookup_name }
 		field_type := if promoted.owner != 0 {
 			promoted.typ
 		} else {
@@ -2150,7 +2142,7 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 				if g.struct_field_value_is_plainly_incompatible(value_id, field_type) {
 					g.gen_default_value_for_type(field_type)
 				} else {
-					g.gen_struct_field_expr_for_field(value_id, flat.source_type_id(field_owner), field.value, field_type)
+					g.gen_struct_field_expr_for_field(value_id, field_owner, field.value, field_type)
 				}
 			} else {
 				g.gen_expr(value_id)
@@ -8495,18 +8487,6 @@ fn (value &StructDefaultDeclSource) args_text() []string {
 	return value.args.names()
 }
 
-// root_type_text resolves the indexed source type spelling.
-@[inline]
-fn (value &PromotedStructInitField) root_type_text() string {
-	return flat.source_type_name(value.root_type)
-}
-
-// generic_args_text resolves the indexed source type spelling.
-@[inline]
-fn (value &StructDefaultContext) generic_args_text() []string {
-	return value.generic_args.names()
-}
-
 // c_type_text resolves the indexed source type spelling.
 @[inline]
 fn (value &SoaFieldInfo) c_type_text() string {
@@ -8517,12 +8497,6 @@ fn (value &SoaFieldInfo) c_type_text() string {
 @[inline]
 fn (value &StructDeclInfo) full_name_text() string {
 	return flat.source_type_name(value.full_name)
-}
-
-// owner_name_text resolves the indexed source type spelling.
-@[inline]
-fn (value &StructDefaultDeclSource) owner_name_text() string {
-	return flat.source_type_name(value.owner_name)
 }
 
 // owner_text resolves the declaring struct source spelling.

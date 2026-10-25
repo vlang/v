@@ -339,6 +339,7 @@ fn (mut g Parser) read_spawn_expression() !string {
 		signature.return_type
 	}
 	thread_type := g.fastc_unclaimed_generated_name(fastc_thread_type_name(flat.source_type_name(value_type)))
+	thread_type_id := flat.source_type_id(thread_type)
 	start_name := g.fastc_unclaimed_generated_name('__vf_spawn_start_${g.fastc_spawn_target_stem(function_key)}')
 	g.register_spawn_helpers(function_key, thread_type, value_type, signature.parameter_types.ids, start_name, method_target)
 	call := '${start_name}(${arguments.join(', ')})'
@@ -350,10 +351,10 @@ fn (mut g Parser) read_spawn_expression() !string {
 			tok:    .name
 			lit:    call
 			source: call
-			typ:    flat.source_type_id(thread_type)
+			typ:    thread_type_id
 		},
 	]
-	g.last_expression_type = flat.source_type_id(thread_type)
+	g.last_expression_type = thread_type_id
 	g.last_multi_return_types = flat.TypeTextList{ ids: ([]u32{}).clone() }
 	return call
 }

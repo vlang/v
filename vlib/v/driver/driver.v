@@ -23207,9 +23207,9 @@ fn implicit_declared_child(name_idx int, values int) int {
 fn implicit_multi_value_types(raw_id u32, index ImplicitFieldScanIndex) []u32 {
 	typ := flat.source_type_name(implicit_normalize_type(raw_id, index))
 	if typ.len < 2 || typ[0] != `(` || typ[typ.len - 1] != `)` {
-		return flat.TypeTextList.from_names([]string{}).ids
+		return []u32{}
 	}
-	mut parts := []string{}
+	mut parts := []u32{}
 	mut depth := 0
 	mut start := 1
 	for i := 1; i < typ.len - 1; i++ {
@@ -23222,18 +23222,18 @@ fn implicit_multi_value_types(raw_id u32, index ImplicitFieldScanIndex) []u32 {
 			}
 			`,` {
 				if depth == 0 {
-					parts << implicit_trim_space(typ[start..i])
+					parts << flat.source_type_id(implicit_trim_space(typ[start..i]))
 					start = i + 1
 				}
 			}
 			else {}
 		}
 	}
-	parts << implicit_trim_space(typ[start..typ.len - 1])
-	if depth != 0 || parts.any(it == '') {
-		return flat.TypeTextList.from_names([]string{}).ids
+	parts << flat.source_type_id(implicit_trim_space(typ[start..typ.len - 1]))
+	if depth != 0 || parts.any(it == 0) {
+		return []u32{}
 	}
-	return flat.TypeTextList.from_names(parts).ids
+	return parts
 }
 
 fn implicit_field_scan_index_append(a &flat.FlatAst, start int, end int, mut index ImplicitFieldScanIndex) {

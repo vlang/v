@@ -800,9 +800,9 @@ fn (mut t Transformer) generic_struct_init_value_type(id flat.NodeId) u32 {
 	if typ == 0 {
 		typ = t.node_type(id)
 	}
-	return match flat.source_type_name(typ) {
-		'int literal' { flat.source_type_int }
-		'float literal' { flat.source_type_f64 }
+	return match typ {
+		transform_identity_int_literal { flat.source_type_int }
+		transform_identity_float_literal { flat.source_type_f64 }
 		else { typ }
 	}
 }

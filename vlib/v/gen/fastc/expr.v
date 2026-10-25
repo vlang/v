@@ -4901,10 +4901,10 @@ fn (g &Parser) render_membership_expression(tokens []FastcExpressionToken, rende
 				left_boxed_type := fastc_normalize_inferred_type(g.infer_expression_type(tokens[..i]) or { u32(0) })
 				if g.is_boxed_type(left_boxed_type) && right_tokens.len >= 2 && right_tokens[0].tok == .lsbr && right_tokens.last().tok == .rsbr {
 					if elements := fastc_expression_list_items(right_tokens, 1, right_tokens.len - 1) {
-						mut type_ids := []string{}
+						mut type_ids := []u32{}
 						for element in elements {
 							type_key := g.type_from_expression_tokens(element) or { break }
-							type_ids << flat.source_type_name(fastc_normalize_inferred_type(type_key)).trim_right('*')
+							type_ids << fastc_trim_pointer_type(fastc_normalize_inferred_type(type_key))
 						}
 						if type_ids.len == elements.len && type_ids.len > 0 {
 							subject := g.render_call_argument_expression(tokens[..i], left_boxed_type) or {
@@ -4918,7 +4918,7 @@ fn (g &Parser) render_membership_expression(tokens []FastcExpressionToken, rende
 							subject_name := '${temporary_namespace}_s'
 							mut checks := []string{}
 							for type_id in type_ids {
-								checks << '(${subject_name}${access}_typ == __v_typeid_${type_id})'
+								checks << '(${subject_name}${access}_typ == __v_typeid_${flat.source_type_name(type_id)})'
 							}
 							joined := checks.join(' || ')
 							predicate := if item.tok == .not_in {
@@ -6189,12 +6189,6 @@ fn (g &Parser) expression_uses_member_smartcast(tokens []FastcExpressionToken) b
 		}
 	}
 	return false
-}
-
-// enum_shorthand_type_text resolves the indexed source type spelling.
-@[inline]
-fn (value &FastcEnumShorthandRewrite) enum_shorthand_type_text() string {
-	return flat.source_type_name(value.enum_shorthand_type)
 }
 
 // variant_text resolves the indexed source type spelling.

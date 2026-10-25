@@ -353,6 +353,11 @@ pub fn build_with_options(a_ &flat.FlatAst, used_fns map[string]bool, tc &types.
 	return b.m
 }
 
+const ssa_strings_builder_source_type = flat.source_type_id('strings.Builder')
+const ssa_builder_source_type = flat.source_type_id('Builder')
+const ssa_strings_builder_ref_source_type = flat.source_type_id('&strings.Builder')
+const ssa_builder_ref_source_type = flat.source_type_id('&Builder')
+
 // canonicalize_internal_function_refs keeps backend symbol lookup consistent with
 // the selected SSA function, including runtime helpers renamed around source functions.
 fn (mut b Builder) canonicalize_internal_function_refs() {
@@ -12967,11 +12972,9 @@ fn (b &Builder) builder_method_name_for_base(base flat.Node, method string) ?str
 	if !is_builder_method(method) {
 		return none
 	}
-	mut receiver_type := flat.source_type_name(b.var_type_names.type_id(base.value_text()) or { u32(0) })
-	if receiver_type.starts_with('&') {
-		receiver_type = receiver_type[1..]
-	}
-	if receiver_type != 'strings.Builder' && receiver_type != 'Builder' {
+	receiver_type := b.var_type_names.type_id(base.value_text()) or { u32(0) }
+	if receiver_type !in [ssa_strings_builder_source_type, ssa_builder_source_type,
+		ssa_strings_builder_ref_source_type, ssa_builder_ref_source_type] {
 		return none
 	}
 	name := 'strings.Builder.${method}'

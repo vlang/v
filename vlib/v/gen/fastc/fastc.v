@@ -4604,12 +4604,6 @@ fn (value &FastcExpressionToken) typ_text() string {
 	return flat.source_type_name(value.typ)
 }
 
-// chan_element_type_text resolves the indexed source type spelling.
-@[inline]
-fn (value &FastcExpressionToken) chan_element_type_text() string {
-	return flat.source_type_name(value.chan_element_type)
-}
-
 // option_value_type_text resolves the indexed source type spelling.
 @[inline]
 fn (value &FastcExpressionToken) option_value_type_text() string {
@@ -4664,24 +4658,6 @@ fn (value &FastcFunctionSignature) option_type_text() string {
 	return flat.source_type_name(value.option_type)
 }
 
-// chan_element_type_text resolves the indexed source type spelling.
-@[inline]
-fn (value &FastcLocal) chan_element_type_text() string {
-	return flat.source_type_name(value.chan_element_type)
-}
-
-// fn_option_value_type_text resolves the indexed source type spelling.
-@[inline]
-fn (value &FastcLocal) fn_option_value_type_text() string {
-	return flat.source_type_name(value.fn_option_value_type)
-}
-
-// fn_return_type_text resolves the indexed source type spelling.
-@[inline]
-fn (value &FastcLocal) fn_return_type_text() string {
-	return flat.source_type_name(value.fn_return_type)
-}
-
 // option_value_type_text resolves the indexed source type spelling.
 @[inline]
 fn (value &FastcLocal) option_value_type_text() string {
@@ -4692,30 +4668,6 @@ fn (value &FastcLocal) option_value_type_text() string {
 @[inline]
 fn (value &FastcLocal) smartcast_origin_type_text() string {
 	return flat.source_type_name(value.smartcast_origin_type)
-}
-
-// chan_element_type_text resolves the indexed source type spelling.
-@[inline]
-fn (value &FastcStructField) chan_element_type_text() string {
-	return flat.source_type_name(value.chan_element_type)
-}
-
-// fn_option_value_type_text resolves the indexed source type spelling.
-@[inline]
-fn (value &FastcStructField) fn_option_value_type_text() string {
-	return flat.source_type_name(value.fn_option_value_type)
-}
-
-// fn_return_type_text resolves the indexed source type spelling.
-@[inline]
-fn (value &FastcStructField) fn_return_type_text() string {
-	return flat.source_type_name(value.fn_return_type)
-}
-
-// generic_argument_type_text resolves the indexed source type spelling.
-@[inline]
-fn (value &FastcStructField) generic_argument_type_text() string {
-	return flat.source_type_name(value.generic_argument_type)
 }
 
 // option_value_type_text resolves the indexed source type spelling.
@@ -4736,40 +4688,10 @@ fn (value &Parser) last_expression_type_text() string {
 	return flat.source_type_name(value.last_expression_type)
 }
 
-// last_option_value_type_text resolves the indexed source type spelling.
-@[inline]
-fn (value &Parser) last_option_value_type_text() string {
-	return flat.source_type_name(value.last_option_value_type)
-}
-
 // option_return_type_text resolves the indexed source type spelling.
 @[inline]
 fn (value &Parser) option_return_type_text() string {
 	return flat.source_type_name(value.option_return_type)
-}
-
-// or_value_expected_type_text resolves the indexed source type spelling.
-@[inline]
-fn (value &Parser) or_value_expected_type_text() string {
-	return flat.source_type_name(value.or_value_expected_type)
-}
-
-// pending_fn_option_value_type_text resolves the indexed source type spelling.
-@[inline]
-fn (value &Parser) pending_fn_option_value_type_text() string {
-	return flat.source_type_name(value.pending_fn_option_value_type)
-}
-
-// pending_fn_return_type_text resolves the indexed source type spelling.
-@[inline]
-fn (value &Parser) pending_fn_return_type_text() string {
-	return flat.source_type_name(value.pending_fn_return_type)
-}
-
-// pending_option_value_type_text resolves the indexed source type spelling.
-@[inline]
-fn (value &Parser) pending_option_value_type_text() string {
-	return flat.source_type_name(value.pending_option_value_type)
 }
 
 // parameter_types_text resolves indexed types at a text integration boundary.
@@ -4777,40 +4699,10 @@ fn (value &FastcFunctionSignature) parameter_types_text() []string {
 	return value.parameter_types.names()
 }
 
-// return_types_text resolves indexed types at a text integration boundary.
-fn (value &FastcFunctionSignature) return_types_text() []string {
-	return value.return_types.names()
-}
-
-// fn_parameter_types_text resolves indexed types at a text integration boundary.
-fn (value &FastcStructField) fn_parameter_types_text() []string {
-	return value.fn_parameter_types.names()
-}
-
-// last_multi_return_types_text resolves indexed types at a text integration boundary.
-fn (value &Parser) last_multi_return_types_text() []string {
-	return value.last_multi_return_types.names()
-}
-
-// return_types_text resolves indexed types at a text integration boundary.
-fn (value &Parser) return_types_text() []string {
-	return value.return_types.names()
-}
-
 // current_receiver_text resolves the indexed source type spelling.
 @[inline]
 fn (value &Parser) current_receiver_text() string {
 	return flat.source_type_name(value.current_receiver)
-}
-
-// last_field_receiver_text resolves the indexed source type spelling.
-@[inline]
-fn (value &Parser) last_field_receiver_text() string {
-	return flat.source_type_name(value.last_field_receiver)
-}
-
-fn (smartcast &FastcMemberSmartcast) variants_text() []string {
-	return smartcast.variants.names()
 }
 
 // value_type_text resolves the tested value's indexed type spelling.

@@ -719,7 +719,7 @@ fn (mut g FlatGen) seed_scope_from_decl(node flat.Node) {
 	// The declared type annotation is authoritative; resolving the RHS can
 	// disagree for lowered temps (`__or_val := <zero []Val>` resolving to the
 	// element sum type) and would poison every later use of the binding.
-	if node.typ_text().len > 0 {
+	if node.typ != 0 {
 		typ := g.parse_node_type(&node)
 		if !decl_annotation_is_unusable(typ, node.typ) {
 			g.tc.cur_scope.insert(lhs.value, typ)
@@ -802,7 +802,7 @@ fn (mut g FlatGen) gen_if_expr_stmt(node flat.Node) {
 	inferred_type := g.if_expr_type(&node)
 	ret_type := if g.expected_expr_type is types.MultiReturn {
 		types.Type(g.expected_expr_type)
-	} else if node.typ_text().len > 0 {
+	} else if node.typ != 0 {
 		annotated_type := g.parse_node_type(&node)
 		if annotated_type is types.Primitive && inferred_type !is types.Primitive {
 			inferred_type

@@ -1199,7 +1199,7 @@ pub mut:
 	reject_unsupported_generics   bool
 	checker_fixture_mode          bool
 	is_test                       bool
-	checked_comptime_method_calls map[string]bool
+	checked_comptime_method_calls map[u64][]ComptimeMethodCallInstance
 	comptime_method_calls_by_decl map[int]map[int]bool
 	check_concrete_generic_bodies bool                  // `-check` checks the concrete clones of the program's generics for fields and methods their types lack, and for arrays and maps with the wrong element layout
 	check_program_lib_instances   bool                  // such a check also checks the instances of library generics that the program's own code asks for (see transform.LibraryBodies)
@@ -1748,7 +1748,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		is_test:                               tc.is_test
 		// Reflection argument caches belong to semantic checking, not lookup or
 		// transform views that may outlive the arena where those caches were made.
-		checked_comptime_method_calls:         map[string]bool{}
+		checked_comptime_method_calls:         map[u64][]ComptimeMethodCallInstance{}
 		comptime_method_calls_by_decl:         map[int]map[int]bool{}
 		check_concrete_generic_bodies:         tc.check_concrete_generic_bodies
 		check_program_lib_instances:           tc.check_program_lib_instances
@@ -15720,16 +15720,17 @@ fn (tc &TypeChecker) unguarded_alias_reaches(start_id u32, current_id u32, mut s
 }
 
 fn (tc &TypeChecker) alias_dependency_key(name_id u32, current_id u32) ?u32 {
-	name := flat.source_type_name(name_id)
-	current := flat.source_type_name(current_id)
-	clean := name.trim_space()
-	if clean.len == 0 {
+	clean_id := trimmed_source_type_id(name_id)
+	if clean_id == 0 {
 		return none
 	}
+	clean := flat.source_type_name(clean_id)
 	if tc.type_aliases.contains(clean) {
-		return flat.source_type_id(clean)
+		return clean_id
 	}
-	if !clean.contains('.') && current.contains('.') {
+	if !flat.source_type_shape(clean_id).has(.dotted)
+		&& flat.source_type_shape(current_id).has(.dotted) {
+		current := flat.source_type_name(current_id)
 		candidate := '${current.all_before_last('.')}.${clean}'
 		if tc.type_aliases.contains(candidate) {
 			return flat.source_type_id(candidate)
@@ -17397,11 +17398,12 @@ fn generic_placeholder_from_unknown(typ Unknown) ?string {
 
 fn (tc &TypeChecker) resolve_known_field_type(type_name_id u32, fallback Type) Type {
 	type_name := flat.source_type_name(type_name_id)
-	qname := tc.qualify_name(type_name)
-	allow_bare_symbol := qname == type_name
+	qname_id := tc.qualify_type_name(type_name_id)
+	qname := flat.source_type_name(qname_id)
+	allow_bare_symbol := qname_id == type_name_id
 	if qname in tc.structs {
 		return Type(Struct{
-			name_id: flat.source_type_id(qname)
+			name_id: qname_id
 		})
 	}
 	if allow_bare_symbol && type_name in tc.structs {
@@ -17411,7 +17413,7 @@ fn (tc &TypeChecker) resolve_known_field_type(type_name_id u32, fallback Type) T
 	}
 	if qname in tc.interface_names {
 		return Type(Interface{
-			name_id: flat.source_type_id(qname)
+			name_id: qname_id
 		})
 	}
 	if allow_bare_symbol && type_name in tc.interface_names {
@@ -17421,7 +17423,7 @@ fn (tc &TypeChecker) resolve_known_field_type(type_name_id u32, fallback Type) T
 	}
 	if tc.type_aliases.contains(qname) {
 		return Type(Alias{
-			name_id:   flat.source_type_id(qname)
+			name_id:   qname_id
 			base_type: tc.parse_type(tc.type_aliases.value_id(qname))
 		})
 	}
@@ -21296,7 +21298,8 @@ fn (tc &TypeChecker) comptime_static_method_cases(source string) ComptimeStaticV
 	clean_type_id := comptime_static_unwrap_type_id(base_type)
 	clean_type := flat.source_type_name(clean_type_id)
 	generic_base, generic_args, is_generic := generic_type_application_parts(clean_type)
-	if is_generic && !tc.generic_args_are_concrete(flat.TypeTextList.from_names(generic_args).ids) {
+	generic_args_ids := flat.TypeTextList.from_names(generic_args).ids
+	if is_generic && !tc.generic_args_are_concrete(generic_args_ids) {
 		return ComptimeStaticValueCases{}
 	}
 	lookup_type := if is_generic { generic_base } else { clean_type }
@@ -21312,7 +21315,6 @@ fn (tc &TypeChecker) comptime_static_method_cases(source string) ComptimeStaticV
 		return ComptimeStaticValueCases{}
 	}
 	struct_name := flat.source_type_name(struct_name_id)
-	generic_args_ids := flat.TypeTextList.from_names(generic_args).ids
 	generic_params := if is_generic {
 		tc.struct_generic_params[struct_name] or {
 			tc.struct_generic_params[struct_name.all_after_last('.')] or { []string{} }

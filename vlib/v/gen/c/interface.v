@@ -603,7 +603,8 @@ fn (mut g FlatGen) register_specialized_interface_applications() {
 }
 
 fn (g &FlatGen) collect_specialized_interface_application_text(type_text_id u32, mut applications map[u32]u32) {
-	mut clean := trimmed_space(flat.source_type_name(type_text_id))
+	type_text := flat.source_type_name(type_text_id)
+	mut clean := trimmed_space(type_text)
 	if clean.len == 0 {
 		return
 	}
@@ -627,44 +628,51 @@ fn (g &FlatGen) collect_specialized_interface_application_text(type_text_id u32,
 		return
 	}
 	for arg in args {
-		g.collect_specialized_interface_application_text(flat.source_type_id(arg), mut applications)
-		if codegen_generic_arg_is_unresolved(flat.source_type_id(arg)) {
+		arg_id := flat.source_type_id(arg)
+		g.collect_specialized_interface_application_text(arg_id, mut applications)
+		if codegen_generic_arg_is_unresolved(arg_id) {
 			return
 		}
 	}
-	resolved_base := if base in g.interfaces {
-		base
+	base_id := flat.source_type_id(base)
+	resolved_base_id := if base in g.interfaces {
+		base_id
 	} else {
-		flat.source_type_name(g.tc.interface_metadata_name(flat.source_type_id(base)))
+		g.tc.interface_metadata_name(base_id)
 	}
+	resolved_base := flat.source_type_name(resolved_base_id)
 	if resolved_base !in g.interfaces {
 		return
 	}
-	application := if resolved_base == base {
-		clean
+	application_id := if resolved_base_id == base_id {
+		if clean == type_text { type_text_id } else { flat.source_type_id(clean) }
 	} else {
-		clean.replace_once(base, resolved_base)
+		flat.source_type_id(clean.replace_once(base, resolved_base))
 	}
-	applications[flat.source_type_id(application)] = flat.source_type_id(resolved_base)
+	applications[application_id] = resolved_base_id
 }
 
 fn (g &FlatGen) collect_specialized_interface_application(typ types.Type, mut applications map[u32]u32) {
 	match typ {
 		types.Interface {
-			base, _, is_generic := parse_shared_generic_app_parts(typ.name())
+			typ_id := typ.source_type_id()
+			typ_text := flat.source_type_name(typ_id)
+			base, _, is_generic := parse_shared_generic_app_parts(typ_text)
 			if is_generic && !g.type_contains_generic_placeholder(typ) {
-				resolved_base := if base in g.interfaces {
-					base
+				base_id := flat.source_type_id(base)
+				resolved_base_id := if base in g.interfaces {
+					base_id
 				} else {
-					flat.source_type_name(g.tc.interface_metadata_name(flat.source_type_id(base)))
+					g.tc.interface_metadata_name(base_id)
 				}
+				resolved_base := flat.source_type_name(resolved_base_id)
 				if resolved_base in g.interfaces {
-					application := if resolved_base == base {
-						typ.name()
+					application_id := if resolved_base_id == base_id {
+						typ_id
 					} else {
-						typ.name().replace_once(base, resolved_base)
+						flat.source_type_id(typ_text.replace_once(base, resolved_base))
 					}
-					applications[flat.source_type_id(application)] = flat.source_type_id(resolved_base)
+					applications[application_id] = resolved_base_id
 				}
 			}
 		}
@@ -1476,10 +1484,11 @@ fn (g &FlatGen) has_ierror_interface() bool {
 // interface_init_typ_id computes the `_typ` dispatch id for a boxed interface
 // literal by recovering the concrete type from its `_object` field.
 fn (g &FlatGen) interface_init_typ_id(node flat.Node) ?int {
-	iface := if node.value in g.interfaces {
-		node.value
+	iface_text := node.value_text()
+	iface_id := if iface_text in g.interfaces {
+		node.source_value_id()
 	} else {
-		g.tc.qualify_name(node.value)
+		flat.source_type_id(g.tc.qualify_name(iface_text))
 	}
 	for i in 0 .. node.children_count {
 		field := g.a.child_node(&node, i)
@@ -1492,7 +1501,7 @@ fn (g &FlatGen) interface_init_typ_id(node flat.Node) ?int {
 				obj_type = obj_type.base_type
 			}
 			concrete := types.unwrap_pointer(obj_type)
-			for candidate in g.interface_semantic_application_candidates(flat.source_type_id(iface), concrete.source_type_id()) {
+			for candidate in g.interface_semantic_application_candidates(iface_id, concrete.source_type_id()) {
 				id := g.iface_type_id_for_concrete(candidate, concrete)
 				if id != 0 {
 					return id

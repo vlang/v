@@ -1538,16 +1538,16 @@ fn (mut t Transformer) transform_array_value_for_dynamic_target(value_id flat.No
 	if int(value_id) < 0 || target_type_id == u32(0) || isnil(t.tc) {
 		return none
 	}
-	expected_name := trimmed_transform_text(flat.source_type_name(t.normalize_type_alias(target_type_id)))
-	if !expected_name.starts_with('[]') {
+	expected_source_id := t.trimmed_type_id(t.normalize_type_alias(target_type_id))
+	if !flat.source_type_shape(expected_source_id).has(.array_type) {
 		return none
 	}
-	actual_name := trimmed_transform_text(flat.source_type_name(t.normalized_node_type(value_id)))
-	if actual_name.len == 0 {
+	actual_source_id := t.trimmed_type_id(t.normalized_node_type(value_id))
+	if actual_source_id == 0 {
 		return none
 	}
-	expected_type := t.tc.parse_type(flat.source_type_id(expected_name))
-	actual_type := t.tc.parse_type(flat.source_type_id(actual_name))
+	expected_type := t.tc.parse_type(expected_source_id)
+	actual_type := t.tc.parse_type(actual_source_id)
 	expected_base := unalias_type(expected_type)
 	actual_base := unalias_type(actual_type)
 	if expected_base is types.Array {
@@ -2207,12 +2207,12 @@ fn (t &Transformer) array_append_consumes_fresh_local(source_id flat.NodeId) boo
 			break
 		}
 		root = t.unwrap_parens(t.a.child(&node, 0))
-		if flat.source_type_name(t.node_type(root)).starts_with('&') {
+		if flat.source_type_shape(t.node_type(root)).has(.pointer) {
 			return false
 		}
 	}
 	root_node := t.a.nodes[int(root)]
-	if root_node.kind != .ident || flat.source_type_name(t.node_type(root)).starts_with('&') {
+	if root_node.kind != .ident || flat.source_type_shape(t.node_type(root)).has(.pointer) {
 		return false
 	}
 	name := root_node.value
@@ -2994,8 +2994,8 @@ fn (mut t Transformer) owned_sum_array_storage_branches(source flat.NodeId, sum_
 			variant_payload_type = t.comptime_normalize_type_alias_chain(t.optional_base_type(variant_payload_type))
 		}
 		array_type := t.trim_all_pointer_type(variant_payload_type)
-		is_array := flat.source_type_name(array_type).starts_with('[]') && !flat.source_type_name(variant_payload_type).starts_with('&&')
-		is_nested_sum := !flat.source_type_name(variant_payload_type).starts_with('&') && t.is_sum_type_name(variant_payload_type)
+		is_array := flat.source_type_shape(array_type).has(.array_type) && !flat.source_type_shape(variant_payload_type).has(.pointer_chain)
+		is_nested_sum := !flat.source_type_shape(variant_payload_type).has(.pointer) && t.is_sum_type_name(variant_payload_type)
 		force_owned_variant := clone_owned_value && !t.sum_variant_is_direct_pointer(qvariant_source_id_2)
 		if !force_owned_variant && ((!is_array && !is_nested_sum)
 			|| !t.tc.ownership_type_requires_destruction(t.tc.parse_type(array_type))) {
@@ -3006,7 +3006,7 @@ fn (mut t Transformer) owned_sum_array_storage_branches(source flat.NodeId, sum_
 		mut payload := field
 		mut branch_guards := guards.clone()
 		branch_guards << t.make_sum_is_check(source, sum_type_id, resolved_sum_source_id_3, qvariant_source_id_2)
-		if flat.source_type_name(clean_variant).starts_with('&') {
+		if flat.source_type_shape(clean_variant).has(.pointer) {
 			branch_guards << t.make_infix(.ne, field, t.a.add(.nil_literal))
 		}
 		mut branch_path := path.clone()
@@ -3024,7 +3024,7 @@ fn (mut t Transformer) owned_sum_array_storage_branches(source flat.NodeId, sum_
 			continue
 		}
 		branch_path << OwnedArraySumVariant{ sum_type: sum_type_id, variant: qvariant_source_id_2 }
-		force_owned_array := clone_owned_value && !flat.source_type_name(variant_payload_type).starts_with('&')
+		force_owned_array := clone_owned_value && !flat.source_type_shape(variant_payload_type).has(.pointer)
 		if is_array && !force_owned_array && !(clone_owned_value && wrappers.len > 0) {
 			mut array_payload := payload
 			for wrapper_source_id_2 in wrappers {
@@ -3554,11 +3554,11 @@ fn (t &Transformer) node_type_is_array(id flat.NodeId) bool {
 	if int(id) < 0 {
 		return false
 	}
-	mut clean := trimmed_transform_text(flat.source_type_name(t.normalized_node_type(id)))
-	if clean.starts_with('...') {
-		clean = clean[3..]
+	mut clean := t.trimmed_type_id(t.normalized_node_type(id))
+	if flat.source_type_shape(clean).has(.variadic) {
+		clean = flat.source_type_id(flat.source_type_name(clean)[3..])
 	}
-	return clean.starts_with('[]') || t.is_fixed_array_type(flat.source_type_id(clean))
+	return flat.source_type_shape(clean).has(.array_type) || t.is_fixed_array_type(clean)
 }
 
 // array_append_rhs_is_push_many honors explicit array spread for append, insert and prepend.

@@ -200,7 +200,7 @@ mut:
 	local_type_decls_by_block         map[int][]string
 	local_type_decls_indexed          bool
 	local_type_scopes                 []string
-	anonymous_struct_types            flat.TypeTextListBindings
+	anonymous_struct_types            AnonymousStructShapeCache
 	anonymous_struct_count            int
 	sql_query_data_aliases            map[string]bool
 	export_records                    []ExportRecord
@@ -314,7 +314,7 @@ pub fn Parser.new(prefs &pref.Preferences) &Parser {
 		translated_sizeof_type_names:   map[string]bool{}
 		translated_sizeof_const_names:  map[string]bool{}
 		translated_sizeof_global_names: map[string]bool{}
-		anonymous_struct_types:         flat.TypeTextListBindings{}
+		anonymous_struct_types:         AnonymousStructShapeCache{}
 		comptime_const_values:          map[string]string{}
 		comptime_local_values:          map[string]string{}
 		imported_module_names:          map[string]bool{}
@@ -503,7 +503,7 @@ fn (mut p Parser) reset_file_state(path string) {
 	p.local_type_scopes = []string{}
 	p.local_type_decls_by_block = map[int][]string{}
 	p.local_type_decls_indexed = false
-	p.anonymous_struct_types = flat.TypeTextListBindings{}
+	p.anonymous_struct_types = AnonymousStructShapeCache{}
 	p.anonymous_struct_count = 0
 	p.sql_query_data_aliases.clear()
 	p.accepted_line_directives.clear()
@@ -17878,19 +17878,6 @@ fn (mut p Parser) diagnose_map_second_key(key string) {
 		key_start, key_start + second_key.len)
 }
 
-fn anonymous_struct_name_shape_key(fields []string) string {
-	return 'names:${fields.join(',')}'
-}
-
-fn anonymous_struct_typed_shape_key(fields []string, field_types []u32) string {
-	mut parts := []string{cap: fields.len}
-	for i, field in fields {
-		typ := if i < field_types.len { flat.source_type_name(field_types[i]) } else { '' }
-		parts << '${field.len}:${field}:${typ.len}:${typ}'
-	}
-	return 'typed:${parts.join(',')}'
-}
-
 fn (mut p Parser) anonymous_struct_type_for_literal(init flat.Node) ?u32 {
 	mut field_names := []string{cap: int(init.children_count)}
 	mut field_types := []u32{cap: int(init.children_count)}
@@ -17908,12 +17895,10 @@ fn (mut p Parser) anonymous_struct_type_for_literal(init flat.Node) ?u32 {
 		field_names << field.value
 		field_types << field_type
 	}
-	name_key := anonymous_struct_name_shape_key(field_names)
 	if can_infer_types {
-		typed_key := anonymous_struct_typed_shape_key(field_names, field_types)
-		if candidates := p.anonymous_struct_types.type_ids(typed_key) {
+		if candidates := p.anonymous_struct_types.typed_candidates(field_names, field_types) {
 			if candidates.len == 1 {
-				if declared_candidates := p.anonymous_struct_types.type_ids(name_key) {
+				if declared_candidates := p.anonymous_struct_types.name_candidates(field_names) {
 					if declared_candidates.len > 1 && candidates[0] in declared_candidates {
 						return none
 					}
@@ -17922,7 +17907,7 @@ fn (mut p Parser) anonymous_struct_type_for_literal(init flat.Node) ?u32 {
 			}
 			return none
 		}
-		if _ := p.anonymous_struct_types.type_ids(name_key) {
+		if _ := p.anonymous_struct_types.name_candidates(field_names) {
 			return none
 		}
 		mut ids := []flat.NodeId{cap: field_names.len}
@@ -17935,7 +17920,7 @@ fn (mut p Parser) anonymous_struct_type_for_literal(init flat.Node) ?u32 {
 		}
 		return p.register_anonymous_aggregate_type(ids, field_names, field_types, true, false, -1)
 	}
-	if candidates := p.anonymous_struct_types.type_ids(name_key) {
+	if candidates := p.anonymous_struct_types.name_candidates(field_names) {
 		if candidates.len == 1
 			&& p.anonymous_struct_literal_matches_candidate(init, field_names, candidates[0]) {
 			return candidates[0]
@@ -17967,7 +17952,7 @@ fn (mut p Parser) create_anonymous_struct_type_for_literal(init flat.Node) ?u32 
 }
 
 fn (p &Parser) anonymous_struct_literal_has_contextual_candidate(init flat.Node, field_names []string) bool {
-	candidates := p.anonymous_struct_types.type_ids(anonymous_struct_name_shape_key(field_names)) or {
+	candidates := p.anonymous_struct_types.name_candidates(field_names) or {
 		return false
 	}
 	if candidates.len <= 1 {
@@ -18079,8 +18064,7 @@ fn (mut p Parser) register_anonymous_struct_type(field_names []string, field_typ
 			return none
 		}
 	}
-	shape := anonymous_struct_typed_shape_key(field_names, field_types)
-	if candidates := p.anonymous_struct_types.type_ids(shape) {
+	if candidates := p.anonymous_struct_types.typed_candidates(field_names, field_types) {
 		if candidates.len == 1 {
 			return candidates[0]
 		}
@@ -18413,15 +18397,9 @@ fn (mut p Parser) register_anonymous_aggregate_type(ids []flat.NodeId, field_nam
 			p.a.formatter_sources[int(decl_id)] = p.s.src[source_start..source_end].clone()
 		}
 	}
-	typed_key := anonymous_struct_typed_shape_key(field_names, field_types)
-	mut typed_candidates := (p.anonymous_struct_types.type_ids(typed_key) or { []u32{} }).clone()
-	typed_candidates << name_id
-	p.anonymous_struct_types.set_ids(typed_key, typed_candidates)
+	p.anonymous_struct_types.append_typed(field_names, field_types, name_id)
 	if !inferred {
-		name_key := anonymous_struct_name_shape_key(field_names)
-		mut name_candidates := (p.anonymous_struct_types.type_ids(name_key) or { []u32{} }).clone()
-		name_candidates << name_id
-		p.anonymous_struct_types.set_ids(name_key, name_candidates)
+		p.anonymous_struct_types.append_declared(field_names, name_id)
 	}
 	return name_id
 }

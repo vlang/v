@@ -24,6 +24,41 @@ fn test_collect_interface_impls_includes_boxed_maps() {
 	assert g.iface_type_ids[interface_dispatch_boxed_type_key(flat.source_type_id('Any'), flat.source_type_id('map[string]int'))] > 0
 }
 
+fn test_interface_init_typ_id_uses_canonical_source_value() {
+	mut a := flat.FlatAst.new()
+	iface_id := flat.source_type_id('Speaker')
+	concrete_id := flat.source_type_id('Cat')
+	obj := a.add_val(.ident, 'cat')
+	object_start := a.children.len
+	a.children << obj
+	field := a.add_node(flat.Node{
+		kind:           .field_init
+		value:          '_object'
+		children_start: i32(object_start)
+		children_count: 1
+	})
+	init_start := a.children.len
+	a.children << field
+	init := a.add_node(flat.Node{
+		kind:           .struct_init
+		value:          'Speaker'
+		children_start: i32(init_start)
+		children_count: 1
+	})
+	// Canonical type operands retain their spelling only as a source ID.
+	assert a.node(init).value == ''
+	assert a.node(init).source_value_id() == iface_id
+	mut tc := types.TypeChecker.new(&a)
+	tc.cur_scope.insert('cat', types.Type(types.Struct{ name_id: concrete_id }))
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.interfaces['Speaker'] = []string{}
+	g.iface_type_ids[interface_dispatch_boxed_type_key(iface_id, concrete_id)] = 7
+
+	assert (g.interface_init_typ_id(*a.node(init)) or { 0 }) == 7
+}
+
 fn test_incremental_cgen_collects_interface_type_ids() {
 	source_path := os.join_path(os.temp_dir(), 'v3_incremental_cgen_interface_ids.v')
 	os.write_file(source_path, 'module main

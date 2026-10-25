@@ -21737,6 +21737,48 @@ fn (mut tc TypeChecker) record_compound_assignment_operand_errors(op flat.Op, lh
 	}
 }
 
+struct ComptimeMethodCallInstance {
+	decl_id flat.NodeId
+	args    []u32
+}
+
+// comptime_method_call_key hashes the declaration and ordered spelling IDs.
+// Bucket lookup still verifies the complete declaration and argument tuple.
+fn comptime_method_call_key(decl_id flat.NodeId, args []u32) u64 {
+	mut key := (u64(14_695_981_039_346_656_037) ^ u64(decl_id)) * u64(1_099_511_628_211)
+	key = (key ^ u64(args.len)) * u64(1_099_511_628_211)
+	for arg in args {
+		key = (key ^ u64(arg)) * u64(1_099_511_628_211)
+	}
+	return key
+}
+
+// remember_comptime_method_call records a new instance before its checking fork
+// is created, so recursive forwarding sees the visited instance.
+fn remember_comptime_method_call(mut calls map[u64][]ComptimeMethodCallInstance, decl_id flat.NodeId, args []u32) bool {
+	key := comptime_method_call_key(decl_id, args)
+	for previous in calls[key] {
+		if previous.decl_id == decl_id && previous.args == args {
+			return false
+		}
+	}
+	calls[key] << ComptimeMethodCallInstance{
+		decl_id: decl_id
+		args:    args.clone()
+	}
+	return true
+}
+
+// clone_checked_comptime_method_calls isolates the fork's mutable buckets.
+// Inserted argument arrays are owned and immutable, so snapshots can share them.
+fn clone_checked_comptime_method_calls(calls map[u64][]ComptimeMethodCallInstance) map[u64][]ComptimeMethodCallInstance {
+	mut cloned := map[u64][]ComptimeMethodCallInstance{}
+	for key, instances in calls {
+		cloned[key] = instances.clone()
+	}
+	return cloned
+}
+
 // check_instantiated_comptime_method_args checks reflection method arguments once
 // an unconstrained generic receiver is known at its call site.
 fn (mut tc TypeChecker) check_instantiated_comptime_method_args(call_id flat.NodeId, call flat.Node, info CallInfo) {
@@ -21752,11 +21794,10 @@ fn (mut tc TypeChecker) check_instantiated_comptime_method_args(call_id flat.Nod
 	// before the callee's module context can rebase them onto a helper type.
 	mut argument_view := tc.fork_type_parse_view('', 'main')
 	concrete_args := instantiation.concrete_args.ids.map(argument_view.explicit_generic_concrete_arg_text(it))
-	key := '${int(instantiation.decl_id)}[${concrete_args.map(flat.source_type_name(it)).join(',')}]'
-	if tc.checked_comptime_method_calls[key] {
+	if !remember_comptime_method_call(mut tc.checked_comptime_method_calls, instantiation.decl_id,
+		concrete_args) {
 		return
 	}
-	tc.checked_comptime_method_calls[key] = true
 	fn_node := tc.a.node(instantiation.decl_id)
 	mut texts := map[string]u32{}
 	for i, name in instantiation.generic_params {

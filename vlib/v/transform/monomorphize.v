@@ -12022,10 +12022,10 @@ fn (mut t Transformer) generic_clone_call_type_args(node flat.Node, decl Generic
 	}
 	mut call_args := []u32{cap: param_names.len}
 	for name in param_names {
-		arg_source_id := inferred[name] or { return flat.TypeTextList.from_names([]string{}).ids }
+		arg_source_id := inferred[name] or { return []u32{} }
 
 		if t.generic_arg_is_unresolved(arg_source_id) {
-			return flat.TypeTextList.from_names([]string{}).ids
+			return []u32{}
 		}
 		call_args << t.inherited_generic_arg_for_decl_module(arg_source_id, decl.module, args_ids)
 	}
@@ -12035,14 +12035,14 @@ fn (mut t Transformer) generic_clone_call_type_args(node flat.Node, decl Generic
 fn (mut t Transformer) generic_clone_call_param_types(node flat.Node, args_ids []u32, return_context_id u32) []u32 {
 	if node.kind != .call || node.children_count < 2 || t.skip_generics
 		|| return_context_id == 0 || t.cloning_comptime_for_depth > 0 {
-		return flat.TypeTextList.from_names([]string{}).ids
+		return []u32{}
 	}
 	decls := t.cached_generic_fn_decls()
-	key := t.generic_call_decl_key(flat.empty_node, node, t.cur_module, decls) or { return flat.TypeTextList.from_names([]string{}).ids }
-	decl := decls[key] or { return flat.TypeTextList.from_names([]string{}).ids }
+	key := t.generic_call_decl_key(flat.empty_node, node, t.cur_module, decls) or { return []u32{} }
+	decl := decls[key] or { return []u32{} }
 	call_args_source_ids := t.generic_clone_call_type_args(node, decl, args_ids, return_context_id)
 
-	if call_args_source_ids.len == 0 { return flat.TypeTextList.from_names([]string{}).ids }
+	if call_args_source_ids.len == 0 { return []u32{} }
 	param_types_source_ids := t.specialized_generic_call_param_type_texts(decl, call_args_source_ids)
 	if t.generic_decl_is_receiver_method(decl.node)
 		&& t.call_is_selector_form(node)
@@ -12080,14 +12080,13 @@ fn (mut t Transformer) generic_clone_child_is_return_value(node flat.Node, child
 		}
 		for i in 0 .. node.children_count {
 			operand_name_source_id := t.node_type(t.a.child(&node, i))
-			operand_name := flat.source_type_name(operand_name_source_id)
 			operand_type := unalias_type(t.tc.parse_resolution_type(operand_name_source_id))
 			// Pointer arithmetic and overloaded operators need their operand types,
 			// which can differ from the enclosing return type.
 			if operand_type is types.Pointer || operand_type is types.Struct {
 				return false
 			}
-			if !types.is_builtin_type_name(operand_name) {
+			if !types.is_builtin_type_name_id(operand_name_source_id) {
 				if _ := t.struct_operator_call_info_any(operand_name_source_id, node.op) {
 					return false
 				}

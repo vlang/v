@@ -12,6 +12,7 @@ import v.util
 const transform_source_type_i128 = flat.source_type_id('i128')
 const transform_source_type_u128 = flat.source_type_id('u128')
 const transform_source_type_array = flat.source_type_id('array')
+const transform_source_type_map = flat.source_type_id('map')
 const transform_source_type_struct = flat.source_type_id('struct')
 const detached_spawn_thread_array_type_id = flat.source_type_id('thread[]')
 
@@ -23800,8 +23801,9 @@ fn (mut t Transformer) call_argument_borrows_fixed_array(id flat.NodeId, node fl
 		return false
 	}
 	param := t.resolved_call_argument_param_type(id, node, child_index) or { return false }
-	param_type := flat.source_type_name(t.normalize_type_alias(t.semantic_type_name(param)))
-	return param_type.starts_with('&') || param_type in ['voidptr', 'byteptr', 'charptr']
+	param_type := t.normalize_type_alias(t.semantic_type_name(param))
+	return flat.source_type_shape(param_type).has(.pointer)
+		|| param_type in [flat.source_type_voidptr, flat.source_type_byteptr, flat.source_type_charptr]
 }
 
 // mut_pointer_slot_arg_keeps_binding reports whether call operand `child_index` passes a plain
@@ -23865,13 +23867,12 @@ fn (mut t Transformer) snapshot_mut_pointer_slot_arg(id flat.NodeId, node flat.N
 		return none
 	}
 	storage_type_source_id := t.lvalue_type(binding_id)
-	storage_type := flat.source_type_name(storage_type_source_id)
 	if !flat.source_type_shape(storage_type_source_id).has(.pointer_chain) {
 		return none
 	}
 	param := t.resolved_call_argument_param_type(id, node, child_index)?
-	param_type := flat.source_type_name(t.normalize_type_alias(t.semantic_type_name(param)))
-	if param_type != flat.source_type_name(t.normalize_type_alias(storage_type_source_id)) {
+	param_type := t.normalize_type_alias(t.semantic_type_name(param))
+	if param_type != t.normalize_type_alias(storage_type_source_id) {
 		// Function values keep mutability separately from their source parameter type.
 		callee_id := t.unwrap_parens(t.a.child(&node, 0))
 		callee := t.a.node(callee_id)
@@ -23888,6 +23889,7 @@ fn (mut t Transformer) snapshot_mut_pointer_slot_arg(id flat.NodeId, node flat.N
 		}
 		fn_type := t.call_callee_fn_type(callee_id) or { return none }
 		param_index := child_index - 1
+		storage_type := flat.source_type_name(storage_type_source_id)
 		if param_index < 0 || param_index >= fn_type.params.len
 			|| !fn_type.params[param_index].is_mut
 			|| t.normalize_type_alias(t.semantic_type_name(*fn_type.params[param_index].typ)) != t.normalize_type_alias(flat.source_type_id(storage_type[1..])) {

@@ -630,11 +630,11 @@ fn (g &Parser) substitute_comptime_field(source_file FastcSourceFile, loop_var s
 						type_c, type_end, next_after := g.read_comptime_is_type(mut s)
 						if type_c != '' {
 							matches := if type_c.starts_with('?') {
-								field.option_value_type_text() == type_c[1..]
+								field.option_value_type == flat.source_type_id(type_c[1..])
 							} else if type_c.starts_with('@') {
 								g.comptime_type_matches(field.typ, flat.source_type_id(type_c[1..]), true)
 							} else {
-								field.typ_text().trim_right('*') == type_c
+								fastc_trim_pointer_type(field.typ) == flat.source_type_id(type_c)
 							}
 							edits << FastcSourceEdit{
 								start:       var_pos

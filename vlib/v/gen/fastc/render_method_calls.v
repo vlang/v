@@ -469,13 +469,14 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				receiver := g.render_method_receiver_expression(receiver_tokens) or { continue }
 				value_type := g.fastc_thread_value_type(element) or { continue }
 				value_storage_type := g.collection_storage_type(value_type)
-				result_type := if value_type == 0 {
-					'void'
+				result_type_id := if value_type == 0 {
+					flat.source_type_void
 				} else {
-					fastc_array_c_type(flat.source_type_name(value_type))
+					flat.source_type_id(fastc_array_c_type(flat.source_type_name(value_type)))
 				}
+				result_type := flat.source_type_name(result_type_id)
 				mut w := unsafe { &Parser(g) }
-				fastc_register_composite_type(flat.source_type_id(result_type), mut w.composite_types)
+				fastc_register_composite_type(result_type_id, mut w.composite_types)
 				wait_helper := g.fastc_thread_wait_helper(flat.source_type_name(element), value_type)
 				recv_src := if flat.source_type_name(receiver_type).ends_with('*') {
 					'*(${receiver.source})'
@@ -491,7 +492,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				if receiver_start == 0 && wait_end == tokens.len - 1 {
 					return FastcRenderedExpression{
 						source: wait_all
-						typ:    flat.source_type_id(result_type)
+						typ:    result_type_id
 					}
 				}
 				mut wait_needle := '${receiver.source}.wait()'

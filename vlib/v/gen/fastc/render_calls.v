@@ -1040,7 +1040,7 @@ fn (g &Parser) render_mutable_map_value_pointer(tokens []FastcExpressionToken) ?
 	}
 	mut map_address := ''
 	if nested := g.render_mutable_map_value_pointer(base_tokens) {
-		if nested.typ_text() != flat.source_type_name(map_type).trim_right('*') {
+		if nested.typ != fastc_trim_pointer_type(map_type) {
 			return none
 		}
 		map_address = nested.source

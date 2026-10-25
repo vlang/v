@@ -7273,8 +7273,7 @@ fn (c &CallCollector) collect_top_level_assign_calls(node &flat.Node, cur_module
 			if lhs.kind == .ident && lhs.value.len > 0 {
 				local_values[lhs.value] = true
 				type_name_source_id_4 := c.top_level_decl_rhs_type_name(rhs_id, cur_module, imports, pre_values, pre_types)
-				type_name := flat.source_type_name(type_name_source_id_4)
-				if type_name.len > 0 {
+				if type_name_source_id_4 != 0 {
 					local_types.set_id(lhs.value, type_name_source_id_4)
 				}
 			}
@@ -7310,8 +7309,7 @@ fn (c &CallCollector) collect_top_level_global_decl_calls(node &flat.Node, cur_m
 		if field.children_count > 0 {
 			expr_id := c.a.child(field, 0)
 			type_name_source_id_5 := c.top_level_decl_rhs_type_name(expr_id, cur_module, imports, pre_values, pre_types)
-			type_name := flat.source_type_name(type_name_source_id_5)
-			if type_name.len > 0 {
+			if type_name_source_id_5 != 0 {
 				local_types.set_id(field.value, type_name_source_id_5)
 			}
 		}
@@ -7490,8 +7488,7 @@ fn (c &CallCollector) top_level_expr_lowers_to_map_str(id flat.NodeId, cur_modul
 // imports and local bindings, before the checker has cached their expression types.
 fn (c &CallCollector) collect_top_level_stringification_calls(id flat.NodeId, cur_module string, imports map[string]string, local_values map[string]bool, local_types flat.TypeTextBindings, mut calls []string) {
 	type_name_source_id_6 := c.top_level_expr_type_name(id, cur_module, imports, local_values, local_types, false)
-	type_name := flat.source_type_name(type_name_source_id_6)
-	if type_name.len == 0 {
+	if type_name_source_id_6 == 0 {
 		return
 	}
 	typ := c.tc.parse_canonical_type(type_name_source_id_6)
@@ -8073,8 +8070,7 @@ fn markused_infer_alias_generic_type_bytes(param_text string, actual types.Type,
 	}
 	if clean in generic_params && !inferred.contains(clean) && !markused_type_has_unknown(actual) {
 		type_name_source_id_8 := resolve_type_name(actual)
-		type_name := flat.source_type_name(type_name_source_id_8)
-		if type_name.len > 0 {
+		if type_name_source_id_8 != 0 {
 			inferred.set_id(clean, type_name_source_id_8)
 		}
 	}
@@ -8400,8 +8396,7 @@ fn (c &CallCollector) collect_lowered_join_path_single(call &flat.Node, resolved
 
 fn (c &CallCollector) collect_top_level_typed_receiver_method(base_id flat.NodeId, method string, cur_module string, imports map[string]string, local_values map[string]bool, local_types flat.TypeTextBindings, mut calls []string) bool {
 	type_name_source_id_9 := c.top_level_receiver_type_name(base_id, cur_module, imports, local_values, local_types)
-	type_name := flat.source_type_name(type_name_source_id_9)
-	if type_name.len == 0 {
+	if type_name_source_id_9 == 0 {
 		return false
 	}
 	if method_name := c.typed_receiver_method_name(type_name_source_id_9, method, cur_module) {
@@ -9915,8 +9910,7 @@ fn (c &CallCollector) collect_typed_receiver_method(base_id flat.NodeId, method 
 		}
 	}
 	type_name_source_id_11 := c.receiver_type_name(base_id, cur_module, imports, local_values, local_types)
-	type_name := flat.source_type_name(type_name_source_id_11)
-	if type_name.len == 0 {
+	if type_name_source_id_11 == 0 {
 		return false
 	}
 	if method_name := c.typed_receiver_method_name(type_name_source_id_11, method, cur_module) {

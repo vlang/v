@@ -3158,10 +3158,11 @@ fn (tc &TypeChecker) resolve_interface_pattern_interface(pattern_id u32) ?u32 {
 }
 
 fn (tc &TypeChecker) pattern_type_known(pattern_id u32) bool {
-	clean := trimmed_space(flat.source_type_name(pattern_id))
+	clean_id := trimmed_source_type_id(pattern_id)
+	clean := flat.source_type_name(clean_id)
 	if clean.starts_with('[]') || clean.starts_with('map[') || clean.starts_with('[')
 		|| clean.starts_with('&') || clean.starts_with('fn ') || clean.starts_with('fn(') {
-		return tc.parse_type(flat.source_type_id(clean)) !is Unknown
+		return tc.parse_type(clean_id) !is Unknown
 	}
 	return false
 }
@@ -6226,14 +6227,14 @@ fn (tc &TypeChecker) source_struct_field_decls(struct_name_id u32) []SourceStruc
 					if field.kind != .field_decl {
 						continue
 					}
-					field_typ := if field.typ != 0 {
-						field.typ_text()
+					field_type_id := if field.typ != 0 {
+						field.typ
 					} else {
-						field.value
+						flat.source_type_id(field.value)
 					}
 					fields << SourceStructFieldDecl{
 						name: field.value
-						typ:  flat.source_type_id(field_typ)
+						typ:  field_type_id
 					}
 				}
 				return fields
@@ -6332,14 +6333,10 @@ fn (tc &TypeChecker) deferred_generic_expr_type_text(id flat.NodeId, param_types
 		}
 		.selector {
 			if node.children_count == 0 { return node.typ }
-			receiver_type := flat.source_type_name(tc.deferred_generic_expr_type_text(tc.a.child(node, 0), param_types))
-			base, args, is_generic := generic_type_application_parts(comptime_static_unwrap_type_text(receiver_type))
-			lookup := if is_generic {
-				base
-			} else {
-				comptime_static_unwrap_type_text(receiver_type)
-			}
-			fields := tc.source_struct_field_decls(flat.source_type_id(lookup))
+			receiver_type_id := comptime_static_unwrap_type_id(tc.deferred_generic_expr_type_text(tc.a.child(node, 0), param_types))
+			base, args, is_generic := generic_type_application_parts(flat.source_type_name(receiver_type_id))
+			lookup_id := if is_generic { flat.source_type_id(base) } else { receiver_type_id }
+			fields := tc.source_struct_field_decls(lookup_id)
 			for field in fields {
 				if field.name != node.value { continue }
 				if is_generic {
@@ -14298,9 +14295,9 @@ fn (tc &TypeChecker) interface_field_type(iface_name_id u32, field_name string) 
 
 // struct_field_type supports struct field type handling for TypeChecker.
 fn (tc &TypeChecker) struct_init_field_lookup_name(literal_name_id u32, parsed_name_id u32) u32 {
-	literal_name := flat.source_type_name(literal_name_id)
+	clean_id := trimmed_source_type_id(literal_name_id)
+	clean := flat.source_type_name(clean_id)
 	parsed_name := flat.source_type_name(parsed_name_id)
-	clean := trimmed_space(literal_name)
 	if clean.len == 0 {
 		return parsed_name_id
 	}
@@ -14318,7 +14315,7 @@ fn (tc &TypeChecker) struct_init_field_lookup_name(literal_name_id u32, parsed_n
 	if parsed_name != '' {
 		return parsed_name_id
 	}
-	return flat.source_type_id(clean)
+	return clean_id
 }
 
 fn (tc &TypeChecker) struct_fields_for_init(struct_name_id u32) []StructField {
@@ -14341,7 +14338,11 @@ fn (tc &TypeChecker) struct_fields_for_init(struct_name_id u32) []StructField {
 		raw_lookup_name
 	} else if raw_lookup_name.all_after_last('.') in tc.structs {
 		raw_lookup_name.all_after_last('.')
-	} else if canonical_source_id := tc.canonical_qualified_type_name(flat.source_type_id(raw_lookup_name)) {
+	} else if canonical_source_id := tc.canonical_qualified_type_name(if is_generic {
+		flat.source_type_id(base_name)
+	} else {
+		struct_name_id
+	}) {
 		canonical := flat.source_type_name(canonical_source_id)
 
 		canonical
@@ -16995,14 +16996,13 @@ pub fn (tc &TypeChecker) parse_type(source_id u32) &Type {
 fn (tc &TypeChecker) parse_type_miss(source_id u32) &Type {
 	if tc.type_cache != unsafe { nil } && tc.type_cache.parse_enabled {
 		mut cache := unsafe { tc.type_cache }
-		// Only a miss needs source spelling bytes. typeof depends on expression scope.
-		typ := flat.source_type_name(source_id)
+		// typeof depends on expression scope.
 		if flat.source_type_shape(source_id).has(.typeof_expr) {
 			return tc.intern_type_reference(tc.parse_type_uncached(source_id))
 		}
 		cache.parse_misses++
 		result := tc.intern_type_reference(tc.parse_type_uncached(source_id))
-		if scalar_builtin_type_name(typ) {
+		if scalar_builtin_type_name_id(source_id) {
 			id, _ := tc.intern_type(*result)
 			tc.remember_parsed_scalar_type(source_id, id, result)
 		}
@@ -17728,7 +17728,7 @@ fn (tc &TypeChecker) parse_open_generic_struct_type(typ_id u32) ?Type {
 	})
 }
 
-fn (tc &TypeChecker) parse_generic_alias_application(name_id u32, args []string, suffix string) Type {
+fn (tc &TypeChecker) parse_generic_alias_application(name_id u32, args []u32, suffix string) Type {
 	name := flat.source_type_name(name_id)
 	target_source_id := tc.type_aliases.value_id(name)
 	params := tc.type_alias_generic_params[name] or {
@@ -17737,7 +17737,7 @@ fn (tc &TypeChecker) parse_generic_alias_application(name_id u32, args []string,
 	if params.len == args.len && params.len > 0 {
 		return Type(Alias{
 			name_id:   flat.source_type_id(name + suffix)
-			base_type: tc.parse_type(subst_generic_text(target_source_id, flat.TypeTextList.from_names(args).ids, params))
+			base_type: tc.parse_type(subst_generic_text(target_source_id, args, params))
 		})
 	}
 	return Type(Alias{
@@ -17790,7 +17790,8 @@ fn (tc &TypeChecker) parse_type_uncached(source_id u32) Type {
 			if generic_type_application(rest) {
 				base, args, _ := generic_type_application_parts(rest)
 				if !base.contains('.') {
-					suffix := tc.qualified_generic_suffix(args)
+					arg_ids := flat.TypeTextList.from_names(args).ids
+					suffix := tc.qualified_generic_suffix(arg_ids)
 					if base in tc.struct_generic_params || base in tc.structs {
 						return Type(Struct{
 							name_id: flat.source_type_id(base + suffix)
@@ -17807,7 +17808,7 @@ fn (tc &TypeChecker) parse_type_uncached(source_id u32) Type {
 						})
 					}
 					if tc.type_aliases.contains(base) {
-						return tc.parse_generic_alias_application(flat.source_type_id(base), args, suffix)
+						return tc.parse_generic_alias_application(flat.source_type_id(base), arg_ids, suffix)
 					}
 				}
 			}
@@ -18122,17 +18123,14 @@ fn (tc &TypeChecker) parse_type_uncached(source_id u32) Type {
 		resolved_base := flat.source_type_name(resolved_base_source_id)
 		generic_suffix := typ[bracket..]
 		_, generic_args, _ := generic_type_application_parts(typ)
-		is_concrete_generic := tc.generic_args_are_concrete(flat.TypeTextList.from_names(generic_args).ids)
+		generic_arg_ids := flat.TypeTextList.from_names(generic_args).ids
+		is_concrete_generic := tc.generic_args_are_concrete(generic_arg_ids)
 		struct_generic_suffix := if is_concrete_generic {
-			tc.qualified_generic_suffix(generic_args)
+			tc.qualified_generic_suffix(generic_arg_ids)
 		} else {
 			generic_suffix
 		}
-		sum_generic_suffix := if is_concrete_generic {
-			tc.qualified_generic_suffix(generic_args)
-		} else {
-			generic_suffix
-		}
+		sum_generic_suffix := struct_generic_suffix
 		mut qbase_source_id := if tc.resolution_type_mode {
 			tc.qualify_resolution_type_name(resolved_base_source_id)
 		} else {
@@ -18178,7 +18176,7 @@ fn (tc &TypeChecker) parse_type_uncached(source_id u32) Type {
 				qbase_source_id
 			} else {
 				flat.source_type_id(qbase)
-			}, generic_args, struct_generic_suffix)
+			}, generic_arg_ids, struct_generic_suffix)
 		}
 		if qbase in tc.structs {
 			return Type(Struct{
@@ -18217,13 +18215,13 @@ fn (tc &TypeChecker) parse_type_uncached(source_id u32) Type {
 				})
 			}
 			if tc.type_aliases.contains(short) {
-				return tc.parse_generic_alias_application(short_source_id, generic_args, struct_generic_suffix)
+				return tc.parse_generic_alias_application(short_source_id, generic_arg_ids, struct_generic_suffix)
 			}
 		}
 		if !resolved_base.contains('.') {
 			if resolved := tc.resolve_selective_import_type_symbol(resolved_base) {
 				if tc.type_aliases.contains(resolved) {
-					return tc.parse_generic_alias_application(flat.source_type_id(resolved), generic_args, struct_generic_suffix)
+					return tc.parse_generic_alias_application(flat.source_type_id(resolved), generic_arg_ids, struct_generic_suffix)
 				}
 				if resolved in tc.structs {
 					return Type(Struct{
@@ -18243,7 +18241,7 @@ fn (tc &TypeChecker) parse_type_uncached(source_id u32) Type {
 			}
 		}
 		if allow_bare_generic_base && tc.type_aliases.contains(resolved_base) {
-			return tc.parse_generic_alias_application(resolved_base_source_id, generic_args, struct_generic_suffix)
+			return tc.parse_generic_alias_application(resolved_base_source_id, generic_arg_ids, struct_generic_suffix)
 		}
 		if allow_bare_generic_base && resolved_base in tc.structs {
 			return Type(Struct{
@@ -18362,12 +18360,13 @@ fn (tc &TypeChecker) type_from_simple_expr_text(expr string) ?Type {
 	return none
 }
 
-fn (tc &TypeChecker) qualified_generic_suffix(args []string) string {
+// qualified_generic_suffix renders a parsed argument-ID sequence after resolution qualification.
+fn (tc &TypeChecker) qualified_generic_suffix(args []u32) string {
 	mut qualified_args := []string{cap: args.len}
 	for arg in args {
 		// Generic application args may name types from the instantiating
 		// module (main's `Foo` inside a json2 specialization).
-		qualified_args << flat.source_type_name(tc.qualify_resolution_type_text(flat.source_type_id(arg)))
+		qualified_args << flat.source_type_name(tc.qualify_resolution_type_text(arg))
 	}
 	return '[' + qualified_args.join(', ') + ']'
 }
