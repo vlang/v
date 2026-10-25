@@ -1067,6 +1067,10 @@ fn (tc &TypeChecker) assignment_preserves_smartcast(op flat.Op, lhs_id flat.Node
 // type (`x = 5` in `if mut x is int`), as in V 0.5.2. Any other value may select
 // another variant, so the narrowing ends.
 fn (tc &TypeChecker) assigned_value_keeps_narrowing(rhs_id flat.NodeId, rhs_type &Type, narrowed &Type) bool {
+	// An untyped zero selects a numeric variant rather than a null pointer.
+	if tc.zero_literal_can_be_pointer(rhs_id, narrowed) {
+		return false
+	}
 	return tc.expr_compatible(rhs_id, rhs_type, narrowed)
 		|| tc.pointer_value_compatible(rhs_type, narrowed)
 }
