@@ -509,23 +509,38 @@ fn (mut p Parser) find_sub_table_view(key DottedKey) !map[string]ast.Value {
 // If some segments of the key does not exist in the input map find_in_table will
 // allocate a new map for the segment. This behavior is needed because you can
 // reference maps by multiple keys "dotted" (separated by "." periods) in TOML documents.
+// A segment naming an array of tables selects its last table, as table headers do.
 fn (mut p Parser) find_in_table_view(mut table map[string]ast.Value, key DottedKey) !map[string]ast.Value {
+	return p.find_in_table_path(mut table, key, true)
+}
+
+// find_key_table_view returns a map sharing the storage of the table that the
+// dotted key `key` (`a.b.c`) of a key/value pair names in `table`, allocating
+// missing segments. Unlike table headers, dotted keys never enter an array of
+// tables or a static array, so such a segment is an error.
+fn (mut p Parser) find_key_table_view(mut table map[string]ast.Value, key DottedKey) !map[string]ast.Value {
+	return p.find_in_table_path(mut table, key, false)
+}
+
+// find_in_table_path walks `key` from `table`, allocating missing segments.
+// With `enter_arrays`, a segment naming an array selects its last element.
+fn (mut p Parser) find_in_table_path(mut table map[string]ast.Value, key DottedKey, enter_arrays bool) !map[string]ast.Value {
 	mut current := unsafe { table }
 	for part in key {
 		if part !in current {
 			current[part] = map[string]ast.Value{}
 		}
 		value := unsafe { &current[part] }
-		if value is []ast.Value && value.len == 0 {
+		if enter_arrays && value is []ast.Value && value.len == 0 {
 			return error('empty array of tables `${part}`')
 		}
-		selected := if value is []ast.Value {
+		selected := if enter_arrays && value is []ast.Value {
 			&value[value.len - 1]
 		} else {
 			value
 		}
 		if selected !is map[string]ast.Value {
-			return error(@MOD + '.' + @STRUCT + '.' + @FN +
+			return error(@MOD + '.' + @STRUCT + '.find_in_table' +
 				' "${part}" in "${key}" is not a map but `${selected.type_name()}`')
 		}
 		current = unsafe { selected }
@@ -572,8 +587,25 @@ pub fn (mut p Parser) find_array_of_tables() ![]ast.Value {
 }
 
 // allocate_in_table allocates all tables in "dotted" `key` (`a.b.c`) in `table`.
+// As in a table header, a segment before the last that names an array of tables
+// selects its last table, but the last segment must name a table: `[[a]]` followed
+// by `[a]` redeclares `a`.
 pub fn (mut p Parser) allocate_in_table(mut table map[string]ast.Value, key DottedKey) ! {
-	p.find_in_table_view(mut table, key)!
+	if key.len == 0 {
+		return
+	}
+	parent_key, _ := p.sub_table_key(key)
+	mut parent := p.find_in_table_view(mut table, parent_key)!
+	last := key.last()
+	if last !in parent {
+		parent[last] = map[string]ast.Value{}
+		return
+	}
+	value := parent[last] or { return }
+	if value !is map[string]ast.Value {
+		return error(@MOD + '.' + @STRUCT + '.' + @FN +
+			' "${last}" in "${key}" is not a table but `${value.type_name()}`')
+	}
 }
 
 // dotted_key returns a string of the next tokens parsed as
@@ -655,7 +687,8 @@ pub fn (mut p Parser) root_table() ! {
 						p.implicit_declared.add(abs_dotted_key)
 					}
 
-					t := p.find_sub_table_view(sub_table)!
+					mut t := p.find_table_view()!
+					t = p.find_key_table_view(mut t, sub_table)!
 					unsafe {
 						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN,
 							'setting "${key}" = ${val} in table ${ptr_str(t)}')
@@ -859,7 +892,7 @@ pub fn (mut p Parser) table_contents(mut tbl map[string]ast.Value) ! {
 
 					sub_table, key := p.sub_table_key(dotted_key)
 
-					t := p.find_in_table_view(mut tbl, sub_table)!
+					t := p.find_key_table_view(mut tbl, sub_table)!
 					unsafe {
 						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN,
 							'setting "${key}" = ${val} in table ${ptr_str(t)}')
@@ -1032,7 +1065,7 @@ fn (mut p Parser) inline_dotted_key_value(mut tbl map[string]ast.Value) ! {
 @[noinline]
 fn (mut p Parser) insert_inline_dotted_value(mut tbl map[string]ast.Value, dotted_key DottedKey, mut val ast.Value) ! {
 	sub_table, key := p.sub_table_key(dotted_key)
-	mut t := p.find_in_table_view(mut tbl, sub_table)!
+	mut t := p.find_key_table_view(mut tbl, sub_table)!
 
 	// Disallow mutation of immutable values (inline tables)
 	if p.explicit_declared.has(dotted_key) {
@@ -1283,17 +1316,19 @@ fn (mut p Parser) array_table_contents(target_key DottedKey) !map[string]ast.Val
 	return tbl
 }
 
+// array_table_entry parses a key/value pair into `table`, the current table of an
+// array of tables, below the table header path `context`.
 fn (mut p Parser) array_table_entry(mut table map[string]ast.Value, context DottedKey) ! {
 	mut path, value := p.dotted_key_value()!
 	last := path.len - 1
 	name := path[last]
 	path.trim(last)
-	if context.len > 0 {
-		path.prepend(context)
-	}
 	mut target := unsafe { table }
+	if context.len > 0 {
+		target = p.find_in_table_view(mut target, context)!
+	}
 	if path.len > 0 {
-		target = p.find_in_table_view(mut table, path)!
+		target = p.find_key_table_view(mut target, path)!
 	}
 	target[name] = value
 }
