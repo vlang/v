@@ -3,6 +3,9 @@
 `builtin` is a module that is implicitly imported by every V program.
 
 It implements the builtin V types `array`, `string`, `map`.
+`int` and `uint` use the pointer width of the target. The old `isize` and `usize`
+names are deprecated in favor of `int` and `uint`. For signed pointer-width C
+parameters and return values, `C.ptrdiff_t` aliases `int` and preserves the C ABI.
 With bounds checking enabled, `first()` and `last()` on an empty dynamic array panic with
 `array.first: array is empty` and `array.last: array is empty`, respectively.
 This also applies when writing through the returned element, such as `cells.last().field = value`.
@@ -101,7 +104,7 @@ ensure no allocation from a rewound or freed scope remains in use.
 
 `prealloc_scope_allocated_size(scope)` reports the bytes in all allocation blocks owned by a
 scope, excluding allocator metadata and address gaps between blocks. It returns zero for a nil
-scope and saturates at `usize`'s maximum on overflow. This query is unsafe: no thread may add or
+scope and saturates at `uint`'s maximum on overflow. This query is unsafe: no thread may add or
 remove blocks while it runs.
 
 `string.replace_each(pairs)` ignores pairs with an empty search string. An empty replacement

@@ -22,12 +22,12 @@ fn test_native_compiler_types_preserve_semantic_payload_identity() {
 const builtin_void_type = Type(Void{})
 const empty_type = &builtin_void_type
 fn C.exit(int)
-fn C.malloc(usize) voidptr
-fn C.calloc(usize, usize) voidptr
-fn C.memcpy(voidptr, voidptr, usize) voidptr
-fn memdup(value voidptr, size isize) voidptr {
-    result := C.malloc(usize(size))
-    return C.memcpy(result, value, usize(size))
+fn C.malloc(uint) voidptr
+fn C.calloc(uint, uint) voidptr
+fn C.memcpy(voidptr, voidptr, uint) voidptr
+fn memdup(value voidptr, size int) voidptr {
+    result := C.malloc(uint(size))
+    return C.memcpy(result, value, uint(size))
 }
 // SSA sum storage starts with the i32 tag declared in ssa/builder.v.
 struct NativeSumHeader { typ i32 }
@@ -57,7 +57,7 @@ fn main() {
     second := Type(FnType{params: [FnParam{typ: new_type_reference(boolean)}], return_type: new_type_reference(boolean)})
     if first !is FnType || second !is FnType || semantic_types_equal(&first, &second)
         || semantic_type_hash(&first) == semantic_type_hash(&second) { C.exit(5) }
-    zero := unsafe { &Type(C.calloc(1, usize(sizeof(Type)))) }
+    zero := unsafe { &Type(C.calloc(1, uint(sizeof(Type)))) }
     if native_sum_tag(zero) != 0 { C.exit(6) }
     valid_void := Type(Void{})
     if native_sum_tag(&valid_void) != 1 || valid_void !is Void

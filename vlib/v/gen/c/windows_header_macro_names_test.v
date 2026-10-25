@@ -83,14 +83,14 @@ fn ordinary(seed int) int {
 	v_alloca := 8
 	__v3_internal_symbol_libc_alloca := 9
 	cell := Cell{value: alloca}
-	return cell.value + alloca + v_alloca + __v3_internal_symbol_libc_alloca + int(usize(voidptr(&cell)) & 511)
+	return cell.value + alloca + v_alloca + __v3_internal_symbol_libc_alloca + int(uint(voidptr(&cell)) & 511)
 }
 fn staging(seed int) int {
 	alloca := seed
 	v_alloca := 8
 	__v3_internal_symbol_libc_alloca := 9
 	cell := if alloca == 7 { Cell{value: alloca} } else { Cell{value: 0} }
-	return cell.value + alloca + v_alloca + __v3_internal_symbol_libc_alloca + int(usize(voidptr(&cell)) & 511)
+	return cell.value + alloca + v_alloca + __v3_internal_symbol_libc_alloca + int(uint(voidptr(&cell)) & 511)
 }
 fn main() { _ := ordinary(7); _ := staging(7) }
 ')!

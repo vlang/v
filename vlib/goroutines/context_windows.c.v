@@ -7,7 +7,7 @@ module goroutines
 
 #include <windows.h>
 
-fn C.CreateFiber(dwStackSize usize, lpStartAddress voidptr, lpParameter voidptr) voidptr
+fn C.CreateFiber(dwStackSize uint, lpStartAddress voidptr, lpParameter voidptr) voidptr
 fn C.ConvertThreadToFiber(lpParameter voidptr) voidptr
 fn C.SwitchToFiber(lpFiber voidptr)
 fn C.DeleteFiber(lpFiber voidptr)
@@ -21,7 +21,7 @@ pub mut:
 
 pub fn context_init(mut ctx Context, stack voidptr, stack_size int, entry_fn fn (voidptr), arg voidptr) {
 	// Windows fibers manage their own stack, so we ignore the stack param
-	ctx.uctx = C.CreateFiber(usize(stack_size), voidptr(entry_fn), arg)
+	ctx.uctx = C.CreateFiber(uint(stack_size), voidptr(entry_fn), arg)
 }
 
 pub fn context_switch(mut from Context, to &Context) {

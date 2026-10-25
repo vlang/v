@@ -8122,7 +8122,7 @@ fn (mut tc TypeChecker) check_index_overload_arg(id flat.NodeId, node flat.Node,
 }
 
 fn js_index_type_requires_int_cast(typ &Type) bool {
-	return unalias_type(typ).name() in ['i64', 'u64', 'isize', 'usize']
+	return unalias_type(typ).name() in ['i64', 'u64', 'isize', 'uint']
 }
 
 fn (mut tc TypeChecker) check_js_index_type(id flat.NodeId, typ Type, base_type Type) bool {
@@ -11269,7 +11269,7 @@ fn call_arg_integer_type(typ &Type) bool {
 		}
 		Struct, Enum, Interface, SumType {
 			clean.name() in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'u16', 'u32', 'u64',
-				'usize', 'rune']
+				'uint', 'rune']
 		}
 		else { false }
 	}
@@ -11299,7 +11299,7 @@ fn call_arg_numeric_promotion_index(name string) int {
 		'u16' { 12 }
 		'u32' { 13 }
 		'u64' { 14 }
-		'usize' { 15 }
+		'uint' { 15 }
 		// 128-bit ranks above the 64-bit types, so a narrower integer widens into
 		// it. Without these rows the index is -1, no widening is offered, and an
 		// expression like `wide + 1` is typed `int` and cut to 64 bits.
@@ -12936,7 +12936,7 @@ pub fn (tc &TypeChecker) interface_accepts_implicit_str(iface_name_id u32) bool 
 
 fn implicit_str_builtin_type_names() []u32 {
 	return [flat.source_type_bool, flat.source_type_int, flat.source_type_i8, flat.source_type_i16,
-		flat.source_type_i32, flat.source_type_i64, flat.source_type_isize, flat.source_type_usize,
+		flat.source_type_i32, flat.source_type_i64, flat.source_type_isize, flat.source_type_uint,
 		flat.source_type_u8, flat.source_type_u16, flat.source_type_u32, flat.source_type_u64,
 		flat.source_type_f32, flat.source_type_f64, flat.source_type_string, flat.source_type_rune]
 }
@@ -18968,7 +18968,7 @@ fn (tc &TypeChecker) resolve_type_slow(id flat.NodeId) Type {
 }
 
 const narrow_integer_type_names = ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'u16', 'u32',
-	'u64', 'usize', 'rune', 'char']
+	'u64', 'uint', 'rune', 'char']
 
 @[inline]
 fn narrow_integer_type_for_widening(typ Type) bool {
@@ -21766,7 +21766,7 @@ fn resolve_type_name_for_method(t &Type) u32 {
 		return flat.source_type_isize
 	}
 	if t is USize {
-		return flat.source_type_usize
+		return flat.source_type_uint
 	}
 	if t is Array {
 		return flat.source_type_id('[]${nested_type_name(t.elem_type)}')

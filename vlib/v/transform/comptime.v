@@ -4466,7 +4466,7 @@ fn (t &Transformer) comptime_field_type_id_key_uncached(typ string, decl_module 
 
 fn comptime_is_primitive_type(typ string) bool {
 	return typ in ['string', 'bool', 'rune', 'char', 'i8', 'i16', 'i32', 'i64', 'int', 'isize',
-		'u8', 'u16', 'u32', 'u64', 'usize', 'f32', 'f64', 'int literal', 'float literal', 'voidptr',
+		'u8', 'u16', 'u32', 'u64', 'uint', 'f32', 'f64', 'int literal', 'float literal', 'voidptr',
 		'byteptr', 'charptr', 'nil', 'void']
 }
 

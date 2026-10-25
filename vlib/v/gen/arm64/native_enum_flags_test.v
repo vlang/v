@@ -31,7 +31,7 @@ fn (mut cache VarTypeIndexCache) clear() { C.exit(90) }
 			r'module main
 import strings
 fn C.exit(int)
-fn C.memcpy(voidptr, voidptr, usize) voidptr
+fn C.memcpy(voidptr, voidptr, uint) voidptr
 @[flag]
 enum Features { read write execute extra }
 type FeatureAlias = Features

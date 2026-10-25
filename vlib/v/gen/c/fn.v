@@ -9525,7 +9525,7 @@ fn (g &FlatGen) expr_is_non_string_scalar_value(id flat.NodeId) bool {
 	if node.kind == .ident {
 		if c_type := g.local_storage_c_type(node.value) {
 			return c_type in ['bool', 'char', 'i8', 'i16', 'int', 'i64', 'isize', 'u8', 'u16',
-				'u32', 'u64', 'usize', 'f32', 'f64', 'rune', types.portable_int_c_type]
+				'u32', 'u64', 'uint', 'f32', 'f64', 'rune', types.portable_int_c_type]
 		}
 		if raw_type_source_id := g.local_storage_raw_type(node.value) {
 			raw_type_source_id_2 := raw_type_source_id
@@ -12984,7 +12984,7 @@ fn callback_can_cast_scalar_int_param(actual_ct string, expected_ct string) bool
 
 fn callback_is_scalar_int_c_type(ct string) bool {
 	return trimmed_space(ct) in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'char',
-		'bool', 'isize', 'usize', 'ptrdiff_t', 'size_t', types.portable_int_c_type]
+		'bool', 'isize', 'uint', 'ptrdiff_t', 'size_t', types.portable_int_c_type]
 }
 
 fn (mut g FlatGen) callback_c_type(typ types.Type) string {
@@ -18054,6 +18054,9 @@ fn (mut g FlatGen) c_extern_interop_type_name(t types.Type) ?string {
 		return base + '*'
 	}
 	if t is types.Alias {
+		if t.name() == 'C.ptrdiff_t' {
+			return 'ptrdiff_t'
+		}
 		// A `type Cb = fn (int)` alias over a function type must still keep C `int`
 		// inside the C ABI; alias-over-`int` likewise. Non-interop bases return none.
 		if _ := g.tc.c_abi_fn_ptr_type_for_type_text(t.source_type_id()) {
@@ -18150,7 +18153,7 @@ fn (mut g FlatGen) c_call_arg_cabi_cast(arg_idx int, typed_param_count int, para
 		// that prototype is exactly what the callee's parameter type was written
 		// against. A `fn C.` declaration cannot spell C qualifiers, so casting to the
 		// V-declared signature is what *creates* an incompatible-pointer-type error
-		// (e.g. `fn C.mbedtls_net_send(voidptr, &u8, usize) i32` drops the `const` in
+		// (e.g. `fn C.mbedtls_net_send(voidptr, &u8, uint) i32` drops the `const` in
 		// mbedtls_net_send's real `const unsigned char *` buffer parameter).
 		if _ := fn_type_from(param_types[arg_idx]) {
 			if g.is_c_extern_fn_name_arg(arg_id) {

@@ -22,7 +22,7 @@ fn fastc_builtin_type_idx(type_name_source_id u32) ?int {
 		'u16' { 12 }
 		'u32' { 13 }
 		'u64' { 14 }
-		'usize' { 15 }
+		'uint', 'usize' { 15 }
 		'f32' { 16 }
 		'f64' { 17 }
 		'char' { 18 }
@@ -1488,7 +1488,7 @@ fn (g &Parser) checked_integer_operation_type(operand_type u32) string {
 	resolved := flat.source_type_name(g.underlying_alias_type(operand_type))
 	return match resolved {
 		'int', 'integer literal', 'negative integer literal' { fastc_output_c_type('int') }
-		'char', 'i8', 'u8', 'i16', 'u16', 'i32', 'u32', 'i64', 'u64', 'isize', 'usize' {
+		'char', 'i8', 'u8', 'i16', 'u16', 'i32', 'u32', 'i64', 'u64', 'isize', 'uint', 'usize' {
 			fastc_output_c_type(resolved)
 		}
 		'rune' { 'u32' }
@@ -1546,7 +1546,7 @@ fn (g &Parser) shift_type_parts(operand_type u32) ?(string, string) {
 		'i32', 'rune', 'u32', 'unsigned int' { 'u32', '32' }
 		'i64', 'u64' { 'u64', '64' }
 		'int' { 'u${g.prefs.target.pointer_bits}', '${g.prefs.target.pointer_bits}' }
-		'isize', 'usize' { 'usize', '${g.prefs.target.pointer_bits}' }
+		'isize', 'uint', 'usize' { 'usize', '${g.prefs.target.pointer_bits}' }
 		else {
 			return none
 		}
@@ -1882,8 +1882,8 @@ fn (g &Parser) narrowed_numeric_operand_type(tokens []FastcExpressionToken, infe
 // fastc_numeric_arithmetic_has_no_overloads is shared by every file generator.
 // Ambiguous primitive metadata disables the shortcut conservatively.
 fn fastc_numeric_arithmetic_has_no_overloads(functions map[string]FastcFunctionSignature, declared_type_c_names flat.TypeTextBindings, alias_base_types flat.TypeTextBindings, struct_fields map[string]flat.TypeTextBindings) bool {
-	for type_name in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'u16', 'u32', 'u64', 'usize',
-		'f32', 'f64'] {
+	for type_name in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'u16', 'u32', 'u64', 'uint',
+		'usize', 'f32', 'f64'] {
 		if declared_type_c_names.contains(type_name) || alias_base_types.contains(type_name)
 			|| type_name in struct_fields {
 			return false
@@ -1975,7 +1975,7 @@ fn (g &Parser) plain_numeric_arithmetic_expression(tokens []FastcExpressionToken
 // generation. Primitive metadata or comparison methods keep the full renderer.
 fn fastc_primitive_comparisons_have_no_overloads(functions map[string]FastcFunctionSignature, declared_type_c_names flat.TypeTextBindings, alias_base_types flat.TypeTextBindings, struct_fields map[string]flat.TypeTextBindings) bool {
 	for type_name in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'u16', 'u32', 'u64',
-		'usize', 'f32', 'f64'] {
+		'uint', 'usize', 'f32', 'f64'] {
 		if declared_type_c_names.contains(type_name) || alias_base_types.contains(type_name)
 			|| type_name in struct_fields {
 			return false
@@ -2082,7 +2082,7 @@ fn fastc_primitive_member_comparison_value_type(typ u32) bool {
 	return typ in [flat.source_type_bool, flat.source_type_int, flat.source_type_i8,
 		flat.source_type_i16, flat.source_type_i32, flat.source_type_i64, flat.source_type_isize,
 		flat.source_type_u8, flat.source_type_u16, flat.source_type_u32, flat.source_type_u64,
-		flat.source_type_usize, flat.source_type_f32, flat.source_type_f64]
+		flat.source_type_uint, flat.source_type_usize, flat.source_type_f32, flat.source_type_f64]
 }
 
 fn (g &Parser) primitive_member_comparison_operand_type(tokens []FastcExpressionToken) u32 {
@@ -5547,7 +5547,7 @@ fn fastc_map_runtime_functions(key_type_source_id u32, pointer_bits int) (string
 		'8'
 	} else if key_type in ['i128', 'u128'] {
 		'16'
-	} else if key_type in ['isize', 'usize'] || fastc_is_pointer_type(key_type_source_id) {
+	} else if key_type in ['isize', 'uint', 'usize'] || fastc_is_pointer_type(key_type_source_id) {
 		if pointer_bits == 32 { '4' } else { '8' }
 	} else {
 		'4'

@@ -74,8 +74,14 @@ pub fn formatted_parser_error(message string, a &flat.FlatAst, pos token.Pos) st
 
 // formatted_parser_diagnostic renders a colored parser diagnostic with template call-site context.
 pub fn formatted_parser_diagnostic(kind string, message string, a &flat.FlatAst, pos token.Pos) string {
-	file := a.source_files[pos.id] or { return formatted_message(kind, message) }
 	mut run := DiagnosticRun{}
+	return run.formatted_parser_diagnostic(kind, message, a, pos)
+}
+
+// formatted_parser_diagnostic renders a parser diagnostic, sharing source and path lookups
+// with the other diagnostics in this run.
+pub fn (mut run DiagnosticRun) formatted_parser_diagnostic(kind string, message string, a &flat.FlatAst, pos token.Pos) string {
+	file := a.source_files[pos.id] or { return formatted_message(kind, message) }
 	result := run.formatted_source_error(kind, message, file, pos)
 	return run.append_template_call_stack(result, kind, a, pos)
 }
@@ -145,32 +151,43 @@ fn (mut run DiagnosticRun) formatted_source_error(kind string, message string, f
 		if position.filename != file.name || position.line != physical_line {
 			if position.filename != file.name {
 				if source := run.read_source(position.filename) {
-					lines := run.source_lines_through(source, position.line - source_context_before,
-						position.line + source_context_after)
-					if position.line <= lines.len {
+					first := int_max(1, position.line - source_context_before)
+					lines := run.source_lines_for_excerpt(source, first,
+						position.line + source_context_after, true)
+					if position.line - first < lines.len {
 						write_source_excerpt(mut result, kind, lines, position.line, span_start,
-							span_end)
+							span_end, first - 1)
 						return result.str().trim_right('\n')
 					}
 				}
 			}
 			source := run.read_source(file.name) or { return result.str().trim_right('\n') }
-			lines := run.source_lines_through(source, physical_line, physical_line)
-			if physical_line <= lines.len {
-				write_source_line(mut result, kind, lines[physical_line - 1], position.line, true,
+			lines := run.source_lines_for_file(source, file, physical_line, physical_line)
+			if lines.len > 0 {
+				write_source_line(mut result, kind, lines[0], position.line, true,
 					true, span_start, span_end)
 			}
 			return result.str().trim_right('\n')
 		}
 	}
 	source := run.read_source(file.name) or { return result.str().trim_right('\n') }
-	lines := run.source_lines_through(source, position.line - source_context_before,
-		position.line + source_context_after)
+	first := int_max(1, position.line - source_context_before)
+	lines := run.source_lines_for_file(source, file, first, position.line + source_context_after)
 	if lines.len == 0 {
 		return result.str().trim_right('\n')
 	}
-	write_source_excerpt(mut result, kind, lines, position.line, span_start, span_end)
+	write_source_excerpt(mut result, kind, lines, position.line, span_start, span_end, first - 1)
 	return result.str().trim_right('\n')
+}
+
+// Parsed files already index their line starts. Use that index instead of scanning
+// the preceding source again when the first warning is near the end of a large file.
+fn (mut run DiagnosticRun) source_lines_for_file(source string, file &token.File, first_line int, last_line int) []string {
+	if file.has_source_lines() && first_line >= 1 && first_line <= file.line_count() {
+		return source_lines_from(source, file.line_start(first_line), 1, 1,
+			last_line - first_line + 1)
+	}
+	return run.source_lines_for_excerpt(source, first_line, last_line, true)
 }
 
 // source_lines_through returns the lines `source.split_into_lines()` holds up to the 1-based
@@ -220,10 +237,20 @@ fn source_lines_from(source string, start_offset int, start_line int, first_line
 // source_lines_through returns what the function of the same name does for the source
 // read last. The diagnostics of one file come in the order of their lines, so the search
 // for a line starts where the one before it was found rather than at the top of the file.
-@[direct_array_access]
 fn (mut run DiagnosticRun) source_lines_through(source string, first_line int, last_line int) []string {
+	return run.source_lines_for_excerpt(source, first_line, last_line, false)
+}
+
+// Compact excerpts contain only the displayed lines, avoiding an array of empty
+// strings for every preceding line when a large legacy file has many warnings.
+@[direct_array_access]
+fn (mut run DiagnosticRun) source_lines_for_excerpt(source string, first_line int, last_line int, compact bool) []string {
 	if !run.source_read || source.str != run.source.str || source.len != run.source.len {
-		return source_lines_through(source, first_line, last_line)
+		lines := source_lines_through(source, first_line, last_line)
+		if compact {
+			return lines[int_min(lines.len, int_max(0, first_line - 1))..]
+		}
+		return lines
 	}
 	target := int_min(int_max(1, first_line), int_max(1, last_line))
 	mut line := 1
@@ -249,20 +276,26 @@ fn (mut run DiagnosticRun) source_lines_through(source string, first_line int, l
 	}
 	if line < target {
 		// The source ends before the first line asked for.
+		if compact {
+			return []string{}
+		}
 		return []string{len: if line_start < source.len { line } else { line - 1 }}
 	}
 	run.cursor_line = line
 	run.cursor_offset = line_start
+	if compact {
+		return source_lines_from(source, line_start, 1, first_line - line + 1, last_line - line + 1)
+	}
 	return source_lines_from(source, line_start, line, first_line, last_line)
 }
 
 // write_source_excerpt writes the lines around `target_line` of `lines`, and highlights
 // the span `span_start..span_end` (byte offsets relative to the line start) on it.
-fn write_source_excerpt(mut result strings.Builder, kind string, lines []string, target_line int, span_start int, span_end int) {
+fn write_source_excerpt(mut result strings.Builder, kind string, lines []string, target_line int, span_start int, span_end int, line_base int) {
 	first_line := int_max(1, target_line - source_context_before)
-	last_line := int_min(lines.len, target_line + source_context_after)
+	last_line := int_min(lines.len + line_base, target_line + source_context_after)
 	for line_number := first_line; line_number <= last_line; line_number++ {
-		write_source_line(mut result, kind, lines[line_number - 1], line_number,
+		write_source_line(mut result, kind, lines[line_number - line_base - 1], line_number,
 			line_number == target_line, line_number == last_line, span_start, span_end)
 	}
 }

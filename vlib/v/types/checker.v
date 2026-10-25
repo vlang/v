@@ -555,7 +555,7 @@ mut:
 	// Per-checker symbol probes front the compilation-wide interner. Resolved
 	// names are usually repeated as the same canonical string pointer inside a
 	// worker, so these slots avoid taking the interner mutex on every call.
-	symbol_recent_ptrs          [type_cache_recent_slots]usize
+	symbol_recent_ptrs          [type_cache_recent_slots]uint
 	symbol_recent_lens          [type_cache_recent_slots]int
 	symbol_recent_ids           [type_cache_recent_slots]SymbolId
 	symbol_recent_vals          [type_cache_recent_slots]string
@@ -605,8 +605,8 @@ mut:
 fn new_type_cache(parse_enabled bool) &TypeCache {
 	// Allocate the fixed caches in place instead of copying a large temporary.
 	// Their owned map/array payloads need a scanned allocation under a GC.
-	mut cache := unsafe { &TypeCache(malloc(sizeof(TypeCache))) }
-	unsafe { vmemset(cache, 0, sizeof(TypeCache)) }
+	mut cache := unsafe { &TypeCache(malloc(int(sizeof(TypeCache)))) }
+	unsafe { vmemset(cache, 0, int(sizeof(TypeCache))) }
 	cache.parse_enabled = parse_enabled
 	cache.generated_parent_entries = map[int]flat.NodeId{}
 	cache.parse_entries = map[u64]ParseTypeCacheEntry{}
@@ -2268,7 +2268,7 @@ fn new_zeroed_name_cache(n int) []&CachedName {
 		// used during transform growth without synthesizing per-element stores.
 		unsafe {
 			values.grow_len(n)
-			vmemset(values.data, 0, isize(n) * isize(sizeof(&CachedName)))
+			vmemset(values.data, 0, int(n) * int(sizeof(&CachedName)))
 		}
 	}
 	return values
@@ -3098,7 +3098,7 @@ fn extend_name_cache(mut values []&CachedName, n int) {
 		start := values.len
 		unsafe {
 			values.grow_len(n - start)
-			vmemset(&values[start], 0, isize(n - start) * isize(sizeof(&CachedName)))
+			vmemset(&values[start], 0, int(n - start) * int(sizeof(&CachedName)))
 		}
 	}
 }
@@ -11097,7 +11097,7 @@ fn (tc &TypeChecker) intern_symbol(name string) (SymbolId, string) {
 	}
 	mut cache := unsafe { tc.type_cache }
 	if !isnil(cache) {
-		ptr := usize(name.str)
+		ptr := uint(name.str)
 		slot := int((u64(ptr) >> 4 ^ u64(name.len)) & u64(type_cache_recent_slots - 1))
 		if cache.symbol_recent_set[slot] && cache.symbol_recent_ptrs[slot] == ptr
 			&& cache.symbol_recent_lens[slot] == name.len {
@@ -19733,7 +19733,7 @@ fn reserved_const_type_name(name string) bool {
 		'string',
 		'rune',
 		'thread',
-		'usize',
+		'uint',
 		'isize',
 		'voidptr',
 	]

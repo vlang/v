@@ -1232,7 +1232,7 @@ fn (tc &TypeChecker) comptime_static_enum_field_value(id flat.NodeId, enum_modul
 				.left_shift { i64(u64(left) << right) }
 				.right_shift {
 					typ := unalias_type(tc.comptime_enum_local_expr_type(tc.a.child(node, 0), map[string]Type{})).name()
-					if typ in ['u64', 'usize'] { i64(u64(left) >> right) } else { left >> right }
+					if typ in ['u64', 'uint'] { i64(u64(left) >> right) } else { left >> right }
 				}
 				.right_shift_unsigned {
 					comptime_enum_unsigned_right_shift(left, right, unalias_type(tc.comptime_enum_local_expr_type(tc.a.child(&node, 0), map[string]Type{})).source_type_id())
@@ -1402,7 +1402,7 @@ pub fn comptime_enum_integer_literal(value string) ?i64 {
 // comptime_enum_integer_division uses unsigned arithmetic for unsigned 64-bit operands.
 // typ_id is a process-wide source-spelling ID.
 pub fn comptime_enum_integer_division(left i64, right i64, typ_id u32, remainder bool) i64 {
-	if typ_id in [flat.source_type_u64, flat.source_type_usize] {
+	if typ_id in [flat.source_type_u64, flat.source_type_uint] {
 		return if remainder { i64(u64(left) % u64(right)) } else { i64(u64(left) / u64(right)) }
 	}
 	return if remainder { left % right } else { left / right }
@@ -1569,7 +1569,7 @@ fn (tc &TypeChecker) comptime_static_enum_local_expr_value(id flat.NodeId, local
 				.left_shift { i64(u64(left) << right) }
 				.right_shift {
 					typ := unalias_type(tc.comptime_enum_local_expr_type(tc.a.child(node, 0), local_types)).name()
-					if typ in ['u64', 'usize'] { i64(u64(left) >> right) } else { left >> right }
+					if typ in ['u64', 'uint'] { i64(u64(left) >> right) } else { left >> right }
 				}
 				.right_shift_unsigned {
 					comptime_enum_unsigned_right_shift(left, right, unalias_type(tc.comptime_enum_local_expr_type(tc.a.child(node, 0), local_types)).source_type_id())
@@ -9344,7 +9344,7 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 		}
 		skip_inactive_compact_else := tc.shift_is_in_inactive_compact_else(id)
 		bit_size := if tc.node_is_in_translated_file(id) {
-			int_max(32, tc.integer_shift_bit_size(lhs_type))
+			int_max(32, tc.integer_shift_bit_size(tc.translated_promoted_shift_type(lhs_type)))
 		} else {
 			tc.integer_shift_bit_size(lhs_type)
 		}
@@ -9645,12 +9645,12 @@ fn (tc &TypeChecker) integer_shift_bit_size(typ Type) int {
 	}
 	if clean is Primitive {
 		if clean.name() == 'int' || clean.size == 0 {
-			return 32
+			return platform_int_bits()
 		}
 		return int(clean.size)
 	}
 	if clean is ISize || clean is USize {
-		return 64
+		return platform_int_bits()
 	}
 	return 0
 }

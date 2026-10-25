@@ -9,17 +9,18 @@ pub struct VContext {
 
 // ptr_str returns a string with the address of `ptr`.
 pub fn ptr_str(ptr voidptr) string {
-	buf1 := u64_to_hex_no_leading_zeros(u64(usize(ptr)), 16)
+	buf1 := u64_to_hex_no_leading_zeros(u64(uint(ptr)), 16)
 	return buf1
 }
 
+// The legacy receiver keeps existing isize method calls working during migration.
 // str returns the string equivalent of x.
 pub fn (x isize) str() string {
 	return i64(x).str()
 }
 
 // str returns the string equivalent of x.
-pub fn (x usize) str() string {
+pub fn (x uint) str() string {
 	return u64(x).str()
 }
 

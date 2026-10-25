@@ -216,9 +216,9 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 fn C.v_multiwindow_test_native_primitive_reset()
 fn C.v_multiwindow_test_native_primitive_call_count() u64
 fn C.v_multiwindow_test_native_primitive(valid_mask u64, return_value i64, handle u64, native_code i64, observed_count u64, observed_flags u64, out &C.VMultiwindowNativePrimitive)
-fn C.v_multiwindow_test_native_primitive_abi_size() usize
-fn C.v_multiwindow_test_native_primitive_abi_last_offset() usize
-fn C.v_multiwindow_test_common_native_primitive_size() usize
+fn C.v_multiwindow_test_native_primitive_abi_size() uint
+fn C.v_multiwindow_test_native_primitive_abi_last_offset() uint
+fn C.v_multiwindow_test_common_native_primitive_size() uint
 fn C.v_multiwindow_test_common_native_primitive_mask() u64
 
 struct NativeContextMismatchCase {
@@ -502,9 +502,9 @@ fn after_each() {
 
 fn test_native_primitive_abi_is_portable_and_included_from_production_header() {
 	expected_mask := native_valid_return_value | native_valid_handle | native_valid_egl_error | native_valid_errno | native_valid_wayland_display_error | native_valid_dxgi_removal_reason | native_valid_observed_count | native_valid_observed_flags | native_valid_selected_value | native_valid_object_identity_0 | u64(1024) | u64(2048)
-	assert C.v_multiwindow_test_native_primitive_abi_size() == usize(104)
-	assert C.v_multiwindow_test_common_native_primitive_size() == usize(104)
-	assert C.v_multiwindow_test_native_primitive_abi_last_offset() == usize(96)
+	assert C.v_multiwindow_test_native_primitive_abi_size() == uint(104)
+	assert C.v_multiwindow_test_common_native_primitive_size() == uint(104)
+	assert C.v_multiwindow_test_native_primitive_abi_last_offset() == uint(96)
 	assert C.v_multiwindow_test_common_native_primitive_mask() == expected_mask
 }
 
@@ -2752,7 +2752,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 						started:                       app.backend.x11.started
 						render_health:                 app.backend.x11.render_health
 						render_sequence:               app.backend.x11.render_sequence
-						native_display:                u64(usize(app.backend.x11.display))
+						native_display:                u64(uint(app.backend.x11.display))
 						egl_display:                   native_identity(app.backend.x11.egl_display)
 						egl_config:                    native_identity(app.backend.x11.egl_config)
 						egl_context:                   native_identity(app.backend.x11.egl_context)
@@ -2768,12 +2768,12 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 						binding_surface:               native_identity(binding.surface)
 						egl_bad_current_recovery_used: app.backend.x11.egl_bad_current_recovery_used
 						native_visual_id:              app.backend.x11.native_visual_id
-						native_operations_identity:    u64(usize(app.backend.x11.native_operations))
+						native_operations_identity:    u64(uint(app.backend.x11.native_operations))
 						x11_screen:                    app.backend.x11.screen
 						x11_xdnd_version:              i64(app.backend.x11.xdnd_version)
 						x11_keycodes:                  app.backend.x11.keycodes
 						backend_owned_identities:      [
-							u64(usize(app.backend.x11.display)),
+							u64(uint(app.backend.x11.display)),
 							u64(app.backend.x11.root),
 							u64(app.backend.x11.wm_protocols),
 							u64(app.backend.x11.wm_delete_window),
@@ -2835,8 +2835,8 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 						}
 						windows << NativePhaseAWindowOwnershipSnapshot{
 							id:                             record.id
-							native_operations_identity:     u64(usize(record.native_operations))
-							owner_identity:                 u64(usize(record.owner))
+							native_operations_identity:     u64(uint(record.native_operations))
+							owner_identity:                 u64(uint(record.owner))
 							native_window_identity:         native_identity(record.surface)
 							native_aux_identity_0:          native_identity(record.xdg_surface)
 							native_aux_identity_1:          native_identity(record.xdg_toplevel)
@@ -2920,7 +2920,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 						event_sequence_terminal:       app.backend.wayland.event_sequence_terminal
 						wayland_display_unavailable:   app.backend.wayland.wayland_display_unavailable
 						wayland_display_error:         app.backend.wayland.wayland_display_error
-						native_operations_identity:    u64(usize(app.backend.wayland.native_operations))
+						native_operations_identity:    u64(uint(app.backend.wayland.native_operations))
 						data_offer_has_uri_list:       app.backend.wayland.data_offer_has_uri_list
 						data_offer_source_actions:     app.backend.wayland.data_offer_source_actions
 						data_offer_selected_action:    app.backend.wayland.data_offer_selected_action
@@ -5625,7 +5625,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 	fn native_assert_sokol_sequence_for_test(snapshot multiwindow_sokol_trace.TypedSnapshot, expected []multiwindow_sokol_trace.Operation) {
 		assert !snapshot.overflow
 		assert snapshot.install_generation != 0
-		assert snapshot.count == usize(snapshot.records.len)
+		assert snapshot.count == uint(snapshot.records.len)
 		assert snapshot.records.len == expected.len
 		for index, operation in expected {
 			record := snapshot.records[index]
@@ -5714,7 +5714,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 	fn native_sokol_swapchain_record_for_test(snapshot multiwindow_sokol_trace.TypedSnapshot) multiwindow_sokol_trace.Record {
 		assert !snapshot.overflow
 		assert snapshot.install_generation != 0
-		assert snapshot.count == usize(snapshot.records.len)
+		assert snapshot.count == uint(snapshot.records.len)
 		mut result := multiwindow_sokol_trace.Record{}
 		mut matches := 0
 		for record in snapshot.records {
@@ -9843,7 +9843,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		match selected {
 			.x11 {
 				$if linux && x_multiwindow_x11 ? {
-					native_display = u64(usize(backend.x11.display))
+					native_display = u64(uint(backend.x11.display))
 					xim_identity = native_identity(backend.x11.xim)
 					assert native_display != 0
 					assert xim_identity != 0

@@ -25,7 +25,7 @@ fn C.zip_close(&Zip)
 
 fn C.zip_entry_open(&Zip, &u8) i32
 
-fn C.zip_entry_openbyindex(&Zip, usize) i32
+fn C.zip_entry_openbyindex(&Zip, uint) i32
 
 fn C.zip_entry_close(&Zip) i32
 
@@ -39,13 +39,13 @@ fn C.zip_entry_size(&Zip) u64
 
 fn C.zip_entry_crc32(&Zip) u32
 
-fn C.zip_entry_write(&Zip, voidptr, usize) i32
+fn C.zip_entry_write(&Zip, voidptr, uint) i32
 
 fn C.zip_entry_fwrite(&Zip, &char) i32
 
-fn C.zip_entry_read(&Zip, &voidptr, &usize) i32
+fn C.zip_entry_read(&Zip, &voidptr, &uint) i32
 
-fn C.zip_entry_noallocread(&Zip, voidptr, usize) i32
+fn C.zip_entry_noallocread(&Zip, voidptr, uint) i32
 
 fn C.zip_entry_fread(&Zip, &char) i32
 
@@ -204,7 +204,7 @@ pub fn (mut zentry Zip) create_entry(name string) ! {
 // for large entries, please take a look at zip_entry_extract function.
 pub fn (mut zentry Zip) read_entry() !voidptr {
 	mut buf := &u8(unsafe { nil })
-	mut bsize := usize(0)
+	mut bsize := uint(0)
 	res := C.zip_entry_read(zentry, unsafe { &voidptr(&buf) }, &bsize)
 	if res == -1 {
 		return error('szip: cannot read properly data from entry')
@@ -214,7 +214,7 @@ pub fn (mut zentry Zip) read_entry() !voidptr {
 
 // read_entry_buf extracts the current zip entry into user specified buffer.
 pub fn (mut zentry Zip) read_entry_buf(buf voidptr, in_bsize int) !int {
-	bsize := usize(in_bsize)
+	bsize := uint(in_bsize)
 	res := C.zip_entry_noallocread(zentry, buf, bsize)
 	if res == -1 {
 		return error('szip: cannot read properly data from entry')

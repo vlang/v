@@ -125,7 +125,7 @@ fn main() {
  local := from_local()
  if local is &Payload {
   assert local.value == 17
-  assert usize(local) % 64 == 0
+  assert uint(local) % 64 == 0
  } else { assert false }
  mut original := Payload{value: 23}
  reference := from_mut(mut original)
@@ -133,7 +133,7 @@ fn main() {
  if reference is &Payload {
   assert voidptr(reference) == voidptr(&original)
   assert reference.value == 99
-  assert usize(reference) % 64 == 0
+  assert uint(reference) % 64 == 0
  } else { assert false }
  borrowed := from_borrowed(&original)
  original.value = 101

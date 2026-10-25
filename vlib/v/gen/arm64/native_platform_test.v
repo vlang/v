@@ -24,8 +24,8 @@ fn test_native_platform_file_flags_and_thread_local_errno() {
 __global C.errno int
 fn C.open(&char, int, ...int) int
 fn C.close(int) int
-fn C.write(int, voidptr, usize) isize
-fn C.read(int, voidptr, usize) isize
+fn C.write(int, voidptr, uint) C.ptrdiff_t
+fn C.read(int, voidptr, uint) C.ptrdiff_t
 fn C.unlink(&char) int
 fn C.v3_bench_peak_rss_kb() i64
 fn C.exit(int)
@@ -34,7 +34,7 @@ fn main() {
 	text := "native file"
 	fd := C.open(path.str, C.O_WRONLY | C.O_CREAT | C.O_TRUNC, 0o600)
 	if fd < 0 { C.exit(1) }
-	if C.write(fd, text.str, usize(text.len)) != text.len { C.exit(2) }
+	if C.write(fd, text.str, uint(text.len)) != text.len { C.exit(2) }
 	C.close(fd)
 	input := C.open(path.str, C.O_RDONLY)
 	mut buffer := [32]u8{}

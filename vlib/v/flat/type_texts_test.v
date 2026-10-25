@@ -329,7 +329,7 @@ fn test_type_text_recent_headers_do_not_own_global_spelling_bytes() {
 	mut texts := TypeTextTable{}
 	input := 'type_texts.CachedHeader'.clone()
 	id := texts.intern(input)
-	slot := int((usize(input.str) >> 4 ^ usize(input.len)) & 127)
+	slot := int((uint(input.str) >> 4 ^ uint(input.len)) & 127)
 	canonical := source_type_name(id)
 	assert texts.recent_texts[slot].str == canonical.str
 	mut fork := texts.fork()
@@ -356,7 +356,7 @@ fn test_type_text_recent_headers_survive_the_input_arena() {
 		input := 'type_texts.DisposableInput'.clone()
 		assert unsafe { prealloc_scope_owns(scope, input.str) }
 		id := texts.intern(input)
-		slot := int((usize(input.str) >> 4 ^ usize(input.len)) & 127)
+		slot := int((uint(input.str) >> 4 ^ uint(input.len)) & 127)
 		unsafe { prealloc_scope_leave(scope) }
 		assert !unsafe { prealloc_scope_owns(scope, texts.recent_texts[slot].str) }
 		mut fork := texts.fork()

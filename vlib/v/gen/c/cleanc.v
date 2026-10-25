@@ -302,7 +302,7 @@ fn cgen_worker_scope_begin(enabled bool) voidptr {
 
 // cgen_chunk_arena_keep_bytes bounds how much of a dispatcher's chunk arena
 // stays mapped between chunks (see prealloc_scope_reenter).
-const cgen_chunk_arena_keep_bytes = isize($d('cgen_chunk_arena_keep_mb', 1)) * 1024 * 1024
+const cgen_chunk_arena_keep_bytes = int($d('cgen_chunk_arena_keep_mb', 1)) * 1024 * 1024
 
 // cgen_worker_scope_reenter makes a chunk arena that was left current again,
 // rewound, for the next chunk. False means the caller needs a new arena.
@@ -3445,7 +3445,7 @@ fn (mut g FlatGen) write_scoped_output_chunk(path string, append bool, scope voi
 			return false
 		}
 		unsafe {
-			file.write_full_buffer(output.data, usize(output.len)) or {
+			file.write_full_buffer(output.data, uint(output.len)) or {
 				g.output_error = err.msg()
 				file.close()
 				output.free()
@@ -3598,7 +3598,7 @@ fn (mut g FlatGen) append_scoped_output_file(path string, source_path string) bo
 			break
 		}
 		unsafe {
-			output.write_full_buffer(buffer.data, usize(n_read)) or {
+			output.write_full_buffer(buffer.data, uint(n_read)) or {
 				g.output_error = err.msg()
 				output.close()
 				source.close()
@@ -16490,7 +16490,7 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 				expected_ct := g.value_c_type(g.expected_expr_type)
 				if byte_value := c_char_literal_byte_value(cv) {
 					if g.expected_expr_type !is types.Pointer && expected_ct in ['u8', 'i8', 'char',
-						'u16', 'i16', 'u32', 'i32', 'int', 'u64', 'i64', 'rune', 'usize', 'isize',
+						'u16', 'i16', 'u32', 'i32', 'int', 'u64', 'i64', 'rune', 'uint', 'isize',
 						types.portable_int_c_type] {
 						if byte_value > 0x7f {
 							g.write('((u8)*"${cv}")')
@@ -17926,7 +17926,7 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 								index_type := cgen_unalias_type(g.usable_expr_type(index_id))
 								helper := match index_type.name() {
 									'i64', 'isize' { 'string__at_i64' }
-									'u8', 'u16', 'u32', 'u64', 'uint', 'usize' { 'string__at_u64' }
+									'u8', 'u16', 'u32', 'u64', 'uint' { 'string__at_u64' }
 									else { 'string__at' }
 								}
 								g.write('${helper}(')
@@ -22852,6 +22852,17 @@ fn (mut g FlatGen) headerless_linux_rwlockattr_setkind_np() {
 	g.writeln('#define pthread_rwlockattr_setkind_np(attr, kind) v3_pthread_rwlockattr_setkind_np((attr), (kind))')
 }
 
+fn (mut g FlatGen) builtin_allocation_size_c_type(name string, index int) string {
+	if !isnil(g.tc) {
+		if params := g.tc.fn_param_types[name] {
+			if index < params.len {
+				return g.tc.c_type(params[index])
+			}
+		}
+	}
+	return g.int_ct
+}
+
 fn (mut g FlatGen) builtin_abi_decls() {
 	if !g.has_builtins {
 		return
@@ -22937,14 +22948,20 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('string u64__str(u64 nn);')
 	g.writeln('string f64__str(double x);')
 	g.writeln('string rune__str(u32 c);')
-	g.writeln('u8* malloc_noscan(ptrdiff_t n);')
-	g.writeln('void* memdup(void* src, ptrdiff_t sz);')
+	// Old source snapshots still declare these sizes as isize. Match their
+	// signatures as well as the migrated int declarations, including on LP64.
+	malloc_size_ct := g.builtin_allocation_size_c_type('malloc_noscan', 0)
+	memdup_size_ct := g.builtin_allocation_size_c_type('memdup', 1)
+	memdup_aligned_size_ct := g.builtin_allocation_size_c_type('memdup_align', 1)
+	memdup_align_ct := g.builtin_allocation_size_c_type('memdup_align', 2)
+	g.writeln('u8* malloc_noscan(${malloc_size_ct} n);')
+	g.writeln('void* memdup(void* src, ${memdup_size_ct} sz);')
 	g.writeln('static inline Array* v3_heap_array(Array value) { return (Array*)memdup(&value, sizeof(Array)); }')
 	// Integer types only: `qsort` is not stable, which only floats could show (see
 	// `array_default_sort_runtime_helper` in the transformer).
 	for sort_spec in ['int|${g.int_ct}', 'i8|signed char', 'i16|short', 'i64|long long',
 		'u8|unsigned char', 'u16|unsigned short', 'u32|unsigned', 'u64|unsigned long long',
-		'isize|ptrdiff_t', 'usize|size_t', 'rune|unsigned', 'char|char'] {
+		'isize|ptrdiff_t', 'uint|size_t', 'rune|unsigned', 'char|char'] {
 		sort_type := sort_spec.all_before('|')
 		c_type := sort_spec.all_after('|')
 		g.writeln('static int v3_array_sort_${sort_type}_cmp(const void* a, const void* b) { ${c_type} av = *(const ${c_type}*)a; ${c_type} bv = *(const ${c_type}*)b; return (av > bv) - (av < bv); }')
@@ -22962,7 +22979,7 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('int posix_memalign(void** memptr, size_t alignment, size_t size);')
 	g.writeln('#endif')
 	g.writeln('#endif')
-	g.writeln('void* memdup_align(void* src, ptrdiff_t sz, ptrdiff_t alignment);')
+	g.writeln('void* memdup_align(void* src, ${memdup_aligned_size_ct} sz, ${memdup_align_ct} alignment);')
 	g.writeln('void v_free(void* p);')
 	g.writeln('static inline void* v3_aligned_memdup(void* src, ptrdiff_t sz, size_t alignment) {')
 	g.writeln('#if defined(CUSTOM_DEFINE_prealloc) || defined(CUSTOM_DEFINE_vgc) || defined(_VGCBOEHM) || defined(CUSTOM_DEFINE_gcboehm)')
@@ -25964,7 +25981,7 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 		'float',
 		'double',
 		'isize',
-		'usize',
+		'uint',
 	] {
 		if qname == 'max_len' && ct == 'int' {
 			g.writeln('enum { ${qname} = ${expr_str} };')
@@ -26975,7 +26992,7 @@ fn (mut g FlatGen) gen_compound_shift_value(lhs_text string, lhs_id flat.NodeId,
 // already rendered as a C expression (used by `>>>=` to shift through a
 // pointer temp so the lvalue is evaluated exactly once).
 // unsigned_shift_parts maps an operand's C type to the unsigned counterpart
-// used for `>>>` logical shifts and its bit-width text. isize/usize lower to
+// used for `>>>` logical shifts and its bit-width text. isize/uint lower to
 // ptrdiff_t/size_t in C and are pointer-width, so their unsigned view and bit
 // width come from size_t, not a fixed 64.
 fn unsigned_shift_parts(ct string) (string, string) {
@@ -26985,7 +27002,7 @@ fn unsigned_shift_parts(ct string) (string, string) {
 		'int', 'i32', 'u32' { 'u32', '32' }
 		'i64', 'u64' { 'u64', '64' }
 		'i128', 'u128' { 'u128', '128' }
-		'isize', 'usize', 'ptrdiff_t', 'size_t' { 'size_t', '(sizeof(size_t) * 8)' }
+		'isize', 'uint', 'ptrdiff_t', 'size_t' { 'size_t', '(sizeof(size_t) * 8)' }
 		types.portable_int_c_type { portable_uint_c_type, '__V_INT_BITS' }
 		else { 'u64', '64' }
 	}

@@ -431,14 +431,14 @@ pub fn (mut cr RandomAccessReader) get_cell(cfg GetCellConfig) !string {
 			}
 
 			// create the string from the buffer
-			mut tmp_mem := malloc_noscan(isize(len + 1))
+			mut tmp_mem := malloc_noscan(int(len + 1))
 			/*
 			defer {
 				free(tmp_mem)
 			}
 			*/
 			mem_start := &u8(cr.mem_buf) + start - cr.start_index
-			vmemcpy(tmp_mem, mem_start, isize(len))
+			vmemcpy(tmp_mem, mem_start, int(len))
 			tmp_mem[len] = 0 // 0 for C string compatibility
 			ret_str := tos(tmp_mem, int(len))
 			return ret_str

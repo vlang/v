@@ -38,7 +38,7 @@ fn (mut t Transformer) materialize_inferred_anonymous_structs() bool {
 	for {
 		idx++
 		if use_flags && idx < original_node_count {
-			found := unsafe { &u8(C.memchr(&u8(candidate_flags.data) + idx, 1, usize(original_node_count - idx))) }
+			found := unsafe { &u8(C.memchr(&u8(candidate_flags.data) + idx, 1, uint(original_node_count - idx))) }
 			idx = if isnil(found) {
 				original_node_count
 			} else {
