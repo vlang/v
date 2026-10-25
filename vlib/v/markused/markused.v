@@ -11210,13 +11210,11 @@ fn resolve_type_name(t types.Type) u32 {
 	} else if t is types.String {
 		return flat.source_type_string
 	} else if t is types.Array {
-		return flat.source_type_id('[]${flat.source_type_name(markused_nested_type_name(t.elem_type))}')
+		return t.source_type_id()
 	} else if t is types.ArrayFixed {
-		mut len_text := t.len.str()
-		if t.len_expr.len > 0 { len_text = t.len_expr }
-		return flat.source_type_id('${flat.source_type_name(markused_nested_type_name(t.elem_type))}[${len_text}]')
+		return flat.source_type_fixed_array(t.len, t.len_expr, t.elem_type.source_type_id(), true)
 	} else if t is types.Map {
-		return flat.source_type_id('map[${flat.source_type_name(markused_nested_type_name(t.key_type))}]${flat.source_type_name(markused_nested_type_name(t.value_type))}')
+		return t.source_type_id()
 	} else if t is types.Pointer {
 		return resolve_type_name(t.base_type)
 	} else if t is types.Primitive {
@@ -11258,10 +11256,6 @@ fn resolve_type_name(t types.Type) u32 {
 		return flat.source_type_rune
 	}
 	return 0
-}
-
-fn markused_nested_type_name(t types.Type) u32 {
-	return t.source_type_id()
 }
 
 fn markused_type_name(t types.Type, unwrap_optional_result bool) ?u32 {

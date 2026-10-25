@@ -22037,17 +22037,13 @@ fn resolve_type_name_for_method(t &Type) u32 {
 		return flat.source_type_uint
 	}
 	if t is Array {
-		return flat.source_type_id('[]${nested_type_name(t.elem_type)}')
+		return t.source_type_id()
 	}
 	if t is ArrayFixed {
-		mut len_text := t.len.str()
-		if t.len_expr.len > 0 {
-			len_text = t.len_expr
-		}
-		return flat.source_type_id('${nested_type_name(t.elem_type)}[${len_text}]')
+		return flat.source_type_fixed_array(t.len, t.len_expr, t.elem_type.source_type_id(), true)
 	}
 	if t is Map {
-		return flat.source_type_id('map[${nested_type_name(t.key_type)}]${nested_type_name(t.value_type)}')
+		return t.source_type_id()
 	}
 	if t is Primitive {
 		return t.source_type_id()
