@@ -991,7 +991,7 @@ fn (mut tc TypeChecker) check_scoped_batches(items []CheckWorkItem, batch_limit 
 
 // check_batch_arena_keep_bytes bounds how much of a worker's batch arena stays
 // mapped between its batches (see prealloc_scope_reenter).
-const check_batch_arena_keep_bytes = isize(8) * 1024 * 1024
+const check_batch_arena_keep_bytes = int(8) * 1024 * 1024
 
 // begin_check_batch_scope starts the arena of one check batch. A worker that
 // reuses its batch arena rewinds the previous batch's one: unmapping and

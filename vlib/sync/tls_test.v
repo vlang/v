@@ -104,7 +104,7 @@ fn test_basic_tls() {
 	}
 	tls_u64.set(5900) or { assert err.msg().contains('already destroyed') }
 
-	mut tls_isize := sync.new_tls[isize](-57000)!
+	mut tls_isize := sync.new_tls[int](-57000)!
 	assert tls_isize.get()! == -57000
 	tls_isize.set(-58000)!
 	assert tls_isize.get()! == -58000
@@ -116,7 +116,7 @@ fn test_basic_tls() {
 	}
 	tls_isize.set(-59000) or { assert err.msg().contains('already destroyed') }
 
-	mut tls_usize := sync.new_tls[usize](57000)!
+	mut tls_usize := sync.new_tls[uint](57000)!
 	assert tls_usize.get()! == 57000
 	tls_usize.set(58000)!
 	assert tls_usize.get()! == 58000

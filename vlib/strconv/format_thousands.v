@@ -17,10 +17,10 @@ pub:
 pub type SeparatorOptions = string | Separator
 
 // Numeric is the set of built-in numeric types accepted by `format_thousands`:
-// `int`, `i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`, `isize`, `usize`,
+// `int`, `i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`, `uint`,
 // `f32` and `f64`. Generic code that forwards a `T` to it can use
 // `[T strconv.Numeric]` as its constraint.
-pub type Numeric = int | i8 | i16 | i32 | i64 | u8 | u16 | u32 | u64 | isize | usize | f32 | f64
+pub type Numeric = int | i8 | i16 | i32 | i64 | u8 | u16 | u32 | u64 | uint | f32 | f64
 
 // is_all_digits reports whether every byte in `s` is an ASCII digit (`0`-`9`).
 // An empty string reports `true` (vacuously), matching how `insert_thousands_sep`

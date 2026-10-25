@@ -189,15 +189,15 @@ fn test_appkit_common_clipboard_owner_borrow_and_titlebar_contracts() {
 		slot:         0
 		generation:   1
 	}
-	parent_state := voidptr(usize(0x1234))
+	parent_state := voidptr(uint(0x1234))
 	records := [AppKitWindowRecord{ id: parent, state: parent_state }]
 	assert appkit_owner_native_state(parent, records)! == parent_state
 	appkit_owner_native_state(WindowId{ app_instance: 9, slot: 1, generation: 1 }, records) or {
 		assert err.msg() == err_window_not_found
 	}
-	borrow := appkit_native_window_borrow_from_pointer(voidptr(usize(0x5678)))!
+	borrow := appkit_native_window_borrow_from_pointer(voidptr(uint(0x5678)))!
 	assert borrow.backend == .appkit
-	assert borrow.primary == voidptr(usize(0x5678))
+	assert borrow.primary == voidptr(uint(0x5678))
 	appkit_native_window_borrow_from_pointer(unsafe { nil }) or {
 		assert err.msg() == err_capability_unsupported
 	}

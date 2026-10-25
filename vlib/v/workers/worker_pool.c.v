@@ -54,20 +54,20 @@ pub fn limit_pool_size(size int) {
 // worker_stack_size resolves the per-worker stack size, honoring the
 // V3_WORKER_STACK_MB override and falling back to the default when it is unset,
 // non-numeric, or non-positive.
-fn worker_stack_size() usize {
+fn worker_stack_size() uint {
 	requested_mb := os.getenv('V3_WORKER_STACK_MB')
 	if requested_mb.len == 0 {
-		return usize(compiler_worker_stack_size)
+		return uint(compiler_worker_stack_size)
 	}
 	mb := requested_mb.int()
 	if mb <= 0 {
-		return usize(compiler_worker_stack_size)
+		return uint(compiler_worker_stack_size)
 	}
 	mut bytes := i64(mb) * 1024 * 1024
 	if bytes < min_worker_stack_size {
 		bytes = min_worker_stack_size
 	}
-	return usize(bytes)
+	return uint(bytes)
 }
 
 // Task is one type-erased compiler phase callback submitted to Pool.

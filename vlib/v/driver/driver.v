@@ -4355,7 +4355,7 @@ fn should_scope_prealloc_cgen() bool {
 	return false
 }
 
-fn transform_scope_size_is_bounded(size usize) bool {
+fn transform_scope_size_is_bounded(size uint) bool {
 	return size > 0 && size <= 64 * 1024 * 1024
 }
 
@@ -4372,7 +4372,7 @@ fn transform_scope_fits_retention_budget(scope voidptr) bool {
 fn transform_helper_scopes_fit_retention_budget(scopes []voidptr) bool {
 	$if prealloc {
 		if scopes.len == 0 { return false }
-		mut remaining := usize(256 * 1024 * 1024)
+		mut remaining := uint(256 * 1024 * 1024)
 		for scope in scopes {
 			size := unsafe { prealloc_scope_allocated_size(scope) }
 			if size == 0 || size > remaining { return false }
@@ -7679,7 +7679,7 @@ fn publish_transform_helper_scope_texts(mut a flat.FlatAst, scopes []voidptr) {
 		// Only a few thousand nodes are flagged; jump between them.
 		mut idx := 0
 		for idx < flags.len {
-			found := unsafe { &u8(C.memchr(&u8(flags.data) + idx, 1, usize(flags.len - idx))) }
+			found := unsafe { &u8(C.memchr(&u8(flags.data) + idx, 1, uint(flags.len - idx))) }
 			if isnil(found) {
 				break
 			}
@@ -7857,7 +7857,7 @@ fn clone_flat_ast_after_transform_from_scope(ast &flat.FlatAst, scope voidptr) &
 		if ast.nodes.len > 0 {
 			unsafe {
 				nodes.grow_len(ast.nodes.len)
-				vmemcpy(nodes.data, ast.nodes.data, isize(ast.nodes.len) * isize(sizeof(flat.Node)))
+				vmemcpy(nodes.data, ast.nodes.data, int(ast.nodes.len) * int(sizeof(flat.Node)))
 			}
 		}
 		for idx in 0 .. nodes.len {
@@ -12349,6 +12349,10 @@ pub fn run(args []string) {
 			if os.getenv('FASTC_BENCH_PHASES') != '' {
 				eprintln('fastc-phase driver.generated ${driver_sw.elapsed().microseconds()}us')
 			}
+			if report_deprecated_integer_types(fastc_generation.deprecated_integer_paths, prefs,
+				warns_are_errors) {
+				exit(1)
+			}
 			fastc_artifact_path := canonical_v3_fastc_output_path(fastc_artifact_file)
 			for source_path in fastc_generation.source_paths {
 				if fastc_artifact_path != '' && fastc_artifact_path == source_path
@@ -13044,6 +13048,7 @@ pub fn run(args []string) {
 			exit(1)
 		}
 		mut printed_parser_diagnostic := false
+		mut parser_diagnostics := compiler_errors.DiagnosticRun{}
 		if (!silent || !only_check_syntax)
 			&& (!parser_diagnostics_already_printed || parser_has_errors) {
 			for diagnostic in p.diagnostics {
@@ -13063,17 +13068,17 @@ pub fn run(args []string) {
 					if compiler_errors.json_output() {
 						mut details := diagnostic.details.clone()
 						if diagnostic.detail_pos.is_valid() {
-							details << compiler_errors.formatted_parser_diagnostic('details:',
+							details << parser_diagnostics.formatted_parser_diagnostic('details:',
 								diagnostic.detail_message, a, diagnostic.detail_pos)
 						}
 						eprintln(compiler_errors.json_parser_diagnostic(severity, diagnostic.message,
 							details, a, diagnostic.pos))
 					} else {
-						eprintln(compiler_errors.formatted_parser_diagnostic(severity, diagnostic.message, a, diagnostic.pos))
+						eprintln(parser_diagnostics.formatted_parser_diagnostic(severity, diagnostic.message, a, diagnostic.pos))
 						print_type_diagnostic_details(diagnostic.details)
 						if diagnostic.detail_pos.is_valid() {
 							eprintln('Details: ')
-							eprintln(compiler_errors.formatted_parser_diagnostic('details:',
+							eprintln(parser_diagnostics.formatted_parser_diagnostic('details:',
 								diagnostic.detail_message, a, diagnostic.detail_pos))
 						}
 					}
@@ -21214,7 +21219,7 @@ fn wasm_supported_array_elem_bytes(type_name string) bool {
 		return false
 	}
 	elem := type_name[2..]
-	return elem in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'usize',
+	return elem in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'uint',
 		'f32', 'f64', 'bool', 'char', 'rune']
 }
 
@@ -23535,7 +23540,7 @@ const implicit_type_prefixes = ['mut ', 'shared ', '&', '?', '!']
 // leaves them.
 const implicit_number_types = [flat.source_type_int, flat.source_type_i8, flat.source_type_i16,
 	flat.source_type_i32, flat.source_type_i64, flat.source_type_isize, flat.source_type_u8,
-	flat.source_type_u16, flat.source_type_u32, flat.source_type_u64, flat.source_type_usize,
+	flat.source_type_u16, flat.source_type_u32, flat.source_type_u64, flat.source_type_uint,
 	flat.source_type_f32, flat.source_type_f64]
 
 fn implicit_normalize_type(raw_id u32, index ImplicitFieldScanIndex) u32 {
@@ -24038,7 +24043,7 @@ fn insert_synthetic_imports(mut a flat.FlatAst, insertions []SyntheticInsertion)
 			// Move backwards by region: source and destination may overlap, and
 			// earlier regions must remain intact until their own move.
 			unsafe {
-				vmemmove(&a.nodes[insertion.pos + i + 1], &a.nodes[insertion.pos], isize(end - insertion.pos) * isize(sizeof(flat.Node)))
+				vmemmove(&a.nodes[insertion.pos + i + 1], &a.nodes[insertion.pos], int(end - insertion.pos) * int(sizeof(flat.Node)))
 			}
 		}
 		a.nodes[insertion.pos + i] = imports[i]

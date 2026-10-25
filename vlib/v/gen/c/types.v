@@ -2570,7 +2570,7 @@ fn (g &FlatGen) enum_field_expr_value_with_enum(id flat.NodeId, enum_module stri
 					} else {
 						types.unalias_type(g.usable_expr_type(g.a.child(&node, 0))).name()
 					}
-					if typ in ['u64', 'usize'] { i64(u64(left) >> right) } else { left >> right }
+					if typ in ['u64', 'uint'] { i64(u64(left) >> right) } else { left >> right }
 				}
 				.right_shift_unsigned {
 					if isnil(g.tc) {
@@ -2872,7 +2872,7 @@ fn (g &FlatGen) enum_comptime_expr_value(id flat.NodeId, locals map[string]i64, 
 					} else {
 						types.unalias_type(g.usable_expr_type(g.a.child(&node, 0))).name()
 					}
-					if typ in ['u64', 'usize'] { i64(u64(left) >> right) } else { left >> right }
+					if typ in ['u64', 'uint'] { i64(u64(left) >> right) } else { left >> right }
 				}
 				.right_shift_unsigned {
 					if isnil(g.tc) {

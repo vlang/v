@@ -91,7 +91,7 @@ fn test_windows_builtin_and_compiler_promoted_pointers_keep_the_v_allocator_fami
 	defer { os.rmdir_all(dir) or {} }
 	source := os.join_path(dir, 'main.c.v')
 	c_source := os.join_path(dir, 'main.c')
-	os.write_file(source, 'fn C.malloc(size usize) voidptr
+	os.write_file(source, 'fn C.malloc(size uint) voidptr
 fn C.free(value voidptr)
 @[aligned: 64]
 struct AlignedCell { value int }
@@ -112,10 +112,10 @@ fn (value &Holder) free() { unsafe { free(value) } }
 fn release_method(value &Holder) { unsafe { value.free() } }
 fn release_c(value &NaturalHolder) { unsafe { C.free(value) } }
 fn main() {
-	ordinary := unsafe { &NaturalHolder(malloc(sizeof(NaturalHolder))) }
+	ordinary := unsafe { &NaturalHolder(malloc(int(sizeof(NaturalHolder)))) }
 	release_natural_v(ordinary)
 	seed := NaturalHolder{}
-	copied := unsafe { &NaturalHolder(memdup(&seed, sizeof(NaturalHolder))) }
+	copied := unsafe { &NaturalHolder(memdup(&seed, int(sizeof(NaturalHolder)))) }
 	release_natural_method(copied)
 	compiler_owned := promoted()
 	release_method(compiler_owned)

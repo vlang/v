@@ -5205,7 +5205,7 @@ pub fn (mut t Transformer) make_sizeof_type(type_name_id u32) flat.NodeId {
 	return t.a.add_node(flat.Node{
 		kind:  .sizeof_expr
 		value: type_name
-		typ:   flat.source_type_usize
+		typ:   flat.source_type_uint
 	})
 }
 

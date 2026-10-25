@@ -55,8 +55,8 @@ fn test_format_thousands_int_types() {
 	assert format_thousands(u16(65535), ',') == '65,535'
 	assert format_thousands(u32(4294967295), ',') == '4,294,967,295'
 	assert format_thousands(u64(18446744073709551615), ' ') == '18 446 744 073 709 551 615'
-	assert format_thousands(isize(-1234567), ',') == '-1,234,567'
-	assert format_thousands(usize(1234567), ',') == '1,234,567'
+	assert format_thousands(int(-1234567), ',') == '-1,234,567'
+	assert format_thousands(uint(1234567), ',') == '1,234,567'
 }
 
 fn grouped[T Numeric](x T) string {

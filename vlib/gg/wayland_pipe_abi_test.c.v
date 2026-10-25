@@ -48,15 +48,15 @@ fn test_wayland_pipe_bindings_and_native_descriptor_storage() {
 	// A small payload fits in an empty pipe; close its writer before reading so
 	// both the payload read and the EOF check are bounded without a compositor.
 	payload := [u8(0), 0x7f, 0x80, 0xff, `V`, `\n`]!
-	assert C.write(probe.fds[1], &payload[0], usize(payload.len)) == isize(payload.len)
+	assert C.write(probe.fds[1], &payload[0], uint(payload.len)) == int(payload.len)
 	assert C.close(probe.fds[1]) == 0
 	probe.fds[1] = -1
 	mut received := [16]u8{}
-	assert C.read(probe.fds[0], &received[0], usize(received.len)) == isize(payload.len)
+	assert C.read(probe.fds[0], &received[0], uint(received.len)) == int(payload.len)
 	for i, expected_byte in payload {
 		assert received[i] == expected_byte
 	}
-	assert C.read(probe.fds[0], &received[0], usize(received.len)) == 0
+	assert C.read(probe.fds[0], &received[0], uint(received.len)) == 0
 	assert probe.before == 0x13579bdf
 	assert probe.after == 0x2468ace0
 }

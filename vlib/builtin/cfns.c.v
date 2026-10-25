@@ -6,6 +6,10 @@ pub struct C.FILE {}
 @[typedef]
 pub struct C.qsort_callback_func {}
 
+// C.ptrdiff_t is the signed pointer-width integer used by C interfaces.
+@[typedef]
+pub type C.ptrdiff_t = int
+
 // Virtual C globals that are available through libc or generated C headers.
 __global C.errno int
 __global C.stdin &C.FILE
@@ -16,74 +20,74 @@ __global C._wyp &u64
 
 // <string.h>
 @[markused; noalloc]
-fn C.memcpy(dest voidptr, const_src voidptr, n usize) voidptr
+fn C.memcpy(dest voidptr, const_src voidptr, n uint) voidptr
 
 @[markused; noalloc]
-fn C.memcmp(const_s1 voidptr, const_s2 voidptr, n usize) i32
+fn C.memcmp(const_s1 voidptr, const_s2 voidptr, n uint) i32
 
 @[markused; noalloc]
-fn C.memmove(dest voidptr, const_src voidptr, n usize) voidptr
+fn C.memmove(dest voidptr, const_src voidptr, n uint) voidptr
 
 @[markused; noalloc]
-fn C.memset(str voidptr, c i32, n usize) voidptr
+fn C.memset(str voidptr, c i32, n uint) voidptr
 
 @[noalloc]
-fn C.memchr(str voidptr, c i32, n usize) voidptr
+fn C.memchr(str voidptr, c i32, n uint) voidptr
 
 @[noalloc]
-fn C.memmem(haystack voidptr, haystacklen usize, needle voidptr, needlelen usize) voidptr
+fn C.memmem(haystack voidptr, haystacklen uint, needle voidptr, needlelen uint) voidptr
 
 @[noalloc]
-fn C.mempcpy(dest voidptr, src voidptr, n usize) voidptr
+fn C.mempcpy(dest voidptr, src voidptr, n uint) voidptr
 
 @[markused; trusted]
-fn C.calloc(usize, usize) voidptr
+fn C.calloc(uint, uint) voidptr
 
 fn C.atoi(&char) i32
 
 @[markused]
-fn C.malloc(usize) voidptr
+fn C.malloc(uint) voidptr
 
 @[markused]
-fn C.realloc(a voidptr, b usize) voidptr
+fn C.realloc(a voidptr, b uint) voidptr
 
 @[markused; noalloc]
 fn C.free(ptr voidptr)
 
 @[markused]
-fn C.mmap(addr_length voidptr, length usize, prot i32, flags i32, fd i32, offset isize) voidptr
+fn C.mmap(addr_length voidptr, length uint, prot i32, flags i32, fd i32, offset C.ptrdiff_t) voidptr
 
 // C.munmap releases a memory mapping created by C.mmap.
-fn C.munmap(addr_length voidptr, len usize) i32
+fn C.munmap(addr_length voidptr, len uint) i32
 
 @[markused]
-fn C.mprotect(addr_length voidptr, len usize, prot i32) i32
+fn C.mprotect(addr_length voidptr, len uint, prot i32) i32
 
 @[markused]
-fn C.aligned_alloc(align usize, size usize) voidptr
+fn C.aligned_alloc(align uint, size uint) voidptr
 
 // windows aligned memory functions
-fn C._aligned_malloc(size usize, align usize) voidptr
+fn C._aligned_malloc(size uint, align uint) voidptr
 fn C._aligned_free(voidptr)
-fn C._aligned_realloc(voidptr, size usize, align usize) voidptr
-fn C._aligned_offset_malloc(size usize, align usize, offset usize) voidptr
-fn C._aligned_offset_realloc(voidptr, size usize, align usize, offset usize) voidptr
-fn C._aligned_msize(voidptr, align usize, offset usize) usize
-fn C._aligned_recalloc(voidptr, num usize, size usize, align usize) voidptr
+fn C._aligned_realloc(voidptr, size uint, align uint) voidptr
+fn C._aligned_offset_malloc(size uint, align uint, offset uint) voidptr
+fn C._aligned_offset_realloc(voidptr, size uint, align uint, offset uint) voidptr
+fn C._aligned_msize(voidptr, align uint, offset uint) uint
+fn C._aligned_recalloc(voidptr, num uint, size uint, align uint) voidptr
 
 $if windows {
-	fn C.VirtualAlloc(voidptr, isize, u32, u32) voidptr
-	fn C.VirtualProtect(voidptr, isize, C.DWORD, &C.DWORD) bool
+	fn C.VirtualAlloc(voidptr, C.ptrdiff_t, u32, u32) voidptr
+	fn C.VirtualProtect(voidptr, C.ptrdiff_t, C.DWORD, &C.DWORD) bool
 }
 
 @[markused; noreturn; trusted]
 fn C.exit(code i32)
 
 @[markused]
-fn C.qsort(base voidptr, items usize, item_size usize, cb C.qsort_callback_func)
+fn C.qsort(base voidptr, items uint, item_size uint, cb C.qsort_callback_func)
 
 @[markused; noalloc]
-fn C.strlen(const_s &char) usize
+fn C.strlen(const_s &char) uint
 
 @[trusted]
 fn C.isdigit(c i32) bool
@@ -110,7 +114,7 @@ fn C.fprintf(fstream &C.FILE, const_format &char, opt ...voidptr) i32
 fn C.sprintf(str &char, const_format &char, opt ...voidptr) i32
 
 @[markused]
-fn C.snprintf(str &char, size usize, const_format &char, opt ...voidptr) i32
+fn C.snprintf(str &char, size uint, const_format &char, opt ...voidptr) i32
 
 fn C.wprintf(const_format &u16, opt ...voidptr) i32
 
@@ -134,7 +138,7 @@ fn C.fflush(fstream &C.FILE) i32
 $if windows {
 	fn C.fseek(stream &C.FILE, offset i32, whence i32) i32
 } $else {
-	fn C.fseek(stream &C.FILE, offset isize, whence i32) i32
+	fn C.fseek(stream &C.FILE, offset C.ptrdiff_t, whence i32) i32
 }
 
 // Coverage and profiling writers call these without a V AST reference.
@@ -143,10 +147,10 @@ fn C.fopen(filename &char, mode &char) &C.FILE
 
 fn C.fileno(&C.FILE) i32
 
-fn C.fread(ptr voidptr, item_size usize, items usize, stream &C.FILE) usize
+fn C.fread(ptr voidptr, item_size uint, items uint, stream &C.FILE) uint
 
 @[markused]
-fn C.fwrite(const_ptr voidptr, item_size usize, items usize, stream &C.FILE) usize
+fn C.fwrite(const_ptr voidptr, item_size uint, items uint, stream &C.FILE) uint
 
 @[markused]
 fn C.fclose(stream &C.FILE) i32
@@ -225,7 +229,7 @@ fn C.chdir(path &char) i32
 
 fn C.rewind(stream &C.FILE) i32
 
-fn C.ftell(&C.FILE) isize
+fn C.ftell(&C.FILE) C.ptrdiff_t
 
 fn C.stat(&char, voidptr) i32
 
@@ -246,7 +250,7 @@ fn C.fgetpos(&C.FILE, voidptr) i32
 @[trusted]
 fn C.sigemptyset() i32
 
-fn C.getcwd(buf &char, size usize) &char
+fn C.getcwd(buf &char, size uint) &char
 
 @[trusted]
 fn C.mktime() i32
@@ -304,7 +308,7 @@ fn C.strncasecmp(s &char, s2 &char, n i32) i32
 
 fn C.strcasecmp(s &char, s2 &char) i32
 
-fn C.strncmp(s &char, s2 &char, n usize) i32
+fn C.strncmp(s &char, s2 &char, n uint) i32
 
 @[trusted]
 fn C.strerror(i32) &char
@@ -326,7 +330,7 @@ fn C.isatty(fd i32) i32
 
 fn C.syscall(number i32, va ...voidptr) i32
 
-fn C.sysctl(name &i32, namelen u32, oldp voidptr, oldlenp voidptr, newp voidptr, newlen usize) i32
+fn C.sysctl(name &i32, namelen u32, oldp voidptr, oldlenp voidptr, newp voidptr, newlen uint) i32
 
 @[trusted]
 fn C._fileno(&C.FILE) i32
@@ -367,9 +371,9 @@ fn C.GetComputerNameW(&u16, &u32) bool
 fn C.GetUserNameW(&u16, &u32) bool
 
 @[trusted]
-fn C.SendMessageTimeout() isize
+fn C.SendMessageTimeout() C.ptrdiff_t
 
-fn C.SendMessageTimeoutW(hWnd voidptr, msg u32, wParam &u16, lParam &u32, fuFlags u32, uTimeout u32, lpdwResult &u64) isize
+fn C.SendMessageTimeoutW(hWnd voidptr, msg u32, wParam &u16, lParam &u32, fuFlags u32, uTimeout u32, lpdwResult &u64) C.ptrdiff_t
 
 fn C.CreateProcessW(lpApplicationName &u16, lpCommandLine &u16, lpProcessAttributes voidptr, lpThreadAttributes voidptr,
 	bInheritHandles bool, dwCreationFlags u32, lpEnvironment voidptr, lpCurrentDirectory &u16, lpStartupInfo voidptr,
@@ -411,7 +415,7 @@ fn C.SymCleanup(hProcess voidptr)
 fn C.MultiByteToWideChar(codePage u32, dwFlags u32, lpMultiMyteStr &char, cbMultiByte i32, lpWideCharStr &u16,
 	cchWideChar i32) i32
 
-fn C.wcslen(str voidptr) usize
+fn C.wcslen(str voidptr) uint
 
 fn C.WideCharToMultiByte(codePage u32, dwFlags u32, lpWideCharStr &u16, cchWideChar i32, lpMultiByteStr &char,
 	cbMultiByte i32, lpDefaultChar &char, lpUsedDefaultChar &int) i32
@@ -533,7 +537,7 @@ $if macos {
 	fn C.pthread_self() voidptr
 } $else {
 	@[markused]
-	fn C.pthread_self() usize
+	fn C.pthread_self() uint
 }
 
 @[markused]
@@ -546,7 +550,7 @@ fn C.pthread_join(thread voidptr, retval voidptr) i32
 fn C.pthread_attr_init(attr voidptr) i32
 
 @[markused]
-fn C.pthread_attr_setstacksize(attr voidptr, stacksize usize) i32
+fn C.pthread_attr_setstacksize(attr voidptr, stacksize uint) i32
 
 @[markused]
 fn C.pthread_attr_destroy(attr voidptr) i32
@@ -618,12 +622,12 @@ fn C.dispatch_time(u64, i64) u64
 fn C.dispatch_release(voidptr)
 
 // file descriptor based reading/writing
-fn C.read(fd i32, buf voidptr, count usize) i32
+fn C.read(fd i32, buf voidptr, count uint) i32
 
 $if windows {
 	fn C.write(fd i32, const_buf voidptr, count u32) i32
 } $else {
-	fn C.write(fd i32, const_buf voidptr, count usize) isize
+	fn C.write(fd i32, const_buf voidptr, count uint) C.ptrdiff_t
 }
 
 fn C.close(fd i32) i32
@@ -735,13 +739,13 @@ fn C.__get_errno_ptr() &i32
 fn C.pthread_equal(t1 voidptr, t2 voidptr) i32
 
 @[markused]
-fn C.pthread_key_create(key &usize, destructor voidptr) i32
+fn C.pthread_key_create(key &uint, destructor voidptr) i32
 
 @[markused]
-fn C.pthread_getspecific(key usize) voidptr
+fn C.pthread_getspecific(key uint) voidptr
 
 @[markused]
-fn C.pthread_setspecific(key usize, value voidptr) i32
+fn C.pthread_setspecific(key uint, value voidptr) i32
 
 @[markused]
 fn C.pthread_once(control voidptr, init_routine voidptr) i32

@@ -127,14 +127,8 @@ fn encode_primitive[T](mut s EncodeState, value T) ! {
 		s.put_u8(u8(value))
 	} $else $if T is rune {
 		s.put_u32(u32(value))
-	} $else $if T is isize {
-		if sizeof(isize) == 4 {
-			s.put_u32(u32(value))
-		} else {
-			s.put_u64(u64(value))
-		}
-	} $else $if T is usize {
-		if sizeof(usize) == 4 {
+	} $else $if T is uint {
+		if sizeof(uint) == 4 {
 			s.put_u32(u32(value))
 		} else {
 			s.put_u64(u64(value))
@@ -313,14 +307,8 @@ fn decode_primitive[T](mut s DecodeState, value T) !T {
 		return s.get_u8()! != 0
 	} $else $if T is rune {
 		return T(s.get_u32()!)
-	} $else $if T is isize {
-		if sizeof(isize) == 4 {
-			return T(s.get_u32()!)
-		} else {
-			return T(s.get_u64()!)
-		}
-	} $else $if T is usize {
-		if sizeof(usize) == 4 {
+	} $else $if T is uint {
+		if sizeof(uint) == 4 {
 			return T(s.get_u32()!)
 		} else {
 			return T(s.get_u64()!)
@@ -392,8 +380,7 @@ type Any = int
 	| u16
 	| u8
 	| rune
-	| isize
-	| usize
+	| uint
 	| []Any
 
 fn decode_map[K, V](mut s DecodeState, _ map[K]V) !map[K]V {

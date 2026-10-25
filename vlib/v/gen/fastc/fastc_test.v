@@ -7127,7 +7127,7 @@ fn test_map_pointer_sized_callbacks_follow_target_width() {
 	source := 'module main
 
 fn main() {
-	values := map[usize]int{}
+	values := map[uint]int{}
 	pointers := map[voidptr]int{}
 	println(values.len)
 	println(pointers.len)
@@ -7136,7 +7136,7 @@ fn main() {
 	c32 := generate(source, 'map_usize_32.v', prefs) or { panic(err) }
 	int32_type := fastc_output_c_type('int')
 	assert int32_type == 'i32'
-	for key_type in ['usize', 'voidptr'] {
+	for key_type in ['uint', 'voidptr'] {
 		assert c32.contains('sizeof(${key_type}), sizeof(${int32_type}), &builtin__map_hash_int_4, &builtin__map_eq_int_4, &builtin__map_clone_int_4'), c32
 	}
 
@@ -7144,7 +7144,7 @@ fn main() {
 	c64 := generate(source, 'map_usize_64.v', prefs) or { panic(err) }
 	int64_type := fastc_output_c_type('int')
 	assert int64_type == 'i64'
-	for key_type in ['usize', 'voidptr'] {
+	for key_type in ['uint', 'voidptr'] {
 		assert c64.contains('sizeof(${key_type}), sizeof(${int64_type}), &builtin__map_hash_int_8, &builtin__map_eq_int_8, &builtin__map_clone_int_8'), c64
 	}
 
@@ -11951,7 +11951,7 @@ fn main() {
 ', 'selfhost_static_multi_return.v', prefs) or { panic(err) }
 	assert c_source.contains('i64 number = (i64){0}'), c_source
 	assert c_source.contains('string text = (string){0}'), c_source
-	assert !c_source.contains('usize number'), c_source
+	assert !c_source.contains('uint number'), c_source
 }
 
 fn test_selfhost_explicit_embed_method_call() {

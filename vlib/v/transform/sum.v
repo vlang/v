@@ -1271,21 +1271,21 @@ fn (t &Transformer) interface_concrete_impl_name(name_id u32) ?u32 {
 	}
 	if name_comparison_type_id_6 in [flat.source_type_bool, flat.source_type_int, flat.source_type_i8,
 		flat.source_type_i16, flat.source_type_i32, flat.source_type_i64, flat.source_type_isize,
-		flat.source_type_usize, flat.source_type_u8, flat.source_type_u16, flat.source_type_u32,
+		flat.source_type_uint, flat.source_type_u8, flat.source_type_u16, flat.source_type_u32,
 		flat.source_type_u64, flat.source_type_f32, flat.source_type_f64, flat.source_type_string,
 		flat.source_type_char, flat.source_type_rune, flat.source_type_voidptr] {
 		return name_id
 	}
 	if name.starts_with('builtin.') {
 		short := name['builtin.'.len..]
-		if short in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'u16', 'u32',
+		if short in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'uint', 'u8', 'u16', 'u32',
 			'u64', 'f32', 'f64', 'string', 'char', 'rune', 'voidptr'] {
 			return flat.source_type_id(short)
 		}
 	}
 	if name.contains('.') {
 		short := name.all_after_last('.')
-		if short in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'u16', 'u32',
+		if short in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'uint', 'u8', 'u16', 'u32',
 			'u64', 'f32', 'f64', 'string', 'char', 'rune', 'voidptr'] {
 			return flat.source_type_id(short)
 		}

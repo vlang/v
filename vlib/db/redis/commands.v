@@ -169,7 +169,7 @@ fn bulk_value[T](resp RedisValue, command string) !T {
 	}
 	$if T is string {
 		return data
-	} $else $if T is u64 || T is usize {
+	} $else $if T is u64 || T is uint {
 		return T(unsigned_value(data))
 	} $else $if T is $int {
 		return T(data.i64())

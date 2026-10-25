@@ -1803,7 +1803,7 @@ fn is_plain_builtin_alias_type_bytes(typ string) bool {
 	}
 	return match typ {
 		'bool', 'string', 'void', 'int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32',
-		'f64', 'rune', 'isize', 'usize', 'voidptr', 'byteptr', 'charptr' {
+		'f64', 'rune', 'isize', 'uint', 'voidptr', 'byteptr', 'charptr' {
 			true
 		}
 		else {

@@ -104,10 +104,8 @@ fn (mut encoder Encoder) encode_value[T](val T) {
 		encoder.encode_number(i32(val))
 	} $else $if T.unaliased_typ is i64 {
 		encoder.encode_number(i64(val))
-	} $else $if T.unaliased_typ is usize {
-		encoder.encode_number(usize(val))
-	} $else $if T.unaliased_typ is isize {
-		encoder.encode_number(isize(val))
+	} $else $if T.unaliased_typ is uint {
+		encoder.encode_number(uint(val))
 	} $else $if T.unaliased_typ is f32 {
 		encoder.encode_number(f32(val))
 	} $else $if T.unaliased_typ is f64 {
@@ -363,7 +361,7 @@ fn (mut encoder Encoder) encode_boolean(val bool) {
 @[manualfree]
 fn (mut encoder Encoder) encode_number[T](val T) {
 	$if T is $int {
-		$if T is u8 || T is u16 || T is u32 || T is u64 || T is usize {
+		$if T is u8 || T is u16 || T is u32 || T is u64 || T is uint {
 			encoder.output.write_u_decimal(u64(val))
 		} $else {
 			encoder.output.write_decimal(i64(val))

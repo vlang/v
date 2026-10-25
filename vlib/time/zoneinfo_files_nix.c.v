@@ -7,7 +7,7 @@ module time
 
 fn C.getenv(&char) &char
 
-fn C.readlink(pathname &char, buf &char, bufsiz usize) i32
+fn C.readlink(pathname &char, buf &char, bufsiz uint) i32
 
 @[typedef]
 struct C.pthread_mutex_t {}
@@ -68,7 +68,7 @@ fn zoneinfo_is_file(path string) bool {
 // zoneinfo_readlink returns the target of the symbolic link `path`, when it is one.
 fn zoneinfo_readlink(path string) ?string {
 	mut buf := [4096]u8{}
-	len := C.readlink(&char(path.str), &char(&buf[0]), usize(buf.len))
+	len := C.readlink(&char(path.str), &char(&buf[0]), uint(buf.len))
 	if len <= 0 || len >= buf.len {
 		return none
 	}
@@ -90,7 +90,7 @@ fn zoneinfo_read_file(path string) ![]u8 {
 	mut data := []u8{}
 	mut buf := [4096]u8{}
 	for {
-		len := int(C.fread(&buf[0], 1, usize(buf.len), file))
+		len := int(C.fread(&buf[0], 1, uint(buf.len), file))
 		if len <= 0 {
 			break
 		}

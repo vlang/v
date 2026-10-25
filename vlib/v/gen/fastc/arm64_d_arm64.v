@@ -1272,7 +1272,7 @@ fn (mut p FastArm64Program) type_id(name_source_id u32) ssa.TypeID {
 		'u32', 'unsigned int' {
 			return p.u32_type
 		}
-		'u64', 'usize' {
+		'u64', 'uint', 'usize' {
 			return p.u64_type
 		}
 		'f32' {
@@ -6370,7 +6370,8 @@ fn (mut p FastArm64Parser) parse_prefix() !FastArm64Value {
 			}
 		}
 		if p.tok == .name && (p.lit in ['bool', 'i8', 'char', 'i16', 'int', 'i32', 'rune', 'i64',
-			'u8', 'u16', 'u32', 'u64', 'isize', 'usize', 'f32', 'f64', 'voidptr', 'byteptr', 'charptr'] || flat.source_type_id(p.lit) in p.program.type_ids || p.program.type_aliases.contains(p.lit)) {
+			'u8', 'u16', 'u32', 'u64', 'isize', 'uint', 'usize', 'f32', 'f64', 'voidptr', 'byteptr',
+			'charptr'] || flat.source_type_id(p.lit) in p.program.type_ids || p.program.type_aliases.contains(p.lit)) {
 			mut look := p.s
 			if look.scan() == .lpar {
 				type_name := p.lit
@@ -7056,8 +7057,8 @@ fn (mut p FastArm64Parser) parse_sizeof_expression() !FastArm64Value {
 	if p.tok == .name {
 		mut look := p.s
 		if look.scan() == .rpar && (p.lit in ['bool', 'i8', 'char', 'i16', 'int', 'i32', 'rune',
-			'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'usize', 'f32', 'f64', 'voidptr', 'byteptr',
-			'charptr', 'string'] || flat.source_type_id(p.lit) in p.program.type_ids || p.program.type_aliases.contains(p.lit)) {
+			'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'uint', 'usize', 'f32', 'f64', 'voidptr',
+			'byteptr', 'charptr', 'string'] || flat.source_type_id(p.lit) in p.program.type_ids || p.program.type_aliases.contains(p.lit)) {
 			type_name := p.lit
 			p.next()
 			p.expect(.rpar)!
@@ -7960,7 +7961,7 @@ fn (mut p FastArm64Parser) parse_name_expression() !FastArm64Value {
 			return p.parse_cast(flat.source_type_id(qualified_type_key))
 		}
 		if (first_name in ['int', 'i8', 'char', 'i16', 'i32', 'rune', 'i64', 'u8', 'u16', 'u32',
-			'u64', 'isize', 'usize', 'f32', 'f64', 'bool', 'voidptr', 'byteptr', 'charptr'] || flat.source_type_id(first_name) in p.program.type_ids || p.program.type_aliases.contains(first_name)) && display_name == first_name {
+			'u64', 'isize', 'uint', 'usize', 'f32', 'f64', 'bool', 'voidptr', 'byteptr', 'charptr'] || flat.source_type_id(first_name) in p.program.type_ids || p.program.type_aliases.contains(first_name)) && display_name == first_name {
 			return p.parse_cast(flat.source_type_id(first_name))
 		}
 		return p.parse_call(key, display_name)

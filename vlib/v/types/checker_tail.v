@@ -6447,7 +6447,7 @@ fn legacy_comptime_type_index(name string) ?int {
 		'u16' { 12 }
 		'u32' { 13 }
 		'u64' { 14 }
-		'usize' { 15 }
+		'uint' { 15 }
 		'f32' { 16 }
 		'f64' { 17 }
 		'char' { 18 }
@@ -21435,9 +21435,9 @@ fn valid_string_data(s string) bool {
 	if s == '' {
 		return true
 	}
-	// Go through usize: C sign-extends a 32-bit pointer converted to a wider
+	// Go through uint: C sign-extends a 32-bit pointer converted to a wider
 	// integer, which put every address above 2 GiB out of range on 32-bit hosts.
-	ptr := unsafe { u64(usize(voidptr(s.str))) }
+	ptr := unsafe { u64(uint(voidptr(s.str))) }
 	return ptr >= 4096 && ptr < 281474976710656 && s.len < 1048576
 }
 

@@ -5,8 +5,8 @@ $if !freestanding {
 	#include <unistd.h>
 }
 
-fn C.munmap(ptr voidptr, size usize) i32
-fn C.mmap(base voidptr, len usize, prot i32, flags i32, fd i32, offset i64) voidptr
+fn C.munmap(ptr voidptr, size uint) i32
+fn C.mmap(base voidptr, len uint, prot i32, flags i32, fd i32, offset i64) voidptr
 
 // Mm_prot and Map_flags hold the Linux values. `system_alloc` uses the C
 // constants of the target platform instead: `MAP_ANONYMOUS` differs between
@@ -32,7 +32,7 @@ pub enum Map_flags {
 	map_huge_mask       = 0x3f
 }
 
-fn system_alloc(_ voidptr, size usize) (voidptr, usize, u32) {
+fn system_alloc(_ voidptr, size uint) (voidptr, uint, u32) {
 	$if !freestanding {
 		unsafe {
 			addr := C.mmap(nil, size, C.PROT_READ | C.PROT_WRITE, C.MAP_PRIVATE | C.MAP_ANONYMOUS,
@@ -50,22 +50,22 @@ fn system_alloc(_ voidptr, size usize) (voidptr, usize, u32) {
 	return unsafe { nil }, 0, 0
 }
 
-fn system_remap(_ voidptr, ptr voidptr, oldsize usize, newsize usize, can_move bool) voidptr {
+fn system_remap(_ voidptr, ptr voidptr, oldsize uint, newsize uint, can_move bool) voidptr {
 	return unsafe { nil }
 }
 
-fn system_free_part(_ voidptr, ptr voidptr, oldsize usize, newsize usize) bool {
+fn system_free_part(_ voidptr, ptr voidptr, oldsize uint, newsize uint) bool {
 	$if !freestanding {
 		// Unmapping the tail shrinks the mapping in place, like `mremap` without
 		// MREMAP_MAYMOVE would, but needs no GNU-only declaration.
 		unsafe {
-			return C.munmap(voidptr(usize(ptr) + newsize), oldsize - newsize) == 0
+			return C.munmap(voidptr(uint(ptr) + newsize), oldsize - newsize) == 0
 		}
 	}
 	return false
 }
 
-fn system_free(_ voidptr, ptr voidptr, size usize) bool {
+fn system_free(_ voidptr, ptr voidptr, size uint) bool {
 	$if !freestanding {
 		unsafe {
 			return C.munmap(ptr, size) == 0
@@ -83,7 +83,7 @@ fn system_allocates_zeros(_ voidptr) bool {
 	return true
 }
 
-fn system_page_size(_ voidptr) usize {
+fn system_page_size(_ voidptr) uint {
 	return 4096
 }
 

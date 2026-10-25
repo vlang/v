@@ -520,7 +520,7 @@ fn (mut decoder Decoder) decode_new_pointer[P](_ P) !P {
 // new_pointer_to returns a new heap pointer to `value`: one more level of
 // indirection, for decoding `&&T`, `&&&T`, ... values.
 fn new_pointer_to[T](value T) &T {
-	mut ptr := unsafe { &T(vcalloc(sizeof(T))) }
+	mut ptr := unsafe { &T(vcalloc(int(sizeof(T)))) }
 	unsafe {
 		*ptr = value
 	}
@@ -1923,10 +1923,8 @@ fn parse_integer_number[T](str string) !T {
 		return int(strconv.atoi64(int_str)!)
 	} $else $if T.unaliased_typ is int {
 		return T(int(strconv.atoi64(int_str)!))
-	} $else $if T.unaliased_typ is isize {
-		return T(isize(strconv.atoi64(int_str)!))
-	} $else $if T.unaliased_typ is usize {
-		return T(usize(strconv.atou64(int_str)!))
+	} $else $if T.unaliased_typ is uint {
+		return T(uint(strconv.atou64(int_str)!))
 	} $else {
 		return error('`parse_integer_number` cannot decode ${T.name} type')
 	}
@@ -1989,8 +1987,7 @@ fn (mut decoder Decoder) decode_number[T](val &T) ! {
 		u32 { *val = parse_integer_number[T](str)! }
 		u64 { *val = parse_integer_number[T](str)! }
 		int { *val = parse_int_number(str)! }
-		isize { *val = parse_integer_number[T](str)! }
-		usize { *val = parse_integer_number[T](str)! }
+		uint { *val = parse_integer_number[T](str)! }
 		f32 { *val = parse_float_number[T](str)! }
 		f64 { *val = parse_float_number[T](str)! }
 		$else { return error('`decode_number` can not decode ${T.name} type') }
@@ -2027,9 +2024,7 @@ fn (mut decoder Decoder) decode_number_from_string[T]() !T {
 		return parse_int_number(str)!
 	} $else $if T.unaliased_typ is int {
 		return parse_integer_number[T](str)!
-	} $else $if T.unaliased_typ is isize {
-		return parse_integer_number[T](str)!
-	} $else $if T.unaliased_typ is usize {
+	} $else $if T.unaliased_typ is uint {
 		return parse_integer_number[T](str)!
 	} $else $if T.unaliased_typ is f32 {
 		return parse_float_number[T](str)!

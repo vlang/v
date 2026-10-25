@@ -4770,7 +4770,7 @@ fn grow_node_context_cache(mut cache []u16, size int, capacity int) {
 	// Extend in place instead of retaining a temporary zero-filled array.
 	unsafe {
 		cache.grow_len(size - old_len)
-		vmemset(&cache[old_len], 0, isize(size - old_len) * isize(sizeof(u16)))
+		vmemset(&cache[old_len], 0, int(size - old_len) * int(sizeof(u16)))
 	}
 }
 
@@ -6214,7 +6214,7 @@ fn (mut t Transformer) refresh_decl_assign_types_after_generic_rewrite() bool {
 		if node.kind == .call && node.children_count > 0 && !isnil(t.tc) {
 			callee := t.a.child_node(&node, 0)
 			if callee.kind == .ident && callee.value.len > 0 {
-				slot := int((usize(callee.value.str) >> 3) & 4095)
+				slot := int((uint(callee.value.str) >> 3) & 4095)
 				if plain_callee_ptrs[slot] == voidptr(callee.value.str)
 					&& plain_callee_lens[slot] == callee.value.len {
 					continue

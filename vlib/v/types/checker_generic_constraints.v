@@ -2495,7 +2495,7 @@ fn (o ConstraintOperand) is_bool() bool {
 enum ConstraintTypeKind {
 	unchecked // pointers and what else the rules below do not cover
 	integer
-	isize // `isize` and `usize`: no `==` with a float
+	isize // `isize` and `uint`: no `==` with a float
 	rune
 	float
 	string

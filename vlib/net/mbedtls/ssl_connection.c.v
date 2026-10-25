@@ -335,7 +335,7 @@ fn (mut l SSLListener) init() ! {
 	// See the matching client-side logic in SSLConn.init for lifetime notes.
 	if l.config.alpn_protocols.len > 0 {
 		n := l.config.alpn_protocols.len
-		l.alpn_list = unsafe { &&char(C.malloc(isize((n + 1) * int(sizeof(voidptr))))) }
+		l.alpn_list = unsafe { &&char(C.malloc(int((n + 1) * int(sizeof(voidptr))))) }
 		if l.alpn_list == unsafe { nil } {
 			l.shutdown() or {}
 			return error('net.mbedtls SSLListener.init, failed to allocate ALPN list')
@@ -366,7 +366,7 @@ fn (mut l SSLListener) init() ! {
 	}
 }
 
-fn tls_listener_rng(p_rng voidptr, output &u8, output_len usize) int {
+fn tls_listener_rng(p_rng voidptr, output &u8, output_len uint) int {
 	mut listener := unsafe { &SSLListener(p_rng) }
 	listener.rng_mutex.lock()
 	defer {
@@ -380,7 +380,7 @@ fn (mut l SSLListener) init_sni(get_cert_callback fn (mut SSLListener, string) !
 	$if trace_ssl ? {
 		eprintln(@METHOD)
 	}
-	C.mbedtls_ssl_conf_sni(&l.conf, fn [get_cert_callback, mut l] (p_info voidptr, ssl &C.mbedtls_ssl_context, name &u8, lng usize) int {
+	C.mbedtls_ssl_conf_sni(&l.conf, fn [get_cert_callback, mut l] (p_info voidptr, ssl &C.mbedtls_ssl_context, name &u8, lng uint) int {
 		host := unsafe { name.vstring_literal_with_len(int(lng)) }
 		if certs := get_cert_callback(mut l, host) {
 			return C.mbedtls_ssl_set_hs_own_cert(ssl, &certs.client_cert, &certs.client_key)
@@ -417,7 +417,7 @@ fn (mut l SSLListener) accept_tcp_connection() !&SSLConn {
 		opened:       true
 	}
 	ip := [16]u8{}
-	iplen := usize(0)
+	iplen := uint(0)
 
 	ret := C.mbedtls_net_accept(&l.server_fd, &conn.server_fd, &ip, 16, &iplen)
 	if ret != 0 {
@@ -697,7 +697,7 @@ fn (mut s SSLConn) init() ! {
 	// is allocated here and freed in shutdown().
 	if s.config.alpn_protocols.len > 0 {
 		n := s.config.alpn_protocols.len
-		s.alpn_list = unsafe { &&char(C.malloc(isize((n + 1) * int(sizeof(voidptr))))) }
+		s.alpn_list = unsafe { &&char(C.malloc(int((n + 1) * int(sizeof(voidptr))))) }
 		if s.alpn_list == unsafe { nil } {
 			return error('net.mbedtls SSLConn.init, failed to allocate ALPN list')
 		}

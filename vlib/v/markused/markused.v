@@ -4426,7 +4426,7 @@ fn enqueue_stringified_primitive_helpers(type_name_id u32, mut used map[string]b
 		enqueue('i64.str', mut used, mut queue)
 		enqueue(markused_c_name('i64.str'), mut used, mut queue)
 		enqueue('strconv__format_int', mut used, mut queue)
-	} else if type_name_id == flat.source_type_u8 || type_name_id == flat.source_type_u16 || type_name_id == flat.source_type_u32 || type_name_id == flat.source_type_usize {
+	} else if type_name_id == flat.source_type_u8 || type_name_id == flat.source_type_u16 || type_name_id == flat.source_type_u32 || type_name_id == flat.source_type_uint {
 		enqueue('u64.str', mut used, mut queue)
 		enqueue(markused_c_name('u64.str'), mut used, mut queue)
 		enqueue('strconv__format_uint', mut used, mut queue)
@@ -11190,7 +11190,7 @@ fn resolve_type_name(t types.Type) u32 {
 	} else if t is types.ISize {
 		return flat.source_type_isize
 	} else if t is types.USize {
-		return flat.source_type_usize
+		return flat.source_type_uint
 	} else if t is types.Rune {
 		return flat.source_type_rune
 	}

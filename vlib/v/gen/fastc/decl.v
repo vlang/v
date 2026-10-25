@@ -3288,7 +3288,7 @@ fn fastc_emit_enum_declaration(mut scan scanner.Scanner, source_file FastcSource
 		// still `int` (or `u64` for flag enums); values are emitted with an explicit
 		// cast, so a narrower/wider spelling does not change the generated C.
 		is_backing_int := tok == .name && scan.lit in ['i8', 'i16', 'i32', 'i64', 'int', 'u8',
-			'u16', 'u32', 'u64', 'isize', 'usize']
+			'u16', 'u32', 'u64', 'isize', 'uint', 'usize']
 		if !is_backing_int || (is_flag && scan.lit != 'u64') {
 			return error('fastc parser does not support enum `${name}` backing type in ${source_file.path}')
 		}

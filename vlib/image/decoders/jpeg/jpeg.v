@@ -2255,7 +2255,7 @@ $if windows {
 // `&stack_local` into a spawn makes V heap-escape it with no way to
 // free; the main thread frees it right after barrier_wait returns.
 fn new_barrier_counter() &u64 {
-	return &u64(unsafe { vcalloc_noscan(sizeof(u64)) })
+	return &u64(unsafe { vcalloc_noscan(int(sizeof(u64))) })
 }
 
 fn free_barrier_counter(cnt &u64) {

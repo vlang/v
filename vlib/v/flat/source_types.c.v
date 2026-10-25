@@ -21,6 +21,7 @@ pub const source_type_char = source_type_id('char')
 pub const source_type_rune = source_type_id('rune')
 pub const source_type_isize = source_type_id('isize')
 pub const source_type_usize = source_type_id('usize')
+pub const source_type_uint = source_type_id('uint')
 pub const source_type_voidptr = source_type_id('voidptr')
 pub const source_type_byteptr = source_type_id('byteptr')
 pub const source_type_charptr = source_type_id('charptr')
@@ -110,7 +111,7 @@ fn source_type_spelling_shape(text string) SourceTypeShape {
 	if text.contains('typeof') { shape.set(.typeof_name) }
 	if text.len >= 8 && text.contains('typeof(') { shape.set(.typeof_expr) }
 	if text in ['bool', 'string', 'void', 'int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32',
-		'u64', 'f32', 'f64', 'rune', 'isize', 'usize', 'voidptr', 'byteptr', 'charptr'] {
+		'u64', 'f32', 'f64', 'rune', 'uint', 'isize', 'usize', 'voidptr', 'byteptr', 'charptr'] {
 		shape.set(.builtin_alias)
 	}
 	if text == 'struct' || text.ends_with('.struct') { shape.set(.anonymous_struct) }
@@ -195,7 +196,7 @@ fn source_type_index_publish(table &SourceTypeTable, index &SourceTypeIndex) {
 @[inline]
 fn source_type_entry(table &SourceTypeTable, id u32) &SourceTypeEntry {
 	idx := id - 1
-	chunk := payload_ptr_get(voidptr(table), usize(idx >> source_type_chunk_bits))
+	chunk := payload_ptr_get(voidptr(table), uint(idx >> source_type_chunk_bits))
 	// Published IDs address immutable entries in nonmoving chunks.
 	return unsafe { &SourceTypeEntry(chunk) + (idx & (source_type_chunk_size - 1)) }
 }
@@ -356,15 +357,15 @@ fn source_type_id_uncached(text string) u32 {
 	if chunk_idx >= source_type_chunk_count {
 		panic('too many source type spellings')
 	}
-	mut chunk := payload_ptr_get(voidptr(table), usize(chunk_idx))
+	mut chunk := payload_ptr_get(voidptr(table), uint(chunk_idx))
 	if isnil(chunk) {
 		chunk = node_payload_alloc_zeroed(source_type_chunk_size * sizeof(SourceTypeEntry))
 		if isnil(chunk) {
 			panic('could not allocate a source type chunk')
 		}
-		payload_ptr_set(voidptr(table), usize(chunk_idx), chunk)
+		payload_ptr_set(voidptr(table), uint(chunk_idx), chunk)
 	}
-	bytes := node_payload_alloc_zeroed(usize(text.len) + 1)
+	bytes := node_payload_alloc_zeroed(uint(text.len) + 1)
 	if isnil(bytes) {
 		panic('could not allocate a source type spelling')
 	}

@@ -1774,7 +1774,7 @@ fn (b &Builder) enum_field_expr_value(id flat.NodeId, enum_name_id u32) ?int {
 			}
 			cast_name := b.qualified_expr_name(b.a.child(&node, 0))
 			if cast_name !in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'u16', 'u32', 'u64',
-				'usize', 'rune'] {
+				'uint', 'rune'] {
 				return none
 			}
 			return b.enum_field_expr_value(b.a.child(&node, 1), enum_name_id)
@@ -3477,7 +3477,7 @@ fn (mut b Builder) register_array_runtime_stubs() {
 
 	// Integer types only, like the C backend: the transformer lowers a float sort
 	// to its stable merge sort.
-	for sort_type in ['int', 'i8', 'i16', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'usize', 'rune',
+	for sort_type in ['int', 'i8', 'i16', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'uint', 'rune',
 		'char'] {
 		elem_type := match sort_type {
 			'int', 'rune' { b.i32_type }
@@ -11817,7 +11817,7 @@ fn (mut b Builder) build_scalar_str_call(node flat.Node, resolved_name string, b
 	primitive_name := name.all_before_last('.')
 	if name.all_after_last('.') != 'str'
 		|| primitive_name !in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'bool',
-			'rune', 'isize', 'usize', 'string'] {
+			'rune', 'isize', 'uint', 'string'] {
 		return none
 	}
 	mut value_id := base_id
@@ -12605,7 +12605,7 @@ fn (b &Builder) const_int_literal_value(id flat.NodeId) ?string {
 			if node.children_count == 2 {
 				callee := b.qualified_expr_name(b.a.child(&node, 0))
 				if callee in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'u16', 'u32', 'u64',
-					'usize', 'rune'] {
+					'uint', 'rune'] {
 					return b.const_int_literal_value(b.a.child(&node, 1))
 				}
 			}
@@ -14237,7 +14237,7 @@ fn (mut b Builder) primitive_type_id(name_id u32) ?TypeID {
 		'isize' {
 			if b.m.target.ptr_size == 4 { b.i32_type } else { b.i64_type }
 		}
-		'usize' {
+		'uint' {
 			if b.m.target.ptr_size == 4 { b.u32_type } else { b.u64_type }
 		}
 		'i8', 'char' {

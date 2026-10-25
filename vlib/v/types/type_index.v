@@ -42,7 +42,7 @@ pub fn builtin_type_index(name string) int {
 		'u16' { 12 }
 		'u32' { 13 }
 		'u64' { 14 }
-		'usize' { 15 }
+		'uint', 'usize' { 15 }
 		'f32' { 16 }
 		'f64' { 17 }
 		'char' { 18 }
