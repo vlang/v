@@ -29,6 +29,8 @@ pub enum ImageEffect {
 	// TODO(FireRedz): Add more effects
 	alpha
 	add
+	multiply
+	screen
 }
 
 // Rect represents a rectangular shape in `gg`.
