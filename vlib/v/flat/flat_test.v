@@ -407,3 +407,30 @@ fn test_clone_node_flags_keeps_borrowed_map_iteration_keys() {
 	assert !Node{ kind: .assign, flags: node_flag_freed_assignment }.borrows_map_key()
 	assert !Node{ kind: .for_in_stmt }.borrows_map_key()
 }
+
+fn test_text_recent_identity_cache_verifies_complete_spelling() {
+	mut ast := FlatAst.new()
+	first_text := 'abcdefghAijklmnop'
+	second_text := 'abcdefghBijklmnop'
+	assert source_type_recent_slot(first_text) == source_type_recent_slot(second_text)
+	first_id, first := ast.intern_text(first_text)
+	second_id, second := ast.intern_text(second_text)
+	assert first_id != second_id
+	assert first == first_text
+	assert second == second_text
+	repeated_id, repeated := ast.intern_text(first_text.clone())
+	assert repeated_id == first_id
+	assert repeated.str == first.str
+	assert ast.text_count() == 2
+}
+
+fn test_text_recent_identity_cache_survives_owned_table_replacement() {
+	mut ast := FlatAst.new()
+	expected_id, _ := ast.intern_text('cached identity')
+	mut values, mut ids := ast.clone_text_table_owned()
+	ast.text_values = values
+	ast.text_ids = ids.move()
+	actual_id, actual := ast.intern_text('cached identity'.clone())
+	assert actual_id == expected_id
+	assert actual.str == ast.text_values[int(expected_id) - 1].str
+}

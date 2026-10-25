@@ -164,7 +164,7 @@ mut:
 	// The sources that a parallel parse batch read once for all of its passes
 	// (see parse_files_dispatch); nil outside of such a batch.
 	batch_sources                     &BatchSources = unsafe { nil }
-	local_binding_undos               []string
+	local_binding_undos               []LocalBindingUndo
 	local_binding_scopes              []int
 	active_lambda_param_counts        map[string]int
 	comptime_value_undos              []ComptimeValueUndo
@@ -199,7 +199,7 @@ mut:
 	local_type_names                  flat.TypeTextBindings
 	local_type_decls_by_block         map[int][]string
 	local_type_decls_indexed          bool
-	local_type_scopes                 []string
+	local_type_scopes                 []LocalTypeScope
 	anonymous_struct_types            flat.TypeTextListBindings
 	anonymous_struct_count            int
 	sql_query_data_aliases            map[string]bool
@@ -282,6 +282,16 @@ struct ExportRecord {
 	name  string
 	qname string
 	value string
+}
+
+// LocalBindingUndo keeps a source/AST-owned name for the current lexical scope.
+struct LocalBindingUndo {
+	name string
+}
+
+// LocalTypeScope retains the lexical scope name until the scope closes.
+struct LocalTypeScope {
+	name string
 }
 
 struct ComptimeValueUndo {
@@ -500,7 +510,7 @@ fn (mut p Parser) reset_file_state(path string) {
 	p.parsing_inferred_fixed_array_type = false
 	p.parsing_struct_field_type = false
 	p.parsing_c_struct_fields = false
-	p.local_type_scopes = []string{}
+	p.local_type_scopes = []LocalTypeScope{}
 	p.local_type_decls_by_block = map[int][]string{}
 	p.local_type_decls_indexed = false
 	p.anonymous_struct_types = flat.TypeTextListBindings{}
@@ -7284,7 +7294,7 @@ fn (mut p Parser) end_local_binding_scope() {
 	}
 	start := p.local_binding_scopes.pop()
 	for i := p.local_binding_undos.len - 1; i >= start; i-- {
-		name := p.local_binding_undos[i]
+		name := p.local_binding_undos[i].name
 		count := p.local_binding_counts[name] or { 0 }
 		if count <= 1 {
 			p.local_binding_counts.delete(name)
@@ -7297,11 +7307,20 @@ fn (mut p Parser) end_local_binding_scope() {
 
 // declare_local_binding records `name` as an in-scope variable/parameter for the current
 // local scope, so template closures can tell it apart from a module/top-level function.
+// Callers keep the name in AST/source storage until the scope ends.
 fn (mut p Parser) declare_local_binding(name string) {
 	if name.len == 0 || name == '_' || p.local_binding_scopes.len == 0 {
 		return
 	}
-	p.local_binding_undos << name
+	$if autofree ? {
+		p.local_binding_undos << LocalBindingUndo{
+			name: name.clone()
+		}
+	} $else {
+		p.local_binding_undos << LocalBindingUndo{
+			name: name
+		}
+	}
 	p.local_binding_counts[name] = (p.local_binding_counts[name] or { 0 }) + 1
 }
 
@@ -18374,12 +18393,16 @@ fn (p &Parser) current_local_type_scope() string {
 	if p.local_type_scopes.len == 0 {
 		return ''
 	}
-	return p.local_type_scopes[p.local_type_scopes.len - 1]
+	return p.local_type_scopes[p.local_type_scopes.len - 1].name
 }
 
 fn (mut p Parser) push_local_type_scope(scope string) {
 	if scope.len > 0 {
-		p.local_type_scopes << scope
+		$if autofree ? {
+			p.local_type_scopes << LocalTypeScope{ name: scope.clone() }
+		} $else {
+			p.local_type_scopes << LocalTypeScope{ name: scope }
+		}
 	}
 }
 
@@ -18547,7 +18570,7 @@ fn (p &Parser) resolve_local_type_name(name string) string {
 		return name
 	}
 	for i := p.local_type_scopes.len - 1; i >= 0; i-- {
-		scope := p.local_type_scopes[i]
+		scope := p.local_type_scopes[i].name
 		if mapped := p.local_type_names.get(p.local_type_key_for_scope(scope, base)) {
 			return mapped + suffix
 		}

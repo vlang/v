@@ -47,6 +47,10 @@ fn (i &TypeInterner) clear_recent_canonical_types() {
 	for slot in 0 .. i.recent.len {
 		unsafe {
 			C.atomic_store_ptr(&i.recent[slot], nil)
+		}
+	}
+	for slot in 0 .. i.identities.len {
+		unsafe {
 			C.atomic_store_ptr(&i.identities[slot], nil)
 		}
 	}
@@ -149,7 +153,12 @@ fn canonical_intern_child_key(t &Type) u64 {
 // structural verification, even when their address has appeared before.
 @[direct_array_access; inline]
 fn (i &TypeInterner) canonical_identity(t &Type) &CanonicalTypeEntry {
-	slot := int((usize(t) >> 4) & 4095)
+	// Primitive identity is already an exact, collision-free content lookup.
+	// Most callers hold a temporary wrapper, which cannot hit a pointer slot.
+	if t is Primitive {
+		return unsafe { nil }
+	}
+	slot := int((usize(t) >> 4) & (canonical_identity_cache_slots - 1))
 	entry := unsafe { &CanonicalTypeEntry(C.atomic_load_ptr(&i.identities[slot])) }
 	if !isnil(entry) && voidptr(entry.typ) == voidptr(t) {
 		return entry
@@ -159,7 +168,10 @@ fn (i &TypeInterner) canonical_identity(t &Type) &CanonicalTypeEntry {
 
 @[direct_array_access; inline]
 fn (i &TypeInterner) remember_canonical_identity(entry &CanonicalTypeEntry) {
-	slot := int((usize(entry.typ) >> 4) & 4095)
+	if entry.typ is Primitive {
+		return
+	}
+	slot := int((usize(entry.typ) >> 4) & (canonical_identity_cache_slots - 1))
 	unsafe {
 		C.atomic_store_ptr(&i.identities[slot], entry)
 	}

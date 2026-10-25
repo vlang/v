@@ -696,3 +696,37 @@ fn test_file_index_gap_preserves_bundle_file_context() {
 		assert '${name}.${name}' in indexed.fn_ret_types
 	}
 }
+
+fn test_closure_prepass_preserves_remaining_implicit_import_flags() {
+	for capturing_literal in [false, true] {
+		mut a := flat.FlatAst.new()
+		if capturing_literal {
+			capture := a.add_val(.ident, 'captured')
+			start := a.begin_children()
+			a.add_child(capture)
+			a.add_node(flat.Node{
+				kind:           .fn_literal
+				children_start: start
+				children_count: 1
+			})
+		} else {
+			a.add(.lambda_expr)
+		}
+		a.add_node(sync_import_node())
+		a.add_node(embed_file_import_node())
+		a.add_node(closure_import_node())
+		a.add_node(debugger_import_node())
+		a.add_node(overflow_import_node())
+		a.add(.lock_expr)
+		a.add_val(.struct_init, 'embed_file.EmbedFileData')
+		a.add(.debugger_stmt)
+		mut scan := ImplicitImportScan{}
+		scan_implicit_imports(&a, a.nodes.len, mut scan)
+		assert scan.node_idx == a.nodes.len
+		assert scan.needs_closure && scan.has_closure
+		assert scan.needs_sync && scan.has_sync
+		assert scan.needs_embed && scan.has_embed_import
+		assert scan.needs_debugger && scan.has_debugger
+		assert scan.has_overflow
+	}
+}

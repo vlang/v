@@ -2388,9 +2388,13 @@ fn promote_scoped_specialization_texts(values map[int]string, scope voidptr) map
 // absorb_scoped_batch publishes one batch's observable state into the helper's
 // result arena before its large scratch arena is released.
 fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr, new_node_start int) {
+	t.call_param_types_recent = unsafe { nil }
+	t.clear_fn_return_name_cache()
 	t.begin_promote_text_window()
 	defer {
 		t.end_promote_text_window()
+		t.call_param_types_recent = unsafe { nil }
+		t.clear_fn_return_name_cache()
 	}
 	t.merge_worker_signatures(batch)
 	// Setters record writes to every pre-existing node, including nodes reached
@@ -2465,7 +2469,13 @@ fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr, ne
 	transform_stage_scope_resume(t.merge_scratch_scope, publication_state)
 	if !isnil(batch.tc.fork_overlay) {
 		for idx, name in batch.tc.fork_overlay.resolved_call_names {
-			owned_name := t.promote_scoped_result_text(name)
+			// Names borrowed from the parent or source tables already outlive this
+			// batch. Only bytes in the retiring arena need promotion.
+			owned_name := if transform_scope_owns(scope, name.str) {
+				t.promote_scoped_result_text(name)
+			} else {
+				name
+			}
 			if isnil(t.tc.fork_overlay) {
 				t.set_resolved_call_entry(idx, owned_name)
 			} else {
@@ -2473,7 +2483,13 @@ fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr, ne
 			}
 		}
 		for idx, name in batch.tc.fork_overlay.resolved_fn_values {
-			owned_name := t.promote_scoped_result_text(name)
+			// Names borrowed from the parent or source tables already outlive this
+			// batch. Only bytes in the retiring arena need promotion.
+			owned_name := if transform_scope_owns(scope, name.str) {
+				t.promote_scoped_result_text(name)
+			} else {
+				name
+			}
 			if isnil(t.tc.fork_overlay) {
 				t.set_resolved_fn_value_entry(idx, owned_name)
 			} else {
@@ -3741,6 +3757,8 @@ fn (mut t Transformer) prepare_with_pre_scans() {
 		t.prepare()
 		t.add_prescan_scope(param_thread.wait())
 		t.add_prescan_scope(index_thread.wait())
+		t.call_param_types_recent = unsafe { nil }
+		t.clear_fn_return_name_cache()
 		t.call_param_types_decl_cache = param_w.call_param_types_decl_cache.move()
 		t.call_param_types_decl_shared = true
 		t.call_param_types_decl_index = param_w.call_param_types_decl_index.move()
