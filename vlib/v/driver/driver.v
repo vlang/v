@@ -16832,7 +16832,6 @@ pub fn run(args []string) {
 					}
 				}
 				$if windows {
-					release_v3_cache_population_lock()
 					exit_with_child_build(os.executable(), regeneration_args)
 				}
 				os.execvp(os.executable(), regeneration_args) or {
@@ -17599,7 +17598,6 @@ fn v3_recover_from_cache_failure(output string, cc_dir string) bool {
 	$if windows {
 		// `_execvp` would exit this process with status 0 before the retried
 		// build finishes, so forward the retried build's status instead.
-		release_v3_cache_population_lock()
 		exit_with_child_build(executable, restart_args)
 	}
 	os.execvp(executable, restart_args) or {
@@ -19050,7 +19048,6 @@ fn restart_v3_with_args(extra_args []string, build_dir string) {
 		// Windows has no exec either: `_execvp` would start the child and then
 		// exit this process with status 0, dropping the restarted build's
 		// result on the floor.
-		release_v3_cache_population_lock()
 		exit_with_child_build(executable, args)
 	} $else {
 		os.execvp(executable, args) or {
@@ -19065,6 +19062,7 @@ fn restart_v3_with_args(extra_args []string, build_dir string) {
 // The child is a process of its own: its launcher stages a fallback marker under the
 // child's pid and reports the child's failures itself.
 fn exit_with_child_build(executable string, args []string) {
+	release_v3_cache_population_lock()
 	release_v3_fallback_marker()
 	exit(os.system_args([executable, ...args]))
 }
