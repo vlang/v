@@ -2189,7 +2189,18 @@ fn test_v3_tcc_flags_dump_matches_monolithic_command() {
 			dump_args << ['-dump-c-flags', '-', '-o', output, source]
 			flags_dump := cmdexec.run(v3_driver_test_executable(), dump_args)
 			assert flags_dump.exit_code == 0, flags_dump.output
-			expected := flags_dump.output.split_into_lines().filter(it.len > 0)
+			dump_lines := flags_dump.output.split_into_lines().filter(it.len > 0)
+			// value-taking flags share a line with their quoted value (`-I "/path"`)
+			mut expected := []string{}
+			for line in dump_lines {
+				for token in cgen.tokenize_c_flag(line) {
+					expected << if token.len > 1 && token.starts_with('"') && token.ends_with('"') {
+						token[1..token.len - 1]
+					} else {
+						token
+					}
+				}
+			}
 			for with_dump in [false, true] {
 				mut build_args := args.clone()
 				build_args << ['-showcc', '-o', output, source]
@@ -2212,7 +2223,7 @@ fn test_v3_tcc_flags_dump_matches_monolithic_command() {
 					assert !actual.any(it.starts_with('-F'))
 				}
 				if with_dump {
-					assert os.read_lines(dump_file)! == expected
+					assert os.read_lines(dump_file)! == dump_lines
 				}
 			}
 		}
