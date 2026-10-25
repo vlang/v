@@ -3656,13 +3656,16 @@ fn (g &FlatGen) arg_is_untyped_nil_literal(arg_id flat.NodeId) bool {
 }
 
 fn (mut g FlatGen) gen_pointer_builtin_method_call(node flat.Node, fn_node &flat.Node, base_type types.Type) bool {
-	receiver := pointer_builtin_receiver_name_for_c(base_type)
-	if receiver.len == 0 {
+	receiver := pointer_builtin_receiver_type_for_c(base_type)
+	if receiver == 0 {
 		return false
 	}
 	method := fn_node.value
-	if receiver in ['charptr', 'byteptr'] && method in ['vstring', 'vstring_with_len'] {
-		g.write(g.cname('${receiver}.${method}'))
+	if receiver in [flat.source_type_charptr, flat.source_type_byteptr] && method in [
+		'vstring',
+		'vstring_with_len',
+	] {
+		g.write(g.cname('${flat.source_type_name(receiver)}.${method}'))
 		g.write('(')
 		g.gen_expr(g.a.child(fn_node, 0))
 		for i in 1 .. node.children_count {
@@ -3672,8 +3675,8 @@ fn (mut g FlatGen) gen_pointer_builtin_method_call(node flat.Node, fn_node &flat
 		g.write(')')
 		return true
 	}
-	if receiver in ['byteptr', 'voidptr'] && method == 'vbytes' {
-		g.write(g.cname('${receiver}.${method}'))
+	if receiver in [flat.source_type_byteptr, flat.source_type_voidptr] && method == 'vbytes' {
+		g.write(g.cname('${flat.source_type_name(receiver)}.${method}'))
 		g.write('(')
 		g.gen_expr(g.a.child(fn_node, 0))
 		for i in 1 .. node.children_count {
@@ -3686,39 +3689,39 @@ fn (mut g FlatGen) gen_pointer_builtin_method_call(node flat.Node, fn_node &flat
 	return false
 }
 
-fn pointer_builtin_receiver_name_for_c(typ &types.Type) string {
+fn pointer_builtin_receiver_type_for_c(typ &types.Type) u32 {
 	if typ is types.Alias {
 		if typ.source_type_id() in [flat.source_type_charptr, flat.source_type_byteptr,
 			flat.source_type_voidptr] {
-			return typ.name()
+			return typ.source_type_id()
 		}
-		return pointer_builtin_receiver_name_for_c(typ.base_type)
+		return pointer_builtin_receiver_type_for_c(typ.base_type)
 	}
 	if typ is types.Pointer {
 		base := *typ.base_type
 		if base is types.Alias {
-			return pointer_builtin_receiver_name_for_c(base)
+			return pointer_builtin_receiver_type_for_c(base)
 		}
 		if base is types.Char {
-			return 'charptr'
+			return flat.source_type_charptr
 		}
 		if base is types.Void {
-			return 'voidptr'
+			return flat.source_type_voidptr
 		}
 		if base is types.Primitive && types.Type(base).source_type_id() == flat.source_type_u8 {
-			return 'byteptr'
+			return flat.source_type_byteptr
 		}
 	}
 	if typ is types.Char {
-		return 'charptr'
+		return flat.source_type_charptr
 	}
 	if typ is types.Void {
-		return 'voidptr'
+		return flat.source_type_voidptr
 	}
 	if typ is types.Primitive && types.Type(typ).source_type_id() == flat.source_type_u8 {
-		return 'byteptr'
+		return flat.source_type_byteptr
 	}
-	return ''
+	return 0
 }
 
 fn (mut g FlatGen) gen_special_c_callback_arg(fn_name string, arg_idx int, arg_id flat.NodeId, expected_param types.Type) bool {
@@ -14039,15 +14042,16 @@ fn codegen_generic_type_arg_from_suffix(suffix string) string {
 }
 
 fn codegen_type_text_is_usable_for_generic_inference(typ u32) bool {
-	return codegen_type_text_is_usable_for_generic_inference_bytes(flat.source_type_name(typ))
-}
-
-fn codegen_type_text_is_usable_for_generic_inference_bytes(typ string) bool {
-	clean := trimmed_space(typ)
-	if clean.len == 0 || clean in ['void', 'unknown', 'generic'] {
+	clean := if flat.source_type_shape(typ).has(.padded) {
+		flat.source_type_id(trimmed_space(flat.source_type_name(typ)))
+	} else {
+		typ
+	}
+	if clean == 0 || clean in [flat.source_type_void, flat.source_type_unknown,
+		flat.source_type_generic] {
 		return false
 	}
-	return !codegen_generic_arg_is_unresolved_bytes(clean)
+	return !codegen_generic_arg_is_unresolved(clean)
 }
 
 fn (mut g FlatGen) specialized_generic_plain_fn_candidates(base string, args_ids []u32) []string {
@@ -17168,17 +17172,23 @@ fn c_extern_decl_specificity(a &flat.FlatAst, node flat.Node) int {
 }
 
 fn c_extern_type_specificity(raw_type_id u32) int {
-	mut clean := flat.source_type_name(raw_type_id).trim_space()
-	if clean.starts_with('mut ') {
-		clean = clean['mut '.len..].trim_space()
+	mut clean := raw_type_id
+	mut shape := flat.source_type_shape(clean)
+	if shape.has(.padded) {
+		clean = flat.source_type_id(trimmed_space(flat.source_type_name(clean)))
+		shape = flat.source_type_shape(clean)
 	}
-	if clean.len == 0 || clean == 'void' {
+	if shape.has(.mutable_type) {
+		clean = flat.source_type_id(trimmed_space(flat.source_type_name(clean)['mut '.len..]))
+		shape = flat.source_type_shape(clean)
+	}
+	if clean == 0 || clean == flat.source_type_void {
 		return 0
 	}
-	if clean in ['voidptr', 'byteptr', 'charptr'] {
+	if clean in [flat.source_type_voidptr, flat.source_type_byteptr, flat.source_type_charptr] {
 		return 1
 	}
-	if clean.starts_with('&') {
+	if shape.has(.pointer) {
 		return 3
 	}
 	return 2

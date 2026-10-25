@@ -295,7 +295,7 @@ fn (mut t Transformer) library_type_parts(text_id u32) ?[]u32 {
 	base, args, is_app := generic_app_parts(text)
 	name := if is_app { base } else { text }
 	name_id := if is_app { flat.source_type_id(base) } else { text_id }
-	if name in ['IError', 'builtin.IError'] || name in t.tc.interface_names
+	if name_id in [transform_identity_ierror, transform_identity_builtin_ierror] || name in t.tc.interface_names
 		|| name_id in t.library_bodies.receivers {
 		return none
 	}

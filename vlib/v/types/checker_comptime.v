@@ -4625,8 +4625,7 @@ fn (mut tc TypeChecker) check_prefix_expr(id flat.NodeId, node flat.Node) {
 			tc.record_error_at(.assignment_mismatch, 'cannot deference a `nil` pointer', child_id, child.pos)
 			return
 		}
-		diagnostic_name := tc.pointer_diagnostic_binding_type_name(child_id, child_type)
-		if diagnostic_name == 'nil' {
+		if tc.pointer_diagnostic_binding_type_id(child_id, child_type) == flat.source_type_nil {
 			tc.record_error_at(.assignment_mismatch, 'cannot deference a `nil` pointer', id, tc.node_value_diagnostic_pos(child_id))
 			return
 		}
@@ -4763,8 +4762,8 @@ fn (mut tc TypeChecker) check_prefix_expr(id flat.NodeId, node flat.Node) {
 // warned about. Like V1, that is only a cast of a variable or of another cast to an
 // explicit `&T`, where `T` is not a struct or an interface: `&u8(buf)` warns, while
 // `&u8(obj.data)`, `&u64(alloc())`, `charptr(buf)` and `&Node(buf)` do not.
-fn (tc &TypeChecker) voidptr_cast_needs_unsafe(child_id flat.NodeId, target_name string, target_base Type) bool {
-	if !target_name.starts_with('&') {
+fn (tc &TypeChecker) voidptr_cast_needs_unsafe(child_id flat.NodeId, target_name_id u32, target_base Type) bool {
+	if !flat.source_type_shape(target_name_id).has(.pointer) {
 		return false
 	}
 	clean_base := unalias_type(target_base)
@@ -5215,7 +5214,8 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 			return
 		}
 	}
-	if target is Alias && target.base_type is OptionType && !node.value_text().starts_with('?') {
+	if target is Alias && target.base_type is OptionType
+		&& !flat.source_type_shape(node.source_value_id()).has(.option_type) {
 		tc.record_error(.assignment_mismatch, 'alias to Option type requires to be used as Option type (?${node.value_text()}(...))', id)
 		return
 	}
@@ -5366,11 +5366,13 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 			return
 		}
 		alias_name := target_name.trim_left('&')
-		alias_target_text := flat.source_type_name(tc.type_aliases.type_id(alias_name) or {
+		alias_target_id := tc.type_aliases.type_id(alias_name) or {
 			tc.type_aliases.type_id(tc.qualify_name(alias_name)) or { u32(0) }
-		})
-		if target_name.starts_with('&') && alias_target_text.starts_with('map[')
+		}
+		if flat.source_type_shape(target_name_id).has(.pointer)
+			&& flat.source_type_shape(alias_target_id).has(.map_type)
 			&& unalias_type(actual) is Map {
+			alias_target_text := flat.source_type_name(alias_target_id)
 			tc.record_error_at(.assignment_mismatch, 'cannot cast to alias pointer `${target_name}` because `${alias_target_text}` is a value', id, tc.cast_expression_diagnostic_pos(node, target_name))
 			return
 		}
@@ -5380,7 +5382,8 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 			return
 		}
 		if infix_power_type_is_numeric(actual) && !fn_param_is_voidptr_type(target)
-			&& target_name !in ['byteptr', 'charptr'] && !tc.translated_files[tc.cur_file]
+			&& target_name_id !in [flat.source_type_byteptr, flat.source_type_charptr]
+			&& !tc.translated_files[tc.cur_file]
 			&& !tc.cur_file.ends_with('.c.v') {
 			if tc.cast_operand_is_zero(child_id) && tc.unsafe_depth == 0 {
 				kind := if struct_type_from_type(target_base) != none {
@@ -5418,7 +5421,7 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 			&& !fn_param_is_voidptr_type(target) {
 			if unalias_type(target_base) is SumType {
 				tc.record_error_at(.assignment_mismatch, 'cannot cast voidptr to `${target_name}` outside `unsafe`', id, node.pos)
-			} else if tc.voidptr_cast_needs_unsafe(child_id, target_name, target_base) {
+			} else if tc.voidptr_cast_needs_unsafe(child_id, target_name_id, target_base) {
 				tc.record_warning_at(.assignment_mismatch, 'casting voidptr to `${target_name}` is only allowed in `unsafe` code', id, node.pos)
 			}
 			return
@@ -6173,7 +6176,7 @@ fn (mut tc TypeChecker) record_interface_implementation_error_with_mut_receiver(
 		expected_key := tc.interface_method_signature_key(expected_name_id, method) or {
 			'${expected_name}.${method}'
 		}
-		if actual_name == 'char' && method == 'str'
+		if actual_name_id == flat.source_type_char && method == 'str'
 			&& tc.interface_method_is_str_requirement(expected_key) {
 			tc.record_error_at(kind, "`${actual_display}` doesn't implement method `${method}` of interface `${expected_display}`", id, pos)
 			missing_methods = true
@@ -6267,12 +6270,10 @@ fn (mut tc TypeChecker) record_interface_implementation_error_with_mut_receiver(
 }
 
 fn (tc &TypeChecker) named_type_implements_interface_method(concrete_name_id u32, iface_name_id u32, method string) bool {
-	concrete_name := flat.source_type_name(concrete_name_id)
-	iface_name := flat.source_type_name(iface_name_id)
 	expected_key := tc.interface_method_signature_key(iface_name_id, method) or {
-		'${iface_name}.${method}'
+		'${flat.source_type_name(iface_name_id)}.${method}'
 	}
-	if concrete_name == 'char' && method == 'str'
+	if concrete_name_id == flat.source_type_char && method == 'str'
 		&& tc.interface_method_is_str_requirement(expected_key) {
 		return false
 	}
@@ -6591,7 +6592,9 @@ fn (mut tc TypeChecker) check_cast_from_string(id flat.NodeId, node flat.Node, c
 	}
 	expr := tc.source_text_for_node(child_id)
 	clean_target := unalias_type(target)
-	target_name := if node.value_text().len > 0 { node.value_text() } else { target.name() }
+	target_source_id := node.source_value_id()
+	target_name_id := if target_source_id != 0 { target_source_id } else { target.source_type_id() }
+	target_name := flat.source_type_name(target_name_id)
 	if clean_target is USize {
 		tc.record_error_at(.assignment_mismatch, 'cannot cast type `${actual.name()}` to `${target_name}`', id, node.pos)
 		return true
@@ -6631,8 +6634,9 @@ fn (mut tc TypeChecker) check_cast_from_string(id flat.NodeId, node flat.Node, c
 		if clean_target.base_type is Alias && unalias_type(clean_target.base_type) is String {
 			return false
 		}
-		if target_name in ['voidptr', 'byteptr', 'charptr'] {
-			outside_unsafe := if target_name == 'voidptr' || tc.unsafe_depth > 0 {
+		if target_name_id in [flat.source_type_voidptr, flat.source_type_byteptr,
+			flat.source_type_charptr] {
+			outside_unsafe := if target_name_id == flat.source_type_voidptr || tc.unsafe_depth > 0 {
 				''
 			} else {
 				' outside `unsafe`'
@@ -7874,16 +7878,16 @@ fn (mut tc TypeChecker) check_comptime_match_diagnostics(id flat.NodeId, node fl
 		tc.record_error_at(.condition_mismatch, 'definition of `${subject}` is unknown at compile time', id, subject_pos)
 		has_error = true
 	}
-	subject_type := if subject.starts_with('$') {
+	subject_type_id := if subject.starts_with('$') {
 		match subject {
-			'$float' { 'f64' }
-			'$string' { 'string' }
-			else { 'int' }
+			'$float' { flat.source_type_f64 }
+			'$string' { flat.source_type_string }
+			else { flat.source_type_int }
 		}
 	} else if typ := tc.cur_scope.lookup(subject) {
-		unalias_type(typ).name()
+		unalias_type(typ).source_type_id()
 	} else {
-		'unknown'
+		flat.source_type_unknown
 	}
 	for offset := 7; offset + 3 < metadata.len; offset += 4 {
 		pattern := metadata[offset]
@@ -7902,7 +7906,8 @@ fn (mut tc TypeChecker) check_comptime_match_diagnostics(id flat.NodeId, node fl
 			continue
 		}
 		if match_kind == 'value' && pattern.len >= 2 && pattern[0] in [`'`, `"`]
-			&& subject_type != 'string' {
+			&& subject_type_id != flat.source_type_string {
+			subject_type := flat.source_type_name(subject_type_id)
 			tc.record_error_at(.condition_mismatch, 'can not matching a string value(`${pattern}`) in a non string type `\$match`, `${subject}` type is `${subject_type}`', id, pattern_pos)
 			has_error = true
 		}
@@ -9263,9 +9268,11 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 			} else {
 				node.pos
 			}
-			lhs_name := tc.diagnostic_expr_type_name(lhs_id, lhs_type)
-			rhs_name := tc.diagnostic_expr_type_name(rhs_id, rhs_type)
-			if lhs_name == rhs_name {
+			lhs_name_id := tc.diagnostic_expr_type_id(lhs_id, lhs_type)
+			rhs_name_id := tc.diagnostic_expr_type_id(rhs_id, rhs_type)
+			lhs_name := flat.source_type_name(lhs_name_id)
+			rhs_name := flat.source_type_name(rhs_name_id)
+			if lhs_name_id == rhs_name_id {
 				tc.record_error_at(.condition_mismatch, 'undefined operation `${lhs_name}` ${op} `${rhs_name}`', id, diagnostic_pos)
 			} else {
 				tc.record_error_at(.condition_mismatch, 'mismatched types `${lhs_name}` and `${rhs_name}`', id, diagnostic_pos)
@@ -9456,9 +9463,11 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 			|| tc.infix_operator_return_type(node.op, lhs_type, rhs_type) != none {
 			return
 		}
-		lhs_name := tc.diagnostic_expr_type_name(lhs_id, lhs_type)
-		rhs_name := tc.diagnostic_expr_type_name(rhs_id, rhs_type)
-		if lhs_clean is Struct && rhs_clean is Struct && lhs_name == rhs_name
+		lhs_name_id := tc.diagnostic_expr_type_id(lhs_id, lhs_type)
+		rhs_name_id := tc.diagnostic_expr_type_id(rhs_id, rhs_type)
+		lhs_name := flat.source_type_name(lhs_name_id)
+		rhs_name := flat.source_type_name(rhs_name_id)
+		if lhs_clean is Struct && rhs_clean is Struct && lhs_name_id == rhs_name_id
 			&& !tc.type_has_infix_operator_method(lhs_type, node.op)
 			&& !tc.type_has_infix_operator_method(rhs_type, node.op) {
 			op := infix_operator_name(node.op) or { '' }
@@ -21570,9 +21579,9 @@ fn (mut tc TypeChecker) record_compound_assignment_operand_errors(op flat.Op, lh
 	] {
 		return
 	}
-	lhs_binding_name := tc.pointer_diagnostic_binding_type_name(lhs_id, lhs_type)
+	lhs_binding_id := tc.pointer_diagnostic_binding_type_id(lhs_id, lhs_type)
 	if op in [.plus_assign, .minus_assign] && unalias_type(lhs_type) is Pointer
-		&& lhs_binding_name !in ['voidptr', 'nil']
+		&& lhs_binding_id !in [flat.source_type_voidptr, flat.source_type_nil]
 		&& (rhs_type.is_integer() || tc.a.node(rhs_id).kind == .int_literal) {
 		lhs := tc.a.node(lhs_id)
 		is_implicitly_dereferenced_mut_param := lhs.kind == .ident
@@ -21660,8 +21669,8 @@ fn (mut tc TypeChecker) record_compound_assignment_operand_errors(op flat.Op, lh
 		tc.record_error_at(.assignment_mismatch, 'undefined operation `${lhs_type.name()}` - `${rhs_type.name()}`', lhs_id, tc.compound_assignment_operator_pos(lhs_id, rhs_id, op_text))
 		return
 	}
-	lhs_name := lhs_binding_name
-	rhs_name := tc.diagnostic_expr_type_name(rhs_id, rhs_type)
+	lhs_name_id := lhs_binding_id
+	rhs_name_id := tc.diagnostic_expr_type_id(rhs_id, rhs_type)
 	rhs_node := tc.a.node(rhs_id)
 	rhs_is_integer := unalias_type(rhs_type).is_integer() || rhs_node.kind == .int_literal
 	lhs_is_string := unalias_type(lhs_type) is String
@@ -21677,15 +21686,15 @@ fn (mut tc TypeChecker) record_compound_assignment_operand_errors(op flat.Op, lh
 		&& (unalias_type(rhs_type) is Primitive || unalias_type(rhs_type) is String)
 	lhs_supports := match op {
 		.plus_assign {
-			infix_power_type_is_numeric(lhs_type) || lhs_name == 'string'
-				|| lhs_name == 'rune' || (unalias_type(lhs_type) is Pointer
-				&& lhs_name !in ['voidptr', 'nil'] && rhs_is_integer)
+			infix_power_type_is_numeric(lhs_type) || lhs_name_id == flat.source_type_string
+				|| lhs_name_id == flat.source_type_rune || (unalias_type(lhs_type) is Pointer
+				&& lhs_name_id !in [flat.source_type_voidptr, flat.source_type_nil] && rhs_is_integer)
 				|| lhs_is_primitive_alias
 		}
 		.minus_assign, .mul_assign, .div_assign, .mod_assign {
 			infix_power_type_is_numeric(lhs_type)
 				|| (op == .minus_assign && unalias_type(lhs_type) is Pointer
-					&& lhs_name !in ['voidptr', 'nil'] && rhs_is_integer)
+					&& lhs_name_id !in [flat.source_type_voidptr, flat.source_type_nil] && rhs_is_integer)
 				|| lhs_is_primitive_alias
 		}
 		.amp_assign, .pipe_assign, .xor_assign, .left_shift_assign, .right_shift_assign,
@@ -21700,6 +21709,7 @@ fn (mut tc TypeChecker) record_compound_assignment_operand_errors(op flat.Op, lh
 		if lhs_type is Unknown && tc.fn_context.generic_params.len > 0 {
 			return
 		}
+		lhs_name := flat.source_type_name(lhs_name_id)
 		message := if op in [.plus_assign, .minus_assign] {
 			'operator `${op_text}` not defined on left operand type `${lhs_name}`'
 		} else {
@@ -21712,14 +21722,14 @@ fn (mut tc TypeChecker) record_compound_assignment_operand_errors(op flat.Op, lh
 	}
 	rhs_supports := match op {
 		.plus_assign {
-			if lhs_name == 'string' || lhs_is_string {
-				rhs_name in ['string', 'rune', 'char'] || clean_rhs_type is String
+			if lhs_name_id == flat.source_type_string || lhs_is_string {
+				rhs_name_id in [flat.source_type_string, flat.source_type_rune, flat.source_type_char] || clean_rhs_type is String
 			} else {
 				infix_power_type_is_numeric(rhs_type) || rhs_is_primitive_alias
 			}
 		}
 		.minus_assign {
-			lhs_name != 'string'
+			lhs_name_id != flat.source_type_string
 				&& (infix_power_type_is_numeric(rhs_type) || rhs_is_primitive_alias)
 		}
 		.mul_assign, .div_assign, .mod_assign {
@@ -21736,6 +21746,8 @@ fn (mut tc TypeChecker) record_compound_assignment_operand_errors(op flat.Op, lh
 	if rhs_supports {
 		return
 	}
+	lhs_name := flat.source_type_name(lhs_name_id)
+	rhs_name := flat.source_type_name(rhs_name_id)
 	if op in [.plus_assign, .minus_assign] {
 		tc.record_error(.assignment_mismatch, 'invalid right operand: ${lhs_name} ${op_text} ${rhs_name}', rhs_id)
 	} else {

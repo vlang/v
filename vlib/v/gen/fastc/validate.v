@@ -648,8 +648,9 @@ fn (g &Parser) render_enum_alias_member_references(tokens []FastcExpressionToken
 	mut rendered := source
 	for owner_index in 0 .. tokens.len - 2 {
 		type_key := g.enum_member_owner_type_key(tokens, owner_index) or { continue }
-		enum_type_key := g.underlying_enum_type_key(flat.source_type_id(type_key)) or { continue }
-		if flat.source_type_name(enum_type_key) == type_key {
+		type_key_id := flat.source_type_id(type_key)
+		enum_type_key := g.underlying_enum_type_key(type_key_id) or { continue }
+		if enum_type_key == type_key_id {
 			continue
 		}
 		member := tokens[owner_index + 2].lit

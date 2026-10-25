@@ -401,10 +401,11 @@ fn (mut g Parser) try_read_atomic_member_expression(stops []token.Token, allow_m
 		return FastcAtomicExpression{}
 	}
 	type_name := flat.source_type_name(local.typ)
-	base_name := fastc_trim_pointer_suffix(type_name)
+	base_type := fastc_trim_pointer_type(local.typ)
+	base_name := flat.source_type_name(base_type)
 	is_pointer := type_name.ends_with('*')
 	if type_name.len - base_name.len > 1 || (local.is_reference && !is_pointer)
-		|| base_name in ['Option', '__v_result'] || base_name.starts_with('FixedArray_')
+		|| base_type in [fastc_type_option, fastc_type_result] || base_name.starts_with('FixedArray_')
 		|| base_name.starts_with('Map_') || base_name in g.sum_types
 		|| g.alias_base_types.type_id(base_name) != none {
 		return FastcAtomicExpression{}
@@ -478,9 +479,8 @@ fn (g &Parser) atomic_member_value_type_is_plain(typ u32) bool {
 		return true
 	}
 	type_name := flat.source_type_name(typ)
-	base_name := fastc_trim_pointer_suffix(type_name)
-	if type_name.len - base_name.len != 1 { return false }
-	base := flat.source_type_id(base_name)
+	base := fastc_trim_pointer_type(typ)
+	if type_name.len - flat.source_type_name(base).len != 1 { return false }
 	return fastc_simple_call_scalar_type(base) || g.is_plain_aggregate_value_type(base)
 }
 
@@ -5729,7 +5729,7 @@ fn (g &Parser) plain_local_direct_member_field(tokens []FastcExpressionToken) ?&
 		return none
 	}
 	type_name := flat.source_type_name(local.typ)
-	if fastc_is_pointer_type(local.typ) || type_name in ['Option', '__v_result']
+	if fastc_is_pointer_type(local.typ) || local.typ in [fastc_type_option, fastc_type_result]
 		|| type_name.starts_with('Array_') || type_name.starts_with('Map_')
 		|| type_name.starts_with('FixedArray_') || type_name in g.sum_types
 		|| g.alias_base_types.type_id(type_name) != none {

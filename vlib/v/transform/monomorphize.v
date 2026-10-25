@@ -14079,9 +14079,9 @@ fn (t &Transformer) callee_matches_generic_args(callee flat.Node, decl GenericFn
 // `fn_name[Type]` list into a specialization ident.
 fn (mut t Transformer) specialized_generic_fn_type_text(decl GenericFnDecl, args_ids []u32) u32 {
 	params := flat.TypeTextList{ ids: t.specialized_generic_call_param_type_texts(decl, args_ids) }.names()
-	ret_type := flat.source_type_name(t.specialized_fn_return_type_text(decl, args_ids))
-	return flat.source_type_id('fn (${params.join(', ')})${if ret_type.len > 0 && ret_type != 'void' {
-		' ${ret_type}'
+	ret_type := t.specialized_fn_return_type_text(decl, args_ids)
+	return flat.source_type_id('fn (${params.join(', ')})${if ret_type != 0 && ret_type != flat.source_type_void {
+		' ${flat.source_type_name(ret_type)}'
 	} else {
 		''
 	}}')

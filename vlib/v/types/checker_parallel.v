@@ -3881,7 +3881,7 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 	if raw_return_type.starts_with('!?') || raw_return_type.starts_with('?!') {
 		tc.record_error_at(.return_mismatch, 'the type must be Option or Result', id, tc.nested_option_result_marker_pos(node))
 	}
-	if raw_return_type == '?void' {
+	if trimmed_source_type_id(node.typ) == checker_option_void_source_type {
 		tc.record_error_at(.return_mismatch, 'use `?` instead of `?void`', id, tc.option_void_payload_diagnostic_pos(node))
 	}
 	if raw_return_type.ends_with('?') && !raw_return_type.starts_with('?') {

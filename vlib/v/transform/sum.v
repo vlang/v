@@ -1934,8 +1934,8 @@ fn (t &Transformer) fixed_array_sum_literal_elem_matches(literal_elem_id u32, va
 }
 
 fn (t &Transformer) fixed_array_sum_literal_elem_unknown(literal_elem_id u32) bool {
-	literal_elem := flat.source_type_name(literal_elem_id)
-	return literal_elem_id == u32(0) || literal_elem in ['unknown', 'void', 'array']
+	return literal_elem_id == u32(0) || literal_elem_id in [flat.source_type_unknown,
+		flat.source_type_void, transform_source_type_array]
 }
 
 fn (t &Transformer) single_pointer_sum_nil_variant(expr_id flat.NodeId, sum_name_id u32) ?u32 {

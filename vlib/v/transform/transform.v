@@ -2737,8 +2737,11 @@ fn (t &Transformer) interface_boxed_impl_name_is_direct(name_id u32) bool {
 		|| name.starts_with('map[') || name.starts_with('builtin.') {
 		return true
 	}
-	if name in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'uint', 'u8', 'u16', 'u32',
-		'u64', 'f32', 'f64', 'string', 'char', 'rune', 'voidptr'] {
+	if name_id in [flat.source_type_bool, flat.source_type_int, flat.source_type_i8,
+		flat.source_type_i16, flat.source_type_i32, flat.source_type_i64, flat.source_type_isize,
+		flat.source_type_uint, flat.source_type_u8, flat.source_type_u16, flat.source_type_u32,
+		flat.source_type_u64, flat.source_type_f32, flat.source_type_f64, flat.source_type_string,
+		flat.source_type_char, flat.source_type_rune, flat.source_type_voidptr] {
 		return true
 	}
 	if name in t.tc.structs || t.tc.type_aliases.contains(name) || name in t.tc.enum_names {
@@ -17115,8 +17118,7 @@ fn (mut t Transformer) compound_assign_operator_type(lhs_id flat.NodeId, lhs_typ
 }
 
 fn (t &Transformer) compound_assign_operator_type_candidate(candidate_id u32, op_name string) ?u32 {
-	candidate := flat.source_type_name(candidate_id)
-	clean_source_id := t.trim_pointer_type(flat.source_type_id(trimmed_transform_text(candidate)))
+	clean_source_id := t.trim_pointer_type(t.trimmed_type_id(candidate_id))
 	clean_comparison_type_id_4 := clean_source_id
 	clean_source_id_2 := clean_comparison_type_id_4
 	clean_source_id_6 := clean_source_id_2
@@ -17125,7 +17127,8 @@ fn (t &Transformer) compound_assign_operator_type_candidate(candidate_id u32, op
 		return none
 	}
 	if is_numeric_type_name(clean_source_id_6)
-		|| clean in ['bool', 'char', 'string', 'voidptr', 'byteptr', 'charptr'] {
+		|| clean_source_id_6 in [flat.source_type_bool, flat.source_type_char, flat.source_type_string,
+			flat.source_type_voidptr, flat.source_type_byteptr, flat.source_type_charptr] {
 		return none
 	}
 	// Prefer an operator declared on the alias itself before resolving the alias
@@ -18602,7 +18605,8 @@ fn (mut t Transformer) coerce_transformed_expr_to_type(expr flat.NodeId, source_
 				return t.make_cast(target_id, expr, target_id)
 			}
 		}
-		if expr_type in ['voidptr', '&void', 'byteptr', 'charptr'] {
+		if expr_type_id in [flat.source_type_voidptr, transform_identity_void_ref,
+			flat.source_type_byteptr, flat.source_type_charptr] {
 			return t.make_cast(target_id, expr, target_id)
 		}
 		if int(source_id) >= 0 && t.a.nodes[int(source_id)].kind == .assoc {
@@ -23700,8 +23704,10 @@ fn (t &Transformer) checked_numeric_infix_operand(id flat.NodeId, op flat.Op, is
 		// String comparisons/addition query both node types; the remaining
 		// operators reach the struct handler's LHS type query instead.
 		name_source_id_4 := t.node_type(id)
-		name := flat.source_type_name(name_source_id_4)
-		if !is_numeric_type_name(name_source_id_4) || name in ['i128', 'u128'] {
+		if !is_numeric_type_name(name_source_id_4) || name_source_id_4 in [
+			transform_source_type_i128,
+			transform_source_type_u128,
+		] {
 			return false
 		}
 		if !is_lhs && op !in [.eq, .ne] {
@@ -24234,8 +24240,8 @@ fn (mut t Transformer) transform_call_expr_inner(id flat.NodeId, node flat.Node)
 	}
 	if resolved_typ == 0 && call_node.typ != 0 {
 		call_typ_source_id_3 := t.normalize_type_alias(call_node.typ)
-		call_typ := flat.source_type_name(call_typ_source_id_3)
-		if call_typ !in ['array', 'map', 'unknown'] {
+		if call_typ_source_id_3 !in [transform_source_type_array, transform_source_type_map,
+			flat.source_type_unknown] {
 			resolved_typ = call_typ_source_id_3
 		}
 	}
@@ -27836,7 +27842,8 @@ fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.
 		child_id := t.a.child(&node, i)
 		if target_type_comparison_type_id_4 in [flat.source_type_f32, flat.source_type_f64] {
 			new_children << t.transform_expr_for_type(child_id, target_type_source_id)
-		} else if target_type in ['voidptr', 'byteptr', 'charptr'] {
+		} else if target_type_source_id in [flat.source_type_voidptr, flat.source_type_byteptr,
+			flat.source_type_charptr] {
 			new_children << t.transform_opaque_pointer_value(child_id)
 		} else {
 			new_children << t.transform_expr(child_id)

@@ -7,6 +7,10 @@ const fastc_type_legacy_option = flat.source_type_id('_option')
 const fastc_type_legacy_result = flat.source_type_id('_result')
 const fastc_type_charptr = flat.source_type_id('charptr')
 const fastc_type_char_pointer = flat.source_type_id('char*')
+const fastc_type_u8_pointer = flat.source_type_id('u8*')
+const fastc_type_voidptr_pointer = flat.source_type_id('voidptr*')
+const fastc_type_i128 = flat.source_type_id('i128')
+const fastc_type_u128 = flat.source_type_id('u128')
 const fastc_type_uint = flat.source_type_id('uint')
 const fastc_type_option = flat.source_type_id('Option')
 const fastc_type_result = flat.source_type_id('__v_result')
@@ -1622,14 +1626,13 @@ fn (g &Parser) semantic_type_key(c_type_id u32) u32 {
 }
 
 fn (g &Parser) semantic_type_key_uncached(c_type_id u32) u32 {
-	c_type := flat.source_type_name(c_type_id)
-	base := fastc_trim_pointer_suffix(c_type)
+	base_id := fastc_trim_pointer_type(c_type_id)
 	// The C ABI keeps the old typedef, while methods use the canonical V name.
-	if base == 'usize' { return flat.source_type_uint }
-	if key := g.declared_type_c_names.type_id(base) {
+	if base_id == flat.source_type_usize { return flat.source_type_uint }
+	if key := g.declared_type_c_names.type_id(flat.source_type_name(base_id)) {
 		return key
 	}
-	return if base.len == c_type.len { c_type_id } else { flat.source_type_id(base) }
+	return base_id
 }
 
 // underlying_alias_type uses the same per-file immutability contract as the
@@ -1897,27 +1900,29 @@ fn fastc_types_share_lowering_representation(actual u32, expected u32) bool {
 fn fastc_selfhost_types_share_lowering_representation(actual_id u32, expected_id u32) bool {
 	actual := flat.source_type_name(actual_id)
 	expected := flat.source_type_name(expected_id)
-	if (actual == 'byteptr' && expected == 'u8*') || (expected == 'byteptr' && actual == 'u8*') || (actual == 'charptr' && expected == 'char*') || (expected == 'charptr' && actual == 'char*') {
+	if (actual_id == flat.source_type_byteptr && expected_id == fastc_type_u8_pointer) || (expected_id == flat.source_type_byteptr && actual_id == fastc_type_u8_pointer) || (actual_id == flat.source_type_charptr && expected_id == fastc_type_char_pointer) || (expected_id == flat.source_type_charptr && actual_id == fastc_type_char_pointer) {
 		return true
 	}
 	if actual == expected + '*' || expected == actual + '*' {
 		return true
 	}
-	actual_base := fastc_trim_pointer_suffix(actual)
-	expected_base := fastc_trim_pointer_suffix(expected)
-	if (actual_base == 'array' && expected_base.starts_with('Array_')) || (expected_base == 'array' && actual_base.starts_with('Array_')) || (actual_base == 'map' && expected_base.starts_with('Map_')) || (expected_base == 'map' && actual_base.starts_with('Map_')) {
+	actual_base_id := fastc_trim_pointer_type(actual_id)
+	expected_base_id := fastc_trim_pointer_type(expected_id)
+	actual_base := flat.source_type_name(actual_base_id)
+	expected_base := flat.source_type_name(expected_base_id)
+	if (actual_base_id == fastc_type_array && expected_base.starts_with('Array_')) || (expected_base_id == fastc_type_array && actual_base.starts_with('Array_')) || (actual_base_id == fastc_type_map && expected_base.starts_with('Map_')) || (expected_base_id == fastc_type_map && actual_base.starts_with('Map_')) {
 		return true
 	}
-	if actual == 'negative integer literal' && fastc_is_unsigned_integer_type(expected_id) {
+	if actual_id == fastc_type_negative_integer_literal && fastc_is_unsigned_integer_type(expected_id) {
 		return false
 	}
 	if fastc_is_integer_expression_type(actual_id) && fastc_is_integer_type(expected_id) {
 		return true
 	}
-	if expected == 'voidptr' && fastc_is_pointer_type(actual_id) {
+	if expected_id == flat.source_type_voidptr && fastc_is_pointer_type(actual_id) {
 		return true
 	}
-	if actual == 'voidptr' && fastc_is_pointer_type(expected_id) {
+	if actual_id == flat.source_type_voidptr && fastc_is_pointer_type(expected_id) {
 		return true
 	}
 	return false

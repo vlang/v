@@ -2123,12 +2123,10 @@ fn (mut g Parser) read_if_expression() !string {
 }
 
 fn (g &Parser) option_branch_expression(wrapper_source_id u32, value_type_source_id u32, expression string) string {
-	wrapper := flat.source_type_name(wrapper_source_id)
-	value_type := flat.source_type_name(value_type_source_id)
-	if wrapper == '__v_result' && value_type.trim_right('*') == 'IError' {
+	if wrapper_source_id == fastc_type_result && fastc_trim_pointer_type(value_type_source_id) == fastc_type_ierror {
 		return '(__v_result){.err=${expression}, .state=1}'
 	}
-	if wrapper == '__v_result' && value_type == 'voidptr' && g.option_return_type != flat.source_type_voidptr {
+	if wrapper_source_id == fastc_type_result && value_type_source_id == flat.source_type_voidptr && g.option_return_type != flat.source_type_voidptr {
 		return '(__v_result){.err=(IError){._object=(voidptr)(${expression})}, .state=1}'
 	}
 	return g.option_success_expression(wrapper_source_id, value_type_source_id, expression)
@@ -2136,7 +2134,7 @@ fn (g &Parser) option_branch_expression(wrapper_source_id u32, value_type_source
 
 fn (mut g Parser) read_return_expression_branch() !string {
 	g.expect(.key_return)!
-	if g.return_type_text().trim_right('*') == 'MultiReturn' {
+	if fastc_trim_pointer_type(g.return_type) == fastc_type_multi_return {
 		mut values := []string{}
 		for {
 			value := g.read_expression([token.Token.comma, token.Token.semicolon, token.Token.rcbr])!

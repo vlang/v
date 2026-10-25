@@ -7581,7 +7581,6 @@ fn (mut p FastArm64Parser) stringify(value FastArm64Value) !FastArm64Value {
 }
 
 fn (mut p FastArm64Parser) parse_if_expression(expected_type_name_source_id u32) !FastArm64Value {
-	expected_type_name := flat.source_type_name(expected_type_name_source_id)
 	p.push_local_scope()
 	p.expect(.key_if)!
 	p.validate_if_condition()!
@@ -7634,7 +7633,7 @@ fn (mut p FastArm64Parser) parse_if_expression(expected_type_name_source_id u32)
 	p.mark_terminated(p.cur_block)
 	p.cur_block = then_block
 	p.expect(.lcbr)!
-	then_value := if expected_type_name == '' {
+	then_value := if expected_type_name_source_id == 0 {
 		p.parse_expression(0)!
 	} else {
 		p.parse_contextual_value(expected_type_name_source_id)!
@@ -11634,7 +11633,7 @@ fn fast_arm64_pointer_element_type_name(type_name_id u32) u32 {
 	if type_name.ends_with('*') {
 		return flat.source_type_id(type_name[..type_name.len - 1])
 	}
-	if type_name in ['voidptr', 'byteptr', 'charptr'] {
+	if type_name_id in [flat.source_type_voidptr, flat.source_type_byteptr, flat.source_type_charptr] {
 		return flat.source_type_u8
 	}
 	return type_name_id

@@ -3647,7 +3647,10 @@ fn (t &Transformer) array_rhs_is_push_many(lhs_id flat.NodeId, rhs_id flat.NodeI
 		}
 		if lhs_resolved := t.tc.expr_type(lhs_id) {
 			lhs_clean := types.unwrap_pointer(lhs_resolved)
-			if lhs_clean is types.Array && clean_rhs_type in ['array', 'Array'] {
+			if lhs_clean is types.Array && clean_rhs_type_id in [
+				transform_source_type_array,
+				transform_identity_array_abi_spelling,
+			] {
 				return t.tc.c_type(lhs_clean.elem_type) == 'void*'
 			}
 		}
@@ -3655,7 +3658,7 @@ fn (t &Transformer) array_rhs_is_push_many(lhs_id flat.NodeId, rhs_id flat.NodeI
 	if lhs_elem_is_interface {
 		return false
 	}
-	if clean_rhs_type in ['array', 'Array'] {
+	if clean_rhs_type_id in [transform_source_type_array, transform_identity_array_abi_spelling] {
 		return t.array_append_elem_c_type(elem_type_id) !in ['array', 'Array']
 	}
 	return false
@@ -7176,8 +7179,12 @@ fn (t &Transformer) array_map_result_can_retain_element_address(type_name_id u32
 		return false
 	}
 	if isnil(t.tc) {
-		clean := flat.source_type_name(t.normalize_type_alias(type_name_id))
-		return clean.starts_with('&') || clean in ['voidptr', 'byteptr', 'charptr']
+		clean := t.normalize_type_alias(type_name_id)
+		return flat.source_type_shape(clean).has(.pointer) || clean in [
+			flat.source_type_voidptr,
+			flat.source_type_byteptr,
+			flat.source_type_charptr,
+		]
 	}
 	mut seen := map[u32]bool{}
 	return t.array_map_type_can_hold_pointer(t.tc.parse_type(type_name_id), mut seen)

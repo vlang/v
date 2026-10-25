@@ -52,6 +52,10 @@ const wasm_bench_runtime_stub_names = ['bench.current_rss_kb', 'bench.macos_rss_
 const ssa_array_source_type = flat.source_type_id('array')
 const ssa_map_source_type = flat.source_type_id('map')
 const ssa_thread_source_type = flat.source_type_id('thread')
+const ssa_nominal_array_source_type = flat.source_type_id('Array')
+const ssa_nominal_map_source_type = flat.source_type_id('Map')
+const ssa_i128_source_type = flat.source_type_id('i128')
+const ssa_u128_source_type = flat.source_type_id('u128')
 const ssa_option_source_type = flat.source_type_id('__v_option')
 const ssa_builtin_array_source_type = flat.source_type_id('builtin.array')
 const ssa_array_flags_source_type = flat.source_type_id('ArrayFlags')
@@ -7695,8 +7699,8 @@ fn (b &Builder) for_in_container_type_name(container_id flat.NodeId) u32 {
 
 // for_in_array_elem_type_name supports for in array elem type name handling for Builder.
 fn (b &Builder) for_in_array_elem_type_name(container_id flat.NodeId, container_type_id u32) u32 {
-	container_type := flat.source_type_name(container_type_id)
-	clean := container_type.trim_left('&')
+	clean_id := ssa_pointer_base_source_type(container_type_id)
+	clean := flat.source_type_name(clean_id)
 	if clean.starts_with('[]') {
 		return flat.source_type_id(clean[2..])
 	}
@@ -7706,7 +7710,7 @@ fn (b &Builder) for_in_array_elem_type_name(container_id flat.NodeId, container_
 			return flat.source_type_id(clean[idx + 1..])
 		}
 	}
-	if clean == 'string' {
+	if clean_id == flat.source_type_string {
 		return flat.source_type_u8
 	}
 	if b.valid_node_id(container_id) {
@@ -8174,7 +8178,10 @@ fn (mut b Builder) build_for_in(node flat.Node) {
 		b.build_string_for_in(node, key_id, val_id, container_id, body_start, label)
 		return
 	}
-	if container_type.starts_with('map[') || container_type == 'map' || container_type == 'Map' {
+	if container_type.starts_with('map[') || container_type_source_id in [
+		ssa_map_source_type,
+		ssa_nominal_map_source_type,
+	] {
 		b.build_map_for_in(node, key_id, val_id, container_id, body_start, container_type_source_id,
 			label)
 		return
@@ -11250,10 +11257,11 @@ fn (mut b Builder) build_thread_wait(id flat.NodeId, node flat.Node, thread_id f
 	join_ref := b.m.add_value(.func_ref, b.void_type, 'pthread_join', b.fn_ids['pthread_join'])
 	status := b.emit3(.call, b.i32_type, join_ref, thread_handle, result_slot)
 	b.check_thread_status(status)
-	thread_type := flat.source_type_name(b.receiver_type_name(thread_id)).trim_left('&')
+	thread_type_id := ssa_pointer_base_source_type(b.receiver_type_name(thread_id))
+	thread_type := flat.source_type_name(thread_type_id)
 	ret_type := if thread_type.starts_with('thread ') {
 		b.resolve_type(flat.source_type_id(thread_type[7..]))
-	} else if thread_type == 'thread' {
+	} else if thread_type_id == ssa_thread_source_type {
 		b.void_type
 	} else {
 		b.call_expr_result_type(id, node)
@@ -14158,10 +14166,10 @@ fn (mut b Builder) resolve_type(name_id u32) TypeID {
 	// of being handed a wrong number. The other 32-bit targets keep their own
 	// resolution path, and a 64-bit target either supports u128 or refuses it in
 	// its own backend.
-	if b.m.target.ptr_size == 4 && (name == 'u128' || name == 'i128') {
+	if b.m.target.ptr_size == 4 && name_id in [ssa_u128_source_type, ssa_i128_source_type] {
 		panic('wasm: `${name}` is not supported on the wasm target; wasm has no 128-bit integer type')
 	}
-	if name == 'thread' || name.starts_with('thread ') {
+	if name_id == ssa_thread_source_type || name.starts_with('thread ') {
 		return b.u64_type
 	}
 	if name.len > 1 && (name[0] == `?` || name[0] == `!`) {
@@ -14191,7 +14199,7 @@ fn (mut b Builder) resolve_type(name_id u32) TypeID {
 		return b.m.type_store.get_ptr(elem_type)
 	}
 	// Nominal compiler descriptors can use these names without being runtime containers.
-	if name in ['Array', 'Map'] {
+	if name_id in [ssa_nominal_array_source_type, ssa_nominal_map_source_type] {
 		if b.cur_module.len > 0 && b.cur_module != 'main' && b.cur_module != 'builtin' {
 			if typ := b.struct_types[b.cur_module + '.' + name] {
 				return typ
@@ -14201,13 +14209,13 @@ fn (mut b Builder) resolve_type(name_id u32) TypeID {
 			return typ
 		}
 	}
-	if name.starts_with('[]') || name == 'array' || name == 'Array' {
+	if name.starts_with('[]') || name_id in [ssa_array_source_type, ssa_nominal_array_source_type] {
 		return b.array_type
 	}
-	if name == 'strings.Builder' {
+	if name_id == ssa_strings_builder_source_type {
 		return b.array_type
 	}
-	if name.starts_with('map[') || name == 'map' || name == 'Map' {
+	if name.starts_with('map[') || name_id in [ssa_map_source_type, ssa_nominal_map_source_type] {
 		return b.map_type
 	}
 	if b.is_enum_type_name(name_id) {
@@ -14235,7 +14243,7 @@ fn (mut b Builder) resolve_type(name_id u32) TypeID {
 	if typ := b.struct_types[short_name] {
 		return typ
 	}
-	if name == 'Builder' {
+	if name_id == ssa_builder_source_type {
 		return b.array_type
 	}
 	return b.i64_type

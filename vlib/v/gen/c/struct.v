@@ -8,6 +8,7 @@ import v.types { unalias_type }
 import strings
 
 const struct_init_option_source_type = flat.source_type_id('__v_option')
+const cgen_embed_file_data_source_type = flat.source_type_id('embed_file.EmbedFileData')
 
 struct PromotedStructInitField {
 	root       string
@@ -347,8 +348,7 @@ fn (mut g FlatGen) gen_struct_field_expr_for_field(value_id flat.NodeId, struct_
 }
 
 fn (mut g FlatGen) gen_embed_file_uncompressed_field(value_id flat.NodeId, struct_name_id u32, field_name string) bool {
-	struct_name := flat.source_type_name(struct_name_id)
-	if field_name != 'uncompressed' || struct_name != 'embed_file.EmbedFileData' {
+	if field_name != 'uncompressed' || struct_name_id != cgen_embed_file_data_source_type {
 		return false
 	}
 	mut data_id := value_id

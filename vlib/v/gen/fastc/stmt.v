@@ -1185,7 +1185,7 @@ fn (mut g Parser) parse_return() !bool {
 		})
 		return true
 	}
-	if g.selfhost && (g.return_type_text().trim_right('*') == 'MultiReturn' || (g.return_type in [
+	if g.selfhost && (fastc_trim_pointer_type(g.return_type) == fastc_type_multi_return || (g.return_type in [
 		fastc_type_option,
 		fastc_type_result,
 	] && g.option_return_type == fastc_type_multi_return)) {
@@ -3210,7 +3210,11 @@ fn (mut g Parser) parse_declaration_after_name(name string, is_mut bool, is_stat
 	if expression.starts_with('"') {
 		// C's typeof preserves the literal's array type. Decay C strings to a
 		// pointer while retaining the ordinary V string runtime type.
-		declaration_type = if local_type == 'charptr' { 'charptr' } else { 'string' }
+		declaration_type = if local_type_id == flat.source_type_charptr {
+			'charptr'
+		} else {
+			'string'
+		}
 	} else if normalized_type == flat.source_type_int {
 		// V's platform `int` is i64 on 64-bit targets. C `__typeof__` would keep
 		// integer literals and C-int expressions at 32 bits and silently truncate.

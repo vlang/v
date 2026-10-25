@@ -10,6 +10,11 @@ import v.vmod
 import v.workers
 
 const checker_option_void_source_type = flat.source_type_id('?void')
+const checker_tail_source_any = flat.source_type_id('any')
+const checker_tail_source_int_literal = flat.source_type_id('int_literal')
+const checker_tail_source_float_literal = flat.source_type_id('float_literal')
+const checker_tail_source_diagnostic_int_literal = flat.source_type_id('int literal')
+const checker_tail_source_diagnostic_float_literal = flat.source_type_id('float literal')
 
 // last_index_between returns the last occurrence of needle that starts at or
 // after lo and ends at or before end, scanning by index: a substr copy of the
@@ -32,22 +37,23 @@ fn last_index_between(source string, needle string, lo int, end int) int {
 	return -1
 }
 
-fn (tc &TypeChecker) pointer_diagnostic_binding_type_name(id flat.NodeId, typ &Type) string {
-	type_name := typ.name()
+fn (tc &TypeChecker) pointer_diagnostic_binding_type_id(id flat.NodeId, typ &Type) u32 {
+	type_name_id := tc.type_name(typ)
 	// Only pointer-flavored bindings can resolve to `nil`/`voidptr`; skip the
 	// source scan for every other type (this runs for each compound assign).
-	if unalias_type(typ) !is Pointer && type_name !in ['voidptr', 'nil'] {
-		return type_name
+	if unalias_type(typ) !is Pointer && type_name_id !in [flat.source_type_voidptr,
+		flat.source_type_nil] {
+		return type_name_id
 	}
 	if !tc.valid_node_id(id) {
-		return type_name
+		return type_name_id
 	}
 	node := tc.a.node(id)
 	if node.kind != .ident || node.value.len == 0 || !node.pos.is_valid() {
-		return type_name
+		return type_name_id
 	}
-	file := tc.a.source_files[node.pos.id] or { return type_name }
-	source := tc.source_texts_by_file[file.name] or { return type_name }
+	file := tc.a.source_files[node.pos.id] or { return type_name_id }
+	source := tc.source_texts_by_file[file.name] or { return type_name_id }
 	end := int_min(int_max(node.pos.offset, 0), source.len)
 	// A local `x := ...` declaration can only appear inside the enclosing
 	// function; bounding the backward scan there keeps misses (params, struct
@@ -71,13 +77,17 @@ fn (tc &TypeChecker) pointer_diagnostic_binding_type_name(id flat.NodeId, typ &T
 		// `&Node(unsafe { nil })` remains a pointer and may be assigned before
 		// it is dereferenced.
 		if compact_rhs in ['nil', 'unsafe{nil}'] {
-			return 'nil'
+			return flat.source_type_nil
 		}
 		if compact_rhs.starts_with('voidptr(') {
-			return 'voidptr'
+			return flat.source_type_voidptr
 		}
 	}
-	return type_name
+	return type_name_id
+}
+
+fn (tc &TypeChecker) pointer_diagnostic_binding_type_name(id flat.NodeId, typ &Type) string {
+	return flat.source_type_name(tc.pointer_diagnostic_binding_type_id(id, typ))
 }
 
 fn (tc &TypeChecker) compound_assignment_source_operator(lhs_id flat.NodeId, rhs_id flat.NodeId, op flat.Op) string {
@@ -122,19 +132,39 @@ fn (tc &TypeChecker) compound_assignment_operator_pos(lhs_id flat.NodeId, rhs_id
 	return lhs.pos
 }
 
-fn (tc &TypeChecker) diagnostic_expr_type_name(id flat.NodeId, typ &Type) string {
+fn (tc &TypeChecker) diagnostic_expr_type_id(id flat.NodeId, typ &Type) u32 {
 	clean := unalias_type(typ)
 	if clean is FnType {
 		if display := tc.expr_diagnostic_fn_type(id) {
-			return display
+			return flat.source_type_id(display)
 		}
-		return Type(clean).name().replace_once('fn(', 'fn (')
+		return diagnostic_fn_spacing_type_id(tc.type_name(clean))
 	}
-	return match tc.a.node(id).kind {
-		.int_literal { 'int literal' }
-		.float_literal { 'float literal' }
-		else { tc.diagnostic_type_name(typ).replace_once('fn(', 'fn (') }
+	match tc.a.node(id).kind {
+		.int_literal { return checker_tail_source_diagnostic_int_literal }
+		.float_literal { return checker_tail_source_diagnostic_float_literal }
+		else {}
 	}
+	type_name_id := tc.type_name(typ)
+	if !flat.source_type_shape(type_name_id).has(.dotted) {
+		return diagnostic_fn_spacing_type_id(type_name_id)
+	}
+	return flat.source_type_id(tc.diagnostic_type_name(typ).replace_once('fn(', 'fn ('))
+}
+
+fn diagnostic_fn_spacing_type_id(type_name_id u32) u32 {
+	if scalar_builtin_type_name_id(type_name_id) {
+		return type_name_id
+	}
+	name := flat.source_type_name(type_name_id)
+	if !name.contains('fn(') {
+		return type_name_id
+	}
+	return flat.source_type_id(name.replace_once('fn(', 'fn ('))
+}
+
+fn (tc &TypeChecker) diagnostic_expr_type_name(id flat.NodeId, typ &Type) string {
+	return flat.source_type_name(tc.diagnostic_expr_type_id(id, typ))
 }
 
 fn (tc &TypeChecker) diagnostic_type_name(typ &Type) string {
@@ -1492,9 +1522,9 @@ fn (mut tc TypeChecker) check_postfix(id flat.NodeId, node flat.Node) {
 		}
 		child_type_ref := child_type
 		if child_type is Pointer {
-			if tc.pointer_diagnostic_binding_type_name(child_id, child_type_ref) in [
-				'voidptr',
-				'nil',
+			if tc.pointer_diagnostic_binding_type_id(child_id, child_type_ref) in [
+				flat.source_type_voidptr,
+				flat.source_type_nil,
 			] {
 				tc.record_error_at(.assignment_mismatch, 'invalid operation: ${op} (non-numeric type `voidptr`)', id, tc.prefix_operator_pos(id, op))
 				return
@@ -3563,11 +3593,16 @@ fn (tc &TypeChecker) current_fn_has_invalid_literal_return_type() bool {
 	if node_id < 0 || node_id >= tc.a.nodes.len {
 		return false
 	}
-	mut typ := tc.a.nodes[node_id].typ_text().trim_space()
-	for typ.starts_with('?') || typ.starts_with('!') {
-		typ = typ[1..].trim_space()
+	mut type_id := trimmed_source_type_id(tc.a.nodes[node_id].typ)
+	if flat.source_type_shape(type_id).has(.optional) {
+		mut typ := flat.source_type_name(type_id)
+		for typ.starts_with('?') || typ.starts_with('!') {
+			typ = typ[1..].trim_space()
+		}
+		type_id = flat.source_type_id(typ)
 	}
-	return typ in ['any', 'int_literal', 'float_literal']
+	return type_id in [checker_tail_source_any, checker_tail_source_int_literal,
+		checker_tail_source_float_literal]
 }
 
 fn (tc &TypeChecker) current_fn_has_invalid_option_void_return_type() bool {
@@ -16858,19 +16893,30 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			&& !is_channel_builtin_method_call_name(info.name, 'try_push')
 			&& tc.a.node(arg_id).kind in [.int_literal, .float_literal, .bool_literal, .char_literal,
 				.string_literal, .string_interp] {
-			mut reference_name := call_argument_type_name(expected)
+			mut raw_reference_name_id := u32(0)
 			if !info.has_receiver {
 				if raw_params_source_ids := tc.fn_param_type_texts.type_ids(info.name) {
 					if param_idx < raw_params_source_ids.len && (raw_params_source_ids[param_idx]) != 0 {
-						reference_name = flat.source_type_name(raw_params_source_ids[param_idx])
+						raw_reference_name_id = raw_params_source_ids[param_idx]
 					}
 				}
+			}
+			reference_name_id := if raw_reference_name_id != 0 {
+				raw_reference_name_id
+			} else {
+				tc.type_name(expected)
 			}
 			c_string_literal := (tc.a.node(arg_id).kind == .char_literal
 				&& tc.a.node(arg_id).value.starts_with('c:') && actual is Pointer)
 				|| tc.raw_string_literal_pointer_compatible(arg_id, expected)
 			if !info.name.starts_with('C.') && !c_string_literal
-				&& reference_name !in ['voidptr', 'byteptr', 'charptr'] {
+				&& reference_name_id !in [flat.source_type_voidptr, flat.source_type_byteptr,
+					flat.source_type_charptr] {
+				reference_name := if raw_reference_name_id != 0 {
+					flat.source_type_name(raw_reference_name_id)
+				} else {
+					call_argument_type_name(expected)
+				}
 				tc.record_error_at(.call_arg_mismatch, 'literal argument cannot be passed as reference parameter `${reference_name}`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
 				continue
 			}

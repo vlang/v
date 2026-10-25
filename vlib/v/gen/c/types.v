@@ -2576,11 +2576,15 @@ fn (g &FlatGen) enum_field_expr_value_with_enum(id flat.NodeId, enum_module stri
 				.left_shift { i64(u64(left) << u64(right)) }
 				.right_shift {
 					typ := if isnil(g.tc) {
-						''
+						u32(0)
 					} else {
-						types.unalias_type(g.usable_expr_type(g.a.child(&node, 0))).name()
+						types.unalias_type(g.usable_expr_type(g.a.child(&node, 0))).source_type_id()
 					}
-					if typ in ['u64', 'uint'] { i64(u64(left) >> right) } else { left >> right }
+					if typ in [flat.source_type_u64, flat.source_type_uint] {
+						i64(u64(left) >> right)
+					} else {
+						left >> right
+					}
 				}
 				.right_shift_unsigned {
 					if isnil(g.tc) {
@@ -2877,11 +2881,15 @@ fn (g &FlatGen) enum_comptime_expr_value(id flat.NodeId, locals map[string]i64, 
 				.left_shift { i64(u64(left) << u64(right)) }
 				.right_shift {
 					typ := if isnil(g.tc) {
-						''
+						u32(0)
 					} else {
-						types.unalias_type(g.usable_expr_type(g.a.child(&node, 0))).name()
+						types.unalias_type(g.usable_expr_type(g.a.child(&node, 0))).source_type_id()
 					}
-					if typ in ['u64', 'uint'] { i64(u64(left) >> right) } else { left >> right }
+					if typ in [flat.source_type_u64, flat.source_type_uint] {
+						i64(u64(left) >> right)
+					} else {
+						left >> right
+					}
 				}
 				.right_shift_unsigned {
 					if isnil(g.tc) {

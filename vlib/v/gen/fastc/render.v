@@ -2174,9 +2174,10 @@ fn (g &Parser) primitive_member_comparison_operand_type(tokens []FastcExpression
 		return u32(0)
 	}
 	type_name := flat.source_type_name(local.typ)
-	base_name := fastc_trim_pointer_suffix(type_name)
+	base_type := fastc_trim_pointer_type(local.typ)
+	base_name := flat.source_type_name(base_type)
 	if type_name.len - base_name.len > 1 || (local.is_reference && !type_name.ends_with('*'))
-		|| base_name in ['Option', '__v_result'] || base_name.starts_with('FixedArray_')
+		|| base_type in [fastc_type_option, fastc_type_result] || base_name.starts_with('FixedArray_')
 		|| base_name.starts_with('Map_') || base_name in g.sum_types
 		|| g.alias_base_types.type_id(base_name) != none {
 		return u32(0)
@@ -3435,8 +3436,9 @@ fn (g &Parser) render_as_cast_member_access(tokens []FastcExpressionToken) ?Fast
 			index_source := g.render_membership_candidate(tokens[i + 1..close_index], flat.source_type_id('int')) or {
 				return none
 			}
-			layout := fastc_trim_pointer_suffix(flat.source_type_name(g.underlying_alias_type(current_type)))
-			if layout == 'string' {
+			layout_id := fastc_trim_pointer_type(g.underlying_alias_type(current_type))
+			layout := flat.source_type_name(layout_id)
+			if layout_id == flat.source_type_string {
 				string_source := if flat.source_type_name(current_type).ends_with('*') {
 					'*(${source})'
 				} else {
@@ -4480,7 +4482,7 @@ fn (g &Parser) render_enum_flag_shorthand_combination(tokens []FastcExpressionTo
 fn (g &Parser) is_plain_aggregate_value_type(typ u32) bool {
 	type_name := flat.source_type_name(typ)
 	if type_name == '' || fastc_is_pointer_type(typ)
-		|| type_name in ['Option', '__v_result'] || type_name.starts_with('FixedArray_')
+		|| typ in [fastc_type_option, fastc_type_result] || type_name.starts_with('FixedArray_')
 		|| type_name in g.sum_types || g.alias_base_types.type_id(type_name) != none {
 		return false
 	}
@@ -4682,7 +4684,7 @@ fn (g &Parser) render_call_argument_expression(tokens []FastcExpressionToken, ex
 				return '&((${flat.source_type_name(interface_type)}){._object=(void*)(&(${target})), ._typ=__v_typeid_${fastc_c_declared_type_name(flat.source_type_name(actual_key))}})'
 			}
 		}
-		if g.selfhost && expected_type == 'voidptr*' {
+		if g.selfhost && expected_type_source_id == fastc_type_voidptr_pointer {
 			actual_type := (g.infer_expression_type(tokens[1..]) or { u32(0) })
 			if actual_type !in [u32(0), flat.source_type_voidptr] {
 				inner := g.render_call_argument_expression(tokens[1..], actual_type) or {
@@ -4998,7 +5000,8 @@ fn (g &Parser) render_array_literal_argument(tokens []FastcExpressionToken, expe
 
 fn (g &Parser) render_selfhost_simple_array_literal_item(tokens []FastcExpressionToken, expected_type_source_id u32) ?string {
 	expected_type := flat.source_type_name(expected_type_source_id)
-	if !g.selfhost || expected_type in ['Option', '__v_result', 'voidptr'] {
+	if !g.selfhost || expected_type_source_id in [fastc_type_option, fastc_type_result,
+		flat.source_type_voidptr] {
 		return none
 	}
 	if tokens.len == 4 && tokens[0].tok == .name && tokens[1].tok == .lpar && tokens[3].tok == .rpar && tokens[2].source == '' {
@@ -5560,10 +5563,11 @@ fn (g &Parser) render_array_lookup_option_expression(tokens []FastcExpressionTok
 	}
 	base_tokens := lookup_tokens[..open]
 	base_type := g.infer_expression_type(base_tokens) or { return none }
-	base_layout := fastc_trim_pointer_suffix(flat.source_type_name(g.underlying_alias_type(base_type)))
+	base_layout_id := fastc_trim_pointer_type(g.underlying_alias_type(base_type))
+	base_layout := flat.source_type_name(base_layout_id)
 	base_source := g.render_call_argument_expression(base_tokens, base_type) or { return none }
 	index_source := g.render_membership_candidate(lookup_tokens[open + 1..lookup_tokens.len - 1], flat.source_type_id('int')) or { return none }
-	if base_layout == 'string' {
+	if base_layout_id == flat.source_type_string {
 		// `s[i] or { … }`: a byte index that is bounds-checked to a `?u8` (V's
 		// `at_with_check`), read from the `string`'s `.str`/`.len` payload.
 		string_source := if flat.source_type_name(base_type).ends_with('*') {
@@ -5592,19 +5596,20 @@ fn (g &Parser) render_array_lookup_option_expression(tokens []FastcExpressionTok
 }
 
 fn fastc_map_runtime_functions(key_type_source_id u32, pointer_bits int) (string, string, string, string) {
-	key_type := flat.source_type_name(key_type_source_id)
-	if key_type == 'string' {
+	if key_type_source_id == flat.source_type_string {
 		return 'builtin__map_hash_string', 'builtin__map_eq_string', 'builtin__map_clone_string', 'builtin__map_free_string'
 	}
-	suffix := if key_type in ['i8', 'u8', 'char', 'bool'] {
+	suffix := if key_type_source_id in [flat.source_type_i8, flat.source_type_u8,
+		flat.source_type_char, flat.source_type_bool] {
 		'1'
-	} else if key_type in ['i16', 'u16'] {
+	} else if key_type_source_id in [flat.source_type_i16, flat.source_type_u16] {
 		'2'
-	} else if key_type in ['i64', 'u64', 'f64'] {
+	} else if key_type_source_id in [flat.source_type_i64, flat.source_type_u64, flat.source_type_f64] {
 		'8'
-	} else if key_type in ['i128', 'u128'] {
+	} else if key_type_source_id in [fastc_type_i128, fastc_type_u128] {
 		'16'
-	} else if key_type in ['isize', 'uint', 'usize'] || fastc_is_pointer_type(key_type_source_id) {
+	} else if key_type_source_id in [flat.source_type_isize, flat.source_type_uint,
+		flat.source_type_usize] || fastc_is_pointer_type(key_type_source_id) {
 		if pointer_bits == 32 { '4' } else { '8' }
 	} else {
 		'4'
@@ -5613,7 +5618,6 @@ fn fastc_map_runtime_functions(key_type_source_id u32, pointer_bits int) (string
 }
 
 fn (g &Parser) map_runtime_functions(key_type_source_id u32) (string, string, string, string) {
-	key_type := flat.source_type_name(key_type_source_id)
 	mut resolved_type := g.underlying_alias_type(key_type_source_id)
 	if enum_key := g.underlying_enum_type_key(g.semantic_type_key(resolved_type)) {
 		resolved_type = if g.enum_flags[flat.source_type_name(enum_key)] {
@@ -5621,7 +5625,7 @@ fn (g &Parser) map_runtime_functions(key_type_source_id u32) (string, string, st
 		} else {
 			flat.source_type_int
 		}
-	} else if key_type == 'int' {
+	} else if key_type_source_id == flat.source_type_int {
 		// Only bare int is emitted at platform width. Enum and alias typedefs
 		// retain their declared C storage width, which the key callbacks must use.
 		resolved_type = flat.source_type_id(fastc_platform_int_c_type)

@@ -1291,7 +1291,6 @@ fn (mut g Parser) parse_generic_body_or_stub(return_type_source_id u32, out_chec
 // emit_generic_body_stub discards any partially-generated body, repositions the
 // scanner just past the body, and emits a trivial `return (T){0};` stub.
 fn (mut g Parser) emit_generic_body_stub(out_checkpoint int, saved_indent int, body_end scanner.Scanner, return_type_source_id u32) {
-	return_type := flat.source_type_name(return_type_source_id)
 	discard := g.out.len - out_checkpoint
 	if discard > 0 {
 		g.out.go_back(discard)
@@ -1307,8 +1306,8 @@ fn (mut g Parser) emit_generic_body_stub(out_checkpoint int, saved_indent int, b
 		// return a zero value as if the body had run.
 		g.write_line('fprintf(stderr, "fastc: generic function `%s` was called without a concrete instance\\n", "${g.current_function}"); exit(1);')
 	}
-	if return_type != 'void' {
-		g.write_line('return (${fastc_output_c_type(return_type)}){0};')
+	if return_type_source_id != flat.source_type_void {
+		g.write_line('return (${fastc_output_c_type(flat.source_type_name(return_type_source_id))}){0};')
 	}
 }
 

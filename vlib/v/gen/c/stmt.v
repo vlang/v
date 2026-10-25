@@ -7,6 +7,9 @@ import v.gen.c.naming { sum_field_name }
 import v.types { unalias_type }
 import v.util
 
+const cgen_message_error_source_type = flat.source_type_id('MessageError')
+const cgen_builtin_message_error_source_type = flat.source_type_id('builtin.MessageError')
+
 const direct_optional_forward_return_value = '__direct_optional_forward'
 const optional_success_return_value = '__optional_success_return'
 const transformed_return_value_prefix = '__transformed_return:'
@@ -1806,7 +1809,6 @@ fn (mut g FlatGen) gen_ownership_drop_result_error(expr string, depth int, mut e
 		iface_name_id = cgen_builtin_ierror_type_name_id
 	}
 	for concrete_id in g.iface_impls[iface_name_id] or { []u32{} } {
-		concrete := flat.source_type_name(concrete_id)
 		id := g.iface_type_id(iface_name_id, concrete_id)
 		concrete_type := g.tc.parse_type(concrete_id)
 		if id == 0 || !g.ownership_type_requires_destruction(concrete_type, depth + 1) {
@@ -1815,7 +1817,7 @@ fn (mut g FlatGen) gen_ownership_drop_result_error(expr string, depth int, mut e
 		concrete_ct := g.value_c_type(concrete_type)
 		g.writeln('case ${id}:')
 		g.indent++
-		if concrete in ['MessageError', 'builtin.MessageError'] {
+		if concrete_id in [cgen_message_error_source_type, cgen_builtin_message_error_source_type] {
 			// MessageError is introduced by generated result/error lowering and can be
 			// absent from markused's source-level call graph in tiny programs.
 			g.writeln('string__free(&(((${concrete_ct}*)${object})->msg));')
@@ -1855,7 +1857,6 @@ fn (mut g FlatGen) gen_ownership_clone_ierror(id flat.NodeId) {
 		iface_name_id = cgen_builtin_ierror_type_name_id
 	}
 	for concrete_id in g.iface_impls[iface_name_id] or { []u32{} } {
-		concrete := flat.source_type_name(concrete_id)
 		type_id := g.iface_type_id(iface_name_id, concrete_id)
 		if type_id == 0 {
 			continue
@@ -1864,7 +1865,7 @@ fn (mut g FlatGen) gen_ownership_clone_ierror(id flat.NodeId) {
 		concrete_ct := g.value_c_type(concrete_type)
 		g.writeln('case ${type_id}: {')
 		g.indent++
-		if concrete in ['MessageError', 'builtin.MessageError'] {
+		if concrete_id in [cgen_message_error_source_type, cgen_builtin_message_error_source_type] {
 			value := '_clone_ierror_value${tmp}'
 			g.writeln('${concrete_ct} ${value} = *((${concrete_ct}*)${object});')
 			g.writeln('${value}.msg = string__clone(${value}.msg);')
@@ -1898,7 +1899,7 @@ fn (mut g FlatGen) gen_ownership_clone_ierror(id flat.NodeId) {
 					g.writeln('${result}._object_is_boxed = true;')
 				}
 			} else if g.ownership_type_requires_destruction(concrete_type, 0) {
-				message := 'cannot retain borrowed Result error: `${concrete}` requires ownership destruction but has no compatible `clone()` method'
+				message := 'cannot retain borrowed Result error: `${flat.source_type_name(concrete_id)}` requires ownership destruction but has no compatible `clone()` method'
 				g.writeln('v_panic(${g.interface_str_lit(message)});')
 			} else {
 				g.writeln('${result}._object = memdup(${object}, sizeof(${concrete_ct}));')

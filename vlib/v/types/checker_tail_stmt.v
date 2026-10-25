@@ -17,6 +17,14 @@ const checker_source_builtin_slice_index = flat.source_type_id('builtin.SliceInd
 const checker_source_thread = flat.source_type_id('thread')
 const checker_source_void_reference = flat.source_type_id('&void')
 const checker_source_option_marker = flat.source_type_id('?')
+const checker_tail_source_struct = flat.source_type_id('struct')
+const checker_tail_source_embed_file_data = flat.source_type_id('embed_file.EmbedFileData')
+const checker_tail_source_chan = flat.source_type_id('chan')
+const checker_tail_source_thread_void = flat.source_type_id('thread void')
+const checker_tail_source_thread_result_marker = flat.source_type_id('thread !')
+const checker_tail_source_thread_result_void = flat.source_type_id('thread !void')
+const checker_tail_source_thread_option_marker = flat.source_type_id('thread ?')
+const checker_tail_source_thread_option_void = flat.source_type_id('thread ?void')
 
 fn (mut tc TypeChecker) check_stmt_node(id flat.NodeId) {
 	if !tc.valid_node_id(id) {
@@ -2565,7 +2573,7 @@ fn (tc &TypeChecker) type_is_same_sum_type(actual &Type, expected SumType) bool 
 }
 
 fn (mut tc TypeChecker) record_match_branch_return_type_mismatch(id flat.NodeId, expected Type, actual Type) {
-	if expected.name() == tc.diagnostic_expr_type_name(id, actual) {
+	if tc.type_name(expected) == tc.diagnostic_expr_type_id(id, actual) {
 		return
 	}
 	expected_multi := multi_return_payload_type(expected)
@@ -4277,7 +4285,7 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 			return
 		}
 	}
-	if node.value_text() == 'any' {
+	if node.source_value_id() == checker_tail_source_any {
 		tc.record_error(.unknown_type, 'cannot use type `any` here', id)
 		return
 	}
@@ -4298,7 +4306,7 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 	}
 	// Synthesized literals have no source spelling of their type: `$embed_file`, and
 	// `Expr.Count(x)`, which the parser lowers to a hidden variant struct literal.
-	raw_source_type_text := if node.value_text() == 'embed_file.EmbedFileData'
+	raw_source_type_text := if node.source_value_id() == checker_tail_source_embed_file_data
 		|| flat.is_named_variant_type_name(node.value_text()) {
 		''
 	} else {
@@ -4437,7 +4445,7 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 			tc.check_generic_type_constraints(id, node.pos, flat.source_type_id(generic_base), flat.TypeTextList.from_names(generic_args).ids, TypeParamScope{})
 		}
 	}
-	if init_type_text != 'struct' && !is_anonymous_struct_name(init_type_text)
+	if init_type_id != checker_tail_source_struct && !is_anonymous_struct_name(init_type_text)
 		&& (!tc.type_name_known(init_type_id) || (init_type_text.starts_with('C.')
 			&& !tc.type_symbol_known(init_type_text))) {
 		if is_bare_generic_param(init_type_text)
@@ -4547,7 +4555,7 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 		// another module. Naming an anonymous declaration outright is a different thing
 		// and stays subject to the check, as does a type a user happened to call
 		// `AnonStruct_...`: neither is a name the parser made up for a literal.
-		if init_type_text != 'struct' && !tc.a.contextual_anon_struct_types[init_type_id] {
+		if init_type_id != checker_tail_source_struct && !tc.a.contextual_anon_struct_types[init_type_id] {
 			if _ := tc.private_declaration(init_struct.name()) {
 				inside_module := if tc.cur_module.len > 0 { tc.cur_module } else { 'main' }
 				tc.record_error_at(.unknown_type, 'struct `${init_struct.name()}` was declared as private to module `${init_struct.name().all_before_last('.')}`, so it can not be used inside module `${inside_module}`', id, node.pos)
@@ -5656,7 +5664,7 @@ fn (tc &TypeChecker) bound_method_node_source_type_text(node flat.Node) string {
 			params << '${prefix}${typ}'
 		}
 	}
-	return 'fn (${params.join(', ')})${if node.typ_text().len > 0 && node.typ_text() != 'void' {
+	return 'fn (${params.join(', ')})${if node.typ != 0 && node.typ != flat.source_type_void {
 		' ${node.typ_text()}'
 	} else {
 		''
@@ -5681,7 +5689,7 @@ fn (tc &TypeChecker) fn_node_source_type_text(node flat.Node) string {
 			params << '${prefix}${typ}'
 		}
 	}
-	return 'fn (${params.join(', ')})${if node.typ_text().len > 0 && node.typ_text() != 'void' {
+	return 'fn (${params.join(', ')})${if node.typ != 0 && node.typ != flat.source_type_void {
 		' ${node.typ_text()}'
 	} else {
 		''
@@ -10628,7 +10636,7 @@ fn (tc &TypeChecker) type_compatible_unequal(actual &Type, expected &Type) bool 
 			}
 		}
 	}
-	if thread_handle_type_names_match(actual_name, expected_name) {
+	if thread_handle_type_ids_match(actual_name_comparison_type_id, expected_name_comparison_type_id) {
 		return true
 	}
 	if fn_param_is_voidptr_type(actual) && fn_param_is_voidptr_type(expected) {
@@ -10646,7 +10654,8 @@ fn (tc &TypeChecker) type_compatible_unequal(actual &Type, expected &Type) bool 
 	if actual is FnType && expected is FnType {
 		return tc.fn_value_signature_compatible(actual_raw, expected_raw)
 	}
-	if (actual_name.contains('[') || expected_name.contains('['))
+	if (flat.source_type_shape(actual_name_comparison_type_id).has(.bracketed)
+		|| flat.source_type_shape(expected_name_comparison_type_id).has(.bracketed))
 		&& tc.generic_type_name_matches(actual_name_comparison_type_id, expected_name_comparison_type_id) {
 		return true
 	}
@@ -11126,25 +11135,33 @@ fn (tc &TypeChecker) alias_type_is_shared(alias Alias) bool {
 	return false
 }
 
-fn thread_handle_type_names_match(actual string, expected string) bool {
-	if !actual.starts_with('thread') || !expected.starts_with('thread') {
+fn thread_handle_type_ids_match(actual_id u32, expected_id u32) bool {
+	if !source_type_has_thread_prefix(actual_id) || !source_type_has_thread_prefix(expected_id) {
 		return false
 	}
-	return canonical_thread_handle_type_name(actual) == canonical_thread_handle_type_name(expected)
+	return canonical_thread_handle_type_id(actual_id) == canonical_thread_handle_type_id(expected_id)
 }
 
-fn canonical_thread_handle_type_name(name string) string {
-	clean := trimmed_space(name)
-	if clean == 'thread void' {
-		return 'thread'
+fn source_type_has_thread_prefix(type_id u32) bool {
+	if type_id == checker_source_thread || flat.source_type_shape(type_id).has(.thread_type) {
+		return true
 	}
-	if clean == 'thread !' {
-		return 'thread !void'
+	// Preserve the original prefix predicate for spellings such as `thread_name`.
+	return flat.source_type_name(type_id).starts_with('thread')
+}
+
+fn canonical_thread_handle_type_id(type_id u32) u32 {
+	clean_id := trimmed_source_type_id(type_id)
+	if clean_id == checker_tail_source_thread_void {
+		return checker_source_thread
 	}
-	if clean == 'thread ?' {
-		return 'thread ?void'
+	if clean_id == checker_tail_source_thread_result_marker {
+		return checker_tail_source_thread_result_void
 	}
-	return clean
+	if clean_id == checker_tail_source_thread_option_marker {
+		return checker_tail_source_thread_option_void
+	}
+	return clean_id
 }
 
 @[inline]
@@ -12222,7 +12239,6 @@ pub fn (tc &TypeChecker) named_type_implements_interface(concrete_name_id u32, i
 // while assuming the pair would let any type with `clone() Self`, such as `string`,
 // implement `Cloner` through its covariant return, which cgen cannot dispatch.
 fn named_type_implements_interface_guarded(tc &TypeChecker, concrete_name_id u32, iface_name_id u32, visited []InterfaceSatisfactionPair) bool {
-	concrete_name := flat.source_type_name(concrete_name_id)
 	iface_name := flat.source_type_name(iface_name_id)
 	if tc.interface_has_no_requirements(iface_name_id) {
 		return true
@@ -12240,7 +12256,7 @@ fn named_type_implements_interface_guarded(tc &TypeChecker, concrete_name_id u32
 		expected_key := tc.interface_method_signature_key(iface_name_id, method) or {
 			'${iface_name}.${method}'
 		}
-		if concrete_name == 'char' && method == 'str'
+		if concrete_name_id == flat.source_type_char && method == 'str'
 			&& tc.interface_method_is_str_requirement(expected_key) {
 			return false
 		}
@@ -17868,7 +17884,7 @@ fn (tc &TypeChecker) parse_type_uncached(source_id u32) Type {
 			is_mut:    elem_text.starts_with('mut ')
 		})
 	}
-	if typ == 'chan' {
+	if source_id == checker_tail_source_chan {
 		return Type(Channel{})
 	}
 	if typ.starts_with('thread ') {
@@ -17883,7 +17899,7 @@ fn (tc &TypeChecker) parse_type_uncached(source_id u32) Type {
 			name_id: flat.source_type_id('thread ${payload_name}')
 		})
 	}
-	if typ == 'thread' {
+	if source_id == checker_source_thread {
 		// The handle itself lowers to `void*` in C (see c_type).
 		return Type(Struct{
 			name_id: source_id
@@ -21092,16 +21108,14 @@ fn (tc &TypeChecker) c_type_uncached(t &Type) string {
 		}
 		if t.base_type is Unknown && t.base_type.reason.starts_with('recursive alias `') {
 			if target_source_id := tc.type_aliases.type_id(t.name()) {
-				target := flat.source_type_name(target_source_id)
-
-				clean_target := target.trim_space()
-				if clean_target.starts_with('map[') {
+				target_shape := trimmed_source_type_shape(target_source_id)
+				if target_shape.has(.map_type) {
 					return 'map'
 				}
-				if clean_target.starts_with('[]') || clean_target.starts_with('...') {
+				if target_shape.has(.array_type) || target_shape.has(.variadic) {
 					return 'Array'
 				}
-				if clean_target.starts_with('chan ') {
+				if target_shape.has(.channel_type) {
 					return 'chan'
 				}
 			}

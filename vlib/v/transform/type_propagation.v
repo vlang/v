@@ -2207,8 +2207,8 @@ fn (t &Transformer) node_type_uncached(id flat.NodeId) u32 {
 	mut deferred_call_typ := u32(0)
 	if node.typ != 0 {
 		node_typ_source_id_2 := t.normalize_type_alias(node.typ)
-		node_typ := flat.source_type_name(node_typ_source_id_2)
-		if node.kind == .call && node_typ in ['int', 'array', 'map', 'unknown'] {
+		if node.kind == .call && node_typ_source_id_2 in [flat.source_type_int,
+			transform_source_type_array, transform_source_type_map, flat.source_type_unknown] {
 			deferred_call_typ = node_typ_source_id_2
 		} else {
 			return node_typ_source_id_2

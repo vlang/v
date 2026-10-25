@@ -995,8 +995,7 @@ fn (t &Transformer) if_expr_result_type(id flat.NodeId, node flat.Node) u32 {
 	mut node_typ := u32(0)
 	if node.typ != 0 {
 		typ_source_id := t.normalize_type_alias(node.typ)
-		typ := flat.source_type_name(typ_source_id)
-		if typ !in ['array', 'map'] {
+		if typ_source_id !in [transform_source_type_array, transform_source_type_map] {
 			node_typ = typ_source_id
 		}
 	}
@@ -1096,7 +1095,8 @@ fn (t &Transformer) if_expr_branch_type_overrides(branch_typ_id u32, stale_typ_i
 	if branch_typ_id == u32(0) || stale_typ_id == u32(0) || branch_typ_comparison_type_id == stale_typ_comparison_type_id {
 		return false
 	}
-	if stale_typ in ['array', 'map', 'unknown'] {
+	if stale_typ_id in [transform_source_type_array, transform_source_type_map,
+		flat.source_type_unknown] {
 		return true
 	}
 	if stale_typ_id == flat.source_type_int && (branch_typ in t.structs

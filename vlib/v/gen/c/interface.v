@@ -445,7 +445,7 @@ fn (mut g FlatGen) collect_interface_impls() {
 		is_materializable_generic := concrete_is_generic
 			&& (concrete_base in g.tc.structs || g.tc.type_aliases.contains(concrete_base) || g.tc.qualify_name(concrete_base) in g.tc.structs
 				|| g.tc.qualify_name(concrete_base) in g.tc.type_aliases.ids)
-		if !is_container && concrete != 'voidptr' && !is_materializable_generic
+		if !is_container && concrete_id != flat.source_type_voidptr && !is_materializable_generic
 			&& concrete !in g.tc.structs && concrete !in g.tc.enum_names
 			&& !g.tc.type_aliases.contains(concrete) {
 			qualified := g.tc.qualify_name(concrete)
