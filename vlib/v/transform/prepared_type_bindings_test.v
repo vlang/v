@@ -47,3 +47,27 @@ fn test_scoped_signature_writes_detach_prepared_bindings_and_survive_release() {
 	assert master.fn_ret_types.value_id('existing') == flat.source_type_int
 	assert peer.fn_ret_types.value_id('existing') == flat.source_type_int
 }
+
+fn test_alias_cache_rebinds_equal_content_type_text_owners() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	alias_id := flat.source_type_id('CacheOwnerAlias')
+	tc.type_aliases.set_id('CacheOwnerAlias', flat.source_type_int)
+	parent := &flat.TypeTextTable{}
+	fork := parent.fork()
+	assert voidptr(parent) != voidptr(fork)
+	// Both tables have identical empty lookup caches. Their global spelling IDs
+	// agree, but switching owners must discard the old owner's disposable entry.
+	mut cache := &AliasCache{
+		texts: parent
+	}
+	cache.entries[alias_id] = flat.source_type_string
+	t := Transformer{
+		tc:             &tc
+		var_type_texts: fork
+		alias_cache:    cache
+	}
+	assert t.normalize_type_alias_cached(alias_id) == flat.source_type_int
+	assert voidptr(cache.texts) == voidptr(fork)
+	assert cache.entries[alias_id] == flat.source_type_int
+}

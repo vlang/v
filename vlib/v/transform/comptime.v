@@ -3547,7 +3547,7 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 			// `T(v)` wraps a zero value of the variant's type in the sum type
 			// (the VariantData literal is only the loop var's runtime carrier).
 			mut zero := t.comptime_zero_value(item.typ)
-			if flat.source_type_name(t.comptime_typeof_unaliased_type(item.typ)) != item.typ_text() {
+			if t.comptime_typeof_unaliased_type(item.typ) != item.typ {
 				// An alias variant's zero value has its base type; keep the alias, so
 				// `Foo | Alias` selects `Alias` rather than `Foo`.
 				zero = t.make_cast(item.typ, zero, item.typ)
