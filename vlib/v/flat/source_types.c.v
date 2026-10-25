@@ -136,9 +136,32 @@ fn source_type_spelling_unusable_decl(text string, shape SourceTypeShape) bool {
 		|| shape.has(.typeof_expr) {
 		return true
 	}
-	clean := if text.contains_u8(` `) { text.replace(' ', '') } else { text }
-	return clean in ['Option', '__v_option', 'Result'] || clean.starts_with('Option_')
-		|| clean.starts_with('__v_option_') || clean.starts_with('Result_')
+	mut pos := 0
+	for pos < text.len && text[pos] == ` ` {
+		pos++
+	}
+	if pos == text.len {
+		return false
+	}
+	token := match text[pos] {
+		`O` { 'Option' }
+		`_` { '__v_option' }
+		`R` { 'Result' }
+		else { return false }
+	}
+	for c in token {
+		for pos < text.len && text[pos] == ` ` {
+			pos++
+		}
+		if pos == text.len || text[pos] != c {
+			return false
+		}
+		pos++
+	}
+	for pos < text.len && text[pos] == ` ` {
+		pos++
+	}
+	return pos == text.len || text[pos] == `_`
 }
 
 fn source_type_space(c u8) bool {

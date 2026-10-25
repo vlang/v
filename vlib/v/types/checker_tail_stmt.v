@@ -6412,34 +6412,35 @@ pub fn (tc &TypeChecker) expr_is_method_value(id flat.NodeId) bool {
 			return true
 		}
 	} else if clean is Struct {
-		sname := clean.name()
-		if tc.struct_field_type(flat.source_type_id(sname), node.value) != none {
+		sname_id := clean.source_type_id()
+		if tc.struct_field_type(sname_id, node.value) != none {
 			return false
 		}
 		if _ := tc.c_struct_receiver_method_name(base_type, node.value) {
 			return true
 		}
+		sname := flat.source_type_name(sname_id)
 		if '${sname}.${node.value}' in tc.fn_param_types {
 			return true
 		}
 		if receiver is Alias && '${receiver.name()}.${node.value}' in tc.fn_param_types {
 			return true
 		}
-		if _ := tc.resolve_generic_struct_method(flat.source_type_id(sname), node.value) {
+		if _ := tc.resolve_generic_struct_method(sname_id, node.value) {
 			return true
 		}
-		if _ := tc.embedded_method_value_owner(flat.source_type_id(sname), node.value) {
+		if _ := tc.embedded_method_value_owner(sname_id, node.value) {
 			return true
 		}
 	} else if clean is Interface {
-		iname := clean.name()
-		if tc.interface_field_type(flat.source_type_id(iname), node.value) != none {
+		iname_id := clean.source_type_id()
+		if tc.interface_field_type(iname_id, node.value) != none {
 			return false
 		}
 		if receiver is Alias && '${receiver.name()}.${node.value}' in tc.fn_param_types {
 			return true
 		}
-		if _ := tc.interface_receiver_method_call_info(flat.source_type_id(iname), node.value) {
+		if _ := tc.interface_receiver_method_call_info(iname_id, node.value) {
 			return true
 		}
 	}
