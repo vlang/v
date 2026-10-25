@@ -313,7 +313,8 @@ fn (mut g Parser) queue_explicit_mono_method(tokens []FastcExpressionToken) ?str
 	dot_index := tokens.len - 2
 	receiver_start := fastc_method_receiver_start(tokens, dot_index)
 	receiver_type := g.infer_expression_type(tokens[receiver_start..dot_index]) or { return none }
-	receiver_base := flat.source_type_name(fastc_normalize_inferred_type(receiver_type)).trim_right('*')
+	receiver_base_id := fastc_trim_pointer_type(fastc_normalize_inferred_type(receiver_type))
+	receiver_base := flat.source_type_name(receiver_base_id)
 	method := tokens.last().lit
 	if '${receiver_base}.${method}' !in g.generic_method_sources {
 		return none
@@ -330,7 +331,7 @@ fn (mut g Parser) queue_explicit_mono_method(tokens []FastcExpressionToken) ?str
 	if next != .rsbr || after != .lpar {
 		return none
 	}
-	return g.queue_mono_method(flat.source_type_id(receiver_base), method, concrete)
+	return g.queue_mono_method(receiver_base_id, method, concrete)
 }
 
 // queue_implicit_mono_method recognizes `receiver.method(arg)` for generic methods and
@@ -346,14 +347,15 @@ fn (mut g Parser) queue_implicit_mono_method(tokens []FastcExpressionToken) ?str
 	dot_index := tokens.len - 2
 	receiver_start := fastc_method_receiver_start(tokens, dot_index)
 	receiver_type := g.infer_expression_type(tokens[receiver_start..dot_index]) or { return none }
-	receiver_base := flat.source_type_name(fastc_normalize_inferred_type(receiver_type)).trim_right('*')
+	receiver_base_id := fastc_trim_pointer_type(fastc_normalize_inferred_type(receiver_type))
+	receiver_base := flat.source_type_name(receiver_base_id)
 	method := tokens.last().lit
 	source_key := '${receiver_base}.${method}'
-	if receiver_base == '' || source_key !in g.generic_method_sources {
+	if receiver_base_id == 0 || source_key !in g.generic_method_sources {
 		return none
 	}
 	source := g.generic_method_sources[source_key] or { return none }
-	base_key := '${flat.source_type_name(g.semantic_type_key(flat.source_type_id(receiver_base)))}.${method}'
+	base_key := '${flat.source_type_name(g.semantic_type_key(receiver_base_id))}.${method}'
 	base := g.functions[base_key] or { return none }
 	parameter_index := source.type_param_parameter_index
 	signature_index := parameter_index + 1
@@ -367,7 +369,7 @@ fn (mut g Parser) queue_implicit_mono_method(tokens []FastcExpressionToken) ?str
 	if concrete == 0 {
 		return none
 	}
-	return g.queue_mono_method(flat.source_type_id(receiver_base), method, concrete)
+	return g.queue_mono_method(receiver_base_id, method, concrete)
 }
 
 // queue_explicit_mono_function recognizes an explicit generic free-function call at the

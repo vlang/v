@@ -1322,20 +1322,10 @@ fn parse_merge_copy_thread(arg voidptr) voidptr {
 				canonical_params << canonical
 				params_hit = params_hit && item_hit
 			}
-			constraints := node.generic_constraints()
-			mut canonical_constraints := []string{cap: constraints.len}
-			for item in constraints {
-				if item.len == 0 {
-					canonical_constraints << ''
-					continue
-				}
-				canonical, item_hit := p.a.probe_text_ptr_cached(item, mut value_cache.ptrs, mut value_cache.values)
-				canonical_constraints << canonical
-				params_hit = params_hit && item_hit
-			}
+			constraints := node.generic_constraint_ids()
 			if params_hit {
 				// The rebuilt array persists: pool-thread arenas outlive the merge.
-				node.set_generic_params_and_constraints(canonical_params, canonical_constraints)
+				node.set_generic_params_and_constraint_ids(canonical_params, constraints)
 			} else {
 				all_hit = false
 			}
@@ -1611,16 +1601,14 @@ fn (mut p Parser) merge_parsed_worker_bookkeeping(mut w Parser, mut starts []int
 			p.a.comptime_skipped_goto_labels[canonical] = true
 		}
 	}
-	for name, is_contextual in w.a.contextual_anon_struct_types {
+	for type_id, is_contextual in w.a.contextual_anon_struct_types {
 		if is_contextual {
-			_, canonical := p.a.intern_text(name)
-			p.a.contextual_anon_struct_types[canonical] = true
+			p.a.contextual_anon_struct_types[type_id] = true
 		}
 	}
-	for name, is_synthesized in w.a.synthesized_anon_struct_types {
+	for type_id, is_synthesized in w.a.synthesized_anon_struct_types {
 		if is_synthesized {
-			_, canonical := p.a.intern_text(name)
-			p.a.synthesized_anon_struct_types[canonical] = true
+			p.a.synthesized_anon_struct_types[type_id] = true
 		}
 	}
 	for name, is_noreturn in w.a.noreturn_fns {

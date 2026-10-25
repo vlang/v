@@ -53,7 +53,7 @@ fn test_comptime_field_type_id_keeps_custom_types_above_builtin_range() {
 	}
 	type_id := t.type_index(flat.source_type_id('T207'), '')
 	assert type_id > 65535
-	assert type_id != types.builtin_type_index('int')
+	assert type_id != types.builtin_type_index(flat.source_type_int)
 	assert type_id & (0xff << 16) == 0
 }
 

@@ -4,6 +4,14 @@ import time
 import v.flat
 import v.gen.c.naming
 
+const ownership_source_iclone = flat.source_type_id('IClone')
+const ownership_source_ierror = flat.source_type_id('IError')
+const ownership_source_builtin_ierror = flat.source_type_id('builtin.IError')
+const ownership_source_error = flat.source_type_id('Error')
+const ownership_source_message_error = flat.source_type_id('MessageError')
+const ownership_source_builtin_error = flat.source_type_id('builtin.Error')
+const ownership_source_builtin_message_error = flat.source_type_id('builtin.MessageError')
+
 // ownership_prescan_max_rounds bounds each ownership fixed point, so that a
 // regression in path composition fails as a diagnostic instead of hanging the
 // compiler. Without it the only bound on returned-parameter paths lived in a test
@@ -1493,32 +1501,33 @@ fn (tc &TypeChecker) ownership_type_name_has_drop(type_name_id u32) bool {
 }
 
 fn (tc &TypeChecker) ownership_drop_target_for_type_name(type_name_id u32) ?OwnershipDropTarget {
-	type_name_comparison_type_id_2 := type_name_id
-	type_name := flat.source_type_name(type_name_comparison_type_id_2)
-	if tc.ownership == unsafe { nil } || type_name_comparison_type_id_2 == u32(0) {
+	if tc.ownership == unsafe { nil } || type_name_id == 0 {
 		return none
 	}
-	clean := type_name.trim_left('&')
-	if clean.len > 1 && clean[0] == `?` {
+	mut clean_id := type_name_id
+	if flat.source_type_shape(type_name_id).has(.pointer) {
+		clean_id = flat.source_type_id(flat.source_type_name(type_name_id).trim_left('&'))
+	}
+	shape := flat.source_type_shape(clean_id)
+	if shape.has(.option_type) && flat.source_type_name(clean_id).len > 1 {
 		return OwnershipDropTarget{
-			type_name: flat.source_type_id(clean)
+			type_name: clean_id
 		}
 	}
 	// A result owns both its successful payload and its failed IError. Preserve the
 	// complete result type so code generation can destroy whichever branch is active.
-	if clean.len > 1 && clean[0] == `!` {
+	if shape.has(.result_type) && flat.source_type_name(clean_id).len > 1 {
 		return OwnershipDropTarget{
-			type_name: flat.source_type_id(clean)
+			type_name: clean_id
 		}
 	}
-	if target := tc.ownership_drop_target_for_direct_type_name(flat.source_type_id(clean), false) {
+	if target := tc.ownership_drop_target_for_direct_type_name(clean_id, false) {
 		return target
 	}
 	return none
 }
 
 fn (tc &TypeChecker) ownership_drop_target_for_direct_type_name(type_name_id u32, optional_wrapper bool) ?OwnershipDropTarget {
-	type_name := flat.source_type_name(type_name_id)
 	if tc.ownership_type_name_has_direct_drop(type_name_id) {
 		return OwnershipDropTarget{
 			type_name:        type_name_id
@@ -1550,10 +1559,10 @@ fn (tc &TypeChecker) ownership_drop_target_for_resolved_type(typ Type, optional_
 			optional_wrapper: optional_wrapper
 		}
 	}
-	type_name := typ.name()
-	if tc.ownership_type_name_has_direct_drop(flat.source_type_id(type_name)) {
+	type_name_id := typ.source_type_id()
+	if tc.ownership_type_name_has_direct_drop(type_name_id) {
 		return OwnershipDropTarget{
-			type_name:        flat.source_type_id(type_name)
+			type_name:        type_name_id
 			optional_wrapper: optional_wrapper
 		}
 	}
@@ -1767,10 +1776,11 @@ pub fn (tc &TypeChecker) ownership_default_clone_missing_method(typ Type) ?strin
 		return none
 	}
 	mut seen := map[u32]bool{}
-	return tc.ownership_default_clone_missing_method_inner(typ, mut seen)
+	bad_type_id := tc.ownership_default_clone_missing_method_inner(typ, mut seen) or { return none }
+	return flat.source_type_name(bad_type_id)
 }
 
-fn (tc &TypeChecker) ownership_default_clone_missing_method_inner(typ Type, mut seen map[u32]bool) ?string {
+fn (tc &TypeChecker) ownership_default_clone_missing_method_inner(typ Type, mut seen map[u32]bool) ?u32 {
 	match typ {
 		Alias {
 			// Compiler-default clone lowering normalizes aliases before recursive method
@@ -1799,7 +1809,7 @@ fn (tc &TypeChecker) ownership_default_clone_missing_method_inner(typ Type, mut 
 			return tc.ownership_default_clone_missing_method_inner(typ.value_type, mut seen)
 		}
 		Struct {
-			name := typ.name()
+			name_id := typ.source_type_id()
 			if tc.ownership_type_has_clone_method(typ) {
 				return none
 			}
@@ -1808,15 +1818,15 @@ fn (tc &TypeChecker) ownership_default_clone_missing_method_inner(typ Type, mut 
 			// `Drop` is structurally cloneable whenever each of its owned fields is, matching
 			// V's ordinary value-copy semantics; requiring `IClone` for it would reject code
 			// that only ever copies such values.
-			if !tc.autofree_mode && !tc.named_type_implements_marker(flat.source_type_id(name), flat.source_type_id('IClone'))
-				&& tc.ownership_type_has_explicit_drop(flat.source_type_id(name)) {
-				return name
+			if !tc.autofree_mode && !tc.named_type_implements_marker(name_id, ownership_source_iclone)
+				&& tc.ownership_type_has_explicit_drop(name_id) {
+				return name_id
 			}
-			if seen[flat.source_type_id(name)] {
+			if seen[name_id] {
 				return none
 			}
-			seen[flat.source_type_id(name)] = true
-			for field in tc.struct_fields_for_type(flat.source_type_id(name)) {
+			seen[name_id] = true
+			for field in tc.struct_fields_for_type(name_id) {
 				if !tc.ownership_type_requires_destruction(field.typ) {
 					continue
 				}
@@ -1830,16 +1840,16 @@ fn (tc &TypeChecker) ownership_default_clone_missing_method_inner(typ Type, mut 
 			if tc.ownership_type_has_clone_method(typ) {
 				return none
 			}
-			name := typ.name()
-			if seen[flat.source_type_id(name)] {
+			name_id := typ.source_type_id()
+			if seen[name_id] {
 				return none
 			}
-			seen[flat.source_type_id(name)] = true
-			base := flat.source_type_name(tc.sum_base_name(flat.source_type_id(name)))
-			for variant_source_id_2 in tc.sum_types.type_ids(base) or { return name } {
+			seen[name_id] = true
+			base := flat.source_type_name(tc.sum_base_name(name_id))
+			for variant_source_id_2 in tc.sum_types.type_ids(base) or { return name_id } {
 				variant_source_id_5 := variant_source_id_2
 
-				concrete_source_id := tc.concrete_sum_variant_name(flat.source_type_id(name), variant_source_id_5)
+				concrete_source_id := tc.concrete_sum_variant_name(name_id, variant_source_id_5)
 
 				variant_type := tc.parse_type(concrete_source_id)
 				if !tc.ownership_type_requires_destruction(variant_type) {
@@ -1852,7 +1862,7 @@ fn (tc &TypeChecker) ownership_default_clone_missing_method_inner(typ Type, mut 
 			return none
 		}
 		Interface {
-			return typ.name()
+			return typ.source_type_id()
 		}
 		else {
 			return none
@@ -1863,17 +1873,16 @@ fn (tc &TypeChecker) ownership_default_clone_missing_method_inner(typ Type, mut 
 // ownership_default_clone_missing_ierror_method validates the failed branch shared by
 // options and results. Plain builtin errors can be copied; destructible custom errors
 // need a dynamic clone that preserves their concrete payload.
-fn (tc &TypeChecker) ownership_default_clone_missing_ierror_method() ?string {
+fn (tc &TypeChecker) ownership_default_clone_missing_ierror_method() ?u32 {
 	for concrete_source_id_2 in tc.ierror_impl_names() {
-		concrete := flat.source_type_name(concrete_source_id_2)
-
 		concrete_type := tc.parse_type(concrete_source_id_2)
 		if !tc.ownership_type_requires_destruction(concrete_type)
-			|| concrete in ['Error', 'MessageError', 'builtin.Error', 'builtin.MessageError'] {
+			|| concrete_source_id_2 in [ownership_source_error, ownership_source_message_error,
+				ownership_source_builtin_error, ownership_source_builtin_message_error] {
 			continue
 		}
 		if !tc.ownership_ierror_has_compatible_clone_method(concrete_type) {
-			return concrete
+			return concrete_source_id_2
 		}
 	}
 	return none
@@ -1886,19 +1895,27 @@ fn (tc &TypeChecker) ownership_ierror_has_compatible_clone_method(typ Type) bool
 	}
 	method := tc.concrete_method_signature_key(type_name, 'clone') or { return false }
 	return_type := tc.fn_ret_types[method] or { return false }
-	actual := flat.source_type_name(method_type_name(unwrap_pointer(return_type)))
-	expected := flat.source_type_name(method_type_name(unwrap_pointer(typ)))
-	if actual.len == 0 || expected.len == 0 {
+	actual_id := method_type_name(unwrap_pointer(return_type))
+	expected_id := method_type_name(unwrap_pointer(typ))
+	if actual_id == 0 || expected_id == 0 {
 		return false
 	}
-	return actual == expected || actual.all_after_last('.') == expected.all_after_last('.')
+	if actual_id == expected_id {
+		return true
+	}
+	actual := flat.source_type_name(actual_id)
+	expected := flat.source_type_name(expected_id)
+	return actual.all_after_last('.') == expected.all_after_last('.')
 }
 
 fn (tc &TypeChecker) ownership_type_has_explicit_drop(type_name_id u32) bool {
-	type_name := flat.source_type_name(type_name_id)
-	clean := type_name.trim_left('&?')
-	base := generic_base_name(clean)
-	return flat.source_type_id(clean) in tc.ownership.drop_structs || flat.source_type_id(base) in tc.ownership.drop_structs
+	mut clean_id := type_name_id
+	shape := flat.source_type_shape(type_name_id)
+	if shape.has(.pointer) || shape.has(.option_type) {
+		clean_id = flat.source_type_id(flat.source_type_name(type_name_id).trim_left('&?'))
+	}
+	return clean_id in tc.ownership.drop_structs
+		|| ownership_generic_base_type_name(clean_id) in tc.ownership.drop_structs
 }
 
 fn (tc &TypeChecker) ownership_collect_drop_type_names(typ Type, mut names []u32, mut seen map[u32]bool, first_only bool) {
@@ -1911,11 +1928,11 @@ fn (tc &TypeChecker) ownership_collect_drop_type_names(typ Type, mut names []u32
 		}
 		OptionType {
 			tc.ownership_collect_drop_type_names(typ.base_type, mut names, mut seen, first_only)
-			tc.ownership_collect_drop_type_names(tc.parse_type(flat.source_type_id('IError')), mut names, mut seen, first_only)
+			tc.ownership_collect_drop_type_names(tc.parse_type(ownership_source_ierror), mut names, mut seen, first_only)
 		}
 		ResultType {
 			tc.ownership_collect_drop_type_names(typ.base_type, mut names, mut seen, first_only)
-			tc.ownership_collect_drop_type_names(tc.parse_type(flat.source_type_id('IError')), mut names, mut seen, first_only)
+			tc.ownership_collect_drop_type_names(tc.parse_type(ownership_source_ierror), mut names, mut seen, first_only)
 		}
 		Array {
 			tc.ownership_collect_drop_type_names(typ.elem_type, mut names, mut seen, first_only)
@@ -1928,19 +1945,18 @@ fn (tc &TypeChecker) ownership_collect_drop_type_names(typ Type, mut names []u32
 			tc.ownership_collect_drop_type_names(typ.value_type, mut names, mut seen, first_only)
 		}
 		Interface {
-			mut iface_name := typ.name()
-			if iface_name !in tc.interface_names {
-				qualified := tc.qualify_name(iface_name)
-				if qualified in tc.interface_names {
-					iface_name = qualified
+			mut iface_name_id := typ.source_type_id()
+			if flat.source_type_name(iface_name_id) !in tc.interface_names {
+				qualified_id := tc.qualify_type_name(iface_name_id)
+				if flat.source_type_name(qualified_id) in tc.interface_names {
+					iface_name_id = qualified_id
 				}
 			}
-			iface_name_id := flat.source_type_id(iface_name)
 			if seen[iface_name_id] {
 				return
 			}
 			seen[iface_name_id] = true
-			impls := if iface_name in ['IError', 'builtin.IError'] {
+			impls := if iface_name_id == ownership_source_ierror || iface_name_id == ownership_source_builtin_ierror {
 				tc.ierror_impl_names()
 			} else {
 				tc.interface_impl_names(iface_name_id)
@@ -2232,9 +2248,8 @@ fn (mut tc TypeChecker) ownership_after_collect() {
 	}
 	for qname, impls_id in tc.struct_implements.ids {
 		qname_id := flat.source_type_id(qname)
-		impls := impls_id.map(flat.source_type_name(it))
-		for iface in impls {
-			short := iface.all_after_last('.')
+		for iface_id in impls_id {
+			short := flat.source_type_name(iface_id).all_after_last('.')
 			match short {
 				'Owned' {
 					st.owned_structs[qname_id] = true
@@ -2324,9 +2339,10 @@ fn (mut tc TypeChecker) ownership_collect_global_decl(cur_module string, node fl
 		if field.value.len > 0 {
 			qname := ownership_qualify_name(cur_module, field.value)
 			if tc.ownership_type_is_owned(typ) || init_owned {
-				st.owned_globals.set(qname, typ.name())
+				type_name_id := typ.source_type_id()
+				st.owned_globals.set_id(qname, type_name_id)
 				if qname == field.value {
-					st.owned_globals.set(field.value, typ.name())
+					st.owned_globals.set_id(field.value, type_name_id)
 				}
 			}
 			if field.children_count > 0 {
@@ -2416,17 +2432,15 @@ fn (mut tc TypeChecker) ownership_collect_global_init_descendant(name string, qn
 	if !tc.ownership_global_init_expr_is_owned(id, ownership_global_module_name(name, qname)) {
 		return marked_call_descendants
 	}
-	type_name := tc.resolve_type(id).name()
-	tc.ownership_mark_owned_global(name, qname, suffix, flat.source_type_id(type_name))
+	tc.ownership_mark_owned_global(name, qname, suffix, tc.resolve_type(id).source_type_id())
 	return true
 }
 
 fn (mut tc TypeChecker) ownership_mark_owned_global(name string, qname string, suffix string, type_name_id u32) {
-	type_name := flat.source_type_name(type_name_id)
 	mut st := tc.ownership_state()
-	st.owned_globals.set(qname + suffix, type_name)
+	st.owned_globals.set_id(qname + suffix, type_name_id)
 	if qname == name {
-		st.owned_globals.set(name + suffix, type_name)
+		st.owned_globals.set_id(name + suffix, type_name_id)
 	}
 }
 
@@ -3531,8 +3545,8 @@ fn (mut tc TypeChecker) ownership_prescan_add_return_owned_descendants_from_expr
 	mut marked := false
 	for source in ownership_prescan_owned_descendant_names(source_name, owned_locals) {
 		source_suffix := source[source_name.len..]
-		type_name := (local_types[source] or { tc.resolve_type(expr_id) }).name()
-		tc.ownership_add_fn_return_descendant(fn_name, slot_idx, source_suffix, flat.source_type_id(type_name))
+		type_name_id := (local_types[source] or { tc.resolve_type(expr_id) }).source_type_id()
+		tc.ownership_add_fn_return_descendant(fn_name, slot_idx, source_suffix, type_name_id)
 		owned_locals.delete(source)
 		marked = true
 	}
@@ -3622,20 +3636,20 @@ fn (mut tc TypeChecker) ownership_prescan_add_return_descendant_from_expr(fn_nam
 	if source_name.len > 0 {
 		for source in ownership_prescan_owned_descendant_names(source_name, owned_locals) {
 			source_suffix := source[source_name.len..]
-			type_name := (local_types[source] or { tc.resolve_type(expr_id) }).name()
-			tc.ownership_add_fn_return_descendant(fn_name, slot_idx, suffix + source_suffix, flat.source_type_id(type_name))
+			type_name_id := (local_types[source] or { tc.resolve_type(expr_id) }).source_type_id()
+			tc.ownership_add_fn_return_descendant(fn_name, slot_idx, suffix + source_suffix, type_name_id)
 			owned_locals.delete(source)
 			marked = true
 		}
 	}
 	if expr_owned {
-		type_name := if source_name.len > 0 {
-			(local_types[source_name] or { tc.resolve_type(expr_id) }).name()
+		type_name_id := if source_name.len > 0 {
+			(local_types[source_name] or { tc.resolve_type(expr_id) }).source_type_id()
 		} else {
-			tc.resolve_type(expr_id).name()
+			tc.resolve_type(expr_id).source_type_id()
 		}
 		tc.ownership_prescan_consume_local(expr_id, mut owned_locals)
-		tc.ownership_add_fn_return_descendant(fn_name, slot_idx, suffix, flat.source_type_id(type_name))
+		tc.ownership_add_fn_return_descendant(fn_name, slot_idx, suffix, type_name_id)
 		marked = true
 	}
 	return marked
@@ -3787,20 +3801,20 @@ fn (mut tc TypeChecker) ownership_prescan_add_param_descendant_from_expr(fn_name
 	if source_name.len > 0 {
 		for source in ownership_prescan_owned_descendant_names(source_name, owned_locals) {
 			source_suffix := source[source_name.len..]
-			type_name := (local_types[source] or { tc.resolve_type(expr_id) }).name()
-			tc.ownership_add_fn_param_descendant(fn_name, param_idx, suffix + source_suffix, flat.source_type_id(type_name))
+			type_name_id := (local_types[source] or { tc.resolve_type(expr_id) }).source_type_id()
+			tc.ownership_add_fn_param_descendant(fn_name, param_idx, suffix + source_suffix, type_name_id)
 			owned_locals.delete(source)
 			marked = true
 		}
 	}
 	if expr_owned {
-		type_name := if source_name.len > 0 {
-			(local_types[source_name] or { tc.resolve_type(expr_id) }).name()
+		type_name_id := if source_name.len > 0 {
+			(local_types[source_name] or { tc.resolve_type(expr_id) }).source_type_id()
 		} else {
-			tc.resolve_type(expr_id).name()
+			tc.resolve_type(expr_id).source_type_id()
 		}
 		tc.ownership_prescan_consume_local(expr_id, mut owned_locals)
-		tc.ownership_add_fn_param_descendant(fn_name, param_idx, suffix, flat.source_type_id(type_name))
+		tc.ownership_add_fn_param_descendant(fn_name, param_idx, suffix, type_name_id)
 		marked = true
 	}
 	return marked
@@ -4199,9 +4213,6 @@ fn (mut tc TypeChecker) ownership_add_fn_return_slot(fn_name string, slot_idx in
 }
 
 fn (mut tc TypeChecker) ownership_add_fn_return_descendant(fn_name string, slot_idx int, suffix string, type_name_id u32) {
-	type_name_comparison_type_id_8 := type_name_id
-	type_name_source_id_2 := type_name_comparison_type_id_8
-	type_name := flat.source_type_name(type_name_source_id_2)
 	if fn_name == '' || slot_idx < 0 || suffix == '' {
 		return
 	}
@@ -4215,11 +4226,7 @@ fn (mut tc TypeChecker) ownership_add_fn_return_descendant(fn_name string, slot_
 	descs << OwnershipReturnDescendant{
 		slot_idx:  slot_idx
 		suffix:    suffix
-		type_name: (if type_name_comparison_type_id_8 != u32(0) {
-			type_name_source_id_2
-		} else {
-			flat.source_type_string
-		})
+		type_name: if type_name_id != 0 { type_name_id } else { flat.source_type_string }
 	}
 	st.ownership_fn_return_descs[fn_name] = descs
 }
@@ -4251,9 +4258,6 @@ fn (mut tc TypeChecker) ownership_add_fn_return_param_descendant(fn_name string,
 }
 
 fn (mut tc TypeChecker) ownership_add_fn_param_descendant(fn_name string, param_idx int, suffix string, type_name_id u32) {
-	type_name_comparison_type_id_9 := type_name_id
-	type_name_source_id_3 := type_name_comparison_type_id_9
-	type_name := flat.source_type_name(type_name_source_id_3)
 	if fn_name == '' || param_idx < 0 || suffix == '' {
 		return
 	}
@@ -4267,11 +4271,7 @@ fn (mut tc TypeChecker) ownership_add_fn_param_descendant(fn_name string, param_
 	descs << OwnershipParamDescendant{
 		param_idx: param_idx
 		suffix:    suffix
-		type_name: (if type_name_comparison_type_id_9 != u32(0) {
-			type_name_source_id_3
-		} else {
-			flat.source_type_string
-		})
+		type_name: if type_name_id != 0 { type_name_id } else { flat.source_type_string }
 	}
 	st.ownership_fn_param_descs[fn_name] = descs
 	st.ownership_fn_param_desc_count++
@@ -5542,8 +5542,8 @@ fn (mut tc TypeChecker) ownership_prescan_transfer_owned_descendants_to_param_wi
 	mut moved_any := false
 	for source_name in ownership_prescan_owned_descendant_names(source_prefix, owned_locals) {
 		suffix := source_name[source_prefix.len..]
-		type_name := (local_types[source_name] or { Type(String{}) }).name()
-		tc.ownership_add_fn_param_descendant(fn_name, param_idx, target_suffix + suffix, flat.source_type_id(type_name))
+		type_name_id := (local_types[source_name] or { Type(String{}) }).source_type_id()
+		tc.ownership_add_fn_param_descendant(fn_name, param_idx, target_suffix + suffix, type_name_id)
 		owned_locals.delete(source_name)
 		moved_any = true
 	}
@@ -8185,7 +8185,7 @@ fn (mut tc TypeChecker) ownership_register_fn_literal_signature(fn_name string, 
 		child := tc.a.child_node(&node, i)
 		if child.kind == .param {
 			params << tc.parse_type(child.typ)
-			shared_params << param_type_text_is_shared(child.typ_text())
+			shared_params << param_source_type_is_shared(child.typ)
 		}
 	}
 	ret_type := tc.parse_type(node.typ)
@@ -9077,10 +9077,11 @@ fn ownership_assoc_base_descendant_overridden(source_prefix string, source_name 
 }
 
 fn (tc &TypeChecker) ownership_struct_decl_node(struct_name_id u32) ?flat.Node {
-	target := generic_base_name(flat.source_type_name(struct_name_id))
-	if decl := tc.source_struct_decl_for_name(flat.source_type_id(target)) {
+	target_id := ownership_generic_base_type_name(struct_name_id)
+	if decl := tc.source_struct_decl_for_name(target_id) {
 		return decl
 	}
+	target := flat.source_type_name(target_id)
 	// Keep the historical spelling fallback for synthesized declarations that
 	// were appended after the immutable source declaration index was built.
 	mut cur_module := ''
@@ -12826,11 +12827,13 @@ fn (mut tc TypeChecker) ownership_projection_is_string_view(id flat.NodeId, pos 
 // error type, so each destructible one needs a compatible `clone()` method.
 fn (tc &TypeChecker) ownership_borrowed_copy_missing_clone(id flat.NodeId, typ Type) ?string {
 	clean := unalias_type(typ)
-	if clean is Interface && is_builtin_ierror_name(clean.name()) {
+	if clean is Interface && (clean.source_type_id() == ownership_source_ierror
+		|| clean.source_type_id() == ownership_source_builtin_ierror) {
 		if tc.ownership_expr_reads_message_error_const(id) {
 			return none
 		}
-		return tc.ownership_default_clone_missing_ierror_method()
+		bad_type_id := tc.ownership_default_clone_missing_ierror_method() or { return none }
+		return flat.source_type_name(bad_type_id)
 	}
 	return tc.ownership_default_clone_missing_method(typ)
 }
@@ -13627,8 +13630,16 @@ fn (mut tc TypeChecker) ownership_owned_global_type_name(name string) ?u32 {
 	return none
 }
 
+fn ownership_generic_base_type_name(name_id u32) u32 {
+	shape := flat.source_type_shape(name_id)
+	if !shape.has(.bracketed) || shape.has(.leading_bracket) {
+		return name_id
+	}
+	return flat.source_type_id(generic_base_name(flat.source_type_name(name_id)))
+}
+
 fn ownership_marker_name_candidates(name_id u32) []u32 {
-	base_id := flat.source_type_id(generic_base_name(flat.source_type_name(name_id)))
+	base_id := ownership_generic_base_type_name(name_id)
 	mut out := [name_id]
 	if base_id != name_id { out << base_id }
 	return out
@@ -13652,7 +13663,7 @@ fn (tc &TypeChecker) ownership_type_is_owned(typ Type) bool {
 	}
 	if typ is Struct {
 		name_id := typ.source_type_id()
-		base_id := flat.source_type_id(generic_base_name(typ.name()))
+		base_id := ownership_generic_base_type_name(name_id)
 		if name_id in tc.ownership.copy_structs
 			|| (base_id != name_id && base_id in tc.ownership.copy_structs) {
 			return false
@@ -13859,7 +13870,7 @@ fn (tc &TypeChecker) ownership_match_covers_all_sum_variants(node flat.Node) boo
 			pattern_id := tc.match_type_pattern(cond) or { continue }
 			pattern := flat.source_type_name(pattern_id)
 			pattern_short := short_type_name(pattern)
-			qpattern_id := flat.source_type_id(tc.qualify_name(pattern))
+			qpattern_id := tc.qualify_type_name(pattern_id)
 			for variant_id in variants {
 				if variant_id == pattern_id || variant_id == qpattern_id
 					|| short_type_name(flat.source_type_name(variant_id)) == pattern_short {

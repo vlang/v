@@ -382,7 +382,7 @@ fn (mut t Transformer) mark_sql_db_methods(db_id flat.NodeId) {
 		return
 	}
 	mut receiver_types := [flat.source_type_name(typ)]
-	if flat.source_type_name(typ) == 'orm.Connection' {
+	if typ == flat.source_type_id('orm.Connection') {
 		receiver_types << 'sqlite.DB'
 		receiver_types << 'db.sqlite.DB'
 	}

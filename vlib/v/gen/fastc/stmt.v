@@ -146,7 +146,7 @@ fn (mut g Parser) skip_disabled_function_statement() !bool {
 	}
 	g.skip_balanced(.lpar, .rpar)!
 	g.consume_statement_end()
-	g.write_line('${fastc_disabled_call_expression(signature.return_type_text())};')
+	g.write_line('${fastc_disabled_call_expression(signature.return_type)};')
 	return true
 }
 
@@ -402,15 +402,15 @@ fn (mut g Parser) parse_select_statement() !bool {
 	direction_array := g.temporary_name('select_directions')
 	value_array := g.temporary_name('select_values')
 	selected := g.temporary_name('selected')
-	channel_type := signature.parameter_types.at(0).trim_right('*')
-	direction_type := signature.parameter_types.at(1)
-	value_type := signature.parameter_types.at(2).trim_right('*')
-	channel_init := g.dynamic_array_literal_source(channel_type, 'chan', channels)
-	direction_init := g.dynamic_array_literal_source(direction_type, 'sync__Direction', directions)
-	value_init := g.dynamic_array_literal_source(value_type, 'voidptr', values)
-	g.write_line('${channel_type} ${channel_array} = ${channel_init};')
-	g.write_line('${direction_type} ${direction_array} = ${direction_init};')
-	g.write_line('${value_type} ${value_array} = ${value_init};')
+	channel_type := fastc_trim_pointer_type(signature.parameter_types.ids[0])
+	direction_type := signature.parameter_types.ids[1]
+	value_type := fastc_trim_pointer_type(signature.parameter_types.ids[2])
+	channel_init := g.dynamic_array_literal_source(channel_type, fastc_type_chan, channels)
+	direction_init := g.dynamic_array_literal_source(direction_type, flat.source_type_id('sync__Direction'), directions)
+	value_init := g.dynamic_array_literal_source(value_type, flat.source_type_voidptr, values)
+	g.write_line('${flat.source_type_name(channel_type)} ${channel_array} = ${channel_init};')
+	g.write_line('${flat.source_type_name(direction_type)} ${direction_array} = ${direction_init};')
+	g.write_line('${flat.source_type_name(value_type)} ${value_array} = ${value_init};')
 	g.write_line('int ${selected} = ${select_name}(&${channel_array}, ${direction_array}, &${value_array}, ${timeout});')
 	for temporary in [value_array, direction_array, channel_array] {
 		g.write_line('builtin__array_free((array *)&${temporary});')
@@ -813,7 +813,7 @@ fn (mut g Parser) parse_match_statement() !bool {
 	subject_name := g.temporary_name('match')
 	subject_decl_type := g.declaration_c_type(subject_type, subject)
 	g.write_line('${subject_decl_type} ${subject_name} = (${subject});')
-	is_string := flat.source_type_name(g.underlying_alias_type(subject_type)).trim_right('*') == 'string'
+	is_string := fastc_trim_pointer_type(g.underlying_alias_type(subject_type)) == flat.source_type_string
 	// A sum type or interface subject dispatches on the boxed `_typ` tag; each
 	// branch names a variant/implementer type. When the subject is a plain local,
 	// the branch body sees it smart-cast to the matched concrete type.
@@ -1113,7 +1113,7 @@ fn (mut g Parser) read_match_type_key() ?string {
 		g.next()
 		element_key := g.read_match_type_key() or { return none }
 		array_c := fastc_array_c_type(fastc_c_declared_type_name(element_key))
-		fastc_register_composite_type(array_c, mut g.composite_types)
+		fastc_register_composite_type(flat.source_type_id(array_c), mut g.composite_types)
 		return array_c
 	}
 	if g.tok != .name {
@@ -1131,7 +1131,7 @@ fn (mut g Parser) read_match_type_key() ?string {
 		g.next()
 		value_key := g.read_match_type_key() or { return none }
 		map_c := fastc_map_c_type(fastc_c_declared_type_name(key_key), fastc_c_declared_type_name(value_key))
-		fastc_register_composite_type(map_c, mut g.composite_types)
+		fastc_register_composite_type(flat.source_type_id(map_c), mut g.composite_types)
 		return map_c
 	}
 	if g.tok == .dot {
@@ -1178,17 +1178,17 @@ fn (mut g Parser) parse_return() !bool {
 		g.write_all_deferred_scopes()
 		g.write_line(if g.in_main {
 			'return 0;'
-		} else if g.return_type_text() in ['Option', '__v_result'] {
+		} else if g.return_type in [fastc_type_option, fastc_type_result] {
 			'return (${g.return_type_text()}){0};'
 		} else {
 			'return;'
 		})
 		return true
 	}
-	if g.selfhost && (g.return_type_text().trim_right('*') == 'MultiReturn' || (g.return_type_text() in [
-		'Option',
-		'__v_result',
-	] && g.option_return_type_text() == 'MultiReturn')) {
+	if g.selfhost && (g.return_type_text().trim_right('*') == 'MultiReturn' || (g.return_type in [
+		fastc_type_option,
+		fastc_type_result,
+	] && g.option_return_type == fastc_type_multi_return)) {
 		mut values := []string{}
 		mut value_types := []u32{}
 		previous_expected_type_source_id := g.expected_expression_type
@@ -1226,15 +1226,15 @@ fn (mut g Parser) parse_return() !bool {
 			evaluated_values << temporary
 		}
 		g.write_all_deferred_scopes()
-		if g.return_type_text() in ['Option', '__v_result'] && values.len == 1 && flat.source_type_name(value_types[0]) == g.return_type_text() {
+		if g.return_type in [fastc_type_option, fastc_type_result] && values.len == 1 && value_types[0] == g.return_type {
 			g.write_line('return ${evaluated_values[0]};')
 			return true
 		}
-		if g.return_type_text() == '__v_result' && values.len == 1 && flat.source_type_name(value_types[0]).trim_right('*') == 'IError' {
+		if g.return_type == fastc_type_result && values.len == 1 && fastc_trim_pointer_type(value_types[0]) == fastc_type_ierror {
 			g.write_line('return (__v_result){.err=${evaluated_values[0]}, .state=1};')
 			return true
 		}
-		multi_value := if values.len == 1 && flat.source_type_name(value_types[0]) == 'MultiReturn' {
+		multi_value := if values.len == 1 && value_types[0] == fastc_type_multi_return {
 			evaluated_values[0]
 		} else {
 			mut packed_values := []string{cap: values.len}
@@ -1243,7 +1243,7 @@ fn (mut g Parser) parse_return() !bool {
 			}
 			'${fastc_multi_return_literal(packed_values)}'
 		}
-		if g.return_type_text() in ['Option', '__v_result'] {
+		if g.return_type in [fastc_type_option, fastc_type_result] {
 			g.write_line('return ${g.option_success_expression(g.return_type, flat.source_type_id('MultiReturn'), multi_value)};')
 		} else {
 			g.write_line('return ${multi_value};')
@@ -1253,10 +1253,10 @@ fn (mut g Parser) parse_return() !bool {
 	previous_expected_type_source_id_2 := g.expected_expression_type
 
 	if g.selfhost {
-		g.expected_expression_type = (if g.return_type_text() in [
-			'Option',
-			'__v_result',
-		] && g.option_return_type_text() !in ['', 'MultiReturn'] {
+		g.expected_expression_type = (if g.return_type in [fastc_type_option, fastc_type_result] && g.option_return_type !in [
+			u32(0),
+			fastc_type_multi_return,
+		] {
 			g.option_return_type
 		} else {
 			g.return_type
@@ -1271,7 +1271,7 @@ fn (mut g Parser) parse_return() !bool {
 		g.write_return_expression(expression, actual_type)
 		return true
 	}
-	contextual_return_type := if g.return_type_text() in ['Option', '__v_result'] && g.option_return_type != u32(0) {
+	contextual_return_type := if g.return_type in [fastc_type_option, fastc_type_result] && g.option_return_type != u32(0) {
 		g.option_return_type
 	} else {
 		g.return_type
@@ -1281,7 +1281,7 @@ fn (mut g Parser) parse_return() !bool {
 		if local := g.locals[g.last_expression[0].lit] {
 			storage_type := fastc_normalize_inferred_type(local.typ)
 			if local.is_reference && (storage_type == contextual_return_type
-				|| g.should_box_variant(flat.source_type_id(flat.source_type_name(contextual_return_type).trim_right('*')), storage_type)) {
+				|| g.should_box_variant(fastc_trim_pointer_type(contextual_return_type), storage_type)) {
 				// A mutable parameter or narrowed interface stores the borrowed object
 				// by pointer. Preserve that storage when the return also expects a pointer.
 				expression = g.render_call_argument_expression(g.last_expression, contextual_return_type) or {
@@ -1335,24 +1335,24 @@ fn (mut g Parser) parse_return() !bool {
 		expression = g.interface_value_expression(g.return_type, actual_type, expression)
 		actual_type = g.return_type
 	}
-	if g.return_type_text() == 'Option' && flat.source_type_name(actual_type).trim_right('*') == 'IError'
+	if g.return_type == fastc_type_option && fastc_trim_pointer_type(actual_type) == fastc_type_ierror
 		&& g.option_return_type_text().trim_right('*') != 'IError'
 		&& g.declared_kinds[flat.source_type_name(g.semantic_type_key(g.option_return_type))] != .interface_
 		&& !g.should_box_variant(g.option_return_type, actual_type) {
 		return g.unsupported('an Option cannot carry an error as its failure state')
 	}
-	if g.selfhost && g.return_type_text() == '__v_result' && flat.source_type_name(actual_type).trim_right('*') != 'IError'
+	if g.selfhost && g.return_type == fastc_type_result && fastc_trim_pointer_type(actual_type) != fastc_type_ierror
 		&& g.returns_error_value(actual_type) {
 		// `return MyError{}` in a `!T` function returns that error, not a `T`.
 		expression = g.interface_value_expression(flat.source_type_id('IError'), actual_type, expression)
 		actual_type = flat.source_type_id('IError')
 	}
-	if g.selfhost && g.return_type_text() == '__v_result' && flat.source_type_name(actual_type).trim_right('*') == 'IError' {
+	if g.selfhost && g.return_type == fastc_type_result && fastc_trim_pointer_type(actual_type) == fastc_type_ierror {
 		expression = '(__v_result){.err=${expression}, .state=1}'
 		actual_type = g.return_type
-	} else if g.selfhost && g.return_type_text() in ['Option', '__v_result'] && flat.source_type_name(actual_type) !in [
-		'Option',
-		'__v_result',
+	} else if g.selfhost && g.return_type in [fastc_type_option, fastc_type_result] && actual_type !in [
+		fastc_type_option,
+		fastc_type_result,
 	] {
 		mut payload_type := fastc_normalize_inferred_type(actual_type)
 		if g.option_return_type != u32(0) && payload_type != g.option_return_type
@@ -1362,7 +1362,7 @@ fn (mut g Parser) parse_return() !bool {
 			// type, so it is boxed as that type, which converts the value.
 			payload_type = g.option_return_type
 		}
-		if g.option_return_type != u32(0) && (g.should_box_variant(g.option_return_type, payload_type) || ((g.option_return_type_text() == 'IError' || g.declared_kinds[flat.source_type_name(g.semantic_type_key(g.option_return_type))] == .interface_) && g.declared_kinds[flat.source_type_name(g.semantic_type_key(payload_type))] != .interface_)) {
+		if g.option_return_type != u32(0) && (g.should_box_variant(g.option_return_type, payload_type) || ((g.option_return_type == fastc_type_ierror || g.declared_kinds[flat.source_type_name(g.semantic_type_key(g.option_return_type))] == .interface_) && g.declared_kinds[flat.source_type_name(g.semantic_type_key(payload_type))] != .interface_)) {
 			expression = g.interface_value_expression(g.option_return_type, payload_type, expression)
 			payload_type = g.option_return_type
 		}
@@ -1384,13 +1384,13 @@ fn (g &Parser) returns_error_value(actual_type u32) bool {
 	if payload_layout == flat.source_type_voidptr && fastc_is_pointer_type(value_layout) {
 		return false
 	}
-	value_type := flat.source_type_id(fastc_trim_pointer_suffix(flat.source_type_name(value_layout)))
+	value_type := fastc_trim_pointer_type(value_layout)
 	if value_type == 0 || g.declared_kinds[flat.source_type_name(g.semantic_type_key(value_type))] != .struct_ {
 		return false
 	}
-	payload_type := flat.source_type_id(fastc_trim_pointer_suffix(flat.source_type_name(payload_layout)))
+	payload_type := fastc_trim_pointer_type(payload_layout)
 	// IError is an intrinsic C struct rather than a source-level interface declaration.
-	if payload_type == value_type || flat.source_type_name(payload_type) == 'IError'
+	if payload_type == value_type || payload_type == fastc_type_ierror
 		|| g.sumtype_has_variant(payload_type, value_type)
 		|| g.result_payload_interface_accepts(payload_type, value_type) {
 		return false
@@ -1466,7 +1466,7 @@ fn (g &Parser) interface_value_expression(interface_type_source_id u32, actual_t
 		// A sum value already carries its concrete variant tag and payload.
 		return expression
 	}
-	actual_interface := flat.source_type_id(fastc_trim_pointer_suffix(flat.source_type_name(actual_layout)))
+	actual_interface := fastc_trim_pointer_type(actual_layout)
 	if g.declared_kinds[flat.source_type_name(g.semantic_type_key(interface_type_source_id))] == .interface_
 		&& g.declared_kinds[flat.source_type_name(g.semantic_type_key(actual_interface))] == .interface_ {
 		value := if flat.source_type_name(actual_type_source_id).ends_with('*') {
@@ -1485,8 +1485,8 @@ fn (g &Parser) interface_value_expression(interface_type_source_id u32, actual_t
 	// example, `Expr(EmptyExpr(0))` must carry `__v_typeid_EmptyExpr`, not the tag
 	// of EmptyExpr's underlying `u8`, or `expr is EmptyExpr` will never match.
 	normalized_actual := fastc_normalize_inferred_type(actual_type_source_id)
-	actual_variant := fastc_trim_pointer_suffix(flat.source_type_name(normalized_actual))
-	normalized := if fastc_trim_pointer_suffix(interface_type) in g.sum_types && g.sumtype_has_variant(interface_type_source_id, flat.source_type_id(actual_variant)) {
+	actual_variant := fastc_trim_pointer_type(normalized_actual)
+	normalized := if fastc_trim_pointer_suffix(interface_type) in g.sum_types && g.sumtype_has_variant(interface_type_source_id, actual_variant) {
 		normalized_actual
 	} else {
 		g.underlying_alias_type(normalized_actual)
@@ -1631,33 +1631,33 @@ fn (mut g Parser) parse_simple_statement() ! {
 			return
 		}
 		if g.selfhost && g.tok == .left_shift {
-			mut target_type := ''
+			mut target_type := u32(0)
 			mut target_is_mut := false
 			mut c_name := ''
 			if local := g.locals[name] {
-				target_type = local.typ_text()
+				target_type = local.typ
 				target_is_mut = local.is_mut
 				c_name = g.local_c_name(name)
 			} else if append_global_key := g.unqualified_global_key(name) {
 				// A `__global` array (`codegen_files << …`) appends the same way; globals
 				// are always mutable and referenced by their resolved C name.
-				target_type = g.global_types.get(append_global_key) or { '' }
+				target_type = g.global_types.type_id(append_global_key) or { u32(0) }
 				target_is_mut = true
 				c_name = g.globals[append_global_key]
 			} else {
 				return g.unsupported('append to unknown name `${name}`')
 			}
-			if !target_is_mut && !(g.unsafe_depth > 0 && target_type.ends_with('*')) {
+			if !target_is_mut && !(g.unsafe_depth > 0 && flat.source_type_name(target_type).ends_with('*')) {
 				return g.unsupported('append to immutable name `${name}`')
 			}
-			element_type := (g.array_element_type(flat.source_type_id(target_type)) or {
-				return g.unsupported('append to non-array `${name}` of type `${target_type}`')
+			element_type := (g.array_element_type(target_type) or {
+				return g.unsupported('append to non-array `${name}` of type `${flat.source_type_name(target_type)}`')
 			})
 			g.next()
 			value := g.read_expression([token.Token.semicolon, token.Token.rcbr])!
 			value_type := fastc_normalize_inferred_type(g.last_expression_type)
-			target_array_type := fastc_trim_pointer_suffix(flat.source_type_name(g.underlying_alias_type(flat.source_type_id(target_type))))
-			value_array_type := fastc_trim_pointer_suffix(flat.source_type_name(g.underlying_alias_type(value_type)))
+			target_array_type := fastc_trim_pointer_type(g.underlying_alias_type(target_type))
+			value_array_type := fastc_trim_pointer_type(g.underlying_alias_type(value_type))
 			// `[]T << []T` is push-many, unless the element type is a sum type that lists
 			// `[]T` as a variant (a recursive sum type such as `type Value = []Value | int`),
 			// in which case the array is boxed as one element. Mirrors the main C backend's
@@ -1665,10 +1665,10 @@ fn (mut g Parser) parse_simple_statement() ! {
 			propagated_array := g.last_expression.len > 1 && g.last_expression.last().tok == .not
 				&& !fastc_trailing_not_marks_fixed_array_literal(g.last_expression)
 			boxes_array_variant := value_array_type == target_array_type
-				&& g.sumtype_has_variant(element_type, flat.source_type_id(value_array_type)) && !propagated_array
+				&& g.sumtype_has_variant(element_type, value_array_type) && !propagated_array
 			is_array_append := value_array_type == target_array_type && !boxes_array_variant
 			g.consume_statement_end()
-			array_target := if target_type.ends_with('*') {
+			array_target := if flat.source_type_name(target_type).ends_with('*') {
 				'(array *)${c_name}'
 			} else {
 				'(array *)&${c_name}'
@@ -1692,12 +1692,9 @@ fn (mut g Parser) parse_simple_statement() ! {
 					|| value.contains('for (') || value.contains('switch ('))
 				boxes_variant := g.should_box_variant(element_type, value_type)
 				copies_pointed_value := flat.source_type_name(value_type).ends_with('*')
-					&& flat.source_type_name(element_type) == flat.source_type_name(value_type).trim_right('*')
+					&& element_type == fastc_trim_pointer_type(value_type)
 				converts_pointer_element := flat.source_type_name(element_type).ends_with('*')
-					&& flat.source_type_name(value_type) in [
-						flat.source_type_name(element_type),
-						flat.source_type_name(element_type).trim_right('*'),
-					]
+					&& value_type in [element_type, fastc_trim_pointer_type(element_type)]
 				mut push_value := if boxes_variant || copies_pointed_value || converts_pointer_element || (g.last_expression.len == 2 && g.last_expression[0].tok == .dot && g.last_expression[1].tok == .name) || is_complex_or {
 					// A `.member` enum-shorthand element, or a complex `or { return … }`-unwrap: the
 					// streamed form can carry a paren imbalance and/or unresolved shorthand. A
@@ -1737,19 +1734,19 @@ fn (mut g Parser) parse_simple_statement() ! {
 			}
 			operator := g.tok
 			expected_type := if is_global {
-				g.global_types.value(global_key)
+				g.global_types.value_id(global_key)
 			} else if local := g.locals[name] {
 				// Assigning to a smart-cast local widens it back to the boxed sum type (`c_target`
 				// is the raw C variable, not the narrowed shadow), so expect the origin type — else
 				// a variant value would be stored into the sum-type slot without the required box.
 				base := if local.smartcast_origin_type != u32(0) {
-					local.smartcast_origin_type_text()
+					local.smartcast_origin_type
 				} else {
-					local.typ_text()
+					local.typ
 				}
-				if local.original_is_reference() { base.trim_right('*') } else { base }
+				if local.original_is_reference() { fastc_trim_pointer_type(base) } else { base }
 			} else {
-				''
+				u32(0)
 			}
 			g.next()
 			if operator == .assign && g.tok == .name && g.lit == 'sql' && 'sql' !in g.locals {
@@ -1763,11 +1760,11 @@ fn (mut g Parser) parse_simple_statement() ! {
 			}
 			previous_expected_type_source_id_2 := g.expected_expression_type
 
-			if g.selfhost && expected_type != '' {
-				g.expected_expression_type = flat.source_type_id(expected_type)
+			if g.selfhost && expected_type != 0 {
+				g.expected_expression_type = expected_type
 			}
 			previous_nil_assignment := g.allows_nil_local_assignment
-			g.allows_nil_local_assignment = !is_global && operator == .assign && g.underlying_alias_type(flat.source_type_id(expected_type)) == flat.source_type_voidptr && !g.fn_alias_return_types.contains(expected_type) && statement_local.fn_return_type == u32(0) && !g.in_generic_placeholder && g.tok == .key_nil && g.nil_ends_value(false)
+			g.allows_nil_local_assignment = !is_global && operator == .assign && g.underlying_alias_type(expected_type) == flat.source_type_voidptr && !g.fn_alias_return_types.contains(flat.source_type_name(expected_type)) && statement_local.fn_return_type == u32(0) && !g.in_generic_placeholder && g.tok == .key_nil && g.nil_ends_value(false)
 			value := g.read_expression([token.Token.semicolon, token.Token.rcbr, token.Token.attribute]) or {
 				g.allows_nil_local_assignment = previous_nil_assignment
 				g.expected_expression_type = previous_expected_type_source_id_2
@@ -1785,23 +1782,23 @@ fn (mut g Parser) parse_simple_statement() ! {
 				return
 			}
 			mut actual_type := g.last_expression_type
-			if g.selfhost && flat.source_type_name(actual_type) == '' {
-				actual_type = flat.source_type_id(expected_type)
+			if g.selfhost && actual_type == u32(0) {
+				actual_type = expected_type
 			}
-			mut resolved_expected_type := if g.selfhost && expected_type == '' {
-				flat.source_type_name(actual_type)
+			mut resolved_expected_type := if g.selfhost && expected_type == 0 {
+				actual_type
 			} else {
 				expected_type
 			}
-			if g.selfhost && resolved_expected_type == 'int' && !fastc_is_numeric_expression_type(actual_type) && name in g.locals {
-				resolved_expected_type = flat.source_type_name(actual_type)
+			if g.selfhost && resolved_expected_type == flat.source_type_int && !fastc_is_numeric_expression_type(actual_type) && name in g.locals {
+				resolved_expected_type = actual_type
 				g.set_scoped_local(name, FastcLocal{
 					is_mut:       statement_local.is_mut
 					is_reference: statement_local.is_reference
 					typ:          actual_type
 				})
 			}
-			expected_layout_type := g.underlying_alias_type(flat.source_type_id(resolved_expected_type))
+			expected_layout_type := g.underlying_alias_type(resolved_expected_type)
 			actual_layout_type := g.underlying_alias_type(actual_type)
 			if g.in_generic_placeholder && expected_layout_type == flat.source_type_voidptr && operator != .assign {
 				// Arithmetic on an erased type parameter is not valid C (`void * +=
@@ -1819,90 +1816,93 @@ fn (mut g Parser) parse_simple_statement() ! {
 				g.write_line('${c_target}=${concatenation};')
 				return
 			}
-			if overloaded := g.render_overloaded_assignment(c_target, value, flat.source_type_id(resolved_expected_type), operator) {
+			if overloaded := g.render_overloaded_assignment(c_target, value, resolved_expected_type, operator) {
 				g.consume_statement_end()
 				g.write_line('${overloaded};')
 				return
 			}
 			g.consume_statement_end()
 			if operator == .power_assign {
-				power := g.render_power_assignment(c_target, value, flat.source_type_id(resolved_expected_type)) or {
-					return g.unsupported('`**=` on type `${resolved_expected_type}`')
+				power := g.render_power_assignment(c_target, value, resolved_expected_type) or {
+					return g.unsupported('`**=` on type `${flat.source_type_name(resolved_expected_type)}`')
 				}
 				g.write_line('${power};')
 				return
 			}
 			if g.checked_target_division_enabled() && operator in [.div_assign, .mod_assign] {
-				g.write_line('${g.render_checked_integer_division_assignment(c_target, value, flat.source_type_id(resolved_expected_type), operator)};')
+				g.write_line('${g.render_checked_integer_division_assignment(c_target, value, resolved_expected_type, operator)};')
 				return
 			}
 			if operator == .right_shift_unsigned_assign {
-				shift := g.render_unsigned_right_shift_assignment(c_target, value, flat.source_type_id(resolved_expected_type)) or {
-					return g.unsupported('unsigned right shift assignment on type `${resolved_expected_type}`')
+				shift := g.render_unsigned_right_shift_assignment(c_target, value, resolved_expected_type) or {
+					return g.unsupported('unsigned right shift assignment on type `${flat.source_type_name(resolved_expected_type)}`')
 				}
 				g.write_line('${shift};')
 				return
 			}
 			if g.translated && operator in [.left_shift_assign, .right_shift_assign] {
-				shift := g.render_guarded_shift_assignment(c_target, value, flat.source_type_id(resolved_expected_type), operator) or {
-					return g.unsupported('shift assignment on type `${resolved_expected_type}`')
+				shift := g.render_guarded_shift_assignment(c_target, value, resolved_expected_type, operator) or {
+					return g.unsupported('shift assignment on type `${flat.source_type_name(resolved_expected_type)}`')
 				}
 				g.write_line('${shift};')
 				return
 			}
-			mut assigned_value := if g.selfhost && operator == .assign && resolved_expected_type.ends_with('*') {
-				g.render_call_argument_expression(g.last_expression, flat.source_type_id(resolved_expected_type)) or { value }
+			mut assigned_value := if g.selfhost && operator == .assign && flat.source_type_name(resolved_expected_type).ends_with('*') {
+				g.render_call_argument_expression(g.last_expression, resolved_expected_type) or { value }
 			} else {
 				value
 			}
-			if g.selfhost && operator == .assign && resolved_expected_type in ['Option', '__v_result'] && flat.source_type_name(actual_type) !in [
-				'Option',
-				'__v_result',
-			] {
-				if flat.source_type_name(actual_type).trim_right('*') == 'IError' {
+			if g.selfhost && operator == .assign && resolved_expected_type in [
+				fastc_type_option,
+				fastc_type_result,
+			] && actual_type !in [fastc_type_option, fastc_type_result] {
+				if fastc_trim_pointer_type(actual_type) == fastc_type_ierror {
 					assigned_value = '(__v_result){.err=${value}, .state=1}'
 				} else {
 					payload_type := if statement_local.option_value_type != u32(0) {
-						statement_local.option_value_type_text()
+						statement_local.option_value_type
 					} else {
-						flat.source_type_name(fastc_normalize_inferred_type(actual_type))
+						fastc_normalize_inferred_type(actual_type)
 					}
-					payload_value := g.render_call_argument_expression(g.last_expression, flat.source_type_id(payload_type)) or { value }
-					assigned_value = g.option_success_expression(flat.source_type_id(resolved_expected_type), flat.source_type_id(payload_type), payload_value)
+					payload_value := g.render_call_argument_expression(g.last_expression, payload_type) or { value }
+					assigned_value = g.option_success_expression(resolved_expected_type, payload_type, payload_value)
 				}
-			} else if g.selfhost && operator == .assign && g.should_box_variant(flat.source_type_id(resolved_expected_type), actual_type) {
+			} else if g.selfhost && operator == .assign && g.should_box_variant(resolved_expected_type, actual_type) {
 				// A concrete struct assigned to an interface variable is boxed with its
 				// type id so the dispatch functions can recover the receiver.
-				assigned_value = g.interface_value_expression(flat.source_type_id(resolved_expected_type), actual_type, value)
-			} else if g.selfhost && operator == .assign && flat.source_type_name(actual_type).ends_with('*') && !resolved_expected_type.ends_with('*') && resolved_expected_type == flat.source_type_name(actual_type).trim_right('*') {
+				assigned_value = g.interface_value_expression(resolved_expected_type, actual_type, value)
+			} else if g.selfhost && operator == .assign && flat.source_type_name(actual_type).ends_with('*') && !flat.source_type_name(resolved_expected_type).ends_with('*') && resolved_expected_type == fastc_trim_pointer_type(actual_type) {
 				// A member smart-cast (`if x.f is T { x = x.f }`) yields a pointer to the
 				// concrete variant; assigning it to a by-value target dereferences it.
 				assigned_value = '*(${value})'
-			} else if g.selfhost && operator == .assign && resolved_expected_type == 'voidptr' && flat.source_type_name(actual_type) !in ['',
-				'voidptr', 'nil'] && !fastc_expression_is_zero(g.last_expression) && !fastc_is_pointer_type(actual_type) {
+			} else if g.selfhost && operator == .assign && resolved_expected_type == flat.source_type_voidptr && actual_type !in [
+				u32(0),
+				flat.source_type_voidptr,
+				flat.source_type_nil,
+			] && !fastc_expression_is_zero(g.last_expression) && !fastc_is_pointer_type(actual_type) {
 				// An unmonomorphized imported generic stores `T` as `voidptr`. Preserve a
 				// concrete value assigned through that slot by copying it into boxed storage.
 				box_value := g.temporary_name('generic_box')
 				assigned_value = '({ ${flat.source_type_name(actual_type)} ${box_value} = (${value}); v_fastc_interface_box(&${box_value}, sizeof(${flat.source_type_name(actual_type)})); })'
-			} else if g.selfhost && operator == .assign && flat.source_type_name(actual_type) == 'voidptr' && !fastc_is_pointer_type(g.underlying_alias_type(flat.source_type_id(resolved_expected_type)))
-				&& (resolved_expected_type.trim_right('*') in g.struct_fields || resolved_expected_type.trim_right('*').starts_with('Array_') || resolved_expected_type.trim_right('*').starts_with('Map_') || resolved_expected_type.trim_right('*').starts_with('FixedArray_')) {
-				assigned_value = '*((${resolved_expected_type} *)(${value}))'
+			} else if g.selfhost && operator == .assign && actual_type == flat.source_type_voidptr && !fastc_is_pointer_type(g.underlying_alias_type(resolved_expected_type))
+				&& (flat.source_type_name(fastc_trim_pointer_type(resolved_expected_type)) in g.struct_fields || flat.source_type_name(fastc_trim_pointer_type(resolved_expected_type)).starts_with('Array_') || flat.source_type_name(fastc_trim_pointer_type(resolved_expected_type)).starts_with('Map_') || flat.source_type_name(fastc_trim_pointer_type(resolved_expected_type)).starts_with('FixedArray_')) {
+				assigned_value = '*((${flat.source_type_name(resolved_expected_type)} *)(${value}))'
 			} else if g.selfhost && operator == .assign
-				&& fastc_fixed_array_element_type(flat.source_type_id(resolved_expected_type)) != none
+				&& fastc_fixed_array_element_type(resolved_expected_type) != none
 				&& g.fixed_array_uses_raw_storage(g.last_expression) {
 				// A struct field or global keeps a fixed array as a raw C array; the local
 				// holds the wrapper struct of the same layout.
-				assigned_value = '*(${resolved_expected_type} *)(${value})'
+				assigned_value = '*(${flat.source_type_name(resolved_expected_type)} *)(${value})'
 			}
 			if g.selfhost && operator == .assign && is_global
-				&& fastc_fixed_array_length(resolved_expected_type) != none {
+				&& fastc_fixed_array_length(flat.source_type_name(resolved_expected_type)) != none {
 				// Globals use raw C arrays, which cannot be assigned as aggregate values.
 				if g.fixed_array_uses_raw_storage(fastc_strip_paren_tokens(g.last_expression)) {
 					g.write_line('memcpy(${c_target}, ${value}, sizeof(${c_target}));')
 				} else {
-					fastc_collect_referenced_fixed_array_types(resolved_expected_type, mut g.fixed_array_types)
+					fastc_collect_referenced_fixed_array_types(flat.source_type_name(resolved_expected_type), mut g.fixed_array_types)
 					temporary := g.temporary_name('fixed_assignment')
-					g.write_line('{ ${fastc_output_c_type(resolved_expected_type)} ${temporary} = (${assigned_value}); memcpy(${c_target}, ${temporary}.data, sizeof(${c_target})); }')
+					g.write_line('{ ${fastc_output_c_type(flat.source_type_name(resolved_expected_type))} ${temporary} = (${assigned_value}); memcpy(${c_target}, ${temporary}.data, sizeof(${c_target})); }')
 				}
 				return
 			}
@@ -2901,7 +2901,7 @@ fn (g &Parser) erased_generic_option_value_type_for_expression(tokens []FastcExp
 		receiver_type := g.infer_expression_type(receiver_tokens) or { return none }
 		method_key, _ := g.resolve_method(receiver_type, tokens[i].lit)
 		signature := g.functions[method_key] or { return none }
-		if signature.return_type_text() in ['Option', '__v_result'] && signature.option_type == flat.source_type_voidptr {
+		if signature.return_type in [fastc_type_option, fastc_type_result] && signature.option_type == flat.source_type_voidptr {
 			return field.generic_argument_type
 		}
 		return none
@@ -3221,7 +3221,7 @@ fn (mut g Parser) parse_declaration_after_name(name string, is_mut bool, is_stat
 	}
 	// A composite spelled here (`Map_string_Array_string` from a map literal) may be named by
 	// no signature or field; register it so it gets its typedef.
-	fastc_register_composite_type(declaration_type, mut g.composite_types)
+	fastc_register_composite_type(flat.source_type_id(declaration_type), mut g.composite_types)
 	if is_volatile {
 		declaration_type = 'volatile ${declaration_type}'
 	}
@@ -3295,7 +3295,7 @@ fn (g &Parser) declaration_c_type(inferred_type_source_id u32, expression string
 		normalized := fastc_normalize_inferred_type(inferred_type_source_id)
 		if !flat.source_type_name(normalized).starts_with('fn (') {
 			mut w := unsafe { &Parser(g) }
-			fastc_register_composite_type(flat.source_type_name(normalized), mut w.composite_types)
+			fastc_register_composite_type(normalized, mut w.composite_types)
 			return fastc_output_c_type(flat.source_type_name(normalized))
 		}
 	}
@@ -4174,7 +4174,7 @@ fn (mut g Parser) parse_orm_sql_select_declaration(name string, is_mut bool) ! {
 	g.consume_statement_end()
 	// The `[]<Table>` result array is often not otherwise constructed in the program,
 	// so register it as a composite type to force its `Array_<Table>` typedef.
-	fastc_register_composite_type(result_type, mut g.composite_types)
+	fastc_register_composite_type(flat.source_type_id(result_type), mut g.composite_types)
 	c_name := fastc_c_identifier(name)
 	g.write_line('${result_type} ${c_name};')
 	g.write_line('{')
@@ -4201,7 +4201,7 @@ fn (mut g Parser) parse_orm_sql_select_assignment(name string) ! {
 	or_source := g.capture_orm_or_block()!
 	lowering, result_type := g.build_orm_select_lowering(db_source, block_source, trailing, or_source)!
 	g.consume_statement_end()
-	fastc_register_composite_type(result_type, mut g.composite_types)
+	fastc_register_composite_type(flat.source_type_id(result_type), mut g.composite_types)
 	c_name := fastc_c_identifier(name)
 	g.write_line('{')
 	g.indent++
@@ -4226,7 +4226,7 @@ fn (mut g Parser) parse_orm_sql_select_return() !bool {
 	g.indent++
 	g.emit_orm_lowering_statements(lowering)!
 	g.write_all_deferred_scopes()
-	return_source := if g.return_type_text() in ['Option', '__v_result'] {
+	return_source := if g.return_type in [fastc_type_option, fastc_type_result] {
 		g.option_success_expression(g.return_type, flat.source_type_id(result_type), '__orm_result')
 	} else {
 		'__orm_result'

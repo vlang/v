@@ -194,7 +194,7 @@ fn (g &Parser) render_typeof_name_expression(tokens []FastcExpressionToken) ?Fas
 	if inner_tokens.len == 1 && inner_tokens[0].tok == .name {
 		if local := g.locals[inner_tokens[0].lit] {
 			if local.is_reference {
-				type_name = flat.source_type_id(flat.source_type_name(type_name).trim_right('*'))
+				type_name = fastc_trim_pointer_type(type_name)
 			}
 		}
 	}
@@ -327,7 +327,7 @@ fn (g &Parser) render_disabled_call_expression(tokens []FastcExpressionToken) ?F
 		return none
 	}
 	return FastcRenderedExpression{
-		source: fastc_disabled_call_expression(signature.return_type_text())
+		source: fastc_disabled_call_expression(signature.return_type)
 		typ:    signature.return_type
 	}
 }
@@ -365,7 +365,7 @@ fn (g &Parser) render_cast_expression(tokens []FastcExpressionToken) ?FastcRende
 			return none
 		}
 		c_type = (g.type_from_expression_tokens(tokens[type_start..i]) or { u32(0) })
-		if flat.source_type_name(c_type) == '' && i == 3 && tokens[0].tok == .name && tokens[0].lit == 'C' && tokens[1].tok == .dot && tokens[2].tok == .name && tokens[2].lit.len > 0 && tokens[2].lit[0].is_capital() && 'C.${tokens[2].lit}' !in g.functions {
+		if c_type == u32(0) && i == 3 && tokens[0].tok == .name && tokens[0].lit == 'C' && tokens[1].tok == .dot && tokens[2].tok == .name && tokens[2].lit.len > 0 && tokens[2].lit[0].is_capital() && 'C.${tokens[2].lit}' !in g.functions {
 			c_type = flat.source_type_id(tokens[2].lit)
 		}
 		if c_type != u32(0) {
@@ -389,7 +389,7 @@ fn (g &Parser) render_cast_expression(tokens []FastcExpressionToken) ?FastcRende
 			}
 		}
 		inner_type := (g.infer_expression_type(inner_tokens) or { u32(0) })
-		if flat.source_type_name(inner_type) == '__v_result' {
+		if inner_type == fastc_type_result {
 			return none
 		}
 		inner := g.render_call_argument_expression(inner_tokens, flat.source_type_id(if inner_type == fastc_type_option {
@@ -412,8 +412,8 @@ fn (g &Parser) render_cast_expression(tokens []FastcExpressionToken) ?FastcRende
 	// primitive-alias variants (`type EmptyExpr = u8`) that cannot be reinterpret-cast at all.
 	if g.selfhost && !fastc_is_pointer_type(c_type) && fastc_trim_pointer_suffix(flat.source_type_name(c_type)) in g.sum_types {
 		inner_type := (g.infer_expression_type(inner_tokens) or { u32(0) })
-		variant := fastc_trim_pointer_suffix(flat.source_type_name(fastc_normalize_inferred_type(inner_type)))
-		if variant != '' && variant != fastc_trim_pointer_suffix(flat.source_type_name(c_type)) && g.sumtype_has_variant(c_type, flat.source_type_id(variant)) {
+		variant := fastc_trim_pointer_type(fastc_normalize_inferred_type(inner_type))
+		if variant != 0 && variant != fastc_trim_pointer_type(c_type) && g.sumtype_has_variant(c_type, variant) {
 			// A member/local chain must render through render_member_receiver so a live member
 			// smart-cast (`if left is CS { Expr(left) }`) supplies the concrete variant pointer
 			// (`((CS *)left->_object)`) rather than the boxed subject itself.
@@ -425,10 +425,10 @@ fn (g &Parser) render_cast_expression(tokens []FastcExpressionToken) ?FastcRende
 			object := if fastc_is_pointer_type(inner_type) {
 				'(void*)(${boxed_inner})'
 			} else {
-				fastc_box_expression(variant, boxed_inner)
+				fastc_box_expression(flat.source_type_name(variant), boxed_inner)
 			}
 			return FastcRenderedExpression{
-				source: '(${flat.source_type_name(c_type)}){._object=${object}, ._typ=__v_typeid_${variant}}'
+				source: '(${flat.source_type_name(c_type)}){._object=${object}, ._typ=__v_typeid_${flat.source_type_name(variant)}}'
 				typ:    c_type
 			}
 		}
@@ -670,7 +670,7 @@ fn (g &Parser) render_static_call_expression(tokens []FastcExpressionToken, rend
 		signature := g.functions[function_key] or { FastcFunctionSignature{} }
 		call_end := fastc_matching_rpar(tokens, i + 1) or { continue }
 		if signature.is_disabled {
-			disabled_call := fastc_disabled_call_expression(signature.return_type_text())
+			disabled_call := fastc_disabled_call_expression(signature.return_type)
 			call_start := i - 2
 			if call_start == 0 && call_end == tokens.len - 1 {
 				return FastcRenderedExpression{
@@ -996,7 +996,7 @@ fn (g &Parser) render_interface_cast_expression(tokens []FastcExpressionToken, r
 			// is auto-dereferenced to the pointee value (`*(node)`), so box that value rather than
 			// letting interface_value_expression's pointer branch cast a struct value to `void*`.
 			if local.is_reference && local.typ == actual_type {
-				box_type = flat.source_type_id(fastc_trim_pointer_suffix(flat.source_type_name(actual_type)))
+				box_type = fastc_trim_pointer_type(actual_type)
 			}
 		}
 	}

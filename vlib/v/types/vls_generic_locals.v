@@ -62,12 +62,12 @@ fn (mut tc TypeChecker) vls_type_generic_body(id flat.NodeId) {
 	tc.fn_context.generic_params = generic_params
 	tc.vls_enter_file(int(node.pos.id))
 	tc.cur_scope = tc.file_scope
-	return_text := if node.typ_text().ends_with('?') && !flat.source_type_shape(node.typ).has(.option_type) {
-		node.typ_text().trim_right('?')
+	return_type := if node.typ_text().ends_with('?') && !flat.source_type_shape(node.typ).has(.option_type) {
+		flat.source_type_id(node.typ_text().trim_right('?'))
 	} else {
-		node.typ_text()
+		node.typ
 	}
-	tc.cur_fn_ret_type = tc.parse_type(flat.source_type_id(return_text))
+	tc.cur_fn_ret_type = tc.parse_type(return_type)
 	tc.fn_context.return_type = tc.cur_fn_ret_type
 	w := tc.checked_generic_fn_body(node, int(fn_id), map[string]u32{}, true)
 	tc.fn_context = saved_context

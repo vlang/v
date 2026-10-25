@@ -7027,7 +7027,6 @@ fn (t &Transformer) generic_call_arg_is_packed_variadic_tail(arg_id flat.NodeId)
 // named `field_init` argument mapped onto a generic struct's declared field
 // type (used by the variadic short struct-init call path).
 fn (mut t Transformer) infer_generic_field_init_type_arg(param_type_id u32, field_id flat.NodeId, mut inferred map[string]u32) {
-	param_type := flat.source_type_name(param_type_id)
 	if int(field_id) < 0 || int(field_id) >= t.a.nodes.len {
 		return
 	}
@@ -7035,9 +7034,9 @@ fn (mut t Transformer) infer_generic_field_init_type_arg(param_type_id u32, fiel
 	if field.kind != .field_init || field.value.len == 0 || field.children_count == 0 {
 		return
 	}
-	mut struct_param_type := t.normalize_type_alias_chain(flat.source_type_id(trimmed_transform_text(param_type)))
+	mut struct_param_type := t.normalize_type_alias_chain(t.trimmed_type_id(param_type_id))
 	if flat.source_type_shape(struct_param_type).has(.pointer) {
-		struct_param_type = flat.source_type_id(trimmed_transform_text(flat.source_type_name(struct_param_type)[1..]))
+		struct_param_type = t.trimmed_type_id(t.trim_pointer_type(struct_param_type))
 	}
 	param_base, param_args, is_generic_struct := generic_app_parts(flat.source_type_name(struct_param_type))
 	if !is_generic_struct || param_args.len == 0 {
@@ -7546,13 +7545,13 @@ fn (mut t Transformer) rewrite_method_level_generic_call(id flat.NodeId, node fl
 			if param_types_source_ids.len > 0 {
 				base_type_source_id := t.generic_call_arg_type_for_inference(recv_id)
 
-				mut expected_type := trimmed_transform_text(flat.source_type_name(param_types_source_ids[0]))
-				if expected_type.starts_with('mut ') {
-					expected_type = trimmed_transform_text(expected_type[4..])
+				mut expected_type := t.trimmed_type_id(param_types_source_ids[0])
+				if flat.source_type_shape(expected_type).has(.mutable_type) {
+					expected_type = flat.source_type_id(trimmed_transform_text(flat.source_type_name(expected_type)[4..]))
 				}
-				expected_type = expected_type.trim_left('&').trim_space()
-				if expected_type.len > 0 {
-					if embedded := t.embedded_receiver_base_for_type(recv_id, base_type_source_id, flat.source_type_id(expected_type)) {
+				expected_type = t.trimmed_type_id(t.trim_all_pointer_type(expected_type))
+				if expected_type != 0 {
+					if embedded := t.embedded_receiver_base_for_type(recv_id, base_type_source_id, expected_type) {
 						receiver_arg = embedded
 					}
 				}
@@ -7563,25 +7562,25 @@ fn (mut t Transformer) rewrite_method_level_generic_call(id flat.NodeId, node fl
 		for i < node.children_count {
 			arg_id := t.a.child(&node, i)
 			param_type := if i < param_types_source_ids.len {
-				flat.source_type_name(param_types_source_ids[i])
+				param_types_source_ids[i]
 			} else {
-				''
+				u32(0)
 			}
 			arg := t.a.nodes[int(arg_id)]
 			if arg.kind == .field_init {
-				if packed_arg := t.transform_params_struct_call_arg(node, i, flat.source_type_id(param_type)) {
+				if packed_arg := t.transform_params_struct_call_arg(node, i, param_type) {
 					children << packed_arg
 					i = t.next_non_field_init_arg(node, i)
 					continue
 				}
-				if packed_arg := t.transform_struct_call_arg(node, i, flat.source_type_id(param_type)) {
+				if packed_arg := t.transform_struct_call_arg(node, i, param_type) {
 					children << packed_arg
 					i = t.next_non_field_init_arg(node, i)
 					continue
 				}
 			}
-			children << t.specialize_generic_fn_value_arg(arg_id, flat.source_type_id(param_type), false) or {
-				t.retype_generic_call_literal_arg(arg_id, flat.source_type_id(param_type))
+			children << t.specialize_generic_fn_value_arg(arg_id, param_type, false) or {
+				t.retype_generic_call_literal_arg(arg_id, param_type)
 			}
 			i++
 		}
@@ -7592,25 +7591,25 @@ fn (mut t Transformer) rewrite_method_level_generic_call(id flat.NodeId, node fl
 			arg_id := t.a.child(&node, i)
 			param_idx := i - 1
 			param_type := if param_idx < param_types_source_ids.len {
-				flat.source_type_name(param_types_source_ids[param_idx])
+				param_types_source_ids[param_idx]
 			} else {
-				''
+				u32(0)
 			}
 			arg := t.a.nodes[int(arg_id)]
 			if arg.kind == .field_init {
-				if packed_arg := t.transform_params_struct_call_arg(node, i, flat.source_type_id(param_type)) {
+				if packed_arg := t.transform_params_struct_call_arg(node, i, param_type) {
 					children << packed_arg
 					i = t.next_non_field_init_arg(node, i)
 					continue
 				}
-				if packed_arg := t.transform_struct_call_arg(node, i, flat.source_type_id(param_type)) {
+				if packed_arg := t.transform_struct_call_arg(node, i, param_type) {
 					children << packed_arg
 					i = t.next_non_field_init_arg(node, i)
 					continue
 				}
 			}
-			children << t.specialize_generic_fn_value_arg(arg_id, flat.source_type_id(param_type), false) or {
-				t.retype_generic_call_literal_arg(arg_id, flat.source_type_id(param_type))
+			children << t.specialize_generic_fn_value_arg(arg_id, param_type, false) or {
+				t.retype_generic_call_literal_arg(arg_id, param_type)
 			}
 			i++
 		}
@@ -8544,41 +8543,33 @@ fn (mut t Transformer) unshadowed_generic_call_decl_key(id flat.NodeId, node fla
 			}
 		}
 		method_keys := t.generic_receiver_methods_by_name[callee.value] or { return none }
-		mut base_type := flat.source_type_name(t.syntactic_static_call_return_type(base_id))
-		if base_type.len == 0 {
-			base_type = flat.source_type_name(t.node_type(base_id))
+		mut base_type := t.syntactic_static_call_return_type(base_id)
+		if base_type == 0 {
+			base_type = t.node_type(base_id)
 		}
 		// Calls in a generic match branch must bind to the concrete variant, even
 		// when the sum type declares a same-named generic method.
 		if sc := t.find_smartcast_for_expr(base_id) {
 			target_type_source_id := t.smartcast_target_type(sc)
-			target_type := flat.source_type_name(target_type_source_id)
 			if target_type_source_id != 0 {
-				base_type = target_type
+				base_type = target_type_source_id
 			}
 		}
-		base_type = flat.source_type_name(transform_unshared_receiver_type(flat.source_type_id(base_type)))
-		if base_type.starts_with('&') {
-			base_type = base_type[1..]
-		}
+		base_type = t.trim_pointer_type(transform_unshared_receiver_type(base_type))
 		mut receiver_types := [base_type]
 		if base.kind == .ident {
 			if declared_type_source_id := t.local_decl_type_before_pos(base.value, node) {
-				declared_type := flat.source_type_name(declared_type_source_id)
-
-				if declared_type !in receiver_types {
-					receiver_types << declared_type
+				if declared_type_source_id !in receiver_types {
+					receiver_types << declared_type_source_id
 				}
 			}
 			if declared_type_source_id := t.local_decl_type_before(base.value, base_id) {
-				declared_type := flat.source_type_name(declared_type_source_id)
-
-				if declared_type !in receiver_types {
-					receiver_types << declared_type
+				if declared_type_source_id !in receiver_types {
+					receiver_types << declared_type_source_id
 				}
 			}
 		}
-		base_name, _, ok := generic_app_parts(base_type)
+		base_name, _, ok := generic_app_parts(flat.source_type_name(base_type))
 		if ok {
 			key := t.generic_receiver_decl_key(base_name, callee.value, decls)
 			if decl := decls[key] {
@@ -8592,12 +8583,12 @@ fn (mut t Transformer) unshadowed_generic_call_decl_key(id flat.NodeId, node fla
 			if decl := decls[key] {
 				mut receiver_matches := false
 				for receiver_type in receiver_types {
-					if t.generic_receiver_decl_matches_type(flat.source_type_id(receiver_type), decl, module_name) {
+					if t.generic_receiver_decl_matches_type(receiver_type, decl, module_name) {
 						receiver_matches = true
 						break
 					}
 					mut seen := map[u32]bool{}
-					if t.generic_decl_matches_embedded_receiver(flat.source_type_id(receiver_type), decl, module_name, mut seen) {
+					if t.generic_decl_matches_embedded_receiver(receiver_type, decl, module_name, mut seen) {
 						receiver_matches = true
 						break
 					}
@@ -12649,14 +12640,14 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args_ids []u32, i
 		}
 	}
 	if node.kind == .param && cloned_value.len > 0 && cloned_typ != 0 {
-		mut scoped_param_type := flat.source_type_name(cloned_typ)
-		if node.is_mut && node.op != .amp && scoped_param_type.starts_with('&') {
+		mut scoped_param_type := cloned_typ
+		if node.is_mut && node.op != .amp && flat.source_type_shape(scoped_param_type).has(.pointer) {
 			// The specialized signature keeps `mut value T` as pointer storage, but
 			// expressions in its body see the language-level `T`. Do not overwrite
 			// the value scope seeded by emit_generic_fn_specialization with `&T`.
-			scoped_param_type = scoped_param_type[1..]
+			scoped_param_type = t.trim_pointer_type(scoped_param_type)
 		}
-		t.set_var_type(cloned_value, flat.source_type_id(scoped_param_type))
+		t.set_var_type(cloned_value, scoped_param_type)
 	}
 	if node.kind == .ident && t.mut_param_values[node.value] {
 		t.mut_value_ident_nodes[int(clone_id)] = true

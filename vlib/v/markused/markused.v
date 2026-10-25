@@ -15,6 +15,8 @@ const markused_source_type_builtin_ierror = flat.source_type_id('builtin.IError'
 const markused_source_type_i128 = flat.source_type_id('i128')
 const markused_source_type_u128 = flat.source_type_id('u128')
 const markused_source_type_float_literal = flat.source_type_id('float literal')
+const markused_source_type_closure_runtime = flat.source_type_id('__v3_builtin_closure_runtime')
+const markused_source_type_veb_result = flat.source_type_id('veb.Result')
 
 // library_seeds are the functions that every program keeps, whatever it calls.
 const library_seeds = ['time.Time.new', 'Time.new', 'gen_expr_lvalue', 'c.gen_expr_lvalue', 'gen_assign',
@@ -887,7 +889,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	}
 	needs_closure_runtime := if reachable_runtime_helpers {
 		a.nodes.any(it.kind == .import_decl && it.value == 'builtin.closure'
-			&& it.typ_text() != '__v3_builtin_closure_runtime')
+			&& it.typ != markused_source_type_closure_runtime)
 	} else if use_prepared && prepared.needs_closure_runtime {
 		true
 	} else {
@@ -2449,7 +2451,7 @@ fn build_prepared_markused_declarations(a &flat.FlatAst, tc &types.TypeChecker) 
 fn markused_syntax_needs_closure_runtime(a &flat.FlatAst) bool {
 	for idx, node in a.nodes {
 		if (node.kind == .import_decl
-			&& (node.value == 'builtin.closure' || node.typ_text() == '__v3_builtin_closure_runtime'))
+			&& (node.value == 'builtin.closure' || node.typ == markused_source_type_closure_runtime))
 			|| node.kind == .fn_literal
 			|| (idx >= a.user_code_start && node.kind == .lambda_expr) {
 			return true
@@ -2663,11 +2665,11 @@ fn markused_fn_needs_implicit_veb_ctx(a &flat.FlatAst, tc &types.TypeChecker, cu
 }
 
 fn markused_fn_returns_veb_result(tc &types.TypeChecker, node flat.Node) bool {
-	if node.typ == flat.source_type_id('veb.Result') {
+	if node.typ == markused_source_type_veb_result {
 		return true
 	}
 	ret := tc.parse_type(node.typ)
-	return ret.source_type_id() == flat.source_type_id('veb.Result')
+	return ret.source_type_id() == markused_source_type_veb_result
 }
 
 fn markused_fn_has_receiver_param(a &flat.FlatAst, node flat.Node) bool {
@@ -3924,11 +3926,11 @@ fn enqueue_debugger_custom_str_methods(tc &types.TypeChecker, mut used map[strin
 fn markused_struct_fields(name_id u32, tc &types.TypeChecker) []types.StructField {
 	name := flat.source_type_name(name_id)
 	mut candidates := [name_id]
-	base_name := flat.source_type_id(types.generic_base_name(name))
+	base_name := types.generic_base_type_id(name_id)
 	if base_name != name_id {
 		candidates << base_name
 	}
-	qualified := flat.source_type_id(tc.qualify_name(name))
+	qualified := tc.qualify_type_name(name_id)
 	if qualified !in candidates {
 		candidates << qualified
 	}
@@ -3949,7 +3951,7 @@ fn markused_struct_fields(name_id u32, tc &types.TypeChecker) []types.StructFiel
 fn markused_sum_variants(name_id u32, tc &types.TypeChecker) []u32 {
 	name := flat.source_type_name(name_id)
 	mut candidates := [name_id]
-	qualified := flat.source_type_id(tc.qualify_name(name))
+	qualified := tc.qualify_type_name(name_id)
 	if qualified !in candidates {
 		candidates << qualified
 	}
@@ -4008,7 +4010,7 @@ fn markused_call_lowers_to_join_path_single(a &flat.FlatAst, fn_node flat.Node, 
 }
 
 fn markused_type_name_lowers_to_map_str(type_name_id u32, tc &types.TypeChecker) bool {
-	if flat.source_type_name(markused_clean_map_type(type_name_id)).starts_with('map[') {
+	if flat.source_type_shape(markused_clean_map_type(type_name_id)).has(.map_type) {
 		return true
 	}
 	return markused_type_lowers_to_map_str(tc.parse_type(type_name_id))
@@ -4027,7 +4029,7 @@ fn markused_type_lowers_to_map_str(typ0 types.Type) bool {
 		}
 		break
 	}
-	return typ is types.Map || flat.source_type_name(markused_clean_map_type(typ.source_type_id())).starts_with('map[')
+	return typ is types.Map || flat.source_type_shape(markused_clean_map_type(typ.source_type_id())).has(.map_type)
 }
 
 fn markused_auto_str_skipped_fields(a &flat.FlatAst) map[u32]&MarkusedSkippedFields {
@@ -4906,10 +4908,10 @@ fn (c &CallCollector) parsed_type_uses_concrete_generics(typ types.Type, depth i
 }
 
 fn (c &CallCollector) named_type_uses_concrete_generics(name_id u32) bool {
-	name := flat.source_type_name(name_id)
-	base_name := types.generic_base_name(name)
-	return base_name != name
-		&& (base_name in c.tc.struct_generic_params || base_name in c.tc.sum_generic_params)
+	base_name_id := types.generic_base_type_id(name_id)
+	if base_name_id == name_id { return false }
+	base_name := flat.source_type_name(base_name_id)
+	return base_name in c.tc.struct_generic_params || base_name in c.tc.sum_generic_params
 }
 
 fn (c &CallCollector) struct_decl_info_with_imports(name_id u32, cur_module string, imports map[string]string) ?StructDeclInfo {
@@ -5337,27 +5339,29 @@ fn type_needs_zero_map(typ types.Type) bool {
 // markused_membership_container_type
 // supports helper handling in markused.
 fn markused_membership_container_type(tc &types.TypeChecker, typ types.Type) u32 {
-	mut clean := typ.name().trim_space()
+	mut clean_id := markused_trimmed_source_type(typ.source_type_id())
 	for {
-		if clean.starts_with('shared ') {
-			clean = clean[7..].trim_space()
+		shape := flat.source_type_shape(clean_id)
+		clean := flat.source_type_name(clean_id)
+		if shape.has(.shared_type) {
+			clean_id = flat.source_type_id(clean[7..].trim_space())
 			continue
 		}
-		if clean.starts_with('&') {
-			clean = clean[1..].trim_space()
+		if shape.has(.pointer) {
+			clean_id = flat.source_type_id(clean[1..].trim_space())
 			continue
 		}
-		if tc.type_aliases.contains(clean) {
-			alias := flat.source_type_name(tc.type_aliases.value_id(clean)).trim_space()
-			if alias == clean {
+		if alias_id := tc.type_aliases.type_id(clean) {
+			alias := markused_trimmed_source_type(alias_id)
+			if alias == clean_id {
 				break
 			}
-			clean = alias
+			clean_id = alias
 			continue
 		}
 		break
 	}
-	return flat.source_type_id(clean)
+	return clean_id
 }
 
 // qualify_fn supports qualify fn handling for markused.
@@ -6965,8 +6969,8 @@ fn (c &CallCollector) local_decl_type_name(declared_id u32, rhs_id flat.NodeId, 
 // modules with one checker view, so parsing that source spelling through the
 // worker's last module would attach an unrelated module to the alias.
 fn (c &CallCollector) contextual_alias_type_name(type_text_id u32, cur_module string, imports map[string]string) ?u32 {
-	type_text := flat.source_type_name(type_text_id)
-	clean := type_text.trim_space()
+	clean_id := markused_trimmed_source_type(type_text_id)
+	clean := flat.source_type_name(clean_id)
 	for prefix in ['mut ', 'shared ', 'atomic ', '...', '[]', '&', '?', '!'] {
 		if clean.starts_with(prefix) {
 			inner := flat.source_type_name(c.contextual_alias_type_name(flat.source_type_id(clean[prefix.len..]), cur_module, imports) or {
@@ -6975,7 +6979,6 @@ fn (c &CallCollector) contextual_alias_type_name(type_text_id u32, cur_module st
 			return flat.source_type_id(prefix + inner)
 		}
 	}
-	clean_id := flat.source_type_id(clean)
 	resolved := markused_resolve_imported_source_type(clean_id, imports)
 	for candidate in markused_alias_type_candidates(resolved, clean_id, cur_module) {
 		if c.tc.type_aliases.contains(flat.source_type_name(candidate)) {
@@ -7913,7 +7916,7 @@ fn (c &CallCollector) alias_type_from_callee(callee &flat.Node, cur_module strin
 }
 
 fn (c &CallCollector) alias_type_from_name(name_id u32, cur_module string, imports map[string]string) ?types.Type {
-	return c.alias_type_from_name_text(flat.source_type_name(name_id), cur_module, imports)
+	return c.alias_type_from_name_bytes(flat.source_type_name(name_id), name_id, cur_module, imports)
 }
 
 // alias_type_from_name_text checks the spellings of markused_alias_type_candidates,
@@ -7921,15 +7924,27 @@ fn (c &CallCollector) alias_type_from_name(name_id u32, cur_module string, impor
 // source type ID: most names here are callees, and interning all of their
 // candidate spellings filled the process-wide type text table.
 fn (c &CallCollector) alias_type_from_name_text(name string, cur_module string, imports map[string]string) ?types.Type {
+	return c.alias_type_from_name_bytes(name, 0, cur_module, imports)
+}
+
+fn (c &CallCollector) alias_type_from_name_bytes(name string, name_id u32, cur_module string, imports map[string]string) ?types.Type {
 	if c.tc.type_aliases.ids.len == 0 {
 		return none
 	}
 	resolved := markused_resolve_imported_name(name, imports)
 	if resolved.len > 0 && c.tc.type_aliases.contains(resolved) {
-		return c.tc.parse_canonical_type(flat.source_type_id(resolved))
+		return c.tc.parse_canonical_type(if name_id != 0 && resolved == name {
+			name_id
+		} else {
+			flat.source_type_id(resolved)
+		})
 	}
 	if name != resolved && name.len > 0 && c.tc.type_aliases.contains(name) {
-		return c.tc.parse_canonical_type(flat.source_type_id(name))
+		return c.tc.parse_canonical_type(if name_id != 0 {
+			name_id
+		} else {
+			flat.source_type_id(name)
+		})
 	}
 	if cur_module.len > 0 && cur_module != 'main' && cur_module != 'builtin' {
 		qualified := '${cur_module}.${resolved}'
@@ -8630,19 +8645,16 @@ fn (c &CallCollector) register_top_level_for_in_vars(node &flat.Node, cur_module
 	}
 	container_type_source_id := c.top_level_expr_type_name(iterable_id, cur_module, imports,
 		container_values, container_types, false)
-	container_type := flat.source_type_name(container_type_source_id)
 	if elem_source_id := c.top_level_for_in_elem_type_name(iterable_id, cur_module, imports,
 		container_values, container_types) {
-		elem := flat.source_type_name(elem_source_id)
-
 		if elem_source_id != 0 {
 			mut value_type := elem_source_id
 			collection := types.unalias_type(types.unwrap_pointer(c.tc.parse_canonical_type(container_type_source_id)))
-			if (node.op == .amp || container_is_ref || container_type.starts_with('&'))
+			if (node.op == .amp || container_is_ref || flat.source_type_shape(container_type_source_id).has(.pointer))
 				&& (collection is types.Array || collection is types.ArrayFixed || collection is types.Map) {
 				clean_elem := types.unalias_type(c.tc.parse_canonical_type(elem_source_id))
 				if clean_elem !is types.Pointer && clean_elem !is types.OptionType {
-					value_type = flat.source_type_id('&${elem}')
+					value_type = flat.source_type_id('&${flat.source_type_name(elem_source_id)}')
 				}
 			}
 			local_types.set_id(value_var, value_type)
@@ -8684,15 +8696,16 @@ fn (c &CallCollector) range_endpoint_is_literal(id flat.NodeId, cur_module strin
 }
 
 fn (c &CallCollector) top_level_for_in_key_type_name(container_id flat.NodeId, cur_module string, imports map[string]string, local_values map[string]bool, local_types flat.TypeTextBindings) u32 {
-	type_name := flat.source_type_name(c.top_level_expr_type_name(container_id, cur_module, imports, local_values,
-		local_types, true)).trim_left('&?!')
+	type_name_id := markused_unwrapped_source_type(c.top_level_expr_type_name(container_id, cur_module, imports, local_values,
+		local_types, true))
+	type_name := flat.source_type_name(type_name_id)
 	if type_name.starts_with('map[') {
 		end := markused_generic_matching_bracket(type_name, 3)
 		if end < type_name.len {
 			return flat.source_type_id(type_name[4..end])
 		}
 	}
-	container := types.unwrap_pointer(c.tc.parse_canonical_type(flat.source_type_id(type_name)))
+	container := types.unwrap_pointer(c.tc.parse_canonical_type(type_name_id))
 	if container is types.Map {
 		return container.key_type.source_type_id()
 	}
@@ -8700,7 +8713,8 @@ fn (c &CallCollector) top_level_for_in_key_type_name(container_id flat.NodeId, c
 }
 
 fn (c &CallCollector) top_level_for_in_elem_type_name(container_id flat.NodeId, cur_module string, imports map[string]string, local_values map[string]bool, local_types flat.TypeTextBindings) ?u32 {
-	type_name := flat.source_type_name(c.top_level_expr_type_name(container_id, cur_module, imports, local_values, local_types, true)).trim_left('&?!')
+	type_name_id := markused_unwrapped_source_type(c.top_level_expr_type_name(container_id, cur_module, imports, local_values, local_types, true))
+	type_name := flat.source_type_name(type_name_id)
 	if type_name.len == 0 {
 		return none
 	}
@@ -8720,7 +8734,7 @@ fn (c &CallCollector) top_level_for_in_elem_type_name(container_id flat.NodeId, 
 			return flat.source_type_id(type_name[end + 1..])
 		}
 	}
-	ct := types.unwrap_pointer(c.tc.parse_canonical_type(flat.source_type_id(type_name)))
+	ct := types.unwrap_pointer(c.tc.parse_canonical_type(type_name_id))
 	if ct is types.Array {
 		return ct.elem_type.source_type_id()
 	}
@@ -9943,11 +9957,12 @@ fn (c &CallCollector) collect_sum_variant_receiver_methods(base_id flat.NodeId, 
 }
 
 fn (c &CallCollector) collect_sum_variant_receiver_methods_for_type_name(type_name_id u32, method string, cur_module string, mut calls []string) bool {
-	mut clean := flat.source_type_name(markused_clean_receiver_type_name(type_name_id))
+	mut clean_id := markused_clean_receiver_type_name(type_name_id)
+	mut clean := flat.source_type_name(clean_id)
 	for clean.starts_with('?') || clean.starts_with('!') {
 		clean = clean[1..].trim_space()
+		clean_id = flat.source_type_id(clean)
 	}
-	clean_id := flat.source_type_id(clean)
 	mut sum_names := [clean_id]
 	qualified := flat.source_type_id(qualify_fn(cur_module, clean))
 	if qualified != clean_id {
@@ -10204,8 +10219,8 @@ fn (c &CallCollector) collection_alias_receiver_method_name(type_name_id u32, me
 		aliases << alias_id
 		owner = c.tc.type_alias_modules[alias_name] or { owner }
 		target_id := markused_clean_receiver_type_name(c.tc.type_aliases.value_id(alias_name))
-		target := flat.source_type_name(target_id)
-		if !target.starts_with('[]') && !target.starts_with('map[') {
+		target_shape := flat.source_type_shape(target_id)
+		if !target_shape.has(.array_type) && !target_shape.has(.map_type) {
 			current = target_id
 			continue
 		}
@@ -10252,12 +10267,12 @@ fn (c &CallCollector) collection_alias_receiver_method_name(type_name_id u32, me
 }
 
 fn markused_clean_receiver_type_name(type_id u32) u32 {
-	type_name := flat.source_type_name(type_id)
-	if type_name.len > 0 && !type_name[0].is_space()
-		&& !type_name[type_name.len - 1].is_space() && type_name[0] != `&`
-		&& !type_name.starts_with('mut ') && !type_name.starts_with('shared ') {
+	shape := flat.source_type_shape(type_id)
+	if !shape.has(.padded) && !shape.has(.pointer) && !shape.has(.mutable_type)
+		&& !shape.has(.shared_type) {
 		return type_id
 	}
+	type_name := flat.source_type_name(type_id)
 	mut clean := type_name.trim_space()
 	for {
 		if clean.starts_with('&') {
@@ -10361,16 +10376,15 @@ fn markused_push_receiver_type_candidate(mut candidates []u32, candidate u32) {
 }
 
 fn markused_receiver_type_text_variants(type_id u32) []u32 {
-	text := flat.source_type_name(type_id)
-	clean_text := text.trim_space()
-	clean := if text.len == clean_text.len { type_id } else { flat.source_type_id(clean_text) }
+	clean := markused_trimmed_source_type(type_id)
+	clean_text := flat.source_type_name(clean)
 	mut names := []u32{}
 	markused_push_receiver_type_candidate(mut names, clean)
-	markused_push_receiver_type_candidate(mut names, flat.source_type_id(markused_receiver_type_text_short_spelling(clean_text)))
+	markused_push_receiver_type_candidate(mut names, markused_receiver_type_short_spelling(clean))
 	if markused_type_text_is_fixed_array(clean_text) {
 		source := markused_receiver_type_text_source_fixed_spelling(clean)
 		markused_push_receiver_type_candidate(mut names, source)
-		markused_push_receiver_type_candidate(mut names, flat.source_type_id(markused_receiver_type_text_short_spelling(flat.source_type_name(source))))
+		markused_push_receiver_type_candidate(mut names, markused_receiver_type_short_spelling(source))
 	}
 	return names
 }
@@ -10421,6 +10435,14 @@ fn markused_trailing_matching_bracket_start(s string, end int) int {
 		}
 	}
 	return -1
+}
+
+// markused_receiver_type_short_spelling retains types whose member spelling is unchanged.
+fn markused_receiver_type_short_spelling(type_id u32) u32 {
+	if !flat.source_type_shape(type_id).has(.dotted) { return type_id }
+	text := flat.source_type_name(type_id)
+	short := markused_receiver_type_text_short_spelling(text)
+	return if short == text { type_id } else { flat.source_type_id(short) }
 }
 
 fn markused_receiver_type_text_short_spelling(type_text string) string {
@@ -10485,6 +10507,10 @@ fn markused_receiver_type_text_module_names_bytes(type_text string) []string {
 }
 
 fn markused_clean_map_type(receiver_id u32) u32 {
+	shape := flat.source_type_shape(receiver_id)
+	if !shape.has(.padded) && !shape.has(.pointer) && !shape.has(.shared_type) {
+		return receiver_id
+	}
 	receiver_type := flat.source_type_name(receiver_id)
 	mut clean := receiver_type.trim_space()
 	for {
@@ -10812,8 +10838,7 @@ fn (c &CallCollector) collect_omitted_params_default_calls(call &flat.Node, call
 
 // collect_struct_default_calls_for_type supports collect_struct_default_calls_for_type handling.
 fn (c &CallCollector) collect_struct_default_calls_for_type(type_name_id u32, cur_module string, imports map[string]string, mut calls []string) {
-	type_name := flat.source_type_name(type_name_id)
-	info := c.struct_decl_info_with_imports(flat.source_type_id(types.generic_base_name(type_name)), cur_module, imports) or {
+	info := c.struct_decl_info_with_imports(types.generic_base_type_id(type_name_id), cur_module, imports) or {
 		return
 	}
 	c.collect_struct_default_calls_from_info(info, type_name_id, map[string]bool{}, mut calls)
@@ -10959,9 +10984,20 @@ mut:
 	structs   int
 }
 
+// markused_trimmed_source_type preserves already-trimmed source spelling identities.
+fn markused_trimmed_source_type(type_id u32) u32 {
+	if !flat.source_type_shape(type_id).has(.padded) { return type_id }
+	return flat.source_type_id(flat.source_type_name(type_id).trim_space())
+}
+
+// markused_unwrapped_source_type removes the leading reference/optional spelling syntax.
+fn markused_unwrapped_source_type(type_id u32) u32 {
+	if !flat.source_type_shape(type_id).has(.wrapped) { return type_id }
+	return flat.source_type_id(flat.source_type_name(type_id).trim_left('&?!'))
+}
+
 // value_type_in_source resolves a value's semantic type in its source context.
 fn (c &CallCollector) value_type_in_source(type_text_id u32, node &flat.Node, imports map[string]string) types.Type {
-	type_text := flat.source_type_name(type_text_id)
 	if !isnil(c.source_type_cache) {
 		if source := c.a.source_files[node.pos.id] {
 			mut cache := c.source_type_cache
@@ -10982,7 +11018,7 @@ fn (c &CallCollector) value_type_in_source(type_text_id u32, node &flat.Node, im
 			if type_id := file.types[text_id] {
 				if typ := c.tc.type_by_id(type_id) { return typ }
 			}
-			typ := types.unalias_type(c.tc.parse_resolution_type_in_file(flat.source_type_id(type_text.trim_space()), source.name))
+			typ := types.unalias_type(c.tc.parse_resolution_type_in_file(markused_trimmed_source_type(type_text_id), source.name))
 			if !markused_type_has_unknown(typ) {
 				if type_id := c.tc.semantic_type_id(typ) {
 					file.types[text_id] = type_id
@@ -10991,22 +11027,22 @@ fn (c &CallCollector) value_type_in_source(type_text_id u32, node &flat.Node, im
 			return *typ
 		}
 	}
-	clean := type_text.trim_space()
+	clean_id := markused_trimmed_source_type(type_text_id)
 	return *types.unalias_type(if source_file := c.a.source_files[node.pos.id] {
-		c.tc.parse_resolution_type_in_file(flat.source_type_id(clean), source_file.name)
+		c.tc.parse_resolution_type_in_file(clean_id, source_file.name)
 	} else {
-		c.tc.parse_canonical_type(markused_resolve_imported_source_type(flat.source_type_id(clean), imports))
+		c.tc.parse_canonical_type(markused_resolve_imported_source_type(clean_id, imports))
 	})
 }
 
 // value_struct_decl_info resolves structs initialized by a semantic value type.
 fn (c &CallCollector) value_struct_decl_info(typ types.Type, cur_module string, imports map[string]string) ?StructDeclInfo {
 	struct_name_source_id := value_struct_default_type_name(typ)
-	struct_name := flat.source_type_name(struct_name_source_id)
 	if struct_name_source_id == 0 {
 		return none
 	}
-	base_name := types.generic_base_name(struct_name)
+	base_name_id := types.generic_base_type_id(struct_name_source_id)
+	base_name := flat.source_type_name(base_name_id)
 	// Semantic bare names belong to their registered module, even when substituted
 	// into an imported generic declaration with a same-named struct of its own.
 	owner := if !base_name.contains('.') {
@@ -11014,7 +11050,7 @@ fn (c &CallCollector) value_struct_decl_info(typ types.Type, cur_module string, 
 	} else {
 		cur_module
 	}
-	return c.struct_decl_info_with_imports(flat.source_type_id(base_name), owner, imports)
+	return c.struct_decl_info_with_imports(base_name_id, owner, imports)
 }
 
 // value_struct_default_type_name preserves the specialization initialized by a value type.
@@ -11090,8 +11126,8 @@ fn (c &CallCollector) collect_array_default_calls(node &flat.Node, cur_module st
 			has_len = true
 		}
 	}
-	typ := if node.typ != 0 { node.typ_text() } else { node.value }
-	array_type := c.value_type_in_source(flat.source_type_id(typ), node, imports)
+	typ_id := if node.typ != 0 { node.typ } else { flat.source_type_id(node.value) }
+	array_type := c.value_type_in_source(typ_id, node, imports)
 	element_type := if array_type is types.Array {
 		if !has_len {
 			// Empty and capacity-only dynamic arrays do not initialize elements.
@@ -11101,7 +11137,7 @@ fn (c &CallCollector) collect_array_default_calls(node &flat.Node, cur_module st
 	} else if array_type is types.ArrayFixed {
 		*array_type.elem_type
 	} else {
-		if (typ.starts_with('[]') || !typ.starts_with('[')) && !has_len {
+		if (flat.source_type_shape(typ_id).has(.array_type) || !flat.source_type_shape(typ_id).has(.leading_bracket)) && !has_len {
 			return
 		}
 		c.value_type_in_source(array_init_element_type_text(node), node, imports)
@@ -11113,7 +11149,9 @@ fn (c &CallCollector) collect_array_default_calls(node &flat.Node, cur_module st
 // array_init_element_type_text returns the value type initialized by an array literal.
 // Fixed-array elements initialize their contents too, but nested dynamic arrays remain empty.
 fn array_init_element_type_text(node &flat.Node) u32 {
-	mut typ := if node.typ != 0 { node.typ_text() } else { node.value }
+	typ_id := if node.typ != 0 { node.typ } else { flat.source_type_id(node.value) }
+	original := flat.source_type_name(typ_id)
+	mut typ := original
 	// Strip the literal's outer dimension once; further dynamic dimensions are containers.
 	if node.typ != 0 && typ.starts_with('[') {
 		close := markused_matching_bracket(typ, 0)
@@ -11129,7 +11167,7 @@ fn array_init_element_type_text(node &flat.Node) u32 {
 		}
 		typ = typ[close + 1..]
 	}
-	return flat.source_type_id(typ)
+	return if typ == original { typ_id } else { flat.source_type_id(typ) }
 }
 
 // resolve_type_name resolves resolve type name information for markused.

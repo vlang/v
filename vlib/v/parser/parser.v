@@ -335,8 +335,8 @@ pub fn Parser.new(prefs &pref.Preferences) &Parser {
 			comptime_skipped_decl_names:   map[string]bool{}
 			comptime_skipped_goto_labels:  map[string]bool{}
 			export_fn_names:               map[string]string{}
-			contextual_anon_struct_types:  map[string]bool{}
-			synthesized_anon_struct_types: map[string]bool{}
+			contextual_anon_struct_types:  map[u32]bool{}
+			synthesized_anon_struct_types: map[u32]bool{}
 			source_files:                  map[int]&token.File{}
 			template_call_sites:           map[int]token.Pos{}
 			template_actions:              map[int]string{}
@@ -2066,7 +2066,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type_
 	p.disable_fn_body = false
 	// generic params — skip
 	mut generic_params := []string{}
-	mut generic_constraints := []string{}
+	mut generic_constraints := []u32{}
 	if p.tok == .lt {
 		p.record_diagnostic_span('unexpected token `<`, expecting `(`', p.tok_pos, p.tok_end)
 		for p.tok !in [.gt, .eof] {
@@ -2178,7 +2178,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type_
 			}
 			typ:            flat.source_type_id(ret_type)
 			pos:            token.new_pos(p.cur_file_id, name_pos)
-			payload:        flat.node_payload_with_constraints(generic_params, named_constraints(generic_constraints))
+			payload:        flat.node_payload_with_constraint_ids(generic_params, named_constraints(generic_constraints))
 			children_start: start
 			children_count: flat.child_count(param_ids.len)
 			flags:          flat.node_flags(false, is_static_type_method)
@@ -2276,7 +2276,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type_
 		value:          if p.prefs.is_fmt && is_c_decl { '${interop_prefix}:${name}' } else { name }
 		typ:            flat.source_type_id(ret_type)
 		pos:            token.new_pos(p.cur_file_id, name_pos)
-		payload:        flat.node_payload_with_constraints(generic_params, named_constraints(generic_constraints))
+		payload:        flat.node_payload_with_constraint_ids(generic_params, named_constraints(generic_constraints))
 		children_start: start
 		children_count: flat.child_count(param_ids.len + body_ids.len)
 		flags:          flat.node_flags(false, is_static_type_method)
@@ -2640,7 +2640,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 	// generic params — skip
 	mut is_generic := false
 	mut generic_params := []string{}
-	mut generic_constraints := []string{}
+	mut generic_constraints := []u32{}
 	if p.tok == .lsbr {
 		generic_params, generic_constraints = p.parse_generic_params()
 		is_generic = generic_params.len > 0
@@ -2672,7 +2672,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 			op:      if is_pub { .arrow } else { .none }
 			value:   name
 			typ:     flat.source_type_id(struct_decl_typ(is_union, is_generic, is_params, is_typedef, is_soa, is_aligned, aligned, implements_types))
-			payload: flat.node_payload_with_constraints(generic_params, named_constraints(generic_constraints))
+			payload: flat.node_payload_with_constraint_ids(generic_params, named_constraints(generic_constraints))
 			pos:     p.span_to(struct_start)
 		})
 	}
@@ -3040,7 +3040,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 		op:             if is_pub { .arrow } else { .none }
 		value:          name
 		typ:            flat.source_type_id(struct_decl_typ(is_union, is_generic, is_params, is_typedef, is_soa, is_aligned, aligned, implements_types))
-		payload:        flat.node_payload_with_constraints(generic_params, named_constraints(generic_constraints))
+		payload:        flat.node_payload_with_constraint_ids(generic_params, named_constraints(generic_constraints))
 		pos:            p.span_to(struct_start)
 		children_start: start
 		children_count: flat.child_count(ids.len)
@@ -3570,7 +3570,7 @@ fn (mut p Parser) type_decl() flat.NodeId {
 	name := language_prefix + p.expect_name()
 	// generic params
 	mut generic_params := []string{}
-	mut generic_constraints := []string{}
+	mut generic_constraints := []u32{}
 	if p.tok == .lsbr {
 		generic_params, generic_constraints = p.parse_generic_params()
 	}
@@ -3646,7 +3646,7 @@ fn (mut p Parser) type_decl() flat.NodeId {
 			kind:           .type_decl
 			op:             if is_pub { .arrow } else { .none }
 			value:          name
-			payload:        flat.node_payload_with_constraints(generic_params, named_constraints(generic_constraints))
+			payload:        flat.node_payload_with_constraint_ids(generic_params, named_constraints(generic_constraints))
 			children_start: start
 			children_count: flat.child_count(variants.len)
 			pos:            p.span_to(type_start)
@@ -3666,7 +3666,7 @@ fn (mut p Parser) type_decl() flat.NodeId {
 		op:      if is_pub { .arrow } else { .none }
 		value:   name
 		typ:     first_type_id
-		payload: flat.node_payload_with_constraints(generic_params, named_constraints(generic_constraints))
+		payload: flat.node_payload_with_constraint_ids(generic_params, named_constraints(generic_constraints))
 		pos:     p.span_to(type_start)
 	})
 }
@@ -3855,7 +3855,7 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 	}
 	// generic params
 	mut generic_params := []string{}
-	mut generic_constraints := []string{}
+	mut generic_constraints := []u32{}
 	if p.tok == .lsbr {
 		generic_params, generic_constraints = p.parse_generic_params()
 	}
@@ -4035,7 +4035,7 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 		kind:           .interface_decl
 		op:             if is_pub { .arrow } else { .none }
 		value:          name
-		payload:        flat.node_payload_with_constraints(generic_params, named_constraints(generic_constraints))
+		payload:        flat.node_payload_with_constraint_ids(generic_params, named_constraints(generic_constraints))
 		children_start: start
 		children_count: flat.child_count(ids.len)
 		pos:            p.span_to(interface_start)
@@ -7951,13 +7951,13 @@ fn (mut p Parser) skip_brackets() {
 // named_constraints returns the constraints of a list of type parameters when
 // one of them names one, and no list otherwise: the payload of a declaration
 // without constraints stays as it was.
-fn named_constraints(constraints []string) []string {
+fn named_constraints(constraints []u32) []u32 {
 	for constraint in constraints {
-		if constraint.len > 0 {
+		if constraint != 0 {
 			return constraints
 		}
 	}
-	return []string{}
+	return []u32{}
 }
 
 fn (mut p Parser) parse_generic_param_names() []string {
@@ -7967,10 +7967,10 @@ fn (mut p Parser) parse_generic_param_names() []string {
 
 // parse_generic_params returns the names of the type parameters of `[T, U X]`,
 // and the constraint each one names: a type name, qualified by its module or
-// not, with type arguments or not; empty when it names none.
-fn (mut p Parser) parse_generic_params() ([]string, []string) {
+// not, with type arguments or not; zero when it names none.
+fn (mut p Parser) parse_generic_params() ([]string, []u32) {
 	mut names := []string{}
-	mut constraints := []string{}
+	mut constraints := []u32{}
 	if p.tok != .lsbr {
 		return names, constraints
 	}
@@ -7994,7 +7994,7 @@ fn (mut p Parser) parse_generic_params() ([]string, []string) {
 				p.next()
 				if p.prefs.is_fmt {
 					names << '^${p.lit}'
-					constraints << ''
+					constraints << u32(0)
 				}
 				expect_name = false
 			} else if expect_name && p.tok == .name {
@@ -8020,7 +8020,7 @@ fn (mut p Parser) parse_generic_params() ([]string, []string) {
 				expect_name = false
 				p.next()
 				if !name_is_valid {
-					constraints << ''
+					constraints << u32(0)
 					continue
 				}
 				constraints << p.parse_generic_constraint()
@@ -8040,11 +8040,11 @@ fn (mut p Parser) parse_generic_params() ([]string, []string) {
 }
 
 // parse_generic_constraint returns the constraint written after the name of a
-// type parameter, `Named`, `mod.Named` or `Box[int]`, as it is written; '' when
-// none is.
-fn (mut p Parser) parse_generic_constraint() string {
+// type parameter, `Named`, `mod.Named` or `Box[int]`, as a source spelling ID; zero
+// when none is.
+fn (mut p Parser) parse_generic_constraint() u32 {
 	if p.tok != .name {
-		return ''
+		return 0
 	}
 	start := p.tok_pos
 	p.next()
@@ -8066,7 +8066,7 @@ fn (mut p Parser) parse_generic_constraint() string {
 			}
 		}
 	}
-	return p.s.src[start..p.prev_tok_end]
+	return flat.source_type_id(p.s.src[start..p.prev_tok_end])
 }
 
 fn (mut p Parser) skip_parens() {
@@ -11704,7 +11704,8 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 				}
 			}
 			if lhs_node.kind == .selector && lhs_node.value.len > 0 {
-				full_name := flat.source_type_name(p.type_expr_name(lhs))
+				full_name_id := p.type_expr_name(lhs)
+				full_name := flat.source_type_name(full_name_id)
 				is_c_struct := full_name.starts_with('C.')
 					&& (!is_all_upper_ident(lhs_node.value) || p.current_lcbr_looks_struct_init())
 				// Generated modules may import types whose names start in lower case.
@@ -11714,7 +11715,7 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 				is_v_struct := !full_name.starts_with('C.')
 					&& (type_name_can_init(full_name) || is_unknown_qualified_struct)
 				if is_c_struct || is_v_struct {
-					lhs = p.struct_init(flat.source_type_id(full_name))
+					lhs = p.struct_init(full_name_id)
 					continue
 				}
 			}
@@ -18353,13 +18354,13 @@ fn (mut p Parser) register_anonymous_aggregate_type(ids []flat.NodeId, field_nam
 	name_prefix := if is_union { 'AnonUnion' } else { 'AnonStruct' }
 	name := '${name_prefix}_${local_type_scope_part(p.cur_file)}_${p.anonymous_struct_count}'
 	name_id := flat.source_type_id(name)
-	p.a.synthesized_anon_struct_types[name] = true
+	p.a.synthesized_anon_struct_types[name_id] = true
 	if inferred {
 		// Synthesized to type a `struct { ... }` literal, not to declare a field. The
 		// literal's type is whatever the context expects, so this name only stands in for
 		// it; the checker uses that to tell such an initializer apart from an attempt to
 		// name another module's anonymous declaration outright.
-		p.a.contextual_anon_struct_types[name] = true
+		p.a.contextual_anon_struct_types[name_id] = true
 	}
 	start := p.add_children(ids)
 	decl_id := p.add_node(flat.Node{

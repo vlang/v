@@ -302,29 +302,26 @@ fn (mut g Parser) add_local_closure_cleanup(name string) {
 	g.deferred_lines << '\t'.repeat(g.indent) + line
 }
 
-fn (g &Parser) capture_type_source(typ u32) ?string {
-	return g.capture_type_source_bytes(flat.source_type_name(typ))
-}
-
-fn (g &Parser) capture_type_source_bytes(typ string) ?string {
+fn (g &Parser) capture_type_source(typ_id u32) ?string {
+	typ := flat.source_type_name(typ_id)
 	if typ.ends_with('*') {
-		return '&' + g.capture_type_source_bytes(typ[..typ.len - 1])?
+		return '&' + g.capture_type_source(flat.source_type_id(typ[..typ.len - 1]))?
 	}
 	if typ.starts_with('Array_') {
-		element := g.array_element_type(flat.source_type_id(typ))?
-		return '[]' + g.capture_type_source_bytes(flat.source_type_name(element))?
+		element := g.array_element_type(typ_id)?
+		return '[]' + g.capture_type_source(element)?
 	}
 	if typ.starts_with('Map_') {
-		key_source_id, value_source_id := g.map_key_value_types(flat.source_type_id(typ))?
+		key_source_id, value_source_id := g.map_key_value_types(typ_id)?
 		key := key_source_id
 		value := value_source_id
 
-		return 'map[' + g.capture_type_source_bytes(flat.source_type_name(key))? + ']' + g.capture_type_source_bytes(flat.source_type_name(value))?
+		return 'map[' + g.capture_type_source(key)? + ']' + g.capture_type_source(value)?
 	}
 	if fastc_primitive_c_type(typ) != none {
 		return typ
 	}
-	key := g.semantic_type_key(flat.source_type_id(typ))
+	key := g.semantic_type_key(typ_id)
 	if flat.source_type_name(key) !in g.declared_types {
 		return none
 	}

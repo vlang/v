@@ -3050,7 +3050,7 @@ fn (g &FlatGen) parallel_base_type_text(typ_id u32) u32 {
 			break
 		}
 	}
-	return flat.source_type_id(clean)
+	return if clean == typ { typ_id } else { flat.source_type_id(clean) }
 }
 
 // preseed_parallel_fn_ptr_type supports preseed parallel fn ptr type handling for FlatGen.

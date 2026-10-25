@@ -105,7 +105,7 @@ fn is_plain_capitalized_ident(name string) bool {
 // hidden struct, `Expr@variant@Count { payload int }`, and the sum type holds
 // those structs, so storage, tags, casts and matching reuse the regular sum type
 // machinery. The formatter keeps the source spelling of each variant instead.
-fn (mut p Parser) named_sum_type_decl(name string, is_pub bool, language_prefix string, generic_params []string, generic_constraints []string, variants []ParsedSumVariant, type_start int) flat.NodeId {
+fn (mut p Parser) named_sum_type_decl(name string, is_pub bool, language_prefix string, generic_params []string, generic_constraints []u32, variants []ParsedSumVariant, type_start int) flat.NodeId {
 	if !p.prefs.is_fmt {
 		p.validate_named_sum_variants(name, language_prefix, variants)
 	}
@@ -171,7 +171,7 @@ fn (mut p Parser) named_sum_type_decl(name string, is_pub bool, language_prefix 
 		kind:           .type_decl
 		op:             if is_pub { .arrow } else { .none }
 		value:          name
-		payload:        flat.node_payload_with_constraints(generic_params, named_constraints(generic_constraints))
+		payload:        flat.node_payload_with_constraint_ids(generic_params, named_constraints(generic_constraints))
 		children_start: variants_start
 		children_count: flat.child_count(variant_ids.len)
 		pos:            p.span_to(type_start)

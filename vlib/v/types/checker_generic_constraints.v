@@ -1763,8 +1763,9 @@ fn binding_text(binding CallBinding, name string) string {
 fn (tc &TypeChecker) generic_param_arg_pos(node flat.Node, info CallInfo, name string) token.Pos {
 	texts := tc.fn_param_type_texts.type_ids(info.name) or { []u32{} }
 	first := if info.has_receiver { 1 } else { 0 }
+	name_id := flat.source_type_id(name)
 	for param_idx in first .. texts.len {
-		if trimmed_space(flat.source_type_name(texts[param_idx])) != name {
+		if trimmed_source_type_id(texts[param_idx]) != name_id {
 			continue
 		}
 		arg_idx := param_idx - first + 1 + info.arg_offset
@@ -2427,13 +2428,13 @@ fn (tc &TypeChecker) type_has_member(typ Type, member string, is_call bool) bool
 			return true
 		}
 	}
-	builtin := match clean {
-		Array { 'array' }
-		Map { 'map' }
-		String { 'string' }
-		else { '' }
+	builtin_id := match clean {
+		Array { qualify_source_type_array }
+		Map { qualify_source_type_map }
+		String { flat.source_type_string }
+		else { u32(0) }
 	}
-	if builtin.len > 0 && tc.concrete_method_signature_key(flat.source_type_id(builtin), member) != none {
+	if builtin_id != 0 && tc.concrete_method_signature_key(builtin_id, member) != none {
 		return true
 	}
 	if is_call {
@@ -2445,7 +2446,7 @@ fn (tc &TypeChecker) type_has_member(typ Type, member string, is_call bool) bool
 	if clean is Channel && member in ['len', 'cap', 'closed'] {
 		return true
 	}
-	if builtin.len > 0 && (tc.structs[builtin] or { []StructField{} }).any(it.name == member) {
+	if builtin_id != 0 && (tc.structs[flat.source_type_name(builtin_id)] or { []StructField{} }).any(it.name == member) {
 		return true
 	}
 	return name_id != 0 && tc.struct_field_type(name_id, member) != none
@@ -2995,7 +2996,7 @@ fn (tc &TypeChecker) constraint_operator_types(constraint GenericConstraint) []T
 fn (mut tc TypeChecker) record_constraint_operator_error(id flat.NodeId, pos token.Pos, what string, constraint GenericConstraint, typ Type) {
 	message := if constraint.is_interface {
 		'${what}: its constraint `${constraint.name_text()}` does not declare it'
-	} else if typ is Struct && typ.name() == '' {
+	} else if typ is Struct && typ.source_type_id() == 0 {
 		'${what}: a struct that embeds `${constraint.family_struct_text().all_after_last('.')}` does not have it'
 	} else {
 		'${what}: `${typ.name().all_after_last('.')}`, in its constraint `${constraint.name_text()}`, does not have it'

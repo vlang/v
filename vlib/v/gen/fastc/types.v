@@ -3,8 +3,16 @@ module fastc
 import v.flat
 import v.token
 
+const fastc_type_legacy_option = flat.source_type_id('_option')
+const fastc_type_legacy_result = flat.source_type_id('_result')
 const fastc_type_charptr = flat.source_type_id('charptr')
+const fastc_type_char_pointer = flat.source_type_id('char*')
+const fastc_type_uint = flat.source_type_id('uint')
 const fastc_type_option = flat.source_type_id('Option')
+const fastc_type_result = flat.source_type_id('__v_result')
+const fastc_type_ierror = flat.source_type_id('IError')
+const fastc_type_multi_return = flat.source_type_id('MultiReturn')
+const fastc_type_chan = flat.source_type_id('chan')
 const fastc_type_integer_literal = flat.source_type_id('integer literal')
 const fastc_type_negative_integer_literal = flat.source_type_id('negative integer literal')
 const fastc_type_float_literal = flat.source_type_id('float literal')
@@ -334,7 +342,7 @@ fn (g &Parser) infer_boolean_binary_expression_type(tokens []FastcExpressionToke
 			_, _ := g.map_key_value_types(right_type) or {
 				return g.unsupported('membership `${operator.str()}` with unverifiable map type `${flat.source_type_name(right_type)}`')
 			}
-		} else if fastc_trim_pointer_suffix(flat.source_type_name(right_type)) == 'string' {
+		} else if fastc_trim_pointer_type(right_type) == flat.source_type_string {
 		} else {
 			_ := (g.array_element_type(right_type) or {
 				return g.unsupported('membership `${operator.str()}` in non-collection type `${flat.source_type_name(right_type)}`')
@@ -352,10 +360,11 @@ fn (g &Parser) infer_boolean_binary_expression_type(tokens []FastcExpressionToke
 			left_type = right_type
 		}
 		if !fastc_is_pointer_type(left_type) && !fastc_is_pointer_type(right_type) {
-			left_layout := fastc_trim_pointer_suffix(flat.source_type_name(g.underlying_alias_type(left_type)))
-			right_layout := fastc_trim_pointer_suffix(flat.source_type_name(g.underlying_alias_type(right_type)))
-			left_key := g.semantic_type_key(flat.source_type_id(left_layout))
-			if left_layout == right_layout && left_layout !in ['Option', '_option', '_result'] && flat.source_type_name(left_key) in g.declared_kinds && g.declared_kinds[flat.source_type_name(left_key)] == .struct_ && !g.struct_equality_is_supported(left_type, []u32{}) {
+			left_layout := fastc_trim_pointer_type(g.underlying_alias_type(left_type))
+			right_layout := fastc_trim_pointer_type(g.underlying_alias_type(right_type))
+			left_key := g.semantic_type_key(left_layout)
+			if left_layout == right_layout && left_layout !in [fastc_type_option,
+				fastc_type_legacy_option, fastc_type_legacy_result] && flat.source_type_name(left_key) in g.declared_kinds && g.declared_kinds[flat.source_type_name(left_key)] == .struct_ && !g.struct_equality_is_supported(left_type, []u32{}) {
 				return g.unsupported('struct equality for `${flat.source_type_name(left_type)}` with unsupported fields')
 			}
 		}
@@ -629,14 +638,14 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 			}
 		}
 	}
-	if end - start == 2 && tokens[start].tok == .dot && tokens[start + 1].typ_text() != '' {
+	if end - start == 2 && tokens[start].tok == .dot && tokens[start + 1].typ != 0 {
 		return tokens[start + 1].typ
 	}
 	if end - start == 5 && tokens[start].tok == .name && tokens[start + 1].tok == .dot && tokens[start + 2].tok == .name && tokens[start + 3].tok == .dot && tokens[start + 4].tok == .name {
 		if imported_module := g.imports[tokens[start].lit] {
 			type_key := fastc_type_key(imported_module, tokens[start + 2].lit)
-			if enum_type_key := g.underlying_enum_type_key(type_key) {
-				return flat.source_type_id(fastc_c_declared_type_name(enum_type_key))
+			if enum_type_key := g.underlying_enum_type_key(flat.source_type_id(type_key)) {
+				return flat.source_type_id(fastc_c_declared_type_name(flat.source_type_name(enum_type_key)))
 			}
 		}
 	}
@@ -664,8 +673,8 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 			}
 		}
 		if type_key := g.resolve_declared_type_key(tokens[start].lit) {
-			if enum_type_key := g.underlying_enum_type_key(type_key) {
-				return flat.source_type_id(fastc_c_declared_type_name(enum_type_key))
+			if enum_type_key := g.underlying_enum_type_key(flat.source_type_id(type_key)) {
+				return flat.source_type_id(fastc_c_declared_type_name(flat.source_type_name(enum_type_key)))
 			}
 		}
 		if imported_module := g.imports[tokens[start].lit] {
@@ -855,7 +864,7 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 			// closure's element type (inferred with `it` bound to the element).
 			method := tokens[i].lit
 			if method == 'filter' {
-				return flat.source_type_id(fastc_trim_pointer_suffix(flat.source_type_name(fastc_normalize_inferred_type(g.underlying_alias_type(receiver_type)))))
+				return fastc_trim_pointer_type(fastc_normalize_inferred_type(g.underlying_alias_type(receiver_type)))
 			}
 			if method == 'count' {
 				return flat.source_type_int
@@ -945,7 +954,7 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 				return function_alias.return_type
 			}
 		}
-		if tokens[i].lit == 'str' && g.can_generate_default_struct_str(flat.source_type_name(receiver_type)) {
+		if tokens[i].lit == 'str' && g.can_generate_default_struct_str(receiver_type) {
 			return flat.source_type_string
 		}
 		if tokens[i].lit == 'str' && g.declared_kinds[flat.source_type_name(g.semantic_type_key(receiver_type))] == .enum_ {
@@ -1066,11 +1075,12 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 		}
 		if open_index > start {
 			base_type := g.infer_expression_type_range(tokens, start, open_index)!
-			base_layout := fastc_trim_pointer_suffix(flat.source_type_name(g.map_type_through_alias(base_type)))
+			base_layout_id := fastc_trim_pointer_type(g.map_type_through_alias(base_type))
+			base_layout := flat.source_type_name(base_layout_id)
 			if fastc_top_level_token_index(tokens, open_index + 1, end - 1, .dotdot) != none {
 				// Slicing a fixed array yields a dynamic array of its element type.
 				if base_layout.starts_with('FixedArray_') {
-					if element_source_id := g.array_element_type(flat.source_type_id(base_layout)) {
+					if element_source_id := g.array_element_type(base_layout_id) {
 						element := element_source_id
 
 						return flat.source_type_id(fastc_array_c_type(flat.source_type_name(fastc_normalize_inferred_type(element))))
@@ -1089,7 +1099,7 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 
 				return value_type
 			}
-			if base_layout == 'string' || g.is_string_layout(base_type) {
+			if base_layout_id == flat.source_type_string || g.is_string_layout(base_type) {
 				return g.indexed_string_type(base_type, tokens[start..open_index])
 			}
 			if element_type_source_id := g.fixed_array_pointee_element_type(base_type, tokens[start..open_index]) {
@@ -1165,7 +1175,7 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 
 				right_type = right_element
 			}
-			if tokens[i].tok == .plus && fastc_trim_pointer_suffix(flat.source_type_name(g.underlying_alias_type(left_type))) == 'string' && fastc_trim_pointer_suffix(flat.source_type_name(g.underlying_alias_type(right_type))) == 'string' {
+			if tokens[i].tok == .plus && fastc_trim_pointer_type(g.underlying_alias_type(left_type)) == flat.source_type_string && fastc_trim_pointer_type(g.underlying_alias_type(right_type)) == flat.source_type_string {
 				return flat.source_type_string
 			}
 			if g.selfhost && tokens[i].tok == .plus && ((left_type == flat.source_type_string && right_type == u32(0)) || (right_type == flat.source_type_string && left_type == u32(0))) {
@@ -1248,7 +1258,7 @@ fn (g &Parser) infer_c_pointer_cast_member_type(tokens []FastcExpressionToken, s
 // is_string_layout reports whether `typ`, or the type it points to, is laid out as a
 // `string`, through aliases (`type Name = string`).
 fn (g &Parser) is_string_layout(typ u32) bool {
-	return fastc_trim_pointer_suffix(flat.source_type_name(g.underlying_alias_type(typ))) == 'string'
+	return fastc_trim_pointer_type(g.underlying_alias_type(typ)) == flat.source_type_string
 }
 
 // indexed_string_type is the type of `base[i]` for a base laid out as a `string`. A string
@@ -1494,20 +1504,21 @@ fn (g &Parser) infer_member_access_type(tokens []FastcExpressionToken, start int
 			close := fastc_matching_delimiter_before(tokens, index, end, .lsbr, .rsbr) or {
 				return none
 			}
-			current_layout := fastc_trim_pointer_suffix(flat.source_type_name(g.map_type_through_alias(current_type)))
+			current_layout_id := fastc_trim_pointer_type(g.map_type_through_alias(current_type))
+			current_layout := flat.source_type_name(current_layout_id)
 			if fastc_top_level_token_index(tokens, index + 1, close, .dotdot) != none {
-				if current_layout != 'string' && g.array_element_type(current_type) == none {
+				if current_layout_id != flat.source_type_string && g.array_element_type(current_type) == none {
 					return none
 				}
 				// A fixed-array slice becomes a dynamic array of its element type.
 				if current_layout.starts_with('FixedArray_') {
-					if element_source_id := g.array_element_type(flat.source_type_id(current_layout)) {
+					if element_source_id := g.array_element_type(current_layout_id) {
 						element := element_source_id
 
 						current_type = flat.source_type_id(fastc_array_c_type(flat.source_type_name(fastc_normalize_inferred_type(element))))
 					}
 				}
-			} else if current_layout == 'string' || g.is_string_layout(current_type) {
+			} else if current_layout_id == flat.source_type_string || g.is_string_layout(current_type) {
 				current_type = g.indexed_string_type(current_type, tokens[start..index])
 			} else if current_layout.starts_with('Map_') {
 				_, value_type_source_id := g.map_key_value_types(current_type) or { return none }
@@ -1581,6 +1592,16 @@ fn fastc_trim_pointer_suffix(typ string) string {
 		return typ
 	}
 	return typ.trim_right('*')
+}
+
+// fastc_trim_pointer_type retains the spelling ID when no pointer suffix is present.
+@[inline]
+fn fastc_trim_pointer_type(typ_id u32) u32 {
+	typ := flat.source_type_name(typ_id)
+	if typ.len == 0 || typ[typ.len - 1] != `*` {
+		return typ_id
+	}
+	return flat.source_type_id(typ.trim_right('*'))
 }
 
 // semantic_type_key memoizes only lookups against finalized file-generation

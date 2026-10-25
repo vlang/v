@@ -1004,20 +1004,22 @@ fn (g &Parser) comptime_type_matches(left_type u32, target_type u32, target_is_g
 	original_key := g.semantic_type_key(left_type)
 	return match flat.source_type_name(target_type) {
 		'array' {
-			flat.source_type_name(left).starts_with('Array_') || flat.source_type_name(left) == 'array'
+			flat.source_type_name(left).starts_with('Array_') || left == fastc_type_array
 		}
 		'array_fixed' {
 			flat.source_type_name(left).starts_with('FixedArray_')
 		}
 		'map' {
-			flat.source_type_name(left).starts_with('Map_') || flat.source_type_name(left) == 'map'
+			flat.source_type_name(left).starts_with('Map_') || left == fastc_type_map
 		}
 		'string' {
 			left == flat.source_type_string
 		}
 		'int' {
-			flat.source_type_name(left) in ['i8', 'i16', 'i32', 'i64', 'int', 'isize', 'u8', 'u16',
-				'u32', 'u64', 'uint', 'usize']
+			left in [flat.source_type_i8, flat.source_type_i16, flat.source_type_i32,
+				flat.source_type_i64, flat.source_type_int, flat.source_type_isize,
+				flat.source_type_u8, flat.source_type_u16, flat.source_type_u32, flat.source_type_u64,
+				fastc_type_uint, flat.source_type_usize]
 		}
 		'float' {
 			left in [flat.source_type_f32, flat.source_type_f64]
@@ -1289,7 +1291,7 @@ fn (mut g Parser) read_comptime_if_expression() !string {
 	if condition {
 		value := g.read_expression([token.Token.semicolon, token.Token.rcbr])!
 		value_type := g.last_expression_type
-		option_value_type := if flat.source_type_name(value_type) in ['Option', '__v_result'] {
+		option_value_type := if value_type in [fastc_type_option, fastc_type_result] {
 			if g.last_expression.len > 0 {
 				g.option_value_type_for_expression(g.last_expression)
 			} else {
@@ -1327,7 +1329,7 @@ fn (mut g Parser) read_comptime_if_expression() !string {
 	g.expect(.lcbr)!
 	value := g.read_expression([token.Token.semicolon, token.Token.rcbr])!
 	value_type := g.last_expression_type
-	option_value_type := if flat.source_type_name(value_type) in ['Option', '__v_result'] {
+	option_value_type := if value_type in [fastc_type_option, fastc_type_result] {
 		if g.last_expression.len > 0 {
 			g.option_value_type_for_expression(g.last_expression)
 		} else {

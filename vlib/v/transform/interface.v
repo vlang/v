@@ -178,12 +178,14 @@ fn (t &Transformer) resolve_interface_type_name_uncached(name_id u32) u32 {
 	if raw_clean in t.tc.interface_names {
 		return raw_clean_source_id
 	}
-	mut clean := flat.source_type_name(t.trim_all_pointer_type(t.normalize_type_alias(name_id)))
+	mut clean_id := t.trim_all_pointer_type(t.normalize_type_alias(name_id))
+	mut clean := flat.source_type_name(clean_id)
 	base, args, is_generic := generic_app_parts(clean)
 	if is_generic {
 		clean = base
+		clean_id = flat.source_type_id(base)
 	}
-	if t.is_builtin_ierror_interface_name(flat.source_type_id(clean)) {
+	if t.is_builtin_ierror_interface_name(clean_id) {
 		if 'builtin.IError' in t.tc.interface_names {
 			return flat.source_type_id('builtin.IError')
 		}
@@ -193,7 +195,7 @@ fn (t &Transformer) resolve_interface_type_name_uncached(name_id u32) u32 {
 		return if is_generic {
 			flat.source_type_id('${clean}[${args.join(', ')}]')
 		} else {
-			flat.source_type_id(clean)
+			clean_id
 		}
 	}
 	if !clean.contains('.') && t.cur_file.len > 0 {
@@ -263,7 +265,7 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 	// Only pointer casts already have the expected representation. A value cast
 	// such as Iface(ptr) still needs the pointer-target conversion below.
 	if target_is_ptr && node.kind == .cast_expr && node.value.starts_with('&')
-		&& flat.source_type_name(t.resolve_interface_type_name(flat.source_type_id(node.value))) == iface_name {
+		&& t.resolve_interface_type_name(flat.source_type_id(node.value)) == iface_name_source_id {
 		if node.children_count == 1 {
 			child_id := t.a.child(&node, 0)
 			child := t.a.nodes[int(child_id)]
@@ -273,15 +275,15 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 					return id
 				}
 			}
-			mut child_type := flat.source_type_name(t.node_type(child_id))
-			if child_type.len == 0 {
-				child_type = flat.source_type_name(t.checker_node_type(child_id))
+			mut child_type := t.node_type(child_id)
+			if child_type == 0 {
+				child_type = t.checker_node_type(child_id)
 			}
 			// `&Iface(unsafe { nil })` is a null interface pointer, as in V1: box a
 			// voidptr value, but never nil itself.
-			if flat.source_type_name(t.normalize_type_alias(flat.source_type_id(child_type))) in [
-				'voidptr',
-				'&void',
+			if t.normalize_type_alias(child_type) in [
+				flat.source_type_voidptr,
+				flat.source_type_id('&void'),
 			]
 				&& !t.expr_is_bare_nil(child_id) {
 				literal := t.make_interface_literal_from_expr(child_id, iface_name_comparison_type_id_3, false) or {
@@ -414,16 +416,16 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 	}
 	if target_is_ptr && node.kind == .prefix && node.op == .amp && node.children_count == 1 {
 		child_id := t.a.child(&node, 0)
-		mut child_type := flat.source_type_name(t.node_type(child_id))
-		if child_type.len == 0 {
-			child_type = flat.source_type_name(t.checker_node_type(child_id))
+		mut child_type := t.node_type(child_id)
+		if child_type == 0 {
+			child_type = t.checker_node_type(child_id)
 		}
-		if child_type.len == 0 {
-			child_type = flat.source_type_name(t.resolve_expr_type(child_id))
+		if child_type == 0 {
+			child_type = t.resolve_expr_type(child_id)
 		}
-		if child_type.len > 0
-			&& flat.source_type_name(t.resolve_interface_type_name(t.trim_pointer_type(flat.source_type_id(child_type)))) != iface_name {
-			source_type = flat.source_type_id('&${flat.source_type_name(t.trim_pointer_type(flat.source_type_id(child_type)))}')
+		if child_type != 0
+			&& t.resolve_interface_type_name(t.trim_pointer_type(child_type)) != iface_name_source_id {
+			source_type = flat.source_type_id('&${flat.source_type_name(t.trim_pointer_type(child_type))}')
 		}
 	}
 	if source_type == u32(0) || t.generic_arg_is_unresolved(source_type) {

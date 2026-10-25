@@ -4340,14 +4340,14 @@ fn parse_comptime_generic_type_base(typ string) string {
 }
 
 fn (t &Transformer) type_index(typ_id u32, decl_module string) int {
-	key_id := t.comptime_field_type_id_key(typ_id, decl_module)
-	mut key := flat.source_type_name(key_id)
+	mut key_id := t.comptime_field_type_id_key(typ_id, decl_module)
 	// Comptime metadata exposes the wrapped type's index; runtime reflection
 	// carries option/result flags separately from that index.
-	for key.starts_with('?') || key.starts_with('!') {
-		key = trimmed_transform_text(key[1..])
+	for flat.source_type_shape(key_id).has(.optional) {
+		key := flat.source_type_name(key_id)
+		key_id = t.trimmed_type_id(flat.source_type_id(key[1..]))
 	}
-	return t.tc.type_index(flat.source_type_id(key))
+	return t.tc.type_index(key_id)
 }
 
 fn (t &Transformer) comptime_field_type_id_key(typ_id u32, decl_module string) u32 {

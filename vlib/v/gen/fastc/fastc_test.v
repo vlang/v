@@ -7356,7 +7356,7 @@ fn test_c_directive_hoisting_preserves_source_order() {
 
 fn test_nested_fixed_array_struct_field_uses_native_c_dimensions() {
 	typ := fastc_fixed_array_type('4', fastc_fixed_array_type('256', 'u32'))
-	assert fastc_fixed_array_field_declaration(typ, 'values')? == 'u32 values[4][256]'
+	assert fastc_fixed_array_field_declaration(flat.source_type_id(typ), 'values')? == 'u32 values[4][256]'
 }
 
 fn test_selfhost_comptime_type_condition_accepts_disjunctions() {

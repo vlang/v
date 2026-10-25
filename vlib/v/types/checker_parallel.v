@@ -8,6 +8,8 @@ import v.gen.c.naming
 import v.token
 import v.workers
 
+const parallel_source_type_c_variadic = flat.source_type_id('...')
+
 const min_parallel_check_items = 256
 const max_parallel_check_jobs = 26
 // Scoped workers use bounded arena batches, so let self-host checks occupy all
@@ -82,7 +84,7 @@ fn interface_impl_index_chunk_thread(arg voidptr) voidptr {
 	for {
 		i := <-a.queue or { break }
 		iface_name := unsafe { iface_names[i] }
-		impls := if is_builtin_ierror_name(flat.source_type_name(iface_name)) {
+		impls := if is_builtin_ierror_name(iface_name) {
 			tc.ierror_impl_names()
 		} else {
 			tc.interface_impl_names_uncached(iface_name)
@@ -377,7 +379,7 @@ fn (mut tc TypeChecker) compute_pass2_fn_prep(node flat.Node) Pass2FnPrep {
 		param_type_source_id := child.typ
 		if flat.source_type_shape(param_type_source_id).has(.variadic) {
 			is_variadic = true
-			if flat.source_type_name(param_type_source_id) == '...' {
+			if param_type_source_id == parallel_source_type_c_variadic {
 				is_c_variadic = true
 			}
 		}
@@ -3654,11 +3656,11 @@ fn (mut tc TypeChecker) check_fn_decl_semantics_with_context(fn_idx int, node fl
 	}
 	tc.cur_scope = tc.file_scope
 	checked_return_type := if node.typ_text().ends_with('?') && !flat.source_type_shape(node.typ).has(.option_type) {
-		node.typ_text().trim_right('?')
+		flat.source_type_id(node.typ_text().trim_right('?'))
 	} else {
-		node.typ_text()
+		node.typ
 	}
-	tc.cur_fn_ret_type = tc.parse_type(flat.source_type_id(checked_return_type))
+	tc.cur_fn_ret_type = tc.parse_type(checked_return_type)
 	tc.fn_context.return_type = tc.cur_fn_ret_type
 	tc.fn_context.node_id = fn_idx
 	// Full expression validation queries local declarations even when self-host
@@ -3705,19 +3707,19 @@ fn (mut tc TypeChecker) check_fn_decl_semantics_with_context(fn_idx int, node fl
 				}
 				if param.is_mut {
 					implicit_mut_reference := param.op != .amp && flat.source_type_shape(param.typ).has(.pointer)
-					diagnostic_type_text := if implicit_mut_reference {
-						param.typ_text()[1..]
+					diagnostic_type_id := if implicit_mut_reference {
+						flat.source_type_id(param.typ_text()[1..])
 					} else {
-						param.typ_text()
+						param.typ
 					}
-					raw_param_type := tc.parse_scope_param_type(flat.source_type_id(diagnostic_type_text))
+					raw_param_type := tc.parse_scope_param_type(diagnostic_type_id)
 					if tc.is_params_struct_type(raw_param_type) {
-						tc.record_error_at(.call_arg_mismatch, 'declaring a mutable parameter that accepts a struct with the `@[params]` attribute is not allowed', param_id, tc.type_diagnostic_pos(param_id, diagnostic_type_text))
+						tc.record_error_at(.call_arg_mismatch, 'declaring a mutable parameter that accepts a struct with the `@[params]` attribute is not allowed', param_id, tc.type_diagnostic_pos(param_id, flat.source_type_name(diagnostic_type_id)))
 					}
 					param_type := unalias_type(raw_param_type)
 					if !is_specialized && !mut_param_type_is_allowed(raw_param_type) {
 						type_name := param_type.name()
-						tc.record_error_at(.call_arg_mismatch, 'mutable arguments are only allowed for arrays, interfaces, maps, pointers, structs or their aliases\nreturn values instead: `fn foo(mut n ${type_name}) {` => `fn foo(n ${type_name}) ${type_name} {`', param_id, tc.type_diagnostic_pos(param_id, diagnostic_type_text))
+						tc.record_error_at(.call_arg_mismatch, 'mutable arguments are only allowed for arrays, interfaces, maps, pointers, structs or their aliases\nreturn values instead: `fn foo(mut n ${type_name}) {` => `fn foo(n ${type_name}) ${type_name} {`', param_id, tc.type_diagnostic_pos(param_id, flat.source_type_name(diagnostic_type_id)))
 					}
 				}
 				tc.check_reserved_parameter_name(param_id)
@@ -4137,7 +4139,7 @@ fn (mut tc TypeChecker) record_unused_fn_vars(node flat.Node) {
 		child := tc.a.node(child_id)
 		if child.kind != .param {
 			stack << child_id
-		} else if child.is_mut && child.value.len > 0 && param_type_text_is_option(child.typ_text()) {
+		} else if child.is_mut && child.value.len > 0 && param_source_type_is_option(child.typ) {
 			mut_option_params[child.value] = true
 		}
 	}
@@ -4203,8 +4205,12 @@ fn (mut tc TypeChecker) record_unused_fn_vars(node flat.Node) {
 	}
 }
 
-fn param_type_text_is_option(typ string) bool {
-	mut clean := typ.trim_space()
+fn param_source_type_is_option(source_id u32) bool {
+	shape := flat.source_type_shape(source_id)
+	if !shape.has(.padded) && !shape.has(.mutable_type) && !shape.has(.pointer) {
+		return shape.has(.option_type)
+	}
+	mut clean := flat.source_type_name(source_id).trim_space()
 	if clean.starts_with('mut ') {
 		clean = clean[4..].trim_space()
 	}

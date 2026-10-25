@@ -42,16 +42,16 @@ fn (mut tc TypeChecker) declare_named_variant_binding(subject_type Type, branch 
 	// An earlier `is` check can already narrow the subject to a variant struct.
 	// Resolve patterns against its owning sum so payload bindings still work.
 	sum_name := if subject_type is SumType {
-		subject_type.name()
+		subject_type.source_type_id()
 	} else if subject_type is Struct {
 		owner, _ := flat.decode_named_variant_type_name(subject_type.name()) or { return }
-		owner
+		flat.source_type_id(owner)
 	} else {
 		return
 	}
 	pattern_source_id := tc.match_type_pattern(cond) or { return }
 
-	variant_type_source_id := tc.sum_variant_type_for_pattern(flat.source_type_id(sum_name), pattern_source_id) or { return }
+	variant_type_source_id := tc.sum_variant_type_for_pattern(sum_name, pattern_source_id) or { return }
 	variant_type := flat.source_type_name(variant_type_source_id)
 	display := flat.named_variant_display_name(variant_type)
 	payload_type := tc.named_variant_payload_type(variant_type_source_id) or {

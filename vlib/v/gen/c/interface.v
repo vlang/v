@@ -437,7 +437,8 @@ fn (mut g FlatGen) collect_interface_impls() {
 		if iface_id == 0 || concrete_id == 0 {
 			continue
 		}
-		mut concrete := flat.source_type_name(concrete_id)
+		concrete := flat.source_type_name(concrete_id)
+		mut concrete_name_id := concrete_id
 		// `[` covers both dynamic (`[]T`) and fixed (`[N]T`) arrays.
 		is_container := concrete.starts_with('[') || concrete.starts_with('map[')
 		concrete_base, _, concrete_is_generic := parse_shared_generic_app_parts(concrete)
@@ -452,10 +453,9 @@ fn (mut g FlatGen) collect_interface_impls() {
 				&& !g.tc.type_aliases.contains(qualified) {
 				continue
 			}
-			concrete = qualified
+			concrete_name_id = flat.source_type_id(qualified)
 		}
 		mut concrete_types := boxed_concrete_types[iface_id] or { []u32{} }
-		concrete_name_id := flat.source_type_id(concrete)
 		if concrete_name_id !in concrete_types {
 			concrete_types << concrete_name_id
 			boxed_concrete_types[iface_id] = concrete_types
@@ -2241,14 +2241,14 @@ fn (mut g FlatGen) collect_interface_boxed_types_for_dispatch() {
 		if node.kind != .struct_init || node.children_count == 0 {
 			continue
 		}
-		iface_name := if node.typ_text() in g.interfaces {
-			node.typ_text()
+		iface_name_id := if node.typ_text() in g.interfaces {
+			node.typ
 		} else if node.value in g.interfaces {
-			node.value
+			flat.source_type_id(node.value)
 		} else {
-			g.tc.qualify_name(node.value)
+			flat.source_type_id(g.tc.qualify_name(node.value))
 		}
-		if iface_name !in g.interfaces {
+		if flat.source_type_name(iface_name_id) !in g.interfaces {
 			continue
 		}
 		for i in 0 .. node.children_count {
@@ -2271,7 +2271,7 @@ fn (mut g FlatGen) collect_interface_boxed_types_for_dispatch() {
 			if concrete_name_id == 0 {
 				continue
 			}
-			for candidate in g.interface_semantic_application_candidates(flat.source_type_id(iface_name), concrete_name_id) {
+			for candidate in g.interface_semantic_application_candidates(iface_name_id, concrete_name_id) {
 				g.mark_interface_boxed_type_for_dispatch(candidate, concrete_name_id)
 			}
 		}

@@ -805,16 +805,16 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		g.expect(.rpar)!
 		receiver_is_reference := receiver_is_mut && !flat.source_type_name(receiver_type).ends_with('*')
 		receiver_parameter_type := if receiver_is_reference {
-			flat.source_type_name(receiver_type) + '*'
+			flat.source_type_id(flat.source_type_name(receiver_type) + '*')
 		} else {
-			flat.source_type_name(receiver_type)
+			receiver_type
 		}
-		params << '${fastc_output_c_type(receiver_parameter_type)} ${fastc_c_identifier(receiver_name)}'
+		params << '${fastc_output_c_type(flat.source_type_name(receiver_parameter_type))} ${fastc_c_identifier(receiver_name)}'
 		g.type_memo.clear()
 		g.locals[receiver_name] = FastcLocal{
 			is_mut:       receiver_is_mut
 			is_reference: receiver_is_reference
-			typ:          flat.source_type_id(receiver_parameter_type)
+			typ:          receiver_parameter_type
 		}
 	}
 	if g.tok != .name && !(g.tok.is_overloadable() || g.tok.is_keyword()) {
@@ -824,7 +824,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	g.next()
 	mut is_c_function := false
 	mut is_static_method := false
-	if flat.source_type_name(receiver_type) == '' && name == 'C' && g.tok == .dot {
+	if receiver_type == u32(0) && name == 'C' && g.tok == .dot {
 		is_c_function = true
 		g.next()
 		if g.tok != .name && !g.tok.is_keyword() {
@@ -832,7 +832,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		}
 		name = g.lit
 		g.next()
-	} else if flat.source_type_name(receiver_type) == '' && g.tok == .dot {
+	} else if receiver_type == u32(0) && g.tok == .dot {
 		type_key := fastc_type_key(g.module_name, name)
 		if type_key !in g.declared_types {
 			return g.unsupported('static method owner `${name}`')
@@ -900,8 +900,8 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		&& name == 'main'
 	// A test build runs its tests from a main of its own; the program's is an ordinary function.
 	is_main := is_program_main && !g.prefs.is_test
-	is_module_init := !is_static_method && flat.source_type_name(receiver_type) == '' && name == 'init'
-	is_module_cleanup := !is_static_method && flat.source_type_name(receiver_type) == '' && name == 'cleanup'
+	is_module_init := !is_static_method && receiver_type == u32(0) && name == 'init'
+	is_module_cleanup := !is_static_method && receiver_type == u32(0) && name == 'cleanup'
 	if is_main {
 		if params.len > 0 {
 			return g.unsupported('main function with parameters')
@@ -932,7 +932,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 			return
 		}
 	}
-	if g.selfhost && !is_fastc_source && flat.source_type_name(receiver_type) != '' && g.method_uses_undefined_receiver() {
+	if g.selfhost && !is_fastc_source && receiver_type != u32(0) && g.method_uses_undefined_receiver() {
 		// A method reaching an undefined identifier as a method-call receiver is broken
 		// dead code, kept only because its name collides with a genuinely-used method on
 		// another type (name-grouped reachability). The mainline compiler drops it via
@@ -1569,7 +1569,7 @@ fn (mut g Parser) parse_type() !u32 {
 
 	g.tok = next_token
 	g.lit = g.s.lit
-	if !g.selfhost && (first_lit in ['charptr', 'rune'] || flat.source_type_name(type_name) == 'char*') {
+	if !g.selfhost && (first_lit in ['charptr', 'rune'] || type_name == fastc_type_char_pointer) {
 		return g.unsupported('type `${first_lit}`')
 	}
 	return type_name

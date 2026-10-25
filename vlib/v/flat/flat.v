@@ -252,6 +252,12 @@ pub fn node_payload_with_constraints(generic_params []string, generic_constraint
 	return node_payload_with_type_constraints(generic_params, TypeTextList.from_names(generic_constraints))
 }
 
+// node_payload_with_constraint_ids registers generic names and source constraint identities.
+// The ordered constraint list is copied before the immutable payload is published.
+pub fn node_payload_with_constraint_ids(params []string, constraints []u32) u32 {
+	return node_payload_with_type_constraints(params, TypeTextList{ ids: constraints.clone() })
+}
+
 // node_payload_with_type_metadata registers names and independent source type metadata.
 // Names follow node_payload ownership rules; the debugger ID list is copied from the caller.
 pub fn node_payload_with_type_metadata(generic_params []string, enum_backing_type u32, debugger_types []u32) u32 {
@@ -615,6 +621,13 @@ pub fn (mut n Node) set_generic_params_and_constraints(params []string, constrai
 	n.payload = node_payload_with_types(params, TypeTextList.from_names(constraints), n.enum_backing_type_id(), TypeTextList{ ids: n.debugger_value_type_ids().clone() })
 }
 
+// set_generic_params_and_constraint_ids replaces generic names and source constraint identities.
+// The constraint list is copied and independent enum/debugger metadata is preserved.
+@[inline]
+pub fn (mut n Node) set_generic_params_and_constraint_ids(params []string, constraints []u32) {
+	n.payload = node_payload_with_types(params, TypeTextList{ ids: constraints.clone() }, n.enum_backing_type_id(), TypeTextList{ ids: n.debugger_value_type_ids().clone() })
+}
+
 // FlatAst represents flat ast data used by flat.
 @[heap]
 pub struct FlatAst {
@@ -729,13 +742,13 @@ pub mut:
 	// themselves keep the visibility they were written with, so neither their generated
 	// names nor a type a user happened to call `AnonStruct_...` become reachable across
 	// module boundaries.
-	contextual_anon_struct_types map[string]bool
+	contextual_anon_struct_types map[u32]bool
 	// synthesized_anon_struct_types names every anonymous aggregate the parser made up,
 	// for a declaration as well as for a literal. A name matching `AnonStruct_` proves
 	// nothing on its own - a user may declare a type so named - so this is what tells
 	// the checker that an expected type really is one it may adopt a bare
 	// `struct { ... }` literal into.
-	synthesized_anon_struct_types map[string]bool
+	synthesized_anon_struct_types map[u32]bool
 	// specialized_fn_nodes identifies program-specific monomorphized function
 	// declarations appended after parsing. Module-cache cgen keeps them with main.
 	specialized_fn_nodes   map[int]bool
@@ -816,8 +829,8 @@ pub fn FlatAst.new() FlatAst {
 		comptime_skipped_goto_labels:  map[string]bool{}
 		export_fn_names:               map[string]string{}
 		noreturn_fns:                  map[string]bool{}
-		contextual_anon_struct_types:  map[string]bool{}
-		synthesized_anon_struct_types: map[string]bool{}
+		contextual_anon_struct_types:  map[u32]bool{}
+		synthesized_anon_struct_types: map[u32]bool{}
 		source_files:                  map[int]&token.File{}
 		template_call_sites:           map[int]token.Pos{}
 		template_actions:              map[int]string{}

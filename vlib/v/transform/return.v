@@ -294,27 +294,24 @@ fn (t &Transformer) return_ierror_expr_type(id flat.NodeId) u32 {
 	node := t.a.nodes[int(id)]
 	primary_type := match node.kind {
 		.struct_init, .cast_expr, .as_expr {
-			node.value
+			flat.source_type_id(node.value)
 		}
 		.ident {
-			flat.source_type_name(t.var_type(node.value))
+			t.var_type(node.value)
 		}
 		.call {
-			flat.source_type_name(t.get_call_return_type(id, node))
+			t.get_call_return_type(id, node)
 		}
 		else {
-			''
+			u32(0)
 		}
 	}
-	if typ_source_id := t.return_ierror_type_candidate(flat.source_type_id(primary_type)) {
+	if typ_source_id := t.return_ierror_type_candidate(primary_type) {
 		return typ_source_id
 	}
-	for typ in [node.typ_text(), flat.source_type_name(t.raw_checker_node_type(id)),
-		flat.source_type_name(t.original_expr_type(id)), flat.source_type_name(t.node_type(id))] {
-		if candidate_source_id := t.return_ierror_type_candidate(flat.source_type_id(typ)) {
-			candidate_source_id_2 := candidate_source_id
-
-			return candidate_source_id_2
+	for typ in [node.typ, t.raw_checker_node_type(id), t.original_expr_type(id), t.node_type(id)] {
+		if candidate_source_id := t.return_ierror_type_candidate(typ) {
+			return candidate_source_id
 		}
 	}
 	return u32(0)
@@ -387,9 +384,8 @@ fn (mut t Transformer) try_return_direct_optional_expr(node flat.Node) ?[]flat.N
 }
 
 fn (mut t Transformer) optional_types_match(a_id u32, b_id u32) bool {
-	a := flat.source_type_name(a_id)
-	b := flat.source_type_name(b_id)
-	if !t.is_optional_type_name(a_id) || !t.is_optional_type_name(b_id) || a[0] != b[0] {
+	if !t.is_optional_type_name(a_id) || !t.is_optional_type_name(b_id)
+		|| flat.source_type_shape(a_id).has(.option_type) != flat.source_type_shape(b_id).has(.option_type) {
 		return false
 	}
 	a_base_source_id := t.normalize_type_alias(t.optional_base_type(a_id))

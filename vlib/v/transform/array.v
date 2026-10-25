@@ -676,17 +676,17 @@ fn (mut t Transformer) lower_array_init_to_runtime(id flat.NodeId, node flat.Nod
 // for flag enums, which default to 0. A value from C (`a = C.FOO`) may not be 0, so it is
 // the first member then.
 fn (mut t Transformer) enum_nonzero_default_value(type_id u32) ?flat.NodeId {
-	enum_name, field_name := t.enum_nonzero_default_member(type_id) or { return none }
+	enum_name_id, field_name := t.enum_nonzero_default_member(type_id) or { return none }
 	return t.a.add_node(flat.Node{
 		kind:  .enum_val
-		value: '${enum_name}.${field_name}'
-		typ:   flat.source_type_id(enum_name)
+		value: '${flat.source_type_name(enum_name_id)}.${field_name}'
+		typ:   enum_name_id
 	})
 }
 
-// enum_nonzero_default_member returns the enum and first member names behind
+// enum_nonzero_default_member returns the enum spelling ID and first member name behind
 // enum_nonzero_default_value.
-fn (mut t Transformer) enum_nonzero_default_member(type_id u32) ?(string, string) {
+fn (mut t Transformer) enum_nonzero_default_member(type_id u32) ?(u32, string) {
 	if isnil(t.tc) {
 		return none
 	}
@@ -698,7 +698,13 @@ fn (mut t Transformer) enum_nonzero_default_member(type_id u32) ?(string, string
 	if enum_type.is_flag {
 		return none
 	}
-	enum_name := flat.source_type_name(enum_type.name_id).trim_string_left('main.')
+	declared_name := flat.source_type_name(enum_type.name_id)
+	enum_name := declared_name.trim_string_left('main.')
+	enum_name_id := if enum_name == declared_name {
+		enum_type.name_id
+	} else {
+		flat.source_type_id(enum_name)
+	}
 	// The first member of an enum without an explicit first value is 0.
 	if enum_name !in t.enum_explicit_first_values {
 		return none
@@ -707,13 +713,13 @@ fn (mut t Transformer) enum_nonzero_default_member(type_id u32) ?(string, string
 	if fields.len == 0 {
 		return none
 	}
-	first_value := t.tc.comptime_enum_decl_first_value(flat.source_type_id(enum_name)) or {
-		return enum_name, fields[0]
+	first_value := t.tc.comptime_enum_decl_first_value(enum_name_id) or {
+		return enum_name_id, fields[0]
 	}
 	if first_value == 0 {
 		return none
 	}
-	return enum_name, fields[0]
+	return enum_name_id, fields[0]
 }
 
 // type_has_enum_default reports whether `type_id` is an enum whose default is not 0, or a
@@ -736,11 +742,10 @@ fn (mut t Transformer) make_struct_runtime_default_value(struct_type_id u32) ?fl
 }
 
 fn (mut t Transformer) make_struct_runtime_default_value_guarded(struct_type_id u32, mut visited map[u32]bool) ?flat.NodeId {
-	struct_type := flat.source_type_name(struct_type_id)
 	// A reference-typed field defaults to nil, which the zeroed element already
 	// is; expanding it would build `(T*){<struct defaults>}` — invalid C
 	// (lookup_struct_info resolves `&mod.T` texts through its direct fallback).
-	if struct_type.starts_with('&') {
+	if flat.source_type_shape(struct_type_id).has(.pointer) {
 		return none
 	}
 	normalized_type_source_id := t.normalize_type_alias(struct_type_id)
@@ -853,7 +858,7 @@ fn (mut t Transformer) make_struct_runtime_default_value_guarded(struct_type_id 
 		kind:           .struct_init
 		children_start: start
 		children_count: flat.child_count(field_ids.len)
-		value:          struct_type
+		value:          flat.source_type_name(struct_type_id)
 		typ:            struct_type_id
 	})
 }
@@ -1169,14 +1174,14 @@ fn (t &Transformer) array_literal_alias_type(node flat.Node) ?u32 {
 		return none
 	}
 	if first.kind == .index && first.children_count > 0 {
-		base_type := flat.source_type_name(t.normalized_node_type(t.a.child(&first, 0))).trim_left('&')
-		if base_type.starts_with('[]') {
+		base_type := t.trim_all_pointer_type(t.normalized_node_type(t.a.child(&first, 0)))
+		if flat.source_type_shape(base_type).has(.array_type) {
 			is_slice := first.value == 'range'
 				|| (first.children_count > 1 && t.a.child_node(&first, 1).kind == .range)
 			return if is_slice {
-				flat.source_type_id('[]${base_type}')
+				flat.source_type_id('[]${flat.source_type_name(base_type)}')
 			} else {
-				flat.source_type_id(base_type)
+				base_type
 			}
 		}
 	}
@@ -1185,9 +1190,9 @@ fn (t &Transformer) array_literal_alias_type(node flat.Node) ?u32 {
 		if callee.kind == .selector && callee.children_count > 0
 			&& callee.value in ['first', 'last', 'pop', 'pop_left'] {
 			base_id := t.a.child(callee, 0)
-			base_type := flat.source_type_name(t.normalized_node_type(base_id)).trim_left('&')
-			if base_type.starts_with('[]') {
-				return flat.source_type_id(base_type)
+			base_type := t.trim_all_pointer_type(t.normalized_node_type(base_id))
+			if flat.source_type_shape(base_type).has(.array_type) {
+				return base_type
 			}
 		}
 	}
@@ -2926,22 +2931,23 @@ fn (mut t Transformer) clone_owned_nonarray_sum_payload_for_storage(value flat.N
 		return value
 	}
 	clean_type_source_id := t.comptime_normalize_type_alias_chain(typ_id)
-	clean_type := flat.source_type_name(clean_type_source_id)
 	mut payload := value
-	if flat.source_type_name(t.comptime_normalize_type_alias_chain(t.node_type(value))) == '&${clean_type}' {
-		payload = t.array_lvalue_value(value, flat.source_type_id('&${clean_type}'))
+	value_type := t.comptime_normalize_type_alias_chain(t.node_type(value))
+	if flat.source_type_shape(value_type).has(.pointer)
+		&& t.trim_pointer_type(value_type) == clean_type_source_id {
+		payload = t.array_lvalue_value(value, value_type)
 		t.set_node_typ(int(payload), clean_type_source_id)
 	}
 	payload = t.stable_transformed_expr_for_reuse(payload, typ_id, 'owned_sum_payload')
 	mut active_payload := payload
-	mut payload_type := clean_type
+	mut payload_type := clean_type_source_id
 	mut active := t.make_bool_literal(true)
-	for t.is_optional_type_name(flat.source_type_id(payload_type)) {
+	for t.is_optional_type_name(payload_type) {
 		active = t.make_infix(.logical_and, active, t.make_selector(active_payload, 'ok', flat.source_type_bool))
-		payload_type = flat.source_type_name(t.comptime_normalize_type_alias_chain(t.optional_base_type(flat.source_type_id(payload_type))))
-		active_payload = t.make_selector(active_payload, 'value', flat.source_type_id(payload_type))
+		payload_type = t.comptime_normalize_type_alias_chain(t.optional_base_type(payload_type))
+		active_payload = t.make_selector(active_payload, 'value', payload_type)
 	}
-	if bad_type := t.tc.ownership_default_clone_missing_method(t.tc.parse_type(flat.source_type_id(payload_type))) {
+	if bad_type := t.tc.ownership_default_clone_missing_method(t.tc.parse_type(payload_type)) {
 		t.pending_stmts << t.make_if_with_skip_ownership_drops(active, t.make_block_skip_scope_drops([
 			t.make_panic_stmt('cannot retain borrowed `${typ}`: `${bad_type}` requires ownership destruction but has no compatible `clone()` method'),
 		]), t.make_empty())
@@ -7413,21 +7419,21 @@ fn (t &Transformer) fn_value_return_type_name(id flat.NodeId) ?u32 {
 			}
 		}
 	}
-	mut typ := flat.source_type_name(t.checker_expr_type_name(id) or { u32(0) })
-	if typ.len == 0 {
-		typ = node.typ_text()
+	mut typ := t.checker_expr_type_name(id) or { u32(0) }
+	if typ == 0 {
+		typ = node.typ
 	}
-	if typ.len == 0 && node.kind == .ident {
-		typ = flat.source_type_name(t.var_type(node.value))
+	if typ == 0 && node.kind == .ident {
+		typ = t.var_type(node.value)
 	}
-	if typ.len == 0 || isnil(t.tc) {
+	if typ == 0 || isnil(t.tc) {
 		return none
 	}
-	parsed := t.tc.parse_type(flat.source_type_id(typ))
+	parsed := t.tc.parse_type(typ)
 	if parsed is types.FnType {
-		name := parsed.return_type.name()
-		if name.len > 0 {
-			return t.normalize_type_alias(flat.source_type_id(name))
+		name := parsed.return_type.source_type_id()
+		if name != 0 {
+			return t.normalize_type_alias(name)
 		}
 	}
 	return none
@@ -8237,10 +8243,10 @@ fn (mut t Transformer) struct_operator_call(info StructOperatorCallInfo, lhs fla
 
 fn (mut t Transformer) array_sort_struct_less_expr(cur flat.NodeId, prev flat.NodeId, elem_type_id u32) ?flat.NodeId {
 	mut struct_type := t.struct_lookup_name(elem_type_id)
-	if flat.source_type_name(struct_type).len == 0 {
+	if struct_type == 0 {
 		struct_type = t.generic_struct_instance_name(elem_type_id)
 	}
-	if flat.source_type_name(struct_type).len == 0 {
+	if struct_type == 0 {
 		return none
 	}
 	call_info := t.struct_operator_call_info(struct_type, .lt) or { return none }
@@ -8270,7 +8276,7 @@ fn (mut t Transformer) array_sort_simple_operator_expr(node flat.Node, cur flat.
 		return none
 	}
 	struct_type := t.struct_lookup_name(elem_type_id)
-	call_info := if flat.source_type_name(struct_type).len > 0 {
+	call_info := if struct_type != 0 {
 		t.struct_operator_call_info(struct_type, node.op) or { return none }
 	} else if raw_elem_type_id != 0 && raw_elem_type_comparison_type_id_3 != elem_type_comparison_type_id_18
 		&& t.is_type_alias_name(t.trim_pointer_type(raw_elem_type_id)) {

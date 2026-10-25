@@ -314,8 +314,8 @@ fn (mut t Transformer) library_type_parts(text_id u32) ?[]u32 {
 		params := t.tc.struct_generic_params[base] or { []string{} }
 		args_ids := flat.TypeTextList.from_names(args).ids
 		for field in fields {
-			parts << flat.source_type_id(library_type_text_bytes(substitute_generic_type_text_with_params_bytes(field.typ.name(),
-				args_ids, params)))
+			parts << library_type_text(substitute_generic_type_text_with_params(field.typ.source_type_id(),
+				args_ids, params))
 		}
 	} else if variants_source_ids := t.tc.sum_types.type_ids(name) {
 		for variant_source_id in variants_source_ids {

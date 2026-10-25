@@ -7454,11 +7454,11 @@ fn global_text(a &flat.FlatAst, tc &types.TypeChecker, module_name string, node 
 			line += 'volatile '
 		}
 		line += field.value
-		mut field_type := field.typ_text()
-		if field_type.len == 0 {
-			field_type = cached_global_type_name(tc, module_name, field.value)
+		mut field_type := field.typ
+		if field_type == 0 {
+			field_type = cached_global_source_type_id(tc, module_name, field.value)
 		}
-		if field_type.len > 0 {
+		if field_type != 0 {
 			line += ' ${cached_type_source_text(tc, field_type)}'
 		}
 		if field.children_count > 0 {
@@ -7473,29 +7473,32 @@ fn global_text(a &flat.FlatAst, tc &types.TypeChecker, module_name string, node 
 	return out.str()
 }
 
-fn cached_global_type_name(tc &types.TypeChecker, module_name string, name string) string {
+fn cached_global_source_type_id(tc &types.TypeChecker, module_name string, name string) u32 {
 	for candidate in [name, '${module_name}.${name}', '${module_name.all_after_last('.')}.${name}'] {
 		if typ := tc.file_scope.lookup(candidate) {
-			mut type_name := typ.name()
-			if type_name == 'nil' || type_name == 'none' || type_name == 'unknown' {
-				return 'voidptr'
+			source_id := typ.source_type_id()
+			if source_id in [flat.source_type_nil, flat.source_type_none, flat.source_type_unknown] {
+				return flat.source_type_voidptr
 			}
-			if type_name.starts_with('&void[') {
-				type_name = 'voidptr' + type_name['&void'.len..]
+			if flat.source_type_shape(source_id).has(.pointer) {
+				type_name := flat.source_type_name(source_id)
+				if type_name.starts_with('&void[') {
+					return flat.source_type_id('voidptr' + type_name['&void'.len..])
+				}
 			}
-			return type_name
+			return source_id
 		}
 	}
-	return ''
+	return 0
 }
 
-fn cached_type_source_text(tc &types.TypeChecker, type_text string) string {
-	typ := tc.parse_resolution_type(flat.source_type_id(type_text))
+fn cached_type_source_text(tc &types.TypeChecker, source_id u32) string {
+	typ := tc.parse_resolution_type(source_id)
 	if typ is types.ArrayFixed {
 		len_text := if typ.len_expr.len > 0 { typ.len_expr } else { typ.len.str() }
 		return '[${len_text}]${cached_type_source_name(typ.elem_type)}'
 	}
-	return type_text
+	return flat.source_type_name(source_id)
 }
 
 fn cached_type_source_name(typ types.Type) string {

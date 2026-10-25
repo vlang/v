@@ -2632,7 +2632,6 @@ fn (mut g FlatGen) gen_promoted_struct_literal_default(value_id flat.NodeId, typ
 // initialized embedded struct. Nested designators keep the promoted expressions in
 // source order while avoiding a second initializer for the whole embedded field.
 fn (mut g FlatGen) gen_promoted_struct_defaults(type_name_id u32, designator_prefix string, mut promoted_set_fields map[string]bool, has_field bool) bool {
-	type_name := flat.source_type_name(type_name_id)
 	mut has := has_field
 	lookup_name := g.struct_init_fields_key(type_name_id, type_name_id)
 	mut explicitly_defaulted := map[string]bool{}
@@ -2667,11 +2666,12 @@ fn (mut g FlatGen) gen_promoted_struct_defaults(type_name_id u32, designator_pre
 		}
 		g.restore_struct_default_context(old_ctx)
 	}
-	defaults_key := if flat.source_type_name(lookup_name) in g.tc.structs {
-		flat.source_type_name(lookup_name)
+	defaults_type_id := if flat.source_type_name(lookup_name) in g.tc.structs {
+		lookup_name
 	} else {
-		type_name
+		type_name_id
 	}
+	defaults_key := flat.source_type_name(defaults_type_id)
 	if defaults_key !in g.tc.structs {
 		return has
 	}
@@ -2687,7 +2687,7 @@ fn (mut g FlatGen) gen_promoted_struct_defaults(type_name_id u32, designator_pre
 			}
 			continue
 		}
-		has = g.gen_unset_struct_field_default(flat.source_type_id(defaults_key), field.name, field.typ, field_designator, has)
+		has = g.gen_unset_struct_field_default(defaults_type_id, field.name, field.typ, field_designator, has)
 	}
 	return has
 }

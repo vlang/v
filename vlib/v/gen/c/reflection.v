@@ -110,14 +110,15 @@ fn reflection_type_key(raw_type string, module_name string) string {
 			return '${base}[${args.map(reflection_type_key(it, module_name)).join(', ')}]'
 		}
 	}
-	if types.builtin_type_index(typ) > 0 || typ.contains('.') || module_name in ['', 'builtin'] {
+	if types.builtin_type_index(flat.source_type_id(typ)) > 0 || typ.contains('.') || module_name in ['',
+		'builtin'] {
 		return typ
 	}
 	return '${module_name}.${typ}'
 }
 
 fn (g &FlatGen) reflection_type_id(type_name_id u32, module_name string) int {
-	return g.reflection_type_id_bytes(flat.source_type_name(type_name_id), module_name)
+	return g.tc.type_index(reflection_source_type_key(type_name_id, module_name))
 }
 
 fn (g &FlatGen) reflection_type_id_bytes(type_name string, module_name string) int {
@@ -601,15 +602,16 @@ fn (mut g FlatGen) gen_reflection_data() {
 		'isize', 'u8', 'u16', 'u32', 'u64', 'uint', 'f32', 'f64', 'char', 'bool', 'none', 'string',
 		'rune', 'float literal', 'int literal', 'thread']
 	for name in builtin_names {
-		g.gen_reflection_type(flat.source_type_id(name), 'builtin', reflection_builtin_type_kind(name), reflection_none_info(),
-			g.reflection_methods(flat.source_type_id(name)), mut seen_ids)
+		name_id := flat.source_type_id(name)
+		g.gen_reflection_type(name_id, 'builtin', reflection_builtin_type_kind(name), reflection_none_info(),
+			g.reflection_methods(name_id), mut seen_ids)
 	}
 
 	mut names := g.struct_decl_infos.keys()
 	names.sort()
 	for name in names {
 		info := g.struct_decl_infos[name]
-		if types.builtin_type_index(info.full_name_text()) > 0 {
+		if types.builtin_type_index(info.full_name) > 0 {
 			continue
 		}
 		key_id := reflection_source_type_key(info.full_name, info.module)

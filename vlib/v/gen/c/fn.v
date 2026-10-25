@@ -5939,7 +5939,8 @@ fn (mut g FlatGen) write_export_wrapper_c_abi_params(node flat.Node, abi_decl fl
 		if param.kind != .param {
 			continue
 		}
-		raw_type := if param.typ != 0 { param.typ_text() } else { param.value }
+		raw_type_id := if param.typ != 0 { param.typ } else { flat.source_type_id(param.value) }
+		raw_type := flat.source_type_name(raw_type_id)
 		if raw_type.starts_with('...') {
 			if written > 0 {
 				g.write(', ')
@@ -5948,7 +5949,7 @@ fn (mut g FlatGen) write_export_wrapper_c_abi_params(node flat.Node, abi_decl fl
 			written++
 			continue
 		}
-		param_type := g.tc.parse_type(flat.source_type_id(raw_type))
+		param_type := g.tc.parse_type(raw_type_id)
 		mut ct := g.c_extern_interop_type_name(param_type) or {
 			g.c_extern_param_c_type(param_type)
 		}
@@ -10267,7 +10268,9 @@ fn (mut g FlatGen) gen_interface_method_call(node flat.Node, fn_node flat.Node, 
 // that a semantic type name can render without its main qualifier.
 fn (g &FlatGen) interface_receiver_application_name(id flat.NodeId, fallback_id u32) u32 {
 	if int(id) < 0 || int(id) >= g.a.nodes.len { return fallback_id }
-	mut text := g.a.nodes[int(id)].typ_text().trim_space()
+	node_type_id := g.a.nodes[int(id)].typ
+	type_text := flat.source_type_name(node_type_id)
+	mut text := type_text.trim_space()
 	for text.starts_with('&') { text = text[1..].trim_space() }
 	base, args, is_generic := parse_shared_generic_app_parts(text)
 	if !is_generic || g.tc.interface_metadata_name(flat.source_type_id(base)) != g.tc.interface_metadata_name(fallback_id) {
@@ -10276,7 +10279,7 @@ fn (g &FlatGen) interface_receiver_application_name(id flat.NodeId, fallback_id 
 	for arg in args {
 		if codegen_generic_arg_is_unresolved(flat.source_type_id(arg)) { return fallback_id }
 	}
-	return flat.source_type_id(text)
+	return if text == type_text { node_type_id } else { flat.source_type_id(text) }
 }
 
 // specialized_interface_name_for_method_call resolves the receiver application spelling ID.
@@ -17299,11 +17302,12 @@ fn (mut g FlatGen) preseed_c_extern_fn_ptr_types_with_filter(referenced map[stri
 			if p.kind != .param {
 				continue
 			}
-			raw_typ := if p.typ != 0 { p.typ_text() } else { p.value }
+			raw_typ_id := if p.typ != 0 { p.typ } else { flat.source_type_id(p.value) }
+			raw_typ := flat.source_type_name(raw_typ_id)
 			if raw_typ.len == 0 || raw_typ.starts_with('...') {
 				continue
 			}
-			pt := g.tc.parse_type(flat.source_type_id(raw_typ))
+			pt := g.tc.parse_type(raw_typ_id)
 			if _ := g.c_extern_interop_type_name(pt) {
 			} else {
 				g.preseed_fn_ptr_type(pt)
@@ -18615,7 +18619,8 @@ fn (mut g FlatGen) c_extern_decl_params(node flat.Node) string {
 		if p.kind != .param {
 			continue
 		}
-		raw_typ := if p.typ != 0 { p.typ_text() } else { p.value }
+		raw_typ_id := if p.typ != 0 { p.typ } else { flat.source_type_id(p.value) }
+		raw_typ := flat.source_type_name(raw_typ_id)
 		if raw_typ.len == 0 {
 			continue
 		}
@@ -18625,7 +18630,7 @@ fn (mut g FlatGen) c_extern_decl_params(node flat.Node) string {
 			}
 			continue
 		}
-		pt := g.tc.parse_type(flat.source_type_id(raw_typ))
+		pt := g.tc.parse_type(raw_typ_id)
 		mut ct := g.c_extern_interop_type_name(pt) or { g.c_extern_param_c_type(pt) }
 		if ct.starts_with('fn_ptr:') {
 			ct = g.resolve_fn_ptr_type(ct)
@@ -19402,11 +19407,11 @@ fn (mut g FlatGen) write_c_fn_node_params(node flat.Node) {
 		if p.kind != .param {
 			continue
 		}
-		raw_typ := if p.typ != 0 { p.typ_text() } else { p.value }
-		if raw_typ.len == 0 {
+		raw_typ_id := if p.typ != 0 { p.typ } else { flat.source_type_id(p.value) }
+		if raw_typ_id == 0 {
 			continue
 		}
-		pt := g.tc.parse_type(flat.source_type_id(raw_typ))
+		pt := g.tc.parse_type(raw_typ_id)
 		ct := if pt is types.OptionType || pt is types.ResultType {
 			g.optional_type_name(pt)
 		} else {

@@ -264,12 +264,12 @@ fn test_alias_target_parsing_preserves_declaration_module() {
 		} else {
 			fresh.parse_type(flat.source_type_id(text))
 		}
-		parsed := tc.parse_alias_type('dep.Alias', flat.source_type_id(text))
+		parsed := tc.parse_alias_type(flat.source_type_id('dep.Alias'), flat.source_type_id(text))
 		assert parsed is Alias
 		assert parsed.name() == 'dep.Alias'
 		assert *parsed.base_type == expected
 	}
-	assert tc.parse_alias_target_type('dep.Alias', flat.source_type_id('Item')).name() == 'dep.Item'
+	assert tc.parse_alias_target_type(flat.source_type_id('dep.Alias'), flat.source_type_id('Item')).name() == 'dep.Item'
 	assert tc.cur_module == 'caller'
 }
 
@@ -290,7 +290,7 @@ fn test_context_independent_container_types_match_declaration_views() {
 		expected := fresh.parse_resolution_type(flat.source_type_id(text))
 		assert tc.parse_resolution_type_in_file(flat.source_type_id(text), 'dep.v') == expected
 		assert tc.fn_signature_type('dep.read', flat.source_type_id(text)) == expected
-		alias_typ := tc.parse_alias_type('dep.Alias', flat.source_type_id(text))
+		alias_typ := tc.parse_alias_type(flat.source_type_id('dep.Alias'), flat.source_type_id(text))
 		assert alias_typ is Alias
 		assert *alias_typ.base_type == fresh.parse_type(flat.source_type_id(text))
 	}
@@ -690,7 +690,7 @@ fn test_generic_text_substitution_preserves_mut_fn_pointer_params() {
 	assert fn_type.params.map(it.is_mut) == [true]
 	assert fn_compatible_param_type(fn_type, 0).name() == '&&Dog'
 	assert tc.c_type(callback_type) == 'fn_ptr:string|Dog**'
-	assert subst_generic_signature_param_text('f fn (mut it T) string', flat.TypeTextList.from_names(['&Dog']).ids, ['T']) == 'fn(mut &Dog) string'
+	assert subst_generic_signature_param_type(flat.source_type_id('f fn (mut it T) string'), flat.TypeTextList.from_names(['&Dog']).ids, ['T']) == flat.source_type_id('fn(mut &Dog) string')
 }
 
 fn test_mut_callback_param_keeps_declared_and_slot_pointers_apart() {

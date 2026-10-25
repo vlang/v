@@ -755,8 +755,8 @@ fn (tc &TypeChecker) vls_smartcast_type(id flat.NodeId, declared Type) ?Type {
 	}
 	typ := tc.expr_type(id)?
 	narrowed := unwrap_pointer(typ)
-	if narrowed is Unknown || narrowed is Void || narrowed.name() == base.name()
-		|| narrowed.name() == unwrap_pointer(declared).name() {
+	if narrowed is Unknown || narrowed is Void || narrowed.source_type_id() == base.source_type_id()
+		|| narrowed.source_type_id() == unwrap_pointer(declared).source_type_id() {
 		return none
 	}
 	return typ
@@ -1024,7 +1024,7 @@ fn (tc &TypeChecker) vls_fn_literal_type(literal flat.Node) Type {
 		is_variadic = param.typ_text().trim_space().starts_with('...')
 		params << FnParam{ typ: tc.parse_type(param.typ), is_mut: param.is_mut }
 	}
-	result := if literal.typ == 0 || literal.typ_text() == 'void' {
+	result := if literal.typ == 0 || literal.typ == flat.source_type_void {
 		Type(void_)
 	} else {
 		*tc.parse_type(literal.typ)
@@ -1357,7 +1357,7 @@ fn (tc &TypeChecker) vls_enum_values(decl flat.Node) map[string]string {
 			field_exprs[field.value] = tc.a.child(field, 0)
 		}
 	}
-	if decl.typ_text() == 'flag' {
+	if decl.typ == comptime_source_type_flag {
 		for i, name in field_names {
 			// A u64: the 64th flag does not fit an i64.
 			bit := u64(1) << i

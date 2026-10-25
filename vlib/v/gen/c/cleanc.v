@@ -18906,8 +18906,7 @@ fn (g &FlatGen) typeof_type_index(node flat.Node) int {
 }
 
 fn (g &FlatGen) type_index_for_type_name(type_name_id u32) int {
-	key := reflection_type_key(flat.source_type_name(type_name_id), g.tc.cur_module)
-	return g.tc.type_index(flat.source_type_id(key))
+	return g.tc.type_index(reflection_source_type_key(type_name_id, g.tc.cur_module))
 }
 
 fn (mut g FlatGen) gen_string_infix_fallback(node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId) bool {

@@ -2160,8 +2160,8 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		composite_types['Array_char_ptr'] = true
 	}
 	for signature in functions.values() {
-		fastc_register_composite_type(signature.return_type_text(), mut composite_types)
-		for parameter_type in signature.parameter_types_text() {
+		fastc_register_composite_type(signature.return_type, mut composite_types)
+		for parameter_type in signature.parameter_types.ids {
 			fastc_register_composite_type(parameter_type, mut composite_types)
 		}
 	}
@@ -2230,10 +2230,10 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	for name, _ in global_output.composite_types {
 		composite_types[name] = true
 	}
-	for constant_type in constant_types.values() {
+	for constant_type in constant_types.ids.values() {
 		fastc_register_composite_type(constant_type, mut composite_types)
 	}
-	for global_type in global_types.values() {
+	for global_type in global_types.ids.values() {
 		fastc_register_composite_type(global_type, mut composite_types)
 	}
 	startup_initializers := fastc_generate_startup_initializers(ordered_sources, constant_output.module_initializers, global_output.module_initializers, module_init_calls, function_c_names)!
@@ -2446,7 +2446,8 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		if flat.source_type_name(element_type).contains('__vf_fn_type_') {
 			callback_fixed_array_types.set_id(name, typ_id)
 		} else if fastc_primitive_c_type(flat.source_type_name(element_type)) != none
-			&& flat.source_type_name(element_type) !in ['string', 'array', 'map', 'Option', '__v_result'] {
+			&& element_type !in [flat.source_type_string, fastc_type_array, fastc_type_map,
+				fastc_type_option, fastc_type_result] {
 			scalar_fixed_array_types.set_id(name, typ_id)
 		} else {
 			aggregate_fixed_array_types.set_id(name, typ_id)
@@ -3999,7 +4000,7 @@ fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTy
 					fastc_method_c_name(candidate_signature.module_name, receiver_type, method_name)
 				}
 				call := '${candidate_c_name}(${receiver_argument}${call_arguments})'
-				out.writeln('\tcase __v_typeid_${receiver_type}: ${if interface_signature.return_type_text() == 'void' {
+				out.writeln('\tcase __v_typeid_${receiver_type}: ${if interface_signature.return_type == flat.source_type_void {
 					call + '; return;'
 				} else {
 					'return ' + call + ';'
@@ -4032,7 +4033,7 @@ fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTy
 						fastc_method_c_name(embedded_signature.module_name, fastc_c_declared_type_name(embedded.key.all_before_last('.')), method_name)
 					}
 					call := '${embedded_c_name}(${receiver_argument}${call_arguments})'
-					out.writeln('\tcase __v_typeid_${struct_type}: ${if interface_signature.return_type_text() == 'void' {
+					out.writeln('\tcase __v_typeid_${struct_type}: ${if interface_signature.return_type == flat.source_type_void {
 						call + '; return;'
 					} else {
 						'return ' + call + ';'
@@ -4286,7 +4287,7 @@ fn fastc_function_id_table(functions map[string]FastcFunctionSignature, function
 	// Native adapters share their implementation's emitted span. References to
 	// either spelling must retain that span without adding another graph node.
 	for key, signature in functions {
-		if key.starts_with('C.') || signature.return_type_text() != 'MultiReturn'
+		if key.starts_with('C.') || signature.return_type != fastc_type_multi_return
 			|| signature.return_types.ids.len != 2 {
 			continue
 		}

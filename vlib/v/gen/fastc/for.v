@@ -179,7 +179,7 @@ fn (mut g Parser) parse_for() !bool {
 				g.write_line('}')
 				return false
 			}
-			if !item_is_mut && flat.source_type_name(collection_layout_type).trim_right('*') != 'string'
+			if !item_is_mut && fastc_trim_pointer_type(collection_layout_type) != flat.source_type_string
 				&& g.array_element_type(collection_layout_type) == none {
 				if iterator := g.iterator_next_method(collection_layout_type) {
 					g.next()
@@ -188,7 +188,7 @@ fn (mut g Parser) parse_for() !bool {
 					return false
 				}
 			}
-			element_type := if flat.source_type_name(collection_layout_type).trim_right('*') == 'string' {
+			element_type := if fastc_trim_pointer_type(collection_layout_type) == flat.source_type_string {
 				flat.source_type_u8
 			} else {
 				g.array_element_type(collection_layout_type) or {
@@ -216,7 +216,7 @@ fn (mut g Parser) parse_for() !bool {
 			} else {
 				'.'
 			}
-			data_field := if flat.source_type_name(collection_layout_type).trim_right('*') == 'string' {
+			data_field := if fastc_trim_pointer_type(collection_layout_type) == flat.source_type_string {
 				'str'
 			} else {
 				'data'
@@ -281,7 +281,7 @@ fn (mut g Parser) parse_for() !bool {
 					g.locals[actual_value_name] = FastcLocal{
 						typ: flat.source_type_u8
 					}
-				} else if !is_fixed_array && flat.source_type_name(collection_layout_type).ends_with('*') && flat.source_type_name(collection_layout_type).trim_right('*') != 'string' {
+				} else if !is_fixed_array && flat.source_type_name(collection_layout_type).ends_with('*') && fastc_trim_pointer_type(collection_layout_type) != flat.source_type_string {
 					g.write_line('${element_c_type} *${c_value_name} = &(((${element_c_type} *)${collection_data})[${index_name}]);')
 					g.locals[actual_value_name] = FastcLocal{
 						typ: flat.source_type_id(flat.source_type_name(element_type) + '*')
@@ -476,7 +476,7 @@ fn (g &Parser) iterator_next_method(collection_type_source_id u32) ?FastcIterato
 	collection_type := flat.source_type_name(collection_type_source_id)
 	key, path := g.resolve_method(flat.source_type_id(fastc_trim_pointer_suffix(collection_type)), 'next')
 	signature := g.functions[key] or { return none }
-	if path.len > 0 || signature.parameter_types.ids.len != 1 || signature.return_type_text() != 'Option'
+	if path.len > 0 || signature.parameter_types.ids.len != 1 || signature.return_type != fastc_type_option
 		|| signature.option_type_text() in ['', 'void', 'MultiReturn'] {
 		return none
 	}

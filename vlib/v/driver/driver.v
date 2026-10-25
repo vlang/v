@@ -7598,21 +7598,13 @@ fn promote_scoped_node(mut node flat.Node, scope voidptr) {
 		}
 		return
 	}
-	old_constraints := node.generic_constraints()
+	old_constraints := node.generic_constraint_ids()
 	mut needs_promotion := scoped_value_owned(scope, node.payload_ptr())
 		|| scoped_value_owned(scope, old_params.data)
 		|| (old_constraints.len > 0 && scoped_value_owned(scope, old_constraints.data))
 	if !needs_promotion {
 		for param in old_params {
 			if param.len > 0 && scoped_value_owned(scope, param.str) {
-				needs_promotion = true
-				break
-			}
-		}
-	}
-	if !needs_promotion {
-		for constraint in old_constraints {
-			if constraint.len > 0 && scoped_value_owned(scope, constraint.str) {
 				needs_promotion = true
 				break
 			}
@@ -7629,15 +7621,7 @@ fn promote_scoped_node(mut node flat.Node, scope voidptr) {
 			param
 		}
 	}
-	mut constraints := []string{cap: old_constraints.len}
-	for constraint in old_constraints {
-		constraints << if constraint.len > 0 && scoped_value_owned(scope, constraint.str) {
-			constraint.clone()
-		} else {
-			constraint
-		}
-	}
-	node.set_generic_params_and_constraints(params, constraints)
+	node.set_generic_params_and_constraint_ids(params, old_constraints)
 }
 
 // promote_scoped_ast_nodes_flagged is the scoped-node promotion walk with an optional
@@ -7734,7 +7718,7 @@ fn canonicalize_scoped_node_cached(mut ast flat.FlatAst, idx int, scope voidptr,
 		}
 		return
 	}
-	old_constraints := node.generic_constraints()
+	old_constraints := node.generic_constraint_ids()
 	if !scoped_generic_payload_owned(node, old_params, old_constraints, scope) {
 		return
 	}
@@ -7746,15 +7730,7 @@ fn canonicalize_scoped_node_cached(mut ast flat.FlatAst, idx int, scope voidptr,
 			params << param
 		}
 	}
-	mut constraints := []string{cap: old_constraints.len}
-	for constraint in old_constraints {
-		if constraint.len > 0 && scoped_value_owned(scope, constraint.str) {
-			constraints << ast.intern_text_ptr_cached(constraint, mut cache_ptrs, mut cache_vals)
-		} else {
-			constraints << constraint
-		}
-	}
-	node.set_generic_params_and_constraints(params, constraints)
+	node.set_generic_params_and_constraint_ids(params, old_constraints)
 }
 
 fn canonicalize_scoped_node(mut ast flat.FlatAst, idx int, scope voidptr) {
@@ -7775,7 +7751,7 @@ fn canonicalize_scoped_node(mut ast flat.FlatAst, idx int, scope voidptr) {
 		}
 		return
 	}
-	old_constraints := node.generic_constraints()
+	old_constraints := node.generic_constraint_ids()
 	if !scoped_generic_payload_owned(node, old_params, old_constraints, scope) {
 		return
 	}
@@ -7788,22 +7764,13 @@ fn canonicalize_scoped_node(mut ast flat.FlatAst, idx int, scope voidptr) {
 			params << param
 		}
 	}
-	mut constraints := []string{cap: old_constraints.len}
-	for constraint in old_constraints {
-		if constraint.len > 0 && scoped_value_owned(scope, constraint.str) {
-			_, canonical := ast.intern_text(constraint)
-			constraints << canonical
-		} else {
-			constraints << constraint
-		}
-	}
-	node.set_generic_params_and_constraints(params, constraints)
+	node.set_generic_params_and_constraint_ids(params, old_constraints)
 }
 
 // scoped_generic_payload_owned reports whether the generic params of `node`, or
 // the constraints they name, live in the scope's memory: its payload, their
-// arrays or their strings.
-fn scoped_generic_payload_owned(node &flat.Node, params []string, constraints []string, scope voidptr) bool {
+// arrays or the parameter strings. Constraint spellings live in the source table.
+fn scoped_generic_payload_owned(node &flat.Node, params []string, constraints []u32, scope voidptr) bool {
 	debugger_types := node.debugger_value_type_ids()
 	if (debugger_types.len > 0 && scoped_value_owned(scope, debugger_types.data)) || scoped_value_owned(scope, node.payload_ptr()) || scoped_value_owned(scope, params.data)
 		|| (constraints.len > 0 && scoped_value_owned(scope, constraints.data)) {
@@ -7811,11 +7778,6 @@ fn scoped_generic_payload_owned(node &flat.Node, params []string, constraints []
 	}
 	for param in params {
 		if param.len > 0 && scoped_value_owned(scope, param.str) {
-			return true
-		}
-	}
-	for constraint in constraints {
-		if constraint.len > 0 && scoped_value_owned(scope, constraint.str) {
 			return true
 		}
 	}
@@ -23370,17 +23332,16 @@ fn implicit_expr_type(a &flat.FlatAst, id flat.NodeId, bindings flat.TypeTextBin
 		}
 		.array_literal, .array_init {
 			if node.children_count == 0 {
-				return flat.source_type_id('[]void')
+				return implicit_source_type_void_array
 			}
 			elem_type_source_id := implicit_expr_type(a, a.child(node, 0), bindings, index, depth + 1)
-			elem_type := flat.source_type_name(elem_type_source_id)
 			if elem_type_source_id != 0 {
-				return flat.source_type_id('[]${elem_type}')
+				return flat.source_type_id('[]${flat.source_type_name(elem_type_source_id)}')
 			}
-			return flat.source_type_id('[]void')
+			return implicit_source_type_void_array
 		}
 		.map_init {
-			return if node.typ != 0 { node.typ } else { flat.source_type_id('map[void]void') }
+			return if node.typ != 0 { node.typ } else { implicit_source_type_void_map }
 		}
 		.struct_init {
 			return implicit_normalize_type(flat.source_type_id(node.value), index)
@@ -23572,16 +23533,16 @@ fn implicit_call_return_type(a &flat.FlatAst, call &flat.Node, bindings flat.Typ
 	}
 	base_id := a.child(callee, 0)
 	base_type_source_id_4 := implicit_normalize_type(implicit_expr_type(a, base_id, bindings, index, depth + 1), index)
-	base_type := flat.source_type_name(base_type_source_id_4)
 	if base_type_source_id_4 == flat.source_type_string {
 		if callee.value == 'runes' {
-			return flat.source_type_id('[]rune')
+			return implicit_source_type_rune_array
 		}
 		if callee.value == 'bytes' {
-			return flat.source_type_id('[]u8')
+			return implicit_source_type_u8_array
 		}
 	}
 	if base_type_source_id_4 != 0 {
+		base_type := flat.source_type_name(base_type_source_id_4)
 		for key in ['${base_type}.${callee.value}', '${base_type.all_after_last('.')}.${callee.value}'] {
 			index.read('r:', key)
 			if typ_source_id := index.fn_returns.type_id(key) {
@@ -23604,7 +23565,7 @@ fn implicit_field_type(raw_type_id u32, field string, index ImplicitFieldScanInd
 	if typ == flat.source_type_string {
 		return match field {
 			'len', 'flags', 'is_lit' { flat.source_type_int }
-			'str' { flat.source_type_id('&u8') }
+			'str' { implicit_source_type_u8_pointer }
 			else { u32(0) }
 		}
 	}
@@ -23634,6 +23595,11 @@ fn implicit_field_type(raw_type_id u32, field string, index ImplicitFieldScanInd
 }
 
 const implicit_type_prefixes = ['mut ', 'shared ', '&', '?', '!']
+const implicit_source_type_void_array = flat.source_type_id('[]void')
+const implicit_source_type_void_map = flat.source_type_id('map[void]void')
+const implicit_source_type_rune_array = flat.source_type_id('[]rune')
+const implicit_source_type_u8_array = flat.source_type_id('[]u8')
+const implicit_source_type_u8_pointer = flat.source_type_id('&u8')
 
 // implicit_number_types are the types of numbers, as implicit_normalize_type
 // leaves them.

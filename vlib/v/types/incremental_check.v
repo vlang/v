@@ -1041,10 +1041,12 @@ fn incremental_names_generic_fn(name string, generic_fns map[string]bool) bool {
 // instance of a generic type, as `Box[int]` and `[]Box[int]` do.
 fn type_mentions_generic_application(typ &Type) bool {
 	return match typ {
-		Struct { typ.name().contains('[') }
-		Interface { typ.name().contains('[') }
-		SumType { typ.name().contains('[') }
-		Alias { typ.name().contains('[') || type_mentions_generic_application(typ.base_type) }
+		Struct { flat.source_type_shape(typ.source_type_id()).has(.bracketed) }
+		Interface { flat.source_type_shape(typ.source_type_id()).has(.bracketed) }
+		SumType { flat.source_type_shape(typ.source_type_id()).has(.bracketed) }
+		Alias {
+			flat.source_type_shape(typ.source_type_id()).has(.bracketed) || type_mentions_generic_application(typ.base_type)
+		}
 		Array { type_mentions_generic_application(typ.elem_type) }
 		ArrayFixed { type_mentions_generic_application(typ.elem_type) }
 		Channel { type_mentions_generic_application(typ.elem_type) }

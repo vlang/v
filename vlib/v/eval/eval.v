@@ -14,6 +14,11 @@ const eval_type_module = flat.source_type_id('module')
 const eval_type_range = flat.source_type_id('range')
 const eval_type_tuple = flat.source_type_id('tuple')
 const eval_type_fn = flat.source_type_id('fn')
+const eval_type_type = flat.source_type_id('Type')
+const eval_type_types_type = flat.source_type_id('types.Type')
+const eval_type_i128 = flat.source_type_id('i128')
+const eval_type_u128 = flat.source_type_id('u128')
+const eval_type_ierror = flat.source_type_id('IError')
 
 pub type Value = ArrayValue
 	| EnumValue
@@ -4103,7 +4108,6 @@ fn (mut e Eval) eval_array_init_flow(node &flat.Node) !FlowSignal {
 }
 
 fn (mut e Eval) eval_array_init_values(len int, cap int, has_init bool, init_id flat.NodeId, elem_type_name_id u32) !FlowSignal {
-	elem_type_name := flat.source_type_name(elem_type_name_id)
 	mut values := []Value{cap: cap}
 	for i in 0 .. len {
 		if has_init {
@@ -4129,7 +4133,11 @@ fn (mut e Eval) eval_array_init_values(len int, cap int, has_init bool, init_id 
 }
 
 fn is_fixed_array_type_name(type_name_id u32) bool {
-	return is_fixed_array_type_name_bytes(flat.source_type_name(type_name_id))
+	shape := flat.source_type_shape(type_name_id)
+	if !shape.has(.bracketed) || shape.has(.array_type) || shape.has(.map_type) {
+		return false
+	}
+	return shape.has(.leading_bracket) || flat.source_type_name(type_name_id).ends_with(']')
 }
 
 fn (mut e Eval) fixed_array_len(type_name_id u32) !int {
@@ -5970,7 +5978,7 @@ fn (e &Eval) value_matches_type_name(value Value, target_name_id u32) bool {
 				|| e.type_name_matches(value.variant_name, name)
 				|| e.value_matches_type_name(value.payload, name)
 		}
-		TypeValue { return flat.source_type_name(name) in ['Type', 'types.Type'] }
+		TypeValue { return name in [eval_type_type, eval_type_types_type] }
 		else { return false }
 	}
 }
@@ -6120,6 +6128,7 @@ fn (e &Eval) sizeof_is_generic_aggregate(name_id u32, module_name string) bool {
 }
 
 fn sizeof_generic_parts(name_id u32) ?(u32, []u32) {
+	if !flat.source_type_shape(name_id).has(.bracketed) { return none }
 	name := flat.source_type_name(name_id)
 	if !name.ends_with(']') { return none }
 	open := name.index('[') or { return none }
@@ -6152,7 +6161,8 @@ fn (e &Eval) sizeof_type_layout(raw_name_id u32, module_name string, seen []Type
 	trimmed_id := if trimmed == raw_name { raw_name_id } else { flat.source_type_id(trimmed) }
 	name_id := e.qualify_nested_type_name(module_name, trimmed_id)
 	name := flat.source_type_name(name_id)
-	if flat.source_type_shape(name_id).has(.pointer) { return TypeLayout{ size: 8, align: 8 } }
+	shape := flat.source_type_shape(name_id)
+	if shape.has(.pointer) { return TypeLayout{ size: 8, align: 8 } }
 	for entry in seen {
 		if entry.source_id == name_id && entry.module_name == module_name {
 			return TypeLayout{ size: 8, align: 8 }
@@ -6167,11 +6177,11 @@ fn (e &Eval) sizeof_type_layout(raw_name_id u32, module_name string, seen []Type
 	if variants := e.sum_types.type_ids(name) {
 		return e.sizeof_sum_layout(variants, module_name, visited)
 	}
-	if name.starts_with('map[') || name.starts_with('fn ') || name.starts_with('chan ')
-		|| name.starts_with('thread ') {
+	if shape.has(.map_type) || shape.has(.function_spaced) || shape.has(.channel_type)
+		|| shape.has(.thread_type) {
 		return TypeLayout{ size: 8, align: 8 }
 	}
-	if name.starts_with('?') || name.starts_with('!') {
+	if shape.has(.optional) {
 		// An option is `{ bool ok; T value; }`, and a result keeps its 16 byte IError
 		// in a union with the value. A bare `?` or `!` stores an `int`.
 		elem_name := flat.source_type_id(name[1..].trim_space())
@@ -6180,7 +6190,7 @@ fn (e &Eval) sizeof_type_layout(raw_name_id u32, module_name string, seen []Type
 		} else {
 			e.sizeof_type_layout(elem_name, module_name, visited)
 		}
-		if name[0] == `?` {
+		if shape.has(.option_type) {
 			align := if elem.align > 1 { elem.align } else { i64(1) }
 			return TypeLayout{ size: sizeof_aligned_size(sizeof_aligned_size(1, align) + elem.size, align), align: align }
 		}
@@ -6201,7 +6211,7 @@ fn (e &Eval) sizeof_type_layout(raw_name_id u32, module_name string, seen []Type
 		context := e.declaration_type_context(backing.module_name, backing.file_name)
 		return context.sizeof_type_layout(backing.target, backing.module_name, visited)
 	}
-	mut struct_type_name := if flat.source_type_shape(name_id).has(.array_type) {
+	mut struct_type_name := if shape.has(.array_type) {
 		eval_type_array
 	} else {
 		name_id
@@ -6239,16 +6249,20 @@ fn (e &Eval) sizeof_type_layout(raw_name_id u32, module_name string, seen []Type
 		if info.align > align { align = info.align }
 		return TypeLayout{ size: sizeof_aligned_size(size, align), align: align }
 	}
-	if flat.source_type_shape(name_id).has(.array_type) || name_id == eval_type_array {
+	if shape.has(.array_type) || name_id == eval_type_array {
 		return TypeLayout{ size: 48, align: 8 }
 	}
-	return match name {
-		'bool', 'i8', 'u8', 'char' { TypeLayout{ size: 1, align: 1 } }
-		'i16', 'u16' { TypeLayout{ size: 2, align: 2 } }
-		'i32', 'u32', 'rune', 'f32' { TypeLayout{ size: 4, align: 4 } }
-		'i128', 'u128' { TypeLayout{ size: 16, align: 16 } }
-		'string' { TypeLayout{ size: 24, align: 8 } }
-		'IError' { TypeLayout{ size: 16, align: 8 } }
+	return match name_id {
+		flat.source_type_bool, flat.source_type_i8, flat.source_type_u8, flat.source_type_char {
+			TypeLayout{ size: 1, align: 1 }
+		}
+		flat.source_type_i16, flat.source_type_u16 { TypeLayout{ size: 2, align: 2 } }
+		flat.source_type_i32, flat.source_type_u32, flat.source_type_rune, flat.source_type_f32 {
+			TypeLayout{ size: 4, align: 4 }
+		}
+		eval_type_i128, eval_type_u128 { TypeLayout{ size: 16, align: 16 } }
+		flat.source_type_string { TypeLayout{ size: 24, align: 8 } }
+		eval_type_ierror { TypeLayout{ size: 16, align: 8 } }
 		else { TypeLayout{ size: 8, align: 8 } }
 	}
 }
@@ -6272,8 +6286,10 @@ fn (e &Eval) sizeof_sum_layout(variants []u32, module_name string, seen []TypeLa
 // sum_variant_has_pointer_payload follows nominal aliases without entering value containers.
 fn (e &Eval) sum_variant_has_pointer_payload(raw_name_id u32, module_name string, seen []u32) bool {
 	name_id := e.qualify_nested_type_name(module_name, raw_name_id)
-	name := flat.source_type_name(name_id)
-	if name.starts_with('&') || name in ['voidptr', 'byteptr', 'charptr'] { return true }
+	if flat.source_type_shape(name_id).has(.pointer)
+		|| name_id in [flat.source_type_voidptr, flat.source_type_byteptr, flat.source_type_charptr] {
+		return true
+	}
 	if name_id in seen { return false }
 	if alias := e.type_alias_info_in_module(name_id, module_name) {
 		mut visited := seen.clone()
