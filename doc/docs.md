@@ -739,6 +739,7 @@ voidptr // this one is mostly used for [C interoperability](#v-and-c)
 `isize` and `usize` are deprecated. Replace `isize` with `int` and `usize` with `uint`.
 Use `uint` for pointer addresses and C `size_t` values to preserve
 the full unsigned range. Existing spellings still compile with deprecation warnings.
+Pointer subtraction returns `int`, including in translated C code.
 
 ### 128-bit integers
 

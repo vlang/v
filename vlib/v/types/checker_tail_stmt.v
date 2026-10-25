@@ -20046,11 +20046,7 @@ fn (tc &TypeChecker) resolve_type_nonliteral(id flat.NodeId) Type {
 			}
 			if node.op in [.plus, .minus] {
 				if node.op == .minus && lt is Pointer && rt is Pointer {
-					return if tc.node_is_in_translated_file(id) {
-						builtin_isize_type
-					} else {
-						builtin_int_type
-					}
+					return builtin_int_type
 				}
 				if lt is Pointer && (rt_raw.is_integer()
 					|| (tc.node_is_in_translated_file(id) && translated_integer_type(rt_raw))) {
