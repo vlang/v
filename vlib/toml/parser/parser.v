@@ -54,6 +54,7 @@ mut:
 	explicit_declared                 KeyIndex
 	explicit_declared_array_of_tables KeyIndex
 	implicit_declared                 KeyIndex
+	outer_immutables                  []KeyIndex // immutable keys of the enclosing inline tables
 	// Array of Tables state
 	last_aot       DottedKey
 	last_aot_index int
@@ -894,14 +895,13 @@ pub fn (mut p Parser) table_contents(mut tbl map[string]ast.Value) ! {
 
 // inline_table parses next tokens into a map of `ast.Value`s.
 // The V map type is corresponding to a "table" in TOML.
+// Nested inline tables and arrays recurse through here, so the work around the recursive
+// calls is done by `@[noinline]` helpers: every level of nesting must keep a small stack frame.
 pub fn (mut p Parser) inline_table(mut tbl map[string]ast.Value) ! {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing inline table into ${ptr_str(tbl)}...')
-	outer_immutable := p.immutable
-	p.immutable = KeyIndex{}
+	p.enter_inline_table()
 	defer {
-		p.immutable.free()
-		p.immutable = outer_immutable
-		p.value_is_immutable = true
+		p.leave_inline_table()
 	}
 	mut previous_token_was_value := false
 	for p.tok.kind != .eof {
@@ -909,10 +909,7 @@ pub fn (mut p Parser) inline_table(mut tbl map[string]ast.Value) ! {
 		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing token "${p.tok.kind}"')
 
 		if previous_token_was_value {
-			p.ignore_while(space_formatting)!
-			if p.tok.kind != .rcbr {
-				p.expect(.comma)!
-			}
+			p.inline_table_value_separator()!
 			previous_token_was_value = false
 		}
 
@@ -928,14 +925,7 @@ pub fn (mut p Parser) inline_table(mut tbl map[string]ast.Value) ! {
 				continue
 			}
 			.comma {
-				p.ignore_while_peek(space_formatting)!
-				if p.peek_tok.kind in [.comma, .rcbr] {
-					p.next()! // Forward to the peek_tok
-					return error(@MOD + '.' + @STRUCT + '.' + @FN +
-						' unexpected "${p.tok.kind}" "${p.tok.lit}" at this (excerpt): "...${p.excerpt()}..."')
-				}
-				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN,
-					'skipping comma table value separator "${p.tok.lit}"')
+				p.inline_table_comma()!
 				continue
 			}
 			.rcbr {
@@ -943,54 +933,138 @@ pub fn (mut p Parser) inline_table(mut tbl map[string]ast.Value) ! {
 				return
 			}
 			.bare, .quoted, .number, .minus, .underscore {
-				// Peek forward as far as we can skipping over space formatting tokens.
-				peek_tok, _ := p.peek_over(1, space_formatting)!
-
-				if peek_tok.kind == .period {
-					dotted_key, val := p.dotted_key_value()!
-
-					sub_table, key := p.sub_table_key(dotted_key)
-					mut t := p.find_in_table_view(mut tbl, sub_table)!
-
-					// Disallow mutation of immutable values (inline tables)
-					if p.explicit_declared.has(dotted_key) {
-						left_most := DottedKey([dotted_key[0]])
-						if t.len > 0 {
-							p.check_immutable(left_most)!
-						}
-					}
-					key_str := key.str()
-					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN,
-						'inserting @6 "${key_str}" = ${val} into ${ptr_str(t)}')
-					unsafe {
-						if _ := t[key_str] {
-							return error(@MOD + '.' + @STRUCT + '.' + @FN +
-								' key "${key_str}" is already initialized with a value. At "${p.tok.kind}" "${p.tok.lit}" in this (excerpt): "...${p.excerpt()}..."')
-						}
-						t[key_str] = val
-					}
+				if p.inline_table_key_is_dotted()! {
+					p.inline_dotted_key_value(mut tbl)!
 				} else {
 					p.ignore_while(space_formatting)!
-					key, val := p.key_value()!
-					key_str := key.str()
-					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN,
-						'inserting @5 "${key_str}" = ${val} into ${ptr_str(tbl)}')
-					if _ := tbl[key_str] {
-						return error(@MOD + '.' + @STRUCT + '.' + @FN +
-							' key "${key_str}" is already initialized with a value. At "${p.tok.kind}" "${p.tok.lit}" in this (excerpt): "...${p.excerpt()}..."')
-					}
-					tbl[key_str] = val
+					p.inline_key_value(mut tbl)!
 				}
 				previous_token_was_value = true
 			}
 			else {
-				return error(@MOD + '.' + @STRUCT + '.' + @FN +
-					' unexpected "${p.tok.kind}" "${p.tok.lit}" at this (excerpt): "...${p.excerpt()}..."')
+				return p.inline_table_token_error()
 			}
 		}
 	}
 	// Make sure the inline-table actually use the return at .rcbr match branch.
-	return error(@MOD + '.' + @STRUCT + '.' + @FN +
+	return p.inline_table_end_error()
+}
+
+// enter_inline_table starts the set of immutable keys of an inline table.
+// The keys of the enclosing tables are kept in `outer_immutables`, not on the stack.
+@[noinline]
+fn (mut p Parser) enter_inline_table() {
+	// Push an empty index and assign to it, since pushing `p.immutable` would clone it.
+	p.outer_immutables << KeyIndex{}
+	p.outer_immutables[p.outer_immutables.len - 1] = p.immutable
+	p.immutable = KeyIndex{}
+}
+
+// leave_inline_table drops the immutable keys of an inline table and restores the ones of
+// the enclosing table.
+@[noinline]
+fn (mut p Parser) leave_inline_table() {
+	p.immutable.free()
+	p.immutable = p.outer_immutables.pop()
+	p.value_is_immutable = true
+}
+
+// inline_table_value_separator checks what follows a key/value pair in an inline table.
+@[noinline]
+fn (mut p Parser) inline_table_value_separator() ! {
+	p.ignore_while(space_formatting)!
+	if p.tok.kind != .rcbr {
+		p.expect(.comma)!
+	}
+}
+
+// inline_table_comma skips a comma key/value separator in an inline table.
+@[noinline]
+fn (mut p Parser) inline_table_comma() ! {
+	p.ignore_while_peek(space_formatting)!
+	if p.peek_tok.kind in [.comma, .rcbr] {
+		p.next()! // Forward to the peek_tok
+		return error(@MOD + '.' + @STRUCT + '.inline_table' +
+			' unexpected "${p.tok.kind}" "${p.tok.lit}" at this (excerpt): "...${p.excerpt()}..."')
+	}
+	util.printdbg(@MOD + '.' + @STRUCT + '.inline_table',
+		'skipping comma table value separator "${p.tok.lit}"')
+}
+
+// inline_table_key_is_dotted reports whether the key at the current token is a dotted key.
+@[noinline]
+fn (mut p Parser) inline_table_key_is_dotted() !bool {
+	// Peek forward as far as we can skipping over space formatting tokens.
+	peek_tok, _ := p.peek_over(1, space_formatting)!
+	return peek_tok.kind == .period
+}
+
+// inline_key_value parses a `key = value` pair into the inline table `tbl`.
+fn (mut p Parser) inline_key_value(mut tbl map[string]ast.Value) ! {
+	key := p.key_and_assign()!
+	mut value := ast.Value(ast.Null{})
+	p.assigned_value_into(DottedKey([key.text]), mut value)!
+	p.insert_inline_value(mut tbl, key.str(), mut value)!
+}
+
+// insert_inline_value inserts the value of a `key = value` pair into the inline table `tbl`.
+@[noinline]
+fn (mut p Parser) insert_inline_value(mut tbl map[string]ast.Value, key_str string, mut val ast.Value) ! {
+	util.printdbg(@MOD + '.' + @STRUCT + '.inline_table',
+		'inserting @5 "${key_str}" = ${val} into ${ptr_str(tbl)}')
+	if _ := tbl[key_str] {
+		return error(@MOD + '.' + @STRUCT + '.inline_table' +
+			' key "${key_str}" is already initialized with a value. At "${p.tok.kind}" "${p.tok.lit}" in this (excerpt): "...${p.excerpt()}..."')
+	}
+	tbl[key_str] = val
+}
+
+// inline_dotted_key_value parses a `dotted.key = value` pair into the inline table `tbl`.
+fn (mut p Parser) inline_dotted_key_value(mut tbl map[string]ast.Value) ! {
+	dotted_key := p.dotted_key_and_assign()!
+	mut value := ast.Value(ast.Null{})
+	p.assigned_value_into(dotted_key, mut value)!
+	p.insert_inline_dotted_value(mut tbl, dotted_key, mut value)!
+}
+
+// insert_inline_dotted_value inserts the value of a `dotted.key = value` pair into the
+// inline table `tbl`.
+@[noinline]
+fn (mut p Parser) insert_inline_dotted_value(mut tbl map[string]ast.Value, dotted_key DottedKey, mut val ast.Value) ! {
+	sub_table, key := p.sub_table_key(dotted_key)
+	mut t := p.find_in_table_view(mut tbl, sub_table)!
+
+	// Disallow mutation of immutable values (inline tables)
+	if p.explicit_declared.has(dotted_key) {
+		left_most := DottedKey([dotted_key[0]])
+		if t.len > 0 {
+			p.check_immutable(left_most)!
+		}
+	}
+	key_str := key.str()
+	util.printdbg(@MOD + '.' + @STRUCT + '.inline_table',
+		'inserting @6 "${key_str}" = ${val} into ${ptr_str(t)}')
+	unsafe {
+		if _ := t[key_str] {
+			return error(@MOD + '.' + @STRUCT + '.inline_table' +
+				' key "${key_str}" is already initialized with a value. At "${p.tok.kind}" "${p.tok.lit}" in this (excerpt): "...${p.excerpt()}..."')
+		}
+		t[key_str] = val
+	}
+}
+
+// inline_table_token_error returns the error for a token that cannot start a key/value pair
+// in an inline table.
+@[noinline]
+fn (p &Parser) inline_table_token_error() IError {
+	return error(@MOD + '.' + @STRUCT + '.inline_table' +
+		' unexpected "${p.tok.kind}" "${p.tok.lit}" at this (excerpt): "...${p.excerpt()}..."')
+}
+
+// inline_table_end_error returns the error for an inline table that is not closed.
+@[noinline]
+fn (p &Parser) inline_table_end_error() IError {
+	return error(@MOD + '.' + @STRUCT + '.inline_table' +
 		' unexpected end of inline-table "${p.tok.kind}" "${p.tok.lit}" at this (excerpt): "...${p.excerpt()}..."')
 }
 
@@ -1226,8 +1300,16 @@ fn (mut p Parser) array_table_entry(mut table map[string]ast.Value, context Dott
 
 // array parses next tokens into an array of `ast.Value`s.
 pub fn (mut p Parser) array() ![]ast.Value {
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing array...')
 	mut arr := []ast.Value{}
+	p.array_into(mut arr)!
+	return arr
+}
+
+// array_into parses next tokens into `arr`.
+// Nested arrays and inline tables recurse through here, so each element is parsed in place,
+// into its slot of `arr`: every level of nesting must keep a small stack frame.
+fn (mut p Parser) array_into(mut arr []ast.Value) ! {
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing array...')
 	p.expect(.lsbr)! // '[' bracket
 	mut previous_token_was_value := false
 	for p.tok.kind != .eof {
@@ -1236,82 +1318,30 @@ pub fn (mut p Parser) array() ![]ast.Value {
 			'parsing token "${p.tok.kind}" "${p.tok.lit}"')
 
 		if previous_token_was_value {
-			p.ignore_while(all_formatting)!
-			if p.tok.kind != .rsbr && p.tok.kind != .hash {
-				p.expect(.comma)!
-			}
+			p.array_value_separator()!
 			previous_token_was_value = false
-		} else {
-			if p.tok.kind == .comma {
-				p.ignore_while_peek(space_formatting)!
-				if p.peek_tok.kind == .rsbr {
-					return error(@MOD + '.' + @STRUCT + '.' + @FN +
-						' unexpected empty value in array "${p.tok.kind}" "${p.tok.lit}" at this (excerpt): "...${p.excerpt()}..."')
-				}
-			}
+		} else if p.tok.kind == .comma {
+			p.array_leading_comma()!
 		}
 		p.ignore_while(all_formatting)!
 		match p.tok.kind {
-			.boolean {
-				arr << ast.Value(p.boolean()!)
+			.boolean, .lcbr, .number, .quoted, .lsbr {
+				arr << ast.Value(ast.Null{})
+				p.value_into(mut arr[arr.len - 1])!
 				previous_token_was_value = true
 			}
 			.comma {
-				p.ignore_while_peek(space_formatting)!
-				// Trailing commas before array close is allowed
-				// so we do not do `if p.peek_tok.kind == .rsbr { ... }`
-
-				// Check for known errors:
-				if p.peek_tok.kind in [.comma, .bare] {
-					p.next()! // Forward to the peek_tok
-					return error(@MOD + '.' + @STRUCT + '.' + @FN +
-						' unexpected "${p.tok.kind}" "${p.tok.lit}" at this (excerpt): "...${p.excerpt()}..."')
-				}
-				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN,
-					'skipping comma table value separator "${p.tok.lit}"')
+				p.array_comma()!
 				continue
 			}
-			.eof {
-				return error(@MOD + '.' + @STRUCT + '.' + @FN +
-					' could not parse array. Reached EOF "${p.tok.kind}" "${p.tok.lit}" ("${p.tok.lit}") in this (excerpt): "...${p.excerpt()}..."')
-			}
 			.hash {
-				c := p.comment()
-				p.ast_root.comments << c
-				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping comment "${c.text}"')
-			}
-			.lcbr {
-				p.ignore_while(space_formatting)!
-				mut t := map[string]ast.Value{}
-				p.inline_table(mut t)!
-				arr << ast.Value(t)
-				previous_token_was_value = true
-			}
-			.number {
-				val := p.number_or_date()!
-				arr << val
-				previous_token_was_value = true
-			}
-			.quoted {
-				arr << ast.Value(p.quoted())
-				previous_token_was_value = true
-			}
-			.lsbr {
-				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN,
-					'parsing array in array "${p.tok.kind}" "${p.tok.lit}"')
-				arr << ast.Value(p.array()!)
-				previous_token_was_value = true
+				p.array_comment()
 			}
 			.rsbr {
 				break
 			}
-			.bare {
-				return error(@MOD + '.' + @STRUCT + '.' + @FN +
-					' unexpected value "${p.tok.lit}". Array values should be quoted (with " or \') in this (excerpt): "...${p.excerpt()}..."')
-			}
 			else {
-				return error(@MOD + '.' + @STRUCT + '.' + @FN +
-					' unexpected token "${p.tok.kind}" "${p.tok.lit}" in this (excerpt): "...${p.excerpt()}..."')
+				return p.array_token_error()
 			}
 		}
 	}
@@ -1321,7 +1351,69 @@ pub fn (mut p Parser) array() ![]ast.Value {
 		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN,
 			'parsed array: ${flat} . Currently @ token "${p.tok.kind}"')
 	}
-	return arr
+}
+
+// array_value_separator checks what follows a value in an array.
+@[noinline]
+fn (mut p Parser) array_value_separator() ! {
+	p.ignore_while(all_formatting)!
+	if p.tok.kind != .rsbr && p.tok.kind != .hash {
+		p.expect(.comma)!
+	}
+}
+
+// array_leading_comma rejects a comma that does not follow a value in an array.
+@[noinline]
+fn (mut p Parser) array_leading_comma() ! {
+	p.ignore_while_peek(space_formatting)!
+	if p.peek_tok.kind == .rsbr {
+		return error(@MOD + '.' + @STRUCT + '.array' +
+			' unexpected empty value in array "${p.tok.kind}" "${p.tok.lit}" at this (excerpt): "...${p.excerpt()}..."')
+	}
+}
+
+// array_comma skips a comma value separator in an array.
+@[noinline]
+fn (mut p Parser) array_comma() ! {
+	p.ignore_while_peek(space_formatting)!
+	// Trailing commas before array close is allowed
+	// so we do not do `if p.peek_tok.kind == .rsbr { ... }`
+
+	// Check for known errors:
+	if p.peek_tok.kind in [.comma, .bare] {
+		p.next()! // Forward to the peek_tok
+		return error(@MOD + '.' + @STRUCT + '.array' +
+			' unexpected "${p.tok.kind}" "${p.tok.lit}" at this (excerpt): "...${p.excerpt()}..."')
+	}
+	util.printdbg(@MOD + '.' + @STRUCT + '.array',
+		'skipping comma table value separator "${p.tok.lit}"')
+}
+
+// array_comment collects a comment inside an array.
+@[noinline]
+fn (mut p Parser) array_comment() {
+	c := p.comment()
+	p.ast_root.comments << c
+	util.printdbg(@MOD + '.' + @STRUCT + '.array', 'skipping comment "${c.text}"')
+}
+
+// array_token_error returns the error for a token that cannot appear in an array.
+@[noinline]
+fn (p &Parser) array_token_error() IError {
+	return match p.tok.kind {
+		.eof {
+			error(@MOD + '.' + @STRUCT + '.array' +
+				' could not parse array. Reached EOF "${p.tok.kind}" "${p.tok.lit}" ("${p.tok.lit}") in this (excerpt): "...${p.excerpt()}..."')
+		}
+		.bare {
+			error(@MOD + '.' + @STRUCT + '.array' +
+				' unexpected value "${p.tok.lit}". Array values should be quoted (with " or \') in this (excerpt): "...${p.excerpt()}..."')
+		}
+		else {
+			error(@MOD + '.' + @STRUCT + '.array' +
+				' unexpected token "${p.tok.kind}" "${p.tok.lit}" in this (excerpt): "...${p.excerpt()}..."')
+		}
+	}
 }
 
 // comment returns an `ast.Comment` type.
@@ -1418,13 +1510,9 @@ pub fn (mut p Parser) key() !ast.Key {
 // see also `key()` and `value()`
 pub fn (mut p Parser) key_value() !(ast.Key, ast.Value) {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing key value pair...')
-	key := p.key()!
-	dotted_key := DottedKey([key.text])
-	p.next()!
-	p.ignore_while(space_formatting)!
-	p.check(.assign)! // Assignment operator
-	p.ignore_while(space_formatting)!
-	value := p.assigned_value(dotted_key)!
+	key := p.key_and_assign()!
+	mut value := ast.Value(ast.Null{})
+	p.assigned_value_into(DottedKey([key.text]), mut value)!
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed key value pair. `${key} = ${value}`')
 	return key, value
 }
@@ -1433,70 +1521,127 @@ pub fn (mut p Parser) key_value() !(ast.Key, ast.Value) {
 // see also `key()` and `value()`
 pub fn (mut p Parser) dotted_key_value() !(DottedKey, ast.Value) {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing dotted key value pair...')
-	p.ignore_while(space_formatting)!
-	dotted_key := p.dotted_key()!
-	p.ignore_while(space_formatting)!
-	p.check(.assign)!
-	p.ignore_while(space_formatting)!
-	value := p.assigned_value(dotted_key)!
+	dotted_key := p.dotted_key_and_assign()!
+	mut value := ast.Value(ast.Null{})
+	p.assigned_value_into(dotted_key, mut value)!
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN,
 		'parsed dotted key value pair `${dotted_key} = ${value}`...')
 
 	return dotted_key, value
 }
 
-fn (mut p Parser) assigned_value(key DottedKey) !ast.Value {
+// key_and_assign parses a key and the `=` after it, up to the first token of the value.
+@[noinline]
+fn (mut p Parser) key_and_assign() !ast.Key {
+	key := p.key()!
+	p.next()!
+	p.ignore_while(space_formatting)!
+	p.check(.assign)! // Assignment operator
+	p.ignore_while(space_formatting)!
+	return key
+}
+
+// dotted_key_and_assign parses a dotted key and the `=` after it, up to the first token of
+// the value.
+@[noinline]
+fn (mut p Parser) dotted_key_and_assign() !DottedKey {
+	p.ignore_while(space_formatting)!
+	dotted_key := p.dotted_key()!
+	p.ignore_while(space_formatting)!
+	p.check(.assign)!
+	p.ignore_while(space_formatting)!
+	return dotted_key
+}
+
+// assigned_value_into parses the value assigned to `key` into `value`.
+// Nested inline tables and arrays recurse through here, so the value is parsed in place
+// instead of being returned: every level of nesting must keep a small stack frame.
+fn (mut p Parser) assigned_value_into(key DottedKey, mut value ast.Value) ! {
+	depth := p.begin_assigned_value(key)!
+	p.value_into(mut value) or {
+		p.root_map_key.trim(depth)
+		return err
+	}
+	p.end_assigned_value(depth)
+}
+
+// begin_assigned_value enters `key` and checks that a value may be assigned to it.
+// It returns the depth to restore with `end_assigned_value`.
+@[noinline]
+fn (mut p Parser) begin_assigned_value(key DottedKey) !int {
 	depth := p.root_map_key.len
 	p.root_map_key << key
-	defer { p.root_map_key.trim(depth) }
-	p.check_table_path(p.root_map_key)!
+	p.check_table_path(p.root_map_key) or {
+		p.root_map_key.trim(depth)
+		return err
+	}
 	p.explicit_declared.add(p.root_map_key)
-	value := p.value()!
+	return depth
+}
+
+// end_assigned_value records an immutable value and leaves the key entered by
+// `begin_assigned_value`.
+@[noinline]
+fn (mut p Parser) end_assigned_value(depth int) {
 	if p.value_is_immutable {
 		p.immutable.add(p.root_map_key)
 		p.value_is_immutable = false
 	}
-	return value
+	p.root_map_key.trim(depth)
 }
 
 // value parse and returns an `ast.Value` type.
 // values are the token(s) appearing after an assignment operator (=).
 pub fn (mut p Parser) value() !ast.Value {
+	mut value := ast.Value(ast.Null{})
+	p.value_into(mut value)!
+	return value
+}
+
+// value_into parses the value starting at the current token into `value`.
+// Arrays and inline tables are parsed in place, into the payload of `value`.
+fn (mut p Parser) value_into(mut value ast.Value) ! {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN,
 		'parsing value from token "${p.tok.kind}" "${p.tok.lit}"...')
-	mut value := ast.Value(ast.Null{})
-	if p.tok.kind == .number {
-		number_or_date := p.number_or_date()!
-		value = number_or_date
-	} else {
-		value = match p.tok.kind {
-			.quoted {
-				ast.Value(p.quoted())
-			}
-			.boolean {
-				ast.Value(p.boolean()!)
-			}
-			.lsbr {
-				ast.Value(p.array()!)
-			}
-			.lcbr {
-				p.ignore_while(space_formatting)!
-				mut t := map[string]ast.Value{}
-				p.inline_table(mut t)!
-				ast.Value(t)
-			}
-			else {
-				ast.Value(ast.Null{})
+	match p.tok.kind {
+		.lsbr {
+			value = ast.Value([]ast.Value{})
+			if mut value is []ast.Value {
+				p.array_into(mut value)!
 			}
 		}
-
-		if value is ast.Null {
-			return error(@MOD + '.' + @STRUCT + '.' + @FN +
-				' value expected .boolean, .quoted, .lsbr, .lcbr or .number got "${p.tok.kind}" "${p.tok.lit}" in this (excerpt): "...${p.excerpt()}..."')
+		.lcbr {
+			p.ignore_while(space_formatting)!
+			value = ast.Value(map[string]ast.Value{})
+			if mut value is map[string]ast.Value {
+				p.inline_table(mut value)!
+			}
+		}
+		else {
+			p.scalar_value_into(mut value)!
 		}
 	}
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed "${p.tok.kind}" as value ${value}')
-	return value
+}
+
+// scalar_value_into parses a number, date, time, string or boolean into `value`.
+@[noinline]
+fn (mut p Parser) scalar_value_into(mut value ast.Value) ! {
+	match p.tok.kind {
+		.number {
+			value = p.number_or_date()!
+		}
+		.quoted {
+			value = ast.Value(p.quoted())
+		}
+		.boolean {
+			value = ast.Value(p.boolean()!)
+		}
+		else {
+			return error(@MOD + '.' + @STRUCT + '.value' +
+				' value expected .boolean, .quoted, .lsbr, .lcbr or .number got "${p.tok.kind}" "${p.tok.lit}" in this (excerpt): "...${p.excerpt()}..."')
+		}
+	}
 }
 
 // number_or_date parse and returns an `ast.Value` type as
