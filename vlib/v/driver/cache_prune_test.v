@@ -416,10 +416,21 @@ fn test_cached_object_signature_keeps_panic_frame_objects_apart() {
 	base := 'base signature'
 	plain := 'int declaration;\n/* V3CACHE_BODY_BEGIN */\n'
 	with_frames := 'typedef struct v_unwind_frame {\n\tstruct v_unwind_frame* prev;\n} v_unwind_frame;\n/* V3CACHE_BODY_BEGIN */\n'
-	assert v3_cached_object_program_compile_signature(base, plain) == v3_cached_object_program_compile_signature(base,
+	no_frames := v3_cached_object_program_compile_signature(base, '')
+	assert v3_cached_object_program_compile_signature(base, plain) == no_frames
+	assert v3_cached_object_program_compile_signature(base, with_frames) != no_frames
+	after_include := '#include <setjmp.h>\n${with_frames}'
+	assert v3_cached_object_program_compile_signature(base, after_include) != no_frames
+}
+
+fn test_cached_object_signature_ignores_panic_frame_text_in_string_literals() {
+	// A program that compiles the C generator holds its source text as literals.
+	// A build that reads that module from its header has no such literals, so the
+	// literals must not give the objects of the cold build a different signature.
+	base := 'base signature'
+	literal := 'static const char _str_7[] = "typedef struct v_unwind_frame {";\n\tputs("typedef struct v_unwind_frame {");\n/* V3CACHE_BODY_BEGIN */\n'
+	assert v3_cached_object_program_compile_signature(base, literal) == v3_cached_object_program_compile_signature(base,
 		'')
-	assert v3_cached_object_program_compile_signature(base, with_frames) != v3_cached_object_program_compile_signature(base,
-		plain)
 }
 
 fn test_cached_object_signature_keeps_system_libc_header_layouts_apart() {
