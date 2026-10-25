@@ -10101,9 +10101,60 @@ fn v3_driver_option_requires_value(option string) bool {
 		'--memory-limit']
 }
 
+// format_v3_dumped_c_flags keeps value-taking flags on one line with their value, as V 0.5.2
+// printed them (`-I "/path"`); vab parses the dump line by line.
+fn format_v3_dumped_c_flags(flags []string) []string {
+	mut lines := []string{cap: flags.len}
+	mut i := 0
+	for i < flags.len {
+		flag := flags[i]
+		if i + 1 < flags.len && flag in ['-I', '-L', '-isystem', '-include', '-framework'] {
+			value := flags[i + 1]
+			lines << if flag == '-framework' { '${flag} ${value}' } else { '${flag} "${value}"' }
+			i += 2
+			continue
+		}
+		lines << flag
+		i++
+	}
+	return lines
+}
+
+// write_v3_c_flags_dump writes the `-dump-c-flags` list, one flag per line, with value-taking
+// flags on the line of their value: to stdout for `-`.
+fn write_v3_c_flags_dump(path string, flags []string, cc_dir string) {
+	lines := format_v3_dumped_c_flags(flags)
+	output := if lines.len > 0 { lines.join('\n') + '\n' } else { '' }
+	if path == '-' {
+		print(output)
+		return
+	}
+	os.write_file(path, output) or {
+		eprintln('failed to write C flags to ${path}: ${err.msg()}')
+		cleanup_c_build_dir(cc_dir)
+		exit(1)
+	}
+}
+
+// write_v3_dump_list writes one entry per line, like V 0.5.2: to stdout for `-`.
+fn write_v3_dump_list(path string, flag string, list []string) {
+	if path == '' {
+		return
+	}
+	content := list.filter(it != '').join('\n') + '\n'
+	if path == '-' {
+		print(content)
+		return
+	}
+	os.write_file(path, content) or {
+		eprintln('cannot write the `${flag}` list to `${path}`: ${err}')
+		exit(1)
+	}
+}
+
 fn v3_driver_option_consumes_value(option string) bool {
 	return v3_driver_option_requires_value(option)
-		|| option in ['-cflags', '-ldflags', '-dump-c-flags']
+		|| option in ['-cflags', '-ldflags', '-dump-c-flags', '-dump-modules', '-dump-defines']
 }
 
 // v3_module_cache_refresh_args keeps the configuration of module objects without
@@ -10180,7 +10231,7 @@ fn v3_live_rebuild_options(args []string, compiler string, module_search_paths [
 		if running && input_seen { break }
 		if v3_driver_option_consumes_value(arg) {
 			if i + 1 < args.len && arg !in ['-o', '-output', '-cc', '-path', '-run-only', '-test-runner',
-				'-dump-c-flags', '-dump-files', '-generate-c-project'] {
+				'-dump-c-flags', '-dump-files', '-dump-modules', '-dump-defines', '-generate-c-project'] {
 				options << [arg, args[i + 1]]
 			}
 			i += 2
@@ -10826,6 +10877,8 @@ pub fn run(args []string) {
 	mut coverage_dir := v3_environment_coverage_dir()
 	mut dump_c_flags := ''
 	mut dump_files := ''
+	mut dump_modules := ''
+	mut dump_defines := ''
 	mut generate_c_project := ''
 	mut module_search_path_spec := ''
 	mut bare_builtin_dir := ''
@@ -11049,6 +11102,16 @@ pub fn run(args []string) {
 			// The dump is derived from the monolithic native compiler command below.
 			// Avoid module/TinyCC cache paths that use a different link plan.
 			no_cache = true
+			i += if i + 1 < args.len { 2 } else { 1 }
+		} else if args[i] in ['-dump-modules', '-dump-defines'] {
+			// Like V 0.5.2, both take the next argument (`-` for stdout), and must be
+			// matched before the `-d<define>` shorthand below.
+			value := if i + 1 < args.len { args[i + 1] } else { '-' }
+			if args[i] == '-dump-modules' {
+				dump_modules = value
+			} else {
+				dump_defines = value
+			}
 			i += if i + 1 < args.len { 2 } else { 1 }
 		} else if args[i] in ['-disable-explicit-mutability', '--disable-explicit-mutability'] {
 			disable_explicit_mutability = true
@@ -13030,6 +13093,31 @@ pub fn run(args []string) {
 			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 			return
 		}
+	}
+	if (dump_modules != '' || dump_defines != '') && !is_instance_check_child() {
+		// vab looks up full module names (`sokol.sapp`) in this list.
+		mut dumped_modules := ['main', 'builtin']
+		mut seen_modules := {
+			'main':    true
+			'builtin': true
+		}
+		mut identities := a.resolved_module_dirs.keys()
+		identities << cache_state.module_sources.keys()
+		for identity in identities {
+			name := cache_state.module_import_paths[identity] or { identity }
+			if name != '' && name !in seen_modules {
+				seen_modules[name] = true
+				dumped_modules << name
+			}
+		}
+		write_v3_dump_list(dump_modules, '-dump-modules', dumped_modules)
+		mut defines := ['system,${target_os},true']
+		for define in user_defines {
+			if !define.contains('=') {
+				defines << 'user,${define},${compile_values[define] or { 'true' }}'
+			}
+		}
+		write_v3_dump_list(dump_defines, '-dump-defines', defines)
 	}
 	if p.diagnostics.len > 0 {
 		parser_has_native_errors := p.diagnostics.any(it.severity.len == 0
@@ -15696,6 +15784,15 @@ pub fn run(args []string) {
 					bundled_tcc, bundled_tcc_available, prefs.normalized_target_os(),
 					object_tcc_sdk_root)
 			}
+			if dump_c_flags.len > 0 && dump_c_flags != '-' {
+				// vab reads the dump even when building the module objects fails (Android
+				// headers are missing on the host); the complete list replaces it below.
+				mut early_dumped_flags := v3_c_source_mode_flags(needs_objective_c)
+				early_dumped_flags << environment_c_flags
+				early_dumped_flags << target_args
+				early_dumped_flags << resolved_c_flags
+				write_v3_c_flags_dump(dump_c_flags, early_dumped_flags, cc_dir)
+			}
 			resolved_c_flags = prepare_c_flags_for_link(generated_c_flags, environment_c_flags,
 				primary_object_compiler_flags, object_optimization_flags, prefs.c99, no_std,
 				pic_flag, target_args, prefs.target, c_compiler, use_implicit_tcc_semantics, cc_dir,
@@ -15885,20 +15982,7 @@ pub fn run(args []string) {
 			} else {
 				c_flag_plan.all_flags(dump_support_flags)
 			}
-			output := if dumped_flags.len > 0 {
-				dumped_flags.join('\n') + '\n'
-			} else {
-				''
-			}
-			if dump_c_flags == '-' {
-				print(output)
-			} else {
-				os.write_file(dump_c_flags, output) or {
-					eprintln('failed to write C flags to ${dump_c_flags}: ${err.msg()}')
-					cleanup_c_build_dir(cc_dir)
-					exit(1)
-				}
-			}
+			write_v3_c_flags_dump(dump_c_flags, dumped_flags, cc_dir)
 		}
 		if c_only {
 			if headerless_snapshot && cross_libc_headers_output.len == 0
