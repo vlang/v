@@ -1402,7 +1402,7 @@ fn (mut g Parser) lower_or_expression(mut result strings.Builder, mut expression
 	// A concrete variant fallback must be boxed to match the option payload.
 	if g.selfhost && option_value_type != 0 && fallback_type != u32(0)
 		&& flat.source_type_name(fallback_type) !in ['Option', '__v_result']
-		&& flat.source_type_name(fallback_type) != flat.source_type_name(option_value_type)
+		&& fallback_type != option_value_type
 		&& g.should_box_variant(option_value_type, fallback_type) {
 		fallback = g.interface_value_expression(option_value_type, fallback_type, fallback)
 		fallback_type = option_value_type

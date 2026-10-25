@@ -1425,7 +1425,7 @@ fn (g &Parser) result_payload_interface_accepts(payload_type u32, value_type u32
 		}
 		actual := g.interface_implementation_field(value_type, flat.source_type_name(g.semantic_type_key(value_type)),
 			required.name) or { return false }
-		if actual.typ_text() != required.typ_text() || (required.is_mutable && !actual.is_mutable) {
+		if actual.typ != required.typ || (required.is_mutable && !actual.is_mutable) {
 			return false
 		}
 	}

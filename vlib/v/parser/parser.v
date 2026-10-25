@@ -14498,14 +14498,15 @@ fn (p &Parser) generic_struct_init_type_name(id flat.NodeId) ?u32 {
 	if !p.generic_type_target_has_static_path(id) {
 		return none
 	}
-	type_name := flat.source_type_name(p.resolve_local_type_id(p.type_expr_name(id)))
+	type_name_id := p.resolve_local_type_id(p.type_expr_name(id))
+	type_name := flat.source_type_name(type_name_id)
 	if !generic_type_name_can_init(type_name) {
 		if p.index_expr_is_lifetime_erased_type_name(id) && type_name_can_init(type_name) {
-			return flat.source_type_id(type_name)
+			return type_name_id
 		}
 		return none
 	}
-	return flat.source_type_id(type_name)
+	return type_name_id
 }
 
 // generic_type_target_has_static_path distinguishes `Type[T]` from a generic

@@ -14148,7 +14148,7 @@ pub fn run(args []string) {
 			}
 		}
 		mut mu_stage_sw := time.new_stopwatch()
-		_ = flat.TypeTextList{ ids: pre_tc.ierror_impl_names() }.names()
+		_ = pre_tc.ierror_impl_names()
 		// Self-host markused is dominated by serial reachability/index work. Build
 		// transform's read-only indexes beside it so the otherwise-idle cores do
 		// useful work without delaying either stage's mutable AST operations.

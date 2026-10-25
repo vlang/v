@@ -927,12 +927,13 @@ fn (g &Parser) render_selfhost_print_expression(tokens []FastcExpressionToken) ?
 // `value_type` without a `str()` method, formatted as read_interpolated_string
 // formats it. Pointers and options print differently in V, so they are left out.
 fn (g &Parser) print_value_string_expression(value string, value_type u32, value_tokens []FastcExpressionToken) ?string {
-	type_name := flat.source_type_name(g.underlying_alias_type(value_type))
+	type_name_id := g.underlying_alias_type(value_type)
+	type_name := flat.source_type_name(type_name_id)
 	if type_name.ends_with('*') || type_name in ['Option', '__v_result'] {
 		return none
 	}
 	mut w := unsafe { &Parser(g) }
-	if element_type := fastc_fixed_array_element_type(flat.source_type_id(type_name)) {
+	if element_type := fastc_fixed_array_element_type(type_name_id) {
 		helper := w.fastc_fixed_array_str_name(type_name)?
 		// A fixed array field or global is raw C array storage; a local is FastC's
 		// wrapper struct.

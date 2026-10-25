@@ -1100,7 +1100,7 @@ fn (mut g Gen) expr(id flat.NodeId) {
 			child := g.a.child(n, 0)
 			cn := g.a.node(child)
 			if n.op == .not && cn.kind == .array_literal
-				&& ((n.typ_text().len > 0 && cn.typ_text() == n.typ_text()) || int(child) in g.a.formatter_sources) {
+				&& ((n.typ != 0 && cn.typ == n.typ) || int(child) in g.a.formatter_sources) {
 				g.expr(child)
 			} else if n.op == .not {
 				g.expr(child)

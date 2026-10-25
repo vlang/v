@@ -455,7 +455,7 @@ fn cgen_types_equal_after_alias_erasure(left &types.Type, right &types.Type) boo
 		}
 		return true
 	}
-	return l.name() == r.name()
+	return l.source_type_id() == r.source_type_id()
 }
 
 fn (mut g FlatGen) multi_return_c_type_name(t types.MultiReturn) string {
@@ -831,45 +831,54 @@ fn (g &FlatGen) canonical_import_alias_type_text_in_file(type_id u32, file strin
 	}
 	mut cache := g.import_type_cache
 	if isnil(cache) {
-		return flat.source_type_id(g.canonical_import_alias_type_text_in_file_uncached(flat.source_type_name(type_id), file))
+		return g.canonical_import_alias_type_text_in_file_uncached(type_id, file)
 	}
 	if !shape.has(.dotted) {
 		if !shape.has(.bracketed) && !shape.has(.wrapped) {
-			return flat.source_type_id(g.canonical_import_alias_type_text_in_file_uncached(flat.source_type_name(type_id), file))
+			return g.canonical_import_alias_type_text_in_file_uncached(type_id, file)
 		}
 		if result := cache.unqualified_texts.get_id(type_id) { return result }
-		result := flat.source_type_id(g.canonical_import_alias_type_text_in_file_uncached(flat.source_type_name(type_id), file))
+		result := g.canonical_import_alias_type_text_in_file_uncached(type_id, file)
 		cache.unqualified_texts.put_id(type_id, result)
 		return result
 	}
 	mut entry := cache.for_file(file)
 	if result := entry.texts.get_id(type_id) { return result }
-	result := flat.source_type_id(g.canonical_import_alias_type_text_in_file_uncached(flat.source_type_name(type_id), file))
+	result := g.canonical_import_alias_type_text_in_file_uncached(type_id, file)
 	entry.texts.put_id(type_id, result)
 	return result
 }
 
-fn (g &FlatGen) canonical_import_alias_type_text_in_file_uncached(typ string, file string) string {
+fn (g &FlatGen) canonical_import_alias_type_text_in_file_uncached(type_id u32, file string) u32 {
+	typ := flat.source_type_name(type_id)
 	clean := trimmed_space(typ)
+	unpadded_id := if clean.len == typ.len { type_id } else { u32(0) }
 	for prefix in ['&', '?', '!', '[]'] {
 		if clean.starts_with(prefix) {
-			inner := clean[prefix.len..]
-			canonical := flat.source_type_name(g.canonical_import_alias_type_text_in_file(flat.source_type_id(inner), file))
-			if inner == canonical {
-				return clean
+			inner_id := flat.source_type_id(clean[prefix.len..])
+			canonical_id := g.canonical_import_alias_type_text_in_file(inner_id, file)
+			if inner_id == canonical_id {
+				return known_type_id(unpadded_id, clean)
 			}
-			return prefix + canonical
+			return flat.source_type_id(prefix + flat.source_type_name(canonical_id))
 		}
 	}
 	if !clean.contains('.') && !clean.contains('[') {
-		return clean
+		return known_type_id(unpadded_id, clean)
 	}
 	if clean.starts_with('map[') {
 		bracket_end := shared_generic_matching_bracket(clean, 3)
 		if bracket_end < clean.len - 1 {
-			key := flat.source_type_name(g.canonical_import_alias_type_text_in_file(flat.source_type_id(clean[4..bracket_end]), file))
-			value := flat.source_type_name(g.canonical_import_alias_type_text_in_file(flat.source_type_id(clean[bracket_end + 1..]), file))
-			return 'map[${key}]${value}'
+			key_id := flat.source_type_id(clean[4..bracket_end])
+			value_id := flat.source_type_id(clean[bracket_end + 1..])
+			canonical_key_id := g.canonical_import_alias_type_text_in_file(key_id, file)
+			canonical_value_id := g.canonical_import_alias_type_text_in_file(value_id, file)
+			if key_id == canonical_key_id && value_id == canonical_value_id {
+				return known_type_id(unpadded_id, clean)
+			}
+			key := flat.source_type_name(canonical_key_id)
+			value := flat.source_type_name(canonical_value_id)
+			return flat.source_type_id('map[${key}]${value}')
 		}
 	}
 	base, args, ok := parse_shared_generic_app_parts(clean)
@@ -879,7 +888,7 @@ fn (g &FlatGen) canonical_import_alias_type_text_in_file_uncached(typ string, fi
 			canonical_args << flat.source_type_name(g.canonical_import_alias_type_text_in_file(flat.source_type_id(arg), file))
 		}
 		canonical_base := flat.source_type_name(g.canonical_import_alias_type_text_in_file(flat.source_type_id(base), file))
-		return '${canonical_base}[${canonical_args.join(', ')}]'
+		return flat.source_type_id('${canonical_base}[${canonical_args.join(', ')}]')
 	}
 	if clean.contains('.') {
 		alias := clean.all_before('.')
@@ -887,12 +896,12 @@ fn (g &FlatGen) canonical_import_alias_type_text_in_file_uncached(typ string, fi
 			// Canonical module paths may themselves start with the import alias.
 			// Re-expanding that prefix makes heap initializer normalization recurse.
 			if clean.starts_with(module_name + '.') {
-				return clean
+				return known_type_id(unpadded_id, clean)
 			}
-			return module_name + clean[alias.len..]
+			return flat.source_type_id(module_name + clean[alias.len..])
 		}
 	}
-	return clean
+	return known_type_id(unpadded_id, clean)
 }
 
 fn (g &FlatGen) node_source_file(node &flat.Node) string {
@@ -2530,9 +2539,9 @@ fn (g &FlatGen) enum_field_expr_value_with_enum(id flat.NodeId, enum_module stri
 			mut left := g.enum_field_expr_value_with_enum(g.a.child(&node, 0), enum_module, enum_name, mut field_values, field_exprs, mut resolving)?
 			mut right := g.enum_field_expr_value_with_enum(g.a.child(&node, 1), enum_module, enum_name, mut field_values, field_exprs, mut resolving)?
 			if node.op in [.div, .mod] && !isnil(g.tc) {
-				typ := types.unalias_type(g.usable_expr_type(id)).name()
-				left = g.enum_comptime_integer_cast(left, flat.source_type_id(typ))
-				right = g.enum_comptime_integer_cast(right, flat.source_type_id(typ))
+				typ := types.unalias_type(g.usable_expr_type(id)).source_type_id()
+				left = g.enum_comptime_integer_cast(left, typ)
+				right = g.enum_comptime_integer_cast(right, typ)
 			}
 			if (node.op == .div || node.op == .mod) && right == 0 {
 				return none
@@ -2741,13 +2750,12 @@ fn (g &FlatGen) enum_comptime_call_value(id flat.NodeId, enum_module string, enu
 }
 
 fn (g &FlatGen) enum_comptime_integer_cast(value i64, typ_id u32) i64 {
-	typ := flat.source_type_name(typ_id)
-	resolved := if isnil(g.tc) || typ.len == 0 {
-		typ
+	resolved := if isnil(g.tc) || typ_id == 0 {
+		typ_id
 	} else {
-		types.unalias_type(g.tc.parse_type(typ_id)).name()
+		types.unalias_type(g.tc.parse_type(typ_id)).source_type_id()
 	}
-	return types.comptime_enum_integer_cast(value, flat.source_type_id(resolved))
+	return types.comptime_enum_integer_cast(value, resolved)
 }
 
 fn (g &FlatGen) enum_comptime_update_locals(stmt flat.Node, mut locals map[string]i64, enum_module string) bool {
@@ -2813,18 +2821,18 @@ fn (g &FlatGen) enum_comptime_expr_value(id flat.NodeId, locals map[string]i64, 
 				return result
 			}
 			// C promotes narrow integer operands for unary arithmetic.
-			typ := types.unalias_type(g.usable_expr_type(id)).name()
-			return types.comptime_enum_integer_cast(result, flat.source_type_id(if typ in [
-				'i8',
-				'u8',
-				'byte',
-				'i16',
-				'u16',
+			typ := types.unalias_type(g.usable_expr_type(id)).source_type_id()
+			return types.comptime_enum_integer_cast(result, if typ in [
+				flat.source_type_i8,
+				flat.source_type_u8,
+				flat.source_type_id('byte'),
+				flat.source_type_i16,
+				flat.source_type_u16,
 			] {
-				'int'
+				flat.source_type_int
 			} else {
 				typ
-			}))
+			})
 		}
 		.infix {
 			if node.children_count < 2 {
@@ -2834,9 +2842,9 @@ fn (g &FlatGen) enum_comptime_expr_value(id flat.NodeId, locals map[string]i64, 
 			mut right := g.enum_comptime_expr_value(g.a.child(&node, 1), locals, enum_module)?
 			if node.op in [.div, .mod] && !isnil(g.tc) {
 				// The runtime division helpers convert operands to the expression type first.
-				typ := types.unalias_type(g.usable_expr_type(id)).name()
-				left = g.enum_comptime_integer_cast(left, flat.source_type_id(typ))
-				right = g.enum_comptime_integer_cast(right, flat.source_type_id(typ))
+				typ := types.unalias_type(g.usable_expr_type(id)).source_type_id()
+				left = g.enum_comptime_integer_cast(left, typ)
+				right = g.enum_comptime_integer_cast(right, typ)
 			}
 			if (node.op in [.div, .mod] && right == 0)
 				|| (node.op in [.left_shift, .right_shift, .right_shift_unsigned] && (right < 0
