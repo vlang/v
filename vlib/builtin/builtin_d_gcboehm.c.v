@@ -261,6 +261,7 @@ fn C.GC_enable()
 // returns non-zero if GC is disabled
 fn C.GC_is_disabled() i32
 
+@[c_extern]
 fn C.GC_set_no_dls(i32)
 
 // protect memory block from being freed before this call
