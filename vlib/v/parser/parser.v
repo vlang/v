@@ -194,6 +194,7 @@ mut:
 	unsupported_inline_asm_guards     map[int]bool
 	parsing_inferred_fixed_array_type bool
 	parsing_struct_field_type         bool
+	in_const_value                    bool
 	parsing_c_struct_fields           bool
 	diagnostic_limit_reached          bool
 	local_type_names                  flat.TypeTextBindings
@@ -3178,7 +3179,10 @@ fn (mut p Parser) global_decl() flat.NodeId {
 			if p.tok == .assign {
 				// global with initializer: __global name = expr, or __global name Type = expr
 				p.next()
+				was_in_const_value := p.in_const_value
+				p.in_const_value = true
 				val_id = p.expr(.lowest)
+				p.in_const_value = was_in_const_value
 			}
 			mut qualifiers := []string{}
 			if is_const {
@@ -3313,7 +3317,11 @@ fn (mut p Parser) const_decl() flat.NodeId {
 					p.record_diagnostic('unexpected eof, expecting an expression', p.s.src.len)
 					p.add(flat.NodeKind.empty)
 				} else {
-					p.expr(.lowest)
+					was_in_const_value := p.in_const_value
+					p.in_const_value = true
+					val_id := p.expr(.lowest)
+					p.in_const_value = was_in_const_value
+					val_id
 				}
 				p.comptime_string_consts[comptime_const_value_key(p.cur_module, full_name)] = true
 				if value := p.comptime_node_value(val_id) {
@@ -3357,6 +3365,13 @@ fn (mut p Parser) const_decl() flat.NodeId {
 			}
 			break
 		} else {
+			// Keywords cannot name consts (a const named `in` could never be
+			// referenced in an expression), so diagnose them instead of letting
+			// `const (x = 2 / in = 3)` silently emit a garbage field.
+			if p.tok.is_keyword() {
+				p.record_diagnostic_span('unexpected keyword `${p.tok.str()}`, expecting name',
+					p.tok_pos, p.tok_end)
+			}
 			p.next()
 			if !is_grouped {
 				break
@@ -11625,7 +11640,9 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 		// V1 allowed an `or {}` handler to start on the line after the
 		// option/result expression. Ignore only scanner-inserted newline
 		// semicolons here; an explicit `;` still terminates the expression.
-		if p.current_token_is_newline_semicolon() && p.peek() == .key_or {
+		// Const/global initializers end at the newline: a keyword name (`or`)
+		// on the next line starts a new declaration, not an `or` handler.
+		if !p.in_const_value && p.current_token_is_newline_semicolon() && p.peek() == .key_or {
 			p.next()
 			continue
 		}
@@ -12021,6 +12038,13 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 		}
 		// skip auto-semicolons before infix operators (multi-line expressions)
 		if p.tok == .semicolon {
+			// Const/global initializers end at the newline when a keyword
+			// (`in`, `is`, `as`) follows: it starts a new declaration, not
+			// an infix continuation of the initializer. Other operators
+			// still continue multiline initializers (`&&`, trailing `+`, ...).
+			if p.in_const_value && p.peek().is_keyword() {
+				break
+			}
 			peek_tok := p.peek()
 			if (token_is_infix(peek_tok) || peek_tok == .key_as) && peek_tok != .mul
 				&& peek_tok != .amp && peek_tok != .arrow {
