@@ -3117,22 +3117,44 @@ fn v3_linux_cross_source_input(input string) bool {
 }
 
 fn compile_v3_macos_linux_cross(c_compiler string, c_flag_plan &V3CCompilerFlagPlan, compiler_inputs []string, sysroot string, vroot string, build_dir string, output_name string, show_command bool, is_shared bool) os.Result {
-	mut compile_flags := c_object_compile_flags(c_flag_plan.before_inputs)
-	compile_flags << c_object_compile_flags(c_flag_plan.after_inputs)
-	compile_flags << c_object_compile_flags(compiler_inputs)
+	mut inputs := c_flag_plan.before_inputs.clone()
+	inputs << compiler_inputs
+	inputs << c_flag_plan.after_inputs
+	mut compile_flags := c_object_compile_flags(inputs)
 	if '-fPIC' !in compile_flags {
 		compile_flags << '-fPIC'
 	}
 	mut objects := []string{}
 	mut source_index := 0
-	for raw_input in compiler_inputs {
-		input := raw_input.trim(' \t\r\n"\'')
-		if !v3_linux_cross_source_input(input) {
+	mut language := ''
+	mut i := 0
+	for i < inputs.len {
+		input := inputs[i].trim(' \t\r\n"\'')
+		if input == '-x' {
+			language = if i + 1 < inputs.len { inputs[i + 1].trim_space() } else { '' }
+			i += 2
+			continue
+		}
+		joined_language := c_joined_source_language(input)
+		if joined_language.len > 0 {
+			language = joined_language
+			i++
+			continue
+		}
+		if c_flag_consumes_next_operand(input) {
+			i += 2
+			continue
+		}
+		i++
+		if input.starts_with('-') || !v3_linux_cross_source_input(input) {
 			continue
 		}
 		object_name := 'linux_cross_${source_index}.o'
 		source_index++
 		mut args := compile_flags.clone()
+		if language !in ['', 'none'] {
+			args << ['-x', language]
+		}
 		args << ['-c', '-o', object_name, input]
 		if show_command {
 			println('  > ${cmdexec.display(c_compiler, args)}')
@@ -3143,7 +3165,7 @@ fn compile_v3_macos_linux_cross(c_compiler string, c_flag_plan &V3CCompilerFlagP
 		}
 		objects << object_name
 	}
-	if objects.len == 0 && !compiler_inputs.any(c_flag_is_object_file(it.trim_space())) {
+	if objects.len == 0 && !c_link_input_indices(inputs).any(c_flag_is_object_file(inputs[it].trim_space())) {
 		return os.Result{
 			exit_code: 1
 			output:    'Linux cross compilation has no C source or object input'
@@ -3183,8 +3205,7 @@ fn compile_v3_macos_linux_cross(c_compiler string, c_flag_plan &V3CCompilerFlagP
 	}
 	linker_args << os.join_path(sysroot, 'crti.o')
 	linker_args << objects
-	linker_args << v3_linux_cross_link_flags(compiler_inputs)
-	linker_args << v3_linux_cross_link_flags(c_flag_plan.after_inputs)
+	linker_args << v3_linux_cross_link_flags(inputs)
 	linker_args << ['-lc', '-lcrypto', '-lssl', '-lpthread', os.join_path(sysroot, 'crtn.o'), '-lm',
 		'-ldl']
 	linker := os.join_path(sysroot, 'ld.lld')
