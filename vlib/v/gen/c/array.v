@@ -46,7 +46,11 @@ fn (mut g FlatGen) fixed_array_decay_byte_compatible(actual types.Type, expected
 	if a is types.Pointer && e is types.Pointer {
 		return g.fixed_array_decay_byte_compatible(a.base_type, e.base_type)
 	}
-	return a.source_type_id() in [flat.source_type_char, flat.source_type_i8, flat.source_type_u8] && e.source_type_id() in [flat.source_type_char, flat.source_type_i8, flat.source_type_u8]
+	return a.source_type_id() in [flat.source_type_char, flat.source_type_i8, flat.source_type_u8] && e.source_type_id() in [
+		flat.source_type_char,
+		flat.source_type_i8,
+		flat.source_type_u8,
+	]
 }
 
 fn (mut g FlatGen) fixed_array_decay_shape_equal(actual types.Type, expected types.Type, allow_byte_cast bool) bool {
@@ -67,7 +71,8 @@ fn (mut g FlatGen) fixed_array_decay_shape_equal(actual types.Type, expected typ
 		return false
 	}
 	return cgen_types_equal_after_alias_erasure(a, e)
-		|| (allow_byte_cast && a.source_type_id() in [flat.source_type_char, flat.source_type_i8, flat.source_type_u8]
+		|| (allow_byte_cast && a.source_type_id() in [flat.source_type_char, flat.source_type_i8,
+			flat.source_type_u8]
 			&& e.source_type_id() in [flat.source_type_char, flat.source_type_i8, flat.source_type_u8])
 }
 
@@ -1657,7 +1662,8 @@ fn (mut g FlatGen) gen_slice_index_value(id flat.NodeId) {
 fn cgen_is_builtin_slice_index_type(typ &types.Type) bool {
 	clean0 := unalias_type(typ)
 	clean := types.unwrap_pointer(clean0)
-	return clean.source_type_id() in [cgen_slice_index_source_type, cgen_builtin_slice_index_source_type]
+	return clean.source_type_id() in [cgen_slice_index_source_type,
+		cgen_builtin_slice_index_source_type]
 }
 
 fn cgen_builtin_slice_index_array_elem(typ types.Type) ?types.Type {

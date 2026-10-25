@@ -193,11 +193,14 @@ fn is_string_interp_float_type(name u32) bool {
 }
 
 fn is_string_interp_signed_int_type(name u32) bool {
-	return name in [flat.source_type_int, flat.source_type_i8, flat.source_type_i16, flat.source_type_i32, flat.source_type_i64, flat.source_type_isize, cgen_int_literal_source_type]
+	return name in [flat.source_type_int, flat.source_type_i8, flat.source_type_i16,
+		flat.source_type_i32, flat.source_type_i64, flat.source_type_isize,
+		cgen_int_literal_source_type]
 }
 
 fn is_string_interp_unsigned_int_type(name u32) bool {
-	return name in [flat.source_type_u8, flat.source_type_u16, flat.source_type_u32, flat.source_type_u64, flat.source_type_uint]
+	return name in [flat.source_type_u8, flat.source_type_u16, flat.source_type_u32,
+		flat.source_type_u64, flat.source_type_uint]
 }
 
 fn is_string_interp_char_code_type(name u32) bool {

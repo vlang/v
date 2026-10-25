@@ -1143,7 +1143,8 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type_id u32) 
 	} else {
 		fallback_type_id
 	}
-	if value_type == 0 || value_type in [transform_identity_bare_result, transform_identity_bare_option] {
+	if value_type == 0 || value_type in [transform_identity_bare_result,
+		transform_identity_bare_option] {
 		value_type = flat.source_type_int
 	}
 	canon_expr_type_source_id, canon_value_type_source_id := t.canonical_or_expr_types(expr_type)

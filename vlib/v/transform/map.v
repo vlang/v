@@ -816,14 +816,16 @@ fn (mut t Transformer) disabled_call_zero_value_expansion_estimate(id flat.NodeI
 		return 0
 	}
 	mut result_type := t.node_type(id)
-	if result_type == 0 || result_type in [expr_array_type_id, expr_map_type_id, flat.source_type_unknown]
+	if result_type == 0 || result_type in [expr_array_type_id, expr_map_type_id,
+		flat.source_type_unknown]
 		|| t.generic_arg_is_unresolved(result_type) {
 		result_type = t.get_call_return_type(id, node)
 	}
 	if result_type == flat.source_type_void {
 		return 0
 	}
-	if result_type == 0 || result_type in [expr_array_type_id, expr_map_type_id, flat.source_type_unknown]
+	if result_type == 0 || result_type in [expr_array_type_id, expr_map_type_id,
+		flat.source_type_unknown]
 		|| t.generic_arg_is_unresolved(result_type) {
 		return deferred_map_expansion_threshold + 1
 	}
@@ -881,7 +883,8 @@ fn (mut t Transformer) disabled_struct_operator_zero_value_expansion_estimate(id
 	if result_type_source_id == flat.source_type_void {
 		return 0
 	}
-	if result_type_source_id == 0 || result_type_source_id in [expr_array_type_id, expr_map_type_id, flat.source_type_unknown]
+	if result_type_source_id == 0 || result_type_source_id in [expr_array_type_id, expr_map_type_id,
+		flat.source_type_unknown]
 		|| t.generic_arg_is_unresolved(result_type_source_id) {
 		return deferred_map_expansion_threshold + 1
 	}
@@ -1758,8 +1761,8 @@ fn map_callback_names(key_type_id u32) (string, string, string, string) {
 		size_suffix = '1'
 	} else if key_type_id in [flat.source_type_u16, flat.source_type_i16] {
 		size_suffix = '2'
-	} else if key_type_id in [flat.source_type_int, flat.source_type_isize, flat.source_type_uint, flat.source_type_voidptr, flat.source_type_charptr,
-		flat.source_type_byteptr]
+	} else if key_type_id in [flat.source_type_int, flat.source_type_isize, flat.source_type_uint,
+		flat.source_type_voidptr, flat.source_type_charptr, flat.source_type_byteptr]
 		|| flat.source_type_shape(key_type_id).has(.pointer) {
 		// Match the target's key storage, not the host or a fixed 32-bit int.
 		// Portable C (`-os cross`) defines the `_w` callbacks as the ones for the

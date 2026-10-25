@@ -1061,7 +1061,7 @@ pub mut:
 	type_alias_modules                    map[string]string
 	type_alias_generic_params             map[string][]string // generic alias base name -> type-param names
 	type_alias_c_abi_fns                  map[string]string
-	recursive_alias_names                 map[string]bool
+	recursive_alias_names                 map[u32]bool
 	sum_types                             flat.TypeTextListBindings
 	sum_generic_params                    map[string][]string // generic sum type base name -> type-param names (e.g. Tree -> [T])
 	enum_names                            map[string]bool
@@ -4070,8 +4070,8 @@ fn (mut tc TypeChecker) check_alias_declaration_cycles() {
 
 fn (mut tc TypeChecker) check_alias_declaration_cycles_of(entries []i32, start_module string) {
 	mut module_name := start_module
-	mut seen_types := map[string]bool{}
-	mut invalid_aliases := []string{}
+	mut seen_types := map[u32]bool{}
+	mut invalid_aliases := []u32{}
 	for index in entries {
 		node := tc.a.nodes[index]
 		if node.kind == .module_decl {
@@ -4079,59 +4079,65 @@ fn (mut tc TypeChecker) check_alias_declaration_cycles_of(entries []i32, start_m
 			continue
 		}
 		if node.kind in [.struct_decl, .type_decl, .interface_decl, .enum_decl] {
-			qname := qualify_decl_name_in_module(node.value, module_name)
-			if seen_types[qname] {
+			qname_id := flat.source_type_id(qualify_decl_name_in_module(node.value, module_name))
+			if seen_types[qname_id] {
 				continue
 			}
-			seen_types[qname] = true
+			seen_types[qname_id] = true
 		}
 		if node.kind != .type_decl || node.children_count > 0 || node.typ == 0 {
 			continue
 		}
 		name := node.value
-		qname := qualify_decl_name_in_module(name, module_name)
+		name_id := flat.source_type_id(name)
+		qname_id := flat.source_type_id(qualify_decl_name_in_module(name, module_name))
 		container := recursive_alias_container(name, node.typ_text())
 		if container.len > 0 {
-			tc.recursive_alias_names[name] = true
-			tc.recursive_alias_names[qname] = true
-			invalid_aliases << qname
+			tc.recursive_alias_names[name_id] = true
+			tc.recursive_alias_names[qname_id] = true
+			invalid_aliases << qname_id
 			tc.errors << tc.make_type_error_at(.unknown_type, 'recursive declarations of aliases are not allowed - the alias `${name}` is used in the ${container}', flat.NodeId(index), node.pos)
 			continue
 		}
-		target := trimmed_space(node.typ_text())
-		if !is_plain_type_symbol(target) || !tc.alias_chain_reaches(qname, target, 0) {
+		target_id := trimmed_source_type_id(node.typ)
+		target := flat.source_type_name(target_id)
+		if !is_plain_type_symbol(target) || !tc.alias_chain_reaches(qname_id, target_id, 0) {
 			continue
 		}
-		tc.recursive_alias_names[name] = true
-		tc.recursive_alias_names[qname] = true
-		invalid_aliases << qname
+		tc.recursive_alias_names[name_id] = true
+		tc.recursive_alias_names[qname_id] = true
+		invalid_aliases << qname_id
 		tc.errors << tc.make_type_error_at(.unknown_type, 'alias `${name}` forms a cycle through `${target}`', flat.NodeId(index), node.pos)
 	}
 	// Pass 2 and later type lowering assume that aliases form an acyclic graph.
 	// Keep reporting the source declaration above, but replace invalid targets
 	// before any consumer can recursively expand them.
-	for name in invalid_aliases {
-		tc.type_aliases.set_id(name, flat.source_type_void)
+	for name_id in invalid_aliases {
+		tc.type_aliases.set_id(flat.source_type_name(name_id), flat.source_type_void)
 	}
 }
 
-fn (tc &TypeChecker) alias_chain_reaches(start string, current string, depth int) bool {
-	mut dependency := current
-	if !tc.type_aliases.contains(dependency) && !dependency.contains('.') && start.contains('.') {
-		dependency = '${start.all_before_last('.')}.${dependency}'
+fn (tc &TypeChecker) alias_chain_reaches(start u32, current u32, depth int) bool {
+	mut dependency_id := current
+	mut dependency := flat.source_type_name(current)
+	if !tc.type_aliases.contains(dependency) && !dependency.contains('.') {
+		start_name := flat.source_type_name(start)
+		if start_name.contains('.') {
+			dependency = '${start_name.all_before_last('.')}.${dependency}'
+			dependency_id = flat.source_type_id(dependency)
+		}
 	}
-	if dependency == start {
+	if dependency_id == start {
 		return true
 	}
 	if depth >= tc.type_aliases.ids.len {
 		return false
 	}
-	target := flat.source_type_name(tc.type_aliases.type_id(dependency) or { return false })
-	clean := trimmed_space(target)
-	if !is_plain_type_symbol(clean) {
+	target := trimmed_source_type_id(tc.type_aliases.type_id(dependency) or { return false })
+	if !is_plain_type_symbol(flat.source_type_name(target)) {
 		return false
 	}
-	return tc.alias_chain_reaches(start, clean, depth + 1)
+	return tc.alias_chain_reaches(start, target, depth + 1)
 }
 
 fn recursive_alias_container(name string, type_text string) string {

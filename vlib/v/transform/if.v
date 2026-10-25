@@ -1026,7 +1026,10 @@ fn (t &Transformer) if_expr_result_type(id flat.NodeId, node flat.Node) u32 {
 			}
 		}
 	}
-	if branch_typ_comparison_type_id_2 in [u32(0), flat.source_type_unknown] && checked_typ in [u32(0), flat.source_type_unknown]
+	if branch_typ_comparison_type_id_2 in [u32(0), flat.source_type_unknown] && checked_typ in [
+		u32(0),
+		flat.source_type_unknown,
+	]
 		&& node_typ in [u32(0), flat.source_type_unknown] && t.if_expr_has_c_macro_values(node) {
 		return flat.source_type_int
 	}

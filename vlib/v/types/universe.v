@@ -169,11 +169,14 @@ pub fn is_builtin_type_name_id(name_id u32) bool {
 		flat.source_type_i8, flat.source_type_u8, flat.source_type_int, flat.source_type_i16,
 		flat.source_type_i32, flat.source_type_i64, flat.source_type_u16, flat.source_type_u32,
 		flat.source_type_u64, flat.source_type_f32, flat.source_type_f64, qualify_source_type_map,
-		flat.source_type_nil, flat.source_type_bool, flat.source_type_char, qualify_source_type_i128,
+		flat.source_type_nil, flat.source_type_bool, flat.source_type_char,
+		qualify_source_type_i128,
 		flat.source_type_rune, qualify_source_type_u128, qualify_source_type_uint,
 		flat.source_type_void, flat.source_type_none, flat.source_type_isize, flat.source_type_usize,
 		qualify_source_type_array, flat.source_type_string, flat.source_type_voidptr,
-		flat.source_type_charptr, flat.source_type_byteptr { true }
+		flat.source_type_charptr, flat.source_type_byteptr {
+			true
+		}
 		else { false }
 	}
 }

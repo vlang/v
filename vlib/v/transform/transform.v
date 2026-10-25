@@ -20586,7 +20586,11 @@ fn (mut t Transformer) expand_multi_return_match_decl(rhs_id flat.NodeId, rhs fl
 			target_lhs_ids << lhs_id
 			continue
 		}
-		typ := if i < value_types.len { value_types[i].source_type_id() } else { flat.source_type_int }
+		typ := if i < value_types.len {
+			value_types[i].source_type_id()
+		} else {
+			flat.source_type_int
+		}
 		target_name := t.new_temp('match_result')
 		result << t.make_decl_assign_typed(target_name, t.zero_value_for_type(typ), typ)
 		target_lhs_ids << t.make_ident(target_name)
@@ -20597,7 +20601,11 @@ fn (mut t Transformer) expand_multi_return_match_decl(rhs_id flat.NodeId, rhs fl
 		if lhs.kind != .ident || lhs.value_text() == '_' {
 			continue
 		}
-		typ := if i < value_types.len { value_types[i].source_type_id() } else { flat.source_type_int }
+		typ := if i < value_types.len {
+			value_types[i].source_type_id()
+		} else {
+			flat.source_type_int
+		}
 		result << t.make_guard_value_decls(lhs.value_text(), target_lhs_ids[i], typ)
 	}
 	return result

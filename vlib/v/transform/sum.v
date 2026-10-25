@@ -1048,11 +1048,10 @@ fn (mut t Transformer) validate_specialized_is_expr(subject_type_id u32, resolve
 
 fn (t &Transformer) specialized_is_pattern_known(pattern_id u32) bool {
 	for candidate_source_id_4 in t.interface_pattern_candidates(pattern_id) {
-		candidate := flat.source_type_name(candidate_source_id_4)
-
-		if types.is_builtin_type_name(candidate) || t.interface_pattern_candidate_known(candidate_source_id_4) {
+		if types.is_builtin_type_name_id(candidate_source_id_4) || t.interface_pattern_candidate_known(candidate_source_id_4) {
 			return true
 		}
+		candidate := flat.source_type_name(candidate_source_id_4)
 		clean := trimmed_transform_text(candidate)
 		if clean.starts_with('[]') || clean.starts_with('map[') || clean.starts_with('[')
 			|| clean.starts_with('fn ') || clean.starts_with('fn(') {

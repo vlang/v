@@ -2535,10 +2535,12 @@ fn (mut g FlatGen) interface_implicit_str_expr(typ types.Type, expr string, quot
 			if name_id == flat.source_type_bool {
 				return '((${expr}) ? ${g.interface_str_lit('true')} : ${g.interface_str_lit('false')})'
 			}
-			if name_id in [flat.source_type_i8, flat.source_type_i16, flat.source_type_i32, flat.source_type_i64, flat.source_type_int] {
+			if name_id in [flat.source_type_i8, flat.source_type_i16, flat.source_type_i32,
+				flat.source_type_i64, flat.source_type_int] {
 				return 'v3_i64_zpad((i64)(${expr}), 0)'
 			}
-			if name_id in [flat.source_type_u8, flat.source_type_u16, flat.source_type_u32, flat.source_type_u64] {
+			if name_id in [flat.source_type_u8, flat.source_type_u16, flat.source_type_u32,
+				flat.source_type_u64] {
 				return 'u64__str((u64)(${expr}))'
 			}
 			if name_id in [cgen_u128_source_type, cgen_i128_source_type] {

@@ -13185,10 +13185,12 @@ fn map_str_kind(tc &types.TypeChecker, typ types.Type) int {
 			return if tc.c_type(types.Type(clean)) == 'float' { 8 } else { 5 }
 		}
 		name_id := types.Type(clean).source_type_id()
-		if name_id in [flat.source_type_i8, flat.source_type_i16, flat.source_type_i32, flat.source_type_i64, flat.source_type_int] {
+		if name_id in [flat.source_type_i8, flat.source_type_i16, flat.source_type_i32,
+			flat.source_type_i64, flat.source_type_int] {
 			return 2
 		}
-		if name_id in [flat.source_type_u8, flat.source_type_u16, flat.source_type_u32, flat.source_type_u64] {
+		if name_id in [flat.source_type_u8, flat.source_type_u16, flat.source_type_u32,
+			flat.source_type_u64] {
 			return 3
 		}
 		if name_id == cgen_u128_source_type {
@@ -17993,8 +17995,13 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 								index_id := g.a.child(node, 1)
 								index_type := cgen_unalias_type(g.usable_expr_type(index_id))
 								helper := match index_type.source_type_id() {
-									flat.source_type_i64, flat.source_type_isize { 'string__at_i64' }
-									flat.source_type_u8, flat.source_type_u16, flat.source_type_u32, flat.source_type_u64, cgen_uint_source_type { 'string__at_u64' }
+									flat.source_type_i64, flat.source_type_isize {
+										'string__at_i64'
+									}
+									flat.source_type_u8, flat.source_type_u16, flat.source_type_u32,
+									flat.source_type_u64, cgen_uint_source_type {
+										'string__at_u64'
+									}
 									else { 'string__at' }
 								}
 								g.write('${helper}(')

@@ -436,7 +436,8 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 			source_type = checker_type_source_id_2
 		}
 	}
-	if target_is_ptr && source_type in [flat.source_type_nil, flat.source_type_voidptr, transform_identity_void_ref] {
+	if target_is_ptr && source_type in [flat.source_type_nil, flat.source_type_voidptr,
+		transform_identity_void_ref] {
 		expr := t.transform_expr(id)
 		if int(expr) >= 0 {
 			t.set_node_typ(int(expr), target_type_id)

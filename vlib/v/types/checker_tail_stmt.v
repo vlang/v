@@ -22397,7 +22397,7 @@ fn (tc &TypeChecker) infix_operator_signature(op flat.Op, lhs Type) ?InfixOperat
 		if !is_concrete_generic {
 			// Primitive receivers retain any exact declared operator above. Only
 			// named generic structs/aliases can supply the remaining fallback.
-			if receiver_type is Primitive && is_builtin_type_name(flat.source_type_name(lhs_name))
+			if receiver_type is Primitive && is_builtin_type_name_id(lhs_name)
 				&& !tc.primitive_infix_has_generic_receiver_candidate(lhs_name) {
 				continue
 			}

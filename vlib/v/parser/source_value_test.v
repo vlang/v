@@ -108,3 +108,23 @@ fn check(n Number) { match n { int {} f64 {} } }
 	}
 	assert branches == 2
 }
+
+fn test_parser_deprecated_generic_type_argument_reads_indexed_spelling() {
+	mut p := Parser.new(pref.new_preferences())
+	mut files := token.FileSet.new()
+	file := files.add_file('legacy_argument.v', 5)
+	p.s.init(file, 'usize')
+	p.next()
+	id := p.a.add_node(flat.Node{
+		kind:         .ident
+		source_value: flat.source_type_usize
+		pos:          p.current_pos()
+	})
+	canonical := p.canonical_generic_type_arg(id)
+	assert canonical != id
+	assert p.a.node(id).source_value_id() == flat.source_type_usize
+	assert p.a.node(canonical).value == ''
+	assert p.a.node(canonical).source_value_id() == flat.source_type_uint
+	assert p.diagnostics.len == 1
+	assert p.diagnostics[0].message == '`usize` is deprecated; use `uint` instead'
+}

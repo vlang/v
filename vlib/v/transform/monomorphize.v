@@ -2767,7 +2767,8 @@ fn (mut t Transformer) collect_interface_boxed_type(actual types.Type, expected 
 			iface_name_source_id_4 := iface_name_source_id
 
 			actual_source_id := actual.source_type_id()
-			if iface_name_source_id != 0 && actual_source_id !in [u32(0), flat.source_type_unknown, flat.source_type_void] && t.resolve_interface_type_name(actual_source_id) == 0 {
+			if iface_name_source_id != 0 && actual_source_id !in [u32(0), flat.source_type_unknown,
+				flat.source_type_void] && t.resolve_interface_type_name(actual_source_id) == 0 {
 				t.mark_interface_boxed_type(iface_name_source_id_4, t.trim_pointer_type(actual_source_id))
 			}
 		}
@@ -12044,7 +12045,7 @@ fn (mut t Transformer) generic_clone_child_is_return_value(node flat.Node, child
 		if node.children_count != 2 {
 			return false
 		}
-		if !types.is_builtin_type_name(flat.source_type_name(expected)) {
+		if !types.is_builtin_type_name_id(expected) {
 			if _ := t.struct_operator_call_info_any(expected, node.op) {
 				return false
 			}

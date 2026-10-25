@@ -2593,7 +2593,8 @@ fn cgen_type_is_pointer_like(t &types.Type) bool {
 		return true
 	}
 	if t is types.Alias {
-		if t.source_type_id() in [flat.source_type_charptr, flat.source_type_byteptr, flat.source_type_voidptr] {
+		if t.source_type_id() in [flat.source_type_charptr, flat.source_type_byteptr,
+			flat.source_type_voidptr] {
 			return true
 		}
 		return cgen_type_is_pointer_like(t.base_type)
@@ -3687,7 +3688,8 @@ fn (mut g FlatGen) gen_pointer_builtin_method_call(node flat.Node, fn_node &flat
 
 fn pointer_builtin_receiver_name_for_c(typ &types.Type) string {
 	if typ is types.Alias {
-		if typ.source_type_id() in [flat.source_type_charptr, flat.source_type_byteptr, flat.source_type_voidptr] {
+		if typ.source_type_id() in [flat.source_type_charptr, flat.source_type_byteptr,
+			flat.source_type_voidptr] {
 			return typ.name()
 		}
 		return pointer_builtin_receiver_name_for_c(typ.base_type)

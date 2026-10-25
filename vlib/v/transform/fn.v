@@ -5993,7 +5993,10 @@ fn (mut t Transformer) stringify_expr(expr_id flat.NodeId, for_print bool) flat.
 	return converted
 }
 
-const stringify_narrow_integer_types = [flat.source_type_int, flat.source_type_i8, flat.source_type_i16, flat.source_type_i32, flat.source_type_i64, flat.source_type_isize, flat.source_type_u8, flat.source_type_u16, flat.source_type_u32, flat.source_type_u64, flat.source_type_uint, flat.source_type_rune]
+const stringify_narrow_integer_types = [flat.source_type_int, flat.source_type_i8,
+	flat.source_type_i16, flat.source_type_i32, flat.source_type_i64, flat.source_type_isize,
+	flat.source_type_u8, flat.source_type_u16, flat.source_type_u32, flat.source_type_u64,
+	flat.source_type_uint, flat.source_type_rune]
 
 // wide_method_receiver_type returns `u128` or `i128` when the expression is an
 // arithmetic node this compiler lowers as a 128-bit value, and an empty string
@@ -8087,7 +8090,13 @@ fn (t &Transformer) alias_str_needs_name_wrapper(base_type_id u32) bool {
 	if t.is_enum_stringify_type(clean) {
 		return false
 	}
-	return clean !in [flat.source_type_string, flat.source_type_bool, flat.source_type_rune, flat.source_type_char, flat.source_type_i8, flat.source_type_i16, flat.source_type_i32, flat.source_type_i64, flat.source_type_int, flat.source_type_isize, flat.source_type_u8, flat.source_type_u16, flat.source_type_u32, flat.source_type_u64, flat.source_type_uint, flat.source_type_f32, flat.source_type_f64, transform_identity_int_literal, transform_identity_float_literal, flat.source_type_voidptr, flat.source_type_byteptr, flat.source_type_charptr, flat.source_type_nil, flat.source_type_void]
+	return clean !in [flat.source_type_string, flat.source_type_bool, flat.source_type_rune,
+		flat.source_type_char, flat.source_type_i8, flat.source_type_i16, flat.source_type_i32,
+		flat.source_type_i64, flat.source_type_int, flat.source_type_isize, flat.source_type_u8,
+		flat.source_type_u16, flat.source_type_u32, flat.source_type_u64, flat.source_type_uint,
+		flat.source_type_f32, flat.source_type_f64, transform_identity_int_literal,
+		transform_identity_float_literal, flat.source_type_voidptr, flat.source_type_byteptr,
+		flat.source_type_charptr, flat.source_type_nil, flat.source_type_void]
 }
 
 fn (mut t Transformer) lower_struct_str(expr flat.NodeId, struct_type_id u32) ?flat.NodeId {

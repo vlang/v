@@ -15970,11 +15970,11 @@ fn (mut p Parser) sizeof_expr() flat.NodeId {
 		// Imports, type members and deferred branches are resolved after parsing.
 		// Preserve both interpretations until the selected declaration is known.
 		inner := p.expr(.lowest)
-		name := flat.source_type_name(p.type_expr_name(inner))
+		name_id := p.type_expr_name(inner)
 		p.check(.rpar)
 		return p.a.add_node(flat.Node{
 			kind:           .sizeof_expr
-			source_value:   flat.source_type_id(name)
+			source_value:   name_id
 			children_start: p.add_child(inner)
 			children_count: 1
 			pos:            p.span_to(sizeof_start)
