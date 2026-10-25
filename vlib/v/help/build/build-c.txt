@@ -145,35 +145,35 @@ see also `v help build`.
             Print "V panic: " + msg, along with an optional backtrace
             and/or the V commit hash, and then exit.
          @[export: 'malloc']
-         __malloc(n usize) &C.void
+         __malloc(n uint) &C.void
             Allocates n bytes of memory and returns the pointer to the first
             byte.
          @[export: 'free']
          __free(ptr &C.void)
             Free the block of memory ptr allocated by malloc.
-         realloc(old_area &C.void, new_size usize) &C.void
+         realloc(old_area &C.void, new_size uint) &C.void
             Allocates a new area of size new_size, copies old_area
             to the new area, and returns a pointer to the new area.
          @[export: 'calloc']
-         __calloc(nmemb usize, size usize) &C.void
+         __calloc(nmemb uint, size uint) &C.void
             Like malloc, but sets all the bytes to `0` first.
-         memcpy(dest &C.void, const_src &C.void, n usize) &C.void
+         memcpy(dest &C.void, const_src &C.void, n uint) &C.void
             Moves n bytes from dest to src, and returns dest
-         memmove(dest &C.void, const_src &C.void, n usize) &C.void
+         memmove(dest &C.void, const_src &C.void, n uint) &C.void
             Like memcpy, but guaranteed to work if dest and src overlap.
-         memcmp(const_a &C.void, const_b &C.void, n usize) int
+         memcmp(const_a &C.void, const_b &C.void, n uint) int
             Compare two buffers of length n. If a and b are equal, return 0.
             Otherwise, return the difference between the first different letter.
-         strlen(const_s &char) usize
+         strlen(const_s &char) uint
             Returns the amount of bytes until the first `0`, starting at s
-         memset(s &C.void, c int, n usize) &C.void
+         memset(s &C.void, c int, n uint) &C.void
             Sets n bytes starting at s to c (c is casted to a char)
             and returns s.
          getchar() int
             Read one character from stdin and return it.
          vsprintf(str &char, format &char, ap va_list) int
             See `man vsprintf`.
-         vsnprintf(str &char, size usize, format &char, ap va_list) int
+         vsnprintf(str &char, size uint, format &char, ap va_list) int
             See `man vsnprintf`.
          bare_backtrace() string
             Return a backtrace that can be printed. If backtraces are not

@@ -9,14 +9,14 @@ module runtime
 struct C.PROCESS_MEMORY_COUNTERS {
 	cb                         u32
 	PageFaultCount             u32
-	PeakWorkingSetSize         usize
-	WorkingSetSize             usize
-	QuotaPeakPagedPoolUsage    usize
-	QuotaPagedPoolUsage        usize
-	QuotaPeakNonPagedPoolUsage usize
-	QuotaNonPagedPoolUsage     usize
-	PagefileUsage              usize
-	PeakPagefileUsage          usize
+	PeakWorkingSetSize         uint
+	WorkingSetSize             uint
+	QuotaPeakPagedPoolUsage    uint
+	QuotaPagedPoolUsage        uint
+	QuotaPeakNonPagedPoolUsage uint
+	QuotaNonPagedPoolUsage     uint
+	PagefileUsage              uint
+	PeakPagefileUsage          uint
 }
 
 fn C.K32GetProcessMemoryInfo(voidptr, &C.PROCESS_MEMORY_COUNTERS, u32) bool

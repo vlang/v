@@ -218,11 +218,11 @@ fn test_fastc_target_exports_match_unqualified_target_header_prototypes() {
 	prefs.vroot = @VEXEROOT
 	prefs.target_libc_headers = true
 	source := declaration_abi_generate('target_constness', r'module main
-fn C.native_copy(destination voidptr, const_source voidptr, count usize) voidptr
+fn C.native_copy(destination voidptr, const_source voidptr, count uint) voidptr
 @[c_extern]
 fn C.verify_copy()
 @[export: "native_copy"]
-fn copy(destination voidptr, source voidptr, count usize) voidptr {
+fn copy(destination voidptr, source voidptr, count uint) voidptr {
 	if count != 0 {
 		unsafe {
 			mut dest := &u8(destination)
@@ -253,13 +253,13 @@ fn test_fastc_target_native_prototypes_match_exported_write_constness_and_abi() 
 	prefs.vroot = @VEXEROOT
 	prefs.target_libc_headers = true
 	source := declaration_abi_generate('target_write', r'module main
-fn C.write(fd i32, const_buf voidptr, count usize) isize
+fn C.write(fd i32, const_buf voidptr, count uint) C.ptrdiff_t
 @[export: "write"]
-fn kernel_write(fd int, buf voidptr, count usize) isize {
+fn kernel_write(fd int, buf voidptr, count uint) int {
 	if fd < 0 { return -7 }
 	if count == 0 { return 0 }
 	ptr := unsafe { &u8(buf) }
-	return isize(ptr[0]) + isize(count)
+	return int(ptr[0]) + int(count)
 }
 fn main() {
 	mut value := u8(40)
@@ -267,7 +267,7 @@ fn main() {
 	assert C.write(1, voidptr(&value), 2) == 42
 }
 ', prefs)
-	assert source.contains('extern isize write(i32, voidptr, usize);'), source
-	assert !source.contains('extern isize write(i32, const void*'), source
+	assert source.contains('extern ptrdiff_t write(i32, voidptr, usize);'), source
+	assert !source.contains('extern ptrdiff_t write(i32, const void*'), source
 	declaration_abi_run_c('target_write', source)
 }

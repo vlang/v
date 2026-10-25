@@ -7,6 +7,6 @@ import time
 // distinguishes sequential calls, while the stack address distinguishes concurrent workers.
 pub fn unique_token() string {
 	stack_marker := u8(0)
-	stack_id := usize(voidptr(&stack_marker))
+	stack_id := uint(voidptr(&stack_marker))
 	return '${os.getpid()}.${time.sys_mono_now()}.${stack_id}'
 }

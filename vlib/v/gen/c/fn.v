@@ -48,9 +48,20 @@ struct TopLevelStmt {
 }
 
 struct GenericMethodCandidate {
-	name   string
-	ret    types.Type
-	params []types.Type
+	name                string
+	ret                 types.Type
+	params              []types.Type
+	receiver_id         u32
+	receiver_base_id    u32
+	receiver_is_generic bool
+}
+
+struct GenericMethodReceiverQuery {
+	receiver_id         u32
+	short_receiver_id   u32
+	base_id             u32
+	short_base_id       u32
+	lookup_receiver_ids []u32
 }
 
 struct SpawnPackedArg {
@@ -1255,8 +1266,18 @@ fn (g &FlatGen) has_used_fn_filter() bool {
 	return !isnil(g.used_fns) && g.used_fns.len > 0 && g.used_fn_contains('main')
 }
 
-fn generic_method_candidate_key(receiver string, method string) string {
-	return '${receiver}\n${method}'
+// Candidate names are declaration keys; only their receiver component is a source type.
+fn generic_method_candidate_for_decl(name string, ret types.Type, params []types.Type) GenericMethodCandidate {
+	receiver := name.all_before_last('.')
+	base, _, is_generic := parse_shared_generic_app_parts(receiver)
+	return GenericMethodCandidate{
+		name:                name
+		ret:                 ret
+		params:              params
+		receiver_id:         flat.source_type_id(receiver)
+		receiver_base_id:    if is_generic { flat.source_type_id(base) } else { 0 }
+		receiver_is_generic: is_generic
+	}
 }
 
 fn (mut g FlatGen) precompute_generic_method_candidate_index() {
@@ -1274,24 +1295,18 @@ fn (mut g FlatGen) precompute_generic_method_candidate_index() {
 		if base_receiver.len == 0 {
 			continue
 		}
-		candidate := GenericMethodCandidate{
-			name:   name
-			ret:    ret
-			params: g.tc.fn_param_types[name] or { []types.Type{} }
-		}
-		g.add_generic_method_candidate(base_receiver, method, candidate)
+		candidate := generic_method_candidate_for_decl(name, ret,
+			g.tc.fn_param_types[name] or { []types.Type{} })
+		g.add_generic_method_candidate(flat.source_type_id(base_receiver), method, candidate)
 		short_receiver := base_receiver.all_after_last('.')
 		if short_receiver != base_receiver {
-			g.add_generic_method_candidate(short_receiver, method, candidate)
+			g.add_generic_method_candidate(flat.source_type_id(short_receiver), method, candidate)
 		}
 	}
 }
 
-fn (mut g FlatGen) add_generic_method_candidate(receiver string, method string, candidate GenericMethodCandidate) {
-	key := generic_method_candidate_key(receiver, method)
-	mut candidates := g.generic_method_candidates[key] or { []GenericMethodCandidate{} }
-	candidates << candidate
-	g.generic_method_candidates[key] = candidates
+fn (mut g FlatGen) add_generic_method_candidate(receiver_id u32, method string, candidate GenericMethodCandidate) {
+	g.generic_method_candidates[receiver_id][method] << candidate
 }
 
 // qualified_fn_name supports qualified fn name handling for FlatGen.
@@ -1858,6 +1873,12 @@ fn (g &FlatGen) enum_method_c_name_in_module_uncached(module_name string, name s
 	receiver := unsafe { qualified.substr_unsafe(0, dot) }
 	method := unsafe { qualified.substr_unsafe(dot + 1, qualified.len) }
 	if _ := g.enum_selector_base_name(flat.source_type_id(receiver)) {
+		// An operator overload of an enum alias gets its C name in the internal
+		// namespace, as other operator overloads do. `g.cname(method)` spells no
+		// operator (`Pitch.+` and `Pitch.<` were both `Pitch__`).
+		if naming.is_operator_method_name(qualified) {
+			return g.cname('${g.enum_type_codegen_name(receiver)}.${method}')
+		}
 		return '${g.enum_type_c_name(receiver)}_${g.cname(method)}'
 	}
 	return none
@@ -2951,8 +2972,9 @@ fn (g &FlatGen) specialized_generic_method_name_for_call_with_arg_count(id flat.
 			}
 		}
 	}
-	for lookup_receiver in generic_method_lookup_receivers(receiver) {
-		candidates := g.generic_method_candidates[generic_method_candidate_key(lookup_receiver, method)] or { continue }
+	receiver_query := generic_method_receiver_query(flat.source_type_id(receiver))
+	for lookup_receiver_id in receiver_query.lookup_receiver_ids {
+		candidates := g.generic_method_candidates[lookup_receiver_id][method] or { continue }
 		for candidate in candidates {
 			if arg_count >= 0 && candidate.params.len != arg_count {
 				continue
@@ -2982,8 +3004,9 @@ fn (g &FlatGen) specialized_generic_method_name_for_call_args(node flat.Node, me
 	mut best_score := 0
 	mut best_preference := -1
 	mut ambiguous := false
-	for lookup_receiver in generic_method_lookup_receivers(receiver) {
-		candidates := g.generic_method_candidates[generic_method_candidate_key(lookup_receiver, method)] or { continue }
+	receiver_query := generic_method_receiver_query(flat.source_type_id(receiver))
+	for lookup_receiver_id in receiver_query.lookup_receiver_ids {
+		candidates := g.generic_method_candidates[lookup_receiver_id][method] or { continue }
 		for candidate in candidates {
 			if arg_count >= 0 && candidate.params.len != arg_count {
 				continue
@@ -2992,7 +3015,7 @@ fn (g &FlatGen) specialized_generic_method_name_for_call_args(node flat.Node, me
 			if score <= 0 {
 				continue
 			}
-			preference := generic_method_candidate_receiver_preference(candidate.name, receiver)
+			preference := generic_method_candidate_receiver_preference(candidate, receiver_query)
 			if score > best_score || (score == best_score && preference > best_preference) {
 				best = candidate.name
 				best_score = score
@@ -3009,45 +3032,64 @@ fn (g &FlatGen) specialized_generic_method_name_for_call_args(node flat.Node, me
 	return none
 }
 
-fn generic_method_lookup_receivers(receiver string) []string {
-	mut result := []string{}
-	mut roots := [receiver]
+// Keep the raw parser and literal last-dot slices: dots inside type arguments and
+// whitespace are part of these legacy receiver alternatives, not normalization.
+fn generic_method_receiver_query(receiver_id u32) GenericMethodReceiverQuery {
+	receiver := flat.source_type_name(receiver_id)
+	short_receiver := receiver.all_after_last('.')
+	short_receiver_id := if short_receiver == receiver {
+		receiver_id
+	} else {
+		flat.source_type_id(short_receiver)
+	}
 	base, _, is_generic := parse_shared_generic_app_parts(receiver)
+	base_id := if is_generic { flat.source_type_id(base) } else { receiver_id }
+	short_base := base.all_after_last('.')
+	short_base_id := if !is_generic {
+		short_receiver_id
+	} else if short_base == base {
+		base_id
+	} else {
+		flat.source_type_id(short_base)
+	}
+	mut lookup_receiver_ids := []u32{}
+	for name_id in [receiver_id, short_receiver_id] {
+		if name_id != 0 && name_id !in lookup_receiver_ids {
+			lookup_receiver_ids << name_id
+		}
+	}
 	if is_generic && base.len > 0 {
-		roots << base
-	}
-	for root in roots {
-		if root.len > 0 && root !in result {
-			result << root
-		}
-		short := root.all_after_last('.')
-		if short.len > 0 && short !in result {
-			result << short
+		for name_id in [base_id, short_base_id] {
+			if name_id != 0 && name_id !in lookup_receiver_ids {
+				lookup_receiver_ids << name_id
+			}
 		}
 	}
-	return result
+	return GenericMethodReceiverQuery{
+		receiver_id:         receiver_id
+		short_receiver_id:   short_receiver_id
+		base_id:             base_id
+		short_base_id:       short_base_id
+		lookup_receiver_ids: lookup_receiver_ids
+	}
 }
 
-fn generic_method_candidate_receiver_preference(candidate_name string, receiver string) int {
-	candidate_receiver := candidate_name.all_before_last('.')
-	if candidate_receiver.len == 0 {
+fn generic_method_candidate_receiver_preference(candidate GenericMethodCandidate, receiver GenericMethodReceiverQuery) int {
+	if candidate.receiver_id == 0 {
 		return 0
 	}
-	if candidate_receiver == receiver {
+	if candidate.receiver_id == receiver.receiver_id {
 		return 30
 	}
-	candidate_base, _, candidate_is_generic := parse_shared_generic_app_parts(candidate_receiver)
-	receiver_generic_base, _, receiver_is_generic := parse_shared_generic_app_parts(receiver)
-	receiver_base := if receiver_is_generic { receiver_generic_base } else { receiver }
-	if candidate_is_generic {
-		if candidate_base == receiver_base {
+	if candidate.receiver_is_generic {
+		if candidate.receiver_base_id == receiver.base_id {
 			return 25
 		}
-		if candidate_base == receiver_base.all_after_last('.') {
+		if candidate.receiver_base_id == receiver.short_base_id {
 			return 15
 		}
 	}
-	if candidate_receiver == receiver.all_after_last('.') {
+	if candidate.receiver_id == receiver.short_receiver_id {
 		return 10
 	}
 	return 0
@@ -3075,7 +3117,7 @@ fn (g &FlatGen) generic_method_candidate_arg_score(node flat.Node, candidate Gen
 		}
 		score += arg_score
 	}
-	score += g.generic_method_candidate_type_arg_score(node, candidate.name, explicit_start)
+	score += g.generic_method_candidate_type_arg_score(node, candidate.receiver_id, explicit_start)
 	return score
 }
 
@@ -3092,12 +3134,11 @@ fn (g &FlatGen) generic_method_candidate_explicit_arg_start(node flat.Node, para
 	return none
 }
 
-fn (g &FlatGen) generic_method_candidate_type_arg_score(node flat.Node, candidate_name string, explicit_start int) int {
-	if !candidate_name.contains('.') {
+fn (g &FlatGen) generic_method_candidate_type_arg_score(node flat.Node, receiver_id u32, explicit_start int) int {
+	if receiver_id == 0 {
 		return 0
 	}
-	receiver := candidate_name.all_before_last('.')
-	_, type_args_source_ids, ok := g.shared_generic_app_parts(flat.source_type_id(receiver))
+	_, type_args_source_ids, ok := g.shared_generic_app_parts(receiver_id)
 
 	if !ok || type_args_source_ids.len == 0 {
 		return 0
@@ -9490,7 +9531,7 @@ fn (g &FlatGen) expr_is_non_string_scalar_value(id flat.NodeId) bool {
 	if node.kind == .ident {
 		if c_type := g.local_storage_c_type(node.value) {
 			return c_type in ['bool', 'char', 'i8', 'i16', 'int', 'i64', 'isize', 'u8', 'u16',
-				'u32', 'u64', 'usize', 'f32', 'f64', 'rune', types.portable_int_c_type]
+				'u32', 'u64', 'uint', 'f32', 'f64', 'rune', types.portable_int_c_type]
 		}
 		if raw_type_source_id := g.local_storage_raw_type(node.value) {
 			raw_type_source_id_2 := raw_type_source_id
@@ -12949,7 +12990,7 @@ fn callback_can_cast_scalar_int_param(actual_ct string, expected_ct string) bool
 
 fn callback_is_scalar_int_c_type(ct string) bool {
 	return trimmed_space(ct) in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'char',
-		'bool', 'isize', 'usize', 'ptrdiff_t', 'size_t', types.portable_int_c_type]
+		'bool', 'isize', 'uint', 'ptrdiff_t', 'size_t', types.portable_int_c_type]
 }
 
 fn (mut g FlatGen) callback_c_type(typ types.Type) string {
@@ -18019,6 +18060,9 @@ fn (mut g FlatGen) c_extern_interop_type_name(t types.Type) ?string {
 		return base + '*'
 	}
 	if t is types.Alias {
+		if t.name() == 'C.ptrdiff_t' {
+			return 'ptrdiff_t'
+		}
 		// A `type Cb = fn (int)` alias over a function type must still keep C `int`
 		// inside the C ABI; alias-over-`int` likewise. Non-interop bases return none.
 		if _ := g.tc.c_abi_fn_ptr_type_for_type_text(t.source_type_id()) {
@@ -18115,7 +18159,7 @@ fn (mut g FlatGen) c_call_arg_cabi_cast(arg_idx int, typed_param_count int, para
 		// that prototype is exactly what the callee's parameter type was written
 		// against. A `fn C.` declaration cannot spell C qualifiers, so casting to the
 		// V-declared signature is what *creates* an incompatible-pointer-type error
-		// (e.g. `fn C.mbedtls_net_send(voidptr, &u8, usize) i32` drops the `const` in
+		// (e.g. `fn C.mbedtls_net_send(voidptr, &u8, uint) i32` drops the `const` in
 		// mbedtls_net_send's real `const unsigned char *` buffer parameter).
 		if _ := fn_type_from(param_types[arg_idx]) {
 			if g.is_c_extern_fn_name_arg(arg_id) {

@@ -822,7 +822,7 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 					if '#Cstruct#${name}' in g.declared_types {
 						return flat.source_type_id('struct ${name}')
 					}
-					if name.len > 0 && name[0].is_capital() {
+					if name.len > 0 && (name[0].is_capital() || '#Ctypedef#${name}' in g.declared_types) {
 						return flat.source_type_id(name)
 					}
 				}
@@ -1602,6 +1602,8 @@ fn (g &Parser) semantic_type_key(c_type_id u32) u32 {
 fn (g &Parser) semantic_type_key_uncached(c_type_id u32) u32 {
 	c_type := flat.source_type_name(c_type_id)
 	base := fastc_trim_pointer_suffix(c_type)
+	// The C ABI keeps the old typedef, while methods use the canonical V name.
+	if base == 'usize' { return flat.source_type_uint }
 	if key := g.declared_type_c_names.type_id(base) {
 		return key
 	}
@@ -1839,7 +1841,7 @@ fn fastc_integer_promotion_index(typ u32) int {
 		'u16' { 12 }
 		'u32' { 13 }
 		'u64' { 14 }
-		'usize' { 15 }
+		'uint', 'usize' { 15 }
 		'rune' { 22 }
 		else { -1 }
 	}
@@ -2004,7 +2006,7 @@ fn (g &Parser) array_element_type(typ_id u32) ?u32 {
 @[inline]
 fn fastc_is_integer_type(typ u32) bool {
 	if fastc_integer_type_mask.enabled { return fastc_integer_type_mask.contains(typ) }
-	return typ == flat.source_type_char || typ == flat.source_type_i8 || typ == flat.source_type_i16 || typ == flat.source_type_i32 || typ == flat.source_type_i64 || typ == flat.source_type_int || typ == flat.source_type_isize || typ == flat.source_type_rune || typ == flat.source_type_u8 || typ == flat.source_type_u16 || typ == flat.source_type_u32 || typ == flat.source_type_u64 || typ == fastc_type_unsigned_int || typ == flat.source_type_usize
+	return typ == flat.source_type_char || typ == flat.source_type_i8 || typ == flat.source_type_i16 || typ == flat.source_type_i32 || typ == flat.source_type_i64 || typ == flat.source_type_int || typ == flat.source_type_isize || typ == flat.source_type_rune || typ == flat.source_type_u8 || typ == flat.source_type_u16 || typ == flat.source_type_u32 || typ == flat.source_type_u64 || typ == fastc_type_unsigned_int || typ == flat.source_type_uint || typ == flat.source_type_usize
 }
 
 @[inline]
@@ -2012,7 +2014,7 @@ fn fastc_is_unsigned_integer_type(typ u32) bool {
 	if fastc_unsigned_integer_type_mask.enabled {
 		return fastc_unsigned_integer_type_mask.contains(typ)
 	}
-	return typ == flat.source_type_u8 || typ == flat.source_type_u16 || typ == flat.source_type_u32 || typ == flat.source_type_u64 || typ == fastc_type_unsigned_int || typ == flat.source_type_usize
+	return typ == flat.source_type_u8 || typ == flat.source_type_u16 || typ == flat.source_type_u32 || typ == flat.source_type_u64 || typ == fastc_type_unsigned_int || typ == flat.source_type_uint || typ == flat.source_type_usize
 }
 
 @[inline]
@@ -2020,7 +2022,7 @@ fn fastc_is_wide_unsigned_integer_type(typ u32) bool {
 	if fastc_wide_unsigned_integer_type_mask.enabled {
 		return fastc_wide_unsigned_integer_type_mask.contains(typ)
 	}
-	return typ == flat.source_type_u32 || typ == flat.source_type_u64 || typ == fastc_type_unsigned_int || typ == flat.source_type_usize
+	return typ == flat.source_type_u32 || typ == flat.source_type_u64 || typ == fastc_type_unsigned_int || typ == flat.source_type_uint || typ == flat.source_type_usize
 }
 
 @[inline]

@@ -3228,7 +3228,7 @@ fn (g &FlatGen) is_scalar_c_type(c_type string) bool {
 		return true
 	}
 	return c_type in ['bool', 'char', 'byte', 'u8', 'i8', 'u16', 'i16', 'u32', 'i32', 'u64', 'i64',
-		'int', 'isize', 'usize', 'size_t', 'ptrdiff_t', 'float', 'double', 'voidptr',
+		'int', 'isize', 'uint', 'size_t', 'ptrdiff_t', 'float', 'double', 'voidptr',
 		types.portable_int_c_type]
 }
 
@@ -4618,7 +4618,7 @@ fn (g &FlatGen) atomic_helper_suffix(typ &types.Type) string {
 	return match ct {
 		'i8', 'u8', 'byte', 'bool', 'char' { 'byte' }
 		'i16', 'u16' { 'u16' }
-		'i64', 'u64', 'isize', 'usize' { 'u64' }
+		'i64', 'u64', 'isize', 'uint' { 'u64' }
 		// Portable C defines the `_w` helpers for the C compiler's `int` width.
 		types.portable_int_c_type { pointer_width_suffix }
 		else { 'u32' }
@@ -5455,8 +5455,8 @@ fn (g &FlatGen) ident_may_name_type(name string) bool {
 // struct_field_list_key identifies a field list by its storage and length.
 @[inline]
 fn struct_field_list_key(fields []types.StructField) u64 {
-	// usize keeps a 32-bit address zero-extended, clear of the length bits.
-	return u64(usize(voidptr(fields.data))) | (u64(fields.len) << 48)
+	// uint keeps a 32-bit address zero-extended, clear of the length bits.
+	return u64(uint(voidptr(fields.data))) | (u64(fields.len) << 48)
 }
 
 // new_struct_field_index_base indexes the checked field lists that
@@ -6785,7 +6785,7 @@ fn (g &FlatGen) map_callback_names(key_type types.Type) (string, string, string,
 const pointer_width_suffix = 'w'
 
 // map_key_has_pointer_width reports whether map keys of this type are as wide as a
-// pointer: V's `int`, `isize`, `usize` and pointers.
+// pointer: V's `int`, `isize`, `uint` and pointers.
 fn map_key_has_pointer_width(key_type &types.Type, c_key string) bool {
 	return c_key == types.portable_int_c_type || key_type is types.Pointer
 		|| key_type is types.ISize || key_type is types.USize

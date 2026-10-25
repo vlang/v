@@ -1214,11 +1214,11 @@ fn test_fmt_preserves_legacy_dollar_builtins_with_v3() {
 }
 
 fn test_fmt_preserves_bodyless_function_prefixes_with_v3() {
-	source := 'fn plain(value usize) usize\nfn C.c_call(value int) int\nfn JS.js_call(value int) int\n'
+	source := 'fn plain(value uint) uint\nfn C.c_call(value int) int\nfn JS.js_call(value int) int\n'
 	res, formatted := run_vfmt_write('bodyless_function_prefixes', source, '')
 
 	assert res.exit_code == 0, res.output
-	assert formatted.contains('fn plain(value usize) usize'), formatted
+	assert formatted.contains('fn plain(value uint) uint'), formatted
 	assert formatted.contains('fn C.c_call(value int) int'), formatted
 	assert formatted.contains('fn JS.js_call(value int) int'), formatted
 	assert !formatted.contains('fn C.plain'), formatted

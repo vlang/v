@@ -240,7 +240,7 @@ fn test_gzip_damaged_payload_is_reported_as_such_whatever_the_trailer() {
 		'invalid gzip stream: size mismatch']
 	assert callback_error(damaged) == payload_error
 	// Nothing was decoded, so there is nothing to compare the trailer with:
-	// a wrong crc32 or isize on top of that does not change the error.
+	// a wrong crc32 or int on top of that does not change the error.
 	for i in [damaged.len - 8, damaged.len - 4] {
 		mut both := damaged.clone()
 		both[i] ^= 0x01

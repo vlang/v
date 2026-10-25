@@ -2,10 +2,10 @@
 // caller mutate separately stored components at an explicit unsafe boundary.
 struct Container {
 mut:
-	on_query fn (&Container, usize) voidptr = unsafe { nil }
+	on_query fn (&Container, uint) voidptr = unsafe { nil }
 }
 
-fn (c &Container) query(idx usize) voidptr {
+fn (c &Container) query(idx uint) voidptr {
 	return c.on_query(c, idx)
 }
 
@@ -16,7 +16,7 @@ mut:
 }
 
 fn Counter.from_container(c &Container) &Counter {
-	return unsafe { &Counter(c.query(usize(typeof(Counter{}).idx))) }
+	return unsafe { &Counter(c.query(uint(typeof(Counter{}).idx))) }
 }
 
 fn bump(c &Container) {
@@ -28,7 +28,7 @@ fn bump(c &Container) {
 fn test_component_from_immutable_container_is_mutable() {
 	counter := &Counter{}
 	c := Container{
-		on_query: fn [counter] (_ &Container, _ usize) voidptr {
+		on_query: fn [counter] (_ &Container, _ uint) voidptr {
 			return voidptr(counter)
 		}
 	}
@@ -58,14 +58,14 @@ fn test_visible_stored_pointer_lookup_does_not_borrow_the_container() {
 	assert counter.hits == 13
 }
 
-fn counter_by_key(key usize, get fn (usize) voidptr) &Counter {
+fn counter_by_key(key uint, get fn (uint) voidptr) &Counter {
 	return get(key)
 }
 
 fn test_type_erased_lookup_with_copied_key_does_not_borrow_the_key() {
-	key := usize(7)
+	key := uint(7)
 	counter := &Counter{}
-	get := fn [counter] (idx usize) voidptr {
+	get := fn [counter] (idx uint) voidptr {
 		assert idx == 7
 		return counter
 	}

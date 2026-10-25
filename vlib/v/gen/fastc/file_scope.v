@@ -2,7 +2,7 @@ module fastc
 
 // Each worker reuses a bounded parser arena. Only published output survives
 // a file: all parser maps, tokens, and intermediate renderings are disposable.
-const fastc_file_arena_keep_bytes = isize(8) * 1024 * 1024
+const fastc_file_arena_keep_bytes = int(8) * 1024 * 1024
 
 struct FastcFileScratch {
 mut:

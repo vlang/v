@@ -5316,7 +5316,7 @@ fn debugger_type_name(typ &types.Type) string {
 }
 
 fn debugger_string_literal(value string) string {
-	return '(string){"${c_escape(value)}", ${value.len}, 1}'
+	return '(string){(u8*)"${c_escape(value)}", ${value.len}, 1}'
 }
 
 fn (g &FlatGen) debugger_smartcast_vars(node flat.Node) map[string]DebuggerSmartcastVar {
@@ -7377,21 +7377,21 @@ fn (g &FlatGen) specialized_selector_method_call_return_type(node flat.Node, fn_
 		return none
 	}
 	receiver_type := types.unwrap_pointer(g.usable_expr_type(g.a.child(&fn_node, 0)))
-	if ret := g.specialized_receiver_method_call_return_type(node, receiver_type.name(), fn_node.value) {
+	if ret := g.specialized_receiver_method_call_return_type(node, receiver_type.source_type_id(), fn_node.value) {
 		return ret
 	}
 	if receiver_type is types.Alias {
-		return g.specialized_receiver_method_call_return_type(node, receiver_type.base_type.name(),
+		return g.specialized_receiver_method_call_return_type(node, receiver_type.base_type.source_type_id(),
 			fn_node.value)
 	}
 	return none
 }
 
-fn (g &FlatGen) specialized_receiver_method_call_return_type(node flat.Node, receiver_name string, method string) ?types.Type {
-	if receiver_name.len == 0 {
+fn (g &FlatGen) specialized_receiver_method_call_return_type(node flat.Node, receiver_id u32, method string) ?types.Type {
+	if receiver_id == 0 {
 		return none
 	}
-	query := g.receiver_method_query(flat.source_type_id(receiver_name), method)
+	query := g.receiver_method_query(receiver_id, method)
 	if query.has_ret {
 		return query.ret
 	}
@@ -10128,7 +10128,7 @@ fn (g &FlatGen) assign_struct_operator_method(lhs_type &types.Type, op flat.Op) 
 	}
 	if clean is types.Struct
 		&& g.tc.c_type(clean) in ['bool', 'char', 'i8', 'i16', 'i32', 'int', 'i64', 'u8', 'u16',
-			'u32', 'u64', 'f32', 'f64', 'isize', 'usize', 'voidptr'] {
+			'u32', 'u64', 'f32', 'f64', 'isize', 'uint', 'voidptr'] {
 		return none
 	}
 	op_symbol := assign_struct_operator_symbol(op) or { return none }

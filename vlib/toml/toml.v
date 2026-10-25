@@ -458,7 +458,7 @@ fn decode_map_key[K](text string) ?K {
 		for digit in text[start..].bytes() {
 			if digit < `0` || digit > `9` { return none }
 		}
-		$if K is u8 || K is u16 || K is u32 || K is u64 || K is usize {
+		$if K is u8 || K is u16 || K is u32 || K is u64 || K is uint {
 			if text.starts_with('-') { return none }
 			unsigned_text := if text.starts_with('+') { text[1..] } else { text }
 			n := strconv.common_parse_uint(unsigned_text, 10, int(sizeof(K) * 8), true, true) or { return none }

@@ -258,7 +258,7 @@ $if macos {
 	#include <sys/sysctl.h>
 }
 
-fn C.sysctlbyname(name &char, oldp voidptr, oldlenp &usize, newp voidptr, newlen usize) int
+fn C.sysctlbyname(name &char, oldp voidptr, oldlenp &uint, newp voidptr, newlen uint) int
 
 fn C.IsProcessorFeaturePresent(feature u32) int
 
@@ -271,7 +271,7 @@ fn can_run_pmull_test() bool {
 		return cpuinfo.contains('pmull')
 	} $else $if macos {
 		mut value := u32(0)
-		mut size := usize(sizeof(value))
+		mut size := uint(sizeof(value))
 		if C.sysctlbyname(c'hw.optional.arm.FEAT_PMULL', &value, &size, unsafe { nil }, 0) != 0 {
 			return false
 		}

@@ -4608,7 +4608,7 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 			t.make_call_expr_typed(fn_value, [t.make_ident(elem_name)], result_elem_type)
 		}
 	} else if has_bound_method_array {
-		t.make_cast(result_elem_type, t.make_cast(flat.source_type_usize, t.make_ident(elem_name), flat.source_type_usize), result_elem_type)
+		t.make_cast(result_elem_type, t.make_cast(flat.source_type_uint, t.make_ident(elem_name), flat.source_type_uint), result_elem_type)
 	} else if mapped_source_node.kind == .map_init && flat.source_type_shape(result_elem_type).has(.map_type) {
 		t.transform_expr_for_type(mapped_source, result_elem_type)
 	} else if decl_type_is_usable(result_elem_type) && result_elem_type != flat.source_type_void {
@@ -8134,7 +8134,7 @@ fn (t &Transformer) array_default_sort_runtime_helper(elem_type_id u32) ?string 
 	clean := flat.source_type_name(clean_comparison_type_id_4)
 	if clean_comparison_type_id_4 in [flat.source_type_int, flat.source_type_i8, flat.source_type_i16,
 		flat.source_type_i64, flat.source_type_u8, flat.source_type_u16, flat.source_type_u32,
-		flat.source_type_u64, flat.source_type_isize, flat.source_type_usize, flat.source_type_rune,
+		flat.source_type_u64, flat.source_type_isize, flat.source_type_uint, flat.source_type_rune,
 		flat.source_type_char] {
 		return 'v3_array_sort_${clean}'
 	}

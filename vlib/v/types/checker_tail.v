@@ -1042,7 +1042,11 @@ fn (tc &TypeChecker) translated_array_element_types_match(actual &Type, expected
 		|| (element.name() in ['char', 'i8', 'u8'] && pointee.name() in ['char', 'i8', 'u8'])
 }
 
-fn (tc &TypeChecker) assignment_preserves_smartcast(lhs_id flat.NodeId, rhs_id flat.NodeId, rhs_type &Type) bool {
+// assignment_preserves_smartcast reports whether assigning `rhs_id` to `lhs_id`
+// with operator `op` leaves the active narrowing of `lhs_id` in force. A compound
+// assignment (`x += 1`) stores a value of the variant it operated on (see
+// compound_assignment_lvalue_type).
+fn (tc &TypeChecker) assignment_preserves_smartcast(op flat.Op, lhs_id flat.NodeId, rhs_id flat.NodeId, rhs_type &Type) bool {
 	if tc.smartcasts.len == 0 {
 		return false
 	}
@@ -1051,11 +1055,65 @@ fn (tc &TypeChecker) assignment_preserves_smartcast(lhs_id flat.NodeId, rhs_id f
 		return false
 	}
 	smartcast := tc.smartcasts[key] or { return false }
-	if tc.expr_compatible(rhs_id, rhs_type, smartcast)
-		|| tc.pointer_value_compatible(rhs_type, smartcast) {
+	if compound_assignment_infix_op(op) != none
+		|| tc.assigned_value_keeps_narrowing(rhs_id, rhs_type, smartcast) {
 		return true
 	}
 	return tc.assignment_rhs_mutates_same_smartcast_lhs(lhs_id, rhs_id, rhs_type, smartcast)
+}
+
+// assigned_value_keeps_narrowing reports whether storing `rhs_id` of type `rhs_type`
+// in a value narrowed to `narrowed` leaves it narrowed: the value has the narrowed
+// type (`x = 5` in `if mut x is int`), as in V 0.5.2. Any other value may select
+// another variant, so the narrowing ends.
+fn (tc &TypeChecker) assigned_value_keeps_narrowing(rhs_id flat.NodeId, rhs_type &Type, narrowed &Type) bool {
+	return tc.expr_compatible(rhs_id, rhs_type, narrowed)
+		|| tc.pointer_value_compatible(rhs_type, narrowed)
+}
+
+// narrowed_sum_assignment_expected_type is the type the value of `lhs_id = rhs_id`
+// is checked as. A sum type value narrowed to a variant that is assigned a value of
+// that variant stays narrowed (see assignment_preserves_smartcast), so the value is
+// checked, and stored, as the variant: `x = 2` in `if mut x is f64` stores an `f64`.
+// The type recorded for the value then tells the later phases that the narrowing
+// survived the assignment (see assignment_keeps_narrowing).
+fn (tc &TypeChecker) narrowed_sum_assignment_expected_type(op flat.Op, lhs_id flat.NodeId, rhs_id flat.NodeId, rhs_type &Type, expected Type) Type {
+	if op != .assign || tc.smartcasts.len == 0
+		|| unalias_and_unwrap_pointer_type(expected) !is SumType {
+		return expected
+	}
+	key := tc.expr_key(lhs_id)
+	if key.len == 0 {
+		return expected
+	}
+	narrowed := tc.smartcasts[key] or { return expected }
+	if tc.assigned_value_keeps_narrowing(rhs_id, rhs_type, narrowed) {
+		return narrowed
+	}
+	return expected
+}
+
+// assignment_keeps_narrowing reports whether the checked assignment `lhs_id = rhs_id`
+// (operator `op`) leaves `lhs_id`, narrowed to `narrowed`, narrowed, as checking
+// decided without its dynamic smartcast state. A sum type value keeps the narrowing
+// when it is assigned a value of the narrowed variant: that value is recorded with
+// the variant's type (see narrowed_sum_assignment_expected_type). The lexical
+// smartcast queries and the transform use this to end a narrowing exactly where
+// checking ended it.
+pub fn (tc &TypeChecker) assignment_keeps_narrowing(op flat.Op, lhs_id flat.NodeId, rhs_id flat.NodeId, narrowed Type) bool {
+	if compound_assignment_infix_op(op) != none {
+		return true
+	}
+	if op != .assign {
+		return false
+	}
+	lhs_type := tc.expr_type(lhs_id) or { return false }
+	if unalias_and_unwrap_pointer_type(lhs_type) !is SumType {
+		return false
+	}
+	// A literal of a primitive type has no recorded type; its own type is static.
+	rhs_type := tc.expr_type(rhs_id) or { tc.resolve_type(rhs_id) }
+	return tc.assigned_value_keeps_narrowing(rhs_id, rhs_type, &narrowed)
 }
 
 fn (tc &TypeChecker) option_assignment_smartcast_type(lhs_id flat.NodeId, lhs_type Type, rhs_type Type, op flat.Op) ?Type {
@@ -1856,6 +1914,17 @@ fn (tc &TypeChecker) lvalue_root_ident(id flat.NodeId) ?flat.NodeId {
 		return tc.lvalue_root_ident(tc.a.child(&node, 0))
 	}
 	return none
+}
+
+// compound_assignment_lvalue_type is the type a compound assignment (`x += 1`)
+// operates on. A sum type value narrowed by `is` or `match` reads and writes its
+// variant there, as `x++` and `x = x + 1` do, so the operator is checked on the
+// variant. A plain `=` keeps the declared type: it may store another variant.
+fn (tc &TypeChecker) compound_assignment_lvalue_type(lhs_id flat.NodeId, op flat.Op, lhs_type Type) Type {
+	if op == .assign || unalias_and_unwrap_pointer_type(lhs_type) !is SumType {
+		return lhs_type
+	}
+	return tc.smartcast_type(lhs_id) or { lhs_type }
 }
 
 fn (tc &TypeChecker) assignment_expected_type(lhs_id flat.NodeId, lhs_type Type) Type {
@@ -3992,18 +4061,28 @@ fn (tc &TypeChecker) pointer_value_compatible(actual &Type, expected &Type) bool
 		if !pointer_value_base_can_match(actual.base_type) {
 			return false
 		}
+		// Every surviving pointer spells '&' followed by its base spelling.
 		return tc.pointer_base_value_compatible(actual.base_type, expected)
-			|| pointer_value_type_names_match(Type(actual).name(), expected.name())
-			|| bare_type_names_match(actual.base_type.name(), expected.name())
+			|| actual.base_type.source_type_id() == expected.source_type_id()
 	}
-	return pointer_value_type_names_match(actual.name(), expected.name())
+	// Only nominal names can begin with '&' outside the structured Pointer case.
+	match actual {
+		Struct, Alias, Enum, Interface, SumType {
+			if !flat.source_type_shape(actual.name_id).has(.pointer) {
+				return false
+			}
+			name := flat.source_type_name(actual.name_id)
+			return flat.source_type_id(name[1..]) == expected.source_type_id()
+		}
+		else { return false }
+	}
 }
 
 fn (tc &TypeChecker) pointer_base_value_compatible(actual_base &Type, expected &Type) bool {
 	clean_actual := unalias_type(actual_base)
 	clean_expected := unalias_type(expected)
 	if clean_actual is Primitive && clean_expected is Primitive
-		&& clean_actual.name() != clean_expected.name() {
+		&& clean_actual.source_type_id() != clean_expected.source_type_id() {
 		return false
 	}
 	return tc.type_compatible(actual_base, expected)
@@ -4024,18 +4103,6 @@ fn c_pointer_to_voidptr_arg_compatible(actual &Type, expected &Type) bool {
 fn pointer_value_base_can_match(typ &Type) bool {
 	clean := if typ is Alias { *typ.base_type } else { *typ }
 	return clean !is Void && clean !is Unknown && clean !is None
-}
-
-fn pointer_value_type_names_match(actual string, expected string) bool {
-	if !actual.starts_with('&') {
-		return false
-	}
-	clean_actual := actual[1..]
-	return clean_actual == expected
-}
-
-fn bare_type_names_match(actual string, expected string) bool {
-	return actual == expected
 }
 
 fn return_numeric_alias_compatible(actual &Type, expected &Type) bool {
@@ -6447,7 +6514,7 @@ fn legacy_comptime_type_index(name string) ?int {
 		'u16' { 12 }
 		'u32' { 13 }
 		'u64' { 14 }
-		'usize' { 15 }
+		'uint' { 15 }
 		'f32' { 16 }
 		'f64' { 17 }
 		'char' { 18 }
@@ -10974,15 +11041,45 @@ fn (mut tc TypeChecker) specialize_explicit_generic_receiver_call(info CallInfo,
 	for arg_source_id in type_args_ids {
 		concrete_types << tc.parse_type(tc.qualify_resolution_type_text(arg_source_id))
 	}
+	param_texts := tc.fn_param_type_texts.type_ids(info.name) or { []u32{} }
 	mut params := []Type{cap: info.params.len}
-	for param in info.params {
-		params << tc.substitute_generic_type_values(param, concrete_types, generic_params)
+	for i in 0 .. info.params.len {
+		param_text := if param_texts.len == info.params.len {
+			flat.source_type_name(param_texts[i])
+		} else {
+			''
+		}
+		params << tc.substitute_generic_param_type(info.params[i], param_text, concrete_types,
+			generic_params)
 	}
 	return CallInfo{
 		...info
 		params:      params
 		return_type: tc.substitute_generic_type_values(info.return_type, concrete_types, generic_params)
 	}
+}
+
+// substitute_generic_param_type substitutes `generic_params` with `concrete_types` in the
+// open parameter type `open` of a generic fn, declared with the type text `param_text`.
+// A `mut a ?T` parameter (text `&?T`) is stored as its semantic type `&?&T` (see
+// mut_param_semantic_type), which substitutes T=&X to `&?&&X`. Such a parameter is
+// re-derived from its declared `&?T` instead, so that T=&X gives `&?&X`, the type of a
+// `mut a ?&X` parameter, as the instance itself declares it.
+fn (tc &TypeChecker) substitute_generic_param_type(open Type, param_text string, concrete_types []Type, generic_params []string) Type {
+	if open is Pointer && param_text.starts_with('&?') && !param_text.starts_with('&?&') {
+		base := *open.base_type
+		if base is OptionType && base.base_type is Pointer {
+			payload_ref := base.base_type as Pointer
+			declared := Type(Pointer{
+				base_type: new_type_reference(Type(OptionType{
+					base_type: payload_ref.base_type
+				}))
+			})
+			return mut_param_semantic_type(tc.substitute_generic_type_values(declared,
+				concrete_types, generic_params))
+		}
+	}
+	return tc.substitute_generic_type_values(open, concrete_types, generic_params)
 }
 
 // explicit_receiver_type_args returns the explicit type arguments `type_args` of
@@ -16852,7 +16949,14 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		mut_container_mismatch := ((arg_node.is_mut && param_is_mut)
 			|| call_param_is_shared(info, param_idx))
 			&& tc.mut_arg_container_layouts_differ(actual, expected)
-		if pointer_depth_mismatch || pointer_array_mismatch || mut_container_mismatch {
+		// A number behind a pointer is read in place, never converted, also when the
+		// argument is referenced implicitly or passed as `mut`: neither a `&u8` nor a
+		// `u8` can stand for a `&u64` (pointee_number_storage_differs).
+		pointee_number_mismatch := expected_pointer_depth > 0 && !info.name.starts_with('C.')
+			&& tc.pointee_number_storage_checked()
+			&& pointee_number_storage_differs(actual_pointer_base, expected_pointer_base)
+		if pointer_depth_mismatch || pointer_array_mismatch || mut_container_mismatch
+			|| pointee_number_mismatch {
 			actual_name := tc.diagnostic_expr_type_name(arg_id, actual)
 			actual_display := if mut_arg_node.is_mut && param_is_mut && actual !is Pointer {
 				'&${actual_name}'
@@ -18511,6 +18615,12 @@ fn (tc &TypeChecker) c_call_arg_compatible(name string, arg_id flat.NodeId, expe
 		if c_char_pointer_types_compatible(actual, expected) {
 			return true
 		}
+		// C headers spell the numbers behind a pointer in their own ways, so C calls keep
+		// accepting the number pointees that converted before their storage was checked
+		// (pointee_number_storage_checked).
+		if c_number_pointer_types_compatible(actual, expected) {
+			return true
+		}
 		base := unalias_type(clean.base_type)
 		if base is Char || (base is Primitive && base.name() == 'u8') {
 			return tc.c_literal_arg(arg_id)
@@ -18532,6 +18642,24 @@ fn c_char_pointer_types_compatible(actual Type, expected Type) bool {
 	expected_depth, expected_base := type_pointer_depth_and_base(expected)
 	return actual_depth > 0 && actual_depth == expected_depth && is_c_char_type(actual_base)
 		&& is_c_char_type(expected_base)
+}
+
+// c_number_pointer_types_compatible reports whether `actual` and `expected` are
+// pointers of the same depth to numbers that `type_compatible` converts, whatever
+// their storage: an integer to an integer or a float, a float to a float.
+// `char` is not one of them; c_char_pointer_types_compatible handles it.
+fn c_number_pointer_types_compatible(actual Type, expected Type) bool {
+	actual_depth, actual_base := type_pointer_depth_and_base(actual)
+	expected_depth, expected_base := type_pointer_depth_and_base(expected)
+	if actual_depth == 0 || actual_depth != expected_depth {
+		return false
+	}
+	actual_number := unalias_type(actual_base)
+	expected_number := unalias_type(expected_base)
+	if actual_number.is_integer() {
+		return expected_number.is_integer() || expected_number.is_float()
+	}
+	return actual_number.is_float() && expected_number.is_float()
 }
 
 fn is_c_char_type(typ Type) bool {
@@ -19072,7 +19200,7 @@ fn (mut tc TypeChecker) specialize_plain_generic_call_info(node flat.Node, info 
 			// open parsed type, so retain the textual reconstruction for them.
 			sub_params << tc.parse_fn_signature_type(info.name, flat.source_type_id(subst_generic_signature_param_text(param_text, signature_args, signature_params)))
 		} else if i < info.params.len {
-			sub_params << tc.substitute_generic_type_values(info.params[i], concrete_types, generic_params)
+			sub_params << tc.substitute_generic_param_type(info.params[i], param_text, concrete_types, generic_params)
 		} else {
 			sub_params << tc.parse_fn_signature_type(info.name, flat.source_type_id(subst_generic_signature_param_text(param_text, concrete_args, generic_params)))
 		}
@@ -19305,8 +19433,7 @@ fn generic_variadic_elem_param_text(param_id u32) u32 {
 }
 
 fn (tc &TypeChecker) parse_fn_signature_type(name string, typ_id u32) Type {
-	typ := flat.source_type_name(typ_id)
-	if context_independent_type_text(typ) {
+	if context_independent_type(typ_id) {
 		return *tc.parse_type(typ_id)
 	}
 	decl_file := tc.fn_type_files[name] or { return *tc.parse_type(typ_id) }
@@ -21436,9 +21563,9 @@ fn valid_string_data(s string) bool {
 	if s == '' {
 		return true
 	}
-	// Go through usize: C sign-extends a 32-bit pointer converted to a wider
+	// Go through uint: C sign-extends a 32-bit pointer converted to a wider
 	// integer, which put every address above 2 GiB out of range on 32-bit hosts.
-	ptr := unsafe { u64(usize(voidptr(s.str))) }
+	ptr := unsafe { u64(uint(voidptr(s.str))) }
 	return ptr >= 4096 && ptr < 281474976710656 && s.len < 1048576
 }
 

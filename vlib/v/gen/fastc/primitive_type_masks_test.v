@@ -62,26 +62,26 @@ fn test_fastc_primitive_masks_leave_caller_identity_arrays_unchanged() {
 	assert !mask.contains(4)
 }
 
-fn test_fastc_primitive_classifiers_match_the_original_exact_source_id_sets() {
+fn test_fastc_primitive_classifiers_match_the_supported_source_id_sets() {
 	scalar := [flat.source_type_bool, flat.source_type_char, flat.source_type_f32,
 		flat.source_type_f64, flat.source_type_i8, flat.source_type_i16, flat.source_type_i32,
 		flat.source_type_i64, flat.source_type_int, flat.source_type_isize, flat.source_type_rune,
 		flat.source_type_string, flat.source_type_u8, flat.source_type_u16, flat.source_type_u32,
-		flat.source_type_u64, flat.source_type_usize]
+		flat.source_type_u64, flat.source_type_uint, flat.source_type_usize]
 	comparison := [flat.source_type_bool, flat.source_type_int, flat.source_type_i8,
 		flat.source_type_i16, flat.source_type_i32, flat.source_type_i64, flat.source_type_isize,
 		flat.source_type_u8, flat.source_type_u16, flat.source_type_u32, flat.source_type_u64,
-		flat.source_type_usize, flat.source_type_f32, flat.source_type_f64]
+		flat.source_type_uint, flat.source_type_usize, flat.source_type_f32, flat.source_type_f64]
 	arithmetic := [flat.source_type_int, flat.source_type_i8, flat.source_type_i16,
 		flat.source_type_i32, flat.source_type_i64, flat.source_type_isize, flat.source_type_u8,
-		flat.source_type_u16, flat.source_type_u32, flat.source_type_u64, flat.source_type_usize,
-		flat.source_type_f32, flat.source_type_f64]
+		flat.source_type_u16, flat.source_type_u32, flat.source_type_u64, flat.source_type_uint,
+		flat.source_type_usize, flat.source_type_f32, flat.source_type_f64]
 	signed := [flat.source_type_char, flat.source_type_i8, flat.source_type_i16, flat.source_type_i32,
 		flat.source_type_i64, flat.source_type_int, flat.source_type_isize, flat.source_type_rune]
 	unsigned := [flat.source_type_u8, flat.source_type_u16, flat.source_type_u32, flat.source_type_u64,
-		fastc_type_unsigned_int, flat.source_type_usize]
+		fastc_type_unsigned_int, flat.source_type_uint, flat.source_type_usize]
 	wide := [flat.source_type_u32, flat.source_type_u64, fastc_type_unsigned_int,
-		flat.source_type_usize]
+		flat.source_type_uint, flat.source_type_usize]
 	mut integer := signed.clone()
 	integer << unsigned
 	for item in [

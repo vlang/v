@@ -139,9 +139,9 @@ fn main() {
 	index := 1
 	minimum := [u32(0x80), 0x800, 0x10000][index]
 	assert minimum == u32(0x800)
-	address := usize(0x12345)
+	address := uint(0x12345)
 	unsafe {
-		assert usize(voidptr(address)) == address
+		assert uint(voidptr(address)) == address
 	}
 	assert "${u8(0):02x}" == "00"
 	assert "${u8(255):02x}" == "ff"

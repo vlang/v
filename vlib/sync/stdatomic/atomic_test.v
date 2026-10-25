@@ -235,28 +235,28 @@ fn test_atomic_vals() {
 	assert v_int.compare_and_swap(new_int, -40001) == true
 	assert v_int.load() == -40001
 
-	mut v_isize := stdatomic.new_atomic(isize(-55))
+	mut v_isize := stdatomic.new_atomic(int(-55))
 	v_isize.store(-56)
 	assert v_isize.load() == -56
 	assert v_isize.add(10) == -56
 	assert v_isize.load() == -46
 	assert v_isize.sub(7) == -46
 	assert v_isize.load() == -53
-	mut new_isize := isize(-50000)
+	mut new_isize := int(-50000)
 	assert v_isize.swap(new_isize) == -53
 	assert v_isize.swap(-53) == new_isize
 	assert v_isize.compare_and_swap(-53, new_isize) == true
 	assert v_isize.compare_and_swap(new_isize, -50001) == true
 	assert v_isize.load() == -50001
 
-	mut v_usize := stdatomic.new_atomic(usize(55))
+	mut v_usize := stdatomic.new_atomic(uint(55))
 	v_usize.store(56)
 	assert v_usize.load() == 56
 	assert v_usize.add(10) == 56
 	assert v_usize.load() == 66
 	assert v_usize.sub(7) == 66
 	assert v_usize.load() == 59
-	mut new_usize := usize(50000)
+	mut new_usize := uint(50000)
 	assert v_usize.swap(new_usize) == 59
 	assert v_usize.swap(59) == new_usize
 	assert v_usize.compare_and_swap(59, new_usize) == true
@@ -279,4 +279,16 @@ fn test_atomic_vals() {
 	// just for compile
 	C.atomic_thread_fence(C.memory_order_relaxed)
 	C.cpu_relax()
+}
+
+fn test_legacy_signed_atomic_operations() {
+	mut value := stdatomic.new_atomic(isize(-42))
+	value.store(-50)
+	assert value.load() == -50
+	assert value.add(8) == -50
+	assert value.sub(2) == -42
+	assert value.swap(-100) == -44
+	assert !value.compare_and_swap(-42, -1)
+	assert value.compare_and_swap(-100, -1)
+	assert value.load() == -1
 }

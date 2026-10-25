@@ -38,8 +38,8 @@ fn test_voidptr_variadic_storage_widens_integers_narrower_than_the_target_int() 
 			expected := if bits == 64 { 'int' } else { typ }
 			assert voidptr_variadic_test_storage(mut t, typ) == expected, '${bits}: ${typ}'
 		}
-		for typ in ['int', 'i64', 'u64', 'isize', 'usize', 'bool', 'f64', 'string', 'Whole', 'Wide',
-			'dep.Tiny', 'Point'] {
+		for typ in ['int', 'i64', 'u64', 'uint', 'bool', 'f64', 'string', 'Whole', 'Wide', 'dep.Tiny',
+			'Point'] {
 			assert voidptr_variadic_test_storage(mut t, typ) == typ, '${bits}: ${typ}'
 		}
 		assert voidptr_variadic_test_storage(mut t, 'f32') == 'f64'

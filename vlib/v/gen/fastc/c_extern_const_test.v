@@ -15,7 +15,7 @@ fn test_fastc_explicit_pthread_helpers_keep_the_native_header_ownership() {
 @[c_extern]
 fn C.v3_pthread_zero() C.pthread_t
 @[c_extern]
-fn C.v3_pthread_create(worker &C.pthread_t, stack_size usize, start_routine fn (voidptr) voidptr, arg voidptr) int
+fn C.v3_pthread_create(worker &C.pthread_t, stack_size uint, start_routine fn (voidptr) voidptr, arg voidptr) int
 @[c_extern]
 fn C.v3_pthread_is_current(worker C.pthread_t) int
 @[c_extern]

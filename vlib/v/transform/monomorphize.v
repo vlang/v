@@ -4770,7 +4770,7 @@ fn grow_node_context_cache(mut cache []u16, size int, capacity int) {
 	// Extend in place instead of retaining a temporary zero-filled array.
 	unsafe {
 		cache.grow_len(size - old_len)
-		vmemset(&cache[old_len], 0, isize(size - old_len) * isize(sizeof(u16)))
+		vmemset(&cache[old_len], 0, int(size - old_len) * int(sizeof(u16)))
 	}
 }
 
@@ -6214,7 +6214,7 @@ fn (mut t Transformer) refresh_decl_assign_types_after_generic_rewrite() bool {
 		if node.kind == .call && node.children_count > 0 && !isnil(t.tc) {
 			callee := t.a.child_node(&node, 0)
 			if callee.kind == .ident && callee.value.len > 0 {
-				slot := int((usize(callee.value.str) >> 3) & 4095)
+				slot := int((uint(callee.value.str) >> 3) & 4095)
 				if plain_callee_ptrs[slot] == voidptr(callee.value.str)
 					&& plain_callee_lens[slot] == callee.value.len {
 					continue
@@ -11776,7 +11776,17 @@ fn (mut t Transformer) generic_const_string_value(id flat.NodeId, args_ids []u32
 }
 
 fn (mut t Transformer) clone_generic_fn_node(node flat.Node, args_ids []u32) flat.NodeId {
-	return t.clone_generic_node_from(node, args_ids, true, u32(0))
+	return t.clone_generic_root(node, args_ids)
+}
+
+// clone_generic_root clones a generic function root with no narrowing from the
+// body that requested the instance.
+fn (mut t Transformer) clone_generic_root(node flat.Node, args_ids []u32) flat.NodeId {
+	outer_smartcasts := t.generic_typeof_smartcasts
+	t.generic_typeof_smartcasts = []SmartcastContext{}
+	cloned := t.clone_generic_node_from(node, args_ids, true, u32(0))
+	t.generic_typeof_smartcasts = outer_smartcasts
+	return cloned
 }
 
 // clone_generic_fn_header clones the generic function `node` without its body:
@@ -11794,7 +11804,7 @@ fn (mut t Transformer) clone_generic_fn_header(node flat.Node, args_ids []u32) f
 		children_start: start
 		children_count: flat.child_count(t.a.children.len - start)
 	}
-	return t.clone_generic_node_from(header, args_ids, true, u32(0))
+	return t.clone_generic_root(header, args_ids)
 }
 
 @[direct_array_access]
@@ -12216,6 +12226,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args_ids []u32, i
 	}
 	for i in 0 .. node.children_count {
 		mut match_smartcasts := 0
+		typeof_smartcasts_len := t.generic_typeof_smartcasts.len
 		// Receiver calls are retargeted while the generic tree is cloned. Preserve
 		// the branch narrowing here so they are not bound to the enclosing sum type.
 		if node.kind == .match_stmt && i > 0 {
@@ -12225,8 +12236,16 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args_ids []u32, i
 				variant := t.resolve_substituted_type_text(t.subst_type(sc.variant_name, args_ids))
 				sum_type := t.resolve_substituted_type_text(t.subst_type(sc.sum_type_name, args_ids))
 				t.push_smartcast(sc.expr_name, variant, sum_type)
+				t.generic_typeof_smartcasts << SmartcastContext{
+					type_texts:    t.var_type_texts
+					expr_name:     sc.expr_name
+					variant_name:  variant
+					sum_type_name: sum_type
+				}
 				match_smartcasts++
 			}
+		} else if node.kind == .if_expr && (i == 1 || i == 2) {
+			t.collect_generic_typeof_smartcasts(t.a.child(&node, 0), args_ids, i == 2)
 		}
 		child_context_source_id := t.generic_clone_child_return_context(node, i, return_context_id, argument_types_source_ids.clone())
 
@@ -12235,6 +12254,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args_ids []u32, i
 		for _ in 0 .. match_smartcasts {
 			t.pop_smartcast()
 		}
+		t.generic_typeof_smartcasts.trim(typeof_smartcasts_len)
 		t.generic_clone_children[scratch_start + i] = child
 		if node.kind == .if_expr && i == 0 {
 			t.unwrap_cloned_if_guard_binding(child)
@@ -12898,7 +12918,157 @@ fn (mut t Transformer) generic_comptime_type_expr(id flat.NodeId, args_ids []u32
 	}
 }
 
+// collect_generic_typeof_smartcasts records, for the clone-time `typeof` fold, the
+// narrowings an if condition gives its then branch (or, with `else_branch`, its else
+// branch): `x is T`, `x != none` and their negations. The types are the instance's.
+fn (mut t Transformer) collect_generic_typeof_smartcasts(cond_id flat.NodeId, args_ids []u32, else_branch bool) {
+	if int(cond_id) < 0 || int(cond_id) >= t.a.nodes.len {
+		return
+	}
+	cond := t.a.nodes[int(cond_id)]
+	if cond.kind == .paren && cond.children_count > 0 {
+		t.collect_generic_typeof_smartcasts(t.a.child(&cond, 0), args_ids, else_branch)
+		return
+	}
+	if else_branch {
+		if cond.kind == .prefix && cond.op == .not && cond.children_count > 0 {
+			inner_id := t.a.child(&cond, 0)
+			if t.a.nodes[int(inner_id)].kind == .is_expr {
+				t.record_generic_typeof_is_smartcast(inner_id, args_ids, false)
+			}
+		} else if cond.kind == .infix && cond.op == .eq && cond.children_count >= 2 {
+			t.record_generic_typeof_none_smartcast(cond, args_ids)
+		}
+		return
+	}
+	if cond.kind == .is_expr {
+		t.record_generic_typeof_is_smartcast(cond_id, args_ids, true)
+	} else if cond.kind == .infix && cond.op == .ne && cond.children_count >= 2 {
+		t.record_generic_typeof_none_smartcast(cond, args_ids)
+	} else if cond.kind == .infix && cond.op == .logical_and && cond.children_count >= 2 {
+		t.collect_generic_typeof_smartcasts(t.a.child(&cond, 0), args_ids, false)
+		t.collect_generic_typeof_smartcasts(t.a.child(&cond, 1), args_ids, false)
+	}
+}
+
+// generic_typeof_operand_type returns the instance type of a narrowed operand.
+fn (t &Transformer) generic_typeof_operand_type(id flat.NodeId, args_ids []u32) u32 {
+	if typ := t.generic_comptime_base_type(id, args_ids) {
+		return typ
+	}
+	original := t.original_expr_type(id)
+	if original == 0 {
+		return 0
+	}
+	return t.resolve_substituted_type_text(t.subst_type(original, args_ids))
+}
+
+// record_generic_typeof_is_smartcast records the narrowing of `x is T`; an interface
+// subject narrows only where `allow_interface` is set, as for non-generic code.
+fn (mut t Transformer) record_generic_typeof_is_smartcast(is_id flat.NodeId, args_ids []u32, allow_interface bool) {
+	is_node := t.a.nodes[int(is_id)]
+	if is_node.children_count == 0 || is_node.value.len == 0 {
+		return
+	}
+	expr_id := t.a.child(&is_node, 0)
+	ek := t.expr_key(expr_id)
+	if ek.len == 0 {
+		return
+	}
+	expr_type := t.generic_typeof_operand_type(expr_id, args_ids)
+	if expr_type == 0 {
+		return
+	}
+	variant := t.resolve_substituted_type_text(t.subst_type(flat.source_type_id(is_node.value), args_ids))
+	mut sum_type := t.sum_type_for_is_expr(expr_type, variant)
+	if sum_type == 0 && allow_interface && t.is_interface_type_name(expr_type) {
+		sum_type = expr_type
+	}
+	if sum_type == 0 {
+		return
+	}
+	t.generic_typeof_smartcasts << SmartcastContext{
+		type_texts:    t.var_type_texts
+		expr_name:     ek
+		variant_name:  variant
+		sum_type_name: sum_type
+	}
+}
+
+// record_generic_typeof_none_smartcast records the option unwrap of `x != none`
+// (or `x == none` for an else branch).
+fn (mut t Transformer) record_generic_typeof_none_smartcast(cond flat.Node, args_ids []u32) {
+	lhs_id := t.a.child(&cond, 0)
+	rhs_id := t.a.child(&cond, 1)
+	mut opt_id := flat.empty_node
+	if t.a.nodes[int(rhs_id)].kind in [.none_expr, .nil_literal] {
+		opt_id = lhs_id
+	} else if t.a.nodes[int(lhs_id)].kind in [.none_expr, .nil_literal] {
+		opt_id = rhs_id
+	}
+	if int(opt_id) < 0 {
+		return
+	}
+	ek := t.expr_key(opt_id)
+	if ek.len == 0 {
+		return
+	}
+	mut expr_type := t.generic_typeof_operand_type(opt_id, args_ids)
+	if !t.is_optional_type_name(expr_type) && flat.source_type_name(expr_type).starts_with('&') {
+		// a `mut x ?T` parameter is stored indirectly
+		expr_type = flat.source_type_id(flat.source_type_name(expr_type)[1..])
+	}
+	if !t.is_optional_type_name(expr_type) {
+		return
+	}
+	base := t.optional_base_type(expr_type)
+	if base == 0 || base == flat.source_type_void {
+		return
+	}
+	t.generic_typeof_smartcasts << SmartcastContext{
+		type_texts:    t.var_type_texts
+		expr_name:     ek
+		variant_name:  base
+		sum_type_name: flat.source_type_id(option_unwrap_marker)
+	}
+}
+
+// generic_typeof_smartcast returns the narrowed type `typeof(x)` observes inside a
+// generic body cloned for an instance, mapped like the non-generic `typeof` fold.
+fn (t &Transformer) generic_typeof_smartcast(node flat.Node) ?u32 {
+	if t.generic_typeof_smartcasts.len == 0 || node.value.len > 0 || node.children_count == 0 {
+		return none
+	}
+	child_id := t.a.child(&node, 0)
+	key := t.expr_key(child_id)
+	if key.len == 0 {
+		return none
+	}
+	for i := t.generic_typeof_smartcasts.len - 1; i >= 0; i-- {
+		sc := t.generic_typeof_smartcasts[i]
+		if sc.expr_name != key {
+			continue
+		}
+		if sc.sum_type_name_text() == option_unwrap_marker {
+			child := t.a.nodes[int(child_id)]
+			if child.kind == .ident && t.mut_param_values[child.value]
+				&& !flat.source_type_shape(sc.variant_name).has(.pointer) {
+				return flat.source_type_id('&${flat.source_type_name(sc.variant_name)}')
+			}
+			return sc.variant_name
+		}
+		if t.is_interface_type_name(sc.sum_type_name) {
+			return flat.source_type_id('&${flat.source_type_name(t.interface_variant_type(sc.variant_name))}')
+		}
+		return t.resolve_variant(sc.sum_type_name, sc.variant_name)
+	}
+	return none
+}
+
 fn (mut t Transformer) generic_comptime_typeof_target(node flat.Node, args_ids []u32) ?u32 {
+	if narrowed := t.generic_typeof_smartcast(node) {
+		return narrowed
+	}
 	if typ := generic_type_name_from_marker(node.value) {
 		idx := t.active_generic_param_index(typ)
 		if idx < args_ids.len {
@@ -12938,6 +13108,9 @@ fn (mut t Transformer) generic_comptime_typeof_target(node flat.Node, args_ids [
 // generic_comptime_typeof_display_name retains the writing file's spelling for
 // a composite type expression, while a direct parameter keeps its caller's name.
 fn (t &Transformer) generic_comptime_typeof_display_name(node flat.Node, args_ids []u32, reflected string) string {
+	if _ := t.generic_typeof_smartcast(node) {
+		return generic_type_name_display(reflected)
+	}
 	if node.value.len > 0 && !node.value.starts_with(generic_type_name_marker_prefix)
 		&& node.value !in t.active_generic_params {
 		return generic_type_name_display(flat.source_type_name(t.subst_type(flat.source_type_id(node.value), args_ids)))

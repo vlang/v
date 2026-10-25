@@ -1694,7 +1694,7 @@ fn (t &Transformer) map_key_backing_type(key_type_id u32) ?u32 {
 		}
 		if alias_target != u32(0) {
 			base := trimmed_transform_text(flat.source_type_name(t.normalize_type_alias(alias_target)))
-			if base in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'u16', 'u32',
+			if base in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'uint', 'u8', 'u16', 'u32',
 				'u64', 'rune', 'char', 'string'] {
 				return flat.source_type_id(base)
 			}
@@ -1757,7 +1757,7 @@ fn map_callback_names(key_type string) (string, string, string, string) {
 		size_suffix = '1'
 	} else if key_type in ['u16', 'i16'] {
 		size_suffix = '2'
-	} else if key_type in ['int', 'isize', 'usize', 'uint', 'voidptr', 'charptr', 'byteptr']
+	} else if key_type in ['int', 'isize', 'uint', 'voidptr', 'charptr', 'byteptr']
 		|| key_type.starts_with('&') {
 		// Match the target's key storage, not the host or a fixed 32-bit int.
 		// Portable C (`-os cross`) defines the `_w` callbacks as the ones for the

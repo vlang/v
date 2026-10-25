@@ -16,8 +16,8 @@ module fasthttp
 #define v_fasthttp_shutdown(s, how) shutdown((s), (how))
 
 type C.DWORD = u32
-type C.ULONG_PTR = usize
-type C.SOCKET = usize
+type C.ULONG_PTR = uint
+type C.SOCKET = uint
 
 const iocp_invalid_socket = C.SOCKET(C.INVALID_SOCKET)
 
@@ -36,8 +36,8 @@ mut:
 @[typedef]
 struct C.OVERLAPPED {
 mut:
-	Internal     usize
-	InternalHigh usize
+	Internal     uint
+	InternalHigh uint
 	Offset       u32
 	OffsetHigh   u32
 	hEvent       voidptr

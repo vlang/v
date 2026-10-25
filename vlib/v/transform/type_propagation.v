@@ -188,17 +188,7 @@ fn map_value_starts_with_fixed_array_bytes(typ string) bool {
 }
 
 fn decl_type_is_usable(typ_id u32) bool {
-	typ := flat.source_type_name(typ_id)
-	if typ_id == u32(0) || typ in ['unknown', 'array', 'map', 'struct'] || typ.contains('unknown') {
-		return false
-	}
-	if flat.source_type_shape(typ_id).has(.typeof_expr) {
-		return false
-	}
-	// `replace` copies the text even when it holds no space.
-	clean := if typ.contains_u8(` `) { typ.replace(' ', '') } else { typ }
-	return clean !in ['Option', '__v_option', 'Result'] && !clean.starts_with('Option_')
-		&& !clean.starts_with('__v_option_') && !clean.starts_with('Result_')
+	return typ_id != 0 && !flat.source_type_shape(typ_id).has(.unusable_decl)
 }
 
 fn (t &Transformer) checker_expr_type_name(id flat.NodeId) ?u32 {
@@ -1792,7 +1782,7 @@ fn is_plain_builtin_alias_type_bytes(typ string) bool {
 	}
 	return match typ {
 		'bool', 'string', 'void', 'int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32',
-		'f64', 'rune', 'isize', 'usize', 'voidptr', 'byteptr', 'charptr' {
+		'f64', 'rune', 'isize', 'uint', 'voidptr', 'byteptr', 'charptr' {
 			true
 		}
 		else {

@@ -9,7 +9,7 @@ fn test_prealloc_scope_allocated_size_tracks_multiple_blocks() {
 		first_size := unsafe { prealloc_scope_allocated_size(scope) }
 		second := []u8{len: 512 * 1024}
 		second_size := unsafe { prealloc_scope_allocated_size(scope) }
-		assert initial >= usize(prealloc_scope_block_size)
+		assert initial >= uint(prealloc_scope_block_size)
 		assert first_size > initial
 		assert second_size > first_size
 		assert unsafe { prealloc_scope_owns(scope, first.data) }
@@ -21,12 +21,12 @@ fn test_prealloc_scope_allocated_size_tracks_multiple_blocks() {
 }
 
 fn test_prealloc_scope_allocated_size_saturates_overflow() {
-	mut ranges := [VPreallocRange{ start: 1, stop: ~usize(0) }, VPreallocRange{ start: 5, stop: 6 }]
+	mut ranges := [VPreallocRange{ start: 1, stop: ~uint(0) }, VPreallocRange{ start: 5, stop: 6 }]
 	scope := VPreallocScope{
 		ranges:     unsafe { &ranges[0] }
 		ranges_len: ranges.len
 	}
-	assert unsafe { prealloc_scope_allocated_size(&scope) } == ~usize(0)
+	assert unsafe { prealloc_scope_allocated_size(&scope) } == ~uint(0)
 	ranges[1].stop = 7
-	assert unsafe { prealloc_scope_allocated_size(&scope) } == ~usize(0)
+	assert unsafe { prealloc_scope_allocated_size(&scope) } == ~uint(0)
 }

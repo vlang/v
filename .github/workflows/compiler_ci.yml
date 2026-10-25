@@ -45,11 +45,13 @@ jobs:
       - name: Check pkg-config flag query selection
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: ./v -new-compiler vlib/v/pref/pkgconfig_test.v
-      - name: Install Objective-C compiler
+      # test_all.vsh compiles and smoke-runs the GUI examples (2048, tetris) under xvfb-run, so
+      # the X11/GL development headers and libraries that gg and sokol link against are needed.
+      - name: Install Objective-C compiler and GUI libraries
         run: |
           .github/workflows/disable_azure_mirror.sh
           ./v retry -- sudo apt update
-          ./v retry -- sudo apt install --quiet -y gobjc
+          ./v retry -- sudo apt install --quiet -y gobjc libobjc-14-dev libx11-dev libxi-dev libxcursor-dev libxrandr-dev libgl-dev libegl-dev libgl1-mesa-dri
       - name: Test compiler
         run: ./v run vlib/v/test_all.vsh --skip-units
 
@@ -75,6 +77,6 @@ jobs:
         run: |
           .github/workflows/disable_azure_mirror.sh
           ./v retry -- sudo apt update
-          ./v retry -- sudo apt install --quiet -y gobjc
+          ./v retry -- sudo apt install --quiet -y gobjc libobjc-14-dev
       - name: Test compiler
         run: ./v run vlib/v/test_all.vsh --units-only --shard ${{ matrix.shard }}/${{ strategy.job-total }}
