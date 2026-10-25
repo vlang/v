@@ -2539,12 +2539,15 @@ fn (tc &TypeChecker) match_branch_tail_diagnostic_type(subject_key string, subje
 }
 
 fn (tc &TypeChecker) type_name_is_direct_sum_variant(actual &Type, expected SumType) bool {
-	actual_name := actual.name()
+	actual_id := actual.source_type_id()
 	base := flat.source_type_name(tc.sum_base_name(expected.source_type_id()))
-	for variant_source_id in tc.sum_types.type_ids(base) or { []u32{} } {
-		variant := flat.source_type_name(variant_source_id)
-
-		if actual_name == variant || short_type_name(actual_name) == short_type_name(variant) {
+	variants := tc.sum_types.type_ids(base) or { []u32{} }
+	if actual_id in variants {
+		return true
+	}
+	actual_short := short_type_name(flat.source_type_name(actual_id))
+	for variant_source_id in variants {
+		if actual_short == short_type_name(flat.source_type_name(variant_source_id)) {
 			return true
 		}
 	}

@@ -18055,7 +18055,7 @@ fn (mut g FlatGen) c_extern_interop_type_name(t types.Type) ?string {
 		return base + '*'
 	}
 	if t is types.Alias {
-		if t.name() == 'C.ptrdiff_t' {
+		if t.source_type_id() == flat.source_type_id('C.ptrdiff_t') {
 			return 'ptrdiff_t'
 		}
 		// A `type Cb = fn (int)` alias over a function type must still keep C `int`

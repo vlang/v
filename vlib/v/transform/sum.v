@@ -1055,7 +1055,7 @@ fn (t &Transformer) specialized_is_pattern_known(pattern_id u32) bool {
 		clean := trimmed_transform_text(candidate)
 		if clean.starts_with('[]') || clean.starts_with('map[') || clean.starts_with('[')
 			|| clean.starts_with('fn ') || clean.starts_with('fn(') {
-			if t.tc.parse_type(flat.source_type_id(clean)).name() != 'unknown' {
+			if t.tc.parse_type(flat.source_type_id(clean)).source_type_id() != flat.source_type_unknown {
 				return true
 			}
 		}
