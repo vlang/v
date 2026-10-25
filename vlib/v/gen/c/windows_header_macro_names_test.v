@@ -95,8 +95,10 @@ fn staging(seed int) int {
 fn main() { _ := ordinary(7); _ := staging(7) }
 ')!
 	c_source := os.join_path(root, 'generated.c')
+	// Pin the arch: on amd64 hosts the driver replaces `-cc tcc` with MinGW gcc for Windows targets,
+	// which never takes the TinyCC alloca path. No MinGW exists for arm64, so tcc is kept.
 	generated_result := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', '-no-retry-compilation',
-		'-os', 'windows', '-cc', 'tcc', '-gc', 'none', '-o', c_source, source])
+		'-os', 'windows', '-arch', 'arm64', '-cc', 'tcc', '-gc', 'none', '-o', c_source, source])
 	assert generated_result.exit_code == 0, generated_result.output
 	generated := os.read_file(c_source)!
 	mut bodies := []string{}
