@@ -51,7 +51,7 @@ fn test_match_variant_clones_remain_independent_across_storage_growth() {
 	assert a.nodes.len == node_count
 	assert a.children.len == child_count
 	assert a.node(leaf).value == 'Last'
-	assert a.node(leaf).typ == flat.source_type_usize
+	assert a.node(leaf).typ == flat.source_type_uint
 	first_branch := a.child_node(a.node(first), 0)
 	second_branch := a.child_node(a.node(second), 0)
 	assert a.child_node(first_branch, 0).value == 'First'
