@@ -29,6 +29,15 @@ def routine(name: str) -> str:
 
 
 class BootstrapConfigurationTests(unittest.TestCase):
+    def test_bootstrap_prepares_a_temporary_uint_compatible_snapshot(self):
+        build = routine("build")
+        self.assertIn('vc_compat_uint.ps1" -Source "%V_C_FILE%"', build)
+        self.assertIn('if !ERRORLEVEL! NEQ 0 goto :error', build)
+        self.assertLess(build.index("vc_compat_uint.ps1"), build.index("echo Building V..."))
+        self.assertIn('set "V_C_FILE=%vc_dir%\\v_win_compat.c"', build)
+        for name in ("success", "error"):
+            self.assertIn('call :try_delete "%vc_dir%\\v_win_compat.c"', routine(name))
+
     def test_all_portable_bootstraps_select_v1(self):
         self.assertIn(
             "set VC_BOOTSTRAP_DEFINE=-DCUSTOM_DEFINE_v1_fallback\n", SOURCE

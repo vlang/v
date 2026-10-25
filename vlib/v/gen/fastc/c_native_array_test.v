@@ -20,7 +20,7 @@ fn test_fastc_tagged_c_array_element_types() {
 struct C.iovec {
 mut:
 	iov_base voidptr
-	iov_len usize
+	iov_len uint
 }
 fn main() {
 	mut values := []C.iovec{cap: 2}

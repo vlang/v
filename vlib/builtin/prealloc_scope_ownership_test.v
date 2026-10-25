@@ -76,10 +76,10 @@ fn test_prealloc_refills_preserve_aligned_allocations() {
 		mut sizes := []int{cap: 64}
 		for i in 0 .. 64 {
 			size := 16_385 + i * 19
-			alignment := isize(16 << (i % 5))
+			alignment := int(16 << (i % 5))
 			source := []u8{len: size, init: u8(i)}
-			ptr := unsafe { &u8(memdup_align(source.data, isize(size), alignment)) }
-			assert usize(ptr) % usize(alignment) == 0
+			ptr := unsafe { &u8(memdup_align(source.data, int(size), alignment)) }
+			assert uint(ptr) % uint(alignment) == 0
 			assert unsafe { prealloc_scope_owns(scope, ptr) }
 			allocations << ptr
 			sizes << size

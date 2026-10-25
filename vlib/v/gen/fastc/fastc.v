@@ -1182,8 +1182,10 @@ pub struct GenerationResult {
 pub:
 	c_pieces     []string
 	source_paths []string
-	uses_threads bool
-	c_flags      []string
+	// Only these files need the frontend pass that locates deprecated type spellings.
+	deprecated_integer_paths []string
+	uses_threads             bool
+	c_flags                  []string
 	// units describes how c_pieces split into translation units that the
 	// drivers can compile in parallel (see fastc_write_c_units).
 	units FastcUnitLayout
@@ -1727,8 +1729,13 @@ pub fn generate_files_with_source_paths(paths []string, prefs &pref.Preferences)
 	sources, module_aliases := fastc_resolve_source_files_deferring_memo(entries, &scoped_prefs, mut pending_memo_store)!
 	timer.mark('resolve')
 	mut source_paths := []string{cap: sources.len}
+	mut deprecated_integer_paths := []string{}
 	for source_file in sources {
 		source_paths << source_file.path
+		if source_file.header.module_name != 'builtin'
+			&& (source_file.source.contains('isize') || source_file.source.contains('usize')) {
+			deprecated_integer_paths << source_file.path
+		}
 	}
 	// The layout comes back through a parameter: a struct of arrays as a
 	// multi-return component is not carried correctly by the self-hosted
@@ -1739,11 +1746,12 @@ pub fn generate_files_with_source_paths(paths []string, prefs &pref.Preferences)
 	fastc_wait_memo_store(mut pending_memo_store)
 	timer.mark('generate_total')
 	return GenerationResult{
-		c_pieces:     c_pieces
-		source_paths: source_paths
-		uses_threads: uses_threads
-		c_flags:      c_flags
-		units:        units
+		c_pieces:                 c_pieces
+		source_paths:             source_paths
+		deprecated_integer_paths: deprecated_integer_paths
+		uses_threads:             uses_threads
+		c_flags:                  c_flags
+		units:                    units
 	}
 }
 

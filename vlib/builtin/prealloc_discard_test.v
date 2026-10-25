@@ -3,7 +3,7 @@ fn test_prealloc_discard_preserves_neighbors_and_writable_reservation() {
 	start := 10_003
 	end := 210_017
 	$if prealloc {
-		unsafe { prealloc_discard_pages(&bytes[start], usize(end - start)) }
+		unsafe { prealloc_discard_pages(&bytes[start], uint(end - start)) }
 	}
 	for i in 0 .. start {
 		assert bytes[i] == 0xa5

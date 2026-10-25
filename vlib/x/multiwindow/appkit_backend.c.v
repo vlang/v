@@ -191,11 +191,11 @@ $if darwin {
 	fn C.v_multiwindow_appkit_service_set_fullscreen(state voidptr, enabled int) int
 	fn C.v_multiwindow_appkit_service_monitor_revision() u64
 	fn C.v_multiwindow_appkit_service_monitor_count() int
-	fn C.v_multiwindow_appkit_service_monitor_info(index int, out_native_id &u64, out_x &int, out_y &int, out_width &int, out_height &int, out_work_x &int, out_work_y &int, out_work_width &int, out_work_height &int, out_scale &f32, out_primary &int, out_name_length &usize) int
-	fn C.v_multiwindow_appkit_service_copy_monitor_name(index int, out_name &char, capacity usize) int
-	fn C.v_multiwindow_appkit_service_set_clipboard_text(state voidptr, text &char, text_length usize) int
-	fn C.v_multiwindow_appkit_service_clipboard_text_length(state voidptr, out_length &usize) int
-	fn C.v_multiwindow_appkit_service_copy_clipboard_text(state voidptr, out_text &char, capacity usize) int
+	fn C.v_multiwindow_appkit_service_monitor_info(index int, out_native_id &u64, out_x &int, out_y &int, out_width &int, out_height &int, out_work_x &int, out_work_y &int, out_work_width &int, out_work_height &int, out_scale &f32, out_primary &int, out_name_length &uint) int
+	fn C.v_multiwindow_appkit_service_copy_monitor_name(index int, out_name &char, capacity uint) int
+	fn C.v_multiwindow_appkit_service_set_clipboard_text(state voidptr, text &char, text_length uint) int
+	fn C.v_multiwindow_appkit_service_clipboard_text_length(state voidptr, out_length &uint) int
+	fn C.v_multiwindow_appkit_service_copy_clipboard_text(state voidptr, out_text &char, capacity uint) int
 	fn C.v_multiwindow_appkit_service_set_owner(state voidptr, owner_state voidptr, modal int) int
 	fn C.v_multiwindow_appkit_service_clear_owner(state voidptr) int
 	fn C.v_multiwindow_appkit_service_native_window(state voidptr) voidptr
@@ -206,8 +206,8 @@ $if darwin {
 	fn C.v_multiwindow_appkit_service_stage_window_readback(state voidptr, request u64, x int, y int, width int, height int, producing_frame u64) int
 	fn C.v_multiwindow_appkit_service_stage_image_readback(state voidptr, texture voidptr, request u64, x int, y int, width int, height int, producing_frame u64) int
 	fn C.v_multiwindow_appkit_service_resolve_readbacks_after_submit(state voidptr, submitted_frame u64, submission_succeeded int) int
-	fn C.v_multiwindow_appkit_service_take_readback_result(state voidptr, out_request &u64, out_status &int, out_width &int, out_height &int, out_stride &int, out_submitted_frame &u64, out_byte_length &usize) int
-	fn C.v_multiwindow_appkit_service_copy_readback_pixels(state voidptr, request u64, out_pixels &u8, capacity usize) int
+	fn C.v_multiwindow_appkit_service_take_readback_result(state voidptr, out_request &u64, out_status &int, out_width &int, out_height &int, out_stride &int, out_submitted_frame &u64, out_byte_length &uint) int
+	fn C.v_multiwindow_appkit_service_copy_readback_pixels(state voidptr, request u64, out_pixels &u8, capacity uint) int
 	fn C.v_multiwindow_appkit_service_release_readback_result(state voidptr, request u64) int
 	fn C.v_multiwindow_appkit_service_cancel_readback(state voidptr, request u64) int
 	fn C.v_multiwindow_appkit_service_cancel_all_readbacks(state voidptr) int
@@ -570,8 +570,8 @@ fn appkit_plan_service_monitors(records []AppKitServiceMonitorRecord, snapshot [
 	}
 }
 
-fn appkit_clipboard_length_is_valid(length usize) bool {
-	return length <= usize(service_appkit_clipboard_max_bytes)
+fn appkit_clipboard_length_is_valid(length uint) bool {
+	return length <= uint(service_appkit_clipboard_max_bytes)
 }
 
 fn appkit_require_clipboard_result(status int) ! {
@@ -1013,16 +1013,16 @@ fn (mut backend AppKitBackend) service_monitor_snapshot(app_instance u64) ![]Ser
 		mut snapshot := []AppKitServiceRawMonitor{cap: count}
 		for index in 0 .. count {
 			mut raw := AppKitServiceRawMonitor{}
-			mut name_length := usize(0)
+			mut name_length := uint(0)
 			if C.v_multiwindow_appkit_service_monitor_info(index, &raw.native_id, &raw.x, &raw.y, &raw.width, &raw.height, &raw.work_x, &raw.work_y, &raw.work_width, &raw.work_height, &raw.scale, &raw.primary, &name_length) <= 0
-				|| name_length > usize(service_appkit_monitor_name_max_bytes) {
+				|| name_length > uint(service_appkit_monitor_name_max_bytes) {
 				return error(err_capability_unsupported)
 			}
 			mut monitor_name := 'AppKit display ${raw.native_id}'
 			if name_length > 0 {
 				mut name := []u8{len: int(name_length) + 1}
 				if C.v_multiwindow_appkit_service_copy_monitor_name(index,
-					unsafe { &char(name.data) }, usize(name.len)) <= 0 {
+					unsafe { &char(name.data) }, uint(name.len)) <= 0 {
 					return error(err_capability_unsupported)
 				}
 				monitor_name = name[..int(name_length)].bytestr()
@@ -1045,12 +1045,12 @@ fn (mut backend AppKitBackend) service_monitor_snapshot(app_instance u64) ![]Ser
 fn (mut backend AppKitBackend) service_set_clipboard_text(id WindowId, request ServiceRequestId, text string) !BackendClipboardStart {
 	index := backend.ensure_service_bridge(id)!
 	_ = request
-	if !appkit_clipboard_length_is_valid(usize(text.len)) {
+	if !appkit_clipboard_length_is_valid(uint(text.len)) {
 		return error(err_clipboard_capacity)
 	}
 	$if darwin {
 		status := C.v_multiwindow_appkit_service_set_clipboard_text(backend.windows[index].state,
-			&char(text.str), usize(text.len))
+			&char(text.str), uint(text.len))
 		if status == service_appkit_result_indeterminate {
 			return BackendClipboardStart{
 				completed: true
@@ -1070,7 +1070,7 @@ fn (mut backend AppKitBackend) service_request_clipboard_text(id WindowId, reque
 	index := backend.ensure_service_bridge(id)!
 	_ = request
 	$if darwin {
-		mut text_length := usize(0)
+		mut text_length := uint(0)
 		length_status := C.v_multiwindow_appkit_service_clipboard_text_length(backend.windows[index].state,
 			&text_length)
 		appkit_require_clipboard_result(length_status)!
@@ -1084,7 +1084,7 @@ fn (mut backend AppKitBackend) service_request_clipboard_text(id WindowId, reque
 		}
 		mut text := []u8{len: int(text_length) + 1}
 		copy_status := C.v_multiwindow_appkit_service_copy_clipboard_text(backend.windows[index].state,
-			unsafe { &char(text.data) }, usize(text.len))
+			unsafe { &char(text.data) }, uint(text.len))
 		appkit_require_clipboard_result(copy_status)!
 		return BackendClipboardStart{
 			completed: true
@@ -1278,7 +1278,7 @@ fn (mut backend AppKitBackend) service_take_readback_results() ![]BackendReadbac
 				mut height := 0
 				mut stride := 0
 				mut submitted_frame := u64(0)
-				mut byte_length := usize(0)
+				mut byte_length := uint(0)
 				take_status := C.v_multiwindow_appkit_service_take_readback_result(record.state,
 					&request, &status, &width, &height, &stride, &submitted_frame, &byte_length)
 				if take_status == service_appkit_result_unavailable {
@@ -1295,8 +1295,8 @@ fn (mut backend AppKitBackend) service_take_readback_results() ![]BackendReadbac
 				mut pixels := []u8{}
 				mut copied := false
 				if status == service_appkit_readback_ready && width > 0 && height > 0
-					&& stride >= width * 4 && byte_length == usize(stride) * usize(height)
-					&& byte_length <= usize(0x7fffffff) {
+					&& stride >= width * 4 && byte_length == uint(stride) * uint(height)
+					&& byte_length <= uint(0x7fffffff) {
 					pixels = []u8{len: int(byte_length)}
 					if C.v_multiwindow_appkit_service_copy_readback_pixels(record.state, request,
 						pixels.data, byte_length) == service_appkit_result_ok {

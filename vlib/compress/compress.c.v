@@ -10,8 +10,8 @@ module compress
 @[deprecated_after: '2026-07-31']
 pub const max_size = u64(1 << 31)
 
-fn C.tdefl_compress_mem_to_heap(source_buf voidptr, source_buf_len usize, out_len &usize, flags i32) voidptr
-fn C.tinfl_decompress_mem_to_heap(source_buf voidptr, source_buf_len usize, out_len &usize, flags i32) voidptr
+fn C.tdefl_compress_mem_to_heap(source_buf voidptr, source_buf_len uint, out_len &uint, flags i32) voidptr
+fn C.tinfl_decompress_mem_to_heap(source_buf voidptr, source_buf_len uint, out_len &uint, flags i32) voidptr
 
 // compresses an array of bytes based on providing flags and returns the compressed bytes in a new array
 // NB: this is a low level api, a high level implementation like zlib/gzip should be preferred
@@ -22,7 +22,7 @@ pub fn compress(data []u8, flags int) ![]u8 {
 	if u64(data.len) > max_size {
 		return error('data too large (${data.len} > ${max_size})')
 	}
-	mut out_len := usize(0)
+	mut out_len := uint(0)
 
 	address := C.tdefl_compress_mem_to_heap(data.data, data.len, &out_len, flags)
 	if address == 0 {
@@ -44,7 +44,7 @@ pub fn compress(data []u8, flags int) ![]u8 {
 @[deprecated_after: '2026-07-31']
 @[manualfree]
 pub fn decompress(data []u8, flags int) ![]u8 {
-	mut out_len := usize(0)
+	mut out_len := uint(0)
 
 	address := C.tinfl_decompress_mem_to_heap(data.data, data.len, &out_len, flags)
 	if address == 0 {
@@ -79,7 +79,7 @@ pub type ChunkCallback = fn (chunk []u8, userdata voidptr) int
 pub fn decompress_with_callback(data []u8, cb ChunkCallback, userdata voidptr, flags int) !u64 {
 	cbdata := DecompressionCallBackData{
 		data:     data.data
-		size:     usize(data.len)
+		size:     uint(data.len)
 		cb:       cb
 		userdata: userdata
 	}
@@ -94,7 +94,7 @@ pub fn decompress_with_callback(data []u8, cb ChunkCallback, userdata voidptr, f
 struct DecompressionCallBackData {
 mut:
 	data              voidptr
-	size              usize
+	size              uint
 	decompressed_size u64
 	userdata          voidptr
 	cb                ChunkCallback = unsafe { nil }
@@ -114,4 +114,4 @@ fn c_cb_for_decompress_mem(buf &char, len i32, pdcbd voidptr) i32 {
 
 type DecompressCallback = fn (const_buffer voidptr, len i32, userdata voidptr) i32
 
-fn C.tinfl_decompress_mem_to_callback(const_input_buffer voidptr, psize &usize, put_buf_cb DecompressCallback, userdata voidptr, flags i32) i32
+fn C.tinfl_decompress_mem_to_callback(const_input_buffer voidptr, psize &uint, put_buf_cb DecompressCallback, userdata voidptr, flags i32) i32

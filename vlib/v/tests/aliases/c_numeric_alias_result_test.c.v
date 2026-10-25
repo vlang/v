@@ -2,27 +2,27 @@
 #define v_result_handle size_t
 #define v_result_make_handle(value) ((v_result_handle)(value))
 
-type C.v_result_handle = usize
+type C.v_result_handle = uint
 
-fn C.v_result_make_handle(value usize) C.v_result_handle
+fn C.v_result_make_handle(value uint) C.v_result_handle
 
-fn result_c_handle(value usize) !C.v_result_handle {
+fn result_c_handle(value uint) !C.v_result_handle {
 	handle := C.v_result_make_handle(value)
 	return handle
 }
 
-fn option_c_handle(value usize) ?C.v_result_handle {
+fn option_c_handle(value uint) ?C.v_result_handle {
 	handle := C.v_result_make_handle(value)
 	return handle
 }
 
-fn deferred_result_c_handle(value usize, mut seen []usize) !C.v_result_handle {
+fn deferred_result_c_handle(value uint, mut seen []uint) !C.v_result_handle {
 	defer { seen << value }
 	handle := C.v_result_make_handle(value)
 	return handle
 }
 
-fn deferred_option_c_handle(value usize, mut seen []usize) ?C.v_result_handle {
+fn deferred_option_c_handle(value uint, mut seen []uint) ?C.v_result_handle {
 	defer { seen << value }
 	handle := C.v_result_make_handle(value)
 	return handle
@@ -37,17 +37,17 @@ fn absent_c_handle() ?C.v_result_handle {
 }
 
 fn test_c_numeric_alias_result_preserves_success_value() {
-	values := [usize(0), usize(1), usize(0x12345678), ~usize(0)]
-	mut deferred_values := []usize{}
+	values := [uint(0), uint(1), uint(0x12345678), ~uint(0)]
+	mut deferred_values := []uint{}
 	for value in values {
 		handle := result_c_handle(value) or { panic('successful C handle became an error: ${err}') }
-		assert usize(handle) == value
+		assert uint(handle) == value
 		optional := option_c_handle(value) or { panic('successful C handle became none') }
-		assert usize(optional) == value
+		assert uint(optional) == value
 		deferred := deferred_result_c_handle(value, mut deferred_values) or { panic(err) }
-		assert usize(deferred) == value
+		assert uint(deferred) == value
 		deferred_option := deferred_option_c_handle(value, mut deferred_values) or { panic('none') }
-		assert usize(deferred_option) == value
+		assert uint(deferred_option) == value
 	}
 	assert deferred_values.len == 2 * values.len
 	for i, value in values {

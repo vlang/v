@@ -1777,7 +1777,7 @@ fn reserve_parallel_transform_ast_with_cache_mode(mut a flat.FlatAst, skip_gener
 		copy_thread2 := spawn transform_byte_copy_thread(unsafe { voidptr(&copies[2]) })
 		tail_start := third * 2
 		unsafe {
-			vmemcpy(voidptr(&grown_nodes[tail_start]), voidptr(&old_nodes[tail_start]), isize(u64(old_nodes.len - tail_start) * u64(old_nodes.element_size)))
+			vmemcpy(voidptr(&grown_nodes[tail_start]), voidptr(&old_nodes[tail_start]), int(u64(old_nodes.len - tail_start) * u64(old_nodes.element_size)))
 		}
 		_ = copy_thread0.wait()
 		_ = copy_thread1.wait()
@@ -1824,7 +1824,7 @@ struct TransformByteCopy {
 
 fn transform_byte_copy_thread(arg voidptr) voidptr {
 	c := unsafe { &TransformByteCopy(arg) }
-	unsafe { vmemcpy(c.dst, c.src, isize(c.bytes)) }
+	unsafe { vmemcpy(c.dst, c.src, int(c.bytes)) }
 	return unsafe { nil }
 }
 
@@ -1843,19 +1843,19 @@ fn transform_worker_scope_begin(enabled bool) voidptr {
 // mapped between batches (see prealloc_scope_reenter). Large helper chunks use
 // small batches (see shared_helper_batch_count), so a bigger floor would only
 // keep idle pages of every helper resident through the parallel peak.
-const transform_batch_arena_keep_bytes = isize($d('transform_batch_arena_keep_mb', 1)) * 1024 * 1024
+const transform_batch_arena_keep_bytes = int($d('transform_batch_arena_keep_mb', 1)) * 1024 * 1024
 
 // transform_sole_batch_arena_keep_bytes is the bound for batches that run one at a time
 // with no helper beside them. Their arena is mapped in full while a batch is published
 // anyway, and a batch that starts in mapped memory does not fault its pages in again. The
 // bound is what a program can then hold over its former peak, when its largest batch is
 // an early one.
-const transform_sole_batch_arena_keep_bytes = isize($d('transform_sole_batch_arena_keep_mb', 64)) * 1024 * 1024
+const transform_sole_batch_arena_keep_bytes = int($d('transform_sole_batch_arena_keep_mb', 64)) * 1024 * 1024
 
 // transform_worker_scope_reenter makes a helper arena that was left current
 // again, rewound, for the next batch, with at most `keep_bytes` of it still
 // mapped. False means the caller needs a new arena.
-fn transform_worker_scope_reenter(scope voidptr, keep_bytes isize) bool {
+fn transform_worker_scope_reenter(scope voidptr, keep_bytes int) bool {
 	$if prealloc {
 		if scope != unsafe { nil } {
 			return unsafe { prealloc_scope_reenter(scope, keep_bytes) }
@@ -2730,7 +2730,7 @@ fn (t &Transformer) interface_boxed_impl_name_is_direct(name_id u32) bool {
 		|| name.starts_with('map[') || name.starts_with('builtin.') {
 		return true
 	}
-	if name in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'u16', 'u32',
+	if name in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'uint', 'u8', 'u16', 'u32',
 		'u64', 'f32', 'f64', 'string', 'char', 'rune', 'voidptr'] {
 		return true
 	}
@@ -3042,7 +3042,7 @@ fn (mut t Transformer) apply_ignored_comptime_for_nodes() {
 	flags := t.ignored_comptime_for_nodes
 	mut idx := 0
 	for idx < flags.len {
-		found := unsafe { &u8(C.memchr(&u8(flags.data) + idx, 1, usize(flags.len - idx))) }
+		found := unsafe { &u8(C.memchr(&u8(flags.data) + idx, 1, uint(flags.len - idx))) }
 		if isnil(found) {
 			break
 		}
@@ -4922,8 +4922,8 @@ fn (t &Transformer) clone_ast_base(base_nodes int, base_children int) &flat.Flat
 	mut cloned := t.allocate_ast_base_clone(base_nodes, base_children)
 	// Both arrays own enough storage for these immutable base payloads.
 	unsafe {
-		vmemcpy(cloned.nodes.data, t.a.nodes.data, isize(base_nodes) * isize(t.a.nodes.element_size))
-		vmemcpy(cloned.children.data, t.a.children.data, isize(base_children) * isize(t.a.children.element_size))
+		vmemcpy(cloned.nodes.data, t.a.nodes.data, int(base_nodes) * int(t.a.nodes.element_size))
+		vmemcpy(cloned.children.data, t.a.children.data, int(base_children) * int(t.a.children.element_size))
 	}
 	return cloned
 }
@@ -5672,7 +5672,7 @@ fn transform_scope_owns(scope voidptr, ptr voidptr) bool {
 // transform_scope_address_range returns the union address range of the blocks
 // owned by `scope`, so callers can reject most pointers before the per-block
 // search in transform_scope_owns.
-fn transform_scope_address_range(scope voidptr) (usize, usize) {
+fn transform_scope_address_range(scope voidptr) (uint, uint) {
 	$if prealloc {
 		unsafe {
 			lo, hi := prealloc_scope_address_range(scope)
@@ -5827,7 +5827,7 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 			// A parallel pass already applied node_shift inside the region;
 			// compaction is a plain leftward move.
 			unsafe {
-				vmemmove(&t.a.children[old_len], &w.a.children[base_children], isize(new_children) * isize(t.a.children.element_size))
+				vmemmove(&t.a.children[old_len], &w.a.children[base_children], int(new_children) * int(t.a.children.element_size))
 			}
 		} else {
 			// Fused copy+relocate: under the shared-base path compaction copies
@@ -5863,7 +5863,7 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 		if t.merge_regions_relocated && !clone_worker_nodes {
 			// A parallel pass already applied child_shift inside the region.
 			unsafe {
-				vmemmove(&t.a.nodes[nodes_old_len], &w.a.nodes[base_nodes], isize(new_nodes) * isize(t.a.nodes.element_size))
+				vmemmove(&t.a.nodes[nodes_old_len], &w.a.nodes[base_nodes], int(new_nodes) * int(t.a.nodes.element_size))
 			}
 		} else {
 			// Fused copy+relocate, same leftward-overlap argument as the children
@@ -6124,8 +6124,8 @@ fn (mut t Transformer) set_resolved_call_canonical(idx int, canonical string) {
 		unsafe {
 			t.tc.resolved_call_names.grow_len(amount)
 			t.tc.resolved_call_set.grow_len(amount)
-			vmemset(&t.tc.resolved_call_names[start], 0, isize(amount) * isize(sizeof(&types.CachedName)))
-			vmemset(&t.tc.resolved_call_set[set_start], 0, isize(amount))
+			vmemset(&t.tc.resolved_call_names[start], 0, int(amount) * int(sizeof(&types.CachedName)))
+			vmemset(&t.tc.resolved_call_set[set_start], 0, int(amount))
 		}
 	}
 	t.tc.resolved_call_names[idx] = types.cached_name(canonical)
@@ -7685,7 +7685,7 @@ fn (mut t Transformer) make_memdup_call_for_type(addr flat.NodeId, type_name_id 
 
 fn (mut t Transformer) make_type_alignment(type_name_id u32) flat.NodeId {
 	// Cgen emits the type operand directly; MSVC rejects expression operands.
-	return t.make_call_typed('__alignof__', [t.make_sizeof_type(type_name_id)], flat.source_type_usize)
+	return t.make_call_typed('__alignof__', [t.make_sizeof_type(type_name_id)], flat.source_type_uint)
 }
 
 fn (mut t Transformer) make_non_aliasing_allocation_call(name string, args []flat.NodeId, typ_id u32) flat.NodeId {
@@ -13439,7 +13439,7 @@ fn (mut t Transformer) transform_sizeof_expr(id flat.NodeId, node flat.Node) fla
 		return id
 	}
 	mut lowered := node
-	lowered.typ = flat.source_type_usize
+	lowered.typ = flat.source_type_uint
 	lowered.value = value
 	if value.len > 0 {
 		lowered.children_count = 0
@@ -18790,13 +18790,13 @@ fn (t &Transformer) expr_can_take_address(id flat.NodeId) bool {
 			}
 			// Indexing through a pointer (`unsafe { (&v.x)[i] }`) reaches the memory it
 			// points to: the element is addressable even when the pointer is not.
-			mut base_type := flat.source_type_name(t.node_type(base_id))
-			if base_type.len == 0 {
-				base_type = flat.source_type_name(t.resolve_expr_type(base_id))
+			mut base_type := t.node_type(base_id)
+			if base_type == 0 {
+				base_type = t.resolve_expr_type(base_id)
 			}
-			base_type = flat.source_type_name(t.normalize_type_alias(flat.source_type_id(base_type)))
-			if base_type.starts_with('&') {
-				pointee_source_id := t.normalize_type_alias(flat.source_type_id(base_type[1..]))
+			base_type = t.normalize_type_alias(base_type)
+			if flat.source_type_shape(base_type).has(.pointer) {
+				pointee_source_id := t.normalize_type_alias(t.trim_pointer_type(base_type))
 				pointee_shape := flat.source_type_shape(pointee_source_id)
 				if !pointee_shape.has(.map_type) && pointee_source_id != flat.source_type_string {
 					return true
@@ -18812,11 +18812,11 @@ fn (t &Transformer) expr_can_take_address(id flat.NodeId) bool {
 				return false
 			}
 			base_id := t.a.child(&node, 0)
-			mut base_type := flat.source_type_name(t.node_type(base_id))
-			if base_type.len == 0 {
-				base_type = flat.source_type_name(t.resolve_expr_type(base_id))
+			mut base_type := t.node_type(base_id)
+			if base_type == 0 {
+				base_type = t.resolve_expr_type(base_id)
 			}
-			if trimmed_transform_text(flat.source_type_name(t.normalize_type_alias(flat.source_type_id(base_type)))).starts_with('&') {
+			if flat.source_type_shape(t.trimmed_type_id(t.normalize_type_alias(base_type))).has(.pointer) {
 				return true
 			}
 			return t.expr_can_take_address(base_id)
@@ -19888,9 +19888,9 @@ fn (mut t Transformer) try_expand_multi_return_decl(node flat.Node) ?[]flat.Node
 				continue
 			}
 			field_name := 'arg${j}'
-			field_type_name := field_type.name()
-			field := t.make_selector(t.make_ident(tmp_name), field_name, flat.source_type_id(field_type_name))
-			result << t.make_guard_value_decls(lhs.value, field, flat.source_type_id(field_type_name))
+			field_type_id := field_type.source_type_id()
+			field := t.make_selector(t.make_ident(tmp_name), field_name, field_type_id)
+			result << t.make_guard_value_decls(lhs.value, field, field_type_id)
 		}
 		return result
 	}
@@ -19934,18 +19934,18 @@ fn (mut t Transformer) try_expand_multi_return_assign(node flat.Node) ?[]flat.No
 				continue
 			}
 			field_name := 'arg${j}'
-			field_type_name := field_type.name()
-			field := t.make_selector(t.make_ident(tmp_name), field_name, flat.source_type_id(field_type_name))
+			field_type_id := field_type.source_type_id()
+			field := t.make_selector(t.make_ident(tmp_name), field_name, field_type_id)
 			mut lvalue := t.transform_lvalue(lhs_id)
 			t.drain_pending(mut result)
 			if !t.tc.ownership_expr_moves_storage(rhs_id, lhs_id)
 				&& t.tc.ownership_type_requires_destruction(field_type) {
 				lvalue = t.stabilize_transformed_lvalue_for_reuse(lvalue)
 				t.drain_pending(mut result)
-				t.append_owned_lvalue_drop_before_assign(lvalue, flat.source_type_id(field_type_name), mut result)
+				t.append_owned_lvalue_drop_before_assign(lvalue, field_type_id, mut result)
 			}
 			mut value := field
-			target_type := t.multi_assign_slot_target_type(lhs_id, lhs, field_type_name)
+			target_type := t.multi_assign_slot_target_type(lhs_id, lhs, field_type_id)
 			// A `[]Item` slot assigned to a `[]Named` (or `[]Shape`) target is converted
 			// element by element, as a single assignment or a forwarded return does.
 			if converted := t.transform_array_value_for_dynamic_target(field, target_type) {
@@ -19958,7 +19958,7 @@ fn (mut t Transformer) try_expand_multi_return_assign(node flat.Node) ?[]flat.No
 					t.drain_pending(mut result)
 					value = converted
 				}
-			} else if converted := t.transform_optional_value_for_option_target(field, flat.source_type_id(field_type_name),
+			} else if converted := t.transform_optional_value_for_option_target(field, field_type_id,
 				target_type)
 			{
 				// A `?[2]int` slot assigned to a `?[]int` target has its payload converted,
@@ -19976,13 +19976,13 @@ fn (mut t Transformer) try_expand_multi_return_assign(node flat.Node) ?[]flat.No
 // multi_assign_slot_target_type returns the value type that the slot `lhs` of a
 // multi-return assignment stores: a `mut` parameter or a local moved to the heap is
 // assigned through its pointer.
-fn (t &Transformer) multi_assign_slot_target_type(lhs_id flat.NodeId, lhs flat.Node, field_type_name string) u32 {
+fn (t &Transformer) multi_assign_slot_target_type(lhs_id flat.NodeId, lhs flat.Node, field_type_id u32) u32 {
 	target := t.lvalue_type(lhs_id)
-	target_name := flat.source_type_name(target)
-	if lhs.kind == .ident && target_name.starts_with('&') && !target_name.starts_with('&&')
-		&& !field_type_name.starts_with('&')
+	target_shape := flat.source_type_shape(target)
+	if lhs.kind == .ident && target_shape.has(.pointer) && !target_shape.has(.pointer_chain)
+		&& !flat.source_type_shape(field_type_id).has(.pointer)
 		&& (t.mut_param_values[lhs.value] || lhs.value in t.heaped_amp_locals) {
-		return flat.source_type_id(target_name[1..])
+		return t.trim_pointer_type(target)
 	}
 	return target
 }
@@ -20032,23 +20032,23 @@ fn (mut t Transformer) try_expand_plain_multi_assign(node flat.Node) ?[]flat.Nod
 			continue
 		}
 		mut lhs_type := if lhs.kind in [.selector, .index] {
-			flat.source_type_name(t.lvalue_type(lhs_id))
+			t.lvalue_type(lhs_id)
 		} else {
-			flat.source_type_name(t.original_expr_type(lhs_id))
+			t.original_expr_type(lhs_id)
 		}
-		if lhs_type.len == 0 {
-			lhs_type = flat.source_type_name(t.lvalue_type(lhs_id))
+		if lhs_type == 0 {
+			lhs_type = t.lvalue_type(lhs_id)
 		}
-		if lhs.kind == .ident && t.pointer_value_lvalues[lhs.value] && lhs_type.starts_with('&') {
-			lhs_type = lhs_type[1..]
+		if lhs.kind == .ident && t.pointer_value_lvalues[lhs.value] && flat.source_type_shape(lhs_type).has(.pointer) {
+			lhs_type = t.trim_pointer_type(lhs_type)
 		}
-		mut rhs := if lhs_type.len > 0 {
-			t.transform_expr_for_type(rhs_id, flat.source_type_id(lhs_type))
+		mut rhs := if lhs_type != 0 {
+			t.transform_expr_for_type(rhs_id, lhs_type)
 		} else {
 			t.transform_expr(rhs_id)
 		}
-		if lhs_type.len > 0 {
-			rhs = t.clone_borrowed_assignment_value(rhs_id, rhs, flat.source_type_id(lhs_type))
+		if lhs_type != 0 {
+			rhs = t.clone_borrowed_assignment_value(rhs_id, rhs, lhs_type)
 		}
 		t.drain_pending(mut result)
 		if lhs.kind == .ident && lhs.value == '_' {
@@ -20059,8 +20059,8 @@ fn (mut t Transformer) try_expand_plain_multi_assign(node flat.Node) ?[]flat.Nod
 			continue
 		}
 		tmp_name := t.new_temp('assign')
-		tmp_type := (if lhs_type.len > 0 {
-			flat.source_type_id(lhs_type)
+		tmp_type := (if lhs_type != 0 {
+			lhs_type
 		} else {
 			t.node_type(rhs_id)
 		})
@@ -20089,15 +20089,15 @@ fn (mut t Transformer) try_expand_plain_multi_assign(node flat.Node) ?[]flat.Nod
 			t.transform_lvalue_without_smartcast(lhs_id)
 		}
 		t.drain_pending(mut result)
-		mut lhs_type := flat.source_type_name(t.lvalue_type(lhs_id))
-		if lhs_type.len == 0 {
-			lhs_type = flat.source_type_name(t.original_expr_type(lhs_id))
+		mut lhs_type := t.lvalue_type(lhs_id)
+		if lhs_type == 0 {
+			lhs_type = t.original_expr_type(lhs_id)
 		}
-		if !lhs_was_moved[i] && !isnil(t.tc) && lhs_type.len > 0
-			&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(flat.source_type_id(lhs_type))) {
+		if !lhs_was_moved[i] && !isnil(t.tc) && lhs_type != 0
+			&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(lhs_type)) {
 			lvalue = t.stabilize_transformed_lvalue_for_reuse(lvalue)
 			t.drain_pending(mut result)
-			t.append_owned_lvalue_drop_before_assign(lvalue, flat.source_type_id(lhs_type), mut result)
+			t.append_owned_lvalue_drop_before_assign(lvalue, lhs_type, mut result)
 		}
 		result << t.make_assign_after_owned_drop(lvalue, t.make_ident(tmp_names[i]))
 	}
@@ -21417,7 +21417,7 @@ fn (t &Transformer) local_binding_flags_before(name string, before flat.NodeId) 
 fn (mut t Transformer) build_source_parent_index() {
 	t.source_parent_ids = []i32{len: t.a.nodes.len}
 	// -1 in every slot, in one memset rather than one store per node.
-	unsafe { C.memset(t.source_parent_ids.data, 0xff, usize(t.source_parent_ids.len) * sizeof(i32)) }
+	unsafe { C.memset(t.source_parent_ids.data, 0xff, uint(t.source_parent_ids.len) * sizeof(i32)) }
 	mut decls := map[string][]int{}
 	mut fn_offsets := map[int][]int{}
 	mut if_exprs := map[int][]int{}
@@ -22415,7 +22415,7 @@ fn (mut t Transformer) transform_lock_node(id flat.NodeId, node flat.Node) flat.
 		}
 	})
 	if t.rewrite_children_in_place(id, children) {
-		if flat.source_type_name(lock_typ) != node.typ_text() {
+		if lock_typ != node.typ {
 			t.set_node_typ(int(id), lock_typ)
 		}
 		return id
@@ -24171,7 +24171,7 @@ fn (mut t Transformer) try_lower_bound_method_array_call(node flat.Node) ?flat.N
 	index_id := t.a.child(&callee, 1)
 	encoded := t.make_index(t.transform_expr(base_id), t.transform_expr(index_id), info.fn_type)
 	t.set_node_generic_params(int(encoded), [bound_method_array_index_marker])
-	as_usize := t.make_cast(flat.source_type_usize, encoded, flat.source_type_usize)
+	as_usize := t.make_cast(flat.source_type_uint, encoded, flat.source_type_uint)
 	receiver := t.make_cast(info.receiver_type, as_usize, info.receiver_type)
 	selector := t.make_selector(receiver, info.method, u32(0))
 	mut args := []flat.NodeId{cap: int(node.children_count) - 1}
@@ -24321,7 +24321,7 @@ fn (mut t Transformer) transform_struct_init(id flat.NodeId, node flat.Node) fla
 				|| clean_value_comparison_type_id in [flat.source_type_f32, flat.source_type_f64,
 					flat.source_type_int, flat.source_type_i8, flat.source_type_i16,
 					flat.source_type_i32, flat.source_type_i64, flat.source_type_isize,
-					flat.source_type_usize, flat.source_type_u8, flat.source_type_u16,
+					flat.source_type_uint, flat.source_type_u8, flat.source_type_u16,
 					flat.source_type_u32, flat.source_type_u64, flat.source_type_rune,
 					flat.source_type_char] {
 				return t.zero_value_for_type(clean_value_source_id)
@@ -24875,34 +24875,34 @@ fn (t &Transformer) string_interp_child_has_unresolved_generic_part(id flat.Node
 			return false
 		}
 	}
-	// Every spelling is resolved before any is tested, and the spellings of one
+	// Every type is resolved before any is tested, and the identities of one
 	// part mostly coincide: test each distinct one once.
-	mut candidates := [5]string{}
+	mut candidates := [5]u32{}
 	mut n := 0
-	candidates[n] = flat.source_type_name(t.node_type(id))
+	candidates[n] = t.node_type(id)
 	n++
 	if node.typ != 0 {
-		candidates[n] = flat.source_type_name(t.normalize_type_alias(node.typ))
+		candidates[n] = t.normalize_type_alias(node.typ)
 		n++
 	}
 	if node.kind == .ident {
-		candidates[n] = flat.source_type_name(t.var_type(node.value))
+		candidates[n] = t.var_type(node.value)
 		n++
 	}
-	candidates[n] = flat.source_type_name(t.lvalue_type(id))
+	candidates[n] = t.lvalue_type(id)
 	n++
-	candidates[n] = flat.source_type_name(t.reliable_stringify_type(id))
+	candidates[n] = t.reliable_stringify_type(id)
 	n++
 	for i in 0 .. n {
 		typ := candidates[i]
 		mut tested := false
 		for j in 0 .. i {
-			if same_transform_text(candidates[j], typ) {
+			if candidates[j] == typ {
 				tested = true
 				break
 			}
 		}
-		if !tested && t.stringify_type_has_generic_placeholder(flat.source_type_id(typ)) {
+		if !tested && t.stringify_type_has_generic_placeholder(typ) {
 			return !t.string_interp_part_is_checked_call(id)
 		}
 	}
@@ -27691,7 +27691,7 @@ fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.
 		if target_type != node.value {
 			t.set_node_value(int(id), target_type)
 		}
-		if flat.source_type_name(output_typ) != node.typ_text() {
+		if output_typ != node.typ {
 			t.set_node_typ(int(id), output_typ)
 		}
 		return id
@@ -30669,7 +30669,7 @@ fn is_numeric_type_name(name_id u32) bool {
 }
 
 fn is_integer_type_name(name_id u32) bool {
-	return name_id == flat.source_type_int || name_id == flat.source_type_i8 || name_id == flat.source_type_i16 || name_id == flat.source_type_i64 || name_id == flat.source_type_u8 || name_id == flat.source_type_u16 || name_id == flat.source_type_u32 || name_id == flat.source_type_u64 || name_id == flat.source_type_isize || name_id == flat.source_type_usize || name_id == flat.source_type_rune || name_id == transform_source_type_i128 || name_id == transform_source_type_u128
+	return name_id == flat.source_type_int || name_id == flat.source_type_i8 || name_id == flat.source_type_i16 || name_id == flat.source_type_i64 || name_id == flat.source_type_u8 || name_id == flat.source_type_u16 || name_id == flat.source_type_u32 || name_id == flat.source_type_u64 || name_id == flat.source_type_isize || name_id == flat.source_type_uint || name_id == flat.source_type_rune || name_id == transform_source_type_i128 || name_id == transform_source_type_u128
 }
 
 fn is_float_type_name(name_id u32) bool {
@@ -31743,7 +31743,7 @@ fn (mut t Transformer) instantiate_match_variant_body(id flat.NodeId, subject st
 		operand := t.sizeof_operand_name(node)
 		if operand == subject || operand == original_subject {
 			node.value = variant_name
-			node.typ = flat.source_type_usize
+			node.typ = flat.source_type_uint
 			node.children_count = 0
 			if !copy {
 				t.set_node(int(id), node)

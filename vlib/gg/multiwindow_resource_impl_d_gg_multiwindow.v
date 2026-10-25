@@ -751,13 +751,13 @@ fn copy_managed_buffer_desc(desc &gfx.BufferDesc) !ManagedBufferDescCopy {
 		result.desc.label = &char(result.label.str)
 	}
 	if desc.data.size > 0 {
-		if desc.data.ptr == unsafe { nil } || desc.data.size > usize(0x7fffffff) {
+		if desc.data.ptr == unsafe { nil } || desc.data.size > uint(0x7fffffff) {
 			return error(err_multiwindow_render_invalid_descriptor)
 		}
 		result.data = unsafe { desc.data.ptr.vbytes(int(desc.data.size)).clone() }
 		result.desc.data = gfx.Range{
 			ptr:  result.data.data
-			size: usize(result.data.len)
+			size: uint(result.data.len)
 		}
 	} else if desc.data.ptr != unsafe { nil } {
 		return error(err_multiwindow_render_invalid_descriptor)
@@ -769,7 +769,7 @@ fn validate_raw_buffer_desc(desc &gfx.BufferDesc) ! {
 	if desc == unsafe { nil } {
 		return error(err_multiwindow_render_invalid_descriptor)
 	}
-	if desc.size > usize(0x7fffffff) || desc.data.size > usize(0x7fffffff) {
+	if desc.size > uint(0x7fffffff) || desc.data.size > uint(0x7fffffff) {
 		return error(err_multiwindow_render_invalid_descriptor)
 	}
 	match desc.usage {
@@ -793,7 +793,7 @@ fn validate_raw_buffer_desc(desc &gfx.BufferDesc) ! {
 }
 
 fn validate_effective_buffer_desc(desc gfx.BufferDesc) ! {
-	if desc.size == 0 || desc.size > usize(0x7fffffff) || desc.data.size > usize(0x7fffffff) {
+	if desc.size == 0 || desc.size > uint(0x7fffffff) || desc.data.size > uint(0x7fffffff) {
 		return error(err_multiwindow_render_invalid_descriptor)
 	}
 	if desc.type != .vertexbuffer && desc.type != .indexbuffer && desc.type != .storagebuffer {
@@ -845,14 +845,14 @@ fn copy_managed_image_desc(desc &gfx.ImageDesc) !ManagedImageDescCopy {
 				}
 				continue
 			}
-			if range.ptr == unsafe { nil } || range.size > usize(0x7fffffff) {
+			if range.ptr == unsafe { nil } || range.size > uint(0x7fffffff) {
 				return error(err_multiwindow_render_invalid_descriptor)
 			}
 			owned := unsafe { range.ptr.vbytes(int(range.size)).clone() }
 			result.data << owned
 			result.desc.data.subimage[face][mip] = gfx.Range{
 				ptr:  result.data[result.data.len - 1].data
-				size: usize(owned.len)
+				size: uint(owned.len)
 			}
 		}
 	}
@@ -949,14 +949,14 @@ fn copy_managed_shader_stage(mut stage gfx.ShaderStageDesc, mut strings []string
 	stage.entry = copy_managed_cstring(stage.entry, mut strings)!
 	stage.d3d11_target = copy_managed_cstring(stage.d3d11_target, mut strings)!
 	if stage.bytecode.size > 0 {
-		if stage.bytecode.ptr == unsafe { nil } || stage.bytecode.size > usize(0x7fffffff) {
+		if stage.bytecode.ptr == unsafe { nil } || stage.bytecode.size > uint(0x7fffffff) {
 			return error(err_multiwindow_render_invalid_descriptor)
 		}
 		owned := unsafe { stage.bytecode.ptr.vbytes(int(stage.bytecode.size)).clone() }
 		bytes << owned
 		stage.bytecode = gfx.Range{
 			ptr:  bytes[bytes.len - 1].data
-			size: usize(owned.len)
+			size: uint(owned.len)
 		}
 	} else if stage.bytecode.ptr != unsafe { nil } {
 		return error(err_multiwindow_render_invalid_descriptor)

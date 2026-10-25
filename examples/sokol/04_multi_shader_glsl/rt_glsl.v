@@ -53,7 +53,7 @@ fn create_texture(w int, h int, buf byteptr) (gfx.Image, gfx.Sampler) {
 	}
 	img_desc.data.subimage[0][0] = gfx.Range{
 		ptr:  buf
-		size: usize(sz)
+		size: uint(sz)
 	}
 	sg_img := gfx.make_image(&img_desc)
 	mut smp_desc := gfx.SamplerDesc{
@@ -111,7 +111,7 @@ fn (mut app App) init_glsl_shader(shader_name string, shader_desc &gfx.ShaderDes
 	mut vert_buffer_desc := gfx.BufferDesc{}
 	unsafe { vmemset(&vert_buffer_desc, 0, sizeof(vert_buffer_desc)) }
 	vert_buffer_desc.label = c'cube-vertices'
-	vert_buffer_desc.size = usize(vertices.len) * sizeof(Vertex_t)
+	vert_buffer_desc.size = uint(vertices.len) * sizeof(Vertex_t)
 	vert_buffer_desc.data = gfx.Range{
 		ptr: vertices.data
 		size: vert_buffer_desc.size
@@ -122,7 +122,7 @@ fn (mut app App) init_glsl_shader(shader_name string, shader_desc &gfx.ShaderDes
 	mut index_buffer_desc := gfx.BufferDesc{}
 	unsafe { vmemset(&index_buffer_desc, 0, sizeof(index_buffer_desc)) }
 	index_buffer_desc.label = c'cube-indices'
-	index_buffer_desc.size = usize(indices.len) * sizeof(u16)
+	index_buffer_desc.size = uint(indices.len) * sizeof(u16)
 	index_buffer_desc.data = gfx.Range{
 		ptr: indices.data
 		size: index_buffer_desc.size
@@ -196,7 +196,7 @@ fn (app &App) draw_glsl_shader(shader_name string) {
 	// res is a 4x4 matrix of f32 thus: 4*16 byte of size
 	vs_uniforms_range := gfx.Range{
 		ptr: unsafe { &tr_matrix }
-		size: usize(4 * 16)
+		size: uint(4 * 16)
 	}
 	gfx.apply_uniforms(.vs, C.SLOT_vs_params_m, &vs_uniforms_range)
 
@@ -216,7 +216,7 @@ fn (app &App) draw_glsl_shader(shader_name string) {
 	]!
 	fs_uniforms_range := gfx.Range{
 		ptr: unsafe { &tmp_fs_params }
-		size: usize(sizeof(tmp_fs_params))
+		size: uint(sizeof(tmp_fs_params))
 	}
 	gfx.apply_uniforms(.fs, C.SLOT_fs_params_p, &fs_uniforms_range)
 

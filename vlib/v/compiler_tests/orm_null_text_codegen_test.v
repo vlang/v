@@ -245,8 +245,8 @@ struct Metric {
 	wide_32 u32
 	wide_i i64
 	wide_u u64
-	wide_is isize
-	wide_us usize
+	wide_is int
+	wide_us uint
 }
 
 fn main() {
@@ -256,8 +256,8 @@ fn main() {
 		wide_32: u32(1) << 31
 		wide_i: i64(1) << 40
 		wide_u: u64(1) << 40
-		wide_is: isize(1) << 40
-		wide_us: usize(1) << 40
+		wide_is: int(1) << 40
+		wide_us: uint(1) << 40
 	}
 	sql db {
 		insert metric into Metric
@@ -282,11 +282,9 @@ fn main() {
 	assert c_code.contains('orm__append_field_value_data_T_u32('), c_code
 	assert c_code.contains('orm__append_field_value_data_T_i64('), c_code
 	assert c_code.contains('orm__append_field_value_data_T_u64('), c_code
-	assert c_code.contains('orm__append_field_value_data_T_isize('), c_code
-	assert c_code.contains('orm__append_field_value_data_T_usize('), c_code
+	assert c_code.contains('orm__append_field_value_data_T_uint('), c_code
 	assert c_code.contains('orm__primitive_from_field_value_T_u32('), c_code
 	assert c_code.contains('orm__primitive_from_field_value_T_i64('), c_code
 	assert c_code.contains('orm__primitive_from_field_value_T_u64('), c_code
-	assert c_code.contains('orm__primitive_from_field_value_T_isize('), c_code
-	assert c_code.contains('orm__primitive_from_field_value_T_usize('), c_code
+	assert c_code.contains('orm__primitive_from_field_value_T_uint('), c_code
 }

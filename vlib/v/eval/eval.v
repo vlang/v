@@ -5004,7 +5004,7 @@ fn is_builtin_str_receiver_type_name(name_id u32) bool {
 	return name_id in [flat.source_type_bool, flat.source_type_int, flat.source_type_i8,
 		flat.source_type_i16, flat.source_type_i32, flat.source_type_i64, flat.source_type_isize,
 		flat.source_type_u8, flat.source_type_u16, flat.source_type_u32, flat.source_type_u64,
-		flat.source_type_usize, flat.source_type_f32, flat.source_type_f64, flat.source_type_rune,
+		flat.source_type_uint, flat.source_type_f32, flat.source_type_f64, flat.source_type_rune,
 		flat.source_type_char, flat.source_type_string]
 }
 
@@ -5639,7 +5639,7 @@ fn (mut e Eval) zero_value_for_type_name_in_module(type_name_id u32, module_name
 	if name == flat.source_type_string { return Value('') }
 	if name in [flat.source_type_int, flat.source_type_i8, flat.source_type_i16, flat.source_type_i32,
 		flat.source_type_i64, flat.source_type_u8, flat.source_type_u16, flat.source_type_u32,
-		flat.source_type_u64, flat.source_type_isize, flat.source_type_usize, flat.source_type_rune,
+		flat.source_type_u64, flat.source_type_isize, flat.source_type_uint, flat.source_type_rune,
 		flat.source_type_char] {
 		return Value(i64(0))
 	}
@@ -5890,7 +5890,7 @@ fn (e &Eval) cast_value_in_module(value Value, type_name_id u32, module_name str
 	source := e.unwrap_sum_cast_value(value, target_name)
 	if name in [flat.source_type_int, flat.source_type_i8, flat.source_type_i16, flat.source_type_i32,
 		flat.source_type_i64, flat.source_type_u8, flat.source_type_u16, flat.source_type_u32,
-		flat.source_type_u64, flat.source_type_isize, flat.source_type_usize, flat.source_type_rune,
+		flat.source_type_u64, flat.source_type_isize, flat.source_type_uint, flat.source_type_rune,
 		flat.source_type_char] {
 		return Value(e.value_as_int(source)!)
 	}
@@ -5948,7 +5948,7 @@ fn (e &Eval) value_matches_type_name(value Value, target_name_id u32) bool {
 			return name in [flat.source_type_int, flat.source_type_i8, flat.source_type_i16,
 				flat.source_type_i32, flat.source_type_i64, flat.source_type_u8, flat.source_type_u16,
 				flat.source_type_u32, flat.source_type_u64, flat.source_type_isize,
-				flat.source_type_usize, flat.source_type_rune, flat.source_type_char]
+				flat.source_type_uint, flat.source_type_rune, flat.source_type_char]
 		}
 		EnumValue { return e.type_name_matches(value.type_name, name) }
 		f64 { return name in [flat.source_type_f32, flat.source_type_f64] }
@@ -6790,7 +6790,7 @@ fn (e &Eval) qualify_type_name_bytes(module_name string, type_name string) strin
 
 fn is_builtin_type_name_bytes(name string) bool {
 	return name in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'u16', 'u32', 'u64',
-		'usize', 'f32', 'f64', 'rune', 'char', 'string', 'void', 'voidptr', 'charptr', 'byteptr',
+		'uint', 'f32', 'f64', 'rune', 'char', 'string', 'void', 'voidptr', 'charptr', 'byteptr',
 		'array']
 }
 

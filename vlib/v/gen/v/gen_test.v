@@ -1434,8 +1434,8 @@ fn test_formatter_ignores_vfmt_directives_inside_strings() {
 }
 
 fn test_formatter_preserves_go_legacy_dollar_builtins_and_bodyless_functions() {
-	bodyless := vfmt('bodyless_functions', 'fn plain(value usize) usize\nfn C.c_call(value int) int\nfn JS.js_call(value int) int\n')
-	assert bodyless.contains('fn plain(value usize) usize'), bodyless
+	bodyless := vfmt('bodyless_functions', 'fn plain(value uint) uint\nfn C.c_call(value int) int\nfn JS.js_call(value int) int\n')
+	assert bodyless.contains('fn plain(value uint) uint'), bodyless
 	assert bodyless.contains('fn C.c_call(value int) int'), bodyless
 	assert bodyless.contains('fn JS.js_call(value int) int'), bodyless
 	assert !bodyless.contains('fn C.plain'), bodyless
