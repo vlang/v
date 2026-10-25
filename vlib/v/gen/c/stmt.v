@@ -1738,11 +1738,12 @@ fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, d
 					continue
 				}
 				concrete_ct := g.value_c_type(concrete_type)
-				g.writeln('case ${id}:')
+				g.writeln('case ${id}: {')
 				g.indent++
 				g.gen_ownership_drop_value_inner(concrete_type, '*((${concrete_ct}*)${object})', depth + 1, mut expanding)
 				g.writeln('break;')
 				g.indent--
+				g.writeln('}')
 			}
 			g.writeln('default: break;')
 			g.writeln('}')
@@ -1760,7 +1761,7 @@ fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, d
 				resolved_variant := g.resolve_variant(sum_name_id, variant)
 				variant_type := g.tc.parse_canonical_type_cached(resolved_variant)
 				idx := g.sum_type_index(sum_name_id, resolved_variant)
-				g.writeln('case ${idx}:')
+				g.writeln('case ${idx}: {')
 				g.indent++
 				clean_variant_type := unalias_type(variant_type)
 				if clean_variant_type is types.Pointer {
@@ -1774,6 +1775,7 @@ fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, d
 					g.writeln('}')
 					g.writeln('break;')
 					g.indent--
+					g.writeln('}')
 					continue
 				}
 				field := sum_field_name(flat.source_type_name(resolved_variant))
@@ -1781,6 +1783,7 @@ fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, d
 				g.gen_ownership_drop_value_inner(variant_type, payload, depth + 1, mut expanding)
 				g.writeln('break;')
 				g.indent--
+				g.writeln('}')
 			}
 			g.writeln('default: break;')
 			g.writeln('}')
@@ -1813,7 +1816,7 @@ fn (mut g FlatGen) gen_ownership_drop_result_error(expr string, depth int, mut e
 			continue
 		}
 		concrete_ct := g.value_c_type(concrete_type)
-		g.writeln('case ${id}:')
+		g.writeln('case ${id}: {')
 		g.indent++
 		if concrete in ['MessageError', 'builtin.MessageError'] {
 			// MessageError is introduced by generated result/error lowering and can be
@@ -1824,6 +1827,7 @@ fn (mut g FlatGen) gen_ownership_drop_result_error(expr string, depth int, mut e
 		}
 		g.writeln('break;')
 		g.indent--
+		g.writeln('}')
 	}
 	g.writeln('default: break;')
 	g.writeln('}')
