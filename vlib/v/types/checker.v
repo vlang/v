@@ -8158,8 +8158,11 @@ fn (tc &TypeChecker) selective_import_symbol_is_ambiguous(name string) bool {
 }
 
 fn (tc &TypeChecker) resolve_imported_type_text(typ_id u32) u32 {
+	if !flat.source_type_shape(typ_id).has(.dotted) {
+		return typ_id
+	}
 	typ := flat.source_type_name(typ_id)
-	if !typ.contains('.') || typ.starts_with('C.') {
+	if typ.starts_with('C.') {
 		return typ_id
 	}
 	dot := typ.index_u8(`.`)
@@ -17005,6 +17008,9 @@ fn placeholder_token_ident_char(ch u8) bool {
 }
 
 fn (tc &TypeChecker) type_text_has_generic_placeholder(typ_id u32) bool {
+	if !flat.source_type_query(typ_id).has(.generic_token) {
+		return false
+	}
 	return tc.type_text_has_generic_placeholder_uncached(flat.source_type_name(typ_id))
 }
 
@@ -17073,6 +17079,9 @@ fn (tc &TypeChecker) type_text_has_generic_placeholder_uncached(typ string) bool
 }
 
 fn (tc &TypeChecker) type_text_has_unbound_generic_placeholder(typ_id u32, bound []string) bool {
+	if !flat.source_type_query(typ_id).has(.generic_token) {
+		return false
+	}
 	return tc.type_text_has_unbound_generic_placeholder_uncached(flat.source_type_name(typ_id), bound)
 }
 
@@ -17129,6 +17138,9 @@ fn (tc &TypeChecker) type_text_has_unbound_generic_placeholder_uncached(typ stri
 }
 
 fn (tc &TypeChecker) type_text_has_generic_struct_placeholder_application(typ_id u32) bool {
+	if !flat.source_type_query(typ_id).has(.generic_token) {
+		return false
+	}
 	return tc.type_text_has_generic_struct_placeholder_application_uncached(flat.source_type_name(typ_id))
 }
 

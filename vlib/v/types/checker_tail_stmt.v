@@ -11143,11 +11143,8 @@ fn thread_handle_type_ids_match(actual_id u32, expected_id u32) bool {
 }
 
 fn source_type_has_thread_prefix(type_id u32) bool {
-	if type_id == checker_source_thread {
-		return true
-	}
 	// The original grammar predicate also accepts spellings such as `thread_name`.
-	return flat.source_type_name(type_id).starts_with('thread')
+	return flat.source_type_query(type_id).has(.thread_prefix)
 }
 
 fn canonical_thread_handle_type_id(type_id u32) u32 {
@@ -21036,16 +21033,22 @@ fn (tc &TypeChecker) c_type_uncached(t &Type) string {
 		return '__v_result'
 	}
 	if t is Struct {
-		if t.source_type_id() == checker_source_thread || t.name().ends_with('.thread') || t.name().starts_with('thread ') {
+		name_id := t.source_type_id()
+		shape := flat.source_type_shape(name_id)
+		if name_id == checker_source_thread || shape.has(.thread_type) {
 			return '__v_thread'
 		}
-		if t.name().starts_with('C.') {
-			raw := t.name()[2..]
+		name := flat.source_type_name(name_id)
+		if shape.has(.dotted) && name.ends_with('.thread') {
+			return '__v_thread'
+		}
+		if name.starts_with('C.') {
+			raw := name[2..]
 			// A struct declared `@[typedef] struct C.foo {}` is referenced by its
 			// typedef name (`foo`), never as `struct foo` — the C header (and v3's own
 			// emitted `typedef struct {...} foo;`) has no matching `struct foo` tag, so
 			// a `struct foo` reference would stay an incomplete type.
-			if t.name() in tc.c_typedef_structs {
+			if name in tc.c_typedef_structs {
 				return raw
 			}
 			// Winsock exposes WSAData only as a struct tag; its typedef is WSADATA.
@@ -21064,26 +21067,28 @@ fn (tc &TypeChecker) c_type_uncached(t &Type) string {
 			}
 			return raw
 		}
-		base, _, is_generic := generic_type_application_parts(t.name())
-		if is_generic {
-			if !base.contains('.') && tc.type_aliases.contains(base) {
-				if module_name := tc.struct_modules[base] {
-					if module_name !in ['', 'main', 'builtin'] {
-						return tc.c_struct_type_name('${module_name}.${t.name()}')
+		if shape.has(.bracketed) {
+			base, _, is_generic := generic_type_application_parts(name)
+			if is_generic {
+				if !base.contains('.') && tc.type_aliases.contains(base) {
+					if module_name := tc.struct_modules[base] {
+						if module_name !in ['', 'main', 'builtin'] {
+							return tc.c_struct_type_name('${module_name}.${name}')
+						}
 					}
 				}
 			}
 		}
-		if t.name().contains('.') && t.name() !in tc.structs && t.name() !in tc.type_aliases.ids {
+		if shape.has(.dotted) && name !in tc.structs && name !in tc.type_aliases.ids {
 			// An import-alias prefix (`json.Any` for `import x.json2 as json`)
 			// can survive in recorded types; resolve by unique short name.
-			if resolved_source_id := tc.unique_qualified_type_name(t.name().all_after_last('.')) {
+			if resolved_source_id := tc.unique_qualified_type_name(name.all_after_last('.')) {
 				resolved := flat.source_type_name(resolved_source_id)
 
 				return tc.c_struct_type_name(resolved)
 			}
 		}
-		return tc.c_struct_type_name(t.name())
+		return tc.c_struct_type_name(name)
 	}
 	if t is Interface {
 		base, _, is_generic := generic_type_application_parts(t.name())

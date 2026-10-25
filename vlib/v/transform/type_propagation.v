@@ -604,6 +604,7 @@ fn (t &Transformer) concrete_node_type_name(node flat.Node) u32 {
 }
 
 fn type_text_has_unresolved_generic_placeholder(typ_id u32) bool {
+	if !flat.source_type_query(typ_id).has(.generic_token) { return false }
 	return type_text_has_unresolved_generic_placeholder_bytes(flat.source_type_name(typ_id))
 }
 
@@ -1486,10 +1487,10 @@ fn (t &Transformer) normalize_dotted_canonical_fast(typ string) bool {
 
 // normalize_type_alias_uncached resolves aliases while preserving source spelling identities.
 fn (t &Transformer) normalize_type_alias_uncached(type_id u32) u32 {
-	typ := flat.source_type_name(type_id)
-	if is_generic_placeholder_type_name(typ) && !t.is_known_type_name(type_id) {
+	if flat.source_type_query(type_id).has(.generic_name) && !t.is_known_type_name(type_id) {
 		return type_id
 	}
+	typ := flat.source_type_name(type_id)
 	if typ.starts_with('mut ') {
 		return flat.source_type_id('&' + flat.source_type_name(t.normalize_type_alias(flat.source_type_id(typ[4..]))))
 	}
@@ -1774,29 +1775,11 @@ fn is_plain_builtin_alias_type(typ_id u32) bool {
 	return flat.source_type_shape(typ_id).has(.builtin_alias)
 }
 
-@[inline]
-fn is_plain_builtin_alias_type_bytes(typ string) bool {
-	// 'i8'..'voidptr': every plain builtin spelling is 2..7 bytes long.
-	if typ.len < 2 || typ.len > 7 {
-		return false
-	}
-	return match typ {
-		'bool', 'string', 'void', 'int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32',
-		'f64', 'rune', 'isize', 'uint', 'voidptr', 'byteptr', 'charptr' {
-			true
-		}
-		else {
-			false
-		}
-	}
-}
-
-// is_generic_placeholder_type_name reports is_generic_placeholder_type_name logic in transform.
+// Text parsers use this for slices that do not yet have source spelling IDs.
 fn is_generic_placeholder_type_name(typ string) bool {
-	if typ.contains('.') {
-		return is_generic_placeholder_type_name(typ.all_after_last('.'))
-	}
-	return typ in ['T', 'U', 'V', 'K']
+	if typ.len == 0 { return false }
+	return (typ.len == 1 || typ[typ.len - 2] == `.`)
+		&& typ[typ.len - 1] in [`T`, `U`, `V`, `K`]
 }
 
 // normalize_type_in_module transforms normalize type in module data for transform.
@@ -2156,7 +2139,7 @@ fn (t &Transformer) node_type_uncached(id flat.NodeId) u32 {
 		// are builtin scalars or containers; avoid parsing both types and deriving
 		// their C names for those overwhelmingly common cases.
 		resolved_shape := flat.source_type_shape(resolved_source_id)
-		if !t.building_v && type_text_may_name_struct(resolved_source_id, resolved_shape) {
+		if !t.building_v && flat.source_type_query(resolved_source_id).has(.struct_candidate) {
 			if checked_source_id := t.checker_type_over_struct_guess(id, resolved_source_id) {
 				return checked_source_id
 			}
@@ -2277,36 +2260,6 @@ fn (t &Transformer) node_type_uncached(id flat.NodeId) u32 {
 		return deferred_call_typ
 	}
 	return u32(0)
-}
-
-// type_text_may_name_struct screens an interned spelling before checker struct overrides.
-@[inline]
-fn type_text_may_name_struct(typ_id u32, shape flat.SourceTypeShape) bool {
-	if typ_id == 0 || shape.has(.builtin_alias) || shape.has(.array_type)
-		|| shape.has(.map_type) || shape.has(.leading_bracket) || shape.has(.function_compact)
-		|| shape.has(.function_spaced) || shape.has(.channel_type) || shape.has(.optional) {
-		return false
-	}
-	if !shape.has(.pointer) {
-		return true
-	}
-	// Pointer chains retain the exact byte grammar for the underlying spelling.
-	typ := flat.source_type_name(typ_id)
-	mut start := 0
-	for start < typ.len && typ[start] == `&` {
-		start++
-	}
-	if start >= typ.len {
-		return false
-	}
-	// Only read below, while `typ` owns the bytes.
-	clean := unsafe { typ.substr_unsafe(start, typ.len) }
-	if is_plain_builtin_alias_type_bytes(clean) {
-		return false
-	}
-	return !clean.starts_with('[]') && !clean.starts_with('map[') && !clean.starts_with('[')
-		&& !clean.starts_with('fn(') && !clean.starts_with('fn (') && !clean.starts_with('chan ')
-		&& !clean.starts_with('?') && !clean.starts_with('!')
 }
 
 fn (t &Transformer) checker_type_over_struct_guess(id flat.NodeId, guessed_id u32) ?u32 {

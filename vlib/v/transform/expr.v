@@ -5214,20 +5214,10 @@ pub fn (mut t Transformer) make_sizeof_type(type_name_id u32) flat.NodeId {
 // like `int[5]` (as opposed to a dynamic array `[]int` or a map `map[...]...`).
 @[inline]
 fn (t &Transformer) is_fixed_array_type(s_id u32) bool {
-	if !flat.source_type_shape(s_id).has(.bracketed) { return false }
-	s := flat.source_type_name(s_id)
-	if s.len < 2 {
-		return false
-	}
-	if s[0] == `[` {
-		return s[1] != `]` && s.contains(']')
-	}
-	// Scalars and dynamic containers do not end in `]`; this is the dominant
-	// transform path, so keep it out of generic and constant-name resolution.
-	if s[s.len - 1] != `]` || s.starts_with('map[') {
-		return false
-	}
-	return t.is_postfix_fixed_array_type(s)
+	query := flat.source_type_query(s_id)
+	if query.has(.fixed_array_prefix) { return true }
+	if !query.has(.fixed_array_postfix) { return false }
+	return t.is_postfix_fixed_array_type(flat.source_type_name(s_id))
 }
 
 fn (t &Transformer) is_postfix_fixed_array_type(s string) bool {

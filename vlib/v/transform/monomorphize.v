@@ -6911,7 +6911,7 @@ fn (mut t Transformer) infer_generic_call_args_from_params(decl GenericFnDecl, c
 		}
 		mut inferred_arg_type := t.generic_call_arg_type_for_inference(arg_id)
 		inference_param_type := generic_inference_param_type(child)
-		if !is_generic_fn_placeholder_name(flat.source_type_name(inference_param_type)) {
+		if !flat.source_type_query(inference_param_type).has(.generic_fn_name) {
 			inferred_arg_type = t.generic_composite_inference_alias_type(inferred_arg_type,
 				call_module)
 		}
@@ -8163,7 +8163,7 @@ fn (mut t Transformer) generic_args_equal_ignoring_mut_storage(decl GenericFnDec
 		}
 		if param.is_mut || flat.source_type_shape(param.typ).has(.mutable_type) {
 			generic_name := generic_inference_param_type(param)
-			if is_generic_fn_placeholder_name(flat.source_type_name(generic_name)) {
+			if flat.source_type_query(generic_name).has(.generic_fn_name) {
 				direct_mut_params[flat.source_type_name(generic_name)] = true
 			}
 		}
@@ -8228,7 +8228,7 @@ fn (mut t Transformer) infer_generic_call_args_from_raw_node_types(decl GenericF
 		arg := t.a.nodes[int(arg_id)]
 		inference_param_type := generic_inference_param_type(param)
 		mut raw_arg_type := t.fn_value_type_name(arg_id) or { arg.typ }
-		if !is_generic_fn_placeholder_name(flat.source_type_name(inference_param_type)) {
+		if !flat.source_type_query(inference_param_type).has(.generic_fn_name) {
 			raw_arg_type = t.generic_composite_inference_alias_type(raw_arg_type, decl.module)
 		}
 		if (param.is_mut || param.op == .amp || flat.source_type_shape(param.typ).has(.mutable_type))
@@ -9515,7 +9515,7 @@ fn (mut t Transformer) infer_generic_call_args_seeded(decl GenericFnDecl, _id fl
 		}
 		mut inferred_arg_type := t.generic_call_arg_type_for_inference(arg_id)
 		inference_param_type := generic_inference_param_type(child)
-		if !is_generic_fn_placeholder_name(flat.source_type_name(inference_param_type)) {
+		if !flat.source_type_query(inference_param_type).has(.generic_fn_name) {
 			inferred_arg_type = t.generic_composite_inference_alias_type(inferred_arg_type,
 				call_module)
 		}
@@ -9539,7 +9539,7 @@ fn (mut t Transformer) infer_generic_call_args_seeded(decl GenericFnDecl, _id fl
 		mut defer_numeric_literal := false
 		arg_kind := t.a.nodes[int(arg_id)].kind
 		if arg_kind in [.int_literal, .float_literal]
-			&& is_generic_fn_placeholder_name(flat.source_type_name(inference_param_type)) {
+			&& flat.source_type_query(inference_param_type).has(.generic_fn_name) {
 			mut later_param_idx := param_idx + 1
 			for later_child_idx in i + 1 .. decl.node.children_count {
 				later_child := t.a.child_node(&decl.node, later_child_idx)
@@ -13656,7 +13656,7 @@ fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children
 				// already represented by its semantic type and must keep a genuine `&T`.
 				raw_arg_type = flat.source_type_id(flat.source_type_name(raw_arg_type)[1..])
 			}
-			if !is_generic_fn_placeholder_name(flat.source_type_name(inference_param_type)) {
+			if !flat.source_type_query(inference_param_type).has(.generic_fn_name) {
 				// Preserve aliases nested in a concrete generic receiver. Resolving
 				// `LinkedList[Distance]` as a whole erases `Distance` to `int`, so a
 				// nested method call is retargeted to the incompatible
@@ -14004,7 +14004,7 @@ fn (mut t Transformer) retarget_cloned_implicit_generic_call(clone_id flat.NodeI
 				&& !is_forwarded_mut_value {
 				arg_type = flat.source_type_id(flat.source_type_name(arg_type)[1..])
 			}
-			if !is_generic_fn_placeholder_name(flat.source_type_name(inference_param_type)) {
+			if !flat.source_type_query(inference_param_type).has(.generic_fn_name) {
 				arg_type = t.generic_inference_alias_target(arg_type, t.cur_module)
 			}
 			arg_type = generic_arg_type_for_param(inference_param_type, arg_type)
@@ -14402,8 +14402,15 @@ fn is_placeholder_ident_char(c u8) bool {
 	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || (c >= `0` && c <= `9`) || c == `_`
 }
 
+@[inline]
+fn type_id_may_have_generic_placeholder(typ_id u32) bool {
+	query := flat.source_type_query(typ_id)
+	return query.has(.generic_token) || query.has(.generic_word)
+}
+
 fn (mut t Transformer) type_text_has_generic_placeholder(typ_id u32, module_name string) bool {
-	return t.type_text_has_generic_placeholder_bytes(flat.source_type_name(typ_id), module_name)
+	if t.skip_generics || !type_id_may_have_generic_placeholder(typ_id) { return false }
+	return t.type_text_has_generic_placeholder_syntax(flat.source_type_name(typ_id), module_name)
 }
 
 // type_text_has_generic_placeholder_bytes parses source syntax and declaration payloads.
@@ -14414,6 +14421,10 @@ fn (mut t Transformer) type_text_has_generic_placeholder_bytes(typ string, modul
 	if !generic_placeholder_prescreen(typ) {
 		return false
 	}
+	return t.type_text_has_generic_placeholder_syntax(typ, module_name)
+}
+
+fn (mut t Transformer) type_text_has_generic_placeholder_syntax(typ string, module_name string) bool {
 	clean := trimmed_transform_text(typ)
 	if clean.len == 0 {
 		return false

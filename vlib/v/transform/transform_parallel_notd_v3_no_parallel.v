@@ -883,7 +883,7 @@ fn fn_decl_generic_candidate_prescreen(a &flat.FlatAst, node &flat.Node, prefix_
 	if node.payload != 0 && node.generic_params().len > 0 {
 		return true
 	}
-	if generic_placeholder_prescreen(node.typ_text()) || generic_placeholder_prescreen(node.value_text()) {
+	if type_id_may_have_generic_placeholder(node.typ) || generic_placeholder_prescreen(node.value_text()) {
 		return true
 	}
 	for i in 0 .. node.children_count {
@@ -894,7 +894,7 @@ fn fn_decl_generic_candidate_prescreen(a &flat.FlatAst, node &flat.Node, prefix_
 			}
 			continue
 		}
-		if generic_placeholder_prescreen(child.typ_text()) {
+		if type_id_may_have_generic_placeholder(child.typ) {
 			return true
 		}
 	}

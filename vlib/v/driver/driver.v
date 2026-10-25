@@ -23794,46 +23794,13 @@ fn implicit_trim_space(text string) string {
 }
 
 fn type_text_is_channel(typ_id u32) bool {
-	return type_text_is_channel_bytes(flat.source_type_name(typ_id))
-}
-
-// type_text_is_channel_bytes inspects spelling syntax within the numeric predicate boundary.
-fn type_text_is_channel_bytes(typ string) bool {
-	mut clean := implicit_trim_space(typ)
-	for {
-		if clean.starts_with('&') {
-			clean = implicit_trim_space(clean[1..])
-			continue
-		}
-		if clean.starts_with('mut ') {
-			clean = implicit_trim_space(clean[4..])
-			continue
-		}
-		break
-	}
-	return clean.starts_with('chan ') || clean == 'chan'
+	return flat.source_type_query(typ_id).has(.channel)
 }
 
 // type_text_has_shared_modifier reports whether a type spelling contains `shared`, also after
 // a container prefix: the elements of `[]shared T` and `map[K]shared T` are shared wrappers.
 fn type_text_has_shared_modifier(raw_id u32) bool {
-	raw := flat.source_type_name(raw_id)
-	if !raw.contains('shared ') {
-		return false
-	}
-	mut start := 0
-	for {
-		idx := raw.index_after('shared ', start) or { return false }
-		if idx == 0 || !implicit_type_name_byte(raw[idx - 1]) {
-			return true
-		}
-		start = idx + 'shared '.len
-	}
-	return false
-}
-
-fn implicit_type_name_byte(c u8) bool {
-	return c.is_letter() || c.is_digit() || c == `_` || c == `.`
+	return flat.source_type_query(raw_id).has(.shared_modifier)
 }
 
 fn decl_assign_value_is_shared(value string) bool {

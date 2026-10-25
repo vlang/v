@@ -3970,26 +3970,7 @@ fn markused_sum_variants(name_id u32, tc &types.TypeChecker) []u32 {
 }
 
 fn markused_type_text_is_channel(type_id u32) bool {
-	if flat.source_type_shape(type_id).has(.channel_type) {
-		return true
-	}
-	raw := flat.source_type_name(type_id)
-	if !raw.contains('chan') {
-		return false
-	}
-	mut clean := raw.trim_space()
-	for {
-		if clean.starts_with('&') {
-			clean = clean[1..].trim_space()
-			continue
-		}
-		if clean.starts_with('mut ') {
-			clean = clean[4..].trim_space()
-			continue
-		}
-		break
-	}
-	return clean.starts_with('chan ') || clean == 'chan'
+	return flat.source_type_query(type_id).has(.channel)
 }
 
 fn markused_call_lowers_to_join_path_single(a &flat.FlatAst, fn_node flat.Node, imports map[string]string, resolved_call string) bool {

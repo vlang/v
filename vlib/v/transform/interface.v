@@ -16,8 +16,8 @@ fn (t &Transformer) has_ierror_interface() bool {
 }
 
 fn (t &Transformer) is_builtin_ierror_interface_name(name_id u32) bool {
-	clean := flat.source_type_name(t.trim_pointer_type(t.normalize_type_alias(name_id)))
-	return clean == 'IError' || clean == 'builtin.IError'
+	clean := t.trim_pointer_type(t.normalize_type_alias(name_id))
+	return clean in [transform_identity_ierror, transform_identity_builtin_ierror]
 }
 
 fn (t &Transformer) interface_cast_matches_target(cast_type_id u32, iface_name_id u32) bool {

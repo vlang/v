@@ -1073,33 +1073,7 @@ fn (mut g FlatGen) collect_unresolved_call_optional_types() {
 }
 
 fn cgen_type_text_is_complete(text_id u32) bool {
-	text := flat.source_type_name(text_id)
-	mut parens := 0
-	mut brackets := 0
-	for ch in text {
-		match ch {
-			`(` {
-				parens++
-			}
-			`)` {
-				if parens == 0 {
-					return false
-				}
-				parens--
-			}
-			`[` {
-				brackets++
-			}
-			`]` {
-				if brackets == 0 {
-					return false
-				}
-				brackets--
-			}
-			else {}
-		}
-	}
-	return parens == 0 && brackets == 0
+	return flat.source_type_query(text_id).has(.complete)
 }
 
 fn (mut g FlatGen) collect_declaration_signature_types() {
