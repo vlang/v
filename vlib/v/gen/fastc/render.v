@@ -954,7 +954,8 @@ fn (g &Parser) render_selfhost_print_expression(tokens []FastcExpressionToken) ?
 // pointer, `Option(...)` for an option. A `mut` local or a smartcast, which C
 // holds through a pointer, prints as its value.
 fn (g &Parser) print_value_string_expression(value string, value_type u32, value_tokens []FastcExpressionToken) ?string {
-	type_name := flat.source_type_name(g.underlying_alias_type(value_type))
+	type_name_id := g.underlying_alias_type(value_type)
+	type_name := flat.source_type_name(type_name_id)
 	if type_name == '__v_result' || type_name.ends_with('**') {
 		return none
 	}
@@ -971,7 +972,7 @@ fn (g &Parser) print_value_string_expression(value string, value_type u32, value
 		}
 		return w.fastc_reference_str_expression(value, type_name, value_tokens)
 	}
-	if element_type := fastc_fixed_array_element_type(flat.source_type_id(type_name)) {
+	if element_type := fastc_fixed_array_element_type(type_name_id) {
 		helper := w.fastc_fixed_array_str_name(type_name)?
 		// A fixed array field or global is raw C array storage; a local is FastC's
 		// wrapper struct.

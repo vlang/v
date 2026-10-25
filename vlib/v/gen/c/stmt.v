@@ -304,18 +304,18 @@ fn (mut g FlatGen) gen_split_array_append_expr_stmt(node flat.Node) bool {
 }
 
 fn (g &FlatGen) array_push_rhs_is_sum_variant_value(rhs_id flat.NodeId, elem_type &types.Type) bool {
-	sum_name := if elem_type is types.SumType {
-		elem_type.name()
+	sum_name_id := if elem_type is types.SumType {
+		elem_type.source_type_id()
 	} else if elem_type is types.Alias && elem_type.base_type is types.SumType {
-		elem_type.name()
+		elem_type.source_type_id()
 	} else {
 		return false
 	}
-	candidate := flat.source_type_name(g.array_push_rhs_variant_candidate(rhs_id))
-	if candidate.len == 0 {
+	candidate_id := g.array_push_rhs_variant_candidate(rhs_id)
+	if candidate_id == 0 {
 		return false
 	}
-	if _ := g.tc.sum_variant_type_for_pattern(flat.source_type_id(sum_name), flat.source_type_id(candidate)) {
+	if _ := g.tc.sum_variant_type_for_pattern(sum_name_id, candidate_id) {
 		return true
 	}
 	return false
@@ -6304,11 +6304,11 @@ fn (g &FlatGen) struct_type_embeds_error(type_name_id u32) bool {
 		return true
 	}
 	for field in g.struct_embedded_fields(type_name_id) {
-		embedded_type_name := flat.source_type_name(g.embedded_field_type_name(field))
-		if embedded_type_name.len == 0 {
+		embedded_type_name_id := g.embedded_field_type_name(field)
+		if embedded_type_name_id == 0 {
 			continue
 		}
-		if g.struct_type_embeds_error(flat.source_type_id(embedded_type_name)) {
+		if g.struct_type_embeds_error(embedded_type_name_id) {
 			return true
 		}
 	}
@@ -9130,7 +9130,7 @@ fn (g &FlatGen) checker_struct_field_type(type_name_id u32, field_name string) ?
 		short_id := flat.source_type_id(c_short_name_view(flat.source_type_name(type_name_id)))
 		return g.checker_owner_field_type(short_id, field_name)
 	}
-	qname := flat.source_type_id(g.tc.qualify_name(flat.source_type_name(type_name_id)))
+	qname := g.tc.qualify_type_name(type_name_id)
 	if qname != type_name_id {
 		return g.checker_owner_field_type(qname, field_name)
 	}
