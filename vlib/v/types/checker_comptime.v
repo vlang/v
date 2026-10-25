@@ -21757,7 +21757,8 @@ fn comptime_method_call_key(decl_id flat.NodeId, args []u32) u64 {
 // is created, so recursive forwarding sees the visited instance.
 fn remember_comptime_method_call(mut calls map[u64][]ComptimeMethodCallInstance, decl_id flat.NodeId, args []u32) bool {
 	key := comptime_method_call_key(decl_id, args)
-	for previous in calls[key] {
+	instances := calls[key]
+	for previous in instances {
 		if previous.decl_id == decl_id && previous.args == args {
 			return false
 		}

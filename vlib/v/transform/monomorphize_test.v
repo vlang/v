@@ -1037,7 +1037,7 @@ fn main() {
 		t.prepare()
 		decl := t.cached_generic_fn_decls()['count'] or { panic('missing count declaration') }
 		args := ['Item']
-		mut emitted := GenericFnSpecMap[bool]{}
+		mut emitted := GenericFnSpecBoolMap{}
 		mut generated := []string{}
 		assert t.run_scoped_monomorphize_specs([PendingGenericFnSpec{
 			decl: decl

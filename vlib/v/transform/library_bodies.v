@@ -44,12 +44,12 @@ import v.types
 struct LibraryBodies {
 mut:
 	ready         bool
-	keep_all      string                 // why every library instance keeps its body, if one does
-	receivers     map[u32]bool           // program types with a method that has type parameters of its own
-	methods       map[u32][]string       // a type -> the keys of its methods
-	harmless      map[u32]bool           // types that reach none of the above
-	program_specs GenericFnSpecMap[bool] // the keys of the library instances that the program's code asks for
-	request_file  string                 // the file of the call that asks for an instance, when the scan knows it
+	keep_all      string               // why every library instance keeps its body, if one does
+	receivers     map[u32]bool         // program types with a method that has type parameters of its own
+	methods       map[u32][]string     // a type -> the keys of its methods
+	harmless      map[u32]bool         // types that reach none of the above
+	program_specs GenericFnSpecBoolMap // the keys of the library instances that the program's code asks for
+	request_file  string               // the file of the call that asks for an instance, when the scan knows it
 }
 
 // note_library_instance_request remembers, in a check of the instances that the

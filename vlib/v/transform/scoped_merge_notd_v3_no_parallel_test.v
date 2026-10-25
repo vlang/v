@@ -288,7 +288,7 @@ fn test_serial_scoped_monomorphization_preserves_lifted_callback_signatures() {
 	for arg in ['int', 'string'] {
 		t.request_generic_fn_specialization(decl, flat.TypeTextList.from_names([arg]).ids)
 	}
-	mut emitted := GenericFnSpecMap[bool]{}
+	mut emitted := GenericFnSpecBoolMap{}
 	mut generated := []string{}
 	assert t.drain_pending_generic_fn_specs(map[string]GenericStructDecl{}, map[string]GenericSumDecl{}, mut emitted, mut generated)
 	assert isnil(a.worker_pool)

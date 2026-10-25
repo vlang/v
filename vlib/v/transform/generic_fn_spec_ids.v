@@ -41,48 +41,41 @@ fn compare_generic_fn_spec_sort_keys(a &GenericFnSpecSortKey, b &GenericFnSpecSo
 	return int(a.write_order > b.write_order)
 }
 
-struct GenericFnSpecEntry[T] {
+struct GenericFnSpecBoolEntry {
 	key         GenericFnSpecKey
-	value       T
+	value       bool
 	write_order u64
 }
 
-// GenericFnSpecMap stores worker-owned keys and resolves hash collisions with exact numeric IDs.
-struct GenericFnSpecMap[T] {
+// GenericFnSpecBoolMap owns keys and resolves bucket collisions with exact source IDs.
+struct GenericFnSpecBoolMap {
 mut:
-	buckets          map[u64][]GenericFnSpecEntry[T]
+	buckets          map[u64][]GenericFnSpecBoolEntry
 	len              int
 	next_write_order u64
 }
 
-fn (m &GenericFnSpecMap[T]) get(key GenericFnSpecKey) ?T {
-	for entry in m.buckets[key.hash] {
-		if entry.key.matches(key) { return entry.value }
-	}
-	return none
-}
-
-fn (m &GenericFnSpecMap[T]) contains(key GenericFnSpecKey) bool {
+fn (m &GenericFnSpecBoolMap) contains(key GenericFnSpecKey) bool {
 	for entry in m.buckets[key.hash] {
 		if entry.key.matches(key) { return true }
 	}
 	return false
 }
 
-fn (mut m GenericFnSpecMap[T]) set(key GenericFnSpecKey, value T) {
+fn (mut m GenericFnSpecBoolMap) set(key GenericFnSpecKey, value bool) {
 	m.next_write_order++
 	for i, entry in m.buckets[key.hash] {
 		if entry.key.matches(key) {
 			// Replace the key too: a parent-arena re-record must discard the worker copy.
-			m.buckets[key.hash][i] = GenericFnSpecEntry[T]{ key: key.clone_owned(), value: value, write_order: m.next_write_order }
+			m.buckets[key.hash][i] = GenericFnSpecBoolEntry{ key: key.clone_owned(), value: value, write_order: m.next_write_order }
 			return
 		}
 	}
-	m.buckets[key.hash] << GenericFnSpecEntry[T]{ key: key.clone_owned(), value: value, write_order: m.next_write_order }
+	m.buckets[key.hash] << GenericFnSpecBoolEntry{ key: key.clone_owned(), value: value, write_order: m.next_write_order }
 	m.len++
 }
 
-fn (mut m GenericFnSpecMap[T]) delete(key GenericFnSpecKey) {
+fn (mut m GenericFnSpecBoolMap) delete(key GenericFnSpecKey) {
 	for i, entry in m.buckets[key.hash] {
 		if entry.key.matches(key) {
 			m.buckets[key.hash].delete(i)
@@ -93,20 +86,112 @@ fn (mut m GenericFnSpecMap[T]) delete(key GenericFnSpecKey) {
 	}
 }
 
-fn (mut m GenericFnSpecMap[T]) clear() {
+fn (mut m GenericFnSpecBoolMap) clear() {
 	m.buckets.clear()
 	m.len = 0
 	m.next_write_order = 0
 }
 
-fn (m &GenericFnSpecMap[T]) write_order(key GenericFnSpecKey) u64 {
+struct GenericFnSpecNodeEntry {
+	key         GenericFnSpecKey
+	value       flat.NodeId
+	write_order u64
+}
+
+// GenericFnSpecNodeMap owns keys and resolves bucket collisions with exact source IDs.
+struct GenericFnSpecNodeMap {
+mut:
+	buckets          map[u64][]GenericFnSpecNodeEntry
+	len              int
+	next_write_order u64
+}
+
+fn (m &GenericFnSpecNodeMap) get(key GenericFnSpecKey) ?flat.NodeId {
+	for entry in m.buckets[key.hash] {
+		if entry.key.matches(key) { return entry.value }
+	}
+	return none
+}
+
+fn (m &GenericFnSpecNodeMap) contains(key GenericFnSpecKey) bool {
+	for entry in m.buckets[key.hash] {
+		if entry.key.matches(key) { return true }
+	}
+	return false
+}
+
+fn (mut m GenericFnSpecNodeMap) set(key GenericFnSpecKey, value flat.NodeId) {
+	m.next_write_order++
+	for i, entry in m.buckets[key.hash] {
+		if entry.key.matches(key) {
+			// Replace the key too: a parent-arena re-record must discard the worker copy.
+			m.buckets[key.hash][i] = GenericFnSpecNodeEntry{ key: key.clone_owned(), value: value, write_order: m.next_write_order }
+			return
+		}
+	}
+	m.buckets[key.hash] << GenericFnSpecNodeEntry{ key: key.clone_owned(), value: value, write_order: m.next_write_order }
+	m.len++
+}
+
+fn (mut m GenericFnSpecNodeMap) delete(key GenericFnSpecKey) {
+	for i, entry in m.buckets[key.hash] {
+		if entry.key.matches(key) {
+			m.buckets[key.hash].delete(i)
+			if m.buckets[key.hash].len == 0 { m.buckets.delete(key.hash) }
+			m.len--
+			return
+		}
+	}
+}
+
+fn (mut m GenericFnSpecNodeMap) clear() {
+	m.buckets.clear()
+	m.len = 0
+	m.next_write_order = 0
+}
+
+struct GenericFnSpecCacheSpecEntry {
+	key         GenericFnSpecKey
+	value       MonomorphCacheSpec
+	write_order u64
+}
+
+// GenericFnSpecCacheSpecMap owns keys and resolves bucket collisions with exact source IDs.
+struct GenericFnSpecCacheSpecMap {
+mut:
+	buckets          map[u64][]GenericFnSpecCacheSpecEntry
+	len              int
+	next_write_order u64
+}
+
+fn (m &GenericFnSpecCacheSpecMap) get(key GenericFnSpecKey) ?MonomorphCacheSpec {
+	for entry in m.buckets[key.hash] {
+		if entry.key.matches(key) { return entry.value }
+	}
+	return none
+}
+
+fn (mut m GenericFnSpecCacheSpecMap) set(key GenericFnSpecKey, value MonomorphCacheSpec) {
+	m.next_write_order++
+	for i, entry in m.buckets[key.hash] {
+		if entry.key.matches(key) {
+			// Replace the key too: a parent-arena re-record must discard the worker copy.
+			m.buckets[key.hash][i] = GenericFnSpecCacheSpecEntry{ key: key.clone_owned(), value: value, write_order: m.next_write_order }
+			return
+		}
+	}
+	m.buckets[key.hash] << GenericFnSpecCacheSpecEntry{ key: key.clone_owned(), value: value, write_order: m.next_write_order }
+	m.len++
+}
+
+fn (m &GenericFnSpecCacheSpecMap) write_order(key GenericFnSpecKey) u64 {
 	for entry in m.buckets[key.hash] {
 		if entry.key.matches(key) { return entry.write_order }
 	}
 	return 0
 }
 
-fn (m &GenericFnSpecMap[T]) keys() []GenericFnSpecKey {
+fn (m &GenericFnSpecCacheSpecMap) keys() []GenericFnSpecKey {
 	mut keys := []GenericFnSpecKey{cap: m.len}
 	for _, bucket in m.buckets {
 		for entry in bucket { keys << entry.key }

@@ -13,17 +13,17 @@ fn test_generic_fn_spec_map_checks_full_identity_on_hash_collision() {
 		]
 		hash:     first.hash
 	}
-	mut entries := GenericFnSpecMap[int]{}
-	entries.set(first, 1)
-	entries.set(second, 2)
-	entries.set(third, 3)
+	mut entries := GenericFnSpecNodeMap{}
+	entries.set(first, flat.NodeId(1))
+	entries.set(second, flat.NodeId(2))
+	entries.set(third, flat.NodeId(3))
 	assert entries.len == 3
-	assert entries.get(first) or { 0 } == 1
-	assert entries.get(second) or { 0 } == 2
-	assert entries.get(third) or { 0 } == 3
-	entries.set(second, 4)
+	assert entries.get(first) or { flat.NodeId(0) } == 1
+	assert entries.get(second) or { flat.NodeId(0) } == 2
+	assert entries.get(third) or { flat.NodeId(0) } == 3
+	entries.set(second, flat.NodeId(4))
 	assert entries.len == 3
-	assert entries.get(second) or { 0 } == 4
+	assert entries.get(second) or { flat.NodeId(0) } == 4
 	entries.delete(first)
 	assert !entries.contains(first)
 	assert entries.contains(second)
@@ -37,10 +37,10 @@ fn test_generic_fn_spec_map_checks_full_identity_on_hash_collision() {
 fn test_generic_fn_spec_identity_preserves_order_arity_and_raw_spelling() {
 	mut args := [flat.source_type_int]
 	key := generic_fn_spec_key('main.pick', args)
-	mut entries := GenericFnSpecMap[int]{}
-	entries.set(key, 7)
+	mut entries := GenericFnSpecNodeMap{}
+	entries.set(key, flat.NodeId(7))
 	args[0] = flat.source_type_string
-	assert entries.get(generic_fn_spec_key('main.pick', [flat.source_type_int])) or { 0 } == 7
+	assert entries.get(generic_fn_spec_key('main.pick', [flat.source_type_int])) or { flat.NodeId(0) } == 7
 	assert !entries.contains(generic_fn_spec_key('main.pick', [flat.source_type_string]))
 	assert !entries.contains(generic_fn_spec_key('main.pick', []u32{}))
 	assert !entries.contains(generic_fn_spec_key('main.pick', [flat.source_type_id(' int ')]))

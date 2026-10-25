@@ -526,12 +526,12 @@ mut:
 	generic_specialization_args        SpecializationArgsBindings
 	generic_specialization_args_log    []SpecializationArgsKey
 	generic_specialization_args_parent &SpecializationArgsBindings = unsafe { nil }
-	generic_fn_specs_in_progress       GenericFnSpecMap[bool]
+	generic_fn_specs_in_progress       GenericFnSpecBoolMap
 	library_bodies                     LibraryBodies // which library instances a check clones without their bodies
-	generic_fn_spec_nodes              GenericFnSpecMap[flat.NodeId]
-	monomorph_cache_specs              GenericFnSpecMap[MonomorphCacheSpec]
+	generic_fn_spec_nodes              GenericFnSpecNodeMap
+	monomorph_cache_specs              GenericFnSpecCacheSpecMap
 	monomorph_signature_types          []MonomorphSignatureType
-	monomorph_signature_spec_keys      GenericFnSpecMap[bool]
+	monomorph_signature_spec_keys      GenericFnSpecBoolMap
 	generic_clone_children             []flat.NodeId
 	node_context_stack                 []flat.NodeId
 	specialization_decl_nodes_by_name  map[string][]int
@@ -540,7 +540,7 @@ mut:
 	parallel_monomorph_worker          bool
 	generic_signatures_pre_registered  bool
 	pending_generic_fn_specs           []PendingGenericFnSpec
-	pending_generic_fn_spec_keys       GenericFnSpecMap[bool]
+	pending_generic_fn_spec_keys       GenericFnSpecBoolMap
 	generic_fn_decls_cache             map[string]GenericFnDecl
 	generic_receiver_methods_by_name   map[string][]string
 	generic_fn_call_names              map[string]bool
@@ -5116,7 +5116,7 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 	w.escaping_fixed_array_view_sources = map[string]bool{}
 	w.heaped_amp_locals = map[string]bool{}
 	w.escaping_interface_box_locals = map[string]bool{}
-	w.generic_fn_specs_in_progress = GenericFnSpecMap[bool]{}
+	w.generic_fn_specs_in_progress = GenericFnSpecBoolMap{}
 	w.monomorph_errors = []string{}
 	w.monomorph_error_seen = map[string]bool{}
 	w.alloc_warnings = []AllocWarning{}
@@ -5239,7 +5239,7 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	w.escaping_fixed_array_view_sources = map[string]bool{}
 	w.heaped_amp_locals = map[string]bool{}
 	w.escaping_interface_box_locals = map[string]bool{}
-	w.generic_fn_specs_in_progress = GenericFnSpecMap[bool]{}
+	w.generic_fn_specs_in_progress = GenericFnSpecBoolMap{}
 	w.stringify_stack = []u32{}
 	w.interface_boxed_types = map[u64]bool{}
 	w.interface_boxed_types_done = false
@@ -5430,10 +5430,10 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		exclusive_closure_return_fns:        t.exclusive_closure_return_fns
 		exclusive_closure_returns_done:      t.exclusive_closure_returns_done
 		mut_fixed_array_capture_sources:     map[string]bool{}
-		generic_fn_specs_in_progress:        GenericFnSpecMap[bool]{}
-		generic_fn_spec_nodes:               GenericFnSpecMap[flat.NodeId]{}
+		generic_fn_specs_in_progress:        GenericFnSpecBoolMap{}
+		generic_fn_spec_nodes:               GenericFnSpecNodeMap{}
 		specialization_decl_nodes_by_name:   map[string][]int{}
-		pending_generic_fn_spec_keys:        GenericFnSpecMap[bool]{}
+		pending_generic_fn_spec_keys:        GenericFnSpecBoolMap{}
 		generic_receiver_methods_by_name:    map[string][]string{}
 		generic_call_spec_cache:             map[int]GenericCallSpec{}
 		generic_call_spec_misses:            map[int]bool{}

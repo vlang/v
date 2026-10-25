@@ -1258,7 +1258,7 @@ struct MonomorphClaimState {
 mut:
 	mu          &sync.Mutex = unsafe { nil }
 	cond        &sync.Cond  = unsafe { nil }
-	claimed     GenericFnSpecMap[bool]
+	claimed     GenericFnSpecBoolMap
 	queues      [][]PendingGenericFnSpec
 	queue_costs []i64
 	remaining   int
@@ -1455,7 +1455,7 @@ fn (mut t Transformer) prepare_parallel_monomorph_scan(start int, end int) bool 
 
 // Serial user builds also need to release specialization scratch between batches.
 // This path runs synchronously and never creates or dispatches a worker pool.
-fn (mut t Transformer) run_serial_scoped_monomorphize_specs(specs []PendingGenericFnSpec, mut emitted GenericFnSpecMap[bool], mut generated []string) bool {
+fn (mut t Transformer) run_serial_scoped_monomorphize_specs(specs []PendingGenericFnSpec, mut emitted GenericFnSpecBoolMap, mut generated []string) bool {
 	$if linux && arm64 {
 		return false
 	}
@@ -1466,7 +1466,7 @@ fn (mut t Transformer) run_serial_scoped_monomorphize_specs(specs []PendingGener
 	return t.run_scoped_monomorphize_specs(specs, mut emitted, mut generated)
 }
 
-fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnSpec, struct_decls map[string]GenericStructDecl, sum_decls map[string]GenericSumDecl, mut emitted GenericFnSpecMap[bool], mut generated []string) bool {
+fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnSpec, struct_decls map[string]GenericStructDecl, sum_decls map[string]GenericSumDecl, mut emitted GenericFnSpecBoolMap, mut generated []string) bool {
 	$if linux && arm64 {
 		// Shared append-only AST regions intermittently corrupt the heap on
 		// Linux/ARM64. Keep the safe serial monomorphizer on that target while
@@ -1551,7 +1551,7 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 	decls := t.cached_generic_fn_decls()
 	mut claims := &MonomorphClaimState{
 		mu:          sync.new_mutex()
-		claimed:     GenericFnSpecMap[bool]{}
+		claimed:     GenericFnSpecBoolMap{}
 		queues:      [][]PendingGenericFnSpec{len: n_jobs}
 		queue_costs: []i64{len: n_jobs}
 		remaining:   specs.len
@@ -1813,7 +1813,7 @@ fn clone_monomorph_worker_decl(decl GenericFnDecl) GenericFnDecl {
 // run_scoped_monomorphize_specs emits a bounded number of specializations in a
 // private AST/checker view, merges their persistent output, and releases all
 // per-specialization scratch before continuing with the next batch.
-fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpec, mut emitted GenericFnSpecMap[bool], mut generated []string) bool {
+fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpec, mut emitted GenericFnSpecBoolMap, mut generated []string) bool {
 	if specs.len == 0 {
 		return false
 	}
