@@ -202,7 +202,7 @@ fn (g &Parser) render_typeof_name_expression(tokens []FastcExpressionToken) ?Fas
 		return none
 	}
 	return FastcRenderedExpression{
-		source: '_S("${g.typeof_display_name(flat.source_type_name(type_name))}")'
+		source: '_S("${g.typeof_display_name(type_name)}")'
 		typ:    flat.source_type_string
 	}
 }
@@ -210,11 +210,11 @@ fn (g &Parser) render_typeof_name_expression(tokens []FastcExpressionToken) ?Fas
 // typeof_display_name spells a FastC C type (`Point*`, `Array_int`,
 // `strings__Builder`) the way `typeof(x).name` does in V (`&Point`, `[]int`,
 // `strings.Builder`). Literal expressions are `int literal` and `f64`, as in cgen.
-fn (g &Parser) typeof_display_name(typ string) string {
+fn (g &Parser) typeof_display_name(typ_id u32) string {
+	typ := flat.source_type_name(typ_id)
 	if typ.ends_with('*') {
-		return '&' + g.typeof_display_name(typ[..typ.len - 1])
+		return '&' + g.typeof_display_name(flat.source_type_id(typ[..typ.len - 1]))
 	}
-	typ_id := flat.source_type_id(typ)
 	if typ_id == fastc_type_integer_literal || typ_id == fastc_type_negative_integer_literal {
 		return 'int literal'
 	}
@@ -226,19 +226,19 @@ fn (g &Parser) typeof_display_name(typ string) string {
 	}
 	if typ.starts_with('Array_') {
 		if element := g.array_element_type(typ_id) {
-			return '[]' + g.typeof_display_name(flat.source_type_name(element))
+			return '[]' + g.typeof_display_name(element)
 		}
 	}
 	if typ.starts_with('Map_') {
 		if key, value := g.map_key_value_types(typ_id) {
-			return 'map[' + g.typeof_display_name(flat.source_type_name(key)) + ']' +
-				g.typeof_display_name(flat.source_type_name(value))
+			return 'map[' + g.typeof_display_name(key) + ']' +
+				g.typeof_display_name(value)
 		}
 	}
 	if length := fastc_fixed_array_length(typ) {
 		if element := fastc_fixed_array_element_type(typ_id) {
 			count := g.fixed_array_length_value(length) or { return typ }
-			return '[${count}]' + g.typeof_display_name(flat.source_type_name(element))
+			return '[${count}]' + g.typeof_display_name(element)
 		}
 	}
 	key := flat.source_type_name(g.semantic_type_key(typ_id))

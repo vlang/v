@@ -1798,13 +1798,12 @@ fn fastc_numeric_infix_result_type(left u32, right u32, left_value ?i64, right_v
 // fastc_integer_literal_adopted_type is the type an untyped integer literal takes
 // next to an operand of type `other` (the checker's int_literal_promoted_infix_type).
 fn fastc_integer_literal_adopted_type(other u32, value ?i64) u32 {
-	name := flat.source_type_name(other)
-	if name in ['i8', 'u8', 'i16', 'u16'] {
+	if other in [flat.source_type_i8, flat.source_type_u8, flat.source_type_i16, flat.source_type_u16] {
 		if v := value {
-			fits := match name {
-				'i8' { v >= -128 && v <= 127 }
-				'u8' { v >= 0 && v <= 255 }
-				'i16' { v >= -32768 && v <= 32767 }
+			fits := match other {
+				flat.source_type_i8 { v >= -128 && v <= 127 }
+				flat.source_type_u8 { v >= 0 && v <= 255 }
+				flat.source_type_i16 { v >= -32768 && v <= 32767 }
 				else { v >= 0 && v <= 65535 }
 			}
 			if !fits {
@@ -1852,19 +1851,19 @@ fn fastc_integer_widens_to(actual u32, expected u32) bool {
 }
 
 fn fastc_integer_promotion_index(typ u32) int {
-	return match flat.source_type_name(typ) {
-		'i8' { 5 }
-		'i16' { 6 }
-		'i32' { 7 }
-		'int' { 8 }
-		'i64' { 9 }
-		'isize' { 10 }
-		'u8' { 11 }
-		'u16' { 12 }
-		'u32' { 13 }
-		'u64' { 14 }
-		'uint', 'usize' { 15 }
-		'rune' { 22 }
+	return match typ {
+		flat.source_type_i8 { 5 }
+		flat.source_type_i16 { 6 }
+		flat.source_type_i32 { 7 }
+		flat.source_type_int { 8 }
+		flat.source_type_i64 { 9 }
+		flat.source_type_isize { 10 }
+		flat.source_type_u8 { 11 }
+		flat.source_type_u16 { 12 }
+		flat.source_type_u32 { 13 }
+		flat.source_type_u64 { 14 }
+		flat.source_type_uint, flat.source_type_usize { 15 }
+		flat.source_type_rune { 22 }
 		else { -1 }
 	}
 }

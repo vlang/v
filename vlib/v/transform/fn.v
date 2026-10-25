@@ -6222,10 +6222,9 @@ fn (t &Transformer) reliable_infix_stringify_type(node flat.Node) u32 {
 }
 
 fn (t &Transformer) unsigned_shift_type_text(typ_id u32, node flat.Node) u32 {
-	typ := flat.source_type_name(typ_id)
-	clean := trimmed_transform_text(typ)
+	clean_id := t.trimmed_type_id(typ_id)
 	if !isnil(t.tc) {
-		mut operand := *t.tc.parse_type(flat.source_type_id(clean))
+		mut operand := *t.tc.parse_type(clean_id)
 		file := if source := t.a.source_files[node.pos.id] { source.name } else { t.cur_file }
 		if t.tc.translated_files[file] {
 			operand = t.tc.translated_promoted_shift_type(operand)
@@ -6248,8 +6247,8 @@ fn (t &Transformer) unsigned_shift_type_text(typ_id u32, node flat.Node) u32 {
 			return resolved_source_id
 		}
 	}
-	if types.is_builtin_type_name(clean) {
-		return t.semantic_type_name(types.unsigned_shift_result_type(types.builtin_type_value(clean)))
+	if types.is_builtin_type_name_id(clean_id) {
+		return t.semantic_type_name(types.unsigned_shift_result_type(types.builtin_type_value_id(clean_id)))
 	}
 	return typ_id
 }

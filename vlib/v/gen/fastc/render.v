@@ -903,8 +903,9 @@ fn (g &Parser) render_selfhost_print_expression(tokens []FastcExpressionToken) ?
 	argument := g.render_call_argument_expression(call_arguments[0], argument_type) or {
 		return none
 	}
-	argument_type_name := flat.source_type_name(g.underlying_alias_type(argument_type))
-	if argument_type_name == 'Option' || (argument_type_name.ends_with('*')
+	argument_type_name_id := g.underlying_alias_type(argument_type)
+	argument_type_name := flat.source_type_name(argument_type_name_id)
+	if argument_type_name_id == fastc_type_option || (argument_type_name.ends_with('*')
 		&& !g.is_reference_local_base(call_arguments[0], argument_type)
 		&& !g.expression_uses_member_smartcast(call_arguments[0])) {
 		// `&T` and `?T` values print as `&...` and `Option(...)`, even when `T`
@@ -956,11 +957,11 @@ fn (g &Parser) render_selfhost_print_expression(tokens []FastcExpressionToken) ?
 fn (g &Parser) print_value_string_expression(value string, value_type u32, value_tokens []FastcExpressionToken) ?string {
 	type_name_id := g.underlying_alias_type(value_type)
 	type_name := flat.source_type_name(type_name_id)
-	if type_name == '__v_result' || type_name.ends_with('**') {
+	if type_name_id == fastc_type_result || type_name.ends_with('**') {
 		return none
 	}
 	mut w := unsafe { &Parser(g) }
-	if type_name == 'Option' {
+	if type_name_id == fastc_type_option {
 		option_helper := w.fastc_option_str_name(g.option_value_type_for_expression(value_tokens))?
 		return '${option_helper}(${value})'
 	}
@@ -970,7 +971,7 @@ fn (g &Parser) print_value_string_expression(value string, value_type u32, value
 			return g.print_value_string_expression('(*(${value}))',
 				flat.source_type_id(type_name[..type_name.len - 1]), value_tokens)
 		}
-		return w.fastc_reference_str_expression(value, type_name, value_tokens)
+		return w.fastc_reference_str_expression(value, type_name_id, value_tokens)
 	}
 	if element_type := fastc_fixed_array_element_type(type_name_id) {
 		helper := w.fastc_fixed_array_str_name(type_name_id)?

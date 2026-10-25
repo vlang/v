@@ -46,14 +46,14 @@ fn (mut g Parser) fastc_default_struct_str_name(c_type u32) ?string {
 			option_helper := g.fastc_option_str_name(field.option_value_type) or { '' }
 			if option_helper != '' {
 				formatted = '${option_helper}(it.${c_field})'
-				needs_indent = g.fastc_struct_field_str_needs_indent(flat.source_type_name(field.option_value_type))
+				needs_indent = g.fastc_struct_field_str_needs_indent(field.option_value_type)
 			}
 		}
 		if formatted == '' {
 			formatted = g.fastc_struct_field_str_expression('it.${c_field}', field.typ) or {
 				'_S("<${field.typ_text()}>")'
 			}
-			needs_indent = g.fastc_struct_field_str_needs_indent(field.typ_text())
+			needs_indent = g.fastc_struct_field_str_needs_indent(field.typ)
 		}
 		if needs_indent {
 			formatted = '${g.fastc_string_indent_helper()}(${formatted})'
@@ -120,13 +120,14 @@ const fastc_string_indent_c = r'string v_fastc_string_indent(string s) {
 // several lines (a nested struct, array, map or sum type without its own `str()`), so its
 // text is indented one level deeper, as V does. Strings, primitives, enums, fixed arrays and
 // custom `str()` results keep their text.
-fn (mut g Parser) fastc_struct_field_str_needs_indent(field_c_type string) bool {
-	ft := fastc_normalize_inferred_type(flat.source_type_id(field_c_type))
+fn (mut g Parser) fastc_struct_field_str_needs_indent(field_c_type u32) bool {
+	ft := fastc_normalize_inferred_type(field_c_type)
 	if ft == flat.source_type_string {
 		return false
 	}
-	base := flat.source_type_name(ft).trim_right('*')
-	if _ := fastc_fixed_array_element_type(flat.source_type_id(base)) {
+	base_id := fastc_trim_pointer_type(ft)
+	base := flat.source_type_name(base_id)
+	if _ := fastc_fixed_array_element_type(base_id) {
 		return false
 	}
 	if base.starts_with('Array_') || base.starts_with('Map_') || base in g.sum_types {
@@ -323,7 +324,7 @@ fn (mut g Parser) fastc_map_str_name(c_type u32) ?string {
 // enum uses its name table, and a nested struct recurses. Returns none if unrenderable.
 fn (mut g Parser) fastc_struct_field_str_expression(value_c string, field_c_type u32) ?string {
 	ft := fastc_normalize_inferred_type(field_c_type)
-	if pointer_helper := g.fastc_pointer_str_name(flat.source_type_name(ft)) {
+	if pointer_helper := g.fastc_pointer_str_name(ft) {
 		return '${pointer_helper}(${value_c})'
 	}
 	if ft == flat.source_type_string {
@@ -396,7 +397,8 @@ fn (mut g Parser) fastc_struct_field_str_expression(value_c string, field_c_type
 // `pointer_c_type` the way V's default `str()` does: `&` before the text of the
 // pointee, or `&nil` for a null pointer. Returns none for raw pointers (`voidptr`,
 // `&u8`, `&char`), pointers to pointers, and pointees that cannot be rendered.
-fn (mut g Parser) fastc_pointer_str_name(pointer_c_type string) ?string {
+fn (mut g Parser) fastc_pointer_str_name(pointer_c_type_id u32) ?string {
+	pointer_c_type := flat.source_type_name(pointer_c_type_id)
 	if !pointer_c_type.ends_with('*') {
 		return none
 	}
@@ -411,7 +413,7 @@ fn (mut g Parser) fastc_pointer_str_name(pointer_c_type string) ?string {
 	}
 	// Reserve the name first so a self-referential pointee does not recurse forever.
 	g.spawn_helpers[fn_name] = ''
-	pointee_text := g.fastc_struct_field_str_expression('(*it)', pointee) or {
+	pointee_text := g.fastc_struct_field_str_expression('(*it)', flat.source_type_id(pointee)) or {
 		g.spawn_helpers.delete(fn_name)
 		return none
 	}
@@ -437,7 +439,7 @@ fn (mut g Parser) fastc_option_str_name(value_type u32) ?string {
 	}
 	g.spawn_helpers[fn_name] = ''
 	value_text := g.fastc_struct_field_str_expression(g.option_value_expression(value_type,
-		'it'), value_c_type) or {
+		'it'), value_type) or {
 		g.spawn_helpers.delete(fn_name)
 		return none
 	}
@@ -454,11 +456,12 @@ fn (mut g Parser) fastc_option_str_name(value_type u32) ?string {
 // sum type or custom `str()` pointee, and the plain name for an enum pointee.
 // Returns none for `mut` locals and smartcasts (C pointers that V sees as values),
 // and for pointers to primitives, which V prints as addresses.
-fn (mut g Parser) fastc_reference_str_expression(value string, value_type string, value_tokens []FastcExpressionToken) ?string {
+fn (mut g Parser) fastc_reference_str_expression(value string, value_type_id u32, value_tokens []FastcExpressionToken) ?string {
+	value_type := flat.source_type_name(value_type_id)
 	if !value_type.ends_with('*') || value_type.ends_with('**') {
 		return none
 	}
-	if g.is_reference_local_base(value_tokens, flat.source_type_id(value_type))
+	if g.is_reference_local_base(value_tokens, value_type_id)
 		|| g.expression_uses_member_smartcast(value_tokens) {
 		return none
 	}
@@ -467,10 +470,11 @@ fn (mut g Parser) fastc_reference_str_expression(value string, value_type string
 	if primitive != '' {
 		return none
 	}
-	if g.declared_kinds[flat.source_type_name(g.semantic_type_key(flat.source_type_id(pointee)))] == .enum_ {
-		return g.fastc_struct_field_str_expression('(*(${value}))', pointee)
+	pointee_id := flat.source_type_id(pointee)
+	if g.declared_kinds[flat.source_type_name(g.semantic_type_key(pointee_id))] == .enum_ {
+		return g.fastc_struct_field_str_expression('(*(${value}))', pointee_id)
 	}
-	helper := g.fastc_pointer_str_name(value_type) or { return none }
+	helper := g.fastc_pointer_str_name(value_type_id) or { return none }
 	return '${helper}(${value})'
 }
 
@@ -537,9 +541,9 @@ fn (mut g Parser) read_interpolated_string() !string {
 		mut option_part := ''
 		if g.selfhost && format_specifier == '' {
 			if interpolation_type.ends_with('*') {
-				reference_part = g.fastc_reference_str_expression(value, interpolation_type,
+				reference_part = g.fastc_reference_str_expression(value, interpolation_type_id,
 					value_tokens) or { '' }
-			} else if interpolation_type == 'Option' {
+			} else if interpolation_type_id == fastc_type_option {
 				option_helper := g.fastc_option_str_name(g.option_value_type_for_expression(value_tokens)) or {
 					return g.unsupported('interpolation of option `${flat.source_type_name(value_type)}`')
 				}
