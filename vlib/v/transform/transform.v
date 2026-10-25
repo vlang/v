@@ -22419,7 +22419,7 @@ fn (mut t Transformer) transform_lock_node(id flat.NodeId, node flat.Node) flat.
 		}
 	})
 	if t.rewrite_children_in_place(id, children) {
-		if flat.source_type_name(lock_typ) != node.typ_text() {
+		if lock_typ != node.typ {
 			t.set_node_typ(int(id), lock_typ)
 		}
 		return id
@@ -23363,7 +23363,9 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 		new_lhs := if lhs_is_value_branch {
 			t.materialize_value_branch_operand(infix_lhs_id)
 		} else if rhs_is_value_branch && t.operand_needs_ordering_snapshot(infix_lhs_id) {
-			if node.op in [.eq, .ne]
+			if literal := t.materialize_comparison_literal(node.op, infix_lhs_id, infix_rhs_id) {
+				literal
+			} else if node.op in [.eq, .ne]
 				&& t.translated_fixed_array_pointer_lvalue(infix_lhs_id, infix_rhs_id) {
 				t.stabilize_original_lvalue_receiver(infix_lhs_id) or {
 					t.snapshot_expr_for_reuse(infix_lhs_id)
@@ -23383,7 +23385,9 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 			t.materialize_value_branch_operand(infix_rhs_id)
 		} else if lhs_is_value_branch && !t.is_stable_expr_for_reuse(infix_rhs_id)
 			&& !t.is_pure_constant_expr(infix_rhs_id) {
-			if node.op in [.eq, .ne]
+			if literal := t.materialize_comparison_literal(node.op, infix_rhs_id, infix_lhs_id) {
+				literal
+			} else if node.op in [.eq, .ne]
 				&& t.translated_fixed_array_pointer_lvalue(infix_rhs_id, infix_lhs_id) {
 				t.stabilize_original_lvalue_receiver(infix_rhs_id) or {
 					t.stable_expr_for_reuse(infix_rhs_id)
@@ -24875,34 +24879,34 @@ fn (t &Transformer) string_interp_child_has_unresolved_generic_part(id flat.Node
 			return false
 		}
 	}
-	// Every spelling is resolved before any is tested, and the spellings of one
+	// Every type is resolved before any is tested, and the identities of one
 	// part mostly coincide: test each distinct one once.
-	mut candidates := [5]string{}
+	mut candidates := [5]u32{}
 	mut n := 0
-	candidates[n] = flat.source_type_name(t.node_type(id))
+	candidates[n] = t.node_type(id)
 	n++
 	if node.typ != 0 {
-		candidates[n] = flat.source_type_name(t.normalize_type_alias(node.typ))
+		candidates[n] = t.normalize_type_alias(node.typ)
 		n++
 	}
 	if node.kind == .ident {
-		candidates[n] = flat.source_type_name(t.var_type(node.value))
+		candidates[n] = t.var_type(node.value)
 		n++
 	}
-	candidates[n] = flat.source_type_name(t.lvalue_type(id))
+	candidates[n] = t.lvalue_type(id)
 	n++
-	candidates[n] = flat.source_type_name(t.reliable_stringify_type(id))
+	candidates[n] = t.reliable_stringify_type(id)
 	n++
 	for i in 0 .. n {
 		typ := candidates[i]
 		mut tested := false
 		for j in 0 .. i {
-			if same_transform_text(candidates[j], typ) {
+			if candidates[j] == typ {
 				tested = true
 				break
 			}
 		}
-		if !tested && t.stringify_type_has_generic_placeholder(flat.source_type_id(typ)) {
+		if !tested && t.stringify_type_has_generic_placeholder(typ) {
 			return !t.string_interp_part_is_checked_call(id)
 		}
 	}
@@ -27691,7 +27695,7 @@ fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.
 		if target_type != node.value {
 			t.set_node_value(int(id), target_type)
 		}
-		if flat.source_type_name(output_typ) != node.typ_text() {
+		if output_typ != node.typ {
 			t.set_node_typ(int(id), output_typ)
 		}
 		return id
@@ -29737,6 +29741,21 @@ fn (t &Transformer) infer_decl_type(node &flat.Node) u32 {
 				// The declaration type can intentionally differ from the visible
 				// smartcast of the rhs after an exiting guard or assertion.
 				return lhs_type_source_id
+			}
+		}
+	}
+	if t.validating_generic_spec && node.children_count == 2 {
+		rhs := t.a.child_node(node, 1)
+		if rhs.kind == .array_literal && rhs.typ == 0 && rhs.children_count > 0
+			&& node.typ_text() == '[]int' {
+			// An untyped local alias of an unrolled reflected method can leave the
+			// default []int annotation behind. Keep checked and explicit array types.
+			elem := t.a.child_node(rhs, 0)
+			if elem.kind == .ident && elem.typ == 0 {
+				elem_type := t.node_type(t.a.child(rhs, 0))
+				if t.is_fn_pointer_type_name(elem_type) {
+					return flat.source_type_id('[]${flat.source_type_name(elem_type)}')
+				}
 			}
 		}
 	}

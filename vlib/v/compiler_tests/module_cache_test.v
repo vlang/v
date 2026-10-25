@@ -478,6 +478,103 @@ fn main() {
 	assert run_module_cache_binary(second_output) == 'ok'
 }
 
+// check_warm_cached_interface_dispatch builds a program whose only dispatch
+// through `Sink` happens inside the cached `sinks` module, after an earlier
+// program warmed that module's object without ever reaching the dispatch.
+fn check_warm_cached_interface_dispatch(name string, sink_type string, sink_decl string) {
+	v3_bin := module_cache_compiler()
+	root := os.join_path(os.temp_dir(), 'v3_cached_iface_dispatch_${name}_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	old_vmodules := os.getenv_opt('VMODULES')
+	os.setenv('VMODULES', os.join_path(root, 'vmods'), true)
+	defer {
+		if value := old_vmodules {
+			os.setenv('VMODULES', value, true)
+		} else {
+			os.unsetenv('VMODULES')
+		}
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'vmods/sinks/sinks.v', 'module sinks
+
+${sink_decl}
+
+pub struct Holder {
+pub mut:
+	s ${sink_type}
+}
+
+struct Worker {
+mut:
+	s ${sink_type}
+}
+
+fn (mut w Worker) go_put() string {
+	return w.s.put(41)
+}
+
+pub fn (mut h Holder) drive() string {
+	mut w := Worker{
+		s: h.s
+	}
+	return w.go_put()
+}
+')
+	program := 'module main
+
+import sinks
+
+struct MySink {}
+
+fn (mut m MySink) put(x int) string {
+	return "got \${x + 1}"
+}
+
+fn new_holder() &sinks.Holder {
+	return &sinks.Holder{
+		s: MySink{}
+	}
+}
+'
+	write_module_cache_file(root, 'p1/main.v', program + '
+fn main() {
+	h := new_holder()
+	println(voidptr(h) != unsafe { nil })
+}
+')
+	write_module_cache_file(root, 'p2/main.v', program + '
+fn main() {
+	mut h := new_holder()
+	println(h.drive())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, os.join_path(root, 'p1', 'main.v'),
+		first_output)
+	assert run_module_cache_binary(first_output) == 'true'
+	// `sinks` is now header-only, so `MySink.put` has no caller in the warm AST.
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, os.join_path(root, 'p2', 'main.v'),
+		second_output)
+	assert run_module_cache_binary(second_output) == 'got 42'
+}
+
+fn test_warm_cached_interface_dispatch_keeps_program_implementers() {
+	check_warm_cached_interface_dispatch('plain', 'Sink', 'pub interface Sink {
+mut:
+	put(x int) string
+}')
+}
+
+fn test_warm_cached_generic_interface_dispatch_keeps_program_implementers() {
+	check_warm_cached_interface_dispatch('generic', 'Sink[int]', 'pub interface Sink[T] {
+mut:
+	put(x T) string
+}')
+}
+
 fn module_cache_object_hash(path string) u64 {
 	bytes := os.read_bytes(path) or { panic(err) }
 	mut hash := u64(1469598103934665603)

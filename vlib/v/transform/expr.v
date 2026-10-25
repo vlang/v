@@ -608,8 +608,8 @@ fn (t &Transformer) contextual_array_comparison_type(id flat.NodeId, own_type_id
 		if !t.array_append_interface_has_requirements(other_iface_source_id) {
 			return other_type_id
 		}
-		own_concrete := flat.source_type_name(t.trim_pointer_type(t.normalize_type_alias(flat.source_type_id(own_elem))))
-		if !isnil(t.tc) && t.tc.named_type_implements_interface(flat.source_type_id(own_concrete), other_iface_source_id) {
+		own_concrete_id := t.trim_pointer_type(t.normalize_type_alias(flat.source_type_id(own_elem)))
+		if !isnil(t.tc) && t.tc.named_type_implements_interface(own_concrete_id, other_iface_source_id) {
 			return other_type_id
 		}
 	}
@@ -1046,10 +1046,10 @@ fn (mut t Transformer) transform_infix_struct_ops(_id flat.NodeId, node flat.Nod
 	if !t.validating_generic_spec && checker_lhs_type_source_id_2 != 0 && !has_smartcast && !lhs_is_pointer
 		&& !flat.source_type_shape(struct_type).has(.bracketed) && !is_alias_operator {
 		checker_struct_type := t.struct_lookup_name(checker_lhs_type_source_id_2)
-		if flat.source_type_name(checker_struct_type).len > 0 && flat.source_type_name(checker_struct_type) != flat.source_type_name(struct_type) {
+		if checker_struct_type != 0 && checker_struct_type != struct_type {
 			return none
 		}
-		if flat.source_type_name(checker_struct_type).len == 0 && checker_lhs_type != flat.source_type_name(lhs_type) {
+		if checker_struct_type == 0 && checker_lhs_type_source_id_2 != lhs_type {
 			return none
 		}
 	}
@@ -1161,10 +1161,10 @@ fn (mut t Transformer) transform_pointer_value_struct_eq(node flat.Node, lhs_id 
 	rhs_clean_source_id := t.trim_pointer_type(rhs_type)
 	lhs_struct := t.struct_lookup_name(lhs_clean_source_id)
 	rhs_struct := t.struct_lookup_name(rhs_clean_source_id)
-	if flat.source_type_name(lhs_struct).len == 0 || flat.source_type_name(rhs_struct).len == 0 {
+	if lhs_struct == 0 || rhs_struct == 0 {
 		return none
 	}
-	if flat.source_type_name(lhs_struct) != flat.source_type_name(rhs_struct) && flat.source_type_name(lhs_struct).all_after_last('.') != flat.source_type_name(rhs_struct).all_after_last('.') {
+	if lhs_struct != rhs_struct && flat.source_type_name(lhs_struct).all_after_last('.') != flat.source_type_name(rhs_struct).all_after_last('.') {
 		return none
 	}
 	if lhs_is_ptr && rhs_is_ptr {
@@ -1346,10 +1346,10 @@ fn (mut t Transformer) transform_transformed_struct_eq(node flat.Node, lhs flat.
 	}
 	lhs_struct_type := t.struct_lookup_name(lhs_type)
 	rhs_struct_type := t.struct_lookup_name(rhs_type)
-	if flat.source_type_name(lhs_struct_type).len == 0 || flat.source_type_name(rhs_struct_type).len == 0 {
+	if lhs_struct_type == 0 || rhs_struct_type == 0 {
 		return none
 	}
-	if flat.source_type_name(lhs_struct_type) != flat.source_type_name(rhs_struct_type)
+	if lhs_struct_type != rhs_struct_type
 		&& flat.source_type_name(lhs_struct_type).all_after_last('.') != flat.source_type_name(rhs_struct_type).all_after_last('.') {
 		return none
 	}
@@ -1924,8 +1924,9 @@ fn (t &Transformer) generic_struct_instance_name(type_name_id u32) u32 {
 		// Qualify a bare imported generic base to its canonical struct name so the
 		// operator lowers to the monomorphized method (`vec.Vec2[int].-`), not a
 		// bogus bare `Vec2[int].-`.
-		resolved_base := t.struct_lookup_name(flat.source_type_id(base))
-		if flat.source_type_name(resolved_base).len > 0 && flat.source_type_name(resolved_base) != base {
+		base_source_id := flat.source_type_id(base)
+		resolved_base := t.struct_lookup_name(base_source_id)
+		if resolved_base != 0 && resolved_base != base_source_id {
 			return flat.source_type_id(flat.source_type_name(resolved_base) + normalized[base.len..])
 		}
 		return normalized_source_id
@@ -2625,12 +2626,13 @@ fn (t &Transformer) struct_lookup_name(type_name_id u32) u32 {
 	}
 	base, _, has_generic_args := generic_app_parts(type_name)
 	if has_generic_args {
-		resolved_base := t.struct_lookup_name(flat.source_type_id(base))
-		if flat.source_type_name(resolved_base).len > 0 {
+		base_source_id := flat.source_type_id(base)
+		resolved_base := t.struct_lookup_name(base_source_id)
+		if resolved_base != 0 {
 			// Qualify a bare imported generic base so the instance name matches the
 			// materialized struct (`Vec2[int]` -> `vec.Vec2[int]`); a matching or bare
 			// base keeps the original spelling.
-			if flat.source_type_name(resolved_base) != base {
+			if resolved_base != base_source_id {
 				return flat.source_type_id(flat.source_type_name(resolved_base) + type_name[base.len..])
 			}
 			return type_name_comparison_type_id
@@ -3039,16 +3041,16 @@ fn (mut t Transformer) lower_type_pattern_membership(lhs_id flat.NodeId, rhs fla
 	if rhs.children_count == 0 {
 		return none
 	}
-	mut patterns := []string{cap: int(rhs.children_count)}
-	mut sum_name := ''
+	mut patterns := []u32{cap: int(rhs.children_count)}
+	mut sum_name_id := u32(0)
 	if sc := t.find_smartcast_for_expr(lhs_id) {
-		sum_name = flat.source_type_name(t.trim_pointer_type(t.smartcast_target_type(sc)))
+		sum_name_id = t.trim_pointer_type(t.smartcast_target_type(sc))
 	}
-	if sum_name.len == 0 {
-		sum_name = flat.source_type_name(t.trim_pointer_type(t.original_expr_type(lhs_id)))
+	if sum_name_id == 0 {
+		sum_name_id = t.trim_pointer_type(t.original_expr_type(lhs_id))
 	}
-	if !t.is_sum_type_name(flat.source_type_id(sum_name)) {
-		sum_name = flat.source_type_name(t.trim_pointer_type(t.node_type(lhs_id)))
+	if !t.is_sum_type_name(sum_name_id) {
+		sum_name_id = t.trim_pointer_type(t.node_type(lhs_id))
 	}
 	for i in 0 .. rhs.children_count {
 		elem_id := t.a.child(&rhs, i)
@@ -3058,23 +3060,22 @@ fn (mut t Transformer) lower_type_pattern_membership(lhs_id flat.NodeId, rhs fla
 				return none
 			}
 		}
-		pattern := flat.source_type_name(t.type_pattern_name(elem_id))
-		if pattern.len == 0 {
+		pattern_id := t.type_pattern_name(elem_id)
+		if pattern_id == 0 {
 			return none
 		}
-		if !t.is_sum_type_name(flat.source_type_id(sum_name)) {
-			pattern_sum_source_id := t.find_sum_type_for_variant(flat.source_type_id(pattern))
-			pattern_sum := flat.source_type_name(pattern_sum_source_id)
+		if !t.is_sum_type_name(sum_name_id) {
+			pattern_sum_source_id := t.find_sum_type_for_variant(pattern_id)
 			if pattern_sum_source_id == 0 {
 				return none
 			}
-			sum_name = pattern_sum
-		} else if t.sum_variant_path(flat.source_type_id(sum_name), flat.source_type_id(pattern)).len == 0 {
+			sum_name_id = pattern_sum_source_id
+		} else if t.sum_variant_path(sum_name_id, pattern_id).len == 0 {
 			return none
 		}
-		patterns << pattern
+		patterns << pattern_id
 	}
-	if !t.is_sum_type_name(flat.source_type_id(sum_name)) {
+	if !t.is_sum_type_name(sum_name_id) {
 		return none
 	}
 	// A value-branch subject (`(match node { First { make_foo(node)! } ... }) in [Foo1, Foo3]`)
@@ -3082,7 +3083,7 @@ fn (mut t Transformer) lower_type_pattern_membership(lhs_id flat.NodeId, rhs fla
 	// plain `stable_expr_for_reuse` would lower it with `transform_expr` in a value-less
 	// statement context and emit an empty expression.
 	base := if t.is_value_match_or_if_operand(lhs_id) {
-		t.stable_transformed_expr_for_reuse(t.transform_expr_for_type(lhs_id, flat.source_type_id(sum_name)), flat.source_type_id(sum_name), 'in_lhs')
+		t.stable_transformed_expr_for_reuse(t.transform_expr_for_type(lhs_id, sum_name_id), sum_name_id, 'in_lhs')
 	} else {
 		t.stable_expr_for_reuse(lhs_id)
 	}
@@ -3094,8 +3095,8 @@ fn (mut t Transformer) lower_type_pattern_membership(lhs_id flat.NodeId, rhs fla
 		lhs_type = t.original_expr_type(lhs_id)
 	}
 	mut chain := flat.empty_node
-	for pattern in patterns {
-		cmp := t.make_sum_type_pattern_check(base, lhs_type, flat.source_type_id(sum_name), flat.source_type_id(pattern)) or { return none }
+	for pattern_id in patterns {
+		cmp := t.make_sum_type_pattern_check(base, lhs_type, sum_name_id, pattern_id) or { return none }
 		if int(chain) < 0 {
 			chain = cmp
 		} else {
@@ -4541,6 +4542,23 @@ fn (mut t Transformer) stable_transformed_expr_for_reuse(expr flat.NodeId, typ_i
 	tmp_name := t.new_temp(prefix)
 	t.pending_stmts << t.make_decl_assign_typed(tmp_name, expr, typ_id)
 	return t.make_ident(tmp_name)
+}
+
+// materialize_comparison_literal preserves contextual element types when an operand's
+// propagation or value branch requires the other operand to be evaluated into a temp.
+fn (mut t Transformer) materialize_comparison_literal(op flat.Op, id flat.NodeId, peer flat.NodeId) ?flat.NodeId {
+	if op !in [.eq, .ne] {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	target := t.membership_container_type(t.node_type(peer))
+	shape := flat.source_type_shape(target)
+	if (node.kind == .array_literal && shape.has(.array_type))
+		|| (node.kind == .map_init && shape.has(.map_type)) {
+		expr := t.transform_expr_for_type(id, target)
+		return t.stable_transformed_expr_for_reuse(expr, target, 'comparison_literal')
+	}
+	return none
 }
 
 // snapshot_expr_for_reuse materializes `id` into a temp holding its current value, unless it is

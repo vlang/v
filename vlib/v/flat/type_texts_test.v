@@ -276,3 +276,70 @@ fn test_source_type_shape_caches_spelling_only_generic_probes() {
 	assert source_type_shape(source_type_id('mod__fn_T_int')).has(.generic_c_name)
 	assert !source_type_shape(source_type_id('mod__fn_Tint')).has(.generic_c_name)
 }
+
+fn test_type_text_fork_cache_checks_reused_buffer_bytes() {
+	mut parent := TypeTextTable{}
+	mut bytes := '[]First'.bytes()
+	borrowed := unsafe { tos(bytes.data, bytes.len) }
+	first := parent.intern(borrowed)
+	mut fork := parent.fork()
+	for i, value in '[]Other'.bytes() {
+		bytes[i] = value
+	}
+	second := fork.intern(borrowed)
+	assert second != first
+	assert source_type_name(first) == '[]First'
+	assert source_type_name(second) == '[]Other'
+	assert parent.intern(borrowed) == second
+	for i, value in '[]First'.bytes() {
+		bytes[i] = value
+	}
+	assert parent.intern(borrowed) == first
+	assert fork.intern(borrowed) == first
+}
+
+fn test_type_text_recent_headers_do_not_own_global_spelling_bytes() {
+	mut texts := TypeTextTable{}
+	input := 'type_texts.CachedHeader'.clone()
+	id := texts.intern(input)
+	slot := int((usize(input.str) >> 4 ^ usize(input.len)) & 127)
+	canonical := source_type_name(id)
+	assert texts.recent_texts[slot].str == canonical.str
+	mut fork := texts.fork()
+	assert fork.recent[slot] == id
+	assert fork.recent_texts[slot].str == canonical.str
+	// Dropping either cached header must leave the process-owned bytes intact.
+	mut parent_header := texts.recent_texts[slot]
+	mut fork_header := fork.recent_texts[slot]
+	unsafe {
+		parent_header.free()
+		fork_header.free()
+	}
+	assert parent_header == 'type_texts.CachedHeader'
+	assert fork_header == 'type_texts.CachedHeader'
+	assert source_type_name(id) == 'type_texts.CachedHeader'
+	assert texts.intern(input) == id
+	assert fork.intern(input) == id
+}
+
+fn test_type_text_recent_headers_survive_the_input_arena() {
+	$if prealloc {
+		mut texts := TypeTextTable{}
+		scope := unsafe { prealloc_scope_begin() }
+		input := 'type_texts.DisposableInput'.clone()
+		assert unsafe { prealloc_scope_owns(scope, input.str) }
+		id := texts.intern(input)
+		slot := int((usize(input.str) >> 4 ^ usize(input.len)) & 127)
+		unsafe { prealloc_scope_leave(scope) }
+		assert !unsafe { prealloc_scope_owns(scope, texts.recent_texts[slot].str) }
+		mut fork := texts.fork()
+		assert fork.recent[slot] == id
+		assert !unsafe { prealloc_scope_owns(scope, fork.recent_texts[slot].str) }
+		unsafe { prealloc_scope_free_after(scope) }
+		assert texts.recent_texts[slot] == 'type_texts.DisposableInput'
+		assert fork.recent_texts[slot] == 'type_texts.DisposableInput'
+		assert source_type_name(id) == 'type_texts.DisposableInput'
+		assert texts.intern('type_texts.DisposableInput') == id
+		assert fork.intern('type_texts.DisposableInput') == id
+	}
+}

@@ -9,7 +9,7 @@ import strings
 
 // This file contains V functions for string interpolation
 
-// StrIntpType is an enumeration of all the supported format types (max 32 types)
+// StrIntpType is an enumeration of all the supported format types (max 32 types).
 pub enum StrIntpType {
 	si_no_str = 0 // no parameter to print only fix string
 	si_c
@@ -58,7 +58,7 @@ pub fn (x StrIntpType) str() string {
 	}
 }
 
-// StrIntpMem is a union of data used by StrIntpData
+// StrIntpMem is a union of data used by StrIntpData.
 pub union StrIntpMem {
 pub mut:
 	d_c   u32
@@ -675,7 +675,7 @@ fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 	}
 }
 
-// StrIntpCgenData is a storing struct used by cgen
+// StrIntpCgenData is a storing struct used by cgen.
 pub struct StrIntpCgenData {
 pub:
 	str string
@@ -683,7 +683,7 @@ pub:
 	d   string
 }
 
-// StrIntpData is a LOW LEVEL struct, passed to V in the C code
+// StrIntpData is a LOW LEVEL struct, passed to V in the C code.
 pub struct StrIntpData {
 pub:
 	str string

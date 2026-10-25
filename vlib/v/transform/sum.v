@@ -41,8 +41,13 @@ fn (t &Transformer) trim_pointer_type(typ_id u32) u32 {
 
 fn (t &Transformer) trim_all_pointer_type(typ_id u32) u32 {
 	mut clean := typ_id
-	for flat.source_type_shape(clean).has(.pointer) { clean = t.trim_pointer_type(clean) }
-	return clean
+	for {
+		next := t.trim_pointer_type(clean)
+		if next == clean {
+			return clean
+		}
+		clean = next
+	}
 }
 
 fn interface_pattern_is_collapsed_container_type(name_id u32) bool {
@@ -1266,7 +1271,7 @@ fn (t &Transformer) interface_concrete_impl_name(name_id u32) ?u32 {
 	if name.starts_with('[') {
 		typ := t.tc.parse_type(name_id)
 		if typ is types.ArrayFixed {
-			return flat.source_type_id(typ.name())
+			return typ.source_type_id()
 		}
 	}
 	if name_comparison_type_id_6 in [flat.source_type_bool, flat.source_type_int, flat.source_type_i8,

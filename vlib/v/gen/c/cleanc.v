@@ -4144,6 +4144,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		g.gen_top_level_asm()
 		if g.incremental_fn_names.len > 0 {
 			g.writeln('/* V3CACHE_SUPPORT_BEGIN */')
+			g.multi_return_forward_decls()
 			g.fixed_array_early_typedefs()
 			g.fn_ptr_typedefs()
 			g.struct_decls()
@@ -4152,6 +4153,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 			g.type_alias_decls_at_phase(false, true)
 			g.fn_ptr_typedefs()
 			g.type_alias_decls_at_phase(true, true)
+			g.multi_return_typedefs()
 			g.optional_typedefs()
 			g.forward_decls()
 			g.cached_header_forward_decls()
@@ -4932,12 +4934,12 @@ fn node_kind_id(node flat.Node) int {
 }
 
 // collect_gen_info updates collect gen info state for c.
-// UnusedParamSeen tracks param type texts already preseeded for unused fn
+// UnusedParamSeen tracks source type IDs already preseeded for unused fn
 // declarations within the current module (see preseed_unused_fn_ptr_param_types).
 struct UnusedParamSeen {
 mut:
-	module string
-	texts  map[string]bool
+	module   string
+	type_ids map[u32]bool
 }
 
 // CollectGenFnPrep carries the context-dependent, table-write-free portion of
@@ -5742,14 +5744,14 @@ fn (mut g FlatGen) cached_shared_alias_pointer_type_from_text(raw_id u32) ?types
 }
 
 fn (mut g FlatGen) preseed_unused_fn_ptr_param_types(node flat.Node, module_name string, file string) {
-	// Unused declarations repeat the same few param type texts; when every
-	// param text of this fn was already preseeded within this module, the
+	// Unused declarations repeat the same few param types; when every
+	// param type of this fn was already preseeded within this module, the
 	// whole typed-param resolution below is a no-op.
 	if !isnil(g.unused_param_seen) {
 		mut seen := g.unused_param_seen
 		if seen.module != module_name {
 			seen.module = module_name
-			seen.texts.clear()
+			seen.type_ids.clear()
 		}
 		mut all_seen := true
 		for i in 0 .. node.children_count {
@@ -5760,7 +5762,7 @@ fn (mut g FlatGen) preseed_unused_fn_ptr_param_types(node flat.Node, module_name
 				}
 				continue
 			}
-			if child.typ_text() !in seen.texts {
+			if child.typ !in seen.type_ids {
 				all_seen = false
 				break
 			}
@@ -5782,7 +5784,7 @@ fn (mut g FlatGen) preseed_unused_fn_ptr_param_types(node flat.Node, module_name
 			continue
 		}
 		if !isnil(g.unused_param_seen) {
-			g.unused_param_seen.texts[child.typ_text()] = true
+			g.unused_param_seen.type_ids[child.typ] = true
 		}
 		raw_type := if param_idx < typed_params.len {
 			typed_params[param_idx]
@@ -13414,7 +13416,7 @@ fn mut_optional_param_value_types_match(param_type &types.Type, expected &types.
 		return false
 	}
 	if expected_payload is types.Pointer {
-		return unalias_type(param_payload).name() == unalias_type(expected_payload.base_type).name()
+		return unalias_type(param_payload).source_type_id() == unalias_type(expected_payload.base_type).source_type_id()
 	}
 	return false
 }
@@ -14335,11 +14337,10 @@ fn (mut g FlatGen) gen_pointer_pointer_struct_selector(base_id flat.NodeId, base
 	if struct_type !is types.Struct {
 		return false
 	}
-	struct_name := (struct_type as types.Struct).name()
 	base := g.a.nodes[int(base_id)]
 	base_is_mut_pointer_param := base.kind == .ident && g.current_param_is_mut_pointer(base.value)
 
-	if _ := g.struct_field_type(flat.source_type_id(struct_name), field) {
+	if _ := g.struct_field_type(struct_type.source_type_id(), field) {
 		g.write('(*(')
 		if base_is_mut_pointer_param {
 			g.gen_mut_pointer_slot_expr(base_id)
@@ -15990,27 +15991,27 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 							}
 						}
 					} else if is_sum_literal && field.value != 'typ' {
-						mut variant := ''
+						mut variant := u32(0)
 						if flat.source_type_shape(field.typ).has(.pointer) {
-							variant = field.typ_text()[1..]
+							variant = flat.source_type_id(field.typ_text()[1..])
 						} else if field.typ != 0 {
-							variant = field.typ_text()
+							variant = field.typ
 						} else {
 							for v_source_id in g.tc.sum_types.type_ids(flat.source_type_name(sum_name)) or { []u32{} } {
 								v := flat.source_type_name(v_source_id)
 
 								if sum_field_name(v) == field.value {
-									variant = v
+									variant = v_source_id
 									break
 								}
 							}
 						}
-						variant = flat.source_type_name(g.resolve_variant(sum_name, flat.source_type_id(variant)))
+						variant = g.resolve_variant(sum_name, variant)
 						const_val := g.const_expr_to_string(val_id, seen)
 						payload := if trimmed_space(const_val).len > 0 {
 							const_val
 						} else {
-							g.expr_to_string_with_expected_type(val_id, g.tc.parse_type(flat.source_type_id(variant)))
+							g.expr_to_string_with_expected_type(val_id, g.tc.parse_type(variant))
 						}
 						payload
 					} else if is_wrapped_c_type(ct) && ct.ends_with('ptr') && field.value == 'value' {
@@ -19052,7 +19053,7 @@ fn (mut g FlatGen) gen_array_infix_eq(node flat.Node, lhs_id flat.NodeId, rhs_id
 	if !rhs_is_arr {
 		rhs_arr = lhs_arr
 	}
-	mut elem_type := if lhs_arr.elem_type.name() != 'unknown' {
+	mut elem_type := if lhs_arr.elem_type.source_type_id() != flat.source_type_unknown {
 		*lhs_arr.elem_type
 	} else {
 		*rhs_arr.elem_type
@@ -20165,6 +20166,22 @@ fn (mut g FlatGen) c99_feature_test_macros() {
 	g.writeln('#endif')
 }
 
+// headerless_darwin_pthread_storage matches Darwin's opaque pthread sizes and
+// long alignment on both data models, without importing system headers.
+fn (mut g FlatGen) headerless_darwin_pthread_storage() {
+	for typ, sizes in {
+		'pthread_attr_t':       '64 : 40'
+		'pthread_mutex_t':      '64 : 44'
+		'pthread_cond_t':       '48 : 28'
+		'pthread_rwlock_t':     '200 : 128'
+		'pthread_rwlockattr_t': '24 : 16'
+		'pthread_condattr_t':   '16 : 8'
+		'pthread_once_t':       '16 : 8'
+	} {
+		g.writeln('typedef union { unsigned char _opaque[sizeof(long) == 8 ? ${sizes}]; long _align; } ${typ};')
+	}
+}
+
 fn (mut g FlatGen) headerless_darwin_pthread_alias(alias string, typ string, guard string) {
 	g.writeln('#ifndef ${guard}')
 	g.writeln('typedef ${typ} ${alias};')
@@ -20525,12 +20542,18 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('#endif')
 	// Fallback pthread declarations for the headerless build. They are only
 	// emitted when the platform's real <pthread.h> guards are absent, so when the
-	// system header is included its exact types win. The opaque unions are
+	// system header is included its exact types win. Darwin storage must match
+	// the SDK exactly: cached interfaces can introduce headers on a warm build,
+	// and cached sync objects must keep the same layout in their callers.
+	// On other platforms the opaque unions are
 	// deliberately oversized (and over-aligned) to safely back the real objects
 	// on mainstream targets; a platform whose pthread objects exceed these sizes
 	// must be built with its real <pthread.h> in scope.
 	g.writeln('#if !defined(_BITS_PTHREADTYPES_COMMON_H) && !defined(_PTHREAD_H) && !defined(_PTHREADTYPES_H_) && !defined(_PTHREADTYPES_H) && !defined(__pthread_t_defined) && !defined(_SYS__PTHREAD_TYPES_H_) && !defined(_PTHREAD_T)')
 	g.writeln('typedef void* pthread_t;')
+	g.writeln('#ifdef __APPLE__')
+	g.headerless_darwin_pthread_storage()
+	g.writeln('#else')
 	g.writeln('typedef union { unsigned char _opaque[64]; long long _align; } pthread_attr_t;')
 	g.writeln('typedef union { unsigned char _opaque[128]; long long _align; } pthread_mutex_t;')
 	g.writeln('typedef union { unsigned char _opaque[128]; long long _align; } pthread_cond_t;')
@@ -20538,6 +20561,7 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('typedef union { unsigned char _opaque[64]; long long _align; } pthread_rwlockattr_t;')
 	g.writeln('typedef union { unsigned char _opaque[64]; long long _align; } pthread_condattr_t;')
 	g.writeln('typedef union { unsigned char _opaque[16]; long long _align; } pthread_once_t;')
+	g.writeln('#endif')
 	g.writeln('typedef unsigned long pthread_key_t;')
 	g.writeln('#endif')
 	// Mach headers expose Darwin's internal pthread storage types without the
