@@ -49,7 +49,7 @@ jobs:
         run: |
           .github/workflows/disable_azure_mirror.sh
           ./v retry -- sudo apt update
-          ./v retry -- sudo apt install --quiet -y gobjc
+          ./v retry -- sudo apt install --quiet -y gobjc libobjc-14-dev
       - name: Test compiler
         run: ./v run vlib/v/test_all.vsh --skip-units
 
@@ -75,6 +75,6 @@ jobs:
         run: |
           .github/workflows/disable_azure_mirror.sh
           ./v retry -- sudo apt update
-          ./v retry -- sudo apt install --quiet -y gobjc
+          ./v retry -- sudo apt install --quiet -y gobjc libobjc-14-dev
       - name: Test compiler
         run: ./v run vlib/v/test_all.vsh --units-only --shard ${{ matrix.shard }}/${{ strategy.job-total }}
