@@ -127,8 +127,8 @@ fn main() {
 		'-manualfree', '-o', c_source, source])
 	assert generated_result.exit_code == 0, generated_result.output
 	generated := os.read_file(c_source)!
-	allocate := allocator_test_c_function(generated, 'u8* v_malloc(ptrdiff_t n) {')
-	copy := allocator_test_c_function(generated, 'void* memdup(void* src, ptrdiff_t sz) {')
+	allocate := allocator_test_c_function(generated, 'u8* v_malloc(i64 n) {')
+	copy := allocator_test_c_function(generated, 'void* memdup(void* src, i64 sz) {')
 	deallocate := allocator_test_c_function(generated, 'void v_free(void* ptr) {')
 	assert allocate.contains('_aligned_malloc(n, 1)'), allocate
 	assert copy.contains('v_malloc(sz)'), copy
@@ -283,8 +283,8 @@ fn main() { implicit_aligned()
 	mock_source := os.join_path(dir, 'implicit_sum_mock.c')
 	mock_binary := os.join_path(dir, 'implicit_sum_mock.exe')
 	os.write_file(mock_source, '${allocator_test_mock_runtime(declarations)}
-${allocator_test_c_function(generated, 'u8* v_malloc(ptrdiff_t n) {')}
-${allocator_test_c_function(generated, 'void* memdup(void* src, ptrdiff_t sz) {')}
+${allocator_test_c_function(generated, 'u8* v_malloc(i64 n) {')}
+${allocator_test_c_function(generated, 'void* memdup(void* src, i64 sz) {')}
 ${allocator_test_c_function(generated, 'void v_free(void* ptr) {')}
 ${allocator_test_c_function(generated, 'static inline void* v3_aligned_memdup(void* src, ptrdiff_t sz, size_t alignment) {')}
 ${allocator_test_c_function(generated, 'static inline void v3_aligned_free(void* p) {')}
