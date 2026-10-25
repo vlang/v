@@ -690,8 +690,8 @@ fn (mut tc TypeChecker) check_written_generic_types(top_id flat.NodeId, mut stac
 		node := tc.a.node(item.id)
 		anchor := if node.pos.end > 0 { item.id } else { item.anchor }
 		mut texts := written_type_texts(*node)
-		if generic_body && node.kind == .struct_init && !node.value.starts_with('chan ') {
-			texts << node.value
+		if generic_body && node.kind == .struct_init && !node.value_text().starts_with('chan ') {
+			texts << node.value_text()
 		}
 		for text in texts {
 			if text.contains('[') {
@@ -722,7 +722,7 @@ struct WrittenTypeItem {
 }
 
 // written_type_texts are the types that `node` writes: in `typ` for the kinds
-// that keep a type there, in `value` for the array, map and channel literals,
+// that keep a type there, in the source operand for array, map and channel literals,
 // the casts, the tests and `sizeof` or `typeof` of a type.
 fn written_type_texts(node flat.Node) []string {
 	mut texts := []string{}
@@ -731,20 +731,20 @@ fn written_type_texts(node flat.Node) []string {
 		texts << node.typ_text()
 	}
 	// The variants of a sum type, `type Sum = Box[int] | string`.
-	if node.kind == .ident && node.value.contains('[') && node.pos.end > 0 {
-		texts << node.value
+	if node.kind == .ident && node.value_text().contains('[') && node.pos.end > 0 {
+		texts << node.value_text()
 	}
 	// An interface that an interface embeds, `Shelf[T]`, written as its name.
 	if node.kind == .interface_field && node.op != .dot && node.typ == 0
 		&& node.value.contains('[') {
-		texts << node.value
+		texts << node.value_text()
 	}
 	// A struct literal, `Box[int]{}`, is checked where it is checked; a channel,
 	// `chan Box[int]{}`, is one only by its syntax.
-	if node.value.len > 0 && (node.kind in [.map_init, .cast_expr, .is_expr, .as_expr, .array_init]
+	if (node.kind in [.map_init, .cast_expr, .is_expr, .as_expr, .array_init]
 		|| (node.kind in [.sizeof_expr, .typeof_expr] && node.children_count == 0)
-		|| (node.kind == .struct_init && node.value.starts_with('chan '))) {
-		texts << node.value
+		|| (node.kind == .struct_init && node.value_text().starts_with('chan '))) && node.source_value_id() != 0 {
+		texts << node.value_text()
 	}
 	return texts
 }
@@ -1780,15 +1780,15 @@ fn (tc &TypeChecker) generic_param_arg_pos(node flat.Node, info CallInfo, name s
 // struct in the body of the walk whose type arguments come from its fields,
 // `Box{ item: x }`: what they are bound to, as check_generic_call_in_body does.
 fn (mut tc TypeChecker) check_inferred_struct_in_body(id flat.NodeId, node flat.Node, scope TypeParamScope, constraints map[string]GenericConstraint) {
-	if node.value.contains('[') {
+	if node.value_text().contains('[') {
 		return
 	}
-	decl := tc.generic_type_decl(flat.source_type_id(node.value)) or { return }
+	decl := tc.generic_type_decl(node.source_value_id()) or { return }
 	if decl.kind != .struct_decl {
 		return
 	}
 	params := decl.generic_params().map(it.trim_space())
-	texts := tc.infer_generic_struct_init_param_texts(node, flat.source_type_id(node.value), params)
+	texts := tc.infer_generic_struct_init_param_texts(node, node.source_value_id(), params)
 	if texts.len != params.len {
 		return
 	}
@@ -1796,7 +1796,7 @@ fn (mut tc TypeChecker) check_inferred_struct_in_body(id flat.NodeId, node flat.
 	if args.any(it == 0) {
 		return
 	}
-	tc.check_generic_type_constraints(id, node.pos, flat.source_type_id(node.value), args, TypeParamScope{
+	tc.check_generic_type_constraints(id, node.pos, node.source_value_id(), args, TypeParamScope{
 		names:       scope.names
 		constraints: constraints
 	})
@@ -2267,7 +2267,7 @@ fn (mut tc TypeChecker) check_constraint_runtime_is(id flat.NodeId, node flat.No
 	subject := tc.a.node(subject_id)
 	tested := if subject.kind == .ident { subject.value } else { param }
 	test := if negated { '!is' } else { 'is' }
-	tc.record_error_at(.condition_mismatch, '`is` can only be used with sum type or interface values, not `${param}`: ${reason}; test `${param}` with `\$if ${tested} ${test} ${node.value}`',
+	tc.record_error_at(.condition_mismatch, '`is` can only be used with sum type or interface values, not `${param}`: ${reason}; test `${param}` with `\$if ${tested} ${test} ${node.value_text()}`',
 		id, node.pos)
 }
 

@@ -6800,7 +6800,7 @@ fn c_hash_monomorph_node(initial u64, a &flat.FlatAst, id flat.NodeId, cacheable
 	hash = c_hash_bytes(hash, node.typ_text().bytes())
 	hash = c_hash_bytes(hash, [u8(0)])
 	if idx >= cacheable_strings.len || !cacheable_strings[idx] {
-		hash = c_hash_bytes(hash, node.value.bytes())
+		hash = c_hash_bytes(hash, node.value_text().bytes())
 	}
 	hash = c_hash_bytes(hash, [u8(0xff)])
 	if attribute_signature := declaration_attributes[idx] {
@@ -6929,7 +6929,7 @@ fn incremental_hash_node_header(initial u64, node &flat.Node, include_value bool
 	hash = c_hash_bytes(hash, node.typ_text().bytes())
 	hash = c_hash_bytes(hash, [u8(0)])
 	if include_value {
-		hash = c_hash_bytes(hash, node.value.bytes())
+		hash = c_hash_bytes(hash, node.value_text().bytes())
 	}
 	hash = c_hash_bytes(hash, [u8(0xff)])
 	hash = c_hash_node_params(hash, node)
@@ -6941,7 +6941,7 @@ fn incremental_hash_fn_declaration(initial u64, node &flat.Node) u64 {
 		u8(node.skip_ownership_drops()), u8(node.is_static_type_method())])
 	hash = c_hash_bytes(hash, node.typ_text().bytes())
 	hash = c_hash_bytes(hash, [u8(0)])
-	hash = c_hash_bytes(hash, node.value.bytes())
+	hash = c_hash_bytes(hash, node.value_text().bytes())
 	hash = c_hash_bytes(hash, [u8(0xff)])
 	hash = c_hash_node_params(hash, node)
 	return hash
@@ -7584,10 +7584,20 @@ fn scoped_value_owned(scope voidptr, ptr voidptr) bool {
 	return false
 }
 
+// promote_scoped_call_type_args preserves numeric call metadata beyond its producing arena.
+fn promote_scoped_call_type_args(mut node flat.Node, scope voidptr) {
+	args := node.call_type_args()
+	if args.len > 0 && (scoped_value_owned(scope, node.payload_ptr()) || scoped_value_owned(scope, args.data)) {
+		node.set_call_type_args(args)
+	}
+}
+
 fn promote_scoped_node(mut node flat.Node, scope voidptr) {
+	node.canonicalize_source_value()
 	if node.value.len > 0 && scoped_value_owned(scope, node.value.str) {
 		node.value = node.value.clone()
 	}
+	promote_scoped_call_type_args(mut node, scope)
 	old_params := node.generic_params()
 	if old_params.len == 0 {
 		debugger_types := node.debugger_value_type_ids()
@@ -7705,9 +7715,11 @@ fn canonicalize_scoped_node_cached(mut ast flat.FlatAst, idx int, scope voidptr,
 		return
 	}
 	mut node := unsafe { &ast.nodes[idx] }
+	node.canonicalize_source_value()
 	if node.value.len > 0 && scoped_value_owned(scope, node.value.str) {
 		node.value = ast.intern_text_ptr_cached(node.value, mut cache_ptrs, mut cache_vals)
 	}
+	promote_scoped_call_type_args(mut node, scope)
 	old_params := node.generic_params()
 	if old_params.len == 0 {
 		debugger_types := node.debugger_value_type_ids()
@@ -7738,9 +7750,11 @@ fn canonicalize_scoped_node(mut ast flat.FlatAst, idx int, scope voidptr) {
 		return
 	}
 	mut node := unsafe { &ast.nodes[idx] }
+	node.canonicalize_source_value()
 	if node.value.len > 0 && scoped_value_owned(scope, node.value.str) {
 		_, node.value = ast.intern_text(node.value)
 	}
+	promote_scoped_call_type_args(mut node, scope)
 	old_params := node.generic_params()
 	if old_params.len == 0 {
 		debugger_types := node.debugger_value_type_ids()
@@ -7769,11 +7783,13 @@ fn canonicalize_scoped_node(mut ast flat.FlatAst, idx int, scope voidptr) {
 
 // scoped_generic_payload_owned reports whether the generic params of `node`, or
 // the constraints they name, live in the scope's memory: its payload, their
-// arrays or the parameter strings. Constraint spellings live in the source table.
+// arrays or the parameter strings. Type spellings live in the source table.
 fn scoped_generic_payload_owned(node &flat.Node, params []string, constraints []u32, scope voidptr) bool {
 	debugger_types := node.debugger_value_type_ids()
+	call_type_args := node.call_type_args()
 	if (debugger_types.len > 0 && scoped_value_owned(scope, debugger_types.data)) || scoped_value_owned(scope, node.payload_ptr()) || scoped_value_owned(scope, params.data)
-		|| (constraints.len > 0 && scoped_value_owned(scope, constraints.data)) {
+		|| (constraints.len > 0 && scoped_value_owned(scope, constraints.data))
+		|| (call_type_args.len > 0 && scoped_value_owned(scope, call_type_args.data)) {
 		return true
 	}
 	for param in params {
@@ -9117,10 +9133,10 @@ fn incremental_node_tree_uses_generics(a &flat.FlatAst, tc &types.TypeChecker, r
 				}
 			}
 		}
-		mut type_names := [node.typ_text(), node.value]
+		mut type_names := [node.typ_text(), node.value_text()]
 		mut params := node.generic_params()
 		debugger_types := node.debugger_value_type_ids()
-		if node.value.len > 0 && debugger_types.len == int(node.children_count) && params.len == 1 + debugger_types.len * 2 {
+		if node.value_text().len > 0 && debugger_types.len == int(node.children_count) && params.len == 1 + debugger_types.len * 2 {
 			mut rendered := []string{cap: params.len + debugger_types.len}
 			for i, param in params {
 				rendered << param
@@ -9130,12 +9146,12 @@ fn incremental_node_tree_uses_generics(a &flat.FlatAst, tc &types.TypeChecker, r
 			}
 			params = rendered.clone()
 		}
-		if node.kind == .enum_decl && node.value.len > 0 && (node.enum_backing_type_id() != 0 || params.len > 0) {
+		if node.kind == .enum_decl && node.value_text().len > 0 && (node.enum_backing_type_id() != 0 || params.len > 0) {
 			// This cache probe retains the legacy source signature projection.
 			suffix := if params.len > 0 { ', ' + params.join(', ') } else { '' }
-			type_names << '${node.value}[${flat.source_type_name(node.enum_backing_type_id())}${suffix}]'
-		} else if params.len > 0 && node.value.len > 0 {
-			type_names << '${node.value}[${params.join(', ')}]'
+			type_names << '${node.value_text()}[${flat.source_type_name(node.enum_backing_type_id())}${suffix}]'
+		} else if params.len > 0 && node.value_text().len > 0 {
+			type_names << '${node.value_text()}[${params.join(', ')}]'
 		}
 		for type_name in type_names {
 			if incremental_type_is_generic_named_application(type_name, module_name, tc) {
@@ -9460,12 +9476,12 @@ fn v3_type_text_uses_interop_namespace(text string, namespace string) bool {
 fn v3_ast_node_uses_interop_namespace(a &flat.FlatAst, node &flat.Node, namespace string) bool {
 	if node.kind == .selector && node.children_count > 0 {
 		base := a.child_node(node, 0)
-		if base.kind == .ident && base.value == namespace {
+		if base.kind == .ident && base.value_text() == namespace {
 			return true
 		}
 	}
 	if node.kind !in [.string_literal, .string_interp, .char_literal, .directive, .file]
-		&& node.value.starts_with(namespace + '.') {
+		&& node.value_text().starts_with(namespace + '.') {
 		return true
 	}
 	return v3_type_text_uses_interop_namespace(node.typ_text(), namespace)
@@ -21268,20 +21284,18 @@ fn msvc_inline_asm_node_error(a &flat.FlatAst, id flat.NodeId, top_level bool, m
 	return none
 }
 
+const wasm_supported_array_types = [flat.source_type_id('[]int'), flat.source_type_id('[]i8'),
+	flat.source_type_id('[]i16'), flat.source_type_id('[]i32'), flat.source_type_id('[]i64'),
+	flat.source_type_id('[]u8'), flat.source_type_id('[]u16'), flat.source_type_id('[]u32'),
+	flat.source_type_id('[]u64'), flat.source_type_id('[]isize'), flat.source_type_id('[]uint'),
+	flat.source_type_id('[]f32'), flat.source_type_id('[]f64'), flat.source_type_id('[]bool'),
+	flat.source_type_id('[]char'), flat.source_type_id('[]rune')]
+
 // wasm_supported_array_elem reports whether a resolved array type name has
 // primitive elements the wasm backend lowers today. Single dimension only:
 // nested arrays need inner-header handling that does not exist yet.
 fn wasm_supported_array_elem(type_id u32) bool {
-	return wasm_supported_array_elem_bytes(flat.source_type_name(type_id))
-}
-
-fn wasm_supported_array_elem_bytes(type_name string) bool {
-	if !type_name.starts_with('[]') || type_name.len <= 2 {
-		return false
-	}
-	elem := type_name[2..]
-	return elem in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'uint',
-		'f32', 'f64', 'bool', 'char', 'rune']
+	return type_id in wasm_supported_array_types
 }
 
 // wasm_supported_struct reports whether every field of the named struct has a
@@ -22253,7 +22267,7 @@ fn embedded_resource_paths(a &flat.FlatAst) []string {
 	mut paths := map[string]bool{}
 	for index in 0 .. a.nodes.len {
 		node := a.nodes[index]
-		if node.kind != .struct_init || node.value != 'embed_file.EmbedFileData' {
+		if node.kind != .struct_init || node.source_value_id() != implicit_source_type_embed_file_data {
 			continue
 		}
 		for child_index in 0 .. int(node.children_count) {
@@ -22401,7 +22415,7 @@ fn scan_implicit_imports(a &flat.FlatAst, end_node int, mut scan ImplicitImportS
 				|| (node.kind in [.field_decl, .param, .array_init, .array_literal]
 					&& type_text_has_shared_modifier(node.typ))
 				|| (node.kind == .decl_assign && decl_assign_value_is_shared(node.value))
-				|| (node.kind == .struct_init && node.value.starts_with('chan '))
+				|| (node.kind == .struct_init && flat.source_type_shape(node.source_value_id()).has(.channel_type))
 				|| (node.kind == .infix && node.op == .arrow)
 				|| (node.kind == .prefix && node.op == .arrow)
 				|| (node.typ != 0 && type_text_is_channel(node.typ)) {
@@ -22409,7 +22423,7 @@ fn scan_implicit_imports(a &flat.FlatAst, end_node int, mut scan ImplicitImportS
 			}
 		}
 		if !scan.needs_embed && node.kind == .struct_init
-			&& node.value == 'embed_file.EmbedFileData' {
+			&& node.source_value_id() == implicit_source_type_embed_file_data {
 			scan.needs_embed = true
 		}
 		// Builtin is parsed before `user_code_start` and contains ordinary selector
@@ -22735,7 +22749,7 @@ fn (mut s NoClosuresLambdaScan) walk(id flat.NodeId) {
 	node := *s.a.node(id)
 	match node.kind {
 		.ident {
-			s.note_ident(node.value)
+			s.note_ident(node.value_text())
 		}
 		.selector {
 			// Only the receiver of `x.field` can name a local.
@@ -23299,19 +23313,19 @@ fn implicit_expr_type(a &flat.FlatAst, id flat.NodeId, bindings flat.TypeTextBin
 	match node.kind {
 		.ident {
 			if index.bindings_are_globals {
-				index.read('g:', node.value)
+				index.read('g:', node.value_text())
 			}
-			if typ_source_id := bindings.type_id(node.value) {
+			if typ_source_id := bindings.type_id(node.value_text()) {
 				return typ_source_id
 			}
-			index.read('g:', node.value)
-			if typ_source_id := index.globals.type_id(node.value) {
+			index.read('g:', node.value_text())
+			if typ_source_id := index.globals.type_id(node.value_text()) {
 				return typ_source_id
 			}
-			index.read('f:', node.value)
-			index.read('e:', node.value)
-			if node.value in index.fields || node.value in index.enum_fields {
-				return flat.source_type_id(node.value)
+			index.read('f:', node.value_text())
+			index.read('e:', node.value_text())
+			if node.value_text() in index.fields || node.value_text() in index.enum_fields {
+				return node.source_value_id()
 			}
 			return u32(0)
 		}
@@ -23344,7 +23358,7 @@ fn implicit_expr_type(a &flat.FlatAst, id flat.NodeId, bindings flat.TypeTextBin
 			return if node.typ != 0 { node.typ } else { implicit_source_type_void_map }
 		}
 		.struct_init {
-			return implicit_normalize_type(flat.source_type_id(node.value), index)
+			return implicit_normalize_type(node.source_value_id(), index)
 		}
 		.paren, .expr_stmt, .postfix {
 			if node.children_count == 1 {
@@ -23419,14 +23433,14 @@ fn implicit_expr_type(a &flat.FlatAst, id flat.NodeId, bindings flat.TypeTextBin
 			if node.children_count > 0 {
 				base_type_source_id := implicit_expr_type(a, a.child(node, 0), bindings, index, depth + 1)
 
-				return implicit_field_type(base_type_source_id, node.value, index)
+				return implicit_field_type(base_type_source_id, node.value_text(), index)
 			}
 		}
 		.index {
 			if node.children_count > 0 {
 				base_type_source_id_3 := implicit_normalize_type(implicit_expr_type(a, a.child(node, 0), bindings, index, depth + 1), index)
 				base_type := flat.source_type_name(base_type_source_id_3)
-				if node.value == 'range' {
+				if node.value_text() == 'range' {
 					// A slice keeps its base type: `s[..n]` is a string, and slicing a
 					// fixed array yields a dynamic one.
 					if base_type_source_id_3 == flat.source_type_string || base_type.starts_with('[]') {
@@ -23458,8 +23472,8 @@ fn implicit_expr_type(a &flat.FlatAst, id flat.NodeId, bindings flat.TypeTextBin
 			if node.typ != 0 {
 				return implicit_normalize_type(node.typ, index)
 			}
-			if node.value.len > 0 {
-				return implicit_normalize_type(flat.source_type_id(node.value), index)
+			if node.source_value_id() != 0 {
+				return implicit_normalize_type(node.source_value_id(), index)
 			}
 		}
 		else {}
@@ -23495,9 +23509,9 @@ fn implicit_match_type(a &flat.FlatAst, node &flat.Node, bindings flat.TypeTextB
 			}
 			cond := a.child_node(branch, 0)
 			if value.kind == .ident && value.value == subject.value && cond.kind == .ident {
-				index.read('f:', cond.value)
-				if cond.value in index.fields {
-					branch_type = flat.source_type_id(cond.value)
+				index.read('f:', cond.value_text())
+				if cond.value_text() in index.fields {
+					branch_type = cond.source_value_id()
 				}
 			}
 		}
@@ -23595,6 +23609,7 @@ fn implicit_field_type(raw_type_id u32, field string, index ImplicitFieldScanInd
 }
 
 const implicit_type_prefixes = ['mut ', 'shared ', '&', '?', '!']
+const implicit_source_type_embed_file_data = flat.source_type_id('embed_file.EmbedFileData')
 const implicit_source_type_void_array = flat.source_type_id('[]void')
 const implicit_source_type_void_map = flat.source_type_id('map[void]void')
 const implicit_source_type_rune_array = flat.source_type_id('[]rune')
@@ -25590,12 +25605,13 @@ fn canonicalize_imported_module_name(mut a flat.FlatAst, first_node int, end_nod
 
 fn set_node_value_canonical(mut a flat.FlatAst, idx int, value string) {
 	_, canonical := a.intern_text(value)
-	a.nodes[idx].value = canonical
+	a.nodes[idx].set_value_text(canonical)
 }
 
 fn canonical_node_texts(mut a flat.FlatAst, node flat.Node) flat.Node {
 	mut canonical := node
-	_, canonical.value = a.intern_text(node.value)
+	canonical.canonicalize_source_value()
+	_, canonical.value = a.intern_text(canonical.value)
 	return canonical
 }
 

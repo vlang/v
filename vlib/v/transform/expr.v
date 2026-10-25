@@ -510,7 +510,7 @@ fn (t &Transformer) array_comparison_literal_elem_type(id flat.NodeId) ?u32 {
 				flat.source_type_bool
 			}
 			.cast_expr {
-				clean_source_id := t.normalize_type_alias(flat.source_type_id(scalar.value))
+				clean_source_id := t.normalize_type_alias(scalar.source_value_id())
 				if clean_source_id != 0 && clean_source_id != flat.source_type_unknown {
 					clean_source_id
 				} else {
@@ -754,7 +754,7 @@ fn (mut t Transformer) map_comparison_expr_type(id flat.NodeId) u32 {
 	}
 	mut typ := t.node_type(id)
 	if typ == 0 && node.kind == .map_init {
-		typ = if node.value.len > 0 { flat.source_type_id(node.value) } else { node.typ }
+		typ = if node.source_value_id() != 0 { node.source_value_id() } else { node.typ }
 	}
 	return typ
 }
@@ -960,7 +960,7 @@ fn (t &Transformer) interface_box_concrete_type(id flat.NodeId) ?u32 {
 			return concrete_source_id_3
 		}
 	}
-	if node.kind != .struct_init || !t.is_interface_type(flat.source_type_id(node.value)) {
+	if node.kind != .struct_init || !t.is_interface_type(node.source_value_id()) {
 		return none
 	}
 	for i in 0 .. node.children_count {
@@ -1689,8 +1689,8 @@ fn (t &Transformer) operator_alias_type_for_operand(id flat.NodeId, op flat.Op) 
 	if node.typ != 0 {
 		candidates << node.typ
 	}
-	if node.kind == .cast_expr && node.value.len > 0 {
-		candidates << flat.source_type_id(node.value)
+	if node.kind == .cast_expr && node.source_value_id() != 0 {
+		candidates << node.source_value_id()
 	}
 	for candidate in candidates {
 		clean_source_id_5 := t.trim_pointer_type(candidate)
@@ -3131,16 +3131,16 @@ fn (t &Transformer) type_pattern_name(id flat.NodeId) u32 {
 			return flat.source_type_id('${base}.${node.value}')
 		}
 		.array_init {
-			if node.value.len == 0 {
+			if node.source_value_id() == 0 {
 				return u32(0)
 			}
-			return flat.source_type_id('[]${node.value}')
+			return flat.source_type_id('[]${node.value_text()}')
 		}
 		.array_literal {
-			if node.value.len == 0 {
+			if node.source_value_id() == 0 {
 				return u32(0)
 			}
-			return flat.source_type_id('[${node.children_count}]${node.value}')
+			return flat.source_type_id('[${node.children_count}]${node.value_text()}')
 		}
 		else {
 			return u32(0)
@@ -4699,7 +4699,7 @@ fn (t &Transformer) is_stable_expr_for_reuse(id flat.NodeId) bool {
 		}
 		.struct_init {
 			mut stable := true
-			if info := t.lookup_struct_info(flat.source_type_id(node.value)) {
+			if info := t.lookup_struct_info(node.source_value_id()) {
 				for field in info.fields {
 					if t.is_fixed_array_type(t.normalize_type_alias(field.typ)) {
 						// Fixed-array initialization can emit a C statement expression.
@@ -5092,14 +5092,13 @@ pub fn (mut t Transformer) make_index(base flat.NodeId, index flat.NodeId, typ_i
 
 // make_cast builds make cast data for transform.
 pub fn (mut t Transformer) make_cast(target_type_id u32, expr flat.NodeId, typ_id u32) flat.NodeId {
-	target_type := flat.source_type_name(target_type_id)
 	start := t.a.children.len
 	t.a.children << expr
 	return t.a.add_node(flat.Node{
 		kind:           .cast_expr
 		children_start: start
 		children_count: 1
-		value:          target_type
+		source_value:   target_type_id
 		typ:            typ_id
 	})
 }
@@ -5118,11 +5117,10 @@ pub fn (mut t Transformer) make_postfix(expr flat.NodeId, op flat.Op) flat.NodeI
 
 // make_struct_init builds make struct init data for transform.
 pub fn (mut t Transformer) make_struct_init(name_id u32) flat.NodeId {
-	name := flat.source_type_name(name_id)
 	return t.a.add_node(flat.Node{
-		kind:  .struct_init
-		value: name
-		typ:   name_id
+		kind:         .struct_init
+		source_value: name_id
+		typ:          name_id
 	})
 }
 
@@ -5130,28 +5128,26 @@ pub fn (mut t Transformer) make_struct_init(name_id u32) flat.NodeId {
 pub fn (mut t Transformer) make_array_init(elem_type_id u32) flat.NodeId {
 	elem_type := flat.source_type_name(elem_type_id)
 	return t.a.add_node(flat.Node{
-		kind:  .array_init
-		value: elem_type
-		typ:   flat.source_type_id('[]${elem_type}')
+		kind:         .array_init
+		source_value: elem_type_id
+		typ:          flat.source_type_id('[]${elem_type}')
 	})
 }
 
 fn (mut t Transformer) make_fixed_array_init(fixed_type_id u32) flat.NodeId {
-	fixed_type := flat.source_type_name(fixed_type_id)
 	return t.a.add_node(flat.Node{
-		kind:  .array_init
-		value: fixed_type
-		typ:   fixed_type_id
+		kind:         .array_init
+		source_value: fixed_type_id
+		typ:          fixed_type_id
 	})
 }
 
 // make_map_init builds make map init data for transform.
 pub fn (mut t Transformer) make_map_init(map_type_id u32) flat.NodeId {
-	map_type := flat.source_type_name(map_type_id)
 	return t.a.add_node(flat.Node{
-		kind:  .map_init
-		value: map_type
-		typ:   map_type_id
+		kind:         .map_init
+		source_value: map_type_id
+		typ:          map_type_id
 	})
 }
 
@@ -5199,11 +5195,10 @@ pub fn (mut t Transformer) make_bool_literal(value bool) flat.NodeId {
 
 // make_sizeof_type builds make sizeof type data for transform.
 pub fn (mut t Transformer) make_sizeof_type(type_name_id u32) flat.NodeId {
-	type_name := flat.source_type_name(type_name_id)
 	return t.a.add_node(flat.Node{
-		kind:  .sizeof_expr
-		value: type_name
-		typ:   flat.source_type_uint
+		kind:         .sizeof_expr
+		source_value: type_name_id
+		typ:          flat.source_type_uint
 	})
 }
 

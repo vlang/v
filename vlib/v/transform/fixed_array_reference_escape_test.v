@@ -542,7 +542,7 @@ fn test_fresh_aligned_fixed_array_addresses_promote_storage_but_existing_values_
 			} else {
 				assert result_node.kind == .cast_expr, '${entry}: ${type_name}'
 				expected_pointer := t.normalize_type_alias(flat.source_type_id('&${type_name}'))
-				assert t.normalize_type_alias(flat.source_type_id(result_node.value)) == expected_pointer
+				assert t.normalize_type_alias(result_node.source_value_id()) == expected_pointer
 				assert t.normalize_type_alias(t.node_type(result)) == expected_pointer
 				allocation := t.a.child_node(&result_node, 0)
 				assert allocation.kind == .call

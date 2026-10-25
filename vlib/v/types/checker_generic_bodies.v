@@ -1166,7 +1166,7 @@ fn (tc &TypeChecker) subtree_depends_on_type_params(id flat.NodeId, names map[st
 			return true
 		}
 		if node.kind !in [.string_literal, .char_literal, .int_literal, .float_literal]
-			&& type_text_names_any(node.value, params) {
+			&& type_text_names_any(node.value_text(), params) {
 			return true
 		}
 		for i in 0 .. node.children_count {

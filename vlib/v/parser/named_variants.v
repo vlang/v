@@ -115,13 +115,13 @@ fn (mut p Parser) named_sum_type_decl(name string, is_pub bool, language_prefix 
 		variant_pos := token.new_span(p.cur_file_id, variant.start, variant.end)
 		if p.prefs.is_fmt {
 			variant_ids << p.add_node(flat.Node{
-				kind:  .ident
-				value: if variant.has_payload {
-					'${variant.text_text()}(${variant.payload_text()})'
+				kind:         .ident
+				source_value: if variant.has_payload {
+					flat.source_type_id('${variant.text_text()}(${variant.payload_text()})')
 				} else {
-					variant.text_text()
+					variant.text
 				}
-				pos:   variant_pos
+				pos:          variant_pos
 			})
 			continue
 		}
@@ -157,13 +157,13 @@ fn (mut p Parser) named_sum_type_decl(name string, is_pub bool, language_prefix 
 			pos:            variant_pos
 		})
 		variant_ids << p.add_node(flat.Node{
-			kind:  .ident
-			value: if used_params.len > 0 {
+			kind:         .ident
+			source_value: flat.source_type_id(if used_params.len > 0 {
 				'${hidden}[${used_params.join(', ')}]'
 			} else {
 				hidden
-			}
-			pos:   variant_pos
+			})
+			pos:          variant_pos
 		})
 	}
 	variants_start := p.add_children(variant_ids)
@@ -413,13 +413,13 @@ fn (mut p Parser) named_variant_init(sum_id u32, variant string, payload flat.No
 	}
 	init := p.add_node_from(flat.Node{
 		kind:           .struct_init
-		value:          hidden
+		source_value:   flat.source_type_id(hidden)
 		children_start: fields_start
 		children_count: flat.child_count(fields.len)
 	}, lhs)
 	return p.add_node_from(flat.Node{
 		kind:           .cast_expr
-		value:          sum
+		source_value:   flat.source_type_id(sum)
 		children_start: p.add_child(init)
 		children_count: 1
 	}, lhs)
@@ -573,7 +573,7 @@ fn (mut p Parser) named_variant_match_pattern(type_name_id u32, start int) ?flat
 	}
 	return p.add_node(flat.Node{
 		kind:           .ident
-		value:          hidden
+		source_value:   hidden_id
 		children_start: p.add_children(children)
 		children_count: flat.child_count(children.len)
 		pos:            p.span_to(start)

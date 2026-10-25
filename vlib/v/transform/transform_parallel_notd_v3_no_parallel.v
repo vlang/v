@@ -564,6 +564,10 @@ fn node_has_any_scoped_text(node &flat.Node, scopes []voidptr, lo uint, hi uint)
 		&& text_pointer_in_scopes(debugger_types.data, scopes, lo, hi) {
 		return true
 	}
+	call_args := payload.call_type_args.ids
+	if call_args.len > 0 && text_pointer_in_scopes(call_args.data, scopes, lo, hi) {
+		return true
+	}
 	constraints := payload.generic_constraints.ids
 	if constraints.len > 0 && text_pointer_in_scopes(constraints.data, scopes, lo, hi) {
 		return true
@@ -765,7 +769,7 @@ fn anonymous_struct_init_scan_thread(arg voidptr) voidptr {
 	flags := unsafe { &u8(a.flags) }
 	for i in a.start .. a.end {
 		node := unsafe { &a.a.nodes[i] }
-		if node.kind == .struct_init && node.children_count > 0 && node.value == 'struct' {
+		if node.kind == .struct_init && node.children_count > 0 && node.value_text() == 'struct' {
 			unsafe {
 				flags[i] = 1
 			}
@@ -879,7 +883,7 @@ fn fn_decl_generic_candidate_prescreen(a &flat.FlatAst, node &flat.Node, prefix_
 	if node.payload != 0 && node.generic_params().len > 0 {
 		return true
 	}
-	if generic_placeholder_prescreen(node.typ_text()) || generic_placeholder_prescreen(node.value) {
+	if generic_placeholder_prescreen(node.typ_text()) || generic_placeholder_prescreen(node.value_text()) {
 		return true
 	}
 	for i in 0 .. node.children_count {
@@ -964,6 +968,11 @@ fn scoped_text_promote_thread(arg voidptr) voidptr {
 		}
 		params := node.generic_params()
 		if params.len == 0 {
+			call_args := node.call_type_args()
+			if call_args.len > 0 && (transform_scope_owns(a.scope, node.payload_ptr()) || transform_scope_owns(a.scope, call_args.data)) {
+				node.set_call_type_args(call_args)
+				continue
+			}
 			debugger_types := node.debugger_value_type_ids()
 			if debugger_types.len > 0 && (transform_scope_owns(a.scope, node.payload_ptr()) || transform_scope_owns(a.scope, debugger_types.data)) {
 				node.set_debugger_value_type_ids(debugger_types)
@@ -973,10 +982,12 @@ fn scoped_text_promote_thread(arg voidptr) voidptr {
 			continue
 		}
 		constraints := node.payload_ptr().generic_constraints.ids
+		call_args := node.call_type_args()
 		debugger_types := node.debugger_value_type_ids()
 		mut needs := (debugger_types.len > 0 && transform_scope_owns(a.scope, debugger_types.data)) || transform_scope_owns(a.scope, node.payload_ptr())
 			|| transform_scope_owns(a.scope, params.data)
 			|| (constraints.len > 0 && transform_scope_owns(a.scope, constraints.data))
+			|| (call_args.len > 0 && transform_scope_owns(a.scope, call_args.data))
 		if !needs {
 			for param in params {
 				if param.len > 0 && transform_scope_owns(a.scope, param.str) {
@@ -2242,6 +2253,13 @@ fn (mut t Transformer) promote_scoped_node_to_current(idx int, scope voidptr) {
 	}
 	old_params := node.generic_params()
 	if old_params.len == 0 {
+		call_args := node.call_type_args()
+		if call_args.len > 0 && (transform_scope_owns(scope, node.payload_ptr()) || transform_scope_owns(scope, call_args.data)) {
+			publication_state := transform_stage_scope_suspend(t.merge_scratch_scope)
+			node.set_call_type_args(call_args)
+			transform_stage_scope_resume(t.merge_scratch_scope, publication_state)
+			return
+		}
 		debugger_types := node.debugger_value_type_ids()
 		if (debugger_types.len > 0 && (transform_scope_owns(scope, node.payload_ptr()) || transform_scope_owns(scope, debugger_types.data))) || (node.enum_backing_type_id() != 0 && transform_scope_owns(scope, node.payload_ptr())) {
 			publication_state := transform_stage_scope_suspend(t.merge_scratch_scope)
@@ -2255,10 +2273,12 @@ fn (mut t Transformer) promote_scoped_node_to_current(idx int, scope voidptr) {
 		return
 	}
 	old_constraints := node.payload_ptr().generic_constraints.ids
+	call_args := node.call_type_args()
 	debugger_types := node.debugger_value_type_ids()
 	mut needs_owned_params := (debugger_types.len > 0 && transform_scope_owns(scope, debugger_types.data)) || transform_scope_owns(scope, node.payload_ptr())
 		|| transform_scope_owns(scope, old_params.data)
 		|| (old_constraints.len > 0 && transform_scope_owns(scope, old_constraints.data))
+		|| (call_args.len > 0 && transform_scope_owns(scope, call_args.data))
 	if !needs_owned_params {
 		for param in old_params {
 			if param.len > 0 && transform_scope_owns(scope, param.str) {
@@ -2707,7 +2727,7 @@ fn (mut t Transformer) clone_deferred_worker_writes_from(start int) {
 	for i in start .. t.deferred_base_writes.len {
 		write := t.deferred_base_writes[i]
 		t.deferred_base_writes[i] = match write.kind {
-			0 {
+			0, 4 {
 				write
 			}
 			1 {
@@ -2722,13 +2742,16 @@ fn (mut t Transformer) clone_deferred_worker_writes_from(start int) {
 				for param in write.node.generic_params() {
 					params << t.promote_scoped_result_text(param)
 				}
+				mut promoted_node := write.node.clone_owned()
+				promoted_node.set_generic_params(params)
 				DeferredBaseWrite{
 					idx:  write.idx
 					kind: write.kind
 					node: flat.Node{
 						value:          t.promote_scoped_result_text(write.node.value)
+						source_value:   write.node.source_value
 						typ:            write.node.typ
-						payload:        flat.node_payload_with_type_metadata(params, write.node.enum_backing_type_id(), write.node.debugger_value_type_ids())
+						payload:        promoted_node.payload
 						pos:            write.node.pos
 						children_start: write.node.children_start
 						children_count: write.node.children_count

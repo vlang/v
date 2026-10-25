@@ -1,6 +1,7 @@
 module types
 
 import strings
+import v.flat
 import v.token
 
 fn incremental_test_entry(key string, hash u64) IncrementalEntry {
@@ -308,4 +309,27 @@ fn test_the_errors_of_the_instances_are_not_noted_when_one_is_in_no_region_of_a_
 		incremental: state
 	}
 	assert tc.incremental_instances_record(record) == ''
+}
+
+fn test_incremental_generic_call_signature_preserves_argument_spellings() {
+	for payload in [u32(0), flat.node_payload(['specialization'])] {
+		legacy := flat.Node{
+			kind:    .call
+			value:   'int, map[string][]f64'
+			payload: payload
+		}
+		mut indexed := legacy
+		indexed.value = ''
+		indexed.set_call_type_args([flat.source_type_int, flat.source_type_id('map[string][]f64')])
+		mut before := strings.new_builder(64)
+		mut after := strings.new_builder(64)
+		incremental_write_node(mut before, &legacy, 2)
+		incremental_write_node(mut after, &indexed, 2)
+		original := before.str()
+		assert after.str() == original
+		indexed.set_call_type_args([flat.source_type_f64, flat.source_type_id('map[string][]f64')])
+		mut changed := strings.new_builder(64)
+		incremental_write_node(mut changed, &indexed, 2)
+		assert changed.str() != original
+	}
 }

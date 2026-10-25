@@ -83,10 +83,10 @@ fn (tc &TypeChecker) named_variant_diagnostic(msg string, node flat.NodeId) stri
 		return msg
 	}
 	parent := tc.a.node(parent_id)
-	if parent.kind != .struct_init || !flat.is_named_variant_type_name(parent.value) {
+	if parent.kind != .struct_init || !flat.is_named_variant_type_name(parent.value_text()) {
 		return msg
 	}
-	variant := flat.named_variant_display_name(parent.value.all_after_last('.'))
+	variant := flat.named_variant_display_name(parent.value_text().all_after_last('.'))
 	return 'invalid payload for `${variant}`: ${msg[named_variant_payload_field_prefix.len..]}'
 }
 
@@ -106,10 +106,10 @@ fn (tc &TypeChecker) named_sum_variant_names(sum_name string) []string {
 // `Expr(Expr@variant@Count{payload: x})` for `Expr.Count(x)`, before the regular
 // struct literal checks. It returns false when the literal was fully handled.
 fn (mut tc TypeChecker) check_named_variant_init(id flat.NodeId, node flat.Node) bool {
-	sum_text, variant := flat.decode_named_variant_type_name(node.value) or { return true }
+	sum_text, variant := flat.decode_named_variant_type_name(node.value_text()) or { return true }
 	display := '${sum_text.all_after_last('.')}.${variant}'
-	variant_type := tc.parse_type(flat.source_type_id(node.value))
-	base_name := generic_base_name(node.value)
+	variant_type := tc.parse_type(node.source_value_id())
+	base_name := generic_base_name(node.value_text())
 	if variant_type !is Struct
 		|| (base_name !in tc.structs && tc.qualify_name(base_name) !in tc.structs) {
 		sum_type := tc.parse_type(flat.source_type_id(sum_text))
@@ -130,7 +130,7 @@ fn (mut tc TypeChecker) check_named_variant_init(id flat.NodeId, node flat.Node)
 		tc.register_synth_type(id, Type(Unknown{}))
 		return false
 	}
-	if payload_type := tc.named_variant_payload_type(flat.source_type_id(node.value)) {
+	if payload_type := tc.named_variant_payload_type(node.source_value_id()) {
 		if node.children_count == 0 {
 			tc.record_error_at(.assignment_mismatch, '`${display}` needs a payload of type `${flat.source_type_name(tc.type_name(payload_type))}`, e.g. `${display}(value)`',
 				id, node.pos)
@@ -157,6 +157,6 @@ fn (tc &TypeChecker) named_variant_init_was_reported(id flat.NodeId) bool {
 		return false
 	}
 	node := tc.a.node(id)
-	return node.kind == .struct_init && flat.is_named_variant_type_name(node.value)
+	return node.kind == .struct_init && flat.is_named_variant_type_name(node.value_text())
 		&& tc.errors.any(it.node == id)
 }

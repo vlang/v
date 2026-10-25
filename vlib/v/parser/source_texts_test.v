@@ -115,7 +115,7 @@ fn declared_texts(p &Parser) []string {
 	mut texts := []string{}
 	for node in p.a.nodes {
 		if node.kind in [.fn_decl, .const_field, .string_literal] {
-			texts << '${node.kind}:${node.value}'
+			texts << '${node.kind}:${node.value_text()}'
 		}
 	}
 	return texts

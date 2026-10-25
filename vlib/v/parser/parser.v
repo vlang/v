@@ -3636,9 +3636,9 @@ fn (mut p Parser) type_decl() flat.NodeId {
 					variant.start, variant.end)
 			}
 			variants << p.add_node(flat.Node{
-				kind:  .ident
-				value: variant.text_text()
-				pos:   token.new_span(p.cur_file_id, variant.start, variant.end)
+				kind:         .ident
+				source_value: variant.text
+				pos:          token.new_span(p.cur_file_id, variant.start, variant.end)
 			})
 		}
 		start := p.add_children(variants)
@@ -8398,51 +8398,57 @@ fn (mut p Parser) skip_defer_result_arguments() {
 
 fn (mut p Parser) parse_comptime_type_arg() flat.NodeId {
 	if p.tok in [.question, .not, .amp, .and] {
-		typ := p.parse_type_name_bytes()
+		typ := p.parse_type_name()
 		if p.tok == .lcbr && p.peek() == .rcbr {
 			p.next()
 			p.check(.rcbr)
 		}
 		return p.add_node(flat.Node{
-			kind:  .ident
-			value: typ
+			kind:         .ident
+			source_value: typ
 		})
 	}
 	if p.tok == .lsbr && p.peek() != .rsbr {
-		typ := p.parse_type_name_bytes()
+		typ := p.parse_type_name()
 		if p.tok == .lcbr && p.peek() == .rcbr {
 			p.next()
 			p.check(.rcbr)
 		}
 		return p.add_node(flat.Node{
-			kind:  .ident
-			value: typ
+			kind:         .ident
+			source_value: typ
 		})
 	}
 	if p.tok == .name && p.peek() == .lsbr {
-		typ := p.parse_type_name_bytes()
+		typ := p.parse_type_name()
 		if p.tok == .lcbr && p.peek() == .rcbr {
 			p.next()
 			p.check(.rcbr)
 		}
 		return p.add_node(flat.Node{
-			kind:  .ident
-			value: typ
+			kind:         .ident
+			source_value: typ
 		})
 	}
 	if p.tok != .lsbr || p.peek() != .rsbr {
 		if p.can_start_type_name() && p.comptime_type_arg_has_empty_literal_suffix() {
-			typ := p.parse_type_name_bytes()
+			typ := p.parse_type_name()
 			if p.tok == .lcbr && p.peek() == .rcbr {
 				p.next()
 				p.check(.rcbr)
 			}
 			return p.add_node(flat.Node{
-				kind:  .ident
-				value: typ
+				kind:         .ident
+				source_value: typ
 			})
 		}
-		return p.expr(.lowest)
+		id := p.expr(.lowest)
+		node := p.a.node(id)
+		if node.kind == .ident && is_builtin_type(node.value_text())
+			&& !p.is_local_binding(node.value_text()) {
+			p.a.nodes[int(id)].set_source_value_id(node.source_value_id())
+		}
+		return id
 	}
 	p.next() // skip `[` in `[]T`
 	p.check(.rsbr)
@@ -8451,8 +8457,8 @@ fn (mut p Parser) parse_comptime_type_arg() flat.NodeId {
 		elem = p.parse_comptime_type_arg()
 	} else if p.tok == .name {
 		elem = p.add_node(flat.Node{
-			kind:  .ident
-			value: p.parse_type_name_bytes()
+			kind:         .ident
+			source_value: p.parse_type_name()
 		})
 	} else {
 		elem = p.prefix_expr()
@@ -8466,7 +8472,7 @@ fn (mut p Parser) parse_comptime_type_arg() flat.NodeId {
 	}
 	return p.add_node(flat.Node{
 		kind:           .array_init
-		value:          '__v3_comptime_type_array'
+		source_value:   flat.source_type_id('__v3_comptime_type_array')
 		children_start: p.add_child(elem)
 		children_count: 1
 	})
@@ -8571,7 +8577,7 @@ fn (mut p Parser) parse_embed_file_expr() flat.NodeId {
 	}
 	return p.a.add_node(flat.Node{
 		kind:           .struct_init
-		value:          'embed_file.EmbedFileData'
+		source_value:   flat.source_type_id('embed_file.EmbedFileData')
 		typ:            flat.source_type_id('embed_file.EmbedFileData')
 		children_start: p.add_children(field_ids)
 		children_count: flat.child_count(field_ids.len)
@@ -8610,7 +8616,7 @@ fn (mut p Parser) embed_file_uncompressed_data(apath string) ?flat.NodeId {
 fn (mut p Parser) embed_file_payload_cast(payload flat.NodeId, typ_id u32) flat.NodeId {
 	return p.add_node(flat.Node{
 		kind:           .cast_expr
-		value:          flat.source_type_name(typ_id)
+		source_value:   typ_id
 		typ:            typ_id
 		is_mut:         true // marks this compiler-generated trusted embed buffer cast
 		children_start: p.add_child(payload)
@@ -10151,9 +10157,9 @@ fn (mut p Parser) match_branch_cond() flat.NodeId {
 		typ_text := flat.source_type_name(typ)
 		elem_type := if typ_text.starts_with('[]') { typ_text[2..] } else { typ_text }
 		return p.add_node(flat.Node{
-			kind:  .array_init
-			value: elem_type
-			typ:   typ
+			kind:         .array_init
+			source_value: flat.source_type_id(elem_type)
+			typ:          typ
 		})
 	}
 	if p.tok == .lsbr && p.current_lbr_starts_fixed_array_type() {
@@ -10165,7 +10171,7 @@ fn (mut p Parser) match_branch_cond() flat.NodeId {
 	}
 	if p.tok == .name && p.lit == 'map' && p.peek() == .lsbr {
 		typ := p.parse_type_name()
-		return p.add_val(.ident, flat.source_type_name(typ))
+		return p.add_node(flat.Node{ kind: .ident, source_value: typ })
 	}
 	if p.tok == .name && p.peek() == .dot {
 		pattern_start := p.span_start()
@@ -10227,7 +10233,10 @@ fn (mut p Parser) match_branch_cond() flat.NodeId {
 	if p.tok == .name && is_builtin_type(p.lit) && p.peek() == .lcbr {
 		name := p.lit
 		p.next()
-		return p.add_val(.ident, name)
+		return p.add_node(flat.Node{
+			kind:         .ident
+			source_value: flat.source_type_id(name)
+		})
 	}
 	p.in_match_branch_condition++
 	cond := p.expr(.lowest)
@@ -10276,7 +10285,7 @@ fn (mut p Parser) match_type_pattern_node(type_name_id u32) flat.NodeId {
 			children_count: 1
 		})
 	}
-	return p.add_val(.ident, type_name)
+	return p.add_node(flat.Node{ kind: .ident, source_value: type_name_id })
 }
 
 // match_branch_cast_follows reports whether `mod.Type` followed by `(` starts a cast value,
@@ -11752,7 +11761,7 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 					p.check(.rpar)
 					lhs = p.add_node(flat.Node{
 						kind:           .cast_expr
-						value:          flat.source_type_name(full_name)
+						source_value:   full_name
 						children_start: p.add_child(inner)
 						children_count: 1
 					})
@@ -11770,7 +11779,7 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 					cstart := p.add_child(inner)
 					lhs = p.add_node(flat.Node{
 						kind:           .cast_expr
-						value:          full_name
+						source_value:   flat.source_type_id(full_name)
 						children_start: cstart
 						children_count: 1
 					})
@@ -11883,7 +11892,7 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 			astart := p.add_child(lhs)
 			lhs = p.add_node(flat.Node{
 				kind:           .as_expr
-				value:          type_name
+				source_value:   flat.source_type_id(type_name)
 				children_start: astart
 				children_count: 1
 			})
@@ -11919,7 +11928,7 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 			// then hoist the block's trailing comment in front of the brace.
 			is_node := p.add_node_from(flat.Node{
 				kind:           .is_expr
-				value:          flat.source_type_name(type_name)
+				source_value:   type_name
 				children_start: istart
 				children_count: 1
 			}, lhs)
@@ -11947,7 +11956,7 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 			istart := p.add_child(lhs)
 			is_node := p.add_node_from(flat.Node{
 				kind:           .is_expr
-				value:          flat.source_type_name(type_name)
+				source_value:   type_name
 				children_start: istart
 				children_count: 1
 			}, lhs)
@@ -12225,9 +12234,9 @@ fn (p &Parser) spaced_dot_starts_array_enum_value(id flat.NodeId) bool {
 	}
 	base := p.a.child_node(&node, 0)
 	type_part := if base.kind == .selector {
-		base.value
+		base.value_text()
 	} else if base.kind == .ident {
-		base.value
+		base.value_text()
 	} else {
 		''
 	}
@@ -13073,7 +13082,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				if p.tok == .lcbr {
 					return p.struct_init(flat.source_type_id(chan_type))
 				}
-				return p.add_val(.ident, chan_type)
+				return p.add_node(flat.Node{ kind: .ident, source_value: flat.source_type_id(chan_type) })
 			}
 			// map init: map[K]V{} or map[K]V{k1: v1, ...}
 			if name == 'map' && p.tok == .lsbr {
@@ -13098,16 +13107,16 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 					cstart := p.add_child(inner)
 					return p.add_node(flat.Node{
 						kind:           .cast_expr
-						value:          map_type
+						source_value:   flat.source_type_id(map_type)
 						children_start: cstart
 						children_count: 1
 						pos:            p.span_to(name_pos)
 					})
 				}
 				return p.a.add_node(flat.Node{
-					kind:  .map_init
-					value: map_type
-					pos:   p.span_to(name_pos)
+					kind:         .map_init
+					source_value: flat.source_type_id(map_type)
+					pos:          p.span_to(name_pos)
 				})
 			}
 			if name == 'map' && p.tok == .lcbr && !p.internal_collection_types_allowed() {
@@ -13136,7 +13145,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				cstart := p.add_child(inner)
 				return p.add_node(flat.Node{
 					kind:           .cast_expr
-					value:          local_type_name
+					source_value:   flat.source_type_id(local_type_name)
 					children_start: cstart
 					children_count: 1
 					pos:            p.span_to(name_pos)
@@ -13196,13 +13205,16 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 						cstart := p.add_child(inner)
 						return p.add_node(flat.Node{
 							kind:           .cast_expr
-							value:          type_name
+							source_value:   flat.source_type_id(type_name)
 							children_start: cstart
 							children_count: 1
 							pos:            p.span_to(amp_start)
 						})
 					}
-					id := p.add_val(.ident, base_name)
+					id := p.add_node(flat.Node{
+						kind:         .ident
+						source_value: flat.source_type_id(base_name)
+					})
 					first := p.add_node(flat.Node{
 						kind:           .prefix
 						op:             .amp
@@ -13259,7 +13271,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 					cstart := p.add_child(inner)
 					return p.add_node(flat.Node{
 						kind:           .cast_expr
-						value:          type_name
+						source_value:   flat.source_type_id(type_name)
 						children_start: cstart
 						children_count: 1
 						pos:            p.span_to(amp_start)
@@ -13326,7 +13338,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 					cstart := p.add_child(inner)
 					return p.a.add_node(flat.Node{
 						kind:           .cast_expr
-						value:          '&${local_type_name}'
+						source_value:   flat.source_type_id('&${local_type_name}')
 						children_start: cstart
 						children_count: 1
 						pos:            p.span_to(amp_start)
@@ -13363,7 +13375,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 					cstart := p.add_child(inner)
 					return p.add_node(flat.Node{
 						kind:           .cast_expr
-						value:          type_name
+						source_value:   flat.source_type_id(type_name)
 						children_start: cstart
 						children_count: 1
 						pos:            p.span_to(amp_start)
@@ -13382,10 +13394,10 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				}
 				if p.tok in [.comma, .rpar] {
 					return p.add_node(flat.Node{
-						kind:  .ident
-						value: type_name
-						typ:   flat.source_type_id(type_name)
-						pos:   p.span_to(amp_start)
+						kind:         .ident
+						source_value: flat.source_type_id(type_name)
+						typ:          flat.source_type_id(type_name)
+						pos:          p.span_to(amp_start)
 					})
 				}
 			}
@@ -13453,7 +13465,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				cstart := p.add_child(inner)
 				return p.add_node(flat.Node{
 					kind:           .cast_expr
-					value:          type_name
+					source_value:   flat.source_type_id(type_name)
 					children_start: cstart
 					children_count: 1
 					pos:            p.span_to(op_start)
@@ -13533,7 +13545,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				cstart := p.add_child(inner)
 				return p.add_node(flat.Node{
 					kind:           .cast_expr
-					value:          type_name
+					source_value:   flat.source_type_id(type_name)
 					children_start: cstart
 					children_count: 1
 				})
@@ -13563,16 +13575,16 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			mut init_id := p.struct_init(flat.source_type_id('struct'))
 			init := p.a.nodes[int(init_id)]
 			if name_id := p.anonymous_struct_type_for_literal(init) {
-				p.a.nodes[int(init_id)].value = flat.source_type_name(name_id)
+				p.a.nodes[int(init_id)].set_source_value_id(name_id)
 				p.a.nodes[int(init_id)].typ = name_id
 			} else if name_id := p.create_anonymous_struct_type_for_literal(init) {
-				p.a.nodes[int(init_id)].value = flat.source_type_name(name_id)
+				p.a.nodes[int(init_id)].set_source_value_id(name_id)
 				p.a.nodes[int(init_id)].typ = name_id
 			} else if name_id := p.create_anonymous_struct_type_from_type_init(init) {
 				if p.tok == .lcbr {
 					init_id = p.struct_init(name_id)
 				} else {
-					p.a.nodes[int(init_id)].value = flat.source_type_name(name_id)
+					p.a.nodes[int(init_id)].set_source_value_id(name_id)
 					p.a.nodes[int(init_id)].typ = name_id
 				}
 			}
@@ -13749,7 +13761,7 @@ fn (mut p Parser) map_init_body(map_type_id u32, map_start int) flat.NodeId {
 	start := p.copy_pending_children(mark)
 	return p.add_node(flat.Node{
 		kind:           .map_init
-		value:          flat.source_type_name(map_type_id)
+		source_value:   map_type_id
 		children_start: start
 		children_count: flat.child_count(p.pending_children.len - mark)
 		pos:            p.span_to(map_start)
@@ -13830,7 +13842,7 @@ fn (mut p Parser) pointer_cast_expr_from_current_depth(depth int, start int) ?fl
 		cstart := p.add_child(inner)
 		return p.add_node(flat.Node{
 			kind:           .cast_expr
-			value:          type_name
+			source_value:   flat.source_type_id(type_name)
 			children_start: cstart
 			children_count: 1
 			pos:            p.span_to(start)
@@ -13938,7 +13950,7 @@ fn (mut p Parser) selector_or_method(lhs flat.NodeId) flat.NodeId {
 			cstart := p.add_child(inner)
 			return p.add_node_from(flat.Node{
 				kind:           .cast_expr
-				value:          full_name
+				source_value:   flat.source_type_id(full_name)
 				children_start: cstart
 				children_count: 1
 			}, lhs)
@@ -14326,7 +14338,7 @@ fn (mut p Parser) index_expr(lhs flat.NodeId) flat.NodeId {
 	first_node := p.a.node(first)
 	if p.tok == .comma && lhs_node.kind == .ident && type_name_can_init(lhs_node.value)
 		&& first_node.kind == .ident
-		&& !generic_struct_init_suffix_arg_can_be_type(first_node.value) {
+		&& !generic_struct_init_suffix_arg_can_be_type(first_node.value_text()) {
 		p.record_diagnostic('unexpected token `,`, expecting `]`', p.tok_pos)
 		for p.tok != .rsbr && p.tok != .eof {
 			p.next()
@@ -14392,10 +14404,10 @@ fn (mut p Parser) index_part_expr() flat.NodeId {
 		start := p.span_start()
 		type_name := p.parse_type_name()
 		return p.add_node(flat.Node{
-			kind:  .ident
-			value: flat.source_type_name(type_name)
-			typ:   type_name
-			pos:   p.span_to(start)
+			kind:         .ident
+			source_value: type_name
+			typ:          type_name
+			pos:          p.span_to(start)
 		})
 	}
 	if p.tok == .dotdot {
@@ -14479,10 +14491,10 @@ fn (mut p Parser) generic_call_type_arg_id(id flat.NodeId) flat.NodeId {
 			source := p.s.src[node.pos.offset..node.pos.end].trim_space()
 			if source.len > 0 {
 				return p.add_node(flat.Node{
-					kind:  .ident
-					value: source
-					typ:   flat.source_type_id(source)
-					pos:   node.pos
+					kind:         .ident
+					source_value: flat.source_type_id(source)
+					typ:          flat.source_type_id(source)
+					pos:          node.pos
 				})
 			}
 		}
@@ -14496,11 +14508,14 @@ fn (mut p Parser) generic_call_type_arg_id(id flat.NodeId) flat.NodeId {
 	resolved := p.canonical_integer_type(p.resolve_local_type_name(name), node.pos.offset,
 		node.pos.end)
 	if name.len == 0 || (resolved == name && canonical_id == id) {
+		if node.kind == .ident && is_builtin_type(name) && !p.is_local_binding(name) {
+			p.a.nodes[int(id)].set_source_value_id(node.source_value_id())
+		}
 		return canonical_id
 	}
 	return p.add_node(flat.Node{
-		kind:  .ident
-		value: resolved
+		kind:         .ident
+		source_value: flat.source_type_id(resolved)
 	})
 }
 
@@ -14595,6 +14610,12 @@ fn (p &Parser) type_expr_is_lifetime_arg(id flat.NodeId) bool {
 }
 
 fn (p &Parser) type_expr_name(id flat.NodeId) u32 {
+	if int(id) >= 0 && int(id) < p.a.nodes.len {
+		node := p.a.nodes[int(id)]
+		if node.kind in [.ident, .struct_init] {
+			return node.source_value_id()
+		}
+	}
 	return flat.source_type_id(p.type_expr_name_bytes(id))
 }
 
@@ -14709,7 +14730,7 @@ fn (mut p Parser) struct_init(name_id u32) flat.NodeId {
 		start := p.copy_pending_children(mark)
 		return p.add_node(flat.Node{
 			kind:           .assoc
-			value:          name
+			source_value:   name_id
 			children_start: start
 			children_count: flat.child_count(p.pending_children.len - mark)
 			pos:            p.span_to(init_start)
@@ -14768,7 +14789,7 @@ fn (mut p Parser) struct_init(name_id u32) flat.NodeId {
 	start := p.copy_pending_children(mark)
 	return p.add_node(flat.Node{
 		kind:           .struct_init
-		value:          name
+		source_value:   name_id
 		children_start: start
 		children_count: flat.child_count(p.pending_children.len - mark)
 		pos:            p.span_to(init_start)
@@ -14960,7 +14981,7 @@ fn (mut p Parser) array_literal() flat.NodeId {
 			cstart := p.add_child(inner)
 			return p.add_node(flat.Node{
 				kind:           .cast_expr
-				value:          '[]${elem_type}'
+				source_value:   flat.source_type_id('[]${elem_type}')
 				children_start: cstart
 				children_count: 1
 				pos:            p.span_to(bracket_start)
@@ -14975,14 +14996,14 @@ fn (mut p Parser) array_literal() flat.NodeId {
 				p.prev_tok_end)
 		}
 		return p.add_node(flat.Node{
-			kind:  .array_init
-			value: elem_type
-			typ:   (if elem_type.starts_with('typeof(') {
+			kind:         .array_init
+			source_value: flat.source_type_id(elem_type)
+			typ:          (if elem_type.starts_with('typeof(') {
 				u32(0)
 			} else {
 				flat.source_type_id('[]${elem_type}')
 			})
-			pos:   p.span_to(bracket_start)
+			pos:          p.span_to(bracket_start)
 		})
 	}
 	// array literal: [1, 2, 3]
@@ -15021,7 +15042,7 @@ fn (mut p Parser) array_literal() flat.NodeId {
 				cstart := p.add_child(inner)
 				return p.a.add_node(flat.Node{
 					kind:           .cast_expr
-					value:          fixed_type
+					source_value:   flat.source_type_id(fixed_type)
 					children_start: cstart
 					children_count: 1
 					pos:            p.span_to(bracket_start)
@@ -15076,7 +15097,7 @@ fn (mut p Parser) array_literal() flat.NodeId {
 				start := p.copy_pending_children(init_mark)
 				return p.add_node(flat.Node{
 					kind:           .array_init
-					value:          fixed_type
+					source_value:   flat.source_type_id(fixed_type)
 					typ:            flat.source_type_id(fixed_type)
 					children_start: start
 					children_count: flat.child_count(p.pending_children.len - init_mark)
@@ -15088,10 +15109,10 @@ fn (mut p Parser) array_literal() flat.NodeId {
 					bracket_start, p.prev_tok_end)
 			}
 			return p.add_node(flat.Node{
-				kind:  .array_init
-				value: fixed_type
-				typ:   flat.source_type_id(fixed_type)
-				pos:   p.span_to(bracket_start)
+				kind:         .array_init
+				source_value: flat.source_type_id(fixed_type)
+				typ:          flat.source_type_id(fixed_type)
+				pos:          p.span_to(bracket_start)
 			})
 		}
 		// single-element array: [expr]
@@ -15204,16 +15225,16 @@ fn (p &Parser) amp_after_array_brackets_is_infix() bool {
 
 fn (p &Parser) fixed_array_size_text(size_node flat.NodeId, size_start int, size_end int) string {
 	node := p.a.nodes[int(size_node)]
-	if node.kind in [.int_literal, .ident] && node.value.len > 0 {
-		return node.value
+	if node.kind in [.int_literal, .ident] && node.value_text().len > 0 {
+		return node.value_text()
 	}
 	if node.kind == .selector && node.children_count == 1 {
 		// Use the parsed name instead of source text, which can include comments.
 		if base := p.fixed_array_const_name(p.a.child_node(&node, 0)) {
-			return '${base}.${node.value}'
+			return '${base}.${node.value_text()}'
 		}
 	}
-	if node.kind == .paren && node.value == '__v3_comptime_d' && node.children_count > 0 {
+	if node.kind == .paren && node.value_text() == '__v3_comptime_d' && node.children_count > 0 {
 		resolved := p.a.child_node(&node, 0)
 		if resolved.kind == .int_literal && resolved.value.len > 0 {
 			return resolved.value
@@ -15229,16 +15250,16 @@ fn (p &Parser) fixed_array_size_text(size_node flat.NodeId, size_start int, size
 		}
 		return p.s.src[size_start..end].trim_space()
 	}
-	return node.value
+	return node.value_text()
 }
 
 fn (p &Parser) fixed_array_const_name(node &flat.Node) ?string {
 	if node.kind == .ident {
-		return node.value
+		return node.value_text()
 	}
 	if node.kind == .selector && node.children_count == 1 {
 		base := p.fixed_array_const_name(p.a.child_node(node, 0))?
-		return '${base}.${node.value}'
+		return '${base}.${node.value_text()}'
 	}
 	return none
 }
@@ -15424,7 +15445,7 @@ fn (mut p Parser) array_init_after_element_type(elem_type_id u32, start int) fla
 	}
 	return p.a.add_node(flat.Node{
 		kind:           .array_init
-		value:          elem_type
+		source_value:   elem_type_id
 		typ:            (if elem_type.starts_with('typeof(') {
 			u32(0)
 		} else {
@@ -15935,9 +15956,9 @@ fn (mut p Parser) sizeof_expr() flat.NodeId {
 			p.check(.rpar)
 		}
 		return p.a.add_node(flat.Node{
-			kind:  .sizeof_expr
-			value: type_name
-			pos:   p.span_to(sizeof_start)
+			kind:         .sizeof_expr
+			source_value: flat.source_type_id(type_name)
+			pos:          p.span_to(sizeof_start)
 		})
 	}
 	p.check(.lpar)
@@ -15953,7 +15974,7 @@ fn (mut p Parser) sizeof_expr() flat.NodeId {
 		p.check(.rpar)
 		return p.a.add_node(flat.Node{
 			kind:           .sizeof_expr
-			value:          name
+			source_value:   flat.source_type_id(name)
 			children_start: p.add_child(inner)
 			children_count: 1
 			pos:            p.span_to(sizeof_start)
@@ -16001,9 +16022,9 @@ fn (mut p Parser) sizeof_expr() flat.NodeId {
 	type_name := p.parse_type_name_bytes()
 	p.check(.rpar)
 	return p.a.add_node(flat.Node{
-		kind:  .sizeof_expr
-		value: type_name
-		pos:   p.span_to(sizeof_start)
+		kind:         .sizeof_expr
+		source_value: flat.source_type_id(type_name)
+		pos:          p.span_to(sizeof_start)
 	})
 }
 
@@ -16899,9 +16920,9 @@ fn (mut p Parser) typeof_expr() flat.NodeId {
 			p.check(.rpar)
 		}
 		return p.add_node(flat.Node{
-			kind:  .typeof_expr
-			value: type_name
-			pos:   p.span_to(start)
+			kind:         .typeof_expr
+			source_value: flat.source_type_id(type_name)
+			pos:          p.span_to(start)
 		})
 	}
 	p.check(.lpar)
@@ -16954,9 +16975,9 @@ fn (mut p Parser) offsetof_expr() flat.NodeId {
 	field_name := p.expect_name()
 	p.check(.rpar)
 	return p.add_node(flat.Node{
-		kind:  .offsetof_expr
-		value: type_name
-		typ:   flat.source_type_id(field_name)
+		kind:         .offsetof_expr
+		source_value: flat.source_type_id(type_name)
+		typ:          flat.source_type_id(field_name)
 	})
 }
 
@@ -18029,7 +18050,7 @@ fn (mut p Parser) create_anonymous_struct_type_from_type_init(init flat.Node) ?u
 		field_name_node := p.anonymous_type_init_positional_ident(init, i) or { return none }
 		field_type_node := p.anonymous_type_init_positional_ident(init, i + 1) or { return none }
 		field_names << field_name_node.value
-		field_types << p.resolve_local_type_id(flat.source_type_id(field_type_node.value))
+		field_types << p.resolve_local_type_id(field_type_node.source_value_id())
 		field_positions << field_name_node.pos
 		i += 2
 	}
@@ -18042,7 +18063,7 @@ fn (p &Parser) anonymous_type_init_positional_ident(init flat.Node, idx int) ?fl
 		return none
 	}
 	child := p.a.child_node(field, 0)
-	if child.kind != .ident || child.value.len == 0 {
+	if child.kind != .ident || child.source_value_id() == 0 {
 		return none
 	}
 	return *child
@@ -18103,8 +18124,8 @@ fn (p &Parser) infer_anonymous_struct_literal_type(node flat.Node) ?u32 {
 			}
 		}
 		.struct_init {
-			if node.value.len > 0 && node.value != 'struct' {
-				return flat.source_type_id(node.value)
+			if node.source_value_id() != 0 && node.source_value_id() != flat.source_type_id('struct') {
+				return node.source_value_id()
 			}
 		}
 		.array_literal {
@@ -18159,8 +18180,8 @@ fn (p &Parser) anonymous_struct_literal_field_type(value_id flat.NodeId) ?u32 {
 			return flat.source_type_string
 		}
 		.struct_init, .array_init, .map_init, .cast_expr {
-			if node.value.len > 0 {
-				return flat.source_type_id(node.value)
+			if node.source_value_id() != 0 {
+				return node.source_value_id()
 			}
 			if node.typ != 0 {
 				return node.typ
@@ -19188,20 +19209,20 @@ fn (p &Parser) type_expr_name_bytes(id flat.NodeId) string {
 	node := p.a.nodes[int(id)]
 	match node.kind {
 		.ident {
-			return node.value
+			return node.value_text()
 		}
 		.selector {
 			if node.children_count == 0 {
-				return node.value
+				return node.value_text()
 			}
 			base := p.type_expr_name_bytes(p.a.child(&node, 0))
 			if base.len == 0 {
-				return node.value
+				return node.value_text()
 			}
-			return '${base}.${node.value}'
+			return '${base}.${node.value_text()}'
 		}
 		.index {
-			if node.children_count < 2 || node.value == 'range' {
+			if node.children_count < 2 || node.value_text() == 'range' {
 				return ''
 			}
 			base := p.type_expr_name_bytes(p.a.child(&node, 0))
@@ -19214,7 +19235,7 @@ fn (p &Parser) type_expr_name_bytes(id flat.NodeId) string {
 				if p.type_expr_is_lifetime_arg(child_id) {
 					if p.prefs.is_fmt {
 						lifetime_node := p.a.child_node(p.a.node(child_id), 0)
-						args << '^${lifetime_node.value}'
+						args << '^${lifetime_node.value_text()}'
 					}
 					continue
 				}
@@ -19230,13 +19251,13 @@ fn (p &Parser) type_expr_name_bytes(id flat.NodeId) string {
 			return '${base}[${args.join(', ')}]'
 		}
 		.struct_init {
-			return node.value
+			return node.value_text()
 		}
 		.array_init {
-			if node.value.len == 0 {
+			if node.value_text().len == 0 {
 				return ''
 			}
-			return '[]${p.resolve_local_type_name(node.value)}'
+			return '[]${p.resolve_local_type_name(node.value_text())}'
 		}
 		.prefix {
 			if node.children_count == 0 {

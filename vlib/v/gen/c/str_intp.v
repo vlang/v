@@ -36,7 +36,7 @@ fn (mut g FlatGen) gen_string_interp(node flat.Node) {
 		} else {
 			typ := g.string_interp_child_type(expr_id, child)
 			typ_name_id := types.Type(typ).source_type_id()
-			if child.typ_text() == 'string' || typ is types.String {
+			if child.typ == flat.source_type_string || typ is types.String {
 				if format.len > 0 {
 					g.gen_formatted_string_interp_child_expr(expr_id, typ, format)
 				} else {
@@ -179,29 +179,30 @@ fn parse_string_interp_format(format string) StringInterpFormat {
 	return f
 }
 
-fn string_interp_type_name(typ &types.Type) string {
-	mut name := typ.name()
+fn string_interp_type_name(typ &types.Type) u32 {
+	name_id := typ.source_type_id()
+	name := flat.source_type_name(name_id)
 	if name.starts_with('builtin.') {
-		name = name.all_after_last('.')
+		return flat.source_type_id(name.all_after_last('.'))
 	}
-	return name
+	return name_id
 }
 
-fn is_string_interp_float_type(name string) bool {
-	return name in ['f32', 'f64', 'float_literal']
+fn is_string_interp_float_type(name u32) bool {
+	return name in [flat.source_type_f32, flat.source_type_f64, cgen_float_literal_source_type]
 }
 
-fn is_string_interp_signed_int_type(name string) bool {
-	return name in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'int_literal']
+fn is_string_interp_signed_int_type(name u32) bool {
+	return name in [flat.source_type_int, flat.source_type_i8, flat.source_type_i16, flat.source_type_i32, flat.source_type_i64, flat.source_type_isize, cgen_int_literal_source_type]
 }
 
-fn is_string_interp_unsigned_int_type(name string) bool {
-	return name in ['u8', 'u16', 'u32', 'u64', 'uint']
+fn is_string_interp_unsigned_int_type(name u32) bool {
+	return name in [flat.source_type_u8, flat.source_type_u16, flat.source_type_u32, flat.source_type_u64, flat.source_type_uint]
 }
 
-fn is_string_interp_char_code_type(name string) bool {
+fn is_string_interp_char_code_type(name u32) bool {
 	return is_string_interp_signed_int_type(name) || is_string_interp_unsigned_int_type(name)
-		|| name == 'rune'
+		|| name == flat.source_type_rune
 }
 
 fn (mut g FlatGen) gen_formatted_string_interp_child_expr(child_id flat.NodeId, typ types.Type, format string) bool {
@@ -310,7 +311,7 @@ fn (mut g FlatGen) gen_formatted_string_interp_child_expr(child_id flat.NodeId, 
 		g.write('), ${f.precision}), ${f.width}, ${left})')
 		return true
 	}
-	if typ is types.String || type_name == 'string' {
+	if typ is types.String || type_name == flat.source_type_string {
 		if f.width > 0 && (f.verb == `s` || f.verb == 0) {
 			g.write('v3_string_pad(')
 			g.gen_string_interp_child_expr(child_id)

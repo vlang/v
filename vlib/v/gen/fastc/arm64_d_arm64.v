@@ -5107,7 +5107,7 @@ fn (mut p FastArm64Parser) prepare_option_return(value FastArm64Value) FastArm64
 		return value
 	}
 	is_error := p.return_wrapper_text() == '__v_result'
-		&& (value.typ_name_text() == 'IError'
+		&& (value.typ_name == fastc_type_ierror
 			|| p.option_return_types_are_incompatible(value.typ, p.return_typ))
 	if value.is_none || is_error {
 		mut error_type := value.result_error_type
@@ -5116,7 +5116,7 @@ fn (mut p FastArm64Parser) prepare_option_return(value FastArm64Value) FastArm64
 		if error_type == ssa.ValueID(0) && !value.is_none {
 			error_type = p.program.m.get_or_add_const(p.program.u64_type, u64(value.typ).str())
 		}
-		if !value.is_none && value.typ_name_text() != 'IError' {
+		if !value.is_none && value.typ_name != fastc_type_ierror {
 			if error_message == ssa.ValueID(0) {
 				if message := p.emit_zero_argument_method(value, 'msg') {
 					error_message = message.id
@@ -9709,7 +9709,7 @@ fn (mut p FastArm64Parser) emit_zero_argument_method(value FastArm64Value, metho
 }
 
 fn (mut p FastArm64Parser) parse_method_call(value FastArm64Value, method string) !FastArm64Value {
-	if value.typ_name_text() == 'IError' && method in ['msg', 'str', 'code'] {
+	if value.typ_name == fastc_type_ierror && method in ['msg', 'str', 'code'] {
 		p.expect(.lpar)!
 		p.expect(.rpar)!
 		code := if value.result_error_code == ssa.ValueID(0) {

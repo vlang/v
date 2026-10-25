@@ -4387,8 +4387,8 @@ fn (mut tc TypeChecker) record_unused_top_level_vars(node flat.Node) {
 			rhs_id := tc.a.child(child, j + 1)
 			rhs := tc.a.node(rhs_id)
 			generic_interface_cast := rhs.kind == .cast_expr
-				&& (rhs.value in tc.interface_generic_params
-					|| tc.qualify_name(rhs.value) in tc.interface_generic_params)
+				&& (rhs.value_text() in tc.interface_generic_params
+					|| tc.qualify_name(rhs.value_text()) in tc.interface_generic_params)
 			if tc.expr_subtree_has_error(rhs_id) && !tc.expr_contains_nil_deref(rhs_id)
 				&& !generic_interface_cast {
 				continue

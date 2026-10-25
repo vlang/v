@@ -78,10 +78,8 @@ fn test_node_uses_compact_header_and_uncommon_payload() {
 	assert with_params.generic_params() == ['T', 'U']
 	assert sizeof(NodeKind) == 1
 	assert sizeof(Op) == 1
-	// The former always-present []string field made Node 96 bytes on 64-bit.
-	// `int` is 64-bit now, so the two `string` headers alone are 48 bytes; the
-	// rest of the header (payload pointer, child range, flags and Pos) is 40.
-	assert sizeof(Node) <= 88
+	// The original operand ID occupies the former trailing padding on 64-bit.
+	assert sizeof(Node) <= 64
 	assert sizeof(NodeId) == 4
 }
 

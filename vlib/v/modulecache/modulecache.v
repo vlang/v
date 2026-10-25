@@ -6694,15 +6694,15 @@ fn generic_call_source_name(a &flat.FlatAst, id flat.NodeId) ?string {
 	node := a.nodes[int(id)]
 	match node.kind {
 		.ident {
-			return node.value
+			return node.value_text()
 		}
 		.selector {
 			if node.children_count == 0 {
 				return none
 			}
 			base := a.child_node(&node, 0)
-			if base.kind == .ident && base.value.len > 0 && node.value.len > 0 {
-				return '${base.value}.${node.value}'
+			if base.kind == .ident && base.value_text().len > 0 && node.value_text().len > 0 {
+				return '${base.value_text()}.${node.value_text()}'
 			}
 		}
 		.index, .paren {
@@ -7595,7 +7595,7 @@ fn type_text(a &flat.FlatAst, node flat.Node, source_is_public bool) string {
 	}
 	mut variants := []string{}
 	for i in 0 .. node.children_count {
-		variants << a.child_node(&node, i).value
+		variants << a.child_node(&node, i).value_text()
 	}
 	return head + variants.join(' | ')
 }
@@ -7661,7 +7661,7 @@ fn expr_text(a &flat.FlatAst, id flat.NodeId) string {
 	node := a.nodes[int(id)]
 	return match node.kind {
 		.int_literal, .float_literal, .bool_literal, .ident {
-			node.value
+			node.value_text()
 		}
 		.char_literal {
 			'`${escape_v_char(node.value)}`'
@@ -7689,9 +7689,9 @@ fn expr_text(a &flat.FlatAst, id flat.NodeId) string {
 		}
 		.selector {
 			if node.children_count > 0 {
-				'${expr_text(a, a.child(&node, 0))}.${node.value}'
+				'${expr_text(a, a.child(&node, 0))}.${node.value_text()}'
 			} else {
-				node.value
+				node.value_text()
 			}
 		}
 		.enum_val {
@@ -7705,11 +7705,11 @@ fn expr_text(a &flat.FlatAst, id flat.NodeId) string {
 			call_expr_text(a, node)
 		}
 		.cast_expr, .as_expr {
-			target := if node.typ != 0 { node.typ_text() } else { node.value }
+			target := if node.typ != 0 { node.typ_text() } else { node.value_text() }
 			'${target}(${expr_text(a, a.child(&node, 0))})'
 		}
 		.sizeof_expr {
-			'sizeof(${node.value})'
+			'sizeof(${node.value_text()})'
 		}
 		.typeof_expr {
 			'typeof(${expr_text(a, a.child(&node, 0))})'
@@ -7775,7 +7775,7 @@ fn expr_can_serialize(a &flat.FlatAst, id flat.NodeId) bool {
 			expr_children_can_serialize(a, node)
 		}
 		.map_init {
-			(node.value.len > 0 || node.typ != 0) && node.children_count % 2 == 0
+			(node.source_value_id() != 0 || node.typ != 0) && node.children_count % 2 == 0
 				&& expr_children_can_serialize(a, node)
 		}
 		.cast_expr, .as_expr {
@@ -7808,13 +7808,13 @@ fn array_init_expr_text(a &flat.FlatAst, node flat.Node) string {
 	for i in 0 .. node.children_count {
 		values << expr_text(a, a.child(&node, i))
 	}
-	typ := if node.typ != 0 { node.typ_text() } else { node.value }
+	typ := if node.typ != 0 { node.typ_text() } else { node.value_text() }
 	return '${typ}{${values.join(', ')}}'
 }
 
 fn call_expr_text(a &flat.FlatAst, node flat.Node) string {
 	if node.children_count == 0 {
-		return '${node.value}()'
+		return '${node.value_text()}()'
 	}
 	callee := expr_text(a, a.child(&node, 0))
 	mut args := []string{}
@@ -7838,8 +7838,8 @@ fn map_expr_text(a &flat.FlatAst, node flat.Node) string {
 	for i := 0; i + 1 < node.children_count; i += 2 {
 		values << '${expr_text(a, a.child(&node, i))}: ${expr_text(a, a.child(&node, i + 1))}'
 	}
-	prefix := if node.value.len > 0 {
-		node.value
+	prefix := if node.source_value_id() != 0 {
+		node.value_text()
 	} else if node.typ != 0 {
 		node.typ_text()
 	} else {
@@ -7853,7 +7853,7 @@ fn struct_init_expr_text(a &flat.FlatAst, node flat.Node) string {
 	for i in 0 .. node.children_count {
 		values << expr_text(a, a.child(&node, i))
 	}
-	return '${node.value}{${values.join(', ')}}'
+	return '${node.value_text()}{${values.join(', ')}}'
 }
 
 fn op_text(op flat.Op) string {

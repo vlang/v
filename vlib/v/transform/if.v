@@ -1004,9 +1004,9 @@ fn (t &Transformer) if_expr_result_type(id flat.NodeId, node flat.Node) u32 {
 	mut checked_typ := u32(0)
 	if !isnil(t.tc) {
 		if typ := t.tc.expr_type(id) {
-			name := typ.name()
-			if name.len > 0 {
-				checked_typ = t.normalize_type_alias(flat.source_type_id(name))
+			name_id := typ.source_type_id()
+			if name_id != 0 {
+				checked_typ = t.normalize_type_alias(name_id)
 			}
 		}
 	}
@@ -1026,9 +1026,8 @@ fn (t &Transformer) if_expr_result_type(id flat.NodeId, node flat.Node) u32 {
 			}
 		}
 	}
-	if branch_typ_comparison_type_id_2 in [u32(0), flat.source_type_unknown] && flat.source_type_name(checked_typ) in ['',
-		'unknown']
-		&& flat.source_type_name(node_typ) in ['', 'unknown'] && t.if_expr_has_c_macro_values(node) {
+	if branch_typ_comparison_type_id_2 in [u32(0), flat.source_type_unknown] && checked_typ in [u32(0), flat.source_type_unknown]
+		&& node_typ in [u32(0), flat.source_type_unknown] && t.if_expr_has_c_macro_values(node) {
 		return flat.source_type_int
 	}
 	if branch_typ.starts_with('[]') && t.is_fixed_array_type(checked_typ)
@@ -1048,7 +1047,7 @@ fn (t &Transformer) if_expr_result_type(id flat.NodeId, node flat.Node) u32 {
 	if t.if_expr_branch_type_overrides(branch_typ_source_id, node_typ) {
 		return branch_typ_source_id
 	}
-	if checked_typ != 0 && flat.source_type_name(checked_typ) !in ['array', 'map'] {
+	if checked_typ != 0 && checked_typ !in [expr_array_type_id, expr_map_type_id] {
 		return checked_typ
 	}
 	if node_typ != 0 {
@@ -1936,8 +1935,7 @@ fn (mut t Transformer) transform_is_condition(cond_id flat.NodeId) flat.NodeId {
 	if cond.children_count < 1 {
 		return cond_id
 	}
-	variant_name := cond.value
-	if variant_name.len == 0 {
+	if cond.source_value_id() == 0 {
 		return cond_id
 	}
 	return t.transform_is_expr(cond_id, cond)
@@ -2037,6 +2035,7 @@ fn (mut t Transformer) transform_if_guard_condition(node flat.Node) flat.NodeId 
 		children_count: flat.child_count(new_children.len)
 		pos:            node.pos
 		value:          node.value
+		source_value:   node.source_value
 		typ:            node.typ
 	})
 }
@@ -2429,25 +2428,23 @@ fn (t &Transformer) collect_is_exprs(cond_id flat.NodeId, mut result []IsExprInf
 	if cond.kind == .is_expr && cond.children_count >= 1 {
 		expr_id := t.a.child(&cond, 0)
 		ek := t.expr_key(expr_id)
-		if ek.len > 0 && cond.value.len > 0 {
+		if ek.len > 0 && cond.source_value_id() != 0 {
 			expr_type_source_id := t.original_expr_type(expr_id)
-			expr_type := flat.source_type_name(expr_type_source_id)
-			stn_source_id := t.sum_type_for_is_expr(expr_type_source_id, flat.source_type_id(cond.value))
-			stn := flat.source_type_name(stn_source_id)
+			stn_source_id := t.sum_type_for_is_expr(expr_type_source_id, cond.source_value_id())
 			if stn_source_id != 0 {
 				result << IsExprInfo{
 					type_texts:    t.var_type_texts
 					expr_name:     ek
-					variant_name:  t.var_type_text_id(cond.value)
-					sum_type_name: t.var_type_text_id(stn)
+					variant_name:  cond.source_value_id()
+					sum_type_name: stn_source_id
 				}
 			} else {
 				if t.is_interface_type_name(expr_type_source_id) {
 					result << IsExprInfo{
 						type_texts:    t.var_type_texts
 						expr_name:     ek
-						variant_name:  t.var_type_text_id(cond.value)
-						sum_type_name: t.var_type_text_id(expr_type)
+						variant_name:  cond.source_value_id()
+						sum_type_name: expr_type_source_id
 					}
 				}
 			}
@@ -2531,18 +2528,17 @@ fn (t &Transformer) extract_else_branch_smartcasts(cond_id flat.NodeId) []IsExpr
 		if inner.kind == .is_expr && inner.children_count > 0 {
 			expr_id := t.a.child(&inner, 0)
 			ek := t.expr_key(expr_id)
-			if ek.len > 0 && inner.value.len > 0 {
+			if ek.len > 0 && inner.source_value_id() != 0 {
 				expr_type_source_id := t.original_expr_type(expr_id)
 
-				stn_source_id_2 := t.sum_type_for_is_expr(expr_type_source_id, flat.source_type_id(inner.value))
-				stn := flat.source_type_name(stn_source_id_2)
+				stn_source_id_2 := t.sum_type_for_is_expr(expr_type_source_id, inner.source_value_id())
 				if stn_source_id_2 != 0 {
 					return [
 						IsExprInfo{
 							type_texts:    t.var_type_texts
 							expr_name:     ek
-							variant_name:  t.var_type_text_id(inner.value)
-							sum_type_name: t.var_type_text_id(stn)
+							variant_name:  inner.source_value_id()
+							sum_type_name: stn_source_id_2
 						},
 					]
 				}
@@ -2584,14 +2580,14 @@ fn (t &Transformer) extract_is_expr(cond_id flat.NodeId) IsExprInfo {
 	if cond.kind == .is_expr && cond.children_count >= 1 {
 		expr_id := t.a.child(&cond, 0)
 		ek := t.expr_key(expr_id)
-		if ek.len > 0 && cond.value.len > 0 {
+		if ek.len > 0 && cond.source_value_id() != 0 {
 			expr_type_source_id := t.original_expr_type(expr_id)
 
 			return IsExprInfo{
 				type_texts:    t.var_type_texts
 				expr_name:     ek
-				variant_name:  t.var_type_text_id(cond.value)
-				sum_type_name: t.sum_type_for_is_expr(expr_type_source_id, flat.source_type_id(cond.value))
+				variant_name:  cond.source_value_id()
+				sum_type_name: t.sum_type_for_is_expr(expr_type_source_id, cond.source_value_id())
 			}
 		}
 	}

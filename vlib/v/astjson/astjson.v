@@ -87,9 +87,10 @@ fn write_node(mut w Writer, a &flat.FlatAst, id flat.NodeId, opts Options) {
 		w.key('kind')
 		w.string('${node.kind}')
 	}
-	if opts.show('value', node.value == '') {
+	value := node.value_text()
+	if opts.show('value', value == '') {
 		w.key('value')
-		w.string(node.value)
+		w.string(value)
 	}
 	if opts.show('type', node.typ_text() == '') {
 		w.key('type')

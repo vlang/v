@@ -701,14 +701,14 @@ fn (mut t Transformer) enum_from_string_info(expr_id flat.NodeId) ?EnumFromStrin
 	arg_id := t.a.child(&expr, 1)
 	arg_node := t.a.nodes[int(arg_id)]
 	mut arg_type := if arg_node.kind in [.string_literal, .string_interp] {
-		'string'
+		flat.source_type_string
 	} else {
-		flat.source_type_name(t.normalized_node_type(arg_id)).trim_left('&')
+		t.trim_all_pointer_type(t.normalized_node_type(arg_id))
 	}
-	if t.validating_generic_spec && arg_type in ['', 'unknown'] {
-		arg_type = flat.source_type_name(t.normalize_type_alias(t.specialized_expr_type_name(arg_id))).trim_left('&')
+	if t.validating_generic_spec && arg_type in [u32(0), flat.source_type_unknown] {
+		arg_type = t.trim_all_pointer_type(t.normalize_type_alias(t.specialized_expr_type_name(arg_id)))
 	}
-	if fn_node.value == 'from' && arg_type != 'string' {
+	if fn_node.value == 'from' && arg_type != flat.source_type_string {
 		return none
 	}
 	fields := t.enum_types[enum_type] or { return none }
@@ -748,7 +748,7 @@ fn (t &Transformer) enum_type_from_node(id flat.NodeId) ?u32 {
 				}
 			}
 		}
-		if enum_type_source_id := t.enum_type_from_name(flat.source_type_id(node.value)) {
+		if enum_type_source_id := t.enum_type_from_name(node.source_value_id()) {
 			return enum_type_source_id
 		}
 	}
@@ -965,7 +965,7 @@ fn (mut t Transformer) try_lower_enum_from_string_call(call_id flat.NodeId, _nod
 		kind:           .struct_init
 		children_start: start
 		children_count: 2
-		value:          flat.source_type_name(optional_type)
+		source_value:   optional_type
 		typ:            optional_type
 	})
 }
@@ -1089,7 +1089,7 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type_id u32) 
 					&& !t.generic_arg_is_unresolved(fallback_type_id) {
 					return t.canonical_or_expr_types(flat.source_type_id('?${fallback_type}'))
 				}
-				source_name := if typ.base_type is types.Void || base_name == '__v_option' {
+				source_name := if typ.base_type is types.Void || base_name_source_id == transform_identity_option_payload {
 					'?void'
 				} else {
 					'?${base_name}'
@@ -1103,7 +1103,7 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type_id u32) 
 					&& !t.generic_arg_is_unresolved(fallback_type_id) {
 					return t.canonical_or_expr_types(flat.source_type_id('!${fallback_type}'))
 				}
-				source_name := if typ.base_type is types.Void || base_name == '__v_option' {
+				source_name := if typ.base_type is types.Void || base_name_source_id_2 == transform_identity_option_payload {
 					'!void'
 				} else {
 					'!${base_name}'
@@ -1118,25 +1118,24 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type_id u32) 
 		prefix := if flat.source_type_shape(expr_type).has(.result_type) { '!' } else { '?' }
 		expr_type = flat.source_type_id('${prefix}${fallback_type}')
 	}
-	if flat.source_type_name(expr_type) == '__v_option' {
+	if expr_type == transform_identity_option_payload {
 		return flat.source_type_id('?void'), flat.source_type_void
 	}
-	if fallback_type == '__v_option' {
+	if fallback_type_id == transform_identity_option_payload {
 		return flat.source_type_id('?void'), flat.source_type_void
 	}
-	if expr_type == u32(0) || flat.source_type_name(expr_type) == '__v_option' {
+	if expr_type == u32(0) || expr_type == transform_identity_option_payload {
 		if fallback_type_id != u32(0) && !t.is_optional_type_name(fallback_type_id) {
 			expr_type = flat.source_type_id('?${fallback_type}')
 		} else {
 			expr_type = fallback_type_id
 		}
 	}
-	if flat.source_type_name(expr_type) == '!' || flat.source_type_name(expr_type) == '?' {
+	if expr_type in [transform_identity_bare_result, transform_identity_bare_option] {
 		return flat.source_type_id('${flat.source_type_name(expr_type)}void'), flat.source_type_void
 	}
 	base_type_source_id_2 := t.optional_base_type(expr_type)
-	base_type := flat.source_type_name(base_type_source_id_2)
-	if base_type == '__v_option' {
+	if base_type_source_id_2 == transform_identity_option_payload {
 		return expr_type, flat.source_type_void
 	}
 	mut value_type := if base_type_source_id_2 != 0 {
@@ -1144,7 +1143,7 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type_id u32) 
 	} else {
 		fallback_type_id
 	}
-	if value_type == 0 || flat.source_type_name(value_type) == '!' || flat.source_type_name(value_type) == '?' {
+	if value_type == 0 || value_type in [transform_identity_bare_result, transform_identity_bare_option] {
 		value_type = flat.source_type_int
 	}
 	canon_expr_type_source_id, canon_value_type_source_id := t.canonical_or_expr_types(expr_type)
@@ -1282,7 +1281,7 @@ fn (t &Transformer) canonical_or_expr_types(expr_type_id u32) (u32, u32) {
 	// A void Result/Option has no payload. Avoid normalizing its wrapper struct
 	// as a value type and adding another wrapper around it.
 	if base_id == 0 || base_id == flat.source_type_void
-		|| flat.source_type_name(base_id) == '__v_option' || base_id == clean_type_id {
+		|| base_id == transform_identity_option_payload || base_id == clean_type_id {
 		return flat.source_type_id('${prefix}void'), flat.source_type_void
 	}
 	// Monomorphized collection arguments can reach an or-expression in their
@@ -1902,6 +1901,7 @@ fn (mut t Transformer) preserve_or_expr_for_codegen(id flat.NodeId, node flat.No
 		children_count: 2
 		pos:            node.pos
 		value:          node.value
+		source_value:   node.source_value
 		typ:            node.typ
 	})
 }
@@ -2008,6 +2008,7 @@ fn (mut t Transformer) lower_nested_optional_expr_part(expr_id flat.NodeId, or_n
 				children_start: start
 				children_count: 2
 				value:          expr.value
+				source_value:   expr.source_value
 				typ:            t.nested_optional_value_type(expr_id, expr.typ)
 			})
 			stmts:   stmts

@@ -192,13 +192,13 @@ fn test_zero_value_normalizes_generic_alias_but_preserves_generic_struct() {
 	alias_zero_id := t.zero_value_for_type(flat.source_type_id('Values[int]'))
 	alias_zero := t.a.nodes[int(alias_zero_id)]
 	assert alias_zero.kind == .array_init
-	assert alias_zero.value == 'int'
+	assert alias_zero.source_value_id() == flat.source_type_int
 	assert alias_zero.typ_text() == '[]int'
 
 	struct_zero_id := t.zero_value_for_type(flat.source_type_id('Box[int]'))
 	struct_zero := t.a.nodes[int(struct_zero_id)]
 	assert struct_zero.kind == .struct_init
-	assert struct_zero.value == 'Box[int]'
+	assert struct_zero.source_value_id() == flat.source_type_id('Box[int]')
 	assert struct_zero.typ_text() == 'Box[int]'
 }
 

@@ -566,8 +566,8 @@ fn (mut g FlatGen) register_specialized_interface_applications() {
 			g.collect_specialized_interface_application_text(node.typ, mut applications)
 			g.collect_specialized_interface_application(g.tc.parse_type(node.typ), mut applications)
 		}
-		if node.kind in [.cast_expr, .struct_init] && node.value.contains('[') {
-			g.collect_specialized_interface_application(g.tc.parse_type(flat.source_type_id(node.value)), mut
+		if node.kind in [.cast_expr, .struct_init] && node.value_text().contains('[') {
+			g.collect_specialized_interface_application(g.tc.parse_type(node.source_value_id()), mut
 				applications)
 		}
 		if node.kind != .call || node.children_count == 0 {
@@ -880,7 +880,7 @@ fn (g &FlatGen) ierror_method_return_matches(method string, ret &types.Type) boo
 	clean := if ret is types.Alias { ret.base_type } else { ret }
 	return match method {
 		'msg' { clean is types.String }
-		'code' { clean.name() == 'int' }
+		'code' { clean.source_type_id() == flat.source_type_int }
 		else { false }
 	}
 }
@@ -1024,11 +1024,11 @@ fn (mut g FlatGen) ierror_none_literal_string() string {
 fn (mut g FlatGen) ierror_from_expr_string(id flat.NodeId) ?string {
 	node := g.a.nodes[int(id)]
 	mut actual := *g.usable_expr_type(id)
-	if node.kind == .struct_init && node.value.len > 0 {
+	if node.kind == .struct_init && node.source_value_id() != 0 {
 		// A concrete error returned from a result function can carry the surrounding
 		// result type as its node annotation. The literal name still identifies the
 		// concrete IError implementation that must be boxed.
-		actual = g.tc.parse_type(flat.source_type_id(node.value))
+		actual = g.tc.parse_type(node.source_value_id())
 	} else if node.kind == .ident {
 		if param_type := g.current_param_type(node.value) {
 			actual = param_type
@@ -1284,21 +1284,21 @@ fn (mut g FlatGen) gen_interface_value_expr(id flat.NodeId, expected types.Type)
 	}
 	actual_clean := if actual is types.Pointer { *actual.base_type } else { actual }
 	actual_base := unalias_type(actual_clean)
-	actual_name := actual_base.name()
-	if actual_base is types.Interface || actual_name == iface.name()
+	actual_name_id := actual_base.source_type_id()
+	actual_name := flat.source_type_name(actual_name_id)
+	if actual_base is types.Interface || actual_name_id == iface.source_type_id()
 		|| (actual_name.starts_with('main.') && actual_name['main.'.len..] == iface.name())
 		|| (iface.name().starts_with('main.') && iface.name()['main.'.len..] == actual_name)
-		|| g.interface_unknown_qualified_name_matches(flat.source_type_id(actual_name), iface.source_type_id()) {
+		|| g.interface_unknown_qualified_name_matches(actual_name_id, iface.source_type_id()) {
 		return false
 	}
-	concrete_name := actual_name
-	if concrete_name.len == 0 {
+	if actual_name_id == 0 {
 		return false
 	}
 	// A specialized generic interface return can retain its placeholder's
 	// struct-shaped annotation while already using the concrete interface ABI.
 	// Equal language type names mean no concrete-to-interface boxing is needed.
-	if concrete_name == iface.name() {
+	if actual_name_id == iface.source_type_id() {
 		return false
 	}
 	type_id := g.iface_type_id_for_concrete(iface.source_type_id(), actual_clean)
@@ -2243,10 +2243,10 @@ fn (mut g FlatGen) collect_interface_boxed_types_for_dispatch() {
 		}
 		iface_name_id := if node.typ_text() in g.interfaces {
 			node.typ
-		} else if node.value in g.interfaces {
-			flat.source_type_id(node.value)
+		} else if node.value_text() in g.interfaces {
+			node.source_value_id()
 		} else {
-			flat.source_type_id(g.tc.qualify_name(node.value))
+			flat.source_type_id(g.tc.qualify_name(node.value_text()))
 		}
 		if flat.source_type_name(iface_name_id) !in g.interfaces {
 			continue
@@ -2523,7 +2523,7 @@ fn (mut g FlatGen) interface_implicit_str_expr(typ types.Type, expr string, quot
 			return 'u64__str((u64)(${expr}))'
 		}
 		types.Primitive {
-			name := types.Type(clean).name()
+			name_id := types.Type(clean).source_type_id()
 			if clean.props.has(.float) {
 				// An f32 widened to f64 would print the binary error of its
 				// rounding (`1.2000000476837158` instead of `1.2`).
@@ -2532,18 +2532,19 @@ fn (mut g FlatGen) interface_implicit_str_expr(typ types.Type, expr string, quot
 				}
 				return 'f64__str((double)(${expr}))'
 			}
-			if name == 'bool' {
+			if name_id == flat.source_type_bool {
 				return '((${expr}) ? ${g.interface_str_lit('true')} : ${g.interface_str_lit('false')})'
 			}
-			if name in ['i8', 'i16', 'i32', 'i64', 'int'] {
+			if name_id in [flat.source_type_i8, flat.source_type_i16, flat.source_type_i32, flat.source_type_i64, flat.source_type_int] {
 				return 'v3_i64_zpad((i64)(${expr}), 0)'
 			}
-			if name in ['u8', 'u16', 'u32', 'u64'] {
+			if name_id in [flat.source_type_u8, flat.source_type_u16, flat.source_type_u32, flat.source_type_u64] {
 				return 'u64__str((u64)(${expr}))'
 			}
-			if name in ['u128', 'i128'] {
+			if name_id in [cgen_u128_source_type, cgen_i128_source_type] {
 				// The 128-bit types have no `(u)64` spelling that can carry them, so
 				// they render through their own str method.
+				name := flat.source_type_name(name_id)
 				return '${name}__str((${name})(${expr}))'
 			}
 			return none

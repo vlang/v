@@ -343,8 +343,8 @@ fn (s &NoAllocScan) type_name(id flat.NodeId, parameters map[string]u32) u32 {
 		return if typ == 0 { flat.source_type_unknown } else { typ }
 	}
 	if node.kind == .selector && node.value in ['len', 'cap'] { return flat.source_type_int }
-	if node.kind in [.struct_init, .cast_expr] && node.value != '' {
-		return flat.source_type_id(node.value)
+	if node.kind in [.struct_init, .cast_expr] && node.source_value_id() != 0 {
+		return node.source_value_id()
 	}
 	if node.kind in [.paren, .prefix, .postfix] && node.children_count > 0 {
 		child_id := s.tc.a.child(node, 0)
@@ -657,8 +657,8 @@ fn (mut s NoAllocScan) walk(id flat.NodeId, decl NoAllocFunction, chain []string
 			}
 		}
 		.cast_expr, .as_expr {
-			target := s.tc.parse_type(if node.value != '' {
-				flat.source_type_id(node.value)
+			target := s.tc.parse_type(if node.source_value_id() != 0 {
+				node.source_value_id()
 			} else {
 				node.typ
 			})

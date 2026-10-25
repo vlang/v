@@ -21,8 +21,10 @@ fn independent_numeric_const_initializer(a &flat.FlatAst, id flat.NodeId) bool {
 			return node.children_count == 0
 		}
 		.cast_expr {
-			if node.value !in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32',
-				'f64', 'uint', 'isize'] || node.children_count != 1 {
+			if node.source_value_id() !in [flat.source_type_int, flat.source_type_i8,
+				flat.source_type_i16, flat.source_type_i32, flat.source_type_i64, flat.source_type_u8,
+				flat.source_type_u16, flat.source_type_u32, flat.source_type_u64, flat.source_type_f32,
+				flat.source_type_f64, flat.source_type_uint, flat.source_type_isize] || node.children_count != 1 {
 				return false
 			}
 		}

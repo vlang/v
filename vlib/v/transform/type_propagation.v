@@ -241,8 +241,8 @@ fn (t &Transformer) decl_rhs_type(id flat.NodeId) u32 {
 		if deref_type_source_id := t.decl_rhs_deref_type(id) {
 			return deref_type_source_id
 		}
-		if node.kind == .cast_expr && node.value.len > 0 {
-			target_source_id := t.normalize_type_alias(flat.source_type_id(node.value))
+		if node.kind == .cast_expr && node.source_value_id() != 0 {
+			target_source_id := t.normalize_type_alias(node.source_value_id())
 			target_source_id_2 := target_source_id
 
 			if decl_type_is_usable(target_source_id_2) {
@@ -255,7 +255,7 @@ fn (t &Transformer) decl_rhs_type(id flat.NodeId) u32 {
 		if node.kind == .call && node.children_count == 2 {
 			callee := t.a.child_node(&node, 0)
 			if callee.kind == .ident && callee.value in primitive_cast_type_names {
-				return flat.source_type_id(callee.value)
+				return callee.source_value_id()
 			}
 		}
 		// Infix expressions cannot be function values in the language. Prefer their
@@ -305,8 +305,8 @@ fn (t &Transformer) decl_rhs_type(id flat.NodeId) u32 {
 				return spawn_type_source_id
 			}
 		}
-		if node.kind == .as_expr && node.value.len > 0 {
-			return t.normalize_type_alias(flat.source_type_id(node.value))
+		if node.kind == .as_expr && node.source_value_id() != 0 {
+			return t.normalize_type_alias(node.source_value_id())
 		}
 		if node.kind == .selector {
 			selector_type_source_id := t.resolve_selector_type(node)
@@ -443,9 +443,9 @@ fn (t &Transformer) map_expr_decl_type(id flat.NodeId) ?u32 {
 	}
 	node := t.a.nodes[int(id)]
 	if node.kind == .map_init {
-		for candidate in [node.value, node.typ_text(), flat.source_type_name(t.node_type(id))] {
-			if candidate.starts_with('map[') {
-				return t.refine_map_init_fixed_array_value_type(node, flat.source_type_id(candidate))
+		for candidate in [node.source_value_id(), node.typ, t.node_type(id)] {
+			if flat.source_type_shape(candidate).has(.map_type) {
+				return t.refine_map_init_fixed_array_value_type(node, candidate)
 			}
 		}
 	}
@@ -524,7 +524,7 @@ fn (t &Transformer) fn_literal_type_text(node flat.Node) u32 {
 			}
 			continue
 		}
-		raw_id := if child.typ != 0 { child.typ } else { flat.source_type_id(child.value) }
+		raw_id := if child.typ != 0 { child.typ } else { child.source_value_id() }
 		slot_type_id := explicit_mut_pointer_param_type_text(child, fn_literal_param_type_text(raw_id))
 		params << flat.source_type_name(mutable_fn_value_param_type_text(child, slot_type_id))
 	}
@@ -763,7 +763,7 @@ fn (t &Transformer) resolve_selector_type_uncached(node flat.Node) u32 {
 		}
 		if fields := t.enum_types[base_node.value] {
 			if field_name in fields {
-				return flat.source_type_id(base_node.value)
+				return base_node.source_value_id()
 			}
 		}
 		if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
@@ -2235,27 +2235,26 @@ fn (t &Transformer) node_type_uncached(id flat.NodeId) u32 {
 	}
 	// NOTE: infix is intentionally not handled here — resolve_expr_type() (called at the top
 	// of node_type) already resolves infix types, including struct operator overloads.
-	if node.kind == .struct_init && node.value.len > 0 {
-		for candidate in [node.typ_text(), node.value] {
-			if candidate.len == 0 {
+	if node.kind == .struct_init && node.source_value_id() != 0 {
+		for candidate in [node.typ, node.source_value_id()] {
+			if candidate == 0 {
 				continue
 			}
-			normalized_source_id := t.normalize_type_alias(flat.source_type_id(candidate))
-			normalized := flat.source_type_name(normalized_source_id)
-			if normalized != candidate || normalized.contains('[') {
+			normalized_source_id := t.normalize_type_alias(candidate)
+			if normalized_source_id != candidate || flat.source_type_shape(normalized_source_id).has(.bracketed) {
 				return normalized_source_id
 			}
 		}
-		if node.value in t.structs {
-			return flat.source_type_id(node.value)
+		if node.value_text() in t.structs {
+			return node.source_value_id()
 		}
 		if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
-			qname := '${t.cur_module}.${node.value}'
+			qname := '${t.cur_module}.${node.value_text()}'
 			if qname in t.structs {
 				return flat.source_type_id(qname)
 			}
 		}
-		return flat.source_type_id(node.value)
+		return node.source_value_id()
 	}
 	if !isnil(t.tc) {
 		mut name_id := u32(0)

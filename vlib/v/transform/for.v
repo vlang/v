@@ -140,6 +140,7 @@ fn (mut t Transformer) transform_for_body(id flat.NodeId, node flat.Node) []flat
 			children_count: flat.child_count(new_children.len)
 			pos:            node.pos
 			value:          node.value
+			source_value:   node.source_value
 			typ:            node.typ
 			flags:          flat.node_flags(node.skip_ownership_drops(), false)
 		})
@@ -327,6 +328,8 @@ fn (mut t Transformer) rewrite_continue_to_for_post_label_in_children(id flat.No
 		kind:           node.kind
 		op:             node.op
 		value:          node.value
+		source_value:   node.source_value
+		payload:        if node.payload != 0 { node.clone_owned().payload } else { u32(0) }
 		typ:            node.typ
 		pos:            node.pos
 		children_start: start
@@ -578,7 +581,7 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 		// the source map cannot invalidate an unvisited snapshot binding.
 		key_type_source_id, value_type_source_id := t.map_type_parts(map_iter_type_source_id)
 
-		key_needs_clone := trimmed_transform_text(flat.source_type_name(t.normalize_type_alias(key_type_source_id))) != 'string'
+		key_needs_clone := t.trimmed_type_id(t.normalize_type_alias(key_type_source_id)) != flat.source_type_string
 			&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(key_type_source_id))
 		value_needs_clone := t.tc.ownership_type_requires_destruction(t.tc.parse_type(value_type_source_id))
 		keys_are_cloneable := t.tc.ownership_default_clone_missing_method(t.tc.parse_type(key_type_source_id)) == none
@@ -714,7 +717,7 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 		if has_index {
 			key_source_name := if int(key_id) >= 0 { t.a.nodes[int(key_id)].value } else { '' }
 			key_name := binding_names[key_source_name] or { key_source_name }
-			if trimmed_transform_text(flat.source_type_name(t.normalize_type_alias(key_type_source_id_2))) != 'string' {
+			if t.trimmed_type_id(t.normalize_type_alias(key_type_source_id_2)) != flat.source_type_string {
 				binding_clones << t.make_for_in_binding_clone(key_name, key_type_source_id_2)
 			}
 			value_source_name := if int(val_id) >= 0 { t.a.nodes[int(val_id)].value } else { '' }
@@ -863,6 +866,7 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 		children_count: flat.child_count(ids.len)
 		pos:            node.pos
 		value:          node.value
+		source_value:   node.source_value
 		typ:            (if iter_type_source_id != 0 {
 			iter_type_source_id_3
 		} else {

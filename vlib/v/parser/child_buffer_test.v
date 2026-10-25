@@ -79,7 +79,7 @@ fn main() {
 	mut names := []string{}
 	for node in p.a.nodes {
 		if node.kind == .sizeof_expr {
-			names << node.value
+			names << node.value_text()
 		}
 	}
 	expected := ['int', 'string', 'Item', '&Item', '[]Item', 'buffer']

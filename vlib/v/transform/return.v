@@ -26,10 +26,10 @@ fn (mut t Transformer) transform_return_with_sumtype_wrap(id flat.NodeId, node f
 	// Check if the return value is a struct init whose type is a variant
 	child_id := t.a.child(&node, 0)
 	child := t.a.nodes[int(child_id)]
-	if child.kind == .struct_init && child.value.len > 0 {
+	if child.kind == .struct_init && child.source_value_id() != 0 {
 		variants := t.sum_types.type_ids(t.cur_fn_ret_type_text()) or { []u32{} }
 		for v in variants {
-			if flat.source_type_name(v) == child.value {
+			if v == child.source_value_id() {
 				// This is a variant being returned as a sum type.
 				// For now, pass through - C gen handles the wrapping.
 				// TODO: Generate explicit sum type wrapping here.
@@ -294,7 +294,7 @@ fn (t &Transformer) return_ierror_expr_type(id flat.NodeId) u32 {
 	node := t.a.nodes[int(id)]
 	primary_type := match node.kind {
 		.struct_init, .cast_expr, .as_expr {
-			flat.source_type_id(node.value)
+			node.source_value_id()
 		}
 		.ident {
 			t.var_type(node.value)
@@ -830,7 +830,7 @@ fn (mut t Transformer) convert_forwarded_optional_result(value_id flat.NodeId, a
 // forwarded_integer_storage_matches reports whether two integer types share the
 // same C storage (width and signedness), regardless of their spellings.
 fn forwarded_integer_storage_matches(a types.Type, b types.Type) bool {
-	if a.name() == b.name() {
+	if a.source_type_id() == b.source_type_id() {
 		return true
 	}
 	if a is types.Primitive && b is types.Primitive {
@@ -855,7 +855,7 @@ fn forwarded_number_storage_differs(actual types.Type, expected types.Type) bool
 	if actual_base.is_integer() && expected_base.is_integer() {
 		return !forwarded_integer_storage_matches(actual_base, expected_base)
 	}
-	return actual_base.name() != expected_base.name()
+	return actual_base.source_type_id() != expected_base.source_type_id()
 }
 
 // forwarded_array_elems_storage_identical reports whether two array element
@@ -868,7 +868,7 @@ fn forwarded_number_storage_differs(actual types.Type, expected types.Type) bool
 fn forwarded_array_elems_storage_identical(actual_elem types.Type, expected_elem types.Type) bool {
 	actual_base := unalias_type(actual_elem)
 	expected_base := unalias_type(expected_elem)
-	if actual_base.name() == expected_base.name() {
+	if actual_base.source_type_id() == expected_base.source_type_id() {
 		return true
 	}
 	return actual_base.is_integer() && expected_base.is_integer()
@@ -1469,12 +1469,12 @@ fn (mut t Transformer) build_return_match_type_branch_chain(match_expr_id flat.N
 		}
 	}
 	subj := t.expr_key(match_expr_id)
-	if subj.len > 0 && sc.sum_type_name_text().len > 0 {
+	if subj.len > 0 && sc.sum_type_name != 0 {
 		t.push_smartcast(subj, sc.variant_name, sc.sum_type_name)
 		sc_pushed++
 	}
 	orig_subj := t.expr_key(orig_expr_id)
-	if orig_subj.len > 0 && orig_subj != subj && sc.sum_type_name_text().len > 0 {
+	if orig_subj.len > 0 && orig_subj != subj && sc.sum_type_name != 0 {
 		t.push_smartcast(orig_subj, sc.variant_name, sc.sum_type_name)
 		sc_pushed++
 	}
@@ -1544,6 +1544,7 @@ fn (mut t Transformer) return_or_result_tail_as_return(node flat.Node, source_re
 		children_count: 2
 		pos:            or_node.pos
 		value:          or_node.value
+		source_value:   or_node.source_value
 		typ:            or_node.typ
 	})
 	ret_start := t.a.children.len

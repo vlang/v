@@ -742,6 +742,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	g.pending_direct_array_access = false
 	g.next()
 	mut receiver_type := u32(0)
+	mut receiver_key_id := u32(0)
 	mut receiver_key := ''
 	mut receiver_name := ''
 	mut receiver_is_mut := false
@@ -795,12 +796,15 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		}
 		if g.tok == .name && g.lit != 'C' {
 			receiver_key = fastc_type_key(g.module_name, g.lit)
+			receiver_key_id = flat.source_type_id(receiver_key)
 		} else if g.tok == .key_none {
 			receiver_key = 'none'
+			receiver_key_id = flat.source_type_none
 		}
 		receiver_type = g.parse_type()!
 		if receiver_key == '' {
-			receiver_key = flat.source_type_name(g.semantic_type_key(receiver_type))
+			receiver_key_id = g.semantic_type_key(receiver_type)
+			receiver_key = flat.source_type_name(receiver_key_id)
 		}
 		g.expect(.rpar)!
 		receiver_is_reference := receiver_is_mut && !flat.source_type_name(receiver_type).ends_with('*')
@@ -839,6 +843,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		}
 		receiver_type = flat.source_type_id(fastc_c_declared_type_name(type_key))
 		receiver_key = type_key
+		receiver_key_id = flat.source_type_id(type_key)
 		is_static_method = true
 		g.next()
 		if g.tok != .name && !g.tok.is_keyword() {
@@ -1032,7 +1037,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	g.option_return_type = option_return_type
 	g.return_types_are_functions = return_types_are_functions
 	g.current_function = name
-	g.current_receiver = flat.source_type_id(receiver_key)
+	g.current_receiver = receiver_key_id
 	g.current_method_is_static = is_static_method
 	g.deferred_lines.clear()
 	g.deferred_block_starts.clear()

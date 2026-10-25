@@ -339,7 +339,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 		// method) is not on the variant, so dispatch it on the boxed original C variable.
 		if unnarrowed_receiver == '' && receiver_tokens.len == 1 && receiver_tokens[0].tok == .name {
 			if local := g.locals[receiver_tokens[0].lit] {
-				if local.smartcast_origin_type != u32(0) && local.smartcast_origin_type_text() != flat.source_type_name(receiver_type) {
+				if local.smartcast_origin_type != u32(0) && local.smartcast_origin_type != receiver_type {
 					narrowed_key, _ := g.resolve_method(receiver_type, tokens[i].lit)
 					if narrowed_key !in g.functions && narrowed_key !in g.mono_functions {
 						origin_key, _ := g.resolve_method(local.smartcast_origin_type, tokens[i].lit)

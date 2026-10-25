@@ -2419,7 +2419,7 @@ fn (mut tc TypeChecker) ownership_collect_global_init_descendant(name string, qn
 			return marked
 		}
 		.struct_init {
-			init_type := tc.parse_type(flat.source_type_id(node.value))
+			init_type := tc.parse_type(node.source_value_id())
 			return tc.ownership_collect_global_struct_init_descendants(name, qname, suffix, node, init_type, map[string]bool{})
 		}
 		.assoc {
@@ -2555,7 +2555,7 @@ fn (mut tc TypeChecker) ownership_collect_global_assoc_base_descendants(name str
 	node := tc.a.nodes[int(id)]
 	match node.kind {
 		.struct_init {
-			init_type := tc.parse_type(flat.source_type_id(node.value))
+			init_type := tc.parse_type(node.source_value_id())
 			return tc.ownership_collect_global_struct_init_descendants(name, qname, suffix, node, init_type, skip_fields)
 		}
 		.assoc {
@@ -3479,7 +3479,7 @@ fn (mut tc TypeChecker) ownership_prescan_return_aggregate_literal_descendants(f
 			return marked
 		}
 		.struct_init {
-			init_type := tc.parse_type(flat.source_type_id(node.value))
+			init_type := tc.parse_type(node.source_value_id())
 			fields := if init_type is Struct {
 				tc.structs[init_type.name()] or { []StructField{} }
 			} else {
@@ -3738,7 +3738,7 @@ fn (mut tc TypeChecker) ownership_prescan_param_aggregate_literal_descendants(fn
 			return marked
 		}
 		.struct_init {
-			init_type := tc.parse_type(flat.source_type_id(node.value))
+			init_type := tc.parse_type(node.source_value_id())
 			fields := if init_type is Struct {
 				tc.structs[init_type.name()] or { []StructField{} }
 			} else {
@@ -3832,14 +3832,14 @@ fn (mut tc TypeChecker) ownership_prescan_return_copies_mut_array(fn_name string
 	if wrapper_type is OptionType || wrapper_type is ResultType {
 		wrapper := tc.a.node(id)
 		if wrapper.kind == .cast_expr && wrapper.children_count == 1
-			&& semantic_types_equal(unalias_type(tc.parse_type(flat.source_type_id(wrapper.value))), wrapper_type) {
+			&& semantic_types_equal(unalias_type(tc.parse_type(wrapper.source_value_id())), wrapper_type) {
 			id = tc.ownership_unwrap_expr(tc.a.child(wrapper, 0))
 			if !tc.valid_node_id(id) { return false }
 		}
 	}
 	payload := tc.a.node(id)
 	if payload.kind == .cast_expr && payload.children_count == 1
-		&& semantic_types_equal(unalias_type(tc.parse_type(flat.source_type_id(payload.value))), unalias_type(success_type)) {
+		&& semantic_types_equal(unalias_type(tc.parse_type(payload.source_value_id())), unalias_type(success_type)) {
 		id = tc.ownership_unwrap_expr(tc.a.child(payload, 0))
 		if !tc.valid_node_id(id) { return false }
 	}
@@ -4638,7 +4638,7 @@ fn (mut tc TypeChecker) ownership_prescan_assign_literal_to_name(lhs_name string
 	}
 	node := tc.a.nodes[int(id)]
 	if node.kind == .struct_init {
-		init_type := tc.parse_type(flat.source_type_id(node.value))
+		init_type := tc.parse_type(node.source_value_id())
 		fields := if init_type is Struct {
 			tc.structs[init_type.name()] or { []StructField{} }
 		} else {
@@ -8890,7 +8890,7 @@ fn (mut tc TypeChecker) ownership_mark_struct_literal_fields_with_mode(lhs_name 
 	if node.kind != .struct_init {
 		return false
 	}
-	init_type := tc.parse_type(flat.source_type_id(node.value))
+	init_type := tc.parse_type(node.source_value_id())
 	if init_type !is Struct {
 		return false
 	}
@@ -9649,7 +9649,7 @@ fn (mut tc TypeChecker) ownership_mark_fn_param_aggregate_literal_descendants(fn
 			return marked
 		}
 		.struct_init {
-			init_type := tc.parse_type(flat.source_type_id(node.value))
+			init_type := tc.parse_type(node.source_value_id())
 			if init_type !is Struct {
 				return false
 			}
@@ -9870,7 +9870,7 @@ fn (mut tc TypeChecker) ownership_mark_return_aggregate_literal_descendants(fn_n
 			return marked
 		}
 		.struct_init {
-			init_type := tc.parse_type(flat.source_type_id(node.value))
+			init_type := tc.parse_type(node.source_value_id())
 			if init_type !is Struct {
 				return false
 			}
@@ -11195,7 +11195,7 @@ fn (mut tc TypeChecker) ownership_aggregate_field_expr(id flat.NodeId, field_nam
 	node := tc.a.nodes[int(id)]
 	match node.kind {
 		.struct_init {
-			init_type := tc.parse_type(flat.source_type_id(node.value))
+			init_type := tc.parse_type(node.source_value_id())
 			if init_type !is Struct {
 				return none
 			}
@@ -11992,8 +11992,8 @@ fn (tc &TypeChecker) ownership_sum_constructor_payload(id flat.NodeId) ?flat.Nod
 	current := tc.ownership_unwrap_expr(id)
 	if !tc.valid_node_id(current) { return none }
 	node := tc.a.node(current)
-	if node.kind == .cast_expr && node.children_count > 0 && node.value.len > 0
-		&& unalias_type(tc.parse_type(flat.source_type_id(node.value))) is SumType {
+	if node.kind == .cast_expr && node.children_count > 0 && node.source_value_id() != 0
+		&& unalias_type(tc.parse_type(node.source_value_id())) is SumType {
 		return tc.ownership_unwrap_expr(tc.a.child(node, 0))
 	}
 	if node.kind == .call && node.children_count == 2 {
@@ -12008,8 +12008,8 @@ fn (tc &TypeChecker) ownership_sum_pointer_alias_payload(id flat.NodeId) flat.No
 	mut current := tc.ownership_unwrap_expr(id)
 	for tc.valid_node_id(current) {
 		node := tc.a.node(current)
-		if node.kind != .cast_expr || node.children_count == 0 || node.value.len == 0
-			|| unalias_type(tc.parse_type(flat.source_type_id(node.value))) !is Pointer {
+		if node.kind != .cast_expr || node.children_count == 0 || node.source_value_id() == 0
+			|| unalias_type(tc.parse_type(node.source_value_id())) !is Pointer {
 			break
 		}
 		current = tc.ownership_unwrap_expr(tc.a.child(node, 0))
@@ -12027,8 +12027,8 @@ fn (tc &TypeChecker) ownership_sum_payload_is_fresh_literal(id flat.NodeId) bool
 		value := tc.a.child_node(payload, 0)
 		return value.kind in [.struct_init, .assoc, .array_literal, .array_init, .map_init]
 	}
-	if payload.kind in [.struct_init, .assoc] && payload.value.len > 0 {
-		return tc.ownership_type_requires_destruction(tc.parse_type(flat.source_type_id(payload.value)))
+	if payload.kind in [.struct_init, .assoc] && payload.source_value_id() != 0 {
+		return tc.ownership_type_requires_destruction(tc.parse_type(payload.source_value_id()))
 	}
 	return payload.kind in [.array_literal, .array_init, .map_init]
 }

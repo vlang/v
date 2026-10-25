@@ -1,6 +1,8 @@
 @[has_globals]
 module types
 
+import v.flat
+
 // platform_int_c_type is the C spelling emitted for V's platform-width `int`
 // (the `Primitive` with size 0). `int` is 64-bit on 64-bit targets and 32-bit
 // on 32-bit targets, so it lowers to `i64` or `i32` respectively. It defaults to
@@ -156,6 +158,22 @@ pub fn is_builtin_type_name(name string) bool {
 		5 { name in ['isize', 'usize', 'array'] }
 		6 { name == 'string' }
 		7 { name in ['voidptr', 'charptr', 'byteptr'] }
+		else { false }
+	}
+}
+
+// is_builtin_type_name_id reports whether an interned source spelling names a builtin type.
+// Source spelling IDs are distinct from checker-local semantic TypeId values.
+pub fn is_builtin_type_name_id(name_id u32) bool {
+	return match name_id {
+		flat.source_type_i8, flat.source_type_u8, flat.source_type_int, flat.source_type_i16,
+		flat.source_type_i32, flat.source_type_i64, flat.source_type_u16, flat.source_type_u32,
+		flat.source_type_u64, flat.source_type_f32, flat.source_type_f64, qualify_source_type_map,
+		flat.source_type_nil, flat.source_type_bool, flat.source_type_char, qualify_source_type_i128,
+		flat.source_type_rune, qualify_source_type_u128, qualify_source_type_uint,
+		flat.source_type_void, flat.source_type_none, flat.source_type_isize, flat.source_type_usize,
+		qualify_source_type_array, flat.source_type_string, flat.source_type_voidptr,
+		flat.source_type_charptr, flat.source_type_byteptr { true }
 		else { false }
 	}
 }

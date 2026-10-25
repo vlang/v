@@ -2,6 +2,21 @@ module types
 
 import v.flat
 
+fn test_builtin_source_spelling_classifier_preserves_exact_names() {
+	names := ['i8', 'u8', 'int', 'i16', 'i32', 'i64', 'u16', 'u32', 'u64', 'f32', 'f64', 'map',
+		'nil', 'bool', 'char', 'i128', 'rune', 'u128', 'uint', 'void', 'none', 'isize', 'usize',
+		'array', 'string', 'voidptr', 'charptr', 'byteptr']
+	for name in names {
+		assert is_builtin_type_name(name)
+		assert is_builtin_type_name_id(flat.source_type_id(name))
+	}
+	for name in ['', 'unknown', 'generic', 'builtin.int', 'main.string', 'Int', ' int', 'int ',
+		'&int', '[]int', 'map[string]int', 'float_literal', 'int_literal', 'thread', 'IError'] {
+		assert !is_builtin_type_name(name)
+		assert !is_builtin_type_name_id(flat.source_type_id(name))
+	}
+}
+
 fn test_builtin_literal_resolution_preserves_builtin_values() {
 	mut a := flat.FlatAst.new()
 	integer_nodes := [a.add_val(.int_literal, '1'), a.add_val(.int_literal, '200')]

@@ -71,7 +71,7 @@ fn main() {
 	tc.collect(a)
 	mut found := false
 	for i, node in a.nodes {
-		if node.kind == .cast_expr && node.value == '&u32' {
+		if node.kind == .cast_expr && node.source_value_id() == flat.source_type_id('&u32') {
 			found = true
 			tc.check_node(flat.NodeId(i))
 		}

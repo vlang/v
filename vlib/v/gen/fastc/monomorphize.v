@@ -82,7 +82,7 @@ fn fastc_collect_generic_method_source_chunk(sources []FastcSourceFile, prefs &p
 fn fastc_collect_generic_methods_in_file(source_file FastcSourceFile, prefs &pref.Preferences, i int, mut result map[string]FastcGenericMethodSource) {
 	module_name := source_file.header.module_name
 	for generic in fastc_scan_generic_fns(source_file.source, source_file.path, prefs, i) {
-		receiver_type := if generic.receiver_type_text() != '' {
+		receiver_type := if generic.receiver_type != 0 {
 			fastc_c_declared_type_name(fastc_type_key(module_name, generic.receiver_type_text()))
 		} else {
 			''
@@ -806,7 +806,7 @@ fn fastc_monomorphize_functions_once(sources []FastcSourceFile, prefs &pref.Pref
 		// monomorphization (see the drain in run()), not the source-level pass — their
 		// bodies recurse through comptime `$for`, which the source-level scanner cannot
 		// follow (it would blank the method and leave the `$for`-unrolled call dangling).
-		if generic.receiver_type_text() != '' {
+		if generic.receiver_type != 0 {
 			continue
 		}
 		by_name[generic.name] = generic

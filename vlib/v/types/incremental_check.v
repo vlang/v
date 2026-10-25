@@ -388,11 +388,16 @@ fn incremental_write_node(mut b strings.Builder, node &flat.Node, children int) 
 	b.write_u8(0)
 	b.write_string(node.typ_text())
 	b.write_u8(0)
-	b.write_string(node.value)
+	b.write_string(node.value_text())
 	b.write_u8(0)
 	if node.payload != 0 {
 		payload := flat.node_payload_at(node.payload)
-		if !isnil(payload) {
+		// Call type arguments previously occupied value; a payload with only those
+		// arguments must not introduce an empty metadata section in the signature.
+		call_args_only := node.call_type_args().len > 0 && !isnil(payload)
+			&& payload.generic_params.len == 0 && payload.generic_constraints.ids.len == 0
+			&& payload.enum_backing_type == 0 && payload.debugger_value_types.ids.len == 0
+		if !isnil(payload) && !call_args_only {
 			// Keep enum backing bytes at the same position in the stable source signature.
 			if node.kind == .enum_decl && (payload.enum_backing_type != 0 || payload.generic_params.len > 0) {
 				b.write_string(flat.source_type_name(payload.enum_backing_type))
