@@ -185,6 +185,7 @@ mut:
 	pending_decl_attr_kinds           []int
 	pending_decl_attr_sources         []string
 	in_for_container                  bool
+	in_struct_field_default           bool
 	in_select_branch_condition        int
 	in_match_branch_condition         int
 	in_array_literal                  int
@@ -2985,7 +2986,10 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 					p.record_diagnostic_span('expecting type declaration', p.tok_pos, p.tok_end)
 				}
 				p.next()
+				was_in_struct_field_default := p.in_struct_field_default
+				p.in_struct_field_default = true
 				default_id = p.expr(.lowest)
+				p.in_struct_field_default = was_in_struct_field_default
 			}
 			mut children_start := 0
 			mut children_count := 0
@@ -11622,7 +11626,10 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 		// V1 allowed an `or {}` handler to start on the line after the
 		// option/result expression. Ignore only scanner-inserted newline
 		// semicolons here; an explicit `;` still terminates the expression.
-		if p.current_token_is_newline_semicolon() && p.peek() == .key_or {
+		// Struct field defaults end at the newline: a keyword field (`in`,
+		// `is`, `as`, `or`) on the next line starts a new field, not a
+		// continuation of the default value.
+		if !p.in_struct_field_default && p.current_token_is_newline_semicolon() && p.peek() == .key_or {
 			p.next()
 			continue
 		}
@@ -12016,8 +12023,14 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 			}, in_node)
 			continue
 		}
-		// skip auto-semicolons before infix operators (multi-line expressions)
+		// skip auto-semicolons before infix operators (multi-line expressions).
+		// Struct field defaults end at the semicolon: a keyword field (`in`,
+		// `is`, `as`) on the next line starts a new field, not an `in`/`is`/`as`
+		// continuation of the default value.
 		if p.tok == .semicolon {
+			if p.in_struct_field_default {
+				break
+			}
 			peek_tok := p.peek()
 			if (token_is_infix(peek_tok) || peek_tok == .key_as) && peek_tok != .mul
 				&& peek_tok != .amp && peek_tok != .arrow {
@@ -18269,7 +18282,10 @@ fn (mut p Parser) parse_anonymous_aggregate_type(is_union bool) u32 {
 		mut default_id := flat.empty_node
 		if p.tok == .assign {
 			p.next()
+			was_in_struct_field_default := p.in_struct_field_default
+			p.in_struct_field_default = true
 			default_id = p.expr(.lowest)
+			p.in_struct_field_default = was_in_struct_field_default
 		}
 		mut children_start := 0
 		mut children_count := 0
