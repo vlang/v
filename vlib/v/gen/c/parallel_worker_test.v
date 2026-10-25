@@ -47,6 +47,27 @@ fn test_forward_decl_lane_bounds_are_strictly_increasing() {
 	}
 }
 
+fn test_forward_decl_lanes_do_not_repeat_boundaries_for_one_expensive_item() {
+	for expensive_index in [0, 2048, 4095] {
+		mut a := flat.FlatAst.new()
+		mut items := []FlatFnGenItem{cap: 4096}
+		for i in 0 .. 4096 {
+			node_id := a.add_node(flat.Node{
+				kind:           .fn_decl
+				children_count: if i == expensive_index { u32(10_000_000) } else { u32(1) }
+			})
+			items << FlatFnGenItem{ node_id: node_id, c_name: 'fn_${i}' }
+		}
+		bounds := forward_decl_lane_bounds(&a, items)
+		assert bounds.first() == 0
+		assert bounds.last() == items.len
+		assert bounds.len <= 9
+		for i in 1 .. bounds.len {
+			assert bounds[i] > bounds[i - 1], '${expensive_index}: ${bounds}'
+		}
+	}
+}
+
 fn test_scoped_cgen_batches_amortize_small_bodies_and_bound_compiler_scratch() {
 	g, mut tc := parallel_worker_test_gen(true)
 	assert g.scoped_cgen_batch_count(0, 0) == 0
