@@ -23571,7 +23571,7 @@ fn implicit_expr_type(a &flat.FlatAst, id flat.NodeId, bindings flat.TypeTextBin
 			if node.children_count > 0 {
 				base_type_source_id_3 := implicit_normalize_type(implicit_expr_type(a, a.child(node, 0), bindings, index, depth + 1), index)
 				base_type := flat.source_type_name(base_type_source_id_3)
-				if node.value_text() == 'range' {
+				if node.value == 'range' {
 					// A slice keeps its base type: `s[..n]` is a string, and slicing a
 					// fixed array yields a dynamic one.
 					if base_type_source_id_3 == flat.source_type_string || base_type.starts_with('[]') {

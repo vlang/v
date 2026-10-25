@@ -749,12 +749,11 @@ fn (mut t Transformer) make_struct_runtime_default_value_guarded(struct_type_id 
 		return none
 	}
 	normalized_type_source_id := t.normalize_type_alias(struct_type_id)
-	normalized_type := flat.source_type_name(normalized_type_source_id)
 	if t.is_fixed_array_type(normalized_type_source_id) {
 		return t.transform_fixed_array_init_expr(flat.Node{
-			kind:  .array_init
-			value: normalized_type
-			typ:   normalized_type_source_id
+			kind:         .array_init
+			source_value: normalized_type_source_id
+			typ:          normalized_type_source_id
 		})
 	}
 	if flat.source_type_name(t.resolve_sum_name(struct_type_id)) in t.sum_types.ids {

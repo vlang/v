@@ -4011,20 +4011,20 @@ fn (mut g FlatGen) gen_method_value_closure(selector_id flat.NodeId, base_id fla
 	} else if clean is types.Alias {
 		receiver_name_id = clean.source_type_id()
 		base_receiver_name_id := clean.base_type.source_type_id()
-		if g.resolve_method_name(clean.source_type_id(), method).len == 0
-			&& g.resolve_method_name(clean.base_type.source_type_id(), method).len > 0 {
+		if g.resolve_method_name(receiver_name_id, method).len == 0
+			&& g.resolve_method_name(base_receiver_name_id, method).len > 0 {
 			// A true alias (`type A = S`) inherits methods declared on its
 			// underlying type. Use that declaration's receiver/signature for
 			// the method-value wrapper when the alias has no method of its own.
 			receiver_name_id = base_receiver_name_id
-		} else if alias_method := g.find_alias_method(clean.base_type.source_type_id(), method) {
+		} else if alias_method := g.find_alias_method(base_receiver_name_id, method) {
 			receiver_name_id = flat.source_type_id(alias_method.all_before_last('.'))
 		}
 	} else if clean is types.String || clean is types.Primitive || clean is types.Char
 		|| clean is types.Rune {
 		receiver_name_id = clean.source_type_id()
-		if g.resolve_method_name(clean.source_type_id(), method).len == 0 {
-			if alias_method := g.find_alias_method(clean.source_type_id(), method) {
+		if g.resolve_method_name(receiver_name_id, method).len == 0 {
+			if alias_method := g.find_alias_method(receiver_name_id, method) {
 				receiver_name_id = flat.source_type_id(alias_method.all_before_last('.'))
 			}
 		}

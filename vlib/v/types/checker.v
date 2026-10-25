@@ -16067,7 +16067,15 @@ fn (tc &TypeChecker) collect_generic_param_candidates(typ_id u32, mut counts map
 // check_type_string_for_unsupported_generics
 // validates helper state for types.
 fn (mut tc TypeChecker) check_type_string_for_unsupported_generics(typ_id u32, node_id flat.NodeId, generic_params map[string]bool) {
-	clean_id := trimmed_source_type_id(typ_id)
+	shape := flat.source_type_shape(typ_id)
+	if shape.has(.builtin_alias) {
+		return
+	}
+	clean_id := if shape.has(.padded) {
+		flat.source_type_id(trimmed_space(flat.source_type_name(typ_id)))
+	} else {
+		typ_id
+	}
 	if clean_id == 0 {
 		return
 	}

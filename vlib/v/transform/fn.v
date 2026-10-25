@@ -15585,7 +15585,7 @@ fn (mut t Transformer) try_lower_generic_named_type_cast_call(node flat.Node) ?f
 	t.a.children << arg
 	return t.a.add_node(flat.Node{
 		kind:           .cast_expr
-		value:          target
+		source_value:   target_source_id_2
 		children_start: start
 		children_count: 1
 		typ:            target_source_id_2

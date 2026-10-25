@@ -7796,7 +7796,6 @@ fn (tc &TypeChecker) selector_type(_id flat.NodeId, node flat.Node) ?Type {
 		alias_receiver_id = clean0.source_type_id()
 	}
 	clean := unalias_and_unwrap_pointer_type(base_type)
-	clean_name_id := clean.source_type_id()
 	if typ := option_result_selector_type(clean, node.value) {
 		return typ
 	}
@@ -7812,6 +7811,7 @@ fn (tc &TypeChecker) selector_type(_id flat.NodeId, node flat.Node) ?Type {
 		return builtin_int_type
 	}
 	if clean is Struct {
+		clean_name_id := clean.source_type_id()
 		if typ := tc.struct_field_type(clean_name_id, node.value) {
 			return typ
 		}
@@ -7872,7 +7872,7 @@ fn (tc &TypeChecker) selector_type(_id flat.NodeId, node flat.Node) ?Type {
 			return typ
 		}
 	}
-	if is_builtin_ierror_name(clean_name_id) {
+	if node.value in ['message', '_object'] && is_builtin_ierror_name(clean.source_type_id()) {
 		if node.value == 'message' {
 			return builtin_string_type
 		}
@@ -11143,10 +11143,10 @@ fn thread_handle_type_ids_match(actual_id u32, expected_id u32) bool {
 }
 
 fn source_type_has_thread_prefix(type_id u32) bool {
-	if type_id == checker_source_thread || flat.source_type_shape(type_id).has(.thread_type) {
+	if type_id == checker_source_thread {
 		return true
 	}
-	// Preserve the original prefix predicate for spellings such as `thread_name`.
+	// The original grammar predicate also accepts spellings such as `thread_name`.
 	return flat.source_type_name(type_id).starts_with('thread')
 }
 
@@ -18416,10 +18416,11 @@ fn (tc &TypeChecker) array_literal_elem_type(node flat.Node) Type {
 	for i in 0 .. node.children_count {
 		child_id := tc.a.child(&node, i)
 		child_type := tc.array_literal_child_elem_type(child_id)
-		if !(child_type.is_integer() || child_type.is_float()) {
+		child_is_float := child_type.is_float()
+		if !(child_type.is_integer() || child_is_float) {
 			all_numeric = false
 		}
-		if child_type.is_float() {
+		if child_is_float {
 			child_type_id := child_type.source_type_id()
 			if child_type_id == flat.source_type_f32 {
 				has_f32 = true

@@ -8629,7 +8629,7 @@ fn (mut t Transformer) escape_arg_value_contains_fixed_array(arg_id flat.NodeId)
 		return false
 	}
 	value := t.a.nodes[int(value_id)]
-	if value.kind == .index && value.value_text() == 'range' && value.children_count > 0 {
+	if value.kind == .index && value.value == 'range' && value.children_count > 0 {
 		value_id = t.a.child(&value, 0)
 	}
 	mut value_type := types.unalias_type(t.tc.resolve_type(value_id))
@@ -9419,8 +9419,8 @@ fn (mut t Transformer) collect_local_closure_cleanup_candidates(id flat.NodeId, 
 			}
 		}
 		.for_in_stmt {
-			body_start := if node.value_text().int() >= 0 && node.value_text().int() <= node.children_count {
-				node.value_text().int()
+			body_start := if node.value.int() >= 0 && node.value.int() <= node.children_count {
+				node.value.int()
 			} else {
 				2
 			}
@@ -9430,7 +9430,7 @@ fn (mut t Transformer) collect_local_closure_cleanup_candidates(id flat.NodeId, 
 			}
 		}
 		.match_branch {
-			condition_count := if node.value_text() == 'else' { 0 } else { node.value_text().int() }
+			condition_count := if node.value == 'else' { 0 } else { node.value.int() }
 			for i in 0 .. node.children_count {
 				child_scope := if i >= condition_count { id } else { scope_id }
 				t.collect_local_closure_cleanup_candidates(t.a.child(&node, i), i >= condition_count, child_scope, mut candidates, mut field_candidates)
@@ -9738,8 +9738,8 @@ fn (t &Transformer) collect_local_closure_alias_binding_uses_in_node(id flat.Nod
 			}
 		}
 		.for_in_stmt {
-			body_start := if node.value_text().int() >= 0 && node.value_text().int() <= node.children_count {
-				node.value_text().int()
+			body_start := if node.value.int() >= 0 && node.value.int() <= node.children_count {
+				node.value.int()
 			} else {
 				2
 			}
@@ -9749,7 +9749,7 @@ fn (t &Transformer) collect_local_closure_alias_binding_uses_in_node(id flat.Nod
 			}
 		}
 		.match_branch {
-			condition_count := if node.value_text() == 'else' { 0 } else { node.value_text().int() }
+			condition_count := if node.value == 'else' { 0 } else { node.value.int() }
 			for i in 0 .. node.children_count {
 				child_scope := if i >= condition_count { id } else { scope_id }
 				t.collect_local_closure_alias_binding_uses_in_node(t.a.child(&node, i), i >= condition_count, child_scope, root_ids, mut bound_uses)
@@ -9842,8 +9842,8 @@ fn (t &Transformer) collect_local_closure_field_alias_candidates(id flat.NodeId,
 			}
 		}
 		.for_in_stmt {
-			body_start := if node.value_text().int() >= 0 && node.value_text().int() <= node.children_count {
-				node.value_text().int()
+			body_start := if node.value.int() >= 0 && node.value.int() <= node.children_count {
+				node.value.int()
 			} else {
 				2
 			}
@@ -9853,7 +9853,7 @@ fn (t &Transformer) collect_local_closure_field_alias_candidates(id flat.NodeId,
 			}
 		}
 		.match_branch {
-			condition_count := if node.value_text() == 'else' { 0 } else { node.value_text().int() }
+			condition_count := if node.value == 'else' { 0 } else { node.value.int() }
 			for i in 0 .. node.children_count {
 				child_scope := if i >= condition_count { id } else { scope_id }
 				t.collect_local_closure_field_alias_candidates(t.a.child(&node, i), i >= condition_count, child_scope, aggregate_uses, field_key, mut aliases)
@@ -10642,7 +10642,7 @@ fn (mut t Transformer) scan_escape_pass_nonempty(id flat.NodeId, mut amp_ptrs ma
 		if is_guard {
 			t.escape_decl_depths['err'] = t.escape_scope_depth
 		}
-		if node.kind == .match_branch && node.value_text() != 'else' && node.value_text().int() == 1
+		if node.kind == .match_branch && node.value != 'else' && node.value.int() == 1
 			&& node.children_count > 0 {
 			// `Expr.Node(n)` binds `n` in the branch. Its declaration is only synthesized
 			// when the branch is lowered (see named_variant_binding_decls).
@@ -10677,7 +10677,7 @@ fn (mut t Transformer) scan_escape_pass_nonempty(id flat.NodeId, mut amp_ptrs ma
 		defer {
 			t.escape_scope_depth--
 		}
-		mut body_start := if node.value_text() == 'else' { 0 } else { 1 }
+		mut body_start := if node.value == 'else' { 0 } else { 1 }
 		if node.children_count >= 2 {
 			second := t.a.child_node(node, 1)
 			if second.kind == .prefix && second.op == .arrow {
@@ -10685,12 +10685,12 @@ fn (mut t Transformer) scan_escape_pass_nonempty(id flat.NodeId, mut amp_ptrs ma
 			}
 		}
 		for i in 0 .. body_start {
-			if node.value_text() == 'recv' && body_start == 2 && i == 0 {
+			if node.value == 'recv' && body_start == 2 && i == 0 {
 				continue
 			}
 			t.scan_escape_pass(t.a.child(node, i), mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut method_value_receivers, mut closure_capture_aliases, mut interface_boxes, mut returned, mut local_stack_names, mut local_stack_added, mut reference_backing_sources, false)
 		}
-		if node.value_text() == 'recv' && body_start == 2 {
+		if node.value == 'recv' && body_start == 2 {
 			lhs := t.a.child_node(node, 0)
 			if lhs.kind == .ident && lhs.value_text().len > 0 && lhs.value_text() != '_' {
 				add_escape_local_stack_name(lhs.value_text(), mut local_stack_names, mut local_stack_added)
@@ -11309,7 +11309,7 @@ fn (mut t Transformer) mark_fixed_array_reference_argument_escape(arg_id flat.No
 		return
 	}
 	value := t.a.nodes[int(value_id)]
-	if value.kind == .index && value.value_text() == 'range' && value.children_count > 0 {
+	if value.kind == .index && value.value == 'range' && value.children_count > 0 {
 		value_id = t.a.child(&value, 0)
 	}
 	mut value_type := types.unalias_type(t.tc.resolve_type(value_id))
@@ -13208,7 +13208,7 @@ fn (mut t Transformer) transform_labeled_loop(label string, loop_id flat.NodeId,
 	}
 	continue_label := '${label}_continue'
 	break_label := '${label}_break'
-	body_start := if loop_node.kind == .for_in_stmt { loop_node.value_text().int() } else { 3 }
+	body_start := if loop_node.kind == .for_in_stmt { loop_node.value.int() } else { 3 }
 	mut children := []flat.NodeId{cap: int(loop_node.children_count) + 1}
 	for i in 0 .. loop_node.children_count {
 		children << t.a.child(&loop_node, i)
@@ -13596,7 +13596,7 @@ pub fn (mut t Transformer) transform_expr(id flat.NodeId) flat.NodeId {
 		}
 	}
 	if !t.assert_watch.active && ((node.kind == .selector && node.value_text() == 'len')
-		|| (node.kind == .index && node.value_text() == 'range')
+		|| (node.kind == .index && node.value == 'range')
 		|| (node.kind == .infix && node.op in [.plus, .eq, .ne, .logical_and, .logical_or])
 		|| node.kind == .in_expr || (node.kind == .prefix && node.op == .not)) {
 		if scalar := t.comptime_scalar_expr(id, 0) {
@@ -15382,7 +15382,7 @@ fn (mut t Transformer) precompute_const_array_fixed_storage() {
 			}
 			t.mark_const_array_ref_safe(mut ref_candidates, mut ref_states, mut unmatched, base_id)
 		}
-		if node.kind == .for_in_stmt && node.value_text().int() == 3 && node.children_count > 2 {
+		if node.kind == .for_in_stmt && node.value.int() == 3 && node.children_count > 2 {
 			container_id := t.a.child(node, 2)
 			if int(container_id) >= 0 && t.a.nodes[int(container_id)].kind != .range {
 				if candidate := t.const_array_candidate_for_expr(container_id, cur_module, cur_file, candidate_ids, candidate_names) {
@@ -15507,7 +15507,7 @@ fn (t &Transformer) const_array_literal_requires_fixed_storage_uncached(key stri
 				fixed_candidate = true
 			}
 		}
-		if node.kind == .for_in_stmt && node.value_text().int() == 3 && node.children_count > 2 {
+		if node.kind == .for_in_stmt && node.value.int() == 3 && node.children_count > 2 {
 			container_id := t.a.child(node, 2)
 			if int(container_id) >= 0 && t.a.nodes[int(container_id)].kind != .range {
 				unmatched_count -= t.mark_const_ref_descendants_safe(mut ref_states, container_id)
@@ -16170,8 +16170,8 @@ fn (t &Transformer) if_branch_yields_fresh_spawn(id flat.NodeId) bool {
 // block or a `match_branch`. A `match_branch` lists its conditions before its
 // statements; `value` holds their count, or `else`.
 fn branch_value_index(node flat.Node) ?int {
-	first_stmt := if node.kind == .match_branch && node.value_text() != 'else' {
-		node.value_text().int()
+	first_stmt := if node.kind == .match_branch && node.value != 'else' {
+		node.value.int()
 	} else {
 		0
 	}
@@ -18221,7 +18221,7 @@ fn (mut t Transformer) transform_array_value_for_type(id flat.NodeId, target_typ
 		if !flat.source_type_shape(expected_type_id).has(.array_type) { return none }
 	}
 	node := t.a.nodes[int(id)]
-	if node.kind == .index && node.value_text() == 'range' {
+	if node.kind == .index && node.value == 'range' {
 		actual_type_id := t.generic_call_arg_type_for_inference(id)
 		if t.normalize_type_alias(actual_type_id) == t.normalize_type_alias(expected_type_id) {
 			t.set_node_typ(int(id), expected_type_id)
@@ -20244,8 +20244,8 @@ fn (t &Transformer) multi_assign_lhs_ids(node flat.Node) []flat.NodeId {
 }
 
 fn (t &Transformer) multi_assign_lhs_count(node flat.Node) int {
-	if node.value_text().is_int() {
-		count := node.value_text().int()
+	if node.value.is_int() {
+		count := node.value.int()
 		if count > 0 && count <= int(node.children_count) {
 			return count
 		}
@@ -22638,7 +22638,7 @@ fn (mut t Transformer) transform_select_stmt(id flat.NodeId, node flat.Node) []f
 fn (mut t Transformer) transform_select_expr(id flat.NodeId, node flat.Node) flat.NodeId {
 	if node.children_count == 1 {
 		branch := t.a.child_node(&node, 0)
-		if branch.kind == .select_branch && branch.value_text() == 'else' {
+		if branch.kind == .select_branch && branch.value == 'else' {
 			heaped_state := t.save_heaped_local_state()
 			defer {
 				t.restore_heaped_local_state(heaped_state)
@@ -22711,7 +22711,7 @@ fn (mut t Transformer) transform_select_branch(id flat.NodeId, order_cases bool)
 	defer {
 		t.restore_heaped_local_state(heaped_state)
 	}
-	mut body_start := if branch.value_text() == 'else' { 0 } else { 1 }
+	mut body_start := if branch.value == 'else' { 0 } else { 1 }
 	if branch.children_count >= 2 {
 		second := t.a.child_node(&branch, 1)
 		if second.kind == .prefix && second.op == .arrow {
@@ -22722,7 +22722,7 @@ fn (mut t Transformer) transform_select_branch(id flat.NodeId, order_cases bool)
 	mut saved_var_types := []VarTypeBinding{}
 	mut saved_smartcasts := []SmartcastContext{}
 	mut saved_invalidated := map[string]bool{}
-	if branch.value_text() == 'recv' && body_start == 2 {
+	if branch.value == 'recv' && body_start == 2 {
 		lhs_id := t.a.child(&branch, 0)
 		lhs := t.a.nodes[int(lhs_id)]
 		if lhs.kind == .ident && lhs.value_text().len > 0 && lhs.value_text() != '_' {
@@ -22734,9 +22734,9 @@ fn (mut t Transformer) transform_select_branch(id flat.NodeId, order_cases bool)
 	for i in 0 .. body_start {
 		child_id := t.a.child(&branch, i)
 		child := t.a.nodes[int(child_id)]
-		children << if branch.value_text() == 'recv_assign' && body_start == 2 && i == 0 {
+		children << if branch.value == 'recv_assign' && body_start == 2 && i == 0 {
 			t.transform_lvalue_without_smartcast(child_id)
-		} else if branch.value_text() == 'recv' && body_start == 2 && i == 0 {
+		} else if branch.value == 'recv' && body_start == 2 && i == 0 {
 			child_id
 		} else if body_start == 2 && i == 0 {
 			t.transform_lvalue(child_id)
@@ -22752,7 +22752,7 @@ fn (mut t Transformer) transform_select_branch(id flat.NodeId, order_cases bool)
 			t.transform_expr(child_id)
 		}
 	}
-	if branch.value_text() == 'recv_assign' && body_start == 2 {
+	if branch.value == 'recv_assign' && body_start == 2 {
 		t.invalidate_smartcast_for_lvalue(t.a.child(&branch, 0))
 	}
 	if bound_name.len > 0 {
@@ -24862,7 +24862,7 @@ fn (mut t Transformer) lower_owned_array_index_move(source_id flat.NodeId, index
 		return index_id
 	}
 	index_node := t.a.nodes[int(index_id)]
-	if index_node.kind != .index || index_node.value_text() == 'range' || index_node.children_count < 2 {
+	if index_node.kind != .index || index_node.value == 'range' || index_node.children_count < 2 {
 		return index_id
 	}
 	base_id := t.a.child(&index_node, 0)
@@ -26740,7 +26740,7 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 			mut value := t.transform_expr(child_id)
 			$if ownership ? {
 				range := t.a.node(t.unwrap_parens(value))
-				if range.kind == .index && range.value_text() == 'range' && range.children_count >= 2
+				if range.kind == .index && range.value == 'range' && range.children_count >= 2
 					&& range.op != .gated_index {
 					base := t.a.child(range, 0)
 					base_type_shape_6 := flat.source_type_shape(t.node_type(base))
@@ -30248,28 +30248,29 @@ fn (t &Transformer) resolve_expr_type(id flat.NodeId) u32 {
 	node := t.a.nodes[int(id)]
 	match node.kind {
 		.ident {
-			if sc := t.find_smartcast(node.value_text()) {
+			ident_name := node.value_text()
+			if sc := t.find_smartcast(ident_name) {
 				return t.smartcast_target_type(sc)
 			}
-			local_type_source_id := t.normalized_var_type(node.value_text())
+			local_type_source_id := t.normalized_var_type(ident_name)
 
 			if local_type_source_id != 0 {
 				return local_type_source_id
 			}
-			if t.current_module_declares_const(node.value_text()) {
-				return t.const_owned_expr_type(node.value_text(), u32(0))
+			if t.current_module_declares_const(ident_name) {
+				return t.const_owned_expr_type(ident_name, u32(0))
 			}
-			if global_type_source_id := t.current_module_global_type(node.value_text()) {
+			if global_type_source_id := t.current_module_global_type(ident_name) {
 				return t.normalize_type_alias(global_type_source_id)
 			}
 			if !isnil(t.tc) {
 				if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
-					qname := '${t.cur_module}.${node.value_text()}'
+					qname := '${t.cur_module}.${ident_name}'
 					if name_source_id := t.const_type_name(qname) {
 						return name_source_id
 					}
 				}
-				if name_source_id := t.const_type_name(node.value_text()) {
+				if name_source_id := t.const_type_name(ident_name) {
 					return name_source_id
 				}
 			}
@@ -32234,9 +32235,9 @@ fn (t &Transformer) match_branch_all_type_patterns(match_expr_id flat.NodeId, br
 
 // count_conds supports count conds handling for Transformer.
 fn (t &Transformer) count_conds(branch flat.Node) int {
-	if branch.value_text().len > 0 && branch.value_text() != 'else' {
-		if branch.value_text()[0] >= `0` && branch.value_text()[0] <= `9` {
-			return branch.value_text().int()
+	if branch.value.len > 0 && branch.value != 'else' {
+		if branch.value[0] >= `0` && branch.value[0] <= `9` {
+			return branch.value.int()
 		}
 	}
 	mut count := 0

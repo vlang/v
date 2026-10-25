@@ -1045,10 +1045,11 @@ fn (mut t Transformer) make_attribute_literal(attr AttributeMeta) flat.NodeId {
 	for field in fields {
 		t.a.children << field
 	}
+	literal_type_id := flat.source_type_id('VAttribute')
 	return t.a.add_node(flat.Node{
 		kind:           .struct_init
-		value:          'VAttribute'
-		typ:            flat.source_type_id('VAttribute')
+		source_value:   literal_type_id
+		typ:            literal_type_id
 		children_start: start
 		children_count: flat.child_count(fields.len)
 	})
@@ -1302,10 +1303,11 @@ fn (mut t Transformer) make_param_data_literal_in_module(param ParamMeta, module
 	start := t.a.children.len
 	t.a.children << name_field
 	t.a.children << typ_field
+	literal_type_id := flat.source_type_id('FunctionParam')
 	return t.a.add_node(flat.Node{
 		kind:           .struct_init
-		value:          'FunctionParam'
-		typ:            flat.source_type_id('FunctionParam')
+		source_value:   literal_type_id
+		typ:            literal_type_id
 		children_start: start
 		children_count: 2
 	})
@@ -1326,10 +1328,11 @@ fn (mut t Transformer) make_method_data_literal(method MethodMeta) flat.NodeId {
 	for field in fields {
 		t.a.children << field
 	}
+	literal_type_id := flat.source_type_id('FunctionData')
 	return t.a.add_node(flat.Node{
 		kind:           .struct_init
-		value:          'FunctionData'
-		typ:            flat.source_type_id('FunctionData')
+		source_value:   literal_type_id
+		typ:            literal_type_id
 		children_start: start
 		children_count: flat.child_count(fields.len)
 	})
@@ -3817,10 +3820,11 @@ fn (mut t Transformer) make_enum_data_literal(item EnumValueMeta) flat.NodeId {
 	t.a.children << name_field
 	t.a.children << value_field
 	t.a.children << attrs_field
+	literal_type_id := flat.source_type_id('EnumData')
 	return t.a.add_node(flat.Node{
 		kind:           .struct_init
-		value:          'EnumData'
-		typ:            flat.source_type_id('EnumData')
+		source_value:   literal_type_id
+		typ:            literal_type_id
 		children_start: start
 		children_count: 3
 	})
@@ -3830,10 +3834,11 @@ fn (mut t Transformer) make_variant_data_literal(item VariantMeta) flat.NodeId {
 	typ_field := t.make_named_field_init('typ', t.make_int_literal(item.typ_id), flat.source_type_int)
 	start := t.a.children.len
 	t.a.children << typ_field
+	literal_type_id := flat.source_type_id('VariantData')
 	return t.a.add_node(flat.Node{
 		kind:           .struct_init
-		value:          'VariantData'
-		typ:            flat.source_type_id('VariantData')
+		source_value:   literal_type_id
+		typ:            literal_type_id
 		children_start: start
 		children_count: 1
 	})
@@ -3864,10 +3869,11 @@ fn (mut t Transformer) make_field_data_literal(fm FieldMeta) flat.NodeId {
 	for field in fields {
 		t.a.children << field
 	}
+	literal_type_id := flat.source_type_id('FieldData')
 	return t.a.add_node(flat.Node{
 		kind:           .struct_init
-		value:          'FieldData'
-		typ:            flat.source_type_id('FieldData')
+		source_value:   literal_type_id
+		typ:            literal_type_id
 		children_start: start
 		children_count: flat.child_count(fields.len)
 	})

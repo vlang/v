@@ -6016,7 +6016,7 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 				calls << 'string_plus_many'
 			}
 			.for_in_stmt {
-				if child.value_text().int() == 3 && child.children_count > 2 {
+				if child.value.int() == 3 && child.children_count > 2 {
 					container_id := c.a.child(child, 2)
 					type_name_source_id_2 := c.top_level_expr_type_name(container_id, cur_module, imports,
 						local_values, local_types, true)
@@ -6034,7 +6034,7 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 				}
 			}
 			.index {
-				if child.value_text() != 'range' && child.children_count >= 2 {
+				if child.value != 'range' && child.children_count >= 2 {
 					base_id := c.a.child(child, 0)
 					base := c.a.node(base_id)
 					if generic_fn := c.generic_fn_value_name(child, base, cur_module, imports, local_values) {
@@ -7610,7 +7610,7 @@ fn (c &CallCollector) generic_call_possible(call &flat.Node, resolved_call strin
 		return true
 	}
 	mut callee := c.a.child_node(call, 0)
-	if callee.kind == .index && callee.children_count > 0 && callee.value_text() != 'range' {
+	if callee.kind == .index && callee.children_count > 0 && callee.value != 'range' {
 		callee = c.a.child_node(callee, 0)
 	}
 	if callee.kind == .ident {
@@ -7649,7 +7649,7 @@ fn (c &CallCollector) generic_alias_operator_call_candidates(call &flat.Node, re
 	mut names := []string{}
 	c.add_generic_alias_candidate(resolved_call, mut names)
 	mut callee := c.a.child_node(call, 0)
-	if callee.kind == .index && callee.children_count > 0 && callee.value_text() != 'range' {
+	if callee.kind == .index && callee.children_count > 0 && callee.value != 'range' {
 		callee = c.a.child_node(callee, 0)
 	}
 	if callee.kind == .ident && callee.value_text().len > 0 && callee.value_text() !in local_values {

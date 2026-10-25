@@ -966,7 +966,6 @@ fn (mut t Transformer) null_safe_interface_pointer_field(source flat.NodeId, val
 
 // make_interface_literal_from_expr converts make interface literal from expr data for transform.
 fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_name_id u32, share_source bool) ?flat.NodeId {
-	iface_name := flat.source_type_name(iface_name_id)
 	fields := t.interface_runtime_field_list(iface_name_id)
 	mut source_id := id
 	mut source_type := t.node_type(id)
@@ -1166,7 +1165,7 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 		kind:           .struct_init
 		children_start: start
 		children_count: flat.child_count(field_ids.len)
-		value:          iface_name
+		source_value:   iface_name_id
 		typ:            iface_name_id
 	})
 }

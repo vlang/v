@@ -565,7 +565,7 @@ fn (mut t Transformer) monomorphize_pass() []string {
 }
 
 fn (mut t Transformer) explicit_generic_fn_value_specialization(id flat.NodeId, node flat.Node, module_name string, decls map[string]GenericFnDecl) ?(string, []u32) {
-	if node.kind != .index || node.children_count < 2 || node.value_text() == 'range' {
+	if node.kind != .index || node.children_count < 2 || node.value == 'range' {
 		return none
 	}
 	base_id := t.a.child(&node, 0)
@@ -1378,7 +1378,7 @@ fn (mut t Transformer) type_erased_generic_template_call_decl_key(id flat.NodeId
 		return none
 	}
 	mut callee := t.a.child_node(&node, 0)
-	if callee.kind == .index && callee.children_count > 0 && callee.value_text() != 'range' {
+	if callee.kind == .index && callee.children_count > 0 && callee.value != 'range' {
 		callee = t.a.child_node(callee, 0)
 	}
 	if callee.kind == .ident {
@@ -1586,7 +1586,7 @@ fn unignored_nodes(old []bool, new []bool, end int) []int {
 }
 
 fn (mut t Transformer) record_index_operator_fn_name(node flat.Node, method string) {
-	if node.kind != .index || node.value_text() == 'range' || node.children_count < 2 {
+	if node.kind != .index || node.value == 'range' || node.children_count < 2 {
 		return
 	}
 	// The operator is found only as a generic method signature such as
@@ -2286,7 +2286,7 @@ fn (mut t Transformer) collect_interface_boxed_types_range(start int, end int) {
 		if node.kind in [.assign, .decl_assign, .selector_assign, .index_assign] {
 			t.collect_interface_assign_boxes(node)
 		}
-		if node.kind == .select_branch && node.value_text() == 'recv_assign' {
+		if node.kind == .select_branch && node.value == 'recv_assign' {
 			t.collect_interface_select_receive_boxes(node)
 		}
 		if node.kind == .infix && node.children_count >= 2 {
@@ -6785,7 +6785,7 @@ fn (t &Transformer) call_name_can_target_generic(node flat.Node) bool {
 	}
 	mut callee := t.a.nodes[int(t.a.child(&node, 0))]
 	mut has_explicit_generic_args := false
-	if callee.kind == .index && callee.children_count > 0 && callee.value_text() != 'range' {
+	if callee.kind == .index && callee.children_count > 0 && callee.value != 'range' {
 		has_explicit_generic_args = true
 		callee = t.a.nodes[int(t.a.child(&callee, 0))]
 	}
@@ -6838,7 +6838,7 @@ fn (t &Transformer) call_may_target_generic(node flat.Node) bool {
 	}
 	mut callee := direct
 	mut has_explicit_generic_args := false
-	if callee.kind == .index && callee.children_count > 0 && callee.value_text() != 'range' {
+	if callee.kind == .index && callee.children_count > 0 && callee.value != 'range' {
 		has_explicit_generic_args = true
 		callee = t.a.nodes[int(t.a.child(&callee, 0))]
 	}
@@ -8415,7 +8415,7 @@ fn (t &Transformer) call_has_source_generic_args(node flat.Node) bool {
 		return false
 	}
 	fn_node := t.a.child_node(&node, 0)
-	return fn_node.kind == .index && fn_node.children_count >= 2 && fn_node.value_text() != 'range'
+	return fn_node.kind == .index && fn_node.children_count >= 2 && fn_node.value != 'range'
 		&& !t.index_callee_is_value_index(fn_node)
 }
 
@@ -8434,7 +8434,7 @@ fn (mut t Transformer) generic_call_decl_key(id flat.NodeId, node flat.Node, mod
 	}
 	mut callee_id := t.a.child(&node, 0)
 	mut callee := t.a.nodes[int(callee_id)]
-	if callee.kind == .index && callee.children_count > 0 && callee.value_text() != 'range' {
+	if callee.kind == .index && callee.children_count > 0 && callee.value != 'range' {
 		if t.index_callee_is_value_index(callee) {
 			return none
 		}
@@ -9354,7 +9354,7 @@ fn (t &Transformer) explicit_generic_call_args(node flat.Node, module_name strin
 		return none
 	}
 	fn_node := t.a.child_node(&node, 0)
-	if fn_node.kind != .index || fn_node.children_count < 2 || fn_node.value_text() == 'range' {
+	if fn_node.kind != .index || fn_node.children_count < 2 || fn_node.value == 'range' {
 		return none
 	}
 	type_arg := t.generic_call_type_args(fn_node)
@@ -10859,7 +10859,7 @@ fn (mut t Transformer) generic_call_arg_type_for_inference(id flat.NodeId) u32 {
 			return map_type_source_id_2
 		}
 	}
-	if node.kind == .index && node.value_text() == 'range' && node.children_count > 0 {
+	if node.kind == .index && node.value == 'range' && node.children_count > 0 {
 		base_type_source_id_2 := t.generic_call_arg_type_for_inference(t.a.child(&node, 0))
 		base_type := flat.source_type_name(base_type_source_id_2)
 		if base_type.starts_with('[]') || base_type_source_id_2 == flat.source_type_string {
@@ -12789,7 +12789,7 @@ fn (t &Transformer) generic_clone_decl_alias_type(id flat.NodeId) u32 {
 			return flat.source_type_id(pointer[1..])
 		}
 	}
-	if node.kind == .index && node.value_text() != 'range' && node.children_count > 0
+	if node.kind == .index && node.value != 'range' && node.children_count > 0
 		&& !isnil(t.tc) {
 		container_source_id := t.generic_clone_decl_alias_type(t.a.child(&node, 0))
 
@@ -13229,7 +13229,7 @@ fn (mut t Transformer) generic_comptime_type_member(raw_id u32, member string) ?
 }
 
 fn (mut t Transformer) substitute_cloned_generic_call_type_args(node flat.Node, mut children []flat.NodeId, args_ids []u32) {
-	if node.kind != .index || node.children_count < 2 || node.value_text() == 'range'
+	if node.kind != .index || node.children_count < 2 || node.value == 'range'
 		|| children.len < int(node.children_count) || t.index_callee_is_value_index(node) {
 		return
 	}
@@ -13413,7 +13413,7 @@ fn (mut t Transformer) retarget_cloned_fn_value_generic_call(node flat.Node, mut
 		return
 	}
 	callee := t.a.nodes[int(children[0])]
-	if callee.kind != .index || callee.children_count < 2 || callee.value_text() == 'range' {
+	if callee.kind != .index || callee.children_count < 2 || callee.value == 'range' {
 		return
 	}
 	base_id := t.a.child(&callee, 0)
@@ -13508,7 +13508,7 @@ fn (mut t Transformer) hold_receiver_type_args(decl GenericFnDecl, callee_id fla
 	receiver_params := t.generic_receiver_param_names(decl)
 	if !param_names.any(it in receiver_params) { return }
 	mut callee := t.a.nodes[int(callee_id)]
-	if callee.kind == .index && callee.children_count > 0 && callee.value_text() != 'range' {
+	if callee.kind == .index && callee.children_count > 0 && callee.value != 'range' {
 		callee = t.a.nodes[int(t.a.child(&callee, 0))]
 	}
 	if callee.kind != .selector || callee.children_count == 0 { return }
@@ -13753,7 +13753,7 @@ fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children
 
 	if is_receiver {
 		mut callee := t.a.nodes[int(children[0])]
-		if callee.kind == .index && callee.children_count > 0 && callee.value_text() != 'range' {
+		if callee.kind == .index && callee.children_count > 0 && callee.value != 'range' {
 			callee = t.a.nodes[int(t.a.child(&callee, 0))]
 		}
 		if callee.kind != .selector || callee.children_count == 0 {
@@ -13795,7 +13795,7 @@ fn (t &Transformer) generic_composite_inference_alias_type(typ_id u32, module_na
 }
 
 fn (mut t Transformer) retarget_cloned_generic_fn_value(node flat.Node, children []flat.NodeId, final_typ_id u32) ?flat.NodeId {
-	if node.kind != .index || node.value_text() == 'range' || children.len < 2 || t.skip_generics {
+	if node.kind != .index || node.value == 'range' || children.len < 2 || t.skip_generics {
 		return none
 	}
 	base := t.a.nodes[int(children[0])]
@@ -13909,7 +13909,7 @@ fn (mut t Transformer) retarget_cloned_implicit_generic_call(clone_id flat.NodeI
 		return
 	}
 	mut callee := t.a.nodes[int(callee_id)]
-	if callee.kind == .index && callee.children_count > 0 && callee.value_text() != 'range' {
+	if callee.kind == .index && callee.children_count > 0 && callee.value != 'range' {
 		callee_id = t.a.child(&callee, 0)
 		callee = t.a.nodes[int(callee_id)]
 	}

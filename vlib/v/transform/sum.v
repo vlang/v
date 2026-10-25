@@ -863,13 +863,11 @@ fn (mut t Transformer) transform_is_expr(id flat.NodeId, node flat.Node) flat.No
 			return check
 		}
 		if pattern_source_id := t.resolve_interface_pattern(concrete_pattern_name_source_id, clean_type0_source_id) {
-			pattern := flat.source_type_name(pattern_source_id)
-
 			is_start := t.a.children.len
 			t.a.children << new_expr
 			return t.a.add_node(flat.Node{
 				kind:           .is_expr
-				value:          pattern
+				source_value:   pattern_source_id
 				children_start: is_start
 				children_count: 1
 				typ:            flat.source_type_bool
@@ -2355,7 +2353,6 @@ fn (mut t Transformer) sum_owned_value_payload(value flat.NodeId, variant_id u32
 
 // make_sum_literal builds make sum literal data for transform.
 fn (mut t Transformer) make_sum_literal(sum_name_id u32, variant_id u32, value flat.NodeId) flat.NodeId {
-	sum_name := flat.source_type_name(sum_name_id)
 	qvariant := t.resolve_variant(sum_name_id, variant_id)
 	typ_field := t.make_sum_literal_field('typ', t.make_int_literal(t.sum_type_index(sum_name_id, qvariant)), flat.source_type_int)
 	value_field := t.make_sum_literal_field(sum_field_name(flat.source_type_name(qvariant)), value, qvariant)
@@ -2366,7 +2363,7 @@ fn (mut t Transformer) make_sum_literal(sum_name_id u32, variant_id u32, value f
 		kind:           .struct_init
 		children_start: start
 		children_count: 2
-		value:          sum_name
+		source_value:   sum_name_id
 		typ:            sum_name_id
 	})
 }

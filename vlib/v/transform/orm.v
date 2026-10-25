@@ -623,7 +623,7 @@ fn (mut t Transformer) sql_create_drop_table_call(stmt SqlTransformStmt, db_expr
 		t.sql_db_connection_arg(db_expr),
 		t.make_attribute_array_literal(t.sql_table_attributes(stmt.table.name)),
 	], flat.source_type_id('!int'))
-	t.set_node_value(int(call), flat.source_type_name(stmt.table.name))
+	t.set_node_call_type_args(int(call), [stmt.table.name])
 	return call
 }
 
@@ -635,7 +635,7 @@ fn (mut t Transformer) sql_new_query_call(table_name u32, db_expr flat.NodeId) f
 	qb_type_source_id_3 := t.sql_query_builder_type(table_name)
 
 	mut qb := t.make_call_typed(spec_name, [t.sql_db_connection_arg(db_expr)], qb_type_source_id_3)
-	t.set_node_value(int(qb), flat.source_type_name(table_name))
+	t.set_node_call_type_args(int(qb), [table_name])
 	attrs := t.sql_table_attributes(table_name)
 	if attrs.len > 0 {
 		qb = t.sql_query_builder_method_call(qb, 'v_sql_table_attrs', [
@@ -1450,10 +1450,11 @@ fn (mut t Transformer) sql_infix_primitive_from_token_for_field(field string, co
 	for item in fields {
 		t.a.children << item
 	}
+	literal_type_id := flat.source_type_id('orm.InfixType')
 	infix := t.a.add_node(flat.Node{
 		kind:           .struct_init
-		value:          'orm.InfixType'
-		typ:            flat.source_type_id('orm.InfixType')
+		source_value:   literal_type_id
+		typ:            literal_type_id
 		children_start: start
 		children_count: flat.child_count(fields.len)
 	})
@@ -1523,14 +1524,14 @@ fn (mut t Transformer) sql_relation_primary_primitive_expr(expr flat.NodeId, rel
 		t.mark_fn_used_name(spec_name)
 		t.sql_record_generic_helper_specialization(spec_name, relation_type_id)
 		call := t.make_call_typed(spec_name, [expr], flat.source_type_id('orm.Primitive'))
-		t.set_node_value(int(call), relation_type)
+		t.set_node_call_type_args(int(call), [relation_type_id])
 		return call
 	}
 	spec_name := 'orm.v_sql_struct_primary_primitive_T_${sql_generic_type_suffix(relation_type)}'
 	t.mark_fn_used_name(spec_name)
 	t.sql_record_generic_helper_specialization(spec_name, relation_type_id)
 	call := t.make_call_typed(spec_name, [expr], flat.source_type_id('orm.Primitive'))
-	t.set_node_value(int(call), relation_type)
+	t.set_node_call_type_args(int(call), [relation_type_id])
 	return call
 }
 
@@ -2202,10 +2203,11 @@ fn (mut t Transformer) sql_table_literal(table SqlTransformTableInfo) flat.NodeI
 	for item in fields {
 		t.a.children << item
 	}
+	literal_type_id := flat.source_type_id('orm.Table')
 	return t.a.add_node(flat.Node{
 		kind:           .struct_init
-		value:          'orm.Table'
-		typ:            flat.source_type_id('orm.Table')
+		source_value:   literal_type_id
+		typ:            literal_type_id
 		children_start: start
 		children_count: flat.child_count(fields.len)
 	})

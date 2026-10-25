@@ -1446,14 +1446,14 @@ fn (mut t Transformer) build_return_match_type_branch_chain(match_expr_id flat.N
 		}
 	}
 	cond_val_id := t.a.child(&branch, cond_idx)
-	variant_name := flat.source_type_name(t.match_type_pattern_for_subject(match_expr_id, cond_val_id) or {
+	variant_name_id := t.match_type_pattern_for_subject(match_expr_id, cond_val_id) or {
 		return t.build_return_match_chain(match_expr_id, orig_expr_id, branches, idx + 1, ret_typ_id, source_return_id)
-	})
+	}
 	is_start := t.a.children.len
 	t.a.children << match_expr_id
 	is_id := t.a.add_node(flat.Node{
 		kind:           .is_expr
-		value:          variant_name
+		source_value:   variant_name_id
 		typ:            flat.source_type_id('match_exact')
 		children_start: is_start
 		children_count: 1
@@ -1464,7 +1464,7 @@ fn (mut t Transformer) build_return_match_type_branch_chain(match_expr_id flat.N
 	sc := t.match_type_smartcast_context(match_expr_id, cond_val_id) or {
 		SmartcastContext{
 			type_texts:    t.var_type_texts
-			variant_name:  t.var_type_text_id(variant_name)
+			variant_name:  variant_name_id
 			sum_type_name: u32(0)
 		}
 	}
