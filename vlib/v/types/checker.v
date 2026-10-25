@@ -9342,7 +9342,8 @@ fn (mut tc TypeChecker) annotate_node(id flat.NodeId) {
 			continue
 		}
 		node := tc.a.nodes[int(current_id)]
-		if inferred_type_source(node.typ) {
+		// A function literal's return type is resolved with its parameters bound.
+		if node.kind != .fn_literal && inferred_type_source(node.typ) {
 			_ = tc.resolve_inferred_type_text(flat.source_type_name(node.typ))
 		}
 		if node.kind == .ident && node.value.contains('typeof(__expr_') {
@@ -9530,12 +9531,13 @@ fn (mut tc TypeChecker) annotate_fn_literal(node flat.Node) {
 	tc.fn_context = new_function_check_context()
 	tc.fn_context.node_id = saved_fn_context.node_id
 	tc.fn_context.generic_params = saved_fn_context.generic_params.clone()
-	tc.fn_context.return_type = tc.parse_type(node.typ)
 	tc.push_scope()
 	for i in 0 .. node.children_count {
 		child_id := tc.a.child(&node, i)
 		tc.insert_fn_param_binding(child_id, tc.a.node(child_id))
 	}
+	// The return type may name the parameters through `typeof(expr)`.
+	tc.fn_context.return_type = tc.parse_type(node.typ)
 	for i in 0 .. node.children_count {
 		child_id := tc.a.child(&node, i)
 		child := tc.a.node(child_id)

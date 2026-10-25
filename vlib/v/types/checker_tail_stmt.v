@@ -18099,6 +18099,84 @@ fn (tc &TypeChecker) resolved_inferred_type(source_id u32) ?u32 {
 	return flat.source_type_id(resolved)
 }
 
+// check_node_inferred_type_witnesses checks the `typeof(expr)` expressions of
+// the type a node is annotated with, or of the type spelling in its value.
+fn (mut tc TypeChecker) check_node_inferred_type_witnesses(node flat.Node) {
+	tc.check_inferred_type_witnesses(node.typ)
+	if node.value.len > 15 && node.kind !in [.string_literal, .char_literal, .string_interp]
+		&& node.value.contains('typeof(__expr_') {
+		tc.check_inferred_type_witnesses(flat.source_type_id(node.value))
+	}
+}
+
+// check_inferred_type_witnesses checks each expression of a `typeof(expr)`
+// type in the current lexical scope like any other expression, so an invalid
+// call or operand in type position is reported. The expression is never
+// evaluated. Checking a call first also infers its generic arguments, so the
+// witness names the instantiated return type. An expression whose type still
+// names an unresolved generic placeholder is rejected.
+fn (mut tc TypeChecker) check_inferred_type_witnesses(source_id u32) {
+	if !inferred_type_source(source_id) {
+		return
+	}
+	typ := flat.source_type_name(source_id)
+	marker := 'typeof(__expr_'
+	mut offset := 0
+	for offset < typ.len {
+		start := typ[offset..].index(marker) or { break } + offset
+		end := typ[start..].index(')') or { break } + start
+		expression_id := flat.NodeId(typ[start + marker.len..end].int())
+		offset = end + 1
+		if !tc.valid_node_id(expression_id) {
+			continue
+		}
+		errors_before := tc.errors.len
+		// A type names its expression without capturing it into a closure.
+		saved_closure_scope := tc.fn_context.closure_scope
+		tc.fn_context.closure_scope = unsafe { nil }
+		tc.check_node(expression_id)
+		tc.fn_context.closure_scope = saved_closure_scope
+		if tc.errors.len != errors_before {
+			continue
+		}
+		value := tc.expr_type(expression_id) or { tc.resolve_type(expression_id) }
+		if placeholder := tc.unresolved_generic_placeholder_in(value) {
+			tc.record_error(.unsupported_generic, 'cannot infer the type of `typeof(...)`: `${placeholder}` is not resolved here', expression_id)
+		}
+	}
+}
+
+// unresolved_generic_placeholder_in returns the first generic placeholder in
+// `typ` that the current function does not declare.
+fn (tc &TypeChecker) unresolved_generic_placeholder_in(typ Type) ?string {
+	if typ is Unknown {
+		if placeholder := generic_placeholder_from_unknown(typ) {
+			if placeholder !in tc.fn_context.generic_params {
+				return placeholder
+			}
+		}
+		return none
+	}
+	name := typ.name()
+	if !generic_placeholder_token_prescreen(name) {
+		return none
+	}
+	for i in 0 .. name.len {
+		if i > 0 && placeholder_token_ident_char(name[i - 1]) {
+			continue
+		}
+		if i + 1 < name.len && placeholder_token_ident_char(name[i + 1]) {
+			continue
+		}
+		placeholder := name[i..i + 1]
+		if is_bare_generic_param(placeholder) && placeholder !in tc.fn_context.generic_params
+			&& !tc.is_known_type_text(flat.source_type_id(placeholder)) {
+			return placeholder
+		}
+	}
+	return none
+}
+
 // `typeof(expr)` annotations can infer array items and nested generic payloads.
 // Resolve the expression before generic specialization records concrete names.
 pub fn (tc &TypeChecker) resolve_inferred_type_text(typ string) string {
@@ -20380,7 +20458,35 @@ fn (tc &TypeChecker) fn_literal_type(node flat.Node) Type {
 		}
 		params << FnParam{ typ: tc.intern_type_reference(slot), is_mut: child.is_mut }
 	}
-	return Type(FnType{ params: params, is_variadic: is_variadic, return_type: tc.parse_type(node.typ) })
+	return Type(FnType{
+		params:      params
+		is_variadic: is_variadic
+		return_type: tc.fn_literal_return_type(node)
+	})
+}
+
+// fn_literal_return_type parses a function literal's return type. A
+// `typeof(expr)` return type is resolved in a scope with the literal's
+// parameters bound, since they shadow outer bindings of the same name.
+fn (tc &TypeChecker) fn_literal_return_type(node flat.Node) &Type {
+	if !inferred_type_source(node.typ) {
+		return tc.parse_type(node.typ)
+	}
+	// Plain bindings: this only names the parameters' types, so it records no
+	// diagnostics and leaves the function context untouched.
+	mut writer := unsafe { &TypeChecker(voidptr(tc)) }
+	writer.push_scope()
+	for i in 0 .. node.children_count {
+		child := tc.a.child_node(&node, i)
+		if child.kind == .param && child.value.len > 0 {
+			parsed := tc.parse_scope_param_type(child.typ)
+			writer.cur_scope.insert(child.value, mut_param_binding_type(parsed, child.is_mut,
+				child.op == .amp))
+		}
+	}
+	typ := tc.parse_type(node.typ)
+	writer.pop_scope()
+	return typ
 }
 
 // lambda_expr_type supports lambda expr type handling for TypeChecker.

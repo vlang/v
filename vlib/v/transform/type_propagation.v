@@ -538,7 +538,18 @@ fn (t &Transformer) fn_literal_type_text(node flat.Node) u32 {
 		slot_type := flat.source_type_name(explicit_mut_pointer_param_type_text(child, fn_literal_param_type_text(flat.source_type_id(raw))))
 		params << flat.source_type_name(mutable_fn_value_param_type_text(child, flat.source_type_id(slot_type)))
 	}
-	ret := trimmed_transform_text(node.typ_text())
+	mut ret_type := node.typ
+	if inferred_type_id(ret_type) {
+		mut param_nodes := []flat.Node{}
+		for i in 0 .. node.children_count {
+			child := t.a.child_node(&node, i)
+			if child.kind == .param {
+				param_nodes << *child
+			}
+		}
+		ret_type = t.resolve_fn_literal_inferred_return_type(ret_type, param_nodes)
+	}
+	ret := trimmed_transform_text(flat.source_type_name(ret_type))
 	if ret.len == 0 || ret == 'void' {
 		return flat.source_type_id('fn (${params.join(', ')})')
 	}
