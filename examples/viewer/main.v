@@ -169,7 +169,7 @@ fn make_rgba_texture(w int, h int, rgba []u8) gfx.Image {
 	}
 	desc.data.subimage[0][0] = gfx.Range{
 		ptr:  rgba.data
-		size: usize(w * h * 4)
+		size: uint(w * h * 4)
 	}
 	return gfx.make_image(&desc)
 }

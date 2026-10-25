@@ -77,7 +77,7 @@ fn (check ProgramInstanceCheck) finish() int {
 	}
 	mut buf := []u8{len: 65536}
 	for {
-		n := C.read(check.output, buf.data, usize(buf.len))
+		n := C.read(check.output, buf.data, uint(buf.len))
 		if n < 0 && C.errno == C.EINTR {
 			continue
 		}

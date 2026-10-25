@@ -265,7 +265,7 @@ fn recv_direct(ch &Chan, sg &Sudog, ep voidptr) {
 // chan_buf returns a pointer to the i-th slot in the buffer.
 // Translated from Go's chanbuf() in chan.go.
 fn chan_buf(c &Chan, i u32) voidptr {
-	return unsafe { voidptr(usize(c.buf) + usize(i) * usize(c.elemsize)) }
+	return unsafe { voidptr(uint(c.buf) + uint(i) * uint(c.elemsize)) }
 }
 
 // chan_len returns the number of elements in the channel buffer.

@@ -64,8 +64,8 @@ fn fake_server_sign_certificate_verify(signed_content []u8) ![]u8 {
 	// verify_rsa_pss_signature uses on the verify side (pk.h/md.h,
 	// confirmed there, not re-derived here).
 	mut sig := []u8{len: 600}
-	mut sig_len := usize(0)
-	ret := C.mbedtls_pk_sign_ext(6, &pk, 9, hash.data, usize(hash.len), sig.data, usize(sig.len), &sig_len, C.mbedtls_ctr_drbg_random, &ctr_drbg)
+	mut sig_len := uint(0)
+	ret := C.mbedtls_pk_sign_ext(6, &pk, 9, hash.data, uint(hash.len), sig.data, uint(sig.len), &sig_len, C.mbedtls_ctr_drbg_random, &ctr_drbg)
 	if ret != 0 {
 		return error('test: mbedtls_pk_sign_ext failed, mbedtls ret: ${ret}')
 	}

@@ -77,7 +77,7 @@ pub struct ISize {
 	dummy_ u8
 }
 
-// USize represents usize data used by types.
+// USize represents uint data used by types.
 pub struct USize {
 	dummy_ u8
 }
@@ -557,7 +557,7 @@ pub fn (t &Type) name() string {
 		Char { 'char' }
 		Rune { 'rune' }
 		ISize { 'isize' }
-		USize { 'usize' }
+		USize { 'uint' }
 		else { t.composite_name() }
 	}
 }
@@ -789,7 +789,7 @@ pub fn (t &Type) source_type_id() u32 {
 		Char { flat.source_type_char }
 		Rune { flat.source_type_rune }
 		ISize { flat.source_type_isize }
-		USize { flat.source_type_usize }
+		USize { flat.source_type_uint }
 		Primitive { primitive_source_type_id(t.props, t.size) }
 		else { flat.source_type_id(t.name()) }
 	}

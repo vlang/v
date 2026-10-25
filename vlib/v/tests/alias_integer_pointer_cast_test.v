@@ -20,10 +20,10 @@ fn end_pointer(n int, z &U8) &U8 {
 
 fn test_pointer_cast_to_an_alias_of_an_integer_type() {
 	all_ones := &U8(-1)
-	assert usize(all_ones) == ~usize(0)
-	assert usize(end_pointer(-1, unsafe { nil })) == ~usize(0)
+	assert uint(all_ones) == ~uint(0)
+	assert uint(end_pointer(-1, unsafe { nil })) == ~uint(0)
 	five := &U8(5)
-	assert usize(five) == 5
+	assert uint(five) == 5
 }
 
 // `&SS('hi')`, with `SS` an alias of a value type, still points to a copy.

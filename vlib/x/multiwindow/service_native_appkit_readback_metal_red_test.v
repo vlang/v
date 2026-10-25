@@ -22,7 +22,7 @@ $if darwin {
 	fn C.v_multiwindow_appkit_readback_probe_state(window voidptr) voidptr
 	fn C.v_multiwindow_appkit_readback_probe_framebuffer_only(window voidptr) int
 	fn C.v_multiwindow_appkit_readback_probe_make_pattern_texture(window voidptr) voidptr
-	fn C.v_multiwindow_appkit_readback_probe_make_pattern_texture_size(window voidptr, width usize, height usize) voidptr
+	fn C.v_multiwindow_appkit_readback_probe_make_pattern_texture_size(window voidptr, width uint, height uint) voidptr
 	fn C.v_multiwindow_appkit_readback_probe_release_texture(texture voidptr)
 	fn C.v_multiwindow_appkit_readback_probe_arm_offscreen(state voidptr, texture voidptr, pass_serial u64, producing_frame u64) int
 	fn C.v_multiwindow_appkit_readback_probe_make_command_buffer(window voidptr) voidptr
@@ -32,8 +32,8 @@ $if darwin {
 	fn C.v_multiwindow_appkit_readback_probe_stage_window(state voidptr, request u64, x int, y int, width int, height int, producing_frame u64) int
 	fn C.v_multiwindow_appkit_readback_probe_stage_image(state voidptr, texture voidptr, request u64, x int, y int, width int, height int, producing_frame u64) int
 	fn C.v_multiwindow_appkit_readback_probe_resolve(state voidptr, submitted_frame u64, submission_succeeded int) int
-	fn C.v_multiwindow_appkit_readback_probe_take(state voidptr, out_request &u64, out_status &int, out_width &int, out_height &int, out_stride &int, out_submitted_frame &u64, out_byte_length &usize) int
-	fn C.v_multiwindow_appkit_readback_probe_copy(state voidptr, request u64, out_pixels &u8, capacity usize) int
+	fn C.v_multiwindow_appkit_readback_probe_take(state voidptr, out_request &u64, out_status &int, out_width &int, out_height &int, out_stride &int, out_submitted_frame &u64, out_byte_length &uint) int
+	fn C.v_multiwindow_appkit_readback_probe_copy(state voidptr, request u64, out_pixels &u8, capacity uint) int
 	fn C.v_multiwindow_appkit_readback_probe_release(state voidptr, request u64) int
 	fn C.v_multiwindow_appkit_readback_probe_cancel(state voidptr, request u64) int
 	fn C.v_multiwindow_appkit_readback_probe_cancel_all(state voidptr) int
@@ -63,7 +63,7 @@ struct AppKitReadbackProbeResult {
 	height          int
 	stride          int
 	submitted_frame u64
-	byte_length     usize
+	byte_length     uint
 mut:
 	take_status int
 }
@@ -672,16 +672,16 @@ $if darwin && sokol_metal ?&& gg_multiwindow ? {
 		assert result.width > 0
 		assert result.height > 0
 		assert result.stride == result.width * 4
-		assert result.byte_length == usize(result.stride * result.height)
+		assert result.byte_length == uint(result.stride * result.height)
 		mut pixels := []u8{len: int(result.byte_length)}
 		if pixels.len > 1 {
 			assert C.v_multiwindow_appkit_readback_probe_copy(state, result.request, pixels.data,
-				usize(pixels.len - 1)) <= 0
+				uint(pixels.len - 1)) <= 0
 		}
 		assert C.v_multiwindow_appkit_readback_probe_copy(state, result.request, pixels.data,
-			usize(pixels.len)) == 1
+			uint(pixels.len)) == 1
 		assert C.v_multiwindow_appkit_readback_probe_copy(state, result.request, pixels.data,
-			usize(pixels.len)) == 0
+			uint(pixels.len)) == 0
 		assert C.v_multiwindow_appkit_readback_probe_release(state, result.request) == 1
 		assert C.v_multiwindow_appkit_readback_probe_release(state, result.request) == 0
 		return pixels
@@ -1047,7 +1047,7 @@ fn test_appkit_metal_readback_offscreen_slot_two_windows_and_odd_widths_red() {
 
 		for width in [1, 3, 257] {
 			texture := C.v_multiwindow_appkit_readback_probe_make_pattern_texture_size(native_a,
-				usize(width), 1)
+				uint(width), 1)
 			assert texture != unsafe { nil }
 			request := u64(400 + width)
 			command := C.v_multiwindow_appkit_readback_probe_make_command_buffer(native_a)

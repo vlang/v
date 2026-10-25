@@ -125,8 +125,9 @@ fn (mut vt Vet) vet_file(path string) {
 	vt.file = path
 	mut prefs := pref.new_preferences()
 	prefs.is_fmt = true
-	// Keep every `$if` branch, like vfmt: the parser drops the ones that are false
-	// for the host, and with them the string literals whose lines vet must skip.
+	// Keep every `$if` branch, like vfmt does, so that the vetted AST matches the
+	// source on every host. Otherwise the parser drops the branches for other
+	// platforms, and the lines of their multi-line strings are vetted as code.
 	prefs.preserve_comptime_conditionals = true
 	vt.vprintln("vetting file '${path}'...")
 	vt.source = os.read_file(path) or { return }

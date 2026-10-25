@@ -47,7 +47,7 @@ struct MultiWindowMatrixSlotState {
 	dependents           []string
 	last_mutation_batch  u64
 	buffer_mutation_mode MultiWindowBufferMutationMode
-	buffer_capacity      usize
+	buffer_capacity      uint
 	buffer_usage         gfx.Usage
 	buffer_desc          []u8
 	image_desc           []u8
@@ -714,7 +714,7 @@ fn multiwindow_fault_matrix_make_image(mut resources AppResourceContext, mut pro
 	}
 	invalid_desc.data.subimage[0][0] = gfx.Range{
 		ptr:  invalid_pixels.data
-		size: usize(invalid_pixels.len)
+		size: uint(invalid_pixels.len)
 	}
 	mut invalid_error := ''
 	_ := resources.make_image(&invalid_desc) or {
@@ -1067,7 +1067,7 @@ fn multiwindow_fault_matrix_update_buffer(mut resources AppResourceContext, mut 
 	bytes := [u8(1), 2, 3, 4]
 	data := gfx.Range{
 		ptr:  bytes.data
-		size: usize(bytes.len)
+		size: uint(bytes.len)
 	}
 	mut fault_error := ''
 	resources.update_buffer(proof.update_buffer, &data) or { fault_error = err.msg() }
@@ -1096,7 +1096,7 @@ fn multiwindow_fault_matrix_append_buffer(mut resources AppResourceContext, mut 
 	prime_bytes := []u8{len: 48, init: u8(index)}
 	prime_data := gfx.Range{
 		ptr:  prime_bytes.data
-		size: usize(prime_bytes.len)
+		size: uint(prime_bytes.len)
 	}
 	prime_offset := resources.append_buffer(proof.append_buffer, &prime_data)!
 	assert prime_offset == 0
@@ -1114,7 +1114,7 @@ fn multiwindow_fault_matrix_append_buffer(mut resources AppResourceContext, mut 
 	overflow_bytes := []u8{len: 20, init: u8(index)}
 	overflow_data := gfx.Range{
 		ptr:  overflow_bytes.data
-		size: usize(overflow_bytes.len)
+		size: uint(overflow_bytes.len)
 	}
 	mut overflow_error := ''
 	_ := resources.append_buffer(proof.append_buffer, &overflow_data) or {
@@ -1127,7 +1127,7 @@ fn multiwindow_fault_matrix_append_buffer(mut resources AppResourceContext, mut 
 	bytes := [u8(5), 6, 7, 8]
 	data := gfx.Range{
 		ptr:  bytes.data
-		size: usize(bytes.len)
+		size: uint(bytes.len)
 	}
 	mut fault_error := ''
 	_ := resources.append_buffer(proof.append_buffer, &data) or {
@@ -1169,7 +1169,7 @@ fn multiwindow_fault_matrix_update_image(mut resources AppResourceContext, mut p
 	mut data := gfx.ImageData{}
 	data.subimage[0][0] = gfx.Range{
 		ptr:  pixels.data
-		size: usize(pixels.len)
+		size: uint(pixels.len)
 	}
 	mut fault_error := ''
 	resources.update_image(proof.update_image, &data) or { fault_error = err.msg() }
@@ -1710,7 +1710,7 @@ fn multiwindow_assert_postcommit_replacement_destruction(before multiwindow_soko
 	assert !before.overflow
 	assert !after.overflow
 	assert after.install_generation == before.install_generation
-	assert after.count >= before.count + usize(expected.len + 1)
+	assert after.count >= before.count + uint(expected.len + 1)
 	for record in before.records {
 		for item in expected {
 			assert record.operation != item.operation || record.identity != item.identity
@@ -1889,7 +1889,7 @@ fn multiwindow_assert_retirement_trace(before multiwindow_sokol_trace.TypedSnaps
 	assert !after.overflow
 	assert before.install_generation != 0
 	assert after.install_generation == before.install_generation
-	assert after.count == before.count + usize(expected.len + 3)
+	assert after.count == before.count + uint(expected.len + 3)
 	anchor_begin := after.records[int(before.count)]
 	anchor_end := after.records[int(before.count) + 1]
 	commit := after.records[int(before.count) + 2]
@@ -1974,7 +1974,7 @@ fn multiwindow_assert_exact_registry_delta(before MultiWindowMatrixRegistryState
 	}
 }
 
-fn multiwindow_assert_buffer_retry_slot(registry MultiWindowMatrixRegistryState, id WindowBufferId, native u32, capacity usize, usage gfx.Usage, mutation MultiWindowBufferMutationMode, mutation_batch u64) {
+fn multiwindow_assert_buffer_retry_slot(registry MultiWindowMatrixRegistryState, id WindowBufferId, native u32, capacity uint, usage gfx.Usage, mutation MultiWindowBufferMutationMode, mutation_batch u64) {
 	slot := multiwindow_fault_matrix_registry_slot(registry,
 		multiwindow_fault_matrix_key(buffer_resource_key(id)))
 	mut desc := gfx.BufferDesc{
@@ -2512,7 +2512,7 @@ fn multiwindow_fault_matrix_materializations(values map[string]MultiWindowSglMat
 fn multiwindow_fault_matrix_raw_bytes[T](value &T) []u8 {
 	mut result := []u8{len: int(sizeof(T))}
 	unsafe {
-		C.memcpy(result.data, value, usize(result.len))
+		C.memcpy(result.data, value, uint(result.len))
 	}
 	return result
 }
@@ -2521,7 +2521,7 @@ fn multiwindow_assert_desc_semantically_equal[T](actual_bytes []u8, expected &T)
 	assert actual_bytes.len == int(sizeof(T))
 	mut actual := T{}
 	unsafe {
-		C.memcpy(&actual, actual_bytes.data, usize(actual_bytes.len))
+		C.memcpy(&actual, actual_bytes.data, uint(actual_bytes.len))
 	}
 	assert actual == *expected
 }
@@ -2621,7 +2621,7 @@ fn multiwindow_assert_cleanup_error_trace(snapshot multiwindow_sokol_trace.Typed
 	assert app_buffer != window_buffer
 	assert snapshot.install_generation != 0
 	assert !snapshot.overflow
-	assert snapshot.count == usize(snapshot.records.len)
+	assert snapshot.count == uint(snapshot.records.len)
 	assert snapshot.records.len > 0
 	assert snapshot.records[0].sequence != 0
 	for index in 1 .. snapshot.records.len {
@@ -2731,7 +2731,7 @@ fn multiwindow_assert_shutdown_destruction_tail(before multiwindow_sokol_trace.T
 		.destroy_shader,
 	]
 	expected_tail := context_shutdown.len * 2 + global_shutdown.len
-	assert after.count == before.count + usize(expected_tail)
+	assert after.count == before.count + uint(expected_tail)
 	assert after.records.len == int(after.count)
 	for index, record in before.records {
 		assert after.records[index] == record
@@ -2780,7 +2780,7 @@ fn multiwindow_assert_trace_delta(before multiwindow_sokol_trace.TypedSnapshot, 
 	assert !after.overflow
 	assert before.install_generation != 0
 	assert after.install_generation == before.install_generation
-	assert after.count == before.count + usize(expected.len)
+	assert after.count == before.count + uint(expected.len)
 	for index, item in expected {
 		record := after.records[int(before.count) + index]
 		assert record.operation == item.operation
