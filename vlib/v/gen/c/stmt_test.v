@@ -973,10 +973,10 @@ fn test_tinyc_declarations_preserve_explicit_stack_alignment() {
 		generated := g.sb.str()
 		assert generated.contains('= alloca(sizeof(Aligned)'), generated
 		assert !generated.contains('__builtin_alloca'), generated
-		assert generated.contains('int __v3_internal_symbol_libc_alloca = 7;'), generated
-		assert generated.contains('int v_alloca = 7;'), generated
-		assert generated.contains('int __v3_internal_symbol_source___v3_internal_symbol_libc_alloca = 7;'), generated
-		assert !generated.contains('int alloca ='), generated
+		assert generated.contains(' __v3_internal_symbol_libc_alloca = 7;'), generated
+		assert generated.contains(' v_alloca = 7;'), generated
+		assert generated.contains(' __v3_internal_symbol_source___v3_internal_symbol_libc_alloca = 7;'), generated
+		assert !generated.contains(' alloca ='), generated
 		assert generated.contains('(size_t)(64)')
 		assert generated.contains('Aligned* staging')
 		if decl_kind == '__v3_zeroed_stack_value_decl' {

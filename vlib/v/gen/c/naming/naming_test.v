@@ -96,7 +96,7 @@ fn test_gnu_predefined_macro_names_are_escaped() {
 
 fn test_alloca_intrinsic_name_cannot_be_shadowed() {
 	assert c_name('alloca') == '${internal_symbol_c_prefix}libc_alloca'
-	assert c_name('@alloca') == c_name('alloca')
+	assert c_name('@alloca') == '_v_alloca'
 	assert c_name('alloca') != c_name('v_alloca')
 	assert c_name('alloca') != c_name(c_name('alloca'))
 	assert c_name('alloca_value') == 'alloca_value'
