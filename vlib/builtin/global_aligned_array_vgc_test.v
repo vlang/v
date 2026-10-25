@@ -14,7 +14,7 @@ __global vgc_global_aligned_cells = &[1]VgcGlobalAlignedCell{init: VgcGlobalAlig
 
 fn test_global_aligned_array_is_scanned_by_vgc() {
 	$if vgc ? {
-		assert usize(voidptr(vgc_global_aligned_cells)) % 512 == 0
+		assert uint(voidptr(vgc_global_aligned_cells)) % 512 == 0
 		span := vgc_find_span(voidptr(vgc_global_aligned_cells))
 		assert span != unsafe { nil }
 		assert !span.noscan
@@ -43,7 +43,7 @@ fn vgc_test_object_is_marked(value voidptr) bool {
 		if span == unsafe { nil } || span.mark_bits == unsafe { nil } {
 			return false
 		}
-		index := (usize(value) - span.base) / usize(span.elem_size)
+		index := (uint(value) - span.base) / uint(span.elem_size)
 		return unsafe { span.mark_bits[index / 8] } & u8(1 << (index % 8)) != 0
 	}
 	return false

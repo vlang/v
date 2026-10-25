@@ -10,7 +10,7 @@ fn C.v_os_exec_capture_start(argv &&char, child_pid &int, read_fd &int) int
 
 fn C.v_os_exec_capture_input_start(argv &&char, child_pid &int, read_fd &int, write_fd &int) int
 
-fn C.v_os_fd_write_all(fd int, data &char, len usize)
+fn C.v_os_fd_write_all(fd int, data &char, len uint)
 
 fn C.waitpid(pid int, status &int, options int) int
 
@@ -93,7 +93,7 @@ fn fastc_stream_unit_compile_order(sources []string) []int {
 }
 
 fn fastc_write_unit_stdin(fd int, source string) {
-	C.v_os_fd_write_all(fd, &char(source.str), usize(source.len))
+	C.v_os_fd_write_all(fd, &char(source.str), uint(source.len))
 	C.close(fd)
 }
 
@@ -158,7 +158,7 @@ fn fastc_render_c_unit_stdin(fd int, pieces []string, units &FastcUnitLayout, g 
 	for k in units.unit_starts[first_unit] .. units.unit_starts[end_unit] {
 		fastc_append_c_unit_piece(mut out, pieces[k])
 	}
-	C.v_os_fd_write_all(fd, &char(out.data), usize(out.len))
+	C.v_os_fd_write_all(fd, &char(out.data), uint(out.len))
 	C.close(fd)
 }
 

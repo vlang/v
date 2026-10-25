@@ -1,0 +1,28 @@
+vlib/v/parser/tests/derived_comparison_operator_overload_err.vv:13:16: error: cannot overload `!=`, `>`, `<=` and `>=` as they are auto generated from `==` and `<`
+   11 | }
+   12 | 
+   13 | fn (a Version) != (b Version) bool {
+      |                ~~
+   14 |     return false
+   15 | }
+vlib/v/parser/tests/derived_comparison_operator_overload_err.vv:17:16: error: cannot overload `!=`, `>`, `<=` and `>=` as they are auto generated from `==` and `<`
+   15 | }
+   16 | 
+   17 | fn (a Version) > (b Version) bool {
+      |                ^
+   18 |     return false
+   19 | }
+vlib/v/parser/tests/derived_comparison_operator_overload_err.vv:21:16: error: cannot overload `!=`, `>`, `<=` and `>=` as they are auto generated from `==` and `<`
+   19 | }
+   20 | 
+   21 | fn (a Version) <= (b Version) bool {
+      |                ~~
+   22 |     return false
+   23 | }
+vlib/v/parser/tests/derived_comparison_operator_overload_err.vv:25:16: error: cannot overload `!=`, `>`, `<=` and `>=` as they are auto generated from `==` and `<`
+   23 | }
+   24 | 
+   25 | fn (a Version) >= (b Version) bool {
+      |                ~~
+   26 |     return false
+   27 | }

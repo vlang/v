@@ -1,0 +1,13 @@
+vlib/v/checker/tests/pointer_number_pointee_generic_instance_err.vv:2:9: error: cannot use `&u8` as type `&u64` in return argument
+    1 | fn as_wide[T](p &T) &u64 {
+    2 |     return p
+      |            ^
+    3 | }
+    4 |
+vlib/v/checker/tests/pointer_number_pointee_generic_instance_err.vv:6:14: error: cannot use `&u8` as `&u64` in argument 1 to `take`
+    4 | 
+    5 | fn read_wide[T](p &T) u64 {
+    6 |     return take(p)
+      |                 ^
+    7 | }
+    8 |

@@ -24,7 +24,7 @@ fn vgc_test_is_marked(p voidptr) bool {
 	if span == unsafe { nil } || span.mark_bits == unsafe { nil } {
 		return false
 	}
-	index := u32((usize(p) - span.base) / usize(span.elem_size))
+	index := u32((uint(p) - span.base) / uint(span.elem_size))
 	return C.vgc_bitmap_get(span.mark_bits, index) != 0
 }
 
@@ -44,8 +44,8 @@ fn test_the_globals_of_vgc_are_not_roots() {
 		// The cache slot of a thread that does not exist.
 		slot := vgc_max_threads - 1
 		assert !vgc_heap.caches[slot].registered
-		vgc_heap.caches[slot].stack_base = usize(p)
-		vgc_heap.caches[slot].stack_hi = usize(p)
+		vgc_heap.caches[slot].stack_base = uint(p)
+		vgc_heap.caches[slot].stack_hi = uint(p)
 		marked := vgc_test_marked_from_data(p)
 		vgc_heap.caches[slot].stack_base = 0
 		vgc_heap.caches[slot].stack_hi = 0
@@ -61,7 +61,7 @@ fn test_the_tiny_block_of_a_thread_is_a_root() {
 		idx := C.vgc_get_cache_idx()
 		tiny := vgc_heap.caches[idx].tiny
 		assert tiny != 0
-		assert usize(p) >= tiny && usize(p) < tiny + vgc_tiny_size
+		assert uint(p) >= tiny && uint(p) < tiny + vgc_tiny_size
 		// Mark from all the roots, without this thread's stack.
 		lo := vgc_heap.caches[idx].stack_lo
 		hi := vgc_heap.caches[idx].stack_hi
@@ -82,14 +82,14 @@ fn test_the_heap_is_far_from_small_numbers() {
 			// Windows hands out the lowest free addresses first: with TinyCC, whose executables
 			// start at 4 MB, the heap started at about 9 MB, where words in the data segment
 			// that hold numbers like 0x2000537 point. The arenas come from the top now.
-			assert vgc_arena_lo > usize(1) << 32
+			assert vgc_arena_lo > uint(1) << 32
 		}
 		$if x64 {
 			$if macos || linux {
 				// macOS hands out low addresses too: a large heap reached 0x300000000, where
 				// constants like 0x300000001 point. The arenas start at 0xc000000000 now, or on
 				// Linux, when that range is taken, at the default, top down from the stack.
-				assert vgc_arena_lo > usize(1) << 36
+				assert vgc_arena_lo > uint(1) << 36
 			}
 		}
 	}

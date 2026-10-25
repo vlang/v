@@ -1,6 +1,6 @@
 module mysql
 
-type C.v_mysql_ulong = usize
+type C.v_mysql_ulong = uint
 type C.v_mysql_bool = i8
 
 @[typedef]
@@ -297,7 +297,7 @@ pub fn (mut stmt Stmt) bind(typ int, buffer voidptr, buf_len u32) {
 	stmt.binds << C.MYSQL_BIND{
 		buffer_type:   typ
 		buffer:        buffer
-		buffer_length: usize(buf_len)
+		buffer_length: uint(buf_len)
 		length:        0
 		is_null:       0
 	}

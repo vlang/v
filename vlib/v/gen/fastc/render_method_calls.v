@@ -477,7 +477,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				}
 				mut w := unsafe { &Parser(g) }
 				fastc_register_composite_type(result_type, mut w.composite_types)
-				wait_helper := g.fastc_unclaimed_generated_name(fastc_thread_wait_name(flat.source_type_name(element)))
+				wait_helper := g.fastc_thread_wait_helper(flat.source_type_name(element), value_type)
 				recv_src := if flat.source_type_name(receiver_type).ends_with('*') {
 					'*(${receiver.source})'
 				} else {
@@ -517,7 +517,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			wait_end := fastc_matching_rpar(tokens, i + 1) or { continue }
 			receiver := g.render_method_receiver_expression(receiver_tokens) or { continue }
 			value_type := (g.fastc_thread_value_type(receiver_type) or { u32(0) })
-			wait_call := '${g.fastc_unclaimed_generated_name(fastc_thread_wait_name(flat.source_type_name(receiver_type)))}(${receiver.source})'
+			wait_call := '${g.fastc_thread_wait_helper(flat.source_type_name(receiver_type).trim_right('*'), value_type)}(${receiver.source})'
 			if receiver_start == 0 && wait_end == tokens.len - 1 {
 				return FastcRenderedExpression{
 					source: wait_call

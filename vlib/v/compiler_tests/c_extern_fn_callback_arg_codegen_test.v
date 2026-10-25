@@ -53,8 +53,8 @@ static int native_register_const_int(int (*callback)(const unsigned char *, int)
 
 #insert "${header}"
 
-fn C.native_send(voidptr, &u8, usize) i32
-fn C.native_register(fn (voidptr, &u8, usize) i32) i32
+fn C.native_send(voidptr, &u8, uint) i32
+fn C.native_register(fn (voidptr, &u8, uint) i32) i32
 fn C.native_send_int(voidptr, &u8, int) i32
 fn C.native_register_int(fn (voidptr, &u8, int) i32) i32
 
@@ -62,7 +62,7 @@ type NativeConstIntCallback = fn (const_buf &u8, len int) int
 
 fn C.native_register_const_int(NativeConstIntCallback) int
 
-fn v_send(ctx voidptr, buf &u8, len usize) i32 {
+fn v_send(ctx voidptr, buf &u8, len uint) i32 {
 	return i32(len) + i32(unsafe { buf[0] }) + i32(ctx != unsafe { nil })
 }
 

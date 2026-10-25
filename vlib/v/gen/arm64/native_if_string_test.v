@@ -48,11 +48,11 @@ fn test_native_pointer_map_or_keeps_type_across_terminating_branches() {
 	$if macos && arm64 {
 		source := r'module main
 fn C.exit(int)
-fn C.malloc(usize) voidptr
-fn C.memcpy(voidptr, voidptr, usize) voidptr
-fn memdup(source voidptr, size isize) voidptr {
-    result := C.malloc(usize(size))
-    return C.memcpy(result, source, usize(size))
+fn C.malloc(uint) voidptr
+fn C.memcpy(voidptr, voidptr, uint) voidptr
+fn memdup(source voidptr, size int) voidptr {
+    result := C.malloc(uint(size))
+    return C.memcpy(result, source, uint(size))
 }
 struct SourceFile { name string }
 fn find_continue(sources map[string]&SourceFile, names []string) string {

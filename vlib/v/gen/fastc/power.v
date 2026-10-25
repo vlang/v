@@ -383,7 +383,7 @@ fn fastc_integer_promotion_index(typ u32) int {
 		'u16' { 12 }
 		'u32' { 13 }
 		'u64' { 14 }
-		'usize' { 15 }
+		'uint', 'usize' { 15 }
 		'rune' { 22 }
 		else { -1 }
 	}

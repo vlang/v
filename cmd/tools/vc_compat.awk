@@ -1,4 +1,30 @@
 # Keep the downloaded snapshot intact and stream compatibility fixes to the C compiler.
+# Only the pre-uint compiler needs its primitive spelling updated. Check the
+# compiler's type-ID declaration, not arbitrary strings or C qualifier IDs.
+BEGIN {
+	while ((getline line < ARGV[1]) > 0) {
+		if (line ~ /^u32 flat__source_type_usize;$/) legacy_uint = 1
+		if (line ~ /^u32 flat__source_type_uint;$/) native_uint = 1
+		if (line ~ /^_SL\([^,]+, "(u8\* malloc_noscan\(ptrdiff_t n\);|void\* memdup\(void\* src, ptrdiff_t sz\);|void\* memdup_align\(void\* src, ptrdiff_t sz, ptrdiff_t alignment\);)",/) {
+			id = line
+			sub(/^_SL\(/, "", id)
+			sub(/,.*/, "", id)
+			allocator_prototypes[id] = 1
+		}
+	}
+	close(ARGV[1])
+}
+
+legacy_uint && !native_uint {
+	gsub(/"usize", 5/, "\"uint\", 4")
+	# The migrated allocator declarations use int. Rewrite their codegen calls
+	# using the selected target type, without changing the snapshot's own ABI.
+	for (id in allocator_prototypes) {
+		sub("c__FlatGen__writeln\\(g, " id "\\);",
+			"c__FlatGen__writeln(g, string__replace(" id ", (string){(u8*)\"ptrdiff_t\", 9, 1}, g->int_ct));")
+	}
+}
+
 # Older portable snapshots return long long here but declare the function as i64.
 # On Linux, i64 is int64_t (long), which conflicts even though both types are 64-bit.
 /^(V_PEAK_RSS_SCOPE|static|static inline) long long v3_bench_peak_rss_kb\(void\)[ \t]*\{/ {

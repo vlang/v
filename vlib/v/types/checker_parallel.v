@@ -991,7 +991,7 @@ fn (mut tc TypeChecker) check_scoped_batches(items []CheckWorkItem, batch_limit 
 
 // check_batch_arena_keep_bytes bounds how much of a worker's batch arena stays
 // mapped between its batches (see prealloc_scope_reenter).
-const check_batch_arena_keep_bytes = isize(8) * 1024 * 1024
+const check_batch_arena_keep_bytes = int(8) * 1024 * 1024
 
 // begin_check_batch_scope starts the arena of one check batch. A worker that
 // reuses its batch arena rewinds the previous batch's one: unmapping and
@@ -3210,7 +3210,9 @@ pub fn (mut tc TypeChecker) check_concrete_fn_semantics(fn_idx int, file string,
 // `x.name` or `add(1)` adds a string to `a`, and an array or map whose elements
 // are stored differently from the one it is used or cast as, as when
 // `to_bytes([1, 2])` returns `[]u8(a)` for an `a []int` (see
-// is_container_layout_error). Every other error and warning of the
+// is_container_layout_error), and an `if x := a` guard whose `a` is declared
+// neither as an option nor as a result, as when `h(User{})` guards its `a T` (see
+// is_concrete_if_guard_error). Every other error and warning of the
 // clone is dropped: checked before the clone is lowered, only these are reliable
 // outside checker fixtures, where many valid generic programs would fail. `args`
 // are source-spelling IDs of the types of the instance: the clone spells an
@@ -3227,11 +3229,16 @@ pub fn (mut tc TypeChecker) check_concrete_instance_members(fn_idx int, file str
 		tc.index_rewritten_parents_after(tc.concrete_parents_indexed)
 	}
 	tc.concrete_parents_indexed = tc.a.nodes.len
+	tc.concrete_guard_options = map[flat.NodeId]bool{}
+	tc.checking_concrete_members = true
 	tc.check_concrete_fn_semantics(fn_idx, file, module_name)
+	tc.checking_concrete_members = false
 	mut kept := []TypeError{}
 	for err in tc.errors[errors_start..] {
 		if (is_concrete_member_error(err.msg) && !tc.member_of_an_alias_argument(err.msg, args))
 			|| (is_concrete_operator_error(err.msg) && tc.operator_operands_are_plain(err.node))
+			|| (is_concrete_if_guard_error(err.msg) && tc.operand_is_plain(err.node)
+				&& !tc.concrete_guard_options[err.node])
 			|| tc.is_container_layout_error(err.msg)
 			|| tc.is_container_type_error(err.msg) {
 			kept << err
@@ -3240,6 +3247,7 @@ pub fn (mut tc TypeChecker) check_concrete_instance_members(fn_idx int, file str
 	tc.errors.trim(errors_start)
 	tc.errors << kept
 	tc.notices.trim(notices_start)
+	tc.concrete_guard_options = map[flat.NodeId]bool{}
 }
 
 // member_of_an_alias_argument reports whether the member error `msg` names the
@@ -3321,6 +3329,18 @@ fn (tc &TypeChecker) operator_operands_are_plain(id flat.NodeId) bool {
 	return true
 }
 
+// is_concrete_if_guard_error reports whether `msg` says that an `if x := a`
+// guard unwraps an `a` that is neither an option nor a result. A clone reports it
+// for `a` that is a name, a literal or a field of them (see operand_is_plain),
+// typed with the concrete types of the instance, unless `a` is declared as an
+// option or a result and only smartcast to its payload, as in
+// `if a != none { if v := a {} }` (see concrete_guard_options).
+fn is_concrete_if_guard_error(msg string) bool {
+	return msg == 'expression should either return an Option or a Result'
+}
+
+// operand_is_plain reports whether `id` is a name, a literal, or a field, a
+// prefix or a parenthesized form of one of them.
 fn (tc &TypeChecker) operand_is_plain(id flat.NodeId) bool {
 	if !tc.valid_node_id(id) {
 		return false
@@ -3546,6 +3566,10 @@ fn (tc &TypeChecker) container_value_layouts_differ(actual Type, expected Type) 
 		if unalias_type(clean_actual.base_type) is OptionType
 			&& unalias_type(clean_expected.base_type) is OptionType {
 			return tc.mut_arg_container_layouts_differ(clean_actual, clean_expected)
+		}
+		// So is a referenced number.
+		if pointee_number_storage_differs(clean_actual.base_type, clean_expected.base_type) {
+			return true
 		}
 		return is_container_type(clean_actual.base_type)
 			&& is_container_type(clean_expected.base_type)
@@ -3899,6 +3923,11 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 		}
 	}
 	operator := node.value.all_after_last('.')
+	if node.value.contains('.') && operator in ['+', '-', '*', '**', '/', '%', '<', '==']
+		&& !tc.operator_method_receiver_can_overload(node) {
+		tc.record_error_at(.call_arg_mismatch, 'operator methods are only allowed for struct and type alias', id, tc.fn_declaration_diagnostic_pos(node))
+		return
+	}
 	if !node.value.contains('.')
 		|| operator !in ['+', '-', '*', '/', '%', '==', '!=', '<', '<=', '>', '>=', '<<', '>>',
 			'&', '|', '^'] {
@@ -3931,12 +3960,14 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 			raw_param_type := tc.parse_type(param.typ)
 			receiver_type := unwrap_pointer(raw_receiver_type)
 			param_type := unwrap_pointer(raw_param_type)
-			if !receiver.is_mut && !param.is_mut && receiver_type.name() == param_type.name()
-				&& raw_receiver_type.name() != raw_param_type.name() {
+			receiver_type_id := receiver_type.source_type_id()
+			param_type_id := param_type.source_type_id()
+			if !receiver.is_mut && !param.is_mut && receiver_type_id == param_type_id
+				&& raw_receiver_type.source_type_id() != raw_param_type.source_type_id() {
 				operator_params_match = false
 				tc.record_error_at(.call_arg_mismatch, 'the receiver type `${receiver.typ_text()}` should be the same type as the operand `${param.typ_text()}`', id, tc.fn_declaration_diagnostic_pos(node))
 			}
-			if receiver_type.name() != param_type.name() {
+			if receiver_type_id != param_type_id {
 				operator_params_match = false
 				tc.record_error_at(.call_arg_mismatch, 'expected `${receiver_type.name()}` not `${param_type.name()}` - both operands must be the same type for operator overloading', param_id, tc.type_diagnostic_pos(param_id, param_type.name()))
 			}
@@ -3952,10 +3983,29 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 		receiver_type := tc.parse_type(receiver.typ)
 		if receiver_type is Alias && (infix_power_type_is_numeric(receiver_type.base_type)
 			|| unalias_type(receiver_type.base_type) is String)
-			&& parsed_return_type.name() != receiver_type.name() && operator_params_match {
+			&& parsed_return_type.source_type_id() != receiver_type.source_type_id()
+			&& operator_params_match {
 			tc.record_error_at(.return_mismatch, 'operator `${operator}` methods on primitive aliases should return `${receiver_type.name()}`', id, tc.fn_return_type_diagnostic_pos(node))
 		}
 	}
+}
+
+// operator_method_receiver_can_overload reports whether the operator method
+// `node` has a receiver whose operators can be overloaded. Nothing lowers an
+// operator method of an enum or an interface: `a + b` and `a == b` kept the
+// builtin operator (integer arithmetic for an enum, invalid C or the builtin
+// equality for an interface). An alias of an enum can still overload
+// operators, as in V 0.5.2. Sum types are not rejected: their `==` is lowered.
+fn (tc &TypeChecker) operator_method_receiver_can_overload(node flat.Node) bool {
+	if node.children_count == 0 {
+		return true
+	}
+	receiver := tc.a.child_node(&node, 0)
+	if receiver.kind != .param || receiver.op != .dot {
+		return true
+	}
+	receiver_type := unwrap_all_pointers(tc.parse_type(receiver.typ))
+	return receiver_type !is Enum && receiver_type !is Interface
 }
 
 fn (tc &TypeChecker) receiver_collection_payload_is_local(typ Type) bool {
@@ -4708,7 +4758,7 @@ fn (tc &TypeChecker) fn_body_reflects_param_type(node flat.Node, param_type_id u
 	for stack.len > 0 {
 		id := stack.pop()
 		child := tc.a.node(id)
-		if child.kind == .comptime_for && child.typ_text() == param_type {
+		if child.kind == .comptime_for && child.typ == param_type_id {
 			return true
 		}
 		for i in 0 .. child.children_count {

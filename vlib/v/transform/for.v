@@ -210,7 +210,7 @@ fn (t &Transformer) for_loop_var_unsigned_type(name string) u32 {
 	}
 	typ = t.trim_all_pointer_type(typ)
 	if typ in [flat.source_type_u8, flat.source_type_u16, flat.source_type_u32, flat.source_type_u64,
-		flat.source_type_usize] {
+		flat.source_type_uint] {
 		return typ
 	}
 	return u32(0)

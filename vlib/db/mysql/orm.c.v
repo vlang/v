@@ -42,7 +42,7 @@ pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.Que
 				data_pointers << unsafe { malloc(8) }
 			}
 			.type_time, .type_date, .type_datetime, .type_time2, .type_datetime2, .type_timestamp {
-				data_pointers << unsafe { malloc(sizeof(C.MYSQL_TIME)) }
+				data_pointers << unsafe { malloc(int(sizeof(C.MYSQL_TIME))) }
 			}
 			.type_decimal, .type_newdecimal, .type_string, .type_var_string, .type_blob,
 			.type_tiny_blob, .type_medium_blob, .type_long_blob {
@@ -88,7 +88,7 @@ pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.Que
 			.type_time, .type_date, .type_datetime, .type_timestamp {
 				// FIXME: Allocate memory for blobs dynamically.
 				mysql_bind.buffer_type = C.MYSQL_TYPE_BLOB
-				mysql_bind.buffer_length = usize(FieldType.type_blob.get_len())
+				mysql_bind.buffer_length = uint(FieldType.type_blob.get_len())
 			}
 			else {}
 		}

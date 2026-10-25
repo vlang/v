@@ -1,13 +1,13 @@
 module memory
 
-pub type FnAllocatorAlloc = fn (size usize, user_data voidptr) voidptr
+pub type FnAllocatorAlloc = fn (size uint, user_data voidptr) voidptr
 
 pub type FnAllocatorFree = fn (ptr voidptr, user_data voidptr)
 
 pub type FnLogCb = fn (const_tag &char, log_level u32, log_item_id u32, const_message_or_null &char, line_nr u32, const_filename_or_null &char, user_data voidptr)
 
 // salloc - used in the allocator structs, that the SOKOL libraries use, for allocating new memory blocks
-pub fn salloc(size usize, user_data voidptr) voidptr {
+pub fn salloc(size uint, user_data voidptr) voidptr {
 	res := unsafe { malloc(int(size)) }
 	$if trace_sokol_memory ? {
 		eprintln('sokol.memory.salloc | user_data: ${user_data:x} | size: ${size:10} | res: ${res:x}')

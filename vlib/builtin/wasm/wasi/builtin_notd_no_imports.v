@@ -4,7 +4,7 @@ module builtin
 pub fn print(s string) {
 	elm := CIOVec{
 		buf: s.str
-		len: usize(s.len)
+		len: uint(s.len)
 	}
 
 	WASM.fd_write(1, &elm, 1, 0)
@@ -14,7 +14,7 @@ pub fn print(s string) {
 pub fn println(s string) {
 	elm := [CIOVec{
 		buf: s.str
-		len: usize(s.len)
+		len: uint(s.len)
 	}, CIOVec{
 		buf: c'\n'
 		len: 1
@@ -27,7 +27,7 @@ pub fn println(s string) {
 pub fn eprint(s string) {
 	elm := CIOVec{
 		buf: s.str
-		len: usize(s.len)
+		len: uint(s.len)
 	}
 
 	WASM.fd_write(2, &elm, 1, 0)
@@ -37,7 +37,7 @@ pub fn eprint(s string) {
 pub fn eprintln(s string) {
 	elm := [CIOVec{
 		buf: s.str
-		len: usize(s.len)
+		len: uint(s.len)
 	}, CIOVec{
 		buf: c'\n'
 		len: 1
