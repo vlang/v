@@ -21165,7 +21165,8 @@ fn (mut g FlatGen) headerless_freebsd_stat_struct() {
 }
 
 fn (mut g FlatGen) headerless_openbsd_stat_struct() {
-	g.writeln('struct stat { u32 st_mode; i32 st_dev; u64 st_ino; u32 st_nlink; u32 st_uid; u32 st_gid; i32 st_rdev; i64 st_atime; long st_atimensec; i64 st_mtime; long st_mtimensec; i64 st_ctime; long st_ctimensec; i64 __st_birthtime; long __st_birthtimensec; i64 st_size; i64 st_blocks; i32 st_blksize; u32 st_flags; u32 st_gen; };')
+	// Unlike FreeBSD and NetBSD, OpenBSD keeps `__st_birthtim` last, after `st_gen`.
+	g.writeln('struct stat { u32 st_mode; i32 st_dev; u64 st_ino; u32 st_nlink; u32 st_uid; u32 st_gid; i32 st_rdev; i64 st_atime; long st_atimensec; i64 st_mtime; long st_mtimensec; i64 st_ctime; long st_ctimensec; i64 st_size; i64 st_blocks; i32 st_blksize; u32 st_flags; u32 st_gen; i64 __st_birthtime; long __st_birthtimensec; };')
 }
 
 fn (mut g FlatGen) headerless_netbsd_stat_struct() {
