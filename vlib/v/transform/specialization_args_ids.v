@@ -22,11 +22,12 @@ mut:
 
 fn specialization_args_text_hash(text string) u64 {
 	mut hash := u64(14695981039346656037)
-	for c in text.bytes() { hash = (hash ^ u64(c)) * u64(1099511628211) }
+	for c in text { hash = (hash ^ u64(c)) * u64(1099511628211) }
 	return hash
 }
 
 fn (bindings &SpecializationArgsBindings) source_key_for_name(name string) u32 {
+	if bindings.type_text_buckets.len == 0 { return 0 }
 	bucket := bindings.type_text_buckets[specialization_args_text_hash(name)] or { return 0 }
 	for id in bucket {
 		if flat.source_type_name(id) == name { return id }

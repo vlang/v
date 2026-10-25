@@ -1570,10 +1570,7 @@ pub fn (n Node) clone_owned() Node {
 // add_node updates add node state for FlatAst.
 pub fn (mut a FlatAst) add_node(node Node) NodeId {
 	if node.value.len > 0 && (node.source_value != 0 || node.has_source_value_kind()) {
-		mut canonical := node
-		canonical.canonicalize_source_value()
-		// Canonicalization clears value, so this enters the immutable append path once.
-		return a.add_node(canonical)
+		return a.add_canonicalized_node(node)
 	}
 	id := NodeId(a.nodes.len)
 	if a.nodes.len < a.nodes.cap {
@@ -1586,6 +1583,15 @@ pub fn (mut a FlatAst) add_node(node Node) NodeId {
 	}
 	a.nodes << node
 	return id
+}
+
+// add_canonicalized_node keeps the legacy operand copy off the immutable append path.
+@[noinline]
+fn (mut a FlatAst) add_canonicalized_node(node Node) NodeId {
+	mut canonical := node
+	canonical.canonicalize_source_value()
+	// Canonicalization clears value, so this enters the immutable append path once.
+	return a.add_node(canonical)
 }
 
 // child_count converts a dynamic child count to Node's compact storage type.

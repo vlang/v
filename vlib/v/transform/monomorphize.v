@@ -17599,7 +17599,7 @@ fn generic_type_arg_from_suffix_with_containers(suffix string) string {
 
 fn generic_fn_spec_key(decl_key string, args_ids []u32) GenericFnSpecKey {
 	mut hash := u64(14695981039346656037)
-	for c in decl_key.bytes() {
+	for c in decl_key {
 		hash = (hash ^ u64(c)) * u64(1099511628211)
 	}
 	hash = (hash ^ u64(args_ids.len)) * u64(1099511628211)

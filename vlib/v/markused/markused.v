@@ -4704,10 +4704,16 @@ fn (c &CallCollector) node_uses_generics(node &flat.Node, cur_module string, imp
 }
 
 fn (c &CallCollector) type_text_uses_generics(typ_id u32, cur_module string, imports map[string]string) bool {
+	if typ_id == 0 {
+		return false
+	}
 	return c.type_text_uses_generics_depth(markused_trimmed_source_type(typ_id), cur_module, imports, 0)
 }
 
 fn (c &CallCollector) type_text_uses_generics_depth(typ_id u32, cur_module string, imports map[string]string, depth int) bool {
+	if typ_id == 0 {
+		return false
+	}
 	typ := flat.source_type_name(typ_id)
 	// A valid alias chain cannot visit more declarations than these tables contain.
 	if typ.len == 0 || depth > c.tc.type_aliases.ids.len + c.selective_alias_targets.len {

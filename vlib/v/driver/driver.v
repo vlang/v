@@ -7594,9 +7594,13 @@ fn compare_monomorph_cache_spec_order(a &MonomorphCacheSpecOrder, b &MonomorphCa
 
 fn monomorph_cache_spec_hash(spec transform.MonomorphCacheSpec) u64 {
 	mut hash := c_hash_tag(u64(1469598103934665603), spec.decl_key.len)
-	hash = c_hash_bytes(hash, spec.decl_key.bytes())
+	for c in spec.decl_key {
+		hash = (hash ^ u64(c)) * u64(1099511628211)
+	}
 	hash = c_hash_tag(hash, spec.module.len)
-	hash = c_hash_bytes(hash, spec.module.bytes())
+	for c in spec.module {
+		hash = (hash ^ u64(c)) * u64(1099511628211)
+	}
 	hash = c_hash_tag(hash, spec.args.ids.len)
 	for id in spec.args.ids {
 		hash = (hash ^ u64(id)) * u64(1099511628211)
