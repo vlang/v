@@ -60,13 +60,6 @@ fn main() { mut holder := Holder{}; lock holder.item { update(mut holder) } }',
 			_ = tc.check_semantics_opt(false)
 			assert tc.errors.len == [0, 0, 0, 2, 1, 1, 1, 1][index]
 			os.rm(path) or {}
-			println('LOCK_CASE ${index} scoped=${scoped}: errors=${tc.errors.len} notices=${tc.notices.len}')
-			for err in tc.errors {
-				println('LOCK_ERROR:${err.kind}:${int(err.node)}:${err.pos.offset}:${err.pos.end}:${err.msg}:${err.details.join('|')}')
-			}
-			for notice in tc.notices {
-				println('LOCK_NOTICE:${notice.kind}:${int(notice.node)}:${notice.pos.offset}:${notice.pos.end}:${notice.msg}:${notice.details.join('|')}')
-			}
 		}
 	}
 }

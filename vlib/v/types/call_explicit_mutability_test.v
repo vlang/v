@@ -59,24 +59,6 @@ fn test_receiver_queries_preserve_explicit_mutability_diagnostics() {
 					}
 					assert tc.errors.len == expected_errors[index], '${index}: ${tc.errors}'
 					assert tc.notices.len == expected_notices[index], '${index}: ${tc.notices}'
-					println('EXPLICIT_CASE:${index}:${disabled}:${scoped}:${trusted}:${tc.errors.len}:${tc.notices.len}')
-					for err in tc.errors {
-						println('EXPLICIT_ERROR:${err.kind}:${int(err.node)}:${err.pos.offset}:${err.pos.end}:${err.msg}:${err.details.join('|')}')
-					}
-					for notice in tc.notices {
-						println('EXPLICIT_NOTICE:${notice.kind}:${int(notice.node)}:${notice.pos.offset}:${notice.pos.end}:${notice.msg}:${notice.details.join('|')}')
-					}
-					for id, node in a.nodes {
-						if typ := tc.expr_type(flat.NodeId(id)) {
-							println('EXPLICIT_TYPE:${index}:${disabled}:${scoped}:${trusted}:${id}:${node.kind}:${typ.name()}')
-						}
-						if node.typ != 0 {
-							println('EXPLICIT_TEXT:${index}:${disabled}:${scoped}:${trusted}:${id}:${flat.source_type_name(node.typ)}')
-						}
-						if node.kind == .call {
-							println('EXPLICIT_CALL:${index}:${disabled}:${scoped}:${trusted}:${id}:${tc.cached_resolved_call(flat.NodeId(id)) or { '' }}')
-						}
-					}
 				}
 			}
 		}

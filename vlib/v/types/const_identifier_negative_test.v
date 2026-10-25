@@ -31,7 +31,6 @@ fn test_const_identifier_filter_preserves_text_and_module_resolution() {
 			fast := tc.const_int_value_in_module(name, module_name, []string{})
 			assert (slow == none) == (fast == none), '${module_name}:${name}'
 			assert (slow or { -9999 }) == (fast or { -9999 }), '${module_name}:${name}'
-			println('CONST_VALUE:${module_name}:${name}:${fast or { -9999 }}')
 		}
 	}
 	assert tc.const_int_value_in_module('_123', 'main', []string{})? == 123
@@ -92,13 +91,6 @@ fn test_const_identifier_filter_preserves_checked_source_diagnostics() {
 			tc.collect(a)
 			_ = tc.check_semantics_opt(false)
 			os.rm(path) or {}
-			println('CONST_CASE ${index} scoped=${scoped}: errors=${tc.errors.len} notices=${tc.notices.len}')
-			for err in tc.errors {
-				println('CONST_ERROR:${err.kind}:${int(err.node)}:${err.pos.offset}:${err.pos.end}:${err.msg}:${err.details.join('|')}')
-			}
-			for notice in tc.notices {
-				println('CONST_NOTICE:${notice.kind}:${int(notice.node)}:${notice.pos.offset}:${notice.pos.end}:${notice.msg}:${notice.details.join('|')}')
-			}
 		}
 	}
 }

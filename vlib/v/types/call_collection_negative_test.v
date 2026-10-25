@@ -32,20 +32,6 @@ fn test_collection_call_negative_guards_preserve_diagnostics_and_annotations() {
 			if index < 5 {
 				assert tc.errors.len == 0, '${index}: ${tc.errors}'
 			}
-			println('COLLECTION_CASE:${index}:${scoped}:${tc.errors.len}:${tc.notices.len}')
-			for err in tc.errors {
-				println('COLLECTION_ERROR:${err.kind}:${int(err.node)}:${err.pos.offset}:${err.pos.end}:${err.msg}:${err.details.join('|')}')
-			}
-			for notice in tc.notices {
-				println('COLLECTION_NOTICE:${notice.kind}:${int(notice.node)}:${notice.pos.offset}:${notice.pos.end}:${notice.msg}:${notice.details.join('|')}')
-			}
-			for id, node in a.nodes {
-				if node.kind != .call { continue }
-				for arg_index in 1 .. node.children_count {
-					typ := tc.builtin_array_annotation_expected_type(node, arg_index)
-					println('COLLECTION_EXPECTED:${index}:${scoped}:${id}:${arg_index}:${typ.name()}')
-				}
-			}
 		}
 	}
 }

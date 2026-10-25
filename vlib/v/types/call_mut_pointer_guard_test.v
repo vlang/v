@@ -32,14 +32,7 @@ fn test_mutable_pointer_lookup_guard_keeps_value_and_slot_arguments() {
 				tc.annotate_types()
 				os.rm(path) or {}
 				assert tc.errors.len == 0, '${index}: ${tc.errors}'
-				println('SLOT_CASE:${index}:${scoped}:${trusted}:${tc.errors.len}:${tc.notices.len}')
-				for notice in tc.notices {
-					println('SLOT_NOTICE:${notice.kind}:${int(notice.node)}:${notice.pos.offset}:${notice.pos.end}:${notice.msg}:${notice.details.join('|')}')
-				}
 				for id, node in a.nodes {
-					if typ := tc.expr_type(flat.NodeId(id)) {
-						println('SLOT_TYPE:${index}:${scoped}:${trusted}:${id}:${node.kind}:${typ.name()}')
-					}
 					if node.kind != .call { continue }
 					if info := tc.resolve_call_info(flat.NodeId(id), node) {
 						for param_idx in 0 .. info.params.len {
@@ -50,7 +43,6 @@ fn test_mutable_pointer_lookup_guard_keeps_value_and_slot_arguments() {
 								immutable_count++
 								assert !requires_slot
 							}
-							println('SLOT_PARAM:${index}:${scoped}:${trusted}:${id}:${param_idx}:${is_mut}:${requires_slot}')
 						}
 					}
 				}

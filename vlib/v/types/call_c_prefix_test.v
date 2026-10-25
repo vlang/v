@@ -1,7 +1,6 @@
 module types
 
 import os
-import v.flat
 import v.parser
 import v.pref
 
@@ -44,24 +43,6 @@ fn test_c_call_prefix_guard_preserves_external_and_ordinary_calls() {
 				os.rm(path) or {}
 				expected_errors := [0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 3, 1, 0, 1]
 				assert tc.errors.len == expected_errors[index], '${index}: ${tc.errors}'
-				println('CQUERY_CASE:${index}:${scoped}:${trusted}:${tc.errors.len}:${tc.notices.len}')
-				for err in tc.errors {
-					println('CQUERY_ERROR:${err.kind}:${int(err.node)}:${err.pos.offset}:${err.pos.end}:${err.msg}:${err.details.join('|')}')
-				}
-				for notice in tc.notices {
-					println('CQUERY_NOTICE:${notice.kind}:${int(notice.node)}:${notice.pos.offset}:${notice.pos.end}:${notice.msg}:${notice.details.join('|')}')
-				}
-				for id, node in a.nodes {
-					if typ := tc.expr_type(flat.NodeId(id)) {
-						println('CQUERY_TYPE:${index}:${scoped}:${trusted}:${id}:${node.kind}:${typ.name()}')
-					}
-					if node.typ != 0 {
-						println('CQUERY_TEXT:${index}:${scoped}:${trusted}:${id}:${flat.source_type_name(node.typ)}')
-					}
-					if node.kind == .call {
-						println('CQUERY_CALL:${index}:${scoped}:${trusted}:${id}:${tc.cached_resolved_call(flat.NodeId(id)) or { '' }}')
-					}
-				}
 			}
 		}
 	}

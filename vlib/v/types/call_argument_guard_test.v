@@ -80,13 +80,6 @@ fn test_call_argument_guards_preserve_diagnostics() {
 			tc.collect(a)
 			_ = tc.check_semantics_opt(false)
 			os.rm(path) or {}
-			println('CALL_CASE ${index} scoped=${scoped}: errors=${tc.errors.len} notices=${tc.notices.len}')
-			for err in tc.errors {
-				println('CALL_ERROR:${err.kind}:${int(err.node)}:${err.pos.offset}:${err.pos.end}:${err.msg}:${err.details.join('|')}')
-			}
-			for notice in tc.notices {
-				println('CALL_NOTICE:${notice.kind}:${int(notice.node)}:${notice.pos.offset}:${notice.pos.end}:${notice.msg}:${notice.details.join('|')}')
-			}
 		}
 	}
 }

@@ -1,7 +1,6 @@
 module types
 
 import os
-import v.flat
 import v.parser
 import v.pref
 
@@ -42,24 +41,6 @@ fn test_variadic_queries_preserve_arguments_and_noarg_generic_diagnostics() {
 				os.rm(path) or {}
 				expected_errors := [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 3, 1, 0, 1]
 				assert tc.errors.len == expected_errors[index], '${index}: ${tc.errors}'
-				println('ANNOTATION_CASE:${index}:${scoped}:${trusted}:${tc.errors.len}:${tc.notices.len}')
-				for err in tc.errors {
-					println('ANNOTATION_ERROR:${err.kind}:${int(err.node)}:${err.pos.offset}:${err.pos.end}:${err.msg}:${err.details.join('|')}')
-				}
-				for notice in tc.notices {
-					println('ANNOTATION_NOTICE:${notice.kind}:${int(notice.node)}:${notice.pos.offset}:${notice.pos.end}:${notice.msg}:${notice.details.join('|')}')
-				}
-				for id, node in a.nodes {
-					if typ := tc.expr_type(flat.NodeId(id)) {
-						println('ANNOTATION_TYPE:${index}:${scoped}:${trusted}:${id}:${node.kind}:${typ.name()}')
-					}
-					if node.typ != 0 {
-						println('ANNOTATION_TEXT:${index}:${scoped}:${trusted}:${id}:${flat.source_type_name(node.typ)}')
-					}
-					if node.kind == .call {
-						println('ANNOTATION_CALL:${index}:${scoped}:${trusted}:${id}:${tc.cached_resolved_call(flat.NodeId(id)) or { '' }}')
-					}
-				}
 			}
 		}
 	}
