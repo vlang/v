@@ -282,9 +282,10 @@ fn test_context_independent_container_types_match_declaration_views() {
 	tc.type_alias_modules['dep.Alias'] = 'dep'
 	tc.fn_type_files['dep.read'] = 'dep.v'
 	tc.fn_type_modules['dep.read'] = 'dep'
+	assert context_independent_type(0)
 	for text in ['map[string]int', '?map[string][]u8', '[]map[int]&string', '[32]u8', '&[2][3]int',
 		'map[[4]u8][]map[string]bool'] {
-		assert context_independent_type_text(text)
+		assert context_independent_type(flat.source_type_id(text))
 		fresh := tc.fork_type_parse_view('dep.v', 'dep')
 		expected := fresh.parse_resolution_type(flat.source_type_id(text))
 		assert tc.parse_resolution_type_in_file(flat.source_type_id(text), 'dep.v') == expected
@@ -295,7 +296,7 @@ fn test_context_independent_container_types_match_declaration_views() {
 	}
 	for text in ['map', 'array', 'map[string]Item', 'map[Key]int', 'map[string]int ', '[size]int',
 		'[2 + 3]int', '[0x10]int', 'map[string', '[2', '[2]'] {
-		assert !context_independent_type_text(text)
+		assert !context_independent_type(flat.source_type_id(text))
 	}
 }
 

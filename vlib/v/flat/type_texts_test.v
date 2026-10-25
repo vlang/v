@@ -167,6 +167,18 @@ fn test_source_type_shapes_and_builtin_ids_share_the_spelling_table() {
 	assert !source_type_shape(source_type_id('pkg.Item')).has(.padded)
 }
 
+fn test_source_type_resolution_shape_preserves_wrappers_and_exact_spelling() {
+	for text in ['int', '?', '!', '&[]u8', '?map[string][]u8', '[]map[int]&string', '[32]u8',
+		'&[2][3]int', 'map[[4]u8][]map[string]bool', 'i128', 'u128', 'uint', 'char', 'nil'] {
+		assert source_type_shape(source_type_id(text)).has(.context_independent)
+	}
+	for text in ['map', 'array', 'map[string]Item', 'map[Key]int', 'map[string]int ', ' int',
+		'[size]int', '[2 + 3]int', '[0x10]int', 'map[string', '[2', '[2]', 'shared int', '...int',
+		'fn () int', 'typeof(value)', 'pkg.int', '&&'] {
+		assert !source_type_shape(source_type_id(text)).has(.context_independent)
+	}
+}
+
 fn test_binding_value_ids_preserve_present_empty_bindings() {
 	mut bindings := TypeTextBindings{}
 	bindings.set('empty', '')

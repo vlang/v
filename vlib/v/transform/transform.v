@@ -18790,13 +18790,13 @@ fn (t &Transformer) expr_can_take_address(id flat.NodeId) bool {
 			}
 			// Indexing through a pointer (`unsafe { (&v.x)[i] }`) reaches the memory it
 			// points to: the element is addressable even when the pointer is not.
-			mut base_type := flat.source_type_name(t.node_type(base_id))
-			if base_type.len == 0 {
-				base_type = flat.source_type_name(t.resolve_expr_type(base_id))
+			mut base_type := t.node_type(base_id)
+			if base_type == 0 {
+				base_type = t.resolve_expr_type(base_id)
 			}
-			base_type = flat.source_type_name(t.normalize_type_alias(flat.source_type_id(base_type)))
-			if base_type.starts_with('&') {
-				pointee_source_id := t.normalize_type_alias(flat.source_type_id(base_type[1..]))
+			base_type = t.normalize_type_alias(base_type)
+			if flat.source_type_shape(base_type).has(.pointer) {
+				pointee_source_id := t.normalize_type_alias(t.trim_pointer_type(base_type))
 				pointee_shape := flat.source_type_shape(pointee_source_id)
 				if !pointee_shape.has(.map_type) && pointee_source_id != flat.source_type_string {
 					return true
@@ -18812,11 +18812,11 @@ fn (t &Transformer) expr_can_take_address(id flat.NodeId) bool {
 				return false
 			}
 			base_id := t.a.child(&node, 0)
-			mut base_type := flat.source_type_name(t.node_type(base_id))
-			if base_type.len == 0 {
-				base_type = flat.source_type_name(t.resolve_expr_type(base_id))
+			mut base_type := t.node_type(base_id)
+			if base_type == 0 {
+				base_type = t.resolve_expr_type(base_id)
 			}
-			if trimmed_transform_text(flat.source_type_name(t.normalize_type_alias(flat.source_type_id(base_type)))).starts_with('&') {
+			if flat.source_type_shape(t.trimmed_type_id(t.normalize_type_alias(base_type))).has(.pointer) {
 				return true
 			}
 			return t.expr_can_take_address(base_id)
@@ -19888,9 +19888,9 @@ fn (mut t Transformer) try_expand_multi_return_decl(node flat.Node) ?[]flat.Node
 				continue
 			}
 			field_name := 'arg${j}'
-			field_type_name := field_type.name()
-			field := t.make_selector(t.make_ident(tmp_name), field_name, flat.source_type_id(field_type_name))
-			result << t.make_guard_value_decls(lhs.value, field, flat.source_type_id(field_type_name))
+			field_type_id := field_type.source_type_id()
+			field := t.make_selector(t.make_ident(tmp_name), field_name, field_type_id)
+			result << t.make_guard_value_decls(lhs.value, field, field_type_id)
 		}
 		return result
 	}
@@ -19934,18 +19934,18 @@ fn (mut t Transformer) try_expand_multi_return_assign(node flat.Node) ?[]flat.No
 				continue
 			}
 			field_name := 'arg${j}'
-			field_type_name := field_type.name()
-			field := t.make_selector(t.make_ident(tmp_name), field_name, flat.source_type_id(field_type_name))
+			field_type_id := field_type.source_type_id()
+			field := t.make_selector(t.make_ident(tmp_name), field_name, field_type_id)
 			mut lvalue := t.transform_lvalue(lhs_id)
 			t.drain_pending(mut result)
 			if !t.tc.ownership_expr_moves_storage(rhs_id, lhs_id)
 				&& t.tc.ownership_type_requires_destruction(field_type) {
 				lvalue = t.stabilize_transformed_lvalue_for_reuse(lvalue)
 				t.drain_pending(mut result)
-				t.append_owned_lvalue_drop_before_assign(lvalue, flat.source_type_id(field_type_name), mut result)
+				t.append_owned_lvalue_drop_before_assign(lvalue, field_type_id, mut result)
 			}
 			mut value := field
-			target_type := t.multi_assign_slot_target_type(lhs_id, lhs, field_type_name)
+			target_type := t.multi_assign_slot_target_type(lhs_id, lhs, field_type_id)
 			// A `[]Item` slot assigned to a `[]Named` (or `[]Shape`) target is converted
 			// element by element, as a single assignment or a forwarded return does.
 			if converted := t.transform_array_value_for_dynamic_target(field, target_type) {
@@ -19958,7 +19958,7 @@ fn (mut t Transformer) try_expand_multi_return_assign(node flat.Node) ?[]flat.No
 					t.drain_pending(mut result)
 					value = converted
 				}
-			} else if converted := t.transform_optional_value_for_option_target(field, flat.source_type_id(field_type_name),
+			} else if converted := t.transform_optional_value_for_option_target(field, field_type_id,
 				target_type)
 			{
 				// A `?[2]int` slot assigned to a `?[]int` target has its payload converted,
@@ -19976,13 +19976,13 @@ fn (mut t Transformer) try_expand_multi_return_assign(node flat.Node) ?[]flat.No
 // multi_assign_slot_target_type returns the value type that the slot `lhs` of a
 // multi-return assignment stores: a `mut` parameter or a local moved to the heap is
 // assigned through its pointer.
-fn (t &Transformer) multi_assign_slot_target_type(lhs_id flat.NodeId, lhs flat.Node, field_type_name string) u32 {
+fn (t &Transformer) multi_assign_slot_target_type(lhs_id flat.NodeId, lhs flat.Node, field_type_id u32) u32 {
 	target := t.lvalue_type(lhs_id)
-	target_name := flat.source_type_name(target)
-	if lhs.kind == .ident && target_name.starts_with('&') && !target_name.starts_with('&&')
-		&& !field_type_name.starts_with('&')
+	target_shape := flat.source_type_shape(target)
+	if lhs.kind == .ident && target_shape.has(.pointer) && !target_shape.has(.pointer_chain)
+		&& !flat.source_type_shape(field_type_id).has(.pointer)
 		&& (t.mut_param_values[lhs.value] || lhs.value in t.heaped_amp_locals) {
-		return flat.source_type_id(target_name[1..])
+		return t.trim_pointer_type(target)
 	}
 	return target
 }
@@ -20032,23 +20032,23 @@ fn (mut t Transformer) try_expand_plain_multi_assign(node flat.Node) ?[]flat.Nod
 			continue
 		}
 		mut lhs_type := if lhs.kind in [.selector, .index] {
-			flat.source_type_name(t.lvalue_type(lhs_id))
+			t.lvalue_type(lhs_id)
 		} else {
-			flat.source_type_name(t.original_expr_type(lhs_id))
+			t.original_expr_type(lhs_id)
 		}
-		if lhs_type.len == 0 {
-			lhs_type = flat.source_type_name(t.lvalue_type(lhs_id))
+		if lhs_type == 0 {
+			lhs_type = t.lvalue_type(lhs_id)
 		}
-		if lhs.kind == .ident && t.pointer_value_lvalues[lhs.value] && lhs_type.starts_with('&') {
-			lhs_type = lhs_type[1..]
+		if lhs.kind == .ident && t.pointer_value_lvalues[lhs.value] && flat.source_type_shape(lhs_type).has(.pointer) {
+			lhs_type = t.trim_pointer_type(lhs_type)
 		}
-		mut rhs := if lhs_type.len > 0 {
-			t.transform_expr_for_type(rhs_id, flat.source_type_id(lhs_type))
+		mut rhs := if lhs_type != 0 {
+			t.transform_expr_for_type(rhs_id, lhs_type)
 		} else {
 			t.transform_expr(rhs_id)
 		}
-		if lhs_type.len > 0 {
-			rhs = t.clone_borrowed_assignment_value(rhs_id, rhs, flat.source_type_id(lhs_type))
+		if lhs_type != 0 {
+			rhs = t.clone_borrowed_assignment_value(rhs_id, rhs, lhs_type)
 		}
 		t.drain_pending(mut result)
 		if lhs.kind == .ident && lhs.value == '_' {
@@ -20059,8 +20059,8 @@ fn (mut t Transformer) try_expand_plain_multi_assign(node flat.Node) ?[]flat.Nod
 			continue
 		}
 		tmp_name := t.new_temp('assign')
-		tmp_type := (if lhs_type.len > 0 {
-			flat.source_type_id(lhs_type)
+		tmp_type := (if lhs_type != 0 {
+			lhs_type
 		} else {
 			t.node_type(rhs_id)
 		})
@@ -20089,15 +20089,15 @@ fn (mut t Transformer) try_expand_plain_multi_assign(node flat.Node) ?[]flat.Nod
 			t.transform_lvalue_without_smartcast(lhs_id)
 		}
 		t.drain_pending(mut result)
-		mut lhs_type := flat.source_type_name(t.lvalue_type(lhs_id))
-		if lhs_type.len == 0 {
-			lhs_type = flat.source_type_name(t.original_expr_type(lhs_id))
+		mut lhs_type := t.lvalue_type(lhs_id)
+		if lhs_type == 0 {
+			lhs_type = t.original_expr_type(lhs_id)
 		}
-		if !lhs_was_moved[i] && !isnil(t.tc) && lhs_type.len > 0
-			&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(flat.source_type_id(lhs_type))) {
+		if !lhs_was_moved[i] && !isnil(t.tc) && lhs_type != 0
+			&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(lhs_type)) {
 			lvalue = t.stabilize_transformed_lvalue_for_reuse(lvalue)
 			t.drain_pending(mut result)
-			t.append_owned_lvalue_drop_before_assign(lvalue, flat.source_type_id(lhs_type), mut result)
+			t.append_owned_lvalue_drop_before_assign(lvalue, lhs_type, mut result)
 		}
 		result << t.make_assign_after_owned_drop(lvalue, t.make_ident(tmp_names[i]))
 	}

@@ -2072,7 +2072,8 @@ fn (tc &TypeChecker) constraint_condition_types(cond string, name string, constr
 			result = types.clone()
 		} else {
 			for t in types {
-				if !result.any(it.name() == t.name()) {
+				type_id := t.source_type_id()
+				if !result.any(it.source_type_id() == type_id) {
 					result << t
 				}
 			}
@@ -2150,7 +2151,8 @@ fn (tc &TypeChecker) constraint_condition_term_types(term_text string, name stri
 			// `$if T is $struct`: which types of the family are in it is not known.
 			return none
 		}
-		matched := named.any(it.name() == t.name())
+		type_id := t.source_type_id()
+		matched := named.any(it.source_type_id() == type_id)
 			|| groups.any(tc.type_in_comptime_group(t, it))
 		if matched == positive {
 			result << t
@@ -2158,8 +2160,9 @@ fn (tc &TypeChecker) constraint_condition_term_types(term_text string, name stri
 		if family && positive {
 			// `$if T is Admin` with `[T User]`: `Admin`, which embeds `User`.
 			for n in named {
-				if n.name() != t.name() && tc.constraint_family_holds(constraint, t, n)
-					&& !result.any(it.name() == n.name()) {
+				named_type_id := n.source_type_id()
+				if named_type_id != type_id && tc.constraint_family_holds(constraint, t, n)
+					&& !result.any(it.source_type_id() == named_type_id) {
 					result << n
 				}
 			}
@@ -2168,24 +2171,26 @@ fn (tc &TypeChecker) constraint_condition_term_types(term_text string, name stri
 	return result
 }
 
-// types_without is `types` without the ones `removed` names. The walk keeps
+// types_without is `types` without the spellings in `removed`. The walk keeps
 // away from closures: the compiler is built without a garbage collector, and
 // its closure runtime fails when the editor asks it about a program.
 fn types_without(types []Type, removed []Type) []Type {
 	mut rest := []Type{}
 	for t in types {
-		if !removed.any(it.name() == t.name()) {
+		type_id := t.source_type_id()
+		if !removed.any(it.source_type_id() == type_id) {
 			rest << t
 		}
 	}
 	return rest
 }
 
-// types_within is `types` with only the ones `allowed` names.
+// types_within is `types` with only the spellings in `allowed`.
 fn types_within(types []Type, allowed []Type) []Type {
 	mut kept := []Type{}
 	for t in types {
-		if allowed.any(it.name() == t.name()) {
+		type_id := t.source_type_id()
+		if allowed.any(it.source_type_id() == type_id) {
 			kept << t
 		}
 	}

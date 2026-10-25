@@ -16959,11 +16959,11 @@ fn (tc &TypeChecker) parse_alias_type(name string, target_id u32) Type {
 }
 
 fn (tc &TypeChecker) parse_alias_target_type(name string, target_id u32) Type {
-	target := flat.source_type_name(target_id)
-	clean := trimmed_space(target)
-	if context_independent_type_text(target) {
+	if context_independent_type(target_id) {
 		return *tc.parse_type(target_id)
 	}
+	target := flat.source_type_name(target_id)
+	clean := trimmed_space(target)
 	// Alias targets are canonicalized when declarations are collected. Prefer an
 	// exact qualified symbol before the referencing file's imports can retarget
 	// it to a same-named type from another module.

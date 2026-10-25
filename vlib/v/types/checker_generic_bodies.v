@@ -573,30 +573,50 @@ fn (tc &TypeChecker) generic_body_combinations(node flat.Node, texts map[string]
 		return combinations
 	}
 	names := texts.keys()
-	mut seen := map[string]bool{}
-	for combination in combinations {
-		seen[type_param_combination_key(names, combination)] = true
+	mut seen := map[u64][]int{}
+	for i, combination in combinations {
+		key := type_param_combination_key(names, combination)
+		seen[key] << i
 	}
 	classes := tc.type_param_branch_classes(node, texts, constraints)
 	for combination in type_param_way_combinations(names, classes, generic_body_instance_budget,
 		generic_body_branch_budget) {
 		key := type_param_combination_key(names, combination)
-		if key !in seen {
-			seen[key] = true
+		if !type_param_combination_seen(names, combination, combinations, seen[key]) {
+			seen[key] << combinations.len
 			combinations << combination
 		}
 	}
 	return combinations
 }
 
-// type_param_combination_key is `combination` as a text, with its types in the
-// order of `names`.
-fn type_param_combination_key(names []string, combination map[string]u32) string {
-	mut key := []string{cap: names.len}
+// type_param_combination_key hashes the spelling IDs of `combination` in the
+// order of `names`. Bucket lookup still verifies every ID before deduplicating.
+fn type_param_combination_key(names []string, combination map[string]u32) u64 {
+	mut key := u64(14_695_981_039_346_656_037) ^ u64(names.len)
 	for name in names {
-		key << flat.source_type_name(combination[name])
+		key = (key ^ u64(combination[name])) * u64(1_099_511_628_211)
 	}
-	return key.join('\n')
+	return key
+}
+
+// type_param_combination_seen checks the full ordered spelling IDs in a hash
+// bucket. Indices reference combinations already retained by the caller.
+fn type_param_combination_seen(names []string, combination map[string]u32, combinations []map[string]u32, candidates []int) bool {
+	for index in candidates {
+		previous := combinations[index]
+		mut matches := true
+		for name in names {
+			if combination[name] != previous[name] {
+				matches = false
+				break
+			}
+		}
+		if matches {
+			return true
+		}
+	}
+	return false
 }
 
 // type_param_way_combinations gives the combinations of the types of each way

@@ -19305,8 +19305,7 @@ fn generic_variadic_elem_param_text(param_id u32) u32 {
 }
 
 fn (tc &TypeChecker) parse_fn_signature_type(name string, typ_id u32) Type {
-	typ := flat.source_type_name(typ_id)
-	if context_independent_type_text(typ) {
+	if context_independent_type(typ_id) {
 		return *tc.parse_type(typ_id)
 	}
 	decl_file := tc.fn_type_files[name] or { return *tc.parse_type(typ_id) }

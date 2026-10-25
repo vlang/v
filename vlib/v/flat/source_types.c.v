@@ -76,6 +76,7 @@ pub enum SourceTypeShape {
 	bare_generic
 	anonymous_struct
 	generic_c_name
+	context_independent
 }
 
 fn source_type_spelling_shape(text string) SourceTypeShape {
@@ -115,6 +116,7 @@ fn source_type_spelling_shape(text string) SourceTypeShape {
 	}
 	if text == 'struct' || text.ends_with('.struct') { shape.set(.anonymous_struct) }
 	if text.contains('_T_') { shape.set(.generic_c_name) }
+	if source_type_spelling_context_independent(text) { shape.set(.context_independent) }
 	mut start := 0
 	mut end := text.len
 	for start < end && source_type_space(text[start]) { start++ }
@@ -127,6 +129,69 @@ fn source_type_spelling_shape(text string) SourceTypeShape {
 
 fn source_type_space(c u8) bool {
 	return c == ` ` || c == `\n` || c == `\t` || c == `\v` || c == `\f` || c == `\r`
+}
+
+// Resolution can bypass declaration imports only for builtin leaves and these
+// exact wrappers. Do not trim: callers decide whether padded spellings are valid.
+@[manualfree]
+fn source_type_spelling_context_independent(text string) bool {
+	if text in ['', '!', '?'] {
+		return true
+	}
+	mut start := 0
+	for start < text.len {
+		if text[start] in [`&`, `?`, `!`] {
+			start++
+		} else if text[start] == `[` && start + 1 < text.len && text[start + 1] == `]` {
+			start += 2
+		} else if text[start] == `[` {
+			mut end := start + 1
+			for end < text.len && text[end] >= `0` && text[end] <= `9` {
+				end++
+			}
+			if end == start + 1 || end >= text.len || text[end] != `]` {
+				return false
+			}
+			start = end + 1
+		} else if start + 4 < text.len && text[start] == `m` && text[start + 1] == `a`
+			&& text[start + 2] == `p` && text[start + 3] == `[` {
+			mut end := start + 4
+			mut depth := 1
+			for end < text.len {
+				if text[end] == `[` { depth++ }
+				if text[end] == `]` {
+					depth--
+					if depth == 0 { break }
+				}
+				end++
+			}
+			if end >= text.len {
+				return false
+			}
+			key := unsafe { text.substr_unsafe(start + 4, end) }
+			if !source_type_spelling_context_independent(key) {
+				return false
+			}
+			start = end + 1
+		} else {
+			break
+		}
+	}
+	if text.len - start > 7 {
+		return false
+	}
+	leaf := unsafe { text.substr_unsafe(start, text.len) }
+	// Keep the builtin leaves accepted by types.is_builtin_type_name, excluding
+	// the open container names `map` and `array`, which still require resolution.
+	return match leaf.len {
+		2 { leaf in ['i8', 'u8'] }
+		3 { leaf in ['int', 'i16', 'i32', 'i64', 'u16', 'u32', 'u64', 'f32', 'f64', 'nil'] }
+		4 { leaf in ['bool', 'char', 'i128', 'rune', 'u128', 'uint', 'void', 'none'] }
+		5 { leaf in ['isize', 'usize'] }
+		6 { leaf == 'string' }
+		7 { leaf in ['voidptr', 'charptr', 'byteptr'] }
+		else { false }
+	}
 }
 
 struct SourceTypeTable {
