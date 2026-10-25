@@ -44,12 +44,12 @@ import v.types
 struct LibraryBodies {
 mut:
 	ready         bool
-	keep_all      string           // why every library instance keeps its body, if one does
-	receivers     map[u32]bool     // program types with a method that has type parameters of its own
-	methods       map[u32][]string // a type -> the keys of its methods
-	harmless      map[u32]bool     // types that reach none of the above
-	program_specs map[string]bool  // the keys of the library instances that the program's code asks for
-	request_file  string           // the file of the call that asks for an instance, when the scan knows it
+	keep_all      string                 // why every library instance keeps its body, if one does
+	receivers     map[u32]bool           // program types with a method that has type parameters of its own
+	methods       map[u32][]string       // a type -> the keys of its methods
+	harmless      map[u32]bool           // types that reach none of the above
+	program_specs GenericFnSpecMap[bool] // the keys of the library instances that the program's code asks for
+	request_file  string                 // the file of the call that asks for an instance, when the scan knows it
 }
 
 // note_library_instance_request remembers, in a check of the instances that the
@@ -57,7 +57,7 @@ mut:
 // asked for by the program's own code (see LibraryBodies): the call that asks
 // for it is in `request_file`, or, when the scan does not tell, in the file of
 // the body that is being lowered.
-fn (mut t Transformer) note_library_instance_request(decl GenericFnDecl, key string) {
+fn (mut t Transformer) note_library_instance_request(decl GenericFnDecl, key GenericFnSpecKey) {
 	if isnil(t.tc) || !t.tc.check_concrete_generic_bodies || !t.tc.check_program_lib_instances
 		|| decl.file in t.tc.diagnostic_files {
 		return
@@ -68,7 +68,7 @@ fn (mut t Transformer) note_library_instance_request(decl GenericFnDecl, key str
 		t.cur_file
 	}
 	if request_file in t.tc.diagnostic_files {
-		t.library_bodies.program_specs[key] = true
+		t.library_bodies.program_specs.set(key, true)
 	}
 }
 

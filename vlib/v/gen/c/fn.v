@@ -4083,7 +4083,7 @@ fn (mut g FlatGen) gen_method_value_closure(selector_id flat.NodeId, base_id fla
 		params = g.tc.fn_param_types[method_key] or { return false }
 		ret = g.tc.fn_ret_types[method_key] or { cgen_void_type }
 		cname = g.direct_call_name(method_key)
-	} else if ci := g.tc.generic_method_value_info['${receiver_name}.${method}'] {
+	} else if ci := g.tc.generic_method_value_info[receiver_name_id][method] {
 		// Generic receiver (`Box[int]`): the open `Box[T].get` registration is gone by
 		// cgen, so use the substituted params/return the checker stashed, plus the
 		// monomorphised C name `g.cname('Box[int].get')` == `Box_int__get`.
@@ -11083,7 +11083,7 @@ struct InterfaceReceiverIdMapping {
 
 fn (g &FlatGen) interface_receiver_type_id_mappings(source_iface_id u32, target_iface_id u32) []InterfaceReceiverIdMapping {
 	mut mappings := []InterfaceReceiverIdMapping{}
-	for impl_id in g.iface_impls[flat.source_type_name(source_iface_id)] or { []u32{} } {
+	for impl_id in g.iface_impls[source_iface_id] or { []u32{} } {
 		source_id := g.iface_type_id(source_iface_id, impl_id)
 		target_id := g.iface_type_id(target_iface_id, impl_id)
 		if source_id == 0 || target_id == 0 {
@@ -13688,6 +13688,10 @@ fn (g &FlatGen) codegen_generic_fn_is_variadic(base string) bool {
 }
 
 fn codegen_variadic_elem_param_text(param_type u32) u32 {
+	shape := flat.source_type_shape(param_type)
+	if !shape.has(.padded) && !shape.has(.variadic) && !shape.has(.array_type) {
+		return param_type
+	}
 	return flat.source_type_id(codegen_variadic_elem_param_text_bytes(flat.source_type_name(param_type)))
 }
 

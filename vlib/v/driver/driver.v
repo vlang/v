@@ -7573,21 +7573,82 @@ fn clone_monomorph_cache_specs(specs []transform.MonomorphCacheSpec) []transform
 	return cloned
 }
 
+struct MonomorphCacheSpecOrder {
+	key       string
+	index     int
+	last_seen int
+}
+
+fn compare_monomorph_cache_spec_order(a &MonomorphCacheSpecOrder, b &MonomorphCacheSpecOrder) int {
+	if a.key < b.key {
+		return -1
+	}
+	if a.key > b.key {
+		return 1
+	}
+	if a.last_seen < b.last_seen {
+		return -1
+	}
+	return int(a.last_seen > b.last_seen)
+}
+
+fn monomorph_cache_spec_hash(spec transform.MonomorphCacheSpec) u64 {
+	mut hash := c_hash_tag(u64(1469598103934665603), spec.decl_key.len)
+	hash = c_hash_bytes(hash, spec.decl_key.bytes())
+	hash = c_hash_tag(hash, spec.module.len)
+	hash = c_hash_bytes(hash, spec.module.bytes())
+	hash = c_hash_tag(hash, spec.args.ids.len)
+	for id in spec.args.ids {
+		hash = (hash ^ u64(id)) * u64(1099511628211)
+	}
+	return hash
+}
+
 fn merge_monomorph_cache_specs(cached []transform.MonomorphCacheSpec, generated []transform.MonomorphCacheSpec) []transform.MonomorphCacheSpec {
-	mut by_key := map[string]transform.MonomorphCacheSpec{}
-	for spec in cached {
-		key := '${spec.decl_key}\x00${spec.module}\x00${spec.args_text().join('\x1f')}'
-		by_key[key] = spec
+	mut buckets := map[u64][]int{}
+	mut unique := []transform.MonomorphCacheSpec{cap: cached.len + generated.len}
+	mut last_seen := []int{cap: cached.len + generated.len}
+	mut position := 0
+	for specs in [cached, generated] {
+		for spec in specs {
+			hash := monomorph_cache_spec_hash(spec)
+			mut found := -1
+			for index in buckets[hash] {
+				previous := unique[index]
+				if previous.decl_key == spec.decl_key && previous.module == spec.module
+					&& previous.args.ids == spec.args.ids {
+					found = index
+					break
+				}
+			}
+			if found >= 0 {
+				unique[found] = spec
+				last_seen[found] = position
+			} else {
+				buckets[hash] << unique.len
+				unique << spec
+				last_seen << position
+			}
+			position++
+		}
 	}
-	for spec in generated {
-		key := '${spec.decl_key}\x00${spec.module}\x00${spec.args_text().join('\x1f')}'
-		by_key[key] = spec
+	// Render spellings only for the existing deterministic cache-output order.
+	mut ordered := []MonomorphCacheSpecOrder{cap: unique.len}
+	for index, spec in unique {
+		ordered << MonomorphCacheSpecOrder{
+			key:       '${spec.decl_key}\x00${spec.module}\x00${spec.args_text().join('\x1f')}'
+			index:     index
+			last_seen: last_seen[index]
+		}
 	}
-	mut keys := by_key.keys()
-	keys.sort()
-	mut merged := []transform.MonomorphCacheSpec{cap: keys.len}
-	for key in keys {
-		spec := by_key[key]
+	ordered.sort_with_compare(compare_monomorph_cache_spec_order)
+	mut merged := []transform.MonomorphCacheSpec{cap: ordered.len}
+	for index, item in ordered {
+		// Preserve last-writer behavior even for colliding serialized keys.
+		if index + 1 < ordered.len && item.key == ordered[index + 1].key {
+			continue
+		}
+		spec := unique[item.index]
 		merged << transform.MonomorphCacheSpec{
 			decl_key: spec.decl_key.clone()
 			module:   spec.module.clone()
@@ -8025,8 +8086,7 @@ fn promote_scoped_type_metadata(mut tc types.TypeChecker) {
 	tc.struct_files = clone_string_string_map(tc.struct_files)
 	tc.soa_structs = clone_string_bool_map(tc.soa_structs)
 	tc.declared_type_scope_keys = clone_string_bool_map(tc.declared_type_scope_keys)
-	tc.struct_error_embeds_shadow_builtin =
-		clone_string_bool_map(tc.struct_error_embeds_shadow_builtin)
+	tc.struct_error_embeds_shadow_builtin = tc.struct_error_embeds_shadow_builtin.clone()
 	tc.struct_generic_params = clone_string_list_map(tc.struct_generic_params)
 	tc.struct_implements = tc.struct_implements.clone_owned()
 	tc.struct_shared_fields = clone_type_owner_field_flags(tc.struct_shared_fields)
@@ -9184,7 +9244,10 @@ fn incremental_node_tree_uses_generics(a &flat.FlatAst, tc &types.TypeChecker, r
 				}
 			}
 		}
-		mut type_names := [node.typ_text(), node.value_text()]
+		if incremental_type_is_generic_named_application(node.typ, module_name, tc) {
+			return true
+		}
+		mut type_names := [node.value_text()]
 		mut params := incremental_legacy_node_params(&node)
 		debugger_types := node.debugger_value_type_ids()
 		if node.value_text().len > 0 && debugger_types.len == int(node.children_count) && params.len == 1 + debugger_types.len * 2 {
@@ -9205,7 +9268,7 @@ fn incremental_node_tree_uses_generics(a &flat.FlatAst, tc &types.TypeChecker, r
 			type_names << '${node.value_text()}[${params.join(', ')}]'
 		}
 		for type_name in type_names {
-			if incremental_type_is_generic_named_application(type_name, module_name, tc) {
+			if incremental_type_is_generic_named_application_bytes(type_name, module_name, tc) {
 				return true
 			}
 		}
@@ -9216,7 +9279,16 @@ fn incremental_node_tree_uses_generics(a &flat.FlatAst, tc &types.TypeChecker, r
 	return false
 }
 
-fn incremental_type_is_generic_named_application(type_name string, module_name string, tc &types.TypeChecker) bool {
+fn incremental_type_is_generic_named_application(type_name_id u32, module_name string, tc &types.TypeChecker) bool {
+	if !flat.source_type_shape(type_name_id).has(.bracketed) {
+		return false
+	}
+	return incremental_type_is_generic_named_application_bytes(flat.source_type_name(type_name_id), module_name, tc)
+}
+
+// incremental_type_is_generic_named_application_bytes also probes ordinary node payloads and
+// the legacy source-signature projection, which are not exclusively source type spellings.
+fn incremental_type_is_generic_named_application_bytes(type_name string, module_name string, tc &types.TypeChecker) bool {
 	mut offset := 0
 	for offset < type_name.len {
 		relative_bracket := type_name[offset..].index_u8(`[`)
@@ -9509,7 +9581,11 @@ fn v3_source_is_pure_v(path string) bool {
 		'wasm']
 }
 
-fn v3_type_text_uses_interop_namespace(text string, namespace string) bool {
+fn v3_type_text_uses_interop_namespace(type_id u32, namespace string) bool {
+	if !flat.source_type_shape(type_id).has(.dotted) {
+		return false
+	}
+	text := flat.source_type_name(type_id)
 	needle := namespace + '.'
 	mut offset := 0
 	for offset < text.len {
@@ -9535,7 +9611,7 @@ fn v3_ast_node_uses_interop_namespace(a &flat.FlatAst, node &flat.Node, namespac
 		&& node.value_text().starts_with(namespace + '.') {
 		return true
 	}
-	return v3_type_text_uses_interop_namespace(node.typ_text(), namespace)
+	return v3_type_text_uses_interop_namespace(node.typ, namespace)
 }
 
 fn v3_explicit_interop_fn_namespace(node &flat.Node, file string, mut source_cache map[string]string) string {
@@ -19501,7 +19577,7 @@ fn parse_v3_interface_scopes(signature string) V3InterfaceScopes {
 			if impl !in scopes.outside {
 				// The fields of a generic implementer have the types of its arguments,
 				// which no module name stands for.
-				scopes.outside[impl] = if flat.source_type_name(impl).contains('[') {
+				scopes.outside[impl] = if flat.source_type_shape(impl).has(.bracketed) {
 					''
 				} else {
 					scopes.declaring_module(impl)

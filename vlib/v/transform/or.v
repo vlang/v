@@ -363,11 +363,17 @@ fn (t &Transformer) channel_receive_selector_source_type(channel_id flat.NodeId)
 	if node.kind != .selector {
 		return none
 	}
-	for candidate in [flat.source_type_name(t.resolve_selector_type(node)),
-		flat.source_type_name(t.selector_field_type(node))] {
-		clean := trimmed_transform_text(flat.source_type_name(t.normalize_type_alias(flat.source_type_id(candidate))))
-		if clean.starts_with('chan ') || clean.starts_with('&chan ') {
-			return flat.source_type_id(clean.trim_left('&').trim_space())
+	for candidate in [t.resolve_selector_type(node), t.selector_field_type(node)] {
+		clean := t.trimmed_type_id(t.normalize_type_alias(candidate))
+		shape := flat.source_type_shape(clean)
+		if shape.has(.channel_type) {
+			return clean
+		}
+		if shape.has(.pointer) {
+			base := t.trim_pointer_type(clean)
+			if flat.source_type_shape(base).has(.channel_type) {
+				return base
+			}
 		}
 	}
 	return none

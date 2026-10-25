@@ -2532,7 +2532,7 @@ fn (g &Parser) validate_parallel_assignment_targets(names []string) ![]FastcRend
 					fastc_c_identifier(name)
 				}
 				typ:    (if local.is_reference {
-					flat.source_type_id(local.typ_text().trim_right('*'))
+					fastc_trim_pointer_type(local.typ)
 				} else {
 					local.typ
 				})

@@ -256,10 +256,10 @@ fn (g &FlatGen) interface_dispatch_method_is_required(concrete_key string) bool 
 
 fn (mut g FlatGen) precompute_required_interface_dispatch_methods() {
 	g.interface_dispatch_required.clear()
-	for iface_name, impls in g.iface_impls {
-		methods := g.interfaces[iface_name] or { g.tc.interface_abstract_method_names(flat.source_type_id(iface_name)) }
+	for iface_name_id, impls in g.iface_impls {
+		methods := g.interfaces[flat.source_type_name(iface_name_id)] or { g.tc.interface_abstract_method_names(iface_name_id) }
 		for method in methods {
-			if !g.should_emit_interface_dispatch(flat.source_type_id(iface_name), method) {
+			if !g.should_emit_interface_dispatch(iface_name_id, method) {
 				continue
 			}
 			for concrete_id in impls {
@@ -497,7 +497,7 @@ fn (mut g FlatGen) collect_interface_impls() {
 		// Keep checker-assigned IDs stable while omitting unused C dispatch layouts.
 		impls = impls.filter(!flat.source_type_name(it).starts_with('C.')
 			|| g.referenced_c_struct_ids[it])
-		g.iface_impls[iface] = impls
+		g.iface_impls[iface_id] = impls
 		for concrete_id in impls {
 			g.iface_type_ids[interface_dispatch_boxed_type_key(iface_id, concrete_id)] = type_ids[concrete_id]
 		}
@@ -805,7 +805,7 @@ fn (g &FlatGen) iface_type_id_for_pattern(iface_id u32, pattern_id u32) int {
 		return 0
 	}
 	mut found := 0
-	for concrete_id in g.iface_impls[flat.source_type_name(iface_id)] or { []u32{} } {
+	for concrete_id in g.iface_impls[iface_id] or { []u32{} } {
 		concrete := flat.source_type_name(concrete_id)
 		if concrete.all_after_last('.') != pattern_key {
 			continue
@@ -1240,7 +1240,7 @@ fn (g &FlatGen) iface_type_id_for_concrete(iface_id u32, concrete types.Type) in
 	}
 	mut alias_id := 0
 	mut matches := 0
-	for impl_id in g.iface_impls[flat.source_type_name(iface_id)] or { []u32{} } {
+	for impl_id in g.iface_impls[iface_id] or { []u32{} } {
 		impl := flat.source_type_name(impl_id)
 		target_id := g.tc.type_aliases.type_id(impl) or { continue }
 		if target_id == concrete_name_id
@@ -1587,7 +1587,7 @@ fn (mut g FlatGen) interface_method_forward_decls() {
 			}
 			mname := '${iface_name}.${method}'
 			decl_key := g.interface_method_signature_key(flat.source_type_id(iface_name), method) or { mname }
-			impls := g.iface_impls[iface_name] or { []u32{} }
+			impls := g.iface_impls[flat.source_type_id(iface_name)] or { []u32{} }
 			mut sig_key := ''
 			for concrete_id in impls {
 				concrete := flat.source_type_name(concrete_id)
@@ -1624,9 +1624,8 @@ fn (g &FlatGen) interface_dispatch_linkage() string {
 }
 
 fn (mut g FlatGen) ierror_dispatch_target_forward_decls(iface_name_id u32, method string, ret_ct string) {
-	iface_name := flat.source_type_name(iface_name_id)
 	mut forwarded := map[string]bool{}
-	for concrete_id in g.iface_impls[iface_name] or { []u32{} } {
+	for concrete_id in g.iface_impls[iface_name_id] or { []u32{} } {
 		call := g.ierror_method_call(concrete_id, method) or { continue }
 		target_c_name := g.cname(call.method_name)
 		if forwarded[target_c_name] {
@@ -1725,7 +1724,7 @@ fn (mut g FlatGen) interface_dispatch_signature(iface_name_id u32, cn string, me
 	}
 	mname := '${iface_name}.${method}'
 	decl_key := g.interface_method_signature_key(iface_name_id, method) or { mname }
-	impls := g.iface_impls[iface_name] or { []u32{} }
+	impls := g.iface_impls[iface_name_id] or { []u32{} }
 	mut sig_key := ''
 	for concrete_id in impls {
 		concrete := flat.source_type_name(concrete_id)
@@ -1797,7 +1796,7 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name_id u32, cn st
 	}
 	mname := '${iface_name}.${method}'
 	decl_key := g.interface_method_signature_key(iface_name_id, method) or { mname }
-	impls := g.iface_impls[iface_name] or { []u32{} }
+	impls := g.iface_impls[iface_name_id] or { []u32{} }
 	if cn == 'IError' {
 		ret_ct := if method == 'code' { g.int_ct } else { 'string' }
 		g.writeln('${ret_ct} ${cn}__${method}(${cn}* i) {')
@@ -2865,9 +2864,8 @@ fn (mut g FlatGen) interface_dynamic_str_expr(iface types.Interface, expr string
 	defer {
 		stack.delete_last()
 	}
-	impls := g.iface_impls[iface_name] or {
-		qualified := flat.source_type_name(qualified_iface_id)
-		g.iface_impls[qualified] or { return none }
+	impls := g.iface_impls[iface_name_id] or {
+		g.iface_impls[qualified_iface_id] or { return none }
 	}
 	ct := g.tc.c_type(types.Type(iface))
 	tmp := g.interface_tmp('iface_str_dynamic')

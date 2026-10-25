@@ -3573,7 +3573,7 @@ fn (tc &TypeChecker) current_fn_has_invalid_literal_return_type() bool {
 fn (tc &TypeChecker) current_fn_has_invalid_option_void_return_type() bool {
 	node_id := tc.fn_context.node_id
 	return node_id >= 0 && node_id < tc.a.nodes.len
-		&& tc.a.nodes[node_id].typ_text().trim_space() == '?void'
+		&& trimmed_source_type_id(tc.a.nodes[node_id].typ) == checker_option_void_source_type
 }
 
 fn (tc &TypeChecker) expr_calls_invalid_option_void_fn(id flat.NodeId) bool {
@@ -11061,12 +11061,12 @@ fn (mut tc TypeChecker) specialize_explicit_generic_receiver_call(info CallInfo,
 	param_texts := tc.fn_param_type_texts.type_ids(info.name) or { []u32{} }
 	mut params := []Type{cap: info.params.len}
 	for i in 0 .. info.params.len {
-		param_text := if param_texts.len == info.params.len {
-			flat.source_type_name(param_texts[i])
+		param_source_id := if param_texts.len == info.params.len {
+			param_texts[i]
 		} else {
-			''
+			u32(0)
 		}
-		params << tc.substitute_generic_param_type(info.params[i], param_text, concrete_types,
+		params << tc.substitute_generic_param_type(info.params[i], param_source_id, concrete_types,
 			generic_params)
 	}
 	return CallInfo{
@@ -11077,13 +11077,14 @@ fn (mut tc TypeChecker) specialize_explicit_generic_receiver_call(info CallInfo,
 }
 
 // substitute_generic_param_type substitutes `generic_params` with `concrete_types` in the
-// open parameter type `open` of a generic fn, declared with the type text `param_text`.
+// open parameter type `open` of a generic fn, declared with source spelling `param_source_id`.
 // A `mut a ?T` parameter (text `&?T`) is stored as its semantic type `&?&T` (see
 // mut_param_semantic_type), which substitutes T=&X to `&?&&X`. Such a parameter is
 // re-derived from its declared `&?T` instead, so that T=&X gives `&?&X`, the type of a
 // `mut a ?&X` parameter, as the instance itself declares it.
-fn (tc &TypeChecker) substitute_generic_param_type(open Type, param_text string, concrete_types []Type, generic_params []string) Type {
-	if open is Pointer && param_text.starts_with('&?') && !param_text.starts_with('&?&') {
+fn (tc &TypeChecker) substitute_generic_param_type(open Type, param_source_id u32, concrete_types []Type, generic_params []string) Type {
+	if open is Pointer && flat.source_type_shape(param_source_id).has(.pointer_option)
+		&& !flat.source_type_name(param_source_id).starts_with('&?&') {
 		base := *open.base_type
 		if base is OptionType && base.base_type is Pointer {
 			payload_ref := base.base_type as Pointer
@@ -19232,7 +19233,7 @@ fn (mut tc TypeChecker) specialize_plain_generic_call_info(node flat.Node, info 
 			// open parsed type, so retain the textual reconstruction for them.
 			sub_params << tc.parse_fn_signature_type(info.name, subst_generic_signature_param_type(param_type_id, signature_args, signature_params))
 		} else if i < info.params.len {
-			sub_params << tc.substitute_generic_param_type(info.params[i], param_text, concrete_types, generic_params)
+			sub_params << tc.substitute_generic_param_type(info.params[i], param_type_id, concrete_types, generic_params)
 		} else {
 			sub_params << tc.parse_fn_signature_type(info.name, subst_generic_signature_param_type(param_type_id, concrete_args, generic_params))
 		}

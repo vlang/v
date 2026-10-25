@@ -288,15 +288,15 @@ fn test_serial_scoped_monomorphization_preserves_lifted_callback_signatures() {
 	for arg in ['int', 'string'] {
 		t.request_generic_fn_specialization(decl, flat.TypeTextList.from_names([arg]).ids)
 	}
-	mut emitted := map[string]bool{}
+	mut emitted := GenericFnSpecMap[bool]{}
 	mut generated := []string{}
 	assert t.drain_pending_generic_fn_specs(map[string]GenericStructDecl{}, map[string]GenericSumDecl{}, mut emitted, mut generated)
 	assert isnil(a.worker_pool)
 	assert t.pending_generic_fn_specs.len == 0
 	for arg in ['int', 'string'] {
 		spec_key := generic_fn_spec_key(decl.key, flat.TypeTextList.from_names([arg]).ids)
-		assert emitted[spec_key]
-		root := t.generic_fn_spec_nodes[spec_key] or { panic('missing ${spec_key}') }
+		assert emitted.contains(spec_key)
+		root := t.generic_fn_spec_nodes.get(spec_key) or { panic('missing ${spec_key.legacy_text()}') }
 		name := transform_qualified_fn_name(decl.module, a.node(root).value)
 		return_type := tc.fn_ret_types[name] or { panic('missing signature ${name}') }
 		assert return_type is types.FnType

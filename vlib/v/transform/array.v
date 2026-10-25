@@ -3974,11 +3974,9 @@ fn (t &Transformer) array_append_literal_children_match_elem(rhs_id flat.NodeId,
 
 // array_append_elem_types_match supports array append elem types match handling for Transformer.
 fn (t &Transformer) array_append_elem_types_match(rhs_elem_type_id u32, lhs_elem_type_id u32) bool {
-	rhs_elem_type := flat.source_type_name(rhs_elem_type_id)
-	lhs_elem_type := flat.source_type_name(lhs_elem_type_id)
-	rhs_raw := trimmed_transform_text(rhs_elem_type)
-	lhs_raw := trimmed_transform_text(lhs_elem_type)
-	if rhs_raw == lhs_raw {
+	rhs_raw_id := transform_trimmed_type_id(rhs_elem_type_id)
+	lhs_raw_id := transform_trimmed_type_id(lhs_elem_type_id)
+	if rhs_raw_id == lhs_raw_id {
 		return true
 	}
 	rhs_clean_source_id := t.normalize_type_alias(rhs_elem_type_id)
@@ -4157,7 +4155,7 @@ fn (mut t Transformer) array_get_base_is_shared_value_selector(base flat.NodeId,
 	// During rlock lowering a shared array value field can be represented as `&[]T`.
 	// Passing that field to `array_get` should use the selector storage directly; a
 	// dereference would emit `*array->val`, which is not a valid C Array lvalue.
-	return trimmed_transform_text(flat.source_type_name(t.node_type(base))).starts_with('&[]')
+	return flat.source_type_shape(t.trimmed_type_id(t.node_type(base))).has(.pointer_array)
 }
 
 fn (t &Transformer) array_get_base_is_shared_array_ident(base_type_id u32, node flat.Node) bool {
@@ -4165,8 +4163,8 @@ fn (t &Transformer) array_get_base_is_shared_array_ident(base_type_id u32, node 
 	if !base_type_shape_3.has(.pointer_array) || node.kind != .ident || node.value.len == 0 {
 		return false
 	}
-	raw_type := trimmed_transform_text(flat.source_type_name(t.raw_var_type(node.value)))
-	return raw_type.starts_with('shared ')
+	raw_type := t.trimmed_type_id(t.raw_var_type(node.value))
+	return flat.source_type_shape(raw_type).has(.shared_type)
 }
 
 // materialize_array_callback evaluates a direct filter/map callback once.
@@ -7809,9 +7807,8 @@ fn (mut t Transformer) lower_array_any_all_call(node flat.Node, fn_node flat.Nod
 // lower_array_sort_call builds lower array sort call data for transform.
 fn (mut t Transformer) lower_array_sort_call(node flat.Node, fn_node flat.Node, base_type_id u32) ?flat.NodeId {
 	clean_base_type_id := transform_unshared_receiver_type(base_type_id)
-	clean_base_type := flat.source_type_name(clean_base_type_id)
-	if !clean_base_type.starts_with('[]') && !(clean_base_type.starts_with('&')
-		&& clean_base_type[1..].starts_with('[]')) {
+	clean_shape := flat.source_type_shape(clean_base_type_id)
+	if !clean_shape.has(.array_type) && !clean_shape.has(.pointer_array) {
 		return none
 	}
 	if node.children_count > 2 {
@@ -7819,38 +7816,39 @@ fn (mut t Transformer) lower_array_sort_call(node flat.Node, fn_node flat.Node, 
 	}
 	base_id := t.a.child(&fn_node, 0)
 	base := t.transform_lvalue(base_id)
-	clean_type := (if clean_base_type.starts_with('&') {
-		flat.source_type_id(clean_base_type[1..])
-	} else {
-		clean_base_type_id
-	})
+	clean_type := t.trim_pointer_type(clean_base_type_id)
 	t.set_node_typ(int(base), clean_type)
-	elem_type := flat.source_type_name(clean_type)[2..]
+	elem_type := flat.source_type_id(flat.source_type_name(clean_type)[2..])
 	cmp_id := if node.children_count > 1 { t.a.child(&node, 1) } else { flat.empty_node }
-	t.pending_stmts << t.make_array_default_sort_stmt(base, flat.source_type_id(elem_type), t.array_receiver_raw_elem_type(fn_node,
-		flat.source_type_id(elem_type)), node, cmp_id)
+	t.pending_stmts << t.make_array_default_sort_stmt(base, elem_type, t.array_receiver_raw_elem_type(fn_node,
+		elem_type), node, cmp_id)
 	return t.make_empty()
 }
 
 fn transform_unshared_receiver_type(typ_id u32) u32 {
-	typ := flat.source_type_name(typ_id)
-	mut prefix := ''
-	mut clean := trimmed_transform_text(typ)
-	if clean.starts_with('&') {
-		prefix = '&'
-		clean = trimmed_transform_text(clean[1..])
+	mut clean := transform_trimmed_type_id(typ_id)
+	pointer := flat.source_type_shape(clean).has(.pointer)
+	if pointer {
+		raw_base := flat.source_type_name(clean)[1..]
+		base := trimmed_transform_text(raw_base)
+		if base.len == raw_base.len && !base.starts_with('shared ') {
+			return clean
+		}
+		clean = flat.source_type_id(base)
 	}
-	for clean.starts_with('shared ') {
-		clean = trimmed_transform_text(clean[7..])
+	for flat.source_type_shape(clean).has(.shared_type) {
+		clean = transform_trimmed_type_id(flat.source_type_id(flat.source_type_name(clean)[7..]))
 	}
-	return flat.source_type_id(prefix + clean)
+	if pointer {
+		return flat.source_type_id('&${flat.source_type_name(clean)}')
+	}
+	return clean
 }
 
 // lower_array_sorted_call builds lower array sorted call data for transform.
 fn (mut t Transformer) lower_array_sorted_call(node flat.Node, fn_node flat.Node, base_type_id u32) ?flat.NodeId {
 	clean_base_type_id := transform_unshared_receiver_type(base_type_id)
-	clean_base_type := flat.source_type_name(clean_base_type_id)
-	if node.children_count > 2 || !clean_base_type.starts_with('[]') {
+	if node.children_count > 2 || !flat.source_type_shape(clean_base_type_id).has(.array_type) {
 		return none
 	}
 	base_id := t.a.child(&fn_node, 0)
@@ -7859,49 +7857,44 @@ fn (mut t Transformer) lower_array_sorted_call(node flat.Node, fn_node flat.Node
 	t.set_var_type(clone_name, clean_base_type_id)
 	t.pending_stmts << t.make_decl_assign_typed(clone_name, clone_call, clean_base_type_id)
 	cmp_id := if node.children_count > 1 { t.a.child(&node, 1) } else { flat.empty_node }
-	t.pending_stmts << t.make_array_default_sort_stmt(t.make_ident(clone_name), flat.source_type_id(clean_base_type[2..]),
-		t.array_receiver_raw_elem_type(fn_node, flat.source_type_id(clean_base_type[2..])), node, cmp_id)
+	elem_type := flat.source_type_id(flat.source_type_name(clean_base_type_id)[2..])
+	t.pending_stmts << t.make_array_default_sort_stmt(t.make_ident(clone_name), elem_type,
+		t.array_receiver_raw_elem_type(fn_node, elem_type), node, cmp_id)
 	return t.make_ident(clone_name)
 }
 
 // lower_array_sort_with_compare_call builds lower array sort with compare call data for transform.
 fn (mut t Transformer) lower_array_sort_with_compare_call(node flat.Node, fn_node flat.Node, base_type_id u32) ?flat.NodeId {
 	clean_base_type_id := transform_unshared_receiver_type(base_type_id)
-	clean_base_type := flat.source_type_name(clean_base_type_id)
+	clean_shape := flat.source_type_shape(clean_base_type_id)
 	if node.children_count != 2
-		|| (!clean_base_type.starts_with('[]') && !(clean_base_type.starts_with('&')
-			&& clean_base_type[1..].starts_with('[]'))) {
+		|| (!clean_shape.has(.array_type) && !clean_shape.has(.pointer_array)) {
 		return none
 	}
 	base_id := t.a.child(&fn_node, 0)
 	base := t.transform_lvalue(base_id)
-	clean_type := (if clean_base_type.starts_with('&') {
-		flat.source_type_id(clean_base_type[1..])
-	} else {
-		clean_base_type_id
-	})
+	clean_type := t.trim_pointer_type(clean_base_type_id)
 	t.set_node_typ(int(base), clean_type)
-	elem_type := flat.source_type_name(clean_type)[2..]
-	cmp := t.stable_array_compare_fn(t.a.child(&node, 1), flat.source_type_id(elem_type))
-	t.pending_stmts << t.make_array_compare_sort_stmt(base, flat.source_type_id(elem_type), node, cmp)
+	elem_type := flat.source_type_id(flat.source_type_name(clean_type)[2..])
+	cmp := t.stable_array_compare_fn(t.a.child(&node, 1), elem_type)
+	t.pending_stmts << t.make_array_compare_sort_stmt(base, elem_type, node, cmp)
 	return t.make_empty()
 }
 
 // lower_array_sorted_with_compare_call supports lower_array_sorted_with_compare_call handling.
 fn (mut t Transformer) lower_array_sorted_with_compare_call(node flat.Node, fn_node flat.Node, base_type_id u32) ?flat.NodeId {
 	clean_base_type_id := transform_unshared_receiver_type(base_type_id)
-	clean_base_type := flat.source_type_name(clean_base_type_id)
-	if node.children_count != 2 || !clean_base_type.starts_with('[]') {
+	if node.children_count != 2 || !flat.source_type_shape(clean_base_type_id).has(.array_type) {
 		return none
 	}
 	base_id := t.a.child(&fn_node, 0)
 	clone_name := t.new_temp('sorted')
 	clone_call := t.make_array_clone_call(base_id, clean_base_type_id)
-	elem_type := clean_base_type[2..]
-	cmp := t.stable_array_compare_fn(t.a.child(&node, 1), flat.source_type_id(elem_type))
+	elem_type := flat.source_type_id(flat.source_type_name(clean_base_type_id)[2..])
+	cmp := t.stable_array_compare_fn(t.a.child(&node, 1), elem_type)
 	t.set_var_type(clone_name, clean_base_type_id)
 	t.pending_stmts << t.make_decl_assign_typed(clone_name, clone_call, clean_base_type_id)
-	t.pending_stmts << t.make_array_compare_sort_stmt(t.make_ident(clone_name), flat.source_type_id(elem_type), node, cmp)
+	t.pending_stmts << t.make_array_compare_sort_stmt(t.make_ident(clone_name), elem_type, node, cmp)
 	return t.make_ident(clone_name)
 }
 

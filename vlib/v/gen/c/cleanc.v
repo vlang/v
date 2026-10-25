@@ -786,9 +786,9 @@ mut:
 	global_init_order              []string               // qualified global names, in declaration order
 	in_global_array_pointer_init   bool
 	enum_backing_infos             map[u32]EnumBackingInfo
-	iface_impls                    map[string][]u32 // interface declaration name -> concrete source spelling IDs
-	interface_dispatch_required    map[string]bool  // source/lowered concrete method names required by emitted interface dispatch
-	iface_type_ids                 map[u64]int      // paired source spelling IDs -> 1-based dispatch ID
+	iface_impls                    map[u32][]u32   // interface source spelling ID -> concrete source spelling IDs
+	interface_dispatch_required    map[string]bool // source/lowered concrete method names required by emitted interface dispatch
+	iface_type_ids                 map[u64]int     // paired source spelling IDs -> 1-based dispatch ID
 	interface_boxed_types          map[u64]bool
 	interface_boxed_types_done     bool
 	ierror_method_emit_names       map[string]bool       // names/lowered names of concrete IError msg/code methods
@@ -1725,7 +1725,7 @@ pub fn FlatGen.new() FlatGen {
 		global_inits:                       map[string]flat.NodeId{}
 		global_init_order:                  []string{}
 		enum_backing_infos:                 map[u32]EnumBackingInfo{}
-		iface_impls:                        map[string][]u32{}
+		iface_impls:                        map[u32][]u32{}
 		interface_dispatch_required:        map[string]bool{}
 		iface_type_ids:                     map[u64]int{}
 		interface_boxed_types:              map[u64]bool{}
@@ -3989,7 +3989,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 				iface_worker = g.new_parallel_worker(4)
 				iface_worker.interface_boxed_types = map[u64]bool{}
 				iface_worker.interface_boxed_types_done = false
-				iface_worker.iface_impls = map[string][]u32{}
+				iface_worker.iface_impls = map[u32][]u32{}
 				iface_worker.iface_type_ids = map[u64]int{}
 				iface_worker.ierror_method_emit_names = map[string]bool{}
 				iface_threads << spawn interface_impl_scan_thread(voidptr(iface_worker))
@@ -25677,10 +25677,17 @@ fn (g &FlatGen) const_call_receiver_type_name(base_id flat.NodeId) u32 {
 	}
 	base := g.a.nodes[int(base_id)]
 	if base.typ != 0 && base.typ !in [flat.source_type_void, flat.source_type_unknown] {
+		if !flat.source_type_shape(base.typ).has(.pointer) {
+			return base.typ
+		}
 		return flat.source_type_id(base.typ_text().trim_left('&'))
 	}
 	if base.kind == .struct_init {
-		return flat.source_type_id(base.value_text().trim_left('&'))
+		value_type := base.source_value_id()
+		if !flat.source_type_shape(value_type).has(.pointer) {
+			return value_type
+		}
+		return flat.source_type_id(flat.source_type_name(value_type).trim_left('&'))
 	}
 	return 0
 }

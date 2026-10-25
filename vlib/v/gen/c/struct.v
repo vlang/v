@@ -822,13 +822,13 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 	} else {
 		raw_init_value
 	}
-	if flat.source_type_name(init_value).starts_with('chan ') {
+	if flat.source_type_shape(init_value).has(.channel_type) {
 		g.gen_channel_init(node)
 		return
 	}
 	// A generic `T{}` can specialize to `&Struct`. The literal must then escape
 	// on the heap; `(Struct*){...}` is neither valid C nor durable storage.
-	if flat.source_type_name(init_value).starts_with('&') {
+	if flat.source_type_shape(init_value).has(.pointer) {
 		pointer_type := g.tc.parse_type(init_value)
 		if pointer_type is types.Pointer && node.children_count == 0 {
 			base_type := unalias_type(pointer_type.base_type)
@@ -878,7 +878,7 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 	} else {
 		g.struct_init_c_type_name(init_value)
 	}
-	if flat.source_type_name(init_value).contains('[') {
+	if flat.source_type_shape(init_value).has(.bracketed) {
 		if qualified_name := g.unique_qualified_struct_c_type(name) {
 			name = qualified_name
 		}
@@ -886,7 +886,7 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 	// A bare generic struct literal (`Vec4{..}`) carries no type args; when the
 	// surrounding expected type fixes them (e.g. a `Vec4[f32]` return), emit the
 	// concrete instance name so it matches the materialized struct.
-	if !flat.source_type_name(init_value).contains('.') {
+	if !flat.source_type_shape(init_value).has(.dotted) {
 		if inst := g.generic_struct_init_instance_ct_for_node(node) {
 			name = inst
 		}
@@ -972,7 +972,7 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 	}
 	is_union_init := flat.source_type_name(init_value) in g.tc.unions || flat.source_type_name(lookup_source_name) in g.tc.unions
 		|| flat.source_type_name(lookup_name) in g.tc.unions
-	if flat.source_type_name(init_value).contains('[') {
+	if flat.source_type_shape(init_value).has(.bracketed) {
 		if qualified_name := g.unique_qualified_struct_c_type(name) {
 			name = qualified_name
 		}
@@ -5678,14 +5678,14 @@ fn (g &FlatGen) struct_decl_alignment_c_type(type_name_id u32, fallback string) 
 	}
 	// Main-module declarations are bare-keyed in the semantic tables, while C
 	// emits their typedefs with the `main__` namespace.
-	if !flat.source_type_name(resolved_name).contains('.') && flat.source_type_name(resolved_name) in g.tc.structs {
+	if !flat.source_type_shape(resolved_name).has(.dotted) && flat.source_type_name(resolved_name) in g.tc.structs {
 		decl_module := g.tc.struct_modules[flat.source_type_name(resolved_name)] or { '' }
 		if decl_module in ['', 'main'] {
 			return 'main__${g.cname(flat.source_type_name(resolved_name))}'
 		}
 	}
 	if info := g.find_struct_decl(resolved_name) {
-		if !flat.source_type_name(resolved_name).contains('.') && info.module in ['', 'main'] {
+		if !flat.source_type_shape(resolved_name).has(.dotted) && info.module in ['', 'main'] {
 			return 'main__${g.cname(flat.source_type_name(resolved_name))}'
 		}
 	}

@@ -4701,14 +4701,11 @@ fn (c &CallCollector) node_uses_generics(node &flat.Node, cur_module string, imp
 }
 
 fn (c &CallCollector) type_text_uses_generics(typ_id u32, cur_module string, imports map[string]string) bool {
-	typ := flat.source_type_name(typ_id)
-	if typ.len == 0 {
-		return false
-	}
-	return c.type_text_uses_generics_depth(typ.trim_space(), cur_module, imports, 0)
+	return c.type_text_uses_generics_depth(markused_trimmed_source_type(typ_id), cur_module, imports, 0)
 }
 
-fn (c &CallCollector) type_text_uses_generics_depth(typ string, cur_module string, imports map[string]string, depth int) bool {
+fn (c &CallCollector) type_text_uses_generics_depth(typ_id u32, cur_module string, imports map[string]string, depth int) bool {
+	typ := flat.source_type_name(typ_id)
 	// A valid alias chain cannot visit more declarations than these tables contain.
 	if typ.len == 0 || depth > c.tc.type_aliases.ids.len + c.selective_alias_targets.len {
 		return false
@@ -4735,13 +4732,12 @@ fn (c &CallCollector) type_text_uses_generics_depth(typ string, cur_module strin
 	if !may_name_alias {
 		return false
 	}
-	clean := typ.trim_left('&?!').trim_space()
-	if target_source_id := c.generic_alias_target(flat.source_type_id(clean), cur_module, imports) {
-		target := flat.source_type_name(target_source_id)
-
-		return c.type_text_uses_generics_depth(target.trim_space(), cur_module, imports, depth + 1)
+	clean_id := markused_trimmed_source_type(markused_unwrapped_source_type(typ_id))
+	clean := flat.source_type_name(clean_id)
+	if target_source_id := c.generic_alias_target(clean_id, cur_module, imports) {
+		return c.type_text_uses_generics_depth(markused_trimmed_source_type(target_source_id), cur_module, imports, depth + 1)
 	}
-	if c.selective_alias_uses_generics(flat.source_type_id(clean), cur_module, imports, depth + 1) {
+	if c.selective_alias_uses_generics(clean_id, cur_module, imports, depth + 1) {
 		return true
 	}
 	// Wrapped aliases are not whole type strings, so inspect each named component.
@@ -4762,15 +4758,12 @@ fn (c &CallCollector) type_text_uses_generics_depth(typ string, cur_module strin
 			end++
 		}
 		if candidate_may_name_alias {
-			candidate := clean[start..end]
-			if target_source_id := c.generic_alias_target(flat.source_type_id(candidate), cur_module, imports) {
-				target := flat.source_type_name(target_source_id)
-
-				alias_target := target.trim_space()
-				if c.type_text_uses_generics_depth(alias_target, cur_module, imports, depth + 1) {
+			candidate_id := flat.source_type_id(clean[start..end])
+			if target_source_id := c.generic_alias_target(candidate_id, cur_module, imports) {
+				if c.type_text_uses_generics_depth(markused_trimmed_source_type(target_source_id), cur_module, imports, depth + 1) {
 					return true
 				}
-			} else if c.selective_alias_uses_generics(flat.source_type_id(candidate), cur_module, imports, depth + 1) {
+			} else if c.selective_alias_uses_generics(candidate_id, cur_module, imports, depth + 1) {
 				return true
 			}
 		}
@@ -4787,7 +4780,7 @@ fn (c &CallCollector) struct_fields_use_generics(name_id u32, cur_module string,
 	field_module := if info.module.len > 0 { info.module } else { cur_module }
 	field_imports := c.imports(info.import_context)
 	for field in fields {
-		if c.type_text_uses_generics_depth(field.typ.name(), field_module, field_imports, depth) {
+		if c.type_text_uses_generics_depth(field.typ.source_type_id(), field_module, field_imports, depth) {
 			return true
 		}
 	}
@@ -4996,7 +4989,7 @@ fn (c &CallCollector) selective_alias_uses_generics(name_id u32, cur_module stri
 	}
 	targets := c.selective_alias_targets[name] or { return false }
 	for target in targets {
-		if c.type_text_uses_generics_depth(flat.source_type_name(target).trim_space(), cur_module, imports, depth) {
+		if c.type_text_uses_generics_depth(markused_trimmed_source_type(target), cur_module, imports, depth) {
 			return true
 		}
 	}
@@ -5391,7 +5384,11 @@ fn receiver_info(a &flat.FlatAst, node &flat.Node) (string, u32) {
 			clean_type := pc.typ_text().trim_left('&')
 			if pc.value.len > 0 && clean_type.len > 0 && clean_type[0] >= `A`
 				&& clean_type[0] <= `Z` {
-				return pc.value, flat.source_type_id(clean_type)
+				return pc.value, if flat.source_type_shape(pc.typ).has(.pointer) {
+					flat.source_type_id(clean_type)
+				} else {
+					pc.typ
+				}
 			}
 		}
 	}
@@ -7788,7 +7785,7 @@ fn (c &CallCollector) generic_factory_short_struct_field_type_text(fn_name strin
 	}
 	resolved_base := markused_resolve_imported_source_type(flat.source_type_id(base), decl_imports)
 	mut candidates := []u32{}
-	if !flat.source_type_name(resolved_base).contains('.') && decl_module !in ['', 'main', 'builtin'] {
+	if !flat.source_type_shape(resolved_base).has(.dotted) && decl_module !in ['', 'main', 'builtin'] {
 		candidates << flat.source_type_id('${decl_module}.${flat.source_type_name(resolved_base)}')
 	}
 	candidates << resolved_base
@@ -9672,7 +9669,13 @@ fn (c &CallCollector) collect_generic_method_value_selector(node &flat.Node, cur
 	// reachable set so it emits the wrapper's target specialization.
 	mut has_generic_method_value := false
 	for name in c.fn_value_selector_names(node, cur_module, imports) {
-		if info := c.tc.generic_method_value_info[name] {
+		if !name.contains('.') {
+			continue
+		}
+		// Selector candidates are declaration symbols; split the receiver at this lookup boundary.
+		owner_id := flat.source_type_id(name.all_before_last('.'))
+		method := name.all_after_last('.')
+		if info := c.tc.generic_method_value_info[owner_id][method] {
 			calls << name
 			calls << info.name
 			has_generic_method_value = true
@@ -9702,8 +9705,8 @@ fn (c &CallCollector) fn_value_selector_names(node &flat.Node, cur_module string
 		}
 	}
 	for type_name in type_names {
-		concrete_method := '${flat.source_type_name(type_name)}.${node.value}'
-		if info := c.tc.generic_method_value_info[concrete_method] {
+		if info := c.tc.generic_method_value_info[type_name][node.value] {
+			concrete_method := '${flat.source_type_name(type_name)}.${node.value}'
 			markused_push_fn_value_selector_name(mut names, concrete_method)
 			markused_push_fn_value_selector_name(mut names, info.name)
 		}

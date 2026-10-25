@@ -5801,7 +5801,7 @@ fn (g &Parser) render_special_expression_impl(tokens []FastcExpressionToken, ren
 				if local.is_reference {
 					return FastcRenderedExpression{
 						source: '*(${rendered_expression})'
-						typ:    flat.source_type_id(local.typ_text().trim_right('*'))
+						typ:    fastc_trim_pointer_type(local.typ)
 					}
 				}
 			}

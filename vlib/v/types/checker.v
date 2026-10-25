@@ -1044,16 +1044,16 @@ pub mut:
 	// O(nodes) per call and dominated check/transform/cgen (called via qualify_name).
 	declared_type_scope_keys           map[string]bool
 	concrete_type_scope_keys           map[string]bool
-	struct_error_embeds_shadow_builtin map[string]bool
+	struct_error_embeds_shadow_builtin map[u32]bool
 	struct_generic_params              map[string][]string // generic struct base name -> type-param names (e.g. Vec4 -> [T])
 	struct_implements                  flat.TypeTextListBindings
 	struct_shared_fields               map[u32]map[string]bool
 	struct_shared_element_fields       map[u32]map[string]bool
 	struct_field_c_abi_fns             map[u32]map[string]string
-	// concrete `Box[int].method` -> substituted CallInfo for a method *value* on a
+	// Concrete receiver spelling ID and method name -> substituted CallInfo for a method *value* on a
 	// generic receiver. The open `Box[T].method` registration is gone by cgen time, so
 	// the checker stashes the resolved signature here for gen_method_value_closure.
-	generic_method_value_info             map[string]CallInfo
+	generic_method_value_info             map[u32]map[string]CallInfo
 	params_structs                        map[string]bool
 	c_typedef_structs                     map[string]bool
 	unions                                map[string]bool
@@ -1075,9 +1075,9 @@ pub mut:
 	interface_impl_name_snapshots         map[u32]flat.TypeTextList
 	interface_impl_candidates_at_snapshot map[u32]bool
 	interface_impl_candidates_at_index    map[u32]bool
-	interface_method_names_index          map[string][]string
-	interface_abstract_index              map[string][]string
-	interface_field_list_index            map[string][]StructField
+	interface_method_names_index          map[u32][]string
+	interface_abstract_index              map[u32][]string
+	interface_field_list_index            map[u32][]StructField
 	interface_impl_indexes                map[u32]&InterfaceImplIndex
 	interface_query_indexes_ready         bool
 
@@ -1489,13 +1489,13 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		soa_structs:                             map[string]bool{}
 		declared_type_scope_keys:                map[string]bool{}
 		concrete_type_scope_keys:                map[string]bool{}
-		struct_error_embeds_shadow_builtin:      map[string]bool{}
+		struct_error_embeds_shadow_builtin:      map[u32]bool{}
 		struct_generic_params:                   map[string][]string{}
 		struct_implements:                       flat.TypeTextListBindings{}
 		struct_shared_fields:                    map[u32]map[string]bool{}
 		struct_shared_element_fields:            map[u32]map[string]bool{}
 		struct_field_c_abi_fns:                  map[u32]map[string]string{}
-		generic_method_value_info:               map[string]CallInfo{}
+		generic_method_value_info:               map[u32]map[string]CallInfo{}
 		params_structs:                          map[string]bool{}
 		c_typedef_structs:                       map[string]bool{}
 		unions:                                  map[string]bool{}
@@ -1516,9 +1516,9 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		interface_impl_name_snapshots:           map[u32]flat.TypeTextList{}
 		interface_impl_candidates_at_snapshot:   map[u32]bool{}
 		interface_impl_candidates_at_index:      map[u32]bool{}
-		interface_method_names_index:            map[string][]string{}
-		interface_abstract_index:                map[string][]string{}
-		interface_field_list_index:              map[string][]StructField{}
+		interface_method_names_index:            map[u32][]string{}
+		interface_abstract_index:                map[u32][]string{}
+		interface_field_list_index:              map[u32][]StructField{}
 		interface_impl_indexes:                  map[u32]&InterfaceImplIndex{}
 		c_globals:                               map[string]Type{}
 		global_names:                            map[string]bool{}
@@ -4983,7 +4983,7 @@ fn (mut tc TypeChecker) set_struct_fields(name_id u32, fields []StructField, sha
 	tc.struct_modules[name] = tc.cur_module
 	tc.struct_files[name] = tc.cur_file
 	if shadows_builtin_error_embed {
-		tc.struct_error_embeds_shadow_builtin[name] = true
+		tc.struct_error_embeds_shadow_builtin[name_id] = true
 	}
 	for field_name in shared_field_names {
 		tc.struct_shared_fields[name_id][field_name] = true
@@ -10394,9 +10394,8 @@ pub fn (tc &TypeChecker) iterator_for_in_next_call_info(typ Type) ?CallInfo {
 // iterator_for_in_next_call_info_text returns specialized `next` call metadata for a source spelling ID.
 pub fn (tc &TypeChecker) iterator_for_in_next_call_info_text(type_text_id u32) ?CallInfo {
 	info := tc.iterator_for_in_next_call_info(tc.parse_type(type_text_id)) or { return none }
-	text := flat.source_type_name(type_text_id)
-	receiver := if text.starts_with('&') {
-		flat.source_type_id(text.trim_left('&'))
+	receiver := if flat.source_type_shape(type_text_id).has(.pointer) {
+		flat.source_type_id(flat.source_type_name(type_text_id).trim_left('&'))
 	} else {
 		type_text_id
 	}
@@ -14526,9 +14525,10 @@ fn (mut tc TypeChecker) check_decl_type_strings(node_id flat.NodeId, node flat.N
 			message := util.new_suggestion(imported_name, candidates).say(base)
 			tc.record_error_at(.unknown_type, message, node_id, tc.type_diagnostic_pos(node_id, node.typ_text().trim_space()))
 		}
-		alias_name := node.typ_text().trim_space()
-		alias_type := tc.parse_type(flat.source_type_id(alias_name))
+		alias_name_id := trimmed_source_type_id(node.typ)
+		alias_type := tc.parse_type(alias_name_id)
 		if alias_type is Alias && alias_type.base_type is FnType {
+			alias_name := flat.source_type_name(alias_name_id)
 			// The base is a function type, not another alias, so unalias_type yields it directly;
 			// the vc bootstrap compiler mis-generates a `Type(ptr)` cast of the payload field.
 			original_type := unalias_type(alias_type).name().replace_once('fn(', 'fn (')
@@ -15155,11 +15155,16 @@ fn (mut tc TypeChecker) check_fn_decl_unmentioned_generic_types(node_id flat.Nod
 	if node.value.contains('.') && node.children_count > 0 {
 		receiver := tc.a.child_node(&node, 0)
 		if receiver.kind == .param {
-			mut receiver_text := receiver.typ_text().trim_space()
-			for receiver_text.starts_with('shared ') || receiver_text.starts_with('atomic ') {
-				receiver_text = receiver_text[7..].trim_space()
+			mut receiver_type_id := trimmed_source_type_id(receiver.typ)
+			for {
+				shape := flat.source_type_shape(receiver_type_id)
+				if !shape.has(.shared_type) && !shape.has(.atomic_type) {
+					break
+				}
+				receiver_text := flat.source_type_name(receiver_type_id)
+				receiver_type_id = flat.source_type_id(receiver_text[7..].trim_space())
 			}
-			receiver_type := unwrap_pointer(tc.parse_type(flat.source_type_id(receiver_text)))
+			receiver_type := unwrap_pointer(tc.parse_type(receiver_type_id))
 			// Generic struct and interface receiver parameters belong to the method declaration.
 			// Alias and sum-type receivers still have to repeat their generic names,
 			// matching the v1 declaration rules.
@@ -17438,9 +17443,11 @@ fn (tc &TypeChecker) resolve_known_field_type(type_name_id u32, fallback Type) T
 
 // type_name_known returns type name known data for TypeChecker.
 fn (tc &TypeChecker) type_name_known(typ_id u32) bool {
-	typ_comparison_type_id_16 := typ_id
-	typ := flat.source_type_name(typ_comparison_type_id_16)
-	if is_builtin_type_name(typ) || typ_comparison_type_id_16 == flat.source_type_unknown || typ.starts_with('C.')
+	if is_builtin_type_name_id(typ_id) || typ_id == flat.source_type_unknown {
+		return true
+	}
+	typ := flat.source_type_name(typ_id)
+	if typ.starts_with('C.')
 		|| (tc.is_js_backend && typ == 'JS.Number') || tc.active_generic_param(typ) {
 		return true
 	}
@@ -19328,8 +19335,7 @@ fn (tc &TypeChecker) non_heap_pointer_param_struct(name string) ?string {
 		return none
 	}
 	type_text_source_id := tc.current_fn_param_type_text(name) or { return none }
-	type_text := flat.source_type_name(type_text_source_id)
-	if !type_text.trim_space().starts_with('&') {
+	if !trimmed_source_type_shape(type_text_source_id).has(.pointer) {
 		return none
 	}
 	param_type := tc.parse_type(type_text_source_id)

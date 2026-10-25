@@ -174,3 +174,18 @@ fn test_cached_builtin_int_keeps_platform_width_dependent_lowering() {
 		assert semantic_types_equal(typ, builtin_int_type)
 	}
 }
+
+fn test_numeric_builtin_values_preserve_exact_spelling_and_unknown_fallback() {
+	for spelling in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'i128',
+		'u128', 'f32', 'f64', 'string', 'char', 'rune', 'isize', 'uint', 'usize', 'void', 'voidptr',
+		'charptr', 'byteptr', 'nil', 'none', 'array', 'map', '', 'unknown', 'builtin.int', 'Int',
+		' int ', '&int', '[]int'] {
+		expected := builtin_type_value(spelling)
+		actual := builtin_type_value_id(flat.source_type_id(spelling))
+		assert semantic_types_equal(actual, expected), spelling
+		if expected is Unknown {
+			assert actual is Unknown
+			assert actual.reason == expected.reason
+		}
+	}
+}

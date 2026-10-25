@@ -378,9 +378,7 @@ fn test_flattened_generic_struct_arg_canonicalizes_to_source_application() {
 	assert flat.TypeTextList{ ids: t.recorded_type_specialization_args(flat.source_type_id('StructType_int')) or { []u32{} } }.names() == [
 		'int',
 	]
-	assert generic_specialized_type_matches_flat_name('StructType_int', 'StructType', [
-		'int',
-	])
+	assert generic_specialized_type_matches_flat_name(flat.source_type_id('StructType_int'), 'StructType', [flat.source_type_int])
 	assert flat.source_type_name(t.generic_specialized_source_type_name(flat.source_type_id('StructType_int')) or { u32(0) }) == 'StructType[int]'
 	assert flat.source_type_name(t.canonical_generic_specialization_arg(flat.source_type_id('StructType_int'))) == 'StructType[int]'
 	assert flat.source_type_name(t.generic_specialized_source_type_name(flat.source_type_id('&StructType_int')) or { u32(0) }) == '&StructType[int]'
@@ -993,9 +991,10 @@ fn test_record_monomorph_cache_spec_replaces_existing_entry() {
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
-	t.record_monomorph_cache_spec('main.f_T_int', 'main.f', 'main', flat.TypeTextList.from_names(['int']).ids)
-	t.record_monomorph_cache_spec('main.f_T_int', 'main.f', 'main', flat.TypeTextList.from_names(['iam.Token']).ids)
-	spec := t.monomorph_cache_specs['main.f_T_int'] or {
+	key := generic_fn_spec_key('main.f', [flat.source_type_int])
+	t.record_monomorph_cache_spec(key, 'main.f', 'main', [flat.source_type_int])
+	t.record_monomorph_cache_spec(key, 'main.f', 'main', flat.TypeTextList.from_names(['iam.Token']).ids)
+	spec := t.monomorph_cache_specs.get(key) or {
 		assert false, 'the re-recorded spec disappeared'
 		return
 	}
@@ -1038,7 +1037,7 @@ fn main() {
 		t.prepare()
 		decl := t.cached_generic_fn_decls()['count'] or { panic('missing count declaration') }
 		args := ['Item']
-		mut emitted := map[string]bool{}
+		mut emitted := GenericFnSpecMap[bool]{}
 		mut generated := []string{}
 		assert t.run_scoped_monomorphize_specs([PendingGenericFnSpec{
 			decl: decl
@@ -1292,7 +1291,7 @@ fn test_recorded_generic_arg_ids_preserve_ownership_and_invalidate_misses() {
 	args[0] = flat.source_type_string
 	assert t.recorded_type_specialization_args(key) or { []u32{} } == [flat.source_type_int]
 
-	mut first_parent := flat.TypeTextListBindings{}
+	mut first_parent := SpecializationArgsBindings{}
 	first_parent.set_ids('First_int', [flat.source_type_int])
 	t.generic_specialization_args_parent = &first_parent
 	parent_key := flat.source_type_id('Second_string')
@@ -1300,9 +1299,9 @@ fn test_recorded_generic_arg_ids_preserve_ownership_and_invalidate_misses() {
 	assert t.recorded_generic_specialization_args('Second_string') == none
 	assert t.spec_args_misses.name_misses['Second_string']
 	assert t.spec_args_misses.misses[parent_key]
-	mut second_parent := flat.TypeTextListBindings{}
+	mut second_parent := SpecializationArgsBindings{}
 	second_parent.set_ids('Second_string', [flat.source_type_string])
-	assert first_parent.ids.len == second_parent.ids.len
+	assert first_parent.len == second_parent.len
 	t.generic_specialization_args_parent = &second_parent
 	assert t.recorded_type_specialization_args(parent_key) or { []u32{} } == [flat.source_type_string]
 	assert t.recorded_generic_specialization_args('Second_string') or { []u32{} } == [flat.source_type_string]

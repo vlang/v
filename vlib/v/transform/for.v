@@ -1896,13 +1896,12 @@ fn (t &Transformer) declared_for_in_elem_type(container_id flat.NodeId, node fla
 }
 
 fn (t &Transformer) for_in_declared_ref_type(binding_id flat.NodeId, elem_type_id u32) u32 {
-	elem_type := flat.source_type_name(elem_type_id)
 	if int(binding_id) >= 0 {
-		checker_type := trimmed_transform_text(flat.source_type_name(t.raw_checker_node_type(binding_id)))
-		clean_checker_source_id := t.normalize_type_alias(flat.source_type_id(checker_type))
+		checker_type := t.trimmed_type_id(t.raw_checker_node_type(binding_id))
+		clean_checker_source_id := t.normalize_type_alias(checker_type)
 		clean_checker_shape := flat.source_type_shape(clean_checker_source_id)
 		if clean_checker_shape.has(.pointer) || t.is_optional_type_name(clean_checker_source_id) {
-			return flat.source_type_id(checker_type)
+			return checker_type
 		}
 	}
 	clean_elem_source_id := t.normalize_type_alias(elem_type_id)
@@ -1910,6 +1909,7 @@ fn (t &Transformer) for_in_declared_ref_type(binding_id flat.NodeId, elem_type_i
 	if clean_elem_shape_2.has(.pointer) || t.is_optional_type_name(clean_elem_source_id) {
 		return elem_type_id
 	}
+	elem_type := flat.source_type_name(elem_type_id)
 	return flat.source_type_id('&${elem_type}')
 }
 

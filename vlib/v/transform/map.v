@@ -485,6 +485,15 @@ fn (mut t Transformer) external_map_tree_expansion_estimate(root flat.NodeId, lo
 	return estimate
 }
 
+// compiler_collection_receiver_type retains shared-prefix trim followed by raw reference removal.
+fn (t &Transformer) compiler_collection_receiver_type(typ_id u32) u32 {
+	mut clean := t.trimmed_type_id(t.normalize_type_alias(typ_id))
+	for flat.source_type_shape(clean).has(.shared_type) {
+		clean = t.unshared_type_id(clean)
+	}
+	return t.trim_all_pointer_type(clean)
+}
+
 fn (t &Transformer) compiler_collection_clone_call_expands(node flat.Node) bool {
 	if node.children_count == 0 {
 		return false
@@ -500,27 +509,24 @@ fn (t &Transformer) compiler_collection_clone_call_expands(node flat.Node) bool 
 	if base_type == 0 {
 		base_type = t.lvalue_type(base_id)
 	}
-	mut clean := trimmed_transform_text(flat.source_type_name(t.normalize_type_alias(base_type)))
-	for clean.starts_with('shared ') {
-		clean = trimmed_transform_text(clean[7..])
-	}
-	clean = clean.trim_left('&')
+	clean := t.compiler_collection_receiver_type(base_type)
+	shape := flat.source_type_shape(clean)
 	if fn_node.value in ['reverse', 'sorted', 'sorted_with_compare'] {
-		if !clean.starts_with('[]') || isnil(t.tc) {
+		if !shape.has(.array_type) || isnil(t.tc) {
 			return false
 		}
-		elem_type := flat.source_type_id(clean[2..])
+		elem_type := flat.source_type_id(flat.source_type_name(clean)[2..])
 		return t.tc.ownership_type_requires_destruction(t.tc.parse_type(elem_type))
 			&& t.compiler_default_clone_type_needs_work(elem_type)
 			&& t.tc.ownership_default_clone_missing_method(t.tc.parse_type(elem_type)) == none
 	}
 	mut owned_types := []u32{}
-	if clean.starts_with('[]') {
-		owned_types << flat.source_type_id(clean[2..])
-	} else if t.is_fixed_array_type(flat.source_type_id(clean)) {
-		owned_types << fixed_array_elem_type(flat.source_type_id(clean))
-	} else if clean.starts_with('map[') {
-		key_type_source_id_3, value_type_source_id_4 := t.map_type_parts(flat.source_type_id(clean))
+	if shape.has(.array_type) {
+		owned_types << flat.source_type_id(flat.source_type_name(clean)[2..])
+	} else if t.is_fixed_array_type(clean) {
+		owned_types << fixed_array_elem_type(clean)
+	} else if shape.has(.map_type) {
+		key_type_source_id_3, value_type_source_id_4 := t.map_type_parts(clean)
 		owned_types << key_type_source_id_3
 		owned_types << value_type_source_id_4
 	} else {
@@ -632,14 +638,14 @@ fn (t &Transformer) compiler_owned_array_filter_call_expands(node flat.Node) boo
 	if base_type == 0 {
 		base_type = t.lvalue_type(base_id)
 	}
-	clean_type := flat.source_type_name(transform_unshared_receiver_type(t.normalize_type_alias(base_type))).trim_left('&')
-	if !clean_type.starts_with('[]') {
+	clean_type := t.trim_all_pointer_type(transform_unshared_receiver_type(t.normalize_type_alias(base_type)))
+	if !flat.source_type_shape(clean_type).has(.array_type) {
 		return false
 	}
-	elem_type := clean_type[2..]
-	return elem_type.len > 0 && t.tc.ownership_type_requires_destruction(t.tc.parse_type(flat.source_type_id(elem_type)))
-		&& t.compiler_default_clone_type_needs_work(flat.source_type_id(elem_type))
-		&& t.tc.ownership_default_clone_missing_method(t.tc.parse_type(flat.source_type_id(elem_type))) == none
+	elem_type := flat.source_type_id(flat.source_type_name(clean_type)[2..])
+	return elem_type != 0 && t.tc.ownership_type_requires_destruction(t.tc.parse_type(elem_type))
+		&& t.compiler_default_clone_type_needs_work(elem_type)
+		&& t.tc.ownership_default_clone_missing_method(t.tc.parse_type(elem_type)) == none
 }
 
 fn (t &Transformer) compiler_owned_array_map_call_expands(node flat.Node) bool {
@@ -655,17 +661,17 @@ fn (t &Transformer) compiler_owned_array_map_call_expands(node flat.Node) bool {
 	if base_type == 0 {
 		base_type = t.lvalue_type(base_id)
 	}
-	clean_base := flat.source_type_name(transform_unshared_receiver_type(t.normalize_type_alias(base_type))).trim_left('&')
-	clean_result :=
-		flat.source_type_name(transform_unshared_receiver_type(t.normalize_type_alias(node.typ))).trim_left('&')
-	if !clean_base.starts_with('[]') || !clean_result.starts_with('[]') {
+	clean_base := t.trim_all_pointer_type(transform_unshared_receiver_type(t.normalize_type_alias(base_type)))
+	clean_result := t.trim_all_pointer_type(transform_unshared_receiver_type(t.normalize_type_alias(node.typ)))
+	if !flat.source_type_shape(clean_base).has(.array_type)
+		|| !flat.source_type_shape(clean_result).has(.array_type) {
 		return false
 	}
-	result_elem_type := clean_result[2..]
-	return result_elem_type.len > 0
-		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(flat.source_type_id(result_elem_type)))
-		&& t.compiler_default_clone_type_needs_work(flat.source_type_id(result_elem_type))
-		&& t.tc.ownership_default_clone_missing_method(t.tc.parse_type(flat.source_type_id(result_elem_type))) == none
+	result_elem_type := flat.source_type_id(flat.source_type_name(clean_result)[2..])
+	return result_elem_type != 0
+		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(result_elem_type))
+		&& t.compiler_default_clone_type_needs_work(result_elem_type)
+		&& t.tc.ownership_default_clone_missing_method(t.tc.parse_type(result_elem_type)) == none
 }
 
 fn (t &Transformer) compiler_collection_str_call_expands(node flat.Node) bool {
@@ -684,16 +690,13 @@ fn (t &Transformer) compiler_collection_str_call_expands(node flat.Node) bool {
 	if _ := t.resolve_receiver_method_for_type(base_type, 'str') {
 		return false
 	}
-	mut clean := trimmed_transform_text(flat.source_type_name(t.normalize_type_alias(base_type)))
-	for clean.starts_with('shared ') {
-		clean = trimmed_transform_text(clean[7..])
-	}
-	clean = clean.trim_left('&')
-	if clean.starts_with('[]') || t.is_fixed_array_type(flat.source_type_id(clean)) {
+	clean := t.compiler_collection_receiver_type(base_type)
+	shape := flat.source_type_shape(clean)
+	if shape.has(.array_type) || t.is_fixed_array_type(clean) {
 		return true
 	}
-	if clean.starts_with('map[') {
-		key_type_source_id_4, raw_value_type_source_id := t.map_type_parts(flat.source_type_id(clean))
+	if shape.has(.map_type) {
+		key_type_source_id_4, raw_value_type_source_id := t.map_type_parts(clean)
 
 		raw_value_type_source_id_3 := raw_value_type_source_id
 
@@ -1297,13 +1300,13 @@ fn (mut t Transformer) or_expr_zero_value_expansion_estimate(id flat.NodeId, nod
 	expr_type_source_id_3 := expr_type_source_id
 
 	value_type_source_id_17 := value_type_source_id_15
-	value_type := flat.source_type_name(value_type_source_id_17)
 	mut estimate := if t.is_optional_type_name(expr_type_source_id_3) {
 		0
 	} else {
 		t.nested_optional_leaf_zero_value_expansion_estimate(expr_id, 0)
 	}
-	if value_type in ['', 'void', '__v_option', '!', '?'] {
+	if value_type_source_id_17 in [u32(0), flat.source_type_void, transform_identity_option_payload,
+		transform_identity_bare_result, transform_identity_bare_option] {
 		return estimate
 	}
 	estimate += t.zero_value_expansion_estimate(id, value_type_source_id_17)
@@ -1696,10 +1699,13 @@ fn (t &Transformer) map_key_backing_type(key_type_id u32) ?u32 {
 			}
 		}
 		if alias_target != u32(0) {
-			base := trimmed_transform_text(flat.source_type_name(t.normalize_type_alias(alias_target)))
-			if base in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'uint', 'u8', 'u16', 'u32',
-				'u64', 'rune', 'char', 'string'] {
-				return flat.source_type_id(base)
+			base := t.trimmed_type_id(t.normalize_type_alias(alias_target))
+			if base in [flat.source_type_int, flat.source_type_i8, flat.source_type_i16,
+				flat.source_type_i32, flat.source_type_i64, flat.source_type_isize,
+				flat.source_type_uint, flat.source_type_u8, flat.source_type_u16, flat.source_type_u32,
+				flat.source_type_u64, flat.source_type_rune, flat.source_type_char,
+				flat.source_type_string] {
+				return base
 			}
 		}
 	}
@@ -1961,14 +1967,14 @@ fn (mut t Transformer) make_map_lookup_value(map_expr flat.NodeId, base_type_id 
 }
 
 fn (t &Transformer) fixed_array_type_contains_map(typ_id u32) bool {
-	clean := trimmed_transform_text(flat.source_type_name(t.normalize_type_alias(typ_id)))
-	if clean.starts_with('map[') {
+	clean := t.trimmed_type_id(t.normalize_type_alias(typ_id))
+	if flat.source_type_shape(clean).has(.map_type) {
 		return true
 	}
-	if !t.is_fixed_array_type(flat.source_type_id(clean)) {
+	if !t.is_fixed_array_type(clean) {
 		return false
 	}
-	return t.fixed_array_type_contains_map(fixed_array_elem_type(flat.source_type_id(clean)))
+	return t.fixed_array_type_contains_map(fixed_array_elem_type(clean))
 }
 
 // make_map_get_check_expr builds make map get check expr data for transform.
@@ -2584,22 +2590,22 @@ fn (mut t Transformer) lower_map_or_body_to_stmts(body_id flat.NodeId, target_na
 }
 
 fn (t &Transformer) map_value_type_is_optional(typ_id u32) bool {
-	clean := trimmed_transform_text(flat.source_type_name(t.normalize_type_alias(typ_id)))
-	return t.is_optional_type_name(flat.source_type_id(clean)) || clean == '__v_option'
+	clean := t.trimmed_type_id(t.normalize_type_alias(typ_id))
+	return t.is_optional_type_name(clean) || clean == transform_identity_option_payload
 }
 
 fn (t &Transformer) map_optional_target_type(typ_id u32) u32 {
-	clean := trimmed_transform_text(flat.source_type_name(t.normalize_type_alias(typ_id)))
-	if t.is_optional_type_name(flat.source_type_id(clean)) {
-		return t.qualify_optional_type(flat.source_type_id(clean))
+	clean := t.trimmed_type_id(t.normalize_type_alias(typ_id))
+	if t.is_optional_type_name(clean) {
+		return t.qualify_optional_type(clean)
 	}
 	return typ_id
 }
 
 fn (t &Transformer) map_optional_value_base_type(typ_id u32) u32 {
-	clean := trimmed_transform_text(flat.source_type_name(t.normalize_type_alias(typ_id)))
-	if t.is_optional_type_name(flat.source_type_id(clean)) {
-		return t.optional_base_type(t.qualify_optional_type(flat.source_type_id(clean)))
+	clean := t.trimmed_type_id(t.normalize_type_alias(typ_id))
+	if t.is_optional_type_name(clean) {
+		return t.optional_base_type(t.qualify_optional_type(clean))
 	}
 	return typ_id
 }
@@ -2687,11 +2693,11 @@ fn (mut t Transformer) prepare_owned_map_set_key_cleanup(key_is_owned bool, key_
 	if !t.tc.ownership_type_requires_destruction(key_type) {
 		return false, ''
 	}
-	mut clean_key_type := trimmed_transform_text(flat.source_type_name(t.normalize_type_alias(key_type_name_id)))
-	for t.is_fixed_array_type(flat.source_type_id(clean_key_type)) {
-		clean_key_type = trimmed_transform_text(flat.source_type_name(t.normalize_type_alias(fixed_array_elem_type(t.resolved_fixed_array_canonical_type(flat.source_type_id(clean_key_type))))))
+	mut clean_key_type := t.trimmed_type_id(t.normalize_type_alias(key_type_name_id))
+	for t.is_fixed_array_type(clean_key_type) {
+		clean_key_type = t.trimmed_type_id(t.normalize_type_alias(fixed_array_elem_type(t.resolved_fixed_array_canonical_type(clean_key_type))))
 	}
-	if clean_key_type == 'string' {
+	if clean_key_type == flat.source_type_string {
 		return true, ''
 	}
 	existing_name := t.new_temp('map_key_existed')

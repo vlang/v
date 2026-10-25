@@ -1047,7 +1047,8 @@ fn (g &Parser) render_struct_literal_with_defaults(c_type_source_id u32, layout_
 
 fn (g &Parser) render_empty_struct_initializer(c_type_source_id u32) string {
 	c_type := flat.source_type_name(c_type_source_id)
-	layout_type := fastc_trim_pointer_suffix(c_type)
+	layout_type_source_id := fastc_trim_pointer_type(c_type_source_id)
+	layout_type := flat.source_type_name(layout_type_source_id)
 	mut rendered_fields := []string{}
 	mut rendered_fields_by_name := map[string]string{}
 	// The struct's rendered defaults are consulted; the constants phase
@@ -1074,7 +1075,7 @@ fn (g &Parser) render_empty_struct_initializer(c_type_source_id u32) string {
 		return '(${c_type}){0}'
 	}
 	empty_initializers := []string{}
-	return g.render_struct_literal_with_defaults(c_type_source_id, flat.source_type_id(layout_type), empty_initializers, rendered_fields, rendered_fields_by_name).source
+	return g.render_struct_literal_with_defaults(c_type_source_id, layout_type_source_id, empty_initializers, rendered_fields, rendered_fields_by_name).source
 }
 
 fn (g &Parser) struct_field_initializer_default(field FastcStructField) string {

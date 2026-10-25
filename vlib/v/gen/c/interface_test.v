@@ -20,8 +20,39 @@ fn test_collect_interface_impls_includes_boxed_maps() {
 
 	g.collect_interface_impls()
 
-	assert flat.source_type_id('map[string]int') in g.iface_impls['Any']
+	assert flat.source_type_id('map[string]int') in g.iface_impls[flat.source_type_id('Any')]
 	assert g.iface_type_ids[interface_dispatch_boxed_type_key(flat.source_type_id('Any'), flat.source_type_id('map[string]int'))] > 0
+}
+
+fn test_interface_impls_preserves_qualified_identity_and_worker_lists() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	alpha_id := flat.source_type_id('alpha.Any')
+	beta_id := flat.source_type_id('beta.Any')
+	alpha_map_id := flat.source_type_id('map[string]int')
+	beta_map_id := flat.source_type_id('map[string]bool')
+	g.interfaces['alpha.Any'] = []string{}
+	g.interfaces['beta.Any'] = []string{}
+	g.interface_boxed_types[interface_dispatch_boxed_type_key(alpha_id, alpha_map_id)] = true
+	g.interface_boxed_types[interface_dispatch_boxed_type_key(beta_id, beta_map_id)] = true
+	g.interface_boxed_types_done = true
+
+	g.collect_interface_impls()
+
+	assert g.iface_impls[alpha_id] == [alpha_map_id]
+	assert g.iface_impls[beta_id] == [beta_map_id]
+	$if !v3_no_parallel ? {
+		mut published := clone_cgen_source_type_list_map(g.iface_impls)
+		mut changed := published[alpha_id] or { panic('missing alpha implementation') }
+		changed[0] = beta_map_id
+		published[alpha_id] = changed
+		assert g.iface_impls[alpha_id] == [alpha_map_id]
+		assert published[alpha_id] == [beta_map_id]
+		assert published[beta_id] == [beta_map_id]
+	}
 }
 
 fn test_interface_init_typ_id_uses_canonical_source_value() {

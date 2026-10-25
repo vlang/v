@@ -5216,7 +5216,7 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 	w.sparse_checking_nodes = map[int]bool{}
 	w.method_values_by_fn = map[int][]string{}
 	w.fn_context = new_function_check_context()
-	w.generic_method_value_info = map[string]CallInfo{}
+	w.generic_method_value_info = map[u32]map[string]CallInfo{}
 	w.smartcasts = map[string]Type{}
 	w.ownership_time_ns = 0
 	if check_memos_enabled() {
@@ -5621,12 +5621,14 @@ fn (mut tc TypeChecker) merge_parallel_check_worker_scoped(w &TypeChecker, scope
 			tc.method_values_by_fn[fn_idx] = owned_values
 		}
 	}
-	for key, info in w.generic_method_value_info {
-		owned_key := if scoped { key.clone() } else { key }
-		tc.generic_method_value_info[owned_key] = if scoped {
-			clone_parallel_call_info(info)
-		} else {
-			info
+	for owner_id, methods in w.generic_method_value_info {
+		for method, info in methods {
+			owned_method := if scoped { method.clone() } else { method }
+			tc.generic_method_value_info[owner_id][owned_method] = if scoped {
+				clone_parallel_call_info(info)
+			} else {
+				info
+			}
 		}
 	}
 	for inferred in w.inferred_c_globals {

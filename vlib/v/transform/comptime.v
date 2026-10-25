@@ -1483,10 +1483,9 @@ fn (t &Transformer) comptime_method_source_type(raw_id u32) u32 {
 		return source_id
 	}
 	if current_args_ids := t.recorded_generic_specialization_args(t.cur_fn_name) {
-		clean := flat.source_type_name(clean_id)
 		for arg_id in current_args_ids {
 			base, args, ok := generic_app_parts(flat.source_type_name(comptime_method_receiver_type(arg_id)))
-			if ok && generic_specialized_type_matches_flat_name(clean, base, args) {
+			if ok && generic_specialized_type_matches_flat_name(clean_id, base, flat.TypeTextList.from_names(args).ids) {
 				return arg_id
 			}
 		}

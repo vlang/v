@@ -838,10 +838,10 @@ fn test_local_module_generic_call_keeps_explicit_type_args_when_normalized() {
 }
 
 fn test_flattened_generic_receiver_short_variants() {
-	assert flattened_generic_receiver_short_variants('foo__Bar_baz__Qux') == [
+	assert flattened_generic_receiver_short_variants(flat.source_type_id('foo__Bar_baz__Qux')) == [
 		'Bar_Qux',
 	]
-	assert flattened_generic_receiver_short_variants('mod.foo__Bar_baz__Qux') == [
+	assert flattened_generic_receiver_short_variants(flat.source_type_id('mod.foo__Bar_baz__Qux')) == [
 		'Bar_Qux',
 		'mod.Bar_Qux',
 	]
@@ -849,25 +849,25 @@ fn test_flattened_generic_receiver_short_variants() {
 
 fn test_generic_specialized_type_matching_preserves_name_spellings() {
 	for spelling in ['Box[int]', 'Box_int'] {
-		assert generic_specialized_type_matches_flat_name(spelling, 'Box', ['int'])
+		assert generic_specialized_type_matches_flat_name(flat.source_type_id(spelling), 'Box', flat.TypeTextList.from_names(['int']).ids)
 	}
 	for spelling in ['Box[time.Time]', 'Box_time__Time', 'Box_time.Time'] {
-		assert generic_specialized_type_matches_flat_name(spelling, 'Box', ['time.Time'])
+		assert generic_specialized_type_matches_flat_name(flat.source_type_id(spelling), 'Box', flat.TypeTextList.from_names(['time.Time']).ids)
 	}
 	for spelling in ['pkg.Box[int]', 'pkg__Box_int'] {
-		assert generic_specialized_type_matches_flat_name(spelling, 'pkg.Box', ['int'])
+		assert generic_specialized_type_matches_flat_name(flat.source_type_id(spelling), 'pkg.Box', flat.TypeTextList.from_names(['int']).ids)
 	}
 	for spelling in ['Box[int]', 'Box_int', 'main.Box_v_int', 'main__Box_v_int'] {
-		assert generic_specialized_type_matches_flat_name(spelling, 'main.Box', ['int'])
+		assert generic_specialized_type_matches_flat_name(flat.source_type_id(spelling), 'main.Box', flat.TypeTextList.from_names(['int']).ids)
 	}
 	for base in ['Box_Name', 'pkg.Box__Name', 'C.Box', '__v3_internal_symbol_Box'] {
-		assert generic_specialized_type_matches_flat_name('${base}[int]', base, ['int'])
-		assert generic_specialized_type_matches_flat_name(c_name('${base}[int]'), base, ['int'])
-		assert generic_specialized_type_matches_flat_name(c_name('${base}[int]').replace('__', '.'), base, ['int'])
+		assert generic_specialized_type_matches_flat_name(flat.source_type_id('${base}[int]'), base, flat.TypeTextList.from_names(['int']).ids)
+		assert generic_specialized_type_matches_flat_name(flat.source_type_id(c_name('${base}[int]')), base, flat.TypeTextList.from_names(['int']).ids)
+		assert generic_specialized_type_matches_flat_name(flat.source_type_id(c_name('${base}[int]').replace('__', '.')), base, flat.TypeTextList.from_names(['int']).ids)
 	}
-	assert !generic_specialized_type_matches_flat_name('Other_time__Time', 'Box', ['time.Time'])
-	assert !generic_specialized_type_matches_flat_name('pkg__Other_int', 'pkg.Box', ['int'])
-	assert !generic_specialized_type_matches_flat_name('Box_string', 'Box', ['int'])
+	assert !generic_specialized_type_matches_flat_name(flat.source_type_id('Other_time__Time'), 'Box', flat.TypeTextList.from_names(['time.Time']).ids)
+	assert !generic_specialized_type_matches_flat_name(flat.source_type_id('pkg__Other_int'), 'pkg.Box', flat.TypeTextList.from_names(['int']).ids)
+	assert !generic_specialized_type_matches_flat_name(flat.source_type_id('Box_string'), 'Box', flat.TypeTextList.from_names(['int']).ids)
 }
 
 fn test_receiver_method_guard_accepts_short_name_for_qualified_type() {
@@ -1505,13 +1505,13 @@ fn test_pending_generic_specialization_keys_are_private_initialized_maps() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	mut master := new_transformer(mut a, &tc, map[string]bool{})
-	master.pending_generic_fn_spec_keys['master'] = true
-	assert master.pending_generic_fn_spec_keys['master']
+	master.pending_generic_fn_spec_keys.set(generic_fn_spec_key('master', []u32{}), true)
+	assert master.pending_generic_fn_spec_keys.contains(generic_fn_spec_key('master', []u32{}))
 
 	mut worker := master.fork_worker(&a, tc.fork_for_parallel_transform(&a))
-	worker.pending_generic_fn_spec_keys['worker'] = true
-	assert worker.pending_generic_fn_spec_keys['worker']
-	assert 'worker' !in master.pending_generic_fn_spec_keys
+	worker.pending_generic_fn_spec_keys.set(generic_fn_spec_key('worker', []u32{}), true)
+	assert worker.pending_generic_fn_spec_keys.contains(generic_fn_spec_key('worker', []u32{}))
+	assert !master.pending_generic_fn_spec_keys.contains(generic_fn_spec_key('worker', []u32{}))
 }
 
 fn test_absorb_scoped_batch_replays_overlay_into_master_checker() {

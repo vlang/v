@@ -13,6 +13,7 @@ import v.util
 
 const max_parse_diagnostics = 100
 const max_assignment_expr_depth = 100
+const parser_invalid_source_type = flat.source_type_id('invalid')
 
 const inline_sum_type_deprecation = 'inline sum types have been deprecated and will be removed on January 1, 2023 due to complicating the language and the compiler too much; define named sum types with `type Foo = Bar | Baz` instead'
 
@@ -2144,7 +2145,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type_
 		p.next()
 	}
 	if !p.prefs.is_fmt && p.tok == .lcbr
-		&& param_ids.any(p.a.node(it).kind == .param && p.a.node(it).typ_text().len == 0
+		&& param_ids.any(p.a.node(it).kind == .param && p.a.node(it).typ == 0
 			&& p.a.node(it).value.len > 0) {
 		p.record_diagnostic_span('functions with type only params can not have bodies', p.tok_pos,
 			p.tok_end)
@@ -8206,7 +8207,7 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 		return p.add_node(flat.Node{
 			kind:  .defer_result
 			value: if defer_index < 0 { '' } else { defer_index.str() }
-			typ:   (if invalid_context { flat.source_type_id('invalid') } else { u32(0) })
+			typ:   (if invalid_context { parser_invalid_source_type } else { u32(0) })
 			pos:   res_pos
 		})
 	}
@@ -14131,7 +14132,7 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 		for i in mark + 1 .. p.pending_children.len {
 			arg_id := p.pending_children[i]
 			arg := p.a.nodes[int(arg_id)]
-			if arg.kind == .defer_result && arg.typ_text() == 'invalid' {
+			if arg.kind == .defer_result && arg.typ == parser_invalid_source_type {
 				p.record_diagnostic_span('`${fn_node.value}` can not print void expressions', fn_node.pos.offset, p.prev_tok_end)
 				break
 			}
@@ -14594,7 +14595,7 @@ fn (p &Parser) index_expr_is_lifetime_erased_type_name(id flat.NodeId) bool {
 			saw_lifetime_arg = true
 			continue
 		}
-		if flat.source_type_name(p.type_expr_name(child)).len > 0 {
+		if p.type_expr_name(child) != 0 {
 			return false
 		}
 	}

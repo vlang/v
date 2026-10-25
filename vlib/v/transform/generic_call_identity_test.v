@@ -95,7 +95,7 @@ fn test_rewritten_generic_call_keeps_caller_type_in_foreign_scan() {
 	t.cur_file = 'callee.v'
 	t.ensure_node_context_map_capacity()
 	t.mark_node_context(id, 'main', 'main.v')
-	t.generic_specialization_args.set('callee.run_T_Context', ['Context'])
+	t.generic_specialization_args.set_ids('callee.run_T_Context', [flat.source_type_id('Context')])
 	t.generic_call_spec_cache[int(id)] = GenericCallSpec{
 		decl_key: 'callee.run'
 		args:     flat.TypeTextList.from_names(['main.Context'])
@@ -108,6 +108,6 @@ fn test_rewritten_generic_call_keeps_caller_type_in_foreign_scan() {
 
 	assert key == 'callee.run'
 	assert args == ['Context']
-	t.generic_fn_spec_nodes[t.generic_specialization_progress_key(decl, args_source_ids)] = id
+	t.generic_fn_spec_nodes.set(t.generic_specialization_progress_key(decl, args_source_ids), id)
 	assert t.cached_generic_call_specialization(id, call, 'main', decls) == none
 }

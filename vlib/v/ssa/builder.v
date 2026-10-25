@@ -51,6 +51,7 @@ const wasm_bench_runtime_stub_names = ['bench.current_rss_kb', 'bench.macos_rss_
 
 const ssa_array_source_type = flat.source_type_id('array')
 const ssa_map_source_type = flat.source_type_id('map')
+const ssa_thread_source_type = flat.source_type_id('thread')
 const ssa_option_source_type = flat.source_type_id('__v_option')
 const ssa_builtin_array_source_type = flat.source_type_id('builtin.array')
 const ssa_array_flags_source_type = flat.source_type_id('ArrayFlags')
@@ -11315,8 +11316,8 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 	}
 	if fn_node.kind == .selector && fn_name == 'wait' && fn_node.children_count > 0 {
 		thread_id := b.a.child(&fn_node, 0)
-		thread_type := flat.source_type_name(b.receiver_type_name(thread_id)).trim_left('&')
-		if thread_type == 'thread' || thread_type.starts_with('thread ') {
+		thread_type := ssa_pointer_base_source_type(b.receiver_type_name(thread_id))
+		if thread_type == ssa_thread_source_type || flat.source_type_shape(thread_type).has(.thread_type) {
 			return b.build_thread_wait(id, node, thread_id)
 		}
 	}
@@ -11482,11 +11483,11 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 		}
 	}
 	if fn_node.kind == .selector && fn_node.value_text() == 'delete' && node.children_count > 1
-		&& flat.source_type_name(b.expr_type_name_for_map(base_id)).trim_left('&').starts_with('map[') {
+		&& flat.source_type_shape(ssa_pointer_base_source_type(b.expr_type_name_for_map(base_id))).has(.map_type) {
 		return b.build_map_delete_call(base_id, b.a.child(&node, 1))
 	}
 	if fn_node.kind == .selector && fn_node.value_text() == 'clone'
-		&& flat.source_type_name(b.expr_type_name_for_map(base_id)).trim_left('&').starts_with('map[') {
+		&& flat.source_type_shape(ssa_pointer_base_source_type(b.expr_type_name_for_map(base_id))).has(.map_type) {
 		return b.build_map_clone_call(base_id)
 	}
 	if actual_name == 'FILE' {

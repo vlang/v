@@ -131,13 +131,14 @@ fn (t &Transformer) resolve_variant(sum_name_id u32, variant_id u32) u32 {
 fn (t &Transformer) generic_sum_arg_variant_for_pattern(sum_name_id u32, variant_id u32) ?u32 {
 	sum_name := flat.source_type_name(sum_name_id)
 	variant := flat.source_type_name(variant_id)
-	base, args, ok := generic_app_parts(sum_name)
+	base, parsed_args, ok := generic_app_parts(sum_name)
 	if !ok {
 		return none
 	}
+	args := flat.TypeTextList.from_names(parsed_args).ids
 	params := t.sum_generic_params_for_base(base)
 	if params.len == args.len {
-		concrete_pattern := substitute_generic_type_text_with_params(variant_id, flat.TypeTextList.from_names(args).ids, params)
+		concrete_pattern := substitute_generic_type_text_with_params(variant_id, args, params)
 		for concrete_variant_source_id in t.concrete_sum_variants_for_candidate(sum_name_id) {
 			if t.variant_names_match(concrete_variant_source_id, concrete_pattern)
 				|| t.variant_names_match(concrete_variant_source_id, variant_id) {
@@ -150,8 +151,8 @@ fn (t &Transformer) generic_sum_arg_variant_for_pattern(sum_name_id u32, variant
 	}
 	_, variant_args, variant_is_generic := generic_app_parts(variant)
 	if variant_is_generic && variant_args.len == args.len
-		&& t.generic_variant_args_are_open(variant_args) {
-		concrete_pattern := substitute_generic_type_text_with_params(variant_id, flat.TypeTextList.from_names(args).ids, variant_args)
+		&& t.generic_variant_args_are_open(flat.TypeTextList.from_names(variant_args).ids) {
+		concrete_pattern := substitute_generic_type_text_with_params(variant_id, args, variant_args)
 		for concrete_variant_source_id_2 in t.concrete_sum_variants_for_candidate(sum_name_id) {
 			if t.variant_names_match(concrete_variant_source_id_2, concrete_pattern)
 				|| t.concrete_variant_matches_generic_pattern(concrete_variant_source_id_2, concrete_pattern) {
@@ -163,8 +164,8 @@ fn (t &Transformer) generic_sum_arg_variant_for_pattern(sum_name_id u32, variant
 		}
 	}
 	for arg in args {
-		if t.variant_names_match(flat.source_type_id(arg), variant_id) {
-			return flat.source_type_id(arg)
+		if t.variant_names_match(arg, variant_id) {
+			return arg
 		}
 	}
 	return none

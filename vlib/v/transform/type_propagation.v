@@ -2453,15 +2453,11 @@ fn (t &Transformer) array_map_call_type_name(id flat.NodeId, node flat.Node) ?u3
 	}
 	base_id := t.a.child(fn_node, 0)
 	mut base_type0 := t.node_type(base_id)
-	if !flat.source_type_name(base_type0).trim_string_left('&').starts_with('[]') {
+	if !flat.source_type_shape(t.trim_pointer_type(base_type0)).has(.array_type) {
 		base_type0 = t.original_expr_type(base_id)
 	}
-	base_type := if flat.source_type_shape(base_type0).has(.pointer) {
-		flat.source_type_name(base_type0)[1..]
-	} else {
-		flat.source_type_name(base_type0)
-	}
-	if !base_type.starts_with('[]') {
+	base_type := t.trim_pointer_type(base_type0)
+	if !flat.source_type_shape(base_type).has(.array_type) {
 		return none
 	}
 	mut elem_type_source_id := if callback_ret_source_id := t.array_map_callback_return_type_name(map_expr_id) {

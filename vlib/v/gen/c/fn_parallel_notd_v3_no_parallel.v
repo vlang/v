@@ -2143,10 +2143,10 @@ fn (mut g FlatGen) publish_interface_impl_scan(mut worker FlatGen) {
 	g.ierror_method_emit_names = worker.ierror_method_emit_names.move()
 }
 
-fn clone_cgen_source_type_list_map(values map[string][]u32) map[string][]u32 {
-	mut cloned := map[string][]u32{}
+fn clone_cgen_source_type_list_map(values map[u32][]u32) map[u32][]u32 {
+	mut cloned := map[u32][]u32{}
 	for key, list in values {
-		cloned[key.clone()] = list.clone()
+		cloned[key] = list.clone()
 	}
 	return cloned
 }

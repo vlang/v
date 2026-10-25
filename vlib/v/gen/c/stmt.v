@@ -1316,14 +1316,14 @@ fn (g &FlatGen) ownership_collect_drop_struct_names(typ types.Type, depth int, m
 			}
 		}
 		types.Interface {
-			mut iface_name := typ.name()
-			if iface_name !in g.iface_impls {
-				qualified := g.tc.qualify_name(iface_name)
-				if qualified in g.iface_impls {
-					iface_name = qualified
+			mut iface_name_id := typ.source_type_id()
+			if iface_name_id !in g.iface_impls {
+				qualified_id := g.tc.qualify_type_name(iface_name_id)
+				if qualified_id in g.iface_impls {
+					iface_name_id = qualified_id
 				}
 			}
-			for concrete_id in g.iface_impls[iface_name] or { []u32{} } {
+			for concrete_id in g.iface_impls[iface_name_id] or { []u32{} } {
 				g.ownership_collect_drop_struct_names(g.tc.parse_type(concrete_id), depth + 1, mut names, mut seen)
 			}
 		}
@@ -1395,14 +1395,14 @@ fn (g &FlatGen) ownership_drop_type_reaches_recursive_struct(typ &types.Type, ta
 			}
 		}
 		types.Interface {
-			mut iface_name := typ.name()
-			if iface_name !in g.iface_impls {
-				qualified := g.tc.qualify_name(iface_name)
-				if qualified in g.iface_impls {
-					iface_name = qualified
+			mut iface_name_id := typ.source_type_id()
+			if iface_name_id !in g.iface_impls {
+				qualified_id := g.tc.qualify_type_name(iface_name_id)
+				if qualified_id in g.iface_impls {
+					iface_name_id = qualified_id
 				}
 			}
-			for concrete_id in g.iface_impls[iface_name] or { []u32{} } {
+			for concrete_id in g.iface_impls[iface_name_id] or { []u32{} } {
 				if g.ownership_drop_type_reaches_recursive_struct(g.tc.parse_type(concrete_id), target_key, true, depth + 1, mut seen) {
 					return true
 				}
@@ -1721,19 +1721,17 @@ fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, d
 				return
 			}
 			mut iface_name_id := typ.source_type_id()
-			mut iface_name := flat.source_type_name(iface_name_id)
-			if iface_name !in g.iface_impls {
-				qualified := g.tc.qualify_name(iface_name)
-				if qualified in g.iface_impls {
-					iface_name = qualified
-					iface_name_id = flat.source_type_id(qualified)
+			if iface_name_id !in g.iface_impls {
+				qualified_id := g.tc.qualify_type_name(iface_name_id)
+				if qualified_id in g.iface_impls {
+					iface_name_id = qualified_id
 				}
 			}
 			object := '((${expr})._object)'
 			g.writeln('if ((${expr})._object_is_boxed && ${object} != NULL) {')
 			g.indent++
 			g.writeln('switch ((${expr})._typ) {')
-			for concrete_id in g.iface_impls[iface_name] or { []u32{} } {
+			for concrete_id in g.iface_impls[iface_name_id] or { []u32{} } {
 				id := g.iface_type_id(iface_name_id, concrete_id)
 				concrete_type := g.tc.parse_type(concrete_id)
 				if id == 0 || !g.ownership_type_requires_destruction(concrete_type, depth + 1) {
@@ -1803,13 +1801,13 @@ fn (mut g FlatGen) gen_ownership_drop_result_error(expr string, depth int, mut e
 	g.writeln('if ((${expr})._object_is_boxed && ${object} != NULL && ${object} != builtin__none__._object && ${object} != builtin__error_sentinel._object) {')
 	g.indent++
 	g.writeln('switch ((${expr})._typ) {')
-	mut iface_name := 'IError'
-	if iface_name !in g.iface_impls && 'builtin.IError' in g.iface_impls {
-		iface_name = 'builtin.IError'
+	mut iface_name_id := cgen_ierror_type_name_id
+	if iface_name_id !in g.iface_impls && cgen_builtin_ierror_type_name_id in g.iface_impls {
+		iface_name_id = cgen_builtin_ierror_type_name_id
 	}
-	for concrete_id in g.iface_impls[iface_name] or { []u32{} } {
+	for concrete_id in g.iface_impls[iface_name_id] or { []u32{} } {
 		concrete := flat.source_type_name(concrete_id)
-		id := g.iface_type_id(flat.source_type_id(iface_name), concrete_id)
+		id := g.iface_type_id(iface_name_id, concrete_id)
 		concrete_type := g.tc.parse_type(concrete_id)
 		if id == 0 || !g.ownership_type_requires_destruction(concrete_type, depth + 1) {
 			continue
@@ -1852,13 +1850,13 @@ fn (mut g FlatGen) gen_ownership_clone_ierror(id flat.NodeId) {
 	g.writeln('if (${object} != NULL && ${object} != builtin__none__._object && ${object} != builtin__error_sentinel._object) {')
 	g.indent++
 	g.writeln('switch (${source}._typ) {')
-	mut iface_name := 'IError'
-	if iface_name !in g.iface_impls && 'builtin.IError' in g.iface_impls {
-		iface_name = 'builtin.IError'
+	mut iface_name_id := cgen_ierror_type_name_id
+	if iface_name_id !in g.iface_impls && cgen_builtin_ierror_type_name_id in g.iface_impls {
+		iface_name_id = cgen_builtin_ierror_type_name_id
 	}
-	for concrete_id in g.iface_impls[iface_name] or { []u32{} } {
+	for concrete_id in g.iface_impls[iface_name_id] or { []u32{} } {
 		concrete := flat.source_type_name(concrete_id)
-		type_id := g.iface_type_id(flat.source_type_id(iface_name), concrete_id)
+		type_id := g.iface_type_id(iface_name_id, concrete_id)
 		if type_id == 0 {
 			continue
 		}
@@ -8409,12 +8407,12 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 			}
 			if rhs.kind == .struct_init {
 				init_name := g.struct_init_effective_type_name(rhs_id, rhs)
-				if flat.source_type_name(init_name).starts_with('&') {
+				if flat.source_type_shape(init_name).has(.pointer) {
 					pointer_init_type := g.tc.parse_resolution_type(init_name)
 					if pointer_init_type is types.Pointer {
 						v_type = pointer_init_type
 					}
-				} else if flat.source_type_name(init_name).starts_with('chan ') {
+				} else if flat.source_type_shape(init_name).has(.channel_type) {
 					channel_type := g.tc.parse_resolution_type(init_name)
 					if channel_type is types.Channel {
 						v_type = channel_type
@@ -8431,7 +8429,7 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 			// that contextual pointer here would declare `local` as `T*` but initialize it
 			// with a `T` compound literal.
 			if rhs.kind == .struct_init && v_type is types.Pointer
-				&& !flat.source_type_name(g.struct_init_effective_type_name(rhs_id, rhs)).starts_with('&') {
+				&& !flat.source_type_shape(g.struct_init_effective_type_name(rhs_id, rhs)).has(.pointer) {
 				v_type = types.unwrap_all_pointers(v_type)
 			}
 			if rhs.kind == .lock_expr && v_type !is types.MultiReturn {
@@ -8515,7 +8513,7 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 			v_type = g.optional_source_type_for_expr(rhs_id, v_type)
 			v_type = g.preserve_specialized_alias_decl_type(rhs_id, rhs, v_type)
 			if rhs.kind == .struct_init && v_type is types.Pointer
-				&& !flat.source_type_name(g.struct_init_effective_type_name(rhs_id, rhs)).starts_with('&') {
+				&& !flat.source_type_shape(g.struct_init_effective_type_name(rhs_id, rhs)).has(.pointer) {
 				v_type = types.unwrap_all_pointers(v_type)
 			}
 			if g.gen_large_heap_struct_decl(lhs_id, rhs_id, v_type, decl_prefix,
@@ -8544,7 +8542,7 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 			boxed_optional := g.optional_interface_assignment_boxes_payload(semantic_v_type,
 				optional_result_unalias_type(g.usable_expr_type(rhs_id)), rhs_id) or { '' }
 			ct0 := if rhs.kind == .struct_init
-				&& flat.source_type_name(g.struct_init_effective_type_name(rhs_id, rhs)).starts_with('chan ') {
+				&& flat.source_type_shape(g.struct_init_effective_type_name(rhs_id, rhs)).has(.channel_type) {
 				'chan'
 			} else if semantic_v_type is types.MultiReturn {
 				g.value_c_type(v_type)
@@ -9013,7 +9011,7 @@ fn (g &FlatGen) struct_init_decl_type_is_bare_generic_instance(rhs flat.Node, v_
 }
 
 fn (mut g FlatGen) struct_init_decl_c_type(rhs_id flat.NodeId, rhs flat.Node, v_type types.Type) string {
-	if flat.source_type_name(g.struct_init_effective_type_name(rhs_id, rhs)).starts_with('&') && v_type is types.Pointer {
+	if flat.source_type_shape(g.struct_init_effective_type_name(rhs_id, rhs)).has(.pointer) && v_type is types.Pointer {
 		return g.value_c_type(v_type)
 	}
 	clean := g.value_unalias_type(types.unwrap_all_pointers(v_type))
@@ -10125,15 +10123,15 @@ fn (g &FlatGen) assign_struct_operator_method(lhs_type &types.Type, op flat.Op) 
 		return none
 	}
 	op_symbol := assign_struct_operator_symbol(op) or { return none }
-	mut type_names := [clean.name()]
+	mut type_name_ids := [clean.source_type_id()]
 	if clean is types.Alias {
-		base_name := types.unwrap_pointer(clean.base_type).name()
-		if base_name.len > 0 && base_name !in type_names {
-			type_names << base_name
+		base_name_id := types.unwrap_pointer(clean.base_type).source_type_id()
+		if base_name_id != 0 && base_name_id !in type_name_ids {
+			type_name_ids << base_name_id
 		}
 	}
-	for type_name in type_names {
-		for receiver_source_id in g.assign_struct_operator_receivers(flat.source_type_id(type_name)) {
+	for type_name_id in type_name_ids {
+		for receiver_source_id in g.assign_struct_operator_receivers(type_name_id) {
 			receiver := flat.source_type_name(receiver_source_id)
 
 			resolved_method := g.resolve_method_name(receiver_source_id, op_symbol)

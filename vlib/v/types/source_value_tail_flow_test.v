@@ -146,3 +146,67 @@ fn test_generic_call_rejects_source_backed_option_and_result_type_names() {
 		assert tc.errors[0].node == type_arg
 	}
 }
+
+fn test_generic_struct_init_inference_reads_source_operand_and_legacy_fallback() {
+	mut a := flat.FlatAst.new()
+	module_id := a.add_val(.module_decl, 'main')
+	source_field := a.add_node(flat.Node{
+		kind:  .field_decl
+		value: 'value'
+		typ:   flat.source_type_id('T')
+	})
+	decl_start := a.begin_children()
+	a.add_child(source_field)
+	declaration := a.add_node(flat.Node{
+		kind:           .struct_decl
+		value:          'Box'
+		children_start: decl_start
+		children_count: 1
+	})
+	value := a.add_node(flat.Node{ kind: .string_literal, value: 'hello' })
+	field_start := a.begin_children()
+	a.add_child(value)
+	field := a.add_node(flat.Node{
+		kind:           .field_init
+		value:          'value'
+		children_start: field_start
+		children_count: 1
+	})
+	init_start := a.begin_children()
+	a.add_child(field)
+	original_id := flat.source_type_id(' Box ')
+	checked_id := flat.source_type_id('UnrelatedCheckedType')
+	legacy := flat.Node{
+		kind:           .struct_init
+		value:          ' Box '
+		typ:            checked_id
+		children_start: init_start
+		children_count: 1
+	}
+	canonicalized := a.add_node(legacy)
+	indexed := a.add_node(flat.Node{
+		kind:           .struct_init
+		source_value:   original_id
+		typ:            checked_id
+		children_start: init_start
+		children_count: 1
+	})
+	assert legacy.value == ' Box '
+	assert legacy.source_value == 0
+	assert a.nodes[int(canonicalized)].value == ''
+	assert a.nodes[int(canonicalized)].source_value == original_id
+	assert a.nodes[int(indexed)].value == ''
+	mut tc := TypeChecker.new(&a)
+	tc.reset_node_caches(a.nodes.len)
+	tc.cur_module = 'main'
+	tc.top_level_idx = [i32(module_id), i32(declaration)]
+	tc.structs['main.Box'] = [StructField{ name: 'value', typ: unknown_type('T') }]
+	tc.struct_generic_params['main.Box'] = ['T']
+	for node in [legacy, a.nodes[int(canonicalized)], a.nodes[int(indexed)]] {
+		inferred := tc.infer_generic_struct_init_type(node) or {
+			panic('failed to infer Box from original struct operand')
+		}
+		assert inferred.source_type_id() == flat.source_type_id('main.Box[string]')
+		assert node.typ == checked_id
+	}
+}

@@ -2031,10 +2031,10 @@ fn (mut g Parser) read_if_expression() !string {
 	// A member smart-cast branch (`if x.obj is Var { x.obj } else { Var{…} }`) reads the narrowed
 	// member as a variant POINTER, while the other branch is a by-value variant; deref the pointer
 	// branch so the ternary selects between two value-typed branches.
-	if g.selfhost && flat.source_type_name(then_type).ends_with('*') && else_type != 0 && flat.source_type_name(then_type).trim_right('*') == flat.source_type_name(else_type) {
+	if g.selfhost && flat.source_type_name(then_type).ends_with('*') && else_type != 0 && fastc_trim_pointer_type(then_type) == else_type {
 		then_expression = '*(${then_expression})'
 		then_type = else_type
-	} else if g.selfhost && flat.source_type_name(else_type).ends_with('*') && then_type != 0 && flat.source_type_name(else_type).trim_right('*') == flat.source_type_name(then_type) {
+	} else if g.selfhost && flat.source_type_name(else_type).ends_with('*') && then_type != 0 && fastc_trim_pointer_type(else_type) == then_type {
 		else_expression = '*(${else_expression})'
 		else_type = then_type
 	}
