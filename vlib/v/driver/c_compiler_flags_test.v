@@ -406,6 +406,38 @@ fn test_macos_linux_cross_compile_uses_bundled_amd64_sysroot() {
 	}
 }
 
+fn test_macos_linux_cross_compile_selects_postgres_sysroot_headers() {
+	$if !macos {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'v3_linux_cross_pg_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	output := os.join_path(root, 'main.c')
+	os.write_file(source, 'import db.pg\nfn main() { println(pg.Config{}) }\n')!
+	old_vflags := os.getenv_opt('VFLAGS')
+	os.unsetenv('VFLAGS')
+	defer {
+		if value := old_vflags {
+			os.setenv('VFLAGS', value, true)
+		}
+	}
+	// C output exercises conditional headers without requiring a cross toolchain or libpq.
+	for target_os in ['macos', 'linux'] {
+		build := cmdexec.run(v3_driver_test_executable(), ['-new-compiler', '-nocache', '-cc',
+			'clang', '-os', target_os, '-o', output, source])
+		assert build.exit_code == 0, build.output
+		c_source := os.read_file(output)!
+		assert c_source.contains('#include <libpq/libpq-fe.h>') == (target_os == 'linux')
+		assert c_source.contains('#include <libpq/pg_config.h>') == (target_os == 'linux')
+		assert c_source.contains('#include <libpq-fe.h>') == (target_os == 'macos')
+		assert c_source.contains('#include <pg_config.h>') == (target_os == 'macos')
+	}
+}
+
 fn test_linux_cross_link_flags_unwrap_clang_driver_flags() {
 	assert v3_linux_cross_link_flags(['-I/include', '-pthread', '-Wl,-z,relro', '-Xlinker',
 		'--as-needed', '-L/lib', '-lssl']) == [
