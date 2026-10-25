@@ -11,8 +11,9 @@ fn test_fastc_spawned_parameter_addresses_keep_one_live_storage_cell() {
 	root := os.join_path(os.vtmp_dir(), 'fastc_spawn_parameter_escape_${os.getpid()}')
 	os.mkdir_all(root) or { panic(err) }
 	defer { os.rmdir_all(root) or {} }
-	os.write_file(os.join_path(root, 'gate.h'), 'void clobber_stack(void);
-void set_state_value(void *state, long long value);
+	os.write_file(os.join_path(root, 'gate.h'), '#include <stdint.h>
+void clobber_stack(void);
+void set_state_value(void *state, int64_t value);
 void wait_gate(void);
 void release_gate(void);
 void reset_gate(void);
@@ -117,7 +118,7 @@ void clobber_stack(void) {
 	volatile u64 storage[8192];
 	for (int i = 0; i < 8192; i++) storage[i] = 0x1111222233334444;
 }
-void set_state_value(void *state, i64 value) { *(i64 *)state = value; }
+void set_state_value(void *state, int64_t value) { *(int64_t *)state = value; }
 ') or { panic(err) }
 	build := cmdexec.run('cc', ['-std=gnu11', '-pthread', '-o', program, c_path])
 	assert build.exit_code == 0, build.output
