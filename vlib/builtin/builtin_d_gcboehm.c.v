@@ -325,8 +325,14 @@ fn C.GC_set_stackbottom(voidptr, voidptr)
 fn C.GC_add_roots(voidptr, voidptr)
 fn C.GC_remove_roots(voidptr, voidptr)
 
+// Defined in gc_boehm_helpers.o; keep their prototypes explicit for backends without its header.
+@[c_extern]
 fn C.v__gc_can_register_main_data_roots_linux() i32
+
+@[c_extern]
 fn C.v__gc_debugger_present_linux() i32
+
+@[c_extern]
 fn C.v__gc_register_main_data_roots_linux()
 
 // fn C.GC_get_push_other_roots() fn()
