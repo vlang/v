@@ -1720,11 +1720,13 @@ fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, d
 				g.gen_ownership_drop_result_error(expr, depth + 1, mut expanding)
 				return
 			}
-			mut iface_name := typ.name()
+			mut iface_name_id := typ.source_type_id()
+			mut iface_name := flat.source_type_name(iface_name_id)
 			if iface_name !in g.iface_impls {
 				qualified := g.tc.qualify_name(iface_name)
 				if qualified in g.iface_impls {
 					iface_name = qualified
+					iface_name_id = flat.source_type_id(qualified)
 				}
 			}
 			object := '((${expr})._object)'
@@ -1732,7 +1734,7 @@ fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, d
 			g.indent++
 			g.writeln('switch ((${expr})._typ) {')
 			for concrete_id in g.iface_impls[iface_name] or { []u32{} } {
-				id := g.iface_type_id(flat.source_type_id(iface_name), concrete_id)
+				id := g.iface_type_id(iface_name_id, concrete_id)
 				concrete_type := g.tc.parse_type(concrete_id)
 				if id == 0 || !g.ownership_type_requires_destruction(concrete_type, depth + 1) {
 					continue
@@ -3618,8 +3620,8 @@ fn (g &FlatGen) assert_struct_init_is_pure(id flat.NodeId, node flat.Node) bool 
 	if clean !is types.Struct {
 		return false
 	}
-	type_name := (clean as types.Struct).name()
-	fields := g.struct_fields_for_type(flat.source_type_id(type_name)) or { return false }
+	type_name_id := (clean as types.Struct).source_type_id()
+	fields := g.struct_fields_for_type(type_name_id) or { return false }
 	mut set_fields := map[string]bool{}
 	for i in 0 .. node.children_count {
 		field := g.a.child_node(&node, i)
@@ -3633,7 +3635,7 @@ fn (g &FlatGen) assert_struct_init_is_pure(id flat.NodeId, node flat.Node) bool 
 		}
 	}
 	mut seen := map[u32]bool{}
-	return g.assert_struct_defaults_are_pure(flat.source_type_id(type_name), set_fields, mut seen)
+	return g.assert_struct_defaults_are_pure(type_name_id, set_fields, mut seen)
 }
 
 // assert_struct_defaults_are_pure reports whether the fields of a struct that are not
@@ -6612,21 +6614,15 @@ fn (g &FlatGen) selector_call_return_type(fn_node flat.Node) ?types.Type {
 	if fn_node.value == 'clone' && (clean_type is types.Array || clean_type is types.Map) {
 		return clean_type
 	}
-	mut receiver_name := clean_type.name()
-	if clean_type is types.Struct {
-		receiver_name = clean_type.name()
-	} else if clean_type is types.Interface {
-		receiver_name = clean_type.name()
-	} else if clean_type is types.Alias {
-		receiver_name = clean_type.name()
-	}
+	receiver_name_id := clean_type.source_type_id()
+	receiver_name := flat.source_type_name(receiver_name_id)
 	if receiver_name.len == 0 {
 		return none
 	}
 	if ret := g.selector_fn_field_return_type(fn_node) {
 		return ret
 	}
-	if decl_key := g.interface_method_signature_key(flat.source_type_id(receiver_name), fn_node.value) {
+	if decl_key := g.interface_method_signature_key(receiver_name_id, fn_node.value) {
 		if ret := g.tc.fn_ret_types[decl_key] {
 			return ret
 		}
@@ -6722,11 +6718,11 @@ fn (g &FlatGen) selector_fn_field_return_type(fn_node flat.Node) ?types.Type {
 		return none
 	}
 	base_type := types.unwrap_all_pointers(g.usable_expr_type(g.a.child(&fn_node, 0)))
-	receiver_name := base_type.name()
-	if receiver_name.len == 0 {
+	receiver_name_id := base_type.source_type_id()
+	if receiver_name_id == 0 {
 		return none
 	}
-	field_type := g.struct_field_type(flat.source_type_id(receiver_name), fn_node.value) or { return none }
+	field_type := g.struct_field_type(receiver_name_id, fn_node.value) or { return none }
 	fn_type := fn_type_from(field_type) or { return none }
 	return *fn_type.return_type
 }
@@ -7030,14 +7026,12 @@ fn (g &FlatGen) generated_variant_access_type(id flat.NodeId) ?types.Type {
 	// Called for most expression nodes; borrow the node instead of copying it.
 	node := unsafe { &g.a.nodes[int(id)] }
 	if node.kind == .selector {
-		params := node.generic_params()
-		for i, param in params {
-			if param == '__v3_generated_variant_access' && i + 1 < params.len {
-				if flat.source_type_shape(node.typ).has(.pointer) {
-					return g.parse_node_type(node)
-				}
-				return *g.tc.parse_type(flat.source_type_id(params[i + 1]))
+		variant_id := node.generated_variant_type_id()
+		if variant_id != 0 {
+			if flat.source_type_shape(node.typ).has(.pointer) {
+				return g.parse_node_type(node)
 			}
+			return *g.tc.parse_type(variant_id)
 		}
 	}
 	if node.kind in [.prefix, .paren] && node.children_count > 0 {

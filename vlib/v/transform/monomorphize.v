@@ -4344,7 +4344,8 @@ fn (mut t Transformer) materialize_generic_struct_spec(spec_id u32, decl Generic
 	if !ok || args.len == 0 {
 		return
 	}
-	t.record_generic_specialization_args_in_module(base, decl.module, flat.TypeTextList.from_names(args).ids)
+	args_ids := flat.TypeTextList.from_names(args).ids
+	t.record_generic_specialization_args_in_module(base, decl.module, args_ids)
 	old_module := t.cur_module
 	old_file := t.cur_file
 	old_tc_module := t.tc.cur_module
@@ -4354,14 +4355,14 @@ fn (mut t Transformer) materialize_generic_struct_spec(spec_id u32, decl Generic
 	t.tc.cur_module = decl.module
 	t.tc.cur_file = decl.file
 	mut old_specialization_main_types := t.active_specialization_main_types.clone()
-	t.active_specialization_main_types = t.specialization_main_type_closure(flat.TypeTextList.from_names(args).ids)
+	t.active_specialization_main_types = t.specialization_main_type_closure(args_ids)
 	mut fields := []types.StructField{}
 	for i in 0 .. decl.node.children_count {
 		field := t.a.child_node(&decl.node, i)
 		if field.kind != .field_decl {
 			continue
 		}
-		field_type := substitute_generic_type_text_with_params(field.typ, flat.TypeTextList.from_names(args).ids, decl.node.generic_params())
+		field_type := substitute_generic_type_text_with_params(field.typ, args_ids, decl.node.generic_params())
 		locked_field_type := t.lock_colliding_main_substitution_type_text(field.typ, field_type, decl.module, decl.node.generic_params())
 		// A field declared directly as its type parameter keeps the concrete
 		// argument's identity (and therefore alias methods/operators). Composite
@@ -5047,19 +5048,28 @@ fn (mut t Transformer) emit_generic_fn_specialization(decl GenericFnDecl, args_i
 			continue
 		}
 		mut param_raw := param_child.typ_text()
+		mut param_raw_changed := false
 		if param_raw.starts_with('mut ') {
 			param_raw = param_raw[4..]
+			param_raw_changed = true
 		}
 		if param_raw.starts_with('...') {
 			param_raw = '[]' + param_raw[3..]
+			param_raw_changed = true
 		}
 		// `mut val T` params are recorded as `&T`; the declared language-level
 		// type is `T`, and that is what a by-value use of the param must infer.
 		// An explicit `mut val &T` keeps its `&T` rvalue type; only its ABI slot is `&&T`.
 		if param_child.is_mut && param_child.op != .amp && param_raw.starts_with('&') {
 			param_raw = param_raw[1..]
+			param_raw_changed = true
 		}
-		param_substituted_source_id := t.subst_type(flat.source_type_id(param_raw), concrete_args_source_ids)
+		param_raw_id := if param_raw_changed {
+			flat.source_type_id(param_raw)
+		} else {
+			param_child.typ
+		}
+		param_substituted_source_id := t.subst_type(param_raw_id, concrete_args_source_ids)
 
 		if param_substituted_source_id != 0 {
 			t.set_var_type(param_child.value_text(), param_substituted_source_id)
@@ -7279,11 +7289,18 @@ fn (mut t Transformer) specialize_generic_fn_value_arg(arg_id flat.NodeId, expec
 		return none
 	}
 	mut expected := trimmed_transform_text(expected_type)
+	mut expected_source_id := if expected.len == expected_type.len {
+		expected_type_id
+	} else {
+		u32(0)
+	}
 	if expected.starts_with('...') {
 		expected = trimmed_transform_text(expected[3..])
+		expected_source_id = 0
 	}
 	if expected.starts_with('[]fn') {
 		expected = expected[2..]
+		expected_source_id = 0
 	}
 	if !expected.starts_with('fn') {
 		return none
@@ -7321,7 +7338,11 @@ fn (mut t Transformer) specialize_generic_fn_value_arg(arg_id flat.NodeId, expec
 			''
 		}}'
 		mut inferred := map[string]u32{}
-		infer_generic_type_args(flat.source_type_id(signature), flat.source_type_id(expected), mut inferred)
+		signature_source_id := flat.source_type_id(signature)
+		if expected_source_id == 0 {
+			expected_source_id = flat.source_type_id(expected)
+		}
+		infer_generic_type_args(signature_source_id, expected_source_id, mut inferred)
 		mut concrete_args := []u32{cap: params.len}
 		for param in params {
 			value_source_id := inferred[param] or { continue }
@@ -7343,7 +7364,7 @@ fn (mut t Transformer) specialize_generic_fn_value_arg(arg_id flat.NodeId, expec
 		spec_value := specialized_generic_fn_value(decl.node.value, concrete_args)
 		qualified_spec := transform_qualified_fn_name(decl.module, spec_value)
 		result := t.make_ident(qualified_spec)
-		t.set_node_typ(int(result), flat.source_type_id(expected))
+		t.set_node_typ(int(result), expected_source_id)
 		return result
 	}
 	return none
@@ -9698,20 +9719,20 @@ fn (mut t Transformer) infer_generic_struct_init_args(param_type_id u32, arg_id 
 		} else {
 			continue
 		}
-		mut field_type := ''
+		mut field_type := u32(0)
 		for struct_field in info.fields {
 			if struct_field.name == field_name {
-				field_type = struct_field.typ_text()
+				field_type = struct_field.typ
 				break
 			}
 		}
-		if field_type.len == 0 {
+		if field_type == 0 {
 			continue
 		}
 		value_id := t.a.child(field, 0)
 		value_type_source_id_2 := t.generic_call_arg_type_for_inference(value_id)
 		if value_type_source_id_2 != 0 {
-			infer_generic_type_args(flat.source_type_id(field_type), value_type_source_id_2, mut inferred)
+			infer_generic_type_args(field_type, value_type_source_id_2, mut inferred)
 		}
 	}
 }

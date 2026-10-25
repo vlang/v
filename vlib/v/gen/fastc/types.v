@@ -20,6 +20,7 @@ const fastc_type_unsigned_int = flat.source_type_id('unsigned int')
 const fastc_type_byteptr = flat.source_type_id('byteptr')
 const fastc_type_array = flat.source_type_id('array')
 const fastc_type_map = flat.source_type_id('map')
+const fastc_type_time_time = flat.source_type_id('time__Time')
 
 fn fastc_matching_rpar(tokens []FastcExpressionToken, open int) ?int {
 	return fastc_matching_rpar_before(tokens, open, tokens.len)

@@ -3998,36 +3998,36 @@ fn (mut g FlatGen) gen_method_value_closure(selector_id flat.NodeId, base_id fla
 	// same can happen to a concrete receiver selector after aggregate lowering.
 	// Field checks below take precedence, and the method lookup must still succeed,
 	// so the receiver and method declaration identify either case unambiguously.
-	mut receiver_name := ''
+	mut receiver_name_id := u32(0)
 	mut is_interface_receiver := false
 	if clean is types.Struct {
-		receiver_name = clean.name()
+		receiver_name_id = clean.source_type_id()
 	} else if clean is types.Interface {
-		receiver_name = clean.name()
+		receiver_name_id = clean.source_type_id()
 		is_interface_receiver = true
 	} else if clean is types.Alias {
-		receiver_name = clean.name()
-		base_receiver_name := clean.base_type.name()
+		receiver_name_id = clean.source_type_id()
+		base_receiver_name_id := clean.base_type.source_type_id()
 		if g.resolve_method_name(clean.source_type_id(), method).len == 0
 			&& g.resolve_method_name(clean.base_type.source_type_id(), method).len > 0 {
 			// A true alias (`type A = S`) inherits methods declared on its
 			// underlying type. Use that declaration's receiver/signature for
 			// the method-value wrapper when the alias has no method of its own.
-			receiver_name = base_receiver_name
+			receiver_name_id = base_receiver_name_id
 		} else if alias_method := g.find_alias_method(clean.base_type.source_type_id(), method) {
-			receiver_name = alias_method.all_before_last('.')
+			receiver_name_id = flat.source_type_id(alias_method.all_before_last('.'))
 		}
 	} else if clean is types.String || clean is types.Primitive || clean is types.Char
 		|| clean is types.Rune {
-		receiver_name = clean.name()
+		receiver_name_id = clean.source_type_id()
 		if g.resolve_method_name(clean.source_type_id(), method).len == 0 {
 			if alias_method := g.find_alias_method(clean.source_type_id(), method) {
-				receiver_name = alias_method.all_before_last('.')
+				receiver_name_id = flat.source_type_id(alias_method.all_before_last('.'))
 			}
 		}
 	} else {
 		alias_method := g.find_alias_method(clean.source_type_id(), method) or { return false }
-		receiver_name = alias_method.all_before_last('.')
+		receiver_name_id = flat.source_type_id(alias_method.all_before_last('.'))
 	}
 	// A real field shadows any same-named method: that's a field access, not a value.
 	if _ := g.selector_declared_type(selector_id) {
@@ -4050,10 +4050,11 @@ fn (mut g FlatGen) gen_method_value_closure(selector_id flat.NodeId, base_id fla
 			return false
 		}
 	}
+	receiver_name := flat.source_type_name(receiver_name_id)
 	method_key := if is_interface_receiver {
 		'${receiver_name}.${method}'
 	} else {
-		g.tc.resolved_call_name(selector_id) or { g.resolve_method_name(flat.source_type_id(receiver_name), method) }
+		g.tc.resolved_call_name(selector_id) or { g.resolve_method_name(receiver_name_id, method) }
 	}
 	mut params := []types.Type{}
 	mut ret := cgen_void_type
@@ -4068,13 +4069,13 @@ fn (mut g FlatGen) gen_method_value_closure(selector_id flat.NodeId, base_id fla
 			}
 		} else {
 			params = g.interface_method_param_types(method_key) or { return false }
-			decl_key := g.interface_method_signature_key(flat.source_type_id(receiver_name), method) or { method_key }
+			decl_key := g.interface_method_signature_key(receiver_name_id, method) or { method_key }
 			// A generic interface (`Shelf[User]`) returns its type arguments where its
 			// declaration returns its parameters, as interface_method_param_types does.
-			_, ret = g.tc.specialized_interface_method_signature(flat.source_type_id(receiver_name), decl_key)
-			g.add_spawn_wrapper_def('${g.interface_dispatch_signature(flat.source_type_id(receiver_name), g.cname(receiver_name), method)};')
-			if !g.should_emit_interface_dispatch(flat.source_type_id(receiver_name), method) {
-				g.add_spawn_wrapper_def(g.interface_dispatch_def_string(flat.source_type_id(receiver_name), g.cname(receiver_name), method))
+			_, ret = g.tc.specialized_interface_method_signature(receiver_name_id, decl_key)
+			g.add_spawn_wrapper_def('${g.interface_dispatch_signature(receiver_name_id, g.cname(receiver_name), method)};')
+			if !g.should_emit_interface_dispatch(receiver_name_id, method) {
+				g.add_spawn_wrapper_def(g.interface_dispatch_def_string(receiver_name_id, g.cname(receiver_name), method))
 			}
 		}
 		cname = g.cname(method_key)

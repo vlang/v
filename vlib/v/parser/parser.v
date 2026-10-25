@@ -4991,13 +4991,13 @@ fn (mut p Parser) parse_comptime_for(dollar_start int) flat.NodeId {
 	source := p.a.nodes[int(source_id)]
 	is_string_source := source.kind == .call
 	mut kind := 'fields'
-	mut base := flat.source_type_name(p.type_expr_name(source_id))
+	mut base_id := p.type_expr_name(source_id)
 	if is_string_source {
 		kind = 'strings'
-		base = ''
+		base_id = 0
 	} else if source.kind == .selector && source.children_count == 1 {
 		kind = source.value
-		base = flat.source_type_name(p.type_expr_name(p.a.child(&source, 0)))
+		base_id = p.type_expr_name(p.a.child(&source, 0))
 		if kind !in ['methods', 'fields', 'values', 'variants', 'attributes', 'params']
 			&& !p.prefs.is_fmt {
 			p.record_diagnostic_span('unknown kind `${kind}`, available are: `methods`, `fields`, `values`, `variants`, `attributes` or `params`',
@@ -5005,7 +5005,7 @@ fn (mut p Parser) parse_comptime_for(dollar_start int) flat.NodeId {
 		}
 	}
 	if !is_string_source {
-		// Metadata headers are stored as text; orphan selectors can otherwise
+		// Metadata headers are stored as spelling IDs; orphan selectors can otherwise
 		// look like unresolved method values to whole-AST runtime helper scans.
 		p.discard_comptime_branch(source_id)
 	}
@@ -5032,7 +5032,7 @@ fn (mut p Parser) parse_comptime_for(dollar_start int) flat.NodeId {
 	return p.add_node(flat.Node{
 		kind:           .comptime_for
 		value:          '${val_var}|${kind}'
-		typ:            flat.source_type_id(base)
+		typ:            base_id
 		children_start: start
 		children_count: flat.child_count(children.len)
 		pos:            p.span_to(dollar_start)

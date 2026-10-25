@@ -3837,10 +3837,11 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 					true
 				}
 				Alias, Struct, Interface, Enum, SumType {
-					receiver_name := receiver_type.name()
+					receiver_name_id := receiver_type.source_type_id()
+					receiver_name := flat.source_type_name(receiver_name_id)
 					!receiver_name.starts_with('C.') && !receiver_name.starts_with('JS.')
-						&& tc.type_name_known(flat.source_type_id(receiver_name))
-						&& !tc.source_module_declares_type(flat.source_type_id(receiver_name))
+						&& tc.type_name_known(receiver_name_id)
+						&& !tc.source_module_declares_type(receiver_name_id)
 				}
 				else {
 					false

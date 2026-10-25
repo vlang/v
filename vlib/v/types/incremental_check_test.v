@@ -333,3 +333,56 @@ fn test_incremental_generic_call_signature_preserves_argument_spellings() {
 		assert changed.str() != original
 	}
 }
+
+fn test_incremental_node_signature_preserves_lowered_marker_source_bytes() {
+	fn_type := flat.source_type_id('fn (dep.Record) []int')
+	variant := flat.source_type_id('dep.Variant')
+	view := flat.source_type_id('?&dep.Record')
+	legacy_params := ['__v3_comptime_method_selector',
+		'__v3_comptime_method_selector_fn_type:' + flat.source_type_name(fn_type),
+		'__v3_generated_variant_access', flat.source_type_name(variant), '__v3_mut_optional_arg',
+		flat.source_type_name(view)]
+	legacy := flat.Node{ kind: .selector, value: 'method', payload: flat.node_payload(legacy_params) }
+	mut canonical := flat.Node{ kind: .selector, value: 'method' }
+	canonical.set_generic_params(['__v3_comptime_method_selector', '__v3_generated_variant_access',
+		'__v3_mut_optional_arg'])
+	canonical.set_fn_value_type_id(fn_type)
+	canonical.set_generated_variant_type_id(variant)
+	canonical.set_mut_optional_arg_view_type_id(view)
+	assert incremental_legacy_node_params(&canonical) == legacy_params
+	mut before := strings.new_builder(256)
+	mut after := strings.new_builder(256)
+	incremental_write_node(mut before, &legacy, 0)
+	incremental_write_node(mut after, &canonical, 0)
+	legacy_signature := before.str()
+	assert legacy_signature == after.str()
+	canonical.set_fn_value_type_id(flat.source_type_id('fn () bool'))
+	mut changed := strings.new_builder(256)
+	incremental_write_node(mut changed, &canonical, 0)
+	assert changed.str() != legacy_signature
+}
+
+fn test_incremental_node_signature_distinguishes_missing_lowered_recognition_markers() {
+	markers := ['__v3_comptime_method_selector', '__v3_generated_variant_access',
+		'__v3_mut_optional_arg']
+	for i, marker in markers {
+		mut unmarked := flat.Node{ kind: .selector, value: 'method' }
+		match i {
+			0 { unmarked.set_fn_value_type_id(flat.source_type_id('fn () int')) }
+			1 { unmarked.set_generated_variant_type_id(flat.source_type_id('dep.Variant')) }
+			else {
+				unmarked.kind = .prefix
+				unmarked.op = .amp
+				unmarked.set_mut_optional_arg_view_type_id(flat.source_type_id('?&dep.Record'))
+			}
+		}
+		mut marked := unmarked
+		marked.set_generic_params([marker])
+		assert incremental_legacy_node_params(&unmarked) != incremental_legacy_node_params(&marked)
+		mut without_marker := strings.new_builder(128)
+		mut with_marker := strings.new_builder(128)
+		incremental_write_node(mut without_marker, &unmarked, 0)
+		incremental_write_node(mut with_marker, &marked, 0)
+		assert without_marker.str() != with_marker.str()
+	}
+}

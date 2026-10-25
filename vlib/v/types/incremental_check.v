@@ -375,6 +375,51 @@ fn (tc &TypeChecker) incremental_write_tree(mut b strings.Builder, root flat.Nod
 	}
 }
 
+// incremental_legacy_node_params renders lowered source identities in their historical marker slots.
+// Cache signatures depend on spelling bytes, never on process-local source ID allocation order.
+fn incremental_legacy_node_params(node &flat.Node) []string {
+	if node.payload == 0 {
+		return []string{}
+	}
+	payload := node.payload_ptr()
+	params := payload.generic_params
+	if payload.fn_value_type == 0 && payload.generated_variant_type == 0 && payload.mut_optional_arg_view_type == 0 {
+		return params
+	}
+	mut rendered := []string{cap: params.len + 6}
+	mut fn_seen := false
+	mut variant_seen := false
+	mut optional_seen := false
+	for param in params {
+		rendered << param
+		if param == '__v3_comptime_method_selector' && payload.fn_value_type != 0 {
+			rendered << '__v3_comptime_method_selector_fn_type:' + flat.source_type_name(payload.fn_value_type)
+			fn_seen = true
+		} else if param == '__v3_generated_variant_access' && payload.generated_variant_type != 0 {
+			rendered << flat.source_type_name(payload.generated_variant_type)
+			variant_seen = true
+		} else if param == '__v3_mut_optional_arg' && payload.mut_optional_arg_view_type != 0 {
+			rendered << flat.source_type_name(payload.mut_optional_arg_view_type)
+			optional_seen = true
+		}
+	}
+	// Keep missing recognition markers distinct from marker-bearing metadata.
+	// The reserved tags contain a colon so ordinary generic names cannot match them.
+	if payload.fn_value_type != 0 && !fn_seen {
+		rendered << '__v3_unmarked_fn_value_type:'
+		rendered << '__v3_comptime_method_selector_fn_type:' + flat.source_type_name(payload.fn_value_type)
+	}
+	if payload.generated_variant_type != 0 && !variant_seen {
+		rendered << '__v3_unmarked_generated_variant_type:'
+		rendered << flat.source_type_name(payload.generated_variant_type)
+	}
+	if payload.mut_optional_arg_view_type != 0 && !optional_seen {
+		rendered << '__v3_unmarked_mut_optional_arg_view_type:'
+		rendered << flat.source_type_name(payload.mut_optional_arg_view_type)
+	}
+	return rendered
+}
+
 // incremental_write_node writes into `b` what the node `node` holds, with
 // `children` children that count, but its place and where its children are.
 fn incremental_write_node(mut b strings.Builder, node &flat.Node, children int) {
@@ -397,15 +442,18 @@ fn incremental_write_node(mut b strings.Builder, node &flat.Node, children int) 
 		call_args_only := node.call_type_args().len > 0 && !isnil(payload)
 			&& payload.generic_params.len == 0 && payload.generic_constraints.ids.len == 0
 			&& payload.enum_backing_type == 0 && payload.debugger_value_types.ids.len == 0
+			&& payload.fn_value_type == 0 && payload.generated_variant_type == 0
+			&& payload.mut_optional_arg_view_type == 0
 		if !isnil(payload) && !call_args_only {
+			params := incremental_legacy_node_params(node)
 			// Keep enum backing bytes at the same position in the stable source signature.
-			if node.kind == .enum_decl && (payload.enum_backing_type != 0 || payload.generic_params.len > 0) {
+			if node.kind == .enum_decl && (payload.enum_backing_type != 0 || params.len > 0) {
 				b.write_string(flat.source_type_name(payload.enum_backing_type))
 				b.write_u8(1)
 			}
 			debugger_types := node.debugger_value_type_ids()
-			debugger_layout := debugger_types.len == int(children) && payload.generic_params.len == 1 + debugger_types.len * 2
-			for i, param in payload.generic_params {
+			debugger_layout := debugger_types.len == int(children) && params.len == 1 + debugger_types.len * 2
+			for i, param in params {
 				b.write_string(param)
 				b.write_u8(1)
 				if debugger_layout && i > 0 && i % 2 == 1 {

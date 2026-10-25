@@ -1263,16 +1263,14 @@ fn (t &Transformer) interface_concrete_impl_name(name_id u32) ?u32 {
 	}
 	if name.starts_with('[]') {
 		typ := t.tc.parse_type(name_id)
-		canonical := typ.name()
 		if typ is types.Array {
-			return flat.source_type_id(canonical)
+			return typ.source_type_id()
 		}
 	}
 	if name.starts_with('map[') {
 		typ := t.tc.parse_type(name_id)
-		canonical := typ.name()
 		if typ is types.Map {
-			return flat.source_type_id(canonical)
+			return typ.source_type_id()
 		}
 	}
 	if name.starts_with('[') {

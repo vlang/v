@@ -1308,7 +1308,7 @@ fn (mut g Parser) parse_return() !bool {
 		expression = '*(${expression})'
 		actual_type = g.return_type
 	}
-	if g.selfhost && g.return_type_text().ends_with('*') && flat.source_type_name(actual_type) == g.return_type_text() && g.last_expression.len == 2 && g.last_expression[0].tok == .amp && g.last_expression[1].tok == .name {
+	if g.selfhost && g.return_type_text().ends_with('*') && actual_type == g.return_type && g.last_expression.len == 2 && g.last_expression[0].tok == .amp && g.last_expression[1].tok == .name {
 		// A pointer returned from a V local escapes the function. Taking its C address
 		// directly leaves a dangling stack pointer (for example `return &pool` in
 		// sync.pool.new_pool_processor), so copy the local into heap-backed storage.
@@ -1321,14 +1321,14 @@ fn (mut g Parser) parse_return() !bool {
 			}
 		}
 	}
-	if g.selfhost && g.return_type_text() !in ['Option', '__v_result', 'MultiReturn'] && g.should_box_variant(g.return_type, actual_type) {
+	if g.selfhost && g.return_type !in [fastc_type_option, fastc_type_result, fastc_type_multi_return] && g.should_box_variant(g.return_type, actual_type) {
 		// A concrete variant returned where the function's boxed sum type is expected
 		// (`fn () Expr { return ArrayInit{...} }`) must be boxed, exactly as the interface
 		// and assignment paths do; otherwise the variant struct is returned raw.
 		expression = g.interface_value_expression(g.return_type, actual_type, expression)
 		actual_type = g.return_type
 	}
-	if g.selfhost && g.return_type_text() !in ['Option', '__v_result', 'MultiReturn'] && g.declared_kinds[flat.source_type_name(g.semantic_type_key(g.return_type))] != .interface_ && !fastc_types_share_lowering_representation(actual_type, g.return_type) && !g.selfhost_types_share_lowering_representation(actual_type, g.return_type) {
+	if g.selfhost && g.return_type !in [fastc_type_option, fastc_type_result, fastc_type_multi_return] && g.declared_kinds[flat.source_type_name(g.semantic_type_key(g.return_type))] != .interface_ && !fastc_types_share_lowering_representation(actual_type, g.return_type) && !g.selfhost_types_share_lowering_representation(actual_type, g.return_type) {
 		actual_type = g.return_type
 	}
 	if g.selfhost && g.declared_kinds[flat.source_type_name(g.semantic_type_key(g.return_type))] == .interface_ && g.declared_kinds[flat.source_type_name(g.semantic_type_key(actual_type))] != .interface_ {
@@ -2080,7 +2080,7 @@ fn (mut g Parser) parse_assert_statement() ! {
 }
 
 fn (mut g Parser) capture_final_or_value(expression string) bool {
-	if !g.selfhost || !g.or_value_capture || g.last_expression_type_text() in ['', 'void']
+	if !g.selfhost || !g.or_value_capture || g.last_expression_type in [u32(0), flat.source_type_void]
 		|| g.local_scope_depth != g.or_value_scope_depth
 		|| fastc_expression_tokens_contain_assignment_or_mutation(g.last_expression) {
 		return false
@@ -2393,7 +2393,7 @@ fn (g &Parser) parallel_rhs_is_option_tuple_or() bool {
 // `MultiReturn` component into each target.
 fn (mut g Parser) parse_parallel_option_tuple(names []string, mutability []bool, is_declaration bool) ! {
 	option_expr := g.read_expression([token.Token.key_or, token.Token.semicolon, token.Token.rcbr])!
-	is_result := g.last_expression_type_text() == '__v_result'
+	is_result := g.last_expression_type == fastc_type_result
 	component_types := g.multi_return_types_for_expression(g.last_expression)
 	if component_types.len < names.len {
 		return g.unsupported('parallel option tuple with ${names.len} targets and ${component_types.len} components')
@@ -3796,7 +3796,7 @@ fn (g &Parser) build_orm_create(db_source string, block_source string, trailing 
 			continue
 		}
 		type_idx := fastc_builtin_type_idx(field.typ) or {
-			if field.typ_text() == 'time__Time' {
+			if field.typ == fastc_type_time_time {
 				// orm.time_ (-2): the ORM renders this as a DATETIME/timestamp column.
 				-2
 			} else if g.is_enum_type_name(field.typ_text()) {

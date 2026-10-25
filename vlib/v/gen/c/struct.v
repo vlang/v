@@ -1300,26 +1300,28 @@ fn (g &FlatGen) unique_qualified_struct_c_type(short_ct string) ?string {
 		|| short_ct.starts_with('union ') {
 		return none
 	}
+	mut short_ct_id := u32(0)
 	if !isnil(g.unique_struct_ct_cache) {
+		short_ct_id = flat.source_type_id(short_ct)
 		mut cache := g.unique_struct_ct_cache
-		if cached := cache.get(short_ct) {
-			if cached.len == 0 {
+		if cached := cache.get_id(short_ct_id) {
+			if cached == 0 {
 				return none
 			}
-			return cached
+			return flat.source_type_name(cached)
 		}
 	}
 	matches := g.qualified_struct_c_types(short_ct)
 	if matches.len == 1 && matches[0] != short_ct {
 		if !isnil(g.unique_struct_ct_cache) {
 			mut cache := g.unique_struct_ct_cache
-			cache.put(short_ct, matches[0])
+			cache.put_id(short_ct_id, flat.source_type_id(matches[0]))
 		}
 		return matches[0]
 	}
 	if !isnil(g.unique_struct_ct_cache) {
 		mut cache := g.unique_struct_ct_cache
-		cache.put(short_ct, '')
+		cache.put_id(short_ct_id, 0)
 	}
 	return none
 }
@@ -2899,20 +2901,27 @@ fn (mut g FlatGen) gen_default_value_for_clean_type(clean_typ types.Type) {
 		g.write('(${ct}){')
 		mut set_fields := map[string]bool{}
 		mut has_field := g.gen_struct_default_fields(clean_typ.source_type_id(), mut set_fields, false)
-		mut sname := g.tc.qualify_name(clean_typ.name())
-		if clean_typ.name() in g.tc.structs {
-			sname = clean_typ.name()
+		type_name_id := clean_typ.source_type_id()
+		type_name := flat.source_type_name(type_name_id)
+		mut sname := g.tc.qualify_name(type_name)
+		if type_name in g.tc.structs {
+			sname = type_name
+		}
+		sname_id := if sname == type_name {
+			type_name_id
+		} else {
+			flat.source_type_id(sname)
 		}
 		if sname in g.tc.structs {
 			for f in g.tc.structs[sname] {
 				if f.name in set_fields {
 					continue
 				}
-				has_field = g.gen_unset_struct_field_default(flat.source_type_id(sname), f.name, f.typ, g.cname(f.name), has_field)
+				has_field = g.gen_unset_struct_field_default(sname_id, f.name, f.typ, g.cname(f.name), has_field)
 			}
 		}
 		if !has_field {
-			g.write(if g.struct_type_is_empty(flat.source_type_id(sname)) {
+			g.write(if g.struct_type_is_empty(sname_id) {
 				'E_STRUCT'
 			} else {
 				'0'
@@ -3195,9 +3204,16 @@ fn (mut g FlatGen) gen_params_struct_arg(typ types.Type, node flat.Node, field_s
 			set_fields[field.value] = true
 			has_field = true
 		}
-		mut sname := g.tc.qualify_name(typ.name())
-		if typ.name() in g.tc.structs {
-			sname = typ.name()
+		type_name_id := typ.source_type_id()
+		type_name := flat.source_type_name(type_name_id)
+		mut sname := g.tc.qualify_name(type_name)
+		if type_name in g.tc.structs {
+			sname = type_name
+		}
+		sname_id := if sname == type_name {
+			type_name_id
+		} else {
+			flat.source_type_id(sname)
 		}
 		has_field = g.gen_struct_default_fields(typ.source_type_id(), mut set_fields, has_field)
 		if sname in g.tc.structs {
@@ -3205,7 +3221,7 @@ fn (mut g FlatGen) gen_params_struct_arg(typ types.Type, node flat.Node, field_s
 				if f.name in set_fields {
 					continue
 				}
-				has_field = g.gen_unset_struct_field_default(flat.source_type_id(sname), f.name, f.typ, g.cname(f.name), has_field)
+				has_field = g.gen_unset_struct_field_default(sname_id, f.name, f.typ, g.cname(f.name), has_field)
 			}
 		}
 		g.write('}')
@@ -5188,10 +5204,12 @@ fn (g &FlatGen) generic_struct_init_app_ct_from_context(type_name_id u32) ?strin
 		}
 		if generic_receiver_type_suffixes(candidate_args_source_ids) == arg_suffix {
 			context_ct := g.tc.c_type(candidate_type)
+			mut context_ct_id := u32(0)
 			if !isnil(g.generic_struct_context_ct_cache) {
+				context_ct_id = flat.source_type_id(context_ct)
 				mut cache := g.generic_struct_context_ct_cache
-				if cached := cache.get(context_ct) {
-					return cached
+				if cached := cache.get_id(context_ct_id) {
+					return flat.source_type_name(cached)
 				}
 			}
 			mut matches := []string{}
@@ -5207,7 +5225,7 @@ fn (g &FlatGen) generic_struct_init_app_ct_from_context(type_name_id u32) ?strin
 			result := if matches.len == 1 { matches[0] } else { context_ct }
 			if !isnil(g.generic_struct_context_ct_cache) {
 				mut cache := g.generic_struct_context_ct_cache
-				cache.put(context_ct, result)
+				cache.put_id(context_ct_id, flat.source_type_id(result))
 			}
 			return result
 		}
@@ -5291,10 +5309,12 @@ fn (g &FlatGen) same_module_flattened_generic_struct_ct(clean string) ?string {
 }
 
 fn (g &FlatGen) flattened_generic_struct_c_type_short_name(ct string) string {
+	mut ct_id := u32(0)
 	if !isnil(g.flattened_generic_name_cache) {
+		ct_id = flat.source_type_id(ct)
 		mut cache := g.flattened_generic_name_cache
-		if cached := cache.get(ct) {
-			return cached
+		if cached := cache.get_id(ct_id) {
+			return flat.source_type_name(cached)
 		}
 	}
 	clean := trimmed_space(ct)
@@ -5319,7 +5339,7 @@ fn (g &FlatGen) flattened_generic_struct_c_type_short_name(ct string) string {
 	result := out.bytestr()
 	if !isnil(g.flattened_generic_name_cache) {
 		mut cache := g.flattened_generic_name_cache
-		cache.put(ct, result)
+		cache.put_id(ct_id, flat.source_type_id(result))
 	}
 	return result
 }
@@ -7112,18 +7132,19 @@ fn c_struct_needs_typedef(name string) bool {
 }
 
 fn (g &FlatGen) struct_cname(name string) string {
+	name_id := flat.source_type_id(name)
 	if !isnil(g.struct_cname_cache) {
 		mut cache := g.struct_cname_cache
-		if cached := cache.get(name) {
-			return cached
+		if cached := cache.get_id(name_id) {
+			return flat.source_type_name(cached)
 		}
 	}
 	result := g.tc.c_type(types.Type(types.Struct{
-		name_id: flat.source_type_id(name)
+		name_id: name_id
 	}))
 	if !isnil(g.struct_cname_cache) {
 		mut cache := g.struct_cname_cache
-		cache.put(name, result)
+		cache.put_id(name_id, flat.source_type_id(result))
 	}
 	return result
 }

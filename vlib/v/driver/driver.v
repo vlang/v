@@ -6900,11 +6900,56 @@ fn incremental_qualified_fn_name(module_name string, name string) string {
 	return '${module_name}.${name}'
 }
 
+// incremental_legacy_node_params renders lowered source identities in their historical marker slots.
+// Cache signatures depend on spelling bytes, never on process-local source ID allocation order.
+fn incremental_legacy_node_params(node &flat.Node) []string {
+	if node.payload == 0 {
+		return []string{}
+	}
+	payload := node.payload_ptr()
+	params := payload.generic_params
+	if payload.fn_value_type == 0 && payload.generated_variant_type == 0 && payload.mut_optional_arg_view_type == 0 {
+		return params
+	}
+	mut rendered := []string{cap: params.len + 6}
+	mut fn_seen := false
+	mut variant_seen := false
+	mut optional_seen := false
+	for param in params {
+		rendered << param
+		if param == '__v3_comptime_method_selector' && payload.fn_value_type != 0 {
+			rendered << '__v3_comptime_method_selector_fn_type:' + flat.source_type_name(payload.fn_value_type)
+			fn_seen = true
+		} else if param == '__v3_generated_variant_access' && payload.generated_variant_type != 0 {
+			rendered << flat.source_type_name(payload.generated_variant_type)
+			variant_seen = true
+		} else if param == '__v3_mut_optional_arg' && payload.mut_optional_arg_view_type != 0 {
+			rendered << flat.source_type_name(payload.mut_optional_arg_view_type)
+			optional_seen = true
+		}
+	}
+	// Keep missing recognition markers distinct from marker-bearing metadata.
+	// The reserved tags contain a colon so ordinary generic names cannot match them.
+	if payload.fn_value_type != 0 && !fn_seen {
+		rendered << '__v3_unmarked_fn_value_type:'
+		rendered << '__v3_comptime_method_selector_fn_type:' + flat.source_type_name(payload.fn_value_type)
+	}
+	if payload.generated_variant_type != 0 && !variant_seen {
+		rendered << '__v3_unmarked_generated_variant_type:'
+		rendered << flat.source_type_name(payload.generated_variant_type)
+	}
+	if payload.mut_optional_arg_view_type != 0 && !optional_seen {
+		rendered << '__v3_unmarked_mut_optional_arg_view_type:'
+		rendered << flat.source_type_name(payload.mut_optional_arg_view_type)
+	}
+	return rendered
+}
+
 // c_hash_node_params hashes the legacy spelling-byte metadata layout for cache stability.
 // Enum storage types live in their own numeric slot and precede attribute markers only here.
 fn c_hash_node_params(initial u64, node &flat.Node) u64 {
 	mut hash := initial
-	params := node.generic_params()
+	params := incremental_legacy_node_params(node)
 	if node.kind == .enum_decl && (node.enum_backing_type_id() != 0 || params.len > 0) {
 		hash = c_hash_bytes(hash, flat.source_type_name(node.enum_backing_type_id()).bytes())
 		hash = c_hash_bytes(hash, [u8(0xfe)])
@@ -7605,6 +7650,8 @@ fn promote_scoped_node(mut node flat.Node, scope voidptr) {
 			node.set_debugger_value_type_ids(debugger_types)
 		} else if node.enum_backing_type_id() != 0 && scoped_value_owned(scope, node.payload_ptr()) {
 			node.set_enum_backing_type_id(node.enum_backing_type_id())
+		} else if node.has_lowered_type_metadata() && scoped_value_owned(scope, node.payload_ptr()) {
+			node.set_generic_params_and_constraint_ids([]string{}, node.generic_constraint_ids())
 		}
 		return
 	}
@@ -7727,6 +7774,8 @@ fn canonicalize_scoped_node_cached(mut ast flat.FlatAst, idx int, scope voidptr,
 			node.set_debugger_value_type_ids(debugger_types)
 		} else if node.enum_backing_type_id() != 0 && scoped_value_owned(scope, node.payload_ptr()) {
 			node.set_enum_backing_type_id(node.enum_backing_type_id())
+		} else if node.has_lowered_type_metadata() && scoped_value_owned(scope, node.payload_ptr()) {
+			node.set_generic_params_and_constraint_ids([]string{}, node.generic_constraint_ids())
 		}
 		return
 	}
@@ -7762,6 +7811,8 @@ fn canonicalize_scoped_node(mut ast flat.FlatAst, idx int, scope voidptr) {
 			node.set_debugger_value_type_ids(debugger_types)
 		} else if node.enum_backing_type_id() != 0 && scoped_value_owned(scope, node.payload_ptr()) {
 			node.set_enum_backing_type_id(node.enum_backing_type_id())
+		} else if node.has_lowered_type_metadata() && scoped_value_owned(scope, node.payload_ptr()) {
+			node.set_generic_params_and_constraint_ids([]string{}, node.generic_constraint_ids())
 		}
 		return
 	}
@@ -9134,7 +9185,7 @@ fn incremental_node_tree_uses_generics(a &flat.FlatAst, tc &types.TypeChecker, r
 			}
 		}
 		mut type_names := [node.typ_text(), node.value_text()]
-		mut params := node.generic_params()
+		mut params := incremental_legacy_node_params(&node)
 		debugger_types := node.debugger_value_type_ids()
 		if node.value_text().len > 0 && debugger_types.len == int(node.children_count) && params.len == 1 + debugger_types.len * 2 {
 			mut rendered := []string{cap: params.len + debugger_types.len}

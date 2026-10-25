@@ -61,7 +61,7 @@ fn (g &FlatGen) wide_enum_signature_c_type(t &types.Type) ?string {
 	if t is types.Pointer {
 		if t.base_type is types.Enum {
 			if info := g.enum_backing_info(t.base_type.source_type_id()) {
-				if info.storage_c_type_text() !in ['int', 'i32'] {
+				if info.storage_c_type !in [flat.source_type_int, flat.source_type_i32] {
 					return info.c_name + '*'
 				}
 			}
@@ -72,7 +72,7 @@ fn (g &FlatGen) wide_enum_signature_c_type(t &types.Type) ?string {
 	}
 	if t is types.Enum {
 		if info := g.enum_backing_info(t.source_type_id()) {
-			if info.storage_c_type_text() in ['i64', 'u64'] {
+			if info.storage_c_type in [flat.source_type_i64, flat.source_type_u64] {
 				return info.c_name
 			}
 		}
@@ -1048,7 +1048,8 @@ fn (mut g FlatGen) collect_unresolved_call_optional_types() {
 		// Only a complete type spelling that was not collected yet can add a
 		// typedef. Rule the rest out before the checker metadata below, which
 		// costs a map lookup per resolved call.
-		if node.typ_text() in ['int', 'array', 'map', 'unknown']
+		if node.typ in [flat.source_type_int, cgen_array_source_type, cgen_map_source_type,
+			flat.source_type_unknown]
 			|| !cgen_type_text_is_complete(node.typ) {
 			continue
 		}

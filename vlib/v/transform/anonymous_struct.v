@@ -78,9 +78,10 @@ fn (mut t Transformer) materialize_inferred_anonymous_structs() bool {
 					}
 					value_id := t.a.child(field, 0)
 					field_type := t.tc.expr_type(value_id) or { t.tc.resolve_type(value_id) }
-					field_type_name := flat.source_type_name(t.tc.type_name(field_type))
+					field_type_id := t.tc.type_name(field_type)
 					if field_type is types.Unknown || field_type is types.Void
-						|| field_type_name in ['', 'unknown', 'void', 'struct'] {
+						|| field_type_id in [u32(0), flat.source_type_unknown, flat.source_type_void,
+							transform_source_type_struct] {
 						valid = false
 						break
 					}

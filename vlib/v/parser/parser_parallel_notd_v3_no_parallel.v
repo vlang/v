@@ -1329,7 +1329,7 @@ fn parse_merge_copy_thread(arg voidptr) voidptr {
 			} else {
 				all_hit = false
 			}
-		} else if node.enum_backing_type_id() != 0 || node.debugger_value_type_ids().len > 0 {
+		} else if node.enum_backing_type_id() != 0 || node.debugger_value_type_ids().len > 0 || node.has_lowered_type_metadata() {
 			// The payload itself may belong to the retiring parser scope even
 			// when it has no attribute names. The ordered tail copies it too.
 			all_hit = false

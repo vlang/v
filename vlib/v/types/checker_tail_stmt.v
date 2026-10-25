@@ -10545,7 +10545,7 @@ fn (tc &TypeChecker) enum_selector_type(node &flat.Node) ?Type {
 			enum_name = (tc.resolve_enum_name(flat.source_type_id('${mod_name}.${base.value}')) or { flat.source_type_id('') })
 		}
 	}
-	if flat.source_type_name(enum_name).len == 0 || !tc.enum_has_field(enum_name, node.value) {
+	if enum_name == 0 || !tc.enum_has_field(enum_name, node.value) {
 		return none
 	}
 	return Type(Enum{
@@ -10775,7 +10775,7 @@ fn (tc &TypeChecker) type_compatible_unequal(actual &Type, expected &Type) bool 
 			}
 			expected_base_name := expected.base_type.name()
 			if expected_base_name in tc.interface_names && tc.type_implements_interface(actual.base_type, Interface{
-				name_id: flat.source_type_id(expected_base_name)
+				name_id: expected.base_type.source_type_id()
 			}) {
 				return true
 			}
@@ -15138,7 +15138,7 @@ fn (tc &TypeChecker) embedded_method_value_owner_inner(struct_name_id u32, metho
 	for field in tc.struct_fields_for_type(struct_name_id) {
 		embedded_type := embedded_field_type(field) or { continue }
 		receiver := method_type_name(unwrap_pointer(embedded_type))
-		if flat.source_type_name(receiver).len == 0 {
+		if receiver == 0 {
 			continue
 		}
 		if _ := tc.resolve_generic_struct_method(receiver, method) {

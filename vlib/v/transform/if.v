@@ -429,10 +429,10 @@ fn (mut t Transformer) try_expand_if_guard_with_tail(node flat.Node, tail GuardR
 				if lhs_item.kind != .ident || lhs_item.value == '_' {
 					continue
 				}
-				field_type := rhs_types[i].name()
+				field_type := rhs_types[i].source_type_id()
 				payload := t.make_selector(t.make_ident(tmp_name), 'value', value_type_source_id)
-				field := t.make_selector(payload, 'arg${i}', flat.source_type_id(field_type))
-				value_decls << t.make_guard_value_decls(lhs_item.value, field, flat.source_type_id(field_type))
+				field := t.make_selector(payload, 'arg${i}', field_type)
+				value_decls << t.make_guard_value_decls(lhs_item.value, field, field_type)
 				binding_names << lhs_item.value
 			}
 		}
@@ -1586,10 +1586,10 @@ fn (mut t Transformer) build_if_value_guard_chain(if_node flat.Node, target_name
 				if lhs_item.kind != .ident || lhs_item.value == '_' {
 					continue
 				}
-				field_type := rhs_types[i].name()
+				field_type := rhs_types[i].source_type_id()
 				payload := t.make_selector(t.make_ident(tmp_name), 'value', value_type_source_id)
-				field := t.make_selector(payload, 'arg${i}', flat.source_type_id(field_type))
-				value_decls << t.make_guard_value_decls(lhs_item.value, field, flat.source_type_id(field_type))
+				field := t.make_selector(payload, 'arg${i}', field_type)
+				value_decls << t.make_guard_value_decls(lhs_item.value, field, field_type)
 			}
 		}
 	}

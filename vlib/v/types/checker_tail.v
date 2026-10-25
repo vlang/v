@@ -7295,7 +7295,8 @@ fn (tc &TypeChecker) call_has_wrapped_receiver(id flat.NodeId) bool {
 }
 
 fn (tc &TypeChecker) wrapped_receiver_payload_diagnostic_name(payload &Type) string {
-	name := unwrap_all_pointers(payload).name()
+	name_id := unwrap_all_pointers(payload).source_type_id()
+	name := flat.source_type_name(name_id)
 	if name.contains('.') {
 		alias := name.all_before('.')
 		if import_path := tc.current_file_import_path_for_alias(alias) {
@@ -7307,7 +7308,7 @@ fn (tc &TypeChecker) wrapped_receiver_payload_diagnostic_name(payload &Type) str
 
 		return qualified
 	}
-	if resolved_source_id := tc.resolve_import_alias_pattern(flat.source_type_id(name)) {
+	if resolved_source_id := tc.resolve_import_alias_pattern(name_id) {
 		resolved := flat.source_type_name(resolved_source_id)
 
 		return resolved

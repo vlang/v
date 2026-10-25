@@ -357,6 +357,9 @@ fn (s &NoAllocScan) type_name(id flat.NodeId, parameters map[string]u32) u32 {
 			return flat.source_type_id('&${flat.source_type_name(child_type)}')
 		}
 		if node.kind == .prefix && node.op == .mul {
+			if !flat.source_type_shape(child_type).has(.pointer) {
+				return child_type
+			}
 			return flat.source_type_id(flat.source_type_name(child_type).trim_string_left('&'))
 		}
 		return child_type

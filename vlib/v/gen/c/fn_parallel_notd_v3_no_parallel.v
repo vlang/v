@@ -2017,8 +2017,7 @@ fn clone_embedded_fields_by_type(values map[u32][]types.StructField) map[u32][]t
 
 fn (mut g FlatGen) publish_fixed_storage_scan(mut fs_worker FlatGen) {
 	for opt_name, val_type_id in fs_worker.needed_optional_types.ids {
-		val_type := flat.source_type_name(val_type_id)
-		g.needed_optional_types.set_id(opt_name.clone(), flat.source_type_id(val_type.clone()))
+		g.needed_optional_types.set_id(opt_name.clone(), val_type_id)
 	}
 	for opt_name, val_type in fs_worker.optional_pointer_struct_tags {
 		g.optional_pointer_struct_tags[opt_name.clone()] = val_type.clone()
@@ -2108,10 +2107,9 @@ fn (mut g FlatGen) publish_optional_support(mut worker FlatGen) {
 
 fn (mut g FlatGen) publish_unresolved_call_optional_types(mut worker FlatGen) {
 	for name, payload_id in worker.needed_optional_types.ids {
-		payload := flat.source_type_name(payload_id)
 		// This scan follows declarations in the serial pipeline, including when
 		// two payload spellings map to the same optional typedef name.
-		g.needed_optional_types.set_id(name.clone(), flat.source_type_id(payload.clone()))
+		g.needed_optional_types.set_id(name.clone(), payload_id)
 	}
 	for name, payload in worker.optional_pointer_struct_tags {
 		g.optional_pointer_struct_tags[name.clone()] = payload.clone()
@@ -3163,9 +3161,8 @@ fn (g &FlatGen) configure_c_extern_scan_worker(mut worker FlatGen) {
 
 fn (mut g FlatGen) publish_c_extern_type_discoveries(worker &FlatGen) {
 	for opt_name, val_type_id in worker.needed_optional_types.ids {
-		val_type := flat.source_type_name(val_type_id)
 		if !g.needed_optional_types.contains(opt_name) {
-			g.needed_optional_types.set_id(opt_name.clone(), flat.source_type_id(val_type.clone()))
+			g.needed_optional_types.set_id(opt_name.clone(), val_type_id)
 		}
 	}
 	for opt_name, val_type in worker.optional_pointer_struct_tags {
@@ -3872,8 +3869,7 @@ fn (mut g FlatGen) merge_parallel_worker_into(w &FlatGen, mut ordered []string, 
 		}
 	}
 	for opt_name, val_type_id in w.needed_optional_types.ids {
-		val_type := flat.source_type_name(val_type_id)
-		g.needed_optional_types.set_id(opt_name.clone(), flat.source_type_id(val_type.clone()))
+		g.needed_optional_types.set_id(opt_name.clone(), val_type_id)
 	}
 	for opt_name, val_type in w.optional_pointer_struct_tags {
 		g.optional_pointer_struct_tags[opt_name.clone()] = val_type.clone()

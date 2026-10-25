@@ -54,3 +54,60 @@ fn test_incremental_hashes_preserve_call_argument_spelling_and_marker_priority()
 	marker := flat.Node{ kind: .call, value: flat.method_value_borrow_receiver_marker }
 	assert incremental_hash_node_header(initial, &marker, true) == incremental_hash_node_header(initial, &canonical, true)
 }
+
+fn test_incremental_hashes_preserve_lowered_type_marker_spelling_layouts() {
+	fn_type := flat.source_type_id('fn (dep.Record) []int')
+	variant := flat.source_type_id('dep.Variant')
+	view := flat.source_type_id('?&dep.Record')
+	legacy_params := ['before', '__v3_comptime_method_selector',
+		'__v3_comptime_method_selector_fn_type:' + flat.source_type_name(fn_type),
+		'__v3_generated_variant_access', flat.source_type_name(variant), '__v3_mut_optional_arg',
+		flat.source_type_name(view), 'after']
+	legacy := flat.Node{ kind: .selector, value: 'method', typ: flat.source_type_int, payload: flat.node_payload(legacy_params) }
+	mut canonical := flat.Node{ kind: .selector, value: 'method', typ: flat.source_type_int }
+	canonical.set_generic_params(['before', '__v3_comptime_method_selector',
+		'__v3_generated_variant_access', '__v3_mut_optional_arg', 'after'])
+	canonical.set_fn_value_type_id(fn_type)
+	canonical.set_generated_variant_type_id(variant)
+	canonical.set_mut_optional_arg_view_type_id(view)
+	assert incremental_legacy_node_params(&canonical) == legacy_params
+	initial := u64(1469598103934665603)
+	assert incremental_hash_node_header(initial, &legacy, true) == incremental_hash_node_header(initial, &canonical, true)
+	mut ast := flat.FlatAst.new()
+	id := ast.add_node(canonical)
+	canonical_hash := c_hash_monomorph_node(initial, &ast, id, []bool{}, map[int]string{})
+	ast.nodes[int(id)] = legacy
+	assert c_hash_monomorph_node(initial, &ast, id, []bool{}, map[int]string{}) == canonical_hash
+	canonical.set_generated_variant_type_id(flat.source_type_id('dep.OtherVariant'))
+	assert incremental_hash_node_header(initial, &canonical, true) != incremental_hash_node_header(initial, &legacy, true)
+	canonical.set_generic_params([]string{})
+	assert incremental_legacy_node_params(&canonical).len == 6
+}
+
+fn test_incremental_hashes_distinguish_missing_lowered_recognition_markers() {
+	markers := ['__v3_comptime_method_selector', '__v3_generated_variant_access',
+		'__v3_mut_optional_arg']
+	for i, marker in markers {
+		mut unmarked := flat.Node{ kind: .selector, value: 'method' }
+		match i {
+			0 { unmarked.set_fn_value_type_id(flat.source_type_id('fn () int')) }
+			1 { unmarked.set_generated_variant_type_id(flat.source_type_id('dep.Variant')) }
+			else {
+				unmarked.kind = .prefix
+				unmarked.op = .amp
+				unmarked.set_mut_optional_arg_view_type_id(flat.source_type_id('?&dep.Record'))
+			}
+		}
+		mut marked := unmarked
+		marked.set_generic_params([marker])
+		assert incremental_legacy_node_params(&unmarked) != incremental_legacy_node_params(&marked)
+		initial := u64(1469598103934665603)
+		assert incremental_hash_node_header(initial, &unmarked, true) != incremental_hash_node_header(initial,
+			&marked, true)
+		mut ast := flat.FlatAst.new()
+		id := ast.add_node(unmarked)
+		unmarked_hash := c_hash_monomorph_node(initial, &ast, id, []bool{}, map[int]string{})
+		ast.nodes[int(id)] = marked
+		assert c_hash_monomorph_node(initial, &ast, id, []bool{}, map[int]string{}) != unmarked_hash
+	}
+}

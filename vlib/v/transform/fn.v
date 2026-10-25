@@ -2073,10 +2073,16 @@ fn (mut t Transformer) mark_mut_optional_arg(addr flat.NodeId, view_type u32) {
 	if view_type == 0 {
 		return
 	}
-	mut params := t.a.nodes[int(addr)].generic_params().clone()
+	node := t.a.nodes[int(addr)]
+	// Inference uses the first recorded view when an argument is marked again.
+	if mut_optional_arg_marker in node.generic_params() {
+		return
+	}
+	mut marked := node
+	mut params := marked.generic_params().clone()
 	params << mut_optional_arg_marker
-	params << flat.source_type_name(view_type)
-	t.set_node_generic_params(int(addr), params)
+	marked.set_generic_params_and_mut_optional_arg_view_type_id(params, view_type)
+	t.set_node(int(addr), marked)
 }
 
 // mut_optional_arg_view_type returns the `?T` that a `&?&T` argument built for a `mut a ?T`
@@ -2085,12 +2091,11 @@ fn mut_optional_arg_view_type(node flat.Node) ?u32 {
 	if node.kind != .prefix || node.op != .amp || node.payload == 0 {
 		return none
 	}
-	params := node.generic_params()
-	idx := params.index(mut_optional_arg_marker)
-	if idx < 0 || idx + 1 >= params.len {
+	if mut_optional_arg_marker !in node.generic_params() {
 		return none
 	}
-	return flat.source_type_id(params[idx + 1])
+	view_type := node.mut_optional_arg_view_type_id()
+	return if view_type == 0 { none } else { view_type }
 }
 
 // heaped_amp_local_arg_name returns the name of the local `arg_id` names when the local was
@@ -2496,8 +2501,8 @@ fn (mut t Transformer) transform_spread_arg_over_fixed_variadic_tail(arg_node fl
 		args << elem
 	}
 	tail_start := variadic_idx - param_idx
-	spread_elem_type := flat.source_type_name(t.array_elem_type(t.normalize_type_alias(spread_type)))
-	if spread_elem_type == flat.source_type_name(t.normalize_type_alias(variadic_array_type_source_id)) {
+	spread_elem_type := t.array_elem_type(t.normalize_type_alias(spread_type))
+	if spread_elem_type == t.normalize_type_alias(variadic_array_type_source_id) {
 		args << t.make_index(spread_expr, t.make_int_literal(tail_start), variadic_array_type_source_id)
 	} else {
 		args << t.make_range_index(spread_expr, t.make_int_literal(tail_start), flat.empty_node, variadic_array_type_source_id)
@@ -15470,13 +15475,12 @@ fn (mut t Transformer) try_lower_primitive_cast_call(node flat.Node) ?flat.NodeI
 
 fn (mut t Transformer) try_lower_generic_sum_constructor_call(node flat.Node) ?flat.NodeId {
 	target_source_id := t.generic_sum_constructor_call_type(node) or { return none }
-	target := flat.source_type_name(target_source_id)
 	arg := t.transform_expr(t.a.child(&node, 1))
 	start := t.a.children.len
 	t.a.children << arg
 	return t.a.add_node(flat.Node{
 		kind:           .cast_expr
-		value:          target
+		source_value:   target_source_id
 		children_start: start
 		children_count: 1
 		typ:            target_source_id

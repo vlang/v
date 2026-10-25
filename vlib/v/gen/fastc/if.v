@@ -2059,10 +2059,7 @@ fn (mut g Parser) read_if_expression() !string {
 			else_type
 		})
 	}
-	g.last_option_value_type = (if g.last_expression_type_text() in [
-		'Option',
-		'__v_result',
-	] && (then_option_value_type == else_option_value_type || then_option_value_type == 0 || else_option_value_type == 0) {
+	g.last_option_value_type = (if g.last_expression_type in [fastc_type_option, fastc_type_result] && (then_option_value_type == else_option_value_type || then_option_value_type == 0 || else_option_value_type == 0) {
 		if then_option_value_type != 0 {
 			then_option_value_type
 		} else {

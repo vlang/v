@@ -477,7 +477,7 @@ fn (g &Parser) iterator_next_method(collection_type_source_id u32) ?FastcIterato
 	key, path := g.resolve_method(flat.source_type_id(fastc_trim_pointer_suffix(collection_type)), 'next')
 	signature := g.functions[key] or { return none }
 	if path.len > 0 || signature.parameter_types.ids.len != 1 || signature.return_type != fastc_type_option
-		|| signature.option_type_text() in ['', 'void', 'MultiReturn'] {
+		|| signature.option_type in [u32(0), flat.source_type_void, fastc_type_multi_return] {
 		return none
 	}
 	receiver := signature.parameter_types.at(0)

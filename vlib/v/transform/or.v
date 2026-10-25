@@ -2589,10 +2589,10 @@ fn (mut t Transformer) lower_or_multi_return_values(values []flat.NodeId, target
 		if i >= field_types.len {
 			break
 		}
-		field_type := field_types[i].name()
-		value := t.transform_if_branch_value(value_id, flat.source_type_id(field_type))
+		field_type := field_types[i].source_type_id()
+		value := t.transform_if_branch_value(value_id, field_type)
 		t.drain_pending(mut result)
-		field := t.make_selector(t.make_ident(target_name), 'arg${i}', flat.source_type_id(field_type))
+		field := t.make_selector(t.make_ident(target_name), 'arg${i}', field_type)
 		result << t.make_assign(field, value)
 	}
 	return result

@@ -12307,9 +12307,10 @@ fn (mut tc TypeChecker) check_sql_expr(id flat.NodeId, node flat.Node) {
 		} else if db_type is ResultType {
 			tc.record_error_at(.call_arg_mismatch, 'expected `${db_type.base_type.name()}`, not `!${db_type.base_type.name()}`', db_id, tc.a.node(db_id).pos)
 		} else {
-			db_name := db_type.name()
+			db_name_id := db_type.source_type_id()
+			db_name := flat.source_type_name(db_name_id)
 			if db_name.len > 0 && db_type !is Unknown
-				&& !tc.named_type_implements_interface(flat.source_type_id(db_name), flat.source_type_id('orm.Connection')) {
+				&& !tc.named_type_implements_interface(db_name_id, flat.source_type_id('orm.Connection')) {
 				for method in tc.interface_abstract_method_names(flat.source_type_id('orm.Connection')) {
 					tc.record_error_at(.call_arg_mismatch, "`${db_name}` doesn't implement method `${method}` of interface `orm.Connection`", db_id, tc.a.node(db_id).pos)
 				}

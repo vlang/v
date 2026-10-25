@@ -2381,9 +2381,9 @@ fn (mut t Transformer) prepare_array_append_tree_factories() {
 
 fn (t &Transformer) array_append_expr_owns_storage(id flat.NodeId) bool {
 	typ := t.tc.expr_type(id) or { return true }
-	name := typ.name()
-	return name.starts_with('&') || typ is types.FnType || typ is types.Unknown
-		|| t.compiler_default_clone_type_needs_work(flat.source_type_id(name))
+	type_source_id := typ.source_type_id()
+	return flat.source_type_shape(type_source_id).has(.pointer) || typ is types.FnType || typ is types.Unknown
+		|| t.compiler_default_clone_type_needs_work(type_source_id)
 }
 
 fn array_append_is_scalar(typ types.Type) bool {

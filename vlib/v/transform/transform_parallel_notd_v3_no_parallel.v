@@ -978,6 +978,8 @@ fn scoped_text_promote_thread(arg voidptr) voidptr {
 				node.set_debugger_value_type_ids(debugger_types)
 			} else if node.enum_backing_type_id() != 0 && transform_scope_owns(a.scope, node.payload_ptr()) {
 				node.set_enum_backing_type_id(node.enum_backing_type_id())
+			} else if node.has_lowered_type_metadata() && transform_scope_owns(a.scope, node.payload_ptr()) {
+				node.set_generic_params_and_constraint_ids([]string{}, node.generic_constraint_ids())
 			}
 			continue
 		}
@@ -2261,12 +2263,14 @@ fn (mut t Transformer) promote_scoped_node_to_current(idx int, scope voidptr) {
 			return
 		}
 		debugger_types := node.debugger_value_type_ids()
-		if (debugger_types.len > 0 && (transform_scope_owns(scope, node.payload_ptr()) || transform_scope_owns(scope, debugger_types.data))) || (node.enum_backing_type_id() != 0 && transform_scope_owns(scope, node.payload_ptr())) {
+		if (debugger_types.len > 0 && (transform_scope_owns(scope, node.payload_ptr()) || transform_scope_owns(scope, debugger_types.data))) || ((node.enum_backing_type_id() != 0 || node.has_lowered_type_metadata()) && transform_scope_owns(scope, node.payload_ptr())) {
 			publication_state := transform_stage_scope_suspend(t.merge_scratch_scope)
 			if debugger_types.len > 0 {
 				node.set_debugger_value_type_ids(debugger_types)
-			} else {
+			} else if node.enum_backing_type_id() != 0 {
 				node.set_enum_backing_type_id(node.enum_backing_type_id())
+			} else {
+				node.set_generic_params_and_constraint_ids([]string{}, node.generic_constraint_ids())
 			}
 			transform_stage_scope_resume(t.merge_scratch_scope, publication_state)
 		}

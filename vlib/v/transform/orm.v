@@ -1741,7 +1741,7 @@ fn (mut t Transformer) sql_value_call_expr(callee_name string, args []string, ty
 	for arg in args {
 		arg_ids << t.sql_expr_from_token(arg)
 	}
-	mut target_type := flat.source_type_id(t.comptime_resolve_selective_import_type(callee_name))
+	mut target_type := t.comptime_resolve_selective_import_type(flat.source_type_id(callee_name))
 	if imported_source_id := t.resolve_imported_type_name(target_type) {
 		target_type = imported_source_id
 	}
@@ -3448,7 +3448,7 @@ fn (t &Transformer) sql_resolved_table_name(table u32) u32 {
 		table
 	}
 	// Selective imports can also denote values elsewhere; this query supplies a source type.
-	table_name_id = flat.source_type_id(t.comptime_resolve_selective_import_type(flat.source_type_name(table_name_id)))
+	table_name_id = t.comptime_resolve_selective_import_type(table_name_id)
 	if imported := t.resolve_imported_type_name(table_name_id) {
 		table_name_id = imported
 	}

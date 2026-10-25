@@ -11,7 +11,6 @@ import v.workers
 
 const comptime_unsupported_late_generic_call = '__v3_comptime_unsupported_late_generic_call'
 const comptime_method_selector_marker = '__v3_comptime_method_selector'
-const comptime_method_selector_fn_type_prefix = '__v3_comptime_method_selector_fn_type:'
 const comptime_clone_syntax_flags = flat.node_flag_freed_assignment |
 	flat.node_flag_literal_interpolation_text
 
@@ -127,20 +126,19 @@ fn comptime_for_declares_var(node flat.Node, var_name string) bool {
 }
 
 // comptime_for_base_type resolves the loop source type to a concrete name. Generic `T` was already
-// substituted to the concrete type in `node.typ_text()` during monomorphization.
-fn (t &Transformer) comptime_for_base_type(raw string) u32 {
-	raw_id := flat.source_type_id(raw)
-	source := t.comptime_for_value_source_type(raw) or { raw_id }
+// substituted to the concrete type in `node.typ` during monomorphization.
+fn (t &Transformer) comptime_for_base_type(raw_id u32) u32 {
+	source := t.comptime_for_value_source_type(raw_id) or { raw_id }
 	base := t.comptime_for_value_type_base(source)
 	// Checked value types already identify their declaration, unlike source import aliases.
 	if source != raw_id && t.type_authority_has(flat.source_type_name(base)) {
 		return t.comptime_normalize_type_alias_chain(base)
 	}
-	return t.comptime_normalize_type_alias_chain(flat.source_type_id(t.comptime_resolve_selective_import_type(flat.source_type_name(base))))
+	return t.comptime_normalize_type_alias_chain(t.comptime_resolve_selective_import_type(base))
 }
 
-fn (t &Transformer) comptime_for_value_source_type(raw string) ?u32 {
-	clean := trimmed_transform_text(raw)
+fn (t &Transformer) comptime_for_value_source_type(raw_id u32) ?u32 {
+	clean := flat.source_type_name(t.trimmed_type_id(raw_id))
 	if clean.len == 0 {
 		return none
 	}
@@ -202,28 +200,27 @@ fn (t &Transformer) comptime_for_value_type_base(raw_id u32) u32 {
 	return typ
 }
 
-fn (t &Transformer) comptime_resolve_selective_import_type(raw string) string {
-	clean := trimmed_transform_text(raw)
+fn (t &Transformer) comptime_resolve_selective_import_type(raw_id u32) u32 {
+	clean_id := t.trimmed_type_id(raw_id)
+	clean := flat.source_type_name(clean_id)
 	if clean.len == 0 || isnil(t.tc) || t.cur_file.len == 0 {
-		return clean
+		return clean_id
 	}
 	if clean.contains('.') {
 		alias := clean.all_before('.')
 		if imported := t.file_import_module(t.cur_file, alias) {
-			return imported + clean[alias.len..]
+			return flat.source_type_id(imported + clean[alias.len..])
 		}
 		// Generic specialization already supplies canonical types. An unrelated
 		// import alias from another file must not rebind `config.Cfg` to
 		// `rand.config.Cfg` before its fields are reflected.
 		if t.type_authority_has(clean) {
-			return clean
+			return clean_id
 		}
-		if imported_source_id := t.resolve_imported_type_name(flat.source_type_id(clean)) {
-			imported := flat.source_type_name(imported_source_id)
-
-			return imported
+		if imported_source_id := t.resolve_imported_type_name(clean_id) {
+			return imported_source_id
 		}
-		return clean
+		return clean_id
 	}
 	for candidate in t.tc.file_selective_imports[file_import_key(t.cur_file, clean)] or {
 		[]string{}
@@ -231,10 +228,10 @@ fn (t &Transformer) comptime_resolve_selective_import_type(raw string) string {
 		if t.tc.type_aliases.contains(candidate) || candidate in t.tc.structs
 			|| candidate in t.tc.interface_names || candidate in t.tc.flag_enums
 			|| candidate in t.tc.enum_names || t.tc.sum_types.contains(candidate) {
-			return candidate
+			return flat.source_type_id(candidate)
 		}
 	}
-	return clean
+	return clean_id
 }
 
 fn (t &Transformer) comptime_resolve_selective_import_reflection_source(raw string) string {
@@ -248,9 +245,10 @@ fn (t &Transformer) comptime_resolve_selective_import_reflection_source(raw stri
 	if clean.contains('.') {
 		return flat.source_type_name(t.resolve_imported_type_name(flat.source_type_id(clean)) or { flat.source_type_id(clean) })
 	}
-	resolved_type := t.comptime_resolve_selective_import_type(clean)
-	if resolved_type != clean {
-		return resolved_type
+	clean_id := flat.source_type_id(clean)
+	resolved_type := t.comptime_resolve_selective_import_type(clean_id)
+	if resolved_type != clean_id {
+		return flat.source_type_name(resolved_type)
 	}
 	for candidate in t.tc.file_selective_imports[file_import_key(t.cur_file, clean)] or {
 		[]string{}
@@ -531,15 +529,14 @@ fn (mut t Transformer) expand_comptime_for(id flat.NodeId, node flat.Node) []fla
 				t.comptime_normalize_type_alias_chain(t.comptime_for_value_type_base(node.typ))
 			}
 		} else if kind == 'methods' {
-			source_source_id := t.comptime_for_value_source_type(node.typ_text()) or { node.typ }
-			source := flat.source_type_name(source_source_id)
+			source_source_id := t.comptime_for_value_source_type(node.typ) or { node.typ }
 			if source_source_id != node.typ && t.type_authority_has(flat.source_type_name(t.comptime_for_value_type_base(source_source_id))) {
 				source_source_id
 			} else {
-				flat.source_type_id(t.comptime_resolve_selective_import_type(source))
+				t.comptime_resolve_selective_import_type(source_source_id)
 			}
 		} else {
-			t.comptime_for_base_type(node.typ_text())
+			t.comptime_for_base_type(node.typ)
 		}
 	)
 	// An open generic template must survive the pre-monomorph transform pass.
@@ -1348,12 +1345,11 @@ fn (mut t Transformer) comptime_method_escape_stmts(node flat.Node) ?[]flat.Node
 	base_type_id := if node.payload == flat.canonical_comptime_type_payload {
 		node.typ
 	} else {
-		source_id := t.comptime_for_value_source_type(node.typ_text()) or { node.typ }
-		source := flat.source_type_name(source_id)
+		source_id := t.comptime_for_value_source_type(node.typ) or { node.typ }
 		if source_id != node.typ && t.type_authority_has(flat.source_type_name(t.comptime_for_value_type_base(source_id))) {
 			source_id
 		} else {
-			flat.source_type_id(t.comptime_resolve_selective_import_type(source))
+			t.comptime_resolve_selective_import_type(source_id)
 		}
 	}
 	if t.generic_arg_is_unresolved(base_type_id) {
@@ -2090,22 +2086,23 @@ fn (t &Transformer) comptime_method_receiver_names_type(receiver flat.NodeId) bo
 	}
 	// A cloned local may not be registered until its declaration is lowered.
 	// Decide on the source node while its lexical binding and checked type remain available.
-	namespace_spelling := t.comptime_resolve_selective_import_type(node.value)
+	namespace_source_id := t.comptime_resolve_selective_import_type(flat.source_type_id(node.value))
+	namespace_spelling := flat.source_type_name(namespace_source_id)
 	if !node.value[0].is_capital() && !types.is_builtin_type_name(namespace_spelling)
-		&& !t.is_known_type_name(flat.source_type_id(namespace_spelling)) {
+		&& !t.is_known_type_name(namespace_source_id) {
 		return false
 	}
 	if _ := t.local_binding_before(node.value, receiver) {
 		return false
 	}
 	if !isnil(t.tc)
-		&& (types.is_builtin_type_name(namespace_spelling) || t.is_known_type_name(flat.source_type_id(namespace_spelling))) {
+		&& (types.is_builtin_type_name(namespace_spelling) || t.is_known_type_name(namespace_source_id)) {
 		mut checked_name := node.typ
 		if typ := t.tc.expr_type(receiver) {
 			checked_name = t.tc.type_name(typ)
 		}
 		if decl_type_is_usable(checked_name) && checked_name != flat.source_type_void {
-			raw_namespace_source_id := t.normalize_type_in_module(flat.source_type_id(namespace_spelling), t.cur_module)
+			raw_namespace_source_id := t.normalize_type_in_module(namespace_source_id, t.cur_module)
 			parsed_namespace_source_id := t.tc.type_name(t.tc.parse_resolution_type(raw_namespace_source_id))
 			namespace_name := if decl_type_is_usable(parsed_namespace_source_id) && parsed_namespace_source_id != flat.source_type_void {
 				parsed_namespace_source_id
@@ -2145,15 +2142,14 @@ fn (mut t Transformer) make_comptime_method_selector(receiver flat.NodeId, metho
 	}
 	start := t.a.children.len
 	t.a.children << receiver
-	fn_type := flat.source_type_name(fn_literal_value_type_text_from_text(method.params.map(it.typ), method.return_type))
+	fn_type := fn_literal_value_type_text_from_text(method.params.map(it.typ), method.return_type)
 	return t.a.add_node(flat.Node{
 		kind:           .selector
 		children_start: start
 		children_count: 1
 		value:          method.name
 		typ:            method.return_type
-		payload:        flat.node_payload([comptime_method_selector_marker,
-			comptime_method_selector_fn_type_prefix + fn_type])
+		payload:        flat.node_payload_with_fn_value_type([comptime_method_selector_marker], fn_type)
 	})
 }
 
@@ -2598,10 +2594,10 @@ fn (t &Transformer) comptime_sum_variants(base_type_id u32) []VariantMeta {
 }
 
 fn (t &Transformer) comptime_resolve_sum_type_name(base_type_id u32) u32 {
-	base_type := flat.source_type_name(base_type_id)
-	base := trimmed_transform_text(base_type)
+	base_id := t.trimmed_type_id(base_type_id)
+	base := flat.source_type_name(base_id)
 	if base.len == 0 {
-		return flat.source_type_id(base)
+		return base_id
 	}
 	// Main-module declarations are stored under their bare names. Generic
 	// specialization locks can make that ownership explicit (`main.Sum`), so
@@ -2613,10 +2609,10 @@ fn (t &Transformer) comptime_resolve_sum_type_name(base_type_id u32) u32 {
 		}
 	}
 	if isnil(t.tc) {
-		return flat.source_type_id(base)
+		return base_id
 	}
 	if base.contains('.') {
-		return t.resolve_imported_type_name(flat.source_type_id(base)) or { flat.source_type_id(base) }
+		return t.resolve_imported_type_name(base_id) or { base_id }
 	}
 	local := if t.cur_module.len > 0 && t.cur_module !in ['main', 'builtin'] {
 		'${t.cur_module}.${base}'
@@ -2631,11 +2627,11 @@ fn (t &Transformer) comptime_resolve_sum_type_name(base_type_id u32) u32 {
 	// registered type before qualifying it as if it belonged to the generic
 	// function's module.
 	if t.tc.sum_types.contains(base) {
-		return flat.source_type_id(base)
+		return base_id
 	}
-	imported := t.comptime_resolve_selective_import_type(base)
-	if imported != base {
-		return flat.source_type_id(imported)
+	imported := t.comptime_resolve_selective_import_type(base_id)
+	if imported != base_id {
+		return imported
 	}
 	return flat.source_type_id(local)
 }

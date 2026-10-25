@@ -419,7 +419,7 @@ fn (mut p Parser) named_variant_init(sum_id u32, variant string, payload flat.No
 	}, lhs)
 	return p.add_node_from(flat.Node{
 		kind:           .cast_expr
-		source_value:   flat.source_type_id(sum)
+		source_value:   sum_id
 		children_start: p.add_child(init)
 		children_count: 1
 	}, lhs)

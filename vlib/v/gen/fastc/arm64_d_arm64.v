@@ -4401,7 +4401,7 @@ fn (mut p FastArm64Parser) parse_function() ! {
 	p.parse_block()!
 	if !p.block_is_terminated(p.cur_block) {
 		if name == 'main' || p.return_typ == p.program.void_type {
-			if p.return_wrapper_text() in ['Option', '__v_result'] {
+			if p.return_wrapper in [fastc_type_option, fastc_type_result] {
 				p.store_option_success(p.return_wrapper)
 			}
 			if name == 'main' {
@@ -5031,31 +5031,31 @@ fn (mut p FastArm64Parser) parse_return() ! {
 	p.next()
 	if p.tok in [.semicolon, .rcbr] {
 		p.emit_return_cleanup()!
-		if p.return_wrapper_text() in ['Option', '__v_result'] {
+		if p.return_wrapper in [fastc_type_option, fastc_type_result] {
 			p.store_option_success(p.return_wrapper)
 		}
 		p.program.instr0(.ret, p.cur_block, p.program.void_type)
 	} else {
-		first_type_name := if p.return_names.ids.len > 0 {
-			flat.source_type_name(p.return_names.ids[0])
+		first_type_name_id := if p.return_names.ids.len > 0 {
+			p.return_names.ids[0]
 		} else {
-			p.return_name_text()
+			p.return_name
 		}
-		first := p.parse_contextual_value(flat.source_type_id(first_type_name))!
+		first := p.parse_contextual_value(first_type_name_id)!
 		if p.tok == .comma {
 			mut values := [first]
 			for p.tok == .comma {
 				p.next()
 				value_index := values.len
-				value_type_name := if value_index < p.return_names.ids.len {
-					flat.source_type_name(p.return_names.ids[value_index])
+				value_type_name_id := if value_index < p.return_names.ids.len {
+					p.return_names.ids[value_index]
 				} else {
-					''
+					u32(0)
 				}
-				values << if value_type_name == '' {
+				values << if value_type_name_id == 0 {
 					p.parse_expression(0)!
 				} else {
-					p.parse_contextual_value(flat.source_type_id(value_type_name))!
+					p.parse_contextual_value(value_type_name_id)!
 				}
 			}
 			layout := p.program.m.type_store.types[p.return_typ]
@@ -5066,12 +5066,12 @@ fn (mut p FastArm64Parser) parse_return() ! {
 			for i, value in values {
 				mut stored_value := value
 				if stored_value.typ != layout.fields[i] {
-					type_name := if i < p.return_names.ids.len {
-						flat.source_type_name(p.return_names.ids[i])
+					type_name_id := if i < p.return_names.ids.len {
+						p.return_names.ids[i]
 					} else {
-						''
+						u32(0)
 					}
-					stored_value = p.convert_value(stored_value, layout.fields[i], flat.source_type_id(type_name))
+					stored_value = p.convert_value(stored_value, layout.fields[i], type_name_id)
 				}
 				address := p.program.struct_field_ptr(p.cur_block, slot, p.return_typ, i)
 				p.program.instr2(.store, p.cur_block, p.program.void_type, stored_value.id, address)
@@ -5082,14 +5082,14 @@ fn (mut p FastArm64Parser) parse_return() ! {
 				typ_name: p.return_name
 			}
 			p.emit_return_cleanup()!
-			if p.return_wrapper_text() in ['Option', '__v_result'] {
+			if p.return_wrapper in [fastc_type_option, fastc_type_result] {
 				result = p.prepare_option_return(result)
 			}
 			p.program.instr1(.ret, p.cur_block, p.program.void_type, result.id)
 		} else {
 			p.emit_return_cleanup()!
 			mut result := first
-			if p.return_wrapper_text() in ['Option', '__v_result'] {
+			if p.return_wrapper in [fastc_type_option, fastc_type_result] {
 				result = p.prepare_option_return(first)
 			} else if result.typ != p.return_typ {
 				result = p.convert_value(result, p.return_typ, p.return_name)
@@ -5106,7 +5106,7 @@ fn (mut p FastArm64Parser) prepare_option_return(value FastArm64Value) FastArm64
 		p.store_result_error_details(value.result_error_type, value.result_error_message, value.result_error_code)
 		return value
 	}
-	is_error := p.return_wrapper_text() == '__v_result'
+	is_error := p.return_wrapper == fastc_type_result
 		&& (value.typ_name == fastc_type_ierror
 			|| p.option_return_types_are_incompatible(value.typ, p.return_typ))
 	if value.is_none || is_error {
@@ -5153,8 +5153,7 @@ fn (p &FastArm64Parser) option_return_types_are_incompatible(actual ssa.TypeID, 
 }
 
 fn (mut p FastArm64Parser) failure_state_pointer(wrapper_source_id u32) ssa.ValueID {
-	wrapper := flat.source_type_name(wrapper_source_id)
-	is_result := wrapper == '__v_result'
+	is_result := wrapper_source_id == fastc_type_result
 	state_type := if is_result { p.program.result_state_type } else { p.program.option_state_type }
 	name := if is_result { 'fastc_result_state' } else { 'fastc_option_state' }
 	pointer_type := p.program.m.type_store.get_ptr(state_type)
@@ -5163,8 +5162,7 @@ fn (mut p FastArm64Parser) failure_state_pointer(wrapper_source_id u32) ssa.Valu
 }
 
 fn (mut p FastArm64Parser) store_option_failure(failed ssa.ValueID, wrapper_source_id u32) {
-	wrapper := flat.source_type_name(wrapper_source_id)
-	state_type := if wrapper == '__v_result' {
+	state_type := if wrapper_source_id == fastc_type_result {
 		p.program.result_state_type
 	} else {
 		p.program.option_state_type
@@ -5174,7 +5172,7 @@ fn (mut p FastArm64Parser) store_option_failure(failed ssa.ValueID, wrapper_sour
 }
 
 fn (mut p FastArm64Parser) store_result_error_details(error_type ssa.ValueID, error_message ssa.ValueID, error_code ssa.ValueID) {
-	if p.return_wrapper_text() != '__v_result' {
+	if p.return_wrapper != fastc_type_result {
 		return
 	}
 	typ := if error_type == ssa.ValueID(0) {
@@ -6520,7 +6518,7 @@ fn (mut p FastArm64Parser) propagate_option_failure(value FastArm64Value) !FastA
 	p.mark_terminated(p.cur_block)
 	p.cur_block = failure_block
 	p.emit_return_cleanup()!
-	if p.return_wrapper_text() in ['Option', '__v_result'] {
+	if p.return_wrapper in [fastc_type_option, fastc_type_result] {
 		p.store_result_error_details(value.result_error_type, value.result_error_message, value.result_error_code)
 		p.store_option_failure(p.program.m.get_or_add_const(p.program.i1_type, '1'), p.return_wrapper)
 		if p.return_typ == p.program.void_type {
@@ -10300,8 +10298,8 @@ fn (mut p FastArm64Parser) new_empty_map_value(map_type_name_source_id u32) !Fas
 }
 
 fn (mut p FastArm64Parser) parse_inferred_map_literal() !FastArm64Value {
-	expected_key_type_name := p.map_key_text()
-	expected_value_type_name := p.map_value_text()
+	expected_key_type_name_id := p.map_key
+	expected_value_type_name_id := p.map_value
 	p.expect(.lcbr)!
 	mut keys := []FastArm64Value{}
 	mut values := []FastArm64Value{}
@@ -10310,24 +10308,24 @@ fn (mut p FastArm64Parser) parse_inferred_map_literal() !FastArm64Value {
 			p.next()
 			continue
 		}
-		keys << if expected_key_type_name == '' && keys.len == 0 {
+		keys << if expected_key_type_name_id == 0 && keys.len == 0 {
 			p.parse_expression(0)!
 		} else {
-			p.parse_contextual_value(flat.source_type_id(if expected_key_type_name == '' {
-				keys[0].typ_name_text()
+			p.parse_contextual_value(if expected_key_type_name_id == 0 {
+				keys[0].typ_name
 			} else {
-				expected_key_type_name
-			}))!
+				expected_key_type_name_id
+			})!
 		}
 		p.expect(.colon)!
-		values << if expected_value_type_name == '' && values.len == 0 {
+		values << if expected_value_type_name_id == 0 && values.len == 0 {
 			p.parse_expression(0)!
 		} else {
-			p.parse_contextual_value(flat.source_type_id(if expected_value_type_name == '' {
-				values[0].typ_name_text()
+			p.parse_contextual_value(if expected_value_type_name_id == 0 {
+				values[0].typ_name
 			} else {
-				expected_value_type_name
-			}))!
+				expected_value_type_name_id
+			})!
 		}
 		if p.tok in [.comma, .semicolon] {
 			p.next()
@@ -10339,17 +10337,18 @@ fn (mut p FastArm64Parser) parse_inferred_map_literal() !FastArm64Value {
 	if keys.len == 0 {
 		return p.unsupported('empty inferred map literal')
 	}
-	key_type_name := if expected_key_type_name == '' {
-		keys[0].typ_name_text()
+	key_type_name_id := if expected_key_type_name_id == 0 {
+		keys[0].typ_name
 	} else {
-		expected_key_type_name
+		expected_key_type_name_id
 	}
-	value_type_name := if expected_value_type_name == '' {
-		values[0].typ_name_text()
+	value_type_name_id := if expected_value_type_name_id == 0 {
+		values[0].typ_name
 	} else {
-		expected_value_type_name
+		expected_value_type_name_id
 	}
-	mut result := p.new_empty_map_value(flat.source_type_id(fastc_map_c_type(key_type_name, value_type_name)))!
+	mut result := p.new_empty_map_value(flat.source_type_id(fastc_map_c_type(flat.source_type_name(key_type_name_id),
+		flat.source_type_name(value_type_name_id))))!
 	for i, key in keys {
 		p.emit_map_set(result, key, values[i])!
 	}

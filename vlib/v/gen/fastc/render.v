@@ -6218,7 +6218,7 @@ fn (g &Parser) render_propagation_before_member(tokens []FastcExpressionToken) ?
 			.question, .not {
 				if depth == 0 && i > 0 && i + 1 < tokens.len && tokens[i + 1].tok == .dot && !fastc_trailing_not_marks_fixed_array_literal(tokens[..i + 1]) {
 					unwrapped := g.render_option_propagation(tokens[..i]) or { return none }
-					if unwrapped.typ_text() in ['', 'void'] {
+					if unwrapped.typ in [u32(0), flat.source_type_void] {
 						return none
 					}
 					synth := FastcExpressionToken{
