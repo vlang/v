@@ -1587,17 +1587,6 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 			return error('Unknown type (${field.typ}) for field ${field.name} in struct ${table.name}')
 		}
 		stmt = '${q}${field_name}${q} ${col_typ}'
-		if sql_dialect == .vsql {
-			if defaults && has_default {
-				return vsql_unsupported_error(table, 'a DEFAULT for column `${field_name}`')
-			}
-			if references_table != '' {
-				return vsql_unsupported_error(table, 'a REFERENCES constraint for column `${field_name}`')
-			}
-			if is_unique {
-				return vsql_unsupported_error(table, 'a UNIQUE constraint for column `${field_name}`')
-			}
-		}
 		if defaults && has_default {
 			if default_is_literal {
 				stmt += ' DEFAULT ${sql_string_literal(sql_dialect, default_val)!}'
@@ -1632,16 +1621,18 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 		fs << stmt
 	}
 
-	if sql_dialect == .vsql && (unique.len > 0 || unique_key_fields.len > 0) {
-		return vsql_unsupported_error(table, 'UNIQUE constraints')
-	}
 	if unique.len > 0 {
 		for k, v in unique {
 			mut tmp := []string{}
 			for f in v {
 				tmp << '${q}${f}${q}'
 			}
-			fs << '/* ${k} */UNIQUE(${tmp.join(', ')})'
+			// vsql does not support bracketed comments.
+			if sql_dialect == .vsql {
+				fs << 'UNIQUE(${tmp.join(', ')})'
+			} else {
+				fs << '/* ${k} */UNIQUE(${tmp.join(', ')})'
+			}
 		}
 	}
 	for key_fields in unique_key_fields {
@@ -1693,12 +1684,6 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 	}
 
 	return str
-}
-
-// vsql_unsupported_error reports a column or table constraint that vsql cannot declare.
-// Index attributes are left out instead: they do not change what a table stores.
-fn vsql_unsupported_error(table Table, what string) IError {
-	return error('orm: vsql does not support ${what} in table `${table.name}`')
 }
 
 // Get's the sql field type
