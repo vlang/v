@@ -468,3 +468,98 @@ fn main() {
 	].join('\n')
 	assert output == expected, output
 }
+
+// Operator methods of generic structs (`fn (a Gen[T]) + (b Gen[T]) Gen[T]`)
+// and methods that build their own struct (`Gen[T]{...}`) are monomorphized
+// like other generic methods, so `Gen[int]{3} + Gen[int]{3}` compiles.
+fn test_fastc_monomorphizes_generic_struct_operators() {
+	$if !macos && !linux {
+		return
+	}
+	output := fastc_program_output('generic_struct_operators', 'module main
+
+struct Gen[T] {
+	v T
+}
+
+fn (a Gen[T]) + (b Gen[T]) Gen[T] {
+	return Gen[T]{a.v + b.v}
+}
+
+fn (a Gen[T]) * (b Gen[T]) Gen[T] {
+	return Gen[T]{a.v * b.v}
+}
+
+fn (a Gen[T]) ** (b Gen[T]) Gen[T] {
+	return Gen[T]{a.v ** b.v}
+}
+
+fn (a Gen[T]) - (b Gen[T]) Gen[T] {
+	return Gen[T]{
+		v: a.v - b.v
+	}
+}
+
+fn (a Gen[T]) == (b Gen[T]) bool {
+	return a.v == b.v
+}
+
+fn (a Gen[T]) < (b Gen[T]) bool {
+	return a.v < b.v
+}
+
+fn (mut a Gen[T]) bump(by T) {
+	a.v += by
+}
+
+fn (a Gen[T]) twice() Gen[T] {
+	mut r := Gen[T]{}
+	r = a + a
+	return r
+}
+
+struct Pair[K, V] {
+	k K
+	v V
+}
+
+fn (a Pair[K, V]) + (b Pair[K, V]) Pair[K, V] {
+	return Pair[K, V]{a.k + b.k, a.v + b.v}
+}
+
+fn main() {
+	x := Gen[int]{3} + Gen[int]{3}
+	println(x.v)
+	g1 := Gen[int]{4}
+	g := g1 + g1
+	println(g.v)
+	h := g1 * g1 + g1
+	println(h.v)
+	f := Gen[f64]{1.5} + Gen[f64]{2.0}
+	println(f.v)
+	mut m := Gen[int]{1}
+	m += g1
+	println(m.v)
+	println(g1 == Gen[int]{4})
+	println(g1 != g)
+	println(g1 < g)
+	println(g1 > g)
+	p := Gen[int]{2} ** Gen[int]{10}
+	println(p.v)
+	mut q := Gen[f64]{1.5} ** Gen[f64]{2.0}
+	q **= Gen[f64]{2.0}
+	println(q.v)
+	d := Gen[int]{9} - Gen[int]{4}
+	println(d.v)
+	mut b := Gen[int]{1}
+	b.bump(41)
+	println(b.twice().v)
+	pr := Pair[int, string]{1, "a"} + Pair[int, string]{2, "b"}
+	println(pr.k)
+	println(pr.v)
+}
+')
+	expected := ['6', '8', '20', '3.5', '5', 'true', 'true', 'true', 'false', '1024', '5.0625',
+		'5', '84', '3', 'ab', ''].join('\n')
+	assert output == expected, output
+}
