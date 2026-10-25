@@ -84,5 +84,13 @@ fn test_the_heap_is_far_from_small_numbers() {
 			// that hold numbers like 0x2000537 point. The arenas come from the top now.
 			assert vgc_arena_lo > uint(1) << 32
 		}
+		$if x64 {
+			$if macos || linux {
+				// macOS hands out low addresses too: a large heap reached 0x300000000, where
+				// constants like 0x300000001 point. The arenas start at 0xc000000000 now, or on
+				// Linux, when that range is taken, at the default, top down from the stack.
+				assert vgc_arena_lo > uint(1) << 36
+			}
+		}
 	}
 }

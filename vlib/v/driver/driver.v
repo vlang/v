@@ -3549,6 +3549,18 @@ fn v3_windows_executable_linker_flags(target_os string, c_compiler string, is_sh
 	return []
 }
 
+// v3_mingw_static_runtime_flags ends the link of a program by MinGW GCC or Clang. Their own
+// libraries, which their driver adds after every argument, come from static archives then: the
+// executable does not need libwinpthread-1.dll, which GCC's thread-local storage (emutls) and
+// `-lpthread` bring in, beside it. The libraries of the program come before the flag and keep
+// their import libraries. MSVC and TinyCC link no MinGW runtime.
+fn v3_mingw_static_runtime_flags(target_os string, c_compiler string, is_tcc bool, is_freestanding bool) []string {
+	if target_os != 'windows' || c_compiler == 'msvc' || is_tcc || is_freestanding {
+		return []
+	}
+	return ['-Wl,-Bstatic']
+}
+
 struct V3TccResourceFlags {
 	install_dir string
 	base_arg    string
@@ -3911,6 +3923,8 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 	}
 	if !options.is_o {
 		after_inputs << options.link_ld_flags
+		after_inputs << v3_mingw_static_runtime_flags(options.target_os, options.c_compiler,
+			options.is_tcc, options.is_freestanding)
 	}
 	return V3CCompilerFlagPlan{
 		before_inputs: before_inputs

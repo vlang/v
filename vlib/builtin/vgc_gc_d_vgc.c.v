@@ -55,6 +55,37 @@ fn vgc_is_enabled() bool {
 	return C.vgc_atomic_load_u32(&vgc_heap.gc_enabled) != 0
 }
 
+// vgc_stop_wait_ns bounds the wait for the other threads to stop. A thread that is blocked
+// (in a join, a lock or a system call) does not reach a safepoint, and the collection
+// proceeds without it after this time. The previous wait, 1M spins, took about 1-2.5 ms.
+const vgc_stop_wait_ns = u64(1_000_000)
+
+// vgc_wait_for_stops waits until every other registered thread acknowledged the stop request
+// `epoch` at a safepoint, or until vgc_stop_wait_ns passed. The caller holds cache_lock, so no
+// thread registers or exits meanwhile.
+fn vgc_wait_for_stops(self_idx int, epoch u32) {
+	mut deadline := u64(0)
+	mut round := 0
+	for i in 0 .. vgc_heap.ncaches {
+		if i == self_idx || !unsafe { vgc_heap.caches[i].registered } {
+			continue
+		}
+		for C.vgc_atomic_load_u32(&vgc_heap.caches[i].stop_epoch) != epoch {
+			round++
+			if round >= 16 {
+				// Read the clock only once spinning did not suffice.
+				now := C.vgc_now_ns()
+				if deadline == 0 {
+					deadline = now + vgc_stop_wait_ns
+				} else if now >= deadline {
+					return
+				}
+			}
+			C.vgc_backoff(round)
+		}
+	}
+}
+
 // vgc_gc_run collects. This thread's stack is scanned from regs, where its registers are saved,
 // upwards: the frames below are the collector's, and they hold copies of the stack and arena
 // bounds, which can be the address of an object.
@@ -66,25 +97,13 @@ fn vgc_gc_run(_ voidptr, regs voidptr) {
 	// Stop the world for root scanning
 	// Set stop flag - threads will stop at next safepoint (allocation)
 	self_idx := C.vgc_get_cache_idx()
-	mut targets := u32(0)
-	for i in 0 .. vgc_heap.ncaches {
-		if i != self_idx && unsafe { vgc_heap.caches[i].registered } {
-			targets++
-		}
+	mut epoch := C.vgc_atomic_load_u32(&vgc_heap.gc_stop_epoch) + 1
+	if epoch == 0 {
+		epoch = 1
 	}
-	vgc_heap.gc_target_stops = targets // all threads except GC thread
-	C.vgc_atomic_store_u32(&vgc_heap.gc_stopped_count, 0)
+	C.vgc_atomic_store_u32(&vgc_heap.gc_stop_epoch, epoch)
 	C.vgc_atomic_store_u32(&vgc_heap.gc_stop_flag, 1)
-
-	// Wait for threads to stop (with timeout to avoid deadlock)
-	mut wait_iters := 0
-	for C.vgc_atomic_load_u32(&vgc_heap.gc_stopped_count) < vgc_heap.gc_target_stops {
-		C.vgc_atomic_fence()
-		wait_iters++
-		if wait_iters > 1000000 {
-			break // Don't wait forever - proceed with what we have
-		}
-	}
+	vgc_wait_for_stops(self_idx, epoch)
 
 	// Clear mark bits on all spans (prepare for new cycle)
 	vgc_clear_mark_bits()
