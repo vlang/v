@@ -5316,7 +5316,7 @@ fn debugger_type_name(typ &types.Type) string {
 }
 
 fn debugger_string_literal(value string) string {
-	return '(string){"${c_escape(value)}", ${value.len}, 1}'
+	return '(string){(u8*)"${c_escape(value)}", ${value.len}, 1}'
 }
 
 fn (g &FlatGen) debugger_smartcast_vars(node flat.Node) map[string]DebuggerSmartcastVar {

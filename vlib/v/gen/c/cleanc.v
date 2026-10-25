@@ -16054,11 +16054,11 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 			'(${ct}){${parts.join(', ')}}'
 		}
 		.string_literal {
-			'(string){"${c_escape(node.value)}", ${node.value.len}, 1}'
+			'(string){(u8*)"${c_escape(node.value)}", ${node.value.len}, 1}'
 		}
 		.typeof_expr {
 			type_name := g.typeof_type_name(node)
-			'(string){"${c_escape(type_name)}", ${type_name.len}, 1}'
+			'(string){(u8*)"${c_escape(type_name)}", ${type_name.len}, 1}'
 		}
 		.sizeof_expr {
 			if node.children_count > 0 {
@@ -25860,7 +25860,7 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 	if qname == 'builtin__error_sentinel' {
 		type_id := g.ierror_type_id_for_pattern(flat.source_type_id('MessageError'))
 		object_name := '${qname}__object'
-		message := '{"error", 5, 1}'
+		message := '{(u8*)"error", 5, 1}'
 		// File-scope initializers need brace lists rather than compound-literal
 		// casts: GCC rejects the latter as non-constant when cached modules are
 		// linked separately.
