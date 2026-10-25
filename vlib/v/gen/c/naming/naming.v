@@ -75,7 +75,7 @@ const reserved_words = {
 	'linux':    true
 }
 
-// libc_collisions are libc function names that are not C keywords but clash at
+// libc_collisions are C runtime and intrinsic names that are not keywords but clash at
 // link/declaration time when a user defines a plain (module `main`) function with
 // the same name (e.g. `fn rint(...)` vs libc's `double rint(double)`). They are
 // mangled to `v_<name>` consistently at definition and call sites. `C.<name>`
@@ -84,6 +84,7 @@ const libc_collisions = {
 	'abort':    true
 	'abs':      true
 	'access':   true
+	'alloca':   true
 	'acos':     true
 	'atexit':   true
 	'ceil':     true
@@ -175,7 +176,7 @@ pub fn c_name(name string) string {
 	if n == 'complex' || name == '@complex' {
 		return '${internal_symbol_c_prefix}macro_complex'
 	}
-	if n in ['mktemp', 'truncate'] {
+	if n in ['mktemp', 'truncate', 'alloca'] {
 		return '${internal_symbol_c_prefix}libc_${n}'
 	}
 	mut result := n

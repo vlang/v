@@ -94,6 +94,15 @@ fn test_gnu_predefined_macro_names_are_escaped() {
 	assert c_name('unix') == 'v_unix'
 }
 
+fn test_alloca_intrinsic_name_cannot_be_shadowed() {
+	assert c_name('alloca') == '${internal_symbol_c_prefix}libc_alloca'
+	assert c_name('@alloca') == c_name('alloca')
+	assert c_name('alloca') != c_name('v_alloca')
+	assert c_name('alloca') != c_name(c_name('alloca'))
+	assert c_name('alloca_value') == 'alloca_value'
+	assert c_name('C.alloca') == 'alloca'
+}
+
 fn test_complex_header_macro_name_is_escaped() {
 	assert c_name('complex') == '${internal_symbol_c_prefix}macro_complex'
 	assert c_name('@complex') == c_name('complex')

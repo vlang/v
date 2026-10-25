@@ -10813,6 +10813,7 @@ compiling for Windows. The C backend escapes these names to avoid Windows header
 including in functions, local variables, and struct fields. Explicit `C.` references retain
 their original C names.
 TinyCC also supports explicitly aligned local structs on Windows through its `alloca` intrinsic.
+V identifiers named `alloca` are escaped so they cannot shadow this intrinsic.
 
 C globals can be exposed on the V side too. Use `@[c_extern] __global name C.Type`
 when you want to redeclare an external symbol explicitly, or

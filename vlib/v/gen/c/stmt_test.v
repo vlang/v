@@ -958,6 +958,13 @@ fn test_tinyc_declarations_preserve_explicit_stack_alignment() {
 		g.set_ccompiler('tcc')
 		g.register_struct_decl_info_at(int(decl), node.value, node.value,
 			'main', 'aligned.v', node)
+		for name in ['alloca', 'v_alloca', '__v3_internal_symbol_libc_alloca'] {
+			local := stmt_test_node(mut a, .ident, name, [])
+			value := stmt_test_node(mut a, .int_literal, '7', [])
+			assignment := stmt_test_node(mut a, .decl_assign, '', [local, value])
+			a.nodes[int(assignment)].typ = flat.source_type_id('int')
+			g.gen_decl_assign(a.nodes[int(assignment)])
+		}
 		lhs := stmt_test_node(mut a, .ident, 'staging', [])
 		rhs := stmt_test_node(mut a, .struct_init, 'Aligned', [])
 		staging := stmt_test_node(mut a, .decl_assign, decl_kind, [lhs, rhs])
@@ -966,6 +973,10 @@ fn test_tinyc_declarations_preserve_explicit_stack_alignment() {
 		generated := g.sb.str()
 		assert generated.contains('= alloca(sizeof(Aligned)'), generated
 		assert !generated.contains('__builtin_alloca'), generated
+		assert generated.contains('int __v3_internal_symbol_libc_alloca = 7;'), generated
+		assert generated.contains('int v_alloca = 7;'), generated
+		assert generated.contains('int __v3_internal_symbol_source___v3_internal_symbol_libc_alloca = 7;'), generated
+		assert !generated.contains('int alloca ='), generated
 		assert generated.contains('(size_t)(64)')
 		assert generated.contains('Aligned* staging')
 		if decl_kind == '__v3_zeroed_stack_value_decl' {
