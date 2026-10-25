@@ -5031,8 +5031,8 @@ fn (t &Transformer) subst_reflected_field_selector_cond(original string, substit
 				if !comptime_plain_ident(receiver) {
 					continue
 				}
-				receiver_type := trimmed_transform_text(flat.source_type_name(t.var_type(receiver))).trim_left('&')
-				selector_type = flat.source_type_name(t.lookup_struct_field_type(flat.source_type_id(receiver_type), fm.name) or { continue })
+				receiver_type := t.trim_all_pointer_type(t.trimmed_type_id(t.var_type(receiver)))
+				selector_type = flat.source_type_name(t.lookup_struct_field_type(receiver_type, fm.name) or { continue })
 			}
 			resolved := trimmed_transform_text(substituted)
 			if resolved_op_idx := comptime_top_index(resolved, op) {

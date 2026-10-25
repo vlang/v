@@ -19359,16 +19359,18 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 					}
 				}
 				if node.value_text() == 'shared' || node.value_text().starts_with('shared:') {
-					clean_raw := trimmed_transform_text(flat.source_type_name(raw_typ))
+					clean_raw_id := t.trimmed_type_id(raw_typ)
+					clean_raw := flat.source_type_name(clean_raw_id)
 					raw_typ = (if clean_raw.starts_with('shared ') {
-						flat.source_type_id(clean_raw)
+						clean_raw_id
 					} else {
 						flat.source_type_id('shared ${clean_raw}')
 					})
 				} else if node.value_text() == 'atomic' || node.value_text().starts_with('atomic:') {
-					clean_raw := trimmed_transform_text(flat.source_type_name(raw_typ))
+					clean_raw_id := t.trimmed_type_id(raw_typ)
+					clean_raw := flat.source_type_name(clean_raw_id)
 					raw_typ = (if clean_raw.starts_with('atomic ') {
-						flat.source_type_id(clean_raw)
+						clean_raw_id
 					} else {
 						flat.source_type_id('atomic ${clean_raw}')
 					})

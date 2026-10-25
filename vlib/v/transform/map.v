@@ -1869,12 +1869,12 @@ fn (mut t Transformer) map_index_info(index_id flat.NodeId) ?MapIndexInfo {
 	// Qualify a bare local sum type (`Value` -> `eval.Value`). A bare name can clash
 	// with an imported type of the same name and resolve to the wrong sum type when the
 	// value is later wrapped into the map element type.
-	mut value_type := raw_value_type
-	if !value_type.contains('.') && !value_type.contains('[') && !value_type.starts_with('&')
+	mut value_type := raw_value_type_source_id_2
+	if !raw_value_type.contains('.') && !raw_value_type.contains('[') && !raw_value_type.starts_with('&')
 		&& t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
-		qualified := '${t.cur_module}.${value_type}'
+		qualified := '${t.cur_module}.${raw_value_type}'
 		if t.sum_types.contains(qualified) || (!isnil(t.tc) && t.tc.sum_types.contains(qualified)) {
-			value_type = qualified
+			value_type = flat.source_type_id(qualified)
 		}
 	}
 	return MapIndexInfo{
@@ -1883,7 +1883,7 @@ fn (mut t Transformer) map_index_info(index_id flat.NodeId) ?MapIndexInfo {
 		base_type:        base_type
 		key_type:         key_type_source_id_8
 		key_storage_type: t.map_key_storage_type(key_type_source_id_8)
-		value_type:       flat.source_type_id(value_type)
+		value_type:       value_type
 	}
 }
 

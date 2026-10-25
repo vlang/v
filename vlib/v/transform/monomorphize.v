@@ -2504,12 +2504,12 @@ fn (mut t Transformer) collect_interface_call_boxes(call_id flat.NodeId, node fl
 		0
 	}
 	logical_params := params.len - param_offset - hidden_ctx_offset
-	mut omitted_params_struct := ''
+	mut omitted_params_struct := u32(0)
 	if variadic_idx < 0 && logical_params != logical_args {
 		if logical_params == logical_args + 1 {
-			omitted_params_struct = flat.source_type_name(t.params_struct_type_name(params[params.len - 1].source_type_id()) or {
+			omitted_params_struct = t.params_struct_type_name(params[params.len - 1].source_type_id()) or {
 				return
-			})
+			}
 		} else {
 			return
 		}
@@ -2562,8 +2562,8 @@ fn (mut t Transformer) collect_interface_call_boxes(call_id flat.NodeId, node fl
 			t.collect_interface_boxed_value(value_id, expected)
 		}
 	}
-	if omitted_params_struct.len > 0 {
-		t.collect_interface_struct_default_boxes(flat.source_type_id(omitted_params_struct), []string{})
+	if omitted_params_struct != 0 {
+		t.collect_interface_struct_default_boxes(omitted_params_struct, []string{})
 	}
 }
 
@@ -11053,19 +11053,19 @@ fn (mut t Transformer) generic_receiver_needs_decl_type_fallback(param_type_id u
 }
 
 fn (t &Transformer) generic_inference_alias_target(typ_id u32, module_name string) u32 {
-	typ := flat.source_type_name(typ_id)
-	clean := trimmed_transform_text(typ)
+	clean_id := t.trimmed_type_id(typ_id)
+	clean := flat.source_type_name(clean_id)
 	if clean.len == 0 {
-		return flat.source_type_id(clean)
+		return clean_id
 	}
 	// Specialization keys use bare main types. Keep their caller provenance when
 	// inferring a nested call instead of resolving a homonym in the callee module.
-	if t.substituted_type_belongs_to_main_generic(flat.source_type_id(clean))
-		&& t.current_specialization_has_generic_arg(flat.source_type_id(clean)) {
-		return flat.source_type_id(clean)
+	if t.substituted_type_belongs_to_main_generic(clean_id)
+		&& t.current_specialization_has_generic_arg(clean_id) {
+		return clean_id
 	}
-	if t.current_specialization_has_generic_arg(flat.source_type_id(clean)) {
-		base, args, is_generic := generic_provenance_app_parts(flat.source_type_id(clean))
+	if t.current_specialization_has_generic_arg(clean_id) {
+		base, args, is_generic := generic_provenance_app_parts(clean_id)
 		if is_generic && !clean.starts_with('map[') {
 			mut scoped_args := []string{cap: args.len}
 			for nested_arg in args {
@@ -11075,15 +11075,14 @@ fn (t &Transformer) generic_inference_alias_target(typ_id u32, module_name strin
 			return flat.source_type_id('${scoped_base}[${scoped_args.join(', ')}]')
 		}
 	}
-	if target_source_id := t.direct_generic_inference_alias_target(flat.source_type_id(clean), module_name) {
+	if target_source_id := t.direct_generic_inference_alias_target(clean_id, module_name) {
 		return target_source_id
 	}
-	normalized_source_id := t.normalize_type_in_module(flat.source_type_id(clean), module_name)
-	normalized := flat.source_type_name(normalized_source_id)
-	if normalized_source_id != 0 && normalized != clean && !t.generic_arg_is_unresolved(normalized_source_id) {
+	normalized_source_id := t.normalize_type_in_module(clean_id, module_name)
+	if normalized_source_id != 0 && normalized_source_id != clean_id && !t.generic_arg_is_unresolved(normalized_source_id) {
 		return normalized_source_id
 	}
-	return flat.source_type_id(clean)
+	return clean_id
 }
 
 fn (t &Transformer) direct_generic_inference_alias_target(typ_id u32, module_name string) ?u32 {
@@ -11101,19 +11100,18 @@ fn (t &Transformer) direct_generic_inference_alias_target(typ_id u32, module_nam
 		}
 	}
 	if !typ.contains('.') {
-		mut unique_target := ''
+		mut unique_target := u32(0)
 		for name, target_id in t.tc.type_aliases.ids {
-			target := flat.source_type_name(target_id)
 			if name != typ && !name.ends_with('.${typ}') {
 				continue
 			}
-			if unique_target != '' && unique_target != target {
+			if unique_target != 0 && unique_target != target_id {
 				return none
 			}
-			unique_target = target
+			unique_target = target_id
 		}
-		if unique_target.len > 0 {
-			return t.normalize_type_in_module(flat.source_type_id(unique_target), module_name)
+		if unique_target != 0 {
+			return t.normalize_type_in_module(unique_target, module_name)
 		}
 	}
 	return none

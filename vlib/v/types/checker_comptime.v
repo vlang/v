@@ -5353,7 +5353,13 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 	clean_pointer_target := unalias_type(target)
 	if clean_pointer_target is Pointer {
 		target_pointer := clean_pointer_target as Pointer
-		target_name := if node.value_text().len > 0 { node.value_text() } else { target.name() }
+		target_source_id := node.source_value_id()
+		target_name_id := if target_source_id != 0 {
+			target_source_id
+		} else {
+			target.source_type_id()
+		}
+		target_name := flat.source_type_name(target_name_id)
 		target_base := unalias_type(target_pointer.base_type)
 		if target_base is SumType && !fn_param_is_voidptr_type(actual)
 			&& tc.sum_type_contains_variant(target_base, unalias_type(actual)) {
@@ -5424,7 +5430,7 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 			&& clean_actual.base_type.source_type_id() == target_pointer.base_type.source_type_id()
 		if tc.unsafe_depth == 0 && !(target is Alias && tc.alias_type_is_shared(target))
 			&& clean_actual is Pointer && struct_type_from_type(target_base) != none
-			&& actual.source_type_id() != flat.source_type_id(target_name) && !same_pointee {
+			&& actual.source_type_id() != target_name_id && !same_pointee {
 			tc.record_warning_at(.assignment_mismatch, 'casting `${actual.name()}` to `${target_name}` is only allowed in `unsafe` code', id, node.pos)
 			return
 		}

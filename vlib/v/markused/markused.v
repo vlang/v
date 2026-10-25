@@ -4093,6 +4093,9 @@ fn markused_auto_str_field_is_skipped(type_name_id u32, field_name string, skipp
 			return true
 		}
 	}
+	if !flat.source_type_shape(lookup).has(.dotted) {
+		return false
+	}
 	short := flat.source_type_id(flat.source_type_name(lookup).all_after_last('.'))
 	if short != lookup {
 		if entry := skipped[short] {
@@ -5367,6 +5370,14 @@ fn qualify_fn(mod string, name string) string {
 		return name
 	}
 	return '${mod}.${name}'
+}
+
+// markused_qualify_source_type preserves IDs when qualify_fn leaves a source spelling unchanged.
+fn markused_qualify_source_type(mod string, name_id u32) u32 {
+	if mod.len == 0 || mod == 'main' || mod == 'builtin' {
+		return name_id
+	}
+	return flat.source_type_id('${mod}.${flat.source_type_name(name_id)}')
 }
 
 // receiver_info supports receiver info handling for markused.
@@ -9039,8 +9050,11 @@ fn (c &CallCollector) generic_factory_type_arg(id flat.NodeId) u32 {
 		.prefix {
 			if node.children_count == 0 { return u32(0) }
 			inner_source_id := c.generic_factory_type_arg(c.a.child(node, 0))
-			inner := flat.source_type_name(inner_source_id)
-			return if node.op == .amp { flat.source_type_id('&${inner}') } else { inner_source_id }
+			return if node.op == .amp {
+				flat.source_type_id('&${flat.source_type_name(inner_source_id)}')
+			} else {
+				inner_source_id
+			}
 		}
 		else { return u32(0) }
 	}
@@ -9643,7 +9657,7 @@ fn (c &CallCollector) selector_is_enum_value(node &flat.Node, cur_module string,
 	}
 	resolved_name := markused_resolve_imported_source_type(flat.source_type_id(base_name), imports)
 	mut candidates := [resolved_name]
-	qualified_name := flat.source_type_id(qualify_fn(cur_module, flat.source_type_name(resolved_name)))
+	qualified_name := markused_qualify_source_type(cur_module, resolved_name)
 	if qualified_name != resolved_name {
 		candidates << qualified_name
 	}
@@ -9928,9 +9942,8 @@ fn (c &CallCollector) flag_enum_intrinsic_receiver_method(type_name_id u32, meth
 		return false
 	}
 	clean_id := markused_clean_receiver_type_name(type_name_id)
-	clean_type_name := flat.source_type_name(clean_id)
 	mut candidates := [clean_id]
-	qualified := flat.source_type_id(qualify_fn(cur_module, clean_type_name))
+	qualified := markused_qualify_source_type(cur_module, clean_id)
 	if qualified != clean_id {
 		candidates << qualified
 	}
@@ -9966,7 +9979,7 @@ fn (c &CallCollector) collect_sum_variant_receiver_methods_for_type_name(type_na
 		clean_id = flat.source_type_id(clean)
 	}
 	mut sum_names := [clean_id]
-	qualified := flat.source_type_id(qualify_fn(cur_module, clean))
+	qualified := markused_qualify_source_type(cur_module, clean_id)
 	if qualified != clean_id {
 		sum_names << qualified
 	}
@@ -10214,7 +10227,11 @@ fn (c &CallCollector) collection_alias_receiver_method_name(type_name_id u32, me
 		} else {
 			return none
 		}
-		alias_id := flat.source_type_id(alias_name)
+		alias_id := if alias_name == current_text {
+			current
+		} else {
+			flat.source_type_id(alias_name)
+		}
 		if alias_id in aliases || (c.tc.type_alias_generic_params[alias_name] or { []string{} }).len > 0 {
 			return none
 		}

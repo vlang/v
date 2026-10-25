@@ -913,28 +913,27 @@ fn (mut t Transformer) try_expand_if_expr_value_for_type(id flat.NodeId, node fl
 		|| result_type_id == flat.source_type_void {
 		return none
 	}
-	mut actual_result_type := result_type
+	mut actual_result_type := result_type_id
 	branch_type_source_id := t.if_expr_branch_result_type(node)
-	branch_type := flat.source_type_name(branch_type_source_id)
 	borrowed_result := result_type.starts_with('&')
 		&& t.normalize_type_alias(flat.source_type_id(result_type[1..])) == t.normalize_type_alias(branch_type_source_id)
 	if borrowed_result || t.if_expr_branch_overrides_sum_target(branch_type_source_id, result_type_id) {
-		actual_result_type = branch_type
-	} else if actual_result_type == 'int' && branch_type_source_id != u32(0) && branch_type_source_id != flat.source_type_int
+		actual_result_type = branch_type_source_id
+	} else if actual_result_type == flat.source_type_int && branch_type_source_id != u32(0) && branch_type_source_id != flat.source_type_int
 		&& branch_type_source_id != flat.source_type_unknown && branch_type_source_id != flat.source_type_void {
 		// In declaration contexts the target type defaults to int before the
 		// branch values are inspected. A default int target does not reflect a
 		// non-int merged branch type (e.g. an if-expression whose branches are
 		// generic f64 calls like math.min), so use the branch type itself.
-		actual_result_type = branch_type
+		actual_result_type = branch_type_source_id
 	}
 	tmp_name := t.new_temp('if_val')
 	outer_pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
 
 	mut prelude := []flat.NodeId{}
-	prelude << t.make_staging_value_decl(tmp_name, flat.source_type_id(actual_result_type))
-	for stmt in t.build_if_value_chain(id, tmp_name, flat.source_type_id(actual_result_type)) {
+	prelude << t.make_staging_value_decl(tmp_name, actual_result_type)
+	for stmt in t.build_if_value_chain(id, tmp_name, actual_result_type) {
 		prelude << stmt
 	}
 
@@ -943,7 +942,7 @@ fn (mut t Transformer) try_expand_if_expr_value_for_type(id flat.NodeId, node fl
 		t.pending_stmts << stmt
 	}
 	tmp := t.make_ident(tmp_name)
-	t.set_node_typ(int(tmp), flat.source_type_id(actual_result_type))
+	t.set_node_typ(int(tmp), actual_result_type)
 	if borrowed_result {
 		return t.coerce_transformed_expr_to_type(tmp, id, result_type_id)
 	}

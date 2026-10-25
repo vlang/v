@@ -1949,23 +1949,22 @@ fn (t &Transformer) single_pointer_sum_nil_variant(expr_id flat.NodeId, sum_name
 	if actual_type != 0 && variants_source_ids_2.any(t.normalize_type_alias(it) == actual_type) {
 		return none
 	}
-	mut pointer_variant := ''
+	mut pointer_variant := u32(0)
 	for variant_source_id in variants_source_ids_2 {
 		variant_source_id_2 := variant_source_id
-		variant := flat.source_type_name(variant_source_id_2)
 
 		if !t.sum_variant_is_direct_pointer(variant_source_id_2) {
 			continue
 		}
-		if pointer_variant.len > 0 {
+		if pointer_variant != 0 {
 			return none
 		}
-		pointer_variant = variant
+		pointer_variant = variant_source_id_2
 	}
-	if pointer_variant.len == 0 {
+	if pointer_variant == 0 {
 		return none
 	}
-	return flat.source_type_id(pointer_variant)
+	return pointer_variant
 }
 
 // sum_nil_expr_type retains scalar literal types beneath an expected sum type.

@@ -14505,9 +14505,11 @@ fn (mut p Parser) generic_call_type_arg_id(id flat.NodeId) flat.NodeId {
 	} else {
 		id
 	}
-	name := flat.source_type_name(p.type_expr_name(canonical_id))
-	resolved := p.canonical_integer_type(p.resolve_local_type_name(name), node.pos.offset,
-		node.pos.end)
+	name_id := p.type_expr_name(canonical_id)
+	name := flat.source_type_name(name_id)
+	resolved_id := p.resolve_local_type_id(name_id)
+	resolved_name := if resolved_id == name_id { name } else { flat.source_type_name(resolved_id) }
+	resolved := p.canonical_integer_type(resolved_name, node.pos.offset, node.pos.end)
 	if name.len == 0 || (resolved == name && canonical_id == id) {
 		if node.kind == .ident && is_builtin_type(name) && !p.is_local_binding(name) {
 			p.a.nodes[int(id)].set_source_value_id(node.source_value_id())
@@ -14516,7 +14518,11 @@ fn (mut p Parser) generic_call_type_arg_id(id flat.NodeId) flat.NodeId {
 	}
 	return p.add_node(flat.Node{
 		kind:         .ident
-		source_value: flat.source_type_id(resolved)
+		source_value: if resolved == resolved_name {
+			resolved_id
+		} else {
+			flat.source_type_id(resolved)
+		}
 	})
 }
 
@@ -18562,9 +18568,26 @@ fn (p &Parser) resolve_local_type_id(name_id u32) u32 {
 	if p.local_type_names.ids.len == 0 || p.local_type_scopes.len == 0 || name_id == 0 {
 		return name_id
 	}
-	source := flat.source_type_name(name_id)
-	resolved := p.resolve_local_type_name(source)
-	return if resolved == source { name_id } else { flat.source_type_id(resolved) }
+	name := flat.source_type_name(name_id)
+	idx := name.index_u8(`[`)
+	base := if idx >= 0 { name[..idx] } else { name }
+	if base.contains('.') {
+		return name_id
+	}
+	for i := p.local_type_scopes.len - 1; i >= 0; i-- {
+		scope := p.local_type_scopes[i]
+		if mapped := p.local_type_names.type_id(p.local_type_key_for_scope(scope, base)) {
+			if idx < 0 {
+				return mapped
+			}
+			mapped_name := flat.source_type_name(mapped)
+			if mapped_name == base {
+				return name_id
+			}
+			return flat.source_type_id(mapped_name + name[idx..])
+		}
+	}
+	return name_id
 }
 
 fn (p &Parser) resolve_local_type_name(name string) string {

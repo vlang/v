@@ -1084,7 +1084,8 @@ fn (t &Transformer) array_literal_checker_alias_type(id flat.NodeId) ?u32 {
 		return none
 	}
 	typ := t.tc.expr_type(id) or { t.tc.resolve_type(id) }
-	name := typ.name()
+	name_id := typ.source_type_id()
+	name := flat.source_type_name(name_id)
 	if !name.starts_with('[]') {
 		return none
 	}
@@ -1099,7 +1100,7 @@ fn (t &Transformer) array_literal_checker_alias_type(id flat.NodeId) ?u32 {
 	source_name := t.a.nodes[int(id)].typ_text()
 	if elem.contains('.') && source_name.starts_with('[]')
 		&& source_name[2..].all_after_last('.') == elem.all_after_last('.') {
-		return flat.source_type_id(name)
+		return name_id
 	}
 	if !t.generic_arg_is_alias_name(elem, t.cur_module) {
 		return none
@@ -4538,15 +4539,14 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 	} else {
 		t.node_type(mapped_value_id)
 	})
-	mut direct_selector_type := ''
+	mut direct_selector_type := u32(0)
 	mut mapped_source_node := t.a.nodes[int(mapped_source)]
 	if mapped_source_node.kind == .map_init {
 		inferred_map_type_source_id := t.infer_map_init_entry_type(mapped_source_node)
 		inferred_map_type_source_id_2 := inferred_map_type_source_id
-		inferred_map_type := flat.source_type_name(inferred_map_type_source_id_2)
 		if inferred_map_type_source_id != 0 {
 			result_elem_type = inferred_map_type_source_id_2
-			t.set_node_value(int(mapped_source), inferred_map_type)
+			t.set_node_source_value(int(mapped_source), inferred_map_type_source_id_2)
 			t.set_node_typ(int(mapped_source), inferred_map_type_source_id)
 			mapped_source_node = t.a.nodes[int(mapped_source)]
 		}
@@ -4555,9 +4555,8 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 		selector_type_source_id := t.lookup_struct_field_type(elem_type, mapped_source_node.value) or {
 			t.resolve_selector_type(mapped_source_node)
 		}
-		selector_type := flat.source_type_name(selector_type_source_id)
 		if selector_type_source_id != 0 {
-			direct_selector_type = selector_type
+			direct_selector_type = selector_type_source_id
 			result_elem_type = selector_type_source_id
 		}
 	}
@@ -4653,10 +4652,10 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 		&& (!checker_result_elem_type_is_usable || t.active_specialization_args.ids.len > 0) {
 		result_elem_type = mapped_type_source_id_3
 	}
-	if direct_selector_type.len > 0 && map_fn_name.len == 0 {
-		result_elem_type = flat.source_type_id(direct_selector_type)
+	if direct_selector_type != 0 && map_fn_name.len == 0 {
+		result_elem_type = direct_selector_type
 	}
-	if direct_selector_type.len == 0 {
+	if direct_selector_type == 0 {
 		if mapped_expr_node := t.selector_expr_node(mapped_expr) {
 			selector_type_source_id_2 := t.resolve_selector_type(mapped_expr_node)
 
