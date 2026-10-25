@@ -97,7 +97,41 @@ fn (mut p InlineParser) parse() []&Node {
 		resolve_emphasis(mut result, mut delims)
 		result = compact_empty_text_nodes(result)
 	}
-	return merge_text_nodes(result)
+	mut merged := merge_text_nodes(result)
+	strip_before_hardbreak(mut merged)
+	return merged
+}
+
+// strip_before_hardbreak removes trailing spaces/tabs from a text node that
+// is immediately followed by a hard or soft line break (they are insignificant
+// there and must not appear in the output). Code spans are atomic nodes, so
+// significant spaces inside them are never touched. Applies at every level.
+fn strip_before_hardbreak(mut nodes []&Node) {
+	for i := 0; i < nodes.len; i++ {
+		if nodes[i].children.len > 0 {
+			strip_before_hardbreak(mut nodes[i].children)
+		}
+	}
+	for i := 0; i + 1 < nodes.len; i++ {
+		if nodes[i + 1].kind == .hard_break || nodes[i + 1].kind == .soft_break {
+			// Walk back over consecutive all-whitespace text nodes: inline
+			// parsing emits one node per character, so trailing spaces may
+			// span several nodes (notably inside emphasis children, which
+			// are never merged).
+			mut j := i
+			for j >= 0 && nodes[j].kind == .text {
+				stripped := nodes[j].literal.trim_right(' \t')
+				if stripped.len == nodes[j].literal.len {
+					break
+				}
+				nodes[j].literal = stripped
+				if stripped.len > 0 {
+					break
+				}
+				j--
+			}
+		}
+	}
 }
 
 fn resolve_emphasis(mut nodes []&Node, mut delims []EmphDelim) {
@@ -217,8 +251,14 @@ fn (mut p InlineParser) parse_one() []&Node {
 			if node := p.try_code_span() {
 				return [node]
 			}
-			p.pos++
-			return [text_node('`')]
+			// No match: the whole run is literal text. Skipping past it
+			// (instead of one byte) keeps a trailing run from pairing up
+			// with an earlier one, e.g. ```foo`` stays literal.
+			start := p.pos
+			for p.pos < p.src.len && p.src[p.pos] == 96 {
+				p.pos++
+			}
+			return [text_node(p.src[start..p.pos])]
 		}
 		`*`, `_` {
 			p.pos++
@@ -310,32 +350,32 @@ fn merge_text_nodes(nodes []&Node) []&Node {
 
 // can_open_emphasis reports whether a delimiter run can open emphasis.
 fn can_open_emphasis(delim u8, before rune, after rune) bool {
-	left_flanking := !is_unicode_space(after) && (!is_ascii_punct(after) || is_unicode_space(before)
-		|| is_ascii_punct(before))
+	left_flanking := !is_unicode_space(after) && (!is_unicode_punct(after) || is_unicode_space(before)
+		|| is_unicode_punct(before))
 	right_flanking := !is_unicode_space(before)
-		&& (!is_ascii_punct(before) || is_unicode_space(after)
-			|| is_ascii_punct(after))
+		&& (!is_unicode_punct(before) || is_unicode_space(after)
+			|| is_unicode_punct(after))
 	if delim == `*` {
 		return left_flanking
 	}
 	if delim == `_` {
-		return left_flanking && (!right_flanking || is_ascii_punct(before))
+		return left_flanking && (!right_flanking || is_unicode_punct(before))
 	}
 	return false
 }
 
 // can_close_emphasis reports whether a delimiter run can close emphasis.
 fn can_close_emphasis(delim u8, before rune, after rune) bool {
-	left_flanking := !is_unicode_space(after) && (!is_ascii_punct(after) || is_unicode_space(before)
-		|| is_ascii_punct(before))
+	left_flanking := !is_unicode_space(after) && (!is_unicode_punct(after) || is_unicode_space(before)
+		|| is_unicode_punct(before))
 	right_flanking := !is_unicode_space(before)
-		&& (!is_ascii_punct(before) || is_unicode_space(after)
-			|| is_ascii_punct(after))
+		&& (!is_unicode_punct(before) || is_unicode_space(after)
+			|| is_unicode_punct(after))
 	if delim == `*` {
 		return right_flanking
 	}
 	if delim == `_` {
-		return right_flanking && (!left_flanking || is_ascii_punct(after))
+		return right_flanking && (!left_flanking || is_unicode_punct(after))
 	}
 	return false
 }
@@ -458,7 +498,7 @@ fn (mut p InlineParser) try_emphasis(c u8) ?&Node {
 // boundary checks (includes non-ASCII bytes used in UTF-8 sequences).
 @[inline]
 fn is_wordish(c rune) bool {
-	return !is_unicode_space(c) && !is_ascii_punct(c)
+	return !is_unicode_space(c) && !is_unicode_punct(c)
 }
 
 // match_close_delim parses content after the opening delimiter run and finds
@@ -601,9 +641,14 @@ fn (mut p InlineParser) try_link_or_footnote() ?[]&Node {
 		dest, title, end := parse_inline_link_dest_from(p.src, p.pos + 1)
 		if end >= 0 {
 			inner_nodes := parse_inline(link_text, p.opts, p.ref_map)
+			if contains_link(inner_nodes) {
+				// A link cannot contain another link.
+				p.pos = saved
+				return none
+			}
 			mut node := new_node(.link)
-			node.dest = unescape_string(dest)
-			node.title = unescape_string(title)
+			node.dest = dest
+			node.title = title
 			for child in inner_nodes {
 				node.append_child(child)
 			}
@@ -611,7 +656,8 @@ fn (mut p InlineParser) try_link_or_footnote() ?[]&Node {
 			return [node]
 		}
 	}
-	// Full reference [text][label].
+	// Full reference [text][label]. Labels end at the first `]` and may
+	// not contain unescaped `[` (matching the reference definitions).
 	if p.pos < p.src.len && p.src[p.pos] == `[` {
 		ref_start := p.pos + 1
 		ref_close := p.src.index_after_(']', ref_start)
@@ -620,11 +666,16 @@ fn (mut p InlineParser) try_link_or_footnote() ?[]&Node {
 			label := normalize_label(if raw_label.len > 0 { raw_label } else { link_text })
 			if label in p.ref_map {
 				ref := p.ref_map[label]
+				inner_nodes := parse_inline(link_text, p.opts, p.ref_map)
+				if contains_link(inner_nodes) {
+					// A link cannot contain another link.
+					p.pos = saved
+					return none
+				}
 				mut node := new_node(.link)
 				node.dest = ref.dest
 				node.title = ref.title
 				node.label = label
-				inner_nodes := parse_inline(link_text, p.opts, p.ref_map)
 				for child in inner_nodes {
 					node.append_child(child)
 				}
@@ -642,11 +693,16 @@ fn (mut p InlineParser) try_link_or_footnote() ?[]&Node {
 	label := normalize_label(link_text)
 	if label in p.ref_map {
 		ref := p.ref_map[label]
+		inner_nodes := parse_inline(link_text, p.opts, p.ref_map)
+		if contains_link(inner_nodes) {
+			// A link cannot contain another link.
+			p.pos = saved
+			return none
+		}
 		mut node := new_node(.link)
 		node.dest = ref.dest
 		node.title = ref.title
 		node.label = label
-		inner_nodes := parse_inline(link_text, p.opts, p.ref_map)
 		for child in inner_nodes {
 			node.append_child(child)
 		}
@@ -670,8 +726,8 @@ fn (mut p InlineParser) try_image_after_bang() ?[]&Node {
 		dest, title, end := parse_inline_link_dest_from(p.src, p.pos + 1)
 		if end >= 0 {
 			mut node := new_node(.image)
-			node.dest = unescape_string(dest)
-			node.title = unescape_string(title)
+			node.dest = dest
+			node.title = title
 			inner_nodes := parse_inline(alt_text, p.opts, p.ref_map)
 			for child in inner_nodes {
 				node.append_child(child)
@@ -699,17 +755,85 @@ fn (mut p InlineParser) try_image_after_bang() ?[]&Node {
 				return [node]
 			}
 		}
+		return none
+	}
+	// Shortcut reference ![label].
+	label := normalize_label(alt_text)
+	if label in p.ref_map {
+		ref := p.ref_map[label]
+		mut node := new_node(.image)
+		node.dest = ref.dest
+		node.title = ref.title
+		inner_nodes := parse_inline(alt_text, p.opts, p.ref_map)
+		for child in inner_nodes {
+			node.append_child(child)
+		}
+		return [node]
 	}
 	return none
 }
 
+// contains_link reports whether nodes contain a link node at any depth,
+// except inside image alt text (which is flattened and cannot block an
+// outer link). A link cannot contain another link: if the text of a
+// candidate link contains a link, the outer brackets stay literal.
+fn contains_link(nodes []&Node) bool {
+	for node in nodes {
+		if node.kind == .link {
+			return true
+		}
+		if node.kind == .image {
+			continue
+		}
+		if contains_link(node.children) {
+			return true
+		}
+	}
+	return false
+}
+
 // find_bracket_close finds the ] matching the [ at start, handling nesting and escapes.
+// Code spans and `<...>` (autolinks, raw HTML tags) take precedence: a `]`
+// inside them does not close the link text.
 fn find_bracket_close(s string, start int) int {
 	mut depth := 1
 	mut i := start
 	for i < s.len {
 		if s[i] == `\\` && i + 1 < s.len {
 			i += 2
+			continue
+		}
+		if s[i] == 96 {
+			// Skip a code span: only a run of the same length closes it.
+			mut run := 1
+			for i + run < s.len && s[i + run] == 96 {
+				run++
+			}
+			close_run := find_code_close(s, i + run, run)
+			if close_run >= 0 {
+				i = close_run
+				continue
+			}
+			i += run
+			continue
+		}
+		if s[i] == `<` {
+			auto := try_autolink(s[i..])
+			if auto >= 0 {
+				i += auto + 1
+				continue
+			}
+			tag_end := scan_html_tag(s[i..])
+			if tag_end > 0 {
+				i += tag_end
+				continue
+			}
+			raw := try_raw_html_tag(s[i..])
+			if raw >= 0 {
+				i += raw + 1
+				continue
+			}
+			i++
 			continue
 		}
 		if s[i] == `[` {
@@ -725,6 +849,27 @@ fn find_bracket_close(s string, start int) int {
 	return -1
 }
 
+// find_code_close finds a closing backtick run of exactly `run` backticks
+// at or after start, returning the position just past it, or -1.
+fn find_code_close(s string, start int, run int) int {
+	mut i := start
+	for i < s.len {
+		if s[i] == 96 {
+			mut j := i
+			for j < s.len && s[j] == 96 {
+				j++
+			}
+			if j - i == run {
+				return j
+			}
+			i = j
+			continue
+		}
+		i++
+	}
+	return -1
+}
+
 // parse_inline_link_dest_from parses (url) or (url "title") starting at s[start]
 // (start is after the opening paren). Returns (dest, title, end_paren_pos) or ("","", -1).
 fn parse_inline_link_dest_from(s string, start int) (string, string, int) {
@@ -734,9 +879,43 @@ fn parse_inline_link_dest_from(s string, start int) (string, string, int) {
 	}
 	dest, after_dest := parse_link_dest(s[i..])
 	j := i + (s[i..].len - after_dest.len)
-	k := skip_ws(s, j)
+	// Separator between destination and title: spaces/tabs and at most one
+	// line ending. Required when both destination and title are present.
+	mut k := j
+	mut seps := 0
+	mut nl := 0
+	for k < s.len {
+		c := s[k]
+		if c == ` ` || c == `\t` {
+			seps++
+			k++
+		} else if c == `\n` {
+			nl++
+			seps++
+			if nl > 1 {
+				break
+			}
+			k++
+		} else if c == `\r` {
+			nl++
+			seps++
+			if nl > 1 {
+				break
+			}
+			k++
+			if k < s.len && s[k] == `\n` {
+				k++
+			}
+		} else {
+			break
+		}
+	}
 	if k < s.len && s[k] == `)` {
 		return dest, '', k
+	}
+	if dest.len > 0 && seps == 0 {
+		// Destination and title must be separated.
+		return '', '', -1
 	}
 	title, after_title := parse_link_title(s[k..])
 	l := k + (s[k..].len - after_title.len)
@@ -768,7 +947,9 @@ fn (mut p InlineParser) try_autolink_or_html() ?&Node {
 		content := rest[1..auto_end]
 		mut node := new_node(.autolink)
 		node.literal = content
-		if content.contains('@') && !content.contains('://') {
+		if content.to_lower().starts_with('mailto:') {
+			node.dest = content
+		} else if content.contains('@') && !content.contains('://') {
 			node.dest = 'mailto:' + content
 		} else {
 			node.dest = content
@@ -787,6 +968,8 @@ fn (mut p InlineParser) try_autolink_or_html() ?&Node {
 }
 
 // try_autolink matches an <autolink> returning the position of '>' or -1.
+// Absolute URIs need a valid scheme; bare `a@b` style text needs a valid
+// email shape. No whitespace (including line endings) is allowed inside.
 fn try_autolink(s string) int {
 	if s.len < 3 || s[0] != `<` {
 		return -1
@@ -796,14 +979,187 @@ fn try_autolink(s string) int {
 		return -1
 	}
 	inner := s[1..end]
-	if inner.contains(' ') || inner.contains('<') {
+	if inner.len == 0 {
 		return -1
 	}
-	if inner.contains('://') {
+	for i := 0; i < inner.len; i++ {
+		c := inner[i]
+		if c == ` ` || c == `\t` || c == `\n` || c == `\r` || c == `<` {
+			return -1
+		}
+	}
+	// Absolute URI: scheme ':' + at least one more character.
+	idx := inner.index(':') or { -1 }
+	if idx > 0 {
+		scheme := inner[..idx]
+		if scheme.len >= 2 && scheme.len <= 32 && is_alpha(scheme[0]) {
+			mut ok := true
+			for i := 1; i < scheme.len; i++ {
+				c := scheme[i]
+				if !(is_alpha(c) || is_digit(c) || c == `+` || c == `-` || c == `.`) {
+					ok = false
+					break
+				}
+			}
+			if ok && idx + 1 < inner.len {
+				return end
+			}
+		}
+		return -1
+	}
+	if idx == 0 || inner.contains(':') {
+		return -1
+	}
+	if is_autolink_email(inner) {
 		return end
 	}
-	if inner.contains('@') && !inner.starts_with('@') {
-		return end
+	return -1
+}
+
+// is_autolink_email reports whether s has the shape local@domain.
+fn is_autolink_email(s string) bool {
+	at := s.index('@') or { return false }
+	if at <= 0 || at == s.len - 1 {
+		return false
+	}
+	if s.index_after_('@', at + 1) >= 0 {
+		return false
+	}
+	for i := 0; i < at; i++ {
+		c := s[i]
+		if !(is_alnum(c) || c == `.` || c == `!` || c == `#` || c == `$` || c == `%` || c == `&` || c == `'` || c == `*` || c == `+` || c == `/` || c == `=` || c == `?` || c == `^` || c == `_` || c == 96 || c == `{` || c == `|` || c == `}` || c == `~` || c == `-`) {
+			return false
+		}
+	}
+	domain := s[at + 1..]
+	mut start := 0
+	for i := 0; i <= domain.len; i++ {
+		if i == domain.len || domain[i] == `.` {
+			if !is_domain_label(domain[start..i]) {
+				return false
+			}
+			start = i + 1
+		}
+	}
+	return true
+}
+
+// is_domain_label reports whether s is a valid DNS label.
+fn is_domain_label(s string) bool {
+	if s.len == 0 || s.len > 63 {
+		return false
+	}
+	if !is_alnum(s[0]) || !is_alnum(s[s.len - 1]) {
+		return false
+	}
+	for i := 1; i + 1 < s.len; i++ {
+		if !(is_alnum(s[i]) || s[i] == `-`) {
+			return false
+		}
+	}
+	return true
+}
+
+// scan_html_tag scans an HTML open or close tag starting at s[0] == `<`.
+// It implements the CommonMark tag grammar (tag name, attributes with
+// unquoted/single/double-quoted values, optional `/` self-close).
+// Returns the index just past the closing `>` or -1 if s is not a valid tag.
+fn scan_html_tag(s string) int {
+	if s.len < 3 || s[0] != `<` {
+		return -1
+	}
+	mut i := 1
+	is_close := s[i] == `/`
+	if is_close {
+		i++
+	}
+	// Tag name: ASCII letter followed by letters, digits, hyphens.
+	if i >= s.len || !is_alpha(s[i]) {
+		return -1
+	}
+	for i < s.len && (is_alpha(s[i]) || is_digit(s[i]) || s[i] == `-`) {
+		i++
+	}
+	for i < s.len {
+		c := s[i]
+		if c == `>` {
+			return i + 1
+		}
+		if c == `/` {
+			if is_close || i + 1 >= s.len || s[i + 1] != `>` {
+				return -1
+			}
+			return i + 2
+		}
+		// A whitespace separator is required here (between the tag name
+		// and the first attribute, or between attributes).
+		if c != ` ` && c != `\t` && c != `\n` && c != `\r` {
+			return -1
+		}
+		for i < s.len
+			&& (s[i] == ` ` || s[i] == `\t` || s[i] == `\n` || s[i] == `\r`) {
+			i++
+		}
+		if i >= s.len {
+			return -1
+		}
+		if s[i] == `>` {
+			return i + 1
+		}
+		if s[i] == `/` {
+			if is_close || i + 1 >= s.len || s[i + 1] != `>` {
+				return -1
+			}
+			return i + 2
+		}
+		// Closing tags take no attributes.
+		if is_close {
+			return -1
+		}
+		// Attribute name must start with a letter, `_` or `:`.
+		if !(is_alpha(s[i]) || s[i] == `_` || s[i] == `:`) {
+			return -1
+		}
+		for i < s.len
+			&& (is_alpha(s[i]) || is_digit(s[i]) || s[i] == `-` || s[i] == `_` || s[i] == `:` || s[i] == `.`) {
+			i++
+		}
+		// Optional whitespace before `=`; peek without consuming, so that
+		// a valueless attribute keeps its trailing separator for the next
+		// loop iteration (which requires whitespace before attributes).
+		mut j := i
+		for j < s.len && (s[j] == ` ` || s[j] == `\t` || s[j] == `\n` || s[j] == `\r`) {
+			j++
+		}
+		if j < s.len && s[j] == `=` {
+			i = j + 1
+			for i < s.len && (s[i] == ` ` || s[i] == `\t` || s[i] == `\n` || s[i] == `\r`) {
+				i++
+			}
+			if i >= s.len {
+				return -1
+			}
+			if s[i] == `"` || s[i] == `'` {
+				q := s[i]
+				i++
+				for i < s.len && s[i] != q {
+					i++
+				}
+				if i >= s.len {
+					return -1
+				}
+				i++
+			} else {
+				vstart := i
+				for i < s.len
+					&& s[i] != ` ` && s[i] != `\t` && s[i] != `\n` && s[i] != `\r` && s[i] != `"` && s[i] != `'` && s[i] != `=` && s[i] != `<` && s[i] != `>` && s[i] != 96 {
+					i++
+				}
+				if i == vstart {
+					return -1
+				}
+			}
+		}
 	}
 	return -1
 }
@@ -814,6 +1170,13 @@ fn try_raw_html_tag(s string) int {
 		return -1
 	}
 	if s.starts_with('<!--') {
+		// Abrupt closings of an empty comment are complete comments.
+		if s.starts_with('<!-->') {
+			return 4
+		}
+		if s.starts_with('<!--->') {
+			return 5
+		}
 		end := s.index_after_('-->', 4)
 		if end >= 0 {
 			return end + 2
@@ -835,18 +1198,19 @@ fn try_raw_html_tag(s string) int {
 		}
 		return -1
 	}
-	end := s.index_after_('>', 1)
-	if end < 0 {
+	// Declaration: `<!` + ASCII letter, then anything up to `>`.
+	if s.len > 2 && s[1] == `!` && is_alpha(s[2]) {
+		end := s.index_after_('>', 2)
+		if end >= 0 {
+			return end
+		}
 		return -1
 	}
-	inner := s[1..end]
-	if inner.len == 0 {
-		return -1
+	tag_end := scan_html_tag(s)
+	if tag_end > 0 {
+		return tag_end - 1 // index of '>'
 	}
-	if !is_alpha(inner[0]) && inner[0] != `/` && inner[0] != `!` {
-		return -1
-	}
-	return end
+	return -1
 }
 
 // try_entity parses an HTML entity reference &name; or &#n; or &#xn'
@@ -857,12 +1221,69 @@ fn (mut p InlineParser) try_entity() ?&Node {
 		return none
 	}
 	candidate := rest[..semi + 1]
+	// Multi-code-point entities (e.g. &ngE;) cannot be represented in the
+	// rune-based standard table; resolve the known ones locally.
+	if candidate.len > 3 && candidate[1] != `#` {
+		inner := candidate[1..candidate.len - 1]
+		if multi := multi_rune_entities[inner] {
+			p.pos += semi + 1
+			return text_node(multi)
+		}
+	}
+	// Out-of-range numeric references (> U+10FFFF) are not entities at all
+	// (they stay literal); zero and surrogates decode to U+FFFD below.
+	if candidate.len > 3 && candidate[1] == `#` {
+		if numeric_entity_too_large(candidate[2..candidate.len - 1]) {
+			return none
+		}
+	}
 	decoded := ehtml.unescape(candidate, all: true)
 	if decoded == candidate {
 		return none
 	}
 	p.pos += semi + 1
 	return text_node(decoded)
+}
+
+// multi_rune_entities holds HTML named entities that expand to more than one
+// Unicode code point and are therefore absent from the rune-based table.
+const multi_rune_entities = {
+	'ngE': '≧̸'
+}
+
+// numeric_entity_too_large reports whether a numeric entity body (the part
+// between `&#` and `;`, with optional `x` prefix) denotes a value above
+// U+10FFFF. Malformed bodies return false (the decoder rejects them).
+fn numeric_entity_too_large(body string) bool {
+	mut digits := body
+	mut base := 10
+	if digits.len > 0 && (digits[0] == `x` || digits[0] == `X`) {
+		base = 16
+		digits = digits[1..]
+	}
+	if digits.len == 0 {
+		return false
+	}
+	limit := u64(0x10ffff)
+	mut v := u64(0)
+	for i := 0; i < digits.len; i++ {
+		c := digits[i]
+		mut d := u64(0)
+		if c >= `0` && c <= `9` {
+			d = u64(c - `0`)
+		} else if base == 16 && c >= `a` && c <= `f` {
+			d = u64(c - `a`) + 10
+		} else if base == 16 && c >= `A` && c <= `F` {
+			d = u64(c - `A`) + 10
+		} else {
+			return false
+		}
+		if v > (limit - d) / u64(base) {
+			return true
+		}
+		v = v * u64(base) + d
+	}
+	return v > limit
 }
 
 // parse_newline handles a newline character.
