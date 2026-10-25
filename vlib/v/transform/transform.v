@@ -282,6 +282,7 @@ mut:
 	global_temp_counter                 int
 	pending_stmts                       []flat.NodeId
 	smartcast_stack                     []SmartcastContext
+	generic_typeof_smartcasts           []SmartcastContext // narrowings of the generic body being cloned, for its `typeof` fold
 	invalidated_smartcasts              map[string]bool
 	smartcast_event_id                  int
 	smartcast_invalidation_event_ids    map[string]int
@@ -5061,6 +5062,7 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 	w.mut_param_values = map[string]bool{}
 	w.fixed_array_param_values = map[string]bool{}
 	w.smartcast_stack = []SmartcastContext{}
+	w.generic_typeof_smartcasts = []SmartcastContext{}
 	w.invalidated_smartcasts = map[string]bool{}
 	w.smartcast_event_id = 0
 	w.smartcast_invalidation_event_ids = map[string]int{}
@@ -5185,6 +5187,7 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	w.mut_param_values = map[string]bool{}
 	w.fixed_array_param_values = map[string]bool{}
 	w.smartcast_stack = []SmartcastContext{}
+	w.generic_typeof_smartcasts = []SmartcastContext{}
 	w.invalidated_smartcasts = map[string]bool{}
 	w.smartcast_event_id = 0
 	w.smartcast_invalidation_event_ids = map[string]int{}

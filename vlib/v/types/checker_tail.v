@@ -11041,15 +11041,45 @@ fn (mut tc TypeChecker) specialize_explicit_generic_receiver_call(info CallInfo,
 	for arg_source_id in type_args_ids {
 		concrete_types << tc.parse_type(tc.qualify_resolution_type_text(arg_source_id))
 	}
+	param_texts := tc.fn_param_type_texts.type_ids(info.name) or { []u32{} }
 	mut params := []Type{cap: info.params.len}
-	for param in info.params {
-		params << tc.substitute_generic_type_values(param, concrete_types, generic_params)
+	for i in 0 .. info.params.len {
+		param_text := if param_texts.len == info.params.len {
+			flat.source_type_name(param_texts[i])
+		} else {
+			''
+		}
+		params << tc.substitute_generic_param_type(info.params[i], param_text, concrete_types,
+			generic_params)
 	}
 	return CallInfo{
 		...info
 		params:      params
 		return_type: tc.substitute_generic_type_values(info.return_type, concrete_types, generic_params)
 	}
+}
+
+// substitute_generic_param_type substitutes `generic_params` with `concrete_types` in the
+// open parameter type `open` of a generic fn, declared with the type text `param_text`.
+// A `mut a ?T` parameter (text `&?T`) is stored as its semantic type `&?&T` (see
+// mut_param_semantic_type), which substitutes T=&X to `&?&&X`. Such a parameter is
+// re-derived from its declared `&?T` instead, so that T=&X gives `&?&X`, the type of a
+// `mut a ?&X` parameter, as the instance itself declares it.
+fn (tc &TypeChecker) substitute_generic_param_type(open Type, param_text string, concrete_types []Type, generic_params []string) Type {
+	if open is Pointer && param_text.starts_with('&?') && !param_text.starts_with('&?&') {
+		base := *open.base_type
+		if base is OptionType && base.base_type is Pointer {
+			payload_ref := base.base_type as Pointer
+			declared := Type(Pointer{
+				base_type: new_type_reference(Type(OptionType{
+					base_type: payload_ref.base_type
+				}))
+			})
+			return mut_param_semantic_type(tc.substitute_generic_type_values(declared,
+				concrete_types, generic_params))
+		}
+	}
+	return tc.substitute_generic_type_values(open, concrete_types, generic_params)
 }
 
 // explicit_receiver_type_args returns the explicit type arguments `type_args` of
@@ -19170,7 +19200,7 @@ fn (mut tc TypeChecker) specialize_plain_generic_call_info(node flat.Node, info 
 			// open parsed type, so retain the textual reconstruction for them.
 			sub_params << tc.parse_fn_signature_type(info.name, flat.source_type_id(subst_generic_signature_param_text(param_text, signature_args, signature_params)))
 		} else if i < info.params.len {
-			sub_params << tc.substitute_generic_type_values(info.params[i], concrete_types, generic_params)
+			sub_params << tc.substitute_generic_param_type(info.params[i], param_text, concrete_types, generic_params)
 		} else {
 			sub_params << tc.parse_fn_signature_type(info.name, flat.source_type_id(subst_generic_signature_param_text(param_text, concrete_args, generic_params)))
 		}
