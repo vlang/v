@@ -20970,8 +20970,9 @@ fn (g &FlatGen) c_directives_provide_posix_socket_structs() bool {
 fn (mut g FlatGen) headerless_addrinfo_struct() {
 	g.writeln('#if defined(_WIN32)')
 	g.writeln('struct addrinfo { int ai_flags; int ai_family; int ai_socktype; int ai_protocol; size_t ai_addrlen; char* ai_canonname; void* ai_addr; struct addrinfo* ai_next; };')
-	g.writeln('#elif defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) || defined(__DragonFly__)')
+	g.writeln('#elif defined(__APPLE__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)')
 	g.writeln('struct addrinfo { int ai_flags; int ai_family; int ai_socktype; int ai_protocol; unsigned int ai_addrlen; char* ai_canonname; void* ai_addr; struct addrinfo* ai_next; };')
+	// OpenBSD's netdb.h has `ai_addr` before `ai_canonname`, like glibc and musl.
 	g.writeln('#else')
 	g.writeln('struct addrinfo { int ai_flags; int ai_family; int ai_socktype; int ai_protocol; unsigned int ai_addrlen; void* ai_addr; char* ai_canonname; struct addrinfo* ai_next; };')
 	g.writeln('#endif')
@@ -21165,7 +21166,8 @@ fn (mut g FlatGen) headerless_freebsd_stat_struct() {
 }
 
 fn (mut g FlatGen) headerless_openbsd_stat_struct() {
-	g.writeln('struct stat { u32 st_mode; i32 st_dev; u64 st_ino; u32 st_nlink; u32 st_uid; u32 st_gid; i32 st_rdev; i64 st_atime; long st_atimensec; i64 st_mtime; long st_mtimensec; i64 st_ctime; long st_ctimensec; i64 __st_birthtime; long __st_birthtimensec; i64 st_size; i64 st_blocks; i32 st_blksize; u32 st_flags; u32 st_gen; };')
+	// Unlike FreeBSD and NetBSD, OpenBSD keeps `__st_birthtim` last, after `st_gen`.
+	g.writeln('struct stat { u32 st_mode; i32 st_dev; u64 st_ino; u32 st_nlink; u32 st_uid; u32 st_gid; i32 st_rdev; i64 st_atime; long st_atimensec; i64 st_mtime; long st_mtimensec; i64 st_ctime; long st_ctimensec; i64 st_size; i64 st_blocks; i32 st_blksize; u32 st_flags; u32 st_gen; i64 __st_birthtime; long __st_birthtimensec; };')
 }
 
 fn (mut g FlatGen) headerless_netbsd_stat_struct() {
@@ -21257,13 +21259,13 @@ fn (mut g FlatGen) headerless_platform_constants() {
 	g.writeln('#elif defined(__FreeBSD__)')
 	g.headerless_freebsd_constants()
 	g.writeln('#elif defined(__OpenBSD__)')
-	g.headerless_bsd_constants('0x10000', '8', '9', '3', '28', '24', '0x0400', '', '0x2', false)
+	g.headerless_bsd_constants('0x10000', '8', '9', '3', '28', '24', '0x0400', '', '0x2', false, '-11')
 	g.headerless_bsd_file_constants('0x20000', '-100', '0x08', '503', '500')
 	g.writeln('#elif defined(__NetBSD__)')
-	g.headerless_bsd_constants('0x00400000', '8', '9', '3', '28', '24', '0x0400', '0x0800', '0x4', false)
+	g.headerless_bsd_constants('0x00400000', '8', '9', '3', '28', '24', '0x0400', '0x0800', '0x4', false, '11')
 	g.headerless_bsd_file_constants('0x00200000', '-100', '0x800', '1002', '121')
 	g.writeln('#elif defined(__DragonFly__)')
-	g.headerless_bsd_constants('0x00020000', '8', '9', '4', '47', '28', '0x0400', '0x0800', '0x0', false)
+	g.headerless_bsd_constants('0x00020000', '8', '9', '4', '47', '28', '0x0400', '0x0800', '0x0', false, '11')
 	g.headerless_bsd_file_constants('0x08000000', '0xFFFAFDCD', '2', '58', '121')
 	g.writeln('#elif defined(__sun)')
 	g.headerless_solaris_constants()
@@ -21547,7 +21549,7 @@ fn (mut g FlatGen) headerless_darwin_constants() {
 }
 
 fn (mut g FlatGen) headerless_freebsd_constants() {
-	g.headerless_bsd_constants('0x00100000', '12', '13', '4', '47', '28', '0x00020000', '0x0800', '0x0', true)
+	g.headerless_bsd_constants('0x00100000', '12', '13', '4', '47', '28', '0x00020000', '0x0800', '0x0', true, '11')
 	g.headerless_bsd_file_constants('0x00020000', '-100', '0x0800', '58', '121')
 }
 
@@ -21562,7 +21564,7 @@ fn (mut g FlatGen) headerless_bsd_file_constants(o_directory string, at_fdcwd st
 	g.writeln('#define _SC_PHYS_PAGES ${sc_phys_pages}')
 }
 
-fn (mut g FlatGen) headerless_bsd_constants(o_cloexec string, f_setlk string, f_setlkw string, clock_monotonic string, sc_pagesize string, af_inet6 string, msg_nosignal string, so_nosigpipe string, ms_sync string, flock_sysid bool) {
+fn (mut g FlatGen) headerless_bsd_constants(o_cloexec string, f_setlk string, f_setlkw string, clock_monotonic string, sc_pagesize string, af_inet6 string, msg_nosignal string, so_nosigpipe string, ms_sync string, flock_sysid bool, eai_system string) {
 	g.writeln('#define O_RDONLY 0x0000')
 	g.writeln('#define O_WRONLY 0x0001')
 	g.writeln('#define O_RDWR 0x0002')
@@ -21596,7 +21598,7 @@ fn (mut g FlatGen) headerless_bsd_constants(o_cloexec string, f_setlk string, f_
 	g.writeln('#define EPROTONOSUPPORT 43')
 	g.writeln('#define EAFNOSUPPORT 47')
 	g.writeln('#define EADDRNOTAVAIL 49')
-	g.writeln('#define EAI_SYSTEM 11')
+	g.writeln('#define EAI_SYSTEM ${eai_system}')
 	g.writeln('#define CLOCK_REALTIME 0')
 	g.writeln('#define CLOCK_MONOTONIC ${clock_monotonic}')
 	g.writeln('#define _SC_PAGESIZE ${sc_pagesize}')
