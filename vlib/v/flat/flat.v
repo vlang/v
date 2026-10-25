@@ -409,8 +409,9 @@ pub mut:
 }
 
 // value_text resolves original type operands, explicit call type arguments or ordinary text.
+// Value receivers keep these borrowed accessors from heap-promoting caller-local nodes.
 @[inline]
-pub fn (n &Node) value_text() string {
+pub fn (n Node) value_text() string {
 	// Raw text wins while a freshly constructed or rewritten node is canonicalized.
 	if n.value.len > 0 {
 		return n.value
@@ -426,7 +427,7 @@ pub fn (n &Node) value_text() string {
 
 // source_value_id returns the original operand spelling independently of its annotation.
 @[inline]
-pub fn (n &Node) source_value_id() u32 {
+pub fn (n Node) source_value_id() u32 {
 	if n.value.len > 0 {
 		return source_type_id(n.value)
 	}
@@ -434,7 +435,7 @@ pub fn (n &Node) source_value_id() u32 {
 }
 
 @[inline]
-fn (n &Node) has_source_value_kind() bool {
+fn (n Node) has_source_value_kind() bool {
 	return n.kind in [.struct_init, .assoc, .cast_expr, .as_expr, .is_expr, .map_init, .array_init,
 		.array_literal, .sizeof_expr, .typeof_expr, .offsetof_expr]
 }
@@ -567,7 +568,7 @@ pub fn (n &Node) payload_ptr() &NodePayload {
 	return node_payload_at(n.payload)
 }
 
-fn (n &Node) payload_metadata() &NodePayload {
+fn (n Node) payload_metadata() &NodePayload {
 	if n.payload == 0 {
 		return &g_canonical_comptime_payload
 	}
@@ -644,7 +645,7 @@ pub fn (mut n Node) set_debugger_value_type_ids(type_ids []u32) {
 // call_type_args returns the ordered source-spelling IDs of explicit generic call arguments.
 // The immutable payload list is borrowed for read-only use; call markers remain in value.
 @[inline]
-pub fn (n &Node) call_type_args() []u32 {
+pub fn (n Node) call_type_args() []u32 {
 	if n.payload == 0 {
 		return []u32{}
 	}
