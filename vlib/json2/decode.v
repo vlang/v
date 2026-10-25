@@ -1921,7 +1921,7 @@ fn parse_integer_number[T](str string) !T {
 		return T(strconv.atou64(int_str)!)
 	} $else $if T is int {
 		return int(strconv.atoi64(int_str)!)
-	} $else $if T.unaliased_typ is int {
+	} $else $if T.unaliased_typ is int || T.unaliased_typ is isize {
 		return T(int(strconv.atoi64(int_str)!))
 	} $else $if T.unaliased_typ is uint {
 		return T(uint(strconv.atou64(int_str)!))
@@ -1987,6 +1987,7 @@ fn (mut decoder Decoder) decode_number[T](val &T) ! {
 		u32 { *val = parse_integer_number[T](str)! }
 		u64 { *val = parse_integer_number[T](str)! }
 		int { *val = parse_int_number(str)! }
+		isize { *val = parse_integer_number[T](str)! }
 		uint { *val = parse_integer_number[T](str)! }
 		f32 { *val = parse_float_number[T](str)! }
 		f64 { *val = parse_float_number[T](str)! }
@@ -2022,7 +2023,7 @@ fn (mut decoder Decoder) decode_number_from_string[T]() !T {
 		return parse_integer_number[T](str)!
 	} $else $if T is int {
 		return parse_int_number(str)!
-	} $else $if T.unaliased_typ is int {
+	} $else $if T.unaliased_typ is int || T.unaliased_typ is isize {
 		return parse_integer_number[T](str)!
 	} $else $if T.unaliased_typ is uint {
 		return parse_integer_number[T](str)!

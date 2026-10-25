@@ -99,3 +99,7 @@ fn test_format_thousands_float_non_finite() {
 		assert format_thousands(value, ',') == value.str()
 	}
 }
+
+fn test_format_legacy_signed_integer() {
+	assert format_thousands(isize(-1234567), ',') == '-1,234,567'
+}

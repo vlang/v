@@ -14467,11 +14467,16 @@ fn (mut p Parser) generic_call_type_arg_id(id flat.NodeId) flat.NodeId {
 			}
 		}
 	}
-	name := flat.source_type_name(p.type_expr_name(id))
+	canonical_id := if node.kind in [.index, .prefix] {
+		p.canonical_generic_type_arg(id)
+	} else {
+		id
+	}
+	name := flat.source_type_name(p.type_expr_name(canonical_id))
 	resolved := p.canonical_integer_type(p.resolve_local_type_name(name), node.pos.offset,
 		node.pos.end)
-	if name.len == 0 || resolved == name {
-		return id
+	if name.len == 0 || (resolved == name && canonical_id == id) {
+		return canonical_id
 	}
 	return p.add_node(flat.Node{
 		kind:  .ident

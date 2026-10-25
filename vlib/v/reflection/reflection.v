@@ -50,7 +50,7 @@ pub enum VKind {
 	i32
 	i64
 	int
-	int
+	isize
 	u8
 	u16
 	u32

@@ -104,6 +104,8 @@ fn (mut encoder Encoder) encode_value[T](val T) {
 		encoder.encode_number(i32(val))
 	} $else $if T.unaliased_typ is i64 {
 		encoder.encode_number(i64(val))
+	} $else $if T.unaliased_typ is isize {
+		encoder.encode_number(i64(val))
 	} $else $if T.unaliased_typ is uint {
 		encoder.encode_number(uint(val))
 	} $else $if T.unaliased_typ is f32 {

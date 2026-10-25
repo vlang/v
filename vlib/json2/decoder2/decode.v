@@ -984,7 +984,7 @@ fn parse_integer_value[T](value string) !T {
 		return T(strconv.atou32(value)!)
 	} $else $if T.unaliased_typ is u64 {
 		return T(strconv.atou64(value)!)
-	} $else $if T.unaliased_typ is int {
+	} $else $if T.unaliased_typ is int || T.unaliased_typ is isize {
 		if sizeof(int) == 4 {
 			return T(strconv.atoi(value)!)
 		}

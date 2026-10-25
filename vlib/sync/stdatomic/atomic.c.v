@@ -114,7 +114,7 @@ pub fn (mut a AtomicVal[T]) load() T {
 		} else {
 			return int(C.atomic_load_u64(voidptr(&a.val)))
 		}
-	} $else $if T is int || T is uint {
+	} $else $if T is isize || T is uint {
 		if sizeof(int) == 4 {
 			return T(C.atomic_load_u32(voidptr(&a.val)))
 		} else {
@@ -150,7 +150,7 @@ pub fn (mut a AtomicVal[T]) store(val T) {
 		} else {
 			C.atomic_store_u64(voidptr(&a.val), u64(val))
 		}
-	} $else $if T is int || T is uint {
+	} $else $if T is isize || T is uint {
 		if sizeof(int) == 4 {
 			C.atomic_store_u32(voidptr(&a.val), u32(val))
 		} else {
@@ -193,7 +193,7 @@ pub fn (mut a AtomicVal[T]) add(delta T) T {
 			old := C.atomic_fetch_add_u64(voidptr(&a.val), u64(delta))
 			return T(old)
 		}
-	} $else $if T is int || T is uint {
+	} $else $if T is isize || T is uint {
 		if sizeof(int) == 4 {
 			old := C.atomic_fetch_add_u32(voidptr(&a.val), u32(delta))
 			return T(old)
@@ -232,7 +232,7 @@ pub fn (mut a AtomicVal[T]) sub(delta T) T {
 			old := C.atomic_fetch_sub_u64(voidptr(&a.val), u64(delta))
 			return T(old)
 		}
-	} $else $if T is int || T is uint {
+	} $else $if T is isize || T is uint {
 		if sizeof(int) == 4 {
 			old := C.atomic_fetch_sub_u32(voidptr(&a.val), u32(delta))
 			return T(old)
@@ -270,7 +270,7 @@ pub fn (mut a AtomicVal[T]) swap(new T) T {
 			old := C.atomic_exchange_u64(voidptr(&a.val), u64(new))
 			return T(old)
 		}
-	} $else $if T is int || T is uint {
+	} $else $if T is isize || T is uint {
 		if sizeof(int) == 4 {
 			old := C.atomic_exchange_u32(voidptr(&a.val), u32(new))
 			return T(old)
@@ -319,7 +319,7 @@ pub fn (mut a AtomicVal[T]) compare_and_swap(expected T, new T) bool {
 			mut exp := u64(expected)
 			return C.atomic_compare_exchange_strong_u64(voidptr(&a.val), &exp, u64(new))
 		}
-	} $else $if T is int || T is uint {
+	} $else $if T is isize || T is uint {
 		if sizeof(int) == 4 {
 			mut exp := u32(expected)
 			return C.atomic_compare_exchange_strong_u32(voidptr(&a.val), &exp, u32(new))

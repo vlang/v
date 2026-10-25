@@ -36,7 +36,7 @@ pub struct C.FONStextIter {
 	scale          f32
 	spacing        f32
 	codepoint      u32
-	int            i16
+	isize          i16
 	iblur          i16
 	font           &C.FONSfont = unsafe { nil }
 	prevGlyphIndex i32

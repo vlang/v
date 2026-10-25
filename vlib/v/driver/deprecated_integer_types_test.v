@@ -66,3 +66,48 @@ fn main() {
 		assert strict.output.contains('error: `usize` is deprecated; use `uint` instead'), strict.output
 	}
 }
+
+fn test_nested_explicit_generic_arguments_use_canonical_integer_names() {
+	root := os.join_path(os.vtmp_dir(), 'nested_legacy_integer_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'main.v'), 'module main
+struct Box[T] { value T }
+fn identity[T](value T) T { return value }
+fn main() {
+	box := identity[Box[usize]](Box[usize]{value: 123})
+	assert box.value == 123
+	nested := identity[Box[Box[usize]]](Box[Box[usize]]{value: Box[usize]{value: 456}})
+	assert nested.value.value == 456
+}
+') or { panic(err) }
+	program := os.join_path(root, 'program')
+	built := cmdexec.run(@VEXE, ['-o', program, root])
+	assert built.exit_code == 0, built.output
+	ran := cmdexec.run(program, [])
+	assert ran.exit_code == 0, ran.output
+}
+
+fn test_modern_integer_library_calls_do_not_emit_legacy_type_warnings() {
+	root := os.join_path(os.vtmp_dir(), 'modern_integer_libraries_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'main.v'), 'module main
+import strconv
+import sync
+import encoding.binary
+fn main() {
+	assert strconv.format_thousands(1234567, ",") == "1,234,567"
+	mut local := sync.new_tls(int(-42))!
+	assert local.get()! == -42
+	local.destroy()!
+	assert binary.encode_binary(int(-42))!.len == 8
+}
+') or { panic(err) }
+	program := os.join_path(root, 'program')
+	built := cmdexec.run(@VEXE, ['-nocache', '-o', program, root])
+	assert built.exit_code == 0, built.output
+	assert !built.output.contains('is deprecated; use'), built.output
+	ran := cmdexec.run(program, [])
+	assert ran.exit_code == 0, ran.output
+}

@@ -282,3 +282,12 @@ fn test_cross_thread_type() {
 	assert int_tls.get()! == 42
 	assert f64_tls.get()! == 1.5
 }
+
+fn test_legacy_signed_tls() ! {
+	value := isize(-42)
+	mut tls := sync.new_tls(value)!
+	assert tls.get()! == value
+	tls.set(-123)!
+	assert tls.get()! == -123
+	tls.destroy()!
+}

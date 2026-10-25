@@ -2250,7 +2250,12 @@ fn fastc_generate_type_declarations(sources []FastcSourceFile, type_sources map[
 	// and `match` both reference `__v_typeid_<primitive>`, so the exact value only
 	// has to be unique and consistent.
 	for offset, primitive in fastc_boxed_primitive_types {
-		out.writeln('#define __v_typeid_${primitive} ${u32(0x40000000) + u32(offset)}')
+		if primitive == 'usize' {
+			// Both spellings box as uint and must also match the same runtime tag.
+			out.writeln('#define __v_typeid_usize __v_typeid_uint')
+		} else {
+			out.writeln('#define __v_typeid_${primitive} ${u32(0x40000000) + u32(offset)}')
+		}
 	}
 	out.writeln('')
 	mut timer := fastc_new_phase_timer()

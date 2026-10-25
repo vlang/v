@@ -5,15 +5,16 @@ import v.pref
 
 fn test_deprecated_integer_type_spellings_warn_at_each_type_token() {
 	sources := {
-		'type Old = isize':                                                        1
-		'struct S { values []map[isize]usize }':                                   2
-		'fn main() { _ = usize(1) }':                                              1
-		'fn take(x isize) usize { return usize(x) }':                              3
-		'fn take(x fn (isize) usize) {}':                                          2
-		'fn main() { _ = sizeof(isize) }':                                         1
-		'fn main() { _ = [1]usize[1] }':                                           1
+		'fn identity[T](x T) T { return x }\nstruct Box[T] { value T }\nfn main() { _ = identity[Box[usize]](Box[usize]{}) }': 2
+		'type Old = isize':                                                                                                    1
+		'struct S { values []map[isize]usize }':                                                                               2
+		'fn main() { _ = usize(1) }':                                                                                          1
+		'fn take(x isize) usize { return usize(x) }':                                                                          3
+		'fn take(x fn (isize) usize) {}':                                                                                      2
+		'fn main() { _ = sizeof(isize) }':                                                                                     1
+		'fn main() { _ = [1]usize[1] }':                                                                                       1
 		'fn identity[T](x T) T { return x }
-fn main() { _ = identity[isize](0) }': 1
+fn main() { _ = identity[isize](0) }':                                             1
 	}
 	for source, count in sources {
 		mut p := Parser.new(pref.new_preferences())
