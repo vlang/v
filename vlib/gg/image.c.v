@@ -5,7 +5,6 @@ module gg
 import os
 import stbi
 import sokol.gfx
-import gg.render
 
 // Image holds the fields and data needed to
 // represent a bitmap/pixel based image in memory.
@@ -255,6 +254,11 @@ pub fn (mut ctx Context) new_streaming_image(w int, h int, channels int, sicfg S
 pub fn (mut ctx Context) update_pixel_data(cached_image_idx int, buf &u8) {
 	mut image := ctx.get_cached_image_by_idx(cached_image_idx)
 	image.update_pixel_data(buf)
+	// refresh the CPU rasterizer's copy too; on the GPU path the registry is empty
+	if ctx.r != unsafe { nil } && buf != unsafe { nil } {
+		ctx.r.update_image_region(int(image.simg.id), voidptr(buf), 0, 0, image.width,
+			image.height, image.nr_channels)
+	}
 }
 
 // update_pixel_data updates the sokol specific pixel data associated
@@ -469,11 +473,15 @@ pub fn (ctx &Context) draw_image_with_config(config DrawImageConfig) {
 
 	ctx.r.enable_texture()
 	ctx.r.texture(img.simg, img.ssmp)
-	// keep the CPU rasterizer's texture registry in sync (no-op on GPU path)
+	// keep the CPU rasterizer's texture registry in sync (no-op on GPU path).
+	// Images are immutable here (stb data is 4 channels), so registering once is
+	// enough; streaming images refresh their copy in `update_pixel_data`.
 	if ctx.r != unsafe { nil } && img.data != unsafe { nil } {
-		filter_flag := if img.texture_filter == .linear { 1 } else { 0 }
-		ctx.r.register_image(int(img.simg.id), img.data, img.width, img.height,
-			4, filter_flag)
+		img_id := int(img.simg.id)
+		if !ctx.r.is_image_registered(img_id) {
+			filter_flag := if img.texture_filter == .linear { 1 } else { 0 }
+			ctx.r.register_image(img_id, img.data, img.width, img.height, 4, filter_flag)
+		}
 	}
 
 	if config.rotation != 0 {

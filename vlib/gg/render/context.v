@@ -197,9 +197,14 @@ fn st_make_default_pipeline(st &State) Pipeline {
 			5 { d.primitive_type = .triangle_strip }
 			else {}
 		}
-		p.pips[i] = gfx.make_pipeline(&d)
+		if i == 5 {
+			// quads are emulated with triangles (sgl does the same), so no
+			// separate pipeline object is created for them.
+			p.pips[i] = p.pips[3]
+		} else {
+			p.pips[i] = gfx.make_pipeline(&d)
+		}
 	}
-	p.pips[5] = p.pips[3]
 	return p
 }
 
@@ -247,6 +252,61 @@ pub fn (ctx &Context) register_image(id int, data voidptr, width int, height int
 		channels: ch
 		filter:   filter
 	}
+}
+
+// is_image_registered reports whether a CPU-side copy of `id` already exists.
+pub fn (ctx &Context) is_image_registered(id int) bool {
+	return id in ctx.st.image_data
+}
+
+// update_image_region refreshes a sub-rectangle of an already registered image.
+// Only the CPU rasterizer uses the registry, so callers should skip this on the
+// GPU path. It avoids copying a whole atlas for every small dirty rectangle.
+pub fn (ctx &Context) update_image_region(id int, data voidptr, x int, y int, w int, h int, channels int) {
+	if data == unsafe { nil } || w <= 0 || h <= 0 {
+		return
+	}
+	mut st := ctx.st
+	img := st.image_data[id] or { return }
+	if img.width <= 0 || img.height <= 0 || img.channels <= 0 {
+		return
+	}
+	ch := if channels > 0 { channels } else { img.channels }
+	if ch != img.channels || img.pixels.len < img.width * img.height * img.channels {
+		return
+	}
+	x0 := if x < 0 { 0 } else { x }
+	y0 := if y < 0 { 0 } else { y }
+	x1 := if x + w > img.width { img.width } else { x + w }
+	y1 := if y + h > img.height { img.height } else { y + h }
+	if x1 <= x0 || y1 <= y0 {
+		return
+	}
+	row_bytes := (x1 - x0) * ch
+	src := unsafe { &u8(data) }
+	for row in y0 .. y1 {
+		unsafe {
+			C.memcpy(&img.pixels[row * img.width * ch + x0 * ch], src +
+				(row * img.width + x0) * ch, row_bytes)
+		}
+	}
+}
+
+// destroy detaches the context from sokol and drops its CPU-side image copies.
+// It must be called before `gfx.shutdown()`. Pipelines created with
+// `make_pipeline` are owned by the caller and stay alive until
+// `destroy_pipeline` is called for them.
+pub fn (ctx &Context) destroy() {
+	if ctx == unsafe { nil } || ctx.st == unsafe { nil } {
+		return
+	}
+	if gfx.is_valid() {
+		gfx.remove_commit_listener(gfx.CommitListener{
+			func:      commit_listener_fn
+			user_data: voidptr(ctx)
+		})
+	}
+	ctx.st.image_data.clear()
 }
 
 pub fn (ctx &Context) setup(desc Desc) {

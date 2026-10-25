@@ -3,7 +3,6 @@
 module gg
 
 import math
-import gg.render
 
 // draw_line_with_thickness draws a centered line between the points `x,y` and `x2,y2`
 // with the given `thickness` and color `c`.

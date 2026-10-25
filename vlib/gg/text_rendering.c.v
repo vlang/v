@@ -3,7 +3,6 @@
 module gg
 
 import fontstash
-import gg.render
 import sokol.gfx
 import os
 import os.font
@@ -17,7 +16,17 @@ pub:
 	font_italic int
 pub mut:
 	fonts_map map[string]int
-	scale     f32 = 1.0
+	scale     f32               = 1.0
+	rt        &FonsRenderTarget = unsafe { nil }
+}
+
+// FonsRenderTarget holds the atlas state used by the fontstash render callbacks.
+// It is allocated *before* the fontstash context, because fontstash calls
+// renderCreate synchronously from fonsCreateInternal, i.e. while the FT that
+// will own this target does not exist yet.
+struct FonsRenderTarget {
+mut:
+	ctx       &Context = unsafe { nil }
 	atlas_img gfx.Image
 	atlas_smp gfx.Sampler
 	atlas_w   int
@@ -40,76 +49,88 @@ pub enum VerticalAlign {
 const initial_text_atlas_size = int($d('gg_text_buff_size', 2048))
 
 fn fons_render_create(uptr voidptr, width i32, height i32) i32 {
-	mut ctx := unsafe { &Context(uptr) }
-	mut img_desc := gfx.ImageDesc{
-		type:         ._2d
-		width:        int(width)
-		height:       int(height)
-		num_mipmaps:  1
-		pixel_format: .r8
-		usage:        .dynamic
-	}
-	ctx.ft.atlas_img = gfx.make_image(&img_desc)
-	mut smp_desc := gfx.SamplerDesc{
-		min_filter: .linear
-		mag_filter: .linear
-		wrap_u:     .clamp_to_edge
-		wrap_v:     .clamp_to_edge
-	}
-	ctx.ft.atlas_smp = gfx.make_sampler(&smp_desc)
-	ctx.ft.atlas_w = int(width)
-	ctx.ft.atlas_h = int(height)
-	if ctx.r != unsafe { nil } {
-		ctx.r.register_image(int(ctx.ft.atlas_img.id), unsafe { nil }, int(width), int(height), 1, 0)
-	}
+	mut rt := unsafe { &FonsRenderTarget(uptr) }
+	rt.create_atlas(int(width), int(height))
 	return 1
 }
 
-fn fons_render_resize(uptr voidptr, width i32, height i32) i32 {
-	mut ctx := unsafe { &Context(uptr) }
-	if ctx.ft.atlas_img.id > 0 {
-		gfx.destroy_image(ctx.ft.atlas_img)
+fn (mut rt FonsRenderTarget) create_atlas(width int, height int) {
+	if width <= 0 || height <= 0 {
+		return
+	}
+	if rt.atlas_img.id > 0 {
+		gfx.destroy_image(rt.atlas_img)
 	}
 	mut img_desc := gfx.ImageDesc{
 		type:         ._2d
-		width:        int(width)
-		height:       int(height)
+		width:        width
+		height:       height
 		num_mipmaps:  1
 		pixel_format: .r8
 		usage:        .dynamic
 	}
-	ctx.ft.atlas_img = gfx.make_image(&img_desc)
-	ctx.ft.atlas_w = int(width)
-	ctx.ft.atlas_h = int(height)
-	if ctx.r != unsafe { nil } {
-		ctx.r.register_image(int(ctx.ft.atlas_img.id), unsafe { nil }, int(width), int(height), 1, 0)
+	rt.atlas_img = gfx.make_image(&img_desc)
+	if rt.atlas_smp.id == 0 {
+		mut smp_desc := gfx.SamplerDesc{
+			min_filter: .linear
+			mag_filter: .linear
+			wrap_u:     .clamp_to_edge
+			wrap_v:     .clamp_to_edge
+		}
+		rt.atlas_smp = gfx.make_sampler(&smp_desc)
 	}
+	rt.atlas_w = width
+	rt.atlas_h = height
+	if rt.ctx != unsafe { nil } && rt.ctx.r != unsafe { nil } {
+		rt.ctx.r.register_image(int(rt.atlas_img.id), unsafe { nil }, width, height, 1, 0)
+	}
+}
+
+fn fons_render_resize(uptr voidptr, width i32, height i32) i32 {
+	mut rt := unsafe { &FonsRenderTarget(uptr) }
+	rt.create_atlas(int(width), int(height))
 	return 1
 }
 
 fn fons_render_update(uptr voidptr, rect &i32, data &u8) {
-	mut ctx := unsafe { &Context(uptr) }
-	if ctx.ft.atlas_img.id == 0 {
+	mut rt := unsafe { &FonsRenderTarget(uptr) }
+	if rt.atlas_img.id == 0 || rt.atlas_w <= 0 || rt.atlas_h <= 0 {
 		return
 	}
 	mut img_data := gfx.ImageData{}
 	img_data.subimage[0][0] = gfx.Range{
 		ptr:  voidptr(data)
-		size: usize(ctx.ft.atlas_w * ctx.ft.atlas_h)
+		size: usize(rt.atlas_w * rt.atlas_h)
 	}
-	gfx.update_image(ctx.ft.atlas_img, &img_data)
-	if ctx.r != unsafe { nil } {
-		ctx.r.register_image(int(ctx.ft.atlas_img.id), voidptr(data), ctx.ft.atlas_w, ctx.ft.atlas_h, 1, 0)
+	gfx.update_image(rt.atlas_img, &img_data)
+	if rt.ctx != unsafe { nil } && rt.ctx.r != unsafe { nil } {
+		// rect is {x, y, width, height} of the dirty atlas region; only that
+		// region is copied into the CPU texture registry.
+		mut rx := 0
+		mut ry := 0
+		mut rw := 0
+		mut rh := 0
+		unsafe {
+			rx = rect[0]
+			ry = rect[1]
+			rw = rect[2]
+			rh = rect[3]
+		}
+		rt.ctx.r.update_image_region(int(rt.atlas_img.id), voidptr(data), rx, ry, rw, rh, 1)
 	}
 }
 
 fn fons_render_draw(uptr voidptr, verts &f32, tcoords &f32, colors &u32, nverts i32) {
-	mut ctx := unsafe { &Context(uptr) }
-	if ctx.r == unsafe { nil } {
+	mut rt := unsafe { &FonsRenderTarget(uptr) }
+	if rt.ctx == unsafe { nil } || rt.ctx.r == unsafe { nil } {
 		return
 	}
+	if rt.ctx.pipeline == unsafe { nil } {
+		return
+	}
+	ctx := rt.ctx
 	ctx.r.enable_texture()
-	ctx.r.texture(ctx.ft.atlas_img, ctx.ft.atlas_smp)
+	ctx.r.texture(rt.atlas_img, rt.atlas_smp)
 	ctx.r.load_pipeline(ctx.pipeline.alpha)
 	ctx.r.begin_quads()
 	for i in 0 .. int(nverts) {
@@ -127,12 +148,14 @@ fn fons_render_draw(uptr voidptr, verts &f32, tcoords &f32, colors &u32, nverts 
 }
 
 fn fons_render_delete(uptr voidptr) {
-	mut ctx := unsafe { &Context(uptr) }
-	if ctx.ft.atlas_img.id > 0 {
-		gfx.destroy_image(ctx.ft.atlas_img)
+	mut rt := unsafe { &FonsRenderTarget(uptr) }
+	if rt.atlas_img.id > 0 {
+		gfx.destroy_image(rt.atlas_img)
+		rt.atlas_img = gfx.Image{}
 	}
-	if ctx.ft.atlas_smp.id > 0 {
-		gfx.destroy_sampler(ctx.ft.atlas_smp)
+	if rt.atlas_smp.id > 0 {
+		gfx.destroy_sampler(rt.atlas_smp)
+		rt.atlas_smp = gfx.Sampler{}
 	}
 }
 
@@ -178,7 +201,8 @@ fn new_ft(ctx &Context, c FTConfig) ?&FT {
 			params.renderUpdate = fons_render_update
 			params.renderDraw = fons_render_draw
 			params.renderDelete = fons_render_delete
-			params.userPtr = voidptr(ctx)
+			rt := &FonsRenderTarget{ ctx: ctx }
+			params.userPtr = voidptr(rt)
 			fons := fontstash.create_internal(&params)
 			bytes_normal := c.bytes_normal
 			bytes_bold := if c.bytes_bold.len > 0 {
@@ -207,6 +231,7 @@ fn new_ft(ctx &Context, c FTConfig) ?&FT {
 				font_mono:   fons.add_font_mem('sans', bytes_mono.clone(), true)
 				font_italic: fons.add_font_mem('sans', bytes_italic.clone(), true)
 				scale:       c.scale
+				rt:          rt
 			}
 		} else {
 			// Load default font
@@ -269,7 +294,8 @@ fn new_ft(ctx &Context, c FTConfig) ?&FT {
 	params.renderUpdate = fons_render_update
 	params.renderDraw = fons_render_draw
 	params.renderDelete = fons_render_delete
-	params.userPtr = voidptr(ctx)
+	rt := &FonsRenderTarget{ ctx: ctx }
+	params.userPtr = voidptr(rt)
 	fons := fontstash.create_internal(&params)
 	debug_font_println('Font used for font_normal : ${normal_path}')
 	debug_font_println('Font used for font_bold   : ${bold_path}')
@@ -283,6 +309,7 @@ fn new_ft(ctx &Context, c FTConfig) ?&FT {
 		font_mono:   fons.add_font_mem('sans', bytes_mono.clone(), true)
 		font_italic: fons.add_font_mem('sans', bytes_italic.clone(), true)
 		scale:       c.scale
+		rt:          rt
 	}
 }
 
@@ -399,8 +426,8 @@ pub fn (ctx &Context) draw_text_def(x int, y int, text string) {
 
 // flush prepares the font for use.
 pub fn (ft &FT) flush() {
-	mut dirty := 0
-	_ = ft.fons.validate_texture(&dirty)
+	mut dirty := [4]int{}
+	_ = ft.fons.validate_texture(&dirty[0])
 }
 
 @[inline]

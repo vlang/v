@@ -2,8 +2,6 @@
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module gg
 
-import gg.render
-
 // draw_rect_filled_gradient draws a filled rectangle with a color specified for each corner.
 // Colors are specified counter-clockwise: top-left, bottom-left, bottom-right, top-right.
 pub fn (ctx &Context) draw_rect_filled_gradient(x f32, y f32, w f32, h f32, top_left Color, bottom_left Color, bottom_right Color, top_right Color) {

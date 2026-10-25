@@ -3,7 +3,6 @@
 module gg
 
 import math
-import gg.render
 
 @[params]
 pub struct DrawPixelConfig {
@@ -496,6 +495,31 @@ pub fn (ctx &Context) draw_rounded_rect_filled(x f32, y f32, w f32, h f32, radiu
 	}
 }
 
+// clamp_radius clamps a corner radius into [0, max_radius].
+@[inline]
+fn clamp_radius(r f32, max_radius f32) f32 {
+	if r < 0 {
+		return 0
+	}
+	if r > max_radius {
+		return max_radius
+	}
+	return r
+}
+
+// clamp_slice clamps a 9-slice border size into [0, available].
+@[inline]
+fn clamp_slice(size int, available f32) f32 {
+	if size < 0 || available <= 0 {
+		return 0
+	}
+	v := f32(size)
+	if v > available {
+		return available
+	}
+	return v
+}
+
 // draw_rounded_rect_filled_4 draws a filled rounded rectangle with per-corner radii.
 // `tl`, `tr`, `br`, `bl` are the radii for top-left, top-right, bottom-right, bottom-left.
 pub fn (ctx &Context) draw_rounded_rect_filled_4(x f32, y f32, w f32, h f32, tl f32, tr f32, br f32, bl f32, c Color) {
@@ -507,131 +531,47 @@ pub fn (ctx &Context) draw_rounded_rect_filled_4(x f32, y f32, w f32, h f32, tl 
 	}
 	ctx.r.c4b(c.r, c.g, c.b, c.a)
 
-	mut r_tl := tl
-	mut r_tr := tr
-	mut r_br := br
-	mut r_bl := bl
-	// clamp radii
-	if r_tl > w / 2 { r_tl = w / 2 }
-	if r_tl > h / 2 { r_tl = h / 2 }
-	if r_tr > w / 2 { r_tr = w / 2 }
-	if r_tr > h / 2 { r_tr = h / 2 }
-	if r_br > w / 2 { r_br = w / 2 }
-	if r_br > h / 2 { r_br = h / 2 }
-	if r_bl > w / 2 { r_bl = w / 2 }
-	if r_bl > h / 2 { r_bl = h / 2 }
-	if r_tl < 0 { r_tl = 0 }
-	if r_tr < 0 { r_tr = 0 }
-	if r_br < 0 { r_br = 0 }
-	if r_bl < 0 { r_bl = 0 }
+	// radii are clamped to half of the smaller side, in logical pixels
+	max_radius := if w < h { w / 2 } else { h / 2 }
+	r_tl := clamp_radius(tl, max_radius)
+	r_tr := clamp_radius(tr, max_radius)
+	r_br := clamp_radius(br, max_radius)
+	r_bl := clamp_radius(bl, max_radius)
 
 	s := ctx.scale
 	sx := x * s
 	sy := y * s
 	width := w * s
 	height := h * s
+	rtl := r_tl * s
+	rtr := r_tr * s
+	rbr := r_br * s
+	rbl := r_bl * s
 
-	// draw center rectangle
-	ctx.r.begin_quads()
-	ctx.r.v2f(sx + r_tl, sy)
-	ctx.r.v2f(sx + width - r_tr, sy)
-	ctx.r.v2f(sx + width - r_tr, sy + height)
-	ctx.r.v2f(sx + r_tl, sy + height)
-	ctx.end()
-
-	// draw 4 corner arcs as triangle fans
-	corner := fn (ctx &Context, cx f32, cy f32, radius f32, start_angle f32, segments int) {
-		if radius <= 0 {
-			return
-		}
-		ctx.r.begin_triangle_fan()
-		ctx.r.v2f(cx, cy)
-		for i in 0 .. segments + 1 {
-			angle := start_angle + f32(i) * 3.0 * math.pi / 180.0
-			ctx.r.v2f(cx + radius * math.cosf(angle), cy + radius * math.sinf(angle))
-		}
-		ctx.end()
+	// A rounded rectangle is convex, so one triangle strip sweeping the left and
+	// right outlines covers it exactly once. Overlapping quads would double-blend
+	// translucent fills, so do not split this into a center rect plus edge rects.
+	segments := 30
+	ctx.r.begin_triangle_strip()
+	for i in 0 .. segments + 1 {
+		t := f32(i) / f32(segments)
+		// left outline, top to bottom: top-left arc
+		a := 3.0 * math.pi / 2.0 - t * (math.pi / 2.0)
+		ctx.r.v2f(sx + rtl + rtl * math.cosf(a), sy + rtl + rtl * math.sinf(a))
+		// right outline, top to bottom: top-right arc
+		b := -math.pi / 2.0 + t * (math.pi / 2.0)
+		ctx.r.v2f(sx + width - rtr + rtr * math.cosf(b), sy + rtr + rtr * math.sinf(b))
 	}
-	_ = corner
-
-	// top-left
-	if r_tl > 0 {
-		ctx.r.begin_triangle_fan()
-		ctx.r.v2f(sx + r_tl, sy + r_tl)
-		for i in 0 .. 91 {
-			angle := math.pi + f32(i) * math.pi / 180.0
-			ctx.r.v2f(sx + r_tl + r_tl * math.cosf(angle), sy + r_tl + r_tl * math.sinf(angle))
-		}
-		ctx.end()
+	for i in 0 .. segments + 1 {
+		t := f32(i) / f32(segments)
+		// left outline, top to bottom: bottom-left arc
+		a := math.pi - t * (math.pi / 2.0)
+		ctx.r.v2f(sx + rbl + rbl * math.cosf(a), sy + height - rbl + rbl * math.sinf(a))
+		// right outline, top to bottom: bottom-right arc
+		b := t * (math.pi / 2.0)
+		ctx.r.v2f(sx + width - rbr + rbr * math.cosf(b), sy + height - rbr + rbr * math.sinf(b))
 	}
-	// top-right
-	if r_tr > 0 {
-		ctx.r.begin_triangle_fan()
-		ctx.r.v2f(sx + width - r_tr, sy + r_tr)
-		for i in 0 .. 91 {
-			angle := -math.pi / 2 + f32(i) * math.pi / 180.0
-			ctx.r.v2f(sx + width - r_tr + r_tr * math.cosf(angle), sy + r_tr + r_tr * math.sinf(angle))
-		}
-		ctx.end()
-	}
-	// bottom-right
-	if r_br > 0 {
-		ctx.r.begin_triangle_fan()
-		ctx.r.v2f(sx + width - r_br, sy + height - r_br)
-		for i in 0 .. 91 {
-			angle := f32(i) * math.pi / 180.0
-			ctx.r.v2f(sx + width - r_br + r_br * math.cosf(angle), sy + height - r_br + r_br * math.sinf(angle))
-		}
-		ctx.end()
-	}
-	// bottom-left
-	if r_bl > 0 {
-		ctx.r.begin_triangle_fan()
-		ctx.r.v2f(sx + r_bl, sy + height - r_bl)
-		for i in 0 .. 91 {
-			angle := math.pi / 2 + f32(i) * math.pi / 180.0
-			ctx.r.v2f(sx + r_bl + r_bl * math.cosf(angle), sy + height - r_bl + r_bl * math.sinf(angle))
-		}
-		ctx.end()
-	}
-
-	// edge rectangles
-	// top edge
-	if r_tl > 0 || r_tr > 0 {
-		ctx.r.begin_quads()
-		ctx.r.v2f(sx + r_tl, sy)
-		ctx.r.v2f(sx + width - r_tr, sy)
-		ctx.r.v2f(sx + width - r_tr, sy + (if r_tl > r_tr { r_tl } else { r_tr }))
-		ctx.r.v2f(sx + r_tl, sy + (if r_tl > r_tr { r_tl } else { r_tr }))
-		ctx.end()
-	}
-	// bottom edge
-	if r_bl > 0 || r_br > 0 {
-		ctx.r.begin_quads()
-		ctx.r.v2f(sx + r_bl, sy + height - (if r_bl > r_br { r_bl } else { r_br }))
-		ctx.r.v2f(sx + width - r_br, sy + height - (if r_bl > r_br { r_bl } else { r_br }))
-		ctx.r.v2f(sx + width - r_br, sy + height)
-		ctx.r.v2f(sx + r_bl, sy + height)
-		ctx.end()
-	}
-	// left edge
-	if r_tl > 0 || r_bl > 0 {
-		ctx.r.begin_quads()
-		ctx.r.v2f(sx, sy + r_tl)
-		ctx.r.v2f(sx + (if r_tl > r_bl { r_tl } else { r_bl }), sy + r_tl)
-		ctx.r.v2f(sx + (if r_tl > r_bl { r_tl } else { r_bl }), sy + height - r_bl)
-		ctx.r.v2f(sx, sy + height - r_bl)
-		ctx.end()
-	}
-	// right edge
-	if r_tr > 0 || r_br > 0 {
-		ctx.r.begin_quads()
-		ctx.r.v2f(sx + width - (if r_tr > r_br { r_tr } else { r_br }), sy + r_tr)
-		ctx.r.v2f(sx + width, sy + r_tr)
-		ctx.r.v2f(sx + width, sy + height - r_br)
-		ctx.r.v2f(sx + width - (if r_tr > r_br { r_tr } else { r_br }), sy + height - r_br)
-		ctx.end()
-	}
+	ctx.r.end()
 }
 
 // draw_9slice draws an image scaled to fit the target rect using 9-slice scaling.
@@ -640,117 +580,106 @@ pub fn (ctx &Context) draw_9slice(img &Image, x f32, y f32, w f32, h f32, slice_
 		return
 	}
 	s := ctx.scale
-	mut ix := x * s
-	mut iy := y * s
-	mut iw := w * s
-	mut ih := h * s
-	if iw == 0 { iw = f32(img.width) * s }
-	if ih == 0 { ih = f32(img.height) * s }
-
-	sl := f32(slice_left) * s
-	st := f32(slice_top) * s
-	sr := f32(slice_right) * s
-	sb := f32(slice_bottom) * s
-
+	ix := x * s
+	iy := y * s
+	iw := if w == 0 { f32(img.width) * s } else { w * s }
+	ih := if h == 0 { f32(img.height) * s } else { h * s }
+	sw := f32(img.width)
+	sh := f32(img.height)
+	if sw <= 0 || sh <= 0 || iw <= 0 || ih <= 0 {
+		return
+	}
+	// source slices, clamped to the image and to each other
+	src_l := clamp_slice(slice_left, sw)
+	src_r := clamp_slice(slice_right, sw - src_l)
+	src_t := clamp_slice(slice_top, sh)
+	src_b := clamp_slice(slice_bottom, sh - src_t)
+	// destination slices shrink proportionally when the target is smaller than
+	// their combined size, so no slice ever gets negative width/height.
+	mut sl := src_l * s
+	mut sr := src_r * s
+	mut st := src_t * s
+	mut sb := src_b * s
+	if sl + sr > iw && sl + sr > 0 {
+		k := iw / (sl + sr)
+		sl *= k
+		sr *= k
+	}
+	if st + sb > ih && st + sb > 0 {
+		k := ih / (st + sb)
+		st *= k
+		sb *= k
+	}
 	mid_w := iw - sl - sr
 	mid_h := ih - st - sb
-	src_mid_w := f32(img.width) - f32(slice_left) - f32(slice_right)
-	src_mid_h := f32(img.height) - f32(slice_top) - f32(slice_bottom)
 
 	ctx.r.enable_texture()
 	ctx.r.texture(img.simg, img.ssmp)
 	ctx.r.load_pipeline(ctx.pipeline.alpha)
 
-	// 9 slices: top-left, top-center, top-right, mid-left, center, mid-right, bot-left, bot-center, bot-right
-	// Each slice: source rect (sx,sy,sw,sh) -> dest rect (dx,dy,dw,dh)
-	slices := [
-		// top-left
-		[0.0, 0.0, sl, st, ix, iy, sl, st],
-		// top-center
-		[sl, 0.0, src_mid_w, st, ix + sl, iy, mid_w, st],
-		// top-right
-		[iw - sr, 0.0, sr, st, ix + sl + mid_w, iy, sr, st],
-		// mid-left
-		[0.0, st, sl, src_mid_h, ix, iy + st, sl, mid_h],
-		// center
-		[sl, st, src_mid_w, src_mid_h, ix + sl, iy + st, mid_w, mid_h],
-		// mid-right
-		[iw - sr, st, sr, src_mid_h, ix + sl + mid_w, iy + st, sr, mid_h],
-		// bot-left
-		[0.0, ih - sb, sl, sb, ix, iy + st + mid_h, sl, sb],
-		// bot-center
-		[sl, ih - sb, src_mid_w, sb, ix + sl, iy + st + mid_h, mid_w, sb],
-		// bot-right
-		[iw - sr, ih - sb, sr, sb, ix + sl + mid_w, iy + st + mid_h, sr, sb],
-	]
-	_ = slices
+	u_l := src_l / sw
+	u_r := (sw - src_r) / sw
+	v_t := src_t / sh
+	v_b := (sh - src_b) / sh
 
-	// Draw each slice as a quad with UV mapping
-	for sli in 0 .. 9 {
-		// source coords in image space
-		sx0 := f32(0)
-		sy0 := f32(0)
-		_ = sx0
-		_ = sy0
-	}
-	// Simplified: draw center + borders as quads with proper UVs
+	// 9 slices: top-left, top-center, top-right, mid-left, center, mid-right, bot-left, bot-center, bot-right
 	// Top row
 	ctx.r.begin_quads()
 	ctx.r.c4b(255, 255, 255, 255)
 	// top-left
 	ctx.r.v3f_t2f(ix, iy, 0, 0, 0)
-	ctx.r.v3f_t2f(ix + sl, iy, 0, f32(slice_left) / f32(img.width), 0)
-	ctx.r.v3f_t2f(ix + sl, iy + st, 0, f32(slice_left) / f32(img.width), f32(slice_top) / f32(img.height))
-	ctx.r.v3f_t2f(ix, iy + st, 0, 0, f32(slice_top) / f32(img.height))
+	ctx.r.v3f_t2f(ix + sl, iy, 0, u_l, 0)
+	ctx.r.v3f_t2f(ix + sl, iy + st, 0, u_l, v_t)
+	ctx.r.v3f_t2f(ix, iy + st, 0, 0, v_t)
 	// top-center
-	ctx.r.v3f_t2f(ix + sl, iy, 0, f32(slice_left) / f32(img.width), 0)
-	ctx.r.v3f_t2f(ix + sl + mid_w, iy, 0, f32(img.width - slice_right) / f32(img.width), 0)
-	ctx.r.v3f_t2f(ix + sl + mid_w, iy + st, 0, f32(img.width - slice_right) / f32(img.width), f32(slice_top) / f32(img.height))
-	ctx.r.v3f_t2f(ix + sl, iy + st, 0, f32(slice_left) / f32(img.width), f32(slice_top) / f32(img.height))
+	ctx.r.v3f_t2f(ix + sl, iy, 0, u_l, 0)
+	ctx.r.v3f_t2f(ix + sl + mid_w, iy, 0, u_r, 0)
+	ctx.r.v3f_t2f(ix + sl + mid_w, iy + st, 0, u_r, v_t)
+	ctx.r.v3f_t2f(ix + sl, iy + st, 0, u_l, v_t)
 	// top-right
-	ctx.r.v3f_t2f(ix + sl + mid_w, iy, 0, f32(img.width - slice_right) / f32(img.width), 0)
+	ctx.r.v3f_t2f(ix + sl + mid_w, iy, 0, u_r, 0)
 	ctx.r.v3f_t2f(ix + iw, iy, 0, 1, 0)
-	ctx.r.v3f_t2f(ix + iw, iy + st, 0, 1, f32(slice_top) / f32(img.height))
-	ctx.r.v3f_t2f(ix + sl + mid_w, iy + st, 0, f32(img.width - slice_right) / f32(img.width), f32(slice_top) / f32(img.height))
-	ctx.end()
+	ctx.r.v3f_t2f(ix + iw, iy + st, 0, 1, v_t)
+	ctx.r.v3f_t2f(ix + sl + mid_w, iy + st, 0, u_r, v_t)
+	ctx.r.end()
 
 	// middle row
 	ctx.r.begin_quads()
 	// mid-left
-	ctx.r.v3f_t2f(ix, iy + st, 0, 0, f32(slice_top) / f32(img.height))
-	ctx.r.v3f_t2f(ix + sl, iy + st, 0, f32(slice_left) / f32(img.width), f32(slice_top) / f32(img.height))
-	ctx.r.v3f_t2f(ix + sl, iy + st + mid_h, 0, f32(slice_left) / f32(img.width), f32(img.height - slice_bottom) / f32(img.height))
-	ctx.r.v3f_t2f(ix, iy + st + mid_h, 0, 0, f32(img.height - slice_bottom) / f32(img.height))
+	ctx.r.v3f_t2f(ix, iy + st, 0, 0, v_t)
+	ctx.r.v3f_t2f(ix + sl, iy + st, 0, u_l, v_t)
+	ctx.r.v3f_t2f(ix + sl, iy + st + mid_h, 0, u_l, v_b)
+	ctx.r.v3f_t2f(ix, iy + st + mid_h, 0, 0, v_b)
 	// center
-	ctx.r.v3f_t2f(ix + sl, iy + st, 0, f32(slice_left) / f32(img.width), f32(slice_top) / f32(img.height))
-	ctx.r.v3f_t2f(ix + sl + mid_w, iy + st, 0, f32(img.width - slice_right) / f32(img.width), f32(slice_top) / f32(img.height))
-	ctx.r.v3f_t2f(ix + sl + mid_w, iy + st + mid_h, 0, f32(img.width - slice_right) / f32(img.width), f32(img.height - slice_bottom) / f32(img.height))
-	ctx.r.v3f_t2f(ix + sl, iy + st + mid_h, 0, f32(slice_left) / f32(img.width), f32(img.height - slice_bottom) / f32(img.height))
+	ctx.r.v3f_t2f(ix + sl, iy + st, 0, u_l, v_t)
+	ctx.r.v3f_t2f(ix + sl + mid_w, iy + st, 0, u_r, v_t)
+	ctx.r.v3f_t2f(ix + sl + mid_w, iy + st + mid_h, 0, u_r, v_b)
+	ctx.r.v3f_t2f(ix + sl, iy + st + mid_h, 0, u_l, v_b)
 	// mid-right
-	ctx.r.v3f_t2f(ix + sl + mid_w, iy + st, 0, f32(img.width - slice_right) / f32(img.width), f32(slice_top) / f32(img.height))
-	ctx.r.v3f_t2f(ix + iw, iy + st, 0, 1, f32(slice_top) / f32(img.height))
-	ctx.r.v3f_t2f(ix + iw, iy + st + mid_h, 0, 1, f32(img.height - slice_bottom) / f32(img.height))
-	ctx.r.v3f_t2f(ix + sl + mid_w, iy + st + mid_h, 0, f32(img.width - slice_right) / f32(img.width), f32(img.height - slice_bottom) / f32(img.height))
-	ctx.end()
+	ctx.r.v3f_t2f(ix + sl + mid_w, iy + st, 0, u_r, v_t)
+	ctx.r.v3f_t2f(ix + iw, iy + st, 0, 1, v_t)
+	ctx.r.v3f_t2f(ix + iw, iy + st + mid_h, 0, 1, v_b)
+	ctx.r.v3f_t2f(ix + sl + mid_w, iy + st + mid_h, 0, u_r, v_b)
+	ctx.r.end()
 
 	// bottom row
 	ctx.r.begin_quads()
 	// bot-left
-	ctx.r.v3f_t2f(ix, iy + st + mid_h, 0, 0, f32(img.height - slice_bottom) / f32(img.height))
-	ctx.r.v3f_t2f(ix + sl, iy + st + mid_h, 0, f32(slice_left) / f32(img.width), f32(img.height - slice_bottom) / f32(img.height))
-	ctx.r.v3f_t2f(ix + sl, iy + ih, 0, f32(slice_left) / f32(img.width), 1)
+	ctx.r.v3f_t2f(ix, iy + st + mid_h, 0, 0, v_b)
+	ctx.r.v3f_t2f(ix + sl, iy + st + mid_h, 0, u_l, v_b)
+	ctx.r.v3f_t2f(ix + sl, iy + ih, 0, u_l, 1)
 	ctx.r.v3f_t2f(ix, iy + ih, 0, 0, 1)
 	// bot-center
-	ctx.r.v3f_t2f(ix + sl, iy + st + mid_h, 0, f32(slice_left) / f32(img.width), f32(img.height - slice_bottom) / f32(img.height))
-	ctx.r.v3f_t2f(ix + sl + mid_w, iy + st + mid_h, 0, f32(img.width - slice_right) / f32(img.width), f32(img.height - slice_bottom) / f32(img.height))
-	ctx.r.v3f_t2f(ix + sl + mid_w, iy + ih, 0, f32(img.width - slice_right) / f32(img.width), 1)
-	ctx.r.v3f_t2f(ix + sl, iy + ih, 0, f32(slice_left) / f32(img.width), 1)
+	ctx.r.v3f_t2f(ix + sl, iy + st + mid_h, 0, u_l, v_b)
+	ctx.r.v3f_t2f(ix + sl + mid_w, iy + st + mid_h, 0, u_r, v_b)
+	ctx.r.v3f_t2f(ix + sl + mid_w, iy + ih, 0, u_r, 1)
+	ctx.r.v3f_t2f(ix + sl, iy + ih, 0, u_l, 1)
 	// bot-right
-	ctx.r.v3f_t2f(ix + sl + mid_w, iy + st + mid_h, 0, f32(img.width - slice_right) / f32(img.width), f32(img.height - slice_bottom) / f32(img.height))
-	ctx.r.v3f_t2f(ix + iw, iy + st + mid_h, 0, 1, f32(img.height - slice_bottom) / f32(img.height))
+	ctx.r.v3f_t2f(ix + sl + mid_w, iy + st + mid_h, 0, u_r, v_b)
+	ctx.r.v3f_t2f(ix + iw, iy + st + mid_h, 0, 1, v_b)
 	ctx.r.v3f_t2f(ix + iw, iy + ih, 0, 1, 1)
-	ctx.r.v3f_t2f(ix + sl + mid_w, iy + ih, 0, f32(img.width - slice_right) / f32(img.width), 1)
-	ctx.end()
+	ctx.r.v3f_t2f(ix + sl + mid_w, iy + ih, 0, u_r, 1)
+	ctx.r.end()
 
 	ctx.r.disable_texture()
 }

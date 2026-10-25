@@ -625,6 +625,9 @@ fn gg_cleanup_fn(user_data voidptr) {
 	if ctx.config.cleanup_fn != unsafe { nil } {
 		ctx.config.cleanup_fn(ctx.user_data)
 	}
+	if ctx.r != unsafe { nil } {
+		ctx.r.destroy()
+	}
 	gfx.shutdown()
 	gg_release_gfx_render_owner(.legacy_context, user_data)
 }

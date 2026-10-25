@@ -1,7 +1,6 @@
 module gg
 
 import math
-import gg.render
 
 // draw_cubic_bezier_recursive draws a cubic Bézier curve, also known as a spline, from four points,
 // where the first and the last points, *will* be part of the curve, and the middle 2 points are control ones.

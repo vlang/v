@@ -67,9 +67,14 @@ pub fn (ctx &Context) make_pipeline(desc gfx.PipelineDesc) Pipeline {
 			5 { d.primitive_type = .triangle_strip }
 			else {}
 		}
-		p.pips[i] = gfx.make_pipeline(&d)
+		if i == 5 {
+			// quads are emulated with triangles (sgl does the same), so no
+			// separate pipeline object is created for them.
+			p.pips[i] = p.pips[3]
+		} else {
+			p.pips[i] = gfx.make_pipeline(&d)
+		}
 	}
-	p.pips[5] = p.pips[3]
 	return p
 }
 
@@ -85,7 +90,7 @@ pub fn (ctx &Context) load_default_pipeline() {
 
 pub fn (ctx &Context) push_pipeline() {
 	mut st := ctx.st
-	if st.pip_tos < 31 {
+	if st.pip_tos < max_stack_depth - 1 {
 		st.pip_tos++
 		st.pip_stack[st.pip_tos] = st.pip_stack[st.pip_tos - 1]
 	} else {

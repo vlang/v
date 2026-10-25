@@ -1,7 +1,5 @@
 module gg
 
-import gg.render
-
 // Stuff for ui from now for screenshot (that would be interesting for gg if screenshot is implemented also for gg)
 
 // required for ui.DrawDevice interface (with &gg.Context as an instance)
