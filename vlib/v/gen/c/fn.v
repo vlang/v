@@ -1873,6 +1873,12 @@ fn (g &FlatGen) enum_method_c_name_in_module_uncached(module_name string, name s
 	receiver := unsafe { qualified.substr_unsafe(0, dot) }
 	method := unsafe { qualified.substr_unsafe(dot + 1, qualified.len) }
 	if _ := g.enum_selector_base_name(flat.source_type_id(receiver)) {
+		// An operator overload of an enum alias gets its C name in the internal
+		// namespace, as other operator overloads do. `g.cname(method)` spells no
+		// operator (`Pitch.+` and `Pitch.<` were both `Pitch__`).
+		if naming.is_operator_method_name(qualified) {
+			return g.cname('${g.enum_type_codegen_name(receiver)}.${method}')
+		}
 		return '${g.enum_type_c_name(receiver)}_${g.cname(method)}'
 	}
 	return none
