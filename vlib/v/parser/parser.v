@@ -185,6 +185,7 @@ mut:
 	pending_decl_attr_kinds           []int
 	pending_decl_attr_sources         []string
 	in_for_container                  bool
+	in_enum_field_value               bool
 	in_select_branch_condition        int
 	in_match_branch_condition         int
 	in_array_literal                  int
@@ -3447,7 +3448,10 @@ fn (mut p Parser) enum_decl_fields() []flat.NodeId {
 		mut children_count := flat.child_count(0)
 		if p.tok == .assign {
 			p.next()
+			was_in_enum_field_value := p.in_enum_field_value
+			p.in_enum_field_value = true
 			val_id := p.expr(.lowest)
+			p.in_enum_field_value = was_in_enum_field_value
 			children_start = p.add_child(val_id)
 			children_count = 1
 		}
@@ -11622,7 +11626,9 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 		// V1 allowed an `or {}` handler to start on the line after the
 		// option/result expression. Ignore only scanner-inserted newline
 		// semicolons here; an explicit `;` still terminates the expression.
-		if p.current_token_is_newline_semicolon() && p.peek() == .key_or {
+		// Enum field values end at the newline: a keyword field (`in`, `is`,
+		// `as`, `or`) on the next line starts a new field, not a continuation.
+		if !p.in_enum_field_value && p.current_token_is_newline_semicolon() && p.peek() == .key_or {
 			p.next()
 			continue
 		}
@@ -12016,8 +12022,14 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 			}, in_node)
 			continue
 		}
-		// skip auto-semicolons before infix operators (multi-line expressions)
+		// skip auto-semicolons before infix operators (multi-line expressions).
+		// Enum field values end at the semicolon: a keyword field (`in`,
+		// `is`, `as`) on the next line starts a new field, not an `in`/`is`/`as`
+		// continuation of this value.
 		if p.tok == .semicolon {
+			if p.in_enum_field_value {
+				break
+			}
 			peek_tok := p.peek()
 			if (token_is_infix(peek_tok) || peek_tok == .key_as) && peek_tok != .mul
 				&& peek_tok != .amp && peek_tok != .arrow {
