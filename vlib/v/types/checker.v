@@ -5475,7 +5475,7 @@ fn c_fn_decl_abi_types_compatible(a u32, b u32) bool {
 	]) {
 		return true
 	}
-	return (a == c_fn_abi_void_pointer_type && flat.source_type_name(b).ends_with('*')) || (b == c_fn_abi_void_pointer_type && flat.source_type_name(a).ends_with('*'))
+	return (a == c_fn_abi_void_pointer_type && flat.source_type_query(b).has(.c_pointer_suffix)) || (b == c_fn_abi_void_pointer_type && flat.source_type_query(a).has(.c_pointer_suffix))
 }
 
 fn (tc &TypeChecker) c_struct_redeclaration_allowed(qname string, first_file string, second_file string, first_module string, second_module string) bool {

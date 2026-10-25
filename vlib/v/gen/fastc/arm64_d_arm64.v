@@ -1238,7 +1238,7 @@ fn (mut p FastArm64Program) type_id(name_source_id u32) ssa.TypeID {
 	// remove surrounding trivia. Keeping this path allocation-free matters during
 	// self-hosting, where it is called for every parameter and field.
 	clean := name
-	if clean.ends_with('*') {
+	if flat.source_type_query(name_source_id).has(.c_pointer_suffix) {
 		return p.m.type_store.get_ptr(p.type_id(flat.source_type_id(clean.trim_right('*'))))
 	}
 	if clean.starts_with('struct ') {
@@ -4214,7 +4214,7 @@ fn (mut p FastArm64Parser) parse_function() ! {
 
 		p.tok = receiver_next_token
 		p.lit = p.s.lit
-		if receiver_is_mut && !flat.source_type_name(receiver_type).ends_with('*') {
+		if receiver_is_mut && !flat.source_type_query(receiver_type).has(.c_pointer_suffix) {
 			receiver_type = flat.source_type_id(flat.source_type_name(receiver_type) + '*')
 		}
 		p.expect(.rpar)!
@@ -4383,7 +4383,7 @@ fn (mut p FastArm64Parser) parse_function() ! {
 		abi_layout := p.program.m.type_store.types[abi_type]
 		if i == 0 && receiver_name != '' && parameter_is_mut[i] && abi_type == typ && abi_layout.kind == .ptr_t {
 			typ = abi_layout.elem_type
-			if flat.source_type_name(typ_name).ends_with('*') {
+			if flat.source_type_query(typ_name).has(.c_pointer_suffix) {
 				typ_name = flat.source_type_id(flat.source_type_name(typ_name)[..flat.source_type_name(typ_name).len - 1])
 			}
 		}
@@ -11630,7 +11630,7 @@ fn fast_arm64_pointer_element_type_name(type_name_id u32) u32 {
 	if type_name.starts_with('&') {
 		return flat.source_type_id(type_name[1..])
 	}
-	if type_name.ends_with('*') {
+	if flat.source_type_query(type_name_id).has(.c_pointer_suffix) {
 		return flat.source_type_id(type_name[..type_name.len - 1])
 	}
 	if type_name_id in [flat.source_type_voidptr, flat.source_type_byteptr, flat.source_type_charptr] {

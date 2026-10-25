@@ -13747,7 +13747,7 @@ fn (mut g FlatGen) precompute_non_generic_fn_index() {
 				cur_module = node.value
 			}
 			.fn_decl {
-				if node.generic_params().len == 0 && !node.typ_text().contains('generic') {
+				if node.generic_params().len == 0 && !flat.source_type_query(node.typ).has(.generic_word) {
 					g.non_generic_fn_names_by_module['${cur_module}\x01${node.value}'] = true
 				}
 			}

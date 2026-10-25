@@ -3997,7 +3997,7 @@ fn (mut g FlatGen) collect_shared_type_names() {
 	old_module := g.tc.cur_module
 	for _, info in g.struct_decl_infos {
 		g.tc.cur_module = info.module
-		if info.node.generic_params().len > 0 || info.node.typ_text().contains('generic') {
+		if info.node.generic_params().len > 0 || flat.source_type_query(info.node.typ).has(.generic_word) {
 			g.collect_generic_shared_type_names(info)
 			continue
 		}

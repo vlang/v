@@ -379,7 +379,11 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				continue
 			}
 			element_storage_type := g.collection_storage_type(element_type)
-			access := if flat.source_type_name(receiver_type).ends_with('*') { '->' } else { '.' }
+			access := if flat.source_type_query(receiver_type).has(.c_pointer_suffix) {
+				'->'
+			} else {
+				'.'
+			}
 			comparison := if fastc_trim_pointer_type(g.underlying_alias_type(element_type)) == flat.source_type_string {
 				'builtin__string_eq(__vf_contains_item, ((${flat.source_type_name(element_type)} *)__vf_contains_collection${access}data)[__vf_contains_index])'
 			} else {
@@ -416,7 +420,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				argument := g.render_call_argument_expression(call_args[0], element_type) or {
 					continue
 				}
-				access := if flat.source_type_name(receiver_type).ends_with('*') {
+				access := if flat.source_type_query(receiver_type).has(.c_pointer_suffix) {
 					'->'
 				} else {
 					'.'
@@ -478,7 +482,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				mut w := unsafe { &Parser(g) }
 				fastc_register_composite_type(result_type_id, mut w.composite_types)
 				wait_helper := g.fastc_thread_wait_helper(flat.source_type_name(element), value_type)
-				recv_src := if flat.source_type_name(receiver_type).ends_with('*') {
+				recv_src := if flat.source_type_query(receiver_type).has(.c_pointer_suffix) {
 					'*(${receiver.source})'
 				} else {
 					receiver.source
@@ -560,7 +564,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				// A member smart-cast reads the narrowed struct through a variant pointer, so its
 				// rendered source is a `T*` even though the inferred receiver type is the value
 				// `T`; the by-value default `str(T)` helper then needs an explicit deref.
-				receiver_is_pointer := flat.source_type_name(receiver_type).ends_with('*') || (g.selfhost && g.expression_uses_member_smartcast(receiver_tokens))
+				receiver_is_pointer := flat.source_type_query(receiver_type).has(.c_pointer_suffix) || (g.selfhost && g.expression_uses_member_smartcast(receiver_tokens))
 				receiver_argument := if receiver_is_pointer {
 					'*(${receiver.source})'
 				} else {
@@ -591,7 +595,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				}
 				receiver := g.render_method_receiver_expression(receiver_tokens) or { continue }
 				enum_c := flat.source_type_name(fastc_normalize_inferred_type(receiver_type)).trim_right('*')
-				receiver_argument := if flat.source_type_name(receiver_type).ends_with('*') {
+				receiver_argument := if flat.source_type_query(receiver_type).has(.c_pointer_suffix) {
 					'*(${receiver.source})'
 				} else {
 					receiver.source
@@ -627,7 +631,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				} else {
 					w.fastc_array_str_name(receiver_type) or { continue }
 				}
-				receiver_argument := if flat.source_type_name(receiver_type).ends_with('*') {
+				receiver_argument := if flat.source_type_query(receiver_type).has(.c_pointer_suffix) {
 					'*(${receiver.source})'
 				} else {
 					receiver.source
@@ -684,7 +688,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				receiver := g.render_method_receiver_expression(receiver_tokens) or { continue }
 				mut w := unsafe { &Parser(g) }
 				helper := w.fastc_map_str_name(receiver_type) or { continue }
-				map_value := if flat.source_type_name(receiver_type).ends_with('*') {
+				map_value := if flat.source_type_query(receiver_type).has(.c_pointer_suffix) {
 					'*(${receiver.source})'
 				} else {
 					receiver.source
@@ -715,7 +719,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				receiver := g.render_method_receiver_expression(receiver_tokens) or { continue }
 				mut w := unsafe { &Parser(g) }
 				helper := w.fastc_sumtype_type_name_helper(receiver_type) or { continue }
-				receiver_argument := if flat.source_type_name(receiver_type).ends_with('*') {
+				receiver_argument := if flat.source_type_query(receiver_type).has(.c_pointer_suffix) {
 					'*(${receiver.source})'
 				} else {
 					receiver.source
@@ -827,7 +831,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			g.render_method_receiver_expression(receiver_tokens) or { continue }
 		}
 		mut receiver_source := receiver.source
-		mut separator := if receiver_tokens.len == 1 && flat.source_type_name(receiver_type).ends_with('*') {
+		mut separator := if receiver_tokens.len == 1 && flat.source_type_query(receiver_type).has(.c_pointer_suffix) {
 			'->'
 		} else {
 			'.'
@@ -876,7 +880,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 		}
 		expected_receiver := signature.parameter_types.at(0)
 		mut effective_receiver_source := receiver_source
-		mut effective_is_pointer := receiver.typ_text().ends_with('*')
+		mut effective_is_pointer := flat.source_type_query(receiver.typ).has(.c_pointer_suffix)
 		if embedded_path.len > 0 {
 			// Promote through embedded fields: `d.method()`, where `method` lives on
 			// an embedded type, becomes `Type_method(&(d.__embedded_N), ...)`. The
@@ -889,10 +893,10 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			}
 			effective_is_pointer = false
 		}
-		receiver_argument := if expected_receiver.ends_with('*') && !effective_is_pointer {
+		receiver_argument := if flat.source_type_query(signature.parameter_types.ids[0]).has(.c_pointer_suffix) && !effective_is_pointer {
 			g.value_address_expression(flat.source_type_id(expected_receiver.trim_right('*')), effective_receiver_source,
 				receiver_tokens)
-		} else if !expected_receiver.ends_with('*') && effective_is_pointer {
+		} else if !flat.source_type_query(signature.parameter_types.ids[0]).has(.c_pointer_suffix) && effective_is_pointer {
 			'*(${effective_receiver_source})'
 		} else {
 			effective_receiver_source

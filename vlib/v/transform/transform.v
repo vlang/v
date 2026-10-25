@@ -25562,7 +25562,7 @@ fn (mut t Transformer) comptime_type_expr_type(id flat.NodeId) ?u32 {
 	}
 	if node.kind == .typeof_expr {
 		typ := t.typeof_type_name(node)
-		if typ != 0 && !flat.source_type_name(typ).contains('unknown') {
+		if typ != 0 && !flat.source_type_query(typ).has(.unknown_fragment) {
 			return typ
 		}
 		return none
@@ -26378,10 +26378,9 @@ fn (mut t Transformer) transform_or_expr(id flat.NodeId, node flat.Node) flat.No
 	})
 	expr_type_source_id_4, value_type_source_id_9 := t.or_expr_types(expr_id, fallback_type)
 	expr_type_source_id_9 := expr_type_source_id_4
-	expr_type := flat.source_type_name(expr_type_source_id_9)
 	value_type_source_id_11 := value_type_source_id_9
-	value_type := flat.source_type_name(value_type_source_id_11)
-	if expr_type.contains('unknown') || value_type.contains('unknown')
+	if flat.source_type_query(expr_type_source_id_9).has(.unknown_fragment)
+		|| flat.source_type_query(value_type_source_id_11).has(.unknown_fragment)
 		|| t.type_text_has_generic_placeholder(expr_type_source_id_9, t.cur_module)
 		|| t.type_text_has_generic_placeholder(value_type_source_id_11, t.cur_module) {
 		return id

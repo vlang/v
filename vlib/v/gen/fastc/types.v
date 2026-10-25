@@ -1038,8 +1038,8 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 		// Dereferencing removes exactly one pointer level. trim_right('*') collapses
 		// `T**` all the way to `T`, which makes values such as
 		// `*(&&ast.File(ptr))` look by-value and adds a bogus address-of later.
-		operand_text := flat.source_type_name(operand_type)
-		return if operand_text.ends_with('*') {
+		return if flat.source_type_query(operand_type).has(.c_pointer_suffix) {
+			operand_text := flat.source_type_name(operand_type)
 			flat.source_type_id(operand_text[..operand_text.len - 1])
 		} else {
 			operand_type
@@ -1117,7 +1117,7 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 
 				return element_type
 			}
-			if flat.source_type_name(base_type).ends_with('*') {
+			if flat.source_type_query(base_type).has(.c_pointer_suffix) {
 				return flat.source_type_id(flat.source_type_name(base_type)[..flat.source_type_name(base_type).len - 1])
 			}
 		}
@@ -1271,8 +1271,7 @@ fn (g &Parser) is_string_layout(typ u32) bool {
 // Any other `string` pointer (a `&string` parameter) is indexed by pointer arithmetic, as
 // in `unsafe { input_base[i] }`, and yields the pointee `string`.
 fn (g &Parser) indexed_string_type(base_type u32, base_tokens []FastcExpressionToken) u32 {
-	base_name := flat.source_type_name(base_type)
-	if !base_name.ends_with('*') {
+	if !flat.source_type_query(base_type).has(.c_pointer_suffix) {
 		return flat.source_type_u8
 	}
 	if base_tokens.len == 1 && base_tokens[0].tok == .name {
@@ -1282,6 +1281,7 @@ fn (g &Parser) indexed_string_type(base_type u32, base_tokens []FastcExpressionT
 			}
 		}
 	}
+	base_name := flat.source_type_name(base_type)
 	return flat.source_type_id(base_name[..base_name.len - 1])
 }
 
@@ -1538,7 +1538,7 @@ fn (g &Parser) infer_member_access_type(tokens []FastcExpressionToken, start int
 				element_type := element_type_source_id
 
 				current_type = element_type
-			} else if flat.source_type_name(current_type).ends_with('*') {
+			} else if flat.source_type_query(current_type).has(.c_pointer_suffix) {
 				current_type = flat.source_type_id(flat.source_type_name(current_type)[..flat.source_type_name(current_type).len - 1])
 			} else {
 				return none
@@ -1602,11 +1602,10 @@ fn fastc_trim_pointer_suffix(typ string) string {
 // fastc_trim_pointer_type retains the spelling ID when no pointer suffix is present.
 @[inline]
 fn fastc_trim_pointer_type(typ_id u32) u32 {
-	typ := flat.source_type_name(typ_id)
-	if typ.len == 0 || typ[typ.len - 1] != `*` {
+	if !flat.source_type_query(typ_id).has(.c_pointer_suffix) {
 		return typ_id
 	}
-	return flat.source_type_id(typ.trim_right('*'))
+	return flat.source_type_id(flat.source_type_name(typ_id).trim_right('*'))
 }
 
 // semantic_type_key memoizes only lookups against finalized file-generation
@@ -1942,7 +1941,7 @@ fn (g &Parser) selfhost_types_share_lowering_representation(actual u32, expected
 }
 
 fn fastc_is_pointer_type(typ u32) bool {
-	return flat.source_type_name(typ).ends_with('*') || typ == flat.source_type_voidptr
+	return flat.source_type_query(typ).has(.c_pointer_suffix) || typ == flat.source_type_voidptr
 		|| typ == fastc_type_byteptr || typ == fastc_type_charptr
 }
 
@@ -1999,10 +1998,10 @@ fn fastc_decode_ptr_element_type(element string) string {
 // that `*`, so inference and rendering agree. Raw storage (a struct field or `__global`,
 // `T* values[N]`) is not reached through a pointer: there the `*` is its element's (`[N]&T`).
 fn (g &Parser) fixed_array_pointee_element_type(typ_id u32, base_tokens []FastcExpressionToken) ?u32 {
-	typ := flat.source_type_name(typ_id)
-	if !typ.ends_with('*') {
+	if !flat.source_type_query(typ_id).has(.c_pointer_suffix) {
 		return none
 	}
+	typ := flat.source_type_name(typ_id)
 	pointee := typ[..typ.len - 1]
 	_ := fastc_fixed_array_length(flat.source_type_name(g.underlying_alias_type(flat.source_type_id(pointee)))) or { return none }
 	if typ.starts_with('FixedArray_') && g.fixed_array_uses_raw_storage(base_tokens) {

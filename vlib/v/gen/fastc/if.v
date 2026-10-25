@@ -259,7 +259,11 @@ fn (mut g Parser) prescan_register_is_conjunct(toks []token.Token, lits []string
 		if g.is_boxed_type(boxed) && subject !in g.member_smartcasts {
 			if variant_key := g.resolve_declared_type_key(variant_name) {
 				variant_c := fastc_c_declared_type_name(variant_key)
-				access := if flat.source_type_name(boxed).ends_with('*') { '->' } else { '.' }
+				access := if flat.source_type_query(boxed).has(.c_pointer_suffix) {
+					'->'
+				} else {
+					'.'
+				}
 				view_type, view_source := g.narrowed_member_view(flat.source_type_id(variant_c),
 					u32(0), '((${variant_c} *)${g.local_c_name(subject)}${access}_object)')
 				g.member_smartcasts[subject] = FastcMemberSmartcast{
@@ -326,7 +330,7 @@ fn (g &Parser) bool_conjunct_implication(conjunct []FastcExpressionToken) ?Fastc
 	}
 	variant_key := g.resolve_declared_type_key(variant_name) or { return none }
 	variant_c := fastc_c_declared_type_name(variant_key)
-	access := if flat.source_type_name(boxed).ends_with('*') { '->' } else { '.' }
+	access := if flat.source_type_query(boxed).has(.c_pointer_suffix) { '->' } else { '.' }
 	view_type, view_source := g.narrowed_member_view(flat.source_type_id(variant_c), u32(0),
 		'((${variant_c} *)${g.local_c_name(subject)}${access}_object)')
 	return FastcBoolImplication{
@@ -624,7 +628,7 @@ fn (mut g Parser) parse_if() !bool {
 	if smartcast_name != '' && local_start == 1 {
 		// `if mut x is T`: the leading `mut`/`&` defeats the general `is` rendering, so
 		// build the runtime tag check explicitly here.
-		access := if flat.source_type_name(smartcast_boxed_type).ends_with('*') {
+		access := if flat.source_type_query(smartcast_boxed_type).has(.c_pointer_suffix) {
 			'->'
 		} else {
 			'.'
@@ -715,7 +719,7 @@ fn (mut g Parser) parse_if() !bool {
 		g.write_line('${flat.source_type_name(smartcast_boxed_type)} ${smartcast_tmp} = ${origin.source};')
 	}
 	for plan in member_smartcast_plans {
-		boxed_zero := if plan.boxed_type_text().ends_with('*') {
+		boxed_zero := if flat.source_type_query(plan.boxed_type).has(.c_pointer_suffix) {
 			'NULL'
 		} else {
 			'(${plan.boxed_type_text()}){0}'
@@ -745,7 +749,7 @@ fn (mut g Parser) parse_if() !bool {
 			}
 		} else if guard_erased_generic {
 			name := fastc_c_identifier(guard_name)
-			if flat.source_type_name(guard_type).ends_with('*') {
+			if flat.source_type_query(guard_type).has(.c_pointer_suffix) {
 				g.write_line('${fastc_output_c_type(flat.source_type_name(guard_type))} ${name} = ${g.option_value_expression(guard_type, guard_option)};')
 			} else {
 				value := if g.prefs.target_libc_headers {
@@ -779,12 +783,12 @@ fn (mut g Parser) parse_if() !bool {
 	}
 	if smartcast_name != '' && !smartcast_negated {
 		// A pointer subject (`node &ast.Node`) reaches its boxed payload through `->`.
-		tmp_access := if flat.source_type_name(smartcast_boxed_type).ends_with('*') {
+		tmp_access := if flat.source_type_query(smartcast_boxed_type).has(.c_pointer_suffix) {
 			'->'
 		} else {
 			'.'
 		}
-		wants_reference := local_start == 1 || flat.source_type_name(smartcast_boxed_type).ends_with('*') || cond_tokens[local_start].is_mut_argument
+		wants_reference := local_start == 1 || flat.source_type_query(smartcast_boxed_type).has(.c_pointer_suffix) || cond_tokens[local_start].is_mut_argument
 		// The narrowed value goes into a UNIQUELY named temporary, not a shadow of the subject's
 		// own C name, so a `defer` body (rendered at function scope) still binds the original.
 		branch_cast := g.temporary_name('if_cast')
@@ -811,7 +815,11 @@ fn (mut g Parser) parse_if() !bool {
 			// rewrite would instead expose it as a pointer to later statements.
 			continue
 		}
-		plan_access := if plan.boxed_type_text().ends_with('*') { '->' } else { '.' }
+		plan_access := if flat.source_type_query(plan.boxed_type).has(.c_pointer_suffix) {
+			'->'
+		} else {
+			'.'
+		}
 		if plan.path in g.locals && !plan.path.contains('.') && !plan.path.contains('[') {
 			// A second bare local narrowed in the same condition (`a is X && b is Y`) must be
 			// shadowed as a concrete-variant VALUE, exactly like the primary subject above.
@@ -828,7 +836,7 @@ fn (mut g Parser) parse_if() !bool {
 			} else {
 				plan.type_c
 			}
-			plan_type, plan_value, plan_is_reference := g.smartcast_payload_binding(value_type, '${plan.boxed_tmp}${plan_access}_object', plan.boxed_type_text().ends_with('*'))
+			plan_type, plan_value, plan_is_reference := g.smartcast_payload_binding(value_type, '${plan.boxed_tmp}${plan_access}_object', flat.source_type_query(plan.boxed_type).has(.c_pointer_suffix))
 			g.write_line('${fastc_output_c_type(flat.source_type_name(plan_type))} ${plan_shadow} = ${plan_value};')
 			previous_plan_local := g.locals[plan.path] or { FastcLocal{} }
 			g.locals[plan.path] = FastcLocal{
@@ -922,14 +930,14 @@ fn (mut g Parser) parse_if() !bool {
 			// variant, so narrow it to a value shadow scoped to the rest of the block,
 			// mirroring the positive `is` branch but in the fall-through path. Assignments
 			// to mutable subjects restore their boxed type and invalidate this view.
-			access := if flat.source_type_name(smartcast_boxed_type).ends_with('*') {
+			access := if flat.source_type_query(smartcast_boxed_type).has(.c_pointer_suffix) {
 				'->'
 			} else {
 				'.'
 			}
 			branch_cast := g.temporary_name('if_cast')
 			branch_type, branch_value, is_reference := g.smartcast_payload_binding(smartcast_type,
-				'${smartcast_storage}${access}_object', flat.source_type_name(smartcast_boxed_type).ends_with('*') || previous_smartcast.is_mut)
+				'${smartcast_storage}${access}_object', flat.source_type_query(smartcast_boxed_type).has(.c_pointer_suffix) || previous_smartcast.is_mut)
 			g.write_line('${fastc_output_c_type(flat.source_type_name(branch_type))} ${branch_cast} = ${branch_value};')
 			g.set_scoped_local(smartcast_name, FastcLocal{
 				is_mut:                        previous_smartcast.is_mut
@@ -1010,10 +1018,10 @@ fn (mut g Parser) bind_else_type_test(name string, variant u32, boxed u32) {
 	} else {
 		g.local_c_name(name)
 	}
-	access := if flat.source_type_name(boxed).ends_with('*') { '->' } else { '.' }
+	access := if flat.source_type_query(boxed).has(.c_pointer_suffix) { '->' } else { '.' }
 	cast := g.temporary_name('else_cast')
 	variant_type, value, is_reference := g.smartcast_payload_binding(variant,
-		'${origin}${access}_object', flat.source_type_name(boxed).ends_with('*') || previous.is_mut)
+		'${origin}${access}_object', flat.source_type_query(boxed).has(.c_pointer_suffix) || previous.is_mut)
 	g.write_line('${fastc_output_c_type(flat.source_type_name(variant_type))} ${cast} = ${value};')
 	g.locals[name] = FastcLocal{
 		is_mut:                        previous.is_mut
@@ -1395,7 +1403,7 @@ fn (mut g Parser) detect_member_smartcasts(cond_tokens []FastcExpressionToken, r
 						// A pointer subject (`node &ast.Node`, or a nested variant already
 						// narrowed to `Variant*`) reaches its boxed `_typ`/`_object` through
 						// `->`, not `.`.
-						access := if flat.source_type_name(left_type).ends_with('*') {
+						access := if flat.source_type_query(left_type).has(.c_pointer_suffix) {
 							'->'
 						} else {
 							'.'
@@ -1800,8 +1808,12 @@ fn (mut g Parser) read_if_expression() !string {
 		for plan in member_smartcast_plans {
 			// A pointer subject (`mut node ast.TypeDecl` is `TypeDecl*`) reaches its boxed
 			// payload through `->`, not `.`.
-			plan_access := if plan.boxed_type_text().ends_with('*') { '->' } else { '.' }
-			boxed_zero := if plan.boxed_type_text().ends_with('*') {
+			plan_access := if flat.source_type_query(plan.boxed_type).has(.c_pointer_suffix) {
+				'->'
+			} else {
+				'.'
+			}
+			boxed_zero := if flat.source_type_query(plan.boxed_type).has(.c_pointer_suffix) {
 				'NULL'
 			} else {
 				'(${plan.boxed_type_text()}){0}'
@@ -2031,10 +2043,10 @@ fn (mut g Parser) read_if_expression() !string {
 	// A member smart-cast branch (`if x.obj is Var { x.obj } else { Var{…} }`) reads the narrowed
 	// member as a variant POINTER, while the other branch is a by-value variant; deref the pointer
 	// branch so the ternary selects between two value-typed branches.
-	if g.selfhost && flat.source_type_name(then_type).ends_with('*') && else_type != 0 && fastc_trim_pointer_type(then_type) == else_type {
+	if g.selfhost && flat.source_type_query(then_type).has(.c_pointer_suffix) && else_type != 0 && fastc_trim_pointer_type(then_type) == else_type {
 		then_expression = '*(${then_expression})'
 		then_type = else_type
-	} else if g.selfhost && flat.source_type_name(else_type).ends_with('*') && then_type != 0 && fastc_trim_pointer_type(else_type) == then_type {
+	} else if g.selfhost && flat.source_type_query(else_type).has(.c_pointer_suffix) && then_type != 0 && fastc_trim_pointer_type(else_type) == then_type {
 		else_expression = '*(${else_expression})'
 		else_type = then_type
 	}

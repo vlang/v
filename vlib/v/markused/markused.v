@@ -1586,12 +1586,13 @@ fn add_candidate_suffix(mut suffixes map[string]bool, name string) {
 }
 
 fn markused_fn_decl_is_generic_template(node flat.Node, a &flat.FlatAst) bool {
-	if node.generic_params().len > 0 || node.value.contains('[') || node.typ_text().contains('generic') {
+	if node.generic_params().len > 0 || node.value.contains('[')
+		|| flat.source_type_query(node.typ).has(.generic_word) {
 		return true
 	}
 	for i in 0 .. node.children_count {
 		child := a.child_node(&node, i)
-		if child.kind == .param && child.typ_text().contains('generic') {
+		if child.kind == .param && flat.source_type_query(child.typ).has(.generic_word) {
 			return true
 		}
 	}

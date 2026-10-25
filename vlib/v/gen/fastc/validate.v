@@ -593,7 +593,7 @@ fn (g &Parser) static_function_key_for_call(tokens []FastcExpressionToken, name_
 
 fn (g &Parser) local_is_pointer(name string) bool {
 	local := g.locals[name] or { return false }
-	return local.typ_text().ends_with('*')
+	return flat.source_type_query(local.typ).has(.c_pointer_suffix)
 }
 
 fn (g &Parser) is_enum_type_name(name string) bool {
@@ -906,7 +906,7 @@ fn (g &Parser) validate_mutating_method_receiver(receiver []FastcExpressionToken
 	if receiver_type_source_id := g.infer_expression_type(receiver) {
 		receiver_type := receiver_type_source_id
 
-		if flat.source_type_name(receiver_type).ends_with('*') {
+		if flat.source_type_query(receiver_type).has(.c_pointer_suffix) {
 			return
 		}
 	}

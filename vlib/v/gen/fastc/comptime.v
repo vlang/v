@@ -938,7 +938,7 @@ fn (mut g Parser) parse_comptime_unary() !bool {
 			left_type = g.underlying_alias_type(left_type)
 		}
 		if pointee_type {
-			left_type = (if flat.source_type_name(left_type).ends_with('*') {
+			left_type = (if flat.source_type_query(left_type).has(.c_pointer_suffix) {
 				flat.source_type_id(flat.source_type_name(left_type)[..flat.source_type_name(left_type).len - 1])
 			} else {
 				flat.source_type_void

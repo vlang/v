@@ -41,12 +41,16 @@ fn (mut g Parser) read_match_expression() !string {
 		return g.unsupported('unverifiable match expression subject')
 	}
 	subject_tokens := g.last_expression.clone()
-	smartcast_is_reference := subject_is_mut || flat.source_type_name(subject_type).ends_with('*')
+	smartcast_is_reference := subject_is_mut || flat.source_type_query(subject_type).has(.c_pointer_suffix)
 	// A sum-type / interface subject dispatches on the boxed `_typ` tag; each branch
 	// names a variant type and (for a plain-local subject) is smart-cast inside its
 	// value expression.
 	is_boxed := g.is_boxed_type(fastc_normalize_inferred_type(subject_type_source_id))
-	boxed_access := if flat.source_type_name(subject_type).ends_with('*') { '->' } else { '.' }
+	boxed_access := if flat.source_type_query(subject_type).has(.c_pointer_suffix) {
+		'->'
+	} else {
+		'.'
+	}
 	mut subject_local := ''
 	if is_boxed && subject_tokens.len == 1 && subject_tokens[0].tok == .name && subject_tokens[0].lit in g.locals {
 		subject_local = subject_tokens[0].lit

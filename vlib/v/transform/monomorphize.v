@@ -9763,7 +9763,7 @@ fn (mut t Transformer) infer_generic_short_struct_init_args(param_type_id u32, a
 	}
 	mut struct_param_type := t.normalize_type_alias_chain(flat.source_type_id(trimmed_transform_text(param_type)))
 	if flat.source_type_shape(struct_param_type).has(.pointer) {
-		if flat.source_type_name(struct_param_type)[1..].starts_with('&') {
+		if flat.source_type_shape(struct_param_type).has(.pointer_chain) {
 			return
 		}
 		struct_param_type = flat.source_type_id(flat.source_type_name(struct_param_type)[1..])

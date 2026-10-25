@@ -65,7 +65,7 @@ fn (g &Parser) render_struct_literal_field_value(value_tokens []FastcExpressionT
 		}
 		copy_source := if is_raw_fixed_array {
 			value
-		} else if expected_type.ends_with('*') {
+		} else if flat.source_type_query(expected_type_source_id).has(.c_pointer_suffix) {
 			'(${value})->data'
 		} else {
 			'(${value}).data'
@@ -211,7 +211,7 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 					rendered_item
 				}
 			}
-			source := if flat.source_type_name(c_type).ends_with('*') {
+			source := if flat.source_type_query(c_type).has(.c_pointer_suffix) {
 				'&(${flat.source_type_name(c_type).trim_right('*')}){${values.join(',')}}'
 			} else {
 				'(${flat.source_type_name(c_type)}){${values.join(',')}}'
@@ -502,7 +502,7 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 		} else if explicit_initializers.len > 0 {
 			value_source = '({ ${explicit_initializers.join(' ')} ${base}; })'
 		}
-		if flat.source_type_name(c_type).ends_with('*') {
+		if flat.source_type_query(c_type).has(.c_pointer_suffix) {
 			value_source = '({ ${array_type} __vf_array_pointer_value = (${value_source}); (${flat.source_type_name(c_type)})v_fastc_interface_box(&__vf_array_pointer_value, sizeof(${array_type})); })'
 		}
 		return FastcRenderedExpression{
@@ -515,7 +515,7 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 		for field in rendered_fields {
 			assignments << '__vf_struct_update${field};'
 		}
-		if flat.source_type_name(c_type).ends_with('*') {
+		if flat.source_type_query(c_type).has(.c_pointer_suffix) {
 			base_type := flat.source_type_name(c_type).trim_right('*')
 			copy_statements := fixed_array_copies.join(' ')
 			return FastcRenderedExpression{
@@ -534,14 +534,14 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 		if fixed_array_copies.len == 0 {
 			return rendered
 		}
-		access := if flat.source_type_name(c_type).ends_with('*') { '->' } else { '.' }
+		access := if flat.source_type_query(c_type).has(.c_pointer_suffix) { '->' } else { '.' }
 		copies := fixed_array_copies.join(' ').replace('__vf_struct_fixed.', '__vf_struct_with_fixed${access}')
 		return FastcRenderedExpression{
 			source: '({ ${flat.source_type_name(c_type)} __vf_struct_with_fixed = (${rendered.source}); ${copies} __vf_struct_with_fixed; })'
 			typ:    c_type
 		}
 	}
-	literal_source := if flat.source_type_name(c_type).ends_with('*') {
+	literal_source := if flat.source_type_query(c_type).has(.c_pointer_suffix) {
 		if g.c_global_static_initializer {
 			'&(${flat.source_type_name(c_type).trim_right('*')}){${rendered_fields.join(',')}}'
 		} else {
@@ -553,7 +553,7 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 	if fixed_array_copies.len > 0 {
 		base_type := flat.source_type_name(c_type).trim_right('*')
 		copies := fixed_array_copies.join(' ')
-		result := if flat.source_type_name(c_type).ends_with('*') {
+		result := if flat.source_type_query(c_type).has(.c_pointer_suffix) {
 			'(${flat.source_type_name(c_type)})v_fastc_interface_box(&__vf_struct_fixed, sizeof(${base_type}))'
 		} else {
 			'__vf_struct_fixed'

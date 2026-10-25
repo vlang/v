@@ -16014,7 +16014,8 @@ fn (tc &TypeChecker) bare_variant_name_matches(candidate_id u32, declared_id u32
 	if candidate_resolved == declared_resolved || candidate_resolved == concrete_resolved {
 		return true
 	}
-	if candidate_base.contains('.') || flat.source_type_name(candidate_resolved).contains('.') {
+	if flat.source_type_shape(candidate_base_id).has(.dotted)
+		|| flat.source_type_shape(candidate_resolved).has(.dotted) {
 		return false
 	}
 	return (!declared_base.contains('.') && candidate_base == short_type_name(declared_base))

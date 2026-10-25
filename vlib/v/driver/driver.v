@@ -23716,7 +23716,7 @@ fn implicit_field_type(raw_type_id u32, field string, index ImplicitFieldScanInd
 	}
 	shape := flat.source_type_shape(typ)
 	if shape.has(.array_type) || shape.has(.variadic)
-		|| (shape.has(.leading_bracket) && flat.source_type_name(typ).contains(']')) {
+		|| flat.source_type_query(typ).has(.fixed_array_prefix) {
 		return match field {
 			'len', 'cap', 'offset', 'flags', 'element_size' { flat.source_type_int }
 			'data' { flat.source_type_voidptr }

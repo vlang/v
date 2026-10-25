@@ -1828,30 +1828,27 @@ fn (mut t Transformer) map_index_info(index_id flat.NodeId) ?MapIndexInfo {
 	base_node := t.a.nodes[int(base_id)]
 	if base_node.kind == .ident {
 		local_type_source_id := t.var_type(base_node.value)
-		local_type := flat.source_type_name(local_type_source_id)
 		local_map_type_source_id := t.clean_map_type(local_type_source_id)
-		local_map_type := flat.source_type_name(local_map_type_source_id)
-		if local_map_type.starts_with('map[') && !local_map_type.contains('unknown')
+		if flat.source_type_shape(local_map_type_source_id).has(.map_type)
+			&& !flat.source_type_query(local_map_type_source_id).has(.unknown_fragment)
 			&& !t.generic_arg_is_unresolved(local_map_type_source_id) {
-			base_type = (if trimmed_transform_text(local_type).starts_with('&') {
-				flat.source_type_id('&${local_map_type}')
+			base_type = (if flat.source_type_shape(t.trimmed_type_id(local_type_source_id)).has(.pointer) {
+				flat.source_type_composition_one(.pointer, local_map_type_source_id)
 			} else {
 				local_map_type_source_id
 			})
 		}
 	}
 	checker_base_type_source_id := t.raw_checker_node_type(base_id)
-	checker_base_type := flat.source_type_name(checker_base_type_source_id)
 	checker_map_type_source_id := t.clean_map_type(checker_base_type_source_id)
-	checker_map_type := flat.source_type_name(checker_map_type_source_id)
 	local_map_type_source_id_2 := t.clean_map_type(base_type)
-	local_map_type := flat.source_type_name(local_map_type_source_id_2)
-	local_map_is_concrete := local_map_type.starts_with('map[')
-		&& !local_map_type.contains('unknown') && !t.generic_arg_is_unresolved(local_map_type_source_id_2)
-	if !local_map_is_concrete && checker_map_type.starts_with('map[')
-		&& !checker_map_type.contains('unknown') {
-		base_type = (if trimmed_transform_text(checker_base_type).starts_with('&') {
-			flat.source_type_id('&${checker_map_type}')
+	local_map_is_concrete := flat.source_type_shape(local_map_type_source_id_2).has(.map_type)
+		&& !flat.source_type_query(local_map_type_source_id_2).has(.unknown_fragment)
+		&& !t.generic_arg_is_unresolved(local_map_type_source_id_2)
+	if !local_map_is_concrete && flat.source_type_shape(checker_map_type_source_id).has(.map_type)
+		&& !flat.source_type_query(checker_map_type_source_id).has(.unknown_fragment) {
+		base_type = (if flat.source_type_shape(t.trimmed_type_id(checker_base_type_source_id)).has(.pointer) {
+			flat.source_type_composition_one(.pointer, checker_map_type_source_id)
 		} else {
 			checker_map_type_source_id
 		})
@@ -1862,7 +1859,6 @@ fn (mut t Transformer) map_index_info(index_id flat.NodeId) ?MapIndexInfo {
 		return none
 	}
 	key_type_source_id_8, raw_value_type_source_id_2 := t.map_type_parts(map_type_source_id)
-	raw_value_type := flat.source_type_name(raw_value_type_source_id_2)
 	if key_type_source_id_8 == 0 || raw_value_type_source_id_2 == 0 {
 		return none
 	}
@@ -1870,8 +1866,10 @@ fn (mut t Transformer) map_index_info(index_id flat.NodeId) ?MapIndexInfo {
 	// with an imported type of the same name and resolve to the wrong sum type when the
 	// value is later wrapped into the map element type.
 	mut value_type := raw_value_type_source_id_2
-	if !raw_value_type.contains('.') && !raw_value_type.contains('[') && !raw_value_type.starts_with('&')
+	raw_value_shape := flat.source_type_shape(raw_value_type_source_id_2)
+	if !raw_value_shape.has(.dotted) && !raw_value_shape.has(.bracketed) && !raw_value_shape.has(.pointer)
 		&& t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
+		raw_value_type := flat.source_type_name(raw_value_type_source_id_2)
 		qualified := '${t.cur_module}.${raw_value_type}'
 		if t.sum_types.contains(qualified) || (!isnil(t.tc) && t.tc.sum_types.contains(qualified)) {
 			value_type = flat.source_type_id(qualified)

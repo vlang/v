@@ -1898,8 +1898,11 @@ fn (t &Transformer) call_arg_is_packed_variadic_tail(arg_id flat.NodeId, variadi
 }
 
 fn (mut t Transformer) transform_mut_optional_pointer_address_call_arg(arg_id flat.NodeId, param_type_id u32) ?flat.NodeId {
+	if int(arg_id) < 0 || !flat.source_type_shape(param_type_id).has(.pointer_option) {
+		return none
+	}
 	param_type := flat.source_type_name(param_type_id)
-	if int(arg_id) < 0 || param_type.len < 4 || !param_type.starts_with('&?') {
+	if param_type.len < 4 {
 		return none
 	}
 	arg_node := t.a.nodes[int(arg_id)]
@@ -1934,8 +1937,11 @@ fn (mut t Transformer) transform_mut_optional_pointer_address_call_arg(arg_id fl
 }
 
 fn (mut t Transformer) transform_mut_optional_value_call_arg(arg_id flat.NodeId, param_type_id u32) ?MutOptionalValueCallArg {
+	if int(arg_id) < 0 || !flat.source_type_shape(param_type_id).has(.pointer_option) {
+		return none
+	}
 	param_type := flat.source_type_name(param_type_id)
-	if int(arg_id) < 0 || param_type.len < 3 || !param_type.starts_with('&?') {
+	if param_type.len < 3 {
 		return none
 	}
 	arg_node := t.a.nodes[int(arg_id)]
@@ -1951,8 +1957,8 @@ fn (mut t Transformer) transform_mut_optional_value_call_arg(arg_id flat.NodeId,
 	// A local moved to the heap is a pointer to its option.
 	heaped_local := t.heaped_amp_local_arg_name(arg_id)
 	mut arg_type_source_id := t.node_type(arg_id)
-	if heaped_local.len > 0 && flat.source_type_name(arg_type_source_id).starts_with('&?') {
-		arg_type_source_id = flat.source_type_id(flat.source_type_name(arg_type_source_id)[1..])
+	if heaped_local.len > 0 && flat.source_type_shape(arg_type_source_id).has(.pointer_option) {
+		arg_type_source_id = t.trim_pointer_type(arg_type_source_id)
 	}
 	arg_type_source_id = t.qualify_optional_type(arg_type_source_id)
 	arg_type_shape := flat.source_type_shape(arg_type_source_id)
@@ -1964,13 +1970,13 @@ fn (mut t Transformer) transform_mut_optional_value_call_arg(arg_id flat.NodeId,
 	param_option_source_id := t.qualify_optional_type(flat.source_type_id(param_type[1..]))
 	param_option := flat.source_type_name(param_option_source_id)
 	target_payload_id := t.optional_base_type(param_option_source_id)
+	if !flat.source_type_shape(target_payload_id).has(.pointer) {
+		return none
+	}
+	if t.normalize_type_alias(payload_type_source_id) != t.normalize_type_alias(t.trim_pointer_type(target_payload_id)) {
+		return none
+	}
 	target_payload := flat.source_type_name(target_payload_id)
-	if !target_payload.starts_with('&') {
-		return none
-	}
-	if t.normalize_type_alias(payload_type_source_id) != t.normalize_type_alias(flat.source_type_id(target_payload[1..])) {
-		return none
-	}
 	target_option := '${param_option[..1]}${target_payload}'
 
 	lvalue := if heaped_local.len > 0 {
@@ -4757,7 +4763,7 @@ fn (mut t Transformer) transform_call_arg_for_param_isolated(arg_id flat.NodeId,
 			return const_arg
 		}
 	}
-	if param_type_id != u32(0) && (param_type.contains('unknown')
+	if param_type_id != u32(0) && (flat.source_type_query(param_type_source_id_3).has(.unknown_fragment)
 		|| t.type_text_has_generic_placeholder(param_type_source_id_3, t.cur_module)) {
 		return t.transform_expr(arg_id)
 	}
@@ -17008,14 +17014,13 @@ fn (t &Transformer) callback_declared_type_text(raw_id u32) u32 {
 }
 
 fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actual_type_id u32, expected_type_id u32) bool {
-	expected_type := flat.source_type_name(expected_type_id)
 	if actual_type_id == u32(0) || actual_type_id == flat.source_type_unknown || expected_type_id == u32(0) {
 		return true
 	}
 	// An `unknown` expected type means the callee signature still carries an
 	// unresolved generic parameter here - nothing can be validated against it
 	// (including container forms such as `[]unknown`).
-	if expected_type.contains('unknown') {
+	if flat.source_type_query(expected_type_id).has(.unknown_fragment) {
 		return true
 	}
 	mut actual := t.callback_declared_type_text(actual_type_id)

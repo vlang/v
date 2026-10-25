@@ -2195,7 +2195,7 @@ fn (mut t Transformer) make_guarded_nested_optional_step(ok_name string, stmts [
 
 fn (mut t Transformer) nested_optional_value_type(expr_id flat.NodeId, fallback_id u32) u32 {
 	mut typ := t.node_type(expr_id)
-	if typ == 0 || flat.source_type_name(typ).contains('unknown') {
+	if typ == 0 || flat.source_type_query(typ).has(.unknown_fragment) {
 		typ = fallback_id
 	}
 	if flat.source_type_name(typ).all_after_last('.') in ['__v_option', 'Result'] {

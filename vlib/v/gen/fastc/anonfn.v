@@ -304,7 +304,7 @@ fn (mut g Parser) add_local_closure_cleanup(name string) {
 
 fn (g &Parser) capture_type_source(typ_id u32) ?string {
 	typ := flat.source_type_name(typ_id)
-	if typ.ends_with('*') {
+	if flat.source_type_query(typ_id).has(.c_pointer_suffix) {
 		return '&' + g.capture_type_source(flat.source_type_id(typ[..typ.len - 1]))?
 	}
 	if typ.starts_with('Array_') {

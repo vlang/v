@@ -166,7 +166,7 @@ fn (g &Parser) mono_argument_type(mut look scanner.Scanner, is_mut_generic_value
 			if local := g.locals[value_tokens[0].lit] {
 				// A typed pointer can already refer to the mutable payload (`mut
 				// entry` with entry &u64), just like a forwarded mut parameter.
-				if local.is_reference || flat.source_type_name(actual).ends_with('*') {
+				if local.is_reference || flat.source_type_query(actual).has(.c_pointer_suffix) {
 					return actual
 				}
 			}
@@ -177,7 +177,7 @@ fn (g &Parser) mono_argument_type(mut look scanner.Scanner, is_mut_generic_value
 		value_tokens := fastc_strip_paren_tokens(argument_tokens)
 		if value_tokens.len == 1 && value_tokens[0].tok == .name {
 			if local := g.locals[value_tokens[0].lit] {
-				if local.is_reference && flat.source_type_name(actual).ends_with('*') {
+				if local.is_reference && flat.source_type_query(actual).has(.c_pointer_suffix) {
 					actual_text := flat.source_type_name(actual)
 					return flat.source_type_id(actual_text[..actual_text.len - 1])
 				}

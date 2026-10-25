@@ -227,7 +227,7 @@ fn collect_function_signatures_at(source string, source_offset int, path string,
 				if receiver_key == '' {
 					receiver_key = fastc_semantic_declared_type_key(flat.source_type_name(receiver_type), declared_type_c_names)
 				}
-				if receiver_is_mut && !flat.source_type_name(receiver_type).ends_with('*') {
+				if receiver_is_mut && !flat.source_type_query(receiver_type).has(.c_pointer_suffix) {
 					receiver_type = flat.source_type_id(flat.source_type_name(receiver_type) + '*')
 				}
 				parameter_types << receiver_type
@@ -404,7 +404,7 @@ fn collect_function_signatures_at(source string, source_offset int, path string,
 				}
 				parameter_type := parameter_type_source_id_2
 
-				stored_parameter_type := if parameter_is_mut && !flat.source_type_name(parameter_type).ends_with('*') {
+				stored_parameter_type := if parameter_is_mut && !flat.source_type_query(parameter_type).has(.c_pointer_suffix) {
 					flat.source_type_id(flat.source_type_name(parameter_type) + '*')
 				} else {
 					parameter_type
@@ -740,7 +740,7 @@ fn fastc_scan_function_alias_signature(mut scan scanner.Scanner, path string, he
 		parameter_type_source_id_2_2, next_token := fastc_scan_type(mut scan, tok, path, header.module_name, header.imports, declared_types, prefs.building_v)!
 		parameter_type := parameter_type_source_id_2_2
 
-		parameter_types << if parameter_is_mut && !flat.source_type_name(parameter_type).ends_with('*') {
+		parameter_types << if parameter_is_mut && !flat.source_type_query(parameter_type).has(.c_pointer_suffix) {
 			flat.source_type_id(flat.source_type_name(parameter_type) + '*')
 		} else {
 			parameter_type
@@ -1209,7 +1209,7 @@ fn collect_interface_method_signatures(source string, path string, header FastcS
 				parameter_type_source_id_2_2_2, next_token := fastc_scan_type(mut scan, tok, path, header.module_name, header.imports, declared_types, prefs.building_v)!
 				parameter_type := parameter_type_source_id_2_2_2
 
-				parameter_types << if parameter_is_mut && !flat.source_type_name(parameter_type).ends_with('*') {
+				parameter_types << if parameter_is_mut && !flat.source_type_query(parameter_type).has(.c_pointer_suffix) {
 					flat.source_type_id(flat.source_type_name(parameter_type) + '*')
 				} else {
 					parameter_type
@@ -1479,7 +1479,7 @@ fn fastc_peek_function_type(scan scanner.Scanner, path string, module_name strin
 		parameter_type_source_id_2_2_2_2, next_token := fastc_scan_type(mut look, tok, path, module_name, imports, declared_types, allow_short_placeholders)!
 		parameter_type := parameter_type_source_id_2_2_2_2
 
-		parameter_types << if parameter_is_mut && !flat.source_type_name(parameter_type).ends_with('*') {
+		parameter_types << if parameter_is_mut && !flat.source_type_query(parameter_type).has(.c_pointer_suffix) {
 			flat.source_type_id(flat.source_type_name(parameter_type) + '*')
 		} else {
 			parameter_type

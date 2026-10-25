@@ -201,7 +201,6 @@ fn (mut t Transformer) transform_returned_error(value_id flat.NodeId) flat.NodeI
 }
 
 fn (mut t Transformer) return_expr_is_propagated_err(id flat.NodeId, payload_type_id u32) bool {
-	payload_type := flat.source_type_name(payload_type_id)
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return false
 	}
@@ -249,7 +248,8 @@ fn (mut t Transformer) return_expr_is_propagated_err(id flat.NodeId, payload_typ
 			&& t.implicit_err_binding_active()) {
 		return true
 	}
-	if payload_type_id == u32(0) || payload_type_id == flat.source_type_unknown || payload_type.contains('unknown') {
+	if payload_type_id == u32(0) || payload_type_id == flat.source_type_unknown
+		|| flat.source_type_query(payload_type_id).has(.unknown_fragment) {
 		return true
 	}
 	return !t.resolved_receiver_arg_compatible(expression_id, actual_type, payload_type_id)
@@ -319,8 +319,8 @@ fn (t &Transformer) return_ierror_expr_type(id flat.NodeId) u32 {
 
 fn (t &Transformer) return_ierror_type_candidate(typ_id u32) ?u32 {
 	typ_comparison_type_id_2 := typ_id
-	typ := flat.source_type_name(typ_comparison_type_id_2)
-	if typ_id == u32(0) || typ_id == flat.source_type_unknown || typ.contains('unknown') {
+	if typ_id == u32(0) || typ_id == flat.source_type_unknown
+		|| flat.source_type_query(typ_id).has(.unknown_fragment) {
 		return none
 	}
 	if t.is_ierror_type(typ_id) {

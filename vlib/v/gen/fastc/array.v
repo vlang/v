@@ -30,7 +30,7 @@ fn (g &Parser) render_fixed_array_layout_argument(tokens []FastcExpressionToken,
 	}
 	if expected_element != actual_element { return none }
 	value := g.render_call_argument_expression(tokens, actual_type) or { return none }
-	if flat.source_type_name(expected_layout).ends_with('*') {
+	if flat.source_type_query(expected_layout).has(.c_pointer_suffix) {
 		return '({ ${checks.join(' ')} (${flat.source_type_name(expected_type)})(${value}); })'
 	}
 	source_name := g.temporary_namespace('fixed_layout') + '_source'
@@ -46,7 +46,7 @@ fn (g &Parser) dynamic_array_literal_source(array_type_id u32, element_type u32,
 	is_scalar := fastc_is_numeric_expression_type(element_type)
 		|| element_type in [flat.source_type_bool, flat.source_type_char, flat.source_type_voidptr,
 			fastc_type_byteptr, fastc_type_charptr]
-		|| flat.source_type_name(element_type).ends_with('*')
+		|| flat.source_type_query(element_type).has(.c_pointer_suffix)
 	if is_scalar && !items.any(it.contains('{')) {
 		return '((${array_type})builtin__new_array_from_c_array(${items.len}, ${items.len}, sizeof(${storage_type}), (${storage_type}[]){${items.join(',')}}))'
 	}
@@ -59,11 +59,11 @@ fn (g &Parser) dynamic_array_literal_source(array_type_id u32, element_type u32,
 // array representation expected by a function or method parameter.
 fn (g &Parser) render_fixed_array_dynamic_argument(tokens []FastcExpressionToken, expected_type_source_id u32) ?string {
 	expected_type := flat.source_type_name(expected_type_source_id)
-	if expected_type.ends_with('*') {
+	if flat.source_type_query(expected_type_source_id).has(.c_pointer_suffix) {
 		// A `mut []T` parameter given a fixed array that is already a pointer (a
 		// `mut [N]T` parameter of the caller) gets a view of that storage.
 		actual_type := g.infer_expression_type(tokens) or { return none }
-		if flat.source_type_name(actual_type).ends_with('*') && !flat.source_type_name(actual_type).ends_with('**')
+		if flat.source_type_query(actual_type).has(.c_pointer_suffix) && !flat.source_type_name(actual_type).ends_with('**')
 			&& fastc_fixed_array_length(flat.source_type_name(g.underlying_alias_type(actual_type)).trim_right('*')) != none {
 			return g.render_fixed_array_as_dynamic(tokens, flat.source_type_id(expected_type.trim_right('*')), true)
 		}
@@ -80,7 +80,7 @@ fn (g &Parser) render_fixed_array_mut_argument(tokens []FastcExpressionToken, ex
 
 fn (g &Parser) render_fixed_array_as_dynamic(tokens []FastcExpressionToken, expected_type_source_id u32, view bool) ?string {
 	expected_type := flat.source_type_name(expected_type_source_id)
-	if expected_type.ends_with('*') || !flat.source_type_name(g.underlying_alias_type(expected_type_source_id)).starts_with('Array_') {
+	if flat.source_type_query(expected_type_source_id).has(.c_pointer_suffix) || !flat.source_type_name(g.underlying_alias_type(expected_type_source_id)).starts_with('Array_') {
 		return none
 	}
 	actual_type := g.infer_expression_type(tokens) or { return none }
@@ -103,7 +103,7 @@ fn (g &Parser) render_fixed_array_as_dynamic(tokens []FastcExpressionToken, expe
 		return '((${expected_type})builtin__new_array_from_c_array(${length}, ${length}, ${size}, ${raw}))'
 	}
 	value := g.render_call_argument_expression(tokens, actual_type) or { return none }
-	access := if flat.source_type_name(actual_layout).ends_with('*') { '->' } else { '.' }
+	access := if flat.source_type_query(actual_layout).has(.c_pointer_suffix) { '->' } else { '.' }
 	if view {
 		return fastc_fixed_array_view(expected_type, length, size, '(${value})${access}data')
 	}
@@ -188,7 +188,7 @@ fn (g &Parser) render_higher_order_method_expression(tokens []FastcExpressionTok
 	fastc_register_composite_type(collection_type_id, mut w.composite_types)
 	receiver := g.render_method_receiver_expression(receiver_tokens) or { return none }
 	receiver_source := receiver.source
-	collection_source := if flat.source_type_name(receiver_type).ends_with('*') {
+	collection_source := if flat.source_type_query(receiver_type).has(.c_pointer_suffix) {
 		'*(${receiver_source})'
 	} else {
 		receiver_source
@@ -490,11 +490,11 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 		// text. It is still an expression, so the omitted end reads the length from a
 		// temporary instead of evaluating the call a second time.
 		base_is_expression := base_tokens.len > 1 || (base_tokens[0].source.contains('(')
-			&& !flat.source_type_name(base_type).ends_with('*'))
+			&& !flat.source_type_query(base_type).has(.c_pointer_suffix))
 		needs_receiver_temporary := omitted_end && base_is_expression && !is_raw_fixed_array
 		receiver_name := '__vf_slice_receiver'
 		receiver_source := if needs_receiver_temporary { receiver_name } else { base_source }
-		receiver_is_pointer := flat.source_type_name(base_type).ends_with('*') && !needs_receiver_temporary
+		receiver_is_pointer := flat.source_type_query(base_type).has(.c_pointer_suffix) && !needs_receiver_temporary
 		access := if receiver_is_pointer { '->' } else { '.' }
 		end := if omitted_end {
 			if is_fixed_array {
@@ -554,10 +554,10 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 			typ:    slice_type
 		}
 	}
-	is_array_pointer := flat.source_type_name(base_type).ends_with('*') && g.array_element_type(base_type) != none
+	is_array_pointer := flat.source_type_query(base_type).has(.c_pointer_suffix) && g.array_element_type(base_type) != none
 	element_type := if is_array_pointer {
 		g.array_element_type(base_type) or { return none }
-	} else if flat.source_type_name(base_type).ends_with('*') {
+	} else if flat.source_type_query(base_type).has(.c_pointer_suffix) {
 		flat.source_type_id(flat.source_type_name(base_type)[..flat.source_type_name(base_type).len - 1])
 	} else if base_layout_type == flat.source_type_string {
 		flat.source_type_u8
@@ -566,7 +566,7 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 	}
 	index_source := g.render_membership_candidate(tokens[open + 1..close], flat.source_type_id('int')) or { return none }
 	if base_layout_type == flat.source_type_string {
-		if g.direct_array_access && !flat.source_type_name(base_type).ends_with('*') {
+		if g.direct_array_access && !flat.source_type_query(base_type).has(.c_pointer_suffix) {
 			return FastcRenderedExpression{
 				source: '((${base_source}).str[${index_source}])'
 				typ:    element_type
@@ -587,7 +587,7 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 				typ:    element_type
 			}
 		}
-		access := if flat.source_type_name(base_type).ends_with('*') { '->' } else { '.' }
+		access := if flat.source_type_query(base_type).has(.c_pointer_suffix) { '->' } else { '.' }
 		// `->` reads the trailing `*` as a pointer to the array (a `mut` fixed-array
 		// parameter), so its element type is the array's, without that `*`.
 		pointee_element_type := (g.fixed_array_pointee_element_type(base_type, base_tokens) or { element_type })
@@ -602,13 +602,13 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 			typ:    element_type
 		}
 	}
-	if flat.source_type_name(base_type).ends_with('*') && !is_array_pointer {
+	if flat.source_type_query(base_type).has(.c_pointer_suffix) && !is_array_pointer {
 		return FastcRenderedExpression{
 			source: '((${base_source})[${index_source}])'
 			typ:    element_type
 		}
 	}
-	array_value := if flat.source_type_name(base_type).ends_with('*') {
+	array_value := if flat.source_type_query(base_type).has(.c_pointer_suffix) {
 		'*(${base_source})'
 	} else {
 		base_source
@@ -629,7 +629,7 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 // variable points at the V value it stands for and is dereferenced on use.
 fn (g &Parser) is_reference_local_base(base_tokens []FastcExpressionToken, base_type u32) bool {
 	if base_tokens.len != 1 || base_tokens[0].tok != .name || base_tokens[0].source != ''
-		|| !flat.source_type_name(base_type).ends_with('*') {
+		|| !flat.source_type_query(base_type).has(.c_pointer_suffix) {
 		return false
 	}
 	local := g.locals[base_tokens[0].lit] or { return false }
@@ -895,7 +895,7 @@ fn (g &Parser) render_membership_candidate_with_raw(tokens []FastcExpressionToke
 	rendered := g.render_membership_candidate_source(tokens, expected_type_source_id, rendered_expression, special_already_missed)?
 	// A subject narrowed earlier in the same condition (`e is string && e !in xs`) reads
 	// through the variant pointer; the membership test compares its value.
-	if expected_type != '' && !expected_type.ends_with('*') && g.member_smartcasts.len > 0
+	if expected_type != '' && !flat.source_type_query(expected_type_source_id).has(.c_pointer_suffix) && g.member_smartcasts.len > 0
 		&& g.expression_uses_member_smartcast(tokens) {
 		actual := fastc_normalize_inferred_type(g.infer_expression_type(tokens) or { u32(0) })
 		if flat.source_type_name(actual) == expected_type + '*' {
@@ -1039,9 +1039,9 @@ fn (g &Parser) render_raw_expression_tokens(tokens []FastcExpressionToken) ?stri
 		}
 		mut piece := item.lit
 		map_length_receiver_type := if item.tok == .dot {
-			flat.source_type_name(g.map_length_receiver_type(tokens, i) or { u32(0) })
+			g.map_length_receiver_type(tokens, i) or { u32(0) }
 		} else {
-			''
+			u32(0)
 		}
 		if item.tok == .right_shift_unsigned {
 			// V's logical right shift `>>>` has no C spelling; on the unsigned operand it is
@@ -1190,8 +1190,12 @@ fn (g &Parser) render_raw_expression_tokens(tokens []FastcExpressionToken) ?stri
 			} else {
 				g.resolved_expression_name(item.lit, previous)
 			}
-		} else if item.tok == .dot && map_length_receiver_type != '' {
-			piece = if map_length_receiver_type.ends_with('*') { '->data->' } else { '.data->' }
+		} else if item.tok == .dot && map_length_receiver_type != u32(0) {
+			piece = if flat.source_type_query(map_length_receiver_type).has(.c_pointer_suffix) {
+				'->data->'
+			} else {
+				'.data->'
+			}
 		} else if item.tok == .dot && i > 0 && tokens[i - 1].tok == .name && tokens[i - 1].lit in g.imports && tokens[i - 1].lit !in g.locals && (i < 2 || tokens[i - 2].tok != .dot) {
 			// An imported module name qualifies only at the start of a chain; `v.pref.os.str()`
 			// accesses the field `os`, not the `os` module, even when that module is imported. A

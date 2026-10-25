@@ -3983,8 +3983,7 @@ fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTy
 				}
 				implemented[receiver_key] = true
 				receiver_type := fastc_c_declared_type_name(receiver_key)
-				expected_receiver := candidate_signature.parameter_types.at(0)
-				receiver_argument := if expected_receiver.ends_with('*') {
+				receiver_argument := if flat.source_type_query(candidate_signature.parameter_types.ids[0]).has(.c_pointer_suffix) {
 					'(${receiver_type} *)value._object'
 				} else {
 					'*(${receiver_type} *)value._object'
@@ -4017,7 +4016,7 @@ fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTy
 					}
 					embedded_signature := functions[embedded.key]
 					field := '((${struct_type} *)value._object)->${embedded.path}'
-					receiver_argument := if embedded_signature.parameter_types.at(0).ends_with('*') {
+					receiver_argument := if flat.source_type_query(embedded_signature.parameter_types.ids[0]).has(.c_pointer_suffix) {
 						'&(${field})'
 					} else {
 						field

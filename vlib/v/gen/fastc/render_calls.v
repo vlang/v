@@ -212,7 +212,7 @@ fn (g &Parser) render_typeof_name_expression(tokens []FastcExpressionToken) ?Fas
 // `strings.Builder`). Literal expressions are `int literal` and `f64`, as in cgen.
 fn (g &Parser) typeof_display_name(typ_id u32) string {
 	typ := flat.source_type_name(typ_id)
-	if typ.ends_with('*') {
+	if flat.source_type_query(typ_id).has(.c_pointer_suffix) {
 		return '&' + g.typeof_display_name(flat.source_type_id(typ[..typ.len - 1]))
 	}
 	if typ_id == fastc_type_integer_literal || typ_id == fastc_type_negative_integer_literal {
@@ -442,7 +442,7 @@ fn (g &Parser) render_cast_expression(tokens []FastcExpressionToken) ?FastcRende
 			typ:    c_type
 		}
 	}
-	if !flat.source_type_name(c_type).ends_with('*') && aliased != c_type && flat.source_type_name(aliased).starts_with('FixedArray_') {
+	if !flat.source_type_query(c_type).has(.c_pointer_suffix) && aliased != c_type && flat.source_type_name(aliased).starts_with('FixedArray_') {
 		if inner_tokens.len >= 5 && inner_tokens[0].tok == .lsbr && inner_tokens[2].tok == .rsbr
 			&& inner_tokens[inner_tokens.len - 2].tok == .lcbr && inner_tokens.last().tok == .rcbr {
 			return FastcRenderedExpression{
@@ -476,14 +476,14 @@ fn (g &Parser) render_cast_expression(tokens []FastcExpressionToken) ?FastcRende
 		} else {
 			'.'
 		}
-		pointer_type := if flat.source_type_name(c_type).ends_with('*') {
+		pointer_type := if flat.source_type_query(c_type).has(.c_pointer_suffix) {
 			fastc_output_c_type(flat.source_type_name(c_type))
 		} else {
 			fastc_output_c_type(flat.source_type_name(c_type)) + '*'
 		}
 		pointer := '((${pointer_type})((${inner})${separator}_object))'
 		return FastcRenderedExpression{
-			source: if flat.source_type_name(c_type).ends_with('*') {
+			source: if flat.source_type_query(c_type).has(.c_pointer_suffix) {
 				pointer
 			} else {
 				'*(${pointer})'
@@ -505,7 +505,7 @@ fn (g &Parser) render_cast_expression(tokens []FastcExpressionToken) ?FastcRende
 		operand := fastc_strip_paren_tokens(inner_tokens)
 		if operand.len == 1 && operand[0].tok == .name {
 			if local := g.locals[operand[0].lit] {
-				if local.is_reference && local.typ_text().ends_with('*') {
+				if local.is_reference && flat.source_type_query(local.typ).has(.c_pointer_suffix) {
 					value_type := flat.source_type_id(local.typ_text()[..local.typ_text().len - 1])
 					if fastc_is_integer_type(g.underlying_alias_type(value_type)) {
 						// Concrete mutable scalar parameters are a FastC extension;
@@ -1054,7 +1054,7 @@ fn (g &Parser) render_mutable_map_value_pointer(tokens []FastcExpressionToken) ?
 				g.render_raw_expression_tokens(base_tokens) or { return none }
 			}
 		}
-		map_address = if flat.source_type_name(map_type).ends_with('*') {
+		map_address = if flat.source_type_query(map_type).has(.c_pointer_suffix) {
 			map_source
 		} else {
 			'&(${map_source})'

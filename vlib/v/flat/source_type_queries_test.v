@@ -75,6 +75,17 @@ fn source_type_query_cases() []SourceTypeQueryCase {
 			negative: ['', ']', 'int', 'int[2] ', 'map[K]', '[2]', '[]', '[]int[2]', '&int', 'int[2',
 				'int]']
 		},
+		SourceTypeQueryCase{
+			flag:     .c_pointer_suffix
+			positive: ['*', 'int*', 'int**', ' int*', 'Array_int*', '&int*']
+			negative: ['', 'int', '&int', 'int* ', 'voidptr', 'byteptr', 'charptr', 'int*[2]']
+		},
+		SourceTypeQueryCase{
+			flag:     .unknown_fragment
+			positive: ['unknown', '[]unknown', 'unknown_type', 'pkg.unknown', 'notunknown', '?unknown']
+			negative: ['', 'Unknown', 'UNKNOWN', 'unk nown', 'typeof(x)', 'array', 'map', 'struct',
+				'Option[int]', '__v_option[int]', 'Result[int]']
+		},
 	]
 }
 

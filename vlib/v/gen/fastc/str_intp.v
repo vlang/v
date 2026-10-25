@@ -342,7 +342,7 @@ fn (mut g Parser) fastc_struct_field_str_expression(value_c string, field_c_type
 	}
 	if flat.source_type_name(ft).trim_right('*').starts_with('Array_') {
 		if helper := g.fastc_array_str_name(ft) {
-			value := if flat.source_type_name(ft).ends_with('*') {
+			value := if flat.source_type_query(ft).has(.c_pointer_suffix) {
 				'*(${value_c})'
 			} else {
 				value_c
@@ -352,7 +352,7 @@ fn (mut g Parser) fastc_struct_field_str_expression(value_c string, field_c_type
 	}
 	if flat.source_type_name(ft).trim_right('*').starts_with('Map_') {
 		if helper := g.fastc_map_str_name(ft) {
-			value := if flat.source_type_name(ft).ends_with('*') {
+			value := if flat.source_type_query(ft).has(.c_pointer_suffix) {
 				'*(${value_c})'
 			} else {
 				value_c
@@ -362,7 +362,7 @@ fn (mut g Parser) fastc_struct_field_str_expression(value_c string, field_c_type
 	}
 	if flat.source_type_name(ft).trim_right('*') in g.sum_types {
 		if helper := g.fastc_sumtype_str_helper(ft) {
-			value := if flat.source_type_name(ft).ends_with('*') {
+			value := if flat.source_type_query(ft).has(.c_pointer_suffix) {
 				'*(${value_c})'
 			} else {
 				value_c
@@ -373,10 +373,9 @@ fn (mut g Parser) fastc_struct_field_str_expression(value_c string, field_c_type
 	key := g.semantic_type_key(ft)
 	method_key := '${flat.source_type_name(key)}.str'
 	if method_signature := g.functions[method_key] {
-		expected_receiver := method_signature.parameter_types.at(0)
-		receiver := if expected_receiver.ends_with('*') && !flat.source_type_name(ft).ends_with('*') {
+		receiver := if flat.source_type_query(method_signature.parameter_types.ids[0]).has(.c_pointer_suffix) && !flat.source_type_query(ft).has(.c_pointer_suffix) {
 			'&(${value_c})'
-		} else if !expected_receiver.ends_with('*') && flat.source_type_name(ft).ends_with('*') {
+		} else if !flat.source_type_query(method_signature.parameter_types.ids[0]).has(.c_pointer_suffix) && flat.source_type_query(ft).has(.c_pointer_suffix) {
 			'*(${value_c})'
 		} else {
 			value_c
@@ -398,10 +397,10 @@ fn (mut g Parser) fastc_struct_field_str_expression(value_c string, field_c_type
 // pointee, or `&nil` for a null pointer. Returns none for raw pointers (`voidptr`,
 // `&u8`, `&char`), pointers to pointers, and pointees that cannot be rendered.
 fn (mut g Parser) fastc_pointer_str_name(pointer_c_type_id u32) ?string {
-	pointer_c_type := flat.source_type_name(pointer_c_type_id)
-	if !pointer_c_type.ends_with('*') {
+	if !flat.source_type_query(pointer_c_type_id).has(.c_pointer_suffix) {
 		return none
 	}
+	pointer_c_type := flat.source_type_name(pointer_c_type_id)
 	pointee := pointer_c_type[..pointer_c_type.len - 1].trim_space()
 	if pointee == '' || pointee.ends_with('*') || pointee in ['void', 'voidptr', 'u8', 'char',
 		'byte'] {
@@ -458,7 +457,7 @@ fn (mut g Parser) fastc_option_str_name(value_type u32) ?string {
 // and for pointers to primitives, which V prints as addresses.
 fn (mut g Parser) fastc_reference_str_expression(value string, value_type_id u32, value_tokens []FastcExpressionToken) ?string {
 	value_type := flat.source_type_name(value_type_id)
-	if !value_type.ends_with('*') || value_type.ends_with('**') {
+	if !flat.source_type_query(value_type_id).has(.c_pointer_suffix) || value_type.ends_with('**') {
 		return none
 	}
 	if g.is_reference_local_base(value_tokens, value_type_id)
@@ -540,7 +539,7 @@ fn (mut g Parser) read_interpolated_string() !string {
 		mut reference_part := ''
 		mut option_part := ''
 		if g.selfhost && format_specifier == '' {
-			if interpolation_type.ends_with('*') {
+			if flat.source_type_query(interpolation_type_id).has(.c_pointer_suffix) {
 				reference_part = g.fastc_reference_str_expression(value, interpolation_type_id,
 					value_tokens) or { '' }
 			} else if interpolation_type_id == fastc_type_option {
@@ -581,13 +580,21 @@ fn (mut g Parser) read_interpolated_string() !string {
 			helper := g.fastc_array_str_name(interpolation_type_id) or {
 				return g.unsupported('interpolation of array type `${flat.source_type_name(value_type)}`')
 			}
-			array_value := if interpolation_type.ends_with('*') { '*(${value})' } else { value }
+			array_value := if flat.source_type_query(interpolation_type_id).has(.c_pointer_suffix) {
+				'*(${value})'
+			} else {
+				value
+			}
 			parts << '${helper}(${array_value})'
 		} else if interpolation_type.trim_right('*').starts_with('Map_') {
 			helper := g.fastc_map_str_name(interpolation_type_id) or {
 				return g.unsupported('interpolation of map type `${flat.source_type_name(value_type)}`')
 			}
-			map_value := if interpolation_type.ends_with('*') { '*(${value})' } else { value }
+			map_value := if flat.source_type_query(interpolation_type_id).has(.c_pointer_suffix) {
+				'*(${value})'
+			} else {
+				value
+			}
 			parts << '${helper}(${map_value})'
 		} else if format_specifier == '+' && fastc_is_integer_expression_type(interpolation_type_id) {
 			// `${n:+}` signs a non-negative integer too.
@@ -598,7 +605,7 @@ fn (mut g Parser) read_interpolated_string() !string {
 		} else if g.declared_kinds[flat.source_type_name(g.semantic_type_key(interpolation_type_id))] == .enum_ {
 			enum_key := g.semantic_type_key(interpolation_type_id)
 			is_unsigned := g.enum_flags[flat.source_type_name(enum_key)]
-			enum_value := if interpolation_type.ends_with('*') {
+			enum_value := if flat.source_type_query(interpolation_type_id).has(.c_pointer_suffix) {
 				'(*(${value}))'
 			} else {
 				value
@@ -624,10 +631,9 @@ fn (mut g Parser) read_interpolated_string() !string {
 				enum_type := fastc_c_declared_type_name(flat.source_type_name(enum_key))
 				method_key := '${flat.source_type_name(enum_key)}.str'
 				enum_name := if method_signature := g.functions[method_key] {
-					expected_receiver := method_signature.parameter_types.at(0)
-					receiver := if expected_receiver.ends_with('*') && !interpolation_type.ends_with('*') {
+					receiver := if flat.source_type_query(method_signature.parameter_types.ids[0]).has(.c_pointer_suffix) && !flat.source_type_query(interpolation_type_id).has(.c_pointer_suffix) {
 						'&(${value})'
-					} else if !expected_receiver.ends_with('*') && interpolation_type.ends_with('*') {
+					} else if !flat.source_type_query(method_signature.parameter_types.ids[0]).has(.c_pointer_suffix) && flat.source_type_query(interpolation_type_id).has(.c_pointer_suffix) {
 						'*(${value})'
 					} else {
 						value
@@ -669,10 +675,9 @@ fn (mut g Parser) read_interpolated_string() !string {
 				receiver_key := g.semantic_type_key(interpolation_type_id)
 				method_key := '${flat.source_type_name(receiver_key)}.str'
 				if method_signature := g.functions[method_key] {
-					expected_receiver := method_signature.parameter_types.at(0)
-					receiver := if expected_receiver.ends_with('*') && !interpolation_type.ends_with('*') {
+					receiver := if flat.source_type_query(method_signature.parameter_types.ids[0]).has(.c_pointer_suffix) && !flat.source_type_query(interpolation_type_id).has(.c_pointer_suffix) {
 						'&(${value})'
-					} else if !expected_receiver.ends_with('*') && interpolation_type.ends_with('*') {
+					} else if !flat.source_type_query(method_signature.parameter_types.ids[0]).has(.c_pointer_suffix) && flat.source_type_query(interpolation_type_id).has(.c_pointer_suffix) {
 						'*(${value})'
 					} else {
 						value
@@ -681,7 +686,7 @@ fn (mut g Parser) read_interpolated_string() !string {
 					parts << '${method_c_name}(${receiver})'
 				} else if sumtype_helper := g.fastc_sumtype_str_helper(interpolation_type_id) {
 					// A boxed sum type dispatches `str()` on its runtime variant tag.
-					receiver := if interpolation_type.ends_with('*') {
+					receiver := if flat.source_type_query(interpolation_type_id).has(.c_pointer_suffix) {
 						'*(${value})'
 					} else {
 						value
@@ -691,7 +696,7 @@ fn (mut g Parser) read_interpolated_string() !string {
 					// No user `str()`: emit V's default `Type{...}` representation. A pointer
 					// value — a member smart-cast narrows a boxed variant to a `T*`, or the
 					// receiver itself is `&T` — must be deref'd for the by-value helper argument.
-					receiver := if interpolation_type.ends_with('*') || (g.selfhost && g.expression_uses_member_smartcast(value_tokens)) {
+					receiver := if flat.source_type_query(interpolation_type_id).has(.c_pointer_suffix) || (g.selfhost && g.expression_uses_member_smartcast(value_tokens)) {
 						'*(${value})'
 					} else {
 						value

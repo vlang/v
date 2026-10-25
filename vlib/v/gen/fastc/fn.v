@@ -807,7 +807,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 			receiver_key = flat.source_type_name(receiver_key_id)
 		}
 		g.expect(.rpar)!
-		receiver_is_reference := receiver_is_mut && !flat.source_type_name(receiver_type).ends_with('*')
+		receiver_is_reference := receiver_is_mut && !flat.source_type_query(receiver_type).has(.c_pointer_suffix)
 		receiver_parameter_type := if receiver_is_reference {
 			flat.source_type_id(flat.source_type_name(receiver_type) + '*')
 		} else {
@@ -1495,7 +1495,7 @@ fn (mut g Parser) parse_parameters(function_key string, parameter_offset int) ![
 		fn_parameters := g.pending_fn_parameters
 		parameter_index := parameter_offset + params.len
 		is_generic_value := g.in_mono_drain && parameter_index < mono_signature.parameter_generic_values.len && mono_signature.parameter_generic_values[parameter_index]
-		is_reference := is_mut && (!flat.source_type_name(type_name).ends_with('*') || is_generic_value)
+		is_reference := is_mut && (!flat.source_type_query(type_name).has(.c_pointer_suffix) || is_generic_value)
 		if is_reference {
 			type_name = flat.source_type_id(flat.source_type_name(type_name) + '*')
 		}

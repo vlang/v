@@ -14,6 +14,8 @@ pub enum SourceTypeQuery {
 	struct_candidate
 	fixed_array_prefix
 	fixed_array_postfix
+	c_pointer_suffix
+	unknown_fragment
 }
 
 @[direct_array_access]
@@ -43,6 +45,9 @@ fn source_type_spelling_query(text string, shape SourceTypeShape) SourceTypeQuer
 	// These counters deliberately allow crossing delimiters, matching the original query.
 	if complete && parens == 0 && brackets == 0 { query.set(.complete) }
 	if text.contains('generic') { query.set(.generic_word) }
+	if text.ends_with('*') { query.set(.c_pointer_suffix) }
+	// The declaration screen already excludes every spelling containing unknown.
+	if shape.has(.unusable_decl) && text.contains('unknown') { query.set(.unknown_fragment) }
 	if text.starts_with('thread') { query.set(.thread_prefix) }
 	if source_type_spelling_channel(text) { query.set(.channel) }
 	if source_type_spelling_shared_modifier(text) { query.set(.shared_modifier) }

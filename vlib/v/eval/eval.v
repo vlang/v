@@ -6587,7 +6587,7 @@ fn (e &Eval) struct_field_value_string(value Value) string {
 fn (e &Eval) enum_value_string(value EnumValue) string {
 	enum_name := e.normalize_type_name(value.type_name)
 	if fields := e.enum_fields[flat.source_type_name(enum_name)] {
-		module_name := if flat.source_type_name(enum_name).contains('.') {
+		module_name := if flat.source_type_shape(enum_name).has(.dotted) {
 			flat.source_type_name(enum_name).all_before_last('.')
 		} else {
 			e.current_module_name()

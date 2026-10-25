@@ -2478,7 +2478,7 @@ fn fastc_composite_definition_positions(source string) map[string]int {
 
 fn fastc_by_value_composite_type(field_type u32, by_value_composite_names map[string]bool, alias_base_types flat.TypeTextBindings) string {
 	field_type_text := flat.source_type_name(field_type)
-	if field_type_text.ends_with('*') || field_type_text.starts_with('Array_') || field_type_text.starts_with('Map_') {
+	if flat.source_type_query(field_type).has(.c_pointer_suffix) || field_type_text.starts_with('Array_') || field_type_text.starts_with('Map_') {
 		return ''
 	}
 	mut candidate := field_type
@@ -2498,7 +2498,7 @@ fn fastc_by_value_composite_type(field_type u32, by_value_composite_names map[st
 		}
 		seen_aliases[candidate] = true
 		candidate = alias_base_types.value_id(name)
-		if flat.source_type_name(candidate).ends_with('*') {
+		if flat.source_type_query(candidate).has(.c_pointer_suffix) {
 			return ''
 		}
 	}
@@ -3779,7 +3779,7 @@ fn fastc_emit_function_alias(mut scan scanner.Scanner, source_file FastcSourceFi
 			parameter_type_source_id, next_token := fastc_scan_type(mut scan, tok, source_file.path, source_file.header.module_name, source_file.header.imports, declared_types, allow_short_placeholders)!
 			parameter_type := parameter_type_source_id
 
-			parameter_types << if parameter_is_mut && !flat.source_type_name(parameter_type).ends_with('*') {
+			parameter_types << if parameter_is_mut && !flat.source_type_query(parameter_type).has(.c_pointer_suffix) {
 				flat.source_type_id(flat.source_type_name(parameter_type) + '*')
 			} else {
 				parameter_type
@@ -3789,7 +3789,7 @@ fn fastc_emit_function_alias(mut scan scanner.Scanner, source_file FastcSourceFi
 			parameter_type_source_id_2, next_token := fastc_scan_type(mut scan, tok, source_file.path, source_file.header.module_name, source_file.header.imports, declared_types, allow_short_placeholders)!
 			parameter_type := parameter_type_source_id_2
 
-			parameter_types << if parameter_is_mut && !flat.source_type_name(parameter_type).ends_with('*') {
+			parameter_types << if parameter_is_mut && !flat.source_type_query(parameter_type).has(.c_pointer_suffix) {
 				flat.source_type_id(flat.source_type_name(parameter_type) + '*')
 			} else {
 				parameter_type
