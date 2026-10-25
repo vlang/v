@@ -8,6 +8,14 @@ pub enum CommandKind {
 	scissor
 }
 
+pub enum BlendMode {
+	none
+	alpha
+	add
+	multiply
+	screen
+}
+
 pub struct Command {
 pub mut:
 	kind            CommandKind
@@ -18,7 +26,7 @@ pub mut:
 	image           gfx.Image
 	sampler         gfx.Sampler
 	uniform_index   int
-	blend_additive  bool
+	blend_mode      BlendMode
 	x               int
 	y               int
 	w               int

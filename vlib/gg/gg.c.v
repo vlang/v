@@ -171,8 +171,10 @@ pub:
 @[heap]
 pub struct PipelineContainer {
 pub mut:
-	alpha render.Pipeline
-	add   render.Pipeline
+	alpha    render.Pipeline
+	add      render.Pipeline
+	multiply render.Pipeline
+	screen   render.Pipeline
 }
 
 fn (mut container PipelineContainer) init_pipeline(r &render.Context) {
@@ -203,6 +205,32 @@ fn (mut container PipelineContainer) init_pipeline(r &render.Context) {
 		}
 	}
 	container.add = r.make_pipeline(add_pipdesc)
+
+	// Multiply
+	mut mul_pipdesc := gfx.PipelineDesc{}
+	unsafe { vmemset(&mul_pipdesc, 0, int(sizeof(mul_pipdesc))) }
+	mul_pipdesc.label = c'multiply-pipeline'
+	mul_pipdesc.colors[0] = gfx.ColorTargetState{
+		blend: gfx.BlendState{
+			enabled:        true
+			src_factor_rgb: .dst_color
+			dst_factor_rgb: .one_minus_src_alpha
+		}
+	}
+	container.multiply = r.make_pipeline(mul_pipdesc)
+
+	// Screen
+	mut screen_pipdesc := gfx.PipelineDesc{}
+	unsafe { vmemset(&screen_pipdesc, 0, int(sizeof(screen_pipdesc))) }
+	screen_pipdesc.label = c'screen-pipeline'
+	screen_pipdesc.colors[0] = gfx.ColorTargetState{
+		blend: gfx.BlendState{
+			enabled:        true
+			src_factor_rgb: .one_minus_dst_color
+			dst_factor_rgb: .one
+		}
+	}
+	container.screen = r.make_pipeline(screen_pipdesc)
 }
 
 @[heap]

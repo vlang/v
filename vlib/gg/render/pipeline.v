@@ -6,9 +6,9 @@ pub const num_primitive_types = 6
 
 pub struct Pipeline {
 pub mut:
-	id             int
-	blend_additive bool
-	pips           [num_primitive_types]gfx.Pipeline
+	id         int
+	blend_mode BlendMode
+	pips       [num_primitive_types]gfx.Pipeline
 }
 
 pub fn (ctx &Context) make_pipeline(desc gfx.PipelineDesc) Pipeline {
@@ -21,7 +21,20 @@ pub fn (ctx &Context) make_pipeline(desc gfx.PipelineDesc) Pipeline {
 	}
 	p.id = st.next_pipeline_id
 	st.next_pipeline_id++
-	p.blend_additive = (desc.colors[0].blend.dst_factor_rgb == .one)
+	// determine blend mode from blend state
+	if desc.colors[0].blend.enabled {
+		if desc.colors[0].blend.src_factor_rgb == .src_alpha && desc.colors[0].blend.dst_factor_rgb == .one {
+			p.blend_mode = .add
+		} else if desc.colors[0].blend.src_factor_rgb == .dst_color {
+			p.blend_mode = .multiply
+		} else if desc.colors[0].blend.src_factor_rgb == .one_minus_dst_color {
+			p.blend_mode = .screen
+		} else {
+			p.blend_mode = .alpha
+		}
+	} else {
+		p.blend_mode = .none
+	}
 
 	for i in 0 .. num_primitive_types {
 		mut d := desc

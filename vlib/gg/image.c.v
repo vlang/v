@@ -463,6 +463,8 @@ pub fn (ctx &Context) draw_image_with_config(config DrawImageConfig) {
 	match config.effect {
 		.alpha { ctx.r.load_pipeline(ctx.pipeline.alpha) }
 		.add { ctx.r.load_pipeline(ctx.pipeline.add) }
+		.multiply { ctx.r.load_pipeline(ctx.pipeline.multiply) }
+		.screen { ctx.r.load_pipeline(ctx.pipeline.screen) }
 	}
 
 	ctx.r.enable_texture()

@@ -274,11 +274,26 @@ fn rasterize_tri(mut frame Frame, st &State, cmd Command, uni Uniform, vp Viewpo
 			mut ng := f32(0)
 			mut nb := f32(0)
 			mut na := f32(0)
-			if cmd.blend_additive {
+			if cmd.blend_mode == .add {
 				nr = tr + dr
 				ng = tg + dg
 				nb = tb + db
 				na = ta + da
+			} else if cmd.blend_mode == .multiply {
+				nr = tr * dr
+				ng = tg * dg
+				nb = tb * db
+				na = ta * da
+			} else if cmd.blend_mode == .screen {
+				nr = 1.0 - (1.0 - tr) * (1.0 - dr)
+				ng = 1.0 - (1.0 - tg) * (1.0 - dg)
+				nb = 1.0 - (1.0 - tb) * (1.0 - db)
+				na = ta + da * (1.0 - ta)
+			} else if cmd.blend_mode == .none {
+				nr = tr
+				ng = tg
+				nb = tb
+				na = ta
 			} else {
 				nr = tr + dr * (1.0 - ta)
 				ng = tg + dg * (1.0 - ta)

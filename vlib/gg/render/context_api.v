@@ -67,16 +67,16 @@ pub fn (ctx &Context) end() {
 	} else {
 		if st.commands_count < st.commands.len {
 			cmd := Command{
-				kind:           .draw
-				primitive:      st.cur_prim
-				base_vertex:    st.base_vertex
-				num_vertices:   st.vertex_count - st.base_vertex
-				pipeline:       pip.pips[primitive_index(st.cur_prim)]
-				image:          img
-				sampler:        smp
-				uniform_index:  st.uniforms_count - 1
-				blend_additive: pip.blend_additive
-				layer_id:       st.layer_id
+				kind:          .draw
+				primitive:     st.cur_prim
+				base_vertex:   st.base_vertex
+				num_vertices:  st.vertex_count - st.base_vertex
+				pipeline:      pip.pips[primitive_index(st.cur_prim)]
+				image:         img
+				sampler:       smp
+				uniform_index: st.uniforms_count - 1
+				blend_mode:    pip.blend_mode
+				layer_id:      st.layer_id
 			}
 			st.commands[st.commands_count] = cmd
 			st.commands_count++
