@@ -16444,7 +16444,8 @@ fn (tc &TypeChecker) lexical_smartcast_type_in_parents(id flat.NodeId, key strin
 				}
 				for binding in bindings {
 					branch_id := tc.a.child(parent, branch_index)
-					if binding.name == key && !tc.branch_writes_key_before(branch_id, id, key) {
+					if binding.name == key
+						&& !tc.branch_writes_key_before(branch_id, id, key, binding.typ) {
 						return binding.typ
 					}
 				}
@@ -16465,7 +16466,7 @@ fn (tc &TypeChecker) lexical_smartcast_type_in_parents(id flat.NodeId, key strin
 			if body_index >= 3 && tc.condition_may_smartcast_key(tc.a.child(parent, 1), key) {
 				for binding in tc.extract_smartcasts(tc.a.child(parent, 1)) {
 					if binding.name == key
-						&& !tc.for_body_writes_key_before(parent, body_index, current, key) {
+						&& !tc.for_body_writes_key_before(parent, body_index, current, key, binding.typ) {
 						return binding.typ
 					}
 				}
@@ -16475,6 +16476,9 @@ fn (tc &TypeChecker) lexical_smartcast_type_in_parents(id flat.NodeId, key strin
 		} else if depth <= 64 && parent.kind == .match_stmt && tc.valid_node_id(match_branch) {
 			branch := tc.a.node(match_branch)
 			if typ := tc.lexical_match_branch_smartcast_type(parent, branch, key) {
+				if tc.branch_writes_key_before(match_branch, id, key, typ) {
+					return none
+				}
 				return typ
 			}
 			// An unrelated inner match leaves an enclosing narrowing available.
@@ -16498,45 +16502,64 @@ fn (tc &TypeChecker) lexical_smartcast_type_in_parents(id flat.NodeId, key strin
 }
 
 // for_body_writes_key_before reports whether any loop-body statement up to and
-// including `current` (the statement holding the checked node) assigns `key`.
-// Such a write invalidates the loop-condition narrowing for the rest of that
-// iteration, so the lexical fallback must not restore it.
-fn (tc &TypeChecker) for_body_writes_key_before(parent flat.Node, body_index int, current flat.NodeId, key string) bool {
+// including `current` (the statement holding the checked node) ends the narrowing
+// of `key` to `narrowed` (see subtree_ends_narrowing). Such a write invalidates the
+// loop-condition narrowing for the rest of that iteration, so the lexical fallback
+// must not restore it.
+fn (tc &TypeChecker) for_body_writes_key_before(parent flat.Node, body_index int, current flat.NodeId, key string, narrowed Type) bool {
 	for i in 3 .. body_index {
-		if tc.subtree_assigns_key(tc.a.child(parent, i), key) {
+		if tc.subtree_ends_narrowing(tc.a.child(parent, i), key, narrowed, true) {
 			return true
 		}
 	}
-	return tc.subtree_assigns_key(current, key)
+	return tc.subtree_ends_narrowing(current, key, narrowed, true)
 }
 
-// branch_writes_key_before reports whether an earlier statement in a branch
-// invalidates `key` before `target` is evaluated.
-fn (tc &TypeChecker) branch_writes_key_before(branch_id flat.NodeId, target flat.NodeId, key string) bool {
+// branch_writes_key_before reports whether a statement that runs before `target`
+// in a branch ends the narrowing of `key` to `narrowed`: an earlier statement of
+// the branch, or an assignment in an earlier statement of a block in the branch
+// that holds `target` (`if c { x = 'a' ... }` inside `if mut x is int`). A call
+// that may write `key` through a `mut` argument or receiver ends it only as a
+// statement of an `if` branch itself, as it always did: code relies on the
+// narrowing surviving such calls in nested blocks and in `match` branches.
+fn (tc &TypeChecker) branch_writes_key_before(branch_id flat.NodeId, target flat.NodeId, key string, narrowed Type) bool {
 	if !tc.valid_node_id(branch_id) || !tc.valid_node_id(target) {
 		return false
 	}
 	branch := tc.a.node(branch_id)
-	if branch.kind != .block {
+	if branch.kind !in [.block, .match_branch] {
 		return false
 	}
-	mut direct_child := target
+	calls := branch.kind == .block
+	mut child := target
 	for _ in 0 .. 128 {
-		parent_id := tc.direct_parent_id(direct_child)
-		if parent_id == branch_id {
-			break
-		}
+		parent_id := tc.direct_parent_id(child)
 		if !tc.valid_node_id(parent_id) {
 			return false
 		}
-		direct_child = parent_id
+		if parent_id == branch_id {
+			return tc.statements_before_end_narrowing(parent_id, child, key, narrowed, calls)
+		}
+		if tc.a.node(parent_id).kind in [.block, .match_branch, .for_stmt, .for_in_stmt, .lock_expr,
+			.defer_stmt, .select_branch]
+			&& tc.statements_before_end_narrowing(parent_id, child, key, narrowed, false) {
+			return true
+		}
+		child = parent_id
 	}
-	for i in 0 .. branch.children_count {
-		child_id := tc.a.child(branch, i)
-		if child_id == direct_child {
+	return tc.statements_before_end_narrowing(branch_id, flat.empty_node, key, narrowed, calls)
+}
+
+// statements_before_end_narrowing reports whether a child of `parent_id` before
+// `child` ends the narrowing of `key` to `narrowed` (see subtree_ends_narrowing).
+fn (tc &TypeChecker) statements_before_end_narrowing(parent_id flat.NodeId, child flat.NodeId, key string, narrowed Type, calls bool) bool {
+	parent := tc.a.node(parent_id)
+	for i in 0 .. parent.children_count {
+		child_id := tc.a.child(parent, i)
+		if child_id == child {
 			return false
 		}
-		if tc.subtree_assigns_key(child_id, key) {
+		if tc.subtree_ends_narrowing(child_id, key, narrowed, calls) {
 			return true
 		}
 	}
@@ -16616,14 +16639,36 @@ fn (tc &TypeChecker) write_invalidates_key(write_key string, key string) bool {
 // swapping a sum's active variant), which changes the runtime tag just like a
 // direct assignment.
 fn (tc &TypeChecker) subtree_assigns_key(root flat.NodeId, key string) bool {
+	return tc.subtree_ends_narrowing(root, key, none, true)
+}
+
+// write_keeps_narrowing reports whether the assignment `node`, pair `i`, which
+// writes the narrowed value itself (`exact`), keeps it narrowed to `narrowed`.
+fn (tc &TypeChecker) write_keeps_narrowing(node &flat.Node, i int, exact bool, narrowed ?Type) bool {
+	if !exact {
+		return false
+	}
+	typ := narrowed or { return false }
+	return tc.assignment_keeps_narrowing(node.op, tc.a.child(node, i), tc.a.child(node, i + 1),
+		typ)
+}
+
+// subtree_ends_narrowing is subtree_assigns_key for a `key` narrowed to `narrowed`:
+// an assignment to `key` itself that keeps it narrowed (see
+// assignment_keeps_narrowing) is not a write. Without `narrowed`, every
+// assignment is one. Mutating calls count only with `calls`.
+fn (tc &TypeChecker) subtree_ends_narrowing(root flat.NodeId, key string, narrowed ?Type, calls bool) bool {
 	if !tc.valid_node_id(root) {
 		return false
 	}
 	node := tc.a.node(root)
-	if node.kind == .assign {
+	// The parser gives `b.v = x` and `a[i] = x` their own kinds.
+	if node.kind in [.assign, .selector_assign, .index_assign] {
 		mut i := 0
 		for i + 1 < node.children_count {
-			if tc.write_invalidates_key(tc.expr_key(tc.a.child(node, i)), key) {
+			write_key := tc.expr_key(tc.a.child(node, i))
+			if tc.write_invalidates_key(write_key, key)
+				&& !tc.write_keeps_narrowing(node, i, write_key == key, narrowed) {
 				return true
 			}
 			i += 2
@@ -16641,7 +16686,7 @@ fn (tc &TypeChecker) subtree_assigns_key(root flat.NodeId, key string) bool {
 				return true
 			}
 		}
-	} else if node.kind == .call {
+	} else if node.kind == .call && calls {
 		// Child 0 is the callee; the arguments follow. A `mut` argument lets the callee
 		// overwrite the passed lvalue (for example `replace(mut x)` swapping a sum's
 		// active variant), which changes the runtime tag just like a direct assignment.
@@ -16687,7 +16732,8 @@ fn (tc &TypeChecker) subtree_assigns_key(root flat.NodeId, key string) bool {
 		// Assignments and mutating calls always have children. Avoid recursing into
 		// the much more numerous ident/literal leaves, which cannot invalidate a
 		// smartcast on their own.
-		if tc.a.node(child_id).children_count > 0 && tc.subtree_assigns_key(child_id, key) {
+		if tc.a.node(child_id).children_count > 0
+			&& tc.subtree_ends_narrowing(child_id, key, narrowed, calls) {
 			return true
 		}
 	}
@@ -16766,6 +16812,16 @@ fn (mut tc TypeChecker) invalidate_smartcasts_for_write_key(key string) {
 		return
 	}
 	tc.smartcasts.delete(key)
+	tc.invalidate_smartcast_descendants_for_write_key(key)
+}
+
+// invalidate_smartcast_descendants_for_write_key ends the narrowings of the fields
+// of `key` (`b.v` for `b`) after an assignment that keeps `key` itself narrowed:
+// the new value has the same variant, but its fields can hold any of theirs.
+fn (mut tc TypeChecker) invalidate_smartcast_descendants_for_write_key(key string) {
+	if key == '' {
+		return
+	}
 	prefix := '${key}.'
 	for child_key in tc.smartcasts.keys() {
 		if child_key.starts_with(prefix) {

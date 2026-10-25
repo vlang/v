@@ -20236,6 +20236,7 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 	mut ownership_lhs_types := []Type{}
 	mut ownership_rhs_types := []Type{}
 	mut smartcast_write_keys := []string{}
+	mut smartcast_descendant_write_keys := []string{}
 	mut option_assignment_smartcasts := []LocalBinding{}
 	assignment_is_translated := tc.node_is_from_translated_file(node)
 	is_cross_assignment := node.op == .assign && node.children_count > 2
@@ -20338,9 +20339,10 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 		lhs_type := if unknown_assign_ident {
 			builtin_void_type
 		} else if node.kind == .index_assign {
-			tc.resolve_index_lvalue_type(lhs_id, node.op)
+			tc.compound_assignment_lvalue_type(lhs_id, node.op, tc.resolve_index_lvalue_type(lhs_id,
+				node.op))
 		} else {
-			tc.resolve_lvalue_type(lhs_id)
+			tc.compound_assignment_lvalue_type(lhs_id, node.op, tc.resolve_lvalue_type(lhs_id))
 		}
 		if lhs_node.kind == .selector && lhs_type is Void && lhs_node.children_count > 0 {
 			base_id := tc.a.child(&lhs_node, 0)
@@ -20349,8 +20351,9 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 			}
 		}
 		tc.remember_expr_type(lhs_id, lhs_type)
-		expected_type := tc.assignment_expected_type(lhs_id, lhs_type)
 		source_rhs_type := tc.resolve_type(rhs_id)
+		expected_type := tc.narrowed_sum_assignment_expected_type(node.op, lhs_id, rhs_id,
+			source_rhs_type, tc.assignment_expected_type(lhs_id, lhs_type))
 		tc.annotate_expected_expr(rhs_id, expected_type)
 		saved_mut_binding_value_id := tc.mut_binding_value_id
 		if node.op == .assign && lhs_node.kind == .ident && lhs_node.value != '_'
@@ -20682,7 +20685,9 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 					name: lhs_key
 					typ:  smartcast
 				}
-			} else if !tc.assignment_preserves_smartcast(lhs_id, rhs_id, source_rhs_type) {
+			} else if tc.assignment_preserves_smartcast(node.op, lhs_id, rhs_id, source_rhs_type) {
+				smartcast_descendant_write_keys << lhs_key
+			} else {
 				smartcast_write_keys << lhs_key
 			}
 		}
@@ -20690,6 +20695,9 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 	}
 	for key in smartcast_write_keys {
 		tc.invalidate_smartcasts_for_write_key(key)
+	}
+	for key in smartcast_descendant_write_keys {
+		tc.invalidate_smartcast_descendants_for_write_key(key)
 	}
 	for smartcast in option_assignment_smartcasts {
 		tc.smartcasts[smartcast.name] = smartcast.typ
@@ -20714,19 +20722,22 @@ fn (mut tc TypeChecker) check_valid_assign(id flat.NodeId, node flat.Node) {
 		return
 	}
 	mut smartcast_write_keys := []string{}
+	mut smartcast_descendant_write_keys := []string{}
 	mut option_assignment_smartcasts := []LocalBinding{}
 	mut i := 0
 	for i + 1 < node.children_count {
 		lhs_id := tc.a.child(&node, i)
 		rhs_id := tc.a.child(&node, i + 1)
 		lhs_type := if node.kind == .index_assign {
-			tc.resolve_index_lvalue_type(lhs_id, node.op)
+			tc.compound_assignment_lvalue_type(lhs_id, node.op, tc.resolve_index_lvalue_type(lhs_id,
+				node.op))
 		} else {
-			tc.resolve_lvalue_type(lhs_id)
+			tc.compound_assignment_lvalue_type(lhs_id, node.op, tc.resolve_lvalue_type(lhs_id))
 		}
 		tc.remember_expr_type(lhs_id, lhs_type)
-		expected_type := tc.assignment_expected_type(lhs_id, lhs_type)
 		source_rhs_type := tc.resolve_type(rhs_id)
+		expected_type := tc.narrowed_sum_assignment_expected_type(node.op, lhs_id, rhs_id,
+			source_rhs_type, tc.assignment_expected_type(lhs_id, lhs_type))
 		tc.annotate_expected_expr(rhs_id, expected_type)
 		tc.check_node_with_expected_context(rhs_id, expected_type)
 		_ = tc.resolve_expr(rhs_id, expected_type)
@@ -20751,7 +20762,9 @@ fn (mut tc TypeChecker) check_valid_assign(id flat.NodeId, node flat.Node) {
 					name: lhs_key
 					typ:  smartcast
 				}
-			} else if !tc.assignment_preserves_smartcast(lhs_id, rhs_id, source_rhs_type) {
+			} else if tc.assignment_preserves_smartcast(node.op, lhs_id, rhs_id, source_rhs_type) {
+				smartcast_descendant_write_keys << lhs_key
+			} else {
 				smartcast_write_keys << lhs_key
 			}
 		}
@@ -20759,6 +20772,9 @@ fn (mut tc TypeChecker) check_valid_assign(id flat.NodeId, node flat.Node) {
 	}
 	for key in smartcast_write_keys {
 		tc.invalidate_smartcasts_for_write_key(key)
+	}
+	for key in smartcast_descendant_write_keys {
+		tc.invalidate_smartcast_descendants_for_write_key(key)
 	}
 	for smartcast in option_assignment_smartcasts {
 		tc.smartcasts[smartcast.name] = smartcast.typ
