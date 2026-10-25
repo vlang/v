@@ -3117,7 +3117,7 @@ fn (t &Transformer) type_pattern_name(id flat.NodeId) u32 {
 			return t.fn_value_type_name(id) or { u32(0) }
 		}
 		.ident {
-			return flat.source_type_id(node.value)
+			return node.source_value_id()
 		}
 		.selector {
 			if node.children_count == 0 {

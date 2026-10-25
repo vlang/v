@@ -3,6 +3,22 @@ module transform
 import v.flat
 import v.types
 
+fn test_match_type_patterns_use_original_spelling_ids() {
+	mut a := flat.FlatAst.new()
+	spelling := flat.source_type_id('First')
+	pattern := a.add_node(flat.Node{
+		kind:         .ident
+		source_value: spelling
+		typ:          flat.source_type_bool
+	})
+	legacy := a.add_node(flat.Node{ kind: .ident, value: 'Second' })
+	mut tc := types.TypeChecker.new(&a)
+	t := new_transformer(mut a, &tc, map[string]bool{})
+	assert t.a.node(pattern).value == ''
+	assert t.type_pattern_name(pattern) == spelling
+	assert t.type_pattern_name(legacy) == flat.source_type_id('Second')
+}
+
 fn test_generic_source_value_substitution_preserves_operand_role() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
