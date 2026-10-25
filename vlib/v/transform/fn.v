@@ -3461,7 +3461,10 @@ fn (mut t Transformer) call_param_types_for_node(call_name string, node flat.Nod
 			}
 		}
 	}
-	return t.call_param_types(call_name)
+	if call_name == '' || isnil(t.tc) {
+		return []types.Type{}
+	}
+	return t.tc.fn_param_types[call_name] or { []types.Type{} }
 }
 
 fn (t &Transformer) implicit_veb_call_param_types(call_name string) ?[]types.Type {
@@ -3580,8 +3583,21 @@ fn (mut t Transformer) call_param_types_from_decl(call_name string) ?[]types.Typ
 		return none
 	}
 	t.ensure_call_param_types_decl_index()
-	decl := t.call_param_types_decl_index[call_name] or { return none }
+	if !isnil(t.call_param_types_recent) {
+		state, params := t.call_param_types_recent.get(call_name)
+		if state > 0 {
+			return params
+		}
+		if state < 0 {
+			return none
+		}
+	}
+	decl := t.call_param_types_decl_index[call_name] or {
+		t.cache_call_param_types(call_name, []types.Type{}, -1)
+		return none
+	}
 	if params := t.call_param_types_decl_cache[decl.idx] {
+		t.cache_call_param_types(call_name, params, 1)
 		return params
 	}
 	node := t.a.nodes[decl.idx]
@@ -3612,7 +3628,9 @@ fn (mut t Transformer) call_param_types_from_decl(call_name string) ?[]types.Typ
 		}
 	}
 	t.ensure_private_call_param_types_decl_cache()
-	t.call_param_types_decl_cache[decl.idx] = params.clone()
+	cached_params := params.clone()
+	t.call_param_types_decl_cache[decl.idx] = cached_params
+	t.cache_call_param_types(call_name, cached_params, 1)
 	return params
 }
 
@@ -3621,6 +3639,8 @@ fn (mut t Transformer) ensure_call_param_types_decl_index() {
 		return
 	}
 	t.ensure_private_call_param_types_decl_cache()
+	t.call_param_types_recent = unsafe { nil }
+	t.clear_fn_return_name_cache()
 	t.call_param_types_decl_index.clear()
 	if !isnil(t.tc) && t.tc.top_level_idx.len > 0 {
 		t.call_param_types_decl_index.reserve(u32(t.tc.top_level_idx.len * 3))
@@ -3715,6 +3735,8 @@ fn (mut t Transformer) add_call_param_types_decl_key(key string, idx int, file s
 	// parallel batches. Make the next snapshot include its signature too.
 	t.call_param_types_prepared = false
 	t.ensure_private_call_param_types_decl_cache()
+	t.call_param_types_recent = unsafe { nil }
+	t.clear_fn_return_name_cache()
 	if key !in t.call_param_types_decl_index {
 		t.call_param_types_decl_index[key] = FnParamDeclRef{
 			idx:    idx
@@ -7412,8 +7434,8 @@ fn (mut t Transformer) build_auto_str_helper_fn(aggregate_id u32) {
 	t.mark_fn_used_name(helper_key)
 	if !isnil(t.tc) {
 		t.tc.ensure_private_transform_signatures()
-		t.tc.fn_ret_types[helper] = t.tc.parse_type(flat.source_type_string)
-		t.tc.fn_ret_types[helper_key] = t.tc.parse_type(flat.source_type_string)
+		t.tc.register_generated_fn_return_type(helper, t.tc.parse_type(flat.source_type_string))
+		t.tc.register_generated_fn_return_type(helper_key, t.tc.parse_type(flat.source_type_string))
 		t.tc.register_generated_fn_param_types(helper, [*t.tc.parse_type(aggregate_id)])
 		t.tc.register_generated_fn_param_types(helper_key, [
 			*t.tc.parse_type(aggregate_id),
@@ -11782,7 +11804,7 @@ fn (mut t Transformer) build_default_clone_helper_fn(typ_id u32) {
 		// the master's maps here, so an in-place write would race with the other
 		// workers and publish a key owned by this worker's disposable arena.
 		t.tc.ensure_private_transform_signatures()
-		t.tc.fn_ret_types[helper] = t.tc.parse_type(typ_id)
+		t.tc.register_generated_fn_return_type(helper, t.tc.parse_type(typ_id))
 		t.tc.register_generated_fn_param_types(helper, [*t.tc.parse_type(flat.source_type_voidptr)])
 		t.tc.fn_variadic[helper] = false
 		t.tc_signature_names_log << helper
@@ -14009,7 +14031,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	if !isnil(t.tc) {
 		t.tc.ensure_private_transform_signatures()
 		ret := t.tc.parse_type(ret_type_source_id)
-		t.tc.fn_ret_types[name] = ret
+		t.tc.register_generated_fn_return_type(name, ret)
 		t.tc.register_generated_fn_param_types(name, param_types.clone())
 		t.tc.fn_variadic[name] = false
 		t.add_receiver_method_suffix_index(name)
@@ -14017,7 +14039,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 		if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
 			qname := '${t.cur_module}.${name}'
 			t.set_fn_ret_type(qname, ret_type_source_id)
-			t.tc.fn_ret_types[qname] = ret
+			t.tc.register_generated_fn_return_type(qname, ret)
 			t.tc.register_generated_fn_param_types(qname, param_types.clone())
 			t.tc.fn_variadic[qname] = false
 			t.add_receiver_method_suffix_index(qname)
@@ -16344,11 +16366,16 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 				return none
 			} else if t.is_known_fn_name(resolved_method) {
 				params := t.call_param_types(resolved_method)
-				if t.resolved_call_uses_receiver_type(base_id, base_type, params) {
+				receiver_param_type := if params.len > 0 {
+					t.semantic_type_name(params[0])
+				} else {
+					u32(0)
+				}
+				if t.resolved_call_uses_receiver_type(base_id, base_type, params, receiver_param_type) {
 					if !t.validate_resolved_receiver_method_args(node, base_id, resolved_method) {
 						return t.make_empty()
 					}
-					args := t.transform_receiver_method_args_with_base(node, t.receiver_base_for_resolved_method(base_id, resolved_method), resolved_method)
+					args := t.transform_receiver_method_args_with_params(node, t.receiver_base_for_resolved_method(base_id, resolved_method, params, receiver_param_type), resolved_method, params, receiver_param_type)
 					ret_type_source_id_6 := t.receiver_method_return_type(resolved_method, node.typ)
 
 					if !t.validate_specialized_call_result(id, ret_type_source_id_6) {
@@ -16385,13 +16412,18 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 			}
 			if t.is_known_fn_name(resolved_method) {
 				params := t.call_param_types(resolved_method)
-				if !t.resolved_call_uses_receiver_type(base_id, base_type, params) {
+				receiver_param_type := if params.len > 0 {
+					t.semantic_type_name(params[0])
+				} else {
+					u32(0)
+				}
+				if !t.resolved_call_uses_receiver_type(base_id, base_type, params, receiver_param_type) {
 					return none
 				}
 				if !t.validate_resolved_receiver_method_args(node, base_id, resolved_method) {
 					return t.make_empty()
 				}
-				args := t.transform_receiver_method_args_with_base(node, t.receiver_base_for_resolved_method(base_id, resolved_method), resolved_method)
+				args := t.transform_receiver_method_args_with_params(node, t.receiver_base_for_resolved_method(base_id, resolved_method, params, receiver_param_type), resolved_method, params, receiver_param_type)
 				ret_type_source_id_8 := t.receiver_method_return_type(resolved_method, node.typ)
 
 				if !t.validate_specialized_call_result(id, ret_type_source_id_8) {
@@ -16405,7 +16437,7 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 		if !t.validate_resolved_receiver_method_args(node, base_id, sum_method) {
 			return t.make_empty()
 		}
-		args := t.transform_receiver_method_args_with_base(node, t.receiver_base_for_resolved_method(base_id, sum_method), sum_method)
+		args := t.transform_receiver_method_args(node, base_id, sum_method)
 		ret_type_source_id_9 := t.receiver_method_return_type(sum_method, node.typ)
 
 		if !t.validate_specialized_call_result(id, ret_type_source_id_9) {
@@ -17549,6 +17581,10 @@ fn (t &Transformer) receiver_method_name_is_open_generic(method_name string) boo
 	}
 	if method_name.contains('.') {
 		receiver := owner_name_view(method_name)
+		// Collection and generic application receivers both require a bracket.
+		if !receiver.contains('[') {
+			return false
+		}
 		if collection_receiver := receiver_collection_method_type(flat.source_type_id(receiver)) {
 			return t.generic_arg_is_unresolved_collection_type(collection_receiver)
 		}
@@ -17667,12 +17703,12 @@ fn is_builder_type_name(typ_id u32, module_name string) bool {
 
 // resolved_call_uses_receiver_type
 // supports helper handling in transform.
-fn (t &Transformer) resolved_call_uses_receiver_type(base_id flat.NodeId, receiver_type_id u32, params []types.Type) bool {
+fn (t &Transformer) resolved_call_uses_receiver_type(base_id flat.NodeId, receiver_type_id u32, params []types.Type, receiver_param_type u32) bool {
 	receiver_type := flat.source_type_name(receiver_type_id)
 	if params.len == 0 {
 		return false
 	}
-	mut param_type := t.semantic_type_name(params[0])
+	mut param_type := receiver_param_type
 	if flat.source_type_shape(param_type).has(.pointer) {
 		param_type = flat.source_type_id(flat.source_type_name(param_type)[1..])
 	}
@@ -17727,15 +17763,9 @@ fn (t &Transformer) resolved_call_uses_receiver_type(base_id flat.NodeId, receiv
 
 // receiver_base_for_resolved_method
 // supports helper handling in transform.
-fn (mut t Transformer) receiver_base_for_resolved_method(base_id flat.NodeId, method_name string) flat.NodeId {
+fn (mut t Transformer) receiver_base_for_resolved_method(base_id flat.NodeId, method_name string, params []types.Type, receiver_param_type u32) flat.NodeId {
 	method_receiver_source_id := t.trim_pointer_type(flat.source_type_id(owner_name_view(method_name)))
 	method_receiver := flat.source_type_name(method_receiver_source_id)
-	params := t.call_param_types(method_name)
-	receiver_param_type := (if params.len > 0 {
-		t.semantic_type_name(params[0])
-	} else {
-		u32(0)
-	})
 	base_node := t.a.node(base_id)
 	if base_node.kind == .ident && base_node.value in t.heaped_amp_locals
 		&& t.normalize_type_alias(t.var_type(base_node.value)) == t.normalize_type_alias(receiver_param_type) {
@@ -17802,14 +17832,14 @@ fn (mut t Transformer) receiver_base_for_resolved_method(base_id flat.NodeId, me
 			}
 		}
 	}
-	if embedded_base := t.embedded_receiver_base(base_id, method_name) {
+	if embedded_base := t.embedded_receiver_base(base_id, params, receiver_param_type) {
 		return embedded_base
 	}
 	sc := t.find_smartcast(key) or { return t.transform_expr(base_id) }
 	if params.len == 0 {
 		return t.transform_expr(base_id)
 	}
-	mut param_type := t.semantic_type_name(params[0])
+	mut param_type := receiver_param_type
 	if flat.source_type_shape(param_type).has(.pointer) {
 		param_type = flat.source_type_id(flat.source_type_name(param_type)[1..])
 	}
@@ -17845,12 +17875,11 @@ fn (mut t Transformer) receiver_base_for_resolved_method(base_id flat.NodeId, me
 	return t.transform_expr(base_id)
 }
 
-fn (mut t Transformer) embedded_receiver_base(base_id flat.NodeId, method_name string) ?flat.NodeId {
-	params := t.call_param_types(method_name)
+fn (mut t Transformer) embedded_receiver_base(base_id flat.NodeId, params []types.Type, receiver_param_type u32) ?flat.NodeId {
 	if params.len == 0 {
 		return none
 	}
-	mut param_type := t.semantic_type_name(params[0])
+	mut param_type := receiver_param_type
 	if flat.source_type_shape(param_type).has(.pointer) {
 		param_type = flat.source_type_id(flat.source_type_name(param_type)[1..])
 	}
@@ -18257,27 +18286,32 @@ fn (t &Transformer) receiver_method_matches_type_name(method_name string, typ_id
 			return true
 		}
 	}
-	mut candidates := [clean_id]
-	if clean.contains('.') {
-		candidates << flat.source_type_id(clean.all_after_last('.'))
+	// These source spellings are already candidates regardless of alias metadata.
+	// Accept them before constructing or resolving any alias-chain candidates.
+	receiver_type_id := flat.source_type_id(receiver_name)
+	if receiver_type_id == clean_id {
+		return true
 	}
-	if !clean.contains('.') && t.cur_module.len > 0 && t.cur_module !in ['main', 'builtin'] {
-		candidates << flat.source_type_id('${t.cur_module}.${clean}')
+	if clean.contains('.') {
+		if receiver_name == clean.all_after_last('.') {
+			return true
+		}
+	} else if t.cur_module.len > 0 && t.cur_module !in ['main', 'builtin'] {
+		if receiver_name == '${t.cur_module}.${clean}' {
+			return true
+		}
 	}
 	normalized_id := t.normalize_type_alias(clean_id)
-	if normalized_id != 0 && normalized_id !in candidates {
-		candidates << normalized_id
+	if normalized_id != 0 && receiver_type_id == normalized_id {
+		return true
 	}
 	for target_id in t.alias_chain_target_names(clean_id) {
-		if target_id !in candidates {
-			candidates << target_id
-		}
-		short_target_id := flat.source_type_id(flat.source_type_name(target_id).all_after_last('.'))
-		if short_target_id !in candidates {
-			candidates << short_target_id
+		if receiver_type_id == target_id
+			|| receiver_name == flat.source_type_name(target_id).all_after_last('.') {
+			return true
 		}
 	}
-	return flat.source_type_id(receiver_name) in candidates
+	return false
 }
 
 // alias_chain_target_names lists source spelling IDs named by an alias chain, nearest first:
@@ -18878,7 +18912,14 @@ fn (t &Transformer) map_receiver_method_candidates(receiver_type_id u32, method 
 
 // transform_receiver_method_args transforms transform receiver method args data for transform.
 fn (mut t Transformer) transform_receiver_method_args(node flat.Node, base_id flat.NodeId, method_name string) []flat.NodeId {
-	return t.transform_receiver_method_args_with_base(node, t.receiver_base_for_resolved_method(base_id, method_name), method_name)
+	params := t.call_param_types(method_name)
+	receiver_param_type := if params.len > 0 {
+		t.semantic_type_name(params[0])
+	} else {
+		u32(0)
+	}
+	base := t.receiver_base_for_resolved_method(base_id, method_name, params, receiver_param_type)
+	return t.transform_receiver_method_args_with_params(node, base, method_name, params, receiver_param_type)
 }
 
 // expr_root_ident_name walks selector/index/paren chains down to the base identifier and
@@ -18945,11 +18986,21 @@ fn (mut t Transformer) clone_checker_marked_receiver_alias_arg(arg_id flat.NodeI
 
 // transform_receiver_method_args_with_base transforms helper data for transform.
 fn (mut t Transformer) transform_receiver_method_args_with_base(node flat.Node, base flat.NodeId, method_name string) []flat.NodeId {
-	mut args := []flat.NodeId{cap: int(node.children_count)}
 	params := t.call_param_types(method_name)
+	receiver_param_type := if params.len > 0 {
+		t.semantic_type_name(params[0])
+	} else {
+		u32(0)
+	}
+	return t.transform_receiver_method_args_with_params(node, base, method_name, params, receiver_param_type)
+}
+
+// Reuse the selected signature while transforming the receiver and its arguments.
+fn (mut t Transformer) transform_receiver_method_args_with_params(node flat.Node, base flat.NodeId, method_name string, params []types.Type, receiver_param_type u32) []flat.NodeId {
+	mut args := []flat.NodeId{cap: int(node.children_count)}
 	mut receiver := base
 	if method_name.all_after_last('.') == 'string' && params.len > 0
-		&& flat.source_type_name(t.normalize_type_alias(t.semantic_type_name(params[0]))) == '[]rune' {
+		&& flat.source_type_name(t.normalize_type_alias(receiver_param_type)) == '[]rune' {
 		receiver_type := flat.source_type_name(t.normalized_node_type(receiver)).trim_left('&')
 		if t.is_fixed_array_type(flat.source_type_id(receiver_type)) {
 			receiver = t.fixed_array_data_to_array_no_alloc(receiver, flat.source_type_id(receiver_type), flat.source_type_id('[]rune'))
@@ -18957,7 +19008,7 @@ fn (mut t Transformer) transform_receiver_method_args_with_base(node flat.Node, 
 	}
 	args << receiver
 	recv_root := t.expr_root_ident_name(base)
-	param_offset := t.receiver_method_param_offset(base, node, params, method_name)
+	param_offset := t.receiver_method_param_offset_with_type(base, node, params.len, receiver_param_type, method_name)
 	mut snapshotted_args := 0
 	explicit_args := int(node.children_count) - 1
 	expected_explicit := params.len - param_offset
@@ -19160,8 +19211,15 @@ fn (t &Transformer) receiver_method_param_offset(base_id flat.NodeId, node flat.
 	if params.len == 0 {
 		return 0
 	}
+	return t.receiver_method_param_offset_with_type(base_id, node, params.len, t.semantic_type_name(params[0]), method_name)
+}
+
+fn (t &Transformer) receiver_method_param_offset_with_type(base_id flat.NodeId, node flat.Node, param_count int, receiver_param_type u32, method_name string) int {
+	if param_count == 0 {
+		return 0
+	}
 	base_type := flat.source_type_name(t.node_type(base_id))
-	first_type := flat.source_type_name(t.normalize_type_alias(t.semantic_type_name(params[0])))
+	first_type := flat.source_type_name(t.normalize_type_alias(receiver_param_type))
 	clean_first := if first_type.starts_with('&') { first_type[1..] } else { first_type }
 	clean_base := if base_type.starts_with('&') { base_type[1..] } else { base_type }
 	if receiver_param_types_match(clean_first, clean_base)
@@ -19170,7 +19228,7 @@ fn (t &Transformer) receiver_method_param_offset(base_id flat.NodeId, node flat.
 		|| short_name_view(clean_first) == short_name_view(clean_base) {
 		return 1
 	}
-	if params.len >= int(node.children_count) {
+	if param_count >= int(node.children_count) {
 		return 1
 	}
 	return 0
@@ -19432,8 +19490,8 @@ fn (t &Transformer) get_call_return_type(id flat.NodeId, node flat.Node) u32 {
 		if callee.kind == .ident {
 			selected := t.resolve_call_name(node)
 			if selected != callee.value {
-				if ret := t.tc.fn_ret_types[selected] {
-					return t.call_return_type_name(t.semantic_type_name(ret), node)
+				if ret_source_id := t.checker_fn_return_type_name(selected) {
+					return t.call_return_type_name(ret_source_id, node)
 				}
 			}
 		}
@@ -19457,8 +19515,8 @@ fn (t &Transformer) get_call_return_type(id flat.NodeId, node flat.Node) u32 {
 							return substitute_generic_type_text(ret_source_id, args_source_ids)
 						}
 						if !isnil(t.tc) {
-							if ret := t.tc.fn_ret_types[name] {
-								return substitute_generic_type_text(t.semantic_type_name(ret), args_source_ids)
+							if ret_source_id := t.checker_fn_return_type_name(name) {
+								return substitute_generic_type_text(ret_source_id, args_source_ids)
 							}
 						}
 					}
@@ -19476,8 +19534,8 @@ fn (t &Transformer) get_call_return_type(id flat.NodeId, node flat.Node) u32 {
 					if ret_source_id := t.fn_ret_types.type_id(name) {
 						return t.call_return_type_name(ret_source_id, node)
 					}
-					if ret := t.tc.fn_ret_types[name] {
-						return t.call_return_type_name(t.semantic_type_name(ret), node)
+					if ret_source_id := t.checker_fn_return_type_name(name) {
+						return t.call_return_type_name(ret_source_id, node)
 					}
 				}
 			}
@@ -19592,8 +19650,8 @@ fn (t &Transformer) get_call_return_type(id flat.NodeId, node flat.Node) u32 {
 	}
 	if !isnil(t.tc) {
 		if name := t.tc.resolved_call_name(id) {
-			if ret := t.tc.fn_ret_types[name] {
-				return t.call_return_type_name(t.semantic_type_name(ret), node)
+			if ret_source_id := t.checker_fn_return_type_name(name) {
+				return t.call_return_type_name(ret_source_id, node)
 			}
 		}
 	}
@@ -19605,12 +19663,12 @@ fn (t &Transformer) get_call_return_type(id flat.NodeId, node flat.Node) u32 {
 		if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin'
 			&& !name.contains('.') {
 			qname := '${t.cur_module}.${name}'
-			if ret := t.tc.fn_ret_types[qname] {
-				return t.call_return_type_name(t.semantic_type_name(ret), node)
+			if ret_source_id := t.checker_fn_return_type_name(qname) {
+				return t.call_return_type_name(ret_source_id, node)
 			}
 		}
-		if ret := t.tc.fn_ret_types[name] {
-			return t.call_return_type_name(t.semantic_type_name(ret), node)
+		if ret_source_id := t.checker_fn_return_type_name(name) {
+			return t.call_return_type_name(ret_source_id, node)
 		}
 	}
 	if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin'
@@ -19797,8 +19855,8 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.No
 		short_name := short_name_view(name)
 		if fn_node.kind == .ident && fn_node.value == short_name {
 			qname := '${t.cur_module}.${short_name}'
-			if ret := t.tc.fn_ret_types[qname] {
-				candidate_source_id_2 := t.call_return_type_name(t.semantic_type_name(ret), node)
+			if ret_source_id := t.checker_fn_return_type_name(qname) {
+				candidate_source_id_2 := t.call_return_type_name(ret_source_id, node)
 				candidate_source_id_9 := candidate_source_id_2
 
 				if decl_type_is_usable(candidate_source_id_9) || candidate_source_id_2 == flat.source_type_void {
@@ -19806,8 +19864,8 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.No
 				}
 			}
 			lowered_qname := c_name(qname)
-			if ret := t.tc.fn_ret_types[lowered_qname] {
-				candidate_source_id_3 := t.call_return_type_name(t.semantic_type_name(ret), node)
+			if ret_source_id := t.checker_fn_return_type_name(lowered_qname) {
+				candidate_source_id_3 := t.call_return_type_name(ret_source_id, node)
 				candidate_source_id_10 := candidate_source_id_3
 
 				if decl_type_is_usable(candidate_source_id_10) || candidate_source_id_3 == flat.source_type_void {
@@ -19842,9 +19900,9 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.No
 			}
 		}
 	}
-	if ret := t.tc.fn_ret_types[name] {
-		if ret !is types.Unknown && ret !is types.Void {
-			candidate_source_id_5 := t.call_return_type_name_in_module(t.semantic_type_name(ret), node, decl_module)
+	if ret_source_id := t.checker_fn_return_type_name(name) {
+		if ret_source_id !in [flat.source_type_unknown, flat.source_type_void] {
+			candidate_source_id_5 := t.call_return_type_name_in_module(ret_source_id, node, decl_module)
 			candidate_source_id_12 := candidate_source_id_5
 
 			if decl_type_is_usable(candidate_source_id_12) {

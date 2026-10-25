@@ -600,7 +600,7 @@ fn (mut tc TypeChecker) apply_pass2_ancillary_group(group int) {
 		}
 	} else if group == 7 {
 		for registration in tc.fn_ancillary_registrations {
-			tc.fn_ret_types[registration.name] = registration.ret_type
+			tc.register_generated_fn_return_type(registration.name, registration.ret_type)
 		}
 	} else if group == 8 {
 		for registration in tc.fn_ancillary_registrations {
@@ -3661,10 +3661,10 @@ fn (mut tc TypeChecker) check_fn_decl_semantics_with_context(fn_idx int, node fl
 	tc.cur_fn_ret_type = tc.parse_type(flat.source_type_id(checked_return_type))
 	tc.fn_context.return_type = tc.cur_fn_ret_type
 	tc.fn_context.node_id = fn_idx
-	// Full expression validation queries local declarations even when self-host
-	// scheduling is enabled. Index them once instead of scanning the body per use.
+	// Full expression validation can query local declarations even when self-host
+	// scheduling is enabled. Build the name index on its first query.
 	if !fast_valid_build || !tc.valid_resolution_fast {
-		tc.index_local_decl_rhs(flat.NodeId(fn_idx))
+		tc.prepare_local_decl_rhs_index(flat.NodeId(fn_idx))
 	}
 	tc.fn_context.concrete_generic_receiver_specialization =
 		fn_value_is_concrete_generic_receiver_specialization(node.value)
@@ -5769,7 +5769,9 @@ fn selected_fn_scan_thread(arg voidptr) voidptr {
 			w.cur_module = decl.mod
 			w.selected_file_called_fns = map[string]bool{}
 			w.selected_file_worklist = []string{}
+			w.arm_body_resolve_memo(decl.idx - decl.cost + 1, decl.idx)
 			w.collect_selected_file_fn_body_called_fns(w.a.nodes[decl.idx])
+			w.disarm_body_resolve_memo()
 			// The worklist holds each name the body reaches once, in discovery order.
 			mut callees := []int{cap: w.selected_file_worklist.len}
 			for name in w.selected_file_worklist {
@@ -5801,6 +5803,9 @@ fn (mut tc TypeChecker) collect_selected_file_called_fns_walk_parallel(master &T
 	saved_module := tc.cur_module
 	saved_scope := tc.cur_scope
 	saved_scope_pool_index := tc.scope_pool_index
+	saved_memo := tc.body_resolve_memo
+	tc.body_resolve_memo = unsafe { nil }
+	defer { tc.body_resolve_memo = saved_memo }
 	tc.collect_selected_file_root_called_fns()
 	decls := tc.selected_file_fn_decls()
 	mut decl_list := []SelectedFnDecl{cap: decls.len}

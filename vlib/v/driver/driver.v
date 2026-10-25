@@ -8096,11 +8096,11 @@ fn promote_scoped_signatures(mut tc types.TypeChecker, original_names map[string
 		// Take the owned copy first, then delete and re-insert through it; using
 		// `name` after the first delete reads (and re-hashes) freed memory.
 		owned_name := name.clone()
-		tc.fn_ret_types.delete(owned_name)
+		tc.unregister_generated_fn_return_type(owned_name)
 		tc.fn_param_types.delete(owned_name)
 		tc.fn_variadic.delete(owned_name)
 		tc.specialized_generic_fns.delete(owned_name)
-		tc.fn_ret_types[owned_name] = ret
+		tc.register_generated_fn_return_type(owned_name, ret)
 		tc.register_generated_fn_param_types(owned_name, params)
 		tc.fn_variadic[owned_name] = variadic
 		if specialized {
@@ -22386,12 +22386,13 @@ fn scan_implicit_imports(a &flat.FlatAst, end_node int, mut scan ImplicitImportS
 		&& scan_implicit_import_decls(a, end_node, mut scan) {
 		return
 	}
-	mut call_callees := map[int]bool{}
+	mut call_callees := []bool{}
 	if !scan.needs_closure {
+		call_callees = []bool{len: a.nodes.len}
 		for i in scan.node_idx .. end_node {
-			node := a.nodes[i]
+			node := &a.nodes[i]
 			if node.kind == .call && node.children_count > 0 {
-				callee_id := a.child(&node, 0)
+				callee_id := a.child(node, 0)
 				call_callees[int(callee_id)] = true
 				callee := a.node(callee_id)
 				if callee.kind == .index && callee.children_count > 0 {
@@ -22401,11 +22402,14 @@ fn scan_implicit_imports(a &flat.FlatAst, end_node int, mut scan ImplicitImportS
 				scan.needs_closure = true
 			} else if node.kind == .fn_literal {
 				for child_idx in 0 .. node.children_count {
-					if a.child_node(&node, child_idx).kind == .ident {
+					if a.child_node(node, child_idx).kind == .ident {
 						scan.needs_closure = true
 						break
 					}
 				}
+			}
+			if scan.needs_closure {
+				break
 			}
 		}
 	}
@@ -22417,7 +22421,7 @@ fn scan_implicit_imports(a &flat.FlatAst, end_node int, mut scan ImplicitImportS
 		implicit_known_field_selectors(a, scan.node_idx, end_node, scan.field_index)
 	}
 	for i in scan.node_idx .. end_node {
-		node := a.nodes[i]
+		node := &a.nodes[i]
 		if node.kind == .import_decl {
 			if node.value == 'sync' {
 				scan.has_sync = true
@@ -22459,12 +22463,12 @@ fn scan_implicit_imports(a &flat.FlatAst, end_node int, mut scan ImplicitImportS
 				scan.needs_closure = true
 			} else if node.kind == .fn_literal {
 				for child_idx in 0 .. node.children_count {
-					if a.child_node(&node, child_idx).kind == .ident {
+					if a.child_node(node, child_idx).kind == .ident {
 						scan.needs_closure = true
 						break
 					}
 				}
-			} else if node.kind == .selector && node.children_count > 0 && i !in call_callees
+			} else if node.kind == .selector && node.children_count > 0 && !call_callees[i]
 				&& i !in known_field_selectors && !implicit_selector_is_interop_symbol(a, node)
 				&& !implicit_selector_is_qualified_type(node) {
 				// A remaining selector used as a value may be a bound method. Full type
@@ -22953,15 +22957,15 @@ fn (mut s NoClosuresLambdaScan) walk_if(node flat.Node) {
 	s.close_scope(mark)
 }
 
-fn implicit_selector_is_qualified_type(node flat.Node) bool {
+fn implicit_selector_is_qualified_type(node &flat.Node) bool {
 	return node.value.len > 0 && node.value[0] >= `A` && node.value[0] <= `Z`
 }
 
-fn implicit_selector_is_interop_symbol(a &flat.FlatAst, node flat.Node) bool {
+fn implicit_selector_is_interop_symbol(a &flat.FlatAst, node &flat.Node) bool {
 	if node.children_count == 0 {
 		return false
 	}
-	base := a.child_node(&node, 0)
+	base := a.child_node(node, 0)
 	return base.kind == .ident && base.value in ['C', 'JS']
 }
 

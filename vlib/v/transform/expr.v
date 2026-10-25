@@ -4,6 +4,8 @@ import v.flat
 import v.gen.c.naming { sum_field_name }
 import v.types
 
+const transform_source_type_string_pointer = flat.source_type_id('&string')
+
 // transform_infix_string_ops transforms transform infix string ops data for transform.
 fn (mut t Transformer) transform_infix_string_ops(_id flat.NodeId, node flat.Node) ?flat.NodeId {
 	if node.children_count < 2 {
@@ -1510,8 +1512,13 @@ fn (t &Transformer) raw_checker_node_type(id flat.NodeId) u32 {
 	if isnil(t.tc) || int(id) < 0 {
 		return u32(0)
 	}
-	typ := t.tc.expr_type(id) or { t.tc.resolve_type(id) }
-	name_source_id := t.tc.type_name(typ)
+	mut name_source_id := u32(0)
+	if typ := t.tc.expr_type_reference(id) {
+		name_source_id = t.tc.type_name(typ)
+	} else {
+		typ := t.tc.resolve_type(id)
+		name_source_id = t.tc.type_name(typ)
+	}
 
 	if name_source_id == 0 || name_source_id == flat.source_type_void {
 		return u32(0)
@@ -1672,31 +1679,33 @@ fn (t &Transformer) operator_alias_type_for_operand(id flat.NodeId, op flat.Op) 
 				return none
 			}
 			clean_source_id := t.trim_pointer_type(flat.source_type_id(elem))
-			clean := flat.source_type_name(clean_source_id)
-			for candidate in [clean, flat.source_type_name(t.normalize_type_alias(clean_source_id))] {
-				if candidate.len > 0 && t.is_type_alias_name(flat.source_type_id(candidate)) {
-					if _ := t.struct_operator_call_info_any(flat.source_type_id(candidate), op) {
-						return flat.source_type_id(candidate)
+			for candidate in [clean_source_id, t.normalize_type_alias(clean_source_id)]! {
+				if candidate != 0 && t.is_type_alias_name(candidate) {
+					if _ := t.struct_operator_call_info_any(candidate, op) {
+						return candidate
 					}
 				}
 			}
 			return none
 		}
 	}
-	mut candidates := []string{cap: 3}
-	raw_type_source_id_3 := t.raw_checker_node_type(id)
-	raw_type := flat.source_type_name(raw_type_source_id_3)
-	if raw_type_source_id_3 != 0 {
-		candidates << raw_type
+	mut candidates := [3]u32{}
+	mut candidate_count := 0
+	raw_type_source_id := t.raw_checker_node_type(id)
+	if raw_type_source_id != 0 {
+		candidates[candidate_count] = raw_type_source_id
+		candidate_count++
 	}
 	if node.typ != 0 {
-		candidates << node.typ_text()
+		candidates[candidate_count] = node.typ
+		candidate_count++
 	}
 	if node.kind == .cast_expr && node.value.len > 0 {
-		candidates << node.value
+		candidates[candidate_count] = flat.source_type_id(node.value)
+		candidate_count++
 	}
-	for candidate in candidates {
-		clean_source_id_5 := t.trim_pointer_type(flat.source_type_id(candidate))
+	for i in 0 .. candidate_count {
+		clean_source_id_5 := t.trim_pointer_type(candidates[i])
 
 		if clean_source_id_5 == 0 || !t.is_type_alias_name(clean_source_id_5) {
 			continue
@@ -3903,7 +3912,7 @@ fn (mut t Transformer) register_sum_eq_helper_signature(helper string, clean_sum
 		t.tc.ensure_private_transform_signatures()
 		ret := t.tc.parse_type(flat.source_type_bool)
 		params := [*t.tc.parse_type(clean_sum_id), *t.tc.parse_type(clean_sum_id)]
-		t.tc.fn_ret_types[helper] = ret
+		t.tc.register_generated_fn_return_type(helper, ret)
 		t.tc.register_generated_fn_param_types(helper, params.clone())
 		t.tc.fn_variadic[helper] = false
 		t.tc_signature_names_log << helper
@@ -4419,28 +4428,32 @@ fn (t &Transformer) membership_type_is_pointer(typ_id u32) bool {
 	return clean.starts_with('&')
 }
 
+fn (t &Transformer) equality_pointer_type(typ_id u32) u32 {
+	mut clean := t.trimmed_type_id(typ_id)
+	for flat.source_type_shape(clean).has(.shared_type) {
+		clean = t.unshared_type_id(clean)
+	}
+	if flat.source_type_shape(clean).has(.mutable_type) {
+		return 0
+	}
+	clean = t.trimmed_type_id(t.normalize_type_alias(clean))
+	for flat.source_type_shape(clean).has(.shared_type) {
+		clean = t.unshared_type_id(clean)
+	}
+	return clean
+}
+
 fn (t &Transformer) equality_type_is_array_pointer(typ_id u32) bool {
-	typ := flat.source_type_name(typ_id)
-	mut clean := trimmed_transform_text(typ)
-	for clean.starts_with('shared ') {
-		clean = trimmed_transform_text(clean[7..])
-	}
-	if clean.starts_with('mut ') {
+	clean := t.equality_pointer_type(typ_id)
+	if !flat.source_type_shape(clean).has(.pointer) {
 		return false
 	}
-	clean = trimmed_transform_text(flat.source_type_name(t.normalize_type_alias(flat.source_type_id(clean))))
-	for clean.starts_with('shared ') {
-		clean = trimmed_transform_text(clean[7..])
-	}
-	if !clean.starts_with('&') {
-		return false
-	}
-	container := flat.source_type_name(t.membership_container_type(flat.source_type_id(clean)))
-	return container.starts_with('[]') || container == 'array'
+	container := t.membership_container_type(clean)
+	return flat.source_type_shape(container).has(.array_type)
+		|| flat.source_type_name(container) == 'array'
 }
 
 fn (t &Transformer) equality_expr_is_string_pointer(id flat.NodeId, typ_id u32) bool {
-	typ := flat.source_type_name(typ_id)
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return false
 	}
@@ -4448,34 +4461,13 @@ fn (t &Transformer) equality_expr_is_string_pointer(id flat.NodeId, typ_id u32) 
 	if node.kind in [.string_literal, .string_interp] {
 		return false
 	}
-	mut clean := trimmed_transform_text(typ)
-	for clean.starts_with('shared ') {
-		clean = trimmed_transform_text(clean[7..])
-	}
-	if clean.starts_with('mut ') {
-		return false
-	}
-	clean = trimmed_transform_text(flat.source_type_name(t.normalize_type_alias(flat.source_type_id(clean))))
-	for clean.starts_with('shared ') {
-		clean = trimmed_transform_text(clean[7..])
-	}
-	return clean == '&string'
+	return t.equality_pointer_type(typ_id) == transform_source_type_string_pointer
 }
 
 fn (t &Transformer) equality_type_is_map_pointer(typ_id u32) bool {
-	typ := flat.source_type_name(typ_id)
-	mut clean := trimmed_transform_text(typ)
-	for clean.starts_with('shared ') {
-		clean = trimmed_transform_text(clean[7..])
-	}
-	if clean.starts_with('mut ') {
-		return false
-	}
-	clean = trimmed_transform_text(flat.source_type_name(t.normalize_type_alias(flat.source_type_id(clean))))
-	for clean.starts_with('shared ') {
-		clean = trimmed_transform_text(clean[7..])
-	}
-	return clean.starts_with('&') && flat.source_type_shape(t.clean_map_type(flat.source_type_id(clean))).has(.map_type)
+	clean := t.equality_pointer_type(typ_id)
+	return flat.source_type_shape(clean).has(.pointer)
+		&& flat.source_type_shape(t.clean_map_type(clean)).has(.map_type)
 }
 
 // membership_container_is_pointer_array supports membership_container_is_pointer_array handling.
