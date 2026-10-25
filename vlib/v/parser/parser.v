@@ -195,6 +195,7 @@ mut:
 	parsing_inferred_fixed_array_type bool
 	parsing_struct_field_type         bool
 	parsing_c_struct_fields           bool
+	seen_default_param_value          bool
 	diagnostic_limit_reached          bool
 	local_type_names                  flat.TypeTextBindings
 	local_type_decls_by_block         map[int][]string
@@ -2077,6 +2078,8 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type_
 	// params
 	p.check(.lpar)
 	mut param_ids := []flat.NodeId{}
+	was_seen_default_param_value := p.seen_default_param_value
+	p.seen_default_param_value = false
 	if is_method && receiver_name.len > 0 {
 		param_ids << p.add_node(flat.Node{
 			kind:   .param
@@ -2130,12 +2133,13 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type_
 	if p.tok == .semicolon && p.peek() == .lcbr {
 		p.next()
 	}
-	if !p.prefs.is_fmt && p.tok == .lcbr
+	if !p.prefs.is_fmt && p.tok == .lcbr && !p.seen_default_param_value
 		&& param_ids.any(p.a.node(it).kind == .param && p.a.node(it).typ_text().len == 0
 			&& p.a.node(it).value.len > 0) {
 		p.record_diagnostic_span('functions with type only params can not have bodies', p.tok_pos,
 			p.tok_end)
 	}
+	p.seen_default_param_value = was_seen_default_param_value
 	if p.tok == .lsbr {
 		p.record_diagnostic_span('unexpected token `[` after function signature, expecting `{`',
 			p.tok_pos, p.tok_end)
@@ -2527,6 +2531,20 @@ fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 		}
 	}
 	p.record_inline_sum_type_deprecation(type_start, p.prev_tok_end)
+	// V has no default parameter values: `fn f(a int = 2)` is invalid.
+	// Diagnose the `=` here instead of letting the params loop re-enter
+	// parse_param_group on it, which shredded the rest of the signature
+	// into phantom params (`2`, `b`, ...) and reported argument-count
+	// errors at call sites far from the actual mistake.
+	if p.tok == .assign {
+		p.record_diagnostic_span('default parameter values are not supported', p.tok_pos,
+			p.tok_end)
+		p.seen_default_param_value = true
+		p.next()
+		if p.tok !in [.comma, .rpar, .eof] {
+			p.expr(.lowest)
+		}
+	}
 	param_group_end := p.prev_tok_end
 	for i, name in names {
 		param_is_mut := is_mut || (p.prefs.is_fmt && name_mutabilities[i])
@@ -3940,6 +3958,17 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 				}
 				mut ptype := p.parse_type_name_bytes()
 				param_end := p.prev_tok_end
+				// V has no default parameter values: diagnose `=` here instead of
+				// letting the loop re-enter on it and shred the rest of the
+				// signature into phantom empty params.
+				if p.tok == .assign {
+					p.record_diagnostic_span('default parameter values are not supported', p.tok_pos,
+						p.tok_end)
+					p.next()
+					if p.tok !in [.comma, .rpar, .eof] {
+						p.expr(.lowest)
+					}
+				}
 				explicit_mut_ref := param_is_mut && ptype.starts_with('&')
 				mut_builtin_pointer := param_is_mut
 					&& ptype in ['voidptr', 'byteptr', 'charptr']
@@ -17687,6 +17716,16 @@ fn (mut p Parser) parse_type_name_bytes() string {
 			typ := p.parse_fn_type_param()
 			if typ.len > 0 {
 				ptypes << typ
+			}
+			// V has no default parameter values: diagnose `=` here instead
+			// of silently dropping the default from the type.
+			if p.tok == .assign {
+				p.record_diagnostic_span('default parameter values are not supported', p.tok_pos,
+					p.tok_end)
+				p.next()
+				if p.tok !in [.comma, .rpar, .eof] {
+					p.expr(.lowest)
+				}
 			}
 			if p.tok == .comma {
 				p.next()
