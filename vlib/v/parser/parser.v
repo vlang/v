@@ -17635,13 +17635,18 @@ fn (mut p Parser) parse_type_name_bytes() string {
 			'payload_type', 'pointee_type', 'return_type', 'value_type'] {
 			p.next()
 			p.next()
-		} else {
+		} else if !p.prefs.is_fmt {
 			// `typeof(expr)` used as a type names the type of `expr`, resolved in the
 			// lexical scope the type is written in (like C++ `decltype`): code
 			// generators can declare closures and containers of inferred types.
+			// vfmt keeps the source spelling, and `typeof(Type)` keeps naming a type.
 			typeof_node := p.a.node(typeof_id)
 			if typeof_node.children_count == 1 {
-				return 'typeof(__expr_' + int(p.a.child(typeof_node, 0)).str() + ')'
+				inner_id := p.a.child(typeof_node, 0)
+				inner := p.a.node(inner_id)
+				if inner.kind != .ident || !parser_name_can_start_pointer_type(inner.value) {
+					return 'typeof(__expr_' + int(inner_id).str() + ')'
+				}
 			}
 		}
 		if p.tok_pos > start && p.tok_pos <= p.s.src.len {

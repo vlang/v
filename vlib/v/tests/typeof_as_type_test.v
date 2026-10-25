@@ -63,3 +63,32 @@ fn test_typeof_return_type_of_an_anonymous_function() {
 	}
 	assert half() == 1.25
 }
+
+fn test_typeof_return_type_names_a_parameter_that_shadows_an_outer_binding() {
+	x := 1.5
+	f := fn (x string) typeof(x) {
+		return x
+	}
+	result := f('hi')
+	assert result.len == 2
+	assert f('abc') == 'abc'
+	assert x == 1.5
+}
+
+fn typeof_identity[T](value T) T {
+	return value
+}
+
+fn test_typeof_infers_the_generic_arguments_of_a_call() {
+	value := 'hello'
+	f := fn [value] () typeof(typeof_identity(value)) {
+		return typeof_identity(value)
+	}
+	assert f() == 'hello'
+	mut items := []typeof(typeof_identity(value)){}
+	items << value
+	assert items == ['hello']
+	mut numbers := []typeof(typeof_identity(3)){}
+	numbers << 4
+	assert numbers == [4]
+}
