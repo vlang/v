@@ -13694,7 +13694,8 @@ fn (mut g FlatGen) gen_untyped_float_expr_as_f32(id flat.NodeId, node &flat.Node
 			}
 			return true
 		}
-		.infix {
+		.infix, .ident, .selector {
+			// A named constant is cast like its initializer: `(float)(main__c)`.
 			if !g.is_untyped_float_literal_expr(id) {
 				return false
 			}
@@ -13717,9 +13718,21 @@ fn (g &FlatGen) is_untyped_float_literal_expr(id flat.NodeId) bool {
 }
 
 // untyped_numeric_literal_expr_info reports whether `id` is built only from numeric literals,
-// signs, parentheses and arithmetic, and whether one of the literals is a float.
+// signs, parentheses and arithmetic, and whether one of the literals is a float. A named
+// constant counts as its initializer: V 0.5.2 keeps `const c = 1.2` an untyped float.
 fn (g &FlatGen) untyped_numeric_literal_expr_info(id flat.NodeId) (bool, bool) {
-	if int(id) < 0 || int(id) >= g.a.nodes.len {
+	return g.untyped_numeric_literal_info_in(id, UntypedLiteralConstScope{}, 0)
+}
+
+// UntypedLiteralConstScope tells untyped_numeric_literal_info_in where a name is resolved:
+// in the code being generated, or in the initializer of a const of `module_name`.
+struct UntypedLiteralConstScope {
+	in_const    bool
+	module_name string
+}
+
+fn (g &FlatGen) untyped_numeric_literal_info_in(id flat.NodeId, scope UntypedLiteralConstScope, depth int) (bool, bool) {
+	if depth > 16 || !g.valid_node_id(id) {
 		return false, false
 	}
 	node := unsafe { &g.a.nodes[int(id)] }
@@ -13732,24 +13745,61 @@ fn (g &FlatGen) untyped_numeric_literal_expr_info(id flat.NodeId) (bool, bool) {
 		}
 		.paren {
 			if node.children_count == 1 {
-				return g.untyped_numeric_literal_expr_info(g.a.child(node, 0))
+				return g.untyped_numeric_literal_info_in(g.a.child(node, 0), scope, depth + 1)
 			}
 		}
 		.prefix {
 			if node.op in [.plus, .minus] && node.children_count == 1 {
-				return g.untyped_numeric_literal_expr_info(g.a.child(node, 0))
+				return g.untyped_numeric_literal_info_in(g.a.child(node, 0), scope, depth + 1)
 			}
 		}
 		.infix {
 			if node.op in [.plus, .minus, .mul, .div, .mod] && node.children_count == 2 {
-				lhs_literal, lhs_float := g.untyped_numeric_literal_expr_info(g.a.child(node, 0))
-				rhs_literal, rhs_float := g.untyped_numeric_literal_expr_info(g.a.child(node, 1))
+				lhs_literal, lhs_float := g.untyped_numeric_literal_info_in(g.a.child(node, 0),
+					scope, depth + 1)
+				rhs_literal, rhs_float := g.untyped_numeric_literal_info_in(g.a.child(node, 1),
+					scope, depth + 1)
 				return lhs_literal && rhs_literal, lhs_float || rhs_float
+			}
+		}
+		.ident, .selector {
+			key := g.untyped_literal_const_key(node, scope)
+			if key.len > 0 {
+				if value_id := g.const_vals[key] {
+					const_scope := UntypedLiteralConstScope{
+						in_const:    true
+						module_name: g.const_modules[key] or { '' }
+					}
+					return g.untyped_numeric_literal_info_in(value_id, const_scope, depth + 1)
+				}
 			}
 		}
 		else {}
 	}
 	return false, false
+}
+
+// untyped_literal_const_key returns the storage key of the const that the name `node` refers
+// to, or '' for anything else. Parameters and locals shadow consts. Inside a const initializer
+// only the bare consts of the const's own module are followed.
+fn (g &FlatGen) untyped_literal_const_key(node &flat.Node, scope UntypedLiteralConstScope) string {
+	if scope.in_const {
+		if node.kind != .ident || node.value.contains('.') || node.value.contains('__') {
+			return ''
+		}
+		key := g.const_storage_name(scope.module_name, node.value)
+		return if key in g.const_vals { key } else { '' }
+	}
+	if node.kind == .selector {
+		return g.const_ref_name_from_node(*node)
+	}
+	if g.selector_base_is_local_value(node.value) {
+		return ''
+	}
+	if node.value.contains('.') || node.value.contains('__') {
+		return g.const_ref_name(node.value)
+	}
+	return g.current_module_const_ref_name(node.value) or { '' }
 }
 
 fn (mut g FlatGen) gen_sum_pointer_default_expr(node flat.Node, expected types.Type) bool {

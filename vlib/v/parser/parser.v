@@ -12098,8 +12098,17 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 		if int(bp) < int(min_bp) {
 			break
 		}
+		is_minus := p.tok == .minus
 		p.next()
+		rhs_op_pos := p.tok_pos
+		rhs_op_end := p.tok_end
 		rhs := p.expr(token_id_right_binding_power(op_id))
+		// Like V 0.5.2, reject a doubled minus only when it negates a literal again:
+		// `5 - - -5` and `5 - -(3)`, but not `5 - -3` or `a - -b`.
+		if is_minus && !p.is_translated && p.is_negated_signed_literal(rhs) {
+			p.record_diagnostic_span('invalid expression: unexpected token `-`', rhs_op_pos,
+				rhs_op_end)
+		}
 		istart := p.add_children2(lhs, rhs)
 		lhs = p.add_node_from(flat.Node{
 			kind:           .infix
@@ -12110,6 +12119,30 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 	}
 
 	return lhs
+}
+
+// is_negated_signed_literal reports whether `id` is a prefix `-` applied to a literal that
+// is parenthesized or already signed, such as `-(3)` or `- -5`. V 0.5.2 parses `-3` itself
+// as a literal, so a `-` directly before a number is not a negation here.
+fn (p &Parser) is_negated_signed_literal(id flat.NodeId) bool {
+	node := p.a.node(id)
+	if node.kind != .prefix || node.op != .minus || node.children_count != 1 {
+		return false
+	}
+	mut operand := p.a.node(p.a.child(node, 0))
+	if operand.kind in [.int_literal, .float_literal] {
+		return false
+	}
+	for operand.kind == .paren && operand.children_count == 1 {
+		operand = p.a.node(p.a.child(operand, 0))
+	}
+	if operand.kind in [.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal] {
+		return true
+	}
+	if operand.kind == .prefix && operand.op == .minus && operand.children_count == 1 {
+		return p.a.node(p.a.child(operand, 0)).kind in [.int_literal, .float_literal]
+	}
+	return false
 }
 
 fn (mut p Parser) translated_postfix_line_starts_deref_assignment() bool {
@@ -12904,28 +12937,6 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 		return p.channel_receive_expr(inner, op_start)
 	}
 	if tok_id == 6 || tok_id == 81 || tok_id == 85 || tok_id == 89 {
-		if p.tok == .minus {
-			mut previous := p.tok_pos - 1
-			mut preceding_minuses := 0
-			mut preceding_minus_is_arrow := false
-			for previous >= 0 {
-				for previous >= 0 && p.s.src[previous] in [` `, `\t`] {
-					previous--
-				}
-				if previous < 0 || p.s.src[previous] != `-` {
-					break
-				}
-				if preceding_minuses == 0 && previous > 0 && p.s.src[previous - 1] == `<` {
-					preceding_minus_is_arrow = true
-				}
-				preceding_minuses++
-				previous--
-			}
-			if preceding_minuses == 1 && !preceding_minus_is_arrow && !p.is_translated {
-				p.record_diagnostic_span('invalid expression: unexpected token `-`', p.tok_pos,
-					p.tok_end)
-			}
-		}
 		p.next()
 		mut operand := p.expr(.power)
 		// A trailing `or {}` binds to the operand, not to the prefix operator:
