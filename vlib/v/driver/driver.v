@@ -16098,7 +16098,11 @@ pub fn run(args []string) {
 							cleanup_c_build_dir(cc_dir)
 							exit(1)
 						}
-						prepared_cache = prepare_v3_cached_generic_body(generated_source, cached_prefix, cached_declarations, cached_body, object_flags_signature + generated_suffix, interface_impl_signature, a, mut cache_state) or {
+						// Generic hits generate bodies without a preamble. The cached prefix
+						// selects the declarations used by the restored module objects.
+						prefix_suffix := v3_cached_object_program_signature_suffix(cached_prefix)
+						compile_signature = object_compile_signature + prefix_suffix
+						prepared_cache = prepare_v3_cached_generic_body(generated_source, cached_prefix, cached_declarations, cached_body, object_flags_signature + prefix_suffix, interface_impl_signature, a, mut cache_state) or {
 							message := err.msg()
 							if request_macos_v3_c_error_fallback_from_message(macos_v3_fallback_file, macos_v3_c_error_dir, c_compiler, message, [
 								cache_plan_file,
@@ -19578,7 +19582,10 @@ fn v3_cached_object_program_compile_signature(program_base string, generated_sou
 // adds to a signature of its module objects. It reads all of that C, so a build
 // that needs the signature of the plan and the one of the objects takes it once.
 fn v3_cached_object_program_signature_suffix(generated_source string) string {
-	mut suffix := ''
+	// An unrelated import can select native libc headers for the whole program.
+	// Their types can have different layouts from the headerless declarations.
+	// Record both modes so neither reuses an object with the old ambiguous key.
+	mut suffix := '\nsystem_libc_headers=${generated_source.contains('\n#define V_MANUAL_STDLIB_HEADERS 1\n')}'
 	if v3_generated_c_declares_panic_frames(generated_source) {
 		suffix += '\npanic_frames=true'
 	}

@@ -5,6 +5,10 @@ on: [workflow_dispatch]
 permissions:
   contents: read
 
+concurrency:
+  group: debug-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   debug-msvc:
     runs-on: windows-2025

@@ -8,6 +8,11 @@ on:
       - 'vlib/json2/**' # Trigger on changes in this folder
       - '!vlib/json2/strict/**' # Ignore
       - '!vlib/json2/tests/**' # Ignore
+      - '.github/workflows/benchmark_footprint_json_encode.yml'
+
+concurrency:
+  group: json-encoder-benchmark-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
