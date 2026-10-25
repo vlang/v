@@ -17153,8 +17153,10 @@ fn v3_missing_c_library_name(output string) ?string {
 				for end < rest.len && !rest[end].is_space() && rest[end] !in [`'`, `"`] {
 					end++
 				}
-				if end > 0 {
-					return rest[..end]
+				// GNU ld appends `: No such file or directory` to the library name.
+				name := rest[..end].trim_right(':')
+				if name.len > 0 {
+					return name
 				}
 			}
 		}
