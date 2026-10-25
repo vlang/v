@@ -55,6 +55,15 @@ pub fn from_u64(value u64) Decimal {
 	}
 }
 
+// from_minor_units creates a decimal from an amount in units of `10^-precision`,
+// so `from_minor_units(1999, 2)` is `19.99`.
+pub fn from_minor_units(units i64, precision int) !Decimal {
+	if precision < 0 {
+		return error('math.decimal: precision cannot be negative')
+	}
+	return new(big.integer_from_i64(units), precision)
+}
+
 // from_string parses a decimal string without exponent notation.
 pub fn from_string(input string) !Decimal {
 	value := input.trim_space()
@@ -125,6 +134,86 @@ pub fn (d Decimal) neg() Decimal {
 		coefficient_value: d.coefficient_value.neg()
 		scale_value:       d.scale_value
 	}
+}
+
+// sign returns -1, 0 or 1 when `d` is negative, zero or positive.
+pub fn (d Decimal) sign() int {
+	return d.coefficient_value.signum
+}
+
+// min returns the smaller of `a` and `b`.
+pub fn min(a Decimal, b Decimal) Decimal {
+	if b < a {
+		return b
+	}
+	return a
+}
+
+// max returns the larger of `a` and `b`.
+pub fn max(a Decimal, b Decimal) Decimal {
+	if a < b {
+		return b
+	}
+	return a
+}
+
+// rem returns the remainder of dividing `dividend` by `divisor` with the
+// quotient truncated towards zero. Like `%` on V integers, the result takes
+// the sign of `dividend`: `-7.5 rem 2` is `-1.5`.
+pub fn (dividend Decimal) rem(divisor Decimal) !Decimal {
+	if divisor.coefficient_value.signum == 0 {
+		return error('math.decimal: cannot divide by zero')
+	}
+	scale := max_scale(dividend.scale_value, divisor.scale_value)
+	_, remainder := dividend.rescaled_coefficient(scale).abs().div_mod(divisor.rescaled_coefficient(scale).abs())
+	if dividend.coefficient_value.signum < 0 {
+		return new(remainder.neg(), scale)
+	}
+	return new(remainder, scale)
+}
+
+// to_minor_units returns `d` as an amount in units of `10^-precision`, so
+// `19.99` with precision 2 is `1999`. It returns an error when `d` has more
+// than `precision` digits after the decimal point (round it first), or when
+// the amount does not fit in an i64.
+pub fn (d Decimal) to_minor_units(precision int) !i64 {
+	if precision < 0 {
+		return error('math.decimal: precision cannot be negative')
+	}
+	if d.scale_value > precision {
+		return error('math.decimal: value has more than ${precision} decimal places')
+	}
+	if d.coefficient_value.signum == 0 {
+		return 0
+	}
+	// Any non-zero coefficient times 10^19 exceeds max_i64; reject before
+	// computing a possibly huge power of ten.
+	if precision - d.scale_value > 18 {
+		return error('math.decimal: value does not fit in i64')
+	}
+	return to_i64(d.rescaled_coefficient(precision))
+}
+
+fn to_i64(value big.Integer) !i64 {
+	bytes, signum := value.bytes()
+	if bytes.len > 8 {
+		return error('math.decimal: value does not fit in i64')
+	}
+	mut magnitude := u64(0)
+	for b in bytes {
+		magnitude = (magnitude << 8) | u64(b)
+	}
+	if signum < 0 {
+		if magnitude > u64(1) << 63 {
+			return error('math.decimal: value does not fit in i64')
+		}
+		// Subtract before negating so that 2^63 maps to min_i64 without overflow.
+		return -i64(magnitude - 1) - 1
+	}
+	if magnitude > u64(max_i64) {
+		return error('math.decimal: value does not fit in i64')
+	}
+	return i64(magnitude)
 }
 
 // str returns the canonical decimal representation of `d`.
