@@ -718,14 +718,14 @@ bool
 
 string
 
-i8    i16  int  i64  i128
+i8    i16  i32  i64  i128
 u8    u16  u32  u64  u128
+
+int, uint // platform-width signed and unsigned integers
 
 rune // represents a Unicode code point
 
 f32 f64
-
-isize, usize // platform-dependent, the size is how many bytes it takes to reference any location in memory
 
 voidptr // this one is mostly used for [C interoperability](#v-and-c)
 ```
@@ -734,6 +734,11 @@ voidptr // this one is mostly used for [C interoperability](#v-and-c)
 > `int` is a platform-width signed integer: 64 bits on 64-bit targets and 32 bits on 32-bit
 > targets. Use `i32` or `i64` when you need a fixed width.
 > Integer literal casts to `int` are checked against the target platform's width.
+> `uint` has the same width and is unsigned.
+
+`isize` and `usize` are deprecated. Replace `isize` with `int` and `usize` with `uint`.
+Use `uint` for pointer addresses and C `size_t` values to preserve
+the full unsigned range. Existing spellings still compile with deprecation warnings.
 
 ### 128-bit integers
 
@@ -1273,6 +1278,10 @@ accessed using an *index* expression. Indexing starts from `0`.
 
 A string literal keeps its string type even when its text names a type alias.
 For example, `['Speed']` contains strings, while `[Speed(7)]` contains `Speed` values.
+
+In `==` and `!=` comparisons, array and map literals use the element or value type of the
+other operand. This also applies when that operand propagates an option or result with `?`
+or `!`. Operands are evaluated from left to right.
 
 After an array literal, separate `&&` from either adjacent token with whitespace or a comment
 to use logical AND, as in `a == [] && flag`. An attached `[]&&Type{}` declares an array of
@@ -3470,6 +3479,8 @@ Instance methods can also be used as unbound function values, such as `f := User
 The receiver becomes the first parameter, so a mutable receiver is passed as `f(mut user)`.
 Inside a method reflection loop, `T.$method` likewise creates an unbound function value.
 Unbound and reflected method values follow the same method privacy and `mut` argument rules.
+A reflected method bound to an instance, such as `f := app.$method`, can be stored in an array
+like other function values.
 
 > [!NOTE]
 > Note, that these are not constructors, but simple functions. V doesn't have constructors or
@@ -5031,7 +5042,7 @@ They are just a convenient way to write `i.some_function()` instead of
 a convenience for writing `s.xyz()` instead of `xyz(s)`.
 
 An immediate read-only interface method call on a smart-casted value can return
-a scalar, including `char`, `rune`, `isize`, `usize`, or an enum.
+a scalar, including `char`, `rune`, `int`, `uint`, or an enum.
 
 Receiver methods are also available through embedded interfaces. A mutable receiver method
 updates the underlying concrete object's mutable fields, including when called through an
@@ -9361,7 +9372,7 @@ V supports the following compile time types:
 - `$enum` => matches [Enums](#enums).
 - `$float` => matches `f32`, `f64` and float literals.
 - `$function` => matches [Function Types](#function-types).
-- `$int` => matches `int`, `i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`, `isize`, `usize`
+- `$int` => matches `int`, `i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`, `uint`
   and integer literals.
 - `$interface` => matches [Interfaces](#interfaces).
 - `$map` => matches [Maps](#maps).
@@ -10802,6 +10813,13 @@ pass `&values[0]`; V's platform-width `int` storage is incompatible on 64-bit ta
 Pointer constants such as `C.NULL` and `C.INVALID_HANDLE_VALUE` retain their pointer type
 in assignments and comparisons.
 
+Ordinary V identifiers such as `near`, `far`, `pascal`, and `cdecl` can also be used when
+compiling for Windows. The C backend escapes these names to avoid Windows header macros,
+including in functions, local variables, and struct fields. Explicit `C.` references retain
+their original C names.
+TinyCC also supports explicitly aligned local structs on Windows through its `alloca` intrinsic.
+V identifiers named `alloca` are escaped so they cannot shadow this intrinsic.
+
 C globals can be exposed on the V side too. Use `@[c_extern] __global name C.Type`
 when you want to redeclare an external symbol explicitly, or
 `@[c_extern] __global const name C.Type` for an external `extern const` symbol.
@@ -11220,7 +11238,7 @@ pub struct C.SomeCStruct {
 	// union {
 	// struct {
 	data voidptr
-	size usize
+	size uint
 	// }
 	view C.DataView
 	// }

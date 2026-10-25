@@ -2250,7 +2250,12 @@ fn fastc_generate_type_declarations(sources []FastcSourceFile, type_sources map[
 	// and `match` both reference `__v_typeid_<primitive>`, so the exact value only
 	// has to be unique and consistent.
 	for offset, primitive in fastc_boxed_primitive_types {
-		out.writeln('#define __v_typeid_${primitive} ${u32(0x40000000) + u32(offset)}')
+		if primitive == 'usize' {
+			// Both spellings box as uint and must also match the same runtime tag.
+			out.writeln('#define __v_typeid_usize __v_typeid_uint')
+		} else {
+			out.writeln('#define __v_typeid_${primitive} ${u32(0x40000000) + u32(offset)}')
+		}
 	}
 	out.writeln('')
 	mut timer := fastc_new_phase_timer()
@@ -3288,7 +3293,7 @@ fn fastc_emit_enum_declaration(mut scan scanner.Scanner, source_file FastcSource
 		// still `int` (or `u64` for flag enums); values are emitted with an explicit
 		// cast, so a narrower/wider spelling does not change the generated C.
 		is_backing_int := tok == .name && scan.lit in ['i8', 'i16', 'i32', 'i64', 'int', 'u8',
-			'u16', 'u32', 'u64', 'isize', 'usize']
+			'u16', 'u32', 'u64', 'isize', 'uint', 'usize']
 		if !is_backing_int || (is_flag && scan.lit != 'u64') {
 			return error('fastc parser does not support enum `${name}` backing type in ${source_file.path}')
 		}

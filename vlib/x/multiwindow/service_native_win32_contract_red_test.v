@@ -94,8 +94,8 @@ $if windows {
 	fn C.v_multiwindow_test_win32_monitor_enumeration_info_failure_calls() int
 	fn C.v_multiwindow_test_win32_monitor_enumeration_growth_calls() int
 	fn C.v_multiwindow_test_win32_monitor_enumeration_growth_callbacks() int
-	fn C.v_multiwindow_test_win32_clipboard_equals(expected &u16, expected_units usize) int
-	fn C.v_multiwindow_test_win32_set_clipboard(owner voidptr, text &u16, units usize) int
+	fn C.v_multiwindow_test_win32_clipboard_equals(expected &u16, expected_units uint) int
+	fn C.v_multiwindow_test_win32_set_clipboard(owner voidptr, text &u16, units uint) int
 	fn C.v_multiwindow_test_win32_clipboard_unterminated_parser_probe() int
 	fn C.v_multiwindow_test_win32_set_clipboard_malformed(owner voidptr, kind int) int
 	fn C.v_multiwindow_win32_service_test_clipboard_configure(backend voidptr, now_ns i64, fail_open_attempts int)
@@ -107,7 +107,7 @@ $if windows {
 	fn C.v_multiwindow_win32_service_test_clipboard_last_open_owner(backend voidptr) voidptr
 	fn C.v_multiwindow_win32_service_test_clipboard_pending_count(backend voidptr) int
 	fn C.v_multiwindow_win32_service_test_clipboard_pending_deadline_ns(backend voidptr, index int) i64
-	fn C.v_multiwindow_win32_service_test_clipboard_pending_write_matches(backend voidptr, index int, request_app u64, request_serial u64, window_app u64, window_slot int, window_generation u32, text &u16, units usize) int
+	fn C.v_multiwindow_win32_service_test_clipboard_pending_write_matches(backend voidptr, index int, request_app u64, request_serial u64, window_app u64, window_slot int, window_generation u32, text &u16, units uint) int
 	fn C.v_multiwindow_win32_service_test_clipboard_owned_globals(backend voidptr) int
 	fn C.v_multiwindow_win32_service_test_clipboard_owned_globals_peak(backend voidptr) int
 	fn C.v_multiwindow_win32_service_test_clipboard_global_allocations(backend voidptr) int
@@ -116,7 +116,7 @@ $if windows {
 	fn C.v_multiwindow_win32_service_test_clipboard_sequence_allocations(backend voidptr) int
 	fn C.v_multiwindow_win32_service_test_clipboard_timeout_ns(backend voidptr) i64
 	fn C.v_multiwindow_test_win32_dwm_dark(hwnd voidptr, value &int) int
-	fn C.SendMessageW(hwnd voidptr, msg u32, wparam usize, lparam isize) isize
+	fn C.SendMessageW(hwnd voidptr, msg u32, wparam uint, lparam C.ptrdiff_t) C.ptrdiff_t
 }
 
 fn C.v_multiwindow_test_win32_raw_mouse_target() voidptr
@@ -315,10 +315,10 @@ mut:
 	valid_inside bool
 }
 
-fn win32_red_utf16_units(text string) usize {
-	mut units := usize(1)
+fn win32_red_utf16_units(text string) uint {
+	mut units := uint(1)
 	for codepoint in text.runes() {
-		units += if codepoint > 0xffff { usize(2) } else { usize(1) }
+		units += if codepoint > 0xffff { uint(2) } else { uint(1) }
 	}
 	return units
 }
@@ -2584,7 +2584,7 @@ fn test_win32_native_cf_unicodetext_roundtrip_exact_limit_and_terminal_queue_red
 		exact := win32_red_exact_mixed_clipboard_text()
 		exact_units := win32_red_utf16_units(exact)
 		win32_red_add(mut issues, 'exact boundary payload is not exactly 16 MiB including NUL',
-			exact_units * 2 == usize(win32_red_clipboard_max_bytes))
+			exact_units * 2 == uint(win32_red_clipboard_max_bytes))
 		win32_red_add(mut issues, 'exact mixed payload exceeds the independent UTF-8 bound',
 			exact.len + 1 <= win32_red_clipboard_max_bytes && exact.contains('漢')
 				&& exact.contains('🙂'))
@@ -2638,7 +2638,7 @@ fn test_win32_native_cf_unicodetext_roundtrip_exact_limit_and_terminal_queue_red
 				win32_red_events_are_globally_ordered(late_delivery))
 		}
 		oversized := exact + 'A'
-		win32_red_add(mut issues, 'one-unit-over payload is not exactly one UTF-16 unit over', win32_red_utf16_units(oversized) * 2 == usize(win32_red_clipboard_max_bytes + 2))
+		win32_red_add(mut issues, 'one-unit-over payload is not exactly one UTF-16 unit over', win32_red_utf16_units(oversized) * 2 == uint(win32_red_clipboard_max_bytes + 2))
 		win32_red_add(mut issues, 'one-unit-over payload does not isolate the UTF-16 bound',
 
 			oversized.len + 1 <= win32_red_clipboard_max_bytes)
@@ -2760,7 +2760,7 @@ fn test_win32_native_clipboard_exact_utf8_limit_and_over_red() {
 
 			exact.len + 1 == win32_red_clipboard_max_bytes)
 		win32_red_add(mut issues, 'exact UTF-8 fixture accidentally reaches the UTF-16 bound',
-			exact_units * 2 < usize(win32_red_clipboard_max_bytes))
+			exact_units * 2 < uint(win32_red_clipboard_max_bytes))
 		exact_request := app.service_set_clipboard_text(window, exact) or {
 			issues << 'exact UTF-8 write was not admitted: ${err.msg()}'
 			ServiceRequestId{}
@@ -2787,7 +2787,7 @@ fn test_win32_native_clipboard_exact_utf8_limit_and_over_red() {
 
 			over.len + 1 == win32_red_clipboard_max_bytes + 1)
 		win32_red_add(mut issues, 'over-limit UTF-8 fixture accidentally reaches the UTF-16 bound',
-			win32_red_utf16_units(over) * 2 < usize(win32_red_clipboard_max_bytes))
+			win32_red_utf16_units(over) * 2 < uint(win32_red_clipboard_max_bytes))
 		core_pending_before := app.services.pending.len
 		native_pending_before := C.v_multiwindow_win32_service_test_clipboard_pending_count(backend)
 		allocations_before :=
@@ -3241,7 +3241,7 @@ fn test_win32_native_clipboard_real_wm_close_global_order_red() {
 			if second != ServiceRequestId{} {
 				win32_red_add(mut issues, 'post-WM_CLOSE write was attempted during admission', C.v_multiwindow_win32_service_test_clipboard_request_attempts(backend,
 					second.app_instance, second.serial) == 0)
-				_ = C.SendMessageW(hwnd, win32_red_wm_close, usize(0), isize(0))
+				_ = C.SendMessageW(hwnd, win32_red_wm_close, uint(0), int(0))
 				win32_red_add(mut issues, 'real WM_CLOSE destroyed the HWND synchronously',
 					C.v_multiwindow_test_win32_is_window(hwnd) == 1)
 				win32_red_add(mut issues, 'real WM_CLOSE removed the public window synchronously',
@@ -3337,7 +3337,7 @@ fn win32_w4_clipboard_timeout_case(test_now_ns i64) ![]string {
 			win32_red_add(mut issues, 'occupied read was not native-pending',
 				C.v_multiwindow_win32_service_test_clipboard_pending_count(backend) == 1)
 			win32_red_add(mut issues, 'occupied read did not reserve the aggregate byte limit',
-				app.backend.win32.clipboard_pending_bytes == usize(win32_red_clipboard_max_bytes))
+				app.backend.win32.clipboard_pending_bytes == uint(win32_red_clipboard_max_bytes))
 			deadline := C.v_multiwindow_win32_service_test_clipboard_pending_deadline_ns(backend, 0)
 			win32_red_add(mut issues, 'occupied read deadline was not admission+2s', deadline ==
 				test_now_ns + i64(2_000_000_000))
@@ -3442,11 +3442,11 @@ fn win32_w4_clipboard_ready_storage_case(test_now_ns i64) ![]string {
 			return issues
 		}
 		win32_red_add(mut issues, 'read admission did not reserve the full aggregate limit',
-			app.backend.win32.clipboard_pending_bytes == usize(win32_red_clipboard_max_bytes))
+			app.backend.win32.clipboard_pending_bytes == uint(win32_red_clipboard_max_bytes))
 		app.poll_events() or {
 			win32_w4_add_infra(mut issues, 'retained-ready read poll failed: ${err.msg()}')
 		}
-		read_charge := usize(read_text.len + 1)
+		read_charge := uint(read_text.len + 1)
 		win32_red_add(mut issues, 'ready read remained native-pending',
 			C.v_multiwindow_win32_service_test_clipboard_pending_count(backend) == 0)
 		win32_red_add(mut issues, 'ready read did not retain its exact stable payload charge',
@@ -3478,7 +3478,7 @@ fn win32_w4_clipboard_ready_storage_case(test_now_ns i64) ![]string {
 				&& win32_red_core_pending(app, read).len == 1)
 
 		write_text := 'small FIFO write'
-		write_bytes := win32_red_utf16_units(write_text) * usize(2)
+		write_bytes := win32_red_utf16_units(write_text) * uint(2)
 		write := app.service_set_clipboard_text(queue_window, write_text) or {
 			issues << 'small write was rejected despite retained-read budget: ${err.msg()}'
 			ServiceRequestId{}
@@ -3515,7 +3515,7 @@ fn win32_w4_clipboard_ready_storage_case(test_now_ns i64) ![]string {
 		}
 		if retry != ServiceRequestId{} {
 			win32_red_add(mut issues, 'read retry did not reserve the full aggregate limit',
-				app.backend.win32.clipboard_pending_bytes == usize(win32_red_clipboard_max_bytes))
+				app.backend.win32.clipboard_pending_bytes == uint(win32_red_clipboard_max_bytes))
 			app.destroy_window(queue_window) or {
 				issues << 'destroy-before-read-poll failed: ${err.msg()}'
 			}

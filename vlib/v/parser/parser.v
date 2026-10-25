@@ -1114,7 +1114,12 @@ fn (mut p Parser) append_diagnostic(diagnostic Diagnostic) {
 	if p.diagnostic_limit_reached {
 		return
 	}
-	if p.diagnostics.len >= max_parse_diagnostics {
+	// Deprecations must not make otherwise valid legacy sources hit the error limit.
+	if diagnostic.severity in ['warning:', 'notice:'] {
+		p.diagnostics << diagnostic
+		return
+	}
+	if p.diagnostics.filter(it.severity !in ['warning:', 'notice:']).len >= max_parse_diagnostics {
 		p.diagnostics << Diagnostic{
 			file:    diagnostic.file
 			pos:     diagnostic.pos
@@ -1735,7 +1740,7 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 			// V permits an unnamed type-only receiver, e.g. `fn (File) read()`.
 			// Keep an explicit ignored receiver binding so downstream method
 			// signature and dispatch indexes still receive parameter 0.
-			receiver_type = receiver_name
+			receiver_type = p.canonical_integer_type(receiver_name, name_pos, p.prev_tok_end)
 			receiver_name = '_'
 		} else if p.tok == .name && p.lit == 'chan' && p.peek() == .rpar {
 			// The builtin channel methods use the generic `chan` receiver. A bare
@@ -13109,7 +13114,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 					name_pos, name_end)
 				return p.map_literal()
 			}
-			local_type_name := p.resolve_local_type_name(name)
+			mut local_type_name := p.resolve_local_type_name(name)
 			// struct init: Name{...}; vlib/builtin also uses concrete lowercase
 			// runtime structs like array{} and string{}.
 			if p.tok == .lcbr && local_type_name.len > 0
@@ -13123,6 +13128,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			if p.tok == .lpar && local_type_name.len > 0
 				&& ((local_type_name[0] >= `A` && local_type_name[0] <= `Z`)
 					|| is_builtin_type(name) || p.is_generated_type_name(name)) {
+				local_type_name = p.canonical_integer_type(local_type_name, name_pos, name_end)
 				p.next() // skip (
 				inner := p.expr(.lowest)
 				p.check(.rpar)
@@ -14480,10 +14486,16 @@ fn (mut p Parser) generic_call_type_arg_id(id flat.NodeId) flat.NodeId {
 			}
 		}
 	}
-	name := flat.source_type_name(p.type_expr_name(id))
-	resolved := p.resolve_local_type_name(name)
-	if name.len == 0 || resolved == name {
-		return id
+	canonical_id := if node.kind in [.index, .prefix] {
+		p.canonical_generic_type_arg(id)
+	} else {
+		id
+	}
+	name := flat.source_type_name(p.type_expr_name(canonical_id))
+	resolved := p.canonical_integer_type(p.resolve_local_type_name(name), node.pos.offset,
+		node.pos.end)
+	if name.len == 0 || (resolved == name && canonical_id == id) {
+		return canonical_id
 	}
 	return p.add_node(flat.Node{
 		kind:  .ident
@@ -14505,14 +14517,15 @@ fn (p &Parser) generic_struct_init_type_name(id flat.NodeId) ?u32 {
 	if !p.generic_type_target_has_static_path(id) {
 		return none
 	}
-	type_name := flat.source_type_name(p.resolve_local_type_id(p.type_expr_name(id)))
+	type_name_id := p.resolve_local_type_id(p.type_expr_name(id))
+	type_name := flat.source_type_name(type_name_id)
 	if !generic_type_name_can_init(type_name) {
 		if p.index_expr_is_lifetime_erased_type_name(id) && type_name_can_init(type_name) {
-			return flat.source_type_id(type_name)
+			return type_name_id
 		}
 		return none
 	}
-	return flat.source_type_id(type_name)
+	return type_name_id
 }
 
 // generic_type_target_has_static_path distinguishes `Type[T]` from a generic
@@ -15312,6 +15325,7 @@ fn (mut p Parser) parse_fixed_array_literal_type_name() string {
 		if !is_builtin_type(name) {
 			name += p.parse_type_generic_suffix()
 		}
+		name = p.canonical_integer_type(name, name_start, name_end)
 		return p.resolve_local_type_name(name)
 	}
 	return p.parse_type_name_bytes()
@@ -16019,7 +16033,7 @@ fn (mut p Parser) translated_sizeof_name_is_const(name string) bool {
 		return false
 	}
 	if !p.is_translated && name in ['bool', 'char', 'i8', 'i16', 'i32', 'int', 'i64', 'u8', 'u16',
-		'u32', 'u64', 'f32', 'f64', 'string', 'rune', 'usize', 'isize', 'voidptr'] {
+		'u32', 'u64', 'f32', 'f64', 'string', 'rune', 'uint', 'usize', 'isize', 'voidptr'] {
 		return false
 	}
 	// `builtin` declares the other builtin types, such as `array`, so none of its
@@ -17807,6 +17821,7 @@ fn (mut p Parser) parse_type_name_bytes() string {
 			}
 		}
 		// generic: Type[T, U]
+		name = p.canonical_integer_type(name, name_start, name_end)
 		name += p.parse_type_generic_suffix()
 		name = p.resolve_local_type_name(name)
 	}
@@ -17992,8 +18007,8 @@ fn anonymous_struct_untyped_numeric_literal_matches(value flat.Node, expected u3
 	if value.kind == .int_literal {
 		return expected in [flat.source_type_int, flat.source_type_i8, flat.source_type_i16,
 			flat.source_type_i32, flat.source_type_i64, flat.source_type_isize, flat.source_type_u8,
-			flat.source_type_u16, flat.source_type_u32, flat.source_type_u64, flat.source_type_usize,
-			flat.source_type_f32, flat.source_type_f64]
+			flat.source_type_u16, flat.source_type_u32, flat.source_type_u64, flat.source_type_uint,
+			flat.source_type_usize, flat.source_type_f32, flat.source_type_f64]
 	}
 	if value.kind == .float_literal {
 		return expected in [flat.source_type_f32, flat.source_type_f64]
@@ -18817,8 +18832,8 @@ fn write_utf8_codepoint(buf &u8, j int, code u32) int {
 
 fn is_builtin_type(name string) bool {
 	return name in ['int', 'i8', 'i16', 'i32', 'i64', 'i128', 'u8', 'u16', 'u32', 'u64', 'u128',
-		'f32', 'f64', 'bool', 'string', 'rune', 'char', 'voidptr', 'charptr', 'byteptr', 'usize',
-		'isize', 'array', 'map', 'mapnode', '_result', '_option', 'any']
+		'f32', 'f64', 'bool', 'string', 'rune', 'char', 'voidptr', 'charptr', 'byteptr', 'uint',
+		'usize', 'isize', 'array', 'map', 'mapnode', '_result', '_option', 'any']
 }
 
 fn parser_name_can_start_pointer_type(name string) bool {

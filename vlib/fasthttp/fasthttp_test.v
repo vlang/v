@@ -218,7 +218,7 @@ fn reusable_takeover_handler(req HttpRequest) !HttpResponse {
 	}
 }
 
-fn send_raw_response(handle usize, response string) {
+fn send_raw_response(handle uint, response string) {
 	$if linux {
 		C.send(int(handle), response.str, response.len, C.MSG_NOSIGNAL)
 	} $else $if bsd {

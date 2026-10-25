@@ -57,7 +57,7 @@ mut:
 	dependents           []MultiWindowResourceKey
 	last_mutation_batch  u64
 	buffer_mutation_mode MultiWindowBufferMutationMode
-	buffer_capacity      usize
+	buffer_capacity      uint
 	buffer_usage         gfx.Usage
 	buffer_desc          gfx.BufferDesc
 	buffer               gfx.Buffer
@@ -227,7 +227,7 @@ fn (registry &MultiWindowResourceRegistry) validate_any(key MultiWindowResourceK
 	return key.slot
 }
 
-fn (registry &MultiWindowResourceRegistry) plan_buffer_mutation(key MultiWindowResourceKey, window WindowId, scope MultiWindowResourceScope, batch u64, mode MultiWindowBufferMutationMode, data_size usize) !MultiWindowBufferMutationPlan {
+fn (registry &MultiWindowResourceRegistry) plan_buffer_mutation(key MultiWindowResourceKey, window WindowId, scope MultiWindowResourceScope, batch u64, mode MultiWindowBufferMutationMode, data_size uint) !MultiWindowBufferMutationPlan {
 	index := registry.validate(key, .buffer, window, scope)!
 	registry.validate_mutation_scope(index, scope)!
 	if batch == 0 {

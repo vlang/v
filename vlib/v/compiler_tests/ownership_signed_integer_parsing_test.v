@@ -9,18 +9,18 @@ fn test_ownership_signed_integer_parsers_preserve_their_inputs() {
 
 fn main() {
 	negative := "-12345".to_owned()
-	negative_address := unsafe { usize(negative.str) }
+	negative_address := unsafe { uint(negative.str) }
 	assert negative.int() == -12345
 	assert negative.int() == -12345
 	assert strconv.parse_int(negative, 10, 64)! == -12345
 	assert negative == "-12345"
-	assert unsafe { usize(negative.str) == negative_address }
+	assert unsafe { uint(negative.str) == negative_address }
 	positive := "+23456".to_owned()
-	positive_address := unsafe { usize(positive.str) }
+	positive_address := unsafe { uint(positive.str) }
 	assert positive.int() == 23456
 	assert strconv.parse_int(positive, 10, 64)! == 23456
 	assert positive == "+23456"
-	assert unsafe { usize(positive.str) == positive_address }
+	assert unsafe { uint(positive.str) == positive_address }
 	unsigned := "34567".to_owned()
 	assert unsigned.int() == 34567
 	assert strconv.parse_int(unsigned, 10, 64)! == 34567

@@ -991,7 +991,7 @@ fn (mut tc TypeChecker) check_scoped_batches(items []CheckWorkItem, batch_limit 
 
 // check_batch_arena_keep_bytes bounds how much of a worker's batch arena stays
 // mapped between its batches (see prealloc_scope_reenter).
-const check_batch_arena_keep_bytes = isize(8) * 1024 * 1024
+const check_batch_arena_keep_bytes = int(8) * 1024 * 1024
 
 // begin_check_batch_scope starts the arena of one check batch. A worker that
 // reuses its batch arena rewinds the previous batch's one: unmapping and
@@ -3931,12 +3931,14 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 			raw_param_type := tc.parse_type(param.typ)
 			receiver_type := unwrap_pointer(raw_receiver_type)
 			param_type := unwrap_pointer(raw_param_type)
-			if !receiver.is_mut && !param.is_mut && receiver_type.name() == param_type.name()
-				&& raw_receiver_type.name() != raw_param_type.name() {
+			receiver_type_id := receiver_type.source_type_id()
+			param_type_id := param_type.source_type_id()
+			if !receiver.is_mut && !param.is_mut && receiver_type_id == param_type_id
+				&& raw_receiver_type.source_type_id() != raw_param_type.source_type_id() {
 				operator_params_match = false
 				tc.record_error_at(.call_arg_mismatch, 'the receiver type `${receiver.typ_text()}` should be the same type as the operand `${param.typ_text()}`', id, tc.fn_declaration_diagnostic_pos(node))
 			}
-			if receiver_type.name() != param_type.name() {
+			if receiver_type_id != param_type_id {
 				operator_params_match = false
 				tc.record_error_at(.call_arg_mismatch, 'expected `${receiver_type.name()}` not `${param_type.name()}` - both operands must be the same type for operator overloading', param_id, tc.type_diagnostic_pos(param_id, param_type.name()))
 			}
@@ -3952,7 +3954,8 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 		receiver_type := tc.parse_type(receiver.typ)
 		if receiver_type is Alias && (infix_power_type_is_numeric(receiver_type.base_type)
 			|| unalias_type(receiver_type.base_type) is String)
-			&& parsed_return_type.name() != receiver_type.name() && operator_params_match {
+			&& parsed_return_type.source_type_id() != receiver_type.source_type_id()
+			&& operator_params_match {
 			tc.record_error_at(.return_mismatch, 'operator `${operator}` methods on primitive aliases should return `${receiver_type.name()}`', id, tc.fn_return_type_diagnostic_pos(node))
 		}
 	}
@@ -4708,7 +4711,7 @@ fn (tc &TypeChecker) fn_body_reflects_param_type(node flat.Node, param_type_id u
 	for stack.len > 0 {
 		id := stack.pop()
 		child := tc.a.node(id)
-		if child.kind == .comptime_for && child.typ_text() == param_type {
+		if child.kind == .comptime_for && child.typ == param_type_id {
 			return true
 		}
 		for i in 0 .. child.children_count {

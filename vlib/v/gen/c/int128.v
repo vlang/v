@@ -419,7 +419,7 @@ fn (mut g FlatGen) gen_int128_cast(target_type types.Type, source_id flat.NodeId
 }
 
 // int128_narrow_c_type returns the C type a 128-bit value narrows into, or none
-// when the target is not a narrower integer. `isize`, `usize`, `rune` and `char`
+// when the target is not a narrower integer. `isize`, `uint`, `rune` and `char`
 // are types of their own in V rather than primitives, so they need naming here
 // too, or the cast falls through to a C cast the struct representation rejects.
 fn (mut g FlatGen) int128_narrow_c_type(t types.Type) ?string {
@@ -593,7 +593,7 @@ fn source_signedness_known(t &types.Type) bool {
 }
 
 // int128_source_is_signed reports whether an integer source casts with a sign
-// extension. `isize` is signed, `usize` and the unsigned primitives are not.
+// extension. `isize` is signed, `uint` and the unsigned primitives are not.
 fn int128_source_is_signed(t &types.Type) bool {
 	clean := unalias_type(t)
 	if clean is types.Primitive {

@@ -106,24 +106,27 @@ fn (mut g FlatGen) gen_fixed_array_index(index_id flat.NodeId, len string) {
 }
 
 fn (g &FlatGen) fixed_array_type_from_alias_text(type_name_id u32) ?types.ArrayFixed {
-	type_name := flat.source_type_name(type_name_id)
-	mut cur := trimmed_space(type_name)
+	mut cur := if flat.source_type_shape(type_name_id).has(.padded) {
+		flat.source_type_id(trimmed_space(flat.source_type_name(type_name_id)))
+	} else {
+		type_name_id
+	}
 	for _ in 0 .. 16 {
-		if cur.len == 0 {
+		if cur == 0 {
 			return none
 		}
-		if fixed := array_fixed_type(g.tc.parse_type(flat.source_type_id(cur))) {
+		if fixed := array_fixed_type(g.tc.parse_type(cur)) {
 			return fixed
 		}
-		mut next := g.tc.type_aliases.type_id(cur) or { u32(0) }
+		mut next := g.tc.type_aliases.type_id(flat.source_type_name(cur)) or { u32(0) }
 		if next == 0 {
-			qname := g.tc.qualify_name(cur)
-			next = g.tc.type_aliases.type_id(qname) or { u32(0) }
+			qname := g.tc.qualify_type_name(cur)
+			next = g.tc.type_aliases.type_id(flat.source_type_name(qname)) or { u32(0) }
 		}
-		if next == 0 || flat.source_type_name(next) == cur {
+		if next == 0 || next == cur {
 			return none
 		}
-		cur = flat.source_type_name(next)
+		cur = next
 	}
 	return none
 }
@@ -1343,7 +1346,7 @@ fn (mut g FlatGen) array_method_fallback_for_receiver(method string, base_id fla
 }
 
 fn (g &FlatGen) array_elem_type_matches(expected &types.Type, actual &types.Type) bool {
-	if expected.name() == actual.name() {
+	if expected.source_type_id() == actual.source_type_id() {
 		return true
 	}
 	return g.tc.c_type(expected) == g.tc.c_type(actual)
@@ -1851,14 +1854,14 @@ fn (g &FlatGen) index_operator_call_name(info types.CallInfo, base_type &types.T
 		return info.name
 	}
 	receiver_type := types.unwrap_pointer(base_type)
-	receiver_name := receiver_type.name()
-	if receiver_name.len == 0 {
+	receiver_name := receiver_type.source_type_id()
+	if receiver_name == 0 {
 		return info.name
 	}
-	if resolved := g.resolve_concrete_generic_method_name(flat.source_type_id(receiver_name), method) {
+	if resolved := g.resolve_concrete_generic_method_name(receiver_name, method) {
 		return resolved
 	}
-	resolved := g.resolve_method_name(flat.source_type_id(receiver_name), method)
+	resolved := g.resolve_method_name(receiver_name, method)
 	if resolved.len > 0 {
 		return resolved
 	}

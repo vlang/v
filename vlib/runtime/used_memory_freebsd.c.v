@@ -19,9 +19,9 @@ const rlimit_rss = i32(5)
 // used_memory retrieves the current physical memory usage of the process.
 // TinyCC and kernels without kern.proc.rlimit_usage report peak resident memory.
 pub fn used_memory() !u64 {
-	page_size := usize(C.sysconf(C._SC_PAGESIZE))
+	page_size := uint(C.sysconf(C._SC_PAGESIZE))
 	c_errno_1 := C.errno
-	if page_size == usize(-1) {
+	if page_size == uint(-1) {
 		return error('used_memory: C.sysconf() return error code = ${c_errno_1}')
 	}
 	$if tinyc {
@@ -30,7 +30,7 @@ pub fn used_memory() !u64 {
 		mib := [sysctl_ctl_kern, sysctl_kern_proc, sysctl_kern_proc_rlimit_usage, C.getpid(),
 			rlimit_rss]!
 		mut bytes := u64(0)
-		mut length := usize(sizeof(u64))
+		mut length := uint(sizeof(u64))
 		result := unsafe { C.sysctl(&mib[0], mib.len, &bytes, &length, nil, 0) }
 		c_errno_2 := C.errno
 		if result == 0 && length == sizeof(u64) && bytes != u64(-1) {

@@ -10,9 +10,9 @@ fn C.getrusage(who i32, usage &C.rusage) i32
 
 // used_memory retrieves the current physical memory usage of the process.
 pub fn used_memory() !u64 {
-	page_size := usize(C.sysconf(C._SC_PAGESIZE))
+	page_size := uint(C.sysconf(C._SC_PAGESIZE))
 	c_errno_1 := C.errno
-	if page_size == usize(-1) {
+	if page_size == uint(-1) {
 		return error('used_memory: C.sysconf() return error code = ${c_errno_1}')
 	}
 

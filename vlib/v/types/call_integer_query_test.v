@@ -25,7 +25,7 @@ fn test_integer_queries_preserve_call_types_and_diagnostics() {
 		'fn empty[T]() {}\nfn main() { empty(); empty[int](); }',
 		'type Count = int\nfn accept(a Count, b u8, c i64, d rune) {}\nfn main() { accept(Count(2), 3, 4, `a`) }',
 		'const amount = 3\nconst negative = -1\nfn accept(a u8, b u16, c int) {}\nfn main() { accept(amount, 4, negative); accept(-1, 2, 3); accept(negative, 2, 3) }',
-		'struct Item { value int }\nfn accept(a u32, b usize) {}\nfn main() { size := sizeof(Item); accept(size, size); accept(300, 4) }',
+		'struct Item { value int }\nfn accept(a u32, b uint) {}\nfn main() { size := sizeof(Item); accept(size, size); accept(300, 4) }',
 		'fn text() string { return "ok" }\nfn ints() []int { return [1, 2] }\nfn accept(a string, b []int, c map[string]int, d f64, e bool) {}\nfn main() { accept(text(), ints(), {"key": 1}, 2, true) }',
 		'struct Item { value int }\ninterface Named { value int }\ntype Choice = Item | string\nfn accept(a Item, b Named, c Choice, d ?int) {}\nfn main() { item := Item{value: 2}; accept(item, item, item, none) }',
 		'fn accept(a fn (int) int, b &int, c voidptr) {}\nfn identity(value int) int { return value }\nfn main() { value := 1; accept(identity, &value, unsafe { nil }) }',

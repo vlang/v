@@ -29,43 +29,43 @@ fn first(values &voidptr) voidptr {
 }
 
 fn set(value &voidptr) {
-	unsafe { *value = voidptr(usize(0x5678)) }
+	unsafe { *value = voidptr(uint(0x5678)) }
 }
 
 fn through_pointer(values &[]voidptr) {
-	assert first(values.data) == voidptr(usize(0x1234))
-	assert first((values.data)) == voidptr(usize(0x1234))
-	assert first(((values.data))) == voidptr(usize(0x1234))
+	assert first(values.data) == voidptr(uint(0x1234))
+	assert first((values.data)) == voidptr(uint(0x1234))
+	assert first(((values.data))) == voidptr(uint(0x1234))
 }
 
 fn through_mut(mut values []voidptr) {
-	assert first(values.data) == voidptr(usize(0x1234))
-	assert first((values.data)) == voidptr(usize(0x1234))
-	assert first(((values.data))) == voidptr(usize(0x1234))
+	assert first(values.data) == voidptr(uint(0x1234))
+	assert first((values.data)) == voidptr(uint(0x1234))
+	assert first(((values.data))) == voidptr(uint(0x1234))
 }
 
 fn through_alias(values &Values) {
-	assert first(values.data) == voidptr(usize(0x1234))
-	assert first((values.data)) == voidptr(usize(0x1234))
-	assert first(((values.data))) == voidptr(usize(0x1234))
+	assert first(values.data) == voidptr(uint(0x1234))
+	assert first((values.data)) == voidptr(uint(0x1234))
+	assert first(((values.data))) == voidptr(uint(0x1234))
 }
 
 fn main() {
 	mut values := unsafe { []voidptr{len: 2} }
-	values[0] = voidptr(usize(0x1234))
-	assert first(values.data) == voidptr(usize(0x1234))
-	assert first((values.data)) == voidptr(usize(0x1234))
-	assert first(((values.data))) == voidptr(usize(0x1234))
+	values[0] = voidptr(uint(0x1234))
+	assert first(values.data) == voidptr(uint(0x1234))
+	assert first((values.data)) == voidptr(uint(0x1234))
+	assert first(((values.data))) == voidptr(uint(0x1234))
 	through_pointer(&values)
 	through_mut(mut values)
 	aliased := Values(values)
 	through_alias(&aliased)
 	mut slot := Slot{}
 	set(slot.data)
-	assert slot.data == voidptr(usize(0x5678))
+	assert slot.data == voidptr(uint(0x5678))
 	slot.data = unsafe { nil }
 	set((slot.data))
-	assert slot.data == voidptr(usize(0x5678))
+	assert slot.data == voidptr(uint(0x5678))
 }
 ') or { panic(err) }
 	bin := os.join_path(root, 'out${exe_suffix}')

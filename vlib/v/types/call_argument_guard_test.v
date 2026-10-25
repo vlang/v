@@ -57,7 +57,7 @@ fn test_call_argument_guards_preserve_diagnostics() {
 	cases := [
 		'fn accept(value u8) {}\nfn main() { accept(255); accept(256); accept(-1) }',
 		'type Count = int\nfn accept(value u8) {}\nfn main() { count := Count(2); accept(count) }',
-		'fn accept(value usize) {}\nfn main() { size := sizeof(int); accept(size) }',
+		'fn accept(value uint) {}\nfn main() { size := sizeof(int); accept(size) }',
 		'fn accept(value int) {}\nfn main() { value := 4; accept(value) }',
 		'fn accept(value []int) {}\nfn main() { value := [4]; accept(value) }',
 		'fn accept(value fn (int) int) {}\nfn identity(value int) int { return value }\nfn main() { accept(identity) }',

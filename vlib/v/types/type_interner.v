@@ -32,8 +32,8 @@ mut:
 fn new_type_interner() &TypeInterner {
 	// Initialize the fixed pointer tables in place rather than copying a large
 	// temporary for each disposable checker and transformer fork.
-	mut interner := unsafe { &TypeInterner(malloc(sizeof(TypeInterner))) }
-	unsafe { vmemset(interner, 0, sizeof(TypeInterner)) }
+	mut interner := unsafe { &TypeInterner(malloc(int(sizeof(TypeInterner)))) }
+	unsafe { vmemset(interner, 0, int(sizeof(TypeInterner))) }
 	interner.lock = sync.new_rwmutex()
 	interner.types = []&Type{}
 	interner.names = []u32{}

@@ -32,7 +32,7 @@ fn (mut i SymbolInterner) intern(name string) (SymbolId, string) {
 	}
 	// Cache identities only: input storage can be a disposable or reused buffer.
 	// Checking the canonical bytes makes pointer reuse and hash collisions safe.
-	slot := int((usize(name.str) >> 4 ^ usize(name.len)) & 127)
+	slot := int((uint(name.str) >> 4 ^ uint(name.len)) & 127)
 	recent := i.recent[slot]
 	if recent != 0 {
 		canonical := i.names[int(recent) - 1]

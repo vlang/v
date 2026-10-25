@@ -11,7 +11,7 @@ fn source_index_u8(src string, c u8, start int) int {
 	if start < 0 || start >= src.len {
 		return -1
 	}
-	found := unsafe { &u8(C.memchr(src.str + start, c, usize(src.len - start))) }
+	found := unsafe { &u8(C.memchr(src.str + start, c, uint(src.len - start))) }
 	if isnil(found) {
 		return -1
 	}
@@ -116,14 +116,14 @@ fn read_batch_source(path string) string {
 			return ''
 		}
 		size := i64(st.st_size)
-		buf := unsafe { &u8(C.malloc(usize(size + 1))) }
+		buf := unsafe { &u8(C.malloc(uint(size + 1))) }
 		if isnil(buf) {
 			C.close(fd)
 			return ''
 		}
 		mut done := i64(0)
 		for done < size {
-			n := i64(C.read(fd, unsafe { buf + done }, usize(size - done)))
+			n := i64(C.read(fd, unsafe { buf + done }, uint(size - done)))
 			if n <= 0 {
 				break
 			}

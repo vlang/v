@@ -1649,7 +1649,7 @@ fn (mut g FlatGen) write_scoped_cgen_batch_output(batch &FlatGen) bool {
 		}
 	} else {
 		unsafe {
-			file.write_full_buffer(batch.sb.data, usize(batch.sb.len)) or {
+			file.write_full_buffer(batch.sb.data, uint(batch.sb.len)) or {
 				g.output_error = err.msg()
 				file.close()
 				return false

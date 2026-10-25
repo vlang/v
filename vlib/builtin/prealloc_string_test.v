@@ -6,13 +6,13 @@ fn test_prealloc_string_buffers_pack_bytes_and_preserve_general_alignment() {
 		first := 'ab'.clone()
 		second := 'cdef'.clone()
 		third := 'gh'.clone()
-		assert usize(second.str) == usize(first.str) + usize(first.len) + 1
-		assert usize(third.str) == usize(second.str) + usize(second.len) + 1
+		assert uint(second.str) == uint(first.str) + uint(first.len) + 1
+		assert uint(third.str) == uint(second.str) + uint(second.len) + 1
 		assert first == 'ab' && second == 'cdef' && third == 'gh'
 		assert unsafe { first.str[first.len] } == 0
 		assert unsafe { second.str[second.len] } == 0
 		general := unsafe { malloc(17) }
-		assert usize(general) % usize(prealloc_default_align) == 0
+		assert uint(general) % uint(prealloc_default_align) == 0
 		assert unsafe { prealloc_scope_owns(scope, first.str) }
 		assert unsafe { prealloc_scope_owns(scope, general) }
 		unsafe {
@@ -38,7 +38,7 @@ fn test_prealloc_string_buffers_grow_and_reenter_a_scope() {
 			assert unsafe { joined.str[joined.len] } == 0
 			assert unsafe { prealloc_scope_owns(scope, joined.str) }
 			general := unsafe { malloc(33) }
-			assert usize(general) % usize(prealloc_default_align) == 0
+			assert uint(general) % uint(prealloc_default_align) == 0
 			unsafe { prealloc_scope_leave(scope) }
 		}
 		unsafe { prealloc_scope_free_after(scope) }

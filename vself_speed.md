@@ -4,7 +4,69 @@ Every compiler fix must preserve or improve self-compilation efficiency. Agents 
 retired instructions before and after compiler changes and resolve regressions before merging.
 Keep correctness tests and generated-output checks alongside performance measurements.
 
-## Compiler hot paths, final C12 focused validation
+## Upstream integration, 2026-10-25
+
+A fresh comparison of the merged implementation against upstream
+`fca9fad345075a468aef230453816841ebd141b7` uses **7.8398% fewer retired
+instructions**, preserving the requested 7% improvement. Both compilers use the same self-built
+seed and direct `-prod` Apple Clang recipe **without PGO**. This comparison is separate from
+the historical C12 PGO result below.
+
+| Median metric | Updated upstream | Merged optimization |
+| --- | ---: | ---: |
+| Retired instructions | 64,435,580,516.5 | 59,383,971,240 |
+| Instructions/parsed line | 115,065.59 | 106,044.70 |
+| CPU cycles, billions | 27.1854 | 24.8506 |
+| Peak resident memory, MiB | 1,442.68 | 1,122.41 |
+| Elapsed time, ms | 8,711.12 | 7,634.60 |
+
+One warmup per role precedes ten alternating measured pairs. All 22 runs exit successfully with
+exactly one positive retired-instruction counter and byte-identical generated C. The common C
+passes Clang's Objective-C syntax check before the measured pairs. **0/10 pairs regress**;
+the median paired instruction difference is `-4,967,599,700`. Elapsed time and cycles are
+contextual measurements under shared host load, without a controlled latency claim.
+
+The fixed fixture, all 8,498 tracked file hashes, and the parsed inventory remain unchanged:
+**559,990 physical lines in 562 parsed `.v` files**, with no parsed `.vh` files. Both roles run
+from the fixture directory using the same executable and output paths. The fixture executable is
+restored after measuring. A common `V_MACOS_V3_VHASH` controls only build metadata; both roles use
+`SOURCE_DATE_EPOCH=0`, `V_MACOS_V3_NO_FALLBACK=1`, and no inherited compiler overrides.
+
+Both production builds use this recipe, outside the measured workload:
+
+```sh
+env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE -u CC -u CFLAGS -u LDFLAGS \
+  VJOBS=4 SOURCE_DATE_EPOCH=0 V_MACOS_V3_NO_FALLBACK=1 \
+  ./v -prod -cc /usr/bin/clang -gc none -no-memory-limit -prealloc \
+  -compile-backend fastc -nocache -o ./v-perf cmd/v
+```
+
+Each role is installed as `./v` in the fixed fixture directory, then measured serially with:
+
+```sh
+env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE -u CC -u CFLAGS -u LDFLAGS \
+  VJOBS=1 SOURCE_DATE_EPOCH=0 V_MACOS_V3_NO_FALLBACK=1 \
+  V_MACOS_V3_VHASH=2d1367e589ed30c03325e586a8ddfd3bc96c8c3d \
+  /usr/bin/time -l -o "$run_log" \
+  ./v -nocache -gc none -prealloc -compile-backend fastc -building-v \
+  -o /Users/alex/code/v-speed-7pct-20261023/pr-conflicts-20261025/output.c cmd/v
+```
+
+The upstream production SHA-256 is
+`b9e6b3e0daabe0ae68b86d54e0949b66c244eb731aeb9051d33e27562dcfb922`;
+the merged production SHA-256 is
+`cfd1597ab0b3d04205424f919ec32220cb57e20f39f5e566c98478a72fbc40ce`.
+The common generated C SHA-256 is
+`0e690ac8d47aea18e67aa4ae7a929bd6ef6f2df06a42d149853f4a26dd1239be`.
+
+Evidence is retained in `/Users/alex/code/v-speed-7pct-20261023/pr-conflicts-20261025/`:
+`upstream-build/` and `merged-build/` record exact sources, seed, flags, toolchain, and binaries;
+`measurement/` retains commands, effective environment, inventories, raw logs, all samples,
+summary, independent audit, output syntax check, and fixture restoration proof. Two test-only
+follow-ups replace deprecated `usize` fixture spellings with `uint`; their exact diffs and passing
+reruns are retained in `fixture-uint-followup/`. No assertions or production build inputs change.
+
+## Compiler hot paths, historical C12 focused validation
 
 The corrected C12 production compiler uses **8.0268% fewer retired instructions** on the
 fixed self-compilation workload with `VJOBS=1`, meeting the requested 7% improvement.

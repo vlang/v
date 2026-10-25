@@ -194,7 +194,8 @@ fn test_cached_cname_classifier_preserves_special_names_and_bytes() {
 	mut g := FlatGen.new()
 	for name in ['', '.', '9name', 'a..b', 'a__b.c', '__v3_internal_symbol_x',
 		'__v3_internal_symbol_x.y', 'x@static@y', 'x.[]=', 'x.+', '_str_123', 'C.name', 'C.SSL_CTX.str',
-		'complex', 'int_str', 'malloc'] {
+		'complex', 'near', 'far', 'pascal', 'cdecl', 'alloca', 'v_alloca',
+		'__v3_internal_symbol_libc_alloca', 'C.alloca', 'int_str', 'malloc'] {
 		for _ in 0 .. 2 {
 			assert g.cname(name) == c_name(name), name
 		}
@@ -552,12 +553,9 @@ fn test_array_receiver_method_is_not_reselected_as_generic() {
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
-	g.generic_method_candidates[generic_method_candidate_key('jsonrpc', 'encode_batch')] = [
-		GenericMethodCandidate{
-			name: 'jsonrpc.[]Request.encode_batch'
-			ret:  types.Type(types.string_)
-		},
-	]
+	g.add_generic_method_candidate(flat.source_type_id('jsonrpc'), 'encode_batch',
+		generic_method_candidate_for_decl('jsonrpc.[]Request.encode_batch', types.Type(types.string_),
+			[]types.Type{}))
 
 	assert g.specialized_generic_method_name_for_call_with_arg_count(flat.empty_node, 'jsonrpc.[]Response.encode_batch', -1) == none
 }
@@ -1815,5 +1813,32 @@ fn test_decl_pointer_param_abi_merge_preserves_name_fallback_after_semantic_equa
 			pointer_param,
 			array_param,
 		]
+	}
+}
+
+fn test_sum_type_index_preserves_import_context_and_builtin_variants() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.qualify_name_cache = &types.QualifyNameCache{}
+	tc.cur_module = 'main'
+	tc.structs['left.Item'] = []types.StructField{}
+	tc.structs['right.Item'] = []types.StructField{}
+	tc.sum_types.set('left.Value', ['left.Item', 'int'])
+	tc.sum_types.set('right.Value', ['int', 'right.Item'])
+	tc.cur_file = 'left.v'
+	tc.register_file_import('dep', 'left')
+	tc.cur_file = 'right.v'
+	tc.register_file_import('dep', 'right')
+	mut g := FlatGen.new()
+	g.tc = &tc
+	sum_id := flat.source_type_id('dep.Value')
+	variant_id := flat.source_type_id('dep.Item')
+	for _ in 0 .. 3 {
+		tc.cur_file = 'left.v'
+		assert g.sum_type_index(sum_id, variant_id) == 1
+		assert g.sum_type_index(sum_id, flat.source_type_int) == 2
+		tc.cur_file = 'right.v'
+		assert g.sum_type_index(sum_id, variant_id) == 2
+		assert g.sum_type_index(sum_id, flat.source_type_int) == 1
 	}
 }

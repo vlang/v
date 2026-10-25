@@ -226,7 +226,7 @@ pub fn map_entry_read_fn_name(v_name string, field string) string {
 pub fn zero_value(v_type string) string {
 	return match v_type {
 		'i8', 'i16', 'int', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize',
-		'usize', 'rune' {
+		'uint', 'usize', 'rune' {
 			'${v_type}(0)'
 		}
 		'f32' { 'f32(0)' }

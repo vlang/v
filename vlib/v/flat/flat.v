@@ -24,7 +24,7 @@ const static_type_method_name_marker = '@static@'
 pub fn empty_node_ids(len int) []NodeId {
 	mut ids := []NodeId{len: len}
 	if len > 0 {
-		unsafe { C.memset(ids.data, 0xff, usize(len) * sizeof(NodeId)) }
+		unsafe { C.memset(ids.data, 0xff, uint(len) * sizeof(NodeId)) }
 	}
 	return ids
 }
@@ -294,16 +294,16 @@ fn node_payload_with_types(generic_params []string, generic_constraints TypeText
 		node_payload_unlock()
 		panic('v3: too many node payloads (${idx})')
 	}
-	mut chunk := payload_ptr_get(voidptr(table), usize(chunk_idx))
+	mut chunk := payload_ptr_get(voidptr(table), uint(chunk_idx))
 	if isnil(chunk) {
 		chunk = node_payload_new_chunk()
-		payload_ptr_set(voidptr(table), usize(chunk_idx), chunk)
+		payload_ptr_set(voidptr(table), uint(chunk_idx), chunk)
 		if isnil(chunk) {
 			node_payload_unlock()
 			panic('v3: could not allocate a node payload chunk')
 		}
 	}
-	payload_ptr_set(chunk, usize(idx & node_payload_chunk_mask), voidptr(payload))
+	payload_ptr_set(chunk, uint(idx & node_payload_chunk_mask), voidptr(payload))
 	node_payload_count_publish(table, u32(idx + 1))
 	node_payload_unlock()
 	return u32(idx + 1)
@@ -323,8 +323,8 @@ pub fn node_payload_at(id u32) &NodePayload {
 	if isnil(table) || idx >= int(node_payload_count_load(table)) {
 		return &NodePayload(unsafe { nil })
 	}
-	chunk := payload_ptr_get(voidptr(table), usize(idx >> node_payload_chunk_bits))
-	return unsafe { &NodePayload(payload_ptr_get(chunk, usize(idx & node_payload_chunk_mask))) }
+	chunk := payload_ptr_get(voidptr(table), uint(idx >> node_payload_chunk_bits))
+	return unsafe { &NodePayload(payload_ptr_get(chunk, uint(idx & node_payload_chunk_mask))) }
 }
 
 // node_flag_skip_ownership_drops marks a block/if/for/fn node whose scope must
@@ -989,7 +989,7 @@ pub mut:
 // passed on by reference is allocated as well, after it is zeroed whole and
 // copied: this allocates it alone and clears no more than a pass reads.
 pub fn new_text_probe_cache() &TextProbeCache {
-	mut cache := unsafe { &TextProbeCache(malloc_noscan(sizeof(TextProbeCache))) }
+	mut cache := unsafe { &TextProbeCache(malloc_noscan(int(sizeof(TextProbeCache)))) }
 	cache.reset()
 	return cache
 }
@@ -1046,8 +1046,8 @@ fn (mut a FlatAst) intern_node_texts_range_wide(start int, end int) {
 	// A slot's text and identity are read only once its nonzero pointer key
 	// matches, so the keys alone start out cleared.
 	mut probe := WideTextProbe{
-		ptrs: unsafe { &voidptr(vcalloc_noscan(isize(wide_text_probe_slots) * isize(sizeof(voidptr)))) }
-		vals: unsafe { &string(malloc_noscan(isize(wide_text_probe_slots) * isize(sizeof(string)))) }
+		ptrs: unsafe { &voidptr(vcalloc_noscan(int(wide_text_probe_slots) * int(sizeof(voidptr)))) }
+		vals: unsafe { &string(malloc_noscan(int(wide_text_probe_slots) * int(sizeof(string)))) }
 	}
 	defer {
 		// These buffers borrow the AST's canonical text; release only the scratch storage.
@@ -1382,7 +1382,7 @@ pub fn (mut a FlatAst) add_node(node Node) NodeId {
 	mut stored := node
 	if a.nodes.len < a.nodes.cap {
 		unsafe {
-			mut slot := &Node(&u8(a.nodes.data) + usize(a.nodes.len) * sizeof(Node))
+			mut slot := &Node(&u8(a.nodes.data) + uint(a.nodes.len) * sizeof(Node))
 			*slot = stored
 			a.nodes.len++
 		}
@@ -1409,7 +1409,7 @@ pub fn (mut a FlatAst) begin_children() int {
 pub fn (mut a FlatAst) add_child(id NodeId) {
 	if a.children.len < a.children.cap {
 		unsafe {
-			mut slot := &NodeId(&u8(a.children.data) + usize(a.children.len) * sizeof(NodeId))
+			mut slot := &NodeId(&u8(a.children.data) + uint(a.children.len) * sizeof(NodeId))
 			*slot = id
 			a.children.len++
 		}

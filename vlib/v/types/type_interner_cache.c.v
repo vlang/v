@@ -158,7 +158,7 @@ fn (i &TypeInterner) canonical_identity(t &Type) &CanonicalTypeEntry {
 	if t is Primitive {
 		return unsafe { nil }
 	}
-	slot := int((usize(t) >> 4) & (canonical_identity_cache_slots - 1))
+	slot := int((uint(t) >> 4) & (canonical_identity_cache_slots - 1))
 	entry := unsafe { &CanonicalTypeEntry(C.atomic_load_ptr(&i.identities[slot])) }
 	if !isnil(entry) && voidptr(entry.typ) == voidptr(t) {
 		return entry
@@ -171,7 +171,7 @@ fn (i &TypeInterner) remember_canonical_identity(entry &CanonicalTypeEntry) {
 	if entry.typ is Primitive {
 		return
 	}
-	slot := int((usize(entry.typ) >> 4) & (canonical_identity_cache_slots - 1))
+	slot := int((uint(entry.typ) >> 4) & (canonical_identity_cache_slots - 1))
 	unsafe {
 		C.atomic_store_ptr(&i.identities[slot], entry)
 	}

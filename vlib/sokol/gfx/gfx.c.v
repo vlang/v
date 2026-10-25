@@ -146,8 +146,9 @@ pub fn query_buffer_overflow(buf Buffer) bool {
 	return C.sg_query_buffer_overflow(buf)
 }
 
+// query_buffer_will_overflow reports whether appending size bytes would overflow buf.
 @[inline]
-pub fn query_buffer_will_overflow(buf Buffer, size usize) bool {
+pub fn query_buffer_will_overflow(buf Buffer, size uint) bool {
 	return C.sg_query_buffer_will_overflow(buf, size)
 }
 

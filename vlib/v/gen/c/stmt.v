@@ -304,18 +304,18 @@ fn (mut g FlatGen) gen_split_array_append_expr_stmt(node flat.Node) bool {
 }
 
 fn (g &FlatGen) array_push_rhs_is_sum_variant_value(rhs_id flat.NodeId, elem_type &types.Type) bool {
-	sum_name := if elem_type is types.SumType {
-		elem_type.name()
+	sum_name_id := if elem_type is types.SumType {
+		elem_type.source_type_id()
 	} else if elem_type is types.Alias && elem_type.base_type is types.SumType {
-		elem_type.name()
+		elem_type.source_type_id()
 	} else {
 		return false
 	}
-	candidate := flat.source_type_name(g.array_push_rhs_variant_candidate(rhs_id))
-	if candidate.len == 0 {
+	candidate_id := g.array_push_rhs_variant_candidate(rhs_id)
+	if candidate_id == 0 {
 		return false
 	}
-	if _ := g.tc.sum_variant_type_for_pattern(flat.source_type_id(sum_name), flat.source_type_id(candidate)) {
+	if _ := g.tc.sum_variant_type_for_pattern(sum_name_id, candidate_id) {
 		return true
 	}
 	return false
@@ -6304,11 +6304,11 @@ fn (g &FlatGen) struct_type_embeds_error(type_name_id u32) bool {
 		return true
 	}
 	for field in g.struct_embedded_fields(type_name_id) {
-		embedded_type_name := flat.source_type_name(g.embedded_field_type_name(field))
-		if embedded_type_name.len == 0 {
+		embedded_type_name_id := g.embedded_field_type_name(field)
+		if embedded_type_name_id == 0 {
 			continue
 		}
-		if g.struct_type_embeds_error(flat.source_type_id(embedded_type_name)) {
+		if g.struct_type_embeds_error(embedded_type_name_id) {
 			return true
 		}
 	}
@@ -7403,21 +7403,21 @@ fn (g &FlatGen) specialized_selector_method_call_return_type(node flat.Node, fn_
 		return none
 	}
 	receiver_type := types.unwrap_pointer(g.usable_expr_type(g.a.child(&fn_node, 0)))
-	if ret := g.specialized_receiver_method_call_return_type(node, receiver_type.name(), fn_node.value) {
+	if ret := g.specialized_receiver_method_call_return_type(node, receiver_type.source_type_id(), fn_node.value) {
 		return ret
 	}
 	if receiver_type is types.Alias {
-		return g.specialized_receiver_method_call_return_type(node, receiver_type.base_type.name(),
+		return g.specialized_receiver_method_call_return_type(node, receiver_type.base_type.source_type_id(),
 			fn_node.value)
 	}
 	return none
 }
 
-fn (g &FlatGen) specialized_receiver_method_call_return_type(node flat.Node, receiver_name string, method string) ?types.Type {
-	if receiver_name.len == 0 {
+fn (g &FlatGen) specialized_receiver_method_call_return_type(node flat.Node, receiver_id u32, method string) ?types.Type {
+	if receiver_id == 0 {
 		return none
 	}
-	query := g.receiver_method_query(flat.source_type_id(receiver_name), method)
+	query := g.receiver_method_query(receiver_id, method)
 	if query.has_ret {
 		return query.ret
 	}
@@ -7954,7 +7954,7 @@ fn (mut g FlatGen) gen_staging_value_decl(node flat.Node) {
 		storage := g.tmp_name()
 		address := g.tmp_name()
 		g.writeln('size_t ${align} = (size_t)(${alignment});')
-		g.writeln('void* ${storage} = __builtin_alloca(sizeof(${ct}) + ${align} - 1);')
+		g.writeln('void* ${storage} = alloca(sizeof(${ct}) + ${align} - 1);')
 		g.writeln('uintptr_t ${address} = (uintptr_t)${storage} + ${align} - 1;')
 		g.writeln('${ct}* ${name} = (${ct}*)(${address} / ${align} * ${align});')
 		g.track_local_pointer_storage_decl(lhs, owner, typ, '${ct}*')
@@ -8607,7 +8607,7 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 					storage_tmp := g.tmp_name()
 					value_tmp := g.tmp_name()
 					g.write('${decl_prefix}${ct}* ${lhs_str} = ({ size_t ${align_tmp} = (size_t)(${align}); ')
-					g.write('void* ${storage_tmp} = __builtin_alloca(sizeof(${ct}) + ${align_tmp} - 1); ')
+					g.write('void* ${storage_tmp} = alloca(sizeof(${ct}) + ${align_tmp} - 1); ')
 					g.write('${ct}* ${value_tmp} = (${ct}*)((((uintptr_t)${storage_tmp} + ${align_tmp} - 1) / ${align_tmp}) * ${align_tmp}); ')
 					g.write('*${value_tmp} = ')
 					g.gen_decl_init_expr(rhs_id, rhs, v_type, ct, true, boxed_optional)
@@ -9156,7 +9156,7 @@ fn (g &FlatGen) checker_struct_field_type(type_name_id u32, field_name string) ?
 		short_id := flat.source_type_id(c_short_name_view(flat.source_type_name(type_name_id)))
 		return g.checker_owner_field_type(short_id, field_name)
 	}
-	qname := flat.source_type_id(g.tc.qualify_name(flat.source_type_name(type_name_id)))
+	qname := g.tc.qualify_type_name(type_name_id)
 	if qname != type_name_id {
 		return g.checker_owner_field_type(qname, field_name)
 	}
@@ -10154,7 +10154,7 @@ fn (g &FlatGen) assign_struct_operator_method(lhs_type &types.Type, op flat.Op) 
 	}
 	if clean is types.Struct
 		&& g.tc.c_type(clean) in ['bool', 'char', 'i8', 'i16', 'i32', 'int', 'i64', 'u8', 'u16',
-			'u32', 'u64', 'f32', 'f64', 'isize', 'usize', 'voidptr'] {
+			'u32', 'u64', 'f32', 'f64', 'isize', 'uint', 'voidptr'] {
 		return none
 	}
 	op_symbol := assign_struct_operator_symbol(op) or { return none }
