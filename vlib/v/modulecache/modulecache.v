@@ -560,50 +560,6 @@ fn source_signature_details_probed(source_files []string, build_pseudo_values st
 		hash = hash_bytes(hash, content)
 		hash = hash_bytes(hash, [u8(0xff)])
 		source := content.bytestr()
-		vml_paths, vml_lookup_paths, vml_lookup_candidates, has_unresolved_vml_path := compile_time_vml_paths(source, path)
-		if has_unresolved_vml_path {
-			cacheable = false
-		}
-		for lookup_path in vml_lookup_paths {
-			resolved := os.real_path(lookup_path)
-			metadata := file_change_signature(lookup_path)
-			if metadata.len == 0 {
-				cacheable = false
-			}
-			validation << 'vmllookup=${lookup_path}\t${resolved}\t${metadata}'
-			hash = hash_bytes(hash, [u8(0xf7)])
-			hash = hash_bytes(hash, lookup_path.bytes())
-			hash = hash_bytes(hash, [u8(0)])
-			hash = hash_bytes(hash, resolved.bytes())
-			hash = hash_bytes(hash, [u8(0xff)])
-		}
-		for candidate in vml_lookup_candidates {
-			metadata := file_change_signature(candidate)
-			if metadata.len == 0 {
-				cacheable = false
-			}
-			validation << 'vmlcandidate=${candidate}\t${metadata}'
-			hash = hash_bytes(hash, [u8(0xf6)])
-			hash = hash_bytes(hash, candidate.bytes())
-			hash = hash_bytes(hash, [u8(0)])
-			hash = hash_bytes(hash, metadata.bytes())
-			hash = hash_bytes(hash, [u8(0xff)])
-		}
-		for vml_path in vml_paths {
-			// Record the file state before reading the bytes the signature hashes, so an
-			// edit in between leaves an older record that the next validation rejects.
-			vml_signature := file_change_signature(vml_path)
-			if vml_signature.len == 0 {
-				cacheable = false
-			}
-			vml_content := os.read_bytes(vml_path) or { return SourceSignatureDetails{} }
-			validation << 'vml=${vml_path}\t${vml_signature}'
-			hash = hash_bytes(hash, [u8(0xf8)])
-			hash = hash_bytes(hash, vml_path.bytes())
-			hash = hash_bytes(hash, [u8(0)])
-			hash = hash_bytes(hash, vml_content)
-			hash = hash_bytes(hash, [u8(0xff)])
-		}
 		if source_uses_pseudo(source, [
 			'@BUILD_TIMESTAMP',
 			'@BUILD_DATE',
@@ -1072,30 +1028,6 @@ fn valid_cached_source_signature(content string, metadata string, build_pseudo_v
 			}
 			continue
 		}
-		if line.starts_with('vml=') {
-			parts := line['vml='.len..].split('\t')
-			if parts.len != 2 || parts[0].len == 0
-				|| !file_change_signature_matches(parts[0], parts[1]) {
-				return none
-			}
-			continue
-		}
-		if line.starts_with('vmlcandidate=') {
-			parts := line['vmlcandidate='.len..].split('\t')
-			if parts.len != 2 || parts[0].len == 0
-				|| !file_change_signature_matches(parts[0], parts[1]) {
-				return none
-			}
-			continue
-		}
-		if line.starts_with('vmllookup=') {
-			parts := line['vmllookup='.len..].split('\t')
-			if parts.len != 3 || parts[0].len == 0 || os.real_path(parts[0]) != parts[1]
-				|| !file_change_signature_matches(parts[0], parts[2]) {
-				return none
-			}
-			continue
-		}
 		if line.starts_with('vmod=') {
 			parts := line['vmod='.len..].split('\t')
 			if parts.len != 4 || parts[0].len == 0 {
@@ -1321,86 +1253,6 @@ fn signature_string_call_arg_prefix(source string, start int) (string, int, bool
 	return '', source.len, false, false
 }
 
-fn compile_time_vml_paths(source string, source_file string) ([]string, []string, []string, bool) {
-	if !source.contains('\$vml') {
-		return []string{}, []string{}, []string{}, false
-	}
-	mut paths := map[string]bool{}
-	mut lookup_paths := map[string]bool{}
-	mut lookup_candidates := map[string]bool{}
-	mut has_unresolved_path := false
-	mut pos := 0
-	for pos < source.len {
-		if source[pos] == `/` && pos + 1 < source.len
-			&& (source[pos + 1] == `/` || source[pos + 1] == `*`) {
-			pos = skip_signature_space_and_comments(source, pos)
-			continue
-		}
-		if source[pos] in [`'`, `"`, `\``] {
-			pos = skip_signature_quoted_text(source, pos, false)
-			continue
-		}
-		if source[pos] == `r` && pos + 1 < source.len && source[pos + 1] in [`'`, `"`] {
-			pos = skip_signature_quoted_text(source, pos + 1, true)
-			continue
-		}
-		if pos + 4 > source.len || source[pos..pos + 4] != '\$vml'
-			|| (pos + 4 < source.len && signature_name_char(source[pos + 4])) {
-			pos++
-			continue
-		}
-		raw_path, next_pos, ok, is_raw := signature_string_call_arg(source, pos + 4)
-		if ok {
-			path_value := if is_raw { raw_path } else { cached_unescape_v_string(raw_path) }
-			path, candidates := resolve_signature_vml_path(path_value, source_file)
-			paths[os.real_path(path)] = true
-			lookup_paths[path] = true
-			for candidate in candidates {
-				lookup_candidates[os.real_path(candidate)] = true
-			}
-		} else {
-			has_unresolved_path = true
-		}
-		pos = if next_pos > pos { next_pos } else { pos + 4 }
-	}
-	mut result := paths.keys()
-	result.sort()
-	mut lookups := lookup_paths.keys()
-	lookups.sort()
-	mut candidates := lookup_candidates.keys()
-	candidates.sort()
-	return result, lookups, candidates, has_unresolved_path
-}
-
-fn resolve_signature_vml_path(path string, source_file string) (string, []string) {
-	if os.is_abs_path(path) {
-		return path, []string{}
-	}
-	dir := os.dir(os.real_path(source_file))
-	direct := os.join_path_single(dir, path)
-	if os.exists(direct) {
-		return direct, []string{}
-	}
-	mut candidates := [direct]
-	in_templates := os.join_path(dir, 'templates', path)
-	if os.exists(in_templates) {
-		return in_templates, candidates
-	}
-	candidates << in_templates
-	root, _ := signature_vmod_root(source_file)
-	if root != dir {
-		vmod_direct := os.join_path_single(root, path)
-		if os.exists(vmod_direct) {
-			return vmod_direct, candidates
-		}
-		candidates << vmod_direct
-		vmod_templates := os.join_path(root, 'templates', path)
-		if os.exists(vmod_templates) {
-			return vmod_templates, candidates
-		}
-	}
-	return direct, []string{}
-}
 
 // file_change_signature returns a value that changes whenever the file at `path`
 // changes, appears or disappears: its metadata when the file system reports one,
@@ -1515,7 +1367,7 @@ pub fn (m &Manager) valid_entry_with_metadata_cache(module_name string, source_f
 	}
 	source_details := m.source_signature_details(source_files)
 	if !source_details.cacheable {
-		cache_trace_module_miss(module_name, 'source has an unresolved compile-time VML path')
+		cache_trace_module_miss(module_name, 'source is not cacheable')
 		return none
 	}
 	expected := entry_stamp(m.salt, source_details.signature)
