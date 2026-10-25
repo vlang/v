@@ -14,9 +14,9 @@ module main
 //
 // Rendering uses `gg` (a sokol-backed 2D layer) in immediate mode: the
 // decoded image is drawn as a single textured quad and panned / zoomed /
-// rotated through the sgl matrix stack. This path works on every native
-// sokol backend (OpenGL on Linux, D3D11 on Windows, Metal on macOS), so no
-// custom shader compilation is required for the viewer itself.
+// rotated through the renderer's matrix stack. This path works on every
+// native sokol backend (OpenGL on Linux, D3D11 on Windows, Metal on macOS),
+// so no custom shader compilation is required for the viewer itself.
 //
 // Image bytes come from our own `decoder` module (no stbi). Files, folders
 // and zip archives are scanned by `file_scan.v` / `zip_container.v`.
@@ -24,7 +24,6 @@ module main
 import os
 import gg
 import sokol.gfx
-import sokol.sgl
 import sokol.sapp
 import image.decoders.decoder
 import image.decoders.gif
@@ -387,24 +386,24 @@ fn draw_image(app &App) {
 	rot := app.item_list.lst[app.item_list.item_index].rotation
 	angle := f32(rot) * 1.5707963 // 90 degrees per step
 
-	sgl.matrix_mode_modelview()
-	sgl.push_matrix()
-	sgl.translate(app.win_w / 2 + app.pan_x, app.win_h / 2 + app.pan_y, 0.0)
-	sgl.rotate(angle, 0.0, 0.0, 1.0)
-	sgl.scale(app.zoom, app.zoom, 1.0)
+	app.gg.r.matrix_mode_modelview()
+	app.gg.r.push_matrix()
+	app.gg.r.translate(app.win_w / 2 + app.pan_x, app.win_h / 2 + app.pan_y, 0.0)
+	app.gg.r.rotate(angle, 0.0, 0.0, 1.0)
+	app.gg.r.scale(app.zoom, app.zoom, 1.0)
 
 	hw := f32(app.img_w) / 2
 	hh := f32(app.img_h) / 2
-	sgl.enable_texture()
-	sgl.texture(app.texture, app.sampler)
-	sgl.begin_quads()
-	sgl.v2f_t2f_c3b(-hw, -hh, 0, 0, 255, 255, 255)
-	sgl.v2f_t2f_c3b(hw, -hh, 1, 0, 255, 255, 255)
-	sgl.v2f_t2f_c3b(hw, hh, 1, 1, 255, 255, 255)
-	sgl.v2f_t2f_c3b(-hw, hh, 0, 1, 255, 255, 255)
-	sgl.end()
-	sgl.disable_texture()
-	sgl.pop_matrix()
+	app.gg.r.enable_texture()
+	app.gg.r.texture(app.texture, app.sampler)
+	app.gg.r.begin_quads()
+	app.gg.r.v2f_t2f_c3b(-hw, -hh, 0, 0, 255, 255, 255)
+	app.gg.r.v2f_t2f_c3b(hw, -hh, 1, 0, 255, 255, 255)
+	app.gg.r.v2f_t2f_c3b(hw, hh, 1, 1, 255, 255, 255)
+	app.gg.r.v2f_t2f_c3b(-hw, hh, 0, 1, 255, 255, 255)
+	app.gg.r.end()
+	app.gg.r.disable_texture()
+	app.gg.r.pop_matrix()
 }
 
 // draw_help paints the help overlay.
