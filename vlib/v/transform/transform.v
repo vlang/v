@@ -11466,8 +11466,8 @@ fn (t &Transformer) escape_value_tails(id flat.NodeId) []flat.NodeId {
 
 // escape_append_target_is_array reports whether `lhs << value` appends to a dynamic array.
 fn (t &Transformer) escape_append_target_is_array(lhs_id flat.NodeId) bool {
-	typ := trimmed_transform_text(flat.source_type_name(t.address_expr_type_name(lhs_id)))
-	return flat.source_type_shape(t.clean_array_append_lhs_type(flat.source_type_id(typ))).has(.array_type)
+	typ := t.trimmed_type_id(t.address_expr_type_name(lhs_id))
+	return flat.source_type_shape(t.clean_array_append_lhs_type(typ)).has(.array_type)
 }
 
 fn (t &Transformer) escape_index_assign_retains_value(lhs_id flat.NodeId) bool {
@@ -12434,25 +12434,32 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 		if child.value_text().len == 0 {
 			continue
 		}
+		child_type_shape := flat.source_type_shape(child.typ)
 		if child.op == .dot {
 			t.cur_fn_receiver_name = child.source_value_id()
 		}
-		if flat.source_type_shape(child.typ).has(.variadic) {
+		if child_type_shape.has(.variadic) {
 			t.cur_fn_variadic_param = child.value_text()
 		}
-		mut raw_source_typ := (if flat.source_type_shape(child.typ).has(.variadic) {
+		mut raw_source_typ := (if child_type_shape.has(.variadic) {
 			flat.source_type_id('[]' + child.typ_text()[3..])
 		} else {
 			child.typ
 		})
 		raw_typ := if child.typ != 0 {
-			if flat.source_type_shape(child.typ).has(.variadic) {
-				'[]' + flat.source_type_name(t.normalize_type_alias(flat.source_type_id(child.typ_text()[3..])))
+			if child_type_shape.has(.variadic) {
+				elem_typ := flat.source_type_id(child.typ_text()[3..])
+				normalized_elem_typ := t.normalize_type_alias(elem_typ)
+				if normalized_elem_typ == elem_typ {
+					raw_source_typ
+				} else {
+					flat.source_type_id('[]' + flat.source_type_name(normalized_elem_typ))
+				}
 			} else {
-				flat.source_type_name(t.normalize_type_alias(child.typ))
+				t.normalize_type_alias(child.typ)
 			}
 		} else {
-			''
+			u32(0)
 		}
 		mut typ := (
 			if t.validating_generic_spec && flat.source_type_name(raw_source_typ).contains('main.') {
@@ -12463,8 +12470,8 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 				raw_source_typ
 			} else if param_idx < param_types.len && param_types[param_idx] !is types.Unknown {
 				t.normalize_type_alias(param_types[param_idx].source_type_id())
-			} else if raw_typ.len > 0 {
-				flat.source_type_id(raw_typ)
+			} else if raw_typ != 0 {
+				raw_typ
 			} else if param_idx == 0 {
 				t.fn_body_receiver_type(fn_node.value)
 			} else {
@@ -12503,9 +12510,9 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 				}
 			}
 		}
-		if flat.source_type_shape(typ).has(.pointer) && raw_typ.len > 0 && !raw_typ.starts_with('&')
-			&& flat.source_type_name(t.normalize_type_alias(flat.source_type_id(flat.source_type_name(typ)[1..]))) == raw_typ {
-			typ = flat.source_type_id(raw_typ)
+		if flat.source_type_shape(typ).has(.pointer) && raw_typ != 0 && !flat.source_type_shape(raw_typ).has(.pointer)
+			&& t.normalize_type_alias(t.trim_pointer_type(typ)) == raw_typ {
+			typ = raw_typ
 		}
 		// The checker's parameter type drops the `shared` element modifier of `[]shared T`.
 		// Keep it, as a `[]shared T{}` local does: the elements are lock wrapper pointers.
@@ -12537,7 +12544,7 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 				t.fixed_array_param_values[child.value_text()] = true
 			}
 		}
-		if child.is_mut || child.op == .amp || flat.source_type_shape(child.typ).has(.mutable_type) {
+		if child.is_mut || child.op == .amp || child_type_shape.has(.mutable_type) {
 			t.mut_param_values[child.value_text()] = true
 			source_mut_params << child.value_text()
 			if child.op == .amp || mut_param_has_builtin_pointer_value(child) {

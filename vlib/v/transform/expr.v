@@ -4447,10 +4447,12 @@ fn (t &Transformer) equality_expr_is_string_pointer(id flat.NodeId, typ_id u32) 
 		return false
 	}
 	mut clean := t.trimmed_type_id(typ_id)
-	for flat.source_type_shape(clean).has(.shared_type) {
+	mut shape := flat.source_type_shape(clean)
+	for shape.has(.shared_type) {
 		clean = t.unshared_type_id(clean)
+		shape = flat.source_type_shape(clean)
 	}
-	if flat.source_type_shape(clean).has(.mutable_type) {
+	if shape.has(.mutable_type) {
 		return false
 	}
 	clean = t.trimmed_type_id(t.normalize_type_alias(clean))
@@ -4462,26 +4464,32 @@ fn (t &Transformer) equality_expr_is_string_pointer(id flat.NodeId, typ_id u32) 
 
 fn (t &Transformer) equality_type_is_map_pointer(typ_id u32) bool {
 	mut clean := t.trimmed_type_id(typ_id)
-	for flat.source_type_shape(clean).has(.shared_type) {
+	mut shape := flat.source_type_shape(clean)
+	for shape.has(.shared_type) {
 		clean = t.unshared_type_id(clean)
+		shape = flat.source_type_shape(clean)
 	}
-	if flat.source_type_shape(clean).has(.mutable_type) {
+	if shape.has(.mutable_type) {
 		return false
 	}
 	clean = t.trimmed_type_id(t.normalize_type_alias(clean))
-	for flat.source_type_shape(clean).has(.shared_type) {
+	shape = flat.source_type_shape(clean)
+	for shape.has(.shared_type) {
 		clean = t.unshared_type_id(clean)
+		shape = flat.source_type_shape(clean)
 	}
-	return flat.source_type_shape(clean).has(.pointer) && flat.source_type_shape(t.clean_map_type(clean)).has(.map_type)
+	return shape.has(.pointer) && flat.source_type_shape(t.clean_map_type(clean)).has(.map_type)
 }
 
 // membership_container_is_pointer_array supports membership_container_is_pointer_array handling.
 fn (t &Transformer) membership_container_is_pointer_array(typ_id u32) bool {
 	mut clean := t.trimmed_type_id(t.normalize_type_alias(typ_id))
-	for flat.source_type_shape(clean).has(.shared_type) {
+	mut shape := flat.source_type_shape(clean)
+	for shape.has(.shared_type) {
 		clean = t.unshared_type_id(clean)
+		shape = flat.source_type_shape(clean)
 	}
-	if !flat.source_type_shape(clean).has(.pointer) {
+	if !shape.has(.pointer) {
 		return false
 	}
 	container := t.membership_container_type(clean)

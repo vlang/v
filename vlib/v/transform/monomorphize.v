@@ -5394,22 +5394,29 @@ fn (mut t Transformer) seed_generated_fn_body_context(root flat.NodeId) {
 		if child.value_text().len == 0 {
 			continue
 		}
-		raw_source_typ := (if flat.source_type_shape(child.typ).has(.variadic) {
+		child_type_shape := flat.source_type_shape(child.typ)
+		raw_source_typ := (if child_type_shape.has(.variadic) {
 			flat.source_type_id('[]' + child.typ_text()[3..])
 		} else {
 			child.typ
 		})
 		raw_typ := if child.typ != 0 {
-			if flat.source_type_shape(child.typ).has(.variadic) {
-				'[]' + flat.source_type_name(t.normalize_type_alias(flat.source_type_id(child.typ_text()[3..])))
+			if child_type_shape.has(.variadic) {
+				elem_typ := flat.source_type_id(child.typ_text()[3..])
+				normalized_elem_typ := t.normalize_type_alias(elem_typ)
+				if normalized_elem_typ == elem_typ {
+					raw_source_typ
+				} else {
+					flat.source_type_id('[]' + flat.source_type_name(normalized_elem_typ))
+				}
 			} else {
-				flat.source_type_name(t.normalize_type_alias(child.typ))
+				t.normalize_type_alias(child.typ)
 			}
 		} else {
-			''
+			u32(0)
 		}
-		typ := (if raw_typ.len > 0 {
-			flat.source_type_id(raw_typ)
+		typ := (if raw_typ != 0 {
+			raw_typ
 		} else if param_idx < param_types.len {
 			t.normalize_type_alias(param_types[param_idx].source_type_id())
 		} else if param_idx == 0 {
@@ -5420,7 +5427,7 @@ fn (mut t Transformer) seed_generated_fn_body_context(root flat.NodeId) {
 		if typ != 0 {
 			t.set_var_type_with_raw(child.value_text(), typ, raw_source_typ)
 		}
-		if child.is_mut || child.op == .amp || flat.source_type_shape(child.typ).has(.mutable_type) {
+		if child.is_mut || child.op == .amp || child_type_shape.has(.mutable_type) {
 			t.mut_param_values[child.value_text()] = true
 		}
 		param_idx++
