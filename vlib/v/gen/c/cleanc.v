@@ -19504,6 +19504,7 @@ fn (mut g FlatGen) preamble() {
 		g.writeln('typedef __INTPTR_TYPE__ intptr_t;')
 		g.writeln('#endif')
 	}
+	g.platform_int_typedefs()
 	if !use_system_libc && !g.target_libc_headers {
 		g.writeln('#if !defined(_TIME_T) && !defined(_TIME_T_DEFINED) && !defined(__time_t_defined) && !defined(_BSD_TIME_T_DEFINED_) && !defined(_TIME_T_DECLARED)')
 		g.writeln('typedef long long time_t;')
@@ -19572,8 +19573,6 @@ fn (mut g FlatGen) preamble() {
 	g.writeln('#define __alignof__(x) __alignof(x)')
 	g.writeln('#endif')
 	if use_system_libc {
-		g.writeln('typedef ptrdiff_t isize;')
-		g.writeln('typedef size_t usize;')
 		g.writeln('typedef char* charptr;')
 		g.writeln('typedef unsigned char* byteptr;')
 		g.writeln('typedef int (*qsort_callback_func)(const void*, const void*);')
@@ -20145,20 +20144,35 @@ fn (mut g FlatGen) portable_int_width_definition() {
 	g.writeln('#endif')
 }
 
-// portable_int_typedefs defines `__v_int`, V's `int` in portable C, and its
-// unsigned counterpart from `__V_INT_BITS`, and points the helpers named with
-// `pointer_width_suffix` at the ones of that width. The typedefs have to follow
-// the fixed-width ones.
+// platform_int_typedefs defines the C names of V's platform types for C code that
+// is included in the generated translation unit. `__v_int` is a typedef of the
+// `i64`/`i32` that V's `int` already lowers to, so a C prototype spelled with it
+// has the same function type as the generated one on every target, without a
+// width `#if`. `__v_uint` is V's `uint`, i.e. `size_t`. `isize` and `usize` stay
+// as the C names of the deprecated V types, independently of them. It is written
+// after `size_t`/`ptrdiff_t` exist and before any user `#include`/`#insert` text.
+fn (mut g FlatGen) platform_int_typedefs() {
+	if !g.portable_int() {
+		g.writeln('typedef ${g.int_ct} ${types.portable_int_c_type};')
+	}
+	g.writeln('typedef size_t ${portable_uint_c_type};')
+	g.writeln('typedef ptrdiff_t isize;')
+	g.writeln('typedef size_t usize;')
+}
+
+// portable_int_typedefs defines `__v_int`, V's `int` in portable C, from
+// `__V_INT_BITS`, and points the helpers named with `pointer_width_suffix` at the
+// ones of that width. `__v_uint` is V's `uint`, i.e. `size_t`, and is defined with
+// the other native names by platform_int_typedefs. The typedefs have to follow the
+// fixed-width ones.
 fn (mut g FlatGen) portable_int_typedefs() {
 	if !g.portable_int() {
 		return
 	}
 	g.writeln('#if __V_INT_BITS == 64')
 	g.writeln('typedef i64 ${types.portable_int_c_type};')
-	g.writeln('typedef u64 ${portable_uint_c_type};')
 	g.writeln('#else')
 	g.writeln('typedef i32 ${types.portable_int_c_type};')
-	g.writeln('typedef u32 ${portable_uint_c_type};')
 	g.writeln('#endif')
 	g.writeln('#if __V_INT_BITS == 64')
 	for callback in ['hash', 'eq', 'clone'] {
