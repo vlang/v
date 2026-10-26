@@ -408,16 +408,54 @@ fn forward_decl_lane_thread(arg voidptr) voidptr {
 	return unsafe { nil }
 }
 
-// forward_decl_lane_bounds splits the prototypes of `n_items` functions into
-// ranges of whole 1024-item forward declaration batches, one per lane.
-fn forward_decl_lane_bounds(n_items int) []int {
-	n_batches := (n_items + 1023) / 1024
-	n_lanes := if n_batches >= 4 { 2 } else { 1 }
-	mut bounds := []int{cap: n_lanes + 1}
-	for lane in 0 .. n_lanes {
-		bounds << (n_batches * lane / n_lanes) * 1024
+// forward_decl_lane_bounds splits prototypes into contiguous lanes with roughly
+// equal estimated emit cost. Item count alone leaves one lane several times
+// slower for generic-heavy programs because signature cost varies widely.
+fn forward_decl_lane_bounds(a &flat.FlatAst, items []FlatFnGenItem) []int {
+	n_items := items.len
+	if n_items == 0 {
+		return [0, 0]
 	}
-	bounds << n_items
+	n_batches := (n_items + 1023) / 1024
+	if n_batches < 4 {
+		return [0, n_items]
+	}
+	n_lanes := 8
+	mut total_cost := i64(0)
+	for item in items {
+		node := a.nodes[int(item.node_id)]
+		total_cost += i64(item.c_name.len * 4 + int(node.children_count) * 32 + 64)
+	}
+	target := total_cost / n_lanes
+	if target <= 0 {
+		mut count_bounds := []int{cap: n_lanes + 1}
+		for lane in 0 .. n_lanes {
+			count_bounds << n_items * lane / n_lanes
+		}
+		count_bounds << n_items
+		return count_bounds
+	}
+	mut running_cost := i64(0)
+	mut bounds := [0]
+	mut lane := 1
+	for i, item in items {
+		node := a.nodes[int(item.node_id)]
+		running_cost += i64(item.c_name.len * 4 + int(node.children_count) * 32 + 64)
+		if lane < n_lanes && running_cost >= target * lane {
+			boundary := i + 1
+			if boundary < n_items && bounds.last() != boundary {
+				bounds << boundary
+			}
+			for lane < n_lanes && running_cost >= target * lane {
+				lane++
+			}
+		}
+	}
+	if bounds.last() != n_items {
+		bounds << n_items
+	}
+	// A single expensive item can cross several cost targets. Skipping those
+	// boundaries leaves fewer, non-empty lanes instead of duplicating bounds.
 	return bounds
 }
 
@@ -2193,6 +2231,9 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 	// discovered by body workers, so emit those on the master after they merge.
 	parallel_type_decls := available_jobs > 2 && g.decl_task_eligible(n_items)
 	n_jobs := flat_cgen_job_count(available_jobs, n_items, g.flat_cgen_job_limit())
+	if g.tc.verbose {
+		eprintln('  [ttime]   cg dispatch mode  no_parallel: ${no_parallel}, items: ${n_items}, available: ${available_jobs}, jobs: ${n_jobs}')
+	}
 	if n_items < min_flat_cgen_parallel_items || n_jobs <= 1 {
 		if g.scope_parallel_workers {
 			if n_items < min_flat_cgen_parallel_items {
@@ -2286,7 +2327,7 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 			// Function prototypes only read the frozen selection and declaration
 			// tables, like the body workers. Generate them on private generators
 			// beside the type declaration task, which is otherwise the longest lane.
-			fwd_bounds := forward_decl_lane_bounds(items.len)
+			fwd_bounds := forward_decl_lane_bounds(g.a, items)
 			mut fwd_args := []ForwardDeclLaneArgs{cap: fwd_bounds.len - 1}
 			fwd_scope := cgen_worker_scope_begin(true)
 			for lane in 0 .. fwd_bounds.len - 1 {

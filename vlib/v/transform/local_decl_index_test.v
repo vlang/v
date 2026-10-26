@@ -127,8 +127,8 @@ fn test_comptime_option_unwrap_uses_indexed_alias_and_if_body() {
 	})? == flat.source_type_int
 }
 
-fn test_monomorph_job_limit_keeps_four_workers_for_large_programs() {
+fn test_monomorph_job_limit_keeps_eight_workers_for_large_programs() {
 	$if !v3_no_parallel ? {
-		assert monomorph_job_limit(12, 500_000, 0) == 4
+		assert monomorph_job_limit(12, 500_000, 0) == 8
 	}
 }
