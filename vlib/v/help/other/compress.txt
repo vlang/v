@@ -1,0 +1,16 @@
+Compress a file, using zlib (DEFLATE).
+
+Usage:
+  v compress <type> <in> <out>
+
+The input file is read in full, compressed, and written to <out>. If
+<out> exists already, it is overwritten.
+
+`zlib` is currently the only supported compression type:
+
+  v compress zlib data.txt data.txt.z
+
+On any problem (unsupported type name, unreadable input, compression
+or output write error), the command prints the error and exits with a
+non-zero status. This command only compresses; to decompress the
+result, use another tool, or the `compress.zlib` module of a V program.

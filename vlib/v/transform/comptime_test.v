@@ -15,8 +15,8 @@ fn test_comptime_canonical_type_is_not_rebound_by_another_module_import() {
 		cur_file:   'generic.v'
 		cur_module: 'json2'
 	}
-	assert t.comptime_resolve_selective_import_type('config.Cfg') == 'config.Cfg'
-	assert t.comptime_resolve_selective_import_type('cfg.Cfg') == 'config.Cfg'
+	assert t.comptime_resolve_selective_import_type(flat.source_type_id('config.Cfg')) == flat.source_type_id('config.Cfg')
+	assert t.comptime_resolve_selective_import_type(flat.source_type_id('cfg.Cfg')) == flat.source_type_id('config.Cfg')
 }
 
 fn test_comptime_explicit_file_alias_precedes_a_same_spelled_canonical_type() {
@@ -31,7 +31,7 @@ fn test_comptime_explicit_file_alias_precedes_a_same_spelled_canonical_type() {
 		cur_file:   'alias.v'
 		cur_module: 'main'
 	}
-	assert t.comptime_resolve_selective_import_type('config.Cfg') == 'alternate.Cfg'
+	assert t.comptime_resolve_selective_import_type(flat.source_type_id('config.Cfg')) == flat.source_type_id('alternate.Cfg')
 }
 
 fn test_comptime_field_function_type_keeps_declaring_module() {
@@ -53,7 +53,7 @@ fn test_comptime_field_type_id_keeps_custom_types_above_builtin_range() {
 	}
 	type_id := t.type_index(flat.source_type_id('T207'), '')
 	assert type_id > 65535
-	assert type_id != types.builtin_type_index('int')
+	assert type_id != types.builtin_type_index(flat.source_type_int)
 	assert type_id & (0xff << 16) == 0
 }
 
@@ -72,8 +72,8 @@ fn test_comptime_for_base_type_unwraps_storage_indirections() {
 	t := Transformer{
 		a: &a
 	}
-	assert flat.source_type_name(t.comptime_for_base_type('&websocket.Server')) == 'websocket.Server'
-	assert flat.source_type_name(t.comptime_for_base_type('shared websocket.ClientState')) == 'websocket.ClientState'
+	assert flat.source_type_name(t.comptime_for_base_type(flat.source_type_id('&websocket.Server'))) == 'websocket.Server'
+	assert flat.source_type_name(t.comptime_for_base_type(flat.source_type_id('shared websocket.ClientState'))) == 'websocket.ClientState'
 }
 
 fn test_comptime_method_receiver_name_normalizes_main_qualification() {
@@ -132,7 +132,11 @@ fn test_comptime_method_selector_keeps_unregistered_local_receivers() {
 		node := a.node(selector)
 		assert node.kind == .selector, binding
 		assert a.child_node(node, 0).value == name
-		assert comptime_method_selector_marker in node.generic_params()
+		assert node.generic_params() == [comptime_method_selector_marker]
+		expected_signature := fn_literal_value_type_text_from_text([flat.source_type_string], flat.source_type_int)
+		assert node.fn_value_type_id() == expected_signature
+		declaration := t.make_decl_assign_typed('method_value', selector, flat.source_type_int)
+		assert t.infer_decl_type(a.node(declaration)) == expected_signature
 	}
 }
 

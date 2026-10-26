@@ -26,8 +26,9 @@ fn (mut p Parser) canonical_integer_type(name string, start int, end int) string
 fn (mut p Parser) canonical_generic_type_arg(id flat.NodeId) flat.NodeId {
 	node := p.a.nodes[int(id)]
 	if node.kind == .ident {
-		name := p.canonical_integer_type(node.value, node.pos.offset, node.pos.end)
-		if name != node.value {
+		spelling := node.value_text()
+		name := p.canonical_integer_type(spelling, node.pos.offset, node.pos.end)
+		if name != spelling {
 			return p.add_node(flat.Node{ ...node, value: name })
 		}
 		return id

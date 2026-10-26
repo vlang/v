@@ -314,10 +314,10 @@ fn test_checked_numeric_infix_keeps_named_annotations_and_casts_on_operator_path
 	assert t.checked_numeric_infix_can_skip_handlers(a.nodes[int(id)])
 	a.nodes[int(lhs)].typ = u32(0)
 	a.nodes[int(lhs)].kind = .cast_expr
-	a.nodes[int(lhs)].value = 'Count'
+	a.nodes[int(lhs)].set_source_value_id(flat.source_type_id('Count'))
 	assert flat.source_type_name(t.operator_alias_type_for_operand(lhs, .plus) or { u32(0) }) == 'Count'
 	assert !t.checked_numeric_infix_can_skip_handlers(a.nodes[int(id)])
-	a.nodes[int(lhs)].value = 'int'
+	a.nodes[int(lhs)].set_source_value_id(flat.source_type_int)
 	assert t.checked_numeric_infix_can_skip_handlers(a.nodes[int(id)])
 }
 

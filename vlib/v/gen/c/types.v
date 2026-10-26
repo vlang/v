@@ -61,7 +61,7 @@ fn (g &FlatGen) wide_enum_signature_c_type(t &types.Type) ?string {
 	if t is types.Pointer {
 		if t.base_type is types.Enum {
 			if info := g.enum_backing_info(t.base_type.source_type_id()) {
-				if info.storage_c_type_text() !in ['int', 'i32'] {
+				if info.storage_c_type !in [flat.source_type_int, flat.source_type_i32] {
 					return info.c_name + '*'
 				}
 			}
@@ -72,7 +72,7 @@ fn (g &FlatGen) wide_enum_signature_c_type(t &types.Type) ?string {
 	}
 	if t is types.Enum {
 		if info := g.enum_backing_info(t.source_type_id()) {
-			if info.storage_c_type_text() in ['i64', 'u64'] {
+			if info.storage_c_type in [flat.source_type_i64, flat.source_type_u64] {
 				return info.c_name
 			}
 		}
@@ -142,7 +142,7 @@ fn (mut g FlatGen) optional_type_name(t &types.Type) string {
 			pointee = cgen_unalias_type(pointee.base_type)
 		}
 		if pointee is types.Struct && !pointee.name().starts_with('C.')
-			&& !types.is_builtin_type_name(pointee.name()) && !type_references_thread(pointee) {
+			&& !types.is_builtin_type_name_id(pointee.source_type_id()) && !type_references_thread(pointee) {
 			pointee_ct := g.optional_payload_c_type(pointee)
 			g.optional_pointer_struct_tags[pointee_ct] = if pointee.name() in g.tc.unions {
 				'union'
@@ -395,7 +395,7 @@ fn main_type_alias_id(aliases flat.TypeTextBindings, name string) ?u32 {
 // `error: no member named 'len' in 'struct map'`.
 fn cgen_type_is_map(typ &types.Type) bool {
 	clean := unalias_type(typ)
-	return clean is types.Map || (clean is types.Struct && clean.name() == 'map')
+	return clean is types.Map || (clean is types.Struct && clean.source_type_id() == cgen_map_source_type)
 }
 
 fn cgen_types_equal_after_alias_erasure(left &types.Type, right &types.Type) bool {
@@ -1025,7 +1025,7 @@ fn (mut g FlatGen) collect_sizeof_optional_types() {
 		} else if node.kind == .module_decl {
 			g.tc.cur_module = node.value
 		} else if is_optional_sizeof_node(&node) {
-			g.collect_optional_typedef_type(g.tc.parse_type(flat.source_type_id(node.value)))
+			g.collect_optional_typedef_type(g.tc.parse_type(node.source_value_id()))
 		}
 	}
 	g.tc.cur_file = old_file
@@ -1048,7 +1048,8 @@ fn (mut g FlatGen) collect_unresolved_call_optional_types() {
 		// Only a complete type spelling that was not collected yet can add a
 		// typedef. Rule the rest out before the checker metadata below, which
 		// costs a map lookup per resolved call.
-		if node.typ_text() in ['int', 'array', 'map', 'unknown']
+		if node.typ in [flat.source_type_int, cgen_array_source_type, cgen_map_source_type,
+			flat.source_type_unknown]
 			|| !cgen_type_text_is_complete(node.typ) {
 			continue
 		}
@@ -1072,33 +1073,7 @@ fn (mut g FlatGen) collect_unresolved_call_optional_types() {
 }
 
 fn cgen_type_text_is_complete(text_id u32) bool {
-	text := flat.source_type_name(text_id)
-	mut parens := 0
-	mut brackets := 0
-	for ch in text {
-		match ch {
-			`(` {
-				parens++
-			}
-			`)` {
-				if parens == 0 {
-					return false
-				}
-				parens--
-			}
-			`[` {
-				brackets++
-			}
-			`]` {
-				if brackets == 0 {
-					return false
-				}
-				brackets--
-			}
-			else {}
-		}
-	}
-	return parens == 0 && brackets == 0
+	return flat.source_type_query(text_id).has(.complete)
 }
 
 fn (mut g FlatGen) collect_declaration_signature_types() {
@@ -2515,7 +2490,7 @@ fn (g &FlatGen) enum_field_expr_value_with_enum(id flat.NodeId, enum_module stri
 				return none
 			}
 			value := g.enum_field_expr_value_with_enum(g.a.child(&node, 0), enum_module, enum_name, mut field_values, field_exprs, mut resolving)?
-			return g.enum_comptime_integer_cast(value, flat.source_type_id(node.value))
+			return g.enum_comptime_integer_cast(value, node.source_value_id())
 		}
 		.call {
 			return g.enum_comptime_call_value(id, enum_module, enum_name, mut field_values, field_exprs, mut resolving)
@@ -2575,11 +2550,15 @@ fn (g &FlatGen) enum_field_expr_value_with_enum(id flat.NodeId, enum_module stri
 				.left_shift { i64(u64(left) << u64(right)) }
 				.right_shift {
 					typ := if isnil(g.tc) {
-						''
+						u32(0)
 					} else {
-						types.unalias_type(g.usable_expr_type(g.a.child(&node, 0))).name()
+						types.unalias_type(g.usable_expr_type(g.a.child(&node, 0))).source_type_id()
 					}
-					if typ in ['u64', 'uint'] { i64(u64(left) >> right) } else { left >> right }
+					if typ in [flat.source_type_u64, flat.source_type_uint] {
+						i64(u64(left) >> right)
+					} else {
+						left >> right
+					}
 				}
 				.right_shift_unsigned {
 					if isnil(g.tc) {
@@ -2801,7 +2780,7 @@ fn (g &FlatGen) enum_comptime_expr_value(id flat.NodeId, locals map[string]i64, 
 			}
 			value := g.enum_comptime_expr_value(g.a.child(&node, 0), locals, enum_module)?
 			return if node.kind == .cast_expr {
-				g.enum_comptime_integer_cast(value, flat.source_type_id(node.value))
+				g.enum_comptime_integer_cast(value, node.source_value_id())
 			} else {
 				value
 			}
@@ -2876,11 +2855,15 @@ fn (g &FlatGen) enum_comptime_expr_value(id flat.NodeId, locals map[string]i64, 
 				.left_shift { i64(u64(left) << u64(right)) }
 				.right_shift {
 					typ := if isnil(g.tc) {
-						''
+						u32(0)
 					} else {
-						types.unalias_type(g.usable_expr_type(g.a.child(&node, 0))).name()
+						types.unalias_type(g.usable_expr_type(g.a.child(&node, 0))).source_type_id()
 					}
-					if typ in ['u64', 'uint'] { i64(u64(left) >> right) } else { left >> right }
+					if typ in [flat.source_type_u64, flat.source_type_uint] {
+						i64(u64(left) >> right)
+					} else {
+						left >> right
+					}
 				}
 				.right_shift_unsigned {
 					if isnil(g.tc) {
@@ -3004,7 +2987,7 @@ fn (mut g FlatGen) enum_field_expr_to_string_resolving(id flat.NodeId, enum_modu
 			if node.children_count == 0 {
 				return none
 			}
-			target_type := g.tc.parse_type(g.generic_default_type_id(flat.source_type_id(node.value)))
+			target_type := g.tc.parse_type(g.generic_default_type_id(node.source_value_id()))
 			mut ct := g.cast_c_type(target_type)
 			if ct.starts_with('fn_ptr:') {
 				ct = g.resolve_fn_ptr_type(ct)
@@ -3036,7 +3019,7 @@ fn (mut g FlatGen) enum_field_expr_to_string_resolving(id flat.NodeId, enum_modu
 			right := g.enum_field_expr_to_string_resolving(g.a.child(&node, 1), enum_module, enum_name, enum_c_name, field_names, inline_refs, mut resolving)?
 			if node.op in [.left_shift, .right_shift, .right_shift_unsigned] {
 				mut shift_type := *g.usable_expr_type(g.a.child(&node, 0))
-				if g.expr_is_in_translated_file(id) && unalias_type(shift_type).name() == 'int' {
+				if g.expr_is_in_translated_file(id) && unalias_type(shift_type).source_type_id() == flat.source_type_int {
 					shift_type = types.Type(types.i32_)
 				}
 				ut, bits := g.unsigned_shift_type_parts(shift_type)
@@ -3164,7 +3147,7 @@ fn (g &FlatGen) enum_decl_selector_base_text(id flat.NodeId) string {
 	node := g.a.nodes[int(id)]
 	match node.kind {
 		.ident {
-			return node.value
+			return node.value_text()
 		}
 		.selector {
 			if node.children_count == 0 {

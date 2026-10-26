@@ -70,7 +70,10 @@ pub mut:
 	id         string
 	fn_label   string
 	fn_index   int
-	children   []&Node
+	// source holds the original markdown text of a link or image, used to
+	// flatten nested links into an image's alt attribute.
+	source   string
+	children []&Node
 }
 
 // new_node allocates and returns a new Node of the given kind.
@@ -100,6 +103,33 @@ pub fn (n &Node) text_content() string {
 			return sb.str()
 		}
 	}
+}
+
+// image_alt_text flattens the alt text of an image node. Nested text and
+// emphasis contribute their text; nested links and images contribute the
+// text of their own children, matching the CommonMark reference behaviour.
+fn (n &Node) image_alt_text() string {
+	mut s := ''
+	for child in n.children {
+		s += alt_text_of(child)
+	}
+	return s
+}
+
+// alt_text_of flattens one inline node for use inside an image's alt text.
+fn alt_text_of(n &Node) string {
+	if n.kind == .text || n.kind == .code_span || n.kind == .raw_html || n.kind == .autolink {
+		return n.literal
+	}
+	if n.kind == .soft_break || n.kind == .hard_break || n.kind == .footnote_ref
+		|| n.kind == .task_checkbox {
+		return ''
+	}
+	mut s := ''
+	for child in n.children {
+		s += alt_text_of(child)
+	}
+	return s
 }
 
 // walk traverses n and all its descendants in pre-order (root before children).

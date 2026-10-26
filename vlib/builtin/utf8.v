@@ -10,6 +10,12 @@ pub fn utf8_char_len(b u8) int {
 	return int(((u32(0xe5000000) >> ((b >> 3) & 0x1e)) & 3) + 1)
 }
 
+// utf8_str_len returns the length in bytes of the string `s`.
+// It is the same as `s.len`.
+pub fn utf8_str_len(s string) int {
+	return s.len
+}
+
 // utf32_to_str returns the UTF-8 encoding of the code point `code` as a new string.
 // A value that is not a Unicode scalar value (a surrogate half in 0xD800..0xDFFF,
 // or anything above 0x10FFFF) is encoded as U+FFFD, the replacement character.
