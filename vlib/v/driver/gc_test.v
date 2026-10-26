@@ -23,6 +23,12 @@ fn test_missing_bundled_gc_library_checks_only_link_inputs() {
 	assert v3_missing_bundled_gc_library(['-lgc'], root) == none
 	assert v3_missing_c_library_name("ld: library 'gc' not found") or { '' } == 'gc'
 	assert v3_missing_c_library_name('ld: library not found for -lgc') or { '' } == 'gc'
+	assert v3_missing_c_library_name('/usr/bin/ld: cannot find -lobjc: No such file or directory') or {
+		''
+	} == 'objc'
+	assert v3_missing_c_library_name('/usr/bin/ld: cannot find -l:libfoo.a: No such file or directory') or {
+		''
+	} == ':libfoo.a'
 	message := v3_missing_gc_library_message('missing libgc.a')
 	assert message.contains('Boehm GC library `missing libgc.a` was not found.')
 	assert message.contains('-d use_bundled_libgc')

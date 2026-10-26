@@ -127,35 +127,35 @@ fn test_decode_narrow_ints_in_collections_rejects_non_integers() {
 }
 
 struct OtherInts {
-	sizes  []usize          = [usize(7)]
-	isizes map[string]isize = {
-		'a': isize(5)
+	sizes  []uint         = [uint(7)]
+	signed map[string]int = {
+		'a': int(5)
 	}
 	runes  []rune = [`x`]
 }
 
 fn test_decode_other_int_collections_keep_current() {
-	// Only u8, u16, u32, i8, i16 and i32 are decoded as narrow integers. Collections
-	// of the other integer types keep their current value, as before.
-	o := toml.decode[OtherInts]('sizes = [1]\nrunes = [1]\n\n[isizes]\nb = 2\n') or {
+	// Platform int maps are decoded normally; uint and rune collections keep their
+	// current value rather than being decoded as narrow integers.
+	o := toml.decode[OtherInts]('sizes = [1]\nrunes = [1]\n\n[signed]\nb = 2\n') or {
 		panic(err)
 	}
-	assert o.sizes == [usize(7)]
-	assert o.isizes == {
-		'a': isize(5)
+	assert o.sizes == [uint(7)]
+	assert o.signed == {
+		'b': int(2)
 	}
 	assert o.runes == [`x`]
 }
 
 struct WideInts {
-	u usize
+	u uint
 	r rune
 }
 
 fn test_encode_other_ints() {
-	w := WideInts{~usize(0), `🚀`}
+	w := WideInts{~uint(0), `🚀`}
 	encoded := toml.encode[WideInts](w)
-	// `usize` is not widened to `i64`, which would wrap its largest values.
+	// `uint` is not widened to `i64`, which would wrap its largest values.
 	assert encoded.contains('${w.u}')
 	// `rune` is still encoded as a string.
 	assert encoded.contains('r = "🚀"')

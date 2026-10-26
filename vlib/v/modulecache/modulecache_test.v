@@ -643,7 +643,6 @@ fn test_cached_source_signature_keeps_per_file_sha256_digests() {
 	assert cached.source_digests == details.source_digests
 }
 
-
 // without_file_metadata makes file_metadata_signature report nothing for
 // `paths`, as it does for a file without a usable identity, and returns the
 // previous setting for restore_file_metadata.
@@ -669,9 +668,9 @@ fn test_file_change_signature_falls_back_to_the_contents() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	with_metadata := os.join_path(root, 'with_metadata.vml')
-	without_metadata := os.join_path(root, 'without_metadata.vml')
-	absent := os.join_path(root, 'absent.vml')
+	with_metadata := os.join_path(root, 'with_metadata.txt')
+	without_metadata := os.join_path(root, 'without_metadata.txt')
+	absent := os.join_path(root, 'absent.txt')
 	os.write_file(with_metadata, 'first')!
 	os.write_file(without_metadata, 'first')!
 	old, was_set := without_file_metadata([without_metadata, absent])
@@ -691,9 +690,6 @@ fn test_file_change_signature_falls_back_to_the_contents() {
 	assert !file_change_signature_matches(absent, 'missing')
 }
 
-// A source file on a file system with file identities can depend on inputs on one
-// without them. Edits to those inputs, and inputs that appear there, must still
-// invalidate the memoized source signature.
 fn test_cached_source_signature_tracks_vmod_edits_without_file_metadata() {
 	root := os.join_path(os.vtmp_dir(), 'v3_modulecache_vmod_no_metadata_${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -724,6 +720,28 @@ fn test_cached_source_signature_tracks_vmod_edits_without_file_metadata() {
 // On FAT, exFAT and HFS+ a same-size edit within one timestamp step keeps the
 // file's metadata identical. os.utime sets whole-second times, which reproduces
 // that on any file system.
+fn test_cached_source_signature_tracks_edits_within_a_coarse_timestamp_step() {
+	root := os.join_path(os.vtmp_dir(), 'v3_modulecache_coarse_mtime_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	step := time.utc().unix()
+	os.write_file(source, "module main\n\nconst label = 'First'\n")!
+	os.utime(source, step, step)!
+	cache_dir := os.join_path(root, 'cache')
+
+	first := cached_source_signature(cache_dir, 'coarse-mtime', [source])
+	assert first.len > 0
+	os.write_file(source, "module main\n\nconst label = 'Other'\n")!
+	os.utime(source, step, step)!
+	second := cached_source_signature(cache_dir, 'coarse-mtime', [source])
+	assert second.len > 0
+	assert second != first
+}
+
 fn test_version_pseudo_signature_ignores_build_clock() {
 	root := os.join_path(os.vtmp_dir(), 'v3_modulecache_version_pseudo_${os.getpid()}')
 	os.rmdir_all(root) or {}

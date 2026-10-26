@@ -30,6 +30,13 @@ fn test_mmap_header_ownership_is_limited_to_supported_shipped_bindings() {
 	a.cached_header_sources['/cache/os.vh'] = source
 	g.a = &a
 	assert g.core_native_header_is_redeclared('/cache/os.vh', '<sys/mman.h>')
+	a.cached_header_sources['/cache/os.vh'] = '/vroot/vlib/os/args.v'
+	assert g.core_native_header_is_redeclared('/cache/os.vh', '<sys/mman.h>')
+	a.cached_header_sources['/cache/user.vh'] = '/project/os/args.v'
+	assert !g.core_native_header_is_redeclared('/cache/user.vh', '<sys/mman.h>')
+	g.set_target(pref.target_from('linux', 'arm32')!)
+	assert !g.core_native_header_is_redeclared('/cache/os.vh', '<sys/mman.h>')
+	g.set_target(pref.target_from('macos', 'arm64')!)
 	g.no_builtin = true
 	assert !g.core_native_header_is_redeclared(source, '<sys/mman.h>')
 	g.no_builtin = false

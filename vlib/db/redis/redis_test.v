@@ -743,12 +743,12 @@ fn test_multi_key_values() ! {
 		assert_command_value(unsigned_values[0], ~u64(0))
 		assert db.get[u64](keys[4])! == ~u64(0)
 		assert db.mset({
-			keys[4]: ~usize(0)
+			keys[4]: ~uint(0)
 		})! == 'OK'
-		usize_values := db.mget[usize](keys[4])!
+		usize_values := db.mget[uint](keys[4])!
 		assert usize_values.len == 1
-		assert_command_value(usize_values[0], ~usize(0))
-		assert db.get[usize](keys[4])! == ~usize(0)
+		assert_command_value(usize_values[0], ~uint(0))
+		assert db.get[uint](keys[4])! == ~uint(0)
 
 		assert !db.msetnx({
 			keys[2]: 'replacement'
@@ -932,12 +932,12 @@ fn test_hash_commands() ! {
 		assert_command_value(unsigned_values[0], ~u64(0))
 		assert db.hget[u64](keys[0], 'unsigned')! == ~u64(0)
 		assert db.hset(keys[0], {
-			'unsigned': ~usize(0)
+			'unsigned': ~uint(0)
 		})! == 0
-		usize_values := db.hmget[usize](keys[0], 'unsigned')!
+		usize_values := db.hmget[uint](keys[0], 'unsigned')!
 		assert usize_values.len == 1
-		assert_command_value(usize_values[0], ~usize(0))
-		assert db.hget[usize](keys[0], 'unsigned')! == ~usize(0)
+		assert_command_value(usize_values[0], ~uint(0))
+		assert db.hget[uint](keys[0], 'unsigned')! == ~uint(0)
 		assert db.hdel(keys[0], 'unsigned')! == 1
 		assert db.hincrbyfloat(keys[0], 'float', 1.25)! == 1.25
 		assert db.hincrbyfloat(keys[0], 'float', -0.5)! == 0.75

@@ -22,13 +22,13 @@ fn C.atomic_load_u64(voidptr) u64
 fn C.cpu_relax()
 
 @[inline]
-fn payload_ptr_get(base voidptr, index usize) voidptr {
+fn payload_ptr_get(base voidptr, index uint) voidptr {
 	// The payload chunks are arrays of pointers with validated indices.
 	return unsafe { (&voidptr(base))[index] }
 }
 
 @[inline]
-fn payload_ptr_set(base voidptr, index usize, value voidptr) {
+fn payload_ptr_set(base voidptr, index uint, value voidptr) {
 	// The caller owns the chunk and has reserved this index.
 	unsafe { (&voidptr(base))[index] = value }
 }
@@ -93,13 +93,13 @@ fn node_payload_unlock() {
 // no arena can release is right; otherwise the storage comes from
 // malloc_uncollectable, which a tracing GC scans but never reclaims, so the
 // payloads (and their generic_params arrays) stay reachable through it.
-fn node_payload_alloc_zeroed(n usize) voidptr {
+fn node_payload_alloc_zeroed(n uint) voidptr {
 	$if prealloc {
 		return unsafe { C.calloc(1, n) }
 	} $else {
-		ptr := unsafe { malloc_uncollectable(isize(n)) }
+		ptr := unsafe { malloc_uncollectable(int(n)) }
 		if !isnil(ptr) {
-			unsafe { vmemset(ptr, 0, isize(n)) }
+			unsafe { vmemset(ptr, 0, int(n)) }
 		}
 		return ptr
 	}

@@ -49,7 +49,7 @@ fn main() {
   value := HeapValue{bytes: [u8(1), 2], drops: &drops}
   mut cloned := value.clone()
   assert cloned.bytes == [u8(1), 2]
-  assert unsafe { usize(cloned.bytes.data) != usize(value.bytes.data) }
+  assert unsafe { uint(cloned.bytes.data) != uint(value.bytes.data) }
   cloned.bytes[0] = 3
   assert value.bytes[0] == 1
  }
@@ -58,23 +58,23 @@ fn main() {
   mut value := HeapValue{bytes: [u8(4), 5], drops: &drops}
   first := (value).clone()
   assert first.bytes == [u8(4), 5]
-  assert unsafe { usize(first.bytes.data) != usize(value.bytes.data) }
+  assert unsafe { uint(first.bytes.data) != uint(value.bytes.data) }
   third := clone_mutable(mut value)
   assert third.bytes == [u8(4), 5]
-  assert unsafe { usize(third.bytes.data) != usize(value.bytes.data) }
+  assert unsafe { uint(third.bytes.data) != uint(value.bytes.data) }
   pointer := &value
   second := pointer.clone()
   assert second.bytes == [u8(4), 5]
-  assert unsafe { usize(second.bytes.data) != usize(value.bytes.data) }
+  assert unsafe { uint(second.bytes.data) != uint(value.bytes.data) }
  }
  assert drops == 6
  {
   mut value := PromotedValue{bytes: [u8(6), 7], drops: &drops}
   pointer := value.reference()
-  assert unsafe { usize(pointer.bytes.data) == usize(value.bytes.data) }
+  assert unsafe { uint(pointer.bytes.data) == uint(value.bytes.data) }
   mut cloned := value.clone()
   assert cloned.bytes == [u8(6), 7]
-  assert unsafe { usize(cloned.bytes.data) != usize(value.bytes.data) }
+  assert unsafe { uint(cloned.bytes.data) != uint(value.bytes.data) }
   cloned.bytes[0] = 8
   assert pointer.bytes[0] == 6
  }

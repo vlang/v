@@ -54,11 +54,11 @@ pub:
 			os.rmdir(directory) or {}
 		}
 		source := 'module main\nimport defaults\nfn C.exit(int)\n' + r'
-fn C.malloc(usize) voidptr
-fn C.memcpy(voidptr, voidptr, usize) voidptr
-fn memdup(source voidptr, size isize) voidptr {
-    destination := C.malloc(usize(size))
-    C.memcpy(destination, source, usize(size))
+fn C.malloc(uint) voidptr
+fn C.memcpy(voidptr, voidptr, uint) voidptr
+fn memdup(source voidptr, size int) voidptr {
+    destination := C.malloc(uint(size))
+    C.memcpy(destination, source, uint(size))
     return destination
 }
 fn main() {

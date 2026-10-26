@@ -161,7 +161,7 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 			} else if val_node.kind == .enum_val && enum_field_type_source_id != 0 {
 				t.transform_enum_shorthand(val_id, val_node, enum_field_type_source_id)
 			} else if fixed_to_dynamic {
-				t.fixed_array_value_to_owned_array(val_id, value_type_source_id, field_type)
+				t.fixed_array_value_to_field_array(val_id, value_type_source_id, field_type)
 			} else if sum_field_type_source_id != 0 {
 				t.wrap_sum_value(val_id, sum_field_type_source_id)
 			} else if flat.source_type_shape(field_type).has(.pointer) {
@@ -715,7 +715,7 @@ fn (mut t Transformer) transform_struct_children(id flat.NodeId, node flat.Node)
 	}
 	if t.inplace_struct_fields && t.rewrite_children_in_place(id, field_ids) {
 		output_typ := (if node.typ != 0 { node.typ } else { flat.source_type_id(node.value) })
-		if flat.source_type_name(output_typ) != node.typ_text() {
+		if output_typ != node.typ {
 			t.set_node_typ(int(id), output_typ)
 		}
 		return id
@@ -761,20 +761,20 @@ fn (mut t Transformer) infer_bare_generic_struct_init_type(node flat.Node) ?u32 
 		} else {
 			continue
 		}
-		mut field_type := ''
+		mut field_type_id := u32(0)
 		for struct_field in info.fields {
 			if struct_field.name == field_name {
-				field_type = struct_field.typ_text()
+				field_type_id = struct_field.typ
 				break
 			}
 		}
-		if field_type.len == 0 {
+		if field_type_id == 0 {
 			continue
 		}
 		value_type_source_id_2 := t.generic_struct_init_value_type(t.a.child(field, 0))
-		value_type := flat.source_type_name(value_type_source_id_2)
+
 		if value_type_source_id_2 != 0 {
-			infer_generic_type_args(flat.source_type_id(field_type), flat.source_type_id(value_type), mut inferred)
+			infer_generic_type_args(field_type_id, value_type_source_id_2, mut inferred)
 		}
 	}
 	mut args := []string{cap: params.len}
@@ -1524,7 +1524,7 @@ fn (mut t Transformer) transform_assoc_expr(id flat.NodeId, node flat.Node) flat
 		mut value := if value_node.kind == .enum_val && enum_field_type_source_id_4 != 0 {
 			t.transform_enum_shorthand(value_id, value_node, enum_field_type_source_id_4)
 		} else if fixed_to_dynamic {
-			t.fixed_array_value_to_owned_array(value_id, value_type_source_id, field_type_source_id_3)
+			t.fixed_array_value_to_field_array(value_id, value_type_source_id, field_type_source_id_3)
 		} else if sum_field_type_source_id_2 != 0 {
 			t.wrap_sum_value(value_id, sum_field_type_source_id_2)
 		} else if field_type_source_id_3 != 0 {
@@ -1783,6 +1783,17 @@ fn (mut t Transformer) fixed_array_value_to_owned_array(value_id flat.NodeId, fi
 	result := t.make_ident(out_name)
 	t.set_node_typ(int(result), array_type_id)
 	return result
+}
+
+// fixed_array_value_to_field_array converts the fixed array value of a field initializer
+// to the field's dynamic array type. Elements stored differently, such as the `Item` values
+// of a `[2]Item` used for a `[]Named` field, are converted one by one, as for an argument;
+// the other fixed arrays are copied as they are.
+fn (mut t Transformer) fixed_array_value_to_field_array(value_id flat.NodeId, fixed_type_id u32, array_type_id u32) flat.NodeId {
+	if converted := t.transform_array_value_for_dynamic_target(value_id, array_type_id) {
+		return converted
+	}
+	return t.fixed_array_value_to_owned_array(value_id, fixed_type_id, array_type_id)
 }
 
 fn (mut t Transformer) fixed_array_value_to_array_no_alloc(value_id flat.NodeId, fixed_type_id u32, array_type_id u32) flat.NodeId {

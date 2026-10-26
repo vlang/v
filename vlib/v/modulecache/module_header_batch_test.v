@@ -52,3 +52,27 @@ pub struct Marker { value int }
 	latest := headers['first'].index('later') or { panic(headers['first']) }
 	assert earliest < latest
 }
+
+fn test_header_selects_a_symbol_that_two_files_import_once() ! {
+	root := os.join_path(os.vtmp_dir(), 'v3_header_selective_imports_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	first := os.join_path(root, 'first.v')
+	second := os.join_path(root, 'second.v')
+	os.write_file(first, 'module joined
+import strings { new_builder }
+pub fn one() string { mut b := new_builder(1) return b.str() }
+')!
+	os.write_file(second, 'module joined
+import strings as s { new_builder, Builder }
+pub fn two() Builder { return new_builder(2) }
+')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	mut a := p.parse_files([first, second])
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	header := module_header_with_const_order(a, &tc, 'joined', root, map[string]string{}, []string{})
+	imports := header.split_into_lines().filter(it.starts_with('import '))
+	assert imports == ['import strings { new_builder }', 'import strings as s { Builder }'], header
+}

@@ -9,7 +9,7 @@ import v.types
 
 fn test_c_free_preserves_the_allocator_for_aligned_array_pointer_casts() {
 	path := os.join_path(os.vtmp_dir(), 'aligned_array_free_${os.getpid()}.c.v')
-	os.write_file(path, 'fn C.malloc(size usize) voidptr
+	os.write_file(path, 'fn C.malloc(size uint) voidptr
 fn C.free(value voidptr)
 @[aligned: 8]
 struct AlignedCell { value int }
@@ -19,7 +19,7 @@ fn release_v(value &Cells) { unsafe { free(value) } }
 fn main() {
 	ordinary := unsafe { &Cells(C.malloc(sizeof(Cells))) }
 	release_c(ordinary)
-	owned := unsafe { &Cells(malloc(sizeof(Cells))) }
+	owned := unsafe { &Cells(malloc(int(sizeof(Cells)))) }
 	release_v(owned)
 	aligned := &Cells{}
 	release_v(aligned)
@@ -44,6 +44,6 @@ fn main() {
 	assert !c_release.contains('v3_aligned_free'), c_release
 	v_release := generated.all_after('void release_v(Array_fixed_main__AlignedCell_2* value) {').all_before('\n}').trim_space()
 	assert v_release.contains('v3_aligned_free(value);'), v_release
-	assert generated.contains('v_malloc(sizeof(main__AlignedCell[2]))'), generated
+	assert generated.contains('v_malloc((i64)(sizeof(main__AlignedCell[2])))'), generated
 	assert generated.contains('v3_aligned_memdup('), generated
 }

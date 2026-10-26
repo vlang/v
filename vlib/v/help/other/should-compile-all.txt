@@ -1,0 +1,16 @@
+Compile all .v files of the given folders and files, one by one.
+
+Usage:
+  v should-compile-all [-c] examples/ some/deep/file.v another/
+
+The command tries to compile all .v files found in the given folders
+and files, one by one. If every single one of them compiles, the
+command exits with an error code of 0. If ANY of them fail to compile,
+the command exits with an error code of 1.
+
+  -c will remove all the compiled executables at the end.
+
+Note: this command is intended to be used in CI pipelines for V
+modules, like this:
+
+  cd module/ ; v should-compile-all examples/
