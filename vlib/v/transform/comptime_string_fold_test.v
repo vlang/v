@@ -1,6 +1,8 @@
 module transform
 
 import v.flat
+import v.parser
+import v.pref
 import v.types
 
 // These folds are what the wasm backend runs instead of the strings source
@@ -89,9 +91,9 @@ fn test_comptime_string_index_fold_keeps_the_option_type() {
 	miss_value := string_fold_test_fold(mut t, miss)
 	// A hit carries the ok flag and the payload; a miss carries only the flag.
 	assert a.node(hit_value).kind == .struct_init
-	assert a.node(hit_value).value == '?int'
+	assert a.node(hit_value).value_text() == '?int'
 	assert int(a.node(hit_value).children_count) == 2
-	assert a.node(miss_value).value == '?int'
+	assert a.node(miss_value).value_text() == '?int'
 	assert int(a.node(miss_value).children_count) == 1
 }
 
@@ -119,7 +121,8 @@ fn test_comptime_array_str_fold_renders_the_printed_text() {
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	mut values := []flat.NodeId{}
-	for text in ['a', 'b', 'c'] {
+	texts := ['a', "it's quoted", 'line\nbreak', r'back\slash', 'tab\tend']
+	for text in texts {
 		values << string_fold_test_literal(mut a, text)
 	}
 	arr := t.make_array_literal_typed(values, flat.source_type_id('[]string'))
@@ -127,7 +130,34 @@ fn test_comptime_array_str_fold_renders_the_printed_text() {
 		assert false, 'a literal array of strings should render'
 		return
 	}
-	assert a.node(folded).value == "['a', 'b', 'c']"
+	assert a.node(folded).value == texts.str()
+}
+
+fn test_comptime_array_str_normalizes_integer_literal_spellings() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	mut values := []flat.NodeId{}
+	for text in ['0x10', '1_000', '0b11', '0o17'] {
+		values << a.add_node(flat.Node{ kind: .int_literal, typ: flat.source_type_int, value: text })
+	}
+	arr := t.make_array_literal_typed(values, flat.source_type_id('[]int'))
+	folded := t.try_fold_comptime_array_str(arr) or {
+		assert false, 'integer array literals should render in decimal'
+		return
+	}
+	assert a.node(folded).value == [0x10, 1_000, 0b11, 0o17].str()
+}
+
+fn test_comptime_array_str_does_not_fold_an_unsupported_integer() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	value := a.add_node(flat.Node{ kind: .int_literal, typ: flat.source_type_int, value: '2147483648' })
+	arr := t.make_array_literal_typed([value], flat.source_type_id('[]int'))
+	if _ := t.try_fold_comptime_array_str(arr) {
+		assert false, 'integers outside the supported int range must retain their runtime path'
+	}
 }
 
 fn test_comptime_array_str_follows_the_declared_local() {
@@ -181,4 +211,58 @@ fn test_comptime_string_fold_values_match_the_source_bodies() {
 	assert 'hello'.index('') or { -1 } == 0
 	assert ''.index('a') == none
 	assert 'hello'.index('hello') or { -1 } == 0
+}
+
+fn test_comptime_array_bindings_do_not_cross_function_boundaries() {
+	mut p := parser.Parser.new(pref.new_preferences())
+	mut a := p.parse_text('array_binding_functions.v', 'fn render(values []string) { println(values) }')
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cur_module = 'main'
+	t.cur_file = 'array_binding_functions.v'
+	t.transformed_fns = []bool{len: a.nodes.len}
+	t.prepare()
+	// A surrounding function or constant initializer may own this same name.
+	t.comptime_array_locals['values'] = [ComptimeStringScalar{flat.source_type_string, 'stale'}]
+	mut fn_idx := -1
+	for i, node in a.nodes {
+		if node.kind == .fn_decl && node.value == 'render' { fn_idx = i }
+	}
+	assert fn_idx >= 0
+	t.transform_fn_body(fn_idx)
+	assert t.comptime_array_locals['values'][0].value == 'stale'
+	for node in a.nodes {
+		assert node.kind != .string_literal || node.value != "['stale']"
+	}
+}
+
+fn test_comptime_array_bindings_restore_after_a_nested_statement_scope() {
+	mut p := parser.Parser.new(pref.new_preferences())
+	mut a := p.parse_text('array_binding_scope.v', "fn scope() {\n values := ['inner']\n println(values)\n}")
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cur_module = 'main'
+	t.cur_file = 'array_binding_scope.v'
+	t.prepare()
+	t.set_var_type('values', flat.source_type_id('[]string'))
+	t.comptime_array_locals['values'] = [ComptimeStringScalar{flat.source_type_string, 'outer'}]
+	mut body := []flat.NodeId{}
+	for node in a.nodes {
+		if node.kind == .fn_decl && node.value == 'scope' {
+			body = a.children_of(&node).clone()
+			break
+		}
+	}
+	assert body.len == 2
+	t.transform_stmts(body)
+	assert t.comptime_array_locals['values'][0].value == 'outer'
+	mut saw_inner := false
+	for node in a.nodes {
+		if node.kind == .string_literal && node.value == "['inner']" { saw_inner = true }
+	}
+	assert saw_inner
 }

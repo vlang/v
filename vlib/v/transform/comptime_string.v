@@ -241,6 +241,14 @@ fn (mut t Transformer) detach_comptime_scalar_locals() {
 	}
 }
 
+// Array bindings detach independently so scalar-only scopes do not copy an array map.
+fn (mut t Transformer) detach_comptime_array_locals() {
+	if t.comptime_array_locals_shared {
+		t.comptime_array_locals = t.comptime_array_locals.clone()
+		t.comptime_array_locals_shared = false
+	}
+}
+
 fn (mut t Transformer) transform_comptime_scalar_decl(id flat.NodeId, node flat.Node) []flat.NodeId {
 	if node.children_count != 2 {
 		return t.transform_decl_assign_stmt(id, node)
@@ -253,7 +261,10 @@ fn (mut t Transformer) transform_comptime_scalar_decl(id flat.NodeId, node flat.
 			t.detach_comptime_scalar_locals()
 			t.comptime_scalar_locals.delete(lhs.value)
 		}
-		t.comptime_array_locals.delete(lhs.value)
+		if lhs.value in t.comptime_array_locals {
+			t.detach_comptime_array_locals()
+			t.comptime_array_locals.delete(lhs.value)
+		}
 		// Generated staging locals can be assigned later despite lacking `mut` flags.
 		if node.pos.is_valid() && !lhs.is_mut && !node.is_mut {
 			if scalar := value {
@@ -266,6 +277,7 @@ fn (mut t Transformer) transform_comptime_scalar_decl(id flat.NodeId, node flat.
 			}
 			elements := t.comptime_array_decl_elements(node)
 			if elements.len > 0 && !t.later_stmts_write_array_local(id, lhs.value) {
+				t.detach_comptime_array_locals()
 				t.comptime_array_locals[lhs.value] = elements
 			}
 		}
@@ -334,7 +346,7 @@ fn (mut t Transformer) try_fold_comptime_array_str(id flat.NodeId) ?flat.NodeId 
 		if element.typ != elem_type {
 			return none
 		}
-		parts << comptime_array_elem_text(element, elem_type)
+		parts << comptime_array_elem_text(element, elem_type)?
 	}
 	return t.make_string_literal('[${parts.join(', ')}]')
 }
@@ -395,10 +407,13 @@ fn (t &Transformer) comptime_scalar_array_elements(id flat.NodeId) ?[]ComptimeSt
 }
 
 // comptime_array_elem_text quotes a string element the way the array printer
-// does; other scalars are printed as their literal text.
-fn comptime_array_elem_text(element ComptimeStringScalar, elem_type u32) string {
+// does, and normalizes integer spellings to decimal.
+fn comptime_array_elem_text(element ComptimeStringScalar, elem_type u32) ?string {
 	if elem_type == flat.source_type_string {
 		return "'${element.value}'"
+	}
+	if elem_type == flat.source_type_int {
+		return util.comptime_string_bound(element.value)?.str()
 	}
 	return element.value
 }
