@@ -6940,7 +6940,10 @@ fn markused_visible_local_idents(a &flat.FlatAst, root &flat.Node, local_values 
 }
 
 fn markused_ident_is_visible_local(id flat.NodeId, name string, local_values map[string]bool, visible_local_idents map[int]bool) bool {
-	return name.len > 0 && name in local_values && int(id) in visible_local_idents
+	// The integer node-id probe is cheaper than hashing the name and rejects
+	// most identifiers, so it runs first; the result is the same conjunction.
+	return name.len > 0 && visible_local_idents.len > 0 && int(id) in visible_local_idents
+		&& name in local_values
 }
 
 fn markused_push_visible_local(name string, mut locals map[string]int, mut local_stack []string) {
@@ -10490,7 +10493,13 @@ fn (c &CallCollector) collect_omitted_params_default_calls(call &flat.Node, call
 	if name.len == 0 {
 		return
 	}
-	info := c.fn_decls[name] or { c.fn_decls[callee_name] or { return } }
+	info := c.fn_decls[name] or {
+		// `name` is `callee_name` unless the latter was empty; skip the repeated miss.
+		if name == callee_name {
+			return
+		}
+		c.fn_decls[callee_name] or { return }
+	}
 	fn_node := c.a.node(info.node_id)
 	// Count only positional arguments. Trailing named params
 	// (`compress(data, level: 3)`) are `field_init` children of the call, not
