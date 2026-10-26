@@ -22,6 +22,17 @@ pub enum SourceTypeComposition {
 	multi_return
 	mutable_parameter
 	variadic_parameter
+	shared_type
+	atomic_type
+	generic
+	qualified
+	thread
+	function_type_spaced
+	void_function_type_spaced
+	named_parameter
+	concat
+	inferred_expression
+	fastc_thread_handle
 }
 
 struct SourceTypeCompositionEntry {
@@ -40,7 +51,11 @@ __global g_source_type_compositions [4096]voidptr
 // exact length spelling and element; fixed_array_size variants take the low and
 // high words of a signed 64-bit length, then the element spelling. Functions take parameter spellings followed
 // by the result; void_function_type takes only parameters. Multiple returns take
-// their component spellings.
+// their component spellings. Generics take a base followed by arguments;
+// qualified spellings take a module and name. Shared and atomic are unary.
+// Concatenation accepts any number of parts, including an empty tuple.
+// inferred_expression takes raw expression-node bits instead of a spelling ID.
+// fastc_thread_handle encodes one source spelling into its FastC thread handle name.
 // Entries own only IDs, so borrowed type descriptors and worker arenas can change
 // or expire without invalidating a cached spelling.
 @[direct_array_access]
@@ -52,8 +67,8 @@ pub fn source_type_composition(kind SourceTypeComposition, parts []u32) u32 {
 	hash ^= hash >> 32
 	slot := int(hash & 4095)
 	cached := source_type_composition_find(slot, kind, parts, hash)
-	if cached != 0 {
-		return cached
+	if !isnil(cached) {
+		return cached.id
 	}
 	return source_type_composition_miss(slot, kind, parts, hash)
 }
@@ -112,7 +127,7 @@ fn source_type_composition_head(slot int) &SourceTypeCompositionEntry {
 }
 
 @[direct_array_access]
-fn source_type_composition_find(slot int, kind SourceTypeComposition, parts []u32, hash u64) u32 {
+fn source_type_composition_find(slot int, kind SourceTypeComposition, parts []u32, hash u64) &SourceTypeCompositionEntry {
 	mut entry := source_type_composition_head(slot)
 	for !isnil(entry) {
 		if entry.hash == hash && entry.kind == kind && entry.len == parts.len {
@@ -124,12 +139,12 @@ fn source_type_composition_find(slot int, kind SourceTypeComposition, parts []u3
 				}
 			}
 			if equal {
-				return entry.id
+				return entry
 			}
 		}
 		entry = entry.next
 	}
-	return 0
+	return unsafe { nil }
 }
 
 fn source_type_composition_miss(slot int, kind SourceTypeComposition, parts []u32, hash u64) u32 {
@@ -138,8 +153,8 @@ fn source_type_composition_miss(slot int, kind SourceTypeComposition, parts []u3
 	source_type_lock()
 	defer { C.atomic_store_u32(&g_source_types_lock, 0) }
 	cached := source_type_composition_find(slot, kind, parts, hash)
-	if cached != 0 {
-		return cached
+	if !isnil(cached) {
+		return cached.id
 	}
 	mut entry := unsafe { &SourceTypeCompositionEntry(node_payload_alloc_zeroed(sizeof(SourceTypeCompositionEntry))) }
 	if isnil(entry) {
@@ -182,6 +197,48 @@ fn source_type_composition_text(kind SourceTypeComposition, parts []u32) string 
 		.mutable_channel { return 'chan mut ${source_type_name(parts[0])}' }
 		.mutable_parameter { return 'mut ${source_type_name(parts[0])}' }
 		.variadic_parameter { return '...${source_type_name(parts[0])}' }
+		.shared_type { return 'shared ${source_type_name(parts[0])}' }
+		.atomic_type { return 'atomic ${source_type_name(parts[0])}' }
+		.qualified { return '${source_type_name(parts[0])}.${source_type_name(parts[1])}' }
+		.thread { return 'thread ${source_type_name(parts[0])}' }
+		.named_parameter { return '${source_type_name(parts[0])} ${source_type_name(parts[1])}' }
+		.inferred_expression { return 'typeof(__expr_${int(parts[0])})' }
+		.fastc_thread_handle {
+			value_type := source_type_name(parts[0])
+			if value_type in ['', 'void'] { return '__vf_thread_void' }
+			hex_digits := '0123456789abcdef'
+			mut text := strings.new_builder(value_type.len + 16)
+			text.write_string('__vf_thread_k')
+			for value in value_type {
+				if (value >= `a` && value <= `z`) || (value >= `A` && value <= `Z`)
+					|| (value >= `0` && value <= `9`) {
+					text.write_u8(value)
+				} else {
+					text.write_u8(`_`)
+					text.write_u8(hex_digits[value >> 4])
+					text.write_u8(hex_digits[value & 0x0f])
+				}
+			}
+			return text.str()
+		}
+		.concat {
+			mut text := strings.new_builder(32 + parts.len * 8)
+			for part in parts {
+				text.write_string(source_type_name(part))
+			}
+			return text.str()
+		}
+		.generic {
+			mut text := strings.new_builder(32 + parts.len * 8)
+			text.write_string(source_type_name(parts[0]))
+			text.write_u8(`[`)
+			for index in 1 .. parts.len {
+				if index > 1 { text.write_string(', ') }
+				text.write_string(source_type_name(parts[index]))
+			}
+			text.write_u8(`]`)
+			return text.str()
+		}
 		.map { return 'map[${source_type_name(parts[0])}]${source_type_name(parts[1])}' }
 		.fixed_array { return '[${source_type_name(parts[0])}]${source_type_name(parts[1])}' }
 		.fixed_array_suffix {
@@ -193,11 +250,18 @@ fn source_type_composition_text(kind SourceTypeComposition, parts []u32) string 
 		.fixed_array_size_suffix {
 			return '${source_type_name(parts[2])}[${i64(u64(parts[0]) | (u64(parts[1]) << 32))}]'
 		}
-		.function_type, .void_function_type, .multi_return {
+		.function_type, .void_function_type, .function_type_spaced, .void_function_type_spaced,
+		.multi_return {
 			mut text := strings.new_builder(32 + parts.len * 8)
-			has_result := kind == .function_type
+			has_result := kind == .function_type || kind == .function_type_spaced
 			is_function := kind != .multi_return
-			text.write_string(if is_function { 'fn(' } else { '(' })
+			text.write_string(if kind == .function_type_spaced || kind == .void_function_type_spaced {
+				'fn ('
+			} else if is_function {
+				'fn('
+			} else {
+				'('
+			})
 			count := parts.len - if has_result { 1 } else { 0 }
 			for index in 0 .. count {
 				if index > 0 { text.write_string(', ') }

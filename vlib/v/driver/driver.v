@@ -9555,47 +9555,31 @@ fn incremental_node_tree_uses_generics(a &flat.FlatAst, tc &types.TypeChecker, r
 }
 
 fn incremental_type_is_generic_named_application(type_name_id u32, module_name string, tc &types.TypeChecker) bool {
-	if !flat.source_type_shape(type_name_id).has(.bracketed) {
-		return false
+	if !flat.source_type_shape(type_name_id).has(.bracketed) { return false }
+	for head in flat.source_type_syntax(type_name_id).generic_application_heads {
+		if incremental_generic_type_base_is_known(head, module_name, tc) { return true }
 	}
-	return incremental_type_is_generic_named_application_bytes(flat.source_type_name(type_name_id), module_name, tc)
+	return false
 }
 
 // incremental_type_is_generic_named_application_bytes also probes ordinary node payloads and
 // the legacy source-signature projection, which are not exclusively source type spellings.
 fn incremental_type_is_generic_named_application_bytes(type_name string, module_name string, tc &types.TypeChecker) bool {
-	mut offset := 0
-	for offset < type_name.len {
-		relative_bracket := type_name[offset..].index_u8(`[`)
-		if relative_bracket < 0 {
-			return false
-		}
-		bracket := offset + relative_bracket
-		mut start := bracket
-		for start > 0 {
-			c := type_name[start - 1]
-			if !((c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`)
-				|| (c >= `0` && c <= `9`) || c in [`_`, `.`]) {
-				break
-			}
-			start--
-		}
-		if start < bracket
-			&& incremental_generic_type_base_is_known(type_name[start..bracket], module_name, tc) {
-			return true
-		}
-		offset = bracket + 1
-	}
-	return false
+	return incremental_type_is_generic_named_application(flat.source_type_id(type_name), module_name, tc)
 }
 
-fn incremental_generic_type_base_is_known(base string, module_name string, tc &types.TypeChecker) bool {
+fn incremental_generic_type_base_is_known(base_id u32, module_name string, tc &types.TypeChecker) bool {
+	base := flat.source_type_name(base_id)
 	if base in tc.struct_generic_params || base in tc.sum_generic_params
 		|| base in tc.type_alias_generic_params {
 		return true
 	}
-	if !base.contains('.') && module_name !in ['', 'main', 'builtin'] {
-		qualified := '${module_name}.${base}'
+	if !flat.source_type_shape(base_id).has(.dotted) && module_name !in ['', 'main', 'builtin'] {
+		qualified_id := flat.source_type_composition(.qualified, [
+			flat.source_type_id(module_name),
+			base_id,
+		])
+		qualified := flat.source_type_name(qualified_id)
 		if qualified in tc.struct_generic_params || qualified in tc.sum_generic_params
 			|| qualified in tc.type_alias_generic_params {
 			return true
@@ -9857,20 +9841,10 @@ fn v3_source_is_pure_v(path string) bool {
 }
 
 fn v3_type_text_uses_interop_namespace(type_id u32, namespace string) bool {
-	if !flat.source_type_shape(type_id).has(.dotted) {
-		return false
-	}
-	text := flat.source_type_name(type_id)
-	needle := namespace + '.'
-	mut offset := 0
-	for offset < text.len {
-		relative := text[offset..].index(needle) or { return false }
-		index := offset + relative
-		if index == 0 || (!(text[index - 1].is_alnum() || text[index - 1] == `_`)
-			&& text[index - 1] != `.`) {
-			return true
-		}
-		offset = index + needle.len
+	if !flat.source_type_shape(type_id).has(.dotted) { return false }
+	namespace_id := flat.source_type_id(namespace)
+	for symbol in flat.source_type_syntax(type_id).symbols {
+		if namespace_id in flat.source_type_syntax(symbol).qualifier_prefixes { return true }
 	}
 	return false
 }
@@ -20021,12 +19995,11 @@ fn v3_split_type_names(list string) []u32 {
 // declaring_module returns the module that declares the type `name`, as the type
 // checker names modules (`json2` for `x.json2`), or `?` when nothing says so.
 fn (scopes &V3InterfaceScopes) declaring_module(name_id u32) string {
-	name := flat.source_type_name(name_id)
-	base := name.all_before('[')
-	if base.contains('.') {
-		return base.all_before_last('.')
+	base := flat.source_type_syntax(name_id).generic_base
+	if flat.source_type_shape(base).has(.dotted) {
+		return flat.source_type_name(flat.source_type_syntax(base).qualifier)
 	}
-	return scopes.modules[name] or { '?' }
+	return scopes.modules[flat.source_type_name(name_id)] or { '?' }
 }
 
 // module_signature returns the implementer lists that the code of a module can
@@ -21682,9 +21655,11 @@ fn unsupported_wasm_struct_infix_error(a &flat.FlatAst, tc &types.TypeChecker, i
 }
 
 fn wasm_type_without_main_prefix(type_id u32) u32 {
-	type_name := flat.source_type_name(type_id)
-	name := type_name.trim_string_left('main.')
-	return if name == type_name { type_id } else { flat.source_type_id(name) }
+	return if flat.source_type_query(type_id).has(.main_prefix) {
+		flat.source_type_syntax(type_id).main_base
+	} else {
+		type_id
+	}
 }
 
 fn wasm_struct_origin_type(a &flat.FlatAst, id flat.NodeId) u32 {
@@ -21804,27 +21779,26 @@ fn wasm_supported_array_elem(type_id u32) bool {
 // with a depth bound, because a self-referential type through a pointer field
 // would otherwise loop the walk for ever.
 fn wasm_supported_struct(tc &types.TypeChecker, type_id u32) bool {
-	name := flat.source_type_name(type_id).trim_string_left('main.@')
+	name_id := flat.source_type_syntax(type_id).main_at_base
 	// Option types (`?T`) lower in the wasm backend when their payload does:
 	// gen.v handles types.OptionType and the SSA backend lowers the leading
 	// `ok` plus payload. Walk the payload instead of looking the option up in
 	// tc.structs, where it is not registered as a regular struct.
-	if name.starts_with('?') {
-		inner := name[1..]
-		if inner.len == 0 {
-			return false
+	if flat.source_type_shape(name_id).has(.option_type) {
+		inner := flat.source_type_syntax(name_id).raw_base
+		if inner == 0 { return false }
+		if flat.source_type_shape(inner).has(.array_type) {
+			return wasm_supported_array_elem(inner)
 		}
-		inner_id := flat.source_type_id(inner)
-		if inner.starts_with('[]') {
-			return wasm_supported_array_elem(inner_id)
-		}
-		if inner in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'uint',
-			'f32', 'f64', 'bool', 'char', 'rune', 'string'] {
+		if inner in [flat.source_type_id('int'), flat.source_type_id('i8'), flat.source_type_id('i16'),
+			flat.source_type_id('i32'), flat.source_type_id('i64'), flat.source_type_id('u8'),
+			flat.source_type_id('u16'), flat.source_type_id('u32'), flat.source_type_id('u64'),
+			flat.source_type_id('isize'), flat.source_type_id('uint'), flat.source_type_id('f32'),
+			flat.source_type_id('f64'), flat.source_type_id('bool'), flat.source_type_id('char'),
+			flat.source_type_id('rune'), flat.source_type_id('string')] {
 			return true
 		}
-		if tc.structs[inner] or { [] }.len >= 0 && inner in tc.structs {
-			return wasm_supported_struct(tc, inner_id)
-		}
+		if flat.source_type_name(inner) in tc.structs { return wasm_supported_struct(tc, inner) }
 		return false
 	}
 	return wasm_struct_fields_supported(tc, type_id, 0)
@@ -21834,11 +21808,11 @@ fn wasm_struct_fields_supported(tc &types.TypeChecker, type_id u32, depth int) b
 	if depth > 8 {
 		return false
 	}
-	name := flat.source_type_name(type_id).trim_string_left('main.@')
-	if name == '' {
+	name_id := flat.source_type_syntax(type_id).main_at_base
+	if name_id == 0 {
 		return false
 	}
-	st := tc.structs[name] or { return false }
+	st := tc.structs[flat.source_type_name(name_id)] or { return false }
 	for f in st {
 		if !wasm_struct_field_supported(tc, f.typ, depth) {
 			return false
@@ -23684,35 +23658,7 @@ fn implicit_declared_child(name_idx int, values int) int {
 // return type of a function that returns several, `(string, []int)`; none when
 // it is not one.
 fn implicit_multi_value_types(raw_id u32, index ImplicitFieldScanIndex) []u32 {
-	typ := flat.source_type_name(implicit_normalize_type(raw_id, index))
-	if typ.len < 2 || typ[0] != `(` || typ[typ.len - 1] != `)` {
-		return []u32{}
-	}
-	mut parts := []u32{}
-	mut depth := 0
-	mut start := 1
-	for i := 1; i < typ.len - 1; i++ {
-		match typ[i] {
-			`(`, `[` {
-				depth++
-			}
-			`)`, `]` {
-				depth--
-			}
-			`,` {
-				if depth == 0 {
-					parts << flat.source_type_id(implicit_trim_space(typ[start..i]))
-					start = i + 1
-				}
-			}
-			else {}
-		}
-	}
-	parts << flat.source_type_id(implicit_trim_space(typ[start..typ.len - 1]))
-	if depth != 0 || parts.any(it == 0) {
-		return []u32{}
-	}
-	return parts
+	return flat.source_type_syntax(implicit_normalize_type(raw_id, index)).implicit_tuple_components.clone()
 }
 
 fn implicit_field_scan_index_append(a &flat.FlatAst, start int, end int, mut index ImplicitFieldScanIndex) {
@@ -23880,7 +23826,7 @@ fn implicit_expr_type(a &flat.FlatAst, id flat.NodeId, bindings flat.TypeTextBin
 			}
 			elem_type_source_id := implicit_expr_type(a, a.child(node, 0), bindings, index, depth + 1)
 			if elem_type_source_id != 0 {
-				return flat.source_type_id('[]${flat.source_type_name(elem_type_source_id)}')
+				return flat.source_type_composition_one(.array, elem_type_source_id)
 			}
 			return implicit_source_type_void_array
 		}
@@ -23969,28 +23915,28 @@ fn implicit_expr_type(a &flat.FlatAst, id flat.NodeId, bindings flat.TypeTextBin
 		.index {
 			if node.children_count > 0 {
 				base_type_source_id_3 := implicit_normalize_type(implicit_expr_type(a, a.child(node, 0), bindings, index, depth + 1), index)
-				base_type := flat.source_type_name(base_type_source_id_3)
+				shape := flat.source_type_shape(base_type_source_id_3)
 				if node.value == 'range' {
 					// A slice keeps its base type: `s[..n]` is a string, and slicing a
 					// fixed array yields a dynamic one.
-					if base_type_source_id_3 == flat.source_type_string || base_type.starts_with('[]') {
+					if base_type_source_id_3 == flat.source_type_string || shape.has(.array_type) {
 						return base_type_source_id_3
 					}
-					if base_type.starts_with('[') {
-						close := base_type.index(']') or { return u32(0) }
-						if close + 1 < base_type.len {
-							return flat.source_type_id('[]' + base_type[close + 1..])
+					if shape.has(.leading_bracket) {
+						syntax := flat.source_type_syntax(base_type_source_id_3)
+						if syntax.first_bracket_closed && syntax.first_bracket_base != 0 {
+							return flat.source_type_composition_one(.array, syntax.first_bracket_base)
 						}
 					}
 					return u32(0)
 				}
-				if base_type.starts_with('[]') {
-					return flat.source_type_id(base_type[2..])
+				if shape.has(.array_type) {
+					return flat.source_type_syntax(base_type_source_id_3).raw_base
 				}
-				if base_type.starts_with('[') {
-					close := base_type.index(']') or { return u32(0) }
-					if close + 1 < base_type.len {
-						return flat.source_type_id(base_type[close + 1..])
+				if shape.has(.leading_bracket) {
+					syntax := flat.source_type_syntax(base_type_source_id_3)
+					if syntax.first_bracket_closed && syntax.first_bracket_base != 0 {
+						return syntax.first_bracket_base
 					}
 				}
 				if base_type_source_id_3 == flat.source_type_string {
@@ -24086,8 +24032,13 @@ fn implicit_call_return_type(a &flat.FlatAst, call &flat.Node, bindings flat.Typ
 		}
 	}
 	if base_type_source_id_4 != 0 {
-		base_type := flat.source_type_name(base_type_source_id_4)
-		for key in ['${base_type}.${callee.value}', '${base_type.all_after_last('.')}.${callee.value}'] {
+		method_id := callee.source_value_id()
+		short_base := flat.source_type_syntax(base_type_source_id_4).unqualified
+		for key_id in [
+			flat.source_type_composition_two(.qualified, base_type_source_id_4, method_id),
+			flat.source_type_composition_two(.qualified, short_base, method_id),
+		] {
+			key := flat.source_type_name(key_id)
 			index.read('r:', key)
 			if typ_source_id := index.fn_returns.type_id(key) {
 				return implicit_normalize_type(typ_source_id, index)
@@ -24138,7 +24089,8 @@ fn implicit_field_type(raw_type_id u32, field string, index ImplicitFieldScanInd
 	return 0
 }
 
-const implicit_type_prefixes = ['mut ', 'shared ', '&', '?', '!']
+const implicit_type_prefixes = [flat.SourceTypeShape.mutable_type, .shared_type, .pointer,
+	.option_type, .result_type]
 const implicit_source_type_embed_file_data = flat.source_type_id('embed_file.EmbedFileData')
 const implicit_source_type_void_array = flat.source_type_id('[]void')
 const implicit_source_type_void_map = flat.source_type_id('map[void]void')
@@ -24154,42 +24106,35 @@ const implicit_number_types = [flat.source_type_int, flat.source_type_i8, flat.s
 	flat.source_type_f32, flat.source_type_f64]
 
 fn implicit_normalize_type(raw_id u32, index ImplicitFieldScanIndex) u32 {
-	raw := flat.source_type_name(raw_id)
-	mut typ := implicit_trim_space(raw)
-	mut normalized_id := raw_id
-	mut has_normalized_id := typ == raw
+	mut typ_id := implicit_trimmed_type_id(raw_id)
 	for _ in 0 .. 12 {
 		mut changed := false
 		for prefix in implicit_type_prefixes {
-			if typ.starts_with(prefix) {
-				typ = implicit_trim_space(typ[prefix.len..])
-				has_normalized_id = false
+			if flat.source_type_shape(typ_id).has(prefix) {
+				typ_id = implicit_trimmed_type_id(flat.source_type_syntax(typ_id).raw_base)
 				changed = true
 			}
 		}
+		typ := flat.source_type_name(typ_id)
 		index.read('a:', typ)
 		if target_id := index.aliases.type_id(typ) {
-			target := flat.source_type_name(target_id)
-			typ = implicit_trim_space(target)
-			normalized_id = target_id
-			has_normalized_id = typ == target
+			typ_id = implicit_trimmed_type_id(target_id)
 			changed = true
 		}
 		if !changed {
 			break
 		}
 	}
-	return if has_normalized_id { normalized_id } else { flat.source_type_id(typ) }
+	return typ_id
 }
 
-// implicit_trim_space is `text.trim_space()` without the copy of a text that
-// has no space to trim: the scans below normalize every type text they meet.
 @[inline]
-fn implicit_trim_space(text string) string {
-	if text.len > 0 && !text[0].is_space() && !text[text.len - 1].is_space() {
-		return text
+fn implicit_trimmed_type_id(id u32) u32 {
+	return if flat.source_type_shape(id).has(.padded) {
+		flat.source_type_syntax(id).trimmed
+	} else {
+		id
 	}
-	return text.trim_space()
 }
 
 fn type_text_is_channel(typ_id u32) bool {

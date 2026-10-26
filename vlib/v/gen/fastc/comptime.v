@@ -903,7 +903,7 @@ fn (mut g Parser) parse_comptime_unary() !bool {
 		expected := g.lit.int()
 		g.next()
 		resolved := g.comptime_named_type(name)
-		actual := flat.source_type_name(resolved).len - flat.source_type_name(resolved).trim_right('*').len + subject_pointer_depth
+		actual := flat.source_type_syntax(resolved).c_pointer_depth + subject_pointer_depth
 		return match operator {
 			.eq { actual == expected }
 			.ne { actual != expected }
@@ -932,14 +932,14 @@ fn (mut g Parser) parse_comptime_unary() !bool {
 		}
 		mut left_type := g.comptime_named_type(name)
 		if subject_pointer_depth > 0 {
-			left_type = flat.source_type_id(flat.source_type_name(left_type) + '*'.repeat(subject_pointer_depth))
+			left_type = fastc_with_pointer_depth(left_type, subject_pointer_depth)
 		}
 		if unaliased {
 			left_type = g.underlying_alias_type(left_type)
 		}
 		if pointee_type {
 			left_type = (if flat.source_type_query(left_type).has(.c_pointer_suffix) {
-				flat.source_type_id(flat.source_type_name(left_type)[..flat.source_type_name(left_type).len - 1])
+				flat.source_type_syntax(left_type).c_pointer_base
 			} else {
 				flat.source_type_void
 			})
@@ -1004,13 +1004,13 @@ fn (g &Parser) comptime_type_matches(left_type u32, target_type u32, target_is_g
 	original_key := g.semantic_type_key(left_type)
 	return match flat.source_type_name(target_type) {
 		'array' {
-			flat.source_type_name(left).starts_with('Array_') || left == fastc_type_array
+			flat.source_type_query(left).has(.c_array_prefix) || left == fastc_type_array
 		}
 		'array_fixed' {
-			flat.source_type_name(left).starts_with('FixedArray_')
+			flat.source_type_query(left).has(.c_fixed_array_prefix)
 		}
 		'map' {
-			flat.source_type_name(left).starts_with('Map_') || left == fastc_type_map
+			flat.source_type_query(left).has(.c_map_prefix) || left == fastc_type_map
 		}
 		'string' {
 			left == flat.source_type_string
@@ -1758,8 +1758,8 @@ fn (g &Parser) fastc_veb_context_name() string {
 		return 'ctx'
 	}
 	for name, local in g.locals {
-		base := local.typ_text().trim_right('*')
-		if base == 'Context' || base.ends_with('__Context') {
+		base := fastc_trim_pointer_type(local.typ)
+		if base == flat.source_type_id('Context') || flat.source_type_syntax(base).last_double_underscore_suffix == flat.source_type_id('Context') {
 			return name
 		}
 	}

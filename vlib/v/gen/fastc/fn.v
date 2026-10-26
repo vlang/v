@@ -809,7 +809,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		g.expect(.rpar)!
 		receiver_is_reference := receiver_is_mut && !flat.source_type_query(receiver_type).has(.c_pointer_suffix)
 		receiver_parameter_type := if receiver_is_reference {
-			flat.source_type_id(flat.source_type_name(receiver_type) + '*')
+			flat.source_type_composition_two(.concat, receiver_type, flat.source_type_id('*'))
 		} else {
 			receiver_type
 		}
@@ -1497,7 +1497,7 @@ fn (mut g Parser) parse_parameters(function_key string, parameter_offset int) ![
 		is_generic_value := g.in_mono_drain && parameter_index < mono_signature.parameter_generic_values.len && mono_signature.parameter_generic_values[parameter_index]
 		is_reference := is_mut && (!flat.source_type_query(type_name).has(.c_pointer_suffix) || is_generic_value)
 		if is_reference {
-			type_name = flat.source_type_id(flat.source_type_name(type_name) + '*')
+			type_name = flat.source_type_composition_two(.concat, type_name, flat.source_type_id('*'))
 		}
 		for parameter_name in names {
 			// Two blank `_` parameters (`fn f(_ A, _ B)`) would both render as the C name
@@ -1691,39 +1691,44 @@ fn fastc_output_c_type(t string) string {
 	return t
 }
 
-fn fastc_primitive_c_type(raw_type string) ?string {
-	return match raw_type {
-		'bool' { 'bool' }
-		'char' { 'char' }
-		'f32' { 'f32' }
-		'f64' { 'f64' }
-		'float_literal' { 'f64' }
-		'i8' { 'i8' }
-		'i16' { 'i16' }
-		'i32' { 'i32' }
-		'i64' { 'i64' }
-		'int' { 'int' }
-		'int_literal' { 'i64' }
-		'isize' { 'isize' }
-		'rune' { 'rune' }
-		'string' { 'string' }
-		'u8' { 'u8' }
-		'u16' { 'u16' }
-		'u32' { 'u32' }
-		'u64' { 'u64' }
-		'uint' { 'usize' }
-		'usize' { 'usize' }
-		'voidptr' { 'voidptr' }
-		'byteptr' { 'byteptr' }
-		'charptr' { 'charptr' }
-		'chan' { 'chan' }
-		'array' { 'array' }
-		'map' { 'map' }
-		'Option' { 'Option' }
-		'__v_result' { '__v_result' }
-		'any' { 'voidptr' }
-		else { none }
+// fastc_output_c_type_id maps semantic spellings to their physical C type identities.
+fn fastc_output_c_type_id(type_id u32) u32 {
+	syntax := flat.source_type_syntax(type_id)
+	base := syntax.c_pointer_raw_base
+	if base == flat.source_type_uint {
+		return fastc_with_pointer_depth(flat.source_type_usize, syntax.c_pointer_depth)
 	}
+	if base == flat.source_type_int {
+		return fastc_with_pointer_depth(flat.source_type_id(fastc_platform_int_c_type), syntax.c_pointer_depth)
+	}
+	return type_id
+}
+
+const fastc_primitive_float_literal = flat.source_type_id('float_literal')
+const fastc_primitive_int_literal = flat.source_type_id('int_literal')
+const fastc_primitive_any = flat.source_type_id('any')
+
+// fastc_primitive_c_type_id maps the exact primitive spelling IDs accepted by the scanner.
+fn fastc_primitive_c_type_id(raw_type u32) ?u32 {
+	if raw_type in [flat.source_type_bool, flat.source_type_char, flat.source_type_f32,
+		flat.source_type_f64, flat.source_type_i8, flat.source_type_i16, flat.source_type_i32,
+		flat.source_type_i64, flat.source_type_int, flat.source_type_isize, flat.source_type_rune,
+		flat.source_type_string, flat.source_type_u8, flat.source_type_u16, flat.source_type_u32,
+		flat.source_type_u64, flat.source_type_usize, flat.source_type_voidptr,
+		flat.source_type_byteptr, flat.source_type_charptr, fastc_type_chan, fastc_type_array,
+		fastc_type_map, fastc_type_option, fastc_type_result] {
+		return raw_type
+	}
+	if raw_type == fastc_primitive_float_literal { return flat.source_type_f64 }
+	if raw_type == fastc_primitive_int_literal { return flat.source_type_i64 }
+	if raw_type == flat.source_type_uint { return flat.source_type_usize }
+	if raw_type == fastc_primitive_any { return flat.source_type_voidptr }
+	return none
+}
+
+fn fastc_primitive_c_type(raw_type string) ?string {
+	mapped := fastc_primitive_c_type_id(flat.source_type_id(raw_type)) or { return none }
+	return flat.source_type_name(mapped)
 }
 
 fn fastc_expression_tokens_contain(tokens []FastcExpressionToken, wanted token.Token) bool {

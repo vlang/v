@@ -3,51 +3,54 @@ module transform
 import v.flat
 import v.types
 
-const inferred_type_marker = 'typeof(__expr_'
-
 // inferred_type_id reports whether an interned spelling holds a `typeof(expr)`
-// type annotation. The shape check keeps ordinary spellings byte-free.
+// type annotation without inspecting its spelling bytes.
 @[inline]
 fn inferred_type_id(typ_id u32) bool {
-	return flat.source_type_shape(typ_id).has(.typeof_expr)
-		&& flat.source_type_name(typ_id).contains(inferred_type_marker)
+	return flat.source_type_query(typ_id).has(.inferred_witness)
 }
 
-// resolve_inferred_type_id is `resolve_inferred_type_text` for an
-// interned spelling; other spellings are returned unchanged.
+// resolve_inferred_type_id resolves source witness nodes from cached numeric
+// annotation components; other spellings are returned unchanged.
 fn (t &Transformer) resolve_inferred_type_id(typ_id u32) u32 {
 	if !inferred_type_id(typ_id) {
 		return typ_id
 	}
-	typ := flat.source_type_name(typ_id)
-	resolved := t.resolve_inferred_type_text(typ)
-	return if resolved == typ { typ_id } else { flat.source_type_id(resolved) }
+	syntax := flat.source_type_syntax(typ_id)
+	mut result := syntax.inferred_parts[0]
+	mut stopped := false
+	mut changed := false
+	for i, annotation in syntax.inferred_annotations {
+		mut replacement := annotation
+		if !stopped {
+			expression_id := flat.NodeId(syntax.inferred_expr_ids[i])
+			if int(expression_id) < 0 || int(expression_id) >= t.a.nodes.len {
+				stopped = true
+			} else {
+				value_id := t.inferred_witness_type(expression_id)
+				if value_id in [u32(0), flat.source_type_void] || inferred_type_id(value_id) {
+					stopped = true
+				} else {
+					// Source witnesses precede transform's generated-node range. Their
+					// concrete spelling IDs remain valid after their source scope expires.
+					mut writer := unsafe { &Transformer(voidptr(t)) }
+					writer.set_node_typ(int(expression_id), value_id)
+					replacement = value_id
+					changed = true
+				}
+			}
+		}
+		result = flat.source_type_composition_two(.concat, result, replacement)
+		result = flat.source_type_composition_two(.concat, result, syntax.inferred_parts[i + 1])
+	}
+	return if changed { result } else { typ_id }
 }
 
 // `typeof(expr)` type annotations retain their ordinary V expression.
 // Resolve them while transform owns the same lexical locals as that expression,
 // before recording a concrete callback signature or generic specialization.
 fn (t &Transformer) resolve_inferred_type_text(typ string) string {
-	mut result := typ
-	mut offset := 0
-	marker := inferred_type_marker
-	for offset < result.len {
-		start := result[offset..].index(marker) or { break } + offset
-		end := result[start..].index(')') or { break } + start + 1
-		expression_id := flat.NodeId(result[start + marker.len..end - 1].int())
-		if int(expression_id) < 0 || int(expression_id) >= t.a.nodes.len { break }
-		value_id := t.inferred_witness_type(expression_id)
-		value := flat.source_type_name(value_id)
-		if value.len == 0 || value == 'void' || value.contains(marker) { break }
-		// Source witnesses precede transform's generated-node range. Their AST
-		// text is promoted with the enclosing source scope, while a synthesized
-		// checker Type would retain pointers into that disposable scope.
-		mut writer := unsafe { &Transformer(voidptr(t)) }
-		writer.set_node_typ(int(expression_id), value_id)
-		result = result[..start] + value + result[end..]
-		offset = start + value.len
-	}
-	return result
+	return flat.source_type_name(t.resolve_inferred_type_id(flat.source_type_id(typ)))
 }
 
 // resolve_fn_literal_inferred_return_type resolves the `typeof(expr)` parts of a
@@ -89,7 +92,7 @@ fn (t &Transformer) resolve_fn_literal_inferred_return_type(ret_type u32, params
 // inferred those arguments, so its type is used instead.
 fn (t &Transformer) inferred_witness_type(expression_id flat.NodeId) u32 {
 	resolved := t.resolve_expr_type(expression_id)
-	if resolved != 0 && flat.source_type_name(resolved) !in ['unknown', 'void']
+	if resolved !in [u32(0), flat.source_type_unknown, flat.source_type_void]
 		&& !t.generic_arg_is_unresolved(resolved) {
 		return resolved
 	}
@@ -102,7 +105,8 @@ fn (t &Transformer) inferred_witness_type(expression_id flat.NodeId) u32 {
 		// Resolving a witness records its type on the expression node and drops
 		// the checker's cached entry for it; later lookups read that record.
 		recorded := t.a.nodes[int(expression_id)].typ
-		if recorded != 0 && flat.source_type_name(recorded) !in ['unknown', 'void', 'array', 'map']
+		if recorded !in [u32(0), flat.source_type_unknown, flat.source_type_void,
+			flat.source_type_id('array'), flat.source_type_id('map')]
 			&& !t.generic_arg_is_unresolved(recorded) {
 			return recorded
 		}

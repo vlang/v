@@ -466,7 +466,7 @@ fn (mut g Gen) setup_json_migration(fnode &flat.Node) {
 			&& legacy.children_count > 0 {
 			return
 		}
-		if n.kind == .field_decl && n.value == n.typ_text() && n.children_count == 0 {
+		if n.kind == .field_decl && n.source_value_id() == n.typ && n.children_count == 0 {
 			return
 		}
 		if n.kind == .selector && n.children_count > 0 {
@@ -4395,19 +4395,19 @@ fn (mut g Gen) params(parent_id flat.NodeId, ids []flat.NodeId) {
 }
 
 fn (g &Gen) param_type(p &flat.Node) string {
-	mut t := p.typ_text()
-	if p.is_mut && p.op != .amp && t.starts_with('&') {
-		t = t[1..]
+	mut t := p.typ
+	if p.is_mut && p.op != .amp && flat.source_type_shape(t).has(.pointer) {
+		t = flat.source_type_syntax(t).raw_base
 	}
-	return t
+	return flat.source_type_name(t)
 }
 
 fn (g &Gen) receiver_type(rn &flat.Node) string {
-	mut t := rn.typ_text()
-	if rn.is_mut && t.starts_with('&') {
-		t = t[1..]
+	mut t := rn.typ
+	if rn.is_mut && flat.source_type_shape(t).has(.pointer) {
+		t = flat.source_type_syntax(t).raw_base
 	}
-	return t
+	return flat.source_type_name(t)
 }
 
 // struct_body_start finds the opening brace without mistaking header comments for the body.

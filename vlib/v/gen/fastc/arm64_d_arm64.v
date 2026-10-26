@@ -1233,66 +1233,64 @@ fn fast_arm64_unique_short_constants(constants map[string]FastArm64ConstantDecl)
 }
 
 fn (mut p FastArm64Program) type_id(name_source_id u32) ssa.TypeID {
-	name := flat.source_type_name(name_source_id)
 	// Type spellings come from FastC's scanner and declaration index, which already
 	// remove surrounding trivia. Keeping this path allocation-free matters during
 	// self-hosting, where it is called for every parameter and field.
-	clean := name
 	if flat.source_type_query(name_source_id).has(.c_pointer_suffix) {
-		return p.m.type_store.get_ptr(p.type_id(flat.source_type_id(clean.trim_right('*'))))
+		return p.m.type_store.get_ptr(p.type_id(fastc_trim_pointer_type(name_source_id)))
 	}
-	if clean.starts_with('struct ') {
-		return p.type_id(flat.source_type_id('C.${clean['struct '.len..]}'))
+	if struct_name := flat.source_type_capture(name_source_id, flat.source_type_id('struct '), 0) {
+		return p.type_id(flat.source_type_composition_two(.qualified, flat.source_type_id('C'), struct_name))
 	}
-	match clean {
-		'', 'void' {
+	match name_source_id {
+		u32(0), flat.source_type_void {
 			return p.void_type
 		}
-		'bool' {
+		flat.source_type_bool {
 			return p.i1_type
 		}
-		'i8', 'char' {
+		flat.source_type_i8, flat.source_type_char {
 			return p.i8_type
 		}
-		'i16' {
+		flat.source_type_i16 {
 			return p.i16_type
 		}
-		'i32', 'rune' {
+		flat.source_type_i32, flat.source_type_rune {
 			return p.i32_type
 		}
-		'int', 'i64', 'isize', 'int_literal' {
+		flat.source_type_int, flat.source_type_i64, flat.source_type_isize, flat.source_type_id('int_literal') {
 			return p.i64_type
 		}
-		'u8' {
+		flat.source_type_u8 {
 			return p.u8_type
 		}
-		'u16' {
+		flat.source_type_u16 {
 			return p.u16_type
 		}
-		'u32', 'unsigned int' {
+		flat.source_type_u32, flat.source_type_id('unsigned int') {
 			return p.u32_type
 		}
-		'u64', 'uint', 'usize' {
+		flat.source_type_u64, flat.source_type_uint, flat.source_type_usize {
 			return p.u64_type
 		}
-		'f32' {
+		flat.source_type_f32 {
 			return p.f32_type
 		}
-		'f64', 'float_literal' {
+		flat.source_type_f64, flat.source_type_id('float_literal') {
 			return p.f64_type
 		}
-		'string' {
+		flat.source_type_string {
 			return p.str_type
 		}
-		'voidptr', 'byteptr', 'charptr' {
+		flat.source_type_voidptr, flat.source_type_byteptr, flat.source_type_charptr {
 			return p.ptr_i8
 		}
-		'array' {
+		fastc_type_array {
 			return p.array_type
 		}
 		else {}
 	}
-	if id := p.type_ids[flat.source_type_id('C.${clean}')] {
+	if id := p.type_ids[flat.source_type_composition_two(.qualified, flat.source_type_id('C'), name_source_id)] {
 		return id
 	}
 	if element_type_source_id := fastc_fixed_array_element_type(name_source_id) {
@@ -1301,21 +1299,21 @@ fn (mut p FastArm64Program) type_id(name_source_id u32) ssa.TypeID {
 		if id := p.type_ids[name_source_id] {
 			return id
 		}
-		length_source := fastc_fixed_array_length(clean) or { return p.i64_type }
+		length_source := fastc_fixed_array_length_id(name_source_id) or { return p.i64_type }
 		length := fastc_decimal_integer_value(length_source) or { return p.i64_type }
 		id := p.m.type_store.get_array(p.type_id(element_type), length)
 		p.type_ids[name_source_id] = id
 		return id
 	}
-	if alias := p.type_aliases.type_id(clean) {
+	if alias := p.type_aliases.type_id(flat.source_type_name(name_source_id)) {
 		return p.type_id(alias)
 	}
 	if id := p.type_ids[name_source_id] {
 		return id
 	}
-	return if clean.starts_with('Array_') || clean.starts_with('[]') {
+	return if flat.source_type_query(name_source_id).has(.c_array_prefix) || flat.source_type_shape(name_source_id).has(.array_type) {
 		p.array_type
-	} else if clean.starts_with('Map_') || clean.starts_with('map[') {
+	} else if flat.source_type_query(name_source_id).has(.c_map_prefix) || flat.source_type_shape(name_source_id).has(.map_type) {
 		p.map_type
 	} else {
 		p.i64_type
@@ -4215,7 +4213,7 @@ fn (mut p FastArm64Parser) parse_function() ! {
 		p.tok = receiver_next_token
 		p.lit = p.s.lit
 		if receiver_is_mut && !flat.source_type_query(receiver_type).has(.c_pointer_suffix) {
-			receiver_type = flat.source_type_id(flat.source_type_name(receiver_type) + '*')
+			receiver_type = flat.source_type_composition_two(.concat, receiver_type, flat.source_type_id('*'))
 		}
 		p.expect(.rpar)!
 	}
@@ -4384,7 +4382,7 @@ fn (mut p FastArm64Parser) parse_function() ! {
 		if i == 0 && receiver_name != '' && parameter_is_mut[i] && abi_type == typ && abi_layout.kind == .ptr_t {
 			typ = abi_layout.elem_type
 			if flat.source_type_query(typ_name).has(.c_pointer_suffix) {
-				typ_name = flat.source_type_id(flat.source_type_name(typ_name)[..flat.source_type_name(typ_name).len - 1])
+				typ_name = flat.source_type_syntax(typ_name).c_pointer_base
 			}
 		}
 		argument := p.program.add_arg(func_id, abi_type, parameter_name)
@@ -4738,7 +4736,7 @@ fn (mut p FastArm64Parser) parse_name_statement(after_mut bool) ! {
 		local_layout := p.program.m.type_store.types[local.typ]
 		mut indexed_value_type_name := u32(0)
 		if local_layout.kind == .ptr_t && flat.source_type_shape(local.typ_name).has(.pointer) {
-			indexed_value_type_name = flat.source_type_id(local.typ_name_text()[1..])
+			indexed_value_type_name = flat.source_type_syntax(local.typ_name).raw_base
 		} else if local_layout.kind == .array_t {
 			indexed_value_type_name = fastc_fixed_array_element_type(local.typ_name) or { u32(0) }
 		} else if local.typ == p.program.array_type {
@@ -4985,7 +4983,6 @@ fn (mut p FastArm64Parser) parse_expression_statement() ! {
 }
 
 fn (mut p FastArm64Parser) parse_enum_shorthand(type_name_source_id u32) !FastArm64Value {
-	type_name := flat.source_type_name(type_name_source_id)
 	p.expect(.dot)!
 	if p.tok != .name && !p.tok.is_keyword() {
 		return p.unsupported('enum shorthand field')
@@ -4997,7 +4994,7 @@ fn (mut p FastArm64Parser) parse_enum_shorthand(type_name_source_id u32) !FastAr
 	} else {
 		'${p.source_file.header.module_name}.'
 	}
-	short_type_name := type_name.all_after_last('.').all_after_last('__')
+	short_type_name := flat.source_type_name(flat.source_type_syntax(flat.source_type_syntax(type_name_source_id).unqualified).last_double_underscore_suffix)
 	key := '${module_prefix}${short_type_name}.${field}'
 	mut declaration := p.program.enum_values[key] or {
 		p.program.enum_values['${short_type_name}.${field}'] or { FastArm64ConstantDecl{} }
@@ -6276,7 +6273,7 @@ fn (mut p FastArm64Parser) parse_expression(min_precedence int) !FastArm64Value 
 			continue
 		}
 		contextual_right_type := if op in [.key_in, .not_in] && p.tok == .lsbr {
-			flat.source_type_id(fastc_array_c_type(left.typ_name_text()))
+			fastc_array_c_type_id(left.typ_name)
 		} else if op == .left_shift && left.typ == p.program.array_type {
 			p.program.array_element_type_name(left.typ_name) or { u32(0) }
 		} else {
@@ -6395,14 +6392,14 @@ fn (mut p FastArm64Parser) parse_prefix() !FastArm64Value {
 			return FastArm64Value{
 				id:       pointer
 				typ:      pointer_type
-				typ_name: flat.source_type_id('&${value.typ_name_text()}')
+				typ_name: flat.source_type_composition_one(.pointer, value.typ_name)
 			}
 		}
 		if value.address != ssa.ValueID(0) {
 			return FastArm64Value{
 				id:       value.address
 				typ:      p.program.m.type_store.get_ptr(value.typ)
-				typ_name: flat.source_type_id('&${value.typ_name_text()}')
+				typ_name: flat.source_type_composition_one(.pointer, value.typ_name)
 			}
 		}
 		slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(value.typ))
@@ -6410,7 +6407,7 @@ fn (mut p FastArm64Parser) parse_prefix() !FastArm64Value {
 		return FastArm64Value{
 			id:       slot
 			typ:      p.program.m.type_store.get_ptr(value.typ)
-			typ_name: flat.source_type_id('&${value.typ_name_text()}')
+			typ_name: flat.source_type_composition_one(.pointer, value.typ_name)
 		}
 	}
 	if p.tok == .mul {
@@ -6423,7 +6420,7 @@ fn (mut p FastArm64Parser) parse_prefix() !FastArm64Value {
 		return FastArm64Value{
 			id:       p.program.instr1(.load, p.cur_block, layout.elem_type, pointer.id)
 			typ:      layout.elem_type
-			typ_name: flat.source_type_id(pointer.typ_name_text().trim_left('&'))
+			typ_name: flat.source_type_syntax(pointer.typ_name).pointer_raw_base
 			address:  pointer.id
 		}
 	}
@@ -8305,7 +8302,7 @@ fn (mut p FastArm64Parser) parse_contextual_value_with_precedence(type_name_sour
 
 fn (mut p FastArm64Parser) source_type_id(type_name_source_id u32) ssa.TypeID {
 	type_name := flat.source_type_name(type_name_source_id)
-	if !type_name.contains('.') && !type_name.contains('__') {
+	if !flat.source_type_shape(type_name_source_id).has(.dotted) && !flat.source_type_syntax(type_name_source_id).contains_doubleunderscore {
 		key := fastc_type_key(p.source_file.header.module_name, type_name)
 		if id := p.program.type_ids[flat.source_type_id(key)] {
 			return id
@@ -8408,8 +8405,8 @@ fn (mut p FastArm64Parser) parse_array_literal() !FastArm64Value {
 			fixed_length := p.fixed_array_length(length) or {
 				return p.unsupported('fixed array length')
 			}
-			fixed_type_name := fastc_fixed_array_type(fixed_length.str(), flat.source_type_name(element_type_name))
-			return p.default_fixed_array_value(p.program.type_id(flat.source_type_id(fixed_type_name)), flat.source_type_id(fixed_type_name))
+			fixed_type_name := fastc_fixed_array_type_id(fixed_length.str(), element_type_name)
+			return p.default_fixed_array_value(p.program.type_id(fixed_type_name), fixed_type_name)
 		}
 	}
 	if p.tok != .rsbr {
@@ -8542,7 +8539,6 @@ fn (mut p FastArm64Parser) parse_array_literal() !FastArm64Value {
 }
 
 fn (mut p FastArm64Parser) make_array(element_type_name_source_id u32, initial []FastArm64Value, length FastArm64Value, capacity FastArm64Value) FastArm64Value {
-	element_type_name := flat.source_type_name(element_type_name_source_id)
 	element_type := p.program.type_id(element_type_name_source_id)
 	element_size := p.program.m.get_or_add_const(p.program.i64_type, p.program.m.type_size(element_type).str())
 	length64 := p.integer_to_i64(length)
@@ -8556,7 +8552,7 @@ fn (mut p FastArm64Parser) make_array(element_type_name_source_id u32, initial [
 			capacity64,
 		])
 		typ:      p.program.array_type
-		typ_name: flat.source_type_id(fastc_array_c_type(element_type_name))
+		typ_name: fastc_array_c_type_id(element_type_name_source_id)
 	}
 	if initial.len > 0 {
 		slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(p.program.array_type))
@@ -9587,7 +9583,7 @@ fn (mut p FastArm64Parser) emit_map_items_array(map_value FastArm64Value, keys b
 	return FastArm64Value{
 		id:       p.program.instr1(.load, p.cur_block, p.program.array_type, array_slot)
 		typ:      p.program.array_type
-		typ_name: flat.source_type_id(fastc_array_c_type(flat.source_type_name(element_type_name)))
+		typ_name: fastc_array_c_type_id(element_type_name)
 		address:  array_slot
 	}
 }
@@ -9620,18 +9616,19 @@ fn (p &FastArm64Program) resolved_type_name(type_name u32) u32 {
 }
 
 fn (mut p FastArm64Parser) resolve_method_key(value FastArm64Value, method string) ?string {
-	receiver_name := value.typ_name_text().trim_right('*')
+	receiver_id := fastc_trim_pointer_type(value.typ_name)
+	receiver_syntax := flat.source_type_syntax(receiver_id)
 	// An array-typed receiver (`[]T`, `&[]T`) takes the builtin array method:
 	// an alias of `[]T` shares the array layout, so its own methods would
 	// otherwise match a plain array receiver by type.
-	if receiver_name.trim_left('&').starts_with('[]') {
+	if flat.source_type_shape(receiver_syntax.pointer_raw_base).has(.array_type) {
 		array_key := 'array.${method}'
 		if array_key in p.program.functions {
 			return array_key
 		}
 	}
-	for semantic_receiver in [receiver_name, receiver_name.replace('__', '.')] {
-		key := '${semantic_receiver}.${method}'
+	for semantic_receiver in [receiver_id, receiver_syntax.doubleunderscore_dotted] {
+		key := flat.source_type_name(flat.source_type_composition_two(.qualified, semantic_receiver, flat.source_type_id(method)))
 		if key in p.program.functions {
 			return key
 		}
@@ -10227,8 +10224,8 @@ fn (mut p FastArm64Parser) parse_map_literal() !FastArm64Value {
 
 	p.tok = value_next
 	p.lit = p.s.lit
-	map_type_name := fastc_map_c_type(flat.source_type_name(key_type_name), flat.source_type_name(value_type_name))
-	mut result := p.new_empty_map_value(flat.source_type_id(map_type_name))!
+	map_type_name := fastc_map_c_type_id(key_type_name, value_type_name)
+	mut result := p.new_empty_map_value(map_type_name)!
 	key_type := p.program.type_id(key_type_name)
 	p.expect(.lcbr)!
 	for p.tok != .rcbr {
@@ -10338,8 +10335,7 @@ fn (mut p FastArm64Parser) parse_inferred_map_literal() !FastArm64Value {
 	} else {
 		expected_value_type_name_id
 	}
-	mut result := p.new_empty_map_value(flat.source_type_id(fastc_map_c_type(flat.source_type_name(key_type_name_id),
-		flat.source_type_name(value_type_name_id))))!
+	mut result := p.new_empty_map_value(fastc_map_c_type_id(key_type_name_id, value_type_name_id))!
 	for i, key in keys {
 		p.emit_map_set(result, key, values[i])!
 	}
@@ -10688,7 +10684,7 @@ fn (p &FastArm64Parser) validate_call_argument_count(display_name string, resolv
 }
 
 fn fast_arm64_c_variadic_fixed_parameter_count(signature FastcFunctionSignature) int {
-	if signature.is_variadic && signature.parameter_types.ids.len > 0 && flat.source_type_name(signature.parameter_types.ids.last()).starts_with('Array_') {
+	if signature.is_variadic && signature.parameter_types.ids.len > 0 && flat.source_type_query(signature.parameter_types.ids.last()).has(.c_array_prefix) {
 		return signature.parameter_types.ids.len - 1
 	}
 	return signature.parameter_types.ids.len
@@ -10759,7 +10755,6 @@ fn (mut p FastArm64Parser) parse_fd_set_macro(display_name string) !FastArm64Val
 }
 
 fn (mut p FastArm64Parser) emit_spawn_call(function_key string, symbol string, function_id int, return_type ssa.TypeID, return_type_name_source_id u32, parameter_type_names []u32, arguments []ssa.ValueID) !FastArm64Value {
-	return_type_name := flat.source_type_name(return_type_name_source_id)
 	mut parameter_types := []ssa.TypeID{cap: parameter_type_names.len}
 	for parameter_type_name in parameter_type_names {
 		parameter_types << p.program.type_id(parameter_type_name)
@@ -10772,7 +10767,7 @@ fn (mut p FastArm64Parser) emit_spawn_call(function_key string, symbol string, f
 		return FastArm64Value{
 			id:                p.program.m.get_or_add_const(p.program.u64_type, '0')
 			typ:               p.program.u64_type
-			typ_name:          flat.source_type_id('thread ${return_type_name}')
+			typ_name:          flat.source_type_composition_one(.thread, return_type_name_source_id)
 			is_spawned:        true
 			spawn_result_type: return_type
 			spawn_result_name: return_type_name_source_id
@@ -10861,7 +10856,7 @@ fn (mut p FastArm64Parser) emit_spawn_call(function_key string, symbol string, f
 	return FastArm64Value{
 		id:                 handle
 		typ:                p.program.u64_type
-		typ_name:           flat.source_type_id('thread ${return_type_name}')
+		typ_name:           flat.source_type_composition_one(.thread, return_type_name_source_id)
 		is_spawned:         true
 		spawn_handle:       handle
 		spawn_context:      raw_context
@@ -11626,12 +11621,11 @@ fn (mut p FastArm64Parser) emit_array_grow_storage(array_slot ssa.ValueID, grow 
 }
 
 fn fast_arm64_pointer_element_type_name(type_name_id u32) u32 {
-	type_name := flat.source_type_name(type_name_id)
-	if type_name.starts_with('&') {
-		return flat.source_type_id(type_name[1..])
+	if flat.source_type_shape(type_name_id).has(.pointer) {
+		return flat.source_type_syntax(type_name_id).raw_base
 	}
 	if flat.source_type_query(type_name_id).has(.c_pointer_suffix) {
-		return flat.source_type_id(type_name[..type_name.len - 1])
+		return flat.source_type_syntax(type_name_id).c_pointer_base
 	}
 	if type_name_id in [flat.source_type_voidptr, flat.source_type_byteptr, flat.source_type_charptr] {
 		return flat.source_type_u8
@@ -11769,7 +11763,6 @@ fn (mut p FastArm64Parser) emit_array_append_many(array FastArm64Value, items Fa
 }
 
 fn (mut p FastArm64Parser) raw_array_value(source FastArm64Value, count FastArm64Value, element_type_name_source_id u32) FastArm64Value {
-	element_type_name := flat.source_type_name(element_type_name_source_id)
 	element_type := p.program.type_id(element_type_name_source_id)
 	slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(p.program.array_type))
 	data := if source.typ == p.program.ptr_i8 {
@@ -11793,7 +11786,7 @@ fn (mut p FastArm64Parser) raw_array_value(source FastArm64Value, count FastArm6
 	return FastArm64Value{
 		id:       p.program.instr1(.load, p.cur_block, p.program.array_type, slot)
 		typ:      p.program.array_type
-		typ_name: flat.source_type_id(fastc_array_c_type(element_type_name))
+		typ_name: fastc_array_c_type_id(element_type_name_source_id)
 		address:  slot
 	}
 }

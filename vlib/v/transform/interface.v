@@ -30,27 +30,25 @@ fn (t &Transformer) interface_cast_matches_target(cast_type_id u32, iface_name_i
 		return cast_iface_comparison_type_id == iface_name_comparison_type_id
 	}
 	clean_cast_comparison_type_id := t.trim_pointer_type(t.normalize_type_alias(cast_type_id))
-	clean_cast := flat.source_type_name(clean_cast_comparison_type_id)
 	clean_iface_comparison_type_id := t.trim_pointer_type(t.normalize_type_alias(iface_name_id))
-	clean_iface := flat.source_type_name(clean_iface_comparison_type_id)
 	if clean_cast_comparison_type_id == clean_iface_comparison_type_id {
 		return true
 	}
-	return !clean_cast.contains('.') && clean_cast == clean_iface.all_after_last('.')
+	return !flat.source_type_shape(clean_cast_comparison_type_id).has(.dotted)
+		&& clean_cast_comparison_type_id == flat.source_type_syntax(clean_iface_comparison_type_id).unqualified
 }
 
 fn (mut t Transformer) heap_copy_interface_expr(expr flat.NodeId, iface_name_id u32, target_type_id u32) flat.NodeId {
-	iface_name := flat.source_type_name(iface_name_id)
 	target_depth, _ := t.pointer_type_depth_and_base(t.normalize_type_alias(target_type_id))
 	if target_depth > 1 {
-		mut current := t.heap_copy_interface_expr(expr, iface_name_id, flat.source_type_id('&${iface_name}'))
-		mut current_type := flat.source_type_id('&${iface_name}')
+		mut current := t.heap_copy_interface_expr(expr, iface_name_id, flat.source_type_composition_one(.pointer, iface_name_id))
+		mut current_type := flat.source_type_composition_one(.pointer, iface_name_id)
 		for _ in 1 .. target_depth {
 			tmp_name := t.new_temp('iface_ref')
 			t.pending_stmts << t.make_decl_assign_typed(tmp_name, current, current_type)
 			addr := t.make_prefix(.amp, t.make_ident(tmp_name))
 			dup := t.make_memdup_call_for_type(addr, current_type)
-			current_type = flat.source_type_id('&${flat.source_type_name(current_type)}')
+			current_type = flat.source_type_composition_one(.pointer, current_type)
 			current = t.make_cast(current_type, dup, current_type)
 		}
 		return t.make_cast(target_type_id, current, target_type_id)
@@ -170,21 +168,21 @@ fn (t &Transformer) resolve_interface_type_name(name_id u32) u32 {
 
 fn (t &Transformer) resolve_interface_type_name_uncached(name_id u32) u32 {
 	raw_clean_source_id := t.trim_all_pointer_type(name_id)
-	raw_clean := flat.source_type_name(raw_clean_source_id)
-	raw_base, raw_args, raw_is_generic := generic_app_parts(raw_clean)
-	if raw_is_generic && raw_base in t.tc.interface_names {
-		return flat.source_type_id('${raw_base}[${raw_args.join(', ')}]')
+	raw_syntax := flat.source_type_syntax(raw_clean_source_id)
+	if raw_syntax.generic_app_valid
+		&& flat.source_type_name(raw_syntax.generic_app_base) in t.tc.interface_names {
+		return interface_type_application(raw_syntax.generic_app_base, raw_syntax.generic_app_args, true)
 	}
-	if raw_clean in t.tc.interface_names {
+	if flat.source_type_name(raw_clean_source_id) in t.tc.interface_names {
 		return raw_clean_source_id
 	}
 	mut clean_id := t.trim_all_pointer_type(t.normalize_type_alias(name_id))
-	mut clean := flat.source_type_name(clean_id)
-	base, args, is_generic := generic_app_parts(clean)
-	if is_generic {
-		clean = base
-		clean_id = flat.source_type_id(base)
+	syntax := flat.source_type_syntax(clean_id)
+	args := syntax.generic_app_args
+	if syntax.generic_app_valid {
+		clean_id = syntax.generic_app_base
 	}
+	clean := flat.source_type_name(clean_id)
 	if t.is_builtin_ierror_interface_name(clean_id) {
 		if 'builtin.IError' in t.tc.interface_names {
 			return flat.source_type_id('builtin.IError')
@@ -192,52 +190,48 @@ fn (t &Transformer) resolve_interface_type_name_uncached(name_id u32) u32 {
 		return flat.source_type_id('IError')
 	}
 	if clean in t.tc.interface_names {
-		return if is_generic {
-			flat.source_type_id('${clean}[${args.join(', ')}]')
-		} else {
-			clean_id
-		}
+		return interface_type_application(clean_id, args, syntax.generic_app_valid)
 	}
-	if !clean.contains('.') && t.cur_file.len > 0 {
+	qualified := flat.source_type_shape(clean_id).has(.dotted)
+	if !qualified && t.cur_file.len > 0 {
 		for candidate in t.tc.file_selective_imports[file_import_key(t.cur_file, clean)] or {
 			[]string{}
 		} {
 			if candidate in t.tc.interface_names {
-				return if is_generic {
-					flat.source_type_id('${candidate}[${args.join(', ')}]')
-				} else {
-					flat.source_type_id(candidate)
-				}
+				return interface_type_application(flat.source_type_id(candidate), args, syntax.generic_app_valid)
 			}
 		}
 	}
-	if !clean.contains('.') && t.cur_module.len > 0 {
-		qname := '${t.cur_module}.${clean}'
-		if qname in t.tc.interface_names {
-			return if is_generic {
-				flat.source_type_id('${qname}[${args.join(', ')}]')
-			} else {
-				flat.source_type_id(qname)
-			}
+	if !qualified && t.cur_module.len > 0 {
+		qname := flat.source_type_composition_two(.qualified, flat.source_type_id(t.cur_module), clean_id)
+		if flat.source_type_name(qname) in t.tc.interface_names {
+			return interface_type_application(qname, args, syntax.generic_app_valid)
 		}
 	}
-	if !clean.contains('.') {
-		main_name := 'main.${clean}'
-		if main_name in t.tc.interface_names {
-			return if is_generic {
-				flat.source_type_id('${main_name}[${args.join(', ')}]')
-			} else {
-				flat.source_type_id(main_name)
-			}
+	if !qualified {
+		main_name := flat.source_type_composition_two(.qualified, flat.source_type_id('main'), clean_id)
+		if flat.source_type_name(main_name) in t.tc.interface_names {
+			return interface_type_application(main_name, args, syntax.generic_app_valid)
 		}
 	}
 	return u32(0)
 }
 
+fn interface_type_application(base u32, args []u32, is_generic bool) u32 {
+	if !is_generic { return base }
+	mut parts := []u32{cap: args.len + 1}
+	parts << base
+	parts << args
+	return flat.source_type_composition(.generic, parts)
+}
+
 fn (t &Transformer) interface_type_with_pointer_depth(source_type_id u32, interface_name_id u32) u32 {
-	interface_name := flat.source_type_name(interface_name_id)
 	depth, _ := t.pointer_type_depth_and_base(source_type_id)
-	return flat.source_type_id('&'.repeat(depth) + interface_name)
+	mut result := interface_name_id
+	for _ in 0 .. depth {
+		result = flat.source_type_composition_one(.pointer, result)
+	}
+	return result
 }
 
 // transform_interface_value_for_type supports transform_interface_value_for_type handling.
@@ -251,7 +245,6 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 	target_is_ptr := flat.source_type_shape(t.normalize_type_alias(target_type_id)).has(.pointer)
 	iface_name_source_id := t.resolve_interface_type_name(target_type_id)
 	iface_name_comparison_type_id_3 := iface_name_source_id
-	iface_name := flat.source_type_name(iface_name_comparison_type_id_3)
 	if iface_name_source_id == 0 {
 		return none
 	}
@@ -428,7 +421,7 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 		}
 		if child_type != 0
 			&& t.resolve_interface_type_name(t.trim_pointer_type(child_type)) != iface_name_source_id {
-			source_type = flat.source_type_id('&${flat.source_type_name(t.trim_pointer_type(child_type))}')
+			source_type = flat.source_type_composition_one(.pointer, t.trim_pointer_type(child_type))
 		}
 	}
 	if source_type == u32(0) || t.generic_arg_is_unresolved(source_type) {
@@ -601,8 +594,8 @@ fn (mut t Transformer) convert_interface_expr_to_interface(source_expr flat.Node
 			out_typ := t.make_selector(t.make_ident(out_name), '_typ', flat.source_type_int)
 			[t.make_assign(out_typ, t.make_int_literal(mapping.target_id))]
 		} else {
-			impl_name := flat.source_type_name(t.interface_concrete_impl_name(mapping.impl) or { mapping.impl })
-			impl_ptr_type := flat.source_type_id('&${impl_name}')
+			impl_name := t.interface_concrete_impl_name(mapping.impl) or { mapping.impl }
+			impl_ptr_type := flat.source_type_composition_one(.pointer, impl_name)
 			impl_ptr := t.make_cast(impl_ptr_type, object, impl_ptr_type)
 			mut fields := [
 				t.make_sum_literal_field('_typ', t.make_int_literal(mapping.target_id), flat.source_type_int),
@@ -634,7 +627,8 @@ fn (mut t Transformer) convert_interface_expr_to_interface(source_expr flat.Node
 // is builtin. Type spellings are already qualified, except for `main` and builtin types.
 fn (t &Transformer) interface_as_display_type(name_id u32) string {
 	name := flat.source_type_name(name_id)
-	if name.len == 0 || name.contains('.') || !name[0].is_capital() || isnil(t.tc)
+	if name_id == 0 || flat.source_type_shape(name_id).has(.dotted)
+		|| !flat.source_type_syntax(name_id).first_capital || isnil(t.tc)
 		|| t.is_builtin_ierror_interface_name(name_id) {
 		return name
 	}
@@ -867,7 +861,6 @@ fn (mut t Transformer) transform_global_amp_interface_cast(node flat.Node, targe
 		return none
 	}
 	iface_name_source_id := t.resolve_interface_type_name(cast.source_value_id())
-	iface_name := flat.source_type_name(iface_name_source_id)
 	if iface_name_source_id == 0 || t.is_builtin_ierror_interface_name(iface_name_source_id) {
 		return none
 	}
@@ -888,7 +881,7 @@ fn (mut t Transformer) transform_global_amp_interface_cast(node flat.Node, targe
 	ptr_type := (if target_type_id != u32(0) {
 		target_type_id
 	} else {
-		flat.source_type_id('&${iface_name}')
+		flat.source_type_composition_one(.pointer, iface_name_source_id)
 	})
 	return t.a.add_node(flat.Node{
 		kind:           .prefix
@@ -920,17 +913,16 @@ fn (t &Transformer) mut_param_address_source_type(id flat.NodeId) ?u32 {
 	}
 	base_type = t.trimmed_type_id(base_type)
 	if flat.source_type_shape(base_type).has(.mutable_type) {
-		base_type = flat.source_type_id(trimmed_transform_text(flat.source_type_name(base_type)[4..]))
+		base_type = t.trimmed_type_id(flat.source_type_syntax(base_type).raw_base)
 	}
 	if base_type == 0 {
 		return none
 	}
 	clean_source_id := t.normalize_type_alias(base_type)
-	clean := flat.source_type_name(clean_source_id)
-	if clean.starts_with('&') {
+	if flat.source_type_shape(clean_source_id).has(.pointer) {
 		return clean_source_id
 	}
-	return flat.source_type_id('&${clean}')
+	return flat.source_type_composition_one(.pointer, clean_source_id)
 }
 
 // heaped_amp_local_address_child unwraps `&v` when `v` was already moved to the heap
@@ -1090,9 +1082,7 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 	}
 	t.mark_interface_boxed_type(iface_name_id, concrete_type)
 	if impl_name_source_id := t.interface_concrete_impl_name(concrete_type) {
-		impl_name := flat.source_type_name(impl_name_source_id)
-
-		if impl_name != flat.source_type_name(concrete_type) {
+		if impl_name_source_id != concrete_type {
 			t.mark_interface_boxed_type(iface_name_id, impl_name_source_id)
 		}
 	}
@@ -1113,7 +1103,7 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 		source
 	} else if share_source && !source_is_pointer_alias && t.expr_can_take_address(source) {
 		addr := t.make_prefix(.amp, source)
-		t.set_node_typ(int(addr), flat.source_type_id('&${flat.source_type_name(concrete_type)}'))
+		t.set_node_typ(int(addr), flat.source_type_composition_one(.pointer, concrete_type))
 		addr
 	} else {
 		// A pointer alias needs its own boxed slot, even when its pointee is shared.
@@ -1122,10 +1112,10 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 		size := t.make_sizeof_type(concrete_type)
 		dup := t.make_non_aliasing_allocation_call('memdup', [addr, size], flat.source_type_voidptr)
 		if t.interface_box_object_cast_needs_raw_call(concrete_type) {
-			t.set_node_typ(int(dup), flat.source_type_id('&${flat.source_type_name(concrete_type)}'))
+			t.set_node_typ(int(dup), flat.source_type_composition_one(.pointer, concrete_type))
 			dup
 		} else {
-			t.make_cast(flat.source_type_id('&${flat.source_type_name(concrete_type)}'), dup, flat.source_type_id('&${flat.source_type_name(concrete_type)}'))
+			t.make_cast(flat.source_type_composition_one(.pointer, concrete_type), dup, flat.source_type_composition_one(.pointer, concrete_type))
 		}
 	}
 	field_base := if is_ptr {
@@ -1146,7 +1136,7 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 	if type_id != 0 {
 		field_ids << t.make_sum_literal_field('_typ', t.make_int_literal(type_id), flat.source_type_int)
 	}
-	field_ids << t.make_sum_literal_field('_object', object_expr, flat.source_type_id('&${flat.source_type_name(concrete_type)}'))
+	field_ids << t.make_sum_literal_field('_object', object_expr, flat.source_type_composition_one(.pointer, concrete_type))
 	for field in fields {
 		field_type_source_id := t.normalize_type_alias(field.typ.source_type_id())
 
@@ -1179,7 +1169,7 @@ fn (t &Transformer) interface_box_object_cast_needs_raw_call(concrete_type_id u3
 		return false
 	}
 	target_source_id := t.tc.type_aliases.type_id(concrete_type) or {
-		(if !concrete_type.contains('.') {
+		(if !flat.source_type_shape(concrete_type_id).has(.dotted) {
 			(t.tc.type_aliases.type_id(t.tc.qualify_name(concrete_type)) or { return false })
 		} else {
 			return false
@@ -1256,9 +1246,8 @@ fn (t &Transformer) type_text_is_pointer_to_interface(typ_id u32, iface_name_id 
 	if flat.source_type_shape(clean_id).has(.pointer) {
 		return t.resolve_interface_type_name(t.trim_pointer_type(clean_id)) == iface_name_id
 	}
-	clean := flat.source_type_name(clean_id)
-	if clean.starts_with('mut ') {
-		return t.resolve_interface_type_name(flat.source_type_id(clean[4..])) == iface_name_id
+	if flat.source_type_shape(clean_id).has(.mutable_type) {
+		return t.resolve_interface_type_name(flat.source_type_syntax(clean_id).raw_base) == iface_name_id
 	}
 	return false
 }
@@ -1318,11 +1307,14 @@ fn (mut t Transformer) transform_interface_method_call(id flat.NodeId, node flat
 				}
 				interface_name = t.resolve_interface_type_name(receiver_source_type)
 			}
-			receiver_base, receiver_args, receiver_is_generic := generic_app_parts(flat.source_type_name(t.trim_pointer_type(receiver_source_type)))
-			if receiver_is_generic && receiver_args.len > 0
-				&& interface_name == flat.source_type_id(receiver_base)
-				&& !receiver_args.any(t.generic_arg_is_unresolved(flat.source_type_id(it))) {
-				interface_name = flat.source_type_id('${receiver_base}[${receiver_args.join(', ')}]')
+			receiver_syntax := flat.source_type_syntax(t.trim_pointer_type(receiver_source_type))
+			receiver_args := receiver_syntax.generic_app_args
+			if receiver_syntax.generic_app_valid && receiver_args.len > 0
+				&& interface_name == receiver_syntax.generic_app_base
+				&& !receiver_args.any(t.generic_arg_is_unresolved(it)) {
+				mut parts := [receiver_syntax.generic_app_base]
+				parts << receiver_args
+				interface_name = flat.source_type_composition(.generic, parts)
 			}
 			if interface_name != 0 {
 				interface_receiver_type = t.interface_type_with_pointer_depth(receiver_source_type, interface_name)

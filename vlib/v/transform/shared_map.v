@@ -416,7 +416,7 @@ fn (t &Transformer) shared_map_base(id flat.NodeId) ?flat.NodeId {
 			typ = t.current_module_global_type(node.value) or { u32(0) }
 		}
 		if typ == 0 && t.local_decl_is_shared_before(node.value, id) {
-			typ = flat.source_type_id('shared ' + (flat.source_type_name(t.checker_expr_type_name(id) or { u32(0) })))
+			typ = flat.source_type_composition_one(.shared_type, t.checker_expr_type_name(id) or { u32(0) })
 		}
 		if t.is_shared_map_type_text(typ) {
 			return id
@@ -463,7 +463,7 @@ fn (t &Transformer) promoted_field_raw_type(struct_type_id u32, field_name strin
 	}
 	for field in info.fields {
 		if field.is_embedded {
-			if typ_source_id := t.promoted_field_raw_type(flat.source_type_id(field.typ_text().trim_left('&')), field_name, depth + 1) {
+			if typ_source_id := t.promoted_field_raw_type(flat.source_type_syntax(field.typ).pointer_raw_base, field_name, depth + 1) {
 				return typ_source_id
 			}
 		}
@@ -472,14 +472,12 @@ fn (t &Transformer) promoted_field_raw_type(struct_type_id u32, field_name strin
 }
 
 fn (t &Transformer) is_shared_map_type_text(typ_id u32) bool {
-	typ := flat.source_type_name(typ_id)
-	mut clean := trimmed_transform_text(typ)
-	if !clean.starts_with('shared ') {
+	clean := transform_trimmed_type_id(typ_id)
+	if !flat.source_type_shape(clean).has(.shared_type) {
 		return false
 	}
-	clean = clean['shared '.len..].trim_space()
-	for clean.starts_with('&') {
-		clean = clean[1..]
-	}
-	return clean.starts_with('map[') || flat.source_type_shape(t.normalize_type_alias(flat.source_type_id(clean))).has(.map_type)
+	payload := transform_trimmed_type_id(flat.source_type_syntax(clean).raw_base)
+	base := flat.source_type_syntax(payload).pointer_raw_base
+	return flat.source_type_shape(base).has(.map_type)
+		|| flat.source_type_shape(t.normalize_type_alias(base)).has(.map_type)
 }

@@ -43,9 +43,9 @@ fn (mut g Parser) parse_anonymous_function() !(string, string, bool) {
 			capture_types << capture_type
 			capture_params << '${capture_name} ${capture_source_type}'
 			capture_value := g.local_c_name(capture_name)
-			capture_values << if flat.source_type_name(capture_type).starts_with('Map_') {
+			capture_values << if flat.source_type_query(capture_type).has(.c_map_prefix) {
 				'builtin__map_clone(&(${capture_value}))'
-			} else if flat.source_type_name(capture_type).starts_with('Array_') {
+			} else if flat.source_type_query(capture_type).has(.c_array_prefix) {
 				'builtin__array_clone_to_depth(&(${capture_value}), 1)'
 			} else {
 				capture_value
@@ -307,11 +307,11 @@ fn (g &Parser) capture_type_source(typ_id u32) ?string {
 	if flat.source_type_query(typ_id).has(.c_pointer_suffix) {
 		return '&' + g.capture_type_source(flat.source_type_id(typ[..typ.len - 1]))?
 	}
-	if typ.starts_with('Array_') {
+	if flat.source_type_query(typ_id).has(.c_array_prefix) {
 		element := g.array_element_type(typ_id)?
 		return '[]' + g.capture_type_source(element)?
 	}
-	if typ.starts_with('Map_') {
+	if flat.source_type_query(typ_id).has(.c_map_prefix) {
 		key_source_id, value_source_id := g.map_key_value_types(typ_id)?
 		key := key_source_id
 		value := value_source_id
@@ -325,8 +325,8 @@ fn (g &Parser) capture_type_source(typ_id u32) ?string {
 	if flat.source_type_name(key) !in g.declared_types {
 		return none
 	}
-	module_name := flat.source_type_name(key).all_before_last('.')
-	name := flat.source_type_name(key).all_after_last('.')
+	module_name := flat.source_type_name(flat.source_type_syntax(key).qualifier)
+	name := flat.source_type_name(flat.source_type_syntax(key).unqualified)
 	if module_name == g.module_name || module_name == 'builtin' {
 		return name
 	}

@@ -1376,7 +1376,7 @@ struct FastcTypeDeclarations {
 	sum_types map[string]bool
 	// Declared variants per sum type, keyed `"${sum_type_c_name}|${variant_c_name}"`
 	// (see Parser.sum_type_variants).
-	sum_type_variants map[string]bool
+	sum_type_variants map[u64]bool
 }
 
 struct FastcLoopBlockResult {
@@ -1460,7 +1460,7 @@ struct Parser {
 	// Declared variants of each sum type, keyed `"${sum_type_c_name}|${variant_c_name}"`.
 	// Lets an append distinguish push-many (`[]T << []T`) from boxing an array-valued
 	// variant of a recursive sum type as one element (see sumtype_has_variant).
-	sum_type_variants   map[string]bool
+	sum_type_variants   map[u64]bool
 	struct_fields       map[string]flat.TypeTextBindings
 	struct_field_info   map[string][]FastcStructField
 	struct_field_lookup map[string]map[string]&FastcStructField
@@ -1778,7 +1778,7 @@ struct FastcFileGenContext {
 	alias_base_types          flat.TypeTextBindings
 	fn_alias_return_types     flat.TypeTextBindings
 	sum_types                 map[string]bool
-	sum_type_variants         map[string]bool
+	sum_type_variants         map[u64]bool
 	struct_fields             map[string]flat.TypeTextBindings
 	struct_field_info         map[string][]FastcStructField
 	struct_field_lookup       map[string]map[string]&FastcStructField
@@ -2447,9 +2447,9 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	mut callback_fixed_array_types := flat.TypeTextBindings{}
 	for name, typ_id in fixed_array_types.ids {
 		element_type := fastc_fixed_array_element_type(typ_id) or { continue }
-		if flat.source_type_name(element_type).contains('__vf_fn_type_') {
+		if flat.source_type_syntax(element_type).c_fn_type_fragment {
 			callback_fixed_array_types.set_id(name, typ_id)
-		} else if fastc_primitive_c_type(flat.source_type_name(element_type)) != none
+		} else if fastc_primitive_c_type_id(element_type) != none
 			&& element_type !in [flat.source_type_string, fastc_type_array, fastc_type_map,
 				fastc_type_option, fastc_type_result] {
 			scalar_fixed_array_types.set_id(name, typ_id)

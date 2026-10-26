@@ -132,7 +132,7 @@ fn (mut g Parser) fastc_struct_field_str_needs_indent(field_c_type u32) bool {
 	if _ := fastc_fixed_array_element_type(base_id) {
 		return false
 	}
-	if base.starts_with('Array_') || base.starts_with('Map_') || base in g.sum_types {
+	if flat.source_type_query(base_id).has(.c_array_prefix) || flat.source_type_query(base_id).has(.c_map_prefix) || base in g.sum_types {
 		return true
 	}
 	key := g.semantic_type_key(ft)
@@ -151,7 +151,7 @@ fn (mut g Parser) fastc_fixed_array_str_name(c_type u32) ?string {
 	array_type_id := fastc_trim_pointer_type(fastc_normalize_inferred_type(c_type))
 	array_type := flat.source_type_name(array_type_id)
 	element_type := (fastc_fixed_array_element_type(array_type_id) or { return none })
-	length_source := fastc_fixed_array_length(array_type) or { return none }
+	length_source := fastc_fixed_array_length_id(array_type_id) or { return none }
 	length := g.fixed_array_length_value(length_source) or { return none }
 	fn_name := 'v_fastc_fixed_array_str_${fastc_composite_type_part(array_type)}'
 	if fn_name in g.spawn_helpers {
@@ -197,19 +197,14 @@ fn (mut g Parser) fastc_sumtype_str_helper(c_type u32) ?string {
 	g.spawn_helpers[fn_name] = ''
 	g.protos.writeln('string ${fn_name}(${base} it);')
 	mut body := 'string ${fn_name}(${base} it) {\n\tswitch (it._typ) {\n'
-	mut variant_keys := g.sum_type_variants.keys()
-	variant_keys.sort()
+	variant_ids := g.sum_type_variant_keys(base_id)
 	// V prints a sum value as `Sum(payload)`, with the sum type's short name, as the
 	// C backend's transform does: a string payload is quoted, a rune one is in
 	// backticks, and any other alias variant keeps its own wrapper (`Res(Ints([1]))`).
-	sum_display := base.all_after_last('__')
-	for key in variant_keys {
-		if !key.starts_with('${base}|') {
-			continue
-		}
-		variant := key.all_after('|')
+	sum_display := flat.source_type_name(flat.source_type_syntax(base_id).last_double_underscore_suffix)
+	for variant_id in variant_ids {
+		variant := flat.source_type_name(variant_id)
 		payload := '(*(${variant} *)it._object)'
-		variant_id := flat.source_type_id(variant)
 		variant_base := g.underlying_alias_type(variant_id)
 		mut formatted := g.fastc_struct_field_str_expression(payload, variant_base) or {
 			g.spawn_helpers.delete(fn_name)
@@ -218,7 +213,7 @@ fn (mut g Parser) fastc_sumtype_str_helper(c_type u32) ?string {
 		if variant_base == flat.source_type_rune {
 			formatted = fastc_wrapped_str_expression('`', formatted, '`')
 		} else if variant_base != variant_id && variant_base != flat.source_type_string {
-			alias_display := variant.all_after_last('__')
+			alias_display := flat.source_type_name(flat.source_type_syntax(variant_id).last_double_underscore_suffix)
 			formatted = fastc_wrapped_str_expression('${alias_display}(', formatted, ')')
 		}
 		formatted = fastc_wrapped_str_expression('${sum_display}(', formatted, ')')
@@ -250,14 +245,10 @@ fn (mut g Parser) fastc_sumtype_type_name_helper(c_type u32) ?string {
 	g.spawn_helpers[fn_name] = ''
 	g.protos.writeln('string ${fn_name}(${base} it);')
 	mut body := 'string ${fn_name}(${base} it) {\n\tswitch (it._typ) {\n'
-	mut variant_keys := g.sum_type_variants.keys()
-	variant_keys.sort()
-	for key in variant_keys {
-		if !key.starts_with('${base}|') {
-			continue
-		}
-		variant := key.all_after('|')
-		display := variant.replace('__', '.')
+	variant_ids := g.sum_type_variant_keys(base_id)
+	for variant_id in variant_ids {
+		variant := flat.source_type_name(variant_id)
+		display := flat.source_type_name(flat.source_type_syntax(variant_id).doubleunderscore_dotted)
 		body += '\t\tcase __v_typeid_${variant}: return _S("${display}");\n'
 	}
 	body += '\t}\n\treturn _S("unknown");\n}'
@@ -268,7 +259,7 @@ fn (mut g Parser) fastc_sumtype_type_name_helper(c_type u32) ?string {
 fn (mut g Parser) fastc_array_str_name(c_type u32) ?string {
 	array_type_id := fastc_trim_pointer_type(fastc_normalize_inferred_type(c_type))
 	array_type := flat.source_type_name(array_type_id)
-	if !array_type.starts_with('Array_') {
+	if !flat.source_type_query(array_type_id).has(.c_array_prefix) {
 		return none
 	}
 	element_type := (fastc_array_element_type(array_type_id) or { return none })
@@ -342,7 +333,7 @@ fn (mut g Parser) fastc_struct_field_str_expression(value_c string, field_c_type
 			return '${helper}((${flat.source_type_name(element_type)} *)(${value_c}))'
 		}
 	}
-	if flat.source_type_name(ft).trim_right('*').starts_with('Array_') {
+	if flat.source_type_query(ft).has(.c_array_prefix) {
 		if helper := g.fastc_array_str_name(ft) {
 			value := if flat.source_type_query(ft).has(.c_pointer_suffix) {
 				'*(${value_c})'
@@ -352,7 +343,7 @@ fn (mut g Parser) fastc_struct_field_str_expression(value_c string, field_c_type
 			return '${helper}(${value})'
 		}
 	}
-	if flat.source_type_name(ft).trim_right('*').starts_with('Map_') {
+	if flat.source_type_query(ft).has(.c_map_prefix) {
 		if helper := g.fastc_map_str_name(ft) {
 			value := if flat.source_type_query(ft).has(.c_pointer_suffix) {
 				'*(${value_c})'
@@ -362,7 +353,7 @@ fn (mut g Parser) fastc_struct_field_str_expression(value_c string, field_c_type
 			return '${helper}(${value})'
 		}
 	}
-	if flat.source_type_name(ft).trim_right('*') in g.sum_types {
+	if flat.source_type_name(fastc_trim_pointer_type(ft)) in g.sum_types {
 		if helper := g.fastc_sumtype_str_helper(ft) {
 			value := if flat.source_type_query(ft).has(.c_pointer_suffix) {
 				'*(${value_c})'
@@ -402,23 +393,27 @@ fn (mut g Parser) fastc_pointer_str_name(pointer_c_type_id u32) ?string {
 	if !flat.source_type_query(pointer_c_type_id).has(.c_pointer_suffix) {
 		return none
 	}
-	pointer_c_type := flat.source_type_name(pointer_c_type_id)
-	pointee := pointer_c_type[..pointer_c_type.len - 1].trim_space()
-	if pointee == '' || pointee.ends_with('*') || pointee in ['void', 'voidptr', 'u8', 'char',
-		'byte'] {
+	pointee_id := flat.source_type_syntax(flat.source_type_syntax(pointer_c_type_id).c_pointer_base).trimmed
+	if pointee_id == 0 || flat.source_type_query(pointee_id).has(.c_pointer_suffix) || pointee_id in [
+		flat.source_type_id('void'),
+		flat.source_type_id('voidptr'),
+		flat.source_type_id('u8'),
+		flat.source_type_id('char'),
+		flat.source_type_id('byte'),
+	] {
 		return none
 	}
-	fn_name := 'v_fastc_ptr_str_${fastc_composite_type_part(pointer_c_type)}'
+	fn_name := 'v_fastc_ptr_str_${fastc_composite_type_part(flat.source_type_name(pointer_c_type_id))}'
 	if fn_name in g.spawn_helpers {
 		return fn_name
 	}
 	// Reserve the name first so a self-referential pointee does not recurse forever.
 	g.spawn_helpers[fn_name] = ''
-	pointee_text := g.fastc_struct_field_str_expression('(*it)', flat.source_type_id(pointee)) or {
+	pointee_text := g.fastc_struct_field_str_expression('(*it)', pointee_id) or {
 		g.spawn_helpers.delete(fn_name)
 		return none
 	}
-	c_type := fastc_output_c_type(pointee) + '*'
+	c_type := fastc_output_c_type(flat.source_type_name(pointee_id)) + '*'
 	g.protos.writeln('string ${fn_name}(${c_type} it);')
 	mut body := 'string ${fn_name}(${c_type} it) {\n'
 	body += '\tif (it == 0) {\n\t\treturn _S("&nil");\n\t}\n'
@@ -458,20 +453,17 @@ fn (mut g Parser) fastc_option_str_name(value_type u32) ?string {
 // Returns none for `mut` locals and smartcasts (C pointers that V sees as values),
 // and for pointers to primitives, which V prints as addresses.
 fn (mut g Parser) fastc_reference_str_expression(value string, value_type_id u32, value_tokens []FastcExpressionToken) ?string {
-	value_type := flat.source_type_name(value_type_id)
-	if !flat.source_type_query(value_type_id).has(.c_pointer_suffix) || value_type.ends_with('**') {
+	if !flat.source_type_query(value_type_id).has(.c_pointer_suffix) || flat.source_type_query(value_type_id).has(.c_double_pointer_suffix) {
 		return none
 	}
 	if g.is_reference_local_base(value_tokens, value_type_id)
 		|| g.expression_uses_member_smartcast(value_tokens) {
 		return none
 	}
-	pointee := value_type[..value_type.len - 1].trim_space()
-	primitive := fastc_primitive_c_type(pointee) or { '' }
-	if primitive != '' {
+	pointee_id := flat.source_type_syntax(flat.source_type_syntax(value_type_id).c_pointer_base).trimmed
+	if fastc_primitive_c_type_id(pointee_id) != none {
 		return none
 	}
-	pointee_id := flat.source_type_id(pointee)
 	if g.declared_kinds[flat.source_type_name(g.semantic_type_key(pointee_id))] == .enum_ {
 		return g.fastc_struct_field_str_expression('(*(${value}))', pointee_id)
 	}
@@ -582,7 +574,7 @@ fn (mut g Parser) read_interpolated_string() !string {
 				'(${value}).data'
 			}
 			parts << '${helper}((${flat.source_type_name(element_type)} *)(${data_source}))'
-		} else if interpolation_type.trim_right('*').starts_with('Array_') {
+		} else if flat.source_type_query(fastc_trim_pointer_type(interpolation_type_id)).has(.c_array_prefix) {
 			helper := g.fastc_array_str_name(interpolation_type_id) or {
 				return g.unsupported('interpolation of array type `${flat.source_type_name(value_type)}`')
 			}
@@ -592,7 +584,7 @@ fn (mut g Parser) read_interpolated_string() !string {
 				value
 			}
 			parts << '${helper}(${array_value})'
-		} else if interpolation_type.trim_right('*').starts_with('Map_') {
+		} else if flat.source_type_query(fastc_trim_pointer_type(interpolation_type_id)).has(.c_map_prefix) {
 			helper := g.fastc_map_str_name(interpolation_type_id) or {
 				return g.unsupported('interpolation of map type `${flat.source_type_name(value_type)}`')
 			}
@@ -985,7 +977,7 @@ fn fastc_c_string(literal string) !string {
 	// A `\x00`/`\000` NUL escape renders to the octal escape `\000`, and the `_S` macro's
 	// `sizeof`-based length preserves it (V strings are length-prefixed, not
 	// NUL-terminated). Other NUL spellings (a raw NUL byte, single `\0`, wrapping octal
-	// like `\400`, unicode ` `) cannot be emitted faithfully, so reject just those.
+	// like `\400`, unicode `\u0000`) cannot be emitted faithfully, so reject just those.
 	if fastc_string_has_unrenderable_nul(content, is_raw) {
 		return error('fastc parser does not support embedded NUL string literals')
 	}

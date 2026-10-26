@@ -168,7 +168,7 @@ fn (tc &TypeChecker) vls_function_definition(resolved string) ?VlsPos {
 	if interface_name == resolved {
 		return none
 	}
-	member := tc.vls_interface_member(interface_name, resolved.all_after_last('.'))?
+	member := tc.vls_interface_member(flat.source_type_id(interface_name), resolved.all_after_last('.'))?
 	return VlsPos{int(member.pos.id), int(member.pos.offset)}
 }
 

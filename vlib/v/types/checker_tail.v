@@ -13,6 +13,7 @@ const checker_option_void_source_type = flat.source_type_id('?void')
 const checker_tail_source_any = flat.source_type_id('any')
 const checker_tail_source_int_literal = flat.source_type_id('int_literal')
 const checker_tail_source_float_literal = flat.source_type_id('float_literal')
+const checker_tail_source_main = flat.source_type_id('main')
 const checker_tail_source_diagnostic_int_literal = flat.source_type_id('int literal')
 const checker_tail_source_diagnostic_float_literal = flat.source_type_id('float literal')
 
@@ -1920,7 +1921,7 @@ fn (mut tc TypeChecker) check_lvalue_field_mutability(id flat.NodeId) {
 		return
 	}
 	struct_type := base_type as Struct
-	if struct_type.name().starts_with('C.') {
+	if flat.source_type_query(struct_type.source_type_id()).has(.c_prefix) {
 		// C struct fields follow C mutability rules; a `mut` C-struct parameter
 		// can update them even though imported field metadata has no V `mut:`
 		// section.
@@ -3605,12 +3606,8 @@ fn (tc &TypeChecker) current_fn_has_invalid_literal_return_type() bool {
 		return false
 	}
 	mut type_id := trimmed_source_type_id(tc.a.nodes[node_id].typ)
-	if flat.source_type_shape(type_id).has(.optional) {
-		mut typ := flat.source_type_name(type_id)
-		for typ.starts_with('?') || typ.starts_with('!') {
-			typ = typ[1..].trim_space()
-		}
-		type_id = flat.source_type_id(typ)
+	for flat.source_type_shape(type_id).has(.optional) {
+		type_id = trimmed_source_type_id(flat.source_type_syntax(type_id).raw_base)
 	}
 	return type_id in [checker_tail_source_any, checker_tail_source_int_literal,
 		checker_tail_source_float_literal]
@@ -4129,8 +4126,7 @@ fn (tc &TypeChecker) pointer_value_compatible(actual &Type, expected &Type) bool
 			if !flat.source_type_shape(actual.name_id).has(.pointer) {
 				return false
 			}
-			name := flat.source_type_name(actual.name_id)
-			return flat.source_type_id(name[1..]) == expected.source_type_id()
+			return flat.source_type_syntax(actual.name_id).raw_base == expected.source_type_id()
 		}
 		else { return false }
 	}
@@ -5006,18 +5002,21 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 				type_arg_id := tc.a.child(callee, i)
 				type_arg := tc.a.node(type_arg_id)
 				if type_arg.kind == .ident {
-					type_arg_shape := flat.source_type_shape(type_arg.source_value_id())
+					type_arg_source_id := type_arg.source_value_id()
+					type_arg_shape := flat.source_type_shape(type_arg_source_id)
 					if type_arg_shape.has(.option_type) || type_arg_shape.has(.result_type) {
-						type_arg_text := type_arg.value_text()
-						if !trimmed_space(type_arg_text[1..]).starts_with('fn') {
+						base_id := trimmed_source_type_id(flat.source_type_syntax(type_arg_source_id).raw_base)
+						if !flat.source_type_syntax(base_id).fn_prefix {
 							tc.record_error_at(.call_arg_mismatch, 'cannot use Option type name as concrete type', type_arg_id, token.new_span(type_arg.pos.id, type_arg.pos.offset, type_arg.pos.offset + 1))
 							return
 						}
 					}
 				}
 				type_name_id := tc.generic_call_type_arg_name(type_arg_id)
+				type_name_syntax := flat.source_type_syntax(type_name_id)
 				type_name := flat.source_type_name(type_name_id)
-				if is_bare_generic_param(type_name) && !tc.type_name_known(type_name_id)
+				if type_name_syntax.trimmed == type_name_id && type_name_syntax.bare_generic
+					&& !tc.type_name_known(type_name_id)
 					&& type_name !in tc.fn_context.generic_params
 					&& !tc.active_generic_param(type_name)
 					&& !tc.node_has_enclosing_generic_param(type_arg_id, type_name)
@@ -5025,7 +5024,7 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 					has_unbound_generic_type_arg = true
 				}
 				if type_name.len > 1 && !tc.type_text_has_generic_placeholder(type_name_id) {
-					if should_check_named_type(type_name) && !tc.type_name_known(type_name_id) {
+					if type_name_syntax.named_type && !tc.type_name_known(type_name_id) {
 						tc.record_error_at(.unknown_type, tc.unknown_type_message(type_name, type_arg_id), type_arg_id, tc.generic_type_arg_diagnostic_pos(type_arg_id))
 						tc.register_synth_type(id, unknown_type('invalid generic type argument'))
 						continue
@@ -6048,7 +6047,7 @@ fn (mut tc TypeChecker) record_chained_bare_generic_struct_method_inference_erro
 		return
 	}
 	receiver := tc.a.child_node(callee, 0)
-	if receiver.kind != .struct_init || generic_type_application(receiver.value_text()) {
+	if receiver.kind != .struct_init || flat.source_type_syntax(receiver.source_value_id()).application_valid {
 		return
 	}
 	base_id := trimmed_source_type_id(receiver.source_value_id())
@@ -6117,14 +6116,15 @@ fn (tc &TypeChecker) chained_bare_struct_call_uses_open_param(call flat.Node) bo
 		return false
 	}
 	receiver := tc.a.child_node(callee, 0)
-	if receiver.kind != .struct_init || generic_type_application(receiver.value_text()) {
+	if receiver.kind != .struct_init || flat.source_type_syntax(receiver.source_value_id()).application_valid {
 		return false
 	}
 	base_id := trimmed_source_type_id(receiver.source_value_id())
 	mut known_method := false
 	for method_key in tc.generic_receiver_method_index[callee.value] or { return false } {
-		method_base, _, is_generic := generic_type_application_parts(method_key.all_before_last('.'))
-		if is_generic && tc.generic_type_base_matches(flat.source_type_id(method_base), base_id) {
+		method_receiver := flat.source_type_syntax(flat.source_type_id(method_key)).qualifier
+		method_syntax := flat.source_type_syntax(method_receiver)
+		if method_syntax.application_valid && tc.generic_type_base_matches(method_syntax.application_base, base_id) {
 			known_method = true
 			break
 		}
@@ -6141,9 +6141,8 @@ fn (tc &TypeChecker) chained_bare_struct_call_uses_open_param(call flat.Node) bo
 		child := tc.a.node(id)
 		if child.kind == .ident {
 			if type_text_source_id := tc.current_fn_param_type_text(child.value) {
-				type_text := flat.source_type_name(type_text_source_id)
-
-				if tc.fn_context.generic_params.any(type_text_contains_symbol(type_text, it)) {
+				symbols := flat.source_type_syntax(type_text_source_id).symbols
+				if tc.fn_context.generic_params.any(flat.source_type_id(it) in symbols) {
 					return true
 				}
 			}
@@ -6215,9 +6214,9 @@ fn (mut tc TypeChecker) record_uninferred_generic_method_type(id flat.NodeId, no
 			actual = tc.contextual_generic_lambda_type(arg_id, info.params[param_idx], generic_params, inferred_types) or { actual }
 		}
 		if raw_arg.kind == .field_init {
-			base, _, is_generic := generic_type_application_parts(flat.source_type_name(param_texts[param_idx]))
-			if is_generic {
-				if field_text_source_id := tc.field_init_struct_field_type(flat.source_type_id(base), param_texts[param_idx], raw_arg.value) {
+			param_syntax := flat.source_type_syntax(param_texts[param_idx])
+			if param_syntax.application_valid {
+				if field_text_source_id := tc.field_init_struct_field_type(param_syntax.application_base, param_texts[param_idx], raw_arg.value) {
 					tc.infer_generic_type_text_from_type(field_text_source_id, actual, generic_params, mut inferred)
 					tc.infer_generic_type_value_from_type(field_text_source_id, actual, generic_params, mut inferred_types)
 				}
@@ -6250,7 +6249,7 @@ fn (mut tc TypeChecker) record_uninferred_generic_method_type(id flat.NodeId, no
 	for param in generic_params {
 		arg_source_id_3 := inferred[param] or {
 			if param in tc.fn_context.generic_params && param_texts.len > 0
-				&& type_text_mentions_any_generic_param(flat.source_type_name(param_texts[0]), [param]) {
+				&& type_id_mentions_any_generic_param(param_texts[0], [param]) {
 				continue
 			}
 			missing = param
@@ -6561,45 +6560,57 @@ fn (tc &TypeChecker) instantiated_compile_warning_message(id flat.NodeId, instan
 		}
 		concrete := instantiation.concrete_args.at(i)
 		message = message.replace(r'${' + param + '.name}', concrete)
-		if idx := legacy_comptime_type_index(concrete) {
+		if idx := legacy_comptime_type_index(instantiation.concrete_args.ids[i]) {
 			message = message.replace(r'${' + param + '.idx}', idx.str())
 		}
 	}
 	return message
 }
 
-fn legacy_comptime_type_index(name string) ?int {
-	clean := name.trim_space().trim_left('&').trim_left('?').trim_left('!')
+const legacy_comptime_source_type_array = flat.source_type_id('array')
+const legacy_comptime_source_type_map = flat.source_type_id('map')
+const legacy_comptime_source_type_chan = flat.source_type_id('chan')
+const legacy_comptime_source_type_any = flat.source_type_id('any')
+const legacy_comptime_source_type_thread = flat.source_type_id('thread')
+const legacy_comptime_source_type_error = flat.source_type_id('error')
+
+fn legacy_comptime_type_index(type_id u32) ?int {
+	mut clean := trimmed_source_type_id(type_id)
+	for marker in [flat.SourceTypeShape.pointer, .option_type, .result_type] {
+		for flat.source_type_shape(clean).has(marker) {
+			clean = flat.source_type_syntax(clean).raw_base
+		}
+	}
 	return match clean {
-		'void' { 1 }
-		'voidptr' { 2 }
-		'byteptr' { 3 }
-		'charptr' { 4 }
-		'i8' { 5 }
-		'i16' { 6 }
-		'i32' { 7 }
-		'int' { 8 }
-		'i64' { 9 }
-		'isize' { 10 }
-		'u8' { 11 }
-		'u16' { 12 }
-		'u32' { 13 }
-		'u64' { 14 }
-		'uint' { 15 }
-		'f32' { 16 }
-		'f64' { 17 }
-		'char' { 18 }
-		'bool' { 19 }
-		'none' { 20 }
-		'string' { 21 }
-		'rune' { 22 }
-		'array' { 23 }
-		'map' { 24 }
-		'chan' { 25 }
-		'any' { 26 }
-		'thread' { 29 }
-		'error' { 30 }
-		'nil' { 31 }
+		flat.source_type_void { 1 }
+		flat.source_type_voidptr { 2 }
+		flat.source_type_byteptr { 3 }
+		flat.source_type_charptr { 4 }
+		flat.source_type_i8 { 5 }
+		flat.source_type_i16 { 6 }
+		flat.source_type_i32 { 7 }
+		flat.source_type_int { 8 }
+		flat.source_type_i64 { 9 }
+		flat.source_type_isize { 10 }
+		flat.source_type_u8 { 11 }
+		flat.source_type_u16 { 12 }
+		flat.source_type_u32 { 13 }
+		flat.source_type_u64 { 14 }
+		flat.source_type_uint { 15 }
+		flat.source_type_f32 { 16 }
+		flat.source_type_f64 { 17 }
+		flat.source_type_char { 18 }
+		flat.source_type_bool { 19 }
+		flat.source_type_none { 20 }
+		flat.source_type_string { 21 }
+		flat.source_type_rune { 22 }
+		legacy_comptime_source_type_array { 23 }
+		legacy_comptime_source_type_map { 24 }
+		legacy_comptime_source_type_chan { 25 }
+		legacy_comptime_source_type_any { 26 }
+		legacy_comptime_source_type_thread { 29 }
+		legacy_comptime_source_type_error { 30 }
+		flat.source_type_nil { 31 }
 		else { none }
 	}
 }
@@ -6801,7 +6812,7 @@ fn (mut tc TypeChecker) check_instantiated_generic_ordering_ops(call flat.Node, 
 	if tc.checker_fixture_mode {
 		if receiver_id := tc.generic_method_call_receiver_id(call) {
 			receiver_type := unalias_and_unwrap_pointer_type(tc.resolve_type(receiver_id))
-			receiver_base := strip_generic_args_name(receiver_type.name())
+			receiver_base := strip_generic_args_id(receiver_type.source_type_id())
 			for idx in tc.top_level_idx {
 				candidate_id := flat.NodeId(idx)
 				if candidate_id == instantiation.decl_id {
@@ -6824,18 +6835,19 @@ fn (mut tc TypeChecker) check_instantiated_generic_ordering_ops(call flat.Node, 
 					continue
 				}
 				receiver_param := tc.a.node(receiver_param_id)
-				param_text := trimmed_space(receiver_param.typ_text()).trim_left('&').trim_left('mut ')
-				param_base, _, is_generic := generic_type_application_parts(param_text)
-				if !is_generic {
+				param_type_id := flat.source_type_syntax(flat.source_type_syntax(trimmed_source_type_id(receiver_param.typ)).pointer_raw_base).mut_chars_base
+				param_syntax := flat.source_type_syntax(param_type_id)
+				if !param_syntax.application_valid {
 					continue
 				}
 				source_file := tc.a.source_files[receiver_param.pos.id] or { continue }
 				module_name := tc.file_modules[source_file.name] or { '' }
-				qualified_base := if param_base.contains('.') || module_name.len == 0
+				param_base := param_syntax.application_base
+				qualified_base := if flat.source_type_shape(param_base).has(.dotted) || module_name.len == 0
 					|| module_name == 'main' {
 					param_base
 				} else {
-					'${module_name}.${param_base}'
+					flat.source_type_composition_two(.qualified, flat.source_type_id(module_name), param_base)
 				}
 				if qualified_base != receiver_base {
 					continue
@@ -7247,7 +7259,7 @@ fn (tc &TypeChecker) unknown_method_call_parts(node flat.Node) ?(flat.Node, Type
 		return none
 	}
 	underlying := unalias_and_unwrap_pointer_type(receiver)
-	if underlying is Struct && underlying.name().starts_with('C.') {
+	if underlying is Struct && flat.source_type_query(underlying.source_type_id()).has(.c_prefix) {
 		method_name, ambiguous := tc.lookup_c_struct_receiver_method(receiver, callee.value)
 		if method_name.len > 0 && !ambiguous { return none }
 		return *callee, receiver_type, receiver_name_id
@@ -7272,26 +7284,32 @@ fn (tc &TypeChecker) unknown_method_call_parts(node flat.Node) ?(flat.Node, Type
 	return *callee, receiver_type, receiver_name_id
 }
 
-fn (tc &TypeChecker) unknown_method_receiver_display(receiver_name string) string {
-	base, _, is_generic := generic_type_application_parts(receiver_name)
-	if !is_generic {
-		return receiver_name.all_after_last('.')
+fn (tc &TypeChecker) unknown_method_receiver_display(receiver_id u32) string {
+	syntax := flat.source_type_syntax(receiver_id)
+	if !syntax.application_valid {
+		return flat.source_type_name(syntax.unqualified)
 	}
+	base := flat.source_type_name(syntax.application_base)
+	short_base := flat.source_type_name(flat.source_type_syntax(syntax.application_base).unqualified)
 	params := tc.struct_generic_params[base] or {
-		tc.struct_generic_params[base.all_after_last('.')] or { []string{} }
+		tc.struct_generic_params[short_base] or { []string{} }
 	}
 	if params.len == 0 {
-		return receiver_name.all_after_last('.')
+		return flat.source_type_name(syntax.unqualified)
 	}
 	diagnostic_params := if params.len == 1 { ['F'] } else { params }
-	return '${base.all_after_last('.')}[${diagnostic_params.join(', ')}]'
+	return '${short_base}[${diagnostic_params.join(', ')}]'
 }
 
-fn (tc &TypeChecker) method_name_suggestions(receiver_name string) []string {
-	base, _, is_generic := generic_type_application_parts(receiver_name)
+fn (tc &TypeChecker) method_name_suggestions(receiver_id u32) []string {
+	syntax := flat.source_type_syntax(receiver_id)
+	base_id := if syntax.application_valid { syntax.application_base } else { u32(0) }
 	mut prefixes := []string{}
-	for candidate in [receiver_name, receiver_name.all_after_last('.'), base, base.all_after_last('.')] {
-		if candidate.len > 0 && candidate !in prefixes {
+	for candidate_id in [receiver_id, syntax.unqualified, base_id,
+		flat.source_type_syntax(base_id).unqualified] {
+		if candidate_id == 0 { continue }
+		candidate := flat.source_type_name(candidate_id)
+		if candidate !in prefixes {
 			prefixes << candidate
 		}
 	}
@@ -7307,7 +7325,7 @@ fn (tc &TypeChecker) method_name_suggestions(receiver_name string) []string {
 			}
 		}
 	}
-	if is_generic {
+	if syntax.application_valid {
 		for key, _ in tc.fn_param_types {
 			for prefix in prefixes {
 				full_prefix := '${prefix}.'
@@ -7327,9 +7345,9 @@ fn (mut tc TypeChecker) record_unknown_method_call(id flat.NodeId, node flat.Nod
 	callee, _, receiver_name_id := tc.unknown_method_call_parts(node) or { return false }
 	receiver_name := flat.source_type_name(receiver_name_id)
 	display := if tc.generic_receiver_has_structured_method_pattern(receiver_name_id, callee.value) {
-		strip_generic_args_name(receiver_name).all_after_last('.')
+		flat.source_type_name(flat.source_type_syntax(strip_generic_args_id(receiver_name_id)).unqualified)
 	} else {
-		tc.unknown_method_receiver_display(receiver_name)
+		tc.unknown_method_receiver_display(receiver_name_id)
 	}
 	receiver_id := tc.a.child(callee, 0)
 	if tc.ident_is_multi_pattern_match_subject(receiver_id) {
@@ -7341,7 +7359,7 @@ fn (mut tc TypeChecker) record_unknown_method_call(id flat.NodeId, node flat.Nod
 		'method `${receiver_name}.${callee.value}` cannot bind `voidptr` to a generic receiver pattern; cast the receiver to a concrete V type first'
 	} else {
 		base := 'unknown method or field: `${display}.${callee.value}`'
-		util.new_suggestion(callee.value, tc.method_name_suggestions(receiver_name)).say(base)
+		util.new_suggestion(callee.value, tc.method_name_suggestions(receiver_name_id)).say(base)
 	}
 	tc.record_error_at(.unknown_fn, message, id, tc.method_call_name_pos(node, callee))
 	tc.register_synth_type(id, Type(MultiReturn{
@@ -7411,14 +7429,14 @@ fn (tc &TypeChecker) call_has_wrapped_receiver(id flat.NodeId) bool {
 
 fn (tc &TypeChecker) wrapped_receiver_payload_diagnostic_name(payload &Type) string {
 	name_id := unwrap_all_pointers(payload).source_type_id()
-	name := flat.source_type_name(name_id)
-	if name.contains('.') {
-		alias := name.all_before('.')
+	syntax := flat.source_type_syntax(name_id)
+	if flat.source_type_shape(name_id).has(.dotted) {
+		alias := flat.source_type_name(syntax.first_dot_prefix)
 		if import_path := tc.current_file_import_path_for_alias(alias) {
-			return import_path + name[alias.len..]
+			return flat.source_type_name(flat.source_type_composition_two(.qualified, flat.source_type_id(import_path), syntax.first_dot_suffix))
 		}
 	}
-	if qualified_source_id := tc.unique_qualified_type_name(name.all_after_last('.')) {
+	if qualified_source_id := tc.unique_qualified_type_name(flat.source_type_name(syntax.unqualified)) {
 		qualified := flat.source_type_name(qualified_source_id)
 
 		return qualified
@@ -7428,7 +7446,7 @@ fn (tc &TypeChecker) wrapped_receiver_payload_diagnostic_name(payload &Type) str
 
 		return resolved
 	}
-	return name
+	return flat.source_type_name(name_id)
 }
 
 fn (tc &TypeChecker) current_file_import_path_for_alias(alias string) ?string {
@@ -7857,24 +7875,24 @@ fn (tc &TypeChecker) generic_named_type_cast_call_type(node flat.Node) ?Type {
 		return none
 	}
 	callee := tc.a.child_node(&node, 0)
-	if callee.kind == .selector && !callee.value.ends_with(']') {
+	if callee.kind == .selector && !flat.source_type_query(flat.source_type_id(callee.value)).has(.bracket_suffix) {
 		return none
 	}
-	if callee.kind == .ident && !callee.value.ends_with(']')
+	if callee.kind == .ident && !flat.source_type_query(flat.source_type_id(callee.value)).has(.bracket_suffix)
 		&& tc.file_selective_imports.len == 0 {
 		return none
 	}
 	target_id := tc.type_expr_name(tc.a.child(&node, 0))
-	target := flat.source_type_name(target_id)
-	base, _, is_generic := generic_type_application_parts(target)
-	if !is_generic || target.len == 0 || base.len == 0 {
+	syntax := flat.source_type_syntax(target_id)
+	if !syntax.application_valid || target_id == 0 || syntax.application_base == 0 {
 		return none
 	}
 	// A rewritten method callee such as `Box[int].get` names a function,
 	// not the receiver type that precedes its generic argument list.
-	if find_matching_bracket(target, target.index_u8(`[`)) != target.len - 1 {
+	if !syntax.bracket_closed || syntax.bracket_prefix != target_id {
 		return none
 	}
+	base := flat.source_type_name(syntax.application_base)
 	qualified_base := tc.qualify_name(base)
 	if base !in tc.type_alias_generic_params && qualified_base !in tc.type_alias_generic_params
 		&& base !in tc.struct_generic_params && qualified_base !in tc.struct_generic_params
@@ -7889,7 +7907,7 @@ fn (tc &TypeChecker) known_sum_constructor_name(name_id u32) ?u32 {
 	if tc.sum_types.contains(name) {
 		return name_id
 	}
-	base_name := strip_generic_args_name(name)
+	base_name := flat.source_type_name(strip_generic_args_id(name_id))
 	if tc.sum_types.contains(base_name) {
 		return name_id
 	}
@@ -7898,7 +7916,7 @@ fn (tc &TypeChecker) known_sum_constructor_name(name_id u32) ?u32 {
 	if tc.sum_types.contains(qname) {
 		return qname_id
 	}
-	qbase := strip_generic_args_name(qname)
+	qbase := flat.source_type_name(strip_generic_args_id(qname_id))
 	if tc.sum_types.contains(qbase) {
 		return qname_id
 	}
@@ -10760,8 +10778,7 @@ fn (tc &TypeChecker) lookup_c_struct_receiver_method_for_type(receiver Type, met
 	if clean !is Struct {
 		return '', false
 	}
-	receiver_name := (clean as Struct).name()
-	if !receiver_name.starts_with('C.') {
+	if !flat.source_type_query(clean.source_type_id()).has(.c_prefix) {
 		return '', false
 	}
 	if unwrapped is Alias {
@@ -10837,7 +10854,7 @@ pub fn (tc &TypeChecker) c_backed_alias_method_name(name string) bool {
 		return false
 	}
 	base := unalias_type(receiver)
-	return base is Struct && base.name().starts_with('C.')
+	return base is Struct && flat.source_type_query(base.source_type_id()).has(.c_prefix)
 }
 
 fn (tc &TypeChecker) c_struct_method_module_visible(name string) bool {
@@ -11039,7 +11056,9 @@ fn (mut tc TypeChecker) resolve_generic_call_info(id flat.NodeId, fn_node flat.N
 			// through the generic method fallback below.
 			if base_node.value == 'hex' && tc.type_is_pointer_receiver(base_type) {
 				underlying := unalias_and_unwrap_pointer_type(base_type)
-				if underlying is Struct && underlying.name().starts_with('C.') { return none }
+				if underlying is Struct && flat.source_type_query(underlying.source_type_id()).has(.c_prefix) {
+					return none
+				}
 			}
 			call_name := '${flat.source_type_name(type_name)}.${base_node.value}'
 			if call_name in tc.fn_ret_types
@@ -11090,11 +11109,12 @@ fn (mut tc TypeChecker) resolve_generic_call_info(id flat.NodeId, fn_node flat.N
 	}
 	call_name := tc.generic_call_base_name(base_node) or {
 		if type_name := tc.generic_call_base_type_name(base_node) {
-			type_args := flat.TypeTextList{ ids: type_args_source_ids }.names()
+			mut parts := [flat.source_type_id(type_name)]
+			parts << type_args_source_ids
 			return CallInfo{
 				name:         ''
 				params:       []Type{}
-				return_type:  tc.parse_type(flat.source_type_id('${type_name}[${type_args.join(', ')}]'))
+				return_type:  tc.parse_type(flat.source_type_composition(.generic, parts))
 				params_known: false
 			}
 		}
@@ -11236,7 +11256,7 @@ fn (mut tc TypeChecker) specialize_explicit_generic_receiver_call(info CallInfo,
 // `mut a ?&X` parameter, as the instance itself declares it.
 fn (tc &TypeChecker) substitute_generic_param_type(open Type, param_source_id u32, concrete_types []Type, generic_params []string) Type {
 	if open is Pointer && flat.source_type_shape(param_source_id).has(.pointer_option)
-		&& !flat.source_type_name(param_source_id).starts_with('&?&') {
+		&& !flat.source_type_query(param_source_id).has(.pointer_option_ref) {
 		base := *open.base_type
 		if base is OptionType && base.base_type is Pointer {
 			payload_ref := base.base_type as Pointer
@@ -11268,22 +11288,22 @@ fn (mut tc TypeChecker) explicit_receiver_type_args(info CallInfo, receiver Type
 	// the generic struct it is.
 	method_receiver := unwrap_pointer(info.params[0])
 	receiver_struct := unalias_type(method_receiver)
-	_, receiver_args, receiver_is_generic := generic_type_application_parts(receiver_struct.name())
-	if !receiver_is_generic {
+	receiver_syntax := flat.source_type_syntax(receiver_struct.source_type_id())
+	receiver_args := receiver_syntax.application_args
+	if !receiver_syntax.application_valid {
 		return type_args_ids.clone()
 	}
 	method := info.name.all_after_last('.')
 	mut pattern := info.name.all_before_last('.')
-	_, _, pattern_is_generic := generic_type_application_parts(pattern)
-	if !pattern_is_generic {
+	if !flat.source_type_syntax(flat.source_type_id(pattern)).application_valid {
 		texts := tc.fn_param_type_texts.type_ids(info.name) or { return type_args_ids.clone() }
 		if texts.len == 0 {
 			return type_args_ids.clone()
 		}
-		pattern = flat.source_type_name(comptime_static_unwrap_type_id(texts[0])).trim_left('&').trim_space()
+		pattern = flat.source_type_name(trimmed_source_type_id(flat.source_type_syntax(comptime_static_unwrap_type_id(texts[0])).pointer_raw_base))
 	}
 	receiver_params, concrete_args := tc.generic_method_receiver_pattern_args('${pattern}.${method}',
-		flat.TypeTextList.from_names(receiver_args).ids) or { return type_args_ids.clone() }
+		receiver_args) or { return type_args_ids.clone() }
 	mut checked := type_args_ids.clone()
 	for i, param in method_params {
 		at := receiver_params.index(param)
@@ -11349,15 +11369,15 @@ pub fn (mut tc TypeChecker) report_receiver_type_arg_mismatch(file string, call_
 // the legacy full spelling `value.method[T, U]()`, where `T` repeats the
 // receiver application's already-known concrete type arguments.
 fn (tc &TypeChecker) explicit_generic_receiver_method_args(receiver_type_id u32, method_name string, type_args_ids []u32) []u32 {
-	receiver_type := flat.source_type_name(receiver_type_id)
 	method_params := tc.fn_generic_params[method_name] or { return type_args_ids.clone() }
-	_, receiver_args, receiver_is_generic := generic_type_application_parts(receiver_type)
-	if !receiver_is_generic || receiver_args.len == 0
+	receiver_syntax := flat.source_type_syntax(receiver_type_id)
+	receiver_args := receiver_syntax.application_args
+	if !receiver_syntax.application_valid || receiver_args.len == 0
 		|| type_args_ids.len != receiver_args.len + method_params.len {
 		return type_args_ids.clone()
 	}
 	for i, receiver_arg in receiver_args {
-		expected := tc.parse_type(tc.explicit_generic_concrete_arg_text(flat.source_type_id(receiver_arg)))
+		expected := tc.parse_type(tc.explicit_generic_concrete_arg_text(receiver_arg))
 		actual := tc.parse_type(tc.explicit_generic_concrete_arg_text(type_args_ids[i]))
 		if expected.source_type_id() != actual.source_type_id() {
 			return type_args_ids.clone()
@@ -11414,59 +11434,62 @@ fn (tc &TypeChecker) failed_explicit_generic_call_info(name string) CallInfo {
 // explicit_generic_concrete_arg_text qualifies an explicit generic type argument
 // spelled at a call site so it survives being re-parsed in the callee module.
 fn (tc &TypeChecker) explicit_generic_concrete_arg_text(type_arg_id u32) u32 {
-	text := flat.source_type_name(type_arg_id)
-	qualified := tc.explicit_generic_concrete_arg_text_bytes(text)
-	return if qualified == text { type_arg_id } else { flat.source_type_id(qualified) }
-}
-
-fn (tc &TypeChecker) explicit_generic_concrete_arg_text_bytes(type_arg string) string {
-	clean := trimmed_space(type_arg)
-	if clean.starts_with('&') || clean.starts_with('?') || clean.starts_with('!') {
-		return clean[..1] + tc.explicit_generic_concrete_arg_text_bytes(clean[1..])
-	}
-	if clean.starts_with('...') {
-		return '...' + tc.explicit_generic_concrete_arg_text_bytes(clean[3..])
-	}
-	if clean.starts_with('[]') {
-		return '[]' + tc.explicit_generic_concrete_arg_text_bytes(clean[2..])
-	}
-	if clean.starts_with('map[') {
-		close := find_matching_bracket(clean, 3)
-		if close > 3 && close + 1 < clean.len {
-			key := tc.explicit_generic_concrete_arg_text_bytes(clean[4..close])
-			value := tc.explicit_generic_concrete_arg_text_bytes(clean[close + 1..])
-			return 'map[${key}]${value}'
+	clean_id := trimmed_source_type_id(type_arg_id)
+	shape := flat.source_type_shape(clean_id)
+	syntax := flat.source_type_syntax(clean_id)
+	if shape.has(.pointer) || shape.has(.option_type) || shape.has(.result_type)
+		|| shape.has(.variadic) || shape.has(.array_type) {
+		kind := if shape.has(.pointer) {
+			flat.SourceTypeComposition.pointer
+		} else if shape.has(.option_type) {
+			flat.SourceTypeComposition.option
+		} else if shape.has(.result_type) {
+			flat.SourceTypeComposition.result
+		} else if shape.has(.variadic) {
+			flat.SourceTypeComposition.variadic_parameter
+		} else {
+			flat.SourceTypeComposition.array
 		}
+		return flat.source_type_composition_one(kind, tc.explicit_generic_concrete_arg_text(syntax.raw_base))
 	}
-	if clean.starts_with('[') {
-		close := find_matching_bracket(clean, 0)
-		if close > 0 && close + 1 < clean.len {
-			return clean[..close + 1] + tc.explicit_generic_concrete_arg_text_bytes(clean[close + 1..])
-		}
+	if shape.has(.map_type) && syntax.bracket_closed && syntax.bracket_base != 0 {
+		key := tc.explicit_generic_concrete_arg_text(syntax.bracket_inner)
+		value := tc.explicit_generic_concrete_arg_text(syntax.bracket_base)
+		return flat.source_type_composition_two(.map, key, value)
 	}
-	if !clean.contains('.') {
+	if shape.has(.leading_bracket) && syntax.bracket_closed && syntax.bracket_base != 0 {
+		return flat.source_type_composition_two(.concat, syntax.bracket_prefix,
+			tc.explicit_generic_concrete_arg_text(syntax.bracket_base))
+	}
+	if !shape.has(.dotted) {
+		clean := flat.source_type_name(clean_id)
 		if tc.source_declares_type_in_scope(clean, tc.cur_file, tc.cur_module) {
-			return if tc.cur_module !in ['', 'main'] {
-				'${tc.cur_module}.${clean}'
+			module_id := if tc.cur_module !in ['', 'main'] {
+				flat.source_type_id(tc.cur_module)
 			} else {
-				'main.${clean}'
+				checker_tail_source_main
+			}
+			return flat.source_type_composition_two(.qualified, module_id, clean_id)
+		}
+		if clean in tc.structs || clean in tc.enum_names || clean in tc.flag_enums
+			|| tc.sum_types.contains(clean) || clean in tc.interface_names || tc.type_aliases.contains(clean) {
+			return if is_builtin_type_name_id(clean_id) {
+				clean_id
+			} else {
+				flat.source_type_composition_two(.qualified, checker_tail_source_main, clean_id)
 			}
 		}
 	}
-	if !clean.contains('.') && (clean in tc.structs || clean in tc.enum_names
-		|| clean in tc.flag_enums || tc.sum_types.contains(clean)
-		|| clean in tc.interface_names || tc.type_aliases.contains(clean)) {
-		return if is_builtin_type_name(clean) { clean } else { 'main.${clean}' }
+	qualified_id := tc.qualify_resolution_type_text(clean_id)
+	if !flat.source_type_shape(qualified_id).has(.dotted) && !is_builtin_type_name_id(qualified_id)
+		&& !tc.fn_context.generic_params.any(flat.source_type_id(it) == qualified_id) {
+		qualified := flat.source_type_name(qualified_id)
+		if qualified in tc.structs || qualified in tc.enum_names || qualified in tc.flag_enums
+			|| tc.sum_types.contains(qualified) || qualified in tc.interface_names || tc.type_aliases.contains(qualified) {
+			return flat.source_type_composition_two(.qualified, checker_tail_source_main, qualified_id)
+		}
 	}
-	qualified := flat.source_type_name(tc.qualify_resolution_type_text(flat.source_type_id(clean)))
-	if !qualified.contains('.') && !is_builtin_type_name(qualified)
-		&& qualified !in tc.fn_context.generic_params && (qualified in tc.structs
-		|| qualified in tc.enum_names || qualified in tc.flag_enums
-		|| tc.sum_types.contains(qualified) || qualified in tc.interface_names
-		|| tc.type_aliases.contains(qualified)) {
-		return 'main.' + qualified
-	}
-	return qualified
+	return qualified_id
 }
 
 fn (tc &TypeChecker) explicit_generic_call_info(name string, has_receiver bool, type_args_ids []u32) ?CallInfo {
@@ -11624,40 +11647,38 @@ fn (tc &TypeChecker) generic_call_type_arg_name(id flat.NodeId) u32 {
 				return node.source_value_id()
 			}
 			base_source_id := tc.generic_call_type_arg_name(tc.a.child(&node, 0))
-			base := flat.source_type_name(base_source_id)
 			if base_source_id == 0 {
 				return node.source_value_id()
 			}
-			return flat.source_type_id('${base}.${node.value}')
+			return flat.source_type_composition_two(.qualified, base_source_id, flat.source_type_id(node.value))
 		}
 		.index {
 			if node.children_count < 2 || node.value == 'range' {
 				return u32(0)
 			}
 			base_source_id_2 := tc.generic_call_type_arg_name(tc.a.child(&node, 0))
-			base := flat.source_type_name(base_source_id_2)
 			if base_source_id_2 == 0 {
 				return u32(0)
 			}
-			mut args := []string{}
+			mut args := [base_source_id_2]
 			for i in 1 .. node.children_count {
-				arg := flat.source_type_name(tc.generic_call_type_arg_name(tc.a.child(&node, i)))
-				if arg.len == 0 {
+				arg := tc.generic_call_type_arg_name(tc.a.child(&node, i))
+				if arg == 0 {
 					return u32(0)
 				}
 				args << arg
 			}
-			return flat.source_type_id('${base}[${args.join(', ')}]')
+			return flat.source_type_composition(.generic, args)
 		}
 		.array_init {
 			if node.typ != 0 {
 				return node.typ
 			}
 			if node.source_value_id() != 0 {
-				if node.value_text().starts_with('[') {
+				if flat.source_type_shape(node.source_value_id()).has(.leading_bracket) {
 					return node.source_value_id()
 				}
-				return flat.source_type_id('[]${node.value_text()}')
+				return flat.source_type_composition_one(.array, node.source_value_id())
 			}
 			return u32(0)
 		}
@@ -11679,7 +11700,7 @@ fn (tc &TypeChecker) generic_call_type_arg_name(id flat.NodeId) u32 {
 				return u32(0)
 			}
 			if node.op == .amp {
-				return flat.source_type_id('&${flat.source_type_name(child_source_id)}')
+				return flat.source_type_composition_one(.pointer, child_source_id)
 			}
 			return child_source_id
 		}
@@ -11785,24 +11806,25 @@ fn (tc &TypeChecker) alias_return_type_from_text(fn_name string) ?Type {
 	clean := flat.source_type_name(clean_id)
 	// Both aliases below, `clean` and `mod.clean`, end in the last segment of clean.
 	if tc.alias_short_names_count == tc.type_aliases.ids.len
-		&& short_name_view(clean) !in tc.alias_short_names {
+		&& flat.source_type_name(flat.source_type_syntax(clean_id).unqualified) !in tc.alias_short_names {
 		return none
 	}
 	if tc.type_aliases.contains(clean) {
 		return tc.parse_canonical_type(clean_id)
 	}
-	if clean.contains('.') {
+	if flat.source_type_shape(clean_id).has(.dotted) {
 		return none
 	}
 	mod := tc.fn_type_modules[fn_name] or { '' }
 	if mod.len == 0 || mod in ['main', 'builtin'] {
 		return none
 	}
-	qname := '${mod}.${clean}'
+	qname_id := flat.source_type_composition_two(.qualified, flat.source_type_id(mod), clean_id)
+	qname := flat.source_type_name(qname_id)
 	if !tc.type_aliases.contains(qname) {
 		return none
 	}
-	return tc.parse_canonical_type(flat.source_type_id(qname))
+	return tc.parse_canonical_type(qname_id)
 }
 
 fn array_type_from_receiver(t Type) ?Array {
@@ -11824,12 +11846,12 @@ fn array_type_from_receiver(t Type) ?Array {
 fn (tc &TypeChecker) thread_wait_return_type(t Type) ?Type {
 	clean := unwrap_pointer(t)
 	if clean is Struct {
-		thread_name := trimmed_space(clean.name())
-		if thread_name == 'thread' || thread_name.ends_with('.thread') {
+		thread_id := trimmed_source_type_id(clean.source_type_id())
+		if thread_id == checker_source_thread || flat.source_type_query(thread_id).has(.thread_suffix) {
 			return builtin_void_type
 		}
-		if thread_name.starts_with('thread ') {
-			return *tc.parse_type(flat.source_type_id(trimmed_space(thread_name[7..])))
+		if flat.source_type_shape(thread_id).has(.thread_type) {
+			return *tc.parse_type(trimmed_source_type_id(flat.source_type_syntax(thread_id).raw_base))
 		}
 	}
 	return none
@@ -11913,14 +11935,15 @@ fn (tc &TypeChecker) receiver_is_sum_type(t &Type) bool {
 	if t is Alias {
 		return tc.receiver_is_sum_type(t.base_type)
 	}
-	name := t.name()
-	if name.len == 0 {
+	name_id := t.source_type_id()
+	if name_id == 0 {
 		return false
 	}
+	name := flat.source_type_name(name_id)
 	if tc.sum_types.contains(name) {
 		return true
 	}
-	if !name.contains('.') {
+	if !flat.source_type_shape(name_id).has(.dotted) {
 		qname := tc.qualify_name(name)
 		if tc.sum_types.contains(qname) {
 			return true
@@ -11936,23 +11959,25 @@ fn (tc &TypeChecker) fixed_array_type_from_receiver(t Type) ?ArrayFixed {
 	if t is Alias {
 		return tc.fixed_array_type_from_receiver(t.base_type)
 	}
-	name := t.name()
-	if name.starts_with('fn(') || name.starts_with('fn (') {
+	name_id := t.source_type_id()
+	shape := flat.source_type_shape(name_id)
+	if shape.has(.function_compact) || shape.has(.function_spaced) {
 		return none
 	}
-	if name.contains('[') && !name.starts_with('[') {
-		bracket := name.last_index_u8(`[`)
-		bracket_end := name.last_index_u8(`]`)
-		if bracket >= 0 && bracket_end > bracket {
-			len_text := trimmed_space(name[bracket + 1..bracket_end])
-			if !is_fixed_array_len_text(len_text)
+	if shape.has(.bracketed) && !shape.has(.leading_bracket) {
+		syntax := flat.source_type_syntax(name_id)
+		if syntax.last_bracket_span_valid {
+			len_id := syntax.last_bracket_span_inner
+			len_syntax := flat.source_type_syntax(len_id)
+			len_text := if len_syntax.decimal { '' } else { flat.source_type_name(len_id) }
+			if !len_syntax.fixed_length
 				&& tc.const_int_value_in_module(len_text, tc.cur_module, []string{}) == none {
 				return none
 			}
 			return ArrayFixed{
-				elem_type: tc.parse_type(flat.source_type_id(name[..bracket]))
-				len:       if is_decimal_int_literal(len_text) { len_text.int() } else { 0 }
-				len_expr:  if is_decimal_int_literal(len_text) { '' } else { len_text }
+				elem_type: tc.parse_type(syntax.last_bracket_prefix)
+				len:       len_syntax.decimal_value
+				len_expr:  if len_syntax.decimal { '' } else { len_text }
 			}
 		}
 	}
@@ -11962,8 +11987,8 @@ fn (tc &TypeChecker) fixed_array_type_from_receiver(t Type) ?ArrayFixed {
 fn (tc &TypeChecker) fixed_array_thread_wait_call_info(base_type Type, arr ArrayFixed) ?CallInfo {
 	elem := *arr.elem_type
 	if elem is Struct {
-		name := trimmed_space(elem.name())
-		if name == 'thread' {
+		name_id := trimmed_source_type_id(elem.source_type_id())
+		if name_id == checker_source_thread {
 			return CallInfo{
 				name:         ''
 				params:       tarr1(base_type)
@@ -11972,11 +11997,11 @@ fn (tc &TypeChecker) fixed_array_thread_wait_call_info(base_type Type, arr Array
 				params_known: true
 			}
 		}
-		if name.starts_with('thread ') {
+		if flat.source_type_shape(name_id).has(.thread_type) {
 			return CallInfo{
 				name:         ''
 				params:       tarr1(base_type)
-				return_type:  tc.thread_array_wait_return_type(name[7..])
+				return_type:  tc.thread_array_wait_return_type(flat.source_type_syntax(name_id).raw_base)
 				has_receiver: true
 				params_known: true
 			}
@@ -11985,15 +12010,15 @@ fn (tc &TypeChecker) fixed_array_thread_wait_call_info(base_type Type, arr Array
 	return none
 }
 
-fn (tc &TypeChecker) thread_array_wait_return_type(payload string) Type {
-	ret_name := trimmed_space(payload)
-	if ret_name == '?' {
+fn (tc &TypeChecker) thread_array_wait_return_type(payload_id u32) Type {
+	ret_id := trimmed_source_type_id(payload_id)
+	if ret_id == checker_source_option_marker {
 		return Type(OptionType{})
 	}
-	if ret_name == '!' {
+	if ret_id == checker_source_result_marker {
 		return Type(ResultType{})
 	}
-	ret_type := tc.parse_type(flat.source_type_id(ret_name))
+	ret_type := tc.parse_type(ret_id)
 	if ret_type is OptionType {
 		if ret_type.base_type is Void {
 			return ret_type
@@ -12406,20 +12431,16 @@ fn visible_mutation_receiver_type_name(type_id u32) u32 {
 		&& !shape.has(.padded) && !shape.has(.bracketed) {
 		return type_id
 	}
-	return flat.source_type_id(visible_mutation_receiver_type_name_bytes(flat.source_type_name(type_id)))
-}
-
-fn visible_mutation_receiver_type_name_bytes(typ string) string {
-	mut clean := trimmed_space(typ)
-	for clean.starts_with('&') {
-		clean = trimmed_space(clean[1..])
+	mut clean_id := flat.source_type_syntax(type_id).trimmed
+	for flat.source_type_shape(clean_id).has(.pointer) {
+		clean_id = trimmed_source_type_id(flat.source_type_syntax(clean_id).raw_base)
 	}
-	for prefix in ['mut ', 'shared '] {
-		if clean.starts_with(prefix) {
-			clean = trimmed_space(clean[prefix.len..])
+	for modifier in [flat.SourceTypeShape.mutable_type, .shared_type] {
+		if flat.source_type_shape(clean_id).has(modifier) {
+			clean_id = trimmed_source_type_id(flat.source_type_syntax(clean_id).raw_base)
 		}
 	}
-	return strip_generic_args_name(clean)
+	return strip_generic_args_id(clean_id)
 }
 
 fn visible_mutation_fn_names_match(actual string, declared string) bool {
@@ -12429,9 +12450,9 @@ fn visible_mutation_fn_names_match(actual string, declared string) bool {
 	if short_name_view(actual) != short_name_view(declared) {
 		return false
 	}
-	actual_receiver := actual.all_before_last('.')
-	declared_receiver := declared.all_before_last('.')
-	return strip_generic_args_name(actual_receiver) == strip_generic_args_name(declared_receiver)
+	actual_receiver := flat.source_type_syntax(flat.source_type_id(actual)).qualifier
+	declared_receiver := flat.source_type_syntax(flat.source_type_id(declared)).qualifier
+	return strip_generic_args_id(actual_receiver) == strip_generic_args_id(declared_receiver)
 }
 
 fn visible_mutation_fn_lookup_name(name string) string {
@@ -12445,12 +12466,12 @@ fn visible_mutation_fn_lookup_name(name string) string {
 	if dot <= 0 || open >= dot {
 		return name
 	}
-	receiver := name[..dot]
-	clean_receiver := strip_generic_args_name(receiver)
-	if clean_receiver == receiver {
+	receiver_id := flat.source_type_syntax(flat.source_type_id(name)).qualifier
+	clean_receiver := strip_generic_args_id(receiver_id)
+	if clean_receiver == receiver_id {
 		return name
 	}
-	return clean_receiver + name[dot..]
+	return flat.source_type_name(clean_receiver) + name[dot..]
 }
 
 fn (tc &TypeChecker) cache_visible_mutation_fn_decl(key string, decl VisibleMutationFnDecl) {
@@ -14235,8 +14256,7 @@ fn (tc &TypeChecker) call_param_has_open_generic_source(call flat.Node, info Cal
 	} else {
 		tc.visible_call_param(info, param_idx) or { return false }
 	}
-	clean := param.typ_text().trim_space().trim_left('&?!').trim_space()
-	return tc.type_text_has_generic_placeholder(flat.source_type_id(clean))
+	return tc.type_text_has_generic_placeholder(param.typ)
 }
 
 // is_channel_builtin_method_call_name reports whether `name`, behind any `&`
@@ -14677,8 +14697,9 @@ fn (mut tc TypeChecker) record_mut_pointer_slot_arg_error(node flat.Node, info C
 }
 
 fn (tc &TypeChecker) visible_mutation_struct_field_is_public(receiver_type_id u32, field_name string, decl_mod string) ?bool {
-	type_name := flat.source_type_name(visible_mutation_receiver_type_name(receiver_type_id))
-	short_name := type_name.all_after_last('.')
+	type_name_id := visible_mutation_receiver_type_name(receiver_type_id)
+	type_name := flat.source_type_name(type_name_id)
+	short_name := flat.source_type_name(flat.source_type_syntax(type_name_id).unqualified)
 	// Every struct declaration whose name (or qualified name) can match is
 	// indexed under its short name, in top-level order; the old full scan over
 	// every top-level declaration ran once per checked struct-init field.
@@ -14705,7 +14726,7 @@ fn (tc &TypeChecker) visible_mutation_struct_field_is_public(receiver_type_id u3
 			if field.kind != .field_decl || field.value != field_name {
 				continue
 			}
-			if source_field_decl_is_embed(field, field.typ_text()) {
+			if source_field_decl_is_embed(field, field.typ) {
 				return true
 			}
 			meta := field.generic_params()
@@ -14722,13 +14743,7 @@ fn (tc &TypeChecker) visible_mutation_struct_field_is_public(receiver_type_id u3
 // of the C structs themselves, and so are those of a type inferred from a `struct { ... }`
 // literal, which has no `pub` section that could make them public.
 fn (tc &TypeChecker) anonymous_struct_field_is_public(struct_name_id u32, field_name string, decl_mod string) bool {
-	struct_name := flat.source_type_name(struct_name_id)
-	short_name := struct_name.all_after_last('.')
-	short_name_id := if short_name == struct_name {
-		struct_name_id
-	} else {
-		flat.source_type_id(short_name)
-	}
+	short_name_id := flat.source_type_syntax(struct_name_id).unqualified
 	if tc.a.contextual_anon_struct_types[short_name_id] {
 		return true
 	}
@@ -14748,7 +14763,7 @@ fn (tc &TypeChecker) anonymous_struct_field_is_public(struct_name_id u32, field_
 		owner_mod := if visibility := tc.declaration_visibility[owner] {
 			visibility.module_name
 		} else {
-			owner.all_before_last('.')
+			flat.source_type_name(flat.source_type_syntax(owner_source_id_2).qualifier)
 		}
 		if owner_mod == tc.cur_module || (owner_mod in ['', 'main'] && tc.cur_module in ['', 'main']) {
 			continue
@@ -14767,14 +14782,14 @@ fn (tc &TypeChecker) anonymous_struct_field_is_public(struct_name_id u32, field_
 // module stays accessible through a struct of the current module. C and JS structs, and
 // the anonymous structs checked by `anonymous_struct_field_is_public`, are skipped.
 fn (tc &TypeChecker) struct_field_is_private_outside_module(struct_name_id u32, field_name string) bool {
-	struct_name := flat.source_type_name(struct_name_id)
 	// Most selectors use a struct of their own module; settle those before scanning any declaration.
 	decl_mod := tc.struct_module_for_type(struct_name_id)
 	if decl_mod == '' || decl_mod == tc.cur_module
 		|| (decl_mod == 'main' && tc.cur_module in ['', 'main']) {
 		return false
 	}
-	if struct_name.starts_with('C.') || struct_name.starts_with('JS.')
+	query := flat.source_type_query(struct_name_id)
+	if query.has(.c_prefix) || query.has(.js_prefix)
 		|| tc.is_synthesized_anon_struct(struct_name_id) {
 		return false
 	}
@@ -15369,7 +15384,7 @@ fn (tc &TypeChecker) expr_is_shared_arg(id flat.NodeId) bool {
 		for base.kind == .paren && base.children_count > 0 {
 			base = tc.a.child_node(base, 0)
 		}
-		if base.typ_text().trim_space().starts_with('[]shared ') {
+		if flat.source_type_query(trimmed_source_type_id(base.typ)).has(.shared_array) {
 			return true
 		}
 		// Idents carry their canonical type, which has no `shared` element marker. A
@@ -15515,14 +15530,13 @@ pub fn (tc &TypeChecker) struct_field_is_shared(struct_name_id u32, field_name s
 	if tc.struct_shared_fields[struct_name_id][field_name] {
 		return true
 	}
-	struct_name := flat.source_type_name(struct_name_id)
+	syntax := flat.source_type_syntax(struct_name_id)
 	mut candidates := []u32{cap: 4}
-	base, _, is_generic := generic_type_application_parts(struct_name)
-	if is_generic {
-		candidates << flat.source_type_id(base)
+	if syntax.application_valid {
+		candidates << syntax.application_base
 	}
-	if struct_name.contains('.') {
-		candidates << flat.source_type_id(struct_name.all_after_last('.'))
+	if flat.source_type_shape(struct_name_id).has(.dotted) {
+		candidates << syntax.unqualified
 	} else {
 		qname_id := tc.qualify_type_name(struct_name_id)
 		if qname_id != struct_name_id {
@@ -15544,14 +15558,13 @@ fn (tc &TypeChecker) struct_field_has_shared_elements(struct_name_id u32, field_
 	if tc.struct_shared_element_fields[struct_name_id][field_name] {
 		return true
 	}
-	struct_name := flat.source_type_name(struct_name_id)
+	syntax := flat.source_type_syntax(struct_name_id)
 	mut candidates := []u32{cap: 4}
-	base, _, is_generic := generic_type_application_parts(struct_name)
-	if is_generic {
-		candidates << flat.source_type_id(base)
+	if syntax.application_valid {
+		candidates << syntax.application_base
 	}
-	if struct_name.contains('.') {
-		candidates << flat.source_type_id(struct_name.all_after_last('.'))
+	if flat.source_type_shape(struct_name_id).has(.dotted) {
+		candidates << syntax.unqualified
 	} else {
 		qname_id := tc.qualify_type_name(struct_name_id)
 		if qname_id != struct_name_id {
@@ -16268,16 +16281,15 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			}
 			if tc.unsafe_depth == 0 {
 				if owner_id := tc.collapsed_field_owner(raw_arg.value, collapsed_target) {
-					owner := flat.source_type_name(owner_id)
-					if !is_anonymous_struct_name(owner) {
-						owner_base := strip_generic_args_name(owner)
+					if !is_anonymous_struct_id(owner_id) {
+						owner_base := flat.source_type_name(strip_generic_args_id(owner_id))
 						decl_mod := tc.struct_modules[owner_base] or { '' }
 						same_main_module := decl_mod in ['', 'main']
 							&& tc.cur_module in ['', 'main']
 						if decl_mod.len > 0 && decl_mod != tc.cur_module && !same_main_module {
 							is_public := tc.visible_mutation_struct_field_is_public(owner_id, raw_arg.value, decl_mod) or { true }
 							if !is_public {
-								tc.record_error_at(.unknown_field, 'cannot access private field `${raw_arg.value}` on `${collapsed_field_owner_display(owner)}`', tc.a.child(&node, i), raw_arg.pos)
+								tc.record_error_at(.unknown_field, 'cannot access private field `${raw_arg.value}` on `${collapsed_field_owner_display(flat.source_type_name(owner_id))}`', tc.a.child(&node, i), raw_arg.pos)
 							}
 						}
 					}
@@ -17394,7 +17406,8 @@ fn (mut tc TypeChecker) infer_call_info_receiver(node flat.Node, info CallInfo) 
 	actual := unalias_and_unwrap_pointer_type(tc.resolve_type(receiver_id))
 	expected := unalias_and_unwrap_pointer_type(info.params[0])
 	if actual is Unknown || actual is Void
-		|| actual.name().all_after_last('.') != expected.name().all_after_last('.') {
+		|| flat.source_type_syntax(actual.source_type_id()).unqualified !=
+			flat.source_type_syntax(expected.source_type_id()).unqualified {
 		return info
 	}
 	return CallInfo{
@@ -17486,19 +17499,23 @@ fn (tc &TypeChecker) diagnostic_fntype_alias_display(typ &Type) ?string {
 	} else {
 		return none
 	}
-	base, args, is_generic := generic_type_application_parts(alias.name())
-	lookup := if is_generic { base } else { alias.name() }
+	syntax := flat.source_type_syntax(alias.source_type_id())
+	lookup := flat.source_type_name(if syntax.application_valid {
+		syntax.application_base
+	} else {
+		alias.source_type_id()
+	})
 	raw := tc.source_fn_alias_type_text(lookup) or { return none }
-	if !is_generic {
+	if !syntax.application_valid {
 		return tc.diagnostic_fn_type_text(raw)
 	}
 	params := tc.type_alias_generic_params[lookup] or {
 		tc.type_alias_generic_params[tc.qualify_name(lookup)] or { return none }
 	}
-	if params.len != args.len {
+	if params.len != syntax.application_args.len {
 		return tc.diagnostic_fn_type_text(raw)
 	}
-	return tc.diagnostic_fn_type_text(flat.source_type_name(subst_generic_text(flat.source_type_id(raw), flat.TypeTextList.from_names(args).ids, params)))
+	return tc.diagnostic_fn_type_text(flat.source_type_name(subst_generic_text(flat.source_type_id(raw), syntax.application_args, params)))
 }
 
 fn (tc &TypeChecker) bare_generic_fntype_call_param_display(fn_name string, param_idx int) ?string {
@@ -17506,7 +17523,8 @@ fn (tc &TypeChecker) bare_generic_fntype_call_param_display(fn_name string, para
 	if param_idx < 0 || param_idx >= param_texts.len {
 		return none
 	}
-	name := tc.bare_generic_decl_type_name(flat.source_type_name(param_texts[param_idx])) or { return none }
+	name_id := tc.bare_generic_decl_type_name_id(param_texts[param_idx]) or { return none }
+	name := flat.source_type_name(name_id)
 	qualified := tc.qualify_name(name)
 	params := tc.type_alias_generic_params[name] or {
 		tc.type_alias_generic_params[qualified] or { return none }
@@ -17515,7 +17533,7 @@ fn (tc &TypeChecker) bare_generic_fntype_call_param_display(fn_name string, para
 		return none
 	}
 	raw := tc.source_fn_alias_type_text(name) or { return none }
-	if unalias_type(tc.parse_type(flat.source_type_id(name))) is FnType {
+	if unalias_type(tc.parse_type(name_id)) is FnType {
 		return tc.diagnostic_fn_type_text(raw)
 	}
 	return none
@@ -17589,7 +17607,7 @@ fn (tc &TypeChecker) current_variadic_param_elem_name(id flat.NodeId) ?u32 {
 			break
 		}
 		if param.value == arg.value && flat.source_type_shape(param.typ).has(.variadic) {
-			return flat.source_type_id(param.typ_text().trim_left('.'))
+			return flat.source_type_syntax(param.typ).dots_base
 		}
 	}
 	return none
@@ -17614,7 +17632,7 @@ fn (tc &TypeChecker) call_argument_target_name(node flat.Node, info CallInfo) st
 					return info.name.replace('fn(', 'fn (')
 				}
 				receiver_type := unalias_and_unwrap_pointer_type(tc.resolve_type(receiver_id))
-				if receiver_type.name().contains('[') && !type_contains_unknown(receiver_type) {
+				if flat.source_type_shape(receiver_type.source_type_id()).has(.bracketed) && !type_contains_unknown(receiver_type) {
 					return '${receiver_type.name()}.${callee.value}'.replace('fn(', 'fn (')
 				}
 			}
@@ -17732,7 +17750,7 @@ fn (tc &TypeChecker) call_count_mismatch_details(node flat.Node, info CallInfo) 
 			source_is_interface := source_type is Interface || source_name in tc.interface_names
 				|| tc.qualify_name(source_name) in tc.interface_names
 				|| tc.interface_names.keys().any(it.all_after_last('.') == source_name)
-			if source_is_interface && !source_name.contains('.') {
+			if source_is_interface && !flat.source_type_shape(source_id).has(.dotted) {
 				raw_mod_name := tc.fn_type_modules[info.name] or {
 					if info.name.contains('.') {
 						info.name.all_before_last('.')
@@ -17754,12 +17772,13 @@ fn (tc &TypeChecker) call_count_mismatch_details(node flat.Node, info CallInfo) 
 			c_variadic_fixed_param_count(info)
 		}
 		for i in param_start .. param_end {
-			param_name := info.params[i].name()
+			param_name_id := info.params[i].source_type_id()
+			param_name := flat.source_type_name(param_name_id)
 			param_type := unalias_type(info.params[i])
 			param_is_interface := param_type is Interface || param_name in tc.interface_names
 				|| tc.qualify_name(param_name) in tc.interface_names
 				|| tc.interface_names.keys().any(it.all_after_last('.') == param_name)
-			if param_is_interface && !param_name.contains('.') {
+			if param_is_interface && !flat.source_type_shape(param_name_id).has(.dotted) {
 				raw_mod_name := tc.fn_type_modules[info.name] or {
 					if info.name.contains('.') {
 						info.name.all_before_last('.')
@@ -18576,7 +18595,7 @@ fn (mut tc TypeChecker) check_array_sort_call(id flat.NodeId, node flat.Node, ca
 	lhs_type := tc.resolve_type(lhs_id)
 	rhs_type := tc.resolve_type(rhs_id)
 	tc.pop_scope()
-	if lhs_type.name().starts_with('thread ') && rhs_type !is Unknown
+	if flat.source_type_shape(lhs_type.source_type_id()).has(.thread_type) && rhs_type !is Unknown
 		&& !tc.type_compatible(rhs_type, lhs_type) {
 		tc.record_error(.call_arg_mismatch, 'infix expr: cannot use `${rhs_type.name()}` (right expression) as `thread ${rhs_type.name()}`', arg_id)
 	}
@@ -19243,9 +19262,9 @@ fn call_arg_has_multiple_pointer_layers(target Type) bool {
 // field_init_struct_field_type substitutes the struct declaration's parameters
 // with the arguments in the function parameter before inferring from a field.
 fn (tc &TypeChecker) field_init_struct_field_type(struct_name_id u32, param_text_id u32, field_name string) ?u32 {
-	param_text := flat.source_type_name(param_text_id)
-	base, args, is_generic := generic_type_application_parts(comptime_static_unwrap_type_text(param_text))
-	params := if is_generic {
+	syntax := flat.source_type_syntax(comptime_static_unwrap_type_id(param_text_id))
+	params := if syntax.application_valid {
+		base := flat.source_type_name(syntax.application_base)
 		tc.struct_generic_params[base] or {
 			tc.struct_generic_params[tc.qualify_name(base)] or { []string{} }
 		}
@@ -19254,7 +19273,7 @@ fn (tc &TypeChecker) field_init_struct_field_type(struct_name_id u32, param_text
 	}
 	for field in tc.source_struct_field_decls(struct_name_id) {
 		if field.name == field_name {
-			return subst_generic_text(field.typ, flat.TypeTextList.from_names(args).ids, params)
+			return subst_generic_text(field.typ, syntax.application_args, params)
 		}
 	}
 	return none
@@ -19335,7 +19354,6 @@ fn (mut tc TypeChecker) specialize_plain_generic_call_info(node flat.Node, info 
 			actual = tc.contextual_generic_lambda_type(arg_id, info.params[param_idx], generic_params, inferred_types) or { actual }
 		}
 		mut param_type_id := trimmed_source_type_id(param_texts[param_idx])
-		mut param_text := flat.source_type_name(param_type_id)
 		if raw_arg.kind == .field_init {
 			// A shorthand field-init argument to a generic struct parameter
 			// (`f(field: value)` for `fn f[T](x Box[T])`) carries no type of its
@@ -19343,32 +19361,30 @@ fn (mut tc TypeChecker) specialize_plain_generic_call_info(node flat.Node, info 
 			// the shorthand value, reusing the numeric literal deferral below so
 			// that a later argument can still decide the placeholder's type.
 			struct_name := field_init_struct_param_name(info, param_idx) or {
-				base, _, is_generic := generic_type_application_parts(param_text)
-				if is_generic { flat.source_type_id(base) } else { u32(0) }
+				syntax := flat.source_type_syntax(param_type_id)
+				if syntax.application_valid { syntax.application_base } else { u32(0) }
 			}
 			mut field_type_id := u32(0)
 			if struct_name != 0 {
 				if field_type_source_id := tc.field_init_struct_field_type(struct_name, param_type_id, raw_arg.value) {
-					field_type := flat.source_type_name(field_type_source_id)
-
-					if generic_params.any(type_text_contains_symbol(field_type, it)) {
+					symbols := flat.source_type_syntax(field_type_source_id).symbols
+					if generic_params.any(flat.source_type_id(it) in symbols) {
 						field_type_id = trimmed_source_type_id(field_type_source_id)
 					}
 				}
 			}
 			if field_type_id != 0 {
-				if is_anonymous_struct_name(raw_arg.typ_text()) {
+				if is_anonymous_struct_id(raw_arg.typ) {
 					// A shorthand with a literal value is parsed as an anonymous
 					// aggregate. The initialized field takes its type from the
 					// value, not from that aggregate type.
 					actual = tc.resolve_generic_call_arg_type(arg_id)
 				}
 				param_type_id = field_type_id
-				param_text = flat.source_type_name(param_type_id)
 			}
 		}
 		mut defer_numeric_literal := false
-		if arg_node.kind in [.int_literal, .float_literal] && param_text in generic_params {
+		if arg_node.kind in [.int_literal, .float_literal] && generic_params.any(flat.source_type_id(it) == param_type_id) {
 			for later_param_idx in param_idx + 1 .. param_texts.len {
 				later_arg_idx := later_param_idx - first_param_idx + 1 + info.arg_offset
 				if trimmed_source_type_id(param_texts[later_param_idx]) != param_type_id
@@ -19417,12 +19433,13 @@ fn (mut tc TypeChecker) specialize_plain_generic_call_info(node flat.Node, info 
 		signature_args << tc.generic_signature_arg_text(info.name, arg_id, concrete_types[i])
 	}
 	if info.has_receiver && info.params.len > 0 && param_texts.len > 0 {
-		receiver_pattern := info.name.all_before_last('.')
-		_, receiver_params, receiver_is_generic := generic_type_application_parts(receiver_pattern)
-		if receiver_is_generic {
+		receiver_pattern := flat.source_type_syntax(flat.source_type_id(info.name)).qualifier
+		receiver_syntax := flat.source_type_syntax(receiver_pattern)
+		if receiver_syntax.application_valid {
+			receiver_params := receiver_syntax.application_args.map(flat.source_type_name(it))
 			mut receiver_inferred := map[string]u32{}
 			actual_receiver := unwrap_pointer(info.params[0]).source_type_id()
-			tc.infer_generic_type_text_from_text(flat.source_type_id(receiver_pattern), actual_receiver, receiver_params, mut receiver_inferred)
+			tc.infer_generic_type_text_from_text(receiver_pattern, actual_receiver, receiver_params, mut receiver_inferred)
 			if receiver_inferred.len == 0 {
 				tc.infer_generic_type_text_from_type(param_texts[0], info.params[0], receiver_params, mut receiver_inferred)
 			}
@@ -19443,8 +19460,8 @@ fn (mut tc TypeChecker) specialize_plain_generic_call_info(node flat.Node, info 
 	}
 	mut sub_params := []Type{}
 	for i, param_type_id in param_texts {
-		param_text := flat.source_type_name(param_type_id)
-		if generic_type_application(param_text) && !(is_fn_type_text(param_text) && i < info.params.len) {
+		if flat.source_type_syntax(param_type_id).application_valid
+			&& !(is_fn_type_id(param_type_id) && i < info.params.len) {
 			// Named applications such as `Box[T]` lose their arguments in the
 			// open parsed type, so retain the textual reconstruction for them.
 			// A callback type keeps them (`fn (&Box[T])`), and its text would be
@@ -19458,10 +19475,10 @@ fn (mut tc TypeChecker) specialize_plain_generic_call_info(node flat.Node, info 
 		}
 	}
 	ret_text_source_id_3 := tc.fn_ret_type_texts.type_id(info.name) or { u32(0) }
-	ret_text := flat.source_type_name(ret_text_source_id_3)
 	sub_ret := if ret_text_source_id_3 != 0 {
-		if (generic_type_application(ret_text) && !is_fn_type_text(ret_text))
-			|| ret_text.starts_with('(') {
+		ret_syntax := flat.source_type_syntax(ret_text_source_id_3)
+		if (ret_syntax.application_valid && !is_fn_type_id(ret_text_source_id_3))
+			|| ret_syntax.paren_prefix {
 			tc.parse_fn_signature_type(info.name, subst_generic_text(ret_text_source_id_3, signature_args, signature_params))
 		} else {
 			tc.substitute_generic_type_values(info.return_type, concrete_types, generic_params)
@@ -19700,14 +19717,7 @@ fn generic_variadic_elem_param_text(param_id u32) u32 {
 	if !shape.has(.variadic) && !shape.has(.array_type) {
 		return clean_id
 	}
-	clean := flat.source_type_name(clean_id)
-	if shape.has(.variadic) {
-		return flat.source_type_id(trimmed_space(clean[3..]))
-	}
-	if clean.starts_with('[]') {
-		return flat.source_type_id(trimmed_space(clean[2..]))
-	}
-	return clean_id
+	return trimmed_source_type_id(flat.source_type_syntax(clean_id).raw_base)
 }
 
 fn (tc &TypeChecker) parse_fn_signature_type(name string, typ_id u32) Type {
@@ -19755,115 +19765,102 @@ fn (tc &TypeChecker) generic_param_type_text(text_id u32) u32 {
 }
 
 fn (mut tc TypeChecker) infer_generic_type_text_from_type(param_id u32, actual Type, generic_params []string, mut inferred map[string]u32) {
-	tc.infer_generic_type_text_from_type_bytes(flat.source_type_name(param_id), actual, generic_params, mut inferred)
-}
-
-fn (mut tc TypeChecker) infer_generic_type_text_from_type_bytes(param_text string, actual Type, generic_params []string, mut inferred map[string]u32) {
-	clean := trimmed_space(param_text)
-	if clean.len == 0 {
+	clean_id := trimmed_source_type_id(param_id)
+	if clean_id == 0 {
 		return
 	}
-	if clean.starts_with('map[') {
-		end := find_matching_bracket(clean, 3)
-		if end > 3 && end + 1 < clean.len && actual is Map {
-			tc.infer_generic_type_text_from_type_bytes(clean[4..end], actual.key_type, generic_params, mut inferred)
-			tc.infer_generic_type_text_from_type_bytes(clean[end + 1..], actual.value_type, generic_params, mut inferred)
+	shape := flat.source_type_shape(clean_id)
+	syntax := flat.source_type_syntax(clean_id)
+	if shape.has(.map_type) {
+		if syntax.bracket_closed && syntax.bracket_base != 0 && actual is Map {
+			tc.infer_generic_type_text_from_type(syntax.bracket_inner, actual.key_type, generic_params, mut inferred)
+			tc.infer_generic_type_text_from_type(syntax.bracket_base, actual.value_type, generic_params, mut inferred)
 		}
 		return
 	}
-	if clean.starts_with('(') && clean.ends_with(')') && actual is MultiReturn {
-		parts := split_params(clean[1..clean.len - 1])
+	if syntax.tuple_like && actual is MultiReturn {
+		parts := syntax.checker_tuple_components
 		if parts.len == actual.types.len {
 			for i, part in parts {
-				tc.infer_generic_type_text_from_type_bytes(part, actual.types[i], generic_params, mut inferred)
+				tc.infer_generic_type_text_from_type(part, actual.types[i], generic_params, mut inferred)
 			}
 		}
 		return
 	}
-	if clean.starts_with('&') {
+	if shape.has(.pointer) {
 		if actual is Pointer {
-			tc.infer_generic_type_text_from_type_bytes(clean[1..], actual.base_type, generic_params, mut inferred)
+			tc.infer_generic_type_text_from_type(syntax.raw_base, actual.base_type, generic_params, mut inferred)
 		} else {
-			tc.infer_generic_type_text_from_type_bytes(clean[1..], actual, generic_params, mut inferred)
+			tc.infer_generic_type_text_from_type(syntax.raw_base, actual, generic_params, mut inferred)
 		}
 		return
 	}
-	if clean.starts_with('mut ') {
-		tc.infer_generic_type_text_from_type_bytes(clean[4..], actual, generic_params, mut inferred)
+	if shape.has(.mutable_type) || shape.has(.shared_type) {
+		tc.infer_generic_type_text_from_type(syntax.raw_base, actual, generic_params, mut inferred)
 		return
 	}
-	if clean.starts_with('shared ') {
-		tc.infer_generic_type_text_from_type_bytes(clean[7..], actual, generic_params, mut inferred)
-		return
-	}
-	if clean.starts_with('...') {
+	if shape.has(.variadic) || shape.has(.array_type) {
 		if actual_array := array_type_from_receiver(actual) {
-			tc.infer_generic_type_text_from_type_bytes(clean[3..], actual_array.elem_type, generic_params, mut inferred)
+			tc.infer_generic_type_text_from_type(syntax.raw_base, actual_array.elem_type, generic_params, mut inferred)
 		}
 		return
 	}
-	if clean.starts_with('[]') {
-		if actual_array := array_type_from_receiver(actual) {
-			tc.infer_generic_type_text_from_type_bytes(clean[2..], actual_array.elem_type, generic_params, mut inferred)
-		}
-		return
-	}
-	if clean.starts_with('chan ') {
+	if shape.has(.channel_type) {
 		if actual is Channel {
-			tc.infer_generic_type_text_from_type_bytes(clean[5..], actual.elem_type, generic_params,
+			tc.infer_generic_type_text_from_type(syntax.raw_base, actual.elem_type, generic_params,
 				mut inferred)
 		}
 		return
 	}
-	if clean.starts_with('thread ') {
+	if shape.has(.thread_type) {
 		// A thread handle keeps its payload type in its struct name (`thread string`,
 		// see parse_type), so `thread T` binds `T` from that payload.
 		if payload := thread_payload_type(actual) {
-			tc.infer_generic_type_text_from_type_bytes(clean[7..], tc.parse_type(payload),
+			tc.infer_generic_type_text_from_type(syntax.raw_base, tc.parse_type(payload),
 				generic_params, mut inferred)
 		}
 		return
 	}
-	if clean.starts_with('[') {
-		close := find_matching_bracket(clean, 0)
-		if close > 0 && close + 1 < clean.len && actual is ArrayFixed {
-			tc.infer_generic_type_text_from_type_bytes(clean[close + 1..], actual.elem_type, generic_params, mut inferred)
+	if shape.has(.leading_bracket) {
+		if syntax.bracket_closed && syntax.bracket_base != 0 && actual is ArrayFixed {
+			tc.infer_generic_type_text_from_type(syntax.bracket_base, actual.elem_type, generic_params, mut inferred)
 		}
 		return
 	}
-	if clean.starts_with('?') {
+	if shape.has(.option_type) {
 		if actual is OptionType {
-			tc.infer_generic_type_text_from_type_bytes(clean[1..], actual.base_type, generic_params, mut inferred)
+			tc.infer_generic_type_text_from_type(syntax.raw_base, actual.base_type, generic_params, mut inferred)
 		} else {
-			tc.infer_generic_type_text_from_type_bytes(clean[1..], actual, generic_params, mut inferred)
+			tc.infer_generic_type_text_from_type(syntax.raw_base, actual, generic_params, mut inferred)
 		}
 		return
 	}
-	if clean.starts_with('!') {
+	if shape.has(.result_type) {
 		if actual is ResultType {
-			tc.infer_generic_type_text_from_type_bytes(clean[1..], actual.base_type, generic_params, mut inferred)
+			tc.infer_generic_type_text_from_type(syntax.raw_base, actual.base_type, generic_params, mut inferred)
 		}
 		return
 	}
-	if clean.starts_with('fn(') || clean.starts_with('fn (') {
+	if shape.has(.function_compact) || shape.has(.function_spaced) {
 		if actual is FnType {
-			tc.infer_generic_fn_type_text_from_type_bytes(clean, actual, generic_params, mut inferred)
+			tc.infer_generic_fn_type_text_from_type(clean_id, actual, generic_params, mut inferred)
 		}
 		return
 	}
-	if generic_type_application(clean) {
-		actual_text := flat.source_type_name(tc.generic_infer_type_text(actual))
-		param_base, param_args, _ := generic_type_application_parts(clean)
-		actual_base, actual_args, actual_is_generic := generic_type_application_parts(actual_text)
-		// `param_base` is declared source text, so an import alias (`import io as csv`)
+	if syntax.application_valid {
+		actual_id := tc.generic_infer_type_text(actual)
+		actual_syntax := flat.source_type_syntax(actual_id)
+		param_args := syntax.application_args
+		actual_args := actual_syntax.application_args
+		// The application base is declared source text, so an import alias (`import io as csv`)
 		// must be resolved before it can be told apart from a same-named loaded type.
-		decl_base := tc.generic_param_type_text(flat.source_type_id(param_base))
+		decl_base := tc.generic_param_type_text(syntax.application_base)
 		iface_name := tc.interface_metadata_name(decl_base)
 		if flat.source_type_name(iface_name) in tc.interface_names {
-			if actual_is_generic && tc.generic_type_base_matches(decl_base, flat.source_type_id(actual_base))
+			if actual_syntax.application_valid && tc.generic_type_base_matches(decl_base, actual_syntax.application_base)
 				&& param_args.len == actual_args.len {
 				for i in 0 .. param_args.len {
-					tc.infer_generic_type_text_from_text_bytes(param_args[i], actual_args[i], generic_params, mut inferred)
+					tc.infer_generic_type_text_from_text(param_args[i], actual_args[i], generic_params, mut inferred)
 				}
 				return
 			}
@@ -19871,17 +19868,17 @@ fn (mut tc TypeChecker) infer_generic_type_text_from_type_bytes(param_text strin
 				actual) {
 				if param_args.len == concrete_args.len {
 					for i in 0 .. param_args.len {
-						tc.infer_generic_type_text_from_type_bytes(param_args[i], concrete_args[i], generic_params, mut inferred)
+						tc.infer_generic_type_text_from_type(param_args[i], concrete_args[i], generic_params, mut inferred)
 					}
 					return
 				}
 			}
 		}
-		tc.infer_generic_type_text_from_text_bytes(clean, actual_text, generic_params, mut inferred)
+		tc.infer_generic_type_text_from_text(clean_id, actual_id, generic_params, mut inferred)
 		return
 	}
 	for param in generic_params {
-		if clean == param && param !in inferred {
+		if clean_id == flat.source_type_id(param) && param !in inferred {
 			mut actual_id := tc.generic_infer_type_text(actual)
 			if actual_id == flat.source_type_unknown || actual_id == flat.source_type_generic {
 				actual_id = flat.source_type_id(param)
@@ -19895,11 +19892,11 @@ fn (mut tc TypeChecker) infer_generic_type_text_from_type_bytes(param_text strin
 // thread_payload_type returns the source type id of a thread handle's payload
 // (`string` for `thread string`), or none when `actual` is not a typed thread handle.
 fn thread_payload_type(actual Type) ?u32 {
-	name := actual.name()
-	if !name.starts_with('thread ') {
+	id := actual.source_type_id()
+	if !flat.source_type_shape(id).has(.thread_type) {
 		return none
 	}
-	return flat.source_type_id(name[7..])
+	return flat.source_type_syntax(id).raw_base
 }
 
 // infer_generic_reachability_type_args infers generic arguments for a call whose checked type
@@ -19907,18 +19904,19 @@ fn thread_payload_type(actual Type) ?u32 {
 // in the declaration's type context.
 pub fn (tc &TypeChecker) infer_generic_reachability_type_args(fn_name string, param_id u32, actual Type, generic_params []string) map[string]u32 {
 	mut inferred := map[string]u32{}
-	clean := trimmed_space(flat.source_type_name(param_id))
-	base, _, is_generic := generic_type_application_parts(clean)
-	is_callback := clean.contains('fn(') || clean.contains('fn (')
-	if !is_callback && !is_generic && !clean.starts_with('chan ') {
+	clean := trimmed_source_type_id(param_id)
+	syntax := flat.source_type_syntax(clean)
+	is_callback := syntax.function_fragment
+	is_channel := flat.source_type_shape(clean).has(.channel_type)
+	if !is_callback && !syntax.application_valid && !is_channel {
 		return inferred
 	}
 	file := tc.fn_type_files[fn_name] or { tc.cur_file }
 	module_name := tc.fn_type_modules[fn_name] or { tc.cur_module }
 	mut view := tc.fork_type_parse_view(file, module_name)
 	view.generic_decl_file = file
-	if !is_callback && !clean.starts_with('chan ')
-		&& flat.source_type_name(view.interface_metadata_name(view.generic_param_type_text(flat.source_type_id(base)))) !in view.interface_names {
+	if !is_callback && !is_channel
+		&& flat.source_type_name(view.interface_metadata_name(view.generic_param_type_text(syntax.application_base))) !in view.interface_names {
 		return inferred
 	}
 	view.infer_generic_type_text_from_type(param_id, actual, generic_params, mut inferred)
@@ -19930,114 +19928,100 @@ pub fn (tc &TypeChecker) infer_generic_reachability_type_args(fn_name string, pa
 // named applications, but semantic substitution must not parse a caller-local or
 // canonical qualified name again in the callee's import context.
 fn (mut tc TypeChecker) infer_generic_type_value_from_type(param_id u32, actual Type, generic_params []string, mut inferred map[string]Type) {
-	tc.infer_generic_type_value_from_type_bytes(flat.source_type_name(param_id), actual, generic_params, mut inferred)
-}
-
-fn (mut tc TypeChecker) infer_generic_type_value_from_type_bytes(param_text string, actual Type, generic_params []string, mut inferred map[string]Type) {
-	clean := trimmed_space(param_text)
-	if clean.len == 0 {
+	clean_id := trimmed_source_type_id(param_id)
+	if clean_id == 0 {
 		return
 	}
-	if clean.starts_with('map[') {
-		end := find_matching_bracket(clean, 3)
-		if end > 3 && end + 1 < clean.len && actual is Map {
-			tc.infer_generic_type_value_from_type_bytes(clean[4..end], actual.key_type, generic_params, mut inferred)
-			tc.infer_generic_type_value_from_type_bytes(clean[end + 1..], actual.value_type, generic_params, mut inferred)
+	shape := flat.source_type_shape(clean_id)
+	syntax := flat.source_type_syntax(clean_id)
+	if shape.has(.map_type) {
+		if syntax.bracket_closed && syntax.bracket_base != 0 && actual is Map {
+			tc.infer_generic_type_value_from_type(syntax.bracket_inner, actual.key_type, generic_params, mut inferred)
+			tc.infer_generic_type_value_from_type(syntax.bracket_base, actual.value_type, generic_params, mut inferred)
 		}
 		return
 	}
-	if clean.starts_with('(') && clean.ends_with(')') && actual is MultiReturn {
-		parts := split_params(clean[1..clean.len - 1])
+	if syntax.tuple_like && actual is MultiReturn {
+		parts := syntax.checker_tuple_components
 		if parts.len == actual.types.len {
 			for i, part in parts {
-				tc.infer_generic_type_value_from_type_bytes(part, actual.types[i], generic_params, mut inferred)
+				tc.infer_generic_type_value_from_type(part, actual.types[i], generic_params, mut inferred)
 			}
 		}
 		return
 	}
-	if clean.starts_with('&') {
+	if shape.has(.pointer) {
 		if actual is Pointer {
-			tc.infer_generic_type_value_from_type_bytes(clean[1..], actual.base_type, generic_params, mut inferred)
+			tc.infer_generic_type_value_from_type(syntax.raw_base, actual.base_type, generic_params, mut inferred)
 		} else {
-			tc.infer_generic_type_value_from_type_bytes(clean[1..], actual, generic_params, mut inferred)
+			tc.infer_generic_type_value_from_type(syntax.raw_base, actual, generic_params, mut inferred)
 		}
 		return
 	}
-	if clean.starts_with('mut ') {
-		tc.infer_generic_type_value_from_type_bytes(clean[4..], actual, generic_params, mut inferred)
+	if shape.has(.mutable_type) || shape.has(.shared_type) {
+		tc.infer_generic_type_value_from_type(syntax.raw_base, actual, generic_params, mut inferred)
 		return
 	}
-	if clean.starts_with('shared ') {
-		tc.infer_generic_type_value_from_type_bytes(clean[7..], actual, generic_params, mut inferred)
-		return
-	}
-	if clean.starts_with('...') {
+	if shape.has(.variadic) || shape.has(.array_type) {
 		if actual_array := array_type_from_receiver(actual) {
-			tc.infer_generic_type_value_from_type_bytes(clean[3..], actual_array.elem_type, generic_params, mut inferred)
+			tc.infer_generic_type_value_from_type(syntax.raw_base, actual_array.elem_type, generic_params, mut inferred)
 		}
 		return
 	}
-	if clean.starts_with('[]') {
-		if actual_array := array_type_from_receiver(actual) {
-			tc.infer_generic_type_value_from_type_bytes(clean[2..], actual_array.elem_type, generic_params, mut inferred)
-		}
-		return
-	}
-	if clean.starts_with('chan ') {
+	if shape.has(.channel_type) {
 		if actual is Channel {
-			tc.infer_generic_type_value_from_type_bytes(clean[5..], actual.elem_type, generic_params,
+			tc.infer_generic_type_value_from_type(syntax.raw_base, actual.elem_type, generic_params,
 				mut inferred)
 		}
 		return
 	}
-	if clean.starts_with('thread ') {
+	if shape.has(.thread_type) {
 		if payload := thread_payload_type(actual) {
-			tc.infer_generic_type_value_from_type_bytes(clean[7..], tc.parse_type(payload),
+			tc.infer_generic_type_value_from_type(syntax.raw_base, tc.parse_type(payload),
 				generic_params, mut inferred)
 		}
 		return
 	}
-	if clean.starts_with('[') {
-		close := find_matching_bracket(clean, 0)
-		if close > 0 && close + 1 < clean.len && actual is ArrayFixed {
-			tc.infer_generic_type_value_from_type_bytes(clean[close + 1..], actual.elem_type, generic_params, mut inferred)
+	if shape.has(.leading_bracket) {
+		if syntax.bracket_closed && syntax.bracket_base != 0 && actual is ArrayFixed {
+			tc.infer_generic_type_value_from_type(syntax.bracket_base, actual.elem_type, generic_params, mut inferred)
 		}
 		return
 	}
-	if clean.starts_with('?') {
+	if shape.has(.option_type) {
 		if actual is OptionType {
-			tc.infer_generic_type_value_from_type_bytes(clean[1..], actual.base_type, generic_params, mut inferred)
+			tc.infer_generic_type_value_from_type(syntax.raw_base, actual.base_type, generic_params, mut inferred)
 		} else {
-			tc.infer_generic_type_value_from_type_bytes(clean[1..], actual, generic_params, mut inferred)
+			tc.infer_generic_type_value_from_type(syntax.raw_base, actual, generic_params, mut inferred)
 		}
 		return
 	}
-	if clean.starts_with('!') {
+	if shape.has(.result_type) {
 		if actual is ResultType {
-			tc.infer_generic_type_value_from_type_bytes(clean[1..], actual.base_type, generic_params, mut inferred)
+			tc.infer_generic_type_value_from_type(syntax.raw_base, actual.base_type, generic_params, mut inferred)
 		}
 		return
 	}
-	if clean.starts_with('fn(') || clean.starts_with('fn (') {
+	if shape.has(.function_compact) || shape.has(.function_spaced) {
 		// A placeholder bound only by a callback parameter keeps the callback's
 		// caller-side type: re-parsing its text in the callee's module would turn
 		// a caller's `Row` into a same-named `Row` of the callee.
 		if actual is FnType {
-			tc.infer_generic_fn_type_value_from_type(clean, actual, generic_params, mut inferred)
+			tc.infer_generic_fn_type_value_from_type(clean_id, actual, generic_params, mut inferred)
 		}
 		return
 	}
-	if generic_type_application(clean) {
-		param_base, param_args, _ := generic_type_application_parts(clean)
-		actual_text := flat.source_type_name(tc.generic_infer_type_text(actual))
-		actual_base, actual_args, actual_is_generic := generic_type_application_parts(actual_text)
-		decl_base := tc.generic_param_type_text(flat.source_type_id(param_base))
+	if syntax.application_valid {
+		param_args := syntax.application_args
+		actual_syntax := flat.source_type_syntax(tc.generic_infer_type_text(actual))
+		actual_args := actual_syntax.application_args
+		decl_base := tc.generic_param_type_text(syntax.application_base)
 		iface_name := tc.interface_metadata_name(decl_base)
 		if flat.source_type_name(iface_name) in tc.interface_names {
-			if actual_is_generic && tc.generic_type_base_matches(decl_base, flat.source_type_id(actual_base))
+			if actual_syntax.application_valid && tc.generic_type_base_matches(decl_base, actual_syntax.application_base)
 				&& param_args.len == actual_args.len {
 				for i in 0 .. param_args.len {
-					tc.infer_generic_type_value_from_type_bytes(param_args[i], *tc.parse_type(flat.source_type_id(actual_args[i])), generic_params, mut inferred)
+					tc.infer_generic_type_value_from_type(param_args[i], *tc.parse_type(actual_args[i]), generic_params, mut inferred)
 				}
 				return
 			}
@@ -20045,7 +20029,7 @@ fn (mut tc TypeChecker) infer_generic_type_value_from_type_bytes(param_text stri
 				actual) {
 				if param_args.len == concrete_args.len {
 					for i in 0 .. param_args.len {
-						tc.infer_generic_type_value_from_type_bytes(param_args[i], concrete_args[i], generic_params, mut inferred)
+						tc.infer_generic_type_value_from_type(param_args[i], concrete_args[i], generic_params, mut inferred)
 					}
 				}
 			}
@@ -20053,7 +20037,7 @@ fn (mut tc TypeChecker) infer_generic_type_value_from_type_bytes(param_text stri
 		return
 	}
 	for param in generic_params {
-		if clean == param && param !in inferred {
+		if clean_id == flat.source_type_id(param) && param !in inferred {
 			inferred[param] = actual
 			return
 		}
@@ -20144,156 +20128,132 @@ fn (tc &TypeChecker) generic_infer_type_text(actual &Type) u32 {
 }
 
 fn (tc &TypeChecker) infer_generic_type_text_from_text(param_id u32, actual_id u32, generic_params []string, mut inferred map[string]u32) {
-	tc.infer_generic_type_text_from_text_bytes(flat.source_type_name(param_id), flat.source_type_name(actual_id), generic_params, mut inferred)
-}
-
-fn (tc &TypeChecker) infer_generic_type_text_from_text_bytes(param_text string, actual_text string, generic_params []string, mut inferred map[string]u32) {
-	clean := trimmed_space(param_text)
-	actual := trimmed_space(actual_text)
-	if clean.len == 0 || actual.len == 0 {
+	clean := trimmed_source_type_id(param_id)
+	actual := trimmed_source_type_id(actual_id)
+	if clean == 0 || actual == 0 {
 		return
 	}
 	for param in generic_params {
-		if clean == param && param !in inferred {
-			inferred[param] = (if actual == 'unknown' || actual == 'generic' {
+		if clean == flat.source_type_id(param) && param !in inferred {
+			inferred[param] = if actual == flat.source_type_unknown || actual == flat.source_type_generic {
 				flat.source_type_id(param)
 			} else {
-				flat.source_type_id(actual)
-			})
+				actual
+			}
 			return
 		}
 	}
-	if clean.starts_with('&') || actual.starts_with('&') {
-		if clean.starts_with('&') && actual.starts_with('&') {
-			tc.infer_generic_type_text_from_text_bytes(clean[1..], actual[1..], generic_params, mut inferred)
+	shape := flat.source_type_shape(clean)
+	actual_shape := flat.source_type_shape(actual)
+	syntax := flat.source_type_syntax(clean)
+	actual_syntax := flat.source_type_syntax(actual)
+	if shape.has(.pointer) || actual_shape.has(.pointer) {
+		if shape.has(.pointer) && actual_shape.has(.pointer) {
+			tc.infer_generic_type_text_from_text(syntax.raw_base, actual_syntax.raw_base, generic_params, mut inferred)
 		}
 		return
 	}
-	if clean.starts_with('mut ') {
-		tc.infer_generic_type_text_from_text_bytes(clean[4..], actual.trim_left('&'), generic_params, mut inferred)
+	if shape.has(.mutable_type) {
+		tc.infer_generic_type_text_from_text(syntax.raw_base, actual_syntax.pointer_raw_base, generic_params, mut inferred)
 		return
 	}
-	if clean.starts_with('...') || actual.starts_with('...') {
-		if clean.starts_with('...') && actual.starts_with('...') {
-			tc.infer_generic_type_text_from_text_bytes(clean[3..], actual[3..], generic_params, mut inferred)
+	if shape.has(.variadic) || actual_shape.has(.variadic) {
+		if shape.has(.variadic) && actual_shape.has(.variadic) {
+			tc.infer_generic_type_text_from_text(syntax.raw_base, actual_syntax.raw_base, generic_params, mut inferred)
 		}
 		return
 	}
-	if clean.starts_with('[]') || actual.starts_with('[]') {
-		if clean.starts_with('[]') && actual.starts_with('[]') {
-			tc.infer_generic_type_text_from_text_bytes(clean[2..], actual[2..], generic_params, mut inferred)
+	if shape.has(.array_type) || actual_shape.has(.array_type) {
+		if shape.has(.array_type) && actual_shape.has(.array_type) {
+			tc.infer_generic_type_text_from_text(syntax.raw_base, actual_syntax.raw_base, generic_params, mut inferred)
 		}
 		return
 	}
-	if clean.starts_with('?') || actual.starts_with('?') {
-		if clean.starts_with('?') && actual.starts_with('?') {
-			tc.infer_generic_type_text_from_text_bytes(clean[1..], actual[1..], generic_params, mut inferred)
+	if shape.has(.option_type) || actual_shape.has(.option_type) {
+		if shape.has(.option_type) && actual_shape.has(.option_type) {
+			tc.infer_generic_type_text_from_text(syntax.raw_base, actual_syntax.raw_base, generic_params, mut inferred)
 		}
 		return
 	}
-	if clean.starts_with('!') || actual.starts_with('!') {
-		if clean.starts_with('!') && actual.starts_with('!') {
-			tc.infer_generic_type_text_from_text_bytes(clean[1..], actual[1..], generic_params, mut inferred)
+	if shape.has(.result_type) || actual_shape.has(.result_type) {
+		if shape.has(.result_type) && actual_shape.has(.result_type) {
+			tc.infer_generic_type_text_from_text(syntax.raw_base, actual_syntax.raw_base, generic_params, mut inferred)
 		}
 		return
 	}
-	if clean.starts_with('map[') || actual.starts_with('map[') {
-		if !clean.starts_with('map[') || !actual.starts_with('map[') {
+	if shape.has(.map_type) || actual_shape.has(.map_type) {
+		if !shape.has(.map_type) || !actual_shape.has(.map_type)
+			|| !syntax.bracket_closed || !actual_syntax.bracket_closed {
 			return
 		}
-		clean_end := find_matching_bracket(clean, 3)
-		actual_end := find_matching_bracket(actual, 3)
-		if clean_end >= clean.len || actual_end >= actual.len {
-			return
-		}
-		tc.infer_generic_type_text_from_text_bytes(clean[4..clean_end], actual[4..actual_end], generic_params, mut inferred)
-		tc.infer_generic_type_text_from_text_bytes(clean[clean_end + 1..], actual[actual_end + 1..], generic_params, mut inferred)
+		tc.infer_generic_type_text_from_text(syntax.bracket_inner, actual_syntax.bracket_inner, generic_params, mut inferred)
+		tc.infer_generic_type_text_from_text(syntax.bracket_base, actual_syntax.bracket_base, generic_params, mut inferred)
 		return
 	}
-	if clean.starts_with('[') || actual.starts_with('[') {
-		if !clean.starts_with('[') || !actual.starts_with('[') {
+	if shape.has(.leading_bracket) || actual_shape.has(.leading_bracket) {
+		if !shape.has(.leading_bracket) || !actual_shape.has(.leading_bracket)
+			|| !syntax.bracket_closed || !actual_syntax.bracket_closed
+			|| syntax.bracket_prefix != actual_syntax.bracket_prefix {
 			return
 		}
-		clean_end := find_matching_bracket(clean, 0)
-		actual_end := find_matching_bracket(actual, 0)
-		if clean_end >= clean.len || actual_end >= actual.len
-			|| clean[..clean_end + 1] != actual[..actual_end + 1] {
-			return
-		}
-		tc.infer_generic_type_text_from_text_bytes(clean[clean_end + 1..], actual[actual_end + 1..], generic_params, mut inferred)
+		tc.infer_generic_type_text_from_text(syntax.bracket_base, actual_syntax.bracket_base, generic_params, mut inferred)
 		return
 	}
-	param_base, param_args, param_is_generic := generic_type_application_parts(clean)
-	actual_base, actual_args, actual_is_generic := generic_type_application_parts(actual)
-	if param_is_generic || actual_is_generic {
-		decl_base := tc.generic_param_type_text(flat.source_type_id(param_base))
-		if !param_is_generic || !actual_is_generic || param_args.len != actual_args.len
-			|| !tc.generic_type_base_matches(decl_base, flat.source_type_id(actual_base)) {
+	if syntax.application_valid || actual_syntax.application_valid {
+		decl_base := tc.generic_param_type_text(syntax.application_base)
+		param_args := syntax.application_args
+		actual_args := actual_syntax.application_args
+		if !syntax.application_valid || !actual_syntax.application_valid
+			|| param_args.len != actual_args.len
+			|| !tc.generic_type_base_matches(decl_base, actual_syntax.application_base) {
 			return
 		}
 		for i in 0 .. param_args.len {
-			tc.infer_generic_type_text_from_text_bytes(param_args[i], actual_args[i], generic_params, mut inferred)
+			tc.infer_generic_type_text_from_text(param_args[i], actual_args[i], generic_params, mut inferred)
 		}
 	}
 }
 
-fn (mut tc TypeChecker) infer_generic_fn_type_text_from_type_bytes(param_text string, actual FnType, generic_params []string, mut inferred map[string]u32) {
-	parts, ret := fn_type_text_parts(param_text) or { return }
-	for i, part in parts {
+fn (mut tc TypeChecker) infer_generic_fn_type_text_from_type(param_id u32, actual FnType, generic_params []string, mut inferred map[string]u32) {
+	syntax := flat.source_type_syntax(param_id)
+	if !syntax.function_closed {
+		return
+	}
+	for i, part in syntax.checker_function_params {
 		if i >= actual.params.len {
 			break
 		}
-		tc.infer_generic_type_text_from_type_bytes(normalize_fn_type_param_text(part), fn_compatible_param_type(actual, i), generic_params, mut inferred)
+		tc.infer_generic_type_text_from_type(flat.source_type_syntax(part).parameter_type, fn_compatible_param_type(actual, i), generic_params, mut inferred)
 	}
-	if ret.len > 0 {
-		tc.infer_generic_type_text_from_type_bytes(ret, actual.return_type, generic_params, mut inferred)
+	if syntax.function_result != 0 {
+		tc.infer_generic_type_text_from_type(syntax.function_result, actual.return_type, generic_params, mut inferred)
 	}
 }
 
 // infer_generic_fn_type_value_from_type binds the placeholders of a callback
 // parameter type, `fn (T) U`, to the caller-side types of the callback passed.
-fn (mut tc TypeChecker) infer_generic_fn_type_value_from_type(param_text string, actual FnType, generic_params []string, mut inferred map[string]Type) {
-	parts, ret := fn_type_text_parts(param_text) or { return }
-	for i, part in parts {
+fn (mut tc TypeChecker) infer_generic_fn_type_value_from_type(param_id u32, actual FnType, generic_params []string, mut inferred map[string]Type) {
+	syntax := flat.source_type_syntax(param_id)
+	if !syntax.function_closed {
+		return
+	}
+	for i, part in syntax.checker_function_params {
 		if i >= actual.params.len {
 			break
 		}
-		tc.infer_generic_type_value_from_type_bytes(normalize_fn_type_param_text(part), fn_compatible_param_type(actual, i), generic_params, mut inferred)
+		tc.infer_generic_type_value_from_type(flat.source_type_syntax(part).parameter_type, fn_compatible_param_type(actual, i), generic_params, mut inferred)
 	}
-	if ret.len > 0 {
-		tc.infer_generic_type_value_from_type_bytes(ret, actual.return_type, generic_params, mut inferred)
+	if syntax.function_result != 0 {
+		tc.infer_generic_type_value_from_type(syntax.function_result, actual.return_type, generic_params, mut inferred)
 	}
 }
 
-// is_fn_type_text reports whether a type text is a function type, `fn (A) R`,
+// is_fn_type_id reports whether a source spelling is a function type, `fn (A) R`,
 // whose brackets belong to its parameter and return types rather than to an
 // application of a named generic type.
-fn is_fn_type_text(text string) bool {
-	clean := trimmed_space(text)
-	return clean.starts_with('fn(') || clean.starts_with('fn (')
-}
-
-// fn_type_text_parts splits the text of a function type, `fn (a A, b B) R`,
-// into its parameter texts and its return type text.
-fn fn_type_text_parts(param_text string) ?([]string, string) {
-	params_start := param_text.index_u8(`(`) + 1
-	mut depth := 1
-	mut params_end := params_start
-	for params_end < param_text.len {
-		if param_text[params_end] == `(` {
-			depth++
-		} else if param_text[params_end] == `)` {
-			depth--
-			if depth == 0 {
-				break
-			}
-		}
-		params_end++
-	}
-	if params_end >= param_text.len {
-		return none
-	}
-	return split_params(param_text[params_start..params_end]), trimmed_space(param_text[params_end + 1..])
+fn is_fn_type_id(type_id u32) bool {
+	shape := flat.source_type_shape(trimmed_source_type_id(type_id))
+	return shape.has(.function_compact) || shape.has(.function_spaced)
 }
 
 // array_map_return_elem_type supports array map return elem type handling for TypeChecker.
@@ -20554,9 +20514,10 @@ fn (tc &TypeChecker) is_params_struct_type(typ &Type) bool {
 		if typ.name() in tc.params_structs {
 			return true
 		}
-		base, _, is_generic := generic_type_application_parts(typ.name())
-		if is_generic
-			&& (base in tc.params_structs || base.all_after_last('.') in tc.params_structs) {
+		syntax := flat.source_type_syntax(typ.source_type_id())
+		if syntax.application_valid
+			&& (flat.source_type_name(syntax.application_base) in tc.params_structs
+				|| flat.source_type_name(flat.source_type_syntax(syntax.application_base).unqualified) in tc.params_structs) {
 			return true
 		}
 		qname := tc.qualify_name(typ.name())
@@ -20870,7 +20831,7 @@ fn (tc &TypeChecker) call_arg_value(id flat.NodeId) flat.NodeId {
 }
 
 fn (tc &TypeChecker) short_struct_call_arg_type(node flat.Node) ?Type {
-	if node.kind != .field_init || !is_anonymous_struct_name(node.typ_text()) {
+	if node.kind != .field_init || !is_anonymous_struct_id(node.typ) {
 		return none
 	}
 	typ := tc.parse_type(node.typ)
@@ -21002,25 +20963,26 @@ pub fn (tc &TypeChecker) is_locally_declared_bare_type(name string) bool {
 // are distinct types and do NOT match. A bare name that is itself a locally-declared
 // type (`User` alongside another module's `foo.User`) denotes that local type, so it
 // does NOT match a qualified name from a different module.
-fn (tc &TypeChecker) qualifier_relaxed_type_name_match(a string, b string) bool {
-	if a == b {
+fn (tc &TypeChecker) qualifier_relaxed_type_name_match(a_id u32, b_id u32) bool {
+	if a_id == b_id {
 		return true
 	}
-	a_qualified := a.contains('.')
-	b_qualified := b.contains('.')
+	a_qualified := flat.source_type_shape(a_id).has(.dotted)
+	b_qualified := flat.source_type_shape(b_id).has(.dotted)
 	// Both bare (but unequal) or both qualified (but unequal) name different types.
 	if a_qualified == b_qualified {
 		return false
 	}
-	if a.all_after_last('.') != b.all_after_last('.') {
+	if flat.source_type_syntax(a_id).unqualified != flat.source_type_syntax(b_id).unqualified {
 		return false
 	}
-	bare := if a_qualified { b } else { a }
-	qualified := if a_qualified { a } else { b }
-	qualifier := qualified.all_before_last('.')
+	bare := if a_qualified { b_id } else { a_id }
+	qualified := if a_qualified { a_id } else { b_id }
+	qualifier := flat.source_type_syntax(qualified).qualifier
 	// A locally-declared bare type only relaxes to a qualified name that is its own
 	// main spelling; against another module's same-short-named type it is distinct.
-	if qualifier != 'main' && qualifier.len > 0 && tc.is_locally_declared_bare_type(bare) {
+	if qualifier != checker_tail_source_main && qualifier != 0
+		&& tc.is_locally_declared_bare_type(flat.source_type_name(bare)) {
 		return false
 	}
 	return true
@@ -21038,27 +21000,33 @@ fn (tc &TypeChecker) generic_receiver_qualifier_mismatch(actual &Type, expected 
 	if (actual is Pointer) != (expected is Pointer) {
 		return false
 	}
-	a_full := unwrap_pointer(actual).name()
-	e_full := unwrap_pointer(expected).name()
-	if a_full == e_full || a_full.len == 0 || e_full.len == 0 {
+	a_full := unwrap_pointer(actual).source_type_id()
+	e_full := unwrap_pointer(expected).source_type_id()
+	if a_full == e_full || a_full == 0 || e_full == 0 {
 		return false
 	}
-	a_base, a_args, a_ok := generic_type_application_parts(a_full)
-	e_base, e_args, e_ok := generic_type_application_parts(e_full)
-	if !a_ok || !e_ok || a_args.len != e_args.len || a_args.len == 0 {
+	a_syntax := flat.source_type_syntax(a_full)
+	e_syntax := flat.source_type_syntax(e_full)
+	a_args := a_syntax.application_args
+	e_args := e_syntax.application_args
+	if !a_syntax.application_valid || !e_syntax.application_valid
+		|| a_args.len != e_args.len || a_args.len == 0 {
 		return false
 	}
+	a_base := a_syntax.application_base
+	e_base := e_syntax.application_base
 	if !tc.qualifier_relaxed_type_name_match(a_base, e_base) {
 		return false
 	}
 	for i in 0 .. a_args.len {
-		if !tc.qualifier_relaxed_type_name_match(trimmed_space(a_args[i]), trimmed_space(e_args[i])) {
+		if !tc.qualifier_relaxed_type_name_match(a_args[i], e_args[i]) {
 			return false
 		}
 	}
-	short := e_base.all_after_last('.')
-	return e_base in tc.struct_generic_params || a_base in tc.struct_generic_params
-		|| short in tc.struct_generic_params
+	short := flat.source_type_syntax(e_base).unqualified
+	return flat.source_type_name(e_base) in tc.struct_generic_params
+		|| flat.source_type_name(a_base) in tc.struct_generic_params
+		|| flat.source_type_name(short) in tc.struct_generic_params
 }
 
 // generic_receiver_base_match relaxes compatibility between two same-base generic
@@ -21080,13 +21048,13 @@ fn (tc &TypeChecker) generic_receiver_base_match(actual &Type, expected &Type) b
 	if (actual is Pointer) != (expected is Pointer) {
 		return false
 	}
-	a_full := unwrap_pointer(actual).name()
-	e_full := unwrap_pointer(expected).name()
-	a := strip_generic_args_name(a_full)
-	if a.len == 0 || a != strip_generic_args_name(e_full) {
+	a_full := unwrap_pointer(actual).source_type_id()
+	e_full := unwrap_pointer(expected).source_type_id()
+	a := strip_generic_args_id(a_full)
+	if a == 0 || a != strip_generic_args_id(e_full) {
 		return false
 	}
-	if !(a in tc.struct_generic_params || tc.sum_params_for_base(flat.source_type_id(a)).len > 0) {
+	if !(flat.source_type_name(a) in tc.struct_generic_params || tc.sum_params_for_base(a).len > 0) {
 		return false
 	}
 	if a_full == e_full {
@@ -21106,12 +21074,12 @@ fn (tc &TypeChecker) generic_receiver_base_match(actual &Type, expected &Type) b
 // is_concrete_generic_instance reports whether `name` is a fully concrete generic
 // instantiation (e.g. `Box[int]`), as opposed to the bare base (`Box`) or an open
 // parameter form (`Box[T]`).
-fn (tc &TypeChecker) is_concrete_generic_instance(name string) bool {
-	_, args, ok := generic_type_application_parts(name)
-	if !ok {
+fn (tc &TypeChecker) is_concrete_generic_instance(name_id u32) bool {
+	syntax := flat.source_type_syntax(name_id)
+	if !syntax.application_valid {
 		return false
 	}
-	return tc.generic_args_are_concrete(flat.TypeTextList.from_names(args).ids)
+	return tc.generic_args_are_concrete(syntax.application_args)
 }
 
 // bare_generic_literal_adopts reports whether a struct literal written as the bare
@@ -21123,21 +21091,31 @@ fn (tc &TypeChecker) bare_generic_literal_adopts(lit_id u32, expected &Type) boo
 	if lit_id == 0 || flat.source_type_shape(lit_id).has(.bracketed) {
 		return false
 	}
-	e_base, _, e_ok := generic_type_application_parts(unwrap_pointer(expected).name())
-	if !e_ok || e_base.all_after_last('.') != flat.source_type_name(lit_id).all_after_last('.') {
+	syntax := flat.source_type_syntax(unwrap_pointer(expected).source_type_id())
+	base_id := syntax.application_base
+	short_id := flat.source_type_syntax(base_id).unqualified
+	if !syntax.application_valid || short_id != flat.source_type_syntax(lit_id).unqualified {
 		return false
 	}
-	return e_base in tc.struct_generic_params
-		|| e_base.all_after_last('.') in tc.struct_generic_params
+	return flat.source_type_name(base_id) in tc.struct_generic_params
+		|| flat.source_type_name(short_id) in tc.struct_generic_params
 }
 
+// is_anonymous_struct_id checks the unqualified source spelling for an anonymous struct name.
+fn is_anonymous_struct_id(name_id u32) bool {
+	return flat.source_type_query(flat.source_type_syntax(name_id).unqualified).has(.anon_struct_prefix)
+}
+
+// is_anonymous_struct_name checks a spelling at a textual name boundary.
 fn is_anonymous_struct_name(name string) bool {
-	return name.all_after_last('.').starts_with('AnonStruct_')
+	return is_anonymous_struct_id(flat.source_type_id(name))
 }
 
+// is_anonymous_aggregate_name checks the unqualified spelling of an aggregate name.
 fn is_anonymous_aggregate_name(name string) bool {
-	short := name.all_after_last('.')
-	return short.starts_with('AnonStruct_') || short.starts_with('AnonUnion_')
+	short_id := flat.source_type_syntax(flat.source_type_id(name)).unqualified
+	query := flat.source_type_query(short_id)
+	return query.has(.anon_struct_prefix) || query.has(.anon_union_prefix)
 }
 
 // is_synthesized_anon_struct reports whether `name` is an anonymous aggregate the
@@ -21146,15 +21124,13 @@ fn is_anonymous_aggregate_name(name string) bool {
 // user-declared one lets `holder.consume(struct { x: 42 })` reach a private type of
 // another module that the caller could not have named.
 fn (tc &TypeChecker) is_synthesized_anon_struct(name_id u32) bool {
-	name := flat.source_type_name(name_id)
-	short_name := name.all_after_last('.')
-	short_id := if short_name == name { name_id } else { flat.source_type_id(short_name) }
+	short_id := flat.source_type_syntax(name_id).unqualified
 	return tc.a.synthesized_anon_struct_types[short_id]
 }
 
 fn is_contextual_anonymous_struct_literal(name_id u32) bool {
 	return name_id == flat.source_type_id('struct')
-		|| is_anonymous_struct_name(flat.source_type_name(name_id))
+		|| is_anonymous_struct_id(name_id)
 }
 
 fn (mut tc TypeChecker) anonymous_struct_literal_compatible(node flat.Node, expected Type) bool {
@@ -21193,17 +21169,20 @@ fn (mut tc TypeChecker) anonymous_struct_literal_compatible(node flat.Node, expe
 // so a clearly-unrelated literal yields a clean checker error instead of adopting the
 // type and emitting broken C; unresolvable fields stay lenient.
 fn (mut tc TypeChecker) generic_literal_fields_compatible(node flat.Node, expected Type) bool {
-	e_base, e_args, e_ok := generic_type_application_parts(unwrap_pointer(expected).name())
-	if !e_ok {
+	syntax := flat.source_type_syntax(unwrap_pointer(expected).source_type_id())
+	if !syntax.application_valid {
 		return true
 	}
+	e_base := flat.source_type_name(syntax.application_base)
+	e_short := flat.source_type_name(flat.source_type_syntax(syntax.application_base).unqualified)
+	e_args := syntax.application_args
 	params := tc.struct_generic_params[e_base] or {
-		tc.struct_generic_params[e_base.all_after_last('.')] or { return true }
+		tc.struct_generic_params[e_short] or { return true }
 	}
 	if params.len != e_args.len {
 		return true
 	}
-	fields := tc.structs[e_base] or { tc.structs[e_base.all_after_last('.')] or { return true } }
+	fields := tc.structs[e_base] or { tc.structs[e_short] or { return true } }
 	for i in 0 .. node.children_count {
 		fi := tc.a.child_node(&node, i)
 		if fi.kind != .field_init || fi.children_count == 0 {
@@ -21229,7 +21208,7 @@ fn (mut tc TypeChecker) generic_literal_fields_compatible(node flat.Node, expect
 		if !found {
 			continue
 		}
-		sub := tc.substitute_generic_type(decl_typ, flat.TypeTextList.from_names(e_args).ids, params)
+		sub := tc.substitute_generic_type(decl_typ, e_args, params)
 		if sub is Unknown || sub is Void {
 			continue
 		}
@@ -21411,14 +21390,13 @@ fn (mut tc TypeChecker) generic_expected_expr_fields_compatible(expr_id flat.Nod
 	return true
 }
 
-// strip_generic_args_name returns the base name of a generic instance type
-// (`Box[int]` -> `Box`); array/map types (leading `[`) yield the name unchanged.
-fn strip_generic_args_name(name string) string {
-	bracket := name.index_u8(`[`)
-	if bracket <= 0 {
-		return name
+// strip_generic_args_id preserves leading array syntax while removing a generic suffix.
+fn strip_generic_args_id(name_id u32) u32 {
+	return if flat.source_type_shape(name_id).has(.leading_bracket) {
+		name_id
+	} else {
+		flat.source_type_syntax(name_id).generic_base
 	}
-	return name[..bracket]
 }
 
 // is_zero_literal reports whether is zero literal applies in types.
@@ -21622,7 +21600,7 @@ fn (mut tc TypeChecker) check_pointer_receiver_method_value_safety(id flat.NodeI
 		owner := flat.source_type_name(owner_source_id)
 
 		method_names = ['${owner}.${node.value}']
-		storage_name = clean.name().all_after_last('.')
+		storage_name = flat.source_type_name(flat.source_type_syntax(clean.source_type_id()).unqualified)
 	}
 	for method_name in method_names {
 		params := tc.fn_param_types[method_name] or { continue }
@@ -22429,7 +22407,7 @@ fn (tc &TypeChecker) is_known_call(node flat.Node) bool {
 		if !tc.is_namespace_selector(*fn_node, base) {
 			receiver := tc.selector_fn_base_type(base_id) or { tc.resolve_type(base_id) }
 			underlying := unalias_and_unwrap_pointer_type(receiver)
-			if underlying is Struct && underlying.name().starts_with('C.') {
+			if underlying is Struct && flat.source_type_query(underlying.source_type_id()).has(.c_prefix) {
 				if _ := tc.selector_field_fn_type(fn_node, receiver) { return true }
 				name, ambiguous := tc.lookup_c_struct_receiver_method(receiver, fn_node.value)
 				if ambiguous { return false }
@@ -23643,7 +23621,7 @@ fn (tc &TypeChecker) type_expr_name(id flat.NodeId) u32 {
 			if base_id == 0 {
 				return node.source_value_id()
 			}
-			return flat.source_type_id('${flat.source_type_name(base_id)}.${node.value}')
+			return flat.source_type_composition_two(.qualified, base_id, flat.source_type_id(node.value))
 		}
 		.index {
 			if node.children_count < 2 || node.value == 'range' {
@@ -23653,21 +23631,21 @@ fn (tc &TypeChecker) type_expr_name(id flat.NodeId) u32 {
 			if base_id == 0 {
 				return u32(0)
 			}
-			mut args := []string{}
+			mut parts := [base_id]
 			for i in 1 .. node.children_count {
 				arg_id := tc.type_expr_name(tc.a.child(&node, i))
 				if arg_id == 0 {
 					return u32(0)
 				}
-				args << flat.source_type_name(arg_id)
+				parts << arg_id
 			}
-			return flat.source_type_id('${flat.source_type_name(base_id)}[${args.join(', ')}]')
+			return flat.source_type_composition(.generic, parts)
 		}
 		.array_init {
 			if node.source_value_id() == 0 {
 				return u32(0)
 			}
-			return flat.source_type_id('[]${node.value_text()}')
+			return flat.source_type_composition_one(.array, node.source_value_id())
 		}
 		.prefix {
 			if node.children_count == 0 {
@@ -23678,7 +23656,7 @@ fn (tc &TypeChecker) type_expr_name(id flat.NodeId) u32 {
 				return u32(0)
 			}
 			if node.op == .amp {
-				return flat.source_type_id('&${flat.source_type_name(child_id)}')
+				return flat.source_type_composition_one(.pointer, child_id)
 			}
 			return child_id
 		}
