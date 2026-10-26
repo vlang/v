@@ -11983,6 +11983,12 @@ Assignment Operators
 
 Note: in V, `assert -10 % 7 == -3` passes. In programming, the sign of the remainder
 depends upon the signs of divisor and dividend.
+For calendar-style modular arithmetic, use floored division instead:
+`math.divide_floored(-10, 7)` gives a quotient of `-2` with remainder `4`,
+and `math.modulo_floored(-10, 7) == 4`. For floats, use `math.floor_div`
+with `math.floor_mod`. New `//` and `%%` operators were considered, but `//`
+would conflict with line comments, so these library functions are the
+supported approach.
 
 ## Other online resources
 
