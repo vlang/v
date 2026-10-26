@@ -167,8 +167,8 @@ fn windows_filetime_to_unix_seconds(filetime Filetime) i64 {
 
 // get_filetype returns the FileType from the Stat struct.
 pub fn (st Stat) get_filetype() FileType {
-	match st.mode & u32(C.S_IFMT) {
-		u32(C.S_IFDIR) {
+	match st.mode & u32(C._S_IFMT) {
+		u32(C._S_IFDIR) {
 			return .directory
 		}
 		else {
@@ -183,19 +183,19 @@ pub fn (st Stat) get_mode() FileMode {
 	return FileMode{
 		typ:    st.get_filetype()
 		owner:  FilePermission{
-			read:    (st.mode & u32(C.S_IREAD)) != 0
-			write:   (st.mode & u32(C.S_IWRITE)) != 0
-			execute: (st.mode & u32(C.S_IEXEC)) != 0
+			read:    (st.mode & u32(C._S_IREAD)) != 0
+			write:   (st.mode & u32(C._S_IWRITE)) != 0
+			execute: (st.mode & u32(C._S_IEXEC)) != 0
 		}
 		group:  FilePermission{
-			read:    (st.mode & u32(C.S_IREAD)) != 0
-			write:   (st.mode & u32(C.S_IWRITE)) != 0
-			execute: (st.mode & u32(C.S_IEXEC)) != 0
+			read:    (st.mode & u32(C._S_IREAD)) != 0
+			write:   (st.mode & u32(C._S_IWRITE)) != 0
+			execute: (st.mode & u32(C._S_IEXEC)) != 0
 		}
 		others: FilePermission{
-			read:    (st.mode & u32(C.S_IREAD)) != 0
-			write:   (st.mode & u32(C.S_IWRITE)) != 0
-			execute: (st.mode & u32(C.S_IEXEC)) != 0
+			read:    (st.mode & u32(C._S_IREAD)) != 0
+			write:   (st.mode & u32(C._S_IWRITE)) != 0
+			execute: (st.mode & u32(C._S_IEXEC)) != 0
 		}
 	}
 }
