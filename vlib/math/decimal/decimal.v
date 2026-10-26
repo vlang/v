@@ -6,8 +6,8 @@ module decimal
 import math.big
 import strings
 
-// default_division_precision is used by the `/` operator when the quotient
-// needs a rounded decimal expansion.
+// default_division_precision is the minimum number of digits after the decimal
+// point that the `/` operator keeps for an inexact quotient.
 pub const default_division_precision = 16
 
 // zero is the canonical zero value for Decimal.
@@ -34,12 +34,16 @@ pub enum RoundingMode {
 	floor     // towards negative infinity
 }
 
-// new creates a decimal from `coefficient * 10^-scale`.
+// new creates a decimal from `coefficient * 10^-scale` and keeps `scale`, so
+// `new(500, 2)` is `5.00`.
 pub fn new(coefficient big.Integer, scale int) Decimal {
 	if scale < 0 {
 		panic('math.decimal: scale cannot be negative')
 	}
-	return normalize(coefficient, scale)
+	return Decimal{
+		coefficient_value: coefficient
+		scale_value:       scale
+	}
 }
 
 // from_int creates a decimal from an int.
@@ -67,7 +71,7 @@ pub fn from_u64(value u64) Decimal {
 }
 
 // from_minor_units creates a decimal from an amount in units of `10^-precision`,
-// so `from_minor_units(1999, 2)` is `19.99`.
+// so `from_minor_units(1999, 2)` is `19.99` and `from_minor_units(500, 2)` is `5.00`.
 pub fn from_minor_units(units i64, precision int) !Decimal {
 	if precision < 0 {
 		return error('math.decimal: precision cannot be negative')
@@ -77,6 +81,8 @@ pub fn from_minor_units(units i64, precision int) !Decimal {
 
 // from_string parses a decimal string with an optional base-10 exponent.
 // Exponents from -100 to 100 are supported; larger magnitudes return an error.
+// The digits after the decimal point set the scale, so `5.00` keeps scale 2;
+// an exponent shifts it, so `1.50e1` is `15.0`.
 pub fn from_string(input string) !Decimal {
 	value := input.trim_space()
 	if value.len == 0 {
@@ -173,6 +179,12 @@ pub fn (d Decimal) scale() int {
 	return d.scale_value
 }
 
+// normalize returns `d` without trailing zeros after the decimal point, so
+// `5.00` becomes `5` and `1.250` becomes `1.25`. The value does not change.
+pub fn (d Decimal) normalize() Decimal {
+	return strip_zeros(d.coefficient_value, d.scale_value, 0)
+}
+
 // is_zero returns true when `d == 0`.
 pub fn (d Decimal) is_zero() bool {
 	return d.coefficient_value.signum == 0
@@ -199,7 +211,7 @@ pub fn (d Decimal) sign() int {
 	return d.coefficient_value.signum
 }
 
-// min returns the smaller of `a` and `b`.
+// min returns the smaller of `a` and `b`, or `a` when they are equal.
 pub fn min(a Decimal, b Decimal) Decimal {
 	if b < a {
 		return b
@@ -207,7 +219,7 @@ pub fn min(a Decimal, b Decimal) Decimal {
 	return a
 }
 
-// max returns the larger of `a` and `b`.
+// max returns the larger of `a` and `b`, or `a` when they are equal.
 pub fn max(a Decimal, b Decimal) Decimal {
 	if a < b {
 		return b
@@ -217,7 +229,8 @@ pub fn max(a Decimal, b Decimal) Decimal {
 
 // rem returns the remainder of dividing `dividend` by `divisor` with the
 // quotient truncated towards zero. Like `%` on V integers, the result takes
-// the sign of `dividend`: `-7.5 rem 2` is `-1.5`.
+// the sign of `dividend`: `-7.5 rem 2` is `-1.5`. Its scale is the larger of
+// the two scales.
 pub fn (dividend Decimal) rem(divisor Decimal) !Decimal {
 	if divisor.coefficient_value.signum == 0 {
 		return error('math.decimal: cannot divide by zero')
@@ -232,24 +245,25 @@ pub fn (dividend Decimal) rem(divisor Decimal) !Decimal {
 
 // to_minor_units returns `d` as an amount in units of `10^-precision`, so
 // `19.99` with precision 2 is `1999`. It returns an error when `d` has more
-// than `precision` digits after the decimal point (round it first), or when
-// the amount does not fit in an i64.
+// than `precision` digits after the decimal point, not counting trailing
+// zeros (round it first), or when the amount does not fit in an i64.
 pub fn (d Decimal) to_minor_units(precision int) !i64 {
 	if precision < 0 {
 		return error('math.decimal: precision cannot be negative')
 	}
-	if d.scale_value > precision {
+	value := d.normalize()
+	if value.scale_value > precision {
 		return error('math.decimal: value has more than ${precision} decimal places')
 	}
-	if d.coefficient_value.signum == 0 {
+	if value.coefficient_value.signum == 0 {
 		return 0
 	}
 	// Any non-zero coefficient times 10^19 exceeds max_i64; reject before
 	// computing a possibly huge power of ten.
-	if precision - d.scale_value > 18 {
+	if precision - value.scale_value > 18 {
 		return error('math.decimal: value does not fit in i64')
 	}
-	return to_i64(d.rescaled_coefficient(precision))
+	return to_i64(value.rescaled_coefficient(precision))
 }
 
 fn to_i64(value big.Integer) !i64 {
@@ -274,11 +288,9 @@ fn to_i64(value big.Integer) !i64 {
 	return i64(magnitude)
 }
 
-// str returns the canonical decimal representation of `d`.
+// str returns `d` in plain decimal notation with exactly `d.scale()` digits
+// after the decimal point, so `5.00` stays `5.00`.
 pub fn (d Decimal) str() string {
-	if d.coefficient_value.signum == 0 {
-		return '0'
-	}
 	if d.scale_value == 0 {
 		return d.coefficient_value.str()
 	}
@@ -295,37 +307,55 @@ pub fn (d Decimal) str() string {
 	return '${prefix}${absolute[..split]}.${absolute[split..]}'
 }
 
-// + returns the exact sum of `left` and `right`.
+// + returns the exact sum of `left` and `right`, with the larger of their scales.
 pub fn (left Decimal) + (right Decimal) Decimal {
 	scale := max_scale(left.scale_value, right.scale_value)
 	return new(left.rescaled_coefficient(scale) + right.rescaled_coefficient(scale), scale)
 }
 
-// - returns the exact difference of `left` and `right`.
+// - returns the exact difference of `left` and `right`, with the larger of
+// their scales.
 pub fn (left Decimal) - (right Decimal) Decimal {
 	scale := max_scale(left.scale_value, right.scale_value)
 	return new(left.rescaled_coefficient(scale) - right.rescaled_coefficient(scale), scale)
 }
 
-// * returns the exact product of `left` and `right`.
+// * returns the exact product of `left` and `right`, with the sum of their scales.
 pub fn (left Decimal) * (right Decimal) Decimal {
 	return new(left.coefficient_value * right.coefficient_value, left.scale_value +
 		right.scale_value)
 }
 
-// / divides `dividend` by `divisor` using `default_division_precision`.
+// / divides `dividend` by `divisor`. Its preferred scale is
+// `dividend.scale() - divisor.scale()` (at least 0): an exact quotient keeps
+// only as many more places as it needs, so `10.00 / 4` is `2.50` and `1 / 4`
+// is `0.25`. An inexact quotient is rounded half up to the larger of
+// `default_division_precision` and the preferred scale. It panics on a zero
+// divisor; use `div` where the divisor can be zero.
 pub fn (dividend Decimal) / (divisor Decimal) Decimal {
-	return dividend.div_prec(divisor, default_division_precision) or { panic(err) }
+	if divisor.coefficient_value.signum == 0 {
+		panic('math.decimal: cannot divide by zero')
+	}
+	preferred_scale := max_scale(dividend.scale_value - divisor.scale_value, 0)
+	precision := max_scale(default_division_precision, preferred_scale)
+	quotient, remainder := scaled_div_mod(dividend, divisor, precision)
+	negative := dividend.coefficient_value.signum * divisor.coefficient_value.signum < 0
+	if remainder.signum == 0 {
+		coefficient := if negative { quotient.neg() } else { quotient }
+		return strip_zeros(coefficient, precision, preferred_scale)
+	}
+	return rounded(quotient, remainder, scaled_divisor(dividend, divisor), negative, precision,
+		.half_up)
 }
 
-// div_prec divides `dividend` by `divisor` and rounds half up to `precision`
-// digits after the decimal point.
+// div_prec divides `dividend` by `divisor` and rounds half up to exactly
+// `precision` digits after the decimal point.
 pub fn (dividend Decimal) div_prec(divisor Decimal, precision int) !Decimal {
 	return dividend.div(divisor, precision, .half_up)
 }
 
-// div divides `dividend` by `divisor` and rounds the quotient to `precision`
-// digits after the decimal point using `mode`.
+// div divides `dividend` by `divisor` and rounds the quotient to exactly
+// `precision` digits after the decimal point using `mode`.
 pub fn (dividend Decimal) div(divisor Decimal, precision int, mode RoundingMode) !Decimal {
 	if precision < 0 {
 		return error('math.decimal: precision cannot be negative')
@@ -339,14 +369,15 @@ pub fn (dividend Decimal) div(divisor Decimal, precision int, mode RoundingMode)
 		mode)
 }
 
-// round returns `d` rounded to `precision` digits after the decimal point using
-// `mode`. A value that already has at most `precision` digits is returned unchanged.
+// round returns `d` rounded to exactly `precision` digits after the decimal
+// point using `mode`. A value with fewer digits is padded with zeros, so
+// `1.5` rounded to 3 places is `1.500`.
 pub fn (d Decimal) round(precision int, mode RoundingMode) !Decimal {
 	if precision < 0 {
 		return error('math.decimal: precision cannot be negative')
 	}
 	if d.scale_value <= precision {
-		return d
+		return new(d.rescaled_coefficient(precision), precision)
 	}
 	divisor := pow10(d.scale_value - precision)
 	quotient, remainder := d.coefficient_value.abs().div_mod(divisor)
@@ -354,10 +385,11 @@ pub fn (d Decimal) round(precision int, mode RoundingMode) !Decimal {
 		mode)
 }
 
-// == returns true when `left` and `right` represent the same value.
+// == returns true when `left` and `right` represent the same value, whatever
+// their scales, so `5.0 == 5.00`.
 pub fn (left Decimal) == (right Decimal) bool {
-	return left.scale_value == right.scale_value
-		&& left.coefficient_value == right.coefficient_value
+	scale := max_scale(left.scale_value, right.scale_value)
+	return left.rescaled_coefficient(scale) == right.rescaled_coefficient(scale)
 }
 
 // < returns true when `left` is smaller than `right`.
@@ -366,23 +398,25 @@ pub fn (left Decimal) < (right Decimal) bool {
 	return left.rescaled_coefficient(scale) < right.rescaled_coefficient(scale)
 }
 
-fn normalize(coefficient big.Integer, scale int) Decimal {
+// strip_zeros removes trailing zeros from `coefficient * 10^-scale`, lowering
+// the scale no further than `min_scale`.
+fn strip_zeros(coefficient big.Integer, scale int, min_scale int) Decimal {
 	if coefficient.signum == 0 {
-		return zero
+		return new(coefficient, min_scale)
 	}
-	mut normalized_coefficient := coefficient
-	mut normalized_scale := scale
-	for normalized_scale > 0 {
-		quotient, remainder := normalized_coefficient.div_mod(big.c10)
+	mut stripped_coefficient := coefficient
+	mut stripped_scale := scale
+	for stripped_scale > min_scale {
+		quotient, remainder := stripped_coefficient.div_mod(big.c10)
 		if remainder.signum != 0 {
 			break
 		}
-		normalized_coefficient = quotient
-		normalized_scale--
+		stripped_coefficient = quotient
+		stripped_scale--
 	}
 	return Decimal{
-		coefficient_value: normalized_coefficient
-		scale_value:       normalized_scale
+		coefficient_value: stripped_coefficient
+		scale_value:       stripped_scale
 	}
 }
 

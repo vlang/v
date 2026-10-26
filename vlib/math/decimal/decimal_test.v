@@ -26,9 +26,9 @@ fn assert_div_error(dividend string, divisor string, precision int, expected str
 
 fn test_new_and_getters() {
 	value := decimal.new(big.integer_from_string('123400') or { panic(err) }, 4)
-	assert value.str() == '12.34'
-	assert value.coefficient().str() == '1234'
-	assert value.scale() == 2
+	assert value.str() == '12.3400'
+	assert value.coefficient().str() == '123400'
+	assert value.scale() == 4
 }
 
 fn test_from_ints() {
@@ -37,12 +37,41 @@ fn test_from_ints() {
 	assert decimal.from_u64(123456789).str() == '123456789'
 }
 
-fn test_from_string_normalizes_trailing_zeroes() {
-	assert must_decimal('00123.4500').str() == '123.45'
-	assert must_decimal('-0.5000').str() == '-0.5'
+fn test_from_string_keeps_scale() {
+	assert must_decimal('00123.4500').str() == '123.4500'
+	assert must_decimal('-0.5000').str() == '-0.5000'
 	assert must_decimal('.25').str() == '0.25'
 	assert must_decimal('5.').str() == '5'
+	assert must_decimal('5.00').scale() == 2
 	assert must_decimal('0.000').is_zero()
+	assert must_decimal('0.000').str() == '0.000'
+	assert must_decimal('1.50e1').str() == '15.0'
+}
+
+fn test_arithmetic_scales() {
+	assert (must_decimal('1.50') + must_decimal('2.5')).str() == '4.00'
+	assert (must_decimal('1.50') - must_decimal('1.5')).str() == '0.00'
+	assert (must_decimal('1.50') * must_decimal('2.0')).str() == '3.000'
+	assert must_decimal('1.5').round(3, .up)!.str() == '1.500'
+	assert must_decimal('7').div(must_decimal('2'), 2, .half_up)!.str() == '3.50'
+}
+
+fn test_normalize() {
+	assert must_decimal('5.00').normalize().str() == '5'
+	assert must_decimal('-1.2500').normalize().str() == '-1.25'
+	assert must_decimal('100').normalize().str() == '100'
+	zero := must_decimal('0.000').normalize()
+	assert zero.str() == '0'
+	assert zero.scale() == 0
+}
+
+fn test_equality_ignores_scale() {
+	assert must_decimal('5.0') == must_decimal('5.00')
+	assert must_decimal('0') == must_decimal('0.000')
+	assert must_decimal('-1.10') == must_decimal('-1.1')
+	assert must_decimal('1.10') != must_decimal('1.101')
+	assert !(must_decimal('5.0') < must_decimal('5.00'))
+	assert must_decimal('5.0') <= must_decimal('5.00')
 }
 
 fn test_from_string_rejects_invalid_input() {
@@ -63,11 +92,11 @@ fn test_from_string_exponent_notation() {
 		'1.2e-2':     '0.012'
 		'1.e2':       '100'
 		' 1e2 ':      '100'
-		'001.200e0':  '1.2'
+		'001.200e0':  '1.200'
 		'1e000001':   '10'
 		'1e-00001':   '0.1'
 		'-0e+100':    '0'
-		'+0.00e-100': '0'
+		'+0.00e-100': '0.' + '0'.repeat(102)
 	}
 	for input, expected in cases {
 		assert must_decimal(input).str() == expected, input
@@ -97,13 +126,13 @@ fn test_from_string_rejects_exponents_out_of_range() {
 fn test_add_sub_and_mul() {
 	assert (must_decimal('1.23') + must_decimal('4.5')).str() == '5.73'
 	assert (must_decimal('4.5') - must_decimal('1.23')).str() == '3.27'
-	assert (must_decimal('12.5') * must_decimal('0.04')).str() == '0.5'
-	assert (must_decimal('9999999999999999999999999999.99') + must_decimal('0.01')).str() == '10000000000000000000000000000'
+	assert (must_decimal('12.5') * must_decimal('0.04')).str() == '0.500'
+	assert (must_decimal('9999999999999999999999999999.99') + must_decimal('0.01')).str() == '10000000000000000000000000000.00'
 }
 
 fn test_neg_abs_and_compare() {
-	assert must_decimal('-1.20').neg().str() == '1.2'
-	assert must_decimal('-1.20').abs().str() == '1.2'
+	assert must_decimal('-1.20').neg().str() == '1.20'
+	assert must_decimal('-1.20').abs().str() == '1.20'
 	assert must_decimal('1.20') == must_decimal('1.2')
 	assert must_decimal('-2') < must_decimal('-1.99')
 	assert must_decimal('0.009') < must_decimal('0.01')
@@ -113,12 +142,23 @@ fn test_div_prec_rounds_half_up() {
 	assert must_decimal('1').div_prec(must_decimal('3'), 2)!.str() == '0.33'
 	assert must_decimal('1').div_prec(must_decimal('6'), 2)!.str() == '0.17'
 	assert must_decimal('-1').div_prec(must_decimal('6'), 2)!.str() == '-0.17'
-	assert must_decimal('10').div_prec(must_decimal('4'), 2)!.str() == '2.5'
+	assert must_decimal('10').div_prec(must_decimal('4'), 2)!.str() == '2.50'
 }
 
 fn test_div_operator_uses_default_precision() {
 	assert (must_decimal('1') / must_decimal('8')).str() == '0.125'
 	assert (must_decimal('1') / must_decimal('3')).str() == '0.3333333333333333'
+	assert (must_decimal('2') / must_decimal('-3')).str() == '-0.6666666666666667'
+}
+
+fn test_div_operator_preferred_scale() {
+	assert (must_decimal('10.00') / must_decimal('4')).str() == '2.50'
+	assert (must_decimal('1') / must_decimal('4')).str() == '0.25'
+	assert (must_decimal('6.0') / must_decimal('2')).str() == '3.0'
+	assert (must_decimal('-6') / must_decimal('0.5')).str() == '-12'
+	assert (must_decimal('0.000') / must_decimal('7')).str() == '0.000'
+	tiny := must_decimal('0.000000000000000000012')
+	assert (tiny / must_decimal('1')).str() == '0.000000000000000000012'
 }
 
 fn test_div_prec_errors() {
@@ -153,15 +193,15 @@ fn test_round_modes_to_integer() {
 
 fn test_round_to_places() {
 	vat := must_decimal('19.99') * must_decimal('0.21')
-	assert vat.round(2, .half_up)!.str() == '4.2'
+	assert vat.round(2, .half_up)!.str() == '4.20'
 	assert vat.round(3, .down)!.str() == '4.197'
 	assert must_decimal('0.125').round(2, .half_even)!.str() == '0.12'
 	assert must_decimal('0.135').round(2, .half_even)!.str() == '0.14'
 	assert must_decimal('0.125').round(2, .half_up)!.str() == '0.13'
 	assert must_decimal('-0.004').round(2, .half_up)!.is_zero()
 	assert must_decimal('-0.001').round(2, .floor)!.str() == '-0.01'
-	assert must_decimal('9.995').round(2, .half_up)!.str() == '10'
-	assert must_decimal('1.5').round(3, .up)!.str() == '1.5'
+	assert must_decimal('9.995').round(2, .half_up)!.str() == '10.00'
+	assert must_decimal('1.5').round(3, .up)!.str() == '1.500'
 }
 
 fn test_div_with_modes() {
