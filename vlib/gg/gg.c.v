@@ -309,6 +309,11 @@ fn gg_init_sokol_window(user_data voidptr) {
 	mut ctx := unsafe { &Context(user_data) }
 	gg_claim_gfx_render_owner(.legacy_context, user_data) or { panic(err.msg()) }
 	desc := sapp.create_desc()
+	$if macos && !darwin_sokol_glcore33 ? {
+		if desc.environment.metal.device == unsafe { nil } {
+			panic('gg: macOS has no Metal device (MTLCreateSystemDefaultDevice returned nil), so sokol cannot draw. Virtual machines without GPU access have none.')
+		}
+	}
 	/*
 	desc := gfx.Desc{
 		mtl_device: sapp.metal_get_device()

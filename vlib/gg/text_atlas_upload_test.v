@@ -7,12 +7,22 @@ import v.cmdexec
 import time
 
 fn test_new_font_glyphs_upload_once_before_their_first_commit() {
+	assert_font_glyphs_upload_before_their_first_commit(['-d', 'darwin_sokol_glcore33'])
+}
+
+fn test_new_font_glyphs_upload_with_the_default_macos_backend() {
+	assert_font_glyphs_upload_before_their_first_commit([]string{})
+}
+
+fn assert_font_glyphs_upload_before_their_first_commit(backend_flags []string) {
 	root := os.join_path(os.vtmp_dir(), 'gg_atlas_first_commit_${os.getpid()}')
 	os.mkdir_all(root) or { panic(err) }
 	defer { os.rmdir_all(root) or {} }
 	executable := os.join_path(root, 'atlas_first_commit')
 	fixture := os.join_path(@DIR, 'testdata', 'text_atlas_first_commit.vv')
-	compiled := cmdexec.run(@VEXE, ['-d', 'darwin_sokol_glcore33', '-o', executable, fixture])
+	mut args := backend_flags.clone()
+	args << ['-o', executable, fixture]
+	compiled := cmdexec.run(@VEXE, args)
 	assert compiled.exit_code == 0, compiled.output
 	run := multiwindow_probe_watchdog.run(
 		executable: executable
@@ -21,6 +31,10 @@ fn test_new_font_glyphs_upload_once_before_their_first_commit() {
 	) or { panic(err) }
 	assert !run.timed_out && run.reaped && run.confinement_empty, run.combined_output()
 	assert !run.forced_cleanup, run.combined_output()
+	if run.exit_code != 0 && run.combined_output().contains('gg: macOS has no Metal device') {
+		eprintln('SKIP: font atlas GPU regression unavailable: no Metal device')
+		return
+	}
 	if run.exit_code != 0 && run.combined_output().contains('glpixelformat') {
 		eprintln('SKIP: font atlas GPU regression unavailable: GL context creation failed')
 		return
