@@ -10447,20 +10447,22 @@ fn (g &FlatGen) call_target_name(id flat.NodeId) string {
 
 // Match replace('__', '.').all_after_last('.') without allocating transformed names.
 // Consume underscore pairs from the left so an odd trailing underscore is preserved.
-@[inline]
+// The result is a view into `name`; callers only hash it or read it.
+@[direct_array_access; inline]
 fn const_call_name_suffix(name string) string {
 	mut start := 0
 	mut i := 0
 	for i < name.len {
-		if name[i] == `.` {
+		c := name[i]
+		if c == `.` {
 			start = i + 1
-		} else if name[i] == `_` && i + 1 < name.len && name[i + 1] == `_` {
+		} else if c == `_` && i + 1 < name.len && name[i + 1] == `_` {
 			i++
 			start = i + 1
 		}
 		i++
 	}
-	return name[start..]
+	return name.substr_unsafe(start, name.len)
 }
 
 fn (mut idx ConstShortIndex) mark_call_name(name string) {
