@@ -21,5 +21,5 @@ fn test_copyable_optional_can_be_read_and_assigned_repeatedly() {
 	}
 	out := os.exec([v3_bin, '-ownership', '-d', 'ownership', '-no-parallel', 'run', source])
 	assert out.exit_code == 0, out.output
-	assert out.output.contains('\nok\n'), out.output
+	assert out.output.trim_space() == 'ok', out.output
 }
