@@ -89,6 +89,49 @@ fn byte_fallback() []u8 {
  return [u8(9)]
 }
 
+struct Bytes {
+mut:
+ value []u8
+}
+
+fn verify_cleanup_scopes() {
+ before := drops.len
+ {
+  mut values := {"found": [u8(1)]}
+  values["found"] = [u8(2)]
+  assert values["found"][0] == 2
+ }
+ {
+  entry := fresh("after value replacement".repeat(1))
+  assert entry.text == "after value replacement"
+ }
+ assert drops.len == before + 1
+ {
+  mut values := map[[1]string][]u8{}
+  name := ["found".to_owned()]!
+  values[name] = [u8(1)]
+  values[["found".to_owned()]!] = [u8(2)]
+  assert values[["found"]!][0] == 2
+ }
+ {
+  entry := fresh("after key cleanup".repeat(1))
+  assert entry.text == "after key cleanup"
+ }
+ assert drops.len == before + 2
+ {
+  mut values := map[[1]string]Bytes{}
+  values[["found".to_owned()]!].value = [u8(1)]
+  values[["found".to_owned()]!].value = [u8(2)]
+  assert values[["found"]!].value[0] == 2
+ }
+ {
+  entry := fresh("after field cleanup".repeat(1))
+  assert entry.text == "after field cleanup"
+ }
+ assert drops.len == before + 3
+ assert drops.len == next_id
+}
+
 fn main() {
  {
   mut builder := Builder{entries: map[string][]Entry{}}
@@ -149,6 +192,7 @@ fn main() {
   assert absent == [u8(9)]
   assert fallbacks == 3
  }
+ verify_cleanup_scopes()
  println("ok")
 }
 ')!

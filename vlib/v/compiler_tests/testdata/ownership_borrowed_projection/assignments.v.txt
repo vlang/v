@@ -234,7 +234,7 @@ fn test_borrowed_sum_projection_is_cloned() {
 	returned_payload.values[0] = "return copy"
 	assert (holder.entry as Payload).values[0] == "original"
 
-	mut optional := get_optional_entry(holder) or { panic(err) }
+	mut optional := get_optional_entry(holder) or { panic("expected entry") }
 	mut optional_payload := &(optional as Payload)
 	optional_payload.values[0] = "optional copy"
 	assert (holder.entry as Payload).values[0] == "original"

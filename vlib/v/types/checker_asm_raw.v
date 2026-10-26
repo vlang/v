@@ -1,5 +1,8 @@
 module types
 
+import v.flat
+import v.token
+
 // Raw assembly templates (`asm amd64 raw { "..." "..." ; ... }`) are a sequence of
 // double-quoted string literals that the C backend passes verbatim to the C compiler.
 // The helpers in checker_asm.v skip quoted text, so they see nothing of a raw template.
@@ -53,15 +56,20 @@ mut:
 	end      int
 }
 
-// InlineAsmRawInstruction is one tokenized statement. `label` is the leading `name:`
-// definition without its colon and with `.L` prefixes and `%=` kept verbatim; it is empty
-// when the statement defines no label. A statement that is only a label has an empty
+// InlineAsmRawLabel is one `name:` label definition, without its colon and with `.L`
+// prefixes and `%=` kept verbatim, at its offsets into the decoded text.
+struct InlineAsmRawLabel {
+	name  string
+	start int
+	end   int
+}
+
+// InlineAsmRawInstruction is one tokenized statement. `labels` holds its leading label
+// definitions (`a: b: nop` defines two). A statement that is only labels has an empty
 // mnemonic. `is_directive` reports a mnemonic that starts with `.`.
 struct InlineAsmRawInstruction {
 mut:
-	label          string
-	label_start    int
-	label_end      int
+	labels         []InlineAsmRawLabel
 	mnemonic       string
 	mnemonic_start int
 	mnemonic_end   int
@@ -77,9 +85,10 @@ const inline_asm_raw_prefixes = ['lock', 'rep', 'repe', 'repz', 'repne', 'repnz'
 	'notrack', 'bnd', 'xacquire', 'xrelease']!
 
 // inline_asm_raw_template decodes the double-quoted string literals of a raw template
-// section into the text the assembler receives. Unknown escapes keep their character;
-// `%%` and `%=` are assembler syntax, not escapes, and stay as written.
-fn inline_asm_raw_template(block string, section InlineAsmRange) InlineAsmRawTemplate {
+// section into the text the assembler receives, with assembler comments blanked out for
+// `arch` (see inline_asm_raw_mask_comments). Unknown escapes keep their character; `%%`
+// and `%=` are assembler syntax, not escapes, and stay as written.
+fn inline_asm_raw_template(block string, section InlineAsmRange, arch string) InlineAsmRawTemplate {
 	// C removes line splices before interpreting string literals and their escapes.
 	mut source := []u8{cap: section.end - section.start}
 	mut offsets := []int{cap: section.end - section.start}
@@ -128,10 +137,55 @@ fn inline_asm_raw_template(block string, section InlineAsmRange) InlineAsmRawTem
 		i++
 	}
 	return InlineAsmRawTemplate{
-		text:   text.bytestr()
+		text:   inline_asm_raw_mask_comments(text.bytestr(), arch)
 		starts: starts
 		ends:   ends
 	}
+}
+
+// The x86 instruction set names a raw block can carry; `#` starts a comment on these,
+// while on arm64 it prefixes an immediate and `//` starts the comment.
+const inline_asm_raw_x86_arches = ['amd64', 'x64', 'x86_64', 'i386', 'i486', 'i586', 'i686', 'x86',
+	'x86_32', 'ia-32', 'ia32']!
+
+// inline_asm_raw_mask_comments replaces every GNU assembler comment in decoded template
+// text with spaces, keeping newlines and the text length, so offsets into the result still
+// map back to the source: `/* ... */` on every instruction set, `# ...` to the end of the
+// line on x86, and `// ...` to the end of the line elsewhere. Comment characters inside a
+// string or character constant are kept.
+fn inline_asm_raw_mask_comments(text string, arch string) string {
+	if !text.contains('/') && !text.contains('#') {
+		return text
+	}
+	is_x86 := arch in inline_asm_raw_x86_arches
+	mut out := text.bytes()
+	mut i := 0
+	for i < text.len {
+		c := text[i]
+		if c == `"` || c == `'` {
+			i = inline_asm_raw_skip_literal(text, i, text.len)
+			continue
+		}
+		mut comment_end := -1
+		if c == `/` && i + 1 < text.len && text[i + 1] == `*` {
+			close := text.index_after('*/', i + 2) or { text.len }
+			comment_end = int_min(close + 2, text.len)
+		} else if (is_x86 && c == `#`)
+			|| (!is_x86 && c == `/` && i + 1 < text.len && text[i + 1] == `/`) {
+			comment_end = text.index_after('\n', i) or { text.len }
+		}
+		if comment_end < 0 {
+			i++
+			continue
+		}
+		for masked in i .. comment_end {
+			if out[masked] != `\n` {
+				out[masked] = ` `
+			}
+		}
+		i = comment_end
+	}
+	return out.bytestr()
 }
 
 // inline_asm_raw_decode_escape decodes the C escape sequence at block[i] (a backslash)
@@ -289,15 +343,17 @@ fn inline_asm_raw_parse_instructions(t &InlineAsmRawTemplate, registers []string
 			end:   end
 		}
 		mut i := start
-		label_end := inline_asm_raw_label_end(t.text, start, end)
-		if label_end > start {
-			instruction.label = t.text[start..label_end]
-			instruction.label_start = start
-			instruction.label_end = label_end
-			i = label_end + 1
-			for i < end && t.text[i].is_space() {
-				i++
+		for {
+			name_end, colon := inline_asm_raw_label_end(t.text, i, end)
+			if colon <= i {
+				break
 			}
+			instruction.labels << InlineAsmRawLabel{
+				name:  t.text[i..name_end]
+				start: i
+				end:   name_end
+			}
+			i = inline_asm_raw_skip_blanks(t.text, colon + 1, end)
 		}
 		if i >= end {
 			instructions << instruction
@@ -345,11 +401,12 @@ fn inline_asm_raw_is_prefix(word string) bool {
 	return lower == 'rex' || lower.starts_with('rex.') || lower.starts_with('rex64')
 }
 
-// inline_asm_raw_label_end returns the end of a leading `name:` label definition, or
-// `start` when the statement does not begin with one. A label token may contain `.`,
-// `$` and the `%=` uniqueness marker; a `::` or a `:` followed by an operand character
-// (`%%fs:0x28`) is not a label.
-fn inline_asm_raw_label_end(text string, start int, end int) int {
+// inline_asm_raw_label_end recognizes a `name:` label definition at `start` and returns
+// the end of the name and the offset of the colon, or `start` twice when there is none.
+// A label token may contain `.`, `$` and the `%=` uniqueness marker, and the assembler
+// allows blanks before the colon (`name :`); a `::` or a `:` followed by an operand
+// character (`%%fs:0x28`) is not a label.
+fn inline_asm_raw_label_end(text string, start int, end int) (int, int) {
 	mut i := start
 	for i < end {
 		c := text[i]
@@ -363,13 +420,17 @@ fn inline_asm_raw_label_end(text string, start int, end int) int {
 		}
 		break
 	}
-	if i == start || i >= end || text[i] != `:` {
-		return start
+	name_end := i
+	for i < end && text[i] in [` `, `\t`] {
+		i++
+	}
+	if name_end == start || i >= end || text[i] != `:` {
+		return start, start
 	}
 	if text[start] == `%` || (i + 1 < end && text[i + 1] == `:`) {
-		return start
+		return start, start
 	}
-	return i
+	return name_end, i
 }
 
 fn inline_asm_raw_skip_blanks(text string, start int, end int) int {
@@ -501,4 +562,41 @@ fn inline_asm_raw_classify_operand(text string, start int, end int, registers []
 		operand.name = bare
 	}
 	return operand
+}
+
+// check_inline_asm_raw_labels warns about a label that a raw template inside a function
+// body defines without the GNU `%=` uniqueness marker. The C compiler emits one copy of
+// the template per instantiation of the function, so inlining or a generic specialization
+// defines the same assembler symbol twice. Numeric local labels (`1:`) are always local,
+// and a label declared with `.globl`, `.global` or `.weak` is a deliberate global symbol.
+fn (mut tc TypeChecker) check_inline_asm_raw_labels(id flat.NodeId, node flat.Node, block string, base int, section InlineAsmRange, arch string) {
+	template := inline_asm_raw_template(block, section, arch)
+	instructions := inline_asm_raw_parse_instructions(&template, [])
+	mut exported := map[string]bool{}
+	for instruction in instructions {
+		directive := instruction.mnemonic.to_lower_ascii()
+		if instruction.is_directive && directive in ['.globl', '.global', '.weak'] {
+			for operand in instruction.operands {
+				// Quotes delimit a symbol name; assembler backslashes remain literal bytes.
+				name := if operand.text.len >= 2 && operand.text[0] == `"`
+					&& operand.text[operand.text.len - 1] == `"` {
+					operand.text[1..operand.text.len - 1]
+				} else {
+					operand.text
+				}
+				exported[name] = true
+			}
+		}
+	}
+	for instruction in instructions {
+		for label in instruction.labels {
+			name := label.name
+			if name.contains('%=') || name.bytes().all(it.is_digit()) || name in exported {
+				continue
+			}
+			start, end := template.span(label.start, label.end)
+			tc.record_warning_at(.compile_error, 'label `${name}` in a raw assembly template has no `%=` suffix, so a second instantiation of this function (inlining, or a generic specialization) defines the same assembler symbol again; use `${name}%=`, a numeric local label such as `1:`, or export the label with `.globl`',
+				id, token.new_span(node.pos.id, base + start, base + end))
+		}
+	}
 }

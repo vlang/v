@@ -2714,7 +2714,7 @@ fn (mut t Transformer) append_owned_map_set_key_cleanup(key_name string, cleanup
 		result << drop_stmt
 		return
 	}
-	result << t.make_if(t.make_ident(existing_name), t.make_block([drop_stmt]), t.make_empty())
+	result << t.make_if_with_skip_ownership_drops(t.make_ident(existing_name), t.make_block_skip_scope_drops([drop_stmt]), t.make_empty())
 }
 
 // map_key_expr_creates_owned_value includes ownership-bearing expressions recognized by
@@ -2806,7 +2806,7 @@ fn (mut t Transformer) append_map_value_drop_before_set(map_expr flat.NodeId, ma
 	t.set_node_typ(int(old_value), value_type_name_id)
 	drop_call := t.make_call_typed('drop_owned', [old_value], flat.source_type_void)
 	found := t.make_infix(.ne, ptr_ident, t.a.add(.nil_literal))
-	result << t.make_if(found, t.make_block([t.make_expr_stmt(drop_call)]), t.make_empty())
+	result << t.make_if_with_skip_ownership_drops(found, t.make_block_skip_scope_drops([t.make_expr_stmt(drop_call)]), t.make_empty())
 }
 
 // try_lower_nested_map_index_assign lowers `m[k1][k2] = value` by updating the
@@ -3273,7 +3273,7 @@ fn (mut t Transformer) make_map_key_drop_defer(key_name string, guard_name strin
 	drop_stmt := t.make_expr_stmt(t.make_call_typed('drop_owned', [t.make_ident(key_name)],
 		flat.source_type_void))
 	guarded_stmt := if guard_name.len > 0 {
-		t.make_if(t.make_ident(guard_name), t.make_block([drop_stmt]), t.make_empty())
+		t.make_if_with_skip_ownership_drops(t.make_ident(guard_name), t.make_block_skip_scope_drops([drop_stmt]), t.make_empty())
 	} else {
 		drop_stmt
 	}
@@ -3304,7 +3304,7 @@ fn (mut t Transformer) append_owned_lvalue_drop_before_assign_if(lvalue flat.Nod
 	drop_call := t.make_call_typed('drop_owned', [lvalue], flat.source_type_void)
 	drop_stmt := t.make_expr_stmt(drop_call)
 	if int(guard) >= 0 {
-		result << t.make_if(guard, t.make_block([drop_stmt]), t.make_empty())
+		result << t.make_if_with_skip_ownership_drops(guard, t.make_block_skip_scope_drops([drop_stmt]), t.make_empty())
 		return
 	}
 	result << drop_stmt
