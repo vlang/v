@@ -5919,7 +5919,7 @@ fn (mut t Transformer) register_specialized_fn_signature_value(decl GenericFnDec
 			// that is released before the driver promotes the checker metadata,
 			// so own them here.
 			owned_name := name.clone()
-			t.tc.fn_ret_types[owned_name] = ret
+			t.tc.register_generated_fn_return_type(owned_name, ret)
 			t.tc.register_generated_fn_param_types(owned_name, params.clone())
 			t.tc.fn_variadic[owned_name] = variadic
 			t.tc.fn_type_modules[owned_name] = decl.module.clone()
@@ -7737,7 +7737,7 @@ fn (mut t Transformer) unregister_generic_fn_signature(decl GenericFnDecl) {
 		names << c_name(qname)
 	}
 	for name in names {
-		t.tc.fn_ret_types.delete(name)
+		t.tc.unregister_generated_fn_return_type(name)
 		t.tc.fn_param_types.delete(name)
 		t.tc.fn_variadic.delete(name)
 	}
@@ -17657,11 +17657,62 @@ fn qualified_name_equals(name string, owner string, member string) bool {
 		&& name.starts_with(owner) && name.ends_with(member)
 }
 
+// FileImportNameFilter conservatively records aliases in the frozen import table.
+// Workers share it without retaining any source or scratch-owned string storage.
+struct FileImportNameFilter {
+mut:
+	count int
+	bits  [64]u64
+}
+
+@[direct_array_access; inline]
+fn file_import_alias_bit(name string) u32 {
+	if name.len == 0 {
+		return 0
+	}
+	mut h := u32(name.len) * 0x9e3779b1 ^ u32(name[0]) * 0x85ebca6b
+	h ^= u32(name[name.len - 1]) * 0xc2b2ae35 ^ u32(name[name.len / 2]) * 0x27d4eb2f
+	return (h ^ (h >> 15)) & 4095
+}
+
+fn (mut t Transformer) prepare_file_import_name_filter() {
+	if isnil(t.tc) {
+		return
+	}
+	mut filter := &FileImportNameFilter{
+		count: t.tc.file_imports.len
+	}
+	for key, _ in t.tc.file_imports {
+		// Every possible separator is included, preserving keys with newlines
+		// in the file or alias as well as the ordinary source identifier case.
+		for i, ch in key {
+			if ch == `\n` {
+				bit := file_import_alias_bit(key[i + 1..])
+				filter.bits[bit >> 6] |= u64(1) << (bit & 63)
+			}
+		}
+	}
+	t.file_import_name_filter = filter
+}
+
+@[direct_array_access; inline]
+fn (filter &FileImportNameFilter) excludes(alias string, count int) bool {
+	if filter.count != count {
+		return false
+	}
+	bit := file_import_alias_bit(alias)
+	return filter.bits[bit >> 6] & (u64(1) << (bit & 63)) == 0
+}
+
 // file_import_module returns the module that `alias` names through the imports
 // of `file`. The checker's import table is complete before transform starts, so
 // answers, including misses, are memoized by the parts of the table's key.
 fn (t &Transformer) file_import_module(file string, alias string) ?string {
 	if isnil(t.tc) {
+		return none
+	}
+	if !isnil(t.file_import_name_filter)
+		&& t.file_import_name_filter.excludes(alias, t.tc.file_imports.len) {
 		return none
 	}
 	if isnil(t.file_import_cache) {

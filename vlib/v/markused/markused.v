@@ -6354,8 +6354,9 @@ fn (c &CallCollector) checked_local_bindings(root &flat.Node, cur_module string,
 	}
 	mut result := CheckedLocalBindings{
 		type_names:  c.new_local_types()
-		ident_names: names.clone()
+		ident_names: names
 	}
+	mut ident_names_owned := false
 	mut bindings := map[string]bool{}
 	mut param_index := 0
 	for i in 0 .. root.children_count {
@@ -6420,7 +6421,13 @@ fn (c &CallCollector) checked_local_bindings(root &flat.Node, cur_module string,
 				}
 				bindings[binding.value] = true
 				loop_names[binding.value] = true
-				result.ident_names[binding.value] = true
+				if !result.ident_names[binding.value] {
+					if !ident_names_owned {
+						result.ident_names = result.ident_names.clone()
+						ident_names_owned = true
+					}
+					result.ident_names[binding.value] = true
+				}
 			}
 		}
 		if node.kind == .call {
@@ -6708,6 +6715,29 @@ struct LocalTypeChange {
 	present bool
 }
 
+struct LocalNameChange {
+	name    string
+	present bool
+}
+
+struct LocalNameState {
+mut:
+	names   map[string]bool
+	owned   bool
+	changes []LocalNameChange
+}
+
+fn (mut state LocalNameState) restore(mark int) {
+	for state.changes.len > mark {
+		change := state.changes.pop()
+		if change.present {
+			state.names[change.name] = false
+		} else {
+			state.names.delete(change.name)
+		}
+	}
+}
+
 // markused_resolve_imported_source_type keeps a source spelling numeric across import resolution.
 fn markused_resolve_imported_source_type(typ_id u32, imports map[string]string) u32 {
 	name := flat.source_type_name(typ_id)
@@ -6738,12 +6768,13 @@ fn markused_restore_local_types(mark int, mut type_names flat.TypeTextBindings, 
 
 fn (c &CallCollector) infer_local_type_bindings(node &flat.Node, cur_module string, imports map[string]string, names map[string]bool, mut type_names flat.TypeTextBindings, mut ident_types flat.NodeTypeTextBindings, root bool) {
 	mut changes := []LocalTypeChange{}
-	c.infer_local_type_bindings_scoped(node, cur_module, imports, names, mut type_names,
+	mut name_state := LocalNameState{ names: names }
+	c.infer_local_type_bindings_scoped(node, cur_module, imports, mut name_state, mut type_names,
 		mut ident_types, root, mut changes)
 }
 
 @[direct_array_access]
-fn (c &CallCollector) infer_local_type_bindings_scoped(node &flat.Node, cur_module string, imports map[string]string, names map[string]bool, mut type_names flat.TypeTextBindings, mut ident_types flat.NodeTypeTextBindings, root bool, mut changes []LocalTypeChange) {
+fn (c &CallCollector) infer_local_type_bindings_scoped(node &flat.Node, cur_module string, imports map[string]string, mut name_state LocalNameState, mut type_names flat.TypeTextBindings, mut ident_types flat.NodeTypeTextBindings, root bool, mut changes []LocalTypeChange) {
 	for i in 0 .. node.children_count {
 		id := c.a.child(node, i)
 		if int(id) < 0 {
@@ -6754,8 +6785,26 @@ fn (c &CallCollector) infer_local_type_bindings_scoped(node &flat.Node, cur_modu
 			continue
 		}
 		if child.kind == .for_in_stmt {
-			mut nested_names := names.clone()
 			mark := changes.len
+			name_mark := name_state.changes.len
+			// Share the outer name set until a loop actually adds a name. Once
+			// copied, one private map serves every nested loop in this inference.
+			if child.children_count >= 3 {
+				for binding_index in 0 .. 2 {
+					binding := c.a.child_node(child, binding_index)
+					if binding.kind != .ident || binding.value in ['', '_'] || name_state.names[binding.value] {
+						continue
+					}
+					if !name_state.owned {
+						name_state.names = name_state.names.clone()
+						name_state.owned = true
+					}
+					name_state.changes << LocalNameChange{
+						name:    binding.value
+						present: binding.value in name_state.names
+					}
+				}
+			}
 			// Registration changes only the key and value bindings. Journal them,
 			// then restore every loop-local change when this scope finishes.
 			for binding_index in 0 .. 2 {
@@ -6767,31 +6816,32 @@ fn (c &CallCollector) infer_local_type_bindings_scoped(node &flat.Node, cur_modu
 					changes << LocalTypeChange{ name: binding.value }
 				}
 			}
-			c.register_top_level_for_in_vars(child, cur_module, imports, mut nested_names,
+			c.register_top_level_for_in_vars(child, cur_module, imports, mut name_state.names,
 				mut type_names)
-			c.infer_local_type_bindings_scoped(child, cur_module, imports, nested_names,
+			c.infer_local_type_bindings_scoped(child, cur_module, imports, mut name_state,
 				mut type_names, mut ident_types, false, mut changes)
 			markused_restore_local_types(mark, mut type_names, mut changes)
+			name_state.restore(name_mark)
 			continue
 		}
 		if child.kind == .lambda_expr {
 			mut nested_types := type_names.clone()
 			c.seed_lambda_param_types(id, child, node, cur_module, imports, type_names,
 				mut nested_types)
-			c.infer_local_type_bindings(child, cur_module, imports, names, mut nested_types,
+			c.infer_local_type_bindings(child, cur_module, imports, name_state.names, mut nested_types,
 				mut ident_types, false)
 			continue
 		}
 		if child.kind in [.block, .if_expr, .match_stmt, .match_branch, .select_stmt, .select_branch,
 			.for_stmt, .fn_literal, .comptime_if, .comptime_for, .defer_stmt, .lock_expr] {
 			if root && child.kind == .block {
-				c.infer_local_type_bindings_scoped(child, cur_module, imports, names, mut type_names,
+				c.infer_local_type_bindings_scoped(child, cur_module, imports, mut name_state, mut type_names,
 					mut ident_types, false, mut changes)
 			} else {
 				// Keep only changed bindings, rather than cloning all outer locals
 				// for every branch and nested block.
 				mark := changes.len
-				c.infer_local_type_bindings_scoped(child, cur_module, imports, names, mut type_names,
+				c.infer_local_type_bindings_scoped(child, cur_module, imports, mut name_state, mut type_names,
 					mut ident_types, false, mut changes)
 				markused_restore_local_types(mark, mut type_names, mut changes)
 			}
@@ -6813,7 +6863,7 @@ fn (c &CallCollector) infer_local_type_bindings_scoped(node &flat.Node, cur_modu
 					rhs := c.a.node(rhs_id)
 					if rhs.children_count > 0 {
 						mark := changes.len
-						c.infer_local_type_bindings_scoped(rhs, cur_module, imports, names,
+						c.infer_local_type_bindings_scoped(rhs, cur_module, imports, mut name_state,
 							mut type_names, mut ident_types, false, mut changes)
 						markused_restore_local_types(mark, mut type_names, mut changes)
 					}
@@ -6830,7 +6880,7 @@ fn (c &CallCollector) infer_local_type_bindings_scoped(node &flat.Node, cur_modu
 			mut parts := []u32{}
 			if rhs_count == 1 && lhs_count > 1 {
 				rhs_id := c.a.child(child, 1)
-				tuple := flat.source_type_name(c.top_level_decl_rhs_type_name(rhs_id, cur_module, imports, names,
+				tuple := flat.source_type_name(c.top_level_decl_rhs_type_name(rhs_id, cur_module, imports, name_state.names,
 					pre_types))
 				if tuple.starts_with('(') && tuple.ends_with(')') {
 					parts = flat.TypeTextList.from_names(markused_split_generic_args(tuple[1..tuple.len - 1])).ids
@@ -6856,7 +6906,7 @@ fn (c &CallCollector) infer_local_type_bindings_scoped(node &flat.Node, cur_modu
 				type_name := if lhs_count == 1 && child.typ != 0 {
 					c.local_decl_type_name(child.typ, rhs_id, cur_module, imports, pre_types)
 				} else {
-					c.top_level_decl_rhs_type_name(rhs_id, cur_module, imports, names, pre_types)
+					c.top_level_decl_rhs_type_name(rhs_id, cur_module, imports, name_state.names, pre_types)
 				}
 				if type_name != 0 {
 					markused_set_local_type(lhs.value, type_name, mut type_names, mut changes)
@@ -6870,7 +6920,7 @@ fn (c &CallCollector) infer_local_type_bindings_scoped(node &flat.Node, cur_modu
 			}
 		}
 		if child.children_count > 0 {
-			c.infer_local_type_bindings_scoped(child, cur_module, imports, names, mut type_names,
+			c.infer_local_type_bindings_scoped(child, cur_module, imports, mut name_state, mut type_names,
 				mut ident_types, false, mut changes)
 		}
 	}
@@ -8561,12 +8611,16 @@ fn (c &CallCollector) register_top_level_for_in_vars(node &flat.Node, cur_module
 							&& key_binding.value.len > 0 && key_binding.value != '_' {
 							key_type_source_id := c.top_level_for_in_key_type_name(container_id, cur_module,
 								imports, local_values, local_types)
-							local_values[key_binding.value] = true
+							if !local_values[key_binding.value] {
+								local_values[key_binding.value] = true
+							}
 							if key_type_source_id != 0 {
 								local_types.set_id(key_binding.value, key_type_source_id)
 							}
 						}
-						local_values[cached_value_name] = true
+						if !local_values[cached_value_name] {
+							local_values[cached_value_name] = true
+						}
 						local_types.set_id(cached_value_name, name_source_id)
 						return
 					}
@@ -8583,7 +8637,7 @@ fn (c &CallCollector) register_top_level_for_in_vars(node &flat.Node, cur_module
 	if has_second {
 		value_var = c.a.node(val_id).value
 		if key_node.kind == .ident && key_node.value.len > 0 && key_node.value != '_' {
-			local_values[key_node.value] = true
+			if !local_values[key_node.value] { local_values[key_node.value] = true }
 			key_type_source_id_2 := c.top_level_for_in_key_type_name(container_id, cur_module, imports,
 				container_values, container_types)
 			if key_type_source_id_2 != 0 {
@@ -8596,7 +8650,7 @@ fn (c &CallCollector) register_top_level_for_in_vars(node &flat.Node, cur_module
 	if value_var.len == 0 || value_var == '_' {
 		return
 	}
-	local_values[value_var] = true
+	if !local_values[value_var] { local_values[value_var] = true }
 	value_id := if has_second { val_id } else { key_id }
 	if cached := c.tc.expr_type(value_id) {
 		if !markused_type_has_unknown(cached) {

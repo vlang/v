@@ -450,43 +450,43 @@ pub fn (mut s Scanner) scan() token.Token {
 		}
 		s.offset = off
 		s.lit = s.source_lit(s.pos, s.offset)
-		if s.lit == 'c' && s.offset < s.src.len
-			&& (s.src[s.offset] == `'` || s.src[s.offset] == `"`) {
-			quote := s.src[s.offset]
-			s.pos = s.offset
-			tok := s.scan_char_literal(quote)
-			s.lit = 'c:${s.lit}'
-			return tok
-		}
-		if s.lit == 'r' && s.offset < s.src.len
-			&& (s.src[s.offset] == `'` || s.src[s.offset] == `"`) {
-			quote := s.src[s.offset]
-			s.offset++
-			if !s.in_str_inter {
-				s.str_quote = quote
+		// Only a following quote can make a name a literal prefix.
+		if s.offset < s.src.len && (s.src[s.offset] == `'` || s.src[s.offset] == `"`) {
+			if s.lit == 'c' {
+				quote := s.src[s.offset]
+				s.pos = s.offset
+				tok := s.scan_char_literal(quote)
+				s.lit = 'c:${s.lit}'
+				return tok
 			}
-			s.string_literal(true, quote)
-			s.lit = s.source_lit(s.pos, s.offset)
-			s.insert_semi = true
-			return .string
-		}
-		if s.lit == 'js' && s.offset < s.src.len
-			&& (s.src[s.offset] == `'` || s.src[s.offset] == `"`) {
-			quote := s.src[s.offset]
-			s.offset++
-			nested_interpolation := s.in_str_inter && !s.skip_interpolation
-			if nested_interpolation {
-				s.begin_nested_string_interpolation(quote)
-			} else if !s.in_str_inter {
-				s.str_quote = quote
+			if s.lit == 'r' {
+				quote := s.src[s.offset]
+				s.offset++
+				if !s.in_str_inter {
+					s.str_quote = quote
+				}
+				s.string_literal(true, quote)
+				s.lit = s.source_lit(s.pos, s.offset)
+				s.insert_semi = true
+				return .string
 			}
-			s.string_literal(false, quote)
-			s.lit = s.source_lit(s.pos, s.offset)
-			if nested_interpolation && !s.in_str_inter {
-				s.restore_parent_string_interpolation()
+			if s.lit == 'js' {
+				quote := s.src[s.offset]
+				s.offset++
+				nested_interpolation := s.in_str_inter && !s.skip_interpolation
+				if nested_interpolation {
+					s.begin_nested_string_interpolation(quote)
+				} else if !s.in_str_inter {
+					s.str_quote = quote
+				}
+				s.string_literal(false, quote)
+				s.lit = s.source_lit(s.pos, s.offset)
+				if nested_interpolation && !s.in_str_inter {
+					s.restore_parent_string_interpolation()
+				}
+				s.insert_semi = true
+				return .string
 			}
-			s.insert_semi = true
-			return .string
 		}
 		tok := token.Token.from_string_tinyv(s.lit)
 		// FastC reads tokens without a parser, so it receives an escaped keyword

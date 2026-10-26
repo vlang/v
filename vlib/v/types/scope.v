@@ -303,6 +303,27 @@ pub fn (s &Scope) lookup_owner(name string) ?ScopeBindingOwner {
 	return none
 }
 
+// bound_type returns the current type of this binding while its scope is live.
+// It returns none after scope reuse or replacement of an ownership-mode binding.
+@[inline]
+pub fn (owner &ScopeBindingOwner) bound_type() ?Type {
+	if owner.scope == unsafe { nil } || owner.lifetime != owner.scope.lifetime
+		|| owner.index < 0 || owner.index >= owner.scope.types.len {
+		return none
+	}
+	$if ownership ? {
+		if owner.index >= owner.scope.generations.len
+			|| owner.scope.generations[owner.index] != owner.generation {
+			return none
+		}
+	} $else {
+		if owner.index >= owner.scope.names.len || owner.scope.names[owner.index] != owner.name {
+			return none
+		}
+	}
+	return owner.scope.types[owner.index]
+}
+
 // storage_key returns a stable key for this binding owner while its scope is live.
 pub fn (owner ScopeBindingOwner) storage_key() string {
 	if owner.scope == unsafe { nil } || owner.index < 0 {

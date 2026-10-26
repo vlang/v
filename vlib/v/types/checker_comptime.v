@@ -51,6 +51,7 @@ fn (mut tc TypeChecker) initialize_pointer_parameter_binding(owner ScopeBindingO
 	key := owner.storage_key()
 	if unalias_type(typ) is Pointer && key.len > 0 {
 		// Distinct parameter bindings may receive the same pointer at a call site.
+		tc.prepare_pointer_binding_write()
 		tc.fn_context.pointer_binding_value_keys[key] = [
 			pointer_binding_parameter_value(key),
 		]
@@ -60,6 +61,7 @@ fn (mut tc TypeChecker) initialize_pointer_parameter_binding(owner ScopeBindingO
 fn (mut tc TypeChecker) initialize_unknown_pointer_binding(owner ScopeBindingOwner, typ Type) {
 	key := owner.storage_key()
 	if unalias_type(typ) is Pointer && key.len > 0 {
+		tc.prepare_pointer_binding_write()
 		tc.fn_context.pointer_binding_value_keys[key] = [
 			pointer_binding_unknown_value(key),
 		]
@@ -14431,6 +14433,7 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 		}
 		if child.kind == .ident && (child.is_mut || child.typ_text() == 'atomic') && child.value.len > 0 {
 			if owner := tc.cur_scope.lookup_owner(child.value) {
+				tc.prepare_mut_local_owner_write()
 				tc.fn_context.mut_local_owners[child.value] = owner
 				if base := captured_mut_params[child.value] {
 					// A captured mutable parameter retains its caller-owned reference.
@@ -16129,8 +16132,10 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 			tc.fn_context.mut_param_base_types.delete(mut_binding_name)
 		}
 		if had_mut_owner {
+			tc.prepare_mut_local_owner_write()
 			tc.fn_context.mut_local_owners[mut_binding_name] = saved_mut_owner
 		} else {
+			tc.prepare_mut_local_owner_write()
 			tc.fn_context.mut_local_owners.delete(mut_binding_name)
 		}
 	}
@@ -16967,6 +16972,7 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 		// Record the binding so reads through it are treated as mutable dependencies.
 		if owner.storage_key().len > 0 && tc.expr_is_unsafe_reference_alias(rhs_id)
 			&& (clean_decl_type is Map || clean_decl_type is Array || clean_decl_type is ArrayFixed) {
+			tc.prepare_unsafe_alias_owner_write()
 			tc.fn_context.unsafe_reference_alias_owners[owner.storage_key()] = true
 		}
 		if lhs_node.value != '_' && lhs_is_mut {
@@ -20140,6 +20146,7 @@ fn (mut tc TypeChecker) insert_decl_lhs(lhs_id flat.NodeId, typ Type, is_mut boo
 					tc.fn_context.mut_param_base_types.delete(lhs.value)
 				}
 			}
+			tc.prepare_mut_local_owner_write()
 			tc.fn_context.mut_local_owners[lhs.value] = owner
 		}
 		tc.register_synth_type(lhs_id, typ)
@@ -20864,6 +20871,7 @@ fn (mut tc TypeChecker) update_unsafe_reference_alias_assignment(lhs_id flat.Nod
 	if key.len == 0 {
 		return
 	}
+	tc.prepare_unsafe_alias_owner_write()
 	if tc.expr_is_unsafe_reference_alias(rhs_id) {
 		tc.fn_context.unsafe_reference_alias_owners[key] = true
 	} else {
@@ -20886,6 +20894,7 @@ fn (mut tc TypeChecker) update_pointer_binding_alias_assignment(lhs_id flat.Node
 				tc.invalidate_all_pointer_binding_aliases()
 				return
 			}
+			tc.prepare_pointer_binding_write()
 			tc.fn_context.pointer_binding_value_keys[target_key] = values
 		}
 		return
@@ -20898,6 +20907,7 @@ fn (mut tc TypeChecker) update_pointer_binding_alias_assignment(lhs_id flat.Node
 	values := tc.pointer_binding_alias_values(left_key, rhs_id, lhs_type, rhs_alias_state) or {
 		return
 	}
+	tc.prepare_pointer_binding_write()
 	tc.fn_context.pointer_binding_value_keys[left_key] = values
 }
 
@@ -20920,6 +20930,7 @@ fn (tc &TypeChecker) indirect_pointer_lvalue_storage_keys(id flat.NodeId) ?[]str
 }
 
 fn (mut tc TypeChecker) invalidate_all_pointer_binding_aliases() {
+	tc.prepare_pointer_binding_write()
 	for key, _ in tc.fn_context.pointer_binding_value_keys {
 		tc.fn_context.pointer_binding_value_keys[key] = [
 			pointer_binding_unknown_value(key),
@@ -20941,6 +20952,7 @@ fn (mut tc TypeChecker) invalidate_pointer_binding_alias_after_mut_call(id flat.
 	if key.len == 0 {
 		return
 	}
+	tc.prepare_pointer_binding_write()
 	tc.fn_context.pointer_binding_value_keys[key] = [
 		pointer_binding_unknown_value(key),
 	]
@@ -20955,6 +20967,7 @@ fn (mut tc TypeChecker) record_pointer_binding_alias(owner ScopeBindingOwner, rh
 		return
 	}
 	values := tc.pointer_binding_alias_values(left_key, rhs_id, typ, tc.fn_context.pointer_binding_value_keys) or { return }
+	tc.prepare_pointer_binding_write()
 	tc.fn_context.pointer_binding_value_keys[left_key] = values
 }
 
@@ -21013,6 +21026,23 @@ fn (tc &TypeChecker) pointer_binding_ident_values(owner ScopeBindingOwner, state
 		return []string{}
 	}
 	return (state[key] or { [tc.pointer_binding_storage_value(owner)] }).clone()
+}
+
+// share_pointer_binding_value_keys keeps a read-only branch snapshot of the current map.
+@[inline]
+fn (mut tc TypeChecker) share_pointer_binding_value_keys() map[string][]string {
+	tc.fn_context.pointer_binding_values_shared = true
+	return tc.fn_context.pointer_binding_value_keys
+}
+
+// prepare_pointer_binding_write detaches branch snapshots before replacing a value list.
+@[inline]
+fn (mut tc TypeChecker) prepare_pointer_binding_write() {
+	if tc.fn_context.pointer_binding_values_shared {
+		tc.fn_context.pointer_binding_value_keys =
+			snapshot_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
+		tc.fn_context.pointer_binding_values_shared = false
+	}
 }
 
 // snapshot_pointer_binding_value_keys copies a branch's map while sharing its immutable value lists.
@@ -21171,6 +21201,22 @@ fn apply_pointer_binding_value_state_delta(before map[string][]string, after map
 		}
 	}
 	return result
+}
+
+// share_unsafe_alias_owners keeps a read-only branch snapshot until the next update.
+@[inline]
+fn (mut tc TypeChecker) share_unsafe_alias_owners() map[string]bool {
+	tc.fn_context.unsafe_alias_owners_shared = true
+	return tc.fn_context.unsafe_reference_alias_owners
+}
+
+// prepare_unsafe_alias_owner_write detaches active branch snapshots before a map update.
+@[inline]
+fn (mut tc TypeChecker) prepare_unsafe_alias_owner_write() {
+	if tc.fn_context.unsafe_alias_owners_shared {
+		tc.fn_context.unsafe_reference_alias_owners = clone_unsafe_alias_owners(tc.fn_context.unsafe_reference_alias_owners)
+		tc.fn_context.unsafe_alias_owners_shared = false
+	}
 }
 
 fn intersect_unsafe_reference_alias_states(states []map[string]bool, fallback map[string]bool) map[string]bool {

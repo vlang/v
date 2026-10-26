@@ -471,8 +471,10 @@ fn (mut g FlatGen) gen_cabi_fixed_array_data_arg(id flat.NodeId, arr types.Array
 	return true
 }
 
-fn (mut g FlatGen) gen_new_array_fixed_data_arg(call flat.Node, arg_start int, arg_idx int, arg_id flat.NodeId, names []string) bool {
-	if arg_idx != 3 || !names.any(it in ['new_array_from_c_array', 'array__new_array_from_c_array'])
+fn (mut g FlatGen) gen_new_array_fixed_data_arg(call flat.Node, arg_start int, arg_idx int, arg_id flat.NodeId, name string, fallback string) bool {
+	if arg_idx != 3
+		|| (name !in ['new_array_from_c_array', 'array__new_array_from_c_array']
+			&& fallback !in ['new_array_from_c_array', 'array__new_array_from_c_array'])
 		|| arg_start + 2 >= call.children_count {
 		return false
 	}

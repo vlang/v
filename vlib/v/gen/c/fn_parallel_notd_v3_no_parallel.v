@@ -3160,6 +3160,12 @@ fn (g &FlatGen) configure_c_extern_scan_worker(mut worker FlatGen) {
 }
 
 fn (mut g FlatGen) publish_c_extern_type_discoveries(worker &FlatGen) {
+	if !g.c_extern_refs_ready && worker.c_extern_refs_ready {
+		// Publication runs after leaving the scan's disposable arena. Keep its
+		// complete immutable result, including owned keys, for later consumers.
+		g.c_extern_refs = clone_cgen_string_bool_map(worker.c_extern_refs)
+		g.c_extern_refs_ready = true
+	}
 	for opt_name, val_type_id in worker.needed_optional_types.ids {
 		if !g.needed_optional_types.contains(opt_name) {
 			g.needed_optional_types.set_id(opt_name.clone(), val_type_id)
@@ -3267,6 +3273,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		str_lits_base_len:                  g.str_lits.len
 		global_types:                       g.global_types
 		global_raw_type_texts:              g.global_raw_type_texts
+		global_shared_storage_present:      g.global_shared_storage_present
 		enum_vals:                          g.enum_vals
 		enum_value_exprs:                   g.enum_value_exprs
 		enum_values_from_c:                 g.enum_values_from_c
@@ -3525,6 +3532,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		local_global_shadow_facts:          &ContextNameFactCache{}
 		local_global_suffix_names:          g.local_global_suffix_names
 		local_global_suffix_names_ready:    g.local_global_suffix_names_ready
+		local_name_exceptions:              g.local_name_exceptions
 		c_typedef_shadow_names:             g.c_typedef_shadow_names
 		c_typedef_shadow_names_ready:       g.c_typedef_shadow_names_ready
 		generic_app_cache:                  &GenericAppCache{

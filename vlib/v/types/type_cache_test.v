@@ -965,3 +965,53 @@ fn test_cached_expr_type_references_preserve_storage_and_visibility() {
 	assert isnil(tc.cached_expr_type_ref(flat.NodeId(1)))
 	assert *dense == Type(int_)
 }
+
+fn test_expr_type_references_preserve_call_precedence_and_canonical_storage() {
+	mut ast := flat.FlatAst.new()
+	ident := ast.add_node(flat.Node{ kind: .ident, value: 'value' })
+	call := ast.add_node(flat.Node{ kind: .call, typ: flat.source_type_id('string') })
+	mut tc := TypeChecker.new(&ast)
+	tc.reset_node_caches(ast.nodes.len)
+	assert tc.expr_type_reference(ident) == none
+	assert tc.expr_type_reference(flat.NodeId(-1)) == none
+	tc.remember_expr_type(ident, Type(int_))
+	assert voidptr(tc.expr_type_reference(ident)?) == voidptr(tc.expr_type_values[int(ident)])
+	assert *tc.expr_type_reference(ident)? == tc.expr_type(ident)?
+	assert *tc.expr_type_reference(call)? == Type(string_)
+	tc.remember_resolved_call(call, 'main.target')
+	tc.fn_ret_types['main.target'] = Type(bool_)
+	resolved := tc.expr_type_reference(call)?
+	assert *resolved == Type(bool_)
+	tc.fn_ret_types['main.target'] = Type(string_)
+	assert *resolved == Type(bool_)
+	tc.remember_expr_type(call, Type(int_))
+	assert voidptr(tc.expr_type_reference(call)?) == voidptr(tc.expr_type_values[int(call)])
+	assert *tc.expr_type_reference(call)? == tc.expr_type(call)?
+	// Legacy call metadata can retain Void even though new writes skip it.
+	tc.expr_type_values[int(call)] = tc.intern_type_reference(Type(void_))
+	assert *tc.expr_type_reference(call)? == Type(string_)
+	tc.fn_ret_types.delete('main.target')
+	assert *tc.expr_type_reference(call)? == Type(string_)
+	ast.nodes[int(call)].typ = flat.source_type_int
+	assert *tc.expr_type_reference(call)? == Type(void_)
+	tc.invalidate_checked_expr_type(int(call))
+	assert tc.expr_type_reference(call) == none
+	for placeholder in [u32(0), flat.source_type_int, flat.source_type_unknown,
+		qualify_source_type_array, qualify_source_type_map] {
+		ast.nodes[int(call)].typ = placeholder
+		assert tc.expr_type(call) == none
+		assert tc.expr_type_reference(call) == none
+	}
+	tc.parallel_check_sparse = true
+	tc.check_range_lo = int(call)
+	tc.check_range_hi = int(call)
+	assert tc.expr_type_reference(ident) == none
+	tc.sparse_expr_type_values[int(ident)] = Type(bool_)
+	sparse := tc.expr_type_reference(ident)?
+	for i in 8 .. 4096 {
+		tc.sparse_expr_type_values[i] = Type(string_)
+	}
+	tc.sparse_expr_type_values[int(ident)] = Type(string_)
+	assert *sparse == Type(bool_)
+	assert *tc.expr_type_reference(ident)? == tc.expr_type(ident)?
+}
