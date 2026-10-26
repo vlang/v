@@ -19,7 +19,10 @@ const min_flat_cgen_parallel_items = 128
 // V3-generated compilers allocate temporary sum payloads while lowering each
 // expression. Keep self-host body batches narrow so those values are released
 // throughout cgen instead of accumulating across hundreds of functions.
-const scoped_cgen_worker_batches = 256
+// Every batch starts with cold generator/checker caches (c names, parsed types,
+// interned types, local scopes), so too many batches re-derive the same facts:
+// 16 batches keep most of that warmth while still bounding the scratch.
+const scoped_cgen_worker_batches = 16
 const min_scoped_cgen_batch_cost = 16_384
 const flat_cgen_chunks_per_job = 32
 
