@@ -8539,7 +8539,13 @@ fn (tc &TypeChecker) imported_type_short_name(typ_id u32) ?u32 {
 
 // has_active_import reports whether has active import applies in types.
 fn (tc &TypeChecker) has_active_import(alias string) bool {
-	info := tc.file_imports_by_file[tc.cur_file] or { return false }
+	info := tc.current_file_import_info()
+	if isnil(info) {
+		return false
+	}
+	if info.imports_mask_ready && info.imports_name_mask & scope_name_bit(alias) == 0 {
+		return false
+	}
 	return alias in info.imports
 }
 
