@@ -3810,10 +3810,13 @@ fn (mut g FlatGen) add_spawn_wrapper_def(def string) {
 	if g.parallel_chunk_wrapper_capture >= 0 {
 		g.parallel_chunk_wrapper_defs[g.parallel_chunk_wrapper_capture].spawn << def.clone()
 	}
-	if g.spawn_wrapper_defs_seen[def] {
+	// Regenerating a capture expression can change its drop loop temporaries,
+	// while the helper's node-based C symbol remains the same.
+	key := if def.starts_with('static void _flctxdrop_') { def.all_before('(') } else { def }
+	if g.spawn_wrapper_defs_seen[key] {
 		return
 	}
-	g.spawn_wrapper_defs_seen[def] = true
+	g.spawn_wrapper_defs_seen[key] = true
 	g.spawn_wrapper_defs << def
 }
 
@@ -13546,7 +13549,11 @@ fn (g &FlatGen) field_type(base_type types.Type, field_name string) ?types.Type 
 	if struct_name.len == 0 {
 		return none
 	}
-	fields := g.tc.structs[struct_name] or { return none }
+	fields := g.tc.structs[struct_name] or {
+		// Checked generic arguments can retain `main.` to distinguish the caller's
+		// type from an imported namesake; materialized structs use bare main names.
+		g.tc.structs[strip_main_module_qualifier(struct_name)] or { return none }
+	}
 	for field in fields {
 		if field.name == field_name {
 			return field.typ
