@@ -222,6 +222,8 @@ The driver can run `make v1` automatically when needed. If it reports that no us
 found and make is unavailable, install GNU make and run the preparation command above. This is a
 missing test prerequisite, and also affects the complete `v test vlib/v/` run, which includes this
 suite. After installation, a usable cached compatibility compiler can run without make.
+Successful automatic installation keeps progress output out of exact-output fixture diagnostics.
+If installation fails, the driver prints the installer output to explain the missing prerequisite.
 
 Use `-new-compiler` when investigating an individual fixture with the current compiler. It overrides
 explicit legacy fixture selection, so its diagnostics need not match that fixture's existing `.out`
