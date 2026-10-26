@@ -239,7 +239,7 @@ fn (mut g Parser) render_asm_operand(operand FastcAsmOperand) !FastcAsmRenderedO
 		if local := g.locals[source] {
 			if local.is_reference {
 				expression = '(*(${expression}))'
-				if flat.source_type_name(typ).ends_with('*') {
+				if flat.source_type_query(typ).has(.c_pointer_suffix) {
 					typ = flat.source_type_id(flat.source_type_name(typ)[..flat.source_type_name(typ).len - 1])
 				}
 			}

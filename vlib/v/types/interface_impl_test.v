@@ -202,3 +202,60 @@ fn test_undeclared_ierror_does_not_make_every_type_an_error_payload() {
 	assert !tc.type_compatible_with_ierror_payload(Type(int_))
 	assert !tc.named_type_compatible_with_ierror(flat.source_type_id('Foo'))
 }
+
+fn test_prepared_interface_requirements_keep_exact_source_spelling_keys() {
+	mut a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.interface_names['pkg.Parent'] = true
+	tc.interface_names['pkg.Contract'] = true
+	// Preparation publishes both the source table spelling and its resolved
+	// metadata name; the concrete application remains an exact additional key.
+	tc.interface_names['pkg.Contract[int]'] = true
+	tc.interface_generic_params['pkg.Contract'] = ['T']
+	tc.interface_embeds.set('pkg.Contract', ['pkg.Parent'])
+	tc.interface_abstract_methods['pkg.Parent'] = ['parent']
+	tc.interface_abstract_methods['pkg.Contract'] = ['required']
+	tc.fn_ret_types['pkg.Parent.parent'] = Type(int_)
+	tc.fn_ret_types['pkg.Contract[T].required'] = Type(int_)
+	tc.fn_ret_types['pkg.Contract[T].defaulted'] = Type(int_)
+	tc.interface_fields['pkg.Parent'] = [StructField{ name: 'parent_field', typ: Type(int_) }]
+	tc.interface_fields['pkg.Contract'] = [StructField{ name: 'own_field', typ: Type(int_) }]
+	queries := flat.TypeTextList.from_names(['pkg.Parent', 'pkg.Contract', 'pkg.Contract[int]',
+		'pkg.Contract[string]', '&pkg.Contract', '&pkg.Contract[int]', '[]pkg.Contract', '',
+		'unknown.Contract']).ids
+	mut expected_methods := [][]string{}
+	mut expected_abstract := [][]string{}
+	mut expected_fields := [][]string{}
+	for query in queries {
+		expected_methods << tc.interface_method_names(query)
+		expected_abstract << tc.interface_abstract_method_names(query)
+		expected_fields << tc.interface_field_list(query).map(it.name)
+	}
+	tc.prepare_interface_requirement_indexes()
+	assert tc.interface_query_indexes_ready
+	base_id := flat.source_type_id('pkg.Contract')
+	application_id := flat.source_type_id('pkg.Contract[int]')
+	for key in [base_id, application_id] {
+		assert key in tc.interface_method_names_index
+		assert key in tc.interface_abstract_index
+		assert key in tc.interface_field_list_index
+	}
+	assert flat.source_type_id('pkg.Contract[string]') !in tc.interface_field_list_index
+	assert flat.source_type_id('&pkg.Contract') !in tc.interface_field_list_index
+	assert u32(0) !in tc.interface_field_list_index
+	worker := tc.fork_for_parallel_codegen()
+	for i, query in queries {
+		assert tc.interface_method_names(query) == expected_methods[i]
+		assert tc.interface_abstract_method_names(query) == expected_abstract[i]
+		assert tc.interface_field_list(query).map(it.name) == expected_fields[i]
+		assert worker.interface_method_names(query) == expected_methods[i]
+		assert worker.interface_abstract_method_names(query) == expected_abstract[i]
+		assert worker.interface_field_list(query).map(it.name) == expected_fields[i]
+	}
+	// Rebuilding replaces the published maps; prior worker views retain the
+	// immutable snapshot instead of sharing the new index under construction.
+	tc.interface_fields['pkg.Contract'] = [StructField{ name: 'replacement', typ: Type(int_) }]
+	tc.prepare_interface_requirement_indexes()
+	assert tc.interface_field_list(application_id).map(it.name) == ['parent_field', 'replacement']
+	assert worker.interface_field_list(application_id).map(it.name) == ['parent_field', 'own_field']
+}

@@ -24,7 +24,7 @@ fn inferred_type_links(a &flat.FlatAst) []string {
 	for id, node in a.nodes {
 		for field, text in {
 			'typ':   node.typ_text()
-			'value': node.value
+			'value': node.value_text()
 		} {
 			if node.kind in [.string_literal, .char_literal, .string_interp] {
 				continue

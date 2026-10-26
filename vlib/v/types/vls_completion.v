@@ -157,9 +157,9 @@ fn (tc &TypeChecker) vls_type_details(typ Type) []VlsDetail {
 		}
 		return details
 	}
-	owner := match t {
+	owner_id := match t {
 		Struct, Interface, Enum, SumType {
-			t.name()
+			t.source_type_id()
 		}
 		else {
 			// A primitive type has methods only: `int.hex`, `f64.str`.
@@ -167,9 +167,10 @@ fn (tc &TypeChecker) vls_type_details(typ Type) []VlsDetail {
 			return details
 		}
 	}
+	owner := flat.source_type_name(owner_id)
 	fields := tc.structs[owner] or { tc.interface_fields[owner] or { []StructField{} } }
 	for field in fields {
-		if t is Struct && !tc.vls_field_is_usable(typ, owner, field.name) {
+		if t is Struct && !tc.vls_field_is_usable(typ, owner_id, field.name) {
 			continue
 		}
 		details << VlsDetail{
@@ -187,16 +188,16 @@ fn (tc &TypeChecker) vls_type_details(typ Type) []VlsDetail {
 // the checker applies to a selector: through an alias, the alias's module
 // decides; a struct private to another module has no field to use there, but
 // for the public ones of an anonymous struct; else the field's `pub` does.
-fn (tc &TypeChecker) vls_field_is_usable(typ Type, owner string, field string) bool {
+fn (tc &TypeChecker) vls_field_is_usable(typ Type, owner u32, field string) bool {
 	receiver := unwrap_all_pointers(typ)
 	if receiver is Alias {
 		return !tc.alias_struct_field_is_private_outside_module(receiver, field)
 	}
-	if visibility := tc.private_declaration(owner) {
+	if visibility := tc.private_declaration(flat.source_type_name(owner)) {
 		return tc.is_synthesized_anon_struct(owner)
-			&& tc.anonymous_struct_field_is_public(flat.source_type_id(owner), field, visibility.module_name)
+			&& tc.anonymous_struct_field_is_public(owner, field, visibility.module_name)
 	}
-	return !tc.struct_field_is_private_outside_module(flat.source_type_id(owner), field)
+	return !tc.struct_field_is_private_outside_module(owner, field)
 }
 
 // vls_method_details adds the methods of the type `owner` the file being

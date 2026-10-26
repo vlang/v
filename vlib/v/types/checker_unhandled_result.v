@@ -118,7 +118,7 @@ fn (tc &TypeChecker) or_tail_result_is_returned(stmt_id flat.NodeId) bool {
 		}
 		node := tc.a.node(current)
 		if node.kind in [.fn_decl, .fn_literal, .lambda_expr] {
-			return node.typ_text().starts_with('!')
+			return flat.source_type_shape(node.typ).has(.result_type)
 		}
 	}
 	return false

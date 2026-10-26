@@ -152,8 +152,8 @@ fn main() {}
 	assert numeric_const_type_name(tc, 'table') == '[2]u32'
 	mut replaced := false
 	for i, node in a.nodes {
-		if node.kind == .cast_expr && node.value == 'u32' {
-			a.nodes[i].value = 'u64'
+		if node.kind == .cast_expr && node.source_value_id() == flat.source_type_u32 {
+			a.nodes[i].set_source_value_id(flat.source_type_u64)
 			replaced = true
 		}
 	}

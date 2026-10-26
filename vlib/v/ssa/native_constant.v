@@ -52,7 +52,11 @@ fn (b &Builder) native_const_requires_storage(id flat.NodeId, module_name string
 		required = true
 	}
 	if node.kind in [.ident, .selector] {
-		name := if node.kind == .ident { node.value } else { b.selector_qualified_name(*node) }
+		name := if node.kind == .ident {
+			node.value_text()
+		} else {
+			b.selector_qualified_name(*node)
+		}
 		if key := b.native_const_key(name, module_name) {
 			expr := b.const_exprs[key]
 			declaring_module := if key.contains('.') { key.all_before_last('.') } else { 'main' }
@@ -82,7 +86,7 @@ fn (mut b Builder) register_native_initializers() {
 		if node.kind == .file {
 			module_name = 'main'
 		} else if node.kind == .module_decl {
-			module_name = node.value
+			module_name = node.value_text()
 		}
 		if node.kind !in [.const_decl, .global_decl] {
 			continue
@@ -147,7 +151,7 @@ fn (b &Builder) native_const_storage_type_name(field flat.Node, expr_id flat.Nod
 		return flat.source_type_id('[]' + element)
 	}
 	if expr.kind in [.array_init, .struct_init] {
-		return flat.source_type_id(expr.value)
+		return expr.source_value_id()
 	}
 	checked_source_id := b.checked_expr_type_name(expr_id)
 
@@ -157,7 +161,7 @@ fn (b &Builder) native_const_storage_type_name(field flat.Node, expr_id flat.Nod
 	if expr.kind == .call && expr.children_count > 0 {
 		callee := b.qualified_expr_name(b.a.child(expr, 0))
 		for node in b.a.nodes {
-			if node.kind == .fn_decl && node.value == callee && node.typ != 0 {
+			if node.kind == .fn_decl && node.value_text() == callee && node.typ != 0 {
 				return qualify_type_ref_name(node.typ, module_name)
 			}
 		}

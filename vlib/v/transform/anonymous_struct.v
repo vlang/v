@@ -48,7 +48,7 @@ fn (mut t Transformer) materialize_inferred_anonymous_structs() bool {
 		if idx >= original_node_count {
 			break
 		}
-		if t.a.nodes[idx].kind != .struct_init || t.a.nodes[idx].value != 'struct'
+		if t.a.nodes[idx].kind != .struct_init || t.a.nodes[idx].source_value_id() != flat.source_type_id('struct')
 			|| t.a.nodes[idx].children_count == 0 {
 			continue
 		}
@@ -78,9 +78,10 @@ fn (mut t Transformer) materialize_inferred_anonymous_structs() bool {
 					}
 					value_id := t.a.child(field, 0)
 					field_type := t.tc.expr_type(value_id) or { t.tc.resolve_type(value_id) }
-					field_type_name := flat.source_type_name(t.tc.type_name(field_type))
+					field_type_id := t.tc.type_name(field_type)
 					if field_type is types.Unknown || field_type is types.Void
-						|| field_type_name in ['', 'unknown', 'void', 'struct'] {
+						|| field_type_id in [u32(0), flat.source_type_unknown, flat.source_type_void,
+							transform_source_type_struct] {
 						valid = false
 						break
 					}
@@ -100,7 +101,7 @@ fn (mut t Transformer) materialize_inferred_anonymous_structs() bool {
 				shape := '${cur_module.len}:${cur_module}:${shape_parts.join(',')}'
 				if semantic_name_id := inferred_by_shape[shape] {
 					semantic_name := flat.source_type_name(semantic_name_id)
-					t.a.nodes[idx].value = semantic_name.all_after_last('.')
+					t.a.nodes[idx].set_value_text(semantic_name.all_after_last('.'))
 					t.a.nodes[idx].typ = semantic_name_id
 					t.mark_scoped_owned_base_node(idx)
 					t.tc.register_synth_type(flat.NodeId(idx), types.Struct{
@@ -162,7 +163,7 @@ fn (mut t Transformer) materialize_inferred_anonymous_structs() bool {
 				t.tc.register_short_type_name(semantic_name)
 				semantic_name_id := flat.source_type_id(semantic_name)
 				inferred_by_shape[shape] = semantic_name_id
-				t.a.nodes[idx].value = name
+				t.a.nodes[idx].set_value_text(name)
 				t.a.nodes[idx].typ = semantic_name_id
 				t.mark_scoped_owned_base_node(idx)
 				t.tc.register_synth_type(flat.NodeId(idx), types.Struct{

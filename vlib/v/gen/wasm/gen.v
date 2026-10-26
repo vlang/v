@@ -1750,7 +1750,7 @@ fn (mut g Gen) emit_inc(w WType, inc bool) {
 
 fn (mut g Gen) gen_cast(node flat.Node) WType {
 	child_id := g.a.child(&node, 0)
-	tt := g.tc.parse_type(flat.source_type_id(node.value))
+	tt := g.tc.parse_type(node.source_value_id())
 	target := prim_wtype(tt) or { WType.i32 }
 	child := g.a.nodes[int(child_id)]
 	if target in [WType.f32, WType.f64] && child.kind == .int_literal {
@@ -2007,8 +2007,8 @@ fn (g &Gen) fold_const_int(id flat.NodeId) i64 {
 				// Apply the cast target's own width/signedness so a nested narrow
 				// cast keeps its value even when the enclosing global is wider
 				// (e.g. `int(u8(300))` -> 44, not 300).
-				return if n.value.len > 0 {
-					g.fold_cast_int(cv, flat.source_type_id(n.value))
+				return if n.source_value_id() != 0 {
+					g.fold_cast_int(cv, n.source_value_id())
 				} else {
 					cv
 				}
@@ -2222,11 +2222,11 @@ fn (g &Gen) fold_const_float(id flat.NodeId) f64 {
 		.cast_expr {
 			if n.children_count > 0 {
 				cid := g.a.child(&n, 0)
-				tw := prim_wtype(g.tc.parse_type(flat.source_type_id(n.value))) or { WType.f64 }
+				tw := prim_wtype(g.tc.parse_type(n.source_value_id())) or { WType.f64 }
 				if tw !in [WType.f32, WType.f64] {
 					// Cast to an integer type inside a float context: fold and
 					// narrow as an int, then widen to float.
-					return f64(g.fold_cast_int(g.fold_const_int(cid), flat.source_type_id(n.value)))
+					return f64(g.fold_cast_int(g.fold_const_int(cid), n.source_value_id()))
 				}
 				child := g.a.nodes[int(cid)]
 				mut fv := if child.kind == .int_literal {
@@ -2566,8 +2566,8 @@ fn (mut g Gen) expr_wtype(id flat.NodeId, fallback_typ_id u32) WType {
 		if node.kind == .paren && node.children_count > 0 {
 			return g.expr_wtype(g.a.child(&node, 0), fallback_typ_id)
 		}
-		if node.kind == .cast_expr && node.value.len > 0 {
-			if w := prim_wtype(g.tc.parse_type(flat.source_type_id(node.value))) {
+		if node.kind == .cast_expr && node.source_value_id() != 0 {
+			if w := prim_wtype(g.tc.parse_type(node.source_value_id())) {
 				return w
 			}
 		}
@@ -2637,8 +2637,8 @@ fn (mut g Gen) is_unsigned(id flat.NodeId) bool {
 		if node.kind == .paren && node.children_count > 0 {
 			return g.is_unsigned(g.a.child(&node, 0))
 		}
-		if node.kind == .cast_expr && node.value.len > 0 {
-			return type_is_unsigned(g.tc.parse_type(flat.source_type_id(node.value)))
+		if node.kind == .cast_expr && node.source_value_id() != 0 {
+			return type_is_unsigned(g.tc.parse_type(node.source_value_id()))
 		}
 	}
 	return type_is_unsigned(g.tc.resolve_type(id))
