@@ -1264,6 +1264,7 @@ fn test_v3_default_tcc_compiler_uses_working_system_tcc() {
 	implicit_tcc := v3_default_tcc_compiler(bundled_tcc, v3_usable_tcc_compiler(bundled_tcc), true, false, 'linux')
 	assert implicit_tcc == system_tcc
 	assert v3_effective_c_compiler_for_codegen('c', 'cc', implicit_tcc != '', pref.host_target()) == 'tinyc'
+	assert v3_effective_c_compiler_for_codegen('x64', 'cc', false, pref.host_target()) == 'tinyc'
 	write_v3_test_tcc(bundled_tcc, 0)
 	assert v3_usable_tcc_compiler(bundled_tcc)
 	assert v3_default_tcc_compiler(bundled_tcc, v3_usable_tcc_compiler(bundled_tcc), true, false, 'linux') == bundled_tcc
@@ -1679,6 +1680,13 @@ fn test_v3_compiles_fastc_by_default_only_for_the_full_cli() {
 	}
 }
 
+fn test_x64_backend_aliases_are_normalized() {
+	for alias in ['amd64', 'x86_64', 'x86-64'] {
+		assert normalize_backend_name(alias) == 'x64'
+	}
+	assert normalize_backend_name('x64') == 'x64'
+}
+
 fn test_v3_compiles_fastc_by_default_not_for_portable_cross_c() {
 	// `vc/v.c` and `vc/v_win.c` are generated with `-cross`; they must compile on every
 	// host, so they leave out FastC's host-specific libtcc linking and Mach-O signing.
@@ -1687,9 +1695,11 @@ fn test_v3_compiles_fastc_by_default_not_for_portable_cross_c() {
 	}
 }
 
-fn test_native_arm64_compiler_does_not_require_libtcc() {
-	for input in ['cmd/v', 'cmd/v/v.v', '/opt/v/cmd/v'] {
-		assert !v3_compiles_fastc_by_default(input, false, 'arm64'), input
+fn test_native_compilers_do_not_require_libtcc() {
+	for backend in ['arm64', 'x64'] {
+		for input in ['cmd/v', 'cmd/v/v.v', '/opt/v/cmd/v'] {
+			assert !v3_compiles_fastc_by_default(input, false, backend), input
+		}
 	}
 }
 

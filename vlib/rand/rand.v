@@ -31,7 +31,11 @@ __global default_rng &PRNG
 pub fn new_default(config_ config.PRNGConfigStruct) &PRNG {
 	mut rng := &wyrand.WyRandRNG{}
 	rng.seed(config_.seed_)
-	unsafe { config_.seed_.free() }
+	$if native ? {
+		// Native callers retain ownership of the configuration's seed array.
+	} $else {
+		unsafe { config_.seed_.free() }
+	}
 	return &PRNG(rng)
 }
 

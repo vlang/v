@@ -217,7 +217,7 @@ fn verify_cfg_edges(m &ssa.Module, stage string, fi int, blk_id int, func_blocks
 
 // verify_uses validates verify uses state for optimize.
 fn verify_uses(m &ssa.Module, stage string) {
-	mut expected_uses := map[int][]int{}
+	mut expected_counts := []int{len: m.values.len}
 	for func in m.funcs {
 		for blk_id in func.blocks {
 			if blk_id < 0 || blk_id >= m.blocks.len {
@@ -233,8 +233,15 @@ fn verify_uses(m &ssa.Module, stage string) {
 						continue
 					}
 					if op_id > 0 && op_id < m.values.len {
-						if !arr_contains(expected_uses[op_id], val_id) {
-							expected_uses[op_id] << val_id
+						mut already_counted := false
+						for previous in 0 .. oi {
+							if instr.is_value_operand(previous) && instr.operands[previous] == op_id {
+								already_counted = true
+								break
+							}
+						}
+						if !already_counted {
+							expected_counts[op_id]++
 						}
 					}
 				}
@@ -242,7 +249,38 @@ fn verify_uses(m &ssa.Module, stage string) {
 		}
 	}
 	for vi in 0 .. m.values.len {
-		verify_same_blocks(stage, 'uses for value ${vi}', expected_uses[vi], m.values[vi].uses)
+		actual := m.values[vi].uses
+		if actual.len != expected_counts[vi] {
+			verify_fail(stage,
+				'uses for value ${vi}: expected count ${expected_counts[vi]}, got ${actual}')
+		}
+		mut sorted := actual.clone()
+		sorted.sort()
+		mut previous_user := -1
+		for user_id in sorted {
+			if user_id == previous_user {
+				verify_fail(stage, 'uses for value ${vi} contain duplicate user ${user_id}')
+			}
+			previous_user = user_id
+			if user_id <= 0 || user_id >= m.values.len {
+				verify_fail(stage, 'uses for value ${vi} contain invalid user ${user_id}')
+			}
+			user := m.values[user_id]
+			if user.kind != .instruction || user.index < 0 || user.index >= m.instrs.len {
+				verify_fail(stage, 'uses for value ${vi} contain non-instruction ${user_id}')
+			}
+			instr := m.instrs[user.index]
+			mut references_value := false
+			for oi, op_id in instr.operands {
+				if instr.is_value_operand(oi) && op_id == vi {
+					references_value = true
+					break
+				}
+			}
+			if !references_value {
+				verify_fail(stage, 'uses for value ${vi} contain user ${user_id} without an operand')
+			}
+		}
 	}
 }
 

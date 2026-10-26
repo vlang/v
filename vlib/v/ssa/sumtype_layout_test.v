@@ -328,7 +328,7 @@ fn test_heap_sum_initializer_keeps_the_selected_payload() {
 	b.a.children << [tag_field, value_field]
 	node := flat.Node{ kind: .struct_init, value: 'Choice', typ: flat.source_type_id('Choice'), children_start: fields, children_count: 2 }
 	before := b.m.instrs.len
-	result := b.build_heap_struct_init(node)
+	result := b.build_heap_struct_init(b.a.add_node(node), node)
 	assert b.deref_type(result) == b.struct_types['Choice']
 	mut payload_stores := 0
 	mut tag_stores := 0

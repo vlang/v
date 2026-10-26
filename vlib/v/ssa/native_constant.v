@@ -128,6 +128,38 @@ fn (mut b Builder) register_native_initializers() {
 }
 
 fn (b &Builder) native_const_storage_type_name(field flat.Node, expr_id flat.NodeId, module_name string) u32 {
+	expr := b.a.node(expr_id)
+	if expr.kind == .array_literal && expr.children_count > 0 {
+		mut all_int_literals := true
+		for index in 0 .. expr.children_count {
+			if !b.is_integer_literal_expr(b.a.child(expr, index)) {
+				all_int_literals = false
+				break
+			}
+		}
+		if all_int_literals {
+			return flat.source_type_id('[]int')
+		}
+	}
+	if expr.kind == .infix && expr.children_count >= 2 {
+		left_type := b.native_const_storage_type_name(flat.Node{}, b.a.child(expr, 0),
+			module_name)
+		if left_type == flat.source_type_f64 || left_type == flat.source_type_f32 {
+			return left_type
+		}
+		right_type := b.native_const_storage_type_name(flat.Node{}, b.a.child(expr, 1),
+			module_name)
+		if right_type == flat.source_type_f64 || right_type == flat.source_type_f32 {
+			return right_type
+		}
+	}
+	checked_source_id := b.checked_expr_type_name(expr_id)
+	if checked_source_id != 0 && checked_source_id != flat.source_type_unknown {
+		return checked_source_id
+	}
+	if field.typ != 0 && field.typ != flat.source_type_unknown {
+		return field.typ
+	}
 	if b.tc != unsafe { nil } {
 		if typ := b.tc.const_types[module_name + '.' + field.value] {
 			if typ !is types.Unknown && typ !is types.Void {
@@ -135,10 +167,6 @@ fn (b &Builder) native_const_storage_type_name(field flat.Node, expr_id flat.Nod
 			}
 		}
 	}
-	if field.typ != 0 && field.typ != flat.source_type_unknown {
-		return field.typ
-	}
-	expr := b.a.node(expr_id)
 	if expr.kind == .array_literal {
 		if b.is_fixed_array_type_name(expr.typ) {
 			return expr.typ
@@ -152,11 +180,6 @@ fn (b &Builder) native_const_storage_type_name(field flat.Node, expr_id flat.Nod
 	}
 	if expr.kind in [.array_init, .struct_init] {
 		return expr.source_value_id()
-	}
-	checked_source_id := b.checked_expr_type_name(expr_id)
-
-	if checked_source_id != 0 {
-		return checked_source_id
 	}
 	if expr.kind == .call && expr.children_count > 0 {
 		callee := b.qualified_expr_name(b.a.child(expr, 0))

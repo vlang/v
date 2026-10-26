@@ -103,12 +103,17 @@ fn wtf8_to_wide(value string) &u16 {
 				&& (b0 != 0xe0 || value.str[src + 1] >= 0xa0) {
 				codepoint = (u32(b0 & 0x0f) << 12) | (u32(value.str[src + 1] & 0x3f) << 6) | u32(value.str[src + 2] & 0x3f)
 				width = 3
-			} else if b0 >= 0xf0 && b0 <= 0xf4 && src + 3 < value.len
-				&& (value.str[src + 1] & 0xc0) == 0x80 && (value.str[src + 2] & 0xc0) == 0x80
-				&& (value.str[src + 3] & 0xc0) == 0x80 && (b0 != 0xf0 || value.str[src + 1] >= 0x90)
-				&& (b0 != 0xf4 || value.str[src + 1] <= 0x8f) {
-				codepoint = (u32(b0 & 0x07) << 18) | (u32(value.str[src + 1] & 0x3f) << 12) | (u32(value.str[src + 2] & 0x3f) << 6) | u32(value.str[src + 3] & 0x3f)
-				width = 4
+			} else if b0 >= 0xf0 && b0 <= 0xf4 && src + 3 < value.len {
+				b1 := value.str[src + 1]
+				b2 := value.str[src + 2]
+				b3 := value.str[src + 3]
+				if (b1 & 0xc0) == 0x80 && (b2 & 0xc0) == 0x80 && (b3 & 0xc0) == 0x80 {
+					valid_lead := (b0 != 0xf0 || b1 >= 0x90) && (b0 != 0xf4 || b1 <= 0x8f)
+					if valid_lead {
+						codepoint = (u32(b0 & 0x07) << 18) | (u32(b1 & 0x3f) << 12) | (u32(b2 & 0x3f) << 6) | u32(b3 & 0x3f)
+						width = 4
+					}
+				}
 			}
 			src += width
 			if codepoint <= 0xffff {

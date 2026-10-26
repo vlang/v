@@ -66,7 +66,13 @@ fn assert_runtime_symbol_source_body(m &Module, name string, expected string) {
 		last := m.blocks[f.blocks[0]].instrs.last()
 		instruction := m.instrs[m.values[last].index]
 		assert instruction.op == .ret, name
-		assert m.values[instruction.operands[0]].name == expected, name
+		returned := m.values[instruction.operands[0]]
+		assert m.type_store.types[returned.typ].width == 32, name
+		assert returned.kind == .instruction, name
+		conversion := m.instrs[returned.index]
+		assert conversion.op == .trunc && conversion.operands.len == 1, name
+		literal := m.values[conversion.operands[0]]
+		assert literal.kind == .constant && literal.name == expected, name
 		found++
 	}
 	assert found == 1, name
@@ -183,8 +189,15 @@ fn test_runtime_replacement_filters_respect_module_ownership() {
 		assert b.skip_source_fn_in_module(name, 'os'), name
 		assert !b.skip_source_fn_in_module(name, 'example.os'), name
 	}
-	assert b.skip_source_fn_in_module('fxx_to_str_l_parse', 'strconv')
-	assert !b.skip_source_fn_in_module('fxx_to_str_l_parse', 'other')
+	for name in ['f32_to_str_l', 'f64_to_str_l_with_dot'] {
+		assert b.skip_source_fn_in_module(name, 'strconv'), name
+		assert !b.skip_source_fn_in_module(name, 'other'), name
+	}
+	// Decimal-string parsing retains its V implementation; only float entry points are replaced.
+	for name in ['fxx_to_str_l_parse', 'fxx_to_str_l_parse_with_dot'] {
+		assert !b.skip_source_fn_in_module(name, 'strconv'), name
+		assert !b.skip_source_fn_in_module(name, 'other'), name
+	}
 	assert b.skip_source_fn_in_module('PRNG.u64', 'rand')
 	assert !b.skip_source_fn_in_module('PRNG.u64', 'other')
 	assert b.skip_source_fn_in_module('Decoder.decompress', 'embed_file')
