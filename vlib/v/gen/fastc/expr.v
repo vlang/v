@@ -1288,7 +1288,7 @@ fn (mut g Parser) lower_or_expression(mut result strings.Builder, mut expression
 			expression_tokens << FastcExpressionToken{
 				tok:          .name
 				lit:          temporary
-				source:       or_expr_body
+				source:       fastc_token_source(or_expr_body)
 				typ:          complex_value_type
 				is_statement: or_expression_is_statement
 			}
@@ -1299,7 +1299,7 @@ fn (mut g Parser) lower_or_expression(mut result strings.Builder, mut expression
 					tok:          .name
 					lit:          temporary
 					// Carry the rendered `({ ... })` so a trailing `.method()` binds to it.
-					source:       or_expr_body
+					source:       fastc_token_source(or_expr_body)
 					typ:          complex_value_type
 					is_statement: or_expression_is_statement
 				},
@@ -1496,7 +1496,7 @@ fn (mut g Parser) lower_or_expression(mut result strings.Builder, mut expression
 		expression_tokens << FastcExpressionToken{
 			tok:          .name
 			lit:          temporary
-			source:       or_expr_body
+			source:       fastc_token_source(or_expr_body)
 			typ:          value_type
 			is_statement: or_expression_is_statement
 		}
@@ -1513,7 +1513,7 @@ fn (mut g Parser) lower_or_expression(mut result strings.Builder, mut expression
 			lit:          temporary
 			// Carry the rendered `({ ... })` so a trailing `.method()`
 			// (`expr or { v }.str()`) binds to it via render_method_receiver_expression.
-			source:       or_expr_body
+			source:       fastc_token_source(or_expr_body)
 			typ:          value_type
 			is_statement: or_expression_is_statement
 		}
@@ -1843,7 +1843,7 @@ fn (mut g Parser) read_inline_comptime_expression(mut result strings.Builder, mu
 		expression_tokens << FastcExpressionToken{
 			tok:    .name
 			lit:    value
-			source: value
+			source: fastc_token_source(value)
 			typ:    value_type
 		}
 		return FastcInlineComptimeResult{
@@ -2080,7 +2080,7 @@ fn (mut g Parser) read_compound_expression_atom(expression_tokens []FastcExpress
 	return FastcExpressionToken{
 		tok:                  .name
 		lit:                  anon_name
-		source:               anon
+		source:               fastc_token_source(anon)
 		typ:                  flat.source_type_id(function_type)
 		is_capturing_closure: is_capturing
 	}
@@ -2544,7 +2544,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			channel_receive := g.read_channel_receive(receive_stops)!
 			receive_type := g.last_expression_type
 			result.write_string(channel_receive)
-			expression_tokens << FastcExpressionToken{ tok: .name, lit: channel_receive, source: channel_receive, typ: receive_type }
+			expression_tokens << FastcExpressionToken{ tok: .name, lit: channel_receive, source: fastc_token_source(channel_receive), typ: receive_type }
 			previous_token = .name
 			previous_lit = channel_receive
 			previous_module_separator = false
@@ -2563,7 +2563,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			result.write_string(map_source)
 			expression_tokens << FastcExpressionToken{
 				tok:    .name
-				source: map_source
+				source: fastc_token_source(map_source)
 				typ:    map_type
 			}
 			previous_token = .name
@@ -2613,7 +2613,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			expression_tokens << FastcExpressionToken{
 				tok:    .string
 				lit:    literal
-				source: interpolation
+				source: fastc_token_source(interpolation)
 				typ:    flat.source_type_string
 			}
 			previous_token = .string
@@ -2636,7 +2636,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 				expression_tokens << FastcExpressionToken{
 					tok:               .name
 					lit:               channel
-					source:            channel
+					source:            fastc_token_source(channel)
 					typ:               flat.source_type_id('chan')
 					chan_element_type: element_type
 				}
@@ -2728,7 +2728,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 		}
 		if g.selfhost && previous_token != .dot && g.tok in [.key_if, .key_match, .key_fn] {
 			atom := g.read_compound_expression_atom(expression_tokens, expected_struct_field_type, paren_depth)!
-			atom_source := if atom.source != '' { atom.source } else { atom.lit }
+			atom_source := if atom.has_source() { atom.source_text() } else { atom.lit }
 			if result.len > 0 && fastc_needs_space(result.last(), atom_source)
 				&& !previous_module_separator {
 				result.write_u8(` `)
@@ -2817,7 +2817,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			expression_tokens << FastcExpressionToken{
 				tok:    .string
 				lit:    pseudo_name
-				source: pseudo
+				source: fastc_token_source(pseudo)
 				typ:    flat.source_type_string
 			}
 			previous_token = .string
@@ -3023,7 +3023,7 @@ fn (mut g Parser) finish_read_expression(mut result strings.Builder, mut express
 			expression_tokens = [FastcExpressionToken{
 				tok:    .name
 				lit:    contextual.source
-				source: contextual.source
+				source: fastc_token_source(contextual.source)
 				typ:    contextual.typ
 			}]
 			flags = fastc_special_token_flags(expression_tokens)
@@ -3900,7 +3900,7 @@ fn (mut g Parser) read_inferred_map_literal() !string {
 // channel_runtime_name resolves runtime methods through the same C-name mapping
 // used for source declarations, including compact self-host names.
 fn (g &Parser) channel_runtime_name(name string) string {
-	return g.c_function_name_or('sync.Channel.${name}', fastc_method_c_name('sync', 'sync__Channel', name))
+	return g.c_method_name('sync.Channel.${name}', 'sync', 'sync__Channel', name)
 }
 
 fn (mut g Parser) read_channel_initializer(element_type u32) !string {
@@ -4761,7 +4761,7 @@ fn fastc_special_token_flags(tokens []FastcExpressionToken) FastcTokenFlags {
 				flags.has_top_level_assignment = true
 			}
 		}
-		if item.tok == .name && item.source != '' {
+		if item.tok == .name && item.has_source() {
 			flags.has_source_name = true
 		}
 		if item.lit == 'typeof' {
@@ -5295,8 +5295,10 @@ fn (g &Parser) render_selfhost_special_expression(tokens []FastcExpressionToken,
 			}
 			// `f(x) is Variant` (a call left operand, possibly combined with `&&`/`||`) is a
 			// boolean tag test, not something the smart-cast reader can shadow.
-			if boolean_is := g.render_boolean_is_expression(tokens) {
-				return boolean_is
+			if flags.has_type_test {
+				if boolean_is := g.render_boolean_is_expression(tokens) {
+					return boolean_is
+				}
 			}
 			if string_comparison := g.render_string_comparison_expression(tokens) {
 				return string_comparison
@@ -5325,7 +5327,7 @@ fn (g &Parser) render_selfhost_special_expression(tokens []FastcExpressionToken,
 				return concatenation
 			}
 		}
-		if g.selfhost {
+		if g.selfhost && has_dot && (flags.has_not || flags.has_question) {
 			// `x()?.field` / `x()?.method(a)`: the `?`/`!` propagates the option and the trailing
 			// member chain applies to the unwrapped value, so lower it before the raw fallback
 			// leaves a stray C `?`/`!` between the call and the member access.
@@ -5424,10 +5426,12 @@ fn (g &Parser) render_selfhost_special_expression(tokens []FastcExpressionToken,
 		}
 		if has_dot && has_lpar {
 			if method_expression := g.render_method_call_expression(tokens, rendered_expression) {
-				if array_expression := g.render_nested_array_access_expression(tokens, method_expression.source) {
-					return FastcRenderedExpression{
-						source: array_expression.source
-						typ:    method_expression.typ
+				if has_lsbr {
+					if array_expression := g.render_nested_array_access_expression(tokens, method_expression.source) {
+						return FastcRenderedExpression{
+							source: array_expression.source
+							typ:    method_expression.typ
+						}
 					}
 				}
 				if array_type_source_id := g.infer_expression_type(tokens) {
@@ -5472,8 +5476,8 @@ fn (g &Parser) render_special_expression_fallback(tokens []FastcExpressionToken,
 		// decided by the local's own (boxed) type — never a member smart-cast that a
 		// sibling guard in the same condition registered on the same name. A folded
 		// `(x as T).field` group arrives as a synthetic token carrying its C text in `.source`
-		// and its type in `.typ_text()` (an empty `.lit`), so read those directly for it.
-		is_synth_subject := tokens[0].source != ''
+		// and its type in `.typ` (an empty `.lit`), so read those directly for it.
+		is_synth_subject := tokens[0].has_source()
 		lhs_type := if is_synth_subject && tokens[0].typ != 0 {
 			fastc_normalize_inferred_type(tokens[0].typ)
 		} else if local := g.locals[tokens[0].lit] {
@@ -5508,7 +5512,7 @@ fn (g &Parser) render_special_expression_fallback(tokens []FastcExpressionToken,
 		access := if flat.source_type_query(lhs_type).has(.c_pointer_suffix) { '->' } else { '.' }
 		operator := if tokens[1].tok == .key_is { '==' } else { '!=' }
 		subject := if is_synth_subject {
-			tokens[0].source
+			tokens[0].source_text()
 		} else if origin := g.narrowed_local_origin(tokens[0].lit) {
 			origin.source
 		} else {
@@ -5713,7 +5717,7 @@ fn (g &Parser) plain_local_direct_member_field(tokens []FastcExpressionToken) ?&
 		return none
 	}
 	for item in tokens {
-		if item.source != '' || item.is_mut_argument { return none }
+		if item.has_source() || item.is_mut_argument { return none }
 	}
 	root := tokens[0]
 	member := tokens[2]
@@ -5819,8 +5823,11 @@ fn (g &Parser) render_special_expression_impl(tokens []FastcExpressionToken, ren
 			return pointer_sizeof
 		}
 	}
-	if call_member := g.render_call_result_member_expression(tokens) {
-		return call_member
+	if (flags.has_lpar && (flags.has_dot || flags.has_lsbr))
+		|| (tokens.len > 1 && tokens[0].has_source() && tokens[0].typ != 0) {
+		if call_member := g.render_call_result_member_expression(tokens) {
+			return call_member
+		}
 	}
 	if tokens.len == 6 && tokens[0].tok == .key_sizeof {
 		if c_sizeof := g.render_c_struct_sizeof(tokens) {
@@ -5851,7 +5858,7 @@ fn (g &Parser) render_special_expression_impl(tokens []FastcExpressionToken, ren
 			return struct_update
 		}
 	}
-	if has_lpar && g.selfhost && tokens.last().tok == .rpar {
+	if has_lpar && has_lsbr && g.selfhost && tokens.last().tok == .rpar {
 		if element_call := g.render_element_function_call(tokens) {
 			return element_call
 		}
@@ -5865,7 +5872,8 @@ fn (g &Parser) render_special_expression_impl(tokens []FastcExpressionToken, ren
 			}
 		}
 	}
-	if has_comparison && g.selfhost {
+	if has_comparison && g.selfhost
+		&& (flags.has_not || flags.has_question || (has_lpar && has_dot)) {
 		if propagation_comparison := g.render_propagation_in_comparison(tokens) {
 			return propagation_comparison
 		}

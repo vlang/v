@@ -38,7 +38,7 @@ fn test_generic_channel_try_methods_validate_specialized_arguments() {
 		ChannelTryCase{
 			body:    'ch.try_push(1.5)'
 			typ:     'f64'
-			message: 'cannot use `f64`'
+			message: 'cannot use `float literal` as `&f64`'
 		},
 		ChannelTryCase{
 			body:    'ch.try_pop()'

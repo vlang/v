@@ -557,7 +557,7 @@ fn main() {}
 }
 
 fn test_a_generic_body_with_a_type_parameter_without_a_constraint_is_not_checked() {
-	// As before: V checks such a body in each of its instances.
+	// As before: V checks such a body in each of its instances, not open.
 	errors := check('unconstrained', "module main
 
 interface Named {
@@ -611,7 +611,14 @@ fn main() {
 	println(Shelf[User]{User{'b'}}.pick(4))
 }
 ")
-	assert errors == []string{}
+	// The open body reports nothing; each function reports its argument once,
+	// from its instance.
+	assert errors == [
+		'main.v:24:17: error: cannot use `string` as `int` in argument 1 to `takes_int`',
+		'main.v:30:17: error: cannot use `string` as `int` in argument 1 to `takes_int`',
+		'main.v:36:17: error: cannot use `string` as `int` in argument 1 to `takes_int`',
+		'main.v:42:17: error: cannot use `string` as `int` in argument 1 to `takes_int`',
+	], errors.str()
 }
 
 fn test_a_generic_body_without_a_constraint_reports_what_is_private_to_another_module() {

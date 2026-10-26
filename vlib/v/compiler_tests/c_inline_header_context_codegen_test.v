@@ -87,10 +87,14 @@ scanned as an active include:
 static inline int optional_backend_value(void) { return 9; }
 #endif
 ')
-	c_out := os.join_path(root, 'out.c')
-	result := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', '${c_out}'])
+	// Portable C embeds local headers; compile it too so inactive missing headers stay harmless.
+	bin_out := os.join_path(root, 'out')
+	result := os.exec([v3_bin, '-cross', '-b', 'c', '-o', bin_out, os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
-	c_code := os.read_file(c_out) or { panic(err) }
+	run := os.exec([bin_out])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '1', run.output
+	c_code := os.read_file(bin_out + '.c') or { panic(err) }
 	assert c_code.contains('#include "comment_only.h"'), c_code
 	assert c_code.contains('#include "missing_optional_backend.h"'), c_code
 	assert include_occurrences_are_under_guard(c_code, '#include "missing_optional_backend.h"',

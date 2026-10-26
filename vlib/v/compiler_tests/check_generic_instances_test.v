@@ -443,6 +443,39 @@ fn test_operators_that_each_instance_has_stay_valid() {
 	}
 }
 
+// A returned name or field of an instance with another type than the function
+// returns is reported for that instance, in a check and in a build: `is_set(1)`
+// returns an `int` as a `bool`. So is one in a generic closure and in a method of
+// a generic struct.
+const return_program = "fn is_set[T](x T) bool {\n\treturn x\n}\n\nfn name_flag[T](x T) bool {\n\treturn x.name\n}\n\nfn checked[T](mut x T) !int {\n\treturn x.name\n}\n\nfn later[T](mut x T) {\n\tread := fn [mut x] [T] () !int {\n\t\treturn x.name\n\t}\n\t_ = read\n}\n\nstruct Box[T] {\n\tv T\n}\n\nfn (b Box[T]) flag() bool {\n\treturn b.v\n}\n\nfn main() {\n\tprintln(is_set(1))\n\tprintln(name_flag(User{ name: 'a' }))\n\tmut u := User{\n\t\tname: 'b'\n\t}\n\tprintln(checked(mut u) or { 0 })\n\tlater(mut u)\n\tprintln(Box[int]{ v: 1 }.flag())\n}\n"
+
+const return_errors = ['11:9: cannot use `int` as type `bool` in return argument',
+	'15:9: cannot use `string` as type `bool` in return argument',
+	'19:9: cannot use `string` as type `!int` in return argument',
+	'24:10: cannot use `string` as type `!int` in return argument',
+	'34:9: cannot use `int` as type `bool` in return argument']
+
+fn test_an_instance_that_returns_a_value_of_another_type_is_reported() {
+	for res in [check_program('return_check', return_program),
+		build_program('return_build', return_program)] {
+		assert res.exit_code != 0, res.output
+		assert !res.output.contains('C compilation error'), res.output
+		assert error_lines(res.output) == return_errors, res.output
+	}
+}
+
+// Returned values of the types their instances return stay valid, and so do the
+// returns that a clone cannot judge from its concrete types: a call result, a
+// literal of a type parameter, and a value narrowed by `is`.
+fn test_instances_that_return_values_of_their_types_stay_valid() {
+	source := "type Value = int | string\n\nfn same[T](x T) T {\n\treturn x\n}\n\nfn widen[T](x T) i64 {\n\treturn x\n}\n\nfn greeting[T](x T) string {\n\tf := fn [x] [T] () string {\n\t\treturn x.greet()\n\t}\n\treturn f()\n}\n\nfn zero[T]() T {\n\treturn T{}\n}\n\nfn pick[T](v Value, fallback T) int {\n\tif v is int {\n\t\treturn v\n\t}\n\treturn 0\n}\n\nfn main() {\n\tprintln(same(1))\n\tprintln(same('a'))\n\tprintln(widen(i32(2)))\n\tprintln(widen(u8(3)))\n\tprintln(greeting(User{ name: 'c' }))\n\tprintln(zero[map[string]int]())\n\tprintln(pick(Value(4), 0))\n}\n"
+	for res in [check_program('return_valid_check', source),
+		build_program('return_valid_build', source)] {
+		assert res.exit_code == 0, res.output
+		assert error_lines(res.output) == [], res.output
+	}
+}
+
 // An `if v := a` guard over an `a T` whose instance is neither an option nor a
 // result is reported for that instance, in a check and in a build, as V1 did,
 // instead of failing in the C compiler.
@@ -464,6 +497,266 @@ fn test_if_guards_over_options_in_instances_stay_valid() {
 	source := "fn plain[T](a T) string {\n\tif v := a {\n\t\treturn '\${v}'\n\t}\n\treturn 'none'\n}\n\nfn opt[T](a ?T) string {\n\tif v := a {\n\t\treturn '\${v}'\n\t}\n\treturn 'none'\n}\n\nfn mut_opt[T](mut a ?T) string {\n\tif v := a {\n\t\treturn '\${v}'\n\t}\n\treturn 'none'\n}\n\nfn index[T](m map[string]T) string {\n\tif v := m['a'] {\n\t\treturn '\${v}'\n\t}\n\treturn 'none'\n}\n\nfn smart[T](a ?T) string {\n\tif a != none {\n\t\tif v := a {\n\t\t\treturn '\${v}'\n\t\t}\n\t}\n\treturn 'none'\n}\n\nfn smart_else[T](mut a ?T) string {\n\tif a == none {\n\t\treturn 'none'\n\t} else {\n\t\tif mut v := a {\n\t\t\treturn '\${v}'\n\t\t}\n\t}\n\treturn 'none'\n}\n\nfn smart_match[T](mut a ?T, n int) string {\n\tif a != none {\n\t\tmatch n {\n\t\t\t1 {\n\t\t\t\tif mut v := a {\n\t\t\t\t\treturn '\${v}'\n\t\t\t\t}\n\t\t\t}\n\t\t\telse {}\n\t\t}\n\t}\n\treturn 'none'\n}\n\nstruct Box[T] {\n\tval ?T\n}\n\nfn (b Box[T]) get() string {\n\tif b.val != none {\n\t\tif v := b.val {\n\t\t\treturn '\${v}'\n\t\t}\n\t}\n\treturn 'none'\n}\n\nfn main() {\n\tx := ?int(3)\n\tprintln(plain(x))\n\tprintln(opt[int](4))\n\tmut y := ?string('s')\n\tprintln(mut_opt(mut y))\n\tprintln(index({\n\t\t'a': 5\n\t}))\n\tprintln(smart[int](6))\n\tprintln(smart_else(mut y))\n\tprintln(smart_match(mut y, 1))\n\tprintln(Box[int]{ val: 7 }.get())\n}\n"
 	for res in [check_program('if_guard_valid_check', source),
 		build_program('if_guard_valid_build', source)] {
+		assert res.exit_code == 0, res.output
+		assert error_lines(res.output) == [], res.output
+	}
+}
+
+// An instance reports its error where the source's `#line` directive maps the
+// returned value, as the code generated from another language does.
+fn test_an_instance_error_is_reported_at_its_line_directive() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_check_generic_instances_line_${os.getpid()}')
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	os.write_file(os.join_path(dir, 'view.txt'), 'first\nsecond\nvalid = count\n') or {
+		panic(err)
+	}
+	path := os.join_path(dir, 'main.v')
+	os.write_file(path, generic_prelude +
+		'fn valid[T](x T) bool {\n#line 3 "view.txt"\n\treturn x.name\n}\n\nfn main() {\n\tprintln(valid(User{}))\n}\n') or {
+		panic(err)
+	}
+	res := os.exec([@VEXE, '-new-compiler', '-check', '-nocolor', path])
+	assert res.exit_code == 1, res.output
+	assert res.output.contains('view.txt:3:9: error: cannot use `string` as type `bool` in return argument'), res.output
+}
+
+// call_arg_program passes names and fields of the wrong type from generic
+// bodies: a `bool` to a `string` parameter of a function, an `int` to a method
+// and to a fn-typed field, a callback of another signature, and the same from a
+// generic closure and a method of a generic struct.
+const call_arg_program = "fn take(s string) int {
+	return s.len
+}
+
+fn on_change(cb fn (string)) {
+	cb('a')
+}
+
+struct Sink {
+	put fn (string) = fn (s string) {}
+}
+
+fn (k Sink) show(s string) {
+	println(s)
+}
+
+struct App {
+	flag   bool
+	action fn (int) = fn (n int) {}
+}
+
+fn label[A](mut app A) int {
+	return take(app.flag)
+}
+
+fn submit[A](mut app A) {
+	on_change(app.action)
+}
+
+fn send[T](x T, k Sink) {
+	k.show(x)
+	k.put(x)
+}
+
+fn later[T](x T) {
+	f := fn [x] [T] () int {
+		return take(x)
+	}
+	_ = f
+}
+
+struct Box[T] {
+	v T
+}
+
+fn (b Box[T]) send() int {
+	return take(b.v)
+}
+
+fn main() {
+	mut app := App{}
+	println(label(mut app))
+	submit(mut app)
+	send(1, Sink{})
+	later(2)
+	println(Box[bool]{ v: true }.send())
+}
+"
+
+const call_arg_errors = ['32:14: cannot use `bool` as `string` in argument 1 to `take`',
+	'36:12: cannot use `fn (int)` as `fn (string)` in argument 1 to `on_change`',
+	'40:9: cannot use `int` as `string` in argument 1 to `Sink.show`',
+	'41:8: cannot use `int` as `string` in argument 1 to `Sink.put`',
+	'46:15: cannot use `int` as `string` in argument 1 to `take`',
+	'56:14: cannot use `bool` as `string` in argument 1 to `take`']
+
+// A plain argument of an instance with another type than its parameter is
+// reported for that instance, in a check and in a build, at the argument.
+fn test_an_instance_that_passes_an_argument_of_another_type_is_reported() {
+	for res in [check_program('call_arg_check', call_arg_program),
+		build_program('call_arg_build', call_arg_program)] {
+		assert res.exit_code != 0, res.output
+		assert !res.output.contains('C compilation error'), res.output
+		assert error_lines(res.output) == call_arg_errors, res.output
+	}
+}
+
+// Arguments of the types their parameters take stay valid, converted or not,
+// and so do the arguments that a clone cannot judge from its concrete types: a
+// call result, a value narrowed by `is` or `match`, one passed in the body of a
+// `$for`, a spread `...args`, and a local initialized by a `match` or a fn
+// literal, which a clone can type as an `int` and as the literal's return type.
+fn test_instances_that_pass_arguments_of_their_types_stay_valid() {
+	source := "type Value = int | string
+
+interface Greeter {
+	greet() string
+}
+
+struct Named {
+	label string
+}
+
+fn take(s string) int {
+	return s.len
+}
+
+fn take_i64(n i64) i64 {
+	return n
+}
+
+fn speak(g Greeter) string {
+	return g.greet()
+}
+
+fn store(v Value) int {
+	return if v is int { v } else { 0 }
+}
+
+fn show_any[U](u U) string {
+	return '\${u}'
+}
+
+fn grow(mut a []int) {
+	a << 1
+}
+
+fn names[T](x T) int {
+	return take(x.name)
+}
+
+fn widen[T](x T) i64 {
+	return take_i64(x)
+}
+
+fn greet_all[T](x T) string {
+	return speak(x)
+}
+
+fn wrap[T](x T) int {
+	return store(x)
+}
+
+fn pass[T](x T) string {
+	return show_any(x)
+}
+
+fn update[T](mut x T) {
+	grow(mut x)
+}
+
+fn later[T](x T) int {
+	f := fn [x] [T] () int {
+		return take(x.name)
+	}
+	return f()
+}
+
+fn via_call[T](x T) int {
+	return take(x.greet())
+}
+
+fn narrowed[T](v Value, fallback T) int {
+	if v is string {
+		return take(v)
+	}
+	return match v {
+		string { take(v) }
+		int { v }
+	}
+}
+
+fn take_u8(n u8) u8 {
+	return n
+}
+
+fn pair(a int, b int) int {
+	return a + b
+}
+
+fn run(f fn () !int) int {
+	return f() or { 0 }
+}
+
+fn sized[T](x T) u8 {
+	len := match typeof(x).name {
+		'u8' { u8(2) }
+		else { 4 }
+	}
+	return take_u8(len)
+}
+
+fn spread[T](args ...T) int {
+	return pair(...args)
+}
+
+fn callback[T](x T) int {
+	make := fn () !int {
+		return 1
+	}
+	return run(make)
+}
+
+fn fields[T](x T, v Value) int {
+	mut n := 0
+	\$for f in T.fields {
+		\$if f.typ is string {
+			if v is string {
+				n += take(v)
+			}
+		}
+	}
+	return n
+}
+
+fn main() {
+	u := User{
+		name: 'a'
+	}
+	println(names(u))
+	println(widen(i32(2)))
+	println(widen(u8(3)))
+	println(greet_all(u))
+	println(wrap(4))
+	println(wrap('c'))
+	println(pass(5))
+	println(pass(u))
+	mut nums := [1]
+	update(mut nums)
+	println(later(u))
+	println(via_call(u))
+	println(narrowed(Value('d'), 0))
+	println(fields(Named{ label: 'e' }, Value('f')))
+	println(sized(1))
+	println(spread(1, 2))
+	println(callback(u))
+}
+"
+	for res in [check_program('call_arg_valid_check', source),
+		build_program('call_arg_valid_build', source)] {
 		assert res.exit_code == 0, res.output
 		assert error_lines(res.output) == [], res.output
 	}

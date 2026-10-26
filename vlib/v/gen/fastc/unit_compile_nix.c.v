@@ -4,15 +4,13 @@ import os
 import strings
 import time
 
-#include <signal.h>
-
 fn C.v_os_exec_capture_start(argv &&char, child_pid &int, read_fd &int) int
 
 fn C.v_os_exec_capture_input_start(argv &&char, child_pid &int, read_fd &int, write_fd &int) int
 
-fn C.v_os_fd_write_all(fd int, data &char, len uint)
-
 fn C.waitpid(pid int, status &int, options int) int
+
+const fastc_unit_stdin_buffer_size = 512 * 1024
 
 struct FastcUnitCompile {
 	pid     int
@@ -92,25 +90,66 @@ fn fastc_stream_unit_compile_order(sources []string) []int {
 	return order
 }
 
-fn fastc_write_unit_stdin(fd int, source string) {
-	C.v_os_fd_write_all(fd, &char(source.str), uint(source.len))
-	C.close(fd)
+fn fastc_write_stdin_bytes(fd int, data &u8, len int) bool {
+	mut offset := 0
+	for offset < len {
+		// The caller keeps this byte range alive until the blocking write returns.
+		written := C.write(fd, unsafe { data + offset }, uint(len - offset))
+		if written > 0 {
+			offset += int(written)
+		} else if written < 0 && C.errno == C.EINTR {
+			continue
+		} else {
+			return false
+		}
+	}
+	return true
 }
 
-fn fastc_render_unit_stdin(fd int, worker thread string) {
+fn fastc_write_unit_stdin(fd int, source string) bool {
+	defer { C.close(fd) }
+	return fastc_write_stdin_bytes(fd, source.str, source.len)
+}
+
+fn fastc_render_unit_stdin(fd int, worker thread string) bool {
 	source := worker.wait()
-	fastc_write_unit_stdin(fd, source)
+	return fastc_write_unit_stdin(fd, source)
+}
+
+fn fastc_flush_c_unit_stdin(fd int, mut out strings.Builder) bool {
+	if !fastc_write_stdin_bytes(fd, &u8(out.data), out.len) {
+		return false
+	}
+	out.clear()
+	return true
 }
 
 @[inline]
-fn fastc_append_c_unit_piece(mut out strings.Builder, text string) {
-	if text.len > 0 {
-		out.write_string(text)
+fn fastc_append_c_unit_piece(fd int, mut out strings.Builder, text string) bool {
+	// Large pieces can be written from shared source storage after the pending
+	// prefix. Small pieces only fill this bounded buffer, never a complete unit.
+	if text.len >= fastc_unit_stdin_buffer_size {
+		if !fastc_flush_c_unit_stdin(fd, mut out) {
+			return false
+		}
+		return fastc_write_stdin_bytes(fd, text.str, text.len)
 	}
+	if text.len > fastc_unit_stdin_buffer_size - out.len {
+		if !fastc_flush_c_unit_stdin(fd, mut out) {
+			return false
+		}
+	}
+	out.write_string(text)
+	return true
 }
 
-fn fastc_render_c_unit_stdin(fd int, pieces []string, units &FastcUnitLayout, g int, first_unit int, end_unit int) {
-	mut out := strings.new_builder(512 * 1024)
+fn fastc_render_c_unit_stdin(fd int, pieces []string, units &FastcUnitLayout, g int, first_unit int, end_unit int) bool {
+	mut out := strings.new_builder(fastc_unit_stdin_buffer_size)
+	defer {
+		C.close(fd)
+		// Only this worker owns the buffer; all writes completed before it is freed.
+		unsafe { out.free() }
+	}
 	for k in 0 .. units.head_end {
 		if units.prototype_start < units.prototype_end && k >= units.prototype_start
 			&& k < units.prototype_end {
@@ -123,7 +162,9 @@ fn fastc_render_c_unit_stdin(fd int, pieces []string, units &FastcUnitLayout, g 
 				break
 			}
 		}
-		fastc_append_c_unit_piece(mut out, piece)
+		if !fastc_append_c_unit_piece(fd, mut out, piece) {
+			return false
+		}
 	}
 	if units.prototype_start < units.prototype_end && units.prototype_texts.len > 0
 		&& units.unit_ref_starts.len == units.unit_starts.len {
@@ -145,21 +186,28 @@ fn fastc_render_c_unit_stdin(fd int, pieces []string, units &FastcUnitLayout, g 
 		}
 		for id, include_prototype in needed {
 			if include_prototype {
-				fastc_append_c_unit_piece(mut out, units.prototype_texts[id])
+				if !fastc_append_c_unit_piece(fd, mut out, units.prototype_texts[id]) {
+					return false
+				}
 			}
 		}
 	}
 	if g == 0 {
 		for k in units.head_end .. units.solo_end {
-			fastc_append_c_unit_piece(mut out, pieces[k])
+			if !fastc_append_c_unit_piece(fd, mut out, pieces[k]) {
+				return false
+			}
 		}
 	}
-	fastc_append_c_unit_piece(mut out, '\n')
-	for k in units.unit_starts[first_unit] .. units.unit_starts[end_unit] {
-		fastc_append_c_unit_piece(mut out, pieces[k])
+	if !fastc_append_c_unit_piece(fd, mut out, '\n') {
+		return false
 	}
-	C.v_os_fd_write_all(fd, &char(out.data), uint(out.len))
-	C.close(fd)
+	for k in units.unit_starts[first_unit] .. units.unit_starts[end_unit] {
+		if !fastc_append_c_unit_piece(fd, mut out, pieces[k]) {
+			return false
+		}
+	}
+	return fastc_flush_c_unit_stdin(fd, mut out)
 }
 
 // fastc_prestart_c_units starts TinyCC processes that wait for their source on
@@ -241,7 +289,7 @@ pub fn fastc_begin_feed_prestarted_c_units(mut prestarted FastcPrestartedCUnits,
 		|| rendering.workers.len != prestarted.unit_count {
 		return error('invalid prestarted FastC unit layout')
 	}
-	mut writers := []thread{len: prestarted.unit_count}
+	mut writers := []thread bool{len: prestarted.unit_count}
 	for i in rendering.order {
 		writers[i] = spawn fastc_render_unit_stdin(prestarted.write_fds[i], rendering.workers[i])
 		prestarted.write_fds[i] = -1
@@ -260,7 +308,7 @@ pub fn fastc_begin_render_prestarted_c_units(mut prestarted FastcPrestartedCUnit
 		|| plan.paths.len != prestarted.unit_count {
 		return error('invalid prestarted FastC unit layout')
 	}
-	mut writers := []thread{len: prestarted.unit_count}
+	mut writers := []thread bool{len: prestarted.unit_count}
 	for g in 0 .. plan.paths.len {
 		writers[g] = spawn fastc_render_c_unit_stdin(prestarted.write_fds[g], pieces, &units, g, plan.first_units[g], plan.first_units[g + 1])
 		prestarted.write_fds[g] = -1
@@ -284,11 +332,17 @@ pub fn fastc_finish_prestarted_c_units(mut prestarted FastcPrestartedCUnits, mut
 		output := os.fd_slurp(prestarted.read_fds[i]).join('')
 		os.fd_close(prestarted.read_fds[i])
 		prestarted.read_fds[i] = -1
-		feeding.writers[i].wait()
+		written := feeding.writers[i].wait()
 		code := fastc_wait_exit_code(prestarted.pids[i])
 		prestarted.pids[i] = 0
-		if code != 0 && failure == '' {
-			failure = if output.len > 0 { output } else { 'tcc failed on ${prestarted.objects[i]}' }
+		if (code != 0 || !written) && failure == '' {
+			failure = if output.len > 0 {
+				output
+			} else if code != 0 {
+				'tcc failed on ${prestarted.objects[i]}'
+			} else {
+				'could not write FastC source for ${prestarted.objects[i]}'
+			}
 		} else if code == 0 && preload_link && failure == '' {
 			fastc_add_prepared_link_input(mut prepared_link, prestarted.objects[i]) or {
 				failure = err.msg()
@@ -321,7 +375,7 @@ pub fn fastc_compile_rendering_c_units(tcc string, base_args []string, mut rende
 	bench_phases := os.getenv('FASTC_BENCH_PHASES') != ''
 	sw := time.new_stopwatch()
 	mut compiles := []FastcUnitCompile{len: rendering.paths.len}
-	mut writers := []thread{len: rendering.paths.len}
+	mut writers := []thread bool{len: rendering.paths.len}
 	mut handed := []bool{len: rendering.paths.len}
 	mut start_error := ''
 	for i in rendering.order {
@@ -354,13 +408,19 @@ pub fn fastc_compile_rendering_c_units(tcc string, base_args []string, mut rende
 		}
 		output := os.fd_slurp(compile.read_fd).join('')
 		os.fd_close(compile.read_fd)
-		writers[i].wait()
+		written := writers[i].wait()
 		code := fastc_wait_exit_code(compile.pid)
 		if bench_phases {
 			eprintln('fastc-phase tcc.unit_done ${sw.elapsed().microseconds()}us ${os.file_name(compile.object)}')
 		}
-		if code != 0 && failure == '' {
-			failure = if output.len > 0 { output } else { 'tcc failed on ${compile.object}' }
+		if (code != 0 || !written) && failure == '' {
+			failure = if output.len > 0 {
+				output
+			} else if code != 0 {
+				'tcc failed on ${compile.object}'
+			} else {
+				'could not write FastC source for ${compile.object}'
+			}
 		} else if code == 0 && preload_link && failure == '' {
 			fastc_add_prepared_link_input(mut prepared_link, compile.object) or {
 				failure = err.msg()
@@ -388,7 +448,7 @@ pub fn fastc_compile_c_unit_texts(tcc string, base_args []string, unit_paths []s
 	bench_phases := os.getenv('FASTC_BENCH_PHASES') != ''
 	sw := time.new_stopwatch()
 	mut compiles := []FastcUnitCompile{cap: unit_paths.len}
-	mut writers := []thread{cap: unit_paths.len}
+	mut writers := []thread bool{cap: unit_paths.len}
 	mut start_error := ''
 	for i in fastc_stream_unit_compile_order(sources) {
 		object := prepared.entries[i].object
@@ -416,13 +476,19 @@ pub fn fastc_compile_c_unit_texts(tcc string, base_args []string, unit_paths []s
 	for i, compile in compiles {
 		output := os.fd_slurp(compile.read_fd).join('')
 		os.fd_close(compile.read_fd)
-		writers[i].wait()
+		written := writers[i].wait()
 		code := fastc_wait_exit_code(compile.pid)
 		if bench_phases {
 			eprintln('fastc-phase tcc.unit_done ${sw.elapsed().microseconds()}us ${os.file_name(compile.object)}')
 		}
-		if code != 0 && failure == '' {
-			failure = if output.len > 0 { output } else { 'tcc failed on ${compile.object}' }
+		if (code != 0 || !written) && failure == '' {
+			failure = if output.len > 0 {
+				output
+			} else if code != 0 {
+				'tcc failed on ${compile.object}'
+			} else {
+				'could not write FastC source for ${compile.object}'
+			}
 		}
 	}
 	if failure != '' {

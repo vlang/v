@@ -5937,12 +5937,16 @@ fn (mut t Transformer) make_array_literal_typed(values []flat.NodeId, typ_id u32
 
 // stringify_expr converts an expression to text, using voidptr.str() for print arguments.
 fn (mut t Transformer) stringify_expr(expr_id flat.NodeId, for_print bool) flat.NodeId {
-	// Transforming a pointer expression can normalize `&Alias` to `&Base`. Keep the
-	// checker's source-level alias here so auto-str can still add `Alias(...)` while
+	// Transforming a pointer expression can normalize `&Alias` to `&Base`. Keep
+	// the checker's source-level alias here so auto-str can still add `Alias(...)` while
 	// reading the pointee through the base representation.
 	raw_alias_type_source_id_4 := t.raw_alias_type_for_expr(expr_id)
 	raw_alias_type_source_id_7 := raw_alias_type_source_id_4
-
+	// An array of compile-time-known scalars renders as the same text either way,
+	// so fold it here rather than lowering it into the auto-str runtime.
+	if array_str := t.try_fold_comptime_array_str(expr_id) {
+		return array_str
+	}
 	expr := t.transform_expr(expr_id)
 	// A smartcasted identifier's transformed expression is the concrete value,
 	// while the source binding still has its interface/sum type. Stringify the
@@ -14482,6 +14486,9 @@ fn (mut t Transformer) try_lower_builtin_call(_id flat.NodeId, node flat.Node) ?
 	if node.children_count > 0 {
 		string_callee := t.a.child_node(&node, 0)
 		if string_callee.kind == .selector && string_callee.children_count > 0 {
+			if folded := t.try_fold_comptime_string_method(node, string_callee) {
+				return folded
+			}
 			if folded := t.try_fold_literal_string_call(node, string_callee) {
 				return folded
 			}
@@ -16827,7 +16834,7 @@ fn (mut t Transformer) validate_specialized_fn_field_call(id flat.NodeId, node f
 		arg_id := t.a.child(&node, i + 1)
 		actual_type_source_id_3 := t.specialized_expr_type_name(arg_id)
 		actual_type := flat.source_type_name(actual_type_source_id_3)
-		expected_type_source_id := t.semantic_type_name(*fn_type.params[i].typ)
+		expected_type_source_id := t.semantic_type_name_in_cur_module(*fn_type.params[i].typ)
 		expected_type := flat.source_type_name(expected_type_source_id)
 		if t.resolved_receiver_arg_compatible(arg_id, actual_type_source_id_3, expected_type_source_id) {
 			continue
@@ -16838,10 +16845,22 @@ fn (mut t Transformer) validate_specialized_fn_field_call(id flat.NodeId, node f
 		t.record_monomorph_error('cannot use `${actual_type}` as argument ${i + 1} to `${display_name}`; expected `${expected_type}`')
 		valid = false
 	}
-	if !t.validate_specialized_call_result(id, t.semantic_type_name(fn_type.return_type)) {
+	if !t.validate_specialized_call_result(id, t.semantic_type_name_in_cur_module(fn_type.return_type)) {
 		valid = false
 	}
 	return valid
+}
+
+// semantic_type_name_in_cur_module spells a checker type for comparison with the
+// expression types of the current module. A type name renders main-module types
+// bare, so inside an imported generic specialization a main `Row` is locked to
+// `main.Row` like the expressions' types, or it would name the module's own `Row`.
+fn (t &Transformer) semantic_type_name_in_cur_module(typ types.Type) u32 {
+	name := t.semantic_type_name(typ)
+	if t.cur_module in ['', 'main', 'builtin'] {
+		return name
+	}
+	return t.lock_colliding_main_generic_type_text(name, t.cur_module)
 }
 
 fn transform_fn_type(typ types.Type) ?types.FnType {
@@ -19520,6 +19539,59 @@ fn (mut t Transformer) try_fold_literal_string_call(node flat.Node, callee flat.
 	}
 	value := comptime_string_scalar(receiver.value, callee.value, args) or { return none }
 	return t.make_comptime_scalar_literal(value)
+}
+
+// try_fold_comptime_string_method folds the string methods whose result is not a
+// plain scalar. `repeat` takes an int count, `index` answers with an option and
+// `split` with an array, so each builds the AST shape the checker already typed
+// at this position: SSA lowers those shapes, while a bare int or string literal
+// in their place would change the value the program reads.
+fn (mut t Transformer) try_fold_comptime_string_method(node flat.Node, callee flat.Node) ?flat.NodeId {
+	if callee.children_count == 0 {
+		return none
+	}
+	method := callee.value
+	if method !in ['repeat', 'index', 'split'] {
+		return none
+	}
+	receiver := t.comptime_scalar_expr(t.a.child(&callee, 0), 0) or { return none }
+	if receiver.typ != flat.source_type_string {
+		return none
+	}
+	match method {
+		'repeat' {
+			if node.children_count != 2 {
+				return none
+			}
+			count := t.comptime_int_arg_value(t.a.child(&node, 1)) or { return none }
+			value := comptime_string_repeat(receiver.value, count) or { return none }
+			return t.make_string_literal(value.value)
+		}
+		'index' {
+			if node.children_count != 2 {
+				return none
+			}
+			needle := t.comptime_scalar_expr(t.a.child(&node, 1), 0) or { return none }
+			if needle.typ != flat.source_type_string {
+				return none
+			}
+			value, found := comptime_string_index(receiver.value, needle.value)
+			// An `if` with a `none` branch is how a V source option is spelled, so the
+			// folded value keeps the option type the checker recorded for the call.
+			return t.make_comptime_option_value(found, value.value.int())
+		}
+		'split' {
+			parts := t.comptime_string_split_parts(node, callee) or { return none }
+			mut values := []flat.NodeId{cap: parts.len}
+			for part in parts {
+				values << t.make_string_literal(part)
+			}
+			return t.make_array_literal_typed(values, flat.source_type_id('[]string'))
+		}
+		else {
+			return none
+		}
+	}
 }
 
 // lower_string_count_call builds lower string count call data for transform.

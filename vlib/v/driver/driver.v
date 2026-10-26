@@ -10935,10 +10935,13 @@ $if !skip_fastc ? {
 			final_args << atomic_arg
 		}
 		final_args << link_ld_flags
+		mut aggregated_host_support := false
 		if prefs.building_v && prefs.normalized_target_os() == 'macos'
 			&& prefs.normalized_target_arch() == 'arm64' && !is_debug
 			&& environment_c_flags.len == 0 && user_c_flags.len == 0 && link_ld_flags.len == 0 {
 			final_args = v3_fastc_aggregate_host_support_args(prefs.vroot, build_dir, compile_args, final_args, macos_sdk_root, tcc_resources.base_arg, tcc_resources.include_arg)
+			aggregated_host_support = final_args.len > 0
+				&& final_args[0] == os.join_path(build_dir, 'host_support_darwin.c')
 		}
 		generation_link_cache_key := fastc.fastc_generation_link_cache_key(tcc_path, compile_args, final_args, pieces, units, jobs, cache_enabled && !final_args.any(fastc.fastc_flag_is_native_input(it)))
 		if fastc.fastc_restore_link_cache(generation_link_cache_key, staged_binary) {
@@ -11004,6 +11007,14 @@ $if !skip_fastc ? {
 				mut prepared_link := fastc.fastc_prepare_link(tcc_path, os.join_path_single(tcc_dir, 'lib'), compile_args, final_args)
 				preload_link := (feeds_prestarted || rendering_units.paths.len > 0)
 					&& fastc.fastc_prepared_link_accepts_inputs(&prepared_link)
+				mut native_compile := fastc.FastcNativeCompile{}
+				defer {
+					fastc.fastc_discard_native_compile(mut native_compile)
+				}
+				if preload_link && !cache_enabled && aggregated_host_support {
+					native_compile = fastc.fastc_begin_native_compile(tcc_path, compile_args,
+						final_args[0], os.join_path(build_dir, 'host_support_darwin.o'))
+				}
 				if feeds_prestarted {
 					if !uses_prestarted {
 						fastc.fastc_discard_link(mut prepared_link)
@@ -11050,7 +11061,12 @@ $if !skip_fastc ? {
 					sign_in_process = shim_dir.dir != ''
 				}
 				finish_inputs := if preload_link { []string{} } else { link_inputs }
-				result = fastc.fastc_finish_link(mut prepared_link, finish_inputs, final_args, staged_binary)
+				mut finish_final_args := final_args
+				if native_object := fastc.fastc_finish_native_compile(mut native_compile) {
+					finish_final_args = final_args.clone()
+					finish_final_args[0] = native_object
+				}
+				result = fastc.fastc_finish_link(mut prepared_link, finish_inputs, finish_final_args, staged_binary)
 			}
 			if bench_phases {
 				eprintln('fastc-phase tcc.linked ${cc_sw.elapsed().microseconds()}us')
@@ -21773,7 +21789,7 @@ const wasm_supported_array_types = [flat.source_type_id('[]int'), flat.source_ty
 	flat.source_type_id('[]u8'), flat.source_type_id('[]u16'), flat.source_type_id('[]u32'),
 	flat.source_type_id('[]u64'), flat.source_type_id('[]isize'), flat.source_type_id('[]uint'),
 	flat.source_type_id('[]f32'), flat.source_type_id('[]f64'), flat.source_type_id('[]bool'),
-	flat.source_type_id('[]char'), flat.source_type_id('[]rune')]
+	flat.source_type_id('[]char'), flat.source_type_id('[]rune'), flat.source_type_id('[]string')]
 
 // wasm_supported_array_elem reports whether a resolved array type name has
 // primitive elements the wasm backend lowers today. Single dimension only:
@@ -21788,6 +21804,29 @@ fn wasm_supported_array_elem(type_id u32) bool {
 // with a depth bound, because a self-referential type through a pointer field
 // would otherwise loop the walk for ever.
 fn wasm_supported_struct(tc &types.TypeChecker, type_id u32) bool {
+	name := flat.source_type_name(type_id).trim_string_left('main.@')
+	// Option types (`?T`) lower in the wasm backend when their payload does:
+	// gen.v handles types.OptionType and the SSA backend lowers the leading
+	// `ok` plus payload. Walk the payload instead of looking the option up in
+	// tc.structs, where it is not registered as a regular struct.
+	if name.starts_with('?') {
+		inner := name[1..]
+		if inner.len == 0 {
+			return false
+		}
+		inner_id := flat.source_type_id(inner)
+		if inner.starts_with('[]') {
+			return wasm_supported_array_elem(inner_id)
+		}
+		if inner in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'uint',
+			'f32', 'f64', 'bool', 'char', 'rune', 'string'] {
+			return true
+		}
+		if tc.structs[inner] or { [] }.len >= 0 && inner in tc.structs {
+			return wasm_supported_struct(tc, inner_id)
+		}
+		return false
+	}
 	return wasm_struct_fields_supported(tc, type_id, 0)
 }
 
@@ -21816,6 +21855,9 @@ fn wasm_struct_field_supported(tc &types.TypeChecker, typ types.Type, depth int)
 		types.Primitive, types.Char, types.Rune, types.ISize, types.USize, types.Enum,
 		types.String {
 			return true
+		}
+		types.OptionType {
+			return wasm_struct_field_supported(tc, typ.base_type, depth)
 		}
 		types.Struct {
 			return wasm_struct_fields_supported(tc, typ.source_type_id(), depth + 1)
