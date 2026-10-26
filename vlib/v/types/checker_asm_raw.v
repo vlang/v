@@ -577,7 +577,14 @@ fn (mut tc TypeChecker) check_inline_asm_raw_labels(id flat.NodeId, node flat.No
 		directive := instruction.mnemonic.to_lower_ascii()
 		if instruction.is_directive && directive in ['.globl', '.global', '.weak'] {
 			for operand in instruction.operands {
-				exported[operand.text] = true
+				// Quotes delimit a symbol name; assembler backslashes remain literal bytes.
+				name := if operand.text.len >= 2 && operand.text[0] == `"`
+					&& operand.text[operand.text.len - 1] == `"` {
+					operand.text[1..operand.text.len - 1]
+				} else {
+					operand.text
+				}
+				exported[name] = true
 			}
 		}
 	}

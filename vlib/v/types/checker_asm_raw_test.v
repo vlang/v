@@ -1,6 +1,75 @@
 module types
 
+import os
+import v.parser
+import v.pref
 import v.util
+
+fn raw_label_checker(name string, source string) &TypeChecker {
+	path := os.join_path(os.vtmp_dir(), 'raw_asm_labels_${name}_${os.getpid()}.v')
+	os.write_file(path, source) or { panic(err) }
+	defer { os.rm(path) or {} }
+	mut prefs := pref.new_preferences()
+	// Check retained templates for each ISA without requiring a matching host backend.
+	prefs.supports_inline_asm = true
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := TypeChecker.new(a)
+	tc.collect(a)
+	tc.check_semantics()
+	return tc
+}
+
+fn test_raw_labels_accept_quoted_exported_symbols() {
+	tc := raw_label_checker('quoted_exports', 'module main
+fn main() {
+ asm arm64 raw {
+  ".globl \\"first_symbol\\"\\n"
+  ".global \\"second_symbol\\"\\n"
+  ".weak \\"third_symbol\\"\\n"
+  "first_symbol: second_symbol: third_symbol: nop"
+ }
+}
+')
+	assert tc.errors.len == 0, tc.errors.str()
+	assert tc.notices.len == 0, tc.notices.str()
+}
+
+fn test_raw_labels_skip_unknown_assembler_comment_grammars() {
+	for arch, comment in {
+		'arm':     '@'
+		'riscv64': '#'
+	} {
+		tc := raw_label_checker(arch, 'module main
+fn main() {
+ asm ${arch} raw {
+  "${comment} ignored; fake_label:\\n"
+  "nop"
+ }
+}
+')
+		assert tc.errors.len == 0, tc.errors.str()
+		assert tc.notices.len == 0, tc.notices.str()
+	}
+}
+
+fn test_raw_labels_still_warn_for_other_unexported_symbols() {
+	tc := raw_label_checker('unexported', 'module main
+fn main() {
+ asm arm64 raw {
+  ".globl \\"exported_symbol\\"\\n"
+  ".globl \\"private\\\\_symbol\\"\\n"
+  "private_symbol: nop"
+ }
+}
+')
+	assert tc.errors.len == 0, tc.errors.str()
+	// The quoted backslash is part of a different assembler symbol, not an escape.
+	assert tc.notices.len == 1, tc.notices.str()
+	assert tc.notices[0].severity == 'warning:'
+	assert tc.notices[0].msg.starts_with('label `private_symbol` in a raw assembly template has no `%=` suffix')
+}
 
 // raw_template_of decodes the template section of a complete raw asm block, so the
 // tests exercise the same block offsets a checker diagnostic would use.

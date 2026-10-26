@@ -15,7 +15,7 @@ fn count_down(n u64) u64 {
 			".Ldone%=:\n\t"
 			"jmp 1f\n\t"
 			"1:\n\t"
-			".globl asm_raw_label_ok_exported\n\t"
+			".globl \"asm_raw_label_ok_exported\"\n\t"
 			"asm_raw_label_ok_exported:"
 			; [len] "+r" (len)
 			;
@@ -30,7 +30,7 @@ fn count_down(n u64) u64 {
 			"subs %[len], %[len], #1\n\t"
 			"b.ne 1b\n\t"
 			"2:\n\t"
-			".global asm_raw_label_ok_exported\n\t"
+			".global \"asm_raw_label_ok_exported\"\n\t"
 			"asm_raw_label_ok_exported:"
 			; [len] "+r" (len)
 			;

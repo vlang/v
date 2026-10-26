@@ -117,13 +117,14 @@ fn (mut tc TypeChecker) check_inline_asm_block(id flat.NodeId, node flat.Node, s
 				operand_types, registers)
 		}
 	}
-	if header.is_raw && sections.len > 0 && tc.fn_context.node_id >= 0 {
-		// File-scope templates are emitted once, so only labels inside functions can collide.
-		tc.check_inline_asm_raw_labels(id, node, block, start, sections[0], header.arch)
-	}
 	if registers.len == 0 {
 		// Without a register table for this instruction set every name looks unknown.
 		return
+	}
+	if header.is_raw && sections.len > 0 && tc.fn_context.node_id >= 0 {
+		// Only these known instruction sets have supported assembler comment grammars.
+		// File-scope templates are emitted once, so only labels inside functions can collide.
+		tc.check_inline_asm_raw_labels(id, node, block, start, sections[0], header.arch)
 	}
 	if sections.len > 3 {
 		tc.check_inline_asm_clobbers(id, node, block, start, sections[3], registers)

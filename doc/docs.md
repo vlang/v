@@ -11502,8 +11502,8 @@ for each inline-assembly statement, so prefer names such as `.Lloop%=` for loops
 functions. Numeric local labels such as `1:` with `1b` (backward) and `1f` (forward) references are
 also useful for short branches. Do not use an ordinary global-looking label in a raw block unless
 it is deliberately exported: two instantiations of a function can otherwise define the same
-assembler symbol. The compiler warns about such a label inside a function unless it is numeric,
-uses `%=`, or is exported with `.globl`.
+assembler symbol. In x86 and arm64 raw blocks, the compiler warns about such a label inside a
+function unless it is numeric, uses `%=`, or is exported with `.globl`, `.global`, or `.weak`.
 
 For a loop over a V buffer, bind a pointer and a block count as read-write register operands, bump
 the pointer inside the template, and decrement the count until it reaches zero:
